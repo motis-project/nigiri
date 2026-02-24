@@ -191,6 +191,7 @@ route::route(timetable& tt,
              std::string_view id,
              translation_idx_t short_name,
              translation_idx_t long_name,
+             translation_idx_t url,
              route_type_t const route_type,
              route_color const color,
              provider_idx_t const agency,
@@ -199,6 +200,7 @@ route::route(timetable& tt,
       id_{id},
       short_name_{short_name},
       long_name_{long_name},
+      url_{url},
       route_type_{route_type},
       color_{color},
       agency_{agency},
@@ -238,6 +240,14 @@ void route::set_long_name(translated_str_t x) {
   long_name_ = tt_->register_translation(x);
 }
 
+std::string_view route::get_url() const {
+  return tt_->get_default_translation(url_);
+}
+translated_str_t route::get_url_translations() const { return tt_->get(url_); }
+void route::set_url(translated_str_t x) {
+  long_name_ = tt_->register_translation(x);
+}
+
 route_type_t::value_t route::get_route_type() const {
   return static_cast<route_type_t::value_t>(route_type_);
 }
@@ -263,7 +273,7 @@ void route::set_clasz(clasz const x) {
     case clasz::kLongDistance: route_type_ = route_type_t{102}; return;
     case clasz::kCoach: route_type_ = route_type_t{200}; return;
     case clasz::kNight: route_type_ = route_type_t{105}; return;
-    case clasz::kRegionalFast: route_type_ = route_type_t{100}; return;
+    case clasz::kRideSharing: route_type_ = route_type_t{1551}; return;
     case clasz::kRegional: route_type_ = route_type_t{103}; return;
     case clasz::kSuburban: route_type_ = route_type_t{109}; return;
     case clasz::kSubway: route_type_ = route_type_t{402}; return;
@@ -710,6 +720,7 @@ route_id_idx_t register_route(timetable& tt, route const& r) {
   route_id.route_id_category_.emplace_back(r.category_);
   route_id.route_id_short_names_.emplace_back(r.short_name_);
   route_id.route_id_long_names_.emplace_back(r.long_name_);
+  route_id.rotue_id_url_.emplace_back(r.url_);
   route_id.route_id_colors_.emplace_back(r.color_);
   route_id.route_id_type_.emplace_back(r.route_type_);
   route_id.route_id_provider_.emplace_back(r.agency_);
