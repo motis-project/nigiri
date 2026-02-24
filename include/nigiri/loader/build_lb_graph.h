@@ -323,6 +323,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                     {ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid()});
             transfers.at(it->second).push_back(transfer);
           }
+          return it->second;
         } else {
           // insert
           auto const edge_idx = insert_ch_edge(from_l, to_l, min_dur, max_dur);
@@ -334,6 +335,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
               {ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid()});
           transfers.at(edge_idx).push_back(transfer);
           stats.inserts_++;
+          return edge_idx;
         }
       };
 
@@ -476,13 +478,42 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           }
         }
       }
+      auto const upsert_edge_with_footpath =
+          [&](location_idx_t const to_l,
+              std::pair<u16_minutes, u16_minutes> const& minmax_duration,
+              ch_edge_idx_t pt_edge) {
+            auto min_saw_transfer = std::vector<tooth>{};
+            auto max_saw_transfer = std::vector<tooth>{};
+            saw<kChSawType>{min_saw, traffic_days}.concat_const(
+                kForward,
+                saw<saw_type::kConstant>{
+                    saw<saw_type::kConstant>::of(minmax_duration.first),
+                    traffic_days},
+                pt_edge, ch_edge_idx_t::invalid(), min_saw_transfer);
+            saw<kChSawType>{max_saw, traffic_days}.concat_const(
+                kForward,
+                saw<saw_type::kConstant>{
+                    saw<saw_type::kConstant>::of(minmax_duration.second),
+                    traffic_days},
+                pt_edge, ch_edge_idx_t::invalid(), max_saw_transfer);
+            return upsert_ch_footpath_edge(
+                from_l, to_l, std::move(min_saw_transfer),
+                std::move(max_saw_transfer), e.routes_,
+                to_l == entry.first ? location_idx_t::invalid() : entry.first);
+          };
+      auto const pt_edge = upsert_edge_with_footpath(
+          entry.first, arrival_fps.at(entry.first), ch_edge_idx_t::invalid());
+
       // std::cout << "arr fps " << arrival_fps.size() << std::endl;
       // TODO take into account PT directs?
       for (auto const& [to_l, minmax_duration] : arrival_fps) {
-        std::cout << "fp mm fr: " << entry.first << " to: " << to_l << " "
+        /*std::cout << "fp mm fr: " << entry.first << " to: " << to_l << " "
                   << minmax_duration.first << " " << minmax_duration.second
-                  << std::endl;
-        if (kChAtomicFootpaths && to_l != entry.first) {
+                  << std::endl;*/
+        if (to_l == entry.first) {
+          continue;
+        }
+        if (kChAtomicFootpaths) {
           upsert_ch_footpath_edge(
               entry.first, to_l,
               saw<saw_type::kConstant>::of(minmax_duration.first),
@@ -490,26 +521,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
               location_idx_t::invalid());
         } else {  // TODO set edge_idx for PT edge so that transfer is taken
                   // into account
-          auto min_saw_transfer = std::vector<tooth>{};
-          auto max_saw_transfer = std::vector<tooth>{};
-          saw<kChSawType>{min_saw, traffic_days}.concat_const(
-              kForward,
-              saw<saw_type::kConstant>{
-                  saw<saw_type::kConstant>::of(minmax_duration.first),
-                  traffic_days},
-              ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(),
-              min_saw_transfer);
-          saw<kChSawType>{max_saw, traffic_days}.concat_const(
-              kForward,
-              saw<saw_type::kConstant>{
-                  saw<saw_type::kConstant>::of(minmax_duration.second),
-                  traffic_days},
-              ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(),
-              max_saw_transfer);
-          upsert_ch_footpath_edge(
-              from_l, to_l, std::move(min_saw_transfer),
-              std::move(max_saw_transfer), e.routes_,
-              to_l == entry.first ? location_idx_t::invalid() : entry.first);
+          upsert_edge_with_footpath(to_l, minmax_duration, pt_edge);
         }
       }
 
