@@ -88,6 +88,7 @@ struct raptor {
     return a;
   }();
   static constexpr auto LbGreedyAcceptableLoss = 1.42;
+  static constexpr auto LbGreedyThreshold = std::uint16_t{60};
 
   static bool is_better(auto a, auto b) { return kFwd ? a < b : a > b; }
   static bool is_better_or_eq(auto a, auto b) { return kFwd ? a <= b : a >= b; }
@@ -825,7 +826,8 @@ private:
       auto const is_last = i == stop_seq.size() - 1U;
 
       if constexpr (LbGreedy) {
-        if (lb_[l_idx] > state_.rt_transport_lb_[rt_t]) {
+        if (lb_[l_idx] > LbGreedyThreshold &&
+            lb_[l_idx] > state_.rt_transport_lb_[rt_t]) {
           continue;
         }
       }
@@ -935,7 +937,8 @@ private:
       auto const is_last = i == stop_seq.size() - 1U;
 
       if constexpr (LbGreedy) {
-        if (lb_[l_idx] > state_.route_lb_[r]) {
+        if (lb_[l_idx] > LbGreedyThreshold &&
+            lb_[l_idx] > state_.route_lb_[r]) {
           continue;
         }
       }
