@@ -68,7 +68,8 @@ enum class search_mode { kOneToOne, kOneToAll };
 template <direction SearchDir,
           bool Rt,
           via_offset_t Vias,
-          search_mode SearchMode>
+          search_mode SearchMode,
+          bool LbGreedy>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
@@ -166,6 +167,10 @@ struct raptor {
     if constexpr (Rt) {
       utl::fill(state_.rt_transport_mark_.blocks_, 0U);
     }
+    if constexpr (LbGreedy) {
+      utl::fill(state_.route_lb_, kUnreachable);
+      utl::fill(state_.rt_transport_lb_, kUnreachable);
+    }
   }
 
   void add_start(location_idx_t const l, unixtime_t const t) {
@@ -212,12 +217,18 @@ struct raptor {
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
           any_marked = true;
           state_.route_mark_.set(to_idx(r), true);
+          if constexpr (LbGreedy) {
+            state_.route_lb_[r] = lb_[i];
+          }
         }
         if constexpr (Rt) {
           for (auto const& rt_t :
                rtt_->location_rt_transports_[location_idx_t{i}]) {
             any_marked = true;
             state_.rt_transport_mark_.set(to_idx(rt_t), true);
+            if constexpr (LbGreedy) {
+              state_.rt_transport_lb_[rt_t] = lb_[i];
+            }
           }
         }
       });
@@ -802,6 +813,12 @@ private:
       auto const is_first = i == 0U;
       auto const is_last = i == stop_seq.size() - 1U;
 
+      if constexpr (LbGreedy) {
+        if (lb_[l_idx] > state_.rt_transport_lb_[rt_t]) {
+          continue;
+        }
+      }
+
       if constexpr (WithSectionBikeFilter) {
         if (!is_first &&
             !rtt_->rt_bikes_allowed_per_section_[rt_t][kFwd ? stop_idx - 1
@@ -905,6 +922,12 @@ private:
       auto const l_idx = cista::to_idx(stp.location_idx());
       auto const is_first = i == 0U;
       auto const is_last = i == stop_seq.size() - 1U;
+
+      if constexpr (LbGreedy) {
+        if (lb_[l_idx] > state_.route_lb_[r]) {
+          continue;
+        }
+      }
 
       auto current_best = std::array<delta_t, Vias + 1>{};
       current_best.fill(kInvalid);
