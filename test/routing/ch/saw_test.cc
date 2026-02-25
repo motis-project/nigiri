@@ -127,7 +127,7 @@ TEST(ch, saw_day_test) {
 
     auto expected = std::vector<tooth>{
         metadata_tooth(0U),
-        metadata_tooth(),
+        metadata_tooth(1446U),
         metadata_tooth(),
         {1001U, u16_minutes{1446}, bitfield_idx_t::invalid()}};
     ASSERT_EQ(tmp.size(), expected.size());
@@ -148,7 +148,7 @@ TEST(ch, saw_day_test) {
 
     auto expected = std::vector<tooth>{
         metadata_tooth(0U),
-        metadata_tooth(),
+        metadata_tooth(1446U),
         metadata_tooth(),
         {1001U, u16_minutes{1446}, bitfield_idx_t::invalid()}};
     ASSERT_EQ(tmp.size(), expected.size());
@@ -189,7 +189,7 @@ TEST(ch, saw_day_test) {
 
     auto expected = std::vector<tooth>{
         metadata_tooth(0U),
-        metadata_tooth(),
+        metadata_tooth(20U),
         metadata_tooth(),
         {1001U, u16_minutes{309}, bitfield_idx_t::invalid()},
         {999U, u16_minutes{20}, bitfield_idx_t::invalid()},
@@ -450,7 +450,7 @@ TEST(ch, saw_traffic_days_test) {
 
     auto expected = std::vector<tooth>{
         metadata_tooth(9U),
-        metadata_tooth(),
+        metadata_tooth(1450U),
         metadata_tooth(),
         {1001U, u16_minutes{1450}, bitfield_idx_t{0}},  // 2886
         {1000U, u16_minutes{1451}, bitfield_idx_t{1}}};
@@ -472,7 +472,7 @@ TEST(ch, saw_traffic_days_test) {
 
     auto expected =
         std::vector<tooth>{metadata_tooth(9U),
-                           metadata_tooth(),
+                           metadata_tooth(1447U),
                            metadata_tooth(),
                            {1001U, u16_minutes{1450}, bitfield_idx_t{0}},
                            {1000U, u16_minutes{1447}, bitfield_idx_t{1}}};
@@ -525,7 +525,7 @@ TEST(ch, saw_traffic_days_test) {
 
     auto expected = std::vector<tooth>{
         metadata_tooth(13U),
-        metadata_tooth(),
+        metadata_tooth(20U),
         metadata_tooth(),
         {1001U, u16_minutes{309}, bitfield_idx_t{0}},
         {1000U, u16_minutes{200}, bitfield_idx_t{2}},
@@ -726,7 +726,7 @@ TEST(ch, saw_traffic_days_power_test) {
 
     auto expected = std::vector<tooth>{
         metadata_tooth(9U),
-        metadata_tooth(),
+        metadata_tooth(1447U),
         metadata_tooth(),
         {1001U, u16_minutes{1450}, bitfield_idx_t{2}},
         //{1001U, u16_minutes{2886}, bitfield_idx_t{3}},  // ommitted due to
@@ -765,7 +765,7 @@ TEST(ch, saw_traffic_days_power_test) {
 
     auto expected = std::vector<tooth>{
         metadata_tooth(9U),
-        metadata_tooth(),
+        metadata_tooth(1447U),
         metadata_tooth(),
         {1001U, u16_minutes{1450}, bitfield_idx_t{2}},
         //{1001U, u16_minutes{2886}, bitfield_idx_t{3}},  // TODO idem
@@ -833,7 +833,7 @@ TEST(ch, saw_traffic_days_power_test) {
 
     auto expected = std::vector<tooth>{
         metadata_tooth(13U),
-        metadata_tooth(),
+        metadata_tooth(20U),
         metadata_tooth(),
         {1001U, u16_minutes{309}, bitfield_idx_t{8}},
         {1000U, u16_minutes{200}, bitfield_idx_t{6}},
@@ -886,7 +886,7 @@ TEST(ch, saw_traffic_days_power_test) {
 
     auto expected = std::vector<tooth>{
         metadata_tooth(12U),
-        metadata_tooth(),
+        metadata_tooth(8U),
         metadata_tooth(),
         {930U, u16_minutes{8}, bitfield_idx_t{0}},
         {920U, u16_minutes{8}, bitfield_idx_t{1}},
