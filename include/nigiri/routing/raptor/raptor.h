@@ -87,6 +87,7 @@ struct raptor {
     a.fill(kInvalid);
     return a;
   }();
+  static constexpr auto LbGreedyAcceptableLoss = 1.42;
 
   static bool is_better(auto a, auto b) { return kFwd ? a < b : a > b; }
   static bool is_better_or_eq(auto a, auto b) { return kFwd ? a <= b : a >= b; }
@@ -170,6 +171,7 @@ struct raptor {
     if constexpr (LbGreedy) {
       utl::fill(state_.route_lb_, kUnreachable);
       utl::fill(state_.rt_transport_lb_, kUnreachable);
+      start_lb_ = kUnreachable;
     }
   }
 
@@ -186,6 +188,11 @@ struct raptor {
     round_times_[0U][to_idx(l)][v] =
         get_best(unix_to_delta(base(), t), round_times_[0U][to_idx(l)][v]);
     state_.station_mark_.set(to_idx(l), true);
+    if constexpr (LbGreedy) {
+      start_lb_ = std::min(
+          start_lb_,
+          static_cast<std::uint16_t>(lb_[to_idx(l)] * LbGreedyAcceptableLoss));
+    }
   }
 
   void execute(unixtime_t const start_time,
@@ -218,7 +225,9 @@ struct raptor {
           any_marked = true;
           state_.route_mark_.set(to_idx(r), true);
           if constexpr (LbGreedy) {
-            state_.route_lb_[r] = lb_[i];
+            state_.route_lb_[r] = std::min(
+                start_lb_,
+                static_cast<std::uint16_t>(lb_[i] * LbGreedyAcceptableLoss));
           }
         }
         if constexpr (Rt) {
@@ -227,7 +236,9 @@ struct raptor {
             any_marked = true;
             state_.rt_transport_mark_.set(to_idx(rt_t), true);
             if constexpr (LbGreedy) {
-              state_.rt_transport_lb_[rt_t] = lb_[i];
+              state_.rt_transport_lb_[rt_t] = std::min(
+                  start_lb_,
+                  static_cast<std::uint16_t>(lb_[i] * LbGreedyAcceptableLoss));
             }
           }
         }
@@ -1287,6 +1298,7 @@ private:
   bool require_car_transport_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
+  std::uint16_t start_lb_;
 };
 
 }  // namespace nigiri::routing
