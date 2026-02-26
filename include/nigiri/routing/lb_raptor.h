@@ -10,6 +10,7 @@ struct footpath;
 
 namespace nigiri::routing {
 struct query;
+struct raptor_state;
 
 void lb_raptor(
     timetable const&,
@@ -17,6 +18,7 @@ void lb_raptor(
     vecvec<location_idx_t, footpath> const& lb_graph,
     bitvec_map<location_idx_t> const* has_rt,
     vecvec<location_idx_t, footpath> const* rt_lb_graph,
+    raptor_state&,
     vector_map<location_idx_t, std::array<std::uint16_t, kMaxTransfers + 2>>&
         location_round_lb);
 
