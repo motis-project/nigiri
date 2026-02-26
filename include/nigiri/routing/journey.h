@@ -46,12 +46,14 @@ struct journey {
         location_idx_t const b,
         unixtime_t const tima_at_a,
         unixtime_t const time_at_b,
-        T&& uses)
+        T&& uses,
+        double const success_chance = 0.0)
         : from_{d == direction::kForward ? a : b},
           to_{d == direction::kForward ? b : a},
           dep_time_{d == direction::kForward ? tima_at_a : time_at_b},
           arr_time_{d == direction::kForward ? time_at_b : tima_at_a},
-          uses_{std::forward<T>(uses)} {}
+          uses_{std::forward<T>(uses)},
+          success_chance_{success_chance} {}
 
     void print(std::ostream&,
                timetable const&,
@@ -72,6 +74,7 @@ struct journey {
     location_idx_t from_, to_;
     unixtime_t dep_time_, arr_time_;
     std::variant<run_enter_exit, footpath, offset> uses_;
+    double success_chance_{};
   };
 
   bool dominates(journey const& o) const {
@@ -80,7 +83,7 @@ struct journey {
              dest_time_ <= o.dest_time_;
     } else {
       return transfers_ <= o.transfers_ && start_time_ <= o.start_time_ &&
-             dest_time_ >= o.dest_time_;
+             dest_time_ >= o.dest_time_ && success_chance_ >= o.success_chance_;
     }
   }
 
@@ -106,6 +109,7 @@ struct journey {
   std::vector<leg> legs_{};
   unixtime_t start_time_{};
   unixtime_t dest_time_{};
+  double success_chance_{};
   location_idx_t dest_{};
   std::uint8_t transfers_{0U};
   bool error_{false};
