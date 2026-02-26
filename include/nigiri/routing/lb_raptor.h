@@ -19,7 +19,7 @@ void lb_raptor(
     bitvec_map<location_idx_t> const* has_rt,
     vecvec<location_idx_t, footpath> const* rt_lb_graph,
     raptor_state&,
-    vector_map<location_idx_t, std::array<std::uint16_t, kMaxTransfers + 2>>&
+    vector_map<location_idx_t, std::array<std::uint16_t, kMaxTransfers + 2U>>&
         location_round_lb);
 
 }  // namespace nigiri::routing
