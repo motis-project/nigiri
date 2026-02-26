@@ -92,3 +92,5 @@ from_stop_id,to_stop_id,transfer_type,min_transfer_time
 F,S,2,600
 )__");
 }
+
+TEST(routing, lb_raptor) {}
