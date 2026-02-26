@@ -217,7 +217,6 @@ struct saw {
               : traffic_days_.bitfields_.at(b_it->traffic_days_).first;
 
       auto a_it = begin();
-
       a_it += b_it.pos_a_ - kSawMetadataOffset;
 
       // std::cout << "b less " << std::endl;
@@ -351,12 +350,7 @@ struct saw {
     auto max = 0;
     auto max_tooth = size_t{};
 
-    auto const empty_tooth = std::vector<tooth>{};
-    auto const empty_saw = saw<SawType>{empty_tooth, traffic_days_};
-    auto const interleaved = interleaved_saws<SawType>{
-        *this, empty_saw};  // TODO impl single loop iterator
-
-    for (auto b_it = interleaved.begin(); b_it != interleaved.end(); ++b_it) {
+    for (auto b_it = begin(); b_it != end(); ++b_it) {
       auto remaining_traffic_days =
           SawType == saw_type::kDay
               ? bitfield{}
@@ -373,7 +367,7 @@ struct saw {
 
         if constexpr (SawType == saw_type::kDay) {
           max = std::max(max, a_it->travel_dur_.count() + mam_diff);
-          max_tooth = a_it.pos_a_;
+          max_tooth = a_it.pos_;
           break;
         }
         if (a_it.day_offset_ > kChMaxEdgeTime / kChDay) {
@@ -390,7 +384,7 @@ struct saw {
                  .first)  // TODO templ, check really needed?
                 .any()) {
           max = std::max(max, a_it->travel_dur_.count() + mam_diff);
-          max_tooth = a_it.pos_a_;
+          max_tooth = a_it.pos_;
           remaining_traffic_days &=
               ~traffic_days_.bitfields_.at(a_it->traffic_days_).first;
           if (remaining_traffic_days.none()) {
@@ -421,12 +415,7 @@ struct saw {
     auto min = static_cast<int>(kChMaxWaitingTime.count());
     auto max = 0;
 
-    auto const empty_tooth = std::vector<tooth>{};
-    auto const empty_saw = saw<SawType>{empty_tooth, traffic_days_};
-    auto const interleaved = interleaved_saws<SawType>{
-        *this, empty_saw};  // TODO impl single loop iterator
-
-    for (auto b_it = interleaved.begin(); b_it != interleaved.end(); ++b_it) {
+    for (auto b_it = begin(); b_it != end(); ++b_it) {
       auto remaining_traffic_days =
           SawType == saw_type::kDay
               ? bitfield{}
@@ -759,20 +748,14 @@ struct saw {
     auto const lsb = std::min(get_last_set_bit(), other.get_last_set_bit());
     init_metadata(out, lsb);
 
-    auto const empty_tooth = std::vector<tooth>{};
-    auto const empty_saw = saw<SawType>{empty_tooth, traffic_days_};
-    auto const loop_it = interleaved_saws<SawType>{
-        *this, empty_saw};  // TODO impl single loop iterator
-    auto const o_loop_it = interleaved_saws<SawType>{
-        other, empty_saw};  // TODO impl single loop iterator
-    auto it = loop_it.begin();
-    auto o_it = o_loop_it.begin();
+    auto it = begin();
+    auto o_it = other.begin();
     while (it->mam_ + it->travel_dur_.count() >
            o_it->mam_ + o_it.day_offset_ * 24 * 60) {
       --o_it;
     }
     auto last_out_mam_idx = kSawMetadataOffset;
-    for (; it != loop_it.end(); ++it) {
+    for (; it != this->end(); ++it) {
       auto remaining_traffic_days =
           SawType == saw_type::kDay
               ? bitfield{}
@@ -839,8 +822,8 @@ struct saw {
                                    it->start_transport_,
                                    end,
                                    o_it->end_transport_,
-                                   static_cast<std::uint16_t>(it.pos_a_),
-                                   static_cast<std::uint16_t>(o_it.pos_a_)};
+                                   static_cast<std::uint16_t>(it.pos_),
+                                   static_cast<std::uint16_t>(o_it.pos_)};
             auto last_out_mam = saw<SawType>{out, traffic_days_}.begin();
             last_out_mam += last_out_mam_idx - kSawMetadataOffset;
 
@@ -898,7 +881,7 @@ struct saw {
         auto next_it = it;
         ++next_it;
         if (out.size() > kSawMetadataOffset &&
-            (next_it == loop_it.end() ||
+            (next_it == this->end() ||
              next_it->mam_ != out.back().mam_)) {  // TODO ugly
           std::sort(out.begin() + last_out_mam_idx, out.end());
           auto const remaining_it = std::remove_if(
@@ -935,8 +918,8 @@ struct saw {
                                      it->start_transport_,
                                      end,
                                      o_it->end_transport_,
-                                     static_cast<std::uint16_t>(it.pos_a_),
-                                     static_cast<std::uint16_t>(o_it.pos_a_)};
+                                     static_cast<std::uint16_t>(it.pos_),
+                                     static_cast<std::uint16_t>(o_it.pos_)};
         auto td = SawType == saw_type::kDay
                       ? bitfield{}
                       : traffic_days_.bitfields_.at(it->traffic_days_).first;
