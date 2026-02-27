@@ -1,5 +1,6 @@
 #include "nigiri/routing/lb_raptor.h"
 
+#include "nigiri/for_each_meta.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/timetable.h"
@@ -27,8 +28,11 @@ void lb_raptor(
   utl::fill(location_round_lb, kRoundLbInit);
 
   for (auto const& o : q.destination_) {
-    location_round_lb[o.target_].fill(o.duration_.count());
-    state.station_mark_.set(to_idx(o.target_), true);
+    for_each_meta(tt, q.dest_match_mode_, o.target_,
+                  [&](location_idx_t const x) {
+                    location_round_lb[x].fill(o.duration_.count());
+                    state.station_mark_.set(to_idx(x), true);
+                  });
   }
 
   for (auto k = 1U; k != kMaxTransfers + 2U; ++k) {
