@@ -71,11 +71,11 @@ void lb_raptor(
       auto const l = location_idx_t{i};
 
       auto const expand = [&](footpath const& e) {
-        auto const new_lb = static_cast<std::uint16_t>(location_round_lb[l][k] +
-                                                       e.duration().count());
-        if (new_lb < location_round_lb[e.target()][k + 1U]) {
+        auto const new_lb = static_cast<std::uint16_t>(
+            location_round_lb[l][k - 1U] + e.duration().count());
+        if (new_lb < location_round_lb[e.target()][k]) {
           any_marked = true;
-          std::fill(begin(location_round_lb[e.target()]) + k + 1U,
+          std::fill(begin(location_round_lb[e.target()]) + k,
                     end(location_round_lb[e.target()]), new_lb);
           state.station_mark_.set(to_idx(e.target()), true);
         }

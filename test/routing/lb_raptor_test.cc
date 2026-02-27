@@ -1,16 +1,23 @@
 #include "gtest/gtest.h"
 
-#include "nigiri/loader/gtfs/files.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include <ranges>
+
+#include "utl/enumerate.h"
+
+#include "nigiri/routing/lb_raptor.h"
+#include "nigiri/routing/raptor/raptor_state.h"
+#include "nigiri/rt/create_rt_timetable.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
+
+#include "../util.h"
 
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::routing;
 
-mem_dir shortest_fp_files() {
+mem_dir lb_test_tt() {
   return mem_dir::read(R"__(
 "(
 # agency.txt
@@ -19,7 +26,7 @@ MTA,MOTIS Transit Authority,https://motis-project.de/,Europe/Berlin
 
 # calendar_dates.txt
 service_id,date,exception_type
-SID,20260101,1
+SID,20260227,1
 
 # stops.txt
 stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
@@ -70,7 +77,7 @@ A,08:00,08:00,S,0,0,0
 A,18:00,18:00,T,1,0,0
 B1,09:00,09:00,S,0,0,0
 B1,13:00,13:00,B1,1,0,0
-B2,14:00,14:00,B2,0,0,0
+B2,14:00,14:00,B1,0,0,0
 B2,17:00,17:00,T,1,0,0
 C1,10:00,10:00,S,0,0,0
 C1,11:00,11:00,C1,1,0,0
@@ -93,4 +100,49 @@ F,S,2,600
 )__");
 }
 
-TEST(routing, lb_raptor) {}
+constexpr auto kGtfsDateRange = interval{sys_days{2026_y / February / 27},
+                                         sys_days{2026_y / February / 28}};
+
+constexpr auto kExpLbT = std::array<std::uint16_t, 16U>{
+    7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U};
+
+TEST(routing, lb_raptor) {
+  auto const tt = load_gtfs(lb_test_tt, kGtfsDateRange);
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2026_y / February / 27});
+  auto const T = tt.find(location_id{"T", source_idx_t{}}).value();
+  auto const q =
+      query{.start_time_ = unixtime_t{sys_days{February / 27 / 2026}},
+            .destination_ = {{tt.locations_.location_id_to_idx_.at(
+                                  {"T", source_idx_t{0U}}),
+                              13_minutes, 0U}},
+            .td_dest_{{T,
+                       {{.valid_from_ = sys_days{2026_y / January / 27},
+                         .duration_ = 7_minutes,
+                         .transport_mode_id_ = 5},
+                        {.valid_from_ = sys_days{2026_y / January / 28},
+                         .duration_ = footpath::kMaxDuration,
+                         .transport_mode_id_ = 5}}}}};
+  auto state = raptor_state{};
+  auto location_round_lb =
+      vector_map<location_idx_t,
+                 std::array<std::uint16_t, kMaxTransfers + 2U>>{};
+
+  lb_raptor(tt, q, tt.fwd_search_lb_graph_[q.prf_idx_], nullptr, nullptr, state,
+            location_round_lb);
+
+  for (auto const [i, round_lb] : utl::enumerate(location_round_lb)) {
+    fmt::println("{}: {}", tt.get_default_name(location_idx_t{i}), round_lb);
+  }
+
+  ASSERT_LE(kMaxTransfers, std::uint8_t{14U});
+
+  auto const check = [](auto&& exp, auto&& act) {
+    for (auto const [e, a] :
+         std::views::zip(exp | std::views::take(kMaxTransfers + 2U),
+                         act | std::views::take(kMaxTransfers + 2U))) {
+      EXPECT_EQ(e, a);
+    }
+  };
+
+  check(kExpLbT, location_round_lb[T]);
+}
