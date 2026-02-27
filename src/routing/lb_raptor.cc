@@ -1,6 +1,8 @@
 #include "nigiri/routing/lb_raptor.h"
 
+#include "utl/enumerate.h"
 #include "utl/get_or_create.h"
+#include "utl/zip.h"
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/query.h"
@@ -60,7 +62,7 @@ void lb_raptor(
   }
 
   // run
-  for (auto k = 1U; k != kMaxTransfers + 2U; ++k) {
+  for (auto const k : interval{1U, kMaxTransfers + 2U}) {
     std::swap(state.prev_station_mark_, state.station_mark_);
     utl::fill(state.station_mark_.blocks_, 0U);
 
@@ -77,5 +79,17 @@ void lb_raptor(
       return;
     }
   }
+
+  // propagate lb to children
+  for (auto const l :
+       interval{location_idx_t{0}, location_idx_t{tt.n_locations()}}) {
+    for (auto const c : tt.locations_.children_[l]) {
+      for (auto [plb, clb] :
+           utl::zip(location_round_lb[l], location_round_lb[c])) {
+        clb = std::min(plb, clb);
+      }
+    }
+  }
 }
+
 }  // namespace nigiri::routing
