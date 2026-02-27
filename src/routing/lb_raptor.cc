@@ -1,5 +1,7 @@
 #include "nigiri/routing/lb_raptor.h"
 
+#include "utl/get_or_create.h"
+
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/raptor_state.h"
@@ -16,6 +18,7 @@ void lb_raptor(
     raptor_state& state,
     vector_map<location_idx_t, std::array<std::uint16_t, kMaxTransfers + 2U>>&
         location_round_lb) {
+  // resize & clear
   state.prev_station_mark_.resize(tt.n_locations());
   state.station_mark_.resize(tt.n_locations());
   utl::fill(state.station_mark_.blocks_, 0U);
@@ -27,14 +30,36 @@ void lb_raptor(
   }();
   utl::fill(location_round_lb, kRoundLbInit);
 
+  // init (k = 0)
+  std::map<location_idx_t, std::uint16_t> min;
+  auto const update_min = [&](location_idx_t const l, std::uint16_t const t) {
+    auto const r = tt.locations_.get_root_idx(l);
+    auto& m =
+        utl::get_or_create(min, r, [&]() { return location_round_lb[r][0]; });
+    m = std::min(t, m);
+  };
   for (auto const& o : q.destination_) {
-    for_each_meta(tt, q.dest_match_mode_, o.target_,
-                  [&](location_idx_t const x) {
-                    location_round_lb[x].fill(o.duration_.count());
-                    state.station_mark_.set(to_idx(x), true);
-                  });
+    for_each_meta(
+        tt, q.dest_match_mode_, o.target_,
+        [&](location_idx_t const l) { update_min(l, o.duration_.count()); });
+  }
+  for (auto const& [l, tds] : q.td_dest_) {
+    for (auto const& td : tds) {
+      if (td.duration_ != footpath::kMaxDuration &&
+          td.duration_ < q.max_travel_time_) {
+        update_min(l, td.duration_.count());
+      }
+    }
+  }
+  for (auto const& [l, t] : min) {
+    for_each_meta(tt, q.dest_match_mode_, l, [&](location_idx_t const meta) {
+      location_round_lb[meta].fill(
+          std::min(t, location_round_lb[meta][0]));  // necessary to min again?
+      state.station_mark_.set(to_idx(meta), true);
+    });
   }
 
+  // run
   for (auto k = 1U; k != kMaxTransfers + 2U; ++k) {
     std::swap(state.prev_station_mark_, state.station_mark_);
     utl::fill(state.station_mark_.blocks_, 0U);
