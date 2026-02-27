@@ -42,14 +42,14 @@ void lb_raptor(
   };
   for (auto const& o : q.destination_) {
     for_each_meta(
-        tt, q.dest_match_mode_, o.target_,
-        [&](location_idx_t const l) { update_min(l, o.duration_.count()); });
+        tt, q.dest_match_mode_, o.target(),
+        [&](location_idx_t const l) { update_min(l, o.duration().count()); });
   }
   for (auto const& [l, tds] : q.td_dest_) {
     for (auto const& td : tds) {
-      if (td.duration_ != footpath::kMaxDuration &&
-          td.duration_ < q.max_travel_time_) {
-        update_min(l, td.duration_.count());
+      if (td.duration() != footpath::kMaxDuration &&
+          td.duration() < q.max_travel_time_) {
+        update_min(l, td.duration().count());
       }
     }
   }
@@ -68,15 +68,31 @@ void lb_raptor(
 
     auto any_marked = false;
     state.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
-      any_marked = true;
-      // follow lb graph and/or rt lb graph from this station
-      // for each edge
-      // check if time of this station + edge duration leads to an improvement
-      // for the next round if yes write improved time to location_round_lb mark
-      // the station with the improved time for the next round
+      auto const l = location_idx_t{i};
+
+      auto const expand = [&](footpath const& e) {
+        auto const new_lb = static_cast<std::uint16_t>(location_round_lb[l][k] +
+                                                       e.duration().count());
+        if (new_lb < location_round_lb[e.target()][k + 1U]) {
+          any_marked = true;
+          std::fill(begin(location_round_lb[e.target()]) + k + 1U,
+                    end(location_round_lb[e.target()]), new_lb);
+          state.station_mark_.set(to_idx(e.target()), true);
+        }
+      };
+
+      for (auto const& e : lb_graph[l]) {
+        expand(e);
+      }
+
+      if (has_rt != nullptr && has_rt->test(l)) {
+        for (auto const& e : (*rt_lb_graph)[l]) {
+          expand(e);
+        }
+      }
     });
     if (!any_marked) {
-      return;
+      break;
     }
   }
 
