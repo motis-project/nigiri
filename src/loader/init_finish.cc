@@ -7,6 +7,7 @@
 #include "geo/box.h"
 
 #include "nigiri/loader/build_footpaths.h"
+#include "nigiri/loader/build_lb_adjacency.h"
 #include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/register.h"
 #include "nigiri/flex.h"
@@ -186,6 +187,7 @@ void finalize(timetable& tt, finalize_options const opt) {
   build_footpaths(tt, opt);
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);
   build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
+  build_lb_adjacency(tt, kDefaultProfile);
   build_location_tree(tt);
   assign_stops_to_flex_areas(tt);
   assign_importance(tt);

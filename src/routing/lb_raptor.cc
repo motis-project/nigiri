@@ -11,13 +11,10 @@
 
 namespace nigiri::routing {
 
-// TODO needs search direction to use the correct footpaths
+template <direction SearchDir>
 void lb_raptor(
     timetable const& tt,
     query const& q,
-    vecvec<location_idx_t, footpath> const& lb_graph,
-    bitvec_map<location_idx_t> const* has_rt,
-    vecvec<location_idx_t, footpath> const* rt_lb_graph,
     raptor_state& state,
     vector_map<location_idx_t, std::array<std::uint16_t, kMaxTransfers + 2U>>&
         location_round_lb) {
@@ -73,25 +70,21 @@ void lb_raptor(
     state.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
       auto const l = location_idx_t{i};
 
-      auto const expand = [&](footpath const& e) {
-        auto const new_lb = static_cast<std::uint16_t>(
-            location_round_lb[l][k - 1U] + e.duration().count());
-        if (new_lb < location_round_lb[e.target()][k]) {
+      auto const expand = [&](lb_neighbor const n) {
+        auto const new_lb =
+            static_cast<std::uint16_t>(location_round_lb[l][k - 1U] + n.lb_);
+        if (new_lb < location_round_lb[n.n_][k]) {
           any_marked = true;
-          std::fill(begin(location_round_lb[e.target()]) + k,
-                    end(location_round_lb[e.target()]), new_lb);
-          state.station_mark_.set(to_idx(e.target()), true);
+          std::fill(begin(location_round_lb[n.n_]) + k,
+                    end(location_round_lb[n.n_]), new_lb);
+          state.station_mark_.set(to_idx(n.n_), true);
         }
       };
 
-      for (auto const& e : lb_graph[l]) {
-        expand(e);
-      }
-
-      if (has_rt != nullptr && has_rt->test(l)) {
-        for (auto const& e : (*rt_lb_graph)[l]) {
-          expand(e);
-        }
+      for (auto const& n : (SearchDir == direction::kForward
+                                ? tt.fwd_lb_adjacency_
+                                : tt.bwd_lb_adjacency_)[q.prf_idx_][l]) {
+        expand(n);
       }
     });
     if (!any_marked) {

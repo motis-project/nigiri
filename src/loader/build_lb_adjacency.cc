@@ -71,7 +71,6 @@ void build_lb_adjacency(timetable& tt, profile_idx_t const prf_idx) {
   pt->status("Compute lower bound adjacencies").in_high(tt.n_locations());
   utl::parallel_ordered_collect_threadlocal<adjacencies>(
       tt.n_locations(),
-
       // parallel
       [&](adjacencies& a, std::size_t const i) {
         auto const l = location_idx_t{i};
@@ -100,15 +99,12 @@ void build_lb_adjacency(timetable& tt, profile_idx_t const prf_idx) {
 
         return ns;
       },
-
       // ordered
       [&](std::size_t, lb_neighbors&& ns) {
-        tt.fwd_lb_adjacency_[prf_idx].emplace_back(ns.out_);
-        tt.bwd_lb_adjacency_[prf_idx].emplace_back(ns.in_);
+        tt.fwd_lb_adjacency_[prf_idx].emplace_back(ns.in_);
+        tt.bwd_lb_adjacency_[prf_idx].emplace_back(ns.out_);
       },
-      pt->update_fn()
-
-  );
+      pt->update_fn());
 }
 
 }  // namespace nigiri::loader
