@@ -104,11 +104,13 @@ constexpr auto kGtfsDateRange = interval{sys_days{2026_y / February / 27},
                                          sys_days{2026_y / February / 28}};
 
 constexpr auto kExpLbP = std::array<std::uint16_t, 16U>{
-    65535U, 65535U, 578U, 487U, 247U, 142U, 142U, 142U,
+    65535U, 65535U, 667U, 487U, 247U, 142U, 142U, 142U,
     142U,   142U,   142U, 142U, 142U, 142U, 142U, 142U};
-constexpr auto kExpLbF = std::array<std::uint16_t, 16U>{/* TODO F should be reached in k = 1 already, since it only takes one transport and a footpath. It follows that lb_raptor needs the search direction to cor*/};
+constexpr auto kExpLbF = std::array<std::uint16_t, 16U>{
+    65535U, 617U, 437U, 197U, 92U, 92U, 92U, 92U,
+    92U,    92U,  92U,  92U,  92U, 92U, 92U, 92U};
 constexpr auto kExpLbS = std::array<std::uint16_t, 16U>{
-    65535U, 518U, 427U, 187U, 82U, 82U, 82U, 82U,
+    65535U, 607U, 427U, 187U, 82U, 82U, 82U, 82U,
     82U,    82U,  82U,  82U,  82U, 82U, 82U, 82U};
 constexpr auto kExpLbB1 = std::array<std::uint16_t, 16U>{
     65535U, 187U, 187U, 187U, 187U, 187U, 187U, 187U,
@@ -168,5 +170,23 @@ TEST(routing, lb_raptor) {
     }
   };
 
+  check(kExpLbP,
+        location_round_lb[tt.find(location_id{"P", source_idx_t{}}).value()]);
+  check(kExpLbF,
+        location_round_lb[tt.find(location_id{"F", source_idx_t{}}).value()]);
+  check(kExpLbS,
+        location_round_lb[tt.find(location_id{"S", source_idx_t{}}).value()]);
+  check(kExpLbB1,
+        location_round_lb[tt.find(location_id{"B1", source_idx_t{}}).value()]);
+  check(kExpLbC1,
+        location_round_lb[tt.find(location_id{"C1", source_idx_t{}}).value()]);
+  check(kExpLbC2,
+        location_round_lb[tt.find(location_id{"C2", source_idx_t{}}).value()]);
+  check(kExpLbD1,
+        location_round_lb[tt.find(location_id{"D1", source_idx_t{}}).value()]);
+  check(kExpLbD2,
+        location_round_lb[tt.find(location_id{"D2", source_idx_t{}}).value()]);
+  check(kExpLbD3,
+        location_round_lb[tt.find(location_id{"D3", source_idx_t{}}).value()]);
   check(kExpLbT, location_round_lb[T]);
 }

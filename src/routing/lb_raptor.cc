@@ -58,12 +58,29 @@ void lb_raptor(
       state.station_mark_.set(to_idx(meta), true);
     });
   }
+  auto const& footpaths = SearchDir == direction::kForward
+                              ? tt.locations_.footpaths_in_[q.prf_idx_]
+                              : tt.locations_.footpaths_out_[q.prf_idx_];
 
   // run
   for (auto const k : interval{1U, kMaxTransfers + 2U}) {
-    // TODO expand footpaths from/to marked stations, they are reached in k-1
-
     std::swap(state.prev_station_mark_, state.station_mark_);
+    utl::fill(state.station_mark_.blocks_, 0U);
+
+    state.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+      auto const l = location_idx_t{i};
+      for (auto const& fp : footpaths[l]) {
+        auto const new_lb = static_cast<std::uint16_t>(
+            location_round_lb[l][k - 1] + fp.duration().count());
+        if (new_lb < location_round_lb[fp.target()][k - 1]) {
+          std::fill(begin(location_round_lb[fp.target()]) + k - 1,
+                    end(location_round_lb[fp.target()]), new_lb);
+          state.station_mark_.set(to_idx(fp.target()), true);
+        }
+      }
+    });
+
+    state.prev_station_mark_ |= state.station_mark_;
     utl::fill(state.station_mark_.blocks_, 0U);
 
     auto any_marked = false;
