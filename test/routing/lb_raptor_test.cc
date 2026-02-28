@@ -103,6 +103,31 @@ F,S,2,600
 constexpr auto kGtfsDateRange = interval{sys_days{2026_y / February / 27},
                                          sys_days{2026_y / February / 28}};
 
+constexpr auto kExpLbP = std::array<std::uint16_t, 16U>{
+    65535U, 65535U, 578U, 487U, 247U, 142U, 142U, 142U,
+    142U,   142U,   142U, 142U, 142U, 142U, 142U, 142U};
+constexpr auto kExpLbF = std::array<std::uint16_t, 16U>{/* TODO F should be reached in k = 1 already, since it only takes one transport and a footpath. It follows that lb_raptor needs the search direction to cor*/};
+constexpr auto kExpLbS = std::array<std::uint16_t, 16U>{
+    65535U, 518U, 427U, 187U, 82U, 82U, 82U, 82U,
+    82U,    82U,  82U,  82U,  82U, 82U, 82U, 82U};
+constexpr auto kExpLbB1 = std::array<std::uint16_t, 16U>{
+    65535U, 187U, 187U, 187U, 187U, 187U, 187U, 187U,
+    187U,   187U, 187U, 187U, 187U, 187U, 187U, 187U};
+constexpr auto kExpLbC1 = std::array<std::uint16_t, 16U>{
+    65535U, 65535U, 127U, 127U, 127U, 127U, 127U, 127U,
+    127U,   127U,   127U, 127U, 127U, 127U, 127U, 127U};
+constexpr auto kExpLbC2 =
+    std::array<std::uint16_t, 16U>{65535U, 67U, 67U, 67U, 67U, 67U, 67U, 67U,
+                                   67U,    67U, 67U, 67U, 67U, 67U, 67U, 67U};
+constexpr auto kExpLbD1 = std::array<std::uint16_t, 16U>{
+    65535U, 65535U, 65535U, 67U, 67U, 67U, 67U, 67U,
+    67U,    67U,    67U,    67U, 67U, 67U, 67U, 67U};
+constexpr auto kExpLbD2 = std::array<std::uint16_t, 16U>{
+    65535U, 65535U, 52U, 52U, 52U, 52U, 52U, 52U,
+    52U,    52U,    52U, 52U, 52U, 52U, 52U, 52U};
+constexpr auto kExpLbD3 =
+    std::array<std::uint16_t, 16U>{65535U, 37U, 37U, 37U, 37U, 37U, 37U, 37U,
+                                   37U,    37U, 37U, 37U, 37U, 37U, 37U, 37U};
 constexpr auto kExpLbT = std::array<std::uint16_t, 16U>{
     7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U};
 

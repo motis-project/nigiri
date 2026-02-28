@@ -699,6 +699,11 @@ struct booking_rule {
   translation_idx_t booking_url_;
 };
 
+struct lb_neighbor {
+  location_idx_t n_;
+  std::uint16_t lb_;
+};
+
 }  // namespace nigiri
 
 template <>

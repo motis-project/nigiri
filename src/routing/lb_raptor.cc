@@ -11,6 +11,7 @@
 
 namespace nigiri::routing {
 
+// TODO needs search direction to use the correct footpaths
 void lb_raptor(
     timetable const& tt,
     query const& q,
@@ -63,6 +64,8 @@ void lb_raptor(
 
   // run
   for (auto const k : interval{1U, kMaxTransfers + 2U}) {
+    // TODO expand footpaths from/to marked stations, they are reached in k-1
+
     std::swap(state.prev_station_mark_, state.station_mark_);
     utl::fill(state.station_mark_.blocks_, 0U);
 
