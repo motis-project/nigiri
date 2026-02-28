@@ -104,4 +104,16 @@ void lb_raptor(
   }
 }
 
+template void lb_raptor<direction::kForward>(
+    timetable const&,
+    query const&,
+    raptor_state&,
+    vector_map<location_idx_t, std::array<std::uint16_t, kMaxTransfers + 2U>>&);
+
+template void lb_raptor<direction::kBackward>(
+    timetable const&,
+    query const&,
+    raptor_state&,
+    vector_map<location_idx_t, std::array<std::uint16_t, kMaxTransfers + 2U>>&);
+
 }  // namespace nigiri::routing

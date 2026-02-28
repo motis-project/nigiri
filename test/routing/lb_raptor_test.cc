@@ -152,8 +152,7 @@ TEST(routing, lb_raptor) {
       vector_map<location_idx_t,
                  std::array<std::uint16_t, kMaxTransfers + 2U>>{};
 
-  lb_raptor(tt, q, tt.fwd_search_lb_graph_[q.prf_idx_], nullptr, nullptr, state,
-            location_round_lb);
+  lb_raptor<direction::kForward>(tt, q, state, location_round_lb);
 
   for (auto const [i, round_lb] : utl::enumerate(location_round_lb)) {
     fmt::println("{}: {}", tt.get_default_name(location_idx_t{i}), round_lb);

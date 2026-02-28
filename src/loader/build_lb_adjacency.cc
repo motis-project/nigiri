@@ -90,10 +90,10 @@ void build_lb_adjacency(timetable& tt, profile_idx_t const prf_idx) {
         }
         explore_routes(l, a);
 
-        for (auto const [k, v] : a.in_) {
+        for (auto const& [k, v] : a.in_) {
           ns.in_.emplace_back(k, v);
         }
-        for (auto const [k, v] : a.out_) {
+        for (auto const& [k, v] : a.out_) {
           ns.out_.emplace_back(k, v);
         }
 
