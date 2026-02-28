@@ -82,11 +82,31 @@ void build_lb_adjacency(timetable& tt, profile_idx_t const prf_idx) {
         if (tt.locations_.parents_[l] != location_idx_t::invalid()) {
           return ns;
         }
+
+        for (auto const c : tt.locations_.children_[l]) {
+          explore_routes(c, a);
+          for (auto const cc : tt.locations_.children_[c]) {
+            explore_routes(cc, a);
+          }
+        }
+        explore_routes(l, a);
+
+        for (auto const [k, v] : a.in_) {
+          ns.in_.emplace_back(k, v);
+        }
+        for (auto const [k, v] : a.out_) {
+          ns.out_.emplace_back(k, v);
+        }
+
         return ns;
       },
 
       // ordered
-      [&](std::size_t const i, lb_neighbors ns) {}, pt->update_fn()
+      [&](std::size_t, lb_neighbors&& ns) {
+        tt.fwd_lb_adjacency_[prf_idx].emplace_back(ns.out_);
+        tt.bwd_lb_adjacency_[prf_idx].emplace_back(ns.in_);
+      },
+      pt->update_fn()
 
   );
 }
