@@ -304,7 +304,7 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, ping_is_via[i]);
   }
 
-  auto ping = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>{
+  auto ping = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne, false>{
       tt,
       rtt,
       r_state,
@@ -350,7 +350,7 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, pong_is_via[i]);
   }
 
-  auto pong = raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>{
+  auto pong = raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne, false>{
       tt,
       rtt,
       r_state,
