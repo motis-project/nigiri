@@ -10,6 +10,8 @@
 namespace nigiri::loader {
 
 void build_lb_adjacency(timetable& tt, profile_idx_t const prf_idx) {
+  auto const timer = scoped_timer{"loader.build_lb_adjacency"};
+
   struct adjacencies {
     hash_map<location_idx_t, std::uint16_t> in_;
     hash_map<location_idx_t, std::uint16_t> out_;
