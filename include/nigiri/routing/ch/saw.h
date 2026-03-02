@@ -1272,8 +1272,4 @@ struct ch_get_bucket {
   }
 };
 
-struct ch_dist {
-  std::array<owning_saw<kChSawType>, 2> d_;
-};
-
 }  // namespace nigiri::routing
