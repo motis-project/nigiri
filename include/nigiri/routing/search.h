@@ -18,10 +18,12 @@
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/lb_raptor.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/debug.h"
+#include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
@@ -126,6 +128,14 @@ struct search {
           state_.travel_time_lower_bound_);
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
+
+      if (q_.prf_idx_ == kDefaultProfile) {
+        auto rs = raptor_state{};
+        auto location_round_lb =
+            vector_map<location_idx_t,
+                       std::array<std::uint16_t, kMaxTransfers + 2U>>{};
+        lb_raptor<SearchDir>(tt_, q_, rs, location_round_lb);
+      }
 
 #if defined(NIGIRI_TRACING)
       for (auto const& o : q_.start_) {

@@ -31,13 +31,15 @@ void build_lb_adjacency(timetable& tt, profile_idx_t const prf_idx) {
 
       auto const location_seq = tt.route_location_seq_[r];
       for (auto const [i, x] : utl::enumerate(location_seq)) {
-        auto const is = stop{x};
-        if (l != is.location_idx()) {
+        auto const i_stop = stop{x};
+        auto const i_stop_idx = static_cast<stop_idx_t>(i);
+        if (l != i_stop.location_idx()) {
           continue;
         }
 
         for (auto const [j, y] : utl::enumerate(location_seq)) {
-          auto const js = stop{y};
+          auto const j_stop = stop{y};
+          auto const j_stop_idx = static_cast<stop_idx_t>(j);
           for (auto const t : tt.route_transport_ranges_[r]) {
             auto const min = [&](auto& hm, auto const n, auto const d) {
               auto& v = utl::get_or_create(hm, n, [] {
@@ -46,21 +48,21 @@ void build_lb_adjacency(timetable& tt, profile_idx_t const prf_idx) {
               v = std::min(v, d);
             };
 
-            if (j < i && js.in_allowed() &&
-                is.out_allowed()) {  // TODO wheelchair profile
-              min(a.in_, js.location_idx(),
+            if (j < i && j_stop.in_allowed() &&
+                i_stop.out_allowed()) {  // TODO wheelchair profile
+              min(a.in_, j_stop.location_idx(),
                   static_cast<std::uint16_t>(
-                      (tt.event_mam(t, i, event_type::kArr) -
-                       tt.event_mam(t, j, event_type::kDep))
+                      (tt.event_mam(t, i_stop_idx, event_type::kArr) -
+                       tt.event_mam(t, j_stop_idx, event_type::kDep))
                           .count()));
             }
 
-            if (i < j && is.in_allowed() &&
-                js.out_allowed()) {  // TODO wheelchair profile
-              min(a.out_, js.location_idx(),
+            if (i < j && i_stop.in_allowed() &&
+                j_stop.out_allowed()) {  // TODO wheelchair profile
+              min(a.out_, j_stop.location_idx(),
                   static_cast<std::uint16_t>(
-                      (tt.event_mam(t, j, event_type::kArr) -
-                       tt.event_mam(t, i, event_type::kDep))
+                      (tt.event_mam(t, j_stop_idx, event_type::kArr) -
+                       tt.event_mam(t, i_stop_idx, event_type::kDep))
                           .count()));
             }
           }
@@ -80,23 +82,13 @@ void build_lb_adjacency(timetable& tt, profile_idx_t const prf_idx) {
         a.out_.clear();
         auto ns = lb_neighbors{};
 
-        if (tt.locations_.parents_[l] != location_idx_t::invalid()) {
-          return ns;
-        }
-
-        for (auto const c : tt.locations_.children_[l]) {
-          explore_routes(c, a);
-          for (auto const cc : tt.locations_.children_[c]) {
-            explore_routes(cc, a);
-          }
-        }
         explore_routes(l, a);
 
-        for (auto const& [k, v] : a.in_) {
-          ns.in_.emplace_back(k, v);
+        for (auto const& [n, dist] : a.in_) {
+          ns.in_.emplace_back(n, dist);
         }
-        for (auto const& [k, v] : a.out_) {
-          ns.out_.emplace_back(k, v);
+        for (auto const& [n, dist] : a.out_) {
+          ns.out_.emplace_back(n, dist);
         }
 
         return ns;
