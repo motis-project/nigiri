@@ -7,7 +7,6 @@
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/query.h"
-#include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::routing {
@@ -16,7 +15,9 @@ template <direction SearchDir>
 void lb_raptor(
     timetable const& tt,
     query const& q,
-    raptor_state& state,
+    bitvec& station_mark,
+    bitvec& prev_station_mark,
+    bitvec& is_start,
     vector_map<location_idx_t, std::array<std::uint16_t, kMaxTransfers + 2U>>&
         location_round_lb) {
   std::cout << std::endl << std::endl;
@@ -29,9 +30,9 @@ void lb_raptor(
                                : tt.locations_.footpaths_out_)[q.prf_idx_];
 
   // resize & clear
-  state.prev_station_mark_.resize(tt.n_locations());
-  state.station_mark_.resize(tt.n_locations());
-  utl::fill(state.station_mark_.blocks_, 0U);
+  prev_station_mark.resize(tt.n_locations());
+  station_mark.resize(tt.n_locations());
+  utl::fill(station_mark.blocks_, 0U);
   location_round_lb.resize(tt.n_locations());
   static constexpr auto kRoundLbInit = []() {
     auto ret = std::array<std::uint16_t, kMaxTransfers + 2>{};
@@ -39,6 +40,8 @@ void lb_raptor(
     return ret;
   }();
   utl::fill(location_round_lb, kRoundLbInit);
+  is_start.resize(tt.n_locations());
+  utl::fill(is_start.blocks_, 0U);
 
   // init (k = 0)
   std::map<location_idx_t, std::uint16_t> min;
@@ -66,36 +69,60 @@ void lb_raptor(
     for_each_meta(tt, q.dest_match_mode_, l, [&](location_idx_t const meta) {
       location_round_lb[meta].fill(
           std::min(t, location_round_lb[meta][0]));  // necessary to min again?
-      state.station_mark_.set(to_idx(meta), true);
+      station_mark.set(to_idx(meta), true);
     });
+  }
+  for (auto const& s : q.start_) {
+    is_start.set(to_idx(s.target()), true);
+  }
+  for (auto const& [l, _] : q.td_start_) {
+    is_start.set(to_idx(l), true);
   }
 
   // run
   auto k = 1U;
   for (; k != kMaxTransfers + 2U; ++k) {
     UTL_START_TIMING(lb_raptor_round);
-    std::swap(state.prev_station_mark_, state.station_mark_);
-    utl::fill(state.station_mark_.blocks_, 0U);
+    std::swap(prev_station_mark, station_mark);
+    utl::fill(station_mark.blocks_, 0U);
 
     auto any_marked = false;
-    state.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+    prev_station_mark.for_each_set_bit([&](std::uint64_t const i) {
       auto const l = location_idx_t{i};
 
       auto const visit = [&](lb_neighbor const n) {
-        auto const pt_lb =
+        auto const lb =
             static_cast<std::uint16_t>(location_round_lb[l][k - 1U] + n.dist_);
-        if (pt_lb < location_round_lb[n.l_][k]) {
-          any_marked = true;
+
+        if (is_start.test(to_idx(n.l_)) && lb < location_round_lb[n.l_][k])
+            [[unlikely]] {
           std::fill(begin(location_round_lb[n.l_]) + k,
-                    end(location_round_lb[n.l_]), pt_lb);
-          state.station_mark_.set(to_idx(n.l_), true);
+                    end(location_round_lb[n.l_]), lb);
+          return;
+        }
+
+        auto const lb_transfer = static_cast<std::uint16_t>(
+            lb +
+            adjusted_transfer_time(q.transfer_time_settings_,
+                                   tt.locations_.transfer_time_[n.l_].count()));
+        if (lb_transfer < location_round_lb[n.l_][k]) {
+          std::fill(begin(location_round_lb[n.l_]) + k,
+                    end(location_round_lb[n.l_]), lb_transfer);
+          station_mark.set(to_idx(n.l_), true);
+          any_marked = true;
+
           for (auto const fp : footpaths[n.l_]) {
-            auto const walk_lb =
-                static_cast<std::uint16_t>(pt_lb + fp.duration().count());
-            if (walk_lb < location_round_lb[fp.target()][k]) {
+            if (is_start.test(to_idx(fp.target()))) [[unlikely]] {
+              continue;
+            }
+
+            auto const lb_fp = static_cast<std::uint16_t>(
+                lb + adjusted_transfer_time(q.transfer_time_settings_,
+                                            fp.duration().count()));
+            if (lb_fp < location_round_lb[fp.target()][k]) {
               std::fill(begin(location_round_lb[fp.target()]) + k,
-                        end(location_round_lb[fp.target()]), walk_lb);
-              state.station_mark_.set(to_idx(fp.target()), true);
+                        end(location_round_lb[fp.target()]), lb_fp);
+              station_mark.set(to_idx(fp.target()), true);
             }
           }
         }
@@ -107,8 +134,11 @@ void lb_raptor(
     });
     UTL_STOP_TIMING(lb_raptor_round);
     fmt::println("lb_raptor_round, k: {}, #marked: {}, time: {} ms", k,
-                 state.prev_station_mark_.count(),
-                 UTL_TIMING_MS(lb_raptor_round));
+                 prev_station_mark.count(), UTL_TIMING_MS(lb_raptor_round));
+
+    for (auto const& s : q.start_) {
+      fmt::println("k: {}, s: {}", k, location_round_lb[s.target()]);
+    }
 
     if (!any_marked) {
       break;
@@ -134,13 +164,17 @@ void lb_raptor(
 template void lb_raptor<direction::kForward>(
     timetable const&,
     query const&,
-    raptor_state&,
+    bitvec&,
+    bitvec&,
+    bitvec&,
     vector_map<location_idx_t, std::array<std::uint16_t, kMaxTransfers + 2U>>&);
 
 template void lb_raptor<direction::kBackward>(
     timetable const&,
     query const&,
-    raptor_state&,
+    bitvec&,
+    bitvec&,
+    bitvec&,
     vector_map<location_idx_t, std::array<std::uint16_t, kMaxTransfers + 2U>>&);
 
 }  // namespace nigiri::routing

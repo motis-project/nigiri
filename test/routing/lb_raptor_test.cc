@@ -137,24 +137,28 @@ TEST(routing, lb_raptor) {
   auto const tt = load_gtfs(lb_test_tt, kGtfsDateRange);
   auto rtt = rt::create_rt_timetable(tt, sys_days{2026_y / February / 27});
   auto const T = tt.find(location_id{"T", source_idx_t{}}).value();
-  auto const q =
-      query{.start_time_ = unixtime_t{sys_days{February / 27 / 2026}},
-            .destination_ = {{tt.locations_.location_id_to_idx_.at(
-                                  {"T", source_idx_t{0U}}),
-                              13_minutes, 0U}},
-            .td_dest_{{T,
-                       {{.valid_from_ = sys_days{2026_y / January / 27},
-                         .duration_ = 7_minutes,
-                         .transport_mode_id_ = 5},
-                        {.valid_from_ = sys_days{2026_y / January / 28},
-                         .duration_ = footpath::kMaxDuration,
-                         .transport_mode_id_ = 5}}}}};
-  auto state = raptor_state{};
+  auto const q = query{
+      .start_time_ = unixtime_t{sys_days{February / 27 / 2026}},
+      .start_ = {{tt.locations_.location_id_to_idx_.at({"P", source_idx_t{0U}}),
+                  3_minutes, 0U}},
+      .destination_ = {{tt.locations_.location_id_to_idx_.at(
+                            {"T", source_idx_t{0U}}),
+                        13_minutes, 0U}},
+      .td_dest_{{T,
+                 {{.valid_from_ = sys_days{2026_y / January / 27},
+                   .duration_ = 7_minutes,
+                   .transport_mode_id_ = 5},
+                  {.valid_from_ = sys_days{2026_y / January / 28},
+                   .duration_ = footpath::kMaxDuration,
+                   .transport_mode_id_ = 5}}}}};
   auto location_round_lb =
       vector_map<location_idx_t,
                  std::array<std::uint16_t, kMaxTransfers + 2U>>{};
-
-  lb_raptor<direction::kForward>(tt, q, state, location_round_lb);
+  auto station_mark = bitvec{};
+  auto prev_station_mark = bitvec{};
+  auto is_start = bitvec{};
+  lb_raptor<direction::kForward>(tt, q, station_mark, prev_station_mark,
+                                 is_start, location_round_lb);
 
   for (auto const [i, round_lb] : utl::enumerate(location_round_lb)) {
     fmt::println("{}: {}", tt.get_default_name(location_idx_t{i}), round_lb);

@@ -23,7 +23,6 @@
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/debug.h"
-#include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
@@ -130,11 +129,14 @@ struct search {
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
 
       if (q_.prf_idx_ == kDefaultProfile) {
-        auto rs = raptor_state{};
+        auto station_mark = bitvec{};
+        auto prev_station_mark = bitvec{};
+        auto is_start = bitvec{};
         auto location_round_lb =
             vector_map<location_idx_t,
                        std::array<std::uint16_t, kMaxTransfers + 2U>>{};
-        lb_raptor<SearchDir>(tt_, q_, rs, location_round_lb);
+        lb_raptor<SearchDir>(tt_, q_, station_mark, prev_station_mark, is_start,
+                             location_round_lb);
       }
 
 #if defined(NIGIRI_TRACING)
