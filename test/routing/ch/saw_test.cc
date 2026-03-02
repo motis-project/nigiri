@@ -253,18 +253,18 @@ TEST(ch, saw_traffic_days_test) {
   td.get_or_create(bitfield{"000000110000000"}, 8);
 
   EXPECT_EQ(saw<nigiri::routing::saw_type::kTrafficDays>::last_set_bit(
-                td.bitfields_.at(bitfield_idx_t{0}).first),
+                td.at(bitfield_idx_t{0}).first),
             9);
   EXPECT_EQ(saw<nigiri::routing::saw_type::kTrafficDays>::last_set_bit(
-                td.bitfields_.at(bitfield_idx_t{1}).first),
+                td.at(bitfield_idx_t{1}).first),
             8);
 
-  EXPECT_FALSE(td.bitfields_.at(bitfield_idx_t{0}).first.test(4));
-  EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{0}).first.test(5));
-  EXPECT_FALSE(td.bitfields_.at(bitfield_idx_t{0}).first.test(6));
-  EXPECT_FALSE(td.bitfields_.at(bitfield_idx_t{0}).first.test(7));
-  EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{0}).first.test(8));
-  EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{0}).first.test(9));
+  EXPECT_FALSE(td.at(bitfield_idx_t{0}).first.test(4));
+  EXPECT_TRUE(td.at(bitfield_idx_t{0}).first.test(5));
+  EXPECT_FALSE(td.at(bitfield_idx_t{0}).first.test(6));
+  EXPECT_FALSE(td.at(bitfield_idx_t{0}).first.test(7));
+  EXPECT_TRUE(td.at(bitfield_idx_t{0}).first.test(8));
+  EXPECT_TRUE(td.at(bitfield_idx_t{0}).first.test(9));
 
   EXPECT_FALSE(s1.to_saw(td) < s1.to_saw(td));
   EXPECT_FALSE(s1.to_saw(td) > s1.to_saw(td));
@@ -580,23 +580,25 @@ TEST(ch, saw_traffic_days_test) {
                                ch_edge_idx_t::invalid(),
                                ch_edge_idx_t::invalid(), tmp);
 
+    auto const tmp_bfi = bitfield_idx_t::invalid() - 1U;
     auto expected =
         std::vector<tooth>{metadata_tooth(9U),
                            metadata_tooth(),
                            metadata_tooth(),
                            {1U, u16_minutes{1010}, bitfield_idx_t{0}},
-                           {1437U, u16_minutes{1010}, bitfield_idx_t{2}}};
+                           {1437U, u16_minutes{1010}, tmp_bfi}};
     ASSERT_EQ(tmp.size(), expected.size());
     for (auto i = 0U; i < expected.size(); ++i) {
       EXPECT_EQ(expected[i], tmp[i]);
     }
-    ASSERT_EQ(td.bitfields_.size(), 3);
-    EXPECT_FALSE(td.bitfields_.at(bitfield_idx_t{2}).first.test(4));
-    EXPECT_FALSE(td.bitfields_.at(bitfield_idx_t{2}).first.test(5));
-    EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{2}).first.test(6));
-    EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{2}).first.test(7));
-    EXPECT_FALSE(td.bitfields_.at(bitfield_idx_t{2}).first.test(8));
-    EXPECT_EQ(td.bitfields_.at(bitfield_idx_t{2}).second, 7);
+    ASSERT_EQ(td.bitfields_.size(), 2);
+    ASSERT_EQ(td.tmp_bitfields_.size(), 1);
+    EXPECT_FALSE(td.at(tmp_bfi).first.test(4));
+    EXPECT_FALSE(td.at(tmp_bfi).first.test(5));
+    EXPECT_TRUE(td.at(tmp_bfi).first.test(6));
+    EXPECT_TRUE(td.at(tmp_bfi).first.test(7));
+    EXPECT_FALSE(td.at(tmp_bfi).first.test(8));
+    EXPECT_EQ(td.at(tmp_bfi).second, 7);
   }
 }
 
@@ -655,11 +657,11 @@ TEST(ch, saw_traffic_days_power_test) {
         {1001U, u16_minutes{10}, bitfield_idx_t{0}},
         {1000U, u16_minutes{5}, bitfield_idx_t{2}}};
 
-    EXPECT_EQ(td.bitfields_.at(bitfield_idx_t{2}).first.count(), 4);
-    EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{2}).first.test(5));
-    EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{2}).first.test(7));
-    EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{2}).first.test(8));
-    EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{2}).first.test(9));
+    EXPECT_EQ(td.at(bitfield_idx_t{2}).first.count(), 4);
+    EXPECT_TRUE(td.at(bitfield_idx_t{2}).first.test(5));
+    EXPECT_TRUE(td.at(bitfield_idx_t{2}).first.test(7));
+    EXPECT_TRUE(td.at(bitfield_idx_t{2}).first.test(8));
+    EXPECT_TRUE(td.at(bitfield_idx_t{2}).first.test(9));
     ASSERT_EQ(tmp.size(), expected.size());
     for (auto i = 0U; i < expected.size(); ++i) {
       EXPECT_EQ(expected[i], tmp[i]);
@@ -706,9 +708,9 @@ TEST(ch, saw_traffic_days_power_test) {
         {1000U, u16_minutes{3}, bitfield_idx_t{1}},
         {1000U, u16_minutes{5}, bitfield_idx_t{2}}};
 
-    EXPECT_EQ(td.bitfields_.at(bitfield_idx_t{2}).first.count(), 2);
-    EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{2}).first.test(5));
-    EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{2}).first.test(9));
+    EXPECT_EQ(td.at(bitfield_idx_t{2}).first.count(), 2);
+    EXPECT_TRUE(td.at(bitfield_idx_t{2}).first.test(5));
+    EXPECT_TRUE(td.at(bitfield_idx_t{2}).first.test(9));
     ASSERT_EQ(tmp.size(), expected.size());
     for (auto i = 0U; i < expected.size(); ++i) {
       EXPECT_EQ(expected[i], tmp[i]);
@@ -728,20 +730,28 @@ TEST(ch, saw_traffic_days_power_test) {
         metadata_tooth(9U),
         metadata_tooth(1447U),
         metadata_tooth(),
-        {1001U, u16_minutes{1450}, bitfield_idx_t{2}},
+        {1001U, u16_minutes{1450},
+         traffic_days::invert_tmp_idx(bitfield_idx_t{0U})},
         //{1001U, u16_minutes{2886}, bitfield_idx_t{3}},  // ommitted due to
         // maxwaittime
-        {1000U, u16_minutes{1447}, bitfield_idx_t{3}},
+        {1000U, u16_minutes{1447},
+         traffic_days::invert_tmp_idx(bitfield_idx_t{1U})},
     };
 
-    EXPECT_EQ(td.bitfields_.at(bitfield_idx_t{2}).first.count(), 1);
-    EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{2}).first.test(8));
+    EXPECT_EQ(
+        td.at(traffic_days::invert_tmp_idx(bitfield_idx_t{0U})).first.count(),
+        1);
+    EXPECT_TRUE(
+        td.at(traffic_days::invert_tmp_idx(bitfield_idx_t{0U})).first.test(8));
 
-    // EXPECT_EQ(td.bitfields_.at(bitfield_idx_t{3}).first.count(), 1);
-    // EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{3}).first.test(5));
+    // EXPECT_EQ(td.at(bitfield_idx_t{3}).first.count(), 1);
+    // EXPECT_TRUE(td.at(bitfield_idx_t{3}).first.test(5));
 
-    EXPECT_EQ(td.bitfields_.at(bitfield_idx_t{3}).first.count(), 1);
-    EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{3}).first.test(7));
+    EXPECT_EQ(
+        td.at(traffic_days::invert_tmp_idx(bitfield_idx_t{1U})).first.count(),
+        1);
+    EXPECT_TRUE(
+        td.at(traffic_days::invert_tmp_idx(bitfield_idx_t{1U})).first.test(7));
 
     ASSERT_EQ(tmp.size(), expected.size());
     for (auto i = 0U; i < expected.size(); ++i) {
@@ -767,19 +777,27 @@ TEST(ch, saw_traffic_days_power_test) {
         metadata_tooth(9U),
         metadata_tooth(1447U),
         metadata_tooth(),
-        {1001U, u16_minutes{1450}, bitfield_idx_t{2}},
+        {1001U, u16_minutes{1450},
+         traffic_days::invert_tmp_idx(bitfield_idx_t{0U})},
         //{1001U, u16_minutes{2886}, bitfield_idx_t{3}},  // TODO idem
-        {1000U, u16_minutes{1447}, bitfield_idx_t{3}},
+        {1000U, u16_minutes{1447},
+         traffic_days::invert_tmp_idx(bitfield_idx_t{1U})},
     };
 
-    EXPECT_EQ(td.bitfields_.at(bitfield_idx_t{2}).first.count(), 1);
-    EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{2}).first.test(8));
+    EXPECT_EQ(
+        td.at(traffic_days::invert_tmp_idx(bitfield_idx_t{0U})).first.count(),
+        1);
+    EXPECT_TRUE(
+        td.at(traffic_days::invert_tmp_idx(bitfield_idx_t{0U})).first.test(8));
 
-    // EXPECT_EQ(td.bitfields_.at(bitfield_idx_t{3}).first.count(), 1);
-    // EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{3}).first.test(5));
+    // EXPECT_EQ(td.at(bitfield_idx_t{3}).first.count(), 1);
+    // EXPECT_TRUE(td.at(bitfield_idx_t{3}).first.test(5));
 
-    EXPECT_EQ(td.bitfields_.at(bitfield_idx_t{3}).first.count(), 1);
-    EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{3}).first.test(7));
+    EXPECT_EQ(
+        td.at(traffic_days::invert_tmp_idx(bitfield_idx_t{1U})).first.count(),
+        1);
+    EXPECT_TRUE(
+        td.at(traffic_days::invert_tmp_idx(bitfield_idx_t{1U})).first.test(7));
 
     ASSERT_EQ(tmp.size(), expected.size());
     for (auto i = 0U; i < expected.size(); ++i) {
@@ -878,11 +896,8 @@ TEST(ch, saw_traffic_days_power_test) {
     td.get_or_create(bitfield{"000001111100000"}, 9);
     td.get_or_create(bitfield{"001110000000000"}, 12);
 
-    std::cout << "932 test " << std::endl;
-
     s3.to_saw(td).concat(s4.to_saw(td), ch_edge_idx_t::invalid(),
                          ch_edge_idx_t::invalid(), false, tmp);
-    std::cout << "932 end " << std::endl;
 
     auto expected = std::vector<tooth>{
         metadata_tooth(12U),
@@ -942,23 +957,26 @@ TEST(ch, saw_traffic_days_power_test) {
                                ch_edge_idx_t::invalid(),
                                ch_edge_idx_t::invalid(), tmp);
 
+    auto const tmp_bfi = bitfield_idx_t::invalid() - 1U;
+
     auto expected =
         std::vector<tooth>{metadata_tooth(9U),
                            metadata_tooth(),
                            metadata_tooth(),
                            {1U, u16_minutes{1010}, bitfield_idx_t{0}},
-                           {1437U, u16_minutes{1010}, bitfield_idx_t{2}}};
+                           {1437U, u16_minutes{1010}, tmp_bfi}};
     ASSERT_EQ(tmp.size(), expected.size());
     for (auto i = 0U; i < expected.size(); ++i) {
       EXPECT_EQ(expected[i], tmp[i]);
     }
-    ASSERT_EQ(td.bitfields_.size(), 3);
-    EXPECT_FALSE(td.bitfields_.at(bitfield_idx_t{2}).first.test(4));
-    EXPECT_FALSE(td.bitfields_.at(bitfield_idx_t{2}).first.test(5));
-    EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{2}).first.test(6));
-    EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{2}).first.test(7));
-    EXPECT_FALSE(td.bitfields_.at(bitfield_idx_t{2}).first.test(8));
-    EXPECT_EQ(td.bitfields_.at(bitfield_idx_t{2}).second, 7);
+    ASSERT_EQ(td.bitfields_.size(), 2);
+    ASSERT_EQ(td.tmp_bitfields_.size(), 1);
+    EXPECT_FALSE(td.at(tmp_bfi).first.test(4));
+    EXPECT_FALSE(td.at(tmp_bfi).first.test(5));
+    EXPECT_TRUE(td.at(tmp_bfi).first.test(6));
+    EXPECT_TRUE(td.at(tmp_bfi).first.test(7));
+    EXPECT_FALSE(td.at(tmp_bfi).first.test(8));
+    EXPECT_EQ(td.at(tmp_bfi).second, 7);
   }
 
   {

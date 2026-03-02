@@ -39,6 +39,26 @@ void obtain_relevant_stops(timetable const& tt,
 
   std::cout << "upsearch" << std::endl;
 
+  auto bf = bitvec{};
+  bf.resize(tt.ch_traffic_days_[prf_idx].size());
+  for (auto const e : tt.ch_graph_min_[prf_idx]) {
+    for (auto const& t : e) {
+      if (t.traffic_days_ != bitfield_idx_t::invalid()) {
+
+        bf.set(t.traffic_days_.v_);
+      }
+    }
+  }
+  std::cout << bf.count() << "/" << bf.size() << std::endl;
+  for (auto const e : tt.ch_graph_max_[prf_idx]) {
+    for (auto const& t : e) {
+      if (t.traffic_days_ != bitfield_idx_t::invalid()) {
+        bf.set(t.traffic_days_.v_);
+      }
+    }
+  }
+  std::cout << bf.count() << "/" << bf.size() << std::endl;
+
   std::array<vector_map<location_idx_t, ch_dist>, 2> dists;
   dists[0].resize(tt.n_locations());
   dists[1].resize(tt.n_locations());

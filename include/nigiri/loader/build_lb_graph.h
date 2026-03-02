@@ -90,6 +90,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   vector_map<location_idx_t, std::vector<ch_edge_idx_t>> fwd_search_ch_graph;
   vector_map<location_idx_t, std::vector<ch_edge_idx_t>> bwd_search_ch_graph;
   ch_stats stats;
+
   auto ignore_timetable_offset_mask = ~bitfield{};
   for (auto i = 0U; i < kTimetableOffset.count(); ++i) {
     ignore_timetable_offset_mask.set(i, false);
@@ -237,8 +238,12 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           // std::cout << "repl" << std::endl;
           ++contract_stats.replacements_;
           if (dry_run) {
+            traffic_days.clear_tmp();
             return false;
           }
+          traffic_days.persist_tmp(min_dur);  // TODO ugly
+          traffic_days.persist_tmp(max_dur);
+          traffic_days.clear_tmp();
           std::swap(edge_min.at(shortcut_idx), min_dur);
           std::swap(edge_max.at(shortcut_idx), max_dur);
 
@@ -264,6 +269,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           }*/
           ++contract_stats.bad_updates_;
           if (dry_run) {
+            traffic_days.clear_tmp();
             return false;
           }
 
@@ -277,9 +283,11 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
               new_max_dur);
           std::swap(edge_min.at(shortcut_idx), new_min_dur);
           std::swap(edge_max.at(shortcut_idx), new_max_dur);
+          traffic_days.clear_tmp();
         } else {
           // std::cout << "skip" << std::endl;
           ++contract_stats.skips_;
+          traffic_days.clear_tmp();
           return false;
         }
 
@@ -328,6 +336,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           }
           return it->second;
         } else {
+          traffic_days.persist_tmp(min_dur);
+          traffic_days.persist_tmp(max_dur);
+          traffic_days.clear_tmp();
           // insert
           auto const edge_idx = insert_ch_edge(from_l, to_l, std::move(min_dur),
                                                std::move(max_dur));
@@ -379,7 +390,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             last_set_bit - j, false);  // TODO do in one go with first 5 days?
       }
       lsb = std::max(lsb, last_set_bit - e.deps_[i].days());
-      auto const traffic_days_idx = traffic_days.get_or_create(
+      auto const traffic_days_idx = traffic_days.get_or_create_tmp(
           remaining_traffic_days,
           static_cast<std::uint16_t>(last_set_bit - e.deps_[i].days()));
       auto const new_tooth = tooth{static_cast<std::int16_t>(e.deps_[i].mam_),
@@ -398,7 +409,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       auto const s = saw<saw_type::kTrafficDays>{max_saw_tmp, traffic_days};
       for (auto b_it = s.begin(); b_it != s.end(); ++b_it) {
         auto remaining_traffic_days =
-            traffic_days.bitfields_.at(b_it->traffic_days_).first;
+            traffic_days.at(b_it->traffic_days_).first;
         auto day_offset = 0;
         auto a_it = b_it;
         while (true) {
@@ -413,8 +424,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             day_offset = a_it.day_offset_;
           }
 
-          remaining_traffic_days &=
-              ~traffic_days.bitfields_.at(a_it->traffic_days_).first;
+          remaining_traffic_days &= ~traffic_days.at(a_it->traffic_days_).first;
           if (remaining_traffic_days.none()) {
             break;
           }
@@ -734,7 +744,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
               << " replacements: " << stats.replacements_
               << " skips: " << stats.skips_
               << " good updates: " << stats.good_updates_
-              << " bad updates: " << stats.bad_updates_
+              << " bad updates: " << stats.bad_updates_ << " avg lookahead: "
+              << saw<kChSawType>::lookahead_sum /
+                     saw<kChSawType>::lookahead_count
               << " traffic bitfields: " << traffic_days.bitfields_.size() << "/"
               << tt.bitfields_.size() << std::endl;
   };
