@@ -170,15 +170,12 @@ void obtain_relevant_stops(timetable const& tt,
                 << std::endl
                 << "simpl:" << saw<kChSawType>{tmp_saw, ch_traffic_days}
                 << std::endl;*/
-      new_max_dist.clear();
-      saw<kChSawType>{tmp_saw, ch_traffic_days}.min(
-          new_max_dist);  // TODO should not be necessary
       auto max_leq = false;
       auto min_leq = false;
       if (saw<kChSawType>{edge_max.at(dists[l_dir].at(edge_target)),
                           ch_traffic_days} !=
-          saw<kChSawType>{new_max_dist, ch_traffic_days}) {
-        std::swap(edge_max.at(dists[l_dir].at(edge_target)), new_max_dist);
+          saw<kChSawType>{tmp_saw, ch_traffic_days}) {
+        std::swap(edge_max.at(dists[l_dir].at(edge_target)), tmp_saw);
         max_leq = true;
       }
       new_max_dist.clear();
@@ -187,14 +184,11 @@ void obtain_relevant_stops(timetable const& tt,
           saw<kChSawType>{edge_min.at(dists[l_dir].at(edge_target)),
                           ch_traffic_days},
           false, tmp_saw);
-      new_min_dist.clear();
-      saw<kChSawType>{tmp_saw, ch_traffic_days}.min(
-          new_min_dist);  // TODO should not be necessary
       if (saw<kChSawType>{edge_min.at(dists[l_dir].at(edge_target)),
                           ch_traffic_days} !=
-          saw<kChSawType>{new_min_dist, ch_traffic_days}) {
+          saw<kChSawType>{tmp_saw, ch_traffic_days}) {
 
-        std::swap(edge_min.at(dists[l_dir][edge_target]), new_min_dist);
+        std::swap(edge_min.at(dists[l_dir][edge_target]), tmp_saw);
         min_leq = true;
       }
       new_min_dist.clear();
@@ -215,8 +209,8 @@ void obtain_relevant_stops(timetable const& tt,
       utl::verify(const_max.count() < kChMaxTravelTime.count() &&
                       const_min.count() < kChMaxTravelTime.count(),
                   "extra weird {} {}", const_max, const_min);
-      std::cout << "push " << e.from_ << " " << e.to_ << " " << edge_target
-                << " minmay " << const_min << " " << const_max << std::endl;
+      /*std::cout << "push " << e.from_ << " " << e.to_ << " " << edge_target
+                << " minmay " << const_min << " " << const_max << std::endl;*/
 
       auto const const_min_edge =
           saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx), ch_traffic_days}
@@ -308,14 +302,6 @@ void obtain_relevant_stops(timetable const& tt,
               << std::endl;*/
     if (dists[other_dir][l.l_] != ch_edge_idx_t::invalid() &&
         !edge_max.at(dists[other_dir][l.l_]).empty()) {
-      std::cout << "ldir"
-                << saw<kChSawType>{edge_max.at(dists[l_dir].at(l.l_)),
-                                   ch_traffic_days}
-                << std::endl;
-      std::cout << "odir"
-                << saw<kChSawType>{edge_max.at(dists[other_dir].at(l.l_)),
-                                   ch_traffic_days}
-                << std::endl;
       auto max_concat =
           saw<kChSawType>{edge_max.at(dists[l_dir].at(l.l_)), ch_traffic_days}
               .concat(l_dir,
@@ -325,7 +311,6 @@ void obtain_relevant_stops(timetable const& tt,
                       dists[other_dir][l.l_] + tmp_edge_offset, true, tmp_saw);
       max_concat.simplify(saw<kChSawType>{min_max_dist, ch_traffic_days}, true,
                           new_max_dist);
-      std::cout << saw<kChSawType>{new_max_dist, ch_traffic_days} << std::endl;
       if (saw<kChSawType>{new_max_dist, ch_traffic_days} !=
           saw<kChSawType>{min_max_dist, ch_traffic_days}) {
         std::swap(min_max_dist, new_max_dist);
@@ -566,6 +551,8 @@ void obtain_relevant_stops(timetable const& tt,
     unpack_children(const_min_max_dist);
     std::cout << "directly marked stops: " << relevant_stops.count() << "/"
               << relevant_stops.size() << std::endl;
+    std::cout << "bitfields: " << "/" << ch_traffic_days.bitfields_.size()
+              << std::endl;
     return;
   }
 
@@ -799,6 +786,8 @@ void obtain_relevant_stops(timetable const& tt,
   }*/
   std::cout << "marked stops: " << relevant_stops.count() << "/"
             << relevant_stops.size() << std::endl;
+  std::cout << "bitfields: " << "/" << ch_traffic_days.bitfields_.size()
+            << std::endl;
 }
 
 }  // namespace nigiri::routing
