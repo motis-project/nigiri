@@ -38,7 +38,7 @@ struct search_state {
   search_state& operator=(search_state&&) = default;
   ~search_state() = default;
 
-  std::vector<std::uint16_t> travel_time_lower_bound_;
+  lb_raptor_state lb_raptor_state_;
   bitvec is_destination_;
   std::array<bitvec, kMaxVias> is_via_;
   std::vector<std::uint16_t> dist_to_dest_;
@@ -114,30 +114,13 @@ struct search {
       auto lb_span = get_otel_tracer()->StartSpan("lower bounds");
       auto lb_scope = opentelemetry::trace::Scope{lb_span};
       UTL_START_TIMING(lb);
-      dijkstra(
-          tt_, q_,
-          (kFwd ? tt_.fwd_search_lb_graph_[q_.prf_idx_]
-                : tt_.bwd_search_lb_graph_[q_.prf_idx_]),
-          (rtt_ == nullptr ? nullptr
-                           : &(kFwd ? rtt_->fwd_search_lb_graph_has_edges_
-                                    : rtt_->bwd_search_lb_graph_has_edges_)),
-          (rtt_ == nullptr ? nullptr
-                           : &(kFwd ? rtt_->fwd_search_lb_graph_
-                                    : rtt_->bwd_search_lb_graph_)),
-          state_.travel_time_lower_bound_);
+      if (q_.prf_idx_ == kDefaultProfile) {
+        lb_raptor<SearchDir>(tt_, q_, state_.lb_raptor_state_);
+      } else {
+        state_.lb_raptor_state_.zeroize();
+      }
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
-
-      if (q_.prf_idx_ == kDefaultProfile) {
-        auto station_mark = bitvec{};
-        auto prev_station_mark = bitvec{};
-        auto is_start = bitvec{};
-        auto location_round_lb =
-            vector_map<location_idx_t,
-                       std::array<std::uint16_t, kMaxTransfers + 2U>>{};
-        lb_raptor<SearchDir>(tt_, q_, station_mark, prev_station_mark, is_start,
-                             location_round_lb);
-      }
 
 #if defined(NIGIRI_TRACING)
       for (auto const& o : q_.start_) {
@@ -163,7 +146,7 @@ struct search {
         state_.is_via_,
         state_.dist_to_dest_,
         q_.td_dest_,
-        state_.travel_time_lower_bound_,
+        state_.lb_raptor_state_.location_round_lb_,
         q_.via_stops_,
         day_idx_t{
             std::chrono::duration_cast<date::days>(

@@ -146,45 +146,39 @@ TEST(routing, lb_raptor) {
                   {.valid_from_ = sys_days{2026_y / January / 28},
                    .duration_ = footpath::kMaxDuration,
                    .transport_mode_id_ = 5}}}}};
-  auto location_round_lb =
-      vector_map<location_idx_t,
-                 std::array<std::uint16_t, kMaxTransfers + 2U>>{};
-  auto station_mark = bitvec{};
-  auto prev_station_mark = bitvec{};
-  auto is_start = bitvec{};
+  auto state = lb_raptor_state{};
 
-  lb_raptor<direction::kForward>(tt, q, station_mark, prev_station_mark,
-                                 is_start, location_round_lb);
+  lb_raptor<direction::kForward>(tt, q, state);
 
   ASSERT_EQ(kMaxTransfers, 14U);
-  EXPECT_EQ(
-      kExpLbP,
-      location_round_lb[tt.find(location_id{"P", source_idx_t{}}).value()]);
-  EXPECT_EQ(
-      kExpLbF,
-      location_round_lb[tt.find(location_id{"F", source_idx_t{}}).value()]);
-  EXPECT_EQ(
-      kExpLbS,
-      location_round_lb[tt.find(location_id{"S", source_idx_t{}}).value()]);
-  EXPECT_EQ(
-      kExpLbB1,
-      location_round_lb[tt.find(location_id{"B1", source_idx_t{}}).value()]);
-  EXPECT_EQ(
-      kExpLbC1,
-      location_round_lb[tt.find(location_id{"C1", source_idx_t{}}).value()]);
-  EXPECT_EQ(
-      kExpLbC2,
-      location_round_lb[tt.find(location_id{"C2", source_idx_t{}}).value()]);
-  EXPECT_EQ(
-      kExpLbD1,
-      location_round_lb[tt.find(location_id{"D1", source_idx_t{}}).value()]);
-  EXPECT_EQ(
-      kExpLbD2,
-      location_round_lb[tt.find(location_id{"D2", source_idx_t{}}).value()]);
-  EXPECT_EQ(
-      kExpLbD3,
-      location_round_lb[tt.find(location_id{"D3", source_idx_t{}}).value()]);
-  EXPECT_EQ(
-      kExpLbT,
-      location_round_lb[tt.find(location_id{"T", source_idx_t{}}).value()]);
+  EXPECT_EQ(kExpLbP,
+            state.location_round_lb_[tt.find(location_id{"P", source_idx_t{}})
+                                         .value()]);
+  EXPECT_EQ(kExpLbF,
+            state.location_round_lb_[tt.find(location_id{"F", source_idx_t{}})
+                                         .value()]);
+  EXPECT_EQ(kExpLbS,
+            state.location_round_lb_[tt.find(location_id{"S", source_idx_t{}})
+                                         .value()]);
+  EXPECT_EQ(kExpLbB1,
+            state.location_round_lb_[tt.find(location_id{"B1", source_idx_t{}})
+                                         .value()]);
+  EXPECT_EQ(kExpLbC1,
+            state.location_round_lb_[tt.find(location_id{"C1", source_idx_t{}})
+                                         .value()]);
+  EXPECT_EQ(kExpLbC2,
+            state.location_round_lb_[tt.find(location_id{"C2", source_idx_t{}})
+                                         .value()]);
+  EXPECT_EQ(kExpLbD1,
+            state.location_round_lb_[tt.find(location_id{"D1", source_idx_t{}})
+                                         .value()]);
+  EXPECT_EQ(kExpLbD2,
+            state.location_round_lb_[tt.find(location_id{"D2", source_idx_t{}})
+                                         .value()]);
+  EXPECT_EQ(kExpLbD3,
+            state.location_round_lb_[tt.find(location_id{"D3", source_idx_t{}})
+                                         .value()]);
+  EXPECT_EQ(kExpLbT,
+            state.location_round_lb_[tt.find(location_id{"T", source_idx_t{}})
+                                         .value()]);
 }
