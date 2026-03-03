@@ -18,7 +18,7 @@ using namespace std::chrono_literals;
 using namespace std::string_view_literals;
 using namespace nigiri::routing;
 
-// TODO test automatic const, same mam concat
+// TODO test automatic const, 7200
 
 tooth metadata_tooth(std::uint16_t const val = u16_minutes::max().count()) {
   return {std::numeric_limits<std::int16_t>::max(),

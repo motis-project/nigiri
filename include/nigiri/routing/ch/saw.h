@@ -353,6 +353,12 @@ struct saw {
       if (a.saw_[i].traffic_days_ != b.saw_[i].traffic_days_) {
         return false;
       }
+      if (a.saw_[i].start_idx_ != b.saw_[i].start_idx_) {
+        return false;
+      }
+      if (a.saw_[i].end_idx_ != b.saw_[i].end_idx_) {
+        return false;
+      }  // TODO all fields?, tie
     }
     return true;
   }
