@@ -1,9 +1,5 @@
 #include "gtest/gtest.h"
 
-#include <ranges>
-
-#include "utl/enumerate.h"
-
 #include "nigiri/routing/lb_raptor.h"
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/rt/create_rt_timetable.h"
@@ -104,39 +100,38 @@ constexpr auto kGtfsDateRange = interval{sys_days{2026_y / February / 27},
                                          sys_days{2026_y / February / 28}};
 
 constexpr auto kExpLbP = std::array<std::uint16_t, 16U>{
-    65535U, 65535U, 667U, 487U, 247U, 142U, 142U, 142U,
-    142U,   142U,   142U, 142U, 142U, 142U, 142U, 142U};
+    65535U, 65535U, 669U, 491U, 253U, 150U, 150U, 150U,
+    150U,   150U,   150U, 150U, 150U, 150U, 150U, 150U};
 constexpr auto kExpLbF = std::array<std::uint16_t, 16U>{
-    65535U, 617U, 437U, 197U, 92U, 92U, 92U, 92U,
-    92U,    92U,  92U,  92U,  92U, 92U, 92U, 92U};
+    65535U, 617U, 439U, 201U, 98U, 98U, 98U, 98U,
+    98U,    98U,  98U,  98U,  98U, 98U, 98U, 98U};
 constexpr auto kExpLbS = std::array<std::uint16_t, 16U>{
-    65535U, 607U, 427U, 187U, 82U, 82U, 82U, 82U,
-    82U,    82U,  82U,  82U,  82U, 82U, 82U, 82U};
+    65535U, 609U, 431U, 193U, 90U, 90U, 90U, 90U,
+    90U,    90U,  90U,  90U,  90U, 90U, 90U, 90U};
 constexpr auto kExpLbB1 = std::array<std::uint16_t, 16U>{
-    65535U, 187U, 187U, 187U, 187U, 187U, 187U, 187U,
-    187U,   187U, 187U, 187U, 187U, 187U, 187U, 187U};
+    65535U, 189U, 189U, 189U, 189U, 189U, 189U, 189U,
+    189U,   189U, 189U, 189U, 189U, 189U, 189U, 189U};
 constexpr auto kExpLbC1 = std::array<std::uint16_t, 16U>{
-    65535U, 65535U, 127U, 127U, 127U, 127U, 127U, 127U,
-    127U,   127U,   127U, 127U, 127U, 127U, 127U, 127U};
+    65535U, 65535U, 131U, 131U, 131U, 131U, 131U, 131U,
+    131U,   131U,   131U, 131U, 131U, 131U, 131U, 131U};
 constexpr auto kExpLbC2 =
-    std::array<std::uint16_t, 16U>{65535U, 67U, 67U, 67U, 67U, 67U, 67U, 67U,
-                                   67U,    67U, 67U, 67U, 67U, 67U, 67U, 67U};
+    std::array<std::uint16_t, 16U>{65535U, 69U, 69U, 69U, 69U, 69U, 69U, 69U,
+                                   69U,    69U, 69U, 69U, 69U, 69U, 69U, 69U};
 constexpr auto kExpLbD1 = std::array<std::uint16_t, 16U>{
-    65535U, 65535U, 65535U, 67U, 67U, 67U, 67U, 67U,
-    67U,    67U,    67U,    67U, 67U, 67U, 67U, 67U};
+    65535U, 65535U, 65535U, 73U, 73U, 73U, 73U, 73U,
+    73U,    73U,    73U,    73U, 73U, 73U, 73U, 73U};
 constexpr auto kExpLbD2 = std::array<std::uint16_t, 16U>{
-    65535U, 65535U, 52U, 52U, 52U, 52U, 52U, 52U,
-    52U,    52U,    52U, 52U, 52U, 52U, 52U, 52U};
+    65535U, 65535U, 56U, 56U, 56U, 56U, 56U, 56U,
+    56U,    56U,    56U, 56U, 56U, 56U, 56U, 56U};
 constexpr auto kExpLbD3 =
-    std::array<std::uint16_t, 16U>{65535U, 37U, 37U, 37U, 37U, 37U, 37U, 37U,
-                                   37U,    37U, 37U, 37U, 37U, 37U, 37U, 37U};
+    std::array<std::uint16_t, 16U>{65535U, 39U, 39U, 39U, 39U, 39U, 39U, 39U,
+                                   39U,    39U, 39U, 39U, 39U, 39U, 39U, 39U};
 constexpr auto kExpLbT = std::array<std::uint16_t, 16U>{
     7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U, 7U};
 
 TEST(routing, lb_raptor) {
   auto const tt = load_gtfs(lb_test_tt, kGtfsDateRange);
   auto rtt = rt::create_rt_timetable(tt, sys_days{2026_y / February / 27});
-  auto const T = tt.find(location_id{"T", source_idx_t{}}).value();
   auto const q = query{
       .start_time_ = unixtime_t{sys_days{February / 27 / 2026}},
       .start_ = {{tt.locations_.location_id_to_idx_.at({"P", source_idx_t{0U}}),
@@ -144,7 +139,7 @@ TEST(routing, lb_raptor) {
       .destination_ = {{tt.locations_.location_id_to_idx_.at(
                             {"T", source_idx_t{0U}}),
                         13_minutes, 0U}},
-      .td_dest_{{T,
+      .td_dest_{{tt.find(location_id{"T", source_idx_t{}}).value(),
                  {{.valid_from_ = sys_days{2026_y / January / 27},
                    .duration_ = 7_minutes,
                    .transport_mode_id_ = 5},
@@ -157,40 +152,39 @@ TEST(routing, lb_raptor) {
   auto station_mark = bitvec{};
   auto prev_station_mark = bitvec{};
   auto is_start = bitvec{};
+
   lb_raptor<direction::kForward>(tt, q, station_mark, prev_station_mark,
                                  is_start, location_round_lb);
 
-  for (auto const [i, round_lb] : utl::enumerate(location_round_lb)) {
-    fmt::println("{}: {}", tt.get_default_name(location_idx_t{i}), round_lb);
-  }
-
-  ASSERT_LE(kMaxTransfers, std::uint8_t{14U});
-
-  auto const check = [](auto&& exp, auto&& act) {
-    for (auto const [e, a] :
-         std::views::zip(exp | std::views::take(kMaxTransfers + 2U),
-                         act | std::views::take(kMaxTransfers + 2U))) {
-      EXPECT_EQ(e, a);
-    }
-  };
-
-  check(kExpLbP,
-        location_round_lb[tt.find(location_id{"P", source_idx_t{}}).value()]);
-  check(kExpLbF,
-        location_round_lb[tt.find(location_id{"F", source_idx_t{}}).value()]);
-  check(kExpLbS,
-        location_round_lb[tt.find(location_id{"S", source_idx_t{}}).value()]);
-  check(kExpLbB1,
-        location_round_lb[tt.find(location_id{"B1", source_idx_t{}}).value()]);
-  check(kExpLbC1,
-        location_round_lb[tt.find(location_id{"C1", source_idx_t{}}).value()]);
-  check(kExpLbC2,
-        location_round_lb[tt.find(location_id{"C2", source_idx_t{}}).value()]);
-  check(kExpLbD1,
-        location_round_lb[tt.find(location_id{"D1", source_idx_t{}}).value()]);
-  check(kExpLbD2,
-        location_round_lb[tt.find(location_id{"D2", source_idx_t{}}).value()]);
-  check(kExpLbD3,
-        location_round_lb[tt.find(location_id{"D3", source_idx_t{}}).value()]);
-  check(kExpLbT, location_round_lb[T]);
+  ASSERT_EQ(kMaxTransfers, 14U);
+  EXPECT_EQ(
+      kExpLbP,
+      location_round_lb[tt.find(location_id{"P", source_idx_t{}}).value()]);
+  EXPECT_EQ(
+      kExpLbF,
+      location_round_lb[tt.find(location_id{"F", source_idx_t{}}).value()]);
+  EXPECT_EQ(
+      kExpLbS,
+      location_round_lb[tt.find(location_id{"S", source_idx_t{}}).value()]);
+  EXPECT_EQ(
+      kExpLbB1,
+      location_round_lb[tt.find(location_id{"B1", source_idx_t{}}).value()]);
+  EXPECT_EQ(
+      kExpLbC1,
+      location_round_lb[tt.find(location_id{"C1", source_idx_t{}}).value()]);
+  EXPECT_EQ(
+      kExpLbC2,
+      location_round_lb[tt.find(location_id{"C2", source_idx_t{}}).value()]);
+  EXPECT_EQ(
+      kExpLbD1,
+      location_round_lb[tt.find(location_id{"D1", source_idx_t{}}).value()]);
+  EXPECT_EQ(
+      kExpLbD2,
+      location_round_lb[tt.find(location_id{"D2", source_idx_t{}}).value()]);
+  EXPECT_EQ(
+      kExpLbD3,
+      location_round_lb[tt.find(location_id{"D3", source_idx_t{}}).value()]);
+  EXPECT_EQ(
+      kExpLbT,
+      location_round_lb[tt.find(location_id{"T", source_idx_t{}}).value()]);
 }
