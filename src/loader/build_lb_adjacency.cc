@@ -51,6 +51,10 @@ void build_lb_adjacency(timetable& tt, profile_idx_t const prf_idx) {
         for (auto const [j, y] : utl::enumerate(location_seq)) {
           auto const j_stop = stop{y};
           auto const j_stop_idx = static_cast<stop_idx_t>(j);
+          if (l == j_stop.location_idx()) {
+            continue;
+          }
+
           for (auto const t : tt.route_transport_ranges_[r]) {
             auto const min = [&](auto& hm, auto const n, durations const d) {
               auto& v = utl::get_or_create(hm, n, [] { return durations{}; });
@@ -84,14 +88,21 @@ void build_lb_adjacency(timetable& tt, profile_idx_t const prf_idx) {
             if (i < j && i_stop.in_allowed() &&
                 j_stop.out_allowed()) {  // TODO wheelchair profile
               auto const pt_duration = static_cast<std::uint16_t>(
-                      (tt.event_mam(t, j_stop_idx, event_type::kArr) -
-                       tt.event_mam(t, i_stop_idx, event_type::kDep))
-                          .count());
-              if (min(a.out_, j_stop.location_idx(), {pt_duration, tt.locations_.transfer_time_[j_stop.location_idx()]
+                  (tt.event_mam(t, j_stop_idx, event_type::kArr) -
+                   tt.event_mam(t, i_stop_idx, event_type::kDep))
+                      .count());
+              if (min(a.out_, j_stop.location_idx(),
+                      {pt_duration,
+                       tt.locations_.transfer_time_[j_stop.location_idx()]
                            .count()})) {
-                for (auto const fp : tt.locations_. )
+                for (auto const fp :
+                     tt.locations_
+                         .footpaths_out_[prf_idx][j_stop.location_idx()]) {
+                  min(a.out_, fp.target(),
+                      {pt_duration,
+                       static_cast<std::uint16_t>(fp.duration().count())});
+                }
               }
-              ;
             }
           }
         }
@@ -112,11 +123,11 @@ void build_lb_adjacency(timetable& tt, profile_idx_t const prf_idx) {
 
         explore_routes(l, a);
 
-        for (auto const& [n, dist] : a.in_) {
-          ns.in_.emplace_back(n, dist);
+        for (auto const& [n, d] : a.in_) {
+          ns.in_.emplace_back(n, d.pt_duration_, d.transfer_duration_);
         }
-        for (auto const& [n, dist] : a.out_) {
-          ns.out_.emplace_back(n, dist);
+        for (auto const& [n, d] : a.out_) {
+          ns.out_.emplace_back(n, d.pt_duration_, d.transfer_duration_);
         }
 
         return ns;
