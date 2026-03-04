@@ -70,7 +70,7 @@ void lb_raptor(timetable const& tt, query const& q, lb_raptor_state& state) {
 
       auto const visit = [&](lb_neighbor const n) {
         auto const lb = static_cast<std::uint16_t>(
-            state.location_round_lb_[l][k - 1U] + n.dist_);
+            state.location_round_lb_[l][k - 1U] + n.pt_duration_);
 
         if (state.is_start_.test(to_idx(n.l_)) &&
             lb < state.location_round_lb_[n.l_][k]) [[unlikely]] {

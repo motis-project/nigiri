@@ -701,7 +701,8 @@ struct booking_rule {
 
 struct lb_neighbor {
   location_idx_t l_;
-  std::uint16_t dist_;
+  std::uint16_t pt_duration_;
+  std::uint16_t transfer_duration_;
 };
 
 }  // namespace nigiri

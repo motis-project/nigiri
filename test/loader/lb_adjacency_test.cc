@@ -61,20 +61,20 @@ TEST(loader, lb_adjacency) {
   EXPECT_EQ(tt.fwd_lb_adjacency_[kDefaultProfile][A1].size(), 0U);
   ASSERT_EQ(tt.fwd_lb_adjacency_[kDefaultProfile][A2].size(), 1U);
   EXPECT_EQ(tt.fwd_lb_adjacency_[kDefaultProfile][A2][0].l_, A1);
-  EXPECT_EQ(tt.fwd_lb_adjacency_[kDefaultProfile][A2][0].dist_, 30U);
+  EXPECT_EQ(tt.fwd_lb_adjacency_[kDefaultProfile][A2][0].pt_duration_, 30U);
   EXPECT_EQ(tt.fwd_lb_adjacency_[kDefaultProfile][A3].size(), 2U);
   EXPECT_EQ(tt.fwd_lb_adjacency_[kDefaultProfile][A3][0].l_, A1);
-  EXPECT_EQ(tt.fwd_lb_adjacency_[kDefaultProfile][A3][0].dist_, 45U);
+  EXPECT_EQ(tt.fwd_lb_adjacency_[kDefaultProfile][A3][0].pt_duration_, 45U);
   EXPECT_EQ(tt.fwd_lb_adjacency_[kDefaultProfile][A3][1].l_, A2);
-  EXPECT_EQ(tt.fwd_lb_adjacency_[kDefaultProfile][A3][1].dist_, 5U);
+  EXPECT_EQ(tt.fwd_lb_adjacency_[kDefaultProfile][A3][1].pt_duration_, 5U);
 
   ASSERT_EQ(tt.bwd_lb_adjacency_[kDefaultProfile][A1].size(), 2U);
   EXPECT_EQ(tt.bwd_lb_adjacency_[kDefaultProfile][A1][0].l_, A2);
-  EXPECT_EQ(tt.bwd_lb_adjacency_[kDefaultProfile][A1][0].dist_, 30U);
+  EXPECT_EQ(tt.bwd_lb_adjacency_[kDefaultProfile][A1][0].pt_duration_, 30U);
   EXPECT_EQ(tt.bwd_lb_adjacency_[kDefaultProfile][A1][1].l_, A3);
-  EXPECT_EQ(tt.bwd_lb_adjacency_[kDefaultProfile][A1][1].dist_, 45U);
+  EXPECT_EQ(tt.bwd_lb_adjacency_[kDefaultProfile][A1][1].pt_duration_, 45U);
   ASSERT_EQ(tt.bwd_lb_adjacency_[kDefaultProfile][A2].size(), 1U);
   EXPECT_EQ(tt.bwd_lb_adjacency_[kDefaultProfile][A2][0].l_, A3);
-  EXPECT_EQ(tt.bwd_lb_adjacency_[kDefaultProfile][A2][0].dist_, 5U);
+  EXPECT_EQ(tt.bwd_lb_adjacency_[kDefaultProfile][A2][0].pt_duration_, 5U);
   EXPECT_EQ(tt.bwd_lb_adjacency_[kDefaultProfile][A3].size(), 0U);
 }

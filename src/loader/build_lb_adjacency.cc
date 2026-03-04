@@ -12,9 +12,20 @@ namespace nigiri::loader {
 void build_lb_adjacency(timetable& tt, profile_idx_t const prf_idx) {
   auto const timer = scoped_timer{"loader.build_lb_adjacency"};
 
+  struct durations {
+    bool operator<(durations const o) const {
+      return o.pt_duration_ == std::numeric_limits<std::uint16_t>::max() ||
+             pt_duration_ + transfer_duration_ <
+                 o.pt_duration_ + o.transfer_duration_;
+    }
+
+    std::uint16_t pt_duration_{std::numeric_limits<std::uint16_t>::max()};
+    std::uint16_t transfer_duration_{std::numeric_limits<std::uint16_t>::max()};
+  };
+
   struct adjacencies {
-    hash_map<location_idx_t, std::uint16_t> in_;
-    hash_map<location_idx_t, std::uint16_t> out_;
+    hash_map<location_idx_t, durations> in_;
+    hash_map<location_idx_t, durations> out_;
   };
 
   struct lb_neighbors {
@@ -41,29 +52,46 @@ void build_lb_adjacency(timetable& tt, profile_idx_t const prf_idx) {
           auto const j_stop = stop{y};
           auto const j_stop_idx = static_cast<stop_idx_t>(j);
           for (auto const t : tt.route_transport_ranges_[r]) {
-            auto const min = [&](auto& hm, auto const n, auto const d) {
-              auto& v = utl::get_or_create(hm, n, [] {
-                return std::numeric_limits<std::uint16_t>::max();
-              });
-              v = std::min(v, d);
+            auto const min = [&](auto& hm, auto const n, durations const d) {
+              auto& v = utl::get_or_create(hm, n, [] { return durations{}; });
+              if (d < v) {
+                v = d;
+                return true;
+              }
+              return false;
             };
 
             if (j < i && j_stop.in_allowed() &&
                 i_stop.out_allowed()) {  // TODO wheelchair profile
-              min(a.in_, j_stop.location_idx(),
-                  static_cast<std::uint16_t>(
-                      (tt.event_mam(t, i_stop_idx, event_type::kArr) -
-                       tt.event_mam(t, j_stop_idx, event_type::kDep))
-                          .count()));
+              auto const pt_duration = static_cast<std::uint16_t>(
+                  (tt.event_mam(t, i_stop_idx, event_type::kArr) -
+                   tt.event_mam(t, j_stop_idx, event_type::kDep))
+                      .count());
+              if (min(a.in_, j_stop.location_idx(),
+                      {pt_duration,
+                       tt.locations_.transfer_time_[j_stop.location_idx()]
+                           .count()})) {
+                for (auto const fp :
+                     tt.locations_
+                         .footpaths_in_[prf_idx][j_stop.location_idx()]) {
+                  min(a.in_, fp.target(),
+                      {pt_duration,
+                       static_cast<std::uint16_t>(fp.duration().count())});
+                }
+              }
             }
 
             if (i < j && i_stop.in_allowed() &&
                 j_stop.out_allowed()) {  // TODO wheelchair profile
-              min(a.out_, j_stop.location_idx(),
-                  static_cast<std::uint16_t>(
+              auto const pt_duration = static_cast<std::uint16_t>(
                       (tt.event_mam(t, j_stop_idx, event_type::kArr) -
                        tt.event_mam(t, i_stop_idx, event_type::kDep))
-                          .count()));
+                          .count());
+              if (min(a.out_, j_stop.location_idx(), {pt_duration, tt.locations_.transfer_time_[j_stop.location_idx()]
+                           .count()})) {
+                for (auto const fp : tt.locations_. )
+              }
+              ;
             }
           }
         }
