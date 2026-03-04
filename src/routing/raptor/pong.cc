@@ -282,17 +282,12 @@ routing_result pong(timetable const& tt,
   // PING
   // ----
   UTL_START_TIMING(ping_lb);
-  auto ping_lb = std::vector<std::uint16_t>{};
-  dijkstra(tt, q,
-           (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
-                 : tt.bwd_search_lb_graph_[q.prf_idx_]),
-           (rtt == nullptr ? nullptr
-                           : &(kFwd ? rtt->fwd_search_lb_graph_has_edges_
-                                    : rtt->bwd_search_lb_graph_has_edges_)),
-           (rtt == nullptr ? nullptr
-                           : &(kFwd ? rtt->fwd_search_lb_graph_
-                                    : rtt->bwd_search_lb_graph_)),
-           ping_lb);
+  auto ping_lb = lb_raptor_state{};
+  if (q.prf_idx_ == kDefaultProfile) {
+    lb_raptor<SearchDir>(tt, q, ping_lb);
+  } else {
+    ping_lb.zeroize();
+  }
   UTL_STOP_TIMING(ping_lb);
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
@@ -312,7 +307,7 @@ routing_result pong(timetable const& tt,
       ping_is_via,
       ping_dist_to_dest,
       q.td_dest_,
-      ping_lb,
+      ping_lb.location_round_lb_,
       q.via_stops_,
       base_day,
       q.allowed_claszes_,
@@ -327,17 +322,12 @@ routing_result pong(timetable const& tt,
   q.flip_dir();
 
   UTL_START_TIMING(pong_lb);
-  auto pong_lb = std::vector<std::uint16_t>{};
-  dijkstra(tt, q,
-           (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
-                 : tt.fwd_search_lb_graph_[q.prf_idx_]),
-           (rtt == nullptr ? nullptr
-                           : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
-                                    : rtt->fwd_search_lb_graph_has_edges_)),
-           (rtt == nullptr ? nullptr
-                           : &(kFwd ? rtt->bwd_search_lb_graph_
-                                    : rtt->fwd_search_lb_graph_)),
-           pong_lb);
+  auto pong_lb = lb_raptor_state{};
+  if (q.prf_idx_ == kDefaultProfile) {
+    lb_raptor<SearchDir>(tt, q, pong_lb);
+  } else {
+    pong_lb.zeroize();
+  }
   UTL_STOP_TIMING(pong_lb);
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
@@ -358,7 +348,7 @@ routing_result pong(timetable const& tt,
       pong_is_via,
       pong_dist_to_dest,
       q.td_dest_,
-      pong_lb,
+      pong_lb.location_round_lb_,
       q.via_stops_,
       base_day,
       q.allowed_claszes_,
