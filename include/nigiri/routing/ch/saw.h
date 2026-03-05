@@ -21,9 +21,9 @@ static constexpr auto const kSawFieldLastSetBit = 0U;
 static constexpr auto const kSawFieldMin = 1U;
 static constexpr auto const kSawFieldMax = 2U;
 static constexpr auto const kRelaxedDomination = true;
-static constexpr auto const kRelaxedDominationEarlierDeparture = u16_minutes{60*4};
+static constexpr auto const kRelaxedDominationEarlierDeparture =
+    u16_minutes{60 * 4};
 static constexpr auto const kRelaxedDominationEarlierArrival = u16_minutes{60};
-
 
 struct traffic_days {
   static bitfield_idx_t invert_tmp_idx(bitfield_idx_t idx) {
@@ -256,8 +256,11 @@ struct saw {
       // TODO exact_true ?
       return {max() < b.min(), 0U, 0U};
     }
-    //if (saw_[kSawFieldMax].travel_dur_ != u16_minutes::max() && b.saw_[kSawFieldMin].travel_dur_ != u16_minutes::max() && saw_[kSawFieldMax].travel_dur_ != u16_minutes::max() && b.saw_[kSawFieldMin].travel_dur_ != u16_minutes::max()) {
-    //}
+    // if (saw_[kSawFieldMax].travel_dur_ != u16_minutes::max() &&
+    // b.saw_[kSawFieldMin].travel_dur_ != u16_minutes::max() &&
+    // saw_[kSawFieldMax].travel_dur_ != u16_minutes::max() &&
+    // b.saw_[kSawFieldMin].travel_dur_ != u16_minutes::max()) {
+    // }
     auto const interleaved_min =
         static_cast<std::int16_t>(std::min(min(), b.min()).count());
     auto const lsb = std::max(get_last_set_bit(), b.get_last_set_bit());
@@ -380,15 +383,18 @@ struct saw {
                           tooth const& e,
                           traffic_days const& td) {
     out << e << " ct:"
-        << (e.traffic_days_ != bitfield_idx_t::invalid() && kChSawType != saw_type::kDay
+        << (e.traffic_days_ != bitfield_idx_t::invalid() &&
+                    kChSawType != saw_type::kDay
                 ? td.bitfields_.at(e.traffic_days_).first.count()
                 : 0U)
         << " fsb:"
-        << (e.traffic_days_ != bitfield_idx_t::invalid() && kChSawType != saw_type::kDay
+        << (e.traffic_days_ != bitfield_idx_t::invalid() &&
+                    kChSawType != saw_type::kDay
                 ? first_set_bit(td.bitfields_.at(e.traffic_days_).first)
                 : 0U)
         << " lsb:"
-        << (e.traffic_days_ != bitfield_idx_t::invalid() && kChSawType != saw_type::kDay
+        << (e.traffic_days_ != bitfield_idx_t::invalid() &&
+                    kChSawType != saw_type::kDay
                 ? last_set_bit(td.bitfields_.at(e.traffic_days_).first)
                 : 0U)
         << " ";
@@ -605,14 +611,18 @@ struct saw {
       auto const mam_diff = a_it->mam_ - t.mam_ + a_it.day_offset_ * 24 * 60;
       auto const remaining_travel_time =
           static_cast<std::int16_t>(t.travel_dur_.count()) - mam_diff;
-      auto const dominated = remaining_travel_time >= a_it->travel_dur_.count() || (kRelaxedDomination && mam_diff > kRelaxedDominationEarlierDeparture.count() && remaining_travel_time + kRelaxedDominationEarlierArrival.count() >= a_it->travel_dur_.count());
+      auto const dominated =
+          remaining_travel_time >= a_it->travel_dur_.count() ||
+          (kRelaxedDomination &&
+           mam_diff > kRelaxedDominationEarlierDeparture.count() &&
+           remaining_travel_time + kRelaxedDominationEarlierArrival.count() >=
+               a_it->travel_dur_.count());
       auto const is_infty_and_not_same_mam =
           a_it->travel_dur_.count() >= kChMaxEdgeTime.count() &&
           remaining_travel_time < kChMaxEdgeTime.count();
 
       if constexpr (SawType == saw_type::kDay) {
-        if (dominated &&
-            !is_infty_and_not_same_mam) {
+        if (dominated && !is_infty_and_not_same_mam) {
           return {false, 0U, 0U, 0U};
         }
         if (!not_normalized) {
@@ -1084,19 +1094,21 @@ struct saw {
                             saw<saw_type::kConstant> const& other,
                             ch_edge_idx_t const start,
                             ch_edge_idx_t const end,
-                            std::vector<tooth>& out) const {
+                            std::vector<tooth>& out,
+                            bool const deconcat = false) const {
     utl::verify(out.empty(), "out not empty");
     if (saw_.empty() || other.saw_.empty()) {
       return saw<SawType>{out, traffic_days_};
     }
-    auto const d = other.saw_[0].travel_dur_;
-    utl::verify(d.count() < 24 * 60, "concat_const more than 24h");
+    auto const d = (deconcat ? -1 : 1) * other.saw_[0].travel_dur_.count();
     if (is_constant()) {
-      out.push_back({std::numeric_limits<std::int16_t>::max(),
-                     std::min(saw_[0].travel_dur_ + d, kChMaxEdgeTime),
-                     bitfield_idx_t::invalid(), dir == kReverse ? end : start,
-                     transport_idx_t::invalid(), dir == kReverse ? start : end,
-                     transport_idx_t::invalid(), 0U, 0U});
+      out.push_back(
+          {std::numeric_limits<std::int16_t>::max(),
+           std::min(u16_minutes{std::max(0, saw_[0].travel_dur_.count() + d)},
+                    kChMaxEdgeTime),
+           bitfield_idx_t::invalid(), dir == kReverse ? end : start,
+           transport_idx_t::invalid(), dir == kReverse ? start : end,
+           transport_idx_t::invalid(), 0U, 0U});
       return saw<SawType>{out, traffic_days_};
     }
     init_metadata(out, get_last_set_bit());
@@ -1104,24 +1116,42 @@ struct saw {
       auto traffic_days_idx = saw_[i].traffic_days_;
       auto mam = saw_[i].mam_;
       if (dir == kReverse) {
-        mam -= d.count();
-        if (mam < 0) {
-          mam += 24 * 60;
+        mam -= d;
+        while (mam < 0) {
+          mam += 1440;
           if (SawType != saw_type::kDay) {
+            utl::verify(std::abs(d) < 24 * 60, "concat_const more than 24h");
             auto traffic_days = traffic_days_.at(traffic_days_idx).first >> 1U;
             traffic_days.set(kTimetableOffset.count() - 1U, false);
             traffic_days_idx = traffic_days_.get_or_create_tmp(
                 traffic_days, traffic_days_.at(traffic_days_idx).second - 1U);
           }
         }
-        out.push_back({mam, std::min(saw_[i].travel_dur_ + d, kChMaxEdgeTime),
-                       traffic_days_idx, end, transport_idx_t::invalid(), start,
-                       saw_[i].end_transport_, 0, static_cast<uint16_t>(i)});
+        while (mam >= 1440) {
+          mam -= 1440;
+          if (SawType != saw_type::kDay) {
+            utl::verify(std::abs(d) < 24 * 60, "concat_const more than 24h");
+            auto traffic_days = traffic_days_.at(traffic_days_idx).first << 1U;
+            traffic_days.set(traffic_days_.at(traffic_days_idx).second + 1U,
+                             false);
+            traffic_days_idx = traffic_days_.get_or_create_tmp(
+                traffic_days, traffic_days_.at(traffic_days_idx).second);
+          }
+        }
+        out.push_back(
+            {mam,
+             std::min(u16_minutes{std::max(0, saw_[i].travel_dur_.count() + d)},
+                      kChMaxEdgeTime),
+             traffic_days_idx, end, transport_idx_t::invalid(), start,
+             saw_[i].end_transport_, 0, static_cast<uint16_t>(i)});
       } else {
-        out.push_back({mam, std::min(saw_[i].travel_dur_ + d, kChMaxEdgeTime),
-                       traffic_days_idx, start, saw_[i].start_transport_, end,
-                       transport_idx_t::invalid(), static_cast<uint16_t>(i),
-                       0});
+        // TODO negative tooths
+        out.push_back(
+            {mam,
+             std::min(u16_minutes{std::max(0, saw_[i].travel_dur_.count() + d)},
+                      kChMaxEdgeTime),
+             traffic_days_idx, start, saw_[i].start_transport_, end,
+             transport_idx_t::invalid(), static_cast<uint16_t>(i), 0});
       }
     }
     return saw<SawType>{out, traffic_days_};

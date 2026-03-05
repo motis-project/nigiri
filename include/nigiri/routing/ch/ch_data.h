@@ -25,7 +25,7 @@ enum class saw_type : std::uint8_t {
   kTrafficDaysPower
 };
 
-static constexpr auto const kChSawType = saw_type::kTrafficDaysPower;
+static constexpr auto const kChSawType = saw_type::kDay;
 static constexpr auto const kChMaxEdgeTime =
     u16_minutes{routing::kMaxTravelTime.count()};  // TODO
 static constexpr auto const kChMaxWaitingTime =
