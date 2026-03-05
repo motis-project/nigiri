@@ -20,6 +20,10 @@ static constexpr auto const kSawMetadataOffset = 3U;
 static constexpr auto const kSawFieldLastSetBit = 0U;
 static constexpr auto const kSawFieldMin = 1U;
 static constexpr auto const kSawFieldMax = 2U;
+static constexpr auto const kRelaxedDomination = true;
+static constexpr auto const kRelaxedDominationEarlierDeparture = u16_minutes{60*4};
+static constexpr auto const kRelaxedDominationEarlierArrival = u16_minutes{60};
+
 
 struct traffic_days {
   static bitfield_idx_t invert_tmp_idx(bitfield_idx_t idx) {
@@ -59,6 +63,9 @@ struct traffic_days {
   }
 
   void persist_tmp(std::vector<tooth>& s) {
+    if (kChSawType != saw_type::kTrafficDaysPower) {
+      return;
+    }
     auto const len = bitfields_.size();
     for (auto& t : s) {
       if (t.traffic_days_ != bitfield_idx_t::invalid() &&
@@ -249,6 +256,8 @@ struct saw {
       // TODO exact_true ?
       return {max() < b.min(), 0U, 0U};
     }
+    //if (saw_[kSawFieldMax].travel_dur_ != u16_minutes::max() && b.saw_[kSawFieldMin].travel_dur_ != u16_minutes::max() && saw_[kSawFieldMax].travel_dur_ != u16_minutes::max() && b.saw_[kSawFieldMin].travel_dur_ != u16_minutes::max()) {
+    //}
     auto const interleaved_min =
         static_cast<std::int16_t>(std::min(min(), b.min()).count());
     auto const lsb = std::max(get_last_set_bit(), b.get_last_set_bit());
@@ -296,12 +305,12 @@ struct saw {
 
   bool less(saw<SawType> const& b, bool const exact_true = false) const {
     auto const r = _less(b, exact_true);
-    /*std::cout << "less " << std::get<0>(r) << " ";
+    std::cout << "less " << std::get<0>(r) << " ";
     if (saw_.size() > 0 && b.saw_.size() > 0) {
       print_tooth(std::cout, saw_[std::get<1>(r)], traffic_days_);
       print_tooth(std::cout, b.saw_[std::get<2>(r)], b.traffic_days_);
     }
-    std::cout << std::endl;*/
+    std::cout << std::endl;
     // std::cout << *this << std::endl;
     // std::cout << b << std::endl;
     /*
@@ -371,15 +380,15 @@ struct saw {
                           tooth const& e,
                           traffic_days const& td) {
     out << e << " ct:"
-        << (e.traffic_days_ != bitfield_idx_t::invalid()
+        << (e.traffic_days_ != bitfield_idx_t::invalid() && kChSawType != saw_type::kDay
                 ? td.bitfields_.at(e.traffic_days_).first.count()
                 : 0U)
         << " fsb:"
-        << (e.traffic_days_ != bitfield_idx_t::invalid()
+        << (e.traffic_days_ != bitfield_idx_t::invalid() && kChSawType != saw_type::kDay
                 ? first_set_bit(td.bitfields_.at(e.traffic_days_).first)
                 : 0U)
         << " lsb:"
-        << (e.traffic_days_ != bitfield_idx_t::invalid()
+        << (e.traffic_days_ != bitfield_idx_t::invalid() && kChSawType != saw_type::kDay
                 ? last_set_bit(td.bitfields_.at(e.traffic_days_).first)
                 : 0U)
         << " ";
@@ -596,12 +605,13 @@ struct saw {
       auto const mam_diff = a_it->mam_ - t.mam_ + a_it.day_offset_ * 24 * 60;
       auto const remaining_travel_time =
           static_cast<std::int16_t>(t.travel_dur_.count()) - mam_diff;
+      auto const dominated = remaining_travel_time >= a_it->travel_dur_.count() || (kRelaxedDomination && mam_diff > kRelaxedDominationEarlierDeparture.count() && remaining_travel_time + kRelaxedDominationEarlierArrival.count() >= a_it->travel_dur_.count());
       auto const is_infty_and_not_same_mam =
           a_it->travel_dur_.count() >= kChMaxEdgeTime.count() &&
           remaining_travel_time < kChMaxEdgeTime.count();
 
       if constexpr (SawType == saw_type::kDay) {
-        if (remaining_travel_time >= a_it->travel_dur_.count() &&
+        if (dominated &&
             !is_infty_and_not_same_mam) {
           return {false, 0U, 0U, 0U};
         }
@@ -624,7 +634,7 @@ struct saw {
           *remaining_traffic_days <<= 1U;
           day_offset = a_it.day_offset_;
         }
-        if (remaining_travel_time >= a_it->travel_dur_.count()) {
+        if (dominated) {
           // std::cout << "bit sub " << *a_it << std::endl;
           //  TODO need to check conjunction? otherwise bit eating can set as
           //  dominated?
