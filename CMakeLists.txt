@@ -12,18 +12,20 @@ endif ()
 include(cmake/buildcache.cmake)
 include(cmake/pkg.cmake)
 
+find_package(TBB REQUIRED)
 
 # --- GTFS-RT PROTOBUF ---
 add_custom_command(
-      OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt/gtfs-realtime.pb.h
-      OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt/gtfs-realtime.pb.cc
-      COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:protoc>
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt/gtfs-realtime.pb.h
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt/gtfs-realtime.pb.cc
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt
+  COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:protoc>
       --cpp_out=${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt
       --proto_path=${CMAKE_CURRENT_SOURCE_DIR}
       ${CMAKE_CURRENT_SOURCE_DIR}/gtfs-realtime.proto
-      DEPENDS protoc
-      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/gtfs-realtime.proto
-      COMMENT "Generating GTFS RT protocol buffers C++ code"
+  DEPENDS protoc
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/gtfs-realtime.proto
+  COMMENT "Generating GTFS RT protocol buffers C++ code"
 )
 add_library(gtfsrt ${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt/gtfs-realtime.pb.cc)
 target_compile_features(gtfsrt PUBLIC cxx_std_23)
@@ -105,6 +107,7 @@ target_link_libraries(
   PRIVATE
   boost-iostreams
   zlibstatic
+  TBB::tbb
 )
 target_compile_features(nigiri PUBLIC cxx_std_23)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
@@ -113,19 +116,25 @@ target_compile_definitions(nigiri PUBLIC PUGIXML_COMPACT=1)
 # --- IMPORTER ---
 file(GLOB_RECURSE nigiri-import-files exe/import.cc)
 add_executable(nigiri-import ${nigiri-import-files})
-target_link_libraries(nigiri-import PRIVATE nigiri boost-program_options ianatzdb-res)
+target_link_libraries(nigiri-import PRIVATE nigiri boost-program_options ianatzdb-res TBB::tbb)
 target_compile_features(nigiri-import PUBLIC cxx_std_23)
+
+# --- EXPORTER ---
+file(GLOB_RECURSE nigiri-export-files exe/export.cc)
+add_executable(nigiri-export ${nigiri-export-files})
+target_link_libraries(nigiri-export PRIVATE nigiri boost-program_options ianatzdb-res TBB::tbb)
+target_compile_features(nigiri-export PUBLIC cxx_std_23)
 
 # --- BENCHMARK ---
 file(GLOB_RECURSE nigiri-benchmark-files exe/benchmark.cc)
 add_executable(nigiri-benchmark ${nigiri-benchmark-files})
-target_link_libraries(nigiri-benchmark PRIVATE nigiri boost-program_options ianatzdb-res)
+target_link_libraries(nigiri-benchmark PRIVATE nigiri boost-program_options ianatzdb-res TBB::tbb)
 target_compile_features(nigiri-benchmark PUBLIC cxx_std_23)
 
 # --- QA ---
 file(GLOB_RECURSE nigiri-qa-files exe/qa.cc)
 add_executable(nigiri-qa ${nigiri-qa-files})
-target_link_libraries(nigiri-qa PRIVATE nigiri boost-program_options)
+target_link_libraries(nigiri-qa PRIVATE nigiri boost-program_options TBB::tbb)
 target_compile_features(nigiri-qa PUBLIC cxx_std_23)
 
 # --- TEST ---
@@ -138,14 +147,14 @@ configure_file(
 file(GLOB_RECURSE nigiri-test-files test/*.cc)
 add_executable(nigiri-test ${nigiri-test-files})
 target_include_directories(nigiri-test PRIVATE include)
-target_link_libraries(nigiri-test nigiri gmock ianatzdb-res nigiri-generated)
+target_link_libraries(nigiri-test nigiri gmock ianatzdb-res nigiri-generated TBB::tbb)
 target_compile_features(nigiri-test PUBLIC cxx_std_23)
 target_compile_options(nigiri-test PRIVATE ${nigiri-compile-options})
 
 
 # MacOS fix for LuaJIT
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
-  target_link_options(nigiri-import PRIVATE -Wl,-no_deduplicate)
-  target_link_options(nigiri-test PRIVATE -Wl,-no_deduplicate)
-  target_link_options(nigiri-benchmark PRIVATE -Wl,-no_deduplicate)
+  target_link_options(nigiri-import PRIVATE -Wl,-no_deduplicate TBB::tbb)
+  target_link_options(nigiri-test PRIVATE -Wl,-no_deduplicate TBB::tbb)
+  target_link_options(nigiri-benchmark PRIVATE -Wl,-no_deduplicate TBB::tbb)
 endif()
