@@ -34,6 +34,7 @@ void obtain_relevant_stops(timetable const& tt,
                            profile_idx_t const prf_idx,
                            bitvec& relevant_stops) {
 
+  auto marked_stations = 0;
   vector_map<ch_edge_idx_t, std::vector<tooth>> edge_min;
   vector_map<ch_edge_idx_t, std::vector<tooth>> edge_max;
   vector_map<ch_edge_idx_t, timetable::ch_edge> graph_edges;
@@ -81,6 +82,7 @@ void obtain_relevant_stops(timetable const& tt,
 
   auto const mark_relevant_stop = [&](location_idx_t const parent) {
     if (loader::kChGroupParents && !relevant_stops.test(parent.v_)) {
+      ++marked_stations;
       for (auto const& c : tt.locations_.children_[parent]) {
         relevant_stops.set(c.v_);
         for (auto const& cc : tt.locations_.children_[c]) {
@@ -256,7 +258,9 @@ void obtain_relevant_stops(timetable const& tt,
                 {d, static_cast<ch_label::dist_t>(nonce_map.at(x) + 1)},
                 dir});
             std::cout << "input" << x << " " << start.duration() << " "
-                      << (dir == kForward ? "fw" : "bw") << std::endl;
+                      << (dir == kForward ? "fw " : "bw ")
+                      << tt.get_default_translation(tt.locations_.names_.at(x))
+                      << " t:" << relevant_stops.test(x.v_) << std::endl;
           });
     }
   };
@@ -906,11 +910,14 @@ void obtain_relevant_stops(timetable const& tt,
                             .max()
                             .count()),
                     false, false, std::move(pushdown_edge_max_dist),
-                    std::move(pushdown_max_dist),
-                    l.dir_ == kReverse ? edge_min.at(dists[other_dir][l.l_])
-                                       : edge_min.at(prev_label),
-                    l.dir_ == kForward ? edge_min.at(dists[other_dir][l.l_])
-                                       : edge_min.at(prev_label)});
+                    std::move(pushdown_edge_max_dist),
+                    saw<saw_type::kConstant>::of(duration_t{0U}),
+                    saw<saw_type::kConstant>::of(duration_t{0U})});
+        /*std::move(pushdown_max_dist), // appears to be slightly worse
+        l.dir_ == kReverse ? edge_min.at(dists[other_dir][l.l_])
+                           : edge_min.at(prev_label),
+        l.dir_ == kForward ? edge_min.at(dists[other_dir][l.l_])
+                           : edge_min.at(prev_label)});*/
         tmp_saw.clear();
         new_min_dist.clear();
       }
@@ -1023,8 +1030,11 @@ void obtain_relevant_stops(timetable const& tt,
     45331, 60392}) {
     relevant_stops.set(static_cast<unsigned>(l));
   }*/
+  init(q.start_, kForward);
+  init(q.destination_, kReverse);
   std::cout << "marked stops: " << relevant_stops.count() << "/"
             << relevant_stops.size() << std::endl;
+  std::cout << "marked stations: " << marked_stations << std::endl;
   std::cout << "bitfields: " << "/" << ch_traffic_days.bitfields_.size()
             << std::endl;
 }

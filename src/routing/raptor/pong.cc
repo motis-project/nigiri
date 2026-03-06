@@ -556,6 +556,13 @@ routing_result pong(timetable const& tt,
       std::chrono::duration_cast<std::chrono::milliseconds>(
           (std::chrono::steady_clock::now() - processing_start_time));
 
+  for (auto const& [k, v] : result.algo_stats_) {
+    std::cout << k << ": " << v << std::endl;
+  }
+  for (auto const& [k, v] : result.search_stats_.to_map()) {
+    std::cout << k << ": " << v << std::endl;
+  }
+
   for (auto& j : s_state.results_) {
     auto const swap = [](location_idx_t const l) -> location_idx_t {
       switch (to_idx(l)) {
