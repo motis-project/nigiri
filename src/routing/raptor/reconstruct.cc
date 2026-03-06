@@ -703,8 +703,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
     auto [fp_leg, transport_leg] = get_legs(k, l);
     l = kFwd ? transport_leg.from_ : transport_leg.to_;
     // don't add a 0-minute footpath at the end (fwd) or beginning (bwd)
-    if (i != 0 || fp_leg.from_ != fp_leg.to_ ||
-        fp_leg.dep_time_ != fp_leg.arr_time_) {
+    if (i != 0 || fp_leg.dep_time_ != fp_leg.arr_time_) {
       j.add(std::move(fp_leg));
     }
     j.add(std::move(transport_leg));
@@ -712,7 +711,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
   auto init_fp =
       find_start_footpath<SearchDir, Vias>(tt, q, j, raptor_state, base);
-  if (init_fp.has_value()) {
+  if (init_fp.has_value() && init_fp->dep_time_ != init_fp->arr_time_) {
     j.add(std::move(*init_fp));
   }
 
