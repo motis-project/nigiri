@@ -119,16 +119,16 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                                      location_idx_t const b,
                                      bool const dry_run = false) {
     utl::verify(departures.empty(), "departures not empty");
-    for (auto const& r : tt.location_routes_[b]) {
+    for (auto const& r : tt.location_routes_.at(b)) {
       to_routes.set(r.v_);
     }
     if (kChGroupParents) {
-      for (auto const& c : tt.locations_.children_[b]) {
-        for (auto const& r : tt.location_routes_[c]) {
+      for (auto const& c : tt.locations_.children_.at(b)) {
+        for (auto const& r : tt.location_routes_.at(c)) {
           to_routes.set(r.v_);
         }
-        for (auto const& cc : tt.locations_.children_[c]) {
-          for (auto const& r : tt.location_routes_[cc]) {
+        for (auto const& cc : tt.locations_.children_.at(c)) {
+          for (auto const& r : tt.location_routes_.at(cc)) {
             to_routes.set(r.v_);
           }
         }
@@ -136,7 +136,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     }
     auto found_direct = false;
     auto const check_routes = [&](location_idx_t const aa) {
-      for (auto const& r : tt.location_routes_[aa]) {
+      for (auto const& r : tt.location_routes_.at(aa)) {
         if ((prf_idx == kCarProfile && !tt.has_car_transport(r)) ||
             (prf_idx == kBikeProfile && !tt.has_bike_transport(r))) {
           continue;
@@ -149,13 +149,13 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           return;
         }
 
-        auto const location_seq = tt.route_location_seq_[r];
+        auto const location_seq = tt.route_location_seq_.at(r);
         auto from_stop_idx = std::numeric_limits<stop_idx_t>::max();
         for (auto const [from, to] : utl::pairwise(
                  interval{stop_idx_t{0U},
                           static_cast<stop_idx_t>(location_seq.size())})) {
-          auto const from_l = stop{location_seq[from]}.location_idx();
-          auto const to_l = stop{location_seq[to]}.location_idx();
+          auto const from_l = stop{location_seq.at(from)}.location_idx();
+          auto const to_l = stop{location_seq.at(to)}.location_idx();
           auto const to_parent = tt.locations_.get_root_idx(to_l);
 
           if (from_stop_idx == std::numeric_limits<stop_idx_t>::max() &&
@@ -169,7 +169,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             continue;
           }
 
-          for (auto const t : tt.route_transport_ranges_[r]) {
+          for (auto const t : tt.route_transport_ranges_.at(r)) {
             auto const from_time =
                 tt.event_mam(t, from_stop_idx, event_type::kDep);
             auto const to_time = tt.event_mam(t, to, event_type::kArr);
@@ -183,12 +183,12 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     };
     check_routes(a);
     if (kChGroupParents) {
-      for (auto const& c : tt.locations_.children_[a]) {
+      for (auto const& c : tt.locations_.children_.at(a)) {
         if (dry_run && found_direct) {
           break;
         }
         check_routes(c);
-        for (auto const& cc : tt.locations_.children_[c]) {
+        for (auto const& cc : tt.locations_.children_.at(c)) {
           if (dry_run && found_direct) {
             break;
           }
@@ -379,6 +379,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     saw<kChSawType>{max_saw_tmp, traffic_days}.init_metadata(max_saw_tmp, 0);
 
     auto lsb = 0;
+    utl::verify(e.deps_.size() == e.travel_durs_.size() &&
+                    e.deps_.size() == e.transports_.size(),
+                "mismatch in arrival vector sizes");
     for (auto i = 0UL; i < e.deps_.size(); ++i) {
       auto remaining_traffic_days =
           tt.bitfields_.at(tt.transport_traffic_days_[e.transports_[i]])
@@ -389,17 +392,17 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         remaining_traffic_days.set(
             last_set_bit - j, false);  // TODO do in one go with first 5 days?
       }
-      lsb = std::max(lsb, last_set_bit - e.deps_[i].days());
+      lsb = std::max(lsb, last_set_bit - e.deps_.at(i).days());
       auto const traffic_days_idx = traffic_days.get_or_create_tmp(
           remaining_traffic_days,
-          static_cast<std::uint16_t>(last_set_bit - e.deps_[i].days()));
-      auto const new_tooth = tooth{static_cast<std::int16_t>(e.deps_[i].mam_),
-                                   e.travel_durs_[i],
+          static_cast<std::uint16_t>(last_set_bit - e.deps_.at(i).days()));
+      auto const new_tooth = tooth{static_cast<std::int16_t>(e.deps_.at(i).mam_),
+                                   e.travel_durs_.at(i),
                                    traffic_days_idx,
                                    ch_edge_idx_t::invalid(),
-                                   e.transports_[i],
+                                   e.transports_.at(i),
                                    ch_edge_idx_t::invalid(),
-                                   e.transports_[i]};
+                                   e.transports_.at(i)};
       min_saw_tmp.push_back(new_tooth);
       max_saw_tmp.push_back(new_tooth);
     }
@@ -430,10 +433,10 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           }
           auto const mam_diff =
               b_it->mam_ - a_it->mam_ + a_it.day_offset_ * -24 * 60;
-          max_saw_tmp[a_it.pos_].travel_dur_ = std::min(
+          max_saw_tmp.at(a_it.pos_).travel_dur_ = std::min(
               std::max(
-                  max_saw_tmp[a_it.pos_].travel_dur_,
-                  u16_minutes{e.travel_durs_[b_it.pos_].count() + mam_diff}),
+                  max_saw_tmp.at(a_it.pos_).travel_dur_,
+                  u16_minutes{e.travel_durs_.at(b_it.pos_-kSawMetadataOffset).count() + mam_diff}),
               kChMaxEdgeTime);
         }
       }
