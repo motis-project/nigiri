@@ -32,6 +32,7 @@ static constexpr auto const kChMaxWaitingTime =
     u16_minutes{1440};  // TODO one day should be sufficient, but this
                         // prolonged avg times?
 static constexpr auto const kChDay = u16_minutes{1440};  // TODO
+static constexpr auto const kDistanceGroups = 5U;
 
 struct tooth {
   bool operator<(tooth const& o) const {

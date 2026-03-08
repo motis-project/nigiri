@@ -14,6 +14,7 @@
 #include "nigiri/common/interval.h"
 #include "nigiri/fares.h"
 #include "nigiri/footpath.h"
+#include "nigiri/routing/ch/ch_data.h"
 #include "nigiri/routing/ch/ch_query.h"
 #include "nigiri/stop.h"
 #include "nigiri/string_store.h"
@@ -434,6 +435,9 @@ struct timetable {
              kNProfiles>
       ch_traffic_days_;
   std::array<vector_map<location_idx_t, std::uint32_t>, kNProfiles> ch_levels_;
+  std::array<std::array<std::uint32_t, routing::kDistanceGroups - 1U>,
+             kNProfiles>
+      ch_distance_groups_;
 
   // profile name -> profile_idx_t
   hash_map<string, profile_idx_t> profiles_;

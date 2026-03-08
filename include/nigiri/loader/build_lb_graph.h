@@ -396,13 +396,14 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       auto const traffic_days_idx = traffic_days.get_or_create_tmp(
           remaining_traffic_days,
           static_cast<std::uint16_t>(last_set_bit - e.deps_.at(i).days()));
-      auto const new_tooth = tooth{static_cast<std::int16_t>(e.deps_.at(i).mam_),
-                                   e.travel_durs_.at(i),
-                                   traffic_days_idx,
-                                   ch_edge_idx_t::invalid(),
-                                   e.transports_.at(i),
-                                   ch_edge_idx_t::invalid(),
-                                   e.transports_.at(i)};
+      auto const new_tooth =
+          tooth{static_cast<std::int16_t>(e.deps_.at(i).mam_),
+                e.travel_durs_.at(i),
+                traffic_days_idx,
+                ch_edge_idx_t::invalid(),
+                e.transports_.at(i),
+                ch_edge_idx_t::invalid(),
+                e.transports_.at(i)};
       min_saw_tmp.push_back(new_tooth);
       max_saw_tmp.push_back(new_tooth);
     }
@@ -436,7 +437,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           max_saw_tmp.at(a_it.pos_).travel_dur_ = std::min(
               std::max(
                   max_saw_tmp.at(a_it.pos_).travel_dur_,
-                  u16_minutes{e.travel_durs_.at(b_it.pos_-kSawMetadataOffset).count() + mam_diff}),
+                  u16_minutes{e.travel_durs_.at(b_it.pos_ - kSawMetadataOffset)
+                                  .count() +
+                              mam_diff}),
               kChMaxEdgeTime);
         }
       }
@@ -488,9 +491,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       update_arrival_fps(entry.first);
       if (kChGroupParents) {  // TODO for atomic & grouped, add fps once at
                               // from_l
-        for (auto const& c : tt.locations_.children_[entry.first]) {
+        for (auto const& c : tt.locations_.children_.at(entry.first)) {
           update_arrival_fps(c);
-          for (auto const& cc : tt.locations_.children_[c]) {
+          for (auto const& cc : tt.locations_.children_.at(c)) {
             update_arrival_fps(cc);
           }
         }
@@ -549,6 +552,112 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     arrivals.clear();
   };
 
+  auto const upsert_ch_edge = [&](location_idx_t const location_id,
+                                  location_idx_t const from,
+                                  location_idx_t const to,
+                                  ch_edge_idx_t const arr_idx,
+                                  ch_edge_idx_t const dep_idx,
+                                  std::vector<ch_edge_idx_t>& write_ahead_edges,
+                                  ch_stats& contract_stats,
+                                  bool const dry_run = false) {
+    auto const arr_max =
+        saw<kChSawType>{edge_max.at(arr_idx), traffic_days}.max();
+    auto const arr_min =
+        saw<kChSawType>{edge_min.at(arr_idx), traffic_days}.min();
+    stats.min_max_diff_sum += (arr_max - arr_min).count();
+    ++stats.min_max_diff_count;
+
+    auto edge_idx = ch_edge_idx_t::invalid();
+    if (auto const it = edges_map.find({from, to}); it != end(edges_map)) {
+      edge_idx = it->second;
+    } else {
+      // insert TODO weigh differently in ordering?
+      ++contract_stats.inserts_;
+      auto found_direct = find_direct_trips(from, to, dry_run);
+      if (found_direct) {
+        ++contract_stats.direct_inserts_;
+      }
+      if (dry_run) {
+        departures.clear();
+        return;
+      }
+      auto min_saw = std::vector<tooth>{};  // TODO reuse alloc
+      auto max_saw = std::vector<tooth>{};
+      assign_departures_to_arrivals();
+      if (!arrivals.empty()) {
+        utl::verify(arrivals.size() == 1,
+                    "more than one direct relation found between a and b");
+        auto const& e = begin(arrivals)->second;
+        arrivals_to_saw(e, min_saw, max_saw);
+        arrivals.clear();
+        /*std::cout << "max saw "
+                  << saw<kChSawType>{max_saw, traffic_days}.max()
+                  << std::endl;*/
+      }
+      edge_idx = insert_ch_edge(from, to, std::move(min_saw),
+                                std::move(max_saw), true);
+      if (found_direct) {
+        unpack.at(edge_idx).push_back(
+            {ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid()});
+        transfers.at(edge_idx).push_back(location_idx_t::invalid());
+      }
+      write_ahead_edges.push_back(edge_idx);
+    }
+
+    saw<kChSawType>{edge_min.at(arr_idx), traffic_days}.concat(
+        saw<kChSawType>{edge_min.at(dep_idx), traffic_days}, arr_idx, dep_idx,
+        false, min_saw_tmp);
+    saw<kChSawType>{edge_max.at(arr_idx), traffic_days}.concat(
+        saw<kChSawType>{edge_max.at(dep_idx), traffic_days}, arr_idx, dep_idx,
+        true, max_saw_tmp);
+    if (!dry_run && false) {
+      std::cout << "eidx " << edge_idx << " " << edge_max.at(edge_idx).size()
+                << " "
+                << saw<kChSawType>{edge_min.at(edge_idx), traffic_days}.max()
+                << " "
+                << saw<kChSawType>{edge_max.at(edge_idx), traffic_days}.max()
+                << "  " << arr_idx << " " << edge_max.at(arr_idx).size() << " "
+                << arr_max << " aah " << dep_idx << " "
+                << edge_max.at(dep_idx).size() << " " << " aah md "
+                << max_saw_tmp.size() << " "
+                << saw<kChSawType>{max_saw_tmp, traffic_days}.max()
+                << std::endl;
+    }
+    if (!dry_run && false) {
+      std::cout
+          << "via: " << location_id << " "
+          << tt.get_default_translation(tt.locations_.names_.at(location_id))
+          << " to: " << to << " "
+          << tt.get_default_translation(tt.locations_.names_.at(to))
+          << " from: " << from << " "
+          << tt.get_default_translation(tt.locations_.names_.at(from))
+          << " pre min: "
+          << saw<kChSawType>{edge_min.at(edge_idx), traffic_days}.min()
+          << " pre max: "
+          << saw<kChSawType>{edge_max.at(edge_idx), traffic_days}.max()
+          << " tent min: " << saw<kChSawType>{min_saw_tmp, traffic_days}.min()
+          << " tent max: " << saw<kChSawType>{max_saw_tmp, traffic_days}.max()
+          << std::endl;
+    }
+    if (update_ch_shortcut(min_saw_tmp, max_saw_tmp, edge_idx, contract_stats,
+                           dry_run)) {
+      unpack.at(edge_idx).push_back({arr_idx, dep_idx});
+      transfers.at(edge_idx).push_back(location_id);
+    }
+    if (!dry_run && false) {
+      std::cout << "eidx " << edge_idx << " " << edge_max.at(edge_idx).size()
+                << " "
+                << saw<kChSawType>{edge_min.at(edge_idx), traffic_days}.max()
+                << " "
+                << saw<kChSawType>{edge_max.at(edge_idx), traffic_days}.max()
+                << "  " << arr_idx << " " << edge_max.at(arr_idx).size()
+                << " aah " << dep_idx << " " << edge_max.at(dep_idx).size()
+                << std::endl;
+    }
+    min_saw_tmp.clear();
+    max_saw_tmp.clear();
+  };
+
   auto const contract_ch_node =
       [&](location_idx_t const location_id,
           std::vector<ch_edge_idx_t>& write_ahead_edges,
@@ -577,109 +686,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             if (from == to) {
               continue;
             }
-            auto const arr_max =
-                saw<kChSawType>{edge_max.at(arr_idx), traffic_days}.max();
-            auto const arr_min =
-                saw<kChSawType>{edge_min.at(arr_idx), traffic_days}.min();
-            stats.min_max_diff_sum += (arr_max - arr_min).count();
-            ++stats.min_max_diff_count;
-
-            auto edge_idx = ch_edge_idx_t::invalid();
-            if (auto const it = edges_map.find({from, to});
-                it != end(edges_map)) {
-              edge_idx = it->second;
-            } else {
-              // insert TODO weigh differently in ordering?
-              ++contract_stats.inserts_;
-              auto found_direct = find_direct_trips(from, to, dry_run);
-              if (found_direct) {
-                ++contract_stats.direct_inserts_;
-              }
-              if (dry_run) {
-                departures.clear();
-                continue;
-              }
-              auto min_saw = std::vector<tooth>{};  // TODO reuse alloc
-              auto max_saw = std::vector<tooth>{};
-              assign_departures_to_arrivals();
-              if (!arrivals.empty()) {
-                utl::verify(
-                    arrivals.size() == 1,
-                    "more than one direct relation found between a and b");
-                auto const& e = begin(arrivals)->second;
-                arrivals_to_saw(e, min_saw, max_saw);
-                arrivals.clear();
-                /*std::cout << "max saw "
-                          << saw<kChSawType>{max_saw, traffic_days}.max()
-                          << std::endl;*/
-              }
-              edge_idx = insert_ch_edge(from, to, std::move(min_saw),
-                                        std::move(max_saw), true);
-              if (found_direct) {
-                unpack.at(edge_idx).push_back(
-                    {ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid()});
-                transfers.at(edge_idx).push_back(location_idx_t::invalid());
-              }
-              write_ahead_edges.push_back(edge_idx);
-            }
-
-            saw<kChSawType>{edge_min.at(arr_idx), traffic_days}.concat(
-                saw<kChSawType>{edge_min.at(dep_idx), traffic_days}, arr_idx,
-                dep_idx, false, min_saw_tmp);
-            saw<kChSawType>{edge_max.at(arr_idx), traffic_days}.concat(
-                saw<kChSawType>{edge_max.at(dep_idx), traffic_days}, arr_idx,
-                dep_idx, true, max_saw_tmp);
-            if (!dry_run && false) {
-              std::cout
-                  << "eidx " << edge_idx << " " << edge_max.at(edge_idx).size()
-                  << " "
-                  << saw<kChSawType>{edge_min.at(edge_idx), traffic_days}.max()
-                  << " "
-                  << saw<kChSawType>{edge_max.at(edge_idx), traffic_days}.max()
-                  << "  " << arr_idx << " " << edge_max.at(arr_idx).size()
-                  << " " << arr_max << " aah " << dep_idx << " "
-                  << edge_max.at(dep_idx).size() << " " << dep_max << " aah md "
-                  << max_saw_tmp.size() << " "
-                  << saw<kChSawType>{max_saw_tmp, traffic_days}.max()
-                  << std::endl;
-            }
-            if (!dry_run && false) {
-              std::cout
-                  << "via: " << location_id << " "
-                  << tt.get_default_translation(
-                         tt.locations_.names_.at(location_id))
-                  << " to: " << to << " "
-                  << tt.get_default_translation(tt.locations_.names_.at(to))
-                  << " from: " << from << " "
-                  << tt.get_default_translation(tt.locations_.names_.at(from))
-                  << " pre min: "
-                  << saw<kChSawType>{edge_min.at(edge_idx), traffic_days}.min()
-                  << " pre max: "
-                  << saw<kChSawType>{edge_max.at(edge_idx), traffic_days}.max()
-                  << " tent min: "
-                  << saw<kChSawType>{min_saw_tmp, traffic_days}.min()
-                  << " tent max: "
-                  << saw<kChSawType>{max_saw_tmp, traffic_days}.max()
-                  << std::endl;
-            }
-            if (update_ch_shortcut(min_saw_tmp, max_saw_tmp, edge_idx,
-                                   contract_stats, dry_run)) {
-              unpack[edge_idx].push_back({arr_idx, dep_idx});
-              transfers[edge_idx].push_back(location_id);
-            }
-            if (!dry_run && false) {
-              std::cout
-                  << "eidx " << edge_idx << " " << edge_max.at(edge_idx).size()
-                  << " "
-                  << saw<kChSawType>{edge_min.at(edge_idx), traffic_days}.max()
-                  << " "
-                  << saw<kChSawType>{edge_max.at(edge_idx), traffic_days}.max()
-                  << "  " << arr_idx << " " << edge_max.at(arr_idx).size()
-                  << " aah " << dep_idx << " " << edge_max.at(dep_idx).size()
-                  << std::endl;
-            }
-            min_saw_tmp.clear();
-            max_saw_tmp.clear();
+            upsert_ch_edge(location_id, from, to, arr_idx, dep_idx,
+                           write_ahead_edges, contract_stats, dry_run);
           }
         }
       };
@@ -807,6 +815,93 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     }
   };
 
+  auto const persist_write_ahead_edges =
+      [&](std::vector<ch_edge_idx_t>& write_ahead_edges) {
+        for (auto const e_idx : write_ahead_edges) {
+          fwd_search_ch_graph.at(tt.ch_graph_edges_[prf_idx].at(e_idx).from_)
+              .push_back(e_idx);
+          bwd_search_ch_graph.at(tt.ch_graph_edges_[prf_idx].at(e_idx).to_)
+              .push_back(e_idx);
+        }
+        write_ahead_edges.clear();
+      };
+
+  auto const compute_dgp = [&](unsigned lowest_level) {
+    auto const distance_group = [&](location_idx_t const l) {
+      for (auto i = 0U; i < kDistanceGroups - 1U; ++i) {
+        if (tt.ch_levels_[prf_idx].at(l) <
+            tt.ch_distance_groups_[prf_idx].at(i)) {
+          return i;
+        }
+      }
+      return kDistanceGroups - 1U;
+    };
+    auto const n = tt.n_locations() - lowest_level;
+    tt.ch_distance_groups_[prf_idx][3] = 0.99 * n + lowest_level;
+    tt.ch_distance_groups_[prf_idx][2] = 0.95 * n + lowest_level;
+    tt.ch_distance_groups_[prf_idx][1] = 0.80 * n + lowest_level;
+    tt.ch_distance_groups_[prf_idx][0] = 0.45 * n + lowest_level;
+
+    auto write_ahead_edges = std::vector<ch_edge_idx_t>{};
+    auto locations_by_levels = std::vector<location_idx_t>{};
+    locations_by_levels.resize(tt.n_locations());
+    std::iota(begin(locations_by_levels), end(locations_by_levels),
+              location_idx_t{0U});
+
+    utl::sort(locations_by_levels, [&](auto&& a, auto&& b) {
+      return tt.ch_levels_[prf_idx].at(a) > tt.ch_levels_[prf_idx].at(b);
+    });
+
+    std::cout << "sorted" << std::endl;
+
+    for (auto l : locations_by_levels) {
+      auto const level = tt.ch_levels_[prf_idx].at(l);
+      if (level % 100 == 0 && level != 0) {
+        std::cout << "dgp "
+                  << tt.get_default_translation(tt.locations_.names_.at(l))
+                  << " l:" << level << std::endl;
+        print_stats();
+        if (level % 1000 == 0) {
+          print_edge_stats();
+        }
+      }
+      for (auto dir : {kForward, kReverse}) {
+
+        auto const& graph =
+            dir == kForward ? fwd_search_ch_graph : bwd_search_ch_graph;
+
+        for (auto const& e_idx : graph.at(l)) {
+
+          auto const e = tt.ch_graph_edges_[prf_idx].at(e_idx);
+          auto const edge_target = dir == kForward ? e.to_ : e.from_;
+          if (level > tt.ch_levels_[prf_idx].at(edge_target)) {
+            continue;
+          }
+          if (distance_group(l) != distance_group(edge_target)) {
+            continue;
+          }
+          for (auto const& second_e_idx : graph.at(edge_target)) {
+            auto const second_e = tt.ch_graph_edges_[prf_idx].at(second_e_idx);
+            auto const second_edge_target =
+                dir == kForward ? second_e.to_ : second_e.from_;
+
+            if (tt.ch_levels_[prf_idx].at(edge_target) >
+                tt.ch_levels_[prf_idx].at(second_edge_target)) {
+              continue;
+            }
+            upsert_ch_edge(edge_target,
+                           dir == kForward ? l : second_edge_target,
+                           dir == kReverse ? l : second_edge_target,
+                           dir == kForward ? e_idx : second_e_idx,
+                           dir == kReverse ? e_idx : second_e_idx,
+                           write_ahead_edges, stats);
+          }
+        }
+        persist_write_ahead_edges(write_ahead_edges);
+      }
+    }
+  };
+
   auto const compute_ch = [&]() {
     print_stats();
     tt.ch_levels_[prf_idx].resize(static_cast<unsigned>(tt.n_locations()));
@@ -840,13 +935,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       ++level;
       contract_ch_node(location_id, write_ahead_edges, stats);
       tt.ch_levels_[prf_idx].at(location_id) = level;
-      for (auto const e_idx : write_ahead_edges) {
-        fwd_search_ch_graph.at(tt.ch_graph_edges_[prf_idx].at(e_idx).from_)
-            .push_back(e_idx);
-        bwd_search_ch_graph.at(tt.ch_graph_edges_[prf_idx].at(e_idx).to_)
-            .push_back(e_idx);
-      }
-      write_ahead_edges.clear();
+      persist_write_ahead_edges(write_ahead_edges);
       std::cout << tt.get_default_translation(
                        tt.locations_.names_.at(location_id))
                 << std::endl;
@@ -889,6 +978,11 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                                      current_order);
       }
     }
+    std::cout << "ch done, starting dgp" << std::endl;
+    print_stats();
+    print_edge_stats();
+    std::cout << "ch done, starting dgp" << std::endl;
+    compute_dgp(empty_stops);
     std::cout << "persisting..." << std::endl;
     /*auto j = 0;
     for (auto const& b : traffic_days.bitfields_) {
