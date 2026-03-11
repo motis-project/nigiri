@@ -27,9 +27,8 @@ using namespace std::string_view_literals;
 
 namespace {
 
-// Liest die binäre GTFS-RT-FeedMessage aus einer Datei (z.B.
-// vehiclePositions.pb) und gibt sie als serialisierten String zurück, der
-// direkt an gtfsrt_update_buf übergeben werden kann.
+// reads a binary GTFS-RT-FeedMessage from a file and returns it as a serialized
+// string
 std::string read_gtfsrt_file(std::filesystem::path const& p) {
   auto f = std::ifstream{p, std::ios::in | std::ios::binary};
   utl::verify(f.good(), "unable to open gtfsrt file {}", p.string());
