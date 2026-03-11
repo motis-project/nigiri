@@ -82,8 +82,10 @@ struct trip_time_data {
 
 struct hist_trip_times_storage {
   explicit hist_trip_times_storage()
-      : coord_seq_idx_ttd_{mm_paged_vecvec_helper<coord_seq_idx_t, trip_time_data_idx_t>::data_t{
-                               mm_vec<trip_time_data_idx_t>{cista::mmap{"hist_trip_time_data.bin"}}},
+      : coord_seq_idx_ttd_{mm_paged_vecvec_helper<coord_seq_idx_t,
+                                                  trip_time_data_idx_t>::data_t{
+                               mm_vec<trip_time_data_idx_t>{
+                                   cista::mmap{"hist_trip_time_data.bin"}}},
                            mm_vec<cista::page<std::uint64_t, std::uint32_t>>{
                                cista::mmap{"hist_trip_time_idx.bin"}}} {}
 

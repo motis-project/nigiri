@@ -3,13 +3,13 @@
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/delay_prediction.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/util.h"
 #include "nigiri/timetable.h"
-#include "nigiri/delay_prediction.h"
 
 #include "./util.h"
 
@@ -482,7 +482,7 @@ auto const kVehiclePosition3 =
 })"s;
 
 constexpr auto const expected =
-  R"(
+    R"(
 cs_key_coord_seq_:
 Key: Source: 0 Transport: 0
 Coord_seq_Idx: 0
@@ -544,7 +544,13 @@ TEST(rt, gtfsrt_hist_trip_database_test) {
   // Create empty Trip Time Data Storage
   auto tts = hist_trip_times_storage{};
 
-  auto dp = delay_prediction{algorithm::kIntelligent, hist_trip_mode::kSameDay, 1, 5, &dps, &tts, &vtm};
+  auto dp = delay_prediction{algorithm::kIntelligent,
+                             hist_trip_mode::kSameDay,
+                             1,
+                             5,
+                             &dps,
+                             &tts,
+                             &vtm};
 
   // Update.
   auto const msg = rt::json_to_protobuf(kVehiclePosition);
@@ -563,21 +569,21 @@ TEST(rt, gtfsrt_hist_trip_database_test) {
   td.set_trip_id("3248651");
   td.set_start_time("05:15:00");
   auto const [r, t] = gtfsrt_resolve_run(date::sys_days{May / 1 / 2019}, tt,
-                                             &rtt, source_idx_t{0}, td);
+                                         &rtt, source_idx_t{0}, td);
 
   transit_realtime::TripDescriptor td2;
   td2.set_start_date("20230810");
   td2.set_trip_id("3248652");
   td2.set_start_time("06:15:00");
   auto const [r2, t2] = gtfsrt_resolve_run(date::sys_days{May / 1 / 2019}, tt,
-                                             &rtt, source_idx_t{0}, td2);
+                                           &rtt, source_idx_t{0}, td2);
 
   transit_realtime::TripDescriptor td3;
   td3.set_start_date("20230810");
   td3.set_trip_id("3248653");
   td3.set_start_time("05:15:00");
   auto const [r3, t3] = gtfsrt_resolve_run(date::sys_days{May / 1 / 2019}, tt,
-                                             &rtt, source_idx_t{0}, td3);
+                                           &rtt, source_idx_t{0}, td3);
 
   ASSERT_TRUE(r.valid());
   ASSERT_TRUE(r2.valid());

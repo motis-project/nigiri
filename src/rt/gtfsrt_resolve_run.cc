@@ -190,7 +190,7 @@ run gtfsrt_vp_resolve_run(timetable const& tt,
   auto const stop_locs = vehicle_idx != vehicle_idx_t::invalid()
                              ? vtm->vehicle_idx_known_stop_locs_[vehicle_idx]
                              : vector{new_stop_loc};
-  for (auto stop_loc_cand : stop_locs) {
+  for (auto const& stop_loc_cand : stop_locs) {
     for (auto const l : tt.locations_.equivalences_[stop_loc_cand]) {
       for (auto const route : tt.location_routes_[l]) {
         auto const location_seq = tt.route_location_seq_[route];
