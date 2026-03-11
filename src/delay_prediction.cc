@@ -41,7 +41,7 @@ coord_seq_idx_t hist_trip_times_storage::match_trip_to_coord_seq(
       continue;
     }
 
-    for (ulong i = 0; i < bucket.size(); ++i) {
+    for (unsigned long i = 0; i < bucket.size(); ++i) {
       if (!routing::matches(tt, routing::location_match_mode::kEquivalent,
                             bucket[i], coord_seq[i])) {
         break;
