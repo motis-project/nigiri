@@ -191,6 +191,7 @@ route::route(timetable& tt,
              std::string_view id,
              translation_idx_t short_name,
              translation_idx_t long_name,
+             translation_idx_t url,
              route_type_t const route_type,
              route_color const color,
              provider_idx_t const agency)
@@ -198,9 +199,9 @@ route::route(timetable& tt,
       id_{id},
       short_name_{short_name},
       long_name_{long_name},
+      url_{url},
       route_type_{route_type},
       color_{color},
-      clasz_{gtfs::to_clasz(to_idx(route_type))},
       agency_{agency},
       tt_{&tt} {}
 
@@ -236,6 +237,14 @@ void route::set_long_name(translated_str_t x) {
   long_name_ = tt_->register_translation(x);
 }
 
+std::string_view route::get_url() const {
+  return tt_->get_default_translation(url_);
+}
+translated_str_t route::get_url_translations() const { return tt_->get(url_); }
+void route::set_url(translated_str_t x) {
+  long_name_ = tt_->register_translation(x);
+}
+
 route_type_t::value_t route::get_route_type() const {
   return static_cast<route_type_t::value_t>(route_type_);
 }
@@ -253,8 +262,28 @@ void route::set_text_color(std::uint32_t const x) {
   color_.text_color_ = color_t{x};
 }
 
-clasz route::get_clasz() const { return clasz_; }
-void route::set_clasz(clasz const x) { clasz_ = x; }
+clasz route::get_clasz() const { return gtfs::to_clasz(to_idx(route_type_)); }
+void route::set_clasz(clasz const x) {
+  switch (x) {
+    case clasz::kAir: route_type_ = route_type_t{1100}; return;
+    case clasz::kHighSpeed: route_type_ = route_type_t{101}; return;
+    case clasz::kLongDistance: route_type_ = route_type_t{102}; return;
+    case clasz::kCoach: route_type_ = route_type_t{200}; return;
+    case clasz::kNight: route_type_ = route_type_t{105}; return;
+    case clasz::kRideSharing: route_type_ = route_type_t{1551}; return;
+    case clasz::kRegional: route_type_ = route_type_t{103}; return;
+    case clasz::kSuburban: route_type_ = route_type_t{109}; return;
+    case clasz::kSubway: route_type_ = route_type_t{402}; return;
+    case clasz::kTram: route_type_ = route_type_t{900}; return;
+    case clasz::kBus: route_type_ = route_type_t{700}; return;
+    case clasz::kShip: route_type_ = route_type_t{1000}; return;
+    case clasz::kODM: route_type_ = route_type_t{1500}; return;
+    case clasz::kFunicular: route_type_ = route_type_t{1400}; return;
+    case clasz::kAerialLift: route_type_ = route_type_t{1300}; return;
+    case clasz::kOther:
+    default: route_type_ = route_type_t{1700}; return;
+  }
+}
 
 agency route::get_agency() const { return agency{*tt_, agency_}; }
 
@@ -341,6 +370,100 @@ struct script_runner::impl {
   sol::protected_function process_trip_;
 };
 
+constexpr std::pair<std::string_view, int> kGTFSRouteTypes[] = {
+    {"GTFS_TRAM", 0},
+    {"GTFS_SUBWAY", 1},
+    {"GTFS_RAIL", 2},
+    {"GTFS_BUS", 3},
+    {"GTFS_FERRY", 4},
+    {"GTFS_CABLE_TRAM", 5},
+    {"GTFS_AERIAL_LIFT", 6},
+    {"GTFS_FUNICULAR", 7},
+    {"GTFS_TROLLEYBUS", 11},
+    {"GTFS_MONORAIL", 12},
+    {"RAILWAY_SERVICE", 100},
+    {"HIGH_SPEED_RAIL_SERVICE", 101},
+    {"LONG_DISTANCE_TRAINS_SERVICE", 102},
+    {"INTER_REGIONAL_RAIL_SERVICE", 103},
+    {"CAR_TRANSPORT_RAIL_SERVICE", 104},
+    {"SLEEPER_RAIL_SERVICE", 105},
+    {"REGIONAL_RAIL_SERVICE", 106},
+    {"TOURIST_RAILWAY_SERVICE", 107},
+    {"RAIL_SHUTTLE_WITHIN_COMPLEX_SERVICE", 108},
+    {"SUBURBAN_RAILWAY_SERVICE", 109},
+    {"REPLACEMENT_RAIL_SERVICE", 110},
+    {"SPECIAL_RAIL_SERVICE", 111},
+    {"LORRY_TRANSPORT_RAIL_SERVICE", 112},
+    {"ALL_RAILS_SERVICE", 113},
+    {"CROSS_COUNTRY_RAIL_SERVICE", 114},
+    {"VEHICLE_TRANSPORT_RAIL_SERVICE", 115},
+    {"RACK_AND_PINION_RAILWAY_SERVICE", 116},
+    {"ADDITIONAL_RAIL_SERVICE", 117},
+    {"COACH_SERVICE", 200},
+    {"INTERNATIONAL_COACH_SERVICE", 201},
+    {"NATIONAL_COACH_SERVICE", 202},
+    {"SHUTTLE_COACH_SERVICE", 203},
+    {"REGIONAL_COACH_SERVICE", 204},
+    {"SPECIAL_COACH_SERVICE", 205},
+    {"SIGHTSEEING_COACH_SERVICE", 206},
+    {"TOURIST_COACH_SERVICE", 207},
+    {"COMMUTER_COACH_SERVICE", 208},
+    {"ALL_COACHS_SERVICE", 209},
+    {"URBAN_RAILWAY_SERVICE", 400},
+    {"METRO_SERVICE", 401},
+    {"UNDERGROUND_SERVICE", 402},
+    {"URBAN_RAILWAY_2_SERVICE", 403},
+    {"ALL_URBAN_RAILWAYS_SERVICE", 404},
+    {"MONORAIL_SERVICE", 405},
+    {"BUS_SERVICE", 700},
+    {"REGIONAL_BUS_SERVICE", 701},
+    {"EXPRESS_BUS_SERVICE", 702},
+    {"STOPPING_BUS_SERVICE", 703},
+    {"LOCAL_BUS_SERVICE", 704},
+    {"NIGHT_BUS_SERVICE", 705},
+    {"POST_BUS_SERVICE", 706},
+    {"SPECIAL_NEEDS_BUS_SERVICE", 707},
+    {"MOBILITY_BUS_SERVICE", 708},
+    {"MOBILITY_BUS_FOR_REGISTERED_DISABLED_SERVICE", 709},
+    {"SIGHTSEEING_BUS_SERVICE", 710},
+    {"SHUTTLE_BUS_SERVICE", 711},
+    {"SCHOOL_BUS_SERVICE", 712},
+    {"SCHOOL_AND_PUBLIC_BUS_SERVICE", 713},
+    {"RAIL_REPLACEMENT_BUS_SERVICE", 714},
+    {"DEMAND_AND_RESPONSE_BUS_SERVICE", 715},
+    {"ALL_BUSS_SERVICE", 716},
+    {"TROLLEYBUS_SERVICE", 800},
+    {"TRAM_SERVICE", 900},
+    {"CITY_TRAM_SERVICE", 901},
+    {"LOCAL_TRAM_SERVICE", 902},
+    {"REGIONAL_TRAM_SERVICE", 903},
+    {"SIGHTSEEING_TRAM_SERVICE", 904},
+    {"SHUTTLE_TRAM_SERVICE", 905},
+    {"ALL_TRAMS_SERVICE", 906},
+    {"WATER_TRANSPORT_SERVICE", 1000},
+    {"AIR_SERVICE", 1100},
+    {"FERRY_SERVICE", 1200},
+    {"AERIAL_LIFT_SERVICE", 1300},
+    {"TELECABIN_SERVICE", 1301},
+    {"CABLE_CAR_SERVICE", 1302},
+    {"ELEVATOR_SERVICE", 1303},
+    {"CHAIR_LIFT_SERVICE", 1304},
+    {"DRAG_LIFT_SERVICE", 1305},
+    {"SMALL_TELECABIN_SERVICE", 1306},
+    {"ALL_TELECABINS_SERVICE", 1307},
+    {"FUNICULAR_SERVICE", 1400},
+    {"TAXI_SERVICE", 1500},
+    {"COMMUNAL_TAXI_SERVICE", 1501},
+    {"WATER_TAXI_SERVICE", 1502},
+    {"RAIL_TAXI_SERVICE", 1503},
+    {"BIKE_TAXI_SERVICE", 1504},
+    {"LICENSED_TAXI_SERVICE", 1505},
+    {"PRIVATE_HIRE_VEHICLE_SERVICE", 1506},
+    {"ALL_TAXIS_SERVICE", 1507},
+    {"MISCELLANEOUS_SERVICE", 1700},
+    {"HORSE_DRAWN_CARRIAGE_SERVICE", 1702},
+};
+
 script_runner::script_runner() = default;
 
 script_runner::script_runner(std::string const& user_script)
@@ -352,6 +475,10 @@ script_runner::script_runner(std::string const& user_script)
   impl_->lua_.open_libraries(sol::lib::base, sol::lib::string,
                              sol::lib::package);
   impl_->lua_.script(user_script);
+
+  for (auto const& [name, route_type] : kGTFSRouteTypes) {
+    impl_->lua_.globals()[name] = route_type;
+  }
 
   impl_->lua_.new_usertype<geo::latlng>(
       "latlng",  //
@@ -589,6 +716,7 @@ route_id_idx_t register_route(timetable& tt, route const& r) {
   auto const idx = route_id.ids_.store(r.id_);
   route_id.route_id_short_names_.emplace_back(r.short_name_);
   route_id.route_id_long_names_.emplace_back(r.long_name_);
+  route_id.rotue_id_url_.emplace_back(r.url_);
   route_id.route_id_colors_.emplace_back(r.color_);
   route_id.route_id_type_.emplace_back(r.route_type_);
   route_id.route_id_provider_.emplace_back(r.agency_);

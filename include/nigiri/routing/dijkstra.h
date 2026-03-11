@@ -30,6 +30,8 @@ struct query;
 
 template <typename NodeIdx, typename Edge, typename Label, typename GetBucketFn>
 void dijkstra(vecvec<NodeIdx, Edge> const& graph,
+              bitvec_map<NodeIdx> const* has_rt,
+              vecvec<NodeIdx, Edge> const* rt,
               dial<Label, GetBucketFn>& pq,
               std::vector<typename Label::dist_t>& dists,
               typename Label::dist_t const max_dist =
@@ -44,13 +46,24 @@ void dijkstra(vecvec<NodeIdx, Edge> const& graph,
       continue;
     }
 
-    for (auto const& e : graph[l.l_]) {
+    auto const expand = [&](Edge const e) {
       auto const edge_target = cista::to_idx(e.target());
       auto const new_dist = l.d_ + e.duration().count();
       if (new_dist < dists[edge_target] && new_dist < pq.n_buckets() &&
           new_dist < max_dist) {
         dists[edge_target] = static_cast<dist_t>(new_dist);
         pq.push(Label{e.target(), static_cast<dist_t>(new_dist)});
+      }
+    };
+
+    for (auto const& e : graph[l.l_]) {
+      expand(e);
+    }
+
+    if (has_rt != nullptr && has_rt->test(l.l_)) {
+      [[unlikely]]
+      for (auto const& e : (*rt)[l.l_]) {
+        expand(e);
       }
     }
   }
@@ -59,6 +72,8 @@ void dijkstra(vecvec<NodeIdx, Edge> const& graph,
 void dijkstra(timetable const&,
               query const&,
               vecvec<location_idx_t, footpath> const& lb_graph,
+              bitvec_map<location_idx_t> const* has_rt,
+              vecvec<location_idx_t, footpath> const* rt_lb_graph,
               std::vector<std::uint16_t>& dists);
 
 }  // namespace nigiri::routing
