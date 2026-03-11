@@ -2,15 +2,13 @@
 
 #include <chrono>
 #include <cinttypes>
+
+#include "nigiri/common/interval.h"
+#include "nigiri/common/it_range.h"
+
 #include <variant>
 
-#include "fmt/ostream.h"
-
-#include "date/date.h"
-#include "date/tz.h"
-
 #include "ankerl/cista_adapter.h"
-
 #include "cista/char_traits.h"
 #include "cista/containers/array.h"
 #include "cista/containers/bitset.h"
@@ -27,13 +25,11 @@
 #include "cista/containers/vecvec.h"
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
-
-#include "utl/helpers/algorithm.h"
-
+#include "date/date.h"
+#include "date/tz.h"
+#include "fmt/ostream.h"
 #include "geo/latlng.h"
-
-#include "nigiri/common/interval.h"
-#include "nigiri/common/it_range.h"
+#include "utl/helpers/algorithm.h"
 
 namespace nigiri {
 
@@ -95,23 +91,18 @@ using cista::holds_alternative;
 template <typename K, typename V, typename SizeType = cista::base_t<K>>
 using vecvec = cista::raw::vecvec<K, V, SizeType>;
 
-template <typename K,
-          typename V,
-          std::size_t N,
+template <typename K, typename V, std::size_t N,
           typename SizeType = std::uint32_t>
 using nvec = cista::raw::nvec<K, V, N, SizeType>;
 
 template <typename K, typename V>
 using mutable_fws_multimap = cista::raw::mutable_fws_multimap<K, V>;
 
-template <typename K,
-          typename V,
-          typename Hash = cista::hash_all,
+template <typename K, typename V, typename Hash = cista::hash_all,
           typename Equality = cista::equals_all>
 using hash_map = cista::raw::ankerl_map<K, V, Hash, Equality>;
 
-template <typename K,
-          typename Hash = cista::hash_all,
+template <typename K, typename Hash = cista::hash_all,
           typename Equality = cista::equals_all>
 using hash_set = cista::raw::ankerl_set<K, Hash, Equality>;
 
@@ -189,6 +180,8 @@ using location_group_idx_t =
 using booking_rule_idx_t =
     cista::strong<std::uint32_t, struct _booking_rule_idx>;
 using language_idx_t = cista::strong<std::uint16_t, struct _language_idx>;
+using vehicle_idx_t = cista::strong<std::uint32_t, struct _vehicle_idx>;
+using vehicle_id_idx_t = cista::strong<std::uint32_t, struct _vehicle_id_idx>;
 
 using lang_t = std::optional<std::vector<std::string>>;
 
@@ -461,8 +454,7 @@ using basic_string = std::basic_string<T, cista::char_traits<T>>;
 namespace std::chrono {
 
 template <typename Ctx>
-inline void serialize(Ctx& c,
-                      nigiri::duration_t const* origin,
+inline void serialize(Ctx& c, nigiri::duration_t const* origin,
                       cista::offset_t pos) {
   c.write(pos, cista::convert_endian<Ctx::MODE>(origin->count()));
 }

@@ -396,7 +396,6 @@ constexpr auto const expected_stats1 = R"(
 }  // namespace
 
 TEST(rt, gtfs_rt_vehicle_position_update) {
-
   // Load static timetable.
   timetable tt;
   register_special_stations(tt);
@@ -408,14 +407,16 @@ TEST(rt, gtfs_rt_vehicle_position_update) {
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
 
+  auto dp = delay_prediction{};
+
   // Update.
   auto const msg = rt::json_to_protobuf(kVehiclePosition);
   auto const msg1 = rt::json_to_protobuf(kVehiclePosition1);
   auto const msg2 = rt::json_to_protobuf(kVehiclePosition2);
-  auto const stats = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, true);
+  auto const stats = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, &dp);
   auto const stats1 =
-      gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg1, true);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2, true);
+      gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg1, &dp);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2, &dp);
 
   // Print trip.
   transit_realtime::TripDescriptor td;

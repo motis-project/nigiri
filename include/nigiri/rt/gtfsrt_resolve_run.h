@@ -1,29 +1,28 @@
 #pragma once
 
-#include <string_view>
-
-#include "utl/parser/arg_parser.h"
-
 #include "nigiri/loader/gtfs/parse_date.h"
 #include "nigiri/loader/gtfs/parse_time.h"
+
+#include "nigiri/delay_prediction.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/timetable.h"
 
+#include <string_view>
+
 #include "gtfsrt/gtfs-realtime.pb.h"
+#include "utl/parser/arg_parser.h"
 
 namespace nigiri::rt {
 
 std::pair<date::days, duration_t> split(duration_t);
 
 template <typename Fn>
-void resolve_trip(date::sys_days const today,
-                  timetable const& tt,
+void resolve_trip(date::sys_days const today, timetable const& tt,
                   trip_idx_t const trip,
                   std::optional<date::sys_days> const& start_date,
-                  std::optional<duration_t> const& start_time,
-                  Fn&& fn) {
+                  std::optional<duration_t> const& start_time, Fn&& fn) {
   for (auto const [t, stop_range] : tt.trip_transport_ranges_[trip]) {
     auto const [first_dep_offset, tz_offset] =
         tt.transport_first_dep_offset_[t].to_offset();
@@ -65,10 +64,8 @@ void resolve_trip(date::sys_days const today,
 }
 
 template <typename Fn>
-void resolve_static_trip_id(date::sys_days const today,
-                            timetable const& tt,
-                            source_idx_t const src,
-                            std::string const& trip_id,
+void resolve_static_trip_id(date::sys_days const today, timetable const& tt,
+                            source_idx_t const src, std::string const& trip_id,
                             std::optional<date::sys_days> const& start_date,
                             std::optional<duration_t> const& start_time,
                             Fn&& fn) {
@@ -91,14 +88,11 @@ void resolve_static_trip_id(date::sys_days const today,
 }
 
 template <typename Fn>
-void resolve_static_route(date::sys_days const today,
-                          timetable const& tt,
-                          source_idx_t const src,
-                          std::string const& route_id,
+void resolve_static_route(date::sys_days const today, timetable const& tt,
+                          source_idx_t const src, std::string const& route_id,
                           direction_id_t const direction,
                           date::sys_days const start_date,
-                          duration_t const start_time,
-                          Fn&& fn) {
+                          duration_t const start_time, Fn&& fn) {
   auto const route = tt.route_ids_[src].ids_.find(route_id);
   if (!route.has_value()) {
     return;
@@ -112,11 +106,9 @@ void resolve_static_route(date::sys_days const today,
 }
 
 template <typename Fn>
-void resolve_static(date::sys_days const today,
-                    timetable const& tt,
+void resolve_static(date::sys_days const today, timetable const& tt,
                     source_idx_t const src,
-                    transit_realtime::TripDescriptor const& td,
-                    Fn&& fn) {
+                    transit_realtime::TripDescriptor const& td, Fn&& fn) {
   using loader::gtfs::hhmm_to_min;
   using loader::gtfs::parse_date;
 
@@ -143,16 +135,15 @@ void resolve_static(date::sys_days const today,
 }
 
 std::pair<run, trip_idx_t> gtfsrt_resolve_run(
-    date::sys_days const today,
-    timetable const&,
-    rt_timetable const*,
-    source_idx_t,
-    transit_realtime::TripDescriptor const&,
+    date::sys_days const today, timetable const&, rt_timetable const*,
+    source_idx_t, transit_realtime::TripDescriptor const&,
     std::string_view rt_changed_trip_id = {});
 
-void resolve_rt(rt_timetable const&,
-                run&,
-                std::string_view trip_id,
+run gtfsrt_vp_resolve_run(timetable const&, source_idx_t,
+                          transit_realtime::VehiclePosition const&,
+                          vehicle_trip_matching* vtm);
+
+void resolve_rt(rt_timetable const&, run&, std::string_view trip_id,
                 source_idx_t src);
 
 }  // namespace nigiri::rt

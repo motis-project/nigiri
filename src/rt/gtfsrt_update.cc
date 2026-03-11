@@ -14,9 +14,8 @@
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 
 #include "nigiri/common/parse_time.h"
-#include "nigiri/delay_prediction_storage.h"
+#include "nigiri/delay_prediction.h"
 #include "nigiri/get_otel_tracer.h"
-#include "nigiri/hist_trip_times_storage.h"
 #include "nigiri/logging.h"
 #include "nigiri/lookup/get_transport.h"
 #include "nigiri/rt/frun.h"
@@ -25,8 +24,6 @@
 #include "nigiri/rt/run.h"
 #include "nigiri/types.h"
 
-#include "libs/filesystem/src/error_handling.hpp"
-#include "utl/concat.h"
 #include "utl/pipes/avg.h"
 
 namespace gtfsrt = transit_realtime;
@@ -495,21 +492,20 @@ bool update_run(source_idx_t const src,
 }
 
 void calculate_delay_simple(timetable const& tt,
-                             rt_timetable& rtt,
-                             source_idx_t const src,
-                             std::string_view tag,
-                             gtfsrt::FeedEntity const& entity,
-                             date::sys_days const today,
-                             date::sys_seconds const message_time,
-                             std::shared_ptr<opentelemetry::trace::Span>& span,
-                             statistics& stats) {
+                            rt_timetable& rtt,
+                            source_idx_t const src,
+                            std::string_view tag,
+                            gtfsrt::FeedEntity const& entity,
+                            date::sys_days const today,
+                            date::sys_seconds const message_time,
+                            std::shared_ptr<opentelemetry::trace::Span>& span,
+                            statistics& stats) {
 
   try {
     auto const& vp = entity.vehicle();
     auto const& td = vp.trip();
 
-    auto [r, trip_idx] = gtfsrt_resolve_run(today, tt, &rtt, src, td,
-                                            std::string_view{td.trip_id()});
+    auto [r, trip_idx] = gtfsrt_resolve_run(today, tt, &rtt, src, td);
 
     if (!r.is_scheduled()) {
       log(log_lvl::info, "rt.gtfs.unsupported",
@@ -610,174 +606,290 @@ void calculate_delay_simple(timetable const& tt,
   }
 }
 
-void calculate_delay_intelligent(timetable const& tt,
-                             rt_timetable& rtt,
-                             source_idx_t const src,
-                             std::string_view tag,
-                             gtfsrt::FeedEntity const& entity,
-                             date::sys_days const today,
-                             date::sys_seconds const message_time,
-                             std::shared_ptr<opentelemetry::trace::Span>& span,
-                             statistics& stats,
-                             delay_prediction_storage* delay_prediction_store,
-                             hist_trip_times_storage* hist_trip_time_store) {
+void calculate_delay_intelligent(
+    timetable const& tt,
+    rt_timetable& rtt,
+    source_idx_t const src,
+    std::string_view tag,
+    gtfsrt::FeedEntity const& entity,
+    date::sys_days const today,
+    date::sys_seconds const message_time,
+    std::shared_ptr<opentelemetry::trace::Span>& span,
+    statistics& stats,
+    delay_prediction* delay_prediction) {
 
-  // TODO: Identifizierung der Trips ohne Trip-ID
-  // TODO: Für rtt fit machen
-  // TODO: Stopzeit ist Zeit zwischen letztem tsd auf altem Segment und erstem tsd auf neuem Segment. Was ist wenn Stop z.B. eigentlich zwischen tsd 1 und 2 auf neuem Segment liegt?
-  // TODO: Für neue Messungen wird als Vergleichswert die letzte Messung hist/pred Trips verwendet. Näherung implementieren.
-  // TODO: Stats-struct anpassen 
+  try {
+    // insertion of new data
 
-  // insertion of new data
+    auto const& vp = entity.vehicle();
+    auto const vehicle_position =
+        geo::latlng{vp.position().latitude(), vp.position().longitude()};
+    auto const td = vp.trip();
 
-  auto const& vp = entity.vehicle();
-  auto const& td = vp.trip();
-  auto const vehicle_position =
-    geo::latlng{vp.position().latitude(), vp.position().longitude()};
+    auto r =
+        vp.has_trip() &&
+                (vp.trip().has_trip_id() ||
+                 (vp.trip().has_route_id() && vp.trip().has_direction_id() &&
+                  vp.trip().has_start_date() && vp.trip().has_start_time()))
+            ? gtfsrt_resolve_run(today, tt, &rtt, src, td).first
+            : gtfsrt_vp_resolve_run(tt, src, vp,
+                                    delay_prediction->vehicle_trip_match);
 
-  auto [r, trip_idx] = gtfsrt_resolve_run(today, tt, &rtt, src, td,
-                                            std::string_view{td.trip_id()});
+    if (!r.valid()) {
+      log(log_lvl::info, "rt.gtfs.unsupported",
+          R"(Run is not valid. Eventual information were saved. Skipping Message)",
+          tag, entity.id());
+      ++stats.vehicle_position_without_matching_run_;
+      return;
+    }
 
-  if (!r.is_scheduled()) {
-    log(log_lvl::info, "rt.gtfs.unsupported",
-        R"(Run is not scheduled. Skipping Message)", tag, entity.id());
-    return;
-  }
+    if (!r.is_scheduled()) {
+      log(log_lvl::info, "rt.gtfs.unsupported",
+          R"(Run is not scheduled. Skipping Message)", tag, entity.id());
+      return;
+    }
 
-  key key{trip_idx, src};
+    // add rt_transport if not existent
+    if (!r.is_rt()) {
+      r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
+    }
 
-  auto const location_seq =
-          std::span{tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]]};
+    key key{r.t_.t_idx_, src};
 
-  auto const location_idx_seq = to_vec(location_seq, [&](auto const& stp) {
-    return stop{stp}.location_idx();
-  });
+    auto const location_seq =
+        std::span{tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]]};
 
-  auto const coord_seq_idx = hist_trip_time_store->match_trip_to_coord_seq(tt, key, location_idx_seq);
+    auto const location_idx_seq = to_vec(location_seq, [&](auto const& stp) {
+      return stop{stp}.location_idx();
+    });
 
-  auto const [current_segment, current_progress] = hist_trip_time_store->get_segment_progress(tt, vehicle_position, coord_seq_idx);
+    auto const coord_seq_idx =
+        delay_prediction->hist_trip_time_store->match_trip_to_coord_seq(
+            tt, key, location_idx_seq);
 
-  auto const vp_ts = vp.has_timestamp()
+    auto const [current_segment, current_progress, nearest_stop] =
+        delay_prediction->hist_trip_time_store->get_segment_progress(
+            tt, vehicle_position, coord_seq_idx);
+
+    auto const vp_ts = vp.has_timestamp()
                            ? unixtime_t{std::chrono::duration_cast<i32_minutes>(
                                  std::chrono::seconds{vp.timestamp()})}
-                              : std::chrono::time_point_cast<i32_minutes>(std::chrono::system_clock::now());
+                           : std::chrono::time_point_cast<i32_minutes>(
+                                 std::chrono::system_clock::now());
 
-  const trip_seg_data new_tsd{current_segment, current_progress, vp_ts, vehicle_position};
+    trip_seg_data const new_tsd{current_segment, current_progress, vp_ts,
+                                vehicle_position};
 
-  auto const ut_start_time = parse_time(td.start_date() + "T" + td.start_time(), "%Y%m%dT%T");
+    auto const ut_start_time = tt.event_time(r.t_, 0, event_type::kDep);
 
-  auto found = false;
-  for (auto ttd_idx : hist_trip_time_store->coord_seq_idx_ttd_[coord_seq_idx]) {
+    auto const current_ttd_idx_it =
+        utl::find_if(delay_prediction->hist_trip_time_store
+                         ->coord_seq_idx_ttd_[coord_seq_idx],
+                     [&](auto current_ttd_idx) {
+                       return delay_prediction->hist_trip_time_store
+                                  ->ttd_idx_trip_time_data_[current_ttd_idx]
+                                  .start_timestamp == ut_start_time;
+                     });
 
-    if (hist_trip_time_store->ttd_idx_trip_time_data_[ttd_idx].start_timestamp == ut_start_time) {
+    if (current_ttd_idx_it != end(delay_prediction->hist_trip_time_store
+                                      ->coord_seq_idx_ttd_[coord_seq_idx])) {
+      auto& current_ttd = delay_prediction->hist_trip_time_store
+                              ->ttd_idx_trip_time_data_[*current_ttd_idx_it];
+      // calculate time since last tsd and add to time spent at stop/segment
+      auto const last_tsd = current_ttd.seg_data_.end() - 1;
 
-      // if new segment: calculate and insert time spent at stop/segment
-      auto last_tsd = hist_trip_time_store->ttd_idx_trip_time_data_[ttd_idx].seg_data_.end()-1;
-      if (last_tsd->seg_idx + 1 == new_tsd.seg_idx) {
-        hist_trip_time_store->ttd_idx_trip_time_data_[ttd_idx].stop_durations_.emplace_back(new_tsd.timestamp - last_tsd->timestamp);
-        auto first_tsd_on_seg = std::ranges::find_if(hist_trip_time_store->ttd_idx_trip_time_data_[ttd_idx].seg_data_,
-                    [last_tsd](auto const tsd){return tsd.seg_idx == last_tsd->seg_idx;});
-        hist_trip_time_store->ttd_idx_trip_time_data_[ttd_idx].segment_durations_.emplace_back(last_tsd->timestamp - first_tsd_on_seg->timestamp);
+      auto const delta = new_tsd.timestamp - last_tsd->timestamp;
+      // If the vehicle is near the stop, add time since last tsd to the stop
+      // duration, otherwise to the segment duration
+      if (geo::approx_squared_distance(
+              last_tsd->position, new_tsd.position,
+              geo::approx_distance_lng_degrees(last_tsd->position)) < 20 &&
+          geo::approx_squared_distance(
+              new_tsd.position, nearest_stop,
+              geo::approx_distance_lng_degrees(new_tsd.position)) < 20) {
+        if (current_ttd.last_tsd_is_segment) {
+          // new stop encountered -> create new entry in stop_durations and
+          // segment_durations
+          current_ttd.stop_durations_.emplace_back(duration_t{0});
+          current_ttd.segment_durations_.emplace_back(duration_t{0});
+        }
+        current_ttd.last_tsd_is_segment = false;
+        current_ttd.stop_durations_.back() += delta;
+      } else {
+        current_ttd.last_tsd_is_segment = true;
+        current_ttd.segment_durations_.back() += delta;
+      }
+      current_ttd.seg_data_.emplace_back(new_tsd);
+    }
+
+    // create kalman here (before creation of new ttd), so it is easier to
+    // calculate averages
+    auto kalman =
+        delay_prediction->delay_prediction_store->get_or_create_kalman(
+            key, ut_start_time, delay_prediction->number_of_predecessors,
+            delay_prediction->number_of_hist_trips,
+            delay_prediction->hist_trip_time_store);
+
+    if (current_ttd_idx_it == end(delay_prediction->hist_trip_time_store
+                                      ->coord_seq_idx_ttd_[coord_seq_idx])) {
+      trip_time_data const new_ttd{ut_start_time,
+                                   {new_tsd},
+                                   vector<duration_t>{1},
+                                   vector<duration_t>{1},
+                                   false};
+      delay_prediction->hist_trip_time_store->coord_seq_idx_ttd_[coord_seq_idx]
+          .push_back(
+              trip_time_data_idx_t{delay_prediction->hist_trip_time_store
+                                       ->ttd_idx_trip_time_data_.size()});
+      delay_prediction->hist_trip_time_store->ttd_idx_trip_time_data_
+          .emplace_back(new_ttd);
+    }
+
+    // calculation of delay prediction
+    if (kalman.predecessors_.empty() || kalman.hist_trips_.empty()) {
+      calculate_delay_simple(tt, rtt, src, tag, entity, today, message_time,
+                             span, stats);
+      return;
+    }
+
+    // calculation of remaining time till next stop of predecessor at same place
+    vector<duration_t> pred_remaining_times;
+    for (auto pred_trip_idx : kalman.predecessors_) {
+      auto const& pred_trip = delay_prediction->hist_trip_time_store
+                                  ->ttd_idx_trip_time_data_[pred_trip_idx];
+      trip_seg_data const* pred_tsd_candidate_hist = nullptr;
+      for (auto const& tsd_to_check : pred_trip.seg_data_) {
+        if (tsd_to_check.seg_idx == current_segment &&
+            tsd_to_check.progress <= current_progress &&
+            (pred_tsd_candidate_hist == nullptr ||
+             tsd_to_check.progress > pred_tsd_candidate_hist->progress)) {
+          pred_tsd_candidate_hist = &tsd_to_check;
+        }
+      }
+      if (pred_tsd_candidate_hist != nullptr) {
+        pred_remaining_times.emplace_back(
+            hist_trip_times_storage::get_remaining_time_till_next_stop(
+                pred_tsd_candidate_hist, &pred_trip));
+      }
+    }
+
+    auto const avg_pred_trips_remaining_time =
+        delay_prediction_storage::get_avg_duration(pred_remaining_times);
+
+    // calculation of average remaining time till next stop of historic trips at
+    // same place
+    vector<duration_t> hist_remaining_times;
+    for (auto hist_trip_idx : kalman.hist_trips_) {
+      auto const& hist_trip = delay_prediction->hist_trip_time_store
+                                  ->ttd_idx_trip_time_data_[hist_trip_idx];
+      trip_seg_data const* pred_tsd_candidate_hist = nullptr;
+      for (auto const& tsd_to_check : hist_trip.seg_data_) {
+        if (tsd_to_check.seg_idx == current_segment &&
+            tsd_to_check.progress <= current_progress &&
+            (pred_tsd_candidate_hist == nullptr ||
+             tsd_to_check.progress > pred_tsd_candidate_hist->progress)) {
+          pred_tsd_candidate_hist = &tsd_to_check;
+        }
+      }
+      if (pred_tsd_candidate_hist != nullptr) {
+        hist_remaining_times.emplace_back(
+            hist_trip_times_storage::get_remaining_time_till_next_stop(
+                pred_tsd_candidate_hist, &hist_trip));
+      }
+    }
+
+    auto const avg_hist_trips_remaining_time =
+        delay_prediction_storage::get_avg_duration(hist_remaining_times);
+
+    // Kalman calculation ...
+
+    // ... next stop
+    auto const next_stop = static_cast<stop_idx_t>(current_segment.v_ + 1);
+
+    double hist_variance = 0;
+    for (auto const hist_del : hist_remaining_times) {
+      hist_variance +=
+          (hist_del.count() - avg_hist_trips_remaining_time.count()) *
+          (hist_del.count() - avg_hist_trips_remaining_time.count());
+    }
+    hist_variance /= hist_remaining_times.size();
+
+    kalman.filter_gain =
+        (kalman.error + hist_variance) / (kalman.error + 2 * hist_variance);
+    kalman.gain_loop = 1 - kalman.filter_gain;
+    kalman.error = hist_variance * kalman.filter_gain;
+
+    // delay for arrival at next stop = now + prognosed driving time to next
+    // stop - scheduled arrival time at next stop
+    auto delay = new_tsd.timestamp +
+                 std::chrono::duration_cast<duration_t>(
+                     kalman.gain_loop * avg_pred_trips_remaining_time +
+                     kalman.filter_gain * avg_hist_trips_remaining_time) -
+                 tt.event_time(r.t_, next_stop, event_type::kArr);
+
+    delay = std::chrono::duration_cast<duration_t>(delay);
+
+    auto const& rtt_const = rtt;
+    auto const fr = frun::from_t(tt, &rtt_const, r.t_);
+    auto const stops_after_next_stop = interval{next_stop, fr.stop_range_.to_};
+
+    // negative delay for an arrival can not lead to a time previous to the
+    // departure at the previous stop negative delay for a departure is not
+    // possible at all
+
+    // update delay for arrival at next stop
+    if (next_stop != *fr.stop_range_.begin()) {
+      // make sure delay for arrival at next stop is not before previous
+      // departure
+      if (delay + rtt.unix_event_time(r.rt_, next_stop, event_type::kArr) >
+          rtt.unix_event_time(r.rt_, next_stop - 1, event_type::kDep)) {
+        update_delay(tt, rtt, r, next_stop, event_type::kArr, delay,
+                     std::nullopt);
+      }
+    }
+
+    // update delay for stops after next stop
+    auto const [avg_pred_stop_durations, avg_pred_segment_durations] =
+        delay_prediction_storage::get_avg_stop_segment_durations(
+            delay_prediction->hist_trip_time_store, kalman.predecessors_);
+
+    for (auto const [first, second] : utl::pairwise(stops_after_next_stop)) {
+      delay +=
+          std::chrono::duration_cast<duration_t>(
+              kalman.gain_loop * avg_pred_stop_durations[first] +
+              kalman.filter_gain * kalman.hist_avg_stop_durations_[first]) -
+          (tt.event_time(r.t_, first, event_type::kDep) -
+           tt.event_time(r.t_, first, event_type::kArr));
+
+      if (delay > duration_t{0}) {
+        update_delay(tt, rtt, r, first, event_type::kDep, delay, std::nullopt);
+      } else {
+        update_delay(tt, rtt, r, first, event_type::kDep, duration_t{0},
+                     std::nullopt);
       }
 
-      hist_trip_time_store->ttd_idx_trip_time_data_[ttd_idx].seg_data_.emplace_back(new_tsd);
-      found = true;
-      break;
-          }
-  }
+      delay +=
+          std::chrono::duration_cast<duration_t>(
+              kalman.gain_loop * avg_pred_segment_durations[first] +
+              kalman.filter_gain * kalman.hist_avg_segment_durations_[first]) -
+          (tt.event_time(r.t_, second, event_type::kArr) -
+           tt.event_time(r.t_, first, event_type::kDep));
 
-  if (!found) {
-    const trip_time_data new_ttd{ut_start_time, {new_tsd}, vector<duration_t>{}, vector<duration_t>{}};
-    hist_trip_time_store->coord_seq_idx_ttd_[coord_seq_idx].push_back(trip_time_data_idx_t{hist_trip_time_store->ttd_idx_trip_time_data_.size()});
-    hist_trip_time_store->ttd_idx_trip_time_data_.emplace_back(new_ttd);
-  }
-
-  // calculation of delay prediction
-  auto kalman = delay_prediction_store->get_or_create_kalman(key, ut_start_time, hist_trip_time_store);
-
-  if (kalman.predecessor == nullptr || kalman.hist_trips_.empty()) {
-    calculate_delay_simple(tt, rtt, src, tag, entity, today,  message_time, span, stats);
-    return;
-  }
-
-  // calculation of remaining time till next stop of predecessor at same place
-  trip_seg_data* pred_tsd_candidate = nullptr;
-  for (auto tsd_to_check : kalman.predecessor->seg_data_) {
-    if (tsd_to_check.seg_idx == current_segment
-            && tsd_to_check.progress < current_progress
-            && (pred_tsd_candidate == nullptr || tsd_to_check.progress > pred_tsd_candidate->progress)) {
-      pred_tsd_candidate = &tsd_to_check;
+      if (delay + rtt.unix_event_time(r.rt_, second, event_type::kArr) >
+          rtt.unix_event_time(r.rt_, first, event_type::kDep)) {
+        update_delay(tt, rtt, r, second, event_type::kArr, delay, std::nullopt);
+      }
     }
-  }
-  // next_stop_timestamp - pred_tsd_candidate->timestamp
-  auto const pred_remaining_time = pred_tsd_candidate != nullptr ? hist_trip_time_store->get_remaining_time_till_next_stop(pred_tsd_candidate, kalman.predecessor) : duration_t{};
-
-  // calculation of average remaining time till next stop of historic trips at same place
-  vector<duration_t> hist_remaining_times;
-  for (auto hist_trip : kalman.hist_trips_) {
-    trip_seg_data* pred_tsd_candidate_hist = nullptr;
-    for (auto tsd_to_check : hist_trip->seg_data_) {
-      if (tsd_to_check.seg_idx == current_segment
-            && tsd_to_check.progress < current_progress
-            && (pred_tsd_candidate_hist == nullptr || tsd_to_check.progress > pred_tsd_candidate_hist->progress)) {
-              pred_tsd_candidate_hist = &tsd_to_check;
-            }
-    }
-    if (pred_tsd_candidate_hist != nullptr) {
-      hist_remaining_times.emplace_back(hist_trip_time_store->get_remaining_time_till_next_stop(pred_tsd_candidate_hist, hist_trip));
-    }
-  }
-
-  auto const avg_hist_trips_remaining_time = delay_prediction_store->get_avg_duration(hist_remaining_times);
-
-  // Kalman calculation ...
-
-  // ... next stop
-  auto const next_stop = static_cast<stop_idx_t>(current_segment.v_ + 1);
-
-  double hist_variance = 0;
-  for (auto const hist_del : hist_remaining_times) {
-    hist_variance += (hist_del.count() - avg_hist_trips_remaining_time.count()) * (hist_del.count() - avg_hist_trips_remaining_time.count());
-  }
-  hist_variance /= hist_remaining_times.size();
-
-  kalman.filter_gain = (kalman.error + hist_variance) / (kalman.error + 2 * hist_variance);
-  kalman.gain_loop = 1 - kalman.filter_gain;
-  kalman.error = hist_variance * kalman.filter_gain;
-
-  // delay for arrival at next stop = now + prognosed driving time to next stop - scheduled arrival time at next stop
-  auto delay =
-    new_tsd.timestamp
-  + std::chrono::duration_cast<duration_t>(kalman.gain_loop * pred_remaining_time + kalman.filter_gain * avg_hist_trips_remaining_time)
-  - tt.event_time(r.t_, next_stop, event_type::kArr);
-
-  delay = delay.count() > 0 ? std::chrono::duration_cast<duration_t>(delay) : duration_t{0};
-
-  // ... following stops and segments
-
-  // update delays for following stops
-  auto const& rtt_const = rtt;
-  auto const fr = frun::from_t(tt, &rtt_const, r.t_);
-  auto const stops_after_next_stop = interval{next_stop, fr.stop_range_.to_};
-
-  if (next_stop != *fr.stop_range_.begin()) {
-    update_delay(tt, rtt, r, next_stop, event_type::kArr, delay,
-                 std::nullopt);
-  }
-
-  for (auto const [first, second] : utl::pairwise(stops_after_next_stop)) {
-    // TODO: delay für arr darf negativ sein (aber nicht vor dep von vorigem stop!), für dep nicht
-    delay += std::chrono::duration_cast<duration_t>(kalman.gain_loop * kalman.predecessor->stop_durations_[first] + kalman.filter_gain * kalman.hist_avg_stop_durations_[first])
-                - (tt.event_time(r.t_, first, event_type::kDep) - tt.event_time(r.t_, first, event_type::kArr));
-
-    update_delay(tt, rtt, r, first, event_type::kDep, delay,
-                 std::nullopt);
-
-    delay += std::chrono::duration_cast<duration_t>(kalman.gain_loop * kalman.predecessor->segment_durations_[second] + kalman.filter_gain * kalman.hist_avg_segment_durations_[second])
-                - (tt.event_time(r.t_, second, event_type::kArr) - tt.event_time(r.t_, first, event_type::kDep));
-
-    update_delay(tt, rtt, r, second, event_type::kArr, delay,
-                 std::nullopt);
+    ++stats.total_entities_success_;
+  } catch (std::exception const& e) {
+    ++stats.total_entities_fail_;
+    log(log_lvl::debug, "rt.gtfs",
+        "GTFS-RT error (tag={}): time={}, entity={}, message={}, error={}", tag,
+        date::format("%T", message_time), entity.id(),
+        remove_nl(entity.DebugString()), e.what());
+    span->AddEvent("exception", {{"exception.message", e.what()},
+                                 {"entity.id", entity.id()},
+                                 {"message", remove_nl(entity.DebugString())}});
   }
 }
 
@@ -786,9 +898,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
                              source_idx_t const src,
                              std::string_view tag,
                              gtfsrt::FeedMessage const& msg,
-                             bool const use_vehicle_position,
-                             delay_prediction_storage* delay_prediction_store,
-                             hist_trip_times_storage* trip_time_data_store) {
+                             delay_prediction* delay_prediction) {
   auto span = get_otel_tracer()->StartSpan("gtfsrt_update_msg", {{"tag", tag}});
   auto scope = opentelemetry::trace::Scope{span};
 
@@ -827,7 +937,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
       continue;
     }
 
-    if (use_vehicle_position) {
+    if (delay_prediction != nullptr) {
       ++stats.total_vehicles_;
       if (!entity.has_vehicle()) {
         log(log_lvl::debug, "rt.gtfs.unsupported",
@@ -839,6 +949,10 @@ statistics gtfsrt_update_msg(timetable const& tt,
             R"(unsupported: no "position" field in "vehicle_position" field (tag={}, id={}), skipping message)",
             tag, entity.id());
         ++stats.vehicle_position_without_position_;
+      } else if (delay_prediction->algo == algorithm::kIntelligent) {
+        calculate_delay_intelligent(tt, rtt, src, tag, entity, today,
+                                    message_time, span, stats,
+                                    delay_prediction);
       } else if (!entity.vehicle().has_trip()) {
         log(log_lvl::debug, "rt.gtfs.unsupported",
             R"(unsupported: no "trip" field in "vehicle_position" field (tag={}, id={}), skipping message)",
@@ -849,13 +963,9 @@ statistics gtfsrt_update_msg(timetable const& tt,
             R"(unsupported: no "trip_id" field in "trip" field (tag={}, id={}), skipping message)",
             tag, entity.id());
         ++stats.vehicle_position_trip_without_trip_id_;
-      } else if (trip_time_data_store != nullptr) {
-        calculate_delay_intelligent(tt, rtt, src, tag, entity, today, message_time,
-                                span, stats, delay_prediction_store, trip_time_data_store);
-      }
-      else {
+      } else {
         calculate_delay_simple(tt, rtt, src, tag, entity, today, message_time,
-                                span, stats);
+                               span, stats);
       }
       continue;
     }
@@ -980,6 +1090,68 @@ statistics gtfsrt_update_msg(timetable const& tt,
             });
         ++stats.trip_resolve_error_;
       }
+      // add matching-information (vehicle -> run) if needed
+      if (delay_prediction != nullptr &&
+          delay_prediction->algo == algorithm::kIntelligent &&
+          entity.trip_update().has_vehicle() &&
+          entity.trip_update().vehicle().has_id()) {
+        auto const lb = std::lower_bound(
+            begin(delay_prediction->vehicle_trip_match->vehicle_id_to_idx_),
+            end(delay_prediction->vehicle_trip_match->vehicle_id_to_idx_),
+            entity.trip_update().vehicle().id(),
+            [&](pair<vehicle_id_idx_t, vehicle_idx_t> const& a, auto&& b) {
+              return std::tuple{delay_prediction->vehicle_trip_match
+                                    ->vehicle_id_src_[a.first],
+                                delay_prediction->vehicle_trip_match
+                                    ->vehicle_id_strings_[a.first]
+                                    .view()} <
+                     std::tuple{src, static_cast<std::string_view>(b)};
+            });
+
+        auto const id_matches = [&](vehicle_id_idx_t const v_id_idx) {
+          return delay_prediction->vehicle_trip_match
+                         ->vehicle_id_src_[v_id_idx] == src &&
+                 delay_prediction->vehicle_trip_match
+                         ->vehicle_id_strings_[v_id_idx]
+                         .view() == entity.trip_update().vehicle().id();
+        };
+
+        std::chrono::sys_seconds now{
+            std::chrono::time_point_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now())};
+        auto vehicle_idx = lb->second;
+        if (lb !=
+                end(delay_prediction->vehicle_trip_match->vehicle_id_to_idx_) &&
+            id_matches(lb->first)) {
+          // if we don't already have a run for this vehicle
+          if (delay_prediction->vehicle_trip_match->vehicle_idx_run_.count(
+                  lb->second) == 0) {
+            delay_prediction->vehicle_trip_match->vehicle_idx_run_.emplace(
+                vehicle_idx,
+                gtfsrt_resolve_run(today, tt, &rtt, src, td).first);
+            delay_prediction->vehicle_trip_match->vehicle_idx_last_access_
+                .emplace(vehicle_idx, now);
+          }
+        } else {
+          vehicle_idx = vehicle_idx_t{
+              delay_prediction->vehicle_trip_match->vehicle_id_to_idx_.size() -
+              1};
+          delay_prediction->vehicle_trip_match->vehicle_id_strings_
+              .emplace_back(entity.trip_update().vehicle().id());
+          delay_prediction->vehicle_trip_match->vehicle_id_src_.emplace_back(
+              src);
+          delay_prediction->vehicle_trip_match->vehicle_id_to_idx_.emplace_back(
+              vehicle_id_idx_t{delay_prediction->vehicle_trip_match
+                                   ->vehicle_id_strings_.size() -
+                               1},
+              vehicle_idx);
+          delay_prediction->vehicle_trip_match->vehicle_idx_run_.emplace(
+              vehicle_idx, gtfsrt_resolve_run(today, tt, &rtt, src, td).first);
+          delay_prediction->vehicle_trip_match->vehicle_idx_last_access_
+              .emplace(vehicle_idx, now);
+        }
+      }
+
     } catch (std::exception const& e) {
       ++stats.total_entities_fail_;
       log(log_lvl::debug, "rt.gtfs",
@@ -1002,9 +1174,7 @@ statistics gtfsrt_update_buf(timetable const& tt,
                              std::string_view tag,
                              std::string_view protobuf,
                              gtfsrt::FeedMessage& msg,
-                             bool const use_vehicle_position,
-                             delay_prediction_storage* delay_prediction_store,
-                             hist_trip_times_storage* hist_trip_time_store) {
+                             delay_prediction* delay_prediction) {
   msg.Clear();
 
   auto const success =
@@ -1017,7 +1187,7 @@ statistics gtfsrt_update_buf(timetable const& tt,
     return {.parser_error_ = true};
   }
 
-  return gtfsrt_update_msg(tt, rtt, src, tag, msg, use_vehicle_position, delay_prediction_store, hist_trip_time_store);
+  return gtfsrt_update_msg(tt, rtt, src, tag, msg, delay_prediction);
 }
 
 statistics gtfsrt_update_buf(timetable const& tt,
@@ -1025,12 +1195,9 @@ statistics gtfsrt_update_buf(timetable const& tt,
                              source_idx_t const src,
                              std::string_view tag,
                              std::string_view protobuf,
-                             bool const use_vehicle_position,
-                             delay_prediction_storage* delay_prediction_store,
-                             hist_trip_times_storage* hist_trip_time_store) {
+                             delay_prediction* delay_prediction) {
   auto msg = gtfsrt::FeedMessage{};
-  return gtfsrt_update_buf(tt, rtt, src, tag, protobuf, msg,
-                           use_vehicle_position, delay_prediction_store, hist_trip_time_store);
+  return gtfsrt_update_buf(tt, rtt, src, tag, protobuf, msg, delay_prediction);
 }
 
 }  // namespace nigiri::rt

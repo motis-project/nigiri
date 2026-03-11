@@ -3,13 +3,13 @@
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/delay_prediction.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/util.h"
 #include "nigiri/timetable.h"
-#include "nigiri/delay_prediction.h"
 
 #include "./util.h"
 
@@ -179,23 +179,19 @@ trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_t
 3248652,06:55:00,06:55:00,1916,26,0,0
 3248652,06:56:00,06:56:00,1918,27,0,0
 3248652,06:58:00,06:58:00,1127,28,1,0
-3248653,05:15:00,05:15:00,2351,1,0,0
-3248653,05:16:00,05:16:00,1033,2,0,0
-3248653,05:18:00,05:18:00,2086,3,0,0
-3248653,05:19:00,05:19:00,2885,4,0,0
-3248653,05:21:00,05:21:00,2888,5,0,0
-3248653,05:22:00,05:22:00,3189,6,0,0
-3248653,05:24:00,05:24:00,3895,7,0,0
-3248653,05:26:00,05:26:00,3893,8,0,0
-3248653,05:27:00,05:27:00,2969,9,0,0
-3248653,05:29:00,05:29:00,2971,10,0,0
+3248653,07:15:00,07:15:00,2351,1,0,0
+3248653,07:16:00,07:16:00,1033,2,0,0
+3248653,07:18:00,07:18:00,2086,3,0,0
+3248653,07:19:00,07:19:00,2885,4,0,0
+3248653,07:21:00,07:21:00,2888,5,0,0
+3248653,07:22:00,07:22:00,3189,6,0,0
+3248653,07:24:00,07:24:00,3895,7,0,0
+3248653,07:26:00,07:26:00,3893,8,0,0
+3248653,07:27:00,07:27:00,2969,9,0,0
+3248653,07:29:00,07:29:00,2971,10,0,0
 )");
 }
 
-// Pos 1 at Seg 0
-// Pos 2 at Seg 5
-// Pos 3 at Seg 5
-// Pos 4 at Seg 6
 auto const kVehiclePosition =
     R"({
  "header": {
@@ -208,12 +204,6 @@ auto const kVehiclePosition =
     "id": "32486517",
     "isDeleted": false,
     "vehicle": {
-    "trip": {
-      "tripId": "3248651",
-      "startTime": "05:15:00",
-      "startDate": "20230810",
-      "routeId": "201"
-    },
     "position": {
       "latitude": "43.420946",
       "longitude": "-80.463974"
@@ -229,12 +219,6 @@ auto const kVehiclePosition =
     "id": "32486518",
     "isDeleted": false,
     "vehicle": {
-    "trip": {
-      "tripId": "3248651",
-      "startTime": "05:15:00",
-      "startDate": "20230810",
-      "routeId": "201"
-    },
     "position": {
       "latitude": "43.409295",
       "longitude": "-80.499004"
@@ -250,12 +234,6 @@ auto const kVehiclePosition =
     "id": "32486519",
     "isDeleted": false,
     "vehicle": {
-    "trip": {
-      "tripId": "3248651",
-      "startTime": "05:15:00",
-      "startDate": "20230810",
-      "routeId": "201"
-    },
     "position": {
       "latitude": "43.407145",
       "longitude": "-80.498714"
@@ -271,12 +249,6 @@ auto const kVehiclePosition =
     "id": "32486520",
     "isDeleted": false,
     "vehicle": {
-    "trip": {
-      "tripId": "3248651",
-      "startTime": "05:15:00",
-      "startDate": "20230810",
-      "routeId": "201"
-    },
     "position": {
       "latitude": "43.412195",
       "longitude": "-80.506761"
@@ -296,24 +268,18 @@ auto const kVehiclePosition2 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1691663040"
+  "timestamp": "1691659440"
  },
  "entity": [
   {
-    "id": "32486521",
+    "id": "32486517",
     "isDeleted": false,
     "vehicle": {
-    "trip": {
-      "tripId": "3248652",
-      "startTime": "06:15:00",
-      "startDate": "20230810",
-      "routeId": "201"
-    },
     "position": {
       "latitude": "43.420946",
       "longitude": "-80.463974"
     },
-    "timestamp": "1691662531",
+    "timestamp": "1691662571",
     "vehicle": {
       "id": "v2"
     },
@@ -321,62 +287,39 @@ auto const kVehiclePosition2 =
     }
   },
   {
-    "id": "32486522",
+    "id": "32486518",
     "isDeleted": false,
     "vehicle": {
-    "trip": {
-      "tripId": "3248652",
-      "startTime": "06:15:00",
-      "startDate": "20230810",
-      "routeId": "201"
-    },
     "position": {
       "latitude": "43.409295",
       "longitude": "-80.499004"
     },
-    "timestamp": "1691662980",
-    "vehicle": {
-      "id": "v2"
-    },
+    "timestamp": "1691662985",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
   {
-    "id": "32486523",
+    "id": "32486519",
     "isDeleted": false,
     "vehicle": {
-    "trip": {
-      "tripId": "3248652",
-      "startTime": "06:15:00",
-      "startDate": "20230810",
-      "routeId": "201"
-    },
     "position": {
       "latitude": "43.407145",
       "longitude": "-80.498714"
     },
-    "timestamp": "1691663280",
-    "vehicle": {
-      "id": "v2"
-    },
+    "stop_id": "3893",
+    "timestamp": "1691663281",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
   {
-    "id": "32486524",
+    "id": "32486520",
     "isDeleted": false,
     "vehicle": {
-    "trip": {
-      "tripId": "3248652",
-      "startTime": "06:15:00",
-      "startDate": "20230810",
-      "routeId": "201"
-    },
     "position": {
       "latitude": "43.412195",
       "longitude": "-80.506761"
     },
-    "timestamp": "1691663400",
+    "timestamp": "1691663405",
     "vehicle": {
       "id": "v2"
     },
@@ -395,20 +338,14 @@ auto const kVehiclePosition3 =
  },
  "entity": [
   {
-    "id": "32486525",
+    "id": "32486517",
     "isDeleted": false,
     "vehicle": {
-    "trip": {
-      "tripId": "3248653",
-      "startTime": "05:15:00",
-      "startDate": "20230810",
-      "routeId": "202"
-    },
     "position": {
       "latitude": "43.420946",
       "longitude": "-80.463974"
     },
-    "timestamp": "1691658931",
+    "timestamp": "1691666700",
     "vehicle": {
       "id": "v3"
     },
@@ -416,20 +353,14 @@ auto const kVehiclePosition3 =
     }
   },
   {
-    "id": "32486526",
+    "id": "32486518",
     "isDeleted": false,
     "vehicle": {
-    "trip": {
-      "tripId": "3248653",
-      "startTime": "05:15:00",
-      "startDate": "20230810",
-      "routeId": "202"
-    },
     "position": {
       "latitude": "43.409295",
       "longitude": "-80.499004"
     },
-    "timestamp": "1691659380",
+    "timestamp": "1691666760",
     "vehicle": {
       "id": "v3"
     },
@@ -437,20 +368,15 @@ auto const kVehiclePosition3 =
     }
   },
   {
-    "id": "32486527",
+    "id": "32486519",
     "isDeleted": false,
     "vehicle": {
-    "trip": {
-      "tripId": "3248653",
-      "startTime": "05:15:00",
-      "startDate": "20230810",
-      "routeId": "202"
-    },
     "position": {
       "latitude": "43.407145",
       "longitude": "-80.498714"
     },
-    "timestamp": "1691659680",
+    "stop_id": "3893",
+    "timestamp": "1691666820",
     "vehicle": {
       "id": "v3"
     },
@@ -458,20 +384,14 @@ auto const kVehiclePosition3 =
     }
   },
   {
-    "id": "32486528",
+    "id": "32486520",
     "isDeleted": false,
     "vehicle": {
-    "trip": {
-      "tripId": "3248653",
-      "startTime": "05:15:00",
-      "startDate": "20230810",
-      "routeId": "202"
-    },
     "position": {
       "latitude": "43.412195",
       "longitude": "-80.506761"
     },
-    "timestamp": "1691659800",
+    "timestamp": "1691666880",
     "vehicle": {
       "id": "v3"
     },
@@ -481,50 +401,10 @@ auto const kVehiclePosition3 =
  ]
 })"s;
 
-constexpr auto const expected =
-  R"(
-cs_key_coord_seq_:
-Key: Source: 0 Transport: 0
-Coord_seq_Idx: 0
-Key: Source: 0 Transport: 1
-Coord_seq_Idx: 0
-Key: Source: 0 Transport: 2
-Coord_seq_Idx: 1
-
-coord_seq_idx_coord_seq_:
-Coord_seq_Idx: 0
-Location_Sequence: 9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,
-Coord_seq_Idx: 1
-Location_Sequence: 9,10,11,12,13,14,15,16,17,18,
-
-coord_seq_idx_ttd_:
-Coord_seq_Idx: 0
-Trip_Time_Data_Idxs: 0,1,
-Coord_seq_Idx: 1
-Trip_Time_Data_Idxs: 2,
-
-ttd_idx_trip_time_data_:
-Trip_Time_Data_Idx: 0 Start_Time: 2023-08-10 09:15
-Segment: 0 Progress: 0.122255 Timestamp: 2023-08-10 09:15
-Segment: 5 Progress: 0.203121 Timestamp: 2023-08-10 09:23
-Segment: 5 Progress: 0.771619 Timestamp: 2023-08-10 09:28
-Segment: 6 Progress: 0.56827 Timestamp: 2023-08-10 09:30
-Trip_Time_Data_Idx: 1 Start_Time: 2023-08-10 10:15
-Segment: 0 Progress: 0.122255 Timestamp: 2023-08-10 10:15
-Segment: 5 Progress: 0.203121 Timestamp: 2023-08-10 10:23
-Segment: 5 Progress: 0.771619 Timestamp: 2023-08-10 10:28
-Segment: 6 Progress: 0.56827 Timestamp: 2023-08-10 10:30
-Trip_Time_Data_Idx: 2 Start_Time: 2023-08-10 09:15
-Segment: 0 Progress: 0.122255 Timestamp: 2023-08-10 09:15
-Segment: 5 Progress: 0.203121 Timestamp: 2023-08-10 09:23
-Segment: 5 Progress: 0.771619 Timestamp: 2023-08-10 09:28
-Segment: 6 Progress: 0.56827 Timestamp: 2023-08-10 09:30
-)";
-
 }  // namespace
 
-TEST(rt, gtfsrt_hist_trip_database_test) {
-  std::cout << "Test rt::gtfsrt_hist_trip_database_test" << std::endl;
+TEST(rt, gtfsrt_vp_resolve_trip_test) {
+  std::cout << "Test rt::gtfsrt_vp_resolve_trip_test" << std::endl;
 
   // Load static timetable.
   timetable tt;
@@ -537,25 +417,8 @@ TEST(rt, gtfsrt_hist_trip_database_test) {
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
 
-  auto dps = delay_prediction_storage{};
-
+  // Create empty vehicle_trip_matching
   auto vtm = vehicle_trip_matching{};
-
-  // Create empty Trip Time Data Storage
-  auto tts = hist_trip_times_storage{};
-
-  auto dp = delay_prediction{algorithm::kIntelligent, hist_trip_mode::kSameDay, 1, 5, &dps, &tts, &vtm};
-
-  // Update.
-  auto const msg = rt::json_to_protobuf(kVehiclePosition);
-  auto const msg2 = rt::json_to_protobuf(kVehiclePosition2);
-  auto const msg3 = rt::json_to_protobuf(kVehiclePosition3);
-
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, &dp);
-  std::cout << "\nA\n" << std::endl;
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2, &dp);
-  std::cout << "\nB\n" << std::endl;
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg3, &dp);
 
   // Print trip.
   transit_realtime::TripDescriptor td;
@@ -563,28 +426,56 @@ TEST(rt, gtfsrt_hist_trip_database_test) {
   td.set_trip_id("3248651");
   td.set_start_time("05:15:00");
   auto const [r, t] = gtfsrt_resolve_run(date::sys_days{May / 1 / 2019}, tt,
-                                             &rtt, source_idx_t{0}, td);
+                                         &rtt, source_idx_t{0}, td);
 
   transit_realtime::TripDescriptor td2;
   td2.set_start_date("20230810");
   td2.set_trip_id("3248652");
   td2.set_start_time("06:15:00");
   auto const [r2, t2] = gtfsrt_resolve_run(date::sys_days{May / 1 / 2019}, tt,
-                                             &rtt, source_idx_t{0}, td2);
+                                           &rtt, source_idx_t{0}, td2);
 
   transit_realtime::TripDescriptor td3;
   td3.set_start_date("20230810");
   td3.set_trip_id("3248653");
-  td3.set_start_time("05:15:00");
+  td3.set_start_time("07:15:00");
   auto const [r3, t3] = gtfsrt_resolve_run(date::sys_days{May / 1 / 2019}, tt,
-                                             &rtt, source_idx_t{0}, td3);
+                                           &rtt, source_idx_t{0}, td3);
 
   ASSERT_TRUE(r.valid());
   ASSERT_TRUE(r2.valid());
   ASSERT_TRUE(r3.valid());
 
-  std::stringstream ss;
-  ss << tts;
+  transit_realtime::FeedMessage msg1;
+  msg1.Clear();
+  msg1.ParseFromArray(
+      reinterpret_cast<void const*>(json_to_protobuf(kVehiclePosition).data()),
+      static_cast<int>(json_to_protobuf(kVehiclePosition).size()));
+  for (auto const& entity1 : msg1.entity()) {
+    auto const vp_r1 =
+        gtfsrt_vp_resolve_run(tt, source_idx_t{0}, entity1.vehicle(), &vtm);
+    ASSERT_TRUE(vp_r1.valid());
+  }
 
-  EXPECT_EQ(expected, ss.str());
+  transit_realtime::FeedMessage msg2;
+  msg2.Clear();
+  msg2.ParseFromArray(
+      reinterpret_cast<void const*>(json_to_protobuf(kVehiclePosition2).data()),
+      static_cast<int>(json_to_protobuf(kVehiclePosition2).size()));
+  for (auto const& entity2 : msg2.entity()) {
+    auto const vp_r2 =
+        gtfsrt_vp_resolve_run(tt, source_idx_t{0}, entity2.vehicle(), &vtm);
+    ASSERT_TRUE(vp_r2.valid());
+  }
+
+  transit_realtime::FeedMessage msg3;
+  msg3.Clear();
+  msg3.ParseFromArray(
+      reinterpret_cast<void const*>(json_to_protobuf(kVehiclePosition3).data()),
+      static_cast<int>(json_to_protobuf(kVehiclePosition3).size()));
+  auto vp_r3 = run{};
+  for (auto const& entity3 : msg3.entity()) {
+    vp_r3 = gtfsrt_vp_resolve_run(tt, source_idx_t{0}, entity3.vehicle(), &vtm);
+  }
+  ASSERT_TRUE(vp_r3.valid());
 }
