@@ -134,11 +134,15 @@ float contrast_ratio(color_t a, color_t b) {
 void correct_color_contrast(timetable& tt) {
   for (auto& ids : tt.route_ids_) {
     for (auto& colors : ids.route_id_colors_) {
+      if (colors.color_ == 0 || colors.text_color_ == 0) {
+        continue;
+      }
+
       auto const ratio = contrast_ratio(colors.color_, colors.text_color_);
 
-      if (ratio < 3.0f) {
-        constexpr auto white = color_t(0xFFFFFF);
-        constexpr auto black = color_t(0x000000);
+      if (ratio < 2.0f) {
+        constexpr auto white = color_t(0xFFFFFFFF);
+        constexpr auto black = color_t(0xFF000000);
         auto const better = contrast_ratio(colors.color_, black) >
                                     contrast_ratio(colors.color_, white)
                                 ? black

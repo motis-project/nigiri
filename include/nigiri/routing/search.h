@@ -52,6 +52,10 @@ struct search_stats {
         {"fastest_direct", fastest_direct_},
         {"interval_extensions", interval_extensions_},
         {"execute_time", execute_time_.count()},
+        {"n_events_skipped_by_early_termination",
+         n_events_skipped_by_early_termination_},
+        {"search_interval_reduction_by_early_termination",
+         search_interval_reduction_by_early_termination_.count()},
     };
   }
 
@@ -59,6 +63,8 @@ struct search_stats {
   std::uint64_t fastest_direct_{0ULL};
   std::uint64_t interval_extensions_{0ULL};
   std::chrono::milliseconds execute_time_{0LL};
+  std::uint64_t n_events_skipped_by_early_termination_{0ULL};
+  std::chrono::minutes search_interval_reduction_by_early_termination_{0LL};
 };
 
 struct routing_result {
@@ -107,13 +113,17 @@ struct search {
       auto lb_span = get_otel_tracer()->StartSpan("lower bounds");
       auto lb_scope = opentelemetry::trace::Scope{lb_span};
       UTL_START_TIMING(lb);
-      dijkstra(tt_, q_,
-               rtt_ == nullptr
-                   ? (kFwd ? tt_.fwd_search_lb_graph_[q_.prf_idx_]
-                           : tt_.bwd_search_lb_graph_[q_.prf_idx_])
-                   : (kFwd ? rtt_->fwd_search_lb_graph_[q_.prf_idx_]
-                           : rtt_->bwd_search_lb_graph_[q_.prf_idx_]),
-               state_.travel_time_lower_bound_);
+      dijkstra(
+          tt_, q_,
+          (kFwd ? tt_.fwd_search_lb_graph_[q_.prf_idx_]
+                : tt_.bwd_search_lb_graph_[q_.prf_idx_]),
+          (rtt_ == nullptr ? nullptr
+                           : &(kFwd ? rtt_->fwd_search_lb_graph_has_edges_
+                                    : rtt_->bwd_search_lb_graph_has_edges_)),
+          (rtt_ == nullptr ? nullptr
+                           : &(kFwd ? rtt_->fwd_search_lb_graph_
+                                    : rtt_->bwd_search_lb_graph_)),
+          state_.travel_time_lower_bound_);
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
 
@@ -426,12 +436,19 @@ private:
     auto span = get_otel_tracer()->StartSpan("search::search_interval");
     auto scope = opentelemetry::trace::Scope{span};
 
+    auto early_termination = false;
     utl::equal_ranges_linear(
         state_.starts_,
         [](start const& a, start const& b) {
           return a.time_at_start_ == b.time_at_start_;
         },
         [&](auto&& from_it, auto&& to_it) {
+          if (early_termination) {
+            stats_.n_events_skipped_by_early_termination_ +=
+                it_range{from_it, to_it}.size();
+            return;
+          }
+
           algo_.next_start_time();
           auto const start_time = from_it->time_at_start_;
           for (auto const& s : it_range{from_it, to_it}) {
@@ -470,6 +487,23 @@ private:
                       fmt::format("reconstruct failed: {}", e.what())}});
               }
             }
+          }
+
+          if (q_.min_connection_count_ > 0 &&
+              n_results_in_interval() >= q_.min_connection_count_ &&
+              ((kFwd && q_.extend_interval_earlier_ &&
+                !q_.extend_interval_later_) ||
+               (kBwd && !q_.extend_interval_earlier_ &&
+                q_.extend_interval_later_))) {
+            early_termination = true;
+            auto const start_size = search_interval_.size();
+            if constexpr (kFwd) {
+              search_interval_.from_ = start_time;
+            } else {
+              search_interval_.to_ = start_time + duration_t{1};
+            }
+            stats_.search_interval_reduction_by_early_termination_ =
+                std::chrono::abs(start_size - search_interval_.size());
           }
         });
   }

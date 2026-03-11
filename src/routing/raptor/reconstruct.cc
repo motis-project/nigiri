@@ -550,14 +550,16 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
   auto const find_dest_leg = [&](unsigned const k, location_idx_t const l,
                                  offset const dest_offset,
-                                 bool const td_footpath) {
-    auto ret = std::optional<std::pair<journey::leg, journey::leg>>{};
+                                 bool const td_footpath)
+      -> std::optional<std::pair<journey::leg, journey::leg>> {
     if (dest_offset.duration_ >= footpath::kMaxDuration) {
       // can happen when considering a td_footpath candidate from another stop
       // that departs more than 8:30 hours (kMaxDuration) later than the actual
       // one that should be reconstructed
-      return ret;
+      return std::nullopt;
     }
+
+    auto ret = std::optional<std::pair<journey::leg, journey::leg>>{};
     auto const curr_time = round_times[k][to_idx(l)][v];
     for_each_meta(
         tt, location_match_mode::kIntermodal, dest_offset.target_,

@@ -73,11 +73,8 @@ struct rt_timetable {
   void update_lbs(timetable const& tt,
                   rt_transport_idx_t,
                   stop_idx_t,
-                  event_type,
-                  std::array<paged_vecvec<location_idx_t, footpath>,
-                             kNProfiles>& fwd_search_lb_graph,
-                  std::array<paged_vecvec<location_idx_t, footpath>,
-                             kNProfiles>& bwd_search_lb_graph);
+                  vector_map<location_idx_t, std::vector<footpath>>&,
+                  vector_map<location_idx_t, std::vector<footpath>>&);
   void update_lbs(timetable const& tt);
 
   void cancel_run(rt::run const&);
@@ -271,11 +268,11 @@ struct rt_timetable {
 
   change_callback_t change_callback_;
 
-  // Lower bound graph.
-  std::array<vecvec<location_idx_t, footpath>, kNProfiles> fwd_search_lb_graph_;
-  std::array<vecvec<location_idx_t, footpath>, kNProfiles> bwd_search_lb_graph_;
-
-  // TODO route colors?
+  // Lower bound graph extension.
+  bitvec_map<location_idx_t> fwd_search_lb_graph_has_edges_;
+  bitvec_map<location_idx_t> bwd_search_lb_graph_has_edges_;
+  vecvec<location_idx_t, footpath> fwd_search_lb_graph_;
+  vecvec<location_idx_t, footpath> bwd_search_lb_graph_;
 };
 
 }  // namespace nigiri

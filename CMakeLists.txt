@@ -38,6 +38,7 @@ if (NIGIRI_LINT)
   include(cmake/clang-tidy.cmake)
 endif ()
 
+set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
   set(nigiri-compile-options
         -Weverything
@@ -64,19 +65,16 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         -Wno-duplicate-enum
         -Wno-switch-default
         -Wno-ctad-maybe-unsupported
-        -Werror)
+        -Wno-nrvo
+        -Wno-thread-safety-negative
+        -Wno-unused-private-field)
 elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
-  set(nigiri-compile-options -Wall -Wextra -Werror)
-elseif (MSVC)
-  set(nigiri-compile-options /WX)
-else ()
+  set(nigiri-compile-options -Wall -Wextra)
+elseif (NOT MSVC)
   set(nigiri-compile-options
         -Wall
         -Wextra
         -Wno-maybe-uninitialized)
-  if (NOT CMAKE_CROSSCOMPILING)
-    set(nigiri-compile-options ${nigiri-compile-options} -Werror)
-  endif ()
 endif ()
 
 
