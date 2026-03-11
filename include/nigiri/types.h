@@ -92,18 +92,23 @@ using cista::holds_alternative;
 template <typename K, typename V, typename SizeType = cista::base_t<K>>
 using vecvec = cista::raw::vecvec<K, V, SizeType>;
 
-template <typename K, typename V, std::size_t N,
+template <typename K,
+          typename V,
+          std::size_t N,
           typename SizeType = std::uint32_t>
 using nvec = cista::raw::nvec<K, V, N, SizeType>;
 
 template <typename K, typename V>
 using mutable_fws_multimap = cista::raw::mutable_fws_multimap<K, V>;
 
-template <typename K, typename V, typename Hash = cista::hash_all,
+template <typename K,
+          typename V,
+          typename Hash = cista::hash_all,
           typename Equality = cista::equals_all>
 using hash_map = cista::raw::ankerl_map<K, V, Hash, Equality>;
 
-template <typename K, typename Hash = cista::hash_all,
+template <typename K,
+          typename Hash = cista::hash_all,
           typename Equality = cista::equals_all>
 using hash_set = cista::raw::ankerl_set<K, Hash, Equality>;
 

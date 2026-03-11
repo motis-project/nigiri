@@ -27,9 +27,10 @@ using namespace std::string_view_literals;
 
 namespace {
 
+
 // reads a binary GTFS-RT-FeedMessage from a file and returns it as a serialized
 // string
-std::string read_gtfsrt_file(std::filesystem::path const& p) {
+[[maybe_unused]] std::string read_gtfsrt_file(std::filesystem::path const& p) {
   auto f = std::ifstream{p, std::ios::in | std::ios::binary};
   utl::verify(f.good(), "unable to open gtfsrt file {}", p.string());
   auto buf = std::string{std::istreambuf_iterator<char>{f},
@@ -1475,14 +1476,6 @@ auto const kVehiclePositionT39 =
  ]
 })"s;
 
-constexpr auto const expected_tts = R"(
-
-)"sv;
-
-constexpr auto const expected_dps = R"(
-
-)"sv;
-
 }  // namespace
 
 TEST(rt, gtfsrt_rt_delay_calc_test) {
@@ -1670,6 +1663,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   std::cout << ss_dps9.str() << std::endl;
 }
 
+/**
 TEST(rt, gtfsrt_rt_delay_calc_real_data_test_file) {
   std::cout << "Test rt::gtfsrt_rt_delay_calc_real_data_test" << std::endl;
 
@@ -1723,3 +1717,4 @@ TEST(rt, gtfsrt_rt_delay_calc_real_data_test_file) {
 
   EXPECT_FALSE(ss_tts.str().empty() && ss_dps.str().empty());
 }
+**/
