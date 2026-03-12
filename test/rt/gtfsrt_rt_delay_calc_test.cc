@@ -181,7 +181,7 @@ auto const kVehiclePositionT11 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1688371440"
+  "timestamp": "1688385840"
  },
  "entity": [
   {
@@ -198,7 +198,7 @@ auto const kVehiclePositionT11 =
       "latitude": "43.422095",
       "longitude": "-80.462740"
     },
-    "timestamp": "1688361540",
+    "timestamp": "1688375940",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -216,7 +216,7 @@ auto const kVehiclePositionT11 =
       "latitude": "43.420610844275686",
       "longitude": "-80.4643359499176"
     },
-    "timestamp": "1688362800",
+    "timestamp": "1688377200",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -234,7 +234,7 @@ auto const kVehiclePositionT11 =
       "latitude": "43.419023",
       "longitude": "-80.466600"
     },
-    "timestamp": "1688364300",
+    "timestamp": "1688378700",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -252,7 +252,7 @@ auto const kVehiclePositionT11 =
       "latitude": "43.419023",
       "longitude": "-80.466600"
     },
-    "timestamp": "1688364960",
+    "timestamp": "1688379360",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -270,7 +270,7 @@ auto const kVehiclePositionT11 =
       "latitude": "43.41855161265139",
       "longitude": "-80.47031974600564"
     },
-    "timestamp": "1688366700",
+    "timestamp": "1688381100",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -288,7 +288,7 @@ auto const kVehiclePositionT11 =
       "latitude": "43.417796",
       "longitude": "-80.473666"
     },
-    "timestamp": "1688367660",
+    "timestamp": "1688382060",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -306,7 +306,7 @@ auto const kVehiclePositionT11 =
       "latitude": "43.417796",
       "longitude": "-80.473666"
     },
-    "timestamp": "1688368500",
+    "timestamp": "1688382900",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -324,7 +324,7 @@ auto const kVehiclePositionT11 =
       "latitude": "43.416960971123125",
       "longitude": "-80.47671371418541"
     },
-    "timestamp": "1688370060",
+    "timestamp": "1688384460",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -342,7 +342,7 @@ auto const kVehiclePositionT11 =
       "latitude": "43.415733",
       "longitude": "-80.480340"
     },
-    "timestamp": "1688371440",
+    "timestamp": "1688385840",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -354,7 +354,7 @@ auto const kVehiclePositionT12 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1688976300"
+  "timestamp": "1688990700"
  },
  "entity": [
   {
@@ -371,7 +371,7 @@ auto const kVehiclePositionT12 =
       "latitude": "43.422095",
       "longitude": "-80.462740"
     },
-    "timestamp": "1688967300",
+    "timestamp": "1688981700",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -389,7 +389,7 @@ auto const kVehiclePositionT12 =
       "latitude": "43.420610844275686",
       "longitude": "-80.4643359499176"
     },
-    "timestamp": "1688968800",
+    "timestamp": "1688983200",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -407,7 +407,7 @@ auto const kVehiclePositionT12 =
       "latitude": "43.419023",
       "longitude": "-80.466600"
     },
-    "timestamp": "1688969940",
+    "timestamp": "1688984340",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -425,7 +425,7 @@ auto const kVehiclePositionT12 =
       "latitude": "43.419023",
       "longitude": "-80.466600"
     },
-    "timestamp": "1688970720",
+    "timestamp": "1688985120",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -443,7 +443,7 @@ auto const kVehiclePositionT12 =
       "latitude": "43.41855161265139",
       "longitude": "-80.47031974600564"
     },
-    "timestamp": "1688971980",
+    "timestamp": "1688986380",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -461,7 +461,7 @@ auto const kVehiclePositionT12 =
       "latitude": "43.417796",
       "longitude": "-80.473666"
     },
-    "timestamp": "1688973180",
+    "timestamp": "1688987580",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -479,7 +479,7 @@ auto const kVehiclePositionT12 =
       "latitude": "43.417796",
       "longitude": "-80.473666"
     },
-    "timestamp": "1688973900",
+    "timestamp": "1688988300",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -497,7 +497,7 @@ auto const kVehiclePositionT12 =
       "latitude": "43.416960971123125",
       "longitude": "-80.47671371418541"
     },
-    "timestamp": "1688975220",
+    "timestamp": "1688989620",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -515,7 +515,7 @@ auto const kVehiclePositionT12 =
       "latitude": "43.415733",
       "longitude": "-80.480340"
     },
-    "timestamp": "1688976300",
+    "timestamp": "1688990700",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -527,7 +527,7 @@ auto const kVehiclePositionT13 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1689580200"
+  "timestamp": "1689594600"
  },
  "entity": [
   {
@@ -544,7 +544,7 @@ auto const kVehiclePositionT13 =
       "latitude": "43.422095",
       "longitude": "-80.462740"
     },
-    "timestamp": "1689570300",
+    "timestamp": "1689584700",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -562,7 +562,7 @@ auto const kVehiclePositionT13 =
       "latitude": "43.420610844275686",
       "longitude": "-80.4643359499176"
     },
-    "timestamp": "1689571740",
+    "timestamp": "1689586140",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -580,7 +580,7 @@ auto const kVehiclePositionT13 =
       "latitude": "43.419023",
       "longitude": "-80.466600"
     },
-    "timestamp": "1689573120",
+    "timestamp": "1689587520",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -598,7 +598,7 @@ auto const kVehiclePositionT13 =
       "latitude": "43.419023",
       "longitude": "-80.466600"
     },
-    "timestamp": "1689574080",
+    "timestamp": "1689588480",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -616,7 +616,7 @@ auto const kVehiclePositionT13 =
       "latitude": "43.41855161265139",
       "longitude": "-80.47031974600564"
     },
-    "timestamp": "1689575520",
+    "timestamp": "1689589920",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -634,7 +634,7 @@ auto const kVehiclePositionT13 =
       "latitude": "43.417796",
       "longitude": "-80.473666"
     },
-    "timestamp": "1689576780",
+    "timestamp": "1689591180",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -652,7 +652,7 @@ auto const kVehiclePositionT13 =
       "latitude": "43.417796",
       "longitude": "-80.473666"
     },
-    "timestamp": "1689577620",
+    "timestamp": "1689592020",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -670,7 +670,7 @@ auto const kVehiclePositionT13 =
       "latitude": "43.416960971123125",
       "longitude": "-80.47671371418541"
     },
-    "timestamp": "1689578940",
+    "timestamp": "1689593340",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -688,7 +688,7 @@ auto const kVehiclePositionT13 =
       "latitude": "43.415733",
       "longitude": "-80.480340"
     },
-    "timestamp": "1689580200",
+    "timestamp": "1689594600",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -700,7 +700,7 @@ auto const kVehiclePositionT14 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1690185600"
+  "timestamp": "1690200000"
  },
  "entity": [
   {
@@ -717,7 +717,7 @@ auto const kVehiclePositionT14 =
       "latitude": "43.422095",
       "longitude": "-80.462740"
     },
-    "timestamp": "1690175700",
+    "timestamp": "1690190100",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -735,7 +735,7 @@ auto const kVehiclePositionT14 =
       "latitude": "43.420610844275686",
       "longitude": "-80.4643359499176"
     },
-    "timestamp": "1690177080",
+    "timestamp": "1690191480",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -753,7 +753,7 @@ auto const kVehiclePositionT14 =
       "latitude": "43.419023",
       "longitude": "-80.466600"
     },
-    "timestamp": "1690178400",
+    "timestamp": "1690192800",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -771,7 +771,7 @@ auto const kVehiclePositionT14 =
       "latitude": "43.419023",
       "longitude": "-80.466600"
     },
-    "timestamp": "1690179540",
+    "timestamp": "1690193940",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -789,7 +789,7 @@ auto const kVehiclePositionT14 =
       "latitude": "43.41855161265139",
       "longitude": "-80.47031974600564"
     },
-    "timestamp": "1690180920",
+    "timestamp": "1690195320",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -807,7 +807,7 @@ auto const kVehiclePositionT14 =
       "latitude": "43.417796",
       "longitude": "-80.473666"
     },
-    "timestamp": "1690182240",
+    "timestamp": "1690196640",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -825,7 +825,7 @@ auto const kVehiclePositionT14 =
       "latitude": "43.417796",
       "longitude": "-80.473666"
     },
-    "timestamp": "1690182900",
+    "timestamp": "1690197300",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -843,7 +843,7 @@ auto const kVehiclePositionT14 =
       "latitude": "43.416960971123125",
       "longitude": "-80.47671371418541"
     },
-    "timestamp": "1690184280",
+    "timestamp": "1690198680",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -861,7 +861,7 @@ auto const kVehiclePositionT14 =
       "latitude": "43.415733",
       "longitude": "-80.480340"
     },
-    "timestamp": "1690185600",
+    "timestamp": "1690200000",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -873,7 +873,7 @@ auto const kVehiclePositionT15 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1690790640"
+  "timestamp": "1690805040"
  },
  "entity": [
   {
@@ -890,7 +890,7 @@ auto const kVehiclePositionT15 =
       "latitude": "43.422095",
       "longitude": "-80.462740"
     },
-    "timestamp": "1690780620",
+    "timestamp": "1690795020",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -908,7 +908,7 @@ auto const kVehiclePositionT15 =
       "latitude": "43.420610844275686",
       "longitude": "-80.4643359499176"
     },
-    "timestamp": "1690782120",
+    "timestamp": "1690796520",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -926,7 +926,7 @@ auto const kVehiclePositionT15 =
       "latitude": "43.419023",
       "longitude": "-80.466600"
     },
-    "timestamp": "1690783260",
+    "timestamp": "1690797660",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -944,7 +944,7 @@ auto const kVehiclePositionT15 =
       "latitude": "43.419023",
       "longitude": "-80.466600"
     },
-    "timestamp": "1690784520",
+    "timestamp": "1690798920",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -962,7 +962,7 @@ auto const kVehiclePositionT15 =
       "latitude": "43.41855161265139",
       "longitude": "-80.47031974600564"
     },
-    "timestamp": "1690785540",
+    "timestamp": "1690799940",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -980,7 +980,7 @@ auto const kVehiclePositionT15 =
       "latitude": "43.417796",
       "longitude": "-80.473666"
     },
-    "timestamp": "1690786560",
+    "timestamp": "1690800960",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -998,7 +998,7 @@ auto const kVehiclePositionT15 =
       "latitude": "43.417796",
       "longitude": "-80.473666"
     },
-    "timestamp": "1690788180",
+    "timestamp": "1690802580",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -1016,7 +1016,7 @@ auto const kVehiclePositionT15 =
       "latitude": "43.416960971123125",
       "longitude": "-80.47671371418541"
     },
-    "timestamp": "1690789440",
+    "timestamp": "1690803840",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -1034,7 +1034,7 @@ auto const kVehiclePositionT15 =
       "latitude": "43.415733",
       "longitude": "-80.480340"
     },
-    "timestamp": "1690790640",
+    "timestamp": "1690805040",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -1046,7 +1046,7 @@ auto const kVehiclePositionT2 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1691305260"
+  "timestamp": "1691319660"
  },
  "entity": [
   {
@@ -1063,7 +1063,7 @@ auto const kVehiclePositionT2 =
       "latitude": "43.422095",
       "longitude": "-80.462740"
     },
-    "timestamp": "1691295540",
+    "timestamp": "1691309940",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -1081,7 +1081,7 @@ auto const kVehiclePositionT2 =
       "latitude": "43.420610844275686",
       "longitude": "-80.4643359499176"
     },
-    "timestamp": "1691296800",
+    "timestamp": "1691311200",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -1099,7 +1099,7 @@ auto const kVehiclePositionT2 =
       "latitude": "43.419023",
       "longitude": "-80.466600"
     },
-    "timestamp": "1691297880",
+    "timestamp": "1691312280",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -1117,7 +1117,7 @@ auto const kVehiclePositionT2 =
       "latitude": "43.419023",
       "longitude": "-80.466600"
     },
-    "timestamp": "1691299500",
+    "timestamp": "1691313900",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -1135,7 +1135,7 @@ auto const kVehiclePositionT2 =
       "latitude": "43.41855161265139",
       "longitude": "-80.47031974600564"
     },
-    "timestamp": "1691300340",
+    "timestamp": "1691314740",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -1153,7 +1153,7 @@ auto const kVehiclePositionT2 =
       "latitude": "43.417796",
       "longitude": "-80.473666"
     },
-    "timestamp": "1691301440",
+    "timestamp": "1691315840",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -1171,7 +1171,7 @@ auto const kVehiclePositionT2 =
       "latitude": "43.417796",
       "longitude": "-80.473666"
     },
-    "timestamp": "1691303040",
+    "timestamp": "1691317440",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -1189,7 +1189,7 @@ auto const kVehiclePositionT2 =
       "latitude": "43.416960971123125",
       "longitude": "-80.47671371418541"
     },
-    "timestamp": "1691303880",
+    "timestamp": "1691318280",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   },
@@ -1207,7 +1207,7 @@ auto const kVehiclePositionT2 =
       "latitude": "43.415733",
       "longitude": "-80.480340"
     },
-    "timestamp": "1691305260",
+    "timestamp": "1691319660",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -1219,7 +1219,7 @@ auto const kVehiclePositionT31 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1691386200"
+  "timestamp": "1691400600"
  },
  "entity": [
   {
@@ -1236,7 +1236,7 @@ auto const kVehiclePositionT31 =
       "latitude": "43.422095",
       "longitude": "-80.462740"
     },
-    "timestamp": "1691386200",
+    "timestamp": "1691400600",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -1248,7 +1248,7 @@ auto const kVehiclePositionT32 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1691387640"
+  "timestamp": "1691402040"
  },
  "entity": [
   {
@@ -1265,7 +1265,7 @@ auto const kVehiclePositionT32 =
       "latitude": "43.420610844275686",
       "longitude": "-80.4643359499176"
     },
-    "timestamp": "1691387640",
+    "timestamp": "1691402040",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -1277,7 +1277,7 @@ auto const kVehiclePositionT33 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1691389200"
+  "timestamp": "1691403600"
  },
  "entity": [
   {
@@ -1294,7 +1294,7 @@ auto const kVehiclePositionT33 =
       "latitude": "43.419023",
       "longitude": "-80.466600"
     },
-    "timestamp": "1691389200",
+    "timestamp": "1691403600",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -1306,7 +1306,7 @@ auto const kVehiclePositionT34 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1691389980"
+  "timestamp": "1691404380"
  },
  "entity": [
   {
@@ -1323,7 +1323,7 @@ auto const kVehiclePositionT34 =
       "latitude": "43.419023",
       "longitude": "-80.466600"
     },
-    "timestamp": "1691389980",
+    "timestamp": "1691404380",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -1335,7 +1335,7 @@ auto const kVehiclePositionT35 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1691391240"
+  "timestamp": "1691405640"
  },
  "entity": [
   {
@@ -1352,7 +1352,7 @@ auto const kVehiclePositionT35 =
       "latitude": "43.41855161265139",
       "longitude": "-80.47031974600564"
     },
-    "timestamp": "1691391240",
+    "timestamp": "1691405640",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -1364,7 +1364,7 @@ auto const kVehiclePositionT36 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1691392440"
+  "timestamp": "1691406840"
  },
  "entity": [
   {
@@ -1381,7 +1381,7 @@ auto const kVehiclePositionT36 =
       "latitude": "43.417796",
       "longitude": "-80.473666"
     },
-    "timestamp": "1691392440",
+    "timestamp": "1691406840",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -1393,7 +1393,7 @@ auto const kVehiclePositionT37 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1691393400"
+  "timestamp": "1691407800"
  },
  "entity": [
   {
@@ -1410,7 +1410,7 @@ auto const kVehiclePositionT37 =
       "latitude": "43.417796",
       "longitude": "-80.473666"
     },
-    "timestamp": "1691393400",
+    "timestamp": "1691407800",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -1422,7 +1422,7 @@ auto const kVehiclePositionT38 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1691394660"
+  "timestamp": "1691409060"
  },
  "entity": [
   {
@@ -1439,7 +1439,7 @@ auto const kVehiclePositionT38 =
       "latitude": "43.416960971123125",
       "longitude": "-80.47671371418541"
     },
-    "timestamp": "1691394660",
+    "timestamp": "1691409060",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -1451,7 +1451,7 @@ auto const kVehiclePositionT39 =
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1691395740"
+  "timestamp": "1691410140"
  },
  "entity": [
   {
@@ -1468,7 +1468,7 @@ auto const kVehiclePositionT39 =
       "latitude": "43.415733",
       "longitude": "-80.480340"
     },
-    "timestamp": "1691395740",
+    "timestamp": "1691410140",
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
   }
@@ -1600,7 +1600,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg32, &dp);
   auto ss2 = std::stringstream{};
   ss2 << "\n" << fr;
-  std::cout << ss2.str() << std::endl;
+  //std::cout << ss2.str() << std::endl;
   std::stringstream ss_dps2;
   ss_dps2 << dps;
   // std::cout << ss_dps2.str() << std::endl;
@@ -1608,7 +1608,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg33, &dp);
   auto ss3 = std::stringstream{};
   ss3 << "\n" << fr;
-  std::cout << ss3.str() << std::endl;
+  //std::cout << ss3.str() << std::endl;
   std::stringstream ss_dps3;
   ss_dps3 << dps;
   // std::cout << ss_dps3.str() << std::endl;
@@ -1616,7 +1616,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg34, &dp);
   auto ss4 = std::stringstream{};
   ss4 << "\n" << fr;
-  std::cout << ss4.str() << std::endl;
+  //std::cout << ss4.str() << std::endl;
   std::stringstream ss_dps4;
   ss_dps4 << dps;
   // std::cout << ss_dps4.str() << std::endl;
@@ -1624,7 +1624,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg35, &dp);
   auto ss5 = std::stringstream{};
   ss5 << "\n" << fr;
-  std::cout << ss5.str() << std::endl;
+  //std::cout << ss5.str() << std::endl;
   std::stringstream ss_dps5;
   ss_dps5 << dps;
   // std::cout << ss_dps5.str() << std::endl;
@@ -1632,7 +1632,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg36, &dp);
   auto ss6 = std::stringstream{};
   ss6 << "\n" << fr;
-  std::cout << ss6.str() << std::endl;
+  //std::cout << ss6.str() << std::endl;
   std::stringstream ss_dps6;
   ss_dps6 << dps;
   // std::cout << ss_dps6.str() << std::endl;
@@ -1640,7 +1640,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg37, &dp);
   auto ss7 = std::stringstream{};
   ss7 << "\n" << fr;
-  std::cout << ss7.str() << std::endl;
+  //std::cout << ss7.str() << std::endl;
   std::stringstream ss_dps7;
   ss_dps7 << dps;
   // std::cout << ss_dps7.str() << std::endl;
@@ -1648,7 +1648,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg38, &dp);
   auto ss8 = std::stringstream{};
   ss8 << "\n" << fr;
-  std::cout << ss8.str() << std::endl;
+  //std::cout << ss8.str() << std::endl;
   std::stringstream ss_dps8;
   ss_dps8 << dps;
   // std::cout << ss_dps8.str() << std::endl;
@@ -1656,7 +1656,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg39, &dp);
   auto ss9 = std::stringstream{};
   ss9 << "\n" << fr;
-  std::cout << ss9.str() << std::endl;
+  //std::cout << ss9.str() << std::endl;
   std::stringstream ss_dps9;
   ss_dps9 << dps;
   // std::cout << ss_dps9.str() << std::endl;
