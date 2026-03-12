@@ -1600,7 +1600,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg32, &dp);
   auto ss2 = std::stringstream{};
   ss2 << "\n" << fr;
-  //std::cout << ss2.str() << std::endl;
+  // std::cout << ss2.str() << std::endl;
   std::stringstream ss_dps2;
   ss_dps2 << dps;
   // std::cout << ss_dps2.str() << std::endl;
@@ -1608,7 +1608,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg33, &dp);
   auto ss3 = std::stringstream{};
   ss3 << "\n" << fr;
-  //std::cout << ss3.str() << std::endl;
+  // std::cout << ss3.str() << std::endl;
   std::stringstream ss_dps3;
   ss_dps3 << dps;
   // std::cout << ss_dps3.str() << std::endl;
@@ -1616,7 +1616,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg34, &dp);
   auto ss4 = std::stringstream{};
   ss4 << "\n" << fr;
-  //std::cout << ss4.str() << std::endl;
+  // std::cout << ss4.str() << std::endl;
   std::stringstream ss_dps4;
   ss_dps4 << dps;
   // std::cout << ss_dps4.str() << std::endl;
@@ -1624,7 +1624,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg35, &dp);
   auto ss5 = std::stringstream{};
   ss5 << "\n" << fr;
-  //std::cout << ss5.str() << std::endl;
+  // std::cout << ss5.str() << std::endl;
   std::stringstream ss_dps5;
   ss_dps5 << dps;
   // std::cout << ss_dps5.str() << std::endl;
@@ -1632,7 +1632,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg36, &dp);
   auto ss6 = std::stringstream{};
   ss6 << "\n" << fr;
-  //std::cout << ss6.str() << std::endl;
+  // std::cout << ss6.str() << std::endl;
   std::stringstream ss_dps6;
   ss_dps6 << dps;
   // std::cout << ss_dps6.str() << std::endl;
@@ -1640,7 +1640,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg37, &dp);
   auto ss7 = std::stringstream{};
   ss7 << "\n" << fr;
-  //std::cout << ss7.str() << std::endl;
+  // std::cout << ss7.str() << std::endl;
   std::stringstream ss_dps7;
   ss_dps7 << dps;
   // std::cout << ss_dps7.str() << std::endl;
@@ -1648,7 +1648,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg38, &dp);
   auto ss8 = std::stringstream{};
   ss8 << "\n" << fr;
-  //std::cout << ss8.str() << std::endl;
+  // std::cout << ss8.str() << std::endl;
   std::stringstream ss_dps8;
   ss_dps8 << dps;
   // std::cout << ss_dps8.str() << std::endl;
@@ -1656,7 +1656,7 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg39, &dp);
   auto ss9 = std::stringstream{};
   ss9 << "\n" << fr;
-  //std::cout << ss9.str() << std::endl;
+  // std::cout << ss9.str() << std::endl;
   std::stringstream ss_dps9;
   ss_dps9 << dps;
   // std::cout << ss_dps9.str() << std::endl;
