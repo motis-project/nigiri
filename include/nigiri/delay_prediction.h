@@ -73,11 +73,16 @@ struct trip_seg_data {
 };
 
 struct trip_time_data {
+  trip_time_data(unixtime_t start_time, vector<trip_seg_data> seg_data, uint32_t n_stops) {
+    start_timestamp = start_time;
+    seg_data_ = std::move(seg_data);
+    stop_durations_.resize(n_stops-1);
+    segment_durations_.resize(n_stops-1);
+  }
   unixtime_t start_timestamp;
   vector<trip_seg_data> seg_data_;
   vector<duration_t> stop_durations_;
   vector<duration_t> segment_durations_;
-  bool last_tsd_is_segment;
 };
 
 struct hist_trip_times_storage {
@@ -134,8 +139,8 @@ struct trip_delay_pred {
 struct delay_prediction_storage {
   hash_map<key, trip_delay_pred> key_trip_delay_;
 
-  trip_delay_pred get_or_create_kalman(
-      key, unixtime_t, uint32_t, uint32_t, hist_trip_times_storage*);
+  trip_delay_pred& get_or_create_kalman(
+      key, unixtime_t, uint32_t, uint32_t, uint32_t, hist_trip_times_storage*);
 
   static pair<vector<duration_t>, vector<duration_t>>
   get_avg_stop_segment_durations(hist_trip_times_storage*,

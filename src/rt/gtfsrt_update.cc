@@ -695,6 +695,10 @@ void calculate_delay_intelligent(
                                       ->coord_seq_idx_ttd_[coord_seq_idx])) {
       auto& current_ttd = delay_prediction->hist_trip_time_store
                               ->ttd_idx_trip_time_data_[*current_ttd_idx_it];
+      //just for safety - should never happen
+      if (current_ttd.seg_data_.empty()) {
+        return;
+      }
       // calculate time since last tsd and add to time spent at stop/segment
       auto const last_tsd = current_ttd.seg_data_.end() - 1;
 
@@ -707,36 +711,32 @@ void calculate_delay_intelligent(
           geo::approx_squared_distance(
               new_tsd.position, nearest_stop,
               geo::approx_distance_lng_degrees(new_tsd.position)) < 20) {
-        if (current_ttd.last_tsd_is_segment) {
-          // new stop encountered -> create new entry in stop_durations and
-          // segment_durations
-          current_ttd.stop_durations_.emplace_back(duration_t{0});
-          current_ttd.segment_durations_.emplace_back(duration_t{0});
+        auto const stop_to_add_to = current_progress < 0.5 ? current_segment.v_ : current_segment.v_ + 1;
+        if (stop_to_add_to < current_ttd.stop_durations_.size()) {
+          current_ttd.stop_durations_[stop_to_add_to] += delta;
         }
-        current_ttd.last_tsd_is_segment = false;
-        current_ttd.stop_durations_.back() += delta;
       } else {
-        current_ttd.last_tsd_is_segment = true;
-        current_ttd.segment_durations_.back() += delta;
+        current_ttd.segment_durations_[current_segment.v_] += delta;
       }
       current_ttd.seg_data_.emplace_back(new_tsd);
     }
 
+    auto const mode_div = delay_prediction->mode == hist_trip_mode::kSameDay ? 10080 : 1440;
+
     // create kalman here (before creation of new ttd), so it is easier to
     // calculate averages
-    auto kalman =
+    auto& kalman =
         delay_prediction->delay_prediction_store->get_or_create_kalman(
             key, ut_start_time, delay_prediction->number_of_predecessors,
             delay_prediction->number_of_hist_trips,
+            mode_div,
             delay_prediction->hist_trip_time_store);
 
     if (current_ttd_idx_it == end(delay_prediction->hist_trip_time_store
                                       ->coord_seq_idx_ttd_[coord_seq_idx])) {
       trip_time_data const new_ttd{ut_start_time,
                                    {new_tsd},
-                                   vector<duration_t>{1},
-                                   vector<duration_t>{1},
-                                   false};
+                                   static_cast<uint32_t>(location_seq.size())};
       delay_prediction->hist_trip_time_store->coord_seq_idx_ttd_[coord_seq_idx]
           .push_back(
               trip_time_data_idx_t{delay_prediction->hist_trip_time_store
@@ -807,14 +807,16 @@ void calculate_delay_intelligent(
     auto const next_stop = static_cast<stop_idx_t>(current_segment.v_ + 1);
 
     double hist_variance = 0;
-    for (auto const hist_del : hist_remaining_times) {
-      hist_variance +=
-          (hist_del.count() - avg_hist_trips_remaining_time.count()) *
-          (hist_del.count() - avg_hist_trips_remaining_time.count());
+    if (hist_remaining_times.size() > 1) {
+      for (auto const hist_del : hist_remaining_times) {
+        hist_variance +=
+            (hist_del.count() - avg_hist_trips_remaining_time.count()) *
+            (hist_del.count() - avg_hist_trips_remaining_time.count());
+      }
+      hist_variance /= hist_remaining_times.size();
     }
-    hist_variance /= hist_remaining_times.size();
 
-    kalman.filter_gain =
+    kalman.filter_gain = kalman.error == 0 && hist_variance == 0 ? 1 :
         (kalman.error + hist_variance) / (kalman.error + 2 * hist_variance);
     kalman.gain_loop = 1 - kalman.filter_gain;
     kalman.error = hist_variance * kalman.filter_gain;
@@ -839,13 +841,8 @@ void calculate_delay_intelligent(
 
     // update delay for arrival at next stop
     if (next_stop != *fr.stop_range_.begin()) {
-      // make sure delay for arrival at next stop is not before previous
-      // departure
-      if (delay + rtt.unix_event_time(r.rt_, next_stop, event_type::kArr) >
-          rtt.unix_event_time(r.rt_, next_stop - 1, event_type::kDep)) {
-        update_delay(tt, rtt, r, next_stop, event_type::kArr, delay,
-                     std::nullopt);
-      }
+      update_delay(tt, rtt, r, next_stop, event_type::kArr, delay,
+                     rtt.unix_event_time(r.rt_, next_stop - 1, event_type::kDep));
     }
 
     // update delay for stops after next stop
@@ -861,12 +858,8 @@ void calculate_delay_intelligent(
           (tt.event_time(r.t_, first, event_type::kDep) -
            tt.event_time(r.t_, first, event_type::kArr));
 
-      if (delay > duration_t{0}) {
-        update_delay(tt, rtt, r, first, event_type::kDep, delay, std::nullopt);
-      } else {
-        update_delay(tt, rtt, r, first, event_type::kDep, duration_t{0},
-                     std::nullopt);
-      }
+      update_delay(tt, rtt, r, first, event_type::kDep, delay,
+          rtt.unix_event_time(r.rt_, first, event_type::kArr));
 
       delay +=
           std::chrono::duration_cast<duration_t>(
@@ -875,10 +868,8 @@ void calculate_delay_intelligent(
           (tt.event_time(r.t_, second, event_type::kArr) -
            tt.event_time(r.t_, first, event_type::kDep));
 
-      if (delay + rtt.unix_event_time(r.rt_, second, event_type::kArr) >
-          rtt.unix_event_time(r.rt_, first, event_type::kDep)) {
-        update_delay(tt, rtt, r, second, event_type::kArr, delay, std::nullopt);
-      }
+      update_delay(tt, rtt, r, second, event_type::kArr, delay,
+      rtt.unix_event_time(r.rt_, first, event_type::kDep));
     }
     ++stats.total_entities_success_;
   } catch (std::exception const& e) {

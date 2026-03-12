@@ -112,6 +112,10 @@ duration_t hist_trip_times_storage::get_remaining_time_till_next_stop(
                      return tsd->seg_idx == check_if_last_tsd.seg_idx;
                    });
 
+  if (last_tsd_before_stop == ttd->seg_data_.rend()) {
+    // should not happen, but if it does, return 0 remaining time
+    return duration_t{0};
+  }
   return last_tsd_before_stop->timestamp - tsd->timestamp;
 }
 
@@ -157,21 +161,23 @@ std::ostream& operator<<(std::ostream& out,
   return out;
 }
 
-trip_delay_pred delay_prediction_storage::get_or_create_kalman(
+trip_delay_pred& delay_prediction_storage::get_or_create_kalman(
     key k,
     unixtime_t start_time,
     uint32_t n_pred,
     uint32_t n_hist,
+    uint32_t mode_div,
     hist_trip_times_storage* htts) {
+
   if (key_trip_delay_.contains(k)) {
     return key_trip_delay_[k];
   }
 
   trip_delay_pred tdp{};
 
-  tdp.error = 14400;
+  tdp.error = 1800;
   tdp.filter_gain = 0.66;
-  tdp.gain_loop = 0.33;
+  tdp.gain_loop = 0.34;
 
   auto const coord_seq_idx = htts->cs_key_coord_seq_[k];
 
@@ -197,7 +203,7 @@ trip_delay_pred delay_prediction_storage::get_or_create_kalman(
         }
       }
 
-      if (((start_time - ttd.start_timestamp) % 10080).count() == 0 &&
+      if (((start_time - ttd.start_timestamp) % mode_div).count() == 0 &&
           (!earliest_hist.has_value() ||
            ttd.start_timestamp >
                htts->ttd_idx_trip_time_data_[earliest_hist.value()]
@@ -224,7 +230,7 @@ trip_delay_pred delay_prediction_storage::get_or_create_kalman(
 
   key_trip_delay_.emplace(k, tdp);
 
-  return tdp;
+  return key_trip_delay_[k];
 }
 
 pair<vector<duration_t>, vector<duration_t>>
@@ -281,26 +287,26 @@ void delay_prediction_storage::print(std::ostream& out) const {
   out << "\ncs_key_coord_seq_:\n";
   for (auto const& [key, tdp] : key_trip_delay_) {
     out << "Key: Source: " << key.source_idx << " Transport: " << key.t_idx
-        << "\nTrip Delay Predicton:"
+        << "\nTrip Delay Prediction:"
            "\nfilter gain: "
         << tdp.filter_gain << "\ngain loop: " << tdp.gain_loop
         << "\nerror: " << tdp.error << "\npredecessors: ";
     if (!tdp.predecessors_.empty()) {
-      for (auto const& p : tdp.predecessors_) out << p << ", ";
+      for (auto const& p : tdp.predecessors_) out << p << ",";
     } else {
       out << "<none>";
     }
-    out << "\nhist trips: ";
+    out << "\nhist trips:";
     for (auto const hist_trip_idx : tdp.hist_trips_) {
-      out << hist_trip_idx << ", ";
+      out << " " << hist_trip_idx << ",";
     }
-    out << "\nhist avg stop durations: ";
+    out << "\nhist avg stop durations:";
     for (auto const stop_dur : tdp.hist_avg_stop_durations_) {
-      out << stop_dur.count() << ", ";
+      out << " " << stop_dur.count() << ",";
     }
-    out << "\nhist avg segment durations: ";
+    out << "\nhist avg segment durations:";
     for (auto const seg_dur : tdp.hist_avg_segment_durations_) {
-      out << seg_dur.count() << ", ";
+      out << " " << seg_dur.count() << ",";
     }
     out << "\n\n";
   }

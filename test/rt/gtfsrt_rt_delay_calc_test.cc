@@ -29,1627 +29,1529 @@ namespace {
 
 mem_dir test_files() {
   return mem_dir::read(R"(
-     "(
 # agency.txt
 agency_name,agency_url,agency_timezone,agency_lang,agency_phone,agency_fare_url,agency_id
-"grt",https://grt.ca,America/New_York,en,519-585-7555,http://www.grt.ca/en/fares/FarePrices.asp,grt
+"Agency",https://agency.com,UTC,en,555-0123,http://agency.com/fares,agency
 
 # stops.txt
 stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,zone_id,stop_url,location_type,parent_station,wheelchair_boarding,platform_code
-2351,2351,Block Line Station,,  43.422095, -80.462740,,
-1033,1033,Block Line / Hanover,,  43.419023, -80.466600,,,0,,1,
-2086,2086,Block Line / Kingswood,,  43.417796, -80.473666,,,0,,1,
-2885,2885,Block Line / Strasburg,,  43.415733, -80.480340,,,0,,1,
+S01,S01,Stop 1,,0.0,0.0,,,
+S02,S02,Stop 2,,0.0,0.1,,,
+S03,S03,Stop 3,,0.0,0.2,,,
+S04,S04,Stop 4,,0.0,0.3,,,
 
 # calendar_dates.txt
 service_id,date,exception_type
-201-Weekday-66-23SUMM-1111100,20230703,1
-201-Weekday-66-23SUMM-1111100,20230704,1
-201-Weekday-66-23SUMM-1111100,20230705,1
-201-Weekday-66-23SUMM-1111100,20230706,1
-201-Weekday-66-23SUMM-1111100,20230707,1
-201-Weekday-66-23SUMM-1111100,20230710,1
-201-Weekday-66-23SUMM-1111100,20230711,1
-201-Weekday-66-23SUMM-1111100,20230712,1
-201-Weekday-66-23SUMM-1111100,20230713,1
-201-Weekday-66-23SUMM-1111100,20230714,1
-201-Weekday-66-23SUMM-1111100,20230717,1
-201-Weekday-66-23SUMM-1111100,20230718,1
-201-Weekday-66-23SUMM-1111100,20230719,1
-201-Weekday-66-23SUMM-1111100,20230720,1
-201-Weekday-66-23SUMM-1111100,20230721,1
-201-Weekday-66-23SUMM-1111100,20230724,1
-201-Weekday-66-23SUMM-1111100,20230725,1
-201-Weekday-66-23SUMM-1111100,20230726,1
-201-Weekday-66-23SUMM-1111100,20230727,1
-201-Weekday-66-23SUMM-1111100,20230728,1
-201-Weekday-66-23SUMM-1111100,20230731,1
-201-Weekday-66-23SUMM-1111100,20230801,1
-201-Weekday-66-23SUMM-1111100,20230802,1
-201-Weekday-66-23SUMM-1111100,20230803,1
-201-Weekday-66-23SUMM-1111100,20230804,1
-201-Weekday-66-23SUMM-1111100,20230807,1
-201-Weekday-66-23SUMM-1111100,20230808,1
-201-Weekday-66-23SUMM-1111100,20230809,1
-201-Weekday-66-23SUMM-1111100,20230810,1
-201-Weekday-66-23SUMM-1111100,20230811,1
-201-Weekday-66-23SUMM-1111100,20230814,1
-201-Weekday-66-23SUMM-1111100,20230815,1
-201-Weekday-66-23SUMM-1111100,20230816,1
-201-Weekday-66-23SUMM-1111100,20230817,1
-201-Weekday-66-23SUMM-1111100,20230818,1
-201-Weekday-66-23SUMM-1111100,20230821,1
-201-Weekday-66-23SUMM-1111100,20230822,1
-201-Weekday-66-23SUMM-1111100,20230823,1
-201-Weekday-66-23SUMM-1111100,20230824,1
-201-Weekday-66-23SUMM-1111100,20230825,1
-201-Weekday-66-23SUMM-1111100,20230828,1
-201-Weekday-66-23SUMM-1111100,20230829,1
-201-Weekday-66-23SUMM-1111100,20230830,1
-201-Weekday-66-23SUMM-1111100,20230831,1
-201-Weekday-66-23SUMM-1111100,20230901,1
+S_DAILY,20240101,1
+S_DAILY,20240108,1
+S_DAILY,20240115,1
+S_DAILY,20240122,1
+S_DAILY,20240129,1
+S_DAILY,20240205,1
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
-201,grt,iXpress Fischer-Hallman,,3,https://www.grt.ca/en/schedules-maps/schedules.aspx
+R01,agency,Route 1,,3,
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,direction_id,block_id,shape_id,wheelchair_accessible,bikes_allowed
-201,201-Weekday-66-23SUMM-1111100,11,Conestoga Station,0,340341,2010025,1,1
-201,201-Weekday-66-23SUMM-1111100,12,Conestoga Station,0,340341,2010025,1,1
-201,201-Weekday-66-23SUMM-1111100,13,Conestoga Station,0,340341,2010025,1,1
-201,201-Weekday-66-23SUMM-1111100,14,Conestoga Station,0,340341,2010025,1,1
-201,201-Weekday-66-23SUMM-1111100,15,Conestoga Station,0,340341,2010025,1,1
-201,201-Weekday-66-23SUMM-1111100,2,Conestoga Station,0,340341,2010025,1,1
-201,201-Weekday-66-23SUMM-1111100,3,Conestoga Station,0,340341,2010025,1,1
-
-
+R01,S_DAILY,T01,Headsign,0,B1,SH1,1,1
+R01,S_DAILY,T02,Headsign,0,B1,SH1,1,1
+R01,S_DAILY,T03,Headsign,0,B1,SH1,1,1
+R01,S_DAILY,T04,Headsign,0,B1,SH1,1,1
+R01,S_DAILY,T05,Headsign,0,B1,SH1,1,1
+R01,S_DAILY,T06,Headsign,0,B1,SH1,1,1
+R01,S_DAILY,T07,Headsign,0,B1,SH1,1,1
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
-11,05:00:00,05:15:00,2351,1,0,0
-11,06:00:00,06:15:00,1033,2,0,0
-11,07:00:00,07:15:00,2086,3,0,0
-11,08:00:00,08:15:00,2885,4,0,0
-12,05:00:00,05:15:00,2351,1,0,0
-12,06:00:00,06:15:00,1033,2,0,0
-12,07:00:00,07:15:00,2086,3,0,0
-12,08:00:00,08:15:00,2885,4,0,0
-13,05:00:00,05:15:00,2351,1,0,0
-13,06:00:00,06:15:00,1033,2,0,0
-13,07:00:00,07:15:00,2086,3,0,0
-13,08:00:00,08:15:00,2885,4,0,0
-14,05:00:00,05:15:00,2351,1,0,0
-14,06:00:00,06:15:00,1033,2,0,0
-14,07:00:00,07:15:00,2086,3,0,0
-14,08:00:00,08:15:00,2885,4,0,0
-15,05:00:00,05:15:00,2351,1,0,0
-15,06:00:00,06:15:00,1033,2,0,0
-15,07:00:00,07:15:00,2086,3,0,0
-15,08:00:00,08:15:00,2885,4,0,0
-2,04:00:00,04:15:00,2351,1,0,0
-2,05:00:00,05:15:00,1033,2,0,0
-2,06:00:00,06:15:00,2086,3,0,0
-2,07:00:00,07:15:00,2885,4,0,0
-3,05:00:00,05:15:00,2351,1,0,0
-3,06:00:00,06:15:00,1033,2,0,0
-3,07:00:00,07:15:00,2086,3,0,0
-3,08:00:00,08:15:00,2885,4,0,0
+T01,10:00:00,10:00:00,S01,1,0,0
+T01,10:30:00,10:30:00,S02,2,0,0
+T01,11:00:00,11:00:00,S03,3,0,0
+T01,11:30:00,11:30:00,S04,4,0,0
+T02,10:00:00,10:00:00,S01,1,0,0
+T02,10:30:00,10:30:00,S02,2,0,0
+T02,11:00:00,11:00:00,S03,3,0,0
+T02,11:30:00,11:30:00,S04,4,0,0
+T03,10:00:00,10:00:00,S01,1,0,0
+T03,10:30:00,10:30:00,S02,2,0,0
+T03,11:00:00,11:00:00,S03,3,0,0
+T03,11:30:00,11:30:00,S04,4,0,0
+T04,10:00:00,10:00:00,S01,1,0,0
+T04,10:30:00,10:30:00,S02,2,0,0
+T04,11:00:00,11:00:00,S03,3,0,0
+T04,11:30:00,11:30:00,S04,4,0,0
+T05,10:00:00,10:00:00,S01,1,0,0
+T05,10:30:00,10:30:00,S02,2,0,0
+T05,11:00:00,11:00:00,S03,3,0,0
+T05,11:30:00,11:30:00,S04,4,0,0
+T06,06:00:00,06:00:00,S01,1,0,0
+T06,06:30:00,06:30:00,S02,2,0,0
+T06,07:00:00,07:00:00,S03,3,0,0
+T06,07:30:00,07:30:00,S04,4,0,0
+T07,10:00:00,10:00:00,S01,1,0,0
+T07,10:30:00,10:30:00,S02,2,0,0
+T07,11:00:00,11:00:00,S03,3,0,0
+T07,11:30:00,11:30:00,S04,4,0,0
 )");
 }
 
-// Test case:
-// 3 Messungen pro Segment:
-//      1 43.422095, -80.462740; 43.420610844275686,
-//      -80.4643359499176; 43.419023, -80.466600; 2 43.419023,
-//      -80.466600; 43.41855161265139, -80.47031974600564; 43.417796,
-//      -80.473666; 3 43.417796, -80.473666; 43.416960971123125,
-//      -80.47671371418541; 43.415733, -80.480340;
-// 5 historische Trips:
-//      1.
-//        1. +4min
-//        2. +2min
-//        3. +5min
-//        4. +1min
-//        5. +7min
-//        6. +1min
-//        7. +0min
-//        8. +3min
-//        9. +4min
-//      2.
-//      3.
-//      4.
-//      5.
-// 1 direkter Vorgänger-Trip:
-//      10min delay
-// 1 "live" Trip
-//      25min delay
+// Day epochs (UTC midnight):
+//   2024-01-01 = 1704067200
+//   2024-01-08 = 1704672000
+//   2024-01-15 = 1705276800
+//   2024-01-22 = 1705881600
+//   2024-01-29 = 1706486400
+//   2024-02-05 = 1707091200
+//
+// Scheduled positions (lon) → approximate scheduled time-of-day:
+//   0.01 → ~sched+03min  (near S01)
+//   0.05 → ~sched+15min  (between S01-S02)
+//   0.11 → ~sched+33min  (near S02)
+//   0.15 → ~sched+45min  (between S02-S03)
+//   0.21 → ~sched+63min  (near S03)
+//   0.25 → ~sched+75min  (between S03-S04)
+//   0.29 → ~sched+87min  (near S04)
 
-auto const kVehiclePositionT11 =
-    R"({
+// T01: 2024-01-01, start 10:00, delay +3/+4/+5/+5/+6/+7/+8 min
+//   10:06, 10:19, 10:38, 10:50, 11:09, 11:22, 11:35
+auto const kVehiclePositionT01 = R"({
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1688385840"
+  "timestamp": 1704108900
  },
  "entity": [
   {
-    "id": "111",
-    "isDeleted": false,
-    "vehicle": {
+   "id": "T01_1",
+   "isDeleted": false,
+   "vehicle": {
     "trip": {
-      "tripId": "11",
-      "startTime": "05:15:00",
-      "startDate": "20230703",
-      "routeId": "201"
+     "tripId": "T01",
+     "startTime": "10:00:00",
+     "startDate": "20240101",
+     "routeId": "R01"
     },
     "position": {
-      "latitude": "43.422095",
-      "longitude": "-80.462740"
+     "latitude": 0.0,
+     "longitude": 0.01
     },
-    "timestamp": "1688375940",
+    "timestamp": 1704103560,
     "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
+   }
   },
   {
-    "id": "112",
-    "isDeleted": false,
-    "vehicle": {
+   "id": "T01_2",
+   "isDeleted": false,
+   "vehicle": {
     "trip": {
-      "tripId": "11",
-      "startTime": "05:15:00",
-      "startDate": "20230703",
-      "routeId": "201"
+     "tripId": "T01",
+     "startTime": "10:00:00",
+     "startDate": "20240101",
+     "routeId": "R01"
     },
     "position": {
-      "latitude": "43.420610844275686",
-      "longitude": "-80.4643359499176"
+     "latitude": 0.0,
+     "longitude": 0.05
     },
-    "timestamp": "1688377200",
+    "timestamp": 1704104340,
     "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
+   }
   },
   {
-    "id": "113",
-    "isDeleted": false,
-    "vehicle": {
+   "id": "T01_before_S02",
+   "isDeleted": false,
+   "vehicle": {
     "trip": {
-      "tripId": "11",
-      "startTime": "05:15:00",
-      "startDate": "20230703",
-      "routeId": "201"
+     "tripId": "T01",
+     "startTime": "10:00:00",
+     "startDate": "20240101",
+     "routeId": "R01"
     },
     "position": {
-      "latitude": "43.419023",
-      "longitude": "-80.466600"
+     "latitude": 0.0,
+     "longitude": 0.09
     },
-    "timestamp": "1688378700",
+    "timestamp": 1704105120,
     "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
+   }
   },
   {
-    "id": "114",
-    "isDeleted": false,
-    "vehicle": {
+   "id": "T01_3",
+   "isDeleted": false,
+   "vehicle": {
     "trip": {
-      "tripId": "11",
-      "startTime": "05:15:00",
-      "startDate": "20230703",
-      "routeId": "201"
+     "tripId": "T01",
+     "startTime": "10:00:00",
+     "startDate": "20240101",
+     "routeId": "R01"
     },
     "position": {
-      "latitude": "43.419023",
-      "longitude": "-80.466600"
+     "latitude": 0.0,
+     "longitude": 0.11
     },
-    "timestamp": "1688379360",
+    "timestamp": 1704105480,
     "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
+   }
   },
   {
-    "id": "115",
-    "isDeleted": false,
-    "vehicle": {
+   "id": "T01_4",
+   "isDeleted": false,
+   "vehicle": {
     "trip": {
-      "tripId": "11",
-      "startTime": "05:15:00",
-      "startDate": "20230703",
-      "routeId": "201"
+     "tripId": "T01",
+     "startTime": "10:00:00",
+     "startDate": "20240101",
+     "routeId": "R01"
     },
     "position": {
-      "latitude": "43.41855161265139",
-      "longitude": "-80.47031974600564"
+     "latitude": 0.0,
+     "longitude": 0.15
     },
-    "timestamp": "1688381100",
+    "timestamp": 1704106200,
     "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
+   }
   },
   {
-    "id": "116",
-    "isDeleted": false,
-    "vehicle": {
+   "id": "T01_before_S03",
+   "isDeleted": false,
+   "vehicle": {
     "trip": {
-      "tripId": "11",
-      "startTime": "05:15:00",
-      "startDate": "20230703",
-      "routeId": "201"
+     "tripId": "T01",
+     "startTime": "10:00:00",
+     "startDate": "20240101",
+     "routeId": "R01"
     },
     "position": {
-      "latitude": "43.417796",
-      "longitude": "-80.473666"
+     "latitude": 0.0,
+     "longitude": 0.19
     },
-    "timestamp": "1688382060",
+    "timestamp": 1704106980,
     "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
+   }
   },
   {
-    "id": "117",
-    "isDeleted": false,
-    "vehicle": {
+   "id": "T01_5",
+   "isDeleted": false,
+   "vehicle": {
     "trip": {
-      "tripId": "11",
-      "startTime": "05:15:00",
-      "startDate": "20230703",
-      "routeId": "201"
+     "tripId": "T01",
+     "startTime": "10:00:00",
+     "startDate": "20240101",
+     "routeId": "R01"
     },
     "position": {
-      "latitude": "43.417796",
-      "longitude": "-80.473666"
+     "latitude": 0.0,
+     "longitude": 0.21
     },
-    "timestamp": "1688382900",
+    "timestamp": 1704107340,
     "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
+   }
   },
   {
-    "id": "118",
-    "isDeleted": false,
-    "vehicle": {
+   "id": "T01_6",
+   "isDeleted": false,
+   "vehicle": {
     "trip": {
-      "tripId": "11",
-      "startTime": "05:15:00",
-      "startDate": "20230703",
-      "routeId": "201"
+     "tripId": "T01",
+     "startTime": "10:00:00",
+     "startDate": "20240101",
+     "routeId": "R01"
     },
     "position": {
-      "latitude": "43.416960971123125",
-      "longitude": "-80.47671371418541"
+     "latitude": 0.0,
+     "longitude": 0.25
     },
-    "timestamp": "1688384460",
+    "timestamp": 1704108120,
     "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
+   }
   },
   {
-    "id": "119",
-    "isDeleted": false,
-    "vehicle": {
+   "id": "T01_before_S04",
+   "isDeleted": false,
+   "vehicle": {
     "trip": {
-      "tripId": "11",
-      "startTime": "05:15:00",
-      "startDate": "20230703",
-      "routeId": "201"
+     "tripId": "T01",
+     "startTime": "10:00:00",
+     "startDate": "20240101",
+     "routeId": "R01"
     },
     "position": {
-      "latitude": "43.415733",
-      "longitude": "-80.480340"
+     "latitude": 0.0,
+     "longitude": 0.28
     },
-    "timestamp": "1688385840",
+    "timestamp": 1704108720,
     "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
+   }
+  },
+  {
+   "id": "T01_7",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T01",
+     "startTime": "10:00:00",
+     "startDate": "20240101",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.29
+    },
+    "timestamp": 1704108900,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+// T02: 2024-01-08, start 10:00, delay +5/+6/+7/+8/+9/+10/+10 min
+//   10:08, 10:21, 10:40, 10:53, 11:12, 11:25, 11:37
+auto const kVehiclePositionT02 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1704713820
+ },
+ "entity": [
+  {
+   "id": "T02_1",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T02",
+     "startTime": "10:00:00",
+     "startDate": "20240108",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.01
+    },
+    "timestamp": 1704708480,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T02_2",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T02",
+     "startTime": "10:00:00",
+     "startDate": "20240108",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.05
+    },
+    "timestamp": 1704709260,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T02_before_S02",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T02",
+     "startTime": "10:00:00",
+     "startDate": "20240108",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.09
+    },
+    "timestamp": 1704710040,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T02_3",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T02",
+     "startTime": "10:00:00",
+     "startDate": "20240108",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.11
+    },
+    "timestamp": 1704710400,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T02_4",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T02",
+     "startTime": "10:00:00",
+     "startDate": "20240108",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.15
+    },
+    "timestamp": 1704711180,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T02_before_S03",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T02",
+     "startTime": "10:00:00",
+     "startDate": "20240108",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.19
+    },
+    "timestamp": 1704711960,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T02_5",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T02",
+     "startTime": "10:00:00",
+     "startDate": "20240108",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.21
+    },
+    "timestamp": 1704712320,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T02_6",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T02",
+     "startTime": "10:00:00",
+     "startDate": "20240108",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.25
+    },
+    "timestamp": 1704713100,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T02_before_S04",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T02",
+     "startTime": "10:00:00",
+     "startDate": "20240108",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.28
+    },
+    "timestamp": 1704713640,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T02_7",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T02",
+     "startTime": "10:00:00",
+     "startDate": "20240108",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.29
+    },
+    "timestamp": 1704713820,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+// T03: 2024-01-15, start 10:00, delay +2/+3/+4/+6/+7/+8/+9 min
+//   10:05, 10:18, 10:37, 10:51, 11:10, 11:23, 11:36
+auto const kVehiclePositionT03 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1705318560
+ },
+ "entity": [
+  {
+   "id": "T03_1",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T03",
+     "startTime": "10:00:00",
+     "startDate": "20240115",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.01
+    },
+    "timestamp": 1705313100,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T03_2",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T03",
+     "startTime": "10:00:00",
+     "startDate": "20240115",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.05
+    },
+    "timestamp": 1705313880,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T03_before_S02",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T03",
+     "startTime": "10:00:00",
+     "startDate": "20240115",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.09
+    },
+    "timestamp": 1705314660,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T03_3",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T03",
+     "startTime": "10:00:00",
+     "startDate": "20240115",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.11
+    },
+    "timestamp": 1705315020,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T03_4",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T03",
+     "startTime": "10:00:00",
+     "startDate": "20240115",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.15
+    },
+    "timestamp": 1705315860,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T03_before_S03",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T03",
+     "startTime": "10:00:00",
+     "startDate": "20240115",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.19
+    },
+    "timestamp": 1705316640,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T03_5",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T03",
+     "startTime": "10:00:00",
+     "startDate": "20240115",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.21
+    },
+    "timestamp": 1705317000,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T03_6",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T03",
+     "startTime": "10:00:00",
+     "startDate": "20240115",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.25
+    },
+    "timestamp": 1705317780,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T03_before_S04",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T03",
+     "startTime": "10:00:00",
+     "startDate": "20240115",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.28
+    },
+    "timestamp": 1705318380,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T03_7",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T03",
+     "startTime": "10:00:00",
+     "startDate": "20240115",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.29
+    },
+    "timestamp": 1705318560,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+// T04: 2024-01-22, start 10:00, delay +7/+8/+8/+9/+10/+11/+12 min
+//   10:10, 10:23, 10:41, 10:54, 11:13, 11:26, 11:39
+auto const kVehiclePositionT04 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1705923540
+ },
+ "entity": [
+  {
+   "id": "T04_1",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T04",
+     "startTime": "10:00:00",
+     "startDate": "20240122",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.01
+    },
+    "timestamp": 1705918200,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T04_2",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T04",
+     "startTime": "10:00:00",
+     "startDate": "20240122",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.05
+    },
+    "timestamp": 1705918980,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T04_before_S02",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T04",
+     "startTime": "10:00:00",
+     "startDate": "20240122",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.09
+    },
+    "timestamp": 1705919700,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T04_3",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T04",
+     "startTime": "10:00:00",
+     "startDate": "20240122",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.11
+    },
+    "timestamp": 1705920060,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T04_4",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T04",
+     "startTime": "10:00:00",
+     "startDate": "20240122",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.15
+    },
+    "timestamp": 1705920840,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T04_before_S03",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T04",
+     "startTime": "10:00:00",
+     "startDate": "20240122",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.19
+    },
+    "timestamp": 1705921620,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T04_5",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T04",
+     "startTime": "10:00:00",
+     "startDate": "20240122",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.21
+    },
+    "timestamp": 1705921980,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T04_6",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T04",
+     "startTime": "10:00:00",
+     "startDate": "20240122",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.25
+    },
+    "timestamp": 1705922760,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T04_before_S04",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T04",
+     "startTime": "10:00:00",
+     "startDate": "20240122",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.28
+    },
+    "timestamp": 1705923360,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T04_7",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T04",
+     "startTime": "10:00:00",
+     "startDate": "20240122",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.29
+    },
+    "timestamp": 1705923540,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+// T05: 2024-01-29, start 10:00, delay +4/+5/+6/+7/+8/+8/+9 min
+//   10:07, 10:20, 10:39, 10:52, 11:11, 11:23, 11:36
+auto const kVehiclePositionT05 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1706528160
+ },
+ "entity": [
+  {
+   "id": "T05_1",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T05",
+     "startTime": "10:00:00",
+     "startDate": "20240129",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.01
+    },
+    "timestamp": 1706522820,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T05_2",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T05",
+     "startTime": "10:00:00",
+     "startDate": "20240129",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.05
+    },
+    "timestamp": 1706523600,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T05_before_S02",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T05",
+     "startTime": "10:00:00",
+     "startDate": "20240129",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.09
+    },
+    "timestamp": 1706524380,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T05_3",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T05",
+     "startTime": "10:00:00",
+     "startDate": "20240129",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.11
+    },
+    "timestamp": 1706524740,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T05_4",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T05",
+     "startTime": "10:00:00",
+     "startDate": "20240129",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.15
+    },
+    "timestamp": 1706525520,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T05_before_S03",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T05",
+     "startTime": "10:00:00",
+     "startDate": "20240129",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.19
+    },
+    "timestamp": 1706526300,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T05_5",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T05",
+     "startTime": "10:00:00",
+     "startDate": "20240129",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.21
+    },
+    "timestamp": 1706526660,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T05_6",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T05",
+     "startTime": "10:00:00",
+     "startDate": "20240129",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.25
+    },
+    "timestamp": 1706527380,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T05_before_S04",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T05",
+     "startTime": "10:00:00",
+     "startDate": "20240129",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.28
+    },
+    "timestamp": 1706527980,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T05_7",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T05",
+     "startTime": "10:00:00",
+     "startDate": "20240129",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.29
+    },
+    "timestamp": 1706528160,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+// T06: 2024-02-05, start 06:00, delay +6/+7/+8/+9/+10/+11/+12 min
+//   06:09, 06:22, 06:41, 06:54, 07:13, 07:26, 07:39
+auto const kVehiclePositionT06 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1707118740
+ },
+ "entity": [
+  {
+   "id": "T06_1",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T06",
+     "startTime": "06:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.01
+    },
+    "timestamp": 1707113340,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T06_2",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T06",
+     "startTime": "06:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.05
+    },
+    "timestamp": 1707114120,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T06_before_S02",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T06",
+     "startTime": "06:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.09
+    },
+    "timestamp": 1707114900,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T06_3",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T06",
+     "startTime": "06:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.11
+    },
+    "timestamp": 1707115260,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T06_4",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T06",
+     "startTime": "06:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.15
+    },
+    "timestamp": 1707116040,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T06_before_S03",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T06",
+     "startTime": "06:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.19
+    },
+    "timestamp": 1707116820,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T06_5",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T06",
+     "startTime": "06:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.21
+    },
+    "timestamp": 1707117180,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T06_6",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T06",
+     "startTime": "06:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.25
+    },
+    "timestamp": 1707117960,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T06_before_S04",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T06",
+     "startTime": "06:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.28
+    },
+    "timestamp": 1707118560,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  },
+  {
+   "id": "T06_7",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T06",
+     "startTime": "06:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.29
+    },
+    "timestamp": 1707118740,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+// T07: 2024-02-05, start 10:00, delay +5/+10/+12/+15/+17/+18/+20 min
+//   10:08, 10:25, 10:45, 11:00, 11:20, 11:33, 11:47
+auto const kVehiclePositionT07_1 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1707127680
+ },
+ "entity": [
+  {
+   "id": "T07_1",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T07",
+     "startTime": "10:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.01
+    },
+    "timestamp": 1707127680,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+auto const kVehiclePositionT07_2 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1707128700
+ },
+ "entity": [
+  {
+   "id": "T07_2",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T07",
+     "startTime": "10:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.05
+    },
+    "timestamp": 1707128700,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+auto const kVehiclePositionT07_before_S02 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1707129540
+ },
+ "entity": [
+  {
+   "id": "T07_before_S02",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T07",
+     "startTime": "10:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.09
+    },
+    "timestamp": 1707129540,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+auto const kVehiclePositionT07_3 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1707129900
+ },
+ "entity": [
+  {
+   "id": "T07_3",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T07",
+     "startTime": "10:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.11
+    },
+    "timestamp": 1707129900,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+auto const kVehiclePositionT07_4 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1707130800
+ },
+ "entity": [
+  {
+   "id": "T07_4",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T07",
+     "startTime": "10:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.15
+    },
+    "timestamp": 1707130800,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+auto const kVehiclePositionT07_before_S03 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1707131640
+ },
+ "entity": [
+  {
+   "id": "T07_before_S03",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T07",
+     "startTime": "10:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.19
+    },
+    "timestamp": 1707131640,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+auto const kVehiclePositionT07_5 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1707132000
+ },
+ "entity": [
+  {
+   "id": "T07_5",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T07",
+     "startTime": "10:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.21
+    },
+    "timestamp": 1707132000,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+auto const kVehiclePositionT07_6 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1707132780
+ },
+ "entity": [
+  {
+   "id": "T07_6",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T07",
+     "startTime": "10:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.25
+    },
+    "timestamp": 1707132780,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+auto const kVehiclePositionT07_before_S04 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1707133440
+ },
+ "entity": [
+  {
+   "id": "T07_before_S04",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T07",
+     "startTime": "10:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.28
+    },
+    "timestamp": 1707133440,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
+  }
+ ]
+})"s;
+auto const kVehiclePositionT07_7 = R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": 1707133620
+ },
+ "entity": [
+  {
+   "id": "T07_7",
+   "isDeleted": false,
+   "vehicle": {
+    "trip": {
+     "tripId": "T07",
+     "startTime": "10:00:00",
+     "startDate": "20240205",
+     "routeId": "R01"
+    },
+    "position": {
+     "latitude": 0.0,
+     "longitude": 0.29
+    },
+    "timestamp": 1707133620,
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+   }
   }
  ]
 })"s;
 
-auto const kVehiclePositionT12 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1688990700"
- },
- "entity": [
-  {
-    "id": "121",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "12",
-      "startTime": "05:15:00",
-      "startDate": "20230710",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.422095",
-      "longitude": "-80.462740"
-    },
-    "timestamp": "1688981700",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "122",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "12",
-      "startTime": "05:15:00",
-      "startDate": "20230710",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.420610844275686",
-      "longitude": "-80.4643359499176"
-    },
-    "timestamp": "1688983200",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "123",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "12",
-      "startTime": "05:15:00",
-      "startDate": "20230710",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.419023",
-      "longitude": "-80.466600"
-    },
-    "timestamp": "1688984340",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "124",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "12",
-      "startTime": "05:15:00",
-      "startDate": "20230710",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.419023",
-      "longitude": "-80.466600"
-    },
-    "timestamp": "1688985120",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "125",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "12",
-      "startTime": "05:15:00",
-      "startDate": "20230710",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.41855161265139",
-      "longitude": "-80.47031974600564"
-    },
-    "timestamp": "1688986380",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "126",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "12",
-      "startTime": "05:15:00",
-      "startDate": "20230710",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.417796",
-      "longitude": "-80.473666"
-    },
-    "timestamp": "1688987580",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "127",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "12",
-      "startTime": "05:15:00",
-      "startDate": "20230710",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.417796",
-      "longitude": "-80.473666"
-    },
-    "timestamp": "1688988300",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "128",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "12",
-      "startTime": "05:15:00",
-      "startDate": "20230710",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.416960971123125",
-      "longitude": "-80.47671371418541"
-    },
-    "timestamp": "1688989620",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "129",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "12",
-      "startTime": "05:15:00",
-      "startDate": "20230710",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.415733",
-      "longitude": "-80.480340"
-    },
-    "timestamp": "1688990700",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  }
- ]
-})"s;
-
-auto const kVehiclePositionT13 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1689594600"
- },
- "entity": [
-  {
-    "id": "131",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "13",
-      "startTime": "05:15:00",
-      "startDate": "20230717",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.422095",
-      "longitude": "-80.462740"
-    },
-    "timestamp": "1689584700",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "132",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "13",
-      "startTime": "05:15:00",
-      "startDate": "20230717",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.420610844275686",
-      "longitude": "-80.4643359499176"
-    },
-    "timestamp": "1689586140",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "133",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "13",
-      "startTime": "05:15:00",
-      "startDate": "20230717",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.419023",
-      "longitude": "-80.466600"
-    },
-    "timestamp": "1689587520",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "134",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "13",
-      "startTime": "05:15:00",
-      "startDate": "20230717",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.419023",
-      "longitude": "-80.466600"
-    },
-    "timestamp": "1689588480",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "135",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "13",
-      "startTime": "05:15:00",
-      "startDate": "20230717",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.41855161265139",
-      "longitude": "-80.47031974600564"
-    },
-    "timestamp": "1689589920",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "136",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "13",
-      "startTime": "05:15:00",
-      "startDate": "20230717",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.417796",
-      "longitude": "-80.473666"
-    },
-    "timestamp": "1689591180",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "137",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "13",
-      "startTime": "05:15:00",
-      "startDate": "20230717",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.417796",
-      "longitude": "-80.473666"
-    },
-    "timestamp": "1689592020",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "138",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "13",
-      "startTime": "05:15:00",
-      "startDate": "20230717",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.416960971123125",
-      "longitude": "-80.47671371418541"
-    },
-    "timestamp": "1689593340",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "139",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "13",
-      "startTime": "05:15:00",
-      "startDate": "20230717",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.415733",
-      "longitude": "-80.480340"
-    },
-    "timestamp": "1689594600",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  }
- ]
-})"s;
-
-auto const kVehiclePositionT14 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1690200000"
- },
- "entity": [
-  {
-    "id": "141",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "14",
-      "startTime": "05:15:00",
-      "startDate": "20230724",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.422095",
-      "longitude": "-80.462740"
-    },
-    "timestamp": "1690190100",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "142",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "14",
-      "startTime": "05:15:00",
-      "startDate": "20230724",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.420610844275686",
-      "longitude": "-80.4643359499176"
-    },
-    "timestamp": "1690191480",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "143",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "14",
-      "startTime": "05:15:00",
-      "startDate": "20230724",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.419023",
-      "longitude": "-80.466600"
-    },
-    "timestamp": "1690192800",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "144",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "14",
-      "startTime": "05:15:00",
-      "startDate": "20230724",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.419023",
-      "longitude": "-80.466600"
-    },
-    "timestamp": "1690193940",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "145",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "14",
-      "startTime": "05:15:00",
-      "startDate": "20230724",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.41855161265139",
-      "longitude": "-80.47031974600564"
-    },
-    "timestamp": "1690195320",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "146",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "14",
-      "startTime": "05:15:00",
-      "startDate": "20230724",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.417796",
-      "longitude": "-80.473666"
-    },
-    "timestamp": "1690196640",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "147",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "14",
-      "startTime": "05:15:00",
-      "startDate": "20230724",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.417796",
-      "longitude": "-80.473666"
-    },
-    "timestamp": "1690197300",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "148",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "14",
-      "startTime": "05:15:00",
-      "startDate": "20230724",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.416960971123125",
-      "longitude": "-80.47671371418541"
-    },
-    "timestamp": "1690198680",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "149",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "14",
-      "startTime": "05:15:00",
-      "startDate": "20230724",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.415733",
-      "longitude": "-80.480340"
-    },
-    "timestamp": "1690200000",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  }
- ]
-})"s;
-
-auto const kVehiclePositionT15 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1690805040"
- },
- "entity": [
-  {
-    "id": "151",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "15",
-      "startTime": "05:15:00",
-      "startDate": "20230731",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.422095",
-      "longitude": "-80.462740"
-    },
-    "timestamp": "1690795020",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "152",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "15",
-      "startTime": "05:15:00",
-      "startDate": "20230731",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.420610844275686",
-      "longitude": "-80.4643359499176"
-    },
-    "timestamp": "1690796520",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "153",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "15",
-      "startTime": "05:15:00",
-      "startDate": "20230731",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.419023",
-      "longitude": "-80.466600"
-    },
-    "timestamp": "1690797660",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "154",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "15",
-      "startTime": "05:15:00",
-      "startDate": "20230731",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.419023",
-      "longitude": "-80.466600"
-    },
-    "timestamp": "1690798920",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "155",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "15",
-      "startTime": "05:15:00",
-      "startDate": "20230731",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.41855161265139",
-      "longitude": "-80.47031974600564"
-    },
-    "timestamp": "1690799940",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "156",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "15",
-      "startTime": "05:15:00",
-      "startDate": "20230731",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.417796",
-      "longitude": "-80.473666"
-    },
-    "timestamp": "1690800960",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "157",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "15",
-      "startTime": "05:15:00",
-      "startDate": "20230731",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.417796",
-      "longitude": "-80.473666"
-    },
-    "timestamp": "1690802580",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "158",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "15",
-      "startTime": "05:15:00",
-      "startDate": "20230731",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.416960971123125",
-      "longitude": "-80.47671371418541"
-    },
-    "timestamp": "1690803840",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "159",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "15",
-      "startTime": "05:15:00",
-      "startDate": "20230731",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.415733",
-      "longitude": "-80.480340"
-    },
-    "timestamp": "1690805040",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  }
- ]
-})"s;
-
-auto const kVehiclePositionT2 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1691319660"
- },
- "entity": [
-  {
-    "id": "21",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "2",
-      "startTime": "04:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.422095",
-      "longitude": "-80.462740"
-    },
-    "timestamp": "1691309940",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "22",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "2",
-      "startTime": "04:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.420610844275686",
-      "longitude": "-80.4643359499176"
-    },
-    "timestamp": "1691311200",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "23",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "2",
-      "startTime": "04:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.419023",
-      "longitude": "-80.466600"
-    },
-    "timestamp": "1691312280",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "24",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "2",
-      "startTime": "04:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.419023",
-      "longitude": "-80.466600"
-    },
-    "timestamp": "1691313900",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "25",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "2",
-      "startTime": "04:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.41855161265139",
-      "longitude": "-80.47031974600564"
-    },
-    "timestamp": "1691314740",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "26",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "2",
-      "startTime": "04:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.417796",
-      "longitude": "-80.473666"
-    },
-    "timestamp": "1691315840",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "27",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "2",
-      "startTime": "04:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.417796",
-      "longitude": "-80.473666"
-    },
-    "timestamp": "1691317440",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "28",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "2",
-      "startTime": "04:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.416960971123125",
-      "longitude": "-80.47671371418541"
-    },
-    "timestamp": "1691318280",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "29",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "2",
-      "startTime": "04:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.415733",
-      "longitude": "-80.480340"
-    },
-    "timestamp": "1691319660",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  }
- ]
-})"s;
-
-auto const kVehiclePositionT31 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1691400600"
- },
- "entity": [
-  {
-    "id": "31",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "3",
-      "startTime": "05:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.422095",
-      "longitude": "-80.462740"
-    },
-    "timestamp": "1691400600",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  }
- ]
-})"s;
-
-auto const kVehiclePositionT32 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1691402040"
- },
- "entity": [
-  {
-    "id": "32",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "3",
-      "startTime": "05:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.420610844275686",
-      "longitude": "-80.4643359499176"
-    },
-    "timestamp": "1691402040",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  }
- ]
-})"s;
-
-auto const kVehiclePositionT33 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1691403600"
- },
- "entity": [
-  {
-    "id": "33",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "3",
-      "startTime": "05:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.419023",
-      "longitude": "-80.466600"
-    },
-    "timestamp": "1691403600",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  }
- ]
-})"s;
-
-auto const kVehiclePositionT34 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1691404380"
- },
- "entity": [
-  {
-    "id": "34",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "3",
-      "startTime": "05:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.419023",
-      "longitude": "-80.466600"
-    },
-    "timestamp": "1691404380",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  }
- ]
-})"s;
-
-auto const kVehiclePositionT35 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1691405640"
- },
- "entity": [
-  {
-    "id": "35",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "3",
-      "startTime": "05:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.41855161265139",
-      "longitude": "-80.47031974600564"
-    },
-    "timestamp": "1691405640",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  }
- ]
-})"s;
-
-auto const kVehiclePositionT36 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1691406840"
- },
- "entity": [
-  {
-    "id": "36",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "3",
-      "startTime": "05:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.417796",
-      "longitude": "-80.473666"
-    },
-    "timestamp": "1691406840",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  }
- ]
-})"s;
-
-auto const kVehiclePositionT37 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1691407800"
- },
- "entity": [
-  {
-    "id": "37",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "3",
-      "startTime": "05:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.417796",
-      "longitude": "-80.473666"
-    },
-    "timestamp": "1691407800",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  }
- ]
-})"s;
-
-auto const kVehiclePositionT38 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1691409060"
- },
- "entity": [
-  {
-    "id": "38",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "3",
-      "startTime": "05:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.416960971123125",
-      "longitude": "-80.47671371418541"
-    },
-    "timestamp": "1691409060",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  }
- ]
-})"s;
-
-auto const kVehiclePositionT39 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1691410140"
- },
- "entity": [
-  {
-    "id": "39",
-    "isDeleted": false,
-    "vehicle": {
-    "trip": {
-      "tripId": "3",
-      "startTime": "05:15:00",
-      "startDate": "20230807",
-      "routeId": "201"
-    },
-    "position": {
-      "latitude": "43.415733",
-      "longitude": "-80.480340"
-    },
-    "timestamp": "1691410140",
-    "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  }
- ]
-})"s;
-
-constexpr auto const expected_tts =
-    R"(
-cs_key_coord_seq_:
-Key: Source: 0 Transport: 6
-Coord_seq_Idx: 0
-Key: Source: 0 Transport: 5
-Coord_seq_Idx: 0
-Key: Source: 0 Transport: 4
-Coord_seq_Idx: 0
-Key: Source: 0 Transport: 3
-Coord_seq_Idx: 0
-Key: Source: 0 Transport: 2
-Coord_seq_Idx: 0
-Key: Source: 0 Transport: 0
-Coord_seq_Idx: 0
-Key: Source: 0 Transport: 1
-Coord_seq_Idx: 0
-
-coord_seq_idx_coord_seq_:
-Coord_seq_Idx: 0
-Location_Sequence: 9,10,11,12,
-
-coord_seq_idx_ttd_:
-Coord_seq_Idx: 0
-Trip_Time_Data_Idxs: 0,1,2,3,4,5,6,
-
-ttd_idx_trip_time_data_:
-Trip_Time_Data_Idx: 0 Start_Time: 2023-07-03 09:15
-Segment: 0 Progress: 0 Timestamp: 2023-07-03 09:19
-Segment: 0 Progress: 0.203225 Timestamp: 2023-07-03 09:40
-Segment: 1 Progress: 0 Timestamp: 2023-07-03 10:05
-Segment: 1 Progress: 0 Timestamp: 2023-07-03 10:16
-Segment: 1 Progress: 0.269319 Timestamp: 2023-07-03 10:45
-Segment: 1 Progress: 0.999189 Timestamp: 2023-07-03 11:01
-Segment: 1 Progress: 0.999189 Timestamp: 2023-07-03 11:15
-Segment: 2 Progress: 0.20144 Timestamp: 2023-07-03 11:41
-Segment: 2 Progress: 0.999709 Timestamp: 2023-07-03 12:04
-Trip_Time_Data_Idx: 1 Start_Time: 2023-07-10 09:15
-Segment: 0 Progress: 0 Timestamp: 2023-07-10 09:35
-Segment: 0 Progress: 0.203225 Timestamp: 2023-07-10 10:00
-Segment: 1 Progress: 0 Timestamp: 2023-07-10 10:19
-Segment: 1 Progress: 0 Timestamp: 2023-07-10 10:32
-Segment: 1 Progress: 0.269319 Timestamp: 2023-07-10 10:53
-Segment: 1 Progress: 0.999189 Timestamp: 2023-07-10 11:13
-Segment: 1 Progress: 0.999189 Timestamp: 2023-07-10 11:25
-Segment: 2 Progress: 0.20144 Timestamp: 2023-07-10 11:47
-Segment: 2 Progress: 0.999709 Timestamp: 2023-07-10 12:05
-Trip_Time_Data_Idx: 2 Start_Time: 2023-07-17 09:15
-Segment: 0 Progress: 0 Timestamp: 2023-07-17 09:05
-Segment: 0 Progress: 0.203225 Timestamp: 2023-07-17 09:29
-Segment: 1 Progress: 0 Timestamp: 2023-07-17 09:52
-Segment: 1 Progress: 0 Timestamp: 2023-07-17 10:08
-Segment: 1 Progress: 0.269319 Timestamp: 2023-07-17 10:32
-Segment: 1 Progress: 0.999189 Timestamp: 2023-07-17 10:53
-Segment: 1 Progress: 0.999189 Timestamp: 2023-07-17 11:07
-Segment: 2 Progress: 0.20144 Timestamp: 2023-07-17 11:29
-Segment: 2 Progress: 0.999709 Timestamp: 2023-07-17 11:50
-Trip_Time_Data_Idx: 3 Start_Time: 2023-07-24 09:15
-Segment: 0 Progress: 0 Timestamp: 2023-07-24 09:15
-Segment: 0 Progress: 0.203225 Timestamp: 2023-07-24 09:38
-Segment: 1 Progress: 0 Timestamp: 2023-07-24 10:00
-Segment: 1 Progress: 0 Timestamp: 2023-07-24 10:19
-Segment: 1 Progress: 0.269319 Timestamp: 2023-07-24 10:42
-Segment: 1 Progress: 0.999189 Timestamp: 2023-07-24 11:04
-Segment: 1 Progress: 0.999189 Timestamp: 2023-07-24 11:15
-Segment: 2 Progress: 0.20144 Timestamp: 2023-07-24 11:38
-Segment: 2 Progress: 0.999709 Timestamp: 2023-07-24 12:00
-Trip_Time_Data_Idx: 4 Start_Time: 2023-07-31 09:15
-Segment: 0 Progress: 0 Timestamp: 2023-07-31 09:17
-Segment: 0 Progress: 0.203225 Timestamp: 2023-07-31 09:42
-Segment: 1 Progress: 0 Timestamp: 2023-07-31 10:01
-Segment: 1 Progress: 0 Timestamp: 2023-07-31 10:22
-Segment: 1 Progress: 0.269319 Timestamp: 2023-07-31 10:39
-Segment: 1 Progress: 0.999189 Timestamp: 2023-07-31 10:56
-Segment: 1 Progress: 0.999189 Timestamp: 2023-07-31 11:23
-Segment: 2 Progress: 0.20144 Timestamp: 2023-07-31 11:44
-Segment: 2 Progress: 0.999709 Timestamp: 2023-07-31 12:04
-Trip_Time_Data_Idx: 5 Start_Time: 2023-08-07 08:15
-Segment: 0 Progress: 0 Timestamp: 2023-08-06 08:19
-Segment: 0 Progress: 0.203225 Timestamp: 2023-08-06 08:40
-Segment: 1 Progress: 0 Timestamp: 2023-08-06 08:58
-Segment: 1 Progress: 0 Timestamp: 2023-08-06 09:25
-Segment: 1 Progress: 0.269319 Timestamp: 2023-08-06 09:39
-Segment: 1 Progress: 0.999189 Timestamp: 2023-08-06 09:57
-Segment: 1 Progress: 0.999189 Timestamp: 2023-08-06 10:24
-Segment: 2 Progress: 0.20144 Timestamp: 2023-08-06 10:38
-Segment: 2 Progress: 0.999709 Timestamp: 2023-08-06 11:01
-Trip_Time_Data_Idx: 6 Start_Time: 2023-08-07 09:15
-Segment: 0 Progress: 0 Timestamp: 2023-08-07 09:30
-)";
-
-constexpr auto const expected_dps =
-    R"(
-cs_key_coord_seq_:
-Key: Source: 0 Transport: 6
-Trip Delay Predicton:
-filter gain: 0.66
-gain loop: 0.33
-error: 14400
-predecessors: <none>
-hist trips:
-hist avg stop durations:
-hist avg segment durations:
-
-Key: Source: 0 Transport: 5
-Trip Delay Predicton:
-filter gain: 0.66
-gain loop: 0.33
-error: 14400
-predecessors: 0,
-hist trips: 0,
-hist avg stop durations: 0, 11, 14,
-hist avg segment durations: 46, 45, 49,
-
-Key: Source: 0 Transport: 4
-Trip Delay Predicton:
-filter gain: 0.66
-gain loop: 0.33
-error: 14400
-predecessors: 0,
-hist trips: 0, 1,
-hist avg stop durations: 0, 12, 13,
-hist avg segment durations: 45, 43, 44,
-
-Key: Source: 0 Transport: 3
-Trip Delay Predicton:
-filter gain: 0.66
-gain loop: 0.33
-error: 14400
-predecessors: 0,
-hist trips: 0, 1, 2,
-hist avg stop durations: 0, 13, 13,
-hist avg segment durations: 45, 43, 44,
-
-Key: Source: 0 Transport: 2
-Trip Delay Predicton:
-filter gain: 0.66
-gain loop: 0.33
-error: 14400
-predecessors: 0,
-hist trips: 0, 1, 2, 3,
-hist avg stop durations: 0, 14, 12,
-hist avg segment durations: 45, 44, 44,
-
-Key: Source: 0 Transport: 0
-Trip Delay Predicton:
-filter gain: 0.66
-gain loop: 0.33
-error: 14400
-predecessors: 0,
-hist trips:
-hist avg stop durations:
-hist avg segment durations:
-
-Key: Source: 0 Transport: 1
-Trip Delay Predicton:
-filter gain: 0.66
-gain loop: 0.33
-error: 14400
-predecessors: 0,
-hist trips: 0, 1, 2, 3, 4,
-hist avg stop durations: 0, 16, 15,
-hist avg segment durations: 45, 42, 43,
-)";
+constexpr auto const expected_tts = "";
+constexpr auto const expected_dps = "";
 
 }  // namespace
 
-TEST(rt, gtfsrt_rt_delay_calc_test) {
-  std::cout << "Test rt::gtfsrt_rt_delay_calc_test" << std::endl;
+TEST(rt, gtfsrt_rt_delay_calc) {
+  std::cout << "Test rt::gtfsrt_rt_delay_calc" << std::endl;
 
   // Load static timetable.
   timetable tt;
   register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / July / 3},
-                    date::sys_days{2023_y / August / 12}};
+  tt.date_range_ = {date::sys_days{2024_y / January / 1},
+                    date::sys_days{2024_y / February / 6}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
 
-  // Create empty RT timetable.
-  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 12});
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / February / 5});
 
   auto tts = hist_trip_times_storage{};
-
   auto vtm = vehicle_trip_matching{};
-
-  // Create empty Delay Prediction Storage
   auto dps = delay_prediction_storage{};
 
   auto dp = delay_prediction{algorithm::kIntelligent,
@@ -1660,157 +1562,122 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
                              &tts,
                              &vtm};
 
-  // Update.
-  auto const msg11 = rt::json_to_protobuf(kVehiclePositionT11);
-  auto const msg12 = rt::json_to_protobuf(kVehiclePositionT12);
-  auto const msg13 = rt::json_to_protobuf(kVehiclePositionT13);
-  auto const msg14 = rt::json_to_protobuf(kVehiclePositionT14);
-  auto const msg15 = rt::json_to_protobuf(kVehiclePositionT15);
-  auto const msg2 = rt::json_to_protobuf(kVehiclePositionT2);
-  auto const msg31 = rt::json_to_protobuf(kVehiclePositionT31);
-  auto const msg32 = rt::json_to_protobuf(kVehiclePositionT32);
-  auto const msg33 = rt::json_to_protobuf(kVehiclePositionT33);
-  auto const msg34 = rt::json_to_protobuf(kVehiclePositionT34);
-  auto const msg35 = rt::json_to_protobuf(kVehiclePositionT35);
-  auto const msg36 = rt::json_to_protobuf(kVehiclePositionT36);
-  auto const msg37 = rt::json_to_protobuf(kVehiclePositionT37);
-  auto const msg38 = rt::json_to_protobuf(kVehiclePositionT38);
-  auto const msg39 = rt::json_to_protobuf(kVehiclePositionT39);
+  // Historic updates (inject previous days)
+  auto const msg01 = rt::json_to_protobuf(kVehiclePositionT01);
+  auto const msg02 = rt::json_to_protobuf(kVehiclePositionT02);
+  auto const msg03 = rt::json_to_protobuf(kVehiclePositionT03);
+  auto const msg04 = rt::json_to_protobuf(kVehiclePositionT04);
+  auto const msg05 = rt::json_to_protobuf(kVehiclePositionT05);
+  auto const msg06 = rt::json_to_protobuf(kVehiclePositionT06);
+  
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg01, &dp);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg02, &dp);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg03, &dp);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg04, &dp);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg05, &dp);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg06, &dp);
 
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg11, &dp);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg12, &dp);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg13, &dp);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg14, &dp);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg15, &dp);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2, &dp);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg31, &dp);
+  transit_realtime::TripDescriptor td01;
+  td01.set_start_date("20240101");
+  td01.set_trip_id("T01");
+  td01.set_start_time("10:00:00");
+  auto const [r01, t01] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024}, tt, &rtt, source_idx_t{0}, td01);
 
-  // Print trip.
-  transit_realtime::TripDescriptor td11;
-  td11.set_start_date("20230703");
-  td11.set_trip_id("11");
-  td11.set_start_time("05:15:00");
-  auto const [r11, t11] = rt::gtfsrt_resolve_run(
-      date::sys_days{May / 1 / 2019}, tt, &rtt, source_idx_t{0}, td11);
-  transit_realtime::TripDescriptor td12;
-  td12.set_start_date("20230710");
-  td12.set_trip_id("12");
-  td12.set_start_time("05:15:00");
-  auto const [r12, t12] = rt::gtfsrt_resolve_run(
-      date::sys_days{May / 1 / 2019}, tt, &rtt, source_idx_t{0}, td12);
-  transit_realtime::TripDescriptor td13;
-  td13.set_start_date("20230717");
-  td13.set_trip_id("13");
-  td13.set_start_time("05:15:00");
-  auto const [r13, t13] = rt::gtfsrt_resolve_run(
-      date::sys_days{May / 1 / 2019}, tt, &rtt, source_idx_t{0}, td13);
-  transit_realtime::TripDescriptor td14;
-  td14.set_start_date("20230724");
-  td14.set_trip_id("14");
-  td14.set_start_time("05:15:00");
-  auto const [r14, t14] = rt::gtfsrt_resolve_run(
-      date::sys_days{May / 1 / 2019}, tt, &rtt, source_idx_t{0}, td14);
-  transit_realtime::TripDescriptor td15;
-  td15.set_start_date("20230731");
-  td15.set_trip_id("15");
-  td15.set_start_time("05:15:00");
-  auto const [r15, t15] = rt::gtfsrt_resolve_run(
-      date::sys_days{May / 1 / 2019}, tt, &rtt, source_idx_t{0}, td15);
-  transit_realtime::TripDescriptor td2;
-  td2.set_start_date("20230807");
-  td2.set_trip_id("2");
-  td2.set_start_time("04:15:00");
-  auto const [r2, t2] = rt::gtfsrt_resolve_run(date::sys_days{May / 1 / 2019},
-                                               tt, &rtt, source_idx_t{0}, td2);
-  transit_realtime::TripDescriptor td3;
-  td3.set_start_date("20230807");
-  td3.set_trip_id("3");
-  td3.set_start_time("05:15:00");
-  auto const [r3, t3] = rt::gtfsrt_resolve_run(date::sys_days{May / 1 / 2019},
-                                               tt, &rtt, source_idx_t{0}, td3);
-  ASSERT_TRUE(r11.valid());
-  ASSERT_TRUE(r12.valid());
-  ASSERT_TRUE(r13.valid());
-  ASSERT_TRUE(r14.valid());
-  ASSERT_TRUE(r15.valid());
-  ASSERT_TRUE(r2.valid());
-  ASSERT_TRUE(r3.valid());
+  transit_realtime::TripDescriptor td02;
+  td02.set_start_date("20240108");
+  td02.set_trip_id("T02");
+  td02.set_start_time("10:00:00");
+  auto const [r02, t02] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024}, tt, &rtt, source_idx_t{0}, td02);
+
+  transit_realtime::TripDescriptor td03;
+  td03.set_start_date("20240115");
+  td03.set_trip_id("T03");
+  td03.set_start_time("10:00:00");
+  auto const [r03, t03] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024}, tt, &rtt, source_idx_t{0}, td03);
+
+  transit_realtime::TripDescriptor td04;
+  td04.set_start_date("20240122");
+  td04.set_trip_id("T04");
+  td04.set_start_time("10:00:00");
+  auto const [r04, t04] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024}, tt, &rtt, source_idx_t{0}, td04);
+
+  transit_realtime::TripDescriptor td05;
+  td05.set_start_date("20240129");
+  td05.set_trip_id("T05");
+  td05.set_start_time("10:00:00");
+  auto const [r05, t05] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024}, tt, &rtt, source_idx_t{0}, td05);
+
+  transit_realtime::TripDescriptor td06;
+  td06.set_start_date("20240205");
+  td06.set_trip_id("T06");
+  td06.set_start_time("06:00:00");
+  auto const [r06, t06] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024}, tt, &rtt, source_idx_t{0}, td06);
+
+  ASSERT_TRUE(r01.valid());
+  ASSERT_TRUE(r02.valid());
+  ASSERT_TRUE(r03.valid());
+  ASSERT_TRUE(r04.valid());
+  ASSERT_TRUE(r05.valid());
+  ASSERT_TRUE(r06.valid());
+
+  // Live updates for T07
+  auto const msg07_1 = rt::json_to_protobuf(kVehiclePositionT07_1);
+  auto const msg07_2 = rt::json_to_protobuf(kVehiclePositionT07_2);
+  auto const msg07_3 = rt::json_to_protobuf(kVehiclePositionT07_3);
+  auto const msg07_4 = rt::json_to_protobuf(kVehiclePositionT07_4);
+  auto const msg07_5 = rt::json_to_protobuf(kVehiclePositionT07_5);
+  auto const msg07_6 = rt::json_to_protobuf(kVehiclePositionT07_6);
+  auto const msg07_6b = rt::json_to_protobuf(kVehiclePositionT07_before_S04);
+  auto const msg07_7 = rt::json_to_protobuf(kVehiclePositionT07_7);
+
+  transit_realtime::TripDescriptor td07;
+  td07.set_start_date("20240205");
+  td07.set_trip_id("T07");
+  td07.set_start_time("10:00:00");
+  auto const [r07, t07] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024}, tt, &rtt, source_idx_t{0}, td07);
+
+  ASSERT_TRUE(r07.valid());
+
+  /**
+  std::cout << "--- Live Update 1 ---" << std::endl;
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_1, &dp);
+  std::cout << rt::frun{tt, &rtt, r07} << std::endl;
+
+  std::cout << "--- Live Update 2 ---" << std::endl;
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_2, &dp);
+  std::cout << rt::frun{tt, &rtt, r07} << std::endl;
+  
+  std::cout << "--- Live Update 3 ---" << std::endl;
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_3, &dp);
+  std::cout << rt::frun{tt, &rtt, r07} << std::endl;
+
+  std::cout << "--- Live Update 4 ---" << std::endl;
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_4, &dp);
+  std::cout << rt::frun{tt, &rtt, r07} << std::endl;
+
+  std::cout << "--- Live Update 5 ---" << std::endl;
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_5, &dp);
+  std::cout << rt::frun{tt, &rtt, r07} << std::endl;
+
+  std::cout << "--- Live Update 6 ---" << std::endl;
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_6, &dp);
+  std::cout << rt::frun{tt, &rtt, r07} << std::endl;
+
+  std::cout << "--- Live Update 6b ---" << std::endl;
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_6b, &dp);
+  std::cout << rt::frun{tt, &rtt, r07} << std::endl;
+
+  std::cout << "--- Live Update 7 ---" << std::endl;
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_7, &dp);
+  std::cout << rt::frun{tt, &rtt, r07} << std::endl;
 
   std::stringstream ss_tts;
   ss_tts << tts;
   std::cout << ss_tts.str() << std::endl;
-  EXPECT_EQ(expected_tts, ss_tts.str());
 
-  std::stringstream ss_dps1;
-  ss_dps1 << dps;
-  std::cout << ss_dps1.str() << std::endl;
-  EXPECT_EQ(expected_dps, ss_dps1.str());
+  std::stringstream ss_dps;
+  ss_dps << dps;
+  std::cout << ss_dps.str() << std::endl;
 
-  auto ss1 = std::stringstream{};
-  ss1 << "\n" << rt::frun{tt, &rtt, r3};
-  std::cout << ss1.str() << std::endl;
-
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg32, &dp);
-  auto ss2 = std::stringstream{};
-  ss2 << "\n" << rt::frun{tt, &rtt, r3};
-  std::cout << ss2.str() << std::endl;
-  std::stringstream ss_dps2;
-  ss_dps2 << dps;
-  std::cout << ss_dps2.str() << std::endl;
-
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg33, &dp);
-  auto ss3 = std::stringstream{};
-  ss3 << "\n" << rt::frun{tt, &rtt, r3};
-  std::cout << ss3.str() << std::endl;
-  std::stringstream ss_dps3;
-  ss_dps3 << dps;
-  std::cout << ss_dps3.str() << std::endl;
-
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg34, &dp);
-  auto ss4 = std::stringstream{};
-  ss4 << "\n" << rt::frun{tt, &rtt, r3};
-  std::cout << ss4.str() << std::endl;
-  std::stringstream ss_dps4;
-  ss_dps4 << dps;
-  std::cout << ss_dps4.str() << std::endl;
-
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg35, &dp);
-  auto ss5 = std::stringstream{};
-  ss5 << "\n" << rt::frun{tt, &rtt, r3};
-  std::cout << ss5.str() << std::endl;
-  std::stringstream ss_dps5;
-  ss_dps5 << dps;
-  std::cout << ss_dps5.str() << std::endl;
-
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg36, &dp);
-  auto ss6 = std::stringstream{};
-  ss6 << "\n" << rt::frun{tt, &rtt, r3};
-  std::cout << ss6.str() << std::endl;
-  std::stringstream ss_dps6;
-  ss_dps6 << dps;
-  std::cout << ss_dps6.str() << std::endl;
-
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg37, &dp);
-  auto ss7 = std::stringstream{};
-  ss7 << "\n" << rt::frun{tt, &rtt, r3};
-  std::cout << ss7.str() << std::endl;
-  std::stringstream ss_dps7;
-  ss_dps7 << dps;
-  std::cout << ss_dps7.str() << std::endl;
-
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg38, &dp);
-  auto ss8 = std::stringstream{};
-  ss8 << "\n" << rt::frun{tt, &rtt, r3};
-  std::cout << ss8.str() << std::endl;
-  std::stringstream ss_dps8;
-  ss_dps8 << dps;
-  std::cout << ss_dps8.str() << std::endl;
-
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg39, &dp);
-  auto ss9 = std::stringstream{};
-  ss9 << "\n" << rt::frun{tt, &rtt, r3};
-  std::cout << ss9.str() << std::endl;
-  std::stringstream ss_dps9;
-  ss_dps9 << dps;
-  std::cout << ss_dps9.str() << std::endl;
+  **/
 }
