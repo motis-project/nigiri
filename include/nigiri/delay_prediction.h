@@ -98,7 +98,8 @@ struct hist_trip_times_storage {
   // check if key already exists
   // if not: check if similar enough coord_seq exists (find_duplicates())
   // if not: create new index and add entries data structures
-  coord_seq_idx_t match_trip_to_coord_seq(timetable const&, key,
+  coord_seq_idx_t match_trip_to_coord_seq(timetable const&,
+                                          key,
                                           vector<location_idx_t>);
 
   std::tuple<segment_idx_t, double, geo::latlng> get_segment_progress(
@@ -133,8 +134,8 @@ struct trip_delay_pred {
 struct delay_prediction_storage {
   hash_map<key, trip_delay_pred> key_trip_delay_;
 
-  trip_delay_pred get_or_create_kalman(key, unixtime_t, uint32_t, uint32_t,
-                                       hist_trip_times_storage*);
+  trip_delay_pred get_or_create_kalman(
+      key, unixtime_t, uint32_t, uint32_t, hist_trip_times_storage*);
 
   static pair<vector<duration_t>, vector<duration_t>>
   get_avg_stop_segment_durations(hist_trip_times_storage*,

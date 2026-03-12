@@ -501,7 +501,8 @@ inline scoped_shape_idx_t to_scoped_shape_idx(shape_idx_t const local_idx,
 namespace std::chrono {
 
 template <typename Ctx>
-inline void serialize(Ctx& c, nigiri::duration_t const* origin,
+inline void serialize(Ctx& c,
+                      nigiri::duration_t const* origin,
                       cista::offset_t pos) {
   c.write(pos, cista::convert_endian<Ctx::MODE>(origin->count()));
 }

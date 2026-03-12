@@ -53,8 +53,10 @@ struct statistics {
 enum class algorithm { kSimple, kIntelligent };
 enum class hist_trip_mode { kSameDay, kPrevDays };
 struct delay_prediction {
-  explicit delay_prediction(algorithm const a, hist_trip_mode const m,
-                            uint32_t const np, uint32_t const nh,
+  explicit delay_prediction(algorithm const a,
+                            hist_trip_mode const m,
+                            uint32_t const np,
+                            uint32_t const nh,
                             delay_prediction_storage* dps,
                             hist_trip_times_storage* htts,
                             vehicle_trip_matching* vtm)
@@ -78,19 +80,25 @@ struct delay_prediction {
   vehicle_trip_matching* vehicle_trip_match = nullptr;
 };
 
-statistics gtfsrt_update_msg(timetable const&, rt_timetable&,
-                             source_idx_t const, std::string_view tag,
+statistics gtfsrt_update_msg(timetable const&,
+                             rt_timetable&,
+                             source_idx_t const,
+                             std::string_view tag,
                              transit_realtime::FeedMessage const&,
                              delay_prediction* = nullptr);
 
-statistics gtfsrt_update_buf(timetable const& tt, rt_timetable& rtt,
-                             source_idx_t const src, std::string_view tag,
+statistics gtfsrt_update_buf(timetable const& tt,
+                             rt_timetable& rtt,
+                             source_idx_t const src,
+                             std::string_view tag,
                              std::string_view protobuf,
                              transit_realtime::FeedMessage& msg,
                              delay_prediction* = nullptr);
 
-statistics gtfsrt_update_buf(timetable const&, rt_timetable&,
-                             source_idx_t const, std::string_view tag,
+statistics gtfsrt_update_buf(timetable const&,
+                             rt_timetable&,
+                             source_idx_t const,
+                             std::string_view tag,
                              std::string_view protobuf,
                              delay_prediction* = nullptr);
 
