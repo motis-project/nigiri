@@ -73,11 +73,13 @@ struct trip_seg_data {
 };
 
 struct trip_time_data {
-  trip_time_data(unixtime_t start_time, vector<trip_seg_data> seg_data, uint32_t n_stops) {
+  trip_time_data(unixtime_t start_time,
+                 vector<trip_seg_data> seg_data,
+                 uint32_t n_stops) {
     start_timestamp = start_time;
     seg_data_ = std::move(seg_data);
-    stop_durations_.resize(n_stops-1);
-    segment_durations_.resize(n_stops-1);
+    stop_durations_.resize(n_stops - 1);
+    segment_durations_.resize(n_stops - 1);
   }
   unixtime_t start_timestamp;
   vector<trip_seg_data> seg_data_;

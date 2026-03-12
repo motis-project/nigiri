@@ -1569,7 +1569,7 @@ TEST(rt, gtfsrt_rt_delay_calc) {
   auto const msg04 = rt::json_to_protobuf(kVehiclePositionT04);
   auto const msg05 = rt::json_to_protobuf(kVehiclePositionT05);
   auto const msg06 = rt::json_to_protobuf(kVehiclePositionT06);
-  
+
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg01, &dp);
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg02, &dp);
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg03, &dp);
@@ -1581,37 +1581,43 @@ TEST(rt, gtfsrt_rt_delay_calc) {
   td01.set_start_date("20240101");
   td01.set_trip_id("T01");
   td01.set_start_time("10:00:00");
-  auto const [r01, t01] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024}, tt, &rtt, source_idx_t{0}, td01);
+  auto const [r01, t01] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024},
+                                             tt, &rtt, source_idx_t{0}, td01);
 
   transit_realtime::TripDescriptor td02;
   td02.set_start_date("20240108");
   td02.set_trip_id("T02");
   td02.set_start_time("10:00:00");
-  auto const [r02, t02] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024}, tt, &rtt, source_idx_t{0}, td02);
+  auto const [r02, t02] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024},
+                                             tt, &rtt, source_idx_t{0}, td02);
 
   transit_realtime::TripDescriptor td03;
   td03.set_start_date("20240115");
   td03.set_trip_id("T03");
   td03.set_start_time("10:00:00");
-  auto const [r03, t03] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024}, tt, &rtt, source_idx_t{0}, td03);
+  auto const [r03, t03] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024},
+                                             tt, &rtt, source_idx_t{0}, td03);
 
   transit_realtime::TripDescriptor td04;
   td04.set_start_date("20240122");
   td04.set_trip_id("T04");
   td04.set_start_time("10:00:00");
-  auto const [r04, t04] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024}, tt, &rtt, source_idx_t{0}, td04);
+  auto const [r04, t04] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024},
+                                             tt, &rtt, source_idx_t{0}, td04);
 
   transit_realtime::TripDescriptor td05;
   td05.set_start_date("20240129");
   td05.set_trip_id("T05");
   td05.set_start_time("10:00:00");
-  auto const [r05, t05] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024}, tt, &rtt, source_idx_t{0}, td05);
+  auto const [r05, t05] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024},
+                                             tt, &rtt, source_idx_t{0}, td05);
 
   transit_realtime::TripDescriptor td06;
   td06.set_start_date("20240205");
   td06.set_trip_id("T06");
   td06.set_start_time("06:00:00");
-  auto const [r06, t06] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024}, tt, &rtt, source_idx_t{0}, td06);
+  auto const [r06, t06] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024},
+                                             tt, &rtt, source_idx_t{0}, td06);
 
   ASSERT_TRUE(r01.valid());
   ASSERT_TRUE(r02.valid());
@@ -1634,7 +1640,8 @@ TEST(rt, gtfsrt_rt_delay_calc) {
   td07.set_start_date("20240205");
   td07.set_trip_id("T07");
   td07.set_start_time("10:00:00");
-  auto const [r07, t07] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024}, tt, &rtt, source_idx_t{0}, td07);
+  auto const [r07, t07] = gtfsrt_resolve_run(date::sys_days{January / 1 / 2024},
+                                             tt, &rtt, source_idx_t{0}, td07);
 
   ASSERT_TRUE(r07.valid());
 
@@ -1646,7 +1653,7 @@ TEST(rt, gtfsrt_rt_delay_calc) {
   std::cout << "--- Live Update 2 ---" << std::endl;
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_2, &dp);
   std::cout << rt::frun{tt, &rtt, r07} << std::endl;
-  
+
   std::cout << "--- Live Update 3 ---" << std::endl;
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_3, &dp);
   std::cout << rt::frun{tt, &rtt, r07} << std::endl;

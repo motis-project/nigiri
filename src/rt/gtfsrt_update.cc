@@ -695,7 +695,7 @@ void calculate_delay_intelligent(
                                       ->coord_seq_idx_ttd_[coord_seq_idx])) {
       auto& current_ttd = delay_prediction->hist_trip_time_store
                               ->ttd_idx_trip_time_data_[*current_ttd_idx_it];
-      //just for safety - should never happen
+      // just for safety - should never happen
       if (current_ttd.seg_data_.empty()) {
         return;
       }
@@ -711,7 +711,9 @@ void calculate_delay_intelligent(
           geo::approx_squared_distance(
               new_tsd.position, nearest_stop,
               geo::approx_distance_lng_degrees(new_tsd.position)) < 20) {
-        auto const stop_to_add_to = current_progress < 0.5 ? current_segment.v_ : current_segment.v_ + 1;
+        auto const stop_to_add_to = current_progress < 0.5
+                                        ? current_segment.v_
+                                        : current_segment.v_ + 1;
         if (stop_to_add_to < current_ttd.stop_durations_.size()) {
           current_ttd.stop_durations_[stop_to_add_to] += delta;
         }
@@ -721,22 +723,21 @@ void calculate_delay_intelligent(
       current_ttd.seg_data_.emplace_back(new_tsd);
     }
 
-    auto const mode_div = delay_prediction->mode == hist_trip_mode::kSameDay ? 10080 : 1440;
+    auto const mode_div =
+        delay_prediction->mode == hist_trip_mode::kSameDay ? 10080 : 1440;
 
     // create kalman here (before creation of new ttd), so it is easier to
     // calculate averages
     auto& kalman =
         delay_prediction->delay_prediction_store->get_or_create_kalman(
             key, ut_start_time, delay_prediction->number_of_predecessors,
-            delay_prediction->number_of_hist_trips,
-            mode_div,
+            delay_prediction->number_of_hist_trips, mode_div,
             delay_prediction->hist_trip_time_store);
 
     if (current_ttd_idx_it == end(delay_prediction->hist_trip_time_store
                                       ->coord_seq_idx_ttd_[coord_seq_idx])) {
-      trip_time_data const new_ttd{ut_start_time,
-                                   {new_tsd},
-                                   static_cast<uint32_t>(location_seq.size())};
+      trip_time_data const new_ttd{
+          ut_start_time, {new_tsd}, static_cast<uint32_t>(location_seq.size())};
       delay_prediction->hist_trip_time_store->coord_seq_idx_ttd_[coord_seq_idx]
           .push_back(
               trip_time_data_idx_t{delay_prediction->hist_trip_time_store
@@ -816,8 +817,10 @@ void calculate_delay_intelligent(
       hist_variance /= hist_remaining_times.size();
     }
 
-    kalman.filter_gain = kalman.error == 0 && hist_variance == 0 ? 1 :
-        (kalman.error + hist_variance) / (kalman.error + 2 * hist_variance);
+    kalman.filter_gain = kalman.error == 0 && hist_variance == 0
+                             ? 1
+                             : (kalman.error + hist_variance) /
+                                   (kalman.error + 2 * hist_variance);
     kalman.gain_loop = 1 - kalman.filter_gain;
     kalman.error = hist_variance * kalman.filter_gain;
 
@@ -842,7 +845,7 @@ void calculate_delay_intelligent(
     // update delay for arrival at next stop
     if (next_stop != *fr.stop_range_.begin()) {
       update_delay(tt, rtt, r, next_stop, event_type::kArr, delay,
-                     rtt.unix_event_time(r.rt_, next_stop - 1, event_type::kDep));
+                   rtt.unix_event_time(r.rt_, next_stop - 1, event_type::kDep));
     }
 
     // update delay for stops after next stop
@@ -859,7 +862,7 @@ void calculate_delay_intelligent(
            tt.event_time(r.t_, first, event_type::kArr));
 
       update_delay(tt, rtt, r, first, event_type::kDep, delay,
-          rtt.unix_event_time(r.rt_, first, event_type::kArr));
+                   rtt.unix_event_time(r.rt_, first, event_type::kArr));
 
       delay +=
           std::chrono::duration_cast<duration_t>(
@@ -869,7 +872,7 @@ void calculate_delay_intelligent(
            tt.event_time(r.t_, first, event_type::kDep));
 
       update_delay(tt, rtt, r, second, event_type::kArr, delay,
-      rtt.unix_event_time(r.rt_, first, event_type::kDep));
+                   rtt.unix_event_time(r.rt_, first, event_type::kDep));
     }
     ++stats.total_entities_success_;
   } catch (std::exception const& e) {
