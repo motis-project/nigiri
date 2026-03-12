@@ -27,17 +27,6 @@ using namespace std::string_view_literals;
 
 namespace {
 
-// reads a binary GTFS-RT-FeedMessage from a file and returns it as a serialized
-// string
-[[maybe_unused]] std::string read_gtfsrt_file(std::filesystem::path const& p) {
-  auto f = std::ifstream{p, std::ios::in | std::ios::binary};
-  utl::verify(f.good(), "unable to open gtfsrt file {}", p.string());
-  auto buf = std::string{std::istreambuf_iterator<char>{f},
-                         std::istreambuf_iterator<char>{}};
-  utl::verify(!buf.empty(), "gtfsrt file {} is empty", p.string());
-  return buf;
-}
-
 mem_dir test_files() {
   return mem_dir::read(R"(
      "(
@@ -1475,6 +1464,171 @@ auto const kVehiclePositionT39 =
  ]
 })"s;
 
+constexpr auto const expected_tts =
+    R"(
+cs_key_coord_seq_:
+Key: Source: 0 Transport: 6
+Coord_seq_Idx: 0
+Key: Source: 0 Transport: 5
+Coord_seq_Idx: 0
+Key: Source: 0 Transport: 4
+Coord_seq_Idx: 0
+Key: Source: 0 Transport: 3
+Coord_seq_Idx: 0
+Key: Source: 0 Transport: 2
+Coord_seq_Idx: 0
+Key: Source: 0 Transport: 0
+Coord_seq_Idx: 0
+Key: Source: 0 Transport: 1
+Coord_seq_Idx: 0
+
+coord_seq_idx_coord_seq_:
+Coord_seq_Idx: 0
+Location_Sequence: 9,10,11,12,
+
+coord_seq_idx_ttd_:
+Coord_seq_Idx: 0
+Trip_Time_Data_Idxs: 0,1,2,3,4,5,6,
+
+ttd_idx_trip_time_data_:
+Trip_Time_Data_Idx: 0 Start_Time: 2023-07-03 09:15
+Segment: 0 Progress: 0 Timestamp: 2023-07-03 09:19
+Segment: 0 Progress: 0.203225 Timestamp: 2023-07-03 09:40
+Segment: 1 Progress: 0 Timestamp: 2023-07-03 10:05
+Segment: 1 Progress: 0 Timestamp: 2023-07-03 10:16
+Segment: 1 Progress: 0.269319 Timestamp: 2023-07-03 10:45
+Segment: 1 Progress: 0.999189 Timestamp: 2023-07-03 11:01
+Segment: 1 Progress: 0.999189 Timestamp: 2023-07-03 11:15
+Segment: 2 Progress: 0.20144 Timestamp: 2023-07-03 11:41
+Segment: 2 Progress: 0.999709 Timestamp: 2023-07-03 12:04
+Trip_Time_Data_Idx: 1 Start_Time: 2023-07-10 09:15
+Segment: 0 Progress: 0 Timestamp: 2023-07-10 09:35
+Segment: 0 Progress: 0.203225 Timestamp: 2023-07-10 10:00
+Segment: 1 Progress: 0 Timestamp: 2023-07-10 10:19
+Segment: 1 Progress: 0 Timestamp: 2023-07-10 10:32
+Segment: 1 Progress: 0.269319 Timestamp: 2023-07-10 10:53
+Segment: 1 Progress: 0.999189 Timestamp: 2023-07-10 11:13
+Segment: 1 Progress: 0.999189 Timestamp: 2023-07-10 11:25
+Segment: 2 Progress: 0.20144 Timestamp: 2023-07-10 11:47
+Segment: 2 Progress: 0.999709 Timestamp: 2023-07-10 12:05
+Trip_Time_Data_Idx: 2 Start_Time: 2023-07-17 09:15
+Segment: 0 Progress: 0 Timestamp: 2023-07-17 09:05
+Segment: 0 Progress: 0.203225 Timestamp: 2023-07-17 09:29
+Segment: 1 Progress: 0 Timestamp: 2023-07-17 09:52
+Segment: 1 Progress: 0 Timestamp: 2023-07-17 10:08
+Segment: 1 Progress: 0.269319 Timestamp: 2023-07-17 10:32
+Segment: 1 Progress: 0.999189 Timestamp: 2023-07-17 10:53
+Segment: 1 Progress: 0.999189 Timestamp: 2023-07-17 11:07
+Segment: 2 Progress: 0.20144 Timestamp: 2023-07-17 11:29
+Segment: 2 Progress: 0.999709 Timestamp: 2023-07-17 11:50
+Trip_Time_Data_Idx: 3 Start_Time: 2023-07-24 09:15
+Segment: 0 Progress: 0 Timestamp: 2023-07-24 09:15
+Segment: 0 Progress: 0.203225 Timestamp: 2023-07-24 09:38
+Segment: 1 Progress: 0 Timestamp: 2023-07-24 10:00
+Segment: 1 Progress: 0 Timestamp: 2023-07-24 10:19
+Segment: 1 Progress: 0.269319 Timestamp: 2023-07-24 10:42
+Segment: 1 Progress: 0.999189 Timestamp: 2023-07-24 11:04
+Segment: 1 Progress: 0.999189 Timestamp: 2023-07-24 11:15
+Segment: 2 Progress: 0.20144 Timestamp: 2023-07-24 11:38
+Segment: 2 Progress: 0.999709 Timestamp: 2023-07-24 12:00
+Trip_Time_Data_Idx: 4 Start_Time: 2023-07-31 09:15
+Segment: 0 Progress: 0 Timestamp: 2023-07-31 09:17
+Segment: 0 Progress: 0.203225 Timestamp: 2023-07-31 09:42
+Segment: 1 Progress: 0 Timestamp: 2023-07-31 10:01
+Segment: 1 Progress: 0 Timestamp: 2023-07-31 10:22
+Segment: 1 Progress: 0.269319 Timestamp: 2023-07-31 10:39
+Segment: 1 Progress: 0.999189 Timestamp: 2023-07-31 10:56
+Segment: 1 Progress: 0.999189 Timestamp: 2023-07-31 11:23
+Segment: 2 Progress: 0.20144 Timestamp: 2023-07-31 11:44
+Segment: 2 Progress: 0.999709 Timestamp: 2023-07-31 12:04
+Trip_Time_Data_Idx: 5 Start_Time: 2023-08-07 08:15
+Segment: 0 Progress: 0 Timestamp: 2023-08-06 08:19
+Segment: 0 Progress: 0.203225 Timestamp: 2023-08-06 08:40
+Segment: 1 Progress: 0 Timestamp: 2023-08-06 08:58
+Segment: 1 Progress: 0 Timestamp: 2023-08-06 09:25
+Segment: 1 Progress: 0.269319 Timestamp: 2023-08-06 09:39
+Segment: 1 Progress: 0.999189 Timestamp: 2023-08-06 09:57
+Segment: 1 Progress: 0.999189 Timestamp: 2023-08-06 10:24
+Segment: 2 Progress: 0.20144 Timestamp: 2023-08-06 10:38
+Segment: 2 Progress: 0.999709 Timestamp: 2023-08-06 11:01
+Trip_Time_Data_Idx: 6 Start_Time: 2023-08-07 09:15
+Segment: 0 Progress: 0 Timestamp: 2023-08-07 09:30
+)";
+
+constexpr auto const expected_dps =
+    R"(
+cs_key_coord_seq_:
+Key: Source: 0 Transport: 6
+Trip Delay Predicton:
+filter gain: 0.66
+gain loop: 0.33
+error: 14400
+predecessors: <none>
+hist trips:
+hist avg stop durations:
+hist avg segment durations:
+
+Key: Source: 0 Transport: 5
+Trip Delay Predicton:
+filter gain: 0.66
+gain loop: 0.33
+error: 14400
+predecessors: 0,
+hist trips: 0,
+hist avg stop durations: 0, 11, 14,
+hist avg segment durations: 46, 45, 49,
+
+Key: Source: 0 Transport: 4
+Trip Delay Predicton:
+filter gain: 0.66
+gain loop: 0.33
+error: 14400
+predecessors: 0,
+hist trips: 0, 1,
+hist avg stop durations: 0, 12, 13,
+hist avg segment durations: 45, 43, 44,
+
+Key: Source: 0 Transport: 3
+Trip Delay Predicton:
+filter gain: 0.66
+gain loop: 0.33
+error: 14400
+predecessors: 0,
+hist trips: 0, 1, 2,
+hist avg stop durations: 0, 13, 13,
+hist avg segment durations: 45, 43, 44,
+
+Key: Source: 0 Transport: 2
+Trip Delay Predicton:
+filter gain: 0.66
+gain loop: 0.33
+error: 14400
+predecessors: 0,
+hist trips: 0, 1, 2, 3,
+hist avg stop durations: 0, 14, 12,
+hist avg segment durations: 45, 44, 44,
+
+Key: Source: 0 Transport: 0
+Trip Delay Predicton:
+filter gain: 0.66
+gain loop: 0.33
+error: 14400
+predecessors: 0,
+hist trips:
+hist avg stop durations:
+hist avg segment durations:
+
+Key: Source: 0 Transport: 1
+Trip Delay Predicton:
+filter gain: 0.66
+gain loop: 0.33
+error: 14400
+predecessors: 0,
+hist trips: 0, 1, 2, 3, 4,
+hist avg stop durations: 0, 16, 15,
+hist avg segment durations: 45, 42, 43,
+)";
+
 }  // namespace
 
 TEST(rt, gtfsrt_rt_delay_calc_test) {
@@ -1584,136 +1738,79 @@ TEST(rt, gtfsrt_rt_delay_calc_test) {
 
   std::stringstream ss_tts;
   ss_tts << tts;
-  // std::cout << ss_tts.str() << std::endl;
-  //  EXPECT_EQ(expected_tts, ss_tts.str());
+  std::cout << ss_tts.str() << std::endl;
+  EXPECT_EQ(expected_tts, ss_tts.str());
 
   std::stringstream ss_dps1;
   ss_dps1 << dps;
-  // std::cout << ss_dps1.str() << std::endl;
-  //  EXPECT_EQ(expected_dps, ss_dps.str());
+  std::cout << ss_dps1.str() << std::endl;
+  EXPECT_EQ(expected_dps, ss_dps1.str());
 
-  auto const fr = rt::frun{tt, &rtt, r3};
   auto ss1 = std::stringstream{};
-  ss1 << "\n" << fr;
-  // std::cout << ss1.str() << std::endl;
+  ss1 << "\n" << rt::frun{tt, &rtt, r3};
+  std::cout << ss1.str() << std::endl;
 
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg32, &dp);
   auto ss2 = std::stringstream{};
-  ss2 << "\n" << fr;
-  // std::cout << ss2.str() << std::endl;
+  ss2 << "\n" << rt::frun{tt, &rtt, r3};
+  std::cout << ss2.str() << std::endl;
   std::stringstream ss_dps2;
   ss_dps2 << dps;
-  // std::cout << ss_dps2.str() << std::endl;
+  std::cout << ss_dps2.str() << std::endl;
 
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg33, &dp);
   auto ss3 = std::stringstream{};
-  ss3 << "\n" << fr;
-  // std::cout << ss3.str() << std::endl;
+  ss3 << "\n" << rt::frun{tt, &rtt, r3};
+  std::cout << ss3.str() << std::endl;
   std::stringstream ss_dps3;
   ss_dps3 << dps;
-  // std::cout << ss_dps3.str() << std::endl;
+  std::cout << ss_dps3.str() << std::endl;
 
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg34, &dp);
   auto ss4 = std::stringstream{};
-  ss4 << "\n" << fr;
-  // std::cout << ss4.str() << std::endl;
+  ss4 << "\n" << rt::frun{tt, &rtt, r3};
+  std::cout << ss4.str() << std::endl;
   std::stringstream ss_dps4;
   ss_dps4 << dps;
-  // std::cout << ss_dps4.str() << std::endl;
+  std::cout << ss_dps4.str() << std::endl;
 
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg35, &dp);
   auto ss5 = std::stringstream{};
-  ss5 << "\n" << fr;
-  // std::cout << ss5.str() << std::endl;
+  ss5 << "\n" << rt::frun{tt, &rtt, r3};
+  std::cout << ss5.str() << std::endl;
   std::stringstream ss_dps5;
   ss_dps5 << dps;
-  // std::cout << ss_dps5.str() << std::endl;
+  std::cout << ss_dps5.str() << std::endl;
 
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg36, &dp);
   auto ss6 = std::stringstream{};
-  ss6 << "\n" << fr;
-  // std::cout << ss6.str() << std::endl;
+  ss6 << "\n" << rt::frun{tt, &rtt, r3};
+  std::cout << ss6.str() << std::endl;
   std::stringstream ss_dps6;
   ss_dps6 << dps;
-  // std::cout << ss_dps6.str() << std::endl;
+  std::cout << ss_dps6.str() << std::endl;
 
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg37, &dp);
   auto ss7 = std::stringstream{};
-  ss7 << "\n" << fr;
-  // std::cout << ss7.str() << std::endl;
+  ss7 << "\n" << rt::frun{tt, &rtt, r3};
+  std::cout << ss7.str() << std::endl;
   std::stringstream ss_dps7;
   ss_dps7 << dps;
-  // std::cout << ss_dps7.str() << std::endl;
+  std::cout << ss_dps7.str() << std::endl;
 
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg38, &dp);
   auto ss8 = std::stringstream{};
-  ss8 << "\n" << fr;
-  // std::cout << ss8.str() << std::endl;
+  ss8 << "\n" << rt::frun{tt, &rtt, r3};
+  std::cout << ss8.str() << std::endl;
   std::stringstream ss_dps8;
   ss_dps8 << dps;
-  // std::cout << ss_dps8.str() << std::endl;
+  std::cout << ss_dps8.str() << std::endl;
 
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg39, &dp);
   auto ss9 = std::stringstream{};
-  ss9 << "\n" << fr;
-  // std::cout << ss9.str() << std::endl;
+  ss9 << "\n" << rt::frun{tt, &rtt, r3};
+  std::cout << ss9.str() << std::endl;
   std::stringstream ss_dps9;
   ss_dps9 << dps;
-  // std::cout << ss_dps9.str() << std::endl;
+  std::cout << ss_dps9.str() << std::endl;
 }
-
-/**
-TEST(rt, gtfsrt_rt_delay_calc_real_data_test_file) {
-  std::cout << "Test rt::gtfsrt_rt_delay_calc_real_data_test" << std::endl;
-
-  auto tts = hist_trip_times_storage{};
-
-  auto vtm = vehicle_trip_matching{};
-
-  // Create empty Delay Prediction Storage
-  auto dps = delay_prediction_storage{};
-
-  auto dp = delay_prediction{algorithm::kIntelligent,
-                             hist_trip_mode::kSameDay,
-                             1,
-                             5,
-                             &dps,
-                             &tts,
-                             &vtm};
-
-  // Statisches GTFS laden.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2026_y / February / 14},
-                    date::sys_days{2026_y / February / 17}};
-
-  // Hier: das reale GTFS aus gtfs zip-file verwenden
-  auto const p = std::filesystem::path{"NL-20260216.gtfs.zip"};
-  auto const dir_ptr = loader::make_dir(p);
-  load_timetable({}, source_idx_t{0}, *dir_ptr, tt);
-  finalize(tt);
-
-  // RT-Timetable für einen Tag innerhalb der GTFS-Daten anlegen.
-  auto const base_day = date::sys_days{2026_y / February / 16};
-  auto rtt = rt::create_rt_timetable(tt, base_day);
-
-  // vehiclePositions.pb aus dem Projekt-Root einlesen.
-  auto const vp_path = std::filesystem::path{"vehiclePositions.pb"};
-  auto const buf = read_gtfsrt_file(vp_path);
-
-  // Als VehiclePositions-Feed einspeisen.
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", buf, &dp);
-
-  std::stringstream ss_tts;
-  ss_tts << tts;
-  std::cout << "hist_trip_times_storage from vehiclePositions.pb:\n"
-            << ss_tts.str() << std::endl;
-
-  std::stringstream ss_dps;
-  ss_dps << dps;
-  std::cout << "delay_prediction_storage from vehiclePositions.pb:\n"
-            << ss_dps.str() << std::endl;
-
-  EXPECT_FALSE(ss_tts.str().empty() && ss_dps.str().empty());
-}
-**/

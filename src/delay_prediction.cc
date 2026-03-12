@@ -280,8 +280,8 @@ duration_t delay_prediction_storage::get_avg_duration(
 void delay_prediction_storage::print(std::ostream& out) const {
   out << "\ncs_key_coord_seq_:\n";
   for (auto const& [key, tdp] : key_trip_delay_) {
-    out << "Key: Source: " << key.source_idx << " Trip: " << key.t_idx
-        << "\nTrip Delay Predicton: "
+    out << "Key: Source: " << key.source_idx << " Transport: " << key.t_idx
+        << "\nTrip Delay Predicton:"
            "\nfilter gain: "
         << tdp.filter_gain << "\ngain loop: " << tdp.gain_loop
         << "\nerror: " << tdp.error << "\npredecessors: ";
