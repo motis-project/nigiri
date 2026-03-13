@@ -1532,9 +1532,6 @@ auto const kVehiclePositionT07_7 = R"({
  ]
 })"s;
 
-constexpr auto const expected_tts = "";
-constexpr auto const expected_dps = "";
-
 }  // namespace
 
 TEST(rt, gtfsrt_rt_delay_calc) {
@@ -1629,8 +1626,10 @@ TEST(rt, gtfsrt_rt_delay_calc) {
   // Live updates for T07
   auto const msg07_1 = rt::json_to_protobuf(kVehiclePositionT07_1);
   auto const msg07_2 = rt::json_to_protobuf(kVehiclePositionT07_2);
+  auto const msg07_2b = rt::json_to_protobuf(kVehiclePositionT07_before_S02);
   auto const msg07_3 = rt::json_to_protobuf(kVehiclePositionT07_3);
   auto const msg07_4 = rt::json_to_protobuf(kVehiclePositionT07_4);
+  auto const msg07_4b = rt::json_to_protobuf(kVehiclePositionT07_before_S03);
   auto const msg07_5 = rt::json_to_protobuf(kVehiclePositionT07_5);
   auto const msg07_6 = rt::json_to_protobuf(kVehiclePositionT07_6);
   auto const msg07_6b = rt::json_to_protobuf(kVehiclePositionT07_before_S04);
@@ -1654,12 +1653,20 @@ TEST(rt, gtfsrt_rt_delay_calc) {
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_2, &dp);
   std::cout << rt::frun{tt, &rtt, r07} << std::endl;
 
+  std::cout << "--- Live Update 2b ---" << std::endl;
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_2b, &dp);
+  std::cout << rt::frun{tt, &rtt, r07} << std::endl;
+
   std::cout << "--- Live Update 3 ---" << std::endl;
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_3, &dp);
   std::cout << rt::frun{tt, &rtt, r07} << std::endl;
 
   std::cout << "--- Live Update 4 ---" << std::endl;
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_4, &dp);
+  std::cout << rt::frun{tt, &rtt, r07} << std::endl;
+
+  std::cout << "--- Live Update 4b ---" << std::endl;
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg07_4b, &dp);
   std::cout << rt::frun{tt, &rtt, r07} << std::endl;
 
   std::cout << "--- Live Update 5 ---" << std::endl;
