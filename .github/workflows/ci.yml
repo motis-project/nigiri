@@ -2,13 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [ master, feat ]
+    branches: [ master ]
   pull_request:
     branches: [ master ]
   release:
     types:
       - published
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
