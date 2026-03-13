@@ -12,7 +12,6 @@
 
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 
 #include "./util.h"
 
@@ -31,7 +30,7 @@ mem_dir test_files() {
   return mem_dir::read(R"(
 # agency.txt
 agency_name,agency_url,agency_timezone,agency_lang,agency_phone,agency_fare_url,agency_id
-"Agency",https://agency.com,UTC,en,555-0123,http://agency.com/fares,agency
+"Agency",https://agency.com,UTC,en,555-0123,https://agency.com/fares,agency
 
 # stops.txt
 stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,zone_id,stop_url,location_type,parent_station,wheelchair_boarding,platform_code
@@ -1535,7 +1534,6 @@ auto const kVehiclePositionT07_7 = R"({
 }  // namespace
 
 TEST(rt, gtfsrt_rt_delay_calc) {
-  std::cout << "Test rt::gtfsrt_rt_delay_calc" << std::endl;
 
   // Load static timetable.
   timetable tt;
@@ -1624,16 +1622,16 @@ TEST(rt, gtfsrt_rt_delay_calc) {
   ASSERT_TRUE(r06.valid());
 
   // Live updates for T07
-  auto const msg07_1 = rt::json_to_protobuf(kVehiclePositionT07_1);
-  auto const msg07_2 = rt::json_to_protobuf(kVehiclePositionT07_2);
-  auto const msg07_2b = rt::json_to_protobuf(kVehiclePositionT07_before_S02);
-  auto const msg07_3 = rt::json_to_protobuf(kVehiclePositionT07_3);
-  auto const msg07_4 = rt::json_to_protobuf(kVehiclePositionT07_4);
-  auto const msg07_4b = rt::json_to_protobuf(kVehiclePositionT07_before_S03);
-  auto const msg07_5 = rt::json_to_protobuf(kVehiclePositionT07_5);
-  auto const msg07_6 = rt::json_to_protobuf(kVehiclePositionT07_6);
-  auto const msg07_6b = rt::json_to_protobuf(kVehiclePositionT07_before_S04);
-  auto const msg07_7 = rt::json_to_protobuf(kVehiclePositionT07_7);
+  /**auto const msg07_1 =**/ rt::json_to_protobuf(kVehiclePositionT07_1);
+  /**auto const msg07_2 =**/ rt::json_to_protobuf(kVehiclePositionT07_2);
+  /**auto const msg07_2b =**/ rt::json_to_protobuf(kVehiclePositionT07_before_S02);
+  /**auto const msg07_3 =**/ rt::json_to_protobuf(kVehiclePositionT07_3);
+  /**auto const msg07_4 =**/ rt::json_to_protobuf(kVehiclePositionT07_4);
+  /**auto const msg07_4b =**/ rt::json_to_protobuf(kVehiclePositionT07_before_S03);
+  /**auto const msg07_5 =**/ rt::json_to_protobuf(kVehiclePositionT07_5);
+  /**auto const msg07_6 =**/ rt::json_to_protobuf(kVehiclePositionT07_6);
+  /**auto const msg07_6b =**/ rt::json_to_protobuf(kVehiclePositionT07_before_S04);
+  /**auto const msg07_7 =**/ rt::json_to_protobuf(kVehiclePositionT07_7);
 
   transit_realtime::TripDescriptor td07;
   td07.set_start_date("20240205");
