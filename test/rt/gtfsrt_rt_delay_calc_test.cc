@@ -1624,13 +1624,16 @@ TEST(rt, gtfsrt_rt_delay_calc) {
   // Live updates for T07
   /**auto const msg07_1 =**/ rt::json_to_protobuf(kVehiclePositionT07_1);
   /**auto const msg07_2 =**/ rt::json_to_protobuf(kVehiclePositionT07_2);
-  /**auto const msg07_2b =**/ rt::json_to_protobuf(kVehiclePositionT07_before_S02);
+  /**auto const msg07_2b =**/ rt::json_to_protobuf(
+      kVehiclePositionT07_before_S02);
   /**auto const msg07_3 =**/ rt::json_to_protobuf(kVehiclePositionT07_3);
   /**auto const msg07_4 =**/ rt::json_to_protobuf(kVehiclePositionT07_4);
-  /**auto const msg07_4b =**/ rt::json_to_protobuf(kVehiclePositionT07_before_S03);
+  /**auto const msg07_4b =**/ rt::json_to_protobuf(
+      kVehiclePositionT07_before_S03);
   /**auto const msg07_5 =**/ rt::json_to_protobuf(kVehiclePositionT07_5);
   /**auto const msg07_6 =**/ rt::json_to_protobuf(kVehiclePositionT07_6);
-  /**auto const msg07_6b =**/ rt::json_to_protobuf(kVehiclePositionT07_before_S04);
+  /**auto const msg07_6b =**/ rt::json_to_protobuf(
+      kVehiclePositionT07_before_S04);
   /**auto const msg07_7 =**/ rt::json_to_protobuf(kVehiclePositionT07_7);
 
   transit_realtime::TripDescriptor td07;
