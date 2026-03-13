@@ -68,7 +68,7 @@ struct delay_prediction {
         hist_trip_time_store{htts},
         vehicle_trip_match{vtm} {}
 
-  explicit delay_prediction() {};
+  explicit delay_prediction() = default;
 
   algorithm const algo = algorithm::kSimple;
   hist_trip_mode const mode = hist_trip_mode::kSameDay;

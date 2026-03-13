@@ -67,7 +67,7 @@ struct trip_seg_data {
   geo::latlng position;
 
   bool operator==(trip_seg_data const& tsd) const {
-    return seg_idx == tsd.seg_idx && progress == tsd.progress &&
+    return seg_idx == tsd.seg_idx && (progress - tsd.progress < 0.00000001) &&
            timestamp == tsd.timestamp && position == tsd.position;
   }
 };

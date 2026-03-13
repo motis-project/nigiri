@@ -196,10 +196,16 @@ trip_delay_pred& delay_prediction_storage::get_or_create_kalman(
               htts->ttd_idx_trip_time_data_[earliest_pred.value()]
                   .start_timestamp) {
         predecessors_.emplace_back(ttd_idx);
+        // Find the element with the smallest start_timestamp
+        auto min_it =
+            std::ranges::min_element(predecessors_, [htts](auto a, auto b) {
+              return htts->ttd_idx_trip_time_data_[a].start_timestamp <
+                     htts->ttd_idx_trip_time_data_[b].start_timestamp;
+            });
         if (predecessors_.size() == n_pred) {
-          earliest_pred = ttd_idx;
+          earliest_pred = *min_it;
         } else if (predecessors_.size() > n_pred) {
-          predecessors_.erase(&earliest_pred.value());
+          predecessors_.erase(min_it);
         }
       }
 
@@ -209,10 +215,16 @@ trip_delay_pred& delay_prediction_storage::get_or_create_kalman(
                htts->ttd_idx_trip_time_data_[earliest_hist.value()]
                    .start_timestamp)) {
         hist_trips_.emplace_back(ttd_idx);
+        // Find the element with the smallest start_timestamp
+        auto min_it =
+            std::ranges::min_element(hist_trips_, [htts](auto a, auto b) {
+              return htts->ttd_idx_trip_time_data_[a].start_timestamp <
+                     htts->ttd_idx_trip_time_data_[b].start_timestamp;
+            });
         if (hist_trips_.size() == n_hist) {
-          earliest_hist = ttd_idx;
+          earliest_hist = *min_it;
         } else if (hist_trips_.size() > n_hist) {
-          hist_trips_.erase(&earliest_hist.value());
+          hist_trips_.erase(min_it);
         }
       }
     }
