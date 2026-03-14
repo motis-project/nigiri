@@ -30,6 +30,7 @@
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/shape_prepare.h"
 #include "nigiri/loader/gtfs/stop.h"
+#include "nigiri/loader/gtfs/stop_group.h"
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/gtfs/translations.h"
@@ -97,6 +98,7 @@ void load_timetable(loader_config const& config,
   auto const [stops, seated_transfers] = read_stops(
       src, tt, i18n, timezones, load(kStopFile).data(),
       load(kTransfersFile).data(), config.link_stop_distance_, user_script);
+  add_stop_groups(tt, load(kStopGroupElementsFile).data(), stops);
   auto const routes =
       read_routes(src, tt, i18n, timezones, agencies, load(kRoutesFile).data(),
                   config.default_tz_, user_script);

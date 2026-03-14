@@ -123,6 +123,21 @@ location_idx_t run_stop::get_scheduled_location_idx() const {
   return get_scheduled_stop().location_idx();
 }
 
+run_stop run_stop::get_first_trip_stop(event_type const ev_type) const {
+  if (!fr_->is_scheduled()) {
+    return run_stop{fr_, stop_idx_t{0U}};
+  }
+
+  auto const trip = get_trip_idx(ev_type);
+  auto copy = *this;
+
+  while (copy.stop_idx_ > 0U && copy.get_trip_idx(event_type::kArr) == trip) {
+    --copy.stop_idx_;
+  }
+
+  return copy;
+}
+
 run_stop run_stop::get_last_trip_stop(event_type const ev_type) const {
   auto const end = fr_->size();
   if (!fr_->is_scheduled()) {
@@ -273,6 +288,14 @@ std::string_view run_stop::route_long_name(event_type const ev_type,
              ? "?"
              : tt().translate(lang,
                               route_ids->route_id_long_names_.at(route_id_idx));
+}
+
+std::string_view run_stop::route_url(event_type const ev_type,
+                                     lang_t const& lang) const {
+  auto const [route_ids, route_id_idx] = get_route(ev_type);
+  return route_ids == nullptr
+             ? "?"
+             : tt().translate(lang, route_ids->rotue_id_url_.at(route_id_idx));
 }
 
 std::string_view run_stop::trip_short_name(event_type const ev_type,
@@ -637,48 +660,65 @@ void frun::for_each_shape_point(
               range.size());
   assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
   auto const absolute_stop_range = range >> stop_range_.from_;
+  auto current_shape_source = shape_source::kTimetable;
   auto const get_subshape = [&](interval<stop_idx_t> absolute_range,
                                 trip_idx_t const trip_idx,
                                 stop_idx_t const absolute_trip_offset)
       -> std::variant<std::span<geo::latlng const>, interval<stop_idx_t>> {
     if (shapes_data != nullptr && trip_idx != trip_idx_t::invalid()) {
-      auto const shape = shapes_data->get_shape(
+      auto const [shape, shape_idx] = shapes_data->get_shape_with_idx(
           trip_idx, absolute_range << absolute_trip_offset);
       if (!shape.empty()) {
+        current_shape_source = get_shape_source(shape_idx);
         return shape;
       }
     }
     return absolute_range << stop_range_.from_;
   };
-  auto start_pos = (*this)[range.from_].pos();
-  callback(start_pos);
-  auto consume_pos = [&, last_pos = std::move(start_pos), changed = false](
-                         geo::latlng const& pos,
-                         bool const force_if_unchanged = false) mutable {
-    if (pos != last_pos || (force_if_unchanged && !changed)) {
+  auto last_pos = std::optional<geo::latlng>{};
+  auto consumed = 0U;
+  auto consume_pos = [&](geo::latlng const& pos,
+                         bool const force_if_unchanged = false) {
+    if (force_if_unchanged || !last_pos.has_value() || pos != *last_pos) {
       callback(pos);
-      changed = true;
+      ++consumed;
     }
     last_pos = pos;
   };
-  for_each_trip([&](trip_idx_t const trip_idx,
-                    interval<stop_idx_t> const subrange) {
-    auto const common_stops = subrange.intersect(absolute_stop_range);
-    if (common_stops.size() > 1) {
-      std::visit(utl::overloaded{[&](std::span<geo::latlng const> shape) {
-                                   for (auto const& pos : shape) {
-                                     consume_pos(pos);
-                                   }
-                                 },
-                                 [&](interval<stop_idx_t> relative_range) {
-                                   for (auto const stop_idx : relative_range) {
-                                     consume_pos((*this)[stop_idx].pos());
-                                   }
-                                 }},
-                 get_subshape(common_stops, trip_idx, subrange.from_));
-    }
-  });
-  consume_pos((*this)[static_cast<stop_idx_t>(range.to_ - 1)].pos(), true);
+  for_each_trip(
+      [&](trip_idx_t const trip_idx, interval<stop_idx_t> const subrange) {
+        auto const common_stops = subrange.intersect(absolute_stop_range);
+        if (common_stops.size() > 1) {
+          auto const relative_common_stops = common_stops << stop_range_.from_;
+          std::visit(
+              utl::overloaded{
+                  [&](std::span<geo::latlng const> shape) {
+                    if (current_shape_source == shape_source::kTimetable) {
+                      consume_pos((*this)[relative_common_stops.from_].pos());
+                    }
+                    for (auto const& pos : shape) {
+                      consume_pos(pos);
+                    }
+                    if (current_shape_source == shape_source::kTimetable) {
+                      consume_pos((*this)[static_cast<stop_idx_t>(
+                                              relative_common_stops.to_ - 1)]
+                                      .pos());
+                    }
+                  },
+                  [&](interval<stop_idx_t> relative_range) {
+                    for (auto const stop_idx : relative_range) {
+                      consume_pos((*this)[stop_idx].pos());
+                    }
+                  }},
+              get_subshape(common_stops, trip_idx, subrange.from_));
+        }
+      });
+  if (consumed == 0U) {
+    consume_pos((*this)[range.from_].pos());
+    consume_pos((*this)[static_cast<stop_idx_t>(range.to_ - 1)].pos(), true);
+  } else if (consumed == 1U) {
+    consume_pos((*this)[static_cast<stop_idx_t>(range.to_ - 1)].pos(), true);
+  }
 }
 
 trip_id frun::id() const {
