@@ -679,7 +679,7 @@ void obtain_relevant_stops(timetable const& tt,
                false, false, std::move(dep_max_saw), std::move(pushdown_right),
                std::move(left_next), right});
           std::cout << "stack push " << unpack.first << " " << unpack.second
-                    << std::endl;
+                    << " qs:" << queue.size() << std::endl;
         }
       }
     }

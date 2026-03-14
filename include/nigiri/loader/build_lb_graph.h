@@ -456,7 +456,14 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       auto const s_max = saw<kChSawType>{max_saw_tmp, traffic_days};
       s_min.set_last_set_bit(max_saw_tmp, static_cast<std::uint16_t>(lsb));
       s_max.max(max_saw, kChSawType);
+
+      if (kChSawType == routing::saw_type::kTrafficDays) {
+        traffic_days.persist_tmp(min_saw, true);
+        traffic_days.persist_tmp(max_saw, true);
+      }
     }
+
+    traffic_days.clear_tmp();
     min_saw_tmp.clear();
     max_saw_tmp.clear();
   };

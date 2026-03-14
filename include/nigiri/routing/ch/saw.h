@@ -20,7 +20,7 @@ static constexpr auto const kSawMetadataOffset = 3U;
 static constexpr auto const kSawFieldLastSetBit = 0U;
 static constexpr auto const kSawFieldMin = 1U;
 static constexpr auto const kSawFieldMax = 2U;
-static constexpr auto const kRelaxedDomination = true;
+static constexpr auto const kRelaxedDomination = false;
 static constexpr auto const kRelaxedDominationEarlierDeparture =
     u16_minutes{60 * 4};
 static constexpr auto const kRelaxedDominationEarlierArrival = u16_minutes{60};
@@ -62,8 +62,8 @@ struct traffic_days {
     tmp_bitfields_.clear();
   }
 
-  void persist_tmp(std::vector<tooth>& s) {
-    if (kChSawType != saw_type::kTrafficDaysPower) {
+  void persist_tmp(std::vector<tooth>& s, bool const force = false) {
+    if (kChSawType != saw_type::kTrafficDaysPower && !force) {
       return;
     }
     auto const len = bitfields_.size();
@@ -308,12 +308,12 @@ struct saw {
 
   bool less(saw<SawType> const& b, bool const exact_true = false) const {
     auto const r = _less(b, exact_true);
-    std::cout << "less " << std::get<0>(r) << " ";
+    /*std::cout << "less " << std::get<0>(r) << " ";
     if (saw_.size() > 0 && b.saw_.size() > 0) {
       print_tooth(std::cout, saw_[std::get<1>(r)], traffic_days_);
       print_tooth(std::cout, b.saw_[std::get<2>(r)], b.traffic_days_);
     }
-    std::cout << std::endl;
+    std::cout << std::endl;*/
     // std::cout << *this << std::endl;
     // std::cout << b << std::endl;
     /*
@@ -1123,7 +1123,7 @@ struct saw {
             utl::verify(std::abs(d) < 24 * 60, "concat_const more than 24h");
             auto traffic_days = traffic_days_.at(traffic_days_idx).first >> 1U;
             traffic_days.set(kTimetableOffset.count() - 1U, false);
-            traffic_days_idx = traffic_days_.get_or_create_tmp(
+            traffic_days_idx = traffic_days_.get_or_create(  // TODO tmp
                 traffic_days, traffic_days_.at(traffic_days_idx).second - 1U);
           }
         }
@@ -1134,7 +1134,7 @@ struct saw {
             auto traffic_days = traffic_days_.at(traffic_days_idx).first << 1U;
             traffic_days.set(traffic_days_.at(traffic_days_idx).second + 1U,
                              false);
-            traffic_days_idx = traffic_days_.get_or_create_tmp(
+            traffic_days_idx = traffic_days_.get_or_create(  // TODO tmp
                 traffic_days, traffic_days_.at(traffic_days_idx).second);
           }
         }
