@@ -723,7 +723,7 @@ void calculate_delay_intelligent(
       current_ttd.seg_data_.emplace_back(new_tsd);
     }
 
-    auto const mode_div =
+    uint32_t const mode_div =
         delay_prediction->mode == hist_trip_mode::kSameDay ? 10080 : 1440;
 
     // create kalman here (before creation of new ttd), so it is easier to
@@ -817,10 +817,11 @@ void calculate_delay_intelligent(
       hist_variance /= hist_remaining_times.size();
     }
 
-    kalman.filter_gain = kalman.error == 0 && hist_variance == 0
-                             ? 1
-                             : (kalman.error + hist_variance) /
-                                   (kalman.error + 2 * hist_variance);
+    kalman.filter_gain =
+        kalman.error - 0 < 0.0000000001 && hist_variance - 0 < 0.0000000001
+            ? 1
+            : (kalman.error + hist_variance) /
+                  (kalman.error + 2 * hist_variance);
     kalman.gain_loop = 1 - kalman.filter_gain;
     kalman.error = hist_variance * kalman.filter_gain;
 
