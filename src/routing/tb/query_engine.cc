@@ -202,7 +202,6 @@ void query_engine<UseLowerBounds>::seg_transfers(queue_idx_t const q,
   auto const from =
       state_.tbd_.segment_transfers_[qe.segment_range_.from_].begin();
   auto const to = state_.tbd_.segment_transfers_[qe.segment_range_.to_].begin();
-  auto const s = qe.segment_range_.from_;
   for (auto it = from; it != to; ++it) {
 #ifndef _MSC_VER
     if (it + 4 < to) {
