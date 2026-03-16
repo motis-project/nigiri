@@ -1,3 +1,5 @@
+#pragma once
+
 #include "nigiri/routing/astar/astar_engine.h"
 #include "nigiri/routing/search.h"
 #include "nigiri/timetable.h"

@@ -1,4 +1,3 @@
-#pragma once
 #include "nigiri/routing/astar/astar_search.h"
 
 namespace nigiri::routing::astar {
