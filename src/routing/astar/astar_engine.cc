@@ -386,13 +386,6 @@ void astar_engine<UseLowerBounds>::reconstruct(query const& q,
     });
   };
 
-  auto const get_full_segment_range = [&](tb::queue_entry const& qe) {
-    auto const departure = get_departure_segment(qe);
-    auto const transport_segments = state_.tbd_.get_segment_range(
-        state_.tbd_.segment_transports_[departure]);
-    return interval{departure, transport_segments.to_};
-  };
-
   auto const get_fp = [&](location_idx_t const from, location_idx_t const to) {
     if (from == to) {
       return footpath{to, tt_.locations_.transfer_time_[from]};
