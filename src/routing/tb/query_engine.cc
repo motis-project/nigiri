@@ -17,9 +17,8 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/special_stations.h"
 
-//ELI TODO
-#define tb_debug fmt::println
-// #define tb_debug(...)
+//#define tb_debug fmt::println
+#define tb_debug(...)
 
 namespace nigiri::routing::tb {
 

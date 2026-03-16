@@ -14,11 +14,10 @@
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/routing/tb/segment_info.h"
-#include "nigiri/routing/tb/settings.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/special_stations.h"
 
-// #define astar_debug fmt::println
+//#define astar_debug fmt::println
 #define astar_debug(...)
 
 namespace nigiri::routing::astar {
@@ -47,7 +46,6 @@ astar_engine<UseLowerBounds>::astar_engine(
       lb_{lb},
       base_{base - QUERY_DAY_SHIFT} {
   state_.q_n_.base_ = base_;
-  stats_.lower_bound_pruning_ = UseLowerBounds;
   state_.reset();
 
   auto const mark_dest_segments = [&](location_idx_t const l,
@@ -102,12 +100,12 @@ void astar_engine<UseLowerBounds>::execute(unixtime_t const start_time,
                                            pareto_set<journey>& results) {
   tb_queue_dbg("--- EXECUTE START_TIME={}", start_time);
 
-  for (auto k = 0U; k != kMaxTransfers; ++k) {
-    if (state_.t_min_[k] >= worst_time_at_dest) {
-      state_.t_min_[k] = worst_time_at_dest;
-      state_.parent_[k] = tb::queue_entry::kNoParent;
-    }
-  }
+  auto const up_bnd_min = std::chrono::duration_cast<nigiri::i32_minutes>(
+                              worst_time_at_dest - start_time)
+                              .count();
+  state_.f_min_ = static_cast<double>(up_bnd_min) +
+                  static_cast<double>(state_.astar_transfer_penalty_) *
+                      static_cast<double>(max_transfers);
 
   struct open_entry {
     double cost_{0.0};
@@ -121,34 +119,46 @@ void astar_engine<UseLowerBounds>::execute(unixtime_t const start_time,
     }
   };
 
-  auto const segment_cost = [&](tb::queue_entry const& qe,
-                                std::uint8_t const k) {
-    auto const segment = qe.segment_range_.from_;
-    auto const t = state_.tbd_.segment_transports_[segment];
-    auto const i = static_cast<stop_idx_t>(
-        to_idx(segment - state_.tbd_.transport_first_segment_[t] + 1));
-    auto const arr_time = tt_.event_time(
-        {t, base_ + qe.transport_query_day_offset_}, i, event_type::kArr);
-    auto const minutes =
-        std::chrono::duration_cast<nigiri::i32_minutes>(arr_time - start_time)
-            .count();
+  auto const segment_cost =
+      [&](tb::queue_entry const& qe, std::uint8_t const k) {
+        auto const segment = qe.segment_range_.from_;
+        auto const t = state_.tbd_.segment_transports_[segment];
+        auto const i = static_cast<stop_idx_t>(
+            to_idx(segment - state_.tbd_.transport_first_segment_[t] + 1));
+        auto const arr_time = tt_.event_time(
+            {t, base_ + qe.transport_query_day_offset_}, i, event_type::kArr);
+        auto const minutes = std::chrono::duration_cast<nigiri::i32_minutes>(
+                                 arr_time - start_time)
+                                 .count();
 
-    return static_cast<double>(minutes) +
-           ASTAR_TRANSFER_PENALTY *
-               static_cast<double>(k);  // TODO ELI add heuristics here later for feature complete patch
+        auto const l = stop{tt_.route_location_seq_[tt_.transport_route_[t]][i]}.location_idx();
+
+        if (lb_.empty()) {
+          return std::numeric_limits<double>::max();
+        }
+
+        auto const lmd = lb_[to_idx(l)];
+        auto const cost = static_cast<double>(minutes) +
+                          static_cast<double>(state_.astar_transfer_penalty_) *
+                              static_cast<double>(k) +
+                          lmd;  
+
+        if (cost < 0) {
+          return std::numeric_limits<double>::max();
+        }
+
+        return cost;
   };
 
   std::priority_queue<open_entry, std::vector<open_entry>, open_entry_cmp> open;
   auto const push_open =
-      [&](std::priority_queue<open_entry, std::vector<open_entry>,
-                              open_entry_cmp>& open,
-          tb::queue_idx_t const idx, std::uint8_t const k) {
+      [&](tb::queue_idx_t const idx, std::uint8_t const k) {
         open.push({segment_cost(state_.q_n_[idx], k), idx, k});
       };
 
   for (auto i = tb::queue_idx_t{0U};
        i < static_cast<tb::queue_idx_t>(state_.q_n_.size()); ++i) {
-    push_open(open, i, 0U);
+    push_open(i, 0U);
   }
 
   auto const enqueue_stay = [&](tb::queue_idx_t const parent_idx, std::uint8_t const k) {
@@ -163,11 +173,10 @@ void astar_engine<UseLowerBounds>::execute(unixtime_t const start_time,
     next.segment_range_.from_ = next_from;
     next.segment_range_.to_ = qe.segment_range_.to_;
     next.parent_ = parent_idx;
-    ;
 
     auto const new_idx = static_cast<tb::queue_idx_t>(state_.q_n_.size());
     state_.q_n_.q_.push_back(next);
-    push_open(open, new_idx, k);
+    push_open(new_idx, k);
   };
 
   auto const enqueue_transfers = [&](tb::queue_idx_t const parent_idx,
@@ -181,7 +190,7 @@ void astar_engine<UseLowerBounds>::execute(unixtime_t const start_time,
     auto const size_after = state_.q_n_.size();
 
     for (auto i = size_before; i < size_after; ++i) {
-      push_open(open, static_cast<tb::queue_idx_t>(i),
+      push_open(static_cast<tb::queue_idx_t>(i),
                 static_cast<std::uint8_t>(k + 1));
     }
   };
@@ -200,29 +209,43 @@ void astar_engine<UseLowerBounds>::execute(unixtime_t const start_time,
     auto& qe = state_.q_n_[idx];
     auto const s = qe.segment_range_.from_;
 
-    if (state_.closed_.test(s)) {
+    auto const s_t = state_.tbd_.segment_transports_[s];
+    auto const s_i = static_cast<stop_idx_t>(
+        to_idx(s - state_.tbd_.transport_first_segment_[s_t] + 1));
+    auto const s_arr_time = tt_.event_time(
+        {s_t, base_ + qe.transport_query_day_offset_}, s_i, event_type::kArr);
+    auto const s_minutes =
+        std::chrono::duration_cast<nigiri::i32_minutes>(s_arr_time - start_time)
+            .count();
+    auto const s_cost = static_cast<double>(s_minutes) +
+                        static_cast<double>(state_.astar_transfer_penalty_) *
+                            static_cast<double>(k);
+
+    auto const [it, inserted] = state_.best_segment_cost_.emplace(s, s_cost);
+
+    if (!inserted && s_cost >= it->second) {
+      stats_.n_enqueue_prevented_by_reached_ += 1;
       continue;
     }
-    state_.closed_.set(s, true);
+
+    if (!inserted) {
+      it->second = s_cost;
+    }
 
     max_k = std::max(max_k, k);
 
-    //One could discuss terminating here if the current node is marked_near_dest -> but then one would miss possible better paths with dest_segments closer to real dest --> think about this for feature complete patch
-    seg_dest(k, idx);
-    seg_prune(k, qe);
+    seg_dest(start_time, k, idx);
 
     enqueue_stay(idx, k);
     enqueue_transfers(idx, k);
   }
 
-  for (auto n = 0U; n != kMaxTransfers; ++n) {
-    if (state_.parent_[n] != tb::queue_entry::kNoParent) {
-      results.add({.legs_ = {},
-                   .start_time_ = start_time,
-                   .dest_time_ = state_.t_min_[n],
-                   .dest_ = location_idx_t::invalid(),
-                   .transfers_ = static_cast<std::uint8_t>(n)});
-    }
+  if (state_.best_parent_ != tb::queue_entry::kNoParent) {
+    results.add({.legs_ = {},
+                 .start_time_ = start_time,
+                 .dest_time_ = state_.best_dest_time_,
+                 .dest_ = location_idx_t::invalid(),
+                 .transfers_ = state_.best_k_});
   }
 
   stats_.n_segments_enqueued_ += state_.q_n_.size();
@@ -230,54 +253,39 @@ void astar_engine<UseLowerBounds>::execute(unixtime_t const start_time,
 }
 
 template <bool UseLowerBounds>
-void astar_engine<UseLowerBounds>::seg_dest(std::uint8_t const k,
+void astar_engine<UseLowerBounds>::seg_dest(unixtime_t const start_time,
+                                            std::uint8_t const k,
                                             tb::queue_idx_t const q) {
   auto const& qe = state_.q_n_[q];
-  for (auto const segment : qe.segment_range_) {
-    if (!state_.end_reachable_.test(segment)) {
-      astar_debug("[k={}] reached segment {}  => dest not reachable", k,
-                  seg(segment, qe));
-      [[likely]] continue;
-    }
+  auto const segment = qe.segment_range_.from_;
 
-    astar_debug("[k={}] reached segment {}  => dest reachable!", k,
+  if (!state_.end_reachable_.test(segment)) {
+    astar_debug("[k={}] reached segment {}  => dest not reachable", k,
                 seg(segment, qe));
-    auto const t = state_.tbd_.segment_transports_[segment];
-    auto const i = static_cast<stop_idx_t>(
-        to_idx(segment - state_.tbd_.transport_first_segment_[t] + 1));
-    auto const arr_time = tt_.event_time(
-        {t, base_ + qe.transport_query_day_offset_}, i, event_type::kArr);
-    auto const time_at_dest = arr_time + state_.dist_to_dest_.at(segment);
-
-    for (auto j = k; j != state_.t_min_.size(); ++j) {
-      if (state_.t_min_[j] > time_at_dest) {
-        state_.t_min_[j] = time_at_dest;
-        if (j == k) {
-          state_.parent_[j] = q;
-        }
-      }
-    }
+    return;
   }
-}
 
-template <bool UseLowerBounds>
-void astar_engine<UseLowerBounds>::seg_prune(std::uint8_t const k,
-                                             tb::queue_entry& qe) {
-  auto const segment = qe.segment_range_[0];
+  astar_debug("[k={}] reached segment {}  => dest reachable!", k,
+                seg(segment, qe));
+
   auto const t = state_.tbd_.segment_transports_[segment];
   auto const i = static_cast<stop_idx_t>(
       to_idx(segment - state_.tbd_.transport_first_segment_[t] + 1));
-  auto arr_time = tt_.event_time({t, base_ + qe.transport_query_day_offset_}, i,
-                                 event_type::kArr);
-  if constexpr (UseLowerBounds) {
-    auto const l = stop{tt_.route_location_seq_[tt_.transport_route_[t]][i]}
-                       .location_idx();
-    arr_time += duration_t{lb_[to_idx(l)]};
-  }
-  if (arr_time > state_.t_min_[k + 1]) {
-    astar_debug("PRUNING {}", seg(segment, qe));
-    qe.segment_range_.to_ = qe.segment_range_.from_;
-    ++stats_.n_segments_pruned_;
+  auto const arr_time = tt_.event_time(
+      {t, base_ + qe.transport_query_day_offset_}, i, event_type::kArr);
+  auto const time_at_dest = arr_time + state_.dist_to_dest_.at(segment);
+  
+  auto const minutes = std::chrono::duration_cast<nigiri::i32_minutes>(time_at_dest - start_time)
+                           .count();
+  auto const f = static_cast<double>(minutes) +
+                 static_cast<double>(state_.astar_transfer_penalty_) *
+                     static_cast<double>(k);
+
+  if (f < state_.f_min_) {
+    state_.f_min_ = f;
+    state_.best_dest_time_ = time_at_dest;
+    state_.best_k_ = k;
+    state_.best_parent_ = q;
   }
 }
 
@@ -286,12 +294,9 @@ void astar_engine<UseLowerBounds>::seg_transfers(tb::queue_idx_t const q,
                                                  std::uint8_t const k) {
   auto const qe = state_.q_n_[q];
 
-  auto const from = state_.tbd_.segment_transfers_[qe.segment_range_.from_].begin();
-  auto const to = state_.tbd_.segment_transfers_[qe.segment_range_.to_].begin();
-  for (auto it = from; it != to; ++it) {
+  auto const tfrs = state_.tbd_.segment_transfers_[qe.segment_range_.from_];
 
-    auto const& transfer = *it;
-
+  for (auto const& transfer : tfrs) {
     auto const day = to_idx(base_ + qe.transport_query_day_offset_);
     if (state_.tbd_.bitfields_[transfer.traffic_days_].test(day)) {
       state_.q_n_.enqueue(transfer, q, k + 1, stats_.max_pareto_set_size_);
@@ -343,8 +348,35 @@ void astar_engine<UseLowerBounds>::reconstruct(query const& q,
   astar_debug("reconstruct journey: transfers={}, dep={} arr={}", j.transfers_,
               j.departure_time(), j.arrival_time());
 
-  auto parent = state_.parent_[j.transfers_];
-  auto departure_segment = state_.q_n_[parent].segment_range_.from_;
+  auto const get_departure_entry = [&](tb::queue_entry const& qe) {
+    auto departure = qe;
+    auto const dest_seg = qe.segment_range_.from_;
+
+    while (departure.parent_ != tb::queue_entry::kNoParent) {
+      auto const departure_candidate = state_.q_n_[departure.parent_];
+      auto const candidate_transports =
+          state_.tbd_
+              .segment_transports_[departure_candidate.segment_range_.from_];
+      auto const dest_transports =
+          state_.tbd_.segment_transports_[dest_seg];
+
+
+      auto const same_transport = candidate_transports == dest_transports;
+
+      if (same_transport) {
+        departure = departure_candidate;
+        continue;
+      }
+      break;
+    }
+
+    return departure;
+  };
+
+  auto const get_departure_segment = [&](tb::queue_entry const& qe) {
+    auto const departure = get_departure_entry(qe);
+    return departure.segment_range_.from_;
+  };
 
   auto const has_offset = [&](std::vector<offset> const& offsets,
                               location_match_mode const match_mode,
@@ -355,21 +387,10 @@ void astar_engine<UseLowerBounds>::reconstruct(query const& q,
   };
 
   auto const get_full_segment_range = [&](tb::queue_entry const& qe) {
+    auto const departure = get_departure_segment(qe);
     auto const transport_segments = state_.tbd_.get_segment_range(
-        state_.tbd_.segment_transports_[qe.segment_range_.from_]);
-    return interval{qe.segment_range_.from_, transport_segments.to_};
-  };
-
-  auto const get_arrival_segment = [&](tb::queue_idx_t const x,
-                                       tb::segment_idx_t const to) {
-    for (auto const segment : get_full_segment_range(state_.q_n_[x])) {
-      for (auto const transfer : state_.tbd_.segment_transfers_[segment]) {
-        if (transfer.to_segment_ == to) {
-          return segment;
-        }
-      }
-    }
-    throw utl::fail("predecessor not found");
+        state_.tbd_.segment_transports_[departure]);
+    return interval{departure, transport_segments.to_};
   };
 
   auto const get_fp = [&](location_idx_t const from, location_idx_t const to) {
@@ -386,10 +407,11 @@ void astar_engine<UseLowerBounds>::reconstruct(query const& q,
     return *it;
   };
 
-  auto const get_transport_info = [&](tb::segment_idx_t const s,
+  auto const get_transport_info =
+      [&](tb::queue_entry const& qe, tb::segment_idx_t const s,
                                       event_type const ev_type)
       -> std::tuple<transport, stop_idx_t, location_idx_t, unixtime_t> {
-    auto const d = base_ + state_.q_n_[parent].transport_query_day_offset_;
+    auto const d = base_ + qe.transport_query_day_offset_;
     auto const t = state_.tbd_.segment_transports_[s];
     auto const i = static_cast<stop_idx_t>(
         to_idx(s - state_.tbd_.transport_first_segment_[t] +
@@ -402,15 +424,15 @@ void astar_engine<UseLowerBounds>::reconstruct(query const& q,
   };
 
   auto const get_run_leg =
-      [&](tb::segment_idx_t const arrival_segment) -> journey::leg {
+      [&](tb::queue_entry const& qe, tb::segment_idx_t const departure_segment,
+          tb::segment_idx_t const arrival_segment) -> journey::leg {
     astar_debug("run leg:\n\tdeparture segment: {}\n\tarrival segment: {}",
-                seg(departure_segment, state_.q_n_[parent]),
-                seg(arrival_segment, state_.q_n_[parent]));
+                seg(departure_segment, qe), seg(arrival_segment, qe));
 
     auto const [transport, arr_stop_idx, arr_l, arr_time] =
-        get_transport_info(arrival_segment, event_type::kArr);
+        get_transport_info(qe, arrival_segment, event_type::kArr);
     auto const [_, dep_stop_idx, dep_l, dep_time] =
-        get_transport_info(departure_segment, event_type::kDep);
+        get_transport_info(qe, departure_segment, event_type::kDep);
     return {
         direction::kForward,
         dep_l,
@@ -430,98 +452,113 @@ void astar_engine<UseLowerBounds>::reconstruct(query const& q,
 
   auto const find_last_leg = [&]() {
     if (q.dest_match_mode_ == location_match_mode::kIntermodal) {
-      for (auto const arr_candidate_segment :
-           get_full_segment_range(state_.q_n_[parent])) {
-        if (!state_.end_reachable_.test(arr_candidate_segment)) {
-          continue;
-        }
+      auto const arrival = state_.q_n_[state_.best_parent_];
+      auto const arrival_segment = arrival.segment_range_.from_;
 
-        auto const offset = state_.dist_to_dest_.at(arr_candidate_segment);
-        auto const [_, _1, arr_l, arr_time] =
-            get_transport_info(arr_candidate_segment, event_type::kArr);
-        if (arr_time + offset != j.arrival_time()) {
-          continue;
-        }
+      if (!state_.end_reachable_.test(arrival_segment)) {
+         astar_debug("no dest candidate {} => end not reachable",
+                    seg(arrival_segment, arrival));
+         return false;
+      }
 
-        auto const offset_it =
-            utl::find_if(q.destination_, [&](routing::offset const& o) {
-              return o.target() == arr_l && o.duration() == offset;
-            });
-        utl::verify(offset_it != end(q.destination_), "offset not found");
-        j.legs_.push_back({direction::kForward, arr_l,
-                           get_special_station(special_station::kEnd), arr_time,
-                           j.arrival_time(), *offset_it});
-        j.legs_.push_back(get_run_leg(arr_candidate_segment));
+      auto const offset = state_.dist_to_dest_.at(arrival_segment);
+      auto const [_, _1, arr_l, arr_time] =
+          get_transport_info(arrival, arrival_segment, event_type::kArr);
+      if (arr_time + offset != j.arrival_time()) {
+        astar_debug("no dest candidate {} => arrival time missmatch",
+                    seg(arrival_segment, arrival));
+        return false;
+      }
+
+      auto const offset_it =
+          utl::find_if(q.destination_, [&](routing::offset const& o) {
+            return o.target() == arr_l && o.duration() == offset;
+          });
+      utl::verify(offset_it != end(q.destination_), "offset not found");
+      j.legs_.push_back({direction::kForward, arr_l,
+                         get_special_station(special_station::kEnd), arr_time,
+                         j.arrival_time(), *offset_it});
+      return true;   
+    } else {
+      auto const arrival = state_.q_n_[state_.best_parent_];
+      auto const arrival_segment = arrival.segment_range_.from_;
+
+      astar_debug("dest candidate {}", seg(arrival_segment, arrival));
+
+      if (!state_.end_reachable_.test(arrival_segment)) {
+        astar_debug("no dest candidate {} => end not reachable",
+                    seg(arrival_segment, arrival));
+        return false;
+      }
+
+      auto const [_, _1, arr_l, arr_time] =
+          get_transport_info(arrival, arrival_segment, event_type::kArr);
+
+      auto const handle_fp = [&](footpath const& fp) {
+        if (arr_time + fp.duration() != j.arrival_time() ||
+            !has_offset(q.destination_, q.dest_match_mode_, fp.target())) {
+          astar_debug(
+              "no dest candidate {} arr_l={}: arr_time={} + fp.duration={} = "
+              "{} != j.arrival_time={}",
+              seg(arrival_segment, arrival),
+              location{tt_, arr_l}, arr_time, fp.duration(),
+              arr_time + fp.duration(), j.arrival_time());
+          return false;
+        }
+        astar_debug("FOUND!");
+        j.legs_.push_back({direction::kForward, arr_l, fp.target(), arr_time,
+                           j.arrival_time(), fp});
+        return true;
+      };
+
+      if (handle_fp(footpath{arr_l, duration_t{0}})) {
         return true;
       }
-    } else {
-      for (auto const arr_candidate_segment :
-           get_full_segment_range(state_.q_n_[parent])) {
-        astar_debug("dest candidate {}",
-                    seg(arr_candidate_segment, state_.q_n_[parent]));
 
-        if (!state_.end_reachable_.test(arr_candidate_segment)) {
-          astar_debug("no dest candidate {} => end not reachable",
-                      seg(arr_candidate_segment, state_.q_n_[parent]));
-          continue;
-        }
-
-        auto const [_, _1, arr_l, arr_time] =
-            get_transport_info(arr_candidate_segment, event_type::kArr);
-
-        auto const handle_fp = [&](footpath const& fp) {
-          if (arr_time + fp.duration() != j.arrival_time() ||
-              !has_offset(q.destination_, q.dest_match_mode_, fp.target())) {
-            astar_debug(
-                "no dest candidate {} arr_l={}: arr_time={} + fp.duration={} = "
-                "{} != j.arrival_time={}",
-                seg(arr_candidate_segment, state_.q_n_[parent]),
-                location{tt_, arr_l}, arr_time, fp.duration(),
-                arr_time + fp.duration(), j.arrival_time());
-            return false;
-          }
-          astar_debug("FOUND!");
-          j.legs_.push_back({direction::kForward, arr_l, fp.target(), arr_time,
-                             j.arrival_time(), fp});
-          j.legs_.push_back(get_run_leg(arr_candidate_segment));
+      for (auto const fp :
+           tt_.locations_.footpaths_out_[state_.tbd_.prf_idx_][arr_l]) {
+        if (handle_fp(fp)) {
           return true;
-        };
-
-        if (handle_fp(footpath{arr_l, duration_t{0}})) {
-          return true;
-        }
-
-        for (auto const fp :
-             tt_.locations_.footpaths_out_[state_.tbd_.prf_idx_][arr_l]) {
-          if (handle_fp(fp)) {
-            return true;
-          }
         }
       }
     }
     return false;
   };
+  
   if (!find_last_leg()) {
     throw utl::fail(
         "no last leg found for: transfers={}, start_time={}, dest_time={}",
         j.transfers_, j.departure_time(), j.arrival_time());
   }
+
+  auto current_arrival = state_.best_parent_;
+  auto current_arrival_segment =
+      state_.q_n_[current_arrival].segment_range_.from_;
+  auto current_departure = get_departure_entry(state_.q_n_[current_arrival]);
+  auto current_departure_segment = current_departure.segment_range_.from_;
+
+  j.legs_.push_back(get_run_leg(
+      current_departure, current_departure_segment, current_arrival_segment));
   j.dest_ = j.legs_.back().to_;
 
-  parent = state_.q_n_[parent].parent_;
-  while (parent != tb::queue_entry::kNoParent) {
-    auto const arrival_segment = get_arrival_segment(parent, departure_segment);
-    auto const [transport, arr_stop_idx, arr_l, arr_time] =
-        get_transport_info(arrival_segment, event_type::kArr);
+  current_arrival = current_departure.parent_;
+
+  while (current_arrival != tb::queue_entry::kNoParent) {
+    current_departure = get_departure_entry(state_.q_n_[current_arrival]);
+    current_departure_segment = current_departure.segment_range_.from_;
+    current_arrival_segment = state_.q_n_[current_arrival].segment_range_.from_;
+
+    auto const [transport, arr_stop_idx, arr_l, arr_time] = get_transport_info(
+        current_departure, current_arrival_segment, event_type::kArr);
     auto const fp = get_fp(arr_l, j.legs_.back().from_);
     j.legs_.emplace_back(journey::leg{direction::kForward, arr_l,
                                       j.legs_.back().from_, arr_time,
                                       arr_time + fp.duration(), fp});
 
-    departure_segment = state_.q_n_[parent].segment_range_.from_;
-    j.legs_.push_back(get_run_leg(arrival_segment));
+    j.legs_.push_back(get_run_leg(
+        current_departure, current_departure_segment, current_arrival_segment));
 
-    parent = state_.q_n_[parent].parent_;
+    current_arrival = current_departure.parent_;
   }
 
   assert(!j.legs_.empty());
