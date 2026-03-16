@@ -13,13 +13,13 @@
 
 #include "nigiri/common/parse_time.h"
 #include "nigiri/query_generator/transport_mode.h"
+#include "nigiri/routing/astar/astar_engine.h"
+#include "nigiri/routing/astar/astar_search.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/tb/preprocess.h"
 #include "nigiri/routing/tb/query_engine.h"
 #include "nigiri/routing/tb/tb_search.h"
-#include "nigiri/routing/astar/astar_engine.h"
-#include "nigiri/routing/astar/astar_search.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 #include "date/date.h"
@@ -79,8 +79,8 @@ nigiri::location_idx_t find_nearest_location(nigiri::timetable const& tt,
   return best;
 }
 
-bool validate_location_input(std::string const& coord_str, 
-                             std::optional<nigiri::location_idx_t> const loc, 
+bool validate_location_input(std::string const& coord_str,
+                             std::optional<nigiri::location_idx_t> const loc,
                              std::string_view const label) {
   auto const has_coord = !coord_str.empty();
   auto const has_loc = loc.has_value();
@@ -161,7 +161,7 @@ int main(int argc, char** argv) {
        "footpath profile index")  //
       ("use_start_footpaths",
        bpo::value<bool>(&use_start_footpaths)->default_value(true),
-       "use start footpaths (true/false)") //
+       "use start footpaths (true/false)")  //
       ("extend_interval_earlier",
        bpo::value<bool>(&extend_interval_earlier)->default_value(true, "true"),
        "allows extension of the search interval into the past")  //
@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
        "minimum transfer time in minutes")  //
       ("transfer_time_factor",
        bpo::value<float>(&transfer_time_factor)->default_value(1.0F),
-       "multiply all transfer times by this factor") //
+       "multiply all transfer times by this factor")  //
       ("astar_transfer_penalty",
        bpo::value<std::uint32_t>(&astar_transfer_penalty)
            ->default_value(astar_transfer_penalty),
@@ -313,8 +313,8 @@ int main(int argc, char** argv) {
     }
     if (q.dest_match_mode_ ==
         nigiri::routing::location_match_mode::kIntermodal) {
-      add_offsets_for_pos(q.destination_, tt, rtree,
-                          dest_coord.value(), intermodal_dest_mode.value());
+      add_offsets_for_pos(q.destination_, tt, rtree, dest_coord.value(),
+                          intermodal_dest_mode.value());
       if (q.destination_.empty()) {
         std::cout << "Error: no destination locations in intermodal range\n";
         return 1;
@@ -337,7 +337,8 @@ int main(int argc, char** argv) {
   auto const tbd = nigiri::routing::tb::preprocess(tt, q.prf_idx_);
 
   auto algo_state = nigiri::routing::astar::astar_state{tt, tbd};
-  auto const result = nigiri::routing::astar::astar_search(tt, search_state, algo_state, std::move(q), astar_transfer_penalty);
+  auto const result = nigiri::routing::astar::astar_search(
+      tt, search_state, algo_state, std::move(q), astar_transfer_penalty);
 
   if (result.journeys_ == nullptr || result.journeys_->empty()) {
     std::cout << "no journeys found\n";

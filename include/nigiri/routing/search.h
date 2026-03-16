@@ -127,7 +127,8 @@ struct search {
       for (auto const [l, lb] :
            utl::enumerate(state_.travel_time_lower_bound_)) {
         if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-          trace_upd("lb {}: {} Index: {}\n", location{tt_, location_idx_t{l}}, lb, l);
+          trace_upd("lb {}: {} Index: {}\n", location{tt_, location_idx_t{l}},
+                    lb, l);
         }
       }
 #endif
