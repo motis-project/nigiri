@@ -30,6 +30,8 @@ struct traffic_days {
     return bitfield_idx_t::invalid() - idx - 1U;
   }
   std::pair<bitfield, std::uint16_t>& at(bitfield_idx_t idx) {
+    // std::cout << idx << " bf " <<  bitfields_.size() << " " <<
+    // tmp_bitfields_.size() << std::endl;
     if (idx >= bitfields_.size()) {
       return tmp_bitfields_.at(invert_tmp_idx(idx));
     }
@@ -64,7 +66,7 @@ struct traffic_days {
 
   void persist_tmp(std::vector<tooth>& s, bool const force = false) {
     if (kChSawType != saw_type::kTrafficDaysPower && !force) {
-      return;
+      // return;
     }
     auto const len = bitfields_.size();
     for (auto& t : s) {
@@ -766,7 +768,9 @@ struct saw {
                                     : traffic_days_.at(it->traffic_days_).first;
 
       auto that = it;
-      if constexpr (SawType == saw_type::kTrafficDaysPower) {
+      // TODO dedup for kTrafficDays as well?
+      if constexpr (SawType == saw_type::kTrafficDaysPower ||
+                    SawType == saw_type::kTrafficDays) {
         ++it;
         while (it != interleaved.end() && that->mam_ == it->mam_ &&
                that->travel_dur_ == it->travel_dur_) {
@@ -775,6 +779,7 @@ struct saw {
         }
         --it;
       }
+      auto rtd = remaining_traffic_days;  // TODO rm
       auto ib = interleaved.begin();
       auto oe = saw<SawType>{out, traffic_days_}.end();
       if ((non_dominated(*that, ib, &remaining_traffic_days, lsb,
@@ -790,6 +795,9 @@ struct saw {
         if constexpr (SawType == saw_type::kTrafficDaysPower) {
           new_tooth.traffic_days_ =
               traffic_days_.get_or_create(remaining_traffic_days, lsb);
+        }
+        if constexpr (SawType == saw_type::kTrafficDays) {
+          new_tooth.traffic_days_ = traffic_days_.get_or_create(rtd, lsb);
         }
         out.push_back(std::move(new_tooth));
         new_min = std::min(new_tooth.travel_dur_, new_min);
@@ -956,7 +964,35 @@ struct saw {
           }
         }
       }
-      if constexpr (SawType == saw_type::kTrafficDaysPower) {
+
+      if constexpr (SawType != saw_type::kTrafficDaysPower) {
+        if ((max && travel_dur_extremum == u16_minutes{0U}) ||
+            (!max && travel_dur_extremum == u16_minutes::max())) {
+          continue;
+        }
+        auto const new_tooth = tooth{it->mam_,
+                                     travel_dur_extremum,
+                                     it->traffic_days_,
+                                     start,
+                                     it->start_transport_,
+                                     end,
+                                     o_it->end_transport_,
+                                     static_cast<std::uint16_t>(it.pos_),
+                                     static_cast<std::uint16_t>(o_it.pos_)};
+        auto td = SawType == saw_type::kDay
+                      ? bitfield{}
+                      : traffic_days_.at(it->traffic_days_).first;
+        auto oe = saw<SawType>{out, traffic_days_}.end();
+        if (out.size() <= kSawMetadataOffset ||
+            non_dominated(new_tooth, oe, &td, lsb,
+                          static_cast<std::int16_t>(new_min.count()), false,
+                          0)) {
+          out.push_back(std::move(new_tooth));
+          new_min = std::min(new_tooth.travel_dur_, new_min);
+        }
+      }
+      if constexpr (SawType == saw_type::kTrafficDaysPower ||
+                    SawType == saw_type::kTrafficDays) {
         auto next_it = it;
         ++next_it;
         if (out.size() > kSawMetadataOffset &&
@@ -984,31 +1020,6 @@ struct saw {
           out.erase(remaining_it, out.end());
           last_out_mam_idx = static_cast<unsigned>(out.size());
         }
-      } else {
-        if ((max && travel_dur_extremum == u16_minutes{0U}) ||
-            (!max && travel_dur_extremum == u16_minutes::max())) {
-          continue;
-        }
-        auto const new_tooth = tooth{it->mam_,
-                                     travel_dur_extremum,
-                                     it->traffic_days_,
-                                     start,
-                                     it->start_transport_,
-                                     end,
-                                     o_it->end_transport_,
-                                     static_cast<std::uint16_t>(it.pos_),
-                                     static_cast<std::uint16_t>(o_it.pos_)};
-        auto td = SawType == saw_type::kDay
-                      ? bitfield{}
-                      : traffic_days_.at(it->traffic_days_).first;
-        auto oe = saw<SawType>{out, traffic_days_}.end();
-        if (out.size() <= kSawMetadataOffset ||
-            non_dominated(new_tooth, oe, &td, lsb,
-                          static_cast<std::int16_t>(new_min.count()), false,
-                          0)) {
-          out.push_back(std::move(new_tooth));
-          new_min = std::min(new_tooth.travel_dur_, new_min);
-        }
       }
     }
 
@@ -1019,8 +1030,8 @@ struct saw {
       auto const remaining_it = std::remove_if(
           out.begin() + kSawMetadataOffset, out.end(),
           [&](tooth const& e) {  // kaboom – relies on tooth only containing
-                                 // primitive types which stay in place and can
-                                 // be read after move!
+                                 // primitive types which stay in place and
+                                 // can be read after move!
             auto td = SawType == saw_type::kDay
                           ? bitfield{}
                           : traffic_days_.at(e.traffic_days_).first;
