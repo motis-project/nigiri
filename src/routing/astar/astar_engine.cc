@@ -373,11 +373,6 @@ void astar_engine<UseLowerBounds>::reconstruct(query const& q,
     return departure;
   };
 
-  auto const get_departure_segment = [&](tb::queue_entry const& qe) {
-    auto const departure = get_departure_entry(qe);
-    return departure.segment_range_.from_;
-  };
-
   auto const has_offset = [&](std::vector<offset> const& offsets,
                               location_match_mode const match_mode,
                               location_idx_t const l) {
