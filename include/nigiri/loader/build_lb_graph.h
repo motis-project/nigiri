@@ -36,7 +36,7 @@ static constexpr auto const kEnableCh = true;
 static constexpr auto const kChGroupParents = true;
 static constexpr auto const kChAtomicFootpaths = true;
 static constexpr auto const kChMaxLevelFraction = 1.0;
-static constexpr auto const kChMaxNodeOrderUpdateFraction = 0.99;
+static constexpr auto const kChMaxNodeOrderUpdateFraction = 0.98;
 
 struct departure {
   bool operator<(departure const& o) const {
@@ -461,6 +461,13 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         traffic_days.persist_tmp(min_saw, true);
         traffic_days.persist_tmp(max_saw, true);
       }
+    }
+
+    if constexpr (kChSawType != saw_type::kConstant) {
+      min_saw[kSawFieldMin].start_idx_ = 0U;
+      min_saw[kSawFieldMax].start_idx_ = 0U;
+      max_saw[kSawFieldMin].start_idx_ = 0U;
+      max_saw[kSawFieldMax].start_idx_ = 0U;
     }
 
     traffic_days.clear_tmp();
@@ -988,8 +995,10 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     std::cout << "ch done, starting dgp" << std::endl;
     print_stats();
     print_edge_stats();
-    std::cout << "ch done, starting dgp" << std::endl;
-    compute_dgp(empty_stops);
+    if (kEnableDgp) {
+      std::cout << "ch done, starting dgp" << std::endl;
+      compute_dgp(empty_stops);
+    }
     std::cout << "persisting..." << std::endl;
     /*auto j = 0;
     for (auto const& b : traffic_days.bitfields_) {

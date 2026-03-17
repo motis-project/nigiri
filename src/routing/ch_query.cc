@@ -76,11 +76,19 @@ void obtain_relevant_stops(timetable const& tt,
   auto nonce_map = vector_map<location_idx_t, std::uint32_t>{};
   nonce_map.resize(tt.n_locations());
 
-  auto pq = dial<ch_label, ch_get_bucket>{kChMaxTravelTime.count()};
+  auto pq = dial<ch_label, ch_get_bucket>{
+      (loader::kEnableDgp ? kDistanceGroups + 1U
+                          : std::numeric_limits<std::uint16_t>::max())};
   auto ch_traffic_days =
       traffic_days{tt.ch_traffic_days_[prf_idx], {}};  // TODO avoid copy
 
   auto const distance_group = [&](location_idx_t const l) {
+    if constexpr (!loader::kEnableDgp) {
+      return static_cast<std::uint16_t>(
+          tt.ch_levels_[prf_idx].at(l) *
+          std::numeric_limits<std::uint32_t>::max() /
+          tt.ch_levels_[prf_idx].size());  // TODO hack
+    }
     for (auto i = static_cast<std::uint16_t>(0U); i < kDistanceGroups - 1U;
          ++i) {
       if (tt.ch_levels_[prf_idx].at(l) < tt.ch_distance_groups_[prf_idx][i]) {
@@ -157,7 +165,7 @@ void obtain_relevant_stops(timetable const& tt,
 
   auto const follow_edges = [&](location_idx_t const l, unsigned const l_dir,
                                 u16_minutes const const_dist,
-                                std::array<ch_label::dist_t, 2> const& dist) {
+                                std::array<ch_label::dist_t, 2> const&) {
     auto const other_dir = l_dir ^ 1U;
     auto const& graph = l_dir == kForward ? tt.fwd_search_ch_graph_[prf_idx]
                                           : tt.bwd_search_ch_graph_[prf_idx];
@@ -261,7 +269,7 @@ void obtain_relevant_stops(timetable const& tt,
         continue;
       }
       mark_mp(edge_target, l_dir);
-      if (distance_group(l) == distance_group(edge_target)) {
+      if (kEnableDgp && distance_group(l) == distance_group(edge_target)) {
         continue;
       }
       auto const const_max =
@@ -279,7 +287,7 @@ void obtain_relevant_stops(timetable const& tt,
          " " << tt.get_default_translation(tt.locations_.names_.at(edge_target))
                 << " minmay " << const_min << " " << const_max << std::endl;*/
 
-      auto const const_min_edge =
+      /*auto const const_min_edge =
           saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx), ch_traffic_days}
               .min();
       if (dist[kMax] + const_min_edge.count() >= kChMaxTravelTime.count()) {
@@ -288,7 +296,7 @@ void obtain_relevant_stops(timetable const& tt,
                   << const_min_edge.count() << std::endl;
 
         throw utl::fail("extra extra weird");
-      }
+      }*/
       pq.push(ch_label{
           edge_target,
           {distance_group(edge_target),
@@ -402,7 +410,8 @@ void obtain_relevant_stops(timetable const& tt,
   pq.clear();
 
   auto const invert = [&](ch_label::dist_t d) {
-    return static_cast<ch_label::dist_t>(kChMaxTravelTime.count() - d);
+    return static_cast<ch_label::dist_t>(
+        std::numeric_limits<std::uint16_t>::max() - d);
   };
 
   auto const const_min_max_dist = static_cast<int>(
@@ -752,10 +761,12 @@ void obtain_relevant_stops(timetable const& tt,
           saw<kChSawType>{tmp_saw, ch_traffic_days}.max().count());
       tmp_saw.clear();
       new_max_dist.clear();
-      pq.push(ch_label{m,
-                       {invert(kDistanceGroups),
-                        static_cast<ch_label::dist_t>(nonce_map.at(m) + 1)},
-                       static_cast<std::uint8_t>(dir)});
+      pq.push(ch_label{
+          m,
+          {invert(kEnableDgp ? kDistanceGroups
+                             : std::numeric_limits<std::uint16_t>::max()),
+           static_cast<ch_label::dist_t>(nonce_map.at(m) + 1)},
+          static_cast<std::uint8_t>(dir)});
       std::cout << "added mp " << d << std::endl;
     }
   }
@@ -821,7 +832,7 @@ void obtain_relevant_stops(timetable const& tt,
       if (tt.ch_levels_[prf_idx][l.l_] < tt.ch_levels_[prf_idx][edge_target]) {
         continue;
       }
-      if (l_d_max == distance_group(edge_target)) {
+      if (kEnableDgp && l_d_max == distance_group(edge_target)) {
         continue;
       }
       auto const& prev_label = dists[l.dir_][edge_target];
