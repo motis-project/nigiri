@@ -124,7 +124,8 @@ struct route {
         translation_idx_t url,
         route_type_t,
         route_color,
-        provider_idx_t);
+        provider_idx_t,
+        category_idx_t);
   route(timetable&, source_idx_t, route_id_idx_t);
 
   std::string_view get_id() const;
@@ -163,6 +164,7 @@ struct route {
   route_type_t route_type_;
   route_color color_;
   provider_idx_t agency_;
+  category_idx_t category_;
 
   timetable* tt_{nullptr};
 };

@@ -272,6 +272,12 @@ std::optional<route_type_t> run_stop::route_type(
              : std::optional{route_ids->route_id_type_.at(route_id_idx)};
 }
 
+category_idx_t run_stop::get_category(event_type const ev_type) const {
+  auto const [route_ids, route_id_idx] = get_route(ev_type);
+  return route_ids == nullptr ? category_idx_t::invalid()
+                              : route_ids->route_id_category_.at(route_id_idx);
+}
+
 std::string_view run_stop::route_short_name(event_type const ev_type,
                                             lang_t const& lang) const {
   auto const [route_ids, route_id_idx] = get_route(ev_type);

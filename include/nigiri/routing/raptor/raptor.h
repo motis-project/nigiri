@@ -278,6 +278,7 @@ struct raptor {
       }
 
       utl::fill(state_.route_mark_.blocks_, 0U);
+      utl::fill(state_.rt_transport_mark_.blocks_, 0U);
 
       std::swap(state_.prev_station_mark_, state_.station_mark_);
       utl::fill(state_.station_mark_.blocks_, 0U);
