@@ -345,11 +345,11 @@ void obtain_relevant_stops(timetable const& tt,
     auto const l_dir = l.dir_ % kModeOffset;
     auto const other_dir = l_dir ^ 1U;
 
-    if (l.d_[kMin] <= nonce_map.at(l.l_)) {
+    if (tt.ch_levels_[prf_idx].at(l.l_) <= nonce_map.at(l.l_)) {
       //
-      // continue; TODO
+      continue;  // TODO
     }
-    nonce_map.at(l.l_) = l.d_[kMin];
+    nonce_map.at(l.l_) = tt.ch_levels_[prf_idx].at(l.l_);
 
     /*if (dists[l_dir].at(l.l_).d_[kMax].to_saw(ch_traffic_days).max().count() <
             l.d_[kMax] &&  // TODO extrema
@@ -771,14 +771,17 @@ void obtain_relevant_stops(timetable const& tt,
     }
   }
 
+  nonce_map.clear();
+  nonce_map.resize(tt.n_locations());
+
   while (!pq.empty()) {
     auto l = pq.top();
     auto const l_d_max = static_cast<int>(invert(l.d_[kMax]));
     auto const other_dir = l.dir_ ^ 1U;
     pq.pop();
 
-    if (l.d_[kMin] <= nonce_map.at(l.l_)) {
-      // continue;
+    if (tt.ch_levels_[prf_idx].at(l.l_) <= nonce_map.at(l.l_)) {
+      continue;
     }
     std::cout << "down " << l.l_ << " "
               << tt.get_default_translation(tt.locations_.names_.at(l.l_))
@@ -786,7 +789,7 @@ void obtain_relevant_stops(timetable const& tt,
               << " max: " << l_d_max << " nonce: " << l.d_[kMin]
               << " dir:" << (l.dir_ == kForward ? "fwd" : "bwd")
               << "| l:" << tt.ch_levels_[prf_idx].at(l.l_) << std::endl;
-    nonce_map.at(l.l_) = l.d_[kMin];
+    nonce_map.at(l.l_) = tt.ch_levels_[prf_idx].at(l.l_);
 
     auto edge_max_dist = std::vector<tooth>{};
     saw<kChSawType>{min_max_dist, ch_traffic_days}.concat_const(

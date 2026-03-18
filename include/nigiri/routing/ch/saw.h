@@ -270,7 +270,7 @@ struct saw {
     auto const interleaved = interleaved_saws<SawType>{*this, b};
 
     for (auto b_it = interleaved.begin(); b_it != interleaved.end(); ++b_it) {
-      if (b_it.is_a()) {
+      if (b_it.is_a_) {
         continue;
       }
       if (b_it->travel_dur_ >= kChMaxEdgeTime) {
@@ -777,6 +777,7 @@ struct saw {
                                     : traffic_days_.at(it->traffic_days_).first;
 
       auto that = it;
+      auto multi = false;
       // TODO dedup for kTrafficDays as well?
       if constexpr (SawType == saw_type::kTrafficDaysPower ||
                     SawType == saw_type::kTrafficDays) {
@@ -784,17 +785,26 @@ struct saw {
         while (it != interleaved.end() && that->mam_ == it->mam_ &&
                that->travel_dur_ == it->travel_dur_) {
           remaining_traffic_days |= traffic_days_.at(it->traffic_days_).first;
+          multi = true;
           ++it;
         }
         --it;
       }
       auto rtd = remaining_traffic_days;  // TODO rm
-      auto ib = interleaved.begin();
+      auto ab = begin();
+      auto ob = other.saw_.empty()
+                    ? begin()
+                    : other.begin();  // assumption: when other is set, this
+                                      // and other are each simplified
       auto oe = saw<SawType>{out, traffic_days_}.end();
-      if ((non_dominated(*that, ib, &remaining_traffic_days, lsb,
-                         interleaved_min,
-                         true)) &&  // TODO only look at other?, calc min on the
-                                    // fly in previous loops
+      if (((it.is_a_ && !multi) ||
+           non_dominated(*that, ab, &remaining_traffic_days, lsb,
+                         interleaved_min, false)) &&
+          ((!it.is_a_ && !multi) ||
+           non_dominated(
+               *that, ob, &remaining_traffic_days, lsb, interleaved_min,
+               other.saw_.empty())) &&  // TODO only look at other?, calc min on
+                                        // the fly in previous loops
           (out.size() <= kSawMetadataOffset ||
            non_dominated(*that, oe, &remaining_traffic_days, lsb,
                          static_cast<std::int16_t>(new_min.count()), false,
@@ -1159,7 +1169,7 @@ struct saw {
             utl::verify(std::abs(d) < 24 * 60, "concat_const more than 24h");
             auto traffic_days = traffic_days_.at(traffic_days_idx).first >> 1U;
             traffic_days.set(kTimetableOffset.count() - 1U, false);
-            traffic_days_idx = traffic_days_.get_or_create(  // TODO tmp
+            traffic_days_idx = traffic_days_.get_or_create_tmp(  // TODO tmp
                 traffic_days, traffic_days_.at(traffic_days_idx).second - 1U);
           }
         }
@@ -1170,7 +1180,7 @@ struct saw {
             auto traffic_days = traffic_days_.at(traffic_days_idx).first << 1U;
             traffic_days.set(traffic_days_.at(traffic_days_idx).second + 1U,
                              false);
-            traffic_days_idx = traffic_days_.get_or_create(  // TODO tmp
+            traffic_days_idx = traffic_days_.get_or_create_tmp(  // TODO tmp
                 traffic_days, traffic_days_.at(traffic_days_idx).second);
           }
         }
@@ -1237,7 +1247,7 @@ struct interleaved_saws {
     }
 
     iterator& operator++() {  // TODO take into account travel dur if == mam?
-      if (is_a()) {
+      if (is_a_) {
         ++pos_a_;
       } else {
         ++pos_b_;
@@ -1247,6 +1257,7 @@ struct interleaved_saws {
         pos_a_ = kSawMetadataOffset;
         pos_b_ = kSawMetadataOffset;
       }
+      is_a_ = is_a();
       return *this;
     }
 
@@ -1276,6 +1287,7 @@ struct interleaved_saws {
       } else {
         --pos_b_;
       }
+      is_a_ = is_a();
       return *this;
     }
 
@@ -1290,7 +1302,7 @@ struct interleaved_saws {
     tooth const* operator->() const { return std::addressof(operator*()); }
 
     tooth const& operator*() const {
-      if (is_a()) {
+      if (is_a_) {
         return s_.saw_a_.saw_[pos_a_];
       }
       return s_.saw_b_.saw_[pos_b_];
@@ -1300,22 +1312,28 @@ struct interleaved_saws {
     size_t pos_a_{kSawMetadataOffset};
     size_t pos_b_{kSawMetadataOffset};
     std::int8_t day_offset_{};
+    bool is_a_{};
   };
 
   iterator begin() const {
     utl::verify(saw_a_.valid() && saw_b_.valid(), "invalid saw {} {}",
                 saw_a_.saw_.size(), saw_b_.saw_.size());
-    return iterator{interleaved_saws<SawType>{saw_a_, saw_b_},
-                    {kSawMetadataOffset},
-                    {kSawMetadataOffset}};
+    auto it = iterator{interleaved_saws<SawType>{saw_a_, saw_b_},
+                       {kSawMetadataOffset},
+                       {kSawMetadataOffset}};
+    it.is_a_ = it.is_a();
+    return it;
   }
 
   iterator end() const {
-    return iterator{interleaved_saws<SawType>{saw_a_, saw_b_},
-                    {kSawMetadataOffset},
-                    {kSawMetadataOffset},
-                    static_cast<std::int8_t>(
-                        saw_a_.saw_.empty() && saw_b_.saw_.empty() ? 0 : -1)};
+    auto it =
+        iterator{interleaved_saws<SawType>{saw_a_, saw_b_},
+                 {kSawMetadataOffset},
+                 {kSawMetadataOffset},
+                 static_cast<std::int8_t>(
+                     saw_a_.saw_.empty() && saw_b_.saw_.empty() ? 0 : -1)};
+    it.is_a_ = it.is_a();
+    return it;
   }
 
   iterator begin(interleaved_saws<SawType> const& ms) { return ms.begin(); }
