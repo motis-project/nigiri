@@ -406,12 +406,12 @@ TEST(ch, saw_traffic_days_test) {
                            .max()
                            .count()),
         {1001U, u16_minutes{10}, bitfield_idx_t{0}},
-        {1000U, u16_minutes{5}, bitfield_idx_t{1}},
-        {1000U, u16_minutes{5}, bitfield_idx_t{0}}};
+        {1000U, u16_minutes{5}, bitfield_idx_t{2}}};
     ASSERT_EQ(tmp.size(), expected.size());
     for (auto i = 0U; i < expected.size(); ++i) {
       EXPECT_EQ(expected[i], tmp[i]);
     }
+    EXPECT_EQ(td.at(bitfield_idx_t{2}).first.count(), 4);
   }
 
   {
@@ -528,8 +528,7 @@ TEST(ch, saw_traffic_days_test) {
         metadata_tooth(20U),
         metadata_tooth(),
         {1001U, u16_minutes{309}, bitfield_idx_t{0}},
-        {1000U, u16_minutes{200}, bitfield_idx_t{2}},
-        {1000U, u16_minutes{200}, bitfield_idx_t{3}},
+        {1000U, u16_minutes{200}, bitfield_idx_t{6}},
         {1000U, u16_minutes{220}, bitfield_idx_t{4}},
         {1000U, u16_minutes{310}, bitfield_idx_t{5}},
         {999U, u16_minutes{20}, bitfield_idx_t{1}},
