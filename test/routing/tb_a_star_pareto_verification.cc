@@ -1,4 +1,3 @@
-#pragma once
 #include <nigiri/routing/raptor/raptor.h>
 #include <nigiri/routing/search.h>
 #include <nigiri/routing/tb/query_engine.h>
@@ -6,11 +5,11 @@
 #include "nigiri/routing/tb/tb_a_star/a_star.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
-#include "gtest/gtest.h"
-#include "../loader/hrd/hrd_timetable.h"
 #include "nigiri/loader/hrd/load_timetable.h"
-namespace nigiri::routing::tb{
+#include "nigiri/loader/init_finish.h"
+#include "../loader/hrd/hrd_timetable.h"
+#include "gtest/gtest.h"
+namespace nigiri::routing::tb {
 
 using namespace date;
 using namespace nigiri;
@@ -21,7 +20,8 @@ using namespace nigiri::test_data::hrd_timetable;
 
 timetable load_gtfs(auto const& files) {
   timetable tt;
-  tt.date_range_ = interval<date::sys_days>{sys_days{2021_y / March / 1},sys_days{2021_y / March / 8}};
+  tt.date_range_ = interval<date::sys_days>{sys_days{2021_y / March / 1},
+                                            sys_days{2021_y / March / 8}};
   loader::register_special_stations(tt);
   loader::gtfs::load_timetable({}, source_idx_t{0}, files(), tt);
   loader::finalize(tt);
@@ -37,76 +37,100 @@ timetable load_hrd(auto const& files) {
   return tt;
 }
 
-int calculate_transfer_factor(std::vector<journey> const& journeys,int index) {
+int calculate_transfer_factor(std::vector<journey> const& journeys, int index) {
   double higher_bound = std::numeric_limits<double>::max();
   double lower_bound = std::numeric_limits<double>::min();
-  for(int j=0;j<journeys.size();++j){
-    if(j==index) continue;
-    utl::verify(journeys[index].transfers_!=journeys[j].transfers_,"Two travels with same amount of transfers");
-    auto factor = static_cast<double>((journeys[j].arrival_time() - journeys[index].arrival_time()).count())/(journeys[index].transfers_-journeys[j].transfers_);
-    if(journeys[index].transfers_ < journeys[j].transfers_ && factor > lower_bound) lower_bound = factor;
-    if(journeys[index].transfers_ > journeys[j].transfers_ && factor < higher_bound) higher_bound = factor;
+  for (int j = 0; j < journeys.size(); ++j) {
+    if (j == index) continue;
+    utl::verify(journeys[index].transfers_ != journeys[j].transfers_,
+                "Two travels with same amount of transfers");
+    auto factor = static_cast<double>((journeys[j].arrival_time() -
+                                       journeys[index].arrival_time())
+                                          .count()) /
+                  (journeys[index].transfers_ - journeys[j].transfers_);
+    if (journeys[index].transfers_ < journeys[j].transfers_ &&
+        factor > lower_bound)
+      lower_bound = factor;
+    if (journeys[index].transfers_ > journeys[j].transfers_ &&
+        factor < higher_bound)
+      higher_bound = factor;
   }
-  if(higher_bound==std::numeric_limits<double>::max()) return static_cast<int>(lower_bound)==lower_bound? lower_bound+1 : std::ceil(lower_bound);
+  if (higher_bound == std::numeric_limits<double>::max())
+    return static_cast<int>(lower_bound) == lower_bound
+               ? lower_bound + 1
+               : std::ceil(lower_bound);
   int higher_bound_floor = static_cast<int>(higher_bound);
-  utl::verify((higher_bound_floor==higher_bound?higher_bound-1:higher_bound_floor) > lower_bound,"No Integer exists between bounds");
-  return higher_bound_floor == higher_bound ? higher_bound-1 : higher_bound_floor;
+  utl::verify(
+      (higher_bound_floor == higher_bound ? higher_bound - 1
+                                          : higher_bound_floor) > lower_bound,
+      "No Integer exists between bounds");
+  return higher_bound_floor == higher_bound ? higher_bound - 1
+                                            : higher_bound_floor;
 }
 
-
-void verify_pareto_set(auto const& files, std::string_view const& start,std::string_view const& stop,unixtime_t const& start_time,int expectedNumberOfJourneys) {
+void verify_pareto_set(auto const& files,
+                       std::string_view const& start,
+                       std::string_view const& stop,
+                       unixtime_t const& start_time,
+                       int expectedNumberOfJourneys) {
   auto const tt = load_gtfs(files);
   auto const tbd = preprocess(tt, profile_idx_t{0});
 
-  query q{
-    .start_time_ =start_time,
-    .start_match_mode_ = location_match_mode::kEquivalent,
-    .dest_match_mode_ = location_match_mode::kEquivalent,
-    .start_ = {
-      {tt.locations_.location_id_to_idx_.at({start, source_idx_t{0}}), 0_minutes, 0U}},
-    .destination_ = {
-      {tt.locations_.location_id_to_idx_.at({stop, source_idx_t{0}}), 0_minutes, 0U}}};
+  query q{.start_time_ = start_time,
+          .start_match_mode_ = location_match_mode::kEquivalent,
+          .dest_match_mode_ = location_match_mode::kEquivalent,
+          .start_ = {{tt.locations_.location_id_to_idx_.at(
+                          {start, source_idx_t{0}}),
+                      0_minutes, 0U}},
+          .destination_ = {
+              {tt.locations_.location_id_to_idx_.at({stop, source_idx_t{0}}),
+               0_minutes, 0U}}};
 
   static auto search_state = routing::search_state{};
   auto algo_state = query_state{tt, tbd};
 
   search<direction::kForward, tb::query_engine<false>> tb_searcher{
-    tt, nullptr, search_state, algo_state, q};
+      tt, nullptr, search_state, algo_state, q};
 
   auto results = tb_searcher.execute().journeys_->els_;
 
-  EXPECT_EQ(results.size(),expectedNumberOfJourneys);
-  for(int i=0;i<results.size();++i) {
-    if(results.size()>1)a_star::transfer_factor = calculate_transfer_factor(results,i);
+  EXPECT_EQ(results.size(), expectedNumberOfJourneys);
+  for (int i = 0; i < results.size(); ++i) {
+    if (results.size() > 1)
+      a_star::transfer_factor = calculate_transfer_factor(results, i);
     static auto a_star_search_state = routing::search_state{};
     auto a_star_algo_state = a_star::a_star_state{tbd};
-    search<direction::kForward,a_star::tb_a_star> a_star_searcher{tt,nullptr,a_star_search_state,a_star_algo_state,q};
+    search<direction::kForward, a_star::tb_a_star> a_star_searcher{
+        tt, nullptr, a_star_search_state, a_star_algo_state, q};
 
     auto a_star = a_star_searcher.execute().journeys_->els_.front();
-    EXPECT_EQ(results[i],a_star_searcher.execute().journeys_->els_.front());
+    EXPECT_EQ(results[i], a_star_searcher.execute().journeys_->els_.front());
   }
 
   search_state = routing::search_state{};
   auto raptor_algo_state = raptor_state{};
 
-  search<direction::kForward, raptor<direction::kForward,false,0,search_mode::kOneToOne>> raptor_searcher{
-    tt, nullptr, search_state, raptor_algo_state, q,std::nullopt};
+  search<direction::kForward,
+         raptor<direction::kForward, false, 0, search_mode::kOneToOne>>
+      raptor_searcher{tt, nullptr,     search_state, raptor_algo_state,
+                      q,  std::nullopt};
 
   results = raptor_searcher.execute().journeys_->els_;
 
-  EXPECT_EQ(results.size(),expectedNumberOfJourneys);
-  for(int i=0;i<results.size();++i) {
-    if(results.size()>1) a_star::transfer_factor = calculate_transfer_factor(results,i);
+  EXPECT_EQ(results.size(), expectedNumberOfJourneys);
+  for (int i = 0; i < results.size(); ++i) {
+    if (results.size() > 1)
+      a_star::transfer_factor = calculate_transfer_factor(results, i);
     static auto a_star_search_state = routing::search_state{};
     auto a_star_algo_state = a_star::a_star_state{tbd};
 
-    search<direction::kForward,a_star::tb_a_star> a_star_searcher{tt,nullptr,a_star_search_state,a_star_algo_state,q};
+    search<direction::kForward, a_star::tb_a_star> a_star_searcher{
+        tt, nullptr, a_star_search_state, a_star_algo_state, q};
 
     auto found_journey = a_star_searcher.execute().journeys_->els_.front();
     found_journey.legs_.pop_back();
-    EXPECT_EQ(results[i],found_journey);
+    EXPECT_EQ(results[i], found_journey);
   }
-
 }
 
 loader::mem_dir simple_pareto_verification_files() {
@@ -151,12 +175,14 @@ R2_MON,01:10:00,01:10:00,S2,0,0,0
 R2_MON,01:30:00,01:30:00,S3,1,0,0
 )");
 }
-TEST(tb_a_star,pareto_verification) {
-  verify_pareto_set(simple_pareto_verification_files,"S0","S3",sys_days{year{2021}/March/day{1}},2);
+TEST(tb_a_star, pareto_verification) {
+  verify_pareto_set(simple_pareto_verification_files, "S0", "S3",
+                    sys_days{year{2021} / March / day{1}}, 2);
 }
 
-TEST(tb_a_star,pareto_verification_with_early_start_time) {
-  verify_pareto_set(simple_pareto_verification_files,"S0","S3",sys_days{year{2021}/February/day{28}}+23h,2);
+TEST(tb_a_star, pareto_verification_with_early_start_time) {
+  verify_pareto_set(simple_pareto_verification_files, "S0", "S3",
+                    sys_days{year{2021} / February / day{28}} + 23h, 2);
 }
 
 loader::mem_dir later_pareto_verification_files() {
@@ -201,8 +227,9 @@ R2_MON,02:10:00,02:10:00,S2,0,0,0
 R2_MON,02:30:00,02:30:00,S3,1,0,0
 )");
 }
-TEST(tb_a_star,pareto_verification_early_start_time_same_day) {
-  verify_pareto_set(simple_pareto_verification_files,"S0","S3",sys_days{year{2021}/March/day{1}},2);
+TEST(tb_a_star, pareto_verification_early_start_time_same_day) {
+  verify_pareto_set(simple_pareto_verification_files, "S0", "S3",
+                    sys_days{year{2021} / March / day{1}}, 2);
 }
 loader::mem_dir overnight_pareto_verification_files() {
   return loader::mem_dir::read(R"(
@@ -247,10 +274,10 @@ R2_MON,11:10:00,11:10:00,S2,0,0,0
 R2_MON,24:30:00,24:30:00,S3,1,0,0
 )");
 }
-TEST(tb_a_star,overnight_pareto_verification) {
-  verify_pareto_set(overnight_pareto_verification_files,"S0","S3",sys_days{year{2021}/March/day{1}}+10h,2);
+TEST(tb_a_star, overnight_pareto_verification) {
+  verify_pareto_set(overnight_pareto_verification_files, "S0", "S3",
+                    sys_days{year{2021} / March / day{1}} + 10h, 2);
 }
-
 
 loader::mem_dir three_journeys_pareto_verification_files() {
   return loader::mem_dir::read(R"(
@@ -307,55 +334,63 @@ R4_MON,01:40:00,01:40:00,S5,0,0,0
 R4_MON,02:10:00,02:10:00,S3,0,0,0
 )");
 }
-TEST(tb_a_star,three_journeys_pareto_verification) {
-  verify_pareto_set(three_journeys_pareto_verification_files,"S0","S3",sys_days{year{2021}/March/day{1}},3);
+TEST(tb_a_star, three_journeys_pareto_verification) {
+  verify_pareto_set(three_journeys_pareto_verification_files, "S0", "S3",
+                    sys_days{year{2021} / March / day{1}}, 3);
 }
 
-
-TEST(tb_a_star,abc_pareto_verification) {
+TEST(tb_a_star, abc_pareto_verification) {
   auto const tt = load_hrd(files_abc);
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
 
-  query q{
-    .start_time_ =interval{unixtime_t{sys_days{March / 30 / 2020}} + 5h,
-                                unixtime_t{sys_days{March / 30 / 2020}} + 6h},
-    .start_match_mode_ = location_match_mode::kEquivalent,
-    .dest_match_mode_ = location_match_mode::kEquivalent,
-    .start_ = {
-      {tt.locations_.location_id_to_idx_.at({"0000001", source_idx_t{0}}), 0_minutes, 0U}},
-    .destination_ = {
-      {tt.locations_.location_id_to_idx_.at({"0000003", source_idx_t{0}}), 0_minutes, 0U}}};
+  query q{.start_time_ = interval{unixtime_t{sys_days{March / 30 / 2020}} + 5h,
+                                  unixtime_t{sys_days{March / 30 / 2020}} + 6h},
+          .start_match_mode_ = location_match_mode::kEquivalent,
+          .dest_match_mode_ = location_match_mode::kEquivalent,
+          .start_ = {{tt.locations_.location_id_to_idx_.at(
+                          {"0000001", source_idx_t{0}}),
+                      0_minutes, 0U}},
+          .destination_ = {{tt.locations_.location_id_to_idx_.at(
+                                {"0000003", source_idx_t{0}}),
+                            0_minutes, 0U}}};
 
   static auto search_state = routing::search_state{};
   auto algo_state = query_state{tt, tbd};
 
   search<direction::kForward, tb::query_engine<false>> tb_searcher{
-    tt, nullptr, search_state, algo_state, q};
+      tt, nullptr, search_state, algo_state, q};
 
   auto results = tb_searcher.execute().journeys_->els_;
 
   static auto a_star_search_state = routing::search_state{};
   auto a_star_algo_state = a_star::a_star_state{tbd};
 
-  search<direction::kForward,a_star::tb_a_star> a_star_searcher{tt,nullptr,a_star_search_state,a_star_algo_state,q};
+  search<direction::kForward, a_star::tb_a_star> a_star_searcher{
+      tt, nullptr, a_star_search_state, a_star_algo_state, q};
 
   auto result_a_star = a_star_searcher.execute().journeys_->els_;
-  EXPECT_TRUE(result_a_star.front() == results.front() || result_a_star.front() == results.back());
-  EXPECT_TRUE(result_a_star.back() == results.front() || result_a_star.back() == results.back());
-  EXPECT_NE(result_a_star.back(),result_a_star.front());
+  EXPECT_TRUE(result_a_star.front() == results.front() ||
+              result_a_star.front() == results.back());
+  EXPECT_TRUE(result_a_star.back() == results.front() ||
+              result_a_star.back() == results.back());
+  EXPECT_NE(result_a_star.back(), result_a_star.front());
 
   search_state = routing::search_state{};
   auto raptor_algo_state = raptor_state{};
 
-  search<direction::kForward, raptor<direction::kForward,false,0,search_mode::kOneToOne>> raptor_searcher{
-    tt, nullptr, search_state, raptor_algo_state, q,std::nullopt};
+  search<direction::kForward,
+         raptor<direction::kForward, false, 0, search_mode::kOneToOne>>
+      raptor_searcher{tt, nullptr,     search_state, raptor_algo_state,
+                      q,  std::nullopt};
 
   results = raptor_searcher.execute().journeys_->els_;
   result_a_star.front().legs_.pop_back();
   result_a_star.back().legs_.pop_back();
-  EXPECT_TRUE(result_a_star.front() == results.front() || result_a_star.front() == results.back());
-  EXPECT_TRUE(result_a_star.back() == results.front() || result_a_star.back() == results.back());
-  EXPECT_NE(result_a_star.back(),result_a_star.front());
+  EXPECT_TRUE(result_a_star.front() == results.front() ||
+              result_a_star.front() == results.back());
+  EXPECT_TRUE(result_a_star.back() == results.front() ||
+              result_a_star.back() == results.back());
+  EXPECT_NE(result_a_star.back(), result_a_star.front());
 }
 
 mem_dir earlier_stop_transfer_files() {
@@ -401,8 +436,9 @@ R0_MON1,08:00:00,08:00:00,S1,4,0,0
 R0_MON1,09:00:00,09:00:00,S4,5,0,0
 )");
 }
-TEST(tb_a_star,earlier_stop_transfer_verification) {
-  verify_pareto_set(earlier_stop_transfer_files,"S3","S2",sys_days{year{2021}/March/day{1}},1);
+TEST(tb_a_star, earlier_stop_transfer_verification) {
+  verify_pareto_set(earlier_stop_transfer_files, "S3", "S2",
+                    sys_days{year{2021} / March / day{1}}, 1);
 }
 
 mem_dir another_longer_files() {
@@ -466,8 +502,9 @@ R5_MON,03:10:00,03:10:00,S7,0,0,0
 R5_MON,04:00:00,04:00:00,S9,1,0,0
 )");
 }
-TEST(tb_a_star,another_longer_gtfs) {
-verify_pareto_set(another_longer_files,"S1","S10",sys_days{year{2021}/March/day{1}},1);
+TEST(tb_a_star, another_longer_gtfs) {
+  verify_pareto_set(another_longer_files, "S1", "S10",
+                    sys_days{year{2021} / March / day{1}}, 1);
 }
 
 mem_dir overnight_files() {
@@ -507,7 +544,8 @@ R1_TUE,00:05:00,00:05:00,S1,0,0,0
 R1_TUE,01:00:00,01:00:00,S2,1,0,0
 )");
 }
-TEST(tb_a_star,overnight_pareto_verification_files) {
-  verify_pareto_set(overnight_files,"S0","S2",sys_days{year{2021}/March/day{1}}+23h+30min,2);
+TEST(tb_a_star, overnight_pareto_verification_files) {
+  verify_pareto_set(overnight_files, "S0", "S2",
+                    sys_days{year{2021} / March / day{1}} + 23h + 30min, 2);
 }
-}// namespace nigiri::routing::tb
+}  // namespace nigiri::routing::tb
