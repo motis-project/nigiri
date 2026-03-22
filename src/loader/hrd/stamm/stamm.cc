@@ -64,33 +64,25 @@ category const* stamm::resolve_category(utl::cstr s) const {
   return it == end(categories_) ? nullptr : &it->second;
 }
 
-trip_direction_idx_t stamm::resolve_direction(direction_info_t const& info) {
+translation_idx_t stamm::resolve_direction(direction_info_t const& info) {
   return info.apply(utl::overloaded{
       [&](utl::cstr const str) {
         return utl::get_or_create(string_directions_, str.view(), [&]() {
           auto const it = directions_.find(str.view());
           if (it == end(directions_)) {
-            return trip_direction_idx_t::invalid();
+            return kEmptyTranslation;
           } else {
-            auto const dir_idx =
-                trip_direction_idx_t{tt_.trip_directions_.size()};
-            tt_.trip_directions_.emplace_back(it->second);
-            return dir_idx;
+            return it->second;
           }
         });
       },
       [&](eva_number const eva) {
-        return utl::get_or_create(eva_directions_, eva, [&]() {
-          auto const it = locations_.find(eva);
-          if (it == end(locations_)) {
-            return trip_direction_idx_t::invalid();
-          } else {
-            auto const dir_idx =
-                trip_direction_idx_t{tt_.trip_directions_.size()};
-            tt_.trip_directions_.emplace_back(it->second.idx_);
-            return dir_idx;
-          }
-        });
+        auto const it = locations_.find(eva);
+        if (it == end(locations_)) {
+          return kEmptyTranslation;
+        } else {
+          return tt_.locations_.names_[it->second.idx_];
+        }
       }});
 }
 
@@ -109,10 +101,11 @@ provider_idx_t stamm::resolve_provider(utl::cstr s) {
     log(log_lvl::error, "nigiri.loader.hrd.provider",
         "creating new provider for missing {}", s.view());
     auto const idx = provider_idx_t{tt_.providers_.size()};
-    tt_.providers_.push_back(provider{.id_ = tt_.strings_.store(s.view()),
-                                      .name_ = tt_.strings_.store(s.view()),
-                                      .url_ = tt_.strings_.store(""),
-                                      .src_ = source_idx_t{0}});
+    tt_.providers_.push_back(
+        provider{.id_ = tt_.strings_.store(s.view()),
+                 .name_ = tt_.register_translation(s.view()),
+                 .url_ = kEmptyTranslation,
+                 .src_ = source_idx_t{0}});
     providers_[s.to_str()] = idx;
     return idx;
   } else {
@@ -155,9 +148,9 @@ location_idx_t stamm::resolve_track(track_rule_key const& k,
 
 trip_line_idx_t stamm::resolve_line(std::string_view s) {
   return utl::get_or_create(lines_, s, [&]() {
-    auto const idx = trip_line_idx_t{tt_.trip_lines_.size()};
-    tt_.trip_lines_.emplace_back(s);
-    return idx;
+    // auto const idx = trip_line_idx_t{tt_.trip_lines_.size()};
+    // tt_.trip_lines_.emplace_back(s);
+    return trip_line_idx_t::invalid();
   });
 }
 

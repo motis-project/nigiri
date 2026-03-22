@@ -7,6 +7,8 @@ namespace nigiri {
 template <typename Idx>
 struct string_store {
   using idx_t = Idx;
+  using iterator = vecvec<idx_t, char>::iterator;
+  using const_iterator = vecvec<idx_t, char>::const_iterator;
 
   struct hash {
     using is_transparent = void;
@@ -70,6 +72,8 @@ struct string_store {
   auto cista_members() { return std::tie(cache_, strings_); }
 
   std::string_view get(idx_t const x) const {
+    assert(cache_.size() == strings_.size());
+    assert(x < strings_.size());
     return x == idx_t::invalid() ? "" : strings_[x].view();
   }
 
@@ -78,25 +82,32 @@ struct string_store {
   }
 
   idx_t store(std::string_view s) {
-    if (auto const it = cache_.find(s); it != end(cache_)) {
+    if (auto const it = cache_.find(s); it != cache_.end()) {
       return *it;
     } else {
       auto next = idx_t{strings_.size()};
       strings_.emplace_back(s);
-      cache_.emplace(next);
+      [[maybe_unused]] auto const inserted = cache_.emplace(next).second;
+      assert(inserted);
+      assert(cache_.size() == strings_.size());
       return next;
     }
   }
 
   std::optional<idx_t> find(std::string_view s) const {
+    assert(cache_.size() == strings_.size());
     auto const it = cache_.find(s);
-    return it == end(cache_) ? std::nullopt : std::optional{*it};
+    return it == cache_.end() ? std::nullopt : std::optional{*it};
   }
 
   void resolve() {
     cache_.hash_function().s_ = &strings_;
     cache_.key_eq().s_ = &strings_;
   }
+
+  auto begin() const { return strings_.begin(); }
+  auto end() const { return strings_.end(); }
+  std::size_t size() const { return strings_.size(); }
 
   vecvec<idx_t, char> strings_;
   hash_set<idx_t, hash, equals> cache_{0U, {&strings_}, {&strings_}};

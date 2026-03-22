@@ -88,8 +88,8 @@ TEST(routing, wheelchair_assistance) {
   tt.bwd_search_lb_graph_[kWheelchairProfile] =
       tt.bwd_search_lb_graph_[kDefaultProfile];
 
-  auto const B1 = tt.locations_.get({"B1", {}}).l_;
-  auto const B2 = tt.locations_.get({"B2", {}}).l_;
+  auto const B1 = tt.find(location_id{"B1", {}}).value();
+  auto const B2 = tt.find(location_id{"B2", {}}).value();
   for (auto const profile : {0U, 2U}) {
     tt.locations_.footpaths_out_[profile].resize(tt.n_locations());
     tt.locations_.footpaths_in_[profile].resize(tt.n_locations());

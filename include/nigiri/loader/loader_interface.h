@@ -21,6 +21,7 @@ struct loader_config {
   std::array<bool, kNumClasses> cars_allowed_default_{};
   bool extend_calendar_{false};
   std::string user_script_{};
+  hash_set<std::string> base_paths_{};
 };
 
 struct loader_interface {
@@ -33,7 +34,6 @@ struct loader_interface {
                     hash_map<bitfield, bitfield_idx_t>&,
                     assistance_times*,
                     shapes_storage*) const = 0;
-  virtual cista::hash_t hash(dir const&) const = 0;
   virtual std::string_view name() const = 0;
 };
 

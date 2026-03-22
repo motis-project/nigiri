@@ -16,6 +16,7 @@
 #include "nigiri/loader/gtfs/services.h"
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/stop.h"
+#include "nigiri/loader/gtfs/translations.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -68,12 +69,12 @@ struct stop_time_window {
 };
 
 struct trip {
-  trip(route const*,
+  trip(route_id_idx_t,
        bitfield const*,
        block*,
        std::string id,
-       trip_direction_idx_t headsign,
-       std::string short_name,
+       translation_idx_t headsign,
+       translation_idx_t short_name,
        direction_id_t,
        shape_idx_t,
        bool bikes_allowed,
@@ -87,31 +88,27 @@ struct trip {
 
   ~trip() = default;
 
-  void interpolate();
-
   void print_stop_times(std::ostream&,
                         timetable const&,
                         unsigned indent = 0) const;
 
   std::string display_name() const;
 
-  clasz get_clasz(timetable const&) const;
-
   bool has_seated_transfers() const;
 
-  route const* route_{nullptr};
+  route_id_idx_t route_{route_id_idx_t::invalid()};
   bitfield const* service_{nullptr};
   block* block_{nullptr};
   std::string id_;
-  trip_direction_idx_t headsign_;
+  translation_idx_t headsign_;
   direction_id_t direction_id_{direction_id_t::invalid()};
-  std::string short_name_;
+  translation_idx_t short_name_;
   shape_idx_t shape_idx_;
 
   stop_seq_t stop_seq_;
   std::vector<std::uint16_t> seq_numbers_;
   std::vector<stop_events> event_times_;
-  std::vector<trip_direction_idx_t> stop_headsigns_;
+  std::vector<translation_idx_t> stop_headsigns_;
   std::vector<double> distance_traveled_;
 
   std::vector<flex_stop_t> flex_stops_;
@@ -127,7 +124,6 @@ struct trip {
   std::uint32_t from_line_{0U}, to_line_{0U};
 
   trip_idx_t trip_idx_{trip_idx_t::invalid()};
-  std::vector<transport_range_t> transport_ranges_;
 };
 
 struct trip_data {
@@ -135,16 +131,20 @@ struct trip_data {
   trip& get(gtfs_trip_idx_t const idx) { return data_[idx]; }
   trip const& get(std::string_view id) const { return data_[trips_.at(id)]; }
   trip& get(std::string_view id) { return data_[trips_.at(id)]; }
-  trip_direction_idx_t get_or_create_direction(timetable&, std::string_view);
 
   hash_map<std::string, gtfs_trip_idx_t> trips_;
   hash_map<std::string, std::unique_ptr<block>> blocks_;
-  hash_map<std::string, trip_direction_idx_t> directions_;
   vector_map<gtfs_trip_idx_t, trip> data_;
 };
 
+enum class interpolate_result { kOk, kErrorLastMissing, kErrorFirstMissing };
+
+interpolate_result interpolate(std::vector<stop_events>&);
+
 trip_data read_trips(source_idx_t,
+                     source_file_idx_t,
                      timetable&,
+                     translator&,
                      route_map_t const&,
                      traffic_days_t const&,
                      shape_loader_state const&,

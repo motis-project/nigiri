@@ -42,6 +42,13 @@ struct raptor_state {
   }
 
   template <via_offset_t Vias>
+  std::span<std::array<delta_t, Vias + 1> const> get_tmp() const {
+    return {reinterpret_cast<std::array<delta_t, Vias + 1> const*>(
+                tmp_storage_.data()),
+            n_locations_};
+  }
+
+  template <via_offset_t Vias>
   std::span<std::array<delta_t, Vias + 1>> get_best() {
     return {
         reinterpret_cast<std::array<delta_t, Vias + 1>*>(best_storage_.data()),
@@ -82,7 +89,6 @@ struct raptor_state {
   bitvec prev_station_mark_;
   bitvec route_mark_;
   bitvec rt_transport_mark_;
-  bitvec end_reachable_;
 };
 
 }  // namespace nigiri::routing

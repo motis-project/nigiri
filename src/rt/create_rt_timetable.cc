@@ -32,6 +32,8 @@ rt_timetable create_rt_timetable(timetable const& tt,
     }
   }
   rtt.additional_trips_.resize(tt.n_sources());
+  rtt.bwd_search_lb_graph_has_edges_.resize(tt.n_locations());
+  rtt.fwd_search_lb_graph_has_edges_.resize(tt.n_locations());
   return rtt;
 }
 

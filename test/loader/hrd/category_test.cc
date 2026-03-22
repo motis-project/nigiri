@@ -17,10 +17,10 @@ s    4 C 0  S         0 N S-Bahn)";
 
     auto const it = categories.find("s  ");
     ASSERT_NE(end(categories), it);
-    EXPECT_EQ((category{.name_ = "s",
-                        .long_name_ = "S",
-                        .output_rule_ = 0,
-                        .clasz_ = clasz::kSuburban}),
+    EXPECT_EQ((nigiri::loader::hrd::category{.name_ = "s",
+                                             .long_name_ = "S",
+                                             .output_rule_ = 0,
+                                             .clasz_ = clasz::kSuburban}),
               it->second);
   }
 }

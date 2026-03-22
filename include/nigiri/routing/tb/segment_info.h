@@ -20,7 +20,7 @@ struct segment_info {
     out << "[dbg=" << tt.dbg(t) << ", trip=" << tt.transport_name(t)
         << ", segment=" << s << ", rel_segment=" << rel << "/"
         << tbd.get_segment_range(t).size()
-        << ", from=" << location{tt, stop{loc_seq[from]}.location_idx()};
+        << ", from=" << loc{tt, stop{loc_seq[from]}.location_idx()};
 
     if (day.has_value()) {
       out << " @ " << tt.event_time({t, *day}, from, event_type::kDep);
@@ -28,7 +28,7 @@ struct segment_info {
       out << " @ " << tt.event_mam(t, from, event_type::kDep);
     }
 
-    out << " => to=" << location{tt, stop{loc_seq[to]}.location_idx()};
+    out << " => to=" << loc{tt, stop{loc_seq[to]}.location_idx()};
 
     if (day.has_value()) {
       out << " @ " << tt.event_time({t, *day}, to, event_type::kArr);

@@ -44,29 +44,55 @@ std::size_t get_closest(geo::latlng const& pos,
              : best.segment_idx_ + 1;
 }
 
+void bisect(auto const& match_stop,
+            unsigned int const seg_start,
+            unsigned int const seg_end,
+            shape_offset_t const shape_start,
+            shape_offset_t const shape_end) {
+  if (seg_start > seg_end) {
+    return;
+  }
+  auto const seg_center = (seg_start + seg_end) / 2;
+  auto const subshape_start = shape_start + (seg_center - seg_start);
+  auto const subshape_length =
+      shape_end.v_ - shape_start.v_ + 1 - (seg_end - seg_start);
+  auto const match_offset =
+      match_stop(seg_center, subshape_start, subshape_length);
+
+  bisect(match_stop, seg_start, seg_center - 1, shape_start, match_offset - 1);
+  bisect(match_stop, seg_center + 1, seg_end, match_offset + 1, shape_end);
+};
+
 std::vector<shape_offset_t> get_offsets_by_stops(
     timetable const& tt,
     std::span<geo::latlng const> shape,
     stop_seq_t const& stop_seq) {
-  auto offsets = std::vector<shape_offset_t>(stop_seq.size());
-  auto remaining_start = cista::base_t<shape_offset_t>{1U};
-  // Reserve space to map each stop to a different point
-  auto max_width = shape.size() - stop_seq.size();
-
-  for (auto const [i, s] : utl::enumerate(stop_seq)) {
-    if (i == 0U) {
-      offsets[0] = shape_offset_t{0U};
-    } else if (i == stop_seq.size() - 1U) {
-      offsets[i] = shape_offset_t{shape.size() - 1U};
-    } else {
-      auto const pos = tt.locations_.coordinates_[stop{s}.location_idx()];
-      auto const offset =
-          get_closest(pos, shape.subspan(remaining_start, max_width + 1U));
-      offsets[i] = shape_offset_t{remaining_start + offset};
-      remaining_start += offset + 1U;
-      max_width -= offset;
-    }
+  auto const stop_seq_size = stop_seq.size();
+  if (stop_seq_size < 2) {
+    // Trivial offsets for at most 1 stop
+    return std::vector<shape_offset_t>{};
   }
+
+  auto const shape_size = shape.size();
+  auto offsets = std::vector<shape_offset_t>(stop_seq_size);
+
+  auto const match_stop = [&](unsigned int const s, shape_offset_t shape_start,
+                              unsigned int shape_length) -> shape_offset_t {
+    auto const pos =
+        tt.locations_.coordinates_[stop{stop_seq[s]}.location_idx()];
+    auto const subshape = shape.subspan(shape_start.v_, shape_length);
+    auto const offset = get_closest(pos, subshape);
+    auto const shape_offset = shape_start + static_cast<unsigned int>(offset);
+    offsets[s] = shape_offset;
+    return shape_offset;
+  };
+
+  // Offsets for first and last stop are always fixed
+  offsets[0] = shape_offset_t{0U};
+  offsets[stop_seq_size - 1] = shape_offset_t{shape_size - 1U};
+
+  bisect(match_stop, 1U, static_cast<unsigned int>(stop_seq_size - 2),
+         shape_offset_t{1}, shape_offset_t{shape_size - 2});
 
   return offsets;
 }
@@ -138,7 +164,8 @@ void process_task(timetable const& tt,
                   shape_loader_state const& shape_states,
                   relative_shape_idx_t const i,
                   task& t) {
-  auto const shape = shapes_data.get_shape(shape_states.get_shape_idx(i));
+  auto const shape =
+      shapes_data.get_shape(shape_states.get_scoped_shape_idx(i));
   auto const& shape_distances = shape_states.distances_[i];
   for (auto& x : t) {
     auto& r = x.result_;
@@ -202,7 +229,8 @@ void assign_shape_offsets(shapes_storage& shapes_data,
     auto const shape_idx = trip.shape_idx_;
     if (shape_idx == shape_idx_t::invalid()) {
       shapes_data.add_trip_shape_offsets(
-          trip_idx, cista::pair{shape_idx, shape_offset_idx_t::invalid()});
+          trip_idx, cista::pair{scoped_shape_idx_t::invalid(),
+                                shape_offset_idx_t::invalid()});
     } else {
       auto const task = tasks[states.get_relative_idx(shape_idx)];
       auto const x = std::ranges::lower_bound(
@@ -212,11 +240,13 @@ void assign_shape_offsets(shapes_storage& shapes_data,
       if (x != end(task) &&
           x->result_.shape_offset_idx_ != shape_offset_idx_t::invalid()) {
         shapes_data.add_trip_shape_offsets(
-            trip_idx, cista::pair{shape_idx, x->result_.shape_offset_idx_});
+            trip_idx, cista::pair{to_scoped_shape_idx(shape_idx,
+                                                      shape_source::kTimetable),
+                                  x->result_.shape_offset_idx_});
       } else {
         shapes_data.add_trip_shape_offsets(
-            trip_idx,
-            cista::pair{shape_idx_t::invalid(), shape_offset_idx_t::invalid()});
+            trip_idx, cista::pair{scoped_shape_idx_t::invalid(),
+                                  shape_offset_idx_t::invalid()});
       }
     }
   }
@@ -250,8 +280,6 @@ void assign_bounding_boxes(timetable const& tt,
       }
     }
 
-    auto is_trivial = true;
-
     for (auto const transport_idx : tt.route_transport_ranges_[r]) {
       auto const frun = rt::frun{tt, nullptr,
                                  rt::run{.t_ = transport{transport_idx},
@@ -259,12 +287,14 @@ void assign_bounding_boxes(timetable const& tt,
                                          .rt_ = rt_transport_idx_t::invalid()}};
       frun.for_each_trip([&](trip_idx_t const trip_idx,
                              interval<stop_idx_t> const absolute_range) {
-        auto const [shape_idx, offset_idx] =
+        auto const [scoped_shape_idx, offset_idx] =
             shapes_data.trip_offset_indices_[trip_idx];
-        if (shape_idx == shape_idx_t::invalid() ||
+        if (scoped_shape_idx == scoped_shape_idx_t::invalid() ||
+            get_shape_source(scoped_shape_idx) != shape_source::kTimetable ||
             offset_idx == shape_offset_idx_t::invalid()) {
           return;
         }
+        auto const shape_idx = get_local_shape_idx(scoped_shape_idx);
         auto const& task = tasks[shape_states.get_relative_idx(shape_idx)];
         auto const it = utl::find_if(task, [&](stop_seq_dist const& s) {
           return s.result_.shape_offset_idx_ == offset_idx;
@@ -276,18 +306,11 @@ void assign_bounding_boxes(timetable const& tt,
         auto const& res = it->result_;
         bounding_box.extend(res.trip_bbox_);
         auto const& bboxes = res.segment_bboxes_;
-        if (!bboxes.empty()) {
-          for (auto const [i, bbox] : utl::enumerate(bboxes)) {
-            segment_bboxes.at(i + cista::to_idx(absolute_range.from_))
-                .extend(bbox);
-          }
-          is_trivial = false;
+        for (auto const [i, bbox] : utl::enumerate(bboxes)) {
+          segment_bboxes.at(i + cista::to_idx(absolute_range.from_))
+              .extend(bbox);
         }
       });
-    }
-
-    if (is_trivial) {
-      segment_bboxes.clear();
     }
 
     shapes_data.route_bboxes_.emplace_back(std::move(bounding_box));

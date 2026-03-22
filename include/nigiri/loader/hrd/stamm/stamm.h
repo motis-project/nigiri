@@ -26,7 +26,7 @@ struct stamm {
   interval<std::chrono::sys_days> get_date_range() const;
   location_idx_t resolve_location(eva_number) const;
   category const* resolve_category(utl::cstr) const;
-  trip_direction_idx_t resolve_direction(direction_info_t const&);
+  translation_idx_t resolve_direction(direction_info_t const&);
   bitfield resolve_bitfield(unsigned) const;
   provider_idx_t resolve_provider(utl::cstr);
   attribute_idx_t resolve_attribute(utl::cstr) const;
@@ -54,8 +54,7 @@ private:
   timetable& tt_;
   source_idx_t src_;
 
-  hash_map<string, trip_direction_idx_t> string_directions_;
-  hash_map<eva_number, trip_direction_idx_t> eva_directions_;
+  hash_map<string, translation_idx_t> string_directions_;
   hash_map<string, trip_line_idx_t> lines_;
 };
 

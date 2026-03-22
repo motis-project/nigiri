@@ -6,6 +6,7 @@
 
 #include "nigiri/loader/gtfs/parse_date.h"
 #include "nigiri/loader/gtfs/parse_time.h"
+#include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/timetable.h"
@@ -17,15 +18,60 @@ namespace nigiri::rt {
 std::pair<date::days, duration_t> split(duration_t);
 
 template <typename Fn>
-void resolve_static(date::sys_days const today,
-                    timetable const& tt,
-                    source_idx_t const src,
-                    transit_realtime::TripDescriptor const& td,
-                    Fn&& fn) {
-  using loader::gtfs::hhmm_to_min;
-  using loader::gtfs::parse_date;
+void resolve_trip(date::sys_days const today,
+                  timetable const& tt,
+                  trip_idx_t const trip,
+                  std::optional<date::sys_days> const& start_date,
+                  std::optional<duration_t> const& start_time,
+                  Fn&& fn) {
+  for (auto const [t, stop_range] : tt.trip_transport_ranges_[trip]) {
+    auto const [first_dep_offset, tz_offset] =
+        tt.transport_first_dep_offset_[t].to_offset();
+    auto const utc_dep =
+        tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration();
+    auto const gtfs_static_dep = utc_dep + first_dep_offset + tz_offset;
+    auto const [gtfs_static_dep_day, gtfs_static_dep_time] =
+        split(gtfs_static_dep);
+    auto const [start_time_day, start_time_time] =
+        start_time.has_value() ? split(*start_time)
+                               : std::pair{date::days{0U}, duration_t{0U}};
 
-  auto const& trip_id = td.trip_id();
+    if (start_time.has_value() && gtfs_static_dep_time != start_time_time) {
+      continue;
+    }
+
+    auto const start_time_day_offset =
+        start_time.has_value() ? gtfs_static_dep_day - start_time_day
+                               : date::days{0U};
+
+    auto const day_idx =
+        ((start_date.has_value() ? *start_date : today) + first_dep_offset -
+         start_time_day_offset - tt.internal_interval_days().from_)
+            .count();
+
+    if (day_idx > kMaxDays || day_idx < 0) {
+      continue;
+    }
+
+    auto const& traffic_days = tt.bitfields_[tt.transport_traffic_days_[t]];
+    if (traffic_days.test(static_cast<std::size_t>(day_idx))) {
+      auto const r = run{.t_ = transport{t, day_idx_t{day_idx}},
+                         .stop_range_ = stop_range};
+      if (fn(r, trip) == utl::continue_t::kBreak) {
+        return;
+      }
+    }
+  }
+}
+
+template <typename Fn>
+void resolve_static_trip_id(date::sys_days const today,
+                            timetable const& tt,
+                            source_idx_t const src,
+                            std::string const& trip_id,
+                            std::optional<date::sys_days> const& start_date,
+                            std::optional<duration_t> const& start_time,
+                            Fn&& fn) {
   auto const lb = std::lower_bound(
       begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_), trip_id,
       [&](pair<trip_id_idx_t, trip_idx_t> const& a, auto&& b) {
@@ -33,6 +79,46 @@ void resolve_static(date::sys_days const today,
                           tt.trip_id_strings_[a.first].view()} <
                std::tuple{src, static_cast<std::string_view>(b)};
       });
+
+  auto const id_matches = [&](trip_id_idx_t const t_id_idx) {
+    return tt.trip_id_src_[t_id_idx] == src &&
+           tt.trip_id_strings_[t_id_idx].view() == trip_id;
+  };
+
+  for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(i->first); ++i) {
+    resolve_trip(today, tt, i->second, start_date, start_time, fn);
+  }
+}
+
+template <typename Fn>
+void resolve_static_route(date::sys_days const today,
+                          timetable const& tt,
+                          source_idx_t const src,
+                          std::string const& route_id,
+                          direction_id_t const direction,
+                          date::sys_days const start_date,
+                          duration_t const start_time,
+                          Fn&& fn) {
+  auto const route = tt.route_ids_[src].ids_.find(route_id);
+  if (!route.has_value()) {
+    return;
+  }
+
+  for (auto const trip : tt.route_ids_[src].route_id_trips_[*route]) {
+    if (tt.trip_direction_id_.test(trip) == (direction != 0U)) {
+      resolve_trip(today, tt, trip, start_date, start_time, fn);
+    }
+  }
+}
+
+template <typename Fn>
+void resolve_static(date::sys_days const today,
+                    timetable const& tt,
+                    source_idx_t const src,
+                    transit_realtime::TripDescriptor const& td,
+                    Fn&& fn) {
+  using loader::gtfs::hhmm_to_min;
+  using loader::gtfs::parse_date;
 
   auto const start_date = td.has_start_date()
                               ? std::make_optional(parse_date(
@@ -42,50 +128,17 @@ void resolve_static(date::sys_days const today,
                               ? std::make_optional(hhmm_to_min(td.start_time()))
                               : std::nullopt;
 
-  auto const id_matches = [&](trip_id_idx_t const t_id_idx) {
-    return tt.trip_id_src_[t_id_idx] == src &&
-           tt.trip_id_strings_[t_id_idx].view() == trip_id;
-  };
-
-  for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(i->first); ++i) {
-    for (auto const [t, stop_range] : tt.trip_transport_ranges_[i->second]) {
-      auto const [first_dep_offset, tz_offset] =
-          tt.transport_first_dep_offset_[t].to_offset();
-      auto const utc_dep =
-          tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration();
-      auto const gtfs_static_dep = utc_dep + first_dep_offset + tz_offset;
-      auto const [gtfs_static_dep_day, gtfs_static_dep_time] =
-          split(gtfs_static_dep);
-      auto const [start_time_day, start_time_time] =
-          start_time.has_value() ? split(*start_time)
-                                 : std::pair{date::days{0U}, duration_t{0U}};
-
-      if (start_time.has_value() && gtfs_static_dep_time != start_time_time) {
-        continue;
-      }
-
-      auto const start_time_day_offset =
-          start_time.has_value() ? gtfs_static_dep_day - start_time_day
-                                 : date::days{0U};
-
-      auto const day_idx =
-          ((start_date.has_value() ? *start_date : today) + first_dep_offset -
-           start_time_day_offset - tt.internal_interval_days().from_)
-              .count();
-
-      if (day_idx > kMaxDays || day_idx < 0) {
-        continue;
-      }
-
-      auto const& traffic_days = tt.bitfields_[tt.transport_traffic_days_[t]];
-      if (traffic_days.test(static_cast<std::size_t>(day_idx))) {
-        auto const r = run{.t_ = transport{t, day_idx_t{day_idx}},
-                           .stop_range_ = stop_range};
-        if (fn(r, i->second) == utl::continue_t::kBreak) {
-          return;
-        }
-      }
-    }
+  if (td.has_trip_id()) {
+    resolve_static_trip_id(today, tt, src, td.trip_id(), start_date, start_time,
+                           std::forward<Fn>(fn));
+  } else {
+    utl_verify(td.has_route_id() && td.has_direction_id() &&
+                   start_time.has_value() && start_date.has_value(),
+               "bad trip descriptor {}", td.DebugString());
+    resolve_static_route(
+        today, tt, src, td.route_id(),
+        td.direction_id() == 0U ? direction_id_t{0U} : direction_id_t{1U},
+        start_date.value(), start_time.value(), std::forward<Fn>(fn));
   }
 }
 

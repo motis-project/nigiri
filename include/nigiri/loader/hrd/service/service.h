@@ -72,7 +72,7 @@ struct service {
     std::optional<std::vector<attribute>> attributes_;
     std::optional<category const*> category_;
     std::optional<utl::cstr> line_;
-    std::optional<trip_direction_idx_t> direction_;
+    std::optional<translation_idx_t> direction_;
     std::optional<unsigned> traffic_days_;
   };
 

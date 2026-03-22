@@ -3,6 +3,7 @@
 #include <ranges>
 
 #include "utl/sorted_diff.h"
+#include "utl/timing.h"
 
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/rt/frun.h"
@@ -16,7 +17,7 @@ auto to_tuple(journey const& j) {
   return std::tuple{j.departure_time(), j.arrival_time(), j.transfers_};
 }
 
-std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
+std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     timetable const& tt,
     rt_timetable const* rtt,
     query const& q,
@@ -258,6 +259,8 @@ routing_result pong(timetable const& tt,
 
   q.sanitize(tt);
 
+  auto const processing_start_time = std::chrono::steady_clock::now();
+
   auto const fastest_direct = get_fastest_direct(tt, q, SearchDir);
   auto const search_interval = std::visit(
       utl::overloaded{[](interval<unixtime_t> const start_interval) {
@@ -278,17 +281,19 @@ routing_result pong(timetable const& tt,
   // ====
   // PING
   // ----
+  UTL_START_TIMING(ping_lb);
   auto ping_lb = std::vector<std::uint16_t>{};
   dijkstra(tt, q,
-           kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
-                : tt.bwd_search_lb_graph_[q.prf_idx_],
+           (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
+                 : tt.bwd_search_lb_graph_[q.prf_idx_]),
+           (rtt == nullptr ? nullptr
+                           : &(kFwd ? rtt->fwd_search_lb_graph_has_edges_
+                                    : rtt->bwd_search_lb_graph_has_edges_)),
+           (rtt == nullptr ? nullptr
+                           : &(kFwd ? rtt->fwd_search_lb_graph_
+                                    : rtt->bwd_search_lb_graph_)),
            ping_lb);
-  for (auto const [l, lb] : utl::enumerate(ping_lb)) {
-    if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-      trace_pong("ping lb {}: {}", location{tt, location_idx_t{l}}, lb);
-    }
-  }
-  trace_pong("\n");
+  UTL_STOP_TIMING(ping_lb);
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
@@ -320,28 +325,28 @@ routing_result pong(timetable const& tt,
   // PONG
   // ----
   q.flip_dir();
+
+  UTL_START_TIMING(pong_lb);
   auto pong_lb = std::vector<std::uint16_t>{};
   dijkstra(tt, q,
-           kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
-                : tt.fwd_search_lb_graph_[q.prf_idx_],
+           (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
+                 : tt.fwd_search_lb_graph_[q.prf_idx_]),
+           (rtt == nullptr ? nullptr
+                           : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
+                                    : rtt->fwd_search_lb_graph_has_edges_)),
+           (rtt == nullptr ? nullptr
+                           : &(kFwd ? rtt->bwd_search_lb_graph_
+                                    : rtt->fwd_search_lb_graph_)),
            pong_lb);
-  for (auto const [l, lb] : utl::enumerate(pong_lb)) {
-    if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-      trace_pong("pong lb {}: {}", location{tt, location_idx_t{l}}, lb);
-    }
-  }
-  trace_pong("\n");
-  q.flip_dir();
+  UTL_STOP_TIMING(pong_lb);
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
   auto pong_is_dest = bitvec{};
-  collect_destinations(tt, q.start_, q.start_match_mode_, pong_is_dest,
+  collect_destinations(tt, q.destination_, q.dest_match_mode_, pong_is_dest,
                        pong_dist_to_dest);
 
   auto pong_is_via = std::array<bitvec, kMaxVias>{};
-  auto reverse_via = q.via_stops_;
-  std::reverse(begin(reverse_via), end(reverse_via));
-  for (auto const [i, via] : utl::enumerate(reverse_via)) {
+  for (auto const [i, via] : utl::enumerate(q.via_stops_)) {
     collect_via_destinations(tt, via.location_, pong_is_via[i]);
   }
 
@@ -362,28 +367,34 @@ routing_result pong(timetable const& tt,
       q.prf_idx_ == 2U,
       q.transfer_time_settings_};
 
+  q.flip_dir();
+
   // ========
   // >> PLAY!
   // --------
   auto starts = std::vector<start>{};
-  auto result = routing_result{.journeys_ = &s_state.results_,
-                               .interval_ = search_interval,
-                               .search_stats_ = {},
-                               .algo_stats_ = {}};
+  auto result = routing_result{
+      .journeys_ = &s_state.results_,
+      .interval_ = search_interval,
+      .search_stats_ = {.lb_time_ =
+                            static_cast<std::uint64_t>(UTL_TIMING_MS(ping_lb)) +
+                            static_cast<std::uint64_t>(UTL_TIMING_MS(pong_lb))},
+      .algo_stats_ = {}};
   auto start_time =
       kFwd ? search_interval.from_ : search_interval.to_ - duration_t{1};
+  auto const end_time =
+      kFwd ? search_interval.to_ : search_interval.from_ - duration_t{1};
   auto const is_better = [](auto a, auto b) { return kFwd ? a < b : a > b; };
   auto const is_validated = [&](journey const& j) {
     return is_better(j.dest_time_, start_time);
   };
-  auto const get_result_count = [&]() {
+  auto const get_result_count = [&](bool const include_too_slow) {
     return utl::count_if(*result.journeys_, [&](journey const& j) {
-      return is_validated(j) &&  //
-             j.travel_time() < fastest_direct &&
-             j.travel_time() < q.max_travel_time_;
+      return is_validated(j) &&
+             (include_too_slow || (j.travel_time() < fastest_direct &&
+                                   j.travel_time() < q.max_travel_time_));
     });
   };
-  auto const processing_start_time = std::chrono::steady_clock::now();
   auto const is_timeout_reached = [&]() {
     if (timeout) {
       return (std::chrono::steady_clock::now() - processing_start_time) >=
@@ -391,7 +402,9 @@ routing_result pong(timetable const& tt,
     }
     return false;
   };
-  while (get_result_count() < q.min_connection_count_ &&
+  while ((is_better(start_time, end_time) ||
+          get_result_count(true) + get_result_count(false) <
+              2 * q.min_connection_count_) &&
          tt.external_interval().contains(start_time) && !is_timeout_reached()) {
     // ----
     // PING
@@ -401,13 +414,14 @@ routing_result pong(timetable const& tt,
 
     starts.clear();
     get_starts(SearchDir, tt, rtt, start_time, q.start_, q.td_start_,
-               q.max_start_offset_, q.start_match_mode_, q.use_start_footpaths_,
-               starts, false, q.prf_idx_, q.transfer_time_settings_);
+               q.via_stops_, q.max_start_offset_, q.start_match_mode_,
+               q.use_start_footpaths_, starts, false, q.prf_idx_,
+               q.transfer_time_settings_);
     ping.reset_arrivals();
     ping.next_start_time();
     for (auto const& s : starts) {
       trace_pong("--- PING START: {} at time_at_start={} time_at_stop={}",
-                 location{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
+                 loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
       ping.add_start(s.stop_, s.time_at_stop_);
     }
     auto const worst_time_at_dest =
@@ -443,14 +457,15 @@ routing_result pong(timetable const& tt,
 
       starts.clear();
       get_starts(flip(SearchDir), tt, rtt, ping_j.dest_time_, q.start_,
-                 q.td_start_, q.max_start_offset_, q.start_match_mode_,
+                 q.td_start_, q.via_stops_, q.max_start_offset_,
+                 q.start_match_mode_,
                  q.start_match_mode_ != location_match_mode::kIntermodal,
                  starts, false, q.prf_idx_, q.transfer_time_settings_);
       pong.next_start_time();
       for (auto const& s : starts) {
         trace_pong("---- PONG START: {} at time_at_start={} time_at_stop={}",
-                   location{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
-        ping.add_start(s.stop_, s.time_at_stop_);
+                   loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
+        pong.add_start(s.stop_, s.time_at_stop_);
       }
       pong.execute(ping_j.dest_time_, ping_j.transfers_,
                    ping_j.start_time_ - duration_t{kFwd ? 1 : -1}, q.prf_idx_,
@@ -463,11 +478,10 @@ routing_result pong(timetable const& tt,
           });
 
       if (match == end(s_state.results_)) {
-        fmt::println(
+        throw utl::fail(
             "no pong for transfers={}, start_time={} found, journeys={}",
             ping_j.transfers_, ping_j.dest_time_,
             s_state.results_.els_ | std::views::transform(to_tuple));
-        continue;
       }
 
       trace_pong("---- HIT [updating ping start time {} -> {}]\n",
@@ -524,6 +538,9 @@ routing_result pong(timetable const& tt,
   result.interval_ = {kFwd ? search_interval.from_ : start_time + duration_t{1},
                       kFwd ? start_time : search_interval.to_};
   result.algo_stats_ = (ping.get_stats() + pong.get_stats()).to_map();
+  result.search_stats_.execute_time_ =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          (std::chrono::steady_clock::now() - processing_start_time));
 
   for (auto& j : s_state.results_) {
     auto const swap = [](location_idx_t const l) -> location_idx_t {
@@ -572,7 +589,7 @@ routing_result pong(timetable const& tt,
       auto const back_r = rt::frun{tt, rtt, back.r_};
       auto const to = back_r[back.stop_range_.from_];
 
-      auto const earlier = get_earliest_alternatve(
+      auto const earlier = get_earliest_alternative(
           tt, rtt, q, from.get_location_idx(), to.get_location_idx(),
           from.time(event_type::kArr), to.time(event_type::kDep),
           r_state.prev_station_mark_, r_state.station_mark_);
