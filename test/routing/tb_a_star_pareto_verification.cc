@@ -36,7 +36,7 @@ timetable load_hrd(auto const& files) {
   finalize(tt);
   return tt;
 }
-
+constexpr double EPSILON = 0.00001;
 unsigned int calculate_transfer_factor(std::vector<journey> const& journeys,
                                        std::size_t index) {
   double higher_bound = std::numeric_limits<double>::max();
@@ -56,17 +56,15 @@ unsigned int calculate_transfer_factor(std::vector<journey> const& journeys,
         factor < higher_bound)
       higher_bound = factor;
   }
-  if (higher_bound == std::numeric_limits<double>::max())
+  if (std::numeric_limits<double>::max() - higher_bound < EPSILON)
     return static_cast<int>(lower_bound) == lower_bound
                ? lower_bound + 1
                : std::ceil(lower_bound);
   int higher_bound_floor = static_cast<int>(higher_bound);
-  utl::verify(
-      (higher_bound_floor == higher_bound ? higher_bound - 1
-                                          : higher_bound_floor) > lower_bound,
-      "No Integer exists between bounds");
-  auto result = higher_bound_floor == higher_bound ? higher_bound - 1
-                                                   : higher_bound_floor;
+  auto result = (higher_bound - higher_bound_floor < EPSILON)
+                    ? higher_bound - 1
+                    : higher_bound_floor;
+  utl::verify(result > lower_bound, "No Integer exists between bounds");
   if (result < 0) throw std::runtime_error("Negative factor");
   return static_cast<unsigned int>(result);
 }

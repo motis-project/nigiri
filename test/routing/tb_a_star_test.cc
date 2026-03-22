@@ -1279,7 +1279,7 @@ TEST(tb_a_star, search_max_cost) {
 
   EXPECT_EQ(result.els_.front().transfers_, 1);
   EXPECT_FALSE(result.els_.front().error_);
-  for (auto i = 0; i < 3; ++i) {
+  for (unsigned long i = 0; i < 3; ++i) {
     EXPECT_EQ(result.els_.front().legs_[i].to_,
               result.els_.front().legs_[i + 1].from_);
   }
