@@ -38,7 +38,7 @@ timetable load_hrd(auto const& files) {
 }
 
 unsigned int calculate_transfer_factor(std::vector<journey> const& journeys,
-                                       int index) {
+                                       std::size_t index) {
   double higher_bound = std::numeric_limits<double>::max();
   double lower_bound = std::numeric_limits<double>::min();
   for (std::size_t j = 0; j < journeys.size(); ++j) {
