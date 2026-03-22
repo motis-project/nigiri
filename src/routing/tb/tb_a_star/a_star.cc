@@ -191,7 +191,7 @@ void tb_a_star::execute(unixtime_t const start_time,
     for (std::size_t i = 0; i < neighbours.size(); ++i) {
       auto neighbour = neighbours[i];
       auto is_next = next_exists && i == neighbours.size() - 1;
-      auto transfer_count = transfers_[p] + (is_next ? 0 : 1);
+      uint8_t transfer_count = transfers_[p] + (is_next ? 0 : 1);
       day_idx_[neighbour] =
           is_next ? day_idx_[p] : get_day(arrival, neighbour, tt_, state_.tbd_);
       if (is_invalid<day_idx_t>(day_idx_[neighbour])) continue;
@@ -199,7 +199,7 @@ void tb_a_star::execute(unixtime_t const start_time,
                                         state_.tbd_, day_idx_[neighbour]);
       if (transfer_count < transfers_[neighbour] &&
           neighbour_arrival < arrival_time_limit) {
-        transfers_[neighbour] = static_cast<uint8_t>(transfer_count);
+        transfers_[neighbour] = transfer_count;
         pred_[neighbour] = p;
         duration_t new_costs = neighbour_arrival - start_time +
                                duration_t(transfer_factor * transfer_count) +
