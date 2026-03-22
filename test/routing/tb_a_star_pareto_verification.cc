@@ -57,9 +57,14 @@ unsigned int calculate_transfer_factor(std::vector<journey> const& journeys,
       higher_bound = factor;
   }
   if (std::numeric_limits<double>::max() - higher_bound < EPSILON)
-    return static_cast<int>(lower_bound) == lower_bound
-               ? lower_bound + 1
-               : std::ceil(lower_bound);
+    return std::abs(lower_bound -
+                    static_cast<int>(
+                        lower_bound))<EPSILON&& static_cast<int>(lower_bound)> -
+                   2
+               ? static_cast<unsigned int>(lower_bound + 1)
+               : (std::ceil(lower_bound) > 0
+                      ? static_cast<unsigned int>(std::ceil(lower_bound))
+                      : 0);
   int higher_bound_floor = static_cast<int>(higher_bound);
   auto result = (higher_bound - higher_bound_floor < EPSILON)
                     ? higher_bound - 1
