@@ -64,11 +64,11 @@ pareto_set<routing::journey> a_star_search(timetable const& tt,
   auto const src = source_idx_t{0};
   auto q = routing::query{
       .start_time_ = time,
+      .use_start_footpaths_ = true,
       .start_ = {{tt.locations_.location_id_to_idx_.at({from, src}), 0_minutes,
                   0U}},
       .destination_ = {{tt.locations_.location_id_to_idx_.at({to, src}),
                         0_minutes, 0U}},
-      .use_start_footpaths_ = true,
       .max_transfers_ = 8};
   return a_star_search(tt, tbd, std::move(q));
 }

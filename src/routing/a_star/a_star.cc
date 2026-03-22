@@ -13,8 +13,6 @@
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/tb/tb_data.h"
 #include "nigiri/special_stations.h"
-#include "nigiri/timetable.h"
-#include "nigiri/types.h"
 
 namespace nigiri {
 namespace routing {
@@ -74,7 +72,7 @@ a_star<UseLowerBounds>::a_star(
   if (dist_to_dest.empty()) /* Destination is stop. */ {
     is_dest_.for_each_set_bit([&](std::size_t const i) {
       auto const l = location_idx_t{i};
-      as_debug("{} is dest!", location{tt_, l});
+      as_debug("{} is dest!", loc{tt_, l});
       mark_dest_segments(l, duration_t{0U});
       for (auto const fp :
            tt_.locations_.footpaths_in_[state_.tbd_.prf_idx_][l]) {
@@ -98,16 +96,16 @@ void a_star<UseLowerBounds>::execute(unixtime_t const start_time,
                                      pareto_set<journey>& results) {
   auto const results_size_before = results.size();
   auto const start_delta = day_idx_mam(start_time);
-  uint16_t const worst_cost =
+  uint16_t const worst_cost = static_cast<uint16_t>(
       std::min(day_idx_mam(worst_time_at_dest) - start_delta,
                delta(maxASTravelTime))
-          .count();
+          .count());
   state_.setup(start_delta, worst_cost, max_transfers);
 
   uint16_t current_best_arrival =
       worst_cost + std::ceil(max_transfers * state_.transfer_factor_);
   while (!state_.pq_.empty()) {
-    auto const& current = state_.pq_.top();
+    auto const current = state_.pq_.top();
     auto bucket = state_.cost_function(current);
     if (bucket >= current_best_arrival) {
       return;
@@ -115,6 +113,7 @@ void a_star<UseLowerBounds>::execute(unixtime_t const start_time,
     state_.pq_.pop();
     auto const& segment = current.segment_;
 
+    assert(segment < state_.settled_segments_.size());
     if (state_.settled_segments_.test(segment)) {
       continue;
     }
@@ -215,7 +214,8 @@ void a_star<UseLowerBounds>::execute(unixtime_t const start_time,
               new_segment -
               state_.tbd_.transport_first_segment_[transport_idx_new] + 1)),
           transport{transport_idx_new,
-                    current_transport_offset + transfer.get_day_offset()},
+                    current_transport_offset +
+                        static_cast<day_idx_t>(transfer.get_day_offset())},
           true);
     }
   }
@@ -253,7 +253,7 @@ void a_star<UseLowerBounds>::add_start(location_idx_t l, unixtime_t t) {
       state_.arrival_time_.emplace(start_segment, arr_time);
       state_.start_segments_.set(start_segment);
       as_debug("Adding start segment {} for location {}", start_segment,
-               location{tt_, l});
+               loc{tt_, l});
       if constexpr (UseLowerBounds) {
         state_.lb_.emplace(
             start_segment,
@@ -266,7 +266,7 @@ void a_star<UseLowerBounds>::add_start(location_idx_t l, unixtime_t t) {
 
 template <bool UseLowerBounds>
 void a_star<UseLowerBounds>::reconstruct(query const& q, journey& j) const {
-  UTL_FINALLY([&]() { std::reverse(begin(j.legs_), end(j.legs_)); });
+  UTL_FINALLY([&]() { std::reverse(begin(j.legs_), end(j.legs_)); })
 
   auto const has_offset = [&](std::vector<offset> const& offsets,
                               location_match_mode const match_mode,
@@ -284,7 +284,8 @@ void a_star<UseLowerBounds>::reconstruct(query const& q, journey& j) const {
     auto i = static_cast<stop_idx_t>(
         to_idx(s - state_.tbd_.transport_first_segment_.at(t) + 1));
     auto const d =
-        base_ + arr_time.days() - tt_.event_mam(t, i, event_type::kArr).days();
+        base_ + static_cast<day_idx_t>(arr_time.days()) -
+        static_cast<day_idx_t>(tt_.event_mam(t, i, event_type::kArr).days());
     auto const loc_seq = tt_.route_location_seq_[tt_.transport_route_[t]];
     if (ev_type == event_type::kDep) {
       --i;
@@ -306,7 +307,7 @@ void a_star<UseLowerBounds>::reconstruct(query const& q, journey& j) const {
         from_fps, [&](footpath const& fp) { return fp.target() == to; });
     utl::verify(it != end(from_fps),
                 "as  reconstruct: footpath from {} to {} not found",
-                location{tt_, from}, location{tt_, to});
+                loc{tt_, from}, loc{tt_, to});
     return *it;
   };
 
@@ -367,7 +368,7 @@ void a_star<UseLowerBounds>::reconstruct(query const& q, journey& j) const {
               "no dest candidate {} arr_l={}: arr_time={} + fp.duration={} = "
               "{} != j.arrival_time={}",
               arr_candidate_segment.value(), arr_l, arr_time, fp.duration(),
-              location{tt_, arr_l}, arr_time, fp.duration(),
+              loc{tt_, arr_l}, arr_time, fp.duration(),
               arr_time + fp.duration(), j.arrival_time());
           return false;
         }
@@ -458,9 +459,9 @@ void a_star<UseLowerBounds>::reconstruct(query const& q, journey& j) const {
     utl::verify(
         offset_it != end(q.start_),
         "no start offset found start_time={}, first_dep={}@{}, offsets={}",
-        start_time, first_dep_time, location{tt_, first_dep_l},
+        start_time, first_dep_time, loc{tt_, first_dep_l},
         q.start_ | std::views::transform([&](offset const& x) {
-          return std::pair{location{tt_, x.target_}, x.duration()};
+          return std::pair{loc{tt_, x.target_}, x.duration()};
         }));
     j.legs_.push_back(journey::leg{
         direction::kForward, get_special_station(special_station::kStart),

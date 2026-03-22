@@ -60,13 +60,13 @@ struct a_star {
          bool,
          transfer_time_settings tts);
 
-  algo_stats_t get_stats() const { return stats_; };
+  algo_stats_t get_stats() const { return stats_; }
 
-  algo_state_t& get_state() { return state_; };
+  algo_state_t& get_state() { return state_; }
 
-  void reset_arrivals() { state_.reset(); };
+  void reset_arrivals() { state_.reset(); }
 
-  void next_start_time() { state_.reset(); };
+  void next_start_time() { state_.reset(); }
 
   void add_start(location_idx_t, unixtime_t);
 
@@ -89,17 +89,17 @@ struct a_star {
   delta day_idx_mam(day_idx_t const day,
                     minutes_after_midnight_t const mam) const {
     return delta{to_idx(day - base_), static_cast<std::uint16_t>(mam.count())};
-  };
+  }
 
   delta day_idx_mam(unixtime_t const ut) const {
     auto const [d, t] = tt_.day_idx_mam(ut);
     return day_idx_mam(d, t);
-  };
+  }
 
   unixtime_t to_unixtime(delta const& d) const {
-    return tt_.to_unixtime(base_ + d.days(),
+    return tt_.to_unixtime(base_ + static_cast<day_idx_t>(d.days()),
                            static_cast<minutes_after_midnight_t>(d.mam()));
-  };
+  }
 
 private:
   timetable const& tt_;

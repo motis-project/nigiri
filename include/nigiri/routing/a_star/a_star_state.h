@@ -49,7 +49,7 @@ struct a_star_state {
     return (use_lower_bounds_
                 ? (arr - start_time_).count() + lb_.at(qe.segment_)
                 : (arr - start_time_).count()) +
-           static_cast<uint16_t>(transfer_factor_ * qe.transfers_);
+           transfer_factor_ * qe.transfers_;
   }
 
   void update_segment(segment_idx_t const s,
@@ -62,7 +62,7 @@ struct a_star_state {
       pred_table_.insert_or_assign(s, pred);
       pq_.push(std::move(qe));
     }
-  };
+  }
 
   void setup(delta const start_delta,
              uint16_t const worst_cost,
@@ -115,7 +115,7 @@ struct a_star_state {
   float transfer_factor_;
   delta start_time_ = delta{(1U << 5) - 1, (1U << 11) - 1};
   uint16_t worst_cost_;
-  hash_map<segment_idx_t, u_int16_t> lb_;
+  hash_map<segment_idx_t, uint16_t> lb_;
   bool use_lower_bounds_ = false;
 };
 }  // namespace nigiri::routing
