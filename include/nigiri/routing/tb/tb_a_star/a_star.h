@@ -6,7 +6,7 @@
 
 namespace nigiri::routing::tb::a_star {
 
-inline int transfer_factor = 5;
+inline unsigned int transfer_factor = 5;
 unixtime_t get_time(segment_idx_t const& idx,
                     timetable const& tt,
                     event_type const& event,
@@ -23,7 +23,9 @@ struct cost_func_t {
   explicit cost_func_t() = default;
   std::size_t operator()(
       std::pair<segment_idx_t, duration_t> const& element) const {
-    return element.second.count();
+    if (element.second.count() < 0)
+      throw std::runtime_error("Got negative costs");
+    return static_cast<std::size_t>(element.second.count());
   }
 };
 
@@ -60,7 +62,7 @@ struct tb_a_star {
   static constexpr auto kUnreachable =
       std::numeric_limits<std::uint16_t>::max();
 
-  explicit tb_a_star(std::size_t const& init_cap)
+  explicit tb_a_star(unsigned int const& init_cap)
       : state_(tb_data()),
         queue_(1440 + (init_cap - 1) * transfer_factor, cost_func_t()) {
     pred_ = vector_map<segment_idx_t, segment_idx_t>(init_cap,

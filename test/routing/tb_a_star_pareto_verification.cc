@@ -37,10 +37,11 @@ timetable load_hrd(auto const& files) {
   return tt;
 }
 
-int calculate_transfer_factor(std::vector<journey> const& journeys, int index) {
+unsigned int calculate_transfer_factor(std::vector<journey> const& journeys,
+                                       int index) {
   double higher_bound = std::numeric_limits<double>::max();
   double lower_bound = std::numeric_limits<double>::min();
-  for (int j = 0; j < journeys.size(); ++j) {
+  for (std::size_t j = 0; j < journeys.size(); ++j) {
     if (j == index) continue;
     utl::verify(journeys[index].transfers_ != journeys[j].transfers_,
                 "Two travels with same amount of transfers");
@@ -64,8 +65,10 @@ int calculate_transfer_factor(std::vector<journey> const& journeys, int index) {
       (higher_bound_floor == higher_bound ? higher_bound - 1
                                           : higher_bound_floor) > lower_bound,
       "No Integer exists between bounds");
-  return higher_bound_floor == higher_bound ? higher_bound - 1
-                                            : higher_bound_floor;
+  auto result = higher_bound_floor == higher_bound ? higher_bound - 1
+                                                   : higher_bound_floor;
+  if (result < 0) throw std::runtime_error("Negative factor");
+  return static_cast<unsigned int>(result);
 }
 
 void verify_pareto_set(auto const& files,
@@ -95,7 +98,7 @@ void verify_pareto_set(auto const& files,
   auto results = tb_searcher.execute().journeys_->els_;
 
   EXPECT_EQ(results.size(), expectedNumberOfJourneys);
-  for (int i = 0; i < results.size(); ++i) {
+  for (std::size_t i = 0; i < results.size(); ++i) {
     if (results.size() > 1)
       a_star::transfer_factor = calculate_transfer_factor(results, i);
     static auto a_star_search_state = routing::search_state{};
@@ -118,7 +121,7 @@ void verify_pareto_set(auto const& files,
   results = raptor_searcher.execute().journeys_->els_;
 
   EXPECT_EQ(results.size(), expectedNumberOfJourneys);
-  for (int i = 0; i < results.size(); ++i) {
+  for (std::size_t i = 0; i < results.size(); ++i) {
     if (results.size() > 1)
       a_star::transfer_factor = calculate_transfer_factor(results, i);
     static auto a_star_search_state = routing::search_state{};

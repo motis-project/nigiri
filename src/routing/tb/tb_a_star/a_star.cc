@@ -114,7 +114,7 @@ day_idx_t get_day(unixtime_t const& before,
                   tb_data const& tbd) {
   auto size = (tt.date_range_.to_ - tt.date_range_.from_).count();
   auto const starting_day_idx = tt.day_idx_mam(tt.date_range_.from_).first;
-  for (int i = 0; i < size; ++i) {
+  for (unsigned short i = 0; i < size; ++i) {
     auto day_idx = starting_day_idx + i;
     auto dep_time = get_time(s_idx, tt, event_type::kDep, tbd, day_idx);
     if (dep_time >= before) return day_idx;
@@ -199,7 +199,7 @@ void tb_a_star::execute(unixtime_t const start_time,
                                         state_.tbd_, day_idx_[neighbour]);
       if (transfer_count < transfers_[neighbour] &&
           neighbour_arrival < arrival_time_limit) {
-        transfers_[neighbour] = transfer_count;
+        transfers_[neighbour] = static_cast<uint8_t>(transfer_count);
         pred_[neighbour] = p;
         duration_t new_costs = neighbour_arrival - start_time +
                                duration_t(transfer_factor * transfer_count) +

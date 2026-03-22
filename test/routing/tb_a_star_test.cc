@@ -29,7 +29,7 @@ void check_neighbours(tb_data const& tbd) {
     auto [neighbours, next_exists] = get_neighbours(i, tbd, day_idx_t{0});
     auto end = next_exists ? neighbours.size() - 1 : neighbours.size();
     std::vector seen(tbd.segment_transports_.size(), false);
-    for (int j = 0; j < end; ++j) {
+    for (std::size_t j = 0; j < end; ++j) {
       auto neighbour = neighbours[j];
       EXPECT_TRUE(utl::any_of(tbd.segment_transfers_[i],
                               [neighbour](transfer const& t) {
@@ -177,7 +177,7 @@ TEST(tb_a_star, a_star_no_transfer) {
           .location_idx();
   EXPECT_EQ(journey.legs_.front().from_, start);
 
-  for (int i = 0; i < journey.legs_.size() - 1; ++i) {
+  for (std::size_t i = 0; i < journey.legs_.size() - 1; ++i) {
     EXPECT_EQ(journey.legs_[i].to_, journey.legs_[i + 1].from_);
   }
   EXPECT_EQ(journey.legs_.back().to_, journey.dest_);
@@ -304,7 +304,7 @@ TEST(tb_a_star, a_star_with_transfer) {
                .front()}
           .location_idx();
   EXPECT_EQ(journey.legs_.front().from_, start);
-  for (int i = 0; i < journey.legs_.size() - 1; ++i) {
+  for (std::size_t i = 0; i < journey.legs_.size() - 1; ++i) {
     EXPECT_EQ(journey.legs_[i].to_, journey.legs_[i + 1].from_);
   }
   EXPECT_EQ(journey.legs_.back().to_, journey.dest_);
@@ -457,7 +457,7 @@ TEST(tb_a_star, a_star_longer_routes) {
                .front()}
           .location_idx();
   EXPECT_EQ(journey.legs_.front().from_, start);
-  for (int i = 0; i < journey.legs_.size() - 1; ++i) {
+  for (std::size_t i = 0; i < journey.legs_.size() - 1; ++i) {
     EXPECT_EQ(journey.legs_[i].to_, journey.legs_[i + 1].from_);
   }
   EXPECT_EQ(journey.legs_.back().to_, journey.dest_);
@@ -590,7 +590,7 @@ TEST(tb_a_star, overnight_travel) {
                .front()}
           .location_idx();
   EXPECT_EQ(journey.legs_.front().from_, start);
-  for (int i = 0; i < journey.legs_.size() - 1; ++i) {
+  for (std::size_t i = 0; i < journey.legs_.size() - 1; ++i) {
     EXPECT_EQ(journey.legs_[i].to_, journey.legs_[i + 1].from_);
   }
   EXPECT_EQ(journey.legs_.back().to_, journey.dest_);
@@ -714,7 +714,7 @@ TEST(tb_a_star, overnight_travel_without_transfer) {
                .front()}
           .location_idx();
   EXPECT_EQ(journey.legs_.front().from_, start);
-  for (int i = 0; i < journey.legs_.size() - 1; ++i) {
+  for (std::size_t i = 0; i < journey.legs_.size() - 1; ++i) {
     EXPECT_EQ(journey.legs_[i].to_, journey.legs_[i + 1].from_);
   }
   EXPECT_EQ(journey.legs_.back().to_, journey.dest_);
@@ -742,7 +742,7 @@ TEST(tb_a_star, add_starts_one_segment) {
 
   a_star_exec.add_start(start_stop.location_idx(), start_time);
   EXPECT_TRUE(a_star_exec.is_start_segment_.test(start_segment));
-  for (int i = 0; i < tbd.segment_transfers_.size(); ++i) {
+  for (std::size_t i = 0; i < tbd.segment_transfers_.size(); ++i) {
     segment_idx_t segment{i};
     if (segment != start_segment) {
       EXPECT_FALSE(a_star_exec.is_start_segment_.test(segment));
@@ -840,7 +840,7 @@ TEST(tb_a_star, a_star_two_start_segments) {
   EXPECT_EQ(result.front(), segment_idx_t(1));
   EXPECT_EQ(a_star_exec.day_idx_[segment_idx_t(1)], day_idx);
   EXPECT_EQ(a_star_exec.day_idx_[segment_idx_t(0)], day_idx);
-  for (int i = 0; i < tbd.segment_transfers_.size(); ++i) {
+  for (std::size_t i = 0; i < tbd.segment_transfers_.size(); ++i) {
     EXPECT_EQ(a_star_exec.transfers_[segment_idx_t{i}], 0);
   }
   EXPECT_EQ(a_star_exec.end_segment_, segment_idx_t(1));
@@ -875,7 +875,7 @@ TEST(tb_a_star, a_star_two_start_segments) {
                .front()}
           .location_idx();
   EXPECT_EQ(journey.legs_.front().from_, start);
-  for (int i = 0; i < journey.legs_.size() - 1; ++i) {
+  for (std::size_t i = 0; i < journey.legs_.size() - 1; ++i) {
     EXPECT_EQ(journey.legs_[i].to_, journey.legs_[i + 1].from_);
   }
   EXPECT_EQ(journey.legs_.back().to_, journey.dest_);
@@ -922,7 +922,7 @@ TEST(tb_a_star, search_execute) {
                .front()}
           .location_idx();
   EXPECT_EQ(journey.legs_.front().from_, start);
-  for (int i = 0; i < journey.legs_.size() - 1; ++i) {
+  for (std::size_t i = 0; i < journey.legs_.size() - 1; ++i) {
     EXPECT_EQ(journey.legs_[i].to_, journey.legs_[i + 1].from_);
   }
   EXPECT_EQ(journey.legs_.back().to_, journey.dest_);
@@ -988,7 +988,7 @@ TEST(tb_a_star, search_overnight) {
                .front()}
           .location_idx();
   EXPECT_EQ(journey.legs_.front().from_, start);
-  for (int i = 0; i < journey.legs_.size() - 1; ++i) {
+  for (std::size_t i = 0; i < journey.legs_.size() - 1; ++i) {
     EXPECT_EQ(journey.legs_[i].to_, journey.legs_[i + 1].from_);
   }
   EXPECT_EQ(journey.legs_.back().to_, journey.dest_);
@@ -1041,7 +1041,7 @@ TEST(tb_a_star, search_intermodal) {
   EXPECT_EQ(journey.dest_, dest);
   auto start = get_special_station(special_station::kStart);
   EXPECT_EQ(journey.legs_.front().from_, start);
-  for (int i = 0; i < journey.legs_.size() - 1; ++i) {
+  for (std::size_t i = 0; i < journey.legs_.size() - 1; ++i) {
     EXPECT_EQ(journey.legs_[i].to_, journey.legs_[i + 1].from_);
   }
   EXPECT_EQ(journey.legs_.back().to_,
@@ -1279,7 +1279,7 @@ TEST(tb_a_star, search_max_cost) {
 
   EXPECT_EQ(result.els_.front().transfers_, 1);
   EXPECT_FALSE(result.els_.front().error_);
-  for (int i = 0; i < 3; ++i) {
+  for (auto i = 0; i < 3; ++i) {
     EXPECT_EQ(result.els_.front().legs_[i].to_,
               result.els_.front().legs_[i + 1].from_);
   }
