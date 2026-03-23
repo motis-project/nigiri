@@ -1,5 +1,7 @@
 #include "nigiri/loader/merge_duplicates.h"
 
+#include "utl/zip.h"
+
 #include "nigiri/for_each_meta.h"
 #include "nigiri/timetable.h"
 

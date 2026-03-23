@@ -83,7 +83,7 @@ TEST(gtfs, local_to_unix_trip_test) {
   auto const get_tz = [&](transport const t, stop_idx_t const stop_idx) {
     auto const fr = rt::frun::from_t(tt, nullptr, t);
     auto const tz_idx = fr[stop_idx].get_tz(nigiri::event_type::kDep);
-    auto const tz = tt.locations_.timezones_[tz_idx];
+    auto const tz = tt.timezones_[tz_idx];
     utl::verify(holds_alternative<pair<string, void const*>>(tz), "bad tz");
     return reinterpret_cast<date::time_zone const*>(
         tz.as<pair<string, void const*>>().second);

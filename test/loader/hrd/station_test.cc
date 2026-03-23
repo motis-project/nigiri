@@ -49,8 +49,9 @@ TEST(hrd, parse_station) {
                        station_geo_file_content, station_metabhf_content);
     loader::finalize(tt);
 
-    auto const l1 = tt.locations_.get(location_id{"0000001", src});
-    EXPECT_EQ(l1.id_, "0000001");
-    EXPECT_EQ(l1.src_, src);
+    auto const l1 = tt.find(location_id{"0000001", src});
+    ASSERT_TRUE(l1.has_value());
+    EXPECT_EQ("0000001", tt.locations_.ids_[*l1].view());
+    EXPECT_EQ(src, tt.locations_.src_[*l1]);
   }
 }

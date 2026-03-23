@@ -23,7 +23,6 @@ raptor_state& raptor_state::resize(unsigned const n_locations,
   prev_station_mark_.resize(n_locations);
   route_mark_.resize(n_routes);
   rt_transport_mark_.resize(n_rt_transports);
-  end_reachable_.resize(n_locations);
   return *this;
 }
 
@@ -69,7 +68,7 @@ void raptor_state::print(timetable const& tt,
       continue;
     }
 
-    fmt::print("{:80}  ", location{tt, location_idx_t{l}});
+    fmt::print("{:80}  ", fmt::streamed(loc{tt, location_idx_t{l}}));
 
     fmt::print("tmp=");
     print_deltas(tmp[l]);

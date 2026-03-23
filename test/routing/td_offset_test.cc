@@ -72,8 +72,8 @@ TEST(routing, td_start_fwd) {
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
 
-  auto const A = tt.locations_.get({"A", {}}).l_;
-  auto const B = tt.locations_.get({"B", {}}).l_;
+  auto const A = tt.find(location_id{"A", source_idx_t{}}).value();
+  auto const B = tt.find(location_id{"B", source_idx_t{}}).value();
 
   auto const run_search = [&]() {
     return raptor_search(
@@ -124,8 +124,8 @@ TEST(routing, td_dest_fwd) {
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
 
-  auto const A = tt.locations_.get({"A", {}}).l_;
-  auto const B = tt.locations_.get({"B", {}}).l_;
+  auto const A = tt.find({"A", {}}).value();
+  auto const B = tt.find({"B", {}}).value();
 
   auto const run_search = [&]() {
     return raptor_search(
@@ -176,8 +176,8 @@ TEST(routing, td_start_bwd) {
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
 
-  auto const A = tt.locations_.get({"A", {}}).l_;
-  auto const B = tt.locations_.get({"B", {}}).l_;
+  auto const A = tt.find({"A", {}}).value();
+  auto const B = tt.find({"B", {}}).value();
 
   auto const run_search = [&]() {
     return raptor_search(
@@ -228,8 +228,8 @@ TEST(routing, td_dest_bwd) {
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
 
-  auto const A = tt.locations_.get({"A", {}}).l_;
-  auto const B = tt.locations_.get({"B", {}}).l_;
+  auto const A = tt.find({"A", {}}).value();
+  auto const B = tt.find({"B", {}}).value();
 
   auto const run_search = [&]() {
     return raptor_search(
@@ -280,8 +280,8 @@ TEST(routing, first_mile_fwd_1min_validity) {
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
 
-  auto const A = tt.locations_.get({"A", {}}).l_;
-  auto const B = tt.locations_.get({"B", {}}).l_;
+  auto const A = tt.find({"A", {}}).value();
+  auto const B = tt.find({"B", {}}).value();
 
   auto const run_search = [&]() {
     return raptor_search(
@@ -336,8 +336,8 @@ TEST(routing, first_mile_bwd_1min_validity) {
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
 
-  auto const A = tt.locations_.get({"A", {}}).l_;
-  auto const B = tt.locations_.get({"B", {}}).l_;
+  auto const A = tt.find({"A", {}}).value();
+  auto const B = tt.find({"B", {}}).value();
 
   auto const run_search = [&]() {
     return raptor_search(
@@ -392,8 +392,8 @@ TEST(routing, last_mile_fwd_1min_validity) {
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
 
-  auto const A = tt.locations_.get({"A", {}}).l_;
-  auto const B = tt.locations_.get({"B", {}}).l_;
+  auto const A = tt.find({"A", {}}).value();
+  auto const B = tt.find({"B", {}}).value();
 
   auto const run_search = [&]() {
     return raptor_search(
@@ -448,8 +448,8 @@ TEST(routing, last_mile_bwd_1min_validity) {
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
 
-  auto const A = tt.locations_.get({"A", {}}).l_;
-  auto const B = tt.locations_.get({"B", {}}).l_;
+  auto const A = tt.find({"A", {}}).value();
+  auto const B = tt.find({"B", {}}).value();
 
   auto const run_search = [&]() {
     return raptor_search(

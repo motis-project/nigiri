@@ -7,6 +7,7 @@
 #include "utl/get_or_create.h"
 #include "utl/pairwise.h"
 #include "utl/pipes/accumulate.h"
+#include "utl/zip.h"
 
 #include "nigiri/loader/assistance.h"
 #include "nigiri/loader/gtfs/noon_offsets.h"
@@ -186,11 +187,7 @@ void expand_local_to_utc(trip_data const& trip_data,
       continue;
     }
 
-    auto const& first_trp = trip_data.get(fet.trips_.front());
-    auto const tz_offset =
-        noon_offsets.at(tt.providers_[first_trp.route_->agency_].tz_)
-            .value()
-            .at(gtfs_local_day_idx);
+    auto const tz_offset = noon_offsets.at(gtfs_local_day_idx);
     auto const first_dep_utc = first_dep_time - tz_offset;
     auto const first_dep_day_offset = date::days{static_cast<date::days::rep>(
         std::floor(static_cast<double>(first_dep_utc.count()) / 1440))};
@@ -340,7 +337,8 @@ void expand_assistance(timetable const& tt,
 }
 
 template <typename Consumer>
-void expand_trip(trip_data& trip_data,
+void expand_trip(source_idx_t const src,
+                 trip_data& trip_data,
                  noon_offset_hours_t const& noon_offsets,
                  timetable const& tt,
                  basic_string<gtfs_trip_idx_t> const& trips,
@@ -353,7 +351,9 @@ void expand_trip(trip_data& trip_data,
         expand_local_to_utc(
             trip_data, noon_offsets, tt, std::move(fet), selection,
             [&](utc_trip&& ut) {
-              auto const c = trip_data.get(ut.trips_.front()).route_->clasz_;
+              auto const c = to_clasz(
+                  tt.route_ids_[src]
+                      .route_id_type_[trip_data.get(ut.trips_.front()).route_]);
               if (assist != nullptr &&
                   (c == clasz::kHighSpeed || c == clasz::kLongDistance ||
                    c == clasz::kNight)) {

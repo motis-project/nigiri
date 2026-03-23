@@ -42,9 +42,9 @@ provider read_provider_names(timetable& tt,
               "no full name found: {}", line.view());
   return provider{.id_ = tt.strings_.store(iso_8859_1_to_utf8(
                       parse_name(line.substr(long_name + 3U)))),
-                  .name_ = tt.strings_.store(iso_8859_1_to_utf8(
+                  .name_ = tt.register_translation(iso_8859_1_to_utf8(
                       parse_name(line.substr(full_name + 3U)))),
-                  .url_ = tt.strings_.store(""),
+                  .url_ = kEmptyTranslation,
                   .src_ = src};
 }
 
@@ -69,9 +69,9 @@ provider_map_t parse_providers(config const& c,
                       "provider line format mismatch in line {}", line_number);
           for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
             providers[token.to_str()] = register_agency(
-                tt, agency{src, tt.strings_.get(current_info.id_),
-                           tt.strings_.get(current_info.name_), "",
-                           current_info.tz_, tt});
+                tt, agency{tt, src, tt.strings_.get(current_info.id_),
+                           current_info.name_, kEmptyTranslation,
+                           current_info.tz_, dummy_tz_map});
           });
         }
       });

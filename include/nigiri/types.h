@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <chrono>
 #include <cinttypes>
 #include <variant>
@@ -27,6 +28,8 @@
 #include "cista/containers/vecvec.h"
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
+
+#include "utl/helpers/algorithm.h"
 
 #include "geo/latlng.h"
 
@@ -159,6 +162,7 @@ struct mm_paged_vecvec_helper {
 template <typename Key, typename T>
 using mm_paged_vecvec = mm_paged_vecvec_helper<Key, T>::type;
 
+using translation_idx_t = cista::strong<std::uint32_t, struct _translation_idx>;
 using string_idx_t = cista::strong<std::uint32_t, struct _string_idx>;
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
@@ -166,11 +170,14 @@ using route_idx_t = cista::strong<std::uint32_t, struct _route_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;
 using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
 using shape_idx_t = cista::strong<std::uint32_t, struct _shape_idx>;
+using scoped_shape_idx_t =
+    cista::strong<std::uint32_t, struct _scoped_shape_idx>;
 using shape_offset_t = cista::strong<std::uint32_t, struct _shape_offset>;
 using shape_offset_idx_t =
     cista::strong<std::uint32_t, struct _shape_offset_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using route_id_idx_t = cista::strong<std::uint32_t, struct _route_id_idx>;
+using category_idx_t = cista::strong<std::uint32_t, struct _category_idx>;
 using trip_id_idx_t = cista::strong<std::uint32_t, struct _trip_id_str_idx>;
 using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
 using source_idx_t = cista::strong<std::uint16_t, struct _source_idx>;
@@ -185,10 +192,14 @@ using location_group_idx_t =
     cista::strong<std::uint32_t, struct _location_group_idx>;
 using booking_rule_idx_t =
     cista::strong<std::uint32_t, struct _booking_rule_idx>;
-using alt_name_idx_t = cista::strong<std::uint32_t, struct _alt_name_idx>;
 using language_idx_t = cista::strong<std::uint16_t, struct _language_idx>;
 
+using lang_t = std::optional<std::vector<std::string>>;
+
 using flex_stop_t = variant<flex_area_idx_t, location_group_idx_t>;
+
+constexpr auto kEmptyTranslation = translation_idx_t{0U};
+constexpr auto kDefaultLang = language_idx_t{0U};
 
 using profile_idx_t = std::uint8_t;
 constexpr auto const kDefaultProfile = profile_idx_t{0U};
@@ -215,8 +226,6 @@ using trip_direction_string_idx_t =
     cista::strong<std::uint32_t, struct _trip_direction_string>;
 using trip_direction_t =
     cista::variant<location_idx_t, trip_direction_string_idx_t>;
-using trip_direction_idx_t =
-    cista::strong<std::uint32_t, struct _trip_direction_idx>;
 using trip_line_idx_t = cista::strong<std::uint32_t, struct _trip_line_idx>;
 using attribute_idx_t = cista::strong<std::uint32_t, struct _attribute_idx>;
 using attribute_combination_idx_t =
@@ -231,21 +240,49 @@ using flex_stop_seq_idx_t =
 
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
+struct category {
+  string_idx_t id_;
+  translation_idx_t name_;
+  translation_idx_t short_name_;
+};
+
+struct translation {
+  translation() = default;
+
+  translation(std::string_view language, std::string_view text)
+      : language_{language, generic_string::non_owning},
+        text_{text, generic_string::non_owning} {}
+
+  std::string_view get_language() const { return language_; }
+  void set_language(std::string_view s) { language_.set_owning(s); }
+
+  std::string_view get_text() const { return text_; }
+  void set_text(std::string_view s) { text_.set_owning(s); }
+
+  generic_string language_;
+  generic_string text_;
+};
+
+using translated_str_t =
+    std::variant<std::string_view, std::vector<translation>>;
+
 struct trip_debug {
   source_file_idx_t source_file_idx_;
-  std::uint32_t line_number_from_, line_number_to_;
+  std::uint32_t line_number_from_{}, line_number_to_{};
 };
 
 struct attribute {
   CISTA_PRINTABLE(attribute, "code", "text")
   friend bool operator==(attribute const&, attribute const&) = default;
-  string code_, text_;
+  string code_;
+  translation_idx_t text_;
 };
 
 struct provider {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(provider, "short_name", "long_name", "url")
-  string_idx_t id_, name_, url_;
+  string_idx_t id_;
+  translation_idx_t name_, url_;
   timezone_idx_t tz_{timezone_idx_t::invalid()};
   source_idx_t src_;
 };
@@ -256,6 +293,17 @@ struct route_color {
   color_t color_;
   color_t text_color_;
 };
+inline color_t to_color(std::string_view s) {
+  auto const is_hex = [](uint8_t c) {
+    return std::isdigit(c) != 0 || (c >= 'a' && c <= 'f') ||
+           (c >= 'A' && c <= 'F');
+  };
+  if (s.size() != 6 || !utl::all_of(s, is_hex)) {
+    return color_t{0};
+  }
+  return color_t{0xFF000000U | static_cast<std::uint32_t>(
+                                   std::strtol(s.data(), nullptr, 16))};
+}
 inline std::optional<std::string> to_str(color_t const c) {
   return c == 0U ? std::nullopt
                  : std::optional{fmt::format("{:06x}", to_idx(c) & 0x00ffffff)};
@@ -271,10 +319,15 @@ struct trip_id {
   source_idx_t src_;
 };
 
-struct location_id {
+struct owning_location_id {
   CISTA_COMPARABLE()
-  CISTA_PRINTABLE(location_id, "id", "src")
+  CISTA_PRINTABLE(owning_location_id, "id", "src")
   string id_;
+  source_idx_t src_;
+};
+
+struct location_id {
+  std::string_view id_;
   source_idx_t src_;
 };
 
@@ -339,14 +392,14 @@ enum class clasz : std::uint8_t {
   kLongDistance = 2,
   kCoach = 3,
   kNight = 4,
-  kRegionalFast = 5,
+  kRideSharing = 5,
   kRegional = 6,
   kSuburban = 7,
   kSubway = 8,
   kTram = 9,
   kBus = 10,
   kShip = 11,
-  kCableCar = 12,
+  kODM = 12,
   kFunicular = 13,
   kAerialLift = 14,
   kOther = 15,
@@ -358,10 +411,10 @@ constexpr auto const kNumClasses =
 
 constexpr std::string_view to_str(clasz const c) {
   constexpr auto const clasz_str =
-      std::array{"AIR",       "HIGHSPEED",     "LONG_DISTANCE", "COACH",
-                 "NIGHT",     "REGIONAL_FAST", "REGIONAL",      "SUBURBAN",
-                 "SUBWAY",    "TRAM",          "BUS",           "SHIP",
-                 "CABLE_CAR", "FUNICULAR",     "AERIAL_LIFT",   "OTHER"};
+      std::array{"AIR",    "HIGHSPEED",    "LONG_DISTANCE", "COACH",
+                 "NIGHT",  "RIDE_SHARING", "REGIONAL",      "SUBURBAN",
+                 "SUBWAY", "TRAM",         "BUS",           "SHIP",
+                 "ODM",    "FUNICULAR",    "AERIAL_LIFT",   "OTHER"};
   return clasz_str[static_cast<unsigned>(c)];
 }
 
@@ -376,6 +429,10 @@ enum class location_type : std::uint8_t {
 };
 
 enum class event_type { kArr, kDep };
+
+inline std::string_view to_str(event_type const d) {
+  return d == event_type::kArr ? "ARR" : "DEP";
+}
 
 enum class direction {
   kForward,
@@ -405,6 +462,41 @@ using via_offset_t = std::uint8_t;
 
 template <typename T>
 using basic_string = std::basic_string<T, cista::char_traits<T>>;
+
+enum class shape_source : std::uint8_t {
+  kNone = 0,
+  kTimetable = 1,
+  kRouted = 2
+};
+
+constexpr auto const kShapeSourceBit = std::uint32_t{1U} << 31U;
+constexpr auto const kShapeIndexMask = kShapeSourceBit - 1U;
+
+inline shape_source get_shape_source(scoped_shape_idx_t const idx) {
+  if (idx == scoped_shape_idx_t::invalid()) {
+    return shape_source::kNone;
+  }
+  return (to_idx(idx) & kShapeSourceBit) != 0U ? shape_source::kRouted
+                                               : shape_source::kTimetable;
+}
+
+inline shape_idx_t get_local_shape_idx(scoped_shape_idx_t const idx) {
+  return idx == scoped_shape_idx_t::invalid()
+             ? shape_idx_t::invalid()
+             : shape_idx_t{to_idx(idx) & kShapeIndexMask};
+}
+
+inline scoped_shape_idx_t to_scoped_shape_idx(shape_idx_t const local_idx,
+                                              shape_source const source) {
+  if (local_idx == shape_idx_t::invalid() || source == shape_source::kNone) {
+    return scoped_shape_idx_t::invalid();
+  }
+  auto const local = to_idx(local_idx);
+  assert((local & kShapeSourceBit) == 0U);
+  return scoped_shape_idx_t{
+      local |
+      (source == shape_source::kRouted ? kShapeSourceBit : std::uint32_t{0U})};
+}
 
 }  // namespace nigiri
 
@@ -606,12 +698,12 @@ struct booking_rule {
   string_idx_t id_;
   booking_type type_;
 
-  string_idx_t message_;
-  string_idx_t pickup_message_;
-  string_idx_t drop_off_message_;
-  string_idx_t phone_number_;
-  string_idx_t info_url_;
-  string_idx_t booking_url_;
+  translation_idx_t message_;
+  translation_idx_t pickup_message_;
+  translation_idx_t drop_off_message_;
+  translation_idx_t phone_number_;
+  translation_idx_t info_url_;
+  translation_idx_t booking_url_;
 };
 
 }  // namespace nigiri

@@ -16,15 +16,8 @@
 
 namespace nigiri::loader::gtfs {
 
-string_idx_t to_str(timetable& tt, auto const& col) {
-  return col
-      ->and_then([&](utl::cstr const& x) {
-        return std::optional{tt.strings_.store(x.view())};
-      })
-      .value_or(string_idx_t::invalid());
-}
-
 flex_areas_t parse_flex_areas(timetable& tt,
+                              translator& i18n,
                               source_idx_t const src,
                               std::string_view file_content) {
   if (file_content.empty()) {
@@ -66,17 +59,19 @@ flex_areas_t parse_flex_areas(timetable& tt,
         auto const name = props.find("stop_name");
         tt.flex_area_name_.emplace_back(
             (name != props.end() && name->value().is_string())
-                ? name->value().as_string()
-                : "");
+                ? i18n.get(t::kStops, f::kStopName, name->value().as_string(),
+                           id)
+                : kEmptyTranslation);
 
         auto const desc = props.find("stop_desc");
         tt.flex_area_desc_.emplace_back(
             (desc != props.end() && desc->value().is_string())
-                ? desc->value().as_string()
-                : "");
+                ? i18n.get(t::kStops, f::kStopDesc, desc->value().as_string(),
+                           id)
+                : kEmptyTranslation);
       } else {
-        tt.flex_area_name_.emplace_back("");
-        tt.flex_area_desc_.emplace_back("");
+        tt.flex_area_name_.emplace_back(kEmptyTranslation);
+        tt.flex_area_desc_.emplace_back(kEmptyTranslation);
       }
 
       auto const rings = geometry.at("coordinates").as_array();
@@ -111,10 +106,11 @@ flex_areas_t parse_flex_areas(timetable& tt,
 }
 
 location_groups_t parse_location_groups(timetable& tt,
+                                        translator& i18n,
                                         std::string_view file_content) {
   struct location_group_record {
     utl::csv_col<utl::cstr, UTL_NAME("location_group_id")> location_group_id_;
-    utl::csv_col<std::optional<utl::cstr>, UTL_NAME("location_group_name")>
+    utl::csv_col<utl::cstr, UTL_NAME("location_group_name")>
         location_group_name_;
   };
 
@@ -124,8 +120,9 @@ location_groups_t parse_location_groups(timetable& tt,
         auto const idx = location_group_idx_t{tt.location_group_name_.size()};
         tt.location_group_id_.emplace_back(
             tt.strings_.store(r.location_group_id_->view()));
-        tt.location_group_name_.emplace_back(
-            to_str(tt, r.location_group_name_));
+        tt.location_group_name_.emplace_back(i18n.get(
+            t::kLocationGroups, f::kLocationGroupName,
+            r.location_group_name_->view(), r.location_group_id_->view()));
         tt.location_group_locations_.emplace_back_empty();
         tt.location_group_transports_.emplace_back_empty();
         map.emplace(r.location_group_id_->to_str(), idx);
@@ -169,6 +166,7 @@ void parse_location_group_stops(timetable& tt,
 
 booking_rules_t parse_booking_rules(
     timetable& tt,
+    translator& i18n,
     std::string_view file_content,
     traffic_days_t const& traffic_days,
     hash_map<bitfield, bitfield_idx_t>& bitfield_indices) {
@@ -191,14 +189,12 @@ booking_rules_t parse_booking_rules(
         prior_notice_start_time_;
     csv_col<std::optional<utl::cstr>, UTL_NAME("prior_notice_service_id")>
         prior_notice_service_id_;
-    csv_col<std::optional<utl::cstr>, UTL_NAME("message")> message_;
-    csv_col<std::optional<utl::cstr>, UTL_NAME("pickup_message")>
-        pickup_message_;
-    csv_col<std::optional<utl::cstr>, UTL_NAME("drop_off_message")>
-        drop_off_message_;
-    csv_col<std::optional<utl::cstr>, UTL_NAME("phone_number")> phone_number_;
-    csv_col<std::optional<utl::cstr>, UTL_NAME("info_url")> info_url_;
-    csv_col<std::optional<utl::cstr>, UTL_NAME("booking_url")> booking_url_;
+    csv_col<utl::cstr, UTL_NAME("message")> message_;
+    csv_col<utl::cstr, UTL_NAME("pickup_message")> pickup_message_;
+    csv_col<utl::cstr, UTL_NAME("drop_off_message")> drop_off_message_;
+    csv_col<utl::cstr, UTL_NAME("phone_number")> phone_number_;
+    csv_col<utl::cstr, UTL_NAME("info_url")> info_url_;
+    csv_col<utl::cstr, UTL_NAME("booking_url")> booking_url_;
   };
 
   auto map = booking_rules_t{};
@@ -257,15 +253,22 @@ booking_rules_t parse_booking_rules(
     };
 
     auto const idx = booking_rule_idx_t{tt.booking_rules_.size()};
-    tt.booking_rules_.emplace_back(
-        booking_rule{.id_ = tt.strings_.store(r.booking_rule_id_->view()),
-                     .type_ = get_type(),
-                     .message_ = to_str(tt, r.message_),
-                     .pickup_message_ = to_str(tt, r.pickup_message_),
-                     .drop_off_message_ = to_str(tt, r.drop_off_message_),
-                     .phone_number_ = to_str(tt, r.phone_number_),
-                     .info_url_ = to_str(tt, r.info_url_),
-                     .booking_url_ = to_str(tt, r.booking_url_)});
+    auto const id = r.booking_rule_id_->view();
+    tt.booking_rules_.emplace_back(booking_rule{
+        .id_ = tt.strings_.store(id),
+        .type_ = get_type(),
+        .message_ =
+            i18n.get(t::kBookingRules, f::kMessage, r.message_->view(), id),
+        .pickup_message_ = i18n.get(t::kBookingRules, f::kPickupMessage,
+                                    r.pickup_message_->view(), id),
+        .drop_off_message_ = i18n.get(t::kBookingRules, f::kDropOffMessage,
+                                      r.drop_off_message_->view(), id),
+        .phone_number_ = i18n.get(t::kBookingRules, f::kPhoneNumber,
+                                  r.phone_number_->view(), id),
+        .info_url_ =
+            i18n.get(t::kBookingRules, f::kInfoURL, r.info_url_->view(), id),
+        .booking_url_ = i18n.get(t::kBookingRules, f::kBookingURL,
+                                 r.booking_url_->view(), id)});
     map.emplace(r.booking_rule_id_->to_str(), idx);
   });
   return map;
@@ -301,10 +304,7 @@ void expand_flex_trip(timetable& tt,
       continue;
     }
 
-    auto const tz_offset =
-        noon_offsets.at(tt.providers_[trp.route_->agency_].tz_)
-            .value()
-            .at(gtfs_local_day_idx);
+    auto const tz_offset = noon_offsets.at(gtfs_local_day_idx);
 
     auto const first_dep_time = trp.flex_time_windows_.front().start_;
     auto const first_dep_utc = first_dep_time - tz_offset;
