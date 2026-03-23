@@ -76,7 +76,7 @@ astar_engine<UseLowerBounds>::astar_engine(
   if (dist_to_dest.empty()) {
     is_dest_.for_each_set_bit([&](std::size_t const i) {
       auto const l = location_idx_t{i};
-      astar_debug("{} is dest!", location{tt_, l});
+      astar_debug("{} is dest!", loc{tt_, l});
       mark_dest_segments(l, duration_t{0U});
       for (auto const fp :
            tt_.locations_.footpaths_in_[state_.tbd_.prf_idx_][l]) {
@@ -391,7 +391,7 @@ void astar_engine<UseLowerBounds>::reconstruct(query const& q,
         from_fps, [&](footpath const& fp) { return fp.target() == to; });
     utl::verify(it != end(from_fps),
                 "tb reconstruct: footpath from {} to {} not found",
-                location{tt_, from}, location{tt_, to});
+                loc{tt_, from}, loc{tt_, to});
     return *it;
   };
 
@@ -488,7 +488,7 @@ void astar_engine<UseLowerBounds>::reconstruct(query const& q,
           astar_debug(
               "no dest candidate {} arr_l={}: arr_time={} + fp.duration={} = "
               "{} != j.arrival_time={}",
-              seg(arrival_segment, arrival), location{tt_, arr_l}, arr_time,
+              seg(arrival_segment, arrival), loc{tt_, arr_l}, arr_time,
               fp.duration(), arr_time + fp.duration(), j.arrival_time());
           return false;
         }
@@ -561,9 +561,9 @@ void astar_engine<UseLowerBounds>::reconstruct(query const& q,
     utl::verify(
         offset_it != end(q.start_),
         "no start offset found start_time={}, first_dep={}@{}, offsets={}",
-        start_time, first_dep_time, location{tt_, first_dep_l},
+        start_time, first_dep_time, loc{tt_, first_dep_l},
         q.start_ | std::views::transform([&](offset const& x) {
-          return std::pair{location{tt_, x.target_}, x.duration()};
+          return std::pair{loc{tt_, x.target_}, x.duration()};
         }));
     j.legs_.push_back(journey::leg{
         direction::kForward, get_special_station(special_station::kStart),
