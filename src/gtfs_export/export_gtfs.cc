@@ -45,24 +45,44 @@ void write_agencies(timetable const& tt, std::filesystem::path const& dir) {
   }
 }
 
-void write_stops([[maybe_unused]] timetable const& tt,
-                 std::filesystem::path const& output_dir) {
+void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
   std::ofstream out(output_dir / "stops.txt");
-  out << "stop_id,stop_name,stop_lat,stop_lon,parent_station\n";
+  out << "stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station\n";
 
-  for (location_idx_t l{9}; l < tt.n_locations(); ++l) {
+  // Skip the first 9 stops, bcs they are sentinels
+  const location_idx_t offset{9};
+
+  for (location_idx_t l{offset}; l < tt.n_locations(); ++l) {
+    if (tt.locations_.children_[l].empty()) {
+      continue;
+    }
+
     auto const id = tt.locations_.ids_[l].view();
     auto const name = tt.get_default_name(l);
     auto const coord = tt.locations_.coordinates_[l];
 
-    auto parent = tt.locations_.parents_[l];
-    auto parentValue = (parent != location_idx_t::invalid() &&
-                        tt.locations_.ids_[parent].view() != id)
-                           ? tt.locations_.ids_[parent].view()
-                           : "";
+    out << id << ",\"" << name << "\"," << coord.lat_ << "," << coord.lng_
+        << ",1,\n";
+  }
+
+  for (location_idx_t l{offset}; l < tt.n_locations(); ++l) {
+    auto const id = tt.locations_.ids_[l].view();
+    auto const name = tt.get_default_name(l);
+    auto const coord = tt.locations_.coordinates_[l];
+
+    auto const root = tt.locations_.get_root_idx(l);
+    bool const has_parent = (root != l);
+
+    // Skip pure parent stations written in first pass
+    if (!tt.locations_.children_[l].empty() && !has_parent) {
+      continue;
+    }
+
+    auto const parent_str =
+        has_parent ? tt.locations_.ids_[root].view() : std::string_view{};
 
     out << id << ",\"" << name << "\"," << coord.lat_ << "," << coord.lng_
-        << "," << parentValue << "\n";
+        << ",0," << parent_str << "\n";
   }
 }
 
@@ -94,10 +114,15 @@ void write_stop_times(timetable const& tt, std::filesystem::path const& dir) {
 
 void write_trips(timetable const& tt, std::filesystem::path const& dir) {
   std::ofstream out(dir / "trips.txt");
-  out << "route_id,service_id,trip_id,trip_headsign\n";
+  out << "route_id,service_id,trip_id,trip_headsign,trip_short_name,bikes_"
+         "allowed,cars_"
+         "allowed\n";
 
   for (route_idx_t r{0}; r < tt.n_routes(); ++r) {
     auto const transport_range = tt.route_transport_ranges_[r];
+
+    auto const bikes_allowed = tt.has_bike_transport(r) ? 1 : 2;
+    auto const cars_allowed = tt.has_car_transport(r) ? 1 : 2;
 
     for (transport_idx_t t = transport_range.from_; t != transport_range.to_;
          ++t) {
@@ -115,15 +140,15 @@ void write_trips(timetable const& tt, std::filesystem::path const& dir) {
       }
 
       auto const service_id = to_idx(tt.transport_traffic_days_[t]);
-
       auto const trip_id = to_idx(t);
-
+      auto const short_name =
+          tt.get_default_translation(tt.trip_short_names_[trip_idx]);
       auto const headsign =
           tt.get_default_translation(tt.trip_display_names_[trip_idx]);
 
       out << route_id_str << "," << service_id << ","
-          << "transport_" << trip_id << ","
-          << "\"" << headsign << "\"\n";
+          << "transport_" << trip_id << ",\"" << short_name << "\",\""
+          << headsign << "\"," << bikes_allowed << "," << cars_allowed << "\n";
     }
   }
 }
@@ -131,7 +156,8 @@ void write_trips(timetable const& tt, std::filesystem::path const& dir) {
 void write_routes(timetable const& tt, std::filesystem::path const& dir) {
   std::ofstream out(dir / "routes.txt");
 
-  out << "route_id,agency_id,route_short_name,route_long_name,route_type\n";
+  out << "route_id,agency_id,route_short_name,route_long_name,route_type,route_"
+         "color,route_text_color\n";
 
   for (source_idx_t s{0}; s < tt.route_ids_.size(); ++s) {
     auto const& routes = tt.route_ids_[s];
@@ -146,9 +172,14 @@ void write_routes(timetable const& tt, std::filesystem::path const& dir) {
       auto agency = routes.route_id_provider_[r];
       auto type = to_idx(routes.route_id_type_[r]);
 
+      auto const& rc = routes.route_id_colors_[r];
+      auto const color_str = to_str(rc.color_).value_or("");
+      auto const text_str = to_str(rc.text_color_).value_or("");
+
       out << routes.ids_.get(r) << "," << agency << ","
           << "\"" << short_name << "\","
-          << "\"" << long_name << "\"," << type << "\n";
+          << "\"" << long_name << "\"," << type << "," << color_str << ","
+          << text_str << "\n";
     }
   }
 }
