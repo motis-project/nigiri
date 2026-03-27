@@ -1,6 +1,7 @@
 #include "nigiri/export_gtfs.h"
 
 #include <filesystem>
+#include <format>
 #include <fstream>
 
 #include "nigiri/common/day_list.h"
@@ -13,8 +14,7 @@ static std::string format_time(delta d) {
   auto h = minutes / 60;
   auto m = minutes % 60;
 
-  char buf[16];
-  std::snprintf(buf, sizeof(buf), "%02d:%02d:00", h, m);
+  auto buf = std::format("{:02}{:02}", int(h), int(m));
   return buf;
 }
 
@@ -220,11 +220,8 @@ void write_calendar_dates(timetable const& tt,
         auto const sys_day = base + date::days{static_cast<int>(day)};
         auto const ymd = date::year_month_day{sys_day};
         // Format as YYYYMMDD
-        char buf[9];
-        std::snprintf(buf, sizeof(buf), "%04d%02d%02d",
-                      static_cast<int>(ymd.year()),
-                      static_cast<unsigned>(ymd.month()),
-                      static_cast<unsigned>(ymd.day()));
+        auto buf = std::format("{:04}{:02}{:02}", int(ymd.year()),
+                               unsigned(ymd.month()), unsigned(ymd.day()));
         out << to_idx(b) << "," << buf << ",1\n";
       }
     }
