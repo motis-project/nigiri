@@ -4,6 +4,7 @@
 #include <format>
 #include <fstream>
 
+#include "nigiri/loader/gtfs/tz_map.h"
 #include "nigiri/common/day_list.h"
 #include "nigiri/timetable.h"
 
@@ -21,10 +22,18 @@ static std::string format_time(delta d) {
 void export_gtfs(timetable const& tt, std::filesystem::path const& dir) {
   std::filesystem::create_directories(dir);
 
+  std::vector<size_t> route_offsets(tt.route_ids_.size());
+
+  size_t sum = 0;
+  for (source_idx_t s{0}; s < tt.route_ids_.size(); ++s) {
+    route_offsets[to_idx(s)] = sum;
+    sum += tt.route_ids_[s].ids_.size();
+  }
+
   write_agencies(tt, dir);
   write_stops(tt, dir);
-  write_routes(tt, dir);
-  write_trips(tt, dir);
+  write_routes(tt, dir, route_offsets);
+  write_trips(tt, dir, route_offsets);
   write_stop_times(tt, dir);
   write_calendar(tt, dir);
   write_calendar_dates(tt, dir);
@@ -39,9 +48,11 @@ void write_agencies(timetable const& tt, std::filesystem::path const& dir) {
   for (provider_idx_t p{0}; p < tt.providers_.size(); ++p) {
     auto const& provider = tt.providers_[p];
 
+    auto const& tz = nigiri::loader::gtfs::get_timezone_name(tt, provider.tz_);
+    auto const timezone_name = tz.value_or("Europe/Berlin");
+
     out << to_idx(p) << ",\"" << tt.get_default_translation(provider.name_)
-        << "\","
-        << "http://example.com,Europe/Berlin\n";
+        << "\"," << provider.url_ << "," << timezone_name << "\n";
   }
 }
 
@@ -49,15 +60,12 @@ void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
   std::ofstream out(output_dir / "stops.txt");
   out << "stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station\n";
 
-  // Skip the first 9 stops, bcs they are sentinels
-  const location_idx_t offset{9};
-
-  for (location_idx_t l{offset}; l < tt.n_locations(); ++l) {
+  for (location_idx_t l{stopOffset}; l < tt.n_locations(); ++l) {
     if (tt.locations_.children_[l].empty()) {
       continue;
     }
 
-    auto const id = tt.locations_.ids_[l].view();
+    auto const id = (to_idx(l) - stopOffset);
     auto const name = tt.get_default_name(l);
     auto const coord = tt.locations_.coordinates_[l];
 
@@ -65,8 +73,8 @@ void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
         << ",1,\n";
   }
 
-  for (location_idx_t l{offset}; l < tt.n_locations(); ++l) {
-    auto const id = tt.locations_.ids_[l].view();
+  for (location_idx_t l{stopOffset}; l < tt.n_locations(); ++l) {
+    auto const id = (to_idx(l) - stopOffset);
     auto const name = tt.get_default_name(l);
     auto const coord = tt.locations_.coordinates_[l];
 
@@ -79,8 +87,7 @@ void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
     }
 
     auto const parent_str =
-        has_parent ? tt.locations_.ids_[root].view() : std::string_view{};
-
+        has_parent ? std::to_string(to_idx(root) - stopOffset) : "";
     out << id << ",\"" << name << "\"," << coord.lat_ << "," << coord.lng_
         << ",0," << parent_str << "\n";
   }
@@ -99,24 +106,30 @@ void write_stop_times(timetable const& tt, std::filesystem::path const& dir) {
       for (auto s = stop_idx_t(0); s < stops.size(); ++s) {
         auto loc = stop{stops[s]}.location_idx();
 
+        auto sId = (to_idx(loc) - stopOffset);
         auto arr = (s == stop_idx_t(0) ? tt.event_mam(t, s, event_type::kDep)
                                        : tt.event_mam(t, s, event_type::kArr));
         auto dep = (s == stop_idx_t(stops.size() - 1)
                         ? tt.event_mam(t, s, event_type::kArr)
                         : tt.event_mam(t, s, event_type::kDep));
-        out << "transport_" << to_idx(t) << "," << format_time(arr) << ","
-            << format_time(dep) << "," << tt.locations_.ids_[loc].view() << ","
-            << s << "\n";
+        out << to_idx(t) << "," << format_time(arr) << "," << format_time(dep)
+            << "," << sId << "," << s << "\n";
       }
     }
   }
 }
 
-void write_trips(timetable const& tt, std::filesystem::path const& dir) {
+void write_trips(timetable const& tt,
+                 std::filesystem::path const& dir,
+                 std::vector<size_t> const& route_offsets) {
   std::ofstream out(dir / "trips.txt");
   out << "route_id,service_id,trip_id,trip_headsign,trip_short_name,bikes_"
          "allowed,cars_"
          "allowed\n";
+
+  auto to_global_route_id = [&](source_idx_t s, route_id_idx_t r) {
+    return route_offsets[to_idx(s)] + to_idx(r);
+  };
 
   for (route_idx_t r{0}; r < tt.n_routes(); ++r) {
     auto const transport_range = tt.route_transport_ranges_[r];
@@ -129,15 +142,10 @@ void write_trips(timetable const& tt, std::filesystem::path const& dir) {
       auto const merged_idx = tt.transport_to_trip_section_[t].front();
       auto const trip_idx = tt.merged_trips_[merged_idx].front();
 
-      auto const route_id_idx = tt.trip_route_id_[trip_idx];
-      std::string_view route_id_str;
-      for (source_idx_t s{0}; s < tt.route_ids_.size(); ++s) {
-        auto const& rids = tt.route_ids_[s];
-        if (to_idx(route_id_idx) < rids.ids_.size()) {
-          route_id_str = rids.ids_.get(route_id_idx);
-          break;
-        }
-      }
+      auto const source_id = tt.trip_id_src_[tt.trip_ids_[trip_idx].front()];
+
+      auto const route_id = tt.trip_route_id_[trip_idx];
+      auto const global_route_id = to_global_route_id(source_id, route_id);
 
       auto const service_id = to_idx(tt.transport_traffic_days_[t]);
       auto const trip_id = to_idx(t);
@@ -146,15 +154,21 @@ void write_trips(timetable const& tt, std::filesystem::path const& dir) {
       auto const headsign =
           tt.get_default_translation(tt.trip_display_names_[trip_idx]);
 
-      out << route_id_str << "," << service_id << ","
-          << "transport_" << trip_id << ",\"" << short_name << "\",\""
-          << headsign << "\"," << bikes_allowed << "," << cars_allowed << "\n";
+      out << global_route_id << "," << service_id << "," << trip_id << ",\""
+          << short_name << "\",\"" << headsign << "\"," << bikes_allowed << ","
+          << cars_allowed << "\n";
     }
   }
 }
 
-void write_routes(timetable const& tt, std::filesystem::path const& dir) {
+void write_routes(timetable const& tt,
+                  std::filesystem::path const& dir,
+                  std::vector<size_t> const& route_offsets) {
   std::ofstream out(dir / "routes.txt");
+
+  auto to_global_route_id = [&](source_idx_t s, route_id_idx_t r) {
+    return route_offsets[to_idx(s)] + to_idx(r);
+  };
 
   out << "route_id,agency_id,route_short_name,route_long_name,route_type,route_"
          "color,route_text_color\n";
@@ -163,6 +177,7 @@ void write_routes(timetable const& tt, std::filesystem::path const& dir) {
     auto const& routes = tt.route_ids_[s];
 
     for (route_id_idx_t r{0}; r < routes.ids_.size(); ++r) {
+      auto const global_id = to_global_route_id(s, r);
       auto short_name =
           tt.get_default_translation(routes.route_id_short_names_[r]);
 
@@ -176,7 +191,7 @@ void write_routes(timetable const& tt, std::filesystem::path const& dir) {
       auto const color_str = to_str(rc.color_).value_or("");
       auto const text_str = to_str(rc.text_color_).value_or("");
 
-      out << routes.ids_.get(r) << "," << agency << ","
+      out << global_id << "," << agency << ","
           << "\"" << short_name << "\","
           << "\"" << long_name << "\"," << type << "," << color_str << ","
           << text_str << "\n";
@@ -189,13 +204,12 @@ void write_transfers(timetable const& tt, std::filesystem::path const& dir) {
 
   out << "from_stop_id,to_stop_id,transfer_type,min_transfer_time\n";
 
-  for (location_idx_t l{0}; l < tt.n_locations(); ++l) {
+  for (location_idx_t l{stopOffset}; l < tt.n_locations(); ++l) {
     for (auto const& fp : tt.locations_.footpaths_out_[0][l]) {
       auto to = fp.target();
 
       // TODO check if transfers contain wheelchair or some
-      out << tt.locations_.ids_[l].view() << ","
-          << tt.locations_.ids_[to].view() << ","
+      out << (to_idx(l) - stopOffset) << "," << (to_idx(to) - stopOffset) << ","
           << "2," << (fp.duration_ * 60) << "\n";
     }
   }
