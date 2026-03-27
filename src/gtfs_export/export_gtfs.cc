@@ -84,10 +84,7 @@ void write_stop_times(timetable const& tt, std::filesystem::path const& dir) {
         auto dep = (s == stop_idx_t(stops.size() - 1)
                         ? tt.event_mam(t, s, event_type::kArr)
                         : tt.event_mam(t, s, event_type::kDep));
-        auto trip =
-            tt.merged_trips_[tt.transport_to_trip_section_[t].front()].front();
-
-        out << "trip_" << to_idx(trip) << "," << format_time(arr) << ","
+        out << "transport_" << to_idx(t) << "," << format_time(arr) << ","
             << format_time(dep) << "," << tt.locations_.ids_[loc].view() << ","
             << s << "\n";
       }
@@ -97,45 +94,39 @@ void write_stop_times(timetable const& tt, std::filesystem::path const& dir) {
 
 void write_trips(timetable const& tt, std::filesystem::path const& dir) {
   std::ofstream out(dir / "trips.txt");
+  out << "route_id,service_id,trip_id,trip_headsign\n";
 
-  out << "route_id,trip_id,service_id,trip_headsign\n";
+  for (route_idx_t r{0}; r < tt.n_routes(); ++r) {
+    auto const transport_range = tt.route_transport_ranges_[r];
 
-  for (auto const [id, idx] : tt.trip_id_to_idx_) {
-    /* auto const str = tt.trip_id_strings_[id].view(); */
-    /* out << str << ": "; */
-    for (auto const& t : tt.trip_transport_ranges_.at(idx)) {
-      out << tt.transport_route_[t.first] << "," << t.first << "," << t.second
-          << "\n";
-      /* out << tt.transport_section_attributes_[t.first] << "\n"; */
+    for (transport_idx_t t = transport_range.from_; t != transport_range.to_;
+         ++t) {
+      auto const merged_idx = tt.transport_to_trip_section_[t].front();
+      auto const trip_idx = tt.merged_trips_[merged_idx].front();
+
+      auto const route_id_idx = tt.trip_route_id_[trip_idx];
+      std::string_view route_id_str;
+      for (source_idx_t s{0}; s < tt.route_ids_.size(); ++s) {
+        auto const& rids = tt.route_ids_[s];
+        if (to_idx(route_id_idx) < rids.ids_.size()) {
+          route_id_str = rids.ids_.get(route_id_idx);
+          break;
+        }
+      }
+
+      auto const service_id = to_idx(tt.transport_traffic_days_[t]);
+
+      auto const trip_id = to_idx(t);
+
+      auto const headsign =
+          tt.get_default_translation(tt.trip_display_names_[trip_idx]);
+
+      out << route_id_str << "," << service_id << ","
+          << "transport_" << trip_id << ","
+          << "\"" << headsign << "\"\n";
     }
   }
 }
-/*
-void write_trips(timetable const& tt, std::filesystem::path const& dir) {
-  std::ofstream out(dir / "trips.txt");
-
-  // TODO check for empty day bitsets trips
-  out << "route_id,service_id,trip_id,trip_headsign,direction_id\n";
-
-  // TODO transport idx vs trip idx
-  // -> external_trip_ids_[0]
-  // check merged_trips_
-  // check transport_to_trip_section_
-  // TODO change auto t = trip_idx_t(0);
-  for (trip_idx_t t{0}; t < tt.n_trips(); ++t) {
-    auto route_id = tt.trip_route_id_[t];
-    // TODO get source_idx_ from trip
-    // -> trip_id_src_[trip_id_idx_t]
-    auto route = tt.route_ids_[source_idx_t{0}].ids_.get(route_id);
-    auto headsign = tt.get_default_translation(tt.trip_display_names_[t]);
-    auto direction = tt.trip_direction_id_[t] ? 1 : 0;
-
-    out << route << ","
-        << "service_" << t << "," << t << ","
-        << "\"" << headsign << "\"," << direction << "\n";
-  }
-}
-*/
 
 void write_routes(timetable const& tt, std::filesystem::path const& dir) {
   std::ofstream out(dir / "routes.txt");
@@ -184,9 +175,29 @@ void write_calendar([[maybe_unused]] timetable const& tt,
   std::ofstream out(dir / "calendar.txt");
 }
 
-void write_calendar_dates([[maybe_unused]] timetable const& tt,
+void write_calendar_dates(timetable const& tt,
                           std::filesystem::path const& dir) {
   std::ofstream out(dir / "calendar_dates.txt");
+  out << "service_id,date,exception_type\n";
+
+  auto const& base = tt.internal_interval_days().from_;
+
+  for (bitfield_idx_t b{0}; b < tt.bitfields_.size(); ++b) {
+    auto const& bf = tt.bitfields_[b];
+    for (std::size_t day = 0; day < bf.size(); ++day) {
+      if (bf.test(day)) {
+        auto const sys_day = base + date::days{static_cast<int>(day)};
+        auto const ymd = date::year_month_day{sys_day};
+        // Format as YYYYMMDD
+        char buf[9];
+        std::snprintf(buf, sizeof(buf), "%04d%02d%02d",
+                      static_cast<int>(ymd.year()),
+                      static_cast<unsigned>(ymd.month()),
+                      static_cast<unsigned>(ymd.day()));
+        out << to_idx(b) << "," << buf << ",1\n";
+      }
+    }
+  }
 }
 
 }  // namespace nigiri
