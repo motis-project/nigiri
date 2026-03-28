@@ -212,7 +212,8 @@ void write_routes(timetable const& tt,
   for (source_idx_t s{0}; s < tt.route_ids_.size(); ++s) {
     auto const& routes = tt.route_ids_[s];
 
-    for (route_id_idx_t r{0}; r < routes.ids_.size(); ++r) {
+    for (route_id_idx_t r{0};
+         r < static_cast<route_id_idx_t>(routes.ids_.size()); ++r) {
       auto const global_id = to_global_route_id(s, r);
       auto short_name =
           tt.get_default_translation(routes.route_id_short_names_[r]);
@@ -268,7 +269,8 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
 
   auto get_weekday = [&](std::size_t day) -> int {
     auto sys_day = base + date::days{static_cast<int>(day)};
-    return date::weekday{sys_day}.c_encoding();  // 0=Sun..6=Sat
+    return static_cast<int>(
+        date::weekday{sys_day}.c_encoding());  // 0=Sun..6=Sat
   };
 
   for (bitfield_idx_t b{0}; b < tt.bitfields_.size(); ++b) {
@@ -302,7 +304,7 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
     for (std::size_t d = first; d <= last; ++d) {
       int wd = get_weekday(d);
       total_count[wd]++;
-      active_count[wd] += (int)(bf.test(d));
+      active_count[wd] += static_cast<int>(bf.test(d));
     }
 
     uint8_t best_map = 0;
@@ -319,8 +321,8 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
       continue;
     }
 
-    std::size_t am_start = first - get_weekday(first);
-    std::size_t am_end = last + (6 - get_weekday(last));
+    std::size_t am_start = first - static_cast<std::size_t>(get_weekday(first));
+    std::size_t am_end = last + static_cast<std::size_t>(6 - get_weekday(last));
     int l = static_cast<int>((am_end - am_start) / 7) + 1;  // number of weeks
 
     uint32_t best_e = UINT32_MAX;
@@ -346,8 +348,8 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
     }
   done:
 
-    std::size_t new_begin = am_start + best_a * 7;
-    std::size_t new_end = am_start + best_b * 7 + 6;
+    std::size_t new_begin = am_start + static_cast<std::size_t>(best_a) * 7;
+    std::size_t new_end = am_start + static_cast<std::size_t>(best_b) * 7 + 6;
 
     while (new_begin <= new_end && !bf.test(new_begin)) ++new_begin;
     while (new_end >= new_begin && !bf.test(new_end)) --new_end;
