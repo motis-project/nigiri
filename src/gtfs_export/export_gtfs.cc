@@ -10,6 +10,24 @@
 
 namespace nigiri {
 
+std::string csv_escape(std::string_view input) {
+  std::string out;
+  out.reserve(input.size());
+
+  for (char c : input) {
+    switch (c) {
+      case '"':
+        out.push_back('"');
+        out.push_back('"');
+        break;
+      case '\n':
+      case '\r': out.push_back(' '); break;
+      default: out.push_back(c);
+    }
+  }
+  return out;
+}
+
 static std::string format_time(delta d) {
   auto total_seconds = static_cast<int>(d.count()) * 60;
   auto h = total_seconds / 3600;
@@ -35,8 +53,8 @@ void export_gtfs(timetable const& tt, std::filesystem::path const& dir) {
   write_routes(tt, dir, route_offsets);
   write_trips(tt, dir, route_offsets);
   write_stop_times(tt, dir);
-  /* write_calendar(tt, dir); */
-  write_calendar_dates(tt, dir);
+  write_calendar(tt, dir);
+  /* write_calendar_dates(tt, dir); */
   write_transfers(tt, dir);
 }
 
@@ -51,9 +69,10 @@ void write_agencies(timetable const& tt, std::filesystem::path const& dir) {
     auto const& tz = nigiri::loader::gtfs::get_timezone_name(tt, provider.tz_);
     auto const timezone_name = tz.value_or("Europe/Berlin");
 
-    out << to_idx(p) << ",\"" << tt.get_default_translation(provider.name_)
-        << "\"," << tt.get_default_translation(provider.url_) << ","
-        << timezone_name << "\n";
+    out << to_idx(p) << ",\""
+        << csv_escape(tt.get_default_translation(provider.name_)) << "\","
+        << tt.get_default_translation(provider.url_) << "," << timezone_name
+        << "\n";
   }
 }
 
@@ -70,8 +89,8 @@ void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
     auto const name = tt.get_default_name(l);
     auto const coord = tt.locations_.coordinates_[l];
 
-    out << id << ",\"" << name << "\"," << coord.lat_ << "," << coord.lng_
-        << ",1,\n";
+    out << id << ",\"" << csv_escape(name) << "\"," << coord.lat_ << ","
+        << coord.lng_ << ",1,\n";
   }
 
   for (location_idx_t l{stopOffset}; l < tt.n_locations(); ++l) {
@@ -89,8 +108,8 @@ void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
 
     auto const parent_str =
         has_parent ? std::to_string(to_idx(root) - stopOffset) : "";
-    out << id << ",\"" << name << "\"," << coord.lat_ << "," << coord.lng_
-        << ",0," << parent_str << "\n";
+    out << id << ",\"" << csv_escape(name) << "\"," << coord.lat_ << ","
+        << coord.lng_ << ",0," << parent_str << "\n";
   }
 }
 
@@ -165,8 +184,8 @@ void write_trips(timetable const& tt,
           tt.get_default_translation(tt.trip_display_names_[trip_idx]);
 
       out << global_route_id << "," << service_id << "," << trip_id << ",\""
-          << short_name << "\",\"" << headsign << "\"," << bikes_allowed << ","
-          << cars_allowed << "\n";
+          << csv_escape(short_name) << "\",\"" << csv_escape(headsign) << "\","
+          << bikes_allowed << "," << cars_allowed << "\n";
     }
   }
 }
@@ -202,9 +221,9 @@ void write_routes(timetable const& tt,
       auto const text_str = to_str(rc.text_color_).value_or("");
 
       out << global_id << "," << agency << ","
-          << "\"" << short_name << "\","
-          << "\"" << long_name << "\"," << type << "," << color_str << ","
-          << text_str << "\n";
+          << "\"" << csv_escape(short_name) << "\","
+          << "\"" << csv_escape(long_name) << "\"," << type << "," << color_str
+          << "," << text_str << "\n";
     }
   }
 }
@@ -225,9 +244,136 @@ void write_transfers(timetable const& tt, std::filesystem::path const& dir) {
   }
 }
 
-void write_calendar([[maybe_unused]] timetable const& tt,
-                    std::filesystem::path const& dir) {
-  std::ofstream out(dir / "calendar.txt");
+void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
+  std::ofstream cal(dir / "calendar.txt");
+  std::ofstream exc(dir / "calendar_dates.txt");
+
+  cal << "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,"
+         "start_date,end_date\n";
+  exc << "service_id,date,exception_type\n";
+
+  auto const& base = tt.internal_interval_days().from_;
+  auto to_ymd_str = [&](std::size_t day) {
+    auto sys_day = base + date::days{static_cast<int>(day)};
+    auto ymd = date::year_month_day{sys_day};
+    return std::format("{:04}{:02}{:02}", int(ymd.year()),
+                       unsigned(ymd.month()), unsigned(ymd.day()));
+  };
+
+  auto get_weekday = [&](std::size_t day) -> int {
+    auto sys_day = base + date::days{static_cast<int>(day)};
+    return date::weekday{sys_day}.c_encoding();  // 0=Sun..6=Sat
+  };
+
+  for (bitfield_idx_t b{0}; b < tt.bitfields_.size(); ++b) {
+    auto const& bf = tt.bitfields_[b];
+    if (bf.none()) continue;
+
+    std::size_t first = 0, last = 0;
+    for (std::size_t d = 0; d < bf.size(); ++d) {
+      if (bf.test(d)) {
+        first = d;
+        break;
+      }
+    }
+    for (std::size_t d = bf.size(); d-- > 0;) {
+      if (bf.test(d)) {
+        last = d;
+        break;
+      }
+    }
+
+    if (last - first < 7) {
+      for (std::size_t d = first; d <= last; ++d) {
+        if (bf.test(d)) exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
+      }
+      continue;
+    }
+
+    int active_count[7] = {};
+    int total_count[7] = {};
+    for (std::size_t d = first; d <= last; ++d) {
+      int wd = get_weekday(d);
+      total_count[wd]++;
+      if (bf.test(d)) active_count[wd]++;
+    }
+
+    uint8_t best_map = 0;
+    for (int wd = 0; wd < 7; ++wd) {
+      if (total_count[wd] > 0 && active_count[wd] * 2 > total_count[wd]) {
+        best_map |= (1 << wd);
+      }
+    }
+
+    if (best_map == 0) {
+      for (std::size_t d = first; d <= last; ++d) {
+        if (bf.test(d)) exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
+      }
+      continue;
+    }
+
+    std::size_t am_start = first - get_weekday(first);
+    std::size_t am_end = last + (6 - get_weekday(last));
+    int l = static_cast<int>((am_end - am_start) / 7) + 1;  // number of weeks
+
+    uint32_t best_e = UINT32_MAX;
+    int best_a = 0, best_b = l - 1;
+
+    for (int a = 0; a < l; ++a) {
+      for (int bb = l - 1; bb >= a; --bb) {
+        uint32_t e = 0;
+        for (std::size_t d = first; d <= last; ++d) {
+          int week = static_cast<int>((d - am_start) / 7);
+          bool in_span = (week >= a && week <= bb);
+          bool in_pattern = in_span && ((best_map >> get_weekday(d)) & 1);
+          bool active = bf.test(d);
+          if (active != in_pattern) e++;
+        }
+        if (e < best_e) {
+          best_e = e;
+          best_a = a;
+          best_b = bb;
+          if (e == 0) goto done;
+        }
+      }
+    }
+  done:
+
+    std::size_t new_begin = am_start + best_a * 7;
+    std::size_t new_end = am_start + best_b * 7 + 6;
+
+    while (new_begin <= new_end && !bf.test(new_begin)) ++new_begin;
+    while (new_end >= new_begin && !bf.test(new_end)) --new_end;
+
+    if (new_end - new_begin < 7) {
+      for (std::size_t d = first; d <= last; ++d) {
+        if (bf.test(d)) exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
+      }
+      continue;
+    }
+
+    cal << to_idx(b) << "," << ((best_map >> 1) & 1) << ","  // Monday
+        << ((best_map >> 2) & 1) << ","  // Tuesday
+        << ((best_map >> 3) & 1) << ","  // Wednesday
+        << ((best_map >> 4) & 1) << ","  // Thursday
+        << ((best_map >> 5) & 1) << ","  // Friday
+        << ((best_map >> 6) & 1) << ","  // Saturday
+        << ((best_map >> 0) & 1) << ","  // Sunday
+        << to_ymd_str(new_begin) << "," << to_ymd_str(new_end) << "\n";
+
+    for (std::size_t d = first; d <= last; ++d) {
+      bool active = bf.test(d);
+      int week = static_cast<int>((d - am_start) / 7);
+      bool in_span = (week >= best_a && week <= best_b);
+      bool in_pattern = in_span && ((best_map >> get_weekday(d)) & 1);
+
+      if (active && !in_pattern) {
+        exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
+      } else if (!active && in_pattern) {
+        exc << to_idx(b) << "," << to_ymd_str(d) << ",2\n";
+      }
+    }
+  }
 }
 
 void write_calendar_dates(timetable const& tt,
