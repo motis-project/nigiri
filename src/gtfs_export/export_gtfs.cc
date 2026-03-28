@@ -11,12 +11,12 @@
 namespace nigiri {
 
 static std::string format_time(delta d) {
-  auto minutes = static_cast<int>(d.count());
-  auto h = minutes / 60;
-  auto m = minutes % 60;
+  auto total_seconds = static_cast<int>(d.count()) * 60;
+  auto h = total_seconds / 3600;
+  auto m = (total_seconds % 3600) / 60;
+  auto s = total_seconds % 60;
 
-  auto buf = std::format("{:02}{:02}", int(h), int(m));
-  return buf;
+  return std::format("{:02}:{:02}:{:02}", h, m, s);
 }
 
 void export_gtfs(timetable const& tt, std::filesystem::path const& dir) {
@@ -35,7 +35,7 @@ void export_gtfs(timetable const& tt, std::filesystem::path const& dir) {
   write_routes(tt, dir, route_offsets);
   write_trips(tt, dir, route_offsets);
   write_stop_times(tt, dir);
-  write_calendar(tt, dir);
+  /* write_calendar(tt, dir); */
   write_calendar_dates(tt, dir);
   write_transfers(tt, dir);
 }
@@ -52,7 +52,8 @@ void write_agencies(timetable const& tt, std::filesystem::path const& dir) {
     auto const timezone_name = tz.value_or("Europe/Berlin");
 
     out << to_idx(p) << ",\"" << tt.get_default_translation(provider.name_)
-        << "\"," << provider.url_ << "," << timezone_name << "\n";
+        << "\"," << tt.get_default_translation(provider.url_) << ","
+        << timezone_name << "\n";
   }
 }
 
@@ -103,6 +104,11 @@ void write_stop_times(timetable const& tt, std::filesystem::path const& dir) {
     auto const transports = tt.route_transport_ranges_.at(r);
 
     for (transport_idx_t t = transports.from_; t != transports.to_; ++t) {
+      // Skip transports with no active traffic days
+      if (tt.bitfields_[tt.transport_traffic_days_[t]].none()) {
+        continue;
+      }
+
       for (auto s = stop_idx_t(0); s < stops.size(); ++s) {
         auto loc = stop{stops[s]}.location_idx();
 
@@ -146,6 +152,10 @@ void write_trips(timetable const& tt,
 
       auto const route_id = tt.trip_route_id_[trip_idx];
       auto const global_route_id = to_global_route_id(source_id, route_id);
+
+      if (tt.bitfields_[tt.transport_traffic_days_[t]].none()) {
+        continue;
+      }
 
       auto const service_id = to_idx(tt.transport_traffic_days_[t]);
       auto const trip_id = to_idx(t);
@@ -229,11 +239,15 @@ void write_calendar_dates(timetable const& tt,
 
   for (bitfield_idx_t b{0}; b < tt.bitfields_.size(); ++b) {
     auto const& bf = tt.bitfields_[b];
+
+    if (bf.none()) {
+      continue;
+    }
+
     for (std::size_t day = 0; day < bf.size(); ++day) {
       if (bf.test(day)) {
         auto const sys_day = base + date::days{static_cast<int>(day)};
         auto const ymd = date::year_month_day{sys_day};
-        // Format as YYYYMMDD
         auto buf = std::format("{:04}{:02}{:02}", int(ymd.year()),
                                unsigned(ymd.month()), unsigned(ymd.day()));
         out << to_idx(b) << "," << buf << ",1\n";
