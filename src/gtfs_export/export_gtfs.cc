@@ -14,7 +14,7 @@ std::string csv_escape(std::string_view input) {
   std::string out;
   out.reserve(input.size());
 
-  for (char c : input) {
+  for (char const c : input) {
     switch (c) {
       case '"':
         out.push_back('"');
@@ -289,6 +289,7 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
       }
     }
 
+    // only add calendar.txt entries if more than a week is covered
     if (last - first < 7) {
       for (std::size_t d = first; d <= last; ++d) {
         if (bf.test(d)) exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
@@ -301,7 +302,7 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
     for (std::size_t d = first; d <= last; ++d) {
       int wd = get_weekday(d);
       total_count[wd]++;
-      if (bf.test(d)) active_count[wd]++;
+      active_count[wd] += (int)(bf.test(d));
     }
 
     uint8_t best_map = 0;
