@@ -48,6 +48,7 @@ void export_gtfs(timetable const& tt, std::filesystem::path const& dir) {
     sum += tt.route_ids_[s].ids_.size();
   }
 
+  write_feed_info(dir);
   write_agencies(tt, dir);
   write_stops(tt, dir);
   write_routes(tt, dir, route_offsets);
@@ -58,6 +59,13 @@ void export_gtfs(timetable const& tt, std::filesystem::path const& dir) {
   write_transfers(tt, dir);
 }
 
+void write_feed_info(std::filesystem::path const& dir) {
+  std::ofstream out(dir / "feed_info.txt");
+
+  out << "feed_publisher_name,feed_publisher_url,feed_lang,agency_timezone\n";
+  out << "MOTIS - Export,https://transitous.org/,EN,Etc/UTC\n";
+}
+
 void write_agencies(timetable const& tt, std::filesystem::path const& dir) {
   std::ofstream out(dir / "agency.txt");
 
@@ -66,19 +74,16 @@ void write_agencies(timetable const& tt, std::filesystem::path const& dir) {
   for (provider_idx_t p{0}; p < tt.providers_.size(); ++p) {
     auto const& provider = tt.providers_[p];
 
-    auto const& tz = nigiri::loader::gtfs::get_timezone_name(tt, provider.tz_);
-    auto const timezone_name = tz.value_or("Europe/Berlin");
-
     out << to_idx(p) << ",\""
         << csv_escape(tt.get_default_translation(provider.name_)) << "\","
-        << tt.get_default_translation(provider.url_) << "," << timezone_name
-        << "\n";
+        << tt.get_default_translation(provider.url_) << ",Etc/UTC\n";
   }
 }
 
 void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
   std::ofstream out(output_dir / "stops.txt");
-  out << "stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station\n";
+  out << "stop_id,original_stop_id,stop_name,stop_lat,stop_lon,location_type,"
+         "parent_station\n";
 
   for (location_idx_t l{stopOffset}; l < tt.n_locations(); ++l) {
     if (tt.locations_.children_[l].empty()) {
@@ -86,15 +91,17 @@ void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
     }
 
     auto const id = (to_idx(l) - stopOffset);
+    auto const originalId = tt.locations_.ids_[l].view();
     auto const name = tt.get_default_name(l);
     auto const coord = tt.locations_.coordinates_[l];
 
-    out << id << ",\"" << csv_escape(name) << "\"," << coord.lat_ << ","
-        << coord.lng_ << ",1,\n";
+    out << id << "," << csv_escape(originalId) << "," << csv_escape(name) << ","
+        << coord.lat_ << "," << coord.lng_ << ",1,\n";
   }
 
   for (location_idx_t l{stopOffset}; l < tt.n_locations(); ++l) {
     auto const id = (to_idx(l) - stopOffset);
+    auto const originalId = tt.locations_.ids_[l].view();
     auto const name = tt.get_default_name(l);
     auto const coord = tt.locations_.coordinates_[l];
 
@@ -108,8 +115,8 @@ void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
 
     auto const parent_str =
         has_parent ? std::to_string(to_idx(root) - stopOffset) : "";
-    out << id << ",\"" << csv_escape(name) << "\"," << coord.lat_ << ","
-        << coord.lng_ << ",0," << parent_str << "\n";
+    out << id << "," << originalId << "," << csv_escape(name) << ","
+        << coord.lat_ << "," << coord.lng_ << ",0," << parent_str << "\n";
   }
 }
 
@@ -220,10 +227,9 @@ void write_routes(timetable const& tt,
       auto const color_str = to_str(rc.color_).value_or("");
       auto const text_str = to_str(rc.text_color_).value_or("");
 
-      out << global_id << "," << agency << ","
-          << "\"" << csv_escape(short_name) << "\","
-          << "\"" << csv_escape(long_name) << "\"," << type << "," << color_str
-          << "," << text_str << "\n";
+      out << global_id << "," << agency << "," << csv_escape(short_name) << ","
+          << csv_escape(long_name) << "," << type << "," << color_str << ","
+          << text_str << "\n";
     }
   }
 }

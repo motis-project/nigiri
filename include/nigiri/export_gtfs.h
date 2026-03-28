@@ -13,8 +13,7 @@ constexpr int stopOffset{9};
 
 void export_gtfs(timetable const& tt, std::filesystem::path const& output_dir);
 
-void write_feed_info(timetable const& tt,
-                     std::filesystem::path const& output_dir);
+void write_feed_info(std::filesystem::path const& output_dir);
 
 void write_agencies(timetable const& tt,
                     std::filesystem::path const& output_dir);
