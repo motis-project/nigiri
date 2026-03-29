@@ -12,7 +12,8 @@ namespace nigiri {
 
 std::string csv_escape(std::string_view input) {
   std::string out;
-  out.reserve(input.size());
+  out.reserve(input.size() + 2);
+  out.push_back('"');
 
   for (char const c : input) {
     switch (c) {
@@ -25,6 +26,7 @@ std::string csv_escape(std::string_view input) {
       default: out.push_back(c);
     }
   }
+  out.push_back('"');
   return out;
 }
 
