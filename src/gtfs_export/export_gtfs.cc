@@ -290,13 +290,13 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
     auto active_count = std::array<int, 7>{};
     auto total_count = std::array<int, 7>{};
     for (auto d = first; d <= last; ++d) {
-      auto const wd = get_weekday(d);
+      auto const wd = static_cast<std::size_t>(get_weekday(d));
       total_count[wd]++;
       active_count[wd] += static_cast<int>(bf.test(d));
     }
 
     auto best_map = uint8_t{0};
-    for (auto wd = int{0}; wd < 7; ++wd) {
+    for (auto wd = std::size_t{0}; wd < 7; ++wd) {
       if (total_count[wd] > 0 && active_count[wd] * 2 > total_count[wd]) {
         best_map |= static_cast<uint8_t>(1 << wd);
       }
