@@ -13,9 +13,9 @@ namespace nigiri {
 
 std::string csv_escape(std::string_view input) {
   auto const needs_quoting =
-      input.empty() || input.find_first_of(",\"\n\r") != std::string_view::npos;
+      input.find_first_of(",\"\n\r") != std::string_view::npos;
 
-  if (!needs_quoting) {
+  if (!needs_quoting || input.empty()) {
     return std::string{input};
   }
 
@@ -82,8 +82,11 @@ void write_agencies(timetable const& tt, std::filesystem::path const& dir) {
 }
 
 void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
+  std::cout << "writing stops.txt ... ";
+
   auto out = std::ofstream{output_dir / "stops.txt"};
-  out << "stop_id,original_stop_id,stop_name,stop_lat,stop_lon,location_type,"
+  out << "stop_id,original_stop_id,stop_name,stop_desc,stop_lat,stop_lon,"
+         "location_type,"
          "parent_station\n";
 
   for (auto l = location_idx_t{stopOffset}; l < tt.n_locations(); ++l) {
@@ -93,15 +96,20 @@ void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
     auto const id = to_idx(l) - stopOffset;
     auto const original_id = tt.locations_.ids_[l].view();
     auto const name = tt.get_default_name(l);
+    auto const desc =
+        tt.get_default_translation(tt.locations_.descriptions_[l]);
     auto const coord = tt.locations_.coordinates_[l];
     out << id << "," << csv_escape(original_id) << "," << csv_escape(name)
-        << "," << coord.lat_ << "," << coord.lng_ << ",1,\n";
+        << "," << csv_escape(desc) << "," << coord.lat_ << "," << coord.lng_
+        << ",1,\n";
   }
 
   for (auto l = location_idx_t{stopOffset}; l < tt.n_locations(); ++l) {
     auto const id = to_idx(l) - stopOffset;
     auto const original_id = tt.locations_.ids_[l].view();
     auto const name = tt.get_default_name(l);
+    auto const desc =
+        tt.get_default_translation(tt.locations_.descriptions_[l]);
     auto const coord = tt.locations_.coordinates_[l];
     auto const root = tt.locations_.get_root_idx(l);
     auto const has_parent = (root != l);
@@ -113,12 +121,16 @@ void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
     auto const parent_str =
         has_parent ? std::to_string(to_idx(root) - stopOffset) : "";
     out << id << "," << csv_escape(original_id) << "," << csv_escape(name)
-        << "," << coord.lat_ << "," << coord.lng_ << ",0," << parent_str
-        << "\n";
+        << "," << csv_escape(desc) << "," << coord.lat_ << "," << coord.lng_
+        << ",0," << parent_str << "\n";
   }
+
+  std::cout << "done.\n";
 }
 
 void write_stop_times(timetable const& tt, std::filesystem::path const& dir) {
+  std::cout << "writing stop_times.txt ... ";
+
   auto out = std::ofstream{dir / "stop_times.txt"};
   out << "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n";
 
@@ -144,11 +156,14 @@ void write_stop_times(timetable const& tt, std::filesystem::path const& dir) {
       }
     }
   }
+  std::cout << "done.\n";
 }
 
 void write_trips(timetable const& tt,
                  std::filesystem::path const& dir,
                  std::vector<size_t> const& route_offsets) {
+  std::cout << "writing trips.txt ... ";
+
   auto out = std::ofstream{dir / "trips.txt"};
   out << "route_id,service_id,trip_id,trip_headsign,trip_short_name,"
          "bikes_allowed,cars_allowed\n";
@@ -190,11 +205,14 @@ void write_trips(timetable const& tt,
           << bikes_allowed << "," << cars_allowed << "\n";
     }
   }
+  std::cout << "done.\n";
 }
 
 void write_routes(timetable const& tt,
                   std::filesystem::path const& dir,
                   std::vector<size_t> const& route_offsets) {
+  std::cout << "writing routes.txt ... ";
+
   auto out = std::ofstream{dir / "routes.txt"};
 
   auto const to_global_route_id = [&](source_idx_t s, route_id_idx_t r) {
@@ -224,9 +242,12 @@ void write_routes(timetable const& tt,
           << text_str << "\n";
     }
   }
+  std::cout << "done.\n";
 }
 
 void write_transfers(timetable const& tt, std::filesystem::path const& dir) {
+  std::cout << "writing transfers.txt ... ";
+
   auto out = std::ofstream{dir / "transfers.txt"};
   out << "from_stop_id,to_stop_id,transfer_type,min_transfer_time\n";
 
@@ -237,9 +258,12 @@ void write_transfers(timetable const& tt, std::filesystem::path const& dir) {
           << ",2," << (fp.duration_ * 60) << "\n";
     }
   }
+  std::cout << "done.\n";
 }
 
 void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
+  std::cout << "writing calendar.txt and calendar_dates.txt ... ";
+
   auto cal = std::ofstream{dir / "calendar.txt"};
   auto exc = std::ofstream{dir / "calendar_dates.txt"};
 
@@ -381,5 +405,6 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
       }
     }
   }
+  std::cout << "done.\n";
 }
 }  // namespace nigiri
