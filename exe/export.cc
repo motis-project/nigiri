@@ -16,7 +16,7 @@ int main(int argc, char* argv[]) {
   auto tt_path = std::filesystem::path{};
   auto gtfs_dir = std::filesystem::path{};
 
-  bpo::options_description desc("Allowed options");
+  auto desc = bpo::options_description{"Allowed options"};
   desc.add_options()("help,h", "produce this help message")  //
       ("tt_path,p", bpo::value(&tt_path)->required(),
        "path to a binary file containing a serialized nigiri timetable")  //

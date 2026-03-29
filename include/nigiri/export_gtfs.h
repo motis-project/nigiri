@@ -34,9 +34,6 @@ void write_routes(timetable const& tt,
 void write_calendar(timetable const& tt,
                     std::filesystem::path const& output_dir);
 
-void write_calendar_dates(timetable const& tt,
-                          std::filesystem::path const& output_dir);
-
 void write_transfers(timetable const& tt,
                      std::filesystem::path const& output_dir);
 
