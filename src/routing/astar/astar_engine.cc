@@ -233,6 +233,10 @@ void astar_engine<UseLowerBounds>::execute(unixtime_t const start_time,
       it->second = s_cost;
     }
 
+    if (s_cost > state_.f_min_) {
+      continue;
+    }
+
     max_k = std::max(max_k, k);
 
     seg_dest(start_time, k, idx);
