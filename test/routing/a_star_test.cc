@@ -37,33 +37,33 @@ timetable load_hrd(auto const& files) {
   return tt;
 }
 
-std::vector<routing::journey> a_star_search(
-    timetable const& tt,
-    tb::tb_data const& tbd,
-    routing::query q) {
+std::vector<routing::journey> a_star_search(timetable const& tt,
+                                            tb::tb_data const& tbd,
+                                            routing::query q) {
   static auto search_state = routing::search_state{};
   auto algo_state = tb::query_state{tt, tbd};
   auto journey_pareto_set =
       (routing::search<direction::kForward, a_star::a_star_search>{
-           tt, nullptr, search_state, algo_state, std::move(q)}
+          tt, nullptr, search_state, algo_state, std::move(q)}
            .execute()
            .journeys_);
   return journey_pareto_set->els_;
 }
 
-std::vector<routing::journey> a_star_search(
-    timetable const& tt,
-    tb::tb_data const& tbd,
-    std::string_view from,
-    std::string_view to,
-    routing::start_time_t const time) {
+std::vector<routing::journey> a_star_search(timetable const& tt,
+                                            tb::tb_data const& tbd,
+                                            std::string_view from,
+                                            std::string_view to,
+                                            routing::start_time_t const time) {
   auto const src = source_idx_t{0};
-  return a_star_search(tt, tbd, routing::query{
-    .start_time_ = time,
-    .start_ = {{tt.locations_.location_id_to_idx_.at({from, src}), 0_minutes,
-                0U}},
-    .destination_ = {
-      {tt.locations_.location_id_to_idx_.at({to, src}), 0_minutes, 0U}}});
+  return a_star_search(
+      tt, tbd,
+      routing::query{
+          .start_time_ = time,
+          .start_ = {{tt.locations_.location_id_to_idx_.at({from, src}),
+                      0_minutes, 0U}},
+          .destination_ = {{tt.locations_.location_id_to_idx_.at({to, src}),
+                            0_minutes, 0U}}});
 }
 
 std::vector<routing::journey> a_star_intermodal_search(
@@ -87,8 +87,8 @@ std::vector<routing::journey> a_star_intermodal_search(
   return a_star_search(tt, tbd, std::move(q));
 }
 
-
-std::string result_str(std::vector<journey> const& results, timetable const& tt) {
+std::string result_str(std::vector<journey> const& results,
+                       timetable const& tt) {
   std::stringstream ss;
   ss << "\n";
   for (auto const& x : results) {
@@ -97,7 +97,6 @@ std::string result_str(std::vector<journey> const& results, timetable const& tt)
   }
   return ss.str();
 }
-
 
 // NOTE: The preprocessing tests from trip-based routing (-> tb_test.cc) are not
 // needed, because the same preprocessing data is used here.
@@ -153,15 +152,13 @@ leg 1: (S2, S2) [2021-03-01 09:00] -> (S2, S2) [2021-03-01 09:00]
 TEST(a_star_query, single_trip) {
   auto const tt = load_gtfs(single_trip_files);
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
-  //tbd.print(std::cout, tt);
-  //auto [a, b] = tt.day_idx_mam(unixtime_t{i32_minutes{26908200}});
-  //std::cout << "DAY: " << a <<    " MAM: " << b << "\n \n";
+  // tbd.print(std::cout, tt);
+  // auto [a, b] = tt.day_idx_mam(unixtime_t{i32_minutes{26908200}});
+  // std::cout << "DAY: " << a <<    " MAM: " << b << "\n \n";
   auto const result = a_star_search(
       tt, tbd, "S0", "S2", unixtime_t{sys_days{March / 1 / 2021} + 6h});
-  EXPECT_EQ(std::string_view{single_trip_journey},
-            result_str(result, tt));
+  EXPECT_EQ(std::string_view{single_trip_journey}, result_str(result, tt));
 }
-
 
 // --- same_day_transfer ---
 
@@ -221,15 +218,14 @@ leg 3: (S2, S2) [2021-03-01 13:00] -> (S2, S2) [2021-03-01 13:00]
 TEST(a_star_query, same_day_transfer) {
   auto const tt = load_gtfs(same_day_transfer_files_2);
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
-  //tbd.print(std::cout, tt);
-  //auto [a, b] = tt.day_idx_mam(unixtime_t{i32_minutes{26908200}});
-  //std::cout << "DAY: " << a <<    " MAM: " << b << "\n \n";
+  // tbd.print(std::cout, tt);
+  // auto [a, b] = tt.day_idx_mam(unixtime_t{i32_minutes{26908200}});
+  // std::cout << "DAY: " << a <<    " MAM: " << b << "\n \n";
   auto const result = a_star_search(
       tt, tbd, "S0", "S2", unixtime_t{sys_days{February / 28 / 2021} + 23h});
   EXPECT_EQ(std::string_view{same_day_transfer_journeys},
             result_str(result, tt));
 }
-
 
 // --- earlier_stop_transfer ---
 
@@ -304,7 +300,6 @@ TEST(a_star_query, early_stop_transfer) {
             result_str(results, tt));
 }
 
-
 // --- no_journey_possible ---  (same data as for early_stop_transfer!)
 
 TEST(a_star_query, no_journey_possible) {
@@ -314,7 +309,6 @@ TEST(a_star_query, no_journey_possible) {
       tt, tbd, "S4", "S0", unixtime_t{sys_days{February / 28 / 2021} + 23h});
   EXPECT_EQ(0, results.size());
 }
-
 
 // --- early_train ---
 
@@ -381,7 +375,6 @@ TEST(a_star_query, early_train) {
       tt, tbd, "S1", "S3", unixtime_t{sys_days{March / 04 / 2021} + 5h});
   EXPECT_EQ(std::string_view{early_train_journeys}, result_str(results, tt));
 }
-
 
 // --- multiple_paths ---
 
@@ -465,14 +458,15 @@ TEST(a_star_query, multiple_paths) {
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
   auto const results = a_star_search(
       tt, tbd, "S0", "S2", unixtime_t{sys_days{March / 1 / 2021} + 1h});
-  // It depends on the parameter ALPHA in the cost function if 'multiple_paths_journey_lowTransfers' or
-  // 'multiple_paths_journey_lowTime' is the desired result.
+  // It depends on the parameter ALPHA in the cost function if
+  // 'multiple_paths_journey_lowTransfers' or 'multiple_paths_journey_lowTime'
+  // is the desired result.
   EXPECT_EQ(std::string_view{multiple_paths_journey_lowTime},
             result_str(results, tt));
 }
 
-
-// --- abc ---  (Note: The data 'files_abc' isn't here, but in 'test\loader\hrd\hrd_timetable.h' instead.)
+// --- abc ---  (Note: The data 'files_abc' isn't here, but in
+// 'test\loader\hrd\hrd_timetable.h' instead.)
 
 constexpr auto const abc_journeys = R"(
 [2020-03-30 05:00, 2020-03-30 07:15]
@@ -497,10 +491,9 @@ TEST(a_star_query, abc) {
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
   auto const results =
       a_star_search(tt, tbd, "0000001", "0000003",
-                       unixtime_t{sys_days{March / 30 / 2020} + 5h});
+                    unixtime_t{sys_days{March / 30 / 2020} + 5h});
   EXPECT_EQ(std::string_view{abc_journeys}, result_str(results, tt));
 }
-
 
 // --- profile_abc ---
 
@@ -542,11 +535,10 @@ TEST(a_star_query, profile_abc) {
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
   auto const results =
       a_star_search(tt, tbd, "0000001", "0000003",
-                       interval{unixtime_t{sys_days{March / 30 / 2020}} + 5h,
-                                unixtime_t{sys_days{March / 30 / 2020}} + 6h});
+                    interval{unixtime_t{sys_days{March / 30 / 2020}} + 5h,
+                             unixtime_t{sys_days{March / 30 / 2020}} + 6h});
   EXPECT_EQ(std::string_view{profile_abc_journeys}, result_str(results, tt));
 }
-
 
 // --- intermodal_abc ---
 
@@ -600,6 +592,5 @@ TEST(a_star_query, intermodal_abc) {
         15_minutes, 77U}},
       interval{unixtime_t{sys_days{March / 30 / 2020}} + 5_hours,
                unixtime_t{sys_days{March / 30 / 2020}} + 6_hours});
-  EXPECT_EQ(std::string_view{intermodal_abc_journeys},
-            result_str(results, tt));
+  EXPECT_EQ(std::string_view{intermodal_abc_journeys}, result_str(results, tt));
 }
