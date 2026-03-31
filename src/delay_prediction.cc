@@ -1,8 +1,12 @@
 #include "nigiri/delay_prediction.h"
+#include "nigiri/timetable.h"
+#include "nigiri/rt/frun.h"
 
 #include <cfloat>
 
 #include "nigiri/for_each_meta.h"
+#include "nigiri/rt/gtfsrt_resolve_run.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/types.h"
 
 namespace nigiri::rt {
@@ -119,10 +123,72 @@ duration_t hist_trip_times_storage::get_remaining_time_till_next_stop(
   return last_tsd_before_stop->timestamp - tsd->timestamp;
 }
 
+void hist_trip_times_storage::dump_delays(timetable const& tt, rt_timetable& rtt) const {
+  auto const& rtt_const = rtt;
+
+  std::ofstream intelligent_calc_out{"intelligent_actual.txt",
+                                     std::ios_base::app};
+  if (std::filesystem::is_empty("intelligent_actual.txt")) {
+    intelligent_calc_out << "trip_id,stop_id,event,delay\n";
+  }
+
+  for (auto const& [key, coord_seq_idx] : cs_key_coord_seq_) {
+    auto const t = key.t;
+    auto const fr = rt::frun::from_t(tt, &rtt_const, t);
+    auto const t_start_time = tt.event_time(t, stop_idx_t{0}, event_type::kDep);
+
+    auto ttd_idx = std::find_if(
+        coord_seq_idx_ttd_[coord_seq_idx].begin(),
+        coord_seq_idx_ttd_[coord_seq_idx].end(), [&](auto const ttd) {
+          return t_start_time == ttd_idx_trip_time_data_[ttd].start_timestamp;
+        });
+
+    if (ttd_idx == coord_seq_idx_ttd_[coord_seq_idx].end()) {
+      continue;
+    }
+    auto const ttd = ttd_idx_trip_time_data_[*ttd_idx];
+    if (static_cast<unsigned int>(fr.stop_range_.size()) != ttd.segment_durations_.size() + 1) {
+      continue;
+    }
+
+    auto delay = duration_t{0};
+    auto actual_time = t_start_time;
+
+    for (auto const& stop : fr.stop_range_) {
+      auto scheduled_arrival = unixtime_t{};
+      auto scheduled_departure = unixtime_t{};
+
+      if (stop == stop_idx_t{0}) {
+        actual_time += ttd.stop_durations_[stop];
+        delay = ttd.stop_durations_[stop];
+        intelligent_calc_out << fr.trip_idx() << "," << stop << ",dep," << delay.count() << "\n";
+      }
+      else if (stop == stop_idx_t{*(--fr.stop_range_.end())}) {
+        scheduled_arrival = tt.event_time(fr.t_, stop, event_type::kArr);
+        actual_time += ttd.segment_durations_[stop-1];
+        delay = actual_time - scheduled_arrival;
+        intelligent_calc_out << fr.trip_idx() << "," << stop << ",arr," << delay.count() << "\n";
+      }
+      else {
+        scheduled_arrival = tt.event_time(fr.t_, stop, event_type::kArr);
+        actual_time += ttd.segment_durations_[stop-1];
+        delay = actual_time - scheduled_arrival;
+        intelligent_calc_out << fr.trip_idx() << "," << stop << ",arr," << delay.count() << "\n";
+
+        scheduled_departure = tt.event_time(fr.t_, stop, event_type::kDep);
+        actual_time += ttd.stop_durations_[stop];
+        delay = actual_time - scheduled_departure;
+        intelligent_calc_out << fr.trip_idx() << "," << stop << ",dep," << delay.count() << "\n";
+      }
+    }
+  }
+  intelligent_calc_out.close();
+}
+
 void hist_trip_times_storage::print(std::ostream& out) const {
   out << "\ncs_key_coord_seq_:\n";
   for (auto const& [key, coord_seq_idx] : cs_key_coord_seq_) {
-    out << "Key: Source: " << key.source_idx << " Transport: " << key.t_idx
+    out << "Key: Source: " << key.source_idx << " Transport: " << key.t.t_idx_
         << "\nCoord_seq_Idx: " << coord_seq_idx << "\n";
   }
 
@@ -298,7 +364,7 @@ duration_t delay_prediction_storage::get_avg_duration(
 void delay_prediction_storage::print(std::ostream& out) const {
   out << "\ncs_key_coord_seq_:\n";
   for (auto const& [key, tdp] : key_trip_delay_) {
-    out << "Key: Source: " << key.source_idx << " Transport: " << key.t_idx
+    out << "Key: Source: " << key.source_idx << " Transport: " << key.t.t_idx_
         << "\nTrip Delay Prediction:"
            "\nfilter gain: "
         << tdp.filter_gain << "\ngain loop: " << tdp.gain_loop

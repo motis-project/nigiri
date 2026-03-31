@@ -56,7 +56,7 @@ struct vehicle_trip_matching {
 };
 
 struct key {
-  transport_idx_t t_idx;
+  transport t;
   source_idx_t source_idx;
 };
 
@@ -96,12 +96,6 @@ struct hist_trip_times_storage {
                            mm_vec<cista::page<std::uint64_t, std::uint32_t>>{
                                cista::mmap{"hist_trip_time_idx.bin"}}} {}
 
-  hash_map<key, coord_seq_idx_t> cs_key_coord_seq_;
-  paged_vecvec<coord_seq_idx_t, location_idx_t> coord_seq_idx_coord_seq_;
-
-  mm_paged_vecvec<coord_seq_idx_t, trip_time_data_idx_t> coord_seq_idx_ttd_;
-  vector_map<trip_time_data_idx_t, trip_time_data> ttd_idx_trip_time_data_;
-
   // check if key already exists
   // if not: check if similar enough coord_seq exists (find_duplicates())
   // if not: create new index and add entries data structures
@@ -115,10 +109,18 @@ struct hist_trip_times_storage {
   static duration_t get_remaining_time_till_next_stop(trip_seg_data const*,
                                                       trip_time_data const*);
 
+  void dump_delays(timetable const&, rt_timetable& rtt) const;
+
   void print(std::ostream& out) const;
 
   friend std::ostream& operator<<(std::ostream& out,
                                   hist_trip_times_storage const& tts);
+
+  hash_map<key, coord_seq_idx_t> cs_key_coord_seq_;
+  paged_vecvec<coord_seq_idx_t, location_idx_t> coord_seq_idx_coord_seq_;
+
+  mm_paged_vecvec<coord_seq_idx_t, trip_time_data_idx_t> coord_seq_idx_ttd_;
+  vector_map<trip_time_data_idx_t, trip_time_data> ttd_idx_trip_time_data_;
 };
 
 struct trip_delay_pred {

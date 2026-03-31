@@ -407,7 +407,18 @@ TEST(rt, gtfs_rt_vehicle_position_update) {
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
 
-  auto dp = delay_prediction{};
+  auto tts = hist_trip_times_storage{};
+  auto vtm = vehicle_trip_matching{};
+  auto dps = delay_prediction_storage{};
+
+  auto dp = delay_prediction{algorithm::kSimple,
+                             hist_trip_mode::kSameDay,
+                             1,
+                             5,
+                             &dps,
+                             &tts,
+                             &vtm,
+    true};
 
   // Update.
   auto const msg = rt::json_to_protobuf(kVehiclePosition);

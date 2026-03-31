@@ -59,14 +59,16 @@ struct delay_prediction {
                             uint32_t const nh,
                             delay_prediction_storage* dps,
                             hist_trip_times_storage* htts,
-                            vehicle_trip_matching* vtm)
+                            vehicle_trip_matching* vtm,
+                            bool const dou = false)
       : algo{a},
         mode{m},
         number_of_predecessors{np},
         number_of_hist_trips{nh},
         delay_prediction_store{dps},
         hist_trip_time_store{htts},
-        vehicle_trip_match{vtm} {}
+        vehicle_trip_match{vtm},
+        dump_output{dou} {}
 
   explicit delay_prediction() = default;
 
@@ -78,6 +80,8 @@ struct delay_prediction {
   delay_prediction_storage* delay_prediction_store = nullptr;
   hist_trip_times_storage* hist_trip_time_store = nullptr;
   vehicle_trip_matching* vehicle_trip_match = nullptr;
+
+  bool dump_output = false;
 };
 
 statistics gtfsrt_update_msg(timetable const&,

@@ -499,7 +499,8 @@ void calculate_delay_simple(timetable const& tt,
                             date::sys_days const today,
                             date::sys_seconds const message_time,
                             std::shared_ptr<opentelemetry::trace::Span>& span,
-                            statistics& stats) {
+                            statistics& stats,
+                            bool dump_output) {
 
   try {
     auto const& vp = entity.vehicle();
@@ -557,6 +558,15 @@ void calculate_delay_simple(timetable const& tt,
     auto const delay_cast =
         std::chrono::duration_cast<duration_t>(vp_ts - ev_time);
 
+    // write delay to file if wanted
+    if (dump_output) {
+      auto simple_calc_out = std::ofstream{"simple_calculated.txt", std::ios_base::app};
+      if (std::filesystem::is_empty("simple_calculated.txt")) {
+        simple_calc_out << "trip_id,current_stop_id,delay";
+      }
+      simple_calc_out << "\n" << trip_idx << "," << stopped_at_idx << "," << delay_cast.count();
+    }
+
     // update delay for remaining stops
     auto const stops_after = interval{stopped_at_idx, fr.stop_range_.to_};
     if (stopped_at_idx != *fr.stop_range_.begin()) {
@@ -569,6 +579,7 @@ void calculate_delay_simple(timetable const& tt,
       update_delay(tt, rtt, r, second, event_type::kArr, delay_cast,
                    std::nullopt);
     }
+
 
     // update delay for previous stops if necessary
     auto const stops_before =
@@ -654,7 +665,7 @@ void calculate_delay_intelligent(
       r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
     }
 
-    key key{r.t_.t_idx_, src};
+    key key{r.t_, src};
 
     auto const location_seq =
         std::span{tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]]};
@@ -749,7 +760,7 @@ void calculate_delay_intelligent(
     // calculation of delay prediction
     if (kalman.predecessors_.empty() || kalman.hist_trips_.empty()) {
       calculate_delay_simple(tt, rtt, src, tag, entity, today, message_time,
-                             span, stats);
+                             span, stats, delay_prediction->dump_output);
       return;
     }
 
@@ -818,7 +829,7 @@ void calculate_delay_intelligent(
     }
 
     kalman.filter_gain =
-        kalman.error - 0 < 0.0000000001 && hist_variance - 0 < 0.0000000001
+        kalman.error < 0.0000000001 && hist_variance < 0.0000000001
             ? 1
             : (kalman.error + hist_variance) /
                   (kalman.error + 2 * hist_variance);
@@ -839,6 +850,19 @@ void calculate_delay_intelligent(
     auto const fr = frun::from_t(tt, &rtt_const, r.t_);
     auto const stops_after_next_stop = interval{next_stop, fr.stop_range_.to_};
 
+    // write calculated delay to file if wanted
+    auto intelligent_calc_out = optional<std::ofstream>{};
+    if (delay_prediction->dump_output) {
+      intelligent_calc_out = std::ofstream{"intelligent_calculated.txt", std::ios_base::app};
+      if (std::filesystem::is_empty("intelligent_calculated.txt")) {
+        intelligent_calc_out.value() << "trip_id,current_stop_id,delay_for_next_stop_arr";
+        for (auto const s : stops_after_next_stop) {
+          intelligent_calc_out.value() << ",stop_" << s << "_dep,stop_" << s << "_arr";
+        }
+      }
+      intelligent_calc_out.value() << "\n" << fr.trip_idx() << "," << current_segment << "," << delay.count();
+    }
+
     // negative delay for an arrival can not lead to a time previous to the
     // departure at the previous stop negative delay for a departure is not
     // possible at all
@@ -854,26 +878,99 @@ void calculate_delay_intelligent(
         delay_prediction_storage::get_avg_stop_segment_durations(
             delay_prediction->hist_trip_time_store, kalman.predecessors_);
 
+    // Kalman-Filters for next stops and segments
+    
+    double tmp_stop_filter_gain = kalman.filter_gain;
+    double tmp_stop_gain_loop = kalman.gain_loop;
+    double tmp_stop_error = kalman.error;
+
+    double tmp_segment_filter_gain = kalman.filter_gain;
+    double tmp_segment_gain_loop = kalman.gain_loop;
+    double tmp_segment_error = kalman.error;
+
     for (auto const [first, second] : utl::pairwise(stops_after_next_stop)) {
+
+      //departure at first
+
+      vector<duration_t> hist_stop_times_same_stop;
+      for (auto const ttd : kalman.hist_trips_) {
+        hist_stop_times_same_stop.push_back(
+            delay_prediction->hist_trip_time_store->ttd_idx_trip_time_data_[ttd]
+                .stop_durations_[first]);
+      }
+      double stop_variance = 0;
+      if (hist_stop_times_same_stop.size() > 1) {
+        for (auto const hist_del : hist_stop_times_same_stop) {
+          stop_variance +=
+              (hist_del.count() - kalman.hist_avg_stop_durations_[first].count()) *
+              (hist_del.count() - kalman.hist_avg_stop_durations_[first].count());
+        }
+        stop_variance /= hist_stop_times_same_stop.size();
+      }
+
+      tmp_stop_filter_gain =
+        tmp_stop_error < 0.0000000001 && stop_variance < 0.0000000001
+          ? 1
+          : (tmp_stop_error + stop_variance) /
+                (tmp_stop_error + 2 * stop_variance);
+      tmp_stop_gain_loop = 1 - tmp_stop_filter_gain;
+      tmp_stop_error = stop_variance * tmp_stop_filter_gain;
+
       delay +=
           std::chrono::duration_cast<duration_t>(
-              kalman.gain_loop * avg_pred_stop_durations[first] +
-              kalman.filter_gain * kalman.hist_avg_stop_durations_[first]) -
+              tmp_stop_gain_loop * avg_pred_stop_durations[first] +
+              tmp_stop_filter_gain * kalman.hist_avg_stop_durations_[first]) -
           (tt.event_time(r.t_, first, event_type::kDep) -
            tt.event_time(r.t_, first, event_type::kArr));
 
       update_delay(tt, rtt, r, first, event_type::kDep, delay,
                    rtt.unix_event_time(r.rt_, first, event_type::kArr));
 
+      if (intelligent_calc_out.has_value()) {
+        intelligent_calc_out.value() << "," << delay.count();
+      }
+
+      //arrival at second
+      vector<duration_t> hist_segment_times_same_segment;
+      for (auto const ttd : kalman.hist_trips_) {
+        hist_segment_times_same_segment.push_back(
+            delay_prediction->hist_trip_time_store->ttd_idx_trip_time_data_[ttd]
+                .segment_durations_[first]);
+      }
+      double segment_variance = 0;
+      if (hist_segment_times_same_segment.size() > 1) {
+        for (auto const hist_del : hist_segment_times_same_segment) {
+          segment_variance +=
+              (hist_del.count() - kalman.hist_avg_segment_durations_[first].count()) *
+              (hist_del.count() - kalman.hist_avg_segment_durations_[first].count());
+        }
+        segment_variance /= hist_segment_times_same_segment.size();
+      }
+
+      tmp_segment_filter_gain =
+        tmp_segment_error < 0.0000000001 && segment_variance < 0.0000000001
+          ? 1
+          : (tmp_segment_error + segment_variance) /
+                (tmp_segment_error + 2 * segment_variance);
+      tmp_segment_gain_loop = 1 - tmp_segment_filter_gain;
+      tmp_segment_error = segment_variance * tmp_segment_filter_gain;
+
       delay +=
           std::chrono::duration_cast<duration_t>(
-              kalman.gain_loop * avg_pred_segment_durations[first] +
-              kalman.filter_gain * kalman.hist_avg_segment_durations_[first]) -
+              tmp_segment_gain_loop * avg_pred_segment_durations[first] +
+              tmp_segment_filter_gain * kalman.hist_avg_segment_durations_[first]) -
           (tt.event_time(r.t_, second, event_type::kArr) -
            tt.event_time(r.t_, first, event_type::kDep));
 
       update_delay(tt, rtt, r, second, event_type::kArr, delay,
                    rtt.unix_event_time(r.rt_, first, event_type::kDep));
+
+      if (intelligent_calc_out.has_value()) {
+        intelligent_calc_out.value() << "," << delay.count();
+      }
+    }
+    if (intelligent_calc_out.has_value()) {
+      intelligent_calc_out.value().close();
     }
     ++stats.total_entities_success_;
   } catch (std::exception const& e) {
@@ -960,7 +1057,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
         ++stats.vehicle_position_trip_without_trip_id_;
       } else {
         calculate_delay_simple(tt, rtt, src, tag, entity, today, message_time,
-                               span, stats);
+                               span, stats, delay_prediction->dump_output);
       }
       continue;
     }

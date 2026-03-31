@@ -7,9 +7,12 @@
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
-#include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/util.h"
 #include "nigiri/timetable.h"
+
+#include <fstream>
+#include "nigiri/loader/dir.h"
+#include "gtfsrt/gtfs-realtime.pb.h"
 
 #include "./util.h"
 
@@ -478,4 +481,176 @@ TEST(rt, gtfsrt_vp_resolve_trip_test) {
     vp_r3 = gtfsrt_vp_resolve_run(tt, source_idx_t{0}, entity3.vehicle(), &vtm);
   }
   ASSERT_TRUE(vp_r3.valid());
+}
+
+TEST(rt, gtfsrt_vp_file_resolve_trip_test) {
+  std::cout << "Test rt::gtfsrt_vp_file_resolve_trip_test" << std::endl;
+
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2026_y / March / 25},
+                    date::sys_days{2026_y / March / 30}};
+  load_timetable({}, source_idx_t{0},
+                 loader::zip_dir{"test/test_data/gtfs-nl.zip"},
+                 tt);
+  finalize(tt);
+
+  // Create empty RT timetable.
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2026_y / March / 28});
+
+  auto vtm = vehicle_trip_matching{};
+
+  std::ifstream f{"test/test_data/vehiclePositions.pb", std::ios::binary};
+  ASSERT_TRUE(f.is_open());
+
+  transit_realtime::FeedMessage msg;
+  ASSERT_TRUE(msg.ParseFromIstream(&f));
+
+  int counter_vps = 0;
+  int num_st = 0;
+  int num_sd = 0;
+  int num_trip_id = 0;
+  int num_route_id = 0;
+  int num_ts = 0;
+  int num_direction_id = 0;
+  int num_vehicle_id = 0;
+  int num_position = 0;
+  int num_stop_id = 0;
+
+  int counter_resolved_runs = 0;
+  int counter_resolved_runs_without_trip_id = 0;
+  int counter_correctly_resolved_runs_without_trip_id = 0;
+
+  vector<std::string> trip_ids;
+  vector<run> runs;
+
+  std::cout << "VPs mit allem\n" << std::endl;
+  for (auto const& entity : msg.entity()) {
+    counter_vps++;
+    if (entity.has_vehicle()) {
+      auto vp = entity.vehicle();
+
+      if (vp.has_stop_id()) {
+        num_stop_id++;
+      }
+      if (vp.has_position()) {
+        num_position++;
+      }
+      if (vp.has_timestamp()) {
+        num_ts++;
+      }
+      if (vp.has_vehicle() && vp.vehicle().has_id()) {
+        num_vehicle_id++;
+      }
+      if (vp.has_trip()) {
+        if (vp.trip().has_start_time()) {
+          num_st++;
+        }
+        if (vp.trip().has_start_date()) {
+          num_sd++;
+        }
+        if (vp.trip().has_trip_id()) {
+          num_trip_id++;
+        }
+        if (vp.trip().has_route_id()) {
+          num_route_id++;
+        }
+        if (vp.trip().has_direction_id()) {
+          num_direction_id++;
+        }
+      }
+
+      run r;
+      if (vp.has_trip() &&
+                (vp.trip().has_trip_id() ||
+                 (vp.trip().has_route_id() && vp.trip().has_direction_id() &&
+                  vp.trip().has_start_date() && vp.trip().has_start_time()))) {
+        r = gtfsrt_resolve_run(date::sys_days{2026_y / March / 28}, tt, &rtt, source_idx_t{0}, vp.trip()).first;
+        if (r.valid()) {
+          counter_resolved_runs++;
+          if (!runs.contains(&r)) {
+            runs.emplace_back(r);
+          }
+        }
+      }
+
+      vp.mutable_vehicle()->set_id(vp.trip().route_id() + vp.trip().start_time() + vp.trip().start_date() + std::to_string(vp.trip().direction_id()));
+      vp.mutable_trip()->clear_trip_id();
+      vp.mutable_trip()->clear_route_id();
+
+      if (!trip_ids.contains(&vp.vehicle().id())) {
+        trip_ids.emplace_back(vp.vehicle().id());
+      }
+
+      if (vp.has_vehicle() && vp.vehicle().has_id()) {
+        num_vehicle_id++;
+      }
+
+      auto r2 = gtfsrt_vp_resolve_run(tt, source_idx_t{0}, vp, &vtm);
+      if (r2.valid()) {
+        counter_resolved_runs_without_trip_id++;
+      }
+      if (r == r2) {
+        counter_correctly_resolved_runs_without_trip_id++;
+      }
+    }
+  }
+  std::cout << "Number of VehiclePositions: " << counter_vps << "\n";
+  std::cout << "Number of VPs with start_time: " << num_st << "\n";
+  std::cout << "Number of VPs with start_date: " << num_sd << "\n";
+  std::cout << "Number of VPs with trip_id: " << num_trip_id << "\n";
+  std::cout << "Number of VPs with route_id: " << num_route_id << "\n";
+  std::cout << "Number of VPs with direction_id: " << num_direction_id << "\n";
+  std::cout << "Number of VPs with vehicle_id: " << num_vehicle_id << "\n";
+  std::cout << "Number of VPs with timestamp: " << num_ts << "\n";
+  std::cout << "Number of VPs with position: " << num_position << "\n";
+  std::cout << "Number of VPs with stop_id: " << num_stop_id << "\n";
+
+  std::cout << "Number of different trip_ids: " << trip_ids.size() << "\n";
+  std::cout << "Number of resolved runs: " << counter_resolved_runs << "\n";
+  std::cout << "Number of resolved runs with candidates: " << counter_resolved_runs_without_trip_id << "\n";
+  std::cout << "Number of different runs: " << runs.size() << "\n";
+  std::cout << "Number of correctly resolved runs with candidates: " << counter_correctly_resolved_runs_without_trip_id << std::endl;
+
+  for (const auto& str : trip_ids) {
+    std::cout << "\n" << str;
+  }
+  std::cout << "\n" << std::endl;
+
+  /**
+  std::cout << "\nVPs ohne trip_id und route_id\n" << std::endl;
+  int counter2_vps = 0;
+  int counter2_resolved_runs = 0;
+  int counter2_resolved_runs_without_trip_id = 0;
+  for (auto const& entity : msg.entity()) {
+    counter2_vps++;
+    if (entity.has_vehicle()) {
+      auto vp = entity.vehicle();
+      vp.mutable_trip()->clear_trip_id();
+      vp.mutable_trip()->clear_route_id();
+      run r;
+      if (vp.has_trip() &&
+                (vp.trip().has_trip_id() ||
+                 (vp.trip().has_route_id() && vp.trip().has_direction_id() &&
+                  vp.trip().has_start_date() && vp.trip().has_start_time()))) {
+        r = gtfsrt_resolve_run(date::sys_days{2026_y / March / 28}, tt, &rtt, source_idx_t{0}, vp.trip()).first;
+        if (r.valid()) {
+          counter2_resolved_runs++;
+        }
+      } else {
+        std::cout << "unresolved vp with: " << vp.has_position()
+                  << vp.has_timestamp() << vp.has_vehicle() << "\n"
+                  << std::endl;
+        r = gtfsrt_vp_resolve_run(tt, source_idx_t{0}, vp, &vtm);
+        if (r.valid()) {
+          counter2_resolved_runs++;
+          counter2_resolved_runs_without_trip_id++;
+        }
+      }
+    }
+  }
+  std::cout << "Number of VehiclePositions: " << counter2_vps << "\n";
+  std::cout << "Number of resolved runs: " << counter2_resolved_runs << "\n";
+  std::cout << "Number of resolved runs with candidates: " << counter2_resolved_runs_without_trip_id << std::endl;
+  **/
 }

@@ -109,6 +109,9 @@ run gtfsrt_vp_resolve_run(timetable const& tt,
                        .value_or(location_idx_t::invalid());
   }
   if (!vp.has_stop_id() || new_stop_loc == location_idx_t::invalid()) {
+    if (!vp.has_position() || !vp.position().has_latitude() || !vp.position().has_longitude()) {
+      return run{};
+    }
     auto const vp_pos =
         geo::latlng{vp.position().latitude(), vp.position().longitude()};
     auto const box = geo::box{vp_pos, 500};
@@ -202,7 +205,7 @@ run gtfsrt_vp_resolve_run(timetable const& tt,
           auto const ev_type =
               stop_idx == 0 ? event_type::kDep : event_type::kArr;
 
-          // alle Events an dem Stop angucken
+          // look at every event at that stop
           for (auto const [nigiri_ev_time_idx, nigiri_ev_time] :
                utl::enumerate(tt.event_times_at_stop(
                    route, static_cast<stop_idx_t>(stop_idx), ev_type))) {
@@ -215,7 +218,7 @@ run gtfsrt_vp_resolve_run(timetable const& tt,
             if (local_score < 0) {
               continue;
             }
-            // wenn timing passt: entprechenden transport holen
+            // if timing fits: get associated transport
             auto const tr = transport{
                 tt.route_transport_ranges_[route][nigiri_ev_time_idx],
                 vp_day_idx -
