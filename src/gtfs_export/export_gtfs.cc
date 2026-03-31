@@ -23,12 +23,14 @@ std::string csv_escape(std::string_view input) {
   out.reserve(input.size() + 2);
   out.push_back('"');
   for (auto const c : input) {
-    if (c == '"')
+    if (c == '"') {
+
       out.push_back('"');
-    else if (c == '\n' || c == '\r')
+    } else if (c == '\n' || c == '\r') {
       out.push_back(' ');
-    else
+    } else {
       out.push_back(c);
+    }
   }
   out.push_back('"');
   return out;
@@ -224,8 +226,8 @@ void write_routes(timetable const& tt,
 
   for (auto s = source_idx_t{0}; s < tt.route_ids_.size(); ++s) {
     auto const& routes = tt.route_ids_[s];
-    for (auto r = route_id_idx_t{0};
-         r < static_cast<route_id_idx_t>(routes.ids_.size()); ++r) {
+    auto const endRouteIds = static_cast<route_id_idx_t>(routes.ids_.size());
+    for (auto r = route_id_idx_t{0}; r < endRouteIds; ++r) {
       auto const global_id = to_global_route_id(s, r);
       auto const short_name =
           tt.get_default_translation(routes.route_id_short_names_[r]);
@@ -287,7 +289,9 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
 
   for (auto b = bitfield_idx_t{0}; b < tt.bitfields_.size(); ++b) {
     auto const& bf = tt.bitfields_[b];
-    if (bf.none()) continue;
+    if (bf.none()) {
+      continue;
+    }
 
     auto first = std::size_t{0};
     auto last = std::size_t{0};
@@ -306,7 +310,9 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
 
     if (last - first < 7) {
       for (auto d = first; d <= last; ++d) {
-        if (bf.test(d)) exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
+        if (bf.test(d)) {
+          exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
+        }
       }
       continue;
     }
@@ -328,7 +334,9 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
 
     if (best_map == 0) {
       for (auto d = first; d <= last; ++d) {
-        if (bf.test(d)) exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
+        if (bf.test(d)) {
+          exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
+        }
       }
       continue;
     }
@@ -349,13 +357,17 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
           auto const in_span = (week >= a && week <= bb);
           auto const in_pattern = in_span && ((best_map >> get_weekday(d)) & 1);
           auto const active = bf.test(d);
-          if (active != in_pattern) e++;
+          if (active != in_pattern) {
+            e++;
+          }
         }
         if (e < best_e) {
           best_e = e;
           best_a = a;
           best_b = bb;
-          if (e == 0) goto done;
+          if (e == 0) {
+            goto done;
+          }
         }
       }
     }
@@ -375,7 +387,9 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
     if (new_end < new_begin ||
         static_cast<std::size_t>(new_end - new_begin) < 7) {
       for (auto d = first; d <= last; ++d) {
-        if (bf.test(d)) exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
+        if (bf.test(d)) {
+          exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
+        }
       }
       continue;
     }
