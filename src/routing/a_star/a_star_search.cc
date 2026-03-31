@@ -196,7 +196,8 @@ void a_star_search::reconstruct(query const& q, journey& j) {
   location_idx_t first_location_on_current_trip{0};
   stop_idx_t first_stop_on_current_trip{0};
   tb::segment_idx_t first_segment_on_current_trip{0};
-  for (auto i = std::size_t{0}; i < path_segments.size(); ++i) {
+  for (vector<tb::segment_idx_t>::access_type i = 0; i < path_segments.size();
+       ++i) {
     tb::segment_idx_t seg = path_segments[i];
     auto [start_location, end_location] = get_segment_locations(seg);
 
