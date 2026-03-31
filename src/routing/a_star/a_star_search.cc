@@ -28,20 +28,20 @@ routing_result initialize_a_star(timetable const& tt,
 
 a_star_search::a_star_search(
     timetable const& tt,
-    rt_timetable const* rtt,
+    rt_timetable const* /*rtt*/,
     tb::query_state& state,
     bitvec const& is_dest,
-    std::array<bitvec, kMaxVias> const& is_via,
+    std::array<bitvec, kMaxVias> const& /*is_via*/,
     std::vector<std::uint16_t> const& dist_to_dest,
-    hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
+    hash_map<location_idx_t, std::vector<td_offset>> const& /*td_dist_to_dest*/,
     std::vector<std::uint16_t> const& lower_bounds,
-    std::vector<via_stop> const& via_stops,
-    day_idx_t base_day,
-    clasz_mask_t allowed_claszes,
-    bool require_bike_transport,
-    bool require_car_transport,
-    bool is_wheelchair,
-    transfer_time_settings const& tts)
+    std::vector<via_stop> const& /*via_stops*/,
+    day_idx_t /*base_day*/,
+    clasz_mask_t /*allowed_claszes*/,
+    bool /*require_bike_transport*/,
+    bool /*require_car_transport*/,
+    bool /*is_wheelchair*/,
+    transfer_time_settings const& /*tts*/)
     : tt_{tt}, state_{state}, is_dest_{is_dest}, lower_bounds_{lower_bounds} {
   get_bucket_ = [this](open_set_element el) {
     return cost_function(el, arrival_times_.at(el.seg),
@@ -124,7 +124,7 @@ void a_star_search::add_start(location_idx_t const l, unixtime_t const t) {
 void a_star_search::execute(unixtime_t start_time,
                             uint8_t max_transfers,
                             unixtime_t worst_time_at_dest,
-                            profile_idx_t prf_idx,
+                            profile_idx_t /*prf_idx*/,
                             pareto_set<journey>& journeys) {
   journey_found_ = false;
   start_time_ = start_time;
@@ -140,7 +140,7 @@ void a_star_search::execute(unixtime_t start_time,
     segment_day_[segment] = et.day_;
     if (cost_function(el, get_arrival_time(segment), 0) > cost_upper_bound_) {
       continue;
-    };
+    }
 
     arrival_times_[segment] = get_arrival_time(segment);
     num_transfers_until_segment_[segment] = 0;
@@ -194,8 +194,7 @@ void a_star_search::reconstruct(query const& q, journey& j) {
   location_idx_t first_location_on_current_trip{0};
   stop_idx_t first_stop_on_current_trip{0};
   tb::segment_idx_t first_segment_on_current_trip{0};
-  int num_transfers = 0;
-  for (int i = 0; i < path_segments.size(); i++) {
+  for (size_t i = 0; i < path_segments.size(); i++) {
     tb::segment_idx_t seg = path_segments[i];
     auto [start_location, end_location] = get_segment_locations(seg);
 
@@ -285,7 +284,6 @@ void a_star_search::reconstruct(query const& q, journey& j) {
             footpath(end_location,
                      duration_t{std::chrono::duration<int, std::ratio<60>>(
                          tt_.locations_.transfer_time_[end_location])})));
-        num_transfers++;
       } else {
         // *** final leg ***
         auto const duration_to_dest = state_.dist_to_dest_.at(seg);

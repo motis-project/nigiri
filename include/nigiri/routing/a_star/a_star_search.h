@@ -24,20 +24,20 @@ struct a_star_search {
   using algo_stats_t = tb::query_stats;
   a_star_search(
       timetable const& tt,
-      rt_timetable const* rtt,
+      rt_timetable const* /*rtt*/,
       tb::query_state& state,
       bitvec const& is_dest,
-      std::array<bitvec, kMaxVias> const& is_via,
+      std::array<bitvec, kMaxVias> const& /*is_via*/,
       std::vector<std::uint16_t> const& dist_to_dest,
-      hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
+      hash_map<location_idx_t, std::vector<td_offset>> const& /*td_dist_to_dest*/,
       std::vector<std::uint16_t> const& lb,
-      std::vector<via_stop> const& via_stops,
-      day_idx_t base_day,
-      clasz_mask_t allowed_claszes,
-      bool require_bike_transport,
-      bool require_car_transport,
-      bool is_wheelchair,
-      transfer_time_settings const& tts);
+      std::vector<via_stop> const& /*via_stops*/,
+      day_idx_t /*base_day*/,
+      clasz_mask_t /*allowed_claszes*/,
+      bool /*require_bike_transport*/,
+      bool /*require_car_transport*/,
+      bool /*is_wheelchair*/,
+      transfer_time_settings const& /*tts*/);
 
   algo_stats_t get_stats() const { return stats_; }
 
@@ -63,7 +63,7 @@ struct a_star_search {
   void execute(unixtime_t start_time,
                uint8_t max_transfers,
                unixtime_t worst_time_at_dest,
-               profile_idx_t prf_idx,
+               profile_idx_t /*prf_idx*/,
                pareto_set<journey>& journeys);
 
   void progress_neighbor_segment(tb::segment_idx_t current,
@@ -85,8 +85,8 @@ struct a_star_search {
   void reconstruct(query const& q, journey& j);
 
   timetable const& tt_;
-  bitvec const& is_dest_;
   tb::query_state& state_;
+  bitvec const& is_dest_;
   tb::query_stats stats_;
   std::vector<std::uint16_t> const& lower_bounds_;
   using bucket_fn = std::function<std::size_t(open_set_element)>;
