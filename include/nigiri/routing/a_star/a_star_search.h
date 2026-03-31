@@ -22,22 +22,22 @@ struct a_star_search {
   static constexpr bool kUseLowerBounds = true;
   using algo_state_t = tb::query_state;
   using algo_stats_t = tb::query_stats;
-  a_star_search(
-      timetable const& tt,
-      rt_timetable const* /*rtt*/,
-      tb::query_state& state,
-      bitvec const& is_dest,
-      std::array<bitvec, kMaxVias> const& /*is_via*/,
-      std::vector<std::uint16_t> const& dist_to_dest,
-      hash_map<location_idx_t, std::vector<td_offset>> const& /*td_dist_to_dest*/,
-      std::vector<std::uint16_t> const& lb,
-      std::vector<via_stop> const& /*via_stops*/,
-      day_idx_t /*base_day*/,
-      clasz_mask_t /*allowed_claszes*/,
-      bool /*require_bike_transport*/,
-      bool /*require_car_transport*/,
-      bool /*is_wheelchair*/,
-      transfer_time_settings const& /*tts*/);
+  a_star_search(timetable const& tt,
+                rt_timetable const* /*rtt*/,
+                tb::query_state& state,
+                bitvec const& is_dest,
+                std::array<bitvec, kMaxVias> const& /*is_via*/,
+                std::vector<std::uint16_t> const& dist_to_dest,
+                hash_map<location_idx_t,
+                         std::vector<td_offset>> const& /*td_dist_to_dest*/,
+                std::vector<std::uint16_t> const& lb,
+                std::vector<via_stop> const& /*via_stops*/,
+                day_idx_t /*base_day*/,
+                clasz_mask_t /*allowed_claszes*/,
+                bool /*require_bike_transport*/,
+                bool /*require_car_transport*/,
+                bool /*is_wheelchair*/,
+                transfer_time_settings const& /*tts*/);
 
   algo_stats_t get_stats() const { return stats_; }
 
@@ -46,7 +46,6 @@ struct a_star_search {
   void next_start_time() {
     segment_day_.clear();
     arrival_times_.clear();
-    num_transfers_until_segment_.clear();
     num_transfers_until_segment_.clear();
     came_from_.clear();
     to_location_.clear();

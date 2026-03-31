@@ -131,8 +131,10 @@ void a_star_search::execute(unixtime_t start_time,
   // In the "Praktikum Algorithmen" lab, a journey can't take more than 24h (=
   // 1440 min). On top of that, there are certainly not more than 10 transfers.
   cost_upper_bound_ =
-      std::min(1440, (worst_time_at_dest - start_time).count()) +
-      std::min(10, static_cast<int>(max_transfers)) * ALPHA;
+      static_cast<size_t>(
+          std::min(1440, (worst_time_at_dest - start_time).count())) +
+      static_cast<size_t>(std::min(10, static_cast<int>(max_transfers))) *
+          ALPHA;
   for (auto [segment, et] : potential_starts_) {
     open_set_element el{element_type::SEGMENT, segment};
     auto [from, to] = get_segment_locations(segment);
@@ -152,14 +154,14 @@ void a_star_search::execute(unixtime_t start_time,
     auto el = open_set_.top();
     auto current = el.seg;
     open_set_.pop();
-    if (closed_set_.test(current)) {
-      continue;
-    }
     auto [from, to] = get_segment_locations(current);
     if (el.type == element_type::FINAL_FOOTPATH || is_dest_[to_idx(to)]) {
       journey_found_ = true;
       end_segment_ = current;
       break;
+    }
+    if (closed_set_.test(current)) {
+      continue;
     }
     closed_set_.set(current);
     if (arrival_times_[current] < worst_time_at_dest &&
@@ -194,7 +196,7 @@ void a_star_search::reconstruct(query const& q, journey& j) {
   location_idx_t first_location_on_current_trip{0};
   stop_idx_t first_stop_on_current_trip{0};
   tb::segment_idx_t first_segment_on_current_trip{0};
-  for (size_t i = 0; i < path_segments.size(); i++) {
+  for (auto i = std::size_t{0}; i < path_segments.size(); ++i) {
     tb::segment_idx_t seg = path_segments[i];
     auto [start_location, end_location] = get_segment_locations(seg);
 
@@ -327,7 +329,8 @@ void a_star_search::expand_node(tb::segment_idx_t current) {
   for (auto neighbor_transfer : state_.tbd_.segment_transfers_[current]) {
     auto neighbor = neighbor_transfer.to_segment_;
     auto new_neighbor_day =
-        segment_day_[current] + neighbor_transfer.get_day_offset();
+        segment_day_[current] +
+        static_cast<day_idx_t>(neighbor_transfer.get_day_offset());
     if (state_.tbd_.bitfields_[neighbor_transfer.traffic_days_].test(
             to_idx(segment_day_[current]))) {
       progress_neighbor_segment(current, neighbor, new_neighbor_day, false);
@@ -396,13 +399,13 @@ size_t a_star_search::cost_function(open_set_element el,
                                     uint32_t num_transfers_until_segment) {
   if (el.type == element_type::SEGMENT) {
     auto to_location_idx = to_idx(to_location_.at(el.seg));
-    return (arrival_time - start_time_).count() +
+    return static_cast<size_t>((arrival_time - start_time_).count()) +
            ALPHA * num_transfers_until_segment +
            lower_bounds_.at(to_location_idx);
   } else {
-    return (arrival_time - start_time_).count() +
+    return static_cast<size_t>((arrival_time - start_time_).count()) +
            ALPHA * num_transfers_until_segment +
-           state_.dist_to_dest_.at(el.seg).count();
+           static_cast<size_t>(state_.dist_to_dest_.at(el.seg).count());
   }
 }
 
