@@ -127,7 +127,7 @@ timetable load_gtfs(auto const& files, interval<sys_days> const date_range) {
 TEST(routing, lb_transit_legs) {
   auto const tt = load_gtfs(lb_test_tt, kGtfsDateRange);
   auto rtt = rt::create_rt_timetable(tt, sys_days{2026_y / February / 27});
-  auto const q = query{
+  auto q = query{
       .start_time_ = unixtime_t{sys_days{February / 27 / 2026}},
       .start_ = {{tt.locations_.location_id_to_idx_.at({"P", source_idx_t{0U}}),
                   3_minutes, 0U}},
@@ -164,4 +164,21 @@ TEST(routing, lb_transit_legs) {
   EXPECT_EQ(get_lb("D1"), 3U);
   EXPECT_EQ(get_lb("X"), 3U);
   EXPECT_EQ(get_lb("Y"), 3U);
+
+  q.flip_dir();
+  lb_transit_legs<direction::kBackward>(tt, q, state, lb);
+
+  ASSERT_EQ(lb.size(), tt.n_locations());
+  EXPECT_EQ(get_lb("T"), 2U);
+  EXPECT_EQ(get_lb("D3"), 4U);
+  EXPECT_EQ(get_lb("C2"), 3U);
+  EXPECT_EQ(get_lb("B1"), 2U);
+  EXPECT_EQ(get_lb("S"), 1U);
+  EXPECT_EQ(get_lb("F"), 1U);
+  EXPECT_EQ(get_lb("P"), 0U);
+  EXPECT_EQ(get_lb("D2"), 3U);
+  EXPECT_EQ(get_lb("C1"), 2U);
+  EXPECT_EQ(get_lb("D1"), 2U);
+  EXPECT_EQ(get_lb("X"), std::numeric_limits<uint8_t>::max());
+  EXPECT_EQ(get_lb("Y"), std::numeric_limits<uint8_t>::max());
 }

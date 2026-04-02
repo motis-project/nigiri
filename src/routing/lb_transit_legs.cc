@@ -11,6 +11,8 @@ void lb_transit_legs(timetable const& tt,
                      std::vector<std::uint8_t>& lb) {
   constexpr auto kFwd = SearchDir == direction::kForward;
 
+  auto const start_time = std::chrono::steady_clock::now();
+
   // init
   state.station_mark_.resize(tt.n_locations());
   utl::fill(state.station_mark_.blocks_, 0U);
@@ -102,7 +104,9 @@ void lb_transit_legs(timetable const& tt,
     }
   }
 
-  fmt::println("all stations reached after {} rounds", k);
+  fmt::println("all stations reached after {} rounds, {}", k,
+               std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now() - start_time));
 }
 
 template void lb_transit_legs<direction::kForward>(timetable const&,
