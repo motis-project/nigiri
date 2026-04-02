@@ -1,14 +1,14 @@
-#include "nigiri/routing/min_legs.h"
+#include "nigiri/routing/lb_transit_legs.h"
 
 #include "nigiri/for_each_meta.h"
 
 namespace nigiri::routing {
 
 template <direction SearchDir>
-void min_rounds(timetable const& tt,
-                query const& q,
-                raptor_state& state,
-                std::vector<std::uint8_t>& min_legs) {
+void lb_transit_legs(timetable const& tt,
+                     query const& q,
+                     raptor_state& state,
+                     std::vector<std::uint8_t>& lb) {
   constexpr auto kFwd = SearchDir == direction::kForward;
 
   // init
@@ -16,13 +16,13 @@ void min_rounds(timetable const& tt,
   utl::fill(state.station_mark_.blocks_, 0U);
   state.prev_station_mark_.resize(tt.n_locations());
   state.route_mark_.resize(tt.n_routes());
-  min_legs.resize(tt.n_locations());
-  utl::fill(min_legs, std::numeric_limits<std::uint8_t>::max());
+  lb.resize(tt.n_locations());
+  utl::fill(lb, std::numeric_limits<std::uint8_t>::max());
 
   // k = 0
   auto const set_terminal = [&](auto const i) {
     state.station_mark_.set(i, true);
-    min_legs[i] = 0U;
+    lb[i] = 0U;
   };
 
   for (auto const& o : q.destination_) {
@@ -78,11 +78,20 @@ void min_rounds(timetable const& tt,
              0 <= out && out < static_cast<std::int32_t>(seq.size());
              out += step) {
           auto const l_out = stop{seq[out]}.location_idx();
-          if (k < min_legs[to_idx(l_out)]) {
-            min_legs[to_idx(l_out)] = k;
+          if (k < lb[to_idx(l_out)]) {
+            lb[to_idx(l_out)] = k;
             state.station_mark_.set(to_idx(l_out), true);
             any_marked = true;
-          } else if (k > min_legs[to_idx(l_out)]) {
+            for (auto const fp :
+                 kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][l_out]
+                      : tt.locations_.footpaths_out_[q.prf_idx_][l_out]) {
+              if (k < lb[to_idx(fp.target())]) {
+                lb[to_idx(fp.target())] = k;
+                state.station_mark_.set(to_idx(fp.target()), true);
+              }
+            }
+
+          } else if (k > lb[to_idx(l_out)]) {
             break;
           }
         }
@@ -96,13 +105,13 @@ void min_rounds(timetable const& tt,
   fmt::println("all stations reached after {} rounds", k);
 }
 
-template void min_rounds<direction::kForward>(timetable const&,
-                                              query const&,
-                                              raptor_state&,
-                                              std::vector<std::uint8_t>&);
-template void min_rounds<direction::kBackward>(timetable const&,
-                                               query const&,
-                                               raptor_state&,
-                                               std::vector<std::uint8_t>&);
+template void lb_transit_legs<direction::kForward>(timetable const&,
+                                                   query const&,
+                                                   raptor_state&,
+                                                   std::vector<std::uint8_t>&);
+template void lb_transit_legs<direction::kBackward>(timetable const&,
+                                                    query const&,
+                                                    raptor_state&,
+                                                    std::vector<std::uint8_t>&);
 
 }  // namespace nigiri::routing
