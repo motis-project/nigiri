@@ -1,0 +1,108 @@
+#include "nigiri/routing/min_legs.h"
+
+#include "nigiri/for_each_meta.h"
+
+namespace nigiri::routing {
+
+template <direction SearchDir>
+void min_rounds(timetable const& tt,
+                query const& q,
+                raptor_state& state,
+                std::vector<std::uint8_t>& min_legs) {
+  constexpr auto kFwd = SearchDir == direction::kForward;
+
+  // init
+  state.station_mark_.resize(tt.n_locations());
+  utl::fill(state.station_mark_.blocks_, 0U);
+  state.prev_station_mark_.resize(tt.n_locations());
+  state.route_mark_.resize(tt.n_routes());
+  min_legs.resize(tt.n_locations());
+  utl::fill(min_legs, std::numeric_limits<std::uint8_t>::max());
+
+  // k = 0
+  auto const set_terminal = [&](auto const i) {
+    state.station_mark_.set(i, true);
+    min_legs[i] = 0U;
+  };
+
+  for (auto const& o : q.destination_) {
+    for_each_meta(
+        tt, q.dest_match_mode_, o.target(),
+        [&](location_idx_t const meta) { set_terminal(to_idx(meta)); });
+  }
+
+  for (auto const& [l, tds] : q.td_dest_) {
+    for (auto const& td : tds) {
+      if (td.duration() != footpath::kMaxDuration &&
+          td.duration() < q.max_travel_time_) {
+        for_each_meta(
+            tt, q.dest_match_mode_, l,
+            [&](location_idx_t const meta) { set_terminal(to_idx(meta)); });
+      }
+    }
+  }
+
+  // run
+  auto k = 1U;
+  for (; k != std::min(q.max_transfers_, kMaxTransfers) + 2U; ++k) {
+    utl::fill(state.route_mark_.blocks_, 0U);
+
+    auto any_marked = false;
+    state.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+      for (auto const r : tt.location_routes_[location_idx_t{i}]) {
+        any_marked = true;
+        state.route_mark_.set(to_idx(r), true);
+      }
+    });
+    if (!any_marked) {
+      break;
+    }
+
+    std::swap(state.prev_station_mark_, state.station_mark_);
+    utl::fill(state.station_mark_.blocks_, 0U);
+
+    any_marked = false;
+    state.route_mark_.for_each_set_bit([&](std::uint64_t const i) {
+      auto const r = route_idx_t{i};
+      auto const& seq = tt.route_location_seq_[r];
+      for (auto x = 0U; x != seq.size(); ++x) {
+        auto const in = kFwd ? seq.size() - x - 1U : x;
+        auto const l_in = stop{seq[in]}.location_idx();
+
+        if (!state.prev_station_mark_.test(to_idx(l_in))) {
+          continue;
+        }
+
+        auto const step = kFwd ? -1 : 1;
+        for (auto out = static_cast<std::int32_t>(in + step);
+             0 <= out && out < static_cast<std::int32_t>(seq.size());
+             out += step) {
+          auto const l_out = stop{seq[out]}.location_idx();
+          if (k < min_legs[to_idx(l_out)]) {
+            min_legs[to_idx(l_out)] = k;
+            state.station_mark_.set(to_idx(l_out), true);
+            any_marked = true;
+          } else if (k > min_legs[to_idx(l_out)]) {
+            break;
+          }
+        }
+      }
+    });
+    if (!any_marked) {
+      break;
+    }
+  }
+
+  fmt::println("all stations reached after {} rounds", k);
+}
+
+template void min_rounds<direction::kForward>(timetable const&,
+                                              query const&,
+                                              raptor_state&,
+                                              std::vector<std::uint8_t>&);
+template void min_rounds<direction::kBackward>(timetable const&,
+                                               query const&,
+                                               raptor_state&,
+                                               std::vector<std::uint8_t>&);
+
+}  // namespace nigiri::routing
