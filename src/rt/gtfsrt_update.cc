@@ -602,9 +602,9 @@ void calculate_delay_simple(timetable const& tt,
         delay_prediction->delay_prediction_store != nullptr) {
       delay_prediction_storage::prediction_snapshot ps{vp_ts, predicted_delays,
                                                        predicted_delays_min};
-      auto sd =
-          td.has_start_date() ? td.start_date() : date::format("%Y%m%d", today);
-      delay_prediction->delay_prediction_store->trip_delays[td.trip_id() + sd]
+
+      auto const trip_key = td.trip_id() + ":" + td.start_date();
+      delay_prediction->delay_prediction_store->trip_delays[trip_key]
           .emplace_back(ps);
     }
 
@@ -802,22 +802,6 @@ void calculate_delay_intelligent(
             ->n_jumped_over_stps_sgmts[jump_size]++;
       }
 
-      uint64_t vp_pairs_count = 0;
-      for (auto const count :
-           delay_prediction->delay_prediction_store->n_jumped_over_stps_sgmts) {
-        vp_pairs_count += count;
-      }
-
-      auto const old_avg = delay_prediction->delay_prediction_store
-                               ->avg_time_between_vps.count();
-      auto const new_avg =
-          vp_pairs_count <= 1
-              ? delta.count()
-              : (old_avg * (vp_pairs_count - 1) + delta.count()) /
-                    vp_pairs_count;
-      delay_prediction->delay_prediction_store->avg_time_between_vps =
-          duration_t{static_cast<int32_t>(new_avg)};
-
       // If the vehicle is near the stop, add time since last tsd to the stop
       // duration, otherwise to the segment duration
       if (geo::approx_squared_distance(
@@ -868,7 +852,7 @@ void calculate_delay_intelligent(
       delay_prediction->hist_trip_time_store->ttd_idx_trip_time_data_
           .emplace_back(new_ttd);
     }
-
+    
     if (kalman.predecessors_.size() !=
             delay_prediction->number_of_predecessors ||
         kalman.hist_trips_.size() != delay_prediction->number_of_hist_trips) {
@@ -1130,9 +1114,9 @@ void calculate_delay_intelligent(
         delay_prediction->delay_prediction_store != nullptr) {
       delay_prediction_storage::prediction_snapshot ps{vp_ts, predicted_delays,
                                                        predicted_delays_min};
-      auto sd =
-          td.has_start_date() ? td.start_date() : date::format("%Y%m%d", today);
-      delay_prediction->delay_prediction_store->trip_delays[td.trip_id() + sd]
+
+      auto const trip_key = td.trip_id() + ":" + td.start_date();
+      delay_prediction->delay_prediction_store->trip_delays[trip_key]
           .emplace_back(ps);
     }
     ++stats.total_entities_success_;

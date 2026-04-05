@@ -47,98 +47,6 @@ date::sys_days extract_date(std::string const& s) {
 
 }  // namespace
 
-TEST(rt, gtfsrt_tu_delay_file_data) {
-  auto const base_dir = std::filesystem::path{"test/test_data/tripUpdates"};
-
-  std::vector<std::filesystem::path> pb_dirs;
-
-  for (auto const& entry : std::filesystem::directory_iterator{base_dir}) {
-    if (entry.is_directory()) {
-      pb_dirs.push_back(entry.path());
-    }
-  }
-
-  std::ranges::sort(pb_dirs);
-
-  std::map<std::string, std::map<uint32_t, std::string>> trip_delays;
-
-  for (auto const& pb_dir : pb_dirs) {
-    std::cout << "Processing " << pb_dir << std::endl;
-
-    std::vector<std::filesystem::path> pb_files;
-    for (auto const& entry :
-         std::filesystem::recursive_directory_iterator{pb_dir}) {
-      if (entry.is_regular_file() && entry.path().extension() == ".pb") {
-        pb_files.push_back(entry.path());
-      }
-    }
-    std::ranges::sort(pb_files);
-
-    int file_counter = 0;
-    int number_of_files = static_cast<int>(pb_files.size());
-    for (auto const& pb_file : pb_files) {
-      std::cout << "  Processing file " << file_counter << "/"
-                << number_of_files << std::endl;
-      file_counter++;
-
-      std::ifstream ifs{pb_file, std::ios::binary};
-      std::string const content{std::istreambuf_iterator<char>{ifs},
-                                std::istreambuf_iterator<char>{}};
-
-      transit_realtime::FeedMessage msg;
-      msg.ParseFromString(content);
-
-      auto const file_name = pb_file.filename().string();
-
-      for (auto const& entity : msg.entity()) {
-        if (entity.has_trip_update() && entity.trip_update().has_trip() &&
-            entity.trip_update().trip().has_trip_id()) {
-
-          auto const& tu = entity.trip_update();
-          auto const& trip_id_str = tu.trip().trip_id();
-
-          if (trip_id_str.empty()) {
-            continue;
-          }
-          std::string trip_id = trip_id_str;
-
-          for (auto const& stu : tu.stop_time_update()) {
-            uint32_t seq = stu.has_stop_sequence() ? stu.stop_sequence() : 0;
-
-            std::string log_msg = "[" + file_name + "] Stop: " +
-                                  (stu.has_stop_id() ? stu.stop_id() : "?");
-            bool has_arr_delay = stu.has_arrival() && stu.arrival().has_delay();
-            bool has_dep_delay =
-                stu.has_departure() && stu.departure().has_delay();
-
-            if (has_arr_delay) {
-              log_msg +=
-                  " Arr Delay: " + std::to_string(stu.arrival().delay() / 60);
-            }
-            if (has_dep_delay) {
-              log_msg +=
-                  " Dep Delay: " + std::to_string(stu.departure().delay() / 60);
-            }
-
-            if (has_arr_delay || has_dep_delay) {
-              trip_delays[trip_id][seq] = log_msg;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  std::ofstream out{"trip_updates_delays.txt"};
-  for (auto const& [trip_id, stops] : trip_delays) {
-    out << "Trip: " << trip_id << "\n";
-    for (auto const& [seq, d] : stops) {
-      out << "  Seq " << seq << ": " << d << "\n";
-    }
-    out << "\n";
-  }
-  std::cout << "Dumped delays to trip_updates_delays.txt\n";
-}
 
 TEST(rt, gtfsrt_rt_delay_calc_file_data) {
   nigiri::s_verbosity = nigiri::log_lvl::error;
@@ -186,7 +94,7 @@ TEST(rt, gtfsrt_rt_delay_calc_file_data) {
     return;
   }
 
-  std::map<std::string, std::vector<unixtime_t>> actual_delays;
+  std::unordered_map<std::string, std::vector<unixtime_t>> actual_delays;
 
   struct error_stat {
     long long total_abs_error_min{0};
@@ -279,7 +187,7 @@ TEST(rt, gtfsrt_rt_delay_calc_file_data) {
               continue;
             }
 
-            auto const trip_key = tu.trip().trip_id() + tu.trip().start_date();
+            auto const trip_key = tu.trip().trip_id() + ":" + tu.trip().start_date();
             if (actual_delays[trip_key].size() < r.stop_range_.size() * 2U) {
               actual_delays[trip_key].resize(r.stop_range_.size() * 2U,
                                              unixtime_t{});
@@ -443,7 +351,7 @@ TEST(rt, gtfsrt_rt_delay_calc_file_data) {
     std::ofstream predicted_out{intelligent_file_name};
     if (predicted_out) {
       for (auto const& [trip_id, snaps] : dps.trip_delays) {
-        predicted_out << trip_id.substr(0, trip_id.size() - 6) << "\n";
+        predicted_out << trip_id << "\n";
         for (auto const& snap : snaps) {
           auto const meas_str =
               date::format("%Y-%m-%d %H:%M:%S", snap.measurement_time);
@@ -492,8 +400,6 @@ TEST(rt, gtfsrt_rt_delay_calc_file_data) {
         << "\n";
     out << "Number of used VehiclePositions intelligent: " << dps.n_vp << "\n";
     out << "Number of used VehiclePositions K1: " << dps.n_vp_k1 << "\n";
-    out << "Average time between VehiclePositions: "
-        << dps.avg_time_between_vps.count() << "\n";
     for (uint16_t i = 0; i < dps.n_jumped_over_stps_sgmts.size(); ++i) {
       if (dps.n_jumped_over_stps_sgmts[i] > 0) {
         out << "Number of " << i << " hops: " << dps.n_jumped_over_stps_sgmts[i]

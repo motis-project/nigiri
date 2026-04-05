@@ -1742,13 +1742,11 @@ TEST(rt, gtfsrt_rt_delay_calc) {
   }
   std::cout << "\n Number of used VehiclePositions: " << dps.n_vp << "\n";
   std::cout << "\n Number of used VehiclePositions K1: " << dps.n_vp_k1 << "\n";
-  std::cout << "\n Average time between VehilcePositions: "
-            << dps.avg_time_between_vps << "\n";
+
   for (unsigned long i = 0; i < dps.n_jumped_over_stps_sgmts.size(); ++i) {
     if (dps.n_jumped_over_stps_sgmts[i] > 0) {
       std::cout << "Number of " << i
                 << " hops: " << dps.n_jumped_over_stps_sgmts[i] << "\n";
     }
   }
-  std::cout << "\n Number of used VehiclePositions K1: " << dps.n_vp_k1 << "\n";
 }

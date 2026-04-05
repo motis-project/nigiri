@@ -158,14 +158,13 @@ struct delay_prediction_storage {
   };
 
   // trip_id + start_date (as string) -> array of snapshots over time
-  std::map<std::string, vector<prediction_snapshot>> trip_delays;
+  std::unordered_map<std::string, vector<prediction_snapshot>> trip_delays;
 
   uint32_t n_vp;
   uint32_t n_vp_k1;
 
-  duration_t avg_time_between_vps;
-  std::vector<uint16_t> n_jumped_over_stps_sgmts =
-      std::vector<uint16_t>(1000, 0);
+  std::vector<uint64_t> n_jumped_over_stps_sgmts =
+      std::vector<uint64_t>(1000, 0);
 
   trip_delay_pred& get_or_create_kalman(key, unixtime_t, uint32_t, uint32_t,
                                         uint32_t, hist_trip_times_storage*);
