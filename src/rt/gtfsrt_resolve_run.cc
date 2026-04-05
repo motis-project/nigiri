@@ -105,11 +105,15 @@ run gtfsrt_vp_resolve_run(timetable const& tt,
   auto new_stop_loc = location_idx_t::invalid();
 
   if (vp.has_stop_id()) {
-    new_stop_loc = tt.find(location_id{vp.stop_id(), src})
-                       .value_or(location_idx_t::invalid());
+    auto const loc_it =
+        tt.locations_.location_id_to_idx_.find({vp.stop_id(), src});
+    if (loc_it != end(tt.locations_.location_id_to_idx_)) {
+      new_stop_loc = loc_it->second;
+    }
   }
   if (!vp.has_stop_id() || new_stop_loc == location_idx_t::invalid()) {
-    if (!vp.has_position() || !vp.position().has_latitude() || !vp.position().has_longitude()) {
+    if (!vp.has_position() || !vp.position().has_latitude() ||
+        !vp.position().has_longitude()) {
       return run{};
     }
     auto const vp_pos =

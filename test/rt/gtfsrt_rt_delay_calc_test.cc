@@ -1667,32 +1667,31 @@ TEST(rt, gtfsrt_rt_delay_calc) {
   ss_dps << dps;
   std::cout << ss_dps.str() << std::endl;
 
-  tts.dump_delays(tt, rtt);
-
   // simple
 
   // Load static timetable.
   timetable tt2;
   register_special_stations(tt2);
   tt2.date_range_ = {date::sys_days{2026_y / January / 1},
-                    date::sys_days{2026_y / February / 6}};
+                     date::sys_days{2026_y / February / 6}};
   load_timetable({}, source_idx_t{0}, test_files(), tt2);
   finalize(tt2);
 
-  auto rtt2 = rt::create_rt_timetable(tt2, date::sys_days{2026_y / February / 5});
+  auto rtt2 =
+      rt::create_rt_timetable(tt2, date::sys_days{2026_y / February / 5});
 
   auto tts2 = hist_trip_times_storage{};
   auto vtm2 = vehicle_trip_matching{};
   auto dps2 = delay_prediction_storage{};
 
   auto dp2 = delay_prediction{algorithm::kSimple,
-                             hist_trip_mode::kSameDay,
-                             1,
-                             5,
-                             &dps2,
-                             &tts2,
-                             &vtm2,
-                             true};
+                              hist_trip_mode::kSameDay,
+                              1,
+                              5,
+                              &dps2,
+                              &tts2,
+                              &vtm2,
+                              true};
 
   // Historic updates (inject previous days)
   gtfsrt_update_buf(tt2, rtt2, source_idx_t{0}, "", msg01, &dp2);
@@ -1713,4 +1712,43 @@ TEST(rt, gtfsrt_rt_delay_calc) {
   gtfsrt_update_buf(tt2, rtt2, source_idx_t{0}, "", msg07_6, &dp2);
   gtfsrt_update_buf(tt2, rtt2, source_idx_t{0}, "", msg07_6b, &dp2);
   gtfsrt_update_buf(tt2, rtt2, source_idx_t{0}, "", msg07_7, &dp2);
+
+  std::string const intelligent_file_name = "predicted_delays_intelligent.txt";
+  std::ofstream predicted_out{intelligent_file_name};
+  if (predicted_out) {
+    for (auto const& [trip_id, snaps] : dps.trip_delays) {
+      predicted_out << "Trip: " << trip_id << "\n";
+      for (auto const& snap : snaps) {
+        predicted_out << "  Measurement Time: "
+                      << date::format("%Y-%m-%d %H:%M:%S",
+                                      snap.measurement_time)
+                      << "\n";
+        for (size_t i = 0; i < snap.stop_delays.size(); ++i) {
+          if (snap.stop_delays[i].has_value()) {
+            if (i % 2 == 0) {
+              predicted_out << "    Arr at stop seq " << (i / 2) << ": "
+                            << snap.stop_delays[i].value().count()
+                            << " min delay\n";
+            } else {
+              predicted_out << "    Dep at stop seq " << (i / 2) << ": "
+                            << snap.stop_delays[i].value().count()
+                            << " min delay\n";
+            }
+          }
+        }
+      }
+      predicted_out << "\n";
+    }
+  }
+  std::cout << "\n Number of used VehiclePositions: " << dps.n_vp << "\n";
+  std::cout << "\n Number of used VehiclePositions K1: " << dps.n_vp_k1 << "\n";
+  std::cout << "\n Average time between VehilcePositions: "
+            << dps.avg_time_between_vps << "\n";
+  for (unsigned long i = 0; i < dps.n_jumped_over_stps_sgmts.size(); ++i) {
+    if (dps.n_jumped_over_stps_sgmts[i] > 0) {
+      std::cout << "Number of " << i
+                << " hops: " << dps.n_jumped_over_stps_sgmts[i] << "\n";
+    }
+  }
+  std::cout << "\n Number of used VehiclePositions K1: " << dps.n_vp_k1 << "\n";
 }

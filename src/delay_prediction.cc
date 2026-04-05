@@ -1,9 +1,10 @@
 #include "nigiri/delay_prediction.h"
-#include "nigiri/timetable.h"
 #include "nigiri/rt/frun.h"
+#include "nigiri/timetable.h"
 
 #include <cfloat>
 
+#include "nigiri/common/day_list.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -31,7 +32,7 @@ void vehicle_trip_matching::clean_up() {
 // if not: check if similar enough coord_seq exists (find_duplicates())
 // if not: create new index and add entries to data structures
 coord_seq_idx_t hist_trip_times_storage::match_trip_to_coord_seq(
-    timetable const& tt, key k, vector<location_idx_t> coord_seq) {
+    key k, vector<geo::latlng> coord_seq) {
 
   if (cs_key_coord_seq_.contains(k)) {
     // key already exists
@@ -46,8 +47,9 @@ coord_seq_idx_t hist_trip_times_storage::match_trip_to_coord_seq(
     }
 
     for (unsigned long i = 0; i < bucket.size(); ++i) {
-      if (!routing::matches(tt, routing::location_match_mode::kEquivalent,
-                            bucket[i], coord_seq[static_cast<uint32_t>(i)])) {
+      if (geo::approx_squared_distance(
+              bucket[i], coord_seq[static_cast<uint32_t>(i)],
+              geo::approx_distance_lng_degrees(bucket[i])) > 20) {
         break;
       }
       if (i == bucket.size() - 1) {
@@ -67,22 +69,52 @@ coord_seq_idx_t hist_trip_times_storage::match_trip_to_coord_seq(
 }
 
 std::tuple<segment_idx_t, double, geo::latlng>
-hist_trip_times_storage::get_segment_progress(timetable const& tt,
-                                              geo::latlng vehicle_position,
-                                              coord_seq_idx_t coord_seq_idx) {
+hist_trip_times_storage::get_segment_progress(
+    geo::latlng vehicle_position,
+    coord_seq_idx_t coord_seq_idx,
+    std::optional<uint32_t> vp_next_stop) {
 
   auto const app_dist_lng_deg_vp =
       geo::approx_distance_lng_degrees(vehicle_position);
+
+  auto const& route_coords = coord_seq_idx_coord_seq_[coord_seq_idx];
+
+  // use vp_next_stop if available and seems reasonable, otherwise calculate
+  // closest segment
+  if (vp_next_stop.has_value() && *vp_next_stop > 0 &&
+      *vp_next_stop < route_coords.size()) {
+    auto const segment_to_idx = *vp_next_stop;
+    auto const segment_from_idx = segment_to_idx - 1;
+
+    auto const segment_from_pos = route_coords[segment_from_idx];
+    auto const segment_to_pos = route_coords[segment_to_idx];
+
+    auto const closest =
+        geo::approx_closest_on_segment(vehicle_position, segment_from_pos,
+                                       segment_to_pos, app_dist_lng_deg_vp);
+
+    auto const adld = geo::approx_distance_lng_degrees(closest.first);
+
+    auto const progress = std::sqrt(
+        geo::approx_squared_distance(closest.first, segment_from_pos, adld) /
+        std::max(0.0000000001, geo::approx_squared_distance(
+                                   segment_to_pos, segment_from_pos, adld)));
+
+    auto const nearest_stop =
+        progress < 0.5 ? segment_from_pos : segment_to_pos;
+
+    return {static_cast<segment_idx_t>(segment_from_idx), progress,
+            nearest_stop};
+  }
+
   std::pair closest = {geo::latlng{0, 0}, DBL_MAX};
 
-  auto segment_from = coord_seq_idx_coord_seq_[coord_seq_idx].begin();
-  for (auto segment_to = coord_seq_idx_coord_seq_[coord_seq_idx].begin() + 1;
-       segment_to != coord_seq_idx_coord_seq_[coord_seq_idx].end();
-       ++segment_to) {
+  auto segment_from = route_coords.begin();
+  for (auto segment_to = route_coords.begin() + 1;
+       segment_to != route_coords.end(); ++segment_to) {
 
     auto const segment_to_test = geo::approx_closest_on_segment(
-        vehicle_position, tt.locations_.coordinates_[*segment_from],
-        tt.locations_.coordinates_[*segment_to], app_dist_lng_deg_vp);
+        vehicle_position, *segment_from, *segment_to, app_dist_lng_deg_vp);
 
     if (closest.second < segment_to_test.second) {
       break;
@@ -94,11 +126,12 @@ hist_trip_times_storage::get_segment_progress(timetable const& tt,
 
   auto const adld = geo::approx_distance_lng_degrees(closest.first);
 
-  auto const segment_from_pos = tt.locations_.coordinates_[*segment_from - 1];
-  auto const segment_to_pos = tt.locations_.coordinates_[*segment_from];
-  auto const progress =
+  auto const segment_from_pos = *(segment_from - 1);
+  auto const segment_to_pos = *segment_from;
+  auto const progress = std::sqrt(
       geo::approx_squared_distance(closest.first, segment_from_pos, adld) /
-      geo::approx_squared_distance(segment_to_pos, segment_from_pos, adld);
+      std::max(0.0000000001, geo::approx_squared_distance(
+                                 segment_to_pos, segment_from_pos, adld)));
 
   auto const nearest_stop = progress < 0.5 ? segment_from_pos : segment_to_pos;
 
@@ -110,85 +143,26 @@ hist_trip_times_storage::get_segment_progress(timetable const& tt,
 
 duration_t hist_trip_times_storage::get_remaining_time_till_next_stop(
     trip_seg_data const* tsd, trip_time_data const* ttd) {
-  auto last_tsd_before_stop =
-      std::find_if(ttd->seg_data_.rbegin(), ttd->seg_data_.rend(),
-                   [tsd](auto const check_if_last_tsd) {
-                     return tsd->seg_idx == check_if_last_tsd.seg_idx;
-                   });
-
-  if (last_tsd_before_stop == ttd->seg_data_.rend()) {
-    // should not happen, but if it does, return 0 remaining time
-    return duration_t{0};
+  if (ttd->seg_data_.empty()) {
+    return duration_t{-1};
   }
-  return last_tsd_before_stop->timestamp - tsd->timestamp;
-}
-
-void hist_trip_times_storage::dump_delays(timetable const& tt, rt_timetable& rtt) const {
-  auto const& rtt_const = rtt;
-
-  std::ofstream intelligent_calc_out{"intelligent_actual.txt",
-                                     std::ios_base::app};
-  if (std::filesystem::is_empty("intelligent_actual.txt")) {
-    intelligent_calc_out << "trip_id,stop_id,event,delay\n";
+  auto ptr = tsd;
+  while (ptr < &ttd->seg_data_.back() && (ptr + 1)->seg_idx == tsd->seg_idx) {
+    ++ptr;
   }
-
-  for (auto const& [key, coord_seq_idx] : cs_key_coord_seq_) {
-    auto const t = key.t;
-    auto const fr = rt::frun::from_t(tt, &rtt_const, t);
-    auto const t_start_time = tt.event_time(t, stop_idx_t{0}, event_type::kDep);
-
-    auto ttd_idx = std::find_if(
-        coord_seq_idx_ttd_[coord_seq_idx].begin(),
-        coord_seq_idx_ttd_[coord_seq_idx].end(), [&](auto const ttd) {
-          return t_start_time == ttd_idx_trip_time_data_[ttd].start_timestamp;
-        });
-
-    if (ttd_idx == coord_seq_idx_ttd_[coord_seq_idx].end()) {
-      continue;
-    }
-    auto const ttd = ttd_idx_trip_time_data_[*ttd_idx];
-    if (static_cast<unsigned int>(fr.stop_range_.size()) != ttd.segment_durations_.size() + 1) {
-      continue;
-    }
-
-    auto delay = duration_t{0};
-    auto actual_time = t_start_time;
-
-    for (auto const& stop : fr.stop_range_) {
-      auto scheduled_arrival = unixtime_t{};
-      auto scheduled_departure = unixtime_t{};
-
-      if (stop == stop_idx_t{0}) {
-        actual_time += ttd.stop_durations_[stop];
-        delay = ttd.stop_durations_[stop];
-        intelligent_calc_out << fr.trip_idx() << "," << stop << ",dep," << delay.count() << "\n";
-      }
-      else if (stop == stop_idx_t{*(--fr.stop_range_.end())}) {
-        scheduled_arrival = tt.event_time(fr.t_, stop, event_type::kArr);
-        actual_time += ttd.segment_durations_[stop-1];
-        delay = actual_time - scheduled_arrival;
-        intelligent_calc_out << fr.trip_idx() << "," << stop << ",arr," << delay.count() << "\n";
-      }
-      else {
-        scheduled_arrival = tt.event_time(fr.t_, stop, event_type::kArr);
-        actual_time += ttd.segment_durations_[stop-1];
-        delay = actual_time - scheduled_arrival;
-        intelligent_calc_out << fr.trip_idx() << "," << stop << ",arr," << delay.count() << "\n";
-
-        scheduled_departure = tt.event_time(fr.t_, stop, event_type::kDep);
-        actual_time += ttd.stop_durations_[stop];
-        delay = actual_time - scheduled_departure;
-        intelligent_calc_out << fr.trip_idx() << "," << stop << ",dep," << delay.count() << "\n";
-      }
-    }
+  auto res = ptr->timestamp - tsd->timestamp;
+  if (ptr->progress < 1.0 &&
+      static_cast<size_t>(tsd->seg_idx.v_) < ttd->segment_durations_.size()) {
+    res += std::chrono::duration_cast<duration_t>(
+        ttd->segment_durations_[tsd->seg_idx.v_] * (1.0 - ptr->progress));
   }
-  intelligent_calc_out.close();
+  return res;
 }
 
 void hist_trip_times_storage::print(std::ostream& out) const {
   out << "\ncs_key_coord_seq_:\n";
   for (auto const& [key, coord_seq_idx] : cs_key_coord_seq_) {
-    out << "Key: Source: " << key.source_idx << " Transport: " << key.t.t_idx_
+    out << "Key: Source: " << key.source_idx << " Transport: " << key.trip_id
         << "\nCoord_seq_Idx: " << coord_seq_idx << "\n";
   }
 
@@ -321,19 +295,36 @@ delay_prediction_storage::get_avg_stop_segment_durations(
        i < htts->ttd_idx_trip_time_data_[trips[0]].stop_durations_.size();
        i++) {
     duration_t sum{0};
+    uint32_t counter_available_stop_times = 0;
     for (auto const hist_trip_idx : trips) {
-      sum += htts->ttd_idx_trip_time_data_[hist_trip_idx].stop_durations_[i];
+      if (htts->ttd_idx_trip_time_data_[hist_trip_idx].stop_durations_[i] >
+          duration_t{-1}) {
+        sum += htts->ttd_idx_trip_time_data_[hist_trip_idx].stop_durations_[i];
+        counter_available_stop_times++;
+      }
     }
-    avg_stop_durations.emplace_back(sum / trips.size());
+    avg_stop_durations.emplace_back(
+        counter_available_stop_times > 0
+            ? duration_t{(sum / counter_available_stop_times)}
+            : duration_t{-1});
   }
   for (uint32_t i = 0;
        i < htts->ttd_idx_trip_time_data_[trips[0]].segment_durations_.size();
        i++) {
     duration_t sum{0};
+    uint32_t counter_available_segment_times = 0;
     for (auto const hist_trip_idx : trips) {
-      sum += htts->ttd_idx_trip_time_data_[hist_trip_idx].segment_durations_[i];
+      if (htts->ttd_idx_trip_time_data_[hist_trip_idx].segment_durations_[i] >
+          duration_t{-1}) {
+        sum +=
+            htts->ttd_idx_trip_time_data_[hist_trip_idx].segment_durations_[i];
+        counter_available_segment_times++;
+      }
     }
-    avg_segment_durations.emplace_back(sum / trips.size());
+    avg_segment_durations.emplace_back(
+        counter_available_segment_times > 0
+            ? duration_t{(sum / counter_available_segment_times)}
+            : duration_t{-1});
   }
   return {avg_stop_durations, avg_segment_durations};
 }
@@ -364,7 +355,7 @@ duration_t delay_prediction_storage::get_avg_duration(
 void delay_prediction_storage::print(std::ostream& out) const {
   out << "\ncs_key_coord_seq_:\n";
   for (auto const& [key, tdp] : key_trip_delay_) {
-    out << "Key: Source: " << key.source_idx << " Transport: " << key.t.t_idx_
+    out << "Key: Source: " << key.source_idx << " Transport: " << key.trip_id
         << "\nTrip Delay Prediction:"
            "\nfilter gain: "
         << tdp.filter_gain << "\ngain loop: " << tdp.gain_loop

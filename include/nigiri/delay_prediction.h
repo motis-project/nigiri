@@ -56,8 +56,18 @@ struct vehicle_trip_matching {
 };
 
 struct key {
-  transport t;
+  std::string trip_id;
+  unixtime_t start_date;
   source_idx_t source_idx;
+
+  bool operator==(key const& o) const {
+    return source_idx == o.source_idx && start_date == o.start_date &&
+           trip_id == o.trip_id;
+  }
+
+  friend auto tie(key const& k) {
+    return std::tie(k.trip_id, k.start_date, k.source_idx);
+  }
 };
 
 struct trip_seg_data {
@@ -73,13 +83,12 @@ struct trip_seg_data {
 };
 
 struct trip_time_data {
-  trip_time_data(unixtime_t start_time,
-                 vector<trip_seg_data> seg_data,
+  trip_time_data(unixtime_t start_time, vector<trip_seg_data> seg_data,
                  uint32_t n_stops) {
     start_timestamp = start_time;
     seg_data_ = std::move(seg_data);
-    stop_durations_.resize(n_stops - 1);
-    segment_durations_.resize(n_stops - 1);
+    stop_durations_.resize(n_stops - 1, duration_t{-1});
+    segment_durations_.resize(n_stops - 1, duration_t{-1});
   }
   unixtime_t start_timestamp;
   vector<trip_seg_data> seg_data_;
@@ -99,17 +108,16 @@ struct hist_trip_times_storage {
   // check if key already exists
   // if not: check if similar enough coord_seq exists (find_duplicates())
   // if not: create new index and add entries data structures
-  coord_seq_idx_t match_trip_to_coord_seq(timetable const&,
-                                          key,
-                                          vector<location_idx_t>);
+  coord_seq_idx_t match_trip_to_coord_seq(key, vector<geo::latlng>);
 
   std::tuple<segment_idx_t, double, geo::latlng> get_segment_progress(
-      timetable const&, geo::latlng, coord_seq_idx_t);
+      geo::latlng, coord_seq_idx_t, std::optional<uint32_t> = std::nullopt);
 
   static duration_t get_remaining_time_till_next_stop(trip_seg_data const*,
                                                       trip_time_data const*);
 
-  void dump_delays(timetable const&, rt_timetable& rtt) const;
+  void dump_delays(timetable const&, rt_timetable& rtt,
+                   date::sys_days today) const;
 
   void print(std::ostream& out) const;
 
@@ -117,7 +125,7 @@ struct hist_trip_times_storage {
                                   hist_trip_times_storage const& tts);
 
   hash_map<key, coord_seq_idx_t> cs_key_coord_seq_;
-  paged_vecvec<coord_seq_idx_t, location_idx_t> coord_seq_idx_coord_seq_;
+  paged_vecvec<coord_seq_idx_t, geo::latlng> coord_seq_idx_coord_seq_;
 
   mm_paged_vecvec<coord_seq_idx_t, trip_time_data_idx_t> coord_seq_idx_ttd_;
   vector_map<trip_time_data_idx_t, trip_time_data> ttd_idx_trip_time_data_;
@@ -143,8 +151,24 @@ struct trip_delay_pred {
 struct delay_prediction_storage {
   hash_map<key, trip_delay_pred> key_trip_delay_;
 
-  trip_delay_pred& get_or_create_kalman(
-      key, unixtime_t, uint32_t, uint32_t, uint32_t, hist_trip_times_storage*);
+  struct prediction_snapshot {
+    unixtime_t measurement_time;
+    std::vector<optional<unixtime_t>> stop_predictions;
+    std::vector<optional<duration_t>> stop_delays;
+  };
+
+  // trip_id + start_date (as string) -> array of snapshots over time
+  std::map<std::string, vector<prediction_snapshot>> trip_delays;
+
+  uint32_t n_vp;
+  uint32_t n_vp_k1;
+
+  duration_t avg_time_between_vps;
+  std::vector<uint16_t> n_jumped_over_stps_sgmts =
+      std::vector<uint16_t>(1000, 0);
+
+  trip_delay_pred& get_or_create_kalman(key, unixtime_t, uint32_t, uint32_t,
+                                        uint32_t, hist_trip_times_storage*);
 
   static pair<vector<duration_t>, vector<duration_t>>
   get_avg_stop_segment_durations(hist_trip_times_storage*,
