@@ -16,6 +16,8 @@
 
 #include "./util.h"
 
+#include <regex>
+
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
@@ -404,6 +406,17 @@ auto const kVehiclePosition3 =
  ]
 })"s;
 
+date::sys_days extract_date(std::string const& s) {
+  std::smatch match;
+  if (std::regex_search(s, match, std::regex(R"((\d{4})-?(\d{2})-?(\d{2}))"))) {
+    int y = std::stoi(match[1].str());
+    int m = std::stoi(match[2].str());
+    int d = std::stoi(match[3].str());
+    return date::sys_days{date::year{y} / m / d};
+  }
+  return date::sys_days{date::year{1970} / 1 / 1};
+}
+
 }  // namespace
 
 TEST(rt, gtfsrt_vp_resolve_trip_test) {
@@ -486,127 +499,169 @@ TEST(rt, gtfsrt_vp_resolve_trip_test) {
 TEST(rt, gtfsrt_vp_file_resolve_trip_test) {
   std::cout << "Test rt::gtfsrt_vp_file_resolve_trip_test" << std::endl;
 
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2026_y / March / 25},
-                    date::sys_days{2026_y / March / 30}};
-  load_timetable({}, source_idx_t{0},
-                 loader::zip_dir{"test/test_data/gtfs_rt/NL-20260328.gtfs.zip"},
-                 tt);
-  finalize(tt);
+  nigiri::s_verbosity = nigiri::log_lvl::error;
 
-  // Create empty RT timetable.
-  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2026_y / March / 29});
+  auto const base_dir = std::filesystem::path{"test/test_data/gtfs_rt"};
 
-  auto vtm = vehicle_trip_matching{};
+  std::vector<std::filesystem::path> pb_dirs;
+  std::vector<std::filesystem::path> zip_files;
 
-  int counter_files = 0;
+  for (auto const& entry : std::filesystem::directory_iterator{base_dir}) {
+    if (entry.is_directory()) {
+      pb_dirs.push_back(entry.path());
+    } else if (entry.is_regular_file() && entry.path().extension() == ".zip") {
+      zip_files.push_back(entry.path());
+    }
+  }
 
-  int counter_vps = 0;
-  int num_st = 0;
-  int num_sd = 0;
-  int num_trip_id = 0;
-  int num_route_id = 0;
-  int num_ts = 0;
-  int num_direction_id = 0;
-  int num_vehicle_id = 0;
-  int num_position = 0;
-  int num_stop_id = 0;
-  int num_current_stop_sequence = 0;
-  int num_current_status = 0;
+  std::ranges::sort(pb_dirs);
+  std::ranges::sort(zip_files);
 
-  int counter_resolved_runs = 0;
-  int counter_resolved_runs_without_trip_id = 0;
-  int counter_correctly_resolved_runs_without_trip_id = 0;
+  std::uint64_t counter_vps = 0;
+  std::uint64_t num_st = 0;
+  std::uint64_t num_sd = 0;
+  std::uint64_t num_trip_id = 0;
+  std::uint64_t num_route_id = 0;
+  std::uint64_t num_ts = 0;
+  std::uint64_t num_direction_id = 0;
+  std::uint64_t num_vehicle_id = 0;
+  std::uint64_t num_position = 0;
+  std::uint64_t num_stop_id = 0;
+  std::uint64_t num_current_stop_sequence = 0;
+  std::uint64_t num_current_status = 0;
 
-  vector<run> runs;
+  std::uint64_t counter_resolved_runs = 0;
+  std::uint64_t counter_resolved_runs_without_trip_id = 0;
 
-  for (auto const& entry : std::filesystem::directory_iterator(
-           "test/test_data/gtfs_rt/2026-03-29")) {
-    if (entry.path().extension() != ".pb") {
+  auto tts = hist_trip_times_storage{};
+  auto dps = delay_prediction_storage{};
+
+  for (unsigned long i = 0; i < pb_dirs.size(); ++i) {
+    auto const& pb_dir = pb_dirs[i];
+    auto const dir_name = pb_dir.filename().string();
+    int y, m, d;
+    if (sscanf(dir_name.c_str(), "%d-%d-%d", &y, &m, &d) != 3) {
       continue;
     }
+    auto const dir_date = date::sys_days{date::year{y} / m / d};
 
-    std::ifstream f{entry.path(), std::ios::binary};
-    ASSERT_TRUE(f.is_open());
+    std::filesystem::path zip_file = zip_files.front();
+    date::sys_days best_zip_date = date::sys_days{date::year{1970} / 1 / 1};
 
-    transit_realtime::FeedMessage msg;
-    ASSERT_TRUE(msg.ParseFromIstream(&f));
-
-    std::cout << "file " << counter_files << std::endl;
-    counter_files++;
-
-    for (auto const& entity : msg.entity()) {
-      counter_vps++;
-      if (entity.has_vehicle()) {
-        auto vp = entity.vehicle();
-
-        if (vp.has_stop_id()) {
-          num_stop_id++;
-        }
-        if (vp.has_position()) {
-          num_position++;
-        }
-        if (vp.has_timestamp()) {
-          num_ts++;
-        }
-        if (vp.has_vehicle() && vp.vehicle().has_id()) {
-          num_vehicle_id++;
-        }
-        if (vp.has_current_stop_sequence()) {
-          num_current_stop_sequence++;
-        }
-        if (vp.has_current_status()) {
-          num_current_status++;
-        }
-        if (vp.has_trip()) {
-          if (vp.trip().has_start_time()) {
-            num_st++;
+    for (auto const& zf : zip_files) {
+      auto zdate = extract_date(zf.filename().string());
+      if (zdate != date::sys_days{date::year{1970} / 1 / 1} &&
+          zdate < dir_date && zdate >= best_zip_date) {
+        zip_file = zf;
+        best_zip_date = zdate;
           }
-          if (vp.trip().has_start_date()) {
-            num_sd++;
-          }
-          if (vp.trip().has_trip_id()) {
-            num_trip_id++;
-          }
-          if (vp.trip().has_route_id()) {
-            num_route_id++;
-          }
-          if (vp.trip().has_direction_id()) {
-            num_direction_id++;
-          }
-        }
+    }
 
-        run r;
-        if (vp.has_trip() &&
-            (vp.trip().has_trip_id() ||
-             (vp.trip().has_route_id() && vp.trip().has_direction_id() &&
-              vp.trip().has_start_date() && vp.trip().has_start_time()))) {
-          r = gtfsrt_resolve_run(date::sys_days{2026_y / March / 28}, tt, &rtt,
-                                 source_idx_t{0}, vp.trip())
-                  .first;
-          if (r.valid()) {
-            counter_resolved_runs++;
-            if (!runs.contains(&r)) {
-              runs.emplace_back(r);
+    std::cout << "Processing " << pb_dir << " with " << zip_file << std::endl;
+
+    // Load static timetable.
+    timetable tt;
+    register_special_stations(tt);
+    tt.date_range_ = {dir_date - date::days{1}, dir_date + date::days{2}};
+    load_timetable({}, source_idx_t{0}, loader::zip_dir{zip_file.string()}, tt);
+    finalize(tt);
+    auto rtt = rt::create_rt_timetable(tt, dir_date);
+
+    auto vtm = vehicle_trip_matching{};
+
+    std::vector<std::filesystem::path> pb_files;
+    for (auto const& entry :
+         std::filesystem::recursive_directory_iterator{pb_dir}) {
+      if (entry.is_regular_file() && entry.path().extension() == ".pb") {
+        pb_files.push_back(entry.path());
+      }
+         }
+    std::ranges::sort(pb_files);
+
+    int loop_file_counter = 0;
+    for (auto const& pb_file : pb_files) {
+      if (loop_file_counter % 5 == 0) {
+        std::cout << "  Processing file " << loop_file_counter << "/"
+                  << pb_files.size() << std::endl;
+      }
+      loop_file_counter++;
+
+      std::ifstream ifs{pb_file, std::ios::binary};
+
+      transit_realtime::FeedMessage msg;
+      if (!msg.ParseFromIstream(&ifs)) {
+        continue;
+      }
+
+      for (auto const& entity : msg.entity()) {
+        counter_vps++;
+        if (entity.has_vehicle()) {
+          auto vp = entity.vehicle();
+
+          if (vp.has_stop_id()) {
+            num_stop_id++;
+          }
+          if (vp.has_position()) {
+            num_position++;
+          }
+          if (vp.has_timestamp()) {
+            num_ts++;
+          }
+          if (vp.has_vehicle() && vp.vehicle().has_id()) {
+            num_vehicle_id++;
+          }
+          if (vp.has_current_stop_sequence()) {
+            num_current_stop_sequence++;
+          }
+          if (vp.has_current_status()) {
+            num_current_status++;
+          }
+          if (vp.has_trip()) {
+            if (vp.trip().has_start_time()) {
+              num_st++;
+            }
+            if (vp.trip().has_start_date()) {
+              num_sd++;
+            }
+            if (vp.trip().has_trip_id()) {
+              num_trip_id++;
+            }
+            if (vp.trip().has_route_id()) {
+              num_route_id++;
+            }
+            if (vp.trip().has_direction_id()) {
+              num_direction_id++;
             }
           }
-        }
 
-        vp.mutable_vehicle()->set_id(vp.trip().route_id() +
-                                     vp.trip().start_date());
-        vp.mutable_trip()->clear_trip_id();
-        vp.mutable_trip()->clear_route_id();
+          run r;
+          if (vp.has_trip() &&
+              (vp.trip().has_trip_id() ||
+               (vp.trip().has_route_id() && vp.trip().has_direction_id() &&
+                vp.trip().has_start_date() && vp.trip().has_start_time()))) {
+            r = gtfsrt_resolve_run(date::sys_days{2026_y / March / 28}, tt,
+                                   &rtt, source_idx_t{0}, vp.trip())
+                    .first;
+            if (r.valid()) {
+              counter_resolved_runs++;
+              if (!runs.contains(&r)) {
+                runs.emplace_back(r);
+              }
+            }
+                }
 
-        if (vp.has_vehicle() && vp.vehicle().has_id()) {
-          num_vehicle_id++;
-        }
+          vp.mutable_vehicle()->set_id(vp.trip().route_id() +
+                                       vp.trip().start_date());
+          vp.mutable_trip()->clear_trip_id();
+          vp.mutable_trip()->clear_route_id();
 
-        auto r2 = gtfsrt_vp_resolve_run(tt, source_idx_t{0}, vp, &vtm);
-        if (r2.valid()) {
-          counter_resolved_runs_without_trip_id++;
-          if (r == r2) {
-            counter_correctly_resolved_runs_without_trip_id++;
+          if (vp.has_vehicle() && vp.vehicle().has_id()) {
+            num_vehicle_id++;
+          }
+
+          auto r2 = gtfsrt_vp_resolve_run(tt, source_idx_t{0}, vp, &vtm);
+          if (r2.valid() && r == r2) {
+            counter_resolved_runs_without_trip_id++;
           }
         }
       }
@@ -630,7 +685,6 @@ TEST(rt, gtfsrt_vp_file_resolve_trip_test) {
   std::cout << "Number of resolved runs: " << counter_resolved_runs << "\n";
   std::cout << "Number of resolved runs with candidates: "
             << counter_resolved_runs_without_trip_id << "\n";
-  std::cout << "Number of different runs: " << runs.size() << "\n";
   std::cout << "Number of correctly resolved runs with candidates: "
-            << counter_correctly_resolved_runs_without_trip_id << std::endl;
+            << counter_resolved_runs_without_trip_id << std::endl;
 }

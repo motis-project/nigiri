@@ -215,6 +215,10 @@ run gtfsrt_vp_resolve_run(timetable const& tt,
                    route, static_cast<stop_idx_t>(stop_idx), ev_type))) {
             auto const [vp_day_idx, vp_mam] = tt.day_idx_mam(vp_ts);
 
+            if (vp_mam < minutes_after_midnight_t{0}) {
+              return run{};
+            }
+
             auto const [error, day_shift] =
                 mam_dist(vp_mam, i32_minutes{nigiri_ev_time.mam()});
             auto const local_score =
