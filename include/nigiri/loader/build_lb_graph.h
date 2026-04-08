@@ -388,7 +388,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           << static_cast<unsigned>(e.deps_[i].days());
       remaining_traffic_days &= ignore_timetable_offset_mask;
       auto last_set_bit = saw<kChSawType>::last_set_bit(remaining_traffic_days);
-      for (auto j = 0U; j < static_cast<unsigned>(e.deps_[i].days()); ++j) {
+      for (auto j = 0U; j < std::min(last_set_bit+1U, static_cast<unsigned>(e.deps_[i].days())); ++j) {
         remaining_traffic_days.set(
             last_set_bit - j, false);  // TODO do in one go with first 5 days?
       }
