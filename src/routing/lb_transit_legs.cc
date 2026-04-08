@@ -45,7 +45,7 @@ void lb_transit_legs(timetable const& tt,
   }
 
   // run
-  auto k = 1U;
+  auto k = std::uint8_t{1U};
   for (; k != std::min(q.max_transfers_, kMaxTransfers) + 2U; ++k) {
     utl::fill(state.route_mark_.blocks_, 0U);
 
@@ -76,9 +76,7 @@ void lb_transit_legs(timetable const& tt,
         }
 
         auto const step = kFwd ? -1 : 1;
-        for (auto out = static_cast<std::int32_t>(in + step);
-             0 <= out && out < static_cast<std::int32_t>(seq.size());
-             out += step) {
+        for (auto out = in + step; out < seq.size(); out += step) {
           auto const l_out = stop{seq[out]}.location_idx();
           if (k < lb[to_idx(l_out)]) {
             lb[to_idx(l_out)] = k;
