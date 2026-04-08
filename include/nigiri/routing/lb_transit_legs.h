@@ -11,7 +11,9 @@ namespace nigiri::routing {
 // fwd: finds the minimum number of transit legs backward from the destination
 // bwd: finds the minimum number of transit legs forward from the destination
 template <direction SearchDir>
-void lb_transit_legs(timetable const&, query const&, raptor_state&,
+void lb_transit_legs(timetable const&,
+                     query const&,
+                     raptor_state&,
                      std::vector<std::uint8_t>& lb);
 
 }  // namespace nigiri::routing
