@@ -232,14 +232,15 @@ void obtain_relevant_stops(timetable const& tt,
           true,
           tmp_saw);  // TODO move to leq again? or detect within simplify if not
       // equal (new bitfields created etc)
-      /*std::cout << "push pq" << edge_target << " " << 0 << " " << 0
+      std::cout << "push pq" << edge_target << " " << 0 << " " << 0
                 << " new: " << saw<kChSawType>{new_max_dist, ch_traffic_days}
                 << std::endl
-                << " old: "
-                << dists[l_dir].at(edge_target).d_[kMax].to_saw(ch_traffic_days)
+                << " edge max: "
+                << saw<kChSawType>{edge_max.at(dists[l_dir][edge_target]),
+                  ch_traffic_days}
                 << std::endl
                 << "simpl:" << saw<kChSawType>{tmp_saw, ch_traffic_days}
-                << std::endl;*/
+                << std::endl;
       auto max_leq = false;
       auto min_leq = false;
       if (saw<kChSawType>{edge_max.at(dists[l_dir].at(edge_target)),
@@ -444,6 +445,7 @@ void obtain_relevant_stops(timetable const& tt,
       visited[child_edge_idx] = child_max_dur;
 
       if (kToothUnpackMode) {
+        /*
         auto const tooth_idx = child_max_dur;  // TODO cleanup
 
         std::cout << "tooth" << tooth_idx << std::endl;
@@ -521,7 +523,7 @@ void obtain_relevant_stops(timetable const& tt,
           queue.push(
               {tooth.end_, tooth.end_idx_, child_max, true, {}, {}, {}, {}});
         }
-
+        */
       } else {
         for (auto const [unpack, transfer] :
              utl::zip(tt.ch_graph_unpack_[prf_idx].at(child_edge_idx),

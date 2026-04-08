@@ -23,11 +23,11 @@ using namespace nigiri::routing;
 tooth metadata_tooth(std::uint16_t const val = u16_minutes::max().count()) {
   return {std::numeric_limits<std::int16_t>::max(),
           u16_minutes{val},
-          bitfield_idx_t::invalid(),
-          ch_edge_idx_t::invalid(),
+          bitfield_idx_t::invalid()
+          /*ch_edge_idx_t::invalid(),
           transport_idx_t::invalid(),
           ch_edge_idx_t::invalid(),
-          transport_idx_t::invalid()};
+          transport_idx_t::invalid()*/};
 }
 
 TEST(ch, saw_day_test) {

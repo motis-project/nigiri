@@ -100,9 +100,9 @@ struct saw {
     utl::verify(SawType == saw_type::kConstant, "of not impl");
     auto out = std::vector<tooth>{};
     out.push_back({std::numeric_limits<std::int16_t>::max(), d,
-                   bitfield_idx_t::invalid(), ch_edge_idx_t::invalid(),
+                   bitfield_idx_t::invalid(), /*ch_edge_idx_t::invalid(),
                    transport_idx_t::invalid(), ch_edge_idx_t::invalid(),
-                   transport_idx_t::invalid()});
+                   transport_idx_t::invalid()*/});
     return out;
   }
 
@@ -368,12 +368,12 @@ struct saw {
       if (a.saw_[i].traffic_days_ != b.saw_[i].traffic_days_) {
         return false;
       }
-      if (a.saw_[i].start_idx_ != b.saw_[i].start_idx_) {
+      /*if (a.saw_[i].start_idx_ != b.saw_[i].start_idx_) {
         return false;
       }
       if (a.saw_[i].end_idx_ != b.saw_[i].end_idx_) {
         return false;
-      }  // TODO all fields?, tie
+      }  // TODO all fields?, tie*/
     }
     return true;
   }
@@ -405,8 +405,8 @@ struct saw {
 
   friend std::ostream& operator<<(std::ostream& out, saw<SawType> const& a) {
     if (!a.saw_.empty()) {
-      std::cout << "transfers: " << a.saw_[kSawFieldMin].start_idx_ << " "
-                << a.saw_[kSawFieldMax].start_idx_ << " ";
+      /*std::cout << "transfers: " << a.saw_[kSawFieldMin].start_idx_ << " "
+                << a.saw_[kSawFieldMax].start_idx_ << " ";*/
     }
     for (auto const& e : a.saw_) {
       print_tooth(out, e, a.traffic_days_);
@@ -573,9 +573,9 @@ struct saw {
       auto tmp = saw<SawType>{out, traffic_days_}.max();
       out.clear();
       out.push_back({std::numeric_limits<std::int16_t>::max(), tmp,
-                     bitfield_idx_t::invalid(), ch_edge_idx_t::invalid(),
+                     bitfield_idx_t::invalid()/*, ch_edge_idx_t::invalid(),
                      transport_idx_t::invalid(), ch_edge_idx_t::invalid(),
-                     transport_idx_t::invalid()});
+                     transport_idx_t::invalid()*/});
       return saw<SawType>{out, traffic_days_};
     }
     return saw<SawType>{out, traffic_days_};
@@ -589,9 +589,9 @@ struct saw {
       auto tmp = saw<SawType>{out, traffic_days_}.min();
       out.clear();
       out.push_back({std::numeric_limits<std::int16_t>::max(), tmp,
-                     bitfield_idx_t::invalid(), ch_edge_idx_t::invalid(),
+                     bitfield_idx_t::invalid()/*, ch_edge_idx_t::invalid(),
                      transport_idx_t::invalid(), ch_edge_idx_t::invalid(),
-                     transport_idx_t::invalid()});
+                     transport_idx_t::invalid()*/});
       return saw<SawType>{out, traffic_days_};
     }
     return saw<SawType>{out, traffic_days_};
@@ -709,17 +709,17 @@ struct saw {
   void init_metadata(std::vector<tooth>& out, std::uint16_t lsb) const {
     utl::verify(out.empty(), "out not empty");
     out.push_back({std::numeric_limits<std::int16_t>::max(), u16_minutes{lsb},
-                   bitfield_idx_t::invalid(), ch_edge_idx_t::invalid(),
+                   bitfield_idx_t::invalid()/*, ch_edge_idx_t::invalid(),
                    transport_idx_t::invalid(), ch_edge_idx_t::invalid(),
-                   transport_idx_t::invalid()});
+                   transport_idx_t::invalid()*/});
     out.push_back({std::numeric_limits<std::int16_t>::max(), u16_minutes::max(),
-                   bitfield_idx_t::invalid(), ch_edge_idx_t::invalid(),
+                   bitfield_idx_t::invalid()/*, ch_edge_idx_t::invalid(),
                    transport_idx_t::invalid(), ch_edge_idx_t::invalid(),
-                   transport_idx_t::invalid()});
+                   transport_idx_t::invalid()*/});
     out.push_back({std::numeric_limits<std::int16_t>::max(), u16_minutes::max(),
-                   bitfield_idx_t::invalid(), ch_edge_idx_t::invalid(),
+                   bitfield_idx_t::invalid()/*, ch_edge_idx_t::invalid(),
                    transport_idx_t::invalid(), ch_edge_idx_t::invalid(),
-                   transport_idx_t::invalid()});
+                   transport_idx_t::invalid()*/});
   }
 
   std::uint16_t get_last_set_bit() const {
@@ -750,14 +750,14 @@ struct saw {
           (is_constant() && a_min <= b_min) ||
           (other.is_constant() && b_min <= a_min)) {
         out.push_back({std::numeric_limits<std::int16_t>::max(),
-                       std::min(a_min, b_min), bitfield_idx_t::invalid(),
+                       std::min(a_min, b_min), bitfield_idx_t::invalid()/*,
                        ch_edge_idx_t::invalid(), transport_idx_t::invalid(),
-                       ch_edge_idx_t::invalid(), transport_idx_t::invalid()});
+                       ch_edge_idx_t::invalid(), transport_idx_t::invalid()*/});
       } else {
         out.push_back({std::numeric_limits<std::int16_t>::max(),
-                       std::max(a_min, b_min), bitfield_idx_t::invalid(),
+                       std::max(a_min, b_min), bitfield_idx_t::invalid()/*,
                        ch_edge_idx_t::invalid(), transport_idx_t::invalid(),
-                       ch_edge_idx_t::invalid(), transport_idx_t::invalid()});
+                       ch_edge_idx_t::invalid(), transport_idx_t::invalid()*/});
       }
       // TODO horizontally cut tooths?
 
@@ -826,7 +826,7 @@ struct saw {
     out[kSawFieldMin].travel_dur_ = new_min;
     out[kSawFieldMax].travel_dur_ =
         u16_minutes{s.max()};  // TODO calc on the fly during simplify
-    if (saw_.empty()) {
+    /*if (saw_.empty()) {
       out[kSawFieldMin].start_idx_ = other.saw_[kSawFieldMin].start_idx_;
       out[kSawFieldMax].start_idx_ = other.saw_[kSawFieldMax].start_idx_;
     } else if (other.saw_.empty()) {
@@ -837,7 +837,7 @@ struct saw {
           saw_[kSawFieldMin].start_idx_, other.saw_[kSawFieldMin].start_idx_);
       out[kSawFieldMax].start_idx_ = std::max(
           saw_[kSawFieldMax].start_idx_, other.saw_[kSawFieldMax].start_idx_);
-    }
+    }*/
     return s;
   }
 
@@ -935,13 +935,13 @@ struct saw {
                 o_it.day_offset_);  // TODO better shift o_it bitfields?
             auto new_tooth = tooth{it->mam_,
                                    new_travel_dur,
-                                   it->traffic_days_,
+                                   it->traffic_days_/*,
                                    start,
                                    it->start_transport_,
                                    end,
                                    o_it->end_transport_,
                                    static_cast<std::uint16_t>(it.pos_),
-                                   static_cast<std::uint16_t>(o_it.pos_)};
+                                   static_cast<std::uint16_t>(o_it.pos_)*/};
             auto last_out_mam = saw<SawType>{out, traffic_days_}.begin();
             last_out_mam += last_out_mam_idx - kSawMetadataOffset;
 
@@ -1003,13 +1003,13 @@ struct saw {
         }
         auto const new_tooth = tooth{it->mam_,
                                      travel_dur_extremum,
-                                     it->traffic_days_,
+                                     it->traffic_days_/*,
                                      start,
                                      it->start_transport_,
                                      end,
                                      o_it->end_transport_,
                                      static_cast<std::uint16_t>(it.pos_),
-                                     static_cast<std::uint16_t>(o_it.pos_)};
+                                     static_cast<std::uint16_t>(o_it.pos_)*/};
         auto td = SawType == saw_type::kDay
                       ? bitfield{}
                       : traffic_days_.at(it->traffic_days_).first;
@@ -1078,10 +1078,10 @@ struct saw {
     }
 
     out[kSawFieldMin].travel_dur_ = new_min;
-    out[kSawFieldMin].start_idx_ = saw_[kSawFieldMin].start_idx_ +
+    /*out[kSawFieldMin].start_idx_ = saw_[kSawFieldMin].start_idx_ +
                                    other.saw_[kSawFieldMin].start_idx_ + 1U;
     out[kSawFieldMax].start_idx_ = saw_[kSawFieldMax].start_idx_ +
-                                   other.saw_[kSawFieldMax].start_idx_ + 1U;
+                                   other.saw_[kSawFieldMax].start_idx_ + 1U;*/
 
     auto const s = saw<SawType>{out, traffic_days_};
     return s;
@@ -1138,8 +1138,8 @@ struct saw {
 
   saw<SawType> concat_const(unsigned const dir,
                             saw<saw_type::kConstant> const& other,
-                            ch_edge_idx_t const start,
-                            ch_edge_idx_t const end,
+                            ch_edge_idx_t const,
+                            ch_edge_idx_t const,
                             std::vector<tooth>& out,
                             bool const deconcat = false) const {
     utl::verify(out.empty(), "out not empty");
@@ -1152,9 +1152,9 @@ struct saw {
           {std::numeric_limits<std::int16_t>::max(),
            std::min(u16_minutes{std::max(0, saw_[0].travel_dur_.count() + d)},
                     kChMaxEdgeTime),
-           bitfield_idx_t::invalid(), dir == kReverse ? end : start,
+           bitfield_idx_t::invalid()/*, dir == kReverse ? end : start,
            transport_idx_t::invalid(), dir == kReverse ? start : end,
-           transport_idx_t::invalid(), 0U, 0U});
+           transport_idx_t::invalid(), 0U, 0U*/});
       return saw<SawType>{out, traffic_days_};
     }
     init_metadata(out, get_last_set_bit());
@@ -1188,20 +1188,20 @@ struct saw {
             {mam,
              std::min(u16_minutes{std::max(0, saw_[i].travel_dur_.count() + d)},
                       kChMaxEdgeTime),
-             traffic_days_idx, end, transport_idx_t::invalid(), start,
-             saw_[i].end_transport_, 0, static_cast<uint16_t>(i)});
+             traffic_days_idx, /*end, transport_idx_t::invalid(), start,
+             saw_[i].end_transport_, 0, static_cast<uint16_t>(i)*/});
       } else {
         // TODO negative tooths
         out.push_back(
             {mam,
              std::min(u16_minutes{std::max(0, saw_[i].travel_dur_.count() + d)},
                       kChMaxEdgeTime),
-             traffic_days_idx, start, saw_[i].start_transport_, end,
-             transport_idx_t::invalid(), static_cast<uint16_t>(i), 0});
+             traffic_days_idx, /*start, saw_[i].start_transport_, end,
+             transport_idx_t::invalid(), static_cast<uint16_t>(i), 0*/});
       }
     }
-    out[kSawFieldMin].start_idx_ = saw_[kSawFieldMin].start_idx_;
-    out[kSawFieldMax].start_idx_ = saw_[kSawFieldMax].start_idx_;
+    /*out[kSawFieldMin].start_idx_ = saw_[kSawFieldMin].start_idx_;
+    out[kSawFieldMax].start_idx_ = saw_[kSawFieldMax].start_idx_;*/
     return saw<SawType>{out, traffic_days_};
   }
 

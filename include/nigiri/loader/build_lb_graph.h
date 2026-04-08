@@ -399,11 +399,11 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       auto const new_tooth =
           tooth{static_cast<std::int16_t>(e.deps_.at(i).mam_),
                 e.travel_durs_.at(i),
-                traffic_days_idx,
+                traffic_days_idx,/*
                 ch_edge_idx_t::invalid(),
                 e.transports_.at(i),
                 ch_edge_idx_t::invalid(),
-                e.transports_.at(i)};
+                e.transports_.at(i)*/};
       min_saw_tmp.push_back(new_tooth);
       max_saw_tmp.push_back(new_tooth);
     }
@@ -464,10 +464,10 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     }
 
     if constexpr (kChSawType != saw_type::kConstant) {
-      min_saw[kSawFieldMin].start_idx_ = 0U;
+      /*min_saw[kSawFieldMin].start_idx_ = 0U;
       min_saw[kSawFieldMax].start_idx_ = 0U;
       max_saw[kSawFieldMin].start_idx_ = 0U;
-      max_saw[kSawFieldMax].start_idx_ = 0U;
+      max_saw[kSawFieldMax].start_idx_ = 0U;*/
     }
 
     traffic_days.clear_tmp();

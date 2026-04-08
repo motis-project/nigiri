@@ -65,12 +65,12 @@ struct tooth {
   std::int16_t mam_;
   u16_minutes travel_dur_;
   bitfield_idx_t traffic_days_;
-  ch_edge_idx_t start_{ch_edge_idx_t::invalid()};
+  /*ch_edge_idx_t start_{ch_edge_idx_t::invalid()};
   transport_idx_t start_transport_{transport_idx_t::invalid()};
   ch_edge_idx_t end_{ch_edge_idx_t::invalid()};
   transport_idx_t end_transport_{transport_idx_t::invalid()};
   std::uint16_t start_idx_{std::numeric_limits<std::uint16_t>::max()};
-  std::uint16_t end_idx_{std::numeric_limits<std::uint16_t>::max()};
+  std::uint16_t end_idx_{std::numeric_limits<std::uint16_t>::max()};*/
 };
 
 }  // namespace nigiri::routing
