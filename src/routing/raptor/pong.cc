@@ -295,7 +295,7 @@ routing_result pong(timetable const& tt,
                                     : rtt->bwd_search_lb_graph_)),
            ping_lb);
   UTL_STOP_TIMING(ping_lb);
- auto ping_lb_transit_legs = std::vector<std::uint8_t>{};
+  auto ping_lb_transit_legs = std::vector<std::uint8_t>{};
   lb_transit_legs<SearchDir>(tt, q, r_state, ping_lb_transit_legs);
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
