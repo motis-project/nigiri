@@ -75,8 +75,8 @@ void lb_transit_legs(timetable const& tt,
           continue;
         }
 
-        auto const step = kFwd ? -1 : 1;
-        for (auto out = in + step; out < seq.size(); out += step) {
+        auto const step = [&](auto const y) { return kFwd ? y - 1U : y + 1U; };
+        for (auto out = step(in); out < seq.size(); out = step(out)) {
           auto const l_out = stop{seq[out]}.location_idx();
           if (k < lb[to_idx(l_out)]) {
             lb[to_idx(l_out)] = k;
