@@ -1,0 +1,2040 @@
+type ActivePeriod {
+	"""
+	Start time of this active period (null means alert is already active)
+	"""
+	start: DateTime
+	"""
+	End time of this active period (null means indefinite)
+	"""
+	end: DateTime
+}
+
+type Address {
+	"""
+	Unique identifier
+	"""
+	id: ID!
+	"""
+	Formatted address string
+	"""
+	name: String!
+	"""
+	Geographic position
+	"""
+	position: Position!
+	"""
+	Street number and name
+	"""
+	streetAddress: String
+	"""
+	City or municipality
+	"""
+	city: String
+	"""
+	Postal or ZIP code
+	"""
+	postalCode: String
+}
+
+type AgenciesConnection {
+	"""
+	List of agencies for the current page
+	"""
+	items: [Agency!]!
+	"""
+	Pagination information
+	"""
+	pageInfo: PageInfo!
+}
+
+type Agency {
+	"""
+	Globally unique identifier (format: {tag}:{gtfsId})
+	"""
+	id: ID!
+	"""
+	Data source identifier/tag
+	"""
+	source: String!
+	"""
+	Original agency ID from the GTFS feed
+	"""
+	gtfsId: String!
+	"""
+	Name of the agency
+	"""
+	name: String!
+	"""
+	IANA timezone identifier for agency operations
+	"""
+	timezone: String!
+	"""
+	Primary language code (ISO 639-1)
+	"""
+	language: String
+	"""
+	Customer service phone number
+	"""
+	phone: String
+	"""
+	Email address for customer inquiries
+	"""
+	email: String
+	"""
+	Fare information URL
+	"""
+	fareUrl: String
+	"""
+	Routes operated by this agency
+	"""
+	routes(
+		"""
+		Filter routes active on this date
+		"""
+		date: DateTime,
+		"""
+		Filter by route type
+		"""
+		routeType: RouteType,
+		"""
+		Pagination parameters
+		"""
+		pagination: PaginationInput
+	): RoutesConnection!
+	"""
+	Service alerts affecting this agency's operations
+	"""
+	alerts(
+		"""
+		Only return currently active alerts
+		"""
+		activeOnly: Boolean! = true
+	): [ServiceAlert!]!
+}
+
+type AgencyReference {
+	"""
+	Globally unique identifier (format: {tag}:{gtfsId})
+	"""
+	id: ID!
+	"""
+	Data source identifier/tag
+	"""
+	source: String!
+	"""
+	Original agency ID from the GTFS feed
+	"""
+	gtfsId: String!
+	"""
+	Name of the agency
+	"""
+	name: String!
+}
+
+enum AlertCause {
+	UNKNOWN_CAUSE
+	OTHER_CAUSE
+	TECHNICAL_PROBLEM
+	STRIKE
+	DEMONSTRATION
+	ACCIDENT
+	HOLIDAY
+	WEATHER
+	MAINTENANCE
+	CONSTRUCTION
+	POLICE_ACTIVITY
+	MEDICAL_EMERGENCY
+}
+
+enum AlertEffect {
+	NO_SERVICE
+	REDUCED_SERVICE
+	SIGNIFICANT_DELAYS
+	DETOUR
+	ADDITIONAL_SERVICE
+	MODIFIED_SERVICE
+	OTHER_EFFECT
+	UNKNOWN_EFFECT
+	STOP_MOVED
+	NO_EFFECT
+	ACCESSIBILITY_ISSUE
+}
+
+"""
+Filter to scope alerts to a specific transit entity.
+Exactly one of stop, route, trip, or operator must be provided.
+"""
+input AlertFilterInput @oneOf {
+	"""
+	Filter alerts affecting a specific stop (format: `{source}:{gtfs_id}`)
+	"""
+	stop: ID
+	"""
+	Filter alerts affecting a specific route (format: `{source}:{slug}`)
+	"""
+	route: ID
+	"""
+	Filter alerts affecting a specific trip (format: `{transport_idx}:{day_idx}`)
+	"""
+	trip: ID
+	"""
+	Filter alerts affecting a specific operator/agency (format: `{source}:{gtfs_id}`)
+	"""
+	operator: ID
+}
+
+"""
+Bounding box input for spatial queries
+"""
+input BoundingBoxInput {
+	"""
+	Minimum (southern) latitude
+	"""
+	minLat: Latitude!
+	"""
+	Minimum (western) longitude
+	"""
+	minLon: Longitude!
+	"""
+	Maximum (northern) latitude
+	"""
+	maxLat: Latitude!
+	"""
+	Maximum (eastern) longitude
+	"""
+	maxLon: Longitude!
+}
+
+"""
+Color scheme for transit branding
+"""
+type Color {
+	"""
+	Background/primary color (hex code without #)
+	"""
+	background: String!
+	"""
+	Text/foreground color (hex code without #)
+	"""
+	text: String!
+}
+
+scalar DateTime
+
+type Departure {
+	"""
+	Aimed (scheduled) departure time from the published timetable.
+	"""
+	aimedDepartureTime: DateTime!
+	"""
+	Aimed (scheduled) arrival time from the published timetable.
+	"""
+	aimedArrivalTime: DateTime!
+	"""
+	Estimated (real-time) departure time. Null when no RT data.
+	"""
+	estimatedDepartureTime: DateTime
+	"""
+	Estimated (real-time) arrival time. Null when no RT data.
+	"""
+	estimatedArrivalTime: DateTime
+	"""
+	Whether this departure has been cancelled (null if no RT data)
+	"""
+	isCancelled: Boolean
+	"""
+	Whether the times reflect real-time predictions
+	"""
+	isRealTime: Boolean!
+	"""
+	Real-time trip identifier
+	"""
+	rtTripId: String
+	"""
+	Wheelchair accessibility of the vehicle
+	"""
+	accessible: WheelchairAccessible!
+	"""
+	Departure delay in seconds (positive = late, negative = early). Null if no RT data.
+	"""
+	delay: Int
+	"""
+	Whether this departure is an RT-added trip (not in the static schedule, null if no RT data)
+	"""
+	isAdded: Boolean
+	"""
+	Passenger occupancy level from real-time vehicle data
+	"""
+	occupancyStatus: OccupancyStatus
+	"""
+	Real-time vehicle information (position, id, occupancy)
+	"""
+	vehicle: Vehicle
+	"""
+	Trip ID for retrieving full trip details (TripIdentifier format: {source}:{YYYYMMDD}_{HH:MM}_{trip_id})
+	"""
+	tripId: ID!
+	"""
+	Internal search key for retrieving this trip instance
+	"""
+	tripSearchKey: ID!
+	"""
+	Route operating this departure
+	"""
+	route: RouteReference!
+	"""
+	Destination displayed on the vehicle
+	"""
+	headsign: String!
+	"""
+	Direction identifier
+	"""
+	direction: Int!
+	"""
+	Platform code for this departure's stop (from GTFS `platform_code`)
+	"""
+	platformCode: String
+	"""
+	The actual stop/platform assigned by real-time data when a platform
+	change has occurred (GTFS-RT `StopTimeProperties.assigned_stop_id`).
+	Null when no reassignment.
+	"""
+	assignedStop: StopReference
+	"""
+	True when real-time data indicates a platform/stop change (null if no RT data)
+	"""
+	isStopReassigned: Boolean
+	"""
+	Active alerts affecting this departure
+	"""
+	alerts: [ServiceAlert!]!
+}
+
+type Fare {
+	"""
+	Total fare amount for the journey.
+	"""
+	totalAmount: Float!
+	"""
+	ISO 4217 currency code (e.g. "AUD", "USD").
+	"""
+	currency: String!
+	"""
+	Per-leg fare breakdown.
+	"""
+	legFares: [LegFareSummary!]!
+}
+
+type IntermediateStop {
+	"""
+	The stop at this point in the trip.
+	"""
+	stop: StopReference!
+	"""
+	Aimed (scheduled) arrival time from the published timetable.
+	"""
+	aimedArrivalTime: DateTime
+	"""
+	Aimed (scheduled) departure time from the published timetable.
+	"""
+	aimedDepartureTime: DateTime
+	"""
+	Estimated (real-time) arrival time. Null when no RT data.
+	"""
+	estimatedArrivalTime: DateTime
+	"""
+	Estimated (real-time) departure time. Null when no RT data.
+	"""
+	estimatedDepartureTime: DateTime
+	"""
+	Arrival delay in seconds (positive = late). Null when no data.
+	"""
+	arrivalDelay: Int
+	"""
+	Departure delay in seconds (positive = late). Null when no data.
+	"""
+	departureDelay: Int
+	"""
+	Whether real-time data is available for this stop.
+	"""
+	isRealTime: Boolean!
+}
+
+"""
+Input for an isochrone (one-to-all reachability) query.
+"""
+input IsochroneInput {
+	"""
+	Origin location (coordinates or stop ID)
+	"""
+	from: LocationInput!
+	"""
+	Departure time. Defaults to now if omitted.
+	"""
+	departureTime: DateTime
+	"""
+	Maximum travel time in minutes. Capped to 120 minutes if omitted.
+	"""
+	maxDurationMins: Int! = 60
+	"""
+	Allowed transit modes. All modes enabled if omitted.
+	"""
+	modes: [RouteType!]
+}
+
+"""
+The full isochrone response: the origin location and all reachable stops.
+"""
+type IsochroneResult {
+	"""
+	Latitude of the resolved origin.
+	"""
+	originLat: Latitude!
+	"""
+	Longitude of the resolved origin.
+	"""
+	originLon: Longitude!
+	"""
+	Maximum travel time used for this query, in minutes.
+	"""
+	maxDurationMins: Int!
+	"""
+	All stops reachable within `maxDurationMins`, sorted by travel time.
+	"""
+	stops: [ReachableStop!]!
+}
+
+type Itinerary {
+	"""
+	Direction identifier (typically 0 or 1 for opposite directions)
+	"""
+	direction: Int!
+	"""
+	Headsign displayed for this itinerary
+	"""
+	headsign: String!
+	"""
+	Direction-specific headsign
+	"""
+	directionHeadsign: String
+	"""
+	Merged headsign combining multiple patterns
+	"""
+	mergedHeadsign: String
+	"""
+	Branch code for route variations
+	"""
+	branchCode: String
+	"""
+	Schedule items — one per trip departure in this itinerary (first + last stop times)
+	"""
+	scheduleItems: [ScheduleItem!]!
+	"""
+	Stops along this itinerary (ordered from first to last)
+	"""
+	stops: [StopReference!]!
+	"""
+	Closest stop to a given position
+	"""
+	closestStop: StopReference
+}
+
+type Journey {
+	"""
+	Unique identifier for this journey option.
+	"""
+	id: ID!
+	"""
+	Departure time from origin.
+	"""
+	departureTime: DateTime!
+	"""
+	Arrival time at destination.
+	"""
+	arrivalTime: DateTime!
+	"""
+	Total journey duration in seconds.
+	"""
+	duration: Int!
+	"""
+	Number of transfers required.
+	"""
+	numberOfTransfers: Int!
+	"""
+	Total walking distance in metres (rounded).
+	"""
+	walkingDistance: Int!
+	"""
+	Whether this journey is wheelchair accessible throughout.
+	"""
+	accessible: Boolean
+	"""
+	Individual segments that make up this journey.
+	"""
+	legs: [Leg!]!
+	"""
+	Total fare for this journey (null when no fare data available).
+	"""
+	fare: Fare
+	"""
+	Service alerts affecting any part of this journey.
+	"""
+	alerts: [ServiceAlert!]!
+}
+
+enum JourneyOptimization {
+	FASTEST
+	FEWEST_TRANSFERS
+	EARLIEST_ARRIVAL
+}
+
+"""
+Journey planning input
+"""
+input JourneyPlanInput {
+	"""
+	Journey origin location
+	"""
+	from: LocationInput!
+	"""
+	Journey destination location
+	"""
+	to: LocationInput!
+	"""
+	Intermediate waypoints (optional)
+	"""
+	via: [LocationInput!]
+	"""
+	Desired departure time (use either this or arrivalTime)
+	"""
+	departureTime: DateTime
+	"""
+	Desired arrival time (use either this or departureTime)
+	"""
+	arrivalTime: DateTime
+	"""
+	Travel date
+	"""
+	date: DateTime
+	"""
+	Allowed transit modes
+	"""
+	modes: [RouteType!]
+	"""
+	Allowed modes for first mile (origin to first transit stop)
+	"""
+	firstMileOptions: [LegMode!]
+	"""
+	Allowed modes for last mile (last transit stop to destination)
+	"""
+	lastMileOptions: [LegMode!]
+	"""
+	Maximum distance for first mile in meters
+	"""
+	maxFirstMileDistance: Float
+	"""
+	Maximum distance for last mile in meters
+	"""
+	maxLastMileDistance: Float
+	"""
+	Only return wheelchair-accessible journeys
+	"""
+	wheelchairAccessible: Boolean
+	"""
+	Only include trips that allow bicycle carriage
+	"""
+	bikeCarriage: Boolean
+	"""
+	Journey optimization strategy
+	"""
+	optimization: JourneyOptimization
+	"""
+	Maximum number of journey options to return
+	"""
+	maxResults: Int! = 5
+}
+
+"""
+Top-level result of a journey refresh query.
+"""
+type JourneyRefreshResult {
+	"""
+	Whether the journey should be re-planned (cancelled leg or missed connection).
+	"""
+	requiresReplan: Boolean!
+	"""
+	Per-leg update details.
+	"""
+	legs: [LegUpdate!]!
+	"""
+	Human-readable summary of what changed.
+	"""
+	summary: String!
+	"""
+	The original journey token (returned as-is for convenience).
+	"""
+	journeyToken: String!
+}
+
+scalar Latitude
+
+"""
+A leg of a journey — one contiguous segment using a single mode.
+"""
+union Leg = TransitLeg | WalkLeg
+
+"""
+Per-leg fare summary included in a `Fare` breakdown.
+"""
+type LegFareSummary {
+	"""
+	Zero-based index of the journey leg this fare applies to.
+	"""
+	legIndex: Int!
+	"""
+	Fare amount for this leg (may be 0 after transfer rule is applied).
+	"""
+	amount: Float!
+	"""
+	ISO 4217 currency code for this leg's fare.
+	"""
+	currency: String!
+}
+
+enum LegMode {
+	WALK
+	TRANSIT
+	PERSONAL_BIKE
+	MICROTRANSIT
+	SHARED_MOBILITY
+}
+
+"""
+Status of a single leg after real-time refresh.
+"""
+enum LegStatus {
+	"""
+	No change from scheduled times.
+	"""
+	UNCHANGED
+	"""
+	Trip is running but delayed.
+	"""
+	DELAYED
+	"""
+	Trip has been cancelled in the RT feed.
+	"""
+	CANCELLED
+	"""
+	Transfer before this leg is no longer feasible (missed connection).
+	"""
+	CONNECTION_MISSED
+}
+
+"""
+Per-leg update detail returned from a journey refresh.
+"""
+type LegUpdate {
+	"""
+	Zero-based leg index in the journey.
+	"""
+	legIndex: Int!
+	"""
+	Status after RT resolution.
+	"""
+	status: LegStatus!
+	"""
+	Scheduled departure (unix seconds).
+	"""
+	scheduledDeparture: Int!
+	"""
+	Scheduled arrival (unix seconds).
+	"""
+	scheduledArrival: Int!
+	"""
+	Updated departure (unix seconds) — equals scheduled when no RT data.
+	"""
+	updatedDeparture: Int!
+	"""
+	Updated arrival (unix seconds) — equals scheduled when no RT data.
+	"""
+	updatedArrival: Int!
+	"""
+	Departure delay in seconds (positive = late). Null when no RT data.
+	"""
+	departureDelay: Int
+	"""
+	Arrival delay in seconds (positive = late). Null when no RT data.
+	"""
+	arrivalDelay: Int
+	"""
+	Whether this trip is cancelled.
+	"""
+	cancelled: Boolean!
+}
+
+"""
+Location input for journey planning
+"""
+input LocationInput {
+	"""
+	Latitude coordinate (required if not using stopId)
+	"""
+	lat: Latitude
+	"""
+	Longitude coordinate (required if not using stopId)
+	"""
+	lon: Longitude
+	"""
+	Global stop ID (alternative to coordinates)
+	"""
+	stopId: ID
+	"""
+	Free-text address for geocoding
+	"""
+	address: String
+	"""
+	Named location for search
+	"""
+	name: String
+}
+
+enum LocationType {
+	STOP
+	STATION
+	ENTRANCE
+	GENERIC_NODE
+	BOARDING_AREA
+}
+
+scalar Longitude
+
+type MapData {
+	"""
+	Stops in the specified area
+	"""
+	stops(
+		"""
+		Filter by pickup/dropoff availability
+		"""
+		pickupDropoffFilter: PickupDropoffFilter
+	): [Stop!]!
+	"""
+	Routes in the specified area
+	"""
+	routes(
+		"""
+		Filter by start time (only routes active after this time)
+		"""
+		startTime: DateTime,
+		"""
+		Filter by end time (only routes active before this time)
+		"""
+		endTime: DateTime,
+		"""
+		Include real-time service status
+		"""
+		includeRealtime: Boolean! = true
+	): [Route!]!
+	"""
+	Active trips in the specified area
+	
+	Returns trips whose routes serve the queried stops and that are active
+	within the given time window. Without time filters, returns trips active
+	on the current local date.
+	"""
+	trips(
+		"""
+		Filter by start time
+		"""
+		startTime: DateTime,
+		"""
+		Filter by end time
+		"""
+		endTime: DateTime,
+		"""
+		Maximum number of trips to return (default 100)
+		"""
+		limit: Int
+	): [Trip!]!
+	"""
+	Vehicles currently in the specified area
+	
+	Iterates all RT transports that have a vehicle attached and returns
+	those whose GPS position falls within the queried bounding box/radius.
+	"""
+	vehicles: [Vehicle!]!
+	"""
+	Shared mobility options (bikes, scooters) in the area
+	"""
+	placemarks: [String!]!
+}
+
+"""
+Input for specifying a geographic area
+Exactly one of boundingBox or radius must be provided
+"""
+input MapLocationInput @oneOf {
+	"""
+	Bounding box area
+	"""
+	boundingBox: BoundingBoxInput
+	"""
+	Radius-based location
+	"""
+	radius: RadiusLocationInput
+}
+
+enum OccupancyStatus {
+	EMPTY
+	MANY_SEATS_AVAILABLE
+	FEW_SEATS_AVAILABLE
+	STANDING_ROOM_ONLY
+	CRUSHED_STANDING_ROOM_ONLY
+	FULL
+	NOT_ACCEPTING_PASSENGERS
+	NO_DATA_AVAILABLE
+	NOT_BOARDABLE
+}
+
+"""
+Pagination metadata
+"""
+type PageInfo {
+	"""
+	Current page number (1-indexed)
+	"""
+	currentPage: Int!
+	"""
+	Number of items per page
+	"""
+	pageSize: Int!
+	"""
+	Total number of items across all pages
+	"""
+	totalItems: Int!
+	"""
+	Total number of pages
+	"""
+	totalPages: Int!
+	"""
+	Whether there is a next page
+	"""
+	hasNextPage: Boolean!
+	"""
+	Whether there is a previous page
+	"""
+	hasPreviousPage: Boolean!
+}
+
+"""
+Pagination input parameters
+"""
+input PaginationInput {
+	"""
+	Page number (1-indexed)
+	"""
+	page: Int!
+	"""
+	Number of items per page
+	"""
+	pageSize: Int!
+}
+
+enum PickupDropoffFilter {
+	PICKUP_ALLOWED_ONLY
+	DROPOFF_ALLOWED_ONLY
+	EVERYTHING
+}
+
+type Place {
+	name: String
+	lat: Latitude!
+	lon: Longitude!
+	stop: StopReference
+}
+
+type Poi {
+	"""
+	Unique identifier
+	"""
+	id: ID!
+	"""
+	Name of the point of interest
+	"""
+	name: String!
+	"""
+	Geographic position
+	"""
+	position: Position!
+	"""
+	Category or type of POI
+	"""
+	category: String
+	"""
+	Street address
+	"""
+	address: String
+}
+
+"""
+Geographic coordinate position
+"""
+type Position {
+	"""
+	Latitude coordinate
+	"""
+	lat: Latitude!
+	"""
+	Longitude coordinate
+	"""
+	lon: Longitude!
+}
+
+type Query {
+	"""
+	Plan a journey between two locations
+	"""
+	planJourney(input: JourneyPlanInput!): [Journey!]!
+	"""
+	Refresh a previously planned journey with real-time updates.
+	
+	Pass the `journeyToken` returned from `planJourney` to get updated
+	departure/arrival times, cancellation status, and transfer feasibility.
+	If `requiresReplan` is true, the journey should be re-planned.
+	"""
+	refreshJourney(
+		"""
+		Journey token from a previous planJourney result
+		"""
+		journeyToken: String!
+	): JourneyRefreshResult!
+	"""
+	Unified map query - get transit data for a geographic area
+	The location input uses @oneOf to ensure exactly one of boundingBox or radius is provided
+	"""
+	map(
+		"""
+		Geographic area to query (exactly one of boundingBox or radius required)
+		"""
+		location: MapLocationInput!
+	): MapData!
+	"""
+	Search for locations by name
+	"""
+	searchLocations(		query: String!,		lat: Latitude,		lon: Longitude,		types: [LocationType!],		maxResults: Int! = 10,
+		"""
+		Preferred languages in priority order, e.g. ["en", "de"]
+		"""
+		language: [String!]
+	): [SearchResult!]!
+	"""
+	Reverse geocode - find location by coordinates
+	"""
+	reverseGeocode(lat: Latitude!, lon: Longitude!, radius: Float! = 100.0, types: [LocationType!]): [SearchResult!]!
+	"""
+	Find stops near a location
+	"""
+	nearbyStops(		lat: Latitude!,		lon: Longitude!,
+		"""
+		Search radius in meters
+		"""
+		radius: Float! = 500.0
+	): [Stop!]!
+	"""
+	Find routes near a location
+	"""
+	nearbyRoutes(		lat: Latitude!,		lon: Longitude!,
+		"""
+		Search radius in meters
+		"""
+		radius: Float! = 500.0
+	): [RouteReference!]!
+	"""
+	Get route by ID
+	"""
+	route(id: ID!): Route
+	"""
+	Search routes with flexible filtering and pagination
+	"""
+	routes(
+		"""
+		Data source identifier to filter by
+		"""
+		source: String,
+		"""
+		Search phrase to match against route names (short name or long name)
+		"""
+		phrase: String,
+		"""
+		Filter by route type (bus, train, etc.)
+		"""
+		routeType: RouteType,
+		"""
+		Filter by agency/operator name
+		"""
+		agency: String,
+		"""
+		Pagination parameters (default: page=1, pageSize=50, max pageSize=1000)
+		"""
+		pagination: PaginationInput
+	): RoutesConnection!
+	"""
+	Get trip by ID
+	"""
+	trip(id: ID!): Trip
+	"""
+	Get stop by ID
+	"""
+	stop(id: ID!): Stop
+	"""
+	Get station by ID (resolves to Station if this ID is a station,
+	or to the parent station of a stop/platform)
+	"""
+	station(
+		"""
+		Stop or station ID
+		"""
+		id: ID!
+	): Station
+	"""
+	Search stops with flexible filtering and pagination
+	"""
+	stops(
+		"""
+		Data source identifier to filter by
+		"""
+		source: String,
+		"""
+		Search phrase to match against stop names or codes
+		"""
+		phrase: String,
+		"""
+		Filter by location type (stop, station, entrance, etc.)
+		"""
+		locationType: LocationType,
+		"""
+		Pagination parameters (default: page=1, pageSize=50, max pageSize=1000)
+		"""
+		pagination: PaginationInput
+	): StopsConnection!
+	"""
+	Get agency by ID
+	"""
+	agency(id: ID!): Agency
+	"""
+	Search agencies with flexible filtering and pagination
+	"""
+	agencies(
+		"""
+		Data source identifier to filter by
+		"""
+		source: String,
+		"""
+		Search phrase to match against agency names
+		"""
+		phrase: String,
+		"""
+		Pagination parameters (default: page=1, pageSize=50, max pageSize=1000)
+		"""
+		pagination: PaginationInput
+	): AgenciesConnection!
+	"""
+	Get service alerts, filtered by a specific transit entity (stop, route, trip, or operator)
+	"""
+	alerts(
+		"""
+		Filter alerts by entity — exactly one of stop, route, trip, or operator
+		"""
+		filter: AlertFilterInput!,
+		"""
+		Filter alerts active after this time
+		"""
+		startTime: DateTime,
+		"""
+		Filter alerts active before this time
+		"""
+		endTime: DateTime
+	): [ServiceAlert!]!
+	"""
+	Get upcoming departures from a specific stop
+	"""
+	stopDepartures(
+		"""
+		Stop ID to get departures for
+		"""
+		stopId: ID!,
+		"""
+		Maximum number of departures to return
+		"""
+		limit: Int! = 10,
+		"""
+		Filter by specific transport modes
+		"""
+		modes: [RouteType!],
+		"""
+		Filter by specific route IDs
+		"""
+		routes: [ID!],
+		"""
+		Include real-time updates
+		"""
+		includeRealtime: Boolean! = true,
+		"""
+		Only return departures after this time
+		"""
+		startTime: DateTime,
+		"""
+		Include departures from parent/child/equivalent stops
+		"""
+		expandStops: Boolean! = false
+	): [Departure!]!
+	"""
+	Compute all transit stops reachable from an origin within a travel-time budget.
+	
+	Returns per-stop arrival times that can be used to render an isochrone map overlay.
+	"""
+	isochrone(input: IsochroneInput!): IsochroneResult! @deprecated(reason: "Use `reachable` instead, which supports both one-to-many and many-to-one.")
+	"""
+	Compute all transit stops reachable from (or to) a given location within a travel-time budget.
+	
+	When `arriveBy` is false (default): **one-to-many** — finds everywhere reachable from the origin.
+	When `arriveBy` is true: **many-to-one** — finds everywhere from which the destination is reachable.
+	"""
+	reachable(input: ReachableInput!): ReachableResult!
+}
+
+"""
+Input for radius-based location search
+"""
+input RadiusLocationInput {
+	"""
+	Center latitude
+	"""
+	lat: Latitude!
+	"""
+	Center longitude
+	"""
+	lon: Longitude!
+	"""
+	Radius in meters from center point (default: 500m)
+	"""
+	radius: Float! = 500.0
+}
+
+"""
+Input for a reachable (one-to-many / many-to-one) query.
+"""
+input ReachableInput {
+	"""
+	The 'one' location — origin (arriveBy=false) or destination (arriveBy=true).
+	"""
+	place: LocationInput!
+	"""
+	Reference time — departure (arriveBy=false) or arrival (arriveBy=true). Defaults to now.
+	"""
+	time: DateTime
+	"""
+	Maximum travel time in minutes (1–120). Defaults to 60.
+	"""
+	maxTravelTime: Int! = 60
+	"""
+	Reverse direction: true = many-to-one, false = one-to-many. Defaults to false.
+	"""
+	arriveBy: Boolean! = false
+	"""
+	Allowed transit modes. All modes enabled if omitted.
+	"""
+	transitModes: [RouteType!]
+	"""
+	Maximum number of transfers. Defaults to server maximum.
+	"""
+	maxTransfers: Int
+}
+
+"""
+A single reachable place with travel duration and transfer count.
+"""
+type ReachablePlace {
+	"""
+	The reachable stop/station.
+	"""
+	place: Place!
+	"""
+	Travel duration in minutes.
+	"""
+	duration: Int!
+	"""
+	Number of transfers (0 = direct, 1 = one transfer, etc.).
+	"""
+	transfers: Int!
+}
+
+"""
+The full reachable response: the resolved origin/destination and all reachable places.
+"""
+type ReachableResult {
+	"""
+	The resolved 'one' location (origin for one-to-many, destination for many-to-one).
+	"""
+	place: Place!
+	"""
+	Maximum travel time used for this query, in minutes.
+	"""
+	maxTravelTime: Int!
+	"""
+	All places reachable within `maxTravelTime`, sorted by travel time.
+	"""
+	all: [ReachablePlace!]!
+}
+
+"""
+A single transit stop reachable from the origin within the given travel time budget.
+"""
+type ReachableStop {
+	"""
+	Latitude of the stop.
+	"""
+	lat: Latitude!
+	"""
+	Longitude of the stop.
+	"""
+	lon: Longitude!
+	"""
+	Stop name (may be empty if the stop has no name).
+	"""
+	name: String!
+	"""
+	Travel time from the origin in minutes.
+	"""
+	durationMins: Int!
+}
+
+type Route {
+	"""
+	Trip patterns and schedules for this route
+	"""
+	itineraries(
+		"""
+		Filter itineraries active on this date
+		"""
+		date: DateTime,
+		"""
+		Filter by direction (0 or 1)
+		"""
+		directionId: Int
+	): [Itinerary!]!
+	"""
+	All stops served by this route group — unique stops across every GTFS
+	route_id in the group, in first-seen order.
+	
+	When `date` is provided only patterns that run on that date are included.
+	When `direction_id` is provided only patterns that have at least one
+	transport running in that direction are included.
+	"""
+	stops(
+		"""
+		Filter stops for routes active on this date
+		"""
+		date: DateTime,
+		"""
+		Filter by direction (0 or 1)
+		"""
+		directionId: Int
+	): [StopReference!]!
+	"""
+	All trips operating on this route
+	
+	Iterates every `RouteIdx` pattern across all `route_id_idxs` in
+	the group so that both directions and variant patterns are included.
+	"""
+	trips(
+		"""
+		Filter trips active on this date
+		"""
+		date: DateTime,
+		"""
+		Filter by direction (0 or 1)
+		"""
+		directionId: Int,
+		"""
+		Maximum number of trips to return
+		"""
+		limit: Int
+	): [Trip!]!
+	"""
+	Globally unique ID — tag-prefixed group slug, e.g. `"SEQ:60"` or `"SEQ:gold_coast"`.
+	
+	Constructed via [`RouteIdentifier`] to ensure the canonical format is always used.
+	
+	[`RouteIdentifier`]: crate::identifiers::RouteIdentifier
+	"""
+	id: ID!
+	"""
+	Data source tag for this route (e.g. `"SEQ"`, `"CNS"`)
+	"""
+	source: String!
+	"""
+	All GTFS `route_id` strings that belong to this route group.
+	
+	Most routes have one entry.  Where the same human-visible route has
+	multiple GTFS `route_id` values (e.g. different service periods or
+	directions encoded as separate entries) they all appear here.
+	"""
+	gtfsRouteIds: [String!]!
+	"""
+	Short name or number of the route (e.g., '101', 'A').
+	Resolved from the first route_id in the group.
+	"""
+	shortName: String
+	"""
+	Full descriptive name of the route.
+	Resolved from the first route_id in the group.
+	"""
+	longName: String!
+	"""
+	Type of transportation used on this route (bus, train, etc.).
+	Resolved from the first route_id in the group.
+	"""
+	type: RouteType!
+	"""
+	Branding colors for this route.
+	Resolved from the first route_id in the group.
+	"""
+	color: Color
+	"""
+	IANA timezone identifier for this route's schedule
+	"""
+	timezone: String!
+	"""
+	Agency operating this route
+	"""
+	agency: AgencyReference
+	"""
+	Service alerts currently affecting this route
+	"""
+	alerts(
+		"""
+		Only return currently active alerts
+		"""
+		activeOnly: Boolean! = true
+	): [ServiceAlert!]!
+	"""
+	Identifier for the transit network this route belongs to
+	"""
+	network: String
+}
+
+type RouteReference {
+	"""
+	Globally unique identifier — tag-prefixed group slug, e.g. `"SEQ:gold_coast"`.
+	
+	Uses the pre-computed `route_group_id` (already in [`RouteIdentifier`] format)
+	when available, falling back to a `{source}:{gtfs_id}` string.
+	
+	[`RouteIdentifier`]: crate::identifiers::RouteIdentifier
+	"""
+	id: ID!
+	"""
+	Data source identifier/tag
+	"""
+	source: String!
+	"""
+	Original route ID from the GTFS feed
+	"""
+	gtfsId: String!
+	"""
+	Short name or number of the route
+	"""
+	shortName: String
+	"""
+	Full descriptive name of the route
+	"""
+	longName: String!
+	"""
+	Type of transportation used on this route
+	"""
+	type: RouteType!
+	"""
+	Branding colors for this route
+	"""
+	color: Color
+}
+
+enum RouteType {
+	TRAM
+	SUBWAY
+	RAIL
+	BUS
+	FERRY
+	CABLE_TRAM
+	AERIAL_LIFT
+	FUNICULAR
+	TROLLEYBUS
+	MONORAIL
+}
+
+type RoutesConnection {
+	"""
+	List of routes for the current page
+	"""
+	items: [Route!]!
+	"""
+	Pagination information
+	"""
+	pageInfo: PageInfo!
+}
+
+type ScheduleItem {
+	"""
+	Aimed (scheduled) departure time from the published timetable.
+	"""
+	aimedDepartureTime: DateTime!
+	"""
+	Aimed (scheduled) arrival time from the published timetable.
+	"""
+	aimedArrivalTime: DateTime!
+	"""
+	Estimated (real-time) departure time. Null when no RT data.
+	"""
+	estimatedDepartureTime: DateTime
+	"""
+	Estimated (real-time) arrival time. Null when no RT data.
+	"""
+	estimatedArrivalTime: DateTime
+	"""
+	Whether this trip has been cancelled (null if no RT data)
+	"""
+	isCancelled: Boolean
+	"""
+	Whether the times reflect real-time predictions
+	"""
+	isRealTime: Boolean!
+	"""
+	Trip ID in TripIdentifier format ({source}:{YYYYMMDD}_{HH:MM}_{trip_id})
+	"""
+	tripId: String
+	"""
+	Internal search key for retrieving this trip instance
+	"""
+	tripSearchKey: String
+	"""
+	Departure delay in seconds (positive = late, negative = early). Null if no RT data.
+	"""
+	delay: Int
+}
+
+"""
+Generic location result from search
+"""
+union SearchResult = Stop | Station | Poi | Address
+
+type ServiceAlert {
+	"""
+	Unique identifier for this alert
+	"""
+	id: ID!
+	"""
+	Short summary of the alert
+	"""
+	headerText: String!
+	"""
+	Detailed description of the alert
+	"""
+	descriptionText: String
+	"""
+	Reason for the service disruption
+	"""
+	cause: AlertCause
+	"""
+	Impact on service operations
+	"""
+	effect: AlertEffect
+	"""
+	URL to additional information about the alert
+	"""
+	url: String
+	"""
+	Time periods when this alert is active
+	"""
+	activePeriods: [ActivePeriod!]!
+	"""
+	Agencies affected by this alert
+	"""
+	affectedAgencies: [AgencyReference!]!
+	"""
+	Routes affected by this alert
+	"""
+	affectedRoutes: [RouteReference!]!
+	"""
+	Stops affected by this alert
+	"""
+	affectedStops: [StopReference!]!
+	"""
+	Trip IDs affected by this alert
+	"""
+	affectedTrips: [ID!]!
+}
+
+type Station {
+	"""
+	Globally unique identifier (format: {source}:{gtfsId})
+	"""
+	id: ID!
+	"""
+	Data source identifier/tag
+	"""
+	source: String!
+	"""
+	Original station ID from the GTFS feed
+	"""
+	gtfsId: String!
+	"""
+	Name of the station
+	"""
+	name: String!
+	"""
+	Geographic position of the station
+	"""
+	position: Position!
+	"""
+	Location type (always STATION for this type)
+	"""
+	locationType: LocationType!
+	"""
+	All stops and platforms within this station
+	"""
+	childStops: [Stop!]!
+	"""
+	Routes serving this station
+	"""
+	routes: [Route!]!
+	"""
+	Upcoming departures from all child stops within this station
+	"""
+	departures(
+		"""
+		Maximum number of departures to return
+		"""
+		limit: Int! = 20,
+		"""
+		Include real-time updates in results
+		"""
+		includeRealtime: Boolean! = true,
+		"""
+		Only return departures after this time
+		"""
+		startTime: DateTime
+	): [Departure!]!
+}
+
+type Stop {
+	"""
+	Globally unique identifier (format: {tag}:{gtfsId})
+	"""
+	id: ID!
+	"""
+	Data source tag (e.g. `"SEQ"`, `"CNS"`)
+	"""
+	source: String!
+	"""
+	Original stop ID from the GTFS feed
+	"""
+	gtfsId: String!
+	"""
+	Name of the stop as displayed to passengers
+	"""
+	name: String!
+	"""
+	Short code or number identifying the stop
+	"""
+	code: String
+	"""
+	Geographic position of the stop
+	"""
+	position: Position!
+	"""
+	Type of location (stop, station, entrance, etc.)
+	"""
+	locationType: LocationType!
+	"""
+	Primary route type served at this stop
+	"""
+	routeType: RouteType
+	"""
+	Wheelchair accessibility level for this stop
+	"""
+	wheelchairBoarding: WheelchairAccessible!
+	"""
+	Real-time feed identifier for this stop
+	"""
+	rtStopId: String
+	"""
+	Distance in meters from a reference point (populated in proximity queries)
+	"""
+	distance: Float
+	"""
+	Parent station containing this stop (if applicable)
+	"""
+	parentStation: Station
+	"""
+	List of upcoming departures from this stop
+	"""
+	departures(
+		"""
+		Maximum number of departures to return
+		"""
+		limit: Int! = 10,
+		"""
+		Filter by specific transport modes
+		"""
+		modes: [RouteType!],
+		"""
+		Filter by specific route IDs
+		"""
+		routes: [ID!],
+		"""
+		Include real-time updates in results
+		"""
+		includeRealtime: Boolean! = true,
+		"""
+		Only return departures after this time
+		"""
+		startTime: DateTime,
+		"""
+		Include departures from parent/child/equivalent stops
+		"""
+		expandStops: Boolean! = false
+	): [Departure!]!
+	"""
+	Routes that serve this stop (returns full route objects)
+	"""
+	routes(
+		"""
+		Filter routes active on this date
+		"""
+		date: DateTime,
+		"""
+		Include real-time service status
+		"""
+		includeRealtime: Boolean! = true
+	): [Route!]!
+	"""
+	Service alerts currently affecting this stop
+	"""
+	alerts(
+		"""
+		Only return currently active alerts
+		"""
+		activeOnly: Boolean! = true
+	): [ServiceAlert!]!
+}
+
+type StopReference {
+	"""
+	Globally unique identifier (format: {tag}:{gtfsId})
+	"""
+	id: ID!
+	"""
+	Data source identifier/tag
+	"""
+	source: String!
+	"""
+	Original stop ID from the GTFS feed
+	"""
+	gtfsId: String!
+	"""
+	Name of the stop
+	"""
+	name: String!
+	"""
+	Short code identifying the stop
+	"""
+	code: String
+	"""
+	Geographic position
+	"""
+	position: Position!
+	"""
+	Type of location
+	"""
+	locationType: LocationType!
+	"""
+	Distance in meters from reference point (if applicable)
+	"""
+	distance: Float
+	"""
+	Platform code from GTFS (e.g. "4", "B", "Platform 3")
+	"""
+	platformCode: String
+}
+
+type StopTime {
+	"""
+	Sequential order of this stop in the trip
+	"""
+	stopSequence: Int!
+	"""
+	Global stop identifier
+	"""
+	stopId: ID!
+	"""
+	Name of the stop
+	"""
+	stopName: String!
+	"""
+	Latitude of the stop
+	"""
+	stopLat: Latitude!
+	"""
+	Longitude of the stop
+	"""
+	stopLon: Longitude!
+	"""
+	Aimed (scheduled) arrival time from the published timetable.
+	"""
+	aimedArrivalTime: DateTime!
+	"""
+	Aimed (scheduled) departure time from the published timetable.
+	"""
+	aimedDepartureTime: DateTime!
+	"""
+	Estimated (real-time) arrival time. Null if no RT data.
+	"""
+	estimatedArrivalTime: DateTime
+	"""
+	Estimated (real-time) departure time. Null if no RT data.
+	"""
+	estimatedDepartureTime: DateTime
+	"""
+	Arrival delay in seconds (positive = late, negative = early, null if no RT data)
+	"""
+	arrivalDelay: Int
+	"""
+	Departure delay in seconds (positive = late, negative = early, null if no RT data)
+	"""
+	departureDelay: Int
+	"""
+	Whether this stop is skipped (not served) by the trip (null if no RT data)
+	"""
+	isSkipped: Boolean
+	"""
+	Whether real-time data is available for this stop time
+	"""
+	isRealTime: Boolean!
+	"""
+	Platform code for this stop (from GTFS `platform_code`)
+	"""
+	platformCode: String
+	"""
+	The actual stop/platform assigned by real-time data when a platform
+	change has occurred (GTFS-RT `StopTimeProperties.assigned_stop_id`).
+	Null when no reassignment.
+	"""
+	assignedStop: StopReference
+	"""
+	True when real-time data indicates a platform/stop change (null if no RT data)
+	"""
+	isStopReassigned: Boolean
+}
+
+type StopsConnection {
+	"""
+	List of stops for the current page
+	"""
+	items: [Stop!]!
+	"""
+	Pagination information
+	"""
+	pageInfo: PageInfo!
+}
+
+type TransitLeg {
+	"""
+	Aimed (scheduled) departure time from the published timetable.
+	"""
+	aimedDepartureTime: DateTime!
+	"""
+	Aimed (scheduled) arrival time from the published timetable.
+	"""
+	aimedArrivalTime: DateTime!
+	"""
+	Duration in seconds.
+	"""
+	duration: Int!
+	"""
+	Estimated (real-time) departure time. Null when no RT data.
+	"""
+	estimatedDepartureTime: DateTime
+	"""
+	Estimated (real-time) arrival time. Null when no RT data.
+	"""
+	estimatedArrivalTime: DateTime
+	"""
+	Departure delay in seconds (positive = late, negative = early).
+	"""
+	departureDelay: Int
+	"""
+	Arrival delay in seconds (positive = late, negative = early).
+	"""
+	arrivalDelay: Int
+	"""
+	Whether real-time data is available for this leg.
+	"""
+	isRealTime: Boolean!
+	"""
+	Whether this trip run is cancelled (from GTFS-RT).
+	"""
+	cancelled: Boolean!
+	"""
+	Origin of this leg.
+	"""
+	from: Place!
+	"""
+	Destination of this leg.
+	"""
+	to: Place!
+	"""
+	Route information (short name, color, agency, etc.).
+	"""
+	route: RouteReference!
+	"""
+	Headsign / destination text shown on the vehicle.
+	"""
+	headsign: String
+	"""
+	GTFS `direction_id` (0 or 1).
+	"""
+	direction: Int
+	"""
+	Route type (Bus, Rail, Ferry, …).
+	"""
+	routeType: RouteType!
+	"""
+	GTFS `trip_id` for this specific trip.
+	"""
+	tripId: String
+	"""
+	Intermediate stops between boarding and alighting, with times.
+	"""
+	intermediateStops: [IntermediateStop!]!
+	"""
+	Encoded polyline geometry of the route shape for this leg.
+	"""
+	polyline: String
+	"""
+	Service alerts affecting this transit leg.
+	"""
+	alerts: [ServiceAlert!]!
+}
+
+type Trip {
+	"""
+	Globally unique trip identifier in motis-inspired format: `{source}:{YYYYMMDD}_{HH:MM}_{trip_id}`
+	
+	Example: `SEQ:20240101_08:00_1234`
+	"""
+	id: ID!
+	"""
+	Unique search key for retrieving this specific trip instance
+	"""
+	tripSearchKey: ID!
+	"""
+	Real-time feed identifier for this trip
+	"""
+	rtTripId: String
+	"""
+	Destination displayed on the vehicle for this trip
+	"""
+	headsign: String!
+	"""
+	Direction identifier for this trip
+	"""
+	directionId: Int!
+	"""
+	Scheduled departure date and time at the first stop
+	"""
+	startDateTime: DateTime
+	"""
+	Short trip identifier displayed to passengers (e.g. train or coach number)
+	"""
+	shortName: String
+	"""
+	Whether bicycles are permitted on this trip
+	"""
+	bikesAllowed: Boolean
+	"""
+	Whether this trip has been cancelled by a real-time update (null if no RT data)
+	"""
+	isCancelled: Boolean
+	"""
+	Whether this trip was added by a real-time update (not in the static schedule, null if no RT data)
+	"""
+	isAdded: Boolean
+	"""
+	Whether real-time data is available for this trip
+	"""
+	isRealTime: Boolean!
+	"""
+	Google-encoded polyline for the geographic path of this trip.
+	
+	Returns `null` when no GTFS shape is available for the trip.
+	Decode with any standard polyline library using precision 5.
+	"""
+	path: String
+	"""
+	Wheelchair accessibility status of the vehicle
+	"""
+	wheelchairAccessible: WheelchairAccessible!
+	"""
+	Route that this trip operates on
+	"""
+	route: RouteReference!
+	"""
+	Complete schedule of stops and times for this trip
+	"""
+	stopTimes: [StopTime!]!
+	"""
+	Service alerts affecting this specific trip, filtered to the trip's
+	actual operating window (first-stop departure → last-stop arrival).
+	"""
+	alerts: [ServiceAlert!]!
+	"""
+	Current real-time position of the vehicle (if available)
+	
+	Resolves the trip's `RtTransportIdx` via the stored typed indices,
+	then retrieves the compact `RtVehicle` from the VectorMap.
+	"""
+	vehicle: Vehicle
+}
+
+type TripReference {
+	"""
+	Globally unique trip identifier
+	"""
+	id: ID!
+	"""
+	Data source tag
+	"""
+	source: String!
+	"""
+	GTFS trip_id
+	"""
+	gtfsTripId: String!
+	"""
+	Destination displayed on the vehicle
+	"""
+	headsign: String!
+	"""
+	Direction identifier (0 or 1)
+	"""
+	directionId: Int!
+	"""
+	Short trip identifier (e.g. train number)
+	"""
+	shortName: String
+	"""
+	Scheduled departure date and time at the first stop
+	"""
+	startDateTime: DateTime
+	"""
+	Route this trip belongs to
+	"""
+	route: RouteReference!
+}
+
+type Vehicle {
+	"""
+	Unique identifier for this vehicle
+	"""
+	id: String!
+	"""
+	Human-readable label or number displayed on the vehicle
+	"""
+	label: String
+	"""
+	License plate or registration number
+	"""
+	licensePlate: String
+	"""
+	Current geographic position of the vehicle
+	"""
+	position: Position
+	"""
+	Direction the vehicle is facing in degrees (0-360)
+	"""
+	bearing: Float
+	"""
+	Current speed in meters per second
+	"""
+	speed: Float
+	"""
+	Timestamp when this vehicle position was recorded
+	"""
+	timestamp: DateTime
+	"""
+	Current passenger occupancy level
+	"""
+	occupancyStatus: OccupancyStatus
+	"""
+	Trip this vehicle is currently serving
+	"""
+	trip: TripReference
+}
+
+type WalkLeg {
+	"""
+	Departure time.
+	"""
+	departureTime: DateTime!
+	"""
+	Arrival time.
+	"""
+	arrivalTime: DateTime!
+	"""
+	Duration in seconds.
+	"""
+	duration: Int!
+	"""
+	Walking distance in metres (straight-line estimate, rounded).
+	"""
+	distance: Int!
+	"""
+	Origin of this walk.
+	"""
+	from: Place!
+	"""
+	Destination of this walk.
+	"""
+	to: Place!
+	"""
+	Encoded polyline geometry (null until walking directions are available).
+	"""
+	polyline: String
+}
+
+enum WheelchairAccessible {
+	NO_INFORMATION
+	ACCESSIBLE
+	NOT_ACCESSIBLE
+}
+
+"""
+Marks an element of a GraphQL schema as no longer supported.
+"""
+directive @deprecated(reason: String = "No longer supported") on FIELD_DEFINITION | ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION | ENUM_VALUE
+"""
+Directs the executor to include this field or fragment only when the `if` argument is true.
+"""
+directive @include(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+"""
+Indicates that an Input Object is a OneOf Input Object (and thus requires exactly one of its field be provided)
+"""
+directive @oneOf on INPUT_OBJECT
+"""
+Directs the executor to skip this field or fragment when the `if` argument is true.
+"""
+directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+schema {
+	query: Query
+}

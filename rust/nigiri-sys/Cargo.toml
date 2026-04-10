@@ -1,0 +1,9 @@
+[package]
+name = "nigiri-sys"
+version = "0.1.0"
+edition = "2024"
+description = "Raw FFI bindings to the nigiri transit routing C++ library"
+links = "nigiri"
+
+[build-dependencies]
+bindgen = "0.71"

@@ -1,0 +1,11 @@
+[workspace]
+members = ["nigiri-sys", "nigiri", "transit-adr", "transit-osr", "transit-core", "transit-import", "transit-routing", "transit-server"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+authors = ["Transit Cloud Contributors"]
+license = "Proprietary"
+repository = "https://github.com/transit-cloud/transit-cloud-rust"

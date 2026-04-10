@@ -135,6 +135,166 @@ nigiri_pareto_set_t* nigiri_get_journeys(nigiri_timetable_t const* t,
 
 void nigiri_destroy_journeys(nigiri_pareto_set_t const* journeys);
 
+// --- Extended accessors for Rust/FFI consumers ---
+
+// Schedule date range as Unix timestamps.
+int64_t nigiri_get_external_interval_start(nigiri_timetable_t const* t);
+int64_t nigiri_get_external_interval_end(nigiri_timetable_t const* t);
+
+// Number of stops in a route.
+uint16_t nigiri_get_route_stop_count(nigiri_timetable_t const* t,
+                                     uint32_t route_idx);
+
+// Transport name (without allocating the full nigiri_transport_t).
+// Writes up to buf_len bytes into buf and returns the actual name length.
+uint32_t nigiri_get_transport_name(nigiri_timetable_t const* t,
+                                   uint32_t transport_idx,
+                                   char* buf,
+                                   uint32_t buf_len);
+
+// Route index for a given transport.
+uint32_t nigiri_get_transport_route(nigiri_timetable_t const* t,
+                                    uint32_t transport_idx);
+
+// Number of RT transports currently tracked (0 if no RT data).
+uint32_t nigiri_get_rt_transport_count(nigiri_timetable_t const* t);
+
+// Find location by string ID. Returns UINT32_MAX if not found.
+uint32_t nigiri_find_location(nigiri_timetable_t const* t,
+                              char const* id,
+                              uint32_t id_len);
+
+// Convert between Unix timestamp and day_idx + minutes after midnight.
+uint16_t nigiri_to_day_idx(nigiri_timetable_t const* t, int64_t unix_ts);
+int64_t nigiri_to_unixtime(nigiri_timetable_t const* t,
+                           uint16_t day_idx,
+                           uint16_t minutes_after_midnight);
+
+// --- Phase 1: Detail accessors ---
+
+// Number of data sources (datasets).
+uint32_t nigiri_get_source_count(nigiri_timetable_t const* t);
+
+// Location detail with type, wheelchair, parent info.
+struct nigiri_location_detail {
+  double lat;
+  double lon;
+  char const* name;
+  uint32_t name_len;
+  char const* id;
+  uint32_t id_len;
+  uint8_t location_type;     // 0=track(generated), 1=track, 2=station
+  uint32_t parent_idx;       // parent station index (UINT32_MAX = none)
+  uint32_t src_idx;          // source dataset index
+  uint16_t transfer_time;    // transfer time in minutes
+};
+typedef struct nigiri_location_detail nigiri_location_detail_t;
+
+// Fill out with location details. Returns false if idx is out of range.
+bool nigiri_get_location_detail(nigiri_timetable_t const* t,
+                                uint32_t location_idx,
+                                nigiri_location_detail_t* out);
+
+// Route detail with names, agency, colors.
+struct nigiri_route_detail {
+  char const* short_name;
+  uint32_t short_name_len;
+  char const* long_name;
+  uint32_t long_name_len;
+  char const* agency_name;
+  uint32_t agency_name_len;
+  char const* agency_id;
+  uint32_t agency_id_len;
+  uint8_t clasz;             // route class (clasz enum value)
+  uint32_t color;            // 0xRRGGBB (0 = not set)
+  uint32_t text_color;       // 0xRRGGBB (0 = not set)
+};
+typedef struct nigiri_route_detail nigiri_route_detail_t;
+
+// Fill out with route details. Returns false if idx is out of range.
+bool nigiri_get_route_detail(nigiri_timetable_t const* t,
+                             uint32_t route_idx,
+                             nigiri_route_detail_t* out);
+
+// --- Phase 2: Tag lookup support ---
+
+// Get the GTFS trip_id string for a transport.
+// Returns false if transport_idx is out of range.
+bool nigiri_get_transport_trip_id(nigiri_timetable_t const* t,
+                                  uint32_t transport_idx,
+                                  char const** id_out,
+                                  uint32_t* id_len_out);
+
+// Get the source index for a transport.
+// Returns UINT32_MAX if out of range.
+uint32_t nigiri_get_transport_source(nigiri_timetable_t const* t,
+                                     uint32_t transport_idx);
+
+// Get the first departure time in minutes after midnight for a transport.
+int16_t nigiri_get_transport_first_dep_mam(nigiri_timetable_t const* t,
+                                           uint32_t transport_idx);
+
+// Get the GTFS route_id string for a route (via the first trip's route_id).
+bool nigiri_get_route_gtfs_id(nigiri_timetable_t const* t,
+                               uint32_t route_idx,
+                               char const** id_out,
+                               uint32_t* id_len_out);
+
+// Convert day_idx to date string "YYYYMMDD". buf must be at least 9 bytes.
+bool nigiri_day_to_date_str(nigiri_timetable_t const* t,
+                            uint16_t day_idx,
+                            char* buf_out);
+
+// --- Phase 3: Routing support ---
+
+// Get routes serving a location. Returns route count written.
+// If routes_out is NULL, just returns the count.
+uint32_t nigiri_get_location_routes(nigiri_timetable_t const* t,
+                                    uint32_t location_idx,
+                                    uint32_t* routes_out,
+                                    uint32_t max_routes);
+
+// Get the stop_idx of a location within a route.
+// Returns UINT16_MAX if location is not on this route.
+uint16_t nigiri_get_stop_idx_in_route(nigiri_timetable_t const* t,
+                                      uint32_t route_idx,
+                                      uint32_t location_idx);
+
+// Get the departure/arrival time for a transport at a given stop.
+// Returns minutes-after-midnight (MAM). Negative on error.
+int16_t nigiri_get_event_mam(nigiri_timetable_t const* t,
+                             uint32_t transport_idx,
+                             uint16_t stop_idx,
+                             bool is_arrival);
+
+// Get transport range for a route.
+// Sets *from_out and *to_out to the transport index range [from, to).
+bool nigiri_get_route_transport_range(nigiri_timetable_t const* t,
+                                      uint32_t route_idx,
+                                      uint32_t* from_out,
+                                      uint32_t* to_out);
+
+// Get the number of intermediate stops for a transport leg.
+// Returns stop times for all stops in the route of a transport.
+// stop_locations_out: location indices, n_stops entries
+// dep_mams_out: departure MAMs, n_stops entries (last is -1)
+// arr_mams_out: arrival MAMs, n_stops entries (first is -1)
+// Returns number of stops, or 0 on error.
+uint16_t nigiri_get_transport_stop_times(
+    nigiri_timetable_t const* t,
+    uint32_t transport_idx,
+    uint32_t* stop_locations_out,
+    int16_t* dep_mams_out,
+    int16_t* arr_mams_out,
+    uint16_t max_stops);
+
+// Get transport display name (headsign/direction).
+uint32_t nigiri_get_transport_display_name(
+    nigiri_timetable_t const* t,
+    uint32_t transport_idx,
+    char* buf,
+    uint32_t buf_len);
+
 #ifdef __cplusplus
 }
 #endif

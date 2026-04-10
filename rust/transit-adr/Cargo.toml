@@ -1,0 +1,15 @@
+[package]
+name = "transit-adr"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Address Data & Reverse Geocoding - text normalization, n-gram matching, and fuzzy string scoring"
+
+[dependencies]
+unicode-normalization = "0.1"
+unicode-general-category = "1.0"
+deunicode = "1.4"
+
+[dev-dependencies]

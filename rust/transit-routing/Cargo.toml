@@ -1,0 +1,16 @@
+[package]
+name = "transit-routing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Transit routing orchestration (journey planning, departures, reachability)"
+
+[dependencies]
+transit-core = { path = "../transit-core" }
+nigiri = { path = "../nigiri" }
+transit-osr = { path = "../transit-osr" }
+tracing = "0.1"
+chrono = { version = "0.4", features = ["serde"] }

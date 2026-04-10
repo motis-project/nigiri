@@ -1,0 +1,26 @@
+[package]
+name = "transit-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "GraphQL API server for the transit platform"
+
+[dependencies]
+transit-core = { path = "../transit-core" }
+transit-import = { path = "../transit-import" }
+transit-routing = { path = "../transit-routing" }
+nigiri = { path = "../nigiri" }
+rstar = "0.12"
+async-graphql = "7"
+async-graphql-axum = "7"
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }

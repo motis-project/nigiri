@@ -1,0 +1,8 @@
+[package]
+name = "nigiri"
+version = "0.1.0"
+edition = "2024"
+description = "Safe Rust wrapper for the nigiri transit routing library"
+
+[dependencies]
+nigiri-sys = { path = "../nigiri-sys" }

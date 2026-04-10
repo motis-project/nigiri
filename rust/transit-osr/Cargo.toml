@@ -1,0 +1,75 @@
+[package]
+name = "transit-osr"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Serialization (zero-copy memory mapping)
+rkyv = { version = "0.7", features = ["validation"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+
+# Packed structs for memory-efficient storage
+bytemuck = { version = "1.14", features = ["derive"] }
+
+# OSM parsing
+osmpbf = "0.2"
+
+# Spatial indexing
+rstar = "0.12"
+
+# Geometry
+geo = "0.28"
+geo-types = "0.7"
+
+# Utilities
+anyhow = "1.0"
+thiserror = "1.0"
+log = "0.4"
+env_logger = "0.11"
+clap = { version = "4.5", features = ["derive"] }
+
+# Memory mapping
+memmap2 = "0.9"
+
+# Collections
+ahash = "0.8"
+bitvec = "1.0"
+vecvec = "0.1.0"
+
+# Bitfield packing
+packed_struct = "0.10"
+
+# Optional: Elevation data (DEM/HGT)
+gdal = { version = "0.17", optional = true }
+
+# HTTP server dependencies (optional)
+axum = { version = "0.7", optional = true }
+tokio = { version = "1.35", features = ["full"], optional = true }
+tower = { version = "0.4", optional = true }
+tower-http = { version = "0.5", features = ["cors", "trace"], optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
+
+[features]
+default = []
+elevation = ["gdal"]
+http-server = ["dep:axum", "dep:tokio", "dep:tower", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber"]
+
+[dev-dependencies]
+tempfile = "3.8"
+rand = "0.8"
+
+[lib]
+name = "transit_cloud_osr"
+path = "src/lib.rs"
+
+[[bin]]
+name = "extract"
+path = "src/bin/extract.rs"
+
+[[bin]]
+name = "osr-server"
+path = "src/bin/server.rs"
+required-features = ["http-server"]

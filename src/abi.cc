@@ -22,6 +22,7 @@
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/shapes_storage.h"
+#include "nigiri/stop.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -415,4 +416,490 @@ void nigiri_destroy_journeys(nigiri_pareto_set_t const* journeys) {
   }
   delete[] journeys->journeys;
   delete journeys;
+}
+
+// --- Extended accessors ---
+
+int64_t nigiri_get_external_interval_start(nigiri_timetable_t const* t) {
+  return std::chrono::system_clock::to_time_t(
+      std::chrono::time_point_cast<std::chrono::seconds>(
+          t->tt->date_range_.from_));
+}
+
+int64_t nigiri_get_external_interval_end(nigiri_timetable_t const* t) {
+  return std::chrono::system_clock::to_time_t(
+      std::chrono::time_point_cast<std::chrono::seconds>(
+          t->tt->date_range_.to_));
+}
+
+uint16_t nigiri_get_route_stop_count(nigiri_timetable_t const* t,
+                                     uint32_t route_idx) {
+  auto const ridx = nigiri::route_idx_t{route_idx};
+  return static_cast<uint16_t>(t->tt->route_location_seq_[ridx].size());
+}
+
+uint32_t nigiri_get_transport_name(nigiri_timetable_t const* t,
+                                   uint32_t transport_idx,
+                                   char* buf,
+                                   uint32_t buf_len) {
+  auto const tidx = nigiri::transport_idx_t{transport_idx};
+  auto const name = t->tt->transport_name(tidx);
+  auto const len = static_cast<uint32_t>(name.length());
+  if (buf != nullptr && buf_len > 0) {
+    auto const copy_len = std::min(len, buf_len);
+    std::memcpy(buf, name.data(), copy_len);
+  }
+  return len;
+}
+
+uint32_t nigiri_get_transport_route(nigiri_timetable_t const* t,
+                                    uint32_t transport_idx) {
+  auto const tidx = nigiri::transport_idx_t{transport_idx};
+  return static_cast<nigiri::route_idx_t::value_t>(
+      t->tt->transport_route_[tidx]);
+}
+
+uint32_t nigiri_get_rt_transport_count(nigiri_timetable_t const* t) {
+  return t->rtt ? t->rtt->n_rt_transports() : 0U;
+}
+
+uint32_t nigiri_find_location(nigiri_timetable_t const* t,
+                              char const* id,
+                              uint32_t id_len) {
+  auto const src = nigiri::source_idx_t{0U};
+  auto const result = t->tt->find(
+      nigiri::location_id{std::string_view{id, id_len}, src});
+  return result.has_value()
+             ? static_cast<nigiri::location_idx_t::value_t>(*result)
+             : UINT32_MAX;
+}
+
+uint16_t nigiri_to_day_idx(nigiri_timetable_t const* t, int64_t unix_ts) {
+  auto const ut = nigiri::unixtime_t{
+      std::chrono::duration_cast<nigiri::i32_minutes>(
+          std::chrono::system_clock::from_time_t(static_cast<time_t>(unix_ts))
+              .time_since_epoch())};
+  auto const [d, m] = t->tt->day_idx_mam(ut);
+  return static_cast<uint16_t>(cista::to_idx(d));
+}
+
+int64_t nigiri_to_unixtime(nigiri_timetable_t const* t,
+                           uint16_t day_idx,
+                           uint16_t minutes_after_midnight) {
+  auto const ut = t->tt->to_unixtime(
+      nigiri::day_idx_t{day_idx},
+      nigiri::minutes_after_midnight_t{minutes_after_midnight});
+  return std::chrono::system_clock::to_time_t(
+      std::chrono::time_point_cast<std::chrono::seconds>(
+          nigiri::unixtime_t{} + ut.time_since_epoch()));
+}
+
+// --- Phase 1: Detail accessors ---
+
+uint32_t nigiri_get_source_count(nigiri_timetable_t const* t) {
+  return static_cast<uint32_t>(t->tt->n_sources());
+}
+
+bool nigiri_get_location_detail(nigiri_timetable_t const* t,
+                                uint32_t location_idx,
+                                nigiri_location_detail_t* out) {
+  if (location_idx >= t->tt->n_locations()) {
+    return false;
+  }
+  auto const l = nigiri::location_idx_t{location_idx};
+
+  auto const pos = t->tt->locations_.coordinates_[l];
+  out->lat = pos.lat_;
+  out->lon = pos.lng_;
+
+  auto const name = t->tt->get_default_translation(t->tt->locations_.names_[l]);
+  out->name = name.data();
+  out->name_len = static_cast<uint32_t>(name.length());
+
+  auto const id = t->tt->locations_.ids_[l].view();
+  out->id = id.data();
+  out->id_len = static_cast<uint32_t>(id.length());
+
+  out->location_type =
+      static_cast<uint8_t>(t->tt->locations_.types_[l]);
+
+  auto const parent = t->tt->locations_.parents_[l];
+  out->parent_idx =
+      parent == nigiri::location_idx_t::invalid()
+          ? UINT32_MAX
+          : static_cast<nigiri::location_idx_t::value_t>(parent);
+
+  out->src_idx =
+      static_cast<nigiri::source_idx_t::value_t>(t->tt->locations_.src_[l]);
+
+  out->transfer_time =
+      static_cast<uint16_t>(t->tt->locations_.transfer_time_[l].count());
+
+  return true;
+}
+
+bool nigiri_get_route_detail(nigiri_timetable_t const* t,
+                             uint32_t route_idx,
+                             nigiri_route_detail_t* out) {
+  if (route_idx >= t->tt->n_routes()) {
+    return false;
+  }
+  auto const ridx = nigiri::route_idx_t{route_idx};
+
+  // Default: clasz from route
+  out->clasz = static_cast<uint8_t>(t->tt->route_clasz_[ridx]);
+
+  // Initialize string fields to empty
+  out->short_name = "";
+  out->short_name_len = 0;
+  out->long_name = "";
+  out->long_name_len = 0;
+  out->agency_name = "";
+  out->agency_name_len = 0;
+  out->agency_id = "";
+  out->agency_id_len = 0;
+  out->color = 0;
+  out->text_color = 0;
+
+  // Navigate: route → first transport → first trip → route_id_idx → names
+  auto const transport_range = t->tt->route_transport_ranges_[ridx];
+  if (transport_range.from_ == transport_range.to_) {
+    return true;  // route with no transports — return with defaults
+  }
+
+  auto const first_transport = transport_range.from_;
+  auto const trip_sections =
+      t->tt->transport_to_trip_section_[first_transport];
+  if (trip_sections.empty()) {
+    return true;
+  }
+
+  auto const merged = t->tt->merged_trips_[trip_sections.front()];
+  if (merged.empty()) {
+    return true;
+  }
+
+  auto const trip_idx = merged.front();
+  auto const route_id_idx = t->tt->trip_route_id_[trip_idx];
+
+  // Find the source for this transport's locations
+  auto const first_loc_seq = t->tt->route_location_seq_[ridx];
+  auto src = nigiri::source_idx_t{0U};
+  if (!first_loc_seq.empty()) {
+    auto const first_loc =
+        nigiri::stop{first_loc_seq.front()}.location_idx();
+    src = t->tt->locations_.src_[first_loc];
+  }
+
+  if (static_cast<uint32_t>(cista::to_idx(src)) < t->tt->route_ids_.size()) {
+    auto const& rids = t->tt->route_ids_[src];
+
+    if (static_cast<uint32_t>(cista::to_idx(route_id_idx)) <
+        rids.route_id_short_names_.size()) {
+      auto const sn =
+          t->tt->get_default_translation(rids.route_id_short_names_[route_id_idx]);
+      out->short_name = sn.data();
+      out->short_name_len = static_cast<uint32_t>(sn.length());
+    }
+
+    if (static_cast<uint32_t>(cista::to_idx(route_id_idx)) <
+        rids.route_id_long_names_.size()) {
+      auto const ln =
+          t->tt->get_default_translation(rids.route_id_long_names_[route_id_idx]);
+      out->long_name = ln.data();
+      out->long_name_len = static_cast<uint32_t>(ln.length());
+    }
+
+    if (static_cast<uint32_t>(cista::to_idx(route_id_idx)) <
+        rids.route_id_colors_.size()) {
+      auto const colors = rids.route_id_colors_[route_id_idx];
+      out->color = static_cast<uint32_t>(colors.color_);
+      out->text_color = static_cast<uint32_t>(colors.text_color_);
+    }
+
+    if (static_cast<uint32_t>(cista::to_idx(route_id_idx)) <
+        rids.route_id_provider_.size()) {
+      auto const provider_idx = rids.route_id_provider_[route_id_idx];
+      if (static_cast<uint32_t>(cista::to_idx(provider_idx)) <
+          t->tt->providers_.size()) {
+        auto const& prov = t->tt->providers_[provider_idx];
+        auto const prov_name = t->tt->get_default_translation(prov.name_);
+        out->agency_name = prov_name.data();
+        out->agency_name_len = static_cast<uint32_t>(prov_name.length());
+
+        auto const prov_id = t->tt->strings_.get(prov.id_);
+        out->agency_id = prov_id.data();
+        out->agency_id_len = static_cast<uint32_t>(prov_id.length());
+      }
+    }
+  }
+
+  return true;
+}
+
+// --- Phase 2: Tag lookup support ---
+
+bool nigiri_get_transport_trip_id(nigiri_timetable_t const* t,
+                                  uint32_t transport_idx,
+                                  char const** id_out,
+                                  uint32_t* id_len_out) {
+  if (transport_idx >= t->tt->transport_route_.size()) {
+    return false;
+  }
+  auto const tidx = nigiri::transport_idx_t{transport_idx};
+  auto const trip_sections = t->tt->transport_to_trip_section_[tidx];
+  if (trip_sections.empty()) {
+    return false;
+  }
+  auto const merged = t->tt->merged_trips_[trip_sections.front()];
+  if (merged.empty()) {
+    return false;
+  }
+  auto const trip_idx = merged.front();
+  auto const trip_id_indices = t->tt->trip_ids_[trip_idx];
+  if (trip_id_indices.empty()) {
+    return false;
+  }
+  auto const trip_id_str =
+      t->tt->trip_id_strings_[trip_id_indices.front()].view();
+  *id_out = trip_id_str.data();
+  *id_len_out = static_cast<uint32_t>(trip_id_str.length());
+  return true;
+}
+
+uint32_t nigiri_get_transport_source(nigiri_timetable_t const* t,
+                                     uint32_t transport_idx) {
+  if (transport_idx >= t->tt->transport_route_.size()) {
+    return UINT32_MAX;
+  }
+  auto const tidx = nigiri::transport_idx_t{transport_idx};
+  auto const trip_sections = t->tt->transport_to_trip_section_[tidx];
+  if (trip_sections.empty()) {
+    return UINT32_MAX;
+  }
+  auto const merged = t->tt->merged_trips_[trip_sections.front()];
+  if (merged.empty()) {
+    return UINT32_MAX;
+  }
+  auto const trip_idx = merged.front();
+  auto const trip_id_indices = t->tt->trip_ids_[trip_idx];
+  if (trip_id_indices.empty()) {
+    return UINT32_MAX;
+  }
+  return static_cast<nigiri::source_idx_t::value_t>(
+      t->tt->trip_id_src_[trip_id_indices.front()]);
+}
+
+int16_t nigiri_get_transport_first_dep_mam(nigiri_timetable_t const* t,
+                                           uint32_t transport_idx) {
+  if (transport_idx >= t->tt->transport_route_.size()) {
+    return -1;
+  }
+  auto const tidx = nigiri::transport_idx_t{transport_idx};
+  return t->tt
+      ->event_mam(tidx, nigiri::stop_idx_t{0}, nigiri::event_type::kDep)
+      .count();
+}
+
+bool nigiri_get_route_gtfs_id(nigiri_timetable_t const* t,
+                              uint32_t route_idx,
+                              char const** id_out,
+                              uint32_t* id_len_out) {
+  if (route_idx >= t->tt->n_routes()) {
+    return false;
+  }
+  auto const ridx = nigiri::route_idx_t{route_idx};
+  auto const transport_range = t->tt->route_transport_ranges_[ridx];
+  if (transport_range.from_ == transport_range.to_) {
+    return false;
+  }
+  auto const first_transport = transport_range.from_;
+  auto const trip_sections =
+      t->tt->transport_to_trip_section_[first_transport];
+  if (trip_sections.empty()) {
+    return false;
+  }
+  auto const merged = t->tt->merged_trips_[trip_sections.front()];
+  if (merged.empty()) {
+    return false;
+  }
+  auto const trip_idx = merged.front();
+  auto const route_id_idx = t->tt->trip_route_id_[trip_idx];
+
+  auto const first_loc_seq = t->tt->route_location_seq_[ridx];
+  auto src = nigiri::source_idx_t{0U};
+  if (!first_loc_seq.empty()) {
+    auto const first_loc =
+        nigiri::stop{first_loc_seq.front()}.location_idx();
+    src = t->tt->locations_.src_[first_loc];
+  }
+
+  if (static_cast<uint32_t>(cista::to_idx(src)) >=
+      t->tt->route_ids_.size()) {
+    return false;
+  }
+  auto const& rids = t->tt->route_ids_[src];
+  if (static_cast<uint32_t>(cista::to_idx(route_id_idx)) >=
+      rids.ids_.size()) {
+    return false;
+  }
+  auto const id_str = rids.ids_.get(route_id_idx);
+  *id_out = id_str.data();
+  *id_len_out = static_cast<uint32_t>(id_str.length());
+  return true;
+}
+
+bool nigiri_day_to_date_str(nigiri_timetable_t const* t,
+                            uint16_t day_idx,
+                            char* buf_out) {
+  auto const days_from_epoch =
+      t->tt->internal_interval_days().from_ + date::days{day_idx};
+  auto const ymd = date::year_month_day{days_from_epoch};
+  auto const y = static_cast<int>(ymd.year());
+  auto const m = static_cast<unsigned>(ymd.month());
+  auto const d = static_cast<unsigned>(ymd.day());
+  // buf_out must be at least 9 bytes (8 chars + null terminator).
+  // We write into a local buffer to satisfy the compiler's truncation checks.
+  char tmp[16];
+  std::snprintf(tmp, sizeof(tmp), "%04d%02u%02u", y, m, d);
+  std::memcpy(buf_out, tmp, 8);
+  buf_out[8] = '\0';
+  return true;
+}
+
+// --- Phase 3: Routing support ---
+
+uint32_t nigiri_get_location_routes(nigiri_timetable_t const* t,
+                                    uint32_t location_idx,
+                                    uint32_t* routes_out,
+                                    uint32_t max_routes) {
+  if (location_idx >= t->tt->n_locations()) {
+    return 0;
+  }
+  auto const l = nigiri::location_idx_t{location_idx};
+  auto const routes = t->tt->location_routes_[l];
+  auto const count = static_cast<uint32_t>(routes.size());
+  if (routes_out != nullptr) {
+    auto const n = std::min(count, max_routes);
+    for (uint32_t i = 0; i < n; ++i) {
+      routes_out[i] =
+          static_cast<nigiri::route_idx_t::value_t>(routes[i]);
+    }
+    return n;
+  }
+  return count;
+}
+
+uint16_t nigiri_get_stop_idx_in_route(nigiri_timetable_t const* t,
+                                      uint32_t route_idx,
+                                      uint32_t location_idx) {
+  if (route_idx >= t->tt->n_routes()) {
+    return UINT16_MAX;
+  }
+  auto const ridx = nigiri::route_idx_t{route_idx};
+  auto const seq = t->tt->route_location_seq_[ridx];
+  for (uint16_t i = 0; i < seq.size(); ++i) {
+    auto const stop_loc =
+        nigiri::stop{seq[i]}.location_idx();
+    if (static_cast<nigiri::location_idx_t::value_t>(stop_loc) ==
+        location_idx) {
+      return i;
+    }
+  }
+  return UINT16_MAX;
+}
+
+int16_t nigiri_get_event_mam(nigiri_timetable_t const* t,
+                             uint32_t transport_idx,
+                             uint16_t stop_idx,
+                             bool is_arrival) {
+  if (transport_idx >= t->tt->transport_route_.size()) {
+    return -1;
+  }
+  auto const tidx = nigiri::transport_idx_t{transport_idx};
+  auto const ev = is_arrival ? nigiri::event_type::kArr
+                             : nigiri::event_type::kDep;
+  return t->tt->event_mam(tidx, nigiri::stop_idx_t{stop_idx}, ev).count();
+}
+
+bool nigiri_get_route_transport_range(nigiri_timetable_t const* t,
+                                      uint32_t route_idx,
+                                      uint32_t* from_out,
+                                      uint32_t* to_out) {
+  if (route_idx >= t->tt->n_routes()) {
+    return false;
+  }
+  auto const ridx = nigiri::route_idx_t{route_idx};
+  auto const range = t->tt->route_transport_ranges_[ridx];
+  *from_out = static_cast<nigiri::transport_idx_t::value_t>(range.from_);
+  *to_out = static_cast<nigiri::transport_idx_t::value_t>(range.to_);
+  return true;
+}
+
+uint16_t nigiri_get_transport_stop_times(nigiri_timetable_t const* t,
+                                         uint32_t transport_idx,
+                                         uint32_t* stop_locations_out,
+                                         int16_t* dep_mams_out,
+                                         int16_t* arr_mams_out,
+                                         uint16_t max_stops) {
+  if (transport_idx >= t->tt->transport_route_.size()) {
+    return 0;
+  }
+  auto const tidx = nigiri::transport_idx_t{transport_idx};
+  auto const ridx = t->tt->transport_route_[tidx];
+  auto const seq = t->tt->route_location_seq_[ridx];
+  auto const n_stops = static_cast<uint16_t>(
+      std::min(static_cast<size_t>(max_stops), seq.size()));
+
+  for (uint16_t i = 0; i < n_stops; ++i) {
+    if (stop_locations_out) {
+      stop_locations_out[i] = static_cast<nigiri::location_idx_t::value_t>(
+          nigiri::stop{seq[i]}.location_idx());
+    }
+    if (dep_mams_out) {
+      dep_mams_out[i] =
+          (i < n_stops - 1)
+              ? t->tt
+                    ->event_mam(tidx, nigiri::stop_idx_t{i},
+                                nigiri::event_type::kDep)
+                    .count()
+              : -1;
+    }
+    if (arr_mams_out) {
+      arr_mams_out[i] =
+          (i > 0) ? t->tt
+                        ->event_mam(tidx, nigiri::stop_idx_t{i},
+                                    nigiri::event_type::kArr)
+                        .count()
+                  : -1;
+    }
+  }
+  return n_stops;
+}
+
+uint32_t nigiri_get_transport_display_name(nigiri_timetable_t const* t,
+                                           uint32_t transport_idx,
+                                           char* buf,
+                                           uint32_t buf_len) {
+  if (transport_idx >= t->tt->transport_route_.size()) {
+    return 0;
+  }
+  auto const tidx = nigiri::transport_idx_t{transport_idx};
+  auto const trip_sections = t->tt->transport_to_trip_section_[tidx];
+  if (trip_sections.empty()) {
+    return 0;
+  }
+  auto const merged = t->tt->merged_trips_[trip_sections.front()];
+  if (merged.empty()) {
+    return 0;
+  }
+  auto const trip_idx = merged.front();
+  auto const name =
+      t->tt->get_default_translation(t->tt->trip_display_names_[trip_idx]);
+  auto const len = static_cast<uint32_t>(name.length());
+  if (buf != nullptr && buf_len > 0) {
+    auto const copy_len = std::min(len, buf_len);
+    std::memcpy(buf, name.data(), copy_len);
+  }
+  return len;
 }
