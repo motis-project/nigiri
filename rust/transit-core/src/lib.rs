@@ -1,5 +1,6 @@
 pub mod config;
 pub mod error;
+pub mod polyline;
 pub mod tag_lookup;
 pub mod types;
 
