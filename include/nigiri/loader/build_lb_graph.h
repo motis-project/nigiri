@@ -388,7 +388,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           << static_cast<unsigned>(e.deps_[i].days());
       remaining_traffic_days &= ignore_timetable_offset_mask;
       auto last_set_bit = saw<kChSawType>::last_set_bit(remaining_traffic_days);
-      for (auto j = 0U; j < std::min(last_set_bit+1U, static_cast<unsigned>(e.deps_[i].days())); ++j) {
+      for (auto j = 0U; j < std::min(last_set_bit + 1U,
+                                     static_cast<unsigned>(e.deps_[i].days()));
+           ++j) {
         remaining_traffic_days.set(
             last_set_bit - j, false);  // TODO do in one go with first 5 days?
       }
@@ -578,8 +580,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         saw<kChSawType>{edge_max.at(arr_idx), traffic_days}.max();
     auto const arr_min =
         saw<kChSawType>{edge_min.at(arr_idx), traffic_days}.min();
-    stats.min_max_diff_sum += (arr_max - arr_min).count();
-    ++stats.min_max_diff_count;
+    contract_stats.min_max_diff_sum += (arr_max - arr_min).count();
+    ++contract_stats.min_max_diff_count;
 
     auto edge_idx = ch_edge_idx_t::invalid();
     if (auto const it = edges_map.find({from, to}); it != end(edges_map)) {
@@ -688,8 +690,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
               saw<kChSawType>{edge_max.at(dep_idx), traffic_days}.max();
           auto const dep_min =
               saw<kChSawType>{edge_min.at(dep_idx), traffic_days}.min();
-          stats.min_max_diff_sum += (dep_max - dep_min).count();
-          ++stats.min_max_diff_count;
+          contract_stats.min_max_diff_sum += (dep_max - dep_min).count();
+          ++contract_stats.min_max_diff_count;
 
           for (auto arr_idx : arrs) {
             auto const from = tt.ch_graph_edges_[prf_idx].at(arr_idx).from_;
@@ -718,11 +720,24 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         if (edges == 0) {
           return false;
         }
+        if (l.v_ % 1000 == 0) {
+          std::cout << " neighbors:" << contract_stats.contracted_neighbors_
+                    << " isnerts:" << contract_stats.inserts_
+                    << " bad:" << contract_stats.bad_updates_
+                    << " good:" << contract_stats.good_updates_
+                    << " repl:" << contract_stats.replacements_
+                    << " skip:" << contract_stats.skips_
+                    << " direct:" << contract_stats.direct_inserts_
+                    << " diff:" << contract_stats.min_max_diff_sum
+                    << " diffcount:" << contract_stats.min_max_diff_count
+                    << " edges:" << edges << std::endl;
+        }
         auto const order = static_cast<routing::label::dist_t>(std::clamp(
             10000L + contract_stats.contracted_neighbors_ +
                 contract_stats.inserts_ + contract_stats.bad_updates_ - edges -
-                contract_stats.good_updates_ - contract_stats.replacements_ -
-                contract_stats.skips_ -
+                std::min(5000L, contract_stats.good_updates_ +
+                                    contract_stats.replacements_ +
+                                    contract_stats.skips_) -
                 contract_stats.direct_inserts_ /
                     std::max(contract_stats.direct_inserts_, 1L) -
                 contract_stats.min_max_diff_sum /
@@ -781,11 +796,11 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     if (tt.ch_graph_edges_[prf_idx].size() > 0) {
       auto min_max = u16_minutes::max();
       auto max_max = u16_minutes::min();
-      auto sum_max = 0;
+      auto sum_max = 0L;
       auto sum_max_len = 0;
       auto min_min = u16_minutes::max();
       auto max_min = u16_minutes::min();
-      auto sum_min = 0;
+      auto sum_min = 0L;
       auto sum_min_len = 0;
       for (auto i = ch_edge_idx_t{0}; i < tt.ch_graph_edges_[prf_idx].size();
            ++i) {
