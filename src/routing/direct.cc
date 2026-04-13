@@ -1,5 +1,7 @@
 #include "nigiri/routing/direct.h"
 
+#include "utl/concat.h"
+#include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
 #include "utl/sorted_diff.h"
 
@@ -316,6 +318,37 @@ void get_direct(timetable const& tt,
       return j.travel_time() >
              shortest_duration * q.fastest_slow_direct_factor_;
     });
+  }
+}
+
+void enrich_with_slow_direct(timetable const& tt,
+                             rt_timetable const* rtt,
+                             query const& q,
+                             interval<unixtime_t> const time,
+                             direction const search_dir,
+                             pareto_set<journey>& results) {
+  if (q.slow_direct_) {
+    auto direct = std::vector<journey>{};
+    auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
+    for (auto const& j : results) {
+      if (j.transfers_ != 0) {
+        continue;
+      }
+      auto const transport_leg_it =
+          utl::find_if(j.legs_, [](journey::leg const& l) {
+            return holds_alternative<journey::run_enter_exit>(l.uses_);
+          });
+      if (transport_leg_it == end(j.legs_)) {
+        continue;
+      }
+      auto const& l = *transport_leg_it;
+      get_direct(tt, rtt, search_dir == direction::kForward ? l.from_ : l.to_,
+                 search_dir == direction::kForward ? l.to_ : l.from_, q, time,
+                 search_dir, done, direct);
+    }
+
+    utl::concat(results.els_, direct);
+    utl::erase_duplicates(results);
   }
 }
 
