@@ -169,14 +169,13 @@ void get_direct(timetable const& tt,
             }
 
             auto const start = stop{loc_seq[start_stop_idx]};
-            if (!start.in_allowed(q.prf_idx_)) {
+            auto const end = stop{loc_seq[end_stop_idx]};
+            if (!(fwd ? start : end).in_allowed(q.prf_idx_)) {
               trace_direct("      transport {} -> not in_allowed",
                            tt.transport_name(t));
               continue;
             }
-
-            auto const end = stop{loc_seq[end_stop_idx]};
-            if (!end.out_allowed(q.prf_idx_)) {
+            if (!(fwd ? end : start).out_allowed(q.prf_idx_)) {
               trace_direct("      transport {} not out_allowed",
                            tt.transport_name(t));
               continue;
