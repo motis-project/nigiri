@@ -661,7 +661,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       auto const footpaths = kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][l]
                                   : tt.locations_.footpaths_out_[q.prf_idx_][l];
       for (auto const& fp : footpaths) {
-        auto fp_legs = check_fp(k, l, curr_time, fp, false, true);
+        auto fp_legs = check_fp(k, l, curr_time, fp, true, true);
         if (fp_legs.has_value()) {
           return std::move(*fp_legs);
         }
