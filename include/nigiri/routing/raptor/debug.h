@@ -198,8 +198,7 @@
   trace_reconstruct(                                                        \
       "round {}: searching for transports at {} with curr_time={} --{}--> " \
       "fp_start={}, v={}, stay_l={}, stay_fp_target={}, stay_start={}\n ",  \
-      k, loc{tt, fp.target()}, delta_to_unix(base, curr_time),              \
-      adjusted_transfer_time(q.transfer_time_settings_, fp.duration()),     \
+      k, loc{tt, fp.target()}, delta_to_unix(base, curr_time), fp_duration, \
       delta_to_unix(base, fp_start), v, stay_l, stay_fp_target,             \
       delta_to_unix(base, stay_start))
 
