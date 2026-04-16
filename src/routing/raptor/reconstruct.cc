@@ -539,7 +539,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
                        l,
                        delta_to_unix(base, fp_start),
                        delta_to_unix(base, fp_start + dir(fp_duration)),
-                       footpath{fp.target(), duration_t{fp_duration}}};
+                       footpath{fp.target(), fp.duration()}};
       return std::pair{fp_leg, *transport_leg};
     } else {
       trace_reconstruct("nothing found\n");
