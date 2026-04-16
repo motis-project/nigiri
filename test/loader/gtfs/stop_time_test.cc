@@ -120,7 +120,7 @@ L001I01S1FES,08:31:00,,23,19,,0,0,7.473
       .emplace_back(route_id_idx_t::invalid(), nullptr, nullptr, "L001I01S1FES",
                     kEmptyTranslation, kEmptyTranslation,
                     direction_id_t::invalid(), shape_idx_t::invalid(), false,
-                    false)
+                    false, false)
       .trip_idx_ = {};
   auto tt = timetable{};
   tt.trip_debug_.emplace_back().emplace_back(trip_debug{});
