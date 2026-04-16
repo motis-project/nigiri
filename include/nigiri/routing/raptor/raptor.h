@@ -475,10 +475,11 @@ private:
       auto section_wheelchair_filter = false;
       if constexpr (WithWheelchairFilter) {
         auto const wheelchair_accessible_on_all_sections =
-            rtt_->rt_transport_cars_allowed_.test(rt_t_idx * 2);
+            rtt_->rt_transport_wheelchair_accessibility_.test(rt_t_idx * 2);
         if (!wheelchair_accessible_on_all_sections) {
           auto const wheelchair_accessible_on_some_sections =
-              rtt_->rt_transport_cars_allowed_.test(rt_t_idx * 2 + 1);
+              rtt_->rt_transport_wheelchair_accessibility_.test(rt_t_idx * 2 +
+                                                                1);
           if (!wheelchair_accessible_on_some_sections) {
             return;
           }
