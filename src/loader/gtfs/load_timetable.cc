@@ -428,8 +428,9 @@ void load_timetable(loader_config const& config,
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
-        auto const route_idx = tt.register_route(
-            key.stop_seq_, {key.clasz_}, key.bikes_allowed_, key.cars_allowed_);
+        auto const route_idx =
+            tt.register_route(key.stop_seq_, {key.clasz_}, key.bikes_allowed_,
+                              key.cars_allowed_, key.wheelchair_accessible_);
 
         for (auto const& s : key.stop_seq_) {
           auto s_routes = location_routes[stop{s}.location_idx()];

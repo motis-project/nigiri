@@ -469,12 +469,6 @@ enum class shape_source : std::uint8_t {
   kRouted = 2
 };
 
-enum wheelchair_accessible : std::uint8_t {
-  kNoInformation = 0,
-  kWheelchairAccessible = 1,
-  kNotAccessible = 2,
-};
-
 constexpr auto const kShapeSourceBit = std::uint32_t{1U} << 31U;
 constexpr auto const kShapeIndexMask = kShapeSourceBit - 1U;
 

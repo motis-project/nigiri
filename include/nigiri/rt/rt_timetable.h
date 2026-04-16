@@ -263,6 +263,9 @@ struct rt_timetable {
   // same for cars
   vecvec<rt_transport_idx_t, bool> rt_cars_allowed_per_section_;
 
+  // same for wheelchair accessbility
+  vecvec<rt_transport_idx_t, bool> rt_wheelchair_accessible_per_section_;
+
   // Service alerts
   alerts alerts_;
 

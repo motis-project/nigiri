@@ -117,7 +117,7 @@ trip::trip(route_id_idx_t route,
            shape_idx_t const shape_idx,
            bool const bikes_allowed,
            bool const cars_allowed,
-           wheelchair_accessible accessible)
+           bool accessible)
     : route_{route},
       service_{service},
       block_{blk},
@@ -128,7 +128,7 @@ trip::trip(route_id_idx_t route,
       shape_idx_{shape_idx},
       bikes_allowed_{bikes_allowed},
       cars_allowed_{cars_allowed},
-      accessible_{accessible} {}
+      wheelchair_accessible_{accessible} {}
 
 interpolate_result interpolate(std::vector<stop_events>& event_times) {
   struct bound {

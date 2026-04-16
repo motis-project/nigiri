@@ -176,7 +176,7 @@ route_idx_t timetable::register_route(
       wheelchair_accessibility_per_section.count();
   auto const wheelchair_accessibility_on_all_sections =
       sections_with_wheelchair_accessibility == wheelchair_sections &&
-      wheelchairs_sections != 0;
+      wheelchair_sections != 0;
   auto const wheelchair_accessibility_on_some_sections =
       sections_with_wheelchair_accessibility != 0U;
   route_wheelchair_accessible_.resize(route_wheelchair_accessible_.size() + 2U);

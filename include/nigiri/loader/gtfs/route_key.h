@@ -9,6 +9,7 @@ struct route_key_t {
   stop_seq_t stop_seq_;
   bitvec bikes_allowed_;
   bitvec cars_allowed_;
+  bitvec wheelchair_accessible_;
 };
 
 struct route_key_ptr_t {
