@@ -14,8 +14,6 @@
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = true;
-
 void generate_ontrip_train_query(timetable const& tt,
                                  transport const& t,
                                  stop_idx_t const stop_idx,

@@ -10,6 +10,7 @@
 #include "nigiri/common/delta_t.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
