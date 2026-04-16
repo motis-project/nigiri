@@ -6,8 +6,8 @@
 #include "utl/timing.h"
 
 #include "nigiri/routing/get_earliest_transport.h"
-#include "nigiri/routing/lb_transit_legs.h"
 #include "nigiri/rt/frun.h"
+#include "../../../include/nigiri/routing/lb/lb_transit_legs.h"
 
 #define trace_pong(...)
 // #define trace_pong fmt::println
@@ -295,8 +295,8 @@ routing_result pong(timetable const& tt,
                                     : rtt->bwd_search_lb_graph_)),
            ping_lb);
   UTL_STOP_TIMING(ping_lb);
-  auto ping_lb_transit_legs = std::vector<std::uint8_t>{};
-  lb_transit_legs<SearchDir>(tt, q, r_state, ping_lb_transit_legs);
+  auto ping_lb_transit_legs_state = lb_transit_legs_state{};
+  lb_transit_legs<SearchDir>(tt, q, ping_lb_transit_legs_state);
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
@@ -342,9 +342,8 @@ routing_result pong(timetable const& tt,
                                     : rtt->fwd_search_lb_graph_)),
            pong_lb);
   UTL_STOP_TIMING(pong_lb);
-
-  auto pong_lb_transit_legs = std::vector<std::uint8_t>{};
-  lb_transit_legs<flip(SearchDir)>(tt, q, r_state, ping_lb_transit_legs);
+  auto pong_lb_transit_legs_state = lb_transit_legs_state{};
+  lb_transit_legs<flip(SearchDir)>(tt, q, pong_lb_transit_legs_state);
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
   auto pong_is_dest = bitvec{};

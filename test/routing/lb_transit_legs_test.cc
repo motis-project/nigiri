@@ -2,10 +2,10 @@
 
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
-#include "nigiri/routing/lb_transit_legs.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
+#include "../../include/nigiri/routing/lb/lb_transit_legs.h"
 
 using namespace date;
 using namespace nigiri;
@@ -142,16 +142,15 @@ TEST(routing, lb_transit_legs) {
                    .duration_ = footpath::kMaxDuration,
                    .transport_mode_id_ = 5}}}}};
 
-  auto state = raptor_state{};
-  auto lb = std::vector<std::uint8_t>{};
-  lb_transit_legs<direction::kForward>(tt, q, state, lb);
+  auto state = lb_transit_legs_state{};
+  lb_transit_legs<direction::kForward>(tt, q, state);
 
   auto const get_lb = [&](auto&& id) {
-    return lb[to_idx(
-        tt.locations_.location_id_to_idx_.at({id, source_idx_t{0U}}))];
+    return state
+        .lb_[tt.locations_.location_id_to_idx_.at({id, source_idx_t{0U}})];
   };
 
-  ASSERT_EQ(lb.size(), tt.n_locations());
+  ASSERT_EQ(state.lb_.size(), tt.n_locations());
   EXPECT_EQ(get_lb("T"), 0U);
   EXPECT_EQ(get_lb("D3"), 1U);
   EXPECT_EQ(get_lb("C2"), 1U);
@@ -166,9 +165,9 @@ TEST(routing, lb_transit_legs) {
   EXPECT_EQ(get_lb("Y"), 3U);
 
   q.flip_dir();
-  lb_transit_legs<direction::kBackward>(tt, q, state, lb);
+  lb_transit_legs<direction::kBackward>(tt, q, state);
 
-  ASSERT_EQ(lb.size(), tt.n_locations());
+  ASSERT_EQ(state.lb_.size(), tt.n_locations());
   EXPECT_EQ(get_lb("T"), 2U);
   EXPECT_EQ(get_lb("D3"), 4U);
   EXPECT_EQ(get_lb("C2"), 3U);

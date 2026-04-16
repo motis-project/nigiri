@@ -1,48 +1,53 @@
-#include "nigiri/routing/lb_transit_legs.h"
+#include "nigiri/routing/lb/lb_transit_legs.h"
 
 #include "nigiri/for_each_meta.h"
 
 namespace nigiri::routing {
 
-template <direction SearchDir>
-void lb_transit_legs(timetable const& tt,
-                     query const& q,
-                     raptor_state& state,
-                     std::vector<std::uint8_t>& lb) {
-  constexpr auto kFwd = SearchDir == direction::kForward;
+constexpr auto kUnreachable = std::numeric_limits<std::uint8_t>::max();
+constexpr auto kUnknown = kUnreachable - 1U;
 
-  auto const start_time = std::chrono::steady_clock::now();
+lb_transit_legs::lb_transit_legs(timetable const& tt,
+                                 query const& q,
+                                 lb_transit_legs_state& state)
+    : tt_{tt}, q_{q}, state_{state}, k_{0U} {
+  state_.station_mark_.resize(tt_.n_locations());
+  utl::fill(state_.station_mark_.blocks_, 0U);
+  state_.prev_station_mark_.resize(tt_.n_locations());
+  state_.route_mark_.resize(tt_.n_routes());
+  state_.lb_.resize(tt_.n_locations());
+  utl::fill(state_.lb_, kUnknown);
 
-  // init
-  state.station_mark_.resize(tt.n_locations());
-  utl::fill(state.station_mark_.blocks_, 0U);
-  state.prev_station_mark_.resize(tt.n_locations());
-  state.route_mark_.resize(tt.n_routes());
-  lb.resize(tt.n_locations());
-  utl::fill(lb, std::numeric_limits<std::uint8_t>::max());
-
-  // k = 0
   auto const set_terminal = [&](auto const i) {
-    state.station_mark_.set(i, true);
-    lb[i] = 0U;
+    state_.station_mark_.set(to_idx(i), true);
+    state_.lb_[i] = 0U;
   };
 
-  for (auto const& o : q.destination_) {
-    for_each_meta(
-        tt, q.dest_match_mode_, o.target(),
-        [&](location_idx_t const meta) { set_terminal(to_idx(meta)); });
+  for (auto const& o : q_.destination_) {
+    for_each_meta(tt_, q_.dest_match_mode_, o.target(),
+                  [&](location_idx_t const meta) { set_terminal(meta); });
   }
 
-  for (auto const& [l, tds] : q.td_dest_) {
+  for (auto const& [l, tds] : q_.td_dest_) {
     for (auto const& td : tds) {
       if (td.duration() != footpath::kMaxDuration &&
-          td.duration() < q.max_travel_time_) {
-        for_each_meta(
-            tt, q.dest_match_mode_, l,
-            [&](location_idx_t const meta) { set_terminal(to_idx(meta)); });
+          td.duration() < q_.max_travel_time_) {
+        for_each_meta(tt, q_.dest_match_mode_, l,
+                      [&](location_idx_t const meta) { set_terminal(meta); });
       }
     }
   }
+
+  k_ = 1U;
+}
+
+template <direction SearchDir>
+void lb_transit_legs(timetable const& tt,
+                     query const& q,
+                     lb_transit_legs_state& state) {
+  constexpr auto kFwd = SearchDir == direction::kForward;
+
+  auto const start_time = std::chrono::steady_clock::now();
 
   // run
   auto k = std::uint8_t{1U};
@@ -78,20 +83,20 @@ void lb_transit_legs(timetable const& tt,
         auto const step = [&](auto const y) { return kFwd ? y - 1U : y + 1U; };
         for (auto out = step(in); out < seq.size(); out = step(out)) {
           auto const l_out = stop{seq[out]}.location_idx();
-          if (k < lb[to_idx(l_out)]) {
-            lb[to_idx(l_out)] = k;
+          if (k < state.lb_[l_out]) {
+            state.lb_[l_out] = k;
             state.station_mark_.set(to_idx(l_out), true);
             any_marked = true;
             for (auto const fp :
                  kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][l_out]
                       : tt.locations_.footpaths_out_[q.prf_idx_][l_out]) {
-              if (k < lb[to_idx(fp.target())]) {
-                lb[to_idx(fp.target())] = k;
+              if (k < state.lb_[fp.target()]) {
+                state.lb_[fp.target()] = k;
                 state.station_mark_.set(to_idx(fp.target()), true);
               }
             }
 
-          } else if (k > lb[to_idx(l_out)]) {
+          } else if (k > state.lb_[l_out]) {
             break;
           }
         }
@@ -109,11 +114,9 @@ void lb_transit_legs(timetable const& tt,
 
 template void lb_transit_legs<direction::kForward>(timetable const&,
                                                    query const&,
-                                                   raptor_state&,
-                                                   std::vector<std::uint8_t>&);
+                                                   lb_transit_legs_state&);
 template void lb_transit_legs<direction::kBackward>(timetable const&,
                                                     query const&,
-                                                    raptor_state&,
-                                                    std::vector<std::uint8_t>&);
+                                                    lb_transit_legs_state&);
 
 }  // namespace nigiri::routing
