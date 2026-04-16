@@ -255,6 +255,7 @@ struct raptor {
           case 0b1101: return loop_routes<true, true, false, true>(k);
           case 0b1110: return loop_routes<true, true, true, false>(k);
           case 0b1111: return loop_routes<true, true, true, true>(k);
+          default: std::unreachable();
         }
       }();
 
@@ -279,6 +280,7 @@ struct raptor {
             case 0b1101: return loop_rt_routes<true, true, false, true>(k);
             case 0b1110: return loop_rt_routes<true, true, true, false>(k);
             case 0b1111: return loop_rt_routes<true, true, true, true>(k);
+            default: std::unreachable();
           }
         }();
 
@@ -419,6 +421,7 @@ private:
           case 0b101: return update_route<true, false, true>(k, r);
           case 0b110: return update_route<true, true, false>(k, r);
           case 0b111: return update_route<true, true, true>(k, r);
+          default: std::unreachable();
         }
       }();
 
@@ -502,6 +505,7 @@ private:
           case 0b101: return update_rt_transport<true, false, true>(k, rt_t);
           case 0b110: return update_rt_transport<true, true, false>(k, rt_t);
           case 0b111: return update_rt_transport<true, true, true>(k, rt_t);
+          default: std::unreachable();
         }
       }();
 
