@@ -1574,7 +1574,7 @@ void load_timetable(loader_config const& config,
       }
       it->second.emplace_back(std::vector<utc_trip>{s});
     } else {
-      route_services.emplace(gtfs::route_key_t{c, s.stop_seq_, {}, {}},
+      route_services.emplace(gtfs::route_key_t{c, s.stop_seq_, {}, {}, {}},
                              std::vector<std::vector<utc_trip>>{{s}});
     }
   };
