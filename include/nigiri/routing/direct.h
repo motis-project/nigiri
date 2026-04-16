@@ -4,6 +4,7 @@
 
 #include "nigiri/common/interval.h"
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/pareto_set.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -23,6 +24,12 @@ void get_direct(timetable const&,
                 hash_set<std::pair<location_idx_t, location_idx_t>>& done,
                 std::vector<journey>& direct);
 
-}
+void enrich_with_slow_direct(timetable const&,
+                             rt_timetable const*,
+                             query const&,
+                             interval<unixtime_t>,
+                             direction,
+                             pareto_set<journey>& results);
+}  // namespace routing
 
 }  // namespace nigiri
