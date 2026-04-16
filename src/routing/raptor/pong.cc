@@ -174,10 +174,7 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
               }};
         };
 
-        check_fp({stp.location_idx(),
-                  adjusted_transfer_time(
-                      q.transfer_time_settings_,
-                      tt.locations_.transfer_time_[stp.location_idx()])});
+        check_fp({stp.location_idx(), tt.locations_.transfer_time_[stp.location_idx()]});
 
         if (q.prf_idx_ != 0U &&
             rtt->has_td_footpaths_out_[q.prf_idx_][stp.location_idx()]) {
