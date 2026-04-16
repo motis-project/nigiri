@@ -407,7 +407,7 @@ private:
 
       uint8_t const filters = (section_bike_filter << 2) |
                               (section_car_filter << 1) |
-                              (section_car_filter << 0);
+                              (section_wheelchair_filter << 0);
 
       bool const marked = [&]() {
         switch (filters) {
