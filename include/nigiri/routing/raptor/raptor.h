@@ -237,7 +237,7 @@ struct raptor {
           static_cast<uint8_t>(require_car_transport_ << 1) |
           static_cast<uint8_t>(is_wheelchair_ << 0);
 
-      bool const marked = [&]() {
+      any_marked |= [&]() {
         switch (filters) {
           case 0b0000: return loop_routes<false, false, false, false>(k);
           case 0b0001: return loop_routes<false, false, false, true>(k);
@@ -259,10 +259,8 @@ struct raptor {
         }
       }();
 
-      any_marked |= marked;
-
       if constexpr (Rt) {
-        bool const marked = [&]() {
+        any_marked |= [&]() {
           switch (filters) {
             case 0b0000: return loop_rt_routes<false, false, false, false>(k);
             case 0b0001: return loop_rt_routes<false, false, false, true>(k);
@@ -283,8 +281,6 @@ struct raptor {
             default: std::unreachable();
           }
         }();
-
-        any_marked |= marked;
       }
 
       if (!any_marked) {
@@ -412,7 +408,7 @@ private:
           static_cast<uint8_t>(section_car_filter << 1) |
           static_cast<uint8_t>(section_wheelchair_filter << 0);
 
-      bool const marked = [&]() {
+      any_marked |= [&]() {
         switch (filters) {
           case 0b000: return update_route<false, false, false>(k, r);
           case 0b001: return update_route<false, false, true>(k, r);
@@ -425,8 +421,6 @@ private:
           default: std::unreachable();
         }
       }();
-
-      any_marked |= marked;
     });
     return any_marked;
   }
@@ -498,7 +492,7 @@ private:
           static_cast<uint8_t>(section_car_filter << 1) |
           static_cast<uint8_t>(section_wheelchair_filter << 0);
 
-      bool const marked = [&]() {
+      any_marked |= [&]() {
         switch (filters) {
           case 0b000: return update_rt_transport<false, false, false>(k, rt_t);
           case 0b001: return update_rt_transport<false, false, true>(k, rt_t);
@@ -511,8 +505,6 @@ private:
           default: std::unreachable();
         }
       }();
-
-      any_marked |= marked;
     });
     return any_marked;
   }
