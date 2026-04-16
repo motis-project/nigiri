@@ -325,7 +325,10 @@ private:
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
   }
 
-  template <bool WithClaszFilter, bool WithBikeFilter, bool WithCarFilter>
+  template <bool WithClaszFilter,
+            bool WithBikeFilter,
+            bool WithCarFilter,
+            bool WithWheelchairFilter>
   bool loop_routes(unsigned const k) {
     auto any_marked = false;
     state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
@@ -365,19 +368,46 @@ private:
         }
       }
 
+      auto section_wheelchair_filter = false;
+      if constexpr (WithWheelchairFilter) {
+        auto const wheelchair_accessibility_on_all_sections =
+            tt_.route_wheelchair_accessible_.test(r_idx * 2);
+        if (!wheelchair_accessibility_on_all_sections) {
+          auto const wheelchair_accessibility_on_some_sections =
+              tt_.route_wheelchair_accessible_.test(r_idx * 2 + 1);
+          if (!wheelchair_accessibility_on_some_sections) {
+            return;
+          }
+          section_wheelchair_filter = true;
+        }
+      }
+
       ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating route {}\n", k, r);
-      any_marked |=
-          section_bike_filter
-              ? (section_car_filter ? update_route<true, true>(k, r)
-                                    : update_route<true, false>(k, r))
-              : (section_car_filter ? update_route<false, true>(k, r)
-                                    : update_route<false, false>(k, r));
+
+      uint8_t filters = (section_bike_filter < 2) | (section_car_filter < 1) |
+                        (section_car_filter < 0);
+
+      any_marked |= []() {
+        switch (filters) {
+          case 0b000: return update_route<false, false, false>(k, r);
+          case 0b001: return update_route<false, false, true>(k, r);
+          case 0b010: return update_route<false, true, false>(k, r);
+          case 0b011: return update_route<false, true, true>(k, r);
+          case 0b100: return update_route<true, false, false>(k, r);
+          case 0b101: return update_route<true, false, true>(k, r);
+          case 0b110: return update_route<true, true, false>(k, r);
+          case 0b111: return update_route<true, true, true>(k, r);
+        }
+      }();
     });
     return any_marked;
   }
 
-  template <bool WithClaszFilter, bool WithBikeFilter, bool WithCarFilter>
+  template <bool WithClaszFilter,
+            bool WithBikeFilter,
+            bool WithCarFilter,
+            bool WithWheelchairFilter>
   bool loop_rt_routes(unsigned const k) {
     auto any_marked = false;
     state_.rt_transport_mark_.for_each_set_bit([&](auto const rt_t_idx) {
@@ -420,13 +450,19 @@ private:
 
       ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating rt transport {}\n", k, rt_t);
-      any_marked |=
-          section_bike_filter
-              ? (section_car_filter ? update_rt_transport<true, true>(k, rt_t)
-                                    : update_rt_transport<true, false>(k, rt_t))
-              : (section_car_filter
-                     ? update_rt_transport<false, true>(k, rt_t)
-                     : update_rt_transport<false, false>(k, rt_t));
+
+      any_marked |= []() {
+        switch (filters) {
+          case 0b000: return update_rt_transport<false, false, false>(k, r);
+          case 0b001: return update_rt_transport<false, false, true>(k, r);
+          case 0b010: return update_rt_transport<false, true, false>(k, r);
+          case 0b011: return update_rt_transport<false, true, true>(k, r);
+          case 0b100: return update_rt_transport<true, false, false>(k, r);
+          case 0b101: return update_rt_transport<true, false, true>(k, r);
+          case 0b110: return update_rt_transport<true, true, false>(k, r);
+          case 0b111: return update_rt_transport<true, true, true>(k, r);
+        }
+      }();
     });
     return any_marked;
   }
@@ -891,7 +927,9 @@ private:
     return any_marked;
   }
 
-  template <bool WithSectionBikeFilter, bool WithSectionCarFilter>
+  template <bool WithSectionBikeFilter,
+            bool WithSectionCarFilter,
+            bool WithSectionWheelchairFilter>
   bool update_route(unsigned const k, route_idx_t const r) {
     auto const stop_seq = tt_.route_location_seq_[r];
     bool any_marked = false;

@@ -124,10 +124,12 @@ struct timetable {
   void resolve();
 
   bitfield_idx_t register_bitfield(bitfield const& b);
-  route_idx_t register_route(basic_string<stop::value_type> const& stop_seq,
-                             basic_string<clasz> const& clasz_sections,
-                             bitvec const& bikes_allowed_per_section,
-                             bitvec const& cars_allowed_per_section);
+  route_idx_t register_route(
+      basic_string<stop::value_type> const& stop_seq,
+      basic_string<clasz> const& clasz_sections,
+      bitvec const& bikes_allowed_per_section,
+      bitvec const& cars_allowed_per_section,
+      bitvec const& wheelchair_accessibility_per_section);
   void finish_route();
 
   provider_idx_t get_provider_idx(std::string_view id, source_idx_t) const;
@@ -350,6 +352,9 @@ struct timetable {
   // same for cars
   bitvec route_cars_allowed_;
 
+  // same for wheelchair accssibility
+  bitvec route_wheelchair_accessible_;
+
   // Route -> bikes allowed per section
   // Only set for routes where the entry in route_bikes_allowed_bitvec_
   // is set to "bikes along parts of the route"
@@ -357,6 +362,9 @@ struct timetable {
 
   // same for cars
   vecvec<route_idx_t, bool> route_cars_allowed_per_section_;
+
+  // same for wheelchair accessibility
+  vecvec<route_idx_t, bool> route_wheelchair_accessibility_per_section_;
 
   // Location -> list of routes
   vecvec<location_idx_t, route_idx_t> location_routes_;
