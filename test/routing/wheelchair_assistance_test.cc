@@ -52,9 +52,9 @@ R1,DB,RE 1,,,101
 R2,DB,RE 2,,,101
 
 # trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-R1,S,T1,RE 1,
-R2,S,T2,RE 2,
+route_id,service_id,trip_id,trip_headsign,block_id,wheelchair_accessible
+R1,S,T1,RE 1,,1
+R2,S,T2,RE 2,,1
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
