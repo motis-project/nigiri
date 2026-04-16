@@ -16,6 +16,7 @@ struct route_key_ptr_t {
   stop_seq_t const* stop_seq_;
   bitvec const* bikes_allowed_{nullptr};
   bitvec const* cars_allowed_{nullptr};
+  bitvec const* wheelchair_accessible_{nullptr};
 };
 
 struct route_key_hash {

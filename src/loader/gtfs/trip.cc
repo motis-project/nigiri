@@ -116,7 +116,8 @@ trip::trip(route_id_idx_t route,
            direction_id_t const direction_id,
            shape_idx_t const shape_idx,
            bool const bikes_allowed,
-           bool const cars_allowed)
+           bool const cars_allowed,
+           wheelchair_accessible accessible)
     : route_{route},
       service_{service},
       block_{blk},
@@ -126,7 +127,8 @@ trip::trip(route_id_idx_t route,
       short_name_{std::move(short_name)},
       shape_idx_{shape_idx},
       bikes_allowed_{bikes_allowed},
-      cars_allowed_{cars_allowed} {}
+      cars_allowed_{cars_allowed},
+      accessible_{accessible} {}
 
 interpolate_result interpolate(std::vector<stop_events>& event_times) {
   struct bound {
@@ -222,6 +224,8 @@ trip_data read_trips(source_idx_t const src,
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> shape_id_;
     utl::csv_col<std::uint8_t, UTL_NAME("bikes_allowed")> bikes_allowed_;
     utl::csv_col<std::uint8_t, UTL_NAME("cars_allowed")> cars_allowed_;
+    utl::csv_col<std::uint8_t, UTL_NAME("wheelchair_accessible")>
+        wheelchair_accessible_;
   };
   auto const& shapes = shape_states.id_map_;
 
@@ -277,6 +281,11 @@ trip_data read_trips(source_idx_t const src,
           cars_allowed = false;
         }
 
+        auto wheelchair_accessible = false;
+        if (t.wheelchair_accessible_.val() == 1) {
+          wheelchair_accessible = true;
+        }
+
         auto const id = t.trip_id_->view();
         auto const trip_short_name = i18n.get(t::kTrips, f::kTripShortName,
                                               t.trip_short_name_->view(), id);
@@ -322,10 +331,10 @@ trip_data read_trips(source_idx_t const src,
                       .get();
 
         auto const gtfs_trp_idx = gtfs_trip_idx_t{ret.data_.size()};
-        ret.data_.push_back(trip{route_id, traffic_days_it->second.get(), blk,
-                                 t.trip_id_->to_str(), x.headsign_,
-                                 trip_short_name, x.direction_, shape_idx,
-                                 bikes_allowed, cars_allowed});
+        ret.data_.push_back(trip{
+            route_id, traffic_days_it->second.get(), blk, t.trip_id_->to_str(),
+            x.headsign_, trip_short_name, x.direction_, shape_idx,
+            bikes_allowed, cars_allowed, wheelchair_accessible});
         ret.data_.back().trip_idx_ = register_trip(tt, x);
         ret.trips_.emplace(t.trip_id_->to_str(), gtfs_trp_idx);
         if (blk != nullptr) {

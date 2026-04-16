@@ -28,8 +28,8 @@ using gtfs_trip_idx_t = cista::strong<std::uint32_t, struct _gtfs_trip_idx>;
 
 struct trip_data;
 
-static auto const kSingleTripBikesAllowed = bitvec{"1"};
-static auto const kSingleTripBikesNotAllowed = bitvec{"0"};
+static auto const kSingleTripTransportationAllowed = bitvec{"1"};
+static auto const kSingleTripTransportationNotAllowed = bitvec{"0"};
 
 struct block {
   std::vector<std::pair<basic_string<gtfs_trip_idx_t>, bitfield>> rule_services(
@@ -78,7 +78,8 @@ struct trip {
        direction_id_t,
        shape_idx_t,
        bool bikes_allowed,
-       bool cars_allowed);
+       bool cars_allowed,
+       wheelchair_accessible accessible);
 
   trip(trip&&) = default;
   trip& operator=(trip&&) = default;
@@ -121,6 +122,7 @@ struct trip {
   bool requires_sorting_{false};
   bool bikes_allowed_{false};
   bool cars_allowed_{false};
+  bool accessible_{false};
   std::uint32_t from_line_{0U}, to_line_{0U};
 
   trip_idx_t trip_idx_{trip_idx_t::invalid()};
