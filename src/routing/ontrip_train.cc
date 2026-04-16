@@ -5,16 +5,16 @@
 #include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
 
+// #define NIGIRI_ONTRIP_DEBUG
+#ifdef NIGIRI_ONTRIP_DEBUG
+#define trace(...) fmt::println(__VA_ARGS__)
+#else
+#define trace(...)
+#endif
+
 namespace nigiri::routing {
 
 constexpr auto const kTracing = true;
-
-template <typename... Args>
-void trace(fmt::format_string<Args...> fmt_str, Args... args) {
-  if constexpr (kTracing) {
-    fmt::print(std::cout, fmt_str, std::forward<Args&&>(args)...);
-  }
-}
 
 void generate_ontrip_train_query(timetable const& tt,
                                  transport const& t,

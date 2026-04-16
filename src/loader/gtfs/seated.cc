@@ -4,8 +4,12 @@
 
 #include <ranges>
 
-// #define trace(...) fmt::println(std::clog, __VA_ARGS__)
+// #define NIGIRI_SEATED_DEBUG
+#ifdef NIGIRI_SEATED_DEBUG
+#define trace(...) fmt::println(__VA_ARGS__)
+#else
 #define trace(...)
+#endif
 
 namespace sv = std::views;
 

@@ -11,16 +11,16 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
 
-namespace nigiri {
-
-using routing::journey;
-
 // #define NIGIRI_FARES_DEBUG
 #ifdef NIGIRI_FARES_DEBUG
 #define trace(...) fmt::println(__VA_ARGS__)
 #else
 #define trace(...)
 #endif
+
+namespace nigiri {
+
+using routing::journey;
 
 struct journey_leg {
   friend std::ostream& operator<<(std::ostream& out, journey_leg const& l) {
