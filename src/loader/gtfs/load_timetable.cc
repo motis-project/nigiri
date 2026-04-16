@@ -297,7 +297,8 @@ void load_timetable(loader_config const& config,
         wheelchair_accessible_seq_cache.resize(
             static_cast<bitvec::size_type>(offset + stop_count - 1));
         for (auto j = 0U; j < stop_count - 1; ++j) {
-          wheelchair_accessible_seq_cache.set(offset + j, trp.cars_allowed_);
+          wheelchair_accessible_seq_cache.set(offset + j,
+                                              trp.wheelchair_accessible_);
         }
       }
       return &wheelchair_accessible_seq_cache;

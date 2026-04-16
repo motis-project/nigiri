@@ -463,7 +463,9 @@ bool run_stop::wheelchair_accessible(event_type ev_type) const {
   if (fr_->is_rt() && rtt() != nullptr) {
     if (rtt()->rt_transport_wheelchair_accessibility_[to_idx(fr_->rt_) * 2U]) {
       return true;
-    } else if (!rtt()->rt_transport_wheelchair_accessibility_[to_idx(fr_->rt_) * 2U + 1U]) {
+    } else if (!rtt()->rt_transport_wheelchair_accessibility_[to_idx(fr_->rt_) *
+                                                                  2U +
+                                                              1U]) {
       return false;
     } else {
       auto const wheelchair_accessible_seq =
@@ -478,14 +480,15 @@ bool run_stop::wheelchair_accessible(event_type ev_type) const {
     } else if (!tt().route_wheelchair_accessible_[to_idx(r) * 2U + 1U]) {
       return false;
     } else {
-      auto const wheelchair_accessibility_seq = tt().route_wheelchair_accessibility_per_section_.at(
-          tt().transport_route_.at(fr_->t_.t_idx_));
+      auto const wheelchair_accessibility_seq =
+          tt().route_wheelchair_accessibility_per_section_.at(
+              tt().transport_route_.at(fr_->t_.t_idx_));
       return wheelchair_accessibility_seq.at(
-          wheelchair_accessibility_seq.size() == 1U ? 0U : section_idx(ev_type));
+          wheelchair_accessibility_seq.size() == 1U ? 0U
+                                                    : section_idx(ev_type));
     }
   }
 }
-
 
 route_color run_stop::get_route_color(event_type ev_type) const {
   auto const [routes, route_id_idx] = get_route(ev_type);
