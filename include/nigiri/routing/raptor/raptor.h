@@ -232,8 +232,10 @@ struct raptor {
 
       bool const clasz_filter = allowed_claszes_ != all_clasz_allowed();
       uint8_t const filters =
-          (clasz_filter << 3) | (require_bike_transport_ << 2) |
-          (require_car_transport_ << 1) | (is_wheelchair_ << 0);
+          static_cast<uint8_t>(clasz_filter << 3) |
+          static_cast<uint8_t>(require_bike_transport_ << 2) |
+          static_cast<uint8_t>(require_car_transport_ << 1) |
+          static_cast<uint8_t>(is_wheelchair_ << 0);
 
       bool const marked = [&]() {
         switch (filters) {
@@ -405,9 +407,10 @@ private:
       ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating route {}\n", k, r);
 
-      uint8_t const filters = (section_bike_filter << 2) |
-                              (section_car_filter << 1) |
-                              (section_wheelchair_filter << 0);
+      uint8_t const filters =
+          static_cast<uint8_t>(section_bike_filter << 2) |
+          static_cast<uint8_t>(section_car_filter << 1) |
+          static_cast<uint8_t>(section_wheelchair_filter << 0);
 
       bool const marked = [&]() {
         switch (filters) {
@@ -490,9 +493,10 @@ private:
       ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating rt transport {}\n", k, rt_t);
 
-      uint8_t const filters = (section_bike_filter << 2) |
-                              (section_car_filter << 1) |
-                              (section_wheelchair_filter << 0);
+      uint8_t const filters =
+          static_cast<uint8_t>(section_bike_filter << 2) |
+          static_cast<uint8_t>(section_car_filter << 1) |
+          static_cast<uint8_t>(section_wheelchair_filter << 0);
 
       bool const marked = [&]() {
         switch (filters) {
