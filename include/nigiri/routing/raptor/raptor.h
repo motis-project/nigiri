@@ -110,7 +110,6 @@ struct raptor {
       clasz_mask_t const allowed_claszes,
       bool const require_bike_transport,
       bool const require_car_transport,
-      bool const require_wheelchair_transport,
       bool const is_wheelchair,
       transfer_time_settings const& tts)
       : tt_{tt},
@@ -133,7 +132,6 @@ struct raptor {
         allowed_claszes_{allowed_claszes},
         require_bike_transport_{require_bike_transport},
         require_car_transport_{require_car_transport},
-        require_wheelchair_transport_{require_wheelchair_transport},
         is_wheelchair_{is_wheelchair},
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
@@ -235,7 +233,7 @@ struct raptor {
       bool const clasz_filter = allowed_claszes_ != all_clasz_allowed();
       uint8_t const filters =
           (clasz_filter << 3) | (require_bike_transport_ << 2) |
-          (require_car_transport_ << 1) | (require_wheelchair_transport_ << 0);
+          (require_car_transport_ << 1) | (is_wheelchair_ << 0);
 
       bool const marked = [&]() {
         switch (filters) {
@@ -1358,7 +1356,6 @@ private:
   clasz_mask_t allowed_claszes_;
   bool require_bike_transport_;
   bool require_car_transport_;
-  bool require_wheelchair_transport_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
 };

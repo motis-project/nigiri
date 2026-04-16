@@ -94,7 +94,6 @@ struct query_engine {
                bool,
                bool,
                bool,
-               bool,
                transfer_time_settings);
 
   algo_stats_t get_stats() const { return stats_; }
