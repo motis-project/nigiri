@@ -79,7 +79,7 @@ struct trip {
        shape_idx_t,
        bool bikes_allowed,
        bool cars_allowed,
-       wheelchair_accessible accessible);
+       bool accessible);
 
   trip(trip&&) = default;
   trip& operator=(trip&&) = default;
@@ -122,7 +122,7 @@ struct trip {
   bool requires_sorting_{false};
   bool bikes_allowed_{false};
   bool cars_allowed_{false};
-  bool accessible_{false};
+  bool wheelchair_accessible_{false};
   std::uint32_t from_line_{0U}, to_line_{0U};
 
   trip_idx_t trip_idx_{trip_idx_t::invalid()};
