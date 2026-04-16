@@ -38,7 +38,6 @@ query_engine<UseLowerBounds>::query_engine(
     bool,
     bool,
     bool,
-    bool,
     transfer_time_settings)
     : tt_{tt},
       state_{state},

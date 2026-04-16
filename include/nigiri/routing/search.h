@@ -80,7 +80,6 @@ struct search {
   Algo init(clasz_mask_t const allowed_claszes,
             bool const require_bikes_allowed,
             bool const require_cars_allowed,
-            bool const require_wheelchair_accessible,
             transfer_time_settings& tts,
             algo_state_t& algo_state) {
     auto span = get_otel_tracer()->StartSpan("search::init");
@@ -161,7 +160,6 @@ struct search {
         allowed_claszes,
         require_bikes_allowed,
         require_cars_allowed,
-        require_wheelchair_accessible,
         q_.prf_idx_ == 2U,
         tts};
   }
@@ -189,7 +187,6 @@ struct search {
         algo_{init(q_.allowed_claszes_,
                    q_.require_bike_transport_,
                    q_.require_car_transport_,
-                   true,  // TODO fill
                    q_.transfer_time_settings_,
                    algo_state)},
         timeout_(timeout) {

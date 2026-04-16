@@ -97,8 +97,6 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, ping_is_via[i]);
   }
 
-  bool require_wheelchair_transport = true;  // TODO fill this from somewhere??
-
   auto ping = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>{
       tt,
       rtt,
@@ -113,7 +111,6 @@ routing_result pong(timetable const& tt,
       q.allowed_claszes_,
       q.require_bike_transport_,
       q.require_car_transport_,
-      require_wheelchair_transport,
       q.prf_idx_ == 2U,
       q.transfer_time_settings_};
 
@@ -160,7 +157,6 @@ routing_result pong(timetable const& tt,
       q.allowed_claszes_,
       q.require_bike_transport_,
       q.require_car_transport_,
-      true,  // TODO fill this
       q.prf_idx_ == 2U,
       q.transfer_time_settings_};
 
