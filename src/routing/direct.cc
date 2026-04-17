@@ -323,7 +323,7 @@ void get_direct(timetable const& tt,
 void enrich_with_slow_direct(timetable const& tt,
                              rt_timetable const* rtt,
                              query const& q,
-                             interval<unixtime_t> const time,
+                             interval<unixtime_t> const& time,
                              direction const search_dir,
                              pareto_set<journey>& results) {
   if (q.slow_direct_) {
