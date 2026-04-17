@@ -95,7 +95,7 @@ void load_timetable(loader_config const& config,
   auto agencies =
       read_agencies(src, tt, i18n, timezones, load(kAgencyFile).data(),
                     config.default_tz_, user_script);
-  auto const [stops, seated_transfers] = read_stops(
+  auto const [stops, seated_transfers, stops_accessible] = read_stops(
       src, tt, i18n, timezones, load(kStopFile).data(),
       load(kTransfersFile).data(), config.link_stop_distance_, user_script);
   add_stop_groups(tt, load(kStopGroupElementsFile).data(), stops);
@@ -127,7 +127,8 @@ void load_timetable(loader_config const& config,
                              location_groups, stops);
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   read_stop_times(trip_data, stops, flex_areas, booking_rules, location_groups,
-                  i18n, load(kStopTimesFile).data(), shapes_data != nullptr);
+                  i18n, load(kStopTimesFile).data(), shapes_data != nullptr,
+                  stops_accessible);
   load_fares(tt, d, service, routes, stops);
   utl::verify(tt.fares_.size() == to_idx(src) + 1U, "fares: size={} src={}",
               tt.fares_.size(), src);
