@@ -15,6 +15,7 @@ void read_stop_times(trip_data&,
                      location_groups_t const&,
                      translator&,
                      std::string_view file_content,
-                     bool);
+                     bool,
+                     location_accessible_map_t);
 
 }  // namespace nigiri::loader::gtfs
