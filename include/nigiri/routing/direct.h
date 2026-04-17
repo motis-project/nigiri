@@ -27,7 +27,7 @@ void get_direct(timetable const&,
 void enrich_with_slow_direct(timetable const&,
                              rt_timetable const*,
                              query const&,
-                             interval<unixtime_t>,
+                             interval<unixtime_t> const&,
                              direction,
                              pareto_set<journey>& results);
 }  // namespace routing
