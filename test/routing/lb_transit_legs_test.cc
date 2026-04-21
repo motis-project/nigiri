@@ -143,7 +143,7 @@ TEST(routing, lb_transit_legs) {
                    .transport_mode_id_ = 5}}}}};
 
   auto state = lb_transit_legs_state{};
-  lb_transit_legs<direction::kForward>(tt, q, state);
+  lb_transit_legs_round<direction::kForward>(tt, q, state);
 
   auto const get_lb = [&](auto&& id) {
     return state
@@ -165,7 +165,7 @@ TEST(routing, lb_transit_legs) {
   EXPECT_EQ(get_lb("Y"), 3U);
 
   q.flip_dir();
-  lb_transit_legs<direction::kBackward>(tt, q, state);
+  lb_transit_legs_round<direction::kBackward>(tt, q, state);
 
   ASSERT_EQ(state.lb_.size(), tt.n_locations());
   EXPECT_EQ(get_lb("T"), 2U);
