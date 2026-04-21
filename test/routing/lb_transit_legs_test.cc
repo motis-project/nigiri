@@ -2,10 +2,10 @@
 
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/routing/lb/lb_transit_legs.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
-#include "../../include/nigiri/routing/lb/lb_transit_legs.h"
 
 using namespace date;
 using namespace nigiri;
