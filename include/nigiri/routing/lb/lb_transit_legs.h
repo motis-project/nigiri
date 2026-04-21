@@ -70,9 +70,11 @@ struct lb_transit_legs {
     while (state_.lb_[l] == kUnknown) {
       lb_transit_legs_round<SearchDir>(tt_,q_,state_,k_++);
       if (!state_.any_marked_ || k_ == std::min(q_.max_transfers_, kMaxTransfers) + 2U) {
-        utl::for_each(state_.lb_, [](auto & lb) {
-          lb = lb == kUnknown ? kUnreachable : lb;
-        });
+        for (auto &lb : state_.lb_ ) {
+          if (lb == kUnknown) {
+            lb = kUnreachable;
+          }
+        }
       }
     }
     return state_.lb_[l];
