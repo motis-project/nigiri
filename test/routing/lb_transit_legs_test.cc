@@ -143,7 +143,7 @@ TEST(routing, lb_transit_legs) {
                    .transport_mode_id_ = 5}}}}};
 
   auto state = lb_transit_legs_state{};
-  lb_transit_legs_round<direction::kForward>(tt, q, state);
+  auto lb_fwd = lb_transit_legs<direction::kForward>(tt, q, state);
 
   auto const get_lb = [&](auto&& id) {
     return state
@@ -160,24 +160,49 @@ TEST(routing, lb_transit_legs) {
   EXPECT_EQ(get_lb("P"), 2U);
   EXPECT_EQ(get_lb("D2"), 2U);
   EXPECT_EQ(get_lb("C1"), 2U);
-  EXPECT_EQ(get_lb("D1"), 3U);
+  EXPECT_EQ(get_lb("D1"), lb_fwd.kUnknown);
+  EXPECT_EQ(get_lb("X"), lb_fwd.kUnknown);
+  EXPECT_EQ(get_lb("Y"), lb_fwd.kUnknown);
+
+  EXPECT_EQ(lb_fwd.get(
+                tt.locations_.location_id_to_idx_.at({"D1", source_idx_t{0U}})),
+            3U);
   EXPECT_EQ(get_lb("X"), 3U);
   EXPECT_EQ(get_lb("Y"), 3U);
 
   q.flip_dir();
-  lb_transit_legs_round<direction::kBackward>(tt, q, state);
+  auto lb_bwd = lb_transit_legs<direction::kBackward>(tt, q, state);
 
   ASSERT_EQ(state.lb_.size(), tt.n_locations());
   EXPECT_EQ(get_lb("T"), 2U);
-  EXPECT_EQ(get_lb("D3"), 4U);
-  EXPECT_EQ(get_lb("C2"), 3U);
+  EXPECT_EQ(get_lb("D3"), lb_bwd.kUnknown);
+  EXPECT_EQ(get_lb("C2"), lb_bwd.kUnknown);
   EXPECT_EQ(get_lb("B1"), 2U);
   EXPECT_EQ(get_lb("S"), 1U);
   EXPECT_EQ(get_lb("F"), 1U);
   EXPECT_EQ(get_lb("P"), 0U);
-  EXPECT_EQ(get_lb("D2"), 3U);
+  EXPECT_EQ(get_lb("D2"), lb_bwd.kUnknown);
   EXPECT_EQ(get_lb("C1"), 2U);
   EXPECT_EQ(get_lb("D1"), 2U);
-  EXPECT_EQ(get_lb("X"), std::numeric_limits<uint8_t>::max());
-  EXPECT_EQ(get_lb("Y"), std::numeric_limits<uint8_t>::max());
+  EXPECT_EQ(get_lb("X"), lb_bwd.kUnknown);
+  EXPECT_EQ(get_lb("Y"), lb_bwd.kUnknown);
+
+  EXPECT_EQ(lb_bwd.get(
+                tt.locations_.location_id_to_idx_.at({"C2", source_idx_t{0U}})),
+            3U);
+  EXPECT_EQ(get_lb("D3"), lb_bwd.kUnknown);
+  EXPECT_EQ(get_lb("D2"), 3U);
+  EXPECT_EQ(get_lb("X"), lb_bwd.kUnknown);
+  EXPECT_EQ(get_lb("Y"), lb_bwd.kUnknown);
+
+  EXPECT_EQ(lb_bwd.get(
+                tt.locations_.location_id_to_idx_.at({"D3", source_idx_t{0U}})),
+            4U);
+  EXPECT_EQ(get_lb("X"), lb_bwd.kUnknown);
+  EXPECT_EQ(get_lb("Y"), lb_bwd.kUnknown);
+
+  EXPECT_EQ(
+      lb_bwd.get(tt.locations_.location_id_to_idx_.at({"X", source_idx_t{0U}})),
+      lb_bwd.kUnreachable);
+  EXPECT_EQ(get_lb("Y"), lb_bwd.kUnreachable);
 }

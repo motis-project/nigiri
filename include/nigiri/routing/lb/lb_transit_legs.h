@@ -2,13 +2,12 @@
 
 #include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
+#include "nigiri/for_each_meta.h"
 
-#include "utl/pipes/for_each.h"
 
 namespace nigiri::routing {
 
-constexpr auto kUnreachable = std::numeric_limits<std::uint8_t>::max();
-constexpr auto kUnknown = kUnreachable - 1U;
+
 
 struct lb_transit_legs_state {
   bool any_marked_;
@@ -26,6 +25,9 @@ void lb_transit_legs_round(timetable const&, query const&, lb_transit_legs_state
 
 template <direction SearchDir>
 struct lb_transit_legs {
+  static constexpr auto kUnreachable = std::numeric_limits<std::uint8_t>::max();
+  static constexpr auto kUnknown = kUnreachable - 1U;
+
   lb_transit_legs(timetable const& tt,
                                  query const& q,
                                  lb_transit_legs_state& state)

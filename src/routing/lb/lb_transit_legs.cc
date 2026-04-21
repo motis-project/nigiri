@@ -1,7 +1,5 @@
 #include "nigiri/routing/lb/lb_transit_legs.h"
 
-#include "nigiri/for_each_meta.h"
-
 namespace nigiri::routing {
 
 template <direction SearchDir>
