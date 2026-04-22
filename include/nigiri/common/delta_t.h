@@ -1,7 +1,8 @@
 #pragma once
 
-#include "nigiri/types.h"
 #include "fmt/base.h"
+
+#include "nigiri/types.h"
 
 namespace nigiri {
 
