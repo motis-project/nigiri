@@ -39,7 +39,6 @@ struct search_state {
   ~search_state() = default;
 
   std::vector<std::uint16_t> travel_time_lower_bound_;
-  lb_transit_legs_state lb_rounds_state_;
   bitvec is_destination_;
   std::array<bitvec, kMaxVias> is_via_;
   std::vector<std::uint16_t> dist_to_dest_;
@@ -129,8 +128,6 @@ struct search {
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
 
-      lb_rounds_.init();
-
 #if defined(NIGIRI_TRACING)
       for (auto const& o : q_.start_) {
         trace_upd("start {}: {}\n", loc{tt_, o.target()}, o.duration());
@@ -192,13 +189,13 @@ struct search {
                             }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
+        lb_rounds_{tt, q_},
         algo_{init(q_.allowed_claszes_,
                    q_.require_bike_transport_,
                    q_.require_car_transport_,
                    q_.transfer_time_settings_,
                    algo_state)},
-        timeout_(timeout),
-        lb_rounds_{tt, q, state_.lb_rounds_state_} {
+        timeout_(timeout) {
     utl::sort(q_.start_);
     utl::sort(q_.destination_);
     q_.sanitize(tt);
@@ -521,9 +518,9 @@ private:
   interval<unixtime_t> search_interval_;
   search_stats stats_;
   duration_t fastest_direct_;
+  lb_transit_legs<SearchDir> lb_rounds_;
   Algo algo_;
   std::optional<std::chrono::seconds> timeout_;
-  lb_transit_legs<SearchDir> lb_rounds_;
 };
 
 }  // namespace nigiri::routing

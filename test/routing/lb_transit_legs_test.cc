@@ -142,69 +142,71 @@ TEST(routing, lb_transit_legs) {
                    .duration_ = footpath::kMaxDuration,
                    .transport_mode_id_ = 5}}}}};
 
-  auto state = lb_transit_legs_state{};
-  auto lb_fwd = lb_transit_legs<direction::kForward>(tt, q, state);
-  lb_fwd.init();
+  auto lb_fwd = lb_transit_legs<direction::kForward>(tt, q);
 
-  auto const get_lb = [&](auto&& id) {
-    return state
+  auto const get_lb_fwd = [&](auto&& id) {
+    return lb_fwd
         .lb_[tt.locations_.location_id_to_idx_.at({id, source_idx_t{0U}})];
   };
 
-  ASSERT_EQ(state.lb_.size(), tt.n_locations());
-  EXPECT_EQ(get_lb("T"), 0U);
-  EXPECT_EQ(get_lb("D3"), 1U);
-  EXPECT_EQ(get_lb("C2"), 1U);
-  EXPECT_EQ(get_lb("B1"), 1U);
-  EXPECT_EQ(get_lb("S"), 1U);
-  EXPECT_EQ(get_lb("F"), 1U);
-  EXPECT_EQ(get_lb("P"), 2U);
-  EXPECT_EQ(get_lb("D2"), 2U);
-  EXPECT_EQ(get_lb("C1"), 2U);
-  EXPECT_EQ(get_lb("D1"), lb_fwd.kUnknown);
-  EXPECT_EQ(get_lb("X"), lb_fwd.kUnknown);
-  EXPECT_EQ(get_lb("Y"), lb_fwd.kUnknown);
+  ASSERT_EQ(lb_fwd.lb_.size(), tt.n_locations());
+  EXPECT_EQ(get_lb_fwd("T"), 0U);
+  EXPECT_EQ(get_lb_fwd("D3"), 1U);
+  EXPECT_EQ(get_lb_fwd("C2"), 1U);
+  EXPECT_EQ(get_lb_fwd("B1"), 1U);
+  EXPECT_EQ(get_lb_fwd("S"), 1U);
+  EXPECT_EQ(get_lb_fwd("F"), 1U);
+  EXPECT_EQ(get_lb_fwd("P"), 2U);
+  EXPECT_EQ(get_lb_fwd("D2"), 2U);
+  EXPECT_EQ(get_lb_fwd("C1"), 2U);
+  EXPECT_EQ(get_lb_fwd("D1"), lb_fwd.kUnknown);
+  EXPECT_EQ(get_lb_fwd("X"), lb_fwd.kUnknown);
+  EXPECT_EQ(get_lb_fwd("Y"), lb_fwd.kUnknown);
 
   EXPECT_EQ(lb_fwd.get(
                 tt.locations_.location_id_to_idx_.at({"D1", source_idx_t{0U}})),
             3U);
-  EXPECT_EQ(get_lb("X"), 3U);
-  EXPECT_EQ(get_lb("Y"), 3U);
+  EXPECT_EQ(get_lb_fwd("X"), 3U);
+  EXPECT_EQ(get_lb_fwd("Y"), 3U);
 
   q.flip_dir();
-  auto lb_bwd = lb_transit_legs<direction::kBackward>(tt, q, state);
-  lb_bwd.init();
+  auto lb_bwd = lb_transit_legs<direction::kBackward>(tt, q);
 
-  ASSERT_EQ(state.lb_.size(), tt.n_locations());
-  EXPECT_EQ(get_lb("T"), 2U);
-  EXPECT_EQ(get_lb("D3"), lb_bwd.kUnknown);
-  EXPECT_EQ(get_lb("C2"), lb_bwd.kUnknown);
-  EXPECT_EQ(get_lb("B1"), 2U);
-  EXPECT_EQ(get_lb("S"), 1U);
-  EXPECT_EQ(get_lb("F"), 1U);
-  EXPECT_EQ(get_lb("P"), 0U);
-  EXPECT_EQ(get_lb("D2"), lb_bwd.kUnknown);
-  EXPECT_EQ(get_lb("C1"), 2U);
-  EXPECT_EQ(get_lb("D1"), 2U);
-  EXPECT_EQ(get_lb("X"), lb_bwd.kUnknown);
-  EXPECT_EQ(get_lb("Y"), lb_bwd.kUnknown);
+  auto const get_lb_bwd = [&](auto&& id) {
+    return lb_bwd
+        .lb_[tt.locations_.location_id_to_idx_.at({id, source_idx_t{0U}})];
+  };
+
+  ASSERT_EQ(lb_bwd.lb_.size(), tt.n_locations());
+  EXPECT_EQ(get_lb_bwd("T"), 2U);
+  EXPECT_EQ(get_lb_bwd("D3"), lb_bwd.kUnknown);
+  EXPECT_EQ(get_lb_bwd("C2"), lb_bwd.kUnknown);
+  EXPECT_EQ(get_lb_bwd("B1"), 2U);
+  EXPECT_EQ(get_lb_bwd("S"), 1U);
+  EXPECT_EQ(get_lb_bwd("F"), 1U);
+  EXPECT_EQ(get_lb_bwd("P"), 0U);
+  EXPECT_EQ(get_lb_bwd("D2"), lb_bwd.kUnknown);
+  EXPECT_EQ(get_lb_bwd("C1"), 2U);
+  EXPECT_EQ(get_lb_bwd("D1"), 2U);
+  EXPECT_EQ(get_lb_bwd("X"), lb_bwd.kUnknown);
+  EXPECT_EQ(get_lb_bwd("Y"), lb_bwd.kUnknown);
 
   EXPECT_EQ(lb_bwd.get(
                 tt.locations_.location_id_to_idx_.at({"C2", source_idx_t{0U}})),
             3U);
-  EXPECT_EQ(get_lb("D3"), lb_bwd.kUnknown);
-  EXPECT_EQ(get_lb("D2"), 3U);
-  EXPECT_EQ(get_lb("X"), lb_bwd.kUnknown);
-  EXPECT_EQ(get_lb("Y"), lb_bwd.kUnknown);
+  EXPECT_EQ(get_lb_bwd("D3"), lb_bwd.kUnknown);
+  EXPECT_EQ(get_lb_bwd("D2"), 3U);
+  EXPECT_EQ(get_lb_bwd("X"), lb_bwd.kUnknown);
+  EXPECT_EQ(get_lb_bwd("Y"), lb_bwd.kUnknown);
 
   EXPECT_EQ(lb_bwd.get(
                 tt.locations_.location_id_to_idx_.at({"D3", source_idx_t{0U}})),
             4U);
-  EXPECT_EQ(get_lb("X"), lb_bwd.kUnknown);
-  EXPECT_EQ(get_lb("Y"), lb_bwd.kUnknown);
+  EXPECT_EQ(get_lb_bwd("X"), lb_bwd.kUnknown);
+  EXPECT_EQ(get_lb_bwd("Y"), lb_bwd.kUnknown);
 
   EXPECT_EQ(
       lb_bwd.get(tt.locations_.location_id_to_idx_.at({"X", source_idx_t{0U}})),
       lb_bwd.kUnreachable);
-  EXPECT_EQ(get_lb("Y"), lb_bwd.kUnreachable);
+  EXPECT_EQ(get_lb_bwd("Y"), lb_bwd.kUnreachable);
 }

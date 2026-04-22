@@ -847,7 +847,6 @@ private:
             auto current_best =
                 get_best(round_times_[k - 1][l_idx][target_v],
                          tmp_[l_idx][target_v], best_[l_idx][target_v]);
-
             if (is_better(by_transport, time_at_dest_[k]) &&
                 lb_time_[l_idx] != kUnreachable &&
                 k + lb_rounds_.get(stp.location_idx()) < end_k_ &&
@@ -1029,19 +1028,20 @@ private:
                 to_unix(round_times_[k - 1][l_idx][target_v]),
                 to_unix(best_[l_idx][target_v]), to_unix(tmp_[l_idx][target_v]),
                 to_unix(current_best[v]), loc{tt_, location_idx_t{l_idx}},
-                lb_[l_idx], to_unix(time_at_dest_[k]),
-                to_unix(clamp(by_transport + dir(lb_[l_idx]))), by_transport,
-                to_unix(by_transport), current_best[v],
+                lb_time_[l_idx], to_unix(time_at_dest_[k]),
+                to_unix(clamp(by_transport + dir(lb_time_[l_idx]))),
+                by_transport, to_unix(by_transport), current_best[v],
                 to_unix(current_best[v]),
                 is_better(by_transport, current_best[v]), by_transport,
                 to_unix(by_transport), time_at_dest_[k],
                 to_unix(time_at_dest_[k]),
                 is_better(by_transport, time_at_dest_[k]),
-                lb_[l_idx] != kUnreachable, by_transport + dir(lb_[l_idx]),
-                to_unix(clamp(by_transport + dir(lb_[l_idx]))),
+                lb_time_[l_idx] != kUnreachable,
+                by_transport + dir(lb_time_[l_idx]),
+                to_unix(clamp(by_transport + dir(lb_time_[l_idx]))),
                 time_at_dest_[k], to_unix(time_at_dest_[k]),
                 to_unix(time_at_dest_[k]),
-                is_better(clamp(by_transport + dir(lb_[l_idx])),
+                is_better(clamp(by_transport + dir(lb_time_[l_idx])),
                           time_at_dest_[k]));
           }
         } else {

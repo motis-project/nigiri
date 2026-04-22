@@ -66,9 +66,7 @@ raptor_state one_to_all(timetable const& tt,
   auto is_via = std::array<bitvec, kMaxVias>{};
   auto dist_to_dest = std::vector<std::uint16_t>{};
   auto lb_time = std::vector<std::uint16_t>(tt.n_locations(), 0U);
-  auto lb_rounds_state = lb_transit_legs_state{};
-  auto lb_rounds = lb_transit_legs<SearchDir>(tt, q, lb_rounds_state);
-  lb_rounds.init(true);
+  auto lb_rounds = lb_transit_legs<SearchDir>(tt, q, true);
   auto const base = make_base(tt, start_time);
   auto const is_wheelchair = q.prf_idx_ == kWheelchairProfile;
 
