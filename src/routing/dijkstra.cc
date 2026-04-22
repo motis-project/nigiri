@@ -10,13 +10,8 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/query.h"
 
-// #define NIGIRI_DIJKSTRA_TRACING
-
-#ifdef NIGIRI_DIJKSTRA_TRACING
-#define trace(...) fmt::print(__VA_ARGS__)
-#else
 #define trace(...)
-#endif
+// #define trace(...) fmt::print(__VA_ARGS__)
 
 namespace nigiri::routing {
 
