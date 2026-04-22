@@ -18,6 +18,7 @@
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/lb/lb_transit_legs.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
@@ -38,6 +39,7 @@ struct search_state {
   ~search_state() = default;
 
   std::vector<std::uint16_t> travel_time_lower_bound_;
+  lb_transit_legs_state lb_rounds_state_;
   bitvec is_destination_;
   std::array<bitvec, kMaxVias> is_via_;
   std::vector<std::uint16_t> dist_to_dest_;
@@ -127,6 +129,8 @@ struct search {
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
 
+      lb_rounds_.init();
+
 #if defined(NIGIRI_TRACING)
       for (auto const& o : q_.start_) {
         trace_upd("start {}: {}\n", loc{tt_, o.target()}, o.duration());
@@ -152,6 +156,7 @@ struct search {
         state_.dist_to_dest_,
         q_.td_dest_,
         state_.travel_time_lower_bound_,
+        lb_rounds_,
         q_.via_stops_,
         day_idx_t{
             std::chrono::duration_cast<date::days>(
@@ -192,7 +197,8 @@ struct search {
                    q_.require_car_transport_,
                    q_.transfer_time_settings_,
                    algo_state)},
-        timeout_(timeout) {
+        timeout_(timeout),
+        lb_rounds_{tt, q, state_.lb_rounds_state_} {
     utl::sort(q_.start_);
     utl::sort(q_.destination_);
     q_.sanitize(tt);
@@ -517,6 +523,7 @@ private:
   duration_t fastest_direct_;
   Algo algo_;
   std::optional<std::chrono::seconds> timeout_;
+  lb_transit_legs<SearchDir> lb_rounds_;
 };
 
 }  // namespace nigiri::routing

@@ -8,6 +8,7 @@ void lb_transit_legs_round(timetable const& tt,
                            lb_transit_legs_state& state,
                            std::uint8_t const k) {
   constexpr auto kFwd = SearchDir == direction::kForward;
+ auto const start_time = std::chrono::steady_clock::now();
 
   utl::fill(state.route_mark_.blocks_, 0U);
 
@@ -58,6 +59,10 @@ void lb_transit_legs_round(timetable const& tt,
       }
     }
   });
+
+  fmt::println("[lb_transit_legs_round] ran for k = {} which took {}", k,
+               std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now() - start_time));
 }
 
 template void lb_transit_legs_round<direction::kForward>(timetable const&,
