@@ -5,12 +5,8 @@
 #include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
 
-// #define NIGIRI_ONTRIP_DEBUG
-#ifdef NIGIRI_ONTRIP_DEBUG
-#define trace(...) fmt::println(__VA_ARGS__)
-#else
 #define trace(...)
-#endif
+// #define trace(...) fmt::println(std::clog, __VA_ARGS__)
 
 namespace nigiri::routing {
 
