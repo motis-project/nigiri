@@ -2,13 +2,10 @@
 
 #include "fmt/format.h"
 
-#include "utl/concat.h"
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
-#include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
 #include "utl/timing.h"
-#include "utl/to_vec.h"
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/get_otel_tracer.h"
@@ -323,28 +320,8 @@ struct search {
                j.travel_time() > q_.max_travel_time_;
       });
 
-      if (q_.slow_direct_) {
-        auto direct = std::vector<journey>{};
-        auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
-        for (auto const& j : state_.results_) {
-          if (j.transfers_ != 0) {
-            continue;
-          }
-          auto const transport_leg_it =
-              utl::find_if(j.legs_, [](journey::leg const& l) {
-                return holds_alternative<journey::run_enter_exit>(l.uses_);
-              });
-          if (transport_leg_it == end(j.legs_)) {
-            continue;
-          }
-          auto const& l = *transport_leg_it;
-          get_direct(tt_, rtt_, kFwd ? l.from_ : l.to_, kFwd ? l.to_ : l.from_,
-                     q_, search_interval_, SearchDir, done, direct);
-        }
-
-        utl::concat(state_.results_.els_, direct);
-        utl::erase_duplicates(state_.results_);
-      }
+      enrich_with_slow_direct(tt_, rtt_, q_, search_interval_, SearchDir,
+                              state_.results_);
 
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
         return std::tuple{a.start_time_, a.transfers_} <

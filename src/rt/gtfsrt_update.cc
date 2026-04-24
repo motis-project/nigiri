@@ -376,7 +376,7 @@ bool update_run(source_idx_t const src,
         auto const l_it = tt.locations_.location_id_to_idx_.find(
             {.id_ = new_id, .src_ = src});
         if (l_it == end(tt.locations_.location_id_to_idx_)) {
-          log(log_lvl::error, "gtfsrt.stop_assignment",
+          log(log_lvl::debug, "gtfsrt.stop_assignment",
               "stop assignment: src={}, old_stop_id=\"{}\", new_stop_id=\"{}\" "
               "not found",
               src, tt.locations_.ids_[loc_idx].view(), new_id);
@@ -384,7 +384,7 @@ bool update_run(source_idx_t const src,
         }
         auto const& equiv_locs = tt.locations_.equivalences_.at(loc_idx);
         if (utl::find(equiv_locs, l_it->second) == end(equiv_locs)) {
-          log(log_lvl::error, "gtfsrt.stop_assignment",
+          log(log_lvl::debug, "gtfsrt.stop_assignment",
               "stop assignment: src={}, old_stop_id=\"{}\", new_stop_id=\"{}\" "
               "is not a mere track change, skipping",
               src, tt.locations_.ids_[loc_idx].view(), new_id);
