@@ -17,6 +17,13 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+#define NIGIRI_LB_TRACING
+#ifdef NIGIRI_LB_TRACING
+#define trace_lb(...) fmt::print(__VA_ARGS__)
+#else
+#define trace_lb(...)
+#endif
+
 namespace nigiri::routing {
 
 struct raptor_stats {
@@ -477,6 +484,19 @@ private:
                   fp_target_time + dir(lb_time_[i]),
                   time_at_dest_[k + lb_rounds_.get(location_idx_t{i})])) {
             ++stats_.fp_update_prevented_by_lower_bound_;
+            trace_lb(
+                "┊ ├k={} *** LB NO TRANSFER UPD: (from={}, tmp={}) --{}--> "
+                "(to={}, "
+                "best={}) --> update => {}, LB={}, LB_AT_DEST={}, "
+                "LB_ROUNDS={}, "
+                "DEST[{}]={}\n",
+                k, loc{tt_, location_idx_t{i}}, to_unix(tmp_[i][v]),
+                transfer_time, loc{tt_, location_idx_t{i}}, best_[i][target_v],
+                to_unix(fp_target_time), lb_time_[i],
+                to_unix(clamp(fp_target_time + dir(lb_time_[i]))),
+                lb_rounds_.get(location_idx_t{i}),
+                k + lb_rounds_.get(location_idx_t{i}),
+                to_unix(time_at_dest_[k]));
             return;
           }
 
@@ -544,16 +564,19 @@ private:
                 !is_better(fp_target_time + dir(lb_time_[target]),
                            time_at_dest_[k + lb_rounds_.get(fp.target())])) {
               ++stats_.fp_update_prevented_by_lower_bound_;
-              trace_upd(
-                  "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
-                  "best={}) --> update => {}, LB={}, LB_AT_DEST={}, DEST={}\n",
+              trace_lb(
+                  "┊ ├k={} *** LB NO FP UPD: (from={}, tmp={}) --{}--> (to={}, "
+                  "best={}) --> update => {}, LB={}, LB_AT_DEST={}, "
+                  "LB_ROUNDS={}, "
+                  "DEST[{}]={}\n",
                   k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
                   adjusted_transfer_time(transfer_time_settings_,
                                          fp.duration()),
                   loc{tt_, fp.target()}, best_[target][target_v],
                   to_unix(fp_target_time), lb_time_[target],
                   to_unix(clamp(fp_target_time + dir(lb_time_[target]))),
-                  to_unix(time_at_dest_[k]));
+                  lb_rounds_.get(fp.target()), k + lb_rounds_.get(fp.target()),
+                  to_unix(time_at_dest_[k + lb_rounds_.get(fp.target())]));
               continue;
             }
 
@@ -642,15 +665,20 @@ private:
                 !is_better(fp_target_time + dir(lb_time_[target]),
                            time_at_dest_[k + lb_rounds_.get(fp.target())])) {
               ++stats_.fp_update_prevented_by_lower_bound_;
-              trace_upd(
+              trace_lb(
                   "┊ ├k={} *** LB NO TD FP UPD: (from={}, tmp={}) --{}--> "
-                  "(to={}, best={}) --> update => {}, LB={}, LB_AT_DEST={}, "
-                  "DEST={}\n",
+                  "(to={}, "
+                  "best={}) --> update => {}, LB={}, LB_AT_DEST={}, "
+                  "LB_ROUNDS={}, "
+                  "DEST[{}]={}\n",
                   k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
-                  fp.duration(), loc{tt_, fp.target()}, best_[target][target_v],
-                  fp_target_time, lb_time_[target],
+                  adjusted_transfer_time(transfer_time_settings_,
+                                         fp.duration()),
+                  loc{tt_, fp.target()}, best_[target][target_v],
+                  to_unix(fp_target_time), lb_time_[target],
                   to_unix(clamp(fp_target_time + dir(lb_time_[target]))),
-                  to_unix(time_at_dest_[k]));
+                  lb_rounds_.get(fp.target()), k + lb_rounds_.get(fp.target()),
+                  to_unix(time_at_dest_[k + lb_rounds_.get(fp.target())]));
               return utl::cflow::kContinue;
             }
 
@@ -849,10 +877,8 @@ private:
                          tmp_[l_idx][target_v], best_[l_idx][target_v]);
             if (is_better(by_transport, time_at_dest_[k]) &&
                 lb_time_[l_idx] != kUnreachable &&
-                k + lb_rounds_.get(stp.location_idx()) < end_k_ &&
-                is_better(
-                    by_transport + dir(lb_time_[l_idx]),
-                    time_at_dest_[k + lb_rounds_.get(stp.location_idx())])) {
+                is_better(by_transport + dir(lb_time_[l_idx]),
+                          time_at_dest_[k])) {
               trace_upd(
                   "┊ │k={}    RT | name={}, dbg={}, time_by_transport={}, "
                   "BETTER THAN current_best={} => update, {} marking station "
@@ -876,8 +902,7 @@ private:
         }
       }
 
-      if (lb_time_[l_idx] == kUnreachable ||
-          k + lb_rounds_.get(stp.location_idx()) >= end_k_) {
+      if (lb_time_[l_idx] == kUnreachable) {
         break;
       }
 
@@ -1003,7 +1028,6 @@ private:
                 to_unix(current_best[v]),
                 !is_better(by_transport, current_best[v]) ? "NOT" : "",
                 loc{tt_, stp.location_idx()});
-
             ++stats_.n_earliest_arrival_updated_by_route_;
             tmp_[l_idx][target_v] =
                 get_best(by_transport, tmp_[l_idx][target_v]);
@@ -1013,11 +1037,11 @@ private:
             }
             any_marked = true;
           } else {
-            trace(
-                "┊ │k={} v={}->{}    *** NO UPD: at={}, name={}, dbg={}, "
+            trace_lb(
+                "┊ │k={} v={}->{}    *** NO ROUTE UPD: at={}, name={}, dbg={}, "
                 "time_by_transport={}, current_best=min({}, {}, {})={} => {} "
                 "- "
-                "LB={}, LB_AT_DEST={}, TIME_AT_DEST={}, "
+                "LB={}, LB_AT_DEST={}, LB_ROUNDS={}, TIME_AT_DEST[{}]={}, "
                 "(is_better(by_transport={}={}, current_best={}={})={}, "
                 "is_better(by_transport={}={}, time_at_dest_={}={})={}, "
                 "reachable={}, "
@@ -1028,8 +1052,11 @@ private:
                 to_unix(round_times_[k - 1][l_idx][target_v]),
                 to_unix(best_[l_idx][target_v]), to_unix(tmp_[l_idx][target_v]),
                 to_unix(current_best[v]), loc{tt_, location_idx_t{l_idx}},
-                lb_time_[l_idx], to_unix(time_at_dest_[k]),
+                lb_time_[l_idx],
                 to_unix(clamp(by_transport + dir(lb_time_[l_idx]))),
+                lb_rounds_.get(stp.location_idx()),
+                k + lb_rounds_.get(stp.location_idx()),
+                to_unix(time_at_dest_[k + lb_rounds_.get(stp.location_idx())]),
                 by_transport, to_unix(by_transport), current_best[v],
                 to_unix(current_best[v]),
                 is_better(by_transport, current_best[v]), by_transport,
@@ -1059,7 +1086,12 @@ private:
       }
 
       if (lb_time_[l_idx] == kUnreachable ||
-          k + lb_rounds_.get(stp.location_idx()) >= end_k_) {
+          k + lb_rounds_.get(stp.location_idx()) > end_k_) {
+        trace_lb(
+            "┊ │k={}    *** NO ROUTE UPD: at={}, lb_time={}, lb_rounds={}, "
+            "end_k_={}",
+            k, loc{tt_, location_idx_t{l_idx}}, lb_time_[l_idx],
+            lb_rounds_.get(stp.location_idx()), end_k_);
         break;
       }
 
@@ -1143,15 +1175,18 @@ private:
 
         if (is_better_or_eq(time_at_dest_[k + lb_rounds_.get(l)],
                             to_delta(day, ev_mam) + dir(lb_time_[to_idx(l)]))) {
-          trace(
+          trace_lb(
               "┊ │k={}      => name={}, dbg={}, day={}={}, best_mam={}, "
-              "transport_mam={}, transport_time={} => TIME AT DEST {} IS "
+              "transport_mam={}, transport_time={}, lb_time={} => "
+              "lb_rounds={}, TIME_AT_DEST[{}] {} IS "
               "BETTER!\n",
               k, tt_.transport_name(tt_.route_transport_ranges_[r][t_offset]),
               tt_.dbg(tt_.route_transport_ranges_[r][t_offset]), day,
               tt_.to_unixtime(day, 0_minutes), mam_at_stop, ev_mam,
               tt_.to_unixtime(day, duration_t{ev_mam}),
-              to_unix(time_at_dest_[k]));
+              to_delta(day, ev_mam) + dir(lb_time_[to_idx(l)]),
+              lb_rounds_.get(l), k + lb_rounds_.get(l),
+              to_unix(time_at_dest_[k + lb_rounds_.get(l)]));
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
