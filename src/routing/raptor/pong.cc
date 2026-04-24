@@ -6,8 +6,8 @@
 #include "utl/timing.h"
 
 #include "nigiri/routing/get_earliest_transport.h"
-#include "nigiri/rt/frun.h"
 #include "nigiri/routing/lb/lb_transit_legs.h"
+#include "nigiri/rt/frun.h"
 
 #define trace_pong(...)
 // #define trace_pong fmt::println
@@ -565,7 +565,8 @@ routing_result pong(timetable const& tt,
                        "\n\t"));
 
   fmt::println("lb_rounds total time: {}",
-               ping_lb_rounds.total_time_ + pong_lb_rounds.total_time_);
+               std::chrono::duration_cast<std::chrono::milliseconds>(
+                   ping_lb_rounds.total_time_ + pong_lb_rounds.total_time_));
 
   if constexpr (!kFwd) {
     return result;

@@ -22,10 +22,11 @@ struct lb_transit_legs {
                   bool const one_to_all = false)
       : tt_{tt},
         q_{q},
-        k_{0},
+        k_{0U},
         end_k_{static_cast<std::uint8_t>(
             std::min(q.max_transfers_, kMaxTransfers) + 2U)},
-        any_marked_{false} {
+        any_marked_{false},
+        total_time_{0U} {
     lb_.resize(tt_.n_locations());
     if (one_to_all) {
       utl::fill(lb_, 0U);
@@ -121,7 +122,7 @@ struct lb_transit_legs {
       }
     });
 
-    total_time_ += std::chrono::duration_cast<std::chrono::milliseconds>(
+    total_time_ += std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - start_time);
   }
 
@@ -145,7 +146,7 @@ struct lb_transit_legs {
   std::uint8_t k_;
   std::uint8_t end_k_;
   bool any_marked_;
-  std::chrono::milliseconds total_time_;
+  std::chrono::microseconds total_time_;
   bitvec station_mark_;
   bitvec prev_station_mark_;
   bitvec route_mark_;
