@@ -1,6 +1,7 @@
 #pragma once
 
-#include "nigiri/routing/raptor/debug.h"
+#include "fmt/base.h"
+
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -17,10 +18,10 @@ template <typename T>
 inline delta_t clamp(T t) {
 #if defined(NIGIRI_TRACING)
   if (t < std::numeric_limits<delta_t>::min()) {
-    trace_upd("CLAMP {} TO {}\n", t, std::numeric_limits<delta_t>::min());
+    fmt::print("CLAMP {} TO {}\n", t, std::numeric_limits<delta_t>::min());
   }
   if (t > std::numeric_limits<delta_t>::max()) {
-    trace_upd("CLAMP {} TO {}\n", t, std::numeric_limits<delta_t>::max());
+    fmt::print("CLAMP {} TO {}\n", t, std::numeric_limits<delta_t>::max());
   }
 #endif
 
