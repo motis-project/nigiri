@@ -40,7 +40,8 @@ void read_stop_times(trip_data& trips,
                      location_groups_t const& location_groups,
                      translator& i18n,
                      std::string_view file_content,
-                     bool const store_distances) {
+                     bool const store_distances,
+                     location_accessible_map_t stops_accessible) {
   struct csv_stop_time {
     utl::csv_col<utl::cstr, UTL_NAME("trip_id")> trip_id_;
     utl::csv_col<utl::cstr, UTL_NAME("arrival_time")> arrival_time_;
@@ -111,8 +112,10 @@ void read_stop_times(trip_data& trips,
     auto const departure_time = hhmm_to_min(*s.departure_time_);
     auto const in_allowed = *s.pickup_type_ != 1;
     auto const out_allowed = *s.drop_off_type_ != 1;
-    t->stop_seq_.push_back(
-        stop{l, in_allowed, out_allowed, in_allowed, out_allowed}.value());
+    t->stop_seq_.push_back(stop{l, in_allowed, out_allowed,
+                                stops_accessible[l] && in_allowed,
+                                stops_accessible[l] && out_allowed}
+                               .value());
     t->requires_interpolation_ |= arrival_time == kInterpolate;
     t->requires_interpolation_ |= departure_time == kInterpolate;
     t->event_times_.push_back({.arr_ = arrival_time, .dep_ = departure_time});

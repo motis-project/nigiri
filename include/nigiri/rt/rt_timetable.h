@@ -257,11 +257,18 @@ struct rt_timetable {
   // same for cars
   bitvec rt_transport_cars_allowed_;
 
+  // same for wheelchair accessibility
+  bitvec rt_transport_wheelchair_accessibility_;  // TODO actually fill this
+                                                  // from somewhere
+
   // RT transport -> bikes allowed for each section
   vecvec<rt_transport_idx_t, bool> rt_bikes_allowed_per_section_;
 
   // same for cars
   vecvec<rt_transport_idx_t, bool> rt_cars_allowed_per_section_;
+
+  // same for wheelchair accessbility
+  vecvec<rt_transport_idx_t, bool> rt_wheelchair_accessible_per_section_;
 
   // Service alerts
   alerts alerts_;

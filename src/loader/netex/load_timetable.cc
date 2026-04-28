@@ -1574,7 +1574,7 @@ void load_timetable(loader_config const& config,
       }
       it->second.emplace_back(std::vector<utc_trip>{s});
     } else {
-      route_services.emplace(gtfs::route_key_t{c, s.stop_seq_, {}, {}},
+      route_services.emplace(gtfs::route_key_t{c, s.stop_seq_, {}, {}, {}},
                              std::vector<std::vector<utc_trip>>{{s}});
     }
   };
@@ -1660,8 +1660,9 @@ void load_timetable(loader_config const& config,
     auto section_attributes = basic_string<attribute_combination_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
-        auto const route_idx = tt.register_route(
-            key.stop_seq_, {key.clasz_}, key.bikes_allowed_, key.cars_allowed_);
+        auto const route_idx =
+            tt.register_route(key.stop_seq_, {key.clasz_}, key.bikes_allowed_,
+                              key.cars_allowed_, key.wheelchair_accessible_);
 
         for (auto const& s : key.stop_seq_) {
           auto s_routes = location_routes[nigiri::stop{s}.location_idx()];

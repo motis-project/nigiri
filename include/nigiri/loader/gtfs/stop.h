@@ -19,14 +19,16 @@ using seated_transfers_map_t =
 
 using stops_map_t = hash_map<std::string, location_idx_t>;
 
-std::pair<stops_map_t, seated_transfers_map_t> read_stops(
-    source_idx_t,
-    timetable&,
-    translator&,
-    tz_map&,
-    std::string_view stops_file_content,
-    std::string_view transfers_file_content,
-    unsigned link_stop_distance,
-    script_runner const& = script_runner{});
+using location_accessible_map_t = hash_map<location_idx_t, bool>;
+
+std::tuple<stops_map_t, seated_transfers_map_t, location_accessible_map_t>
+read_stops(source_idx_t,
+           timetable&,
+           translator&,
+           tz_map&,
+           std::string_view stops_file_content,
+           std::string_view transfers_file_content,
+           unsigned link_stop_distance,
+           script_runner const& = script_runner{});
 
 }  // namespace nigiri::loader::gtfs
