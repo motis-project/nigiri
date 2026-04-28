@@ -9,7 +9,9 @@
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/for_each_meta.h"
+#include "nigiri/location_match_mode.h"
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -468,6 +470,13 @@ void reconstruct_journey_with_vias(timetable const& tt,
     auto stay_fp_target = 0_minutes;
     trace_reconstruct("  [check_fp] v={}, l={}, fp.target={}, intermodal={}\n",
                       v, loc{tt, l}, loc{tt, fp.target()}, is_intermodal);
+
+    // l->k => nothing
+    // v->k => v-1; stay_l
+    // l->v => v-1; [x]
+    // v->v-1 => v-2; stay_l; [x]
+    // v->v => v-1; stay_fp_target
+
     if (v != 0 && matches(tt, location_match_mode::kEquivalent,
                           q.via_stops_[v - 1].location_, l)) {
       --v;
@@ -488,14 +497,39 @@ void reconstruct_journey_with_vias(timetable const& tt,
                           q.via_stops_[v - 1].location_, fp.target())) {
       --v;
       assert(stay_fp_target == 0_minutes);
-      if (is_intermodal) {
-        stay_fp_target = q.via_stops_[v].stay_;
-      }
+      stay_fp_target = q.via_stops_[v].stay_;
       trace_reconstruct(
           "  [check_fp]: fp target matches current via: v={}->{}, "
           "stay_fp_target={}\n",
           v + 1, v, stay_fp_target);
     }
+
+    // if (v != 0 && matches(tt, location_match_mode::kEquivalent,
+    //                       q.via_stops_[v - 1].location_, l)) {
+    //   --v;
+    //   if (matches(tt, location_match_mode::kEquivalent, l, fp.target())) {
+    //     stay_fp_target = q.via_stops_[v].stay_;
+    //     trace_reconstruct(
+    //         "  [check_fp]: fp start+target matches current via: v={}->{}, "
+    //         "stay_target={}\n",
+    //         v + 1, v, stay_fp_target);
+    //   } else {
+    //     stay_l = q.via_stops_[v].stay_;
+    //     trace_reconstruct(
+    //         "  [check_fp]: fp start matches current via: v={}->{},
+    //         stay_l={}\n", v + 1, v, stay_l);
+    //   }
+    // } else if (v != 0 && matches(tt, location_match_mode::kEquivalent,
+    //                              q.via_stops_[v - 1].location_, fp.target()))
+    //                              {
+    //   --v;
+    //   assert(stay_fp_target == 0_minutes);
+    //   stay_fp_target = q.via_stops_[v].stay_;
+    //   trace_reconstruct(
+    //       "  [check_fp]: fp target matches current via: v={}->{}, "
+    //       "stay_fp_target={}\n",
+    //       v + 1, v, stay_fp_target);
+    // }
 
     auto const fp_plus_stay_l_duration = fp_duration + stay_l.count();
     auto const fp_plus_both_stay_duration =
