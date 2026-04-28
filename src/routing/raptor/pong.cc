@@ -170,7 +170,7 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
                   to,
                   trip_arr,
                   dst_arr,
-                  footpath{fp.target(), fp.duration()},
+                  footpath{fp.target(), adjusted_fp_time},
               }};
         };
 
