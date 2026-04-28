@@ -89,6 +89,7 @@ struct raptor_state {
   bitvec prev_station_mark_;
   bitvec route_mark_;
   bitvec rt_transport_mark_;
+  std::vector<std::vector<std::pair<int, double>>> arr_dist_;
 };
 
 }  // namespace nigiri::routing
