@@ -17,6 +17,7 @@ include(cmake/pkg.cmake)
 add_custom_command(
       OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt/gtfs-realtime.pb.h
       OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt/gtfs-realtime.pb.cc
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt
       COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:protoc>
       --cpp_out=${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt
       --proto_path=${CMAKE_CURRENT_SOURCE_DIR}
@@ -115,6 +116,12 @@ file(GLOB_RECURSE nigiri-import-files exe/import.cc)
 add_executable(nigiri-import ${nigiri-import-files})
 target_link_libraries(nigiri-import PRIVATE nigiri boost-program_options ianatzdb-res)
 target_compile_features(nigiri-import PUBLIC cxx_std_23)
+
+# --- EXPORTER ---
+file(GLOB_RECURSE nigiri-export-files exe/export.cc)
+add_executable(nigiri-export ${nigiri-export-files})
+target_link_libraries(nigiri-export PRIVATE nigiri boost-program_options ianatzdb-res)
+target_compile_features(nigiri-export PUBLIC cxx_std_23)
 
 # --- BENCHMARK ---
 file(GLOB_RECURSE nigiri-benchmark-files exe/benchmark.cc)
