@@ -3,8 +3,12 @@
 #include <execution>
 
 #include "utl/enumerate.h"
+#include "utl/erase_if.h"
+#include "utl/to_vec.h"
 
 #include "geo/box.h"
+#include "geo/convert.h"
+#include "geo/fixed.h"
 
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/build_lb_graph.h"
@@ -153,6 +157,48 @@ void correct_color_contrast(timetable& tt) {
   }
 }
 
+void compute_initial_view(timetable& tt) {
+  auto const get_quantiles = [](std::vector<double>&& coords) {
+    utl::erase_if(coords, [](auto const c) { return c == 0.; });
+    if (coords.empty()) {
+      return std::make_pair(0., 0.);
+    }
+    if (coords.size() < 10) {
+      return std::make_pair(coords.front(), coords.back());
+    }
+
+    std::sort(begin(coords), end(coords));
+    constexpr auto const kQuantile = .8;
+    return std::make_pair(
+        coords.at(static_cast<double>(coords.size()) * (1 - kQuantile)),
+        coords.at(static_cast<double>(coords.size()) * (kQuantile)));
+  };
+
+  auto zoom = 0U;
+
+  auto const [lat_min, lat_max] = get_quantiles(utl::to_vec(
+      tt.locations_.coordinates_, [](auto const& s) { return s.lat_; }));
+  auto const [lng_min, lng_max] = get_quantiles(utl::to_vec(
+      tt.locations_.coordinates_, [](auto const& s) { return s.lng_; }));
+
+  auto const fixed0 = geo::latlng_to_fixed({lat_min, lng_min});
+  auto const fixed1 = geo::latlng_to_fixed({lat_max, lng_max});
+
+  tt.initial_view_.center_ = geo::fixed_to_latlng(
+      {(fixed0.x() + fixed1.x()) / 2, (fixed0.y() + fixed1.y()) / 2});
+
+  auto const d = static_cast<unsigned>(std::max(
+      std::abs(fixed0.x() - fixed1.x()), std::abs(fixed0.y() - fixed1.y())));
+
+  for (; zoom < (geo::kMaxZoomLevel - 1); ++zoom) {
+    if (((geo::kTileSize * 2ULL) *
+         (1ULL << (geo::kMaxZoomLevel - (zoom + 1)))) < d) {
+      break;
+    }
+  }
+  tt.initial_view_.zoom_ = static_cast<double>(zoom);
+};
+
 void finalize(timetable& tt, finalize_options const opt) {
   tt.location_routes_.resize(tt.n_locations());
 
@@ -190,6 +236,7 @@ void finalize(timetable& tt, finalize_options const opt) {
   assign_stops_to_flex_areas(tt);
   assign_importance(tt);
   correct_color_contrast(tt);
+  compute_initial_view(tt);
 
   log(log_lvl::info, "nigiri.loader.finalize",
       "{} locations ({}% of idx space used)", tt.n_locations(),

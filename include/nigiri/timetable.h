@@ -108,6 +108,11 @@ struct timetable {
     basic_string<translation_idx_t> const& section_directions_;
   };
 
+  struct initial_view {
+    geo::latlng center_;
+    double zoom_;
+  } initial_view_;
+
   timezone_idx_t register_timezone(timezone tz);
 
   std::string_view translate(lang_t const&, translation_idx_t) const;
