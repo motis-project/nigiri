@@ -524,15 +524,6 @@ routing_result pong(timetable const& tt,
     std::swap(x.start_time_, x.dest_time_);
   }
 
-  utl::sort(s_state.results_, [](journey const& a, journey const& b) {
-    return std::tuple{a.start_time_, a.transfers_} <
-           std::tuple{b.start_time_, b.transfers_};
-  });
-
-  trace_pong("RESULT:\n\t{}",
-             fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),
-                       "\n\t"));
-
   result.interval_ = {kFwd ? search_interval.from_ : start_time + duration_t{1},
                       kFwd ? start_time : search_interval.to_};
   result.algo_stats_ = (ping.get_stats() + pong.get_stats()).to_map();
@@ -553,6 +544,18 @@ routing_result pong(timetable const& tt,
     j.legs_.front().from_ = swap(j.legs_.front().from_);
     j.legs_.back().to_ = swap(j.legs_.back().to_);
   }
+
+  auto const iv = result.interval_;
+  enrich_with_slow_direct(tt, rtt, q, iv, SearchDir, s_state.results_);
+
+  utl::sort(s_state.results_, [](journey const& a, journey const& b) {
+    return std::tuple{a.start_time_, a.transfers_} <
+           std::tuple{b.start_time_, b.transfers_};
+  });
+
+  trace_pong("RESULT:\n\t{}",
+             fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),
+                       "\n\t"));
 
   if constexpr (!kFwd) {
     return result;
