@@ -523,6 +523,8 @@ TEST(rt, rt_vehicle_position_block_id_test) {
   finalize(tt);
   auto rtt = rt::create_rt_timetable(tt, May / 1 / 2019);
 
+  auto dp = delay_prediction{};
+
   auto const msg = rt::json_to_protobuf(kVehiclePosition);
   auto const msg2 = rt::json_to_protobuf(kVehiclePosition2);
   auto const msg3 = rt::json_to_protobuf(kVehiclePosition3);
@@ -546,7 +548,7 @@ TEST(rt, rt_vehicle_position_block_id_test) {
   td4.set_trip_id("T4");
   td4.set_start_time("29:00:00");
 
-  auto const stats = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, true);
+  auto const stats = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, &dp);
 
   auto const [r1, t1] = rt::gtfsrt_resolve_run(date::sys_days{May / 1 / 2019},
                                                tt, &rtt, source_idx_t{0}, td1);
@@ -581,7 +583,7 @@ TEST(rt, rt_vehicle_position_block_id_test) {
 
   // Test: located at several stops at the same time
   auto const stats2 =
-      gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2, true);
+      gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2, &dp);
   auto stats2_ss = std::stringstream{};
   stats2_ss << stats2;
   EXPECT_EQ(expected_stats2, stats2_ss.str());
@@ -589,7 +591,7 @@ TEST(rt, rt_vehicle_position_block_id_test) {
   // Test: timestamps before start time of run and after the present point of
   // time
   auto const stats3 =
-      gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg3, true);
+      gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg3, &dp);
   auto stats3_ss = std::stringstream{};
   stats3_ss << stats3;
   EXPECT_EQ(expected_stats3, stats3_ss.str());
@@ -600,7 +602,7 @@ TEST(rt, rt_vehicle_position_block_id_test) {
   auto rtt4 = rt::create_rt_timetable(tt, May / 1 / 2019);
 
   auto const stats4 =
-      gtfsrt_update_buf(tt, rtt4, source_idx_t{0}, "", msg4, true);
+      gtfsrt_update_buf(tt, rtt4, source_idx_t{0}, "", msg4, &dp);
 
   auto const [r4_1, t4_1] = rt::gtfsrt_resolve_run(
       date::sys_days{May / 1 / 2019}, tt, &rtt4, source_idx_t{0}, td1);
@@ -634,5 +636,5 @@ TEST(rt, rt_vehicle_position_block_id_test) {
   EXPECT_EQ(expected_stats4, stats4_ss.str());
 
   // Test: Invalid TripDescriptors -> expected not to crash
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg5, true);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg5, &dp);
 }

@@ -1,17 +1,18 @@
 #pragma once
 
-#include <string_view>
-
-#include "utl/parser/arg_parser.h"
-
 #include "nigiri/loader/gtfs/parse_date.h"
 #include "nigiri/loader/gtfs/parse_time.h"
+
+#include "nigiri/delay_prediction.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/timetable.h"
 
+#include <string_view>
+
 #include "gtfsrt/gtfs-realtime.pb.h"
+#include "utl/parser/arg_parser.h"
 
 namespace nigiri::rt {
 
@@ -149,6 +150,11 @@ std::pair<run, trip_idx_t> gtfsrt_resolve_run(
     source_idx_t,
     transit_realtime::TripDescriptor const&,
     std::string_view rt_changed_trip_id = {});
+
+run gtfsrt_vp_resolve_run(timetable const&,
+                          source_idx_t,
+                          transit_realtime::VehiclePosition const&,
+                          vehicle_trip_matching* vtm);
 
 void resolve_rt(rt_timetable const&,
                 run&,

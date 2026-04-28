@@ -3,11 +3,11 @@
 #ifdef NO_DATA
 #undef NO_DATA
 #endif
-#include "gtfsrt/gtfs-realtime.pb.h"
+#include "nigiri/delay_prediction.h"
+#include "nigiri/types.h"
 
 #include "date/date.h"
-
-#include "nigiri/types.h"
+#include "gtfsrt/gtfs-realtime.pb.h"
 
 namespace nigiri {
 struct rt_timetable;
@@ -42,6 +42,7 @@ struct statistics {
   int vehicle_position_without_trip_{0};
   int vehicle_position_trip_without_trip_id_{0};
   int vehicle_position_position_not_at_stop_{0};
+  int vehicle_position_without_matching_run_{0};
   int no_trip_update_{0};
   int trip_update_without_trip_{0};
   int trip_resolve_error_{0};
@@ -49,12 +50,46 @@ struct statistics {
   date::sys_seconds feed_timestamp_{};
 };
 
+enum class algorithm { kSimple, kIntelligent };
+enum class hist_trip_mode { kSameDay, kPrevDays };
+struct delay_prediction {
+  explicit delay_prediction(algorithm const a,
+                            hist_trip_mode const m,
+                            uint32_t const np,
+                            uint32_t const nh,
+                            delay_prediction_storage* dps,
+                            hist_trip_times_storage* htts,
+                            vehicle_trip_matching* vtm,
+                            bool const dou = false)
+      : algo{a},
+        mode{m},
+        number_of_predecessors{np},
+        number_of_hist_trips{nh},
+        delay_prediction_store{dps},
+        hist_trip_time_store{htts},
+        vehicle_trip_match{vtm},
+        dump_output{dou} {}
+
+  explicit delay_prediction() = default;
+
+  algorithm const algo = algorithm::kSimple;
+  hist_trip_mode const mode = hist_trip_mode::kSameDay;
+  uint32_t number_of_predecessors = 1;
+  uint32_t number_of_hist_trips = 5;
+
+  delay_prediction_storage* delay_prediction_store = nullptr;
+  hist_trip_times_storage* hist_trip_time_store = nullptr;
+  vehicle_trip_matching* vehicle_trip_match = nullptr;
+
+  bool dump_output = false;
+};
+
 statistics gtfsrt_update_msg(timetable const&,
                              rt_timetable&,
                              source_idx_t const,
                              std::string_view tag,
                              transit_realtime::FeedMessage const&,
-                             bool use_vehicle_position = false);
+                             delay_prediction* = nullptr);
 
 statistics gtfsrt_update_buf(timetable const& tt,
                              rt_timetable& rtt,
@@ -62,13 +97,13 @@ statistics gtfsrt_update_buf(timetable const& tt,
                              std::string_view tag,
                              std::string_view protobuf,
                              transit_realtime::FeedMessage& msg,
-                             bool use_vehicle_position = false);
+                             delay_prediction* = nullptr);
 
 statistics gtfsrt_update_buf(timetable const&,
                              rt_timetable&,
                              source_idx_t const,
                              std::string_view tag,
                              std::string_view protobuf,
-                             bool use_vehicle_position = false);
+                             delay_prediction* = nullptr);
 
 }  // namespace nigiri::rt
