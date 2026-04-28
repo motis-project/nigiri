@@ -464,18 +464,11 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
     auto const backup_v = v;
 
-    auto const is_intermodal =
-        q.dest_match_mode_ == location_match_mode::kIntermodal;
     auto stay_l = 0_minutes;
     auto stay_fp_target = 0_minutes;
     trace_reconstruct("  [check_fp] v={}, l={}, fp.target={}, intermodal={}\n",
-                      v, loc{tt, l}, loc{tt, fp.target()}, is_intermodal);
-
-    // l->k => nothing
-    // v->k => v-1; stay_l
-    // l->v => v-1; [x]
-    // v->v-1 => v-2; stay_l; [x]
-    // v->v => v-1; stay_fp_target
+                      v, loc{tt, l}, loc{tt, fp.target()},
+                      q.dest_match_mode_ == location_match_mode::kIntermodal);
 
     if (v != 0 && matches(tt, location_match_mode::kEquivalent,
                           q.via_stops_[v - 1].location_, l)) {
