@@ -15,6 +15,7 @@
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/lb/lb_transit_legs.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
@@ -149,6 +150,7 @@ struct search {
         state_.dist_to_dest_,
         q_.td_dest_,
         state_.travel_time_lower_bound_,
+        lb_rounds_,
         q_.via_stops_,
         day_idx_t{
             std::chrono::duration_cast<date::days>(
@@ -184,6 +186,7 @@ struct search {
                             }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
+        lb_rounds_{tt, q_},
         algo_{init(q_.allowed_claszes_,
                    q_.require_bike_transport_,
                    q_.require_car_transport_,
@@ -492,6 +495,7 @@ private:
   interval<unixtime_t> search_interval_;
   search_stats stats_;
   duration_t fastest_direct_;
+  lb_transit_legs<SearchDir> lb_rounds_;
   Algo algo_;
   std::optional<std::chrono::seconds> timeout_;
 };

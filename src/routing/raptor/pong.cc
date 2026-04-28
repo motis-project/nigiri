@@ -6,6 +6,7 @@
 #include "utl/timing.h"
 
 #include "nigiri/routing/get_earliest_transport.h"
+#include "nigiri/routing/lb/lb_transit_legs.h"
 #include "nigiri/rt/frun.h"
 
 #define trace_pong(...)
@@ -282,7 +283,7 @@ routing_result pong(timetable const& tt,
   // PING
   // ----
   UTL_START_TIMING(ping_lb);
-  auto ping_lb = std::vector<std::uint16_t>{};
+  auto ping_lb_time = std::vector<std::uint16_t>{};
   dijkstra(tt, q,
            (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
                  : tt.bwd_search_lb_graph_[q.prf_idx_]),
@@ -292,8 +293,9 @@ routing_result pong(timetable const& tt,
            (rtt == nullptr ? nullptr
                            : &(kFwd ? rtt->fwd_search_lb_graph_
                                     : rtt->bwd_search_lb_graph_)),
-           ping_lb);
+           ping_lb_time);
   UTL_STOP_TIMING(ping_lb);
+  auto ping_lb_rounds = lb_transit_legs<SearchDir>(tt, q);
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
@@ -312,7 +314,8 @@ routing_result pong(timetable const& tt,
       ping_is_via,
       ping_dist_to_dest,
       q.td_dest_,
-      ping_lb,
+      ping_lb_time,
+      ping_lb_rounds,
       q.via_stops_,
       base_day,
       q.allowed_claszes_,
@@ -327,7 +330,7 @@ routing_result pong(timetable const& tt,
   q.flip_dir();
 
   UTL_START_TIMING(pong_lb);
-  auto pong_lb = std::vector<std::uint16_t>{};
+  auto pong_lb_time = std::vector<std::uint16_t>{};
   dijkstra(tt, q,
            (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
                  : tt.fwd_search_lb_graph_[q.prf_idx_]),
@@ -337,8 +340,9 @@ routing_result pong(timetable const& tt,
            (rtt == nullptr ? nullptr
                            : &(kFwd ? rtt->bwd_search_lb_graph_
                                     : rtt->fwd_search_lb_graph_)),
-           pong_lb);
+           pong_lb_time);
   UTL_STOP_TIMING(pong_lb);
+  auto pong_lb_rounds = lb_transit_legs<flip(SearchDir)>(tt, q);
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
   auto pong_is_dest = bitvec{};
@@ -358,7 +362,8 @@ routing_result pong(timetable const& tt,
       pong_is_via,
       pong_dist_to_dest,
       q.td_dest_,
-      pong_lb,
+      pong_lb_time,
+      pong_lb_rounds,
       q.via_stops_,
       base_day,
       q.allowed_claszes_,
@@ -558,6 +563,10 @@ routing_result pong(timetable const& tt,
   trace_pong("RESULT:\n\t{}",
              fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),
                        "\n\t"));
+
+  fmt::println("lb_rounds total time: {}",
+               std::chrono::duration_cast<std::chrono::milliseconds>(
+                   ping_lb_rounds.total_time_ + pong_lb_rounds.total_time_));
 
   if constexpr (!kFwd) {
     return result;
