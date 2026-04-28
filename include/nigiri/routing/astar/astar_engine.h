@@ -1,0 +1,150 @@
+#pragma once
+
+#include <map>
+#include <vector>
+
+#include "nigiri/routing/journey.h"
+#include "nigiri/routing/pareto_set.h"
+#include "nigiri/routing/query.h"
+#include "nigiri/routing/tb/queue.h"
+#include "nigiri/routing/tb/reached.h"
+#include "nigiri/routing/tb/settings.h"
+
+namespace nigiri {
+struct timetable;
+}
+
+namespace nigiri::routing::tb {
+struct queue_entry;
+struct segment_info;
+struct tb_data;
+}  // namespace nigiri::routing::tb
+
+namespace nigiri::routing::astar {
+
+struct astar_state {
+  astar_state(timetable const& tt, tb::tb_data const& tbd)
+      : tbd_{tbd}, r_{tt, tbd} {
+    q_n_.q_.reserve(10'000'000);
+    end_reachable_.resize(tbd.segment_transfers_.size());
+
+    f_min_ = std::numeric_limits<double>::infinity();
+    best_dest_time_ = unixtime_t::max();
+    best_k_ = kMaxTransfers;
+    best_parent_ = tb::queue_entry::kNoParent;
+  }
+
+  void reset() {
+    r_.reset();
+    q_n_.reset();
+    end_reachable_.zero_out();
+    dist_to_dest_.clear();
+    best_segment_cost_.clear();
+
+    f_min_ = std::numeric_limits<double>::infinity();
+    best_dest_time_ = unixtime_t::max();
+    best_k_ = kMaxTransfers;
+    best_parent_ = tb::queue_entry::kNoParent;
+  }
+
+  tb::tb_data const& tbd_;
+
+  tb::reached r_;
+  tb::queue<tb::reached> q_n_{r_};
+
+  double f_min_{std::numeric_limits<double>::infinity()};
+  unixtime_t best_dest_time_{unixtime_t::max()};
+  std::uint8_t best_k_{kMaxTransfers};
+  tb::queue_idx_t best_parent_{tb::queue_entry::kNoParent};
+
+  bitvec_map<tb::segment_idx_t> end_reachable_;
+  hash_map<tb::segment_idx_t, duration_t> dist_to_dest_;
+  hash_map<tb::segment_idx_t, double> best_segment_cost_;
+  std::uint32_t astar_transfer_penalty_{2U};
+};
+
+struct astar_stats {
+  std::map<std::string, std::uint64_t> to_map() const {
+    return {
+        {"n_segments_enqueued", n_segments_enqueued_},
+        {"n_enqueue_prevented_by_reached", n_enqueue_prevented_by_reached_},
+        {"max_transfers_reached", max_transfers_reached_},
+        {"max_pareto_set_size", max_pareto_set_size_},
+    };
+  }
+
+  std::uint64_t n_segments_enqueued_{0U};
+  std::uint64_t n_enqueue_prevented_by_reached_{0U};
+  std::uint64_t n_journeys_found_{0U};
+  std::uint64_t max_pareto_set_size_{0U};
+  bool max_transfers_reached_{false};
+};
+
+template <bool UseLowerBounds>
+struct astar_engine {
+  using algo_state_t = astar_state;
+  using algo_stats_t = astar_stats;
+
+  static constexpr bool kUseLowerBounds = UseLowerBounds;
+  static constexpr auto const kUnreachable =
+      std::numeric_limits<std::uint16_t>::max();
+
+  astar_engine(timetable const&,
+               rt_timetable const*,
+               astar_state&,
+               bitvec const& is_dest,
+               std::array<bitvec, kMaxVias> const&,
+               std::vector<std::uint16_t> const& dist_to_dest,
+               hash_map<location_idx_t, std::vector<td_offset>> const&,
+               std::vector<std::uint16_t> const& lb,
+               std::vector<via_stop> const&,
+               day_idx_t base,
+               clasz_mask_t,
+               bool,
+               bool,
+               bool,
+               transfer_time_settings);
+
+  algo_stats_t get_stats() const { return stats_; }
+
+  void reset_arrivals() {
+    state_.r_.reset();
+
+    state_.f_min_ = std::numeric_limits<double>::infinity();
+    state_.best_dest_time_ = unixtime_t::max();
+    state_.best_k_ = kMaxTransfers;
+    state_.best_parent_ = tb::queue_entry::kNoParent;
+  }
+
+  void next_start_time() {
+    state_.q_n_.reset();
+    state_.best_segment_cost_.clear();
+  }
+
+  void add_start(location_idx_t, unixtime_t);
+
+  void execute(unixtime_t const start_time,
+               std::uint8_t const max_transfers,
+               unixtime_t const worst_time_at_dest,
+               profile_idx_t const,
+               pareto_set<journey>& results);
+
+  void reconstruct(query const& q, journey& j) const;
+
+private:
+  void seg_dest(unixtime_t start_time, std::uint8_t k, tb::queue_idx_t);
+  void seg_transfers(tb::queue_idx_t, std::uint8_t k);
+
+  tb::segment_info seg(tb::segment_idx_t, tb::queue_entry const&) const;
+  tb::segment_info seg(tb::segment_idx_t, day_idx_t) const;
+
+  timetable const& tt_;
+  astar_state& state_;
+  bitvec const& is_dest_;
+  std::vector<std::uint16_t> const& dist_to_dest_;
+  std::vector<std::uint16_t> const& lb_;
+  day_idx_t base_;
+  astar_stats stats_;
+};
+
+}  // namespace nigiri::routing::astar
