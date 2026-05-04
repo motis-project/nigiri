@@ -192,6 +192,11 @@ struct rt_timetable {
            rt_transport_bikes_allowed_[to_idx(r) * 2U + 1U];
   }
 
+  bool has_wheelchair_transport(rt_transport_idx_t const r) const {
+    return rt_transport_wheelchair_accessibility_[to_idx(r) * 2U] ||
+           rt_transport_wheelchair_accessibility_[to_idx(r) * 2U + 1U];
+  }
+
   array<bitvec_map<location_idx_t>, kNProfiles> has_td_footpaths_out_;
   array<bitvec_map<location_idx_t>, kNProfiles> has_td_footpaths_in_;
   array<vecvec<location_idx_t, td_footpath>, kNProfiles> td_footpaths_out_;

@@ -267,6 +267,11 @@ struct timetable {
            route_bikes_allowed_[to_idx(r) * 2U + 1U];
   }
 
+  bool has_wheelchair_transport(route_idx_t const r) const {
+    return route_wheelchair_accessible_[to_idx(r) * 2U] ||
+           route_wheelchair_accessible_[to_idx(r) * 2U + 1U];
+  }
+
   // Schedule range.
   interval<date::sys_days> date_range_;
 

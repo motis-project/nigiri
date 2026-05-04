@@ -236,7 +236,8 @@ bool sections_violate_constraints(rt::frun const& fr,
                                   unsigned const from_section_idx,
                                   unsigned const to_section_idx,
                                   bool const require_bike,
-                                  bool const require_car) {
+                                  bool const require_car,
+                                  bool const is_wheelchair) {
   if (!require_bike && !require_car) {
     return false;
   }
@@ -246,6 +247,10 @@ bool sections_violate_constraints(rt::frun const& fr,
       return true;
     }
     if (require_car && !fr[section_start].cars_allowed(event_type::kDep)) {
+      return true;
+    }
+    if (is_wheelchair &&
+        !fr[section_start].wheelchair_accessible(event_type::kDep)) {
       return true;
     }
   }
@@ -445,6 +450,7 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
     unixtime_t const time) {
   auto const q = q_in;
   constexpr auto kFwd = Dir == direction::kForward;
+  bool const is_wheelchair = q.prf_idx_ == kWheelchairProfile;
 
   auto const merge_sorted = [](auto& dst, auto const& src) {
     auto const original_size = static_cast<int>(dst.size());
@@ -486,7 +492,8 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
           [&](route_idx_t const r, route_idx_t) {
             if (!is_allowed(q.allowed_claszes_, tt.route_clasz_[r]) ||
                 (q.require_bike_transport_ && !tt.has_bike_transport(r)) ||
-                (q.require_car_transport_ && !tt.has_car_transport(r))) {
+                (q.require_car_transport_ && !tt.has_car_transport(r)) ||
+                (is_wheelchair && !tt.has_wheelchair_transport(r))) {
               return;
             }
 
@@ -502,7 +509,7 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
                           [&](stop_idx_t const a, stop_idx_t const b) {
                             if (sections_violate_constraints(
                                     fr, a, b, q.require_bike_transport_,
-                                    q.require_car_transport_)) {
+                                    q.require_car_transport_, is_wheelchair)) {
                               return;
                             }
                             add_gen(route_gen<Dir>(tt, rtt, r, a, b, q, time));
@@ -530,7 +537,8 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
               if (!is_allowed(q.allowed_claszes_,
                               rtt->rt_transport_section_clasz_[x].front()) ||
                   (q.require_bike_transport_ && !rtt->has_bike_transport(x)) ||
-                  (q.require_car_transport_ && !rtt->has_car_transport(x))) {
+                  (q.require_car_transport_ && !rtt->has_car_transport(x)) ||
+                  (is_wheelchair && !rtt->has_wheelchair_transport(x))) {
                 return;
               }
 
