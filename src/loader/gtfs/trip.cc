@@ -281,10 +281,7 @@ trip_data read_trips(source_idx_t const src,
           cars_allowed = false;
         }
 
-        auto wheelchair_accessible = false;
-        if (t.wheelchair_accessible_.val() == 1) {
-          wheelchair_accessible = true;
-        }
+        auto wheelchair_accessible = t.wheelchair_accessible_.val() == 1;
 
         auto const id = t.trip_id_->view();
         auto const trip_short_name = i18n.get(t::kTrips, f::kTripShortName,
