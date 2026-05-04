@@ -302,13 +302,13 @@ void expand_assistance(timetable const& tt,
       auto from = stop{a};
       auto to = stop{b};
       from.in_allowed_wheelchair_ =
-          (from.in_allowed_ &&
+          (from.in_allowed_wheelchair_ &&
            assist.is_available(tt, from.location_idx(),
                                oh::local_minutes{day + dep_day_offset + dep}))
               ? 1U
               : 0U;
       to.out_allowed_wheelchair_ =
-          (to.out_allowed_ &&
+          (to.out_allowed_wheelchair_ &&
            assist.is_available(tt, to.location_idx(),
                                oh::local_minutes{day + arr_day_offset + arr}))
               ? 1U
