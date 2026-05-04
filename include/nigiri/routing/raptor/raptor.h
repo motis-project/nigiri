@@ -868,7 +868,7 @@ private:
 
   template <bool WithSectionBikeFilter,
             bool WithSectionCarFilter,
-            bool WithWheelchairFilter>
+            bool WithSectionWheelchairFilter>
   bool update_rt_transport(unsigned const k, rt_transport_idx_t const rt_t) {
     auto const stop_seq = rtt_->rt_transport_location_seq_[rt_t];
     auto et = std::array<bool, Vias + 1>{};
@@ -901,7 +901,7 @@ private:
         }
       }
 
-      if constexpr (WithWheelchairFilter) {
+      if constexpr (WithSectionWheelchairFilter) {
         if (!is_first && !rtt_->rt_wheelchair_accessible_per_section_
                               [rt_t][kFwd ? stop_idx - 1 : stop_idx]) {
           et.fill(false);
@@ -1034,6 +1034,14 @@ private:
           if (!is_first &&
               !tt_.route_cars_allowed_per_section_[r][kFwd ? stop_idx - 1
                                                            : stop_idx]) {
+            et[v] = {};
+            v_offset[v] = 0;
+          }
+        }
+
+        if constexpr (WithSectionWheelchairFilter) {
+          if (!is_first && !tt_.route_wheelchair_accessibility_per_section_
+                                [r][kFwd ? stop_idx - 1 : stop_idx]) {
             et[v] = {};
             v_offset[v] = 0;
           }
