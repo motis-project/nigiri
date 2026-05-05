@@ -167,8 +167,8 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   assert(rt_transport_section_clasz_.size() == rt_t_idx + 1U);
   assert(rt_transport_line_.size() == rt_t_idx + 1U);
   assert(rt_bikes_allowed_per_section_.size() == rt_t_idx + 1U);
-  assert(rt_cars_allowed_per_section.size() == rt_t_idx + 1U);
-  assert(rt_wheelchair_accessible_per_section.size() == rt_t_idx + 1U);
+  assert(rt_cars_allowed_per_section_.size() == rt_t_idx + 1U);
+  assert(rt_wheelchair_accessible_per_section_.size() == rt_t_idx + 1U);
 
   return rt_transport_idx_t{rt_t_idx};
 }
