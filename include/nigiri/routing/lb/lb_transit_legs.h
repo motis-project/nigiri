@@ -42,6 +42,16 @@ struct lb_transit_legs {
     auto const set_terminal = [&](auto const i) {
       station_mark_.set(to_idx(i), true);
       lb_[i] = 0U;
+      // Stops within walking distance of a terminal:
+      constexpr auto kFwd = SearchDir == direction::kForward;
+      for (auto const fp :
+           kFwd ? tt_.locations_.footpaths_in_[q_.prf_idx_][i]
+                : tt_.locations_.footpaths_out_[q_.prf_idx_][i]) {
+        if (lb_[fp.target()] != 0U) {
+          lb_[fp.target()] = 0U;
+          station_mark_.set(to_idx(fp.target()), true);
+        }
+      }
     };
 
     for (auto const& o : q.destination_) {
