@@ -1113,14 +1113,18 @@ private:
 
     auto const n_days_to_iterate = kMaxTravelTime / std::chrono::days{1} + 1U;
     for (auto i = day_idx_t::value_t{0U}; i != n_days_to_iterate; ++i) {
+      auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
+
+      if (!tt_.is_route_active(r, static_cast<std::size_t>(to_idx(day)))) {
+        continue;
+      }
+
       auto const ev_time_range =
           it_range{i == 0U ? seek_first_day() : get_begin_it(event_times),
                    get_end_it(event_times)};
       if (ev_time_range.empty()) {
         continue;
       }
-
-      auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
       for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
         auto const t_offset =
             static_cast<std::size_t>(&*it - event_times.data());
@@ -1180,9 +1184,9 @@ private:
   bool is_transport_active(transport_idx_t const t,
                            std::size_t const day) const {
     if constexpr (Rt) {
-      return rtt_->bitfields_[rtt_->transport_traffic_days_[t]].test(day);
+      return rtt_->is_transport_active(t, day);
     } else {
-      return tt_.bitfields_[tt_.transport_traffic_days_[t]].test(day);
+      return tt_.is_transport_active(t, day);
     }
   }
 

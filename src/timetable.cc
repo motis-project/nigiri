@@ -231,6 +231,39 @@ transport_idx_t timetable::next_transport_idx() const {
   return transport_idx_t{transport_traffic_days_.size()};
 }
 
+void timetable::rebuild_route_traffic_days() {
+  route_traffic_days_.resize(n_routes());
+
+  for (auto r = route_idx_t{0U}; r != n_routes(); ++r) {
+    auto combined = bitfield{};
+    auto const& seq = route_location_seq_[r];
+    auto const stop_count = static_cast<stop_idx_t>(seq.size());
+
+    for (auto const t : route_transport_ranges_[r]) {
+      // Maximum event-day-offset across all stops:
+      auto max_delta = std::int16_t{0};
+      for (auto s = stop_idx_t{0U}; s != stop_count; ++s) {
+        if (s != 0U) {
+          max_delta =
+              std::max(max_delta, event_mam(r, t, s, event_type::kArr).days());
+        }
+        if (s + 1U != stop_count) {
+          max_delta =
+              std::max(max_delta, event_mam(r, t, s, event_type::kDep).days());
+        }
+      }
+
+      auto const& trans_bf = bitfields_[transport_traffic_days_[t]];
+      for (auto d = std::int16_t{0}; d <= max_delta; ++d) {
+        combined |= (trans_bf << static_cast<std::size_t>(d));
+      }
+    }
+
+    bitfields_.emplace_back(combined);
+    route_traffic_days_[r] = bitfield_idx_t{bitfields_.size() - 1U};
+  }
+}
+
 std::string reverse(std::string s) {
   std::reverse(s.begin(), s.end());
   return s;

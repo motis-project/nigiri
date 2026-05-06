@@ -53,8 +53,7 @@ void resolve_trip(date::sys_days const today,
       continue;
     }
 
-    auto const& traffic_days = tt.bitfields_[tt.transport_traffic_days_[t]];
-    if (traffic_days.test(static_cast<std::size_t>(day_idx))) {
+    if (tt.is_transport_active(t, static_cast<std::size_t>(day_idx))) {
       auto const r = run{.t_ = transport{t, day_idx_t{day_idx}},
                          .stop_range_ = stop_range};
       if (fn(r, trip) == utl::continue_t::kBreak) {

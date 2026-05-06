@@ -192,6 +192,11 @@ struct rt_timetable {
            rt_transport_bikes_allowed_[to_idx(r) * 2U + 1U];
   }
 
+  bool is_transport_active(transport_idx_t const t,
+                           std::size_t const day) const {
+    return bitfields_[transport_traffic_days_[t]].test(day);
+  }
+
   array<bitvec_map<location_idx_t>, kNProfiles> has_td_footpaths_out_;
   array<bitvec_map<location_idx_t>, kNProfiles> has_td_footpaths_in_;
   array<vecvec<location_idx_t, td_footpath>, kNProfiles> td_footpaths_out_;

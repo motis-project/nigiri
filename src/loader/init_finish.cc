@@ -184,6 +184,7 @@ void finalize(timetable& tt, finalize_options const opt) {
         });
   }
   build_footpaths(tt, opt);
+  tt.rebuild_route_traffic_days();
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);
   build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
   build_location_tree(tt);
