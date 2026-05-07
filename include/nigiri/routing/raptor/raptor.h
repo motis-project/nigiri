@@ -478,11 +478,11 @@ private:
 
         if (is_better(fp_target_time, best_[i][target_v]) &&
             is_better(fp_target_time, time_at_dest_[k])) {
-          if (lb_time_[i] == kUnreachable ||
-              k + lb_rounds_.get(location_idx_t{i}) >= end_k_ ||
-              !is_better(
-                  fp_target_time + dir(lb_time_[i]),
-                  time_at_dest_[k + lb_rounds_.get(location_idx_t{i})])) {
+          auto const i_lb_rounds = lb_rounds_.get(location_idx_t{i});
+          auto const i_dest_k = k + i_lb_rounds;
+          if (lb_time_[i] == kUnreachable || i_dest_k >= end_k_ ||
+              !is_better(fp_target_time + dir(lb_time_[i]),
+                         time_at_dest_[i_dest_k])) {
             ++stats_.fp_update_prevented_by_lower_bound_;
             trace_lb(
                 "┊ ├k={} *** LB NO TRANSFER UPD: (from={}, tmp={}) --{}--> "
@@ -493,10 +493,8 @@ private:
                 k, loc{tt_, location_idx_t{i}}, to_unix(tmp_[i][v]),
                 transfer_time, loc{tt_, location_idx_t{i}}, best_[i][target_v],
                 to_unix(fp_target_time), lb_time_[i],
-                to_unix(clamp(fp_target_time + dir(lb_time_[i]))),
-                lb_rounds_.get(location_idx_t{i}),
-                k + lb_rounds_.get(location_idx_t{i}),
-                to_unix(time_at_dest_[k]));
+                to_unix(clamp(fp_target_time + dir(lb_time_[i]))), i_lb_rounds,
+                i_dest_k, to_unix(time_at_dest_[k]));
             return;
           }
 
@@ -1092,13 +1090,13 @@ private:
         continue;
       }
 
-      if (lb_time_[l_idx] == kUnreachable ||
-          k + lb_rounds_.get(stp.location_idx()) > end_k_) {
+      auto const stp_break_lb_rounds = lb_rounds_.get(stp.location_idx());
+      if (lb_time_[l_idx] == kUnreachable || k + stp_break_lb_rounds > end_k_) {
         trace_lb(
             "┊ │k={}    *** NO ROUTE UPD: at={}, lb_time={}, lb_rounds={}, "
             "end_k_={}",
             k, loc{tt_, location_idx_t{l_idx}}, lb_time_[l_idx],
-            lb_rounds_.get(stp.location_idx()), end_k_);
+            stp_break_lb_rounds, end_k_);
         break;
       }
 
@@ -1180,7 +1178,8 @@ private:
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
-        auto const dest_k = k + lb_rounds_.get(l);
+        auto const l_lb_rounds = lb_rounds_.get(l);
+        auto const dest_k = k + l_lb_rounds;
         if (dest_k < time_at_dest_.size() &&
             is_better_or_eq(time_at_dest_[dest_k],
                             to_delta(day, ev_mam) + dir(lb_time_[to_idx(l)]))) {
@@ -1193,8 +1192,8 @@ private:
               tt_.dbg(tt_.route_transport_ranges_[r][t_offset]), day,
               tt_.to_unixtime(day, 0_minutes), mam_at_stop, ev_mam,
               tt_.to_unixtime(day, duration_t{ev_mam}),
-              to_delta(day, ev_mam) + dir(lb_time_[to_idx(l)]),
-              lb_rounds_.get(l), dest_k, to_unix(time_at_dest_[dest_k]));
+              to_delta(day, ev_mam) + dir(lb_time_[to_idx(l)]), l_lb_rounds,
+              dest_k, to_unix(time_at_dest_[dest_k]));
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
