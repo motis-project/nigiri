@@ -501,7 +501,7 @@ struct timetable {
   };
 
   vecvec<ticketing_link_idx_t, ticketing_link> ticketing_links_;
-  hash_map<provider_idx_t, ticketing_link_idx_t> ticketing_agencies;
+  hash_map<provider_idx_t, ticketing_link_idx_t> ticketing_agencies_;
   hash_map<route_id_idx_t, ticketing_link_idx_t> ticketing_routes_;
 };
 

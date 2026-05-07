@@ -74,7 +74,7 @@ void load_ticketing(timetable& tt,
       read_ticketing_deep_links(tt, load(kTicketingDeeplinks).data());
 
   for (auto const& [provider_idx, deep_link_id] : agency_ticketing) {
-    tt.ticketing_agencies.emplace(provider_idx, deep_links.at(deep_link_id));
+    tt.ticketing_agencies_.emplace(provider_idx, deep_links.at(deep_link_id));
   }
 
   for (auto const& [route_id, route] : routes) {
