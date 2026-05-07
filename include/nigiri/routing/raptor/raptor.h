@@ -1173,7 +1173,9 @@ private:
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
-        if (is_better_or_eq(time_at_dest_[k + lb_rounds_.get(l)],
+        auto const dest_k = k + lb_rounds_.get(l);
+        if (dest_k < time_at_dest_.size() &&
+            is_better_or_eq(time_at_dest_[dest_k],
                             to_delta(day, ev_mam) + dir(lb_time_[to_idx(l)]))) {
           trace_lb(
               "┊ │k={}      => name={}, dbg={}, day={}={}, best_mam={}, "
@@ -1185,8 +1187,7 @@ private:
               tt_.to_unixtime(day, 0_minutes), mam_at_stop, ev_mam,
               tt_.to_unixtime(day, duration_t{ev_mam}),
               to_delta(day, ev_mam) + dir(lb_time_[to_idx(l)]),
-              lb_rounds_.get(l), k + lb_rounds_.get(l),
-              to_unix(time_at_dest_[k + lb_rounds_.get(l)]));
+              lb_rounds_.get(l), dest_k, to_unix(time_at_dest_[dest_k]));
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
