@@ -79,7 +79,9 @@ struct trip {
        shape_idx_t,
        bool bikes_allowed,
        bool cars_allowed,
-       bool accessible);
+       bool accessible,
+       std::string ticketing_trip_id,
+       bool ticketing_available);
 
   trip(trip&&) = default;
   trip& operator=(trip&&) = default;
@@ -128,6 +130,9 @@ struct trip {
   // GTFS extension (MBTA): trips.txt `trip_route_type` overrides the
   // route-level clasz for this trip (e.g. rail route, replacement-bus trip).
   std::optional<clasz> clasz_{};
+  std::string ticketing_trip_id;
+  bool ticketing_available_{false};
+  std::vector<bool> stop_ticketing_available_;
 
   trip_idx_t trip_idx_{trip_idx_t::invalid()};
 };
