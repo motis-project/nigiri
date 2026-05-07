@@ -2,6 +2,7 @@
 
 #include <ranges>
 
+#include "utl/erase_duplicates.h"
 #include "utl/sorted_diff.h"
 #include "utl/timing.h"
 
@@ -573,7 +574,6 @@ routing_result pong(timetable const& tt,
     }
   }
 
-  auto results = pareto_set<journey>{};
   for (auto& j : s_state.results_) {
     for (auto const [transit_1, transfer_1, transit_2, transfer_2, transit_3] :
          utl::nwise<5>(j.legs_)) {
@@ -602,6 +602,186 @@ routing_result pong(timetable const& tt,
         transit_2 = earlier->at(1);
         transfer_2 = earlier->at(2);
       }
+    }
+  }
+
+  // For each reconstructed journey, find transports on ANY route that depart
+  // from the same boarding location at the exact same time and arrive at the
+  // same alighting location at the exact same time (twin trains / Flügelzug).
+  // Twin trains are typically on different routes (different stop sequences)
+  // but share a segment, so we must search across all routes serving the
+  // boarding location, not just the original route.
+  if (q.include_coupled_trips_) {
+    struct leg_replacement {
+      stop_idx_t enter_si_;
+      stop_idx_t exit_si_;
+      route_idx_t route_;
+      transport t_;
+    };
+
+    auto const is_transport_active = [&](transport_idx_t const t,
+                                         day_idx_t const day) -> bool {
+      auto const d = to_idx(day);
+      return (rtt != nullptr)
+                 ? rtt->bitfields_[rtt->transport_traffic_days_[t]].test(d)
+                 : tt.bitfields_[tt.transport_traffic_days_[t]].test(d);
+    };
+
+    auto equivalents = std::vector<journey>{};
+    for (auto const& j : s_state.results_) {
+      auto const leg_count = j.legs_.size();
+      auto per_leg = std::vector<std::vector<leg_replacement>>(leg_count);
+      auto alt_counts = std::vector<std::size_t>(leg_count, 1U);
+      auto const base = tt.internal_interval_days().from_;
+
+      for (auto const [leg_idx, leg] : utl::enumerate(j.legs_)) {
+        if (!std::holds_alternative<journey::run_enter_exit>(leg.uses_)) {
+          continue;
+        }
+        auto const& ree = std::get<journey::run_enter_exit>(leg.uses_);
+        if (!ree.r_.is_scheduled()) {
+          continue;  // skip RT-only transports (no static t_idx_)
+        }
+
+        auto const orig_t_idx = ree.r_.t_.t_idx_;
+        auto const boarding_loc = leg.from_;
+        auto const alighting_loc = leg.to_;
+        auto const dep_time = leg.dep_time_;
+        auto const arr_time = leg.arr_time_;
+
+        // Search all routes containing the boarding location.
+        for (auto const r_cand : tt.location_routes_[boarding_loc]) {
+          auto const loc_seq = tt.route_location_seq_[r_cand];
+
+          // Find the first in_allowed boarding stop and the first subsequent
+          // out_allowed alighting stop in this candidate route.
+          auto enter_si = std::optional<stop_idx_t>{};
+          auto exit_si = std::optional<stop_idx_t>{};
+          for (auto si = stop_idx_t{0U};
+               si != static_cast<stop_idx_t>(loc_seq.size()); ++si) {
+            auto const s = stop{loc_seq[si]};
+            if (!enter_si.has_value()) {
+              if (s.location_idx() == boarding_loc &&
+                  s.in_allowed(q.prf_idx_)) {
+                enter_si = si;
+              }
+            } else {
+              if (s.location_idx() == alighting_loc &&
+                  s.out_allowed(q.prf_idx_)) {
+                exit_si = si;
+                break;
+              }
+            }
+          }
+          if (!enter_si.has_value() || !exit_si.has_value()) {
+            continue;
+          }
+
+          for (auto const t_cand : tt.route_transport_ranges_[r_cand]) {
+            if (t_cand == orig_t_idx) {
+              continue;
+            }
+
+            // Compute the traffic day for t_cand such that it departs at
+            // dep_time from enter_si.
+            // event_time = base + day*1440min + mam
+            // => day = (dep_time - base - mam) / 1440
+            auto const mam =
+                tt.event_mam(t_cand, *enter_si, event_type::kDep);
+            auto const offset =
+                (dep_time - base).count() - mam.as_duration().count();
+            if (offset < 0 || offset % 1440 != 0) {
+              continue;
+            }
+            auto const start_day =
+                day_idx_t{static_cast<cista::base_t<day_idx_t>>(offset / 1440)};
+
+            if (tt.event_time(transport{t_cand, start_day}, *enter_si,
+                              event_type::kDep) != dep_time) {
+              continue;
+            }
+            if (tt.event_time(transport{t_cand, start_day}, *exit_si,
+                              event_type::kArr) != arr_time) {
+              continue;
+            }
+            if (!is_transport_active(t_cand, start_day)) {
+              continue;
+            }
+
+            per_leg[leg_idx].emplace_back(leg_replacement{
+                .enter_si_ = *enter_si,
+                .exit_si_ = *exit_si,
+                .route_ = r_cand,
+                .t_ = transport{t_cand, start_day}});
+          }
+        }
+
+        alt_counts[leg_idx] += per_leg[leg_idx].size();
+      }
+
+      // Guard against combinatorial explosion: if the product of all per-leg
+      // alternative counts (including the original) exceeds this threshold,
+      // skip this journey entirely.
+      constexpr auto kMaxCoupledCombinations = std::size_t{512U};
+      auto total_combinations = std::size_t{1U};
+      for (auto const c : alt_counts) {
+        total_combinations *= c;
+      }
+      if (total_combinations <= 1U || total_combinations > kMaxCoupledCombinations) {
+        continue;
+      }
+
+      auto counters = std::vector<std::size_t>(leg_count, 0U);
+      while (true) {
+        auto carry = std::size_t{1U};
+        for (auto i = static_cast<int>(leg_count) - 1; i >= 0 && carry != 0U;
+             --i) {
+          counters[static_cast<std::size_t>(i)] += carry;
+          carry = counters[static_cast<std::size_t>(i)] /
+                  alt_counts[static_cast<std::size_t>(i)];
+          counters[static_cast<std::size_t>(i)] %=
+              alt_counts[static_cast<std::size_t>(i)];
+        }
+        if (carry != 0U) {
+          break;
+        }
+
+        auto alt = j;
+        auto changed = false;
+        for (auto li = std::size_t{0U}; li != leg_count; ++li) {
+          if (counters[li] == 0U) {
+            continue;
+          }
+
+          auto const& repl = per_leg[li][counters[li] - 1U];
+          auto& alt_leg = alt.legs_[li];
+          auto& alt_ree = std::get<journey::run_enter_exit>(alt_leg.uses_);
+          auto const full_route_size =
+              static_cast<stop_idx_t>(tt.route_location_seq_[repl.route_].size());
+          alt_ree.r_.t_ = repl.t_;
+          alt_ree.r_.rt_ = rt_transport_idx_t::invalid();
+          alt_ree.r_.stop_range_ = {stop_idx_t{0U}, full_route_size};
+          alt_ree.stop_range_ = {
+              repl.enter_si_,
+              static_cast<stop_idx_t>(static_cast<unsigned>(repl.exit_si_) +
+                                      1U)};
+          changed = true;
+        }
+
+        if (changed) {
+          equivalents.emplace_back(std::move(alt));
+        }
+      }
+    }
+    if (!equivalents.empty()) {
+      for (auto& j : equivalents) {
+        s_state.results_.add_not_optimal(std::move(j));
+      }
+      utl::erase_duplicates(s_state.results_);
+      utl::sort(s_state.results_, [](journey const& a, journey const& b) {
+        return std::tuple{a.start_time_, a.transfers_} <
+               std::tuple{b.start_time_, b.transfers_};
+      });
     }
   }
 
