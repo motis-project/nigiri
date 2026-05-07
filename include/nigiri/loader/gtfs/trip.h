@@ -81,7 +81,7 @@ struct trip {
        bool cars_allowed,
        bool accessible,
        std::string ticketing_trip_id,
-       bool ticketing_available);
+       bool ticketing_unavailable);
 
   trip(trip&&) = default;
   trip& operator=(trip&&) = default;
@@ -131,8 +131,8 @@ struct trip {
   // route-level clasz for this trip (e.g. rail route, replacement-bus trip).
   std::optional<clasz> clasz_{};
   std::string ticketing_trip_id;
-  bool ticketing_available_{false};
-  std::vector<bool> stop_ticketing_available_;
+  bool ticketing_unavailable_{false};
+  std::vector<bool> stop_ticketing_unavailable_;
 
   trip_idx_t trip_idx_{trip_idx_t::invalid()};
 };

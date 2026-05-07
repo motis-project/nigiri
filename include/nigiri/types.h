@@ -240,6 +240,9 @@ using flex_stop_seq_idx_t =
 
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
+using ticketing_link_idx_t =
+    cista::strong<std::uint32_t, struct _ticketing_link_idx>;
+
 struct category {
   string_idx_t id_;
   translation_idx_t name_;
