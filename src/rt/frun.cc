@@ -282,6 +282,11 @@ std::pair<timetable::route_ids const*, route_id_idx_t> run_stop::get_route(
   }
 }
 
+route_id_idx_t run_stop::get_route_id_idx(event_type const ev_type) const {
+  auto const [_, route_id_idx] = get_route(ev_type);
+  return route_id_idx;
+}
+
 std::string_view run_stop::get_route_id(event_type const ev_type) const {
   auto const [route_ids, route_id_idx] = get_route(ev_type);
   return route_ids == nullptr ? "?" : route_ids->ids_.get(route_id_idx);
