@@ -33,6 +33,7 @@
 #include "nigiri/loader/gtfs/stop_group.h"
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/loader/gtfs/stop_time.h"
+#include "nigiri/loader/gtfs/ticketing.h"
 #include "nigiri/loader/gtfs/translations.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
@@ -130,6 +131,7 @@ void load_timetable(loader_config const& config,
                   i18n, load(kStopTimesFile).data(), shapes_data != nullptr,
                   stops_accessible);
   load_fares(tt, d, service, routes, stops);
+  load_ticketing(tt, d, agency_ticketing, stops, routes, trip_data);
   utl::verify(tt.fares_.size() == to_idx(src) + 1U, "fares: size={} src={}",
               tt.fares_.size(), src);
 
