@@ -1,7 +1,6 @@
 #pragma once
 
-#include <map>
-#include <string>
+#include <string_view>
 
 #include "nigiri/loader/gtfs/flex.h"
 #include "nigiri/loader/gtfs/trip.h"

@@ -79,7 +79,9 @@ struct trip {
        shape_idx_t,
        bool bikes_allowed,
        bool cars_allowed,
-       bool accessible);
+       bool accessible,
+       std::string ticketing_trip_id,
+       bool ticketing_available);
 
   trip(trip&&) = default;
   trip& operator=(trip&&) = default;
@@ -124,6 +126,10 @@ struct trip {
   bool cars_allowed_{false};
   bool wheelchair_accessible_{false};
   std::uint32_t from_line_{0U}, to_line_{0U};
+
+  std::string ticketing_trip_id;
+  bool ticketing_available_{false};
+  std::vector<bool> stop_ticketing_available_;
 
   trip_idx_t trip_idx_{trip_idx_t::invalid()};
 };

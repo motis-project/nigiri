@@ -92,7 +92,7 @@ void load_timetable(loader_config const& config,
   auto const feed_info = read_feed_info(load(kFeedInfoFile).data());
   auto i18n = read_translations(tt, feed_info.default_lang_,
                                 load(kTranslationsFile).data());
-  auto agencies =
+  auto [agencies, agency_ticketing] =
       read_agencies(src, tt, i18n, timezones, load(kAgencyFile).data(),
                     config.default_tz_, user_script);
   auto const [stops, seated_transfers, stops_accessible] = read_stops(
