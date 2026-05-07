@@ -488,6 +488,21 @@ struct timetable {
   string_store<language_idx_t> languages_;
 
   cista::base_t<source_idx_t> n_sources_{};
+
+  // Ticketing
+  vector_map<location_idx_t, string> location_ticketing_identifier_;
+  hash_map<location_idx_t, std::monostate> location_ticketing_unavailable_;
+  hash_map<trip_idx_t, std::monostate> trip_ticketing_unavailable_;
+
+  struct ticketing_link {
+    string web_;
+    string android_;
+    string ios_;
+  };
+
+  vecvec<ticketing_link_idx_t, ticketing_link> ticketing_links_;
+  hash_map<provider_idx_t, ticketing_link_idx_t> ticketing_agencies;
+  hash_map<route_id_idx_t, ticketing_link_idx_t> ticketing_routes_;
 };
 
 struct loc {
