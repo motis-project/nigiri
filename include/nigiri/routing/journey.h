@@ -39,6 +39,18 @@ struct journey {
     interval<stop_idx_t> stop_range_;
   };
 
+  // An alternative transport for a single leg: same dep/arr times, different
+  // vehicle (e.g. coupled train / Flügelzug on a parallel route).
+  struct leg_alternative {
+    friend bool operator==(leg_alternative const&,
+                           leg_alternative const&) = default;
+
+    transport_idx_t transport_idx_{transport_idx_t::invalid()};
+    day_idx_t day_idx_{};
+    stop_idx_t enter_stop_idx_{};
+    stop_idx_t exit_stop_idx_{};
+  };
+
   struct leg {
     template <typename T>
     leg(direction const d,
@@ -72,6 +84,9 @@ struct journey {
     location_idx_t from_, to_;
     unixtime_t dep_time_, arr_time_;
     std::variant<run_enter_exit, footpath, offset> uses_;
+    // Alternative transports that cover the same leg (same dep/arr times).
+    // Populated post-routing; not considered for journey comparison/dominance.
+    std::vector<leg_alternative> alternatives_{};
   };
 
   bool dominates(journey const& o) const {

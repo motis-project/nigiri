@@ -10,6 +10,7 @@
 #include "nigiri/common/delta_t.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/rt/frun.h"
@@ -707,6 +708,16 @@ void reconstruct_journey_with_vias(timetable const& tt,
     if (i != 0 || fp_leg.from_ != fp_leg.to_ ||
         fp_leg.dep_time_ != fp_leg.arr_time_) {
       j.add(std::move(fp_leg));
+    }
+    // Populate alternative transports for this leg (e.g. coupled trains).
+    if (q.include_coupled_trips_ &&
+        std::holds_alternative<journey::run_enter_exit>(transport_leg.uses_)) {
+      auto const& ree = std::get<journey::run_enter_exit>(transport_leg.uses_);
+      if (ree.r_.is_scheduled()) {
+        transport_leg.alternatives_ = find_equivalent_transports(
+            tt, rtt, q.prf_idx_, transport_leg.from_, transport_leg.to_,
+            transport_leg.dep_time_, transport_leg.arr_time_, ree.r_.t_.t_idx_);
+      }
     }
     j.add(std::move(transport_leg));
   }

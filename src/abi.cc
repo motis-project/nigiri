@@ -404,6 +404,24 @@ nigiri_pareto_set_t* nigiri_get_journeys(nigiri_timetable_t const* t,
         l->duration = static_cast<uint32_t>(x.duration().count());
       };
       std::visit(utl::overloaded{set_run, set_footpath, set_offset}, leg.uses_);
+
+      // Serialize per-leg alternatives (e.g. coupled trains / Flügelzug).
+      l->n_alternatives = static_cast<uint16_t>(leg.alternatives_.size());
+      if (!leg.alternatives_.empty()) {
+        l->alternatives =
+            new nigiri_leg_alternative_t[leg.alternatives_.size()];
+        for (auto const [ai, alt] : utl::enumerate(leg.alternatives_)) {
+          l->alternatives[ai] = {
+              .transport_idx = static_cast<uint32_t>(
+                  nigiri::transport_idx_t::value_t{alt.transport_idx_}),
+              .day_idx = static_cast<uint16_t>(
+                  nigiri::day_idx_t::value_t{alt.day_idx_}),
+              .enter_stop_idx = alt.enter_stop_idx_,
+              .exit_stop_idx = alt.exit_stop_idx_};
+        }
+      } else {
+        l->alternatives = nullptr;
+      }
     }
   }
   return pareto_set;
@@ -411,6 +429,9 @@ nigiri_pareto_set_t* nigiri_get_journeys(nigiri_timetable_t const* t,
 
 void nigiri_destroy_journeys(nigiri_pareto_set_t const* journeys) {
   for (int i = 0; i < journeys->n_journeys; i++) {
+    for (int j = 0; j < journeys->journeys[i].n_legs; j++) {
+      delete[] journeys->journeys[i].legs[j].alternatives;
+    }
     delete[] journeys->journeys[i].legs;
   }
   delete[] journeys->journeys;

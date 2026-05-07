@@ -67,6 +67,16 @@ struct nigiri_event_change {
 };
 typedef struct nigiri_event_change nigiri_event_change_t;
 
+// An alternative transport that covers the same leg with identical dep/arr
+// times (e.g. Flügelzug / coupled train on a parallel route).
+struct nigiri_leg_alternative {
+  uint32_t transport_idx;
+  uint16_t day_idx;
+  uint16_t enter_stop_idx;
+  uint16_t exit_stop_idx;
+};
+typedef struct nigiri_leg_alternative nigiri_leg_alternative_t;
+
 struct nigiri_leg {
   bool is_footpath;
   uint32_t transport_idx;
@@ -76,6 +86,10 @@ struct nigiri_leg {
   uint16_t to_stop_idx;
   uint32_t to_location_idx;
   uint32_t duration;
+  // Alternative transports covering this leg (e.g. Flügelzug / coupled
+  // trains). Array of length n_alternatives; freed by nigiri_destroy_journeys.
+  uint16_t n_alternatives;
+  nigiri_leg_alternative_t* alternatives;
 };
 typedef struct nigiri_leg nigiri_leg_t;
 
