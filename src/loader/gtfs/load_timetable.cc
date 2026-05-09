@@ -132,7 +132,7 @@ void load_timetable(loader_config const& config,
                   i18n, load(kStopTimesFile).data(), shapes_data != nullptr,
                   stops_accessible);
   load_fares(tt, d, service, routes, stops);
-  load_ticketing(tt, d, agency_ticketing, stops, routes, trip_data);
+  load_ticketing(tt, d, agency_ticketing, stops, routes, trip_data, src);
   utl::verify(tt.fares_.size() == to_idx(src) + 1U, "fares: size={} src={}",
               tt.fares_.size(), src);
 
