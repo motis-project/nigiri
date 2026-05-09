@@ -14,7 +14,8 @@ constexpr auto kTicketingIdentifiers = "ticketing_identifiers.txt";
 namespace nigiri::loader::gtfs {
 void read_ticketing_identifiers(timetable& tt,
                                 std::string_view file_content,
-                                stops_map_t const& stops) {
+                                stops_map_t const& stops,
+                                source_idx_t const src) {
   struct ticketing_identifiers_row {
     utl::csv_col<utl::cstr, UTL_NAME("ticketing_stop_id")> ticketing_stop_id;
     utl::csv_col<utl::cstr, UTL_NAME("stop_id")> stop_id;
@@ -25,8 +26,18 @@ void read_ticketing_identifiers(timetable& tt,
       file_content, [&](ticketing_identifiers_row const& t) {
         auto location_it = stops.find(std::string{t.stop_id->view()});
         if (location_it != stops.end()) {
-          tt.location_ticketing_identifier_.emplace_back(
-              string{t.ticketing_stop_id->view()});
+          auto provider = tt.get_provider_idx(t.agency_id->view(), src);
+          auto provider_it = tt.location_ticketing_identifier_.find(provider);
+          if (provider_it == std::end(tt.location_ticketing_identifier_)) {
+            hash_map<location_idx_t, string> location_ids;
+            location_ids.emplace(location_it->second,
+                                 string{t.ticketing_stop_id->view()});
+            tt.location_ticketing_identifier_.emplace(provider,
+                                                      std::move(location_ids));
+          } else {
+            provider_it->second.emplace(location_it->second,
+                                        string{t.ticketing_stop_id->view()});
+          }
         }
       });
 }
@@ -62,14 +73,16 @@ void load_ticketing(timetable& tt,
                     agency_ticketing_map_t const& agency_ticketing,
                     stops_map_t const& stops,
                     route_map_t const& routes,
-                    trip_data const& trips) {
+                    trip_data const& trips,
+                    source_idx_t const src) {
   auto const load = [&](std::string_view file_name) -> file {
     return d.exists(file_name) ? d.get_file(file_name) : file{};
   };
 
   utl::get_active_progress_tracker()->status("Load Ticketing");
 
-  read_ticketing_identifiers(tt, load(kTicketingIdentifiers).data(), stops);
+  read_ticketing_identifiers(tt, load(kTicketingIdentifiers).data(), stops,
+                             src);
   auto const deep_links =
       read_ticketing_deep_links(tt, load(kTicketingDeeplinks).data());
 
