@@ -7,6 +7,7 @@
 
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_earliest_transport.h"
+#include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
 
@@ -27,66 +28,30 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     location_idx_t const to,
     unixtime_t const from_arr,
     unixtime_t const to_dep) {
-  auto const collect_footpaths = [&](location_idx_t const l, auto const& fps) {
-    auto v = std::vector<offset>{};
-    v.emplace_back(l,
-                   adjusted_transfer_time(q.transfer_time_settings_,
-                                          tt.locations_.transfer_time_[l]),
-                   transport_mode_id_t{0});
-    for (auto const& fp : fps) {
-      v.emplace_back(
-          fp.target(),
-          adjusted_transfer_time(q.transfer_time_settings_, fp.duration()),
-          transport_mode_id_t{0});
-    }
-    return v;
-  };
-
-  auto const collect_td_footpaths =
-      [&](location_idx_t const l,
-          array<bitvec_map<location_idx_t>, kNProfiles> const& has_td,
-          array<vecvec<location_idx_t, td_footpath>, kNProfiles> const&
-              td_fps) {
-        auto m = td_offsets_t{};
-        if (rtt == nullptr || q.prf_idx_ == 0U ||
-            to_idx(l) >= has_td[q.prf_idx_].size() || !has_td[q.prf_idx_][l]) {
-          return m;
-        }
-        for (auto const& tdfp : td_fps[q.prf_idx_][l]) {
-          m[tdfp.target_].push_back(td_offset{tdfp.valid_from_, tdfp.duration_,
-                                              transport_mode_id_t{0}});
-        }
-        return m;
-      };
-
-  auto const direct_query = query{
-      .start_ = collect_footpaths(
-          from, tt.locations_.footpaths_out_[q.prf_idx_][from]),
-      .destination_ =
-          collect_footpaths(to, tt.locations_.footpaths_in_[q.prf_idx_][to]),
-      .td_start_ = rtt != nullptr
-                       ? collect_td_footpaths(from, rtt->has_td_footpaths_out_,
-                                              rtt->td_footpaths_out_)
-                       : td_offsets_t{},
-      .td_dest_ = rtt != nullptr
-                      ? collect_td_footpaths(to, rtt->has_td_footpaths_in_,
-                                             rtt->td_footpaths_in_)
-                      : td_offsets_t{},
-      .prf_idx_ = q.prf_idx_,
-      .allowed_claszes_ = q.allowed_claszes_,
-      .require_bike_transport_ = q.require_bike_transport_,
-      .require_car_transport_ = q.require_car_transport_,
-      .transfer_time_settings_ = q.transfer_time_settings_,
-  };
-
+  auto const direct_query = make_alternative_query(tt, rtt, q, from, to);
   auto cursor =
       get_direct_journeys<direction::kForward>(tt, rtt, direct_query, from_arr);
   if (!cursor) {
     return std::nullopt;
-  } else if (auto legs = cursor(); legs[2].arr_time_ <= to_dep) {
-    return legs;
   }
-  return std::nullopt;
+  auto legs = cursor();
+  if (legs[2].arr_time_ > to_dep) {
+    return std::nullopt;
+  }
+  // direct.cc emits the ingress/egress legs as `offset` from/to the
+  // intermodal kStart/kEnd. For an in-journey alternative the boundaries
+  // are real stops connected by transfer footpaths — rewrite the variants
+  // and endpoints accordingly so callers don't get a synthetic offset leg
+  // that would later be routed through OSR.
+  auto const ingress_dur = duration_t{static_cast<duration_t::rep>(
+      (legs[0].arr_time_ - legs[0].dep_time_).count())};
+  auto const egress_dur = duration_t{static_cast<duration_t::rep>(
+      (legs[2].arr_time_ - legs[2].dep_time_).count())};
+  legs[0].from_ = from;
+  legs[0].uses_ = footpath{legs[0].to_, ingress_dur};
+  legs[2].to_ = to;
+  legs[2].uses_ = footpath{to, egress_dur};
+  return legs;
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>

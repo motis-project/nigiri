@@ -477,6 +477,18 @@ void enrich_with_slow_direct(timetable const& tt,
   utl::erase_duplicates(results);
 }
 
+template utl::generator<std::array<journey::leg, 3>>
+get_direct_journeys<direction::kForward>(timetable const&,
+                                         rt_timetable const*,
+                                         query const&,
+                                         unixtime_t);
+
+template utl::generator<std::array<journey::leg, 3>>
+get_direct_journeys<direction::kBackward>(timetable const&,
+                                          rt_timetable const*,
+                                          query const&,
+                                          unixtime_t);
+
 template void enrich_with_slow_direct<direction::kForward>(
     timetable const&,
     rt_timetable const*,
