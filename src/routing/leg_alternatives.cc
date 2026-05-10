@@ -93,11 +93,10 @@ query make_alternative_query(timetable const& tt,
               ? td_footpath_offsets(rtt, q, from, rtt->has_td_footpaths_out_,
                                     rtt->td_footpaths_out_)
               : td_offsets_t{},
-      .td_dest_ =
-          rtt != nullptr
-              ? td_footpath_offsets(rtt, q, to, rtt->has_td_footpaths_in_,
-                                    rtt->td_footpaths_in_)
-              : td_offsets_t{},
+      .td_dest_ = rtt != nullptr ? td_footpath_offsets(
+                                       rtt, q, to, rtt->has_td_footpaths_in_,
+                                       rtt->td_footpaths_in_)
+                                 : td_offsets_t{},
       .prf_idx_ = q.prf_idx_,
       .allowed_claszes_ = q.allowed_claszes_,
       .require_bike_transport_ = q.require_bike_transport_,
@@ -174,10 +173,9 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
                              tt.locations_.footpaths_out_[q.prf_idx_][from])
           : match_mode_offsets(tt, q.start_match_mode_, from);
   auto const to_offsets =
-      has_next
-          ? footpath_offsets(tt, q, to,
-                             tt.locations_.footpaths_in_[q.prf_idx_][to])
-          : match_mode_offsets(tt, q.dest_match_mode_, to);
+      has_next ? footpath_offsets(tt, q, to,
+                                  tt.locations_.footpaths_in_[q.prf_idx_][to])
+               : match_mode_offsets(tt, q.dest_match_mode_, to);
   auto const from_td =
       has_prev && rtt != nullptr
           ? td_footpath_offsets(rtt, q, from, rtt->has_td_footpaths_out_,
@@ -269,8 +267,9 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
     trace_alt("[leg_alt]   bwd done: yielded={}, kept={}\n", yielded,
               alternatives.size());
   } else {
-    trace_alt("[leg_alt]   iterating FORWARD from from_arr={} (upper_bound={})\n",
-              from_arr, has_next ? fmt::format("{}", to_dep) : "<unbounded>");
+    trace_alt(
+        "[leg_alt]   iterating FORWARD from from_arr={} (upper_bound={})\n",
+        from_arr, has_next ? fmt::format("{}", to_dep) : "<unbounded>");
     auto cursor = get_direct_journeys<direction::kForward>(
         tt, rtt, direct_query, from_arr);
     auto yielded = 0U;
