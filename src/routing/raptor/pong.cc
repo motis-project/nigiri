@@ -84,7 +84,7 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   if (!cursor) {
     return std::nullopt;
   } else if (auto legs = cursor(); legs[2].arr_time_ <= to_dep) {
-    return std::move(legs);
+    return legs;
   }
   return std::nullopt;
 }
