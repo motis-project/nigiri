@@ -202,7 +202,7 @@ void read_stop_times(trip_data& trips,
 
         utl::verify(
             utl::parse<std::uint32_t>(*s.stop_sequence_) <= kMaxStopSequenceNum,
-            "stop_times.txt:{} stop_sequence {} exceeds uint16_t max value ",
+            "stop_times.txt:{} stop_sequence {} exceeds uint16_t max value {}",
             line_number, s.stop_sequence_->view(), kMaxStopSequenceNum);
 
         // Store common attributes of regular trips and flex trips.
