@@ -8,6 +8,8 @@
 
 namespace nigiri::loader::gtfs {
 
+constexpr auto kMaxStopSequenceNum = std::numeric_limits<uint16_t>::max();
+
 void read_stop_times(trip_data&,
                      stops_map_t const&,
                      flex_areas_t const&,

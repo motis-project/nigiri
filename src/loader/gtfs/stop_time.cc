@@ -197,6 +197,14 @@ void read_stop_times(trip_data& trips,
           return;
         }
 
+        if (utl::parse<std::uint32_t>(*s.stop_sequence_) >
+            kMaxStopSequenceNum) {
+          throw utl::fail(
+              "stop_times.txt:{} stop_sequence {} exceeds uint16_t max value "
+              "{}",
+              line_number, s.stop_sequence_->view(), kMaxStopSequenceNum);
+        }
+
         // Store common attributes of regular trips and flex trips.
         auto const seq = utl::parse<std::uint16_t>(*s.stop_sequence_);
         t->requires_sorting_ |=
