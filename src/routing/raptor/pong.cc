@@ -249,12 +249,14 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
-routing_result pong(timetable const& tt,
-                    rt_timetable const* rtt,
-                    search_state& s_state,
-                    raptor_state& r_state,
-                    query q,
-                    std::optional<std::chrono::seconds> timeout) {
+routing_result pong(
+    timetable const& tt,
+    rt_timetable const* rtt,
+    search_state& s_state,
+    raptor_state& r_state,
+    query q,
+    std::optional<std::chrono::seconds> timeout,
+    std::optional<std::chrono::seconds> lookahead = std::nullopt) {
   constexpr auto kFwd = (SearchDir == direction::kForward);
 
   q.sanitize(tt);
@@ -470,6 +472,11 @@ routing_result pong(timetable const& tt,
       pong.execute(ping_j.dest_time_, ping_j.transfers_,
                    ping_j.start_time_ - duration_t{kFwd ? 1 : -1}, q.prf_idx_,
                    s_state.results_);
+
+      utl::erase_if(s_state.results_, [&](journey const& j) {
+        return lookahead &&
+               j.departure_time() > *lookahead + search_interval.from_;
+      });
 
       auto const match =
           utl::find_if(s_state.results_, [&](journey const& pong_j) {
