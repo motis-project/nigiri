@@ -10,15 +10,15 @@
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
 #include "utl/pipes/transform.h"
+#include "utl/pipes/for_each.h"
 #include "utl/pipes/vec.h"
 #include "utl/progress_tracker.h"
+#include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/common/cached_lookup.h"
 #include "nigiri/logging.h"
-#include "utl/pipes/for_each.h"
-#include "utl/verify.h"
 
 namespace nigiri::loader::gtfs {
 
