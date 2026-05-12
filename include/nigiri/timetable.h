@@ -140,16 +140,13 @@ struct timetable {
 
   transport_idx_t next_transport_idx() const;
 
-  bool is_transport_active(transport_idx_t const t,
-                           std::size_t const day) const {
-    return bitfields_[transport_traffic_days_[t]].test(day);
+  bool is_transport_active(transport_idx_t const t, day_idx_t const day) const {
+    return bitfields_[transport_traffic_days_[t]].test(to_idx(day));
   }
 
-  bool is_route_active(route_idx_t const r, std::size_t const day) const {
-    return bitfields_[route_traffic_days_[r]].test(day);
+  bool is_route_active(route_idx_t const r, day_idx_t const day) const {
+    return bitfields_[route_traffic_days_[r]].test(to_idx(day));
   }
-
-  void rebuild_route_traffic_days();
 
   std::span<delta const> event_times_at_stop(route_idx_t const r,
                                              stop_idx_t const stop_idx,

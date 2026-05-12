@@ -131,7 +131,7 @@ void get_direct(timetable const& tt,
       [&](route_idx_t const r, stop_idx_t const start_stop_idx,
           stop_idx_t const end_stop_idx) {
         auto const is_transport_active = [&](transport_idx_t const t,
-                                             std::size_t const day) {
+                                             day_idx_t const day) {
           if (rtt != nullptr) {
             return rtt->is_transport_active(t, day);
           } else {
@@ -151,6 +151,9 @@ void get_direct(timetable const& tt,
         trace_direct("    check_interval [{}, {}]: days={}", start_stop_idx,
                      end_stop_idx, days);
         for (auto const day : day_indices) {
+          if (!tt.is_route_active(r, day)) {
+            continue;
+          }
           for (auto it = begin(start_events); it != end(start_events); ++it) {
             auto const ev = *it;
             auto const t_offset =
@@ -158,13 +161,13 @@ void get_direct(timetable const& tt,
             auto const t = tt.route_transport_ranges_[r][t_offset];
             auto const ev_day_offset = ev.days();
             auto const start_day =
-                static_cast<std::size_t>(to_idx(day) - ev_day_offset);
+                static_cast<day_idx_t>(to_idx(day) - ev_day_offset);
             if (!is_transport_active(t, start_day)) {
-              trace_direct(
-                  "      transport {} not inactive on {} (ev_time={})",
-                  tt.transport_name(t),
-                  tt.internal_interval_days().from_ + date::days{1} * start_day,
-                  ev);
+              trace_direct("      transport {} not inactive on {} (ev_time={})",
+                           tt.transport_name(t),
+                           tt.internal_interval_days().from_ +
+                               date::days{to_idx(start_day)},
+                           ev);
               continue;
             }
 
@@ -181,12 +184,12 @@ void get_direct(timetable const& tt,
               continue;
             }
 
-            trace_direct(
-                "      transport {} operates on {} (ev_time={})",
-                tt.transport_name(t),
-                tt.internal_interval_days().from_ + date::days{1} * start_day,
-                ev);
-            auto const tr = transport{t, day_idx_t{start_day}};
+            trace_direct("      transport {} operates on {} (ev_time={})",
+                         tt.transport_name(t),
+                         tt.internal_interval_days().from_ +
+                             date::days{to_idx(start_day)},
+                         ev);
+            auto const tr = transport{t, start_day};
             auto const start_time =
                 tt.event_time(tr, start_stop_idx, start_ev_type);
             auto const end_time = tt.event_time(tr, end_stop_idx, end_ev_type);

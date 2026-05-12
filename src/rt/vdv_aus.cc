@@ -364,7 +364,7 @@ void updater::match_run(run_id const& vdv_id,
                 vdv_day_idx -
                     day_idx_t{nigiri_ev_time.days() - day_shift.count()}};
 
-            if (tt_.is_transport_active(tr.t_idx_, to_idx(tr.day_))) {
+            if (tt_.is_transport_active(tr.t_idx_, tr.day_)) {
               auto candidate =
                   std::find_if(begin(candidates), end(candidates),
                                [&](auto const& c) { return c.r_.t_ == tr; });

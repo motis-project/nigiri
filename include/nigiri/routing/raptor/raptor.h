@@ -1115,7 +1115,7 @@ private:
     for (auto i = day_idx_t::value_t{0U}; i != n_days_to_iterate; ++i) {
       auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
 
-      if (!tt_.is_route_active(r, static_cast<std::size_t>(to_idx(day)))) {
+      if (!tt_.is_route_active(r, day)) {
         continue;
       }
 
@@ -1158,7 +1158,7 @@ private:
 
         auto const ev_day_offset = ev.days();
         auto const start_day =
-            static_cast<std::size_t>(as_int(day) - ev_day_offset);
+            static_cast<day_idx_t>(as_int(day) - ev_day_offset);
         if (!is_transport_active(t, start_day)) {
           trace(
               "┊ │k={}      => transport={}, name={}, dbg={}, day={}/{}, "
@@ -1181,8 +1181,7 @@ private:
     return {};
   }
 
-  bool is_transport_active(transport_idx_t const t,
-                           std::size_t const day) const {
+  bool is_transport_active(transport_idx_t const t, day_idx_t const day) const {
     if constexpr (Rt) {
       return rtt_->is_transport_active(t, day);
     } else {

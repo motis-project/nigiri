@@ -81,7 +81,7 @@ transport get_earliest_transport(timetable const& tt,
 
       auto const ev_day_offset = ev.days();
       auto const start_day =
-          static_cast<std::size_t>(as_int(day) - ev_day_offset);
+          static_cast<day_idx_t>(as_int(day) - ev_day_offset);
       if (!traffic_day_src.is_transport_active(t, start_day)) {
         continue;
       }

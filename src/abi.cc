@@ -164,14 +164,14 @@ bool nigiri_is_transport_active(nigiri_timetable_t const* t,
                                 uint32_t const transport_idx,
                                 uint16_t day_idx) {
   auto const tidx = nigiri::transport_idx_t{transport_idx};
-  return t->tt->is_transport_active(tidx, day_idx);
+  return t->tt->is_transport_active(tidx, nigiri::day_idx_t{day_idx});
 }
 
 bool nigiri_is_route_active(nigiri_timetable_t const* t,
                             uint32_t const route_idx,
                             uint16_t day_idx) {
   auto const ridx = nigiri::route_idx_t{route_idx};
-  return t->tt->is_route_active(ridx, day_idx);
+  return t->tt->is_route_active(ridx, nigiri::day_idx_t{day_idx});
 }
 
 uint32_t nigiri_get_route_count(nigiri_timetable_t const* t) {
