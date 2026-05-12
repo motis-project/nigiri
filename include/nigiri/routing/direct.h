@@ -1,6 +1,6 @@
 #pragma once
 
-#include <array>
+#include <vector>
 
 #include "utl/generator.h"
 
@@ -18,7 +18,7 @@ struct rt_timetable;
 namespace routing {
 
 template <direction Dir>
-utl::generator<std::array<journey::leg, 3>> get_direct_journeys(
+utl::generator<std::vector<journey::leg>> get_direct_journeys(
     timetable const&, rt_timetable const*, query const&, unixtime_t time);
 
 template <direction Dir>

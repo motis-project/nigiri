@@ -35,23 +35,59 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     return std::nullopt;
   }
   auto legs = cursor();
-  if (legs[2].arr_time_ > to_dep) {
+  if (legs.back().arr_time_ > to_dep) {
     return std::nullopt;
   }
-  // direct.cc emits the ingress/egress legs as `offset` from/to the
-  // intermodal kStart/kEnd. For an in-journey alternative the boundaries
-  // are real stops connected by transfer footpaths — rewrite the variants
-  // and endpoints accordingly so callers don't get a synthetic offset leg
-  // that would later be routed through OSR.
-  auto const ingress_dur = duration_t{static_cast<duration_t::rep>(
-      (legs[0].arr_time_ - legs[0].dep_time_).count())};
-  auto const egress_dur = duration_t{static_cast<duration_t::rep>(
-      (legs[2].arr_time_ - legs[2].dep_time_).count())};
-  legs[0].from_ = from;
-  legs[0].uses_ = footpath{legs[0].to_, ingress_dur};
-  legs[2].to_ = to;
-  legs[2].uses_ = footpath{to, egress_dur};
-  return legs;
+  // `make_alternative_query` uses kExact + pre-expanded footpath offsets,
+  // so direct.cc emits the orig/dest legs with `from`/`to` collapsed onto
+  // each offset target. Rewrite them so the leg walks between the real
+  // adjacent stop and the boarding/alighting stop. If direct.cc omitted a
+  // degenerate zero-duration leg (transfer_time at the source stop is 0)
+  // we synthesize a placeholder so the caller still sees the canonical
+  // [transfer, transit, transfer] triple.
+  auto const transit_it =
+      std::find_if(begin(legs), end(legs), [](journey::leg const& l) {
+        return std::holds_alternative<journey::run_enter_exit>(l.uses_);
+      });
+  if (transit_it == end(legs)) {
+    return std::nullopt;
+  }
+  auto const transit_idx =
+      static_cast<std::size_t>(std::distance(begin(legs), transit_it));
+  auto& transit = legs[transit_idx];
+
+  auto orig = transit_idx > 0
+                  ? legs[0]
+                  : journey::leg{direction::kForward,
+                                 from,
+                                 transit.from_,
+                                 transit.dep_time_,
+                                 transit.dep_time_,
+                                 footpath{transit.from_, duration_t{0}}};
+  {
+    auto const dur = orig.arr_time_ - orig.dep_time_;
+    orig.from_ = from;
+    orig.to_ = transit.from_;
+    orig.uses_ = footpath{transit.from_, dur};
+  }
+
+  auto dest = transit_idx + 1 < legs.size()
+                  ? legs.back()
+                  : journey::leg{direction::kForward,
+                                 transit.to_,
+                                 to,
+                                 transit.arr_time_,
+                                 transit.arr_time_,
+                                 footpath{to, duration_t{0}}};
+  {
+    auto const dur = dest.arr_time_ - dest.dep_time_;
+    dest.from_ = transit.to_;
+    dest.to_ = to;
+    dest.uses_ = footpath{to, dur};
+  }
+
+  return std::array<journey::leg, 3>{std::move(orig), std::move(transit),
+                                     std::move(dest)};
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>

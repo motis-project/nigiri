@@ -1,5 +1,7 @@
 #include "gtest/gtest.h"
 
+#include <algorithm>
+
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
@@ -44,18 +46,29 @@ void get_direct_for(timetable const& tt,
   auto const time_threshold = kFwd ? time.from_ : time.to_;
   for (auto&& legs :
        routing::get_direct_journeys<Dir>(tt, rtt, qq, time_threshold)) {
-    // Legs are in physical order: legs[0]=origin-side, legs[2]=dest-side.
-    auto const t_check = kFwd ? legs[0].dep_time_ : legs[2].arr_time_;
+    // Legs are in physical order; with the default kExact match mode and
+    // zero-duration offsets here the orig/dest walks are degenerate and
+    // get omitted, so only the transit leg remains.
+    auto const t_check =
+        kFwd ? legs.front().dep_time_ : legs.back().arr_time_;
     if (!time.contains(t_check)) {
       if (kFwd && t_check >= time.to_) {
         break;
       }
       continue;
     }
+    auto const transit_it =
+        std::find_if(begin(legs), end(legs), [](auto const& l) {
+          return std::holds_alternative<routing::journey::run_enter_exit>(
+              l.uses_);
+        });
+    if (transit_it == end(legs)) {
+      continue;
+    }
     auto j = routing::journey{};
-    j.start_time_ = legs[1].dep_time_;
-    j.dest_time_ = legs[1].arr_time_;
-    j.legs_.push_back(std::move(legs[1]));
+    j.start_time_ = transit_it->dep_time_;
+    j.dest_time_ = transit_it->arr_time_;
+    j.legs_.push_back(std::move(*transit_it));
     j.dest_ = kFwd ? j.legs_.back().to_ : j.legs_.front().from_;
     direct.push_back(std::move(j));
   }
