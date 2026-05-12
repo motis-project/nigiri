@@ -9,17 +9,20 @@
 #include "utl/parser/csv.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
+#include "utl/pipes/for_each.h"
 #include "utl/pipes/transform.h"
 #include "utl/pipes/vec.h"
 #include "utl/progress_tracker.h"
+#include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/common/cached_lookup.h"
 #include "nigiri/logging.h"
-#include "utl/pipes/for_each.h"
 
 namespace nigiri::loader::gtfs {
+
+constexpr auto kMaxStopSequenceNum = std::numeric_limits<uint16_t>::max();
 
 void add_distance(auto& trip_data, double const distance) {
   auto& distances = trip_data.distance_traveled_;
@@ -196,6 +199,11 @@ void read_stop_times(trip_data& trips,
               line_number);
           return;
         }
+
+        utl::verify(
+            utl::parse<std::uint32_t>(*s.stop_sequence_) <= kMaxStopSequenceNum,
+            "stop_times.txt:{} stop_sequence {} exceeds uint16_t max value {}",
+            line_number, s.stop_sequence_->view(), kMaxStopSequenceNum);
 
         // Store common attributes of regular trips and flex trips.
         auto const seq = utl::parse<std::uint16_t>(*s.stop_sequence_);
