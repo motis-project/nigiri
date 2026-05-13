@@ -276,7 +276,7 @@ TEST(routing, rt_raptor_backward) {
   auto const& l = results.begin()->legs_.back();
   auto direct = std::vector<routing::journey>{};
   get_direct_for<direction::kBackward>(
-      tt, &rtt, l.to_, l.from_,
+      tt, &rtt, l.from_, l.to_,
       interval<unixtime_t>{l.arr_time_, l.arr_time_ + 1min}, direct);
   EXPECT_EQ(R"(
 [2019-05-03 00:30, 2019-05-03 01:00]
