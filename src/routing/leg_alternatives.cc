@@ -109,7 +109,7 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
                            tt, rtt, direct_query, next_dep) |
                            std::views::filter(not_original) |
                            std::views::take(max_alternatives)) {
-      alternatives.push_back(make_journey(std::move(legs)));
+      alternatives.push_back(make_journey(legs));
     }
   } else {
     // LATER DEPARTURES:
@@ -126,7 +126,7 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
                            std::views::take_while(fits_arrival) |
                            std::views::filter(not_original) |
                            std::views::take(max_alternatives)) {
-      alternatives.push_back(make_journey(std::move(legs)));
+      alternatives.push_back(make_journey(legs));
     }
   }
 
