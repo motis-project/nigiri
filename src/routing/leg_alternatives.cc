@@ -12,6 +12,15 @@
 
 namespace nigiri::routing {
 
+// MSVC's debug `std::views::take_while` iterator dereferences the
+// underlying iterator when comparing against the sentinel even after
+// the for-loop body has run — i.e. *after* the body has done `std::move(legs)`
+#if defined(_MSC_VER) && defined(_DEBUG)
+#define MOVE_IF_NOT_MSVC_DBG(x) (x)
+#else
+#define MOVE_IF_NOT_MSVC_DBG(x) std::move(x)
+#endif
+
 query make_alternative_query(timetable const&,
                              rt_timetable const*,
                              query const& q,
@@ -109,7 +118,7 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
                            tt, rtt, direct_query, next_dep) |
                            std::views::filter(not_original) |
                            std::views::take(max_alternatives)) {
-      alternatives.push_back(make_journey(std::move(legs)));
+      alternatives.push_back(make_journey(MOVE_IF_NOT_MSVC_DBG(legs)));
     }
   } else {
     // LATER DEPARTURES:
@@ -126,7 +135,7 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
                            std::views::take_while(fits_arrival) |
                            std::views::filter(not_original) |
                            std::views::take(max_alternatives)) {
-      alternatives.push_back(make_journey(std::move(legs)));
+      alternatives.push_back(make_journey(MOVE_IF_NOT_MSVC_DBG(legs)));
     }
   }
 
