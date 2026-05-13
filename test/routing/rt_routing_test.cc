@@ -49,8 +49,7 @@ void get_direct_for(timetable const& tt,
     // Legs are in physical order; with the default kExact match mode and
     // zero-duration offsets here the orig/dest walks are degenerate and
     // get omitted, so only the transit leg remains.
-    auto const t_check =
-        kFwd ? legs.front().dep_time_ : legs.back().arr_time_;
+    auto const t_check = kFwd ? legs.front().dep_time_ : legs.back().arr_time_;
     if (!time.contains(t_check)) {
       if (kFwd && t_check >= time.to_) {
         break;

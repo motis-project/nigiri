@@ -86,8 +86,7 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
   // termination (we rely on max_alternatives instead).
   auto const from_arr =
       has_prev ? prev_it->arr_time_ : j.legs_.front().dep_time_;
-  auto const to_dep =
-      has_next ? next_it->dep_time_ : j.legs_.back().arr_time_;
+  auto const to_dep = has_next ? next_it->dep_time_ : j.legs_.back().arr_time_;
 
   // Inner boundary (transit leg before/after the alternative): hand
   // direct.cc the adjacent transit leg's exit/entry stop and let it
@@ -106,10 +105,10 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
        transport_mode_id_t{0}}};
 
   auto direct_query = query{
-      .start_match_mode_ = has_prev ? location_match_mode::kExact
-                                    : q.start_match_mode_,
-      .dest_match_mode_ = has_next ? location_match_mode::kExact
-                                   : q.dest_match_mode_,
+      .start_match_mode_ =
+          has_prev ? location_match_mode::kExact : q.start_match_mode_,
+      .dest_match_mode_ =
+          has_next ? location_match_mode::kExact : q.dest_match_mode_,
       .use_start_footpaths_ = has_prev ? true : q.use_start_footpaths_,
       .start_ = has_prev ? inner_from : q.start_,
       .destination_ = has_next ? inner_to : q.destination_,

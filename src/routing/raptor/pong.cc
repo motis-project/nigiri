@@ -56,14 +56,13 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
       static_cast<std::size_t>(std::distance(begin(legs), transit_it));
   auto& transit = legs[transit_idx];
 
-  auto orig = transit_idx > 0
-                  ? legs[0]
-                  : journey::leg{direction::kForward,
-                                 from,
-                                 transit.from_,
-                                 transit.dep_time_,
-                                 transit.dep_time_,
-                                 footpath{transit.from_, duration_t{0}}};
+  auto orig =
+      transit_idx > 0
+          ? legs[0]
+          : journey::leg{
+                direction::kForward, from,
+                transit.from_,       transit.dep_time_,
+                transit.dep_time_,   footpath{transit.from_, duration_t{0}}};
   {
     auto const dur = orig.arr_time_ - orig.dep_time_;
     orig.from_ = from;
