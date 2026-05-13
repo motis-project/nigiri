@@ -8,6 +8,7 @@
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/direct.h"
+#include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/routing/transfer_time_settings.h"
 
 namespace nigiri::routing {
@@ -92,17 +93,17 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
   auto alternatives = std::vector<journey>{};
   alternatives.reserve(max_alternatives);
 
-  auto const make_journey = [&](std::vector<journey::leg> legs) {
-    auto alt = journey{};
-    alt.start_time_ = legs.front().dep_time_;
-    alt.dest_time_ = legs.back().arr_time_;
-    alt.dest_ = legs.back().to_;
-    alt.transfers_ = 0U;
-    alt.legs_ = std::move(legs);
-    return alt;
+  auto const optimize = [&](std::vector<journey::leg> const& legs) {
+    auto j_alt = journey{};
+    j_alt.legs_ = legs;
+    optimize_footpaths<direction::kForward>(tt, rtt, direct_query, j_alt);
+    j_alt.start_time_ = j_alt.legs_.front().dep_time_;
+    j_alt.dest_time_ = j_alt.legs_.back().arr_time_;
+    j_alt.dest_ = j_alt.legs_.back().to_;
+    return j_alt;
   };
-  auto const not_original = [&](std::vector<journey::leg> const& legs) {
-    return utl::none_of(legs, [&](journey::leg const& l) {
+  auto const not_original = [&](journey const& j_alt) {
+    return utl::none_of(j_alt.legs_, [&](journey::leg const& l) {
       return is_transit(l) &&
              std::get<journey::run_enter_exit>(l.uses_) == original_ree;
     });
@@ -114,11 +115,12 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
     // EARLIER ARRIVALS (unbounded):
     // First transit leg with a successor: collect the latest alternatives
     // that still arrive in time for the next leg's departure.
-    for (auto&& legs : get_direct_journeys<direction::kBackward>(
-                           tt, rtt, direct_query, next_dep) |
-                           std::views::filter(not_original) |
-                           std::views::take(max_alternatives)) {
-      alternatives.push_back(make_journey(MOVE_IF_NOT_MSVC_DBG(legs)));
+    for (auto&& j_alt : get_direct_journeys<direction::kBackward>(
+                            tt, rtt, direct_query, next_dep) |
+                            std::views::transform(optimize) |
+                            std::views::filter(not_original) |
+                            std::views::take(max_alternatives)) {
+      alternatives.push_back(MOVE_IF_NOT_MSVC_DBG(j_alt));
     }
   } else {
     // LATER DEPARTURES:
@@ -130,12 +132,13 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
     auto const fits_arrival = [&](std::vector<journey::leg> const& legs) {
       return !has_next /* unbounded */ || legs.back().arr_time_ <= next_dep;
     };
-    for (auto&& legs : get_direct_journeys<direction::kForward>(
-                           tt, rtt, direct_query, prev_arr) |
-                           std::views::take_while(fits_arrival) |
-                           std::views::filter(not_original) |
-                           std::views::take(max_alternatives)) {
-      alternatives.push_back(make_journey(MOVE_IF_NOT_MSVC_DBG(legs)));
+    for (auto&& j_alt : get_direct_journeys<direction::kForward>(
+                            tt, rtt, direct_query, prev_arr) |
+                            std::views::take_while(fits_arrival) |
+                            std::views::transform(optimize) |
+                            std::views::filter(not_original) |
+                            std::views::take(max_alternatives)) {
+      alternatives.push_back(MOVE_IF_NOT_MSVC_DBG(j_alt));
     }
   }
 
