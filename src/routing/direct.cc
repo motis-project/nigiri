@@ -252,8 +252,23 @@ bool sections_violate_constraints(rt::frun const& fr,
   return false;
 }
 
-bool drop_at_boundary(journey::leg const& l) {
-  return std::holds_alternative<offset>(l.uses_) && l.dep_time_ == l.arr_time_;
+std::vector<journey::leg> assemble_legs(journey::leg const& boarding_walk,
+                                        journey::leg&& transit,
+                                        journey::leg const& alighting_walk) {
+  auto const drop_at_boundary = [](journey::leg const& l) {
+    return std::holds_alternative<offset>(l.uses_) &&
+           l.dep_time_ == l.arr_time_;
+  };
+  auto legs = std::vector<journey::leg>{};
+  legs.reserve(3);
+  if (!drop_at_boundary(boarding_walk)) {
+    legs.push_back(boarding_walk);
+  }
+  legs.push_back(std::move(transit));
+  if (!drop_at_boundary(alighting_walk)) {
+    legs.push_back(alighting_walk);
+  }
+  return legs;
 }
 
 template <direction Dir>
@@ -334,16 +349,8 @@ utl::generator<std::vector<journey::leg>> route_gen(
                                                        loc_seq.size())}}},
               boarding_idx, alighting_idx}};
 
-      auto legs = std::vector<journey::leg>{};
-      legs.reserve(3);
-      if (!drop_at_boundary(*boarding_walk)) {
-        legs.push_back(*boarding_walk);
-      }
-      legs.push_back(std::move(transit));
-      if (!drop_at_boundary(*alighting_walk)) {
-        legs.push_back(*alighting_walk);
-      }
-      co_yield std::move(legs);
+      co_yield assemble_legs(*boarding_walk, std::move(transit),
+                             *alighting_walk);
     }
 
     if constexpr (kFwd) {
@@ -402,16 +409,7 @@ utl::generator<std::vector<journey::leg>> rt_gen(
                            .rt_ = rt_idx}},
           boarding_idx, alighting_idx}};
 
-  auto legs = std::vector<journey::leg>{};
-  legs.reserve(3);
-  if (!drop_at_boundary(*boarding_walk)) {
-    legs.push_back(*boarding_walk);
-  }
-  legs.push_back(std::move(transit));
-  if (!drop_at_boundary(*alighting_walk)) {
-    legs.push_back(*alighting_walk);
-  }
-  co_yield std::move(legs);
+  co_yield assemble_legs(*boarding_walk, std::move(transit), *alighting_walk);
 }
 
 template <typename LocSeq, typename Fn>

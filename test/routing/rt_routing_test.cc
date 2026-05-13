@@ -6,6 +6,7 @@
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/routing/direct.h"
+#include "nigiri/routing/pareto_set.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -24,10 +25,6 @@ using nigiri::test::raptor_search;
 
 namespace {
 
-// Test helper: single-(from, to) wrapper around `get_direct_journeys` that
-// builds a minimal query, pulls all journeys whose start/end is in `time`,
-// and stores them as transit-only journeys in `direct`. Mirrors the API the
-// older `routing::get_direct` had.
 template <direction Dir>
 void get_direct_for(timetable const& tt,
                     rt_timetable const* rtt,
@@ -35,40 +32,29 @@ void get_direct_for(timetable const& tt,
                     location_idx_t const to,
                     interval<unixtime_t> const time,
                     std::vector<routing::journey>& direct) {
-  constexpr auto kFwd = Dir == direction::kForward;
   if (from == to) {
     return;
   }
   auto qq = routing::query{};
   qq.start_.emplace_back(from, duration_t{0}, transport_mode_id_t{0});
   qq.destination_.emplace_back(to, duration_t{0}, transport_mode_id_t{0});
+  qq.slow_direct_ = true;
+  qq.fastest_slow_direct_factor_ = 0.0;  // disable post-filter
 
-  auto const time_threshold = kFwd ? time.from_ : time.to_;
-  for (auto&& legs :
-       routing::get_direct_journeys<Dir>(tt, rtt, qq, time_threshold)) {
-    // Legs are in physical order; with the default kExact match mode and
-    // zero-duration offsets here the orig/dest walks are degenerate and
-    // get omitted, so only the transit leg remains.
-    auto const t_check = kFwd ? legs.front().dep_time_ : legs.back().arr_time_;
-    if (!time.contains(t_check)) {
-      if (kFwd && t_check >= time.to_) {
-        break;
-      }
+  auto results = pareto_set<routing::journey>{};
+  routing::enrich_with_slow_direct<Dir>(tt, rtt, qq, time, results);
+
+  for (auto& j : results.els_) {
+    std::erase_if(j.legs_, [](auto const& l) {
+      return !std::holds_alternative<routing::journey::run_enter_exit>(l.uses_);
+    });
+    if (j.legs_.empty()) {
       continue;
     }
-    auto const transit_it =
-        std::find_if(begin(legs), end(legs), [](auto const& l) {
-          return std::holds_alternative<routing::journey::run_enter_exit>(
-              l.uses_);
-        });
-    if (transit_it == end(legs)) {
-      continue;
-    }
-    auto j = routing::journey{};
-    j.start_time_ = transit_it->dep_time_;
-    j.dest_time_ = transit_it->arr_time_;
-    j.legs_.push_back(std::move(*transit_it));
-    j.dest_ = kFwd ? j.legs_.back().to_ : j.legs_.front().from_;
+    j.start_time_ = j.legs_.front().dep_time_;
+    j.dest_time_ = j.legs_.back().arr_time_;
+    j.dest_ =
+        Dir == direction::kForward ? j.legs_.back().to_ : j.legs_.front().from_;
     direct.push_back(std::move(j));
   }
 }
