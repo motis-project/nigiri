@@ -173,10 +173,10 @@ std::optional<journey::leg> lookup_access(query const& q,
   return lookup_footpath(loc, t, s, tt, rtt, q, offs, mode, use_footpaths);
 }
 
-hash_set<location_idx_t> collect_locs(timetable const& tt,
-                                      rt_timetable const* rtt,
-                                      query const& q,
-                                      side const s) {
+hash_set<location_idx_t> collect_locations(timetable const& tt,
+                                           rt_timetable const* rtt,
+                                           query const& q,
+                                           side const s) {
   auto const is_boarding = s == side::kBoarding;
   auto const& offsets = is_boarding ? q.start_ : q.destination_;
   auto const& td_offsets = is_boarding ? q.td_start_ : q.td_dest_;
@@ -316,8 +316,6 @@ utl::generator<std::vector<journey::leg>> route_gen(
         continue;
       }
 
-      // fwd: skip if origin departure is before the lower-bound `time`.
-      // bwd: skip if dest arrival is after the upper-bound `time`.
       if (kFwd ? boarding_walk->dep_time_ < time
                : alighting_walk->arr_time_ > time) {
         continue;
@@ -471,8 +469,8 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
     }
   };
 
-  auto const boarding_locs = collect_locs(tt, rtt, q, side::kBoarding);
-  auto const alighting_locs = collect_locs(tt, rtt, q, side::kAlighting);
+  auto const boarding_locs = collect_locations(tt, rtt, q, side::kBoarding);
+  auto const alighting_locs = collect_locations(tt, rtt, q, side::kAlighting);
 
   // ==============================
   // Collect route_idx_t generators

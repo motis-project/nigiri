@@ -38,55 +38,7 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   if (legs.back().arr_time_ > to_dep) {
     return std::nullopt;
   }
-  // `make_alternative_query` uses kExact + pre-expanded footpath offsets,
-  // so direct.cc emits the orig/dest legs with `from`/`to` collapsed onto
-  // each offset target. Rewrite them so the leg walks between the real
-  // adjacent stop and the boarding/alighting stop. If direct.cc omitted a
-  // degenerate zero-duration leg (transfer_time at the source stop is 0)
-  // we synthesize a placeholder so the caller still sees the canonical
-  // [transfer, transit, transfer] triple.
-  auto const transit_it =
-      std::find_if(begin(legs), end(legs), [](journey::leg const& l) {
-        return std::holds_alternative<journey::run_enter_exit>(l.uses_);
-      });
-  if (transit_it == end(legs)) {
-    return std::nullopt;
-  }
-  auto const transit_idx =
-      static_cast<std::size_t>(std::distance(begin(legs), transit_it));
-  auto& transit = legs[transit_idx];
-
-  auto orig =
-      transit_idx > 0
-          ? legs[0]
-          : journey::leg{
-                direction::kForward, from,
-                transit.from_,       transit.dep_time_,
-                transit.dep_time_,   footpath{transit.from_, duration_t{0}}};
-  {
-    auto const dur = orig.arr_time_ - orig.dep_time_;
-    orig.from_ = from;
-    orig.to_ = transit.from_;
-    orig.uses_ = footpath{transit.from_, dur};
-  }
-
-  auto dest = transit_idx + 1 < legs.size()
-                  ? legs.back()
-                  : journey::leg{direction::kForward,
-                                 transit.to_,
-                                 to,
-                                 transit.arr_time_,
-                                 transit.arr_time_,
-                                 footpath{to, duration_t{0}}};
-  {
-    auto const dur = dest.arr_time_ - dest.dep_time_;
-    dest.from_ = transit.to_;
-    dest.to_ = to;
-    dest.uses_ = footpath{to, dur};
-  }
-
-  return std::array<journey::leg, 3>{std::move(orig), std::move(transit),
-                                     std::move(dest)};
+  return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
