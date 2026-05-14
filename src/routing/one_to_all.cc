@@ -43,9 +43,8 @@ void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
   // It will not find journeys with the same duration
   constexpr auto const kEpsilon = duration_t{1};
   auto const worst_time_at_dest =
-      start_time +
-      (SearchDir == direction::kForward ? 1 : -1) * (q.max_travel_time_) +
-      kEpsilon;
+      start_time + (SearchDir == direction::kForward ? 1 : -1) *
+                       (q.max_travel_time_ + kEpsilon);
 
   algo.execute(start_time, q.max_transfers_, worst_time_at_dest, q.prf_idx_,
                results);
@@ -63,7 +62,7 @@ raptor_state one_to_all(timetable const& tt,
 
   auto state = raptor_state{};
 
-  auto is_dest = bitvec::max(tt.n_locations());
+  auto is_dest = bitvec{tt.n_locations()};  // Keep footpath time for each stop
   auto is_via = std::array<bitvec, kMaxVias>{};
   auto dist_to_dest = std::vector<std::uint16_t>{};
   auto lb = std::vector<std::uint16_t>(tt.n_locations(), 0U);
@@ -128,6 +127,30 @@ fastest_offset get_fastest_one_to_all_offsets(timetable const& tt,
   }
   return {};
 };
+
+void for_each_one_to_all_round_time(
+    timetable const& tt,
+    raptor_state const& state,
+    direction const search_dir,
+    location_idx_t const l,
+    unixtime_t const start_time,
+    std::uint8_t const transfers,
+    std::function<void(std::uint8_t, duration_t)> const& cb) {
+  auto const invalid_delta = search_dir == direction::kForward
+                                 ? kInvalidDelta<direction::kForward>
+                                 : kInvalidDelta<direction::kBackward>;
+  auto const& round_times = state.get_round_times<kVias>();
+  auto const base =
+      tt.internal_interval_days().from_ +
+      static_cast<int>(to_idx(make_base(tt, start_time))) * date::days{1};
+  for (auto const k : std::views::iota(std::uint8_t{0U}, transfers + 2U)) {
+    if (round_times[k][to_idx(l)][kVias] != invalid_delta) {
+      auto end_time = delta_to_unix(base, round_times[k][to_idx(l)][kVias]);
+      cb(k, search_dir == direction::kForward ? end_time - start_time
+                                              : start_time - end_time);
+    }
+  }
+}
 
 template raptor_state one_to_all<direction::kForward>(timetable const&,
                                                       rt_timetable const*,

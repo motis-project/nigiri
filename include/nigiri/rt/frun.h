@@ -42,10 +42,13 @@ struct run_stop {
   std::string_view get_route_id(event_type) const;
   direction_id_t get_direction_id(event_type) const;
   std::optional<route_type_t> route_type(event_type) const;
+  category_idx_t get_category(event_type) const;
   std::string_view route_short_name(event_type, lang_t const&) const;
   std::string_view route_long_name(event_type, lang_t const&) const;
+  std::string_view route_url(event_type, lang_t const&) const;
   std::string_view trip_short_name(event_type, lang_t const&) const;
   std::string_view display_name(event_type, lang_t const&) const;
+  run_stop get_first_trip_stop(event_type) const;
   run_stop get_last_trip_stop(event_type) const;
 
   unixtime_t scheduled_time(event_type) const;

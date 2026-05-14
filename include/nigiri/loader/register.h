@@ -121,9 +121,11 @@ struct route {
         std::string_view id,
         translation_idx_t short_name,
         translation_idx_t long_name,
+        translation_idx_t url,
         route_type_t,
         route_color,
-        provider_idx_t);
+        provider_idx_t,
+        category_idx_t);
   route(timetable&, source_idx_t, route_id_idx_t);
 
   std::string_view get_id() const;
@@ -135,6 +137,10 @@ struct route {
   std::string_view get_long_name() const;
   translated_str_t get_long_name_translations() const;
   void set_long_name(translated_str_t);
+
+  std::string_view get_url() const;
+  translated_str_t get_url_translations() const;
+  void set_url(translated_str_t);
 
   std::uint16_t get_route_type() const;
   void set_route_type(std::uint16_t);
@@ -154,10 +160,11 @@ struct route {
   std::string_view id_;
   translation_idx_t short_name_;
   translation_idx_t long_name_;
+  translation_idx_t url_;
   route_type_t route_type_;
   route_color color_;
-  clasz clasz_;
   provider_idx_t agency_;
+  category_idx_t category_;
 
   timetable* tt_{nullptr};
 };

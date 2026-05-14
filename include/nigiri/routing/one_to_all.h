@@ -31,4 +31,13 @@ fastest_offset get_fastest_one_to_all_offsets(timetable const& tt,
                                               unixtime_t start_time,
                                               std::uint8_t transfers);
 
+void for_each_one_to_all_round_time(
+    timetable const&,
+    raptor_state const&,
+    direction,
+    location_idx_t,
+    unixtime_t start_time,
+    std::uint8_t transfers,
+    std::function<void(std::uint8_t, duration_t)> const&);
+
 }  // namespace nigiri::routing

@@ -2,18 +2,11 @@
 
 #include <ranges>
 
-#include "utl/pairwise.h"
-#include "utl/parser/cstr.h"
 #include "utl/to_vec.h"
 
-#include "nigiri/loader/gtfs/noon_offsets.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
-
-namespace nigiri {
-
-using routing::journey;
 
 // #define NIGIRI_FARES_DEBUG
 #ifdef NIGIRI_FARES_DEBUG
@@ -21,6 +14,10 @@ using routing::journey;
 #else
 #define trace(...)
 #endif
+
+namespace nigiri {
+
+using routing::journey;
 
 struct journey_leg {
   friend std::ostream& operator<<(std::ostream& out, journey_leg const& l) {

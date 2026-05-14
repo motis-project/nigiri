@@ -2,13 +2,10 @@
 
 #include "fmt/format.h"
 
-#include "utl/concat.h"
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
-#include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
 #include "utl/timing.h"
-#include "utl/to_vec.h"
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/get_otel_tracer.h"
@@ -52,6 +49,10 @@ struct search_stats {
         {"fastest_direct", fastest_direct_},
         {"interval_extensions", interval_extensions_},
         {"execute_time", execute_time_.count()},
+        {"n_events_skipped_by_early_termination",
+         n_events_skipped_by_early_termination_},
+        {"search_interval_reduction_by_early_termination",
+         search_interval_reduction_by_early_termination_.count()},
     };
   }
 
@@ -59,6 +60,8 @@ struct search_stats {
   std::uint64_t fastest_direct_{0ULL};
   std::uint64_t interval_extensions_{0ULL};
   std::chrono::milliseconds execute_time_{0LL};
+  std::uint64_t n_events_skipped_by_early_termination_{0ULL};
+  std::chrono::minutes search_interval_reduction_by_early_termination_{0LL};
 };
 
 struct routing_result {
@@ -314,28 +317,8 @@ struct search {
                j.travel_time() > q_.max_travel_time_;
       });
 
-      if (q_.slow_direct_) {
-        auto direct = std::vector<journey>{};
-        auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
-        for (auto const& j : state_.results_) {
-          if (j.transfers_ != 0) {
-            continue;
-          }
-          auto const transport_leg_it =
-              utl::find_if(j.legs_, [](journey::leg const& l) {
-                return holds_alternative<journey::run_enter_exit>(l.uses_);
-              });
-          if (transport_leg_it == end(j.legs_)) {
-            continue;
-          }
-          auto const& l = *transport_leg_it;
-          get_direct(tt_, rtt_, kFwd ? l.from_ : l.to_, kFwd ? l.to_ : l.from_,
-                     q_, search_interval_, SearchDir, done, direct);
-        }
-
-        utl::concat(state_.results_.els_, direct);
-        utl::erase_duplicates(state_.results_);
-      }
+      enrich_with_slow_direct<SearchDir>(tt_, rtt_, q_, search_interval_,
+                                         state_.results_);
 
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
         return std::tuple{a.start_time_, a.transfers_} <
@@ -430,12 +413,19 @@ private:
     auto span = get_otel_tracer()->StartSpan("search::search_interval");
     auto scope = opentelemetry::trace::Scope{span};
 
+    auto early_termination = false;
     utl::equal_ranges_linear(
         state_.starts_,
         [](start const& a, start const& b) {
           return a.time_at_start_ == b.time_at_start_;
         },
         [&](auto&& from_it, auto&& to_it) {
+          if (early_termination) {
+            stats_.n_events_skipped_by_early_termination_ +=
+                it_range{from_it, to_it}.size();
+            return;
+          }
+
           algo_.next_start_time();
           auto const start_time = from_it->time_at_start_;
           for (auto const& s : it_range{from_it, to_it}) {
@@ -474,6 +464,23 @@ private:
                       fmt::format("reconstruct failed: {}", e.what())}});
               }
             }
+          }
+
+          if (q_.min_connection_count_ > 0 &&
+              n_results_in_interval() >= q_.min_connection_count_ &&
+              ((kFwd && q_.extend_interval_earlier_ &&
+                !q_.extend_interval_later_) ||
+               (kBwd && !q_.extend_interval_earlier_ &&
+                q_.extend_interval_later_))) {
+            early_termination = true;
+            auto const start_size = search_interval_.size();
+            if constexpr (kFwd) {
+              search_interval_.from_ = start_time;
+            } else {
+              search_interval_.to_ = start_time + duration_t{1};
+            }
+            stats_.search_interval_reduction_by_early_termination_ =
+                std::chrono::abs(start_size - search_interval_.size());
           }
         });
   }

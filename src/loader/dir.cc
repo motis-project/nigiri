@@ -1,6 +1,7 @@
 #include "nigiri/loader/dir.h"
 
 #include <optional>
+#include <ranges>
 #include <variant>
 #include <vector>
 
@@ -289,7 +290,9 @@ std::size_t mem_dir::file_size(std::filesystem::path const& p) const {
 }
 
 std::unique_ptr<dir> make_dir(std::filesystem::path const& p) {
-  if (std::filesystem::is_regular_file(p) && p.extension() == ".zip") {
+  auto ext = p.extension().string();
+  std::ranges::transform(ext, ext.begin(), ::tolower);
+  if (std::filesystem::is_regular_file(p) && ext == ".zip") {
     return std::make_unique<zip_dir>(p);
   } else if (std::filesystem::is_directory(p)) {
     return std::make_unique<fs_dir>(p);

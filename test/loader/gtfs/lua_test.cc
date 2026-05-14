@@ -88,11 +88,9 @@ function process_route(route)
   end
 
   if route:get_route_type() == 3 then
-    route:set_clasz(7)
-    route:set_route_type(101)
+    route:set_route_type(HIGH_SPEED_RAIL_SERVICE)
   elseif route:get_route_type() == 1 then
-    route:set_clasz(8)
-    route:set_route_type(400)
+    route:set_route_type(URBAN_RAILWAY_SERVICE)
   end
 
   if route:get_agency():get_name() == 'Deutsche Bahn' and route:get_route_type() == 101 then
@@ -179,6 +177,8 @@ TEST(gtfs, lua_test) {
         R"(   0: A       A...............................................                               d: 02.05 23:00 [03.05 01:00]  [{name=ICE 123, day=2019-05-02, id=T_RE1, src=0}]
    1: B       B............................................... a: 03.05 00:00 [03.05 02:00]
 )";
+    EXPECT_EQ(clasz::kHighSpeed,
+              (rt::frun{tt, nullptr, r}[0].get_clasz(event_type::kDep)));
     EXPECT_EQ(kExpected,
               (std::stringstream{} << rt::frun{tt, nullptr, r}).view());
   }
