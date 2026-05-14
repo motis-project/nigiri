@@ -443,6 +443,11 @@ inline constexpr direction flip(direction const d) noexcept {
   return d == direction::kForward ? direction::kBackward : direction::kForward;
 }
 
+template <direction Dir>
+constexpr direction flip(direction const dir) {
+  return Dir == direction::kForward ? dir : flip(dir);
+}
+
 inline std::string_view to_str(direction const d) {
   return d == direction::kForward ? "FWD" : "BWD";
 }

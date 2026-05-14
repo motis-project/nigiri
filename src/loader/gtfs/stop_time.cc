@@ -200,16 +200,22 @@ void read_stop_times(trip_data& trips,
           return;
         }
 
-        utl::verify(
-            utl::parse<std::uint32_t>(*s.stop_sequence_) <= kMaxStopSequenceNum,
-            "stop_times.txt:{} stop_sequence {} exceeds uint16_t max value {}",
-            line_number, s.stop_sequence_->view(), kMaxStopSequenceNum);
+        auto const seq = utl::parse<std::uint32_t>(*s.stop_sequence_);
+        if (seq >= kMaxStopSequenceNum) {
+          log(log_lvl::error, "loader.gtfs.stop_time",
+              "stop_times.txt:{}: {} exceeds max stop sequence {}", line_number,
+              seq, kMaxStopSequenceNum);
+        }
 
         // Store common attributes of regular trips and flex trips.
-        auto const seq = utl::parse<std::uint16_t>(*s.stop_sequence_);
         t->requires_sorting_ |=
             (!t->seq_numbers_.empty() && t->seq_numbers_.back() > seq);
-        t->seq_numbers_.push_back(seq);
+        t->seq_numbers_.push_back(static_cast<stop_idx_t>(
+            seq < kMaxStopSequenceNum ? seq
+            : t->seq_numbers_.empty() ? 0
+            : t->seq_numbers_.back() != kMaxStopSequenceNum
+                ? t->seq_numbers_.back() + 1U
+                : kMaxStopSequenceNum));
         if (!s.stop_headsign_->empty()) {
           t->stop_headsigns_.resize(t->seq_numbers_.size(), t->headsign_);
           t->stop_headsigns_.back() = i18n.get(

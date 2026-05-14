@@ -5,7 +5,10 @@
 #include "utl/sorted_diff.h"
 #include "utl/timing.h"
 
+#include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_earliest_transport.h"
+#include "nigiri/routing/leg_alternatives.h"
+#include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
 
 #define trace_pong(...)
@@ -24,228 +27,18 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     location_idx_t const from,
     location_idx_t const to,
     unixtime_t const from_arr,
-    unixtime_t const to_dep,
-    bitvec& is_src,
-    bitvec& is_dst) {
-  auto const merge_sorted = [](auto& dst, auto const& src) {
-    auto const original_size = static_cast<int>(dst.size());
-    dst.resize(dst.size() + src.size());
-    std::copy(begin(src), end(src), begin(dst) + original_size);
-    std::inplace_merge(begin(dst), begin(dst) + original_size, end(dst));
-    dst.erase(std::unique(begin(dst), end(dst)), end(dst));
-  };
-
-  auto const add = [&](auto& dst, auto& marker, auto& copy_from,
-                       location_idx_t const l, direction const dir) {
-    marker.set(to_idx(l), true);
-    merge_sorted(dst, copy_from[l]);
-
-    for (auto const& fp : (dir == direction::kForward
-                               ? tt.locations_.footpaths_out_
-                               : tt.locations_.footpaths_in_)[q.prf_idx_][l]) {
-      marker.set(to_idx(fp.target()), true);
-      merge_sorted(dst, copy_from[fp.target()]);
-    }
-  };
-
-  is_src.resize(tt.n_locations());
-  is_dst.resize(tt.n_locations());
-  is_src.zero_out();
-  is_dst.zero_out();
-
-  // Determine earliest departure + adjusted transfers at ingress stops.
-  auto ingress = hash_map<location_idx_t, std::pair<footpath, unixtime_t>>{};
-  {
-    auto transfer_time = adjusted_transfer_time(
-        q.transfer_time_settings_, tt.locations_.transfer_time_[from]);
-    ingress.emplace(from, std::pair{footpath{from, transfer_time},
-                                    from_arr + transfer_time});
-    for (auto const fp : tt.locations_.footpaths_out_[q.prf_idx_][from]) {
-      transfer_time =
-          adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
-      ingress.emplace(fp.target(),
-                      std::pair{footpath{fp.target(), transfer_time},
-                                from_arr + transfer_time});
-    }
+    unixtime_t const to_dep) {
+  auto const direct_query = make_alternative_query(tt, rtt, q, from, to);
+  auto cursor =
+      get_direct_journeys<direction::kForward>(tt, rtt, direct_query, from_arr);
+  if (!cursor) {
+    return std::nullopt;
   }
-
-  // Join all relevent routes.
-  auto from_routes = std::vector<route_idx_t>{},
-       to_routes = std::vector<route_idx_t>{};
-  add(from_routes, is_src, tt.location_routes_, from, direction::kForward);
-  add(to_routes, is_dst, tt.location_routes_, to, direction::kBackward);
-
-  // Join all relevent rt transports.
-  auto from_rt_transports = std::vector<rt_transport_idx_t>{},
-       to_rt_transports = std::vector<rt_transport_idx_t>{};
-  if (rtt != nullptr) {
-    add(from_rt_transports, is_src, rtt->location_rt_transports_, from,
-        direction::kForward);
-    add(to_rt_transports, is_dst, rtt->location_rt_transports_, to,
-        direction::kBackward);
+  auto legs = cursor();
+  if (legs.back().arr_time_ > to_dep) {
+    return std::nullopt;
   }
-
-  // Visit route in RAPTOR without updating intermediate stops that are not the
-  // destination  because there's no next round (no dynamic programming).
-  auto const get_earliest =
-      [&]<typename T>(T const x,  // route_idx_t | rt_transport_idx_t
-                      stop_idx_t const stop_idx,
-                      unixtime_t const time) -> std::optional<rt::frun> {
-    if constexpr (std::is_same_v<T, rt_transport_idx_t>) {
-      auto const dep = rtt->unix_event_time(x, stop_idx, event_type::kDep);
-      return time <= dep ? std::optional{rt::frun::from_rt(tt, rtt, x)}
-                         : std::nullopt;
-    } else {
-      auto const [day, mam] = tt.day_idx_mam(time);
-      if (rtt == nullptr) {
-        auto const t = get_earliest_transport(
-            tt, tt, 0U, x, stop_idx, day, mam, location_idx_t::invalid(),
-            [](day_idx_t, std::int16_t) { return false; });
-        return t.is_valid() ? std::optional{rt::frun::from_t(tt, rtt, t)}
-                            : std::nullopt;
-      } else {
-        auto const t = get_earliest_transport(
-            tt, *rtt, 0U, x, stop_idx, day, mam, location_idx_t::invalid(),
-            [](day_idx_t, std::int16_t) { return false; });
-        return t.is_valid() ? std::optional{rt::frun::from_t(tt, rtt, t)}
-                            : std::nullopt;
-      }
-    }
-  };
-
-  auto earliest_arr = to_dep;
-  auto best = std::optional<std::array<journey::leg, 3U>>{};
-  auto const update_earliest = [&](auto&& loc_seq, auto&& r) {
-    struct enter_info {
-      journey::leg ingress_leg_;
-      rt::frun fr_;
-      stop_idx_t enter_stop_idx_;
-      location_idx_t enter_location_;
-      unixtime_t enter_time_;
-    };
-
-    auto et = std::optional<enter_info>{};
-    for (auto i = stop_idx_t{0U}; i != loc_seq.size(); ++i) {
-      auto stp = stop{loc_seq[i]};
-
-      if (et.has_value() && ((q.require_bike_transport_ &&
-                              !et->fr_[i].bikes_allowed(event_type::kArr)) ||
-                             (q.require_car_transport_ &&
-                              !et->fr_[i].cars_allowed(event_type::kArr)))) {
-        et = std::nullopt;
-      }
-
-      // Check for earlier arrival at destination.
-      // -> update arrival + legs
-      if (et.has_value() && is_dst[to_idx(stp.location_idx())] &&
-          stp.out_allowed()) {
-        auto const trip_arr = et->fr_[i].time(event_type::kArr);
-
-        auto const check_fp = [&](footpath const& fp) {
-          if (fp.target() != to) {
-            return;
-          }
-
-          auto const adjusted_fp_time =
-              adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
-          auto const dst_arr = trip_arr + adjusted_fp_time;
-          if (dst_arr > earliest_arr) {
-            return;
-          }
-
-          earliest_arr = dst_arr;
-          best = std::array<journey::leg, 3U>{
-              et->ingress_leg_,
-              journey::leg{
-                  direction::kForward,
-                  et->enter_location_,
-                  stp.location_idx(),
-                  et->enter_time_,
-                  trip_arr,
-                  journey::run_enter_exit{et->fr_, et->enter_stop_idx_, i},
-              },
-              journey::leg{
-                  direction::kForward,
-                  stp.location_idx(),
-                  to,
-                  trip_arr,
-                  dst_arr,
-                  footpath{fp.target(), adjusted_fp_time},
-              }};
-        };
-
-        check_fp({stp.location_idx(),
-                  adjusted_transfer_time(
-                      q.transfer_time_settings_,
-                      tt.locations_.transfer_time_[stp.location_idx()])});
-
-        if (q.prf_idx_ != 0U &&
-            rtt->has_td_footpaths_out_[q.prf_idx_][stp.location_idx()]) {
-          for_each_footpath<direction::kForward>(
-              rtt->td_footpaths_out_[q.prf_idx_][stp.location_idx()], trip_arr,
-              [&](footpath const fp) { check_fp(fp); });
-        } else {
-          for (auto const& fp :
-               tt.locations_.footpaths_out_[q.prf_idx_][stp.location_idx()]) {
-            check_fp(fp);
-          }
-        }
-      }
-
-      // Check for earlier trip.
-      if (stp.in_allowed(q.prf_idx_) && is_src[to_idx(stp.location_idx())]) {
-        auto const [fp, location_arr] = ingress.at(stp.location_idx());
-        auto const candidate = get_earliest(r, i, location_arr);
-        if (candidate.has_value() &&
-            (!et.has_value() || (*candidate)[i].time(event_type::kDep) <
-                                    et->fr_[i].time(event_type::kDep))) {
-          et =
-              enter_info{.ingress_leg_ =
-                             journey::leg{
-                                 direction::kForward,
-                                 from,
-                                 stp.location_idx(),
-                                 from_arr,
-                                 location_arr,
-                                 fp,
-                             },
-                         .fr_ = *candidate,
-                         .enter_stop_idx_ = i,
-                         .enter_location_ = stp.location_idx(),
-                         .enter_time_ = (*candidate)[i].time(event_type::kDep)};
-        }
-      }
-    }
-  };
-
-  utl::sorted_diff(
-      from_routes, to_routes, std::less<route_idx_t>{},
-      [](auto&&, auto&&) { return false; },
-      utl::overloaded{
-          [](utl::op, route_idx_t) {},
-          [&](route_idx_t const r, route_idx_t) {
-            if (is_allowed(q.allowed_claszes_, tt.route_clasz_[r]) &&
-                (!q.require_bike_transport_ || tt.has_bike_transport(r)) &&
-                (!q.require_car_transport_ || tt.has_car_transport(r))) {
-              update_earliest(tt.route_location_seq_[r], r);
-            }
-          }});
-
-  utl::sorted_diff(
-      from_rt_transports, to_rt_transports, std::less<rt_transport_idx_t>{},
-      [](auto&&, auto&&) { return false; },
-      utl::overloaded{
-          [](utl::op, rt_transport_idx_t) {},
-          [&](rt_transport_idx_t const rt_t, rt_transport_idx_t) {
-            if (is_allowed(q.allowed_claszes_,
-                           rtt->rt_transport_section_clasz_[rt_t].front()) &&
-                (!q.require_bike_transport_ || rtt->has_bike_transport(rt_t)) &&
-                (!q.require_car_transport_ || rtt->has_car_transport(rt_t))) {
-              update_earliest(rtt->rt_transport_location_seq_[rt_t], rt_t);
-            }
-          }});
-
-  return best;
+  return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
@@ -548,7 +341,7 @@ routing_result pong(timetable const& tt,
   }
 
   auto const iv = result.interval_;
-  enrich_with_slow_direct(tt, rtt, q, iv, SearchDir, s_state.results_);
+  enrich_with_slow_direct<SearchDir>(tt, rtt, q, iv, s_state.results_);
 
   utl::sort(s_state.results_, [](journey const& a, journey const& b) {
     return std::tuple{a.start_time_, a.transfers_} <
@@ -594,8 +387,7 @@ routing_result pong(timetable const& tt,
 
       auto const earlier = get_earliest_alternative(
           tt, rtt, q, from.get_location_idx(), to.get_location_idx(),
-          from.time(event_type::kArr), to.time(event_type::kDep),
-          r_state.prev_station_mark_, r_state.station_mark_);
+          from.time(event_type::kArr), to.time(event_type::kDep));
 
       if (earlier.has_value()) {
         transfer_1 = earlier->at(0);

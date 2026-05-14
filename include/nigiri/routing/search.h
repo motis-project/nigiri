@@ -317,8 +317,8 @@ struct search {
                j.travel_time() > q_.max_travel_time_;
       });
 
-      enrich_with_slow_direct(tt_, rtt_, q_, search_interval_, SearchDir,
-                              state_.results_);
+      enrich_with_slow_direct<SearchDir>(tt_, rtt_, q_, search_interval_,
+                                         state_.results_);
 
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
         return std::tuple{a.start_time_, a.transfers_} <
