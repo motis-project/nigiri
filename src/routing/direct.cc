@@ -418,22 +418,19 @@ void for_each_pair(LocSeq const& loc_seq,
                    hash_set<location_idx_t> const& alighting_locs,
                    profile_idx_t const prf_idx,
                    Fn&& fn) {
-  auto const is_wheelchair = prf_idx == kWheelchairProfile;
-  auto first = std::optional<stop_idx_t>{};
-  for (auto i = 0U; i != loc_seq.size(); ++i) {
-    auto const stop_idx = static_cast<stop_idx_t>(i);
-    auto const stp = stop{loc_seq[stop_idx]};
+  auto boarding_stop_idx = std::optional<stop_idx_t>{};
+  for (auto i = stop_idx_t{0U}; i != static_cast<stop_idx_t>(loc_seq.size());
+       ++i) {
+    auto const stp = stop{loc_seq[i]};
     auto const loc = stp.location_idx();
 
-    if (first.has_value()) {
-      if (alighting_locs.contains(loc) &&
-          stp.can_finish<direction::kForward>(is_wheelchair)) {
-        fn(*first, stop_idx);
-        first = std::nullopt;
+    if (boarding_stop_idx.has_value()) {
+      if (alighting_locs.contains(loc) && stp.out_allowed(prf_idx)) {
+        fn(*boarding_stop_idx, i);
+        boarding_stop_idx = std::nullopt;
       }
-    } else if (boarding_locs.contains(loc) &&
-               stp.can_start<direction::kForward>(is_wheelchair)) {
-      first = stop_idx;
+    } else if (boarding_locs.contains(loc) && stp.in_allowed(prf_idx)) {
+      boarding_stop_idx = i;
     }
   }
 }
@@ -500,17 +497,16 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
                         .stop_range_ = {
                             0U, static_cast<stop_idx_t>(
                                     tt.route_location_seq_[r].size())}}};
-            for_each_pair(
-                tt.route_location_seq_[r], boarding_locs, alighting_locs,
-                q.prf_idx_,
-                [&](stop_idx_t const b_idx, stop_idx_t const a_idx) {
-                  if (sections_violate_constraints(fr, b_idx, a_idx,
-                                                   q.require_bike_transport_,
-                                                   q.require_car_transport_)) {
-                    return;
-                  }
-                  add_gen(route_gen<Dir>(tt, rtt, r, b_idx, a_idx, q, time));
-                });
+            for_each_pair(tt.route_location_seq_[r], boarding_locs,
+                          alighting_locs, q.prf_idx_,
+                          [&](stop_idx_t const a, stop_idx_t const b) {
+                            if (sections_violate_constraints(
+                                    fr, a, b, q.require_bike_transport_,
+                                    q.require_car_transport_)) {
+                              return;
+                            }
+                            add_gen(route_gen<Dir>(tt, rtt, r, a, b, q, time));
+                          });
           }});
 
   // =====================================
@@ -545,17 +541,16 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
                           {0U, static_cast<stop_idx_t>(
                                    rtt->rt_transport_location_seq_[x].size())},
                       .rt_ = x}};
-              for_each_pair(
-                  rtt->rt_transport_location_seq_[x], boarding_locs,
-                  alighting_locs, q.prf_idx_,
-                  [&](stop_idx_t const b_idx, stop_idx_t const a_idx) {
-                    if (sections_violate_constraints(
-                            fr, b_idx, a_idx, q.require_bike_transport_,
-                            q.require_car_transport_)) {
-                      return;
-                    }
-                    add_gen(rt_gen<Dir>(tt, *rtt, x, b_idx, a_idx, q, time));
-                  });
+              for_each_pair(rtt->rt_transport_location_seq_[x], boarding_locs,
+                            alighting_locs, q.prf_idx_,
+                            [&](stop_idx_t const a, stop_idx_t const b) {
+                              if (sections_violate_constraints(
+                                      fr, a, b, q.require_bike_transport_,
+                                      q.require_car_transport_)) {
+                                return;
+                              }
+                              add_gen(rt_gen<Dir>(tt, *rtt, x, a, b, q, time));
+                            });
             }});
   }
 
