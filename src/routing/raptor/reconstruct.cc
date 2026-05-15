@@ -9,6 +9,7 @@
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/for_each_meta.h"
+#include "nigiri/location_match_mode.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/raptor/raptor_state.h"
@@ -463,12 +464,12 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
     auto const backup_v = v;
 
-    auto const is_intermodal =
-        q.dest_match_mode_ == location_match_mode::kIntermodal;
     auto stay_l = 0_minutes;
     auto stay_fp_target = 0_minutes;
     trace_reconstruct("  [check_fp] v={}, l={}, fp.target={}, intermodal={}\n",
-                      v, loc{tt, l}, loc{tt, fp.target()}, is_intermodal);
+                      v, loc{tt, l}, loc{tt, fp.target()},
+                      q.dest_match_mode_ == location_match_mode::kIntermodal);
+
     if (v != 0 && matches(tt, location_match_mode::kEquivalent,
                           q.via_stops_[v - 1].location_, l)) {
       --v;
@@ -489,9 +490,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
                           q.via_stops_[v - 1].location_, fp.target())) {
       --v;
       assert(stay_fp_target == 0_minutes);
-      if (is_intermodal) {
-        stay_fp_target = q.via_stops_[v].stay_;
-      }
+      stay_fp_target = q.via_stops_[v].stay_;
       trace_reconstruct(
           "  [check_fp]: fp target matches current via: v={}->{}, "
           "stay_fp_target={}\n",
@@ -540,7 +539,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
                        l,
                        delta_to_unix(base, fp_start),
                        delta_to_unix(base, fp_start + dir(fp_duration)),
-                       footpath{fp.target(), duration_t{fp_duration}}};
+                       footpath{fp.target(), fp.duration()}};
       return std::pair{fp_leg, *transport_leg};
     } else {
       trace_reconstruct("nothing found\n");
@@ -662,7 +661,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       auto const footpaths = kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][l]
                                   : tt.locations_.footpaths_out_[q.prf_idx_][l];
       for (auto const& fp : footpaths) {
-        auto fp_legs = check_fp(k, l, curr_time, fp, false, true);
+        auto fp_legs = check_fp(k, l, curr_time, fp, true, false);
         if (fp_legs.has_value()) {
           return std::move(*fp_legs);
         }
@@ -680,7 +679,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       auto legs = std::optional<std::pair<journey::leg, journey::leg>>{};
       for_each_footpath<SearchDir>(
           td_footpaths, unix_now, [&](footpath const& fp) {
-            auto fp_legs = check_fp(k, l, curr_time, fp, false, true);
+            auto fp_legs = check_fp(k, l, curr_time, fp, true, true);
             if (fp_legs.has_value()) {
               legs = std::move(*fp_legs);
               return utl::cflow::kBreak;
