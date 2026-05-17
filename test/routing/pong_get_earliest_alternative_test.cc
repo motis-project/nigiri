@@ -189,18 +189,18 @@ agency_id,agency_name,agency_url,agency_timezone
 DB,DB,https://db.de,Europe/Berlin
 
 # stops.txt
-stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
-X,X,0.0,1.0,,
-A,A,0.0,1.0,,
-B,B,2.0,3.0,,
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station,wheelchair_boarding
+X,X,0.0,1.0,,,1
+A,A,0.0,1.0,,,1
+B,B,2.0,3.0,,,1
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
 R,DB,R,,,3
 
 # trips.txt
-route_id,service_id,trip_id,trip_headsign
-R,S,T,
+route_id,service_id,trip_id,trip_headsign,wheelchair_accessible
+R,S,T,,1
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -269,18 +269,18 @@ agency_id,agency_name,agency_url,agency_timezone
 DB,DB,https://db.de,Europe/Berlin
 
 # stops.txt
-stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
-A,A,0.0,1.0,,
-B,B,2.0,3.0,,
-Y,Y,4.0,5.0,,
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station,wheelchair_boarding
+A,A,0.0,1.0,,,1
+B,B,2.0,3.0,,,1
+Y,Y,4.0,5.0,,,1
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
 R,DB,R,,,3
 
 # trips.txt
-route_id,service_id,trip_id,trip_headsign
-R,S,T,
+route_id,service_id,trip_id,trip_headsign,wheelchair_accessible
+R,S,T,,1
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
