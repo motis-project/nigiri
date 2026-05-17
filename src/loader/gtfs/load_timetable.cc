@@ -291,6 +291,9 @@ void load_timetable(loader_config const& config,
         route_key_ptr_t{clasz, stop_seq, bikes_allowed_seq, cars_allowed_seq});
     if (it != end(route_services)) {
       for (auto& r : it->second) {
+        if (r.front().tz_offset_ != s.tz_offset_) {
+          continue;
+        }
         auto const idx = get_index(r, s);
         if (idx.has_value()) {
           r.insert(std::next(begin(r), static_cast<int>(*idx)), s);
