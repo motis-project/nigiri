@@ -195,7 +195,7 @@ struct rt_timetable {
   bool is_transport_active(transport_idx_t const t, day_idx_t const day) const {
     return bitfields_[transport_traffic_days_[t]].test(to_idx(day));
   }
-  
+
   bool has_wheelchair_transport(rt_transport_idx_t const r) const {
     return rt_transport_wheelchair_accessibility_[to_idx(r) * 2U] ||
            rt_transport_wheelchair_accessibility_[to_idx(r) * 2U + 1U];
