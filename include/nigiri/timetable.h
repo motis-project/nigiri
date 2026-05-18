@@ -493,6 +493,7 @@ struct timetable {
   // Ticketing
   hash_map<provider_idx_t, hash_map<location_idx_t, string>>
       location_ticketing_identifier_;
+  hash_map<trip_idx_t, string> trip_ticketing_identifier_;
   hash_map<location_idx_t, std::monostate> location_ticketing_unavailable_;
   hash_map<trip_idx_t, std::monostate> trip_ticketing_unavailable_;
 
