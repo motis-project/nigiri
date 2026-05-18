@@ -128,7 +128,7 @@ void read_stop_times(trip_data& trips,
     if (store_distances) {
       add_distance(*t, *s.distance_);
     }
-    t->stop_ticketing_unavailable_.push_back(s.ticketing_type.val() == 2);
+    t->stop_ticketing_unavailable_.push_back(s.ticketing_type.val() == 1);
   };
 
   auto last_trip = static_cast<trip*>(nullptr);
