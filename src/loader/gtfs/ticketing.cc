@@ -119,6 +119,11 @@ void load_ticketing(timetable& tt,
                                                    std::monostate{});
       }
     }
+
+    if (!trip.ticketing_trip_id_.empty()) {
+      tt.trip_ticketing_identifier_.emplace(trip.trip_idx_,
+                                            string{trip.ticketing_trip_id_});
+    }
   }
 }
 
