@@ -298,7 +298,9 @@ utl::generator<std::vector<journey::leg>> route_gen(
 
   while (kFwd ? day_int <= day_hi : day_int >= day_lo) {
     auto const day = day_idx_t{static_cast<day_idx_t::value_t>(day_int)};
-    for (auto t_offset = 0U; t_offset < n_transports; ++t_offset) {
+    auto const route_active = tt.is_route_active(r, day);
+    for (auto t_offset = 0U; route_active && t_offset < n_transports;
+         ++t_offset) {
       auto const idx = kFwd ? t_offset : (n_transports - 1U - t_offset);
       auto const ev = events[idx];
       auto const t = tt.route_transport_ranges_[r][idx];
@@ -307,17 +309,22 @@ utl::generator<std::vector<journey::leg>> route_gen(
       if (day_off < 0) {
         continue;
       }
-      auto const start_day = static_cast<std::size_t>(day_off);
+      auto const start_day =
+          day_idx_t{static_cast<day_idx_t::value_t>(day_off)};
       auto const& bitfields = rtt != nullptr ? rtt->bitfields_ : tt.bitfields_;
       auto const traffic_idx = rtt != nullptr ? rtt->transport_traffic_days_[t]
                                               : tt.transport_traffic_days_[t];
-      if (start_day >= bitfields[traffic_idx].size() ||
-          !bitfields[traffic_idx].test(start_day)) {
+      if (to_idx(start_day) >= bitfields[traffic_idx].size()) {
+        continue;
+      }
+      auto const transport_active = rtt != nullptr
+                                        ? rtt->is_transport_active(t, start_day)
+                                        : tt.is_transport_active(t, start_day);
+      if (!transport_active) {
         continue;
       }
 
-      auto const tr =
-          transport{t, day_idx_t{static_cast<day_idx_t::value_t>(start_day)}};
+      auto const tr = transport{t, start_day};
       auto const boarding_time =
           tt.event_time(tr, boarding_idx, event_type::kDep);
       auto const alighting_time =
