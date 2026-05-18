@@ -131,7 +131,7 @@ trip::trip(route_id_idx_t route,
       bikes_allowed_{bikes_allowed},
       cars_allowed_{cars_allowed},
       wheelchair_accessible_{accessible},
-      ticketing_trip_id{ticketing_trip_id},
+      ticketing_trip_id_{ticketing_trip_id},
       ticketing_unavailable_{ticketing_unavailable} {}
 
 interpolate_result interpolate(std::vector<stop_events>& event_times) {

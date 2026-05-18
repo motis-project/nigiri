@@ -127,7 +127,7 @@ struct trip {
   bool wheelchair_accessible_{false};
   std::uint32_t from_line_{0U}, to_line_{0U};
 
-  std::string ticketing_trip_id;
+  std::string ticketing_trip_id_;
   bool ticketing_unavailable_{false};
   std::vector<bool> stop_ticketing_unavailable_;
 
