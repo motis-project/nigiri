@@ -120,7 +120,7 @@ L001I01S1FES,08:31:00,,23,19,,0,0,7.473
       .emplace_back(route_id_idx_t::invalid(), nullptr, nullptr, "L001I01S1FES",
                     kEmptyTranslation, kEmptyTranslation,
                     direction_id_t::invalid(), shape_idx_t::invalid(), false,
-                    false, false)
+                    false, false, "", false)
       .trip_idx_ = {};
   auto tt = timetable{};
   tt.trip_debug_.emplace_back().emplace_back(trip_debug{});
@@ -158,7 +158,7 @@ L001I01S1FES,,08:31:00,23,19,,0,0,7.473
       .emplace_back(route_id_idx_t::invalid(), nullptr, nullptr, "L001I01S1FES",
                     kEmptyTranslation, kEmptyTranslation,
                     direction_id_t::invalid(), shape_idx_t::invalid(), false,
-                    false, false)
+                    false, false, "", false)
       .trip_idx_ = {};
   auto tt = timetable{};
   tt.trip_debug_.emplace_back().emplace_back(trip_debug{});
@@ -187,7 +187,7 @@ L001I01S1FES,,,23,19,,0,0,7.473
       .emplace_back(route_id_idx_t::invalid(), nullptr, nullptr, "L001I01S1FES",
                     kEmptyTranslation, kEmptyTranslation,
                     direction_id_t::invalid(), shape_idx_t::invalid(), false,
-                    false, false)
+                    false, false, "", false)
       .trip_idx_ = {};
   auto tt = timetable{};
   tt.trip_debug_.emplace_back().emplace_back(trip_debug{});
@@ -212,7 +212,7 @@ TEST(gtfs, read_stop_times_example_data) {
   auto i18n = translator{.tt_ = tt};
 
   auto const config = loader_config{};
-  auto agencies =
+  auto [agencies, _] =
       read_agencies(source_idx_t{0}, tt, i18n, timezones,
                     files.get_file(kAgencyFile).data(), "Europe/Berlin");
   auto const routes =
