@@ -178,54 +178,55 @@ route_map_t read_routes(source_idx_t const src,
   utl::line_range{
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_route>()  //
-      | utl::for_each([&](csv_route const& r) {
-          auto const a =
-              agencies.size() == 1U
-                  ? agencies.begin()->second
-                  : utl::get_or_create(agencies, r.agency_id_->view(), [&]() {
-                      log(log_lvl::error, "gtfs.route",
-                          "agency {} not found, using UNKNOWN with default "
-                          "timezone {}",
-                          r.agency_id_->view(), default_tz);
+      |
+      utl::for_each([&](csv_route const& r) {
+        auto const a =
+            agencies.size() == 1U
+                ? agencies.begin()->second
+                : utl::get_or_create(agencies, r.agency_id_->view(), [&]() {
+                    log(log_lvl::error, "gtfs.route",
+                        "agency {} not found, using UNKNOWN with default "
+                        "timezone {}",
+                        r.agency_id_->view(), default_tz);
 
-                      auto const id = r.agency_id_->view().empty()
-                                          ? "UKN"
-                                          : r.agency_id_->view();
-                      return register_agency(
-                          tt, agency{tt, src, id, kEmptyTranslation,
-                                     kEmptyTranslation,
-                                     get_tz_idx(tt, timezones, default_tz),
-                                     timezones});
-                    });
+                    auto const id = r.agency_id_->view().empty()
+                                        ? "UKN"
+                                        : r.agency_id_->view();
+                    return register_agency(
+                        tt, agency{tt, src, id, kEmptyTranslation,
+                                   kEmptyTranslation,
+                                   get_tz_idx(tt, timezones, default_tz),
+                                   timezones});
+                  });
 
-          if (a == provider_idx_t::invalid()) {
-            return;  // agency has been blacklisted by user script
-          }
+        if (a == provider_idx_t::invalid()) {
+          return;  // agency has been blacklisted by user script
+        }
 
-          auto x = loader::route{
-              tt,
-              src,
-              r.route_id_->view(),
-              i18n.get(t::kRoutes, f::kRouteShortName,
-                       r.route_short_name_->view(), r.route_id_->view()),
-              i18n.get(t::kRoutes, f::kRouteLongName,
-                       r.route_long_name_->view(), r.route_id_->view()),
-              i18n.get(t::kRoutes, f::kRouteURL, r.route_url_->view(),
-                       r.route_id_->view()),
-              route_type_t{*r.route_type_},
-              {.color_ = to_color(r.route_color_->view()),
-               .text_color_ = to_color(r.route_text_color_->view())},
-              a,
-              category_idx_t::invalid()};
-          if (process_route(user_script, x)) {
-            map.emplace(r.route_id_->to_str(),
-                        std::make_unique<route>(route{
-                            .route_id_idx_ = register_route(tt, x),
-                            .network_ = std::string{r.network_id_->view()},
-                            .ticketing_deep_link_id_ = std::string{
-                                r.ticketing_deep_link_id->view()}}));
-          }
-        });
+        auto x = loader::route{
+            tt,
+            src,
+            r.route_id_->view(),
+            i18n.get(t::kRoutes, f::kRouteShortName,
+                     r.route_short_name_->view(), r.route_id_->view()),
+            i18n.get(t::kRoutes, f::kRouteLongName, r.route_long_name_->view(),
+                     r.route_id_->view()),
+            i18n.get(t::kRoutes, f::kRouteURL, r.route_url_->view(),
+                     r.route_id_->view()),
+            route_type_t{*r.route_type_},
+            {.color_ = to_color(r.route_color_->view()),
+             .text_color_ = to_color(r.route_text_color_->view())},
+            a,
+            category_idx_t::invalid()};
+        if (process_route(user_script, x)) {
+          map.emplace(r.route_id_->to_str(),
+                      std::make_unique<route>(route{
+                          .route_id_idx_ = register_route(tt, x),
+                          .network_ = std::string{r.network_id_->view()},
+                          .ticketing_deep_link_id_ =
+                              std::string{r.ticketing_deep_link_id->view()}}));
+        }
+      });
   return map;
 }
 
