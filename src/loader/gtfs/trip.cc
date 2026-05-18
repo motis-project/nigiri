@@ -117,7 +117,7 @@ trip::trip(route_id_idx_t route,
            shape_idx_t const shape_idx,
            bool const bikes_allowed,
            bool const cars_allowed,
-           bool accessible)
+           bool accessible,
            std::string ticketing_trip_id,
            bool ticketing_unavailable)
     : route_{route},

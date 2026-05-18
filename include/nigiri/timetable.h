@@ -1,6 +1,7 @@
 #pragma once
 
 #include <compare>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <span>
@@ -494,7 +495,12 @@ struct timetable {
   hash_map<location_idx_t, std::monostate> location_ticketing_unavailable_;
   hash_map<trip_idx_t, std::monostate> trip_ticketing_unavailable_;
 
+  enum class ticketing_link_type : uint8_t {
+    kGoogleTransit,
+  };
+
   struct ticketing_link {
+    ticketing_link_type type_;
     string web_;
     string android_;
     string ios_;
