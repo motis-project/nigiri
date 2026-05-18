@@ -259,11 +259,11 @@ void reconstruct_journey_with_vias(timetable const& tt,
   };
 
   auto const is_transport_active = [&](transport_idx_t const t,
-                                       std::size_t const day) {
+                                       day_idx_t const day) {
     if (rtt != nullptr) {
-      return rtt->bitfields_[rtt->transport_traffic_days_[t]].test(day);
+      return rtt->is_transport_active(t, day);
     } else {
-      return tt.bitfields_[tt.transport_traffic_days_[t]].test(day);
+      return tt.is_transport_active(t, day);
     }
   };
 
@@ -286,7 +286,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
 
       auto const traffic_day = to_idx(day) - event_mam.count() / 1440;
-      if (!is_transport_active(t, static_cast<std::size_t>(traffic_day))) {
+      if (!is_transport_active(t, day_idx_t{traffic_day})) {
         trace_rc_transport_no_traffic;
         continue;
       }

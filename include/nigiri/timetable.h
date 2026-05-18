@@ -142,6 +142,14 @@ struct timetable {
 
   transport_idx_t next_transport_idx() const;
 
+  bool is_transport_active(transport_idx_t const t, day_idx_t const day) const {
+    return bitfields_[transport_traffic_days_[t]].test(to_idx(day));
+  }
+
+  bool is_route_active(route_idx_t const r, day_idx_t const day) const {
+    return bitfields_[route_traffic_days_[r]].test(to_idx(day));
+  }
+
   std::span<delta const> event_times_at_stop(route_idx_t const r,
                                              stop_idx_t const stop_idx,
                                              event_type const ev_type) const {
@@ -398,6 +406,9 @@ struct timetable {
 
   // Trip index -> traffic day bitfield
   vector_map<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
+
+  // Route -> traffic day bitfield
+  vector_map<route_idx_t, bitfield_idx_t> route_traffic_days_;
 
   // Unique bitfields
   vector_map<bitfield_idx_t, bitfield> bitfields_;

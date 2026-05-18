@@ -153,6 +153,38 @@ void correct_color_contrast(timetable& tt) {
   }
 }
 
+void rebuild_route_traffic_days(timetable& tt) {
+  tt.route_traffic_days_.resize(tt.n_routes());
+
+  for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
+    auto combined = bitfield{};
+    auto const& seq = tt.route_location_seq_[r];
+    auto const stop_count = static_cast<stop_idx_t>(seq.size());
+
+    for (auto const t : tt.route_transport_ranges_[r]) {
+      auto max_delta = std::int16_t{0};
+      for (auto s = stop_idx_t{0U}; s != stop_count; ++s) {
+        if (s != 0U) {
+          max_delta = std::max(max_delta,
+                               tt.event_mam(r, t, s, event_type::kArr).days());
+        }
+        if (s + 1U != stop_count) {
+          max_delta = std::max(max_delta,
+                               tt.event_mam(r, t, s, event_type::kDep).days());
+        }
+      }
+
+      auto const& trans_bf = tt.bitfields_[tt.transport_traffic_days_[t]];
+      for (auto d = std::int16_t{0}; d <= max_delta; ++d) {
+        combined |= (trans_bf << static_cast<std::size_t>(d));
+      }
+    }
+
+    tt.bitfields_.emplace_back(combined);
+    tt.route_traffic_days_[r] = bitfield_idx_t{tt.bitfields_.size() - 1U};
+  }
+}
+
 void finalize(timetable& tt, finalize_options const opt) {
   tt.location_routes_.resize(tt.n_locations());
 
@@ -184,6 +216,7 @@ void finalize(timetable& tt, finalize_options const opt) {
         });
   }
   build_footpaths(tt, opt);
+  rebuild_route_traffic_days(tt);
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);
   build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
   build_location_tree(tt);
