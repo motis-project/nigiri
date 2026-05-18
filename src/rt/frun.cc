@@ -301,7 +301,7 @@ std::string_view run_stop::route_url(event_type const ev_type,
   auto const [route_ids, route_id_idx] = get_route(ev_type);
   return route_ids == nullptr
              ? "?"
-             : tt().translate(lang, route_ids->rotue_id_url_.at(route_id_idx));
+             : tt().translate(lang, route_ids->route_id_url_.at(route_id_idx));
 }
 
 std::string_view run_stop::trip_short_name(event_type const ev_type,

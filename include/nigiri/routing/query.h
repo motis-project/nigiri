@@ -72,7 +72,7 @@ struct query {
   void sanitize(timetable const&);
   bool operator==(query const& o) const;
 
-  start_time_t start_time_;
+  start_time_t start_time_{};
   location_match_mode start_match_mode_{
       nigiri::routing::location_match_mode::kExact};
   location_match_mode dest_match_mode_{

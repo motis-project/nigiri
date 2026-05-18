@@ -9,17 +9,20 @@
 #include "utl/parser/csv.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
+#include "utl/pipes/for_each.h"
 #include "utl/pipes/transform.h"
 #include "utl/pipes/vec.h"
 #include "utl/progress_tracker.h"
+#include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/common/cached_lookup.h"
 #include "nigiri/logging.h"
-#include "utl/pipes/for_each.h"
 
 namespace nigiri::loader::gtfs {
+
+constexpr auto kMaxStopSequenceNum = std::numeric_limits<uint16_t>::max();
 
 void add_distance(auto& trip_data, double const distance) {
   auto& distances = trip_data.distance_traveled_;
@@ -197,11 +200,22 @@ void read_stop_times(trip_data& trips,
           return;
         }
 
+        auto const seq = utl::parse<std::uint32_t>(*s.stop_sequence_);
+        if (seq >= kMaxStopSequenceNum) {
+          log(log_lvl::error, "loader.gtfs.stop_time",
+              "stop_times.txt:{}: {} exceeds max stop sequence {}", line_number,
+              seq, kMaxStopSequenceNum);
+        }
+
         // Store common attributes of regular trips and flex trips.
-        auto const seq = utl::parse<std::uint16_t>(*s.stop_sequence_);
         t->requires_sorting_ |=
             (!t->seq_numbers_.empty() && t->seq_numbers_.back() > seq);
-        t->seq_numbers_.push_back(seq);
+        t->seq_numbers_.push_back(static_cast<stop_idx_t>(
+            seq < kMaxStopSequenceNum ? seq
+            : t->seq_numbers_.empty() ? 0
+            : t->seq_numbers_.back() != kMaxStopSequenceNum
+                ? t->seq_numbers_.back() + 1U
+                : kMaxStopSequenceNum));
         if (!s.stop_headsign_->empty()) {
           t->stop_headsigns_.resize(t->seq_numbers_.size(), t->headsign_);
           t->stop_headsigns_.back() = i18n.get(

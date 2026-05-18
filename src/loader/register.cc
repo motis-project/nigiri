@@ -720,7 +720,7 @@ route_id_idx_t register_route(timetable& tt, route const& r) {
   route_id.route_id_category_.emplace_back(r.category_);
   route_id.route_id_short_names_.emplace_back(r.short_name_);
   route_id.route_id_long_names_.emplace_back(r.long_name_);
-  route_id.rotue_id_url_.emplace_back(r.url_);
+  route_id.route_id_url_.emplace_back(r.url_);
   route_id.route_id_colors_.emplace_back(r.color_);
   route_id.route_id_type_.emplace_back(r.route_type_);
   route_id.route_id_provider_.emplace_back(r.agency_);
