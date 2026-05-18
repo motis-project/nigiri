@@ -195,6 +195,11 @@ struct rt_timetable {
   bool is_transport_active(transport_idx_t const t, day_idx_t const day) const {
     return bitfields_[transport_traffic_days_[t]].test(to_idx(day));
   }
+  
+  bool has_wheelchair_transport(rt_transport_idx_t const r) const {
+    return rt_transport_wheelchair_accessibility_[to_idx(r) * 2U] ||
+           rt_transport_wheelchair_accessibility_[to_idx(r) * 2U + 1U];
+  }
 
   array<bitvec_map<location_idx_t>, kNProfiles> has_td_footpaths_out_;
   array<bitvec_map<location_idx_t>, kNProfiles> has_td_footpaths_in_;
@@ -261,11 +266,18 @@ struct rt_timetable {
   // same for cars
   bitvec rt_transport_cars_allowed_;
 
+  // same for wheelchair accessibility
+  bitvec rt_transport_wheelchair_accessibility_;  // TODO actually fill this
+                                                  // from somewhere
+
   // RT transport -> bikes allowed for each section
   vecvec<rt_transport_idx_t, bool> rt_bikes_allowed_per_section_;
 
   // same for cars
   vecvec<rt_transport_idx_t, bool> rt_cars_allowed_per_section_;
+
+  // same for wheelchair accessbility
+  vecvec<rt_transport_idx_t, bool> rt_wheelchair_accessible_per_section_;
 
   // Service alerts
   alerts alerts_;
