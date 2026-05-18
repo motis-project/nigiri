@@ -58,9 +58,12 @@ hash_map<std::string_view, ticketing_link_idx_t> read_ticketing_deep_links(
       file_content, [&](ticketing_deep_links_row const& t) {
         ticketing_link_idx_t const idx =
             ticketing_link_idx_t{tt.ticketing_links_.size()};
-        timetable::ticketing_link links{string{t.web_url->view()},
-                                        string{t.android_intent_uri->view()},
-                                        string{t.ios_url->view()}};
+        timetable::ticketing_link links{
+            timetable::ticketing_link_type::kGoogleTransit,
+            string{t.web_url->view()},
+            string{t.android_intent_uri->view()},
+            string{t.ios_url->view()},
+        };
         tt.ticketing_links_.emplace_back({std::move(links)});
         map.emplace(t.ticketing_deep_link_id->view(), idx);
       });
