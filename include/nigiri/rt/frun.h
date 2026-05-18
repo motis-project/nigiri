@@ -66,6 +66,7 @@ struct run_stop {
 
   bool bikes_allowed(event_type) const;
   bool cars_allowed(event_type) const;
+  bool wheelchair_accessible(event_type) const;
 
   route_color get_route_color(event_type) const;
 

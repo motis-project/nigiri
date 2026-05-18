@@ -184,7 +184,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
   auto const find_entry_in_prev_round =
       [&](unsigned const k, rt::run const& r, stop_idx_t const from_stop_idx,
           delta_t, bool const section_bike_filter,
-          bool const section_car_filter) -> std::optional<journey::leg> {
+          bool const section_car_filter,
+          bool const section_wheelchair_filter) -> std::optional<journey::leg> {
     auto const fr = rt::frun{tt, rtt, r};
     auto const n_stops = kFwd ? from_stop_idx + 1U : fr.size() - from_stop_idx;
     auto new_v = v;
@@ -201,6 +202,12 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
       if (section_car_filter &&
           !stp.cars_allowed(kFwd ? event_type::kDep : event_type::kArr)) {
+        break;
+      }
+
+      if (section_wheelchair_filter &&
+          !stp.wheelchair_accessible(kFwd ? event_type::kDep
+                                          : event_type::kArr)) {
         break;
       }
 
@@ -263,7 +270,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
   auto const get_route_transport =
       [&](unsigned const k, delta_t const time, route_idx_t const r,
           stop_idx_t const stop_idx, bool const section_bike_filter,
-          bool const section_car_filter,
+          bool const section_car_filter, bool const section_wheelchair_filter,
           bool const is_td_footpath) -> std::optional<journey::leg> {
     auto const [day, mam] = split_day_mam(base_day_idx, time);
 
@@ -311,7 +318,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
                interval<stop_idx_t>{0, static_cast<stop_idx_t>(
                                            tt.route_location_seq_[r].size())}},
           stop_idx, unix_to_delta(base, ev_time), section_bike_filter,
-          section_car_filter);
+          section_car_filter, section_wheelchair_filter);
       if (leg.has_value()) {
         return leg;
       }
@@ -367,6 +374,23 @@ void reconstruct_journey_with_vias(timetable const& tt,
           }
         }
 
+        auto section_wheelchair_filter = false;
+        if (is_wheelchair) {
+          auto const wheelchair_accessible_on_all_sections =
+              rtt->rt_transport_wheelchair_accessibility_.test(rt_t.v_ * 2);
+          auto const wheelchair_accessible_on_some_sections =
+              rtt->rt_transport_wheelchair_accessibility_.test(rt_t.v_ * 2 + 1);
+          trace_reconstruct(
+              "  rt_t={}: cars allowed on_all={} on_some={} (RT)\n", rt_t,
+              cars_allowed_on_all_sections, cars_allowed_on_some_sections);
+          if (!wheelchair_accessible_on_all_sections) {
+            if (!wheelchair_accessible_on_some_sections) {
+              continue;
+            }
+            section_wheelchair_filter = true;
+          }
+        }
+
         auto const location_seq = rtt->rt_transport_location_seq_[rt_t];
         for (auto const [i, s] : utl::enumerate(location_seq)) {
           auto const stp = stop{s};
@@ -384,7 +408,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
           }
 
           auto leg = find_entry_in_prev_round(
-              k, fr, stop_idx, time, section_bike_filter, section_car_filter);
+              k, fr, stop_idx, time, section_bike_filter, section_car_filter,
+              section_wheelchair_filter);
           if (leg.has_value()) {
             return leg;
           }
@@ -431,6 +456,24 @@ void reconstruct_journey_with_vias(timetable const& tt,
         }
       }
 
+      auto section_wheelchair_filter = false;
+      if (is_wheelchair) {
+        auto const wheelchair_accessible_on_all_sections =
+            tt.route_wheelchair_accessible_.test(r.v_ * 2);
+        auto const wheelchair_accessible_on_some_sections =
+            tt.route_wheelchair_accessible_.test(r.v_ * 2 + 1);
+        trace_reconstruct(
+            "  r={}: wheelchair accessible on_all={} on_some={}\n", r,
+            wheelchair_accessible_on_all_sections,
+            wheelchair_accessible_on_some_sections);
+        if (!wheelchair_accessible_on_all_sections) {
+          if (!wheelchair_accessible_on_some_sections) {
+            continue;
+          }
+          section_car_filter = true;
+        }
+      }
+
       auto const location_seq = tt.route_location_seq_[r];
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         auto const stp = stop{s};
@@ -441,9 +484,9 @@ void reconstruct_journey_with_vias(timetable const& tt,
           continue;
         }
 
-        auto leg = get_route_transport(k, time, r, static_cast<stop_idx_t>(i),
-                                       section_bike_filter, section_car_filter,
-                                       is_td_footpath);
+        auto leg = get_route_transport(
+            k, time, r, static_cast<stop_idx_t>(i), section_bike_filter,
+            section_car_filter, section_wheelchair_filter, is_td_footpath);
         if (leg.has_value()) {
           return leg;
         }
