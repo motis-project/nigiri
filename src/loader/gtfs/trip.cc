@@ -340,7 +340,7 @@ trip_data read_trips(source_idx_t const src,
             x.headsign_, trip_short_name, x.direction_, shape_idx,
             bikes_allowed, cars_allowed, wheelchair_accessible,
             std::string{t.ticketing_trip_id->view()},
-            t.ticketing_type.val() != 1});
+            t.ticketing_type.val() == 1});
         ret.data_.back().trip_idx_ = register_trip(tt, x);
         ret.trips_.emplace(t.trip_id_->to_str(), gtfs_trp_idx);
         if (blk != nullptr) {
