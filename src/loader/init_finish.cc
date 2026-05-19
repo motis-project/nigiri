@@ -134,20 +134,33 @@ float contrast_ratio(color_t a, color_t b) {
 void correct_color_contrast(timetable& tt) {
   for (auto& ids : tt.route_ids_) {
     for (auto& colors : ids.route_id_colors_) {
-      if (colors.color_ == 0 || colors.text_color_ == 0) {
-        continue;
+      constexpr auto white = color_t(0xFFFFFFFF);
+      constexpr auto black = color_t(0xFF000000);
+
+      if (colors.color_ != 0 && colors.text_color_ != 0) {
+        auto const ratio = contrast_ratio(colors.color_, colors.text_color_);
+
+        if (ratio < 2.0f) {
+          auto const better = contrast_ratio(colors.color_, black) >
+                                      contrast_ratio(colors.color_, white)
+                                  ? black
+                                  : white;
+          colors.text_color_ = better;
+        }
       }
 
-      auto const ratio = contrast_ratio(colors.color_, colors.text_color_);
+      if (colors.color_ == 0 && colors.text_color_ != 0) {
+        colors.color_ = contrast_ratio(colors.text_color_, black) >
+                                contrast_ratio(colors.text_color_, white)
+                            ? black
+                            : white;
+      }
 
-      if (ratio < 2.0f) {
-        constexpr auto white = color_t(0xFFFFFFFF);
-        constexpr auto black = color_t(0xFF000000);
-        auto const better = contrast_ratio(colors.color_, black) >
-                                    contrast_ratio(colors.color_, white)
-                                ? black
-                                : white;
-        colors.text_color_ = better;
+      if (colors.color_ != 0 && colors.text_color_ == 0) {
+        colors.text_color_ = contrast_ratio(colors.color_, black) >
+                                     contrast_ratio(colors.color_, white)
+                                 ? black
+                                 : white;
       }
     }
   }
