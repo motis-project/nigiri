@@ -75,12 +75,12 @@ R4,DB,RE 2,,,2
 R5,DB,RE 1,,,2
 
 # trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-R1,S,T1,RE 1,
-R2,S,T2,RE 2,
-R3,S,T3,RE 3,
-R4,S,T4,RE 4,
-R5,S,T5,RE 5,
+route_id,service_id,trip_id,trip_headsign,block_id,wheelchair_accessible
+R1,S,T1,RE 1,,1
+R2,S,T2,RE 2,,1
+R3,S,T3,RE 3,,1
+R4,S,T4,RE 4,,1
+R5,S,T5,RE 5,,1
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type

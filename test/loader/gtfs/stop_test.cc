@@ -19,9 +19,9 @@ TEST(gtfs, read_stations_example_data) {
   register_special_stations(tt);
 
   auto const files = example_files();
-  auto const [stops, _] = read_stops(source_idx_t{0}, tt, i18n, timezones,
-                                     files.get_file(kStopFile).data(),
-                                     files.get_file(kTransfersFile).data(), 0U);
+  auto const [stops, _transfers, _accessibility] = read_stops(
+      source_idx_t{0}, tt, i18n, timezones, files.get_file(kStopFile).data(),
+      files.get_file(kTransfersFile).data(), 0U);
 
   EXPECT_EQ(8, stops.size());
 
@@ -67,9 +67,9 @@ TEST(gtfs, read_stations_berlin_data) {
   auto i18n = translator{.tt_ = tt};
 
   auto const files = berlin_files();
-  auto const [stops, _] = read_stops(source_idx_t{0}, tt, i18n, timezones,
-                                     files.get_file(kStopFile).data(),
-                                     files.get_file(kTransfersFile).data(), 0U);
+  auto const [stops, _transfers, _accessibility] = read_stops(
+      source_idx_t{0}, tt, i18n, timezones, files.get_file(kStopFile).data(),
+      files.get_file(kTransfersFile).data(), 0U);
 
   EXPECT_EQ(3, stops.size());
 
