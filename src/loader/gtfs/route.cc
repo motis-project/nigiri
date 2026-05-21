@@ -61,13 +61,13 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 117 /* Additional Rail Service */: return clasz::kRegional;
     case 200 /* Coach Service */:
     case 201 /* International Coach Service */:
-    case 202 /* National Coach Service */:
+    case 202 /* National Coach Service */: return clasz::kCoach;
     case 203 /* Shuttle Coach Service */:
-    case 204 /* Regional Coach Service */:
+    case 204 /* Regional Coach Service */: return clasz::kBus;
     case 205 /* Special Coach Service */:
     case 206 /* Sightseeing Coach Service */:
-    case 207 /* Tourist Coach Service */:
-    case 208 /* Commuter Coach Service */:
+    case 207 /* Tourist Coach Service */: return clasz::kCoach;
+    case 208 /* Commuter Coach Service */: return clasz::kBus;
     case 209 /* All Coach Services */: return clasz::kCoach;
     case 400 /* Urban Railway Service */:
     case 401 /* Metro Service */:
