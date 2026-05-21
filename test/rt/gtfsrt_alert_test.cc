@@ -153,6 +153,11 @@ trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_t
 )");
 }
 
+unixtime_t ut(std::uint64_t const s) {
+  return unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
+      std::chrono::seconds{s})};
+}
+
 }  // namespace
 
 TEST(rt, gtfs_rt_alert_agency) {
@@ -172,10 +177,64 @@ TEST(rt, gtfs_rt_alert_agency) {
   auto ae = a.add_informed_entity();
   ae->set_agency_id("grt");
 
+  // All three periods are given: the more precise communication_period and
+  // impact_period must be used, the legacy active_period must be ignored.
+  auto* active = a.add_active_period();
+  active->set_start(60);
+  active->set_end(120);
+  auto* comm = a.add_communication_period();
+  comm->set_start(180);
+  comm->set_end(240);
+  auto* impact = a.add_impact_period();
+  impact->set_start(300);
+  impact->set_end(360);
+
   // weird
   handle_alert(today, tt, rtt, source_idx_t{1}, "tag", a, stats);
   EXPECT_EQ(0, rtt.alerts_.agency_[provider_idx_t{0}].size());
 
   handle_alert(today, tt, rtt, source_idx_t{0}, "tag", a, stats);
   EXPECT_EQ(1, rtt.alerts_.agency_[provider_idx_t{0}].size());
+
+  auto const idx = alert_idx_t{0};
+  ASSERT_EQ(1, rtt.alerts_.communication_period_[idx].size());
+  ASSERT_EQ(1, rtt.alerts_.impact_period_[idx].size());
+  EXPECT_EQ((interval<unixtime_t>{ut(180), ut(240)}),
+            rtt.alerts_.communication_period_[idx][0]);
+  EXPECT_EQ((interval<unixtime_t>{ut(300), ut(360)}),
+            rtt.alerts_.impact_period_[idx][0]);
+}
+
+TEST(rt, gtfs_rt_alert_active_period_fallback) {
+  // Load static timetable.
+  timetable tt;
+  register_special_stations(tt);
+  auto const today = date::sys_days{2023_y / August / 9};
+  tt.date_range_ = {today, date::sys_days{2023_y / August / 12}};
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+
+  // Create empty RT timetable.
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
+  auto stats = statistics{.total_entities_ = 0, .feed_timestamp_ = {}};
+
+  auto a = transit_realtime::Alert{};
+  a.add_informed_entity()->set_agency_id("grt");
+
+  // Only the legacy active_period is given (no communication/impact period):
+  // it must still be supported and used as fallback for both periods.
+  auto* active = a.add_active_period();
+  active->set_start(600);
+  active->set_end(1200);
+
+  handle_alert(today, tt, rtt, source_idx_t{0}, "tag", a, stats);
+  EXPECT_EQ(1, rtt.alerts_.agency_[provider_idx_t{0}].size());
+
+  auto const idx = alert_idx_t{0};
+  ASSERT_EQ(1, rtt.alerts_.communication_period_[idx].size());
+  ASSERT_EQ(1, rtt.alerts_.impact_period_[idx].size());
+  EXPECT_EQ((interval<unixtime_t>{ut(600), ut(1200)}),
+            rtt.alerts_.communication_period_[idx][0]);
+  EXPECT_EQ((interval<unixtime_t>{ut(600), ut(1200)}),
+            rtt.alerts_.impact_period_[idx][0]);
 }
