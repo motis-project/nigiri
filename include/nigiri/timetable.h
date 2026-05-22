@@ -500,14 +500,15 @@ struct timetable {
     kGoogleTransit,
   };
 
-  struct ticketing_link {
-    ticketing_link_type type_;
-    string web_;
-    string android_;
-    string ios_;
+  struct ticketing_links {
+    vector_map<ticketing_link_idx_t, ticketing_link_type> type_;
+    vecvec<ticketing_link_idx_t, char> web_;
+    vecvec<ticketing_link_idx_t, char> andoid_;
+    vecvec<ticketing_link_idx_t, char> ios_;
   };
 
-  vecvec<ticketing_link_idx_t, ticketing_link> ticketing_links_;
+  ticketing_links ticketing_links_;
+
   hash_map<provider_idx_t, ticketing_link_idx_t> ticketing_agencies_;
   hash_map<route_id_idx_t, ticketing_link_idx_t> ticketing_routes_;
 };
