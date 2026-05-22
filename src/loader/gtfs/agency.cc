@@ -23,6 +23,7 @@ std::pair<agency_map_t, agency_ticketing_map_t> read_agencies(
     utl::csv_col<cista::raw::generic_string, UTL_NAME("agency_name")> name_;
     utl::csv_col<utl::cstr, UTL_NAME("agency_url")> url_;
     utl::csv_col<utl::cstr, UTL_NAME("agency_timezone")> tz_name_;
+    utl::csv_col<utl::cstr, UTL_NAME("agency_fare_url")> fare_url_;
     // Google Transit Ticketing extension
     utl::csv_col<utl::cstr, UTL_NAME("ticketing_deep_link_id")>
         ticketing_deep_link_id;
@@ -39,6 +40,8 @@ std::pair<agency_map_t, agency_ticketing_map_t> read_agencies(
         a.id_->view(),
         i18n.get(t::kAgency, f::kAgencyName, a.name_->view(), a.id_->view()),
         i18n.get(t::kAgency, f::kAgencyURL, a.url_->view(), a.id_->view()),
+        i18n.get(t::kAgency, f::kAgencyFareUrl, a.fare_url_->view(),
+                 a.id_->view()),
         get_tz_idx(
             tt, timezones,
             a.tz_name_->view().empty() ? default_tz : a.tz_name_->view()),

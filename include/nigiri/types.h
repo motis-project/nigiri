@@ -283,9 +283,9 @@ struct attribute {
 
 struct provider {
   CISTA_COMPARABLE()
-  CISTA_PRINTABLE(provider, "short_name", "long_name", "url")
+  CISTA_PRINTABLE(provider, "short_name", "long_name", "url", "fare_url")
   string_idx_t id_;
-  translation_idx_t name_, url_;
+  translation_idx_t name_, url_, fare_url_;
   timezone_idx_t tz_{timezone_idx_t::invalid()};
   source_idx_t src_;
 };
