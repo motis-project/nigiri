@@ -46,12 +46,14 @@ agency::agency(timetable& tt,
                std::string_view id,
                translation_idx_t name,
                translation_idx_t url,
+               translation_idx_t fare_url,
                timezone_idx_t const tz_idx,
                gtfs::tz_map& tz_map)
     : src_{src},
       id_{id},
       name_{std::move(name)},
       url_{std::move(url)},
+      fare_url_{std::move(fare_url)},
       timezone_idx_{tz_idx},
       tt_{&tt},
       tz_map_{&tz_map} {}
@@ -80,6 +82,16 @@ std::string_view agency::get_url() const {
 }
 translated_str_t agency::get_url_translations() const { return tt_->get(url_); }
 void agency::set_url(translated_str_t x) {
+  url_ = tt_->register_translation(x);
+}
+
+std::string_view agency::get_fare_url() const {
+  return tt_->get_default_translation(fare_url_);
+}
+translated_str_t agency::get_fare_url_translations() const {
+  return tt_->get(fare_url_);
+}
+void agency::set_fare_url(translated_str_t x) {
   url_ = tt_->register_translation(x);
 }
 
@@ -676,7 +688,7 @@ attribute_idx_t register_attribute(timetable& tt, attribute const& a) {
 provider_idx_t register_agency(timetable& tt, agency const& a) {
   auto const idx = tt.providers_.size();
   tt.providers_.emplace_back(provider{tt.strings_.store(a.id_), a.name_, a.url_,
-                                      a.timezone_idx_, a.src_});
+                                      a.fare_url_, a.timezone_idx_, a.src_});
   tt.provider_id_to_idx_.emplace_back(idx);
   return provider_idx_t{idx};
 }
