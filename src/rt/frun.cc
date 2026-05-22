@@ -21,6 +21,7 @@ constexpr auto const kUnknownProvider =
     provider{.id_ = string_idx_t::invalid(),
              .name_ = kEmptyTranslation,
              .url_ = kEmptyTranslation,
+             .fare_url_ = kEmptyTranslation,
              .src_ = source_idx_t::invalid()};
 
 stop run_stop::get_stop() const {

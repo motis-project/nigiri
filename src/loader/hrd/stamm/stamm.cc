@@ -105,6 +105,7 @@ provider_idx_t stamm::resolve_provider(utl::cstr s) {
         provider{.id_ = tt_.strings_.store(s.view()),
                  .name_ = tt_.register_translation(s.view()),
                  .url_ = kEmptyTranslation,
+                 .fare_url_ = kEmptyTranslation,
                  .src_ = source_idx_t{0}});
     providers_[s.to_str()] = idx;
     return idx;

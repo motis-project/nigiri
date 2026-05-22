@@ -45,6 +45,7 @@ provider read_provider_names(timetable& tt,
                   .name_ = tt.register_translation(iso_8859_1_to_utf8(
                       parse_name(line.substr(full_name + 3U)))),
                   .url_ = kEmptyTranslation,
+                  .fare_url_ = kEmptyTranslation,
                   .src_ = src};
 }
 
@@ -71,7 +72,7 @@ provider_map_t parse_providers(config const& c,
             providers[token.to_str()] = register_agency(
                 tt, agency{tt, src, tt.strings_.get(current_info.id_),
                            current_info.name_, kEmptyTranslation,
-                           current_info.tz_, dummy_tz_map});
+                           kEmptyTranslation, current_info.tz_, dummy_tz_map});
           });
         }
       });
