@@ -97,3 +97,36 @@ TEST(gtfs, read_stations_berlin_data) {
   EXPECT_FLOAT_EQ(13.0362980,
                   tt.locations_.coordinates_.at(s2_it->second).lng_);
 }
+
+TEST(gtfs, read_stations_stop_code_platform_fallback) {
+  auto tt = timetable{};
+  auto timezones = tz_map{};
+  auto i18n = translator{.tt_ = tt};
+
+  register_special_stations(tt);
+
+  // P:  station (no platform/track).
+  // A:  platform_code and stop_code set -> platform_code wins.
+  // B:  only stop_code set              -> falls back to stop_code.
+  // C:  neither set                     -> empty.
+  constexpr auto const stops_content = std::string_view{
+      R"(stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,location_type,parent_station,platform_code
+P,,Parent,,52.0,13.0,1,,
+A,A_CODE,Platform A,,52.0,13.0,0,P,A_PLATFORM
+B,B_CODE,Platform B,,52.0,13.0,0,P,
+C,,Platform C,,52.0,13.0,0,P,
+)"};
+
+  auto const [stops, _transfers, _accessibility] =
+      read_stops(source_idx_t{0}, tt, i18n, timezones, stops_content,
+                 std::string_view{}, 0U);
+
+  auto const track = [&](std::string_view const id) {
+    return tt.get_default_translation(
+        tt.locations_.platform_codes_.at(stops.at(std::string{id})));
+  };
+
+  EXPECT_EQ("A_PLATFORM", track("A"));
+  EXPECT_EQ("B_CODE", track("B"));
+  EXPECT_EQ("", track("C"));
+}
