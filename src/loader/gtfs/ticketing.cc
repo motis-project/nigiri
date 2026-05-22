@@ -52,21 +52,26 @@ hash_map<std::string_view, ticketing_link_idx_t> read_ticketing_deep_links(
     utl::csv_col<utl::cstr, UTL_NAME("ios_universal_link_url")> ios_url;
   };
 
-  hash_map<std::string_view, ticketing_link_idx_t> map;
+  auto map = hash_map<std::string_view, ticketing_link_idx_t>{};
 
   utl::for_each_row<ticketing_deep_links_row>(
       file_content, [&](ticketing_deep_links_row const& t) {
         ticketing_link_idx_t const idx =
-            ticketing_link_idx_t{tt.ticketing_links_.size()};
-        timetable::ticketing_link links{
-            timetable::ticketing_link_type::kGoogleTransit,
-            string{t.web_url->view()},
-            string{t.android_intent_uri->view()},
-            string{t.ios_url->view()},
-        };
-        tt.ticketing_links_.emplace_back({std::move(links)});
+            ticketing_link_idx_t{tt.ticketing_links_.web_.size()};
+
+        tt.ticketing_links_.type_.emplace_back(
+            timetable::ticketing_link_type::kGoogleTransit);
+        tt.ticketing_links_.web_.emplace_back(string{t.web_url->view()});
+        tt.ticketing_links_.andoid_.emplace_back(
+            string{t.android_intent_uri->view()});
+        tt.ticketing_links_.ios_.emplace_back(string{t.ios_url->view()});
+
         map.emplace(t.ticketing_deep_link_id->view(), idx);
       });
+
+  assert(tt.ticketing_links_.type_.size() == tt.ticketing_links_.web_.size());
+  assert(tt.ticketing_links_.web_.size() == tt.ticketing_links_.andoid_.size());
+  assert(tt.ticketing_links_.andoid_.size() == tt.ticketing_links_.ios_.size());
 
   return map;
 }
