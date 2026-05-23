@@ -95,7 +95,15 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
     for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
       // Direct match - boarding/alighting at the input loc itself.
       if (l == loc && o_duration < best_dur) {
-        best_dur = o_duration;
+        best_dur =
+            o_duration +
+            (mode == location_match_mode::kExact
+                 // kExact is used for transfers
+                 // -> respect reflexive transfer time
+                 ? adjusted_transfer_time(q.transfer_time_settings_,
+                                          tt.locations_.transfer_time_[l])
+                 // kIntermodal / kEquivalent: no transfer time access/egress
+                 : u8_minutes{0});
         best_source = o.target();
       }
 
