@@ -989,11 +989,16 @@ private:
     auto et = std::array<transport, Vias + 1>{};
     auto v_offset = std::array<std::size_t, Vias + 1>{};
 
+    auto const time_at_dest_k = time_at_dest_[k];
+    auto prev_round_times = round_times_[k - 1];
+
     for (auto i = 0U; i != stop_seq.size(); ++i) {
       auto const stop_idx =
           static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l_idx = cista::to_idx(stp.location_idx());
+      auto const prev_marked = state_.prev_station_mark_[l_idx];
+      auto const lb_l = lb_[l_idx];
       auto const is_first = i == 0U;
       auto const is_last = i == stop_seq.size() - 1U;
 
@@ -1005,7 +1010,7 @@ private:
       // transport (v_offset > 0 if the transport passes via stops)
       for (auto j = 0U; j != Vias + 1; ++j) {
         auto const v = Vias - j;
-        if (!et[v].is_valid() && !state_.prev_station_mark_[l_idx]) {
+        if (!et[v].is_valid() && !prev_marked) {
           trace(
               "┊ │k={} v={}  stop_idx={} {}: not marked, no et - "
               "skip\n",
@@ -1072,14 +1077,13 @@ private:
           }
 
           current_best[v] =
-              get_best(round_times_[k - 1][l_idx][target_v],
-                       tmp_[l_idx][target_v], best_[l_idx][target_v]);
+              get_best(prev_round_times[l_idx][target_v], tmp_[l_idx][target_v],
+                       best_[l_idx][target_v]);
 
           assert(by_transport != std::numeric_limits<delta_t>::min() &&
                  by_transport != std::numeric_limits<delta_t>::max());
-          if (is_better(by_transport, time_at_dest_[k]) &&
-              lb_[l_idx] != kUnreachable &&
-              is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
+          if (is_better(by_transport, time_at_dest_k) && lb_l != kUnreachable &&
+              is_better(by_transport + dir(lb_l), time_at_dest_k)) {
             trace_upd(
                 "┊ │k={} v={}->{}    name={}, dbg={}, time_by_transport={}, "
                 "BETTER THAN current_best={} => update, {} marking station "
@@ -1139,28 +1143,26 @@ private:
       }
 
       if (is_last || !stp.can_start<SearchDir>(is_wheelchair_) ||
-          !state_.prev_station_mark_[l_idx]) {
+          !prev_marked) {
         continue;
       }
 
-      if (lb_[l_idx] == kUnreachable) {
+      if (lb_l == kUnreachable) {
         break;
       }
 
       for (auto v = 0U; v != Vias + 1; ++v) {
-        if (!et[v].is_valid() && !state_.prev_station_mark_[l_idx]) {
+        auto const target_v = v + v_offset[v];
+        auto const prev_round_time = prev_round_times[l_idx][target_v];
+        if (prev_round_time == kInvalid) {
           continue;
         }
-
-        auto const target_v = v + v_offset[v];
         auto const et_time_at_stop =
             et[v].is_valid()
                 ? time_at_stop(r, et[v], stop_idx,
                                kFwd ? event_type::kDep : event_type::kArr)
                 : kInvalid;
-        auto const prev_round_time = round_times_[k - 1][l_idx][target_v];
-        if (prev_round_time != kInvalid &&
-            is_better_or_eq(prev_round_time, et_time_at_stop)) {
+        if (is_better_or_eq(prev_round_time, et_time_at_stop)) {
           auto const [day, mam] = split(prev_round_time);
           auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
                                                      stp.location_idx());
