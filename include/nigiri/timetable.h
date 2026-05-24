@@ -150,28 +150,47 @@ struct timetable {
     return bitfields_[route_traffic_days_[r]].test(to_idx(day));
   }
 
+  struct route_stop_time_accessor {
+    delta event(stop_idx_t const stop_idx,
+                transport_idx_t const t,
+                event_type const ev_type) const {
+      return base_[offset(stop_idx, ev_type) +
+                   (to_idx(t) - to_idx(first_transport_))];
+    }
+
+    std::span<delta const> at_stop(stop_idx_t const stop_idx,
+                                   event_type const ev_type) const {
+      return std::span<delta const>{base_ + offset(stop_idx, ev_type),
+                                    n_transports_};
+    }
+
+    unsigned offset(stop_idx_t const stop_idx, event_type const ev_type) const {
+      return n_transports_ *
+             (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0));
+    }
+
+    delta const* base_;
+    unsigned n_transports_;
+    transport_idx_t first_transport_;
+  };
+
+  route_stop_time_accessor stop_times(route_idx_t const r) const {
+    auto const range = route_transport_ranges_[r];
+    return {&route_stop_times_[route_stop_time_ranges_[r].from_],
+            static_cast<unsigned>(range.size()), range.from_};
+  }
+
   std::span<delta const> event_times_at_stop(route_idx_t const r,
                                              stop_idx_t const stop_idx,
                                              event_type const ev_type) const {
-    auto const n_transports =
-        static_cast<unsigned>(route_transport_ranges_[r].size());
-    auto const idx = static_cast<unsigned>(
-        route_stop_time_ranges_[r].from_ +
-        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    return std::span<delta const>{&route_stop_times_[idx], n_transports};
+    return stop_times(r).at_stop(stop_idx, ev_type);
   }
 
   delta event_mam(route_idx_t const r,
                   transport_idx_t t,
                   stop_idx_t const stop_idx,
                   event_type const ev_type) const {
-    auto const range = route_transport_ranges_[r];
-    auto const n_transports = static_cast<unsigned>(range.size());
-    auto const route_stop_begin = static_cast<unsigned>(
-        route_stop_time_ranges_[r].from_ +
-        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    auto const t_idx_in_route = to_idx(t) - to_idx(range.from_);
-    return route_stop_times_[route_stop_begin + t_idx_in_route];
+    return stop_times(r).event(stop_idx, t, ev_type);
   }
 
   delta event_mam(transport_idx_t t,
