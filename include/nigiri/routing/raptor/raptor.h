@@ -926,30 +926,20 @@ private:
               ++target_v;
             }
 
-            auto current_best =
-                get_best(round_times_[k - 1][l_idx][target_v],
-                         tmp_[l_idx][target_v], best_[l_idx][target_v]);
-
             if (is_better(by_transport, time_at_dest_[k]) &&
                 lb_[l_idx] != kUnreachable &&
                 is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
               trace_upd(
-                  "┊ │k={}    RT | name={}, dbg={}, time_by_transport={}, "
-                  "BETTER THAN current_best={} => update, {} marking station "
-                  "{}!\n",
+                  "┊ │k={}    RT | name={}, dbg={}, time_by_transport={} => "
+                  "update, marking station {}!\n",
                   k, rtt_->default_trip_short_name(tt_, rt_t),
                   rtt_->dbg(tt_, rt_t), to_unix(by_transport),
-                  to_unix(current_best),
-                  !is_better(by_transport, current_best) ? "NOT" : "",
                   loc{tt_, stp.location_idx()});
 
               ++stats_.n_earliest_arrival_updated_by_route_;
               tmp_[l_idx][target_v] =
                   get_best(by_transport, tmp_[l_idx][target_v]);
               state_.station_mark_.set(l_idx, true);
-              if (is_better(by_transport, current_best)) {
-                current_best = by_transport;
-              }
               any_marked = true;
             }
           }
@@ -1001,9 +991,6 @@ private:
       auto const lb_l = lb_[l_idx];
       auto const is_first = i == 0U;
       auto const is_last = i == stop_seq.size() - 1U;
-
-      auto current_best = std::array<delta_t, Vias + 1>{};
-      current_best.fill(kInvalid);
 
       // v = via state when entering the transport
       // v + v_offset = via state at the current stop after entering the
@@ -1076,40 +1063,28 @@ private:
             ++target_v;
           }
 
-          current_best[v] =
-              get_best(prev_round_times[l_idx][target_v], tmp_[l_idx][target_v],
-                       best_[l_idx][target_v]);
-
           assert(by_transport != std::numeric_limits<delta_t>::min() &&
                  by_transport != std::numeric_limits<delta_t>::max());
           if (is_better(by_transport, time_at_dest_k) && lb_l != kUnreachable &&
               is_better(by_transport + dir(lb_l), time_at_dest_k)) {
             trace_upd(
-                "┊ │k={} v={}->{}    name={}, dbg={}, time_by_transport={}, "
-                "BETTER THAN current_best={} => update, {} marking station "
-                "{}!\n",
+                "┊ │k={} v={}->{}    name={}, dbg={}, time_by_transport={} => "
+                "update, marking station {}!\n",
                 k, v, target_v, tt_.transport_name(et[v].t_idx_),
                 tt_.dbg(et[v].t_idx_), to_unix(by_transport),
-                to_unix(current_best[v]),
-                !is_better(by_transport, current_best[v]) ? "NOT" : "",
                 loc{tt_, stp.location_idx()});
 
             ++stats_.n_earliest_arrival_updated_by_route_;
             tmp_[l_idx][target_v] =
                 get_best(by_transport, tmp_[l_idx][target_v]);
             state_.station_mark_.set(l_idx, true);
-            if (is_better(by_transport, current_best[v])) {
-              current_best[v] = by_transport;
-            }
             any_marked = true;
           } else {
             trace(
                 "┊ │k={} v={}->{}    *** NO UPD: at={}, name={}, dbg={}, "
-                "time_by_transport={}, current_best=min({}, {}, {})={} => {} "
-                "- "
-                "LB={}, LB_AT_DEST={}, TIME_AT_DEST={}, "
-                "(is_better(by_transport={}={}, current_best={}={})={}, "
-                "is_better(by_transport={}={}, time_at_dest_={}={})={}, "
+                "time_by_transport={}, round/best/tmp=({}, {}, {}) - "
+                "LB={}, TIME_AT_DEST={}, "
+                "(is_better(by_transport={}={}, time_at_dest_={}={})={}, "
                 "reachable={}, "
                 "is_better(lb={}={}, time_at_dest_={}={})={})!\n",
                 k, v, target_v, loc{tt_, location_idx_t{l_idx}},
@@ -1117,19 +1092,13 @@ private:
                 to_unix(by_transport),
                 to_unix(round_times_[k - 1][l_idx][target_v]),
                 to_unix(best_[l_idx][target_v]), to_unix(tmp_[l_idx][target_v]),
-                to_unix(current_best[v]), loc{tt_, location_idx_t{l_idx}},
-                lb_[l_idx], to_unix(time_at_dest_[k]),
-                to_unix(clamp(by_transport + dir(lb_[l_idx]))), by_transport,
-                to_unix(by_transport), current_best[v],
-                to_unix(current_best[v]),
-                is_better(by_transport, current_best[v]), by_transport,
+                lb_[l_idx], to_unix(time_at_dest_[k]), by_transport,
                 to_unix(by_transport), time_at_dest_[k],
                 to_unix(time_at_dest_[k]),
                 is_better(by_transport, time_at_dest_[k]),
                 lb_[l_idx] != kUnreachable, by_transport + dir(lb_[l_idx]),
                 to_unix(clamp(by_transport + dir(lb_[l_idx]))),
                 time_at_dest_[k], to_unix(time_at_dest_[k]),
-                to_unix(time_at_dest_[k]),
                 is_better(clamp(by_transport + dir(lb_[l_idx])),
                           time_at_dest_[k]));
           }
@@ -1166,10 +1135,13 @@ private:
           auto const [day, mam] = split(prev_round_time);
           auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
                                                      stp.location_idx());
-          current_best[v] = get_best(current_best[v], best_[l_idx][target_v],
-                                     tmp_[l_idx][target_v]);
+          auto const no_existing_label =
+              !(et[v].is_valid() &&
+                stp.can_finish<SearchDir>(is_wheelchair_)) &&
+              best_[l_idx][target_v] == kInvalid &&
+              tmp_[l_idx][target_v] == kInvalid;
           if (new_et.is_valid() &&
-              (current_best[v] == kInvalid ||
+              (no_existing_label ||
                is_better_or_eq(
                    time_at_stop(r, new_et, stop_idx,
                                 kFwd ? event_type::kDep : event_type::kArr),
