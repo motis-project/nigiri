@@ -984,7 +984,6 @@ private:
             bool WithSectionWheelchairFilter>
   bool update_route(unsigned const k, route_idx_t const r) {
     auto const stop_seq = tt_.route_location_seq_[r];
-    auto const stop_times = tt_.stop_times(r);
     bool any_marked = false;
 
     auto et = std::array<transport, Vias + 1>{};
@@ -1056,9 +1055,8 @@ private:
         auto target_v = v + v_offset[v];
 
         if (et[v].is_valid() && stp.can_finish<SearchDir>(is_wheelchair_)) {
-          auto const by_transport =
-              time_at_stop(stop_times, et[v], stop_idx,
-                           kFwd ? event_type::kArr : event_type::kDep);
+          auto const by_transport = time_at_stop(
+              r, et[v], stop_idx, kFwd ? event_type::kArr : event_type::kDep);
 
           auto const is_via = target_v != Vias && is_via_[target_v][l_idx];
           auto const is_no_stay_via =
@@ -1161,19 +1159,19 @@ private:
         }
         auto const et_time_at_stop =
             et[v].is_valid()
-                ? time_at_stop(stop_times, et[v], stop_idx,
+                ? time_at_stop(r, et[v], stop_idx,
                                kFwd ? event_type::kDep : event_type::kArr)
                 : kInvalid;
         if (is_better_or_eq(prev_round_time, et_time_at_stop)) {
           auto const [day, mam] = split(prev_round_time);
-          auto const new_et = get_earliest_transport(
-              k, r, stop_idx, day, mam, stp.location_idx(), stop_times);
+          auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
+                                                     stp.location_idx());
           current_best[v] = get_best(current_best[v], best_[l_idx][target_v],
                                      tmp_[l_idx][target_v]);
           if (new_et.is_valid() &&
               (current_best[v] == kInvalid ||
                is_better_or_eq(
-                   time_at_stop(stop_times, new_et, stop_idx,
+                   time_at_stop(r, new_et, stop_idx,
                                 kFwd ? event_type::kDep : event_type::kArr),
                    et_time_at_stop))) {
             et[v] = new_et;
@@ -1195,12 +1193,11 @@ private:
                                    stop_idx_t const stop_idx,
                                    day_idx_t const day_at_stop,
                                    minutes_after_midnight_t const mam_at_stop,
-                                   location_idx_t const l,
-                                   auto const& stop_times) {
+                                   location_idx_t const l) {
     ++stats_.n_earliest_trip_calls_;
 
-    auto const event_times = stop_times.at_stop(
-        stop_idx, kFwd ? event_type::kDep : event_type::kArr);
+    auto const event_times = tt_.event_times_at_stop(
+        r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
 
     auto const seek_first_day = [&]() {
       return linear_lb(get_begin_it(event_times), get_end_it(event_times),
@@ -1292,12 +1289,12 @@ private:
     }
   }
 
-  delta_t time_at_stop(auto const& stop_times,
+  delta_t time_at_stop(route_idx_t const r,
                        transport const t,
                        stop_idx_t const stop_idx,
                        event_type const ev_type) {
     return to_delta(t.day_,
-                    stop_times.event(stop_idx, t.t_idx_, ev_type).count());
+                    tt_.event_mam(r, t.t_idx_, stop_idx, ev_type).count());
   }
 
   delta_t rt_time_at_stop(rt_transport_idx_t const rt_t,
