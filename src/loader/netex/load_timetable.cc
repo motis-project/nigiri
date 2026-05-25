@@ -1338,9 +1338,14 @@ void load_timetable(loader_config const& config,
     auto const tz = gtfs::get_tz_idx(tt, tz_map, im.tz_->name());
 
     for (auto& [id, o] : im.operators_) {
-      auto a = agency{
-          tt, src,   id, tt.register_translation(o->name_), kEmptyTranslation,
-          tz, tz_map};
+      auto a = agency{tt,
+                      src,
+                      id,
+                      tt.register_translation(o->name_),
+                      kEmptyTranslation,
+                      kEmptyTranslation,
+                      tz,
+                      tz_map};
       if (process_agency(r, a)) {
         o->provider_ = register_agency(tt, a);
       }

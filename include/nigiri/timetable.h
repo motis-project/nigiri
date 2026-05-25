@@ -1,6 +1,7 @@
 #pragma once
 
 #include <compare>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <span>
@@ -487,6 +488,29 @@ struct timetable {
   string_store<language_idx_t> languages_;
 
   cista::base_t<source_idx_t> n_sources_{};
+
+  // Ticketing
+  hash_map<provider_idx_t, hash_map<location_idx_t, string>>
+      location_ticketing_identifier_;
+  hash_map<trip_idx_t, string> trip_ticketing_identifier_;
+  hash_map<location_idx_t, std::monostate> location_ticketing_unavailable_;
+  hash_map<trip_idx_t, std::monostate> trip_ticketing_unavailable_;
+
+  enum class ticketing_link_type : uint8_t {
+    kGoogleTransit,
+  };
+
+  struct ticketing_links {
+    vector_map<ticketing_link_idx_t, ticketing_link_type> type_;
+    vecvec<ticketing_link_idx_t, char> web_;
+    vecvec<ticketing_link_idx_t, char> andoid_;
+    vecvec<ticketing_link_idx_t, char> ios_;
+  };
+
+  ticketing_links ticketing_links_;
+
+  hash_map<provider_idx_t, ticketing_link_idx_t> ticketing_agencies_;
+  hash_map<route_id_idx_t, ticketing_link_idx_t> ticketing_routes_;
 };
 
 struct loc {

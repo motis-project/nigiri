@@ -21,6 +21,7 @@ constexpr auto const kUnknownProvider =
     provider{.id_ = string_idx_t::invalid(),
              .name_ = kEmptyTranslation,
              .url_ = kEmptyTranslation,
+             .fare_url_ = kEmptyTranslation,
              .src_ = source_idx_t::invalid()};
 
 stop run_stop::get_stop() const {
@@ -248,6 +249,11 @@ std::pair<timetable::route_ids const*, route_id_idx_t> run_stop::get_route(
   } else {
     return {nullptr, route_id_idx_t::invalid()};
   }
+}
+
+route_id_idx_t run_stop::get_route_id_idx(event_type const ev_type) const {
+  auto const [_, route_id_idx] = get_route(ev_type);
+  return route_id_idx;
 }
 
 std::string_view run_stop::get_route_id(event_type const ev_type) const {
