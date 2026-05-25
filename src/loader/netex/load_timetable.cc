@@ -1359,6 +1359,7 @@ void load_timetable(loader_config const& config,
                         tt.register_translation(stop->name_),
                         tt.register_translation(stop->public_code_),
                         kEmptyTranslation,
+                        kEmptyTranslation,
                         stop->pos_,
                         location_type::kStation,
                         stop->parent_ != nullptr ? stop->parent_->location_

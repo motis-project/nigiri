@@ -26,6 +26,7 @@ void register_special_stations(timetable& tt) {
                                    name_translation,
                                    kEmptyTranslation,
                                    kEmptyTranslation,
+                                   kEmptyTranslation,
                                    {0.0, 0.0},
                                    location_type::kStation,
                                    location_idx_t::invalid(),
