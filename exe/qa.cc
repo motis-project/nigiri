@@ -76,10 +76,13 @@ int main(int ac, char** av) {
     return 1;
   }
 
+  auto const in_r_path = in_r.string();
+  auto const in_c_path = in_c.string();
+
   auto const ref = nigiri::qa::benchmark_criteria::read(
-      cista::memory_holder{cista::file{in_r.c_str(), "r"}.content()});
+      cista::memory_holder{cista::file{in_r_path.c_str(), "r"}.content()});
   auto const cmp = nigiri::qa::benchmark_criteria::read(
-      cista::memory_holder{cista::file{in_c.c_str(), "r"}.content()});
+      cista::memory_holder{cista::file{in_c_path.c_str(), "r"}.content()});
 
   auto rating_timing =
       std::vector<std::pair<double, std::chrono::milliseconds>>{};
