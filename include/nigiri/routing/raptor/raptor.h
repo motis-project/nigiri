@@ -987,12 +987,7 @@ private:
     auto const time_at_dest_k = time_at_dest_[k];
     auto prev_round_times = round_times_[k - 1];
 
-    auto const transport_range = tt_.route_transport_ranges_[r];
-    auto const n_route_transports =
-        static_cast<unsigned>(transport_range.size());
-    auto const route_stop_time_base =
-        static_cast<unsigned>(tt_.route_stop_time_ranges_[r].from_);
-    auto const route_transport_from = to_idx(transport_range.from_);
+    constexpr auto kPrefetchStops = 2U;
 
     for (auto i = 0U; i != stop_seq.size(); ++i) {
       auto const stop_idx =
@@ -1003,8 +998,16 @@ private:
       auto const lb_l = lb_[l_idx];
       auto const is_first = i == 0U;
       auto const is_last = i == stop_seq.size() - 1U;
-      auto const next_stop_idx =
-          static_cast<stop_idx_t>(kFwd ? stop_idx + 1 : stop_idx - 1);
+
+      if (auto const pf = i + kPrefetchStops; pf < stop_seq.size()) {
+        auto const pf_l =
+            cista::to_idx(stop{stop_seq[static_cast<stop_idx_t>(
+                                   kFwd ? pf : stop_seq.size() - pf - 1U)]}
+                              .location_idx());
+        __builtin_prefetch(&best_[pf_l]);
+        __builtin_prefetch(&tmp_[pf_l]);
+        __builtin_prefetch(&prev_round_times[pf_l]);
+      }
 
       // v = via state when entering the transport
       // v + v_offset = via state at the current stop after entering the
@@ -1051,16 +1054,6 @@ private:
             et[v] = {};
             v_offset[v] = 0;
           }
-        }
-
-        if (!is_last && et[v].is_valid()) {
-          auto const pf_ev = kFwd ? event_type::kArr : event_type::kDep;
-          auto const pf_idx =
-              route_stop_time_base +
-              n_route_transports *
-                  (next_stop_idx * 2 - (pf_ev == event_type::kArr ? 1 : 0)) +
-              (to_idx(et[v].t_idx_) - route_transport_from);
-          __builtin_prefetch(&tt_.route_stop_times_[pf_idx]);
         }
 
         auto target_v = v + v_offset[v];
@@ -1184,7 +1177,7 @@ private:
     return any_marked;
   }
 
-  __attribute__((always_inline)) inline transport get_earliest_transport(
+  inline transport get_earliest_transport(
       unsigned const k,
       route_idx_t const r,
       stop_idx_t const stop_idx,
