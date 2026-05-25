@@ -578,8 +578,13 @@ private:
       auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx][l_idx]
                              : tt_.locations_.footpaths_in_[prf_idx][l_idx];
 
-      for (auto const& fp : fps) {
+      for (auto it = fps.begin(); it != fps.end(); ++it) {
+        auto const& fp = *it;
         ++stats_.n_footpaths_visited_;
+
+        if (auto const nxt = it + 1; nxt != fps.end()) {
+          __builtin_prefetch(&best_[to_idx(nxt->target())]);
+        }
 
         auto const target = to_idx(fp.target());
 
@@ -982,6 +987,13 @@ private:
     auto const time_at_dest_k = time_at_dest_[k];
     auto prev_round_times = round_times_[k - 1];
 
+    auto const transport_range = tt_.route_transport_ranges_[r];
+    auto const n_route_transports =
+        static_cast<unsigned>(transport_range.size());
+    auto const route_stop_time_base =
+        static_cast<unsigned>(tt_.route_stop_time_ranges_[r].from_);
+    auto const route_transport_from = to_idx(transport_range.from_);
+
     for (auto i = 0U; i != stop_seq.size(); ++i) {
       auto const stop_idx =
           static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
@@ -991,6 +1003,8 @@ private:
       auto const lb_l = lb_[l_idx];
       auto const is_first = i == 0U;
       auto const is_last = i == stop_seq.size() - 1U;
+      auto const next_stop_idx =
+          static_cast<stop_idx_t>(kFwd ? stop_idx + 1 : stop_idx - 1);
 
       // v = via state when entering the transport
       // v + v_offset = via state at the current stop after entering the
@@ -1037,6 +1051,16 @@ private:
             et[v] = {};
             v_offset[v] = 0;
           }
+        }
+
+        if (!is_last && et[v].is_valid()) {
+          auto const pf_ev = kFwd ? event_type::kArr : event_type::kDep;
+          auto const pf_idx =
+              route_stop_time_base +
+              n_route_transports *
+                  (next_stop_idx * 2 - (pf_ev == event_type::kArr ? 1 : 0)) +
+              (to_idx(et[v].t_idx_) - route_transport_from);
+          __builtin_prefetch(&tt_.route_stop_times_[pf_idx]);
         }
 
         auto target_v = v + v_offset[v];
@@ -1160,12 +1184,13 @@ private:
     return any_marked;
   }
 
-  transport get_earliest_transport(unsigned const k,
-                                   route_idx_t const r,
-                                   stop_idx_t const stop_idx,
-                                   day_idx_t const day_at_stop,
-                                   minutes_after_midnight_t const mam_at_stop,
-                                   location_idx_t const l) {
+  __attribute__((always_inline)) inline transport get_earliest_transport(
+      unsigned const k,
+      route_idx_t const r,
+      stop_idx_t const stop_idx,
+      day_idx_t const day_at_stop,
+      minutes_after_midnight_t const mam_at_stop,
+      location_idx_t const l) {
     ++stats_.n_earliest_trip_calls_;
 
     auto const event_times = tt_.event_times_at_stop(
