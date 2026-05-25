@@ -3,15 +3,13 @@
 #include <cassert>
 #include <chrono>
 #include <cinttypes>
+
+#include "nigiri/common/interval.h"
+#include "nigiri/common/it_range.h"
+
 #include <variant>
 
-#include "fmt/ostream.h"
-
-#include "date/date.h"
-#include "date/tz.h"
-
 #include "ankerl/cista_adapter.h"
-
 #include "cista/char_traits.h"
 #include "cista/containers/array.h"
 #include "cista/containers/bitset.h"
@@ -28,13 +26,11 @@
 #include "cista/containers/vecvec.h"
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
-
-#include "utl/helpers/algorithm.h"
-
+#include "date/date.h"
+#include "date/tz.h"
+#include "fmt/ostream.h"
 #include "geo/latlng.h"
-
-#include "nigiri/common/interval.h"
-#include "nigiri/common/it_range.h"
+#include "utl/helpers/algorithm.h"
 
 namespace nigiri {
 
@@ -193,6 +189,8 @@ using location_group_idx_t =
 using booking_rule_idx_t =
     cista::strong<std::uint32_t, struct _booking_rule_idx>;
 using language_idx_t = cista::strong<std::uint16_t, struct _language_idx>;
+using vehicle_idx_t = cista::strong<std::uint32_t, struct _vehicle_idx>;
+using vehicle_id_idx_t = cista::strong<std::uint32_t, struct _vehicle_id_idx>;
 
 using lang_t = std::optional<std::vector<std::string>>;
 
