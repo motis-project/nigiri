@@ -154,11 +154,14 @@ struct raptor {
 
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
+    utl::fill(best_, kInvalidArray);
     round_times_.reset(kInvalidArray);
+    utl::fill(state_.touched_.blocks_, 0U);
   }
 
   void next_start_time() {
-    utl::fill(best_, kInvalidArray);
+    state_.touched_.for_each_set_bit(
+        [&](std::uint64_t const i) { best_[i] = kInvalidArray; });
     utl::fill(tmp_, kInvalidArray);
     utl::fill(state_.prev_station_mark_.blocks_, 0U);
     utl::fill(state_.station_mark_.blocks_, 0U);
@@ -181,6 +184,7 @@ struct raptor {
     round_times_[0U][to_idx(l)][v] =
         get_best(unix_to_delta(base(), t), round_times_[0U][to_idx(l)][v]);
     state_.station_mark_.set(to_idx(l), true);
+    state_.touched_.set(to_idx(l), true);
   }
 
   void execute(unixtime_t const start_time,
@@ -198,11 +202,11 @@ struct raptor {
     trace_print_init_state();
 
     for (auto k = 1U; k != end_k; ++k) {
-      for (auto i = 0U; i != n_locations_; ++i) {
+      state_.touched_.for_each_set_bit([&](std::uint64_t const i) {
         for (auto v = 0U; v != Vias + 1; ++v) {
           best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
         }
-      }
+      });
       is_dest_.for_each_set_bit([&](std::uint64_t const i) {
         update_time_at_dest(k, best_[i][Vias]);
       });
@@ -556,6 +560,7 @@ private:
           round_times_[k][i][target_v] = fp_target_time;
           best_[i][target_v] = fp_target_time;
           state_.station_mark_.set(i, true);
+          state_.touched_.set(i, true);
           if (is_dest) {
             update_time_at_dest(k, fp_target_time);
           }
@@ -646,6 +651,7 @@ private:
             round_times_[k][target][target_v] = fp_target_time;
             best_[target][target_v] = fp_target_time;
             state_.station_mark_.set(target, true);
+            state_.touched_.set(target, true);
             if (target_v == Vias && is_dest_[target]) {
               update_time_at_dest(k, fp_target_time);
             }
@@ -743,6 +749,7 @@ private:
             round_times_[k][target][target_v] = fp_target_time;
             best_[target][target_v] = fp_target_time;
             state_.station_mark_.set(target, true);
+            state_.touched_.set(target, true);
             if (is_dest_[target]) {
               update_time_at_dest(k, fp_target_time);
             }
@@ -802,6 +809,7 @@ private:
             if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
               round_times_[k][kIntermodalTarget][Vias] = end_time;
               best_[kIntermodalTarget][Vias] = end_time;
+              state_.touched_.set(kIntermodalTarget, true);
               update_time_at_dest(k, end_time);
               trace_upd(" -> update\n");
             } else {
@@ -829,6 +837,7 @@ private:
         if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
           round_times_[k][kIntermodalTarget][Vias] = end_time;
           best_[kIntermodalTarget][Vias] = end_time;
+          state_.touched_.set(kIntermodalTarget, true);
           update_time_at_dest(k, end_time);
           trace_upd(" -> update\n");
         } else {
@@ -852,6 +861,7 @@ private:
           if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
             round_times_[k][kIntermodalTarget][Vias] = end_time;
             best_[kIntermodalTarget][Vias] = end_time;
+            state_.touched_.set(kIntermodalTarget, true);
             update_time_at_dest(k, end_time);
 
             trace(
@@ -987,8 +997,6 @@ private:
     auto const time_at_dest_k = time_at_dest_[k];
     auto prev_round_times = round_times_[k - 1];
 
-    constexpr auto kPrefetchStops = 2U;
-
     for (auto i = 0U; i != stop_seq.size(); ++i) {
       auto const stop_idx =
           static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
@@ -998,16 +1006,6 @@ private:
       auto const lb_l = lb_[l_idx];
       auto const is_first = i == 0U;
       auto const is_last = i == stop_seq.size() - 1U;
-
-      if (auto const pf = i + kPrefetchStops; pf < stop_seq.size()) {
-        auto const pf_l =
-            cista::to_idx(stop{stop_seq[static_cast<stop_idx_t>(
-                                   kFwd ? pf : stop_seq.size() - pf - 1U)]}
-                              .location_idx());
-        __builtin_prefetch(&best_[pf_l]);
-        __builtin_prefetch(&tmp_[pf_l]);
-        __builtin_prefetch(&prev_round_times[pf_l]);
-      }
 
       // v = via state when entering the transport
       // v + v_offset = via state at the current stop after entering the

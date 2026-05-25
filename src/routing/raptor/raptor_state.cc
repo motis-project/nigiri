@@ -23,6 +23,7 @@ raptor_state& raptor_state::resize(unsigned const n_locations,
   prev_station_mark_.resize(n_locations);
   route_mark_.resize(n_routes);
   rt_transport_mark_.resize(n_rt_transports);
+  touched_.resize(n_locations);
   return *this;
 }
 
