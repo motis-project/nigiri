@@ -82,17 +82,11 @@ struct raptor_state {
   }
 
   void mark_round_touched(std::uint64_t const i) {
-    if (!round_touched_[i]) {
-      round_touched_[i] = true;
-      round_touched_list_.push_back(static_cast<std::uint32_t>(i));
-    }
+    round_touched_list_.push_back(static_cast<std::uint32_t>(i));
   }
 
   void mark_tmp_touched(std::uint64_t const i) {
-    if (!tmp_touched_[i]) {
-      tmp_touched_[i] = true;
-      tmp_touched_list_.push_back(static_cast<std::uint32_t>(i));
-    }
+    tmp_touched_list_.push_back(static_cast<std::uint32_t>(i));
   }
 
   unsigned n_locations_{};
@@ -103,9 +97,7 @@ struct raptor_state {
   bitvec prev_station_mark_;
   bitvec route_mark_;
   bitvec rt_transport_mark_;
-  std::vector<bool> round_touched_;
   std::vector<std::uint32_t> round_touched_list_;
-  std::vector<bool> tmp_touched_;
   std::vector<std::uint32_t> tmp_touched_list_;
 };
 

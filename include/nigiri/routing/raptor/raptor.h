@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <algorithm>
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
@@ -157,13 +158,14 @@ struct raptor {
     utl::fill(best_, kInvalidArray);
     utl::fill(tmp_, kInvalidArray);
     round_times_.reset(kInvalidArray);
-    utl::fill(state_.round_touched_, false);
     state_.round_touched_list_.clear();
-    utl::fill(state_.tmp_touched_, false);
     state_.tmp_touched_list_.clear();
   }
 
   void next_start_time() {
+    std::sort(begin(state_.round_touched_list_),
+              end(state_.round_touched_list_));
+    std::sort(begin(state_.tmp_touched_list_), end(state_.tmp_touched_list_));
     for (auto const i : state_.round_touched_list_) {
       best_[i] = kInvalidArray;
     }
@@ -209,6 +211,7 @@ struct raptor {
     trace_print_init_state();
 
     for (auto k = 1U; k != end_k; ++k) {
+      sort_unique(state_.round_touched_list_);
       for (auto const i : state_.round_touched_list_) {
         for (auto v = 0U; v != Vias + 1; ++v) {
           best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
