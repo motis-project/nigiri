@@ -81,14 +81,6 @@ struct raptor_state {
             n_locations_};
   }
 
-  void mark_round_touched(std::uint64_t const i) {
-    round_touched_list_.push_back(static_cast<std::uint32_t>(i));
-  }
-
-  void mark_tmp_touched(std::uint64_t const i) {
-    tmp_touched_list_.push_back(static_cast<std::uint32_t>(i));
-  }
-
   unsigned n_locations_{};
   std::vector<delta_t> tmp_storage_;
   std::vector<delta_t> best_storage_;
@@ -97,8 +89,8 @@ struct raptor_state {
   bitvec prev_station_mark_;
   bitvec route_mark_;
   bitvec rt_transport_mark_;
-  std::vector<std::uint32_t> round_touched_list_;
-  std::vector<std::uint32_t> tmp_touched_list_;
+  bitvec round_touched_;
+  bitvec tmp_touched_;
 };
 
 }  // namespace nigiri::routing
