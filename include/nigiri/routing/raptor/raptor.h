@@ -155,17 +155,14 @@ struct raptor {
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
     utl::fill(best_, kInvalidArray);
-    utl::fill(tmp_, kInvalidArray);
     round_times_.reset(kInvalidArray);
     utl::fill(state_.round_touched_.blocks_, 0U);
-    utl::fill(state_.tmp_touched_.blocks_, 0U);
   }
 
   void next_start_time() {
     state_.round_touched_.for_each_set_bit(
         [&](std::uint64_t const i) { best_[i] = kInvalidArray; });
-    state_.tmp_touched_.for_each_set_bit(
-        [&](std::uint64_t const i) { tmp_[i] = kInvalidArray; });
+    utl::fill(tmp_, kInvalidArray);
     utl::fill(state_.prev_station_mark_.blocks_, 0U);
     utl::fill(state_.station_mark_.blocks_, 0U);
     utl::fill(state_.route_mark_.blocks_, 0U);
@@ -958,7 +955,6 @@ private:
               tmp_[l_idx][target_v] =
                   get_best(by_transport, tmp_[l_idx][target_v]);
               state_.station_mark_.set(l_idx, true);
-              state_.tmp_touched_.set(l_idx, true);
               any_marked = true;
             }
           }
@@ -1097,7 +1093,6 @@ private:
             tmp_[l_idx][target_v] =
                 get_best(by_transport, tmp_[l_idx][target_v]);
             state_.station_mark_.set(l_idx, true);
-            state_.tmp_touched_.set(l_idx, true);
             any_marked = true;
           } else {
             trace(

@@ -90,7 +90,6 @@ struct raptor_state {
   bitvec route_mark_;
   bitvec rt_transport_mark_;
   bitvec round_touched_;
-  bitvec tmp_touched_;
 };
 
 }  // namespace nigiri::routing

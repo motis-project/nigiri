@@ -24,7 +24,6 @@ raptor_state& raptor_state::resize(unsigned const n_locations,
   route_mark_.resize(n_routes);
   rt_transport_mark_.resize(n_rt_transports);
   round_touched_.resize(n_locations);
-  tmp_touched_.resize(n_locations);
   return *this;
 }
 
