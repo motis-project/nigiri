@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <bit>
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
@@ -96,6 +97,25 @@ struct raptor {
   }
   static auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
+  template <typename Fn>
+  static void for_each_set(bitvec const& bits, Fn&& fn) {
+    if (bits.empty()) {
+      return;
+    }
+
+    auto const last_block = bits.blocks_.size() - 1U;
+    for (auto block_idx = bitvec::size_type{0U};
+         block_idx != bits.blocks_.size(); ++block_idx) {
+      auto block = block_idx == last_block ? bits.sanitized_last_block()
+                                           : bits.blocks_[block_idx];
+      while (block != 0U) {
+        auto const bit = std::countr_zero(block);
+        fn(block_idx * bitvec::bits_per_block + bit);
+        block &= block - 1U;
+      }
+    }
+  }
+
   raptor(
       timetable const& tt,
       rt_timetable const* rtt,
@@ -160,8 +180,8 @@ struct raptor {
   }
 
   void next_start_time() {
-    state_.round_touched_.for_each_set_bit(
-        [&](std::uint64_t const i) { best_[i] = kInvalidArray; });
+    for_each_set(state_.round_touched_,
+                 [&](auto const i) { best_[i] = kInvalidArray; });
     utl::fill(tmp_, kInvalidArray);
     utl::fill(state_.prev_station_mark_.blocks_, 0U);
     utl::fill(state_.station_mark_.blocks_, 0U);
@@ -202,17 +222,17 @@ struct raptor {
     trace_print_init_state();
 
     for (auto k = 1U; k != end_k; ++k) {
-      state_.round_touched_.for_each_set_bit([&](std::uint64_t const i) {
+      for_each_set(state_.round_touched_, [&](auto const i) {
         for (auto v = 0U; v != Vias + 1; ++v) {
           best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
         }
       });
-      is_dest_.for_each_set_bit([&](std::uint64_t const i) {
+      for_each_set(is_dest_, [&](auto const i) {
         update_time_at_dest(k, best_[i][Vias]);
       });
 
       auto any_marked = false;
-      state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+      for_each_set(state_.station_mark_, [&](auto const i) {
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
           any_marked = true;
           state_.route_mark_.set(to_idx(r), true);
@@ -310,7 +330,7 @@ struct raptor {
       return;
     }
 
-    is_dest_.for_each_set_bit([&](auto const i) {
+    for_each_set(is_dest_, [&](auto const i) {
       for (auto k = 1U; k != end_k; ++k) {
         auto const dest_time = round_times_[k][i][Vias];
         if (dest_time != kInvalid) {
@@ -353,7 +373,7 @@ private:
             bool WithWheelchairFilter>
   bool loop_routes(unsigned const k) {
     auto any_marked = false;
-    state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
+    for_each_set(state_.route_mark_, [&](auto const r_idx) {
       auto const r = route_idx_t{r_idx};
 
       if constexpr (WithClaszFilter) {
@@ -435,7 +455,7 @@ private:
             bool WithWheelchairFilter>
   bool loop_rt_routes(unsigned const k) {
     auto any_marked = false;
-    state_.rt_transport_mark_.for_each_set_bit([&](auto const rt_t_idx) {
+    for_each_set(state_.rt_transport_mark_, [&](auto const rt_t_idx) {
       auto const rt_t = rt_transport_idx_t{rt_t_idx};
 
       if constexpr (WithClaszFilter) {
@@ -514,7 +534,7 @@ private:
   }
 
   void update_transfers(unsigned const k) {
-    state_.prev_station_mark_.for_each_set_bit([&](auto&& i) {
+    for_each_set(state_.prev_station_mark_, [&](auto&& i) {
       for (auto v = 0U; v != Vias + 1; ++v) {
         auto const tmp_time = tmp_[i][v];
         if (tmp_time == kInvalid) {
@@ -570,7 +590,7 @@ private:
   }
 
   void update_footpaths(unsigned const k, profile_idx_t const prf_idx) {
-    state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+    for_each_set(state_.prev_station_mark_, [&](auto const i) {
       auto const l_idx = location_idx_t{i};
       if constexpr (Rt) {
         if (prf_idx != 0U && (kFwd ? rtt_->has_td_footpaths_out_
@@ -678,7 +698,7 @@ private:
       return;
     }
 
-    state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+    for_each_set(state_.prev_station_mark_, [&](auto const i) {
       auto const l_idx = location_idx_t{i};
       if (!(kFwd ? rtt_->has_td_footpaths_out_
                  : rtt_->has_td_footpaths_in_)[prf_idx]
@@ -774,7 +794,7 @@ private:
       return;
     }
 
-    state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
+    for_each_set(state_.prev_station_mark_, [&](auto const i) {
       if (!end_reachable_.test(i)) {
         trace_upd("┊ ├k={}   no end_reachable: {}\n", k,
                   loc{tt_, location_idx_t{i}});
