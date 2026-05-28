@@ -243,6 +243,7 @@ struct raptor {
   }
 
   void next_start_time() {
+    started_ = true;
     for_each_set(state_.round_touched_,
                  [&](auto const i) { best_[i] = kInvalidArray; });
     utl::fill(tmp_, kInvalidArray);
@@ -285,11 +286,13 @@ struct raptor {
     trace_print_init_state();
 
     for (auto k = 1U; k != end_k; ++k) {
-      for_each_set(state_.round_touched_, [&](auto const i) {
-        for (auto v = 0U; v != Vias + 1; ++v) {
-          best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
-        }
-      });
+      if (started_) {
+        for_each_set(state_.round_touched_, [&](auto const i) {
+          for (auto v = 0U; v != Vias + 1; ++v) {
+            best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
+          }
+        });
+      }
       for_each_set(is_dest_, [&](auto const i) {
         update_time_at_dest(k, best_[i][Vias]);
       });
@@ -1135,6 +1138,13 @@ private:
           auto const by_transport = time_at_stop(
               r, et[v], stop_idx, kFwd ? event_type::kArr : event_type::kDep);
 
+          if (!is_last) {
+            prefetch(tt_.event_mam_ptr(
+                r, et[v].t_idx_,
+                static_cast<stop_idx_t>(kFwd ? stop_idx + 1 : stop_idx - 1),
+                kFwd ? event_type::kArr : event_type::kDep));
+          }
+
           auto const is_via = target_v != Vias && is_via_[target_v][l_idx];
           auto const is_no_stay_via =
               is_via && via_stops_[target_v].stay_ == 0_minutes;
@@ -1427,6 +1437,7 @@ private:
   std::array<delta_t, kMaxTransfers + 2> time_at_dest_;
   day_idx_t base_;
   raptor_stats stats_;
+  bool started_{false};
   clasz_mask_t allowed_claszes_;
   bool require_bike_transport_;
   bool require_car_transport_;
