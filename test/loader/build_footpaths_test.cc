@@ -1,3 +1,5 @@
+#include "boost/chrono/duration.hpp"
+
 #include "gtest/gtest.h"
 
 #include "utl/enumerate.h"
@@ -59,25 +61,34 @@ TEST(loader, build_footpaths) {
                                loader::mem_dir::read(test_files), tt);
   loader::finalize(tt);
 
-  auto ss = std::stringstream{};
-  for (auto const [i, x] : utl::enumerate(tt.locations_.footpaths_out_[0])) {
-    if (!x.empty()) {
-      ss << loc{tt, location_idx_t{i}} << "\n";
-      for (auto const y : x) {
-        ss << "  " << y.duration() << "->" << loc{tt, y.target()} << "\n";
-      }
-    }
-  }
+  auto const a = tt.find({"A", source_idx_t{0}});
+  ASSERT_TRUE(a);
+  auto const b = tt.find({"B", source_idx_t{0}});
+  ASSERT_TRUE(b);
+  auto const c = tt.find({"C", source_idx_t{0}});
+  ASSERT_TRUE(c);
 
-  EXPECT_EQ(R"((A, A)
-  00:03.0->(B, B)
-  00:06.0->(C, C)
-(B, B)
-  00:03.0->(A, A)
-  00:03.0->(C, C)
-(C, C)
-  00:03.0->(B, B)
-  00:06.0->(A, A)
-)"sv,
-            ss.str());
+  EXPECT_EQ(tt.locations_.footpaths_out_[kDefaultProfile][*a].size(), 2);
+  EXPECT_NE(utl::find(tt.locations_.footpaths_out_[kDefaultProfile][*a],
+                      footpath{*b, duration_t{3}}),
+            end(tt.locations_.footpaths_out_[kDefaultProfile][*a]));
+  EXPECT_NE(utl::find(tt.locations_.footpaths_out_[kDefaultProfile][*a],
+                      footpath{*c, duration_t{6}}),
+            end(tt.locations_.footpaths_out_[kDefaultProfile][*a]));
+
+  EXPECT_EQ(tt.locations_.footpaths_out_[kDefaultProfile][*b].size(), 2);
+  EXPECT_NE(utl::find(tt.locations_.footpaths_out_[kDefaultProfile][*b],
+                      footpath{*a, duration_t{3}}),
+            end(tt.locations_.footpaths_out_[kDefaultProfile][*b]));
+  EXPECT_NE(utl::find(tt.locations_.footpaths_out_[kDefaultProfile][*b],
+                      footpath{*c, duration_t{3}}),
+            end(tt.locations_.footpaths_out_[kDefaultProfile][*b]));
+
+  EXPECT_EQ(tt.locations_.footpaths_out_[kDefaultProfile][*c].size(), 2);
+  EXPECT_NE(utl::find(tt.locations_.footpaths_out_[kDefaultProfile][*c],
+                      footpath{*b, duration_t{3}}),
+            end(tt.locations_.footpaths_out_[kDefaultProfile][*c]));
+  EXPECT_NE(utl::find(tt.locations_.footpaths_out_[kDefaultProfile][*c],
+                      footpath{*a, duration_t{6}}),
+            end(tt.locations_.footpaths_out_[kDefaultProfile][*c]));
 }

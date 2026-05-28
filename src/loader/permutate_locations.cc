@@ -83,8 +83,8 @@ std::pair<permutation_t, permutation_t> get_permutation(timetable const& tt) {
                              : 0U;
   std::stable_sort(begin(p) + first_idx, end(p),
                    [&](location_idx_t const a, location_idx_t const b) {
-                     return !tt.location_routes_[a].empty() &&
-                            tt.location_routes_[b].empty();
+                     return tile_hash_32(tt.locations_.coordinates_[a]) <
+                            tile_hash_32(tt.locations_.coordinates_[b]);
                    });
 
   r.resize(tt.n_locations());
