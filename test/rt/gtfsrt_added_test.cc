@@ -810,10 +810,12 @@ TEST(rt, gtfs_rt_added) {
     EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
     ASSERT_FALSE(fr.is_cancelled());
 
-    EXPECT_EQ(location_idx_t{13}, fr[0].get_stop().location_idx());
+    auto const E_idx = tt.find({"E", source_idx_t{0}});
+    ASSERT_TRUE(E_idx);
+    EXPECT_EQ(*E_idx, fr[0].get_stop().location_idx());
     EXPECT_EQ(true, fr[0].get_stop().in_allowed());
     EXPECT_EQ(true, fr[0].get_stop().out_allowed());
-    EXPECT_EQ(location_idx_t{13}, fr[0].get_scheduled_stop().location_idx());
+    EXPECT_EQ(E_idx, fr[0].get_scheduled_stop().location_idx());
     EXPECT_FLOAT_EQ(0.05, fr[0].pos().lat());
     EXPECT_FLOAT_EQ(0.05, fr[0].pos().lng());
     EXPECT_EQ("", fr[0].track(std::nullopt));

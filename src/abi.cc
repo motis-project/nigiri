@@ -80,7 +80,10 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
   (*c)->load({.link_stop_distance_ = link_stop_distance,
               .default_tz_ = "Europe/Berlin"},
              src, d, *t->tt, local_bitfield_indices, nullptr, nullptr);
-  nigiri::loader::finalize(*t->tt);
+  nigiri::loader::finalize(*t->tt, {.adjust_footpaths_ = false,
+                                    .merge_dupes_intra_src_ = false,
+                                    .merge_dupes_inter_src_ = false,
+                                    .z_order_curve_locations_ = false});
 
   t->rtt = std::make_shared<nigiri::rt_timetable>(
       nigiri::rt::create_rt_timetable(*t->tt, t->tt->date_range_.from_));

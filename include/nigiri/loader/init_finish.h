@@ -17,7 +17,7 @@ void finalize(timetable&,
               bool adjust_footpaths = false,
               bool merge_dupes_intra_src = false,
               bool merge_dupes_inter_src = false,
-              bool z_order_curve_locations = false,
+              bool z_order_curve_locations = true,
               std::uint16_t max_footpath_length =
                   std::numeric_limits<std::uint16_t>::max());
 

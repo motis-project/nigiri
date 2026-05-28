@@ -8,7 +8,7 @@ struct finalize_options {
   bool adjust_footpaths_{true};
   bool merge_dupes_intra_src_{true};
   bool merge_dupes_inter_src_{true};
-  bool z_order_curve_locations_{false};
+  bool z_order_curve_locations_{true};
   std::uint16_t max_footpath_length_{20};
 };
 
