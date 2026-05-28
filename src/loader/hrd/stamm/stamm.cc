@@ -28,24 +28,27 @@ std::vector<file> stamm::load_files(config const& c, dir const& d) {
                      });
 }
 
-stamm::stamm(config const& c, timetable& tt, dir const& d) : tt_{tt} {
+stamm::stamm(config const& c,
+             timetable& tt,
+             dir const& d,
+             source_idx_t const src)
+    : tt_{tt}, src_{src} {
   auto const files = load_files(c, d);
   timezones_ = parse_timezones(c, tt, files.at(TIMEZONES).data());
   locations_ =
-      parse_stations(c, source_idx_t{0U}, tt, *this, files.at(STATIONS).data(),
+      parse_stations(c, src, tt, *this, files.at(STATIONS).data(),
                      files.at(COORDINATES).data(), files.at(FOOTPATHS).data());
   bitfields_ = parse_bitfields(c, files.at(BITFIELDS).data());
   categories_ = parse_categories(c, files.at(CATEGORIES).data());
-  providers_ =
-      parse_providers(c, source_idx_t{0U}, tt, files.at(PROVIDERS).data());
+  providers_ = parse_providers(c, src, tt, files.at(PROVIDERS).data());
   attributes_ = parse_attributes(c, tt, files.at(ATTRIBUTES).data());
   directions_ = parse_directions(c, tt, files.at(DIRECTIONS).data());
   date_range_ = parse_interval(files.at(BASIC_DATA).data());
   tracks_ = parse_track_rules(c, *this, tt, files.at(TRACKS).data());
 }
 
-stamm::stamm(timetable& tt, timezone_map_t&& m)
-    : timezones_{std::move(m)}, tt_{tt} {}
+stamm::stamm(timetable& tt, timezone_map_t&& m, source_idx_t const src)
+    : timezones_{std::move(m)}, tt_{tt}, src_{src} {}
 
 interval<std::chrono::sys_days> stamm::get_date_range() const {
   return date_range_;
@@ -61,33 +64,25 @@ category const* stamm::resolve_category(utl::cstr s) const {
   return it == end(categories_) ? nullptr : &it->second;
 }
 
-trip_direction_idx_t stamm::resolve_direction(direction_info_t const& info) {
+translation_idx_t stamm::resolve_direction(direction_info_t const& info) {
   return info.apply(utl::overloaded{
       [&](utl::cstr const str) {
         return utl::get_or_create(string_directions_, str.view(), [&]() {
           auto const it = directions_.find(str.view());
           if (it == end(directions_)) {
-            return trip_direction_idx_t::invalid();
+            return kEmptyTranslation;
           } else {
-            auto const dir_idx =
-                trip_direction_idx_t{tt_.trip_directions_.size()};
-            tt_.trip_directions_.emplace_back(it->second);
-            return dir_idx;
+            return it->second;
           }
         });
       },
       [&](eva_number const eva) {
-        return utl::get_or_create(eva_directions_, eva, [&]() {
-          auto const it = locations_.find(eva);
-          if (it == end(locations_)) {
-            return trip_direction_idx_t::invalid();
-          } else {
-            auto const dir_idx =
-                trip_direction_idx_t{tt_.trip_directions_.size()};
-            tt_.trip_directions_.emplace_back(it->second.idx_);
-            return dir_idx;
-          }
-        });
+        auto const it = locations_.find(eva);
+        if (it == end(locations_)) {
+          return kEmptyTranslation;
+        } else {
+          return tt_.locations_.names_[it->second.idx_];
+        }
       }});
 }
 
@@ -106,10 +101,10 @@ provider_idx_t stamm::resolve_provider(utl::cstr s) {
     log(log_lvl::error, "nigiri.loader.hrd.provider",
         "creating new provider for missing {}", s.view());
     auto const idx = provider_idx_t{tt_.providers_.size()};
-    tt_.providers_.emplace_back(
-        provider{.short_name_ = tt_.strings_.store(s.view()),
-                 .long_name_ = tt_.strings_.store(s.view()),
-                 .url_ = tt_.strings_.store(""),
+    tt_.providers_.push_back(
+        provider{.id_ = tt_.strings_.store(s.view()),
+                 .name_ = tt_.register_translation(s.view()),
+                 .url_ = kEmptyTranslation,
                  .src_ = source_idx_t{0}});
     providers_[s.to_str()] = idx;
     return idx;
@@ -153,9 +148,9 @@ location_idx_t stamm::resolve_track(track_rule_key const& k,
 
 trip_line_idx_t stamm::resolve_line(std::string_view s) {
   return utl::get_or_create(lines_, s, [&]() {
-    auto const idx = trip_line_idx_t{tt_.trip_lines_.size()};
-    tt_.trip_lines_.emplace_back(s);
-    return idx;
+    // auto const idx = trip_line_idx_t{tt_.trip_lines_.size()};
+    // tt_.trip_lines_.emplace_back(s);
+    return trip_line_idx_t::invalid();
   });
 }
 

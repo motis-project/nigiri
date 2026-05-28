@@ -48,7 +48,7 @@ private:
   basic_string<attribute_idx_t> attribute_combination_;
   basic_string<provider_idx_t> section_providers_;
   basic_string<attribute_combination_idx_t> section_attributes_;
-  basic_string<trip_direction_idx_t> section_directions_;
+  basic_string<translation_idx_t> section_directions_;
   basic_string<trip_line_idx_t> section_lines_;
   basic_string<stop_idx_t> stop_seq_numbers_;
   basic_string<route_color> route_colors_;

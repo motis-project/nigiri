@@ -14,6 +14,9 @@ using relative_shape_idx_t =
     cista::strong<std::uint32_t, struct relative_shape_idx_>;
 
 struct shape_loader_state {
+  scoped_shape_idx_t get_scoped_shape_idx(relative_shape_idx_t const i) const {
+    return to_scoped_shape_idx(get_shape_idx(i), shape_source::kTimetable);
+  }
   shape_idx_t get_shape_idx(relative_shape_idx_t const i) const {
     return shape_idx_t{to_idx(i) + index_offset_};
   }

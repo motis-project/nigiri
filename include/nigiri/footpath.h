@@ -14,7 +14,7 @@ namespace nigiri {
 struct footpath {
   using value_type = location_idx_t::value_t;
   static constexpr auto const kTotalBits = 8 * sizeof(value_type);
-  static constexpr auto const kTargetBits = 22U;
+  static constexpr auto const kTargetBits = 23U;
   static constexpr auto const kDurationBits = kTotalBits - kTargetBits;
   static constexpr auto const kMaxDuration = duration_t{
       std::numeric_limits<location_idx_t::value_t>::max() >> kTargetBits};

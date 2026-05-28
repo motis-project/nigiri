@@ -16,6 +16,7 @@ using flex_areas_t = hash_map<std::string, flex_area_idx_t>;
 using stop_seq_map_t = hash_map<std::vector<flex_stop_t>, flex_stop_seq_idx_t>;
 
 flex_areas_t parse_flex_areas(timetable&,
+                              translator&,
                               source_idx_t,
                               std::string_view file_content);
 
@@ -25,9 +26,11 @@ void parse_location_group_stops(timetable&,
                                 stops_map_t const&);
 
 location_groups_t parse_location_groups(timetable&,
+                                        translator&,
                                         std::string_view file_content);
 
 booking_rules_t parse_booking_rules(timetable&,
+                                    translator&,
                                     std::string_view file_content,
                                     traffic_days_t const&,
                                     hash_map<bitfield, bitfield_idx_t>&);

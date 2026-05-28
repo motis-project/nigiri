@@ -68,10 +68,11 @@ using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
 using td_offsets_t = hash_map<location_idx_t, std::vector<routing::td_offset>>;
 
 struct query {
+  void flip_dir();
   void sanitize(timetable const&);
   bool operator==(query const& o) const;
 
-  start_time_t start_time_;
+  start_time_t start_time_{};
   location_match_mode start_match_mode_{
       nigiri::routing::location_match_mode::kExact};
   location_match_mode dest_match_mode_{
@@ -95,6 +96,7 @@ struct query {
   std::optional<duration_t> fastest_direct_{};
   double fastest_direct_factor_{1.0};
   bool slow_direct_{false};
+  double fastest_slow_direct_factor_{2.0};
 };
 
 }  // namespace nigiri::routing

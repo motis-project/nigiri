@@ -281,8 +281,9 @@ TEST(routing, start_times) {
   get_starts(direction::kForward, tt, nullptr,
              interval<unixtime_t>{sys_days{2020_y / March / 30},
                                   sys_days{2020_y / March / 31}},
-             {{A, 15_minutes, 0}, {B, 30_minutes, 0}}, {}, duration_t::max(),
-             location_match_mode::kExact, false, starts, true, 0, {});
+             {{A, 15_minutes, 0}, {B, 30_minutes, 0}}, {}, {},
+             duration_t::max(), location_match_mode::kExact, false, starts,
+             true, 0, {});
   std::sort(begin(starts), end(starts),
             [](auto&& a, auto&& b) { return a > b; });
   starts.erase(std::unique(begin(starts), end(starts)), end(starts));
@@ -299,8 +300,9 @@ TEST(routing, start_times) {
         ss << "start_time=" << from_it->time_at_start_ << "\n";
         for (auto const& s : it_range{from_it, to_it}) {
           ss << "|  {time_at_start=" << s.time_at_start_
-             << ", time_at_stop=" << s.time_at_stop_
-             << ", stop=" << tt.locations_.names_[s.stop_].view() << "}\n";
+             << ", time_at_stop=" << s.time_at_stop_ << ", stop="
+             << tt.get_default_translation(tt.locations_.names_[s.stop_])
+             << "}\n";
         }
       });
 
@@ -366,7 +368,7 @@ TEST(routing, rt_start_times) {
     get_starts(direction::kForward, tt, &rtt,
                interval<unixtime_t>{sys_days{2024_y / July / 9} + 21_hours,
                                     sys_days{2024_y / July / 9} + 23_hours},
-               {{A, 15_minutes, 0}}, {}, duration_t::max(),
+               {{A, 15_minutes, 0}}, {}, {}, duration_t::max(),
                location_match_mode::kExact, false, starts, true, 0, {});
     std::sort(begin(starts), end(starts),
               [](auto&& a, auto&& b) { return a > b; });
@@ -384,8 +386,9 @@ TEST(routing, rt_start_times) {
           ss << "start_time=" << from_it->time_at_start_ << "\n";
           for (auto const& s : it_range{from_it, to_it}) {
             ss << "|  {time_at_start=" << s.time_at_start_
-               << ", time_at_stop=" << s.time_at_stop_
-               << ", stop=" << tt.locations_.names_[s.stop_].view() << "}\n";
+               << ", time_at_stop=" << s.time_at_stop_ << ", stop="
+               << tt.get_default_translation(tt.locations_.names_[s.stop_])
+               << "}\n";
           }
         });
     return ss.str();

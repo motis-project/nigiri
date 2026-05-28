@@ -9,6 +9,7 @@
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/permutate_locations.h"
+#include "nigiri/loader/register.h"
 #include "nigiri/flex.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
@@ -16,22 +17,26 @@
 namespace nigiri::loader {
 
 void register_special_stations(timetable& tt) {
-  auto empty_idx_vec = vector<location_idx_t>{};
+  tt.languages_.store("");  // enable kDefaultLang
+  tt.register_translation(std::string_view{""});  // enable kEmptyTranslation
   for (auto const& name : special_stations_names) {
-    tt.locations_.register_location(location{name,
-                                             name,
-                                             "",
-                                             "",
-                                             {0.0, 0.0},
-                                             source_idx_t::invalid(),
-                                             location_type::kStation,
-                                             location_idx_t::invalid(),
-                                             timezone_idx_t::invalid(),
-                                             0_minutes,
-                                             it_range{empty_idx_vec}});
+    auto const name_translation = tt.register_translation(name);
+    register_location(tt, location{tt,
+                                   source_idx_t::invalid(),
+                                   name,
+                                   name_translation,
+                                   kEmptyTranslation,
+                                   kEmptyTranslation,
+                                   kEmptyTranslation,
+                                   {0.0, 0.0},
+                                   location_type::kStation,
+                                   location_idx_t::invalid(),
+                                   timezone_idx_t::invalid(),
+                                   0_minutes});
   }
   tt.location_routes_.resize(tt.n_locations());
   tt.bitfields_.emplace_back(bitfield{});  // bitfield_idx 0 = 000...00 bitfield
+  tt.attribute_combinations_.add_back_sized(0U);  // combination 0 = empty
 }
 
 void build_location_tree(timetable& tt) {
@@ -84,7 +89,7 @@ void assign_importance(timetable& tt) {
                                        /* Night */ 20,
                                        /* RegionalFast */ 16,
                                        /* Regional */ 15,
-                                       /* Metro */ 10,
+                                       /* Suburban */ 10,
                                        /* Subway */ 10,
                                        /* Tram */ 3,
                                        /* Bus  */ 2,
@@ -99,8 +104,103 @@ void assign_importance(timetable& tt) {
   }
 }
 
+// Based on https://www.w3.org/TR/WCAG20/#relativeluminancedef
+float luminance(color_t color) {
+  constexpr auto max = static_cast<float>(std::numeric_limits<uint8_t>::max());
+  auto const r = (color.v_ >> 16 & 0xFF) / max;
+  auto const g = (color.v_ >> 8 & 0xFF) / max;
+  auto const b = (color.v_ & 0xFF) / max;
+
+  auto const color_lum = [](float channel) -> float {
+    return channel <= 0.03928f ? channel / 12.92f
+                               : std::pow((channel + 0.055f) / 1.055f, 2.4f);
+  };
+  auto const red_lum = color_lum(r);
+  auto const green_lum = color_lum(g);
+  auto const blue_lum = color_lum(b);
+
+  return 0.2126f * red_lum + 0.7152f * green_lum + 0.0722f * blue_lum;
+}
+
+// Based on contrast ratio formula from https://www.w3.org/TR/WCAG20/
+float contrast_ratio(color_t a, color_t b) {
+  auto const a_lum = luminance(a);
+  auto const b_lum = luminance(b);
+
+  auto const [lighter, darker] =
+      a_lum > b_lum ? std::tuple{a_lum, b_lum} : std::tuple{b_lum, a_lum};
+
+  return (lighter + 0.05f) / (darker + 0.05f);
+}
+
+void correct_color_contrast(timetable& tt) {
+  for (auto& ids : tt.route_ids_) {
+    for (auto& colors : ids.route_id_colors_) {
+      constexpr auto white = color_t(0xFFFFFFFF);
+      constexpr auto black = color_t(0xFF000000);
+
+      if (colors.color_ != 0 && colors.text_color_ != 0) {
+        auto const ratio = contrast_ratio(colors.color_, colors.text_color_);
+
+        if (ratio < 2.0f) {
+          auto const better = contrast_ratio(colors.color_, black) >
+                                      contrast_ratio(colors.color_, white)
+                                  ? black
+                                  : white;
+          colors.text_color_ = better;
+        }
+      }
+
+      if (colors.color_ == 0 && colors.text_color_ != 0) {
+        colors.color_ = contrast_ratio(colors.text_color_, black) >
+                                contrast_ratio(colors.text_color_, white)
+                            ? black
+                            : white;
+      }
+
+      if (colors.color_ != 0 && colors.text_color_ == 0) {
+        colors.text_color_ = contrast_ratio(colors.color_, black) >
+                                     contrast_ratio(colors.color_, white)
+                                 ? black
+                                 : white;
+      }
+    }
+  }
+}
+
+void rebuild_route_traffic_days(timetable& tt) {
+  tt.route_traffic_days_.resize(tt.n_routes());
+
+  for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
+    auto combined = bitfield{};
+    auto const& seq = tt.route_location_seq_[r];
+    auto const stop_count = static_cast<stop_idx_t>(seq.size());
+
+    for (auto const t : tt.route_transport_ranges_[r]) {
+      auto max_delta = std::int16_t{0};
+      for (auto s = stop_idx_t{0U}; s != stop_count; ++s) {
+        if (s != 0U) {
+          max_delta = std::max(max_delta,
+                               tt.event_mam(r, t, s, event_type::kArr).days());
+        }
+        if (s + 1U != stop_count) {
+          max_delta = std::max(max_delta,
+                               tt.event_mam(r, t, s, event_type::kDep).days());
+        }
+      }
+
+      auto const& trans_bf = tt.bitfields_[tt.transport_traffic_days_[t]];
+      for (auto d = std::int16_t{0}; d <= max_delta; ++d) {
+        combined |= (trans_bf << static_cast<std::size_t>(d));
+      }
+    }
+
+    tt.bitfields_.emplace_back(combined);
+    tt.route_traffic_days_[r] = bitfield_idx_t{tt.bitfields_.size() - 1U};
+  }
+}
+
 void finalize(timetable& tt, finalize_options const opt) {
-  tt.strings_.cache_.clear();
   tt.location_routes_.resize(tt.n_locations());
 
   {
@@ -126,18 +226,20 @@ void finalize(timetable& tt, finalize_options const opt) {
 #endif
         begin(tt.provider_id_to_idx_), end(tt.provider_id_to_idx_),
         [&](provider_idx_t const a, provider_idx_t const b) {
-          return tt.strings_.get(tt.providers_[a].short_name_) <
-                 tt.strings_.get(tt.providers_[b].short_name_);
+          return std::tie(tt.providers_[a].src_, tt.providers_[a].id_) <
+                 std::tie(tt.providers_[b].src_, tt.providers_[b].id_);
         });
   }
 
   permutate_locations(tt);
   build_footpaths(tt, opt);
+  rebuild_route_traffic_days(tt);
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);
   build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
   build_location_tree(tt);
   assign_stops_to_flex_areas(tt);
   assign_importance(tt);
+  correct_color_contrast(tt);
 
   log(log_lvl::info, "nigiri.loader.finalize",
       "{} locations ({}% of idx space used)", tt.n_locations(),

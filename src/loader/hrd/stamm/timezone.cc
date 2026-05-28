@@ -95,7 +95,7 @@ timezone_map_t parse_timezones(config const& c,
 
   for (auto& [eva, t] : tz) {
     auto& [tz_idx, offsets] = t;
-    tz_idx = tt.locations_.register_timezone(offsets);
+    tz_idx = tt.register_timezone(offsets);
   }
 
   return tz;

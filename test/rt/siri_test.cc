@@ -123,14 +123,45 @@ mem_dir siri_test_files() {
 8005142,,,,"49.491553000000","11.261613000000"
 8003587,,,,"49.501127000000","11.277998000000"
 8003580,,,,"49.507130000000","11.285283000000"
+"de:13003:1489:2:2","","Rostock Hauptbahnhof","Gleis 1+2 SBahn","54.078725000000","12.130823000000","0","de:13003:1489","0","2","2"
+"de:13003:1489:3:6","","Rostock Hauptbahnhof","Gleis 3-7","54.079115000000","12.129736000000","0","de:13003:1489","0","6","2"
+"de:13003:1489:3:3","","Rostock Hauptbahnhof","Gleis 3-7","54.078261000000","12.131398000000","0","de:13003:1489","0","3","2"
+"de:13003:1489","","Rostock Hauptbahnhof","","54.078177000000","12.130724000000","1","","0","",""
+"de:13003:853:3:1","","Rostock S Parkstraße","Gleis 1 + 2","54.085407000000","12.107835000000","0","de:13003:853","0","1","2"
+"de:13003:791:3:1","","Rostock S Holbeinplatz","Bahn","54.093258000000","12.099633000000","0","de:13003:791","0","3","5"
+"de:13003:1504:2:1","","Rostock S Bramow","Bahn","54.101633000000","12.090641000000","0","de:13003:1504","0","1","2"
+"de:13003:827:2:1","","Rostock S Marienehe","Bahn","54.111556000000","12.080364000000","0","de:13003:827","0","1","2"
+"de:13003:794:2:1","","Rostock S Evershagen","Gleis 1 + 2","54.123571000000","12.068632000000","0","de:13003:794","0","1","2"
+"de:13003:796:2:1","","Rostock, S Lütten Klein","Gleis 1","54.138162000000","12.065102000000","0","de:13003:796","0","1","2"
+"de:13003:840:1:1","","Rostock S Lichtenhagen","Gleis 1 + 2","54.152331000000","12.070941000000","0","de:13003:795","0","1","2"
+"de:13003:926:2:1","","Warnemünde, S Warnemünde, Werft","Gleis 1","54.169368000000","12.085961000000","0","de:13003:926","0","1","2"
+"de:13003:1500:2:2","","Warnemünde","Gleis 1+2","54.176934000000","12.090470000000","0","de:13003:1500","0","2","2"
+"de:13003:1500:3:3","","Warnemünde","Gleis 3","54.176961000000","12.090677000000","0","de:13003:1500","0","3","2"
+"de:13003:1500","","Warnemünde","","54.177108000000","12.090839000000","1","","0","",""
+"8010304","","Rostock Hbf","","54.078246","12.131079","0","","0","",""
+"8012801","","Rostock Parkstraße","","54.085243","12.10789","0","","0","",""
+"8012805","","Rostock Holbeinplatz","","54.0933","12.099466","0","","0","",""
+"8012803","","Rostock-Bramow","","54.101746","12.090548","0","","0","",""
+"8012807","","Rostock-Marienehe","","54.111774","12.080072","0","","0","",""
+"8011523","","Rostock-Evershagen","","54.123552","12.068507","0","","0","",""
+"8012271","","Rostock-Lütten Klein","","54.138222","12.064985","0","","0","",""
+"8012221","","Rostock-Lichtenhagen","","54.152403","12.070866","0","","0","",""
+"8013237","","Warnemünde Werft","","54.16932","12.085638","0","","0","",""
+"8013236","","Warnemünde","","54.176852","12.091271","0","","0","",""
+
 
 # routes.txt
 "route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
 "162465_109",10446,"S2","",109,"","",""
+"162770_109",10434,"S1","",109,"","",""
 
 # trips.txt
 "route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
 "162465_109",9782,2867631759,"Lauf a.d.Pegnitz Bahnhof links der Pegnitz","39611",0,,40080,0,0
+"162770_109",9782,2879065600,"Warnemünde","33374",1,,53439,0,0
+"162770_109",9782,2879065754,"Warnemünde","75812",1,,53439,0,0
+"162770_109",9782,2879065589,"Warnemünde","33524",1,,53439,0,0
+"162770_109",9782,2879065551,"Warnemünde","33376",1,,53439,0,0
 
 # stop_times.txt
 "trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
@@ -154,8 +185,46 @@ mem_dir siri_test_files() {
 2867631759,11:21:00,11:22:00,"de:09574:7710:2:2",17,0,0,""
 2867631759,11:23:00,11:24:00,"de:09574:7040:2:2",18,0,0,""
 2867631759,11:26:00,11:26:00,"de:09574:7000:3:2",19,0,0,""
-
-
+2879065600,14:26:00,14:26:00,"de:13003:1489:2:2",0,0,0,""
+2879065600,14:28:00,14:29:00,"de:13003:853:3:1",1,0,0,""
+2879065600,14:31:00,14:32:00,"de:13003:791:3:1",2,0,0,""
+2879065600,14:35:00,14:36:00,"de:13003:1504:2:1",3,0,0,""
+2879065600,14:37:00,14:38:00,"de:13003:827:2:1",4,0,0,""
+2879065600,14:41:00,14:41:00,"de:13003:794:2:1",5,0,0,""
+2879065600,14:42:00,14:43:00,"de:13003:796:2:1",6,0,0,""
+2879065600,14:44:00,14:45:00,"de:13003:840:1:1",7,0,0,""
+2879065600,14:48:00,14:48:00,"de:13003:926:2:1",8,0,0,""
+2879065600,14:50:00,14:50:00,"de:13003:1500:2:2",9,0,0,""
+2879065754,14:36:00,14:36:00,"de:13003:1489:2:2",0,0,0,""
+2879065754,14:38:00,14:39:00,"de:13003:853:3:1",1,0,0,""
+2879065754,14:41:00,14:42:00,"de:13003:791:3:1",2,0,0,""
+2879065754,14:45:00,14:46:00,"de:13003:1504:2:1",3,0,0,""
+2879065754,14:47:00,14:48:00,"de:13003:827:2:1",4,0,0,""
+2879065754,14:50:00,14:51:00,"de:13003:794:2:1",5,0,0,""
+2879065754,14:52:00,14:53:00,"de:13003:796:2:1",6,0,0,""
+2879065754,14:54:00,14:55:00,"de:13003:840:1:1",7,0,0,""
+2879065754,14:57:00,14:58:00,"de:13003:926:2:1",8,0,0,""
+2879065754,15:00:00,15:00:00,"de:13003:1500:3:3",9,0,0,""
+2879065589,14:46:00,14:46:00,"de:13003:1489:3:6",0,0,0,""
+2879065589,14:48:00,14:49:00,"de:13003:853:3:1",1,0,0,""
+2879065589,14:51:00,14:52:00,"de:13003:791:3:1",2,0,0,""
+2879065589,14:55:00,14:56:00,"de:13003:1504:2:1",3,0,0,""
+2879065589,14:57:00,14:58:00,"de:13003:827:2:1",4,0,0,""
+2879065589,15:01:00,15:01:00,"de:13003:794:2:1",5,0,0,""
+2879065589,15:02:00,15:03:00,"de:13003:796:2:1",6,0,0,""
+2879065589,15:04:00,15:05:00,"de:13003:840:1:1",7,0,0,""
+2879065589,15:08:00,15:08:00,"de:13003:926:2:1",8,0,0,""
+2879065589,15:10:00,15:10:00,"de:13003:1500:2:2",9,0,0,""
+2879065551,14:56:00,14:56:00,"de:13003:1489:3:3",0,0,0,""
+2879065551,14:58:00,14:59:00,"de:13003:853:3:1",1,0,0,""
+2879065551,15:01:00,15:02:00,"de:13003:791:3:1",2,0,0,""
+2879065551,15:05:00,15:06:00,"de:13003:1504:2:1",3,0,0,""
+2879065551,15:07:00,15:08:00,"de:13003:827:2:1",4,0,0,""
+2879065551,15:11:00,15:11:00,"de:13003:794:2:1",5,0,0,""
+2879065551,15:13:00,15:13:00,"de:13003:796:2:1",6,0,0,""
+2879065551,15:15:00,15:15:00,"de:13003:840:1:1",7,0,0,""
+2879065551,15:18:00,15:18:00,"de:13003:926:2:1",8,0,0,""
+2879065551,15:20:00,15:20:00,"de:13003:1500:2:2",9,0,0,""
 )__");
 }
 
@@ -393,6 +462,551 @@ constexpr auto const kMsg =
   </ServiceDelivery>
 </Siri>)";
 
+constexpr auto const kMultipleMatchesMsg1 =
+    R"(<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Siri xmlns:datex="http://datex2.eu/schema/2_0RC1/2_0" xmlns="http://www.siri.org.uk/siri" xmlns:acsb="http://www.ifopt.org.uk/acsb" xmlns:ifopt="http://www.ifopt.org.uk/ifopt" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xs="http://www.w3.org/2001/XMLSchema" version="2.0">
+  <ServiceDelivery>
+    <ResponseTimestamp>2025-07-21T12:58:55.126Z</ResponseTimestamp>
+    <ProducerRef>rcsued-siri-spnv</ProducerRef>
+    <RequestMessageRef>49758e6c-ac3b-4778-aaca-5921ef0834d2</RequestMessageRef>
+    <EstimatedTimetableDelivery version="2.0">
+      <ResponseTimestamp>2025-07-21T12:58:55.126Z</ResponseTimestamp>
+      <RequestMessageRef>49758e6c-ac3b-4778-aaca-5921ef0834d2</RequestMessageRef>
+      <EstimatedJourneyVersionFrame>
+
+    <EstimatedVehicleJourney>
+      <LineRef>1</LineRef>
+      <DirectionRef>Rostock Hbf#Warnemünde</DirectionRef>
+      <FramedVehicleJourneyRef>
+        <DataFrameRef>2025-07-21</DataFrameRef>
+        <DatedVehicleJourneyRef>33374-800156-8010304-142600_x35__x33_ADD_x33__x35_DB-s</DatedVehicleJourneyRef>
+      </FramedVehicleJourneyRef>
+      <PublishedLineName>S1</PublishedLineName>
+      <DirectionName>Warnemünde</DirectionName>
+      <OriginRef>8010304</OriginRef>
+      <OriginName>Rostock Hbf</OriginName>
+      <DestinationRef>8013236</DestinationRef>
+      <OperatorRef>800156</OperatorRef>
+      <ProductCategoryRef>S</ProductCategoryRef>
+      <Monitored>true</Monitored>
+      <PredictionInaccurate>false</PredictionInaccurate>
+      <VehicleJourneyRef>33374-800156-8010304-142600#!ADD!#DB-s</VehicleJourneyRef>
+      <RecordedCalls>
+        <RecordedCall>
+          <StopPointRef>8010304</StopPointRef>
+          <VisitNumber>100</VisitNumber>
+          <PredictionInaccurate>false</PredictionInaccurate>
+          <AimedDepartureTime>2025-07-21T14:26:00+02:00</AimedDepartureTime>
+          <ExpectedDepartureTime>2025-07-21T14:30:00+02:00</ExpectedDepartureTime>
+          <DeparturePlatformName>1</DeparturePlatformName>
+        </RecordedCall>
+        <RecordedCall>
+          <StopPointRef>8012801</StopPointRef>
+          <VisitNumber>100</VisitNumber>
+          <PredictionInaccurate>false</PredictionInaccurate>
+          <AimedArrivalTime>2025-07-21T14:28:00+02:00</AimedArrivalTime>
+          <ExpectedArrivalTime>2025-07-21T14:32:00+02:00</ExpectedArrivalTime>
+          <ArrivalPlatformName>1</ArrivalPlatformName>
+          <AimedDepartureTime>2025-07-21T14:29:00+02:00</AimedDepartureTime>
+          <ExpectedDepartureTime>2025-07-21T14:33:00+02:00</ExpectedDepartureTime>
+          <DeparturePlatformName>1</DeparturePlatformName>
+        </RecordedCall>
+        <RecordedCall>
+          <StopPointRef>8012805</StopPointRef>
+          <VisitNumber>100</VisitNumber>
+          <PredictionInaccurate>false</PredictionInaccurate>
+          <AimedArrivalTime>2025-07-21T14:31:00+02:00</AimedArrivalTime>
+          <ExpectedArrivalTime>2025-07-21T14:35:00+02:00</ExpectedArrivalTime>
+          <ArrivalPlatformName>1</ArrivalPlatformName>
+          <AimedDepartureTime>2025-07-21T14:32:00+02:00</AimedDepartureTime>
+          <ExpectedDepartureTime>2025-07-21T14:36:00+02:00</ExpectedDepartureTime>
+          <DeparturePlatformName>1</DeparturePlatformName>
+        </RecordedCall>
+        <RecordedCall>
+          <StopPointRef>8012803</StopPointRef>
+          <VisitNumber>100</VisitNumber>
+          <PredictionInaccurate>false</PredictionInaccurate>
+          <AimedArrivalTime>2025-07-21T14:35:00+02:00</AimedArrivalTime>
+          <ExpectedArrivalTime>2025-07-21T14:38:00+02:00</ExpectedArrivalTime>
+          <ArrivalPlatformName>1</ArrivalPlatformName>
+          <AimedDepartureTime>2025-07-21T14:36:00+02:00</AimedDepartureTime>
+          <ExpectedDepartureTime>2025-07-21T14:39:00+02:00</ExpectedDepartureTime>
+          <DeparturePlatformName>1</DeparturePlatformName>
+        </RecordedCall>
+        <RecordedCall>
+          <StopPointRef>8012807</StopPointRef>
+          <VisitNumber>100</VisitNumber>
+          <PredictionInaccurate>false</PredictionInaccurate>
+          <AimedArrivalTime>2025-07-21T14:37:00+02:00</AimedArrivalTime>
+          <ExpectedArrivalTime>2025-07-21T14:40:00+02:00</ExpectedArrivalTime>
+          <ArrivalPlatformName>1</ArrivalPlatformName>
+          <AimedDepartureTime>2025-07-21T14:38:00+02:00</AimedDepartureTime>
+          <ExpectedDepartureTime>2025-07-21T14:41:00+02:00</ExpectedDepartureTime>
+          <DeparturePlatformName>1</DeparturePlatformName>
+        </RecordedCall>
+        <RecordedCall>
+          <StopPointRef>8011523</StopPointRef>
+          <VisitNumber>100</VisitNumber>
+          <PredictionInaccurate>false</PredictionInaccurate>
+          <AimedArrivalTime>2025-07-21T14:41:00+02:00</AimedArrivalTime>
+          <ExpectedArrivalTime>2025-07-21T14:43:00+02:00</ExpectedArrivalTime>
+          <ArrivalPlatformName>1</ArrivalPlatformName>
+          <AimedDepartureTime>2025-07-21T14:41:00+02:00</AimedDepartureTime>
+          <ExpectedDepartureTime>2025-07-21T14:45:00+02:00</ExpectedDepartureTime>
+          <DeparturePlatformName>1</DeparturePlatformName>
+        </RecordedCall>
+        <RecordedCall>
+          <StopPointRef>8012271</StopPointRef>
+          <VisitNumber>100</VisitNumber>
+          <PredictionInaccurate>false</PredictionInaccurate>
+          <AimedArrivalTime>2025-07-21T14:42:00+02:00</AimedArrivalTime>
+          <ExpectedArrivalTime>2025-07-21T14:46:00+02:00</ExpectedArrivalTime>
+          <ArrivalPlatformName>1</ArrivalPlatformName>
+          <AimedDepartureTime>2025-07-21T14:43:00+02:00</AimedDepartureTime>
+          <ExpectedDepartureTime>2025-07-21T14:47:00+02:00</ExpectedDepartureTime>
+          <DeparturePlatformName>1</DeparturePlatformName>
+        </RecordedCall>
+        <RecordedCall>
+          <StopPointRef>8012221</StopPointRef>
+          <VisitNumber>100</VisitNumber>
+          <PredictionInaccurate>false</PredictionInaccurate>
+          <AimedArrivalTime>2025-07-21T14:44:00+02:00</AimedArrivalTime>
+          <ExpectedArrivalTime>2025-07-21T14:49:00+02:00</ExpectedArrivalTime>
+          <ArrivalPlatformName>1</ArrivalPlatformName>
+          <AimedDepartureTime>2025-07-21T14:45:00+02:00</AimedDepartureTime>
+          <ExpectedDepartureTime>2025-07-21T14:50:00+02:00</ExpectedDepartureTime>
+          <DeparturePlatformName>1</DeparturePlatformName>
+        </RecordedCall>
+        <RecordedCall>
+          <StopPointRef>8013237</StopPointRef>
+          <VisitNumber>100</VisitNumber>
+          <PredictionInaccurate>false</PredictionInaccurate>
+          <AimedArrivalTime>2025-07-21T14:48:00+02:00</AimedArrivalTime>
+          <ExpectedArrivalTime>2025-07-21T14:53:00+02:00</ExpectedArrivalTime>
+          <ArrivalPlatformName>1</ArrivalPlatformName>
+          <AimedDepartureTime>2025-07-21T14:48:00+02:00</AimedDepartureTime>
+          <ExpectedDepartureTime>2025-07-21T14:54:00+02:00</ExpectedDepartureTime>
+          <DeparturePlatformName>1</DeparturePlatformName>
+        </RecordedCall>
+        <RecordedCall>
+          <StopPointRef>8013236</StopPointRef>
+          <VisitNumber>100</VisitNumber>
+          <PredictionInaccurate>false</PredictionInaccurate>
+          <AimedArrivalTime>2025-07-21T14:50:00+02:00</AimedArrivalTime>
+          <ExpectedArrivalTime>2025-07-21T14:55:00+02:00</ExpectedArrivalTime>
+          <ArrivalPlatformName>3</ArrivalPlatformName>
+        </RecordedCall>
+      </RecordedCalls>
+      <EstimatedCalls/>
+      <IsCompleteStopSequence>true</IsCompleteStopSequence>
+    </EstimatedVehicleJourney>
+
+
+    <EstimatedVehicleJourney>
+          <LineRef>1</LineRef>
+          <DirectionRef>Rostock Hbf#Warnemünde</DirectionRef>
+          <FramedVehicleJourneyRef>
+            <DataFrameRef>2025-07-21</DataFrameRef>
+            <DatedVehicleJourneyRef>75812-800156-8010304-143600_x35__x33_ADD_x33__x35_DB-s</DatedVehicleJourneyRef>
+          </FramedVehicleJourneyRef>
+          <PublishedLineName>S1</PublishedLineName>
+          <DirectionName>Warnemünde</DirectionName>
+          <OriginRef>8010304</OriginRef>
+          <OriginName>Rostock Hbf</OriginName>
+          <DestinationRef>8013236</DestinationRef>
+          <OperatorRef>800156</OperatorRef>
+          <ProductCategoryRef>S</ProductCategoryRef>
+          <Monitored>true</Monitored>
+          <PredictionInaccurate>false</PredictionInaccurate>
+          <VehicleJourneyRef>75812-800156-8010304-143600#!ADD!#DB-s</VehicleJourneyRef>
+          <RecordedCalls>
+            <RecordedCall>
+              <StopPointRef>8010304</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedDepartureTime>2025-07-21T14:36:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T14:37:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>3</DeparturePlatformName>
+            </RecordedCall>
+            <RecordedCall>
+              <StopPointRef>8012801</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T14:38:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T14:39:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T14:39:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T14:40:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </RecordedCall>
+            <RecordedCall>
+              <StopPointRef>8012805</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T14:41:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T14:41:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T14:42:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T14:43:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </RecordedCall>
+            <RecordedCall>
+              <StopPointRef>8012803</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T14:45:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T14:47:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T14:46:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T14:47:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </RecordedCall>
+            <RecordedCall>
+              <StopPointRef>8012807</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T14:47:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T14:49:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T14:48:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T14:49:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </RecordedCall>
+            <RecordedCall>
+              <StopPointRef>8011523</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T14:50:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T14:51:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T14:51:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T14:52:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </RecordedCall>
+            <RecordedCall>
+              <StopPointRef>8012271</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T14:52:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T14:53:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T14:53:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T14:54:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </RecordedCall>
+            <RecordedCall>
+              <StopPointRef>8012221</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T14:54:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T14:56:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T14:55:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T14:57:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </RecordedCall>
+          </RecordedCalls>
+          <EstimatedCalls>
+            <EstimatedCall>
+              <StopPointRef>8013237</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T14:57:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T14:59:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T14:58:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T15:00:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>8013236</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T15:00:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T15:01:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>3</ArrivalPlatformName>
+            </EstimatedCall>
+          </EstimatedCalls>
+          <IsCompleteStopSequence>true</IsCompleteStopSequence>
+        </EstimatedVehicleJourney>
+      </EstimatedJourneyVersionFrame>
+    </EstimatedTimetableDelivery>
+  </ServiceDelivery>
+</Siri>)";
+
+constexpr auto const kMultipleMatchesMsg2 =
+    R"(<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Siri xmlns:datex="http://datex2.eu/schema/2_0RC1/2_0" xmlns="http://www.siri.org.uk/siri" xmlns:acsb="http://www.ifopt.org.uk/acsb" xmlns:ifopt="http://www.ifopt.org.uk/ifopt" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xs="http://www.w3.org/2001/XMLSchema" version="2.0">
+  <ServiceDelivery>
+    <ResponseTimestamp>2025-07-21T12:58:55.126Z</ResponseTimestamp>
+    <ProducerRef>rcsued-siri-spnv</ProducerRef>
+    <RequestMessageRef>49758e6c-ac3b-4778-aaca-5921ef0834d2</RequestMessageRef>
+    <EstimatedTimetableDelivery version="2.0">
+      <ResponseTimestamp>2025-07-21T12:58:55.126Z</ResponseTimestamp>
+      <RequestMessageRef>49758e6c-ac3b-4778-aaca-5921ef0834d2</RequestMessageRef>
+      <EstimatedJourneyVersionFrame>
+
+        <EstimatedVehicleJourney>
+          <LineRef>1</LineRef>
+          <DirectionRef>Rostock Hbf#Warnemünde</DirectionRef>
+          <FramedVehicleJourneyRef>
+            <DataFrameRef>2025-07-21</DataFrameRef>
+            <DatedVehicleJourneyRef>33376-800156-8010304-145600_x35__x33_ADD_x33__x35_DB-s</DatedVehicleJourneyRef>
+          </FramedVehicleJourneyRef>
+          <PublishedLineName>S1</PublishedLineName>
+          <DirectionName>Warnemünde</DirectionName>
+          <OriginRef>8010304</OriginRef>
+          <OriginName>Rostock Hbf</OriginName>
+          <DestinationRef>8013236</DestinationRef>
+          <OperatorRef>800156</OperatorRef>
+          <ProductCategoryRef>S</ProductCategoryRef>
+          <Monitored>true</Monitored>
+          <PredictionInaccurate>false</PredictionInaccurate>
+          <VehicleJourneyRef>33376-800156-8010304-145600#!ADD!#DB-s</VehicleJourneyRef>
+          <RecordedCalls>
+            <RecordedCall>
+              <StopPointRef>8010304</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedDepartureTime>2025-07-21T14:56:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T14:57:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>3</DeparturePlatformName>
+            </RecordedCall>
+          </RecordedCalls>
+          <EstimatedCalls>
+            <EstimatedCall>
+              <StopPointRef>8012801</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T14:58:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T14:59:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T14:59:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T15:00:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>8012805</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T15:01:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T15:01:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T15:02:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T15:02:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>8012803</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T15:05:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T15:03:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>2</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T15:06:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T15:06:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>2</DeparturePlatformName>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>8012807</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T15:07:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T15:08:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T15:08:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T15:08:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>8011523</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T15:11:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T15:10:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T15:11:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T15:11:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>8012271</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T15:13:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T15:13:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T15:13:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T15:13:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>8012221</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T15:15:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T15:15:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T15:15:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T15:15:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>8013237</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T15:18:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T15:18:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T15:18:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T15:18:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>8013236</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T15:20:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T15:20:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>3</ArrivalPlatformName>
+            </EstimatedCall>
+          </EstimatedCalls>
+          <IsCompleteStopSequence>true</IsCompleteStopSequence>
+        </EstimatedVehicleJourney>
+
+        <EstimatedVehicleJourney>
+          <LineRef>1</LineRef>
+          <DirectionRef>Rostock Hbf#Warnemünde</DirectionRef>
+          <FramedVehicleJourneyRef>
+            <DataFrameRef>2025-07-21</DataFrameRef>
+            <DatedVehicleJourneyRef>33524-800156-8010304-144600_x35__x33_ADD_x33__x35_DB-s</DatedVehicleJourneyRef>
+          </FramedVehicleJourneyRef>
+          <PublishedLineName>S1</PublishedLineName>
+          <DirectionName>Warnemünde</DirectionName>
+          <OriginRef>8010304</OriginRef>
+          <OriginName>Rostock Hbf</OriginName>
+          <DestinationRef>8013236</DestinationRef>
+          <OperatorRef>800156</OperatorRef>
+          <ProductCategoryRef>S</ProductCategoryRef>
+          <Monitored>true</Monitored>
+          <PredictionInaccurate>false</PredictionInaccurate>
+          <VehicleJourneyRef>33524-800156-8010304-144600#!ADD!#DB-s</VehicleJourneyRef>
+          <RecordedCalls>
+            <RecordedCall>
+              <StopPointRef>8010304</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedDepartureTime>2025-07-21T14:46:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T14:46:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </RecordedCall>
+            <RecordedCall>
+              <StopPointRef>8012801</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T14:48:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T14:48:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T14:49:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T14:49:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </RecordedCall>
+            <RecordedCall>
+              <StopPointRef>8012805</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T14:51:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T14:51:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T14:52:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T14:53:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </RecordedCall>
+            <RecordedCall>
+              <StopPointRef>8012803</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T14:55:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T14:55:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T14:56:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T14:56:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </RecordedCall>
+            <RecordedCall>
+              <StopPointRef>8012807</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T14:57:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T14:57:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T14:58:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T14:58:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </RecordedCall>
+          </RecordedCalls>
+         <EstimatedCalls>
+            <EstimatedCall>
+              <StopPointRef>8011523</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T15:01:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T15:00:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T15:01:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T15:01:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>8012271</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T15:02:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T15:03:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T15:03:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T15:03:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>8012221</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T15:04:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T15:05:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T15:05:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T15:06:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>8013237</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T15:08:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T15:08:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-21T15:08:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-21T15:08:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>8013236</StopPointRef>
+              <VisitNumber>100</VisitNumber>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-21T15:10:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-21T15:10:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>3</ArrivalPlatformName>
+            </EstimatedCall>
+          </EstimatedCalls>
+          <IsCompleteStopSequence>true</IsCompleteStopSequence>
+        </EstimatedVehicleJourney>        
+
+      </EstimatedJourneyVersionFrame>
+    </EstimatedTimetableDelivery>
+  </ServiceDelivery>
+</Siri>)";
+
 }  // namespace
 
 TEST(siri_update, matching) {
@@ -445,4 +1059,79 @@ TEST(siri_update, matching) {
   19: de:09574:7000:3:2 Lauf a.d.Pegnitz Bahnhof links der Pegnitz...... a: 03.07 09:26 [03.07 11:26]  RT 03.07 09:26 [03.07 11:26]
 )";
   EXPECT_EQ(kExpected, (std::stringstream{} << rt::frun{tt, &rtt, r}).str());
+}
+
+TEST(siri_update, matching_multiple) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2025_y / July / 1},
+                    date::sys_days{2025_y / July / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, siri_test_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2025_y / July / 21});
+
+  auto u = rt::vdv_aus::updater{tt, src_idx,
+                                rt::vdv_aus::updater::xml_format::kSiri};
+
+  {
+    auto doc = pugi::xml_document{};
+    doc.load_string(kMultipleMatchesMsg1);
+    u.update(rtt, doc);
+  }
+  {
+    auto doc = pugi::xml_document{};
+    doc.load_string(kMultipleMatchesMsg2);
+    u.update(rtt, doc);
+  }
+
+  {
+    auto td = transit_realtime::TripDescriptor{};
+    td.set_trip_id("2879065600");
+    td.set_start_date("20250721");
+    td.set_start_time("14:26:00");
+    auto const [r, trip] = gtfsrt_resolve_run(
+        date::sys_days{2025_y / July / 21}, tt, &rtt, {}, td);
+    ASSERT_TRUE(r.valid());
+    EXPECT_TRUE(r.is_rt());
+    auto const fr = rt::frun{tt, &rtt, r};
+    EXPECT_EQ(4, fr[0].delay(nigiri::event_type::kDep).count());
+  }
+  {
+    auto td = transit_realtime::TripDescriptor{};
+    td.set_trip_id("2879065754");
+    td.set_start_date("20250721");
+    td.set_start_time("14:36:00");
+    auto const [r, trip] = gtfsrt_resolve_run(
+        date::sys_days{2025_y / July / 21}, tt, &rtt, {}, td);
+    ASSERT_TRUE(r.valid());
+    EXPECT_TRUE(r.is_rt());
+    auto const fr = rt::frun{tt, &rtt, r};
+    EXPECT_EQ(1, fr[0].delay(nigiri::event_type::kDep).count());
+  }
+  {
+    auto td = transit_realtime::TripDescriptor{};
+    td.set_trip_id("2879065589");
+    td.set_start_date("20250721");
+    td.set_start_time("14:46:00");
+    auto const [r, trip] = gtfsrt_resolve_run(
+        date::sys_days{2025_y / July / 21}, tt, &rtt, {}, td);
+    ASSERT_TRUE(r.valid());
+    EXPECT_TRUE(r.is_rt());
+    auto const fr = rt::frun{tt, &rtt, r};
+    EXPECT_EQ(0, fr[0].delay(nigiri::event_type::kDep).count());
+  }
+  {
+    auto td = transit_realtime::TripDescriptor{};
+    td.set_trip_id("2879065551");
+    td.set_start_date("20250721");
+    td.set_start_time("14:56:00");
+    auto const [r, trip] = gtfsrt_resolve_run(
+        date::sys_days{2025_y / July / 21}, tt, &rtt, {}, td);
+    ASSERT_TRUE(r.valid());
+    EXPECT_TRUE(r.is_rt());
+    auto const fr = rt::frun{tt, &rtt, r};
+    EXPECT_EQ(1, fr[0].delay(nigiri::event_type::kDep).count());
+  }
 }

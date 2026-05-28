@@ -67,6 +67,7 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
   auto t = new nigiri_timetable_t;
   t->tt = std::make_unique<nigiri::timetable>();
 
+  t->tt->n_sources_ = 1U;
   t->tt->date_range_ = {floor<days>(std::chrono::system_clock::from_time_t(
                             static_cast<time_t>(from_ts))),
                         floor<days>(std::chrono::system_clock::from_time_t(
@@ -163,7 +164,14 @@ bool nigiri_is_transport_active(nigiri_timetable_t const* t,
                                 uint32_t const transport_idx,
                                 uint16_t day_idx) {
   auto const tidx = nigiri::transport_idx_t{transport_idx};
-  return t->tt->bitfields_[t->tt->transport_traffic_days_[tidx]].test(day_idx);
+  return t->tt->is_transport_active(tidx, nigiri::day_idx_t{day_idx});
+}
+
+bool nigiri_is_route_active(nigiri_timetable_t const* t,
+                            uint32_t const route_idx,
+                            uint16_t day_idx) {
+  auto const ridx = nigiri::route_idx_t{route_idx};
+  return t->tt->is_route_active(ridx, nigiri::day_idx_t{day_idx});
 }
 
 uint32_t nigiri_get_route_count(nigiri_timetable_t const* t) {
@@ -197,19 +205,25 @@ uint32_t nigiri_get_location_count(nigiri_timetable_t const* t) {
 
 nigiri_location_t* nigiri_get_location_with_footpaths(
     nigiri_timetable_t const* t, uint32_t idx, bool incoming_footpaths) {
-  auto const lidx = nigiri::location_idx_t{idx};
+  auto const l = nigiri::location_idx_t{idx};
   auto location = new nigiri_location_t;
-  auto l = t->tt->locations_.get(lidx);
-  location->name = l.name_.data();
-  location->name_len = static_cast<uint32_t>(l.name_.length());
-  location->id = l.id_.data();
-  location->id_len = static_cast<uint32_t>(l.id_.length());
-  location->lat = l.pos_.lat_;
-  location->lon = l.pos_.lng_;
-  location->transfer_time = static_cast<uint16_t>(l.transfer_time_.count());
-  auto footpaths = incoming_footpaths
-                       ? t->tt->locations_.footpaths_in_[0][lidx]
-                       : t->tt->locations_.footpaths_out_[0][lidx];
+
+  auto const name = t->tt->get_default_translation(t->tt->locations_.names_[l]);
+  location->name = name.data();
+  location->name_len = static_cast<uint32_t>(name.length());
+
+  auto const id = t->tt->locations_.ids_[l].view();
+  location->id = id.data();
+  location->id_len = static_cast<uint32_t>(id.length());
+
+  auto const pos = t->tt->locations_.coordinates_[l];
+  location->lat = pos.lat_;
+  location->lon = pos.lng_;
+
+  location->transfer_time =
+      static_cast<uint16_t>(t->tt->locations_.transfer_time_[l].count());
+  auto footpaths = incoming_footpaths ? t->tt->locations_.footpaths_in_[0][l]
+                                      : t->tt->locations_.footpaths_out_[0][l];
   auto const n_footpaths = footpaths.size();
   location->footpaths = new nigiri_footpath_t[n_footpaths];
   if (n_footpaths > 0) {
@@ -217,10 +231,12 @@ nigiri_location_t* nigiri_get_location_with_footpaths(
                 sizeof(nigiri_footpath_t) * n_footpaths);
   }
   location->n_footpaths = static_cast<uint32_t>(n_footpaths);
+
+  auto const parent = t->tt->locations_.parents_[l];
   location->parent =
-      l.parent_ == nigiri::location_idx_t::invalid()
+      t->tt->locations_.parents_[l] == nigiri::location_idx_t::invalid()
           ? 0
-          : static_cast<nigiri::location_idx_t::value_t>(l.parent_);
+          : static_cast<nigiri::location_idx_t::value_t>(parent);
   return location;
 }
 

@@ -84,7 +84,7 @@ clasz get_clasz(std::string_view s) {
     case hash("RegioExpress"):
     case hash("TER"):  // Transport express regional
     case hash("TE2"): [[fallthrough]];  // Transport express regional
-    case hash("Cross-Country Rail"): return clasz::kRegionalFast;
+    case hash("Cross-Country Rail"): return clasz::kRegional;
 
     // local trains
     case hash("Railway Service"):
@@ -114,7 +114,7 @@ clasz get_clasz(std::string_view s) {
     case hash("Metro"):
     case hash("Schnelles Nachtnetz"): [[fallthrough]];
     case hash("SN"):
-      return clasz::kMetro;  // S-Bahn Nachtlinie
+      return clasz::kSuburban;  // S-Bahn Nachtlinie
 
     // subway
     case hash("U"):
@@ -218,9 +218,11 @@ clasz to_clasz(std::string_view s) {
     case cista::hash("LONGDISTANCE"): return clasz::kLongDistance;
     case cista::hash("COACH"): return clasz::kCoach;
     case cista::hash("NIGHT"): return clasz::kNight;
-    case cista::hash("REGIONALFAST"): return clasz::kRegionalFast;
+    case cista::hash("RIDE_SHARING"): return clasz::kRideSharing;
+    case cista::hash("REGIONALFAST"): return clasz::kRegional;
     case cista::hash("REGIONAL"): return clasz::kRegional;
-    case cista::hash("METRO"): return clasz::kMetro;
+    case cista::hash("METRO"): return clasz::kSuburban;
+    case cista::hash("SUBURBAN"): return clasz::kSuburban;
     case cista::hash("SUBWAY"): return clasz::kSubway;
     case cista::hash("TRAM"): return clasz::kTram;
     case cista::hash("BUS"): return clasz::kBus;

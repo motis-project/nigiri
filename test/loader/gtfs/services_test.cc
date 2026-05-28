@@ -3,7 +3,9 @@
 #include "nigiri/loader/gtfs/calendar.h"
 #include "nigiri/loader/gtfs/calendar_date.h"
 #include "nigiri/loader/gtfs/files.h"
+#include "nigiri/loader/gtfs/parse_date.h"
 #include "nigiri/loader/gtfs/services.h"
+
 #include "nigiri/common/interval.h"
 #include "nigiri/types.h"
 
@@ -61,7 +63,15 @@ TEST(gtfs, von_dates) {
                           date::sys_days{August / 7 / 2025}};
   auto const dates = read_calendar_date("");
   auto const calendar = read_calendar(kCalendar);
-  auto const traffic_days = merge_traffic_days(i, calendar, dates);
 
-  EXPECT_TRUE(traffic_days.at("T0+ss#68")->none());
+  {
+    auto const traffic_days = merge_traffic_days(i, calendar, dates);
+    EXPECT_TRUE(traffic_days.at("T0+ss#68")->none());
+  }
+
+  {
+    auto const traffic_days =
+        merge_traffic_days(i, calendar, dates, parse_date(20240428));
+    EXPECT_TRUE(traffic_days.at("T0+ss#68")->any());
+  }
 }

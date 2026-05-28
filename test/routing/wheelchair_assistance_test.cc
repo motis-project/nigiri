@@ -52,9 +52,9 @@ R1,DB,RE 1,,,101
 R2,DB,RE 2,,,101
 
 # trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-R1,S,T1,RE 1,
-R2,S,T2,RE 2,
+route_id,service_id,trip_id,trip_headsign,block_id,wheelchair_accessible
+R1,S,T1,RE 1,,1
+R2,S,T2,RE 2,,1
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -88,8 +88,8 @@ TEST(routing, wheelchair_assistance) {
   tt.bwd_search_lb_graph_[kWheelchairProfile] =
       tt.bwd_search_lb_graph_[kDefaultProfile];
 
-  auto const B1 = tt.locations_.get({"B1", {}}).l_;
-  auto const B2 = tt.locations_.get({"B2", {}}).l_;
+  auto const B1 = tt.find(location_id{"B1", {}}).value();
+  auto const B2 = tt.find(location_id{"B2", {}}).value();
   for (auto const profile : {0U, 2U}) {
     tt.locations_.footpaths_out_[profile].resize(tt.n_locations());
     tt.locations_.footpaths_in_[profile].resize(tt.n_locations());

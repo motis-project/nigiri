@@ -1,0 +1,384 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Based on extracts from the French NeTEx dataset "Réseaux urbains et interurbains d'Île-de-France Mobilités" -->
+<!-- Original source: https://transport.data.gouv.fr/datasets/reseau-urbain-et-interurbain-dile-de-france-mobilites -->
+<!-- License: Mobility License (https://wiki.lafabriquedesmobilites.fr/wiki/Licence_Mobilit%C3%A9s) -->
+<PublicationDelivery xmlns="http://www.netex.org.uk/netex" xmlns:gml="http://www.opengis.net/gml/3.2" version="1.04:FR1-NETEX-1.6-1.8">
+    <PublicationTimestamp>2025-05-09T06:03:56Z</PublicationTimestamp>
+    <ParticipantRef>FR1_OFFRE</ParticipantRef>
+    <dataObjects>
+        <GeneralFrame id="FR1:GeneralFrame:NETEX_ARRET_IDF-20250509T060356Z:LOC" version="1.8" dataSourceRef="FR1-OFFRE_AUTO">
+            <TypeOfFrameRef ref="FR1:TypeOfFrame:NETEX_ARRET_IDF:"/>
+            <members>
+                <StopPlace dataSourceRef="FR1-ARRET_AUTO" version="1324773" created="2014-12-28T23:00:00Z" changed="2024-05-03T15:33:15Z"
+                           id="FR::multimodalStopPlace:73797:FR1">
+                    <Name>Tour Eiffel</Name>
+                    <Centroid>
+                        <Location>
+                            <gml:pos srsName="EPSG:2154">648228.5 6862427.0</gml:pos>
+                        </Location>
+                    </Centroid>
+                    <PostalAddress version="any" id="FR1:PostalAddress:73797:">
+                        <Town>Paris 7e</Town>
+                        <PostalRegion>75107</PostalRegion>
+                    </PostalAddress>
+                    <StopPlaceType>onstreetBus</StopPlaceType>
+                </StopPlace>
+                <StopPlace dataSourceRef="FR1-ARRET_AUTO" version="1324772-1324773" created="2014-12-28T23:00:00Z" changed="2024-05-03T15:33:15Z"
+                           id="FR::monomodalStopPlace:45122:FR1">
+                    <Name>Tour Eiffel</Name>
+                    <Centroid>
+                        <Location>
+                            <gml:pos srsName="EPSG:2154">648228.5 6862427.0</gml:pos>
+                        </Location>
+                    </Centroid>
+                    <PostalAddress version="any" id="FR1:PostalAddress:45122:">
+                        <Town>Paris 7e</Town>
+                        <PostalRegion>75107</PostalRegion>
+                    </PostalAddress>
+                    <ParentSiteRef ref="FR::multimodalStopPlace:73797:FR1"/>
+                    <StopPlaceType>onstreetBus</StopPlaceType>
+                </StopPlace>
+                <Quay dataSourceRef="FR1:OrganisationalUnit:59:" version="1590509-23475" created="2018-04-12T07:40:58Z" changed="2024-07-05T09:25:55Z"
+                      derivedFromObjectRef="FR::Quay:23475:FR1" id="FR::Quay:50114645:FR1">
+                    <Name>Tour Eiffel</Name>
+                    <PrivateCode>706</PrivateCode>
+                    <Centroid>
+                        <Location>
+                            <gml:pos srsName="EPSG:2154">648336.0 6862487.0</gml:pos>
+                        </Location>
+                    </Centroid>
+                    <PostalAddress version="any" id="FR1:PostalAddress:50114645:">
+                        <AddressLine1>4 AVENUE DE LA BOURDONNAIS</AddressLine1>
+                        <Town>Paris 7e</Town>
+                        <PostalRegion>75107</PostalRegion>
+                    </PostalAddress>
+                    <AccessibilityAssessment version="any" id="FR1:AccessibilityAssessment:50114645:">
+                        <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                        <limitations>
+                            <AccessibilityLimitation>
+                                <WheelchairAccess>true</WheelchairAccess>
+                                <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                <VisualSignsAvailable>unknown</VisualSignsAvailable>
+                            </AccessibilityLimitation>
+                        </limitations>
+                    </AccessibilityAssessment>
+                    <TransportMode>bus</TransportMode>
+                    <tariffZones>
+                        <TariffZoneRef ref="FR1:TariffZone:1:LOC"/>
+                    </tariffZones>
+                    <destinations>
+                        <DestinationDisplayView>
+                            <Name>42</Name>
+                            <ShortName>42</ShortName>
+                            <FrontText>Aller Cours de l'Île Seguin</FrontText>
+                            <PrivateCode>C01085</PrivateCode>
+                        </DestinationDisplayView>
+                    </destinations>
+                </Quay>
+                <Quay dataSourceRef="FR1:OrganisationalUnit:59:" version="1577823-1338515" created="2018-04-12T07:40:56Z"
+                      changed="2024-06-20T14:42:18Z" derivedFromObjectRef="FR::Quay:23455:FR1" id="FR::Quay:50114668:FR1">
+                    <Name>Tour Eiffel</Name>
+                    <PrivateCode>734</PrivateCode>
+                    <Centroid>
+                        <Location>
+                            <gml:pos srsName="EPSG:2154">648340.0 6862501.0</gml:pos>
+                        </Location>
+                    </Centroid>
+                    <PostalAddress version="any" id="FR1:PostalAddress:50114668:">
+                        <AddressLine1>1 AVENUE DE LA BOURDONNAIS</AddressLine1>
+                        <Town>Paris 7e</Town>
+                        <PostalRegion>75107</PostalRegion>
+                    </PostalAddress>
+                    <AccessibilityAssessment version="any" id="FR1:AccessibilityAssessment:50114668:">
+                        <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                        <limitations>
+                            <AccessibilityLimitation>
+                                <WheelchairAccess>true</WheelchairAccess>
+                                <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                <VisualSignsAvailable>unknown</VisualSignsAvailable>
+                            </AccessibilityLimitation>
+                        </limitations>
+                    </AccessibilityAssessment>
+                    <TransportMode>bus</TransportMode>
+                    <tariffZones>
+                        <TariffZoneRef ref="FR1:TariffZone:1:LOC"/>
+                    </tariffZones>
+                    <destinations>
+                        <DestinationDisplayView>
+                            <Name>42</Name>
+                            <ShortName>42</ShortName>
+                            <FrontText>Retour Gare Saint-Lazare</FrontText>
+                            <PrivateCode>C01085</PrivateCode>
+                        </DestinationDisplayView>
+                    </destinations>
+                </Quay>
+                <Quay dataSourceRef="FR1:OrganisationalUnit:59:" version="1569743-1324774" created="2018-04-12T07:40:42Z"
+                      changed="2024-05-03T15:32:02Z" derivedFromObjectRef="FR::Quay:9107:FR1" id="FR::Quay:50121794:FR1">
+                    <Name>Tour Eiffel</Name>
+                    <PrivateCode>1916</PrivateCode>
+                    <Centroid>
+                        <Location>
+                            <gml:pos srsName="EPSG:2154">648118.0 6862353.0</gml:pos>
+                        </Location>
+                    </Centroid>
+                    <PostalAddress version="any" id="FR1:PostalAddress:50121794:">
+                        <AddressLine1>PONT D'IENA</AddressLine1>
+                        <Town>Paris 7e</Town>
+                        <PostalRegion>75107</PostalRegion>
+                    </PostalAddress>
+                    <AccessibilityAssessment version="any" id="FR1:AccessibilityAssessment:50121794:">
+                        <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                        <limitations>
+                            <AccessibilityLimitation>
+                                <WheelchairAccess>false</WheelchairAccess>
+                                <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                <VisualSignsAvailable>unknown</VisualSignsAvailable>
+                            </AccessibilityLimitation>
+                        </limitations>
+                    </AccessibilityAssessment>
+                    <TransportMode>bus</TransportMode>
+                    <tariffZones>
+                        <TariffZoneRef ref="FR1:TariffZone:1:LOC"/>
+                    </tariffZones>
+                    <destinations>
+                        <DestinationDisplayView>
+                            <Name>82</Name>
+                            <ShortName>82</ShortName>
+                            <FrontText>Retour Champ de Mars - Suffren</FrontText>
+                            <PrivateCode>C01114</PrivateCode>
+                        </DestinationDisplayView>
+                        <DestinationDisplayView>
+                            <Name>30</Name>
+                            <ShortName>30</ShortName>
+                            <FrontText>Aller Hôpital Européen Georges Pompidou</FrontText>
+                            <PrivateCode>C01080</PrivateCode>
+                        </DestinationDisplayView>
+                        <DestinationDisplayView>
+                            <Name>82</Name>
+                            <ShortName>82</ShortName>
+                            <FrontText>Retour Luxembourg</FrontText>
+                            <PrivateCode>C01114</PrivateCode>
+                        </DestinationDisplayView>
+                    </destinations>
+                </Quay>
+                <Quay dataSourceRef="FR1:OrganisationalUnit:59:" version="1582686-1359570" created="2018-04-12T07:40:41Z"
+                      changed="2024-07-03T17:00:29Z" derivedFromObjectRef="FR::Quay:25775:FR1" id="FR::Quay:50121766:FR1">
+                    <Name>Tour Eiffel</Name>
+                    <PrivateCode>1880</PrivateCode>
+                    <Centroid>
+                        <Location>
+                            <gml:pos srsName="EPSG:2154">648123.0 6862385.0</gml:pos>
+                        </Location>
+                    </Centroid>
+                    <PostalAddress version="any" id="FR1:PostalAddress:50121766:">
+                        <AddressLine1>PONT D'IENA</AddressLine1>
+                        <Town>Paris 7e</Town>
+                        <PostalRegion>75107</PostalRegion>
+                    </PostalAddress>
+                    <AccessibilityAssessment version="any" id="FR1:AccessibilityAssessment:50121766:">
+                        <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                        <limitations>
+                            <AccessibilityLimitation>
+                                <WheelchairAccess>true</WheelchairAccess>
+                                <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                <VisualSignsAvailable>unknown</VisualSignsAvailable>
+                            </AccessibilityLimitation>
+                        </limitations>
+                    </AccessibilityAssessment>
+                    <TransportMode>bus</TransportMode>
+                    <tariffZones>
+                        <TariffZoneRef ref="FR1:TariffZone:1:LOC"/>
+                    </tariffZones>
+                    <destinations>
+                        <DestinationDisplayView>
+                            <Name>30</Name>
+                            <ShortName>30</ShortName>
+                            <FrontText>Retour pigalle</FrontText>
+                            <PrivateCode>C01080</PrivateCode>
+                        </DestinationDisplayView>
+                        <DestinationDisplayView>
+                            <Name>82</Name>
+                            <ShortName>82</ShortName>
+                            <FrontText>Aller Hôpital Américain</FrontText>
+                            <PrivateCode>C01114</PrivateCode>
+                        </DestinationDisplayView>
+                        <DestinationDisplayView>
+                            <Name>30</Name>
+                            <ShortName>30</ShortName>
+                            <FrontText>Retour Trocadéro</FrontText>
+                            <PrivateCode>C01080</PrivateCode>
+                        </DestinationDisplayView>
+                    </destinations>
+                </Quay>
+                <Quay dataSourceRef="FR1-ARRET_AUTO" version="1359570-1324772" created="2014-12-28T23:00:00Z" changed="2021-12-07T09:21:38Z"
+                      id="FR::Quay:25775:FR1">
+                    <Name>Tour Eiffel</Name>
+                    <Centroid>
+                        <Location>
+                            <gml:pos srsName="EPSG:2154">648122.0 6862385.0</gml:pos>
+                        </Location>
+                    </Centroid>
+                    <ParentZoneRef ref="FR::monomodalStopPlace:45122:FR1"/>
+                    <PostalAddress version="any" id="FR1:PostalAddress:25775:">
+                        <Town>Paris 7e</Town>
+                        <PostalRegion>75107</PostalRegion>
+                    </PostalAddress>
+                    <AccessibilityAssessment version="any" id="FR1:AccessibilityAssessment:25775:">
+                        <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                        <limitations>
+                            <AccessibilityLimitation>
+                                <WheelchairAccess>true</WheelchairAccess>
+                                <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                <VisualSignsAvailable>unknown</VisualSignsAvailable>
+                            </AccessibilityLimitation>
+                        </limitations>
+                    </AccessibilityAssessment>
+                    <TransportMode>bus</TransportMode>
+                    <tariffZones>
+                        <TariffZoneRef ref="FR1:TariffZone:1:LOC"/>
+                    </tariffZones>
+                    <destinations>
+                        <DestinationDisplayView>
+                            <Name>82</Name>
+                            <ShortName>82</ShortName>
+                            <FrontText>Aller Hôpital Américain</FrontText>
+                            <PrivateCode>C01114</PrivateCode>
+                        </DestinationDisplayView>
+                        <DestinationDisplayView>
+                            <Name>30</Name>
+                            <ShortName>30</ShortName>
+                            <FrontText>Retour pigalle</FrontText>
+                            <PrivateCode>C01080</PrivateCode>
+                        </DestinationDisplayView>
+                        <DestinationDisplayView>
+                            <Name>30</Name>
+                            <ShortName>30</ShortName>
+                            <FrontText>Retour Trocadéro</FrontText>
+                            <PrivateCode>C01080</PrivateCode>
+                        </DestinationDisplayView>
+                    </destinations>
+                </Quay>
+                <Quay dataSourceRef="FR1-ARRET_AUTO" version="23475-1324772" created="2014-12-29T14:31:51Z" changed="2021-05-05T07:38:23Z"
+                      id="FR::Quay:23475:FR1">
+                    <Name>Tour Eiffel</Name>
+                    <Centroid>
+                        <Location>
+                            <gml:pos srsName="EPSG:2154">648339.0 6862483.0</gml:pos>
+                        </Location>
+                    </Centroid>
+                    <ParentZoneRef ref="FR::monomodalStopPlace:45122:FR1"/>
+                    <PostalAddress version="any" id="FR1:PostalAddress:23475:">
+                        <Town>Paris 7e</Town>
+                        <PostalRegion>75107</PostalRegion>
+                    </PostalAddress>
+                    <AccessibilityAssessment version="any" id="FR1:AccessibilityAssessment:23475:">
+                        <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                        <limitations>
+                            <AccessibilityLimitation>
+                                <WheelchairAccess>true</WheelchairAccess>
+                                <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                <VisualSignsAvailable>unknown</VisualSignsAvailable>
+                            </AccessibilityLimitation>
+                        </limitations>
+                    </AccessibilityAssessment>
+                    <TransportMode>bus</TransportMode>
+                    <tariffZones>
+                        <TariffZoneRef ref="FR1:TariffZone:1:LOC"/>
+                    </tariffZones>
+                    <destinations>
+                        <DestinationDisplayView>
+                            <Name>42</Name>
+                            <ShortName>42</ShortName>
+                            <FrontText>Aller Cours de l'Île Seguin</FrontText>
+                            <PrivateCode>C01085</PrivateCode>
+                        </DestinationDisplayView>
+                    </destinations>
+                </Quay>
+                <Quay dataSourceRef="FR1-ARRET_AUTO" version="1338515-1324772" created="2014-12-28T23:00:00Z" changed="2021-10-15T09:19:32Z"
+                      id="FR::Quay:23455:FR1">
+                    <Name>Tour Eiffel</Name>
+                    <Centroid>
+                        <Location>
+                            <gml:pos srsName="EPSG:2154">648339.0 6862502.0</gml:pos>
+                        </Location>
+                    </Centroid>
+                    <ParentZoneRef ref="FR::monomodalStopPlace:45122:FR1"/>
+                    <PostalAddress version="any" id="FR1:PostalAddress:23455:">
+                        <Town>Paris 7e</Town>
+                        <PostalRegion>75107</PostalRegion>
+                    </PostalAddress>
+                    <AccessibilityAssessment version="any" id="FR1:AccessibilityAssessment:23455:">
+                        <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                        <limitations>
+                            <AccessibilityLimitation>
+                                <WheelchairAccess>true</WheelchairAccess>
+                                <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                <VisualSignsAvailable>unknown</VisualSignsAvailable>
+                            </AccessibilityLimitation>
+                        </limitations>
+                    </AccessibilityAssessment>
+                    <TransportMode>bus</TransportMode>
+                    <tariffZones>
+                        <TariffZoneRef ref="FR1:TariffZone:1:LOC"/>
+                    </tariffZones>
+                    <destinations>
+                        <DestinationDisplayView>
+                            <Name>42</Name>
+                            <ShortName>42</ShortName>
+                            <FrontText>Retour Gare Saint-Lazare</FrontText>
+                            <PrivateCode>C01085</PrivateCode>
+                        </DestinationDisplayView>
+                    </destinations>
+                </Quay>
+                <Quay dataSourceRef="FR1-ARRET_AUTO" version="1324774-1324772" created="2014-12-28T23:00:00Z" changed="2024-05-03T15:33:15Z"
+                      id="FR::Quay:9107:FR1">
+                    <Name>Tour Eiffel</Name>
+                    <Centroid>
+                        <Location>
+                            <gml:pos srsName="EPSG:2154">648118.0 6862352.0</gml:pos>
+                        </Location>
+                    </Centroid>
+                    <ParentZoneRef ref="FR::monomodalStopPlace:45122:FR1"/>
+                    <PostalAddress version="any" id="FR1:PostalAddress:9107:">
+                        <Town>Paris 7e</Town>
+                        <PostalRegion>75107</PostalRegion>
+                    </PostalAddress>
+                    <AccessibilityAssessment version="any" id="FR1:AccessibilityAssessment:9107:">
+                        <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                        <limitations>
+                            <AccessibilityLimitation>
+                                <WheelchairAccess>false</WheelchairAccess>
+                                <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                <VisualSignsAvailable>unknown</VisualSignsAvailable>
+                            </AccessibilityLimitation>
+                        </limitations>
+                    </AccessibilityAssessment>
+                    <TransportMode>bus</TransportMode>
+                    <tariffZones>
+                        <TariffZoneRef ref="FR1:TariffZone:1:LOC"/>
+                    </tariffZones>
+                    <destinations>
+                        <DestinationDisplayView>
+                            <Name>82</Name>
+                            <ShortName>82</ShortName>
+                            <FrontText>Retour Luxembourg</FrontText>
+                            <PrivateCode>C01114</PrivateCode>
+                        </DestinationDisplayView>
+                        <DestinationDisplayView>
+                            <Name>82</Name>
+                            <ShortName>82</ShortName>
+                            <FrontText>Retour Champ de Mars - Suffren</FrontText>
+                            <PrivateCode>C01114</PrivateCode>
+                        </DestinationDisplayView>
+                        <DestinationDisplayView>
+                            <Name>30</Name>
+                            <ShortName>30</ShortName>
+                            <FrontText>Aller Hôpital Européen Georges Pompidou</FrontText>
+                            <PrivateCode>C01080</PrivateCode>
+                        </DestinationDisplayView>
+                    </destinations>
+                </Quay>
+            </members>
+        </GeneralFrame>
+    </dataObjects>
+</PublicationDelivery>

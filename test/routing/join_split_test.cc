@@ -2,11 +2,13 @@
 
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/timetable_metrics.h"
 
 #include "../raptor_search.h"
 #include "../rt/util.h"
@@ -22,7 +24,7 @@ using nigiri::test::raptor_search;
 
 namespace {
 
-// Days are relative to i, j.
+// Days are relative to i, k.
 // That means that x|x1, j, l are +1 day.
 //
 // Mo-Th    We-Fr      Mo,Th-Sa
@@ -32,6 +34,9 @@ namespace {
 //        C --x|x1-- D
 //       C2          D2
 // B --k-/            \-l-- F
+//
+//
+// Columns: i,k x|x1 j,l
 //
 // Mo: X_X
 // Tu: X__
@@ -63,16 +68,17 @@ constexpr auto const kTests =
                                      {"A", "F", 2025_y / June / 12, true},
                                      {"B", "E", 2025_y / June / 12, true},
                                      {"B", "F", 2025_y / June / 12, true},
-
+                                     // still 12.06.2025 in table; +1 day
                                      {"C", "E", 2025_y / June / 13, true},
                                      {"C", "F", 2025_y / June / 13, true},
 
-                                     //
+                                     // 13.06.2025 in table
                                      {"C", "E", 2025_y / June / 14, true},
                                      {"C", "F", 2025_y / June / 14, true},
 
                                      {"A", "C", 2025_y / June / 17, true},
                                      {"B", "C", 2025_y / June / 17, true},
+                                     // 16.06.2025 in table
                                      {"D1", "E", 2025_y / June / 17, true},
                                      {"D2", "F", 2025_y / June / 17, true},
 
@@ -163,7 +169,7 @@ transfer_type,from_trip_id,to_trip_id
 
 }  // namespace
 
-TEST(routing, join_split) {
+TEST(join_split, complex) {
   auto const run = [](auto&&... trips) {
     timetable tt;
     tt.date_range_ = {date::sys_days{2025_y / June / 12},
@@ -246,8 +252,141 @@ TEST(routing, join_split) {
     EXPECT_EQ(kExpected, ss.str());
 
     run_test();
+
+    // Service days per trip for [12th, 22nd[:
+    // ik: 11, 12, 16, 17, 18, 19  // > 24:00
+    // x: 12, 13, 14, 19, 21
+    // x1: 18  // > 48:00
+    // jl: 13, 14, 15, 17, 20, 21
+    EXPECT_EQ(
+        R"([{"idx":0,"firstDay":"2025-06-11","lastDay":"2025-06-21","noLocations":10,"noTrips":6,"transportsXDays":30}])",
+        to_str(get_metrics(tt), tt));
   };
 
   run(0U, 1U, 2U, 3U, 4U, 5U);
   run(5U, 4U, 3U, 2U, 1U, 0U);
+}
+
+namespace {
+
+template <typename... Args>
+std::string simple_test_files(Args... order) {
+  constexpr auto const kTrips = std::array{"a,a,a,a,", "b,b,b,b,"};
+  return fmt::format(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,
+B,B,,2.0,3.0,,
+C,C,,4.0,5.0,,
+
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+a,1,1,1,1,1,1,1,20260327,20260331
+b,1,1,1,1,1,1,1,20260327,20260331
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+a,DB,a,,,2
+b,DB,b,,,2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+{}
+{}
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+a,07:00:00,07:00:00,A,1,0,0
+a,08:00:00,08:00:00,B,2,0,0
+b,08:00:00,08:00:00,B,1,0,0
+b,09:00:00,09:00:00,C,2,0,0
+
+# transfers.txt
+transfer_type,from_trip_id,to_trip_id
+4,a,b
+)",
+                     kTrips[order]...);
+}
+
+}  // namespace
+
+TEST(join_split, simple) {
+  auto const run = [](auto&&... trips) {
+    auto tt =
+        loader::load({{.tag_ = "test",
+                       .path_ = simple_test_files(trips...),
+                       .loader_config_ = {.default_tz_ = "Europe/Berlin"}}},
+                     {},
+                     {date::sys_days{2026_y / March / 27},
+                      date::sys_days{2026_y / April / 1}});
+    std::cout << tt << "\n";
+  };
+  run(0U, 1U);
+  run(1U, 0U);
+}
+
+namespace {
+
+template <typename... Args>
+std::string over_night_test_files(Args... order) {
+  constexpr auto const kTrips = std::array{"a,a,a,a,", "b,b,b,b,"};
+  return fmt::format(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,
+B,B,,2.0,3.0,,
+C,C,,4.0,5.0,,
+
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+a,1,1,1,1,1,1,1,20260327,20260331
+b,1,1,1,1,1,1,1,20260327,20260331
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+a,DB,a,,,2
+b,DB,b,,,2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+{}
+{}
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+a,24:00:00,24:00:00,A,1,0,0
+a,25:00:00,25:00:00,B,2,0,0
+b,25:00:00,25:00:00,B,1,0,0
+b,26:00:00,26:00:00,C,2,0,0
+
+# transfers.txt
+transfer_type,from_trip_id,to_trip_id
+4,a,b
+)",
+                     kTrips[order]...);
+}
+
+}  // namespace
+
+TEST(join_split, over_night) {
+  auto const run = [](auto&&... trips) {
+    auto tt =
+        loader::load({{.tag_ = "test",
+                       .path_ = over_night_test_files(trips...),
+                       .loader_config_ = {.default_tz_ = "Europe/Berlin"}}},
+                     {},
+                     {date::sys_days{2026_y / March / 27},
+                      date::sys_days{2026_y / April / 1}});
+    std::cout << tt << "\n";
+  };
+  run(0U, 1U);
+  run(1U, 0U);
 }

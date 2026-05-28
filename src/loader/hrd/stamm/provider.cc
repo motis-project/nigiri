@@ -1,6 +1,7 @@
 #include "nigiri/loader/hrd/stamm/provider.h"
 
 #include "nigiri/loader/hrd/util.h"
+#include "nigiri/loader/register.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/verify.h"
 
@@ -39,11 +40,11 @@ provider read_provider_names(timetable& tt,
   auto const full_name = line.substr_offset(" V ");
   utl::verify(long_name != std::numeric_limits<size_t>::max(),
               "no full name found: {}", line.view());
-  return provider{.short_name_ = tt.strings_.store(iso_8859_1_to_utf8(
+  return provider{.id_ = tt.strings_.store(iso_8859_1_to_utf8(
                       parse_name(line.substr(long_name + 3U)))),
-                  .long_name_ = tt.strings_.store(iso_8859_1_to_utf8(
+                  .name_ = tt.register_translation(iso_8859_1_to_utf8(
                       parse_name(line.substr(full_name + 3U)))),
-                  .url_ = tt.strings_.store(""),
+                  .url_ = kEmptyTranslation,
                   .src_ = src};
 }
 
@@ -67,8 +68,10 @@ provider_map_t parse_providers(config const& c,
           utl::verify(previous_provider_number == provider_number,
                       "provider line format mismatch in line {}", line_number);
           for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
-            providers[token.to_str()] =
-                tt.register_provider(provider{current_info});
+            providers[token.to_str()] = register_agency(
+                tt, agency{tt, src, tt.strings_.get(current_info.id_),
+                           current_info.name_, kEmptyTranslation,
+                           current_info.tz_, dummy_tz_map});
           });
         }
       });

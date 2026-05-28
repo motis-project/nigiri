@@ -17,7 +17,7 @@ struct nigiri_transport {
 };
 typedef struct nigiri_transport nigiri_transport_t;
 
-static uint32_t const kTargetBits = 22U;
+static uint32_t const kTargetBits = 23U;
 static uint32_t const kDurationBits = 8 * sizeof(uint32_t) - kTargetBits;
 struct nigiri_footpath {
   unsigned int target_location_idx : kTargetBits;
@@ -111,6 +111,9 @@ void nigiri_destroy_transport(nigiri_transport_t const* transport);
 bool nigiri_is_transport_active(nigiri_timetable_t const* t,
                                 uint32_t const transport_idx,
                                 uint16_t day_idx);
+bool nigiri_is_route_active(nigiri_timetable_t const* t,
+                            uint32_t const route_idx,
+                            uint16_t day_idx);
 uint32_t nigiri_get_route_count(nigiri_timetable_t const* t);
 nigiri_route_t* nigiri_get_route(nigiri_timetable_t const* t, uint32_t idx);
 void nigiri_destroy_route(nigiri_route_t const* route);

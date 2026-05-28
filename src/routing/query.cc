@@ -47,6 +47,13 @@ void sanitize_via_stops(timetable const& tt, query& q) {
   }
 }
 
+void query::flip_dir() {
+  std::swap(start_, destination_);
+  std::swap(td_start_, td_dest_);
+  std::swap(start_match_mode_, dest_match_mode_);
+  std::reverse(begin(via_stops_), end(via_stops_));
+}
+
 void query::sanitize(timetable const& tt) {
   sanitize_query(*this);
   sanitize_via_stops(tt, *this);

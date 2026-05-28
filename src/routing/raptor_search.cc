@@ -21,7 +21,7 @@ namespace nigiri::routing {
 namespace {
 
 template <direction SearchDir, via_offset_t Vias>
-routing_result<raptor_stats> raptor_search_with_vias(
+routing_result raptor_search_with_vias(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
@@ -42,7 +42,7 @@ routing_result<raptor_stats> raptor_search_with_vias(
 }
 
 template <direction SearchDir>
-routing_result<raptor_stats> raptor_search_with_dir(
+routing_result raptor_search_with_dir(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
@@ -84,7 +84,7 @@ std::string_view location_match_mode_str(location_match_mode const mode) {
 
 }  // namespace
 
-routing_result<raptor_stats> raptor_search(
+routing_result raptor_search(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
