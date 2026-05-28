@@ -97,6 +97,14 @@ struct raptor {
   }
   static auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
+  static void prefetch(void const* addr) {
+#if defined(__GNUC__) || defined(__clang__)
+    __builtin_prefetch(addr);
+#else
+    (void)addr;
+#endif
+  }
+
   template <typename Fn>
   static void for_each_set(bitvec const& bits, Fn&& fn) {
     if (bits.empty()) {
@@ -109,8 +117,59 @@ struct raptor {
       auto block = block_idx == last_block ? bits.sanitized_last_block()
                                            : bits.blocks_[block_idx];
       while (block != 0U) {
-        auto const bit = std::countr_zero(block);
+        auto const bit =
+            static_cast<bitvec::size_type>(std::countr_zero(block));
         fn(block_idx * bitvec::bits_per_block + bit);
+        block &= block - 1U;
+      }
+    }
+  }
+
+  template <typename A, typename B, typename Fn>
+  static void for_each_set(A const& a, B const& b, Fn&& fn) {
+    if (a.empty() || b.empty()) {
+      return;
+    }
+    assert(a.blocks_.size() == b.blocks_.size());
+
+    auto const last_block = a.blocks_.size() - 1U;
+    for (auto block_idx = typename A::size_type{0U};
+         block_idx != a.blocks_.size(); ++block_idx) {
+      auto block = (block_idx == last_block ? a.sanitized_last_block()
+                                            : a.blocks_[block_idx]) &
+                   (block_idx == last_block ? b.sanitized_last_block()
+                                            : b.blocks_[block_idx]);
+      while (block != 0U) {
+        auto const bit =
+            static_cast<typename A::size_type>(std::countr_zero(block));
+        fn(block_idx * A::bits_per_block + bit);
+        block &= block - 1U;
+      }
+    }
+  }
+
+  template <typename A, typename B, typename Fn>
+  static void for_each_set_and_not(A const& a, B const& b, Fn&& fn) {
+    if (a.empty()) {
+      return;
+    }
+    if (b.empty()) {
+      for_each_set(a, std::forward<Fn>(fn));
+      return;
+    }
+    assert(a.blocks_.size() == b.blocks_.size());
+
+    auto const last_block = a.blocks_.size() - 1U;
+    for (auto block_idx = typename A::size_type{0U};
+         block_idx != a.blocks_.size(); ++block_idx) {
+      auto block = (block_idx == last_block ? a.sanitized_last_block()
+                                            : a.blocks_[block_idx]) &
+                   ~(block_idx == last_block ? b.sanitized_last_block()
+                                             : b.blocks_[block_idx]);
+      while (block != 0U) {
+        auto const bit =
+            static_cast<typename A::size_type>(std::countr_zero(block));
+        fn(block_idx * A::bits_per_block + bit);
         block &= block - 1U;
       }
     }
@@ -164,8 +223,12 @@ struct raptor {
           end_reachable_.set(i, true);
         }
       }
-      for (auto const& [l, _] : td_dist_to_end_) {
-        end_reachable_.set(to_idx(l), true);
+      if (!td_dist_to_end_.empty()) {
+        has_td_dist_to_end_.resize(n_locations_);
+        for (auto const& [l, _] : td_dist_to_end_) {
+          end_reachable_.set(to_idx(l), true);
+          has_td_dist_to_end_.set(to_idx(l), true);
+        }
       }
     }
   }
@@ -590,16 +653,8 @@ private:
   }
 
   void update_footpaths(unsigned const k, profile_idx_t const prf_idx) {
-    for_each_set(state_.prev_station_mark_, [&](auto const i) {
+    auto const process = [&](auto const i) {
       auto const l_idx = location_idx_t{i};
-      if constexpr (Rt) {
-        if (prf_idx != 0U && (kFwd ? rtt_->has_td_footpaths_out_
-                                   : rtt_->has_td_footpaths_in_)[prf_idx]
-                                 .test(l_idx)) {
-          return;
-        }
-      }
-
       auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx][l_idx]
                              : tt_.locations_.footpaths_in_[prf_idx][l_idx];
 
@@ -608,7 +663,7 @@ private:
         ++stats_.n_footpaths_visited_;
 
         if (auto const nxt = it + 1; nxt != fps.end()) {
-          __builtin_prefetch(&best_[to_idx(nxt->target())]);
+          prefetch(&best_[to_idx(nxt->target())]);
         }
 
         auto const target = to_idx(fp.target());
@@ -686,7 +741,18 @@ private:
           }
         }
       }
-    });
+    };
+
+    if constexpr (Rt) {
+      if (prf_idx != 0U) {
+        for_each_set_and_not(state_.prev_station_mark_,
+                             (kFwd ? rtt_->has_td_footpaths_out_
+                                   : rtt_->has_td_footpaths_in_)[prf_idx],
+                             process);
+        return;
+      }
+    }
+    for_each_set(state_.prev_station_mark_, process);
   }
 
   void update_td_offsets(unsigned const k, profile_idx_t const prf_idx) {
@@ -698,14 +764,10 @@ private:
       return;
     }
 
-    for_each_set(state_.prev_station_mark_, [&](auto const i) {
+    auto const& has_td = (kFwd ? rtt_->has_td_footpaths_out_
+                               : rtt_->has_td_footpaths_in_)[prf_idx];
+    for_each_set(state_.prev_station_mark_, has_td, [&](auto const i) {
       auto const l_idx = location_idx_t{i};
-      if (!(kFwd ? rtt_->has_td_footpaths_out_
-                 : rtt_->has_td_footpaths_in_)[prf_idx]
-               .test(l_idx)) {
-        return;
-      }
-
       auto const& fps = kFwd ? rtt_->td_footpaths_out_[prf_idx][l_idx]
                              : rtt_->td_footpaths_in_[prf_idx][l_idx];
 
@@ -794,14 +856,7 @@ private:
       return;
     }
 
-    for_each_set(state_.prev_station_mark_, [&](auto const i) {
-      if (!end_reachable_.test(i)) {
-        trace_upd("┊ ├k={}   no end_reachable: {}\n", k,
-                  loc{tt_, location_idx_t{i}});
-        [[likely]];
-        return;
-      }
-
+    for_each_set(state_.prev_station_mark_, end_reachable_, [&](auto const i) {
       trace_upd("┊ ├k={}   end_reachable: {}\n", k,
                 loc{tt_, location_idx_t{i}});
 
@@ -865,13 +920,13 @@ private:
         }
       }
 
-      if (auto const it = td_dist_to_end_.find(l); it != end(td_dist_to_end_)) {
-        [[unlikely]];
-
+      if (has_td_dist_to_end_.test(i)) [[unlikely]] {
         auto const fp_start_time = tmp_[i][Vias];
         if (fp_start_time == kInvalid) {
           return;
         }
+        auto const it = td_dist_to_end_.find(l);
+        assert(it != end(td_dist_to_end_));
         auto const fp =
             get_td_duration<SearchDir>(it->second, to_unix(fp_start_time));
         if (fp.has_value()) {
@@ -1359,6 +1414,7 @@ private:
   std::uint32_t n_locations_, n_routes_, n_rt_transports_;
   raptor_state& state_;
   bitvec end_reachable_;
+  bitvec has_td_dist_to_end_;
   std::span<std::array<delta_t, Vias + 1>> tmp_;
   std::span<std::array<delta_t, Vias + 1>> best_;
   flat_matrix_view<std::array<delta_t, Vias + 1>> round_times_;
