@@ -47,7 +47,10 @@ void update_refs(permutation_t const& p, T& c) {
 }
 
 void update_refs(permutation_t const& p,
-                 hash_map<location_id, location_idx_t>& map) {
+                 hash_map<owning_location_id,
+                          location_idx_t,
+                          location_id_hash,
+                          location_id_equals>& map) {
   for (auto& it : map) {
     update_refs(p, it.second);
   }
@@ -73,12 +76,11 @@ std::pair<permutation_t, permutation_t> get_permutation(timetable const& tt) {
   p.resize(tt.n_locations());
   std::generate(begin(p), end(p),
                 [l = location_idx_t{0U}]() mutable { return l++; });
-  auto const first_idx =
-      tt.n_locations() >= kNSpecialStations &&
-              tt.locations_.names_.at(location_idx_t{0U}).view() ==
-                  special_stations_names[0]
-          ? kNSpecialStations
-          : 0U;
+  auto const first_idx = tt.n_locations() >= kNSpecialStations &&
+                                 tt.get_default_name(location_idx_t{0U}) ==
+                                     special_stations_names[0]
+                             ? kNSpecialStations
+                             : 0U;
   std::stable_sort(begin(p) + first_idx, end(p),
                    [&](location_idx_t const a, location_idx_t const b) {
                      return !tt.location_routes_[a].empty() &&
