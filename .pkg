@@ -7,9 +7,9 @@
   branch=master
   commit=abbbf9cfc1484b3a2737eff7a8f2f96d8dab85e4
 [geo]
-  url=git@github.com:motis-project/geo.git
-  branch=master
-  commit=1450091a6ee2d541e91d26bf06157342ec0599f6
+  url=git@github.com:mority/geo.git
+  branch=morton
+  commit=04e8cc1da15c118f59a54a22c59ba6d4bdd3a883
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
