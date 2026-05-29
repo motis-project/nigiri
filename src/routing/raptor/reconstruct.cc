@@ -381,8 +381,9 @@ void reconstruct_journey_with_vias(timetable const& tt,
           auto const wheelchair_accessible_on_some_sections =
               rtt->rt_transport_wheelchair_accessibility_.test(rt_t.v_ * 2 + 1);
           trace_reconstruct(
-              "  rt_t={}: cars allowed on_all={} on_some={} (RT)\n", rt_t,
-              cars_allowed_on_all_sections, cars_allowed_on_some_sections);
+              "  rt_t={}: wheelchairs allowed on_all={} on_some={} (RT)\n",
+              rt_t, wheelchair_accessible_on_all_sections,
+              wheelchair_accessible_on_some_sections);
           if (!wheelchair_accessible_on_all_sections) {
             if (!wheelchair_accessible_on_some_sections) {
               continue;
