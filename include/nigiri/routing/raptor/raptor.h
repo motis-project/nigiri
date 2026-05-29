@@ -678,11 +678,10 @@ private:
           }
 
           auto const start_is_via =
-              v != Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
+              v < Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
           auto const start_v = start_is_via ? v + 1 : v;
 
-          auto const target_is_via =
-              start_v != Vias && is_via_[start_v][target];
+          auto const target_is_via = start_v < Vias && is_via_[start_v][target];
           auto const target_v = target_is_via ? start_v + 1 : start_v;
           auto stay = 0_minutes;
           if (start_is_via) {
@@ -786,11 +785,10 @@ private:
           auto const target = to_idx(fp.target());
 
           auto const start_is_via =
-              v != Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
+              v < Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
           auto const start_v = start_is_via ? v + 1 : v;
 
-          auto const target_is_via =
-              start_v != Vias && is_via_[start_v][target];
+          auto const target_is_via = start_v < Vias && is_via_[start_v][target];
           auto const target_v = target_is_via ? start_v + 1 : start_v;
           auto stay = 0_minutes;
           if (start_is_via) {
