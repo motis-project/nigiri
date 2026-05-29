@@ -293,6 +293,11 @@ routing_result pong(timetable const& tt,
         });
     auto const next = first_it->start_time_ + duration_t{kFwd ? 1 : -1};
 
+    if (!is_better(start_time, next)) {
+      throw utl::fail("no pong progress: start_time={}, next={}", start_time,
+                      next);
+    }
+
     trace_pong(
         "AFTER {} [next={}]:\n\t{}", start_time, next,
         fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),

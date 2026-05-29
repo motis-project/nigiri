@@ -21,7 +21,8 @@ enum class alert_cause : std::uint8_t {
   kMaintenance,
   kConstruction,
   kPoliceActivity,
-  kMedicalEmergency
+  kMedicalEmergency,
+  kSpecialEvent
 };
 
 std::string_view to_str(alert_cause);

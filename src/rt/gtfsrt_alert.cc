@@ -36,6 +36,7 @@ alert_cause convert(transit_realtime::Alert_Cause x) {
     case Alert_Cause_CONSTRUCTION: return alert_cause::kConstruction;
     case Alert_Cause_POLICE_ACTIVITY: return alert_cause::kPoliceActivity;
     case Alert_Cause_MEDICAL_EMERGENCY: return alert_cause::kMedicalEmergency;
+    case Alert_Cause_SPECIAL_EVENT: return alert_cause::kSpecialEvent;
   }
   throw utl::fail("unknown Alert_Cause");
 }
@@ -206,9 +207,20 @@ void handle_alert(date::sys_days const today,
     return x.translation() | std::views::transform(to_translation);
   };
 
-  auto const period = a.active_period() | std::views::transform(to_interval);
-  alerts.communication_period_.emplace_back(period);
-  alerts.impact_period_.emplace_back(period);
+  auto const active_period =
+      a.active_period() | std::views::transform(to_interval);
+  if (a.communication_period_size() != 0) {
+    alerts.communication_period_.emplace_back(
+        a.communication_period() | std::views::transform(to_interval));
+  } else {
+    alerts.communication_period_.emplace_back(active_period);
+  }
+  if (a.impact_period_size() != 0) {
+    alerts.impact_period_.emplace_back(a.impact_period() |
+                                       std::views::transform(to_interval));
+  } else {
+    alerts.impact_period_.emplace_back(active_period);
+  }
 
   if (a.has_cause_detail()) {
     alerts.cause_detail_.emplace_back(translate(a.cause_detail()));

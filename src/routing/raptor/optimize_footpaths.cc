@@ -1,5 +1,7 @@
 #include "nigiri/routing/raptor/reconstruct.h"
 
+#include <algorithm>
+
 #include "utl/overloaded.h"
 
 #include "nigiri/for_each_meta.h"
@@ -130,15 +132,27 @@ void optimize_last_arrival(timetable const& tt,
 
 double get_penalty(timetable const& tt,
                    duration_t const duration,
+                   duration_t const buffer,
                    location_idx_t const from,
                    location_idx_t const to) {
+  // Basic weight: footpath duration.
   auto weight = static_cast<double>(duration.count());
+
+  // Adjust for station size.
   if (matches(tt, location_match_mode::kEquivalent, from, to)) {
     auto const x = tt.locations_.get_root_idx(from);
     weight -= (static_cast<double>(tt.locations_.location_importance_[x]) /
                tt.locations_.max_importance_) *
               3U;
   }
+
+  // Consider transfer time buffer (clamped + weighted)
+  constexpr auto kMaxRewardedBuffer = duration_t{15};
+  constexpr auto kBufferWeight = 0.2;
+  weight -= kBufferWeight *
+            static_cast<double>(
+                std::clamp(buffer, duration_t{0}, kMaxRewardedBuffer).count());
+
   return weight;
 }
 
@@ -243,9 +257,9 @@ void optimize_transfers(timetable const& tt,
       continue;
     }
 
-    auto penalty_best =
-        get_penalty(tt, get<footpath>(leg_footpath.uses_).duration(),
-                    leg_from.from_, leg_to.to_);
+    auto penalty_best = get_penalty(
+        tt, get<footpath>(leg_footpath.uses_).duration(),
+        leg_to.dep_time_ - leg_footpath.arr_time_, leg_from.from_, leg_to.to_);
     for (auto stp_from : fr_from) {
       if (!stp_from.out_allowed()) {
         continue;
@@ -264,33 +278,31 @@ void optimize_transfers(timetable const& tt,
 
           auto const fp_dur =
               adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
-          auto const penalty =
-              get_penalty(tt, fp_dur, stp_from.get_location_idx(),
-                          stp_to.get_location_idx());
-          if (penalty >= penalty_best) {
-            continue;
-          }
-
           auto const arr = stp_from.time(event_type::kArr);
           auto const dep = stp_to.time(event_type::kDep);
           auto const arr_fp = arr + fp_dur;
           if (arr_fp <= dep) {
-            leg_from.to_ = stp_from.get_location_idx();
-            leg_from.arr_time_ = arr;
-            ree_from.stop_range_.to_ =
-                stp_from.stop_idx_ + 1U;  // half open interval
+            auto const penalty = get_penalty(tt, fp_dur, dep - arr_fp,
+                                             stp_from.get_location_idx(),
+                                             stp_to.get_location_idx());
+            if (penalty < penalty_best) {
+              leg_from.to_ = stp_from.get_location_idx();
+              leg_from.arr_time_ = arr;
+              ree_from.stop_range_.to_ =
+                  stp_from.stop_idx_ + 1U;  // half open interval
 
-            leg_to.from_ = stp_to.get_location_idx();
-            leg_to.dep_time_ = dep;
-            ree_to.stop_range_.from_ = stp_to.stop_idx_;
+              leg_to.from_ = stp_to.get_location_idx();
+              leg_to.dep_time_ = dep;
+              ree_to.stop_range_.from_ = stp_to.stop_idx_;
 
-            leg_footpath.from_ = stp_from.get_location_idx();
-            leg_footpath.to_ = stp_to.get_location_idx();
-            leg_footpath.dep_time_ = arr;
-            leg_footpath.arr_time_ = arr_fp;
-            leg_footpath.uses_ = fp;
+              leg_footpath.from_ = stp_from.get_location_idx();
+              leg_footpath.to_ = stp_to.get_location_idx();
+              leg_footpath.dep_time_ = arr;
+              leg_footpath.arr_time_ = arr_fp;
+              leg_footpath.uses_ = fp;
 
-            penalty_best = penalty;
+              penalty_best = penalty;
+            }
           }
           break;
         }

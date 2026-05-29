@@ -79,6 +79,7 @@ struct timetable {
         location_id_to_idx_;
     vector_map<location_idx_t, translation_idx_t> names_;
     vector_map<location_idx_t, translation_idx_t> platform_codes_;
+    vector_map<location_idx_t, translation_idx_t> stop_codes_;
     vector_map<location_idx_t, translation_idx_t> descriptions_;
     vecvec<location_idx_t, char> ids_;
     vector_map<location_idx_t, geo::latlng> coordinates_;

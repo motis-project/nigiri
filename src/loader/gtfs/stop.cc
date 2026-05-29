@@ -95,6 +95,7 @@ struct stop {
   std::string_view id_;
   cista::raw::generic_string name_;
   std::string_view platform_code_;
+  std::string_view stop_code_;
   std::string_view desc_;
   geo::latlng coord_;
   std::string_view timezone_;
@@ -226,6 +227,7 @@ read_stops(source_idx_t const src,
     utl::csv_col<utl::cstr, UTL_NAME("stop_timezone")> timezone_;
     utl::csv_col<utl::cstr, UTL_NAME("parent_station")> parent_station_;
     utl::csv_col<utl::cstr, UTL_NAME("platform_code")> platform_code_;
+    utl::csv_col<utl::cstr, UTL_NAME("stop_code")> stop_code_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_desc")> stop_desc_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_lat")> lat_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_lon")> lon_;
@@ -256,6 +258,7 @@ read_stops(source_idx_t const src,
             std::clamp(utl::parse<double>(s.lat_->trim()), -90.0, 90.0),
             std::clamp(utl::parse<double>(s.lon_->trim()), -180.0, 180.0)};
         new_stop->platform_code_ = s.platform_code_->view();
+        new_stop->stop_code_ = s.stop_code_->view();
         new_stop->desc_ = s.stop_desc_->view();
         new_stop->timezone_ = s.timezone_->trim().view();
 
@@ -315,6 +318,7 @@ read_stops(source_idx_t const src,
         id,
         i18n.get(t::kStops, f::kStopName, s->name_.view(), s->id_),
         i18n.get(t::kStops, f::kPlatformCode, s->platform_code_, s->id_),
+        i18n.get(t::kStops, f::kStopCode, s->stop_code_, s->id_),
         i18n.get(t::kStops, f::kStopDesc, s->desc_, s->id_),
         s->coord_,
         s->parent_ == nullptr ? location_type::kStation : location_type::kTrack,

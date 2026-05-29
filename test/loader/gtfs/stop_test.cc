@@ -97,3 +97,43 @@ TEST(gtfs, read_stations_berlin_data) {
   EXPECT_FLOAT_EQ(13.0362980,
                   tt.locations_.coordinates_.at(s2_it->second).lng_);
 }
+
+TEST(gtfs, read_stations_stop_code_and_platform_code) {
+  auto tt = timetable{};
+  auto timezones = tz_map{};
+  auto i18n = translator{.tt_ = tt};
+
+  register_special_stations(tt);
+
+  // platform_code and stop_code are independent fields and do not fall back
+  // into each other.
+  constexpr auto const stops_content = std::string_view{
+      R"(stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,location_type,parent_station,platform_code
+P,,Parent,,52.0,13.0,1,,
+A,A_CODE,Platform A,,52.0,13.0,0,P,A_PLATFORM
+B,B_CODE,Platform B,,52.0,13.0,0,P,
+C,,Platform C,,52.0,13.0,0,P,
+)"};
+
+  auto const [stops, _transfers, _accessibility] =
+      read_stops(source_idx_t{0}, tt, i18n, timezones, stops_content,
+                 std::string_view{}, 0U);
+
+  auto const platform_code = [&](std::string_view const id) {
+    return tt.get_default_translation(
+        tt.locations_.platform_codes_.at(stops.at(std::string{id})));
+  };
+  auto const stop_code = [&](std::string_view const id) {
+    return tt.get_default_translation(
+        tt.locations_.stop_codes_.at(stops.at(std::string{id})));
+  };
+
+  EXPECT_EQ("A_PLATFORM", platform_code("A"));
+  EXPECT_EQ("A_CODE", stop_code("A"));
+
+  EXPECT_EQ("", platform_code("B"));
+  EXPECT_EQ("B_CODE", stop_code("B"));
+
+  EXPECT_EQ("", platform_code("C"));
+  EXPECT_EQ("", stop_code("C"));
+}
