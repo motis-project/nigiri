@@ -371,7 +371,6 @@ routing_result pong(timetable const& tt,
     }
   }
 
-  auto results = pareto_set<journey>{};
   for (auto& j : s_state.results_) {
     for (auto const [transit_1, transfer_1, transit_2, transfer_2, transit_3] :
          utl::nwise<5>(j.legs_)) {
