@@ -677,18 +677,21 @@ private:
             continue;
           }
 
-          auto const start_is_via =
-              v < Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
-          auto const start_v = start_is_via ? v + 1 : v;
-
-          auto const target_is_via = start_v < Vias && is_via_[start_v][target];
-          auto const target_v = target_is_via ? start_v + 1 : start_v;
+          auto target_v = v;
           auto stay = 0_minutes;
-          if (start_is_via) {
-            stay += via_stops_[v].stay_;
-          }
-          if (target_is_via) {
-            stay += via_stops_[start_v].stay_;
+          if constexpr (Vias != 0U) {
+            auto const start_is_via =
+                v < Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
+            auto const start_v = start_is_via ? v + 1 : v;
+            auto const target_is_via =
+                start_v < Vias && is_via_[start_v][target];
+            target_v = target_is_via ? start_v + 1 : start_v;
+            if (start_is_via) {
+              stay += via_stops_[v].stay_;
+            }
+            if (target_is_via) {
+              stay += via_stops_[start_v].stay_;
+            }
           }
 
           auto const fp_target_time = clamp(
@@ -784,18 +787,21 @@ private:
 
           auto const target = to_idx(fp.target());
 
-          auto const start_is_via =
-              v < Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
-          auto const start_v = start_is_via ? v + 1 : v;
-
-          auto const target_is_via = start_v < Vias && is_via_[start_v][target];
-          auto const target_v = target_is_via ? start_v + 1 : start_v;
+          auto target_v = v;
           auto stay = 0_minutes;
-          if (start_is_via) {
-            stay += via_stops_[v].stay_;
-          }
-          if (target_is_via) {
-            stay += via_stops_[start_v].stay_;
+          if constexpr (Vias != 0U) {
+            auto const start_is_via =
+                v < Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
+            auto const start_v = start_is_via ? v + 1 : v;
+            auto const target_is_via =
+                start_v < Vias && is_via_[start_v][target];
+            target_v = target_is_via ? start_v + 1 : start_v;
+            if (start_is_via) {
+              stay += via_stops_[v].stay_;
+            }
+            if (target_is_via) {
+              stay += via_stops_[start_v].stay_;
+            }
           }
 
           auto const fp_target_time =
