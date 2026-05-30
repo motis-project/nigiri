@@ -393,15 +393,18 @@ routing_result pong(timetable const& tt,
       auto const from_via = utl::find_if(q.via_stops_, [&](via_stop const& v) {
         return v.location_ == from.get_location_idx();
       });
-      auto const arr_time = from_via != end(q.via_stops_)
-                                ? from.time(event_type::kArr) + from_via->stay_
-                                : from.time(event_type::kArr);
+      auto arr_time = from_via != end(q.via_stops_)
+                          ? from.time(event_type::kArr) + from_via->stay_
+                          : from.time(event_type::kArr);
       auto const to_via = utl::find_if(q.via_stops_, [&](via_stop const& v) {
         return v.location_ == to.get_location_idx();
       });
-      auto const dep_time = to_via != end(q.via_stops_)
-                                ? to.time(event_type::kDep) - to_via->stay_
-                                : to.time(event_type::kDep);
+      auto dep_time = to_via != end(q.via_stops_)
+                          ? to.time(event_type::kDep) - to_via->stay_
+                          : to.time(event_type::kDep);
+
+      // arr_time = from.time(event_type::kArr);
+      // dep_time = to.time(event_type::kDep);
 
       auto const earlier =
           get_earliest_alternative(tt, rtt, q, from.get_location_idx(),
