@@ -20,7 +20,9 @@
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/td_footpath.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 #include "../raptor_search.h"
 #include "../rt/util.h"
@@ -1569,7 +1571,8 @@ leg 4: (C, C) [2019-05-01 08:50] -> (D, D) [2019-05-01 09:00]
   }
 }
 
-constexpr auto const test_files_3 = R"(
+TEST(routing, via_test_35_earlier_alternative) {
+  constexpr auto const kGTFS = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
 DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
@@ -1615,8 +1618,7 @@ S1,20190501,1
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
 )"sv;
 
-TEST(routing, via_test_35_earliest_alternative) {
-  constexpr auto const expected_via_test_35_earliest_alternative =
+  constexpr auto const expected_via_test_35_earlier_alternative =
       R"(
 [2019-05-01 08:00, 2019-05-01 08:55]
 TRANSFERS: 2
@@ -1639,7 +1641,7 @@ leg 4: (C, C) [2019-05-01 08:45] -> (D, D) [2019-05-01 08:55]
 
 )"sv;
 
-  auto tt = load_timetable(test_files_3);
+  auto tt = load_timetable(kGTFS);
 
   for (auto const& [dir, start_time] : {
            std::pair{direction::kForward, iv("2019-05-01 10:00 Europe/Berlin",
@@ -1660,6 +1662,120 @@ leg 4: (C, C) [2019-05-01 08:45] -> (D, D) [2019-05-01 08:55]
     if (dir == direction::kBackward) {
       results_str = std::regex_replace(results_str, std::regex("START"), "END");
     }
-    EXPECT_EQ(expected_via_test_35_earliest_alternative, results_str);
+    EXPECT_EQ(expected_via_test_35_earlier_alternative, results_str);
   }
+}
+
+location_idx_t find_loc(timetable const& tt, std::string_view const id) {
+  auto const x = tt.find(location_id{id, source_idx_t{0}});
+  EXPECT_TRUE(x.has_value()) << id;
+  return x.value_or(location_idx_t::invalid());
+}
+
+TEST(routing, via_search_test_36_earlier_alternative_td) {
+  constexpr auto const kGTFS = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
+
+#stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,location_type,parent_station
+A,A,,0.0,1.0,,
+B,B,,2.0,3.0,,
+C,C,,4.0,5.0,,
+D,D,,6.0,7.0,,
+
+#routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R0,DB,0,,,3
+R1,DB,1,,,3
+R2,DB,2,,,3
+R3,DB,3,,,3
+
+#trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R0,S1,T0,,
+R1,S1,T1,,
+R2,S1,T2,,
+R3,S1,T3,,
+
+
+#stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+T0,10:00:00,10:00:00,A,0
+T0,10:10:00,10:10:00,B,1
+T1,10:30:00,10:30:00,B,0
+T1,10:40:00,10:40:00,C,1
+T3,10:45:00,10:45:00,C,0
+T3,10:55:00,10:55:00,D,1
+
+#calendar_dates.txt
+service_id,date,exception_type
+S1,20190501,1
+
+#transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+)"sv;
+
+  constexpr auto const expected_via_test_36_earlier_alternative_td =
+      R"(
+[2019-05-01 08:00, 2019-05-01 08:55]
+TRANSFERS: 2
+     FROM: (A, A) [2019-05-01 08:00]
+       TO: (D, D) [2019-05-01 08:55]
+leg 0: (A, A) [2019-05-01 08:00] -> (B, B) [2019-05-01 08:10]
+   0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=0, day=2019-05-01, id=T0, src=0}]
+   1: B       B............................................... a: 01.05 08:10 [01.05 10:10]
+leg 1: (B, B) [2019-05-01 08:16] -> (B, B) [2019-05-01 08:18]
+  FOOTPATH (duration=2)
+leg 2: (B, B) [2019-05-01 08:30] -> (C, C) [2019-05-01 08:40]
+   0: B       B...............................................                               d: 01.05 08:30 [01.05 10:30]  [{name=1, day=2019-05-01, id=T1, src=0}]
+   1: C       C............................................... a: 01.05 08:40 [01.05 10:40]
+leg 3: (C, C) [2019-05-01 08:40] -> (C, C) [2019-05-01 08:42]
+  FOOTPATH (duration=2)
+leg 4: (C, C) [2019-05-01 08:45] -> (D, D) [2019-05-01 08:55]
+   0: C       C...............................................                               d: 01.05 08:45 [01.05 10:45]  [{name=3, day=2019-05-01, id=T3, src=0}]
+   1: D       D............................................... a: 01.05 08:55 [01.05 10:55]
+
+
+)"sv;
+
+  constexpr auto const kProfile = profile_idx_t{2U};
+  auto tt = load_timetable(kGTFS);
+
+  auto const A = find_loc(tt, "A");
+  auto const B = find_loc(tt, "B");
+
+  tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_out_[kProfile][A].push_back(
+      footpath{B, footpath::kMaxDuration});
+  tt.locations_.footpaths_in_[kProfile][B].push_back(
+      footpath{A, footpath::kMaxDuration});
+
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 01});
+
+  rtt.has_td_footpaths_out_[kProfile].resize(tt.n_locations());
+  rtt.has_td_footpaths_in_[kProfile].resize(tt.n_locations());
+  rtt.td_footpaths_out_[kProfile].resize(tt.n_locations());
+  rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
+  rtt.has_td_footpaths_out_[kProfile].set(A, true);
+  rtt.has_td_footpaths_in_[kProfile].set(B, true);
+  rtt.td_footpaths_out_[kProfile][A].push_back(td_footpath{
+      B, unixtime_t{sys_days{2019_y / May / 01}} + 10h + 25min, 4min});
+  rtt.td_footpaths_in_[kProfile][B].push_back(td_footpath{
+      A, unixtime_t{sys_days{2019_y / May / 01}} + 10h + 25min, 4min});
+
+  auto const results =
+      search(tt, &rtt,
+             routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
+                                              "2019-05-01 10:01 Europe/Berlin"),
+                            .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                            .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
+                            .via_stops_ = {{loc_idx(tt, "B"), 6_minutes}},
+                            .prf_idx_ = kProfile},
+             direction::kForward);
+
+  auto results_str = results_to_str(results, tt);
+  EXPECT_EQ(expected_via_test_36_earlier_alternative_td, results_str);
 }
