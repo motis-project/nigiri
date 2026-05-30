@@ -2,6 +2,7 @@
 
 #include <ranges>
 
+#include "utl/helpers/algorithm.h"
 #include "utl/sorted_diff.h"
 #include "utl/timing.h"
 
@@ -389,9 +390,22 @@ routing_result pong(timetable const& tt,
       auto const back_r = rt::frun{tt, rtt, back.r_};
       auto const to = back_r[back.stop_range_.from_];
 
-      auto const earlier = get_earliest_alternative(
-          tt, rtt, q, from.get_location_idx(), to.get_location_idx(),
-          from.time(event_type::kArr), to.time(event_type::kDep));
+      auto const from_via = utl::find_if(q.via_stops_, [&](via_stop const& v) {
+        return v.location_ == from.get_location_idx();
+      });
+      auto const arr_time = from_via != end(q.via_stops_)
+                                ? from.time(event_type::kArr) + from_via->stay_
+                                : from.time(event_type::kArr);
+      auto const to_via = utl::find_if(q.via_stops_, [&](via_stop const& v) {
+        return v.location_ == to.get_location_idx();
+      });
+      auto const dep_time = to_via != end(q.via_stops_)
+                                ? to.time(event_type::kDep) - to_via->stay_
+                                : to.time(event_type::kDep);
+
+      auto const earlier =
+          get_earliest_alternative(tt, rtt, q, from.get_location_idx(),
+                                   to.get_location_idx(), arr_time, dep_time);
 
       if (earlier.has_value()) {
         transfer_1 = earlier->at(0);

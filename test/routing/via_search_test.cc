@@ -7,6 +7,7 @@
 
 #include "nigiri/common/parse_time.h"
 
+#include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/calendar.h"
 #include "nigiri/loader/gtfs/calendar_date.h"
@@ -1740,12 +1741,12 @@ leg 4: (C, C) [2019-05-01 08:45] -> (D, D) [2019-05-01 08:55]
 
 )"sv;
 
-  constexpr auto const kProfile = profile_idx_t{2U};
   auto tt = load_timetable(kGTFS);
 
   auto const A = find_loc(tt, "A");
   auto const B = find_loc(tt, "B");
 
+  constexpr auto const kProfile = profile_idx_t{0};
   tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
   tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
   tt.locations_.footpaths_out_[kProfile][A].push_back(
@@ -1762,19 +1763,17 @@ leg 4: (C, C) [2019-05-01 08:45] -> (D, D) [2019-05-01 08:55]
   rtt.has_td_footpaths_out_[kProfile].set(A, true);
   rtt.has_td_footpaths_in_[kProfile].set(B, true);
   rtt.td_footpaths_out_[kProfile][A].push_back(td_footpath{
-      B, unixtime_t{sys_days{2019_y / May / 01}} + 10h + 25min, 4min});
+      B, unixtime_t{sys_days{2019_y / May / 01}} + 8h + 25min, 4min});
   rtt.td_footpaths_in_[kProfile][B].push_back(td_footpath{
-      A, unixtime_t{sys_days{2019_y / May / 01}} + 10h + 25min, 4min});
+      A, unixtime_t{sys_days{2019_y / May / 01}} + 8h + 25min, 4min});
 
-  auto const results =
-      search(tt, &rtt,
-             routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
-                                              "2019-05-01 10:01 Europe/Berlin"),
-                            .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                            .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
-                            .via_stops_ = {{loc_idx(tt, "B"), 6_minutes}},
-                            .prf_idx_ = kProfile},
-             direction::kForward);
+  auto q = routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
+                                            "2019-05-01 10:01 Europe/Berlin"),
+                          .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                          .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
+                          .via_stops_ = {{loc_idx(tt, "B"), 6_minutes}}};
+
+  auto const results = search(tt, &rtt, q, direction::kForward);
 
   auto results_str = results_to_str(results, tt);
   EXPECT_EQ(expected_via_test_36_earlier_alternative_td, results_str);
