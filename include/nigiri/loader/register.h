@@ -68,6 +68,7 @@ struct location {
            std::string_view id,
            translation_idx_t name,
            translation_idx_t platform_code,
+           translation_idx_t stop_code,
            translation_idx_t desc,
            geo::latlng pos,
            location_type,
@@ -87,6 +88,10 @@ struct location {
   translated_str_t get_platform_code_translations() const;
   void set_platform_code(translated_str_t);
 
+  std::string_view get_stop_code() const;
+  translated_str_t get_stop_code_translations() const;
+  void set_stop_code(translated_str_t);
+
   std::string_view get_description() const;
   translated_str_t get_description_translations() const;
   void set_description(translated_str_t);
@@ -104,6 +109,7 @@ struct location {
   std::string_view id_;
   translation_idx_t name_;
   translation_idx_t platform_code_;
+  translation_idx_t stop_code_;
   translation_idx_t description_;
   geo::latlng pos_;
   location_type type_;

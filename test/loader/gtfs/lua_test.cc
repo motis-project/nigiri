@@ -22,11 +22,11 @@ DB,Deutsche Bahn,https://deutschebahn.com,Europe/Paris
 TT,Tischtennis,https://deutschebahn.com,Europe/Paris
 
 # stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station,platform_code
-A,A Berlin,i,0.0,1.0,,,,1
-B,B Berlin,j,2.0,3.0,,,,1
-C,C Berlin,k,4.0,5.0,,,,1
-D,D Berlin,l,6.0,7.0,,,,1
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station,platform_code,stop_code
+A,A Berlin,i,0.0,1.0,,,,1,SC_A
+B,B Berlin,j,2.0,3.0,,,,1,SC_B
+C,C Berlin,k,4.0,5.0,,,,1,SC_C
+D,D Berlin,l,6.0,7.0,,,,1,SC_D
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -78,6 +78,7 @@ function process_location(stop)
   stop:set_timezone('Europe/Berlin')
   stop:set_transfer_time(stop:get_transfer_time() + 98)
   stop:set_platform_code(stop:get_platform_code() .. 'A')
+  stop:set_stop_code(stop:get_stop_code() .. '_X')
 
   return true
 end
@@ -162,6 +163,8 @@ TEST(gtfs, lua_test) {
   EXPECT_EQ(100min, tt.locations_.transfer_time_[*b]);
   EXPECT_EQ("1A",
             tt.get_default_translation(tt.locations_.platform_codes_[*b]));
+  EXPECT_EQ("SC_B_X",
+            tt.get_default_translation(tt.locations_.stop_codes_[*b]));
   EXPECT_EQ("Europe/Berlin",
             get_tz_name(tt.locations_.location_timezones_[*b]));
 

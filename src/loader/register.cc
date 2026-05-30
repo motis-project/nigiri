@@ -99,6 +99,7 @@ location::location(timetable const& tt, location_idx_t const l)
       id_{tt.locations_.ids_[l].view()},
       name_{tt.locations_.names_[l]},
       platform_code_{tt.locations_.platform_codes_[l]},
+      stop_code_{tt.locations_.stop_codes_[l]},
       description_{tt.locations_.descriptions_[l]},
       pos_{tt.locations_.coordinates_[l]},
       type_{tt.locations_.types_[l]},
@@ -112,6 +113,7 @@ location::location(timetable& tt,
                    std::string_view id,
                    translation_idx_t name,
                    translation_idx_t platform_code,
+                   translation_idx_t stop_code,
                    translation_idx_t desc,
                    geo::latlng pos,
                    location_type type,
@@ -123,6 +125,7 @@ location::location(timetable& tt,
       id_{id},
       name_{name},
       platform_code_{platform_code},
+      stop_code_{stop_code},
       description_{desc},
       pos_{pos},
       type_{type},
@@ -152,6 +155,16 @@ translated_str_t location::get_platform_code_translations() const {
 }
 void location::set_platform_code(translated_str_t x) {
   platform_code_ = tt_->register_translation(x);
+}
+
+std::string_view location::get_stop_code() const {
+  return tt_->get_default_translation(stop_code_);
+}
+translated_str_t location::get_stop_code_translations() const {
+  return tt_->get(stop_code_);
+}
+void location::set_stop_code(translated_str_t x) {
+  stop_code_ = tt_->register_translation(x);
 }
 
 std::string_view location::get_description() const {
@@ -530,6 +543,10 @@ script_runner::script_runner(std::string const& user_script)
       "get_platform_code_translations",
       &location::get_platform_code_translations,  //
       "set_platform_code", &location::set_platform_code,  //
+      "get_stop_code", &location::get_stop_code,  //
+      "get_stop_code_translations",
+      &location::get_stop_code_translations,  //
+      "set_stop_code", &location::set_stop_code,  //
       "get_description", &location::get_description,  //
       "get_description_translations",
       &location::get_description_translations,  //
@@ -678,6 +695,7 @@ location_idx_t register_location(timetable& tt, location const& l) {
 
     loc.names_.emplace_back(l.name_);
     loc.platform_codes_.emplace_back(l.platform_code_);
+    loc.stop_codes_.emplace_back(l.stop_code_);
     loc.descriptions_.emplace_back(l.description_);
     loc.coordinates_.emplace_back(l.pos_);
     loc.ids_.emplace_back(l.id_);
@@ -698,6 +716,7 @@ location_idx_t register_location(timetable& tt, location const& l) {
 
   assert(loc.names_.size() == next_idx + 1);
   assert(loc.platform_codes_.size() == next_idx + 1);
+  assert(loc.stop_codes_.size() == next_idx + 1);
   assert(loc.descriptions_.size() == next_idx + 1);
   assert(loc.coordinates_.size() == next_idx + 1);
   assert(loc.ids_.size() == next_idx + 1);
@@ -720,7 +739,7 @@ route_id_idx_t register_route(timetable& tt, route const& r) {
   route_id.route_id_category_.emplace_back(r.category_);
   route_id.route_id_short_names_.emplace_back(r.short_name_);
   route_id.route_id_long_names_.emplace_back(r.long_name_);
-  route_id.rotue_id_url_.emplace_back(r.url_);
+  route_id.route_id_url_.emplace_back(r.url_);
   route_id.route_id_colors_.emplace_back(r.color_);
   route_id.route_id_type_.emplace_back(r.route_type_);
   route_id.route_id_provider_.emplace_back(r.agency_);

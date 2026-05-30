@@ -9,6 +9,7 @@ struct route_key_t {
   stop_seq_t stop_seq_;
   bitvec bikes_allowed_;
   bitvec cars_allowed_;
+  bitvec wheelchair_accessible_;
 };
 
 struct route_key_ptr_t {
@@ -16,6 +17,7 @@ struct route_key_ptr_t {
   stop_seq_t const* stop_seq_;
   bitvec const* bikes_allowed_{nullptr};
   bitvec const* cars_allowed_{nullptr};
+  bitvec const* wheelchair_accessible_{nullptr};
 };
 
 struct route_key_hash {
@@ -24,7 +26,8 @@ struct route_key_hash {
   static cista::hash_t hash(clasz const c,
                             stop_seq_t const& seq,
                             bitvec const* bikes_allowed,
-                            bitvec const* cars_allowed) {
+                            bitvec const* cars_allowed,
+                            bitvec const* wheelchair_accessible) {
     auto h = cista::BASE_HASH;
     h = cista::hash_combine(h, cista::hashing<stop_seq_t>{}(seq));
     h = cista::hash_combine(h, c);
@@ -34,15 +37,21 @@ struct route_key_hash {
     if (cars_allowed != nullptr && !cars_allowed->empty()) {
       h = cista::hash_combine(h, cista::hashing<bitvec>{}(*cars_allowed));
     }
+    if (wheelchair_accessible != nullptr && !wheelchair_accessible->empty()) {
+      h = cista::hash_combine(h,
+                              cista::hashing<bitvec>{}(*wheelchair_accessible));
+    }
     return h;
   }
 
   cista::hash_t operator()(route_key_t const& x) const {
-    return hash(x.clasz_, x.stop_seq_, &x.bikes_allowed_, &x.cars_allowed_);
+    return hash(x.clasz_, x.stop_seq_, &x.bikes_allowed_, &x.cars_allowed_,
+                &x.wheelchair_accessible_);
   }
 
   cista::hash_t operator()(route_key_ptr_t const& x) const {
-    return hash(x.clasz_, *x.stop_seq_, x.bikes_allowed_, x.cars_allowed_);
+    return hash(x.clasz_, *x.stop_seq_, x.bikes_allowed_, x.cars_allowed_,
+                x.wheelchair_accessible_);
   }
 };
 
@@ -50,8 +59,10 @@ struct route_key_equals {
   using is_transparent = void;
 
   cista::hash_t operator()(route_key_t const& a, route_key_t const& b) const {
-    return std::tie(a.clasz_, a.stop_seq_, a.bikes_allowed_, a.cars_allowed_) ==
-           std::tie(b.clasz_, b.stop_seq_, b.bikes_allowed_, b.cars_allowed_);
+    return std::tie(a.clasz_, a.stop_seq_, a.bikes_allowed_, a.cars_allowed_,
+                    a.wheelchair_accessible_) ==
+           std::tie(b.clasz_, b.stop_seq_, b.bikes_allowed_, b.cars_allowed_,
+                    b.wheelchair_accessible_);
   }
 
   cista::hash_t operator()(route_key_ptr_t const& a,
@@ -60,16 +71,19 @@ struct route_key_equals {
     if ((a.bikes_allowed_ == nullptr || a.bikes_allowed_->empty()) !=
             b.bikes_allowed_.empty() ||
         (a.cars_allowed_ == nullptr || a.bikes_allowed_->empty()) !=
-            b.cars_allowed_.empty()) {
+            b.cars_allowed_.empty() ||
+        (a.wheelchair_accessible_ == nullptr ||
+         a.wheelchair_accessible_->empty()) !=
+            b.wheelchair_accessible_.empty()) {
       return false;
     }
-    if (a.bikes_allowed_ == nullptr) {
-      return std::tie(a.clasz_, *a.stop_seq_) ==
-             std::tie(b.clasz_, b.stop_seq_);
-    }
-    return std::tie(a.clasz_, *a.stop_seq_, *a.bikes_allowed_,
-                    *a.cars_allowed_) ==
-           std::tie(b.clasz_, b.stop_seq_, b.bikes_allowed_, b.cars_allowed_);
+    return a.clasz_ == b.clasz_ && *a.stop_seq_ == b.stop_seq_ &&
+           (a.bikes_allowed_ == nullptr ||
+            *a.bikes_allowed_ == b.bikes_allowed_) &&
+           (a.cars_allowed_ == nullptr ||
+            *a.cars_allowed_ == b.cars_allowed_) &&
+           (a.wheelchair_accessible_ == nullptr ||
+            *a.wheelchair_accessible_ == b.wheelchair_accessible_);
   }
 };
 
