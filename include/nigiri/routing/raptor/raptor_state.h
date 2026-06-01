@@ -90,6 +90,7 @@ struct raptor_state {
   bitvec route_mark_;
   bitvec rt_transport_mark_;
   bitvec round_touched_;
+  std::array<bitvec, kMaxTransfers + 2> round_touched_per_k_;
 };
 
 }  // namespace nigiri::routing

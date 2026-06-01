@@ -235,11 +235,20 @@ struct raptor {
 
   algo_stats_t get_stats() const { return stats_; }
 
+  template <typename I>
+  void mark_round_touched(unsigned const k, I const i) {
+    state_.round_touched_.set(i, true);
+    state_.round_touched_per_k_[k].set(i, true);
+  }
+
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
     utl::fill(best_, kInvalidArray);
     round_times_.reset(kInvalidArray);
     utl::fill(state_.round_touched_.blocks_, 0U);
+    for (auto& b : state_.round_touched_per_k_) {
+      utl::fill(b.blocks_, 0U);
+    }
   }
 
   void next_start_time() {
@@ -268,7 +277,7 @@ struct raptor {
     round_times_[0U][to_idx(l)][v] =
         get_best(unix_to_delta(base(), t), round_times_[0U][to_idx(l)][v]);
     state_.station_mark_.set(to_idx(l), true);
-    state_.round_touched_.set(to_idx(l), true);
+    mark_round_touched(0U, to_idx(l));
   }
 
   void execute(unixtime_t const start_time,
@@ -287,7 +296,7 @@ struct raptor {
 
     for (auto k = 1U; k != end_k; ++k) {
       if (started_) {
-        for_each_set(state_.round_touched_, [&](auto const i) {
+        for_each_set(state_.round_touched_per_k_[k], [&](auto const i) {
           for (auto v = 0U; v != Vias + 1; ++v) {
             best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
           }
@@ -646,7 +655,7 @@ private:
           round_times_[k][i][target_v] = fp_target_time;
           best_[i][target_v] = fp_target_time;
           state_.station_mark_.set(i, true);
-          state_.round_touched_.set(i, true);
+          mark_round_touched(k, i);
           if (is_dest) {
             update_time_at_dest(k, fp_target_time);
           }
@@ -731,7 +740,7 @@ private:
             round_times_[k][target][target_v] = fp_target_time;
             best_[target][target_v] = fp_target_time;
             state_.station_mark_.set(target, true);
-            state_.round_touched_.set(target, true);
+            mark_round_touched(k, target);
             if (target_v == Vias && is_dest_[target]) {
               update_time_at_dest(k, fp_target_time);
             }
@@ -838,7 +847,7 @@ private:
             round_times_[k][target][target_v] = fp_target_time;
             best_[target][target_v] = fp_target_time;
             state_.station_mark_.set(target, true);
-            state_.round_touched_.set(target, true);
+            mark_round_touched(k, target);
             if (is_dest_[target]) {
               update_time_at_dest(k, fp_target_time);
             }
@@ -891,7 +900,7 @@ private:
             if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
               round_times_[k][kIntermodalTarget][Vias] = end_time;
               best_[kIntermodalTarget][Vias] = end_time;
-              state_.round_touched_.set(kIntermodalTarget, true);
+              mark_round_touched(k, kIntermodalTarget);
               update_time_at_dest(k, end_time);
               trace_upd(" -> update\n");
             } else {
@@ -919,7 +928,7 @@ private:
         if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
           round_times_[k][kIntermodalTarget][Vias] = end_time;
           best_[kIntermodalTarget][Vias] = end_time;
-          state_.round_touched_.set(kIntermodalTarget, true);
+          mark_round_touched(k, kIntermodalTarget);
           update_time_at_dest(k, end_time);
           trace_upd(" -> update\n");
         } else {
@@ -943,7 +952,7 @@ private:
           if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
             round_times_[k][kIntermodalTarget][Vias] = end_time;
             best_[kIntermodalTarget][Vias] = end_time;
-            state_.round_touched_.set(kIntermodalTarget, true);
+            mark_round_touched(k, kIntermodalTarget);
             update_time_at_dest(k, end_time);
 
             trace(
