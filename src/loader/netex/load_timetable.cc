@@ -1365,7 +1365,7 @@ void load_timetable(loader_config const& config,
                         stop->parent_ != nullptr ? stop->parent_->location_
                                                  : location_idx_t::invalid(),
                         tz,
-                        2_minutes,
+                        config.default_transfer_time_,
                         tz_map};
       if (process_location(r, s)) {
         stop->location_ = register_location(tt, s);
@@ -1797,7 +1797,8 @@ void load_timetable(loader_config const& config,
           auto const dist = std::sqrt(geo::approx_squared_distance(
               pos, neighbor_pos, dist_lng_degrees));
           auto const duration = duration_t{std::max(
-              2, static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
+              static_cast<int>(config.default_transfer_time_.count()),
+              static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
           metas[get_new_location(l)].emplace_back(neighbor, duration);
         }
       },
