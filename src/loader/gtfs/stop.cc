@@ -212,6 +212,7 @@ read_stops(source_idx_t const src,
            std::string_view stops_file_content,
            std::string_view transfers_file_content,
            unsigned link_stop_distance,
+           duration_t const default_transfer_time,
            script_runner const& r) {
   auto const timer = scoped_timer{"gtfs.loader.stops"};
 
@@ -325,7 +326,7 @@ read_stops(source_idx_t const src,
         location_idx_t::invalid(),
         s->timezone_.empty() ? timezone_idx_t::invalid()
                              : get_tz_idx(tt, timezones, s->timezone_),
-        s->transfer_time_.value_or(2_minutes),
+        s->transfer_time_.value_or(default_transfer_time),
         timezones};
     if (process_location(r, loc)) {
       locations.emplace(id, s->location_ = register_location(tt, loc));

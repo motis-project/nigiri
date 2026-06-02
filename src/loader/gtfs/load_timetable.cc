@@ -95,9 +95,10 @@ void load_timetable(loader_config const& config,
   auto agencies =
       read_agencies(src, tt, i18n, timezones, load(kAgencyFile).data(),
                     config.default_tz_, user_script);
-  auto const [stops, seated_transfers, stops_accessible] = read_stops(
-      src, tt, i18n, timezones, load(kStopFile).data(),
-      load(kTransfersFile).data(), config.link_stop_distance_, user_script);
+  auto const [stops, seated_transfers, stops_accessible] =
+      read_stops(src, tt, i18n, timezones, load(kStopFile).data(),
+                 load(kTransfersFile).data(), config.link_stop_distance_,
+                 config.default_transfer_time_, user_script);
   add_stop_groups(tt, load(kStopGroupElementsFile).data(), stops);
   auto const routes =
       read_routes(src, tt, i18n, timezones, agencies, load(kRoutesFile).data(),
