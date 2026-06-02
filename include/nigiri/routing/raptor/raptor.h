@@ -236,9 +236,16 @@ struct raptor {
   algo_stats_t get_stats() const { return stats_; }
 
   template <typename I>
-  void mark_round_touched(unsigned const k, I const i) {
+  void mark_round_touched(unsigned const k,
+                          I const i,
+                          bool const newly = false) {
     state_.round_touched_.set(i, true);
-    state_.round_touched_per_k_[k].set(i, true);
+    if (k < raptor_state::kSparseRoundThreshold) {
+      state_.round_touched_dense_[k].set(i, true);
+    } else if (newly) {
+      state_.round_touched_sparse_[k - raptor_state::kSparseRoundThreshold]
+          .push_back(static_cast<std::uint32_t>(i));
+    }
   }
 
   void reset_arrivals() {
@@ -246,8 +253,11 @@ struct raptor {
     utl::fill(best_, kInvalidArray);
     round_times_.reset(kInvalidArray);
     utl::fill(state_.round_touched_.blocks_, 0U);
-    for (auto& b : state_.round_touched_per_k_) {
+    for (auto& b : state_.round_touched_dense_) {
       utl::fill(b.blocks_, 0U);
+    }
+    for (auto& v : state_.round_touched_sparse_) {
+      v.clear();
     }
   }
 
@@ -296,11 +306,19 @@ struct raptor {
 
     for (auto k = 1U; k != end_k; ++k) {
       if (started_) {
-        for_each_set(state_.round_touched_per_k_[k], [&](auto const i) {
+        auto const merge = [&](auto const i) {
           for (auto v = 0U; v != Vias + 1; ++v) {
             best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
           }
-        });
+        };
+        if (k < raptor_state::kSparseRoundThreshold) {
+          for_each_set(state_.round_touched_dense_[k], merge);
+        } else {
+          for (auto const i : state_.round_touched_sparse_
+                                  [k - raptor_state::kSparseRoundThreshold]) {
+            merge(i);
+          }
+        }
       }
       for_each_set(is_dest_, [&](auto const i) {
         update_time_at_dest(k, best_[i][Vias]);
@@ -652,10 +670,12 @@ private:
           }
 
           ++stats_.n_earliest_arrival_updated_by_footpath_;
+          auto const newly = k >= raptor_state::kSparseRoundThreshold &&
+                             round_times_[k][i] == kInvalidArray;
           round_times_[k][i][target_v] = fp_target_time;
           best_[i][target_v] = fp_target_time;
           state_.station_mark_.set(i, true);
-          mark_round_touched(k, i);
+          mark_round_touched(k, i, newly);
           if (is_dest) {
             update_time_at_dest(k, fp_target_time);
           }
@@ -737,10 +757,12 @@ private:
                 to_unix(fp_target_time), v, target_v, stay);
 
             ++stats_.n_earliest_arrival_updated_by_footpath_;
+            auto const newly = k >= raptor_state::kSparseRoundThreshold &&
+                               round_times_[k][target] == kInvalidArray;
             round_times_[k][target][target_v] = fp_target_time;
             best_[target][target_v] = fp_target_time;
             state_.station_mark_.set(target, true);
-            mark_round_touched(k, target);
+            mark_round_touched(k, target, newly);
             if (target_v == Vias && is_dest_[target]) {
               update_time_at_dest(k, fp_target_time);
             }
@@ -844,10 +866,12 @@ private:
                 target_v, stay);
 
             ++stats_.n_earliest_arrival_updated_by_footpath_;
+            auto const newly = k >= raptor_state::kSparseRoundThreshold &&
+                               round_times_[k][target] == kInvalidArray;
             round_times_[k][target][target_v] = fp_target_time;
             best_[target][target_v] = fp_target_time;
             state_.station_mark_.set(target, true);
-            mark_round_touched(k, target);
+            mark_round_touched(k, target, newly);
             if (is_dest_[target]) {
               update_time_at_dest(k, fp_target_time);
             }
@@ -898,9 +922,12 @@ private:
                 to_unix(best_[kIntermodalTarget][Vias]), to_unix(end_time));
 
             if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
+              auto const newly =
+                  k >= raptor_state::kSparseRoundThreshold &&
+                  round_times_[k][kIntermodalTarget] == kInvalidArray;
               round_times_[k][kIntermodalTarget][Vias] = end_time;
               best_[kIntermodalTarget][Vias] = end_time;
-              mark_round_touched(k, kIntermodalTarget);
+              mark_round_touched(k, kIntermodalTarget, newly);
               update_time_at_dest(k, end_time);
               trace_upd(" -> update\n");
             } else {
@@ -926,9 +953,12 @@ private:
             to_unix(best_[kIntermodalTarget][Vias]), to_unix(end_time));
 
         if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
+          auto const newly =
+              k >= raptor_state::kSparseRoundThreshold &&
+              round_times_[k][kIntermodalTarget] == kInvalidArray;
           round_times_[k][kIntermodalTarget][Vias] = end_time;
           best_[kIntermodalTarget][Vias] = end_time;
-          mark_round_touched(k, kIntermodalTarget);
+          mark_round_touched(k, kIntermodalTarget, newly);
           update_time_at_dest(k, end_time);
           trace_upd(" -> update\n");
         } else {
@@ -950,9 +980,12 @@ private:
           auto const end_time = clamp(fp_start_time + dir(duration.count()));
 
           if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
+            auto const newly =
+                k >= raptor_state::kSparseRoundThreshold &&
+                round_times_[k][kIntermodalTarget] == kInvalidArray;
             round_times_[k][kIntermodalTarget][Vias] = end_time;
             best_[kIntermodalTarget][Vias] = end_time;
-            mark_round_touched(k, kIntermodalTarget);
+            mark_round_touched(k, kIntermodalTarget, newly);
             update_time_at_dest(k, end_time);
 
             trace(
