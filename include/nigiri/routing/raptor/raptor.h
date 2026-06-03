@@ -1131,6 +1131,16 @@ private:
       auto const is_first = i == 0U;
       auto const is_last = i == stop_seq.size() - 1U;
 
+      if (!is_last) {
+        auto const next_l_idx =
+            cista::to_idx(stop{stop_seq[static_cast<stop_idx_t>(
+                                   kFwd ? stop_idx + 1 : stop_idx - 1)]}
+                              .location_idx());
+        prefetch(&prev_round_times[next_l_idx]);
+        prefetch(&best_[next_l_idx]);
+        prefetch(&tmp_[next_l_idx]);
+      }
+
       // v = via state when entering the transport
       // v + v_offset = via state at the current stop after entering the
       // transport (v_offset > 0 if the transport passes via stops)
