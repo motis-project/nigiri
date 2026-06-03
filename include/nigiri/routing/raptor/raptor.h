@@ -97,6 +97,14 @@ struct raptor {
   }
   static auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
+  static void prefetch(void const* addr) {
+#if defined(__GNUC__) || defined(__clang__)
+    __builtin_prefetch(addr);
+#else
+    (void)addr;
+#endif
+  }
+
   template <typename Fn>
   static void for_each_set(bitvec const& bits, Fn&& fn) {
     if (bits.empty()) {
@@ -682,8 +690,13 @@ private:
       auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx][l_idx]
                              : tt_.locations_.footpaths_in_[prf_idx][l_idx];
 
-      for (auto const& fp : fps) {
+      for (auto it = fps.begin(); it != fps.end(); ++it) {
+        auto const& fp = *it;
         ++stats_.n_footpaths_visited_;
+
+        if (auto const nxt = it + 1; nxt != fps.end()) {
+          prefetch(&best_[to_idx(nxt->target())]);
+        }
 
         auto const target = to_idx(fp.target());
 
@@ -1170,6 +1183,13 @@ private:
         if (et[v].is_valid() && stp.can_finish<SearchDir>(is_wheelchair_)) {
           auto const by_transport = time_at_stop(
               r, et[v], stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+
+          if (!is_last) {
+            prefetch(tt_.event_mam_ptr(
+                r, et[v].t_idx_,
+                static_cast<stop_idx_t>(kFwd ? stop_idx + 1 : stop_idx - 1),
+                kFwd ? event_type::kArr : event_type::kDep));
+          }
 
           auto const is_via = target_v != Vias && is_via_[target_v][l_idx];
           auto const is_no_stay_via =
