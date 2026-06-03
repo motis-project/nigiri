@@ -694,10 +694,6 @@ private:
         auto const& fp = *it;
         ++stats_.n_footpaths_visited_;
 
-        if (auto const nxt = it + 1; nxt != fps.end()) {
-          prefetch(&best_[to_idx(nxt->target())]);
-        }
-
         auto const target = to_idx(fp.target());
 
         for (auto v = 0U; v != Vias + 1; ++v) {
@@ -1349,13 +1345,6 @@ private:
             static_cast<std::size_t>(&*it - event_times.data());
         auto const ev = *it;
         auto const ev_mam = ev.mam();
-
-        if (auto const nxt = it + 1; nxt != end(ev_time_range)) {
-          auto const nt =
-              tt_.route_transport_ranges_[r][static_cast<std::size_t>(
-                  &*nxt - event_times.data())];
-          prefetch(&tt_.bitfields_[tt_.transport_traffic_days_[nt]]);
-        }
 
         if (is_better_or_eq(time_at_dest_[k],
                             to_delta(day, ev_mam) + dir(lb_[to_idx(l)]))) {
