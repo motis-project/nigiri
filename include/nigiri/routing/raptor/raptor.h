@@ -1131,16 +1131,6 @@ private:
       auto const is_first = i == 0U;
       auto const is_last = i == stop_seq.size() - 1U;
 
-      if (!is_last) {
-        auto const next_l_idx =
-            cista::to_idx(stop{stop_seq[static_cast<stop_idx_t>(
-                                   kFwd ? stop_idx + 1 : stop_idx - 1)]}
-                              .location_idx());
-        if (state_.prev_station_mark_[next_l_idx]) {
-          prefetch(&prev_round_times[next_l_idx]);
-        }
-      }
-
       // v = via state when entering the transport
       // v + v_offset = via state at the current stop after entering the
       // transport (v_offset > 0 if the transport passes via stops)
@@ -1359,6 +1349,13 @@ private:
             static_cast<std::size_t>(&*it - event_times.data());
         auto const ev = *it;
         auto const ev_mam = ev.mam();
+
+        if (auto const nxt = it + 1; nxt != end(ev_time_range)) {
+          auto const nt =
+              tt_.route_transport_ranges_[r][static_cast<std::size_t>(
+                  &*nxt - event_times.data())];
+          prefetch(&tt_.bitfields_[tt_.transport_traffic_days_[nt]]);
+        }
 
         if (is_better_or_eq(time_at_dest_[k],
                             to_delta(day, ev_mam) + dir(lb_[to_idx(l)]))) {
