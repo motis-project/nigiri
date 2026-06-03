@@ -1136,9 +1136,9 @@ private:
             cista::to_idx(stop{stop_seq[static_cast<stop_idx_t>(
                                    kFwd ? stop_idx + 1 : stop_idx - 1)]}
                               .location_idx());
-        prefetch(&prev_round_times[next_l_idx]);
-        prefetch(&best_[next_l_idx]);
-        prefetch(&tmp_[next_l_idx]);
+        if (state_.prev_station_mark_[next_l_idx]) {
+          prefetch(&prev_round_times[next_l_idx]);
+        }
       }
 
       // v = via state when entering the transport
