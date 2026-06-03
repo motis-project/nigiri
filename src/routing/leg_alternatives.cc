@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <optional>
 #include <ranges>
 
 #include "utl/helpers/algorithm.h"
@@ -39,6 +40,67 @@ query make_alternative_query(timetable const&,
       .require_car_transport_ = q.require_car_transport_,
       .transfer_time_settings_ = q.transfer_time_settings_,
   };
+}
+
+std::vector<journey> get_leg_alternatives(
+    timetable const& tt,
+    rt_timetable const* rtt,
+    query const& direct_query,
+    direction const search_dir,
+    unixtime_t const anchor_time,
+    std::optional<unixtime_t> const max_arrival,
+    journey::run_enter_exit const& original,
+    std::size_t const max_alternatives) {
+  auto const is_transit = [](journey::leg const& l) {
+    return std::holds_alternative<journey::run_enter_exit>(l.uses_);
+  };
+
+  auto alternatives = std::vector<journey>{};
+  alternatives.reserve(max_alternatives);
+
+  auto const optimize = [&](std::vector<journey::leg> const& legs) {
+    auto j_alt = journey{};
+    j_alt.legs_ = legs;
+    optimize_footpaths<direction::kForward>(tt, rtt, direct_query, j_alt);
+    j_alt.start_time_ = j_alt.legs_.front().dep_time_;
+    j_alt.dest_time_ = j_alt.legs_.back().arr_time_;
+    j_alt.dest_ = j_alt.legs_.back().to_;
+    return j_alt;
+  };
+  auto const not_original = [&](journey const& j_alt) {
+    return utl::none_of(j_alt.legs_, [&](journey::leg const& l) {
+      return is_transit(l) &&
+             std::get<journey::run_enter_exit>(l.uses_) == original;
+    });
+  };
+
+  if (search_dir == direction::kBackward) {
+    // EARLIER ARRIVALS: search backward from the anchor time, taking the
+    // latest alternatives.
+    for (auto&& j_alt : get_direct_journeys<direction::kBackward>(
+                            tt, rtt, direct_query, anchor_time) |
+                            std::views::transform(optimize) |
+                            std::views::filter(not_original) |
+                            std::views::take(max_alternatives)) {
+      alternatives.push_back(MOVE_IF_NOT_MSVC_DBG(j_alt));
+    }
+  } else {
+    // LATER DEPARTURES: search forward from the anchor time, stopping once an
+    // alternative arrives later than the (optional) upper bound.
+    auto const fits_arrival = [&](std::vector<journey::leg> const& legs) {
+      return !max_arrival.has_value() || legs.back().arr_time_ <= *max_arrival;
+    };
+    for (auto&& j_alt : get_direct_journeys<direction::kForward>(
+                            tt, rtt, direct_query, anchor_time) |
+                            std::views::take_while(fits_arrival) |
+                            std::views::transform(optimize) |
+                            std::views::filter(not_original) |
+                            std::views::take(max_alternatives)) {
+      alternatives.push_back(MOVE_IF_NOT_MSVC_DBG(j_alt));
+    }
+  }
+
+  return alternatives;
 }
 
 std::vector<journey> get_leg_alternatives(timetable const& tt,
@@ -89,60 +151,25 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
     direct_query.td_dest_ = q.td_dest_;
   }
 
-  // Collect alternatives.
-  auto alternatives = std::vector<journey>{};
-  alternatives.reserve(max_alternatives);
-
-  auto const optimize = [&](std::vector<journey::leg> const& legs) {
-    auto j_alt = journey{};
-    j_alt.legs_ = legs;
-    optimize_footpaths<direction::kForward>(tt, rtt, direct_query, j_alt);
-    j_alt.start_time_ = j_alt.legs_.front().dep_time_;
-    j_alt.dest_time_ = j_alt.legs_.back().arr_time_;
-    j_alt.dest_ = j_alt.legs_.back().to_;
-    return j_alt;
-  };
-  auto const not_original = [&](journey const& j_alt) {
-    return utl::none_of(j_alt.legs_, [&](journey::leg const& l) {
-      return is_transit(l) &&
-             std::get<journey::run_enter_exit>(l.uses_) == original_ree;
-    });
-  };
-
   auto const next_dep =
       has_next ? next_it->dep_time_ : j.legs_.back().arr_time_;
   if (!has_prev && has_next) {
-    // EARLIER ARRIVALS (unbounded):
-    // First transit leg with a successor: collect the latest alternatives
-    // that still arrive in time for the next leg's departure.
-    for (auto&& j_alt : get_direct_journeys<direction::kBackward>(
-                            tt, rtt, direct_query, next_dep) |
-                            std::views::transform(optimize) |
-                            std::views::filter(not_original) |
-                            std::views::take(max_alternatives)) {
-      alternatives.push_back(MOVE_IF_NOT_MSVC_DBG(j_alt));
-    }
-  } else {
-    // LATER DEPARTURES:
-    // - Intermediate transit leg (with successor)
-    // - Only one transit leg (no successor)
-    // - Last transit leg (no successor)
-    auto const prev_arr =
-        has_prev ? prev_it->arr_time_ : j.legs_.front().dep_time_;
-    auto const fits_arrival = [&](std::vector<journey::leg> const& legs) {
-      return !has_next /* unbounded */ || legs.back().arr_time_ <= next_dep;
-    };
-    for (auto&& j_alt : get_direct_journeys<direction::kForward>(
-                            tt, rtt, direct_query, prev_arr) |
-                            std::views::take_while(fits_arrival) |
-                            std::views::transform(optimize) |
-                            std::views::filter(not_original) |
-                            std::views::take(max_alternatives)) {
-      alternatives.push_back(MOVE_IF_NOT_MSVC_DBG(j_alt));
-    }
+    // First transit leg with a successor:
+    // search backward from the next leg's departure.
+    return get_leg_alternatives(tt, rtt, direct_query, direction::kBackward,
+                                next_dep, std::nullopt, original_ree,
+                                max_alternatives);
   }
 
-  return alternatives;
+  // Intermediate / single / last transit leg: search forward from the previous
+  // leg's arrival (or the journey start), bounded by the next departure when a
+  // successor exists.
+  auto const prev_arr =
+      has_prev ? prev_it->arr_time_ : j.legs_.front().dep_time_;
+  return get_leg_alternatives(tt, rtt, direct_query, direction::kForward,
+                              prev_arr,
+                              has_next ? std::optional{next_dep} : std::nullopt,
+                              original_ree, max_alternatives);
 }
 
 }  // namespace nigiri::routing
