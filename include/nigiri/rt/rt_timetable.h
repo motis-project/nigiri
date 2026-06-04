@@ -196,10 +196,6 @@ struct rt_timetable {
     return bitfields_[transport_traffic_days_[t]].test(to_idx(day));
   }
 
-  void const* traffic_bitfield_ptr(transport_idx_t const t) const {
-    return &bitfields_[transport_traffic_days_[t]];
-  }
-
   bool has_wheelchair_transport(rt_transport_idx_t const r) const {
     return rt_transport_wheelchair_accessibility_[to_idx(r) * 2U] ||
            rt_transport_wheelchair_accessibility_[to_idx(r) * 2U + 1U];
