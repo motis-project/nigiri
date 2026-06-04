@@ -1346,6 +1346,9 @@ private:
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
+        auto const t = tt_.route_transport_ranges_[r][t_offset];
+        prefetch(traffic_bitfield_ptr(t));
+
         if (is_better_or_eq(time_at_dest_[k],
                             to_delta(day, ev_mam) + dir(lb_[to_idx(l)]))) {
           trace(
@@ -1360,7 +1363,6 @@ private:
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
-        auto const t = tt_.route_transport_ranges_[r][t_offset];
         if (i == 0U && !is_better_or_eq(mam_at_stop.count(), ev_mam)) {
           trace(
               "┊ │k={}      => transport={}, name={}, dbg={}, day={}/{}, "
@@ -1401,6 +1403,14 @@ private:
       return rtt_->is_transport_active(t, day);
     } else {
       return tt_.is_transport_active(t, day);
+    }
+  }
+
+  void const* traffic_bitfield_ptr(transport_idx_t const t) const {
+    if constexpr (Rt) {
+      return rtt_->traffic_bitfield_ptr(t);
+    } else {
+      return tt_.traffic_bitfield_ptr(t);
     }
   }
 

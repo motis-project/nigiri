@@ -146,6 +146,10 @@ struct timetable {
     return bitfields_[transport_traffic_days_[t]].test(to_idx(day));
   }
 
+  void const* traffic_bitfield_ptr(transport_idx_t const t) const {
+    return &bitfields_[transport_traffic_days_[t]];
+  }
+
   bool is_route_active(route_idx_t const r, day_idx_t const day) const {
     return bitfields_[route_traffic_days_[r]].test(to_idx(day));
   }
