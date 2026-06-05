@@ -1572,7 +1572,7 @@ leg 4: (C, C) [2019-05-01 08:50] -> (D, D) [2019-05-01 09:00]
   }
 }
 
-TEST(routing, via_test_37_earlier_alternative) {
+TEST(routing, via_test_36_earlier_alternative) {
   constexpr auto const kGTFS = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -1618,7 +1618,7 @@ S1,20190501,1
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
 )"sv;
 
-  constexpr auto const expected_via_test_37_earlier_alternative =
+  constexpr auto const expected_via_test_36_earlier_alternative =
       R"(
 [2019-05-01 08:00, 2019-05-01 08:55]
 TRANSFERS: 2
@@ -1662,6 +1662,6 @@ leg 4: (C, C) [2019-05-01 08:45] -> (D, D) [2019-05-01 08:55]
     if (dir == direction::kBackward) {
       results_str = std::regex_replace(results_str, std::regex("START"), "END");
     }
-    EXPECT_EQ(expected_via_test_37_earlier_alternative, results_str);
+    EXPECT_EQ(expected_via_test_36_earlier_alternative, results_str);
   }
 }

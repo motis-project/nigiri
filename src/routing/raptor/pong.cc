@@ -403,9 +403,6 @@ routing_result pong(timetable const& tt,
                           ? to.time(event_type::kDep) - to_via->stay_
                           : to.time(event_type::kDep);
 
-      // arr_time = from.time(event_type::kArr);
-      // dep_time = to.time(event_type::kDep);
-
       auto const earlier =
           get_earliest_alternative(tt, rtt, q, from.get_location_idx(),
                                    to.get_location_idx(), arr_time, dep_time);
