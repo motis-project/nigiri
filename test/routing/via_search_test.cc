@@ -1703,10 +1703,10 @@ R3,S1,T3,,
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
 T0,10:00:00,10:00:00,A,0
 T0,10:10:00,10:10:00,B,1
-T1,10:30:00,10:30:00,B,0
-T1,10:40:00,10:40:00,C,1
-T3,10:45:00,10:45:00,C,0
-T3,10:55:00,10:55:00,D,1
+T1,10:25:00,10:25:00,B,0
+T1,10:30:00,10:30:00,C,1
+T3,10:32:00,10:32:00,C,0
+T3,10:40:00,10:40:00,D,1
 
 #calendar_dates.txt
 service_id,date,exception_type
@@ -1718,39 +1718,39 @@ from_stop_id,to_stop_id,transfer_type,min_transfer_time
 
   constexpr auto const expected_via_test_36_earlier_alternative_td =
       R"(
-[2019-05-01 08:00, 2019-05-01 08:55]
+[2019-05-01 08:00, 2019-05-01 08:40]
 TRANSFERS: 2
      FROM: (A, A) [2019-05-01 08:00]
-       TO: (D, D) [2019-05-01 08:55]
+       TO: (D, D) [2019-05-01 08:40]
 leg 0: (A, A) [2019-05-01 08:00] -> (B, B) [2019-05-01 08:10]
    0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=0, day=2019-05-01, id=T0, src=0}]
    1: B       B............................................... a: 01.05 08:10 [01.05 10:10]
-leg 1: (B, B) [2019-05-01 08:16] -> (B, B) [2019-05-01 08:18]
+leg 1: (B, B) [2019-05-01 08:23] -> (B, B) [2019-05-01 08:25]
   FOOTPATH (duration=2)
-leg 2: (B, B) [2019-05-01 08:30] -> (C, C) [2019-05-01 08:40]
-   0: B       B...............................................                               d: 01.05 08:30 [01.05 10:30]  [{name=1, day=2019-05-01, id=T1, src=0}]
-   1: C       C............................................... a: 01.05 08:40 [01.05 10:40]
-leg 3: (C, C) [2019-05-01 08:40] -> (C, C) [2019-05-01 08:42]
+leg 2: (B, B) [2019-05-01 08:25] -> (C, C) [2019-05-01 08:30]
+   0: B       B...............................................                               d: 01.05 08:25 [01.05 10:25]  [{name=1, day=2019-05-01, id=T1, src=0}]
+   1: C       C............................................... a: 01.05 08:30 [01.05 10:30]
+leg 3: (C, C) [2019-05-01 08:30] -> (C, C) [2019-05-01 08:32]
   FOOTPATH (duration=2)
-leg 4: (C, C) [2019-05-01 08:45] -> (D, D) [2019-05-01 08:55]
-   0: C       C...............................................                               d: 01.05 08:45 [01.05 10:45]  [{name=3, day=2019-05-01, id=T3, src=0}]
-   1: D       D............................................... a: 01.05 08:55 [01.05 10:55]
+leg 4: (C, C) [2019-05-01 08:32] -> (D, D) [2019-05-01 08:40]
+   0: C       C...............................................                               d: 01.05 08:32 [01.05 10:32]  [{name=3, day=2019-05-01, id=T3, src=0}]
+   1: D       D............................................... a: 01.05 08:40 [01.05 10:40]
 
 
 )"sv;
 
   auto tt = load_timetable(kGTFS);
 
-  auto const A = find_loc(tt, "A");
   auto const B = find_loc(tt, "B");
+  auto const C = find_loc(tt, "C");
 
   constexpr auto const kProfile = profile_idx_t{0};
   tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
   tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
-  tt.locations_.footpaths_out_[kProfile][A].push_back(
+  tt.locations_.footpaths_out_[kProfile][B].push_back(
+      footpath{C, footpath::kMaxDuration});
+  tt.locations_.footpaths_in_[kProfile][C].push_back(
       footpath{B, footpath::kMaxDuration});
-  tt.locations_.footpaths_in_[kProfile][B].push_back(
-      footpath{A, footpath::kMaxDuration});
 
   auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 01});
 
@@ -1758,23 +1758,27 @@ leg 4: (C, C) [2019-05-01 08:45] -> (D, D) [2019-05-01 08:55]
   rtt.has_td_footpaths_in_[kProfile].resize(tt.n_locations());
   rtt.td_footpaths_out_[kProfile].resize(tt.n_locations());
   rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
-  rtt.has_td_footpaths_out_[kProfile].set(A, true);
-  rtt.has_td_footpaths_in_[kProfile].set(B, true);
-  rtt.td_footpaths_out_[kProfile][A].push_back(td_footpath{
-      B, unixtime_t{sys_days{2019_y / May / 01}} + 8h + 25min, 4min});
-  rtt.td_footpaths_in_[kProfile][B].push_back(td_footpath{
-      A, unixtime_t{sys_days{2019_y / May / 01}} + 8h + 25min, 4min});
+  rtt.has_td_footpaths_out_[kProfile].set(B, true);
+  rtt.has_td_footpaths_in_[kProfile].set(C, true);
+  rtt.td_footpaths_out_[kProfile][B].push_back(td_footpath{
+      C, unixtime_t{sys_days{2019_y / May / 01}} + 8h + 15min, 2min});
+  rtt.td_footpaths_in_[kProfile][C].push_back(td_footpath{
+      B, unixtime_t{sys_days{2019_y / May / 01}} + 8h + 15min, 2min});
 
   auto q = routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
                                             "2019-05-01 10:01 Europe/Berlin"),
                           .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
                           .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
-                          .via_stops_ = {{loc_idx(tt, "B"), 6_minutes}}};
+                          .via_stops_ = {{loc_idx(tt, "B"), 13_minutes}}};
 
-  auto const results = search(tt, &rtt, q, direction::kForward);
+  // auto const results = search(tt, &rtt, q, direction::kForward);
+  auto search_state = routing::search_state{};
+  auto raptor_state = routing::raptor_state{};
+  auto const pong_results = routing::pong_search(
+      tt, &rtt, search_state, raptor_state, q, direction::kForward);
+  auto pong_results_str = print_results(tt, *pong_results.journeys_);
 
-  auto results_str = results_to_str(results, tt);
-  EXPECT_EQ(expected_via_test_36_earlier_alternative_td, results_str);
+  EXPECT_EQ(expected_via_test_36_earlier_alternative_td, pong_results_str);
 }
 
 TEST(routing, via_test_37_earlier_alternative) {
@@ -1809,9 +1813,9 @@ trip_id,arrival_time,departure_time,stop_id,stop_sequence
 T0,10:00:00,10:00:00,A,0
 T0,10:10:00,10:10:00,B,1
 T1,10:15:00,10:15:00,B,0
-T1,10:39:00,10:39:00,C,1
-T2,10:30:00,10:30:00,B,0
-T2:10:43:00,10:43:00,C,1
+T1,10:30:00,10:30:00,C,1
+T2,10:25:00,10:25:00,B,0
+T2,10:40:00,10:40:00,C,1
 T3,10:45:00,10:45:00,C,0
 T3,10:55:00,10:55:00,D,1
 
@@ -1832,12 +1836,12 @@ TRANSFERS: 2
 leg 0: (A, A) [2019-05-01 08:00] -> (B, B) [2019-05-01 08:10]
    0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=0, day=2019-05-01, id=T0, src=0}]
    1: B       B............................................... a: 01.05 08:10 [01.05 10:10]
-leg 1: (B, B) [2019-05-01 08:10] -> (B, B) [2019-05-01 08:12]
+leg 1: (B, B) [2019-05-01 08:23] -> (B, B) [2019-05-01 08:25]
   FOOTPATH (duration=2)
-leg 2: (B, B) [2019-05-01 08:15] -> (C, C) [2019-05-01 08:39]
-   0: B       B...............................................                               d: 01.05 08:15 [01.05 10:15]  [{name=1, day=2019-05-01, id=T1, src=0}]
-   1: C       C............................................... a: 01.05 08:39 [01.05 10:39]
-leg 3: (C, C) [2019-05-01 08:43] -> (C, C) [2019-05-01 08:45]
+leg 2: (B, B) [2019-05-01 08:25] -> (C, C) [2019-05-01 08:40]
+   0: B       B...............................................                               d: 01.05 08:25 [01.05 10:25]  [{name=2, day=2019-05-01, id=T2, src=0}]
+   1: C       C............................................... a: 01.05 08:40 [01.05 10:40]
+leg 3: (C, C) [2019-05-01 08:40] -> (C, C) [2019-05-01 08:42]
   FOOTPATH (duration=2)
 leg 4: (C, C) [2019-05-01 08:45] -> (D, D) [2019-05-01 08:55]
    0: C       C...............................................                               d: 01.05 08:45 [01.05 10:45]  [{name=3, day=2019-05-01, id=T3, src=0}]
@@ -1855,15 +1859,13 @@ leg 4: (C, C) [2019-05-01 08:45] -> (D, D) [2019-05-01 08:55]
            //           iv("2019-05-01 10:25 Europe/Berlin",
            //              "2019-05-01 10:26 Europe/Berlin")}
        }) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{
-                   .start_time_ = start_time,
-                   .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                   .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
-                   //  .via_stops_ = {{loc_idx(tt, "C"), 3_minutes}}
-               },
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "B"), 13_minutes}}},
+        dir);
 
     auto results_str = results_to_str(results, tt);
     if (dir == direction::kBackward) {
