@@ -1732,20 +1732,20 @@ void load_timetable(loader_config const& config,
 
         tt.finish_route();
 
-        auto const stop_times_begin = tt.route_stop_times_.size();
+        auto const stop_times_begin = tt.departure_route_stop_times_.size();
         for (auto const [from, to] :
              utl::pairwise(interval{std::size_t{0U}, key.stop_seq_.size()})) {
           // Write departure times of all route services at stop i.
           for (auto const& s : services) {
-            tt.route_stop_times_.emplace_back(s.utc_times_[from * 2]);
+            tt.departure_route_stop_times_.emplace_back(s.utc_times_[from * 2]);
           }
 
           // Write arrival times of all route services at stop i+1.
           for (auto const& s : services) {
-            tt.route_stop_times_.emplace_back(s.utc_times_[to * 2 - 1]);
+            tt.arrival_route_stop_times_.emplace_back(s.utc_times_[to * 2 - 1]);
           }
         }
-        auto const stop_times_end = tt.route_stop_times_.size();
+        auto const stop_times_end = tt.departure_route_stop_times_.size();
         tt.route_stop_time_ranges_.emplace_back(
             interval{stop_times_begin, stop_times_end});
       }
