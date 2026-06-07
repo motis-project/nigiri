@@ -65,6 +65,89 @@ void optimize_initial_departure(timetable const& tt,
   }
 }
 
+// Like `optimize_initial_departure`, but for journeys whose access to the first
+// transport is a (timetable) start footpath instead of an intermodal offset
+// (i.e. a non-intermodal start match mode with `use_start_footpaths_`). In that
+// case `j.legs_.front()` is a `footpath` from the journey start to the boarding
+// stop, so `optimize_initial_departure` (which expects an `offset` leg) does
+// nothing. The raptor may board at a stop reached via a long footpath even
+// though the same transport later passes a stop reachable by a much shorter
+// footpath from the journey start (i.e. it walks away from a station only to
+// ride back through it). Move the boarding to the stop with the shortest start
+// footpath, without departing earlier.
+template <direction SearchDir>
+void optimize_initial_start_footpath(timetable const& tt,
+                                     rt_timetable const* rtt,
+                                     query const& q,
+                                     journey& j) {
+  if constexpr (SearchDir != direction::kForward) {
+    return;  // journey legs are reconstructed start-first for forward searches.
+  }
+
+  if (j.legs_.size() <= 1 ||
+      !holds_alternative<footpath>(j.legs_.front().uses_) ||
+      !holds_alternative<journey::run_enter_exit>(j.legs_[1].uses_)) {
+    return;
+  }
+
+  auto& fp_leg = j.legs_.front();
+  auto& transport_leg = j.legs_[1];
+  auto& ree = get<journey::run_enter_exit>(transport_leg.uses_);
+
+  auto const start_loc = fp_leg.from_;
+
+  // When the start location has time-dependent footpaths in this profile (e.g.
+  // an elevator that can be out of service), the static footpath table is
+  // bypassed during search (see `raptor::update_footpaths`) and its durations
+  // don't reflect blocking. We can't safely re-time the access from static
+  // footpaths here, so leave the journey as reconstructed.
+  if (rtt != nullptr && q.prf_idx_ != 0U &&
+      rtt->has_td_footpaths_out_[q.prf_idx_].test(start_loc)) {
+    return;
+  }
+
+  auto fp_dur_best = adjusted_transfer_time(
+      q.transfer_time_settings_, get<footpath>(fp_leg.uses_).duration());
+
+  auto const& footpaths = tt.locations_.footpaths_out_[q.prf_idx_][start_loc];
+
+  auto r = rt::run{ree.r_};
+  r.stop_range_ = {0U, static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)};
+  for (auto const stp : rt::frun{tt, rtt, r}) {
+    if (!q.via_stops_.empty() &&
+        matches(tt, location_match_mode::kEquivalent, stp.get_location_idx(),
+                q.via_stops_[0].location_)) {
+      // don't skip over via stops
+      break;
+    }
+    if (!stp.in_allowed()) {
+      continue;
+    }
+    for (auto const& fp : footpaths) {
+      if (fp.target() != stp.get_location_idx()) {
+        continue;
+      }
+      auto const fp_dur =
+          adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
+      if (fp_dur < fp_dur_best) {
+        auto const dep = stp.time(event_type::kDep);
+        auto const fp_start = dep - fp_dur;
+        if (fp_leg.dep_time_ <= fp_start) {
+          fp_leg.to_ = stp.get_location_idx();
+          fp_leg.dep_time_ = fp_start;
+          fp_leg.arr_time_ = dep;
+          fp_leg.uses_ = footpath{stp.get_location_idx(), fp_dur};
+          transport_leg.from_ = stp.get_location_idx();
+          transport_leg.dep_time_ = dep;
+          ree.stop_range_.from_ = stp.stop_idx_;
+          fp_dur_best = fp_dur;
+        }
+      }
+      break;
+    }
+  }
+}
+
 template <direction SearchDir>
 void optimize_last_arrival(timetable const& tt,
                            rt_timetable const* rtt,
@@ -126,6 +209,95 @@ void optimize_last_arrival(timetable const& tt,
         ree.stop_range_.to_ = stp.stop_idx_ + 1U;
         offset_dur_best = o.duration();
       }
+    }
+  }
+}
+
+// Symmetric to `optimize_initial_start_footpath`, but for the egress: when the
+// access to the destination is a (timetable) footpath instead of an intermodal
+// offset, `j.legs_.back()` is a `footpath` to the destination and
+// `optimize_last_arrival` (which expects an `offset` leg) does nothing. The
+// raptor may alight at a stop reached to the destination via a long footpath
+// even though the same transport passed a stop closer to the destination
+// earlier (i.e. it stays on the train past a station only to walk back). Move
+// the alighting to the stop with the shortest egress footpath, without
+// arriving later.
+template <direction SearchDir>
+void optimize_final_egress_footpath(timetable const& tt,
+                                    rt_timetable const* rtt,
+                                    query const& q,
+                                    journey& j) {
+  if constexpr (SearchDir != direction::kForward) {
+    return;  // journey legs are reconstructed start-first for forward searches.
+  }
+
+  if (j.legs_.size() <= 1 ||
+      !holds_alternative<footpath>(j.legs_.back().uses_) ||
+      !holds_alternative<journey::run_enter_exit>(rbegin(j.legs_)[1].uses_)) {
+    return;
+  }
+
+  auto& fp_leg = j.legs_.back();
+  auto& transport_leg = rbegin(j.legs_)[1];
+  auto& ree = get<journey::run_enter_exit>(transport_leg.uses_);
+
+  auto const dest_loc = fp_leg.to_;
+
+  // See `optimize_initial_start_footpath`: don't re-time across time-dependent
+  // footpaths (the static table is bypassed for those locations during search).
+  if (rtt != nullptr && q.prf_idx_ != 0U &&
+      rtt->has_td_footpaths_in_[q.prf_idx_].test(dest_loc)) {
+    return;
+  }
+
+  auto fp_dur_best = adjusted_transfer_time(
+      q.transfer_time_settings_, get<footpath>(fp_leg.uses_).duration());
+
+  auto const& footpaths = tt.locations_.footpaths_in_[q.prf_idx_][dest_loc];
+
+  auto fr = rt::frun{tt, rtt, ree.r_};
+  auto range_from = static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U);
+
+  if (!q.via_stops_.empty()) {
+    // don't alight before the last via stop
+    auto const& last_via = q.via_stops_.back();
+    for (auto i = stop_idx_t{0U}; i < fr.size(); ++i) {
+      auto idx = static_cast<stop_idx_t>(fr.size() - i - 1U);
+      if (matches(tt, location_match_mode::kEquivalent,
+                  fr[idx].get_location_idx(), last_via.location_)) {
+        range_from = std::max(range_from, idx);
+        break;
+      }
+    }
+  }
+
+  fr.stop_range_ = {range_from, fr.size()};
+
+  for (auto const stp : fr) {
+    if (!stp.out_allowed()) {
+      continue;
+    }
+    for (auto const& fp : footpaths) {
+      if (fp.target() != stp.get_location_idx()) {
+        continue;
+      }
+      auto const fp_dur =
+          adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
+      if (fp_dur < fp_dur_best) {
+        auto const arr = stp.time(event_type::kArr);
+        auto const fp_end = arr + fp_dur;
+        if (fp_end <= fp_leg.arr_time_) {
+          fp_leg.from_ = stp.get_location_idx();
+          fp_leg.dep_time_ = arr;
+          fp_leg.arr_time_ = fp_end;
+          fp_leg.uses_ = footpath{dest_loc, fp_dur};
+          transport_leg.to_ = stp.get_location_idx();
+          transport_leg.arr_time_ = arr;
+          ree.stop_range_.to_ = stp.stop_idx_ + 1U;
+          fp_dur_best = fp_dur;
+        }
+      }
+      break;
     }
   }
 }
@@ -317,7 +489,9 @@ void optimize_footpaths(timetable const& tt,
                         query const& q,
                         journey& j) {
   optimize_initial_departure<SearchDir>(tt, rtt, q, j);
+  optimize_initial_start_footpath<SearchDir>(tt, rtt, q, j);
   optimize_last_arrival<SearchDir>(tt, rtt, q, j);
+  optimize_final_egress_footpath<SearchDir>(tt, rtt, q, j);
   optimize_transfers(tt, rtt, q, j);
 }
 
