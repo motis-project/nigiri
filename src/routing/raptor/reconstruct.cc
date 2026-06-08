@@ -760,9 +760,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
     j.add(std::move(*init_fp));
   }
 
-  if constexpr (kFwd) {
-    std::reverse(begin(j.legs_), end(j.legs_));
-  } else {
+  std::reverse(begin(j.legs_), end(j.legs_));
+  if constexpr (!kFwd) {
     // adjust footpaths so that they always begin at the arrival time of
     // the previous leg
     v = 0;
@@ -805,6 +804,10 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
   optimize_footpaths<SearchDir>(tt, rtt, q, j);
   specify_td_offsets<SearchDir>(q, j);
+
+  if constexpr (!kFwd) {
+    std::reverse(begin(j.legs_), end(j.legs_));
+  }
 
 #if defined(NIGIRI_TRACE_RECUSTRUCT)
   j.print(std::cout, tt, true);
