@@ -9,6 +9,7 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 namespace nigiri::routing {
 
@@ -156,10 +157,16 @@ double get_penalty(timetable const& tt,
   return weight;
 }
 
+template <direction SearchDir>
 void optimize_transfers(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q,
                         journey& j) {
+  auto vias_stops = q.via_stops_;
+  if (SearchDir ==
+      direction::kBackward) {  // Query does not match journey direction
+    std::reverse(begin(vias_stops), end(vias_stops));
+  }
   // v = vias reached in previous legs
   auto v = via_offset_t{0};
 
@@ -171,24 +178,24 @@ void optimize_transfers(timetable const& tt,
                        auto const fr = rt::frun{tt, rtt, t.r_};
                        for (auto s = t.stop_range_.from_;
                             s != t.stop_range_.to_; ++s) {
-                         if (v != q.via_stops_.size() &&
-                             q.via_stops_[v].stay_ == 0_minutes &&
+                         if (v != vias_stops.size() &&
+                             vias_stops[v].stay_ == 0_minutes &&
                              matches(tt, location_match_mode::kEquivalent,
-                                     q.via_stops_[v].location_,
+                                     vias_stops[v].location_,
                                      fr[s].get_location_idx())) {
                            ++v;
                          }
                        }
                      },
                      [&](footpath const&) {
-                       if (v != q.via_stops_.size() &&
+                       if (v != vias_stops.size() &&
                            matches(tt, location_match_mode::kEquivalent,
-                                   q.via_stops_[v].location_, prev_leg.from_)) {
+                                   vias_stops[v].location_, prev_leg.from_)) {
                          ++v;
                        }
-                       if (v != q.via_stops_.size() &&
+                       if (v != vias_stops.size() &&
                            matches(tt, location_match_mode::kEquivalent,
-                                   q.via_stops_[v].location_, prev_leg.to_)) {
+                                   vias_stops[v].location_, prev_leg.to_)) {
                          ++v;
                        }
                      }},
@@ -216,11 +223,11 @@ void optimize_transfers(timetable const& tt,
 
     // make sure that no via stops are skipped in ree_from
     for (auto s = ree_from.stop_range_.from_; s < fr_from.size(); ++s) {
-      if (current_v < q.via_stops_.size() &&
+      if (current_v < vias_stops.size() &&
           matches(tt, location_match_mode::kEquivalent,
                   fr_from[s].get_location_idx(),
-                  q.via_stops_[current_v].location_)) {
-        if (q.via_stops_[current_v].stay_ == 0_minutes) {
+                  vias_stops[current_v].location_)) {
+        if (vias_stops[current_v].stay_ == 0_minutes) {
           from_start = std::max(from_start, s);
           ++current_v;
         } else {
@@ -237,11 +244,11 @@ void optimize_transfers(timetable const& tt,
 
     // make sure that no via stops are skipped in ree_to
     for (auto s = ree_to.stop_range_.from_; s < fr_to.size(); ++s) {
-      if (current_v < q.via_stops_.size() &&
+      if (current_v < vias_stops.size() &&
           matches(tt, location_match_mode::kEquivalent,
                   fr_to[s].get_location_idx(),
-                  q.via_stops_[current_v].location_)) {
-        if (q.via_stops_[current_v].stay_ == 0_minutes) {
+                  vias_stops[current_v].location_)) {
+        if (vias_stops[current_v].stay_ == 0_minutes) {
           to_end = std::min(to_end, static_cast<stop_idx_t>(s + 1U));
           ++current_v;
         } else {
@@ -318,7 +325,7 @@ void optimize_footpaths(timetable const& tt,
                         journey& j) {
   optimize_initial_departure<SearchDir>(tt, rtt, q, j);
   optimize_last_arrival<SearchDir>(tt, rtt, q, j);
-  optimize_transfers(tt, rtt, q, j);
+  optimize_transfers<SearchDir>(tt, rtt, q, j);
 }
 
 template void optimize_footpaths<direction::kForward>(timetable const&,
