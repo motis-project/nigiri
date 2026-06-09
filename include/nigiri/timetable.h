@@ -168,10 +168,10 @@ struct timetable {
     }
   }
 
-  delta event_mam(route_idx_t const r,
-                  transport_idx_t t,
-                  stop_idx_t const stop_idx,
-                  event_type const ev_type) const {
+  delta const* event_mam_ptr(route_idx_t const r,
+                             transport_idx_t const t,
+                             stop_idx_t const stop_idx,
+                             event_type const ev_type) const {
     auto const range = route_transport_ranges_[r];
     auto const n_transports = static_cast<unsigned>(range.size());
     auto const base = route_stop_time_ranges_[r].from_;
@@ -179,12 +179,19 @@ struct timetable {
     if (ev_type == event_type::kDep) {
       auto const route_stop_begin =
           static_cast<unsigned>(base + n_transports * stop_idx);
-      return departure_route_stop_times_[route_stop_begin + t_idx_in_route];
+      return &departure_route_stop_times_[route_stop_begin + t_idx_in_route];
     } else {
       auto const route_stop_begin =
           static_cast<unsigned>(base + n_transports * (stop_idx - 1));
-      return arrival_route_stop_times_[route_stop_begin + t_idx_in_route];
+      return &arrival_route_stop_times_[route_stop_begin + t_idx_in_route];
     }
+  }
+
+  delta event_mam(route_idx_t const r,
+                  transport_idx_t t,
+                  stop_idx_t const stop_idx,
+                  event_type const ev_type) const {
+    return *event_mam_ptr(r, t, stop_idx, ev_type);
   }
 
   delta event_mam(transport_idx_t t,
