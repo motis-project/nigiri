@@ -6,11 +6,13 @@
 #include "utl/sorted_diff.h"
 #include "utl/timing.h"
 
+#include "nigiri/location_match_mode.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
+#include "nigiri/types.h"
 
 #define trace_pong(...)
 // #define trace_pong fmt::println
@@ -373,6 +375,7 @@ routing_result pong(timetable const& tt,
   }
 
   for (auto& j : s_state.results_) {
+    auto v = via_offset_t{0};
     for (auto const [transit_1, transfer_1, transit_2, transfer_2, transit_3] :
          utl::nwise<5>(j.legs_)) {
       if (!std::holds_alternative<journey::run_enter_exit>(transit_1.uses_) ||
@@ -387,21 +390,20 @@ routing_result pong(timetable const& tt,
       auto const front_r = rt::frun{tt, rtt, front.r_};
       auto const from = front_r[front.stop_range_.to_ - 1U];
 
+      auto arr_time = from.time(event_type::kArr);
+      if (matches(tt, location_match_mode::kEquivalent,
+                  q.via_stops_[v].location_, from.get_location_idx())) {
+        arr_time += q.via_stops_[v++].stay_;
+      }
+
       auto const back_r = rt::frun{tt, rtt, back.r_};
       auto const to = back_r[back.stop_range_.from_];
 
-      auto const from_via = utl::find_if(q.via_stops_, [&](via_stop const& v) {
-        return v.location_ == from.get_location_idx();
-      });
-      auto arr_time = from_via != end(q.via_stops_)
-                          ? from.time(event_type::kArr) + from_via->stay_
-                          : from.time(event_type::kArr);
-      auto const to_via = utl::find_if(q.via_stops_, [&](via_stop const& v) {
-        return v.location_ == to.get_location_idx();
-      });
-      auto dep_time = to_via != end(q.via_stops_)
-                          ? to.time(event_type::kDep) - to_via->stay_
-                          : to.time(event_type::kDep);
+      auto dep_time = to.time(event_type::kDep);
+      if (matches(tt, location_match_mode::kEquivalent,
+                  q.via_stops_[v].location_, to.get_location_idx())) {
+        dep_time += q.via_stops_[v++].stay_;
+      }
 
       auto const earlier =
           get_earliest_alternative(tt, rtt, q, from.get_location_idx(),
