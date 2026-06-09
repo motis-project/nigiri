@@ -760,47 +760,47 @@ void reconstruct_journey_with_vias(timetable const& tt,
     j.add(std::move(*init_fp));
   }
 
-  std::reverse(begin(j.legs_), end(j.legs_));
   if constexpr (!kFwd) {
     // adjust footpaths so that they always begin at the arrival time of
     // the previous leg
-    v = 0;
+    v = static_cast<via_offset_t>(q.via_stops_.size());
     for (auto it = std::next(j.legs_.begin()); it != j.legs_.end(); ++it) {
       std::visit(
-          utl::overloaded{[&](journey::run_enter_exit const& t) {
-                            auto const fr = rt::frun{tt, rtt, t.r_};
-                            for (auto i = t.stop_range_.from_;
-                                 i != t.stop_range_.to_; ++i) {
-                              if (v != q.via_stops_.size() &&
-                                  q.via_stops_[v].stay_ == 0_minutes &&
-                                  matches(tt, location_match_mode::kEquivalent,
-                                          q.via_stops_[v].location_,
-                                          fr[i].get_location_idx())) {
-                                ++v;
-                              }
-                            }
-                          },
-                          [&](footpath const&) {
-                            auto stay = 0_minutes;
-                            if (v != q.via_stops_.size() &&
-                                matches(tt, location_match_mode::kEquivalent,
-                                        q.via_stops_[v].location_, it->from_)) {
-                              stay = q.via_stops_[v].stay_;
-                              ++v;
-                            }
-                            if (v != q.via_stops_.size() &&
-                                matches(tt, location_match_mode::kEquivalent,
-                                        q.via_stops_[v].location_, it->to_)) {
-                              ++v;
-                            }
-                            auto const diff =
-                                it->dep_time_ - std::prev(it)->arr_time_ - stay;
-                            it->dep_time_ -= diff;
-                            it->arr_time_ -= diff;
-                          }},
+          utl::overloaded{
+              [&](journey::run_enter_exit const& t) {
+                auto const fr = rt::frun{tt, rtt, t.r_};
+                for (auto i = t.stop_range_.from_; i != t.stop_range_.to_;
+                     ++i) {
+                  if (v != 0 && q.via_stops_[v - 1].stay_ == 0_minutes &&
+                      matches(tt, location_match_mode::kEquivalent,
+                              q.via_stops_[v - 1].location_,
+                              fr[i].get_location_idx())) {
+                    --v;
+                  }
+                }
+              },
+              [&](footpath const&) {
+                auto stay = 0_minutes;
+                if (v != 0 &&
+                    matches(tt, location_match_mode::kEquivalent,
+                            q.via_stops_[v - 1].location_, it->from_)) {
+                  stay = q.via_stops_[v - 1].stay_;
+                  --v;
+                }
+                if (v != 0 && matches(tt, location_match_mode::kEquivalent,
+                                      q.via_stops_[v - 1].location_, it->to_)) {
+                  --v;
+                }
+                auto const diff =
+                    it->dep_time_ - std::prev(it)->arr_time_ - stay;
+                it->dep_time_ -= diff;
+                it->arr_time_ -= diff;
+              }},
           it->uses_);
     }
   }
+
+  std::reverse(begin(j.legs_), end(j.legs_));
 
   optimize_footpaths<SearchDir>(tt, rtt, q, j);
   specify_td_offsets<SearchDir>(q, j);
