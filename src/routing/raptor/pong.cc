@@ -391,7 +391,8 @@ routing_result pong(timetable const& tt,
       auto const from = front_r[front.stop_range_.to_ - 1U];
 
       auto arr_time = from.time(event_type::kArr);
-      if (matches(tt, location_match_mode::kEquivalent,
+      if (v < q.via_stops_.size() &&
+          matches(tt, location_match_mode::kEquivalent,
                   q.via_stops_[v].location_, from.get_location_idx())) {
         arr_time += q.via_stops_[v++].stay_;
       }
@@ -400,9 +401,11 @@ routing_result pong(timetable const& tt,
       auto const to = back_r[back.stop_range_.from_];
 
       auto dep_time = to.time(event_type::kDep);
-      if (matches(tt, location_match_mode::kEquivalent,
+      if (v < q.via_stops_.size() &&
+          matches(tt, location_match_mode::kEquivalent,
                   q.via_stops_[v].location_, to.get_location_idx())) {
-        dep_time += q.via_stops_[v++].stay_;
+        // do not increment v, via may be used in next iteration
+        dep_time -= q.via_stops_[v].stay_;
       }
 
       auto const earlier =
