@@ -36,7 +36,9 @@ void optimize_initial_departure(timetable const& tt,
   for (auto const stp : rt::frun{tt, rtt, r}) {
     if (!q.via_stops_.empty() &&
         matches(tt, location_match_mode::kEquivalent, stp.get_location_idx(),
-                q.via_stops_[0].location_)) {
+                SearchDir == direction::kForward
+                    ? q.via_stops_.front().location_
+                    : q.via_stops_.back().location_)) {
       // don't skip over via stops
       break;
     }
@@ -92,7 +94,9 @@ void optimize_last_arrival(timetable const& tt,
 
   if (!q.via_stops_.empty()) {
     // don't skip the last via stop
-    auto const& last_via = q.via_stops_.back();
+    auto const& last_via = SearchDir == direction::kForward
+                               ? q.via_stops_.back()
+                               : q.via_stops_.front();
     for (auto i = stop_idx_t{0U}; i < fr.size(); ++i) {
       auto idx = static_cast<stop_idx_t>(fr.size() - i - 1U);
       if (matches(tt, location_match_mode::kEquivalent,
