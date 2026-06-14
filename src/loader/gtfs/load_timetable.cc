@@ -316,8 +316,8 @@ void load_timetable(loader_config const& config,
     auto const clasz =
         front_trip.clasz_.has_value()
             ? *front_trip.clasz_
-            : to_clasz(to_idx(
-                  tt.route_ids_[src].route_id_type_[front_trip.route_]));
+            : to_clasz(
+                  to_idx(tt.route_ids_[src].route_id_type_[front_trip.route_]));
     auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
     auto const* cars_allowed_seq = get_cars_allowed_seq(s.trips_);
     auto const* wheelchair_accessible_seq =
