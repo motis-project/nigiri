@@ -10,6 +10,7 @@
 #include "utl/erase_if.h"
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/parser/arg_parser.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv.h"
 #include "utl/parser/csv_range.h"
@@ -226,6 +227,7 @@ trip_data read_trips(source_idx_t const src,
     utl::csv_col<std::uint8_t, UTL_NAME("cars_allowed")> cars_allowed_;
     utl::csv_col<std::uint8_t, UTL_NAME("wheelchair_accessible")>
         wheelchair_accessible_;
+    utl::csv_col<utl::cstr, UTL_NAME("trip_route_type")> trip_route_type_;
   };
   auto const& shapes = shape_states.id_map_;
 
@@ -264,8 +266,19 @@ trip_data read_trips(source_idx_t const src,
                                    : shape_it->second;
 
         auto const route_id = route_it->second->route_id_idx_;
+
+        // GTFS extension (MBTA): `trip_route_type` overrides the route-level
+        // type for this trip (e.g. replacement bus on a rail route).
+        auto const trt = t.trip_route_type_->trim();
+        auto const trip_clasz =
+            trt.empty()
+                ? std::optional<clasz>{}
+                : std::optional{to_clasz(utl::parse<std::uint16_t>(trt))};
+
         auto const clasz = static_cast<std::size_t>(
-            to_clasz(tt.route_ids_[src].route_id_type_[route_id]));
+            trip_clasz.has_value()
+                ? *trip_clasz
+                : to_clasz(tt.route_ids_[src].route_id_type_[route_id]));
 
         auto bikes_allowed = bikes_allowed_default[clasz];
         if (t.bikes_allowed_.val() == 1) {
@@ -333,6 +346,7 @@ trip_data read_trips(source_idx_t const src,
             x.headsign_, trip_short_name, x.direction_, shape_idx,
             bikes_allowed, cars_allowed, wheelchair_accessible});
         ret.data_.back().trip_idx_ = register_trip(tt, x);
+        ret.data_.back().clasz_ = trip_clasz;
         ret.trips_.emplace(t.trip_id_->to_str(), gtfs_trp_idx);
         if (blk != nullptr) {
           blk->trips_.emplace_back(gtfs_trp_idx);
