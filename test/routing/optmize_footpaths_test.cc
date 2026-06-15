@@ -136,7 +136,7 @@ leg 1: (A, A) [2019-05-01 08:10] -> (C, C) [2019-05-01 08:15]
           0,
           2}});
 
-  optimize_footpaths<direction::kForward>(tt, nullptr, q, journey);
+  optimize_footpaths(tt, nullptr, q, journey);
   EXPECT_EQ(expected_optimize_initial_departure, print_journey(tt, journey));
 }
 
@@ -188,7 +188,7 @@ leg 1: (C, C) [2019-05-01 08:15] -> (END, END) [2019-05-01 08:25]
       routing::offset{get_special_station(special_station::kEnd), 10_minutes,
                       0U}});
 
-  optimize_footpaths<direction::kForward>(tt, nullptr, q, journey);
+  optimize_footpaths(tt, nullptr, q, journey);
   EXPECT_EQ(expected_optimize_last_arrival, print_journey(tt, journey));
 }
 
@@ -257,6 +257,6 @@ leg 2: (C, C) [2019-05-01 08:17] -> (E, E) [2019-05-01 08:40]
           0,
           2}});
 
-  optimize_footpaths<direction::kForward>(tt, nullptr, q, journey);
+  optimize_footpaths(tt, nullptr, q, journey);
   EXPECT_EQ(expected_optimize_transfers, print_journey(tt, journey));
 }
