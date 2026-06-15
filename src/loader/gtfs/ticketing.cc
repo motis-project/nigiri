@@ -12,6 +12,7 @@ constexpr auto kTicketingDeeplinks = "ticketing_deep_links.txt";
 constexpr auto kTicketingIdentifiers = "ticketing_identifiers.txt";
 
 namespace nigiri::loader::gtfs {
+
 void read_ticketing_identifiers(timetable& tt,
                                 std::string_view file_content,
                                 stops_map_t const& stops,

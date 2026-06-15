@@ -14,7 +14,7 @@ struct timetable;
 namespace nigiri::loader::gtfs {
 
 using agency_map_t = hash_map<std::string, provider_idx_t>;
-using agency_ticketing_map_t = hash_map<provider_idx_t, string>;
+using agency_ticketing_map_t = hash_map<provider_idx_t, std::string>;
 
 std::pair<agency_map_t, agency_ticketing_map_t> read_agencies(
     source_idx_t,
