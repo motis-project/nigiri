@@ -187,9 +187,7 @@ void build_component_graph(
   }
 
   for (auto n : tmp_graph) {
-    utl::erase_duplicates(
-        n, [](auto&& a, auto&& b) { return a.target_ < b.target_; },
-        [](auto&& a, auto&& b) { return a.target_ == b.target_; });
+    utl::erase_duplicates(n);
     c.graph_.emplace_back(n);
   }
 
