@@ -46,10 +46,6 @@ unixtime_t time(std::string_view const time) {
   return parse_time_tz(time, "%Y-%m-%d %H:%M %Z");
 }
 
-interval<unixtime_t> iv(std::string_view const from, std::string_view to) {
-  return {time(from), time(to)};
-}
-
 constexpr auto const test_files_1 = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -60,10 +56,8 @@ stop_id,stop_name,stop_desc,stop_lat,stop_lon,location_type,parent_station
 A,A,,0.0,1.0,,
 B,B,,2.0,3.0,,
 C,C,,4.0,5.0,,
-G,G,,6.0,7.0,,
-D,D,,8.0,9.0,,
-E,E,,10.0,11.0,,
-F,F,,12.0,13.0,,
+D,D,,6.0,7.0,,
+E,E,,8.0,9.0,,
 
 #routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -75,7 +69,6 @@ R2,DB,2,,,3
 route_id,service_id,trip_id,trip_headsign,block_id
 R0,S1,T0,,
 R1,S1,T1,,
-R2,S1,T2,,
 
 #stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -94,141 +87,7 @@ S1,20190501,1
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
 )"sv;
 
-// constexpr auto const expected_optimize_footpaths_forward = R"(
-// [2019-05-01 08:00, 2019-05-01 08:50]
-// TRANSFERS: 2
-//      FROM: (START, START) [2019-05-01 08:00]
-//        TO: (END, END) [2019-05-01 08:52]
-// leg 0: (START, START) [2019-05-01 08:00] -> (A, A) [2019-05-01 08:10]
-//   MUMO (id=0, duration=10)
-// leg 1: (A, A) [2019-05-01 08:10] -> (C, C) [2019-05-01 08:15]
-//    0: A       A............................................... d: 01.05 08:10
-//    [01.05 10:10]  [{name=0, day=2019-05-01, id=T0, src=0}] 1: B
-//    B............................................... a: 01.05 08:12 [01.05
-//    10:12]  d: 01.05 08:12 [01.05 10:12]  [{name=0, day=2019-05-01, id=T0,
-//    src=0}] 2: C       C............................................... a:
-//    01.05 08:15 [01.05 10:15]
-// leg 2: (C, C) [2019-05-01 08:15] -> (C, C) [2019-05-01 08:20]
-//   FOOTPATH (duration=5)
-// leg 3: (C, C) [2019-05-01 08:20] -> (D, D) [2019-05-01 08:25]
-//    0: C       C............................................... d: 01.05 08:20
-//    [01.05 10:20]  [{name=1, day=2019-05-01, id=T1, src=0}] 1: G
-//    G............................................... a: 01.05 08:22 [01.05
-//    10:22]  d: 01.05 08:22 [01.05 10:22]  [{name=1, day=2019-05-01, id=T1,
-//    src=0}] 2: D       D............................................... a:
-//    01.05 08:25 [01.05 10:25]
-// leg 4: (D, D) [2019-05-01 08:25] -> (D, D) [2019-05-01 08:30]
-//   FOOTPATH (duration=5)
-// leg 5: (D, D) [2019-05-01 08:30] -> (F, F) [2019-05-01 08:40]
-//    0: D       D............................................... d: 01.05 08:30
-//    [01.05 10:30]  [{name=2, day=2019-05-01, id=T2, src=0}] 1: E
-//    E............................................... a: 01.05 08:35 [01.05
-//    10:35] 2: F       F............................................... a:
-//    01.05 08:40 [01.05 10:40]
-// leg 6: (F, F) [2019-05-01 08:40] -> (END, END) [2019-05-01 08:50]
-//   MUMO (id=0, duration=10)
-// )"sv;
-
 }  // namespace
-
-// TEST(routing, optimize_footpaths_forward_test) {
-//   auto tt = load_timetable(test_files_1);
-
-//   auto const A = loc_idx(tt, "A");
-//   auto const B = loc_idx(tt, "B");
-//   auto const C = loc_idx(tt, "C");
-//   auto const D = loc_idx(tt, "D");
-//   auto const E = loc_idx(tt, "E");
-//   auto const F = loc_idx(tt, "F");
-
-//   tt.locations_.footpaths_out_[0U][C].push_back(footpath{D, 0_minutes});
-
-//   auto const q = routing::query{
-//       .start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
-//                         "2019-05-01 10:01 Europe/Berlin"),
-//       .start_ = {{B, 8_minutes, 0U}},
-//       .destination_ = {{E, 8_minutes, 0U}},
-//       .via_stops_ = {
-//           // {loc_idx(tt, "A"), 0_minutes},  // Blocks offset from B
-//           // {loc_idx(tt, "G"), 0_minutes},  // Blocks transfer from C -> D
-//           // {loc_idx(tt, "F"), 0_minutes}  // Blocks offset from E
-//       }};
-
-//   auto journey = routing::journey{};
-//   journey.transfers_ = 2U;
-//   journey.start_time_ = time("2019-05-01 10:00 Europe/Berlin");
-//   journey.dest_time_ = time("2019-05-01 10:50 Europe/Berlin");
-
-//   // Start -> A
-//   journey.add(routing::journey::leg{
-//       direction::kForward, get_special_station(special_station::kStart), A,
-//       time("2019-05-01 10:00 Europe/Berlin"),
-//       time("2019-05-01 10:10 Europe/Berlin"),
-//       routing::offset{A, 10_minutes,
-//                       0U}});  // optimized away by initial_departure
-
-//   // A -> B -> C
-//   journey.add(routing::journey::leg{
-//       direction::kForward, A, C, time("2019-05-01 10:10 Europe/Berlin"),
-//       time("2019-05-01 10:15 Europe/Berlin"),
-//       routing::journey::run_enter_exit{
-//           {
-//               .t_ = {transport_idx_t{0U}, day_idx_t{5U}},
-//               .stop_range_ = interval<stop_idx_t>{0U, 3U},
-//           },
-//           0,
-//           2}});
-
-//   // Transfer C
-//   journey.add(routing::journey::leg{
-//       direction::kForward, C, C, time("2019-05-01 10:15 Europe/Berlin"),
-//       time("2019-05-01 10:20 Europe/Berlin"), footpath{C, 5_minutes}});
-
-//   // C -> G -> D
-//   journey.add(routing::journey::leg{
-//       direction::kForward, C, D, time("2019-05-01 10:20 Europe/Berlin"),
-//       time("2019-05-01 10:25 Europe/Berlin"),
-//       routing::journey::run_enter_exit{
-//           {
-//               .t_ = {transport_idx_t{1U}, day_idx_t{5U}},
-//               .stop_range_ = interval<stop_idx_t>{0U, 3U},
-//           },
-//           0,
-//           2}});
-
-//   // Transfer D
-//   journey.add(routing::journey::leg{
-//       direction::kForward, D, D, time("2019-05-01 10:25 Europe/Berlin"),
-//       time("2019-05-01 10:30 Europe/Berlin"), footpath{D, 5_minutes}});
-
-//   // D -> E -> F
-//   journey.add(routing::journey::leg{
-//       direction::kForward, D, F, time("2019-05-01 10:30 Europe/Berlin"),
-//       time("2019-05-01 10:40 Europe/Berlin"),
-//       routing::journey::run_enter_exit{
-//           {
-//               .t_ = {transport_idx_t{2U}, day_idx_t{5U}},
-//               .stop_range_ = interval<stop_idx_t>{0U, 3U},
-//           },
-//           0,
-//           2}});
-
-//   // F -> END
-//   journey.add(routing::journey::leg{
-//       direction::kForward, F, get_special_station(special_station::kEnd),
-//       time("2019-05-01 10:40 Europe/Berlin"),
-//       time("2019-05-01 10:50 Europe/Berlin"),
-//       routing::offset{get_special_station(special_station::kEnd), 10_minutes,
-//                       0U}});  // optimized away by last_arrival
-
-//   journey.print(std::cout, tt);
-
-//   optimize_footpaths<direction::kForward>(tt, nullptr, q, journey);
-
-//   journey.print(std::cout, tt);
-
-//   EXPECT_EQ(expected_optimize_footpaths_forward, print_journey(tt, journey));
-// }
 
 TEST(routing, optimize_initial_departure_test) {
   constexpr auto const expected_optimize_initial_departure = R"(
@@ -250,11 +109,8 @@ leg 1: (A, A) [2019-05-01 08:10] -> (C, C) [2019-05-01 08:15]
   auto const B = loc_idx(tt, "B");
   auto const C = loc_idx(tt, "C");
 
-  auto const q =
-      routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
-                                       "2019-05-01 10:01 Europe/Berlin"),
-                     .start_ = {{B, 8_minutes, 0U}},
-                     .via_stops_ = {{loc_idx(tt, "A"), 0_minutes}}};
+  auto const q = routing::query{.start_ = {{B, 8_minutes, 0U}},
+                                .via_stops_ = {{loc_idx(tt, "A"), 0_minutes}}};
 
   auto journey = routing::journey{};
   journey.transfers_ = 0U;
@@ -304,11 +160,8 @@ leg 1: (C, C) [2019-05-01 08:15] -> (END, END) [2019-05-01 08:25]
   auto const B = loc_idx(tt, "B");
   auto const C = loc_idx(tt, "C");
 
-  auto const q =
-      routing::query{.start_time_ = iv("2019-05-01 10:10 Europe/Berlin",
-                                       "2019-05-01 10:11 Europe/Berlin"),
-                     .destination_ = {{B, 8_minutes, 0U}},
-                     .via_stops_ = {{loc_idx(tt, "C"), 0_minutes}}};
+  auto const q = routing::query{.destination_ = {{B, 8_minutes, 0U}},
+                                .via_stops_ = {{loc_idx(tt, "C"), 0_minutes}}};
 
   auto journey = routing::journey{};
   journey.transfers_ = 0U;
@@ -367,11 +220,8 @@ leg 2: (C, C) [2019-05-01 08:17] -> (E, E) [2019-05-01 08:40]
 
   tt.locations_.footpaths_out_[0U][B].push_back(footpath{D, 1_minutes});
 
-  auto const q =
-      routing::query{.start_time_ = iv("2019-05-01 10:10 Europe/Berlin",
-                                       "2019-05-01 10:11 Europe/Berlin"),
-                     .via_stops_ = {{loc_idx(tt, "C"), 0_minutes}},
-                     .prf_idx_ = 0U};
+  auto const q = routing::query{.via_stops_ = {{loc_idx(tt, "C"), 0_minutes}},
+                                .prf_idx_ = 0U};
 
   auto journey = routing::journey{};
   journey.transfers_ = 1U;
