@@ -220,8 +220,8 @@ leg 2: (C, C) [2019-05-01 08:17] -> (E, E) [2019-05-01 08:40]
 
   tt.locations_.footpaths_out_[0U][B].push_back(footpath{D, 1_minutes});
 
-  auto const q = routing::query{.via_stops_ = {{loc_idx(tt, "C"), 0_minutes}},
-                                .prf_idx_ = 0U};
+  auto const q = routing::query{.prf_idx_ = 0U,
+                                .via_stops_ = {{loc_idx(tt, "C"), 0_minutes}}};
 
   auto journey = routing::journey{};
   journey.transfers_ = 1U;
