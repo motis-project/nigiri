@@ -17,10 +17,6 @@
 
 namespace nigiri::routing {
 
-namespace {
-
-enum class side { kBoarding, kAlighting };
-
 std::optional<journey::leg> lookup_offset(location_idx_t const loc,
                                           unixtime_t const t,
                                           side const s,
@@ -161,6 +157,8 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
   return journey::leg{direction::kForward,   from, to, dep, arr,
                       footpath{to, best_dur}};
 }
+
+namespace {
 
 std::optional<journey::leg> lookup_access(query const& q,
                                           timetable const& tt,
