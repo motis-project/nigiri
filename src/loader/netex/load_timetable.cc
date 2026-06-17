@@ -34,6 +34,7 @@
 #include "nigiri/common/gunzip.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 using namespace std::string_view_literals;
 namespace fs = std::filesystem;
@@ -1445,7 +1446,8 @@ void load_timetable(loader_config const& config,
                                                            line.route_type_)},
                   line.color_,
                   op->provider_,
-                  line.category_->category_idx_};
+                  line.category_->category_idx_,
+                  ticketing_link_idx_t::invalid()};
         route_id = line.routes_
                        .emplace_hint(
                            route_it, line::route_key{sj.route_type_, op},

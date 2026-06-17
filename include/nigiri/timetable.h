@@ -99,6 +99,7 @@ struct timetable {
     vector_map<location_idx_t, std::uint32_t> location_importance_;
     std::uint32_t max_importance_{0U};
     rtree<location_idx_t> rtree_;
+    bitvec_map<location_idx_t> ticketing_unavailable_;
   } locations_;
 
   struct transport {
@@ -322,6 +323,7 @@ struct timetable {
     vector_map<route_id_idx_t, route_type_t> route_id_type_;
     vector_map<route_id_idx_t, provider_idx_t> route_id_provider_;
     vector_map<route_id_idx_t, route_color> route_id_colors_;
+    vector_map<route_id_idx_t, ticketing_link_idx_t> route_id_ticketing_link_;
     paged_vecvec<route_id_idx_t, trip_idx_t> route_id_trips_;
     string_store<route_id_idx_t> ids_;
   };
@@ -494,24 +496,15 @@ struct timetable {
   hash_map<provider_idx_t, hash_map<location_idx_t, string>>
       location_ticketing_identifier_;
   hash_map<trip_idx_t, string> trip_ticketing_identifier_;
-  hash_map<location_idx_t, std::monostate> location_ticketing_unavailable_;
-  hash_map<trip_idx_t, std::monostate> trip_ticketing_unavailable_;
-
-  enum class ticketing_link_type : uint8_t {
-    kGoogleTransit,
-  };
+  bitvec_map<trip_idx_t> trip_ticketing_unavailable_;
 
   struct ticketing_links {
-    vector_map<ticketing_link_idx_t, ticketing_link_type> type_;
     vecvec<ticketing_link_idx_t, char> web_;
     vecvec<ticketing_link_idx_t, char> andoid_;
     vecvec<ticketing_link_idx_t, char> ios_;
   };
 
   ticketing_links ticketing_links_;
-
-  hash_map<provider_idx_t, ticketing_link_idx_t> ticketing_agencies_;
-  hash_map<route_id_idx_t, ticketing_link_idx_t> ticketing_routes_;
 };
 
 struct loc {

@@ -22,6 +22,7 @@ constexpr auto const kUnknownProvider =
              .name_ = kEmptyTranslation,
              .url_ = kEmptyTranslation,
              .fare_url_ = kEmptyTranslation,
+             .ticketing_link_ = ticketing_link_idx_t::invalid(),
              .src_ = source_idx_t::invalid()};
 
 stop run_stop::get_stop() const {
