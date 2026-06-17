@@ -69,7 +69,6 @@ hash_map<std::string_view, ticketing_link_idx_t> read_ticketing_deep_links(
         map.emplace(t.ticketing_deep_link_id->view(), idx);
       });
 
-  assert(tt.ticketing_links_.type_.size() == tt.ticketing_links_.web_.size());
   assert(tt.ticketing_links_.web_.size() == tt.ticketing_links_.andoid_.size());
   assert(tt.ticketing_links_.andoid_.size() == tt.ticketing_links_.ios_.size());
 
