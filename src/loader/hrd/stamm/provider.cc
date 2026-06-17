@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/hrd/util.h"
 #include "nigiri/loader/register.h"
+#include "nigiri/types.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/verify.h"
 
@@ -46,6 +47,7 @@ provider read_provider_names(timetable& tt,
                       parse_name(line.substr(full_name + 3U)))),
                   .url_ = kEmptyTranslation,
                   .fare_url_ = kEmptyTranslation,
+                  .ticketing_link_ = ticketing_link_idx_t::invalid(),
                   .src_ = src};
 }
 

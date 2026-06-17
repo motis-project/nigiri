@@ -8,6 +8,7 @@
 #include "utl/to_vec.h"
 
 #include "nigiri/loader/hrd/stamm/basic_info.h"
+#include "nigiri/types.h"
 
 namespace nigiri::loader::hrd {
 
@@ -106,6 +107,7 @@ provider_idx_t stamm::resolve_provider(utl::cstr s) {
                  .name_ = tt_.register_translation(s.view()),
                  .url_ = kEmptyTranslation,
                  .fare_url_ = kEmptyTranslation,
+                 .ticketing_link_ = ticketing_link_idx_t::invalid(),
                  .src_ = source_idx_t{0}});
     providers_[s.to_str()] = idx;
     return idx;
