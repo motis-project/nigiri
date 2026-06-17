@@ -4,6 +4,7 @@
 #include "nigiri/loader/gtfs/stop.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 #include "utl/parser/csv_range.h"
 #include "utl/progress_tracker.h"
@@ -60,8 +61,6 @@ hash_map<std::string_view, ticketing_link_idx_t> read_ticketing_deep_links(
         ticketing_link_idx_t const idx =
             ticketing_link_idx_t{tt.ticketing_links_.web_.size()};
 
-        tt.ticketing_links_.type_.emplace_back(
-            timetable::ticketing_link_type::kGoogleTransit);
         tt.ticketing_links_.web_.emplace_back(string{t.web_url->view()});
         tt.ticketing_links_.andoid_.emplace_back(
             string{t.android_intent_uri->view()});
@@ -96,19 +95,19 @@ void load_ticketing(timetable& tt,
       read_ticketing_deep_links(tt, load(kTicketingDeeplinks).data());
 
   for (auto const& [provider_idx, deep_link_id] : agency_ticketing) {
-    tt.ticketing_agencies_.emplace(provider_idx, deep_links.at(deep_link_id));
+    tt.providers_[provider_idx].ticketing_link_ = deep_links.at(deep_link_id);
   }
 
   for (auto const& [route_id, route] : routes) {
     if (!route->ticketing_deep_link_id_.empty()) {
       ticketing_link_idx_t idx = deep_links.at(route->ticketing_deep_link_id_);
-      tt.ticketing_routes_.emplace(route->route_id_idx_, idx);
+      tt.route_ids_[src].route_id_ticketing_link_[route->route_id_idx_] = idx;
     }
   }
 
   for (auto const& trip : trips.data_) {
     if (trip.ticketing_unavailable_) {
-      tt.trip_ticketing_unavailable_.emplace(trip.trip_idx_, std::monostate{});
+      tt.trip_ticketing_unavailable_.set(trip.trip_idx_);
     }
 
     for (auto [idx, unavailable] :
@@ -121,8 +120,7 @@ void load_ticketing(timetable& tt,
         //
         // conclusion -> we can store it per location instead of per stop time.
         auto const stop = nigiri::stop{trip.stop_seq_.at(idx)};
-        tt.location_ticketing_unavailable_.emplace(stop.location_,
-                                                   std::monostate{});
+        tt.locations_.ticketing_unavailable_.set(stop.location_idx());
       }
     }
 

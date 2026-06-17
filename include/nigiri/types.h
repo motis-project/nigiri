@@ -287,6 +287,7 @@ struct provider {
   string_idx_t id_;
   translation_idx_t name_, url_, fare_url_;
   timezone_idx_t tz_{timezone_idx_t::invalid()};
+  ticketing_link_idx_t ticketing_link_;
   source_idx_t src_;
 };
 
