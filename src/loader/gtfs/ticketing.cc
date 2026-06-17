@@ -99,6 +99,9 @@ void load_ticketing(timetable& tt,
     }
   }
 
+  tt.trip_ticketing_identifier_.resize(tt.trip_ticketing_identifier_.size() +
+                                       trips.data_.size());
+
   for (auto const& trip : trips.data_) {
     if (trip.ticketing_unavailable_) {
       tt.trip_ticketing_unavailable_.set(trip.trip_idx_);
@@ -119,8 +122,8 @@ void load_ticketing(timetable& tt,
     }
 
     if (!trip.ticketing_trip_id_.empty()) {
-      tt.trip_ticketing_identifier_.emplace(trip.trip_idx_,
-                                            string{trip.ticketing_trip_id_});
+      auto const str_idx = tt.strings_.store(trip.ticketing_trip_id_);
+      tt.trip_ticketing_identifier_[trip.trip_idx_].push_back(str_idx);
     }
   }
 }

@@ -495,7 +495,7 @@ struct timetable {
   // Ticketing
   vecvec<location_idx_t, pair<provider_idx_t, string_idx_t>>
       location_ticketing_identifier_;
-  hash_map<trip_idx_t, string> trip_ticketing_identifier_;
+  vecvec<trip_idx_t, string_idx_t> trip_ticketing_identifier_;
   bitvec_map<trip_idx_t> trip_ticketing_unavailable_;
 
   struct ticketing_links {
