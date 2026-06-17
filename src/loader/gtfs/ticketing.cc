@@ -34,7 +34,7 @@ void read_ticketing_identifiers(timetable& tt,
           string_idx_t const str_idx =
               tt.strings_.store(t.ticketing_stop_id->view());
           tt.location_ticketing_identifier_.at(location_it->second)
-              .push_back(pair(provider, str_idx));
+              .push_back(pair<provider_idx_t, string_idx_t>{provider, str_idx});
         }
       });
 }
@@ -115,7 +115,8 @@ void load_ticketing(timetable& tt,
         // ticketing_type=1, then all of its other stop_times must also have
         // ticketing_type=1.
         //
-        // conclusion -> we can store it per location instead of per stop time.
+        // conclusion -> we can store it per location instead of per stop
+        // time.
         auto const stop = nigiri::stop{trip.stop_seq_.at(idx)};
         tt.locations_.ticketing_unavailable_.set(stop.location_idx());
       }
