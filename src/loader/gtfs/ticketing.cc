@@ -24,23 +24,18 @@ void read_ticketing_identifiers(timetable& tt,
     utl::csv_col<utl::cstr, UTL_NAME("agency_id")> agency_id;
   };
 
+  tt.location_ticketing_identifier_.resize(tt.n_locations());
+
   utl::for_each_row<ticketing_identifiers_row>(
       file_content, [&](ticketing_identifiers_row const& t) {
         auto location_it = stops.find(std::string{t.stop_id->view()});
         if (location_it != stops.end()) {
           auto provider = tt.get_provider_idx(t.agency_id->view(), src);
-          auto provider_it = tt.location_ticketing_identifier_.find(provider);
-          if (provider_it == std::end(tt.location_ticketing_identifier_)) {
-            hash_map<location_idx_t, string> location_ids;
-            location_ids.emplace(location_it->second,
-                                 string{t.ticketing_stop_id->view()});
-            tt.location_ticketing_identifier_.emplace(provider,
-                                                      std::move(location_ids));
-          } else {
-            provider_it->second.emplace(location_it->second,
-                                        string{t.ticketing_stop_id->view()});
-          }
-        }
+          string_idx_t const str_idx =
+              tt.strings_.store(t.ticketing_stop_id->view());
+          tt.location_ticketing_identifier_.at(location_it->second)
+              .push_back(pair(provider, str_idx));
+        };
       });
 }
 

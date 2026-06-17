@@ -131,7 +131,6 @@ struct trip {
   // route-level clasz for this trip (e.g. rail route, replacement-bus trip).
   std::optional<clasz> clasz_{};
 
-  std::string ticketing_trip_id;
   std::string ticketing_trip_id_;
   bool ticketing_unavailable_{false};
   std::vector<bool> stop_ticketing_unavailable_;

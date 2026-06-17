@@ -493,7 +493,7 @@ struct timetable {
   cista::base_t<source_idx_t> n_sources_{};
 
   // Ticketing
-  hash_map<provider_idx_t, hash_map<location_idx_t, string>>
+  vecvec<location_idx_t, pair<provider_idx_t, string_idx_t>>
       location_ticketing_identifier_;
   hash_map<trip_idx_t, string> trip_ticketing_identifier_;
   bitvec_map<trip_idx_t> trip_ticketing_unavailable_;
