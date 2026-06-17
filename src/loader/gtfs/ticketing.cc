@@ -35,7 +35,7 @@ void read_ticketing_identifiers(timetable& tt,
               tt.strings_.store(t.ticketing_stop_id->view());
           tt.location_ticketing_identifier_.at(location_it->second)
               .push_back(pair(provider, str_idx));
-        };
+        }
       });
 }
 
