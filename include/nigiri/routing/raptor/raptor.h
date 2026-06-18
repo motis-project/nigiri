@@ -23,6 +23,7 @@ struct raptor_stats {
     return {
         {"n_routing_time", n_routing_time_},
         {"n_footpaths_visited", n_footpaths_visited_},
+        {"n_footpaths_pruned_by_ep", n_footpaths_pruned_by_ep_},
         {"n_routes_visited", n_routes_visited_},
         {"n_earliest_trip_calls", n_earliest_trip_calls_},
         {"n_earliest_arrival_updated_by_route",
@@ -40,6 +41,7 @@ struct raptor_stats {
     auto copy = *this;
     copy.n_routing_time_ += o.n_routing_time_;
     copy.n_footpaths_visited_ += o.n_footpaths_visited_;
+    copy.n_footpaths_pruned_by_ep_ += o.n_footpaths_pruned_by_ep_;
     copy.n_routes_visited_ += o.n_routes_visited_;
     copy.n_earliest_trip_calls_ += o.n_earliest_trip_calls_;
     copy.n_earliest_arrival_updated_by_route_ +=
@@ -55,6 +57,7 @@ struct raptor_stats {
 
   std::uint64_t n_routing_time_{0ULL};
   std::uint64_t n_footpaths_visited_{0ULL};
+  std::uint64_t n_footpaths_pruned_by_ep_{0ULL};
   std::uint64_t n_routes_visited_{0ULL};
   std::uint64_t n_earliest_trip_calls_{0ULL};
   std::uint64_t n_earliest_arrival_updated_by_route_{0ULL};
@@ -579,6 +582,23 @@ private:
                              : tt_.locations_.footpaths_in_[prf_idx][l_idx];
 
       for (auto const& fp : fps) {
+        // EARLY PRUNING: fps are sorted ascending by duration. For the
+        // common Vias==0 case, fp_target_time is monotone in fp.duration().
+        // Once it can no longer beat the per-round target bound, all later
+        // (longer) fps will also fail — break the loop.
+        if constexpr (Vias == 0) {
+          auto const tmp_time_ep = tmp_[i][0];
+          if (tmp_time_ep != kInvalid) {
+            auto const projected_ep = clamp(
+                tmp_time_ep + dir(adjusted_transfer_time(
+                                      transfer_time_settings_,
+                                      fp.duration().count())));
+            if (!is_better(projected_ep, time_at_dest_[k])) {
+              ++stats_.n_footpaths_pruned_by_ep_;
+              break;
+            }
+          }
+        }
         ++stats_.n_footpaths_visited_;
 
         auto const target = to_idx(fp.target());
