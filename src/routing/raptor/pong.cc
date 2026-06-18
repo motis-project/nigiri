@@ -225,6 +225,8 @@ routing_result pong(timetable const& tt,
     auto ping_results = pareto_set<journey>{};
     ping.execute(start_time, q.max_transfers_, worst_time_at_dest, q.prf_idx_,
                  ping_results);
+    kFwd ? ++result.search_stats_.n_execute_fwd_
+         : ++result.search_stats_.n_execute_bwd_;
     if (ping_results.empty()) {
       trace_pong(
           "EMPTY PING RESULTS -> QUIT (max_transfers={}, "
@@ -266,6 +268,8 @@ routing_result pong(timetable const& tt,
       pong.execute(ping_j.dest_time_, ping_j.transfers_,
                    ping_j.start_time_ - duration_t{kFwd ? 1 : -1}, q.prf_idx_,
                    s_state.results_);
+      kFwd ? ++result.search_stats_.n_execute_bwd_
+           : ++result.search_stats_.n_execute_fwd_;
 
       auto const match =
           utl::find_if(s_state.results_, [&](journey const& pong_j) {
