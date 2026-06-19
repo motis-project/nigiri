@@ -9,11 +9,11 @@
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
-  commit=1450091a6ee2d541e91d26bf06157342ec0599f6
+  commit=a8c1126b673b0def185b65c1e5010832612e9a78
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
-  commit=06443e9460d801f09a30d9d11bd070d3152b6888
+  commit=5ddd9956455b18fc96fd5f8095f7552d5be92c17
 [miniz]
   url=git@github.com:motis-project/miniz.git
   branch=master
