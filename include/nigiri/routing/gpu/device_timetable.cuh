@@ -19,7 +19,8 @@ struct device_timetable {
       route_idx_t const r,
       stop_idx_t const stop_idx,
       event_type const ev_type) const {
-    auto const n_transports = to_idx(route_transport_ranges_[r].size());
+    auto const n_transports =
+        static_cast<unsigned>(route_transport_ranges_[r].size());
     auto const idx = static_cast<unsigned>(
         route_stop_time_ranges_[r].from_ +
         n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
@@ -31,7 +32,7 @@ struct device_timetable {
                              stop_idx_t const stop_idx,
                              event_type const ev_type) const {
     auto const range = route_transport_ranges_[r];
-    auto const n_transports = to_idx(range.size());
+    auto const n_transports = static_cast<unsigned>(range.size());
     auto const route_stop_begin = static_cast<unsigned>(
         route_stop_time_ranges_[r].from_ +
         n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));

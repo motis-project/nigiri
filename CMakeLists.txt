@@ -172,7 +172,8 @@ if (NIGIRI_CUDA)
           WINDOWS_EXPORT_ALL_SYMBOLS ON
           CUDA_SEPARABLE_COMPILATION ON
           CUDA_ARCHITECTURES native
-          CUDA_STANDARD 26
+          CUDA_STANDARD 20
+          COMPILE_WARNING_AS_ERROR OFF
           RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
           LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
           INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/"
@@ -186,7 +187,7 @@ if (NIGIRI_CUDA)
   set_property(TARGET nigiri PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
   set_property(TARGET nigiri-test PROPERTY CUDA_SEPARABLE_COMPILATION ON)
-  target_link_libraries(nigiri-test PRIVATE nigiri-gpu)
+  target_link_libraries(nigiri-test nigiri-gpu)
 
   set_property(TARGET nigiri-benchmark PROPERTY CUDA_SEPARABLE_COMPILATION ON)
   target_link_libraries(nigiri-benchmark PRIVATE nigiri-gpu)

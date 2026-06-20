@@ -212,7 +212,7 @@ void process_queries(
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 total_time_stop - total_time_start)});
         progress_tracker->increment();
-      } catch (const std::exception& e) {
+      } catch (std::exception const& e) {
         std::cout << e.what();
       }
     }
@@ -413,10 +413,10 @@ int main(int argc, char* argv[]) {
        "walk | bicycle | car")  //
       ("use_start_footpaths",
        bpo::value<bool>(&gs.use_start_footpaths_)->default_value(true),
-       "")("max_transfers,t",
-           bpo::value<std::uint32_t>(&max_transfers)
-               ->default_value(kMaxTransfers),
-           "maximum number of transfers during routing")  //
+       "")  //
+      ("max_transfers,t",
+       bpo::value<std::uint32_t>(&max_transfers)->default_value(kMaxTransfers),
+       "maximum number of transfers during routing")  //
       ("min_connection_count,m",
        bpo::value<std::uint32_t>(&gs.min_connection_count_)->default_value(3U),
        "the minimum number of connections to find with each query")  //

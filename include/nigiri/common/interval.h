@@ -106,7 +106,9 @@ struct interval {
     return r.end();
   }
 
-  auto size() const { return cista::to_idx(to_ - from_); }
+  constexpr CISTA_CUDA_COMPAT auto size() const {
+    return cista::to_idx(to_ - from_);
+  }
 
   CISTA_CUDA_COMPAT bool empty() const { return to_ - from_ == 0U; }
 

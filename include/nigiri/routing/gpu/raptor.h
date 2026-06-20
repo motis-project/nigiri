@@ -1,6 +1,22 @@
 #pragma once
 
-#include "nigiri/routing/raptor/raptor.h"
+#include <array>
+#include <memory>
+#include <vector>
+
+#include "nigiri/common/delta_t.h"
+#include "nigiri/routing/journey.h"
+#include "nigiri/routing/limits.h"
+#include "nigiri/routing/pareto_set.h"
+#include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/raptor_state.h"
+#include "nigiri/routing/raptor/raptor_stats.h"
+#include "nigiri/routing/raptor/reconstruct.h"
+#include "nigiri/routing/transfer_time_settings.h"
+#include "nigiri/rt/rt_timetable.h"
+#include "nigiri/special_stations.h"
+#include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 namespace nigiri::routing::gpu {
 

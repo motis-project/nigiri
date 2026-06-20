@@ -3,6 +3,8 @@
 #include "cooperative_groups.h"
 
 #include "nigiri/common/delta_t.h"
+#include "nigiri/common/it_range.h"
+#include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/types.h"
@@ -25,7 +27,7 @@ namespace nigiri::routing::gpu {
 #define debug_timing(...)
 
 // #define start_timing() auto const round_start = clock64()
-// #d ef ine deb ug_timing(str, ...)                        \
+// #define debug_timing(str, ...)                        \
 //  if (global_t_id == 0) {                             \
 //    printf(str ": %" PRIi64 " cycles\n", __VA_ARGS__, \
 //           clock64() - round_start);                  \
