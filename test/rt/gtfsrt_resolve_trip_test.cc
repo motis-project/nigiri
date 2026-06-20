@@ -1,5 +1,7 @@
 #include "gtest/gtest.h"
 
+#include "utl/zip.h"
+
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
@@ -61,8 +63,8 @@ T_RE2,01:00:00,01:00:00,D,3,0,0
 }
 
 constexpr auto const kTransportAfterUpdate = std::string_view{
-    R"(   0: B       B...............................................                                                             d: 03.05 22:30 [04.05 00:30]  RT 03.05 22:35 [04.05 00:35]  [{name=Bus RE 2, day=2019-05-03, id=T_RE2, src=0}]
-   1: C       C............................................... a: 03.05 22:45 [04.05 00:45]  RT 03.05 22:50 [04.05 00:50]  d: 03.05 22:45 [04.05 00:45]  RT 03.05 22:50 [04.05 00:50]  [{name=Bus RE 2, day=2019-05-03, id=T_RE2, src=0}]
+    R"(   0: B       B...............................................                                                             d: 03.05 22:30 [04.05 00:30]  RT 03.05 22:35 [04.05 00:35]  [{name=RE 2, day=2019-05-03, id=T_RE2, src=0}]
+   1: C       C............................................... a: 03.05 22:45 [04.05 00:45]  RT 03.05 22:50 [04.05 00:50]  d: 03.05 22:45 [04.05 00:45]  RT 03.05 22:50 [04.05 00:50]  [{name=RE 2, day=2019-05-03, id=T_RE2, src=0}]
    2: D       D............................................... a: 03.05 23:00 [04.05 01:00]  RT 03.05 23:10 [04.05 01:10]
 )"};
 
@@ -115,6 +117,21 @@ TEST(rt, gtfsrt_resolve_static_trip) {
                                                tt, &rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
   }
+
+  {  // test with route_id + start_date + start_time + direction_id
+    auto td = transit_realtime::TripDescriptor();
+    *td.mutable_start_time() = "00:30:00";
+    *td.mutable_start_date() = "20190504";
+    *td.mutable_route_id() = "R_RE2";
+    td.set_schedule_relationship(
+        transit_realtime::TripDescriptor_ScheduleRelationship_SCHEDULED);
+    td.set_direction_id(0);
+    // *td.mutable_trip_id() = "T_RE2";
+
+    auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4},
+                                               tt, &rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
+  }
 }
 
 mem_dir miami_test_files() {
@@ -137,6 +154,7 @@ Miami-Dade Transit,27757,1,SO.MIAMI HTS-PERRINE VIA SOUTHLAND,3,FF00FF,FFFFFF,-9
 route_id,trip_id,service_id,trip_headsign,direction_id,block_id,shape_id,drt_advance_book_min,peak_offpeak
 27757,5456914,1,1 - SW 168 St,0,1484970,196385,0.0,0
 27757,5456915,1,1 - SW 168 St,0,1484970,196385,0.0,0
+27757,5456916,1,1 - SW 168 St,0,1484970,196385,0.0,0
 
 # stop_times.txt
 trip_id,stop_id,arrival_time,departure_time,timepoint,stop_sequence,shape_dist_traveled,continuous_pickup,continuous_drop_off,start_service_area_radius,end_service_area_radius,departure_buffer
@@ -146,6 +164,9 @@ trip_id,stop_id,arrival_time,departure_time,timepoint,stop_sequence,shape_dist_t
 5456915,1,47:15:00,47:15:00,1,1,,-999,-999,-999.0,-999.0,0
 5456915,3614,47:15:35,47:15:35,0,2,0.1548,-999,-999,-999.0,-999.0,0
 5456915,3213,47:16:20,47:16:20,0,3,0.354,-999,-999,-999.0,-999.0,0
+5456916,1,,,1,1,,-999,-999,-999.0,-999.0,0
+5456916,3614,,,0,2,0.1548,-999,-999,-999.0,-999.0,0
+5456916,3213,,,0,3,0.354,-999,-999,-999.0,-999.0,0
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -192,6 +213,16 @@ TEST(rt, resolve_tz) {
                                       &rtt, source_idx_t{0U}, td);
     EXPECT_TRUE(r.first.valid());
   }
+
+  {
+    auto td = transit_realtime::TripDescriptor();
+    td.set_start_date("20230803");
+    td.set_trip_id("5456916");
+
+    auto const r = gtfsrt_resolve_run(date::sys_days{2023_y / August / 3}, tt,
+                                      &rtt, source_idx_t{0U}, td);
+    EXPECT_FALSE(r.first.valid());
+  }
 }
 
 TEST(rt, gtfs_rt_update) {
@@ -216,6 +247,7 @@ TEST(rt, gtfs_rt_update) {
   rtt.base_day_ = date::sys_days{2019_y / May / 3};
   rtt.base_day_idx_ = tt.day_idx(rtt.base_day_);
   rtt.location_rt_transports_[location_idx_t{tt.n_locations() - 1U}];
+  rtt.additional_trips_.resize(tt.n_sources());
 
   // Create basic update message.
   transit_realtime::FeedMessage msg;
@@ -242,12 +274,23 @@ TEST(rt, gtfs_rt_update) {
                                 sys_days{2019_y / May / 3} + 22h + 45min,
                                 sys_days{2019_y / May / 3} + 23h + 0min};
   auto const stop_ids = {"B", "C", "D"};
+  auto const find_loc = [&](std::string_view id) {
+    auto const idx = tt.find(location_id{id, source_idx_t{0U}});
+    EXPECT_TRUE(idx.has_value()) << id;
+    return idx.value_or(location_idx_t::invalid());
+  };
   auto i = 0U, j = 0U;
   auto fr = frun{tt, nullptr,
                  rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
                                         &rtt, source_idx_t{0}, *td)
                      .first};
   ASSERT_TRUE(fr.valid());
+
+  EXPECT_EQ("RE 2", tt.transport_name(fr.t_.t_idx_));
+  EXPECT_EQ("", fr[0].trip_short_name(event_type::kDep, {}));
+  EXPECT_EQ("RE 2", fr[0].route_short_name(event_type::kDep, {}));
+  EXPECT_EQ("RE 2", fr[0].display_name(event_type::kDep, {}));
+
   for (auto const [from, to] : utl::pairwise(fr)) {
     EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
     EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
@@ -255,8 +298,7 @@ TEST(rt, gtfs_rt_update) {
     EXPECT_EQ(scheduled[j++], to.time(nigiri::event_type::kArr));
   }
   for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
-    EXPECT_EQ(tt.locations_.get({id, source_idx_t{0U}}).l_,
-              stop.get_location().l_);
+    EXPECT_EQ(find_loc(id), stop.get_location_idx());
   }
 
   // Basic checks with rt_timetable!=nullptr.
@@ -272,8 +314,7 @@ TEST(rt, gtfs_rt_update) {
     EXPECT_EQ(scheduled[j++], to.time(nigiri::event_type::kArr));
   }
   for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
-    EXPECT_EQ(tt.locations_.get({id, source_idx_t{0U}}).l_,
-              stop.get_location().l_);
+    EXPECT_EQ(find_loc(id), stop.get_location_idx());
   }
 
   // ** UPDATE 0: update first arrival, check propagation **
@@ -341,6 +382,13 @@ TEST(rt, gtfs_rt_update) {
 
   i = j = 0U;
   fr = frun{tt, &rtt, r};
+
+  EXPECT_EQ("RE 2", rtt.transport_name(tt, fr.rt_));
+  EXPECT_EQ("RE 2", tt.transport_name(fr.t_.t_idx_));
+  EXPECT_EQ("", fr[0].trip_short_name(event_type::kDep, {}));
+  EXPECT_EQ("RE 2", fr[0].route_short_name(event_type::kDep, {}));
+  EXPECT_EQ("RE 2", fr[0].display_name(event_type::kDep, {}));
+
   for (auto const [from, to] : utl::pairwise(fr)) {
     EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
     EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
@@ -349,8 +397,7 @@ TEST(rt, gtfs_rt_update) {
   }
 
   for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
-    EXPECT_EQ(tt.locations_.get({id, source_idx_t{0U}}).l_,
-              stop.get_location().l_);
+    EXPECT_EQ(find_loc(id), stop.get_location_idx());
   }
 
   // Ignore delays.

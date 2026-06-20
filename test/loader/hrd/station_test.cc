@@ -37,18 +37,21 @@ TEST(hrd, parse_station) {
   for (auto const& c : configs) {
     timetable tt;
     auto const src = source_idx_t{0U};
-    auto st = stamm{
-        tt, timezone_map_t{
-                {eva_number{0U},
-                 std::pair<timezone_idx_t, tz_offsets>{
-                     0U, tz_offsets{.seasons_ = {}, .offset_ = 0_minutes}}}}};
+    auto st =
+        stamm{tt,
+              timezone_map_t{
+                  {eva_number{0U},
+                   std::pair<timezone_idx_t, tz_offsets>{
+                       0U, tz_offsets{.seasons_ = {}, .offset_ = 0_minutes}}}},
+              src};
     auto const locations =
         parse_stations(c, src, tt, st, stations_file_content,
                        station_geo_file_content, station_metabhf_content);
     loader::finalize(tt);
 
-    auto const l1 = tt.locations_.get(location_id{"0000001", src});
-    EXPECT_EQ(l1.id_, "0000001");
-    EXPECT_EQ(l1.src_, src);
+    auto const l1 = tt.find(location_id{"0000001", src});
+    ASSERT_TRUE(l1.has_value());
+    EXPECT_EQ("0000001", tt.locations_.ids_[*l1].view());
+    EXPECT_EQ(src, tt.locations_.src_[*l1]);
   }
 }

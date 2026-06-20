@@ -90,14 +90,13 @@ struct benchmark_result {
         << std::chrono::duration_cast<std::chrono::hours>(
                br.routing_result_.interval_.size())
                .count()
-        << "h"
-        << ", #jrny: " << std::setfill(' ') << std::setw(2)
+        << "h" << ", #jrny: " << std::setfill(' ') << std::setw(2)
         << br.journeys_.size() << ")";
     return out;
   }
 
   std::uint64_t q_idx_;
-  routing_result<raptor_stats> routing_result_;
+  routing_result routing_result_;
   pareto_set<journey> journeys_;
   std::chrono::milliseconds total_time_;
 };
@@ -134,6 +133,18 @@ std::string to_str(timetable const& tt,
     ss << "\n\n";
   }
   return ss.str();
+}
+
+nigiri::pareto_set<nigiri::routing::journey> raptor_search(
+    nigiri::timetable const& tt, nigiri::routing::query q) {
+  using namespace nigiri;
+  using algo_state_t = routing::raptor_state;
+  static auto search_state = routing::search_state{};
+  static auto algo_state = algo_state_t{};
+
+  return *(routing::raptor_search(tt, nullptr, search_state, algo_state,
+                                  std::move(q), nigiri::direction::kForward)
+               .journeys_);
 }
 
 void process_queries(
@@ -255,9 +266,8 @@ void print_results(
 
   auto const visit_loc_idx = [&](location_idx_t const loc_idx) {
     std::stringstream ss;
-    ss << "loc_idx: " << loc_idx.v_ << ", name: "
-       << std::string_view{begin(tt.locations_.names_[loc_idx]),
-                           end(tt.locations_.names_[loc_idx])}
+    ss << "loc_idx: " << loc_idx.v_
+       << ", name: " << tt.get_default_name(loc_idx)
        << ", coord: " << tt.locations_.coordinates_[loc_idx];
     return ss.str();
   };
@@ -458,7 +468,7 @@ int main(int argc, char* argv[]) {
 
   std::cout << "loading timetable...\n";
   auto tt = *nigiri::timetable::read(tt_path);
-  tt.locations_.resolve_timezones();
+  tt.resolve();
 
   gs.interval_size_ = duration_t{interval_size};
 
@@ -517,7 +527,7 @@ int main(int argc, char* argv[]) {
       min_transfer_time == 0U && gs.transfer_time_settings_.factor_ == 1.0F;
 
   if (vm.count("profile_idx") != 0) {
-    if (prf_idx >= kMaxProfiles) {
+    if (prf_idx >= kNProfiles) {
       std::cout << "Error: profile idx exceeds numeric limits\n";
       return 1;
     }

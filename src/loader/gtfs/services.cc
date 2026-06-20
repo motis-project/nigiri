@@ -9,13 +9,17 @@ namespace nigiri::loader::gtfs {
 
 enum class bound { kFirst, kLast };
 
-bitfield calendar_to_bitfield(interval<date::sys_days> const& tt_interval,
-                              calendar const& c) {
-  if (!tt_interval.overlaps(c.interval_)) {
+bitfield calendar_to_bitfield(
+    interval<date::sys_days> const& tt_interval,
+    calendar const& c,
+    std::optional<date::sys_days> const& feed_end_date) {
+  auto const extend = feed_end_date.has_value() &&
+                      *feed_end_date == c.interval_.to_ - date::days{1};
+  if (!tt_interval.overlaps(c.interval_) && !extend) {
     return {};
   }
   auto const from = tt_interval.clamp(c.interval_.from_);
-  auto const to = tt_interval.clamp(c.interval_.to_);
+  auto const to = extend ? tt_interval.to_ : tt_interval.clamp(c.interval_.to_);
   auto bit = (from - tt_interval.from_).count();
   auto traffic_days = bitfield{};
   for (auto d = from; d < to && bit < kMaxDays; d = d + date::days{1}, ++bit) {
@@ -39,7 +43,8 @@ void add_exception(interval<date::sys_days> const& tt_interval,
 traffic_days_t merge_traffic_days(
     interval<date::sys_days> const& tt_interval,
     hash_map<std::string, calendar> const& base,
-    hash_map<std::string, std::vector<calendar_date>> const& exceptions) {
+    hash_map<std::string, std::vector<calendar_date>> const& exceptions,
+    std::optional<date::sys_days> const& feed_end_date) {
   auto const timer = nigiri::scoped_timer{"loader.gtfs.services"};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
@@ -49,8 +54,8 @@ traffic_days_t merge_traffic_days(
 
   auto s = traffic_days_t{};
   for (auto const& [service_name, calendar] : base) {
-    s[service_name] =
-        std::make_unique<bitfield>(calendar_to_bitfield(tt_interval, calendar));
+    s[service_name] = std::make_unique<bitfield>(
+        calendar_to_bitfield(tt_interval, calendar, feed_end_date));
   }
 
   progress_tracker->status("Add Service Exceptions")

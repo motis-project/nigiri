@@ -14,7 +14,7 @@ bool is_based(std::span<stop_idx_t> in,
 }
 
 void encode_seq_numbers(std::span<stop_idx_t> in,
-                        std::basic_string<stop_idx_t>& out) {
+                        basic_string<stop_idx_t>& out) {
   out.clear();
   if (is_based(in, 0U, 1U)) {
     return;

@@ -20,10 +20,6 @@ void gtfs_loader::load(
       c, src, d, tt, global_bitfield_indices, assistance, shapes_data);
 }
 
-cista::hash_t gtfs_loader::hash(dir const& d) const {
-  return ::nigiri::loader::gtfs::hash(d);
-}
-
 std::string_view gtfs_loader::name() const { return "gtfs"; }
 
 }  // namespace nigiri::loader::gtfs

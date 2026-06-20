@@ -4,12 +4,21 @@
 
 namespace nigiri {
 
-unixtime_t parse_time(std::string const& str) {
-  unixtime_t parsed;
-  auto ss = std::stringstream{str};
-  ss.exceptions(std::ios::badbit | std::ios::failbit | std::ios::eofbit);
-  ss >> date::parse("%FT%T", parsed);
-  return parsed;
+unixtime_t parse_time_tz(std::string_view s, char const* format) {
+  std::stringstream in;
+  in.exceptions(std::ios::badbit | std::ios::failbit);
+  in << s;
+
+  date::local_seconds ls;
+  std::string tz;
+  in >> date::parse(format, ls, tz);
+
+  return std::chrono::time_point_cast<unixtime_t::duration>(
+      date::make_zoned(tz, ls).get_sys_time());
+}
+
+unixtime_t parse_time_no_tz(std::string_view s) {
+  return parse_time(s, "%FT%T");
 }
 
 }  // namespace nigiri

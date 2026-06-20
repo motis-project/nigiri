@@ -2,6 +2,7 @@
 
 #include "gtest/gtest.h"
 
+#include "nigiri/common/parse_time.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
@@ -65,6 +66,7 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            direction const search_dir,
                                            routing::clasz_mask_t const mask,
                                            bool const require_bikes_allowed,
+                                           bool const require_cars_allowed,
                                            profile_idx_t const profile) {
   auto const src = source_idx_t{0};
   auto q = routing::query{
@@ -87,9 +89,11 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            std::string_view time,
                                            direction const search_dir,
                                            routing::clasz_mask_t mask,
-                                           bool const require_bikes_allowed) {
-  return raptor_search(tt, rtt, from, to, parse_time(time, "%Y-%m-%d %H:%M %Z"),
-                       search_dir, mask, require_bikes_allowed, 0U);
+                                           bool const require_bikes_allowed,
+                                           bool const require_cars_allowed) {
+  return raptor_search(tt, rtt, from, to,
+                       parse_time_tz(time, "%Y-%m-%d %H:%M %Z"), search_dir,
+                       mask, require_bikes_allowed, require_cars_allowed, 0U);
 }
 
 pareto_set<routing::journey> raptor_search(timetable const& tt,
@@ -109,7 +113,7 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
         {tt.locations_.location_id_to_idx_.at({to, src}), 0_minutes, 0U}};
   }
   if (!time.empty()) {
-    q.start_time_ = parse_time(time, "%Y-%m-%d %H:%M %Z");
+    q.start_time_ = parse_time_tz(time, "%Y-%m-%d %H:%M %Z");
   }
   return raptor_search(tt, rtt, std::move(q), search_dir);
 }

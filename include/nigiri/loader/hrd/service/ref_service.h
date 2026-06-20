@@ -35,8 +35,8 @@ struct ref_service {
   }
 
   ref_service(ref_service const& s,
-              std::basic_string<duration_t> utc_times,
-              std::basic_string<stop::value_type> stop_seq,
+              basic_string<duration_t> utc_times,
+              basic_string<stop::value_type> stop_seq,
               bitfield utc_traffic_days)
       : ref_service{s} {
     utc_traffic_days_ = std::move(utc_traffic_days);
@@ -109,8 +109,8 @@ struct ref_service {
   split_info split_info_;
   unsigned repetition_;
   bitfield utc_traffic_days_;
-  std::basic_string<duration_t> utc_times_;
-  std::basic_string<stop::value_type> stop_seq_;
+  basic_string<duration_t> utc_times_;
+  basic_string<stop::value_type> stop_seq_;
 };
 
 }  // namespace nigiri::loader::hrd

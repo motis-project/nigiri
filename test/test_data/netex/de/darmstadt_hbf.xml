@@ -1,0 +1,688 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Based on extracts from the German NeTEx data provided by DELFI under CC-BY license (https://opendefinition.org/licenses/cc-by/) -->
+<!-- Original source: https://www.opendata-oepnv.de/ -->
+<PublicationDelivery xmlns="http://www.netex.org.uk/netex" version="ntx:1.1">
+    <dataObjects>
+        <CompositeFrame id="DE::CompositeFrame_EU_PI_LINE_OFFER:36-FSBUS-18055" version="1752322136">
+            <ValidBetween>
+                <FromDate>2025-06-28T00:00:00</FromDate>
+                <ToDate>2025-12-13T00:00:00</ToDate>
+            </ValidBetween>
+            <TypeOfFrameRef ref="epip:EU_PI_LINE_OFFER" versionRef="1.0"/>
+            <codespaces>
+                <Codespace id="epip_data">
+                    <Xmlns>epd</Xmlns>
+                    <XmlnsUrl>http://netex-cen.eu/epip_data</XmlnsUrl>
+                    <Description>EPIP data</Description>
+                </Codespace>
+            </codespaces>
+            <FrameDefaults>
+                <DefaultCodespaceRef ref="epip_data"/>
+                <DefaultDataSourceRef ref="epip_data:DataSource:General"/>
+                <DefaultResponsibilitySetRef ref="DE::ResponsibilitySet:28425::" version="1752322136"/>
+                <DefaultLocale>
+                    <TimeZone>Europe/Berlin</TimeZone>
+                    <DefaultLanguage>de-DE</DefaultLanguage>
+                </DefaultLocale>
+                <DefaultLocationSystem>urn:ogc:def:crs:EPSG::4326</DefaultLocationSystem>
+            </FrameDefaults>
+            <frames>
+                <SiteFrame id="DE::SiteFrame_EU_PI_STOP:36-FSBUS-18055" version="1752322136">
+                    <stopPlaces>
+                        <StopPlace id="DE::StopPlace:380004734_1000::" version="1752322136">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>GlobalID</Key>
+                                    <Value>de:06411:4734</Value>
+                                </KeyValue>
+                            </keyList>
+                            <Name>Darmstadt Hauptbahnhof</Name>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>8.631148</Longitude>
+                                    <Latitude>49.871941</Latitude>
+                                </Location>
+                            </Centroid>
+                            <TopographicPlaceRef ref="DE::TopographicPlace:72285::" version="1752322136"/>
+                            <AuthorityRef ref="DE::Authority:35::" version="1752322136"/>
+                            <levels>
+                                <Level id="DE::Level:35_4734_0::" version="1752322136">
+                                    <ShortName>0</ShortName>
+                                </Level>
+                                <Level id="DE::Level:35_4734_-1::" version="1752322136">
+                                    <ShortName>-1</ShortName>
+                                </Level>
+                            </levels>
+                            <entrances>
+                                <StopPlaceEntrance id="DE::StopPlaceEntrance:304734002_1000::" version="1752322136">
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.630843</Longitude>
+                                            <Latitude>49.871751</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                    <Label>Zugang E</Label>
+                                </StopPlaceEntrance>
+                                <StopPlaceEntrance id="DE::StopPlaceEntrance:304734005_1000::" version="1752322136">
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.630974</Longitude>
+                                            <Latitude>49.872822</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                    <Label>Zugang A</Label>
+                                </StopPlaceEntrance>
+                                <StopPlaceEntrance id="DE::StopPlaceEntrance:304734006_1000::" version="1752322136">
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.630881</Longitude>
+                                            <Latitude>49.872246</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                    <Label>Zugang B</Label>
+                                </StopPlaceEntrance>
+                                <StopPlaceEntrance id="DE::StopPlaceEntrance:304734007_1000::" version="1752322136">
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.628145</Longitude>
+                                            <Latitude>49.871689</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                    <Label>Zugang C</Label>
+                                </StopPlaceEntrance>
+                                <StopPlaceEntrance id="DE::StopPlaceEntrance:304734027_1000::" version="1752322136">
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.627172</Longitude>
+                                            <Latitude>49.871515</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                    <Label>Zugang D</Label>
+                                </StopPlaceEntrance>
+                                <StopPlaceEntrance id="DE::StopPlaceEntrance:304734071_1000::" version="1752322136">
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.630805</Longitude>
+                                            <Latitude>49.871293</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                    <Label>Zugang F</Label>
+                                </StopPlaceEntrance>
+                            </entrances>
+                            <PublicCode>FD</PublicCode>
+                            <StopPlaceType>other</StopPlaceType>
+                            <quays>
+                                <Quay id="DE::Quay:310473441_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:41:41</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Schiene 6</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.629164</Longitude>
+                                            <Latitude>49.873041</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_-1::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473442_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:42:42</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Schiene 10</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.629164</Longitude>
+                                            <Latitude>49.873041</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_-1::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473443_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:43:43</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Schiene 12</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.629164</Longitude>
+                                            <Latitude>49.873041</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_-1::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473444_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:44:44</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Schiene 8</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.629164</Longitude>
+                                            <Latitude>49.873041</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_-1::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473446_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:46:46</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Tram Platz 1</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.631645</Longitude>
+                                            <Latitude>49.872401</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473447_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:47:47</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Bus Platz 2</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.631558</Longitude>
+                                            <Latitude>49.872868</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473448_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:48:48</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Tram Platz 3</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.631405</Longitude>
+                                            <Latitude>49.872796</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473449_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:49:49</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Bus Platz 4</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.631479</Longitude>
+                                            <Latitude>49.872302</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473451_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:50:51</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Bus Platz 11</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.631551</Longitude>
+                                            <Latitude>49.87196</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473452_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:50:52</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Bus Platz 12</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.63172</Longitude>
+                                            <Latitude>49.8717</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473453_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:51:53</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Bus Platz 13</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.631888</Longitude>
+                                            <Latitude>49.871512</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473454_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:51:54</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Bus Platz 14</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.632028</Longitude>
+                                            <Latitude>49.87135</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473455_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:52:55</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Bus Platz 15</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.631862</Longitude>
+                                            <Latitude>49.871287</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473456_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:52:56</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Bus Platz 16</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.631529</Longitude>
+                                            <Latitude>49.871205</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473457_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:53:57</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Bus Platz 17</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.631388</Longitude>
+                                            <Latitude>49.871384</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473459_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:50:59</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Bus Platz 19</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.631344</Longitude>
+                                            <Latitude>49.871762</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473460_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:50:60</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Bus Platz 20</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.6313</Longitude>
+                                            <Latitude>49.871942</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473462_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:62:62</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Gleis 1</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.629164</Longitude>
+                                            <Latitude>49.873041</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_-1::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473463_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:64:63</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Schiene 3</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.629164</Longitude>
+                                            <Latitude>49.873041</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_-1::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473464_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:64:64</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Schiene 4</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.629164</Longitude>
+                                            <Latitude>49.873041</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_-1::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473465_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:41:65</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Schiene 5</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.629164</Longitude>
+                                            <Latitude>49.873041</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_-1::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473466_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:44:66</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Schiene 7</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.629164</Longitude>
+                                            <Latitude>49.873041</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_-1::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473467_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:57:67</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Bus Platz 21</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.628293</Longitude>
+                                            <Latitude>49.872337</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473468_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:58:68</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Bus Platz 22</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.628126</Longitude>
+                                            <Latitude>49.872363</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473469_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:42:69</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Schiene 9</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.629164</Longitude>
+                                            <Latitude>49.873041</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_-1::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473470_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:43:70</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Schiene 11</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.629164</Longitude>
+                                            <Latitude>49.873041</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_-1::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473498_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:98:98</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Pl. 5 Bus</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.632853</Longitude>
+                                            <Latitude>49.872319</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                                <Quay id="DE::Quay:310473499_1000::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:06411:4734:99:99</Value>
+                                        </KeyValue>
+                                        <KeyValue>
+                                            <Key>AreaType</Key>
+                                            <Value>Access and PT</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Pl. 2 SEV</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.631607</Longitude>
+                                            <Latitude>49.872906</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                    <LevelRef ref="DE::Level:35_4734_0::" version="1752322136"/>
+                                </Quay>
+                            </quays>
+                        </StopPlace>
+                    </stopPlaces>
+                </SiteFrame>
+            </frames>
+        </CompositeFrame>
+    </dataObjects>
+</PublicationDelivery>

@@ -1,0 +1,1510 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Contains data under the Norwegian licence for Open Government data (NLOD) distributed by ENTUR (https://data.norge.no/nlod/en/2.0) -->
+<!-- Based on extracts from the Norway NeTEx data from https://developer.entur.org/stops-and-timetable-data -->
+<PublicationDelivery xmlns="http://www.netex.org.uk/netex" xmlns:ns2="http://www.opengis.net/gml/3.2" xmlns:ns3="http://www.siri.org.uk/siri"
+                     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.14:NO-NeTEx-stops:1.5" xsi:schemaLocation="">
+    <dataObjects>
+        <SiteFrame modification="new" version="1" id="NSR:SiteFrame:50691384">
+            <Description>Site frame
+                {"name":"CurrentAndFuture","tariffZoneExportMode":"ALL","fareZoneExportMode":"ALL","groupOfStopPlacesExportMode":"ALL","groupOfTariffZonesExportMode":"RELEVANT","topographicPlaceExportMode":"RELEVANT","municipalityReferences":null,"countyReferences":null,"countryReferences":null,"stopPlaceSearch":{"query":null,"stopTypeEnumerations":null,"submode":null,"netexIdList":null,"allVersions":false,"versionValidity":"CURRENT_FUTURE","withoutLocationOnly":false,"withoutQuaysOnly":false,"withDuplicatedQuayImportedIds":false,"withNearbySimilarDuplicates":false,"hasParking":false,"version":null,"tags":null,"withTags":false,"pointInTime":null}}
+            </Description>
+            <FrameDefaults>
+                <DefaultLocale>
+                    <TimeZone>Europe/Oslo</TimeZone>
+                    <DefaultLanguage>nor</DefaultLanguage>
+                </DefaultLocale>
+            </FrameDefaults>
+            <groupsOfStopPlaces>
+                <GroupOfStopPlaces created="2018-03-08T12:22:54.29" changed="2024-10-25T13:37:21.831" modification="new" version="13"
+                                   id="NSR:GroupOfStopPlaces:1">
+                    <keyList>
+                        <KeyValue>
+                            <Key>imported-id</Key>
+                            <Value></Value>
+                        </KeyValue>
+                    </keyList>
+                    <Name lang="nor">Oslo</Name>
+                    <Description lang="nor"></Description>
+                    <PurposeOfGroupingRef ref="NSR:PurposeOfGrouping:1"/>
+                    <members>
+                        <StopPlaceRef ref="NSR:StopPlace:58366"/>
+                        <StopPlaceRef ref="NSR:StopPlace:59872"/>
+                        <StopPlaceRef ref="NSR:StopPlace:58293"/>
+                        <StopPlaceRef ref="NSR:StopPlace:58382"/>
+                    </members>
+                    <Centroid>
+                        <Location>
+                            <Longitude>10.748128</Longitude>
+                            <Latitude>59.911076</Latitude>
+                        </Location>
+                    </Centroid>
+                </GroupOfStopPlaces>
+            </groupsOfStopPlaces>
+            <stopPlaces>
+                <StopPlace created="2018-11-29T11:22:45.905" changed="2024-03-13T23:03:18.229" modification="new" version="8"
+                           id="NSR:StopPlace:59872">
+                    <ValidBetween>
+                        <FromDate>2023-01-11T10:41:59.077</FromDate>
+                    </ValidBetween>
+                    <keyList>
+                        <KeyValue>
+                            <Key>VERSION_COMMENT</Key>
+                            <Value>Fjernet JBVcode fra bussholdeplass</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>IS_PARENT_STOP_PLACE</Key>
+                            <Value>true</Value>
+                        </KeyValue>
+                    </keyList>
+                    <Name lang="nor">Oslo S</Name>
+                    <Centroid>
+                        <Location>
+                            <Longitude>10.753051</Longitude>
+                            <Latitude>59.910357</Latitude>
+                        </Location>
+                    </Centroid>
+                    <alternativeNames>
+                        <AlternativeName modification="new" version="7" id="NSR:AlternativeName:2983">
+                            <NameType>alias</NameType>
+                            <Name lang="nor">Oslo Sentralstasjon</Name>
+                        </AlternativeName>
+                        <AlternativeName modification="new" version="7" id="NSR:AlternativeName:2984">
+                            <NameType>translation</NameType>
+                            <Name lang="eng">Oslo Central Station</Name>
+                        </AlternativeName>
+                    </alternativeNames>
+                    <TopographicPlaceRef ref="KVE:TopographicPlace:0301" created="2025-07-25T12:02:31.367" version="13"/>
+                    <OtherTransportModes/>
+                    <tariffZones>
+                        <TariffZoneRef ref="OST:TariffZone:227" version="1"/>
+                        <TariffZoneRef ref="BRA:TariffZone:311" version="6"/>
+                        <TariffZoneRef ref="RUT:TariffZone:1" version="9"/>
+                        <TariffZoneRef ref="RUT:FareZone:4" version="10"/>
+                    </tariffZones>
+                    <Weighting>interchangeAllowed</Weighting>
+                </StopPlace>
+                <StopPlace created="2017-06-19T21:12:27.003" changed="2024-03-13T23:03:18.126" modification="new" version="33" id="NSR:StopPlace:2">
+                    <keyList>
+                        <KeyValue>
+                            <Key>iffCode</Key>
+                            <Value>7600100</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>uicCode</Key>
+                            <Value>7600100</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>lisaId</Key>
+                            <Value>100</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>imported-id</Key>
+                            <Value>
+                                RUT:StopPlace:3010010-6,TEL:StopPlace:3010010,NSB:StopPlace:760010031,NSB:StopPlace:760010030,OPP:StopPlace:3010016,TEL:StopPlace:03010010,RUT:StopPlace:03010010-6,HED:StopPlace:3010016,RUT:StopPlace:03010010
+                            </Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>TAG-0-idReference</Key>
+                            <Value>NSR:StopPlace:2</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>TAG-0-name</Key>
+                            <Value>adm_navn</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>TAG-0-created</Key>
+                            <Value>1506449229990</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>TAG-0-removed</Key>
+                            <Value>1516886756406</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>IS_PARENT_STOP_PLACE</Key>
+                            <Value>false</Value>
+                        </KeyValue>
+                    </keyList>
+                    <Name lang="nor">Oslo S Trelastgata</Name>
+                    <Description lang="nor">ved spor 19</Description>
+                    <PrivateCode/>
+                    <Centroid>
+                        <Location>
+                            <Longitude>10.755165</Longitude>
+                            <Latitude>59.909584</Latitude>
+                        </Location>
+                    </Centroid>
+                    <AccessibilityAssessment modification="new" version="33" id="NSR:AccessibilityAssessment:2">
+                        <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                        <limitations>
+                            <AccessibilityLimitation modification="new" version="9" id="178009">
+                                <WheelchairAccess>true</WheelchairAccess>
+                                <StepFreeAccess>true</StepFreeAccess>
+                                <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                <LiftFreeAccess>unknown</LiftFreeAccess>
+                                <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                            </AccessibilityLimitation>
+                        </limitations>
+                    </AccessibilityAssessment>
+                    <TopographicPlaceRef ref="KVE:TopographicPlace:0301" created="2025-07-25T12:02:31.313" version="13"/>
+                    <ParentSiteRef ref="NSR:StopPlace:59872" version="8"/>
+                    <TransportMode>bus</TransportMode>
+                    <BusSubmode>railReplacementBus</BusSubmode>
+                    <OtherTransportModes/>
+                    <tariffZones>
+                        <TariffZoneRef ref="OST:TariffZone:227" version="1"/>
+                        <TariffZoneRef ref="BRA:TariffZone:311" version="6"/>
+                        <TariffZoneRef ref="RUT:TariffZone:1" version="9"/>
+                        <TariffZoneRef ref="RUT:FareZone:4" version="10"/>
+                    </tariffZones>
+                    <StopPlaceType>onstreetBus</StopPlaceType>
+                    <Weighting>interchangeAllowed</Weighting>
+                    <quays>
+                        <Quay changed="2023-01-11T10:41:59.068" modification="new" version="13" id="NSR:Quay:100148">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>FLY:Quay:760010050</Value>
+                                </KeyValue>
+                            </keyList>
+                            <Description lang="nor">Foran Hotel Opera</Description>
+                            <PrivateCode/>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.752796</Longitude>
+                                    <Latitude>59.909700</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60497">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178010">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <OtherTransportModes/>
+                        </Quay>
+                        <Quay changed="2023-01-11T10:41:59.071" modification="new" version="20" id="NSR:Quay:122024">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010034</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>34</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.756640</Longitude>
+                                    <Latitude>59.909224</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60498">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178011">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70349">
+                                <GeneralSign modification="new" version="1" id="126014">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode>34</PublicCode>
+                        </Quay>
+                        <Quay changed="2023-01-11T10:41:59.071" modification="new" version="20" id="NSR:Quay:122023">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010033</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>33</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.756205</Longitude>
+                                    <Latitude>59.909323</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60499">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178042">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70350">
+                                <ShelterEquipment modification="new" version="1" id="126016">
+                                    <Seats>1</Seats>
+                                    <StepFree>false</StepFree>
+                                    <Enclosed>false</Enclosed>
+                                </ShelterEquipment>
+                                <GeneralSign modification="new" version="1" id="126017">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode>33</PublicCode>
+                        </Quay>
+                        <Quay changed="2023-01-11T10:41:59.076" modification="new" version="20" id="NSR:Quay:122033">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010043</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>43</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.759818</Longitude>
+                                    <Latitude>59.908652</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60500">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178043">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70351">
+                                <GeneralSign modification="new" version="1" id="126019">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode>43</PublicCode>
+                        </Quay>
+                        <Quay changed="2023-01-11T10:41:59.075" modification="new" version="20" id="NSR:Quay:122031">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010041</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>41</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.759183</Longitude>
+                                    <Latitude>59.908730</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60501">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178044">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70352">
+                                <GeneralSign modification="new" version="1" id="126021">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode>41</PublicCode>
+                        </Quay>
+                        <Quay changed="2023-01-11T10:41:59.074" modification="new" version="20" id="NSR:Quay:122029">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010039</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>39</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.758193</Longitude>
+                                    <Latitude>59.908886</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60502">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178045">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70353">
+                                <GeneralSign modification="new" version="1" id="126023">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode>39</PublicCode>
+                        </Quay>
+                        <Quay changed="2023-01-11T10:41:59.076" modification="new" version="20" id="NSR:Quay:122032">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010042</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>42</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.759459</Longitude>
+                                    <Latitude>59.908695</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60503">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178046">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70354">
+                                <GeneralSign modification="new" version="1" id="126025">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode>42</PublicCode>
+                        </Quay>
+                        <Quay changed="2023-01-11T10:41:59.075" modification="new" version="20" id="NSR:Quay:122030">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010040</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>40</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.758555</Longitude>
+                                    <Latitude>59.908823</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60504">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178047">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70355">
+                                <GeneralSign modification="new" version="1" id="126027">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode>40</PublicCode>
+                        </Quay>
+                        <Quay changed="2023-01-11T10:41:59.073" modification="new" version="20" id="NSR:Quay:122026">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010036</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>36</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.757246</Longitude>
+                                    <Latitude>59.909097</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60505">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178048">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70356">
+                                <GeneralSign modification="new" version="1" id="126029">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode>36</PublicCode>
+                        </Quay>
+                        <Quay changed="2023-01-11T10:41:59.07" modification="new" version="20" id="NSR:Quay:122021">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010031</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>31</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.755532</Longitude>
+                                    <Latitude>59.909487</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60506">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178049">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70357">
+                                <ShelterEquipment modification="new" version="1" id="126031">
+                                    <Seats>1</Seats>
+                                    <StepFree>false</StepFree>
+                                    <Enclosed>false</Enclosed>
+                                </ShelterEquipment>
+                                <GeneralSign modification="new" version="1" id="126032">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode>31</PublicCode>
+                        </Quay>
+                        <Quay created="2017-06-19T22:15:53.229" changed="2023-01-11T10:41:59.069" modification="new" version="22"
+                              id="NSR:Quay:116019">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>hpltype</Key>
+                                    <Value>9766</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>merged-id</Key>
+                                    <Value>NSR:Quay:98630</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>HED:Quay:301001601,OPP:Quay:301001601,NSB:Quay:760010050</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>retn_nett</Key>
+                                    <Value>9769</Value>
+                                </KeyValue>
+                            </keyList>
+                            <Description lang="nor">Taxi</Description>
+                            <PrivateCode/>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.753008</Longitude>
+                                    <Latitude>59.909911</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60507">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178050">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70358">
+                                <GeneralSign modification="new" version="1" id="126034">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode/>
+                        </Quay>
+                        <Quay changed="2023-01-11T10:41:59.07" modification="new" version="20" id="NSR:Quay:122022">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010032</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>32</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.755875</Longitude>
+                                    <Latitude>59.909403</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60508">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178051">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70359">
+                                <ShelterEquipment modification="new" version="1" id="126036">
+                                    <Seats>1</Seats>
+                                    <StepFree>false</StepFree>
+                                    <Enclosed>false</Enclosed>
+                                </ShelterEquipment>
+                                <GeneralSign modification="new" version="1" id="126037">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode>32</PublicCode>
+                        </Quay>
+                        <Quay changed="2023-01-11T10:41:59.074" modification="new" version="20" id="NSR:Quay:122028">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010038</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>38</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.757847</Longitude>
+                                    <Latitude>59.908952</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60509">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178052">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70360">
+                                <GeneralSign modification="new" version="1" id="126039">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode>38</PublicCode>
+                        </Quay>
+                        <Quay changed="2023-01-11T10:41:59.073" modification="new" version="20" id="NSR:Quay:122027">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010037</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>37</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.757576</Longitude>
+                                    <Latitude>59.909021</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60510">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178053">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70361">
+                                <GeneralSign modification="new" version="1" id="126041">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode>37</PublicCode>
+                        </Quay>
+                        <Quay changed="2023-01-11T10:41:59.069" modification="new" version="33" id="NSR:Quay:1">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010030</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>30</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.755250</Longitude>
+                                    <Latitude>59.909548</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60511">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178054">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70362">
+                                <ShelterEquipment modification="new" version="1" id="126043">
+                                    <Seats>1</Seats>
+                                    <StepFree>false</StepFree>
+                                    <Enclosed>false</Enclosed>
+                                </ShelterEquipment>
+                                <GeneralSign modification="new" version="1" id="126044">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode/>
+                        </Quay>
+                        <Quay changed="2023-01-11T10:41:59.072" modification="new" version="20" id="NSR:Quay:122025">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010035</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>35</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.756900</Longitude>
+                                    <Latitude>59.909165</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AccessibilityAssessment modification="new" version="7" id="NSR:AccessibilityAssessment:60512">
+                                <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                                <limitations>
+                                    <AccessibilityLimitation modification="new" version="7" id="178055">
+                                        <WheelchairAccess>true</WheelchairAccess>
+                                        <StepFreeAccess>true</StepFreeAccess>
+                                        <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                        <LiftFreeAccess>unknown</LiftFreeAccess>
+                                        <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                                    </AccessibilityLimitation>
+                                </limitations>
+                            </AccessibilityAssessment>
+                            <placeEquipments id="NSR:PlaceEquipment:70363">
+                                <GeneralSign modification="new" version="1" id="126046">
+                                    <PrivateCode>512</PrivateCode>
+                                    <SignContentType>transportMode</SignContentType>
+                                </GeneralSign>
+                            </placeEquipments>
+                            <OtherTransportModes/>
+                            <PublicCode>35</PublicCode>
+                        </Quay>
+                    </quays>
+                </StopPlace>
+                <StopPlace created="2017-06-19T21:12:47.527" changed="2024-03-13T23:14:51.965" modification="new" version="44" id="NSR:StopPlace:337">
+                    <keyList>
+                        <KeyValue>
+                            <Key>jbvCode</Key>
+                            <Value>OSL</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>uicCode</Key>
+                            <Value>7600100</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>grailsId</Key>
+                            <Value>528</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>iffCode</Key>
+                            <Value>7600100</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>lisaId</Key>
+                            <Value>100</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>imported-id</Key>
+                            <Value>FLT:StopPlace:7600100,RUT:StopPlace:3010010,LIN:StopPlace:007600100,NSB:StopPlace:007600100</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>tpsiId</Key>
+                            <Value>007600100</Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>IS_PARENT_STOP_PLACE</Key>
+                            <Value>false</Value>
+                        </KeyValue>
+                    </keyList>
+                    <Name lang="nor">Oslo S</Name>
+                    <Description lang="nor"/>
+                    <Centroid>
+                        <Location>
+                            <Longitude>10.753276</Longitude>
+                            <Latitude>59.910925</Latitude>
+                        </Location>
+                    </Centroid>
+                    <AccessibilityAssessment modification="new" version="44" id="NSR:AccessibilityAssessment:337">
+                        <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                        <limitations>
+                            <AccessibilityLimitation modification="new" version="3" id="178056">
+                                <WheelchairAccess>true</WheelchairAccess>
+                                <StepFreeAccess>true</StepFreeAccess>
+                                <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                <LiftFreeAccess>unknown</LiftFreeAccess>
+                                <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                            </AccessibilityLimitation>
+                        </limitations>
+                    </AccessibilityAssessment>
+                    <TopographicPlaceRef ref="KVE:TopographicPlace:0301" created="2025-07-25T12:03:39.006" version="13"/>
+                    <ParentSiteRef ref="NSR:StopPlace:59872" version="8"/>
+                    <placeEquipments id="NSR:PlaceEquipment:70364">
+                        <SanitaryEquipment modification="new" version="1" id="126048">
+                            <Gender>both</Gender>
+                            <SanitaryFacilityList/>
+                            <PaymentMethods/>
+                        </SanitaryEquipment>
+                        <WaitingRoomEquipment modification="new" version="1" id="126049">
+                            <StepFree>true</StepFree>
+                            <Heated>true</Heated>
+                            <Sanitary/>
+                        </WaitingRoomEquipment>
+                        <TicketingEquipment modification="new" version="1" id="126050">
+                            <VehicleModes/>
+                            <TicketMachines>true</TicketMachines>
+                            <NumberOfMachines>17</NumberOfMachines>
+                            <TicketingFacilityList/>
+                            <TicketOffice>false</TicketOffice>
+                            <PaymentMethods/>
+                            <TicketTypesAvailable/>
+                            <ScopeOfTicketsAvailable/>
+                        </TicketingEquipment>
+                    </placeEquipments>
+                    <TransportMode>rail</TransportMode>
+                    <OtherTransportModes/>
+                    <tariffZones>
+                        <TariffZoneRef ref="OST:TariffZone:227" version="1"/>
+                        <TariffZoneRef ref="BRA:TariffZone:311" version="6"/>
+                        <TariffZoneRef ref="RUT:TariffZone:1" version="9"/>
+                        <TariffZoneRef ref="RUT:FareZone:4" version="10"/>
+                    </tariffZones>
+                    <StopPlaceType>railStation</StopPlaceType>
+                    <Weighting>preferredInterchange</Weighting>
+                    <quays>
+                        <Quay changed="2018-11-29T11:23:41.129" modification="new" version="44" id="NSR:Quay:563">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6170</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:760010015,LIN:Quay:007600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010015</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>15</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.754734</Longitude>
+                                    <Latitude>59.910123</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>15</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.125" modification="new" version="44" id="NSR:Quay:570">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6157</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:0076001002</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010002</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>2</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.755594</Longitude>
+                                    <Latitude>59.911022</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>2</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.126" modification="new" version="44" id="NSR:Quay:559">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6160</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:0076001005</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010005</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>5</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.755399</Longitude>
+                                    <Latitude>59.910818</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>5</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.127" modification="new" version="44" id="NSR:Quay:553">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6162</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:0076001007</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010007</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>7</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.755264</Longitude>
+                                    <Latitude>59.910677</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>7</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.127" modification="new" version="44" id="NSR:Quay:550">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6161</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:0076001006</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010006</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>6</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.755326</Longitude>
+                                    <Latitude>59.910741</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>6</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.128" modification="new" version="44" id="NSR:Quay:571">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6166</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:00760010011</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010011</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>11</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.754999</Longitude>
+                                    <Latitude>59.910400</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>11</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.13" modification="new" version="44" id="NSR:Quay:562">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6171</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:00760010016</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010016</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>16</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.754663</Longitude>
+                                    <Latitude>59.910049</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>16</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.129" modification="new" version="44" id="NSR:Quay:557">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6168</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:00760010013</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010013</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>13</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.754866</Longitude>
+                                    <Latitude>59.910261</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>13</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.129" modification="new" version="44" id="NSR:Quay:569">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6169</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:00760010014</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010014</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>14</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.754798</Longitude>
+                                    <Latitude>59.910189</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>14</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.128" modification="new" version="44" id="NSR:Quay:555">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6164</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:0076001009</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010009</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>9</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.755133</Longitude>
+                                    <Latitude>59.910540</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>9</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.127" modification="new" version="44" id="NSR:Quay:561">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6163</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:0076001008</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010008</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>8</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.755195</Longitude>
+                                    <Latitude>59.910605</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>8</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.126" modification="new" version="44" id="NSR:Quay:566">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6159</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:0076001004</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010004</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>4</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.755461</Longitude>
+                                    <Latitude>59.910882</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>4</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.131" modification="new" version="44" id="NSR:Quay:556">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6174</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:00760010019</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010019</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>19</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.754467</Longitude>
+                                    <Latitude>59.909844</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>19</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.13" modification="new" version="44" id="NSR:Quay:564">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6172</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:00760010017</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010017</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>17</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.754599</Longitude>
+                                    <Latitude>59.909982</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>17</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.129" modification="new" version="44" id="NSR:Quay:568">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6167</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:00760010012</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010012</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>12</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.754926</Longitude>
+                                    <Latitude>59.910324</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>12</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.126" modification="new" version="44" id="NSR:Quay:554">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6158</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:0076001003</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010003</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>3</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.755531</Longitude>
+                                    <Latitude>59.910956</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>3</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.13" modification="new" version="44" id="NSR:Quay:567">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6173</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:00760010018</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010018</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>18</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.754527</Longitude>
+                                    <Latitude>59.909906</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>18</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.128" modification="new" version="44" id="NSR:Quay:551">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6165</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>NSB:Quay:00760010010</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010010</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>10</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.755060</Longitude>
+                                    <Latitude>59.910464</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>10</PublicCode>
+                        </Quay>
+                        <Quay changed="2018-11-29T11:23:41.125" modification="new" version="44" id="NSR:Quay:565">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>grails-platformId</Key>
+                                    <Value>6156</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>uicCode</Key>
+                                    <Value>7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value>FLT:Quay:007600100,NSB:Quay:0076001001,NSB:Quay:076001001,NSB:Quay:007600100,FLT:Quay:7600100</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>tpsiId</Key>
+                                    <Value>760010001</Value>
+                                </KeyValue>
+                                <KeyValue>
+                                    <Key>TPSI-Kode</Key>
+                                    <Value>760010001</Value>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>1</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.755664</Longitude>
+                                    <Latitude>59.911095</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                            <PublicCode>1</PublicCode>
+                        </Quay>
+                    </quays>
+                </StopPlace>
+                <StopPlace created="2019-06-04T15:38:01.978" changed="2024-03-13T23:35:31.31" modification="new" version="11"
+                           id="NSR:StopPlace:60158">
+                    <keyList>
+                        <KeyValue>
+                            <Key>imported-id</Key>
+                            <Value/>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>IS_PARENT_STOP_PLACE</Key>
+                            <Value>false</Value>
+                        </KeyValue>
+                    </keyList>
+                    <Name lang="nor">Oslo Tollbugata</Name>
+                    <Description lang="no"/>
+                    <PrivateCode/>
+                    <Centroid>
+                        <Location>
+                            <Longitude>10.748819</Longitude>
+                            <Latitude>59.909030</Latitude>
+                        </Location>
+                    </Centroid>
+                    <AccessibilityAssessment modification="new" version="11" id="NSR:AccessibilityAssessment:61221">
+                        <MobilityImpairedAccess>unknown</MobilityImpairedAccess>
+                        <limitations>
+                            <AccessibilityLimitation modification="new" version="5" id="178057">
+                                <WheelchairAccess>unknown</WheelchairAccess>
+                                <StepFreeAccess>unknown</StepFreeAccess>
+                                <EscalatorFreeAccess>unknown</EscalatorFreeAccess>
+                                <LiftFreeAccess>unknown</LiftFreeAccess>
+                                <AudibleSignalsAvailable>unknown</AudibleSignalsAvailable>
+                            </AccessibilityLimitation>
+                        </limitations>
+                    </AccessibilityAssessment>
+                    <TopographicPlaceRef ref="KVE:TopographicPlace:0301" created="2025-07-25T12:05:21.803" version="13"/>
+                    <ParentSiteRef ref="NSR:StopPlace:59872" version="8"/>
+                    <placeEquipments id="NSR:PlaceEquipment:70365">
+                        <GeneralSign modification="new" version="1" id="126052">
+                            <PrivateCode>512</PrivateCode>
+                            <SignContentType>transportMode</SignContentType>
+                        </GeneralSign>
+                    </placeEquipments>
+                    <TransportMode>bus</TransportMode>
+                    <BusSubmode>railReplacementBus</BusSubmode>
+                    <OtherTransportModes/>
+                    <tariffZones>
+                        <TariffZoneRef ref="BRA:TariffZone:311" version="6"/>
+                        <TariffZoneRef ref="RUT:TariffZone:1" version="9"/>
+                        <TariffZoneRef ref="RUT:FareZone:4" version="10"/>
+                    </tariffZones>
+                    <StopPlaceType>onstreetBus</StopPlaceType>
+                    <Weighting>interchangeAllowed</Weighting>
+                    <quays>
+                        <Quay changed="2021-06-25T12:46:28.453" modification="new" version="11" id="NSR:Quay:102541">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value/>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>avstigning</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.748827</Longitude>
+                                    <Latitude>59.909038</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                        </Quay>
+                        <Quay changed="2021-06-25T12:46:28.453" modification="new" version="7" id="NSR:Quay:105064">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>imported-id</Key>
+                                    <Value/>
+                                </KeyValue>
+                            </keyList>
+                            <PrivateCode>påstigning</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>10.748266</Longitude>
+                                    <Latitude>59.908284</Latitude>
+                                </Location>
+                            </Centroid>
+                            <OtherTransportModes/>
+                        </Quay>
+                    </quays>
+                </StopPlace>
+            </stopPlaces>
+        </SiteFrame>
+        <ResourceFrame modification="new" version="1" id="NSR:ResourceFrame:339552304">
+            <typesOfValue>
+                <PurposeOfGrouping created="2023-10-11T22:22:52.344" modification="new" version="1" id="NSR:PurposeOfGrouping:1">
+                    <keyList>
+                        <KeyValue>
+                            <Key>imported-id</Key>
+                            <Value></Value>
+                        </KeyValue>
+                        <KeyValue>
+                            <Key>VERSION_COMMENT</Key>
+                            <Value>default pog</Value>
+                        </KeyValue>
+                    </keyList>
+                    <Name>placeCentroid</Name>
+                    <Description>placeCentroid</Description>
+                </PurposeOfGrouping>
+            </typesOfValue>
+        </ResourceFrame>
+    </dataObjects>
+</PublicationDelivery>

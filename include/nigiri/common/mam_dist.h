@@ -15,11 +15,10 @@ namespace nigiri {
  * the two values
  * the second value of the returned pair signals if and in which direction
  * midnight is passed:
- * -1: [actual -- midnight -- expected]
- *  0: [actual -- expected] / [expected -- actual]
- * +1: [expected -- midnight -- actual]
+ * -1: [b -- midnight -- a]
+ *  0: [b -- a] / [a -- b]
+ * +1: [a -- midnight -- b]
  */
-std::pair<i32_minutes, date::days> mam_dist(i32_minutes expected,
-                                            i32_minutes actual);
+std::pair<i32_minutes, date::days> mam_dist(i32_minutes a, i32_minutes b);
 
 }  // namespace nigiri

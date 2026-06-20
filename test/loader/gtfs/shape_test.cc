@@ -43,7 +43,8 @@ TEST(gtfs, shape_get_existing_shape_points) {
                 {51.543652, 7.217830},
                 {51.478609, 7.223275},
             }),
-            shapes_data.get_shape(shapes.at("243")));
+            shapes_data.get_shape(to_scoped_shape_idx(
+                shapes.at("243"), shape_source::kTimetable)));
 
   EXPECT_EQ((geo::polyline{
                 {50.553822, 6.356876},
@@ -54,7 +55,8 @@ TEST(gtfs, shape_get_existing_shape_points) {
                 {50.578249, 6.383394},
                 {50.581956, 6.379866},
             }),
-            shapes_data.get_shape(shapes.at("3105")));
+            shapes_data.get_shape((to_scoped_shape_idx(
+                shapes.at("3105"), shape_source::kTimetable))));
 }
 
 TEST(gtfs, shape_not_ascending_sequence) {
@@ -71,7 +73,8 @@ TEST(gtfs, shape_not_ascending_sequence) {
   auto const& shapes = shape_states.id_map_;
 
   EXPECT_EQ((geo::polyline{{50.636259, 6.473668}, {50.636512, 6.473487}}),
-            shapes_data.get_shape(shapes.at("1")));
+            shapes_data.get_shape((to_scoped_shape_idx(
+                shapes.at("1"), shape_source::kTimetable))));
 }
 
 TEST(gtfs, shape_shuffled_rows) {
@@ -131,7 +134,8 @@ TEST(gtfs, shape_shuffled_rows) {
            }},
       };
   for (auto [id, polyline] : shape_points) {
-    EXPECT_EQ(polyline, shapes_data.get_shape(shapes.at(id)));
+    EXPECT_EQ(polyline, shapes_data.get_shape((to_scoped_shape_idx(
+                            shapes.at(id), shape_source::kTimetable))));
   }
 }
 
@@ -152,5 +156,6 @@ TEST(gtfs, shape_delay_insert_no_ascending_sequence) {
   EXPECT_NE(shape_idx, end(shapes));
   EXPECT_NE(shapes.find("2"), end(shapes));
   EXPECT_EQ((geo::polyline{{50.636259, 6.473668}, {50.636512, 6.473487}}),
-            shapes_data.get_shape(shape_idx->second));
+            shapes_data.get_shape((to_scoped_shape_idx(
+                shape_idx->second, shape_source::kTimetable))));
 }

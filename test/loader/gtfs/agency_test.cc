@@ -10,10 +10,12 @@ using namespace nigiri;
 using namespace nigiri::loader::gtfs;
 
 TEST(gtfs, agency) {
-  timetable tt;
-  tz_map timezones;
+  auto tt = timetable{};
+  auto timezones = tz_map{};
+  auto i18n = translator{.tt_ = tt};
   auto const agencies = read_agencies(
-      tt, timezones, example_files().get_file(kAgencyFile).data());
+      source_idx_t{0}, tt, i18n, timezones,
+      example_files().get_file(kAgencyFile).data(), "Europe/Berlin");
 
   auto const dta_it = agencies.find("DTA");
   ASSERT_NE(dta_it, end(agencies));
@@ -23,8 +25,9 @@ TEST(gtfs, agency) {
 
   auto const& dta = tt.providers_.at(dta_it->second);
   auto const& sbb = tt.providers_.at(sbb_it->second);
-  EXPECT_EQ("Demo Transit Authority", dta.long_name_);
-  EXPECT_EQ("http://google.com", dta.url_);
-  EXPECT_EQ("Schweizerische Bundesbahnen SBB", sbb.long_name_);
-  EXPECT_EQ("http://www.sbb.ch/", sbb.url_);
+  EXPECT_EQ("Demo Transit Authority", tt.get_default_translation(dta.name_));
+  EXPECT_EQ("http://google.com", tt.get_default_translation(dta.url_));
+  EXPECT_EQ("Schweizerische Bundesbahnen SBB",
+            tt.get_default_translation(sbb.name_));
+  EXPECT_EQ("http://www.sbb.ch/", tt.get_default_translation(sbb.url_));
 }

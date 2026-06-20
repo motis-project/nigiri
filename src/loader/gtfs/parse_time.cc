@@ -7,7 +7,7 @@
 namespace nigiri::loader::gtfs {
 
 duration_t hhmm_to_min(utl::cstr s) {
-  if (s.empty()) {
+  if (s.trim().empty()) {
     return kInterpolate;
   } else {
     int hours = 0;

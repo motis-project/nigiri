@@ -52,9 +52,9 @@ R1,DB,RE 1,,,101
 R2,DB,RE 2,,,101
 
 # trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-R1,S,T1,RE 1,
-R2,S,T2,RE 2,
+route_id,service_id,trip_id,trip_headsign,block_id,wheelchair_accessible
+R1,S,T1,RE 1,,1
+R2,S,T2,RE 2,,1
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -83,8 +83,13 @@ TEST(routing, wheelchair_assistance) {
   load_timetable({}, source_idx_t{0}, test_files(), tt, &assistance);
   finalize(tt);
 
-  auto const B1 = tt.locations_.get({"B1", {}}).l_;
-  auto const B2 = tt.locations_.get({"B2", {}}).l_;
+  tt.fwd_search_lb_graph_[kWheelchairProfile] =
+      tt.fwd_search_lb_graph_[kDefaultProfile];
+  tt.bwd_search_lb_graph_[kWheelchairProfile] =
+      tt.bwd_search_lb_graph_[kDefaultProfile];
+
+  auto const B1 = tt.find(location_id{"B1", {}}).value();
+  auto const B2 = tt.find(location_id{"B2", {}}).value();
   for (auto const profile : {0U, 2U}) {
     tt.locations_.footpaths_out_[profile].resize(tt.n_locations());
     tt.locations_.footpaths_in_[profile].resize(tt.n_locations());
@@ -97,7 +102,7 @@ TEST(routing, wheelchair_assistance) {
 
   auto const results_walk =
       raptor_search(tt, nullptr, "A", "C", iv, direction::kForward,
-                    routing::all_clasz_allowed(), false, 0U);
+                    routing::all_clasz_allowed(), false, false, 0U);
   ASSERT_FALSE(results_walk.begin() == results_walk.end());
   EXPECT_EQ((unixtime_t{sys_days{2024_y / June / 19} + 5_hours}),
             results_walk.begin()->start_time_);
@@ -106,7 +111,7 @@ TEST(routing, wheelchair_assistance) {
 
   auto const results_wheelchair =
       raptor_search(tt, nullptr, "A", "C", iv, direction::kForward,
-                    routing::all_clasz_allowed(), false, 2U);
+                    routing::all_clasz_allowed(), false, false, 2U);
   ASSERT_FALSE(results_wheelchair.begin() == results_wheelchair.end());
   EXPECT_EQ((unixtime_t{sys_days{2024_y / June / 19} + 6_hours}),
             results_wheelchair.begin()->start_time_);

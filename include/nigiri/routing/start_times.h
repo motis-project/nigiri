@@ -30,6 +30,7 @@ void get_starts(
     start_time_t const& start_time,
     std::vector<offset> const& start_offsets,
     hash_map<location_idx_t, std::vector<td_offset>> const& start_td_offsets,
+    std::vector<via_stop> const& via_stops,
     duration_t const max_start_offset,
     location_match_mode,
     bool use_start_footpaths,

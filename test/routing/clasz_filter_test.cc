@@ -3,6 +3,8 @@
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
+
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -10,6 +12,7 @@
 
 #include "../raptor_search.h"
 #include "../rt/util.h"
+#include "results_to_string.h"
 
 using namespace nigiri;
 using namespace date;
@@ -67,9 +70,8 @@ TRANSFERS: 0
      FROM: (A, A) [2024-03-01 09:00]
        TO: (C, C) [2024-03-01 10:00]
 leg 0: (A, A) [2024-03-01 09:00] -> (C, C) [2024-03-01 10:00]
-   0: A       A...............................................                               d: 01.03 09:00 [01.03 10:00]  [{name=X , day=2024-03-01, id=AIR, src=0}]
+   0: A       A...............................................                               d: 01.03 09:00 [01.03 10:00]  [{name=X, day=2024-03-01, id=AIR, src=0}]
    1: C       C............................................... a: 01.03 10:00 [01.03 11:00]
-
 
 )"sv;
 
@@ -80,14 +82,13 @@ TRANSFERS: 1
      FROM: (A, A) [2024-03-01 09:00]
        TO: (C, C) [2024-03-01 11:00]
 leg 0: (A, A) [2024-03-01 09:00] -> (B, B) [2024-03-01 09:55]
-   0: A       A...............................................                               d: 01.03 09:00 [01.03 10:00]  [{name=Bus 1, day=2024-03-01, id=T1, src=0}]
+   0: A       A...............................................                               d: 01.03 09:00 [01.03 10:00]  [{name=1, day=2024-03-01, id=T1, src=0}]
    1: B       B............................................... a: 01.03 09:55 [01.03 10:55]
 leg 1: (B, B) [2024-03-01 09:55] -> (B, B) [2024-03-01 09:57]
   FOOTPATH (duration=2)
 leg 2: (B, B) [2024-03-01 10:05] -> (C, C) [2024-03-01 11:00]
-   0: B       B...............................................                               d: 01.03 10:05 [01.03 11:05]  [{name=2 , day=2024-03-01, id=T2, src=0}]
+   0: B       B...............................................                               d: 01.03 10:05 [01.03 11:05]  [{name=2, day=2024-03-01, id=T2, src=0}]
    1: C       C............................................... a: 01.03 11:00 [01.03 12:00]
-
 
 )"sv;
 
@@ -98,9 +99,8 @@ TRANSFERS: 0
      FROM: (A, A) [2024-03-01 09:10]
        TO: (C, C) [2024-03-01 10:10]
 leg 0: (A, A) [2024-03-01 09:10] -> (C, C) [2024-03-01 10:10]
-   0: A       A...............................................                               d: 01.03 09:00 [01.03 10:00]  [{name=X , day=2024-03-01, id=AIR, src=0}]
+   0: A       A...............................................                               d: 01.03 09:00 [01.03 10:00]  [{name=X, day=2024-03-01, id=AIR, src=0}]
    1: C       C............................................... a: 01.03 10:00 [01.03 11:00]
-
 
 )"sv;
 
@@ -111,14 +111,13 @@ TRANSFERS: 1
      FROM: (A, A) [2024-03-01 09:10]
        TO: (C, C) [2024-03-01 11:10]
 leg 0: (A, A) [2024-03-01 09:10] -> (B, B) [2024-03-01 10:05]
-   0: A       A...............................................                               d: 01.03 09:00 [01.03 10:00]  [{name=Bus 1, day=2024-03-01, id=T1, src=0}]
+   0: A       A...............................................                               d: 01.03 09:00 [01.03 10:00]  [{name=1, day=2024-03-01, id=T1, src=0}]
    1: B       B............................................... a: 01.03 09:55 [01.03 10:55]
 leg 1: (B, B) [2024-03-01 10:05] -> (B, B) [2024-03-01 10:07]
   FOOTPATH (duration=2)
 leg 2: (B, B) [2024-03-01 10:15] -> (C, C) [2024-03-01 11:10]
-   0: B       B...............................................                               d: 01.03 10:05 [01.03 11:05]  [{name=2 , day=2024-03-01, id=T2, src=0}]
+   0: B       B...............................................                               d: 01.03 10:05 [01.03 11:05]  [{name=2, day=2024-03-01, id=T2, src=0}]
    1: C       C............................................... a: 01.03 11:00 [01.03 12:00]
-
 
 )"sv;
 
@@ -146,41 +145,23 @@ TEST(routing, clasz_filter_test) {
         raptor_search(tt, nullptr, "A", "C", tt.date_range_,
                       direction::kForward, routing::all_clasz_allowed());
 
-    std::stringstream ss;
-    ss << "\n";
-    for (auto const& x : results) {
-      x.print(ss, tt);
-      ss << "\n\n";
-    }
-    EXPECT_EQ(expected, ss.str());
+    EXPECT_EQ(expected, to_string(tt, results));
   }
 
   {  // All available classes.
     auto const results = raptor_search(
         tt, nullptr, "A", "C", tt.date_range_, direction::kForward,
-        make_mask(clasz::kCoach, clasz::kRegionalFast, clasz::kAir));
+        make_mask(clasz::kBus, clasz::kRegional, clasz::kAir));
 
-    std::stringstream ss;
-    ss << "\n";
-    for (auto const& x : results) {
-      x.print(ss, tt);
-      ss << "\n\n";
-    }
-    EXPECT_EQ(expected, ss.str());
+    EXPECT_EQ(expected, to_string(tt, results));
   }
 
   {  // No plane - one transfer, 2h
     auto const results = raptor_search(
         tt, nullptr, "A", "C", tt.date_range_, direction::kForward,
-        make_mask(clasz::kCoach, clasz::kRegionalFast));
+        make_mask(clasz::kBus, clasz::kRegional));
 
-    std::stringstream ss;
-    ss << "\n";
-    for (auto const& x : results) {
-      x.print(ss, tt);
-      ss << "\n\n";
-    }
-    EXPECT_EQ(expected_1, ss.str());
+    EXPECT_EQ(expected_1, to_string(tt, results));
   }
 
   {  // No connection.
@@ -210,30 +191,18 @@ TEST(routing, clasz_filter_test) {
   rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "", msg);
 
   {  // All available classes.
-    auto const results = raptor_search(
-        tt, &rtt, "A", "C", tt.date_range_, direction::kForward,
-        make_mask(clasz::kCoach, clasz::kRegionalFast, clasz::kAir));
+    auto const results =
+        raptor_search(tt, &rtt, "A", "C", tt.date_range_, direction::kForward,
+                      make_mask(clasz::kBus, clasz::kRegional, clasz::kAir));
 
-    std::stringstream ss;
-    ss << "\n";
-    for (auto const& x : results) {
-      x.print(ss, tt);
-      ss << "\n\n";
-    }
-    EXPECT_EQ(expected_rt, ss.str());
+    EXPECT_EQ(expected_rt, to_string(tt, results));
   }
 
   {  // No plane - one transfer, 2h
     auto const results =
         raptor_search(tt, &rtt, "A", "C", tt.date_range_, direction::kForward,
-                      make_mask(clasz::kCoach, clasz::kRegionalFast));
+                      make_mask(clasz::kBus, clasz::kRegional));
 
-    std::stringstream ss;
-    ss << "\n";
-    for (auto const& x : results) {
-      x.print(ss, tt);
-      ss << "\n\n";
-    }
-    EXPECT_EQ(expected_rt_1, ss.str());
+    EXPECT_EQ(expected_rt_1, to_string(tt, results));
   }
 }

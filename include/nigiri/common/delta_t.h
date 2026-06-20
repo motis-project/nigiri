@@ -1,6 +1,7 @@
 #pragma once
 
-#include "nigiri/routing/raptor/debug.h"
+#include "fmt/base.h"
+
 #include "nigiri/types.h"
 
 #include "cista/cuda_check.h"
@@ -19,10 +20,10 @@ template <typename T>
 inline constexpr delta_t clamp(T t) {
 #if defined(NIGIRI_TRACING)
   if (t < std::numeric_limits<delta_t>::min()) {
-    trace_upd("CLAMP {} TO {}\n", t, std::numeric_limits<delta_t>::min());
+    fmt::print("CLAMP {} TO {}\n", t, std::numeric_limits<delta_t>::min());
   }
   if (t > std::numeric_limits<delta_t>::max()) {
-    trace_upd("CLAMP {} TO {}\n", t, std::numeric_limits<delta_t>::max());
+    fmt::print("CLAMP {} TO {}\n", t, std::numeric_limits<delta_t>::max());
   }
 #endif
 
@@ -53,8 +54,6 @@ inline constexpr unixtime_t delta_to_unix(date::sys_days const base,
 
 inline constexpr std::pair<day_idx_t, minutes_after_midnight_t> split_day_mam(
     day_idx_t const base, delta_t const x) {
-  assert(x != std::numeric_limits<delta_t>::min());
-  assert(x != std::numeric_limits<delta_t>::max());
   auto const minutes = base.v_ * 1440 + x;
   return {day_idx_t{minutes / 1440}, minutes_after_midnight_t{minutes % 1440}};
 }

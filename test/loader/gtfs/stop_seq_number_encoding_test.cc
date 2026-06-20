@@ -7,11 +7,11 @@ using namespace nigiri;
 using namespace nigiri::loader::gtfs;
 
 TEST(gtfs, stop_seq_number_encoding) {
-  auto const check = [](std::basic_string<stop_idx_t> seq) {
-    std::basic_string<stop_idx_t> out;
+  auto const check = [](basic_string<stop_idx_t> seq) {
+    basic_string<stop_idx_t> out;
     encode_seq_numbers(seq, out);
 
-    std::basic_string<stop_idx_t> test;
+    basic_string<stop_idx_t> test;
     for (auto const x :
          stop_seq_number_range{out, static_cast<stop_idx_t>(seq.size())}) {
       test.push_back(x);

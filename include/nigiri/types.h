@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <chrono>
 #include <cinttypes>
 #include <variant>
@@ -11,6 +12,7 @@
 
 #include "ankerl/cista_adapter.h"
 
+#include "cista/char_traits.h"
 #include "cista/containers/array.h"
 #include "cista/containers/bitset.h"
 #include "cista/containers/bitvec.h"
@@ -18,6 +20,7 @@
 #include "cista/containers/mutable_fws_multimap.h"
 #include "cista/containers/nvec.h"
 #include "cista/containers/optional.h"
+#include "cista/containers/rtree.h"
 #include "cista/containers/string.h"
 #include "cista/containers/tuple.h"
 #include "cista/containers/variant.h"
@@ -25,6 +28,8 @@
 #include "cista/containers/vecvec.h"
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
+
+#include "utl/helpers/algorithm.h"
 
 #include "geo/latlng.h"
 
@@ -47,6 +52,9 @@ namespace nigiri {
 // to the base day offset due to timezone conversion - see above).
 constexpr auto const kTimetableOffset =
     std::chrono::days{1} + std::chrono::days{4};
+
+template <typename T>
+using ptr = cista::raw::ptr<T>;
 
 template <size_t Size>
 using bitset = cista::bitset<Size>;
@@ -88,6 +96,12 @@ using cista::holds_alternative;
 template <typename K, typename V, typename SizeType = cista::base_t<K>>
 using vecvec = cista::raw::vecvec<K, V, SizeType>;
 
+template <typename K,
+          typename V,
+          std::size_t N,
+          typename SizeType = std::uint32_t>
+using nvec = cista::raw::nvec<K, V, N, SizeType>;
+
 template <typename K, typename V>
 using mutable_fws_multimap = cista::raw::mutable_fws_multimap<K, V>;
 
@@ -106,11 +120,13 @@ using stop_idx_t = std::uint16_t;
 
 using string = cista::raw::string;
 
+using generic_string = cista::raw::generic_string;
+
+template <typename T>
+using unique_ptr = cista::raw::unique_ptr<T>;
+
 template <typename T>
 using optional = cista::optional<T>;
-
-template <typename Key, typename T, std::size_t N>
-using nvec = cista::raw::nvec<Key, T, N>;
 
 template <typename K, typename V>
 using mm_vec_map = cista::basic_mmap_vec<V, K>;
@@ -120,6 +136,9 @@ using mm_vec = cista::basic_mmap_vec<T, std::uint64_t>;
 
 template <typename Key, typename V, typename SizeType = cista::base_t<Key>>
 using mm_vecvec = cista::basic_vecvec<Key, mm_vec<V>, mm_vec<SizeType>>;
+
+template <typename T>
+using rtree = cista::raw::rtree<T>;
 
 template <typename Key, typename T>
 struct paged_vecvec_helper {
@@ -143,16 +162,22 @@ struct mm_paged_vecvec_helper {
 template <typename Key, typename T>
 using mm_paged_vecvec = mm_paged_vecvec_helper<Key, T>::type;
 
+using translation_idx_t = cista::strong<std::uint32_t, struct _translation_idx>;
+using string_idx_t = cista::strong<std::uint32_t, struct _string_idx>;
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
 using route_idx_t = cista::strong<std::uint32_t, struct _route_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;
 using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
 using shape_idx_t = cista::strong<std::uint32_t, struct _shape_idx>;
+using scoped_shape_idx_t =
+    cista::strong<std::uint32_t, struct _scoped_shape_idx>;
 using shape_offset_t = cista::strong<std::uint32_t, struct _shape_offset>;
 using shape_offset_idx_t =
     cista::strong<std::uint32_t, struct _shape_offset_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
+using route_id_idx_t = cista::strong<std::uint32_t, struct _route_id_idx>;
+using category_idx_t = cista::strong<std::uint32_t, struct _category_idx>;
 using trip_id_idx_t = cista::strong<std::uint32_t, struct _trip_id_str_idx>;
 using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
 using source_idx_t = cista::strong<std::uint16_t, struct _source_idx>;
@@ -162,9 +187,27 @@ using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
+using flex_area_idx_t = cista::strong<std::uint32_t, struct _flex_area_idx>;
+using location_group_idx_t =
+    cista::strong<std::uint32_t, struct _location_group_idx>;
+using booking_rule_idx_t =
+    cista::strong<std::uint32_t, struct _booking_rule_idx>;
+using language_idx_t = cista::strong<std::uint16_t, struct _language_idx>;
+
+using lang_t = std::optional<std::vector<std::string>>;
+
+using flex_stop_t = variant<flex_area_idx_t, location_group_idx_t>;
+
+constexpr auto kEmptyTranslation = translation_idx_t{0U};
+constexpr auto kDefaultLang = language_idx_t{0U};
 
 using profile_idx_t = std::uint8_t;
-static constexpr auto const kMaxProfiles = profile_idx_t{8};
+constexpr auto const kDefaultProfile = profile_idx_t{0U};
+constexpr auto const kFootProfile = profile_idx_t{1U};
+constexpr auto const kWheelchairProfile = profile_idx_t{2U};
+constexpr auto const kCarProfile = profile_idx_t{3U};
+constexpr auto const kBikeProfile = profile_idx_t{4U};
+static constexpr auto const kNProfiles = profile_idx_t{5U};
 
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using rt_add_trip_id_idx_t =
@@ -174,6 +217,8 @@ using rt_transport_idx_t =
     cista::strong<std::uint32_t, struct _rt_transport_idx>;
 using rt_merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
+using rt_transport_direction_string_idx_t =
+    cista::strong<std::uint32_t, struct _rt_transport_direction_string>;
 
 using line_id_t = string;
 
@@ -181,32 +226,65 @@ using trip_direction_string_idx_t =
     cista::strong<std::uint32_t, struct _trip_direction_string>;
 using trip_direction_t =
     cista::variant<location_idx_t, trip_direction_string_idx_t>;
-using trip_direction_idx_t =
-    cista::strong<std::uint32_t, struct _trip_direction_idx>;
 using trip_line_idx_t = cista::strong<std::uint32_t, struct _trip_line_idx>;
 using attribute_idx_t = cista::strong<std::uint32_t, struct _attribute_idx>;
 using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
+using direction_id_t = cista::strong<std::uint8_t, struct _direction_id>;
+using route_type_t = cista::strong<std::uint16_t, struct _route_type>;
+using flex_transport_idx_t =
+    cista::strong<std::uint32_t, struct _flex_transport_idx>;
+using flex_stop_seq_idx_t =
+    cista::strong<std::uint32_t, struct _flex_stop_seq_idx>;
 
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
+struct category {
+  string_idx_t id_;
+  translation_idx_t name_;
+  translation_idx_t short_name_;
+};
+
+struct translation {
+  translation() = default;
+
+  translation(std::string_view language, std::string_view text)
+      : language_{language, generic_string::non_owning},
+        text_{text, generic_string::non_owning} {}
+
+  std::string_view get_language() const { return language_; }
+  void set_language(std::string_view s) { language_.set_owning(s); }
+
+  std::string_view get_text() const { return text_; }
+  void set_text(std::string_view s) { text_.set_owning(s); }
+
+  generic_string language_;
+  generic_string text_;
+};
+
+using translated_str_t =
+    std::variant<std::string_view, std::vector<translation>>;
+
 struct trip_debug {
   source_file_idx_t source_file_idx_;
-  std::uint32_t line_number_from_, line_number_to_;
+  std::uint32_t line_number_from_{}, line_number_to_{};
 };
 
 struct attribute {
   CISTA_PRINTABLE(attribute, "code", "text")
   friend bool operator==(attribute const&, attribute const&) = default;
-  string code_, text_;
+  string code_;
+  translation_idx_t text_;
 };
 
 struct provider {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(provider, "short_name", "long_name", "url")
-  string short_name_, long_name_, url_;
+  string_idx_t id_;
+  translation_idx_t name_, url_;
   timezone_idx_t tz_{timezone_idx_t::invalid()};
+  source_idx_t src_;
 };
 
 // colors in ARGB layout, 0 thus indicates no color specified
@@ -215,6 +293,17 @@ struct route_color {
   color_t color_;
   color_t text_color_;
 };
+inline color_t to_color(std::string_view s) {
+  auto const is_hex = [](uint8_t c) {
+    return std::isdigit(c) != 0 || (c >= 'a' && c <= 'f') ||
+           (c >= 'A' && c <= 'F');
+  };
+  if (s.size() != 6 || !utl::all_of(s, is_hex)) {
+    return color_t{0};
+  }
+  return color_t{0xFF000000U | static_cast<std::uint32_t>(
+                                   std::strtol(s.data(), nullptr, 16))};
+}
 inline std::optional<std::string> to_str(color_t const c) {
   return c == 0U ? std::nullopt
                  : std::optional{fmt::format("{:06x}", to_idx(c) & 0x00ffffff)};
@@ -230,10 +319,15 @@ struct trip_id {
   source_idx_t src_;
 };
 
-struct location_id {
+struct owning_location_id {
   CISTA_COMPARABLE()
-  CISTA_PRINTABLE(location_id, "id", "src")
+  CISTA_PRINTABLE(owning_location_id, "id", "src")
   string id_;
+  source_idx_t src_;
+};
+
+struct location_id {
+  std::string_view id_;
   source_idx_t src_;
 };
 
@@ -298,19 +392,31 @@ enum class clasz : std::uint8_t {
   kLongDistance = 2,
   kCoach = 3,
   kNight = 4,
-  kRegionalFast = 5,
+  kRideSharing = 5,
   kRegional = 6,
-  kMetro = 7,
+  kSuburban = 7,
   kSubway = 8,
   kTram = 9,
   kBus = 10,
   kShip = 11,
-  kOther = 12,
+  kODM = 12,
+  kFunicular = 13,
+  kAerialLift = 14,
+  kOther = 15,
   kNumClasses
 };
 
 constexpr auto const kNumClasses =
     static_cast<std::underlying_type_t<clasz>>(clasz::kNumClasses);
+
+constexpr std::string_view to_str(clasz const c) {
+  constexpr auto const clasz_str =
+      std::array{"AIR",    "HIGHSPEED",    "LONG_DISTANCE", "COACH",
+                 "NIGHT",  "RIDE_SHARING", "REGIONAL",      "SUBURBAN",
+                 "SUBWAY", "TRAM",         "BUS",           "SHIP",
+                 "ODM",    "FUNICULAR",    "AERIAL_LIFT",   "OTHER"};
+  return clasz_str[static_cast<unsigned>(c)];
+}
 
 enum class location_type : std::uint8_t {
   kGeneratedTrack,  // track generated from track number (i.e. HRD), no separate
@@ -324,6 +430,10 @@ enum class location_type : std::uint8_t {
 
 enum class event_type { kArr, kDep };
 
+inline std::string_view to_str(event_type const d) {
+  return d == event_type::kArr ? "ARR" : "DEP";
+}
+
 enum class direction {
   kForward,
   kBackward  // start = final arrival, destination = journey departure
@@ -331,6 +441,11 @@ enum class direction {
 
 inline constexpr direction flip(direction const d) noexcept {
   return d == direction::kForward ? direction::kBackward : direction::kForward;
+}
+
+template <direction Dir>
+constexpr direction flip(direction const dir) {
+  return Dir == direction::kForward ? dir : flip(dir);
 }
 
 inline std::string_view to_str(direction const d) {
@@ -346,9 +461,47 @@ auto to_range(Collection const& c) {
   }
 }
 
-using transport_mode_id_t = std::int32_t;
+using transport_mode_id_t = std::uint32_t;
 
 using via_offset_t = std::uint8_t;
+
+template <typename T>
+using basic_string = std::basic_string<T, cista::char_traits<T>>;
+
+enum class shape_source : std::uint8_t {
+  kNone = 0,
+  kTimetable = 1,
+  kRouted = 2
+};
+
+constexpr auto const kShapeSourceBit = std::uint32_t{1U} << 31U;
+constexpr auto const kShapeIndexMask = kShapeSourceBit - 1U;
+
+inline shape_source get_shape_source(scoped_shape_idx_t const idx) {
+  if (idx == scoped_shape_idx_t::invalid()) {
+    return shape_source::kNone;
+  }
+  return (to_idx(idx) & kShapeSourceBit) != 0U ? shape_source::kRouted
+                                               : shape_source::kTimetable;
+}
+
+inline shape_idx_t get_local_shape_idx(scoped_shape_idx_t const idx) {
+  return idx == scoped_shape_idx_t::invalid()
+             ? shape_idx_t::invalid()
+             : shape_idx_t{to_idx(idx) & kShapeIndexMask};
+}
+
+inline scoped_shape_idx_t to_scoped_shape_idx(shape_idx_t const local_idx,
+                                              shape_source const source) {
+  if (local_idx == shape_idx_t::invalid() || source == shape_source::kNone) {
+    return scoped_shape_idx_t::invalid();
+  }
+  auto const local = to_idx(local_idx);
+  assert((local & kShapeSourceBit) == 0U);
+  return scoped_shape_idx_t{
+      local |
+      (source == shape_source::kRouted ? kShapeSourceBit : std::uint32_t{0U})};
+}
 
 }  // namespace nigiri
 
@@ -414,6 +567,15 @@ struct delta {
   constexpr delta(std::uint16_t const day, std::uint16_t const mam)
       : days_{day}, mam_{mam} {}
 
+  delta(date::days const day_offset, duration_t const minutes_offset)
+      : days_{static_cast<std::uint16_t>(day_offset.count() + 1)},
+        mam_{static_cast<std::uint16_t>(minutes_offset.count() + 720)} {
+    assert(day_offset.count() >= -1);
+    assert(day_offset.count() < 30);
+    assert(minutes_offset.count() >= -720);
+    assert(minutes_offset.count() < 1320);
+  }
+
   std::uint16_t value() const {
     return *reinterpret_cast<std::uint16_t const*>(this);
   }
@@ -435,8 +597,10 @@ struct delta {
     return cista::hash_combine(cista::BASE_HASH, value());
   }
 
-  constexpr duration_t as_duration() const {
-    return days() * 1_days + mam() * 1_minutes;
+  constexpr duration_t as_duration() const { return days() * 1_days + mam() * 1_minutes; }
+
+  std::pair<date::days, duration_t> to_offset() const {
+    return {date::days{days() - 1}, duration_t{mam() - 720}};
   }
 
   constexpr std::int16_t count() const { return days_ * 1440U + mam_; }
@@ -492,6 +656,60 @@ inline local_time to_local_time(timezone const& tz, unixtime_t const t) {
             reinterpret_cast<date::time_zone const*>(x.second), t);
       }});
 }
+
+inline date::time_zone const* to_time_zone(timezone const& tz) {
+  return tz.apply(utl::overloaded{
+      [](tz_offsets const&) { return nullptr; },
+      [](pair<string, void const*> const& x) {
+        return reinterpret_cast<date::time_zone const*>(x.second);
+      }});
+}
+
+struct booking_rule {
+  enum class type : std::uint8_t {
+    kRealTimeBooking,
+    kUpToSameDayBooking,
+    kUpToPrioDaysBooking
+  };
+
+  CISTA_COMPARABLE()
+
+  // booking_type = 0
+  struct real_time {};
+
+  // booking_type = 1
+  // Up to same-day booking with advanced notice.
+  struct prior_notice {
+    i32_minutes prior_notice_duration_min_{0U};
+    i32_minutes prior_notice_duration_max_{
+        std::numeric_limits<duration_t::rep>::max()};
+  };
+
+  // booking_type = 2
+  // Up to prior day(s) booking.
+  struct prior_day {
+    std::uint16_t prior_notice_last_day_{0U};
+    minutes_after_midnight_t prior_notice_last_time_{0U};
+
+    std::uint16_t prior_notice_start_day_{
+        std::numeric_limits<std::int16_t>::max()};
+    minutes_after_midnight_t prior_notice_start_time_{0U};
+
+    bitfield_idx_t prior_notice_bitfield_{bitfield_idx_t::invalid()};
+  };
+
+  using booking_type = variant<real_time, prior_notice, prior_day>;
+
+  string_idx_t id_;
+  booking_type type_;
+
+  translation_idx_t message_;
+  translation_idx_t pickup_message_;
+  translation_idx_t drop_off_message_;
+  translation_idx_t phone_number_;
+  translation_idx_t info_url_;
+  translation_idx_t booking_url_;
+};
 
 }  // namespace nigiri
 

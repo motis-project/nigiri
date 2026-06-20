@@ -43,6 +43,7 @@ if (NIGIRI_LINT)
   include(cmake/clang-tidy.cmake)
 endif ()
 
+set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
   set(nigiri-compile-options
         -Weverything
@@ -68,27 +69,51 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         -Wno-documentation-unknown-command
         -Wno-duplicate-enum
         -Wno-switch-default
-        -Werror)
+        -Wno-ctad-maybe-unsupported
+        -Wno-nrvo
+        -Wno-thread-safety-negative
+        -Wno-unused-private-field)
 elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
-  set(nigiri-compile-options -Wall -Wextra -Werror)
-elseif (MSVC)
-  set(nigiri-compile-options /WX)
-else ()
+  set(nigiri-compile-options -Wall -Wextra)
+elseif (NOT MSVC)
   set(nigiri-compile-options
         -Wall
         -Wextra
         -Wno-maybe-uninitialized)
-  if (NOT CMAKE_CROSSCOMPILING)
-    set(nigiri-compile-options ${nigiri-compile-options} -Werror)
-  endif ()
 endif ()
 
 
-# --- MAIN ---
-file(GLOB_RECURSE nigiri-server-files server/main.cc)
-add_executable(nigiri-server ${nigiri-server-files})
-target_link_libraries(nigiri-server PRIVATE nigiri)
-target_compile_features(nigiri-server PUBLIC cxx_std_23)
+# --- LIB ---
+file(GLOB_RECURSE nigiri-files src/*.cc)
+add_library(nigiri ${nigiri-files})
+target_include_directories(nigiri PUBLIC include)
+target_link_libraries(
+  nigiri
+  PUBLIC
+  cista
+  geo
+  utl
+  fmt
+  date
+  miniz
+  date-tz
+  wyhash
+  unordered_dense
+  gtfsrt
+  oh
+  opentelemetry_api
+  pugixml
+  boost-json
+  sol2
+  libluajit
+  proj
+  PRIVATE
+  boost-iostreams
+  zlibstatic
+)
+target_compile_features(nigiri PUBLIC cxx_std_23)
+target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
+target_compile_definitions(nigiri PUBLIC PUGIXML_COMPACT=1)
 
 # --- IMPORTER ---
 file(GLOB_RECURSE nigiri-import-files exe/import.cc)
@@ -118,18 +143,19 @@ configure_file(
 file(GLOB_RECURSE nigiri-test-files test/*.cc)
 add_executable(nigiri-test ${nigiri-test-files})
 target_include_directories(nigiri-test PRIVATE include)
-target_link_libraries(nigiri-test PRIVATE nigiri gtest ianatzdb-res nigiri-generated)
+target_link_libraries(nigiri-test nigiri gmock ianatzdb-res nigiri-generated)
+target_compile_features(nigiri-test PUBLIC cxx_std_23)
 target_compile_options(nigiri-test PRIVATE ${nigiri-compile-options})
 
 
-# --- LIB ---
-file(GLOB_RECURSE nigiri-files src/*.cc)
-add_library(nigiri ${nigiri-files})
-target_include_directories(nigiri PUBLIC include)
-target_link_libraries(nigiri PUBLIC cista geo utl fmt date miniz date-tz wyhash unordered_dense gtfsrt oh opentelemetry_api pugixml)
-target_compile_features(nigiri PUBLIC cxx_std_23)
-target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
+# MacOS fix for LuaJIT
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
+  target_link_options(nigiri-import PRIVATE -Wl,-no_deduplicate)
+  target_link_options(nigiri-test PRIVATE -Wl,-no_deduplicate)
+  target_link_options(nigiri-benchmark PRIVATE -Wl,-no_deduplicate)
+endif()
 
+# CUDA Support
 if (NIGIRI_CUDA)
   if (MSVC)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -lineinfo -lcudadevrt")
@@ -142,14 +168,14 @@ if (NIGIRI_CUDA)
   file(GLOB_RECURSE nigiri-gpu-files src/*.cu)
   add_library(nigiri-gpu OBJECT ${nigiri-gpu-files})
   set_target_properties(nigiri-gpu PROPERTIES
-      COMPILE_OPTIONS "-O3;-DNDEBUG"
-      WINDOWS_EXPORT_ALL_SYMBOLS ON
-      CUDA_SEPARABLE_COMPILATION ON
-      CUDA_ARCHITECTURES native
-      CUDA_STANDARD 26
-      RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
-      LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
-      INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/"
+          COMPILE_OPTIONS "-O3;-DNDEBUG"
+          WINDOWS_EXPORT_ALL_SYMBOLS ON
+          CUDA_SEPARABLE_COMPILATION ON
+          CUDA_ARCHITECTURES native
+          CUDA_STANDARD 26
+          RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+          LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+          INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/"
   )
   target_include_directories(nigiri-gpu PUBLIC include ${CUDAToolkit_INCLUDE_DIRS})
   target_link_libraries(nigiri-gpu PRIVATE cista fmt date unordered_dense geo utl)

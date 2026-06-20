@@ -33,7 +33,7 @@ S8,24th St. Mission Station,,37.752240,-122.418450,http://www.bart.gov/stations/
 constexpr auto const example_agency_file_content = std::string_view{
     R"(agency_id,agency_name,agency_url,agency_timezone
 DTA,Demo Transit Authority,http://google.com,America/Los_Angeles
-"11","Schweizerische Bundesbahnen SBB","http://www.sbb.ch/","Europe/Berlin","DE","0900 300 300 "
+"11","Schweizerische Bundesbahnen SBB","http://www.sbb.ch/",,"DE","0900 300 300 "
 )"};
 
 auto const example_routes_file_content = std::string_view{
@@ -45,6 +45,7 @@ constexpr auto const example_transfers_file_content =
     std::string_view{R"(from_stop_id,to_stop_id,transfer_type,min_transfer_time
 S6,S7,2,300
 S7,S6,3,
+S7,S7,2,900
 )"};
 
 constexpr auto const example_shapes_file_content =

@@ -22,10 +22,6 @@ void hrd_loader::load(
                                              global_bitfield_indices);
 }
 
-cista::hash_t hrd_loader::hash(dir const& d) const {
-  return nigiri::loader::hrd::hash(config_, d);
-}
-
 hrd_5_00_8_loader::hrd_5_00_8_loader() : hrd_loader{hrd_5_00_8} {}
 std::string_view hrd_5_00_8_loader::name() const { return "hrd_5_00_8"; }
 

@@ -1,23 +1,23 @@
 [googletest]
   url=git@github.com:motis-project/googletest.git
   branch=master
-  commit=7b64fca6ea0833628d6f86255a81424365f7cc0c
+  commit=9758d168fd1ccff2d76f3bd6ef802943d0f8f7e5
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=master
-  commit=e3aa8339c765029acd59164bbd848d61c58ded0c
+  commit=abbbf9cfc1484b3a2737eff7a8f2f96d8dab85e4
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
-  commit=cee17208dba98f5f3ddaf78d0bfff9c083557ba3
+  commit=a8c1126b673b0def185b65c1e5010832612e9a78
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
-  commit=368fdcb8326ced5bb151b60c09a07c2e5f09bf55
+  commit=5ddd9956455b18fc96fd5f8095f7552d5be92c17
 [miniz]
   url=git@github.com:motis-project/miniz.git
   branch=master
-  commit=1edbdece9d71dc65c6ff405572ee37cbdcef7af4
+  commit=e857234a23de8e5a2d05d266e518220a495db0ce
 [fmt]
   url=git@github.com:motis-project/fmt.git
   branch=master
@@ -33,24 +33,36 @@
 [unordered_dense]
   url=git@github.com:motis-project/unordered_dense.git
   branch=main
-  commit=77e91016354e6d8cba24a86c5abb807de2534c02
+  commit=2c7230ae7f9c30849a5b089fb4a5d11896b45dcf
 [protobuf]
   url=git@github.com:motis-project/protobuf.git
   branch=main
-  commit=d8136b9c6a62db6ce09900ecdeb82bb793096cbd
+  commit=eac788868fc49284a2c7f9df48d311e526491f3e
 [boost]
   url=git@github.com:motis-project/boost.git
-  branch=master
-  commit=73549ebca677fe6214202a1ab580362b4f80e653
+  branch=boost-1.89.0
+  commit=77467bf580d98ea06716e2931cbe3b1f28e0cd37
 [oh]
   url=git@github.com:felixguendling/oh.git
   branch=master
-  commit=d21c30f40e52a83d6dc09bcffd0067598b5ec069
+  commit=d9eb908452e808179afeb7954e8beaa5b3626c36
 [opentelemetry-cpp]
   url=git@github.com:motis-project/opentelemetry-cpp.git
   branch=main
-  commit=60770dc9dc63e3543fc87d605b2e88fd53d7a414
+  commit=57a4c01aff876e08d9d37a3dec2c9899f0606909
 [pugixml]
   url=git@github.com:motis-project/pugixml.git
   branch=master
-  commit=60175e80e2f5e97e027ac78f7e14c5acc009ce50
+  commit=bb45e30c5bf21b3599eb5b4b7fa20547043c3e24
+[PROJ]
+  url=git@github.com:motis-project/PROJ.git
+  branch=master
+  commit=27ed257526ddf6e2fd7a1a3c92a1d3de913ce34b
+[sol2]
+  url=git@github.com:motis-project/sol2.git
+  branch=master
+  commit=40c7cbc7c5cfed1e8c7f1bbe6fcbe23d7a67fc75
+[luajit]
+  url=git@github.com:motis-project/LuaJIT.git
+  branch=v2.1
+  commit=dfa894a9c571bedc26f3a45573917a8af07603e4

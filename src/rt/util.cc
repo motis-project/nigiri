@@ -8,14 +8,14 @@
 
 namespace nigiri::rt {
 
-std::string json_to_protobuf(std::string const& json) {
+std::string json_to_protobuf(std::string_view json) {
   transit_realtime::FeedMessage msg;
   auto const status = google::protobuf::util::JsonStringToMessage(json, &msg);
   utl::verify(status.ok(), "json_to_protobuf: {}", status.message());
   return msg.SerializeAsString();
 }
 
-std::string protobuf_to_json(std::string const& protobuf) {
+std::string protobuf_to_json(std::string_view protobuf) {
   transit_realtime::FeedMessage msg;
   auto const success =
       msg.ParseFromArray(reinterpret_cast<void const*>(protobuf.data()),

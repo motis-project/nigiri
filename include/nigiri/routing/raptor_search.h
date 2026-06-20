@@ -7,7 +7,7 @@
 namespace nigiri::routing {
 
 template <typename AlgoState>
-routing_result<raptor_stats> raptor_search(
+routing_result raptor_search(
     timetable const&,
     rt_timetable const*,
     search_state&,

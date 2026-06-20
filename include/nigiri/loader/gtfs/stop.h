@@ -2,7 +2,9 @@
 
 #include <string>
 
+#include "nigiri/loader/gtfs/translations.h"
 #include "nigiri/loader/gtfs/tz_map.h"
+#include "nigiri/loader/register.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -11,13 +13,23 @@ struct timetable;
 
 namespace nigiri::loader::gtfs {
 
-using locations_map = hash_map<std::string, location_idx_t>;
+using seated_transfers_map_t =
+    hash_map<std::string /* from_trip_id */,
+             std::vector<std::string> /* to trip ids */>;
 
-locations_map read_stops(source_idx_t,
-                         timetable&,
-                         tz_map&,
-                         std::string_view stops_file_content,
-                         std::string_view transfers_file_content,
-                         unsigned link_stop_distance);
+using stops_map_t = hash_map<std::string, location_idx_t>;
+
+using location_accessible_map_t = hash_map<location_idx_t, bool>;
+
+std::tuple<stops_map_t, seated_transfers_map_t, location_accessible_map_t>
+read_stops(source_idx_t,
+           timetable&,
+           translator&,
+           tz_map&,
+           std::string_view stops_file_content,
+           std::string_view transfers_file_content,
+           unsigned link_stop_distance,
+           duration_t default_transfer_time = duration_t{2},
+           script_runner const& = script_runner{});
 
 }  // namespace nigiri::loader::gtfs

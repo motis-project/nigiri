@@ -22,29 +22,20 @@ namespace nigiri::routing {
 namespace {
 
 template <direction SearchDir, via_offset_t Vias, typename AlgoState>
-routing_result<raptor_stats> raptor_search_with_vias(
+routing_result raptor_search_with_vias(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
     AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
-  //  if constexpr (SearchDir == direction::kForward && Vias == 0U) {
-  //    using algo_t =
-  //        std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-  //                           gpu::gpu_raptor<SearchDir, false, Vias>,
-  //                           raptor<SearchDir, false, Vias>>;
-  //    return search<SearchDir, algo_t>{tt,      rtt,          s_state,
-  //                                     r_state, std::move(q), timeout}
-  //        .execute();
-  //  }
-  //  return {};
+
   if (rtt == nullptr) {
     using algo_t =
         std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
                            gpu::gpu_raptor<SearchDir, false, Vias>,
                            raptor<SearchDir, false, Vias>>;
-    return search<SearchDir, algo_t>{tt,      rtt,          s_state,
+    return search<SearchDir, algo_t, Vias, search_mode::kOneToOne>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();
   } else {
@@ -52,14 +43,14 @@ routing_result<raptor_stats> raptor_search_with_vias(
         std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
                            gpu::gpu_raptor<SearchDir, true, Vias>,
                            raptor<SearchDir, true, Vias>>;
-    return search<SearchDir, algo_t>{tt,      rtt,          s_state,
+    return search<SearchDir, algo_t, Vias, search_mode::kOneToOne>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();
   }
 }
 
 template <direction SearchDir, typename AlgoState>
-routing_result<raptor_stats> raptor_search_with_dir(
+routing_result raptor_search_with_dir(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
@@ -102,7 +93,7 @@ std::string_view location_match_mode_str(location_match_mode const mode) {
 }  // namespace
 
 template <typename AlgoState>
-routing_result<raptor_stats> raptor_search(
+routing_result raptor_search(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
@@ -168,7 +159,7 @@ routing_result<raptor_stats> raptor_search(
   }
 }
 
-template routing_result<raptor_stats> raptor_search(
+template routing_result raptor_search(
     timetable const&,
     rt_timetable const*,
     search_state&,
@@ -177,7 +168,7 @@ template routing_result<raptor_stats> raptor_search(
     direction,
     std::optional<std::chrono::seconds>);
 
-template routing_result<raptor_stats> raptor_search(
+template routing_result raptor_search(
     timetable const&,
     rt_timetable const*,
     search_state&,

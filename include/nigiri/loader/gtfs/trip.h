@@ -6,6 +6,8 @@
 #include <tuple>
 #include <vector>
 
+#include "utl/enumerate.h"
+
 #include "cista/reflection/comparable.h"
 
 #include "nigiri/loader/gtfs/flat_map.h"
@@ -14,6 +16,7 @@
 #include "nigiri/loader/gtfs/services.h"
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/stop.h"
+#include "nigiri/loader/gtfs/translations.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -25,17 +28,17 @@ using gtfs_trip_idx_t = cista::strong<std::uint32_t, struct _gtfs_trip_idx>;
 
 struct trip_data;
 
-static auto const kSingleTripBikesAllowed = bitvec{"1"};
-static auto const kSingleTripBikesNotAllowed = bitvec{"0"};
+static auto const kSingleTripTransportationAllowed = bitvec{"1"};
+static auto const kSingleTripTransportationNotAllowed = bitvec{"0"};
 
 struct block {
-  std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
-  rule_services(trip_data&);
+  std::vector<std::pair<basic_string<gtfs_trip_idx_t>, bitfield>> rule_services(
+      trip_data&);
 
   std::vector<gtfs_trip_idx_t> trips_;
 };
 
-using stop_seq_t = std::basic_string<stop::value_type>;
+using stop_seq_t = basic_string<stop::value_type>;
 
 struct frequency {
   unsigned number_of_iterations() const {
@@ -59,15 +62,24 @@ struct stop_events {
   minutes_after_midnight_t arr_{kInterpolate}, dep_{kInterpolate};
 };
 
+struct stop_time_window {
+  booking_rule_idx_t pickup_booking_rule_{booking_rule_idx_t::invalid()};
+  booking_rule_idx_t drop_off_booking_rule_{booking_rule_idx_t::invalid()};
+  minutes_after_midnight_t start_, end_;
+};
+
 struct trip {
-  trip(route const*,
+  trip(route_id_idx_t,
        bitfield const*,
        block*,
        std::string id,
-       trip_direction_idx_t headsign,
-       std::string short_name,
+       translation_idx_t headsign,
+       translation_idx_t short_name,
+       direction_id_t,
        shape_idx_t,
-       bool bikes_allowed);
+       bool bikes_allowed,
+       bool cars_allowed,
+       bool accessible);
 
   trip(trip&&) = default;
   trip& operator=(trip&&) = default;
@@ -77,38 +89,47 @@ struct trip {
 
   ~trip() = default;
 
-  void interpolate();
-
   void print_stop_times(std::ostream&,
                         timetable const&,
                         unsigned indent = 0) const;
 
-  std::string display_name(timetable const&) const;
+  std::string display_name() const;
 
-  clasz get_clasz(timetable const&) const;
+  bool has_seated_transfers() const;
 
-  route const* route_{nullptr};
+  route_id_idx_t route_{route_id_idx_t::invalid()};
   bitfield const* service_{nullptr};
   block* block_{nullptr};
   std::string id_;
-  trip_direction_idx_t headsign_;
-  std::string short_name_;
+  translation_idx_t headsign_;
+  direction_id_t direction_id_{direction_id_t::invalid()};
+  translation_idx_t short_name_;
   shape_idx_t shape_idx_;
 
   stop_seq_t stop_seq_;
   std::vector<std::uint16_t> seq_numbers_;
   std::vector<stop_events> event_times_;
-  std::vector<trip_direction_idx_t> stop_headsigns_;
+  std::vector<translation_idx_t> stop_headsigns_;
   std::vector<double> distance_traveled_;
+
+  std::vector<flex_stop_t> flex_stops_;
+  std::vector<stop_time_window> flex_time_windows_;
+
+  std::vector<gtfs_trip_idx_t> seated_out_, seated_in_;
 
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};
   bool requires_sorting_{false};
   bool bikes_allowed_{false};
+  bool cars_allowed_{false};
+  bool wheelchair_accessible_{false};
   std::uint32_t from_line_{0U}, to_line_{0U};
 
+  // GTFS extension (MBTA): trips.txt `trip_route_type` overrides the
+  // route-level clasz for this trip (e.g. rail route, replacement-bus trip).
+  std::optional<clasz> clasz_{};
+
   trip_idx_t trip_idx_{trip_idx_t::invalid()};
-  std::vector<transport_range_t> transport_ranges_;
 };
 
 struct trip_data {
@@ -116,21 +137,27 @@ struct trip_data {
   trip& get(gtfs_trip_idx_t const idx) { return data_[idx]; }
   trip const& get(std::string_view id) const { return data_[trips_.at(id)]; }
   trip& get(std::string_view id) { return data_[trips_.at(id)]; }
-  trip_direction_idx_t get_or_create_direction(timetable&, std::string_view);
 
   hash_map<std::string, gtfs_trip_idx_t> trips_;
   hash_map<std::string, std::unique_ptr<block>> blocks_;
-  hash_map<std::string, trip_direction_idx_t> directions_;
   vector_map<gtfs_trip_idx_t, trip> data_;
 };
 
-trip_data read_trips(
-    timetable&,
-    route_map_t const&,
-    traffic_days_t const&,
-    shape_loader_state const&,
-    std::string_view file_content,
-    std::array<bool, kNumClasses> const& bikes_allowed_default);
+enum class interpolate_result { kOk, kErrorLastMissing, kErrorFirstMissing };
+
+interpolate_result interpolate(std::vector<stop_events>&);
+
+trip_data read_trips(source_idx_t,
+                     source_file_idx_t,
+                     timetable&,
+                     translator&,
+                     route_map_t const&,
+                     traffic_days_t const&,
+                     shape_loader_state const&,
+                     std::string_view file_content,
+                     std::array<bool, kNumClasses> const& bikes_allowed_default,
+                     std::array<bool, kNumClasses> const& cars_allowed_default,
+                     script_runner const& = script_runner{});
 
 void read_frequencies(trip_data&, std::string_view);
 

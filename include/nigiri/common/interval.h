@@ -72,6 +72,10 @@ struct interval {
 
   bool contains(T const t) const { return t >= from_ && t < to_; }
 
+  bool contains(interval const& o) const {
+    return from_ <= o.from_ && to_ >= o.to_;
+  }
+
   bool overlaps(interval const& o) const {
     return from_ < o.to_ && to_ > o.from_;
   }
@@ -102,7 +106,9 @@ struct interval {
     return r.end();
   }
 
-  CISTA_CUDA_COMPAT auto size() const { return to_ - from_; }
+  auto size() const { return cista::to_idx(to_ - from_); }
+
+  CISTA_CUDA_COMPAT bool empty() const { return to_ - from_ == 0U; }
 
   CISTA_CUDA_COMPAT T operator[](std::size_t const i) const {
 #ifndef __CUDA_ARCH__
@@ -115,7 +121,13 @@ struct interval {
     return out << "[" << i.from_ << ", " << i.to_ << "[";
   }
 
-  friend bool operator==(interval const&, interval const&) = default;
+  friend bool operator==(interval const& a, interval const& b) {
+    return std::tie(a.from_, a.to_) == std::tie(b.from_, b.to_);
+  }
+
+  friend bool operator<(interval const& a, interval const& b) {
+    return std::tie(a.from_, a.to_) < std::tie(b.from_, b.to_);
+  }
 
   T from_{}, to_{};
 };

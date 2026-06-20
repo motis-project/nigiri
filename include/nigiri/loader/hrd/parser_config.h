@@ -148,7 +148,7 @@ struct config {
 
   bool convert_utf8_;
 
-  const char* files(filename_key k, unsigned index = 0) const {
+  char const* files(filename_key k, unsigned index = 0) const {
     return required_files_[k][index].c_str();
   }
 
@@ -161,7 +161,7 @@ struct config {
   }
 };
 
-const config hrd_5_00_8 = {
+config const hrd_5_00_8 = {
     INIT(.att_,
          {
              INIT(.code_, {0, 2}),
@@ -317,7 +317,7 @@ const config hrd_5_00_8 = {
     INIT(.fplan_file_extension_, ""),
     INIT(.convert_utf8_, false)};
 
-const config hrd_5_20_26 = {
+config const hrd_5_20_26 = {
     INIT(.att_,
          {
              INIT(.code_, {0, 2}),
@@ -473,7 +473,7 @@ const config hrd_5_20_26 = {
     INIT(.convert_utf8_, false),
 };
 
-const config hrd_5_20_39 = {
+config const hrd_5_20_39 = {
     INIT(.att_,
          {
              INIT(.code_, {0, 2}),
@@ -630,7 +630,7 @@ const config hrd_5_20_39 = {
     INIT(.convert_utf8_, true),
 };
 
-const config hrd_5_20_avv = {
+config const hrd_5_20_avv = {
     INIT(.att_,
          {
              INIT(.code_, {0, 2}),
@@ -786,7 +786,7 @@ const config hrd_5_20_avv = {
     INIT(.convert_utf8_, false),
 };
 
-const std::vector<config> configs = {hrd_5_00_8, hrd_5_20_26, hrd_5_20_39,
+std::vector<config> const configs = {hrd_5_00_8, hrd_5_20_26, hrd_5_20_39,
                                      hrd_5_20_avv};
 
 }  // namespace nigiri::loader::hrd

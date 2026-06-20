@@ -26,26 +26,18 @@ struct stop {
         in_allowed_wheelchair_{in_allowed_wheelchair ? 1U : 0U},
         out_allowed_wheelchair_{out_allowed_wheelchair ? 1U : 0U} {}
 
-  constexpr location_idx_t location_idx() const {
-    return location_idx_t{location_};
-  }
-  constexpr bool in_allowed_wheelchair() const {
-    return in_allowed_wheelchair_ != 0U;
-  }
-  constexpr bool out_allowed_wheelchair() const {
-    return out_allowed_wheelchair_ != 0U;
-  }
+  constexpr location_idx_t location_idx() const { return location_idx_t{location_}; }
+  constexpr bool in_allowed_wheelchair() const { return in_allowed_wheelchair_ != 0U; }
+  constexpr bool out_allowed_wheelchair() const { return out_allowed_wheelchair_ != 0U; }
   constexpr bool in_allowed() const { return in_allowed_ != 0U; }
   constexpr bool out_allowed() const { return out_allowed_ != 0U; }
-  constexpr bool is_cancelled() const {
-    return !in_allowed() && !out_allowed();
-  }
+  constexpr bool is_cancelled() const { return !in_allowed() && !out_allowed(); }
 
   constexpr bool in_allowed(profile_idx_t const p) const {
-    return p == 2U ? in_allowed_wheelchair() : in_allowed();
+    return p == kWheelchairProfile ? in_allowed_wheelchair() : in_allowed();
   }
   constexpr bool out_allowed(profile_idx_t const p) const {
-    return p == 2U ? out_allowed_wheelchair() : out_allowed();
+    return p == kWheelchairProfile ? out_allowed_wheelchair() : out_allowed();
   }
 
   template <direction SearchDir>

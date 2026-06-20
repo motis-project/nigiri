@@ -21,9 +21,9 @@ void for_each_schedule_transport(timetable const& tt,
   auto const lb = std::lower_bound(
       begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_), id,
       [&](pair<trip_id_idx_t, trip_idx_t> const& a, trip_id const& b) {
-        return std::tuple(tt.trip_id_src_[a.first],
-                          tt.trip_id_strings_[a.first].view()) <
-               std::tuple(b.src_, std::string_view{b.id_});
+        return std::tuple{tt.trip_id_src_[a.first],
+                          tt.trip_id_strings_[a.first].view()} <
+               std::tuple{b.src_, std::string_view{b.id_}};
       });
 
   // One trip can have several transports associated to it. Reasons:
@@ -37,7 +37,7 @@ void for_each_schedule_transport(timetable const& tt,
       if (gtfs_local_day) {
         auto const provider =
             tt.providers_[tt.transport_section_providers_[t].front()];
-        auto const tz = tt.locations_.timezones_[provider.tz_];
+        auto const tz = tt.timezones_[provider.tz_];
         tz_offset = loader::gtfs::get_noon_offset(
             date::local_days{day},
             reinterpret_cast<date::time_zone const*>(

@@ -8,8 +8,28 @@
 
 namespace nigiri::loader {
 
+struct dist_at {
+  explicit dist_at(geo::latlng const& x)
+      : x_{x}, distance_lng_degrees_{geo::approx_distance_lng_degrees(x_)} {}
+
+  double lt(geo::latlng const& y, double const z) const {
+    auto const squared_dist =
+        geo::approx_squared_distance(x_, y, distance_lng_degrees_);
+    return squared_dist < std::pow(z, 2U);
+  }
+
+  double get(geo::latlng const& y) const {
+    return std::sqrt(
+        geo::approx_squared_distance(x_, y, distance_lng_degrees_));
+  }
+
+  geo::latlng x_;
+  double distance_lng_degrees_;
+};
+
 void link_nearby_stations(timetable& tt) {
-  constexpr auto const kLinkNearbyMaxDistance = 300;  // [m];
+  constexpr auto const kLinkNearbyMaxDistance = 300.0;  // [m];
+  constexpr auto const kEqDist = 100.0;  // [m];
 
   auto const locations_rtree =
       geo::make_point_rtree(tt.locations_.coordinates_);
@@ -26,6 +46,7 @@ void link_nearby_stations(timetable& tt) {
       continue;  // no dummy stations
     }
 
+    auto dist = dist_at{from_pos};
     for (auto const& to_idx :
          locations_rtree.in_radius(from_pos, kLinkNearbyMaxDistance)) {
       auto const l_to_idx = location_idx_t{static_cast<unsigned>(to_idx)};
@@ -45,7 +66,7 @@ void link_nearby_stations(timetable& tt) {
       auto const to_transfer_time =
           duration_t{tt.locations_.transfer_time_[l_to_idx]};
       auto const walk_duration = duration_t{static_cast<unsigned>(
-          std::round(geo::distance(from_pos, to_pos) / (60 * kWalkSpeed)))};
+          std::round(dist.get(to_pos) / (60 * kWalkSpeed)))};
       auto const duration =
           std::max({from_transfer_time, to_transfer_time, walk_duration});
 
@@ -53,7 +74,10 @@ void link_nearby_stations(timetable& tt) {
           l_to_idx, duration);
       tt.locations_.preprocessing_footpaths_in_[l_to_idx].emplace_back(
           l_from_idx, duration);
-      tt.locations_.equivalences_[l_from_idx].emplace_back(l_to_idx);
+
+      if (dist.lt(to_pos, kEqDist)) {
+        tt.locations_.equivalences_[l_from_idx].emplace_back(l_to_idx);
+      }
     }
   }
 }

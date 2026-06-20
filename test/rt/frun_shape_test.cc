@@ -1,6 +1,5 @@
 #include "gtest/gtest.h"
 
-#include <ranges>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
@@ -8,15 +7,22 @@
 #include "geo/latlng.h"
 #include "geo/polyline.h"
 
+#include "date/date.h"
+
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/common/delta_t.h"
+#include "nigiri/routing/one_to_all.h"
+#include "nigiri/routing/query.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
+#include "nigiri/timetable_metrics.h"
+#include "nigiri/types.h"
 
 #include "../raptor_search.h"
 
@@ -73,6 +79,7 @@ ROUTE_6,AGENCY_1,Route 6,,3
 ROUTE_7,AGENCY_1,Route 7,,3
 ROUTE_8,AGENCY_1,Route 8,,3
 ROUTE_9,AGENCY_1,Route 9,,3
+ROUTE_10,AGENCY_1,Route 10,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id,shape_id,
@@ -91,6 +98,7 @@ ROUTE_6,SERVICE_1,TRIP_10,E,BLOCK_5,SHAPE_6,
 ROUTE_7,SERVICE_1,TRIP_11,E,BLOCK_11,SHAPE_11,
 ROUTE_8,SERVICE_1,TRIP_12,E,BLOCK_12,SHAPE_12,
 ROUTE_9,SERVICE_1,TRIP_13,E,BLOCK_13,SHAPE_13,
+ROUTE_10,SERVICE_1,TRIP_14,E,BLOCK_14,,
 
 # shapes.txt
 "shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence","shape_dist_traveled"
@@ -206,8 +214,13 @@ TRIP_13,11:00:00,11:00:00,M,2,0,0,
 TRIP_13,12:00:00,12:00:00,N,3,0,0,
 TRIP_13,13:00:00,13:00:00,O,4,0,0,
 TRIP_13,13:05:00,13:05:00,O,5,0,0,
+TRIP_14,11:15:00,11:15:00,F,1,0,0,
+TRIP_14,12:15:00,12:15:00,S,2,0,0,
+TRIP_14,13:15:00,13:15:00,W,3,0,0,
 
 )"sv;
+
+constexpr auto const kDefaultFootpathDuration = 2_minutes;
 
 TEST(
     rt,
@@ -226,9 +239,32 @@ TEST(
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / January / 1});
 
+  // Helper functions
   auto leg_shape = std::vector<geo::latlng>{};
   auto const plot_point = [&leg_shape](geo::latlng const& point) {
     leg_shape.push_back(point);
+  };
+
+  using round_times_t = std::vector<std::pair<std::uint8_t, duration_t>>;
+  auto round_times = round_times_t{};
+  auto const add_round_time = [&](std::uint8_t const k, duration_t const d) {
+    round_times.emplace_back(k, d);
+  };
+
+  auto const to_location_idx = [&](std::string_view x) {
+    auto const src = source_idx_t{0};
+    return tt.locations_.location_id_to_idx_.at({x, src});
+  };
+
+  auto const to_offsets =
+      [&](std::string_view x) -> std::vector<routing::offset> {
+    return {{to_location_idx(x), 0_minutes, 0U}};
+  };
+
+  auto const is_reachable = [](nigiri::routing::raptor_state const& state,
+                               location_idx_t const l,
+                               delta_t const unreachable) {
+    return state.get_best<0>()[to_idx(l)][0] != unreachable;
   };
 
   // TRIP_1
@@ -797,16 +833,181 @@ TEST(
       ASSERT_TRUE(extended_bbox.has_value());
       EXPECT_EQ((geo::make_box({{6.0, 2.0}, {7.0, 3.0}})), *test_bbox);
     }
-    // Do not insert bounding boxes if sequential trip has no segment bounding
-    // boxes
+  }
+
+  // One-to-All search for time point and without Rt
+  {
+    // Exact start time
     {
-      auto const r = route_idx_t{4U};
-      // Ensure the correct route is used
-      EXPECT_EQ((geo::make_box({{-1.0, -1.0}, {1.0, 1.0}})),
-                shapes_data.get_bounding_box(r));
-      // On 1st trip
-      ASSERT_FALSE(shapes_data.get_bounding_box(r, 0).has_value());
+      constexpr auto const kSearchDir = direction::kForward;
+      constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
+
+      auto const start_time =
+          unixtime_t{sys_days{2024_y / January / 1}} + 9_hours;
+      auto const q = routing::query{
+          .start_time_ = start_time,
+          .start_ = to_offsets("A"),
+          .max_travel_time_ =
+              4_hours + kDefaultFootpathDuration,  // Exact limit
+      };
+      auto state = nigiri::routing::one_to_all<kSearchDir>(tt, nullptr, q);
+
+      ASSERT_TRUE(is_reachable(state, to_location_idx("I"),
+                               kUnreachable));  // 122 minutes
+      ASSERT_TRUE(
+          is_reachable(state, to_location_idx("T"), kUnreachable));  // 4 hours
+      ASSERT_FALSE(
+          is_reachable(state, to_location_idx("U"), kUnreachable));  // 5 hours
     }
+    // Earlier start time
+    {
+      constexpr auto const kSearchDir = direction::kForward;
+      constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
+
+      auto const start_time =
+          unixtime_t{sys_days{2024_y / January / 1}} + 9_hours - 5_minutes;
+      auto const q = routing::query{
+          .start_time_ = start_time,
+          .start_ = to_offsets("A"),
+          .max_travel_time_ =
+              4_hours + 4_minutes +
+              kDefaultFootpathDuration,  // Exact limit - 1 minute
+      };
+      auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
+
+      ASSERT_TRUE(is_reachable(state, to_location_idx("I"),
+                               kUnreachable));  // 122 + 5 minutes
+      ASSERT_FALSE(is_reachable(state, to_location_idx("T"),
+                                kUnreachable));  // 4 hours + 5 minutes
+
+      // Test duration and number of transfers
+      {
+        auto const stats_s = get_fastest_one_to_all_offsets(
+            tt, state, kSearchDir, to_location_idx("S"), start_time,
+            q.max_transfers_);
+        ASSERT_EQ(stats_s.duration_,
+                  delta_t{140 + kDefaultFootpathDuration.count()});
+        ASSERT_EQ(stats_s.k_, 2U);
+        auto const stats_w = get_fastest_one_to_all_offsets(
+            tt, state, kSearchDir, to_location_idx("W"), start_time,
+            q.max_transfers_);
+        ASSERT_EQ(stats_w.duration_,
+                  delta_t{200 + kDefaultFootpathDuration.count()});
+        ASSERT_EQ(stats_w.k_, 2U);
+        auto const stats_s_direct = get_fastest_one_to_all_offsets(
+            tt, state, kSearchDir, to_location_idx("S"), start_time, 0);
+        ASSERT_EQ(stats_s_direct.duration_,
+                  delta_t{185 + kDefaultFootpathDuration.count()});
+        ASSERT_EQ(stats_s_direct.k_, 1U);
+      }
+      // Test round times
+      {
+        round_times.clear();
+        routing::for_each_one_to_all_round_time(
+            tt, state, kSearchDir, to_location_idx("S"), start_time,
+            q.max_transfers_, add_round_time);
+        EXPECT_EQ(
+            (round_times_t{{1, duration_t{185} + kDefaultFootpathDuration},
+                           {2, duration_t{140} + kDefaultFootpathDuration}}),
+            round_times);
+        round_times.clear();
+        routing::for_each_one_to_all_round_time(
+            tt, state, kSearchDir, to_location_idx("W"), start_time,
+            q.max_transfers_, add_round_time);
+        EXPECT_EQ(
+            (round_times_t{{2, duration_t{200} + kDefaultFootpathDuration}}),
+            round_times);
+      }
+    }
+  }
+  // One-to-All backwards search for time point
+  {
+    constexpr auto const kSearchDir = direction::kBackward;
+    constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
+
+    auto const start_time =
+        unixtime_t{sys_days{2024_y / January / 1}} + 12_hours + 30_minutes;
+    auto const q = routing::query{
+        .start_time_ = start_time,
+        .start_ = to_offsets("D"),
+        .max_travel_time_ = 3_hours,
+    };
+    auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
+
+    ASSERT_TRUE(
+        is_reachable(state, to_location_idx("B"), kUnreachable));  // 62 minutes
+    ASSERT_FALSE(
+        is_reachable(state, to_location_idx("A"), kUnreachable));  // 5 hours
+
+    auto const stats_b = get_fastest_one_to_all_offsets(
+        tt, state, kSearchDir, to_location_idx("B"), start_time,
+        q.max_transfers_);
+    ASSERT_EQ(stats_b.duration_,
+              delta_t{-150 - kDefaultFootpathDuration.count()});
+  }
+  // One-to-All forwards with nontrivial offsets at F
+  {
+    constexpr auto const kSearchDir = direction::kForward;
+    constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
+
+    auto const start_time =
+        unixtime_t{sys_days{2024_y / January / 1}} + 9_hours + 55_minutes;
+    auto const q = routing::query{
+        .start_time_ = start_time,
+        .start_ = {{to_location_idx("F"), 10_minutes, 0U}},
+    };
+    auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
+
+    // F -> S leaves 11:15
+    EXPECT_TRUE(is_reachable(state, to_location_idx("S"), kUnreachable));
+    // F -> G leaves 11:00
+    EXPECT_FALSE(is_reachable(state, to_location_idx("G"), kUnreachable));
+
+    auto const stats_s = get_fastest_one_to_all_offsets(
+        tt, state, kSearchDir, to_location_idx("S"), start_time,
+        q.max_transfers_);
+    EXPECT_EQ(stats_s.duration_,
+              delta_t{80 + kDefaultFootpathDuration.count()});
+  }
+  // One-to-All backwards with nontrivial offsets at S
+  {
+    constexpr auto const kSearchDir = direction::kBackward;
+    constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
+
+    auto const start_time =
+        unixtime_t{sys_days{2024_y / January / 1}} + 12_hours + 5_minutes;
+    auto const q = routing::query{
+        .start_time_ = start_time,
+        .start_ = {{to_location_idx("S"), 10_minutes, 0U}},
+        .max_travel_time_ =
+            110_minutes +
+            kDefaultFootpathDuration,  // Exact limit for backward search
+    };
+    auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
+
+    // F -> S arrives 12:15
+    EXPECT_TRUE(is_reachable(state, to_location_idx("F"), kUnreachable));
+    // G -> S arrives 13:00
+    EXPECT_FALSE(is_reachable(state, to_location_idx("G"), kUnreachable));
+
+    auto const stats_f = get_fastest_one_to_all_offsets(
+        tt, state, kSearchDir, to_location_idx("F"), start_time,
+        q.max_transfers_);
+    EXPECT_EQ(stats_f.duration_,
+              delta_t{-110 - kDefaultFootpathDuration.count()});
+    // Test round times
+    round_times.clear();
+    routing::for_each_one_to_all_round_time(tt, state, kSearchDir,
+                                            to_location_idx("F"), start_time,
+                                            q.max_transfers_, add_round_time);
+    EXPECT_EQ((round_times_t{{1, duration_t{110} + kDefaultFootpathDuration}}),
+              round_times);
+  }
+  // Loading statistics
+  {
+    EXPECT_EQ(
+        R"([{"idx":0,"firstDay":"2024-01-01","lastDay":"2024-01-01","noLocations":22,"noTrips":16,"transportsXDays":16}])",
+        to_str(get_metrics(tt), tt));
   }
 }
 

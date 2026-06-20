@@ -5,12 +5,12 @@
 
 namespace nigiri {
 
-std::pair<i32_minutes, date::days> mam_dist(i32_minutes const expected,
-                                            i32_minutes const actual) {
-  assert(i32_minutes{0} <= expected && expected < i32_minutes{1440});
-  assert(i32_minutes{0} <= actual && actual < i32_minutes{1440});
+std::pair<i32_minutes, date::days> mam_dist(i32_minutes const a,
+                                            i32_minutes const b) {
+  assert(i32_minutes{0} <= a && a < i32_minutes{1440});
+  assert(i32_minutes{0} <= b && b < i32_minutes{1440});
 
-  auto const diff = (expected - actual).count();
+  auto const diff = (a - b).count();
   auto const abs = std::abs(diff);
 
   if (abs > 1440 / 2) {

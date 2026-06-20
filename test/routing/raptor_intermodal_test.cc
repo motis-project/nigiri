@@ -5,6 +5,7 @@
 
 #include "../loader/hrd/hrd_timetable.h"
 #include "../raptor_search.h"
+#include "results_to_string.h"
 
 using namespace date;
 using namespace nigiri;
@@ -30,7 +31,6 @@ leg 3: (B, 0000002) [2020-03-30 06:45] -> (C, 0000003) [2020-03-30 07:45]
 leg 4: (C, 0000003) [2020-03-30 07:45] -> (END, END) [2020-03-30 08:00]
   MUMO (id=77, duration=15)
 
-
 [2020-03-30 05:50, 2020-03-30 08:30]
 TRANSFERS: 1
      FROM: (START, START) [2020-03-30 05:50]
@@ -47,7 +47,6 @@ leg 3: (B, 0000002) [2020-03-30 07:15] -> (C, 0000003) [2020-03-30 08:15]
    1: 0000003 C............................................... a: 30.03 08:15 [30.03 10:15]
 leg 4: (C, 0000003) [2020-03-30 08:15] -> (END, END) [2020-03-30 08:30]
   MUMO (id=77, duration=15)
-
 
 )";
 
@@ -70,14 +69,7 @@ TEST(routing, raptor_intermodal_forward) {
                unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
       nigiri::direction::kForward);
 
-  std::stringstream ss;
-  ss << "\n";
-  for (auto const& x : results) {
-    x.print(ss, tt);
-    ss << "\n\n";
-  }
-  std::cout << ss.str() << "\n";
-  EXPECT_EQ(std::string_view{fwd_journeys}, ss.str());
+  EXPECT_EQ(std::string_view{fwd_journeys}, to_string(tt, results));
 };
 
 constexpr auto const bwd_journeys = R"(
@@ -98,7 +90,6 @@ leg 3: (B, 0000002) [2020-03-30 01:45] -> (C, 0000003) [2020-03-30 02:45]
 leg 4: (C, 0000003) [2020-03-30 02:45] -> (START, START) [2020-03-30 03:00]
   MUMO (id=99, duration=15)
 
-
 [2020-03-30 00:50, 2020-03-30 03:30]
 TRANSFERS: 1
      FROM: (END, END) [2020-03-30 00:50]
@@ -115,7 +106,6 @@ leg 3: (B, 0000002) [2020-03-30 02:15] -> (C, 0000003) [2020-03-30 03:15]
    1: 0000003 C............................................... a: 30.03 03:15 [30.03 05:15]
 leg 4: (C, 0000003) [2020-03-30 03:15] -> (START, START) [2020-03-30 03:30]
   MUMO (id=99, duration=15)
-
 
 [2020-03-30 01:20, 2020-03-30 04:00]
 TRANSFERS: 1
@@ -134,7 +124,6 @@ leg 3: (B, 0000002) [2020-03-30 02:45] -> (C, 0000003) [2020-03-30 03:45]
 leg 4: (C, 0000003) [2020-03-30 03:45] -> (START, START) [2020-03-30 04:00]
   MUMO (id=99, duration=15)
 
-
 [2020-03-30 01:50, 2020-03-30 04:30]
 TRANSFERS: 1
      FROM: (END, END) [2020-03-30 01:50]
@@ -151,7 +140,6 @@ leg 3: (B, 0000002) [2020-03-30 03:15] -> (C, 0000003) [2020-03-30 04:15]
    1: 0000003 C............................................... a: 30.03 04:15 [30.03 06:15]
 leg 4: (C, 0000003) [2020-03-30 04:15] -> (START, START) [2020-03-30 04:30]
   MUMO (id=99, duration=15)
-
 
 [2020-03-30 02:20, 2020-03-30 05:00]
 TRANSFERS: 1
@@ -170,7 +158,6 @@ leg 3: (B, 0000002) [2020-03-30 03:45] -> (C, 0000003) [2020-03-30 04:45]
 leg 4: (C, 0000003) [2020-03-30 04:45] -> (START, START) [2020-03-30 05:00]
   MUMO (id=99, duration=15)
 
-
 [2020-03-30 02:50, 2020-03-30 05:30]
 TRANSFERS: 1
      FROM: (END, END) [2020-03-30 02:50]
@@ -187,7 +174,6 @@ leg 3: (B, 0000002) [2020-03-30 04:15] -> (C, 0000003) [2020-03-30 05:15]
    1: 0000003 C............................................... a: 30.03 05:15 [30.03 07:15]
 leg 4: (C, 0000003) [2020-03-30 05:15] -> (START, START) [2020-03-30 05:30]
   MUMO (id=99, duration=15)
-
 
 [2020-03-30 03:20, 2020-03-30 06:00]
 TRANSFERS: 1
@@ -206,7 +192,6 @@ leg 3: (B, 0000002) [2020-03-30 04:45] -> (C, 0000003) [2020-03-30 05:45]
 leg 4: (C, 0000003) [2020-03-30 05:45] -> (START, START) [2020-03-30 06:00]
   MUMO (id=99, duration=15)
 
-
 [2020-03-30 03:50, 2020-03-30 06:30]
 TRANSFERS: 1
      FROM: (END, END) [2020-03-30 03:50]
@@ -223,7 +208,6 @@ leg 3: (B, 0000002) [2020-03-30 05:15] -> (C, 0000003) [2020-03-30 06:15]
    1: 0000003 C............................................... a: 30.03 06:15 [30.03 08:15]
 leg 4: (C, 0000003) [2020-03-30 06:15] -> (START, START) [2020-03-30 06:30]
   MUMO (id=99, duration=15)
-
 
 )";
 
@@ -246,12 +230,5 @@ TEST(routing, raptor_intermodal_backward) {
                            unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
       nigiri::direction::kBackward, 3U, true, true);
 
-  std::stringstream ss;
-  ss << "\n";
-  for (auto const& x : results) {
-    x.print(ss, tt);
-    ss << "\n\n";
-  }
-
-  EXPECT_EQ(std::string_view{bwd_journeys}, ss.str());
+  EXPECT_EQ(std::string_view{bwd_journeys}, to_string(tt, results));
 }

@@ -17,7 +17,7 @@ struct stamm;
 struct hrd_location {
   location_idx_t idx_;
   eva_number id_;
-  string name_;
+  std::string name_;
   geo::latlng pos_;
   vector<eva_number> children_;
   hash_set<eva_number> equivalent_;

@@ -18,12 +18,11 @@ raptor_state& raptor_state::resize(unsigned const n_locations,
   tmp_storage_.resize(n_locations * (kMaxVias + 1));
   best_storage_.resize(n_locations * (kMaxVias + 1));
   round_times_storage_.resize(n_locations * (kMaxVias + 1) *
-                              (kMaxTransfers + 1));
+                              (kMaxTransfers + 2));
   station_mark_.resize(n_locations);
   prev_station_mark_.resize(n_locations);
   route_mark_.resize(n_routes);
   rt_transport_mark_.resize(n_rt_transports);
-  end_reachable_.resize(n_locations);
   return *this;
 }
 
@@ -34,18 +33,18 @@ void raptor_state::print(timetable const& tt,
   auto invalid_array = std::array<delta_t, Vias + 1>{};
   invalid_array.fill(invalid);
 
-  //  auto const& tmp = get_tmp<Vias>();
-  //  auto const& best = get_best<Vias>();
+  auto const& tmp = get_tmp<Vias>();
+  auto const& best = get_best<Vias>();
   auto const& round_times = get_round_times<Vias>();
 
-  //  auto const has_empty_rounds = [&](std::uint32_t const l) {
-  //    for (auto k = 0U; k != kMaxTransfers + 1U; ++k) {
-  //      if (round_times[k][l] != invalid_array) {
-  //        return false;
-  //      }
-  //    }
-  //    return true;
-  //  };
+  auto const has_empty_rounds = [&](std::uint32_t const l) {
+    for (auto k = 0U; k != kMaxTransfers + 2U; ++k) {
+      if (round_times[k][l] != invalid_array) {
+        return false;
+      }
+    }
+    return true;
+  };
 
   auto const print_delta = [&](delta_t const d) {
     if (d == invalid) {
@@ -65,21 +64,21 @@ void raptor_state::print(timetable const& tt,
   };
 
   for (auto l = 0U; l != tt.n_locations(); ++l) {
-    //    if (best[l] == invalid_array && has_empty_rounds(l)) {
-    //      continue;
-    //    }
+    if (best[l] == invalid_array && has_empty_rounds(l)) {
+      continue;
+    }
 
-    fmt::print("{:80}  ", location{tt, location_idx_t{l}});
+    fmt::print("{:80}  ", fmt::streamed(loc{tt, location_idx_t{l}}));
 
-    //    fmt::print("tmp=");
-    //    print_deltas(tmp[l]);
-    //    fmt::print(", ");
+    fmt::print("tmp=");
+    print_deltas(tmp[l]);
+    fmt::print(", ");
 
-    //    auto const& b = best[l];
-    //    fmt::print("best=");
-    //    print_deltas(b);
+    auto const& b = best[l];
+    fmt::print("best=");
+    print_deltas(b);
     fmt::print(", round_times: ");
-    for (auto i = 0U; i != kMaxTransfers + 1U; ++i) {
+    for (auto i = 0U; i != kMaxTransfers + 2U; ++i) {
       auto const& t = round_times[i][l];
       fmt::print("{}:", i);
       print_deltas(t);
