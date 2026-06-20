@@ -8,6 +8,7 @@
 
 #include "cooperative_groups.h"
 
+#include "thrust/copy.h"
 #include "thrust/device_vector.h"
 #include "thrust/fill.h"
 #include "thrust/host_vector.h"
@@ -20,6 +21,12 @@
 namespace cg = cooperative_groups;
 
 namespace nigiri::routing::gpu {
+
+// packed time||breadcrumb sentinel: worst time key (0xFFFF) + empty breadcrumb.
+// Direction-independent: to_key(kInvalidDelta) == 0xFFFF for both directions.
+static constexpr std::uint64_t kInvalidPacked = static_cast<std::uint64_t>(
+                                                    0xFFFFU)
+                                                << 48U;
 
 #define CUDA_CHECK(code)                                              \
   if ((code) != cudaSuccess) {                                        \
@@ -46,6 +53,7 @@ struct gpu_timetable::impl {
         route_location_seq_{tt.route_location_seq_},
         location_routes_{tt.location_routes_},
         transport_traffic_days_{to_device(tt.transport_traffic_days_)},
+        transport_route_{to_device(tt.transport_route_)},
         bitfields_{to_device(tt.bitfields_)},
         internal_interval_days_{tt.internal_interval_days()} {}
 
@@ -65,6 +73,7 @@ struct gpu_timetable::impl {
             .route_location_seq_ = to_view(route_location_seq_),
             .location_routes_ = to_view(location_routes_),
             .transport_traffic_days_ = to_view(transport_traffic_days_),
+            .transport_route_ = to_view(transport_route_),
             .bitfields_ = to_view(bitfields_),
             .internal_interval_days_ = internal_interval_days_};
   }
@@ -88,6 +97,7 @@ struct gpu_timetable::impl {
   device_vecvec<decltype(t{}.location_routes_)> location_routes_;
 
   thrust::device_vector<bitfield_idx_t> transport_traffic_days_;
+  thrust::device_vector<route_idx_t> transport_route_;
   thrust::device_vector<bitfield> bitfields_;
 
   interval<date::sys_days> internal_interval_days_;
@@ -201,10 +211,11 @@ struct gpu_raptor_state::impl {
   std::uint32_t n_locations_;
   bool is_intermodal_dest_;
   thrust::device_vector<std::uint32_t> any_marked_;
-  thrust::device_vector<delta_t> time_at_dest_;
-  thrust::device_vector<delta_t> tmp_;
-  thrust::device_vector<delta_t> best_;
-  thrust::device_vector<delta_t> round_times_;
+  // packed time||breadcrumb words (see device_times / breadcrumb.h)
+  thrust::device_vector<std::uint64_t> time_at_dest_;
+  thrust::device_vector<std::uint64_t> tmp_;
+  thrust::device_vector<std::uint64_t> best_;
+  thrust::device_vector<std::uint64_t> round_times_;
   thrust::device_vector<std::uint32_t> station_mark_;
   thrust::device_vector<std::uint32_t> prev_station_mark_;
   thrust::device_vector<std::uint32_t> route_mark_;
@@ -217,9 +228,14 @@ struct gpu_raptor_state::impl {
   thrust::device_vector<std::uint16_t> dist_to_dest_;
   thrust::device_vector<std::uint16_t> lb_;
 
+  // reusable reconstruction buffers (avoid per-query cudaMalloc)
+  thrust::device_vector<location_idx_t> rec_dest_;
+  thrust::device_vector<gpu_journey> rec_out_;
+  thrust::host_vector<gpu_journey> rec_host_out_;
+
   device_timetable tt_;
 
-  thrust::host_vector<delta_t> host_round_times_;
+  thrust::host_vector<std::uint64_t> host_round_times_;
   raptor_state host_state_;
 
   cudaStream_t stream_;
@@ -278,6 +294,24 @@ __global__ void exec_raptor(unixtime_t const start_time,
                             unixtime_t const worst_time_at_dest,
                             raptor_impl<SearchDir, Rt, Vias> r) {
   r.execute(start_time, max_transfers, worst_time_at_dest);
+}
+
+template <direction SearchDir, bool Rt, via_offset_t Vias>
+__global__ void reconstruct_kernel(location_idx_t const* const dest_list,
+                                   std::uint32_t const n_dest,
+                                   std::uint32_t const end_k,
+                                   raptor_impl<SearchDir, Rt, Vias> r,
+                                   gpu_journey* const out) {
+  auto const tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= n_dest * end_k) {
+    return;
+  }
+  out[tid].valid_ = 0U;
+  auto const k = tid % end_k;
+  if (k == 0U) {
+    return;
+  }
+  r.reconstruct_journey(dest_list[tid / end_k], k, &out[tid]);
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
@@ -345,25 +379,83 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
   }
   CUDA_CHECK(cudaPeekAtLastError());
 
-  sync_round_times();
-  //  std::cout << "GPU RAPTOR STATE [start_time=" << start_time << "]\n";
-  //  s.host_state_.print<Vias>(tt_, base(), kInvalidDelta<SearchDir>);
+  // --- GPU reconstruction: build journeys (with legs) on the device, then
+  // materialize them on the host. No full round-time transfer. ---
+  auto const end_k =
+      static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 1U);
 
-  auto const round_times = s.host_state_.get_round_times<Vias>();
-  auto const end_k = std::min(max_transfers, kMaxTransfers) + 1U;
-  is_dest_.for_each_set_bit([&](auto const i) {
-    for (auto k = 1U; k != end_k; ++k) {
-      auto const dest_time = round_times[k][i][Vias];
-      if (dest_time != kInvalid) {
-        auto const [optimal, it, dominated_by] = results.add(
-            journey{.legs_ = {},
-                    .start_time_ = start_time,
-                    .dest_time_ = delta_to_unix(base(), dest_time),
-                    .dest_ = location_idx_t{i},
-                    .transfers_ = static_cast<std::uint8_t>(k - 1)});
+  auto dest_list = std::vector<location_idx_t>{};
+  if (s.is_intermodal_dest_) {
+    dest_list.push_back(get_special_station(special_station::kEnd));
+  } else {
+    is_dest_.for_each_set_bit(
+        [&](auto const i) { dest_list.push_back(location_idx_t{i}); });
+  }
+  if (dest_list.empty()) {
+    return;
+  }
+
+  auto const n_dest = static_cast<std::uint32_t>(dest_list.size());
+  auto const total = n_dest * end_k;
+  // reuse preallocated buffers (resize only grows; no per-query cudaMalloc once
+  // warmed up)
+  s.rec_dest_ = dest_list;  // small host->device copy
+  if (s.rec_out_.size() < total) {
+    s.rec_out_.resize(total);
+  }
+  {
+    auto const threads = 128U;
+    auto const blocks = (total + threads - 1U) / threads;
+    reconstruct_kernel<SearchDir, Rt, Vias><<<blocks, threads, 0, s.stream_>>>(
+        thrust::raw_pointer_cast(s.rec_dest_.data()), n_dest, end_k, r,
+        thrust::raw_pointer_cast(s.rec_out_.data()));
+    cudaStreamSynchronize(s.stream_);
+  }
+  CUDA_CHECK(cudaPeekAtLastError());
+
+  if (s.rec_host_out_.size() < total) {
+    s.rec_host_out_.resize(total);
+  }
+  thrust::copy(s.rec_out_.begin(), s.rec_out_.begin() + total,
+               s.rec_host_out_.begin());
+  for (auto idx = std::uint32_t{0U}; idx != total; ++idx) {
+    auto const& gj = s.rec_host_out_[idx];
+    if (gj.valid_ == 0U) {
+      continue;
+    }
+    auto j = journey{};
+    j.start_time_ = start_time;
+    j.dest_time_ = delta_to_unix(base(), gj.dest_time_);
+    j.dest_ = location_idx_t{gj.dest_l_};
+    j.transfers_ = gj.transfers_;
+    // POD legs are reverse-chronological -> emit in chronological order
+    for (auto li = static_cast<int>(gj.n_legs_) - 1; li >= 0; --li) {
+      auto const& gl = gj.legs_[static_cast<unsigned>(li)];
+      auto const from = location_idx_t{gl.from_l_};
+      auto const to = location_idx_t{gl.to_l_};
+      auto const dep = delta_to_unix(base(), gl.dep_);
+      auto const arr = delta_to_unix(base(), gl.arr_);
+      if (gl.is_footpath_ != 0U) {
+        j.legs_.emplace_back(journey::leg{SearchDir, from, to, dep, arr,
+                                          footpath{to, duration_t{static_cast<
+                                              duration_t::rep>(
+                                              gl.fp_duration_)}}});
+      } else {
+        auto const t_idx = transport_idx_t{gl.transport_};
+        auto const route = tt_.transport_route_[t_idx];
+        auto const route_len =
+            static_cast<stop_idx_t>(tt_.route_location_seq_[route].size());
+        auto const run =
+            rt::run{.t_ = transport{t_idx, day_idx_t{gl.day_}},
+                    .stop_range_ = interval<stop_idx_t>{stop_idx_t{0},
+                                                        route_len}};
+        j.legs_.emplace_back(journey::leg{
+            SearchDir, from, to, dep, arr,
+            journey::run_enter_exit{run, gl.enter_stop_, gl.exit_stop_}});
       }
     }
-  });
+    results.add(std::move(j));
+  }
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
@@ -373,31 +465,37 @@ void gpu_raptor<SearchDir, Rt, Vias>::sync_round_times() {
       cudaSuccess ==
           cudaMemcpy(thrust::raw_pointer_cast(s.host_round_times_.data()),
                      thrust::raw_pointer_cast(s.round_times_.data()),
-                     s.round_times_.size() * sizeof(delta_t),
+                     s.round_times_.size() * sizeof(std::uint64_t),
                      cudaMemcpyDeviceToHost),
       "could not sync round times");
   s.host_state_.round_times_storage_.resize(s.host_round_times_.size());
-  std::copy(begin(s.host_round_times_), end(s.host_round_times_),
-            begin(s.host_state_.round_times_storage_));
+  // unpack the time component from the packed time||breadcrumb words
+  for (auto i = std::size_t{0U}; i != s.host_round_times_.size(); ++i) {
+    s.host_state_.round_times_storage_[i] =
+        device_times<SearchDir, Vias + 1U>::from_key(
+            static_cast<std::uint16_t>(s.host_round_times_[i] >> 48U));
+  }
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
 void gpu_raptor<SearchDir, Rt, Vias>::reset_arrivals() {
   thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
                begin(state_.impl_->time_at_dest_),
-               end(state_.impl_->time_at_dest_), kInvalid);
+               end(state_.impl_->time_at_dest_), kInvalidPacked);
   thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
                begin(state_.impl_->round_times_),
-               end(state_.impl_->round_times_), kInvalid);
+               end(state_.impl_->round_times_), kInvalidPacked);
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
 void gpu_raptor<SearchDir, Rt, Vias>::next_start_time() {
   starts_.clear();
   thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
-               begin(state_.impl_->best_), end(state_.impl_->best_), kInvalid);
+               begin(state_.impl_->best_), end(state_.impl_->best_),
+               kInvalidPacked);
   thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
-               begin(state_.impl_->tmp_), end(state_.impl_->tmp_), kInvalid);
+               begin(state_.impl_->tmp_), end(state_.impl_->tmp_),
+               kInvalidPacked);
   thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
                begin(state_.impl_->prev_station_mark_),
                end(state_.impl_->prev_station_mark_), 0U);
@@ -415,9 +513,11 @@ void gpu_raptor<SearchDir, Rt, Vias>::next_start_time() {
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
-void gpu_raptor<SearchDir, Rt, Vias>::reconstruct(query const& q, journey& j) {
-  reconstruct_journey<SearchDir>(tt_, rtt_, q, state_.impl_->host_state_, j,
-                                 base(), base_);
+void gpu_raptor<SearchDir, Rt, Vias>::reconstruct(query const&, journey&) {
+  // No-op: journeys are reconstructed on the GPU inside execute() (legs are
+  // already filled). The host round-time matrix is no longer synced, so the CPU
+  // reconstruct path is unavailable. Journeys we could not reconstruct stay
+  // leg-less and are dropped by the search.
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>

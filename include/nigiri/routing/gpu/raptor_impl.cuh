@@ -12,6 +12,7 @@
 #include "nigiri/routing/gpu/device_bitvec.cuh"
 #include "nigiri/routing/gpu/device_times.h"
 #include "nigiri/routing/gpu/device_timetable.cuh"
+#include "nigiri/routing/gpu/journey_pod.h"
 #include "nigiri/routing/gpu/stride.cuh"
 #include "nigiri/routing/gpu/types.cuh"
 
@@ -76,7 +77,7 @@ struct raptor_impl {
       auto const t = unix_to_delta(base(), starts_[i].second);
       auto const v = (Vias != 0 && is_via_[0][to_idx(l)]) ? 1U : 0U;
       best_.update_min(l, v, t);
-      round_times_.update_min(0U, l, v, t);
+      round_times_.update_min(0U, l, v, t, make_start_bc());
       station_mark_.mark(to_idx(l));
     }
 
@@ -171,6 +172,129 @@ struct raptor_impl {
     cooperative_groups::this_grid().sync();
   }
 
+  // Reconstruct the journey arriving at `dest` using exactly `K` rounds by
+  // following the breadcrumbs back to the start. Pure pointer-chase: each
+  // breadcrumb carries (transport, board_stop, alight_stop); the route comes
+  // from transport_route_, the day is recovered from the arrival time minus the
+  // event's over-midnight offset, and the transfer/footpath hop is derived from
+  // the alight location. Legs are written in reverse-chronological order; the
+  // host reverses them. Writes out->valid_ = 1 on success.
+  __device__ void reconstruct_journey(location_idx_t const dest,
+                                      unsigned const K,
+                                      gpu_journey* out) {
+    out->valid_ = 0U;
+    auto cur_v = static_cast<via_offset_t>(Vias);
+    auto const dest_time =
+        round_times_.get(static_cast<std::uint8_t>(K), dest, cur_v);
+    if (dest_time == kInvalid) {
+      return;
+    }
+    out->dest_l_ = dest.v_;
+    out->dest_time_ = dest_time;
+    out->transfers_ = static_cast<std::uint8_t>(K - 1U);
+
+    auto const ev_arr_type = kFwd ? event_type::kArr : event_type::kDep;
+    auto const ev_dep_type = kFwd ? event_type::kDep : event_type::kArr;
+
+    auto cur_l = dest;
+    auto cur_k = K;
+    auto n = 0U;
+    while (cur_k >= 1U) {
+      auto const bc =
+          round_times_.get_bc(static_cast<std::uint8_t>(cur_k), cur_l, cur_v);
+      // egress only applies to intermodal queries; a real station may share the
+      // special kEnd index, so guard with is_intermodal_dest()
+      if (bc_is_start(bc) ||
+          (is_intermodal_dest() && cur_l == kIntermodalTarget)) {
+        break;
+      }
+
+      auto const t_idx = transport_idx_t{bc_transport(bc)};
+      auto const board = static_cast<stop_idx_t>(bc_board(bc));
+      auto const alight = static_cast<stop_idx_t>(bc_alight(bc));
+      auto const r = tt_.transport_route_[t_idx];
+      auto const arr_at_cur =
+          round_times_.get(static_cast<std::uint8_t>(cur_k), cur_l, cur_v);
+
+      // recover the traffic (first-departure) day of the transport
+      auto const event_mam_full =
+          tt_.event_mam(r, t_idx, alight, ev_arr_type).count();
+      auto const split_arr = split(arr_at_cur);
+      auto found_day = false;
+      auto day = day_idx_t{0U};
+      auto train_arr = kInvalid;
+      for (auto off = 0; off != 2; ++off) {
+        auto const cand = as_int(split_arr.first) - event_mam_full / 1440 -
+                          (kFwd ? off : -off);
+        if (cand < 0) {
+          continue;
+        }
+        if (!is_transport_active(t_idx, static_cast<std::size_t>(cand))) {
+          continue;
+        }
+        auto const tr =
+            transport{t_idx, day_idx_t{static_cast<day_idx_t::value_t>(cand)}};
+        auto const ev = time_at_stop(r, tr, alight, ev_arr_type);
+        if (is_better_or_eq(ev, arr_at_cur)) {
+          day = day_idx_t{static_cast<day_idx_t::value_t>(cand)};
+          train_arr = ev;
+          found_day = true;
+          break;
+        }
+      }
+      if (!found_day) {
+        return;  // could not recover -> leave invalid
+      }
+
+      auto const tr = transport{t_idx, day};
+      auto const dep_at_board = time_at_stop(r, tr, board, ev_dep_type);
+      auto const stop_seq = tt_.route_location_seq_[r];
+      auto const board_loc = stop{stop_seq[board]}.location_idx();
+      auto const alight_loc = stop{stop_seq[alight]}.location_idx();
+
+      // footpath/transfer leg from the train's alighting stop to cur_l. nigiri
+      // represents the same-station transfer between two trains as a self
+      // footpath (B->B) with the transfer time, so we emit it whenever there is
+      // a non-zero cost (a real footpath, or a same-station transfer), and skip
+      // it only for a zero-cost direct arrival (e.g. at the destination).
+      if (alight_loc != cur_l || train_arr != arr_at_cur) {
+        if (n >= kMaxRecLegs) {
+          return;
+        }
+        auto& lg = out->legs_[n++];
+        lg.is_footpath_ = 1U;
+        lg.from_l_ = alight_loc.v_;
+        lg.to_l_ = cur_l.v_;
+        lg.dep_ = train_arr;
+        lg.arr_ = arr_at_cur;
+        lg.fp_duration_ = static_cast<std::uint16_t>(
+            kFwd ? (arr_at_cur - train_arr) : (train_arr - arr_at_cur));
+      }
+
+      // transport leg board_loc -> alight_loc
+      if (n >= kMaxRecLegs) {
+        return;
+      }
+      auto& lg = out->legs_[n++];
+      lg.is_footpath_ = 0U;
+      lg.from_l_ = board_loc.v_;
+      lg.to_l_ = alight_loc.v_;
+      lg.dep_ = dep_at_board;
+      lg.arr_ = train_arr;
+      lg.transport_ = t_idx.v_;
+      lg.day_ = static_cast<std::uint16_t>(day.v_);
+      lg.enter_stop_ = board;
+      lg.exit_stop_ = alight;
+
+      cur_l = board_loc;
+      cur_k -= 1U;
+    }
+
+    out->start_l_ = cur_l.v_;
+    out->n_legs_ = static_cast<std::uint8_t>(n);
+    out->valid_ = 1U;
+  }
+
   __device__ date::sys_days base() const {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
   }
@@ -254,7 +378,8 @@ struct raptor_impl {
             continue;
           }
 
-          round_times_.update_min(k, l, target_v, fp_target_time);
+          round_times_.update_min(k, l, target_v, fp_target_time,
+                                  tmp_.get_bc(0U, l, v));
           best_.update_min(l, target_v, fp_target_time);
           station_mark_.mark(i);
           if (is_dest) {
@@ -313,7 +438,8 @@ struct raptor_impl {
               continue;
             }
 
-            round_times_.update_min(k, fp.target(), target_v, fp_target_time);
+            round_times_.update_min(k, fp.target(), target_v, fp_target_time,
+                                    tmp_.get_bc(0U, l, v));
             best_.update_min(fp.target(), target_v, fp_target_time);
             station_mark_.mark(target);
             if (target_v == Vias && is_dest_[target]) {
@@ -352,7 +478,8 @@ struct raptor_impl {
               clamp(best_time + stay.count() + dir(dist_to_end_[i]));
 
           if (is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
-            round_times_.update_min(k, kIntermodalTarget, Vias, end_time);
+            round_times_.update_min(k, kIntermodalTarget, Vias, end_time,
+                                    make_egress_bc(i));
             best_.update_min(kIntermodalTarget, Vias, end_time);
             update_time_at_dest(k, end_time);
           }
@@ -368,6 +495,8 @@ struct raptor_impl {
 
     auto et = std::array<transport, Vias + 1>{};
     auto v_offset = std::array<std::size_t, Vias + 1>{};
+    // boarding stop_idx of the transport currently in et[v] (for breadcrumbs)
+    auto et_board_stop = cuda::std::array<stop_idx_t, Vias + 1>{};
 
     for (auto i = 0U; i != stop_seq.size(); ++i) {
       auto const stop_idx =
@@ -437,7 +566,9 @@ struct raptor_impl {
               is_better(by_transport, higher_v_best) &&
               lb_[l_idx] != kUnreachable &&
               is_better(by_transport + dir(lb_[l_idx]), time_at_dest_.get(k))) {
-            tmp_.update_min(l, target_v, by_transport);
+            tmp_.update_min(l, target_v, by_transport,
+                            make_transport_payload(et[v].t_idx_.v_,
+                                                   et_board_stop[v], stop_idx));
             station_mark_.mark(l_idx);
             current_best[v] = by_transport;
             any_marked = true;
@@ -456,7 +587,9 @@ struct raptor_impl {
                 lb_[l_idx] != kUnreachable &&
                 is_better(by_transport + dir(lb_[l_idx]),
                           time_at_dest_.get(k))) {
-              tmp_.update_min(l, dest_v, by_transport);
+              tmp_.update_min(l, dest_v, by_transport,
+                              make_transport_payload(et[v].t_idx_.v_,
+                                                     et_board_stop[v], stop_idx));
               station_mark_.mark(l_idx);
               any_marked = true;
               debug("round %u: route=%u, marking l=%u\n", k, to_idx(r), l_idx);
@@ -512,6 +645,7 @@ struct raptor_impl {
                    et_time_at_stop))) {
             et[v] = new_et;
             v_offset[v] = 0;
+            et_board_stop[v] = stop_idx;
             debug("round %u: route=%u, stop=%u [l=%u] -> transport=%u\n", k,
                   r.v_, stop_idx, l_idx, new_et.t_idx_.v_);
           }

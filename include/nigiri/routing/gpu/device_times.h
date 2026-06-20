@@ -3,62 +3,87 @@
 #include <cuda/std/span>
 
 #include "nigiri/common/delta_t.h"
+#include "nigiri/routing/gpu/breadcrumb.h"
 #include "nigiri/types.h"
 
 namespace nigiri::routing::gpu {
 
+// Packed round-time storage: each entry is a 64-bit word
+//   [63:48] biased time key (16 bits, so unsigned atomicMin == "better time")
+//   [47:0]  breadcrumb (see breadcrumb.h)
+// The time is biased per search direction so that a smaller key always means a
+// better arrival; this lets us use a single native 64-bit atomicMin to update
+// the time and carry its breadcrumb atomically (no torn writes).
 template <direction SearchDir, via_offset_t Vias>
 struct device_times {
+  static constexpr bool kFwd = SearchDir == direction::kForward;
+
+  CISTA_CUDA_COMPAT static std::uint16_t to_key(delta_t const t) {
+    return kFwd ? static_cast<std::uint16_t>(static_cast<int>(t) + 32768)
+                : static_cast<std::uint16_t>(32767 - static_cast<int>(t));
+  }
+  CISTA_CUDA_COMPAT static delta_t from_key(std::uint16_t const k) {
+    return kFwd ? static_cast<delta_t>(static_cast<int>(k) - 32768)
+                : static_cast<delta_t>(32767 - static_cast<int>(k));
+  }
+  CISTA_CUDA_COMPAT static std::uint64_t pack(delta_t const t,
+                                              std::uint64_t const bc) {
+    return (static_cast<std::uint64_t>(to_key(t)) << 48U) | (bc & kBcMask);
+  }
+  // packed value representing kInvalid (worst key) with empty breadcrumb
+  CISTA_CUDA_COMPAT static std::uint64_t invalid_packed() {
+    return static_cast<std::uint64_t>(std::uint16_t{0xFFFFU}) << 48U;
+  }
+
   __device__ delta_t get(std::uint8_t const k,
                          location_idx_t const l,
                          via_offset_t const via) {
-    return data_[internal_idx(k, l, via)];
+    return from_key(
+        static_cast<std::uint16_t>(data_[internal_idx(k, l, via)] >> 48U));
   }
 
   __device__ delta_t get(location_idx_t const l, via_offset_t const via) {
-    return data_[internal_idx(0U, l, via)];
+    return from_key(
+        static_cast<std::uint16_t>(data_[internal_idx(0U, l, via)] >> 48U));
   }
 
-  __device__ delta_t get(std::uint8_t const i) { return data_[i]; }
+  __device__ delta_t get(std::uint8_t const i) {
+    return from_key(static_cast<std::uint16_t>(data_[i] >> 48U));
+  }
+
+  __device__ std::uint64_t get_bc(std::uint8_t const k,
+                                  location_idx_t const l,
+                                  via_offset_t const via) {
+    return data_[internal_idx(k, l, via)] & kBcMask;
+  }
 
   __device__ bool update_min(std::uint8_t const k,
                              location_idx_t const l,
                              via_offset_t const via,
-                             delta_t const val) {
-    return update_min(internal_idx(k, l, via), val);
+                             delta_t const val,
+                             std::uint64_t const bc = 0U) {
+    return update_min(static_cast<std::size_t>(internal_idx(k, l, via)), val,
+                      bc);
   }
 
   __device__ bool update_min(location_idx_t const l,
                              via_offset_t const via,
-                             delta_t const val) {
-    return update_min(internal_idx(0U, l, via), val);
+                             delta_t const val,
+                             std::uint64_t const bc = 0U) {
+    return update_min(static_cast<std::size_t>(internal_idx(0U, l, via)), val,
+                      bc);
   }
 
-  __device__ bool update_min(std::size_t const idx, delta_t const val) {
-    delta_t* const arr_address = &data_[idx];
-    auto* base_address = (int*)((size_t)arr_address & ~2);
-    std::int32_t old_value, new_value;
-    do {
-      old_value = atomicCAS(base_address, *base_address, *base_address);
-      if ((size_t)arr_address & 2) {
-        std::int32_t old_upper = (old_value >> 16) & 0xFFFF;
-        old_upper = (old_upper << 16) >> 16;
-        std::int32_t new_upper = get_best(old_upper, val);
-        if (new_upper == old_upper) {
-          return false;
-        }
-        new_value = (old_value & 0x0000FFFF) | (new_upper << 16);
-      } else {
-        std::int32_t old_lower = old_value & 0xFFFF;
-        old_lower = (old_lower << 16) >> 16;
-        std::int32_t new_lower = get_best(old_lower, val);
-        if (new_lower == old_lower) {
-          return false;
-        }
-        new_value = (old_value & 0xFFFF0000) | (new_lower & 0xFFFF);
-      }
-    } while (atomicCAS(base_address, old_value, new_value) != old_value);
-    return true;
+  __device__ bool update_min(std::size_t const idx,
+                             delta_t const val,
+                             std::uint64_t const bc = 0U) {
+    auto const new_packed = pack(val, bc);
+    auto* const addr =
+        reinterpret_cast<unsigned long long*>(&data_[idx]);  // NOLINT
+    auto const old =
+        atomicMin(addr, static_cast<unsigned long long>(new_packed));
+    // strictly improved iff the new time key is smaller than the old one
+    return (new_packed >> 48U) < (old >> 48U);
   }
 
   __device__ __forceinline__ unsigned internal_idx(std::uint8_t const k,
@@ -67,15 +92,7 @@ struct device_times {
     return (k * n_locations_ * Vias) + (l.v_ * Vias) + via;
   }
 
-  __device__ __forceinline__ bool is_better(auto a, auto b) {
-    return (SearchDir == direction::kForward) ? a < b : a > b;
-  }
-
-  __device__ __forceinline__ auto get_best(auto a, auto b) {
-    return is_better(a, b) ? a : b;
-  }
-
-  cuda::std::span<delta_t> data_;
+  cuda::std::span<std::uint64_t> data_;
   std::uint32_t n_locations_;
 };
 
