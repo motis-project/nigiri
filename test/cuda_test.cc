@@ -15,6 +15,7 @@ using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::test_data::hrd_timetable;
 
+#if defined(NIGIRI_CUDA)
 constexpr auto const fwd_journeys = R"(
 [2020-03-30 05:00, 2020-03-30 07:15]
 TRANSFERS: 1
@@ -80,3 +81,4 @@ TEST(nigiri_cuda, test) {
   }
   EXPECT_EQ(std::string_view{fwd_journeys}, ss.str());
 }
+#endif

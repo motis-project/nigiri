@@ -244,6 +244,7 @@ gpu_raptor<SearchDir, Rt, Vias>::gpu_raptor(
     day_idx_t const base,
     clasz_mask_t const allowed_claszes,
     bool const require_bike_transport,
+    bool const require_car_transport,
     bool const is_wheelchair,
     transfer_time_settings const& tts)
     : tt_{tt},
@@ -262,6 +263,7 @@ gpu_raptor<SearchDir, Rt, Vias>::gpu_raptor(
       base_{base},
       allowed_claszes_{allowed_claszes},
       require_bike_transport_{require_bike_transport},
+      require_car_transport_{require_car_transport},
       is_wheelchair_{is_wheelchair},
       transfer_time_settings_{tts} {
   state_.impl_->resize(tt.n_locations(), tt.n_routes(),

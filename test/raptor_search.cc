@@ -46,6 +46,7 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
       *(routing::raptor_search(tt, rtt, search_state, algo_state, q, search_dir)
             .journeys_);
 
+#if defined(NIGIRI_CUDA)
   auto gpu_search_state = routing::search_state{};
   auto gpu_timetable = routing::gpu::gpu_timetable{tt};
   auto gpu_state = routing::gpu::gpu_raptor_state{gpu_timetable};
@@ -54,6 +55,7 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                            .journeys_);
 
   EXPECT_EQ(print_results(tt, results), print_results(tt, gpu_results));
+#endif
 
   return results;
 }
@@ -78,6 +80,7 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
       .prf_idx_ = profile,
       .allowed_claszes_ = mask,
       .require_bike_transport_ = require_bikes_allowed,
+      .require_car_transport_ = require_cars_allowed,
       .via_stops_ = {}};
   return raptor_search(tt, rtt, std::move(q), search_dir);
 }

@@ -54,6 +54,7 @@ struct gpu_raptor {
       day_idx_t const base,
       clasz_mask_t const allowed_claszes,
       bool const require_bike_transport,
+      bool const require_car_transport,
       bool const is_wheelchair,
       transfer_time_settings const& tts);
 
@@ -93,6 +94,7 @@ private:
   raptor_stats stats_;
   clasz_mask_t allowed_claszes_;
   bool require_bike_transport_;
+  bool require_car_transport_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
 

@@ -29,21 +29,20 @@ routing_result raptor_search_with_vias(
     AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
-
   if (rtt == nullptr) {
-    using algo_t =
-        std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-                           gpu::gpu_raptor<SearchDir, false, Vias>,
-                           raptor<SearchDir, false, Vias>>;
-    return search<SearchDir, algo_t, Vias, search_mode::kOneToOne>{tt,      rtt,          s_state,
+    using algo_t = std::conditional_t<
+        std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+        gpu::gpu_raptor<SearchDir, false, Vias>,
+        raptor<SearchDir, false, Vias, search_mode::kOneToOne>>;
+    return search<SearchDir, algo_t>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();
   } else {
-    using algo_t =
-        std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-                           gpu::gpu_raptor<SearchDir, true, Vias>,
-                           raptor<SearchDir, true, Vias>>;
-    return search<SearchDir, algo_t, Vias, search_mode::kOneToOne>{tt,      rtt,          s_state,
+    using algo_t = std::conditional_t<
+        std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+        gpu::gpu_raptor<SearchDir, true, Vias>,
+        raptor<SearchDir, true, Vias, search_mode::kOneToOne>>;
+    return search<SearchDir, algo_t>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();
   }
@@ -159,22 +158,22 @@ routing_result raptor_search(
   }
 }
 
-template routing_result raptor_search(
-    timetable const&,
-    rt_timetable const*,
-    search_state&,
-    raptor_state&,
-    query,
-    direction,
-    std::optional<std::chrono::seconds>);
+template routing_result raptor_search(timetable const&,
+                                      rt_timetable const*,
+                                      search_state&,
+                                      raptor_state&,
+                                      query,
+                                      direction,
+                                      std::optional<std::chrono::seconds>);
 
-template routing_result raptor_search(
-    timetable const&,
-    rt_timetable const*,
-    search_state&,
-    gpu::gpu_raptor_state&,
-    query,
-    direction,
-    std::optional<std::chrono::seconds>);
+#if defined(NIGIRI_CUDA)
+template routing_result raptor_search(timetable const&,
+                                      rt_timetable const*,
+                                      search_state&,
+                                      gpu::gpu_raptor_state&,
+                                      query,
+                                      direction,
+                                      std::optional<std::chrono::seconds>);
+#endif
 
 }  // namespace nigiri::routing
