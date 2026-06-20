@@ -428,9 +428,14 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
     j.dest_time_ = delta_to_unix(base(), gj.dest_time_);
     j.dest_ = location_idx_t{gj.dest_l_};
     j.transfers_ = gj.transfers_;
-    // POD legs are reverse-chronological -> emit in chronological order
-    for (auto li = static_cast<int>(gj.n_legs_) - 1; li >= 0; --li) {
-      auto const& gl = gj.legs_[static_cast<unsigned>(li)];
+    // POD legs are emitted in walk order: reverse-chronological for forward
+    // (walk dest->start), chronological for backward (walk start->dest). Emit
+    // the journey in chronological order accordingly.
+    for (auto li2 = 0U; li2 != gj.n_legs_; ++li2) {
+      auto const li = (SearchDir == direction::kForward)
+                          ? (static_cast<unsigned>(gj.n_legs_) - 1U - li2)
+                          : li2;
+      auto const& gl = gj.legs_[li];
       auto const from = location_idx_t{gl.from_l_};
       auto const to = location_idx_t{gl.to_l_};
       auto const dep = delta_to_unix(base(), gl.dep_);
@@ -452,6 +457,19 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
         j.legs_.emplace_back(journey::leg{
             SearchDir, from, to, dep, arr,
             journey::run_enter_exit{run, gl.enter_stop_, gl.exit_stop_}});
+      }
+    }
+    // Re-anchor transfer/footpath legs to the preceding leg's arrival (CPU
+    // convention). The footpath duration is correct in both directions, but for
+    // backward search round_times holds latest-departure times, so the device
+    // anchors the transfer to the next departure instead of the previous
+    // arrival. Snapping dep to the preceding leg's arrival fixes the instant
+    // (no-op for forward, where they already coincide).
+    for (auto i = std::size_t{1U}; i < j.legs_.size(); ++i) {
+      if (std::holds_alternative<footpath>(j.legs_[i].uses_)) {
+        auto const dur = std::get<footpath>(j.legs_[i].uses_).duration();
+        j.legs_[i].dep_time_ = j.legs_[i - 1U].arr_time_;
+        j.legs_[i].arr_time_ = j.legs_[i].dep_time_ + dur;
       }
     }
     results.add(std::move(j));

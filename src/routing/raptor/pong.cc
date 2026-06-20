@@ -1,6 +1,7 @@
 #include "nigiri/routing/raptor/pong.h"
 
 #include <ranges>
+#include <type_traits>
 
 #include "utl/helpers/algorithm.h"
 #include "utl/sorted_diff.h"
@@ -8,6 +9,7 @@
 
 #include "nigiri/location_match_mode.h"
 #include "nigiri/routing/direct.h"
+#include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/transfer_time_settings.h"
@@ -44,14 +46,25 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
 
-template <direction SearchDir, bool Rt, via_offset_t Vias>
+template <direction SearchDir, bool Rt, via_offset_t Vias, typename AlgoState>
 routing_result pong(timetable const& tt,
                     rt_timetable const* rtt,
                     search_state& s_state,
-                    raptor_state& r_state,
+                    AlgoState& r_state,
                     query q,
                     std::optional<std::chrono::seconds> timeout) {
   constexpr auto kFwd = (SearchDir == direction::kForward);
+
+  // ping searches in SearchDir, pong searches in the flipped direction; both
+  // share the algo state. Select CPU raptor or gpu_raptor based on the state.
+  using ping_algo_t = std::conditional_t<
+      std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+      gpu::gpu_raptor<SearchDir, Rt, Vias>,
+      raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>>;
+  using pong_algo_t = std::conditional_t<
+      std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+      gpu::gpu_raptor<flip(SearchDir), Rt, Vias>,
+      raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>>;
 
   q.sanitize(tt);
 
@@ -100,7 +113,7 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, ping_is_via[i]);
   }
 
-  auto ping = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>{
+  auto ping = ping_algo_t{
       tt,
       rtt,
       r_state,
@@ -146,7 +159,7 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, pong_is_via[i]);
   }
 
-  auto pong = raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>{
+  auto pong = pong_algo_t{
       tt,
       rtt,
       r_state,
@@ -427,11 +440,11 @@ routing_result pong(timetable const& tt,
   return result;
 }
 
-template <direction SearchDir, via_offset_t Vias>
+template <direction SearchDir, via_offset_t Vias, typename AlgoState>
 routing_result pong_with_vias(timetable const& tt,
                               rt_timetable const* rtt,
                               search_state& s_state,
-                              raptor_state& r_state,
+                              AlgoState& r_state,
                               query q,
                               std::optional<std::chrono::seconds> timeout) {
   if (rtt == nullptr) {
@@ -443,12 +456,12 @@ routing_result pong_with_vias(timetable const& tt,
   }
 }
 
-template <direction SearchDir>
+template <direction SearchDir, typename AlgoState>
 routing_result pong_search_with_dir(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
-    raptor_state& r_state,
+    AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> timeout) {
   switch (q.via_stops_.size()) {
@@ -465,10 +478,11 @@ routing_result pong_search_with_dir(
   throw utl::fail("{} vias not supported (max={})", kMaxVias);
 }
 
+template <typename AlgoState>
 routing_result pong_search(timetable const& tt,
                            rt_timetable const* rtt,
                            search_state& s_state,
-                           raptor_state& r_state,
+                           AlgoState& r_state,
                            query q,
                            direction search_dir,
                            std::optional<std::chrono::seconds> timeout) {
@@ -480,5 +494,23 @@ routing_result pong_search(timetable const& tt,
                                                       std::move(q), timeout);
   }
 }
+
+template routing_result pong_search(timetable const&,
+                                    rt_timetable const*,
+                                    search_state&,
+                                    raptor_state&,
+                                    query,
+                                    direction,
+                                    std::optional<std::chrono::seconds>);
+
+#if defined(NIGIRI_CUDA)
+template routing_result pong_search(timetable const&,
+                                    rt_timetable const*,
+                                    search_state&,
+                                    gpu::gpu_raptor_state&,
+                                    query,
+                                    direction,
+                                    std::optional<std::chrono::seconds>);
+#endif
 
 }  // namespace nigiri::routing

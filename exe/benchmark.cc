@@ -11,6 +11,7 @@
 #include "nigiri/logging.h"
 #include "nigiri/qa/qa.h"
 #include "nigiri/query_generator/generator.h"
+#include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
@@ -150,7 +151,8 @@ nigiri::pareto_set<nigiri::routing::journey> raptor_search(
 void process_queries(
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
     std::vector<benchmark_result>& results,
-    nigiri::timetable const& tt) {
+    nigiri::timetable const& tt,
+    bool const use_pong) {
   results.reserve(queries.size());
   std::mutex mutex;
   {
@@ -175,15 +177,26 @@ void process_queries(
       }
       try {
         auto const total_time_start = std::chrono::steady_clock::now();
-        auto const result = routing::raptor_search(
-            tt, nullptr, query_state.ss_, query_state.rs_, queries[q_idx].q_,
-            direction::kForward);
+        auto const result =
+            use_pong ? routing::pong_search(tt, nullptr, query_state.ss_,
+                                            query_state.rs_, queries[q_idx].q_,
+                                            direction::kForward)
+                     : routing::raptor_search(tt, nullptr, query_state.ss_,
+                                              query_state.rs_,
+                                              queries[q_idx].q_,
+                                              direction::kForward);
         auto const total_time_stop = std::chrono::steady_clock::now();
 
         auto const gpu_total_time_start = std::chrono::steady_clock::now();
-        auto const gpu_result = routing::raptor_search(
-            tt, nullptr, query_state.ss_, *query_state.gpu_rs_,
-            queries[q_idx].q_, direction::kForward);
+        auto const gpu_result =
+            use_pong
+                ? routing::pong_search(tt, nullptr, query_state.ss_,
+                                       *query_state.gpu_rs_, queries[q_idx].q_,
+                                       direction::kForward)
+                : routing::raptor_search(tt, nullptr, query_state.ss_,
+                                         *query_state.gpu_rs_,
+                                         queries[q_idx].q_,
+                                         direction::kForward);
         auto const gpu_total_time_stop = std::chrono::steady_clock::now();
 
         auto const total_ms =
@@ -381,11 +394,14 @@ int main(int argc, char* argv[]) {
   auto seed = std::int64_t{-1};
   auto min_transfer_time = duration_t::rep{};
   auto qa_path = std::filesystem::path{};
+  auto algorithm = std::string{"raptor"};
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
       ("tt_path,p", bpo::value(&tt_path)->required(),
        "path to a binary file containing a serialized nigiri timetable")  //
+      ("algorithm,a", bpo::value(&algorithm)->default_value(algorithm),
+       "routing algorithm: 'raptor' (interval extension) or 'pong'")  //
       ("seed,s", bpo::value<std::int64_t>(&seed),
        "value to seed the RNG of the query generator with, "
        "omit for random seed")  //
@@ -418,7 +434,7 @@ int main(int argc, char* argv[]) {
        bpo::value<std::uint32_t>(&max_transfers)->default_value(kMaxTransfers),
        "maximum number of transfers during routing")  //
       ("min_connection_count,m",
-       bpo::value<std::uint32_t>(&gs.min_connection_count_)->default_value(3U),
+       bpo::value<std::uint32_t>(&gs.min_connection_count_)->default_value(5U),
        "the minimum number of connections to find with each query")  //
       ("extend_interval_earlier,e",
        bpo::value<bool>(&gs.extend_interval_earlier_)
@@ -570,8 +586,10 @@ int main(int argc, char* argv[]) {
   auto queries = std::vector<nigiri::query_generation::start_dest_query>{};
   generate_queries(queries, n_queries, tt, gs, seed);
 
+  auto const use_pong = algorithm == "pong";
+  std::cout << "algorithm: " << (use_pong ? "pong" : "raptor") << "\n";
   auto results = std::vector<benchmark_result>{};
-  process_queries(queries, results, tt);
+  process_queries(queries, results, tt, use_pong);
 
   print_results(queries, results, tt, gs, tt_path);
 
