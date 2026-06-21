@@ -90,14 +90,24 @@ routing_result pong(timetable const& tt,
   // ====
   // PING
   // ----
-  auto ping_lb = std::vector<std::uint16_t>{};
-  // The GPU searches the scheduled timetable only (rtt=nullptr in the kernel).
-  // The scheduled lb is the TIGHTEST admissible bound for a scheduled search.
-  // (The rt-aware bound would also be admissible -- nigiri's rt lb_graph only
-  // ADDS edges that are faster than scheduled and the dijkstra keeps the min, so
-  // rt-aware lb <= scheduled lb, never longer -- but it's weaker pruning, so we
-  // use the scheduled one for the GPU.)
   constexpr auto const kGpu = std::is_same_v<AlgoState, gpu::gpu_raptor_state>;
+
+  auto ping_dist_to_dest = std::vector<std::uint16_t>{};
+  auto ping_is_dest = bitvec{};
+  auto ping_is_via = std::array<bitvec, kMaxVias>{};
+  collect_destinations(tt, q.destination_, q.dest_match_mode_, ping_is_dest,
+                       ping_dist_to_dest);
+  for (auto const [i, via] : utl::enumerate(q.via_stops_)) {
+    collect_via_destinations(tt, via.location_, ping_is_via[i]);
+  }
+
+  // Lower bound: the GPU computes it on-device (multi-source Bellman-Ford over
+  // the scheduled lb-graph), the CPU runs the dijkstra. The GPU is scheduled-only
+  // so it uses the scheduled lb -- the tightest admissible bound for a scheduled
+  // search (the rt-aware bound only ever shortens it -> weaker pruning).
+  // GPU uses the scheduled lb (rtt=nullptr); GPU-SSSP path is dormant (see
+  // compute_lb in raptor.cu -- needs the children pass + a frontier BF).
+  auto ping_lb = std::vector<std::uint16_t>{};
   dijkstra(tt, q,
            (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
                  : tt.bwd_search_lb_graph_[q.prf_idx_]),
@@ -109,15 +119,6 @@ routing_result pong(timetable const& tt,
                                      : &(kFwd ? rtt->fwd_search_lb_graph_
                                               : rtt->bwd_search_lb_graph_)),
            ping_lb);
-
-  auto ping_dist_to_dest = std::vector<std::uint16_t>{};
-  auto ping_is_dest = bitvec{};
-  auto ping_is_via = std::array<bitvec, kMaxVias>{};
-  collect_destinations(tt, q.destination_, q.dest_match_mode_, ping_is_dest,
-                       ping_dist_to_dest);
-  for (auto const [i, via] : utl::enumerate(q.via_stops_)) {
-    collect_via_destinations(tt, via.location_, ping_is_via[i]);
-  }
 
   auto ping = ping_algo_t{
       tt,
@@ -141,8 +142,17 @@ routing_result pong(timetable const& tt,
   // ----
   q.flip_dir();
 
+  auto pong_dist_to_dest = std::vector<std::uint16_t>{};
+  auto pong_is_dest = bitvec{};
+  collect_destinations(tt, q.destination_, q.dest_match_mode_, pong_is_dest,
+                       pong_dist_to_dest);
+
+  auto pong_is_via = std::array<bitvec, kMaxVias>{};
+  for (auto const [i, via] : utl::enumerate(q.via_stops_)) {
+    collect_via_destinations(tt, via.location_, pong_is_via[i]);
+  }
+
   auto pong_lb = std::vector<std::uint16_t>{};
-  // scheduled lower bound for the GPU (see ping_lb above)
   dijkstra(tt, q,
            (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
                  : tt.fwd_search_lb_graph_[q.prf_idx_]),
@@ -154,16 +164,6 @@ routing_result pong(timetable const& tt,
                                      : &(kFwd ? rtt->bwd_search_lb_graph_
                                               : rtt->fwd_search_lb_graph_)),
            pong_lb);
-
-  auto pong_dist_to_dest = std::vector<std::uint16_t>{};
-  auto pong_is_dest = bitvec{};
-  collect_destinations(tt, q.destination_, q.dest_match_mode_, pong_is_dest,
-                       pong_dist_to_dest);
-
-  auto pong_is_via = std::array<bitvec, kMaxVias>{};
-  for (auto const [i, via] : utl::enumerate(q.via_stops_)) {
-    collect_via_destinations(tt, via.location_, pong_is_via[i]);
-  }
 
   auto pong = pong_algo_t{
       tt,
