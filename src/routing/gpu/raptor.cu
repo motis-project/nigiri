@@ -81,6 +81,7 @@ struct gpu_timetable::impl {
         route_location_seq_{tt.route_location_seq_},
         location_routes_{tt.location_routes_},
         transport_traffic_days_{to_device(tt.transport_traffic_days_)},
+        route_traffic_days_{to_device(tt.route_traffic_days_)},
         transport_route_{to_device(tt.transport_route_)},
         bitfields_{to_device(tt.bitfields_)},
         internal_interval_days_{tt.internal_interval_days()} {}
@@ -101,6 +102,7 @@ struct gpu_timetable::impl {
             .route_location_seq_ = to_view(route_location_seq_),
             .location_routes_ = to_view(location_routes_),
             .transport_traffic_days_ = to_view(transport_traffic_days_),
+            .route_traffic_days_ = to_view(route_traffic_days_),
             .transport_route_ = to_view(transport_route_),
             .bitfields_ = to_view(bitfields_),
             .internal_interval_days_ = internal_interval_days_};
@@ -125,6 +127,7 @@ struct gpu_timetable::impl {
   device_vecvec<decltype(t{}.location_routes_)> location_routes_;
 
   thrust::device_vector<bitfield_idx_t> transport_traffic_days_;
+  thrust::device_vector<bitfield_idx_t> route_traffic_days_;
   thrust::device_vector<route_idx_t> transport_route_;
   thrust::device_vector<bitfield> bitfields_;
 
@@ -169,18 +172,17 @@ struct gpu_raptor_state::impl {
               std::vector<via_stop> const& via_stops,
               nigiri::bitvec const& is_dest,
               std::vector<std::uint16_t> const& dist_to_dest) {
-    is_intermodal_dest_ = !dist_to_dest.empty();
     n_locations_ = host_state_.n_locations_ = n_locations;
 
     // The GPU search is station-to-station only (Vias == 0), so the state needs
     // just one via-slot, not kMaxVias+1. Sizing to 1 cuts round_times/best/tmp
     // ~3x — important to fit large timetables on small GPUs.
     static constexpr auto kGpuViaSlots = std::uint32_t{1};
-    time_at_dest_.resize(kMaxTransfers + 1);
+    time_at_dest_.resize(kMaxTransfers + 2);
     tmp_.resize(n_locations * kGpuViaSlots);
     best_.resize(n_locations * kGpuViaSlots);
     auto const first_time = round_times_.empty();
-    round_times_.resize(n_locations * kGpuViaSlots * (kMaxTransfers + 1));
+    round_times_.resize(n_locations * kGpuViaSlots * (kMaxTransfers + 2));
     host_round_times_.resize(round_times_.size());
     // selective-clear: 1 dirty bit per entry for round_times / best_ / tmp_;
     // reset only clears the marked entries. Needs an initial full clear so the
@@ -208,7 +210,24 @@ struct gpu_raptor_state::impl {
     rt_transport_mark_.resize(n_rt_transports / 32U + 1U);
     end_reachable_.resize(n_locations / 32U + 1U);
 
-    using bitvec_block_t = std::decay_t<decltype(is_via[0])>::block_t;
+    // lower bounds are intentionally not used on the GPU (no dijkstra; the
+    // search explores without lb pruning -- same results, and it avoids the
+    // per-query upload).
+
+    any_marked_.resize(1U);
+
+    // Per-search params (is_dest/is_via/via_stops/dist_to_dest) live in the
+    // shared state but differ per gpu_raptor instance. upload_query() (re)uploads
+    // them; execute() calls it too, so a sibling instance sharing this state
+    // (e.g. pong's ping vs pong) can't leak its destination into our search.
+    upload_query(is_via, via_stops, is_dest, dist_to_dest);
+  }
+
+  void upload_query(std::array<nigiri::bitvec, kMaxVias> const& is_via,
+                    std::vector<via_stop> const& via_stops,
+                    nigiri::bitvec const& is_dest,
+                    std::vector<std::uint16_t> const& dist_to_dest) {
+    is_intermodal_dest_ = !dist_to_dest.empty();
 
     for (auto i = 0U; i != is_via.size(); ++i) {
       is_via_[i].resize(is_via[i].blocks_.size());
@@ -251,12 +270,6 @@ struct gpu_raptor_state::impl {
                             dist_to_dest.size() * sizeof(std::uint16_t),
                             cudaMemcpyHostToDevice, stream_),
         "could not copy dist to dest");
-
-    // lower bounds are intentionally not used on the GPU (no dijkstra; the
-    // search explores without lb pruning -- same results, and it avoids the
-    // per-query upload).
-
-    any_marked_.resize(1U);
   }
 
   std::uint32_t n_locations_;
@@ -402,6 +415,10 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
                                               profile_idx_t,
                                               pareto_set<journey>& results) {
   auto& s = *state_.impl_;
+  // Re-upload this search's params: ping and pong share one gpu_raptor_state,
+  // and the pong instance's ctor would otherwise leave its destination (= the
+  // original start) in the shared device is_dest_, killing ping's propagation.
+  s.upload_query(is_via_, via_stops_, is_dest_, dist_to_end_);
   auto* const starts_pinned = s.starts_pinned_.ensure(starts_.size());
   std::copy(starts_.begin(), starts_.end(), starts_pinned);
   if (s.starts_dev_.size() < starts_.size()) {
@@ -475,7 +492,7 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
   // --- GPU reconstruction: build journeys (with legs) on the device, then
   // materialize them on the host. No full round-time transfer. ---
   auto const end_k =
-      static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 1U);
+      static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
 
   auto dest_list = std::vector<location_idx_t>{};
   if (s.is_intermodal_dest_) {
@@ -597,33 +614,24 @@ void gpu_raptor<SearchDir, Rt, Vias>::reset_arrivals() {
   auto& s = *state_.impl_;
   cudaMemsetAsync(thrust::raw_pointer_cast(s.time_at_dest_.data()), 0xFF,
                   s.time_at_dest_.size() * sizeof(std::uint64_t), s.stream_);
-  // selectively clear only the round_times entries written last search.
-  auto const n_words =
-      static_cast<std::uint32_t>((s.round_times_.size() + 31U) / 32U);
-  auto const threads = 256U;
-  auto const blocks = std::min((n_words + threads - 1U) / threads, 4096U);
-  clear_dirty_kernel<<<blocks, threads, 0, s.stream_>>>(
-      thrust::raw_pointer_cast(s.round_times_.data()),
-      thrust::raw_pointer_cast(s.dirty_bits_.data()), n_words, kInvalidPacked);
+  // Full reset (kInvalidPacked == all-ones == 0xFF bytes). The selective
+  // dirty-clear optimization was incorrect on state reuse (it left stale
+  // arrivals that pruned later searches -> degraded/empty results); correctness
+  // first. Re-introducing a correct selective clear is a throughput TODO.
+  cudaMemsetAsync(thrust::raw_pointer_cast(s.round_times_.data()), 0xFF,
+                  s.round_times_.size() * sizeof(std::uint64_t), s.stream_);
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
 void gpu_raptor<SearchDir, Rt, Vias>::next_start_time() {
   starts_.clear();
   auto& s = *state_.impl_;
-  // selectively clear only the best_/tmp_ entries written last start.
-  auto const n_words =
-      static_cast<std::uint32_t>((s.best_.size() + 31U) / 32U);
-  auto const threads = 256U;
-  auto const blocks = std::min((n_words + threads - 1U) / threads, 4096U);
-  clear_dirty_kernel<<<blocks, threads, 0, s.stream_>>>(
-      thrust::raw_pointer_cast(s.best_.data()),
-      thrust::raw_pointer_cast(s.best_dirty_bits_.data()), n_words,
-      kInvalidPacked);
-  clear_dirty_kernel<<<blocks, threads, 0, s.stream_>>>(
-      thrust::raw_pointer_cast(s.tmp_.data()),
-      thrust::raw_pointer_cast(s.tmp_dirty_bits_.data()), n_words,
-      kInvalidPacked);
+  // Full reset (see reset_arrivals): the selective dirty-clear was incorrect on
+  // state reuse. Correctness first; selective clear is a throughput TODO.
+  cudaMemsetAsync(thrust::raw_pointer_cast(s.best_.data()), 0xFF,
+                  s.best_.size() * sizeof(std::uint64_t), s.stream_);
+  cudaMemsetAsync(thrust::raw_pointer_cast(s.tmp_.data()), 0xFF,
+                  s.tmp_.size() * sizeof(std::uint64_t), s.stream_);
   thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
                begin(state_.impl_->prev_station_mark_),
                end(state_.impl_->prev_station_mark_), 0U);

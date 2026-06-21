@@ -63,6 +63,7 @@ struct device_timetable {
   d_vecvec_view<decltype(t{}.location_routes_)> location_routes_;
 
   d_vecmap_view<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
+  d_vecmap_view<route_idx_t, bitfield_idx_t> route_traffic_days_;
   d_vecmap_view<transport_idx_t, route_idx_t> transport_route_;
   d_vecmap_view<bitfield_idx_t, bitfield> bitfields_;
 

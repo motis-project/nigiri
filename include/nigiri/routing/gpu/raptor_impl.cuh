@@ -82,13 +82,17 @@ struct raptor_impl {
     }
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
-    for (auto i = global_t_id; i < kMaxTransfers + 1U; i += global_stride) {
+    for (auto i = global_t_id; i < kMaxTransfers + 2U; i += global_stride) {
       time_at_dest_.update_min(i, d_worst_at_dest);
     }
 
     sync();
 
-    auto const end_k = min(max_transfers, kMaxTransfers) + 1U;
+    // +2 (not +1): rounds run 1..max_transfers+1 so that journeys with exactly
+    // max_transfers transfers (reached in round max_transfers+1) are found. CPU
+    // raptor uses the same +2; the GPU previously dropped the last round, which
+    // was invisible at high max_transfers but emptied pong (max_transfers=0).
+    auto const end_k = min(max_transfers, kMaxTransfers) + 2U;
     for (auto k = 1U; k != end_k; ++k) {
       start_timing();
 
@@ -657,8 +661,22 @@ struct raptor_impl {
                        });
     };
 
-    constexpr auto const kNDaysToIterate = day_idx_t::value_t{2U};
+    // Must match the CPU raptor: look up to kMaxTravelTime days ahead for the
+    // next departure. The previous value (2) silently missed connections when
+    // the next active service was >2 days out (sparse/rural service, or reduced
+    // service near the timetable-start dates) -> GPU returned empty where CPU
+    // found journeys.
+    constexpr auto const kNDaysToIterate = static_cast<day_idx_t::value_t>(
+        kMaxTravelTime / std::chrono::days{1} + 1U);
     for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
+      auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
+      // Skip days on which this route runs no service before iterating its
+      // events (matches the CPU raptor). Without this the wider day window
+      // (kNDaysToIterate) would scan every event on every inactive day.
+      if (!is_route_active(r, day)) {
+        continue;
+      }
+
       auto const ev_time_range =
           it_range{i == 0U ? seek_first_day() : get_begin_it(event_times),
                    get_end_it(event_times)};
@@ -666,7 +684,6 @@ struct raptor_impl {
         continue;
       }
 
-      auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
       for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
         auto const t_offset =
             static_cast<std::size_t>(&*it - event_times.data());
@@ -697,6 +714,13 @@ struct raptor_impl {
   __device__ __forceinline__ bool is_transport_active(
       transport_idx_t const t, std::size_t const day) const {
     return tt_.bitfields_[tt_.transport_traffic_days_[t]].test(day);
+  }
+
+  __device__ __forceinline__ bool is_route_active(route_idx_t const r,
+                                                  day_idx_t const day) const {
+    return as_int(day) >= 0 &&
+           tt_.bitfields_[tt_.route_traffic_days_[r]].test(
+               static_cast<std::size_t>(as_int(day)));
   }
 
   __device__ delta_t time_at_stop(route_idx_t const r,
