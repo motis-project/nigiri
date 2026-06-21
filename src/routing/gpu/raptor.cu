@@ -66,28 +66,6 @@ static constexpr std::uint64_t kInvalidPacked = ~std::uint64_t{0};
 struct gpu_timetable::impl {
   using t = timetable;
 
-  // prefix sum of route lengths: flat (route, stop) base offsets (n_routes + 1)
-  static std::vector<std::uint32_t> build_route_stop_offset(timetable const& tt) {
-    auto v = std::vector<std::uint32_t>(tt.n_routes() + 1U);
-    for (auto r = 0U; r < tt.n_routes(); ++r) {
-      v[r + 1U] = v[r] + static_cast<std::uint32_t>(
-                             tt.route_location_seq_[route_idx_t{r}].size());
-    }
-    return v;
-  }
-
-  // inverse map: flat (route, stop) index -> route
-  static std::vector<std::uint32_t> build_route_of_stop(
-      timetable const& tt, std::vector<std::uint32_t> const& off) {
-    auto v = std::vector<std::uint32_t>(off.back());
-    for (auto r = 0U; r < tt.n_routes(); ++r) {
-      for (auto s = off[r]; s < off[r + 1U]; ++s) {
-        v[s] = r;
-      }
-    }
-    return v;
-  }
-
   explicit impl(timetable const& tt)
       : n_locations_{tt.n_locations()},
         n_routes_{tt.n_routes()},
@@ -105,12 +83,7 @@ struct gpu_timetable::impl {
         transport_traffic_days_{to_device(tt.transport_traffic_days_)},
         transport_route_{to_device(tt.transport_route_)},
         bitfields_{to_device(tt.bitfields_)},
-        internal_interval_days_{tt.internal_interval_days()} {
-    auto const off = build_route_stop_offset(tt);
-    route_stop_offset_.assign(off.begin(), off.end());
-    auto const ros = build_route_of_stop(tt, off);
-    route_of_stop_.assign(ros.begin(), ros.end());
-  }
+        internal_interval_days_{tt.internal_interval_days()} {}
 
   device_timetable to_device_timetable() const {
     return {.n_locations_ = n_locations_,
@@ -130,9 +103,7 @@ struct gpu_timetable::impl {
             .transport_traffic_days_ = to_view(transport_traffic_days_),
             .transport_route_ = to_view(transport_route_),
             .bitfields_ = to_view(bitfields_),
-            .internal_interval_days_ = internal_interval_days_,
-            .route_stop_offset_ = to_view(route_stop_offset_),
-            .route_of_stop_ = to_view(route_of_stop_)};
+            .internal_interval_days_ = internal_interval_days_};
   }
 
   std::uint32_t n_locations_;
@@ -156,9 +127,6 @@ struct gpu_timetable::impl {
   thrust::device_vector<bitfield_idx_t> transport_traffic_days_;
   thrust::device_vector<route_idx_t> transport_route_;
   thrust::device_vector<bitfield> bitfields_;
-
-  thrust::device_vector<std::uint32_t> route_stop_offset_;
-  thrust::device_vector<std::uint32_t> route_of_stop_;
 
   interval<date::sys_days> internal_interval_days_;
 };
@@ -190,9 +158,6 @@ struct gpu_raptor_state::impl {
   explicit impl(gpu_timetable const& gtt)
       : tt_{gtt.impl_->to_device_timetable()} {
     cudaStreamCreate(&stream_);
-    et_result_.resize(gtt.impl_->route_of_stop_.size());
-    et_task_list_.resize(gtt.impl_->route_of_stop_.size());
-    et_task_count_.resize(1U);
   }
 
   ~impl() { cudaStreamDestroy(stream_); }
@@ -215,22 +180,29 @@ struct gpu_raptor_state::impl {
     time_at_dest_.resize(kMaxTransfers + 1);
     tmp_.resize(n_locations * kGpuViaSlots);
     best_.resize(n_locations * kGpuViaSlots);
-    auto const rt_was_empty = round_times_.empty();
+    auto const first_time = round_times_.empty();
     round_times_.resize(n_locations * kGpuViaSlots * (kMaxTransfers + 1));
     host_round_times_.resize(round_times_.size());
-    // selective-clear: 1 dirty bit per round_times entry; reset only clears the
-    // marked entries. Needs an initial full clear so the first search starts
-    // all-invalid (and the bitfield starts all-zero).
+    // selective-clear: 1 dirty bit per entry for round_times / best_ / tmp_;
+    // reset only clears the marked entries. Needs an initial full clear so the
+    // first search starts all-invalid (and the bitfields start all-zero).
     dirty_bits_.resize((round_times_.size() + 31U) / 32U);
+    best_dirty_bits_.resize((best_.size() + 31U) / 32U);
+    tmp_dirty_bits_.resize((tmp_.size() + 31U) / 32U);
     cudaMemsetAsync(thrust::raw_pointer_cast(dirty_bits_.data()), 0,
                     dirty_bits_.size() * sizeof(std::uint32_t), stream_);
-    if (rt_was_empty) {
+    cudaMemsetAsync(thrust::raw_pointer_cast(best_dirty_bits_.data()), 0,
+                    best_dirty_bits_.size() * sizeof(std::uint32_t), stream_);
+    cudaMemsetAsync(thrust::raw_pointer_cast(tmp_dirty_bits_.data()), 0,
+                    tmp_dirty_bits_.size() * sizeof(std::uint32_t), stream_);
+    if (first_time) {
       cudaMemsetAsync(thrust::raw_pointer_cast(round_times_.data()), 0xFF,
                       round_times_.size() * sizeof(std::uint64_t), stream_);
+      cudaMemsetAsync(thrust::raw_pointer_cast(best_.data()), 0xFF,
+                      best_.size() * sizeof(std::uint64_t), stream_);
+      cudaMemsetAsync(thrust::raw_pointer_cast(tmp_.data()), 0xFF,
+                      tmp_.size() * sizeof(std::uint64_t), stream_);
     }
-#if NIGIRI_GPU_SPLIT_TIMES
-    round_times_keys_.resize(round_times_.size());
-#endif
     station_mark_.resize(n_locations / 32U + 1U);
     prev_station_mark_.resize(n_locations / 32U + 1U);
     route_mark_.resize(n_routes / 32U + 1U);
@@ -308,8 +280,9 @@ struct gpu_raptor_state::impl {
   thrust::device_vector<std::uint64_t> tmp_;
   thrust::device_vector<std::uint64_t> best_;
   thrust::device_vector<std::uint64_t> round_times_;
-  thrust::device_vector<std::uint16_t> round_times_keys_;
   thrust::device_vector<std::uint32_t> dirty_bits_;  // 1 bit / round_times entry
+  thrust::device_vector<std::uint32_t> best_dirty_bits_;  // 1 bit / best_ entry
+  thrust::device_vector<std::uint32_t> tmp_dirty_bits_;  // 1 bit / tmp_ entry
   thrust::device_vector<std::uint32_t> station_mark_;
   thrust::device_vector<std::uint32_t> prev_station_mark_;
   thrust::device_vector<std::uint32_t> route_mark_;
@@ -317,9 +290,6 @@ struct gpu_raptor_state::impl {
 
   thrust::device_vector<std::uint32_t> end_reachable_;
   thrust::device_vector<std::uint64_t> is_dest_;
-  thrust::device_vector<std::uint64_t> et_result_;
-  thrust::device_vector<std::uint32_t> et_task_list_;
-  thrust::device_vector<std::uint32_t> et_task_count_;
   std::array<thrust::device_vector<std::uint64_t>, kMaxVias> is_via_;
   thrust::device_vector<via_stop> via_stops_;
   thrust::device_vector<std::uint16_t> dist_to_dest_;
@@ -492,17 +462,15 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
       .dist_to_end_ = to_view(s.dist_to_dest_),
       .lb_ = to_view(s.lb_),
       .round_times_ = {to_mutable_view(s.round_times_), n_locations_,
-                       to_mutable_view(s.round_times_keys_),
                        thrust::raw_pointer_cast(s.dirty_bits_.data())},
-      .best_ = {to_mutable_view(s.best_), n_locations_},
-      .tmp_ = {to_mutable_view(s.tmp_), n_locations_},
+      .best_ = {to_mutable_view(s.best_), n_locations_,
+                thrust::raw_pointer_cast(s.best_dirty_bits_.data())},
+      .tmp_ = {to_mutable_view(s.tmp_), n_locations_,
+               thrust::raw_pointer_cast(s.tmp_dirty_bits_.data())},
       .time_at_dest_ = {to_mutable_view(s.time_at_dest_), n_locations_},
       .station_mark_ = {to_mutable_view(s.station_mark_)},
       .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
-      .route_mark_ = {to_mutable_view(s.route_mark_)},
-      .et_result_ = to_mutable_view(s.et_result_),
-      .et_task_list_ = to_mutable_view(s.et_task_list_),
-      .et_task_count_ = thrust::raw_pointer_cast(s.et_task_count_.data())};
+      .route_mark_ = {to_mutable_view(s.route_mark_)}};
 
   auto blocks = 0;
   auto threads = 0;
@@ -655,12 +623,19 @@ template <direction SearchDir, bool Rt, via_offset_t Vias>
 void gpu_raptor<SearchDir, Rt, Vias>::next_start_time() {
   starts_.clear();
   auto& s = *state_.impl_;
-  // see reset_arrivals: only the used (Vias+1) via-slot prefix needs clearing.
-  auto const bt_used = static_cast<std::size_t>(s.n_locations_) * (Vias + 1U);
-  cudaMemsetAsync(thrust::raw_pointer_cast(s.best_.data()), 0xFF,
-                  bt_used * sizeof(std::uint64_t), s.stream_);
-  cudaMemsetAsync(thrust::raw_pointer_cast(s.tmp_.data()), 0xFF,
-                  bt_used * sizeof(std::uint64_t), s.stream_);
+  // selectively clear only the best_/tmp_ entries written last start.
+  auto const n_words =
+      static_cast<std::uint32_t>((s.best_.size() + 31U) / 32U);
+  auto const threads = 256U;
+  auto const blocks = std::min((n_words + threads - 1U) / threads, 4096U);
+  clear_dirty_kernel<<<blocks, threads, 0, s.stream_>>>(
+      thrust::raw_pointer_cast(s.best_.data()),
+      thrust::raw_pointer_cast(s.best_dirty_bits_.data()), n_words,
+      kInvalidPacked);
+  clear_dirty_kernel<<<blocks, threads, 0, s.stream_>>>(
+      thrust::raw_pointer_cast(s.tmp_.data()),
+      thrust::raw_pointer_cast(s.tmp_dirty_bits_.data()), n_words,
+      kInvalidPacked);
   thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
                begin(state_.impl_->prev_station_mark_),
                end(state_.impl_->prev_station_mark_), 0U);

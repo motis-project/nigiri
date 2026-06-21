@@ -67,13 +67,6 @@ struct device_timetable {
   d_vecmap_view<bitfield_idx_t, bitfield> bitfields_;
 
   interval<date::sys_days> internal_interval_days_;
-
-  // flat (route, stop) indexing for the parallel get_earliest_transport phase:
-  // route_stop_offset_[r] is the base of route r's stops in the flat space
-  // (size n_routes_ + 1, last entry = total route-stop count); route_of_stop_
-  // maps a flat index back to its route.
-  cuda::std::span<std::uint32_t const> route_stop_offset_;
-  cuda::std::span<std::uint32_t const> route_of_stop_;
 };
 
 }  // namespace nigiri::routing::gpu
