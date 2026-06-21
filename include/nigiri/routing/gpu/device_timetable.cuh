@@ -67,6 +67,12 @@ struct device_timetable {
   d_vecmap_view<transport_idx_t, route_idx_t> transport_route_;
   d_vecmap_view<bitfield_idx_t, bitfield> bitfields_;
 
+  // Flat (route, stop) index space for the compute_et load-balanced boarding
+  // pre-pass: route_stop_offset_[r] is route r's base (size n_routes_+1, last =
+  // total route-stops); route_of_stop_[flat] maps a flat index back to a route.
+  cuda::std::span<std::uint32_t const> route_stop_offset_;
+  cuda::std::span<std::uint32_t const> route_of_stop_;
+
   interval<date::sys_days> internal_interval_days_;
 };
 

@@ -144,6 +144,12 @@ struct raptor_impl {
       }
       sync();
 
+      // Load-balanced boarding pre-pass: precompute earliest transports for all
+      // (route,stop) candidates in parallel, so loop_routes/update_route can read
+      // them instead of doing the divergent get_earliest_transport per route.
+      compute_et(k);
+      sync();
+
       (allowed_claszes_ == all_clasz_allowed())
           ? (require_bike_transport_ ? loop_routes<false, true>(k)
                                      : loop_routes<false, false>(k))
@@ -615,9 +621,16 @@ struct raptor_impl {
         auto const prev_round_time = round_times_.get(k - 1, l, target_v);
         if (prev_round_time != kInvalid &&
             is_better_or_eq(prev_round_time, et_time_at_stop)) {
-          auto const [day, mam] = split(prev_round_time);
-          auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
-                                                     stp.location_idx());
+          transport new_et{};
+          if constexpr (Vias == 0) {
+            // boarding et precomputed by compute_et (load-balanced pre-pass)
+            new_et = unpack_et(
+                et_result_[tt_.route_stop_offset_[to_idx(r)] + stop_idx]);
+          } else {
+            auto const [day, mam] = split(prev_round_time);
+            new_et = get_earliest_transport(k, r, stop_idx, day, mam,
+                                            stp.location_idx());
+          }
           current_best[v] = get_best(current_best[v], best_.get(l, target_v),
                                      tmp_.get(l, target_v));
           if (new_et.is_valid() &&
@@ -723,6 +736,81 @@ struct raptor_impl {
                static_cast<std::size_t>(as_int(day)));
   }
 
+  static constexpr std::uint64_t kEtInvalid = ~std::uint64_t{0};
+
+  __device__ __forceinline__ std::uint64_t pack_et(transport const t) const {
+    return t.is_valid() ? ((static_cast<std::uint64_t>(to_idx(t.day_)) << 32) |
+                           static_cast<std::uint64_t>(to_idx(t.t_idx_)))
+                        : kEtInvalid;
+  }
+
+  __device__ __forceinline__ transport unpack_et(std::uint64_t const p) const {
+    return p == kEtInvalid
+               ? transport{}
+               : transport{transport_idx_t{static_cast<std::uint32_t>(
+                               p & 0xFFFFFFFFU)},
+                           day_idx_t{static_cast<std::uint16_t>(p >> 32)}};
+  }
+
+  // Load-balanced boarding pre-pass (the "compute_et" optimization): instead of
+  // one thread per route scanning all its stops (huge per-route work variance ->
+  // warps stall at the round barrier), parallelize the earliest-transport lookup
+  // over a compacted list of (route,stop) boarding candidates -- one task per
+  // thread. update_route then just reads et_result_ instead of calling
+  // get_earliest_transport inline.
+  __device__ void compute_et(unsigned const k) {
+    if constexpr (Vias == 0) {
+      auto const gid = get_global_thread_id();
+      auto const stride = get_global_stride();
+      auto const total = tt_.route_stop_offset_[tt_.n_routes_];
+
+      // phase 1a: compact candidate tasks (default non-candidates to invalid).
+      if (gid == 0U) {
+        *et_task_count_ = 0U;
+      }
+      sync();
+      for (auto flat = gid; flat < total; flat += stride) {
+        auto const r = route_idx_t{tt_.route_of_stop_[flat]};
+        if (!route_mark_.test(to_idx(r))) {
+          continue;
+        }
+        et_result_[flat] = kEtInvalid;
+        auto const stop_seq = tt_.route_location_seq_[r];
+        auto const stop_idx =
+            static_cast<stop_idx_t>(flat - tt_.route_stop_offset_[to_idx(r)]);
+        auto const is_dir_last =
+            kFwd ? (stop_idx + 1U == stop_seq.size()) : (stop_idx == 0U);
+        if (is_dir_last) {
+          continue;
+        }
+        auto const stp = stop{stop_seq[stop_idx]};
+        auto const l = stp.location_idx();
+        if (!prev_station_mark_[cista::to_idx(l)] ||
+            !stp.can_start<SearchDir>(is_wheelchair_) ||
+            round_times_.get(k - 1, l, 0U) == kInvalid) {
+          continue;
+        }
+        et_task_list_[atomicAdd(et_task_count_, 1U)] = flat;
+      }
+      sync();
+
+      // phase 1b: one earliest-transport lookup per task (no route divergence).
+      auto const n_tasks = *et_task_count_;
+      for (auto i = gid; i < n_tasks; i += stride) {
+        auto const flat = et_task_list_[i];
+        auto const r = route_idx_t{tt_.route_of_stop_[flat]};
+        auto const stop_idx =
+            static_cast<stop_idx_t>(flat - tt_.route_stop_offset_[to_idx(r)]);
+        auto const stop_seq = tt_.route_location_seq_[r];
+        auto const stp = stop{stop_seq[stop_idx]};
+        auto const l = stp.location_idx();
+        auto const [day, mam] = split(round_times_.get(k - 1, l, 0U));
+        et_result_[flat] =
+            pack_et(get_earliest_transport(k, r, stop_idx, day, mam, l));
+      }
+    }
+  }
+
   __device__ delta_t time_at_stop(route_idx_t const r,
                                   transport const t,
                                   stop_idx_t const stop_idx,
@@ -800,6 +888,9 @@ struct raptor_impl {
   device_bitvec<std::uint32_t> station_mark_;
   device_bitvec<std::uint32_t> prev_station_mark_;
   device_bitvec<std::uint32_t> route_mark_;
+  cuda::std::span<std::uint64_t> et_result_;  // packed et per flat (route,stop)
+  cuda::std::span<std::uint32_t> et_task_list_;  // compacted boarding candidates
+  std::uint32_t* et_task_count_;  // number of tasks this round
 };
 
 }  // namespace nigiri::routing::gpu

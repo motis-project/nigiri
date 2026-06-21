@@ -66,6 +66,26 @@ static constexpr std::uint64_t kInvalidPacked = ~std::uint64_t{0};
 struct gpu_timetable::impl {
   using t = timetable;
 
+  static std::vector<std::uint32_t> build_route_stop_offset(timetable const& tt) {
+    auto v = std::vector<std::uint32_t>(tt.n_routes() + 1U);
+    for (auto r = 0U; r < tt.n_routes(); ++r) {
+      v[r + 1U] = v[r] + static_cast<std::uint32_t>(
+                             tt.route_location_seq_[route_idx_t{r}].size());
+    }
+    return v;
+  }
+
+  static std::vector<std::uint32_t> build_route_of_stop(
+      timetable const& tt, std::vector<std::uint32_t> const& off) {
+    auto v = std::vector<std::uint32_t>(off.back());
+    for (auto r = 0U; r < tt.n_routes(); ++r) {
+      for (auto s = off[r]; s < off[r + 1U]; ++s) {
+        v[s] = r;
+      }
+    }
+    return v;
+  }
+
   explicit impl(timetable const& tt)
       : n_locations_{tt.n_locations()},
         n_routes_{tt.n_routes()},
@@ -84,7 +104,12 @@ struct gpu_timetable::impl {
         route_traffic_days_{to_device(tt.route_traffic_days_)},
         transport_route_{to_device(tt.transport_route_)},
         bitfields_{to_device(tt.bitfields_)},
-        internal_interval_days_{tt.internal_interval_days()} {}
+        internal_interval_days_{tt.internal_interval_days()} {
+    auto const off = build_route_stop_offset(tt);
+    route_stop_offset_.assign(off.begin(), off.end());
+    auto const ros = build_route_of_stop(tt, off);
+    route_of_stop_.assign(ros.begin(), ros.end());
+  }
 
   device_timetable to_device_timetable() const {
     return {.n_locations_ = n_locations_,
@@ -105,6 +130,8 @@ struct gpu_timetable::impl {
             .route_traffic_days_ = to_view(route_traffic_days_),
             .transport_route_ = to_view(transport_route_),
             .bitfields_ = to_view(bitfields_),
+            .route_stop_offset_ = to_view(route_stop_offset_),
+            .route_of_stop_ = to_view(route_of_stop_),
             .internal_interval_days_ = internal_interval_days_};
   }
 
@@ -130,6 +157,8 @@ struct gpu_timetable::impl {
   thrust::device_vector<bitfield_idx_t> route_traffic_days_;
   thrust::device_vector<route_idx_t> transport_route_;
   thrust::device_vector<bitfield> bitfields_;
+  thrust::device_vector<std::uint32_t> route_stop_offset_;
+  thrust::device_vector<std::uint32_t> route_of_stop_;
 
   interval<date::sys_days> internal_interval_days_;
 };
@@ -161,6 +190,11 @@ struct gpu_raptor_state::impl {
   explicit impl(gpu_timetable const& gtt)
       : tt_{gtt.impl_->to_device_timetable()} {
     cudaStreamCreate(&stream_);
+    // compute_et boarding pre-pass buffers, sized to the flat route-stop space.
+    auto const n_route_stops = tt_.route_of_stop_.size();
+    et_result_.resize(n_route_stops);
+    et_task_list_.resize(n_route_stops);
+    et_task_count_.resize(1U);
   }
 
   ~impl() { cudaStreamDestroy(stream_); }
@@ -308,6 +342,12 @@ struct gpu_raptor_state::impl {
 
   thrust::host_vector<std::uint64_t> host_round_times_;
   raptor_state host_state_;
+
+  // compute_et boarding pre-pass: precomputed earliest-transport per flat
+  // (route,stop), and a compacted task list of boarding candidates per round.
+  thrust::device_vector<std::uint64_t> et_result_;
+  thrust::device_vector<std::uint32_t> et_task_list_;
+  thrust::device_vector<std::uint32_t> et_task_count_;
 
   cudaStream_t stream_;
 };
@@ -471,7 +511,10 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
       .time_at_dest_ = {to_mutable_view(s.time_at_dest_), n_locations_},
       .station_mark_ = {to_mutable_view(s.station_mark_)},
       .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
-      .route_mark_ = {to_mutable_view(s.route_mark_)}};
+      .route_mark_ = {to_mutable_view(s.route_mark_)},
+      .et_result_ = to_mutable_view(s.et_result_),
+      .et_task_list_ = to_mutable_view(s.et_task_list_),
+      .et_task_count_ = thrust::raw_pointer_cast(s.et_task_count_.data())};
 
   auto blocks = 0;
   auto threads = 0;
