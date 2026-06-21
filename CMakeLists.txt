@@ -166,11 +166,12 @@ if (NIGIRI_CUDA)
 
   find_package(CUDAToolkit REQUIRED)
   file(GLOB_RECURSE nigiri-gpu-files src/*.cu)
-  add_library(nigiri-gpu OBJECT ${nigiri-gpu-files})
+  add_library(nigiri-gpu STATIC ${nigiri-gpu-files})
   set_target_properties(nigiri-gpu PROPERTIES
           COMPILE_OPTIONS "-O3;-DNDEBUG"
           WINDOWS_EXPORT_ALL_SYMBOLS ON
           CUDA_SEPARABLE_COMPILATION ON
+          CUDA_RESOLVE_DEVICE_SYMBOLS ON
           CUDA_ARCHITECTURES native
           CUDA_STANDARD 20
           COMPILE_WARNING_AS_ERROR OFF
@@ -180,9 +181,14 @@ if (NIGIRI_CUDA)
   )
   target_include_directories(nigiri-gpu PUBLIC include ${CUDAToolkit_INCLUDE_DIRS})
   target_link_libraries(nigiri-gpu PRIVATE cista fmt date unordered_dense geo utl)
+  target_link_libraries(nigiri-gpu PUBLIC CUDA::cudart)
 
   target_compile_definitions(nigiri-gpu PUBLIC NIGIRI_CUDA)
   target_compile_definitions(nigiri PUBLIC NIGIRI_CUDA)
+
+  # propagate the GPU implementations to every consumer of nigiri (motis, tools,
+  # tests) so pong.cc's gpu_raptor instantiations resolve at link time
+  target_link_libraries(nigiri PUBLIC nigiri-gpu)
 
   set_property(TARGET nigiri PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 

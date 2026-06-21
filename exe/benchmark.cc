@@ -1,7 +1,9 @@
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
 #include <iostream>
 #include <regex>
+#include <thread>
 
 #include "boost/program_options.hpp"
 
@@ -199,14 +201,15 @@ void process_queries(
                                          direction::kForward);
         auto const gpu_total_time_stop = std::chrono::steady_clock::now();
 
-        auto const total_ms =
-            std::chrono::duration_cast<std::chrono::milliseconds>(
+        auto const total_us =
+            std::chrono::duration_cast<std::chrono::microseconds>(
                 total_time_stop - total_time_start);
-        auto const total_gpu_ms =
-            std::chrono::duration_cast<std::chrono::milliseconds>(
+        auto const total_gpu_us =
+            std::chrono::duration_cast<std::chrono::microseconds>(
                 gpu_total_time_stop - gpu_total_time_start);
 
-        std::cout << "cpu=" << total_ms << ", gpu=" << total_gpu_ms << "\n";
+        std::cout << "cpu=" << total_us.count() << "us, gpu="
+                  << total_gpu_us.count() << "us\n";
 
         auto const cpu_result_str = to_str(tt, *result.journeys_);
         auto const gpu_result_str = to_str(tt, *gpu_result.journeys_);
@@ -226,7 +229,7 @@ void process_queries(
                 total_time_stop - total_time_start)});
         progress_tracker->increment();
       } catch (std::exception const& e) {
-        std::cout << e.what();
+        std::cerr << "query #" << q_idx << " FAILED: " << e.what() << std::endl;
       }
     }
   }
@@ -243,8 +246,56 @@ T quantile(std::vector<T> const& v, double q) {
   return v[static_cast<std::size_t>(v.size() * q)];
 }
 
+// GPU-only throughput test: run pong on `n_threads` worker threads, each with
+// its own gpu_raptor_state + stream, all sharing the read-only gpu_timetable.
+// Measures sustained queries/sec (how much the per-query GPU-idle slack can be
+// reclaimed by concurrency, up to the DRAM-bandwidth ceiling).
+void throughput_test(
+    std::vector<nigiri::query_generation::start_dest_query> const& queries,
+    timetable const& tt, unsigned const n_threads) {
+  auto const gpu_tt = routing::gpu::gpu_timetable{tt};
+  std::cout << "throughput: " << n_threads << " threads, " << queries.size()
+            << " queries\n";
+  auto next = std::atomic<std::size_t>{0};
+  auto done = std::atomic<std::size_t>{0};
+  auto const t0 = std::chrono::steady_clock::now();
+  auto workers = std::vector<std::thread>{};
+  for (auto t = 0U; t != n_threads; ++t) {
+    workers.emplace_back([&]() {
+      auto ss = search_state{};
+      auto gpu_rs = std::make_unique<routing::gpu::gpu_raptor_state>(gpu_tt);
+      for (auto i = next.fetch_add(1); i < queries.size();
+           i = next.fetch_add(1)) {
+        try {
+          auto const r = routing::pong_search(tt, nullptr, ss, *gpu_rs,
+                                              queries[i].q_, direction::kForward);
+          if (!r.journeys_->empty() || true) {
+            done.fetch_add(1);
+          }
+        } catch (std::exception const& e) {
+          std::cerr << "q#" << i << " FAILED: " << e.what() << std::endl;
+        }
+      }
+    });
+  }
+  for (auto& w : workers) {
+    w.join();
+  }
+  auto const ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::steady_clock::now() - t0)
+                      .count();
+  auto const d = done.load();
+  std::cout << "throughput: " << d << " queries in " << ms << "ms = "
+            << (d * 1000.0 / static_cast<double>(std::max<std::int64_t>(ms, 1)))
+            << " queries/sec (" << n_threads << " threads)\n";
+}
+
 void print_result(std::vector<benchmark_result> const& var,
                   std::string const& var_name) {
+  if (var.empty()) {
+    std::cout << "\n--- " << var_name << " --- (n = 0, no successful queries)\n";
+    return;
+  }
   std::cout << "\n--- " << var_name << " --- (n = " << var.size() << ")"
             << "\n  10%: " << quantile(var, 0.1)
             << "\n  20%: " << quantile(var, 0.2)
@@ -386,6 +437,7 @@ int main(int argc, char* argv[]) {
   auto intermodal_start_str = std::string{};
   auto intermodal_dest_str = std::string{};
   auto max_transfers = std::uint32_t{kMaxTransfers};
+  auto gpu_threads = std::uint32_t{0};
   auto prf_idx = std::uint32_t{0};
   auto start_coord_str = std::string{};
   auto dest_coord_str = std::string{};
@@ -470,7 +522,11 @@ int main(int argc, char* argv[]) {
       ("dest_loc", bpo::value<location_idx_t::value_t>(&dest_loc_val),
        "destination location for random queries")  //
       ("qa_path,q", bpo::value(&qa_path),
-       "path to write the journey criteria to for qa");
+       "path to write the journey criteria to for qa")  //
+      ("gpu_threads",
+       bpo::value<std::uint32_t>(&gpu_threads)->default_value(0U),
+       "if >0: run GPU-only pong throughput test with this many worker "
+       "threads (each its own state) instead of the cpu-vs-gpu benchmark");
   bpo::variables_map vm;
   bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
 
@@ -588,6 +644,12 @@ int main(int argc, char* argv[]) {
 
   auto const use_pong = algorithm == "pong";
   std::cout << "algorithm: " << (use_pong ? "pong" : "raptor") << "\n";
+
+  if (gpu_threads > 0U) {
+    throughput_test(queries, tt, gpu_threads);
+    return 0;
+  }
+
   auto results = std::vector<benchmark_result>{};
   process_queries(queries, results, tt, use_pong);
 

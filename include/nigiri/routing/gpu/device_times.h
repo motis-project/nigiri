@@ -4,6 +4,7 @@
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/routing/gpu/breadcrumb.h"
+#include "nigiri/routing/gpu/tuning.h"
 #include "nigiri/types.h"
 
 namespace nigiri::routing::gpu {
@@ -30,31 +31,61 @@ struct device_times {
                                               std::uint64_t const bc) {
     return (static_cast<std::uint64_t>(to_key(t)) << 48U) | (bc & kBcMask);
   }
-  // packed value representing kInvalid (worst key) with empty breadcrumb
+  // packed value representing kInvalid: all-ones (worst key 0xFFFF in the high
+  // bits; breadcrumb bits unused for invalid entries). All-ones so a single
+  // cudaMemset(0xFF) produces it.
   CISTA_CUDA_COMPAT static std::uint64_t invalid_packed() {
-    return static_cast<std::uint64_t>(std::uint16_t{0xFFFFU}) << 48U;
+    return ~std::uint64_t{0};
   }
 
   __device__ delta_t get(std::uint8_t const k,
                          location_idx_t const l,
                          via_offset_t const via) {
-    return from_key(
-        static_cast<std::uint16_t>(data_[internal_idx(k, l, via)] >> 48U));
+    auto const idx = internal_idx(k, l, via);
+#if NIGIRI_GPU_SPLIT_TIMES
+    if (!keys_.empty()) {
+      return from_key(keys_[idx]);
+    }
+#endif
+    return from_key(static_cast<std::uint16_t>(data_[idx] >> 48U));
   }
 
   __device__ delta_t get(location_idx_t const l, via_offset_t const via) {
-    return from_key(
-        static_cast<std::uint16_t>(data_[internal_idx(0U, l, via)] >> 48U));
+    auto const idx = internal_idx(0U, l, via);
+#if NIGIRI_GPU_SPLIT_TIMES
+    if (!keys_.empty()) {
+      return from_key(keys_[idx]);
+    }
+#endif
+    return from_key(static_cast<std::uint16_t>(data_[idx] >> 48U));
   }
 
   __device__ delta_t get(std::uint8_t const i) {
     return from_key(static_cast<std::uint16_t>(data_[i] >> 48U));
   }
 
+  // exact time from the 64-bit master (used by reconstruction, which also needs
+  // the breadcrumb from the same word; never the 16-bit mirror).
+  __device__ delta_t get_time_data(std::uint8_t const k,
+                                   location_idx_t const l,
+                                   via_offset_t const via) {
+    return from_key(
+        static_cast<std::uint16_t>(data_[internal_idx(k, l, via)] >> 48U));
+  }
+
   __device__ std::uint64_t get_bc(std::uint8_t const k,
                                   location_idx_t const l,
                                   via_offset_t const via) {
     return data_[internal_idx(k, l, via)] & kBcMask;
+  }
+
+  // copy the 16-bit time key from the 64-bit master into the read mirror; called
+  // after a round's writes complete (#3).
+  __device__ void extract_key(std::uint8_t const k,
+                              location_idx_t const l,
+                              via_offset_t const via) {
+    auto const idx = internal_idx(k, l, via);
+    keys_[idx] = static_cast<std::uint16_t>(data_[idx] >> 48U);
   }
 
   __device__ bool update_min(std::uint8_t const k,
@@ -82,6 +113,13 @@ struct device_times {
         reinterpret_cast<unsigned long long*>(&data_[idx]);  // NOLINT
     auto const old =
         atomicMin(addr, static_cast<unsigned long long>(new_packed));
+    // mark the first write to a previously-invalid entry in a dirty bitfield,
+    // so reset only clears the touched entries instead of memset-ing the whole
+    // (huge) buffer. One bit per entry (size/8 bytes).
+    if (dirty_bits_ != nullptr && (old >> 48U) == 0xFFFFULL &&
+        (new_packed >> 48U) != 0xFFFFULL) {
+      atomicOr(&dirty_bits_[idx >> 5U], 1U << (idx & 31U));
+    }
     // strictly improved iff the new time key is smaller than the old one
     return (new_packed >> 48U) < (old >> 48U);
   }
@@ -94,6 +132,14 @@ struct device_times {
 
   cuda::std::span<std::uint64_t> data_;
   std::uint32_t n_locations_;
+  // optional 16-bit read mirror of the time keys (#3); empty unless enabled and
+  // populated (round_times only). Hot reads use this; writes/reconstruction use
+  // data_.
+  cuda::std::span<std::uint16_t> keys_;
+  // optional selective-clear bitfield (round_times only): one bit per entry, set
+  // on first invalid->valid write. reset scans it and clears only the marked
+  // entries instead of memset-ing the whole buffer. null = off.
+  std::uint32_t* dirty_bits_ = nullptr;
 };
 
 }  // namespace nigiri::routing::gpu

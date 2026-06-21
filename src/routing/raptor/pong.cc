@@ -90,19 +90,24 @@ routing_result pong(timetable const& tt,
   // ====
   // PING
   // ----
-  UTL_START_TIMING(ping_lb);
   auto ping_lb = std::vector<std::uint16_t>{};
-  dijkstra(tt, q,
-           (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
-                 : tt.bwd_search_lb_graph_[q.prf_idx_]),
-           (rtt == nullptr ? nullptr
-                           : &(kFwd ? rtt->fwd_search_lb_graph_has_edges_
-                                    : rtt->bwd_search_lb_graph_has_edges_)),
-           (rtt == nullptr ? nullptr
-                           : &(kFwd ? rtt->fwd_search_lb_graph_
-                                    : rtt->bwd_search_lb_graph_)),
-           ping_lb);
-  UTL_STOP_TIMING(ping_lb);
+  if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
+    // GPU: skip the per-query dijkstra. Leave ping_lb empty -> the GPU treats it
+    // as an all-zero (trivial, valid) lower bound, so results stay correct; we
+    // just lose pruning (the GPU search kernel is cheap; the dijkstra dominated
+    // GPU-pong wall time). Empty also avoids the host fill + a pageable upload.
+  } else {
+    dijkstra(tt, q,
+             (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
+                   : tt.bwd_search_lb_graph_[q.prf_idx_]),
+             (rtt == nullptr ? nullptr
+                             : &(kFwd ? rtt->fwd_search_lb_graph_has_edges_
+                                      : rtt->bwd_search_lb_graph_has_edges_)),
+             (rtt == nullptr ? nullptr
+                             : &(kFwd ? rtt->fwd_search_lb_graph_
+                                      : rtt->bwd_search_lb_graph_)),
+             ping_lb);
+  }
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
@@ -135,19 +140,21 @@ routing_result pong(timetable const& tt,
   // ----
   q.flip_dir();
 
-  UTL_START_TIMING(pong_lb);
   auto pong_lb = std::vector<std::uint16_t>{};
-  dijkstra(tt, q,
-           (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
-                 : tt.fwd_search_lb_graph_[q.prf_idx_]),
-           (rtt == nullptr ? nullptr
-                           : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
-                                    : rtt->fwd_search_lb_graph_has_edges_)),
-           (rtt == nullptr ? nullptr
-                           : &(kFwd ? rtt->bwd_search_lb_graph_
-                                    : rtt->fwd_search_lb_graph_)),
-           pong_lb);
-  UTL_STOP_TIMING(pong_lb);
+  if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
+    // empty -> GPU uses all-zero lower bounds (see ping_lb above)
+  } else {
+    dijkstra(tt, q,
+             (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
+                   : tt.fwd_search_lb_graph_[q.prf_idx_]),
+             (rtt == nullptr ? nullptr
+                             : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
+                                      : rtt->fwd_search_lb_graph_has_edges_)),
+             (rtt == nullptr ? nullptr
+                             : &(kFwd ? rtt->bwd_search_lb_graph_
+                                      : rtt->fwd_search_lb_graph_)),
+             pong_lb);
+  }
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
   auto pong_is_dest = bitvec{};
@@ -185,9 +192,7 @@ routing_result pong(timetable const& tt,
   auto result = routing_result{
       .journeys_ = &s_state.results_,
       .interval_ = search_interval,
-      .search_stats_ = {.lb_time_ =
-                            static_cast<std::uint64_t>(UTL_TIMING_MS(ping_lb)) +
-                            static_cast<std::uint64_t>(UTL_TIMING_MS(pong_lb))},
+      .search_stats_ = {.lb_time_ = 0U},  // lower bounds disabled
       .algo_stats_ = {}};
   auto start_time =
       kFwd ? search_interval.from_ : search_interval.to_ - duration_t{1};

@@ -14,6 +14,7 @@
 #include "nigiri/routing/gpu/device_timetable.cuh"
 #include "nigiri/routing/gpu/journey_pod.h"
 #include "nigiri/routing/gpu/stride.cuh"
+#include "nigiri/routing/gpu/tuning.h"
 #include "nigiri/routing/gpu/types.cuh"
 
 namespace nigiri::routing::gpu {
@@ -88,6 +89,11 @@ struct raptor_impl {
 
     sync();
 
+#if NIGIRI_GPU_SPLIT_TIMES
+    extract_round(0U);  // seed the read mirror with the start times
+    sync();
+#endif
+
     auto const end_k = min(max_transfers, kMaxTransfers) + 1U;
     for (auto k = 1U; k != end_k; ++k) {
       start_timing();
@@ -140,6 +146,14 @@ struct raptor_impl {
       }
       sync();
 
+      // parallel get_earliest_transport pre-pass over (route, stop) tasks
+#if NIGIRI_GPU_COMPUTE_ET
+      if constexpr (Vias == 0) {
+        compute_et(k);
+        sync();
+      }
+#endif
+
       (allowed_claszes_ == all_clasz_allowed())
           ? (require_bike_transport_ ? loop_routes<false, true>(k)
                                      : loop_routes<false, false>(k))
@@ -164,6 +178,10 @@ struct raptor_impl {
 
       route_mark_.reset();
       sync();
+#if NIGIRI_GPU_SPLIT_TIMES
+      extract_round(k);  // round_times[k] writes are fenced by the sync above
+      sync();
+#endif
       debug_timing("round %u: TOTAL", k);
     }
   }
@@ -185,7 +203,7 @@ struct raptor_impl {
     out->valid_ = 0U;
     auto cur_v = static_cast<via_offset_t>(Vias);
     auto const dest_time =
-        round_times_.get(static_cast<std::uint8_t>(K), dest, cur_v);
+        round_times_.get_time_data(static_cast<std::uint8_t>(K), dest, cur_v);
     if (dest_time == kInvalid) {
       return;
     }
@@ -213,8 +231,8 @@ struct raptor_impl {
       auto const board = static_cast<stop_idx_t>(bc_board(bc));
       auto const alight = static_cast<stop_idx_t>(bc_alight(bc));
       auto const r = tt_.transport_route_[t_idx];
-      auto const arr_at_cur =
-          round_times_.get(static_cast<std::uint8_t>(cur_k), cur_l, cur_v);
+      auto const arr_at_cur = round_times_.get_time_data(
+          static_cast<std::uint8_t>(cur_k), cur_l, cur_v);
 
       // recover the traffic (first-departure) day of the transport
       auto const event_mam_full =
@@ -632,9 +650,18 @@ struct raptor_impl {
         auto const prev_round_time = round_times_.get(k - 1, l, target_v);
         if (prev_round_time != kInvalid &&
             is_better_or_eq(prev_round_time, et_time_at_stop)) {
-          auto const [day, mam] = split(prev_round_time);
-          auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
-                                                     stp.location_idx());
+          transport new_et;
+#if NIGIRI_GPU_COMPUTE_ET
+          if constexpr (Vias == 0) {
+            new_et = unpack_et(
+                et_result_[tt_.route_stop_offset_[to_idx(r)] + stop_idx]);
+          } else
+#endif
+          {
+            auto const [day, mam] = split(prev_round_time);
+            new_et = get_earliest_transport(k, r, stop_idx, day, mam,
+                                            stp.location_idx());
+          }
           current_best[v] = get_best(current_best[v], best_.get(l, target_v),
                                      tmp_.get(l, target_v));
           if (new_et.is_valid() &&
@@ -658,6 +685,105 @@ struct raptor_impl {
       }
     }
     return any_marked;
+  }
+
+  static constexpr std::uint64_t kEtInvalid = ~std::uint64_t{0};
+
+  __device__ __forceinline__ std::uint64_t pack_et(transport const t) const {
+    return t.is_valid() ? ((static_cast<std::uint64_t>(to_idx(t.day_)) << 32) |
+                           static_cast<std::uint64_t>(to_idx(t.t_idx_)))
+                        : kEtInvalid;
+  }
+
+  __device__ __forceinline__ transport unpack_et(std::uint64_t const p) const {
+    return p == kEtInvalid
+               ? transport{}
+               : transport{
+                     transport_idx_t{static_cast<std::uint32_t>(p & 0xFFFFFFFFU)},
+                     day_idx_t{static_cast<std::uint16_t>(p >> 32)}};
+  }
+
+  // Parallel pre-pass (Vias == 0). Phase 1a scans (route, stop) of marked
+  // routes and compacts the boarding candidates (prev_station_mark + can_start +
+  // reachable last round) into et_task_list_; phase 1b then runs one
+  // get_earliest_transport per task, so the latency-bound lookups execute with
+  // full warp utilization instead of scattered among skipped lanes inside the
+  // divergent per-route loop. Over-computes vs inline (it can't see the running
+  // et's departure cutoff), but the result is identical because update_route
+  // still applies that cutoff before using et_result_.
+  __device__ void compute_et(unsigned const k) {
+    if constexpr (Vias == 0) {
+      auto const gid = get_global_thread_id();
+      auto const stride = get_global_stride();
+      auto const total = tt_.route_stop_offset_[tt_.n_routes_];
+
+      // phase 1a: collect candidate tasks; default every marked-route stop to
+      // "no transport" so non-candidate stops read invalid.
+      if (gid == 0U) {
+        *et_task_count_ = 0U;
+      }
+      sync();
+      for (auto flat = gid; flat < total; flat += stride) {
+        auto const r = route_idx_t{tt_.route_of_stop_[flat]};
+        if (!route_mark_.test(to_idx(r))) {
+          continue;
+        }
+        et_result_[flat] = kEtInvalid;
+        auto const stop_seq = tt_.route_location_seq_[r];
+        auto const stop_idx =
+            static_cast<stop_idx_t>(flat - tt_.route_stop_offset_[to_idx(r)]);
+        // boarding never happens at the direction-final stop
+        auto const is_dir_last =
+            kFwd ? (stop_idx + 1U == stop_seq.size()) : (stop_idx == 0U);
+        if (is_dir_last) {
+          continue;
+        }
+        auto const stp = stop{stop_seq[stop_idx]};
+        auto const l = stp.location_idx();
+        auto const l_idx = cista::to_idx(l);
+        if (!prev_station_mark_[l_idx] ||
+            !stp.can_start<SearchDir>(is_wheelchair_) ||
+            round_times_.get(k - 1, l, 0U) == kInvalid) {
+          continue;
+        }
+        et_task_list_[atomicAdd(et_task_count_, 1U)] = flat;
+      }
+      sync();
+
+      // phase 1b: one lookup per task, no per-route divergence.
+      auto const n_tasks = *et_task_count_;
+      for (auto i = gid; i < n_tasks; i += stride) {
+        auto const flat = et_task_list_[i];
+        auto const r = route_idx_t{tt_.route_of_stop_[flat]};
+        auto const stop_idx =
+            static_cast<stop_idx_t>(flat - tt_.route_stop_offset_[to_idx(r)]);
+        auto const stop_seq = tt_.route_location_seq_[r];
+        auto const stp = stop{stop_seq[stop_idx]};
+        auto const l = stp.location_idx();
+        auto const [day, mam] = split(round_times_.get(k - 1, l, 0U));
+        et_result_[flat] =
+            pack_et(get_earliest_transport(k, r, stop_idx, day, mam, l));
+      }
+    }
+  }
+
+  // copy the 16-bit time keys of the locations written this round into the read
+  // mirror, so the next round's hot reads hit 2-byte instead of 8-byte loads
+  // (#3). Must run after the round's round_times writes are fenced.
+  __device__ void extract_round(unsigned const k) {
+#if NIGIRI_GPU_SPLIT_TIMES
+    auto const gid = get_global_thread_id();
+    auto const stride = get_global_stride();
+    for (auto i = gid; i < n_locations_; i += stride) {
+      if (!station_mark_[i]) {
+        continue;
+      }
+      auto const l = location_idx_t{i};
+      for (auto v = 0U; v != Vias + 1; ++v) {
+        round_times_.extract_key(static_cast<std::uint8_t>(k), l, v);
+      }
+    }
+#endif
   }
 
   __device__ transport
@@ -799,6 +925,11 @@ struct raptor_impl {
   device_bitvec<std::uint32_t> station_mark_;
   device_bitvec<std::uint32_t> prev_station_mark_;
   device_bitvec<std::uint32_t> route_mark_;
+  // precomputed earliest transport per flat (route, stop) for the current round
+  // (Vias == 0 only): packed (day << 32) | transport_idx, kEtInvalid if none.
+  cuda::std::span<std::uint64_t> et_result_;
+  cuda::std::span<std::uint32_t> et_task_list_;  // compacted candidate flats
+  std::uint32_t* et_task_count_;  // number of tasks this round
 };
 
 }  // namespace nigiri::routing::gpu
