@@ -260,7 +260,8 @@ struct gpu_raptor_state::impl {
   void upload_query(std::array<nigiri::bitvec, kMaxVias> const& is_via,
                     std::vector<via_stop> const& via_stops,
                     nigiri::bitvec const& is_dest,
-                    std::vector<std::uint16_t> const& dist_to_dest) {
+                    std::vector<std::uint16_t> const& dist_to_dest,
+                    std::vector<std::uint16_t> const& lb = {}) {
     is_intermodal_dest_ = !dist_to_dest.empty();
 
     for (auto i = 0U; i != is_via.size(); ++i) {
@@ -304,6 +305,24 @@ struct gpu_raptor_state::impl {
                             dist_to_dest.size() * sizeof(std::uint16_t),
                             cudaMemcpyHostToDevice, stream_),
         "could not copy dist to dest");
+
+    // lower bound to destination: empty -> zero-fill (trivial valid bound = no
+    // pruning); else copy. Always sized to n_locations_ so the kernel can index
+    // lb_[l] unconditionally.
+    if (lb.empty()) {
+      lb_.resize(n_locations_);
+      cudaMemsetAsync(thrust::raw_pointer_cast(lb_.data()), 0,
+                      n_locations_ * sizeof(std::uint16_t), stream_);
+    } else {
+      lb_.resize(lb.size());
+      auto* const lb_p = lb_pinned_.ensure(lb.size());
+      std::copy(lb.begin(), lb.end(), lb_p);
+      utl::verify(
+          cudaSuccess == cudaMemcpyAsync(thrust::raw_pointer_cast(lb_.data()),
+                                         lb_p, lb.size() * sizeof(std::uint16_t),
+                                         cudaMemcpyHostToDevice, stream_),
+          "could not copy lb");
+    }
   }
 
   std::uint32_t n_locations_;
@@ -327,9 +346,11 @@ struct gpu_raptor_state::impl {
   std::array<thrust::device_vector<std::uint64_t>, kMaxVias> is_via_;
   thrust::device_vector<via_stop> via_stops_;
   thrust::device_vector<std::uint16_t> dist_to_dest_;
+  thrust::device_vector<std::uint16_t> lb_;  // per-location lower bound to dest
 
   // pinned staging + device buffers for fast per-query H2D
   pinned_buffer<std::uint16_t> dist_to_dest_pinned_;
+  pinned_buffer<std::uint16_t> lb_pinned_;
   pinned_buffer<std::pair<location_idx_t, unixtime_t>> starts_pinned_;
   thrust::device_vector<std::pair<location_idx_t, unixtime_t>> starts_dev_;
 
@@ -409,6 +430,7 @@ gpu_raptor<SearchDir, Rt, Vias>::gpu_raptor(
       is_via_{is_via},
       dist_to_end_{dist_to_dest},
       td_dist_to_end_{td_dist_to_dest},
+      lb_{lb},
       via_stops_{via_stops},
       base_{base},
       allowed_claszes_{allowed_claszes},
@@ -458,7 +480,7 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
   // Re-upload this search's params: ping and pong share one gpu_raptor_state,
   // and the pong instance's ctor would otherwise leave its destination (= the
   // original start) in the shared device is_dest_, killing ping's propagation.
-  s.upload_query(is_via_, via_stops_, is_dest_, dist_to_end_);
+  s.upload_query(is_via_, via_stops_, is_dest_, dist_to_end_, lb_);
   auto* const starts_pinned = s.starts_pinned_.ensure(starts_.size());
   std::copy(starts_.begin(), starts_.end(), starts_pinned);
   if (s.starts_dev_.size() < starts_.size()) {
@@ -502,6 +524,7 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
       .is_dest_ = {to_view(s.is_dest_)},
       .end_reachable_ = {to_mutable_view(s.end_reachable_)},
       .dist_to_end_ = to_view(s.dist_to_dest_),
+      .lb_ = to_view(s.lb_),
       .round_times_ = {to_mutable_view(s.round_times_), n_locations_,
                        thrust::raw_pointer_cast(s.dirty_bits_.data())},
       .best_ = {to_mutable_view(s.best_), n_locations_,

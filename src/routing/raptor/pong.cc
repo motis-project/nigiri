@@ -91,23 +91,24 @@ routing_result pong(timetable const& tt,
   // PING
   // ----
   auto ping_lb = std::vector<std::uint16_t>{};
-  if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
-    // GPU: skip the per-query dijkstra. Leave ping_lb empty -> the GPU treats it
-    // as an all-zero (trivial, valid) lower bound, so results stay correct; we
-    // just lose pruning (the GPU search kernel is cheap; the dijkstra dominated
-    // GPU-pong wall time). Empty also avoids the host fill + a pageable upload.
-  } else {
-    dijkstra(tt, q,
-             (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
-                   : tt.bwd_search_lb_graph_[q.prf_idx_]),
-             (rtt == nullptr ? nullptr
-                             : &(kFwd ? rtt->fwd_search_lb_graph_has_edges_
-                                      : rtt->bwd_search_lb_graph_has_edges_)),
-             (rtt == nullptr ? nullptr
-                             : &(kFwd ? rtt->fwd_search_lb_graph_
-                                      : rtt->bwd_search_lb_graph_)),
-             ping_lb);
-  }
+  // The GPU searches the scheduled timetable only (rtt=nullptr in the kernel).
+  // The scheduled lb is the TIGHTEST admissible bound for a scheduled search.
+  // (The rt-aware bound would also be admissible -- nigiri's rt lb_graph only
+  // ADDS edges that are faster than scheduled and the dijkstra keeps the min, so
+  // rt-aware lb <= scheduled lb, never longer -- but it's weaker pruning, so we
+  // use the scheduled one for the GPU.)
+  constexpr auto const kGpu = std::is_same_v<AlgoState, gpu::gpu_raptor_state>;
+  dijkstra(tt, q,
+           (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
+                 : tt.bwd_search_lb_graph_[q.prf_idx_]),
+           ((rtt == nullptr || kGpu)
+                ? nullptr
+                : &(kFwd ? rtt->fwd_search_lb_graph_has_edges_
+                         : rtt->bwd_search_lb_graph_has_edges_)),
+           ((rtt == nullptr || kGpu) ? nullptr
+                                     : &(kFwd ? rtt->fwd_search_lb_graph_
+                                              : rtt->bwd_search_lb_graph_)),
+           ping_lb);
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
@@ -141,20 +142,18 @@ routing_result pong(timetable const& tt,
   q.flip_dir();
 
   auto pong_lb = std::vector<std::uint16_t>{};
-  if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
-    // empty -> GPU uses all-zero lower bounds (see ping_lb above)
-  } else {
-    dijkstra(tt, q,
-             (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
-                   : tt.fwd_search_lb_graph_[q.prf_idx_]),
-             (rtt == nullptr ? nullptr
-                             : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
-                                      : rtt->fwd_search_lb_graph_has_edges_)),
-             (rtt == nullptr ? nullptr
-                             : &(kFwd ? rtt->bwd_search_lb_graph_
-                                      : rtt->fwd_search_lb_graph_)),
-             pong_lb);
-  }
+  // scheduled lower bound for the GPU (see ping_lb above)
+  dijkstra(tt, q,
+           (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
+                 : tt.fwd_search_lb_graph_[q.prf_idx_]),
+           ((rtt == nullptr || kGpu)
+                ? nullptr
+                : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
+                         : rtt->fwd_search_lb_graph_has_edges_)),
+           ((rtt == nullptr || kGpu) ? nullptr
+                                     : &(kFwd ? rtt->bwd_search_lb_graph_
+                                              : rtt->fwd_search_lb_graph_)),
+           pong_lb);
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
   auto pong_is_dest = bitvec{};

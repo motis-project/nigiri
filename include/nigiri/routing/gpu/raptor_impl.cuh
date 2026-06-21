@@ -311,16 +311,20 @@ struct raptor_impl {
 
   template <bool WithClaszFilter, bool WithBikeFilter>
   __device__ void loop_routes(unsigned const k) {
-    auto const global_t_id = get_global_thread_id();
-    auto const global_stride = get_global_stride();
+    // one warp per route (lanes cooperate on the route's stops via
+    // update_route_warp); all 32 lanes share warp_id so they stay converged for
+    // the warp shuffles / __any_sync.
+    auto const full = 0xFFFFFFFFU;
+    auto const lane = get_global_thread_id() % 32U;
+    auto const warp_id = get_global_thread_id() / 32U;
+    auto const n_warps = get_global_stride() / 32U;
 
-    for (auto i = global_t_id; i < tt_.n_routes_; i += global_stride) {
+    for (auto i = warp_id; i < tt_.n_routes_; i += n_warps) {
       if (!route_mark_.test(i)) {
         continue;
       }
 
       auto const r = route_idx_t{i};
-      debug("round %u: processing route %d\n", k, i);
       if constexpr (WithClaszFilter) {
         if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
           continue;
@@ -341,11 +345,24 @@ struct raptor_impl {
         }
       }
 
-      auto const route_any_marked = section_bike_filter
-                                        ? update_route<true>(k, r)
-                                        : update_route<false>(k, r);
-      if (route_any_marked && !*any_marked_) {
-        debug("round %u: route=%d -> any_marked=true\n", k, i);
+      bool route_any_marked;
+      if constexpr (Vias == 0) {
+        if (!section_bike_filter) {
+          route_any_marked = update_route_warp(k, r, lane);
+        } else {
+          // rare path: section bike filter -> sequential on lane 0
+          auto const m = (lane == 0U) ? update_route<true>(k, r) : false;
+          route_any_marked = __any_sync(full, m);
+        }
+      } else {
+        // Vias>0 is unused on the GPU (kGpuViaSlots==1); sequential on lane 0
+        auto const m =
+            (lane == 0U) ? (section_bike_filter ? update_route<true>(k, r)
+                                                : update_route<false>(k, r))
+                         : false;
+        route_any_marked = __any_sync(full, m);
+      }
+      if (route_any_marked && lane == 0U && !*any_marked_) {
         atomicOr(any_marked_, 1U);
       }
     }
@@ -383,6 +400,10 @@ struct raptor_impl {
 
         if (is_better(fp_target_time, best_.get(l, target_v)) &&
             is_better(fp_target_time, time_at_dest_.get(k))) {
+          if (lb_[i] == kUnreachable ||
+              !is_better(fp_target_time + dir(lb_[i]), time_at_dest_.get(k))) {
+            continue;
+          }
           round_times_.update_min(k, l, target_v, fp_target_time,
                                   tmp_.get_bc(0U, l, v));
           best_.update_min(l, target_v, fp_target_time);
@@ -436,6 +457,11 @@ struct raptor_impl {
 
           if (is_better(fp_target_time, best_.get(fp.target(), target_v)) &&
               is_better(fp_target_time, time_at_dest_.get(k))) {
+            if (lb_[target] == kUnreachable ||
+                !is_better(fp_target_time + dir(lb_[target]),
+                           time_at_dest_.get(k))) {
+              continue;
+            }
             round_times_.update_min(k, fp.target(), target_v, fp_target_time,
                                     tmp_.get_bc(0U, l, v));
             best_.update_min(fp.target(), target_v, fp_target_time);
@@ -484,6 +510,108 @@ struct raptor_impl {
         }
       }
     }
+  }
+
+  // Warp-cooperative route scan (Vias==0, no section-bike-filter): one warp per
+  // route, lane = stop in scan order. The boarding earliest-transport per stop
+  // is precomputed by compute_et into et_result_ (packed (day<<32)|t_idx, which
+  // is the per-route total order -> lower = earlier). A warp prefix-min of that
+  // value gives, for every stop, the earliest transport boardable at any earlier
+  // stop (carrying its board stop); each lane then propagates that transport's
+  // arrival to its stop. This replaces the per-route sequential scan (huge
+  // per-route work variance -> warps stalling at the round barrier).
+  __device__ bool update_route_warp(unsigned const k, route_idx_t const r,
+                                    unsigned const lane) {
+    auto const stop_seq = tt_.route_location_seq_[r];
+    auto const n = static_cast<unsigned>(stop_seq.size());
+    auto const base_flat = tt_.route_stop_offset_[to_idx(r)];
+    auto const full = 0xFFFFFFFFU;
+    auto local_marked = false;
+
+    std::uint64_t run_et = kEtInvalid;  // prefix-min et across chunks
+    unsigned run_board_i = full;  // scan position where run_et was boarded
+
+    for (auto chunk = 0U; chunk < n; chunk += 32U) {
+      auto const i = chunk + lane;
+      auto stop_idx = stop_idx_t{};
+      std::uint64_t my_et = kEtInvalid;
+      if (i < n) {
+        stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
+        my_et = et_result_[base_flat + stop_idx];  // gated boardable by compute_et
+      }
+      auto my_board_i = (my_et != kEtInvalid) ? i : full;
+
+      // within-chunk inclusive prefix-min of (et value, board scan-pos)
+      auto incl_et = my_et;
+      auto incl_bi = my_board_i;
+      for (auto off = 1U; off < 32U; off <<= 1) {
+        auto const o_et = __shfl_up_sync(full, incl_et, off);
+        auto const o_bi = __shfl_up_sync(full, incl_bi, off);
+        if (lane >= off &&
+            (et_is_better(o_et, incl_et) ||
+             (!et_is_better(incl_et, o_et) && o_bi < incl_bi))) {
+          incl_et = o_et;
+          incl_bi = o_bi;
+        }
+      }
+      // EXCLUSIVE prefix (stops strictly before this one) = inclusive of the
+      // previous lane, combined with the carry from earlier chunks. The alight
+      // must use a transport boarded *before* this stop -- if we boarded a
+      // better transport *at* this stop, we still alight here on the previous
+      // one (and the new one serves later stops).
+      auto act_et = __shfl_up_sync(full, incl_et, 1);
+      auto act_board_i = __shfl_up_sync(full, incl_bi, 1);
+      if (lane == 0U) {
+        act_et = kEtInvalid;
+        act_board_i = full;
+      }
+      if (et_is_better(run_et, act_et) ||
+          (!et_is_better(act_et, run_et) && run_board_i < act_board_i)) {
+        act_et = run_et;
+        act_board_i = run_board_i;
+      }
+
+      // propagate: alight here on the transport boarded at an earlier stop
+      if (i < n && act_et != kEtInvalid && act_board_i < i) {
+        auto const stp = stop{stop_seq[stop_idx]};
+        if (stp.can_finish<SearchDir>(is_wheelchair_)) {
+          auto const l = stp.location_idx();
+          auto const l_idx = cista::to_idx(l);
+          auto const et = unpack_et(act_et);
+          auto const by_transport = time_at_stop(
+              r, et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+          auto const best = get_best(round_times_.get(k - 1, l, 0U),
+                                     tmp_.get(l, 0U), best_.get(l, 0U));
+          if (is_better(by_transport, best) &&
+              is_better(by_transport, time_at_dest_.get(k)) &&
+              lb_[l_idx] != kUnreachable &&
+              is_better(by_transport + dir(lb_[l_idx]),
+                        time_at_dest_.get(k))) {
+            auto const board_stop = static_cast<stop_idx_t>(
+                kFwd ? act_board_i : n - 1U - act_board_i);
+            tmp_.update_min(
+                l, 0U, by_transport,
+                make_transport_payload(et.t_idx_.v_, board_stop, stop_idx));
+            station_mark_.mark(l_idx);
+            local_marked = true;
+          }
+        }
+      }
+
+      // carry forward the INCLUSIVE prefix (min over earlier chunks + this one);
+      // lane 31's inclusive value is the chunk-wide min.
+      auto new_run_et = incl_et;
+      auto new_run_bi = incl_bi;
+      if (et_is_better(run_et, new_run_et) ||
+          (!et_is_better(new_run_et, run_et) && run_board_i < new_run_bi)) {
+        new_run_et = run_et;
+        new_run_bi = run_board_i;
+      }
+      run_et = __shfl_sync(full, new_run_et, 31);
+      run_board_i = __shfl_sync(full, new_run_bi, 31);
+    }
+
+    return __any_sync(full, local_marked);
   }
 
   template <bool WithSectionBikeFilter>
@@ -703,7 +831,8 @@ struct raptor_impl {
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
-        if (is_better_or_eq(time_at_dest_.get(k), to_delta(day, ev_mam))) {
+        if (is_better_or_eq(time_at_dest_.get(k),
+                            to_delta(day, ev_mam) + dir(lb_[to_idx(l)]))) {
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
@@ -742,6 +871,20 @@ struct raptor_impl {
     return t.is_valid() ? ((static_cast<std::uint64_t>(to_idx(t.day_)) << 32) |
                            static_cast<std::uint64_t>(to_idx(t.t_idx_)))
                         : kEtInvalid;
+  }
+
+  // Is packed et `a` a better boarding than `b`? Forward search wants the
+  // earliest transport (min (day,t_idx)); backward wants the latest (max).
+  // Invalid (kEtInvalid) is always worse.
+  __device__ __forceinline__ bool et_is_better(std::uint64_t const a,
+                                               std::uint64_t const b) const {
+    if (a == kEtInvalid) {
+      return false;
+    }
+    if (b == kEtInvalid) {
+      return true;
+    }
+    return kFwd ? (a < b) : (a > b);
   }
 
   __device__ __forceinline__ transport unpack_et(std::uint64_t const p) const {
@@ -881,6 +1024,7 @@ struct raptor_impl {
   device_bitvec<std::uint64_t const> is_dest_;
   device_bitvec<std::uint32_t> end_reachable_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
+  cuda::std::span<std::uint16_t const> lb_;  // per-location lower bound to dest
   device_times<SearchDir, Vias + 1> round_times_;
   device_times<SearchDir, Vias + 1> best_;
   device_times<SearchDir, Vias + 1> tmp_;
