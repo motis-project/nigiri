@@ -373,11 +373,6 @@ struct raptor_impl {
 
         if (is_better(fp_target_time, best_.get(l, target_v)) &&
             is_better(fp_target_time, time_at_dest_.get(k))) {
-          if (lb_[i] == kUnreachable ||
-              !is_better(fp_target_time + dir(lb_[i]), time_at_dest_.get(k))) {
-            continue;
-          }
-
           round_times_.update_min(k, l, target_v, fp_target_time,
                                   tmp_.get_bc(0U, l, v));
           best_.update_min(l, target_v, fp_target_time);
@@ -431,13 +426,6 @@ struct raptor_impl {
 
           if (is_better(fp_target_time, best_.get(fp.target(), target_v)) &&
               is_better(fp_target_time, time_at_dest_.get(k))) {
-            auto const lower_bound = lb_[target];
-            if (lower_bound == kUnreachable ||
-                !is_better(fp_target_time + dir(lower_bound),
-                           time_at_dest_.get(k))) {
-              continue;
-            }
-
             round_times_.update_min(k, fp.target(), target_v, fp_target_time,
                                     tmp_.get_bc(0U, l, v));
             best_.update_min(fp.target(), target_v, fp_target_time);
@@ -563,9 +551,7 @@ struct raptor_impl {
 
           if (is_better(by_transport, current_best[v]) &&
               is_better(by_transport, time_at_dest_.get(k)) &&
-              is_better(by_transport, higher_v_best) &&
-              lb_[l_idx] != kUnreachable &&
-              is_better(by_transport + dir(lb_[l_idx]), time_at_dest_.get(k))) {
+              is_better(by_transport, higher_v_best)) {
             tmp_.update_min(l, target_v, by_transport,
                             make_transport_payload(et[v].t_idx_.v_,
                                                    et_board_stop[v], stop_idx));
@@ -583,10 +569,7 @@ struct raptor_impl {
                          tmp_.get(l, dest_v), best_.get(l, dest_v));
 
             if (is_better(by_transport, best_dest) &&
-                is_better(by_transport, time_at_dest_.get(k)) &&
-                lb_[l_idx] != kUnreachable &&
-                is_better(by_transport + dir(lb_[l_idx]),
-                          time_at_dest_.get(k))) {
+                is_better(by_transport, time_at_dest_.get(k))) {
               tmp_.update_min(l, dest_v, by_transport,
                               make_transport_payload(et[v].t_idx_.v_,
                                                      et_board_stop[v], stop_idx));
@@ -607,10 +590,6 @@ struct raptor_impl {
             b2s(stp.can_start<SearchDir>(is_wheelchair_)),
             b2s(prev_station_mark_[l_idx]));
         continue;
-      }
-
-      if (lb_[l_idx] == kUnreachable) {
-        break;
       }
 
       for (auto v = 0U; v != Vias + 1; ++v) {
@@ -694,8 +673,7 @@ struct raptor_impl {
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
-        if (is_better_or_eq(time_at_dest_.get(k),
-                            to_delta(day, ev_mam) + dir(lb_[to_idx(l)]))) {
+        if (is_better_or_eq(time_at_dest_.get(k), to_delta(day, ev_mam))) {
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
@@ -791,7 +769,6 @@ struct raptor_impl {
   device_bitvec<std::uint64_t const> is_dest_;
   device_bitvec<std::uint32_t> end_reachable_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
-  cuda::std::span<std::uint16_t const> lb_;
   device_times<SearchDir, Vias + 1> round_times_;
   device_times<SearchDir, Vias + 1> best_;
   device_times<SearchDir, Vias + 1> tmp_;

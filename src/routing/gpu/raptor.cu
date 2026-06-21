@@ -168,8 +168,7 @@ struct gpu_raptor_state::impl {
               std::array<nigiri::bitvec, kMaxVias> const& is_via,
               std::vector<via_stop> const& via_stops,
               nigiri::bitvec const& is_dest,
-              std::vector<std::uint16_t> const& dist_to_dest,
-              std::vector<std::uint16_t> const& lb) {
+              std::vector<std::uint16_t> const& dist_to_dest) {
     is_intermodal_dest_ = !dist_to_dest.empty();
     n_locations_ = host_state_.n_locations_ = n_locations;
 
@@ -253,21 +252,9 @@ struct gpu_raptor_state::impl {
                             cudaMemcpyHostToDevice, stream_),
         "could not copy dist to dest");
 
-    if (lb.empty()) {
-      // disabled lower bounds: keep a zeroed device buffer (a valid trivial
-      // bound) instead of uploading 1 MB of zeros over a pageable copy.
-      lb_.resize(n_locations);
-      cudaMemsetAsync(thrust::raw_pointer_cast(lb_.data()), 0,
-                      n_locations * sizeof(std::uint16_t), stream_);
-    } else {
-      lb_.resize(lb.size());
-      utl::verify(
-          cudaSuccess == cudaMemcpyAsync(thrust::raw_pointer_cast(lb_.data()),
-                                         lb.data(),
-                                         lb.size() * sizeof(std::uint16_t),
-                                         cudaMemcpyHostToDevice, stream_),
-          "could not copy lb");
-    }
+    // lower bounds are intentionally not used on the GPU (no dijkstra; the
+    // search explores without lb pruning -- same results, and it avoids the
+    // per-query upload).
 
     any_marked_.resize(1U);
   }
@@ -293,7 +280,6 @@ struct gpu_raptor_state::impl {
   std::array<thrust::device_vector<std::uint64_t>, kMaxVias> is_via_;
   thrust::device_vector<via_stop> via_stops_;
   thrust::device_vector<std::uint16_t> dist_to_dest_;
-  thrust::device_vector<std::uint16_t> lb_;
 
   // pinned staging + device buffers for fast per-query H2D
   pinned_buffer<std::uint16_t> dist_to_dest_pinned_;
@@ -370,7 +356,6 @@ gpu_raptor<SearchDir, Rt, Vias>::gpu_raptor(
       is_via_{is_via},
       dist_to_end_{dist_to_dest},
       td_dist_to_end_{td_dist_to_dest},
-      lb_{lb},
       via_stops_{via_stops},
       base_{base},
       allowed_claszes_{allowed_claszes},
@@ -380,7 +365,7 @@ gpu_raptor<SearchDir, Rt, Vias>::gpu_raptor(
       transfer_time_settings_{tts} {
   state_.impl_->resize(tt.n_locations(), tt.n_routes(),
                        rtt ? rtt->n_rt_transports() : 0U, is_via, via_stops,
-                       is_dest, dist_to_dest, lb);
+                       is_dest, dist_to_dest);
   reset_arrivals();
 }
 
@@ -460,7 +445,6 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
       .is_dest_ = {to_view(s.is_dest_)},
       .end_reachable_ = {to_mutable_view(s.end_reachable_)},
       .dist_to_end_ = to_view(s.dist_to_dest_),
-      .lb_ = to_view(s.lb_),
       .round_times_ = {to_mutable_view(s.round_times_), n_locations_,
                        thrust::raw_pointer_cast(s.dirty_bits_.data())},
       .best_ = {to_mutable_view(s.best_), n_locations_,
@@ -581,6 +565,10 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
         j.legs_[i].arr_time_ = j.legs_[i].dep_time_ + dur;
       }
     }
+    // Add the fully-reconstructed journey. is_reconstructed_ stays false here so
+    // it still goes through search.h's reconstruct-loop filtering (interval /
+    // travel-time checks); reconstruct(q, j) then marks it. The pareto_set
+    // dedups via journey::dominates (start_time, dest_time, transfers).
     results.add(std::move(j));
   }
 }
@@ -653,11 +641,10 @@ void gpu_raptor<SearchDir, Rt, Vias>::next_start_time() {
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
-void gpu_raptor<SearchDir, Rt, Vias>::reconstruct(query const&, journey&) {
-  // No-op: journeys are reconstructed on the GPU inside execute() (legs are
-  // already filled). The host round-time matrix is no longer synced, so the CPU
-  // reconstruct path is unavailable. Journeys we could not reconstruct stay
-  // leg-less and are dropped by the search.
+void gpu_raptor<SearchDir, Rt, Vias>::reconstruct(query const&, journey& j) {
+  // The legs were already filled on the GPU inside execute(); just mark the
+  // journey reconstructed so search.h keeps it (and runs its filtering).
+  j.is_reconstructed_ = true;
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>

@@ -805,6 +805,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
   optimize_footpaths<SearchDir>(tt, rtt, q, j);
   specify_td_offsets<SearchDir>(q, j);
 
+  j.is_reconstructed_ = true;
+
 #if defined(NIGIRI_TRACE_RECUSTRUCT)
   j.print(std::cout, tt, true);
 #endif

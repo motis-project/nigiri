@@ -304,7 +304,7 @@ routing_result pong(timetable const& tt,
 
       trace_pong("---- HIT [updating ping start time {} -> {}]\n",
                  ping_j.start_time_, match->dest_time_);
-      if (match->legs_.empty() && !match->error_) {
+      if (!match->is_reconstructed_ && !match->error_) {
         pong.reconstruct(q, *match);
       }
       ping_j.start_time_ = match->dest_time_;
@@ -332,7 +332,7 @@ routing_result pong(timetable const& tt,
   }
 
   utl::erase_if(s_state.results_, [&](journey const& j) {
-    auto const erase = j.legs_.empty() || !is_validated(j) ||
+    auto const erase = !j.is_reconstructed_ || !is_validated(j) ||
                        j.travel_time() >= fastest_direct ||
                        j.travel_time() >= q.max_travel_time_;
     if (erase) {
