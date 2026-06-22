@@ -139,20 +139,22 @@ run_stop run_stop::get_first_trip_stop(event_type const ev_type) const {
   auto const trip = get_trip_idx(ev_type);
   auto copy = *this;
 
-  // Go backward to the first stop of the trip.
+  // Go backward to the first stop of the trip = its scheduled origin. A trip
+  // spans >= 1 section, so its origin always has a departure (stop_idx_ <=
+  // N-2).
   while (copy.stop_idx_ > 0U && copy.get_trip_idx(event_type::kArr) == trip) {
     --copy.stop_idx_;
   }
+  auto const origin = copy;
 
   // Go forward to the first non-cancelled stop.
-  // N-2, N-1, N
-  // ^- last increment -> N-1
   while (copy.stop_idx_ + 1U < end && copy.is_cancelled() &&
          copy.get_trip_idx(event_type::kDep) == trip) {
     ++copy.stop_idx_;
   }
 
-  return copy;
+  // first stop == last stop => trip cancelled => return original first stop.
+  return copy.stop_idx_ + 1U < end ? copy : origin;
 }
 
 run_stop run_stop::get_last_trip_stop(event_type const ev_type) const {
@@ -184,13 +186,16 @@ run_stop run_stop::get_last_trip_stop(event_type const ev_type) const {
     }
   }
 
+  auto const dest = copy;  // the trip's last stop; always has an arrival.
+
   // Go back to the last non-cancelled stop.
   while (copy.stop_idx_ > 0U && copy.is_cancelled() &&
          copy.get_trip_idx(event_type::kArr) == trip) {
     --copy.stop_idx_;
   }
 
-  return copy;
+  // last stop == first stop => trip cancelled => return original last stop.
+  return copy.stop_idx_ == 0U ? dest : copy;
 }
 
 unixtime_t run_stop::scheduled_time(event_type const ev_type) const {
