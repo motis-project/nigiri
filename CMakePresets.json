@@ -124,6 +124,21 @@
         "BUILDCACHE_LUA_PATH": "/opt/buildcache/share/lua-examples",
         "PATH": "/opt:/opt/cmake-3.26.3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
       }
+    },
+    {
+      "name": "windows-x64",
+      "displayName": "Windows x64 (Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows-x64"
+    },
+    {
+      "name": "windows-x64-clang-tidy",
+      "displayName": "Windows x64 Clang Tidy (Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows-x64-clang-tidy",
+      "cacheVariables": {
+        "NIGIRI_LINT": "On"
+      }
     }
   ],
   "buildPresets": [
@@ -158,6 +173,26 @@
     {
       "name": "linux-sanitizer",
       "configurePreset": "linux-sanitizer"
+    },
+    {
+      "name": "windows-x64-debug",
+      "configurePreset": "windows-x64",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-x64-release",
+      "configurePreset": "windows-x64",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-x64-relwithdebinfo",
+      "configurePreset": "windows-x64",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "windows-x64-clang-tidy",
+      "configurePreset": "windows-x64-clang-tidy",
+      "configuration": "Release"
     }
   ]
 }
