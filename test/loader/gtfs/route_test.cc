@@ -19,9 +19,9 @@ TEST(gtfs, read_routes_example_data) {
   auto const src = source_idx_t{};
   auto const r = route_id_idx_t{0};
 
-  auto agencies = read_agencies(source_idx_t{0}, tt, i18n, timezones,
-                                example_files().get_file(kAgencyFile).data(),
-                                "Europe/Berlin");
+  auto [agencies, _] = read_agencies(
+      source_idx_t{0}, tt, i18n, timezones,
+      example_files().get_file(kAgencyFile).data(), "Europe/Berlin");
   auto const routes =
       read_routes(src, tt, i18n, timezones, agencies,
                   example_files().get_file(kRoutesFile).data(), "CET");
@@ -53,9 +53,9 @@ TEST(gtfs, read_routes_berlin_data) {
   tt.register_translation(std::string_view{});
   auto const src = source_idx_t{};
 
-  auto agencies = read_agencies(source_idx_t{0}, tt, i18n, timezones,
-                                berlin_files().get_file(kAgencyFile).data(),
-                                "Europe/Berlin");
+  auto [agencies, _] = read_agencies(
+      source_idx_t{0}, tt, i18n, timezones,
+      berlin_files().get_file(kAgencyFile).data(), "Europe/Berlin");
   auto const routes =
       read_routes(src, tt, i18n, timezones, agencies,
                   berlin_files().get_file(kRoutesFile).data(), "CET");
