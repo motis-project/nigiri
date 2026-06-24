@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <array>
 #include <span>
 #include <vector>
@@ -89,6 +90,14 @@ struct raptor_state {
   bitvec prev_station_mark_;
   bitvec route_mark_;
   bitvec rt_transport_mark_;
+  bitvec round_touched_;
+
+  static constexpr unsigned kSparseRoundThreshold = (kMaxTransfers + 2U) / 3U;
+  static constexpr unsigned kSparseRoundReserve = 1024U;
+  std::array<bitvec, kSparseRoundThreshold> round_touched_dense_;
+  std::array<std::vector<std::uint32_t>,
+             (kMaxTransfers + 2U) - kSparseRoundThreshold>
+      round_touched_sparse_;
 };
 
 }  // namespace nigiri::routing
