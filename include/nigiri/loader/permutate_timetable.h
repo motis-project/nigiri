@@ -4,6 +4,6 @@ namespace nigiri {
 
 struct timetable;
 
-void permutate_locations(timetable&);
+void permutate_timetable(timetable&);
 
 }  // namespace nigiri

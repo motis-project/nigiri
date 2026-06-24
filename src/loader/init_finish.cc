@@ -8,7 +8,7 @@
 
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/build_lb_graph.h"
-#include "nigiri/loader/permutate_locations.h"
+#include "nigiri/loader/permutate_timetable.h"
 #include "nigiri/loader/register.h"
 #include "nigiri/flex.h"
 #include "nigiri/special_stations.h"
@@ -233,8 +233,7 @@ void finalize(timetable& tt, finalize_options const opt) {
 
   if (opt.z_order_) {
     auto const timer = scoped_timer{"loader.z_order"};
-    permutate_locations(tt);
-    // TODO permutate routes and transports
+    permutate_timetable(tt);
   }
 
   build_footpaths(tt, opt);
