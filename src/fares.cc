@@ -1,6 +1,12 @@
 #include "nigiri/fares.h"
 
+#include <algorithm>
+#include <array>
+#include <memory>
+#include <mutex>
 #include <ranges>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "utl/to_vec.h"
 
@@ -160,6 +166,93 @@ namespace nigiri {
 
 bool contains(auto&& range, auto&& needle) {
   return std::ranges::find(range, needle) != std::end(range);
+}
+
+struct leg_rule_index {
+  struct key {
+    bool operator==(key const&) const = default;
+    std::uint32_t network_;
+    std::uint32_t from_area_;
+    std::uint32_t to_area_;
+  };
+  struct key_hash {
+    std::size_t operator()(key const& k) const noexcept {
+      auto h = cista::BASE_HASH;
+      h = cista::hash_combine(h, k.network_);
+      h = cista::hash_combine(h, k.from_area_);
+      h = cista::hash_combine(h, k.to_area_);
+      return h;
+    }
+  };
+
+  static key make_key(network_idx_t const n,
+                      area_idx_t const fa,
+                      area_idx_t const ta) {
+    return key{to_idx(n), to_idx(fa), to_idx(ta)};
+  }
+
+  void for_candidates(fares::fare_leg_rule const& x, auto&& fn) const {
+    auto seen = std::array<key, 8U>{};
+    auto n = std::size_t{0U};
+    for (auto const nw : {x.network_, network_idx_t::invalid()}) {
+      for (auto const fa : {x.from_area_, area_idx_t::invalid()}) {
+        for (auto const ta : {x.to_area_, area_idx_t::invalid()}) {
+          auto const k = make_key(nw, fa, ta);
+          if (std::find(seen.begin(), seen.begin() + n, k) !=
+              seen.begin() + n) {
+            continue;
+          }
+          seen[n++] = k;
+          if (auto const it = by_key_.find(k); it != end(by_key_)) {
+            for (auto const ri : it->second) {
+              fn(rules_[ri]);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  std::unordered_map<key, std::vector<std::uint32_t>, key_hash> by_key_;
+  std::unordered_set<std::uint32_t> concrete_networks_;
+  std::unordered_set<std::uint32_t> concrete_from_areas_;
+  std::unordered_set<std::uint32_t> concrete_to_areas_;
+  fares::fare_leg_rule const* rules_{nullptr};
+  std::size_t n_rules_{0U};
+};
+
+leg_rule_index build_leg_rule_index(fares const& f) {
+  auto idx = leg_rule_index{};
+  idx.rules_ = f.fare_leg_rules_.data();
+  idx.n_rules_ = f.fare_leg_rules_.size();
+  for (auto i = std::uint32_t{0}; i != f.fare_leg_rules_.size(); ++i) {
+    auto const& r = f.fare_leg_rules_[i];
+    idx.by_key_[leg_rule_index::make_key(r.network_, r.from_area_, r.to_area_)]
+        .push_back(i);
+    if (r.network_ != network_idx_t::invalid()) {
+      idx.concrete_networks_.insert(to_idx(r.network_));
+    }
+    if (r.from_area_ != area_idx_t::invalid()) {
+      idx.concrete_from_areas_.insert(to_idx(r.from_area_));
+    }
+    if (r.to_area_ != area_idx_t::invalid()) {
+      idx.concrete_to_areas_.insert(to_idx(r.to_area_));
+    }
+  }
+  return idx;
+}
+
+leg_rule_index const& get_leg_rule_index(fares const& f) {
+  static std::mutex m;
+  static std::unordered_map<fares const*, std::unique_ptr<leg_rule_index>>
+      cache;
+  auto const lock = std::lock_guard{m};
+  auto& entry = cache[&f];
+  if (entry == nullptr || entry->rules_ != f.fare_leg_rules_.data() ||
+      entry->n_rules_ != f.fare_leg_rules_.size()) {
+    entry = std::make_unique<leg_rule_index>(build_leg_rule_index(f));
+  }
+  return *entry;
 }
 
 std::ostream& operator<<(
@@ -402,19 +495,7 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
       match_timeframe(tt, f, to.get_location_idx(), to.fr_->t_.t_idx_,
                       to.time(event_type::kArr));
 
-  namespace sv = std::views;
-  auto concrete_network =
-      f.fare_leg_rules_ |
-      sv::transform([](auto const& r) { return r.network_; }) |
-      sv::filter([](auto const n) { return n != network_idx_t::invalid(); });
-  auto concrete_from =
-      f.fare_leg_rules_ |
-      sv::transform([](auto const& r) { return r.from_area_; }) |
-      sv::filter([](auto const a) { return a != area_idx_t::invalid(); });
-  auto concrete_to =
-      f.fare_leg_rules_ |
-      sv::transform([](auto const& r) { return r.to_area_; }) |
-      sv::filter([](auto const a) { return a != area_idx_t::invalid(); });
+  auto const& ridx = get_leg_rule_index(f);
 
   auto const has_area = [&](area_idx_t const x) {
     for (auto const& l : joined_legs) {
@@ -476,16 +557,19 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
                                           .to_area_ = to_area,
                                           .from_timeframe_group_ = from_tf,
                                           .to_timeframe_group_ = to_tf};
-      for (auto const& r : f.fare_leg_rules_) {
+      ridx.for_candidates(x, [&](fares::fare_leg_rule const& r) {
         auto const matches =
             ((r.network_ == network_idx_t::invalid() &&
-              (f.has_priority_ || !contains(concrete_network, x.network_))) ||
+              (f.has_priority_ ||
+               !ridx.concrete_networks_.contains(to_idx(x.network_)))) ||
              r.network_ == x.network_) &&
             ((r.from_area_ == area_idx_t::invalid() &&
-              (f.has_priority_ || !contains(concrete_from, x.from_area_))) ||
+              (f.has_priority_ ||
+               !ridx.concrete_from_areas_.contains(to_idx(x.from_area_)))) ||
              r.from_area_ == x.from_area_) &&
             ((r.to_area_ == area_idx_t::invalid() &&
-              (f.has_priority_ || !contains(concrete_to, x.to_area_))) ||
+              (f.has_priority_ ||
+               !ridx.concrete_to_areas_.contains(to_idx(x.to_area_)))) ||
              r.to_area_ == x.to_area_) &&
             (r.from_timeframe_group_ == timeframe_group_idx_t::invalid() ||
              r.from_timeframe_group_ == x.from_timeframe_group_) &&
@@ -502,47 +586,8 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
           trace("RULE MATCH\n\t\tRULE = {}\n\t\tLEG = {}\n", leg_rule{tt, f, r},
                 leg_rule{tt, f, x});
           matching_rules.push_back(r);
-        } else {
-          trace("NO MATCH\n\t\tRULE = {}\n\t\tLEG = {}", leg_rule{tt, f, r},
-                leg_rule{tt, f, x});
-
-          auto const criteria = std::initializer_list<
-              std::pair<char const*, bool>>{
-              {"network",
-               (r.network_ == network_idx_t::invalid() &&
-                (f.has_priority_ || !contains(concrete_network, x.network_))) ||
-                   r.network_ == x.network_},
-              {"from_area",
-               (r.from_area_ == area_idx_t::invalid() &&
-                (f.has_priority_ || !contains(concrete_from, x.from_area_))) ||
-                   r.from_area_ == x.from_area_},
-              {"to_area",
-               (r.to_area_ == area_idx_t::invalid() &&
-                (f.has_priority_ || !contains(concrete_to, x.to_area_))) ||
-                   r.to_area_ == x.to_area_},
-              {"from_timeframe",
-               r.from_timeframe_group_ == timeframe_group_idx_t::invalid() ||
-                   r.from_timeframe_group_ == x.from_timeframe_group_},
-              {"to_timeframe",
-               r.to_timeframe_group_ == timeframe_group_idx_t::invalid() ||
-                   r.to_timeframe_group_ == x.to_timeframe_group_},
-              {"contains_area_set",
-               r.contains_area_set_id_ == area_set_idx_t::invalid() ||
-                   utl::all_of(f.area_sets_[r.contains_area_set_id_],
-                               has_area)},
-              {"contains_exactly_area_set",
-               r.contains_exactly_area_set_id_ == area_set_idx_t::invalid() ||
-                   (utl::all_of(f.area_sets_[r.contains_exactly_area_set_id_],
-                                has_area) &&
-                    !has_other_area(
-                        f.area_sets_[r.contains_exactly_area_set_id_]))}};
-          for (auto const& [criterion, matched] : criteria) {
-            if (!matched) {
-              trace("    {} -> NO MATCH", criterion);
-            }
-          }
         }
-      }
+      });
     });
   });
   utl::sort(matching_rules, [&](fares::fare_leg_rule const& a,
