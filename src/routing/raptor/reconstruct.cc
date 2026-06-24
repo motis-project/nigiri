@@ -802,8 +802,16 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
   }
 
-  optimize_footpaths<SearchDir>(tt, rtt, q, j);
-  specify_td_offsets<SearchDir>(q, j);
+  // Journey is always returned in order START -> END (as presented to user) but
+  // is reconstructed in opposite direction as search direction (query
+  // direction). If direction is kBackward, flip query to match journey
+  auto journey_q = q;
+  if constexpr (!kFwd) {
+    journey_q.flip_dir();
+  }
+
+  optimize_footpaths(tt, rtt, journey_q, j);
+  specify_td_offsets(journey_q, j);
 
 #if defined(NIGIRI_TRACE_RECUSTRUCT)
   j.print(std::cout, tt, true);
