@@ -19,6 +19,7 @@ using permutation_t = vector_map<T, T>;
 
 using location_permutation_t = permutation_t<location_idx_t>;
 using route_permutation_t = permutation_t<route_idx_t>;
+using transport_permutation_t = permutation_t<transport_idx_t>;
 using cartesian_t = std::tuple<double, double, double>;
 
 template <typename T>
@@ -209,6 +210,34 @@ std::pair<route_permutation_t, route_permutation_t> get_route_permutation(timeta
   return ret;
 }
 
+std::pair<transport_permutation_t, transport_permutation_t> get_transport_permutation(vector_map<route_idx_t, interval<transport_idx_t>>& route_transport_ranges) {
+  if (route_transport_ranges.empty()) {
+    return {};
+  }
+  const auto n_routes = route_transport_ranges.size();
+
+  auto ret = std::pair<transport_permutation_t, transport_permutation_t>{};
+  auto& [p, r] = ret;
+
+  for (auto route = route_idx_t{0U}; route < n_routes; ++route) {
+    auto& range = route_transport_ranges[route];
+
+    auto const new_from = transport_idx_t{p.size()};
+    for (transport_idx_t const old_idx : range) {
+      p.emplace_back(old_idx);
+    }
+    auto const new_to = transport_idx_t{p.size()};
+    range = {new_from, new_to};
+  }
+
+  r.resize(p.size());
+  for (auto i = transport_idx_t{0U}; i != p.size(); ++i) {
+    r[p[i]] = i;
+  }
+
+  return ret;
+}
+
 std::pair<location_permutation_t, location_permutation_t> get_location_permutation(timetable const& tt) {
   if (tt.n_locations() == 0U) {
     return {};
@@ -281,6 +310,10 @@ void permutate_locations(timetable& tt) {
 }
 
 void permutate_routes_and_transports(timetable& tt) {
+
+  // ===========================
+  // Permutate Routes First
+  // ---------------------------
   auto const [p, r] = get_route_permutation(tt);
 
   permutate(p, tt.route_transport_ranges_);
@@ -313,6 +346,21 @@ void permutate_routes_and_transports(timetable& tt) {
 
   update_refs(r, tt.location_routes_);
   update_refs(r, tt.transport_route_);
+
+  // ===========================
+  // Given the route permutation,
+  // permutate the transports
+  // ---------------------------
+  auto const [pt, _] = get_transport_permutation(tt.route_transport_ranges_);
+
+  permutate(pt, tt.transport_first_dep_offset_);
+  permutate(pt, tt.initial_day_offset_);
+  permutate(pt, tt.transport_traffic_days_);
+  permutate(pt, tt.transport_route_);
+  permutate(pt, tt.transport_to_trip_section_);
+  permutate(pt, tt.transport_section_attributes_);
+  permutate(pt, tt.transport_section_providers_);
+  permutate(pt, tt.transport_section_directions_);
 }
 
 void permutate_timetable(timetable& tt) {
