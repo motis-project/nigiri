@@ -103,6 +103,7 @@ void permutate_route_times(route_permutation_t const& p,
   const auto n_routes = ranges.size();
 
   vector_map<route_idx_t, interval<uint32_t>> new_ranges;
+  new_ranges.resize(n_routes);
   uint32_t offset = 0;
   for (auto new_idx = route_idx_t{0}; new_idx < n_routes; ++new_idx) {
     const auto n_stops = permutated_route_stops[new_idx].size();
@@ -269,6 +270,7 @@ std::pair<location_permutation_t, location_permutation_t> get_location_permutati
 }
 
 void permutate_locations(timetable& tt) {
+  auto timer = scoped_timer{"permutate locations"};
   for (auto i = 0U; i != kNProfiles; ++i) {
     assert(tt.locations_.footpaths_out_[i].empty());
     assert(tt.locations_.footpaths_in_[i].empty());
@@ -310,7 +312,7 @@ void permutate_locations(timetable& tt) {
 }
 
 void permutate_routes_and_transports(timetable& tt) {
-
+  auto timer = scoped_timer{"permutate routes and transports"};
   // ===========================
   // Permutate Routes First
   // ---------------------------
