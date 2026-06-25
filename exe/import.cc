@@ -67,6 +67,9 @@ int main(int ac, char** av) {
       ("max_footpath_length",
        bpo::value(&finalize_opt.max_footpath_length_)
            ->default_value(finalize_opt.max_footpath_length_))  //
+      ("z_order",
+       bpo::value(&finalize_opt.z_order_)
+           ->default_value(finalize_opt.z_order_))  //
       ("assistance_times", bpo::value(&assistance_path))  //
       ("shapes", bpo::value(&out_shapes));
   auto const pos = bpo::positional_options_description{}.add("in", -1);
