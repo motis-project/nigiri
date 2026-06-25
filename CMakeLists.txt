@@ -65,7 +65,6 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         -Wno-duplicate-enum
         -Wno-switch-default
         -Wno-ctad-maybe-unsupported
-        -Wno-nrvo
         -Wno-thread-safety-negative
         -Wno-unused-private-field)
 elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
@@ -86,7 +85,7 @@ target_link_libraries(
   nigiri
   PUBLIC
   cista
-  geo
+  geoMoritz
   utl
   fmt
   date
