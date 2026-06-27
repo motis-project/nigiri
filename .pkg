@@ -6,7 +6,7 @@
   url=git@github.com:felixguendling/cista.git
   branch=master
   commit=abbbf9cfc1484b3a2737eff7a8f2f96d8dab85e4
-[geoMoritz]
+[geo]
   url=git@github.com:mority/geo.git
   branch=morton
   commit=04e8cc1da15c118f59a54a22c59ba6d4bdd3a883
