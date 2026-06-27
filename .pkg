@@ -9,7 +9,7 @@
 [geo]
   url=git@github.com:mority/geo.git
   branch=morton
-  commit=04e8cc1da15c118f59a54a22c59ba6d4bdd3a883
+  commit=e36f521f27f6c655caa5da307373d18bc63410c6
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
