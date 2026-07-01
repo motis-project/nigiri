@@ -95,9 +95,10 @@ void load_timetable(loader_config const& config,
   auto agencies =
       read_agencies(src, tt, i18n, timezones, load(kAgencyFile).data(),
                     config.default_tz_, user_script);
-  auto const [stops, seated_transfers, stops_accessible] = read_stops(
-      src, tt, i18n, timezones, load(kStopFile).data(),
-      load(kTransfersFile).data(), config.link_stop_distance_, user_script);
+  auto const [stops, seated_transfers, stops_accessible] =
+      read_stops(src, tt, i18n, timezones, load(kStopFile).data(),
+                 load(kTransfersFile).data(), config.link_stop_distance_,
+                 config.default_transfer_time_, user_script);
   add_stop_groups(tt, load(kStopGroupElementsFile).data(), stops);
   auto const routes =
       read_routes(src, tt, i18n, timezones, agencies, load(kRoutesFile).data(),
@@ -308,9 +309,15 @@ void load_timetable(loader_config const& config,
 
   auto const add_expanded_trip = [&](utc_trip&& s) {
     auto const* stop_seq = get_stop_seq(trip_data, s, stop_seq_cache);
-    auto const clasz = to_clasz(
-        to_idx(tt.route_ids_[src]
-                   .route_id_type_[trip_data.get(s.trips_.front()).route_]));
+    auto const& front_trip = trip_data.get(s.trips_.front());
+    // GTFS extension (MBTA): per-trip `trip_route_type` overrides the
+    // route-level clasz. As clasz is part of the route key, overridden trips
+    // are grouped into their own routes (e.g. replacement bus split from rail).
+    auto const clasz =
+        front_trip.clasz_.has_value()
+            ? *front_trip.clasz_
+            : to_clasz(
+                  to_idx(tt.route_ids_[src].route_id_type_[front_trip.route_]));
     auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
     auto const* cars_allowed_seq = get_cars_allowed_seq(s.trips_);
     auto const* wheelchair_accessible_seq =

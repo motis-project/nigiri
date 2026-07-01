@@ -9,10 +9,10 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 namespace nigiri::routing {
 
-template <direction SearchDir>
 void optimize_initial_departure(timetable const& tt,
                                 rt_timetable const* rtt,
                                 query const& q,
@@ -27,15 +27,14 @@ void optimize_initial_departure(timetable const& tt,
   auto& ree = get<journey::run_enter_exit>(transport_leg.uses_);
   auto offset_dur_best = get<offset>(offset_leg.uses_).duration();
 
-  auto const& offsets =
-      (SearchDir == direction::kBackward) ? q.destination_ : q.start_;
+  auto const& offsets = q.start_;
 
   auto r = rt::run{ree.r_};
   r.stop_range_ = {0U, static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)};
   for (auto const stp : rt::frun{tt, rtt, r}) {
     if (!q.via_stops_.empty() &&
         matches(tt, location_match_mode::kEquivalent, stp.get_location_idx(),
-                q.via_stops_[0].location_)) {
+                q.via_stops_.front().location_)) {
       // don't skip over via stops
       break;
     }
@@ -65,7 +64,6 @@ void optimize_initial_departure(timetable const& tt,
   }
 }
 
-template <direction SearchDir>
 void optimize_last_arrival(timetable const& tt,
                            rt_timetable const* rtt,
                            query const& q,
@@ -82,20 +80,16 @@ void optimize_last_arrival(timetable const& tt,
   auto offset_dur_best = get<offset>(offset_leg.uses_).duration();
 
   auto const* offsets = &q.destination_;
-  if constexpr (SearchDir == direction::kBackward) {
-    offsets = &q.start_;
-  }
 
   auto fr = rt::frun{tt, rtt, ree.r_};
   auto range_from = static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U);
 
   if (!q.via_stops_.empty()) {
     // don't skip the last via stop
-    auto const& last_via = q.via_stops_.back();
     for (auto i = stop_idx_t{0U}; i < fr.size(); ++i) {
       auto idx = static_cast<stop_idx_t>(fr.size() - i - 1U);
       if (matches(tt, location_match_mode::kEquivalent,
-                  fr[idx].get_location_idx(), last_via.location_)) {
+                  fr[idx].get_location_idx(), q.via_stops_.back().location_)) {
         range_from = std::max(range_from, idx);
         break;
       }
@@ -199,8 +193,8 @@ void optimize_transfers(timetable const& tt,
     auto& leg_footpath = j.legs_[i + 1];
     auto& leg_to = j.legs_[i + 2];
     if (!holds_alternative<journey::run_enter_exit>(leg_from.uses_) ||
-        !holds_alternative<footpath>(j.legs_[i + 1].uses_) ||
-        !holds_alternative<journey::run_enter_exit>(j.legs_[i + 2].uses_)) {
+        !holds_alternative<footpath>(leg_footpath.uses_) ||
+        !holds_alternative<journey::run_enter_exit>(leg_to.uses_)) {
       continue;
     }
 
@@ -311,23 +305,13 @@ void optimize_transfers(timetable const& tt,
   }
 }
 
-template <direction SearchDir>
 void optimize_footpaths(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q,
                         journey& j) {
-  optimize_initial_departure<SearchDir>(tt, rtt, q, j);
-  optimize_last_arrival<SearchDir>(tt, rtt, q, j);
+  optimize_initial_departure(tt, rtt, q, j);
+  optimize_last_arrival(tt, rtt, q, j);
   optimize_transfers(tt, rtt, q, j);
 }
-
-template void optimize_footpaths<direction::kForward>(timetable const&,
-                                                      rt_timetable const*,
-                                                      query const&,
-                                                      journey&);
-template void optimize_footpaths<direction::kBackward>(timetable const&,
-                                                       rt_timetable const*,
-                                                       query const&,
-                                                       journey&);
 
 }  // namespace nigiri::routing

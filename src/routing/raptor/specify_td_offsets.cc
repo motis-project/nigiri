@@ -6,12 +6,9 @@ namespace nigiri::routing {
 
 using namespace nigiri;
 
-template <direction SearchDir>
 void specify_td_offsets(query const& q, journey& j) {
-  auto const& td_first_mile =
-      SearchDir == direction::kForward ? q.td_start_ : q.td_dest_;
-  auto const& td_last_mile =
-      SearchDir == direction::kForward ? q.td_dest_ : q.td_start_;
+  auto const& td_first_mile = q.td_start_;
+  auto const& td_last_mile = q.td_dest_;
 
   if (!j.legs_.empty() &&
       std::holds_alternative<offset>(j.legs_.front().uses_)) {
@@ -41,8 +38,5 @@ void specify_td_offsets(query const& q, journey& j) {
     }
   }
 }
-
-template void specify_td_offsets<direction::kForward>(query const&, journey&);
-template void specify_td_offsets<direction::kBackward>(query const&, journey&);
 
 }  // namespace nigiri::routing

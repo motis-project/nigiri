@@ -124,46 +124,78 @@ location_idx_t run_stop::get_scheduled_location_idx() const {
 }
 
 run_stop run_stop::get_first_trip_stop(event_type const ev_type) const {
+  auto const end = fr_->size();
   if (!fr_->is_scheduled()) {
-    return run_stop{fr_, stop_idx_t{0U}};
+    auto copy = run_stop{fr_, stop_idx_t{0U}};
+
+    // Go forward to the first non-cancelled stop.
+    while (copy.stop_idx_ + 1U < end && copy.is_cancelled()) {
+      ++copy.stop_idx_;
+    }
+
+    return copy;
   }
 
   auto const trip = get_trip_idx(ev_type);
   auto copy = *this;
 
+  // Go backward to the first stop of the trip = its scheduled origin. A trip
+  // spans >= 1 section, so its origin always has a departure (stop_idx_ <=
+  // N-2).
   while (copy.stop_idx_ > 0U && copy.get_trip_idx(event_type::kArr) == trip) {
     --copy.stop_idx_;
   }
+  auto const origin = copy;
 
-  return copy;
+  // Go forward to the first non-cancelled stop.
+  while (copy.stop_idx_ + 1U < end && copy.is_cancelled() &&
+         copy.get_trip_idx(event_type::kDep) == trip) {
+    ++copy.stop_idx_;
+  }
+
+  // first stop == last stop => trip cancelled => return original first stop.
+  return copy.stop_idx_ + 1U < end ? copy : origin;
 }
 
 run_stop run_stop::get_last_trip_stop(event_type const ev_type) const {
   auto const end = fr_->size();
   if (!fr_->is_scheduled()) {
-    return run_stop{fr_, static_cast<stop_idx_t>(end - 1)};
+    // Go back to the last non-cancelled stop.
+    auto copy = run_stop{fr_, static_cast<stop_idx_t>(end - 1)};
+    while (copy.stop_idx_ > 0U && copy.is_cancelled()) {
+      --copy.stop_idx_;
+    }
+    return copy;
   }
 
   auto const trip = get_trip_idx(ev_type);
   auto copy = *this;
-  if (copy.stop_idx_ == end - 1) {
-    return copy;
-  }
-
-  // Can't be (end-1), so ++stop_idx is fine.
-  ++copy.stop_idx_;
-
-  // Can't be 0 after ++stop_idx, so get_trip_idx(kArr) is fine.
-  while (copy.stop_idx_ < end - 1 &&
-         copy.get_trip_idx(event_type::kArr) == trip) {
+  if (copy.stop_idx_ != end - 1) {
+    // Can't be (end-1), so ++stop_idx is fine.
     ++copy.stop_idx_;
+
+    // Go forward to the last stop of the trip.
+    // Can't be 0 after ++stop_idx, so get_trip_idx(kArr) is fine.
+    while (copy.stop_idx_ < end - 1 &&
+           copy.get_trip_idx(event_type::kArr) == trip) {
+      ++copy.stop_idx_;
+    }
+
+    if (copy.get_trip_idx(event_type::kArr) != trip) {
+      copy.stop_idx_ -= 1;
+    }
   }
 
-  if (copy.get_trip_idx(event_type::kArr) != trip) {
-    copy.stop_idx_ -= 1;
+  auto const dest = copy;  // the trip's last stop; always has an arrival.
+
+  // Go back to the last non-cancelled stop.
+  while (copy.stop_idx_ > 0U && copy.is_cancelled() &&
+         copy.get_trip_idx(event_type::kArr) == trip) {
+    --copy.stop_idx_;
   }
 
-  return copy;
+  // last stop == first stop => trip cancelled => return original last stop.
+  return copy.stop_idx_ == 0U ? dest : copy;
 }
 
 unixtime_t run_stop::scheduled_time(event_type const ev_type) const {
