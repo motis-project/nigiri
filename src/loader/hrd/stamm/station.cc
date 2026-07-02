@@ -193,9 +193,9 @@ location_map_t parse_stations(config const& c,
     auto const name_translation = tt.register_translation(s.name_);
     auto const idx = register_location(
         tt, location{tt, src, id, name_translation, kEmptyTranslation,
-                     kEmptyTranslation, s.pos_, location_type::kStation,
-                     location_idx_t::invalid(), st.get_tz(s.id_).first,
-                     transfer_time, dummy_tz_map});
+                     kEmptyTranslation, kEmptyTranslation, s.pos_,
+                     location_type::kStation, location_idx_t::invalid(),
+                     st.get_tz(s.id_).first, transfer_time, dummy_tz_map});
     s.idx_ = idx;
   }
 

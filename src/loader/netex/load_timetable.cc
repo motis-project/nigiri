@@ -1359,12 +1359,13 @@ void load_timetable(loader_config const& config,
                         tt.register_translation(stop->name_),
                         tt.register_translation(stop->public_code_),
                         kEmptyTranslation,
+                        kEmptyTranslation,
                         stop->pos_,
                         location_type::kStation,
                         stop->parent_ != nullptr ? stop->parent_->location_
                                                  : location_idx_t::invalid(),
                         tz,
-                        2_minutes,
+                        config.default_transfer_time_,
                         tz_map};
       if (process_location(r, s)) {
         stop->location_ = register_location(tt, s);
@@ -1383,6 +1384,10 @@ void load_timetable(loader_config const& config,
       if (stop->parent_ != nullptr) {
         add_stop(stop.get());
       }
+    }
+    for (auto const& [id, stop] : im.stop_assignments_) {
+      tt.locations_.location_id_to_idx_.emplace(owning_location_id{id, src},
+                                                stop->location_);
     }
 
     for (auto& [id, dd] : im.destination_displays_) {
@@ -1574,7 +1579,7 @@ void load_timetable(loader_config const& config,
       }
       it->second.emplace_back(std::vector<utc_trip>{s});
     } else {
-      route_services.emplace(gtfs::route_key_t{c, s.stop_seq_, {}, {}},
+      route_services.emplace(gtfs::route_key_t{c, s.stop_seq_, {}, {}, {}},
                              std::vector<std::vector<utc_trip>>{{s}});
     }
   };
@@ -1660,8 +1665,9 @@ void load_timetable(loader_config const& config,
     auto section_attributes = basic_string<attribute_combination_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
-        auto const route_idx = tt.register_route(
-            key.stop_seq_, {key.clasz_}, key.bikes_allowed_, key.cars_allowed_);
+        auto const route_idx =
+            tt.register_route(key.stop_seq_, {key.clasz_}, key.bikes_allowed_,
+                              key.cars_allowed_, key.wheelchair_accessible_);
 
         for (auto const& s : key.stop_seq_) {
           auto s_routes = location_routes[nigiri::stop{s}.location_idx()];
@@ -1795,7 +1801,8 @@ void load_timetable(loader_config const& config,
           auto const dist = std::sqrt(geo::approx_squared_distance(
               pos, neighbor_pos, dist_lng_degrees));
           auto const duration = duration_t{std::max(
-              2, static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
+              static_cast<int>(config.default_transfer_time_.count()),
+              static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
           metas[get_new_location(l)].emplace_back(neighbor, duration);
         }
       },

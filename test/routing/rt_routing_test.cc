@@ -1,12 +1,15 @@
 #include "gtest/gtest.h"
 
+#include <algorithm>
+
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/routing/direct.h"
+#include "nigiri/routing/pareto_set.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
-#include "../../include/nigiri/routing/direct.h"
 
 #include "../loader/hrd/hrd_timetable.h"
 
@@ -21,6 +24,42 @@ using namespace std::chrono_literals;
 using nigiri::test::raptor_search;
 
 namespace {
+
+template <direction Dir>
+void get_direct_for(timetable const& tt,
+                    rt_timetable const* rtt,
+                    location_idx_t const from,
+                    location_idx_t const to,
+                    interval<unixtime_t> const time,
+                    std::vector<routing::journey>& direct) {
+  if (from == to) {
+    return;
+  }
+  auto qq = routing::query{};
+  qq.start_match_mode_ = routing::location_match_mode::kEquivalent;
+  qq.dest_match_mode_ = routing::location_match_mode::kEquivalent;
+  qq.start_.emplace_back(from, duration_t{0}, transport_mode_id_t{0});
+  qq.destination_.emplace_back(to, duration_t{0}, transport_mode_id_t{0});
+  qq.slow_direct_ = true;
+  qq.fastest_slow_direct_factor_ = 0.0;  // disable post-filter
+
+  auto results = pareto_set<routing::journey>{};
+  routing::enrich_with_slow_direct<Dir>(tt, rtt, qq, time, results);
+
+  for (auto& j : results.els_) {
+    std::erase_if(j.legs_, [](auto const& l) {
+      return !std::holds_alternative<routing::journey::run_enter_exit>(l.uses_);
+    });
+    if (j.legs_.empty()) {
+      continue;
+    }
+    j.start_time_ = j.legs_.front().dep_time_;
+    j.dest_time_ = j.legs_.back().arr_time_;
+    j.dest_ =
+        Dir == direction::kForward ? j.legs_.back().to_ : j.legs_.front().from_;
+    direct.push_back(std::move(j));
+  }
+}
 
 // T_RE1
 // A | 01.05.  49:00 = 03.05. 01:00
@@ -138,11 +177,10 @@ TEST(routing, rt_raptor_forward) {
   EXPECT_EQ(std::string_view{kFwdJourneys}, to_string(tt, &rtt, results));
   ASSERT_FALSE(results.empty());
   auto const& l = results.begin()->legs_.back();
-  auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
   auto direct = std::vector<routing::journey>{};
-  get_direct(tt, &rtt, l.from_, l.to_, routing::query{},
-             interval<unixtime_t>{l.dep_time_, l.dep_time_ + 1min},
-             direction::kForward, done, direct);
+  get_direct_for<direction::kForward>(
+      tt, &rtt, l.from_, l.to_,
+      interval<unixtime_t>{l.dep_time_, l.dep_time_ + 1min}, direct);
   EXPECT_EQ(R"(
 [2019-05-03 00:30, 2019-05-03 01:00]
 TRANSFERS: 0
@@ -223,11 +261,10 @@ TEST(routing, rt_raptor_backward) {
   EXPECT_EQ(std::string_view{kBwdJourneys}, to_string(tt, &rtt, results));
   ASSERT_FALSE(results.empty());
   auto const& l = results.begin()->legs_.back();
-  auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
   auto direct = std::vector<routing::journey>{};
-  routing::get_direct(tt, &rtt, l.to_, l.from_, routing::query{},
-                      interval<unixtime_t>{l.arr_time_, l.arr_time_ + 1min},
-                      direction::kBackward, done, direct);
+  get_direct_for<direction::kBackward>(
+      tt, &rtt, l.from_, l.to_,
+      interval<unixtime_t>{l.arr_time_, l.arr_time_ + 1min}, direct);
   EXPECT_EQ(R"(
 [2019-05-03 00:30, 2019-05-03 01:00]
 TRANSFERS: 0

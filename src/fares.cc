@@ -1,19 +1,13 @@
 #include "nigiri/fares.h"
 
+#include <array>
 #include <ranges>
 
-#include "utl/pairwise.h"
-#include "utl/parser/cstr.h"
 #include "utl/to_vec.h"
 
-#include "nigiri/loader/gtfs/noon_offsets.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
-
-namespace nigiri {
-
-using routing::journey;
 
 // #define NIGIRI_FARES_DEBUG
 #ifdef NIGIRI_FARES_DEBUG
@@ -21,6 +15,10 @@ using routing::journey;
 #else
 #define trace(...)
 #endif
+
+namespace nigiri {
+
+using routing::journey;
 
 struct journey_leg {
   friend std::ostream& operator<<(std::ostream& out, journey_leg const& l) {
@@ -405,20 +403,6 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
       match_timeframe(tt, f, to.get_location_idx(), to.fr_->t_.t_idx_,
                       to.time(event_type::kArr));
 
-  namespace sv = std::views;
-  auto concrete_network =
-      f.fare_leg_rules_ |
-      sv::transform([](auto const& r) { return r.network_; }) |
-      sv::filter([](auto const n) { return n != network_idx_t::invalid(); });
-  auto concrete_from =
-      f.fare_leg_rules_ |
-      sv::transform([](auto const& r) { return r.from_area_; }) |
-      sv::filter([](auto const a) { return a != area_idx_t::invalid(); });
-  auto concrete_to =
-      f.fare_leg_rules_ |
-      sv::transform([](auto const& r) { return r.to_area_; }) |
-      sv::filter([](auto const a) { return a != area_idx_t::invalid(); });
-
   auto const has_area = [&](area_idx_t const x) {
     for (auto const& l : joined_legs) {
       auto const ree = std::get<journey::run_enter_exit>(l->uses_);
@@ -471,6 +455,30 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
     }
   };
 
+  auto const area_set_matches = [&](fares::fare_leg_rule const& r) {
+    return (r.contains_area_set_id_ == area_set_idx_t::invalid() ||
+            utl::all_of(f.area_sets_[r.contains_area_set_id_], has_area)) &&
+           (r.contains_exactly_area_set_id_ == area_set_idx_t::invalid() ||
+            (utl::all_of(f.area_sets_[r.contains_exactly_area_set_id_],
+                         has_area) &&
+             !has_other_area(f.area_sets_[r.contains_exactly_area_set_id_])));
+  };
+
+  auto const in_set = [](auto const& s, auto const v) {
+    return s.find(v) != s.end();
+  };
+
+  auto const num_opts = [&](auto const val, auto const& concrete) {
+    return val != std::decay_t<decltype(val)>::invalid() &&
+                   !in_set(concrete, val)  //  true for feeds with rule priority
+               ? 2U
+               : 1U;
+  };
+  auto const num_tf_opts = [](auto const val) {
+    return val != std::decay_t<decltype(val)>::invalid() ? 2U : 1U;
+  };
+
+  namespace sv = std::views;
   auto matching_rules = std::vector<fares::fare_leg_rule>{};
   for_each_area(from.get_location_idx(), [&](area_idx_t const from_area) {
     for_each_area(to.get_location_idx(), [&](area_idx_t const to_area) {
@@ -479,69 +487,43 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
                                           .to_area_ = to_area,
                                           .from_timeframe_group_ = from_tf,
                                           .to_timeframe_group_ = to_tf};
-      for (auto const& r : f.fare_leg_rules_) {
-        auto const matches =
-            ((r.network_ == network_idx_t::invalid() &&
-              (f.has_priority_ || !contains(concrete_network, x.network_))) ||
-             r.network_ == x.network_) &&
-            ((r.from_area_ == area_idx_t::invalid() &&
-              (f.has_priority_ || !contains(concrete_from, x.from_area_))) ||
-             r.from_area_ == x.from_area_) &&
-            ((r.to_area_ == area_idx_t::invalid() &&
-              (f.has_priority_ || !contains(concrete_to, x.to_area_))) ||
-             r.to_area_ == x.to_area_) &&
-            (r.from_timeframe_group_ == timeframe_group_idx_t::invalid() ||
-             r.from_timeframe_group_ == x.from_timeframe_group_) &&
-            (r.to_timeframe_group_ == timeframe_group_idx_t::invalid() ||
-             r.to_timeframe_group_ == x.to_timeframe_group_) &&
-            (r.contains_area_set_id_ == area_set_idx_t::invalid() ||
-             utl::all_of(f.area_sets_[r.contains_area_set_id_], has_area)) &&
-            (r.contains_exactly_area_set_id_ == area_set_idx_t::invalid() ||
-             (utl::all_of(f.area_sets_[r.contains_exactly_area_set_id_],
-                          has_area) &&
-              !has_other_area(f.area_sets_[r.contains_exactly_area_set_id_])));
 
-        if (matches) {
-          trace("RULE MATCH\n\t\tRULE = {}\n\t\tLEG = {}\n", leg_rule{tt, f, r},
-                leg_rule{tt, f, x});
-          matching_rules.push_back(r);
-        } else {
-          trace("NO MATCH\n\t\tRULE = {}\n\t\tLEG = {}", leg_rule{tt, f, r},
-                leg_rule{tt, f, x});
+      auto const nets = std::array{x.network_, network_idx_t::invalid()} |
+                        sv::take(num_opts(x.network_, f.concrete_networks_));
+      auto const froms =
+          std::array{x.from_area_, area_idx_t::invalid()} |
+          sv::take(num_opts(x.from_area_, f.concrete_from_areas_));
+      auto const tos = std::array{x.to_area_, area_idx_t::invalid()} |
+                       sv::take(num_opts(x.to_area_, f.concrete_to_areas_));
+      auto const from_tfs = std::array{x.from_timeframe_group_,
+                                       timeframe_group_idx_t::invalid()} |
+                            sv::take(num_tf_opts(x.from_timeframe_group_));
+      auto const to_tfs =
+          std::array{x.to_timeframe_group_, timeframe_group_idx_t::invalid()} |
+          sv::take(num_tf_opts(x.to_timeframe_group_));
 
-          auto const criteria = std::initializer_list<
-              std::pair<char const*, bool>>{
-              {"network",
-               (r.network_ == network_idx_t::invalid() &&
-                (f.has_priority_ || !contains(concrete_network, x.network_))) ||
-                   r.network_ == x.network_},
-              {"from_area",
-               (r.from_area_ == area_idx_t::invalid() &&
-                (f.has_priority_ || !contains(concrete_from, x.from_area_))) ||
-                   r.from_area_ == x.from_area_},
-              {"to_area",
-               (r.to_area_ == area_idx_t::invalid() &&
-                (f.has_priority_ || !contains(concrete_to, x.to_area_))) ||
-                   r.to_area_ == x.to_area_},
-              {"from_timeframe",
-               r.from_timeframe_group_ == timeframe_group_idx_t::invalid() ||
-                   r.from_timeframe_group_ == x.from_timeframe_group_},
-              {"to_timeframe",
-               r.to_timeframe_group_ == timeframe_group_idx_t::invalid() ||
-                   r.to_timeframe_group_ == x.to_timeframe_group_},
-              {"contains_area_set",
-               r.contains_area_set_id_ == area_set_idx_t::invalid() ||
-                   utl::all_of(f.area_sets_[r.contains_area_set_id_],
-                               has_area)},
-              {"contains_exactly_area_set",
-               r.contains_exactly_area_set_id_ == area_set_idx_t::invalid() ||
-                   (utl::all_of(f.area_sets_[r.contains_exactly_area_set_id_],
-                                has_area) &&
-                    !has_other_area(
-                        f.area_sets_[r.contains_exactly_area_set_id_]))}};
-          for (auto const& [criterion, matched] : criteria) {
-            if (!matched) {
-              trace("    {} -> NO MATCH", criterion);
+      for (auto const nw : nets) {
+        for (auto const fa : froms) {
+          for (auto const ta : tos) {
+            for (auto const ftg : from_tfs) {
+              for (auto const ttg : to_tfs) {
+                auto const it = f.fare_leg_rule_keys_.find(
+                    fares::fare_leg_rule_key{.network_ = nw,
+                                             .from_area_ = fa,
+                                             .to_area_ = ta,
+                                             .from_timeframe_group_ = ftg,
+                                             .to_timeframe_group_ = ttg});
+                if (it == end(f.fare_leg_rule_keys_)) {
+                  continue;
+                }
+                for (auto const& r : f.fare_leg_rule_groups_[it->second]) {
+                  if (area_set_matches(r)) {
+                    trace("RULE MATCH\n\t\tRULE = {}\n\t\tLEG = {}\n",
+                          leg_rule{tt, f, r}, leg_rule{tt, f, x});
+                    matching_rules.push_back(r);
+                  }
+                }
+              }
             }
           }
         }

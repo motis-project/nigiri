@@ -9,15 +9,9 @@
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/query.h"
-#include "nigiri/rt/rt_timetable.h"
 
-// #define NIGIRI_DIJKSTRA_TRACING
-
-#ifdef NIGIRI_DIJKSTRA_TRACING
-#define trace(...) fmt::print(__VA_ARGS__)
-#else
 #define trace(...)
-#endif
+// #define trace(...) fmt::print(__VA_ARGS__)
 
 namespace nigiri::routing {
 

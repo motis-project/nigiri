@@ -9,7 +9,9 @@
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/for_each_meta.h"
+#include "nigiri/location_match_mode.h"
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -182,7 +184,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
   auto const find_entry_in_prev_round =
       [&](unsigned const k, rt::run const& r, stop_idx_t const from_stop_idx,
           delta_t, bool const section_bike_filter,
-          bool const section_car_filter) -> std::optional<journey::leg> {
+          bool const section_car_filter,
+          bool const section_wheelchair_filter) -> std::optional<journey::leg> {
     auto const fr = rt::frun{tt, rtt, r};
     auto const n_stops = kFwd ? from_stop_idx + 1U : fr.size() - from_stop_idx;
     auto new_v = v;
@@ -199,6 +202,12 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
       if (section_car_filter &&
           !stp.cars_allowed(kFwd ? event_type::kDep : event_type::kArr)) {
+        break;
+      }
+
+      if (section_wheelchair_filter &&
+          !stp.wheelchair_accessible(kFwd ? event_type::kDep
+                                          : event_type::kArr)) {
         break;
       }
 
@@ -250,18 +259,18 @@ void reconstruct_journey_with_vias(timetable const& tt,
   };
 
   auto const is_transport_active = [&](transport_idx_t const t,
-                                       std::size_t const day) {
+                                       day_idx_t const day) {
     if (rtt != nullptr) {
-      return rtt->bitfields_[rtt->transport_traffic_days_[t]].test(day);
+      return rtt->is_transport_active(t, day);
     } else {
-      return tt.bitfields_[tt.transport_traffic_days_[t]].test(day);
+      return tt.is_transport_active(t, day);
     }
   };
 
   auto const get_route_transport =
       [&](unsigned const k, delta_t const time, route_idx_t const r,
           stop_idx_t const stop_idx, bool const section_bike_filter,
-          bool const section_car_filter,
+          bool const section_car_filter, bool const section_wheelchair_filter,
           bool const is_td_footpath) -> std::optional<journey::leg> {
     auto const [day, mam] = split_day_mam(base_day_idx, time);
 
@@ -277,7 +286,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
 
       auto const traffic_day = to_idx(day) - event_mam.count() / 1440;
-      if (!is_transport_active(t, static_cast<std::size_t>(traffic_day))) {
+      if (!is_transport_active(t, day_idx_t{traffic_day})) {
         trace_rc_transport_no_traffic;
         continue;
       }
@@ -309,7 +318,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
                interval<stop_idx_t>{0, static_cast<stop_idx_t>(
                                            tt.route_location_seq_[r].size())}},
           stop_idx, unix_to_delta(base, ev_time), section_bike_filter,
-          section_car_filter);
+          section_car_filter, section_wheelchair_filter);
       if (leg.has_value()) {
         return leg;
       }
@@ -365,6 +374,24 @@ void reconstruct_journey_with_vias(timetable const& tt,
           }
         }
 
+        auto section_wheelchair_filter = false;
+        if (is_wheelchair) {
+          auto const wheelchair_accessible_on_all_sections =
+              rtt->rt_transport_wheelchair_accessibility_.test(rt_t.v_ * 2);
+          auto const wheelchair_accessible_on_some_sections =
+              rtt->rt_transport_wheelchair_accessibility_.test(rt_t.v_ * 2 + 1);
+          trace_reconstruct(
+              "  rt_t={}: wheelchairs allowed on_all={} on_some={} (RT)\n",
+              rt_t, wheelchair_accessible_on_all_sections,
+              wheelchair_accessible_on_some_sections);
+          if (!wheelchair_accessible_on_all_sections) {
+            if (!wheelchair_accessible_on_some_sections) {
+              continue;
+            }
+            section_wheelchair_filter = true;
+          }
+        }
+
         auto const location_seq = rtt->rt_transport_location_seq_[rt_t];
         for (auto const [i, s] : utl::enumerate(location_seq)) {
           auto const stp = stop{s};
@@ -382,7 +409,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
           }
 
           auto leg = find_entry_in_prev_round(
-              k, fr, stop_idx, time, section_bike_filter, section_car_filter);
+              k, fr, stop_idx, time, section_bike_filter, section_car_filter,
+              section_wheelchair_filter);
           if (leg.has_value()) {
             return leg;
           }
@@ -429,6 +457,24 @@ void reconstruct_journey_with_vias(timetable const& tt,
         }
       }
 
+      auto section_wheelchair_filter = false;
+      if (is_wheelchair) {
+        auto const wheelchair_accessible_on_all_sections =
+            tt.route_wheelchair_accessible_.test(r.v_ * 2);
+        auto const wheelchair_accessible_on_some_sections =
+            tt.route_wheelchair_accessible_.test(r.v_ * 2 + 1);
+        trace_reconstruct(
+            "  r={}: wheelchair accessible on_all={} on_some={}\n", r,
+            wheelchair_accessible_on_all_sections,
+            wheelchair_accessible_on_some_sections);
+        if (!wheelchair_accessible_on_all_sections) {
+          if (!wheelchair_accessible_on_some_sections) {
+            continue;
+          }
+          section_car_filter = true;
+        }
+      }
+
       auto const location_seq = tt.route_location_seq_[r];
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         auto const stp = stop{s};
@@ -439,9 +485,9 @@ void reconstruct_journey_with_vias(timetable const& tt,
           continue;
         }
 
-        auto leg = get_route_transport(k, time, r, static_cast<stop_idx_t>(i),
-                                       section_bike_filter, section_car_filter,
-                                       is_td_footpath);
+        auto leg = get_route_transport(
+            k, time, r, static_cast<stop_idx_t>(i), section_bike_filter,
+            section_car_filter, section_wheelchair_filter, is_td_footpath);
         if (leg.has_value()) {
           return leg;
         }
@@ -462,12 +508,12 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
     auto const backup_v = v;
 
-    auto const is_intermodal =
-        q.dest_match_mode_ == location_match_mode::kIntermodal;
     auto stay_l = 0_minutes;
     auto stay_fp_target = 0_minutes;
     trace_reconstruct("  [check_fp] v={}, l={}, fp.target={}, intermodal={}\n",
-                      v, loc{tt, l}, loc{tt, fp.target()}, is_intermodal);
+                      v, loc{tt, l}, loc{tt, fp.target()},
+                      q.dest_match_mode_ == location_match_mode::kIntermodal);
+
     if (v != 0 && matches(tt, location_match_mode::kEquivalent,
                           q.via_stops_[v - 1].location_, l)) {
       --v;
@@ -488,9 +534,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
                           q.via_stops_[v - 1].location_, fp.target())) {
       --v;
       assert(stay_fp_target == 0_minutes);
-      if (is_intermodal) {
-        stay_fp_target = q.via_stops_[v].stay_;
-      }
+      stay_fp_target = q.via_stops_[v].stay_;
       trace_reconstruct(
           "  [check_fp]: fp target matches current via: v={}->{}, "
           "stay_fp_target={}\n",
@@ -539,7 +583,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
                        l,
                        delta_to_unix(base, fp_start),
                        delta_to_unix(base, fp_start + dir(fp_duration)),
-                       footpath{fp.target(), duration_t{fp_duration}}};
+                       footpath{fp.target(), fp.duration()}};
       return std::pair{fp_leg, *transport_leg};
     } else {
       trace_reconstruct("nothing found\n");
@@ -661,7 +705,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       auto const footpaths = kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][l]
                                   : tt.locations_.footpaths_out_[q.prf_idx_][l];
       for (auto const& fp : footpaths) {
-        auto fp_legs = check_fp(k, l, curr_time, fp, false, true);
+        auto fp_legs = check_fp(k, l, curr_time, fp, true, false);
         if (fp_legs.has_value()) {
           return std::move(*fp_legs);
         }
@@ -679,7 +723,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       auto legs = std::optional<std::pair<journey::leg, journey::leg>>{};
       for_each_footpath<SearchDir>(
           td_footpaths, unix_now, [&](footpath const& fp) {
-            auto fp_legs = check_fp(k, l, curr_time, fp, false, true);
+            auto fp_legs = check_fp(k, l, curr_time, fp, true, true);
             if (fp_legs.has_value()) {
               legs = std::move(*fp_legs);
               return utl::cflow::kBreak;
@@ -721,46 +765,53 @@ void reconstruct_journey_with_vias(timetable const& tt,
   } else {
     // adjust footpaths so that they always begin at the arrival time of
     // the previous leg
-    v = 0;
+    v = static_cast<via_offset_t>(q.via_stops_.size());
     for (auto it = std::next(j.legs_.begin()); it != j.legs_.end(); ++it) {
       std::visit(
-          utl::overloaded{[&](journey::run_enter_exit const& t) {
-                            auto const fr = rt::frun{tt, rtt, t.r_};
-                            for (auto i = t.stop_range_.from_;
-                                 i != t.stop_range_.to_; ++i) {
-                              if (v != q.via_stops_.size() &&
-                                  q.via_stops_[v].stay_ == 0_minutes &&
-                                  matches(tt, location_match_mode::kEquivalent,
-                                          q.via_stops_[v].location_,
-                                          fr[i].get_location_idx())) {
-                                ++v;
-                              }
-                            }
-                          },
-                          [&](footpath const&) {
-                            auto stay = 0_minutes;
-                            if (v != q.via_stops_.size() &&
-                                matches(tt, location_match_mode::kEquivalent,
-                                        q.via_stops_[v].location_, it->from_)) {
-                              stay = q.via_stops_[v].stay_;
-                              ++v;
-                            }
-                            if (v != q.via_stops_.size() &&
-                                matches(tt, location_match_mode::kEquivalent,
-                                        q.via_stops_[v].location_, it->to_)) {
-                              ++v;
-                            }
-                            auto const diff =
-                                it->dep_time_ - std::prev(it)->arr_time_ - stay;
-                            it->dep_time_ -= diff;
-                            it->arr_time_ -= diff;
-                          }},
+          utl::overloaded{
+              [&](journey::run_enter_exit const& t) {
+                auto const fr = rt::frun{tt, rtt, t.r_};
+                for (auto i = t.stop_range_.from_; i != t.stop_range_.to_;
+                     ++i) {
+                  if (v != 0 && q.via_stops_[v - 1].stay_ == 0_minutes &&
+                      matches(tt, location_match_mode::kEquivalent,
+                              q.via_stops_[v - 1].location_,
+                              fr[i].get_location_idx())) {
+                    --v;
+                  }
+                }
+              },
+              [&](footpath const&) {
+                auto stay = 0_minutes;
+                if (v != 0 &&
+                    matches(tt, location_match_mode::kEquivalent,
+                            q.via_stops_[v - 1].location_, it->from_)) {
+                  stay = q.via_stops_[v - 1].stay_;
+                  --v;
+                }
+                if (v != 0 && matches(tt, location_match_mode::kEquivalent,
+                                      q.via_stops_[v - 1].location_, it->to_)) {
+                  --v;
+                }
+                auto const diff =
+                    it->dep_time_ - std::prev(it)->arr_time_ - stay;
+                it->dep_time_ -= diff;
+                it->arr_time_ -= diff;
+              }},
           it->uses_);
     }
   }
 
-  optimize_footpaths<SearchDir>(tt, rtt, q, j);
-  specify_td_offsets<SearchDir>(q, j);
+  // Journey is always returned in order START -> END (as presented to user) but
+  // is reconstructed in opposite direction as search direction (query
+  // direction). If direction is kBackward, flip query to match journey
+  auto journey_q = q;
+  if constexpr (!kFwd) {
+    journey_q.flip_dir();
+  }
+
+  optimize_footpaths(tt, rtt, journey_q, j);
+  specify_td_offsets(journey_q, j);
 
 #if defined(NIGIRI_TRACE_RECUSTRUCT)
   j.print(std::cout, tt, true);

@@ -16,6 +16,7 @@ std::string_view to_str(alert_cause const x) {
     case alert_cause::kConstruction: return "CONSTRUCTION";
     case alert_cause::kPoliceActivity: return "POLICE_ACTIVITY";
     case alert_cause::kMedicalEmergency: return "MEDICAL_EMERGENCY";
+    case alert_cause::kSpecialEvent: return "SPECIAL_EVENT";
   }
   std::unreachable();
 }

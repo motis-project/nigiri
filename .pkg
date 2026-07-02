@@ -9,11 +9,11 @@
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
-  commit=1450091a6ee2d541e91d26bf06157342ec0599f6
+  commit=a8c1126b673b0def185b65c1e5010832612e9a78
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
-  commit=3d6d0c626d124b8a1625be1c6cb6d5c76c140195
+  commit=5ddd9956455b18fc96fd5f8095f7552d5be92c17
 [miniz]
   url=git@github.com:motis-project/miniz.git
   branch=master
@@ -37,7 +37,7 @@
 [protobuf]
   url=git@github.com:motis-project/protobuf.git
   branch=main
-  commit=d8136b9c6a62db6ce09900ecdeb82bb793096cbd
+  commit=eac788868fc49284a2c7f9df48d311e526491f3e
 [boost]
   url=git@github.com:motis-project/boost.git
   branch=boost-1.89.0

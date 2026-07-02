@@ -124,46 +124,78 @@ location_idx_t run_stop::get_scheduled_location_idx() const {
 }
 
 run_stop run_stop::get_first_trip_stop(event_type const ev_type) const {
+  auto const end = fr_->size();
   if (!fr_->is_scheduled()) {
-    return run_stop{fr_, stop_idx_t{0U}};
+    auto copy = run_stop{fr_, stop_idx_t{0U}};
+
+    // Go forward to the first non-cancelled stop.
+    while (copy.stop_idx_ + 1U < end && copy.is_cancelled()) {
+      ++copy.stop_idx_;
+    }
+
+    return copy;
   }
 
   auto const trip = get_trip_idx(ev_type);
   auto copy = *this;
 
+  // Go backward to the first stop of the trip = its scheduled origin. A trip
+  // spans >= 1 section, so its origin always has a departure (stop_idx_ <=
+  // N-2).
   while (copy.stop_idx_ > 0U && copy.get_trip_idx(event_type::kArr) == trip) {
     --copy.stop_idx_;
   }
+  auto const origin = copy;
 
-  return copy;
+  // Go forward to the first non-cancelled stop.
+  while (copy.stop_idx_ + 1U < end && copy.is_cancelled() &&
+         copy.get_trip_idx(event_type::kDep) == trip) {
+    ++copy.stop_idx_;
+  }
+
+  // first stop == last stop => trip cancelled => return original first stop.
+  return copy.stop_idx_ + 1U < end ? copy : origin;
 }
 
 run_stop run_stop::get_last_trip_stop(event_type const ev_type) const {
   auto const end = fr_->size();
   if (!fr_->is_scheduled()) {
-    return run_stop{fr_, static_cast<stop_idx_t>(end - 1)};
+    // Go back to the last non-cancelled stop.
+    auto copy = run_stop{fr_, static_cast<stop_idx_t>(end - 1)};
+    while (copy.stop_idx_ > 0U && copy.is_cancelled()) {
+      --copy.stop_idx_;
+    }
+    return copy;
   }
 
   auto const trip = get_trip_idx(ev_type);
   auto copy = *this;
-  if (copy.stop_idx_ == end - 1) {
-    return copy;
-  }
-
-  // Can't be (end-1), so ++stop_idx is fine.
-  ++copy.stop_idx_;
-
-  // Can't be 0 after ++stop_idx, so get_trip_idx(kArr) is fine.
-  while (copy.stop_idx_ < end - 1 &&
-         copy.get_trip_idx(event_type::kArr) == trip) {
+  if (copy.stop_idx_ != end - 1) {
+    // Can't be (end-1), so ++stop_idx is fine.
     ++copy.stop_idx_;
+
+    // Go forward to the last stop of the trip.
+    // Can't be 0 after ++stop_idx, so get_trip_idx(kArr) is fine.
+    while (copy.stop_idx_ < end - 1 &&
+           copy.get_trip_idx(event_type::kArr) == trip) {
+      ++copy.stop_idx_;
+    }
+
+    if (copy.get_trip_idx(event_type::kArr) != trip) {
+      copy.stop_idx_ -= 1;
+    }
   }
 
-  if (copy.get_trip_idx(event_type::kArr) != trip) {
-    copy.stop_idx_ -= 1;
+  auto const dest = copy;  // the trip's last stop; always has an arrival.
+
+  // Go back to the last non-cancelled stop.
+  while (copy.stop_idx_ > 0U && copy.is_cancelled() &&
+         copy.get_trip_idx(event_type::kArr) == trip) {
+    --copy.stop_idx_;
   }
 
-  return copy;
+  // last stop == first stop => trip cancelled => return original last stop.
+  return copy.stop_idx_ == 0U ? dest : copy;
 }
 
 unixtime_t run_stop::scheduled_time(event_type const ev_type) const {
@@ -301,7 +333,7 @@ std::string_view run_stop::route_url(event_type const ev_type,
   auto const [route_ids, route_id_idx] = get_route(ev_type);
   return route_ids == nullptr
              ? "?"
-             : tt().translate(lang, route_ids->rotue_id_url_.at(route_id_idx));
+             : tt().translate(lang, route_ids->route_id_url_.at(route_id_idx));
 }
 
 std::string_view run_stop::trip_short_name(event_type const ev_type,
@@ -455,6 +487,37 @@ bool run_stop::cars_allowed(event_type const ev_type) const {
           tt().transport_route_.at(fr_->t_.t_idx_));
       return cars_allowed_seq.at(
           cars_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+    }
+  }
+}
+
+bool run_stop::wheelchair_accessible(event_type ev_type) const {
+  if (fr_->is_rt() && rtt() != nullptr) {
+    if (rtt()->rt_transport_wheelchair_accessibility_[to_idx(fr_->rt_) * 2U]) {
+      return true;
+    } else if (!rtt()->rt_transport_wheelchair_accessibility_[to_idx(fr_->rt_) *
+                                                                  2U +
+                                                              1U]) {
+      return false;
+    } else {
+      auto const wheelchair_accessible_seq =
+          rtt()->rt_wheelchair_accessible_per_section_.at(fr_->rt_);
+      return wheelchair_accessible_seq.at(
+          wheelchair_accessible_seq.size() == 1U ? 0U : section_idx(ev_type));
+    }
+  } else {
+    auto const r = tt().transport_route_.at(fr_->t_.t_idx_);
+    if (tt().route_wheelchair_accessible_[to_idx(r) * 2U]) {
+      return true;
+    } else if (!tt().route_wheelchair_accessible_[to_idx(r) * 2U + 1U]) {
+      return false;
+    } else {
+      auto const wheelchair_accessibility_seq =
+          tt().route_wheelchair_accessibility_per_section_.at(
+              tt().transport_route_.at(fr_->t_.t_idx_));
+      return wheelchair_accessibility_seq.at(
+          wheelchair_accessibility_seq.size() == 1U ? 0U
+                                                    : section_idx(ev_type));
     }
   }
 }
