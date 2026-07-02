@@ -477,15 +477,6 @@ struct raptor_impl {
       auto const l = location_idx_t{i};
       if (prev_station_mark_[i] || station_mark_[i]) {
         if (dist_to_end_[i] != std::numeric_limits<std::uint16_t>::max()) {
-          // Source the egress from tmp_ (this round's raw transport arrival),
-          // like update_transfers / update_footpaths do -- NOT best_. best_
-          // persists across rounds and range-query start-times, so keying off
-          // it recorded a target arrival whose source has no valid
-          // round_times[k][src] (unreconstructable -> dropped as a 0-leg
-          // journey), and it also folds in no transfer, which the egress must
-          // not add (RAPTOR does not chain transfer->egress). Reading tmp_
-          // makes the egress round-consistent and independent of the
-          // transfer/footpath passes (so no barrier is needed between them).
           auto const src_arr = tmp_.get(l, Vias);
           if (src_arr == kInvalid) {
             continue;
@@ -493,16 +484,6 @@ struct raptor_impl {
           auto const end_time = clamp(src_arr + dir(dist_to_end_[i]));
 
           if (is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
-            // Make the egress source (l) reconstructable. Even with option A,
-            // update_transfers may not have recorded round_times[k][l]: its
-            // admissible prune drops l when l's arrival + transfer_time + lb[l]
-            // can't beat time_at_dest, but the egress from l's RAW arrival +
-            // dist_to_end[l] (a direct walk, typically shorter than the lb
-            // estimate) still can. Reconstruction reads round_times[k][src], so
-            // record l's transport arrival (+ its transfer time, matching
-            // update_transfers) with tmp_'s transport breadcrumb. Don't touch
-            // best_/station_mark_: this arrival is not better than best_, so it
-            // must not re-propagate.
             round_times_.update_min(
                 k, l, Vias,
                 clamp(src_arr + dir(adjusted_transfer_time(
@@ -777,18 +758,10 @@ struct raptor_impl {
                        });
     };
 
-    // Must match the CPU raptor: look up to kMaxTravelTime days ahead for the
-    // next departure. The previous value (2) silently missed connections when
-    // the next active service was >2 days out (sparse/rural service, or reduced
-    // service near the timetable-start dates) -> GPU returned empty where CPU
-    // found journeys.
     constexpr auto const kNDaysToIterate = static_cast<day_idx_t::value_t>(
         kMaxTravelTime / std::chrono::days{1} + 1U);
     for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
       auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
-      // Skip days on which this route runs no service before iterating its
-      // events (matches the CPU raptor). Without this the wider day window
-      // (kNDaysToIterate) would scan every event on every inactive day.
       if (!is_route_active(r, day)) {
         continue;
       }
@@ -847,9 +820,6 @@ struct raptor_impl {
                         : kEtInvalid;
   }
 
-  // Is packed et `a` a better boarding than `b`? Forward search wants the
-  // earliest transport (min (day,t_idx)); backward wants the latest (max).
-  // Invalid (kEtInvalid) is always worse.
   __device__ __forceinline__ bool et_is_better(std::uint64_t const a,
                                                std::uint64_t const b) const {
     if (a == kEtInvalid) {
@@ -990,7 +960,7 @@ struct raptor_impl {
   device_bitvec<std::uint64_t const> is_dest_;
   device_bitvec<std::uint32_t> end_reachable_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
-  cuda::std::span<std::uint16_t const> lb_;  // per-location lower bound to dest
+  cuda::std::span<std::uint16_t const> lb_;
   device_times<SearchDir, Vias + 1> round_times_;
   device_times<SearchDir, Vias + 1> best_;
   device_times<SearchDir, Vias + 1> tmp_;
@@ -998,9 +968,9 @@ struct raptor_impl {
   device_bitvec<std::uint32_t> station_mark_;
   device_bitvec<std::uint32_t> prev_station_mark_;
   device_bitvec<std::uint32_t> route_mark_;
-  cuda::std::span<std::uint64_t> et_result_;  // packed et per flat (route,stop)
-  cuda::std::span<std::uint32_t>
-      et_task_list_;  // compacted boarding candidates
+
+  cuda::std::span<std::uint64_t> et_result_;  // per flat (route,stop)
+  cuda::std::span<std::uint32_t> et_task_list_;  // per flat (route,stop)
   std::uint32_t* et_task_count_;  // number of tasks this round
 };
 

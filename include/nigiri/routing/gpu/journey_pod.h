@@ -7,11 +7,6 @@
 
 namespace nigiri::routing::gpu {
 
-// Plain-old-data journey/leg representation written by the GPU reconstruction
-// kernel and read back by the host, which materializes nigiri::routing::journey
-// objects from it. Kept POD so it can be cudaMemcpy'd. Legs are stored in
-// reverse-chronological order (dest -> start) and reversed on the host.
-
 inline constexpr unsigned kMaxRecLegs = 2U * kMaxTransfers + 4U;
 
 struct gpu_journey_leg {
