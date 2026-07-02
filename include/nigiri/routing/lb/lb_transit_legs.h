@@ -2,6 +2,7 @@
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::routing {
@@ -19,8 +20,10 @@ struct lb_transit_legs {
 
   lb_transit_legs(timetable const& tt,
                   query const& q,
-                  bool const one_to_all = false)
+                  rt_timetable const* rtt = nullptr,
+                  bool const disabled = false)
       : tt_{tt},
+        rtt_{rtt != nullptr && rtt->n_rt_transports() > 0U ? rtt : nullptr},
         q_{q},
         k_{0U},
         end_k_{static_cast<std::uint8_t>(
@@ -28,7 +31,7 @@ struct lb_transit_legs {
         any_marked_{false},
         total_time_{0U} {
     lb_.resize(tt_.n_locations());
-    if (one_to_all) {
+    if (disabled) {
       utl::fill(lb_, 0U);
       return;
     }
@@ -36,7 +39,11 @@ struct lb_transit_legs {
     station_mark_.resize(tt_.n_locations());
     utl::fill(station_mark_.blocks_, 0U);
     prev_station_mark_.resize(tt_.n_locations());
+    ride_expanded_.resize(tt_.n_locations());
     route_mark_.resize(tt_.n_routes());
+    if (rtt_ != nullptr) {
+      rt_transport_mark_.resize(rtt_->n_rt_transports());
+    }
     utl::fill(lb_, kUnknown);
 
     auto const set_terminal = [&](auto const i) {
@@ -83,12 +90,23 @@ struct lb_transit_legs {
     auto const start_time = std::chrono::steady_clock::now();
 
     utl::fill(route_mark_.blocks_, 0U);
+    utl::fill(ride_expanded_.blocks_, 0U);
+    if (rtt_ != nullptr) {
+      utl::fill(rt_transport_mark_.blocks_, 0U);
+    }
 
     any_marked_ = false;
     station_mark_.for_each_set_bit([&](std::uint64_t const i) {
       for (auto const r : tt_.location_routes_[location_idx_t{i}]) {
         any_marked_ = true;
         route_mark_.set(to_idx(r), true);
+      }
+      if (rtt_ != nullptr) {
+        for (auto const rt_t :
+             rtt_->location_rt_transports_[location_idx_t{i}]) {
+          any_marked_ = true;
+          rt_transport_mark_.set(to_idx(rt_t), true);
+        }
       }
     });
     if (!any_marked_) {
@@ -99,9 +117,7 @@ struct lb_transit_legs {
     utl::fill(station_mark_.blocks_, 0U);
 
     any_marked_ = false;
-    route_mark_.for_each_set_bit([&](std::uint64_t const i) {
-      auto const r = route_idx_t{i};
-      auto const& seq = tt_.route_location_seq_[r];
+    auto const relax_seq = [&](auto const& seq) {
       for (auto x = 0U; x != seq.size(); ++x) {
         auto const in = kFwd ? seq.size() - x - 1U : x;
         auto const l_in = stop{seq[in]}.location_idx();
@@ -113,24 +129,39 @@ struct lb_transit_legs {
         auto const step = [&](auto const y) { return kFwd ? y - 1U : y + 1U; };
         for (auto out = step(in); out < seq.size(); out = step(out)) {
           auto const l_out = stop{seq[out]}.location_idx();
-          if (k_ < lb_[l_out]) {
-            lb_[l_out] = k_;
-            station_mark_.set(to_idx(l_out), true);
-            any_marked_ = true;
+
+          if (!ride_expanded_.test(to_idx(l_out))) {
+            ride_expanded_.set(to_idx(l_out), true);
             for (auto const fp :
                  kFwd ? tt_.locations_.footpaths_in_[q_.prf_idx_][l_out]
                       : tt_.locations_.footpaths_out_[q_.prf_idx_][l_out]) {
               if (k_ < lb_[fp.target()]) {
                 lb_[fp.target()] = k_;
                 station_mark_.set(to_idx(fp.target()), true);
+                any_marked_ = true;
               }
             }
+          }
+
+          if (k_ < lb_[l_out]) {
+            lb_[l_out] = k_;
+            station_mark_.set(to_idx(l_out), true);
+            any_marked_ = true;
           } else if (k_ > lb_[l_out]) {
             break;
           }
         }
       }
+    };
+
+    route_mark_.for_each_set_bit([&](std::uint64_t const i) {
+      relax_seq(tt_.route_location_seq_[route_idx_t{i}]);
     });
+    if (rtt_ != nullptr) {
+      rt_transport_mark_.for_each_set_bit([&](std::uint64_t const i) {
+        relax_seq(rtt_->rt_transport_location_seq_[rt_transport_idx_t{i}]);
+      });
+    }
 
     total_time_ += std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - start_time);
@@ -152,6 +183,7 @@ struct lb_transit_legs {
   }
 
   timetable const& tt_;
+  rt_timetable const* rtt_;
   query const& q_;
   std::uint8_t k_;
   std::uint8_t end_k_;
@@ -159,7 +191,9 @@ struct lb_transit_legs {
   std::chrono::microseconds total_time_;
   bitvec station_mark_;
   bitvec prev_station_mark_;
+  bitvec ride_expanded_;
   bitvec route_mark_;
+  bitvec rt_transport_mark_;
   vector_map<location_idx_t, std::uint8_t> lb_;
 };
 

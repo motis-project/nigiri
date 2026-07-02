@@ -91,7 +91,7 @@ routing_result pong(timetable const& tt,
                                     : rtt->bwd_search_lb_graph_)),
            ping_lb_time);
   UTL_STOP_TIMING(ping_lb);
-  auto ping_lb_rounds = lb_transit_legs<SearchDir>(tt, q);
+  auto ping_lb_rounds = lb_transit_legs<SearchDir>(tt, q, rtt);
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
@@ -138,7 +138,7 @@ routing_result pong(timetable const& tt,
                                     : rtt->fwd_search_lb_graph_)),
            pong_lb_time);
   UTL_STOP_TIMING(pong_lb);
-  auto pong_lb_rounds = lb_transit_legs<flip(SearchDir)>(tt, q);
+  auto pong_lb_rounds = lb_transit_legs<flip(SearchDir)>(tt, q, rtt);
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
   auto pong_is_dest = bitvec{};

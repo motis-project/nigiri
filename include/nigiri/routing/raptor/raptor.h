@@ -17,7 +17,7 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
-#define NIGIRI_LB_TRACING
+// #define NIGIRI_LB_TRACING
 #ifdef NIGIRI_LB_TRACING
 #define trace_lb(...) fmt::print(__VA_ARGS__)
 #else
@@ -573,7 +573,7 @@ private:
                 to_unix(fp_target_time), lb_time_[i],
                 to_unix(clamp(fp_target_time + dir(lb_time_[i]))), i_lb_rounds,
                 i_dest_k, to_unix(time_at_dest_[k]));
-            return;
+            continue;
           }
 
           ++stats_.n_earliest_arrival_updated_by_footpath_;
@@ -1188,14 +1188,18 @@ private:
         continue;
       }
 
+      if (lb_time_[l_idx] == kUnreachable) {
+        break;
+      }
+
       auto const stp_break_lb_rounds = lb_rounds_.get(stp.location_idx());
-      if (lb_time_[l_idx] == kUnreachable || k + stp_break_lb_rounds > end_k_) {
+      if (k + stp_break_lb_rounds > end_k_) {
         trace_lb(
-            "┊ │k={}    *** NO ROUTE UPD: at={}, lb_time={}, lb_rounds={}, "
-            "end_k_={}",
+            "┊ │k={}    *** NO BOARD: at={}, lb_time={}, lb_rounds={}, "
+            "end_k_={}\n",
             k, loc{tt_, location_idx_t{l_idx}}, lb_time_[l_idx],
             stp_break_lb_rounds, end_k_);
-        break;
+        continue;
       }
 
       for (auto v = 0U; v != Vias + 1; ++v) {
@@ -1281,7 +1285,7 @@ private:
         auto const ev_mam = ev.mam();
 
         auto const l_lb_rounds = lb_rounds_.get(l);
-        auto const dest_k = k + l_lb_rounds;
+        auto const dest_k = std::max(k, k - 1U + l_lb_rounds);
         if (dest_k < time_at_dest_.size() &&
             is_better_or_eq(time_at_dest_[dest_k],
                             to_delta(day, ev_mam) + dir(lb_time_[to_idx(l)]))) {

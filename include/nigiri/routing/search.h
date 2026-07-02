@@ -190,7 +190,7 @@ struct search {
                             }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
-        lb_rounds_{tt, q_},
+        lb_rounds_{tt, q_, rtt},
         algo_{init(q_.allowed_claszes_,
                    q_.require_bike_transport_,
                    q_.require_car_transport_,
