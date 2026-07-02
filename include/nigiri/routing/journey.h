@@ -112,10 +112,6 @@ struct journey {
   location_idx_t dest_{};
   std::uint8_t transfers_{0U};
   bool error_{false};
-  // set once the legs have been reconstructed (by reconstruct.cc or
-  // gpu_raptor::reconstruct). Used instead of legs_.empty() to detect
-  // reconstruction status: the GPU fills legs in execute() before search.h asks
-  // for reconstruction, so legs_.empty() would wrongly skip search's filtering.
   bool is_reconstructed_{false};
 };
 
