@@ -27,7 +27,7 @@ struct device_times {
                 : static_cast<delta_t>(32767 - static_cast<int>(k));
   }
   CISTA_CUDA_COMPAT static std::uint64_t pack(delta_t const t,
-                                              std::uint64_t const bc) {
+                                              breadcrumb_t const bc) {
     return (static_cast<std::uint64_t>(to_key(t)) << 48U) | (bc & kBcMask);
   }
   // packed value representing kInvalid: all-ones (worst key 0xFFFF in the high
@@ -53,9 +53,9 @@ struct device_times {
     return from_key(static_cast<std::uint16_t>(data_[i] >> 48U));
   }
 
-  __device__ std::uint64_t get_bc(std::uint8_t const k,
-                                  location_idx_t const l,
-                                  via_offset_t const via) {
+  __device__ breadcrumb_t get_bc(std::uint8_t const k,
+                                 location_idx_t const l,
+                                 via_offset_t const via) {
     return data_[internal_idx(k, l, via)] & kBcMask;
   }
 
@@ -63,7 +63,7 @@ struct device_times {
                              location_idx_t const l,
                              via_offset_t const via,
                              delta_t const val,
-                             std::uint64_t const bc = 0U) {
+                             breadcrumb_t const bc = 0U) {
     return update_min(static_cast<std::size_t>(internal_idx(k, l, via)), val,
                       bc);
   }
@@ -71,26 +71,19 @@ struct device_times {
   __device__ bool update_min(location_idx_t const l,
                              via_offset_t const via,
                              delta_t const val,
-                             std::uint64_t const bc = 0U) {
+                             breadcrumb_t const bc = 0U) {
     return update_min(static_cast<std::size_t>(internal_idx(0U, l, via)), val,
                       bc);
   }
 
   __device__ bool update_min(std::size_t const idx,
                              delta_t const val,
-                             std::uint64_t const bc = 0U) {
+                             breadcrumb_t const bc = 0U) {
     auto const new_packed = pack(val, bc);
     auto* const addr =
         reinterpret_cast<unsigned long long*>(&data_[idx]);  // NOLINT
     auto const old =
         atomicMin(addr, static_cast<unsigned long long>(new_packed));
-    // mark the first write to a previously-invalid entry in a dirty bitfield,
-    // so reset only clears the touched entries instead of memset-ing the whole
-    // (huge) buffer. One bit per entry (size/8 bytes).
-    if (dirty_bits_ != nullptr && (old >> 48U) == 0xFFFFULL &&
-        (new_packed >> 48U) != 0xFFFFULL) {
-      atomicOr(&dirty_bits_[idx >> 5U], 1U << (idx & 31U));
-    }
     // strictly improved iff the new time key is smaller than the old one
     return (new_packed >> 48U) < (old >> 48U);
   }
@@ -103,10 +96,6 @@ struct device_times {
 
   cuda::std::span<std::uint64_t> data_;
   std::uint32_t n_locations_;
-  // optional selective-clear bitfield: one bit per entry, set on first
-  // invalid->valid write. reset scans it and clears only the marked entries
-  // instead of memset-ing the whole buffer. null = off.
-  std::uint32_t* dirty_bits_ = nullptr;
 };
 
 }  // namespace nigiri::routing::gpu

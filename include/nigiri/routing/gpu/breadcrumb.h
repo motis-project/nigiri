@@ -31,6 +31,12 @@ namespace nigiri::routing::gpu {
 // tmp_ stores the same transport payload (transport|board|alight); round_times
 // kTransport entries copy it verbatim.
 
+// The 48-bit breadcrumb payload carried in the low bits of a packed round-time
+// word (the high 16 bits are the time key; see device_times). Same underlying
+// type as the packed word -- the alias only documents that a value is a bare
+// breadcrumb, not a full time||breadcrumb word.
+using breadcrumb_t = std::uint64_t;
+
 inline constexpr std::uint64_t kBcMask = 0x0000'FFFF'FFFF'FFFFULL;  // 48 bits
 inline constexpr std::uint64_t kBcTransportMask = 0x03FF'FFFFULL;  // 26 bits
 inline constexpr std::uint64_t kBcStopMask = 0x7FFULL;  // 11 bits
@@ -39,39 +45,39 @@ inline constexpr unsigned kBcAlightShift = 37U;
 inline constexpr std::uint32_t kStartSentinel =
     static_cast<std::uint32_t>(kBcTransportMask);  // 26-bit all-ones
 
-CISTA_CUDA_COMPAT inline std::uint64_t make_transport_payload(
+CISTA_CUDA_COMPAT inline breadcrumb_t make_transport_payload(
     std::uint32_t const transport_idx,
     std::uint32_t const board_stop,
     std::uint32_t const alight_stop) {
-  return (static_cast<std::uint64_t>(transport_idx) & kBcTransportMask) |
-         ((static_cast<std::uint64_t>(board_stop) & kBcStopMask)
+  return (static_cast<breadcrumb_t>(transport_idx) & kBcTransportMask) |
+         ((static_cast<breadcrumb_t>(board_stop) & kBcStopMask)
           << kBcBoardShift) |
-         ((static_cast<std::uint64_t>(alight_stop) & kBcStopMask)
+         ((static_cast<breadcrumb_t>(alight_stop) & kBcStopMask)
           << kBcAlightShift);
 }
 
-CISTA_CUDA_COMPAT inline std::uint64_t make_start_bc() {
-  return static_cast<std::uint64_t>(kStartSentinel);
+CISTA_CUDA_COMPAT inline breadcrumb_t make_start_bc() {
+  return static_cast<breadcrumb_t>(kStartSentinel);
 }
 
-CISTA_CUDA_COMPAT inline std::uint64_t make_egress_bc(
+CISTA_CUDA_COMPAT inline breadcrumb_t make_egress_bc(
     std::uint32_t const source_location) {
-  return static_cast<std::uint64_t>(source_location) & kBcTransportMask;
+  return static_cast<breadcrumb_t>(source_location) & kBcTransportMask;
 }
 
-CISTA_CUDA_COMPAT inline std::uint32_t bc_transport(std::uint64_t const bc) {
+CISTA_CUDA_COMPAT inline std::uint32_t bc_transport(breadcrumb_t const bc) {
   return static_cast<std::uint32_t>(bc & kBcTransportMask);
 }
 
-CISTA_CUDA_COMPAT inline std::uint32_t bc_board(std::uint64_t const bc) {
+CISTA_CUDA_COMPAT inline std::uint32_t bc_board(breadcrumb_t const bc) {
   return static_cast<std::uint32_t>((bc >> kBcBoardShift) & kBcStopMask);
 }
 
-CISTA_CUDA_COMPAT inline std::uint32_t bc_alight(std::uint64_t const bc) {
+CISTA_CUDA_COMPAT inline std::uint32_t bc_alight(breadcrumb_t const bc) {
   return static_cast<std::uint32_t>((bc >> kBcAlightShift) & kBcStopMask);
 }
 
-CISTA_CUDA_COMPAT inline bool bc_is_start(std::uint64_t const bc) {
+CISTA_CUDA_COMPAT inline bool bc_is_start(breadcrumb_t const bc) {
   return bc_transport(bc) == kStartSentinel;
 }
 

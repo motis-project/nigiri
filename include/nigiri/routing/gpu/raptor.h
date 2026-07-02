@@ -44,7 +44,7 @@ struct gpu_raptor_state {
   std::unique_ptr<impl> impl_;
 };
 
-template <direction SearchDir, bool Rt, via_offset_t Vias>
+template <direction SearchDir, bool Rt>
 struct gpu_raptor {
   using algo_state_t = gpu_raptor_state;
   using algo_stats_t = raptor_stats;
@@ -52,7 +52,7 @@ struct gpu_raptor {
   static constexpr bool kUseLowerBounds = true;
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
   static constexpr auto const kInvalidArray = []() {
-    auto a = std::array<delta_t, Vias + 1>{};
+    auto a = std::array<delta_t, 1>{};
     a.fill(kInvalid);
     return a;
   }();
@@ -100,11 +100,9 @@ private:
   std::uint32_t n_locations_, n_routes_, n_rt_transports_;
   gpu_raptor_state& state_;
   bitvec const& is_dest_;
-  std::array<bitvec, kMaxVias> const& is_via_;
   std::vector<std::uint16_t> const& dist_to_end_;
   hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
   std::vector<std::uint16_t> const& lb_;
-  std::vector<via_stop> const& via_stops_;
   std::array<delta_t, kMaxTransfers + 1> time_at_dest_;
   day_idx_t base_;
   raptor_stats stats_;

@@ -42,8 +42,10 @@ namespace nigiri::routing::gpu {
 
 __device__ char const* b2s(bool const b) { return b ? "true" : "false"; }
 
-template <direction SearchDir, bool Rt, via_offset_t Vias>
+template <direction SearchDir, bool Rt>
 struct raptor_impl {
+  static constexpr via_offset_t Vias = 0U;
+
   __device__ __forceinline__ bool is_better(auto a, auto b) {
     return kFwd ? a < b : a > b;
   }
@@ -75,7 +77,7 @@ struct raptor_impl {
     for (auto i = global_t_id; i < starts_.size(); i += global_stride) {
       auto const l = starts_[i].first;
       auto const t = unix_to_delta(base(), starts_[i].second);
-      auto const v = (Vias != 0 && is_via_[0][to_idx(l)]) ? 1U : 0U;
+      auto const v = via_offset_t{0};
       best_.update_min(l, v, t);
       round_times_.update_min(0U, l, v, t, make_start_bc());
       station_mark_.mark(to_idx(l));
@@ -88,10 +90,6 @@ struct raptor_impl {
 
     sync();
 
-    // +2 (not +1): rounds run 1..max_transfers+1 so that journeys with exactly
-    // max_transfers transfers (reached in round max_transfers+1) are found. CPU
-    // raptor uses the same +2; the GPU previously dropped the last round, which
-    // was invisible at high max_transfers but emptied pong (max_transfers=0).
     auto const end_k = min(max_transfers, kMaxTransfers) + 2U;
     for (auto k = 1U; k != end_k; ++k) {
       start_timing();
@@ -108,7 +106,6 @@ struct raptor_impl {
         }
       }
 
-      // Mark every route at all stations marked in the previous round.
       if (global_t_id == 0) {
         *any_marked_ = 0U;
       }
@@ -144,9 +141,6 @@ struct raptor_impl {
       }
       sync();
 
-      // Load-balanced boarding pre-pass: precompute earliest transports for all
-      // (route,stop) candidates in parallel, so loop_routes/update_route can read
-      // them instead of doing the divergent get_earliest_transport per route.
       compute_et(k);
       sync();
 
@@ -182,13 +176,6 @@ struct raptor_impl {
     cooperative_groups::this_grid().sync();
   }
 
-  // Reconstruct the journey arriving at `dest` using exactly `K` rounds by
-  // following the breadcrumbs back to the start. Pure pointer-chase: each
-  // breadcrumb carries (transport, board_stop, alight_stop); the route comes
-  // from transport_route_, the day is recovered from the arrival time minus the
-  // event's over-midnight offset, and the transfer/footpath hop is derived from
-  // the alight location. Legs are written in reverse-chronological order; the
-  // host reverses them. Writes out->valid_ = 1 on success.
   __device__ void reconstruct_journey(location_idx_t const dest,
                                       unsigned const K,
                                       gpu_journey* out) {
@@ -209,13 +196,19 @@ struct raptor_impl {
     auto cur_l = dest;
     auto cur_k = K;
     auto n = 0U;
+    auto egress_src = false;
     while (cur_k >= 1U) {
       auto const bc =
           round_times_.get_bc(static_cast<std::uint8_t>(cur_k), cur_l, cur_v);
-      // egress only applies to intermodal queries; a real station may share the
-      // special kEnd index, so guard with is_intermodal_dest()
-      if (bc_is_start(bc) ||
-          (is_intermodal_dest() && cur_l == kIntermodalTarget)) {
+
+      if (is_intermodal_dest() && cur_l == kIntermodalTarget) {
+        auto const src = location_idx_t{bc_transport(bc)};
+        out->dest_l_ = src.v_;
+        cur_l = src;
+        egress_src = true;
+        continue;
+      }
+      if (bc_is_start(bc)) {
         break;
       }
 
@@ -256,6 +249,12 @@ struct raptor_impl {
         return;  // could not recover -> leave invalid
       }
 
+      // at the egress stop, use the raw train arrival (drop the folded-in
+      // transfer_time) so no self-footpath is emitted and the egress time is
+      // anchored to the train.
+      auto const eff_arr = egress_src ? train_arr : arr_at_cur;
+      egress_src = false;
+
       auto const tr = transport{t_idx, day};
       auto const dep_at_board = time_at_stop(r, tr, board, ev_dep_type);
       auto const stop_seq = tt_.route_location_seq_[r];
@@ -267,7 +266,7 @@ struct raptor_impl {
       // footpath (B->B) with the transfer time, so we emit it whenever there is
       // a non-zero cost (a real footpath, or a same-station transfer), and skip
       // it only for a zero-cost direct arrival (e.g. at the destination).
-      if (alight_loc != cur_l || train_arr != arr_at_cur) {
+      if (alight_loc != cur_l || train_arr != eff_arr) {
         if (n >= kMaxRecLegs) {
           return;
         }
@@ -276,9 +275,9 @@ struct raptor_impl {
         lg.from_l_ = alight_loc.v_;
         lg.to_l_ = cur_l.v_;
         lg.dep_ = train_arr;
-        lg.arr_ = arr_at_cur;
+        lg.arr_ = eff_arr;
         lg.fp_duration_ = static_cast<std::uint16_t>(
-            kFwd ? (arr_at_cur - train_arr) : (train_arr - arr_at_cur));
+            kFwd ? (eff_arr - train_arr) : (train_arr - eff_arr));
       }
 
       // transport leg board_loc -> alight_loc
@@ -302,7 +301,7 @@ struct raptor_impl {
 
     out->start_l_ = cur_l.v_;
     out->n_legs_ = static_cast<std::uint8_t>(n);
-    out->valid_ = 1U;
+    out->valid_ = (n != 0U) ? 1U : 0U;  // should not happen, safe guard
   }
 
   __device__ date::sys_days base() const {
@@ -356,10 +355,10 @@ struct raptor_impl {
         }
       } else {
         // Vias>0 is unused on the GPU (kGpuViaSlots==1); sequential on lane 0
-        auto const m =
-            (lane == 0U) ? (section_bike_filter ? update_route<true>(k, r)
-                                                : update_route<false>(k, r))
-                         : false;
+        auto const m = (lane == 0U)
+                           ? (section_bike_filter ? update_route<true>(k, r)
+                                                  : update_route<false>(k, r))
+                           : false;
         route_any_marked = __any_sync(full, m);
       }
       if (route_any_marked && lane == 0U && !*any_marked_) {
@@ -384,26 +383,24 @@ struct raptor_impl {
           continue;
         }
 
-        auto const is_via = v != Vias && is_via_[v][i];
-        auto const target_v = is_via ? v + 1 : v;
-        auto const is_dest = target_v == Vias && is_dest_[i];
-        auto const stay = is_via ? via_stops_[v].stay_ : 0_minutes;
+        auto const target_v = v;
+        auto const is_dest = is_dest_[i];
 
         auto const transfer_time =
             (!is_intermodal_dest() && is_dest)
                 ? 0
                 : dir(adjusted_transfer_time(transfer_time_settings_,
-                                             tt_.transfer_time_[l].count()) +
-                      stay.count());
+                                             tt_.transfer_time_[l].count()));
         auto const fp_target_time =
             static_cast<delta_t>(tmp_time + transfer_time);
 
-        if (is_better(fp_target_time, best_.get(l, target_v)) &&
-            is_better(fp_target_time, time_at_dest_.get(k))) {
-          if (lb_[i] == kUnreachable ||
-              !is_better(fp_target_time + dir(lb_[i]), time_at_dest_.get(k))) {
-            continue;
-          }
+        if (!is_better(fp_target_time, time_at_dest_.get(k)) ||
+            lb_[i] == kUnreachable ||
+            !is_better(fp_target_time + dir(lb_[i]), time_at_dest_.get(k))) {
+          continue;
+        }
+
+        if (is_better(fp_target_time, best_.get(l, target_v))) {
           round_times_.update_min(k, l, target_v, fp_target_time,
                                   tmp_.get_bc(0U, l, v));
           best_.update_min(l, target_v, fp_target_time);
@@ -436,32 +433,22 @@ struct raptor_impl {
             continue;
           }
 
-          auto const start_is_via = v != Vias && is_via_[v][i];
-          auto const start_v = start_is_via ? v + 1 : v;
-
-          auto const target_is_via =
-              start_v != Vias && is_via_[start_v][target];
-          auto const target_v = target_is_via ? start_v + 1 : start_v;
-          auto stay = 0_minutes;
-          if (start_is_via) {
-            stay += via_stops_[v].stay_;
-          }
-          if (target_is_via) {
-            stay += via_stops_[start_v].stay_;
-          }
+          auto const target_v = v;
 
           auto const fp_target_time = clamp(
               tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
-                                                    fp.duration().count()) +
-                             stay.count()));
+                                                    fp.duration().count())));
 
-          if (is_better(fp_target_time, best_.get(fp.target(), target_v)) &&
-              is_better(fp_target_time, time_at_dest_.get(k))) {
-            if (lb_[target] == kUnreachable ||
-                !is_better(fp_target_time + dir(lb_[target]),
-                           time_at_dest_.get(k))) {
-              continue;
-            }
+          // Admissible pruning.
+          if (!is_better(fp_target_time, time_at_dest_.get(k)) ||
+              lb_[target] == kUnreachable ||
+              !is_better(fp_target_time + dir(lb_[target]),
+                         time_at_dest_.get(k))) {
+            continue;
+          }
+          // Match the CPU (raptor.h update_footpaths): write round_times + best
+          // and mark together, only on a genuine improvement over best_.
+          if (is_better(fp_target_time, best_.get(fp.target(), target_v))) {
             round_times_.update_min(k, fp.target(), target_v, fp_target_time,
                                     tmp_.get_bc(0U, l, v));
             best_.update_min(fp.target(), target_v, fp_target_time);
@@ -490,18 +477,38 @@ struct raptor_impl {
       auto const l = location_idx_t{i};
       if (prev_station_mark_[i] || station_mark_[i]) {
         if (dist_to_end_[i] != std::numeric_limits<std::uint16_t>::max()) {
-          auto const best_time =
-              get_best(best_.get(l, Vias), tmp_.get(l, Vias));
-          if (best_time == kInvalid) {
+          // Source the egress from tmp_ (this round's raw transport arrival),
+          // like update_transfers / update_footpaths do -- NOT best_. best_
+          // persists across rounds and range-query start-times, so keying off
+          // it recorded a target arrival whose source has no valid
+          // round_times[k][src] (unreconstructable -> dropped as a 0-leg
+          // journey), and it also folds in no transfer, which the egress must
+          // not add (RAPTOR does not chain transfer->egress). Reading tmp_
+          // makes the egress round-consistent and independent of the
+          // transfer/footpath passes (so no barrier is needed between them).
+          auto const src_arr = tmp_.get(l, Vias);
+          if (src_arr == kInvalid) {
             continue;
           }
-          auto const stay = Vias != 0 && is_via_[Vias - 1U][i]
-                                ? via_stops_[Vias - 1U].stay_
-                                : 0_minutes;
-          auto const end_time =
-              clamp(best_time + stay.count() + dir(dist_to_end_[i]));
+          auto const end_time = clamp(src_arr + dir(dist_to_end_[i]));
 
           if (is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
+            // Make the egress source (l) reconstructable. Even with option A,
+            // update_transfers may not have recorded round_times[k][l]: its
+            // admissible prune drops l when l's arrival + transfer_time + lb[l]
+            // can't beat time_at_dest, but the egress from l's RAW arrival +
+            // dist_to_end[l] (a direct walk, typically shorter than the lb
+            // estimate) still can. Reconstruction reads round_times[k][src], so
+            // record l's transport arrival (+ its transfer time, matching
+            // update_transfers) with tmp_'s transport breadcrumb. Don't touch
+            // best_/station_mark_: this arrival is not better than best_, so it
+            // must not re-propagate.
+            round_times_.update_min(
+                k, l, Vias,
+                clamp(src_arr + dir(adjusted_transfer_time(
+                                    transfer_time_settings_,
+                                    tt_.transfer_time_[l].count()))),
+                tmp_.get_bc(0U, l, Vias));
             round_times_.update_min(k, kIntermodalTarget, Vias, end_time,
                                     make_egress_bc(i));
             best_.update_min(kIntermodalTarget, Vias, end_time);
@@ -516,11 +523,12 @@ struct raptor_impl {
   // route, lane = stop in scan order. The boarding earliest-transport per stop
   // is precomputed by compute_et into et_result_ (packed (day<<32)|t_idx, which
   // is the per-route total order -> lower = earlier). A warp prefix-min of that
-  // value gives, for every stop, the earliest transport boardable at any earlier
-  // stop (carrying its board stop); each lane then propagates that transport's
-  // arrival to its stop. This replaces the per-route sequential scan (huge
-  // per-route work variance -> warps stalling at the round barrier).
-  __device__ bool update_route_warp(unsigned const k, route_idx_t const r,
+  // value gives, for every stop, the earliest transport boardable at any
+  // earlier stop (carrying its board stop); each lane then propagates that
+  // transport's arrival to its stop. This replaces the per-route sequential
+  // scan (huge per-route work variance -> warps stalling at the round barrier).
+  __device__ bool update_route_warp(unsigned const k,
+                                    route_idx_t const r,
                                     unsigned const lane) {
     auto const stop_seq = tt_.route_location_seq_[r];
     auto const n = static_cast<unsigned>(stop_seq.size());
@@ -537,7 +545,8 @@ struct raptor_impl {
       std::uint64_t my_et = kEtInvalid;
       if (i < n) {
         stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
-        my_et = et_result_[base_flat + stop_idx];  // gated boardable by compute_et
+        my_et =
+            et_result_[base_flat + stop_idx];  // gated boardable by compute_et
       }
       auto my_board_i = (my_et != kEtInvalid) ? i : full;
 
@@ -547,9 +556,8 @@ struct raptor_impl {
       for (auto off = 1U; off < 32U; off <<= 1) {
         auto const o_et = __shfl_up_sync(full, incl_et, off);
         auto const o_bi = __shfl_up_sync(full, incl_bi, off);
-        if (lane >= off &&
-            (et_is_better(o_et, incl_et) ||
-             (!et_is_better(incl_et, o_et) && o_bi < incl_bi))) {
+        if (lane >= off && (et_is_better(o_et, incl_et) ||
+                            (!et_is_better(incl_et, o_et) && o_bi < incl_bi))) {
           incl_et = o_et;
           incl_bi = o_bi;
         }
@@ -580,13 +588,20 @@ struct raptor_impl {
           auto const et = unpack_et(act_et);
           auto const by_transport = time_at_stop(
               r, et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-          auto const best = get_best(round_times_.get(k - 1, l, 0U),
-                                     tmp_.get(l, 0U), best_.get(l, 0U));
-          if (is_better(by_transport, best) &&
-              is_better(by_transport, time_at_dest_.get(k)) &&
+          // Match the CPU (raptor.h update_route): write tmp_ and mark the
+          // station based ONLY on the admissible time_at_dest+lb prune, NOT on
+          // whether the arrival beats the station's best. A later same-round
+          // TRANSPORT arrival that is worse than an earlier FOOTPATH arrival at
+          // the same station is still essential: with non-transitive footpaths
+          // (A-B and B-C exist but not A-C) an arrival at B that can't improve
+          // best[B] is still needed, because the label that reached B via A->B
+          // cannot label C, while a genuine arrival at B can now walk B->C. So
+          // tmp_ (this round's transport arrivals) must record every arrival
+          // passing the prune; round_times/best writes stay improvement-gated
+          // (see update_transfers/update_footpaths).
+          if (is_better(by_transport, time_at_dest_.get(k)) &&
               lb_[l_idx] != kUnreachable &&
-              is_better(by_transport + dir(lb_[l_idx]),
-                        time_at_dest_.get(k))) {
+              is_better(by_transport + dir(lb_[l_idx]), time_at_dest_.get(k))) {
             auto const board_stop = static_cast<stop_idx_t>(
                 kFwd ? act_board_i : n - 1U - act_board_i);
             tmp_.update_min(
@@ -598,8 +613,8 @@ struct raptor_impl {
         }
       }
 
-      // carry forward the INCLUSIVE prefix (min over earlier chunks + this one);
-      // lane 31's inclusive value is the chunk-wide min.
+      // carry forward the INCLUSIVE prefix (min over earlier chunks + this
+      // one); lane 31's inclusive value is the chunk-wide min.
       auto new_run_et = incl_et;
       auto new_run_bi = incl_bi;
       if (et_is_better(run_et, new_run_et) ||
@@ -661,35 +676,13 @@ struct raptor_impl {
           auto const by_transport = time_at_stop(
               r, et[v], stop_idx, kFwd ? event_type::kArr : event_type::kDep);
 
-          auto const is_via = target_v != Vias && is_via_[target_v][l_idx];
-          auto const is_no_stay_via =
-              is_via && via_stops_[target_v].stay_ == 0_minutes;
-
-          // special case: stop is via with stay > 0m + destination
-          auto const is_via_and_dest =
-              is_via && !is_no_stay_via &&
-              (is_dest_[l_idx] ||
-               (is_intermodal_dest() && end_reachable_[l_idx]));
-
-          if (is_no_stay_via) {
-            ++v_offset[v];
-            ++target_v;
-          }
-
           current_best[v] =
               get_best(round_times_.get(k - 1, l, target_v),
                        tmp_.get(l, target_v), best_.get(l, target_v));
 
-          auto higher_v_best = kInvalid;
-          for (auto higher_v = Vias; higher_v != target_v; --higher_v) {
-            higher_v_best =
-                get_best(higher_v_best, round_times_.get(k - 1, l, higher_v),
-                         tmp_.get(l, higher_v), best_.get(l, higher_v));
-          }
-
-          if (is_better(by_transport, current_best[v]) &&
-              is_better(by_transport, time_at_dest_.get(k)) &&
-              is_better(by_transport, higher_v_best)) {
+          // See update_route_warp: mark on the admissible prune alone, not on
+          // beating current_best (which folds in best_).
+          if (is_better(by_transport, time_at_dest_.get(k))) {
             tmp_.update_min(l, target_v, by_transport,
                             make_transport_payload(et[v].t_idx_.v_,
                                                    et_board_stop[v], stop_idx));
@@ -697,24 +690,6 @@ struct raptor_impl {
             current_best[v] = by_transport;
             any_marked = true;
             debug("round %u: route=%u, marking l=%u\n", k, to_idx(r), l_idx);
-          }
-
-          if (is_via_and_dest) {
-            auto const dest_v = target_v + 1;
-            assert(dest_v == Vias);
-            auto const best_dest =
-                get_best(round_times_.get(k - 1, l, dest_v),
-                         tmp_.get(l, dest_v), best_.get(l, dest_v));
-
-            if (is_better(by_transport, best_dest) &&
-                is_better(by_transport, time_at_dest_.get(k))) {
-              tmp_.update_min(l, dest_v, by_transport,
-                              make_transport_payload(et[v].t_idx_.v_,
-                                                     et_board_stop[v], stop_idx));
-              station_mark_.mark(l_idx);
-              any_marked = true;
-              debug("round %u: route=%u, marking l=%u\n", k, to_idx(r), l_idx);
-            }
           }
         }
       }
@@ -860,9 +835,8 @@ struct raptor_impl {
 
   __device__ __forceinline__ bool is_route_active(route_idx_t const r,
                                                   day_idx_t const day) const {
-    return as_int(day) >= 0 &&
-           tt_.bitfields_[tt_.route_traffic_days_[r]].test(
-               static_cast<std::size_t>(as_int(day)));
+    return as_int(day) >= 0 && tt_.bitfields_[tt_.route_traffic_days_[r]].test(
+                                   static_cast<std::size_t>(as_int(day)));
   }
 
   static constexpr std::uint64_t kEtInvalid = ~std::uint64_t{0};
@@ -890,17 +864,11 @@ struct raptor_impl {
   __device__ __forceinline__ transport unpack_et(std::uint64_t const p) const {
     return p == kEtInvalid
                ? transport{}
-               : transport{transport_idx_t{static_cast<std::uint32_t>(
-                               p & 0xFFFFFFFFU)},
+               : transport{transport_idx_t{
+                               static_cast<std::uint32_t>(p & 0xFFFFFFFFU)},
                            day_idx_t{static_cast<std::uint16_t>(p >> 32)}};
   }
 
-  // Load-balanced boarding pre-pass (the "compute_et" optimization): instead of
-  // one thread per route scanning all its stops (huge per-route work variance ->
-  // warps stall at the round barrier), parallelize the earliest-transport lookup
-  // over a compacted list of (route,stop) boarding candidates -- one task per
-  // thread. update_route then just reads et_result_ instead of calling
-  // get_earliest_transport inline.
   __device__ void compute_et(unsigned const k) {
     if constexpr (Vias == 0) {
       auto const gid = get_global_thread_id();
@@ -1019,8 +987,6 @@ struct raptor_impl {
   bool is_intermodal_dest_;
   bool is_wheelchair_;
   cuda::std::span<std::pair<location_idx_t, unixtime_t> const> starts_;
-  cuda::std::array<device_bitvec<std::uint64_t const>, kMaxVias> is_via_;
-  cuda::std::span<via_stop const> via_stops_;
   device_bitvec<std::uint64_t const> is_dest_;
   device_bitvec<std::uint32_t> end_reachable_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
@@ -1033,7 +999,8 @@ struct raptor_impl {
   device_bitvec<std::uint32_t> prev_station_mark_;
   device_bitvec<std::uint32_t> route_mark_;
   cuda::std::span<std::uint64_t> et_result_;  // packed et per flat (route,stop)
-  cuda::std::span<std::uint32_t> et_task_list_;  // compacted boarding candidates
+  cuda::std::span<std::uint32_t>
+      et_task_list_;  // compacted boarding candidates
   std::uint32_t* et_task_count_;  // number of tasks this round
 };
 

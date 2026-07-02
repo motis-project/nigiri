@@ -1,7 +1,5 @@
 #include "nigiri/loader/init_finish.h"
 
-#include <execution>
-
 #include "utl/enumerate.h"
 
 #include "geo/box.h"
@@ -205,9 +203,6 @@ void finalize(timetable& tt, finalize_options const opt) {
   {
     auto const timer = scoped_timer{"loader.sort_trip_ids"};
     std::sort(
-#if __cpp_lib_execution
-        std::execution::par_unseq,
-#endif
         begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_),
         [&](pair<trip_id_idx_t, trip_idx_t> const& a,
             pair<trip_id_idx_t, trip_idx_t> const& b) {
@@ -220,9 +215,6 @@ void finalize(timetable& tt, finalize_options const opt) {
   {
     auto const timer = scoped_timer{"loader.sort_providers"};
     std::sort(
-#if __cpp_lib_execution
-        std::execution::par_unseq,
-#endif
         begin(tt.provider_id_to_idx_), end(tt.provider_id_to_idx_),
         [&](provider_idx_t const a, provider_idx_t const b) {
           return std::tie(tt.providers_[a].src_, tt.providers_[a].id_) <

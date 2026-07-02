@@ -9,8 +9,8 @@
 
 #include "nigiri/location_match_mode.h"
 #include "nigiri/routing/direct.h"
-#include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/get_earliest_transport.h"
+#include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
@@ -55,17 +55,16 @@ routing_result pong(timetable const& tt,
                     std::optional<std::chrono::seconds> timeout) {
   constexpr auto kFwd = (SearchDir == direction::kForward);
 
-  // ping searches in SearchDir, pong searches in the flipped direction; both
-  // share the algo state. Select CPU raptor or gpu_raptor based on the state.
-  using ping_algo_t = std::conditional_t<
-      std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-      gpu::gpu_raptor<SearchDir, Rt, Vias>,
-      raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>>;
+  using ping_algo_t =
+      std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+                         gpu::gpu_raptor<SearchDir, Rt>,
+                         raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>>;
   using pong_algo_t = std::conditional_t<
       std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-      gpu::gpu_raptor<flip(SearchDir), Rt, Vias>,
+      gpu::gpu_raptor<flip(SearchDir), Rt>,
       raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>>;
 
+  s_state.results_.clear();
   q.sanitize(tt);
 
   auto const processing_start_time = std::chrono::steady_clock::now();
@@ -101,12 +100,6 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, ping_is_via[i]);
   }
 
-  // Lower bound: the GPU computes it on-device (multi-source Bellman-Ford over
-  // the scheduled lb-graph), the CPU runs the dijkstra. The GPU is scheduled-only
-  // so it uses the scheduled lb -- the tightest admissible bound for a scheduled
-  // search (the rt-aware bound only ever shortens it -> weaker pruning).
-  // GPU uses the scheduled lb (rtt=nullptr); GPU-SSSP path is dormant (see
-  // compute_lb in raptor.cu -- needs the children pass + a frontier BF).
   auto ping_lb = std::vector<std::uint16_t>{};
   dijkstra(tt, q,
            (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
@@ -120,22 +113,21 @@ routing_result pong(timetable const& tt,
                                               : rtt->bwd_search_lb_graph_)),
            ping_lb);
 
-  auto ping = ping_algo_t{
-      tt,
-      rtt,
-      r_state,
-      ping_is_dest,
-      ping_is_via,
-      ping_dist_to_dest,
-      q.td_dest_,
-      ping_lb,
-      q.via_stops_,
-      base_day,
-      q.allowed_claszes_,
-      q.require_bike_transport_,
-      q.require_car_transport_,
-      q.prf_idx_ == 2U,
-      q.transfer_time_settings_};
+  auto ping = ping_algo_t{tt,
+                          rtt,
+                          r_state,
+                          ping_is_dest,
+                          ping_is_via,
+                          ping_dist_to_dest,
+                          q.td_dest_,
+                          ping_lb,
+                          q.via_stops_,
+                          base_day,
+                          q.allowed_claszes_,
+                          q.require_bike_transport_,
+                          q.require_car_transport_,
+                          q.prf_idx_ == 2U,
+                          q.transfer_time_settings_};
 
   // ====
   // PONG
@@ -165,22 +157,21 @@ routing_result pong(timetable const& tt,
                                               : rtt->fwd_search_lb_graph_)),
            pong_lb);
 
-  auto pong = pong_algo_t{
-      tt,
-      rtt,
-      r_state,
-      pong_is_dest,
-      pong_is_via,
-      pong_dist_to_dest,
-      q.td_dest_,
-      pong_lb,
-      q.via_stops_,
-      base_day,
-      q.allowed_claszes_,
-      q.require_bike_transport_,
-      q.require_car_transport_,
-      q.prf_idx_ == 2U,
-      q.transfer_time_settings_};
+  auto pong = pong_algo_t{tt,
+                          rtt,
+                          r_state,
+                          pong_is_dest,
+                          pong_is_via,
+                          pong_dist_to_dest,
+                          q.td_dest_,
+                          pong_lb,
+                          q.via_stops_,
+                          base_day,
+                          q.allowed_claszes_,
+                          q.require_bike_transport_,
+                          q.require_car_transport_,
+                          q.prf_idx_ == 2U,
+                          q.transfer_time_settings_};
 
   q.flip_dir();
 
