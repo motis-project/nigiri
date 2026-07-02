@@ -32,8 +32,8 @@ inline constexpr delta_t clamp(T t) {
                  static_cast<int>(std::numeric_limits<delta_t>::max())));
 }
 
-inline constexpr delta_t unix_to_delta(const date::sys_days base,
-                                       const unixtime_t t) {
+inline constexpr delta_t unix_to_delta(date::sys_days const base,
+                                       unixtime_t const t) {
   return clamp(
       (t - std::chrono::time_point_cast<unixtime_t::duration>(base)).count());
 }

@@ -597,7 +597,9 @@ struct delta {
     return cista::hash_combine(cista::BASE_HASH, value());
   }
 
-  constexpr duration_t as_duration() const { return days() * 1_days + mam() * 1_minutes; }
+  constexpr duration_t as_duration() const {
+    return days() * 1_days + mam() * 1_minutes;
+  }
 
   std::pair<date::days, duration_t> to_offset() const {
     return {date::days{days() - 1}, duration_t{mam() - 720}};
