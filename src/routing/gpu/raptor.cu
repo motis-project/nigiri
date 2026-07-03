@@ -703,7 +703,7 @@ void gpu_raptor<SearchDir>::reconstruct(query const& q, journey& j) {
     }
   }
 
-  optimize_footpaths<SearchDir>(tt_, nullptr, q, j);
+  optimize_footpaths(tt_, nullptr, q, j);
 
   j.is_reconstructed_ = true;
 }
