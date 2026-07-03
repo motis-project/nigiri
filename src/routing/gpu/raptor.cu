@@ -9,8 +9,6 @@
 #include "cuda/std/array"
 #include "cuda/std/span"
 
-#include "cooperative_groups.h"
-
 #include "thrust/copy.h"
 #include "thrust/device_vector.h"
 #include "thrust/fill.h"
@@ -21,8 +19,6 @@
 #include "nigiri/routing/gpu/raptor_impl.cuh"
 #include "nigiri/routing/gpu/types.cuh"
 #include "utl/timer.h"
-
-namespace cg = cooperative_groups;
 
 namespace nigiri::routing::gpu {
 
@@ -192,6 +188,7 @@ struct gpu_raptor_state::impl {
     prev_station_mark_.resize(n_locations / 32U + 1U);
     route_mark_.resize(n_routes / 32U + 1U);
     any_marked_.resize(1U);
+    done_.resize(1U);
 
     // is_dest + dist_to_dest they change between ping vs pong
     // -> handled in upload_query
@@ -241,6 +238,7 @@ struct gpu_raptor_state::impl {
 
   bool is_intermodal_dest_[2];  // per direction: [0]=fwd, [1]=bwd
   thrust::device_vector<std::uint32_t> any_marked_;
+  thrust::device_vector<std::uint32_t> done_;
 
   // 16bit time | 48bit breadcrumb
   thrust::device_vector<std::uint64_t> time_at_dest_;
@@ -310,23 +308,122 @@ gpu_raptor<SearchDir>::gpu_raptor(
       base_{base},
       allowed_claszes_{allowed_claszes},
       transfer_time_settings_{tts} {
-  utl::verify(via_stops.empty(), "GPU raptor does not support via stops");
-  utl::verify(
-      !require_bike_transport && !require_car_transport && !is_wheelchair,
-      "GPU raptor does not support bike/car transport or wheelchair "
-      "profiles (see gpu_supported)");
   state_.impl_->resize(tt.n_locations(), tt.n_routes());
   reset_arrivals();
-  // Query data is constant for this instance's lifetime; upload it once into
-  // this direction's slot (see upload_query on why slots are per direction).
   state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest, lb);
 }
 
 template <direction SearchDir>
-__global__ void exec_raptor(std::uint8_t const max_transfers,
-                            unixtime_t const worst_time_at_dest,
-                            raptor_impl<SearchDir> r) {
-  r.execute(max_transfers, worst_time_at_dest);
+__global__ void init_arrivals_kernel(raptor_impl<SearchDir> r,
+                                     unixtime_t const worst_time_at_dest) {
+  r.init_arrivals(worst_time_at_dest);
+}
+
+template <direction SearchDir>
+__global__ void reuse_previous_arrivals_kernel(raptor_impl<SearchDir> r,
+                                               unsigned const k) {
+  if (*r.done_) {
+    return;
+  }
+  r.reuse_previous_arrivals(k);
+}
+
+template <direction SearchDir>
+__global__ void mark_routes_kernel(raptor_impl<SearchDir> r, unsigned const k) {
+  if (*r.done_) {
+    return;
+  }
+  r.mark_routes(k);
+}
+
+template <direction SearchDir>
+__global__ void begin_transit_phase_kernel(raptor_impl<SearchDir> r) {
+  if (*r.done_) {
+    return;
+  }
+  if (*r.any_marked_ == 0U) {  // no route marked -> search converged
+    if (get_global_thread_id() == 0U) {
+      *r.done_ = 1U;
+    }
+    return;
+  }
+  r.begin_transit_phase();
+}
+
+template <direction SearchDir>
+__global__ void et_build_route_list_kernel(raptor_impl<SearchDir> r) {
+  if (*r.done_) {
+    return;
+  }
+  r.et_build_route_list();
+}
+
+template <direction SearchDir>
+__global__ void et_collect_tasks_kernel(raptor_impl<SearchDir> r,
+                                        unsigned const k) {
+  if (*r.done_) {
+    return;
+  }
+  r.et_collect_tasks(k);
+}
+
+template <direction SearchDir>
+__global__ void et_run_lookups_kernel(raptor_impl<SearchDir> r,
+                                      unsigned const k) {
+  if (*r.done_) {
+    return;
+  }
+  r.et_run_lookups(k);
+}
+
+template <direction SearchDir, bool WithClaszFilter>
+__global__ void loop_routes_kernel(raptor_impl<SearchDir> r, unsigned const k) {
+  if (*r.done_) {
+    return;
+  }
+  r.template loop_routes<WithClaszFilter>(k);
+}
+
+template <direction SearchDir>
+__global__ void begin_footpath_phase_kernel(raptor_impl<SearchDir> r) {
+  if (*r.done_) {
+    return;
+  }
+  if (*r.any_marked_ == 0U) {  // no location improved -> search converged
+    if (get_global_thread_id() == 0U) {
+      *r.done_ = 1U;
+    }
+    return;
+  }
+  r.begin_footpath_phase();
+}
+
+template <direction SearchDir>
+__global__ void transfers_footpaths_kernel(raptor_impl<SearchDir> r,
+                                           unsigned const k) {
+  if (*r.done_) {
+    return;
+  }
+  r.update_transfers_and_footpaths(k);
+  r.route_mark_.reset();
+}
+
+template <typename Kernel>
+std::pair<int, int> launch_dims(Kernel kernel) {
+  static auto const dims = [&]() {
+    auto blocks = 0;
+    auto threads = 0;
+    // half + quarter benchmarked with less throughput
+    cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
+    return std::pair{blocks, threads};
+  }();
+  return dims;
+}
+
+template <typename Kernel, typename... Args>
+void launch(Kernel kernel, cudaStream_t stream, Args&&... args) {
+  auto const [blocks, threads] = launch_dims(kernel);
+  kernel<<<blocks, threads, 0, stream>>>(std::forward<Args>(args)...);
 }
 
 template <direction SearchDir>
@@ -376,6 +473,7 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
 
   auto r = raptor_impl<SearchDir>{
       .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
+      .done_ = thrust::raw_pointer_cast(s.done_.data()),
       .tt_ = s.tt_,
       .transfer_time_settings_ = transfer_time_settings_,
       .max_transfers_ = max_transfers,
@@ -399,32 +497,27 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
       .route_list_count_ =
           thrust::raw_pointer_cast(s.route_list_count_.data())};
 
-  auto blocks = 0;
-  auto threads = 0;
-  auto const kernel = reinterpret_cast<void*>(exec_raptor<SearchDir>);
-  cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
-  {
-    void* args[] = {reinterpret_cast<void*>(&max_transfers),
-                    reinterpret_cast<void*>(&worst_time_at_dest),
-                    reinterpret_cast<void*>(&r)};
-    cudaLaunchCooperativeKernel(kernel, blocks, threads, args, 0, s.stream_);
+  auto const end_k =
+      static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
 
-    cudaStreamSynchronize(s.stream_);
+  launch(init_arrivals_kernel<SearchDir>, s.stream_, r, worst_time_at_dest);
+  for (auto k = 1U; k != end_k; ++k) {
+    launch(reuse_previous_arrivals_kernel<SearchDir>, s.stream_, r, k);
+    launch(mark_routes_kernel<SearchDir>, s.stream_, r, k);
+    launch(begin_transit_phase_kernel<SearchDir>, s.stream_, r);
+    launch(et_build_route_list_kernel<SearchDir>, s.stream_, r);
+    launch(et_collect_tasks_kernel<SearchDir>, s.stream_, r, k);
+    launch(et_run_lookups_kernel<SearchDir>, s.stream_, r, k);
+    if (allowed_claszes_ == all_clasz_allowed()) {
+      launch(loop_routes_kernel<SearchDir, false>, s.stream_, r, k);
+    } else {
+      launch(loop_routes_kernel<SearchDir, true>, s.stream_, r, k);
+    }
+    launch(begin_footpath_phase_kernel<SearchDir>, s.stream_, r);
+    launch(transfers_footpaths_kernel<SearchDir>, s.stream_, r, k);
   }
+  cudaStreamSynchronize(s.stream_);
   CUDA_CHECK(cudaPeekAtLastError());
-
-#ifdef NIGIRI_CUDA_PHASE_TIMING
-  {
-    // cumulative over all execute() calls so far (both directions)
-    unsigned long long h[12];
-    CUDA_CHECK(cudaMemcpyFromSymbol(h, g_phase_cycles, sizeof(h)));
-    std::printf(
-        "PHASET init=%llu reuse=%llu mark_routes=%llu swap1=%llu et_zero=%llu "
-        "et_compact=%llu et_lookup=%llu loop_routes=%llu swap2=%llu "
-        "transfers_fp=%llu rounds=%llu\n",
-        h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], h[8], h[9], h[10]);
-  }
-#endif
 
   auto dest_list = std::vector<location_idx_t>{};
   if (s.is_intermodal_dest_[kDirIdx]) {
@@ -437,12 +530,10 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
     return;
   }
 
-  auto const end_k =
-      static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
   auto const n_dest = static_cast<std::uint32_t>(dest_list.size());
   auto const total = n_dest * end_k;
 
-  s.rec_dest_ = dest_list;  // small host->device copy
+  s.rec_dest_ = dest_list;
   if (s.rec_out_.size() < total) {
     s.rec_out_.resize(total);
   }

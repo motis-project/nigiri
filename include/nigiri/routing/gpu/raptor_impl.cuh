@@ -1,7 +1,5 @@
 #pragma once
 
-#include "cooperative_groups.h"
-
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/it_range.h"
 #include "nigiri/common/linear_lower_bound.h"
@@ -23,39 +21,6 @@ namespace nigiri::routing::gpu {
 #else
 #define debug(...) printf(__VA_ARGS__)
 #endif
-
-#define start_timing() (void)0
-#define debug_timing(...)
-
-#ifdef NIGIRI_CUDA_PHASE_TIMING
-__device__ unsigned long long g_phase_cycles[12];
-__device__ long long g_phase_prev;
-#define PHASE_RESET()                 \
-  if (get_global_thread_id() == 0U) { \
-    g_phase_prev = clock64();         \
-  }
-#define PHASE_MARK(i)                                                          \
-  if (get_global_thread_id() == 0U) {                                          \
-    auto const now_ = clock64();                                               \
-    g_phase_cycles[i] += static_cast<unsigned long long>(now_ - g_phase_prev); \
-    g_phase_prev = now_;                                                       \
-  }
-#define PHASE_COUNT(i)                \
-  if (get_global_thread_id() == 0U) { \
-    g_phase_cycles[i] += 1U;          \
-  }
-#else
-#define PHASE_RESET()
-#define PHASE_MARK(i)
-#define PHASE_COUNT(i)
-#endif
-
-// #define start_timing() auto const round_start = clock64()
-// #define debug_timing(str, ...)                        \
-//  if (global_t_id == 0) {                             \
-//    printf(str ": %" PRIi64 " cycles\n", __VA_ARGS__, \
-//           clock64() - round_start);                  \
-//  }
 
 #define kInvalid (kInvalidDelta<SearchDir>)
 #define kFwd (SearchDir == direction::kForward)
@@ -87,12 +52,20 @@ struct raptor_impl {
   __device__ __forceinline__ auto min(auto x, auto y) { return x <= y ? x : y; }
   __device__ __forceinline__ auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
-  __device__ void execute(std::uint8_t const max_transfers,
-                          unixtime_t const worst_time_at_dest) {
+  // The search runs as a sequence of per-phase kernels enqueued by the host
+  // (see raptor.cu): every former grid-wide sync is a kernel boundary, which
+  // lets kernels of concurrent queries overlap on the device. The host
+  // enqueues all rounds up front without reading back any state; once the
+  // search converges, `done_` is set and every later kernel of this query
+  // exits immediately.
+
+  __device__ void init_arrivals(unixtime_t const worst_time_at_dest) {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
 
-    PHASE_RESET();
+    if (global_t_id == 0U) {
+      *done_ = 0U;
+    }
 
     for (auto i = global_t_id; i < starts_.size(); i += global_stride) {
       auto const l = starts_[i].first;
@@ -107,99 +80,53 @@ struct raptor_impl {
     for (auto i = global_t_id; i < kMaxTransfers + 2U; i += global_stride) {
       time_at_dest_.update_min(i, d_worst_at_dest);
     }
+  }
 
-    sync();
-    PHASE_MARK(0);
-
-    auto const end_k = min(max_transfers, kMaxTransfers) + 2U;
-    for (auto k = 1U; k != end_k; ++k) {
-      start_timing();
-      PHASE_COUNT(10);
-
-      // Reuse best time from previous time at start (for range queries).
-      for (auto i = global_t_id; i < tt_.n_locations_; i += global_stride) {
-        debug("round %u: location %d / %u\n", k, i, tt_.n_locations_);
-        auto const l = location_idx_t{i};
-        for (auto v = 0U; v != Vias + 1; ++v) {
-          best_.update_min(l, v, round_times_.get(k, l, v));
-        }
-        if (is_dest_[i]) {
-          update_time_at_dest(k, best_.get(l, Vias));
-        }
+  // Reuse best time from previous time at start (for range queries).
+  __device__ void reuse_previous_arrivals(unsigned const k) {
+    auto const global_t_id = get_global_thread_id();
+    auto const global_stride = get_global_stride();
+    for (auto i = global_t_id; i < tt_.n_locations_; i += global_stride) {
+      debug("round %u: location %d / %u\n", k, i, tt_.n_locations_);
+      auto const l = location_idx_t{i};
+      for (auto v = 0U; v != Vias + 1; ++v) {
+        best_.update_min(l, v, round_times_.get(k, l, v));
       }
-
-      if (global_t_id == 0) {
-        *any_marked_ = 0U;
+      if (is_dest_[i]) {
+        update_time_at_dest(k, best_.get(l, Vias));
       }
-
-      sync();
-      PHASE_MARK(1);
-      debug_timing("round %u: after reuse times from prev start", k);
-
-      for (auto i = global_t_id; i < tt_.n_locations_; i += global_stride) {
-        if (station_mark_[i]) {
-          if (!tt_.location_routes_[location_idx_t{i}].empty() &&
-              !*any_marked_) {
-            atomicOr(any_marked_, 1U);
-          }
-          for (auto r : tt_.location_routes_[location_idx_t{i}]) {
-            debug("round %u: marking route %u\n", k, to_idx(r));
-            route_mark_.mark(to_idx(r));
-          }
-        }
-      }
-
-      sync();
-      PHASE_MARK(2);
-      debug_timing("round %u: after station flags -> route flags", k);
-
-      if (!*any_marked_) {
-        debug("round %d: no route marked -> break;\n", k);
-        debug_timing("round %u: TOTAL", k);
-        break;
-      }
-
-      prev_station_mark_.swap_reset(station_mark_);
-      if (global_t_id == 0) {
-        *any_marked_ = false;
-        *et_task_count_ = 0U;
-        *route_list_count_ = 0U;
-      }
-      sync();
-      PHASE_MARK(3);
-
-      compute_et(k);
-      sync();
-      PHASE_MARK(6);
-
-      (allowed_claszes_ == all_clasz_allowed()) ? loop_routes<false>(k)
-                                                : loop_routes<true>(k);
-
-      sync();
-      PHASE_MARK(7);
-      debug_timing("round %u: after visit routes", k);
-
-      if (!*any_marked_) {
-        debug("round %d: no location marked after loop_routes -> break;\n", k);
-        debug_timing("round %u: TOTAL", k);
-        break;
-      }
-      prev_station_mark_.swap_reset(station_mark_);
-      sync();
-      PHASE_MARK(8);
-      debug_timing("round %u: after swap station marks", k);
-
-      update_transfers_and_footpaths(k);
-
-      route_mark_.reset();
-      sync();
-      PHASE_MARK(9);
-      debug_timing("round %u: TOTAL", k);
+    }
+    if (global_t_id == 0U) {
+      *any_marked_ = 0U;
     }
   }
 
-  __device__ __forceinline__ void sync() const {
-    cooperative_groups::this_grid().sync();
+  __device__ void mark_routes(unsigned const k) {
+    auto const global_t_id = get_global_thread_id();
+    auto const global_stride = get_global_stride();
+    for (auto i = global_t_id; i < tt_.n_locations_; i += global_stride) {
+      if (station_mark_[i]) {
+        if (!tt_.location_routes_[location_idx_t{i}].empty() && !*any_marked_) {
+          atomicOr(any_marked_, 1U);
+        }
+        for (auto r : tt_.location_routes_[location_idx_t{i}]) {
+          debug("round %u: marking route %u\n", k, to_idx(r));
+          route_mark_.mark(to_idx(r));
+        }
+      }
+    }
+  }
+
+  __device__ void begin_transit_phase() {
+    prev_station_mark_.swap_reset(station_mark_);
+    if (get_global_thread_id() == 0U) {
+      *et_task_count_ = 0U;
+      *route_list_count_ = 0U;
+    }
+  }
+
+  __device__ void begin_footpath_phase() {
+    prev_station_mark_.swap_reset(station_mark_);
   }
 
   __device__ void reconstruct_journey(location_idx_t const dest,
@@ -678,11 +605,18 @@ struct raptor_impl {
                                                   et_day_lo())}};
   }
 
-  __device__ void compute_et(unsigned const k) {
+  // et PHASE 1: compact the marked routes into route_list_. Also resets
+  // any_marked_ for loop_routes: doing it here (nothing reads it in this
+  // kernel) instead of in begin_transit_phase avoids racing that kernel's
+  // grid-wide convergence read.
+  __device__ void et_build_route_list() {
     auto const gid = get_global_thread_id();
     auto const stride = get_global_stride();
 
-    // PHASE 1: compact the marked routes into route_list_
+    if (gid == 0U) {
+      *any_marked_ = 0U;
+    }
+
     for (auto w = gid; w < route_mark_.blocks_.size(); w += stride) {
       auto const word = route_mark_.blocks_[w];
       if (word == 0U) {
@@ -693,15 +627,17 @@ struct raptor_impl {
       for_each_set_bit(
           word, [&](unsigned const b) { route_list_[pos++] = w * 32U + b; });
     }
-    sync();
-    PHASE_MARK(4);
+  }
 
-    // PHASE 2: Write list of marked route stops (flat offsets).
-    // -> warp-aggregated stream compaction:
-    // 1) Filter: check if route is "boardable" (fwd) / "alightable" (bwd)
-    // 2) Count: __ballot_sync(is_task) collapses 32 lanes to a 32bit mask
-    // 3) Reserve: make space for popcount(ballot sync mask) entries
-    // 4) Rank + Scatter: write flat route stop to ballot & ((1 << lane) - 1)
+  // et PHASE 2: Write list of marked route stops (flat offsets).
+  // -> warp-aggregated stream compaction:
+  // 1) Filter: check if route is "boardable" (fwd) / "alightable" (bwd)
+  // 2) Count: __ballot_sync(is_task) collapses 32 lanes to a 32bit mask
+  // 3) Reserve: make space for popcount(ballot sync mask) entries
+  // 4) Rank + Scatter: write flat route stop to ballot & ((1 << lane) - 1)
+  __device__ void et_collect_tasks(unsigned const k) {
+    auto const gid = get_global_thread_id();
+    auto const stride = get_global_stride();
     {
       auto const lane = gid % kWarpSize;
       auto const warp_id = gid / kWarpSize;
@@ -747,10 +683,12 @@ struct raptor_impl {
         }
       }
     }
-    sync();
-    PHASE_MARK(5);
+  }
 
-    // PHASE 3: Do one earliest-transport lookup per task.
+  // et PHASE 3: Do one earliest-transport lookup per task.
+  __device__ void et_run_lookups(unsigned const k) {
+    auto const gid = get_global_thread_id();
+    auto const stride = get_global_stride();
     auto const n_tasks = *et_task_count_;
     for (auto i = gid; i < n_tasks; i += stride) {
       auto const flat = et_task_list_[i];
@@ -820,6 +758,7 @@ struct raptor_impl {
   }
 
   std::uint32_t* any_marked_;
+  std::uint32_t* done_;
   device_timetable tt_;
   transfer_time_settings transfer_time_settings_;
   std::uint8_t max_transfers_;
