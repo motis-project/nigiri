@@ -27,6 +27,29 @@ namespace nigiri::routing::gpu {
 #define start_timing() (void)0
 #define debug_timing(...)
 
+#ifdef NIGIRI_CUDA_PHASE_TIMING
+__device__ unsigned long long g_phase_cycles[12];
+__device__ long long g_phase_prev;
+#define PHASE_RESET()                 \
+  if (get_global_thread_id() == 0U) { \
+    g_phase_prev = clock64();         \
+  }
+#define PHASE_MARK(i)                                                          \
+  if (get_global_thread_id() == 0U) {                                          \
+    auto const now_ = clock64();                                               \
+    g_phase_cycles[i] += static_cast<unsigned long long>(now_ - g_phase_prev); \
+    g_phase_prev = now_;                                                       \
+  }
+#define PHASE_COUNT(i)                \
+  if (get_global_thread_id() == 0U) { \
+    g_phase_cycles[i] += 1U;          \
+  }
+#else
+#define PHASE_RESET()
+#define PHASE_MARK(i)
+#define PHASE_COUNT(i)
+#endif
+
 // #define start_timing() auto const round_start = clock64()
 // #define debug_timing(str, ...)                        \
 //  if (global_t_id == 0) {                             \
@@ -40,9 +63,11 @@ namespace nigiri::routing::gpu {
 #define kUnreachable (std::numeric_limits<std::uint16_t>::max())
 #define kIntermodalTarget (get_special_station(special_station::kEnd))
 
-__device__ char const* b2s(bool const b) { return b ? "true" : "false"; }
+inline constexpr auto kWarpSize = 32U;
 
-template <direction SearchDir, bool Rt>
+inline constexpr auto kAllLanes = ~std::uint32_t{0};
+
+template <direction SearchDir>
 struct raptor_impl {
   static constexpr via_offset_t Vias = 0U;
 
@@ -62,17 +87,12 @@ struct raptor_impl {
   __device__ __forceinline__ auto min(auto x, auto y) { return x <= y ? x : y; }
   __device__ __forceinline__ auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
-  __device__ void execute(unixtime_t const start_time,
-                          std::uint8_t const max_transfers,
+  __device__ void execute(std::uint8_t const max_transfers,
                           unixtime_t const worst_time_at_dest) {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
 
-    for (auto i = global_t_id; i < dist_to_end_.size(); i += global_stride) {
-      if (dist_to_end_[i] != kUnreachable) {
-        end_reachable_.mark(i);
-      }
-    }
+    PHASE_RESET();
 
     for (auto i = global_t_id; i < starts_.size(); i += global_stride) {
       auto const l = starts_[i].first;
@@ -89,14 +109,16 @@ struct raptor_impl {
     }
 
     sync();
+    PHASE_MARK(0);
 
     auto const end_k = min(max_transfers, kMaxTransfers) + 2U;
     for (auto k = 1U; k != end_k; ++k) {
       start_timing();
+      PHASE_COUNT(10);
 
       // Reuse best time from previous time at start (for range queries).
-      for (auto i = global_t_id; i < n_locations_; i += global_stride) {
-        debug("round %u: location %d / %u\n", k, i, n_locations_);
+      for (auto i = global_t_id; i < tt_.n_locations_; i += global_stride) {
+        debug("round %u: location %d / %u\n", k, i, tt_.n_locations_);
         auto const l = location_idx_t{i};
         for (auto v = 0U; v != Vias + 1; ++v) {
           best_.update_min(l, v, round_times_.get(k, l, v));
@@ -111,6 +133,7 @@ struct raptor_impl {
       }
 
       sync();
+      PHASE_MARK(1);
       debug_timing("round %u: after reuse times from prev start", k);
 
       for (auto i = global_t_id; i < tt_.n_locations_; i += global_stride) {
@@ -127,6 +150,7 @@ struct raptor_impl {
       }
 
       sync();
+      PHASE_MARK(2);
       debug_timing("round %u: after station flags -> route flags", k);
 
       if (!*any_marked_) {
@@ -138,19 +162,21 @@ struct raptor_impl {
       prev_station_mark_.swap_reset(station_mark_);
       if (global_t_id == 0) {
         *any_marked_ = false;
+        *et_task_count_ = 0U;
+        *route_list_count_ = 0U;
       }
       sync();
+      PHASE_MARK(3);
 
       compute_et(k);
       sync();
+      PHASE_MARK(6);
 
-      (allowed_claszes_ == all_clasz_allowed())
-          ? (require_bike_transport_ ? loop_routes<false, true>(k)
-                                     : loop_routes<false, false>(k))
-          : (require_bike_transport_ ? loop_routes<true, true>(k)
-                                     : loop_routes<true, false>(k));
+      (allowed_claszes_ == all_clasz_allowed()) ? loop_routes<false>(k)
+                                                : loop_routes<true>(k);
 
       sync();
+      PHASE_MARK(7);
       debug_timing("round %u: after visit routes", k);
 
       if (!*any_marked_) {
@@ -160,14 +186,14 @@ struct raptor_impl {
       }
       prev_station_mark_.swap_reset(station_mark_);
       sync();
+      PHASE_MARK(8);
       debug_timing("round %u: after swap station marks", k);
 
-      update_transfers(k);
-      update_intermodal_footpaths(k);
-      update_footpaths(k);
+      update_transfers_and_footpaths(k);
 
       route_mark_.reset();
       sync();
+      PHASE_MARK(9);
       debug_timing("round %u: TOTAL", k);
     }
   }
@@ -219,16 +245,20 @@ struct raptor_impl {
       auto const arr_at_cur =
           round_times_.get(static_cast<std::uint8_t>(cur_k), cur_l, cur_v);
 
-      // recover the traffic (first-departure) day of the transport
+      // Recover the traffic (first-departure) day of the transport. Two
+      // candidate days are exhaustive: multi-day rides are handled exactly by
+      // the event's day offset (event_mam_full / 1440), and the label differs
+      // from the raw train arrival only by the folded-in transfer/footpath
+      // (< 24h, footpath::kMaxDuration) -> at most one midnight crossing.
       auto const event_mam_full =
           tt_.event_mam(r, t_idx, alight, ev_arr_type).count();
-      auto const split_arr = split(arr_at_cur);
+      auto const [arr_day, _] = split(arr_at_cur);
       auto found_day = false;
       auto day = day_idx_t{0U};
       auto train_arr = kInvalid;
       for (auto off = 0; off != 2; ++off) {
-        auto const cand = as_int(split_arr.first) - event_mam_full / 1440 -
-                          (kFwd ? off : -off);
+        auto const cand =
+            as_int(arr_day) - event_mam_full / 1440 - (kFwd ? off : -off);
         if (cand < 0) {
           continue;
         }
@@ -249,9 +279,6 @@ struct raptor_impl {
         return;  // could not recover -> leave invalid
       }
 
-      // at the egress stop, use the raw train arrival (drop the folded-in
-      // transfer_time) so no self-footpath is emitted and the egress time is
-      // anchored to the train.
       auto const eff_arr = egress_src ? train_arr : arr_at_cur;
       egress_src = false;
 
@@ -262,11 +289,12 @@ struct raptor_impl {
       auto const alight_loc = stop{stop_seq[alight]}.location_idx();
 
       // footpath/transfer leg from the train's alighting stop to cur_l. nigiri
-      // represents the same-station transfer between two trains as a self
-      // footpath (B->B) with the transfer time, so we emit it whenever there is
-      // a non-zero cost (a real footpath, or a same-station transfer), and skip
-      // it only for a zero-cost direct arrival (e.g. at the destination).
-      if (alight_loc != cur_l || train_arr != eff_arr) {
+      // journeys alternate transit and footpath legs (a same-station transfer
+      // is a self footpath B->B with the transfer time), so the leg is always
+      // emitted -- EXCEPT a zero-length self footpath at the journey's
+      // destination end (n == 0U: nothing emitted yet), matching the CPU
+      // (reconstruct.cc: "don't add a 0-minute footpath at the end").
+      if (n != 0U || alight_loc != cur_l || train_arr != eff_arr) {
         if (n >= kMaxRecLegs) {
           return;
         }
@@ -308,15 +336,14 @@ struct raptor_impl {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
   }
 
-  template <bool WithClaszFilter, bool WithBikeFilter>
+  template <bool WithClaszFilter>
   __device__ void loop_routes(unsigned const k) {
-    // one warp per route (lanes cooperate on the route's stops via
-    // update_route_warp); all 32 lanes share warp_id so they stay converged for
-    // the warp shuffles / __any_sync.
-    auto const full = 0xFFFFFFFFU;
-    auto const lane = get_global_thread_id() % 32U;
-    auto const warp_id = get_global_thread_id() / 32U;
-    auto const n_warps = get_global_stride() / 32U;
+    // One warp per route:
+    // - lanes cooperate on the route's stops via update_route_warp
+    // - all lanes share warp_id for the warp shuffles and __any_sync
+    auto const lane = get_global_thread_id() % kWarpSize;
+    auto const warp_id = get_global_thread_id() / kWarpSize;
+    auto const n_warps = get_global_stride() / kWarpSize;
 
     for (auto i = warp_id; i < tt_.n_routes_; i += n_warps) {
       if (!route_mark_.test(i)) {
@@ -330,414 +357,207 @@ struct raptor_impl {
         }
       }
 
-      auto section_bike_filter = false;
-      if constexpr (WithBikeFilter) {
-        auto const bikes_allowed_on_all_sections =
-            tt_.route_bikes_allowed_.test(i * 2);
-        if (!bikes_allowed_on_all_sections) {
-          auto const bikes_allowed_on_some_sections =
-              tt_.route_bikes_allowed_.test(i * 2 + 1);
-          if (!bikes_allowed_on_some_sections) {
-            continue;
-          }
-          section_bike_filter = true;
-        }
-      }
-
-      bool route_any_marked;
-      if constexpr (Vias == 0) {
-        if (!section_bike_filter) {
-          route_any_marked = update_route_warp(k, r, lane);
-        } else {
-          // rare path: section bike filter -> sequential on lane 0
-          auto const m = (lane == 0U) ? update_route<true>(k, r) : false;
-          route_any_marked = __any_sync(full, m);
-        }
-      } else {
-        // Vias>0 is unused on the GPU (kGpuViaSlots==1); sequential on lane 0
-        auto const m = (lane == 0U)
-                           ? (section_bike_filter ? update_route<true>(k, r)
-                                                  : update_route<false>(k, r))
-                           : false;
-        route_any_marked = __any_sync(full, m);
-      }
-      if (route_any_marked && lane == 0U && !*any_marked_) {
+      if (update_route_warp(k, r, lane) && lane == 0U && !*any_marked_) {
         atomicOr(any_marked_, 1U);
       }
     }
   }
 
-  __device__ void update_transfers(unsigned const k) {
-    auto const global_t_id = get_global_thread_id();
-    auto const global_stride = get_global_stride();
-    for (auto i = global_t_id; i < n_locations_; i += global_stride) {
-      if (!prev_station_mark_.test(i)) {
-        continue;
-      }
-
-      auto const l = location_idx_t{i};
-
-      for (auto v = 0U; v != Vias + 1; ++v) {
-        auto const tmp_time = tmp_.get(l, v);
-        if (tmp_time == kInvalid) {
-          continue;
-        }
-
-        auto const target_v = v;
-        auto const is_dest = is_dest_[i];
-
-        auto const transfer_time =
-            (!is_intermodal_dest() && is_dest)
-                ? 0
-                : dir(adjusted_transfer_time(transfer_time_settings_,
-                                             tt_.transfer_time_[l].count()));
-        auto const fp_target_time =
-            static_cast<delta_t>(tmp_time + transfer_time);
-
-        if (!is_better(fp_target_time, time_at_dest_.get(k)) ||
-            lb_[i] == kUnreachable ||
-            !is_better(fp_target_time + dir(lb_[i]), time_at_dest_.get(k))) {
-          continue;
-        }
-
-        if (is_better(fp_target_time, best_.get(l, target_v))) {
-          round_times_.update_min(k, l, target_v, fp_target_time,
-                                  tmp_.get_bc(0U, l, v));
-          best_.update_min(l, target_v, fp_target_time);
-          station_mark_.mark(i);
-          if (is_dest) {
-            update_time_at_dest(k, fp_target_time);
-          }
-        }
-      }
-    }
-  }
-
-  __device__ void update_footpaths(unsigned const k) {
-    auto const global_t_id = get_global_thread_id();
-    auto const global_stride = get_global_stride();
-    for (auto i = global_t_id; i < n_locations_; i += global_stride) {
-      if (!prev_station_mark_.test(i)) {
-        continue;
-      }
-
-      auto const l = location_idx_t{i};
-      auto const& fps = kFwd ? tt_.footpaths_out_[l] : tt_.footpaths_in_[l];
-
-      for (auto const& fp : fps) {
-        auto const target = to_idx(fp.target());
-
-        for (auto v = 0U; v != Vias + 1; ++v) {
-          auto const tmp_time = tmp_.get(l, v);
-          if (tmp_time == kInvalid) {
-            continue;
-          }
-
-          auto const target_v = v;
-
-          auto const fp_target_time = clamp(
-              tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
+  __device__ __forceinline__ void relax_footpath(unsigned const k,
+                                                 footpath const fp,
+                                                 delta_t const tmp_time,
+                                                 breadcrumb_t const bc,
+                                                 delta_t const t_at_dest) {
+    auto const target = to_idx(fp.target());
+    auto const fp_target_time =
+        clamp(tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
                                                     fp.duration().count())));
-
-          // Admissible pruning.
-          if (!is_better(fp_target_time, time_at_dest_.get(k)) ||
-              lb_[target] == kUnreachable ||
-              !is_better(fp_target_time + dir(lb_[target]),
-                         time_at_dest_.get(k))) {
-            continue;
-          }
-          // Match the CPU (raptor.h update_footpaths): write round_times + best
-          // and mark together, only on a genuine improvement over best_.
-          if (is_better(fp_target_time, best_.get(fp.target(), target_v))) {
-            round_times_.update_min(k, fp.target(), target_v, fp_target_time,
-                                    tmp_.get_bc(0U, l, v));
-            best_.update_min(fp.target(), target_v, fp_target_time);
-            station_mark_.mark(target);
-            if (target_v == Vias && is_dest_[target]) {
-              update_time_at_dest(k, fp_target_time);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  __device__ void update_intermodal_footpaths(unsigned const k) {
-    if (dist_to_end_.empty()) {
+    if (!is_better(fp_target_time, t_at_dest) || lb_[target] == kUnreachable ||
+        !is_better(fp_target_time + dir(lb_[target]), t_at_dest)) {
       return;
     }
-
-    auto const global_t_id = get_global_thread_id();
-    auto const global_stride = get_global_stride();
-    for (auto i = global_t_id; i < n_locations_; i += global_stride) {
-      if (!prev_station_mark_.test(i)) {
-        continue;
-      }
-
-      auto const l = location_idx_t{i};
-      if (prev_station_mark_[i] || station_mark_[i]) {
-        if (dist_to_end_[i] != std::numeric_limits<std::uint16_t>::max()) {
-          auto const src_arr = tmp_.get(l, Vias);
-          if (src_arr == kInvalid) {
-            continue;
-          }
-          auto const end_time = clamp(src_arr + dir(dist_to_end_[i]));
-
-          if (is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
-            round_times_.update_min(
-                k, l, Vias,
-                clamp(src_arr + dir(adjusted_transfer_time(
-                                    transfer_time_settings_,
-                                    tt_.transfer_time_[l].count()))),
-                tmp_.get_bc(0U, l, Vias));
-            round_times_.update_min(k, kIntermodalTarget, Vias, end_time,
-                                    make_egress_bc(i));
-            best_.update_min(kIntermodalTarget, Vias, end_time);
-            update_time_at_dest(k, end_time);
-          }
-        }
+    if (is_better(fp_target_time, best_.get(fp.target(), Vias))) {
+      round_times_.update_min(k, fp.target(), Vias, fp_target_time, bc);
+      best_.update_min(fp.target(), Vias, fp_target_time);
+      station_mark_.mark(target);
+      if (is_dest_[target]) {
+        update_time_at_dest(k, fp_target_time);
       }
     }
   }
 
-  // Warp-cooperative route scan (Vias==0, no section-bike-filter): one warp per
-  // route, lane = stop in scan order. The boarding earliest-transport per stop
-  // is precomputed by compute_et into et_result_ (packed (day<<32)|t_idx, which
-  // is the per-route total order -> lower = earlier). A warp prefix-min of that
-  // value gives, for every stop, the earliest transport boardable at any
-  // earlier stop (carrying its board stop); each lane then propagates that
-  // transport's arrival to its stop. This replaces the per-route sequential
-  // scan (huge per-route work variance -> warps stalling at the round barrier).
+  __device__ void update_transfers_and_footpaths(unsigned const k) {
+    constexpr auto const kWarpFpThreshold = 8U;
+    auto const lane = get_global_thread_id() % kWarpSize;
+    auto const warp_id = get_global_thread_id() / kWarpSize;
+    auto const n_warps = get_global_stride() / kWarpSize;
+    auto const intermodal = is_intermodal_dest();
+    auto const n_blocks =
+        static_cast<unsigned>(prev_station_mark_.blocks_.size());
+
+    for (auto w = warp_id; w < n_blocks; w += n_warps) {
+      auto const bits = prev_station_mark_.blocks_[w];
+      if (bits == 0U) {  // uniform: all lanes read the same word
+        continue;
+      }
+
+      auto const base = w * kWarpSize;  // lane i <-> bit i of the mark word
+      auto const my_i = base + lane;
+      auto const my_marked = ((bits >> lane) & 1U) != 0U;
+
+      // per-lane state; sourced via shuffle by the cooperative hub path
+      auto tmp_time = kInvalid;
+      auto bc = breadcrumb_t{0U};
+      auto n_fps = 0U;
+      auto defer = false;
+
+      auto const t_at_dest = time_at_dest_.get(k);
+
+      if (my_marked) {
+        auto const l = location_idx_t{my_i};
+        tmp_time = tmp_.get(l, Vias);
+        if (tmp_time != kInvalid) {
+          bc = tmp_.get_bc(0U, l, Vias);
+          auto const is_dest = is_dest_[my_i];
+          auto const loc_transfer_time = dir(adjusted_transfer_time(
+              transfer_time_settings_, tt_.transfer_time_[l].count()));
+
+          // same-station transfer (former update_transfers)
+          {
+            auto const fp_target_time = static_cast<delta_t>(
+                tmp_time + ((!intermodal && is_dest) ? 0 : loc_transfer_time));
+            if (is_better(fp_target_time, t_at_dest) &&
+                lb_[my_i] != kUnreachable &&
+                is_better(fp_target_time + dir(lb_[my_i]), t_at_dest) &&
+                is_better(fp_target_time, best_.get(l, Vias))) {
+              round_times_.update_min(k, l, Vias, fp_target_time, bc);
+              best_.update_min(l, Vias, fp_target_time);
+              station_mark_.mark(my_i);
+              if (is_dest) {
+                update_time_at_dest(k, fp_target_time);
+              }
+            }
+          }
+
+          // intermodal egress (former update_intermodal_footpaths)
+          if (intermodal && dist_to_end_[my_i] != kUnreachable) {
+            auto const end_time = clamp(tmp_time + dir(dist_to_end_[my_i]));
+            if (is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
+              round_times_.update_min(k, l, Vias,
+                                      clamp(tmp_time + loc_transfer_time), bc);
+              round_times_.update_min(k, kIntermodalTarget, Vias, end_time,
+                                      make_egress_bc(my_i));
+              best_.update_min(kIntermodalTarget, Vias, end_time);
+              update_time_at_dest(k, end_time);
+            }
+          }
+
+          // footpaths: short lists inline, hubs deferred to the whole warp
+          auto const fps = kFwd ? tt_.footpaths_out_[l] : tt_.footpaths_in_[l];
+          n_fps = static_cast<unsigned>(fps.size());
+          if (n_fps <= kWarpFpThreshold) {
+            for (auto j = 0U; j != n_fps; ++j) {
+              relax_footpath(k, fps[j], tmp_time, bc, t_at_dest);
+            }
+          } else {
+            defer = true;
+          }
+        }
+      }
+
+      // hubs: all 32 lanes stride one deferred location's footpath list
+      auto const deferred = __ballot_sync(kAllLanes, defer);
+      for_each_set_bit(deferred, [&](unsigned const b) {
+        auto const l = location_idx_t{base + b};
+        auto const l_tmp = static_cast<delta_t>(__shfl_sync(
+            kAllLanes, static_cast<int>(tmp_time), static_cast<int>(b)));
+        auto const l_bc = __shfl_sync(kAllLanes, bc, static_cast<int>(b));
+        auto const l_n = __shfl_sync(kAllLanes, n_fps, static_cast<int>(b));
+        auto const fps = kFwd ? tt_.footpaths_out_[l] : tt_.footpaths_in_[l];
+        for (auto j = lane; j < l_n; j += kWarpSize) {
+          relax_footpath(k, fps[j], l_tmp, l_bc, t_at_dest);
+        }
+      });
+    }
+  }
+
   __device__ bool update_route_warp(unsigned const k,
                                     route_idx_t const r,
                                     unsigned const lane) {
     auto const stop_seq = tt_.route_location_seq_[r];
     auto const n = static_cast<unsigned>(stop_seq.size());
     auto const base_flat = tt_.route_stop_offset_[to_idx(r)];
-    auto const full = 0xFFFFFFFFU;
     auto local_marked = false;
 
-    std::uint64_t run_et = kEtInvalid;  // prefix-min et across chunks
-    unsigned run_board_i = full;  // scan position where run_et was boarded
+    // The scan state is ONE 64-bit key:
+    //  - 32bit MSB: earliest transport: (day, transport) = total order in route
+    //  - 32bit LSB: scan-order index (not stop index)
+    //    (forward: boarding index, backward: alighting index)
+    // Plain unsigned integer comparison yields lexicographical order
+    // (transport, stop)
+    // -> earliest transport at earliest boarding position = good
+    constexpr auto kEtKeyInvalid = ~std::uint64_t{0};
+    auto run_key = kEtKeyInvalid;  // prefix-min across chunks
 
-    for (auto chunk = 0U; chunk < n; chunk += 32U) {
+    for (auto chunk = 0U; chunk < n; chunk += kWarpSize) {
+      // note: continue for i >= n would be UB for __shfl_up_sync etc
+
       auto const i = chunk + lane;
       auto stop_idx = stop_idx_t{};
-      std::uint64_t my_et = kEtInvalid;
+      auto my_key = kEtKeyInvalid;
       if (i < n) {
         stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
-        my_et =
-            et_result_[base_flat + stop_idx];  // gated boardable by compute_et
-      }
-      auto my_board_i = (my_et != kEtInvalid) ? i : full;
-
-      // within-chunk inclusive prefix-min of (et value, board scan-pos)
-      auto incl_et = my_et;
-      auto incl_bi = my_board_i;
-      for (auto off = 1U; off < 32U; off <<= 1) {
-        auto const o_et = __shfl_up_sync(full, incl_et, off);
-        auto const o_bi = __shfl_up_sync(full, incl_bi, off);
-        if (lane >= off && (et_is_better(o_et, incl_et) ||
-                            (!et_is_better(incl_et, o_et) && o_bi < incl_bi))) {
-          incl_et = o_et;
-          incl_bi = o_bi;
+        auto const et = et_result_[base_flat + stop_idx];
+        if (et != kEtInvalid) {
+          my_key = (static_cast<std::uint64_t>(et) << 32U) | i;
         }
       }
-      // EXCLUSIVE prefix (stops strictly before this one) = inclusive of the
-      // previous lane, combined with the carry from earlier chunks. The alight
-      // must use a transport boarded *before* this stop -- if we boarded a
-      // better transport *at* this stop, we still alight here on the previous
-      // one (and the new one serves later stops).
-      auto act_et = __shfl_up_sync(full, incl_et, 1);
-      auto act_board_i = __shfl_up_sync(full, incl_bi, 1);
-      if (lane == 0U) {
-        act_et = kEtInvalid;
-        act_board_i = full;
-      }
-      if (et_is_better(run_et, act_et) ||
-          (!et_is_better(act_et, run_et) && run_board_i < act_board_i)) {
-        act_et = run_et;
-        act_board_i = run_board_i;
+
+      // Get min accross all previous positions in chunk including this pos.
+      auto incl = my_key;
+      for (auto off = 1U; off < kWarpSize; off <<= 1) {
+        auto const o = __shfl_up_sync(kAllLanes, incl, off);
+        if (lane >= off) {
+          incl = min(incl, o);
+        }
       }
 
-      // propagate: alight here on the transport boarded at an earlier stop
-      if (i < n && act_et != kEtInvalid && act_board_i < i) {
+      // Get earliest transport from previous stop.
+      auto et = __shfl_up_sync(kAllLanes, incl, 1);
+      if (lane == 0U) {
+        et = kEtKeyInvalid;
+      }
+      et = min(et, run_key);
+
+      // Update stop time.
+      auto const et_board_i = static_cast<unsigned>(et & 0xFFFF'FFFFU);
+      if (i < n && et != kEtKeyInvalid && et_board_i < i) {
         auto const stp = stop{stop_seq[stop_idx]};
-        if (stp.can_finish<SearchDir>(is_wheelchair_)) {
+        if (stp.can_finish<SearchDir>(/*is_wheelchair=*/false)) {
           auto const l = stp.location_idx();
           auto const l_idx = cista::to_idx(l);
-          auto const et = unpack_et(act_et);
+          auto const t = unpack_et(r, static_cast<std::uint32_t>(et >> 32U));
           auto const by_transport = time_at_stop(
-              r, et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-          // Match the CPU (raptor.h update_route): write tmp_ and mark the
-          // station based ONLY on the admissible time_at_dest+lb prune, NOT on
-          // whether the arrival beats the station's best. A later same-round
-          // TRANSPORT arrival that is worse than an earlier FOOTPATH arrival at
-          // the same station is still essential: with non-transitive footpaths
-          // (A-B and B-C exist but not A-C) an arrival at B that can't improve
-          // best[B] is still needed, because the label that reached B via A->B
-          // cannot label C, while a genuine arrival at B can now walk B->C. So
-          // tmp_ (this round's transport arrivals) must record every arrival
-          // passing the prune; round_times/best writes stay improvement-gated
-          // (see update_transfers/update_footpaths).
+              r, t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
           if (is_better(by_transport, time_at_dest_.get(k)) &&
               lb_[l_idx] != kUnreachable &&
               is_better(by_transport + dir(lb_[l_idx]), time_at_dest_.get(k))) {
             auto const board_stop = static_cast<stop_idx_t>(
-                kFwd ? act_board_i : n - 1U - act_board_i);
+                kFwd ? et_board_i : n - 1U - et_board_i);
             tmp_.update_min(
                 l, 0U, by_transport,
-                make_transport_payload(et.t_idx_.v_, board_stop, stop_idx));
+                make_transport_payload(t.t_idx_.v_, board_stop, stop_idx));
             station_mark_.mark(l_idx);
             local_marked = true;
           }
         }
       }
 
-      // carry forward the INCLUSIVE prefix (min over earlier chunks + this
-      // one); lane 31's inclusive value is the chunk-wide min.
-      auto new_run_et = incl_et;
-      auto new_run_bi = incl_bi;
-      if (et_is_better(run_et, new_run_et) ||
-          (!et_is_better(new_run_et, run_et) && run_board_i < new_run_bi)) {
-        new_run_et = run_et;
-        new_run_bi = run_board_i;
-      }
-      run_et = __shfl_sync(full, new_run_et, 31);
-      run_board_i = __shfl_sync(full, new_run_bi, 31);
+      // Carry accross chunks.
+      run_key = __shfl_sync(kAllLanes, min(incl, run_key), kWarpSize - 1U);
     }
 
-    return __any_sync(full, local_marked);
-  }
-
-  template <bool WithSectionBikeFilter>
-  __device__ bool update_route(unsigned const k, route_idx_t const r) {
-    auto const stop_seq = tt_.route_location_seq_[r];
-    bool any_marked = false;
-
-    auto et = std::array<transport, Vias + 1>{};
-    auto v_offset = std::array<std::size_t, Vias + 1>{};
-    // boarding stop_idx of the transport currently in et[v] (for breadcrumbs)
-    auto et_board_stop = cuda::std::array<stop_idx_t, Vias + 1>{};
-
-    for (auto i = 0U; i != stop_seq.size(); ++i) {
-      auto const stop_idx =
-          static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
-      auto const stp = stop{stop_seq[stop_idx]};
-      auto const l = stp.location_idx();
-      auto const l_idx = cista::to_idx(l);
-      auto const is_first = i == 0U;
-      auto const is_last = i == stop_seq.size() - 1U;
-
-      auto current_best = cuda::std::array<delta_t, Vias + 1>{};
-      current_best.fill(kInvalid);
-
-      // v = via state when entering the transport
-      // v + v_offset = via state at the current stop after entering the
-      // transport (v_offset > 0 if the transport passes via stops)
-      for (auto j = 0U; j != Vias + 1; ++j) {
-        auto const v = Vias - j;
-        if (!et[v].is_valid() && !prev_station_mark_[l_idx]) {
-          continue;
-        }
-
-        if constexpr (WithSectionBikeFilter) {
-          if (!is_first &&
-              !const_cast<device_timetable const&>(tt_)
-                   .route_bikes_allowed_per_section_[r][kFwd ? stop_idx - 1
-                                                             : stop_idx]) {
-            et[v] = {};
-            v_offset[v] = 0;
-          }
-        }
-
-        auto target_v = v + v_offset[v];
-
-        if (et[v].is_valid() && stp.can_finish<SearchDir>(is_wheelchair_)) {
-          auto const by_transport = time_at_stop(
-              r, et[v], stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-
-          current_best[v] =
-              get_best(round_times_.get(k - 1, l, target_v),
-                       tmp_.get(l, target_v), best_.get(l, target_v));
-
-          // See update_route_warp: mark on the admissible prune alone, not on
-          // beating current_best (which folds in best_).
-          if (is_better(by_transport, time_at_dest_.get(k))) {
-            tmp_.update_min(l, target_v, by_transport,
-                            make_transport_payload(et[v].t_idx_.v_,
-                                                   et_board_stop[v], stop_idx));
-            station_mark_.mark(l_idx);
-            current_best[v] = by_transport;
-            any_marked = true;
-            debug("round %u: route=%u, marking l=%u\n", k, to_idx(r), l_idx);
-          }
-        }
-      }
-
-      if (is_last || !stp.can_start<SearchDir>(is_wheelchair_) ||
-          !prev_station_mark_[l_idx]) {
-        debug(
-            "round %u: route=%u, stop=%u [l=%u] -> "
-            "is_last=%s, can_start=%s, prev_station_mark=%s   => no new et\n",
-            k, r.v_, stop_idx, l_idx, b2s(is_last),
-            b2s(stp.can_start<SearchDir>(is_wheelchair_)),
-            b2s(prev_station_mark_[l_idx]));
-        continue;
-      }
-
-      for (auto v = 0U; v != Vias + 1; ++v) {
-        if (!et[v].is_valid() && !prev_station_mark_[l_idx]) {
-          debug(
-              "round %u: route=%u, stop=%u [l=%u] -> et_valid=%s, "
-              "prev_station_mark=%s   => no new et\n",
-              k, r.v_, stop_idx, l_idx, b2s(et[v].is_valid()),
-              b2s(prev_station_mark_[l_idx]));
-          continue;
-        }
-
-        auto const target_v = v + v_offset[v];
-        auto const et_time_at_stop =
-            et[v].is_valid()
-                ? time_at_stop(r, et[v], stop_idx,
-                               kFwd ? event_type::kDep : event_type::kArr)
-                : kInvalid;
-        auto const prev_round_time = round_times_.get(k - 1, l, target_v);
-        if (prev_round_time != kInvalid &&
-            is_better_or_eq(prev_round_time, et_time_at_stop)) {
-          transport new_et{};
-          if constexpr (Vias == 0) {
-            // boarding et precomputed by compute_et (load-balanced pre-pass)
-            new_et = unpack_et(
-                et_result_[tt_.route_stop_offset_[to_idx(r)] + stop_idx]);
-          } else {
-            auto const [day, mam] = split(prev_round_time);
-            new_et = get_earliest_transport(k, r, stop_idx, day, mam,
-                                            stp.location_idx());
-          }
-          current_best[v] = get_best(current_best[v], best_.get(l, target_v),
-                                     tmp_.get(l, target_v));
-          if (new_et.is_valid() &&
-              (current_best[v] == kInvalid ||
-               is_better_or_eq(
-                   time_at_stop(r, new_et, stop_idx,
-                                kFwd ? event_type::kDep : event_type::kArr),
-                   et_time_at_stop))) {
-            et[v] = new_et;
-            v_offset[v] = 0;
-            et_board_stop[v] = stop_idx;
-            debug("round %u: route=%u, stop=%u [l=%u] -> transport=%u\n", k,
-                  r.v_, stop_idx, l_idx, new_et.t_idx_.v_);
-          }
-        } else {
-          debug(
-              "round %u: route=%u, stop=%u [l=%u] -> prev_round_time=%d, "
-              "time_at_stop=%d => no new et\n",
-              k, r.v_, stop_idx, l_idx, prev_round_time, et_time_at_stop);
-        }
-      }
-    }
-    return any_marked;
+    return __any_sync(kAllLanes, local_marked);
   }
 
   __device__ transport
@@ -812,83 +632,137 @@ struct raptor_impl {
                                    static_cast<std::size_t>(as_int(day)));
   }
 
-  static constexpr std::uint64_t kEtInvalid = ~std::uint64_t{0};
+  // Packed earliest transport, 32 bits: [rel_day : 6 | t_offset : 26].
+  //  - rel_day: traffic day relative to (base_ - 28)
+  //  - t_offset: transport index relative to the route's first transport
+  static constexpr auto kEtInvalid = ~std::uint32_t{0};
+  static constexpr auto kEtRelDayShift = 26U;
 
-  __device__ __forceinline__ std::uint64_t pack_et(transport const t) const {
-    return t.is_valid() ? ((static_cast<std::uint64_t>(to_idx(t.day_)) << 32) |
-                           static_cast<std::uint64_t>(to_idx(t.t_idx_)))
-                        : kEtInvalid;
+  __device__ __forceinline__ int et_day_lo() const {
+    return as_int(base_) - 28;
   }
 
-  __device__ __forceinline__ bool et_is_better(std::uint64_t const a,
-                                               std::uint64_t const b) const {
-    if (a == kEtInvalid) {
-      return false;
+  __device__ __forceinline__ std::uint32_t pack_et(route_idx_t const r,
+                                                   transport const t) const {
+    if (!t.is_valid()) {
+      return kEtInvalid;
     }
-    if (b == kEtInvalid) {
-      return true;
+
+    auto const rel_day =
+        static_cast<std::uint32_t>(as_int(t.day_) - et_day_lo());
+    auto const t_offset =
+        to_idx(t.t_idx_) - to_idx(tt_.route_transport_ranges_[r].from_);
+    auto const x = (rel_day << kEtRelDayShift) | t_offset;
+
+    if constexpr (kFwd) {
+      return x;
+    } else {
+      // This allows:
+      // - always compare earliest transports (day, transport) with < / min
+      // - have invalid values encoded as `111...` (always x < kEtInvalid;
+      //   0xFFFFFFFE - x instead of an XOR/complement, which would collide
+      //   with kEtInvalid for first transport on day=0 -> x == 0)
+      return 0xFFFF'FFFEU - x;
     }
-    return kFwd ? (a < b) : (a > b);
   }
 
-  __device__ __forceinline__ transport unpack_et(std::uint64_t const p) const {
-    return p == kEtInvalid
-               ? transport{}
-               : transport{transport_idx_t{
-                               static_cast<std::uint32_t>(p & 0xFFFFFFFFU)},
-                           day_idx_t{static_cast<std::uint16_t>(p >> 32)}};
+  __device__ __forceinline__ transport unpack_et(route_idx_t const r,
+                                                 std::uint32_t const p) const {
+    auto const x = kFwd ? p : 0xFFFF'FFFEU - p;
+    auto const rel_day = x >> kEtRelDayShift;
+    auto const t_offset = x & ((1U << kEtRelDayShift) - 1U);
+    return transport{
+        transport_idx_t{to_idx(tt_.route_transport_ranges_[r].from_) +
+                        t_offset},
+        day_idx_t{static_cast<day_idx_t::value_t>(static_cast<int>(rel_day) +
+                                                  et_day_lo())}};
   }
 
   __device__ void compute_et(unsigned const k) {
-    if constexpr (Vias == 0) {
-      auto const gid = get_global_thread_id();
-      auto const stride = get_global_stride();
-      auto const total = tt_.route_stop_offset_[tt_.n_routes_];
+    auto const gid = get_global_thread_id();
+    auto const stride = get_global_stride();
 
-      // phase 1a: compact candidate tasks (default non-candidates to invalid).
-      if (gid == 0U) {
-        *et_task_count_ = 0U;
+    // PHASE 1: compact the marked routes into route_list_
+    for (auto w = gid; w < route_mark_.blocks_.size(); w += stride) {
+      auto const word = route_mark_.blocks_[w];
+      if (word == 0U) {
+        continue;
       }
-      sync();
-      for (auto flat = gid; flat < total; flat += stride) {
-        auto const r = route_idx_t{tt_.route_of_stop_[flat]};
-        if (!route_mark_.test(to_idx(r))) {
-          continue;
-        }
-        et_result_[flat] = kEtInvalid;
-        auto const stop_seq = tt_.route_location_seq_[r];
-        auto const stop_idx =
-            static_cast<stop_idx_t>(flat - tt_.route_stop_offset_[to_idx(r)]);
-        auto const is_dir_last =
-            kFwd ? (stop_idx + 1U == stop_seq.size()) : (stop_idx == 0U);
-        if (is_dir_last) {
-          continue;
-        }
-        auto const stp = stop{stop_seq[stop_idx]};
-        auto const l = stp.location_idx();
-        if (!prev_station_mark_[cista::to_idx(l)] ||
-            !stp.can_start<SearchDir>(is_wheelchair_) ||
-            round_times_.get(k - 1, l, 0U) == kInvalid) {
-          continue;
-        }
-        et_task_list_[atomicAdd(et_task_count_, 1U)] = flat;
-      }
-      sync();
+      auto pos =
+          atomicAdd(route_list_count_, static_cast<unsigned>(__popc(word)));
+      for_each_set_bit(
+          word, [&](unsigned const b) { route_list_[pos++] = w * 32U + b; });
+    }
+    sync();
+    PHASE_MARK(4);
 
-      // phase 1b: one earliest-transport lookup per task (no route divergence).
-      auto const n_tasks = *et_task_count_;
-      for (auto i = gid; i < n_tasks; i += stride) {
-        auto const flat = et_task_list_[i];
-        auto const r = route_idx_t{tt_.route_of_stop_[flat]};
-        auto const stop_idx =
-            static_cast<stop_idx_t>(flat - tt_.route_stop_offset_[to_idx(r)]);
+    // PHASE 2: Write list of marked route stops (flat offsets).
+    // -> warp-aggregated stream compaction:
+    // 1) Filter: check if route is "boardable" (fwd) / "alightable" (bwd)
+    // 2) Count: __ballot_sync(is_task) collapses 32 lanes to a 32bit mask
+    // 3) Reserve: make space for popcount(ballot sync mask) entries
+    // 4) Rank + Scatter: write flat route stop to ballot & ((1 << lane) - 1)
+    {
+      auto const lane = gid % kWarpSize;
+      auto const warp_id = gid / kWarpSize;
+      auto const n_warps = stride / kWarpSize;
+      auto const n_marked = *route_list_count_;
+      for (auto idx = warp_id; idx < n_marked; idx += n_warps) {
+        auto const ri = route_list_[idx];
+        auto const r = route_idx_t{ri};
+        auto const base_flat = tt_.route_stop_offset_[ri];
         auto const stop_seq = tt_.route_location_seq_[r];
-        auto const stp = stop{stop_seq[stop_idx]};
-        auto const l = stp.location_idx();
-        auto const [day, mam] = split(round_times_.get(k - 1, l, 0U));
-        et_result_[flat] =
-            pack_et(get_earliest_transport(k, r, stop_idx, day, mam, l));
+        auto const n = static_cast<unsigned>(stop_seq.size());
+        for (auto chunk = 0U; chunk < n; chunk += kWarpSize) {
+          auto const s = chunk + lane;
+          auto is_task = false;
+          if (s < n) {
+            et_result_[base_flat + s] = kEtInvalid;
+            auto const is_dir_last = kFwd ? (s + 1U == n) : (s == 0U);
+            if (!is_dir_last) {
+              auto const stp = stop{stop_seq[s]};
+              auto const l = stp.location_idx();
+              is_task = prev_station_mark_[cista::to_idx(l)] &&
+                        stp.can_start<SearchDir>(/*is_wheelchair=*/false) &&
+                        round_times_.get(k - 1, l, 0U) != kInvalid;
+            }
+          }
+
+          auto const ballot = __ballot_sync(kAllLanes, is_task);
+          if (ballot != 0U) {
+            auto const leader =
+                static_cast<int>(__ffs(static_cast<int>(ballot))) - 1;
+            auto base_pos = 0U;
+            if (lane == static_cast<unsigned>(leader)) {
+              base_pos = atomicAdd(et_task_count_,
+                                   static_cast<unsigned>(__popc(ballot)));
+            }
+            base_pos = __shfl_sync(kAllLanes, base_pos, leader);
+            if (is_task) {
+              auto const off =
+                  static_cast<unsigned>(__popc(ballot & ((1U << lane) - 1U)));
+              et_task_list_[base_pos + off] = base_flat + s;
+            }
+          }
+        }
       }
+    }
+    sync();
+    PHASE_MARK(5);
+
+    // PHASE 3: Do one earliest-transport lookup per task.
+    auto const n_tasks = *et_task_count_;
+    for (auto i = gid; i < n_tasks; i += stride) {
+      auto const flat = et_task_list_[i];
+      auto const r = route_idx_t{tt_.route_of_stop_[flat]};
+      auto const stop_idx =
+          static_cast<stop_idx_t>(flat - tt_.route_stop_offset_[to_idx(r)]);
+      auto const stop_seq = tt_.route_location_seq_[r];
+      auto const stp = stop{stop_seq[stop_idx]};
+      auto const l = stp.location_idx();
+      auto const [day, mam] = split(round_times_.get(k - 1, l, 0U));
+      et_result_[flat] =
+          pack_et(r, get_earliest_transport(k, r, stop_idx, day, mam, l));
     }
   }
 
@@ -947,18 +821,12 @@ struct raptor_impl {
 
   std::uint32_t* any_marked_;
   device_timetable tt_;
-  std::uint32_t n_locations_, n_routes_, n_rt_transports_;
   transfer_time_settings transfer_time_settings_;
   std::uint8_t max_transfers_;
   clasz_mask_t allowed_claszes_;
-  bool require_bike_transport_;
   day_idx_t base_;
-  unixtime_t worst_time_at_dest_;
-  bool is_intermodal_dest_;
-  bool is_wheelchair_;
   cuda::std::span<std::pair<location_idx_t, unixtime_t> const> starts_;
   device_bitvec<std::uint64_t const> is_dest_;
-  device_bitvec<std::uint32_t> end_reachable_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
   cuda::std::span<std::uint16_t const> lb_;
   device_times<SearchDir, Vias + 1> round_times_;
@@ -969,9 +837,14 @@ struct raptor_impl {
   device_bitvec<std::uint32_t> prev_station_mark_;
   device_bitvec<std::uint32_t> route_mark_;
 
-  cuda::std::span<std::uint64_t> et_result_;  // per flat (route,stop)
-  cuda::std::span<std::uint32_t> et_task_list_;  // per flat (route,stop)
+  // earliest transports per flat (route,stop)
+  cuda::std::span<std::uint32_t> et_result_;
+  cuda::std::span<std::uint32_t> et_task_list_;
   std::uint32_t* et_task_count_;  // number of tasks this round
+
+  // marked routes this round
+  cuda::std::span<std::uint32_t> route_list_;
+  std::uint32_t* route_list_count_;
 };
 
 }  // namespace nigiri::routing::gpu

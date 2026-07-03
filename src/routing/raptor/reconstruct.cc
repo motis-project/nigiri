@@ -49,8 +49,22 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
   auto const leg_start_location =
       kFwd ? j.legs_.back().from_ : j.legs_.back().to_;
+  // Anchor for the start offset: the first transit event, shifted by a via
+  // stay at the search-start location (the offset must not overlap the
+  // mandatory stay between the transit event and the offset leg).
+  auto const search_start_via_stay = [&]() {
+    if (q.via_stops_.empty()) {
+      return duration_t{0};
+    }
+    auto const& via = kFwd ? q.via_stops_.front() : q.via_stops_.back();
+    return matches(tt, location_match_mode::kEquivalent, via.location_,
+                   leg_start_location)
+               ? via.stay_
+               : duration_t{0};
+  }();
   auto const leg_start_time =
-      kFwd ? j.legs_.back().dep_time_ : j.legs_.back().arr_time_;
+      (kFwd ? j.legs_.back().dep_time_ : j.legs_.back().arr_time_) -
+      dir(search_start_via_stay);
 
   if (q.start_match_mode_ != location_match_mode::kIntermodal &&
       is_journey_start(tt, q, leg_start_location) &&
@@ -75,15 +89,12 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
     for (auto const& o : q.start_) {
       if (matches(tt, q.start_match_mode_, o.target(), leg_start_location) &&
-          is_better_or_eq(j.start_time_,
-                          leg_start_time - (kFwd ? 1 : -1) * o.duration())) {
+          is_better_or_eq(j.start_time_, leg_start_time - dir(o.duration()))) {
         trace_rc_intermodal_start_found;
-        return journey::leg{SearchDir,
-                            get_special_station(special_station::kStart),
-                            leg_start_location,
-                            j.start_time_,
-                            j.start_time_ + dir(o.duration()),
-                            o};
+        return journey::leg{
+            SearchDir,          get_special_station(special_station::kStart),
+            leg_start_location, leg_start_time - dir(o.duration()),
+            leg_start_time,     o};
       } else {
         trace_rc_intermodal_no_match;
       }
@@ -94,12 +105,11 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       auto const fp =
           get_td_duration<flip(SearchDir)>(it->second, leg_start_time);
       if (fp.has_value() &&
-          is_better_or_eq(j.start_time_,
-                          leg_start_time - (kFwd ? 1 : -1) * fp->first)) {
+          is_better_or_eq(j.start_time_, leg_start_time - dir(fp->first))) {
         return journey::leg{SearchDir,
                             get_special_station(special_station::kStart),
                             leg_start_location,
-                            leg_start_time - (kFwd ? 1 : -1) * fp->first,
+                            leg_start_time - dir(fp->first),
                             leg_start_time,
                             offset{leg_start_location, fp->first,
                                    fp->second.transport_mode_id_}};
@@ -116,7 +126,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
             "journey_start={}\n",
             to_str(flip(SearchDir)), loc{tt, leg_start_location},
             leg_start_time, fp.has_value() ? fp->first : footpath::kMaxDuration,
-            fp.has_value() ? leg_start_time - (kFwd ? 1 : -1) * fp->first
+            fp.has_value() ? leg_start_time - dir(fp->first)
                            : unixtime_t{0_minutes},
             j.start_time_);
       }

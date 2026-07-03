@@ -3,6 +3,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/common/parse_time.h"
+#include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
@@ -47,14 +48,17 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
             .journeys_);
 
 #if defined(NIGIRI_CUDA)
-  auto gpu_search_state = routing::search_state{};
-  auto gpu_timetable = routing::gpu::gpu_timetable{tt};
-  auto gpu_state = routing::gpu::gpu_raptor_state{gpu_timetable};
-  auto gpu_results = *(routing::raptor_search(tt, rtt, gpu_search_state,
-                                              gpu_state, q, search_dir)
-                           .journeys_);
+  if (routing::gpu::gpu_supported(q) &&
+      (rtt == nullptr || rtt->n_rt_transports() == 0U)) {
+    auto gpu_search_state = routing::search_state{};
+    auto gpu_timetable = routing::gpu::gpu_timetable{tt};
+    auto gpu_state = routing::gpu::gpu_raptor_state{gpu_timetable};
+    auto gpu_results = *(routing::raptor_search(tt, rtt, gpu_search_state,
+                                                gpu_state, q, search_dir)
+                             .journeys_);
 
-  EXPECT_EQ(print_results(tt, results), print_results(tt, gpu_results));
+    EXPECT_EQ(print_results(tt, results), print_results(tt, gpu_results));
+  }
 #endif
 
   return results;

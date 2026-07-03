@@ -57,11 +57,11 @@ routing_result pong(timetable const& tt,
 
   using ping_algo_t =
       std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-                         gpu::gpu_raptor<SearchDir, Rt>,
+                         gpu::gpu_raptor<SearchDir>,
                          raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>>;
   using pong_algo_t = std::conditional_t<
       std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-      gpu::gpu_raptor<flip(SearchDir), Rt>,
+      gpu::gpu_raptor<flip(SearchDir)>,
       raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>>;
 
   s_state.results_.clear();

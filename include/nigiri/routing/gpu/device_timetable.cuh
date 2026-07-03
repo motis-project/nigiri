@@ -55,9 +55,6 @@ struct device_timetable {
   d_vecmap_view<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
   d_vecmap_view<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
   d_vecmap_view<route_idx_t, clasz> route_clasz_;
-  device_bitvec<std::uint64_t const> route_bikes_allowed_;
-  d_vecvec_view<decltype(t{}.route_bikes_allowed_per_section_)>
-      route_bikes_allowed_per_section_;
 
   d_vecvec_view<decltype(t{}.route_location_seq_)> route_location_seq_;
   d_vecvec_view<decltype(t{}.location_routes_)> location_routes_;

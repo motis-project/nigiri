@@ -11,6 +11,18 @@
 
 namespace nigiri::routing::gpu {
 
+// Calls fn(bit_index) for every set bit of the word, lowest first. NOTE: when
+// the body contains warp collectives (__shfl_sync etc.), the word must be
+// warp-uniform so all lanes iterate in lockstep.
+template <typename Fn>
+__device__ __forceinline__ void for_each_set_bit(std::uint32_t word, Fn&& fn) {
+  while (word != 0U) {
+    auto const b = static_cast<unsigned>(__ffs(static_cast<int>(word))) - 1U;
+    word &= word - 1U;  // clear LSB
+    fn(b);
+  }
+}
+
 template <typename Block = std::uint64_t>
 struct device_bitvec {
   using block_t = Block;

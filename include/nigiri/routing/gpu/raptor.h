@@ -5,11 +5,11 @@
 #include <vector>
 
 #include "nigiri/common/delta_t.h"
+#include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
-#include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/routing/transfer_time_settings.h"
@@ -20,20 +20,19 @@
 
 namespace nigiri::routing::gpu {
 
+inline bool gpu_supported(query const& q) {
+  return q.allowed_claszes_ == all_clasz_allowed() && q.td_start_.empty() &&
+         q.td_dest_.empty() && q.transfer_time_settings_.default_ &&
+         !q.require_bike_transport_ && !q.require_car_transport_ &&
+         q.via_stops_.empty() && q.prf_idx_ == 0U;
+}
+
 struct gpu_timetable {
   explicit gpu_timetable(timetable const&);
   ~gpu_timetable();
 
   struct impl;
   std::unique_ptr<impl> impl_;
-};
-
-struct gpu_rt_timetable {
-  explicit gpu_rt_timetable(rt_timetable const&);
-  ~gpu_rt_timetable();
-
-  struct impl;
-  std::unique_ptr<impl> impl;
 };
 
 struct gpu_raptor_state {
@@ -44,18 +43,14 @@ struct gpu_raptor_state {
   std::unique_ptr<impl> impl_;
 };
 
-template <direction SearchDir, bool Rt>
+template <direction SearchDir>
 struct gpu_raptor {
   using algo_state_t = gpu_raptor_state;
   using algo_stats_t = raptor_stats;
 
   static constexpr bool kUseLowerBounds = true;
-  static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
-  static constexpr auto const kInvalidArray = []() {
-    auto a = std::array<delta_t, 1>{};
-    a.fill(kInvalid);
-    return a;
-  }();
+  static constexpr auto const kDirIdx =
+      SearchDir == direction::kForward ? 0U : 1U;
 
   gpu_raptor(
       timetable const& tt,
@@ -89,27 +84,17 @@ struct gpu_raptor {
   void reconstruct(query const&, journey&);
 
 private:
-  void sync_round_times();
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + to_idx(base_) * date::days{1};
   }
 
   timetable const& tt_;
-  rt_timetable const* rtt_{nullptr};
-  int n_days_;
-  std::uint32_t n_locations_, n_routes_, n_rt_transports_;
+  std::uint32_t n_locations_;
   gpu_raptor_state& state_;
   bitvec const& is_dest_;
-  std::vector<std::uint16_t> const& dist_to_end_;
-  hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
-  std::vector<std::uint16_t> const& lb_;
-  std::array<delta_t, kMaxTransfers + 1> time_at_dest_;
   day_idx_t base_;
   raptor_stats stats_;
   clasz_mask_t allowed_claszes_;
-  bool require_bike_transport_;
-  bool require_car_transport_;
-  bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
