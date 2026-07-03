@@ -52,13 +52,6 @@ struct raptor_impl {
   __device__ __forceinline__ auto min(auto x, auto y) { return x <= y ? x : y; }
   __device__ __forceinline__ auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
-  // The search runs as a sequence of per-phase kernels enqueued by the host
-  // (see raptor.cu): every former grid-wide sync is a kernel boundary, which
-  // lets kernels of concurrent queries overlap on the device. The host
-  // enqueues all rounds up front without reading back any state; once the
-  // search converges, `done_` is set and every later kernel of this query
-  // exits immediately.
-
   __device__ void init_arrivals(unixtime_t const worst_time_at_dest) {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
