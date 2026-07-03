@@ -1385,6 +1385,10 @@ void load_timetable(loader_config const& config,
         add_stop(stop.get());
       }
     }
+    for (auto const& [id, stop] : im.stop_assignments_) {
+      tt.locations_.location_id_to_idx_.emplace(owning_location_id{id, src},
+                                                stop->location_);
+    }
 
     for (auto& [id, dd] : im.destination_displays_) {
       dd->trip_direction_ = tt.register_translation(dd->direction_);
