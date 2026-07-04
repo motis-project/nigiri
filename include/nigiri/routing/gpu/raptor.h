@@ -48,7 +48,7 @@ struct gpu_raptor {
   using algo_state_t = gpu_raptor_state;
   using algo_stats_t = raptor_stats;
 
-  static constexpr bool kUseLowerBounds = true;
+  static constexpr bool kUseLowerBounds = false;
   static constexpr auto const kDirIdx =
       SearchDir == direction::kForward ? 0U : 1U;
 

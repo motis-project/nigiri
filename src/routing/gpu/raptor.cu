@@ -201,8 +201,7 @@ struct gpu_raptor_state::impl {
   // re-uploading identical data on every execute().
   void upload_query(unsigned const dir,
                     nigiri::bitvec const& is_dest,
-                    std::vector<std::uint16_t> const& dist_to_dest,
-                    std::vector<std::uint16_t> const& lb) {
+                    std::vector<std::uint16_t> const& dist_to_dest) {
     is_intermodal_dest_[dir] = !dist_to_dest.empty();
 
     is_dest_[dir].resize(is_dest.blocks_.size());
@@ -224,16 +223,6 @@ struct gpu_raptor_state::impl {
                         dd_pinned, dist_to_dest.size() * sizeof(std::uint16_t),
                         cudaMemcpyHostToDevice, stream_),
                 "could not copy dist to dest");
-
-    lb_dev_[dir].resize(lb.size());
-    auto* const lb_p = lb_[dir].ensure(lb.size());
-    std::copy(lb.begin(), lb.end(), lb_p);
-    utl::verify(
-        cudaSuccess ==
-            cudaMemcpyAsync(thrust::raw_pointer_cast(lb_dev_[dir].data()), lb_p,
-                            lb.size() * sizeof(std::uint16_t),
-                            cudaMemcpyHostToDevice, stream_),
-        "could not copy lb");
   }
 
   bool is_intermodal_dest_[2];  // per direction: [0]=fwd, [1]=bwd
@@ -255,10 +244,8 @@ struct gpu_raptor_state::impl {
   thrust::device_vector<std::uint64_t> is_dest_[2];
 
   thrust::device_vector<std::uint16_t> dist_to_dest_dev_[2];
-  thrust::device_vector<std::uint16_t> lb_dev_[2];
 
   pinned_buffer<std::uint16_t> dist_to_dest_[2];
-  pinned_buffer<std::uint16_t> lb_[2];
   pinned_buffer<std::pair<location_idx_t, unixtime_t>> starts_;
   thrust::device_vector<std::pair<location_idx_t, unixtime_t>> starts_dev_;
 
@@ -293,7 +280,7 @@ gpu_raptor<SearchDir>::gpu_raptor(
     std::vector<std::uint16_t> const& dist_to_dest,
     hash_map<location_idx_t,
              std::vector<td_offset>> const& /* td_dist_to_dest (GPU: no td) */,
-    std::vector<std::uint16_t> const& lb,
+    std::vector<std::uint16_t> const& /* lb (GPU: no lower bounds) */,
     std::vector<via_stop> const& via_stops,
     day_idx_t const base,
     clasz_mask_t const allowed_claszes,
@@ -310,7 +297,7 @@ gpu_raptor<SearchDir>::gpu_raptor(
       transfer_time_settings_{tts} {
   state_.impl_->resize(tt.n_locations(), tt.n_routes());
   reset_arrivals();
-  state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest, lb);
+  state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest);
 }
 
 template <direction SearchDir>
@@ -482,7 +469,6 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
       .starts_ = starts,
       .is_dest_ = {to_view(s.is_dest_[kDirIdx])},
       .dist_to_end_ = to_view(s.dist_to_dest_dev_[kDirIdx]),
-      .lb_ = to_view(s.lb_dev_[kDirIdx]),
       .round_times_ = {to_mutable_view(s.round_times_), n_locations_},
       .best_ = {to_mutable_view(s.best_), n_locations_},
       .tmp_ = {to_mutable_view(s.tmp_), n_locations_},

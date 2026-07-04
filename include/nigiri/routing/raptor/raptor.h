@@ -750,7 +750,7 @@ private:
                 loc{tt_, location_idx_t{kIntermodalTarget}},
                 to_unix(best_[kIntermodalTarget][Vias]), to_unix(end_time));
 
-            if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
+            if (is_better(end_time, time_at_dest_[k])) {
               round_times_[k][kIntermodalTarget][Vias] = end_time;
               best_[kIntermodalTarget][Vias] = end_time;
               update_time_at_dest(k, end_time);
@@ -777,7 +777,7 @@ private:
             loc{tt_, location_idx_t{kIntermodalTarget}},
             to_unix(best_[kIntermodalTarget][Vias]), to_unix(end_time));
 
-        if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
+        if (is_better(end_time, time_at_dest_[k])) {
           round_times_[k][kIntermodalTarget][Vias] = end_time;
           best_[kIntermodalTarget][Vias] = end_time;
           update_time_at_dest(k, end_time);

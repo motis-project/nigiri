@@ -292,8 +292,7 @@ struct raptor_impl {
     auto const fp_target_time =
         clamp(tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
                                                     fp.duration().count())));
-    if (!is_better(fp_target_time, t_at_dest) || lb_[target] == kUnreachable ||
-        !is_better(fp_target_time + dir(lb_[target]), t_at_dest)) {
+    if (!is_better(fp_target_time, t_at_dest)) {
       return;
     }
     if (is_better(fp_target_time, best_.get(fp.target(), Vias))) {
@@ -347,8 +346,6 @@ struct raptor_impl {
             auto const fp_target_time = static_cast<delta_t>(
                 tmp_time + ((!intermodal && is_dest) ? 0 : loc_transfer_time));
             if (is_better(fp_target_time, t_at_dest) &&
-                lb_[my_i] != kUnreachable &&
-                is_better(fp_target_time + dir(lb_[my_i]), t_at_dest) &&
                 is_better(fp_target_time, best_.get(l, Vias))) {
               round_times_.update_min(k, l, Vias, fp_target_time, bc);
               best_.update_min(l, Vias, fp_target_time);
@@ -362,7 +359,7 @@ struct raptor_impl {
           // intermodal egress (former update_intermodal_footpaths)
           if (intermodal && dist_to_end_[my_i] != kUnreachable) {
             auto const end_time = clamp(tmp_time + dir(dist_to_end_[my_i]));
-            if (is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
+            if (is_better(end_time, t_at_dest)) {
               round_times_.update_min(k, l, Vias,
                                       clamp(tmp_time + loc_transfer_time), bc);
               round_times_.update_min(k, kIntermodalTarget, Vias, end_time,
@@ -459,9 +456,7 @@ struct raptor_impl {
           auto const t = unpack_et(r, static_cast<std::uint32_t>(et >> 32U));
           auto const by_transport = time_at_stop(
               r, t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-          if (is_better(by_transport, time_at_dest_.get(k)) &&
-              lb_[l_idx] != kUnreachable &&
-              is_better(by_transport + dir(lb_[l_idx]), time_at_dest_.get(k))) {
+          if (is_better(by_transport, time_at_dest_.get(k))) {
             auto const board_stop = static_cast<stop_idx_t>(
                 kFwd ? et_board_i : n - 1U - et_board_i);
             tmp_.update_min(
@@ -485,8 +480,7 @@ struct raptor_impl {
                          route_idx_t const r,
                          stop_idx_t const stop_idx,
                          day_idx_t const day_at_stop,
-                         minutes_after_midnight_t const mam_at_stop,
-                         location_idx_t const l) {
+                         minutes_after_midnight_t const mam_at_stop) {
     auto const event_times = tt_.event_times_at_stop(
         r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
 
@@ -519,8 +513,7 @@ struct raptor_impl {
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
-        if (is_better_or_eq(time_at_dest_.get(k),
-                            to_delta(day, ev_mam) + dir(lb_[to_idx(l)]))) {
+        if (is_better_or_eq(time_at_dest_.get(k), to_delta(day, ev_mam))) {
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
@@ -693,7 +686,7 @@ struct raptor_impl {
       auto const l = stp.location_idx();
       auto const [day, mam] = split(round_times_.get(k - 1, l, 0U));
       et_result_[flat] =
-          pack_et(r, get_earliest_transport(k, r, stop_idx, day, mam, l));
+          pack_et(r, get_earliest_transport(k, r, stop_idx, day, mam));
     }
   }
 
@@ -760,7 +753,6 @@ struct raptor_impl {
   cuda::std::span<std::pair<location_idx_t, unixtime_t> const> starts_;
   device_bitvec<std::uint64_t const> is_dest_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
-  cuda::std::span<std::uint16_t const> lb_;
   device_times<SearchDir, Vias + 1> round_times_;
   device_times<SearchDir, Vias + 1> best_;
   device_times<SearchDir, Vias + 1> tmp_;

@@ -100,18 +100,23 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, ping_is_via[i]);
   }
 
+  auto lb_time = std::chrono::steady_clock::duration{};
+  auto const ping_lb_start = std::chrono::steady_clock::now();
   auto ping_lb = std::vector<std::uint16_t>{};
-  dijkstra(tt, q,
-           (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
-                 : tt.bwd_search_lb_graph_[q.prf_idx_]),
-           ((rtt == nullptr || kGpu)
-                ? nullptr
-                : &(kFwd ? rtt->fwd_search_lb_graph_has_edges_
-                         : rtt->bwd_search_lb_graph_has_edges_)),
-           ((rtt == nullptr || kGpu) ? nullptr
-                                     : &(kFwd ? rtt->fwd_search_lb_graph_
-                                              : rtt->bwd_search_lb_graph_)),
-           ping_lb);
+  if constexpr (ping_algo_t::kUseLowerBounds) {
+    dijkstra(tt, q,
+             (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
+                   : tt.bwd_search_lb_graph_[q.prf_idx_]),
+             ((rtt == nullptr || kGpu)
+                  ? nullptr
+                  : &(kFwd ? rtt->fwd_search_lb_graph_has_edges_
+                           : rtt->bwd_search_lb_graph_has_edges_)),
+             ((rtt == nullptr || kGpu) ? nullptr
+                                       : &(kFwd ? rtt->fwd_search_lb_graph_
+                                                : rtt->bwd_search_lb_graph_)),
+             ping_lb);
+  }
+  lb_time += std::chrono::steady_clock::now() - ping_lb_start;
 
   auto ping = ping_algo_t{tt,
                           rtt,
@@ -144,18 +149,22 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, pong_is_via[i]);
   }
 
+  auto const pong_lb_start = std::chrono::steady_clock::now();
   auto pong_lb = std::vector<std::uint16_t>{};
-  dijkstra(tt, q,
-           (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
-                 : tt.fwd_search_lb_graph_[q.prf_idx_]),
-           ((rtt == nullptr || kGpu)
-                ? nullptr
-                : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
-                         : rtt->fwd_search_lb_graph_has_edges_)),
-           ((rtt == nullptr || kGpu) ? nullptr
-                                     : &(kFwd ? rtt->bwd_search_lb_graph_
-                                              : rtt->fwd_search_lb_graph_)),
-           pong_lb);
+  if constexpr (pong_algo_t::kUseLowerBounds) {
+    dijkstra(tt, q,
+             (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
+                   : tt.fwd_search_lb_graph_[q.prf_idx_]),
+             ((rtt == nullptr || kGpu)
+                  ? nullptr
+                  : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
+                           : rtt->fwd_search_lb_graph_has_edges_)),
+             ((rtt == nullptr || kGpu) ? nullptr
+                                       : &(kFwd ? rtt->bwd_search_lb_graph_
+                                                : rtt->fwd_search_lb_graph_)),
+             pong_lb);
+  }
+  lb_time += std::chrono::steady_clock::now() - pong_lb_start;
 
   auto pong = pong_algo_t{tt,
                           rtt,
@@ -182,7 +191,10 @@ routing_result pong(timetable const& tt,
   auto result = routing_result{
       .journeys_ = &s_state.results_,
       .interval_ = search_interval,
-      .search_stats_ = {.lb_time_ = 0U},  // lower bounds disabled
+      .search_stats_ =
+          {.lb_time_ = static_cast<std::uint64_t>(
+               std::chrono::duration_cast<std::chrono::milliseconds>(lb_time)
+                   .count())},
       .algo_stats_ = {}};
   auto start_time =
       kFwd ? search_interval.from_ : search_interval.to_ - duration_t{1};

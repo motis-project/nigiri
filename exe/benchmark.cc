@@ -90,6 +90,9 @@ struct benchmark_result {
         << std::chrono::duration_cast<double_seconds_t>(
                br.routing_result_.search_stats_.execute_time_)
                .count()
+        << "s, t_lb: " << std::setw(6)
+        << (static_cast<double>(br.routing_result_.search_stats_.lb_time_) /
+            1000.0)
         << "s, intvl_ext: " << std::setw(2)
         << br.routing_result_.search_stats_.interval_extensions_
         << ", intvl_size: " << std::setw(5)
@@ -241,7 +244,9 @@ void process_queries(
                                j.dest_time_, j.transfers_);
           };
           std::cout << "query #" << q_idx << " GPU_MISSES_CPU=" << gpu_misses
-                    << " CPU_MISSES_GPU=" << cpu_misses << "\n";
+                    << " CPU_MISSES_GPU=" << cpu_misses
+                    << " cpu_intvl=" << result.interval_
+                    << " gpu_intvl=" << gpu_result.interval_ << "\n";
           if (gpu_misses != 0) {
             std::cout << "  GPU-pareto: ";
             for (auto const& g : *gpu_result.journeys_) {
@@ -312,9 +317,13 @@ void print_load_latency(std::vector<double> lat, std::string const& tag) {
     return lat[std::min(lat.size() - 1,
                         static_cast<std::size_t>(p * lat.size()))];
   };
-  std::cout << tag << " under-load latency ms: median=" << pct(0.5)
-            << " p90=" << pct(0.9) << " p99=" << pct(0.99)
-            << " max=" << lat.back() << " min=" << lat.front() << "\n";
+  auto const avg = std::accumulate(begin(lat), end(lat), 0.0) /
+                   static_cast<double>(lat.size());
+  std::cout << tag << " under-load latency ms: avg=" << avg
+            << " min=" << lat.front() << " p10=" << pct(0.1)
+            << " p25=" << pct(0.25) << " median=" << pct(0.5)
+            << " p75=" << pct(0.75) << " p90=" << pct(0.9)
+            << " p99=" << pct(0.99) << " max=" << lat.back() << "\n";
 }
 
 // ---- profiling matrix: N worker threads sharing a pool of M states ----
@@ -487,13 +496,15 @@ void profile_matrix(
 void throughput_test(
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
     timetable const& tt,
-    unsigned const n_threads) {
+    unsigned const n_threads,
+    bool const use_pong) {
   auto const gpu_tt = routing::gpu::gpu_timetable{tt};
   std::cout << "throughput: " << n_threads << " threads, " << queries.size()
             << " queries\n";
   auto next = std::atomic<std::size_t>{0};
   auto done = std::atomic<std::size_t>{0};
   auto lat = std::vector<double>(queries.size(), -1.0);
+  auto lat_lb = std::vector<double>(queries.size(), -1.0);
   auto const t0 = std::chrono::steady_clock::now();
   auto workers = std::vector<std::thread>{};
   for (auto t = 0U; t != n_threads; ++t) {
@@ -504,11 +515,16 @@ void throughput_test(
            i = next.fetch_add(1)) {
         try {
           auto const q0 = std::chrono::steady_clock::now();
-          auto const r = routing::pong_search(
-              tt, nullptr, ss, *gpu_rs, queries[i].q_, direction::kForward);
+          auto const r =
+              use_pong
+                  ? routing::pong_search(tt, nullptr, ss, *gpu_rs,
+                                         queries[i].q_, direction::kForward)
+                  : routing::raptor_search(tt, nullptr, ss, *gpu_rs,
+                                           queries[i].q_, direction::kForward);
           lat[i] = std::chrono::duration<double, std::milli>(
                        std::chrono::steady_clock::now() - q0)
                        .count();
+          lat_lb[i] = static_cast<double>(r.search_stats_.lb_time_);
           if (!r.journeys_->empty() || true) {
             done.fetch_add(1);
           }
@@ -529,6 +545,7 @@ void throughput_test(
             << (d * 1000.0 / static_cast<double>(std::max<std::int64_t>(ms, 1)))
             << " queries/sec (" << n_threads << " threads)\n";
   print_load_latency(std::move(lat), "gpu");
+  print_load_latency(std::move(lat_lb), "lb(cpu)");
 }
 
 // CPU counterpart of throughput_test: N worker threads, each its own
@@ -537,7 +554,8 @@ void throughput_test(
 void throughput_test_cpu(
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
     timetable const& tt,
-    unsigned const n_threads) {
+    unsigned const n_threads,
+    bool const use_pong) {
   std::cout << "throughput(cpu): " << n_threads << " threads, "
             << queries.size() << " queries\n";
   auto next = std::atomic<std::size_t>{0};
@@ -553,8 +571,10 @@ void throughput_test_cpu(
            i = next.fetch_add(1)) {
         try {
           auto const q0 = std::chrono::steady_clock::now();
-          routing::pong_search(tt, nullptr, ss, rs, queries[i].q_,
-                               direction::kForward);
+          use_pong ? routing::pong_search(tt, nullptr, ss, rs, queries[i].q_,
+                                          direction::kForward)
+                   : routing::raptor_search(tt, nullptr, ss, rs, queries[i].q_,
+                                            direction::kForward);
           lat[i] = std::chrono::duration<double, std::milli>(
                        std::chrono::steady_clock::now() - q0)
                        .count();
@@ -972,10 +992,10 @@ int main(int argc, char* argv[]) {
     return 0;
   }
   if (cpu_threads > 0U) {
-    throughput_test_cpu(queries, tt, cpu_threads);
+    throughput_test_cpu(queries, tt, cpu_threads, use_pong);
   }
   if (gpu_threads > 0U) {
-    throughput_test(queries, tt, gpu_threads);
+    throughput_test(queries, tt, gpu_threads, use_pong);
   }
   if (cpu_threads > 0U || gpu_threads > 0U) {
     return 0;
