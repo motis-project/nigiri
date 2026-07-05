@@ -539,11 +539,15 @@ void handle_vehicle_position(timetable const& tt,
         static_cast<stop_idx_t>(std::distance(begin(location_seq), stop_it));
     auto const fr = frun::from_t(tt, &rtt_const, r.t_);
 
-    // get delay
-    auto const vp_ts = vp.has_timestamp()
-                           ? unixtime_t{std::chrono::duration_cast<i32_minutes>(
-                                 std::chrono::seconds{vp.timestamp()})}
-                           : std::chrono::system_clock::now();
+    // get delay -- for a position without its own timestamp, date it to the
+    // feed's generation time (header timestamp), NOT the wall clock at parse
+    // time: the header time is the correct reference and makes replaying a
+    // canned feed deterministic (system_clock::now() drifts between runs).
+    auto const vp_ts =
+        vp.has_timestamp()
+            ? unixtime_t{std::chrono::duration_cast<i32_minutes>(
+                  std::chrono::seconds{vp.timestamp()})}
+            : std::chrono::time_point_cast<unixtime_t::duration>(message_time);
     auto const ev_time =
         stopped_at_idx == 0
             ? tt.event_time(r.t_, stopped_at_idx, event_type::kDep)

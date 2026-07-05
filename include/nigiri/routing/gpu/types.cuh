@@ -62,6 +62,7 @@ d_vecvec_view<Host> to_view(device_vecvec<Host> const& h) {
 
 template <typename K, typename V>
 struct d_vecmap_view {
+  d_vecmap_view() = default;
   d_vecmap_view(cuda::std::span<V const> data) : data_{data} {}
   d_vecmap_view(thrust::device_vector<V> const& data) : data_{to_view(data)} {}
 

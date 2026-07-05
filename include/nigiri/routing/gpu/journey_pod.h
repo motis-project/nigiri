@@ -4,31 +4,39 @@
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/routing/limits.h"
+#include "nigiri/types.h"
 
 namespace nigiri::routing::gpu {
 
 inline constexpr unsigned kMaxRecLegs = 2U * kMaxTransfers + 4U;
 
 struct gpu_journey_leg {
-  std::uint8_t is_footpath_;  // 1 = footpath, 0 = transport (run_enter_exit)
-  std::uint32_t from_l_;  // location_idx value
-  std::uint32_t to_l_;
-  delta_t dep_;  // delta relative to base
+  bool is_footpath_;
+  location_idx_t from_l_;
+  location_idx_t to_l_;
+  delta_t dep_;
   delta_t arr_;
-  std::uint32_t transport_;  // transport_idx value (transport legs)
-  std::uint16_t day_;  // day_idx value (transport legs)
-  std::uint16_t enter_stop_;  // route stop_idx (transport legs)
-  std::uint16_t exit_stop_;
-  std::uint16_t fp_duration_;  // minutes (footpath legs)
+  transport_idx_t transport_;
+  rt_transport_idx_t rt_transport_;
+  day_idx_t day_;
+  stop_idx_t enter_stop_;
+  stop_idx_t exit_stop_;
+  std::uint16_t fp_duration_;
+};
+
+enum class reconstruction_result : std::uint8_t {
+  kNotReconstructed,
+  kOk,
+  kReconstructionFailed,
 };
 
 struct gpu_journey {
-  std::uint8_t valid_;
+  reconstruction_result state_;
   std::uint8_t n_legs_;
   std::uint8_t transfers_;
-  std::uint32_t dest_l_;  // location_idx value
-  delta_t dest_time_;  // delta relative to base
-  std::uint32_t start_l_;  // location_idx value of the resolved start
+  location_idx_t dest_l_;
+  delta_t dest_time_;
+  location_idx_t start_l_;
   gpu_journey_leg legs_[kMaxRecLegs];
 };
 

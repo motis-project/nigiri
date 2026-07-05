@@ -4,6 +4,8 @@
 
 #include <cuda/std/span>
 
+#include "nigiri/common/delta_t.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -11,6 +13,30 @@
 #include "nigiri/routing/gpu/types.cuh"
 
 namespace nigiri::routing::gpu {
+
+struct device_rt_timetable {
+  using rtt = rt_timetable;
+
+  __device__ delta_t event_time(rt_transport_idx_t const rt_t,
+                                stop_idx_t const stop_idx,
+                                event_type const ev_type) const {
+    auto const ev_idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
+    return rt_transport_stop_times_[rt_t][static_cast<unsigned>(ev_idx)];
+  }
+
+  std::uint32_t n_rt_transports_{0U};
+  day_idx_t base_day_idx_{};
+
+  d_vecvec_view<vecvec<location_idx_t, rt_transport_idx_t>>
+      location_rt_transports_;
+  d_vecvec_view<decltype(rtt{}.rt_transport_location_seq_)>
+      rt_transport_location_seq_;
+  d_vecvec_view<decltype(rtt{}.rt_transport_stop_times_)>
+      rt_transport_stop_times_;
+
+  d_vecmap_view<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
+  d_vecmap_view<bitfield_idx_t, bitfield> bitfields_;
+};
 
 struct device_timetable {
   using t = timetable;

@@ -75,7 +75,6 @@ struct raptor_impl {
     }
   }
 
-  // Reuse best time from previous time at start (for range queries).
   __device__ void reuse_previous_arrivals(unsigned const k) {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
@@ -110,6 +109,24 @@ struct raptor_impl {
     }
   }
 
+  __device__ void mark_rt_transports(unsigned const k) {
+    auto const global_t_id = get_global_thread_id();
+    auto const global_stride = get_global_stride();
+    for (auto i = global_t_id; i < tt_.n_locations_; i += global_stride) {
+      if (station_mark_[i]) {
+        auto const rt_transports =
+            rtt_.location_rt_transports_[location_idx_t{i}];
+        if (!rt_transports.empty() && !*any_marked_) {
+          atomicOr(any_marked_, 1U);
+        }
+        for (auto const rt_t : rt_transports) {
+          debug("round %u: marking rt transport %u\n", k, to_idx(rt_t));
+          rt_transport_mark_.mark(to_idx(rt_t));
+        }
+      }
+    }
+  }
+
   __device__ void begin_transit_phase() {
     prev_station_mark_.swap_reset(station_mark_);
     if (get_global_thread_id() == 0U) {
@@ -125,14 +142,14 @@ struct raptor_impl {
   __device__ void reconstruct_journey(location_idx_t const dest,
                                       unsigned const K,
                                       gpu_journey* out) {
-    out->valid_ = 0U;
+    out->state_ = reconstruction_result::kNotReconstructed;
     auto cur_v = static_cast<via_offset_t>(Vias);
     auto const dest_time =
         round_times_.get(static_cast<std::uint8_t>(K), dest, cur_v);
     if (dest_time == kInvalid) {
       return;
     }
-    out->dest_l_ = dest.v_;
+    out->dest_l_ = dest;
     out->dest_time_ = dest_time;
     out->transfers_ = static_cast<std::uint8_t>(K - 1U);
 
@@ -142,104 +159,118 @@ struct raptor_impl {
     auto cur_l = dest;
     auto cur_k = K;
     auto n = 0U;
-    auto egress_src = false;
     while (cur_k >= 1U) {
       auto const bc =
           round_times_.get_bc(static_cast<std::uint8_t>(cur_k), cur_l, cur_v);
 
-      if (is_intermodal_dest() && cur_l == kIntermodalTarget) {
-        auto const src = location_idx_t{bc_transport(bc)};
-        out->dest_l_ = src.v_;
-        cur_l = src;
-        egress_src = true;
-        continue;
-      }
       if (bc_is_start(bc)) {
         break;
       }
 
-      auto const t_idx = transport_idx_t{bc_transport(bc)};
+      auto const bc_t = bc_transport(bc);
       auto const board = static_cast<stop_idx_t>(bc_board(bc));
       auto const alight = static_cast<stop_idx_t>(bc_alight(bc));
-      auto const r = tt_.transport_route_[t_idx];
       auto const arr_at_cur =
           round_times_.get(static_cast<std::uint8_t>(cur_k), cur_l, cur_v);
 
-      // Recover the traffic (first-departure) day of the transport. Two
-      // candidate days are exhaustive: multi-day rides are handled exactly by
-      // the event's day offset (event_mam_full / 1440), and the label differs
-      // from the raw train arrival only by the folded-in transfer/footpath
-      // (< 24h, footpath::kMaxDuration) -> at most one midnight crossing.
-      auto const event_mam_full =
-          tt_.event_mam(r, t_idx, alight, ev_arr_type).count();
-      auto const [arr_day, _] = split(arr_at_cur);
-      auto found_day = false;
+      auto const is_rt = is_rt_bc_transport(bc_t, rtt_.n_rt_transports_);
       auto day = day_idx_t{0U};
       auto train_arr = kInvalid;
-      for (auto off = 0; off != 2; ++off) {
-        auto const cand =
-            as_int(arr_day) - event_mam_full / 1440 - (kFwd ? off : -off);
-        if (cand < 0) {
-          continue;
+      auto dep_at_board = kInvalid;
+      auto board_loc = location_idx_t::invalid();
+      auto alight_loc = location_idx_t::invalid();
+
+      if (is_rt) {
+        // rt transport: event times are stored absolute (relative to the rt
+        // base day) -> exact, no traffic-day recovery needed
+        auto const rt_t = rt_transport_idx_t{decode_rt_bc_transport(bc_t)};
+        auto const stop_seq = rtt_.rt_transport_location_seq_[rt_t];
+        board_loc = stop{stop_seq[board]}.location_idx();
+        alight_loc = stop{stop_seq[alight]}.location_idx();
+        train_arr = rt_time_at_stop(rt_t, alight, ev_arr_type);
+        dep_at_board = rt_time_at_stop(rt_t, board, ev_dep_type);
+      } else {
+        auto const t_idx = transport_idx_t{bc_t};
+        auto const r = tt_.transport_route_[t_idx];
+
+        // Longest transfer/footpath/offset <24h
+        // -> at most one midnight crossing
+        // -> iterate 2 days
+        auto const event_mam_full =
+            tt_.event_mam(r, t_idx, alight, ev_arr_type).count();
+        auto const [arr_day, _] = split(arr_at_cur);
+        auto found_day = false;
+        for (auto off = 0; off != 2; ++off) {
+          auto const cand =
+              as_int(arr_day) - event_mam_full / 1440 - (kFwd ? off : -off);
+          if (cand < 0) {
+            continue;
+          }
+          if (!is_transport_active(t_idx, static_cast<std::size_t>(cand))) {
+            continue;
+          }
+          auto const tr = transport{
+              t_idx, day_idx_t{static_cast<day_idx_t::value_t>(cand)}};
+          auto const ev = time_at_stop(r, tr, alight, ev_arr_type);
+          if (is_better_or_eq(ev, arr_at_cur)) {
+            day = day_idx_t{static_cast<day_idx_t::value_t>(cand)};
+            train_arr = ev;
+            found_day = true;
+            break;
+          }
         }
-        if (!is_transport_active(t_idx, static_cast<std::size_t>(cand))) {
-          continue;
+        if (!found_day) {
+          out->state_ = reconstruction_result::kReconstructionFailed;
+          return;
         }
-        auto const tr =
-            transport{t_idx, day_idx_t{static_cast<day_idx_t::value_t>(cand)}};
-        auto const ev = time_at_stop(r, tr, alight, ev_arr_type);
-        if (is_better_or_eq(ev, arr_at_cur)) {
-          day = day_idx_t{static_cast<day_idx_t::value_t>(cand)};
-          train_arr = ev;
-          found_day = true;
-          break;
-        }
+
+        auto const tr = transport{t_idx, day};
+        dep_at_board = time_at_stop(r, tr, board, ev_dep_type);
+        auto const stop_seq = tt_.route_location_seq_[r];
+        board_loc = stop{stop_seq[board]}.location_idx();
+        alight_loc = stop{stop_seq[alight]}.location_idx();
       }
-      if (!found_day) {
-        return;  // could not recover -> leave invalid
-      }
 
-      auto const eff_arr = egress_src ? train_arr : arr_at_cur;
-      egress_src = false;
-
-      auto const tr = transport{t_idx, day};
-      auto const dep_at_board = time_at_stop(r, tr, board, ev_dep_type);
-      auto const stop_seq = tt_.route_location_seq_[r];
-      auto const board_loc = stop{stop_seq[board]}.location_idx();
-      auto const alight_loc = stop{stop_seq[alight]}.location_idx();
-
-      // footpath/transfer leg from the train's alighting stop to cur_l. nigiri
-      // journeys alternate transit and footpath legs (a same-station transfer
-      // is a self footpath B->B with the transfer time), so the leg is always
-      // emitted -- EXCEPT a zero-length self footpath at the journey's
-      // destination end (n == 0U: nothing emitted yet), matching the CPU
-      // (reconstruct.cc: "don't add a 0-minute footpath at the end").
-      if (n != 0U || alight_loc != cur_l || train_arr != eff_arr) {
+      auto const is_egress = is_intermodal_dest() && cur_l == kIntermodalTarget;
+      if (is_egress) {
+        // no footpath leg: the last mile alight -> kEnd is the host's mumo
+        // leg; the GPU journey's terminal is the ride's alighting stop
+        out->dest_l_ = alight_loc;
+      } else if (n != 0U || alight_loc != cur_l ||
+                 train_arr != arr_at_cur /* skip 0min last leg */) {
+        // Footpaths are always emitted (even zero minute reflexive transfers).
+        // Journey structure: [WALK]? TRANSIT [TRANSIT WALK]*
         if (n >= kMaxRecLegs) {
+          out->state_ = reconstruction_result::kReconstructionFailed;
           return;
         }
         auto& lg = out->legs_[n++];
-        lg.is_footpath_ = 1U;
-        lg.from_l_ = alight_loc.v_;
-        lg.to_l_ = cur_l.v_;
+        lg.is_footpath_ = true;
+        lg.from_l_ = alight_loc;
+        lg.to_l_ = cur_l;
         lg.dep_ = train_arr;
-        lg.arr_ = eff_arr;
+        lg.arr_ = arr_at_cur;
         lg.fp_duration_ = static_cast<std::uint16_t>(
-            kFwd ? (eff_arr - train_arr) : (train_arr - eff_arr));
+            kFwd ? (arr_at_cur - train_arr) : (train_arr - arr_at_cur));
       }
 
       // transport leg board_loc -> alight_loc
       if (n >= kMaxRecLegs) {
+        out->state_ = reconstruction_result::kReconstructionFailed;
         return;
       }
       auto& lg = out->legs_[n++];
-      lg.is_footpath_ = 0U;
-      lg.from_l_ = board_loc.v_;
-      lg.to_l_ = alight_loc.v_;
+      lg.is_footpath_ = false;
+      lg.from_l_ = board_loc;
+      lg.to_l_ = alight_loc;
       lg.dep_ = dep_at_board;
       lg.arr_ = train_arr;
-      lg.transport_ = t_idx.v_;
-      lg.day_ = static_cast<std::uint16_t>(day.v_);
+      lg.transport_ =
+          is_rt ? transport_idx_t::invalid() : transport_idx_t{bc_t};
+      lg.rt_transport_ = is_rt
+                             ? rt_transport_idx_t{decode_rt_bc_transport(bc_t)}
+                             : rt_transport_idx_t::invalid();
+      lg.day_ = day;
       lg.enter_stop_ = board;
       lg.exit_stop_ = alight;
 
@@ -247,9 +278,11 @@ struct raptor_impl {
       cur_k -= 1U;
     }
 
-    out->start_l_ = cur_l.v_;
+    out->start_l_ = cur_l;
     out->n_legs_ = static_cast<std::uint8_t>(n);
-    out->valid_ = (n != 0U) ? 1U : 0U;  // should not happen, safe guard
+    // n == 0 with a valid dest label = inconsistent chain, flag loudly
+    out->state_ = (n != 0U) ? reconstruction_result::kOk
+                            : reconstruction_result::kReconstructionFailed;
   }
 
   __device__ date::sys_days base() const {
@@ -281,6 +314,61 @@ struct raptor_impl {
         atomicOr(any_marked_, 1U);
       }
     }
+  }
+
+  __device__ void update_rt_transports(unsigned const k) {
+    auto const gid = get_global_thread_id();
+    auto const stride = get_global_stride();
+    for (auto i = gid; i < rtt_.n_rt_transports_; i += stride) {
+      if (!rt_transport_mark_.test(i)) {
+        continue;
+      }
+      if (update_rt_transport(k, rt_transport_idx_t{i}) && !*any_marked_) {
+        atomicOr(any_marked_, 1U);
+      }
+    }
+  }
+
+  __device__ bool update_rt_transport(unsigned const k,
+                                      rt_transport_idx_t const rt_t) {
+    auto const stop_seq = rtt_.rt_transport_location_seq_[rt_t];
+    auto const n = static_cast<unsigned>(stop_seq.size());
+    auto any_marked = false;
+
+    auto et = false;
+    auto boarding_stop_idx = stop_idx_t{0};
+    for (auto i = 0U; i != n; ++i) {
+      auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - i - 1U);
+      auto const stp = stop{stop_seq[stop_idx]};
+      auto const l = stp.location_idx();
+      auto const l_idx = to_idx(l);
+
+      if (i != 0U && et && stp.can_finish<SearchDir>(/*is_wheelchair=*/false)) {
+        auto const by_transport = rt_time_at_stop(
+            rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+        if (is_better(by_transport, time_at_dest_.get(k))) {
+          tmp_.update_min(
+              l, 0U, by_transport,
+              make_transport_payload(encode_rt_bc_transport(to_idx(rt_t)),
+                                     boarding_stop_idx, stop_idx));
+          station_mark_.mark(l_idx);
+          any_marked = true;
+        }
+      }
+
+      if (i == n - 1U || !stp.can_start<SearchDir>(/*is_wheelchair=*/false) ||
+          !prev_station_mark_[l_idx]) {
+        continue;
+      }
+
+      auto const dep = rt_time_at_stop(
+          rt_t, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
+      if (is_better_or_eq(round_times_.get(k - 1, l, 0U), dep)) {
+        et = true;
+        boarding_stop_idx = stop_idx;
+      }
+    }
+    return any_marked;
   }
 
   __device__ __forceinline__ void relax_footpath(unsigned const k,
@@ -360,10 +448,9 @@ struct raptor_impl {
           if (intermodal && dist_to_end_[my_i] != kUnreachable) {
             auto const end_time = clamp(tmp_time + dir(dist_to_end_[my_i]));
             if (is_better(end_time, t_at_dest)) {
-              round_times_.update_min(k, l, Vias,
-                                      clamp(tmp_time + loc_transfer_time), bc);
-              round_times_.update_min(k, kIntermodalTarget, Vias, end_time,
-                                      make_egress_bc(my_i));
+              round_times_.update_min(
+                  k, kIntermodalTarget, Vias, end_time,
+                  bc /* write breadcrumb of last arriving transport */);
               best_.update_min(kIntermodalTarget, Vias, end_time);
               update_time_at_dest(k, end_time);
             }
@@ -417,7 +504,7 @@ struct raptor_impl {
     auto run_key = kEtKeyInvalid;  // prefix-min across chunks
 
     for (auto chunk = 0U; chunk < n; chunk += kWarpSize) {
-      // note: continue for i >= n would be UB for __shfl_up_sync etc
+      // Note: continue for i >= n would be UB for __shfl_up_sync etc
 
       auto const i = chunk + lane;
       auto stop_idx = stop_idx_t{};
@@ -452,7 +539,7 @@ struct raptor_impl {
         auto const stp = stop{stop_seq[stop_idx]};
         if (stp.can_finish<SearchDir>(/*is_wheelchair=*/false)) {
           auto const l = stp.location_idx();
-          auto const l_idx = cista::to_idx(l);
+          auto const l_idx = to_idx(l);
           auto const t = unpack_et(r, static_cast<std::uint32_t>(et >> 32U));
           auto const by_transport = time_at_stop(
               r, t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
@@ -548,8 +635,12 @@ struct raptor_impl {
   // Packed earliest transport, 32 bits: [rel_day : 6 | t_offset : 26].
   //  - rel_day: traffic day relative to (base_ - 28)
   //  - t_offset: transport index relative to the route's first transport
+  //
+  // Bwd: encode t_offset as (kEtReverseBase - x [including 0]) != kEtInvalid
+  // -> taking min() is still correct (yields later transport for bwd search)
   static constexpr auto kEtInvalid = ~std::uint32_t{0};
   static constexpr auto kEtRelDayShift = 26U;
+  static constexpr auto kEtReverseBase = kEtInvalid - 1U;
 
   __device__ __forceinline__ int et_day_lo() const {
     return as_int(base_) - 28;
@@ -567,21 +658,12 @@ struct raptor_impl {
         to_idx(t.t_idx_) - to_idx(tt_.route_transport_ranges_[r].from_);
     auto const x = (rel_day << kEtRelDayShift) | t_offset;
 
-    if constexpr (kFwd) {
-      return x;
-    } else {
-      // This allows:
-      // - always compare earliest transports (day, transport) with < / min
-      // - have invalid values encoded as `111...` (always x < kEtInvalid;
-      //   0xFFFFFFFE - x instead of an XOR/complement, which would collide
-      //   with kEtInvalid for first transport on day=0 -> x == 0)
-      return 0xFFFF'FFFEU - x;
-    }
+    return kFwd ? x : kEtReverseBase - x;
   }
 
   __device__ __forceinline__ transport unpack_et(route_idx_t const r,
                                                  std::uint32_t const p) const {
-    auto const x = kFwd ? p : 0xFFFF'FFFEU - p;
+    auto const x = kFwd ? p : kEtReverseBase - p;
     auto const rel_day = x >> kEtRelDayShift;
     auto const t_offset = x & ((1U << kEtRelDayShift) - 1U);
     return transport{
@@ -644,7 +726,7 @@ struct raptor_impl {
             if (!is_dir_last) {
               auto const stp = stop{stop_seq[s]};
               auto const l = stp.location_idx();
-              is_task = prev_station_mark_[cista::to_idx(l)] &&
+              is_task = prev_station_mark_[to_idx(l)] &&
                         stp.can_start<SearchDir>(/*is_wheelchair=*/false) &&
                         round_times_.get(k - 1, l, 0U) != kInvalid;
             }
@@ -698,6 +780,13 @@ struct raptor_impl {
                     tt_.event_mam(r, t.t_idx_, stop_idx, ev_type).count());
   }
 
+  __device__ delta_t rt_time_at_stop(rt_transport_idx_t const rt_t,
+                                     stop_idx_t const stop_idx,
+                                     event_type const ev_type) {
+    return clamp((as_int(rtt_.base_day_idx_) - as_int(base_)) * 1440 +
+                 rtt_.event_time(rt_t, stop_idx, ev_type));
+  }
+
   __device__ delta_t to_delta(day_idx_t const day, std::int16_t const mam) {
     return clamp((as_int(day) - as_int(base_)) * 1440 + mam);
   }
@@ -746,6 +835,7 @@ struct raptor_impl {
   std::uint32_t* any_marked_;
   std::uint32_t* done_;
   device_timetable tt_;
+  device_rt_timetable rtt_;  // all-empty views = rt disabled
   transfer_time_settings transfer_time_settings_;
   std::uint8_t max_transfers_;
   clasz_mask_t allowed_claszes_;
@@ -760,6 +850,7 @@ struct raptor_impl {
   device_bitvec<std::uint32_t> station_mark_;
   device_bitvec<std::uint32_t> prev_station_mark_;
   device_bitvec<std::uint32_t> route_mark_;
+  device_bitvec<std::uint32_t> rt_transport_mark_;
 
   // earliest transports per flat (route,stop)
   cuda::std::span<std::uint32_t> et_result_;
