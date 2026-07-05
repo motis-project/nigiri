@@ -20,10 +20,15 @@
 
 namespace nigiri::routing::gpu {
 
-inline bool gpu_supported(query const& q) {
+inline bool gpu_supported(query const& q, rt_timetable const* rtt = nullptr) {
+  auto const prf_ok =
+      q.prf_idx_ == 0U ||
+      (q.prf_idx_ == kFootProfile &&
+       (rtt == nullptr || (!rtt->has_td_footpaths_out_[q.prf_idx_].any() &&
+                           !rtt->has_td_footpaths_in_[q.prf_idx_].any())));
   return q.td_start_.empty() && q.td_dest_.empty() &&
          q.transfer_time_settings_.default_ && !q.require_bike_transport_ &&
-         !q.require_car_transport_ && q.via_stops_.empty() && q.prf_idx_ == 0U;
+         !q.require_car_transport_ && q.via_stops_.empty() && prf_ok;
 }
 
 struct gpu_timetable {

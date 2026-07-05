@@ -43,6 +43,7 @@ struct device_vecvec {
   using H = std::decay_t<Host>;
   using data_value_type = typename H::data_value_type;
   using index_value_type = typename H::index_value_type;
+  device_vecvec() = default;
   explicit device_vecvec(H const& h)
       : data_{to_device(h.data_)}, index_{to_device(h.bucket_starts_)} {}
   thrust::device_vector<data_value_type> data_;

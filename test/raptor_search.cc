@@ -51,7 +51,7 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
             .journeys_);
 
 #if defined(NIGIRI_CUDA)
-  if (routing::gpu::gpu_supported(q)) {
+  if (routing::gpu::gpu_supported(q, rtt)) {
     auto gpu_search_state = routing::search_state{};
     auto gpu_timetable = routing::gpu::gpu_timetable{tt};
     auto gpu_state = routing::gpu::gpu_raptor_state{gpu_timetable};

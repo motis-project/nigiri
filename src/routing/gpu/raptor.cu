@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
+#include <array>
 #include <iostream>
 #include <optional>
 
@@ -63,6 +64,7 @@ struct pinned_buffer {
 
 struct gpu_timetable::impl {
   using t = timetable;
+  using fp_t = decltype(t{}.locations_.footpaths_out_[0]);
 
   static std::vector<std::uint32_t> build_route_stop_offset(
       timetable const& tt) {
@@ -89,8 +91,6 @@ struct gpu_timetable::impl {
       : n_locations_{tt.n_locations()},
         n_routes_{tt.n_routes()},
         transfer_time_{to_device(tt.locations_.transfer_time_)},
-        footpaths_out_{tt.locations_.footpaths_out_[0]},
-        footpaths_in_{tt.locations_.footpaths_in_[0]},
         route_stop_times_{to_device(tt.route_stop_times_)},
         route_stop_time_ranges_{to_device(tt.route_stop_time_ranges_)},
         route_transport_ranges_{to_device(tt.route_transport_ranges_)},
@@ -106,35 +106,43 @@ struct gpu_timetable::impl {
     route_stop_offset_.assign(off.begin(), off.end());
     auto const ros = build_route_of_stop(tt, off);
     route_of_stop_.assign(ros.begin(), ros.end());
+    for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
+      footpaths_out_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_out_[p]};
+      footpaths_in_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_in_[p]};
+    }
   }
 
   device_timetable to_device_timetable() const {
-    return {.n_locations_ = n_locations_,
-            .n_routes_ = n_routes_,
-            .transfer_time_ = transfer_time_,
-            .footpaths_out_ = to_view(footpaths_out_),
-            .footpaths_in_ = to_view(footpaths_in_),
-            .route_stop_times_ = to_view(route_stop_times_),
-            .route_stop_time_ranges_ = to_view(route_stop_time_ranges_),
-            .route_transport_ranges_ = to_view(route_transport_ranges_),
-            .route_clasz_ = to_view(route_clasz_),
-            .route_location_seq_ = to_view(route_location_seq_),
-            .location_routes_ = to_view(location_routes_),
-            .transport_traffic_days_ = to_view(transport_traffic_days_),
-            .route_traffic_days_ = to_view(route_traffic_days_),
-            .transport_route_ = to_view(transport_route_),
-            .bitfields_ = to_view(bitfields_),
-            .route_stop_offset_ = to_view(route_stop_offset_),
-            .route_of_stop_ = to_view(route_of_stop_),
-            .internal_interval_days_ = internal_interval_days_};
+    auto dt = device_timetable{
+        .n_locations_ = n_locations_,
+        .n_routes_ = n_routes_,
+        .transfer_time_ = transfer_time_,
+        .route_stop_times_ = to_view(route_stop_times_),
+        .route_stop_time_ranges_ = to_view(route_stop_time_ranges_),
+        .route_transport_ranges_ = to_view(route_transport_ranges_),
+        .route_clasz_ = to_view(route_clasz_),
+        .route_location_seq_ = to_view(route_location_seq_),
+        .location_routes_ = to_view(location_routes_),
+        .transport_traffic_days_ = to_view(transport_traffic_days_),
+        .route_traffic_days_ = to_view(route_traffic_days_),
+        .transport_route_ = to_view(transport_route_),
+        .bitfields_ = to_view(bitfields_),
+        .route_stop_offset_ = to_view(route_stop_offset_),
+        .route_of_stop_ = to_view(route_of_stop_),
+        .internal_interval_days_ = internal_interval_days_};
+    for (auto p = 0U; p != kNProfiles; ++p) {
+      dt.footpaths_out_[p] = to_view(footpaths_out_[p]);
+      dt.footpaths_in_[p] = to_view(footpaths_in_[p]);
+    }
+    return dt;
   }
 
   std::uint32_t n_locations_;
   std::uint32_t n_routes_;
 
   thrust::device_vector<u8_minutes> transfer_time_;
-  device_vecvec<decltype(t{}.locations_.footpaths_out_[0])> footpaths_out_;
-  device_vecvec<decltype(t{}.locations_.footpaths_in_[0])> footpaths_in_;
+  std::array<device_vecvec<fp_t>, kNProfiles> footpaths_out_;
+  std::array<device_vecvec<fp_t>, kNProfiles> footpaths_in_;
 
   thrust::device_vector<delta> route_stop_times_;
   thrust::device_vector<interval<std::uint32_t>> route_stop_time_ranges_;
@@ -549,7 +557,7 @@ template <direction SearchDir>
 void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
                                     std::uint8_t max_transfers,
                                     unixtime_t worst_time_at_dest,
-                                    profile_idx_t,
+                                    profile_idx_t prf_idx,
                                     pareto_set<journey>& results) {
   auto& s = *state_.impl_;
 
@@ -582,6 +590,7 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
       .transfer_time_settings_ = transfer_time_settings_,
       .max_transfers_ = max_transfers,
       .allowed_claszes_ = allowed_claszes_,
+      .prf_idx_ = prf_idx,
       .base_ = base_,
       .starts_ = starts,
       .is_dest_ = {to_view(s.is_dest_[kDirIdx])},
@@ -868,8 +877,9 @@ void gpu_raptor<SearchDir>::reconstruct(query const& q, journey& j) {
     auto const direct_start_ok =
         is_fwd ? j.start_time_ <= start_t : j.start_time_ >= start_t;
     if (!is_journey_start(start_l) || !direct_start_ok) {
-      auto const fps = is_fwd ? tt_.locations_.footpaths_in_[0][start_l]
-                              : tt_.locations_.footpaths_out_[0][start_l];
+      auto const fps = is_fwd
+                           ? tt_.locations_.footpaths_in_[q.prf_idx_][start_l]
+                           : tt_.locations_.footpaths_out_[q.prf_idx_][start_l];
       auto best = std::optional<footpath>{};
       for (auto const fp : fps) {
         if ((!best.has_value() || fp.duration() < best->duration()) &&

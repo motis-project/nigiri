@@ -464,7 +464,8 @@ struct raptor_impl {
           }
 
           // footpaths: short lists inline, hubs deferred to the whole warp
-          auto const fps = kFwd ? tt_.footpaths_out_[l] : tt_.footpaths_in_[l];
+          auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
+                                : tt_.footpaths_in_[prf_idx_][l];
           n_fps = static_cast<unsigned>(fps.size());
           if (n_fps <= kWarpFpThreshold) {
             for (auto j = 0U; j != n_fps; ++j) {
@@ -484,7 +485,8 @@ struct raptor_impl {
             kAllLanes, static_cast<int>(tmp_time), static_cast<int>(b)));
         auto const l_bc = __shfl_sync(kAllLanes, bc, static_cast<int>(b));
         auto const l_n = __shfl_sync(kAllLanes, n_fps, static_cast<int>(b));
-        auto const fps = kFwd ? tt_.footpaths_out_[l] : tt_.footpaths_in_[l];
+        auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
+                              : tt_.footpaths_in_[prf_idx_][l];
         for (auto j = lane; j < l_n; j += kWarpSize) {
           relax_footpath(k, fps[j], l_tmp, l_bc, t_at_dest);
         }
@@ -846,6 +848,7 @@ struct raptor_impl {
   transfer_time_settings transfer_time_settings_;
   std::uint8_t max_transfers_;
   clasz_mask_t allowed_claszes_;
+  profile_idx_t prf_idx_;
   day_idx_t base_;
   cuda::std::span<std::pair<location_idx_t, unixtime_t> const> starts_;
   device_bitvec<std::uint64_t const> is_dest_;

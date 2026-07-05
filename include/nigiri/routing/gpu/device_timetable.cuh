@@ -2,6 +2,7 @@
 
 #include <cinttypes>
 
+#include <cuda/std/array>
 #include <cuda/std/span>
 
 #include "nigiri/common/delta_t.h"
@@ -75,8 +76,12 @@ struct device_timetable {
   std::uint32_t n_routes_;
 
   d_vecmap_view<location_idx_t, u8_minutes> transfer_time_;
-  d_vecvec_view<decltype(t{}.locations_.footpaths_out_[0])> footpaths_out_;
-  d_vecvec_view<decltype(t{}.locations_.footpaths_in_[0])> footpaths_in_;
+  cuda::std::array<d_vecvec_view<decltype(t{}.locations_.footpaths_out_[0])>,
+                   kNProfiles>
+      footpaths_out_;
+  cuda::std::array<d_vecvec_view<decltype(t{}.locations_.footpaths_in_[0])>,
+                   kNProfiles>
+      footpaths_in_;
 
   cuda::std::span<delta const> route_stop_times_;
   d_vecmap_view<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
