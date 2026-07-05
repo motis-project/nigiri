@@ -99,15 +99,18 @@ namespace nigiri::routing {
             #pragma region inside constructor
             //TODO: avoid copy
             auto all_tmp_times = state.get_tmp<Vias>();
+            auto all_best_times = state.get_best<Vias>();
+
             new_tmp_.resize(all_tmp_times.size());
             for (unsigned long i = 0; i < all_tmp_times.size(); ++i) {
                 for (unsigned long v = 0; v < Vias + 1; ++v) {
                     new_tmp_[i][v] = bag(all_tmp_times[i][v]);
                 }             
             }
-            for (unsigned long i = 0; i < all_tmp_times.size(); ++i) {
+            new_best_ - resize(all_best_times.size());
+            for (unsigned long i = 0; i < all_best_times.size(); ++i) {
                 for (unsigned long v = 0; v < Vias + 1; ++v) {
-                    new_tmp_[i][v] = bag(all_tmp_times[i][v]);
+                    new_best_[i][v] = bag(all_best_times[i][v]);
                 }
             }
             assert(Vias == via_stops_.size());
