@@ -100,13 +100,13 @@ namespace nigiri::routing {
             //TODO: avoid copy
             auto all_tmp_times = state.get_tmp<Vias>();
             new_tmp_.resize(all_tmp_times.size());
-            for (unsigned long i = 0; i < Vias + 2; ++i) {
-                for (unsigned long v = 0; v < Vias + 2; ++v) {
+            for (unsigned long i = 0; i < all_tmp_times.size(); ++i) {
+                for (unsigned long v = 0; v < Vias + 1; ++v) {
                     new_tmp_[i][v] = bag(all_tmp_times[i][v]);
                 }             
             }
-            for (unsigned long i = 0; i < Vias + 2; ++i) {
-                for (unsigned long v = 0; v < Vias + 2; ++v) {
+            for (unsigned long i = 0; i < all_tmp_times.size(); ++i) {
+                for (unsigned long v = 0; v < Vias + 1; ++v) {
                     new_tmp_[i][v] = bag(all_tmp_times[i][v]);
                 }
             }
