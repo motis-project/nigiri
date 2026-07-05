@@ -21,10 +21,9 @@
 namespace nigiri::routing::gpu {
 
 inline bool gpu_supported(query const& q) {
-  return q.allowed_claszes_ == all_clasz_allowed() && q.td_start_.empty() &&
-         q.td_dest_.empty() && q.transfer_time_settings_.default_ &&
-         !q.require_bike_transport_ && !q.require_car_transport_ &&
-         q.via_stops_.empty() && q.prf_idx_ == 0U;
+  return q.td_start_.empty() && q.td_dest_.empty() &&
+         q.transfer_time_settings_.default_ && !q.require_bike_transport_ &&
+         !q.require_car_transport_ && q.via_stops_.empty() && q.prf_idx_ == 0U;
 }
 
 struct gpu_timetable {

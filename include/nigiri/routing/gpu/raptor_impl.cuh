@@ -316,12 +316,19 @@ struct raptor_impl {
     }
   }
 
+  template <bool WithClaszFilter>
   __device__ void update_rt_transports(unsigned const k) {
     auto const gid = get_global_thread_id();
     auto const stride = get_global_stride();
     for (auto i = gid; i < rtt_.n_rt_transports_; i += stride) {
       if (!rt_transport_mark_.test(i)) {
         continue;
+      }
+      if constexpr (WithClaszFilter) {
+        if (!is_allowed(allowed_claszes_,
+                        rtt_.rt_transport_clasz_[rt_transport_idx_t{i}])) {
+          continue;
+        }
       }
       if (update_rt_transport(k, rt_transport_idx_t{i}) && !*any_marked_) {
         atomicOr(any_marked_, 1U);

@@ -176,12 +176,24 @@ struct gpu_rt_timetable::impl {
     return v;
   }
 
+  static std::vector<clasz> build_rt_transport_clasz(rt_timetable const& rtt) {
+    auto v = std::vector<clasz>{};
+    v.reserve(rtt.n_rt_transports());
+    for (auto rt_t = 0U; rt_t != rtt.n_rt_transports(); ++rt_t) {
+      auto const sections =
+          rtt.rt_transport_section_clasz_[rt_transport_idx_t{rt_t}];
+      v.push_back(sections.empty() ? clasz::kOther : sections[0]);
+    }
+    return v;
+  }
+
   impl(timetable const& tt, rt_timetable const& rtt)
       : n_rt_transports_{rtt.n_rt_transports()},
         base_day_idx_{rtt.base_day_idx_},
         location_rt_transports_{build_location_rt(tt, rtt)},
         rt_transport_location_seq_{rtt.rt_transport_location_seq_},
         rt_transport_stop_times_{rtt.rt_transport_stop_times_},
+        rt_transport_clasz_{to_device(build_rt_transport_clasz(rtt))},
         transport_traffic_days_{to_device(rtt.transport_traffic_days_)},
         bitfields_{to_device(rtt.bitfields_)} {
     utl::verify(
@@ -196,6 +208,7 @@ struct gpu_rt_timetable::impl {
             .location_rt_transports_ = to_view(location_rt_transports_),
             .rt_transport_location_seq_ = to_view(rt_transport_location_seq_),
             .rt_transport_stop_times_ = to_view(rt_transport_stop_times_),
+            .rt_transport_clasz_ = to_view(rt_transport_clasz_),
             .transport_traffic_days_ = to_view(transport_traffic_days_),
             .bitfields_ = to_view(bitfields_)};
   }
@@ -209,6 +222,7 @@ struct gpu_rt_timetable::impl {
       rt_transport_location_seq_;
   device_vecvec<decltype(rtt_t{}.rt_transport_stop_times_)>
       rt_transport_stop_times_;
+  thrust::device_vector<clasz> rt_transport_clasz_;
 
   thrust::device_vector<bitfield_idx_t> transport_traffic_days_;
   thrust::device_vector<bitfield> bitfields_;
@@ -413,13 +427,13 @@ __global__ void mark_rt_transports_kernel(raptor_impl<SearchDir> r,
   r.mark_rt_transports(k);
 }
 
-template <direction SearchDir>
+template <direction SearchDir, bool WithClaszFilter>
 __global__ void update_rt_transports_kernel(raptor_impl<SearchDir> r,
                                             unsigned const k) {
   if (*r.done_) {
     return;
   }
-  r.update_rt_transports(k);
+  r.template update_rt_transports<WithClaszFilter>(k);
 }
 
 template <direction SearchDir>
@@ -613,7 +627,11 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
       launch(loop_routes_kernel<SearchDir, true>, s.stream_, r, k);
     }
     if (rt_active) {
-      launch(update_rt_transports_kernel<SearchDir>, s.stream_, r, k);
+      if (allowed_claszes_ == all_clasz_allowed()) {
+        launch(update_rt_transports_kernel<SearchDir, false>, s.stream_, r, k);
+      } else {
+        launch(update_rt_transports_kernel<SearchDir, true>, s.stream_, r, k);
+      }
     }
     launch(begin_footpath_phase_kernel<SearchDir>, s.stream_, r);
     launch(transfers_footpaths_kernel<SearchDir>, s.stream_, r, k);

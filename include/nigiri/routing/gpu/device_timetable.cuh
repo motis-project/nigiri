@@ -33,6 +33,7 @@ struct device_rt_timetable {
       rt_transport_location_seq_;
   d_vecvec_view<decltype(rtt{}.rt_transport_stop_times_)>
       rt_transport_stop_times_;
+  d_vecmap_view<rt_transport_idx_t, clasz> rt_transport_clasz_;
 
   d_vecmap_view<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
   d_vecmap_view<bitfield_idx_t, bitfield> bitfields_;
