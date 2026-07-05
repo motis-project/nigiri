@@ -100,13 +100,13 @@ namespace nigiri::routing {
             //TODO: avoid copy
             auto all_tmp_times = state.get_tmp<Vias>();
             new_tmp_.resize(all_tmp_times.size());
-            for (int i = 0; i < Vias + 2; ++i) {
-                for (int v = 0; v < Vias + 2; ++v) {
+            for (size_type i = 0; i < Vias + 2; ++i) {
+                for (size_type v = 0; v < Vias + 2; ++v) {
                     new_tmp_[i][v] = bag(all_tmp_times[i][v]);
                 }             
             }
-            for (int i = 0; i < Vias + 2; ++i) {
-                for (int v = 0; v < Vias + 2; ++v) {
+            for (size_type i = 0; i < Vias + 2; ++i) {
+                for (size_type v = 0; v < Vias + 2; ++v) {
                     new_tmp_[i][v] = bag(all_tmp_times[i][v]);
                 }
             }
@@ -141,16 +141,16 @@ namespace nigiri::routing {
                 // Empty
             }
 
-            bool dominate(bag b) {
+            bool is_better(bag b) const {
                 return time_ < b.time_
                     && flag;
             }
 
-            bool is_invalid() {
+            bool is_invalid() const {
                 return time_ == kInvalid;
             }
 
-            bool is_better(delta_t time) {
+            bool is_better(delta_t time) const {
                 return time_ < time;
             }
 
@@ -172,12 +172,12 @@ namespace nigiri::routing {
                 auto a = std::array<bag, Vias + 1>{};
                 a.fill(bag());
                 return a;
-                }(););
+                }());
             utl::fill(new_tmp_, []() {
                 auto a = std::array<bag, Vias + 1>{};
                 a.fill(bag());
                 return a;
-                }(););
+                }());
             utl::fill(state_.prev_station_mark_.blocks_, 0U);
             utl::fill(state_.station_mark_.blocks_, 0U);
             utl::fill(state_.route_mark_.blocks_, 0U);
