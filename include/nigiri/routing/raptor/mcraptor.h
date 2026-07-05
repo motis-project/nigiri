@@ -107,7 +107,7 @@ namespace nigiri::routing {
                     new_tmp_[i][v] = bag(all_tmp_times[i][v]);
                 }             
             }
-            new_best_ - resize(all_best_times.size());
+            new_best_.resize(all_best_times.size());
             for (unsigned long i = 0; i < all_best_times.size(); ++i) {
                 for (unsigned long v = 0; v < Vias + 1; ++v) {
                     new_best_[i][v] = bag(all_best_times[i][v]);
