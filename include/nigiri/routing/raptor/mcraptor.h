@@ -701,7 +701,7 @@ namespace nigiri::routing {
 
                 for (auto v = 0U; v != Vias + 1; ++v) {
                     auto const tmp_time = new_tmp_[i][v].time_;
-                    if (new_tmp_[i][v].is_invalid) {
+                    if (new_tmp_[i][v].is_invalid()) {
                         continue;
                     }
                     for_each_footpath<
