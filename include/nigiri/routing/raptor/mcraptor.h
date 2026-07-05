@@ -43,11 +43,6 @@ namespace nigiri::routing {
             a.fill(kInvalid);
             return a;
             }();
-        static constexpr auto const kInvalidBag = []() {
-            auto a = std::array<delta_t, Vias + 1>{};
-            a.fill(bag());
-            return a;
-            }();
         #pragma endregion
 
         #pragma region static_func
@@ -103,8 +98,8 @@ namespace nigiri::routing {
             transfer_time_settings_{ tts } {
             #pragma region inside constructor
             //TODO: avoid copy
-            auto all_tmp_times = state.get_tmp<Vias>());
-            new_tmp_.resize(all_tmp_times.size()))
+            auto all_tmp_times = state.get_tmp<Vias>();
+            new_tmp_.resize(all_tmp_times.size());
             for (int i = 0; i < Vias + 2; ++i) {
                 for (int v = 0; v < Vias + 2; ++v) {
                     new_tmp_[i][v] = bag(all_tmp_times[i][v]);
@@ -142,13 +137,12 @@ namespace nigiri::routing {
             #endif
             }
 
-            bag()
-            {
-                bag(kInvalid);
+            bag() : bag(delta_t{ kInvalid }) {
+                // Empty
             }
 
             bool dominate(bag b) {
-                return time_ < b.delta_t
+                return time_ < b.time_
                     && flag;
             }
 
@@ -174,8 +168,16 @@ namespace nigiri::routing {
         void next_start_time() {
             utl::fill(best_, kInvalidArray);
             utl::fill(tmp_, kInvalidArray);
-            utl::fill(new_best_, kInvalidBag);
-            utl::fill(new_tmp_, kInvalidBag);
+            utl::fill(new_best_, []() {
+                auto a = std::array<bag, Vias + 1>{};
+                a.fill(bag());
+                return a;
+                }(););
+            utl::fill(new_tmp_, []() {
+                auto a = std::array<bag, Vias + 1>{};
+                a.fill(bag());
+                return a;
+                }(););
             utl::fill(state_.prev_station_mark_.blocks_, 0U);
             utl::fill(state_.station_mark_.blocks_, 0U);
             utl::fill(state_.route_mark_.blocks_, 0U);
@@ -843,7 +845,7 @@ namespace nigiri::routing {
                         loc{ tt_, location_idx_t{kIntermodalTarget} },
                         to_unix(new_best_[kIntermodalTarget][Vias].time_), to_unix(end_time));
 
-                    if (!new_best_[kIntermodalTarget][Vias]is_better(end_time)) {
+                    if (!new_best_[kIntermodalTarget][Vias].is_better(end_time)) {
                         round_times_[k][kIntermodalTarget][Vias] = end_time;
                         new_best_[kIntermodalTarget][Vias].time_ = end_time;
                         update_time_at_dest(k, end_time);
@@ -1373,10 +1375,6 @@ namespace nigiri::routing {
             }
         }
 
-        void set_fare_zone(area_idx_t id) {
-            if(id >= 0 && id < numAreas) fare_zones_[id] = 1;
-        }
-        #pragma endregion
 
         #pragma region members
         timetable const& tt_;
