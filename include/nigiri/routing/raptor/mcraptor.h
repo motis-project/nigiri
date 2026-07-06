@@ -146,6 +146,10 @@ namespace nigiri::routing {
                 // Empty
             }
 
+            bool is_invalid() const {
+                return time_ == kInvalid;
+            }
+
             bool operator<=(delta_t time) const {
                 return time_ <= time;
             }
@@ -196,6 +200,11 @@ namespace nigiri::routing {
             }
 
             void add(bag_entry be) {
+
+                if (be.is_invalid()) {
+                    return;
+                }
+
                 std::vector<bag_entry> bad_entries;
                 bool should_add = false;
                 for (auto elem : pareto_set) 
