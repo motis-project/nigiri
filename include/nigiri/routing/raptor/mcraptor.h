@@ -155,7 +155,7 @@ namespace nigiri::routing {
 
             void add(bag bg) {
                 for (auto elem : bg) {
-                    add(bg);
+                    add(elem);
                 }
             }
 
