@@ -81,9 +81,7 @@ namespace nigiri::routing {
             n_rt_transports_{ Rt ? rtt->n_rt_transports() : 0U },
             state_{ state.resize(n_locations_, n_routes_, n_rt_transports_) },
             //TODO:
-            tmp_{ state_.get_tmp<Vias>() },
-            best_{ state_.get_best<Vias>() },
-            round_times_{ state.get_round_times<Vias>() },
+            //round_times_{ state.get_round_times<Vias>() },
             is_dest_{ is_dest },
             is_via_{ is_via },
             dist_to_end_{ dist_to_dest },
@@ -113,6 +111,22 @@ namespace nigiri::routing {
                     new_best_[i][v] = bag(all_best_times[i][v]);
                 }
             }
+
+            auto srcSpan = state.get_round_times<Vias>();
+            round_times_.clear();
+            for (unsigned long k = 0; k < srcSpan.n_rows_; ++k) {
+                std::vector<std::array<bag, Vias>> row;
+                for (unsigned long i = 0; i < srcSpan.n_columns_; ++i) {
+                    std::array<bag, Vias + 1> target_array;
+                    auto srcArray = src_span[k][i];
+                    for (unsigned long v = 0; v < Vias + 1; ++v) {
+                        targetArray[v] = bag(timeArray[v]);
+                    }
+                    row.push_back(target_array);
+                }
+                round_times_.push_back(row);
+            }
+
             assert(Vias == via_stops_.size());
             reset_arrivals();
             if (!dist_to_end_.empty()) {
@@ -259,12 +273,17 @@ namespace nigiri::routing {
 
         void reset_arrivals() {
             utl::fill(time_at_dest_, kInvalid);
-            round_times_.reset(kInvalidArray);
+            //round_times_.reset(kInvalidArray);
+            for (auto ke : round_times_) {
+                for (auto& ie : ke) {
+                    for (auto& ve : ie) {
+                        ve = bag();
+                    }
+                }
+            }
         }
 
         void next_start_time() {
-            utl::fill(best_, kInvalidArray);
-            utl::fill(tmp_, kInvalidArray);
             utl::fill(new_best_, []() {
                 auto a = std::array<bag, Vias + 1>{};
                 a.fill(bag());
@@ -289,12 +308,12 @@ namespace nigiri::routing {
                 "adding start [fwd={}] {}: {}, v={} [current: best={}, round={} => "
                 "best={}]\n",
                 kFwd, loc{ tt_, l }, t, v, to_unix(new_best_[to_idx(l)][v]),
-                to_unix(round_times_[0U][to_idx(l)][v]),
+                to_unix(round_times_[0U][to_idx(l)][v].get_any_time()),
                 get_best(t, to_unix(new_best_[to_idx(l)][v])));
             new_best_[to_idx(l)][v] =
                 get_best(unix_to_delta(base(), t), new_best_[to_idx(l)][v].get_any_time());
-            round_times_[0U][to_idx(l)][v] =
-                get_best(unix_to_delta(base(), t), round_times_[0U][to_idx(l)][v]);
+            round_times_[0U][to_idx(l)][v].replace_any_time(
+                get_best(unix_to_delta(base(), t), round_times_[0U][to_idx(l)][v]));
             state_.station_mark_.set(to_idx(l), true);
         }
 
@@ -315,20 +334,24 @@ namespace nigiri::routing {
             for (auto k = 1U; k != end_k; ++k) {
                 for (auto i = 0U; i != n_locations_; ++i) {
                     for (auto v = 0U; v != Vias + 1; ++v) {
-                        new_best_[i][v] = get_best(round_times_[k][i][v], new_best_[i][v].get_any_time());
+                        // new_best_[i][v].add(round_time_[k][i][v]);
+                        new_best_[i][v].replace_any_time(get_best(round_times_[k][i][v], new_best_[i][v].get_any_time()));
                     }
                 }
+                //COMMENT: bestimmt bestmöglichen Ankunftzeit für i
                 is_dest_.for_each_set_bit([&](std::uint64_t const i) {
                     update_time_at_dest(k, new_best_[i][Vias].get_any_time());
                     });
 
                 auto any_marked = false;
                 state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+                    //COMMENT: markiert die Station (falls es Umstiegsmöglichkeiten gibt) und bestimmt alle Routen, die von der markierten Stationen ausgehn
                     for (auto const& r : tt_.location_routes_[location_idx_t{ i }]) {
                         any_marked = true;
                         state_.route_mark_.set(to_idx(r), true);
                     }
                     if constexpr (Rt) {
+                        //COMMENT: Echtzeit-Fall
                         for (auto const& rt_t :
                             rtt_->location_rt_transports_[location_idx_t{ i }]) {
                             any_marked = true;
@@ -423,10 +446,10 @@ namespace nigiri::routing {
 
             is_dest_.for_each_set_bit([&](auto const i) {
                 for (auto k = 1U; k != end_k; ++k) {
-                    auto const dest_time = round_times_[k][i][Vias];
+                    auto const dest_time = round_times_[k][i][Vias].get_any_times();
                     if (dest_time != kInvalid) {
                         trace("ADDING JOURNEY: start={}, dest={} @ {}, transfers={}\n",
-                            start_time, delta_to_unix(base(), round_times_[k][i][Vias]),
+                            start_time, delta_to_unix(base(), round_times_[k][i][Vias].get_any_time()),
                             loc{ tt_, location_idx_t{i} }, k - 1);
                         auto const [optimal, it, dominated_by] = results.add(
                             journey{ .legs_ = {},
@@ -670,7 +693,7 @@ namespace nigiri::routing {
                         }
 
                         ++stats_.n_earliest_arrival_updated_by_footpath_;
-                        round_times_[k][i][target_v] = fp_target_time;
+                        round_times_[k][i][target_v].replace_any_time(fp_target_time);
                         new_best_[i][target_v].replace_any_time(fp_target_time);
                         state_.station_mark_.set(i, true);
                         if (is_dest) {
@@ -755,7 +778,7 @@ namespace nigiri::routing {
                                 to_unix(fp_target_time), v, target_v, stay);
 
                             ++stats_.n_earliest_arrival_updated_by_footpath_;
-                            round_times_[k][target][target_v] = fp_target_time;
+                            round_times_[k][target][target_v].replace_any_time(fp_target_time);
                             new_best_[target][target_v].replace_any_time(fp_target_time);
                             state_.station_mark_.set(target, true);
                             if (target_v == Vias && is_dest_[target]) {
@@ -853,7 +876,7 @@ namespace nigiri::routing {
                                 target_v, stay);
 
                             ++stats_.n_earliest_arrival_updated_by_footpath_;
-                            round_times_[k][target][target_v] = fp_target_time;
+                            round_times_[k][target][target_v].replace_any_time(fp_target_time);
                             new_best_[target][target_v].replace_any_time(fp_target_time);
                             state_.station_mark_.set(target, true);
                             if (is_dest_[target]) {
@@ -914,7 +937,7 @@ namespace nigiri::routing {
                                 to_unix(new_best_[kIntermodalTarget][Vias].get_any_time()), to_unix(end_time));
 
                             if (!new_best_[kIntermodalTarget][Vias].is_better(end_time)) {
-                                round_times_[k][kIntermodalTarget][Vias] = end_time;
+                                round_times_[k][kIntermodalTarget][Vias].replace_any_time(end_time);
                                 new_best_[kIntermodalTarget][Vias].replace_any_time(end_time);
                                 update_time_at_dest(k, end_time);
                                 trace_upd(" -> update\n");
@@ -943,7 +966,7 @@ namespace nigiri::routing {
                         to_unix(new_best_[kIntermodalTarget][Vias].get_any_time()), to_unix(end_time));
 
                     if (!new_best_[kIntermodalTarget][Vias].is_better(end_time)) {
-                        round_times_[k][kIntermodalTarget][Vias] = end_time;
+                        round_times_[k][kIntermodalTarget][Vias].replace_any_time(end_time);
                         new_best_[kIntermodalTarget][Vias].replace_any_time(end_time);
                         update_time_at_dest(k, end_time);
                         trace_upd(" -> update\n");
@@ -967,7 +990,7 @@ namespace nigiri::routing {
                         auto const end_time = clamp(fp_start_time + dir(duration.count()));
 
                         if (!new_best_[kIntermodalTarget][Vias].is_better(end_time)) {
-                            round_times_[k][kIntermodalTarget][Vias] = end_time;
+                            round_times_[k][kIntermodalTarget][Vias].replace_any_time(end_time);
                             new_best_[kIntermodalTarget][Vias].replace_any_time(end_time);
                             update_time_at_dest(k, end_time);
 
@@ -1050,7 +1073,7 @@ namespace nigiri::routing {
                             }
 
                             auto current_best =
-                                get_best(round_times_[k - 1][l_idx][target_v],
+                                get_best(round_times_[k - 1][l_idx][target_v].get_any_time(),
                                     new_tmp_[l_idx][target_v].get_any_time(), new_best_[l_idx][target_v].get_any_time());
 
                             if (is_better(by_transport, time_at_dest_[k]) &&
@@ -1092,7 +1115,7 @@ namespace nigiri::routing {
                     rt_t, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
                 for (auto v = 0U; v != Vias + 1; ++v) {
                     auto const target_v = v + v_offset[v];
-                    auto const prev_round_time = round_times_[k - 1][l_idx][target_v];
+                    auto const prev_round_time = round_times_[k - 1][l_idx][target_v].get_any_time();
                     if (is_better_or_eq(prev_round_time, by_transport)) {
                         et[v] = true;
                         v_offset[v] = 0;
@@ -1141,7 +1164,7 @@ namespace nigiri::routing {
                         "best={}, "
                         "tmp={}\n",
                         k, v, v_offset[v], stop_idx, loc{ tt_, stp.location_idx() },
-                        to_unix(round_times_[k - 1][l_idx][v]), to_unix(new_best_[l_idx][v].get_any_time()),
+                        to_unix(round_times_[k - 1][l_idx][v].get_any_time()), to_unix(new_best_[l_idx][v].get_any_time()),
                         to_unix(new_tmp_[l_idx][v].get_any_time()));
 
                     if constexpr (WithSectionBikeFilter) {
@@ -1195,7 +1218,7 @@ namespace nigiri::routing {
                         }
 
                         current_best[v] =
-                            get_best(round_times_[k - 1][l_idx][target_v],
+                            get_best(round_times_[k - 1][l_idx][target_v].get_any_time(),
                                 new_tmp_[l_idx][target_v].get_any_time(), new_best_[l_idx][target_v].get_any_time());
 
                         assert(by_transport != std::numeric_limits<delta_t>::min() &&
@@ -1235,7 +1258,7 @@ namespace nigiri::routing {
                                 k, v, target_v, loc{ tt_, location_idx_t{l_idx} },
                                 tt_.transport_name(et[v].t_idx_), tt_.dbg(et[v].t_idx_),
                                 to_unix(by_transport),
-                                to_unix(round_times_[k - 1][l_idx][target_v]),
+                                to_unix(round_times_[k - 1][l_idx][target_v].get_any_time()),
                                 to_unix(new_best_[l_idx][target_v].get_any_time()), to_unix(new_tmp_[l_idx][target_v].get_any_time()),
                                 to_unix(current_best[v]), loc{ tt_, location_idx_t{l_idx} },
                                 lb_[l_idx], to_unix(time_at_dest_[k]),
@@ -1283,7 +1306,7 @@ namespace nigiri::routing {
                         ? time_at_stop(r, et[v], stop_idx,
                             kFwd ? event_type::kDep : event_type::kArr)
                         : kInvalid;
-                    auto const prev_round_time = round_times_[k - 1][l_idx][target_v];
+                    auto const prev_round_time = round_times_[k - 1][l_idx][target_v].get_any_time();
                     if (prev_round_time != kInvalid &&
                         is_better_or_eq(prev_round_time, et_time_at_stop)) {
                         auto const [day, mam] = split(prev_round_time);
@@ -1441,6 +1464,7 @@ namespace nigiri::routing {
 
         bool is_intermodal_dest() const { return !dist_to_end_.empty(); }
 
+        // TODO: bekommt eine Liste aus t
         void update_time_at_dest(unsigned const k, delta_t const t) {
             if constexpr (SearchMode == search_mode::kOneToAll) {
                 return;
@@ -1480,18 +1504,24 @@ namespace nigiri::routing {
         std::uint32_t n_locations_, n_routes_, n_rt_transports_;
         raptor_state& state_;
         bitvec end_reachable_;
-        //TODO: replace vector with more memory efficient type
-        std::span<std::array<delta_t, Vias + 1>> tmp_;
+        //TODO: replace vector with more memory efficient type; and rename to best_/tmp_
         std::vector<std::array<bag, Vias + 1>> new_tmp_;
-        std::span<std::array<delta_t, Vias + 1>> best_;
         std::vector<std::array<bag, Vias + 1>> new_best_;
-        flat_matrix_view<std::array<delta_t, Vias + 1>> round_times_;
+
+        //COMMENT: [n_rows_ -1] -> last matrix_row; [n_columns - 1] -> last Span_entry; [span.size()] -> last array element 
+        //COMMENT: kein resize zum befüllen über loops; größe des matrix dest aber über span von state abhängig
+        //TODO: workaround:ersetze flat_matrix_view mit vec<vec<arr>>
+        //flat_matrix_view<std::array<bag, Vias + 1>> round_times_;
+		std::vector<std::vector<std::array<bag, Vias>>> round_times_;
+
         bitvec const& is_dest_;
         std::array<bitvec, kMaxVias> const& is_via_;
         std::vector<std::uint16_t> const& dist_to_end_;
         hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
         std::vector<std::uint16_t> const& lb_;
         std::vector<via_stop> const& via_stops_;
+
+        //TODO: statt delta_t ein vec<delta_t> oder sogar bag
         std::array<delta_t, kMaxTransfers + 2> time_at_dest_;
         day_idx_t base_;
         raptor_stats stats_;
