@@ -164,13 +164,22 @@ namespace nigiri::routing {
                 return time_ == kInvalid;
             }
 
-            bool operator<=(delta_t time) const {
-                return time_ <= time;
+            bool operator<=(const delta_t time) const {
+                return kFwd ? (time_ <= time ):(time_ >= time);
             }
 
             bool operator<=(const bag_entry& cmp) const {
-                return time_ <= cmp.time_;
+                return kFwd ? (time_ <= cmp.time_):(time_>=cmp.time_);
             }
+
+            bool operator<(const delta_t time) const {
+                return kFwd ? (time_ < time) : (time_ > time);
+            }
+
+            bool operator<(const bag_entry& cmp) const {
+                return kFwd ? (time_ < cmp.time_) : (time_ > cmp.time_);
+            }
+
         };
 
         struct bag {
@@ -194,14 +203,11 @@ namespace nigiri::routing {
             bool is_better(bag b) const {
                 for (auto this_ele : pareto_set) {
                     for (auto b_ele : b.pareto_set) {
-                        if (b_ele <= this_ele)
+                        if (b_ele < this_ele)
                             return false;
                     }
                 }
                 return true;
-
-                return time_ < b.get_any_time()
-                    && flag;
             }
 
             bool is_invalid() const {
@@ -210,7 +216,18 @@ namespace nigiri::routing {
 
             bool is_better(delta_t time) const {
                 for(auto e: pareto_set)
-                    if (!(e <= time)) return false;
+                    if (!(e < time)) return false;
+                return true;
+            }
+
+            bool is_better_with_offset(delta_t offset, bag b) {
+                for (auto this_ele : pareto_set) {
+                    for (auto b_ele : b.pareto_set) {
+                        bag_entry offset_ele = bag_entry(this_ele.time_ + offset);
+                        if (!(offset_ele < b_ele))
+                            return false;
+                    }
+                }
                 return true;
             }
 
@@ -726,8 +743,7 @@ namespace nigiri::routing {
                     if (!new_best_[i][target_v].is_better(fp_target_time) &&
                         fp_target_time.is_better( time_at_dest_[k])) {
                         if (lb_[i] == kUnreachable ||
-                            // TODO: 
-                            !is_better(fp_target_time.get_any_time() + dir(lb_[i]), time_at_dest_[k].get_any_time())) {
+                            !fp_target_time.is_better_with_offset(dir(lb_[i]), time_at_dest_[k])) {
                             ++stats_.fp_update_prevented_by_lower_bound_;
                             return;
                         }
@@ -793,9 +809,7 @@ namespace nigiri::routing {
                             fp_target_time.is_better( time_at_dest_[k]) {
                             auto const lower_bound = lb_[target];
                             if (lower_bound == kUnreachable ||
-                                //TODO:
-                                !is_better(fp_target_time.get_any_time() + dir(lower_bound),
-                                    time_at_dest_[k].get_any_time())) {
+                                !fp_target_time.is_better_with_offset(dir(lower_bound), time_at_dest_[k])) {
                                 ++stats_.fp_update_prevented_by_lower_bound_;
                                 trace_upd(
                                     "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
@@ -893,9 +907,7 @@ namespace nigiri::routing {
                             fp_target_time.is_better(time_at_dest_[k])) {
                             auto const lower_bound = lb_[target];
                             if (lower_bound == kUnreachable ||
-                                //TODO:
-                                !is_better(fp_target_time.get_any_time() + dir(lower_bound),
-                                    time_at_dest_[k].get_any_time())) {
+                                !fp_target_time.is_better_with_offset(dir(lower_bound), time_at_dest_[k])) {
                                 ++stats_.fp_update_prevented_by_lower_bound_;
                                 trace_upd(
                                     "┊ ├k={} *** LB NO TD FP UPD: (from={}, tmp={}) --{}--> "
@@ -1023,7 +1035,8 @@ namespace nigiri::routing {
                     if (fp_start_time.is_invalid()) {
                         return;
                     }
-                    //TODO: ist mir erstmal zu kompliziert
+                    //TODO: für mich zu kompliziert. evtl muss für jeden label ein instanz erstellt werden (siehe: td_footpath.h)
+                    //COMMENT: fp bzw. duration wird nur für trace verwendet -> wird erstmal ignoriert
                     auto const fp =
                         get_td_duration<SearchDir>(it->second, to_unix(fp_start_time.get_any_time()));
                     if (fp.has_value()) {
@@ -1503,7 +1516,6 @@ namespace nigiri::routing {
 
         bool is_intermodal_dest() const { return !dist_to_end_.empty(); }
 
-        // TODO: bekommt eine Liste aus t
         void update_time_at_dest(unsigned const k, bag const b) {
             if constexpr (SearchMode == search_mode::kOneToAll) {
                 return;
@@ -1560,7 +1572,6 @@ namespace nigiri::routing {
         std::vector<std::uint16_t> const& lb_;
         std::vector<via_stop> const& via_stops_;
 
-        //TODO: statt delta_t ein vec<delta_t> oder sogar bag
         std::array<bag, kMaxTransfers + 2> time_at_dest_;
         day_idx_t base_;
         raptor_stats stats_;
