@@ -26,6 +26,41 @@ namespace nigiri::routing {
         search_mode SearchMode>
     struct mcraptor {
 
+#pragma region members
+        timetable const& tt_;
+        rt_timetable const* rtt_{ nullptr };
+        int n_days_;
+        std::uint32_t n_locations_, n_routes_, n_rt_transports_;
+        raptor_state& state_;
+        bitvec end_reachable_;
+        //TODO: replace vector with more memory efficient type; and rename to best_/tmp_
+        std::vector<std::array<bag, Vias + 1>> new_tmp_;
+        std::vector<std::array<bag, Vias + 1>> new_best_;
+
+        //COMMENT: [n_rows_ -1] -> last matrix_row; [n_columns - 1] -> last Span_entry; [span.size()] -> last array element 
+        //COMMENT: kein resize zum befüllen über loops; größe des matrix dest aber über span von state abhängig
+        //TODO: workaround:ersetze flat_matrix_view mit vec<vec<arr>>
+        //flat_matrix_view<std::array<bag, Vias + 1>> round_times_;
+        std::vector<std::vector<std::array<bag, Vias>>> round_times_;
+
+        bitvec const& is_dest_;
+        std::array<bitvec, kMaxVias> const& is_via_;
+        std::vector<std::uint16_t> const& dist_to_end_;
+        hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
+        std::vector<std::uint16_t> const& lb_;
+        std::vector<via_stop> const& via_stops_;
+
+        std::array<bag, kMaxTransfers + 2> time_at_dest_;
+        day_idx_t base_;
+        raptor_stats stats_;
+        clasz_mask_t allowed_claszes_;
+        bool require_bike_transport_;
+        bool require_car_transport_;
+        bool is_wheelchair_;
+        transfer_time_settings transfer_time_settings_;
+
+#pragma endregion
+
         using algo_state_t = raptor_state;
         using algo_stats_t = raptor_stats;
 
@@ -1548,40 +1583,7 @@ namespace nigiri::routing {
         }
         #pragma endregion
 
-        #pragma region members
-        timetable const& tt_;
-        rt_timetable const* rtt_{ nullptr };
-        int n_days_;
-        std::uint32_t n_locations_, n_routes_, n_rt_transports_;
-        raptor_state& state_;
-        bitvec end_reachable_;
-        //TODO: replace vector with more memory efficient type; and rename to best_/tmp_
-        std::vector<std::array<bag, Vias + 1>> new_tmp_;
-        std::vector<std::array<bag, Vias + 1>> new_best_;
 
-        //COMMENT: [n_rows_ -1] -> last matrix_row; [n_columns - 1] -> last Span_entry; [span.size()] -> last array element 
-        //COMMENT: kein resize zum befüllen über loops; größe des matrix dest aber über span von state abhängig
-        //TODO: workaround:ersetze flat_matrix_view mit vec<vec<arr>>
-        //flat_matrix_view<std::array<bag, Vias + 1>> round_times_;
-        std::vector<std::vector<std::array<bag, Vias>>> round_times_;
-
-        bitvec const& is_dest_;
-        std::array<bitvec, kMaxVias> const& is_via_;
-        std::vector<std::uint16_t> const& dist_to_end_;
-        hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
-        std::vector<std::uint16_t> const& lb_;
-        std::vector<via_stop> const& via_stops_;
-
-        std::array<bag, kMaxTransfers + 2> time_at_dest_;
-        day_idx_t base_;
-        raptor_stats stats_;
-        clasz_mask_t allowed_claszes_;
-        bool require_bike_transport_;
-        bool require_car_transport_;
-        bool is_wheelchair_;
-        transfer_time_settings transfer_time_settings_;
-
-        #pragma endregion
     };
 
 }  // namespace nigiri::routing
