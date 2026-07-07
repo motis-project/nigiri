@@ -501,7 +501,6 @@ namespace nigiri::routing {
             }
 
             //COMMENT: hier werden die journeys erstellt
-            //TODO: über bag_entries iterieren und alle möglichen journeys erstellen
             is_dest_.for_each_set_bit([&](auto const i) {
                 for (auto k = 1U; k != end_k; ++k) {
                     auto const dest_time = round_times_[k][i][Vias];
@@ -509,12 +508,15 @@ namespace nigiri::routing {
                         trace("ADDING JOURNEY: start={}, dest={} @ {}, transfers={}\n",
                             start_time, delta_to_unix(base(), round_times_[k][i][Vias].get_any_time()),
                             loc{ tt_, location_idx_t{i} }, k - 1);
-                        auto const [optimal, it, dominated_by] = results.add(
-                            journey{ .legs_ = {},
-                                    .start_time_ = start_time,
-                                    .dest_time_ = delta_to_unix(base(), dest_time.get_any_time()),
-                                    .dest_ = location_idx_t{i},
-                                    .transfers_ = static_cast<std::uint8_t>(k - 1) });
+                        for (auto label : dest_time.pareto_set) {
+                            // TODO: added criteria should also be added in journey
+                            auto const [optimal, it, dominated_by] = results.add(
+                                journey{ .legs_ = {},
+                                        .start_time_ = start_time,
+                                        .dest_time_ = delta_to_unix(base(), label.time_),
+                                        .dest_ = location_idx_t{i},
+                                        .transfers_ = static_cast<std::uint8_t>(k - 1) });
+                        }
                         if (!optimal) {
                             trace("  DOMINATED BY: start={}, dest={} @ {}, transfers={}\n",
                                 dominated_by->start_time_, dominated_by->dest_time_,
