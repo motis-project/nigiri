@@ -32,9 +32,9 @@ namespace nigiri::routing {
 
 
             bag_entry(delta_t time) : time_(time) {
-#ifdef kFalseFlag
+                #ifdef kFalseFlag
                 flag = (static_cast<unsigned long long>(time_) % 2); // prefer even (only for testing)
-#endif
+                #endif
             }
 
             bool is_invalid() const {
@@ -47,6 +47,10 @@ namespace nigiri::routing {
 
             bool operator<=(const bag_entry& cmp) const {
                 return kFwd ? (time_ <= cmp.time_) : (time_ >= cmp.time_);
+            }
+
+            bool operator==(const bag_entry& cmp) const {
+                return time_ == cmp.time_;
             }
 
             bool operator<(const delta_t time) const {
@@ -126,7 +130,7 @@ namespace nigiri::routing {
 
                 pareto_set.erase(std::remove_if(pareto_set.begin()
                     , pareto_set.end()
-                    , [&](int toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != bad_entries.end();})
+                    , [&](auto const& toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != bad_entries.end();})
                     , pareto_set.end());
                 if(should_add) pareto_set.push_back(be);
             }
@@ -148,13 +152,13 @@ namespace nigiri::routing {
 
                 pareto_set.erase(std::remove_if(pareto_set.begin()
                     , pareto_set.end()
-                    , [&](int toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != bad_entries.end();})
+                    , [&](auto const& toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != bad_entries.end();})
                     , pareto_set.end());
                 if(should_add) pareto_set.push_back(bag_entry(t));
             }
 
             void add(bag bg) {
-                for (auto elem : bg) {
+                for (auto elem : bg.pareto_set) {
                     add(elem);
                 }
             }
@@ -162,9 +166,9 @@ namespace nigiri::routing {
             template <typename... Args>
             bag copy(Args... t) {
                 bag ret = bag();
-                ret.add(this);
+                ret.add(*this);
                 for (auto e : ret.pareto_set) {
-                    e.time_ = clamp(e.time_ + (... + t));
+                    e.time_ = clamp((e.time_ + ... + t));
                 }
                 return ret;
             }
