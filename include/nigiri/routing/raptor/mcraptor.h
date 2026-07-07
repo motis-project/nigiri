@@ -233,7 +233,37 @@ namespace nigiri::routing {
                                                 , pareto_set.end()
                                                 , [&](int toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != b.end();})
                                 , pareto_set.end());
+                pareto_set.push_back(be);
             }
+
+            void add(delta_t t) {
+                if (t == kInvalid) {
+                    return;
+                }
+
+                std::vector<bag_entry> bad_entries;
+                bool should_add = false;
+                for (auto elem : pareto_set)
+                {
+                    if (!(elem<=t)) {
+                        should_add = true;
+                        bad_entries.push_back(elem);
+                    }
+                }
+
+                pareto_set.erase(std::remove_if(pareto_set.begin()
+                    , pareto_set.end()
+                    , [&](int toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != b.end();})
+                    , pareto_set.end());
+                pareto_set.push_back(bag_entry(t));
+            }
+
+            void add(bag bg) {
+                for (auto elem : bg) {
+                    add(bg);
+                }
+            }
+
             // Depricated
             delta_t get_any_time() {
                 if (pareto_set.empty()) {
@@ -310,10 +340,8 @@ namespace nigiri::routing {
                 kFwd, loc{ tt_, l }, t, v, to_unix(new_best_[to_idx(l)][v]),
                 to_unix(round_times_[0U][to_idx(l)][v].get_any_time()),
                 get_best(t, to_unix(new_best_[to_idx(l)][v])));
-            new_best_[to_idx(l)][v] =
-                get_best(unix_to_delta(base(), t), new_best_[to_idx(l)][v].get_any_time());
-            round_times_[0U][to_idx(l)][v].replace_any_time(
-                get_best(unix_to_delta(base(), t), round_times_[0U][to_idx(l)][v]));
+            new_best_[to_idx(l)][v].add(unix_to_delta(base(), t));
+            round_times_[0U][to_idx(l)][v].add( unix_to_delta(base(), t));
             state_.station_mark_.set(to_idx(l), true);
         }
 
@@ -335,7 +363,7 @@ namespace nigiri::routing {
                 for (auto i = 0U; i != n_locations_; ++i) {
                     for (auto v = 0U; v != Vias + 1; ++v) {
                         // new_best_[i][v].add(round_time_[k][i][v]);
-                        new_best_[i][v].replace_any_time(get_best(round_times_[k][i][v], new_best_[i][v].get_any_time()));
+                        new_best_[i][v].add(round_times_[k][i][v]);
                     }
                 }
                 //COMMENT: bestimmt bestmöglichen Ankunftzeit für i
@@ -692,9 +720,10 @@ namespace nigiri::routing {
                             return;
                         }
 
+                        //COMMENT: gegeben aus if-Bedingung: fp_target_time < round_times_[k] und best_
                         ++stats_.n_earliest_arrival_updated_by_footpath_;
-                        round_times_[k][i][target_v].replace_any_time(fp_target_time);
-                        new_best_[i][target_v].replace_any_time(fp_target_time);
+                        round_times_[k][i][target_v].add(fp_target_time);
+                        new_best_[i][target_v].add(fp_target_time);
                         state_.station_mark_.set(i, true);
                         if (is_dest) {
                             update_time_at_dest(k, fp_target_time);
@@ -777,9 +806,10 @@ namespace nigiri::routing {
                                 loc{ tt_, fp.target() }, to_unix(new_best_[target][target_v].get_any_time()),
                                 to_unix(fp_target_time), v, target_v, stay);
 
+                            //COMMENT: gegeben aus if-Bedingung: fp_target_time < round_times_[k] und best_
                             ++stats_.n_earliest_arrival_updated_by_footpath_;
-                            round_times_[k][target][target_v].replace_any_time(fp_target_time);
-                            new_best_[target][target_v].replace_any_time(fp_target_time);
+                            round_times_[k][target][target_v].add(fp_target_time);
+                            new_best_[target][target_v].add(fp_target_time);
                             state_.station_mark_.set(target, true);
                             if (target_v == Vias && is_dest_[target]) {
                                 update_time_at_dest(k, fp_target_time);
@@ -875,9 +905,10 @@ namespace nigiri::routing {
                                 to_unix(new_best_[target][target_v].get_any_time()), to_unix(fp_target_time), v,
                                 target_v, stay);
 
+                            //COMMENT: gegeben aus if-Bedingung: fp_target_time < round_times_[k] und best_
                             ++stats_.n_earliest_arrival_updated_by_footpath_;
-                            round_times_[k][target][target_v].replace_any_time(fp_target_time);
-                            new_best_[target][target_v].replace_any_time(fp_target_time);
+                            round_times_[k][target][target_v].add(fp_target_time);
+                            new_best_[target][target_v].add(fp_target_time);
                             state_.station_mark_.set(target, true);
                             if (is_dest_[target]) {
                                 update_time_at_dest(k, fp_target_time);
@@ -937,8 +968,8 @@ namespace nigiri::routing {
                                 to_unix(new_best_[kIntermodalTarget][Vias].get_any_time()), to_unix(end_time));
 
                             if (!new_best_[kIntermodalTarget][Vias].is_better(end_time)) {
-                                round_times_[k][kIntermodalTarget][Vias].replace_any_time(end_time);
-                                new_best_[kIntermodalTarget][Vias].replace_any_time(end_time);
+                                round_times_[k][kIntermodalTarget][Vias].add(end_time);
+                                new_best_[kIntermodalTarget][Vias].add(end_time);
                                 update_time_at_dest(k, end_time);
                                 trace_upd(" -> update\n");
                             }
@@ -966,8 +997,8 @@ namespace nigiri::routing {
                         to_unix(new_best_[kIntermodalTarget][Vias].get_any_time()), to_unix(end_time));
 
                     if (!new_best_[kIntermodalTarget][Vias].is_better(end_time)) {
-                        round_times_[k][kIntermodalTarget][Vias].replace_any_time(end_time);
-                        new_best_[kIntermodalTarget][Vias].replace_any_time(end_time);
+                        round_times_[k][kIntermodalTarget][Vias].add(end_time);
+                        new_best_[kIntermodalTarget][Vias].add(end_time);
                         update_time_at_dest(k, end_time);
                         trace_upd(" -> update\n");
                     }
@@ -990,8 +1021,8 @@ namespace nigiri::routing {
                         auto const end_time = clamp(fp_start_time + dir(duration.count()));
 
                         if (!new_best_[kIntermodalTarget][Vias].is_better(end_time)) {
-                            round_times_[k][kIntermodalTarget][Vias].replace_any_time(end_time);
-                            new_best_[kIntermodalTarget][Vias].replace_any_time(end_time);
+                            round_times_[k][kIntermodalTarget][Vias].add(end_time);
+                            new_best_[kIntermodalTarget][Vias].add(end_time);
                             update_time_at_dest(k, end_time);
 
                             trace(
@@ -1090,8 +1121,7 @@ namespace nigiri::routing {
                                     loc{ tt_, stp.location_idx() });
 
                                 ++stats_.n_earliest_arrival_updated_by_route_;
-                                new_tmp_[l_idx][target_v].replace_any_time(
-                                    get_best(by_transport, new_tmp_[l_idx][target_v].get_any_time()));
+                                new_tmp_[l_idx][target_v].add(get_best(by_transport));
                                 state_.station_mark_.set(l_idx, true);
                                 if (is_better(by_transport, current_best)) {
                                     current_best = by_transport;
@@ -1237,8 +1267,7 @@ namespace nigiri::routing {
                                 loc{ tt_, stp.location_idx() });
 
                             ++stats_.n_earliest_arrival_updated_by_route_;
-                            new_tmp_[l_idx][target_v].replace_any_time(
-                                get_best(by_transport, new_tmp_[l_idx][target_v].get_any_time()));
+                            new_tmp_[l_idx][target_v].add(get_best(by_transport));
                             state_.station_mark_.set(l_idx, true);
                             if (is_better(by_transport, current_best[v])) {
                                 current_best[v] = by_transport;
