@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdlib>
+
 #include "fmt/format.h"
 
 #include "utl/enumerate.h"
@@ -210,6 +212,24 @@ struct search {
               algo_.get_stats().to_map()};
     }
 
+    // interval search processes start times toward a fixed destination in
+    // dominance order (see add_start_labels' sort): enable rRAPTOR bag
+    // reuse so later-departing starts prune earlier ones (raptor.h does
+    // this via round_times; mcraptor needs the flag). No-op for algos that
+    // do not expose it (plain raptor has its own reuse built in).
+    // rRAPTOR bag reuse: opt-in while the cross-start frontier's
+    // interaction with destination pruning is being finished (it can
+    // over-prune a late departure). Enable with NIGIRI_RANGE_REUSE=1.
+    if constexpr (requires { algo_.set_range_reuse(true); }) {
+      static bool const on = std::getenv("NIGIRI_RANGE_REUSE") != nullptr;
+      algo_.set_range_reuse(on);
+    }
+    // A/B kill switch for the boarding watermark (single-departure path).
+    if constexpr (requires { algo_.set_use_watermark(true); }) {
+      static bool const off = std::getenv("NIGIRI_NO_WATERMARK") != nullptr;
+      algo_.set_use_watermark(!off);
+    }
+
     auto const itv_est = interval_estimator<SearchDir>{tt_, q_};
     if (is_pretrip()) {
       search_interval_ = itv_est.initial(search_interval_);
@@ -325,12 +345,15 @@ struct search {
                                          state_.results_);
 
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
-        return std::tuple{a.start_time_, a.transfers_} <
-               std::tuple{b.start_time_, b.transfers_};
+        return std::tuple{a.start_time_, a.transfers_, a.dest_time_,
+                          a.criteria_cost_} <
+               std::tuple{b.start_time_, b.transfers_, b.dest_time_,
+                          b.criteria_cost_};
       });
     }
 
-    utl::erase_if(state_.results_, [&](auto&& j) { return j.legs_.empty(); });
+    utl::erase_if(state_.results_,
+                  [&](auto&& j) { return !j.is_reconstructed_; });
 
     stats_.execute_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -374,15 +397,19 @@ private:
     });
   }
 
+  bool is_tuple_dominated(journey const& j) const {
+    return utl::any_of(state_.results_, [&](journey const& o) {
+      return &o != &j && o.tuple_dominates(j);
+    });
+  }
+
   unsigned n_results_in_interval() const {
-    if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
-      auto count = utl::count_if(state_.results_, [&](journey const& j) {
-        return search_interval_.contains(j.start_time_);
-      });
-      return static_cast<unsigned>(count);
-    } else {
-      return static_cast<unsigned>(state_.results_.size());
-    }
+    auto count = utl::count_if(state_.results_, [&](journey const& j) {
+      return (!holds_alternative<interval<unixtime_t>>(q_.start_time_) ||
+              search_interval_.contains(j.start_time_)) &&
+             !is_tuple_dominated(j);
+    });
+    return static_cast<unsigned>(count);
   }
 
   bool max_interval_reached() const {
@@ -452,7 +479,7 @@ private:
           kFwd ? ++stats_.n_execute_fwd_ : ++stats_.n_execute_bwd_;
 
           for (auto& j : state_.results_) {
-            if (j.legs_.empty() && !j.error_ &&
+            if (!j.is_reconstructed_ && !j.error_ &&
                 (is_ontrip() || search_interval_.contains(j.start_time_)) &&
                 j.travel_time() < fastest_direct_) {
               try {

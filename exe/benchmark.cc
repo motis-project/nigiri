@@ -11,6 +11,8 @@
 #include "nigiri/logging.h"
 #include "nigiri/qa/qa.h"
 #include "nigiri/query_generator/generator.h"
+#include "nigiri/routing/raptor/mcraptor.h"
+#include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
@@ -78,6 +80,9 @@ struct benchmark_result {
     using double_seconds_t = std::chrono::duration<double, std::ratio<1>>;
     out << "(t_total: " << std::fixed << std::setprecision(3) << std::setw(9)
         << std::chrono::duration_cast<double_seconds_t>(br.total_time_).count()
+        << "s, t_mc: " << std::setw(9)
+        << std::chrono::duration_cast<double_seconds_t>(br.mc_total_time_)
+               .count()
         << "s, t_exec: " << std::setw(9)
         << std::chrono::duration_cast<double_seconds_t>(
                br.routing_result_.search_stats_.execute_time_)
@@ -97,6 +102,7 @@ struct benchmark_result {
   routing_result routing_result_;
   pareto_set<journey> journeys_;
   std::chrono::milliseconds total_time_;
+  std::chrono::milliseconds mc_total_time_;
 };
 
 void generate_queries(
@@ -137,37 +143,142 @@ nigiri::pareto_set<nigiri::routing::journey> raptor_search(
 void process_queries(
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
     std::vector<benchmark_result>& results,
-    nigiri::timetable const& tt) {
+    nigiri::timetable const& tt,
+    bool const use_pong) {
   results.reserve(queries.size());
-  std::mutex mutex;
   {
     auto query_processing_timer =
         scoped_timer(fmt::format("processing of {} queries", queries.size()));
     auto const progress_tracker = utl::activate_progress_tracker("benchmark");
-    utl::get_global_progress_trackers().silent_ = false;
     progress_tracker->status("processing queries").in_high(queries.size());
+
     struct query_state {
       search_state ss_;
+      search_state mc_ss_;  // separate required for result comparison
       raptor_state rs_;
-    };
-    utl::parallel_for_run_threadlocal<query_state>(
-        queries.size(), [&](auto& query_state, auto const q_idx) {
-          try {
-            auto const total_time_start = std::chrono::steady_clock::now();
-            auto const result = routing::raptor_search(
-                tt, nullptr, query_state.ss_, query_state.rs_,
-                queries[q_idx].q_, direction::kForward);
-            auto const total_time_stop = std::chrono::steady_clock::now();
-            auto const guard = std::lock_guard{mutex};
-            results.emplace_back(benchmark_result{
-                q_idx, result, *result.journeys_,
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    total_time_stop - total_time_start)});
-            progress_tracker->increment();
-          } catch (std::exception const& e) {
-            std::cout << e.what();
+      mcraptor_state mc_rs_;
+    } query_state;
+
+    for (auto q_idx = std::uint64_t{0U}; q_idx != queries.size(); ++q_idx) {
+      try {
+        auto const total_time_start = std::chrono::steady_clock::now();
+        auto const result =
+            use_pong ? routing::pong_search(tt, nullptr, query_state.ss_,
+                                            query_state.rs_, queries[q_idx].q_,
+                                            direction::kForward)
+                     : routing::raptor_search(
+                           tt, nullptr, query_state.ss_, query_state.rs_,
+                           queries[q_idx].q_, direction::kForward);
+        auto const total_time_stop = std::chrono::steady_clock::now();
+
+        auto const mc_total_time_start = std::chrono::steady_clock::now();
+        auto const mc_result =
+            use_pong
+                ? routing::pong_search(tt, nullptr, query_state.mc_ss_,
+                                       query_state.mc_rs_, queries[q_idx].q_,
+                                       direction::kForward)
+                : routing::raptor_search(
+                      tt, nullptr, query_state.mc_ss_, query_state.mc_rs_,
+                      queries[q_idx].q_, direction::kForward);
+        auto const mc_total_time_stop = std::chrono::steady_clock::now();
+
+        auto const total_us =
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                total_time_stop - total_time_start);
+        auto const total_mc_us =
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                mc_total_time_stop - mc_total_time_start);
+
+        std::cout << "raptor=" << total_us.count()
+                  << "us, mcraptor=" << total_mc_us.count() << "us\n";
+
+        std::cout << "  stats (baseline vs mcraptor):\n";
+        auto const mc_algo_stats = mc_result.algo_stats_;
+        for (auto const& [name, val] : result.algo_stats_) {
+          auto const it = mc_algo_stats.find(name);
+          auto const mc_val = it == end(mc_algo_stats) ? 0ULL : it->second;
+          std::cout << "    " << std::left << std::setw(45) << name
+                    << std::right << std::setw(12) << val << " vs "
+                    << std::setw(12) << mc_val << "\n";
+        }
+        std::cout << "    " << std::left << std::setw(45) << "n_execute"
+                  << std::right << std::setw(12)
+                  << (result.search_stats_.n_execute_fwd_ +
+                      result.search_stats_.n_execute_bwd_)
+                  << " vs " << std::setw(12)
+                  << (mc_result.search_stats_.n_execute_fwd_ +
+                      mc_result.search_stats_.n_execute_bwd_)
+                  << "\n";
+
+        auto const dominates = [](journey const& a, journey const& b) {
+          return a.start_time_ >= b.start_time_ &&
+                 a.dest_time_ <= b.dest_time_ && a.transfers_ <= b.transfers_;
+        };
+        auto const covered = [&](journey const& j, auto const& by) {
+          return std::any_of(begin(by), end(by),
+                             [&](journey const& o) { return dominates(o, j); });
+        };
+        auto mc_misses = 0, cpu_misses = 0;
+        for (auto const& c : *result.journeys_) {
+          if (!covered(c, *mc_result.journeys_)) {
+            ++mc_misses;
           }
-        });
+        }
+        for (auto const& g : *mc_result.journeys_) {
+          if (!covered(g, *result.journeys_)) {
+            ++cpu_misses;
+          }
+        }
+        if (mc_misses != 0 || cpu_misses != 0) {
+          auto const key = [](journey const& j) {
+            return fmt::format("dep={} arr={} transfers={}", j.start_time_,
+                               j.dest_time_, j.transfers_);
+          };
+          std::cout << "query #" << q_idx << " MC_MISSES_CPU=" << mc_misses
+                    << " CPU_MISSES_MC=" << cpu_misses
+                    << " cpu_intvl=" << result.interval_
+                    << " mc_intvl=" << mc_result.interval_ << "\n";
+          if (mc_misses != 0) {
+            std::cout << "  MC-pareto: ";
+            for (auto const& g : *mc_result.journeys_) {
+              std::cout << "[" << key(g) << "] ";
+            }
+            std::cout << "\n";
+            for (auto const& c : *result.journeys_) {
+              if (!covered(c, *mc_result.journeys_)) {
+                std::cout << "  === MISSED-BY-MC: " << key(c) << " ===\n";
+                c.print(std::cout, tt);
+                std::cout << "\n";
+              }
+            }
+          }
+          if (cpu_misses != 0) {
+            std::cout << "  CPU-pareto: ";
+            for (auto const& c : *result.journeys_) {
+              std::cout << "[" << key(c) << "] ";
+            }
+            std::cout << "\n";
+            for (auto const& g : *mc_result.journeys_) {
+              if (!covered(g, *result.journeys_)) {
+                std::cout << "  === MC-EXTRA (not dominated by CPU): "
+                          << key(g) << " ===\n";
+                g.print(std::cout, tt);
+                std::cout << "\n";
+              }
+            }
+          }
+        }
+        results.emplace_back(benchmark_result{
+            q_idx, result, *result.journeys_,
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                total_time_stop - total_time_start),
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                mc_total_time_stop - mc_total_time_start)});
+        progress_tracker->increment();
+      } catch (std::exception const& e) {
+        std::cerr << "query #" << q_idx << " FAILED: " << e.what() << std::endl;
+      }
+    }
   }
 }
 
@@ -209,6 +320,15 @@ void print_results(
     return a.total_time_ < b.total_time_;
   });
   print_result(results, "total_time");
+
+  utl::sort(results, [](auto const& a, auto const& b) {
+    return a.mc_total_time_ < b.mc_total_time_;
+  });
+  print_result(results, "mcraptor_total_time");
+
+  utl::sort(results, [](auto const& a, auto const& b) {
+    return a.total_time_ < b.total_time_;
+  });
 
   auto const visit_coord = [](geo::latlng const& coord) {
     std::stringstream ss;
@@ -333,6 +453,7 @@ int main(int argc, char* argv[]) {
   auto seed = std::int64_t{-1};
   auto min_transfer_time = duration_t::rep{};
   auto qa_path = std::filesystem::path{};
+  auto algorithm = std::string{"raptor"};
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
@@ -406,7 +527,10 @@ int main(int argc, char* argv[]) {
       ("dest_loc", bpo::value<location_idx_t::value_t>(&dest_loc_val),
        "destination location for random queries")  //
       ("qa_path,q", bpo::value(&qa_path),
-       "path to write the journey criteria to for qa");
+       "path to write the journey criteria to for qa")  //
+      ("algorithm,a", bpo::value(&algorithm)->default_value(algorithm),
+       "baseline routing algorithm: 'raptor' (interval extension) or 'pong'; "
+       "each query additionally runs McRAPTOR for timing + verification");
   bpo::variables_map vm;
   bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
 
@@ -519,21 +643,29 @@ int main(int argc, char* argv[]) {
   }
   // process program options - end
 
+  auto const use_pong = algorithm == "pong";
+  std::cout << "algorithm: " << (use_pong ? "pong" : "raptor") << "\n";
+
   auto queries = std::vector<nigiri::query_generation::start_dest_query>{};
   generate_queries(queries, n_queries, tt, gs, seed);
 
   auto results = std::vector<benchmark_result>{};
-  process_queries(queries, results, tt);
+  process_queries(queries, results, tt, use_pong);
 
   print_results(queries, results, tt, gs, tt_path);
 
   print_memory_usage();
 
   auto total = std::chrono::milliseconds{0U};
+  auto mc_total = std::chrono::milliseconds{0U};
   for (auto const& res : results) {
     total += res.total_time_;
+    mc_total += res.mc_total_time_;
   }
   std::cout << "AVG: " << (static_cast<double>(total.count()) / results.size())
+            << "ms\n"
+            << "AVG (mcraptor): "
+            << (static_cast<double>(mc_total.count()) / results.size())
             << "ms\n";
 
   if (vm.count("qa_path")) {

@@ -2,6 +2,7 @@
 
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 #include "date/date.h"
@@ -15,38 +16,51 @@
 
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 
 namespace nigiri::routing {
 
 namespace {
 
-template <direction SearchDir, via_offset_t Vias>
+// the algorithm belonging to a state type: any basic_mcraptor_state<C>
+// selects the matching basic_mcraptor<Dir, C> instantiation
+template <direction SearchDir, via_offset_t Vias, bool Rt, typename AlgoState>
+struct algo_for {
+  using type = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>;
+};
+
+template <direction SearchDir, via_offset_t Vias, bool Rt, typename Criteria>
+struct algo_for<SearchDir, Vias, Rt, basic_mcraptor_state<Criteria>> {
+  using type = basic_mcraptor<SearchDir, Criteria>;
+};
+
+template <direction SearchDir, via_offset_t Vias, typename AlgoState>
 routing_result raptor_search_with_vias(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
-    raptor_state& r_state,
+    AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
   if (rtt == nullptr) {
-    using algo_t = raptor<SearchDir, false, Vias, search_mode::kOneToOne>;
+    using algo_t = typename algo_for<SearchDir, Vias, false, AlgoState>::type;
     return search<SearchDir, algo_t>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();
   } else {
-    using algo_t = raptor<SearchDir, true, Vias, search_mode::kOneToOne>;
+    using algo_t = typename algo_for<SearchDir, Vias, true, AlgoState>::type;
     return search<SearchDir, algo_t>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();
   }
 }
 
-template <direction SearchDir>
+template <direction SearchDir, typename AlgoState>
 routing_result raptor_search_with_dir(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
-    raptor_state& r_state,
+    AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
   q.sanitize(tt);
@@ -84,11 +98,12 @@ std::string_view location_match_mode_str(location_match_mode const mode) {
 
 }  // namespace
 
+template <typename AlgoState>
 routing_result raptor_search(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
-    raptor_state& r_state,
+    AlgoState& r_state,
     query q,
     direction const search_dir,
     std::optional<std::chrono::seconds> const timeout) {
@@ -149,5 +164,29 @@ routing_result raptor_search(
         tt, rtt, s_state, r_state, std::move(q), timeout);
   }
 }
+
+template routing_result raptor_search(timetable const&,
+                                      rt_timetable const*,
+                                      search_state&,
+                                      raptor_state&,
+                                      query,
+                                      direction,
+                                      std::optional<std::chrono::seconds>);
+
+template routing_result raptor_search(timetable const&,
+                                      rt_timetable const*,
+                                      search_state&,
+                                      mcraptor_state&,
+                                      query,
+                                      direction,
+                                      std::optional<std::chrono::seconds>);
+
+template routing_result raptor_search(timetable const&,
+                                      rt_timetable const*,
+                                      search_state&,
+                                      mcraptor_cost_state&,
+                                      query,
+                                      direction,
+                                      std::optional<std::chrono::seconds>);
 
 }  // namespace nigiri::routing
