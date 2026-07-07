@@ -2,6 +2,7 @@
 
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/raptor.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/search.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
