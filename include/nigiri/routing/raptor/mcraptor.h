@@ -293,7 +293,7 @@ namespace nigiri::routing {
             auto src_span = state.get_round_times<Vias>();
             round_times_.clear();
             for (unsigned long k = 0; k < src_span.n_rows_; ++k) {
-                std::vector<std::array<bag, Vias>> row;
+                std::vector<std::array<bag, Vias + 1>> row;
                 for (unsigned long i = 0; i < src_span.n_columns_; ++i) {
                     std::array<bag, Vias + 1> target_array;
                     auto src_array = src_span[k][i];
@@ -805,7 +805,7 @@ namespace nigiri::routing {
                             stay.count())));
 
                         if (!new_best_[target][target_v].is_better(fp_target_time) &&
-                            fp_target_time.is_better( time_at_dest_[k]) {
+                            fp_target_time.is_better( time_at_dest_[k])) {
                             auto const lower_bound = lb_[target];
                             if (lower_bound == kUnreachable ||
                                 !fp_target_time.is_better_with_offset(dir(lower_bound), time_at_dest_[k])) {
