@@ -130,7 +130,7 @@ namespace nigiri::routing {
 
                 pareto_set.erase(std::remove_if(pareto_set.begin()
                     , pareto_set.end()
-                    , [&](int toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != b.end();})
+                    , [&](int toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != bad_entries.end();})
                     , pareto_set.end());
                 pareto_set.push_back(be);
             }
@@ -152,7 +152,7 @@ namespace nigiri::routing {
 
                 pareto_set.erase(std::remove_if(pareto_set.begin()
                     , pareto_set.end()
-                    , [&](int toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != b.end();})
+                    , [&](int toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != bad_entries.end();})
                     , pareto_set.end());
                 pareto_set.push_back(bag_entry(t));
             }
@@ -168,7 +168,7 @@ namespace nigiri::routing {
                 bag ret = bag();
                 ret.add(this);
                 for (auto e : ret.pareto_set) {
-                    e.time_ = clamp(e.time_ + ... + t);
+                    e.time_ = clamp(e.time_ + (... + t));
                 }
                 return ret;
             }
