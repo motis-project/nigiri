@@ -17,6 +17,8 @@
 #define trace_pong(...)
 // #define trace_pong fmt::println
 
+#define USE_MCRAPTOR
+
 namespace nigiri::routing {
 
 auto to_tuple(journey const& j) {
@@ -100,7 +102,8 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, ping_is_via[i]);
   }
 
-  auto ping = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>{
+  #ifdef USE_MCRAPTOR
+  auto ping = mcraptor<SearchDir, Rt, Vias, search_mode::kOneToOne>{
       tt,
       rtt,
       r_state,
@@ -116,7 +119,24 @@ routing_result pong(timetable const& tt,
       q.require_car_transport_,
       q.prf_idx_ == 2U,
       q.transfer_time_settings_};
-
+  #else
+  auto ping = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>{
+    tt,
+    rtt,
+    r_state,
+    ping_is_dest,
+    ping_is_via,
+    ping_dist_to_dest,
+    q.td_dest_,
+    ping_lb,
+    q.via_stops_,
+    base_day,
+    q.allowed_claszes_,
+    q.require_bike_transport_,
+    q.require_car_transport_,
+    q.prf_idx_ == 2U,
+    q.transfer_time_settings_ };
+  #endif
   // ====
   // PONG
   // ----
@@ -146,7 +166,8 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, pong_is_via[i]);
   }
 
-  auto pong = raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>{
+  #ifdef USE_MCRAPTOR
+  auto pong = mcraptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>{
       tt,
       rtt,
       r_state,
@@ -162,9 +183,25 @@ routing_result pong(timetable const& tt,
       q.require_car_transport_,
       q.prf_idx_ == 2U,
       q.transfer_time_settings_};
-
+  #else
+  auto pong = mcraptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>{
+      tt,
+      rtt,
+      r_state,
+      pong_is_dest,
+      pong_is_via,
+      pong_dist_to_dest,
+      q.td_dest_,
+      pong_lb,
+      q.via_stops_,
+      base_day,
+      q.allowed_claszes_,
+      q.require_bike_transport_,
+      q.require_car_transport_,
+      q.prf_idx_ == 2U,
+      q.transfer_time_settings_ };
   q.flip_dir();
-
+  #endif
   // ========
   // >> PLAY!
   // --------
