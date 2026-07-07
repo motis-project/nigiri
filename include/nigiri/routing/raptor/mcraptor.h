@@ -37,10 +37,6 @@ namespace nigiri::routing {
 #endif
             }
 
-            bag_entry() : bag(delta_t{ kInvalid }) {
-                // Empty
-            }
-
             bool is_invalid() const {
                 return time_ == kInvalid;
             }
@@ -1547,7 +1543,7 @@ namespace nigiri::routing {
         }
         #pragma endregion
 
-#pragma region members
+        #pragma region members
         timetable const& tt_;
         rt_timetable const* rtt_{ nullptr };
         int n_days_;
@@ -1562,7 +1558,7 @@ namespace nigiri::routing {
         //COMMENT: kein resize zum befüllen über loops; größe des matrix dest aber über span von state abhängig
         //TODO: workaround:ersetze flat_matrix_view mit vec<vec<arr>>
         //flat_matrix_view<std::array<bag, Vias + 1>> round_times_;
-        std::vector<std::vector<std::array<bag, Vias>>> round_times_;
+        std::vector<std::vector<std::array<bag, Vias + 1>>> round_times_;
 
         bitvec const& is_dest_;
         std::array<bitvec, kMaxVias> const& is_via_;
@@ -1579,9 +1575,7 @@ namespace nigiri::routing {
         bool require_car_transport_;
         bool is_wheelchair_;
         transfer_time_settings transfer_time_settings_;
-
-#pragma endregion
-
+        #pragma endregion
     };
 
 }  // namespace nigiri::routing
