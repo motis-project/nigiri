@@ -80,8 +80,6 @@ namespace nigiri::routing {
             n_routes_{ tt.n_routes() },
             n_rt_transports_{ Rt ? rtt->n_rt_transports() : 0U },
             state_{ state.resize(n_locations_, n_routes_, n_rt_transports_) },
-            //TODO:
-            //round_times_{ state.get_round_times<Vias>() },
             is_dest_{ is_dest },
             is_via_{ is_via },
             dist_to_end_{ dist_to_dest },
@@ -1548,7 +1546,7 @@ namespace nigiri::routing {
                 return t.rend();
             }
         }
-
+        #pragma endregion
 
         #pragma region members
         timetable const& tt_;
@@ -1565,7 +1563,7 @@ namespace nigiri::routing {
         //COMMENT: kein resize zum befüllen über loops; größe des matrix dest aber über span von state abhängig
         //TODO: workaround:ersetze flat_matrix_view mit vec<vec<arr>>
         //flat_matrix_view<std::array<bag, Vias + 1>> round_times_;
-		std::vector<std::vector<std::array<bag, Vias>>> round_times_;
+        std::vector<std::vector<std::array<bag, Vias>>> round_times_;
 
         bitvec const& is_dest_;
         std::array<bitvec, kMaxVias> const& is_via_;
