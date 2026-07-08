@@ -164,7 +164,7 @@ namespace nigiri::routing {
             }
 
             template <typename... Args>
-            bag copy(Args... t) {
+            bag copy(Args... t) const{
                 bag ret = bag();
                 ret.add(*this);
                 for (auto e : ret.pareto_set) {
@@ -174,7 +174,7 @@ namespace nigiri::routing {
             }
 
             // Depricated
-            delta_t get_any_time() {
+            delta_t get_any_time() const {
                 if (pareto_set.empty()) {
                     return delta_t{ kInvalid };
                 }
