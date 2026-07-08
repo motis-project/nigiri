@@ -145,11 +145,11 @@ TEST(routing, lb_transit_legs) {
   auto lb_fwd = lb_transit_legs<direction::kForward>(tt, q);
 
   auto const get_lb_fwd = [&](auto&& id) {
-    return lb_fwd
-        .lb_[tt.locations_.location_id_to_idx_.at({id, source_idx_t{0U}})];
+    return lb_fwd.lb_[lb_fwd.comps_->comp_[to_idx(
+        tt.locations_.location_id_to_idx_.at({id, source_idx_t{0U}}))]];
   };
 
-  ASSERT_EQ(lb_fwd.lb_.size(), tt.n_locations());
+  ASSERT_EQ(lb_fwd.comps_->comp_.size(), tt.n_locations());
   EXPECT_EQ(get_lb_fwd("T"), 0U);
   EXPECT_EQ(get_lb_fwd("D3"), 1U);
   EXPECT_EQ(get_lb_fwd("C2"), 1U);
@@ -173,11 +173,11 @@ TEST(routing, lb_transit_legs) {
   auto lb_bwd = lb_transit_legs<direction::kBackward>(tt, q);
 
   auto const get_lb_bwd = [&](auto&& id) {
-    return lb_bwd
-        .lb_[tt.locations_.location_id_to_idx_.at({id, source_idx_t{0U}})];
+    return lb_bwd.lb_[lb_bwd.comps_->comp_[to_idx(
+        tt.locations_.location_id_to_idx_.at({id, source_idx_t{0U}}))]];
   };
 
-  ASSERT_EQ(lb_bwd.lb_.size(), tt.n_locations());
+  ASSERT_EQ(lb_bwd.comps_->comp_.size(), tt.n_locations());
   EXPECT_EQ(get_lb_bwd("T"), 2U);
   EXPECT_EQ(get_lb_bwd("D3"), lb_bwd.kUnknown);
   EXPECT_EQ(get_lb_bwd("C2"), lb_bwd.kUnknown);
@@ -209,4 +209,78 @@ TEST(routing, lb_transit_legs) {
       lb_bwd.get(tt.locations_.location_id_to_idx_.at({"X", source_idx_t{0U}})),
       lb_bwd.kUnreachable);
   EXPECT_EQ(get_lb_bwd("Y"), lb_bwd.kUnreachable);
+}
+
+mem_dir lb_fp_after_ride_tt() {
+  return mem_dir::read(R"__(
+"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+MTA,MOTIS Transit Authority,https://motis-project.de/,Europe/Berlin
+
+# calendar_dates.txt
+service_id,date,exception_type
+SID,20260227,1
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+T,T,,,,,,
+P,P,,,,,,
+M,M,,,,,,
+C,C,,,,,,
+W,W,,,,,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+PT,MTA,PT,PT,P -> T,0
+MC,MTA,MC,MC,M -> C,0
+CT,MTA,CT,CT,C -> T,0
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+PT,SID,PT,PT,0
+MC,SID,MC,MC,1
+CT,SID,CT,CT,2
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+PT,10:00,10:00,P,0,0,0
+PT,11:00,11:00,T,1,0,0
+MC,08:00,08:00,M,0,0,0
+MC,09:00,09:00,C,1,0,0
+CT,09:30,09:30,C,0,0,0
+CT,10:30,10:30,T,1,0,0
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+M,P,2,540
+W,M,2,540
+)__");
+}
+
+TEST(routing, lb_transit_legs_footpath_component) {
+  auto tt_mut = timetable{};
+  tt_mut.date_range_ = kGtfsDateRange;
+  register_special_stations(tt_mut);
+  gtfs::load_timetable({}, source_idx_t{0U}, lb_fp_after_ride_tt(), tt_mut);
+  finalize(tt_mut, false, false, false, 10U);
+  auto const& tt = tt_mut;
+  auto const l = [&](auto&& id) {
+    return tt.locations_.location_id_to_idx_.at({id, source_idx_t{0U}});
+  };
+  auto q = query{.start_time_ = unixtime_t{sys_days{February / 27 / 2026}},
+                 .start_ = {{l("W"), 0_minutes, 0U}},
+                 .destination_ = {{l("T"), 0_minutes, 0U}}};
+
+  auto lb = lb_transit_legs<direction::kForward>(tt, q);
+
+  EXPECT_EQ(lb.comps_->comp_[to_idx(l("W"))], lb.comps_->comp_[to_idx(l("M"))]);
+  EXPECT_EQ(lb.comps_->comp_[to_idx(l("M"))], lb.comps_->comp_[to_idx(l("P"))]);
+  EXPECT_NE(lb.comps_->comp_[to_idx(l("C"))], lb.comps_->comp_[to_idx(l("P"))]);
+  EXPECT_NE(lb.comps_->comp_[to_idx(l("T"))], lb.comps_->comp_[to_idx(l("C"))]);
+
+  EXPECT_EQ(lb.get(l("P")), 1U);
+  EXPECT_EQ(lb.get(l("C")), 1U);
+  EXPECT_EQ(lb.get(l("M")), 1U);
+  EXPECT_EQ(lb.get(l("W")), 1U);
 }
