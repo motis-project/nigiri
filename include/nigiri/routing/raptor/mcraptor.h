@@ -513,11 +513,11 @@ namespace nigiri::routing {
                                         .dest_time_ = delta_to_unix(base(), label.time_),
                                         .dest_ = location_idx_t{i},
                                         .transfers_ = static_cast<std::uint8_t>(k - 1) });
-                        }
-                        if (!optimal) {
-                            trace("  DOMINATED BY: start={}, dest={} @ {}, transfers={}\n",
-                                dominated_by->start_time_, dominated_by->dest_time_,
-                                loc{ tt_, dominated_by->dest_ }, dominated_by->transfers_);
+                            if (!optimal) {
+                                trace("  DOMINATED BY: start={}, dest={} @ {}, transfers={}\n",
+                                    dominated_by->start_time_, dominated_by->dest_time_,
+                                    loc{ tt_, dominated_by->dest_ }, dominated_by->transfers_);
+                            }
                         }
                     }
                 }
@@ -742,7 +742,7 @@ namespace nigiri::routing {
                     if (!new_best_[i][target_v].is_better(fp_target_time) &&
                         fp_target_time.is_better( time_at_dest_[k])) {
                         if (lb_[i] == kUnreachable ||
-                            !fp_target_time.is_better_with_offset(dir(lb_[i]), time_at_dest_[k])) {
+                            !fp_target_time.is_better_with_offset(static_cast<delta_t>(dir(lb_[i])), time_at_dest_[k])) {
                             ++stats_.fp_update_prevented_by_lower_bound_;
                             return;
                         }
@@ -808,7 +808,7 @@ namespace nigiri::routing {
                             fp_target_time.is_better( time_at_dest_[k])) {
                             auto const lower_bound = lb_[target];
                             if (lower_bound == kUnreachable ||
-                                !fp_target_time.is_better_with_offset(dir(lower_bound), time_at_dest_[k])) {
+                                !fp_target_time.is_better_with_offset(static_cast<delta_t>(dir(lower_bound)), time_at_dest_[k])) {
                                 ++stats_.fp_update_prevented_by_lower_bound_;
                                 trace_upd(
                                     "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
@@ -906,7 +906,7 @@ namespace nigiri::routing {
                             fp_target_time.is_better(time_at_dest_[k])) {
                             auto const lower_bound = lb_[target];
                             if (lower_bound == kUnreachable ||
-                                !fp_target_time.is_better_with_offset(dir(lower_bound), time_at_dest_[k])) {
+                                !fp_target_time.is_better_with_offset(static_cast<delta_t>(dir(lower_bound)), time_at_dest_[k])) {
                                 ++stats_.fp_update_prevented_by_lower_bound_;
                                 trace_upd(
                                     "┊ ├k={} *** LB NO TD FP UPD: (from={}, tmp={}) --{}--> "
