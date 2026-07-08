@@ -491,7 +491,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
           if (!wheelchair_accessible_on_some_sections) {
             continue;
           }
-          section_car_filter = true;
+          section_wheelchair_filter = true;
         }
       }
 
