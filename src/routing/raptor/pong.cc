@@ -21,14 +21,17 @@
 
 namespace nigiri::routing {
 
-template <direction SearchDir, via_offset_t Vias, bool Rt, typename AlgoState>
+template <direction SearchDir, via_offset_t Vias, bool Rt, typename AlgoState,
+          bool RangeReuse>
 struct pong_algo_for {
   using type = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>;
 };
 
-template <direction SearchDir, via_offset_t Vias, bool Rt, typename Criteria>
-struct pong_algo_for<SearchDir, Vias, Rt, basic_mcraptor_state<Criteria>> {
-  using type = basic_mcraptor<SearchDir, Criteria>;
+template <direction SearchDir, via_offset_t Vias, bool Rt, typename Criteria,
+          bool RangeReuse>
+struct pong_algo_for<SearchDir, Vias, Rt, basic_mcraptor_state<Criteria>,
+                     RangeReuse> {
+  using type = basic_mcraptor<SearchDir, Criteria, RangeReuse>;
 };
 
 auto to_tuple(journey const& j) {
@@ -65,10 +68,12 @@ routing_result pong(timetable const& tt,
                     std::optional<std::chrono::seconds> timeout) {
   constexpr auto kFwd = (SearchDir == direction::kForward);
 
+  // forward ping = plain EA over the window (no reuse); backward pong =
+  // rRAPTOR bag reuse across its anchors
   using ping_algo_t =
-      typename pong_algo_for<SearchDir, Vias, Rt, AlgoState>::type;
+      typename pong_algo_for<SearchDir, Vias, Rt, AlgoState, false>::type;
   using pong_algo_t =
-      typename pong_algo_for<flip(SearchDir), Vias, Rt, AlgoState>::type;
+      typename pong_algo_for<flip(SearchDir), Vias, Rt, AlgoState, true>::type;
 
   q.sanitize(tt);
 

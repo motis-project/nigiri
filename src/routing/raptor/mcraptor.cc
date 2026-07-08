@@ -30,8 +30,8 @@ bool mcraptor_supported(query const& q, rt_timetable const* rtt) {
          q.via_stops_.empty();
 }
 
-template <direction SearchDir, typename Criteria>
-basic_mcraptor<SearchDir, Criteria>::basic_mcraptor(
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+basic_mcraptor<SearchDir, Criteria, RangeReuse>::basic_mcraptor(
     timetable const& tt,
     rt_timetable const* rtt,
     state_t& state,
@@ -78,16 +78,16 @@ basic_mcraptor<SearchDir, Criteria>::basic_mcraptor(
   }
 }
 
-template <direction SearchDir, typename Criteria>
-date::sys_days basic_mcraptor<SearchDir, Criteria>::base() const {
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+date::sys_days basic_mcraptor<SearchDir, Criteria, RangeReuse>::base() const {
   return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
 }
 
 // per-slice / per-query reset: the bag and its arena start empty (with
 // range reuse the bag persists across start times *within* a slice, so it
 // is cleared only here, not in next_start_time).
-template <direction SearchDir, typename Criteria>
-void basic_mcraptor<SearchDir, Criteria>::reset_arrivals() {
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+void basic_mcraptor<SearchDir, Criteria, RangeReuse>::reset_arrivals() {
   worst_at_dest_ = kInvalid;
   dest_bag_.clear();
   state_.bag_.clear();
@@ -95,12 +95,12 @@ void basic_mcraptor<SearchDir, Criteria>::reset_arrivals() {
   seeds_.clear();
 }
 
-template <direction SearchDir, typename Criteria>
-void basic_mcraptor<SearchDir, Criteria>::next_start_time() {
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+void basic_mcraptor<SearchDir, Criteria, RangeReuse>::next_start_time() {
   // With range reuse the accumulating bag persists across start times so a
   // later-departing start can prune an earlier one; without it the bag is
-  // wiped every start to stay lean (pong).
-  if (!range_reuse_) {
+  // wiped every start to stay lean (pong ping / EA).
+  if constexpr (!RangeReuse) {
     state_.bag_.clear();
     state_.breadcrumbs_.clear();
   }
@@ -127,7 +127,7 @@ void for_each_label_in_round(
     std::uint8_t const round,
     delta_t const dep,
     Fn&& fn) {
-  for (auto const& e : layer.bags_[l]) {
+  for (auto const& e : layer.span(l)) {
     if (e.round_ == round && e.dep_ == dep) {
       fn(e.crit_, e.breadcrumb_);
     }
@@ -166,42 +166,33 @@ bool bag_insert(typename basic_mcraptor_state<Criteria>::bag_layer& layer,
                 delta_t const dep,
                 bool const by_route) {
   using state_t = basic_mcraptor_state<Criteria>;
-  auto& bag = layer.bags_[l];
-  if (bag.empty()) {
+  if (layer.empty(l)) {
     layer.touched_.set(l);
   }
+  auto const bag = layer.span(l);
   for (auto const& e : bag) {
     if (e.round_ <= round &&
         (!by_route || (e.breadcrumb_ & state_t::kByRoute) != 0U) &&
-        (e.dep_ == dep
-             ? e.crit_.template dominates<SearchDir>(crit)
-             : e.crit_.template reuse_dominates<SearchDir>(crit, e.dep_, dep))) {
+        (e.dep_ == dep ? e.crit_.template dominates<SearchDir>(crit)
+                       : e.crit_.template reuse_dominates<SearchDir>(
+                             crit, e.dep_, dep))) {
       return false;
     }
-  }
-  // boarding watermark: mark where this round's block begins. The first
-  // label of a new round is appended after the (frozen) earlier-round
-  // labels, so its position is the block start; eviction below only touches
-  // round >= round, which cannot exist yet for a first-of-round insert.
-  if (layer.blk_round_[l] != round) {
-    layer.blk_round_[l] = round;
-    layer.blk_start_[l] = static_cast<std::uint32_t>(bag.size());
   }
   auto removed = std::size_t{0U};
   for (auto i = std::size_t{0U}; i != bag.size(); ++i) {
     if (bag[i].round_ >= round &&
         (by_route || (bag[i].breadcrumb_ & state_t::kByRoute) == 0U) &&
-        (bag[i].dep_ == dep
-             ? crit.template dominates<SearchDir>(bag[i].crit_)
-             : crit.template reuse_dominates<SearchDir>(bag[i].crit_, dep,
-                                                        bag[i].dep_))) {
+        (bag[i].dep_ == dep ? crit.template dominates<SearchDir>(bag[i].crit_)
+                            : crit.template reuse_dominates<SearchDir>(
+                                  bag[i].crit_, dep, bag[i].dep_))) {
       ++removed;
       continue;
     }
     bag[i - removed] = bag[i];
   }
-  bag.resize(bag.size() - removed + 1U);
-  bag.back() = {crit, flagged_breadcrumb, round, dep};
+  layer.set_size(l, static_cast<std::uint32_t>(bag.size() - removed));
+  layer.push_back(l, {crit, flagged_breadcrumb, round, dep});
   return true;
 }
 
@@ -209,8 +200,8 @@ bool bag_insert(typename basic_mcraptor_state<Criteria>::bag_layer& layer,
 
 // dest-aware same-station transfer buffer (0 at a non-intermodal
 // destination, like raptor.h's update_transfers)
-template <direction SearchDir, typename Criteria>
-delta_t basic_mcraptor<SearchDir, Criteria>::transfer_buffer(
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+delta_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::transfer_buffer(
     std::uint64_t const l) const {
   return static_cast<delta_t>(
       (!is_intermodal_dest() && is_dest_[l])
@@ -220,8 +211,8 @@ delta_t basic_mcraptor<SearchDir, Criteria>::transfer_buffer(
                 tt_.locations_.transfer_time_[location_idx_t{l}].count())));
 }
 
-template <direction SearchDir, typename Criteria>
-bool basic_mcraptor<SearchDir, Criteria>::merge_round(
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::merge_round(
     std::uint32_t const l,
     Criteria const& crit,
     typename state_t::breadcrumb const& bc,
@@ -236,8 +227,8 @@ bool basic_mcraptor<SearchDir, Criteria>::merge_round(
   return false;
 }
 
-template <direction SearchDir, typename Criteria>
-void basic_mcraptor<SearchDir, Criteria>::add_start(location_idx_t const l,
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+void basic_mcraptor<SearchDir, Criteria, RangeReuse>::add_start(location_idx_t const l,
                                                     unixtime_t const t) {
   auto const i = to_idx(l);
   // record the raw seed; execute() inserts it once the query start time is
@@ -246,8 +237,8 @@ void basic_mcraptor<SearchDir, Criteria>::add_start(location_idx_t const l,
   state_.station_mark_.set(i, true);
 }
 
-template <direction SearchDir, typename Criteria>
-void basic_mcraptor<SearchDir, Criteria>::execute(
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
     unixtime_t const start_time,
     std::uint8_t const max_transfers,
     unixtime_t const worst_time_at_dest,
@@ -268,8 +259,7 @@ void basic_mcraptor<SearchDir, Criteria>::execute(
   for (auto const& [l, arr] : seeds_) {
     bag_insert<SearchDir, Criteria>(
         state_.bag_, l,
-        Criteria::at_start(arr,
-                           static_cast<std::uint16_t>(dir(arr - d_start))),
+        Criteria::at_start(arr, static_cast<std::uint16_t>(dir(arr - d_start))),
         state_t::kNoBreadcrumb, /*round=*/std::uint8_t{0U}, cur_dep_,
         /*by_route=*/false);
   }
@@ -278,15 +268,6 @@ void basic_mcraptor<SearchDir, Criteria>::execute(
   for (auto k = 1U; k != end_k; ++k) {
     auto any_marked = false;
     state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
-      // snapshot each boarding stop's round-(k-1) block now, before any
-      // round-k insert moves the boundary. station_mark_ here = stops touched
-      // in round k-1, whose last (and only current) block is round k-1. Only
-      // the single-departure path uses this: with reuse, cross-departure
-      // eviction can shift the block, so boarding keeps the filtered scan.
-      if (!range_reuse_ && use_watermark_) {
-        state_.board_[i] = {state_.bag_.blk_start_[i],
-                            static_cast<std::uint32_t>(state_.bag_.bags_[i].size())};
-      }
       for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
         any_marked = true;
         state_.route_mark_.set(to_idx(r), true);
@@ -321,8 +302,8 @@ void basic_mcraptor<SearchDir, Criteria>::execute(
   }
 }
 
-template <direction SearchDir, typename Criteria>
-bool basic_mcraptor<SearchDir, Criteria>::loop_routes(unsigned const k) {
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::loop_routes(unsigned const k) {
   auto const clasz_filter = allowed_claszes_ != all_clasz_allowed();
   auto any_marked = false;
   state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
@@ -336,8 +317,8 @@ bool basic_mcraptor<SearchDir, Criteria>::loop_routes(unsigned const k) {
   return any_marked;
 }
 
-template <direction SearchDir, typename Criteria>
-bool basic_mcraptor<SearchDir, Criteria>::update_route(unsigned const k,
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(unsigned const k,
                                                        route_idx_t const r) {
   auto const stop_seq = tt_.route_location_seq_[r];
   auto const n = stop_seq.size();
@@ -389,8 +370,8 @@ bool basic_mcraptor<SearchDir, Criteria>::update_route(unsigned const k,
             static_cast<std::uint32_t>(state_.breadcrumbs_.size());
         if (!bag_insert<SearchDir, Criteria>(
                 state_.bag_, static_cast<std::uint32_t>(l_idx), post_crit,
-                breadcrumb_idx | state_t::kByRoute, static_cast<std::uint8_t>(k),
-                cur_dep_, /*by_route=*/true)) {
+                breadcrumb_idx | state_t::kByRoute,
+                static_cast<std::uint8_t>(k), cur_dep_, /*by_route=*/true)) {
           continue;
         }
         // traffic day is not stored: reconstruction recovers it from arr_
@@ -435,89 +416,79 @@ bool basic_mcraptor<SearchDir, Criteria>::update_route(unsigned const k,
     // the current start
     auto const board_from = [&](Criteria const& pe_crit,
                                 std::uint32_t const pe_breadcrumb) {
-          auto const pe_arr = pe_crit.arr_;
-          auto const pe_carried = pe_crit.carry();
-          // destination pareto pruning before the boarding search: even
-          // the optimistic completion of this breadcrumb is dominated
-          if (dest_dominates(
-                  k, pe_crit.projected_to(clamp(pe_arr + dir(lb_[l_idx]))))) {
-            return;
-          }
-          // Skip the earliest-transport lookup if a route breadcrumb already
-          // boards a trip departing before this label's arrival (with
-          // carried criteria dominating): the lookup result would be
-          // dominated.
-          for (auto j = std::size_t{0U}; j != route_bag_.size(); ++j) {
-            if (route_bag_[j].carried_.template dominates<SearchDir>(
-                    pe_carried) &&
-                is_better(route_bag_dep_[j], pe_arr)) {
-              return;
-            }
-          }
-
-          auto const [day, mam] = split(pe_arr);
-          auto const et =
-              get_earliest_transport(r, stop_idx, day, mam, stp.location_idx());
-          if (!et.is_valid()) {
-            return;
-          }
-
-          // merge into the route bag: pareto over
-          // (total trip order, carried criteria)
-          auto const key_new = trip_order_key(r, et);
-          for (auto& rl : route_bag_) {
-            if (rl.key_ == key_new && rl.carried_ == pe_carried) {
-              // same trip, same carried criteria: prefer boarding closest
-              // to the exit (matches reconstruct.cc's label point)
-              rl.board_ = stop_idx;
-              rl.board_dep_ = time_at_stop(r, rl.t_, stop_idx, dep_ev);
-              rl.parent_ = pe_breadcrumb & state_t::kBreadcrumbMask;
-              return;
-            }
-            if (!is_earlier_trip(key_new, rl.key_) &&
-                rl.carried_.template dominates<SearchDir>(pe_carried)) {
-              return;
-            }
-          }
-          auto w = 0U;
-          for (auto j = 0U; j != route_bag_.size(); ++j) {
-            if (!(is_earlier_trip(key_new, route_bag_[j].key_) ||
-                  (key_new == route_bag_[j].key_)) ||
-                !pe_carried.template dominates<SearchDir>(
-                    route_bag_[j].carried_)) {
-              route_bag_[w] = route_bag_[j];
-              route_bag_dep_[w] = route_bag_dep_[j];
-              ++w;
-            }
-          }
-          route_bag_.resize(w);
-          route_bag_dep_.resize(w);
-          auto const dep_new = time_at_stop(r, et, stop_idx, dep_ev);
-          route_bag_.push_back({et, key_new, dep_new, stop_idx,
-                                pe_breadcrumb & state_t::kBreadcrumbMask, pe_carried});
-          route_bag_dep_.push_back(dep_new);
-    };
-    if (range_reuse_ || !use_watermark_) {
-      // persistent bag (reuse) or watermark disabled: filter round + departure
-      for_each_label_in_round<Criteria>(
-          state_.bag_, static_cast<std::uint32_t>(l_idx),
-          static_cast<std::uint8_t>(k - 1U), cur_dep_, board_from);
-    } else {
-      // watermark: iterate exactly this start's round-(k-1) block, no filter
-      auto const& bag = state_.bag_.bags_[static_cast<std::uint32_t>(l_idx)];
-      auto const range = state_.board_[l_idx];
-      for (auto idx = range.lo_; idx != range.hi_; ++idx) {
-        board_from(bag[idx].crit_, bag[idx].breadcrumb_);
+      auto const pe_arr = pe_crit.arr_;
+      auto const pe_carried = pe_crit.carry();
+      // destination pareto pruning before the boarding search: even
+      // the optimistic completion of this breadcrumb is dominated
+      if (dest_dominates(
+              k, pe_crit.projected_to(clamp(pe_arr + dir(lb_[l_idx]))))) {
+        return;
       }
-    }
+      // Skip the earliest-transport lookup if a route breadcrumb already
+      // boards a trip departing before this label's arrival (with
+      // carried criteria dominating): the lookup result would be
+      // dominated.
+      for (auto j = std::size_t{0U}; j != route_bag_.size(); ++j) {
+        if (route_bag_[j].carried_.template dominates<SearchDir>(pe_carried) &&
+            is_better(route_bag_dep_[j], pe_arr)) {
+          return;
+        }
+      }
+
+      auto const [day, mam] = split(pe_arr);
+      auto const et =
+          get_earliest_transport(r, stop_idx, day, mam, stp.location_idx());
+      if (!et.is_valid()) {
+        return;
+      }
+
+      // merge into the route bag: pareto over
+      // (total trip order, carried criteria)
+      auto const key_new = trip_order_key(r, et);
+      for (auto& rl : route_bag_) {
+        if (rl.key_ == key_new && rl.carried_ == pe_carried) {
+          // same trip, same carried criteria: prefer boarding closest
+          // to the exit (matches reconstruct.cc's label point)
+          rl.board_ = stop_idx;
+          rl.board_dep_ = time_at_stop(r, rl.t_, stop_idx, dep_ev);
+          rl.parent_ = pe_breadcrumb & state_t::kBreadcrumbMask;
+          return;
+        }
+        if (!is_earlier_trip(key_new, rl.key_) &&
+            rl.carried_.template dominates<SearchDir>(pe_carried)) {
+          return;
+        }
+      }
+      auto w = 0U;
+      for (auto j = 0U; j != route_bag_.size(); ++j) {
+        if (!(is_earlier_trip(key_new, route_bag_[j].key_) ||
+              (key_new == route_bag_[j].key_)) ||
+            !pe_carried.template dominates<SearchDir>(route_bag_[j].carried_)) {
+          route_bag_[w] = route_bag_[j];
+          route_bag_dep_[w] = route_bag_dep_[j];
+          ++w;
+        }
+      }
+      route_bag_.resize(w);
+      route_bag_dep_.resize(w);
+      auto const dep_new = time_at_stop(r, et, stop_idx, dep_ev);
+      route_bag_.push_back({et, key_new, dep_new, stop_idx,
+                            pe_breadcrumb & state_t::kBreadcrumbMask,
+                            pe_carried});
+      route_bag_dep_.push_back(dep_new);
+    };
+    // board from this stop's round-(k-1) labels of the current departure
+    for_each_label_in_round<Criteria>(
+        state_.bag_, static_cast<std::uint32_t>(l_idx),
+        static_cast<std::uint8_t>(k - 1U), cur_dep_, board_from);
   }
   return any_marked;
 }
 
 // (traffic day << 16 | transport offset in route): lexicographic order =
 // total trip order within a route (trips in a route do not overtake)
-template <direction SearchDir, typename Criteria>
-std::uint32_t basic_mcraptor<SearchDir, Criteria>::trip_order_key(
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+std::uint32_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::trip_order_key(
     route_idx_t const r, transport const t) const {
   auto const t_offset = static_cast<std::uint32_t>(
       to_idx(t.t_idx_) - to_idx(tt_.route_transport_ranges_[r].from_));
@@ -530,8 +501,8 @@ std::uint32_t basic_mcraptor<SearchDir, Criteria>::trip_order_key(
 // same-station transfer is already folded into update_route on our side).
 // Fusing collects each stop's by-route arrivals ONCE instead of once per
 // former loop.
-template <direction SearchDir, typename Criteria>
-void basic_mcraptor<SearchDir, Criteria>::update_footpaths(
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
     unsigned const k, profile_idx_t const prf_idx) {
   auto const intermodal = is_intermodal_dest();
   state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
@@ -637,8 +608,8 @@ void basic_mcraptor<SearchDir, Criteria>::update_footpaths(
   });
 }
 
-template <direction SearchDir, typename Criteria>
-transport basic_mcraptor<SearchDir, Criteria>::get_earliest_transport(
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+transport basic_mcraptor<SearchDir, Criteria, RangeReuse>::get_earliest_transport(
     route_idx_t const r,
     stop_idx_t const stop_idx,
     day_idx_t const day_at_stop,
@@ -700,8 +671,8 @@ transport basic_mcraptor<SearchDir, Criteria>::get_earliest_transport(
   return {};
 }
 
-template <direction SearchDir, typename Criteria>
-void basic_mcraptor<SearchDir, Criteria>::collect_dest_journeys(
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+void basic_mcraptor<SearchDir, Criteria, RangeReuse>::collect_dest_journeys(
     unsigned const k,
     unixtime_t const start_time,
     pareto_set<journey>& results) {
@@ -722,13 +693,14 @@ void basic_mcraptor<SearchDir, Criteria>::collect_dest_journeys(
             return;
           }
           results.add(materialize(location_idx_t{i}, k, e_crit,
-                                  e_breadcrumb & state_t::kBreadcrumbMask, start_time));
+                                  e_breadcrumb & state_t::kBreadcrumbMask,
+                                  start_time));
         });
   });
 }
 
-template <direction SearchDir, typename Criteria>
-journey basic_mcraptor<SearchDir, Criteria>::materialize(
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+journey basic_mcraptor<SearchDir, Criteria, RangeReuse>::materialize(
     location_idx_t const dest,
     unsigned const k,
     Criteria const& crit,
@@ -763,7 +735,8 @@ journey basic_mcraptor<SearchDir, Criteria>::materialize(
     // the day whose train arrives at alight no later than cur_arr. A single
     // footpath/transfer crosses midnight at most once, so the day is
     // arr_day - event_day_offset - {0,1} (gouda raptor_impl reconstruction).
-    auto const event_day_offset = tt_.event_mam(r, t_idx, alight, arr_ev).count() / 1440;
+    auto const event_day_offset =
+        tt_.event_mam(r, t_idx, alight, arr_ev).count() / 1440;
     auto const arr_day = as_int(split(cur_arr).first);
     auto day = day_idx_t::invalid();
     auto train_arr = kInvalid;
@@ -776,7 +749,8 @@ journey basic_mcraptor<SearchDir, Criteria>::materialize(
       if (!tt_.is_transport_active(t_idx, cand_day)) {
         continue;
       }
-      auto const ev = time_at_stop(r, transport{t_idx, cand_day}, alight, arr_ev);
+      auto const ev =
+          time_at_stop(r, transport{t_idx, cand_day}, alight, arr_ev);
       if (is_better_or_eq(ev, cur_arr)) {
         day = cand_day;
         train_arr = ev;
@@ -867,8 +841,8 @@ journey basic_mcraptor<SearchDir, Criteria>::materialize(
 
 // First/last mile mumo offset and start footpath legs are added here,
 // where the query offsets live.
-template <direction SearchDir, typename Criteria>
-void basic_mcraptor<SearchDir, Criteria>::reconstruct(query const& q,
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+void basic_mcraptor<SearchDir, Criteria, RangeReuse>::reconstruct(query const& q,
                                                       journey& j) {
   utl::verify(!j.legs_.empty(), "mcraptor reconstruct: journey without legs");
 
@@ -981,8 +955,8 @@ void basic_mcraptor<SearchDir, Criteria>::reconstruct(query const& q,
   j.is_reconstructed_ = true;
 }
 
-template <direction SearchDir, typename Criteria>
-delta_t basic_mcraptor<SearchDir, Criteria>::time_at_stop(
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+delta_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::time_at_stop(
     route_idx_t const r,
     transport const t,
     stop_idx_t const stop_idx,
@@ -991,26 +965,31 @@ delta_t basic_mcraptor<SearchDir, Criteria>::time_at_stop(
                   tt_.event_mam(r, t.t_idx_, stop_idx, ev_type).count());
 }
 
-template <direction SearchDir, typename Criteria>
-delta_t basic_mcraptor<SearchDir, Criteria>::to_delta(
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+delta_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::to_delta(
     day_idx_t const day, std::int16_t const mam) const {
   return clamp((as_int(day) - as_int(base_)) * 1440 + mam);
 }
 
-template <direction SearchDir, typename Criteria>
-unixtime_t basic_mcraptor<SearchDir, Criteria>::to_unix(delta_t const t) const {
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+unixtime_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::to_unix(delta_t const t) const {
   return delta_to_unix(base(), t);
 }
 
-template <direction SearchDir, typename Criteria>
+template <direction SearchDir, typename Criteria, bool RangeReuse>
 std::pair<day_idx_t, minutes_after_midnight_t>
-basic_mcraptor<SearchDir, Criteria>::split(delta_t const x) const {
+basic_mcraptor<SearchDir, Criteria, RangeReuse>::split(delta_t const x) const {
   return split_day_mam(base_, x);
 }
 
-template struct basic_mcraptor<direction::kForward, arr_criteria>;
-template struct basic_mcraptor<direction::kBackward, arr_criteria>;
-template struct basic_mcraptor<direction::kForward, arr_cost_criteria>;
-template struct basic_mcraptor<direction::kBackward, arr_cost_criteria>;
+// range reuse OFF (pong ping / EA) and ON (pong pong / search.h interval)
+template struct basic_mcraptor<direction::kForward, arr_criteria, false>;
+template struct basic_mcraptor<direction::kBackward, arr_criteria, false>;
+template struct basic_mcraptor<direction::kForward, arr_cost_criteria, false>;
+template struct basic_mcraptor<direction::kBackward, arr_cost_criteria, false>;
+template struct basic_mcraptor<direction::kForward, arr_criteria, true>;
+template struct basic_mcraptor<direction::kBackward, arr_criteria, true>;
+template struct basic_mcraptor<direction::kForward, arr_cost_criteria, true>;
+template struct basic_mcraptor<direction::kBackward, arr_cost_criteria, true>;
 
 }  // namespace nigiri::routing

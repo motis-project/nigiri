@@ -1,11 +1,13 @@
 #pragma once
 
+#include <cassert>
 #include <cinttypes>
 #include <cstdlib>
 #include <algorithm>
 #include <type_traits>
 #include <array>
 #include <limits>
+#include <span>
 #include <vector>
 
 #include "cista/containers/bitvec.h"
@@ -241,44 +243,139 @@ struct basic_mcraptor_state {
     delta_t dep_;
   };
 
-  // One bag per location: an unbounded vector of pareto labels with
-  // linear-scan merges (TREX: DataStructures/RAPTOR/Entities/Bags.h).
-  // touched_ marks non-empty bags so clearing between rounds/start times
-  // only visits those (word-skipping) instead of sweeping all locations;
-  // vector capacity is retained across clears.
-  struct bag_layer {
-    // sentinel for "no block recorded this start time" (never a real round)
-    static constexpr auto const kNoBlock = std::uint8_t{0xFFU};
+  // One pareto bag per location (TREX: DataStructures/RAPTOR/Entities/Bags.h),
+  // stored as a small inline buffer with an arena overflow. Measured on
+  // Germany, a stop's bag holds mean 1.9 / p95 4 / max 18 labels, so kInline
+  // covers ~97% of bags without touching the arena.
+  static constexpr auto const kInline = std::uint32_t{4U};
+  static constexpr auto const kNoOverflow = std::uint32_t{0xFFFFFFFFU};
 
+  // Exactly one cache line (64 B). Metadata first so a small bag's header and
+  // its first labels share cache line 0. over_ == kNoOverflow => labels live in
+  // inline_; else at arena offset over_, capacity cap_.
+  struct alignas(64) small_bag {
+    std::uint16_t size_{0U};
+    std::uint16_t cap_{static_cast<std::uint16_t>(kInline)};
+    std::uint32_t over_{kNoOverflow};
+    std::array<label, kInline> inline_;
+  };
+
+  // Bump arena for overflow spans with power-of-two size classes and a
+  // per-class free list (cf. cista paged.h). small_bag stores an offset (not a
+  // pointer) so the backing vector can grow without invalidating live bags;
+  // the whole arena is reset when the bags are cleared per start time.
+  struct arena {
+    static constexpr auto const kMinClass = std::uint32_t{8U};
+    static constexpr auto const kNumClasses = std::size_t{10U};  // 8 .. 4096
+
+    static std::uint32_t class_of(std::uint32_t const cap) {
+      auto idx = std::uint32_t{0U};
+      while ((kMinClass << idx) < cap) {
+        ++idx;
+      }
+      return idx;
+    }
+    std::uint32_t alloc(std::uint32_t const cap) {  // cap: pow2 >= kMinClass
+      auto const idx = class_of(cap);
+      assert(idx < kNumClasses);
+      if (!free_[idx].empty()) {
+        auto const off = free_[idx].back();
+        free_[idx].pop_back();
+        return off;
+      }
+      auto const off = bump_;
+      bump_ += cap;
+      if (bump_ > data_.size()) {
+        data_.resize(std::max<std::size_t>(bump_, data_.size() * 2U));
+      }
+      return off;
+    }
+    void free_span(std::uint32_t const off, std::uint32_t const cap) {
+      free_[class_of(cap)].push_back(off);
+    }
+    void reset() {
+      bump_ = 0U;
+      for (auto& f : free_) {
+        f.clear();
+      }
+    }
+    label* ptr(std::uint32_t const off) { return data_.data() + off; }
+    label const* ptr(std::uint32_t const off) const {
+      return data_.data() + off;
+    }
+
+    std::vector<label> data_;
+    std::uint32_t bump_{0U};
+    std::array<std::vector<std::uint32_t>, kNumClasses> free_{};
+  };
+
+  // touched_ marks non-empty bags so clearing between start times only visits
+  // those (word-skipping) instead of sweeping all locations.
+  struct bag_layer {
     void resize(std::size_t const n) {
       bags_.resize(n);
-      blk_start_.resize(n);
-      blk_round_.resize(n);
       touched_.resize(n);
     }
 
-    bool empty(std::uint32_t const l) const { return bags_[l].empty(); }
+    label* data(small_bag& b) {
+      return b.over_ == kNoOverflow ? b.inline_.data() : arena_.ptr(b.over_);
+    }
+    label const* data(small_bag const& b) const {
+      return b.over_ == kNoOverflow ? b.inline_.data() : arena_.ptr(b.over_);
+    }
+
+    std::span<label> span(std::uint32_t const l) {
+      auto& b = bags_[l];
+      return {data(b), b.size_};
+    }
+    std::span<label const> span(std::uint32_t const l) const {
+      auto const& b = bags_[l];
+      return {data(b), b.size_};
+    }
+
+    bool empty(std::uint32_t const l) const { return bags_[l].size_ == 0U; }
+
+    // shrink to n labels (n <= current size); capacity unchanged
+    void set_size(std::uint32_t const l, std::uint32_t const n) {
+      bags_[l].size_ = static_cast<std::uint16_t>(n);
+    }
+
+    // append one label, moving to a larger arena span if the buffer is full
+    void push_back(std::uint32_t const l, label const& x) {
+      auto& b = bags_[l];
+      if (b.size_ == b.cap_) {
+        grow(b);
+      }
+      data(b)[b.size_++] = x;
+    }
+
+    void grow(small_bag& b) {
+      auto const new_cap = std::uint32_t{b.cap_} * 2U;  // 4->8->16->...
+      auto const new_off = arena_.alloc(new_cap);  // may resize arena_.data_
+      auto* const dst = arena_.ptr(new_off);
+      auto const* const src = data(b);
+      std::copy(src, src + b.size_, dst);
+      if (b.over_ != kNoOverflow) {
+        arena_.free_span(b.over_, b.cap_);
+      }
+      b.over_ = new_off;
+      b.cap_ = static_cast<std::uint16_t>(new_cap);
+    }
 
     void clear() {
       touched_.for_each_set_bit([&](std::size_t const l) {
-        bags_[l].clear();
-        blk_round_[l] = kNoBlock;
+        auto& b = bags_[l];
+        b.size_ = 0U;
+        b.cap_ = static_cast<std::uint16_t>(kInline);
+        b.over_ = kNoOverflow;
       });
       touched_.zero_out();
+      arena_.reset();
     }
 
-    std::vector<std::vector<label>> bags_;
+    std::vector<small_bag> bags_;
     bitvec touched_;
-    // Boarding watermark (single-departure path). blk_start_[l] is the index
-    // in bags_[l] where the current (last-inserted) round's block begins and
-    // blk_round_[l] is that round; both are maintained by bag_insert. A
-    // round's block is frozen once the next round starts (bag_insert only
-    // evicts labels of round >= the candidate's), and the earlier rounds sit
-    // before it, so [blk_start_ of round k-1, size at round-k start) is
-    // exactly the round-(k-1) block - the boarding scan can jump straight to
-    // it instead of filtering the whole accumulated bag by round and dep.
-    std::vector<std::uint32_t> blk_start_;
-    std::vector<std::uint8_t> blk_round_;
+    arena arena_;
   };
 
   basic_mcraptor_state() = default;
@@ -291,7 +388,6 @@ struct basic_mcraptor_state {
   basic_mcraptor_state& resize(unsigned const n_locations,
                                unsigned const n_routes) {
     bag_.resize(n_locations);
-    board_.resize(n_locations);
     station_mark_.resize(n_locations);
     prev_station_mark_.resize(n_locations);
     route_mark_.resize(n_routes);
@@ -305,20 +401,18 @@ struct basic_mcraptor_state {
   // dimension; boarding, footpath expansion and destination collection
   // filter by round. Reset per start time.
   bag_layer bag_;
-  // per-round snapshot of each boarding stop's round-(k-1) block [lo_, hi_) in
-  // bag_ (single-departure path); taken at round-k start before any round-k
-  // insert moves the block boundary. One vector (lo_/hi_ share a cache line).
-  struct board_range {
-    std::uint32_t lo_, hi_;
-  };
-  std::vector<board_range> board_;
   std::vector<breadcrumb> breadcrumbs_;
   bitvec station_mark_;
   bitvec prev_station_mark_;
   bitvec route_mark_;
 };
 
-template <direction SearchDir, typename Criteria>
+// RangeReuse: keep the per-stop bags across start times (rRAPTOR reuse,
+// raptor_alenex.pdf 4.2) instead of clearing them each departure. Compile-time
+// so each driver fixes it: false for the pong forward ping / plain EA (start
+// times target different arrivals), true for the pong backward validation and
+// the search.h interval search (fixed destination, latest-departure first).
+template <direction SearchDir, typename Criteria, bool RangeReuse = false>
 struct basic_mcraptor {
   using state_t = basic_mcraptor_state<Criteria>;
   using algo_state_t = state_t;
@@ -363,19 +457,6 @@ struct basic_mcraptor {
   // Core legs are materialized by execute() (breadcrumb chase); this only
   // adds first/last-mile offset legs and the start footpath.
   void reconstruct(query const&, journey&);
-
-  // rRAPTOR bag reuse (raptor_alenex.pdf 4.2), OTP-style: the single per-
-  // stop bag persists across start times instead of being cleared each one
-  // (like OTP's McStopArrivals across range-raptor departure iterations).
-  // Enable when the driver processes start times toward a *fixed*
-  // destination in dominance order (search.h: latest departure first). An
-  // label of an earlier-departing start is then pruned by a dominating
-  // later-departing label via the departure-aware reuse dominance in
-  // bag_insert. MUST stay off for pong: its start times target different
-  // arrivals, so the cross-start frontier would be invalid (and the bag is
-  // cleared per start, keeping it lean).
-  void set_range_reuse(bool const b) { range_reuse_ = b; }
-  void set_use_watermark(bool const b) { use_watermark_ = b; }
 
 private:
   static bool is_better(auto a, auto b) { return kFwd ? a < b : a > b; }
@@ -514,9 +595,6 @@ private:
   // pareto frontier owns all destination pruning)
   delta_t worst_at_dest_;
   std::vector<dest_entry> dest_bag_;
-  bool range_reuse_{false};
-  // boarding-watermark path (single-departure only); kill switch for A/B.
-  bool use_watermark_{true};
   // current start's departure (query start time in delta units); tagged
   // onto every label inserted this execute so range reuse can compare
   // labels across departures (see label::dep_).

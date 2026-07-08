@@ -31,7 +31,8 @@ struct algo_for {
 
 template <direction SearchDir, via_offset_t Vias, bool Rt, typename Criteria>
 struct algo_for<SearchDir, Vias, Rt, basic_mcraptor_state<Criteria>> {
-  using type = basic_mcraptor<SearchDir, Criteria>;
+  // interval search over a fixed destination -> rRAPTOR bag reuse ON
+  using type = basic_mcraptor<SearchDir, Criteria, /*RangeReuse=*/true>;
 };
 
 template <direction SearchDir, via_offset_t Vias, typename AlgoState>

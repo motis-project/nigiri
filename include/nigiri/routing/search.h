@@ -212,23 +212,10 @@ struct search {
               algo_.get_stats().to_map()};
     }
 
-    // interval search processes start times toward a fixed destination in
-    // dominance order (see add_start_labels' sort): enable rRAPTOR bag
-    // reuse so later-departing starts prune earlier ones (raptor.h does
-    // this via round_times; mcraptor needs the flag). No-op for algos that
-    // do not expose it (plain raptor has its own reuse built in).
-    // rRAPTOR bag reuse: opt-in while the cross-start frontier's
-    // interaction with destination pruning is being finished (it can
-    // over-prune a late departure). Enable with NIGIRI_RANGE_REUSE=1.
-    if constexpr (requires { algo_.set_range_reuse(true); }) {
-      static bool const on = std::getenv("NIGIRI_RANGE_REUSE") != nullptr;
-      algo_.set_range_reuse(on);
-    }
-    // A/B kill switch for the boarding watermark (single-departure path).
-    if constexpr (requires { algo_.set_use_watermark(true); }) {
-      static bool const off = std::getenv("NIGIRI_NO_WATERMARK") != nullptr;
-      algo_.set_use_watermark(!off);
-    }
+    // rRAPTOR bag reuse (mcraptor via search.h) is now a compile-time
+    // property of the algorithm type (algo_for sets RangeReuse=true), so the
+    // interval search processing start times toward a fixed destination in
+    // dominance order prunes earlier-departing starts automatically.
 
     auto const itv_est = interval_estimator<SearchDir>{tt_, q_};
     if (is_pretrip()) {
