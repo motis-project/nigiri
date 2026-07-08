@@ -20,15 +20,8 @@
 
 namespace nigiri::routing::gpu {
 
-inline bool gpu_supported(query const& q, rt_timetable const* rtt = nullptr) {
-  auto const prf_ok =
-      q.prf_idx_ == 0U ||
-      (q.prf_idx_ == kFootProfile &&
-       (rtt == nullptr || (!rtt->has_td_footpaths_out_[q.prf_idx_].any() &&
-                           !rtt->has_td_footpaths_in_[q.prf_idx_].any())));
-  return q.td_start_.empty() && q.td_dest_.empty() &&
-         q.transfer_time_settings_.default_ && !q.require_bike_transport_ &&
-         !q.require_car_transport_ && q.via_stops_.empty() && prf_ok;
+inline bool gpu_supported(query const& q, rt_timetable const* = nullptr) {
+  return q.transfer_time_settings_.default_ && q.via_stops_.empty();
 }
 
 struct gpu_timetable {
@@ -113,6 +106,9 @@ private:
   day_idx_t base_;
   raptor_stats stats_;
   clasz_mask_t allowed_claszes_;
+  bool require_bike_transport_;
+  bool require_car_transport_;
+  bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;

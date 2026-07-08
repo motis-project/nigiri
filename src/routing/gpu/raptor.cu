@@ -24,6 +24,7 @@
 #include "nigiri/routing/gpu/device_timetable.cuh"
 #include "nigiri/routing/gpu/raptor_impl.cuh"
 #include "nigiri/routing/gpu/types.cuh"
+#include "nigiri/td_footpath.h"
 
 namespace nigiri::routing::gpu {
 
@@ -101,6 +102,14 @@ struct gpu_timetable::impl {
         route_traffic_days_{to_device(tt.route_traffic_days_)},
         transport_route_{to_device(tt.transport_route_)},
         bitfields_{to_device(tt.bitfields_)},
+        route_bikes_allowed_{to_device(tt.route_bikes_allowed_.blocks_)},
+        route_cars_allowed_{to_device(tt.route_cars_allowed_.blocks_)},
+        route_wheelchair_accessible_{
+            to_device(tt.route_wheelchair_accessible_.blocks_)},
+        route_bike_sections_{tt.route_bikes_allowed_per_section_},
+        route_car_sections_{tt.route_cars_allowed_per_section_},
+        route_wheelchair_sections_{
+            tt.route_wheelchair_accessibility_per_section_},
         internal_interval_days_{tt.internal_interval_days()} {
     auto const off = build_route_stop_offset(tt);
     route_stop_offset_.assign(off.begin(), off.end());
@@ -110,6 +119,16 @@ struct gpu_timetable::impl {
       footpaths_out_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_out_[p]};
       footpaths_in_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_in_[p]};
     }
+
+    // device-resident (launch-arg size, see device_transport_filters)
+    auto f = device_transport_filters<route_idx_t>{
+        .bike_ = {{to_view(route_bikes_allowed_)},
+                  to_view(route_bike_sections_)},
+        .car_ = {{to_view(route_cars_allowed_)}, to_view(route_car_sections_)},
+        .wheelchair_ = {{to_view(route_wheelchair_accessible_)},
+                        to_view(route_wheelchair_sections_)}};
+    filters_ctx_.resize(1);
+    thrust::copy_n(&f, 1, filters_ctx_.begin());
   }
 
   device_timetable to_device_timetable() const {
@@ -127,6 +146,7 @@ struct gpu_timetable::impl {
         .route_traffic_days_ = to_view(route_traffic_days_),
         .transport_route_ = to_view(transport_route_),
         .bitfields_ = to_view(bitfields_),
+        .filters_ = thrust::raw_pointer_cast(filters_ctx_.data()),
         .route_stop_offset_ = to_view(route_stop_offset_),
         .route_of_stop_ = to_view(route_of_stop_),
         .internal_interval_days_ = internal_interval_days_};
@@ -156,6 +176,16 @@ struct gpu_timetable::impl {
   thrust::device_vector<bitfield_idx_t> route_traffic_days_;
   thrust::device_vector<route_idx_t> transport_route_;
   thrust::device_vector<bitfield> bitfields_;
+  thrust::device_vector<std::uint64_t> route_bikes_allowed_;
+  thrust::device_vector<std::uint64_t> route_cars_allowed_;
+  thrust::device_vector<std::uint64_t> route_wheelchair_accessible_;
+  device_vecvec<decltype(t{}.route_bikes_allowed_per_section_)>
+      route_bike_sections_;
+  device_vecvec<decltype(t{}.route_cars_allowed_per_section_)>
+      route_car_sections_;
+  device_vecvec<decltype(t{}.route_wheelchair_accessibility_per_section_)>
+      route_wheelchair_sections_;
+  thrust::device_vector<device_transport_filters<route_idx_t>> filters_ctx_;
   thrust::device_vector<std::uint32_t> route_stop_offset_;
   thrust::device_vector<std::uint32_t> route_of_stop_;
 
@@ -203,22 +233,72 @@ struct gpu_rt_timetable::impl {
         rt_transport_stop_times_{rtt.rt_transport_stop_times_},
         rt_transport_clasz_{to_device(build_rt_transport_clasz(rtt))},
         transport_traffic_days_{to_device(rtt.transport_traffic_days_)},
-        bitfields_{to_device(rtt.bitfields_)} {
+        bitfields_{to_device(rtt.bitfields_)},
+        rt_transport_bikes_allowed_{
+            to_device(rtt.rt_transport_bikes_allowed_.blocks_)},
+        rt_transport_cars_allowed_{
+            to_device(rtt.rt_transport_cars_allowed_.blocks_)},
+        rt_transport_wheelchair_accessibility_{
+            to_device(rtt.rt_transport_wheelchair_accessibility_.blocks_)},
+        rt_bike_sections_{rtt.rt_bikes_allowed_per_section_},
+        rt_car_sections_{rtt.rt_cars_allowed_per_section_},
+        rt_wheelchair_sections_{rtt.rt_wheelchair_accessible_per_section_} {
     utl::verify(
         bc_transport_space_fits(tt.transport_route_.size(), n_rt_transports_),
         "transport idx space too small: {} static + {} rt",
         tt.transport_route_.size(), n_rt_transports_);
+
+    // device-resident (launch-arg size, see device_transport_filters)
+    auto f = device_transport_filters<rt_transport_idx_t>{
+        .bike_ = {{to_view(rt_transport_bikes_allowed_)},
+                  to_view(rt_bike_sections_)},
+        .car_ = {{to_view(rt_transport_cars_allowed_)},
+                 to_view(rt_car_sections_)},
+        .wheelchair_ = {{to_view(rt_transport_wheelchair_accessibility_)},
+                        to_view(rt_wheelchair_sections_)}};
+    rt_filters_ctx_.resize(1);
+    thrust::copy_n(&f, 1, rt_filters_ctx_.begin());
+    for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
+      if (!rtt.td_footpaths_out_[p].empty()) {
+        td_footpaths_out_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_out_[p]};
+        has_td_out_[p] = to_device(rtt.has_td_footpaths_out_[p].blocks_);
+      }
+      if (!rtt.td_footpaths_in_[p].empty()) {
+        td_footpaths_in_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_in_[p]};
+        has_td_in_[p] = to_device(rtt.has_td_footpaths_in_[p].blocks_);
+      }
+      // for the host-side kernel dispatch (the common transfers kernel must
+      // not contain the td footpath code path)
+      has_td_fps_[p] = rtt.has_td_footpaths_out_[p].any() ||
+                       rtt.has_td_footpaths_in_[p].any();
+    }
+
+    // device-resident view struct (the launch-parameter struct only carries
+    // a pointer; ~480B of views inline cost ~0.5% pong throughput)
+    auto td = device_rt_timetable::td_footpaths{};
+    for (auto p = 0U; p != kNProfiles; ++p) {
+      td.out_[p] = to_view(td_footpaths_out_[p]);
+      td.in_[p] = to_view(td_footpaths_in_[p]);
+      td.has_out_[p] = {to_view(has_td_out_[p])};
+      td.has_in_[p] = {to_view(has_td_in_[p])};
+    }
+    td_ctx_.resize(1);
+    thrust::copy_n(&td, 1, td_ctx_.begin());
   }
 
   device_rt_timetable to_device_rt_timetable() const {
-    return {.n_rt_transports_ = n_rt_transports_,
-            .base_day_idx_ = base_day_idx_,
-            .location_rt_transports_ = to_view(location_rt_transports_),
-            .rt_transport_location_seq_ = to_view(rt_transport_location_seq_),
-            .rt_transport_stop_times_ = to_view(rt_transport_stop_times_),
-            .rt_transport_clasz_ = to_view(rt_transport_clasz_),
-            .transport_traffic_days_ = to_view(transport_traffic_days_),
-            .bitfields_ = to_view(bitfields_)};
+    auto d = device_rt_timetable{
+        .n_rt_transports_ = n_rt_transports_,
+        .base_day_idx_ = base_day_idx_,
+        .location_rt_transports_ = to_view(location_rt_transports_),
+        .rt_transport_location_seq_ = to_view(rt_transport_location_seq_),
+        .rt_transport_stop_times_ = to_view(rt_transport_stop_times_),
+        .rt_transport_clasz_ = to_view(rt_transport_clasz_),
+        .transport_traffic_days_ = to_view(transport_traffic_days_),
+        .bitfields_ = to_view(bitfields_),
+        .filters_ = thrust::raw_pointer_cast(rt_filters_ctx_.data()),
+        .td_ = thrust::raw_pointer_cast(td_ctx_.data())};
+    return d;
   }
 
   std::uint32_t n_rt_transports_;
@@ -234,6 +314,25 @@ struct gpu_rt_timetable::impl {
 
   thrust::device_vector<bitfield_idx_t> transport_traffic_days_;
   thrust::device_vector<bitfield> bitfields_;
+  thrust::device_vector<std::uint64_t> rt_transport_bikes_allowed_;
+  thrust::device_vector<std::uint64_t> rt_transport_cars_allowed_;
+  thrust::device_vector<std::uint64_t> rt_transport_wheelchair_accessibility_;
+  device_vecvec<decltype(rtt_t{}.rt_bikes_allowed_per_section_)>
+      rt_bike_sections_;
+  device_vecvec<decltype(rtt_t{}.rt_cars_allowed_per_section_)>
+      rt_car_sections_;
+  device_vecvec<decltype(rtt_t{}.rt_wheelchair_accessible_per_section_)>
+      rt_wheelchair_sections_;
+  thrust::device_vector<device_transport_filters<rt_transport_idx_t>>
+      rt_filters_ctx_;
+
+  using td_fp_t = decltype(rtt_t{}.td_footpaths_out_[0]);
+  std::array<device_vecvec<td_fp_t>, kNProfiles> td_footpaths_out_;
+  std::array<device_vecvec<td_fp_t>, kNProfiles> td_footpaths_in_;
+  std::array<thrust::device_vector<std::uint64_t>, kNProfiles> has_td_out_;
+  std::array<thrust::device_vector<std::uint64_t>, kNProfiles> has_td_in_;
+  std::array<bool, kNProfiles> has_td_fps_{};
+  thrust::device_vector<device_rt_timetable::td_footpaths> td_ctx_;
 };
 
 gpu_rt_timetable::gpu_rt_timetable(timetable const& tt, rt_timetable const& rtt)
@@ -293,10 +392,67 @@ struct gpu_raptor_state::impl {
   // this state and their execute() calls interleave (pong_search runs
   // ping, pong*N, ping, pong*M, ...), so each direction keeps separate device
   // buffers and uploads exactly once from the gpu_raptor ctor.
-  void upload_query(unsigned const dir,
-                    nigiri::bitvec const& is_dest,
-                    std::vector<std::uint16_t> const& dist_to_dest) {
+  void upload_query(
+      unsigned const dir,
+      nigiri::bitvec const& is_dest,
+      std::vector<std::uint16_t> const& dist_to_dest,
+      hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest) {
     is_intermodal_dest_[dir] = !dist_to_dest.empty();
+
+    // td egress offsets: flatten into sorted (loc, range, data) groups.
+    // Only touch the device when there are td offsets: thrust ops run on the
+    // legacy default stream which serializes against the OTHER states'
+    // streams (measured ~2% pong throughput on worldwide at 2-4 states).
+    td_dest_n_[dir] = td_dist_to_dest.size();
+    td_dest_data_n_[dir] = 0U;
+    if (!td_dist_to_dest.empty()) {
+      auto locs = std::vector<location_idx_t>{};
+      locs.reserve(td_dist_to_dest.size());
+      for (auto const& [l, _] : td_dist_to_dest) {
+        locs.push_back(l);
+      }
+      utl::sort(locs);  // hash_map order is not deterministic
+      auto ranges = std::vector<std::uint32_t>{0U};
+      auto td_data = std::vector<td_offset>{};
+      for (auto const l : locs) {
+        auto const& v = td_dist_to_dest.at(l);
+        td_data.insert(end(td_data), begin(v), end(v));
+        ranges.push_back(static_cast<std::uint32_t>(td_data.size()));
+      }
+      td_dest_data_n_[dir] = td_data.size();
+
+      if (td_dest_locs_dev_[dir].size() < locs.size()) {
+        td_dest_locs_dev_[dir].resize(locs.size());
+        td_dest_ranges_dev_[dir].resize(ranges.size());
+      }
+      if (td_dest_data_dev_[dir].size() < td_data.size()) {
+        td_dest_data_dev_[dir].resize(td_data.size());
+      }
+
+      auto* const locs_pin = td_dest_locs_pin_[dir].ensure(locs.size());
+      std::copy(locs.begin(), locs.end(), locs_pin);
+      auto* const ranges_pin = td_dest_ranges_pin_[dir].ensure(ranges.size());
+      std::copy(ranges.begin(), ranges.end(), ranges_pin);
+      auto* const data_pin = td_dest_data_pin_[dir].ensure(td_data.size());
+      std::copy(td_data.begin(), td_data.end(), data_pin);
+      utl::verify(
+          cudaSuccess ==
+                  cudaMemcpyAsync(
+                      thrust::raw_pointer_cast(td_dest_locs_dev_[dir].data()),
+                      locs_pin, locs.size() * sizeof(location_idx_t),
+                      cudaMemcpyHostToDevice, stream_) &&
+              cudaSuccess ==
+                  cudaMemcpyAsync(
+                      thrust::raw_pointer_cast(td_dest_ranges_dev_[dir].data()),
+                      ranges_pin, ranges.size() * sizeof(std::uint32_t),
+                      cudaMemcpyHostToDevice, stream_) &&
+              cudaSuccess ==
+                  cudaMemcpyAsync(
+                      thrust::raw_pointer_cast(td_dest_data_dev_[dir].data()),
+                      data_pin, td_data.size() * sizeof(td_offset),
+                      cudaMemcpyHostToDevice, stream_),
+          "could not copy td dest offsets");
+    }
 
     is_dest_[dir].resize(is_dest.blocks_.size());
     utl::verify(
@@ -340,6 +496,18 @@ struct gpu_raptor_state::impl {
 
   thrust::device_vector<std::uint16_t> dist_to_dest_dev_[2];
 
+  // td egress offsets (q.td_dest_), sparse groups per direction; device
+  // vectors are grow-only capacity pools, the logical sizes live in
+  // td_dest_n_/td_dest_data_n_ (0 = no td offsets, device never touched)
+  std::size_t td_dest_n_[2] = {0U, 0U};
+  std::size_t td_dest_data_n_[2] = {0U, 0U};
+  thrust::device_vector<location_idx_t> td_dest_locs_dev_[2];
+  thrust::device_vector<std::uint32_t> td_dest_ranges_dev_[2];
+  thrust::device_vector<td_offset> td_dest_data_dev_[2];
+  pinned_buffer<location_idx_t> td_dest_locs_pin_[2];
+  pinned_buffer<std::uint32_t> td_dest_ranges_pin_[2];
+  pinned_buffer<td_offset> td_dest_data_pin_[2];
+
   pinned_buffer<std::uint16_t> dist_to_dest_[2];
   pinned_buffer<std::pair<location_idx_t, unixtime_t>> starts_;
   thrust::device_vector<std::pair<location_idx_t, unixtime_t>> starts_dev_;
@@ -373,8 +541,7 @@ gpu_raptor<SearchDir>::gpu_raptor(
     nigiri::bitvec& is_dest,
     std::array<nigiri::bitvec, kMaxVias> const& /* is_via (GPU: no vias) */,
     std::vector<std::uint16_t> const& dist_to_dest,
-    hash_map<location_idx_t,
-             std::vector<td_offset>> const& /* td_dist_to_dest (GPU: no td) */,
+    hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
     std::vector<std::uint16_t> const& /* lb (GPU: no lower bounds) */,
     std::vector<via_stop> const& via_stops,
     day_idx_t const base,
@@ -393,6 +560,9 @@ gpu_raptor<SearchDir>::gpu_raptor(
       is_dest_{is_dest},
       base_{base},
       allowed_claszes_{allowed_claszes},
+      require_bike_transport_{require_bike_transport},
+      require_car_transport_{require_car_transport},
+      is_wheelchair_{is_wheelchair},
       transfer_time_settings_{tts} {
   utl::verify(rtt == nullptr || gpu_rtt_ != nullptr,
               "GPU raptor: rt search requires the uploaded device rt "
@@ -400,7 +570,7 @@ gpu_raptor<SearchDir>::gpu_raptor(
   state_.impl_->resize(tt.n_locations(), tt.n_routes(),
                        rtt == nullptr ? 0U : rtt->n_rt_transports());
   reset_arrivals();
-  state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest);
+  state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest, td_dist_to_dest);
 }
 
 template <direction SearchDir>
@@ -435,13 +605,17 @@ __global__ void mark_rt_transports_kernel(raptor_impl<SearchDir> r,
   r.mark_rt_transports(k);
 }
 
-template <direction SearchDir, bool WithClaszFilter>
+template <direction SearchDir,
+          bool WithClaszFilter,
+          bool IsWheelchair,
+          bool WithFilters>
 __global__ void update_rt_transports_kernel(raptor_impl<SearchDir> r,
                                             unsigned const k) {
   if (*r.done_) {
     return;
   }
-  r.template update_rt_transports<WithClaszFilter>(k);
+  r.template update_rt_transports<WithClaszFilter, IsWheelchair, WithFilters>(
+      k);
 }
 
 template <direction SearchDir>
@@ -466,13 +640,13 @@ __global__ void et_build_route_list_kernel(raptor_impl<SearchDir> r) {
   r.et_build_route_list();
 }
 
-template <direction SearchDir>
+template <direction SearchDir, bool IsWheelchair>
 __global__ void et_collect_tasks_kernel(raptor_impl<SearchDir> r,
                                         unsigned const k) {
   if (*r.done_) {
     return;
   }
-  r.et_collect_tasks(k);
+  r.template et_collect_tasks<IsWheelchair>(k);
 }
 
 template <direction SearchDir>
@@ -484,12 +658,15 @@ __global__ void et_run_lookups_kernel(raptor_impl<SearchDir> r,
   r.et_run_lookups(k);
 }
 
-template <direction SearchDir, bool WithClaszFilter>
+template <direction SearchDir,
+          bool WithClaszFilter,
+          bool IsWheelchair,
+          bool WithFilters>
 __global__ void loop_routes_kernel(raptor_impl<SearchDir> r, unsigned const k) {
   if (*r.done_) {
     return;
   }
-  r.template loop_routes<WithClaszFilter>(k);
+  r.template loop_routes<WithClaszFilter, IsWheelchair, WithFilters>(k);
 }
 
 template <direction SearchDir>
@@ -506,13 +683,13 @@ __global__ void begin_footpath_phase_kernel(raptor_impl<SearchDir> r) {
   r.begin_footpath_phase();
 }
 
-template <direction SearchDir>
+template <direction SearchDir, bool WithTdDest, bool WithTdFootpaths>
 __global__ void transfers_footpaths_kernel(raptor_impl<SearchDir> r,
                                            unsigned const k) {
   if (*r.done_) {
     return;
   }
-  r.update_transfers_and_footpaths(k);
+  r.template update_transfers_and_footpaths<WithTdDest, WithTdFootpaths>(k);
   r.route_mark_.reset();
   r.rt_transport_mark_.reset();
 }
@@ -533,6 +710,24 @@ template <typename Kernel, typename... Args>
 void launch(Kernel kernel, cudaStream_t stream, Args&&... args) {
   auto const [blocks, threads] = launch_dims(kernel);
   kernel<<<blocks, threads, 0, stream>>>(std::forward<Args>(args)...);
+}
+
+template <typename Fn>
+void dispatch_filtered(bool const with_clasz,
+                       bool const is_wheelchair,
+                       bool const with_filters,
+                       Fn&& fn) {
+  switch ((static_cast<unsigned>(with_clasz) << 2) |
+          (static_cast<unsigned>(is_wheelchair) << 1) |
+          static_cast<unsigned>(with_filters)) {
+    case 0b000: fn.template operator()<false, false, false>(); break;
+    case 0b001: fn.template operator()<false, false, true>(); break;
+    case 0b011: fn.template operator()<false, true, true>(); break;
+    case 0b100: fn.template operator()<true, false, false>(); break;
+    case 0b101: fn.template operator()<true, false, true>(); break;
+    case 0b111: fn.template operator()<true, true, true>(); break;
+    default: __builtin_unreachable();  // no 010/110 (wheelchair => filters)
+  }
 }
 
 template <direction SearchDir>
@@ -581,6 +776,9 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
   CUDA_CHECK(cudaPeekAtLastError());
 
   auto const rt_active = gpu_rtt_ != nullptr;
+  auto const with_td_dest = s.td_dest_n_[kDirIdx] > 0U;
+  auto const with_td_fps =
+      rt_active && prf_idx != 0U && gpu_rtt_->impl_->has_td_fps_[prf_idx];
   auto r = raptor_impl<SearchDir>{
       .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
       .done_ = thrust::raw_pointer_cast(s.done_.data()),
@@ -591,10 +789,22 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
       .max_transfers_ = max_transfers,
       .allowed_claszes_ = allowed_claszes_,
       .prf_idx_ = prf_idx,
+      .require_bike_transport_ = require_bike_transport_,
+      .require_car_transport_ = require_car_transport_,
       .base_ = base_,
       .starts_ = starts,
       .is_dest_ = {to_view(s.is_dest_[kDirIdx])},
       .dist_to_end_ = to_view(s.dist_to_dest_dev_[kDirIdx]),
+      .td_dest_locs_ = {thrust::raw_pointer_cast(
+                            s.td_dest_locs_dev_[kDirIdx].data()),
+                        s.td_dest_n_[kDirIdx]},
+      .td_dest_ =
+          {.data_ = {thrust::raw_pointer_cast(
+                         s.td_dest_data_dev_[kDirIdx].data()),
+                     s.td_dest_data_n_[kDirIdx]},
+           .bucket_starts_ =
+               {thrust::raw_pointer_cast(s.td_dest_ranges_dev_[kDirIdx].data()),
+                s.td_dest_n_[kDirIdx] == 0U ? 0U : s.td_dest_n_[kDirIdx] + 1U}},
       .round_times_ = {to_mutable_view(s.round_times_), n_locations_},
       .best_ = {to_mutable_view(s.best_), n_locations_},
       .tmp_ = {to_mutable_view(s.tmp_), n_locations_},
@@ -628,22 +838,47 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
     }
     launch(begin_transit_phase_kernel<SearchDir>, s.stream_, r);
     launch(et_build_route_list_kernel<SearchDir>, s.stream_, r);
-    launch(et_collect_tasks_kernel<SearchDir>, s.stream_, r, k);
-    launch(et_run_lookups_kernel<SearchDir>, s.stream_, r, k);
-    if (allowed_claszes_ == all_clasz_allowed()) {
-      launch(loop_routes_kernel<SearchDir, false>, s.stream_, r, k);
+    if (is_wheelchair_) {
+      launch(et_collect_tasks_kernel<SearchDir, true>, s.stream_, r, k);
     } else {
-      launch(loop_routes_kernel<SearchDir, true>, s.stream_, r, k);
+      launch(et_collect_tasks_kernel<SearchDir, false>, s.stream_, r, k);
     }
-    if (rt_active) {
-      if (allowed_claszes_ == all_clasz_allowed()) {
-        launch(update_rt_transports_kernel<SearchDir, false>, s.stream_, r, k);
-      } else {
-        launch(update_rt_transports_kernel<SearchDir, true>, s.stream_, r, k);
+    launch(et_run_lookups_kernel<SearchDir>, s.stream_, r, k);
+    {
+      auto const with_clasz = allowed_claszes_ != all_clasz_allowed();
+      auto const with_filters =
+          is_wheelchair_ || require_bike_transport_ || require_car_transport_;
+      dispatch_filtered(
+          with_clasz, is_wheelchair_, with_filters,
+          [&]<bool WithClasz, bool IsWheelchair, bool WithFilters>() {
+            launch(loop_routes_kernel<SearchDir, WithClasz, IsWheelchair,
+                                      WithFilters>,
+                   s.stream_, r, k);
+          });
+      if (rt_active) {
+        dispatch_filtered(
+            with_clasz, is_wheelchair_, with_filters,
+            [&]<bool WithClasz, bool IsWheelchair, bool WithFilters>() {
+              launch(update_rt_transports_kernel<SearchDir, WithClasz,
+                                                 IsWheelchair, WithFilters>,
+                     s.stream_, r, k);
+            });
       }
     }
     launch(begin_footpath_phase_kernel<SearchDir>, s.stream_, r);
-    launch(transfers_footpaths_kernel<SearchDir>, s.stream_, r, k);
+    if (!with_td_dest && !with_td_fps) {
+      launch(transfers_footpaths_kernel<SearchDir, false, false>, s.stream_, r,
+             k);
+    } else if (with_td_dest && !with_td_fps) {
+      launch(transfers_footpaths_kernel<SearchDir, true, false>, s.stream_, r,
+             k);
+    } else if (!with_td_dest && with_td_fps) {
+      launch(transfers_footpaths_kernel<SearchDir, false, true>, s.stream_, r,
+             k);
+    } else {
+      launch(transfers_footpaths_kernel<SearchDir, true, true>, s.stream_, r,
+             k);
+    }
   }
   cudaStreamSynchronize(s.stream_);
   CUDA_CHECK(cudaPeekAtLastError());
@@ -765,6 +1000,41 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
       }
     }
 
+    // The device derives footpath durations from label deltas which include
+    // waiting for the window of a time-dependent footpath (e.g. elevator
+    // downtime). Mirror the CPU reconstruct: evaluate the active td entry at
+    // the label and anchor the leg to the actual walking window.
+    if (rtt_ != nullptr && prf_idx != 0U &&
+        !(SearchDir == direction::kForward ? rtt_->td_footpaths_in_[prf_idx]
+                                           : rtt_->td_footpaths_out_[prf_idx])
+             .empty()) {
+      constexpr auto const kIsFwd = SearchDir == direction::kForward;
+      auto const& has_td = kIsFwd ? rtt_->has_td_footpaths_in_[prf_idx]
+                                  : rtt_->has_td_footpaths_out_[prf_idx];
+      auto const& td_fps = kIsFwd ? rtt_->td_footpaths_in_[prf_idx]
+                                  : rtt_->td_footpaths_out_[prf_idx];
+      for (auto& lg : j.legs_) {
+        if (!std::holds_alternative<footpath>(lg.uses_)) {
+          continue;
+        }
+        auto const key_l = kIsFwd ? lg.to_ : lg.from_;
+        auto const target_l = kIsFwd ? lg.from_ : lg.to_;
+        if (!has_td.test(key_l)) {
+          continue;
+        }
+        auto const t = lg.arr_time_;
+        for_each_footpath<SearchDir>(td_fps[key_l], t, [&](footpath const fp) {
+          if (fp.target() != target_l) {
+            return utl::cflow::kContinue;
+          }
+          lg.dep_time_ = t - fp.duration();
+          lg.arr_time_ = t;
+          lg.uses_ = footpath{lg.to_, fp.duration()};
+          return utl::cflow::kBreak;
+        });
+      }
+    }
+
     // is_reconstructed_ stays false
     // -> only reconstruct() might set it to true
     results.add(std::move(j));
@@ -820,6 +1090,7 @@ void gpu_raptor<SearchDir>::reconstruct(query const& q, journey& j) {
       is_fwd ? q.start_match_mode_ : q.dest_match_mode_;
   if (front_match_mode == location_match_mode::kIntermodal) {
     auto const& offsets = is_fwd ? q.start_ : q.destination_;
+    auto const& td_offsets = is_fwd ? q.td_start_ : q.td_dest_;
     auto const special = get_special_station(is_fwd ? special_station::kStart
                                                     : special_station::kEnd);
     auto const o = utl::find_if(offsets, [&](offset const& x) {
@@ -830,10 +1101,50 @@ void gpu_raptor<SearchDir>::reconstruct(query const& q, journey& j) {
                   // bwd: destination, anchored exactly at j.dest_time_
                   : dep_time - x.duration() == j.dest_time_);
     });
-    utl::verify(o != end(offsets), "gpu reconstruct: no front mumo offset");
-    auto const dep = dep_time - o->duration();
-    j.legs_.insert(begin(j.legs_), journey::leg{direction::kForward, special,
-                                                from, dep, dep_time, *o});
+    if (o != end(offsets)) {
+      auto const dep = dep_time - o->duration();
+      j.legs_.insert(begin(j.legs_), journey::leg{direction::kForward, special,
+                                                  from, dep, dep_time, *o});
+    } else {
+      // td offset (e.g. flex), mirrors the CPU reconstruct:
+      // - fwd = query start side (find_start_footpath): evaluated backward
+      //   from the first transit departure, feasible if not before the
+      //   journey start
+      // - bwd = td egress side (get_legs intermodal dest): evaluated forward
+      //   from the final label j.dest_time_
+      // specify_td_offsets() refines both to the raw entry duration below.
+      auto inserted = false;
+      for (auto const& [target, tds] : td_offsets) {
+        if (!matches(tt_, front_match_mode, target, from)) {
+          continue;
+        }
+        if (is_fwd) {
+          auto const fp = get_td_duration<direction::kBackward>(tds, dep_time);
+          if (!fp.has_value() || dep_time - fp->first < j.start_time_) {
+            continue;
+          }
+          j.legs_.insert(begin(j.legs_),
+                         journey::leg{direction::kForward, special, from,
+                                      dep_time - fp->first, dep_time,
+                                      offset{target, fp->first,
+                                             fp->second.transport_mode_id_}});
+        } else {
+          auto const t = j.dest_time_;
+          auto const fp = get_td_duration<direction::kForward>(tds, t);
+          if (!fp.has_value() || t + fp->first > dep_time) {
+            continue;  // must reach the stop before the transit departure
+          }
+          j.legs_.insert(
+              begin(j.legs_),
+              journey::leg{
+                  direction::kForward, special, from, t, t + fp->first,
+                  offset{target, fp->first, fp->second.transport_mode_id_}});
+        }
+        inserted = true;
+        break;
+      }
+      utl::verify(inserted, "gpu reconstruct: no front mumo offset");
+    }
   }
 
   // Back-side mumo leg: last transit stop -> special_station.
@@ -843,6 +1154,7 @@ void gpu_raptor<SearchDir>::reconstruct(query const& q, journey& j) {
       is_fwd ? q.dest_match_mode_ : q.start_match_mode_;
   if (back_match_mode == location_match_mode::kIntermodal) {
     auto const& offsets = is_fwd ? q.destination_ : q.start_;
+    auto const& td_offsets = is_fwd ? q.td_dest_ : q.td_start_;
     auto const special = get_special_station(is_fwd ? special_station::kEnd
                                                     : special_station::kStart);
     auto const o = utl::find_if(offsets, [&](offset const& x) {
@@ -853,11 +1165,46 @@ void gpu_raptor<SearchDir>::reconstruct(query const& q, journey& j) {
                   // bwd: query start, anchored by feasibility
                   : arr_time + x.duration() <= j.start_time_);
     });
-    utl::verify(o != end(offsets), "gpu reconstruct: no back mumo offset");
-    auto const arr = arr_time + o->duration();
-    j.legs_.push_back(
-        journey::leg{direction::kForward, to, special, arr_time, arr, *o});
-    j.dest_ = special;
+    if (o != end(offsets)) {
+      auto const arr = arr_time + o->duration();
+      j.legs_.push_back(
+          journey::leg{direction::kForward, to, special, arr_time, arr, *o});
+      j.dest_ = special;
+    } else {
+      // td offset (e.g. flex), mirrors the CPU reconstruct:
+      // - fwd = td egress side: evaluated backward from the final label
+      // - bwd = query start side: evaluated forward from the last transit
+      //   arrival, feasible if not past the journey start anchor
+      // specify_td_offsets() refines both to the raw entry duration below.
+      auto inserted = false;
+      for (auto const& [target, tds] : td_offsets) {
+        if (!matches(tt_, back_match_mode, target, to)) {
+          continue;
+        }
+        if (is_fwd) {
+          auto const t = j.dest_time_;
+          auto const fp = get_td_duration<direction::kBackward>(tds, t);
+          if (!fp.has_value() || t - fp->first < arr_time) {
+            continue;  // can only leave after arriving at the stop
+          }
+          j.legs_.push_back(journey::leg{
+              direction::kForward, to, special, t - fp->first, t,
+              offset{target, fp->first, fp->second.transport_mode_id_}});
+        } else {
+          auto const fp = get_td_duration<direction::kForward>(tds, arr_time);
+          if (!fp.has_value() || arr_time + fp->first > j.start_time_) {
+            continue;
+          }
+          j.legs_.push_back(journey::leg{
+              direction::kForward, to, special, arr_time, arr_time + fp->first,
+              offset{target, fp->first, fp->second.transport_mode_id_}});
+        }
+        j.dest_ = special;
+        inserted = true;
+        break;
+      }
+      utl::verify(inserted, "gpu reconstruct: no back mumo offset");
+    }
   }
 
   // use_start_footpaths_:
@@ -907,11 +1254,13 @@ void gpu_raptor<SearchDir>::reconstruct(query const& q, journey& j) {
 
   if constexpr (is_fwd) {
     optimize_footpaths(tt_, rtt_, q, j);
+    specify_td_offsets(q, j);
   } else {
     // The journey's legs are chronological, but q is in search direction.
     auto journey_q = q;
     journey_q.flip_dir();
     optimize_footpaths(tt_, rtt_, journey_q, j);
+    specify_td_offsets(journey_q, j);
   }
 
   j.is_reconstructed_ = true;

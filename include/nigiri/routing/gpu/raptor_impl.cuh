@@ -5,9 +5,11 @@
 #include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
+#include "nigiri/routing/query.h"
 #include "nigiri/types.h"
 
 #include "nigiri/routing/gpu/device_bitvec.cuh"
+#include "nigiri/routing/gpu/device_td.cuh"
 #include "nigiri/routing/gpu/device_times.h"
 #include "nigiri/routing/gpu/device_timetable.cuh"
 #include "nigiri/routing/gpu/journey_pod.h"
@@ -31,6 +33,9 @@ namespace nigiri::routing::gpu {
 inline constexpr auto kWarpSize = 32U;
 
 inline constexpr auto kAllLanes = ~std::uint32_t{0};
+
+using td_dest_group_idx_t = cista::strong<std::uint32_t, struct td_dest_group_>;
+using td_dest_offsets_t = vecvec<td_dest_group_idx_t, td_offset>;
 
 template <direction SearchDir>
 struct raptor_impl {
@@ -289,7 +294,31 @@ struct raptor_impl {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
   }
 
-  template <bool WithClaszFilter>
+  // Combines the query's required modes (bike/car runtime flags +
+  // IsWheelchair compile-time), delegating the 2-bit decode to each filter.
+  // Only called from the WithFilters kernel variants.
+  template <bool IsWheelchair, typename Key>
+  __device__ __forceinline__ bool transport_allowed(
+      device_transport_filters<Key> const& f,
+      std::uint32_t const i,
+      unsigned& section_mask) const {
+    if (require_bike_transport_ &&
+        !f.bike_.allows(i, kBikeSections, section_mask)) {
+      return false;
+    }
+    if (require_car_transport_ &&
+        !f.car_.allows(i, kCarSections, section_mask)) {
+      return false;
+    }
+    if constexpr (IsWheelchair) {
+      if (!f.wheelchair_.allows(i, kWheelchairSections, section_mask)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  template <bool WithClaszFilter, bool IsWheelchair, bool WithFilters>
   __device__ void loop_routes(unsigned const k) {
     // One warp per route:
     // - lanes cooperate on the route's stops via update_route_warp
@@ -310,13 +339,29 @@ struct raptor_impl {
         }
       }
 
-      if (update_route_warp(k, r, lane) && lane == 0U && !*any_marked_) {
-        atomicOr(any_marked_, 1U);
+      if constexpr (WithFilters) {
+        auto section_mask = 0U;
+        if (!transport_allowed<IsWheelchair>(*tt_.filters_, i, section_mask)) {
+          continue;
+        }
+        auto const marked =
+            section_mask != 0U
+                ? update_route_warp<IsWheelchair, true>(k, r, lane,
+                                                        section_mask)
+                : update_route_warp<IsWheelchair, false>(k, r, lane, 0U);
+        if (marked && lane == 0U && !*any_marked_) {
+          atomicOr(any_marked_, 1U);
+        }
+      } else {
+        if (update_route_warp<false, false>(k, r, lane, 0U) && lane == 0U &&
+            !*any_marked_) {
+          atomicOr(any_marked_, 1U);
+        }
       }
     }
   }
 
-  template <bool WithClaszFilter>
+  template <bool WithClaszFilter, bool IsWheelchair, bool WithFilters>
   __device__ void update_rt_transports(unsigned const k) {
     auto const gid = get_global_thread_id();
     auto const stride = get_global_stride();
@@ -324,20 +369,41 @@ struct raptor_impl {
       if (!rt_transport_mark_.test(i)) {
         continue;
       }
+
       if constexpr (WithClaszFilter) {
         if (!is_allowed(allowed_claszes_,
                         rtt_.rt_transport_clasz_[rt_transport_idx_t{i}])) {
           continue;
         }
       }
-      if (update_rt_transport(k, rt_transport_idx_t{i}) && !*any_marked_) {
-        atomicOr(any_marked_, 1U);
+
+      if constexpr (WithFilters) {
+        auto section_mask = 0U;
+        if (!transport_allowed<IsWheelchair>(*rtt_.filters_, i, section_mask)) {
+          continue;
+        }
+        auto const marked = section_mask != 0U
+                                ? update_rt_transport<IsWheelchair, true>(
+                                      k, rt_transport_idx_t{i}, section_mask)
+                                : update_rt_transport<IsWheelchair, false>(
+                                      k, rt_transport_idx_t{i}, 0U);
+        if (marked && !*any_marked_) {
+          atomicOr(any_marked_, 1U);
+        }
+      } else {
+        if (update_rt_transport<false, false>(k, rt_transport_idx_t{i}, 0U) &&
+            !*any_marked_) {
+          atomicOr(any_marked_, 1U);
+        }
       }
     }
   }
 
-  __device__ bool update_rt_transport(unsigned const k,
-                                      rt_transport_idx_t const rt_t) {
+  template <bool IsWheelchair, bool WithSections>
+  __device__ bool update_rt_transport(
+      unsigned const k,
+      rt_transport_idx_t const rt_t,
+      [[maybe_unused]] unsigned const section_mask) {
     auto const stop_seq = rtt_.rt_transport_location_seq_[rt_t];
     auto const n = static_cast<unsigned>(stop_seq.size());
     auto any_marked = false;
@@ -350,7 +416,18 @@ struct raptor_impl {
       auto const l = stp.location_idx();
       auto const l_idx = to_idx(l);
 
-      if (i != 0U && et && stp.can_finish<SearchDir>(/*is_wheelchair=*/false)) {
+      // the carried transport cannot cross an inaccessible section
+      if constexpr (WithSections) {
+        if (i != 0U && et) {
+          auto const sec =
+              static_cast<unsigned>(kFwd ? stop_idx - 1 : stop_idx);
+          if (rtt_.filters_->section_killed(section_mask, rt_t, sec)) {
+            et = false;
+          }
+        }
+      }
+
+      if (i != 0U && et && stp.can_finish<SearchDir>(IsWheelchair)) {
         auto const by_transport = rt_time_at_stop(
             rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
         if (is_better(by_transport, time_at_dest_.get(k))) {
@@ -363,7 +440,7 @@ struct raptor_impl {
         }
       }
 
-      if (i == n - 1U || !stp.can_start<SearchDir>(/*is_wheelchair=*/false) ||
+      if (i == n - 1U || !stp.can_start<SearchDir>(IsWheelchair) ||
           !prev_station_mark_[l_idx]) {
         continue;
       }
@@ -383,16 +460,27 @@ struct raptor_impl {
                                                  delta_t const tmp_time,
                                                  breadcrumb_t const bc,
                                                  delta_t const t_at_dest) {
-    auto const target = to_idx(fp.target());
-    auto const fp_target_time =
-        clamp(tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
-                                                    fp.duration().count())));
+    relax_fp_target(
+        k, fp.target(),
+        adjusted_transfer_time(transfer_time_settings_, fp.duration().count()),
+        tmp_time, bc, t_at_dest);
+  }
+
+  __device__ __forceinline__ void relax_fp_target(unsigned const k,
+                                                  location_idx_t const target_l,
+                                                  int const duration,
+                                                  delta_t const tmp_time,
+                                                  breadcrumb_t const bc,
+                                                  delta_t const t_at_dest) {
+    auto const target = to_idx(target_l);
+    auto const fp_target_time = clamp(tmp_time + dir(duration));
     if (!is_better(fp_target_time, t_at_dest)) {
       return;
     }
-    if (is_better(fp_target_time, best_.get(fp.target(), Vias))) {
-      round_times_.update_min(k, fp.target(), Vias, fp_target_time, bc);
-      best_.update_min(fp.target(), Vias, fp_target_time);
+
+    if (is_better(fp_target_time, best_.get(target_l, Vias))) {
+      round_times_.update_min(k, target_l, Vias, fp_target_time, bc);
+      best_.update_min(target_l, Vias, fp_target_time);
       station_mark_.mark(target);
       if (is_dest_[target]) {
         update_time_at_dest(k, fp_target_time);
@@ -400,6 +488,47 @@ struct raptor_impl {
     }
   }
 
+  __device__ __forceinline__ bool has_td_fps(location_idx_t const l) const {
+    auto const& bv =
+        kFwd ? rtt_.td_->has_out_[prf_idx_] : rtt_.td_->has_in_[prf_idx_];
+    return !bv.blocks_.empty() && bv[to_idx(l)];
+  }
+
+  __device__ void update_td_dest_offsets(unsigned const k) {
+    auto const gid = get_global_thread_id();
+    auto const stride = get_global_stride();
+    for (auto g = gid; g < td_dest_locs_.size(); g += stride) {
+      auto const l = td_dest_locs_[g];
+
+      if (!prev_station_mark_[to_idx(l)]) {
+        continue;
+      }
+
+      auto const tmp_time = tmp_.get(l, Vias);
+      if (tmp_time == kInvalid) {
+        continue;
+      }
+
+      auto const offsets = td_dest_[td_dest_group_idx_t{g}];
+      auto const r = d_get_td_duration<SearchDir>(
+          offsets, 0U, static_cast<std::uint32_t>(offsets.size()),
+          to_unix(tmp_time));
+      if (!r.valid_) {
+        continue;
+      }
+
+      auto const end_time =
+          clamp(tmp_time + dir(static_cast<int>(r.duration_.count())));
+      if (is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
+        auto const bc = tmp_.get_bc(0U, l, Vias);
+        round_times_.update_min(k, kIntermodalTarget, Vias, end_time, bc);
+        best_.update_min(kIntermodalTarget, Vias, end_time);
+        update_time_at_dest(k, end_time);
+      }
+    }
+  }
+
+  template <bool WithTdDest, bool WithTdFootpaths>
   __device__ void update_transfers_and_footpaths(unsigned const k) {
     constexpr auto const kWarpFpThreshold = 8U;
     auto const lane = get_global_thread_id() % kWarpSize;
@@ -408,6 +537,12 @@ struct raptor_impl {
     auto const intermodal = is_intermodal_dest();
     auto const n_blocks =
         static_cast<unsigned>(prev_station_mark_.blocks_.size());
+
+    if constexpr (WithTdDest) {
+      if (intermodal && !td_dest_locs_.empty()) {
+        update_td_dest_offsets(k);
+      }
+    }
 
     for (auto w = warp_id; w < n_blocks; w += n_warps) {
       auto const bits = prev_station_mark_.blocks_[w];
@@ -464,15 +599,32 @@ struct raptor_impl {
           }
 
           // footpaths: short lists inline, hubs deferred to the whole warp
-          auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
-                                : tt_.footpaths_in_[prf_idx_][l];
-          n_fps = static_cast<unsigned>(fps.size());
-          if (n_fps <= kWarpFpThreshold) {
-            for (auto j = 0U; j != n_fps; ++j) {
-              relax_footpath(k, fps[j], tmp_time, bc, t_at_dest);
+          auto use_td_fps = false;
+          if constexpr (WithTdFootpaths) {
+            use_td_fps = has_td_fps(l);
+          }
+          if (use_td_fps) {
+            if constexpr (WithTdFootpaths) {
+              auto const td_fps = kFwd ? rtt_.td_->out_[prf_idx_][l]
+                                       : rtt_.td_->in_[prf_idx_][l];
+              d_for_each_td_footpath<SearchDir>(
+                  td_fps, to_unix(tmp_time),
+                  [&](location_idx_t const target, duration_t const d) {
+                    relax_fp_target(k, target, static_cast<int>(d.count()),
+                                    tmp_time, bc, t_at_dest);
+                  });
             }
           } else {
-            defer = true;
+            auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
+                                  : tt_.footpaths_in_[prf_idx_][l];
+            n_fps = static_cast<unsigned>(fps.size());
+            if (n_fps <= kWarpFpThreshold) {
+              for (auto j = 0U; j != n_fps; ++j) {
+                relax_footpath(k, fps[j], tmp_time, bc, t_at_dest);
+              }
+            } else {
+              defer = true;
+            }
           }
         }
       }
@@ -494,23 +646,29 @@ struct raptor_impl {
     }
   }
 
-  __device__ bool update_route_warp(unsigned const k,
-                                    route_idx_t const r,
-                                    unsigned const lane) {
+  // IsWheelchair == the kernel's dispatch flag -> stop accessibility checks
+  // constant-fold. WithSections + section_mask = the per-route section
+  // filters of the query's required modes (bike/car/wheelchair).
+  template <bool IsWheelchair, bool WithSections>
+  __device__ bool update_route_warp(
+      unsigned const k,
+      route_idx_t const r,
+      unsigned const lane,
+      [[maybe_unused]] unsigned const section_mask) {
     auto const stop_seq = tt_.route_location_seq_[r];
     auto const n = static_cast<unsigned>(stop_seq.size());
     auto const base_flat = tt_.route_stop_offset_[to_idx(r)];
     auto local_marked = false;
 
-    // The scan state is ONE 64-bit key:
+    // The 64bit key:
     //  - 32bit MSB: earliest transport: (day, transport) = total order in route
     //  - 32bit LSB: scan-order index (not stop index)
     //    (forward: boarding index, backward: alighting index)
+    //
     // Plain unsigned integer comparison yields lexicographical order
-    // (transport, stop)
-    // -> earliest transport at earliest boarding position = good
+    // (transport, stop) selects earliest transport at earliest boarding index
     constexpr auto kEtKeyInvalid = ~std::uint64_t{0};
-    auto run_key = kEtKeyInvalid;  // prefix-min across chunks
+    auto carried_et = kEtKeyInvalid;
 
     for (auto chunk = 0U; chunk < n; chunk += kWarpSize) {
       // Note: continue for i >= n would be UB for __shfl_up_sync etc
@@ -518,35 +676,76 @@ struct raptor_impl {
       auto const i = chunk + lane;
       auto stop_idx = stop_idx_t{};
       auto my_key = kEtKeyInvalid;
+      [[maybe_unused]] auto kill = false;
+
       if (i < n) {
         stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
+
         auto const et = et_result_[base_flat + stop_idx];
         if (et != kEtInvalid) {
           my_key = (static_cast<std::uint64_t>(et) << 32U) | i;
         }
+
+        if constexpr (WithSections) {
+          if (i != 0U) {
+            auto const sec =
+                static_cast<unsigned>(kFwd ? stop_idx - 1 : stop_idx);
+            kill = tt_.filters_->section_killed(section_mask, r, sec);
+          }
+        }
       }
 
-      // Get min accross all previous positions in chunk including this pos.
+      // Inclusive prefix-min over previous keys in the chunk (including this).
       auto incl = my_key;
-      for (auto off = 1U; off < kWarpSize; off <<= 1) {
-        auto const o = __shfl_up_sync(kAllLanes, incl, off);
-        if (lane >= off) {
-          incl = min(incl, o);
+      [[maybe_unused]] auto prefix_contains_kill = 0U;
+      if constexpr (WithSections) {
+        prefix_contains_kill = kill ? 1U : 0U;
+        for (auto off = 1U; off < kWarpSize; off <<= 1) {
+          auto const prev_incl = __shfl_up_sync(kAllLanes, incl, off);
+          auto const prev_prefix_contains_kill =
+              __shfl_up_sync(kAllLanes, prefix_contains_kill, off);
+          if (lane >= off) {
+            if (prefix_contains_kill == 0U) {
+              // no kill between lane-off and me
+              incl = min(incl, prev_incl);
+            }
+            prefix_contains_kill |= prev_prefix_contains_kill;
+          }
+        }
+      } else {
+        // no section filters -> plain prefix-min
+        for (auto off = 1U; off < kWarpSize; off <<= 1) {
+          auto const prev_incl = __shfl_up_sync(kAllLanes, incl, off);
+          if (lane >= off) {
+            incl = min(incl, prev_incl);
+          }
         }
       }
 
       // Get earliest transport from previous stop.
       auto et = __shfl_up_sync(kAllLanes, incl, 1);
-      if (lane == 0U) {
-        et = kEtKeyInvalid;
+      if constexpr (WithSections) {
+        auto prev_prefix_contains_kill =
+            __shfl_up_sync(kAllLanes, prefix_contains_kill, 1);
+        if (lane == 0U) {
+          et = kEtKeyInvalid;
+          prev_prefix_contains_kill = 0U;
+        }
+        et =  // if no kill between chunk start and incl here -> min(et, carry)
+            kill ? kEtKeyInvalid
+                 : (prev_prefix_contains_kill != 0U ? et : min(et, carried_et));
+      } else {
+        if (lane == 0U) {
+          et = kEtKeyInvalid;
+        }
+        et = min(et, carried_et);
       }
-      et = min(et, run_key);
 
       // Update stop time.
       auto const et_board_i = static_cast<unsigned>(et & 0xFFFF'FFFFU);
       if (i < n && et != kEtKeyInvalid && et_board_i < i) {
         auto const stp = stop{stop_seq[stop_idx]};
-        if (stp.can_finish<SearchDir>(/*is_wheelchair=*/false)) {
+        if (stp.can_finish<SearchDir>(IsWheelchair)) {
           auto const l = stp.location_idx();
           auto const l_idx = to_idx(l);
           auto const t = unpack_et(r, static_cast<std::uint32_t>(et >> 32U));
@@ -564,8 +763,17 @@ struct raptor_impl {
         }
       }
 
-      // Carry accross chunks.
-      run_key = __shfl_sync(kAllLanes, min(incl, run_key), kWarpSize - 1U);
+      // Carry across chunks (sections: reset if the chunk contains a kill).
+      if constexpr (WithSections) {
+        auto const incl_last = __shfl_sync(kAllLanes, incl, kWarpSize - 1U);
+        auto const chunk_contains_kill =
+            __shfl_sync(kAllLanes, prefix_contains_kill, kWarpSize - 1U);
+        carried_et =
+            chunk_contains_kill != 0U ? incl_last : min(incl_last, carried_et);
+      } else {
+        carried_et =
+            __shfl_sync(kAllLanes, min(incl, carried_et), kWarpSize - 1U);
+      }
     }
 
     return __any_sync(kAllLanes, local_marked);
@@ -712,6 +920,8 @@ struct raptor_impl {
   // 2) Count: __ballot_sync(is_task) collapses 32 lanes to a 32bit mask
   // 3) Reserve: make space for popcount(ballot sync mask) entries
   // 4) Rank + Scatter: write flat route stop to ballot & ((1 << lane) - 1)
+  // IsWheelchair: kernel-level (see loop_routes) -> can_start constant-folds
+  template <bool IsWheelchair>
   __device__ void et_collect_tasks(unsigned const k) {
     auto const gid = get_global_thread_id();
     auto const stride = get_global_stride();
@@ -736,7 +946,7 @@ struct raptor_impl {
               auto const stp = stop{stop_seq[s]};
               auto const l = stp.location_idx();
               is_task = prev_station_mark_[to_idx(l)] &&
-                        stp.can_start<SearchDir>(/*is_wheelchair=*/false) &&
+                        stp.can_start<SearchDir>(IsWheelchair) &&
                         round_times_.get(k - 1, l, 0U) != kInvalid;
             }
           }
@@ -844,15 +1054,19 @@ struct raptor_impl {
   std::uint32_t* any_marked_;
   std::uint32_t* done_;
   device_timetable tt_;
-  device_rt_timetable rtt_;  // all-empty views = rt disabled
+  device_rt_timetable rtt_;
   transfer_time_settings transfer_time_settings_;
   std::uint8_t max_transfers_;
   clasz_mask_t allowed_claszes_;
   profile_idx_t prf_idx_;
+  bool require_bike_transport_;
+  bool require_car_transport_;
   day_idx_t base_;
   cuda::std::span<std::pair<location_idx_t, unixtime_t> const> starts_;
   device_bitvec<std::uint64_t const> is_dest_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
+  cuda::std::span<location_idx_t const> td_dest_locs_;
+  d_vecvec_view<td_dest_offsets_t> td_dest_;
   device_times<SearchDir, Vias + 1> round_times_;
   device_times<SearchDir, Vias + 1> best_;
   device_times<SearchDir, Vias + 1> tmp_;

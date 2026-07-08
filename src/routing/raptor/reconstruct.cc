@@ -296,19 +296,24 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
 
       auto const traffic_day = to_idx(day) - event_mam.count() / 1440;
-      if (!is_transport_active(t, day_idx_t{traffic_day})) {
-        trace_rc_transport_no_traffic;
-        continue;
-      }
 
       auto tr = transport{t, day_idx_t{traffic_day}};
       auto ev_time = tt.event_time(tr, stop_idx,
                                    kFwd ? event_type::kArr : event_type::kDep);
       if (is_td_footpath) {
+        // The td wait can span midnight (e.g. flex window closes in the
+        // evening, connection leaves the next morning), so the transport may
+        // run on a shifted traffic day -> check activity PER shifted day
+        // (the unshifted day being inactive must not reject the transport).
         auto const fp_time = delta_to_unix(base, time);
 
         for (auto i = 0; i != 2; ++i) {
-          tr = transport{t, day_idx_t{traffic_day - (kFwd ? i : -i)}};
+          auto const td_day = day_idx_t{traffic_day - (kFwd ? i : -i)};
+          if (!is_transport_active(t, td_day)) {
+            trace_rc_transport_no_traffic;
+            continue;
+          }
+          tr = transport{t, td_day};
           ev_time = tt.event_time(tr, stop_idx,
                                   kFwd ? event_type::kArr : event_type::kDep);
           if (is_better_or_eq(ev_time, fp_time)) {
@@ -317,6 +322,11 @@ void reconstruct_journey_with_vias(timetable const& tt,
           }
         }
 
+        continue;
+      }
+
+      if (!is_transport_active(t, day_idx_t{traffic_day})) {
+        trace_rc_transport_no_traffic;
         continue;
       }
 
