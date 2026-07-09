@@ -3,6 +3,7 @@
 #include <atomic>
 #include <filesystem>
 #include <iostream>
+#include <map>
 #include <mutex>
 #include <numeric>
 #include <regex>
@@ -156,12 +157,20 @@ nigiri::pareto_set<nigiri::routing::journey> raptor_search(
                .journeys_);
 }
 
-void process_queries(
+// CPU-vs-GPU pareto disagreements accumulated over a process_queries run;
+// used as the CI gate (any nonzero count = engines diverged).
+struct compare_stats {
+  std::uint64_t gpu_misses_{0U};  // CPU journeys not covered by GPU pareto
+  std::uint64_t cpu_misses_{0U};  // GPU journeys not covered by CPU pareto
+};
+
+compare_stats process_queries(
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
     std::vector<benchmark_result>& results,
     nigiri::timetable const& tt,
     bool const use_pong) {
   results.reserve(queries.size());
+  auto stats = compare_stats{};
 
   auto mutex = std::mutex{};
   {
@@ -284,6 +293,8 @@ void process_queries(
             }
           }
         }
+        stats.gpu_misses_ += static_cast<std::uint64_t>(gpu_misses);
+        stats.cpu_misses_ += static_cast<std::uint64_t>(cpu_misses);
 #else
         std::cout << "cpu=" << total_us.count() << "us\n";
 #endif
@@ -298,6 +309,7 @@ void process_queries(
       }
     }
   }
+  return stats;
 }
 
 // needs sorted vector
@@ -772,6 +784,7 @@ int main(int argc, char* argv[]) {
   auto min_transfer_time = duration_t::rep{};
   auto qa_path = std::filesystem::path{};
   auto algorithm = std::string{"raptor"};
+  auto runs_str = std::string{};
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
@@ -779,6 +792,12 @@ int main(int argc, char* argv[]) {
        "path to a binary file containing a serialized nigiri timetable")  //
       ("algorithm,a", bpo::value(&algorithm)->default_value(algorithm),
        "routing algorithm: 'raptor' (interval extension) or 'pong'")  //
+      ("runs", bpo::value(&runs_str),
+       "comma-separated list of <base>-<algo> configurations to run on the "
+       "once-loaded timetable (base: station | intermodal, algo: raptor | "
+       "pong), e.g. station-pong,intermodal-raptor; query sets are generated "
+       "once per base and shared across its algorithms; exits non-zero if CPU "
+       "and GPU results diverge")  //
       ("seed,s", bpo::value<std::int64_t>(&seed),
        "value to seed the RNG of the query generator with, "
        "omit for random seed")  //
@@ -994,6 +1013,68 @@ int main(int argc, char* argv[]) {
     gs.dest_ = location_idx_t{dest_loc_val};
   }
   // process program options - end
+
+  // multi-configuration mode: several <base>-<algo> runs against the ONE
+  // loaded timetable (loading dominates wall time for big datasets); query
+  // sets are generated once per base and shared across its algorithms.
+  if (!runs_str.empty()) {
+    auto base_queries =
+        std::map<std::string,
+                 std::vector<nigiri::query_generation::start_dest_query>>{};
+    auto summary = std::vector<std::string>{};
+    auto total = compare_stats{};
+    for (auto start = std::size_t{0U}; start < runs_str.size();) {
+      auto const end = std::min(runs_str.find(',', start), runs_str.size());
+      auto const run = runs_str.substr(start, end - start);
+      start = end + 1U;
+
+      auto const sep = run.rfind('-');
+      auto const base = run.substr(0, sep);
+      auto const algo = sep == std::string::npos ? "" : run.substr(sep + 1U);
+      if ((base != "station" && base != "intermodal") ||
+          (algo != "raptor" && algo != "pong")) {
+        std::cerr << "invalid run \"" << run
+                  << "\", expected <station|intermodal>-<raptor|pong>\n";
+        return 1;
+      }
+
+      auto rs = gs;
+      if (base == "station") {
+        rs.start_match_mode_ = location_match_mode::kEquivalent;
+        rs.dest_match_mode_ = location_match_mode::kEquivalent;
+      } else {
+        rs.start_match_mode_ = location_match_mode::kIntermodal;
+        rs.dest_match_mode_ = location_match_mode::kIntermodal;
+        rs.start_mode_ = *query_generation::to_transport_mode("walk");
+        rs.dest_mode_ = *query_generation::to_transport_mode("walk");
+        rs.use_start_footpaths_ = false;  // first mile is in the start offsets
+      }
+
+      auto& qs = base_queries[base];
+      if (qs.empty()) {
+        generate_queries(qs, n_queries, tt, rs, seed);
+      }
+
+      std::cout << "\n=== RUN " << run << " ===\n";
+      auto results = std::vector<benchmark_result>{};
+      auto const cs = process_queries(qs, results, tt, algo == "pong");
+      print_results(qs, results, tt, rs, tt_path);
+
+      summary.push_back(fmt::format(
+          "{:<24} n={:<6} gpu_misses_cpu={:<4} cpu_misses_gpu={:<4} {}", run,
+          qs.size(), cs.gpu_misses_, cs.cpu_misses_,
+          cs.gpu_misses_ + cs.cpu_misses_ == 0U ? "PASS" : "FAIL"));
+      total.gpu_misses_ += cs.gpu_misses_;
+      total.cpu_misses_ += cs.cpu_misses_;
+    }
+
+    std::cout << "\n=== RUNS SUMMARY ===\n";
+    for (auto const& s : summary) {
+      std::cout << s << "\n";
+    }
+    print_memory_usage();
+    return total.gpu_misses_ + total.cpu_misses_ == 0U ? 0 : 1;
+  }
 
   auto queries = std::vector<nigiri::query_generation::start_dest_query>{};
   generate_queries(queries, n_queries, tt, gs, seed);

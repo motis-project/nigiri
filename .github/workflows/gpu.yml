@@ -1,0 +1,64 @@
+name: GPU Benchmark
+
+on:
+  push:
+    branches: [ master, gouda ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gpu-benchmark:
+    runs-on: [ self-hosted, linux, x64, gpu ]
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      CUDACXX: /usr/local/cuda/bin/nvcc
+      CLICOLOR_FORCE: 1
+      LD_LIBRARY_PATH: /usr/local/cuda/lib64
+    steps:
+      - uses: actions/checkout@v4
+
+      # ~/nigiri-* stash names: the same runner home also parks the motis
+      # workflow's ~/deps + ~/build -- keep them separate.
+      - name: Get deps
+        run: mkdir -p ~/nigiri-deps && mv ~/nigiri-deps deps
+
+      - name: Get build
+        run: mkdir -p ~/nigiri-build && mv ~/nigiri-build build
+
+      - name: Configure
+        run: cmake --preset cuda
+
+      - name: Build
+        run: cmake --build --preset cuda --target nigiri-test nigiri-benchmark
+
+      - name: nigiri-test
+        run: ./build/cuda/nigiri-test
+
+      - name: Save deps
+        if: always()
+        run: mv deps ~/nigiri-deps
+
+      # nigiri-benchmark loads the timetable once and runs all --runs
+      # configurations against it (CPU vs GPU per query); exits non-zero on
+      # any pareto divergence. tt.bin comes from the motis CI imports
+      # (read-only).
+      - name: Benchmark Germany (station + intermodal, raptor + pong)
+        run: |
+          ./build/cuda/nigiri-benchmark -p "$HOME/ci-data/ger/data/tt.bin" \
+            --runs station-pong,station-raptor,intermodal-pong,intermodal-raptor \
+            -n 50 -s 42
+
+      - name: Benchmark Europe (station + intermodal, raptor + pong)
+        run: |
+          ./build/cuda/nigiri-benchmark -p "$HOME/ci-data/eu/data/tt.bin" \
+            --runs station-pong,station-raptor,intermodal-pong \
+            -n 20 -s 42
+
+      - name: Save build
+        if: always()
+        run: mv build ~/nigiri-build
