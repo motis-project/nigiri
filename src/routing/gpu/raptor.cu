@@ -415,10 +415,12 @@ struct gpu_raptor_state::impl {
 
     // Copy is_dest.
     is_dest_[dir].resize(is_dest.blocks_.size());
+    auto* const is_dest_pin = is_dest_pin_[dir].ensure(is_dest.blocks_.size());
+    std::copy(is_dest.blocks_.begin(), is_dest.blocks_.end(), is_dest_pin);
     utl::verify(
         cudaSuccess == cudaMemcpyAsync(
                            thrust::raw_pointer_cast(is_dest_[dir].data()),
-                           is_dest.blocks_.data(),
+                           is_dest_pin,
                            is_dest.blocks_.size() *
                                sizeof(std::decay_t<decltype(is_dest)>::block_t),
                            cudaMemcpyHostToDevice, stream_),
@@ -454,11 +456,11 @@ struct gpu_raptor_state::impl {
   // per-direction query data: [0]=fwd, [1]=bwd (ping/pong interleave on the
   // shared state, each direction uploads its slot once in the ctor)
   thrust::device_vector<std::uint64_t> is_dest_[2];
+  pinned_host_buffer<std::uint64_t> is_dest_pin_[2];
 
   thrust::device_vector<std::uint16_t> dist_to_dest_dev_[2];
 
-  // td egress offsets (q.td_dest_), sparse groups per direction; device
-  // vectors are grow-only capacity pools, the logical sizes live in
+  // td egress offsets (q.td_dest_), sparse groups per direction;
   // used size 0 = no td offsets (device never touched)
   device_buffer<location_idx_t> td_dest_locs_dev_[2];
   device_buffer<std::uint32_t> td_dest_ranges_dev_[2];
@@ -472,9 +474,10 @@ struct gpu_raptor_state::impl {
   thrust::device_vector<std::pair<location_idx_t, unixtime_t>> starts_dev_;
 
   // reusable reconstruction buffers
-  thrust::device_vector<location_idx_t> rec_dest_;
-  thrust::device_vector<gpu_journey> rec_out_;
-  thrust::host_vector<gpu_journey> rec_host_out_;
+  pinned_host_buffer<location_idx_t> rec_dest_pin_;
+  device_buffer<location_idx_t> rec_dest_;
+  device_buffer<gpu_journey> rec_out_;
+  pinned_host_buffer<gpu_journey> rec_host_out_;
 
   device_timetable tt_;
 
@@ -852,31 +855,30 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
   auto const n_dest = static_cast<std::uint32_t>(dest_list.size());
   auto const total = n_dest * end_k;
 
-  s.rec_dest_ = dest_list;
-  if (s.rec_out_.size() < total) {
-    s.rec_out_.resize(total);
-  }
+  auto* const dest_pin = s.rec_dest_pin_.ensure(dest_list.size());
+  std::copy(dest_list.begin(), dest_list.end(), dest_pin);
+  auto* const dest_dev = s.rec_dest_.ensure(dest_list.size(), s.stream_);
+  CUDA_CHECK(cudaMemcpyAsync(dest_dev, dest_pin,
+                             dest_list.size() * sizeof(location_idx_t),
+                             cudaMemcpyHostToDevice, s.stream_));
+  auto* const rec_out_dev = s.rec_out_.ensure(total, s.stream_);
+  auto* const rec_host = s.rec_host_out_.ensure(total);
 
   {
     auto const threads = 128U;
     auto const blocks = (total + threads - 1U) / threads;
     reconstruct_kernel<SearchDir><<<blocks, threads, 0, s.stream_>>>(
-        thrust::raw_pointer_cast(s.rec_dest_.data()), n_dest, end_k, r,
-        thrust::raw_pointer_cast(s.rec_out_.data()));
+        dest_dev, n_dest, end_k, r, rec_out_dev);
+    CUDA_CHECK(cudaMemcpyAsync(rec_host, rec_out_dev,
+                               total * sizeof(gpu_journey),
+                               cudaMemcpyDeviceToHost, s.stream_));
     cudaStreamSynchronize(s.stream_);
   }
   CUDA_CHECK(cudaPeekAtLastError());
 
-  if (s.rec_host_out_.size() < total) {
-    s.rec_host_out_.resize(total);
-  }
-
-  thrust::copy(s.rec_out_.begin(), s.rec_out_.begin() + total,
-               s.rec_host_out_.begin());
-
   // === CONVERT DEVICE JOURNEYS TO HOST JOURNEYS ===
   for (auto idx = std::uint32_t{0U}; idx != total; ++idx) {
-    auto const& gj = s.rec_host_out_[idx];
+    auto const& gj = rec_host[idx];
 
     if (gj.state_ == reconstruction_result::kReconstructionFailed) {
       // should not happen

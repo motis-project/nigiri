@@ -183,14 +183,6 @@ cell_result run_config(
   auto out = cell_result{};
   auto& stats = out.stats_;
 
-  // padded markdown: renders as a table AND stays aligned as plain text
-  fmt::print("| {:<36} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} |\n",  //
-             "config", "q/s", "avg ms", "median", "q90", "q99");
-  fmt::print(
-      "| {0:-<36} | {0:->5}: | {0:->5}: | {0:->5}: | {0:->5}: | "
-      "{0:->5}: |\n",
-      "");
-
   // the sweep's state pool is allocated once at the maximum count; each
   // sweep point borrows a prefix of it
   auto const prefix = []<typename WS>(
@@ -610,6 +602,15 @@ int main(int argc, char* argv[]) {
     return false;
   };
 
+  // padded markdown: renders as a table AND stays aligned as plain text;
+  // one table for the whole matrix
+  fmt::print("| {:<36} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} |\n",  //
+             "config", "q/s", "avg ms", "median", "q90", "q99");
+  fmt::print(
+      "| {0:-<36} | {0:->5}: | {0:->5}: | {0:->5}: | {0:->5}: | "
+      "{0:->5}: |\n",
+      "");
+
   auto mode_queries =
       std::map<std::string,
                std::vector<nigiri::query_generation::start_dest_query>>{};
@@ -639,7 +640,6 @@ int main(int argc, char* argv[]) {
 
     for (auto const& algo : algos) {
       auto const label = mode + "-" + algo;
-      std::cout << "\n=== RUN " << label << " ===\n";
       auto cell = cell_result{};
       try {
         cell = run_config(qs, tt, label, algo == "pong", run_cpu, run_gpu,
