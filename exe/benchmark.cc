@@ -165,9 +165,11 @@ void process_queries(
 
   auto mutex = std::mutex{};
   {
+#if defined(NIGIRI_CUDA)
     std::cout << "creating GPU timetable\n";
     auto const gpu_tt = routing::gpu::gpu_timetable{tt};
     std::cout << "creating GPU timetable finished\n";
+#endif
 
     auto query_processing_timer =
         scoped_timer(fmt::format("processing of {} queries", queries.size()));
@@ -177,16 +179,20 @@ void process_queries(
 
     struct query_state {
       search_state ss_;
-      search_state gpu_ss_;  // separate required for result comparison
       raptor_state rs_;
+#if defined(NIGIRI_CUDA)
+      search_state gpu_ss_;  // separate required for result comparison
       std::unique_ptr<routing::gpu::gpu_raptor_state> gpu_rs_;
+#endif
     } query_state;
 
     for (auto q_idx = 0U; q_idx != queries.size(); ++q_idx) {
+#if defined(NIGIRI_CUDA)
       if (query_state.gpu_rs_.get() == nullptr) {
         query_state.gpu_rs_ =
             std::make_unique<routing::gpu::gpu_raptor_state>(gpu_tt);
       }
+#endif
       try {
         auto const total_time_start = std::chrono::steady_clock::now();
         auto const result =
@@ -197,7 +203,11 @@ void process_queries(
                            tt, nullptr, query_state.ss_, query_state.rs_,
                            queries[q_idx].q_, direction::kForward);
         auto const total_time_stop = std::chrono::steady_clock::now();
+        auto const total_us =
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                total_time_stop - total_time_start);
 
+#if defined(NIGIRI_CUDA)
         auto const gpu_total_time_start = std::chrono::steady_clock::now();
         auto const gpu_result =
             use_pong
@@ -209,9 +219,6 @@ void process_queries(
                       queries[q_idx].q_, direction::kForward);
         auto const gpu_total_time_stop = std::chrono::steady_clock::now();
 
-        auto const total_us =
-            std::chrono::duration_cast<std::chrono::microseconds>(
-                total_time_stop - total_time_start);
         auto const total_gpu_us =
             std::chrono::duration_cast<std::chrono::microseconds>(
                 gpu_total_time_stop - gpu_total_time_start);
@@ -277,6 +284,9 @@ void process_queries(
             }
           }
         }
+#else
+        std::cout << "cpu=" << total_us.count() << "us\n";
+#endif
         auto const guard = std::lock_guard{mutex};
         results.emplace_back(benchmark_result{
             q_idx, result, *result.journeys_,
@@ -453,6 +463,7 @@ void profile_matrix(
         cpu_search);
   }
 
+#if defined(NIGIRI_CUDA)
   auto const gpu_tt = routing::gpu::gpu_timetable{tt};
   struct gpu_ws {
     search_state ss_;
@@ -491,8 +502,10 @@ void profile_matrix(
       break;
     }
   }
+#endif
 }
 
+#if defined(NIGIRI_CUDA)
 void throughput_test(
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
     timetable const& tt,
@@ -547,6 +560,7 @@ void throughput_test(
   print_load_latency(std::move(lat), "gpu");
   print_load_latency(std::move(lat_lb), "lb(cpu)");
 }
+#endif
 
 // CPU counterpart of throughput_test: N worker threads, each its own
 // raptor_state, running CPU pong over the shared timetable. For a fair
@@ -995,7 +1009,12 @@ int main(int argc, char* argv[]) {
     throughput_test_cpu(queries, tt, cpu_threads, use_pong);
   }
   if (gpu_threads > 0U) {
+#if defined(NIGIRI_CUDA)
     throughput_test(queries, tt, gpu_threads, use_pong);
+#else
+    std::cerr << "--gpu_threads requires a NIGIRI_CUDA build\n";
+    return 1;
+#endif
   }
   if (cpu_threads > 0U || gpu_threads > 0U) {
     return 0;
