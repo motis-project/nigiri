@@ -84,9 +84,6 @@ void generate_queries(
                 ? query_generation::generator{tt, gs,
                                               static_cast<std::uint32_t>(seed)}
                 : query_generation::generator{tt, gs};
-  auto query_generation_timer = scoped_timer(fmt::format(
-      "generation of {} queries using seed {}", n_queries, qg.seed_));
-  std::cout << "--- Query generator settings ---\n" << gs << "\n--- --- ---\n";
   queries.reserve(n_queries);
   for (auto i = 0U; i != n_queries; ++i) {
     auto const sdq = qg.random_query();
@@ -94,7 +91,6 @@ void generate_queries(
       queries.emplace_back(sdq.value());
     }
   }
-  std::cout << queries.size() << " queries generated successfully\n";
 }
 
 struct compare_stats {
