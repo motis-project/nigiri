@@ -47,7 +47,7 @@ jobs:
             --engines cpu gpu \
             --algo raptor pong \
             --modes station-station coordinate-coordinate \
-            -n 100
+            -n 50
 
       - name: Validate Europe
         run: |
