@@ -21,7 +21,7 @@
 namespace nigiri::routing::gpu {
 
 inline bool gpu_supported(query const& q, rt_timetable const* = nullptr) {
-  return q.transfer_time_settings_.default_ && q.via_stops_.empty();
+  return q.via_stops_.empty();
 }
 
 struct gpu_timetable {
