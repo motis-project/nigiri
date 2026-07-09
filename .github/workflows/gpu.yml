@@ -22,9 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ~/deps is shared with the motis workflow on this runner (pkg checks
-      # out each project's pinned commits on configure); the build tree is
-      # project-specific -> parked separately as ~/nigiri-build.
       - name: Get deps
         run: mkdir -p ~/deps && mv ~/deps .
 
@@ -44,21 +41,21 @@ jobs:
         if: always()
         run: mv deps ~
 
-      # nigiri-benchmark loads the timetable once and runs all --runs
-      # configurations against it (CPU vs GPU per query); exits non-zero on
-      # any pareto divergence. tt.bin comes from the motis CI imports
-      # (read-only).
-      - name: Benchmark Germany (station + intermodal, raptor + pong)
+      - name: Benchmark Germany (full matrix)
         run: |
           ./build/cuda/nigiri-benchmark -p "$HOME/ci-data/ger/data/tt.bin" \
-            --runs station-pong,station-raptor,intermodal-pong,intermodal-raptor \
-            -n 50 -s 42
+            --engines cpu gpu \
+            --algo raptor pong \
+            --modes station-station coordinate-coordinate \
+            -n 100
 
-      - name: Benchmark Europe (station + intermodal, raptor + pong)
+      - name: Benchmark Europe (full matrix)
         run: |
           ./build/cuda/nigiri-benchmark -p "$HOME/ci-data/eu/data/tt.bin" \
-            --runs station-pong,station-raptor,intermodal-pong \
-            -n 20 -s 42
+            --engines cpu gpu \
+            --algo raptor pong \
+            --modes station-station coordinate-coordinate \
+            -n 100 --gpu_states 2
 
       - name: Save build
         if: always()
