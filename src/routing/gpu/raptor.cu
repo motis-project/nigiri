@@ -388,21 +388,14 @@ struct gpu_raptor_state::impl {
     // -> handled in upload_query (called by the gpu_raptor ctor -> one per dir)
   }
 
-  // Uploads one direction's query data into its own slot. Ping and pong share
-  // this state and their execute() calls interleave (pong_search runs
-  // ping, pong*N, ping, pong*M, ...), so each direction keeps separate device
-  // buffers and uploads exactly once from the gpu_raptor ctor.
   void upload_query(
-      unsigned const dir,
+      unsigned const dir /* fwd=0 bwd=1 -> ping/pong can coexist */,
       nigiri::bitvec const& is_dest,
       std::vector<std::uint16_t> const& dist_to_dest,
       hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest) {
     is_intermodal_dest_[dir] = !dist_to_dest.empty();
 
-    // td egress offsets: flatten into sorted (loc, range, data) groups.
-    // Only touch the device when there are td offsets: thrust ops run on the
-    // legacy default stream which serializes against the OTHER states'
-    // streams (measured ~2% pong throughput on worldwide at 2-4 states).
+    // td dest offsets: flatten into sorted (loc, range, data) groups.
     td_dest_n_[dir] = td_dist_to_dest.size();
     td_dest_data_n_[dir] = 0U;
     if (!td_dist_to_dest.empty()) {
@@ -454,6 +447,7 @@ struct gpu_raptor_state::impl {
           "could not copy td dest offsets");
     }
 
+    // Copy is_dest.
     is_dest_[dir].resize(is_dest.blocks_.size());
     utl::verify(
         cudaSuccess == cudaMemcpyAsync(
@@ -464,6 +458,7 @@ struct gpu_raptor_state::impl {
                            cudaMemcpyHostToDevice, stream_),
         "could not copy is_dest");
 
+    // Copy dist_to_dest.
     dist_to_dest_dev_[dir].resize(dist_to_dest.size());
     auto* const dd_pinned = dist_to_dest_[dir].ensure(dist_to_dest.size());
     std::copy(dist_to_dest.begin(), dist_to_dest.end(), dd_pinned);
@@ -1000,10 +995,7 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
       }
     }
 
-    // The device derives footpath durations from label deltas which include
-    // waiting for the window of a time-dependent footpath (e.g. elevator
-    // downtime). Mirror the CPU reconstruct: evaluate the active td entry at
-    // the label and anchor the leg to the actual walking window.
+    // Shorten td footpaths to their actual duration (excluding waiting).
     if (rtt_ != nullptr && prf_idx != 0U &&
         !(SearchDir == direction::kForward ? rtt_->td_footpaths_in_[prf_idx]
                                            : rtt_->td_footpaths_out_[prf_idx])
@@ -1147,7 +1139,7 @@ void gpu_raptor<SearchDir>::reconstruct(query const& q, journey& j) {
     }
   }
 
-  // Back-side mumo leg: last transit stop -> special_station.
+  // offset: last transit stop -> special_station.
   auto const to = j.legs_.back().to_;
   auto const arr_time = j.legs_.back().arr_time_;
   auto const back_match_mode =
@@ -1171,43 +1163,46 @@ void gpu_raptor<SearchDir>::reconstruct(query const& q, journey& j) {
           journey::leg{direction::kForward, to, special, arr_time, arr, *o});
       j.dest_ = special;
     } else {
-      // td offset (e.g. flex), mirrors the CPU reconstruct:
-      // - fwd = td egress side: evaluated backward from the final label
-      // - bwd = query start side: evaluated forward from the last transit
-      //   arrival, feasible if not past the journey start anchor
-      // specify_td_offsets() refines both to the raw entry duration below.
+      // dest td offset
       auto inserted = false;
       for (auto const& [target, tds] : td_offsets) {
         if (!matches(tt_, back_match_mode, target, to)) {
           continue;
         }
+
         if (is_fwd) {
-          auto const t = j.dest_time_;
-          auto const fp = get_td_duration<direction::kBackward>(tds, t);
-          if (!fp.has_value() || t - fp->first < arr_time) {
-            continue;  // can only leave after arriving at the stop
+          auto const fp =
+              get_td_duration<direction::kBackward>(tds, j.dest_time_);
+          if (!fp.has_value() ||
+              j.dest_time_ - fp->first /* duration*/ < arr_time) {
+            continue;
           }
+
           j.legs_.push_back(journey::leg{
-              direction::kForward, to, special, t - fp->first, t,
+              direction::kForward, to, special, j.dest_time_ - fp->first,
+              j.dest_time_,
               offset{target, fp->first, fp->second.transport_mode_id_}});
         } else {
           auto const fp = get_td_duration<direction::kForward>(tds, arr_time);
           if (!fp.has_value() || arr_time + fp->first > j.start_time_) {
             continue;
           }
+
           j.legs_.push_back(journey::leg{
               direction::kForward, to, special, arr_time, arr_time + fp->first,
               offset{target, fp->first, fp->second.transport_mode_id_}});
         }
+
         j.dest_ = special;
         inserted = true;
+
         break;
       }
       utl::verify(inserted, "gpu reconstruct: no back mumo offset");
     }
   }
 
-  // use_start_footpaths_:
+  // use_start_footpaths_ == true:
   // reconstruct the start footpath that seeded round k=0 at the first stop.
   if (q.start_match_mode_ != location_match_mode::kIntermodal) {
     auto const is_journey_start = [&](location_idx_t const l) {

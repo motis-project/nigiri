@@ -30,8 +30,6 @@
 #include <sys/resource.h>
 #endif
 
-#define NIGIRI_CUDA 1
-
 using namespace nigiri;
 using namespace nigiri::routing;
 
