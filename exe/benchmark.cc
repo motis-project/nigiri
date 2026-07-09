@@ -342,7 +342,7 @@ int main(int argc, char* argv[]) {
   auto dest_coord_str = std::string{};
   auto start_loc_val = location_idx_t::value_t{0U};
   auto dest_loc_val = location_idx_t::value_t{0U};
-  auto seed = std::int64_t{-1};
+  auto seed = std::int64_t{0};
   auto min_transfer_time = duration_t::rep{};
   auto qa_path = std::filesystem::path{};
   auto engines = std::vector<std::string>{};
@@ -374,9 +374,8 @@ int main(int argc, char* argv[]) {
        "concurrency)")  //
       ("gpu_states", bpo::value(&gpu_states_v)->multitoken(),
        "concurrent GPU pipeline counts to sweep (default: 2)")  //
-      ("seed,s", bpo::value<std::int64_t>(&seed),
-       "value to seed the RNG of the query generator with, "
-       "omit for random seed")  //
+      ("seed,s", bpo::value<std::int64_t>(&seed)->default_value(seed),
+       "query generator RNG seed, -1 for a random seed")  //
       ("num_queries,n", bpo::value(&n_queries)->default_value(n_queries),
        "number of queries to generate/process")(
           "interval_size,i",

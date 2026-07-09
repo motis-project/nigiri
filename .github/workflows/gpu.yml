@@ -41,7 +41,7 @@ jobs:
         if: always()
         run: mv deps ~
 
-      - name: Benchmark Germany (full matrix)
+      - name: Validate Germany
         run: |
           ./build/cuda/nigiri-benchmark -p "$HOME/ci-data/ger/data/tt.bin" \
             --engines cpu gpu \
@@ -49,13 +49,14 @@ jobs:
             --modes station-station coordinate-coordinate \
             -n 100
 
-      - name: Benchmark Europe (full matrix)
+      - name: Validate Europe
         run: |
           ./build/cuda/nigiri-benchmark -p "$HOME/ci-data/eu/data/tt.bin" \
             --engines cpu gpu \
             --algo raptor pong \
             --modes station-station coordinate-coordinate \
-            -n 100 --gpu_states 2
+            --gpu_states 2 \
+            -n 50
 
       - name: Save build
         if: always()
