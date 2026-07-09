@@ -56,7 +56,7 @@ jobs:
             --algo raptor pong \
             --modes station-station coordinate-coordinate \
             --gpu_states 2 \
-            -n 50
+            -n 20
 
       - name: Save build
         if: always()

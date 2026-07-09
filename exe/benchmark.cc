@@ -454,23 +454,6 @@ int main(int argc, char* argv[]) {
   auto tt = *nigiri::timetable::read(tt_path);
   tt.resolve();
 
-  {
-    auto fp_counts = std::vector<std::uint32_t>{};
-    fp_counts.reserve(tt.n_locations());
-    for (auto i = 0U; i != tt.n_locations(); ++i) {
-      fp_counts.push_back(static_cast<std::uint32_t>(
-          tt.locations_.footpaths_out_[0][location_idx_t{i}].size()));
-    }
-    utl::sort(fp_counts);
-    auto const q = [&](double const p) {
-      return fp_counts[static_cast<std::size_t>(
-          p * static_cast<double>(fp_counts.size() - 1U))];
-    };
-    std::cout << "footpaths_out[0] per location: p50=" << q(.5)
-              << " p90=" << q(.9) << " p99=" << q(.99) << " p99.9=" << q(.999)
-              << " max=" << fp_counts.back() << "\n";
-  }
-
   gs.interval_size_ = duration_t{interval_size};
 
   if (!bbox_str.empty()) {
