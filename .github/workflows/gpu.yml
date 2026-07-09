@@ -22,10 +22,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ~/nigiri-* stash names: the same runner home also parks the motis
-      # workflow's ~/deps + ~/build -- keep them separate.
+      # ~/deps is shared with the motis workflow on this runner (pkg checks
+      # out each project's pinned commits on configure); the build tree is
+      # project-specific -> parked separately as ~/nigiri-build.
       - name: Get deps
-        run: mkdir -p ~/nigiri-deps && mv ~/nigiri-deps deps
+        run: mkdir -p ~/deps && mv ~/deps .
 
       - name: Get build
         run: mkdir -p ~/nigiri-build && mv ~/nigiri-build build
@@ -41,7 +42,7 @@ jobs:
 
       - name: Save deps
         if: always()
-        run: mv deps ~/nigiri-deps
+        run: mv deps ~
 
       # nigiri-benchmark loads the timetable once and runs all --runs
       # configurations against it (CPU vs GPU per query); exits non-zero on
