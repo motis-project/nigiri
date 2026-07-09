@@ -1,5 +1,7 @@
 #include "nigiri/routing/query.h"
 
+#include "utl/verify.h"
+
 #include "nigiri/for_each_meta.h"
 
 namespace nigiri::routing {
@@ -55,6 +57,9 @@ void query::flip_dir() {
 }
 
 void query::sanitize(timetable const& tt) {
+  utl::verify(start_match_mode_ != location_match_mode::kIntermodal ||
+                  !use_start_footpaths_,
+              "intermodal start is incompatible with use_start_footpaths");
   sanitize_query(*this);
   sanitize_via_stops(tt, *this);
 }
