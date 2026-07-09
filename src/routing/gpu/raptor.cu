@@ -21,47 +21,15 @@
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
+#include "nigiri/routing/gpu/cuda_check.cuh"
+#include "nigiri/routing/gpu/device_buffer.cuh"
 #include "nigiri/routing/gpu/device_timetable.cuh"
+#include "nigiri/routing/gpu/pinned_host_buffer.cuh"
 #include "nigiri/routing/gpu/raptor_impl.cuh"
 #include "nigiri/routing/gpu/types.cuh"
 #include "nigiri/td_footpath.h"
 
 namespace nigiri::routing::gpu {
-
-template <typename T>
-struct pinned_buffer {
-  pinned_buffer() = default;
-
-  pinned_buffer(pinned_buffer const&) = delete;
-  pinned_buffer& operator=(pinned_buffer const&) = delete;
-
-  ~pinned_buffer() {
-    if (ptr_ != nullptr) {
-      cudaFreeHost(ptr_);
-    }
-  }
-
-  T* ensure(std::size_t const n) {
-    if (n > cap_) {
-      if (ptr_ != nullptr) {
-        cudaFreeHost(ptr_);
-      }
-      cudaMallocHost(reinterpret_cast<void**>(&ptr_), n * sizeof(T));
-      cap_ = n;
-    }
-    return ptr_;
-  }
-
-  T* ptr_ = nullptr;
-  std::size_t cap_ = 0U;
-};
-
-#define CUDA_CHECK(code)                                              \
-  if ((code) != cudaSuccess) {                                        \
-    std::cerr << "CUDA error: " << cudaGetErrorString(code) << " at " \
-              << __FILE__ << ":" << __LINE__;                         \
-    std::terminate();                                                 \
-  }
 
 struct gpu_timetable::impl {
   using t = timetable;
@@ -248,7 +216,7 @@ struct gpu_rt_timetable::impl {
         "transport idx space too small: {} static + {} rt",
         tt.transport_route_.size(), n_rt_transports_);
 
-    // device-resident (launch-arg size, see device_transport_filters)
+    // Copy filters.
     auto f = device_transport_filters<rt_transport_idx_t>{
         .bike_ = {{to_view(rt_transport_bikes_allowed_)},
                   to_view(rt_bike_sections_)},
@@ -258,17 +226,20 @@ struct gpu_rt_timetable::impl {
                         to_view(rt_wheelchair_sections_)}};
     rt_filters_ctx_.resize(1);
     thrust::copy_n(&f, 1, rt_filters_ctx_.begin());
+
+    // Copy td-footpaths.
     for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
       if (!rtt.td_footpaths_out_[p].empty()) {
         td_footpaths_out_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_out_[p]};
         has_td_out_[p] = to_device(rtt.has_td_footpaths_out_[p].blocks_);
       }
+
       if (!rtt.td_footpaths_in_[p].empty()) {
         td_footpaths_in_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_in_[p]};
         has_td_in_[p] = to_device(rtt.has_td_footpaths_in_[p].blocks_);
       }
-      // for the host-side kernel dispatch (the common transfers kernel must
-      // not contain the td footpath code path)
+
+      // for the host-side kernel dispatch
       has_td_fps_[p] = rtt.has_td_footpaths_out_[p].any() ||
                        rtt.has_td_footpaths_in_[p].any();
     }
@@ -350,42 +321,43 @@ struct gpu_raptor_state::impl {
   explicit impl(gpu_timetable const& gtt)
       : tt_{gtt.impl_->to_device_timetable()} {
     cudaStreamCreate(&stream_);
-    // compute_et boarding pre-pass buffers, sized to the flat route-stop space.
+
     auto const n_route_stops = tt_.route_of_stop_.size();
     et_result_.resize(n_route_stops);
     et_task_list_.resize(n_route_stops);
     et_task_count_.resize(1U);
     route_list_.resize(tt_.n_routes_);
     route_list_count_.resize(1U);
+
+    // the state is bound to this timetable for its whole lifetime -> all
+    // n_locations/n_routes-sized buffers are allocated once here; the
+    // selective-clear scheme requires an all-invalid (0xFF) start
+    time_at_dest_.resize(kMaxTransfers + 2);
+    tmp_.resize(tt_.n_locations_);
+    best_.resize(tt_.n_locations_);
+    round_times_.resize(tt_.n_locations_ * (kMaxTransfers + 2));
+    cudaMemsetAsync(thrust::raw_pointer_cast(round_times_.data()), 0xFF,
+                    round_times_.size() * sizeof(std::uint64_t), stream_);
+    cudaMemsetAsync(thrust::raw_pointer_cast(best_.data()), 0xFF,
+                    best_.size() * sizeof(std::uint64_t), stream_);
+    cudaMemsetAsync(thrust::raw_pointer_cast(tmp_.data()), 0xFF,
+                    tmp_.size() * sizeof(std::uint64_t), stream_);
+    station_mark_.resize(tt_.n_locations_ / 32U + 1U);
+    prev_station_mark_.resize(tt_.n_locations_ / 32U + 1U);
+    route_mark_.resize(tt_.n_routes_ / 32U + 1U);
+    any_marked_.resize(1U);
+    done_.resize(1U);
+
+    // is_dest + dist_to_dest differ between ping vs pong -> handled in
+    // upload_query (called by the gpu_raptor ctor -> one per dir)
   }
 
   ~impl() { cudaStreamDestroy(stream_); }
 
-  void resize(unsigned n_locations,
-              unsigned n_routes,
-              unsigned n_rt_transports) {
-    time_at_dest_.resize(kMaxTransfers + 2);
-    tmp_.resize(n_locations);
-    best_.resize(n_locations);
-    auto const first_time = round_times_.empty();
-    round_times_.resize(n_locations * (kMaxTransfers + 2));
-    if (first_time) {
-      cudaMemsetAsync(thrust::raw_pointer_cast(round_times_.data()), 0xFF,
-                      round_times_.size() * sizeof(std::uint64_t), stream_);
-      cudaMemsetAsync(thrust::raw_pointer_cast(best_.data()), 0xFF,
-                      best_.size() * sizeof(std::uint64_t), stream_);
-      cudaMemsetAsync(thrust::raw_pointer_cast(tmp_.data()), 0xFF,
-                      tmp_.size() * sizeof(std::uint64_t), stream_);
-    }
-    station_mark_.resize(n_locations / 32U + 1U);
-    prev_station_mark_.resize(n_locations / 32U + 1U);
-    route_mark_.resize(n_routes / 32U + 1U);
+  // the only per-query sizing: the rt timetable may be absent or may have
+  // grown (rt updates) since the last query on this state
+  void resize_rt(unsigned const n_rt_transports) {
     rt_transport_mark_.resize(n_rt_transports / 32U + 1U);
-    any_marked_.resize(1U);
-    done_.resize(1U);
-
-    // is_dest + dist_to_dest they differ between ping vs pong
-    // -> handled in upload_query (called by the gpu_raptor ctor -> one per dir)
   }
 
   void upload_query(
@@ -396,9 +368,12 @@ struct gpu_raptor_state::impl {
     is_intermodal_dest_[dir] = !dist_to_dest.empty();
 
     // td dest offsets: flatten into sorted (loc, range, data) groups.
-    td_dest_n_[dir] = td_dist_to_dest.size();
-    td_dest_data_n_[dir] = 0U;
-    if (!td_dist_to_dest.empty()) {
+    if (td_dist_to_dest.empty()) {
+      // reset used sizes: the state may have served a flex query before
+      td_dest_locs_dev_[dir].clear();
+      td_dest_ranges_dev_[dir].clear();
+      td_dest_data_dev_[dir].clear();
+    } else {
       auto locs = std::vector<location_idx_t>{};
       locs.reserve(td_dist_to_dest.size());
       for (auto const& [l, _] : td_dist_to_dest) {
@@ -412,15 +387,6 @@ struct gpu_raptor_state::impl {
         td_data.insert(end(td_data), begin(v), end(v));
         ranges.push_back(static_cast<std::uint32_t>(td_data.size()));
       }
-      td_dest_data_n_[dir] = td_data.size();
-
-      if (td_dest_locs_dev_[dir].size() < locs.size()) {
-        td_dest_locs_dev_[dir].resize(locs.size());
-        td_dest_ranges_dev_[dir].resize(ranges.size());
-      }
-      if (td_dest_data_dev_[dir].size() < td_data.size()) {
-        td_dest_data_dev_[dir].resize(td_data.size());
-      }
 
       auto* const locs_pin = td_dest_locs_pin_[dir].ensure(locs.size());
       std::copy(locs.begin(), locs.end(), locs_pin);
@@ -431,17 +397,17 @@ struct gpu_raptor_state::impl {
       utl::verify(
           cudaSuccess ==
                   cudaMemcpyAsync(
-                      thrust::raw_pointer_cast(td_dest_locs_dev_[dir].data()),
+                      td_dest_locs_dev_[dir].ensure(locs.size(), stream_),
                       locs_pin, locs.size() * sizeof(location_idx_t),
                       cudaMemcpyHostToDevice, stream_) &&
               cudaSuccess ==
                   cudaMemcpyAsync(
-                      thrust::raw_pointer_cast(td_dest_ranges_dev_[dir].data()),
+                      td_dest_ranges_dev_[dir].ensure(ranges.size(), stream_),
                       ranges_pin, ranges.size() * sizeof(std::uint32_t),
                       cudaMemcpyHostToDevice, stream_) &&
               cudaSuccess ==
                   cudaMemcpyAsync(
-                      thrust::raw_pointer_cast(td_dest_data_dev_[dir].data()),
+                      td_dest_data_dev_[dir].ensure(td_data.size(), stream_),
                       data_pin, td_data.size() * sizeof(td_offset),
                       cudaMemcpyHostToDevice, stream_),
           "could not copy td dest offsets");
@@ -493,18 +459,16 @@ struct gpu_raptor_state::impl {
 
   // td egress offsets (q.td_dest_), sparse groups per direction; device
   // vectors are grow-only capacity pools, the logical sizes live in
-  // td_dest_n_/td_dest_data_n_ (0 = no td offsets, device never touched)
-  std::size_t td_dest_n_[2] = {0U, 0U};
-  std::size_t td_dest_data_n_[2] = {0U, 0U};
-  thrust::device_vector<location_idx_t> td_dest_locs_dev_[2];
-  thrust::device_vector<std::uint32_t> td_dest_ranges_dev_[2];
-  thrust::device_vector<td_offset> td_dest_data_dev_[2];
-  pinned_buffer<location_idx_t> td_dest_locs_pin_[2];
-  pinned_buffer<std::uint32_t> td_dest_ranges_pin_[2];
-  pinned_buffer<td_offset> td_dest_data_pin_[2];
+  // used size 0 = no td offsets (device never touched)
+  device_buffer<location_idx_t> td_dest_locs_dev_[2];
+  device_buffer<std::uint32_t> td_dest_ranges_dev_[2];
+  device_buffer<td_offset> td_dest_data_dev_[2];
+  pinned_host_buffer<location_idx_t> td_dest_locs_pin_[2];
+  pinned_host_buffer<std::uint32_t> td_dest_ranges_pin_[2];
+  pinned_host_buffer<td_offset> td_dest_data_pin_[2];
 
-  pinned_buffer<std::uint16_t> dist_to_dest_[2];
-  pinned_buffer<std::pair<location_idx_t, unixtime_t>> starts_;
+  pinned_host_buffer<std::uint16_t> dist_to_dest_[2];
+  pinned_host_buffer<std::pair<location_idx_t, unixtime_t>> starts_;
   thrust::device_vector<std::pair<location_idx_t, unixtime_t>> starts_dev_;
 
   // reusable reconstruction buffers
@@ -562,8 +526,7 @@ gpu_raptor<SearchDir>::gpu_raptor(
   utl::verify(rtt == nullptr || gpu_rtt_ != nullptr,
               "GPU raptor: rt search requires the uploaded device rt "
               "timetable (rt_timetable::gpu_rtt_)");
-  state_.impl_->resize(tt.n_locations(), tt.n_routes(),
-                       rtt == nullptr ? 0U : rtt->n_rt_transports());
+  state_.impl_->resize_rt(rtt == nullptr ? 0U : rtt->n_rt_transports());
   reset_arrivals();
   state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest, td_dist_to_dest);
 }
@@ -771,7 +734,7 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
   CUDA_CHECK(cudaPeekAtLastError());
 
   auto const rt_active = gpu_rtt_ != nullptr;
-  auto const with_td_dest = s.td_dest_n_[kDirIdx] > 0U;
+  auto const with_td_dest = s.td_dest_locs_dev_[kDirIdx].size() > 0U;
   auto const with_td_fps =
       rt_active && prf_idx != 0U && gpu_rtt_->impl_->has_td_fps_[prf_idx];
   auto r = raptor_impl<SearchDir>{
@@ -790,16 +753,12 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
       .starts_ = starts,
       .is_dest_ = {to_view(s.is_dest_[kDirIdx])},
       .dist_to_end_ = to_view(s.dist_to_dest_dev_[kDirIdx]),
-      .td_dest_locs_ = {thrust::raw_pointer_cast(
-                            s.td_dest_locs_dev_[kDirIdx].data()),
-                        s.td_dest_n_[kDirIdx]},
-      .td_dest_ =
-          {.data_ = {thrust::raw_pointer_cast(
-                         s.td_dest_data_dev_[kDirIdx].data()),
-                     s.td_dest_data_n_[kDirIdx]},
-           .bucket_starts_ =
-               {thrust::raw_pointer_cast(s.td_dest_ranges_dev_[kDirIdx].data()),
-                s.td_dest_n_[kDirIdx] == 0U ? 0U : s.td_dest_n_[kDirIdx] + 1U}},
+      .td_dest_locs_ = {s.td_dest_locs_dev_[kDirIdx].data(),
+                        s.td_dest_locs_dev_[kDirIdx].size()},
+      .td_dest_ = {.data_ = {s.td_dest_data_dev_[kDirIdx].data(),
+                             s.td_dest_data_dev_[kDirIdx].size()},
+                   .bucket_starts_ = {s.td_dest_ranges_dev_[kDirIdx].data(),
+                                      s.td_dest_ranges_dev_[kDirIdx].size()}},
       .round_times_ = {to_mutable_view(s.round_times_), n_locations_},
       .best_ = {to_mutable_view(s.best_), n_locations_},
       .tmp_ = {to_mutable_view(s.tmp_), n_locations_},
@@ -1028,7 +987,7 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
     }
 
     // is_reconstructed_ stays false
-    // -> only reconstruct() might set it to true
+    // -> only reconstruct() called by pong/search.h might set it to true
     results.add(std::move(j));
   }
 }
