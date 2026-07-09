@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <algorithm>
 #include <atomic>
 #include <filesystem>
@@ -327,6 +328,10 @@ void print_memory_usage() {
 }
 
 int main(int argc, char* argv[]) {
+  // CI pipes stdout -> fully buffered by default; line-buffer so progress
+  // (table rows) appears immediately (std::cout syncs with stdio)
+  setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);
+
   namespace bpo = boost::program_options;
 
   auto tt_path = std::filesystem::path{};
