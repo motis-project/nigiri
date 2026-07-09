@@ -53,8 +53,8 @@ jobs:
         run: |
           ./build/cuda/nigiri-benchmark -p "$HOME/ci-data/eu/data/tt.bin" \
             --engines cpu gpu \
-            --algo raptor pong \
-            --modes station-station coordinate-coordinate \
+            --algo pong \
+            --modes coordinate-coordinate \
             --gpu_states 2 \
             -n 20
 
