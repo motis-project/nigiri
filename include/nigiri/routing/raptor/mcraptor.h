@@ -340,7 +340,7 @@ namespace nigiri::routing {
         algo_stats_t get_stats() const { return stats_; }
 
         void reset_arrivals() {
-            utl::fill(time_at_dest_, kInvalid);
+            utl::fill(best_time_at_dest_, kInvalid);
             //round_times_.reset(kInvalidArray);
             for (auto ke : round_times_) {
                 for (auto& ie : ke) {
@@ -1534,7 +1534,7 @@ namespace nigiri::routing {
             }
             for (auto i = k; i != best_time_at_dest_.size(); ++i) {
                 for (auto b_entry : b.pareto_set_) {
-                    delta_t t = b_entry.time_
+                    delta_t t = b_entry.time_;
                     best_time_at_dest_[i] = get_best(best_time_at_dest_[i], t);
                 }
             }
