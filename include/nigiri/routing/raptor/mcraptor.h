@@ -504,7 +504,7 @@ namespace nigiri::routing {
                         trace("ADDING JOURNEY: start={}, dest={} @ {}, transfers={}\n",
                             start_time, delta_to_unix(base(), round_times_[k][i][Vias].get_any_time()),
                             loc{ tt_, location_idx_t{i} }, k - 1);
-                        for (auto label : dest_time.pareto_set) {
+                        for (auto label : dest_time.pareto_set_) {
                             // TODO: added criteria should also be added in journey
                             auto const [optimal, it, dominated_by] = results.add(
                                 journey{ .legs_ = {},
