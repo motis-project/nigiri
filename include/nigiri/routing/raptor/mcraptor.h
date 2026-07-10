@@ -85,7 +85,7 @@ namespace nigiri::routing {
             }
 
             bool is_better(bag b) const {
-                if ()(b.is_invalid()) {
+                if (b.is_invalid()) {
                     return true;
                 }
 
