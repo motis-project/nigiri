@@ -452,7 +452,6 @@ struct mcraptor_impl {
     }
     if (free_slot == ~0U) {
       atomicOr(overflow_, kMcOverflowBag);  // full of non-dominated labels
-      atomicCAS(overflow_loc_, ~0U, l);  // diagnostics: first culprit
     } else {
       auto bc = kMcNoBc;
       if (with_bc) {
@@ -1678,7 +1677,6 @@ struct mcraptor_impl {
   std::uint32_t* any_marked_;
   std::uint32_t* done_;
   std::uint32_t* overflow_;
-  std::uint32_t* overflow_loc_;
   device_timetable tt_;
   transfer_time_settings transfer_time_settings_;
   clasz_mask_t allowed_claszes_;
