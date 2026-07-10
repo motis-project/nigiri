@@ -132,6 +132,10 @@ namespace nigiri::routing {
 
                 std::vector<bag_entry> bad_entries;
                 bool should_add = false;
+                if (pareto_set_.empty()) {
+                    pareto_set_.push_back(be);
+                    return;
+                }
                 for (auto elem : pareto_set_)
                 {
                     if (be <= elem) {
@@ -147,6 +151,11 @@ namespace nigiri::routing {
 
             void add(delta_t t) {
                 if (t == kInvalid) {
+                    return;
+                }
+
+                if (pareto_set_.empty()) {
+                    pareto_set_.push_back(bag_entry(t));
                     return;
                 }
 
