@@ -85,16 +85,14 @@ namespace nigiri::routing {
             }
 
             bool is_better(bag b) const {
-                if (pareto_set_.empty()) {
-                    return false;
-                }
                 for (auto this_ele : pareto_set_) {
                     for (auto b_ele : b.pareto_set_) {
-                        if (b_ele < this_ele)
-                            return false;
+                        if (this_ele < b_ele) {
+                            return true;
+                        }
                     }
                 }
-                return true;
+                return false;
             }
 
             bool is_invalid() const {
@@ -102,26 +100,24 @@ namespace nigiri::routing {
             }
 
             bool is_better(delta_t time) const {
-                if (pareto_set_.empty()) {
-                    return false;
+                for (auto e : pareto_set_) {
+                    if (e <= time) {
+                        return true;
+                    }
                 }
-                for (auto e : pareto_set_)
-                    if (!(e < time)) return false;
-                return true;
+                return false;
             }
 
             bool is_better_with_offset(delta_t offset, bag b) const {
-                if (pareto_set_.empty()) {
-                    return false;
-                }
                 for (auto this_ele : pareto_set_) {
                     for (auto b_ele : b.pareto_set_) {
                         bag_entry offset_ele = bag_entry(this_ele.time_ + offset);
-                        if (!(offset_ele < b_ele))
-                            return false;
+                        if (offset_ele < b_ele) {
+                            return true;
+                        }
                     }
                 }
-                return true;
+                return false;
             }
 
             void add(bag_entry be) {
@@ -163,7 +159,7 @@ namespace nigiri::routing {
                 bool should_add = false;
                 for (auto elem : pareto_set_)
                 {
-                    if (!(elem <= t)) {
+                    if (!(elem < t)) {
                         should_add = true;
                         bad_entries.push_back(elem);
                     }
