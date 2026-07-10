@@ -18,6 +18,9 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+#include "cista/containers/vecvec.h"
+#include "utl/erase_if.h"
+
 namespace nigiri::routing {
 
     template <direction SearchDir,
@@ -32,9 +35,9 @@ namespace nigiri::routing {
 
 
             bag_entry(delta_t time) : time_(time) {
-                #ifdef kFalseFlag
+                //#ifdef kFalseFlag
                 flag = (static_cast<unsigned long long>(time_) % 2); // prefer even (only for testing)
-                #endif
+                //#endif
             }
 
             bool is_invalid() const {
@@ -64,26 +67,26 @@ namespace nigiri::routing {
         };
 
         struct bag {
-            std::vector<bag_entry> pareto_set;
+            std::vector<bag_entry> pareto_set_;
 
             bag(delta_t t) {
-                pareto_set.clear();
+                pareto_set_.clear();
                 if (t != kInvalid) {
-                    pareto_set.push_back(bag_entry(t));
+                    pareto_set_.push_back(bag_entry(t));
                 }
             }
 
             bag(bag_entry be) {
-                pareto_set.push_back(be);
+                pareto_set_.push_back(be);
             }
 
             bag() {
-                pareto_set.clear();
+                pareto_set_.clear();
             }
 
             bool is_better(bag b) const {
-                for (auto this_ele : pareto_set) {
-                    for (auto b_ele : b.pareto_set) {
+                for (auto this_ele : pareto_set_) {
+                    for (auto b_ele : b.pareto_set_) {
                         if (b_ele < this_ele)
                             return false;
                     }
@@ -92,18 +95,18 @@ namespace nigiri::routing {
             }
 
             bool is_invalid() const {
-                return pareto_set.empty();
+                return pareto_set_.empty();
             }
 
             bool is_better(delta_t time) const {
-                for (auto e : pareto_set)
+                for (auto e : pareto_set_)
                     if (!(e < time)) return false;
                 return true;
             }
 
             bool is_better_with_offset(delta_t offset, bag b) const {
-                for (auto this_ele : pareto_set) {
-                    for (auto b_ele : b.pareto_set) {
+                for (auto this_ele : pareto_set_) {
+                    for (auto b_ele : b.pareto_set_) {
                         bag_entry offset_ele = bag_entry(this_ele.time_ + offset);
                         if (!(offset_ele < b_ele))
                             return false;
@@ -120,19 +123,17 @@ namespace nigiri::routing {
 
                 std::vector<bag_entry> bad_entries;
                 bool should_add = false;
-                for (auto elem : pareto_set)
+                for (auto elem : pareto_set_)
                 {
                     if (be <= elem) {
                         should_add = true;
                         bad_entries.push_back(elem);
                     }
                 }
-
-                pareto_set.erase(std::remove_if(pareto_set.begin()
-                    , pareto_set.end()
-                    , [&](auto const& toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != bad_entries.end();})
-                    , pareto_set.end());
-                if(should_add) pareto_set.push_back(be);
+                
+                utl::erase_if(pareto_set_
+                    , [&](auto const& toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != bad_entries.end();});
+                if (should_add) { pareto_set_.push_back(be) };
             }
 
             void add(delta_t t) {
@@ -142,7 +143,7 @@ namespace nigiri::routing {
 
                 std::vector<bag_entry> bad_entries;
                 bool should_add = false;
-                for (auto elem : pareto_set)
+                for (auto elem : pareto_set_)
                 {
                     if (!(elem <= t)) {
                         should_add = true;
@@ -150,15 +151,13 @@ namespace nigiri::routing {
                     }
                 }
 
-                pareto_set.erase(std::remove_if(pareto_set.begin()
-                    , pareto_set.end()
-                    , [&](auto const& toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != bad_entries.end();})
-                    , pareto_set.end());
-                if(should_add) pareto_set.push_back(bag_entry(t));
+                utl::erase_if(pareto_set_
+                    , [&](auto const& toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != bad_entries.end();});
+                    if (should_add) { pareto_set_.push_back(bag_entry(t)) };
             }
 
             void add(bag bg) {
-                for (auto elem : bg.pareto_set) {
+                for (auto elem : bg.pareto_set_) {
                     add(elem);
                 }
             }
@@ -167,7 +166,7 @@ namespace nigiri::routing {
             bag copy(Args... t) const{
                 bag ret = bag();
                 ret.add(*this);
-                for (auto e : ret.pareto_set) {
+                for (auto e : ret.pareto_set_) {
                     e.time_ = clamp((e.time_ + ... + t));
                 }
                 return ret;
@@ -175,21 +174,21 @@ namespace nigiri::routing {
 
             // Depricated
             delta_t get_any_time() const {
-                if (pareto_set.empty()) {
+                if (pareto_set_.empty()) {
                     return delta_t{ kInvalid };
                 }
 
-                return pareto_set.at(0).time_;
+                return pareto_set_.at(0).time_;
             }
 
             // Depricated 
             void replace_any_time(delta_t t) {
-                if (pareto_set.empty()) {
-                    pareto_set.push_back(bag_entry(t));
+                if (pareto_set_.empty()) {
+                    pareto_set_.push_back(bag_entry(t));
                     return;
                 }
 
-                pareto_set.at(0).time_ = t;
+                pareto_set_.at(0).time_ = t;
             }
 
             // Depricated
@@ -1562,7 +1561,7 @@ namespace nigiri::routing {
         //COMMENT: kein resize zum befüllen über loops; größe des matrix dest aber über span von state abhängig
         //TODO: workaround:ersetze flat_matrix_view mit vec<vec<arr>>
         //flat_matrix_view<std::array<bag, Vias + 1>> round_times_;
-        std::vector<std::vector<std::array<bag, Vias + 1>>> round_times_;
+        vecvec<std::array<bag, Vias + 1>> round_times_;
 
         bitvec const& is_dest_;
         std::array<bitvec, kMaxVias> const& is_via_;
