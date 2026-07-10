@@ -10,8 +10,10 @@
 #include "nigiri/location_match_mode.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_earliest_transport.h"
+#include "nigiri/routing/gpu/mcraptor.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/leg_alternatives.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/types.h"
@@ -20,6 +22,41 @@
 // #define trace_pong fmt::println
 
 namespace nigiri::routing {
+
+template <direction SearchDir, via_offset_t Vias, bool Rt, typename AlgoState,
+          bool RangeReuse>
+struct pong_algo_for {
+  using type = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>;
+};
+
+template <direction SearchDir, via_offset_t Vias, bool Rt, typename Criteria,
+          bool RangeReuse>
+struct pong_algo_for<SearchDir, Vias, Rt, basic_mcraptor_state<Criteria>,
+                     RangeReuse> {
+  using type = basic_mcraptor<SearchDir, Criteria, RangeReuse>;
+};
+
+#if defined(NIGIRI_CUDA)
+template <direction SearchDir, via_offset_t Vias, bool Rt, bool RangeReuse>
+struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_raptor_state, RangeReuse> {
+  using type = gpu::gpu_raptor<SearchDir>;
+};
+
+// GPU mcraptor pong: the state's frontiers are per-direction, so the
+// forward ping and backward pong coexist; the GPU's reuse frontier
+// replaces the CPU's RangeReuse template switch (result-neutral).
+template <direction SearchDir, via_offset_t Vias, bool Rt, bool RangeReuse>
+struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_state,
+                     RangeReuse> {
+  using type = gpu::gpu_mcraptor<SearchDir, /*WithCost=*/false>;
+};
+
+template <direction SearchDir, via_offset_t Vias, bool Rt, bool RangeReuse>
+struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_cost_state,
+                     RangeReuse> {
+  using type = gpu::gpu_mcraptor<SearchDir, /*WithCost=*/true>;
+};
+#endif
 
 auto to_tuple(journey const& j) {
   return std::tuple{j.departure_time(), j.arrival_time(), j.transfers_};
@@ -55,14 +92,12 @@ routing_result pong(timetable const& tt,
                     std::optional<std::chrono::seconds> timeout) {
   constexpr auto kFwd = (SearchDir == direction::kForward);
 
+  // forward ping = plain EA over the window (no bag reuse for mcraptor);
+  // backward pong = validation toward fixed anchors (rRAPTOR bag reuse ON)
   using ping_algo_t =
-      std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-                         gpu::gpu_raptor<SearchDir>,
-                         raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>>;
-  using pong_algo_t = std::conditional_t<
-      std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-      gpu::gpu_raptor<flip(SearchDir)>,
-      raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>>;
+      typename pong_algo_for<SearchDir, Vias, Rt, AlgoState, false>::type;
+  using pong_algo_t =
+      typename pong_algo_for<flip(SearchDir), Vias, Rt, AlgoState, true>::type;
 
   s_state.results_.clear();
   q.sanitize(tt);
@@ -204,11 +239,17 @@ routing_result pong(timetable const& tt,
   auto const is_validated = [&](journey const& j) {
     return is_better(j.dest_time_, start_time);
   };
+  auto const is_tuple_dominated = [&](journey const& j) {
+    return utl::any_of(*result.journeys_, [&](journey const& o) {
+      return &o != &j && o.tuple_dominates(j);
+    });
+  };
   auto const get_result_count = [&](bool const include_too_slow) {
     return utl::count_if(*result.journeys_, [&](journey const& j) {
       return is_validated(j) &&
              (include_too_slow || (j.travel_time() < fastest_direct &&
-                                   j.travel_time() < q.max_travel_time_));
+                                   j.travel_time() < q.max_travel_time_)) &&
+             !is_tuple_dominated(j);
     });
   };
   auto const is_timeout_reached = [&]() {
@@ -261,8 +302,14 @@ routing_result pong(timetable const& tt,
       }
       return dominated;
     });
-    utl::sort(ping_results, [](journey const& a, journey const& b) {
-      return a.transfers_ > b.transfers_;
+    // validation anchors must be processed in dominance order (best
+    // arrival first): the pong search's destination frontier persists
+    // across anchors, so entries may only stem from anchors whose
+    // journeys dominate on the anchor dimension - then a pruned label
+    // always corresponds to a journey dominated by an already-validated
+    // one (see the no-match handling below)
+    utl::sort(ping_results, [&](journey const& a, journey const& b) {
+      return is_better(a.dest_time_, b.dest_time_);
     });
 
     // ----
@@ -291,29 +338,92 @@ routing_result pong(timetable const& tt,
       kFwd ? ++result.search_stats_.n_execute_bwd_
            : ++result.search_stats_.n_execute_fwd_;
 
-      auto const match =
-          utl::find_if(s_state.results_, [&](journey const& pong_j) {
-            return pong_j.transfers_ == ping_j.transfers_ &&
-                   pong_j.start_time_ == ping_j.dest_time_;
-          });
+      // multi-criteria configurations can hold several pareto journeys
+      // with the same (transfers, start_time) - e.g. walking trade-offs:
+      // reconstruct all of them, the tuple-optimal departure updates ping
+      auto match = end(s_state.results_);
+      for (auto it = begin(s_state.results_); it != end(s_state.results_);
+           ++it) {
+        if (it->transfers_ == ping_j.transfers_ &&
+            it->start_time_ == ping_j.dest_time_) {
+          if (!it->is_reconstructed_ && !it->error_) {
+            pong.reconstruct(q, *it);
+          }
+          if (match == end(s_state.results_) ||
+              is_better(match->dest_time_, it->dest_time_)) {
+            match = it;
+          }
+        }
+      }
 
       if (match == end(s_state.results_)) {
-        throw utl::fail(
-            "no pong for transfers={}, start_time={} found, journeys={}",
-            ping_j.transfers_, ping_j.dest_time_,
-            s_state.results_.els_ | std::views::transform(to_tuple));
+        // No journey for this anchor: the anchor's journey is dominated by
+        // an already-validated journey (its reverse labels lost the result
+        // pareto set / the destination frontier - both only ever remove
+        // dominated journeys). Advance the ping journey to the dominating
+        // journey's validated departure: the dominance implies the
+        // anchor's own latest departure cannot be later, so its slot is
+        // fully covered and the progression is not held back (otherwise
+        // the search crawls minute-by-minute and the count-based
+        // termination can stop the frontier before later journeys already
+        // found validate).
+        auto superseding = end(s_state.results_);
+        for (auto it = begin(s_state.results_); it != end(s_state.results_);
+             ++it) {
+          if (it->transfers_ <= ping_j.transfers_ &&
+              !is_better(ping_j.dest_time_, it->start_time_) &&
+              (superseding == end(s_state.results_) ||
+               is_better(superseding->dest_time_, it->dest_time_))) {
+            superseding = it;
+          }
+        }
+        if (superseding == end(s_state.results_)) {
+          throw utl::fail(
+              "no pong for transfers={}, start_time={} found, journeys={}",
+              ping_j.transfers_, ping_j.dest_time_,
+              s_state.results_.els_ | std::views::transform(to_tuple));
+        }
+        trace_pong("---- DROP superseded ping {} [start -> {}]",
+                   to_tuple(ping_j), superseding->dest_time_);
+        ping_j.start_time_ = superseding->dest_time_;
+        continue;
       }
 
+      // If the pong's best journey for this (arrival, transfers) tuple
+      // departs worse than the ping journey's own proven departure, the
+      // ping journey is not on the pong's pareto frontier - it is
+      // dominated. This can only happen with a departure-dependent
+      // generalized cost (elapsed time charges waiting): the forward ping
+      // prices a journey at an early departure where a competing journey
+      // sits idle, inflating that competitor's cost; the backward pong
+      // prices every journey at its latest, minimum-wait departure, where a
+      // fewer-transfer/cheaper journey dominates the ping journey outright.
+      // The dominating journey is already validated into the results, so
+      // this anchor must neither be emitted nor hold the progression back
+      // to an earlier departure. Drop it. (For a non-cost search the pong
+      // can always at least reproduce the ping journey, so this never
+      // triggers there and behaviour is unchanged.)
+      if (is_better(match->dest_time_, ping_j.start_time_)) {
+        trace_pong("---- DROP dominated ping {} (pong best {} worse than dep)",
+                   to_tuple(ping_j), match->dest_time_);
+        ping_j.error_ = true;
+        continue;
+      }
       trace_pong("---- HIT [updating ping start time {} -> {}]\n",
                  ping_j.start_time_, match->dest_time_);
-      if (!match->is_reconstructed_ && !match->error_) {
-        pong.reconstruct(q, *match);
-      }
       ping_j.start_time_ = match->dest_time_;
     }
     q.flip_dir();
 
+    utl::erase_if(ping_results, [](journey const& j) { return j.error_; });
+
     // NEXT
+    if (ping_results.empty()) {
+      // every ping journey at this start time was a dominated phantom-wait
+      // artifact; advance minimally so the interval scan keeps progressing
+      start_time += duration_t{kFwd ? 1 : -1};
+      continue;
+    }
     auto const first_it =
         utl::min_element(ping_results, [&](journey const& a, journey const& b) {
           return is_better(a.start_time_, b.start_time_);
@@ -376,8 +486,10 @@ routing_result pong(timetable const& tt,
   enrich_with_slow_direct<SearchDir>(tt, rtt, q, iv, s_state.results_);
 
   utl::sort(s_state.results_, [](journey const& a, journey const& b) {
-    return std::tuple{a.start_time_, a.transfers_} <
-           std::tuple{b.start_time_, b.transfers_};
+    return std::tuple{a.start_time_, a.transfers_, a.dest_time_,
+                      a.criteria_cost_} <
+           std::tuple{b.start_time_, b.transfers_, b.dest_time_,
+                      b.criteria_cost_};
   });
 
   trace_pong("RESULT:\n\t{}",
@@ -510,11 +622,43 @@ template routing_result pong_search(timetable const&,
                                     direction,
                                     std::optional<std::chrono::seconds>);
 
+template routing_result pong_search(timetable const&,
+                                    rt_timetable const*,
+                                    search_state&,
+                                    mcraptor_state&,
+                                    query,
+                                    direction,
+                                    std::optional<std::chrono::seconds>);
+
+template routing_result pong_search(timetable const&,
+                                    rt_timetable const*,
+                                    search_state&,
+                                    mcraptor_cost_state&,
+                                    query,
+                                    direction,
+                                    std::optional<std::chrono::seconds>);
+
 #if defined(NIGIRI_CUDA)
 template routing_result pong_search(timetable const&,
                                     rt_timetable const*,
                                     search_state&,
                                     gpu::gpu_raptor_state&,
+                                    query,
+                                    direction,
+                                    std::optional<std::chrono::seconds>);
+
+template routing_result pong_search(timetable const&,
+                                    rt_timetable const*,
+                                    search_state&,
+                                    gpu::gpu_mcraptor_state&,
+                                    query,
+                                    direction,
+                                    std::optional<std::chrono::seconds>);
+
+template routing_result pong_search(timetable const&,
+                                    rt_timetable const*,
+                                    search_state&,
+                                    gpu::gpu_mcraptor_cost_state&,
                                     query,
                                     direction,
                                     std::optional<std::chrono::seconds>);

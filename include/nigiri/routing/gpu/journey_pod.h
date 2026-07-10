@@ -36,6 +36,9 @@ struct gpu_journey {
   std::uint8_t transfers_;
   location_idx_t dest_l_;
   delta_t dest_time_;
+  // generalized-cost extras of the label (mcraptor cost config; the host
+  // adds the elapsed part) - unused by the single-criterion raptor
+  std::uint16_t criteria_cost_;
   location_idx_t start_l_;
   gpu_journey_leg legs_[kMaxRecLegs];
 };

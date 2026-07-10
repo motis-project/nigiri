@@ -14,12 +14,51 @@
 #include "utl/verify.h"
 
 #include "nigiri/get_otel_tracer.h"
+#include "nigiri/routing/gpu/mcraptor.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 
 namespace nigiri::routing {
 
 namespace {
+
+// the algorithm belonging to a state type: gpu_raptor_state selects the GPU
+// raptor, any basic_mcraptor_state<C> the matching basic_mcraptor<Dir, C>
+// (interval search over a fixed destination -> rRAPTOR bag reuse ON),
+// raptor_state the CPU raptor.
+template <direction SearchDir, via_offset_t Vias, bool Rt, typename AlgoState>
+struct algo_for {
+  using type = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>;
+};
+
+// Range reuse is result-neutral for the mcraptor criteria: dominance is
+// the strict pareto over (arr, extras), which is structurally the same
+// comparison as the cross-departure reuse rule (departure-discounted
+// extras) - a reuse rejection can only drop labels whose completions the
+// rejector's completions dominate. The GPU searches each start with
+// fresh bags (no reuse) and produces identical results.
+template <direction SearchDir, via_offset_t Vias, bool Rt, typename Criteria>
+struct algo_for<SearchDir, Vias, Rt, basic_mcraptor_state<Criteria>> {
+  using type = basic_mcraptor<SearchDir, Criteria, /*RangeReuse=*/true>;
+};
+
+#if defined(NIGIRI_CUDA)
+template <direction SearchDir, via_offset_t Vias, bool Rt>
+struct algo_for<SearchDir, Vias, Rt, gpu::gpu_raptor_state> {
+  using type = gpu::gpu_raptor<SearchDir>;
+};
+
+template <direction SearchDir, via_offset_t Vias, bool Rt>
+struct algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_state> {
+  using type = gpu::gpu_mcraptor<SearchDir, /*WithCost=*/false>;
+};
+
+template <direction SearchDir, via_offset_t Vias, bool Rt>
+struct algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_cost_state> {
+  using type = gpu::gpu_mcraptor<SearchDir, /*WithCost=*/true>;
+};
+#endif
 
 template <direction SearchDir, via_offset_t Vias, typename AlgoState>
 routing_result raptor_search_with_vias(
@@ -30,18 +69,12 @@ routing_result raptor_search_with_vias(
     query q,
     std::optional<std::chrono::seconds> const timeout) {
   if (rtt == nullptr) {
-    using algo_t = std::conditional_t<
-        std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-        gpu::gpu_raptor<SearchDir>,
-        raptor<SearchDir, false, Vias, search_mode::kOneToOne>>;
+    using algo_t = typename algo_for<SearchDir, Vias, false, AlgoState>::type;
     return search<SearchDir, algo_t>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();
   } else {
-    using algo_t = std::conditional_t<
-        std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-        gpu::gpu_raptor<SearchDir>,
-        raptor<SearchDir, true, Vias, search_mode::kOneToOne>>;
+    using algo_t = typename algo_for<SearchDir, Vias, true, AlgoState>::type;
     return search<SearchDir, algo_t>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();
@@ -166,11 +199,43 @@ template routing_result raptor_search(timetable const&,
                                       direction,
                                       std::optional<std::chrono::seconds>);
 
+template routing_result raptor_search(timetable const&,
+                                      rt_timetable const*,
+                                      search_state&,
+                                      mcraptor_state&,
+                                      query,
+                                      direction,
+                                      std::optional<std::chrono::seconds>);
+
+template routing_result raptor_search(timetable const&,
+                                      rt_timetable const*,
+                                      search_state&,
+                                      mcraptor_cost_state&,
+                                      query,
+                                      direction,
+                                      std::optional<std::chrono::seconds>);
+
 #if defined(NIGIRI_CUDA)
 template routing_result raptor_search(timetable const&,
                                       rt_timetable const*,
                                       search_state&,
                                       gpu::gpu_raptor_state&,
+                                      query,
+                                      direction,
+                                      std::optional<std::chrono::seconds>);
+
+template routing_result raptor_search(timetable const&,
+                                      rt_timetable const*,
+                                      search_state&,
+                                      gpu::gpu_mcraptor_state&,
+                                      query,
+                                      direction,
+                                      std::optional<std::chrono::seconds>);
+
+template routing_result raptor_search(timetable const&,
+                                      rt_timetable const*,
+                                      search_state&,
+                                      gpu::gpu_mcraptor_cost_state&,
                                       query,
                                       direction,
                                       std::optional<std::chrono::seconds>);

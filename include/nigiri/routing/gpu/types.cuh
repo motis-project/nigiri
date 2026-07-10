@@ -34,7 +34,8 @@ thrust::device_vector<typename T::value_type> to_device(T const& t) {
   return thrust::device_vector<typename T::value_type>(begin(t), end(t));
 }
 
-thrust::device_vector<std::uint64_t> to_device(cista::raw::bitvec const& t) {
+inline thrust::device_vector<std::uint64_t> to_device(
+    cista::raw::bitvec const& t) {
   return to_device(t.blocks_);
 }
 

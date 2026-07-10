@@ -20,11 +20,13 @@
 #include "nigiri/query_generator/generator.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor/raptor.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+#include "nigiri/routing/gpu/mcraptor.h"
 #include "nigiri/routing/gpu/raptor.h"
 
 #ifndef _WIN32
@@ -122,6 +124,13 @@ std::vector<double> run_load(
     workers.emplace_back([&, ws]() {
       for (auto i = next.fetch_add(1); i < queries.size();
            i = next.fetch_add(1)) {
+        // NIGIRI_BENCH_ONLY_QUERY=<idx>: single-query deep dives
+        static char const* const only_q =
+            std::getenv("NIGIRI_BENCH_ONLY_QUERY");
+        if (only_q != nullptr &&
+            i != static_cast<std::size_t>(std::atoll(only_q))) {
+          continue;
+        }
         try {
           auto const q0 = std::chrono::steady_clock::now();
           search_one(*ws, queries[i].q_, i);
@@ -159,6 +168,22 @@ std::vector<double> run_load(
       "| {:<36} | {:>6.1f} | {:>6.0f} | {:>6.0f} | {:>6.0f} | "
       "{:>6.0f} |\n",
       tag, qps, avg, q(0.50), q(0.90), q(0.99));
+  {  // slowest queries: the q99 tail is usually 1-2 identifiable queries
+    auto idx = std::vector<std::size_t>{};
+    for (auto i = std::size_t{0U}; i != lat.size(); ++i) {
+      if (lat[i] >= 0.0) {
+        idx.push_back(i);
+      }
+    }
+    std::sort(begin(idx), end(idx),
+              [&](auto const a, auto const b) { return lat[a] > lat[b]; });
+    fmt::print("    slowest:");
+    for (auto i = std::size_t{0U}; i != std::min<std::size_t>(5U, idx.size());
+         ++i) {
+      fmt::print(" #{}={:.0f}ms", idx[i], lat[idx[i]]);
+    }
+    fmt::print("\n");
+  }
   return lat;
 }
 
@@ -172,13 +197,19 @@ cell_result run_config(
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
     timetable const& tt,
     std::string const& label,
-    bool const use_pong,
+    std::string const& algo,
     bool const run_cpu,
     [[maybe_unused]] bool const run_gpu,
     std::vector<unsigned> const& cpu_threads_v,
     [[maybe_unused]] std::vector<unsigned> const& gpu_states_v) {
   auto out = cell_result{};
   auto& stats = out.stats_;
+  // token scheme: ${strategy}-${algorithm}; "pong-" prefix selects the
+  // pong strategy, the rest selects the algorithm/state type
+  auto const use_pong = algo == "pong" || algo.starts_with("pong-");
+  auto const algo_part =
+      algo == "pong" ? std::string{"raptor"}
+                     : (algo.starts_with("pong-") ? algo.substr(5) : algo);
 
   // the sweep's state pool is allocated once at the maximum count; each
   // sweep point borrows a prefix of it
@@ -192,32 +223,47 @@ cell_result run_config(
     return pool;
   };
 
-  struct cpu_ws {
-    search_state ss_;
-    routing::raptor_state rs_;
-  };
   auto& cpu_res = out.cpu_res_;
   cpu_res.resize(queries.size());
+  auto cpu_itv = std::vector<interval<unixtime_t>>(queries.size());
+  auto gpu_itv = std::vector<interval<unixtime_t>>(queries.size());
   if (run_cpu) {
-    auto states = std::vector<std::unique_ptr<cpu_ws>>{};
-    for (auto i = 0U;
-         i != *std::max_element(begin(cpu_threads_v), end(cpu_threads_v));
-         ++i) {
-      states.push_back(std::make_unique<cpu_ws>());
-    }
+    // one worker struct per algo state type; pong only exists for the
+    // plain raptor state (mcraptor cells are raptor_search-driven)
+    auto const run_cpu_variant = [&]<typename RS>() {
+      struct cpu_ws {
+        search_state ss_;
+        RS rs_;
+      };
+      auto states = std::vector<std::unique_ptr<cpu_ws>>{};
+      for (auto i = 0U;
+           i != *std::max_element(begin(cpu_threads_v), end(cpu_threads_v));
+           ++i) {
+        states.push_back(std::make_unique<cpu_ws>());
+      }
 
-    for (auto const t : cpu_threads_v) {
-      out.cpu_lat_ = run_load<cpu_ws>(
-          queries, label + "-cpu-" + std::to_string(t), prefix(states, t),
-          [&](cpu_ws& w, routing::query q, std::size_t const i) {
-            auto const r =
-                use_pong
-                    ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
-                                           std::move(q), direction::kForward)
-                    : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
-                                             std::move(q), direction::kForward);
-            cpu_res[i] = *r.journeys_;
-          });
+      for (auto const t : cpu_threads_v) {
+        out.cpu_lat_ = run_load<cpu_ws>(
+            queries, label + "-cpu-" + std::to_string(t), prefix(states, t),
+            [&](cpu_ws& w, routing::query q, std::size_t const i) {
+              auto const r =
+                  use_pong
+                      ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
+                                             std::move(q), direction::kForward)
+                      : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
+                                               std::move(q),
+                                               direction::kForward);
+              cpu_res[i] = *r.journeys_;
+              cpu_itv[i] = r.interval_;
+            });
+      }
+    };
+    if (algo_part == "mcraptor") {
+      run_cpu_variant.template operator()<routing::mcraptor_state>();
+    } else if (algo_part == "mcraptor-cost") {
+      run_cpu_variant.template operator()<routing::mcraptor_cost_state>();
+    } else {
+      run_cpu_variant.template operator()<routing::raptor_state>();
     }
   }
 
@@ -225,29 +271,41 @@ cell_result run_config(
   auto gpu_res = std::vector<pareto_set<routing::journey>>(queries.size());
   if (run_gpu) {
     auto const gpu_tt = routing::gpu::gpu_timetable{tt};
-    struct gpu_ws {
-      search_state ss_;
-      std::unique_ptr<routing::gpu::gpu_raptor_state> rs_;
+    auto const run_gpu_variant = [&]<typename RS>() {
+      struct gpu_ws {
+        search_state ss_;
+        std::unique_ptr<RS> rs_;
+      };
+      auto states = std::vector<std::unique_ptr<gpu_ws>>{};
+      for (auto i = 0U;
+           i != *std::max_element(begin(gpu_states_v), end(gpu_states_v));
+           ++i) {
+        states.push_back(std::make_unique<gpu_ws>(
+            gpu_ws{search_state{}, std::make_unique<RS>(gpu_tt)}));
+      }
+      for (auto const s : gpu_states_v) {
+        run_load<gpu_ws>(
+            queries, label + "-gpu-" + std::to_string(s), prefix(states, s),
+            [&](gpu_ws& w, routing::query q, std::size_t const i) {
+              auto const r =
+                  use_pong
+                      ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
+                                             std::move(q), direction::kForward)
+                      : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
+                                               std::move(q),
+                                               direction::kForward);
+              gpu_res[i] = *r.journeys_;
+              gpu_itv[i] = r.interval_;
+            });
+      }
     };
-    auto states = std::vector<std::unique_ptr<gpu_ws>>{};
-    for (auto i = 0U;
-         i != *std::max_element(begin(gpu_states_v), end(gpu_states_v)); ++i) {
-      states.push_back(std::make_unique<gpu_ws>(
-          gpu_ws{search_state{},
-                 std::make_unique<routing::gpu::gpu_raptor_state>(gpu_tt)}));
-    }
-    for (auto const s : gpu_states_v) {
-      run_load<gpu_ws>(
-          queries, label + "-gpu-" + std::to_string(s), prefix(states, s),
-          [&](gpu_ws& w, routing::query q, std::size_t const i) {
-            auto const r =
-                use_pong
-                    ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
-                                           std::move(q), direction::kForward)
-                    : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
-                                             std::move(q), direction::kForward);
-            gpu_res[i] = *r.journeys_;
-          });
+    if (algo_part == "mcraptor") {
+      run_gpu_variant.template operator()<routing::gpu::gpu_mcraptor_state>();
+    } else if (algo_part == "mcraptor-cost") {
+      run_gpu_variant
+          .template operator()<routing::gpu::gpu_mcraptor_cost_state>();
+    } else {
+      run_gpu_variant.template operator()<routing::gpu::gpu_raptor_state>();
     }
   }
 
@@ -258,14 +316,15 @@ cell_result run_config(
 
   auto const dominates = [](journey const& a, journey const& b) {
     return a.start_time_ >= b.start_time_ && a.dest_time_ <= b.dest_time_ &&
-           a.transfers_ <= b.transfers_;
+           a.transfers_ <= b.transfers_ &&
+           a.criteria_cost_ <= b.criteria_cost_;
   };
   auto const covered = [&](journey const& j, auto const& by) {
     return utl::any_of(by, [&](journey const& o) { return dominates(o, j); });
   };
   auto const key = [](journey const& j) {
-    return fmt::format("dep={} arr={} transfers={}", j.start_time_,
-                       j.dest_time_, j.transfers_);
+    return fmt::format("dep={} arr={} transfers={} cost={}", j.start_time_,
+                       j.dest_time_, j.transfers_, j.criteria_cost_);
   };
   for (auto i = std::size_t{0U}; i != queries.size(); ++i) {
     auto gpu_misses = 0, cpu_misses = 0;
@@ -281,7 +340,9 @@ cell_result run_config(
     }
     if (gpu_misses != 0 || cpu_misses != 0) {
       std::cout << "query #" << i << " GPU_MISSES_CPU=" << gpu_misses
-                << " CPU_MISSES_GPU=" << cpu_misses << "\n  CPU-pareto: ";
+                << " CPU_MISSES_GPU=" << cpu_misses
+                << "\n  cpu_interval=" << cpu_itv[i]
+                << "\n  gpu_interval=" << gpu_itv[i] << "\n  CPU-pareto: ";
       for (auto const& c : cpu_res[i]) {
         std::cout << "[" << key(c) << "] ";
       }
@@ -294,6 +355,10 @@ cell_result run_config(
         if (!covered(c, gpu_res[i])) {
           std::cout << "  === MISSED-BY-GPU: " << key(c) << " ===\n";
           c.print(std::cout, tt);
+          std::cout << "  leg location indices:";
+          for (auto const& lg : c.legs_) {
+            std::cout << " " << to_idx(lg.from_) << "->" << to_idx(lg.to_);
+          }
           std::cout << "\n";
         }
       }
@@ -365,7 +430,9 @@ int main(int argc, char* argv[]) {
        "cross-checked per query and the process exits non-zero on any "
        "divergence")  //
       ("algo,a", bpo::value(&algos)->multitoken(),
-       "algorithms: raptor | pong (default: both)")  //
+       "algorithms (strategy-algorithm): raptor | pong | mcraptor | "
+       "mcraptor-cost | pong-mcraptor | pong-mcraptor-cost "
+       "(default: raptor pong)")  //
       ("modes", bpo::value(&modes)->multitoken(),
        "<start>-<dest> query modes with station | coordinate, e.g. "
        "station-station coordinate-coordinate (default: those two); "
@@ -565,8 +632,12 @@ int main(int argc, char* argv[]) {
   }
 #endif
   for (auto const& a : algos) {
-    if (a != "raptor" && a != "pong") {
-      std::cerr << "invalid algo \"" << a << "\", expected raptor | pong\n";
+    if (a != "raptor" && a != "pong" && a != "mcraptor" &&
+        a != "mcraptor-cost" && a != "pong-mcraptor" &&
+        a != "pong-mcraptor-cost") {
+      std::cerr << "invalid algo \"" << a
+                << "\", expected raptor | pong | mcraptor | mcraptor-cost | "
+                   "pong-mcraptor | pong-mcraptor-cost\n";
       return 1;
     }
   }
@@ -625,8 +696,8 @@ int main(int argc, char* argv[]) {
       auto const label = mode + "-" + algo;
       auto cell = cell_result{};
       try {
-        cell = run_config(qs, tt, label, algo == "pong", run_cpu, run_gpu,
-                          threads_v, gpu_states_v);
+        cell = run_config(qs, tt, label, algo, run_cpu, run_gpu, threads_v,
+                          gpu_states_v);
       } catch (std::exception const& e) {
         // e.g. GPU state allocation OOM -- report + fail instead of dying
         std::cerr << "RUN " << label << " failed: " << e.what() << "\n";

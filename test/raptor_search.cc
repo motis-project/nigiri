@@ -1,24 +1,24 @@
 #include "./raptor_search.h"
 
-#include <memory>
+#include <sstream>
 
 #include "gtest/gtest.h"
 
 #include "nigiri/common/parse_time.h"
-#include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
 #include "nigiri/timetable.h"
 
-#include "nigiri/routing/gpu/raptor.h"
-
 namespace nigiri::test {
+
+namespace {
 
 std::string print_results(timetable const& tt,
                           rt_timetable const* rtt,
-                          pareto_set<nigiri::routing::journey> const& results) {
+                          pareto_set<routing::journey> const& results) {
   std::stringstream ss;
   ss << "\n";
   for (auto const& x : results) {
@@ -28,46 +28,56 @@ std::string print_results(timetable const& tt,
   return ss.str();
 }
 
-unixtime_t parse_time(std::string_view s, char const* format) {
-  std::stringstream in;
-  in << s;
-
-  date::local_seconds ls;
-  std::string tz;
-  in >> date::parse(format, ls, tz);
-
-  return std::chrono::time_point_cast<unixtime_t::duration>(
-      date::make_zoned(tz, ls).get_sys_time());
-}
+}  // namespace
 
 pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            rt_timetable const* rtt,
                                            routing::query q,
                                            direction const search_dir) {
-  auto search_state = routing::search_state{};
-  auto algo_state = routing::raptor_state{};
-  auto results =
-      *(routing::raptor_search(tt, rtt, search_state, algo_state, q, search_dir)
-            .journeys_);
+  using algo_state_t = routing::raptor_state;
+  static auto search_state = routing::search_state{};
+  static auto algo_state = algo_state_t{};
 
-#if defined(NIGIRI_CUDA)
-  if (routing::gpu::gpu_supported(q, rtt)) {
-    auto gpu_search_state = routing::search_state{};
-    auto gpu_timetable = routing::gpu::gpu_timetable{tt};
-    auto gpu_state = routing::gpu::gpu_raptor_state{gpu_timetable};
-    if (rtt != nullptr) {
-      // Re-upload every call: tests mutate rtt between searches.
-      const_cast<rt_timetable&>(*rtt).gpu_rtt_.ptr_ =
-          routing::gpu::make_gpu_rtt(tt, *rtt);
-    }
-    auto gpu_results = *(routing::raptor_search(tt, rtt, gpu_search_state,
-                                                gpu_state, q, search_dir)
+  auto const results = *(routing::raptor_search(tt, rtt, search_state,
+                                                algo_state, q, search_dir)
                              .journeys_);
 
+  if (routing::mcraptor_supported(q, rtt)) {
+    auto mc_search_state = routing::search_state{};
+    auto mc_state = routing::mcraptor_state{};
+    auto const mc_results = *(routing::raptor_search(tt, rtt, mc_search_state,
+                                                     mc_state, q, search_dir)
+                                  .journeys_);
     EXPECT_EQ(print_results(tt, rtt, results),
-              print_results(tt, rtt, gpu_results));
+              print_results(tt, rtt, mc_results));
+
+    // generalized-cost criteria: the cost configuration keeps additional
+    // pareto trade-offs (later/more transfers but cheaper), so its
+    // journeys must be a superset of the baseline on
+    // (start, dest, transfers)
+    auto walk_search_state = routing::search_state{};
+    auto walk_state = routing::mcraptor_cost_state{};
+    auto const walk_results =
+        *(routing::raptor_search(tt, rtt, walk_search_state, walk_state,
+                                 std::move(q), search_dir)
+              .journeys_);
+    auto const tuples = [](pareto_set<routing::journey> const& js) {
+      auto v = std::vector<
+          std::tuple<unixtime_t, unixtime_t, std::uint8_t>>{};
+      for (auto const& j : js) {
+        v.emplace_back(j.start_time_, j.dest_time_, j.transfers_);
+      }
+      std::sort(begin(v), end(v));
+      return v;
+    };
+    auto const base_tuples = tuples(results);
+    auto const walk_tuples = tuples(walk_results);
+    for (auto const& t : base_tuples) {
+      EXPECT_TRUE(std::find(begin(walk_tuples), end(walk_tuples), t) !=
+                  end(walk_tuples))
+          << "baseline journey missing in walk results";
+    }
   }
-#endif
 
   return results;
 }
