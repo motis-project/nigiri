@@ -85,6 +85,10 @@ namespace nigiri::routing {
             }
 
             bool is_better(bag b) const {
+                if ()(b.is_invalid()) {
+                    return true;
+                }
+
                 for (auto this_ele : pareto_set_) {
                     for (auto b_ele : b.pareto_set_) {
                         if (this_ele < b_ele) {
@@ -109,6 +113,11 @@ namespace nigiri::routing {
             }
 
             bool is_better_with_offset(delta_t offset, bag b) const {
+
+                if (b.is_invalid()) {
+                    return true;
+                }
+
                 for (auto this_ele : pareto_set_) {
                     for (auto b_ele : b.pareto_set_) {
                         bag_entry offset_ele = bag_entry(this_ele.time_ + offset);
