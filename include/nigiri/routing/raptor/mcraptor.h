@@ -340,7 +340,7 @@ namespace nigiri::routing {
         algo_stats_t get_stats() const { return stats_; }
 
         void reset_arrivals() {
-            utl::fill(time_at_dest_, bag());
+            utl::fill(time_at_dest_, kInvalid);
             //round_times_.reset(kInvalidArray);
             for (auto ke : round_times_) {
                 for (auto& ie : ke) {
@@ -391,8 +391,8 @@ namespace nigiri::routing {
             auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
 
             auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
-            for (auto& time_at_dest : time_at_dest_) {
-                time_at_dest.add(d_worst_at_dest);
+            for (auto& time_at_dest : best_time_at_dest_) {
+                time_at_dest = get_best(d_worst_at_dest, time_at_dest);
             }
 
             trace_print_init_state();
@@ -750,12 +750,12 @@ namespace nigiri::routing {
                         "    transfer_time={}, fp_target_time={}, best@target={}, "
                         "dest={}\n",
                         transfer_time, to_unix(fp_target_time.get_any_time()), to_unix(new_best_[i][target_v].get_any_time()),
-                        to_unix(time_at_dest_[k].get_any_time()));
+                        to_unix(best_time_at_dest_[k]));
 
                     if (!new_best_[i][target_v].is_better(fp_target_time) &&
-                        fp_target_time.is_better( time_at_dest_[k])) {
+                        fp_target_time.is_better( best_time_at_dest_[k])) {
                         if (lb_[i] == kUnreachable ||
-                            !fp_target_time.is_better_with_offset(static_cast<delta_t>(dir(lb_[i])), time_at_dest_[k])) {
+                            !fp_target_time.is_better_with_offset(static_cast<delta_t>(dir(lb_[i])), best_time_at_dest_[k])) {
                             ++stats_.fp_update_prevented_by_lower_bound_;
                             return;
                         }
@@ -818,10 +818,10 @@ namespace nigiri::routing {
                             stay.count()));
 
                         if (!new_best_[target][target_v].is_better(fp_target_time) &&
-                            fp_target_time.is_better( time_at_dest_[k])) {
+                            fp_target_time.is_better( best_time_at_dest_[k])) {
                             auto const lower_bound = lb_[target];
                             if (lower_bound == kUnreachable ||
-                                !fp_target_time.is_better_with_offset(static_cast<delta_t>(dir(lower_bound)), time_at_dest_[k])) {
+                                !fp_target_time.is_better_with_offset(static_cast<delta_t>(dir(lower_bound)), best_time_at_dest_[k])) {
                                 ++stats_.fp_update_prevented_by_lower_bound_;
                                 trace_upd(
                                     "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
@@ -832,7 +832,7 @@ namespace nigiri::routing {
                                     loc{ tt_, fp.target() }, new_best_[target][target_v].get_any_time(),
                                     to_unix(fp_target_time.get_any_time()), lower_bound,
                                     to_unix(clamp(fp_target_time.get_any_time() + dir(lower_bound))),
-                                    to_unix(time_at_dest_[k].get_any_time()));
+                                    to_unix(best_time_at_dest_[k]));
                                 continue;
                             }
 
@@ -860,7 +860,7 @@ namespace nigiri::routing {
                                 k, loc{ tt_, l_idx }, to_unix(new_best_[to_idx(l_idx)][target_v].get_any_time()),
                                 adjusted_transfer_time(transfer_time_settings_, fp.duration()),
                                 loc{ tt_, fp.target() }, to_unix(new_best_[target][target_v].get_any_time()),
-                                to_unix(time_at_dest_[k].get_any_time()));
+                                to_unix(best_time_at_dest_[k]));
                         }
                     }
                 }
@@ -916,10 +916,10 @@ namespace nigiri::routing {
                         auto const fp_target_time = tmp_bag.copy(dir(fp.duration().count() + stay.count()));
 
                         if (!new_best_[target][target_v].is_better(fp_target_time) &&
-                            fp_target_time.is_better(time_at_dest_[k])) {
+                            fp_target_time.is_better(best_time_at_dest_[k])) {
                             auto const lower_bound = lb_[target];
                             if (lower_bound == kUnreachable ||
-                                !fp_target_time.is_better_with_offset(static_cast<delta_t>(dir(lower_bound)), time_at_dest_[k])) {
+                                !fp_target_time.is_better_with_offset(static_cast<delta_t>(dir(lower_bound)), best_time_at_dest_[k])) {
                                 ++stats_.fp_update_prevented_by_lower_bound_;
                                 trace_upd(
                                     "┊ ├k={} *** LB NO TD FP UPD: (from={}, tmp={}) --{}--> "
@@ -929,7 +929,7 @@ namespace nigiri::routing {
                                     fp.duration(), loc{ tt_, fp.target() }, new_best_[target][target_v].get_any_time(),
                                     fp_target_time.get_any_time(), lower_bound,
                                     to_unix(clamp(fp_target_time.get_any_time() + dir(lower_bound))),
-                                    to_unix(time_at_dest_[k].get_any_time()));
+                                    to_unix(best_time_at_dest_[k]));
                                 return utl::cflow::kContinue;
                             }
 
@@ -957,7 +957,7 @@ namespace nigiri::routing {
                                 k, loc{ tt_, l_idx }, new_best_[to_idx(l_idx)][v].get_any_time(),
                                 adjusted_transfer_time(transfer_time_settings_, fp.duration()),
                                 loc{ tt_, fp.target() }, new_best_[target][v].get_any_time(),
-                                to_unix(time_at_dest_[k].get_any_time()));
+                                to_unix(best_time_at_dest_[k]));
                         }
 
                         return utl::cflow::kContinue;
@@ -1142,9 +1142,9 @@ namespace nigiri::routing {
                                 get_best(round_times_[k - 1][l_idx][target_v].get_any_time(),
                                     new_tmp_[l_idx][target_v].get_any_time(), new_best_[l_idx][target_v].get_any_time());
 
-                            if (is_better(by_transport, time_at_dest_[k].get_any_time()) &&
+                            if (is_better(by_transport, best_time_at_dest_[k]) &&
                                 lb_[l_idx] != kUnreachable &&
-                                is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k].get_any_time())) {
+                                is_better(by_transport + dir(lb_[l_idx]), best_time_at_dest_[k])) {
                                 trace_upd(
                                     "┊ │k={}    RT | name={}, dbg={}, time_by_transport={}, "
                                     "BETTER THAN current_best={} => update, {} marking station "
@@ -1288,9 +1288,9 @@ namespace nigiri::routing {
 
                         assert(by_transport != std::numeric_limits<delta_t>::min() &&
                             by_transport != std::numeric_limits<delta_t>::max());
-                        if (is_better(by_transport, time_at_dest_[k].get_any_time()) &&
+                        if (is_better(by_transport, best_time_at_dest_[k]) &&
                             lb_[l_idx] != kUnreachable &&
-                            is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k].get_any_time())) {
+                            is_better(by_transport + dir(lb_[l_idx]), best_time_at_dest_[k])) {
                             trace_upd(
                                 "┊ │k={} v={}->{}    name={}, dbg={}, time_by_transport={}, "
                                 "BETTER THAN current_best={} => update, {} marking station "
@@ -1325,20 +1325,20 @@ namespace nigiri::routing {
                                 to_unix(round_times_[k - 1][l_idx][target_v].get_any_time()),
                                 to_unix(new_best_[l_idx][target_v].get_any_time()), to_unix(new_tmp_[l_idx][target_v].get_any_time()),
                                 to_unix(current_best[v]), loc{ tt_, location_idx_t{l_idx} },
-                                lb_[l_idx], to_unix(time_at_dest_[k].get_any_time()),
+                                lb_[l_idx], to_unix(best_time_at_dest_[k]),
                                 to_unix(clamp(by_transport + dir(lb_[l_idx]))), by_transport,
                                 to_unix(by_transport), current_best[v],
                                 to_unix(current_best[v]),
                                 is_better(by_transport, current_best[v]), by_transport,
-                                to_unix(by_transport), time_at_dest_[k].get_any_time(),
-                                to_unix(time_at_dest_[k].get_any_time()),
-                                is_better(by_transport, time_at_dest_[k].get_any_time()),
+                                to_unix(by_transport), best_time_at_dest_[k],
+                                to_unix(best_time_at_dest_[k]),
+                                is_better(by_transport, best_time_at_dest_[k]),
                                 lb_[l_idx] != kUnreachable, by_transport + dir(lb_[l_idx]),
                                 to_unix(clamp(by_transport + dir(lb_[l_idx]))),
-                                time_at_dest_[k].get_any_time(), to_unix(time_at_dest_[k].get_any_time()),
-                                to_unix(time_at_dest_[k].get_any_time()),
+                                best_time_at_dest_[k], to_unix(best_time_at_dest_[k]),
+                                to_unix(best_time_at_dest_[k]),
                                 is_better(clamp(by_transport + dir(lb_[l_idx])),
-                                    time_at_dest_[k].get_any_time()));
+                                    best_time_at_dest_[k]));
                         }
                     }
                     else {
@@ -1442,7 +1442,7 @@ namespace nigiri::routing {
                     auto const ev = *it;
                     auto const ev_mam = ev.mam();
 
-                    if (is_better_or_eq(time_at_dest_[k].get_any_time(),
+                    if (is_better_or_eq(best_time_at_dest_[k],
                         to_delta(day, ev_mam) + dir(lb_[to_idx(l)]))) {
                         trace(
                             "┊ │k={}      => name={}, dbg={}, day={}={}, best_mam={}, "
@@ -1452,7 +1452,7 @@ namespace nigiri::routing {
                             tt_.dbg(tt_.route_transport_ranges_[r][t_offset]), day,
                             tt_.to_unixtime(day, 0_minutes), mam_at_stop, ev_mam,
                             tt_.to_unixtime(day, duration_t{ ev_mam }),
-                            to_unix(time_at_dest_[k].get_any_time()));
+                            to_unix(best_time_at_dest_[k]));
                         return { transport_idx_t::invalid(), day_idx_t::invalid() };
                     }
 
@@ -1532,8 +1532,11 @@ namespace nigiri::routing {
             if constexpr (SearchMode == search_mode::kOneToAll) {
                 return;
             }
-            for (auto i = k; i != time_at_dest_.size(); ++i) {
-                time_at_dest_[i].add(b);
+            for (auto i = k; i != best_time_at_dest_.size(); ++i) {
+                for (auto b_entry : b.pareto_set_) {
+                    delta_t t = b_entry.time_
+                    best_time_at_dest_[i] = get_best(best_time_at_dest_[i], t);
+                }
             }
         }
 
@@ -1585,7 +1588,7 @@ namespace nigiri::routing {
         std::vector<std::uint16_t> const& lb_;
         std::vector<via_stop> const& via_stops_;
 
-        std::array<bag, kMaxTransfers + 2> time_at_dest_;
+        std::array<delta_t, kMaxTransfers + 2> best_time_at_dest_;
         day_idx_t base_;
         raptor_stats stats_;
         clasz_mask_t allowed_claszes_;
