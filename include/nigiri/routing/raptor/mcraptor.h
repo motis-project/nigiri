@@ -86,7 +86,7 @@ namespace nigiri::routing {
 
             bool is_better(bag b) const {
                 if (pareto_set_.empty()) {
-                    return false
+                    return false;
                 }
                 for (auto this_ele : pareto_set_) {
                     for (auto b_ele : b.pareto_set_) {
