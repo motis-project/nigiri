@@ -301,7 +301,7 @@ namespace nigiri::routing {
                     }
                     row.push_back(target_array);
                 }
-                round_times_.push_back(row);
+                round_times_.emplace_back(row);
             }
 
             assert(Vias == via_stops_.size());
@@ -1561,7 +1561,8 @@ namespace nigiri::routing {
         //COMMENT: kein resize zum befüllen über loops; größe des matrix dest aber über span von state abhängig
         //TODO: workaround:ersetze flat_matrix_view mit vec<vec<arr>>
         //flat_matrix_view<std::array<bag, Vias + 1>> round_times_;
-        vecvec< location_idx_t, std::array<bag, Vias + 1>> round_times_;
+        vecvec< unsigned, std::array<bag, Vias + 1>> round_times_;
+        //std::vector<std::vecctor<std::array<bag, Vias + 1>>> round_times_;
 
         bitvec const& is_dest_;
         std::array<bitvec, kMaxVias> const& is_via_;
