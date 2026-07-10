@@ -85,6 +85,9 @@ namespace nigiri::routing {
             }
 
             bool is_better(bag b) const {
+                if (pareto_set_.empty()) {
+                    return false
+                }
                 for (auto this_ele : pareto_set_) {
                     for (auto b_ele : b.pareto_set_) {
                         if (b_ele < this_ele)
@@ -99,6 +102,9 @@ namespace nigiri::routing {
             }
 
             bool is_better(delta_t time) const {
+                if (pareto_set_.empty()) {
+                    return false;
+                }
                 for (auto e : pareto_set_)
                     if (!(e < time)) return false;
                 return true;
@@ -363,7 +369,7 @@ namespace nigiri::routing {
                 "best={}]\n",
                 kFwd, loc{ tt_, l }, t, v, to_unix(new_best_[to_idx(l)][v]),
                 to_unix(round_times_[0U][to_idx(l)][v].get_any_time()),
-                get_best(t, to_unix(new_best_[to_idx(l)][v])));
+                get_best(t, to_unix(new_best_[to_idx(l)][v].get_any_time())));
             new_best_[to_idx(l)][v].add(unix_to_delta(base(), t));
             round_times_[0U][to_idx(l)][v].add( unix_to_delta(base(), t));
             state_.station_mark_.set(to_idx(l), true);
