@@ -133,7 +133,7 @@ namespace nigiri::routing {
                 
                 utl::erase_if(pareto_set_
                     , [&](auto const& toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != bad_entries.end();});
-                if (should_add) { pareto_set_.push_back(be) };
+                if (should_add) { pareto_set_.push_back(be); }
             }
 
             void add(delta_t t) {
@@ -153,7 +153,7 @@ namespace nigiri::routing {
 
                 utl::erase_if(pareto_set_
                     , [&](auto const& toDelete) { return std::find(bad_entries.begin(), bad_entries.end(), toDelete) != bad_entries.end();});
-                    if (should_add) { pareto_set_.push_back(bag_entry(t)) };
+                if (should_add) { pareto_set_.push_back(bag_entry(t)); }
             }
 
             void add(bag bg) {
@@ -1561,7 +1561,7 @@ namespace nigiri::routing {
         //COMMENT: kein resize zum befüllen über loops; größe des matrix dest aber über span von state abhängig
         //TODO: workaround:ersetze flat_matrix_view mit vec<vec<arr>>
         //flat_matrix_view<std::array<bag, Vias + 1>> round_times_;
-        vecvec<std::array<bag, Vias + 1>> round_times_;
+        vecvec< location_idx_t, std::array<bag, Vias + 1>> round_times_;
 
         bitvec const& is_dest_;
         std::array<bitvec, kMaxVias> const& is_via_;
