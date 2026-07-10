@@ -83,7 +83,13 @@ inline constexpr auto kMcNoBc = std::uint32_t{(1U << 27U) - 1U};
 // max 255 = hwm range). The strict (arr, extras) pareto keeps every
 // walk-class trade-off, so frontier sizes vary strongly with the dataset;
 // a fixed compile-time cap either wastes memory or trips the canary.
-inline constexpr auto kMcBagCapDefault = 64U;
+inline constexpr auto kMcBagCapDefault = 24U;  // inline slots per stop
+// two-level bags: stops whose frontier outgrows the inline slots get one
+// lazily allocated fixed-size block from a global pool. Removes the
+// per-stop capacity knob: the tail of the bag-size distribution (0.1% of
+// bags even at high walk surcharge) no longer dictates the per-stop cap.
+inline constexpr auto kMcBagBlock = 128U;  // slots per overflow block
+inline constexpr auto kMcBagPoolDefault = 65536U;  // blocks (64 MB)
 inline constexpr auto kMcDestCap = 64U;  // dest frontier entries
 // cross-start reuse frontier (rRAPTOR range reuse, GPU form): CPU reuse
 // only ever uses labels of previously processed (later-departing) starts
@@ -283,6 +289,48 @@ struct mcraptor_impl {
     return bags_ + static_cast<std::size_t>(l) * bag_cap_;
   }
 
+  __device__ __forceinline__ mc_label_t* bag_block(
+      std::uint32_t const l) const {
+    auto const blk = bag_ovf_[l];
+    return blk == ~0U
+               ? nullptr
+               : bag_pool_ + static_cast<std::size_t>(blk) * kMcBagBlock;
+  }
+
+  // single-slot read across both levels (post-kernel-boundary contexts)
+  __device__ mc_label_t bag_label(std::uint32_t const l,
+                                  std::uint32_t const i) const {
+    if (i < bag_cap_) {
+      return bag(l)[i];
+    }
+    auto const* const b = bag_block(l);
+    return b == nullptr ? kMcEmptySlot : b[i - bag_cap_];
+  }
+
+  // iteration view over a bag's used slots. A concurrently growing bag
+  // may expose the new hwm before its overflow pointer (plain stores, no
+  // reader ordering): the view then clamps to the inline slots, which is
+  // safe everywhere a concurrent read happens - the insert pre-scan is
+  // advisory and same-kernel readers only need labels written before the
+  // last kernel boundary (round/flag stability rules).
+  struct mc_bag_view {
+    mc_label_t const* a_;
+    mc_label_t const* b_;
+    std::uint32_t n_, na_;
+    __device__ __forceinline__ mc_label_t operator[](
+        std::uint32_t const i) const {
+      return i < na_ ? a_[i] : b_[i - na_];
+    }
+    __device__ __forceinline__ std::uint32_t size() const { return n_; }
+  };
+  __device__ __forceinline__ mc_bag_view bag_view(
+      std::uint32_t const l) const {
+    auto const hwm = static_cast<std::uint32_t>(bag_hwm_[l]);
+    auto const na = hwm < bag_cap_ ? hwm : bag_cap_;
+    auto const* const b = hwm > bag_cap_ ? bag_block(l) : nullptr;
+    return {bag(l), b, b == nullptr ? na : hwm, na};
+  }
+
   // CPU bag_insert rules 1:1, serialized by a per-stop spinlock: without
   // the lock, concurrent inserts that mutually pass the reject scan both
   // land, and such transiently dominated junk sticks around occupying
@@ -398,16 +446,15 @@ struct mcraptor_impl {
     if (reuse_rejected(rslots, arr_key, extras, round, by_route)) {
       return false;
     }
-    auto* const slots = bag(l);
     // lock-free reject pre-scan: most candidates are dominated and never
     // need the lock. Racy reads are safe: 64-bit aligned loads do not
     // tear, a missed dominator is caught by the locked re-scan below,
     // and rejecting on a concurrently evicted label is still valid (its
     // evictor dominates the candidate transitively).
     {
-      auto const pre_hwm = static_cast<std::uint32_t>(bag_hwm_[l]);
-      for (auto i = 0U; i != pre_hwm; ++i) {
-        auto const v = slots[i];
+      auto const pre = bag_view(l);
+      for (auto i = 0U; i != pre.size(); ++i) {
+        auto const v = pre[i];
         if (v != kMcEmptySlot && mc_round(v) <= round &&
             (!by_route || mc_by_route(v)) &&
             dominates(mc_arr_key(v), mc_extras(v), arr_key, extras)) {
@@ -423,11 +470,16 @@ struct mcraptor_impl {
     }
     __threadfence();  // acquire: see prior holders' plain stores
 
+    auto* const slots = bag(l);
+    auto* blk = bag_block(l);
+    auto const slot_at = [&](std::uint32_t const i) -> mc_label_t& {
+      return i < bag_cap_ ? slots[i] : blk[i - bag_cap_];
+    };
     auto inserted = false;
     auto free_slot = ~0U;
     auto const hwm = static_cast<std::uint32_t>(bag_hwm_[l]);
     for (auto i = 0U; i != hwm; ++i) {
-      auto const v = slots[i];
+      auto const v = slot_at(i);
       if (v == kMcEmptySlot) {
         free_slot = free_slot == ~0U ? i : free_slot;
         continue;
@@ -443,15 +495,28 @@ struct mcraptor_impl {
       // by-transfer candidate only evicts by-transfer labels)
       if (mc_round(v) >= round && (by_route || !mc_by_route(v)) &&
           dominates(arr_key, extras, mc_arr_key(v), mc_extras(v))) {
-        slots[i] = kMcEmptySlot;
+        slot_at(i) = kMcEmptySlot;
         free_slot = free_slot == ~0U ? i : free_slot;
       }
     }
-    if (free_slot == ~0U && hwm < bag_cap_) {
-      free_slot = hwm;
+    // grow into the inline area or the stop's overflow block, allocating
+    // the block lazily from the pool (race-free: the lock is held; racing
+    // readers see the old hwm or treat the not-yet-visible block as empty)
+    if (free_slot == ~0U && hwm < bag_cap_ + kMcBagBlock) {
+      if (hwm >= bag_cap_ && blk == nullptr) {
+        auto const b = atomicAdd(bag_pool_count_, 1U);
+        if (b < bag_pool_cap_) {
+          bag_ovf_[l] = b;
+          blk = bag_pool_ + static_cast<std::size_t>(b) * kMcBagBlock;
+        }
+      }
+      if (hwm < bag_cap_ || blk != nullptr) {
+        free_slot = hwm;
+      }
     }
     if (free_slot == ~0U) {
-      atomicOr(overflow_, kMcOverflowBag);  // full of non-dominated labels
+      // inline + block full of non-dominated labels, or pool exhausted
+      atomicOr(overflow_, kMcOverflowBag);
     } else {
       auto bc = kMcNoBc;
       if (with_bc) {
@@ -460,7 +525,7 @@ struct mcraptor_impl {
           goto unlock;  // arena overflow (canary set)
         }
       }
-      slots[free_slot] = mc_pack(arr_key, extras, round, by_route, bc);
+      slot_at(free_slot) = mc_pack(arr_key, extras, round, by_route, bc);
       if (free_slot + 1U > hwm) {
         bag_hwm_[l] = static_cast<std::uint8_t>(free_slot + 1U);
       }
@@ -717,8 +782,8 @@ struct mcraptor_impl {
       auto const stop_seq = tt_.route_location_seq_[r];
       auto const l_idx = to_idx(stop{stop_seq[stop_idx]}.location_idx());
       auto const l_lb = lb_[l_idx];
-      auto const* const stop_bag = bag(l_idx);
-      auto const stop_hwm = static_cast<std::uint32_t>(bag_hwm_[l_idx]);
+      auto const stop_bag = bag_view(l_idx);
+      auto const stop_hwm = stop_bag.size();
 
       // gather the boardable labels SORTED BY ARRIVAL: the earliest
       // transport depends only on the arrival time and is monotone in it,
@@ -859,7 +924,7 @@ struct mcraptor_impl {
         if (lane == 0U) {
           auto const l = to_idx(stop{stop_seq[stop_idx]}.location_idx());
           segs[0] = {mc_et_key(packed),
-                     mc_bc(bag(l)[mc_et_slot(packed)]),
+                     mc_bc(bag_label(l, mc_et_slot(packed))),
                      static_cast<std::uint16_t>(
                          WithCost ? mc_et_extras(packed) : 0U),
                      static_cast<std::uint16_t>(stop_idx),
@@ -918,7 +983,7 @@ struct mcraptor_impl {
         continue;  // not a boarding stop this round
       }
       auto const l_idx = to_idx(stop{stop_seq[stop_idx]}.location_idx());
-      auto const* const stop_bag = bag(l_idx);
+      auto const stop_bag = bag_view(l_idx);
       for (auto e = 0U; e != et_per_stop_; ++e) {
         auto const blk =
             e == 0U ? first : et_blocks_[flat * et_per_stop_ + e];
@@ -1154,7 +1219,7 @@ struct mcraptor_impl {
         break;
       }
 
-      auto const* const stop_bag = bag(l_idx);
+      auto const stop_bag = bag_view(l_idx);
       auto const flat = tt_.route_stop_offset_[to_idx(r)] + stop_idx;
 
       for (auto e = 0U; e != et_per_stop_; ++e) {
@@ -1285,8 +1350,8 @@ struct mcraptor_impl {
             intermodal && dist_to_end_[my_i] != kUnreachable;
         if (n_fps != 0U || egress_ok) {
           auto const buf = transfer_buffer(my_i);
-          auto const* const stop_bag = bag(my_i);
-          auto const stop_hwm = static_cast<std::uint32_t>(bag_hwm_[my_i]);
+          auto const stop_bag = bag_view(my_i);
+          auto const stop_hwm = stop_bag.size();
           if (n_fps > kWarpFpThreshold) {
             defer = true;  // hub: the whole warp strides the list below
           }
@@ -1340,8 +1405,8 @@ struct mcraptor_impl {
                               : tt_.footpaths_in_[prf_idx_][l];
         auto const n_fps = static_cast<unsigned>(fps.size());
         auto const buf = transfer_buffer(i);
-        auto const* const stop_bag = bag(i);
-        auto const stop_hwm = static_cast<std::uint32_t>(bag_hwm_[i]);
+        auto const stop_bag = bag_view(i);
+        auto const stop_hwm = stop_bag.size();
         for (auto sl = 0U; sl != stop_hwm; ++sl) {
           auto const lab = stop_bag[sl];
           if (lab == kMcEmptySlot || mc_round(lab) != k ||
@@ -1371,9 +1436,8 @@ struct mcraptor_impl {
     }
     for (auto t = 0U; t != trace_locs_.size(); ++t) {
       auto const l = to_idx(trace_locs_[t]);
-      auto const* const slots = bag(l);
-      for (auto i = 0U; i != bag_cap_; ++i) {
-        auto const v = slots[i];
+      for (auto i = 0U; i != bag_cap_ + kMcBagBlock; ++i) {
+        auto const v = bag_label(l, i);
         if (v == kMcEmptySlot) {
           continue;
         }
@@ -1403,8 +1467,16 @@ struct mcraptor_impl {
         auto const l = w * 32U + b;
         auto* const slots = bag(l);
         auto const n = static_cast<std::uint32_t>(bag_hwm_[l]);
-        for (auto s = 0U; s != n; ++s) {
+        auto const na = n < bag_cap_ ? n : bag_cap_;
+        for (auto s = 0U; s != na; ++s) {
           slots[s] = kMcEmptySlot;
+        }
+        if (n > bag_cap_) {  // release the block empty for reuse
+          auto* const b = bag_block(l);
+          for (auto s = 0U; s != n - bag_cap_; ++s) {
+            b[s] = kMcEmptySlot;
+          }
+          bag_ovf_[l] = ~0U;
         }
         bag_hwm_[l] = 0U;
       });
@@ -1695,7 +1767,11 @@ struct mcraptor_impl {
   cuda::std::span<std::uint16_t const> lb_;
   cuda::std::span<location_idx_t const> trace_locs_;  // debug dump only
 
-  mc_label_t* bags_;  // n_locations x bag_cap_
+  mc_label_t* bags_;  // n_locations x bag_cap_ inline slots
+  mc_label_t* bag_pool_;  // bag_pool_cap_ x kMcBagBlock overflow blocks
+  std::uint32_t* bag_ovf_;  // n_locations block idx (~0 = none)
+  std::uint32_t* bag_pool_count_;  // bump allocator
+  std::uint32_t bag_pool_cap_;
   std::uint64_t* reuse_bags_;  // n_locations x kMcReuseCap, per-query
   std::uint32_t bag_cap_;
   std::uint32_t et_per_stop_;

@@ -42,12 +42,25 @@ struct gpu_mcraptor_state::impl {
                   max);
       return x;
     };
-    bag_cap_ = env_cap("NIGIRI_GPU_MC_BAG_CAP", kMcBagCapDefault, 255U);
+    // inline slots per stop; the hwm byte bounds inline + overflow block
+    bag_cap_ =
+        env_cap("NIGIRI_GPU_MC_BAG_CAP", kMcBagCapDefault, 255U - kMcBagBlock);
     et_per_stop_ =
         env_cap("NIGIRI_GPU_MC_ET_PER_STOP", kMcEtPerStopDefault, 255U);
     bags_.resize(static_cast<std::size_t>(n_locations) * bag_cap_);
     cudaMemsetAsync(thrust::raw_pointer_cast(bags_.data()), 0xFF,
                     bags_.size() * sizeof(mc_label_t), stream_);
+    bag_pool_cap_ = env_cap("NIGIRI_GPU_MC_BAG_POOL", kMcBagPoolDefault,
+                            1U << 22U);
+    bag_pool_.resize(static_cast<std::size_t>(bag_pool_cap_) * kMcBagBlock);
+    cudaMemsetAsync(thrust::raw_pointer_cast(bag_pool_.data()), 0xFF,
+                    bag_pool_.size() * sizeof(mc_label_t), stream_);
+    bag_ovf_.resize(n_locations);
+    cudaMemsetAsync(thrust::raw_pointer_cast(bag_ovf_.data()), 0xFF,
+                    bag_ovf_.size() * sizeof(std::uint32_t), stream_);
+    bag_pool_count_.resize(1U);
+    cudaMemsetAsync(thrust::raw_pointer_cast(bag_pool_count_.data()), 0,
+                    sizeof(std::uint32_t), stream_);
     for (auto d = 0U; d != 2U; ++d) {
       reuse_bags_[d].resize(static_cast<std::size_t>(n_locations) *
                             kMcReuseCap);
@@ -116,10 +129,10 @@ struct gpu_mcraptor_state::impl {
     // the last round of every execute) and prints it at teardown
     bag_hist_ = std::getenv("NIGIRI_GPU_MC_BAG_HIST") != nullptr;
     if (bag_hist_) {
-      hist_dev_.resize(bag_cap_ + 1U);
+      hist_dev_.resize(bag_cap_ + kMcBagBlock + 1U);
       cudaMemsetAsync(thrust::raw_pointer_cast(hist_dev_.data()), 0,
                       hist_dev_.size() * sizeof(std::uint32_t), stream_);
-      hist_acc_.assign(bag_cap_ + 1U, 0ULL);
+      hist_acc_.assign(bag_cap_ + kMcBagBlock + 1U, 0ULL);
     }
   }
 
@@ -190,6 +203,10 @@ struct gpu_mcraptor_state::impl {
   device_timetable tt_;
 
   thrust::device_vector<mc_label_t> bags_;
+  thrust::device_vector<mc_label_t> bag_pool_;
+  thrust::device_vector<std::uint32_t> bag_ovf_;
+  thrust::device_vector<std::uint32_t> bag_pool_count_;
+  std::uint32_t bag_pool_cap_;
   thrust::device_vector<std::uint64_t> reuse_bags_[2];
   thrust::device_vector<std::uint32_t> bag_locks_;
   thrust::device_vector<std::uint8_t> bag_hwm_;
@@ -395,12 +412,13 @@ __global__ void mc_reconstruct_kernel(
     mcraptor_impl<SearchDir, WithCost> r,
     gpu_journey* const out) {
   auto const tid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (tid >= n_dest * r.bag_cap_) {
+  auto const per_dest = r.bag_cap_ + kMcBagBlock;
+  if (tid >= n_dest * per_dest) {
     return;
   }
   out[tid].state_ = reconstruction_result::kNotReconstructed;
-  auto const dest = dest_list[tid / r.bag_cap_];
-  auto const lab = r.bag(to_idx(dest))[tid % r.bag_cap_];
+  auto const dest = dest_list[tid / per_dest];
+  auto const lab = r.bag_label(to_idx(dest), tid % per_dest);
   if (lab == kMcEmptySlot) {
     return;
   }
@@ -408,6 +426,8 @@ __global__ void mc_reconstruct_kernel(
 }
 
 __global__ void mc_bag_hist_kernel(std::uint64_t const* const bags,
+                                   std::uint64_t const* const pool,
+                                   std::uint32_t const* const ovf,
                                    std::uint32_t const n_locations,
                                    std::uint32_t const cap,
                                    std::uint32_t* const hist) {
@@ -419,6 +439,15 @@ __global__ void mc_bag_hist_kernel(std::uint64_t const* const bags,
     for (auto i = 0U; i != cap; ++i) {
       if (b[i] != kMcEmptySlot) {
         ++n;
+      }
+    }
+    if (ovf[l] != ~0U) {
+      auto const* const o =
+          pool + static_cast<std::size_t>(ovf[l]) * kMcBagBlock;
+      for (auto i = 0U; i != kMcBagBlock; ++i) {
+        if (o[i] != kMcEmptySlot) {
+          ++n;
+        }
       }
     }
     if (n != 0U) {
@@ -544,6 +573,10 @@ mcraptor_impl<SearchDir, WithCost> make_impl(
       .dist_to_end_ = to_view(s.dist_to_dest_dev_[dir_idx]),
       .lb_ = {s.lb_dev_[dir_idx].data(), s.lb_dev_[dir_idx].size()},
       .bags_ = thrust::raw_pointer_cast(s.bags_.data()),
+      .bag_pool_ = thrust::raw_pointer_cast(s.bag_pool_.data()),
+      .bag_ovf_ = thrust::raw_pointer_cast(s.bag_ovf_.data()),
+      .bag_pool_count_ = thrust::raw_pointer_cast(s.bag_pool_count_.data()),
+      .bag_pool_cap_ = s.bag_pool_cap_,
       .reuse_bags_ = thrust::raw_pointer_cast(s.reuse_bags_[dir_idx].data()),
       .bag_cap_ = s.bag_cap_,
       .et_per_stop_ = s.et_per_stop_,
@@ -591,6 +624,8 @@ void gpu_mcraptor<SearchDir, WithCost>::next_start_time() {
       s, kDirIdx, transfer_time_settings_, allowed_claszes_, 0U, base_,
       worst_at_dest_, 0U, 0, {});
   mc_launch(mc_clear_bags_kernel<SearchDir, WithCost>, s.stream_, r);
+  cudaMemsetAsync(thrust::raw_pointer_cast(s.bag_pool_count_.data()), 0,
+                  sizeof(std::uint32_t), s.stream_);
   thrust::fill(thrust::cuda::par.on(s.stream_), s.station_mark_.begin(),
                s.station_mark_.end(), 0U);
   thrust::fill(thrust::cuda::par.on(s.stream_), s.prev_station_mark_.begin(),
@@ -714,9 +749,11 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
 
   if (s.bag_hist_) {
     mc_bag_hist_kernel<<<512, 256, 0, s.stream_>>>(
-        thrust::raw_pointer_cast(s.bags_.data()), s.tt_.n_locations_,
+        thrust::raw_pointer_cast(s.bags_.data()),
+        thrust::raw_pointer_cast(s.bag_pool_.data()),
+        thrust::raw_pointer_cast(s.bag_ovf_.data()), s.tt_.n_locations_,
         s.bag_cap_, thrust::raw_pointer_cast(s.hist_dev_.data()));
-    auto hist = std::vector<std::uint32_t>(s.bag_cap_ + 1U);
+    auto hist = std::vector<std::uint32_t>(s.bag_cap_ + kMcBagBlock + 1U);
     CUDA_CHECK(cudaMemcpyAsync(
         hist.data(), thrust::raw_pointer_cast(s.hist_dev_.data()),
         hist.size() * sizeof(std::uint32_t), cudaMemcpyDeviceToHost,
@@ -742,7 +779,7 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
   }
 
   auto const n_dest = static_cast<std::uint32_t>(dest_list.size());
-  auto const total = n_dest * s.bag_cap_;
+  auto const total = n_dest * (s.bag_cap_ + kMcBagBlock);
 
   auto* const dest_pin = s.rec_dest_pin_.ensure(dest_list.size());
   std::copy(dest_list.begin(), dest_list.end(), dest_pin);
