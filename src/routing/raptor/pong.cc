@@ -1,5 +1,6 @@
 #include "nigiri/routing/raptor/pong.h"
 
+#include <future>
 #include <ranges>
 #include <type_traits>
 
@@ -136,8 +137,35 @@ routing_result pong(timetable const& tt,
   }
 
   auto lb_time = std::chrono::steady_clock::duration{};
-  auto const ping_lb_start = std::chrono::steady_clock::now();
   auto ping_lb = std::vector<std::uint16_t>{};
+  auto pong_lb = std::vector<std::uint16_t>{};
+  // the two lb dijkstras are independent (ping: destination-rooted on the
+  // search-direction graph; pong: start-rooted on the flipped graph), so
+  // overlap them - they dominate the per-query CPU critical path
+  auto pong_lb_time = std::chrono::steady_clock::duration{};
+  auto pong_lb_fut = std::future<void>{};
+  if constexpr (pong_algo_t::kUseLowerBounds) {
+    pong_lb_fut = std::async(std::launch::async, [&tt, rtt, q, &pong_lb,
+                                                  &pong_lb_time] {
+      auto const t0 = std::chrono::steady_clock::now();
+      auto qf = q;
+      qf.flip_dir();
+      dijkstra(tt, qf,
+               (kFwd ? tt.bwd_search_lb_graph_[qf.prf_idx_]
+                     : tt.fwd_search_lb_graph_[qf.prf_idx_]),
+               ((rtt == nullptr || kGpu)
+                    ? nullptr
+                    : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
+                             : rtt->fwd_search_lb_graph_has_edges_)),
+               ((rtt == nullptr || kGpu)
+                    ? nullptr
+                    : &(kFwd ? rtt->bwd_search_lb_graph_
+                             : rtt->fwd_search_lb_graph_)),
+               pong_lb);
+      pong_lb_time = std::chrono::steady_clock::now() - t0;
+    });
+  }
+  auto const ping_lb_start = std::chrono::steady_clock::now();
   if constexpr (ping_algo_t::kUseLowerBounds) {
     dijkstra(tt, q,
              (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
@@ -184,22 +212,10 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, pong_is_via[i]);
   }
 
-  auto const pong_lb_start = std::chrono::steady_clock::now();
-  auto pong_lb = std::vector<std::uint16_t>{};
   if constexpr (pong_algo_t::kUseLowerBounds) {
-    dijkstra(tt, q,
-             (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
-                   : tt.fwd_search_lb_graph_[q.prf_idx_]),
-             ((rtt == nullptr || kGpu)
-                  ? nullptr
-                  : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
-                           : rtt->fwd_search_lb_graph_has_edges_)),
-             ((rtt == nullptr || kGpu) ? nullptr
-                                       : &(kFwd ? rtt->bwd_search_lb_graph_
-                                                : rtt->fwd_search_lb_graph_)),
-             pong_lb);
+    pong_lb_fut.get();  // overlapped with the ping dijkstra + ping setup
+    lb_time += pong_lb_time;
   }
-  lb_time += std::chrono::steady_clock::now() - pong_lb_start;
 
   auto pong = pong_algo_t{tt,
                           rtt,
