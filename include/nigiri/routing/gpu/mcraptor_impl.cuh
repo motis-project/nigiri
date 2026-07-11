@@ -113,16 +113,14 @@ CISTA_CUDA_COMPAT inline std::uint64_t mc_reuse_pack(
     bool const by_route) {
   return (static_cast<std::uint64_t>(arr_key & 0xFFFFU) << 48U) |
          (static_cast<std::uint64_t>(extras & 0xFFFFU) << 32U) |
-         (static_cast<std::uint64_t>(static_cast<std::uint16_t>(dep))
-          << 16U) |
+         (static_cast<std::uint64_t>(static_cast<std::uint16_t>(dep)) << 16U) |
          (static_cast<std::uint64_t>(round & 0xFU) << 4U) |
          (by_route ? 1U : 0U);
 }
 CISTA_CUDA_COMPAT inline std::uint32_t mc_reuse_key(std::uint64_t const x) {
   return static_cast<std::uint32_t>(x >> 48U);
 }
-CISTA_CUDA_COMPAT inline std::uint32_t mc_reuse_extras(
-    std::uint64_t const x) {
+CISTA_CUDA_COMPAT inline std::uint32_t mc_reuse_extras(std::uint64_t const x) {
   return static_cast<std::uint32_t>(x >> 32U) & 0xFFFFU;
 }
 CISTA_CUDA_COMPAT inline delta_t mc_reuse_dep(std::uint64_t const x) {
@@ -253,11 +251,11 @@ struct mcraptor_impl {
   // assumed to wait for the same connection, and the waiting charge
   // cancels the arrival advantage). WithCost=false: extras are all 0 and
   // this degenerates to the plain arrival comparison.
-  __device__ __forceinline__ bool dominates(std::uint32_t const a_key,
-                                            std::uint32_t const a_extras,
-                                            std::uint32_t const b_key,
-                                            std::uint32_t const b_extras)
-      const {
+  __device__ __forceinline__ bool dominates(
+      std::uint32_t const a_key,
+      std::uint32_t const a_extras,
+      std::uint32_t const b_key,
+      std::uint32_t const b_extras) const {
     return a_key <= b_key && a_extras <= b_extras;
   }
 
@@ -293,9 +291,8 @@ struct mcraptor_impl {
   __device__ __forceinline__ mc_label_t* bag_block(
       std::uint32_t const l) const {
     auto const blk = bag_ovf_[l];
-    return blk == ~0U
-               ? nullptr
-               : bag_pool_ + static_cast<std::size_t>(blk) * kMcBagBlock;
+    return blk == ~0U ? nullptr
+                      : bag_pool_ + static_cast<std::size_t>(blk) * kMcBagBlock;
   }
 
   // single-slot read across both levels (post-kernel-boundary contexts)
@@ -318,14 +315,13 @@ struct mcraptor_impl {
     mc_label_t const* a_;
     mc_label_t const* b_;
     std::uint32_t n_, na_;
-    __device__ __forceinline__ mc_label_t operator[](
-        std::uint32_t const i) const {
+    __device__ __forceinline__ mc_label_t
+    operator[](std::uint32_t const i) const {
       return i < na_ ? a_[i] : b_[i - na_];
     }
     __device__ __forceinline__ std::uint32_t size() const { return n_; }
   };
-  __device__ __forceinline__ mc_bag_view bag_view(
-      std::uint32_t const l) const {
+  __device__ __forceinline__ mc_bag_view bag_view(std::uint32_t const l) const {
     auto const hwm = static_cast<std::uint32_t>(bag_hwm_[l]);
     auto const na = hwm < bag_cap_ ? hwm : bag_cap_;
     auto const* const b = hwm > bag_cap_ ? bag_block(l) : nullptr;
@@ -373,8 +369,7 @@ struct mcraptor_impl {
       if (v == kMcEmptySlot) {
         continue;
       }
-      if (mc_reuse_round(v) <= round &&
-          (!by_route || mc_reuse_by_route(v)) &&
+      if (mc_reuse_round(v) <= round && (!by_route || mc_reuse_by_route(v)) &&
           mc_reuse_key(v) <= arr_key &&
           reuse_term(mc_reuse_extras(v), mc_reuse_dep(v)) <= cand_term) {
         return true;
@@ -406,8 +401,7 @@ struct mcraptor_impl {
       }
     }
     if (free_slot != ~0U) {
-      rslots[free_slot] = mc_reuse_pack(arr_key, extras, dep_, round,
-                                        by_route);
+      rslots[free_slot] = mc_reuse_pack(arr_key, extras, dep_, round, by_route);
       return;
     }
     // Full of mutually non-dominated entries: evict the LATEST arrival
@@ -442,9 +436,9 @@ struct mcraptor_impl {
                              breadcrumb_t const payload,
                              std::uint32_t const parent,
                              delta_t const arr) {
-    auto* const rslots = reuse_bags_ + static_cast<std::size_t>(l) *
-                                           kMcReuseCap;
-    if (reuse_rejected(rslots, arr_key, extras, round, by_route)) {
+    auto* const rslots =
+        reuse_bags_ + static_cast<std::size_t>(l) * kMcReuseCap;
+    if (!reuse_disabled_ && reuse_rejected(rslots, arr_key, extras, round, by_route)) {
       return false;
     }
     // lock-free reject pre-scan: most candidates are dominated and never
@@ -459,15 +453,24 @@ struct mcraptor_impl {
         if (v != kMcEmptySlot && mc_round(v) <= round &&
             (!by_route || mc_by_route(v)) &&
             dominates(mc_arr_key(v), mc_extras(v), arr_key, extras)) {
+          if (lock_stats_ != nullptr) {
+            atomicAdd(lock_stats_ + 2U, 1ULL);  // lock-free reject
+          }
           return false;
         }
       }
     }
     auto* const lock = bag_locks_ + l;
     while (atomicCAS(lock, 0U, 1U) != 0U) {
+      if (lock_stats_ != nullptr) {
+        atomicAdd(lock_stats_ + 1U, 1ULL);  // contended CAS retry
+      }
 #if __CUDA_ARCH__ >= 700
       __nanosleep(32);
 #endif
+    }
+    if (lock_stats_ != nullptr) {
+      atomicAdd(lock_stats_ + 0U, 1ULL);  // acquisition
     }
     __threadfence();  // acquire: see prior holders' plain stores
 
@@ -532,6 +535,9 @@ struct mcraptor_impl {
       }
       reuse_upsert(rslots, arr_key, extras, round, by_route);
       inserted = true;
+      if (lock_stats_ != nullptr) {
+        atomicAdd(lock_stats_ + 3U, 1ULL);  // accepted insert
+      }
     }
   unlock:
     __threadfence();  // release: publish stores before unlocking
@@ -635,8 +641,8 @@ struct mcraptor_impl {
       // at_start: ingress = walking between query start and seeded stop
       auto const ingress = static_cast<std::uint32_t>(dir(arr - d_start));
       auto const extras = WithCost ? ingress * walk_surcharge_ : 0U;
-      if (bag_insert(l, to_key(arr), extras, 0U, false, /*with_bc=*/false,
-                     0U, kMcNoBc, 0)) {
+      if (bag_insert(l, to_key(arr), extras, 0U, false, /*with_bc=*/false, 0U,
+                     kMcNoBc, 0)) {
         touched_.mark(l);
         station_mark_.mark(l);
       }
@@ -756,8 +762,7 @@ struct mcraptor_impl {
         auto is_task = false;
         auto task_hwm = 0U;
         if (i < n) {
-          auto const stop_idx =
-              static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
+          auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
           if (i + 1U != n) {
             auto const stp = stop{stop_seq[stop_idx]};
             auto const l = to_idx(stp.location_idx());
@@ -891,8 +896,7 @@ struct mcraptor_impl {
         auto need_seek = true;
         if (key == prev_key) {
           need_seek = false;  // identical arrival: identical result
-        } else if (prev_valid &&
-                   is_better_or_eq(from_key(key), prev_dep)) {
+        } else if (prev_valid && is_better_or_eq(from_key(key), prev_dep)) {
           need_seek = false;  // previous trip still catchable: same result
         }
         if (need_seek) {
@@ -967,21 +971,21 @@ struct mcraptor_impl {
       // one segment directly, no sequential stop walk needed
       auto const packed = route_single_entry_[to_idx(r)];
       auto const flat = route_single_flat_[to_idx(r)];
-      auto const stop_idx = static_cast<stop_idx_t>(
-          flat - tt_.route_stop_offset_[to_idx(r)]);
+      auto const stop_idx =
+          static_cast<stop_idx_t>(flat - tt_.route_stop_offset_[to_idx(r)]);
       auto const stop_seq = tt_.route_location_seq_[r];
       auto const n = static_cast<unsigned>(stop_seq.size());
       auto const pos = kFwd ? static_cast<unsigned>(stop_idx)
                             : n - 1U - static_cast<unsigned>(stop_idx);
       if (lane == 0U) {
         auto const l = to_idx(stop{stop_seq[stop_idx]}.location_idx());
-        segs[0] = {mc_et_key(packed),
-                   mc_bc(bag_label(l, mc_et_slot(packed))),
-                   static_cast<std::uint16_t>(
-                       WithCost ? mc_et_extras(packed) : 0U),
-                   static_cast<std::uint16_t>(stop_idx),
-                   static_cast<std::uint16_t>(pos + 1U),
-                   static_cast<std::uint16_t>(n)};
+        segs[0] = {
+            mc_et_key(packed),
+            mc_bc(bag_label(l, mc_et_slot(packed))),
+            static_cast<std::uint16_t>(WithCost ? mc_et_extras(packed) : 0U),
+            static_cast<std::uint16_t>(stop_idx),
+            static_cast<std::uint16_t>(pos + 1U),
+            static_cast<std::uint16_t>(n)};
       }
       n_segs = 1U;
     } else {
@@ -1020,8 +1024,7 @@ struct mcraptor_impl {
     auto const lane = get_global_thread_id() % kWarpSize;
     auto const warp_id = get_global_thread_id() / kWarpSize;
     auto const n_warps = get_global_stride() / kWarpSize;
-    auto* const segs =
-        seg_smem + (threadIdx.x / kWarpSize) * kMcMaxSegs;
+    auto* const segs = seg_smem + (threadIdx.x / kWarpSize) * kMcMaxSegs;
     auto local_marked = false;
 
     auto const n_marked = *route_list_count_;
@@ -1030,8 +1033,7 @@ struct mcraptor_impl {
           k, route_idx_t{route_list_[task]}, segs, lane);
       __syncwarp();
     }
-    if (__any_sync(kAllLanes, local_marked) && lane == 0U &&
-        !*any_marked_) {
+    if (__any_sync(kAllLanes, local_marked) && lane == 0U && !*any_marked_) {
       atomicOr(any_marked_, 1U);
     }
   }
@@ -1265,8 +1267,7 @@ struct mcraptor_impl {
                       /*with_bc=*/true,
                       make_transport_payload(
                           to_idx(t.t_idx_),
-                          static_cast<stop_idx_t>(bag.bx_[i] >> 16U),
-                          stop_idx),
+                          static_cast<stop_idx_t>(bag.bx_[i] >> 16U), stop_idx),
                       bag.par_[i], post_arr)) {
         continue;
       }
@@ -1286,8 +1287,7 @@ struct mcraptor_impl {
                               route_idx_t const r,
                               unsigned const lane,
                               bool& any_marked) {
-    auto const n =
-        static_cast<unsigned>(tt_.route_location_seq_[r].size());
+    auto const n = static_cast<unsigned>(tt_.route_location_seq_[r].size());
     auto const base_flat = tt_.route_stop_offset_[to_idx(r)];
     auto const worst_key = to_key(worst_at_dest_);
 
@@ -1303,8 +1303,8 @@ struct mcraptor_impl {
       // chunk without boardings: the state everywhere is just the carry
       if (__ballot_sync(kAllLanes, incl.cnt_ != 0U) == 0U) {
         if (carry.cnt_ != 0U && pos >= 1U && pos < n) {
-          marked |= alight_position<IsWheelchair>(k, r, n, pos, carry,
-                                                  worst_key);
+          marked |=
+              alight_position<IsWheelchair>(k, r, n, pos, carry, worst_key);
         }
         continue;
       }
@@ -1432,7 +1432,7 @@ struct mcraptor_impl {
                           static_cast<std::uint16_t>(n)};
         }
         rb[bag_size] = {et_key, static_cast<std::uint16_t>(pe_extras),
-                         static_cast<std::uint16_t>(n_segs)};
+                        static_cast<std::uint16_t>(n_segs)};
         ++bag_size;
         ++n_segs;
         peak_bag = bag_size > peak_bag ? bag_size : peak_bag;
@@ -1486,8 +1486,7 @@ struct mcraptor_impl {
           continue;
         }
         auto const ride_extras =
-            WithCost ? static_cast<std::uint32_t>(sg.extras_) + kBoardCost
-                     : 0U;
+            WithCost ? static_cast<std::uint32_t>(sg.extras_) + kBoardCost : 0U;
         // destination pareto pruning: optimistic projection (key + lb)
         if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
           continue;
@@ -1554,7 +1553,8 @@ struct mcraptor_impl {
       auto const is_last = i == n - 1U;
 
       // ---- alight: write arrivals of carried boardings -----------------
-      if (i != 0U && bag_size != 0U && stp.can_finish<SearchDir>(IsWheelchair)) {
+      if (i != 0U && bag_size != 0U &&
+          stp.can_finish<SearchDir>(IsWheelchair)) {
         auto const buf = transfer_buffer(l_idx);
         auto const l_lb = lb_[l_idx];
         for (auto b = 0U; b != bag_size; ++b) {
@@ -1578,8 +1578,7 @@ struct mcraptor_impl {
           if (!bag_insert(
                   l_idx, to_key(post_arr), ride_extras, k, true,
                   /*with_bc=*/true,
-                  make_transport_payload(to_idx(t.t_idx_), rl.board_,
-                                         stop_idx),
+                  make_transport_payload(to_idx(t.t_idx_), rl.board_, stop_idx),
                   rl.parent_, post_arr)) {
             continue;
           }
@@ -1673,8 +1672,8 @@ struct mcraptor_impl {
     if (target == source) {
       return false;
     }
-    auto const fp_duration = adjusted_transfer_time(transfer_time_settings_,
-                                                    fp.duration().count());
+    auto const fp_duration =
+        adjusted_transfer_time(transfer_time_settings_, fp.duration().count());
     auto const fp_arr = clamp(te_arr + dir(fp_duration));
     auto const fp_key = to_key(fp_arr);
     auto const target_lb = lb_[target];
@@ -1683,8 +1682,8 @@ struct mcraptor_impl {
       return false;
     }
     auto const fp_extras =
-        WithCost ? te_extras + static_cast<std::uint32_t>(fp_duration *
-                                                          walk_surcharge_)
+        WithCost ? te_extras +
+                       static_cast<std::uint32_t>(fp_duration * walk_surcharge_)
                  : 0U;
     if (dest_dominates(k, fp_key + target_lb, fp_extras)) {
       return false;
@@ -1715,8 +1714,7 @@ struct mcraptor_impl {
     auto const n_warps = get_global_stride() / kWarpSize;
     auto const intermodal = is_intermodal_dest();
     auto const worst_key = to_key(worst_at_dest_);
-    auto const n_blocks =
-        static_cast<unsigned>(station_mark_.blocks_.size());
+    auto const n_blocks = static_cast<unsigned>(station_mark_.blocks_.size());
     auto local_marked = false;
 
     for (auto w = warp_id; w < n_blocks; w += n_warps) {
@@ -1734,8 +1732,7 @@ struct mcraptor_impl {
         auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
                               : tt_.footpaths_in_[prf_idx_][l];
         auto const n_fps = static_cast<unsigned>(fps.size());
-        auto const egress_ok =
-            intermodal && dist_to_end_[my_i] != kUnreachable;
+        auto const egress_ok = intermodal && dist_to_end_[my_i] != kUnreachable;
         if (n_fps != 0U || egress_ok) {
           auto const buf = transfer_buffer(my_i);
           auto const stop_bag = bag_view(my_i);
@@ -1765,9 +1762,9 @@ struct mcraptor_impl {
               // journeys departing beyond the ping's start time
               if (end_key < worst_key) {
                 auto const src = bc_arena_[te_bc];
-                if (bag_insert(to_idx(kIntermodalTarget), end_key,
-                               end_extras, k, false, /*with_bc=*/true,
-                               src.payload_, src.parent_, end_arr)) {
+                if (bag_insert(to_idx(kIntermodalTarget), end_key, end_extras,
+                               k, false, /*with_bc=*/true, src.payload_,
+                               src.parent_, end_arr)) {
                   touched_.mark(to_idx(kIntermodalTarget));
                   dest_bag_add(k, end_key, end_extras);
                 }
@@ -1787,6 +1784,15 @@ struct mcraptor_impl {
       // hubs: all lanes stride one deferred stop's footpath list per label
       auto const deferred = __ballot_sync(kAllLanes, defer);
       for_each_set_bit(deferred, [&](unsigned const b) {
+        // reconverge per deferred stop: ballots/shuffles synchronize
+        // participation, not convergence - the divergent per-lane block
+        // above (and relax_fp spinlocks of the previous iteration) can
+        // leave the warp split, and a partial group striding the list
+        // (f = lane) skips every f >= its member count - observed as
+        // deterministically lost hub relaxations (q#52). gouda raptor's
+        // hub loop is immune only because it happens to open with
+        // full-mask shuffles.
+        __syncwarp();
         auto const i = base + b;
         auto const l = location_idx_t{i};
         auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
@@ -1797,8 +1803,7 @@ struct mcraptor_impl {
         auto const stop_hwm = stop_bag.size();
         for (auto sl = 0U; sl != stop_hwm; ++sl) {
           auto const lab = stop_bag[sl];
-          if (lab == kMcEmptySlot || mc_round(lab) != k ||
-              !mc_by_route(lab)) {
+          if (lab == kMcEmptySlot || mc_round(lab) != k || !mc_by_route(lab)) {
             continue;
           }
           auto const te_arr = clamp(from_key(mc_arr_key(lab)) - buf);
@@ -1829,12 +1834,11 @@ struct mcraptor_impl {
         if (v == kMcEmptySlot) {
           continue;
         }
-        printf("GPUTRACE k=%u stop=%u slot=%u round=%u route=%d arr=%d "
-               "extras=%u bc=%u\n",
-               k, static_cast<unsigned>(l), i, mc_round(v),
-               mc_by_route(v) ? 1 : 0,
-               static_cast<int>(from_key(mc_arr_key(v))), mc_extras(v),
-               mc_bc(v));
+        printf(
+            "GPUTRACE k=%u stop=%u slot=%u round=%u route=%d arr=%d "
+            "extras=%u bc=%u\n",
+            k, static_cast<unsigned>(l), i, mc_round(v), mc_by_route(v) ? 1 : 0,
+            static_cast<int>(from_key(mc_arr_key(v))), mc_extras(v), mc_bc(v));
       }
     }
   }
@@ -1913,8 +1917,7 @@ struct mcraptor_impl {
       auto day = day_idx_t::invalid();
       auto train_arr = kInvalid;
       for (auto off = 0; off != 2; ++off) {
-        auto const cand =
-            arr_day - event_mam_full / 1440 - (kFwd ? off : -off);
+        auto const cand = arr_day - event_mam_full / 1440 - (kFwd ? off : -off);
         if (cand < 0) {
           continue;
         }
@@ -1987,14 +1990,15 @@ struct mcraptor_impl {
                             : reconstruction_result::kReconstructionFailed;
   }
 
-  // ---- shared helpers (1:1 gouda raptor_impl) --------------------------------
+  // ---- shared helpers (1:1 gouda raptor_impl)
+  // --------------------------------
 
-  __device__ transport get_earliest_transport(route_idx_t const r,
-                                              stop_idx_t const stop_idx,
-                                              day_idx_t const day_at_stop,
-                                              minutes_after_midnight_t const
-                                                  mam_at_stop,
-                                              std::uint16_t const l_lb) {
+  __device__ transport
+  get_earliest_transport(route_idx_t const r,
+                         stop_idx_t const stop_idx,
+                         day_idx_t const day_at_stop,
+                         minutes_after_midnight_t const mam_at_stop,
+                         std::uint16_t const l_lb) {
     auto const event_times = tt_.event_times_at_stop(
         r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
 
@@ -2104,9 +2108,8 @@ struct mcraptor_impl {
 
   __device__ delta_t to_delta(day_idx_t const day,
                               std::int16_t const mam) const {
-    return clamp((static_cast<int>(day.v_) - static_cast<int>(base_.v_)) *
-                     1440 +
-                 mam);
+    return clamp(
+        (static_cast<int>(day.v_) - static_cast<int>(base_.v_)) * 1440 + mam);
   }
 
   __device__ std::pair<day_idx_t, minutes_after_midnight_t> split(
@@ -2132,12 +2135,14 @@ struct mcraptor_impl {
     }
   }
 
-  // ---- members ---------------------------------------------------------------
+  // ---- members
+  // ---------------------------------------------------------------
 
   std::uint32_t* any_marked_;
   std::uint32_t* done_;
   std::uint32_t* overflow_;
   std::uint32_t* seg_hist_;  // instrumentation (nullptr = off)
+  unsigned long long* lock_stats_;  // instrumentation (nullptr = off)
   std::uint32_t* livebag_hist_;  // instrumentation (nullptr = off)
   std::uint32_t* len_hist_;  // instrumentation (nullptr = off)
   device_timetable tt_;
@@ -2179,6 +2184,7 @@ struct mcraptor_impl {
   std::uint32_t* dest_best_total_;
   bool dest_prune_disabled_;
   bool prefix_disabled_;  // NIGIRI_GPU_MC_NO_PREFIX: force the two-pass path
+  bool reuse_disabled_;  // NIGIRI_GPU_MC_NO_REUSE: rejection frontier off
   mc_bc_entry* bc_arena_;
   std::uint32_t* bc_count_;
   std::uint32_t bc_cap_;

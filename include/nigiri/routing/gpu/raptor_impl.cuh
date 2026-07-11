@@ -629,6 +629,7 @@ struct raptor_impl {
       auto const deferred = __ballot_sync(kAllLanes, defer);
       for_each_set_bit(deferred, [&](unsigned const b) {
         auto const l = location_idx_t{base + b};
+        // full-mask shuffles also reconverge the warp for the strided loop
         auto const l_tmp = static_cast<delta_t>(__shfl_sync(
             kAllLanes, static_cast<int>(tmp_time), static_cast<int>(b)));
         auto const l_bc = __shfl_sync(kAllLanes, bc, static_cast<int>(b));

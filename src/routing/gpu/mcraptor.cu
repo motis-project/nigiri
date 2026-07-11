@@ -144,6 +144,12 @@ struct gpu_mcraptor_state::impl {
     // instrumentation: NIGIRI_GPU_MC_BAG_HIST=1 accumulates a bag
     // occupancy histogram (non-empty slots per touched bag, sampled after
     // the last round of every execute) and prints it at teardown
+    lock_stats_ = std::getenv("NIGIRI_GPU_MC_LOCK_STATS") != nullptr;
+    if (lock_stats_) {
+      lock_stats_dev_.resize(4U);
+      cudaMemsetAsync(thrust::raw_pointer_cast(lock_stats_dev_.data()), 0,
+                      4U * sizeof(unsigned long long), stream_);
+    }
     seg_hist_ = std::getenv("NIGIRI_GPU_MC_SEG_HIST") != nullptr;
     if (seg_hist_) {
       seg_hist_dev_.resize(kMcMaxSegs + 2U);
@@ -167,6 +173,15 @@ struct gpu_mcraptor_state::impl {
   }
 
   ~impl() {
+    if (lock_stats_) {
+      auto v = std::vector<unsigned long long>(4U);
+      cudaMemcpy(v.data(), thrust::raw_pointer_cast(lock_stats_dev_.data()),
+                 4U * sizeof(unsigned long long), cudaMemcpyDeviceToHost);
+      std::fprintf(stderr,
+                   "MCLOCKSTATS acq=%llu cas_retries=%llu prescan_rej=%llu "
+                   "accepts=%llu\n",
+                   v[0], v[1], v[2], v[3]);
+    }
     if (seg_hist_) {
       auto h = std::vector<std::uint32_t>(seg_hist_dev_.size());
       cudaMemcpy(h.data(), thrust::raw_pointer_cast(seg_hist_dev_.data()),
@@ -305,6 +320,8 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> hist_dev_;
   std::vector<unsigned long long> hist_acc_;
   bool seg_hist_{false};
+  bool lock_stats_{false};
+  thrust::device_vector<unsigned long long> lock_stats_dev_;
   thrust::device_vector<std::uint32_t> seg_hist_dev_;
   thrust::device_vector<std::uint32_t> livebag_hist_dev_;
   thrust::device_vector<std::uint32_t> len_hist_dev_;
@@ -635,6 +652,10 @@ mcraptor_impl<SearchDir, WithCost> make_impl(
       .seg_hist_ = s.seg_hist_
                        ? thrust::raw_pointer_cast(s.seg_hist_dev_.data())
                        : nullptr,
+      .lock_stats_ =
+          s.lock_stats_
+              ? thrust::raw_pointer_cast(s.lock_stats_dev_.data())
+              : nullptr,
       .livebag_hist_ =
           s.seg_hist_ ? thrust::raw_pointer_cast(s.livebag_hist_dev_.data())
                       : nullptr,
@@ -678,6 +699,12 @@ mcraptor_impl<SearchDir, WithCost> make_impl(
           [] {
             static bool const v =
                 std::getenv("NIGIRI_GPU_MC_NO_PREFIX") != nullptr;
+            return v;
+          }(),
+      .reuse_disabled_ =
+          [] {
+            static bool const v =
+                std::getenv("NIGIRI_GPU_MC_NO_REUSE") != nullptr;
             return v;
           }(),
       .bc_arena_ = thrust::raw_pointer_cast(s.bc_arena_.data()),

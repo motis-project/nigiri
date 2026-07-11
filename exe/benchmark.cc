@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <iostream>
 #include <map>
-#include <numeric>
 #include <regex>
 #include <thread>
 
@@ -519,6 +518,8 @@ int main(int argc, char* argv[]) {
 
   std::cout << "loading timetable...\n";
   auto tt = *nigiri::timetable::read(tt_path);
+
+
   tt.resolve();
 
   gs.interval_size_ = duration_t{interval_size};
