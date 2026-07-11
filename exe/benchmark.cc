@@ -520,6 +520,7 @@ int main(int argc, char* argv[]) {
   auto tt = *nigiri::timetable::read(tt_path);
 
 
+
   tt.resolve();
 
   gs.interval_size_ = duration_t{interval_size};

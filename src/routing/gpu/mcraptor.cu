@@ -51,8 +51,8 @@ struct gpu_mcraptor_state::impl {
     bag_pool_cap_ = env_cap(
         "NIGIRI_GPU_MC_BAG_POOL",
         static_cast<std::uint32_t>(std::min<std::size_t>(
-            std::max<std::size_t>(n_locations / 16U, kMcBagPoolDefault),
-            262'144U)),
+            std::max<std::size_t>(n_locations / 16U, 131'072U),
+            393'216U)),
         1U << 22U);
     bag_pool_.resize(static_cast<std::size_t>(bag_pool_cap_) * kMcBagBlock);
     cudaMemsetAsync(thrust::raw_pointer_cast(bag_pool_.data()), 0xFF,
@@ -90,12 +90,14 @@ struct gpu_mcraptor_state::impl {
     auto arena_cap = std::min<std::size_t>(
         std::max<std::size_t>(static_cast<std::size_t>(n_locations) * 16U,
                               8'000'000U),
-        48'000'000U);
+        32'000'000U);
     if (auto const* env = std::getenv("NIGIRI_GPU_MC_ARENA");
         env != nullptr) {
       arena_cap = static_cast<std::size_t>(std::atoll(env));
     }
-    bc_arena_.resize(arena_cap);
+    bc_pay_lo_.resize(arena_cap);
+    bc_hi_arr_.resize(arena_cap);
+    bc_par_.resize(arena_cap);
     bc_count_.resize(1U);
 
     touched_.resize(n_locations / 32U + 1U);
@@ -121,20 +123,29 @@ struct gpu_mcraptor_state::impl {
     // (task count can never exceed that), the entry pool is reserved at
     // collect time as hwm+1 per task - it scales with the actual frontier
     // (measured ~3 entries/task mean) instead of a worst-case row width
-    et_task_list_.resize(n_route_stops);
-    et_task_off_.resize(n_route_stops);
+    // measured WW peaks (n=20): 38M tasks, 26M arena entries; caps ~1.7x
+    et_tasks_cap_ = env_cap(
+        "NIGIRI_GPU_MC_ET_TASKS",
+        static_cast<std::uint32_t>(
+            std::min<std::size_t>(n_route_stops, 64'000'000U)),
+        1U << 28U);
+    et_task_list_.resize(et_tasks_cap_);
+    et_task_off_.resize(et_tasks_cap_);
     et_task_count_.resize(1U);
     et_entry_count_.resize(1U);
     et_pool_cap_ = env_cap("NIGIRI_GPU_MC_ET_POOL",
                            static_cast<std::uint32_t>(std::min<std::size_t>(
                                std::max<std::size_t>(8U * n_route_stops,
                                                      64'000'000U),
-                               192'000'000U)),
+                               224'000'000U)),
                            1U << 30U);
-    et_blocks_.resize(et_pool_cap_);
-    et_block_map_.resize(n_route_stops);
-    cudaMemsetAsync(thrust::raw_pointer_cast(et_block_map_.data()), 0xFF,
-                    et_block_map_.size() * sizeof(std::uint32_t), stream_);
+    et_ent_key_.resize(et_pool_cap_);
+    et_ent_ex_.resize(et_pool_cap_);
+    et_ent_sl_.resize(et_pool_cap_);
+    task_bits_.resize((n_route_stops >> 5U) + 2U);
+    cudaMemsetAsync(thrust::raw_pointer_cast(task_bits_.data()), 0,
+                    task_bits_.size() * sizeof(std::uint32_t), stream_);
+    route_task_start_.resize(tt_.n_routes_);
     any_marked_.resize(1U);
     done_.resize(1U);
     overflow_.resize(1U);
@@ -144,6 +155,12 @@ struct gpu_mcraptor_state::impl {
     // instrumentation: NIGIRI_GPU_MC_BAG_HIST=1 accumulates a bag
     // occupancy histogram (non-empty slots per touched bag, sampled after
     // the last round of every execute) and prints it at teardown
+    hwm_stats_ = std::getenv("NIGIRI_GPU_MC_STATS") != nullptr;
+    if (hwm_stats_) {
+      hwm_stats_dev_.resize(3U);
+      cudaMemsetAsync(thrust::raw_pointer_cast(hwm_stats_dev_.data()), 0,
+                      3U * sizeof(std::uint32_t), stream_);
+    }
     lock_stats_ = std::getenv("NIGIRI_GPU_MC_LOCK_STATS") != nullptr;
     if (lock_stats_) {
       lock_stats_dev_.resize(4U);
@@ -173,6 +190,15 @@ struct gpu_mcraptor_state::impl {
   }
 
   ~impl() {
+    if (hwm_stats_) {
+      auto v = std::vector<std::uint32_t>(3U);
+      cudaMemcpy(v.data(), thrust::raw_pointer_cast(hwm_stats_dev_.data()),
+                 3U * sizeof(std::uint32_t), cudaMemcpyDeviceToHost);
+      std::fprintf(stderr,
+                   "MCHWM tasks_per_round=%u pool_entries_per_round=%u "
+                   "arena_per_start=%u\n",
+                   v[0], v[1], v[2]);
+    }
     if (lock_stats_) {
       auto v = std::vector<unsigned long long>(4U);
       cudaMemcpy(v.data(), thrust::raw_pointer_cast(lock_stats_dev_.data()),
@@ -278,6 +304,7 @@ struct gpu_mcraptor_state::impl {
   bool is_intermodal_dest_[2];  // per direction: [0]=fwd, [1]=bwd
   std::uint32_t bag_cap_;
   std::size_t et_pool_cap_;
+  std::uint32_t et_tasks_cap_;
 
   device_timetable tt_;
 
@@ -293,7 +320,9 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> dest_lock_[2];
   thrust::device_vector<std::uint32_t> dest_best_key_[2];
   thrust::device_vector<std::uint32_t> dest_best_total_[2];
-  thrust::device_vector<mc_bc_entry> bc_arena_;
+  thrust::device_vector<std::uint32_t> bc_pay_lo_;
+  thrust::device_vector<std::uint32_t> bc_hi_arr_;
+  thrust::device_vector<std::uint32_t> bc_par_;
   thrust::device_vector<std::uint32_t> bc_count_;
 
   thrust::device_vector<std::uint32_t> touched_;
@@ -305,8 +334,11 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> route_list_count_;
   thrust::device_vector<std::uint32_t> et_task_list_;
   thrust::device_vector<std::uint32_t> et_task_count_;
-  thrust::device_vector<std::uint64_t> et_blocks_;
-  thrust::device_vector<std::uint32_t> et_block_map_;
+  thrust::device_vector<std::uint32_t> et_ent_key_;
+  thrust::device_vector<std::uint16_t> et_ent_ex_;
+  thrust::device_vector<std::uint8_t> et_ent_sl_;
+  thrust::device_vector<std::uint32_t> task_bits_;
+  thrust::device_vector<std::uint32_t> route_task_start_;
   thrust::device_vector<std::uint32_t> et_task_off_;
   thrust::device_vector<std::uint32_t> et_entry_count_;
   thrust::device_vector<std::uint32_t> route_entry_count_;
@@ -320,6 +352,8 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> hist_dev_;
   std::vector<unsigned long long> hist_acc_;
   bool seg_hist_{false};
+  bool hwm_stats_{false};
+  thrust::device_vector<std::uint32_t> hwm_stats_dev_;
   bool lock_stats_{false};
   thrust::device_vector<unsigned long long> lock_stats_dev_;
   thrust::device_vector<std::uint32_t> seg_hist_dev_;
@@ -400,11 +434,12 @@ __global__ void mc_build_route_list_kernel(
 }
 
 template <direction SearchDir, bool WithCost, bool IsWheelchair>
-__global__ void mc_et_collect_kernel(mcraptor_impl<SearchDir, WithCost> r) {
+__global__ void mc_et_collect_kernel(mcraptor_impl<SearchDir, WithCost> r,
+                                     unsigned const k) {
   if (*r.done_) {
     return;
   }
-  r.template et_collect_tasks<IsWheelchair>();
+  r.template et_collect_tasks<IsWheelchair>(k);
 }
 
 template <direction SearchDir, bool WithCost>
@@ -652,6 +687,9 @@ mcraptor_impl<SearchDir, WithCost> make_impl(
       .seg_hist_ = s.seg_hist_
                        ? thrust::raw_pointer_cast(s.seg_hist_dev_.data())
                        : nullptr,
+      .hwm_stats_ =
+          s.hwm_stats_ ? thrust::raw_pointer_cast(s.hwm_stats_dev_.data())
+                       : nullptr,
       .lock_stats_ =
           s.lock_stats_
               ? thrust::raw_pointer_cast(s.lock_stats_dev_.data())
@@ -707,9 +745,11 @@ mcraptor_impl<SearchDir, WithCost> make_impl(
                 std::getenv("NIGIRI_GPU_MC_NO_REUSE") != nullptr;
             return v;
           }(),
-      .bc_arena_ = thrust::raw_pointer_cast(s.bc_arena_.data()),
+      .bc_pay_lo_ = thrust::raw_pointer_cast(s.bc_pay_lo_.data()),
+      .bc_hi_arr_ = thrust::raw_pointer_cast(s.bc_hi_arr_.data()),
+      .bc_par_ = thrust::raw_pointer_cast(s.bc_par_.data()),
       .bc_count_ = thrust::raw_pointer_cast(s.bc_count_.data()),
-      .bc_cap_ = static_cast<std::uint32_t>(s.bc_arena_.size()),
+      .bc_cap_ = static_cast<std::uint32_t>(s.bc_pay_lo_.size()),
       .touched_ = {to_mutable_view(s.touched_)},
       .station_mark_ = {to_mutable_view(s.station_mark_)},
       .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
@@ -719,11 +759,16 @@ mcraptor_impl<SearchDir, WithCost> make_impl(
           thrust::raw_pointer_cast(s.route_list_count_.data()),
       .et_task_list_ = to_mutable_view(s.et_task_list_),
       .et_task_count_ = thrust::raw_pointer_cast(s.et_task_count_.data()),
-      .et_blocks_ = to_mutable_view(s.et_blocks_),
-      .et_block_map_ = thrust::raw_pointer_cast(s.et_block_map_.data()),
+      .et_ent_key_ = thrust::raw_pointer_cast(s.et_ent_key_.data()),
+      .et_ent_ex_ = thrust::raw_pointer_cast(s.et_ent_ex_.data()),
+      .et_ent_sl_ = thrust::raw_pointer_cast(s.et_ent_sl_.data()),
+      .task_bits_ = thrust::raw_pointer_cast(s.task_bits_.data()),
+      .route_task_start_ =
+          thrust::raw_pointer_cast(s.route_task_start_.data()),
       .et_task_off_ = thrust::raw_pointer_cast(s.et_task_off_.data()),
       .et_entry_count_ = thrust::raw_pointer_cast(s.et_entry_count_.data()),
       .et_pool_cap_ = s.et_pool_cap_,
+      .et_tasks_cap_ = s.et_tasks_cap_,
       .route_entry_count_ =
           thrust::raw_pointer_cast(s.route_entry_count_.data()),
       .route_single_entry_ =
@@ -824,10 +869,10 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
     mc_launch(mc_build_route_list_kernel<SearchDir, WithCost>, s.stream_, r);
     if (is_wheelchair_) {
       mc_launch(mc_et_collect_kernel<SearchDir, WithCost, true>, s.stream_,
-                r);
+                r, k);
     } else {
       mc_launch(mc_et_collect_kernel<SearchDir, WithCost, false>, s.stream_,
-                r);
+                r, k);
     }
     mc_launch(mc_et_lookups_kernel<SearchDir, WithCost>, s.stream_, r, k);
     // warp-per-route two-pass scan: fixed geometry + per-warp shared
@@ -926,13 +971,14 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
   // capacity canaries: a lossy search must never go unnoticed
   utl::verify(*overflow_pin == 0U,
               "gpu mcraptor: capacity overflow (mask={}): bag={} arena={} "
-              "route_bag={} rec={} et_block={} et_tasks={}",
+              "route_bag={} rec={} et_block={} et_tasks={} task_cap={}",
               *overflow_pin, (*overflow_pin & kMcOverflowBag) != 0U,
               (*overflow_pin & kMcOverflowArena) != 0U,
               (*overflow_pin & kMcOverflowRouteBag) != 0U,
               (*overflow_pin & kMcOverflowRec) != 0U,
               (*overflow_pin & kMcOverflowEtBlock) != 0U,
-              (*overflow_pin & kMcOverflowEtTasks) != 0U);
+              (*overflow_pin & kMcOverflowEtTasks) != 0U,
+              (*overflow_pin & kMcOverflowTaskCap) != 0U);
 
   // === CONVERT DEVICE JOURNEYS TO HOST JOURNEYS ===
   for (auto idx = std::uint32_t{0U}; idx != total; ++idx) {

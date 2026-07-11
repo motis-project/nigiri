@@ -83,7 +83,7 @@ inline constexpr auto kMcNoBc = std::uint32_t{(1U << 27U) - 1U};
 // max 255 = hwm range). The strict (arr, extras) pareto keeps every
 // walk-class trade-off, so frontier sizes vary strongly with the dataset;
 // a fixed compile-time cap either wastes memory or trips the canary.
-inline constexpr auto kMcBagCapDefault = 24U;  // inline slots per stop
+inline constexpr auto kMcBagCapDefault = 16U;  // inline slots per stop
 // two-level bags: stops whose frontier outgrows the inline slots get one
 // lazily allocated fixed-size block from a global pool. Removes the
 // per-stop capacity knob: the tail of the bag-size distribution (0.1% of
@@ -103,7 +103,11 @@ inline constexpr auto kMcDestCap = 64U;  // dest frontier entries
 // result-neutral under the strict dominance rule. Cleared per QUERY
 // (reset_arrivals), not per start. Capacity overflow drops the entry
 // (pruning only - never results).
-inline constexpr auto kMcReuseCap = 8U;
+// 4/6/8 measured (2026-07-11): WW pong FLAT (1.7 q/s each), WW search.h
+// 1.6/1.7/1.8 q/s (q99 4.1/3.3/3.2s), GER pong 20.1/19.1/18.9; 85MB/slot
+// worldwide per state. 6 = production optimum (WW, ~10% search.h): near-
+// full tail recovery at half the memory of 8.
+inline constexpr auto kMcReuseCap = 6U;
 
 CISTA_CUDA_COMPAT inline std::uint64_t mc_reuse_pack(
     std::uint32_t const arr_key,
@@ -214,13 +218,13 @@ CISTA_CUDA_COMPAT inline std::uint32_t mc_bc(mc_label_t const x) {
 // breadcrumb arena entry: everything the reconstruction chase needs.
 // arr_ is the arrival at the label's location (post transfer buffer /
 // footpath), used for traffic-day recovery exactly like the CPU.
+// stored as SoA (12B/entry: pay_lo u32, [arr:16|pay_hi:16] u32, parent
+// u32 - the AoS layout wasted 4B/entry on padding); this is the read view
 struct mc_bc_entry {
   breadcrumb_t payload_;
   std::uint32_t parent_;
   delta_t arr_;
-  std::uint16_t pad_{0U};
 };
-static_assert(sizeof(mc_bc_entry) == 16U);
 
 // device canary bits (checked by the host after each query)
 inline constexpr auto kMcOverflowBag = 1U;
@@ -228,7 +232,8 @@ inline constexpr auto kMcOverflowArena = 2U;
 inline constexpr auto kMcOverflowRouteBag = 4U;
 inline constexpr auto kMcOverflowRec = 8U;
 inline constexpr auto kMcOverflowEtBlock = 16U;
-inline constexpr auto kMcOverflowEtTasks = 32U;
+inline constexpr auto kMcOverflowEtTasks = 32U;  // entry pool exhausted
+inline constexpr auto kMcOverflowTaskCap = 64U;  // raise ET_TASKS
 
 template <direction SearchDir, bool WithCost>
 struct mcraptor_impl {
@@ -555,8 +560,20 @@ struct mcraptor_impl {
       atomicOr(overflow_, kMcOverflowArena);
       return kMcNoBc;
     }
-    bc_arena_[idx] = {payload, parent, arr, 0U};
+    bc_pay_lo_[idx] = static_cast<std::uint32_t>(payload);
+    bc_hi_arr_[idx] =
+        static_cast<std::uint32_t>(payload >> 32U) |
+        (static_cast<std::uint32_t>(static_cast<std::uint16_t>(arr)) << 16U);
+    bc_par_[idx] = parent;
     return idx;
+  }
+
+  __device__ __forceinline__ mc_bc_entry bc_read(std::uint32_t const i) const {
+    auto const hi = bc_hi_arr_[i];
+    return {static_cast<breadcrumb_t>(bc_pay_lo_[i]) |
+                (static_cast<breadcrumb_t>(hi & 0xFFFFU) << 32U),
+            bc_par_[i],
+            static_cast<delta_t>(static_cast<std::int16_t>(hi >> 16U))};
   }
 
   // ---- destination frontier (pruning only) ----------------------------------
@@ -667,6 +684,10 @@ struct mcraptor_impl {
   __device__ void begin_transit_phase() {
     prev_station_mark_.swap_reset(station_mark_);
     if (get_global_thread_id() == 0U) {
+      if (hwm_stats_ != nullptr) {  // instrumentation (NIGIRI_GPU_MC_STATS)
+        hwm_stats_[0] = umax(hwm_stats_[0], *et_task_count_);
+        hwm_stats_[1] = umax(hwm_stats_[1], *et_entry_count_);
+      }
       *route_list_count_ = 0U;
       *et_task_count_ = 0U;
       *et_entry_count_ = 0U;
@@ -718,30 +739,40 @@ struct mcraptor_impl {
 
   // et PHASE 1 (cf. gouda et_collect_tasks): warp-cooperative stream
   // compaction of the marked routes' boardable stops into a flat task list
-  // task-indexed et rows, exactly sized: each task owns hwm+1 pool
-  // entries reserved at collect time (worldwide, fixed per-flat sizing
-  // was 23.5GB; fixed per-task rows still needed >5GB for monster
-  // rounds). et_block_map_[flat] points at the stop's task row;
-  // a map entry is valid iff the task list entry points back
-  // (et_task_list_[ti] == flat), so stale entries from earlier rounds and
-  // starts self-invalidate: if the stop IS a task this round the map was
-  // just overwritten, and if not, task slot ti holds a different stop.
-  // No resets, no epochs.
-  __device__ __forceinline__ std::uint64_t const* et_block_for(
-      std::size_t const flat) const {
-    auto const ti = et_block_map_[flat];
-    if (ti >= *et_task_count_ || et_task_list_[ti] != flat) {
-      return nullptr;  // not a boarding stop this round
+  // task-indexed et rows, exactly sized (each task owns count+1 pool
+  // entries reserved at collect). The flat->task mapping is a BITMAP +
+  // RANK instead of a u32-per-flat map (worldwide: 368MB -> 11.5MB):
+  // collect assigns each marked route a contiguous, flat-ordered task
+  // range and sets one bit per task; a reader recovers the task index as
+  // route_task_start_ + popcount(route's bits below flat). Stale state is
+  // impossible: collect clears the route's bit range every round before
+  // setting, and readers only ever query this round's marked routes.
+  __device__ __forceinline__ std::uint32_t et_row_for(
+      std::uint32_t const ri,
+      std::uint32_t const base_flat,
+      std::uint32_t const flat) const {
+    if (((task_bits_[flat >> 5U] >> (flat & 31U)) & 1U) == 0U) {
+      return ~0U;  // not a boarding stop this round
     }
-    auto const eoff = et_task_off_[ti];
-    if (eoff == ~0U) {
-      return nullptr;  // entry pool exhausted (canary already set)
+    auto const w0 = base_flat >> 5U;
+    auto const wf = flat >> 5U;
+    auto const lo_mask = ~0U << (base_flat & 31U);
+    auto const hi_mask = (1U << (flat & 31U)) - 1U;
+    auto rank = 0U;
+    if (w0 == wf) {
+      rank = static_cast<unsigned>(__popc(task_bits_[w0] & lo_mask & hi_mask));
+    } else {
+      rank = static_cast<unsigned>(__popc(task_bits_[w0] & lo_mask));
+      for (auto w = w0 + 1U; w < wf; ++w) {
+        rank += static_cast<unsigned>(__popc(task_bits_[w]));
+      }
+      rank += static_cast<unsigned>(__popc(task_bits_[wf] & hi_mask));
     }
-    return &et_blocks_[eoff];
+    return et_task_off_[route_task_start_[ri] + rank];
   }
 
   template <bool IsWheelchair>
-  __device__ void et_collect_tasks() {
+  __device__ void et_collect_tasks(unsigned const k) {
     auto const gid = get_global_thread_id();
     auto const stride = get_global_stride();
     auto const lane = gid % kWarpSize;
@@ -751,75 +782,134 @@ struct mcraptor_impl {
     for (auto idx = warp_id; idx < n_marked; idx += n_warps) {
       auto const ri = route_list_[idx];
       auto const r = route_idx_t{ri};
-      auto const base_flat = tt_.route_stop_offset_[ri];
+      auto const base_flat =
+          static_cast<std::uint32_t>(tt_.route_stop_offset_[ri]);
       auto const stop_seq = tt_.route_location_seq_[r];
       auto const n = static_cast<unsigned>(stop_seq.size());
       if (lane == 0U) {
         route_entry_count_[ri] = 0U;
       }
+      auto const boardable = [&](unsigned const i, unsigned& l_out) {
+        if (i + 1U >= n) {
+          return false;  // last stop never boards
+        }
+        auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
+        auto const stp = stop{stop_seq[stop_idx]};
+        auto const l = to_idx(stp.location_idx());
+        l_out = l;
+        return prev_station_mark_[l] &&
+               stp.can_start<SearchDir>(IsWheelchair) &&
+               lb_[l] != kUnreachable && bag_hwm_[l] != 0U;
+      };
+      // pass A: task count + clear this route's bitmap range (boundary
+      // words are shared with adjacent routes -> masked atomics there)
+      auto route_tasks = 0U;
+      for (auto chunk = 0U; chunk < n; chunk += kWarpSize) {
+        auto l = 0U;
+        auto const t = chunk + lane < n && boardable(chunk + lane, l);
+        route_tasks +=
+            static_cast<unsigned>(__popc(__ballot_sync(kAllLanes, t)));
+      }
+      {
+        auto const w0 = base_flat >> 5U;
+        auto const w1 = (base_flat + n - 1U) >> 5U;
+        auto const lo = ~0U << (base_flat & 31U);
+        auto const hi_rem = (base_flat + n) & 31U;
+        auto const hi = hi_rem == 0U ? ~0U : (1U << hi_rem) - 1U;
+        for (auto w = w0 + lane; w <= w1; w += kWarpSize) {
+          auto keep = 0U;
+          if (w == w0) {
+            keep |= ~lo;
+          }
+          if (w == w1) {
+            keep |= ~hi;
+          }
+          if (keep == 0U) {
+            task_bits_[w] = 0U;
+          } else {
+            atomicAnd(task_bits_ + w, keep);
+          }
+        }
+      }
+      if (route_tasks == 0U) {
+        continue;
+      }
+      auto route_start = 0U;
+      if (lane == 0U) {
+        route_start = atomicAdd(et_task_count_, route_tasks);
+      }
+      route_start = __shfl_sync(kAllLanes, route_start, 0);
+      if (route_start + route_tasks > et_tasks_cap_) {  // raise ET_TASKS
+        if (lane == 0U) {
+          atomicOr(overflow_, kMcOverflowTaskCap);
+        }
+        // neutralize the reserved-but-unwritten slots for the lookup pass
+        for (auto t = route_start + lane;
+             t < umin(route_start + route_tasks, et_tasks_cap_);
+             t += kWarpSize) {
+          et_task_off_[t] = ~0U;
+        }
+        continue;
+      }
+      if (lane == 0U) {
+        route_task_start_[ri] = route_start;
+      }
+      // pass B: exact entry needs (count round-(k-1) labels; worldwide
+      // the old hwm bound overshot the pool 2-3x), pool reservation via
+      // one warp scan per chunk, flat-ordered task writes (bwd: scan
+      // order is reverse flat order, so the rank flips)
+      auto done_before = 0U;
       for (auto chunk = 0U; chunk < n; chunk += kWarpSize) {
         auto const i = chunk + lane;
-        auto is_task = false;
-        auto task_hwm = 0U;
-        if (i < n) {
-          auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
-          if (i + 1U != n) {
-            auto const stp = stop{stop_seq[stop_idx]};
-            auto const l = to_idx(stp.location_idx());
-            task_hwm = static_cast<unsigned>(bag_hwm_[l]);
-            is_task = prev_station_mark_[l] &&
-                      stp.can_start<SearchDir>(IsWheelchair) &&
-                      lb_[l] != kUnreachable && task_hwm != 0U;
+        auto l = 0U;
+        auto const is_task = i < n && boardable(i, l);
+        auto need = 0U;
+        if (is_task) {
+          auto const bv = bag_view(l);
+          for (auto sl = 0U; sl != bv.size(); ++sl) {
+            auto const lab = bv[sl];
+            need +=
+                (lab != kMcEmptySlot && mc_round(lab) == k - 1U) ? 1U : 0U;
           }
+          need = umin(need, kMcEtGatherCap) + 1U;
         }
         auto const ballot = __ballot_sync(kAllLanes, is_task);
-        if (ballot != 0U) {
-          auto const leader =
-              static_cast<int>(__ffs(static_cast<int>(ballot))) - 1;
-          auto base_pos = 0U;
-          if (lane == static_cast<unsigned>(leader)) {
-            base_pos = atomicAdd(et_task_count_,
-                                 static_cast<unsigned>(__popc(ballot)));
-          }
-          base_pos = __shfl_sync(kAllLanes, base_pos, leader);
-          // exact-size entry rows: reserve min(hwm, gather cap)+1 slots
-          // per task (hwm bounds the stop's boardable labels and stays
-          // stable between collect and lookups; the lookup gather is
-          // hard-capped at kMcEtGatherCap, so the min is always enough;
-          // +1 for the terminator). One pool atomic per warp.
-          auto const need =
-              is_task ? umin(task_hwm, kMcEtGatherCap) + 1U : 0U;
-          auto incl_sum = need;
+        if (ballot == 0U) {
+          continue;
+        }
+        auto incl_sum = need;
 #pragma unroll
-          for (auto d = 1U; d < kWarpSize; d <<= 1U) {
-            auto const v = __shfl_up_sync(kAllLanes, incl_sum, d);
-            if (lane >= d) {
-              incl_sum += v;
-            }
-          }
-          auto base_off = 0U;
-          if (lane == kWarpSize - 1U) {
-            base_off = atomicAdd(et_entry_count_, incl_sum);
-          }
-          base_off = __shfl_sync(kAllLanes, base_off, kWarpSize - 1U);
-          if (is_task) {
-            auto const off =
-                static_cast<unsigned>(__popc(ballot & ((1U << lane) - 1U)));
-            auto const stop_idx =
-                static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
-            auto const ti = base_pos + off;
-            auto const flat = base_flat + stop_idx;
-            et_task_list_[ti] = flat;
-            et_block_map_[flat] = ti;
-            auto const eoff = base_off + (incl_sum - need);
-            if (static_cast<std::size_t>(eoff) + need > et_pool_cap_) {
-              atomicOr(overflow_, kMcOverflowEtTasks);  // raise ET_POOL
-              et_task_off_[ti] = ~0U;
-            } else {
-              et_task_off_[ti] = eoff;
-            }
+        for (auto d = 1U; d < kWarpSize; d <<= 1U) {
+          auto const v = __shfl_up_sync(kAllLanes, incl_sum, d);
+          if (lane >= d) {
+            incl_sum += v;
           }
         }
+        auto base_off = 0U;
+        if (lane == kWarpSize - 1U) {
+          base_off = atomicAdd(et_entry_count_, incl_sum);
+        }
+        base_off = __shfl_sync(kAllLanes, base_off, kWarpSize - 1U);
+        if (is_task) {
+          auto const rank_i =
+              done_before +
+              static_cast<unsigned>(__popc(ballot & ((1U << lane) - 1U)));
+          auto const ti = kFwd ? route_start + rank_i
+                               : route_start + route_tasks - 1U - rank_i;
+          auto const stop_idx =
+              static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
+          auto const flat = base_flat + stop_idx;
+          et_task_list_[ti] = flat;
+          atomicOr(task_bits_ + (flat >> 5U), 1U << (flat & 31U));
+          auto const eoff = base_off + (incl_sum - need);
+          if (static_cast<std::size_t>(eoff) + need > et_pool_cap_) {
+            atomicOr(overflow_, kMcOverflowEtTasks);  // raise ET_POOL
+            et_task_off_[ti] = ~0U;
+          } else {
+            et_task_off_[ti] = eoff;
+          }
+        }
+        done_before += static_cast<unsigned>(__popc(ballot));
       }
     }
   }
@@ -831,7 +921,7 @@ struct mcraptor_impl {
   __device__ void et_run_lookups(unsigned const k) {
     auto const gid = get_global_thread_id();
     auto const stride = get_global_stride();
-    auto const n_tasks = *et_task_count_;
+    auto const n_tasks = umin(*et_task_count_, et_tasks_cap_);
     for (auto t = gid; t < n_tasks; t += stride) {
       auto const eoff = et_task_off_[t];
       if (eoff == ~0U) {
@@ -912,18 +1002,20 @@ struct mcraptor_impl {
         if (!prev_valid) {
           continue;  // nothing catchable from this (or an equal) arrival
         }
-        auto const packed =
-            mc_et_pack(pack_et(r, prev_et), cands[ci].extras_, cands[ci].sl_);
-        et_blocks_[static_cast<std::size_t>(eoff) + out] = packed;
+        auto const slot = static_cast<std::size_t>(eoff) + out;
+        et_ent_key_[slot] = pack_et(r, prev_et);
+        et_ent_ex_[slot] = cands[ci].extras_;
+        et_ent_sl_[slot] = cands[ci].sl_;
         if (atomicAdd(route_entry_count_ + to_idx(r), 1U) == 0U) {
-          route_single_entry_[to_idx(r)] = packed;
+          route_single_entry_[to_idx(r)] = mc_et_pack(
+              pack_et(r, prev_et), cands[ci].extras_, cands[ci].sl_);
           route_single_flat_[to_idx(r)] = flat;
         }
         ++out;
       }
-      // terminate the dense fill (space is guaranteed: the reservation is
-      // hwm+1 and out <= boardable labels <= hwm)
-      et_blocks_[static_cast<std::size_t>(eoff) + out] = kMcEtInvalid;
+      // terminate the dense fill (space is guaranteed: the reservation
+      // covers count+1 and out <= boardable labels)
+      et_ent_key_[static_cast<std::size_t>(eoff) + out] = ~0U;
     }
   }
 
@@ -1165,30 +1257,26 @@ struct mcraptor_impl {
     }
     auto const stop_idx = static_cast<stop_idx_t>(kFwd ? pos : n - 1U - pos);
     auto const flat = static_cast<std::size_t>(base_flat + stop_idx);
-    auto const* const eb = et_block_for(flat);
-    if (eb == nullptr) {
-      return;
-    }
-    auto const first = eb[0];
-    if (first == kMcEtInvalid) {
+    auto const eoff = et_row_for(to_idx(r), static_cast<std::uint32_t>(base_flat),
+                                 static_cast<std::uint32_t>(flat));
+    if (eoff == ~0U || et_ent_key_[eoff] == ~0U) {
       return;
     }
     auto const stop_seq = tt_.route_location_seq_[r];
     auto const l_idx = to_idx(stop{stop_seq[stop_idx]}.location_idx());
     auto const stop_bag = bag_view(l_idx);
     for (auto e = 0U; e != kMcEtGatherCap; ++e) {
-      auto const blk = e == 0U ? first : eb[e];
-      if (blk == kMcEtInvalid) {
+      auto const et_key = et_ent_key_[eoff + e];
+      if (et_key == ~0U) {
         break;
       }
-      auto const et_key = mc_et_key(blk);
-      auto const pe_extras = WithCost ? mc_et_extras(blk) : 0U;
+      auto const pe_extras = WithCost ? et_ent_ex_[eoff + e] : 0U;
       auto merged = false;
 #pragma unroll
       for (auto i = 0U; i != K; ++i) {
         if (i < out.cnt_ && !merged) {
           if (out.et_[i] == et_key && (out.bx_[i] & 0xFFFFU) == pe_extras) {
-            out.par_[i] = mc_bc(stop_bag[mc_et_slot(blk)]);
+            out.par_[i] = mc_bc(stop_bag[et_ent_sl_[eoff + e]]);
             merged = true;
           } else if (et_key >= out.et_[i] &&
                      (out.bx_[i] & 0xFFFFU) <= pe_extras) {
@@ -1216,7 +1304,7 @@ struct mcraptor_impl {
         return;
       }
       out.et_[out.cnt_] = et_key;
-      out.par_[out.cnt_] = mc_bc(stop_bag[mc_et_slot(blk)]);
+      out.par_[out.cnt_] = mc_bc(stop_bag[et_ent_sl_[eoff + e]]);
       out.bx_[out.cnt_] =
           (static_cast<std::uint32_t>(stop_idx) << 16U) | pe_extras;
       ++out.cnt_;
@@ -1360,20 +1448,21 @@ struct mcraptor_impl {
     for (auto i = 0U; i + 1U < n; ++i) {  // last stop never boards
       auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
       auto const flat = static_cast<std::size_t>(base_flat + stop_idx);
-      auto const* const eb = et_block_for(flat);
-      if (eb == nullptr || eb[0] == kMcEtInvalid) {
+      auto const eoff =
+          et_row_for(to_idx(r), static_cast<std::uint32_t>(base_flat),
+                     static_cast<std::uint32_t>(flat));
+      if (eoff == ~0U || et_ent_key_[eoff] == ~0U) {
         continue;  // not a boarding stop this round
       }
       auto const l_idx = to_idx(stop{stop_seq[stop_idx]}.location_idx());
       auto const stop_bag = bag_view(l_idx);
       for (auto e = 0U; e != kMcEtGatherCap; ++e) {
-        auto const blk = eb[e];
-        if (blk == kMcEtInvalid) {
+        auto const et_key = et_ent_key_[eoff + e];
+        if (et_key == ~0U) {
           break;  // dense fill up to the terminator
         }
-        auto const et_key = mc_et_key(blk);
-        auto const pe_extras = WithCost ? mc_et_extras(blk) : 0U;
-        auto const pe_parent = mc_bc(stop_bag[mc_et_slot(blk)]);
+        auto const pe_extras = WithCost ? et_ent_ex_[eoff + e] : 0U;
+        auto const pe_parent = mc_bc(stop_bag[et_ent_sl_[eoff + e]]);
 
         // merge into the route bag: pareto over (trip order, extras)
         auto merged = false;
@@ -1604,20 +1693,22 @@ struct mcraptor_impl {
       }
 
       auto const stop_bag = bag_view(l_idx);
-      auto const flat = tt_.route_stop_offset_[to_idx(r)] + stop_idx;
-      auto const* const eb = et_block_for(flat);
-      if (eb == nullptr) {
+      auto const rsbase = tt_.route_stop_offset_[to_idx(r)];
+      auto const flat = rsbase + stop_idx;
+      auto const eoff =
+          et_row_for(to_idx(r), static_cast<std::uint32_t>(rsbase),
+                     static_cast<std::uint32_t>(flat));
+      if (eoff == ~0U) {
         continue;
       }
 
       for (auto e = 0U; e != kMcEtGatherCap; ++e) {
-        auto const blk = eb[e];
-        if (blk == kMcEtInvalid) {
+        auto const et_key = et_ent_key_[eoff + e];
+        if (et_key == ~0U) {
           break;  // dense fill up to the terminator
         }
-        auto const et_key = mc_et_key(blk);
-        auto const pe_extras = WithCost ? mc_et_extras(blk) : 0U;
-        auto const pe_parent = mc_bc(stop_bag[mc_et_slot(blk)]);
+        auto const pe_extras = WithCost ? et_ent_ex_[eoff + e] : 0U;
+        auto const pe_parent = mc_bc(stop_bag[et_ent_sl_[eoff + e]]);
 
         // merge into the route bag: pareto over (trip order, extras)
         auto merged = false;
@@ -1688,7 +1779,7 @@ struct mcraptor_impl {
     if (dest_dominates(k, fp_key + target_lb, fp_extras)) {
       return false;
     }
-    auto const src = bc_arena_[te_bc];
+    auto const src = bc_read(te_bc);
     if (!bag_insert(target, fp_key, fp_extras, k, false, /*with_bc=*/true,
                     src.payload_, src.parent_, fp_arr)) {
       return false;
@@ -1761,7 +1852,7 @@ struct mcraptor_impl {
               // window bound: pong's reverse searches must not write
               // journeys departing beyond the ping's start time
               if (end_key < worst_key) {
-                auto const src = bc_arena_[te_bc];
+                auto const src = bc_read(te_bc);
                 if (bag_insert(to_idx(kIntermodalTarget), end_key, end_extras,
                                k, false, /*with_bc=*/true, src.payload_,
                                src.parent_, end_arr)) {
@@ -1848,6 +1939,9 @@ struct mcraptor_impl {
     auto const gid = get_global_thread_id();
     auto const stride = get_global_stride();
     if (gid == 0U) {
+      if (hwm_stats_ != nullptr) {
+        hwm_stats_[2] = umax(hwm_stats_[2], *bc_count_);
+      }
       *bc_count_ = 0U;
     }
     for (auto w = gid; w < touched_.blocks_.size(); w += stride) {
@@ -1902,7 +1996,7 @@ struct mcraptor_impl {
     auto li = mc_bc(lab);
     auto n = 0U;
     while (li != kMcNoBc) {
-      auto const bc = bc_arena_[li];
+      auto const bc = bc_read(li);
       auto const cur_arr = bc.arr_;
       auto const t_idx = transport_idx_t{bc_transport(bc.payload_)};
       auto const board = static_cast<stop_idx_t>(bc_board(bc.payload_));
@@ -2142,6 +2236,7 @@ struct mcraptor_impl {
   std::uint32_t* done_;
   std::uint32_t* overflow_;
   std::uint32_t* seg_hist_;  // instrumentation (nullptr = off)
+  std::uint32_t* hwm_stats_;  // instrumentation: [tasks, entries, arena] HWM
   unsigned long long* lock_stats_;  // instrumentation (nullptr = off)
   std::uint32_t* livebag_hist_;  // instrumentation (nullptr = off)
   std::uint32_t* len_hist_;  // instrumentation (nullptr = off)
@@ -2185,7 +2280,9 @@ struct mcraptor_impl {
   bool dest_prune_disabled_;
   bool prefix_disabled_;  // NIGIRI_GPU_MC_NO_PREFIX: force the two-pass path
   bool reuse_disabled_;  // NIGIRI_GPU_MC_NO_REUSE: rejection frontier off
-  mc_bc_entry* bc_arena_;
+  std::uint32_t* bc_pay_lo_;  // arena SoA (12B/entry vs 16B AoS)
+  std::uint32_t* bc_hi_arr_;
+  std::uint32_t* bc_par_;
   std::uint32_t* bc_count_;
   std::uint32_t bc_cap_;
 
@@ -2201,11 +2298,15 @@ struct mcraptor_impl {
   // + per route-stop result blocks consumed by the scan
   cuda::std::span<std::uint32_t> et_task_list_;
   std::uint32_t* et_task_count_;
-  cuda::std::span<std::uint64_t> et_blocks_;  // entry pool (exact rows)
-  std::uint32_t* et_block_map_;  // flat route-stop -> task (validated)
+  std::uint32_t* et_ent_key_;  // entry pool SoA (7B/entry vs 8B packed)
+  std::uint16_t* et_ent_ex_;
+  std::uint8_t* et_ent_sl_;
+  std::uint32_t* task_bits_;  // 1 bit per flat route-stop (this round)
+  std::uint32_t* route_task_start_;  // route -> first task index
   std::uint32_t* et_task_off_;  // task -> first pool entry (~0 = no space)
   std::uint32_t* et_entry_count_;  // pool bump allocator
   std::size_t et_pool_cap_;
+  std::uint32_t et_tasks_cap_;
   // single-boarding fast path: per-route entry tally + the (single) entry
   // recorded by the lookup phase. Most marked routes have exactly one
   // boardable (stop, label) in a round; the scan then skips the
