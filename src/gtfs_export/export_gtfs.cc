@@ -12,8 +12,9 @@
 namespace nigiri {
 
 std::string csv_escape(std::string_view input) {
+  auto const had_quote = bool{input.find('"') != std::string_view::npos};
   auto const needs_quoting =
-      input.find_first_of(",\"\n\r") != std::string_view::npos;
+      bool{had_quote || input.find_first_of(",\n\r") != std::string_view::npos};
 
   if (!needs_quoting || input.empty()) {
     return std::string{input};
@@ -24,8 +25,7 @@ std::string csv_escape(std::string_view input) {
   out.push_back('"');
   for (auto const c : input) {
     if (c == '"') {
-
-      out.push_back('"');
+      continue;
     } else if (c == '\n' || c == '\r') {
       out.push_back(' ');
     } else {
@@ -37,10 +37,10 @@ std::string csv_escape(std::string_view input) {
 }
 
 static std::string format_time(delta d) {
-  auto const total_seconds = static_cast<int>(d.count()) * 60;
-  auto const h = total_seconds / 3600;
-  auto const m = (total_seconds % 3600) / 60;
-  auto const s = total_seconds % 60;
+  auto const total_seconds = int{static_cast<int>(d.count()) * 60};
+  auto const h = int{total_seconds / 3600};
+  auto const m = int{(total_seconds % 3600) / 60};
+  auto const s = int{total_seconds % 60};
   return std::format("{:02}:{:02}:{:02}", h, m, s);
 }
 
@@ -68,7 +68,7 @@ void export_gtfs(timetable const& tt, std::filesystem::path const& dir) {
 void write_feed_info(std::filesystem::path const& dir) {
   auto out = std::ofstream{dir / "feed_info.txt"};
   out << "feed_publisher_name,feed_publisher_url,feed_lang,agency_timezone\n";
-  out << "MOTIS - Export,https://transitous.org/,EN,Etc/UTC\n";
+  out << "MOTIS - Export,github.com/motis-project/motis,EN,Etc/UTC\n";
 }
 
 void write_agencies(timetable const& tt, std::filesystem::path const& dir) {
@@ -91,11 +91,20 @@ void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
          "location_type,"
          "parent_station\n";
 
+  // precompute which locations are actually referenced as a root/parent
+  auto is_parent = std::vector<bool>(tt.n_locations(), false);
   for (auto l = location_idx_t{stopOffset}; l < tt.n_locations(); ++l) {
-    if (tt.locations_.children_[l].empty()) {
+    auto const root = tt.locations_.get_root_idx(l);
+    if (root != l) {
+      is_parent[to_idx(root)] = true;
+    }
+  }
+
+  for (auto l = location_idx_t{stopOffset}; l < tt.n_locations(); ++l) {
+    if (!is_parent[to_idx(l)]) {
       continue;
     }
-    auto const id = to_idx(l) - stopOffset;
+    auto const id = std::size_t{to_idx(l) - stopOffset};
     auto const original_id = tt.locations_.ids_[l].view();
     auto const name = tt.get_default_name(l);
     auto const desc =
@@ -107,21 +116,21 @@ void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
   }
 
   for (auto l = location_idx_t{stopOffset}; l < tt.n_locations(); ++l) {
-    auto const id = to_idx(l) - stopOffset;
+    auto const id = std::size_t{to_idx(l) - stopOffset};
     auto const original_id = tt.locations_.ids_[l].view();
     auto const name = tt.get_default_name(l);
     auto const desc =
         tt.get_default_translation(tt.locations_.descriptions_[l]);
     auto const coord = tt.locations_.coordinates_[l];
     auto const root = tt.locations_.get_root_idx(l);
-    auto const has_parent = (root != l);
+    auto const has_parent = bool{root != l};
 
-    if (!tt.locations_.children_[l].empty() && !has_parent) {
+    if (is_parent[to_idx(l)] && !has_parent) {
       continue;
     }
 
-    auto const parent_str =
-        has_parent ? std::to_string(to_idx(root) - stopOffset) : "";
+    auto const parent_str = std::string{
+        has_parent ? std::to_string(to_idx(root) - stopOffset) : ""};
     out << id << "," << csv_escape(original_id) << "," << csv_escape(name)
         << "," << csv_escape(desc) << "," << coord.lat_ << "," << coord.lng_
         << ",0," << parent_str << "\n";
@@ -146,7 +155,7 @@ void write_stop_times(timetable const& tt, std::filesystem::path const& dir) {
       }
       for (auto s = stop_idx_t{0}; s < stops.size(); ++s) {
         auto const loc = stop{stops[s]}.location_idx();
-        auto const s_id = to_idx(loc) - stopOffset;
+        auto const s_id = std::size_t{to_idx(loc) - stopOffset};
         auto const arr =
             (s == stop_idx_t{0} ? tt.event_mam(t, s, event_type::kDep)
                                 : tt.event_mam(t, s, event_type::kArr));
@@ -176,8 +185,8 @@ void write_trips(timetable const& tt,
 
   for (auto r = route_idx_t{0}; r < tt.n_routes(); ++r) {
     auto const transport_range = tt.route_transport_ranges_[r];
-    auto const bikes_allowed = tt.has_bike_transport(r) ? 1 : 2;
-    auto const cars_allowed = tt.has_car_transport(r) ? 1 : 2;
+    auto const bikes_allowed = int{tt.has_bike_transport(r) ? 1 : 2};
+    auto const cars_allowed = int{tt.has_car_transport(r) ? 1 : 2};
 
     for (auto t = transport_range.from_; t != transport_range.to_; ++t) {
       auto const merged_idx = tt.transport_to_trip_section_[t].front();
