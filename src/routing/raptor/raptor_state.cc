@@ -91,16 +91,8 @@ void raptor_state::print(timetable const& tt,
 static_assert(kMaxVias == 2,
               "raptor_state.cc needs to be adjusted for kMaxVias");
 
-template void raptor_state::print<0>(timetable const& tt,
-                                     date::sys_days const base,
-                                     delta_t const invalid);
-
-template void raptor_state::print<1>(timetable const& tt,
-                                     date::sys_days const base,
-                                     delta_t const invalid);
-
-template void raptor_state::print<2>(timetable const& tt,
-                                     date::sys_days const base,
-                                     delta_t const invalid);
+template void raptor_state::print<0>(timetable const&, date::sys_days, delta_t);
+template void raptor_state::print<1>(timetable const&, date::sys_days, delta_t);
+template void raptor_state::print<2>(timetable const&, date::sys_days, delta_t);
 
 }  // namespace nigiri::routing

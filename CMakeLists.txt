@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
 project(nigiri)
 
+option(NIGIRI_CUDA "enable CUDA functions" OFF)
+if (NIGIRI_CUDA)
+  set(CMAKE_CUDA_ARCHITECTURES native)
+endif()
+
 if (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
   if (NIGIRI_MIMALLOC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
@@ -155,4 +160,48 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
   target_link_options(nigiri-import PRIVATE -Wl,-no_deduplicate)
   target_link_options(nigiri-test PRIVATE -Wl,-no_deduplicate)
   target_link_options(nigiri-benchmark PRIVATE -Wl,-no_deduplicate)
+endif()
+
+# CUDA Support
+if (NIGIRI_CUDA)
+  if (MSVC)
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -lineinfo -lcudadevrt")
+  else()
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo --compiler-options -static")
+  endif()
+  enable_language(CUDA)
+
+  find_package(CUDAToolkit REQUIRED)
+  file(GLOB_RECURSE nigiri-gpu-files src/*.cu)
+  add_library(nigiri-gpu STATIC ${nigiri-gpu-files})
+  set_target_properties(nigiri-gpu PROPERTIES
+          COMPILE_OPTIONS "-O3;-DNDEBUG"
+          WINDOWS_EXPORT_ALL_SYMBOLS ON
+          CUDA_SEPARABLE_COMPILATION ON
+          CUDA_RESOLVE_DEVICE_SYMBOLS ON
+          CUDA_ARCHITECTURES native
+          CUDA_STANDARD 20
+          COMPILE_WARNING_AS_ERROR OFF
+          RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+          LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+          INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/"
+  )
+  target_include_directories(nigiri-gpu PUBLIC include ${CUDAToolkit_INCLUDE_DIRS})
+  target_link_libraries(nigiri-gpu PRIVATE cista fmt date unordered_dense geo utl)
+  target_link_libraries(nigiri-gpu PUBLIC CUDA::cudart)
+
+  target_compile_definitions(nigiri-gpu PUBLIC NIGIRI_CUDA)
+  target_compile_definitions(nigiri PUBLIC NIGIRI_CUDA)
+
+  # propagate the GPU implementations to every consumer of nigiri (motis, tools,
+  # tests) so pong.cc's gpu_raptor instantiations resolve at link time
+  target_link_libraries(nigiri PUBLIC nigiri-gpu)
+
+  set_property(TARGET nigiri PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+
+  set_property(TARGET nigiri-test PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+  target_link_libraries(nigiri-test nigiri-gpu)
+
+  set_property(TARGET nigiri-benchmark PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+  target_link_libraries(nigiri-benchmark PRIVATE nigiri-gpu)
 endif()
