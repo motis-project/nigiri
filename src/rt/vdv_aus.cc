@@ -1,3 +1,4 @@
+
 #include "nigiri/rt/vdv_aus.h"
 
 #include <optional>
@@ -193,6 +194,10 @@ updater::vdv_stop::vdv_stop(location_idx_t const l,
                   : get_opt_time_siri(n, "ExpectedArrivalTime").or_else([&]() {
                       return get_opt_time_siri(n, "ActualArrivalTime");
                     })},
+      dep_track_{is_vdv(f) ? get_opt_str(n, "AbfahrtssteigText")
+                           : get_opt_str(n, "DeparturePlatformName")},
+      arr_track_{is_vdv(f) ? get_opt_str(n, "AnkunftssteigText")
+                           : get_opt_str(n, "ArrivalPlatformName")},
       in_forbidden_{is_vdv(f) ? *get_opt_bool(n, "Einsteigeverbot", false)
                               : *get_opt_str(n,
                                              "DepartureBoardingActivity",
@@ -552,6 +557,10 @@ void updater::update_run(rt_timetable& rtt,
             update_event(rtt, rs, event_type::kArr, *vdv_stop->rt_arr_, &delay);
             ++stats.updated_events_;
           }
+          if (vdv_stop->arr_track_.has_value()) {
+            rtt.set_track(fr.rt_, rs.stop_idx_, event_type::kArr,
+                          *vdv_stop->arr_track_);
+          }
         }
 
         if (rs.stop_idx_ != fr.stop_range_.to_ - 1 &&
@@ -563,6 +572,10 @@ void updater::update_run(rt_timetable& rtt,
           if (vdv_stop->rt_dep_.has_value()) {
             update_event(rtt, rs, event_type::kDep, *vdv_stop->rt_dep_, &delay);
             ++stats.updated_events_;
+          }
+          if (vdv_stop->dep_track_.has_value()) {
+            rtt.set_track(fr.rt_, rs.stop_idx_, event_type::kDep,
+                          *vdv_stop->dep_track_);
           }
         }
 

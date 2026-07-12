@@ -102,6 +102,13 @@ std::string_view run_stop::track(lang_t const& lang) const {
   return tt().translate(lang, tt().locations_.platform_codes_.at(l));
 }
 
+std::optional<std::string_view> run_stop::get_track_override(
+    event_type const ev_type) const {
+  return (fr_->is_rt() && rtt() != nullptr)
+             ? rtt()->get_track(fr_->rt_, stop_idx_, ev_type)
+             : std::nullopt;
+}
+
 geo::latlng run_stop::pos() const {
   assert(fr_->size() > stop_idx_);
   return fr_->tt_->locations_.coordinates_[get_stop().location_idx()];
