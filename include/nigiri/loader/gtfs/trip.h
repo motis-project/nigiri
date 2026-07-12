@@ -125,6 +125,10 @@ struct trip {
   bool wheelchair_accessible_{false};
   std::uint32_t from_line_{0U}, to_line_{0U};
 
+  // GTFS extension (MBTA): trips.txt `trip_route_type` overrides the
+  // route-level clasz for this trip (e.g. rail route, replacement-bus trip).
+  std::optional<clasz> clasz_{};
+
   trip_idx_t trip_idx_{trip_idx_t::invalid()};
 };
 

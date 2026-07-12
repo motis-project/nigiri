@@ -2,6 +2,7 @@
 
 #include "utl/pairwise.h"
 
+#include <memory>
 #include <optional>
 #include <string_view>
 #include <variant>
@@ -289,6 +290,18 @@ struct rt_timetable {
   bitvec_map<location_idx_t> bwd_search_lb_graph_has_edges_;
   vecvec<location_idx_t, footpath> fwd_search_lb_graph_;
   vecvec<location_idx_t, footpath> bwd_search_lb_graph_;
+
+  // Incremental mode requires copyability of rt_timetable.
+  // unique_ptr alone would make the rt_timetable move only (not copyable)
+  // -> we need a copyable wrapper
+  struct gpu_rtt_slot {
+    gpu_rtt_slot() = default;
+    gpu_rtt_slot(gpu_rtt_slot const&) { /* start empty, upload after update */ }
+    gpu_rtt_slot(gpu_rtt_slot&&) = default;
+    gpu_rtt_slot& operator=(gpu_rtt_slot&&) = default;
+    std::unique_ptr<void, void (*)(void*)> ptr_{nullptr, [](void*) {}};
+  };
+  gpu_rtt_slot gpu_rtt_;
 };
 
 }  // namespace nigiri
