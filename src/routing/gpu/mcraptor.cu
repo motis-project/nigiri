@@ -161,6 +161,10 @@ struct gpu_mcraptor_state::impl {
       cudaMemsetAsync(thrust::raw_pointer_cast(hwm_stats_dev_.data()), 0,
                       3U * sizeof(std::uint32_t), stream_);
     }
+    validate_ = std::getenv("NIGIRI_GPU_MC_VALIDATE") != nullptr;
+    if (validate_) {
+      validate_claim_.resize(bag_pool_cap_);
+    }
     lock_stats_ = std::getenv("NIGIRI_GPU_MC_LOCK_STATS") != nullptr;
     if (lock_stats_) {
       lock_stats_dev_.resize(4U);
@@ -194,10 +198,13 @@ struct gpu_mcraptor_state::impl {
       auto v = std::vector<std::uint32_t>(3U);
       cudaMemcpy(v.data(), thrust::raw_pointer_cast(hwm_stats_dev_.data()),
                  3U * sizeof(std::uint32_t), cudaMemcpyDeviceToHost);
+      auto c = std::uint32_t{0U};  // the last query's count was never swept
+      cudaMemcpy(&c, thrust::raw_pointer_cast(bag_pool_count_.data()),
+                 sizeof(std::uint32_t), cudaMemcpyDeviceToHost);
       std::fprintf(stderr,
                    "MCHWM tasks_per_round=%u pool_entries_per_round=%u "
-                   "arena_per_start=%u\n",
-                   v[0], v[1], v[2]);
+                   "arena_per_start=%u bag_blocks=%u\n",
+                   v[0], v[1], v[2], std::max(bag_blocks_hwm_, c));
     }
     if (lock_stats_) {
       auto v = std::vector<unsigned long long>(4U);
@@ -354,6 +361,10 @@ struct gpu_mcraptor_state::impl {
   bool seg_hist_{false};
   bool hwm_stats_{false};
   thrust::device_vector<std::uint32_t> hwm_stats_dev_;
+  std::uint32_t bag_blocks_hwm_{0U};
+  // debug (NIGIRI_GPU_MC_VALIDATE): bag invariant checks + block claim map
+  bool validate_{false};
+  thrust::device_vector<std::uint32_t> validate_claim_;
   bool lock_stats_{false};
   thrust::device_vector<unsigned long long> lock_stats_dev_;
   thrust::device_vector<std::uint32_t> seg_hist_dev_;
@@ -422,6 +433,39 @@ __global__ void mc_begin_transit_kernel(mcraptor_impl<SearchDir, WithCost> r) {
     return;
   }
   r.begin_transit_phase();
+}
+
+// debug (NIGIRI_GPU_MC_VALIDATE): bag-storage invariant checks.
+// tag 0 = post-sweep: every stop must be pristine (hwm==0, no block).
+// tag 1 = mid-round: a pool block may be owned by at most ONE stop and
+// an owned block implies hwm > inline capacity.
+template <direction SearchDir, bool WithCost>
+__global__ void mc_bag_validate_kernel(mcraptor_impl<SearchDir, WithCost> r,
+                                       std::uint32_t const n_locations,
+                                       std::uint32_t* const claim,
+                                       std::uint32_t const tag,
+                                       std::uint32_t const round) {
+  auto const gid = blockIdx.x * blockDim.x + threadIdx.x;
+  auto const stride = gridDim.x * blockDim.x;
+  for (auto l = gid; l < n_locations; l += stride) {
+    auto const ovf = r.bag_ovf_[l];
+    auto const hwm = static_cast<std::uint32_t>(r.bag_hwm_[l]);
+    if (tag == 0U) {
+      if (hwm != 0U || ovf != ~0U) {
+        printf("VALIDBG post-sweep dirty l=%u hwm=%u ovf=%u\n", l, hwm, ovf);
+      }
+    } else if (ovf != ~0U) {
+      if (hwm <= r.bag_cap_) {
+        printf("VALIDBG k=%u stranded l=%u hwm=%u ovf=%u\n", round, l, hwm,
+               ovf);
+      }
+      auto const prev = atomicExch(claim + ovf, l);
+      if (prev != ~0U) {
+        printf("VALIDBG k=%u DUP block=%u l1=%u l2=%u\n", round, ovf, prev,
+               l);
+      }
+    }
+  }
 }
 
 template <direction SearchDir, bool WithCost>
@@ -679,7 +723,8 @@ mcraptor_impl<SearchDir, WithCost> make_impl(
     delta_t const worst_at_dest,
     std::uint32_t const walk_surcharge,
     delta_t const dep,
-    cuda::std::span<std::pair<location_idx_t, delta_t> const> starts) {
+    cuda::std::span<std::pair<location_idx_t, delta_t> const> starts,
+    bool const reuse_same_dep = false) {
   return mcraptor_impl<SearchDir, WithCost>{
       .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
       .done_ = thrust::raw_pointer_cast(s.done_.data()),
@@ -745,6 +790,7 @@ mcraptor_impl<SearchDir, WithCost> make_impl(
                 std::getenv("NIGIRI_GPU_MC_NO_REUSE") != nullptr;
             return v;
           }(),
+      .reuse_same_dep_only_ = reuse_same_dep,
       .bc_pay_lo_ = thrust::raw_pointer_cast(s.bc_pay_lo_.data()),
       .bc_hi_arr_ = thrust::raw_pointer_cast(s.bc_hi_arr_.data()),
       .bc_par_ = thrust::raw_pointer_cast(s.bc_par_.data()),
@@ -785,8 +831,19 @@ void gpu_mcraptor<SearchDir, WithCost>::next_start_time() {
       s, kDirIdx, transfer_time_settings_, allowed_claszes_, 0U, base_,
       worst_at_dest_, 0U, 0, {});
   mc_launch(mc_clear_bags_kernel<SearchDir, WithCost>, s.stream_, r);
+  if (s.hwm_stats_) {  // counter is monotone within a query - read = max
+    auto c = std::uint32_t{0U};
+    cudaMemcpyAsync(&c, thrust::raw_pointer_cast(s.bag_pool_count_.data()),
+                    sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_);
+    cudaStreamSynchronize(s.stream_);
+    s.bag_blocks_hwm_ = std::max(s.bag_blocks_hwm_, c);
+  }
   cudaMemsetAsync(thrust::raw_pointer_cast(s.bag_pool_count_.data()), 0,
                   sizeof(std::uint32_t), s.stream_);
+  if (s.validate_) {  // debug: everything must be pristine after the sweep
+    mc_bag_validate_kernel<SearchDir, WithCost>
+        <<<512, 256, 0, s.stream_>>>(r, n_locations_, nullptr, 0U, 0U);
+  }
   thrust::fill(thrust::cuda::par.on(s.stream_), s.station_mark_.begin(),
                s.station_mark_.end(), 0U);
   thrust::fill(thrust::cuda::par.on(s.stream_), s.prev_station_mark_.begin(),
@@ -836,7 +893,8 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
       s, kDirIdx, transfer_time_settings_, allowed_claszes_, prf_idx, base_,
       worst_at_dest_, walk_surcharge, d_start_dep,
       cuda::std::span<std::pair<location_idx_t, delta_t> const>{
-          starts_dev, starts_.size()});
+          starts_dev, starts_.size()},
+      reuse_same_dep_);
 
   auto const end_k =
       static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
@@ -860,21 +918,24 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
   }
 
   // === ROUTING KERNELS ===
-  mc_launch(mc_init_arrivals_kernel<SearchDir, WithCost>, s.stream_, r,
+  // (all launches use the `trace` copy: identical to r, plus trace_locs_
+  // when NIGIRI_MC_TRACE is active - the debug probes live in the phases)
+  mc_launch(mc_init_arrivals_kernel<SearchDir, WithCost>, s.stream_, trace,
             d_start);
   for (auto k = 1U; k != end_k; ++k) {
-    mc_launch(mc_begin_round_kernel<SearchDir, WithCost>, s.stream_, r);
-    mc_launch(mc_mark_routes_kernel<SearchDir, WithCost>, s.stream_, r);
-    mc_launch(mc_begin_transit_kernel<SearchDir, WithCost>, s.stream_, r);
-    mc_launch(mc_build_route_list_kernel<SearchDir, WithCost>, s.stream_, r);
+    mc_launch(mc_begin_round_kernel<SearchDir, WithCost>, s.stream_, trace);
+    mc_launch(mc_mark_routes_kernel<SearchDir, WithCost>, s.stream_, trace);
+    mc_launch(mc_begin_transit_kernel<SearchDir, WithCost>, s.stream_, trace);
+    mc_launch(mc_build_route_list_kernel<SearchDir, WithCost>, s.stream_,
+              trace);
     if (is_wheelchair_) {
       mc_launch(mc_et_collect_kernel<SearchDir, WithCost, true>, s.stream_,
-                r, k);
+                trace, k);
     } else {
       mc_launch(mc_et_collect_kernel<SearchDir, WithCost, false>, s.stream_,
-                r, k);
+                trace, k);
     }
-    mc_launch(mc_et_lookups_kernel<SearchDir, WithCost>, s.stream_, r, k);
+    mc_launch(mc_et_lookups_kernel<SearchDir, WithCost>, s.stream_, trace, k);
     // warp-per-route two-pass scan: fixed geometry + per-warp shared
     // segment slab (occupancy-launch cannot size dynamic shared memory)
     auto const scan_blocks = 512U;
@@ -884,23 +945,36 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
     if (with_clasz) {
       if (is_wheelchair_) {
         mc_scan_routes_kernel<SearchDir, WithCost, true, true>
-            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
+            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(trace,
+                                                                      k);
       } else {
         mc_scan_routes_kernel<SearchDir, WithCost, true, false>
-            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
+            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(trace,
+                                                                      k);
       }
     } else {
       if (is_wheelchair_) {
         mc_scan_routes_kernel<SearchDir, WithCost, false, true>
-            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
+            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(trace,
+                                                                      k);
       } else {
         mc_scan_routes_kernel<SearchDir, WithCost, false, false>
-            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
+            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(trace,
+                                                                      k);
       }
     }
-    mc_launch(mc_begin_footpath_kernel<SearchDir, WithCost>, s.stream_, r);
+    mc_launch(mc_begin_footpath_kernel<SearchDir, WithCost>, s.stream_,
+              trace);
     mc_launch(mc_transfers_footpaths_kernel<SearchDir, WithCost>, s.stream_,
-              r, k);
+              trace, k);
+    if (s.validate_) {  // debug: block ownership must be unique per stop
+      cudaMemsetAsync(thrust::raw_pointer_cast(s.validate_claim_.data()),
+                      0xFF, s.validate_claim_.size() * sizeof(std::uint32_t),
+                      s.stream_);
+      mc_bag_validate_kernel<SearchDir, WithCost><<<512, 256, 0, s.stream_>>>(
+          trace, n_locations_,
+          thrust::raw_pointer_cast(s.validate_claim_.data()), 1U, k);
+    }
     if (tracing) {
       mc_trace_kernel<SearchDir, WithCost><<<1, 1, 0, s.stream_>>>(trace, k);
     }

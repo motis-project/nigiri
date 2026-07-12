@@ -72,6 +72,13 @@ struct gpu_mcraptor {
       transfer_time_settings const& tts);
 
   raptor_stats get_stats() const { return stats_; }
+
+  // pong-side engines: reuse-frontier rejections restricted to entries
+  // of the SAME departure (= the same merged anchor run). Cross-anchor
+  // rejections were observed to over-prune without a real dominating
+  // journey behind them (q#45 trace, 2026-07-11).
+  void set_reuse_same_dep() { reuse_same_dep_ = true; }
+
   void reset_arrivals();
   void next_start_time();
   void add_start(location_idx_t, unixtime_t);
@@ -106,6 +113,7 @@ private:
   // within one query (never journey-tightened - the device dest frontier
   // owns all destination pruning)
   delta_t worst_at_dest_;
+  bool reuse_same_dep_{false};
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
 };

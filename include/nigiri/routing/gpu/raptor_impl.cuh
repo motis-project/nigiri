@@ -423,7 +423,8 @@ struct raptor_impl {
         }
       }
 
-      if (i != 0U && et && stp.can_finish<SearchDir>(IsWheelchair)) {
+      if (i != 0U && et && stop_idx <= kBcStopMask &&
+          stp.can_finish<SearchDir>(IsWheelchair)) {
         auto const by_transport = rt_time_at_stop(
             rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
         if (is_better(by_transport, time_at_dest_.get(k))) {
@@ -436,7 +437,8 @@ struct raptor_impl {
         }
       }
 
-      if (i == n - 1U || !stp.can_start<SearchDir>(IsWheelchair) ||
+      if (i == n - 1U || stop_idx > kBcStopMask ||
+          !stp.can_start<SearchDir>(IsWheelchair) ||
           !prev_station_mark_[l_idx]) {
         continue;
       }
@@ -740,7 +742,10 @@ struct raptor_impl {
 
       // Update stop time.
       auto const et_board_i = static_cast<unsigned>(et & 0xFFFF'FFFFU);
-      if (i < n && et != kEtKeyInvalid && et_board_i < i) {
+      // stop_idx <= kBcStopMask: no alight at positions the 11-bit
+      // breadcrumb cannot represent (see et_run_lookups)
+      if (i < n && et != kEtKeyInvalid && et_board_i < i &&
+          stop_idx <= kBcStopMask) {
         auto const stp = stop{stop_seq[stop_idx]};
         if (stp.can_finish<SearchDir>(IsWheelchair)) {
           auto const l = stp.location_idx();
@@ -983,8 +988,13 @@ struct raptor_impl {
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l = stp.location_idx();
       auto const [day, mam] = split(round_times_.get(k - 1, l, 0U));
+      // the breadcrumb stores stop positions in 11 bits: no boarding at
+      // positions beyond that (a handful of >2048-stop routes exist in
+      // worldwide data; those tails are unreachable for reconstruction)
       et_result_[flat] =
-          pack_et(r, get_earliest_transport(k, r, stop_idx, day, mam));
+          stop_idx > kBcStopMask
+              ? kEtInvalid
+              : pack_et(r, get_earliest_transport(k, r, stop_idx, day, mam));
     }
   }
 

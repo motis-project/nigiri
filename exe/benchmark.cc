@@ -5,6 +5,8 @@
 #include <iostream>
 #include <map>
 #include <regex>
+#include <set>
+#include <sstream>
 #include <thread>
 
 #include "boost/program_options.hpp"
@@ -114,6 +116,15 @@ std::vector<double> run_load(
     }
   }
 
+  // NIGIRI_BENCH_REPEAT=<n>: run the query set n times in one process
+  // (one timetable load) - repro batteries for schedule-dependent bugs
+  static auto const repeat = []() {
+    auto const* v = std::getenv("NIGIRI_BENCH_REPEAT");
+    return v == nullptr ? std::size_t{1U}
+                        : std::max(std::size_t{1U},
+                                   static_cast<std::size_t>(std::atoll(v)));
+  }();
+
   auto next = std::atomic<std::size_t>{0};
   auto done = std::atomic<std::size_t>{0};
   auto lat = std::vector<double>(queries.size(), -1.0);
@@ -121,13 +132,24 @@ std::vector<double> run_load(
   auto workers = std::vector<std::thread>{};
   for (auto* ws : states) {
     workers.emplace_back([&, ws]() {
-      for (auto i = next.fetch_add(1); i < queries.size();
-           i = next.fetch_add(1)) {
-        // NIGIRI_BENCH_ONLY_QUERY=<idx>: single-query deep dives
-        static char const* const only_q =
-            std::getenv("NIGIRI_BENCH_ONLY_QUERY");
-        if (only_q != nullptr &&
-            i != static_cast<std::size_t>(std::atoll(only_q))) {
+      for (auto it = next.fetch_add(1); it < queries.size() * repeat;
+           it = next.fetch_add(1)) {
+        auto const i = it % queries.size();
+        // NIGIRI_BENCH_ONLY_QUERY=<idx>[,<idx>...]: single-query deep dives
+        // and minimal multi-query interference repros
+        static auto const only_q = []() {
+          auto set = std::set<std::size_t>{};
+          if (auto const* s = std::getenv("NIGIRI_BENCH_ONLY_QUERY");
+              s != nullptr) {
+            auto ss = std::stringstream{s};
+            auto tok = std::string{};
+            while (std::getline(ss, tok, ',')) {
+              set.insert(static_cast<std::size_t>(std::stoull(tok)));
+            }
+          }
+          return set;
+        }();
+        if (!only_q.empty() && !only_q.contains(i)) {
           continue;
         }
         try {
@@ -164,9 +186,10 @@ std::vector<double> run_load(
   auto const avg =
       l.empty() ? 0.0 : std::accumulate(begin(l), end(l), 0.0) / l.size();
   fmt::print(
-      "| {:<36} | {:>6.1f} | {:>6.0f} | {:>6.0f} | {:>6.0f} | "
-      "{:>6.0f} |\n",
-      tag, qps, avg, q(0.50), q(0.90), q(0.99));
+      "| {:<36} | {:>6.1f} | {:>6.0f} | {:>6.0f} | {:>6.0f} | {:>6.0f} | "
+      "{:>6.0f} | {:>6.0f} |\n",
+      tag, qps, avg, q(0.50), q(0.75), q(0.90), q(0.99),
+      l.empty() ? 0.0 : l.back());
   {  // slowest queries: the q99 tail is usually 1-2 identifiable queries
     auto idx = std::vector<std::size_t>{};
     for (auto i = std::size_t{0U}; i != lat.size(); ++i) {
@@ -519,9 +542,29 @@ int main(int argc, char* argv[]) {
   std::cout << "loading timetable...\n";
   auto tt = *nigiri::timetable::read(tt_path);
 
-
-
   tt.resolve();
+
+  // NIGIRI_ROUTE_STATS: route stop-sequence length distribution (debug aid
+  // for the 11-bit breadcrumb stop position: positions >= 2048 wrap)
+  if (std::getenv("NIGIRI_ROUTE_STATS") != nullptr) {
+    auto max_len = std::size_t{0U};
+    auto over_2047 = 0U;
+    auto max_r = route_idx_t{0U};
+    for (auto r = route_idx_t{0U}; r != tt.route_location_seq_.size(); ++r) {
+      auto const n = tt.route_location_seq_[r].size();
+      if (n > max_len) {
+        max_len = n;
+        max_r = r;
+      }
+      if (n > 2048U) {
+        ++over_2047;
+      }
+    }
+    std::cout << "ROUTE_STATS n_routes " << tt.route_location_seq_.size()
+              << " max_seq_len " << max_len << " (route " << to_idx(max_r)
+              << ") routes_over_2048 " << over_2047 << "\n";
+    return 0;
+  }
 
   gs.interval_size_ = duration_t{interval_size};
 
@@ -660,11 +703,12 @@ int main(int argc, char* argv[]) {
 
   // padded markdown: renders as a table AND stays aligned as plain text;
   // one table for the whole matrix
-  fmt::print("| {:<36} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} |\n",  //
-             "config", "q/s", "avg ms", "median", "q90", "q99");
   fmt::print(
-      "| {0:-<36} | {0:->5}: | {0:->5}: | {0:->5}: | {0:->5}: | "
-      "{0:->5}: |\n",
+      "| {:<36} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} |\n",
+      "config", "q/s", "avg ms", "median", "q75", "q90", "q99", "max");
+  fmt::print(
+      "| {0:-<36} | {0:->5}: | {0:->5}: | {0:->5}: | {0:->5}: | {0:->5}: | "
+      "{0:->5}: | {0:->5}: |\n",
       "");
 
   auto mode_queries =

@@ -79,8 +79,9 @@ using mc_label_t = std::uint64_t;
 
 inline constexpr auto kMcEmptySlot = ~mc_label_t{0};
 inline constexpr auto kMcNoBc = std::uint32_t{(1U << 27U) - 1U};
-// stop bag capacity: RUNTIME (env NIGIRI_GPU_MC_BAG_CAP, default 64,
-// max 255 = hwm range). The strict (arr, extras) pareto keeps every
+// stop bag capacity: RUNTIME (env NIGIRI_GPU_MC_BAG_CAP = inline slots,
+// max 127 = u8 hwm minus the overflow block). The strict (arr, extras)
+// pareto keeps every
 // walk-class trade-off, so frontier sizes vary strongly with the dataset;
 // a fixed compile-time cap either wastes memory or trips the canary.
 inline constexpr auto kMcBagCapDefault = 16U;  // inline slots per stop
@@ -310,6 +311,44 @@ struct mcraptor_impl {
     return b == nullptr ? kMcEmptySlot : b[i - bag_cap_];
   }
 
+  // SAME-ROUND cross-SM reads (footpath phase only): L1 caches are not
+  // coherent between SMs, so labels/arena entries published by another
+  // SM in THIS kernel must be read past L1 (volatile) - the writer
+  // fences the arena entry before the label store (see bag_insert).
+  // Round-(k-1) readers stay on plain loads (kernel-boundary ordered).
+  __device__ __forceinline__ std::uint32_t bag_hwm_coherent(
+      std::uint32_t const l) const {
+    return *reinterpret_cast<std::uint8_t const volatile*>(bag_hwm_ + l);
+  }
+
+  __device__ mc_label_t bag_label_coherent(std::uint32_t const l,
+                                           std::uint32_t const i) const {
+    if (i < bag_cap_) {
+      return *reinterpret_cast<mc_label_t const volatile*>(bag(l) + i);
+    }
+    // the ovf link may have been published in THIS kernel by another
+    // SM - a stale L1 copy (~0U) would silently hide the whole block
+    auto const blk =
+        *reinterpret_cast<std::uint32_t const volatile*>(bag_ovf_ + l);
+    return blk == ~0U
+               ? kMcEmptySlot
+               : *reinterpret_cast<mc_label_t const volatile*>(
+                     bag_pool_ + static_cast<std::size_t>(blk) * kMcBagBlock +
+                     (i - bag_cap_));
+  }
+
+  __device__ mc_bc_entry bc_read_coherent(std::uint32_t const i) const {
+    auto const lo =
+        *reinterpret_cast<std::uint32_t const volatile*>(bc_pay_lo_ + i);
+    auto const hi =
+        *reinterpret_cast<std::uint32_t const volatile*>(bc_hi_arr_ + i);
+    auto const par =
+        *reinterpret_cast<std::uint32_t const volatile*>(bc_par_ + i);
+    return {static_cast<breadcrumb_t>(lo) |
+                (static_cast<breadcrumb_t>(hi & 0xFFFFU) << 32U),
+            par, static_cast<delta_t>(static_cast<std::int16_t>(hi >> 16U))};
+  }
+
   // iteration view over a bag's used slots. A concurrently growing bag
   // may expose the new hwm before its overflow pointer (plain stores, no
   // reader ordering): the view then clamps to the inline slots, which is
@@ -372,6 +411,9 @@ struct mcraptor_impl {
     for (auto i = 0U; i != kMcReuseCap; ++i) {
       auto const v = rslots[i];
       if (v == kMcEmptySlot) {
+        continue;
+      }
+      if (reuse_same_dep_only_ && mc_reuse_dep(v) != dep_) {
         continue;
       }
       if (mc_reuse_round(v) <= round && (!by_route || mc_reuse_by_route(v)) &&
@@ -443,7 +485,8 @@ struct mcraptor_impl {
                              delta_t const arr) {
     auto* const rslots =
         reuse_bags_ + static_cast<std::size_t>(l) * kMcReuseCap;
-    if (!reuse_disabled_ && reuse_rejected(rslots, arr_key, extras, round, by_route)) {
+    if (!reuse_disabled_ &&
+        reuse_rejected(rslots, arr_key, extras, round, by_route)) {
       return false;
     }
     // lock-free reject pre-scan: most candidates are dominated and never
@@ -533,9 +576,25 @@ struct mcraptor_impl {
         if (bc == kMcNoBc) {
           goto unlock;  // arena overflow (canary set)
         }
+        // publish the arena entry BEFORE the label becomes visible: the
+        // footpath phase reads same-round labels lock-free from other
+        // SMs and dereferences their bc - without this fence it can see
+        // the label first and read a STALE arena entry at that index
+        // (a recycled slot from a previous start = foreign payload).
+        // The unlock fence below only orders for lock-acquiring readers.
+        __threadfence();
       }
       slot_at(free_slot) = mc_pack(arr_key, extras, round, by_route, bc);
       if (free_slot + 1U > hwm) {
+        // publish the slot content (and a freshly linked pool block /
+        // ovf pointer) BEFORE the hwm: the footpath phase discovers
+        // labels lock-free via hwm from other SMs. Without this fence
+        // it can see the grown hwm first and read the slot's PREVIOUS
+        // memory content - for a just-claimed pool block that is
+        // recycled garbage from an earlier start (a foreign stop's
+        // stale label with a foreign breadcrumb). The unlock fence
+        // below only orders for lock-acquiring readers.
+        __threadfence();
         bag_hwm_[l] = static_cast<std::uint8_t>(free_slot + 1U);
       }
       reuse_upsert(rslots, arr_key, extras, round, by_route);
@@ -794,12 +853,16 @@ struct mcraptor_impl {
           return false;  // last stop never boards
         }
         auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
+        if (stop_idx > kBcStopMask) {
+          return false;  // 11-bit breadcrumb position limit (see breadcrumb.h)
+        }
         auto const stp = stop{stop_seq[stop_idx]};
         auto const l = to_idx(stp.location_idx());
         l_out = l;
-        return prev_station_mark_[l] &&
-               stp.can_start<SearchDir>(IsWheelchair) &&
-               lb_[l] != kUnreachable && bag_hwm_[l] != 0U;
+        auto const ok = prev_station_mark_[l] &&
+                        stp.can_start<SearchDir>(IsWheelchair) &&
+                        lb_[l] != kUnreachable && bag_hwm_[l] != 0U;
+        return ok;
       };
       // pass A: task count + clear this route's bitmap range (boundary
       // words are shared with adjacent routes -> masked atomics there)
@@ -868,8 +931,7 @@ struct mcraptor_impl {
           auto const bv = bag_view(l);
           for (auto sl = 0U; sl != bv.size(); ++sl) {
             auto const lab = bv[sl];
-            need +=
-                (lab != kMcEmptySlot && mc_round(lab) == k - 1U) ? 1U : 0U;
+            need += (lab != kMcEmptySlot && mc_round(lab) == k - 1U) ? 1U : 0U;
           }
           need = umin(need, kMcEtGatherCap) + 1U;
         }
@@ -878,7 +940,6 @@ struct mcraptor_impl {
           continue;
         }
         auto incl_sum = need;
-#pragma unroll
         for (auto d = 1U; d < kWarpSize; d <<= 1U) {
           auto const v = __shfl_up_sync(kAllLanes, incl_sum, d);
           if (lane >= d) {
@@ -896,8 +957,7 @@ struct mcraptor_impl {
               static_cast<unsigned>(__popc(ballot & ((1U << lane) - 1U)));
           auto const ti = kFwd ? route_start + rank_i
                                : route_start + route_tasks - 1U - rank_i;
-          auto const stop_idx =
-              static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
+          auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
           auto const flat = base_flat + stop_idx;
           et_task_list_[ti] = flat;
           atomicOr(task_bits_ + (flat >> 5U), 1U << (flat & 31U));
@@ -1007,8 +1067,8 @@ struct mcraptor_impl {
         et_ent_ex_[slot] = cands[ci].extras_;
         et_ent_sl_[slot] = cands[ci].sl_;
         if (atomicAdd(route_entry_count_ + to_idx(r), 1U) == 0U) {
-          route_single_entry_[to_idx(r)] = mc_et_pack(
-              pack_et(r, prev_et), cands[ci].extras_, cands[ci].sl_);
+          route_single_entry_[to_idx(r)] =
+              mc_et_pack(pack_et(r, prev_et), cands[ci].extras_, cands[ci].sl_);
           route_single_flat_[to_idx(r)] = flat;
         }
         ++out;
@@ -1145,6 +1205,8 @@ struct mcraptor_impl {
   // scan, 4 shuffle words, one dominance compare), the rest upgrade to
   // kMcPrefixK via warp ballot, then to the two-pass path. Reruns after an
   // upgrade are exact: earlier chunks' inserts are idempotent.
+  // deliberately NO #pragma unroll on the K-loops below: forcing full
+  // unrolling measured -5% pong-cost (2026-07-11) vs nvcc's own choices
   template <unsigned K>
   struct mc_pbag {
     std::uint32_t et_[K];
@@ -1157,7 +1219,6 @@ struct mcraptor_impl {
   __device__ static mc_pbag<K> pbag_shfl_up(mc_pbag<K> const& v,
                                             unsigned const d) {
     auto r = mc_pbag<K>{};
-#pragma unroll
     for (auto i = 0U; i != K; ++i) {
       r.et_[i] = __shfl_up_sync(kAllLanes, v.et_[i], d);
       r.par_[i] = __shfl_up_sync(kAllLanes, v.par_[i], d);
@@ -1171,7 +1232,6 @@ struct mcraptor_impl {
   __device__ static mc_pbag<K> pbag_bcast(mc_pbag<K> const& v,
                                           unsigned const src) {
     auto r = mc_pbag<K>{};
-#pragma unroll
     for (auto i = 0U; i != K; ++i) {
       r.et_[i] = __shfl_sync(kAllLanes, v.et_[i], static_cast<int>(src));
       r.par_[i] = __shfl_sync(kAllLanes, v.par_[i], static_cast<int>(src));
@@ -1192,13 +1252,11 @@ struct mcraptor_impl {
                                       bool& overflow) {
     auto r = mc_pbag<K>{};
     r.cnt_ = 0U;
-#pragma unroll
     for (auto bi = 0U; bi != K; ++bi) {
       if (bi >= b.cnt_) {
         break;
       }
       auto keep = true;
-#pragma unroll
       for (auto ai = 0U; ai != K; ++ai) {
         if (ai < a.cnt_ && a.et_[ai] <= b.et_[bi] &&
             (a.bx_[ai] & 0xFFFFU) <= (b.bx_[bi] & 0xFFFFU) &&
@@ -1214,13 +1272,11 @@ struct mcraptor_impl {
         ++r.cnt_;
       }
     }
-#pragma unroll
     for (auto ai = 0U; ai != K; ++ai) {
       if (ai >= a.cnt_) {
         break;
       }
       auto keep = true;
-#pragma unroll
       for (auto bi = 0U; bi != K; ++bi) {
         if (bi < b.cnt_ && b.et_[bi] <= a.et_[ai] &&
             (b.bx_[bi] & 0xFFFFU) <= (a.bx_[ai] & 0xFFFFU)) {
@@ -1257,8 +1313,9 @@ struct mcraptor_impl {
     }
     auto const stop_idx = static_cast<stop_idx_t>(kFwd ? pos : n - 1U - pos);
     auto const flat = static_cast<std::size_t>(base_flat + stop_idx);
-    auto const eoff = et_row_for(to_idx(r), static_cast<std::uint32_t>(base_flat),
-                                 static_cast<std::uint32_t>(flat));
+    auto const eoff =
+        et_row_for(to_idx(r), static_cast<std::uint32_t>(base_flat),
+                   static_cast<std::uint32_t>(flat));
     if (eoff == ~0U || et_ent_key_[eoff] == ~0U) {
       return;
     }
@@ -1272,7 +1329,6 @@ struct mcraptor_impl {
       }
       auto const pe_extras = WithCost ? et_ent_ex_[eoff + e] : 0U;
       auto merged = false;
-#pragma unroll
       for (auto i = 0U; i != K; ++i) {
         if (i < out.cnt_ && !merged) {
           if (out.et_[i] == et_key && (out.bx_[i] & 0xFFFFU) == pe_extras) {
@@ -1288,7 +1344,6 @@ struct mcraptor_impl {
         continue;
       }
       auto w = 0U;
-#pragma unroll
       for (auto i = 0U; i != K; ++i) {
         if (i < out.cnt_ &&
             !(et_key <= out.et_[i] && pe_extras <= (out.bx_[i] & 0xFFFFU))) {
@@ -1321,6 +1376,9 @@ struct mcraptor_impl {
                                   std::uint32_t const worst_key) {
     auto const stop_seq = tt_.route_location_seq_[r];
     auto const stop_idx = static_cast<stop_idx_t>(kFwd ? p : n - 1U - p);
+    if (stop_idx > kBcStopMask) {
+      return false;  // 11-bit breadcrumb position limit
+    }
     auto const stp = stop{stop_seq[stop_idx]};
     if (!stp.can_finish<SearchDir>(IsWheelchair)) {
       return false;
@@ -1334,7 +1392,6 @@ struct mcraptor_impl {
     auto const is_dest = is_dest_[l_idx];
     auto const arr_ev = kFwd ? event_type::kArr : event_type::kDep;
     auto any = false;
-#pragma unroll
     for (auto i = 0U; i != K; ++i) {
       if (i >= bag.cnt_) {
         break;
@@ -1396,7 +1453,6 @@ struct mcraptor_impl {
         }
         continue;
       }
-#pragma unroll
       for (auto d = 1U; d < kWarpSize; d <<= 1U) {
         auto const other = pbag_shfl_up(incl, d);
         if (lane >= d) {
@@ -1550,6 +1606,9 @@ struct mcraptor_impl {
 
     for (auto p = 1U + lane; p < n; p += kWarpSize) {
       auto const stop_idx = static_cast<stop_idx_t>(kFwd ? p : n - 1U - p);
+      if (stop_idx > kBcStopMask) {
+        continue;  // 11-bit breadcrumb position limit
+      }
       auto const stp = stop{stop_seq[stop_idx]};
       if (!stp.can_finish<SearchDir>(IsWheelchair)) {
         continue;
@@ -1642,7 +1701,7 @@ struct mcraptor_impl {
       auto const is_last = i == n - 1U;
 
       // ---- alight: write arrivals of carried boardings -----------------
-      if (i != 0U && bag_size != 0U &&
+      if (i != 0U && bag_size != 0U && stop_idx <= kBcStopMask &&
           stp.can_finish<SearchDir>(IsWheelchair)) {
         auto const buf = transfer_buffer(l_idx);
         auto const l_lb = lb_[l_idx];
@@ -1683,7 +1742,8 @@ struct mcraptor_impl {
       }
 
       // ---- board: merge this stop's round-(k-1) labels ------------------
-      if (is_last || !stp.can_start<SearchDir>(IsWheelchair) ||
+      if (is_last || stop_idx > kBcStopMask ||
+          !stp.can_start<SearchDir>(IsWheelchair) ||
           !prev_station_mark_[l_idx]) {
         continue;
       }
@@ -1779,7 +1839,7 @@ struct mcraptor_impl {
     if (dest_dominates(k, fp_key + target_lb, fp_extras)) {
       return false;
     }
-    auto const src = bc_read(te_bc);
+    auto const src = bc_read_coherent(te_bc);
     if (!bag_insert(target, fp_key, fp_extras, k, false, /*with_bc=*/true,
                     src.payload_, src.parent_, fp_arr)) {
       return false;
@@ -1792,14 +1852,9 @@ struct mcraptor_impl {
     return true;
   }
 
-  // fused same-round intermodal egress + footpath relaxation over the
-  // stops the route scan marked (the same-station transfer buffer is
-  // already folded into the route arrivals). Warp-cooperative like the
-  // gouda raptor: short footpath lists inline per lane, hub stops
-  // deferred to the whole warp (lanes stride the list; the deferred
-  // stop's labels are re-read by every lane - no shuffles needed).
   __device__ void update_transfers_and_footpaths(unsigned const k) {
-    constexpr auto const kWarpFpThreshold = 8U;
+    // 4/8/16 swept (2026-07-11): GER pong-cost 19.0/18.7/18.1 q/s, WW flat
+    constexpr auto const kWarpFpThreshold = 4U;
     auto const lane = get_global_thread_id() % kWarpSize;
     auto const warp_id = get_global_thread_id() / kWarpSize;
     auto const n_warps = get_global_stride() / kWarpSize;
@@ -1818,7 +1873,7 @@ struct mcraptor_impl {
       auto const my_marked = ((bits >> lane) & 1U) != 0U;
 
       auto defer = false;
-      if (my_marked && bag_hwm_[my_i] != 0U) {
+      if (my_marked && bag_hwm_coherent(my_i) != 0U) {
         auto const l = location_idx_t{my_i};
         auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
                               : tt_.footpaths_in_[prf_idx_][l];
@@ -1826,13 +1881,12 @@ struct mcraptor_impl {
         auto const egress_ok = intermodal && dist_to_end_[my_i] != kUnreachable;
         if (n_fps != 0U || egress_ok) {
           auto const buf = transfer_buffer(my_i);
-          auto const stop_bag = bag_view(my_i);
-          auto const stop_hwm = stop_bag.size();
+          auto const stop_hwm = bag_hwm_coherent(my_i);
           if (n_fps > kWarpFpThreshold) {
             defer = true;  // hub: the whole warp strides the list below
           }
           for (auto sl = 0U; sl != stop_hwm; ++sl) {
-            auto const lab = stop_bag[sl];
+            auto const lab = bag_label_coherent(my_i, sl);
             if (lab == kMcEmptySlot || mc_round(lab) != k ||
                 !mc_by_route(lab)) {
               continue;
@@ -1852,7 +1906,7 @@ struct mcraptor_impl {
               // window bound: pong's reverse searches must not write
               // journeys departing beyond the ping's start time
               if (end_key < worst_key) {
-                auto const src = bc_read(te_bc);
+                auto const src = bc_read_coherent(te_bc);
                 if (bag_insert(to_idx(kIntermodalTarget), end_key, end_extras,
                                k, false, /*with_bc=*/true, src.payload_,
                                src.parent_, end_arr)) {
@@ -1875,25 +1929,32 @@ struct mcraptor_impl {
       // hubs: all lanes stride one deferred stop's footpath list per label
       auto const deferred = __ballot_sync(kAllLanes, defer);
       for_each_set_bit(deferred, [&](unsigned const b) {
-        // reconverge per deferred stop: ballots/shuffles synchronize
-        // participation, not convergence - the divergent per-lane block
-        // above (and relax_fp spinlocks of the previous iteration) can
-        // leave the warp split, and a partial group striding the list
-        // (f = lane) skips every f >= its member count - observed as
-        // deterministically lost hub relaxations (q#52). gouda raptor's
-        // hub loop is immune only because it happens to open with
-        // full-mask shuffles.
-        __syncwarp();
+        __syncwarp();  // neccessary, otherwise lanes are missing -> incorrect
         auto const i = base + b;
         auto const l = location_idx_t{i};
         auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
                               : tt_.footpaths_in_[prf_idx_][l];
         auto const n_fps = static_cast<unsigned>(fps.size());
         auto const buf = transfer_buffer(i);
-        auto const stop_bag = bag_view(i);
-        auto const stop_hwm = stop_bag.size();
+        // lane-0 reads + full-mask broadcasts: OTHER warps insert into
+        // this bag concurrently, so per-lane reads are NOT uniform - a
+        // divergent skip splits the warp and the next label's strided
+        // loop silently drops every f >= group size (lost relaxations,
+        // q#52 family). The full-mask shuffle also reconverges the warp
+        // after relax_fp's spinlocks (cf. the raptor hub, which is built
+        // from the same broadcasts). Coherent reads: same-round labels
+        // come from other SMs mid-kernel (L1 not coherent).
+        auto stop_hwm = std::uint32_t{0U};
+        if (lane == 0U) {
+          stop_hwm = bag_hwm_coherent(i);
+        }
+        stop_hwm = __shfl_sync(kAllLanes, stop_hwm, 0);
         for (auto sl = 0U; sl != stop_hwm; ++sl) {
-          auto const lab = stop_bag[sl];
+          auto lab = mc_label_t{kMcEmptySlot};
+          if (lane == 0U) {
+            lab = bag_label_coherent(i, sl);
+          }
+          lab = __shfl_sync(kAllLanes, lab, 0);
           if (lab == kMcEmptySlot || mc_round(lab) != k || !mc_by_route(lab)) {
             continue;
           }
@@ -1901,9 +1962,19 @@ struct mcraptor_impl {
           auto const te_extras = WithCost ? mc_extras(lab) : 0U;
           auto const te_bc = mc_bc(lab);
           for (auto f = lane; f < n_fps; f += kWarpSize) {
-            local_marked |= relax_fp(k, i, fps[f], te_arr, te_extras, te_bc,
-                                     worst_key);
+            local_marked |=
+                relax_fp(k, i, fps[f], te_arr, te_extras, te_bc, worst_key);
           }
+          // barrier per label: without it a lane lagging in relax_fp's
+          // spinlocks can meet a racing lane's NEXT-iteration __shfl_sync
+          // at the same PC (independent thread scheduling) and receive
+          // the next stop's label while holding THIS stop's i/fps -
+          // relaxations fire from the wrong source (foreign payloads =
+          // phantom journeys, wrong times = lost journeys). Uniform
+          // control flow up to here (broadcast label), so every lane
+          // reaches this barrier - no deadlock (unlike a per-lane-read
+          // design, cf. 2026-07-12 hunt).
+          __syncwarp();
         }
       });
     }
@@ -2279,7 +2350,13 @@ struct mcraptor_impl {
   std::uint32_t* dest_best_total_;
   bool dest_prune_disabled_;
   bool prefix_disabled_;  // NIGIRI_GPU_MC_NO_PREFIX: force the two-pass path
-  bool reuse_disabled_;  // NIGIRI_GPU_MC_NO_REUSE: rejection frontier off
+  // rejection frontier off entirely (env NIGIRI_GPU_MC_NO_REUSE)
+  bool reuse_disabled_;
+  // pong-side engines: only SAME-departure entries may reject (= the
+  // same merged anchor run - plain dominance). Cross-anchor rejections
+  // were observed to over-prune without a real dominating journey
+  // behind them (q#45 trace, 2026-07-11).
+  bool reuse_same_dep_only_;
   std::uint32_t* bc_pay_lo_;  // arena SoA (12B/entry vs 16B AoS)
   std::uint32_t* bc_hi_arr_;
   std::uint32_t* bc_par_;

@@ -1,6 +1,10 @@
 #include "nigiri/routing/raptor/pong.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <future>
+#include <map>
 #include <ranges>
 #include <type_traits>
 
@@ -216,7 +220,6 @@ routing_result pong(timetable const& tt,
     pong_lb_fut.get();  // overlapped with the ping dijkstra + ping setup
     lb_time += pong_lb_time;
   }
-
   auto pong = pong_algo_t{tt,
                           rtt,
                           r_state,
@@ -232,6 +235,15 @@ routing_result pong(timetable const& tt,
                           q.require_car_transport_,
                           q.prf_idx_ == 2U,
                           q.transfer_time_settings_};
+  // pong-side engines: the persistent reuse frontier may only reject
+  // against SAME-departure entries (= the same merged anchor run, plain
+  // dominance semantics). Cross-anchor rejections were observed to fire
+  // without a real dominating journey behind them (see the q#45 trace:
+  // anchor (13:35, +1d 12:56, 8) unreproducible though no dominator can
+  // exist, or the ping pareto would not contain the anchor).
+  if constexpr (requires { pong.set_reuse_same_dep(); }) {
+    pong.set_reuse_same_dep();
+  }
 
   q.flip_dir();
 
@@ -275,6 +287,12 @@ routing_result pong(timetable const& tt,
     }
     return false;
   };
+  // NIGIRI_PONG_STATS: how often is the identical pong anchor re-executed
+  // within one query? (feasibility data for a per-query result cache)
+  static bool const pong_stats = std::getenv("NIGIRI_PONG_STATS") != nullptr;
+  auto pong_exec_total = 0U;
+  auto pong_exec_keys = std::map<std::pair<unixtime_t, std::uint8_t>, unsigned>{};
+
   while ((is_better(start_time, end_time) ||
           get_result_count(true) + get_result_count(false) <
               2 * q.min_connection_count_) &&
@@ -332,27 +350,57 @@ routing_result pong(timetable const& tt,
     // PONG
     // ----
     q.flip_dir();
+    // one pong search per distinct anchor ARRIVAL time: all same-arrival
+    // pareto anchors (transfers x cost trade-offs) are answered by a
+    // single merged run with the group-maximal attributes (max
+    // transfers, loosest departure bound). The per-anchor matching
+    // below stays exact - a looser bound can only find equal-or-better
+    // departures for each tuple.
+    // reset per STEP, reuse across groups: anchor groups are processed
+    // in ascending arrival order, so a persisted completed journey that
+    // prunes a later group's label fully dominates every journey that
+    // label could produce (arr ordering closes the frame gap); partial-
+    // label reuse rejections are same-departure-gated by the engines.
     pong.reset_arrivals();
-    for (auto& ping_j : ping_results) {
-      trace_pong("-- PING RESULT: {}", to_tuple(ping_j));
+    auto g_end = begin(ping_results);
+    for (auto pi = begin(ping_results); pi != end(ping_results); ++pi) {
+      auto& ping_j = *pi;
+      if (pi == g_end) {  // new arrival group -> one merged search
+        auto const g_arr = ping_j.dest_time_;
+        g_end = std::find_if(pi, end(ping_results), [&](journey const& j) {
+          return j.dest_time_ != g_arr;
+        });
+        auto max_transfers = ping_j.transfers_;
+        auto loosest_start = ping_j.start_time_;
+        for (auto it = std::next(pi); it != g_end; ++it) {
+          max_transfers = std::max(max_transfers, it->transfers_);
+          if (is_better(it->start_time_, loosest_start)) {
+            loosest_start = it->start_time_;
+          }
+        }
 
-      starts.clear();
-      get_starts(flip(SearchDir), tt, rtt, ping_j.dest_time_, q.start_,
-                 q.td_start_, q.via_stops_, q.max_start_offset_,
-                 q.start_match_mode_,
-                 q.start_match_mode_ != location_match_mode::kIntermodal,
-                 starts, false, q.prf_idx_, q.transfer_time_settings_);
-      pong.next_start_time();
-      for (auto const& s : starts) {
-        trace_pong("---- PONG START: {} at time_at_start={} time_at_stop={}",
-                   loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
-        pong.add_start(s.stop_, s.time_at_stop_);
+        starts.clear();
+        get_starts(flip(SearchDir), tt, rtt, g_arr, q.start_, q.td_start_,
+                   q.via_stops_, q.max_start_offset_, q.start_match_mode_,
+                   q.start_match_mode_ != location_match_mode::kIntermodal,
+                   starts, false, q.prf_idx_, q.transfer_time_settings_);
+        pong.next_start_time();
+        for (auto const& s : starts) {
+          trace_pong("---- PONG START: {} at time_at_start={} time_at_stop={}",
+                     loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
+          pong.add_start(s.stop_, s.time_at_stop_);
+        }
+        if (pong_stats) {
+          ++pong_exec_total;
+          ++pong_exec_keys[{g_arr, max_transfers}];
+        }
+        pong.execute(g_arr, max_transfers,
+                     loosest_start - duration_t{kFwd ? 1 : -1}, q.prf_idx_,
+                     s_state.results_);
+        kFwd ? ++result.search_stats_.n_execute_bwd_
+             : ++result.search_stats_.n_execute_fwd_;
       }
-      pong.execute(ping_j.dest_time_, ping_j.transfers_,
-                   ping_j.start_time_ - duration_t{kFwd ? 1 : -1}, q.prf_idx_,
-                   s_state.results_);
-      kFwd ? ++result.search_stats_.n_execute_bwd_
-           : ++result.search_stats_.n_execute_fwd_;
+      trace_pong("-- PING RESULT: {}", to_tuple(ping_j));
 
       // multi-criteria configurations can hold several pareto journeys
       // with the same (transfers, start_time) - e.g. walking trade-offs:
@@ -386,8 +434,12 @@ routing_result pong(timetable const& tt,
         auto superseding = end(s_state.results_);
         for (auto it = begin(s_state.results_); it != end(s_state.results_);
              ++it) {
+          // a TRUE dominator departs no earlier than the anchor's proven
+          // departure - without this clause a non-dominating journey can
+          // drag the progression backwards into a silent stall
           if (it->transfers_ <= ping_j.transfers_ &&
               !is_better(ping_j.dest_time_, it->start_time_) &&
+              !is_better(it->dest_time_, ping_j.start_time_) &&
               (superseding == end(s_state.results_) ||
                is_better(superseding->dest_time_, it->dest_time_))) {
             superseding = it;
@@ -457,6 +509,15 @@ routing_result pong(timetable const& tt,
                   "\n\t"));
 
     start_time = next;
+  }
+
+  if (pong_stats && pong_exec_total != 0U) {
+    auto repeated = 0U;
+    for (auto const& [k, c] : pong_exec_keys) {
+      repeated += c - 1U;
+    }
+    std::fprintf(stderr, "PONG_EXEC total=%u unique=%zu repeated=%u\n",
+                 pong_exec_total, pong_exec_keys.size(), repeated);
   }
 
   utl::erase_if(s_state.results_, [&](journey const& j) {
