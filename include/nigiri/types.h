@@ -219,6 +219,7 @@ using rt_merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using rt_transport_direction_string_idx_t =
     cista::strong<std::uint32_t, struct _rt_transport_direction_string>;
+using track_idx_t = cista::strong<std::uint32_t, struct _track_idx>;
 
 using line_id_t = string;
 
