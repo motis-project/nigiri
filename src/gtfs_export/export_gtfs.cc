@@ -11,6 +11,12 @@
 
 namespace nigiri {
 
+namespace {
+// Some agencies do not have a name or / and an url
+constexpr auto const kDummyAgencyName = std::string_view{"Unknown Agency"};
+constexpr auto const kDummyAgencyUrl = std::string_view{"https://example.com"};
+}  // namespace
+
 std::string csv_escape(std::string_view input) {
   auto const had_quote = bool{input.find('"') != std::string_view::npos};
   auto const needs_quoting =
@@ -66,21 +72,37 @@ void export_gtfs(timetable const& tt, std::filesystem::path const& dir) {
 }
 
 void write_feed_info(std::filesystem::path const& dir) {
+  std::cout << "writing feed_info.txt ... ";
+
   auto out = std::ofstream{dir / "feed_info.txt"};
   out << "feed_publisher_name,feed_publisher_url,feed_lang,agency_timezone\n";
   out << "MOTIS - Export,github.com/motis-project/motis,EN,Etc/UTC\n";
+
+  std::cout << "done.\n";
 }
 
 void write_agencies(timetable const& tt, std::filesystem::path const& dir) {
+  std::cout << "writing agency.txt ... ";
+
   auto out = std::ofstream{dir / "agency.txt"};
   out << "agency_id,agency_name,agency_url,agency_timezone\n";
 
   for (auto p = provider_idx_t{0}; p < tt.providers_.size(); ++p) {
     auto const& provider = tt.providers_[p];
-    out << to_idx(p) << ","
-        << csv_escape(tt.get_default_translation(provider.name_)) << ","
-        << tt.get_default_translation(provider.url_) << ",Etc/UTC\n";
+
+    auto const raw_name = tt.get_default_translation(provider.name_);
+    auto const raw_url = tt.get_default_translation(provider.url_);
+
+    auto const name =
+        std::string_view{raw_name.empty() ? kDummyAgencyName : raw_name};
+    auto const url =
+        std::string_view{raw_url.empty() ? kDummyAgencyUrl : raw_url};
+
+    out << to_idx(p) << "," << csv_escape(name) << "," << csv_escape(url)
+        << ",Etc/UTC\n";
   }
+
+  std::cout << "done.\n";
 }
 
 void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
