@@ -64,16 +64,6 @@ void optimize_initial_departure(timetable const& tt,
   }
 }
 
-// Like `optimize_initial_departure`, but for journeys whose access to the first
-// transport is a (timetable) start footpath instead of an intermodal offset
-// (i.e. a non-intermodal start match mode with `use_start_footpaths_`). In that
-// case `j.legs_.front()` is a `footpath` from the journey start to the boarding
-// stop, so `optimize_initial_departure` (which expects an `offset` leg) does
-// nothing. The raptor may board at a stop reached via a long footpath even
-// though the same transport later passes a stop reachable by a much shorter
-// footpath from the journey start (i.e. it walks away from a station only to
-// ride back through it). Move the boarding to the stop with the shortest start
-// footpath, without departing earlier.
 void optimize_initial_start_footpath(timetable const& tt,
                                      rt_timetable const* rtt,
                                      query const& q,
@@ -90,14 +80,9 @@ void optimize_initial_start_footpath(timetable const& tt,
 
   auto const start_loc = fp_leg.from_;
 
-  // When the start location has time-dependent footpaths in this profile (e.g.
-  // an elevator that can be out of service), the static footpath table is
-  // bypassed during search (see `raptor::update_footpaths`) and its durations
-  // don't reflect blocking. We can't safely re-time the access from static
-  // footpaths here, so leave the journey as reconstructed.
   if (rtt != nullptr && q.prf_idx_ != 0U &&
       rtt->has_td_footpaths_out_[q.prf_idx_].test(start_loc)) {
-    return;
+    return;  // TODO(felix) handle shortening of td-footpaths
   }
 
   auto fp_dur_best = adjusted_transfer_time(
@@ -111,12 +96,13 @@ void optimize_initial_start_footpath(timetable const& tt,
     if (!q.via_stops_.empty() &&
         matches(tt, location_match_mode::kEquivalent, stp.get_location_idx(),
                 q.via_stops_[0].location_)) {
-      // don't skip over via stops
-      break;
+      break;  // don't skip over via stops
     }
+
     if (!stp.in_allowed()) {
       continue;
     }
+
     for (auto const& fp : footpaths) {
       if (fp.target() != stp.get_location_idx()) {
         continue;
@@ -202,15 +188,6 @@ void optimize_last_arrival(timetable const& tt,
   }
 }
 
-// Symmetric to `optimize_initial_start_footpath`, but for the egress: when the
-// access to the destination is a (timetable) footpath instead of an intermodal
-// offset, `j.legs_.back()` is a `footpath` to the destination and
-// `optimize_last_arrival` (which expects an `offset` leg) does nothing. The
-// raptor may alight at a stop reached to the destination via a long footpath
-// even though the same transport passed a stop closer to the destination
-// earlier (i.e. it stays on the train past a station only to walk back). Move
-// the alighting to the stop with the shortest egress footpath, without
-// arriving later.
 void optimize_final_egress_footpath(timetable const& tt,
                                     rt_timetable const* rtt,
                                     query const& q,
@@ -227,11 +204,9 @@ void optimize_final_egress_footpath(timetable const& tt,
 
   auto const dest_loc = fp_leg.to_;
 
-  // See `optimize_initial_start_footpath`: don't re-time across time-dependent
-  // footpaths (the static table is bypassed for those locations during search).
   if (rtt != nullptr && q.prf_idx_ != 0U &&
       rtt->has_td_footpaths_in_[q.prf_idx_].test(dest_loc)) {
-    return;
+    return;  // TODO(felix) handle shortening of td-footpaths
   }
 
   auto fp_dur_best = adjusted_transfer_time(
