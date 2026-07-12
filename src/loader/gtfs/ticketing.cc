@@ -1,4 +1,7 @@
 #include "nigiri/loader/gtfs/ticketing.h"
+
+#include <algorithm>
+
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/stop.h"
@@ -37,6 +40,12 @@ void read_ticketing_identifiers(timetable& tt,
               .push_back(pair<provider_idx_t, string_idx_t>{provider, str_idx});
         }
       });
+
+  for (auto loc = location_idx_t{0U};
+       loc != location_idx_t{tt.location_ticketing_identifier_.size()}; ++loc) {
+    auto bucket = tt.location_ticketing_identifier_[loc];
+    utl::sort(bucket, [](auto&& a, auto&& b) { return a.first < b.first; });
+  }
 }
 
 hash_map<std::string_view, ticketing_link_idx_t> read_ticketing_deep_links(
