@@ -34,6 +34,7 @@ struct agency {
          std::string_view id,
          translation_idx_t name,
          translation_idx_t url,
+         translation_idx_t fare_url,
          timezone_idx_t,
          gtfs::tz_map& = dummy_tz_map);
   agency(timetable&, provider_idx_t);
@@ -48,6 +49,10 @@ struct agency {
   translated_str_t get_url_translations() const;
   void set_url(translated_str_t);
 
+  std::string_view get_fare_url() const;
+  translated_str_t get_fare_url_translations() const;
+  void set_fare_url(translated_str_t);
+
   std::optional<std::string_view> get_timezone() const;
   void set_timezone(std::string_view);
 
@@ -56,6 +61,7 @@ struct agency {
   std::string_view id_;
   translation_idx_t name_;
   translation_idx_t url_;
+  translation_idx_t fare_url_;
   timezone_idx_t timezone_idx_;
 
   timetable* tt_{nullptr};
@@ -131,7 +137,8 @@ struct route {
         route_type_t,
         route_color,
         provider_idx_t,
-        category_idx_t);
+        category_idx_t,
+        ticketing_link_idx_t);
   route(timetable&, source_idx_t, route_id_idx_t);
 
   std::string_view get_id() const;
@@ -171,6 +178,7 @@ struct route {
   route_color color_;
   provider_idx_t agency_;
   category_idx_t category_;
+  ticketing_link_idx_t ticketing_link_;
 
   timetable* tt_{nullptr};
 };

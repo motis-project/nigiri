@@ -219,6 +219,7 @@ using rt_merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using rt_transport_direction_string_idx_t =
     cista::strong<std::uint32_t, struct _rt_transport_direction_string>;
+using track_idx_t = cista::strong<std::uint32_t, struct _track_idx>;
 
 using line_id_t = string;
 
@@ -239,6 +240,9 @@ using flex_stop_seq_idx_t =
     cista::strong<std::uint32_t, struct _flex_stop_seq_idx>;
 
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
+
+using ticketing_link_idx_t =
+    cista::strong<std::uint32_t, struct _ticketing_link_idx>;
 
 struct category {
   string_idx_t id_;
@@ -280,10 +284,11 @@ struct attribute {
 
 struct provider {
   CISTA_COMPARABLE()
-  CISTA_PRINTABLE(provider, "short_name", "long_name", "url")
+  CISTA_PRINTABLE(provider, "short_name", "long_name", "url", "fare_url")
   string_idx_t id_;
-  translation_idx_t name_, url_;
+  translation_idx_t name_, url_, fare_url_;
   timezone_idx_t tz_{timezone_idx_t::invalid()};
+  ticketing_link_idx_t ticketing_link_;
   source_idx_t src_;
 };
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <compare>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <span>
@@ -98,6 +99,7 @@ struct timetable {
     vector_map<location_idx_t, std::uint32_t> location_importance_;
     std::uint32_t max_importance_{0U};
     rtree<location_idx_t> rtree_;
+    bitvec_map<location_idx_t> ticketing_unavailable_;
   } locations_;
 
   struct transport {
@@ -321,6 +323,7 @@ struct timetable {
     vector_map<route_id_idx_t, route_type_t> route_id_type_;
     vector_map<route_id_idx_t, provider_idx_t> route_id_provider_;
     vector_map<route_id_idx_t, route_color> route_id_colors_;
+    vector_map<route_id_idx_t, ticketing_link_idx_t> route_id_ticketing_link_;
     paged_vecvec<route_id_idx_t, trip_idx_t> route_id_trips_;
     string_store<route_id_idx_t> ids_;
   };
@@ -488,6 +491,20 @@ struct timetable {
   string_store<language_idx_t> languages_;
 
   cista::base_t<source_idx_t> n_sources_{};
+
+  // Ticketing
+  vecvec<location_idx_t, pair<provider_idx_t, string_idx_t>>
+      location_ticketing_identifier_;
+  vecvec<trip_idx_t, string_idx_t> trip_ticketing_identifier_;
+  bitvec_map<trip_idx_t> trip_ticketing_unavailable_;
+
+  struct ticketing_links {
+    vecvec<ticketing_link_idx_t, char> web_;
+    vecvec<ticketing_link_idx_t, char> andoid_;
+    vecvec<ticketing_link_idx_t, char> ios_;
+  };
+
+  ticketing_links ticketing_links_;
 };
 
 struct loc {

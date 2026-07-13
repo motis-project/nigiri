@@ -116,6 +116,11 @@ struct rt_timetable {
                    std::nullopt);
   }
 
+  void set_track(rt_transport_idx_t, stop_idx_t, event_type, std::string_view);
+  std::optional<std::string_view> get_track(rt_transport_idx_t,
+                                            stop_idx_t,
+                                            event_type) const;
+
   unixtime_t unix_event_time(rt_transport_idx_t const rt_t,
                              stop_idx_t const stop_idx,
                              event_type const ev_type) const {
@@ -249,6 +254,12 @@ struct rt_timetable {
   // RT transport -> event times (dep, arr, dep, arr, ...)
   vecvec<rt_transport_idx_t, delta_t> rt_transport_stop_times_;
   vecvec<rt_transport_idx_t, stop::value_type> rt_transport_location_seq_;
+
+  // RT transport -> real-time track (dep, arr, dep, arr, ...)
+  // - empty if no overwrite exists at all
+  // - track_idx_t::invalid for stops where no overwrite exists
+  vecvec<rt_transport_idx_t, track_idx_t> rt_transport_track_sequence_;
+  string_store<track_idx_t> track_strings_;
 
   // RT trip index -> display name (empty if not changed)
   vecvec<rt_transport_idx_t, char> rt_transport_trip_short_names_;
