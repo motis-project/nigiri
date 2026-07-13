@@ -79,6 +79,14 @@ struct gpu_mcraptor {
   // journey behind them (q#45 trace, 2026-07-11).
   void set_reuse_same_dep() { reuse_same_dep_ = true; }
 
+  // tight starts (pong ping): re-anchor collected journeys at their
+  // latest feasible departure instead of the step start, so the result
+  // pareto prices real dep-normalized cost - the one-step ping window
+  // otherwise collapses cost-pareto variants under phantom waiting
+  // (see basic_mcraptor::set_tight_start). The device reconstruct
+  // reports the shift per journey (gpu_journey::start_shift_).
+  void set_tight_start() { tight_start_ = true; }
+
   void reset_arrivals();
   void next_start_time();
   void add_start(location_idx_t, unixtime_t);
@@ -114,6 +122,7 @@ private:
   // owns all destination pruning)
   delta_t worst_at_dest_;
   bool reuse_same_dep_{false};
+  bool tight_start_{false};  // see set_tight_start()
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
 };

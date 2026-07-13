@@ -197,6 +197,15 @@ struct search {
     utl::sort(q_.start_);
     utl::sort(q_.destination_);
     q_.sanitize(tt);
+    // NOT calling algo_.set_tight_start() here (mcraptor): for interval
+    // queries it is a no-op (starts are event-enumerated, so the wait
+    // before the first boarding is zero by construction), but for POINT
+    // queries it would report real departures and drop the initial wait
+    // from the generalized cost while plain raptor keeps reporting the
+    // query anchor - the engines would diverge (routing.ontrip_train,
+    // fares.simple_fares, join_split.complex assert raptor == mcraptor).
+    // Real-departure point-query semantics (= the motis ontrip journey
+    // normalization) would have to land in raptor and mcraptor together.
   }
 
   routing_result execute() {

@@ -84,13 +84,23 @@ inline constexpr auto kMcNoBc = std::uint32_t{(1U << 27U) - 1U};
 // pareto keeps every
 // walk-class trade-off, so frontier sizes vary strongly with the dataset;
 // a fixed compile-time cap either wastes memory or trips the canary.
-inline constexpr auto kMcBagCapDefault = 16U;  // inline slots per stop
-// two-level bags: stops whose frontier outgrows the inline slots get one
-// lazily allocated fixed-size block from a global pool. Removes the
-// per-stop capacity knob: the tail of the bag-size distribution (0.1% of
-// bags even at high walk surcharge) no longer dictates the per-stop cap.
-inline constexpr auto kMcBagBlock = 128U;  // slots per overflow block
-inline constexpr auto kMcBagPoolDefault = 65536U;  // blocks (64 MB)
+inline constexpr auto kMcBagCapDefault = 8U;  // inline slots per stop
+// chained bags: stops whose frontier outgrows the inline slots chain
+// small fixed-size blocks from a global pool (bag_ovf_ = head,
+// bag_next_ = links). Sized by the measured occupancy distribution
+// (2026-07-12, GER+WW): mean 2-3 labels/bag, <=8 covers 96-99%, ~97% of
+// spilling bags need one block; observed worldwide peak 130 labels.
+// Small blocks keep the pool proportional to DEMAND (labels), not to
+// the touched-stop count times a worst-case row: the 128-slot design
+// needed GB-scale pools once inline shrank, this needs hundreds of MB.
+// Geometry swept 2026-07-12 (inline 4/6/8 x block 8/16): inline 8 +
+// block 16 = best perf (GER -2.3% vs dense baseline, WW tails +4.5%,
+// q/s + medians at parity) at ~1.8x less memory per WW state.
+inline constexpr auto kMcBagBlock = 16U;  // slots per chained block
+inline constexpr auto kMcBagPoolDefault = 1U << 20U;  // blocks (~138 MB)
+// u8 hwm bounds the total slots; 248 = inline 8 + 15 blocks (peak seen:
+// 130). Growing past this trips the bag canary.
+inline constexpr auto kMcMaxBagSlots = 248U;
 inline constexpr auto kMcDestCap = 64U;  // dest frontier entries
 // cross-start reuse frontier (rRAPTOR range reuse, GPU form): CPU reuse
 // only ever uses labels of previously processed (later-departing) starts
@@ -162,14 +172,11 @@ inline constexpr auto kMcMaxSegs = 128U;  // per route; overflow -> seq path
 inline constexpr auto kMcPrefixK = 4U;  // register route-bag entries/lane
 inline constexpr auto kMcEtGatherCap = 32U;  // sorted lookup candidates
 inline constexpr auto kMcScanThreads = 128U;  // 4 warps per block
-// per route-stop earliest-transport result block (et phase): one entry per
-// boardable round-(k-1) label of the stop, filled densely with a
-// terminator. The collect phase only resets entry [0] per stop (the
-// terminator position of an empty block); the lookup phase overwrites the
-// prefix and re-terminates, so entries beyond the terminator may be stale
+// per route-stop earliest-transport result row (et phase): one entry per
+// boardable round-(k-1) label of the stop, filled densely; the row length
+// lives in et_task_cnt_ (u8, replaces the former terminator entry - saves
+// one 7B pool entry per task). Entries beyond a task's count may be stale
 // garbage from earlier rounds/starts but are never read.
-// [et:32 | extras:16 | slot:8 | valid:1]; block size is RUNTIME
-// (env NIGIRI_GPU_MC_ET_PER_STOP, default 32, canary on overflow).
 inline constexpr auto kMcEtInvalid = ~std::uint64_t{0};
 
 CISTA_CUDA_COMPAT inline std::uint64_t mc_et_pack(std::uint32_t const et,
@@ -294,21 +301,26 @@ struct mcraptor_impl {
     return bags_ + static_cast<std::size_t>(l) * bag_cap_;
   }
 
-  __device__ __forceinline__ mc_label_t* bag_block(
-      std::uint32_t const l) const {
-    auto const blk = bag_ovf_[l];
-    return blk == ~0U ? nullptr
-                      : bag_pool_ + static_cast<std::size_t>(blk) * kMcBagBlock;
+  // walk the block chain to ordinal j (~0U if the chain is shorter)
+  __device__ __forceinline__ std::uint32_t chain_block(
+      std::uint32_t const l, std::uint32_t const j) const {
+    auto b = bag_ovf_[l];
+    for (auto h = 0U; h != j && b != ~0U; ++h) {
+      b = bag_next_[b];
+    }
+    return b;
   }
 
-  // single-slot read across both levels (post-kernel-boundary contexts)
+  // single-slot read across inline + chain (post-kernel-boundary contexts)
   __device__ mc_label_t bag_label(std::uint32_t const l,
                                   std::uint32_t const i) const {
     if (i < bag_cap_) {
       return bag(l)[i];
     }
-    auto const* const b = bag_block(l);
-    return b == nullptr ? kMcEmptySlot : b[i - bag_cap_];
+    auto const b = chain_block(l, (i - bag_cap_) / kMcBagBlock);
+    return b == ~0U ? kMcEmptySlot
+                    : bag_pool_[static_cast<std::size_t>(b) * kMcBagBlock +
+                                (i - bag_cap_) % kMcBagBlock];
   }
 
   // SAME-ROUND cross-SM reads (footpath phase only): L1 caches are not
@@ -326,16 +338,53 @@ struct mcraptor_impl {
     if (i < bag_cap_) {
       return *reinterpret_cast<mc_label_t const volatile*>(bag(l) + i);
     }
-    // the ovf link may have been published in THIS kernel by another
-    // SM - a stale L1 copy (~0U) would silently hide the whole block
-    auto const blk =
-        *reinterpret_cast<std::uint32_t const volatile*>(bag_ovf_ + l);
-    return blk == ~0U
+    // head + links may have been published in THIS kernel by another
+    // SM - stale L1 copies (~0U) would silently hide chain tails, so
+    // every hop reads past L1 (writers fence links before the hwm)
+    auto b = *reinterpret_cast<std::uint32_t const volatile*>(bag_ovf_ + l);
+    for (auto h = (i - bag_cap_) / kMcBagBlock; h != 0U && b != ~0U; --h) {
+      b = *reinterpret_cast<std::uint32_t const volatile*>(bag_next_ + b);
+    }
+    return b == ~0U
                ? kMcEmptySlot
                : *reinterpret_cast<mc_label_t const volatile*>(
-                     bag_pool_ + static_cast<std::size_t>(blk) * kMcBagBlock +
-                     (i - bag_cap_));
+                     bag_pool_ + static_cast<std::size_t>(b) * kMcBagBlock +
+                     (i - bag_cap_) % kMcBagBlock);
   }
+
+  // forward-cursor variant of bag_label_coherent for the fp phase's
+  // ascending slot loops: one chain hop per block instead of a re-walk
+  // per slot (all loads past L1, links fenced before the hwm)
+  struct mc_chain_reader {
+    mcraptor_impl const* r_;
+    std::uint32_t l_;
+    std::uint32_t cur_ord_{0U};
+    std::uint32_t cur_blk_{~0U};
+    bool init_{false};
+    __device__ __forceinline__ mc_label_t at(std::uint32_t const i) {
+      if (i < r_->bag_cap_) {
+        return *reinterpret_cast<mc_label_t const volatile*>(r_->bag(l_) + i);
+      }
+      auto const ord = (i - r_->bag_cap_) / kMcBagBlock;
+      if (!init_ || ord < cur_ord_ || cur_blk_ == ~0U) {
+        cur_blk_ = *reinterpret_cast<std::uint32_t const volatile*>(
+            r_->bag_ovf_ + l_);
+        cur_ord_ = 0U;
+        init_ = true;
+      }
+      while (cur_ord_ != ord && cur_blk_ != ~0U) {
+        cur_blk_ = *reinterpret_cast<std::uint32_t const volatile*>(
+            r_->bag_next_ + cur_blk_);
+        ++cur_ord_;
+      }
+      return cur_blk_ == ~0U
+                 ? kMcEmptySlot
+                 : *reinterpret_cast<mc_label_t const volatile*>(
+                       r_->bag_pool_ +
+                       static_cast<std::size_t>(cur_blk_) * kMcBagBlock +
+                       (i - r_->bag_cap_) % kMcBagBlock);
+    }
+  };
 
   __device__ mc_bc_entry bc_read_coherent(std::uint32_t const i) const {
     auto const lo =
@@ -349,27 +398,54 @@ struct mcraptor_impl {
             par, static_cast<delta_t>(static_cast<std::int16_t>(hi >> 16U))};
   }
 
-  // iteration view over a bag's used slots. A concurrently growing bag
-  // may expose the new hwm before its overflow pointer (plain stores, no
-  // reader ordering): the view then clamps to the inline slots, which is
-  // safe everywhere a concurrent read happens - the insert pre-scan is
-  // advisory and same-kernel readers only need labels written before the
-  // last kernel boundary (round/flag stability rules).
+  // iteration view over a bag's used slots (inline + block chain). The
+  // cursor caches the current chain position: sequential/monotone access
+  // is O(1) amortized, a backwards jump restarts from the head (only the
+  // pbag parent re-reads jump, and they stay within gathered slots). A
+  // concurrently growing bag may expose the new hwm before its head/link
+  // stores (plain reads here): the view then clamps to what is
+  // reachable, which is safe everywhere a concurrent read happens - the
+  // insert pre-scan is advisory and same-kernel readers only need labels
+  // written before the last kernel boundary (round/flag stability rules).
   struct mc_bag_view {
-    mc_label_t const* a_;
-    mc_label_t const* b_;
+    mc_label_t const* a_;       // inline slots
+    mc_label_t const* pool_;    // block pool base
+    std::uint32_t const* nxt_;  // chain links
+    std::uint32_t head_;        // first block (~0U: none)
     std::uint32_t n_, na_;
+    mutable std::uint32_t cur_ord_{0U};
+    mutable std::uint32_t cur_blk_{~0U};
     __device__ __forceinline__ mc_label_t
     operator[](std::uint32_t const i) const {
-      return i < na_ ? a_[i] : b_[i - na_];
+      if (i < na_) {
+        return a_[i];
+      }
+      auto const ord = (i - na_) / kMcBagBlock;
+      if (ord < cur_ord_ || cur_blk_ == ~0U) {
+        cur_ord_ = 0U;
+        cur_blk_ = head_;
+      }
+      while (cur_ord_ != ord && cur_blk_ != ~0U) {
+        cur_blk_ = nxt_[cur_blk_];
+        ++cur_ord_;
+      }
+      // a concurrently growing chain may not be fully visible (plain
+      // reads): treat unreachable slots as empty - advisory contexts
+      // only; result-relevant readers see cross-kernel-published links
+      return cur_blk_ == ~0U
+                 ? kMcEmptySlot
+                 : pool_[static_cast<std::size_t>(cur_blk_) * kMcBagBlock +
+                         (i - na_) % kMcBagBlock];
     }
     __device__ __forceinline__ std::uint32_t size() const { return n_; }
   };
   __device__ __forceinline__ mc_bag_view bag_view(std::uint32_t const l) const {
     auto const hwm = static_cast<std::uint32_t>(bag_hwm_[l]);
     auto const na = hwm < bag_cap_ ? hwm : bag_cap_;
-    auto const* const b = hwm > bag_cap_ ? bag_block(l) : nullptr;
-    return {bag(l), b, b == nullptr ? na : hwm, na};
+    auto const head = hwm > bag_cap_ ? bag_ovf_[l] : ~0U;
+    return {bag(l), bag_pool_, bag_next_, head,
+            head == ~0U ? na : hwm,      na,
+            0U,          head};
   }
 
   // CPU bag_insert rules 1:1, serialized by a per-stop spinlock: without
@@ -523,9 +599,25 @@ struct mcraptor_impl {
     __threadfence();  // acquire: see prior holders' plain stores
 
     auto* const slots = bag(l);
-    auto* blk = bag_block(l);
+    // chain cursor (the lock is held, so the chain is stable): O(1) for
+    // the ascending dominance scan, restart-from-head on backward jumps
+    auto cur_ord = 0U;
+    auto cur_blk = bag_ovf_[l];
     auto const slot_at = [&](std::uint32_t const i) -> mc_label_t& {
-      return i < bag_cap_ ? slots[i] : blk[i - bag_cap_];
+      if (i < bag_cap_) {
+        return slots[i];
+      }
+      auto const ord = (i - bag_cap_) / kMcBagBlock;
+      if (ord < cur_ord || cur_blk == ~0U) {
+        cur_ord = 0U;
+        cur_blk = bag_ovf_[l];
+      }
+      while (cur_ord != ord) {
+        cur_blk = bag_next_[cur_blk];
+        ++cur_ord;
+      }
+      return bag_pool_[static_cast<std::size_t>(cur_blk) * kMcBagBlock +
+                       (i - bag_cap_) % kMcBagBlock];
     };
     auto inserted = false;
     auto free_slot = ~0U;
@@ -551,19 +643,28 @@ struct mcraptor_impl {
         free_slot = free_slot == ~0U ? i : free_slot;
       }
     }
-    // grow into the inline area or the stop's overflow block, allocating
-    // the block lazily from the pool (race-free: the lock is held; racing
-    // readers see the old hwm or treat the not-yet-visible block as empty)
-    if (free_slot == ~0U && hwm < bag_cap_ + kMcBagBlock) {
-      if (hwm >= bag_cap_ && blk == nullptr) {
+    // grow into the inline area or the block chain, appending a block
+    // from the pool when the tail is full (race-free: the lock is held;
+    // racing readers see the old hwm or treat unreachable chain slots as
+    // empty - links are published before the hwm, see the fence below)
+    if (free_slot == ~0U && hwm < kMcMaxBagSlots) {
+      if (hwm < bag_cap_ || (hwm - bag_cap_) % kMcBagBlock != 0U) {
+        free_slot = hwm;  // inline space or room in the tail block
+      } else {
         auto const b = atomicAdd(bag_pool_count_, 1U);
         if (b < bag_pool_cap_) {
-          bag_ovf_[l] = b;
-          blk = bag_pool_ + static_cast<std::size_t>(b) * kMcBagBlock;
+          bag_next_[b] = ~0U;
+          if (hwm == bag_cap_) {
+            bag_ovf_[l] = b;
+          } else {
+            auto t = bag_ovf_[l];
+            while (bag_next_[t] != ~0U) {
+              t = bag_next_[t];
+            }
+            bag_next_[t] = b;
+          }
+          free_slot = hwm;
         }
-      }
-      if (hwm < bag_cap_ || blk != nullptr) {
-        free_slot = hwm;
       }
     }
     if (free_slot == ~0U) {
@@ -806,7 +907,7 @@ struct mcraptor_impl {
   // route_task_start_ + popcount(route's bits below flat). Stale state is
   // impossible: collect clears the route's bit range every round before
   // setting, and readers only ever query this round's marked routes.
-  __device__ __forceinline__ std::uint32_t et_row_for(
+  __device__ __forceinline__ std::uint32_t et_task_for(
       std::uint32_t const ri,
       std::uint32_t const base_flat,
       std::uint32_t const flat) const {
@@ -827,7 +928,7 @@ struct mcraptor_impl {
       }
       rank += static_cast<unsigned>(__popc(task_bits_[wf] & hi_mask));
     }
-    return et_task_off_[route_task_start_[ri] + rank];
+    return route_task_start_[ri] + rank;
   }
 
   template <bool IsWheelchair>
@@ -933,7 +1034,7 @@ struct mcraptor_impl {
             auto const lab = bv[sl];
             need += (lab != kMcEmptySlot && mc_round(lab) == k - 1U) ? 1U : 0U;
           }
-          need = umin(need, kMcEtGatherCap) + 1U;
+          need = umin(need, kMcEtGatherCap);
         }
         auto const ballot = __ballot_sync(kAllLanes, is_task);
         if (ballot == 0U) {
@@ -985,6 +1086,7 @@ struct mcraptor_impl {
     for (auto t = gid; t < n_tasks; t += stride) {
       auto const eoff = et_task_off_[t];
       if (eoff == ~0U) {
+        et_task_cnt_[t] = 0U;
         continue;  // entry pool exhausted (canary already set)
       }
       auto const flat = et_task_list_[t];
@@ -1073,9 +1175,9 @@ struct mcraptor_impl {
         }
         ++out;
       }
-      // terminate the dense fill (space is guaranteed: the reservation
-      // covers count+1 and out <= boardable labels)
-      et_ent_key_[static_cast<std::size_t>(eoff) + out] = ~0U;
+      // per-task entry count instead of a terminator entry: saves one
+      // pool entry per task (7B x tasks; the flood round has ~44M tasks)
+      et_task_cnt_[t] = static_cast<std::uint8_t>(out);
     }
   }
 
@@ -1313,20 +1415,19 @@ struct mcraptor_impl {
     }
     auto const stop_idx = static_cast<stop_idx_t>(kFwd ? pos : n - 1U - pos);
     auto const flat = static_cast<std::size_t>(base_flat + stop_idx);
-    auto const eoff =
-        et_row_for(to_idx(r), static_cast<std::uint32_t>(base_flat),
-                   static_cast<std::uint32_t>(flat));
-    if (eoff == ~0U || et_ent_key_[eoff] == ~0U) {
+    auto const ti =
+        et_task_for(to_idx(r), static_cast<std::uint32_t>(base_flat),
+                    static_cast<std::uint32_t>(flat));
+    if (ti == ~0U || et_task_cnt_[ti] == 0U) {
       return;
     }
+    auto const eoff = et_task_off_[ti];
+    auto const n_ent = static_cast<std::uint32_t>(et_task_cnt_[ti]);
     auto const stop_seq = tt_.route_location_seq_[r];
     auto const l_idx = to_idx(stop{stop_seq[stop_idx]}.location_idx());
     auto const stop_bag = bag_view(l_idx);
-    for (auto e = 0U; e != kMcEtGatherCap; ++e) {
+    for (auto e = 0U; e != n_ent; ++e) {
       auto const et_key = et_ent_key_[eoff + e];
-      if (et_key == ~0U) {
-        break;
-      }
       auto const pe_extras = WithCost ? et_ent_ex_[eoff + e] : 0U;
       auto merged = false;
       for (auto i = 0U; i != K; ++i) {
@@ -1504,19 +1605,18 @@ struct mcraptor_impl {
     for (auto i = 0U; i + 1U < n; ++i) {  // last stop never boards
       auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
       auto const flat = static_cast<std::size_t>(base_flat + stop_idx);
-      auto const eoff =
-          et_row_for(to_idx(r), static_cast<std::uint32_t>(base_flat),
-                     static_cast<std::uint32_t>(flat));
-      if (eoff == ~0U || et_ent_key_[eoff] == ~0U) {
+      auto const ti =
+          et_task_for(to_idx(r), static_cast<std::uint32_t>(base_flat),
+                      static_cast<std::uint32_t>(flat));
+      if (ti == ~0U || et_task_cnt_[ti] == 0U) {
         continue;  // not a boarding stop this round
       }
+      auto const eoff = et_task_off_[ti];
+      auto const n_ent = static_cast<std::uint32_t>(et_task_cnt_[ti]);
       auto const l_idx = to_idx(stop{stop_seq[stop_idx]}.location_idx());
       auto const stop_bag = bag_view(l_idx);
-      for (auto e = 0U; e != kMcEtGatherCap; ++e) {
+      for (auto e = 0U; e != n_ent; ++e) {
         auto const et_key = et_ent_key_[eoff + e];
-        if (et_key == ~0U) {
-          break;  // dense fill up to the terminator
-        }
         auto const pe_extras = WithCost ? et_ent_ex_[eoff + e] : 0U;
         auto const pe_parent = mc_bc(stop_bag[et_ent_sl_[eoff + e]]);
 
@@ -1755,18 +1855,17 @@ struct mcraptor_impl {
       auto const stop_bag = bag_view(l_idx);
       auto const rsbase = tt_.route_stop_offset_[to_idx(r)];
       auto const flat = rsbase + stop_idx;
-      auto const eoff =
-          et_row_for(to_idx(r), static_cast<std::uint32_t>(rsbase),
-                     static_cast<std::uint32_t>(flat));
-      if (eoff == ~0U) {
+      auto const ti =
+          et_task_for(to_idx(r), static_cast<std::uint32_t>(rsbase),
+                      static_cast<std::uint32_t>(flat));
+      if (ti == ~0U || et_task_cnt_[ti] == 0U) {
         continue;
       }
+      auto const eoff = et_task_off_[ti];
+      auto const n_ent = static_cast<std::uint32_t>(et_task_cnt_[ti]);
 
-      for (auto e = 0U; e != kMcEtGatherCap; ++e) {
+      for (auto e = 0U; e != n_ent; ++e) {
         auto const et_key = et_ent_key_[eoff + e];
-        if (et_key == ~0U) {
-          break;  // dense fill up to the terminator
-        }
         auto const pe_extras = WithCost ? et_ent_ex_[eoff + e] : 0U;
         auto const pe_parent = mc_bc(stop_bag[et_ent_sl_[eoff + e]]);
 
@@ -1885,8 +1984,9 @@ struct mcraptor_impl {
           if (n_fps > kWarpFpThreshold) {
             defer = true;  // hub: the whole warp strides the list below
           }
+          auto rd = mc_chain_reader{this, my_i};
           for (auto sl = 0U; sl != stop_hwm; ++sl) {
-            auto const lab = bag_label_coherent(my_i, sl);
+            auto const lab = rd.at(sl);
             if (lab == kMcEmptySlot || mc_round(lab) != k ||
                 !mc_by_route(lab)) {
               continue;
@@ -1949,10 +2049,11 @@ struct mcraptor_impl {
           stop_hwm = bag_hwm_coherent(i);
         }
         stop_hwm = __shfl_sync(kAllLanes, stop_hwm, 0);
+        auto rd = mc_chain_reader{this, i};
         for (auto sl = 0U; sl != stop_hwm; ++sl) {
           auto lab = mc_label_t{kMcEmptySlot};
           if (lane == 0U) {
-            lab = bag_label_coherent(i, sl);
+            lab = rd.at(sl);
           }
           lab = __shfl_sync(kAllLanes, lab, 0);
           if (lab == kMcEmptySlot || mc_round(lab) != k || !mc_by_route(lab)) {
@@ -1991,7 +2092,7 @@ struct mcraptor_impl {
     }
     for (auto t = 0U; t != trace_locs_.size(); ++t) {
       auto const l = to_idx(trace_locs_[t]);
-      for (auto i = 0U; i != bag_cap_ + kMcBagBlock; ++i) {
+      for (auto i = 0U; i != kMcMaxBagSlots; ++i) {
         auto const v = bag_label(l, i);
         if (v == kMcEmptySlot) {
           continue;
@@ -2024,16 +2125,28 @@ struct mcraptor_impl {
         auto const l = w * 32U + b;
         auto* const slots = bag(l);
         auto const n = static_cast<std::uint32_t>(bag_hwm_[l]);
+        if (hwm_stats_ != nullptr) {
+          atomicMax(hwm_stats_ + 3U, n);  // peak slots used in any one bag
+        }
         auto const na = n < bag_cap_ ? n : bag_cap_;
         for (auto s = 0U; s != na; ++s) {
           slots[s] = kMcEmptySlot;
         }
-        if (n > bag_cap_) {  // release the block empty for reuse
-          auto* const b = bag_block(l);
-          for (auto s = 0U; s != n - bag_cap_; ++s) {
-            b[s] = kMcEmptySlot;
+        if (n > bag_cap_) {  // clear the chain, release blocks for reuse
+          auto rem = n - bag_cap_;
+          auto b = bag_ovf_[l];
+          while (b != ~0U && rem != 0U) {
+            auto const m = rem < kMcBagBlock ? rem : kMcBagBlock;
+            auto* const p =
+                bag_pool_ + static_cast<std::size_t>(b) * kMcBagBlock;
+            for (auto s = 0U; s != m; ++s) {
+              p[s] = kMcEmptySlot;
+            }
+            rem -= m;
+            b = bag_next_[b];
           }
-          bag_ovf_[l] = ~0U;
+          bag_ovf_[l] = ~0U;  // links become unreachable garbage (pool
+                              // bump counter resets per start)
         }
         bag_hwm_[l] = 0U;
       });
@@ -2056,6 +2169,7 @@ struct mcraptor_impl {
     out->transfers_ = static_cast<std::uint8_t>(K - 1U);
     out->criteria_cost_ =
         WithCost ? static_cast<std::uint16_t>(mc_extras(lab)) : 0U;
+    out->start_shift_ = 0;
 
     auto const arr_ev = kFwd ? event_type::kArr : event_type::kDep;
     auto const dep_ev = kFwd ? event_type::kDep : event_type::kArr;
@@ -2066,6 +2180,7 @@ struct mcraptor_impl {
     auto cur_l = dest_l;
     auto li = mc_bc(lab);
     auto n = 0U;
+    auto root_dep = kInvalid;  // boarding departure of the first ride
     while (li != kMcNoBc) {
       auto const bc = bc_read(li);
       auto const cur_arr = bc.arr_;
@@ -2146,7 +2261,32 @@ struct mcraptor_impl {
       lg.exit_stop_ = alight;
 
       cur_l = board_loc;
+      root_dep = dep_at_board;  // last iteration = first ride (fwd)
       li = bc.parent_;
+    }
+
+    // tight-start shift (CPU tighten_start 1:1): re-anchor at the
+    // minimum-walk feasible round-0 label of the first boarding stop -
+    // the journey's latest feasible departure relative to the step start.
+    // Consumed by the host only when tight starts are on (pong ping).
+    if (n != 0U && root_dep != kInvalid) {
+      auto best = kInvalid;
+      auto const hwm =
+          static_cast<std::uint32_t>(bag_hwm_[to_idx(cur_l)]);
+      for (auto s = 0U; s != hwm; ++s) {
+        auto const v = bag_label(to_idx(cur_l), s);
+        if (v == kMcEmptySlot) {
+          continue;  // evictions leave holes (no compaction)
+        }
+        auto const arr0 = from_key(mc_arr_key(v));
+        if (mc_round(v) == 0U && is_better_or_eq(arr0, root_dep) &&
+            is_better(arr0, best)) {
+          best = arr0;
+        }
+      }
+      if (best != kInvalid) {
+        out->start_shift_ = static_cast<delta_t>(root_dep - best);
+      }
     }
 
     out->start_l_ = cur_l;
@@ -2330,8 +2470,9 @@ struct mcraptor_impl {
   cuda::std::span<location_idx_t const> trace_locs_;  // debug dump only
 
   mc_label_t* bags_;  // n_locations x bag_cap_ inline slots
-  mc_label_t* bag_pool_;  // bag_pool_cap_ x kMcBagBlock overflow blocks
-  std::uint32_t* bag_ovf_;  // n_locations block idx (~0 = none)
+  mc_label_t* bag_pool_;  // bag_pool_cap_ x kMcBagBlock chained blocks
+  std::uint32_t* bag_ovf_;  // n_locations chain head (~0 = none)
+  std::uint32_t* bag_next_;  // bag_pool_cap_ chain links (~0 = end)
   std::uint32_t* bag_pool_count_;  // bump allocator
   std::uint32_t bag_pool_cap_;
   std::uint64_t* reuse_bags_;  // n_locations x kMcReuseCap, per-query
@@ -2381,6 +2522,7 @@ struct mcraptor_impl {
   std::uint32_t* task_bits_;  // 1 bit per flat route-stop (this round)
   std::uint32_t* route_task_start_;  // route -> first task index
   std::uint32_t* et_task_off_;  // task -> first pool entry (~0 = no space)
+  std::uint8_t* et_task_cnt_;  // task -> entry count (replaces terminator)
   std::uint32_t* et_entry_count_;  // pool bump allocator
   std::size_t et_pool_cap_;
   std::uint32_t et_tasks_cap_;

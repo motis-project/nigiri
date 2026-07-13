@@ -1,5 +1,6 @@
 #include "nigiri/routing/gpu/mcraptor.h"
 
+#include <cinttypes>
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
@@ -9,6 +10,10 @@
 #include "cuda/std/span"
 
 #include "thrust/device_vector.h"
+#include "thrust/functional.h"
+#include "thrust/reduce.h"
+#include "thrust/transform.h"
+#include "thrust/transform_reduce.h"
 
 #include "utl/helpers/algorithm.h"
 #include "utl/verify.h"
@@ -27,6 +32,17 @@
 
 namespace nigiri::routing::gpu {
 
+// host+device popcount for thrust reductions over mark bitvec words
+struct mc_popc {
+  __host__ __device__ std::uint32_t operator()(std::uint32_t const w) const {
+#ifdef __CUDA_ARCH__
+    return static_cast<std::uint32_t>(__popc(w));
+#else
+    return static_cast<std::uint32_t>(__builtin_popcount(w));
+#endif
+  }
+};
+
 struct gpu_mcraptor_state::impl {
   explicit impl(gpu_timetable const& gtt)
       : tt_{gtt.impl_->to_device_timetable()} {
@@ -38,25 +54,28 @@ struct gpu_mcraptor_state::impl {
       auto const* v = std::getenv(name);
       auto const x = v == nullptr ? def
                                   : static_cast<std::uint32_t>(std::atoi(v));
-      utl::verify(x >= 8U && x <= max, "{}={} out of range [8, {}]", name, x,
+      utl::verify(x >= 4U && x <= max, "{}={} out of range [4, {}]", name, x,
                   max);
       return x;
     };
-    // inline slots per stop; the hwm byte bounds inline + overflow block
+    // inline slots per stop; the hwm byte bounds inline + block chain
     bag_cap_ =
         env_cap("NIGIRI_GPU_MC_BAG_CAP", kMcBagCapDefault, 255U - kMcBagBlock);
     bags_.resize(static_cast<std::size_t>(n_locations) * bag_cap_);
     cudaMemsetAsync(thrust::raw_pointer_cast(bags_.data()), 0xFF,
                     bags_.size() * sizeof(mc_label_t), stream_);
+    // chained 8-slot blocks: pool scales with label demand, not with a
+    // worst-case per-stop row (68 B/block; the WW flood start needs ~1M)
     bag_pool_cap_ = env_cap(
         "NIGIRI_GPU_MC_BAG_POOL",
         static_cast<std::uint32_t>(std::min<std::size_t>(
-            std::max<std::size_t>(n_locations / 16U, 131'072U),
-            393'216U)),
-        1U << 22U);
+            std::max<std::size_t>(n_locations / 2U, 524'288U),
+            kMcBagPoolDefault * 4U)),
+        1U << 25U);
     bag_pool_.resize(static_cast<std::size_t>(bag_pool_cap_) * kMcBagBlock);
     cudaMemsetAsync(thrust::raw_pointer_cast(bag_pool_.data()), 0xFF,
                     bag_pool_.size() * sizeof(mc_label_t), stream_);
+    bag_next_.resize(bag_pool_cap_);
     bag_ovf_.resize(n_locations);
     cudaMemsetAsync(thrust::raw_pointer_cast(bag_ovf_.data()), 0xFF,
                     bag_ovf_.size() * sizeof(std::uint32_t), stream_);
@@ -131,6 +150,7 @@ struct gpu_mcraptor_state::impl {
         1U << 28U);
     et_task_list_.resize(et_tasks_cap_);
     et_task_off_.resize(et_tasks_cap_);
+    et_task_cnt_.resize(et_tasks_cap_);
     et_task_count_.resize(1U);
     et_entry_count_.resize(1U);
     et_pool_cap_ = env_cap("NIGIRI_GPU_MC_ET_POOL",
@@ -157,9 +177,14 @@ struct gpu_mcraptor_state::impl {
     // the last round of every execute) and prints it at teardown
     hwm_stats_ = std::getenv("NIGIRI_GPU_MC_STATS") != nullptr;
     if (hwm_stats_) {
-      hwm_stats_dev_.resize(3U);
+      hwm_stats_dev_.resize(4U);
       cudaMemsetAsync(thrust::raw_pointer_cast(hwm_stats_dev_.data()), 0,
-                      3U * sizeof(std::uint32_t), stream_);
+                      4U * sizeof(std::uint32_t), stream_);
+      // sparse-storage feasibility: union of touched locations over the
+      // whole run (per-start counts tracked in next_start_time)
+      touched_union_.resize(touched_.size());
+      cudaMemsetAsync(thrust::raw_pointer_cast(touched_union_.data()), 0,
+                      touched_union_.size() * sizeof(std::uint32_t), stream_);
     }
     validate_ = std::getenv("NIGIRI_GPU_MC_VALIDATE") != nullptr;
     if (validate_) {
@@ -186,25 +211,45 @@ struct gpu_mcraptor_state::impl {
     }
     bag_hist_ = std::getenv("NIGIRI_GPU_MC_BAG_HIST") != nullptr;
     if (bag_hist_) {
-      hist_dev_.resize(bag_cap_ + kMcBagBlock + 1U);
+      hist_dev_.resize(kMcMaxBagSlots + 1U);
       cudaMemsetAsync(thrust::raw_pointer_cast(hist_dev_.data()), 0,
                       hist_dev_.size() * sizeof(std::uint32_t), stream_);
-      hist_acc_.assign(bag_cap_ + kMcBagBlock + 1U, 0ULL);
+      hist_acc_.assign(kMcMaxBagSlots + 1U, 0ULL);
     }
   }
 
   ~impl() {
     if (hwm_stats_) {
-      auto v = std::vector<std::uint32_t>(3U);
+      auto v = std::vector<std::uint32_t>(4U);
       cudaMemcpy(v.data(), thrust::raw_pointer_cast(hwm_stats_dev_.data()),
-                 3U * sizeof(std::uint32_t), cudaMemcpyDeviceToHost);
+                 4U * sizeof(std::uint32_t), cudaMemcpyDeviceToHost);
       auto c = std::uint32_t{0U};  // the last query's count was never swept
       cudaMemcpy(&c, thrust::raw_pointer_cast(bag_pool_count_.data()),
                  sizeof(std::uint32_t), cudaMemcpyDeviceToHost);
+      // the final start's bags never pass through the sweep - include them
+      auto const last_max = thrust::reduce(
+          bag_hwm_.begin(), bag_hwm_.end(), std::uint8_t{0U},
+          thrust::maximum<std::uint8_t>{});
       std::fprintf(stderr,
                    "MCHWM tasks_per_round=%u pool_entries_per_round=%u "
-                   "arena_per_start=%u bag_blocks=%u\n",
-                   v[0], v[1], v[2], std::max(bag_blocks_hwm_, c));
+                   "arena_per_start=%u bag_blocks=%u bag_hwm_peak=%u\n",
+                   v[0], v[1], v[2], std::max(bag_blocks_hwm_, c),
+                   std::max(v[3], static_cast<std::uint32_t>(last_max)));
+      auto tu = std::uint64_t{0U};
+      if (!touched_union_.empty()) {
+        tu = thrust::transform_reduce(touched_union_.begin(),
+                                      touched_union_.end(), mc_popc{},
+                                      std::uint64_t{0U},
+                                      thrust::plus<std::uint64_t>{});
+      }
+      std::fprintf(
+          stderr,
+          "MCTOUCH max_per_start=%u avg_per_start=%" PRIu64 " starts=%" PRIu64
+          " union=%" PRIu64 " n_locations=%zu\n",
+          touched_start_max_,
+          touched_starts_ != 0U ? touched_start_sum_ / touched_starts_
+                                : std::uint64_t{0U},
+          touched_starts_, tu, bag_hwm_.size());
     }
     if (lock_stats_) {
       auto v = std::vector<unsigned long long>(4U);
@@ -317,6 +362,7 @@ struct gpu_mcraptor_state::impl {
 
   thrust::device_vector<mc_label_t> bags_;
   thrust::device_vector<mc_label_t> bag_pool_;
+  thrust::device_vector<std::uint32_t> bag_next_;
   thrust::device_vector<std::uint32_t> bag_ovf_;
   thrust::device_vector<std::uint32_t> bag_pool_count_;
   std::uint32_t bag_pool_cap_;
@@ -347,6 +393,7 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> task_bits_;
   thrust::device_vector<std::uint32_t> route_task_start_;
   thrust::device_vector<std::uint32_t> et_task_off_;
+  thrust::device_vector<std::uint8_t> et_task_cnt_;
   thrust::device_vector<std::uint32_t> et_entry_count_;
   thrust::device_vector<std::uint32_t> route_entry_count_;
   thrust::device_vector<std::uint64_t> route_single_entry_;
@@ -362,6 +409,10 @@ struct gpu_mcraptor_state::impl {
   bool hwm_stats_{false};
   thrust::device_vector<std::uint32_t> hwm_stats_dev_;
   std::uint32_t bag_blocks_hwm_{0U};
+  std::uint32_t touched_start_max_{0U};
+  std::uint64_t touched_start_sum_{0U};
+  std::uint64_t touched_starts_{0U};
+  thrust::device_vector<std::uint32_t> touched_union_;
   // debug (NIGIRI_GPU_MC_VALIDATE): bag invariant checks + block claim map
   bool validate_{false};
   thrust::device_vector<std::uint32_t> validate_claim_;
@@ -459,10 +510,26 @@ __global__ void mc_bag_validate_kernel(mcraptor_impl<SearchDir, WithCost> r,
         printf("VALIDBG k=%u stranded l=%u hwm=%u ovf=%u\n", round, l, hwm,
                ovf);
       }
-      auto const prev = atomicExch(claim + ovf, l);
-      if (prev != ~0U) {
-        printf("VALIDBG k=%u DUP block=%u l1=%u l2=%u\n", round, ovf, prev,
-               l);
+      // every block of the chain is owned by exactly one stop, and the
+      // chain is exactly long enough for the hwm
+      auto const want =
+          hwm > r.bag_cap_
+              ? (hwm - r.bag_cap_ + kMcBagBlock - 1U) / kMcBagBlock
+              : 0U;
+      auto b = ovf;
+      auto len = 0U;
+      while (b != ~0U && len != want) {
+        auto const prev = atomicExch(claim + b, l);
+        if (prev != ~0U) {
+          printf("VALIDBG k=%u DUP block=%u l1=%u l2=%u\n", round, b, prev,
+                 l);
+        }
+        b = r.bag_next_[b];
+        ++len;
+      }
+      if (len != want) {
+        printf("VALIDBG k=%u SHORT-CHAIN l=%u hwm=%u len=%u want=%u\n", round,
+               l, hwm, len, want);
       }
     }
   }
@@ -579,7 +646,9 @@ __global__ void mc_reconstruct_kernel(
     mcraptor_impl<SearchDir, WithCost> r,
     gpu_journey* const out) {
   auto const tid = blockIdx.x * blockDim.x + threadIdx.x;
-  auto const per_dest = r.bag_cap_ + kMcBagBlock;
+  // full chain capacity: a dest bag can use every slot the u8 hwm
+  // allows (inline + all chained blocks), not just inline + one block
+  auto const per_dest = kMcMaxBagSlots;
   if (tid >= n_dest * per_dest) {
     return;
   }
@@ -595,6 +664,7 @@ __global__ void mc_reconstruct_kernel(
 __global__ void mc_bag_hist_kernel(std::uint64_t const* const bags,
                                    std::uint64_t const* const pool,
                                    std::uint32_t const* const ovf,
+                                   std::uint32_t const* const nxt,
                                    std::uint32_t const n_locations,
                                    std::uint32_t const cap,
                                    std::uint32_t* const hist) {
@@ -608,14 +678,17 @@ __global__ void mc_bag_hist_kernel(std::uint64_t const* const bags,
         ++n;
       }
     }
-    if (ovf[l] != ~0U) {
-      auto const* const o =
-          pool + static_cast<std::size_t>(ovf[l]) * kMcBagBlock;
+    auto blk = ovf[l];
+    auto hops = 0U;
+    while (blk != ~0U && hops != kMcMaxBagSlots / kMcBagBlock) {
+      auto const* const o = pool + static_cast<std::size_t>(blk) * kMcBagBlock;
       for (auto i = 0U; i != kMcBagBlock; ++i) {
         if (o[i] != kMcEmptySlot) {
           ++n;
         }
       }
+      blk = nxt[blk];
+      ++hops;
     }
     if (n != 0U) {
       atomicAdd(hist + n, 1U);
@@ -759,6 +832,7 @@ mcraptor_impl<SearchDir, WithCost> make_impl(
       .bags_ = thrust::raw_pointer_cast(s.bags_.data()),
       .bag_pool_ = thrust::raw_pointer_cast(s.bag_pool_.data()),
       .bag_ovf_ = thrust::raw_pointer_cast(s.bag_ovf_.data()),
+      .bag_next_ = thrust::raw_pointer_cast(s.bag_next_.data()),
       .bag_pool_count_ = thrust::raw_pointer_cast(s.bag_pool_count_.data()),
       .bag_pool_cap_ = s.bag_pool_cap_,
       .reuse_bags_ = thrust::raw_pointer_cast(s.reuse_bags_[dir_idx].data()),
@@ -812,6 +886,7 @@ mcraptor_impl<SearchDir, WithCost> make_impl(
       .route_task_start_ =
           thrust::raw_pointer_cast(s.route_task_start_.data()),
       .et_task_off_ = thrust::raw_pointer_cast(s.et_task_off_.data()),
+      .et_task_cnt_ = thrust::raw_pointer_cast(s.et_task_cnt_.data()),
       .et_entry_count_ = thrust::raw_pointer_cast(s.et_entry_count_.data()),
       .et_pool_cap_ = s.et_pool_cap_,
       .et_tasks_cap_ = s.et_tasks_cap_,
@@ -830,6 +905,22 @@ void gpu_mcraptor<SearchDir, WithCost>::next_start_time() {
   auto const r = make_impl<SearchDir, WithCost>(
       s, kDirIdx, transfer_time_settings_, allowed_claszes_, 0U, base_,
       worst_at_dest_, 0U, 0, {});
+  if (s.hwm_stats_) {
+    // sparse-storage feasibility: distinct locations written this start
+    // (touched_ is consumed by the sweep below, so count first)
+    auto const cnt = thrust::transform_reduce(
+        thrust::cuda::par.on(s.stream_), s.touched_.begin(), s.touched_.end(),
+        mc_popc{}, 0U, thrust::plus<std::uint32_t>{});
+    if (cnt != 0U) {
+      s.touched_start_max_ = std::max(s.touched_start_max_, cnt);
+      s.touched_start_sum_ += cnt;
+      ++s.touched_starts_;
+      thrust::transform(thrust::cuda::par.on(s.stream_), s.touched_.begin(),
+                        s.touched_.end(), s.touched_union_.begin(),
+                        s.touched_union_.begin(),
+                        thrust::bit_or<std::uint32_t>{});
+    }
+  }
   mc_launch(mc_clear_bags_kernel<SearchDir, WithCost>, s.stream_, r);
   if (s.hwm_stats_) {  // counter is monotone within a query - read = max
     auto c = std::uint32_t{0U};
@@ -986,9 +1077,10 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
     mc_bag_hist_kernel<<<512, 256, 0, s.stream_>>>(
         thrust::raw_pointer_cast(s.bags_.data()),
         thrust::raw_pointer_cast(s.bag_pool_.data()),
-        thrust::raw_pointer_cast(s.bag_ovf_.data()), s.tt_.n_locations_,
+        thrust::raw_pointer_cast(s.bag_ovf_.data()),
+        thrust::raw_pointer_cast(s.bag_next_.data()), s.tt_.n_locations_,
         s.bag_cap_, thrust::raw_pointer_cast(s.hist_dev_.data()));
-    auto hist = std::vector<std::uint32_t>(s.bag_cap_ + kMcBagBlock + 1U);
+    auto hist = std::vector<std::uint32_t>(kMcMaxBagSlots + 1U);
     CUDA_CHECK(cudaMemcpyAsync(
         hist.data(), thrust::raw_pointer_cast(s.hist_dev_.data()),
         hist.size() * sizeof(std::uint32_t), cudaMemcpyDeviceToHost,
@@ -1014,7 +1106,7 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
   }
 
   auto const n_dest = static_cast<std::uint32_t>(dest_list.size());
-  auto const total = n_dest * (s.bag_cap_ + kMcBagBlock);
+  auto const total = n_dest * kMcMaxBagSlots;
 
   auto* const dest_pin = s.rec_dest_pin_.ensure(dest_list.size());
   std::copy(dest_list.begin(), dest_list.end(), dest_pin);
@@ -1070,7 +1162,15 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
     }
 
     auto j = journey{};
-    j.start_time_ = start_time;
+    // tight starts (pong ping, see set_tight_start): re-anchor at the
+    // journey's latest feasible departure so the result pareto prices
+    // real dep-normalized cost instead of the step frame (whose phantom
+    // waiting collapses cost-pareto variants). CPU tighten_start 1:1.
+    j.start_time_ =
+        tight_start_
+            ? start_time + duration_t{static_cast<duration_t::rep>(
+                               gj.start_shift_)}
+            : start_time;
     j.dest_time_ = delta_to_unix(base(), gj.dest_time_);
     j.dest_ = gj.dest_l_;
     j.transfers_ = gj.transfers_;

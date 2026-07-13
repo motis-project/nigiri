@@ -480,6 +480,19 @@ struct basic_mcraptor {
                profile_idx_t prf_idx,
                pareto_set<journey>& results);
 
+  // tight starts (pong ping): the ping runs its whole window as ONE step,
+  // so the step start contains waiting until each journey's first boarding
+  // and result-pareto decisions in the step frame collapse dep-normalized
+  // cost-pareto variants (later-departing-but-cheaper journeys look
+  // dominated). With tight starts, collect_dest_journeys re-anchors every
+  // journey at its latest feasible departure (first boarding minus the
+  // minimum ingress walk) before the result-pareto add - exactly the
+  // journey search.h would report, because its steps ARE the concrete
+  // departures (zero wait before the first boarding by construction; the
+  // arrival side is always tight). The pong re-derives departures anyway,
+  // so ping start times are anchor-internal.
+  void set_tight_start() { tight_start_ = true; }
+
   // Core legs are materialized by execute() (breadcrumb chase); this only
   // adds first/last-mile offset legs and the start footpath.
   void reconstruct(query const&, journey&);
@@ -516,6 +529,8 @@ private:
                       Criteria const&,
                       std::uint32_t breadcrumb_idx,
                       unixtime_t start_time);
+  unixtime_t tighten_start(std::uint32_t breadcrumb_idx,
+                           unixtime_t step_start);
 
   transport get_earliest_transport(route_idx_t,
                                    stop_idx_t,
@@ -626,6 +641,7 @@ private:
   // onto every label inserted this execute so range reuse can compare
   // labels across departures (see label::dep_).
   delta_t cur_dep_{};
+  bool tight_start_{false};  // see set_tight_start()
   // this execute's round-0 seeds (stop, seeded stop time in delta units),
   // recorded by add_start and inserted with the ingress walking duration at
   // the top of execute (the query start time is only known then). A list -

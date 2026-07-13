@@ -200,6 +200,15 @@ routing_result pong(timetable const& tt,
                           q.require_car_transport_,
                           q.prf_idx_ == 2U,
                           q.transfer_time_settings_};
+  if constexpr (requires { ping.set_tight_start(); }) {
+    // the ping sweeps its whole window in one step: without tight starts
+    // its journeys are priced from the step start and the contained
+    // phantom waiting collapses dep-normalized cost-pareto variants
+    // before they can become pong anchors (the dual of the phantom-wait
+    // DROP case below). Tight starts re-anchor every ping journey at its
+    // latest feasible departure - search.h semantics.
+    ping.set_tight_start();
+  }
 
   // ====
   // PONG

@@ -739,10 +739,15 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::collect_dest_journeys(
         state_.bag_, static_cast<std::uint32_t>(i),
         static_cast<std::uint8_t>(k), cur_dep_,
         [&](Criteria const& e_crit, std::uint32_t const e_breadcrumb) {
+          auto const j_start =
+              tight_start_
+                  ? tighten_start(e_breadcrumb & state_t::kBreadcrumbMask,
+                                  start_time)
+                  : start_time;
           // check dominance before materializing the legs: most candidates
           // are rejected and materialization allocates (journey legs)
           auto probe = journey{};
-          probe.start_time_ = start_time;
+          probe.start_time_ = j_start;
           probe.dest_time_ = to_unix(e_crit.arr_);
           probe.dest_ = location_idx_t{i};
           probe.transfers_ = static_cast<std::uint8_t>(k - 1U);
@@ -750,11 +755,80 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::collect_dest_journeys(
           if (results.is_dominated(probe)) {
             return;
           }
-          results.add(materialize(location_idx_t{i}, k, e_crit,
-                                  e_breadcrumb & state_t::kBreadcrumbMask,
-                                  start_time));
+          auto j = materialize(location_idx_t{i}, k, e_crit,
+                               e_breadcrumb & state_t::kBreadcrumbMask,
+                               j_start);
+          results.add(std::move(j));
         });
   });
+}
+
+// Latest feasible departure of the journey behind a destination label
+// (see set_tight_start): chase the breadcrumbs to the first ride, recover
+// its boarding departure, and re-anchor at the minimum-walk round-0 label
+// of the boarding stop that still makes that departure. Minimum walk =
+// latest origin departure AND minimum ingress surcharge, so it is also
+// the label the route scan boarded (walk surcharge is monotone in the
+// duration). Falls back to the step start defensively - the ride was
+// boarded from a feasible round-0 label and round-0 labels are only ever
+// evicted by better (still feasible) round-0 labels, so the scan finds one.
+template <direction SearchDir, typename Criteria, bool RangeReuse>
+unixtime_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::tighten_start(
+    std::uint32_t const breadcrumb_idx, unixtime_t const step_start) {
+  auto li = breadcrumb_idx;
+  if (li == state_t::kNoBreadcrumb) {
+    return step_start;
+  }
+  while (state_.breadcrumbs_[li].parent_ != state_t::kNoBreadcrumb) {
+    li = state_.breadcrumbs_[li].parent_;
+  }
+  auto const& bc = state_.breadcrumbs_[li];
+  auto const t_idx = transport_idx_t{bc_transport(bc.payload_)};
+  auto const board = static_cast<stop_idx_t>(bc_board(bc.payload_));
+  auto const alight = static_cast<stop_idx_t>(bc_alight(bc.payload_));
+  auto const r = tt_.transport_route_[t_idx];
+  auto const arr_ev = kFwd ? event_type::kArr : event_type::kDep;
+  auto const dep_ev = kFwd ? event_type::kDep : event_type::kArr;
+
+  // traffic-day recovery: materialize's two-candidate rule
+  auto const event_day_offset =
+      tt_.event_mam(r, t_idx, alight, arr_ev).count() / 1440;
+  auto const arr_day = as_int(split(bc.arr_).first);
+  auto dep_at_board = kInvalid;
+  for (auto off = 0; off != 2; ++off) {
+    auto const cand = arr_day - event_day_offset - (kFwd ? off : -off);
+    if (cand < 0) {
+      continue;
+    }
+    auto const cand_day = day_idx_t{static_cast<day_idx_t::value_t>(cand)};
+    if (!tt_.is_transport_active(t_idx, cand_day)) {
+      continue;
+    }
+    auto const tr = transport{t_idx, cand_day};
+    if (is_better_or_eq(time_at_stop(r, tr, alight, arr_ev), bc.arr_)) {
+      dep_at_board = time_at_stop(r, tr, board, dep_ev);
+      break;
+    }
+  }
+  if (dep_at_board == kInvalid) {
+    return step_start;
+  }
+
+  auto const board_loc = stop{tt_.route_location_seq_[r][board]}.location_idx();
+  auto best = kInvalid;
+  for_each_label_in_round<Criteria>(
+      state_.bag_, static_cast<std::uint32_t>(to_idx(board_loc)),
+      std::uint8_t{0U}, cur_dep_,
+      [&](Criteria const& c, std::uint32_t) {
+        if (is_better_or_eq(c.arr_, dep_at_board) && is_better(c.arr_, best)) {
+          best = c.arr_;
+        }
+      });
+  if (best == kInvalid) {
+    return step_start;
+  }
+  return step_start +
+         duration_t{static_cast<duration_t::rep>(dep_at_board - best)};
 }
 
 template <direction SearchDir, typename Criteria, bool RangeReuse>

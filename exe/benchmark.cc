@@ -212,6 +212,7 @@ std::vector<double> run_load(
 struct cell_result {
   compare_stats stats_;
   std::vector<pareto_set<routing::journey>> cpu_res_;
+  std::vector<interval<unixtime_t>> cpu_itv_;
   std::vector<double> cpu_lat_;
 };
 
@@ -247,7 +248,8 @@ cell_result run_config(
 
   auto& cpu_res = out.cpu_res_;
   cpu_res.resize(queries.size());
-  auto cpu_itv = std::vector<interval<unixtime_t>>(queries.size());
+  auto& cpu_itv = out.cpu_itv_;
+  cpu_itv.resize(queries.size());
   auto gpu_itv = std::vector<interval<unixtime_t>>(queries.size());
   if (run_cpu) {
     // one worker struct per algo state type; pong only exists for the
@@ -493,6 +495,11 @@ int main(int argc, char* argv[]) {
       ("min_connection_count,m",
        bpo::value<std::uint32_t>(&gs.min_connection_count_)->default_value(5U),
        "the minimum number of connections to find with each query")  //
+      ("cross", bpo::bool_switch()->default_value(false),
+       "cross-validate two algos (e.g. pong-mcraptor-cost vs mcraptor-cost): "
+       "results must be gap-free consistent up to the shorter result's last "
+       "connection, and min_connection_count must be satisfied by both or "
+       "neither")  //
       ("extend_interval_earlier,e",
        bpo::value<bool>(&gs.extend_interval_earlier_)
            ->default_value(true, "true"),
@@ -738,6 +745,43 @@ int main(int argc, char* argv[]) {
       generate_queries(qs, n_queries, tt, rs, seed);
     }
 
+    // NIGIRI_BENCH_DUMP_QUERY="i,j,...": print the generated queries'
+    // start/dest (debug aid for triaging specific query indices)
+    if (auto const* dump = std::getenv("NIGIRI_BENCH_DUMP_QUERY");
+        dump != nullptr) {
+      auto const print_pos = [&](char const* tag, auto const& v) {
+        std::visit(utl::overloaded{
+                       [&](location_idx_t const l) {
+                         std::cout << tag << " location "
+                                   << tt.locations_.ids_[l].view();
+                       },
+                       [&](geo::latlng const& pos) {
+                         std::cout << tag << " " << pos.lat_ << "," << pos.lng_;
+                       }},
+                   v);
+      };
+      auto ss2 = std::stringstream{dump};
+      auto tok2 = std::string{};
+      while (std::getline(ss2, tok2, ',')) {
+        auto const i = static_cast<std::size_t>(std::atoll(tok2.c_str()));
+        if (i >= qs.size()) {
+          continue;
+        }
+        std::cout << "QDUMP #" << i << " ";
+        print_pos("from", qs[i].start_);
+        print_pos("  to", qs[i].dest_);
+        std::cout << "  start=" << std::visit(
+            utl::overloaded{[](interval<unixtime_t> const& iv) {
+                              return iv.from_;
+                            },
+                            [](unixtime_t const t) { return t; }},
+            qs[i].q_.start_time_)
+                  << "\n";
+      }
+      return 0;
+    }
+
+    auto mode_cells = std::vector<std::pair<std::string, cell_result>>{};
     for (auto const& algo : algos) {
       auto const label = mode + "-" + algo;
       auto cell = cell_result{};
@@ -750,6 +794,9 @@ int main(int argc, char* argv[]) {
         summary.push_back(fmt::format("{:<40} EXCEPTION: {}", label, e.what()));
         total.gpu_misses_ += 1U;
         continue;
+      }
+      if (vm["cross"].as<bool>()) {
+        mode_cells.emplace_back(algo, cell);
       }
 
       summary.push_back(
@@ -769,6 +816,96 @@ int main(int argc, char* argv[]) {
 
       ++qa_n_cells;
       qa_cell = std::move(cell);
+    }
+
+    // --cross: pong must agree with the range search up to its LAST
+    // connection - the range result naturally extends further (search.h
+    // finds everything in its window, pong stops at min_connection_count),
+    // but there may be NO GAPS before that point, and the
+    // min_connection_count contract must be met by both or neither.
+    // The window is clipped to where both engines actually searched.
+    if (vm["cross"].as<bool>()) {
+      if (mode_cells.size() != 2U || !run_cpu) {
+        std::cerr << "--cross needs exactly two --algo entries + cpu engine\n";
+      } else {
+        auto const dominates = [](routing::journey const& a,
+                                  routing::journey const& b) {
+          return a.start_time_ >= b.start_time_ &&
+                 a.dest_time_ <= b.dest_time_ &&
+                 a.transfers_ <= b.transfers_ &&
+                 a.criteria_cost_ <= b.criteria_cost_;
+        };
+        // order by |result|: a = the shorter (pong), b = the longer (range)
+        auto viol = 0U;
+        for (auto i = std::size_t{0U}; i != qs.size(); ++i) {
+          auto const& c0 = mode_cells[0].second;
+          auto const& c1 = mode_cells[1].second;
+          auto const swap = c1.cpu_res_[i].size() < c0.cpu_res_[i].size();
+          auto const& a = swap ? c1 : c0;  // shorter result
+          auto const& b = swap ? c0 : c1;  // longer result
+          auto const& av = a.cpu_res_[i];
+          auto const& bv = b.cpu_res_[i];
+
+          // relaxed rule (user decision 2026-07-12): only the common
+          // prefix min(N, M) must be gap-free consistent within the
+          // window both algorithms actually searched. NO count contract:
+          // the two stopping rules legitimately differ (search.h has a
+          // bounded interval estimator; pong's cutoff counts too-slow
+          // journeys against termination to survive the dominated-by-
+          // direct case).
+          auto bad = false;
+
+          if (!av.empty()) {
+            auto last_dep = unixtime_t::min();
+            for (auto const& j : av) {
+              last_dep = std::max(last_dep, j.start_time_);
+            }
+            auto const w_from =
+                std::max(a.cpu_itv_[i].from_, b.cpu_itv_[i].from_);
+            auto const w_to = std::min(
+                {last_dep, a.cpu_itv_[i].to_ - unixtime_t::duration{1},
+                 b.cpu_itv_[i].to_ - unixtime_t::duration{1}});
+            auto const in_w = [&](routing::journey const& j) {
+              return j.start_time_ >= w_from && j.start_time_ <= w_to;
+            };
+            auto const covered = [&](routing::journey const& j,
+                                     auto const& by) {
+              return utl::any_of(
+                  by, [&](routing::journey const& o) { return dominates(o, j); });
+            };
+            for (auto const& j : av) {
+              bad |= in_w(j) && !covered(j, bv);
+            }
+            for (auto const& j : bv) {
+              bad |= in_w(j) && !covered(j, av);  // a gap in the prefix
+            }
+          }
+
+          if (bad) {
+            ++viol;
+            std::cout << "CROSS MISMATCH query #" << i << " |"
+                      << mode_cells[0].first
+                      << "|=" << c0.cpu_res_[i].size() << " itv "
+                      << c0.cpu_itv_[i] << " |" << mode_cells[1].first
+                      << "|=" << c1.cpu_res_[i].size() << " itv "
+                      << c1.cpu_itv_[i] << "\n";
+            for (auto const& [nm, c] : mode_cells) {
+              std::cout << "  " << nm << ":";
+              for (auto const& j : c.cpu_res_[i]) {
+                std::cout << " [dep=" << j.start_time_
+                          << " arr=" << j.dest_time_
+                          << " t=" << unsigned{j.transfers_}
+                          << " c=" << j.criteria_cost_ << "]";
+              }
+              std::cout << "\n";
+            }
+          }
+        }
+        summary.push_back(fmt::format(
+            "CROSS {:<34} n={:<6} mismatches={:<4} {}", mode,
+            qs.size(), viol, viol == 0U ? "PASS" : "FAIL"));
+        total.gpu_misses_ += viol;
+      }
     }
   }
 

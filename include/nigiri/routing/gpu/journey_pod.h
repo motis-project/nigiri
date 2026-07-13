@@ -39,6 +39,12 @@ struct gpu_journey {
   // generalized-cost extras of the label (mcraptor cost config; the host
   // adds the elapsed part) - unused by the single-criterion raptor
   std::uint16_t criteria_cost_;
+  // tight-start shift (mcraptor, see gpu_mcraptor::set_tight_start):
+  // journey's latest feasible departure minus the step start, i.e. first
+  // boarding departure minus the minimum-walk feasible round-0 label of
+  // the boarding stop. 0 when unavailable. Unused by the single-criterion
+  // raptor.
+  delta_t start_shift_;
   location_idx_t start_l_;
   gpu_journey_leg legs_[kMaxRecLegs];
 };
