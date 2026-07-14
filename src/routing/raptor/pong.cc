@@ -118,7 +118,7 @@ routing_result pong(timetable const& tt,
              ping_lb);
   }
   lb_time += std::chrono::steady_clock::now() - ping_lb_start;
-  auto ping_lb_rounds = lb_transit_legs<SearchDir>(tt, q, rtt);
+  auto ping_lb_rounds = lb_transit_legs<SearchDir>(tt, q, rtt, kGpu);
 
   auto ping = ping_algo_t{tt,
                           rtt,
@@ -168,7 +168,7 @@ routing_result pong(timetable const& tt,
              pong_lb);
   }
   lb_time += std::chrono::steady_clock::now() - pong_lb_start;
-  auto pong_lb_rounds = lb_transit_legs<flip(SearchDir)>(tt, q, rtt);
+  auto pong_lb_rounds = lb_transit_legs<flip(SearchDir)>(tt, q, rtt, kGpu);
 
   auto pong = pong_algo_t{tt,
                           rtt,

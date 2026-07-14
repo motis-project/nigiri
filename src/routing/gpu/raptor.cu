@@ -505,6 +505,7 @@ gpu_raptor<SearchDir>::gpu_raptor(
     std::vector<std::uint16_t> const& dist_to_dest,
     hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
     std::vector<std::uint16_t> const& /* lb (GPU: no lower bounds) */,
+    lb_transit_legs<SearchDir>& /* lb_rounds (GPU: no lower bounds) */,
     std::vector<via_stop> const& via_stops,
     day_idx_t const base,
     clasz_mask_t const allowed_claszes,
