@@ -353,7 +353,8 @@ bool update_run(source_idx_t const src,
     while (upd_it != end(stus)) {
       matches = (r.is_scheduled() && upd_it->has_stop_sequence() &&
                  upd_it->stop_sequence() == *seq_it) ||
-                upd_it->stop_id() == tt.locations_.ids_[loc_idx].view();
+                (upd_it->has_stop_id() &&
+                 upd_it->stop_id() == tt.locations_.ids_[loc_idx].view());
 
       if (matches || upd_it->has_stop_sequence() || !upd_it->has_stop_id()) {
         break;
