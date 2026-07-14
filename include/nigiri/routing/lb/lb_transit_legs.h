@@ -5,6 +5,8 @@
 #include <mutex>
 #include <numeric>
 
+#include "utl/erase_duplicates.h"
+
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -94,12 +96,30 @@ struct lb_components {
     for (auto l = std::uint32_t{0U}; l != n; ++l) {
       comp_locations_[pos[comp_[l]]++] = location_idx_t{l};
     }
+
+    comp_route_offsets_.resize(n_components_ + 1U);
+    comp_route_offsets_[0U] = 0U;
+    auto routes = std::vector<route_idx_t>{};
+    for (auto c = std::uint32_t{0U}; c != n_components_; ++c) {
+      routes.clear();
+      for (auto i = comp_loc_offsets_[c]; i != comp_loc_offsets_[c + 1U]; ++i) {
+        for (auto const r : tt.location_routes_[comp_locations_[i]]) {
+          routes.push_back(r);
+        }
+      }
+      utl::erase_duplicates(routes);
+      comp_routes_.insert(end(comp_routes_), begin(routes), end(routes));
+      comp_route_offsets_[c + 1U] =
+          static_cast<std::uint32_t>(comp_routes_.size());
+    }
   }
 
   std::uint32_t n_components_{0U};
   std::vector<std::uint32_t> comp_;  // location -> component id
   std::vector<std::uint32_t> comp_loc_offsets_;
   std::vector<location_idx_t> comp_locations_;
+  std::vector<std::uint32_t> comp_route_offsets_;
+  std::vector<route_idx_t> comp_routes_;
 };
 
 // SearchDir refers to the direction of the main routing query
@@ -183,14 +203,15 @@ struct lb_transit_legs {
 
     any_marked_ = false;
     comp_mark_.for_each_set_bit([&](std::uint64_t const c) {
-      for (auto i = comps_->comp_loc_offsets_[c];
-           i != comps_->comp_loc_offsets_[c + 1U]; ++i) {
-        auto const l = comps_->comp_locations_[i];
-        for (auto const r : tt_.location_routes_[l]) {
-          any_marked_ = true;
-          route_mark_.set(to_idx(r), true);
-        }
-        if (rtt_ != nullptr) {
+      for (auto i = comps_->comp_route_offsets_[c];
+           i != comps_->comp_route_offsets_[c + 1U]; ++i) {
+        any_marked_ = true;
+        route_mark_.set(to_idx(comps_->comp_routes_[i]), true);
+      }
+      if (rtt_ != nullptr) {
+        for (auto i = comps_->comp_loc_offsets_[c];
+             i != comps_->comp_loc_offsets_[c + 1U]; ++i) {
+          auto const l = comps_->comp_locations_[i];
           for (auto const rt_t : rtt_->location_rt_transports_[l]) {
             any_marked_ = true;
             rt_transport_mark_.set(to_idx(rt_t), true);
