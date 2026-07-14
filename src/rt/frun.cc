@@ -21,6 +21,8 @@ constexpr auto const kUnknownProvider =
     provider{.id_ = string_idx_t::invalid(),
              .name_ = kEmptyTranslation,
              .url_ = kEmptyTranslation,
+             .fare_url_ = kEmptyTranslation,
+             .ticketing_link_ = ticketing_link_idx_t::invalid(),
              .src_ = source_idx_t::invalid()};
 
 stop run_stop::get_stop() const {
@@ -100,6 +102,13 @@ std::pair<date::sys_days, duration_t> run_stop::get_trip_start(
 std::string_view run_stop::track(lang_t const& lang) const {
   auto const l = get_location_idx();
   return tt().translate(lang, tt().locations_.platform_codes_.at(l));
+}
+
+std::optional<std::string_view> run_stop::get_track_override(
+    event_type const ev_type) const {
+  return (fr_->is_rt() && rtt() != nullptr)
+             ? rtt()->get_track(fr_->rt_, stop_idx_, ev_type)
+             : std::nullopt;
 }
 
 geo::latlng run_stop::pos() const {
@@ -280,6 +289,11 @@ std::pair<timetable::route_ids const*, route_id_idx_t> run_stop::get_route(
   } else {
     return {nullptr, route_id_idx_t::invalid()};
   }
+}
+
+route_id_idx_t run_stop::get_route_id_idx(event_type const ev_type) const {
+  auto const [_, route_id_idx] = get_route(ev_type);
+  return route_id_idx;
 }
 
 std::string_view run_stop::get_route_id(event_type const ev_type) const {

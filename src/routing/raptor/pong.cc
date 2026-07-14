@@ -1,6 +1,7 @@
 #include "nigiri/routing/raptor/pong.h"
 
 #include <ranges>
+#include <type_traits>
 
 #include "utl/helpers/algorithm.h"
 #include "utl/sorted_diff.h"
@@ -9,6 +10,7 @@
 #include "nigiri/location_match_mode.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_earliest_transport.h"
+#include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/lb/lb_transit_legs.h"
 #include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/transfer_time_settings.h"
@@ -45,15 +47,25 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
 
-template <direction SearchDir, bool Rt, via_offset_t Vias>
+template <direction SearchDir, bool Rt, via_offset_t Vias, typename AlgoState>
 routing_result pong(timetable const& tt,
                     rt_timetable const* rtt,
                     search_state& s_state,
-                    raptor_state& r_state,
+                    AlgoState& r_state,
                     query q,
                     std::optional<std::chrono::seconds> timeout) {
   constexpr auto kFwd = (SearchDir == direction::kForward);
 
+  using ping_algo_t =
+      std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+                         gpu::gpu_raptor<SearchDir>,
+                         raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>>;
+  using pong_algo_t = std::conditional_t<
+      std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+      gpu::gpu_raptor<flip(SearchDir)>,
+      raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>>;
+
+  s_state.results_.clear();
   q.sanitize(tt);
 
   auto const processing_start_time = std::chrono::steady_clock::now();
@@ -78,20 +90,7 @@ routing_result pong(timetable const& tt,
   // ====
   // PING
   // ----
-  UTL_START_TIMING(ping_lb);
-  auto ping_lb_time = std::vector<std::uint16_t>{};
-  dijkstra(tt, q,
-           (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
-                 : tt.bwd_search_lb_graph_[q.prf_idx_]),
-           (rtt == nullptr ? nullptr
-                           : &(kFwd ? rtt->fwd_search_lb_graph_has_edges_
-                                    : rtt->bwd_search_lb_graph_has_edges_)),
-           (rtt == nullptr ? nullptr
-                           : &(kFwd ? rtt->fwd_search_lb_graph_
-                                    : rtt->bwd_search_lb_graph_)),
-           ping_lb_time);
-  UTL_STOP_TIMING(ping_lb);
-  auto ping_lb_rounds = lb_transit_legs<SearchDir>(tt, q, rtt);
+  constexpr auto const kGpu = std::is_same_v<AlgoState, gpu::gpu_raptor_state>;
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
@@ -102,43 +101,46 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, ping_is_via[i]);
   }
 
-  auto ping = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>{
-      tt,
-      rtt,
-      r_state,
-      ping_is_dest,
-      ping_is_via,
-      ping_dist_to_dest,
-      q.td_dest_,
-      ping_lb_time,
-      ping_lb_rounds,
-      q.via_stops_,
-      base_day,
-      q.allowed_claszes_,
-      q.require_bike_transport_,
-      q.require_car_transport_,
-      q.prf_idx_ == 2U,
-      q.transfer_time_settings_};
+  auto lb_time = std::chrono::steady_clock::duration{};
+  auto const ping_lb_start = std::chrono::steady_clock::now();
+  auto ping_lb = std::vector<std::uint16_t>{};
+  if constexpr (ping_algo_t::kUseLowerBounds) {
+    dijkstra(tt, q,
+             (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
+                   : tt.bwd_search_lb_graph_[q.prf_idx_]),
+             ((rtt == nullptr || kGpu)
+                  ? nullptr
+                  : &(kFwd ? rtt->fwd_search_lb_graph_has_edges_
+                           : rtt->bwd_search_lb_graph_has_edges_)),
+             ((rtt == nullptr || kGpu) ? nullptr
+                                       : &(kFwd ? rtt->fwd_search_lb_graph_
+                                                : rtt->bwd_search_lb_graph_)),
+             ping_lb);
+  }
+  lb_time += std::chrono::steady_clock::now() - ping_lb_start;
+  auto ping_lb_rounds = lb_transit_legs<SearchDir>(tt, q, rtt);
+
+  auto ping = ping_algo_t{tt,
+                          rtt,
+                          r_state,
+                          ping_is_dest,
+                          ping_is_via,
+                          ping_dist_to_dest,
+                          q.td_dest_,
+                          ping_lb,
+                          ping_lb_rounds,
+                          q.via_stops_,
+                          base_day,
+                          q.allowed_claszes_,
+                          q.require_bike_transport_,
+                          q.require_car_transport_,
+                          q.prf_idx_ == 2U,
+                          q.transfer_time_settings_};
 
   // ====
   // PONG
   // ----
   q.flip_dir();
-
-  UTL_START_TIMING(pong_lb);
-  auto pong_lb_time = std::vector<std::uint16_t>{};
-  dijkstra(tt, q,
-           (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
-                 : tt.fwd_search_lb_graph_[q.prf_idx_]),
-           (rtt == nullptr ? nullptr
-                           : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
-                                    : rtt->fwd_search_lb_graph_has_edges_)),
-           (rtt == nullptr ? nullptr
-                           : &(kFwd ? rtt->bwd_search_lb_graph_
-                                    : rtt->fwd_search_lb_graph_)),
-           pong_lb_time);
-  UTL_STOP_TIMING(pong_lb);
-  auto pong_lb_rounds = lb_transit_legs<flip(SearchDir)>(tt, q, rtt);
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
   auto pong_is_dest = bitvec{};
@@ -150,23 +152,40 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, pong_is_via[i]);
   }
 
-  auto pong = raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>{
-      tt,
-      rtt,
-      r_state,
-      pong_is_dest,
-      pong_is_via,
-      pong_dist_to_dest,
-      q.td_dest_,
-      pong_lb_time,
-      pong_lb_rounds,
-      q.via_stops_,
-      base_day,
-      q.allowed_claszes_,
-      q.require_bike_transport_,
-      q.require_car_transport_,
-      q.prf_idx_ == 2U,
-      q.transfer_time_settings_};
+  auto const pong_lb_start = std::chrono::steady_clock::now();
+  auto pong_lb = std::vector<std::uint16_t>{};
+  if constexpr (pong_algo_t::kUseLowerBounds) {
+    dijkstra(tt, q,
+             (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
+                   : tt.fwd_search_lb_graph_[q.prf_idx_]),
+             ((rtt == nullptr || kGpu)
+                  ? nullptr
+                  : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
+                           : rtt->fwd_search_lb_graph_has_edges_)),
+             ((rtt == nullptr || kGpu) ? nullptr
+                                       : &(kFwd ? rtt->bwd_search_lb_graph_
+                                                : rtt->fwd_search_lb_graph_)),
+             pong_lb);
+  }
+  lb_time += std::chrono::steady_clock::now() - pong_lb_start;
+  auto pong_lb_rounds = lb_transit_legs<flip(SearchDir)>(tt, q, rtt);
+
+  auto pong = pong_algo_t{tt,
+                          rtt,
+                          r_state,
+                          pong_is_dest,
+                          pong_is_via,
+                          pong_dist_to_dest,
+                          q.td_dest_,
+                          pong_lb,
+                          pong_lb_rounds,
+                          q.via_stops_,
+                          base_day,
+                          q.allowed_claszes_,
+                          q.require_bike_transport_,
+                          q.require_car_transport_,
+                          q.prf_idx_ == 2U,
+                          q.transfer_time_settings_};
 
   q.flip_dir();
 
@@ -177,9 +196,10 @@ routing_result pong(timetable const& tt,
   auto result = routing_result{
       .journeys_ = &s_state.results_,
       .interval_ = search_interval,
-      .search_stats_ = {.lb_time_ =
-                            static_cast<std::uint64_t>(UTL_TIMING_MS(ping_lb)) +
-                            static_cast<std::uint64_t>(UTL_TIMING_MS(pong_lb))},
+      .search_stats_ =
+          {.lb_time_ = static_cast<std::uint64_t>(
+               std::chrono::duration_cast<std::chrono::milliseconds>(lb_time)
+                   .count())},
       .algo_stats_ = {}};
   auto start_time =
       kFwd ? search_interval.from_ : search_interval.to_ - duration_t{1};
@@ -291,7 +311,7 @@ routing_result pong(timetable const& tt,
 
       trace_pong("---- HIT [updating ping start time {} -> {}]\n",
                  ping_j.start_time_, match->dest_time_);
-      if (match->legs_.empty() && !match->error_) {
+      if (!match->is_reconstructed_ && !match->error_) {
         pong.reconstruct(q, *match);
       }
       ping_j.start_time_ = match->dest_time_;
@@ -319,7 +339,7 @@ routing_result pong(timetable const& tt,
   }
 
   utl::erase_if(s_state.results_, [&](journey const& j) {
-    auto const erase = j.legs_.empty() || !is_validated(j) ||
+    auto const erase = !j.is_reconstructed_ || !is_validated(j) ||
                        j.travel_time() >= fastest_direct ||
                        j.travel_time() >= q.max_travel_time_;
     if (erase) {
@@ -436,11 +456,11 @@ routing_result pong(timetable const& tt,
   return result;
 }
 
-template <direction SearchDir, via_offset_t Vias>
+template <direction SearchDir, via_offset_t Vias, typename AlgoState>
 routing_result pong_with_vias(timetable const& tt,
                               rt_timetable const* rtt,
                               search_state& s_state,
-                              raptor_state& r_state,
+                              AlgoState& r_state,
                               query q,
                               std::optional<std::chrono::seconds> timeout) {
   if (rtt == nullptr) {
@@ -452,12 +472,12 @@ routing_result pong_with_vias(timetable const& tt,
   }
 }
 
-template <direction SearchDir>
+template <direction SearchDir, typename AlgoState>
 routing_result pong_search_with_dir(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
-    raptor_state& r_state,
+    AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> timeout) {
   switch (q.via_stops_.size()) {
@@ -474,10 +494,11 @@ routing_result pong_search_with_dir(
   throw utl::fail("{} vias not supported (max={})", kMaxVias);
 }
 
+template <typename AlgoState>
 routing_result pong_search(timetable const& tt,
                            rt_timetable const* rtt,
                            search_state& s_state,
-                           raptor_state& r_state,
+                           AlgoState& r_state,
                            query q,
                            direction search_dir,
                            std::optional<std::chrono::seconds> timeout) {
@@ -489,5 +510,23 @@ routing_result pong_search(timetable const& tt,
                                                       std::move(q), timeout);
   }
 }
+
+template routing_result pong_search(timetable const&,
+                                    rt_timetable const*,
+                                    search_state&,
+                                    raptor_state&,
+                                    query,
+                                    direction,
+                                    std::optional<std::chrono::seconds>);
+
+#if defined(NIGIRI_CUDA)
+template routing_result pong_search(timetable const&,
+                                    rt_timetable const*,
+                                    search_state&,
+                                    gpu::gpu_raptor_state&,
+                                    query,
+                                    direction,
+                                    std::optional<std::chrono::seconds>);
+#endif
 
 }  // namespace nigiri::routing

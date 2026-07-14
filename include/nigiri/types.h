@@ -219,6 +219,7 @@ using rt_merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using rt_transport_direction_string_idx_t =
     cista::strong<std::uint32_t, struct _rt_transport_direction_string>;
+using track_idx_t = cista::strong<std::uint32_t, struct _track_idx>;
 
 using line_id_t = string;
 
@@ -239,6 +240,9 @@ using flex_stop_seq_idx_t =
     cista::strong<std::uint32_t, struct _flex_stop_seq_idx>;
 
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
+
+using ticketing_link_idx_t =
+    cista::strong<std::uint32_t, struct _ticketing_link_idx>;
 
 struct category {
   string_idx_t id_;
@@ -280,10 +284,11 @@ struct attribute {
 
 struct provider {
   CISTA_COMPARABLE()
-  CISTA_PRINTABLE(provider, "short_name", "long_name", "url")
+  CISTA_PRINTABLE(provider, "short_name", "long_name", "url", "fare_url")
   string_idx_t id_;
-  translation_idx_t name_, url_;
+  translation_idx_t name_, url_, fare_url_;
   timezone_idx_t tz_{timezone_idx_t::invalid()};
+  ticketing_link_idx_t ticketing_link_;
   source_idx_t src_;
 };
 
@@ -564,7 +569,7 @@ struct delta {
       : days_{static_cast<std::uint16_t>(minutes / 1440U)},
         mam_{static_cast<std::uint16_t>(minutes % 1440U)} {}
 
-  delta(std::uint16_t const day, std::uint16_t const mam)
+  constexpr delta(std::uint16_t const day, std::uint16_t const mam)
       : days_{day}, mam_{mam} {}
 
   delta(date::days const day_offset, duration_t const minutes_offset)
@@ -580,8 +585,8 @@ struct delta {
     return *reinterpret_cast<std::uint16_t const*>(this);
   }
 
-  std::int16_t days() const { return days_; }
-  std::int16_t mam() const { return mam_; }
+  constexpr std::int16_t days() const { return days_; }
+  constexpr std::int16_t mam() const { return mam_; }
 
   friend std::ostream& operator<<(std::ostream& out, delta const& d) {
     return out << duration_t{static_cast<duration_t::rep>(d.mam_)} << "."
@@ -597,13 +602,15 @@ struct delta {
     return cista::hash_combine(cista::BASE_HASH, value());
   }
 
-  duration_t as_duration() const { return days() * 1_days + mam() * 1_minutes; }
+  constexpr duration_t as_duration() const {
+    return days() * 1_days + mam() * 1_minutes;
+  }
 
   std::pair<date::days, duration_t> to_offset() const {
     return {date::days{days() - 1}, duration_t{mam() - 720}};
   }
 
-  std::int16_t count() const { return days_ * 1440U + mam_; }
+  constexpr std::int16_t count() const { return days_ * 1440U + mam_; }
 
   friend bool operator<(delta const a, delta const b) {
     return a.value() < b.value();

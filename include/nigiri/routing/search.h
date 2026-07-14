@@ -333,7 +333,8 @@ struct search {
       });
     }
 
-    utl::erase_if(state_.results_, [&](auto&& j) { return j.legs_.empty(); });
+    utl::erase_if(state_.results_,
+                  [&](auto&& j) { return !j.is_reconstructed_; });
 
     stats_.execute_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -455,7 +456,7 @@ private:
           kFwd ? ++stats_.n_execute_fwd_ : ++stats_.n_execute_bwd_;
 
           for (auto& j : state_.results_) {
-            if (j.legs_.empty() && !j.error_ &&
+            if (!j.is_reconstructed_ && !j.error_ &&
                 (is_ontrip() || search_interval_.contains(j.start_time_)) &&
                 j.travel_time() < fastest_direct_) {
               try {

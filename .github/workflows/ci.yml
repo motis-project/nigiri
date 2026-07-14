@@ -169,6 +169,7 @@ jobs:
       fail-fast: false
       matrix:
         config:
+          - preset: clang-tidy
           - preset: linux-amd64-release
             artifact: linux-amd64
           - preset: linux-arm64-release

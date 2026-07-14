@@ -29,7 +29,7 @@ TEST(gtfs, read_trips_example_data) {
   auto i18n = translator{.tt_ = tt};
 
   auto const config = loader_config{};
-  auto agencies =
+  auto [agencies, _] =
       read_agencies(source_idx_t{}, tt, i18n, timezones,
                     files.get_file(kAgencyFile).data(), "Europe/Berlin");
   auto const routes =
@@ -67,7 +67,7 @@ TEST(gtfs, read_trips_berlin_data) {
   auto i18n = translator{.tt_ = tt};
 
   auto const config = loader_config{};
-  auto agencies =
+  auto [agencies, _] =
       read_agencies(source_idx_t{0}, tt, i18n, timezones,
                     files.get_file(kAgencyFile).data(), "Europe/Berlin");
   auto const routes =

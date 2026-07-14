@@ -11,6 +11,8 @@
 #include "fmt/ostream.h"
 #include "fmt/ranges.h"
 
+#include "cista/cuda_check.h"
+#include "cista/reflection/comparable.h"
 #include "cista/strong.h"
 
 namespace nigiri {
@@ -23,13 +25,7 @@ struct interval {
     using value_type = T;
     using pointer = std::add_pointer_t<value_type>;
     using reference = value_type;
-    friend auto operator<=>(iterator const&, iterator const&) = default;
-    friend bool operator==(iterator const&, iterator const&) = default;
-    friend bool operator!=(iterator const&, iterator const&) = default;
-    friend bool operator<=(iterator const&, iterator const&) = default;
-    friend bool operator<(iterator const&, iterator const&) = default;
-    friend bool operator>=(iterator const&, iterator const&) = default;
-    friend bool operator>(iterator const&, iterator const&) = default;
+    CISTA_FRIEND_COMPARABLE(iterator)
     value_type operator*() const { return t_; }
     iterator& operator++() {
       ++t_;
@@ -110,12 +106,16 @@ struct interval {
     return r.end();
   }
 
-  auto size() const { return cista::to_idx(to_ - from_); }
+  constexpr CISTA_CUDA_COMPAT auto size() const {
+    return cista::to_idx(to_ - from_);
+  }
 
-  bool empty() const { return to_ - from_ == 0U; }
+  CISTA_CUDA_COMPAT bool empty() const { return to_ - from_ == 0U; }
 
-  T operator[](std::size_t const i) const {
+  CISTA_CUDA_COMPAT T operator[](std::size_t const i) const {
+#ifndef __CUDA_ARCH__
     assert(contains(from_ + static_cast<T>(i)));
+#endif
     return from_ + static_cast<T>(i);
   }
 

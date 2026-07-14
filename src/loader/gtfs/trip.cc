@@ -118,7 +118,9 @@ trip::trip(route_id_idx_t route,
            shape_idx_t const shape_idx,
            bool const bikes_allowed,
            bool const cars_allowed,
-           bool accessible)
+           bool accessible,
+           std::string ticketing_trip_id,
+           bool ticketing_unavailable)
     : route_{route},
       service_{service},
       block_{blk},
@@ -129,7 +131,9 @@ trip::trip(route_id_idx_t route,
       shape_idx_{shape_idx},
       bikes_allowed_{bikes_allowed},
       cars_allowed_{cars_allowed},
-      wheelchair_accessible_{accessible} {}
+      wheelchair_accessible_{accessible},
+      ticketing_trip_id_{ticketing_trip_id},
+      ticketing_unavailable_{ticketing_unavailable} {}
 
 interpolate_result interpolate(std::vector<stop_events>& event_times) {
   struct bound {
@@ -228,6 +232,9 @@ trip_data read_trips(source_idx_t const src,
     utl::csv_col<std::uint8_t, UTL_NAME("wheelchair_accessible")>
         wheelchair_accessible_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_route_type")> trip_route_type_;
+    // Google Transit ticketing extension
+    utl::csv_col<utl::cstr, UTL_NAME("ticketing_trip_id")> ticketing_trip_id;
+    utl::csv_col<std::uint8_t, UTL_NAME("ticketing_type")> ticketing_type;
   };
   auto const& shapes = shape_states.id_map_;
 
@@ -344,7 +351,9 @@ trip_data read_trips(source_idx_t const src,
         ret.data_.push_back(trip{
             route_id, traffic_days_it->second.get(), blk, t.trip_id_->to_str(),
             x.headsign_, trip_short_name, x.direction_, shape_idx,
-            bikes_allowed, cars_allowed, wheelchair_accessible});
+            bikes_allowed, cars_allowed, wheelchair_accessible,
+            std::string{t.ticketing_trip_id->view()},
+            t.ticketing_type.val() == 1});
         ret.data_.back().trip_idx_ = register_trip(tt, x);
         ret.data_.back().clasz_ = trip_clasz;
         ret.trips_.emplace(t.trip_id_->to_str(), gtfs_trp_idx);
