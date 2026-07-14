@@ -349,12 +349,34 @@ bool update_run(source_idx_t const src,
   auto upd_it = begin(stus);
   for (; seq_it != end(seq_numbers); ++stop_idx, ++seq_it) {
     auto const loc_idx = stop{location_seq[stop_idx]}.location_idx();
-    auto const matches =
-        upd_it != end(stus) &&
-        ((r.is_scheduled() && upd_it->has_stop_sequence() &&
-          upd_it->stop_sequence() == *seq_it) ||
-         (upd_it->has_stop_id() &&
-          upd_it->stop_id() == tt.locations_.ids_[loc_idx].view()));
+    auto matches = false;
+    while (upd_it != end(stus)) {
+      auto matches_seq = r.is_scheduled() && upd_it->has_stop_sequence() &&
+                         upd_it->stop_sequence() == *seq_it;
+      auto matches_any_loc = false;
+
+      if (!matches_seq && upd_it->has_stop_id()) {
+        for (auto i = 0U; stop_idx + i != location_seq.size(); ++i) {
+
+          if (upd_it->stop_id() ==
+              tt.locations_
+                  .ids_[stop{location_seq[stop_idx + i]}.location_idx()]
+                  .view()) {
+            matches_any_loc = true;
+            break;
+          }
+        }
+        if (!matches_any_loc) {
+          ++upd_it;
+        } else {
+          matches = upd_it->stop_id() == tt.locations_.ids_[loc_idx].view();
+          break;
+        }
+      } else {
+        matches = matches_seq;
+        break;
+      }
+    }
 
     if (matches) {
       auto& stp = rtt.rt_transport_location_seq_[r.rt_][stop_idx];
