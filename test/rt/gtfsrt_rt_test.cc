@@ -60,6 +60,7 @@ stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,zone_id,stop_url,locatio
 1916,1916,King / Weber,,  43.484988, -80.526677,,,0,,1,
 1918,1918,King / Manulife,,  43.491207, -80.528026,,,0,,1,
 1127,1127,Conestoga Station,,  43.498036, -80.528999,,
+10000,10000,Fischer-Hallman / Thorndale The Other,,  43.448678, -80.550034,,,0,,1,
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -187,7 +188,7 @@ auto const kTripUpdate =
        "departure": {
         "time": "1691660351"
        },
-       "stopId": "1992",
+       "stopId": "10000",
        "scheduleRelationship": "SCHEDULED"
       },
       {
@@ -328,7 +329,203 @@ auto const kTripUpdate =
  ]
 })"s;
 
+auto const kTripUpdateWithoutSeq =
+    R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": "1691660324"
+ },
+ "entity": [
+  {
+    "id": "3248651",
+    "isDeleted": false,
+    "tripUpdate": {
+     "trip": {
+      "tripId": "3248651",
+      "startTime": "05:15:00",
+      "startDate": "20230810",
+      "routeId": "201"
+     },
+     "stopTimeUpdate": [
+      {
+       "arrival": {
+        "time": "1691660288"
+       },
+       "departure": {
+        "time": "1691660288"
+       },
+       "stopId": "3146",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "arrival": {
+        "time": "1691660351"
+       },
+       "departure": {
+        "time": "1691660351"
+       },
+       "stopId": "10000",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "arrival": {
+        "time": "1691660431"
+       },
+       "departure": {
+        "time": "1691660431"
+       },
+       "stopId": "1972",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "arrival": {
+        "time": "1691660496"
+       },
+       "departure": {
+        "time": "1691660496"
+       },
+       "stopId": "3465",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "arrival": {
+        "time": "1691660669"
+       },
+       "departure": {
+        "time": "1691660669"
+       },
+       "stopId": "3890",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "arrival": {
+        "time": "1691660718"
+       },
+       "departure": {
+        "time": "1691660718"
+       },
+       "stopId": "1117",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "arrival": {
+        "time": "1691660869"
+       },
+       "departure": {
+        "time": "1691660869"
+       },
+       "stopId": "3899",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "arrival": {
+        "time": "1691660943"
+       },
+       "departure": {
+        "time": "1691660943"
+       },
+       "stopId": "1223",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "arrival": {
+        "time": "1691661004"
+       },
+       "departure": {
+        "time": "1691661004"
+       },
+       "stopId": "3887",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "arrival": {
+        "time": "1691661152"
+       },
+       "departure": {
+        "time": "0"
+       },
+       "stopId": "2524",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "arrival": {
+        "time": "1691661240"
+       },
+       "departure": {
+        "time": "1691661240"
+       },
+       "stopId": "4073",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "arrival": {
+        "time": "1691661276"
+       },
+       "departure": {
+        "time": "1691661276"
+       },
+       "stopId": "1916",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "arrival": {
+        "time": "1691661366"
+       },
+       "departure": {
+        "time": "1691661366"
+       },
+       "stopId": "1918",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "arrival": {
+        "time": "1691661480"
+       },
+       "departure": {
+        "time": "1691661480"
+       },
+       "stopId": "1127",
+       "scheduleRelationship": "SCHEDULED"
+      }
+     ]
+    }
+  }
+ ]
+})"s;
+
 constexpr auto const expected = R"(
+   0: 2351    Block Line Station..............................                                                             d: 10.08 09:15 [10.08 05:15]  RT 10.08 09:15 [10.08 05:15]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   1: 1033    Block Line / Hanover............................ a: 10.08 09:16 [10.08 05:16]  RT 10.08 09:16 [10.08 05:16]  d: 10.08 09:16 [10.08 05:16]  RT 10.08 09:16 [10.08 05:16]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   2: 2086    Block Line / Kingswood.......................... a: 10.08 09:18 [10.08 05:18]  RT 10.08 09:18 [10.08 05:18]  d: 10.08 09:18 [10.08 05:18]  RT 10.08 09:18 [10.08 05:18]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   3: 2885    Block Line / Strasburg.......................... a: 10.08 09:19 [10.08 05:19]  RT 10.08 09:19 [10.08 05:19]  d: 10.08 09:19 [10.08 05:19]  RT 10.08 09:19 [10.08 05:19]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   4: 2888    Block Line / Laurentian......................... a: 10.08 09:21 [10.08 05:21]  RT 10.08 09:21 [10.08 05:21]  d: 10.08 09:21 [10.08 05:21]  RT 10.08 09:21 [10.08 05:21]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   5: 3189    Block Line / Westmount.......................... a: 10.08 09:22 [10.08 05:22]  RT 10.08 09:22 [10.08 05:22]  d: 10.08 09:22 [10.08 05:22]  RT 10.08 09:22 [10.08 05:22]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   6: 3895    Fischer-Hallman / Westmount..................... a: 10.08 09:24 [10.08 05:24]  RT 10.08 09:24 [10.08 05:24]  d: 10.08 09:24 [10.08 05:24]  RT 10.08 09:24 [10.08 05:24]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   7: 3893    Fischer-Hallman / Activa........................ a: 10.08 09:26 [10.08 05:26]  RT 10.08 09:26 [10.08 05:26]  d: 10.08 09:26 [10.08 05:26]  RT 10.08 09:26 [10.08 05:26]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   8: 2969    Fischer-Hallman / Ottawa........................ a: 10.08 09:27 [10.08 05:27]  RT 10.08 09:27 [10.08 05:27]  d: 10.08 09:27 [10.08 05:27]  RT 10.08 09:27 [10.08 05:27]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   9: 2971    Fischer-Hallman / Mcgarry....................... a: 10.08 09:29 [10.08 05:29]  RT 10.08 09:29 [10.08 05:29]  d: 10.08 09:29 [10.08 05:29]  RT 10.08 09:29 [10.08 05:29]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  10: 2986    Fischer-Hallman / Queens........................ a: 10.08 09:31 [10.08 05:31]  RT 10.08 09:31 [10.08 05:31]  d: 10.08 09:31 [10.08 05:31]  RT 10.08 09:31 [10.08 05:31]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  11: 3891    Fischer-Hallman / Highland...................... a: 10.08 09:32 [10.08 05:32]  RT 10.08 09:32 [10.08 05:32]  d: 10.08 09:32 [10.08 05:32]  RT 10.08 09:32 [10.08 05:32]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  12: 3143    Fischer-Hallman / Victoria...................... a: 10.08 09:33 [10.08 05:33]  RT 10.08 09:33 [10.08 05:33]  d: 10.08 09:33 [10.08 05:33]  RT 10.08 09:33 [10.08 05:33]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  13: 3144    Fischer-Hallman / Stoke......................... a: 10.08 09:35 [10.08 05:35]  RT 10.08 09:35 [10.08 05:35]  d: 10.08 09:35 [10.08 05:35]  RT 10.08 09:35 [10.08 05:35]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  14: 3146    Fischer-Hallman / University Ave................ a: 10.08 09:37 [10.08 05:37]  RT 10.08 09:38 [10.08 05:38]  d: 10.08 09:37 [10.08 05:37]  RT 10.08 09:38 [10.08 05:38]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  15: 10000   Fischer-Hallman / Thorndale The Other........... a: 10.08 09:38 [10.08 05:38]  RT 10.08 09:39 [10.08 05:39]  d: 10.08 09:38 [10.08 05:38]  RT 10.08 09:39 [10.08 05:39]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  16: 1972    Fischer-Hallman / Erb........................... a: 10.08 09:39 [10.08 05:39]  RT 10.08 09:40 [10.08 05:40]  d: 10.08 09:39 [10.08 05:39]  RT 10.08 09:40 [10.08 05:40]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  17: 3465    Fischer-Hallman / Keats Way..................... a: 10.08 09:40 [10.08 05:40]  RT 10.08 09:41 [10.08 05:41]  d: 10.08 09:40 [10.08 05:40]  RT 10.08 09:41 [10.08 05:41]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  18: 3890    Fischer-Hallman / Columbia...................... a: 10.08 09:42 [10.08 05:42]  RT 10.08 09:44 [10.08 05:44]  d: 10.08 09:42 [10.08 05:42]  RT 10.08 09:44 [10.08 05:44]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  19: 1117    Columbia / U.W. - Columbia Lake Village......... a: 10.08 09:43 [10.08 05:43]  RT 10.08 09:45 [10.08 05:45]  d: 10.08 09:43 [10.08 05:43]  RT 10.08 09:45 [10.08 05:45]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  20: 3899    Columbia / University Of Waterloo............... a: 10.08 09:46 [10.08 05:46]  RT 10.08 09:47 [10.08 05:47]  d: 10.08 09:46 [10.08 05:46]  RT 10.08 09:47 [10.08 05:47]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  21: 1223    University Of Waterloo Station.................. a: 10.08 09:47 [10.08 05:47]  RT 10.08 09:49 [10.08 05:49]  d: 10.08 09:49 [10.08 05:49]  RT 10.08 09:49 [10.08 05:49]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  22: 3887    Phillip / Columbia.............................. a: 10.08 09:50 [10.08 05:50]  RT 10.08 09:50 [10.08 05:50]  d: 10.08 09:50 [10.08 05:50]  RT 10.08 09:50 [10.08 05:50]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  23: 2524    Columbia / Hazel................................ a: 10.08 09:53 [10.08 05:53]  RT 10.08 09:52 [10.08 05:52]  d: 10.08 09:53 [10.08 05:53]  RT 10.08 09:52 [10.08 05:52]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  24: 4073    King / Columbia................................. a: 10.08 09:54 [10.08 05:54]  RT 10.08 09:54 [10.08 05:54]  d: 10.08 09:54 [10.08 05:54]  RT 10.08 09:54 [10.08 05:54]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  25: 1916    King / Weber.................................... a: 10.08 09:55 [10.08 05:55]  RT 10.08 09:54 [10.08 05:54]  d: 10.08 09:55 [10.08 05:55]  RT 10.08 09:54 [10.08 05:54]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  26: 1918    King / Manulife................................. a: 10.08 09:56 [10.08 05:56]  RT 10.08 09:56 [10.08 05:56]  d: 10.08 09:56 [10.08 05:56]  RT 10.08 09:56 [10.08 05:56]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+  27: 1127    Conestoga Station............................... a: 10.08 09:58 [10.08 05:58]  RT 10.08 09:58 [10.08 05:58]
+)"sv;
+
+constexpr auto const expectedWithoutSeq = R"(
    0: 2351    Block Line Station..............................                                                             d: 10.08 09:15 [10.08 05:15]  RT 10.08 09:15 [10.08 05:15]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
    1: 1033    Block Line / Hanover............................ a: 10.08 09:16 [10.08 05:16]  RT 10.08 09:16 [10.08 05:16]  d: 10.08 09:16 [10.08 05:16]  RT 10.08 09:16 [10.08 05:16]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
    2: 2086    Block Line / Kingswood.......................... a: 10.08 09:18 [10.08 05:18]  RT 10.08 09:18 [10.08 05:18]  d: 10.08 09:18 [10.08 05:18]  RT 10.08 09:18 [10.08 05:18]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
@@ -390,5 +587,37 @@ TEST(rt, gtfs_rt_update_1) {
   auto ss = std::stringstream{};
   ss << "\n" << fr;
   EXPECT_EQ(expected, ss.str());
+  ASSERT_FALSE(fr.is_cancelled());
+}
+
+TEST(rt, gtfs_rt_update_without_seq_1) {
+  // Load static timetable.
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2023_y / August / 9},
+                    date::sys_days{2023_y / August / 12}};
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+
+  // Create empty RT timetable.
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
+
+  // Update.
+  auto const msg = rt::json_to_protobuf(kTripUpdateWithoutSeq);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+
+  // Print trip.
+  transit_realtime::TripDescriptor td;
+  td.set_start_date("20230810");
+  td.set_trip_id("3248651");
+  td.set_start_time("05:15:00");
+  auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{May / 1 / 2019}, tt,
+                                             &rtt, source_idx_t{0}, td);
+  ASSERT_TRUE(r.valid());
+
+  auto const fr = rt::frun{tt, &rtt, r};
+  auto ss = std::stringstream{};
+  ss << "\n" << fr;
+  EXPECT_EQ(expectedWithoutSeq, ss.str());
   ASSERT_FALSE(fr.is_cancelled());
 }
