@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/lb/lb_transit_legs.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/tb/queue.h"
@@ -87,7 +88,8 @@ struct query_engine {
                std::array<bitvec, kMaxVias> const&,
                std::vector<std::uint16_t> const& dist_to_dest,
                hash_map<location_idx_t, std::vector<td_offset>> const&,
-               std::vector<std::uint16_t> const& lb,
+               std::vector<std::uint16_t> const& lb_time,
+               lb_transit_legs<direction::kForward>& lb_rounds,
                std::vector<via_stop> const&,
                day_idx_t base,
                clasz_mask_t,
@@ -130,7 +132,8 @@ private:
   query_state& state_;
   bitvec const& is_dest_;
   std::vector<std::uint16_t> const& dist_to_dest_;
-  std::vector<std::uint16_t> const& lb_;
+  std::vector<std::uint16_t> const& lb_time_;
+  lb_transit_legs<direction::kForward>& lb_rounds_;
   day_idx_t base_;
   query_stats stats_;
 };

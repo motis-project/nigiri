@@ -11,6 +11,7 @@
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/gpu/raptor.h"
+#include "nigiri/routing/lb/lb_transit_legs.h"
 #include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
@@ -117,6 +118,7 @@ routing_result pong(timetable const& tt,
              ping_lb);
   }
   lb_time += std::chrono::steady_clock::now() - ping_lb_start;
+  auto ping_lb_rounds = lb_transit_legs<SearchDir>(tt, q, rtt, kGpu);
 
   auto ping = ping_algo_t{tt,
                           rtt,
@@ -126,6 +128,7 @@ routing_result pong(timetable const& tt,
                           ping_dist_to_dest,
                           q.td_dest_,
                           ping_lb,
+                          ping_lb_rounds,
                           q.via_stops_,
                           base_day,
                           q.allowed_claszes_,
@@ -165,6 +168,7 @@ routing_result pong(timetable const& tt,
              pong_lb);
   }
   lb_time += std::chrono::steady_clock::now() - pong_lb_start;
+  auto pong_lb_rounds = lb_transit_legs<flip(SearchDir)>(tt, q, rtt, kGpu);
 
   auto pong = pong_algo_t{tt,
                           rtt,
@@ -174,6 +178,7 @@ routing_result pong(timetable const& tt,
                           pong_dist_to_dest,
                           q.td_dest_,
                           pong_lb,
+                          pong_lb_rounds,
                           q.via_stops_,
                           base_day,
                           q.allowed_claszes_,
@@ -383,6 +388,10 @@ routing_result pong(timetable const& tt,
   trace_pong("RESULT:\n\t{}",
              fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),
                        "\n\t"));
+
+  fmt::println("lb_rounds total time: {}",
+               std::chrono::duration_cast<std::chrono::milliseconds>(
+                   ping_lb_rounds.total_time_ + pong_lb_rounds.total_time_));
 
   if constexpr (!kFwd) {
     return result;

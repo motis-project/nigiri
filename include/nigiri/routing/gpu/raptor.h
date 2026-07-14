@@ -7,6 +7,7 @@
 #include "nigiri/common/delta_t.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/lb/lb_transit_legs.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
@@ -70,6 +71,7 @@ struct gpu_raptor {
       std::vector<std::uint16_t> const& dist_to_dest,
       hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
       std::vector<std::uint16_t> const& lb,
+      lb_transit_legs<SearchDir>& lb_rounds,
       std::vector<via_stop> const& via_stops,
       day_idx_t const base,
       clasz_mask_t const allowed_claszes,
