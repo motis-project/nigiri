@@ -108,8 +108,7 @@ void load_ticketing(timetable& tt,
     }
   }
 
-  tt.trip_ticketing_identifier_.resize(tt.trip_ticketing_identifier_.size() +
-                                       trips.data_.size());
+  tt.trip_ticketing_identifier_.resize(tt.n_trips());
 
   for (auto const& trip : trips.data_) {
     if (trip.ticketing_unavailable_) {
