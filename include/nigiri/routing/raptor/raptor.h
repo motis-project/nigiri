@@ -155,6 +155,7 @@ struct raptor {
                profile_idx_t const prf_idx,
                pareto_set<journey>& results) {
     end_k_ = std::min(max_transfers, kMaxTransfers) + 2U;
+    lb_rounds_.set_end_k(static_cast<std::uint8_t>(end_k_));
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
     for (auto& time_at_dest : time_at_dest_) {

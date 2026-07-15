@@ -260,15 +260,20 @@ struct lb_transit_legs {
         std::chrono::steady_clock::now() - start_time);
   }
 
+  void set_end_k(std::uint8_t const end_k) { end_k_ = end_k; }
+
   std::uint8_t get(location_idx_t const l) {
     if (comps_ == nullptr) {
       return 0U;
     }
     auto const c = comps_->comp_[to_idx(l)];
     while (lb_[c] == kUnknown) {
+      if (k_ >= end_k_) {
+        return kUnreachable;
+      }
       run_round();
       ++k_;
-      if (!any_marked_ || k_ == end_k_) {
+      if (!any_marked_) {
         for (auto& lb : lb_) {
           if (lb == kUnknown) {
             lb = kUnreachable;
