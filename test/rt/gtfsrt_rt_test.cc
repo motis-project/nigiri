@@ -435,7 +435,8 @@ auto const kTripUpdateWithoutSeq =
        "departure": {
         "time": "1691661004"
        },
-       "stopId": "3887",
+       "stopId": "9999999",
+       "stopSequence": 99999999,
        "scheduleRelationship": "SCHEDULED"
       },
       {
