@@ -13,7 +13,6 @@
 #include "nigiri/routing/dijkstra.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_fastest_direct.h"
-#include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/lb/lb_transit_legs.h"
@@ -82,8 +81,6 @@ struct search {
   using algo_state_t = typename Algo::algo_state_t;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
-  static constexpr auto const kGpu =
-      std::is_same_v<Algo, gpu::gpu_raptor<SearchDir>>;
 
   Algo init(clasz_mask_t const allowed_claszes,
             bool const require_bikes_allowed,
@@ -193,7 +190,7 @@ struct search {
                             }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
-        lb_rounds_{tt, q_, rtt, kGpu},
+        lb_rounds_{tt, q_, rtt, /* disabled= */ true},
         algo_{init(q_.allowed_claszes_,
                    q_.require_bike_transport_,
                    q_.require_car_transport_,
