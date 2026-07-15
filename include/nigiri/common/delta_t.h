@@ -12,7 +12,7 @@ using delta_t = std::int16_t;
 static_assert(sizeof(delta_t) == 2);
 
 template <direction SearchDir>
-inline CISTA_CUDA_DEVICE_COMPAT constexpr auto const kInvalidDelta =
+CISTA_CUDA_DEVICE_COMPAT constexpr auto const kInvalidDelta =
     SearchDir == direction::kForward ? std::numeric_limits<delta_t>::max()
                                      : std::numeric_limits<delta_t>::min();
 

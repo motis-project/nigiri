@@ -8,6 +8,14 @@
 #include <iostream>
 #include <optional>
 
+// date/date.h (pulled in transitively via nigiri/types.h above) leaks a
+// `#define NOEXCEPT noexcept`. CCCL's concept machinery builds a requirement
+// switch via `_CCCL_PP_CASE(NOEXCEPT)`, where the NOEXCEPT token expands to
+// lowercase `noexcept` and produces the undefined
+// `_CCCL_CONCEPT_REQUIREMENT_CASE_noexcept`, breaking every <cuda/std/...>
+// concept header. Undo the leak before including any CUDA std header.
+#undef NOEXCEPT
+
 #include "cuda/std/array"
 #include "cuda/std/span"
 
