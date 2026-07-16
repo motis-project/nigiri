@@ -71,13 +71,13 @@ struct stop_seq_number_range {
       return *this;
     }
 
-    iterator operator++(int) noexcept {
+    iterator operator++(int) {
       auto r = *this;
       ++(*this);
       return r;
     }
 
-    iterator operator+(unsigned int n) noexcept {
+    iterator operator+(unsigned int n) {
       std::visit(utl::overloaded{[n](compact& c) {
                                    utl::verify(c.num_stops_ >= n, "");
                                    c.curr_ += c.inc_ * n;
