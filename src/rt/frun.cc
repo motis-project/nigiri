@@ -21,6 +21,8 @@ constexpr auto const kUnknownProvider =
     provider{.id_ = string_idx_t::invalid(),
              .name_ = kEmptyTranslation,
              .url_ = kEmptyTranslation,
+             .fare_url_ = kEmptyTranslation,
+             .ticketing_link_ = ticketing_link_idx_t::invalid(),
              .src_ = source_idx_t::invalid()};
 
 stop run_stop::get_stop() const {
@@ -102,6 +104,13 @@ std::string_view run_stop::track(lang_t const& lang) const {
   return tt().translate(lang, tt().locations_.platform_codes_.at(l));
 }
 
+std::optional<std::string_view> run_stop::get_track_override(
+    event_type const ev_type) const {
+  return (fr_->is_rt() && rtt() != nullptr)
+             ? rtt()->get_track(fr_->rt_, stop_idx_, ev_type)
+             : std::nullopt;
+}
+
 geo::latlng run_stop::pos() const {
   assert(fr_->size() > stop_idx_);
   return fr_->tt_->locations_.coordinates_[get_stop().location_idx()];
@@ -139,20 +148,22 @@ run_stop run_stop::get_first_trip_stop(event_type const ev_type) const {
   auto const trip = get_trip_idx(ev_type);
   auto copy = *this;
 
-  // Go backward to the first stop of the trip.
+  // Go backward to the first stop of the trip = its scheduled origin. A trip
+  // spans >= 1 section, so its origin always has a departure (stop_idx_ <=
+  // N-2).
   while (copy.stop_idx_ > 0U && copy.get_trip_idx(event_type::kArr) == trip) {
     --copy.stop_idx_;
   }
+  auto const origin = copy;
 
   // Go forward to the first non-cancelled stop.
-  // N-2, N-1, N
-  // ^- last increment -> N-1
   while (copy.stop_idx_ + 1U < end && copy.is_cancelled() &&
          copy.get_trip_idx(event_type::kDep) == trip) {
     ++copy.stop_idx_;
   }
 
-  return copy;
+  // first stop == last stop => trip cancelled => return original first stop.
+  return copy.stop_idx_ + 1U < end ? copy : origin;
 }
 
 run_stop run_stop::get_last_trip_stop(event_type const ev_type) const {
@@ -184,13 +195,16 @@ run_stop run_stop::get_last_trip_stop(event_type const ev_type) const {
     }
   }
 
+  auto const dest = copy;  // the trip's last stop; always has an arrival.
+
   // Go back to the last non-cancelled stop.
   while (copy.stop_idx_ > 0U && copy.is_cancelled() &&
          copy.get_trip_idx(event_type::kArr) == trip) {
     --copy.stop_idx_;
   }
 
-  return copy;
+  // last stop == first stop => trip cancelled => return original last stop.
+  return copy.stop_idx_ == 0U ? dest : copy;
 }
 
 unixtime_t run_stop::scheduled_time(event_type const ev_type) const {
@@ -275,6 +289,11 @@ std::pair<timetable::route_ids const*, route_id_idx_t> run_stop::get_route(
   } else {
     return {nullptr, route_id_idx_t::invalid()};
   }
+}
+
+route_id_idx_t run_stop::get_route_id_idx(event_type const ev_type) const {
+  auto const [_, route_id_idx] = get_route(ev_type);
+  return route_id_idx;
 }
 
 std::string_view run_stop::get_route_id(event_type const ev_type) const {

@@ -3,6 +3,7 @@
 #include "utl/enumerate.h"
 #include "utl/overloaded.h"
 #include "utl/timer.h"
+#include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/route.h"
 
@@ -78,6 +79,8 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   } else {
     rt_transport_stop_times_.emplace_back(time_seq);
   }
+
+  rt_transport_track_sequence_.add_back_sized(0U);
 
   auto const bikes_allowed_default = false;  // TODO
   auto const cars_allowed_default = false;  // TODO
@@ -171,6 +174,45 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   assert(rt_wheelchair_accessible_per_section_.size() == rt_t_idx + 1U);
 
   return rt_transport_idx_t{rt_t_idx};
+}
+
+void rt_timetable::set_track(rt_transport_idx_t const rt_t,
+                             stop_idx_t const stop_idx,
+                             event_type const ev_type,
+                             std::string_view const track) {
+  if (track.empty()) {
+    return;
+  }
+  utl::verify(stop_idx < rt_transport_location_seq_[rt_t].size(),
+              "set_track: invalid stop_idx {} (n_stops={})", stop_idx,
+              rt_transport_location_seq_[rt_t].size());
+  auto bucket = rt_transport_track_sequence_[rt_t];
+  if (bucket.empty()) {
+    bucket.grow(rt_transport_stop_times_[rt_t].size(), track_idx_t::invalid());
+  }
+  auto const ev_idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
+  bucket[static_cast<std::size_t>(ev_idx)] = track_strings_.store(track);
+}
+
+std::optional<std::string_view> rt_timetable::get_track(
+    rt_transport_idx_t const rt_t,
+    stop_idx_t const stop_idx,
+    event_type const ev_type) const {
+  if (to_idx(rt_t) >= rt_transport_track_sequence_.size()) {
+    return std::nullopt;
+  }
+  utl::verify(stop_idx < rt_transport_location_seq_[rt_t].size(),
+              "get_track: invalid stop_idx {} (n_stops={})", stop_idx,
+              rt_transport_location_seq_[rt_t].size());
+  auto const bucket = rt_transport_track_sequence_[rt_t];
+  if (bucket.empty()) {
+    return std::nullopt;
+  }
+  auto const ev_idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
+  if (ev_idx < 0 || static_cast<std::size_t>(ev_idx) >= bucket.size()) {
+    return std::nullopt;
+  }
+  return track_strings_.try_get(bucket[static_cast<std::size_t>(ev_idx)]);
 }
 
 std::string_view rt_timetable::transport_name(

@@ -61,7 +61,7 @@ std::vector<journey> get_leg_alternatives(
   auto const optimize = [&](std::vector<journey::leg> const& legs) {
     auto j_alt = journey{};
     j_alt.legs_ = legs;
-    optimize_footpaths<direction::kForward>(tt, rtt, direct_query, j_alt);
+    optimize_footpaths(tt, rtt, direct_query, j_alt);
     j_alt.start_time_ = j_alt.legs_.front().dep_time_;
     j_alt.dest_time_ = j_alt.legs_.back().arr_time_;
     j_alt.dest_ = j_alt.legs_.back().to_;

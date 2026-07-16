@@ -124,6 +124,20 @@
         "BUILDCACHE_LUA_PATH": "/opt/buildcache/share/lua-examples",
         "PATH": "/opt:/opt/cmake-3.26.3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
       }
+    },
+    {
+      "name": "cuda",
+      "displayName": "Linux CUDA RelWithDebInfo",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/cuda",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "NIGIRI_CUDA": "ON",
+        "CMAKE_C_COMPILER": "gcc-15",
+        "CMAKE_CXX_COMPILER": "g++-15",
+        "CMAKE_CUDA_COMPILER": "/usr/local/cuda/bin/nvcc",
+        "CMAKE_CUDA_HOST_COMPILER": "g++-15"
+      }
     }
   ],
   "buildPresets": [
@@ -158,6 +172,10 @@
     {
       "name": "linux-sanitizer",
       "configurePreset": "linux-sanitizer"
+    },
+    {
+      "name": "cuda",
+      "configurePreset": "cuda"
     }
   ]
 }

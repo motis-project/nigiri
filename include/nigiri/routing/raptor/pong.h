@@ -17,11 +17,12 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     unixtime_t from_arr,
     unixtime_t to_dep);
 
+template <typename AlgoState>
 routing_result pong_search(
     timetable const&,
     rt_timetable const*,
     search_state&,
-    raptor_state&,
+    AlgoState&,
     query,
     direction search_dir,
     std::optional<std::chrono::seconds> timeout = std::nullopt);

@@ -2,6 +2,7 @@
 
 #include "utl/pairwise.h"
 
+#include <memory>
 #include <optional>
 #include <string_view>
 #include <variant>
@@ -114,6 +115,11 @@ struct rt_timetable {
     dispatch_event(r, stop_idx, ev_type, location_idx, in_out_allowed,
                    std::nullopt);
   }
+
+  void set_track(rt_transport_idx_t, stop_idx_t, event_type, std::string_view);
+  std::optional<std::string_view> get_track(rt_transport_idx_t,
+                                            stop_idx_t,
+                                            event_type) const;
 
   unixtime_t unix_event_time(rt_transport_idx_t const rt_t,
                              stop_idx_t const stop_idx,
@@ -249,6 +255,12 @@ struct rt_timetable {
   vecvec<rt_transport_idx_t, delta_t> rt_transport_stop_times_;
   vecvec<rt_transport_idx_t, stop::value_type> rt_transport_location_seq_;
 
+  // RT transport -> real-time track (dep, arr, dep, arr, ...)
+  // - empty if no overwrite exists at all
+  // - track_idx_t::invalid for stops where no overwrite exists
+  vecvec<rt_transport_idx_t, track_idx_t> rt_transport_track_sequence_;
+  string_store<track_idx_t> track_strings_;
+
   // RT trip index -> display name (empty if not changed)
   vecvec<rt_transport_idx_t, char> rt_transport_trip_short_names_;
   vecvec<rt_transport_idx_t, char> rt_transport_line_;
@@ -289,6 +301,18 @@ struct rt_timetable {
   bitvec_map<location_idx_t> bwd_search_lb_graph_has_edges_;
   vecvec<location_idx_t, footpath> fwd_search_lb_graph_;
   vecvec<location_idx_t, footpath> bwd_search_lb_graph_;
+
+  // Incremental mode requires copyability of rt_timetable.
+  // unique_ptr alone would make the rt_timetable move only (not copyable)
+  // -> we need a copyable wrapper
+  struct gpu_rtt_slot {
+    gpu_rtt_slot() = default;
+    gpu_rtt_slot(gpu_rtt_slot const&) { /* start empty, upload after update */ }
+    gpu_rtt_slot(gpu_rtt_slot&&) = default;
+    gpu_rtt_slot& operator=(gpu_rtt_slot&&) = default;
+    std::unique_ptr<void, void (*)(void*)> ptr_{nullptr, [](void*) {}};
+  };
+  gpu_rtt_slot gpu_rtt_;
 };
 
 }  // namespace nigiri

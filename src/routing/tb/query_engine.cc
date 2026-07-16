@@ -490,6 +490,8 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
       }
     }
   }
+
+  j.is_reconstructed_ = true;
 }
 
 template <bool UseLowerBounds>

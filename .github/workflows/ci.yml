@@ -114,10 +114,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: 16.2
-
       - name: Install ninja
         run: brew install ninja
 
@@ -173,6 +169,7 @@ jobs:
       fail-fast: false
       matrix:
         config:
+          - preset: clang-tidy
           - preset: linux-amd64-release
             artifact: linux-amd64
           - preset: linux-arm64-release

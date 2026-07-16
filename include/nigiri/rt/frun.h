@@ -31,6 +31,7 @@ struct run_stop {
   location_idx_t get_scheduled_location_idx() const;
   std::string_view name(lang_t const&) const;
   std::string_view track(lang_t const&) const;
+  std::optional<std::string_view> get_track_override(event_type) const;
   std::string_view id() const;
   std::pair<date::sys_days, duration_t> get_trip_start(event_type) const;
   provider_idx_t get_provider_idx(event_type) const;
