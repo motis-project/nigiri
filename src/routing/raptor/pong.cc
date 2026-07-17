@@ -1,6 +1,9 @@
 #include "nigiri/routing/raptor/pong.h"
 
+#include <cstdlib>
+#include <cstring>
 #include <ranges>
+#include <string_view>
 #include <type_traits>
 
 #include "utl/helpers/algorithm.h"
@@ -20,6 +23,93 @@
 // #define trace_pong fmt::println
 
 namespace nigiri::routing {
+
+pong_prune_settings pong_prune{
+    .prune_ =
+        []() {
+          auto const* const v = std::getenv("NIGIRI_PONG_PRUNE");
+          return v == nullptr || std::string_view{v} != "0";
+        }(),
+    .skip_pong_lb_ =
+        []() {
+          auto const* const v = std::getenv("NIGIRI_PONG_NO_LB");
+          return v != nullptr && std::string_view{v} == "1";
+        }(),
+};
+
+namespace {
+
+// Transform the ping search's round_times into pruning bounds for the pong
+// search (written to raptor_state::bounds_storage_):
+// - made monotonic over rounds (bounds[k] = best over rounds <= k), which
+//   also fills rounds where the ping found no improvement and wrote nothing
+// - reduced to *trip-level* arrival bounds (the pong checks trip event times
+//   before its own transfer): a stop's trip-level arrival is proven either
+//   by its own round entry (written as arrival + transfer time -> subtract
+//   the transfer time; this also keeps same-trip continuations, which pay
+//   no transfer, within bounds) or by a footpath projection at a neighbor
+//   (written as arrival + fp duration -> subtract the fp duration). The
+//   footpath candidates are required for correctness: the ping only records
+//   arrivals *somewhere* -- the transfer update at the arrival stop itself
+//   may be pruned by the lower bound while the footpath still propagates
+//   from the trip arrival (bypassing the transfer).
+// Only for Vias == 0 (bounds element = std::array<delta_t, 1>).
+template <direction PingDir>
+std::array<delta_t, 1U> const* fill_bounds(timetable const& tt,
+                                           raptor_state& s,
+                                           transfer_time_settings const& tts,
+                                           profile_idx_t const prf_idx) {
+  constexpr auto const kFwd = PingDir == direction::kForward;
+  auto const n = static_cast<std::size_t>(s.n_locations_);
+  auto const n_rounds = static_cast<std::size_t>(kMaxTransfers) + 2U;
+
+  s.bounds_storage_.resize(n * n_rounds);
+  auto const* const src = s.round_times_storage_.data();
+  auto* const dst = s.bounds_storage_.data();
+
+  auto const better = [](delta_t const a, delta_t const b) {
+    return kFwd ? std::min(a, b) : std::max(a, b);
+  };
+
+  // monotonic fill
+  std::memcpy(dst, src, n * sizeof(delta_t));
+  for (auto k = std::size_t{1U}; k != n_rounds; ++k) {
+    auto const* const src_row = src + (k * n);
+    auto const* const prev_row = dst + ((k - 1U) * n);
+    auto* const dst_row = dst + (k * n);
+    for (auto x = std::size_t{0U}; x != n; ++x) {
+      dst_row[x] = better(src_row[x], prev_row[x]);
+    }
+  }
+
+  // trip-level arrival bounds
+  auto const& fps =
+      (kFwd ? tt.locations_.footpaths_out_ : tt.locations_.footpaths_in_)
+          [prf_idx];
+  auto scratch = std::vector<delta_t>(n);
+  for (auto k = std::size_t{0U}; k != n_rounds; ++k) {
+    auto* const dst_row = dst + (k * n);
+    std::memcpy(scratch.data(), dst_row, n * sizeof(delta_t));
+    for (auto x = std::size_t{0U}; x != n; ++x) {
+      auto const l = location_idx_t{x};
+      auto const transfer = adjusted_transfer_time(
+          tts, static_cast<int>(tt.locations_.transfer_time_[l].count()));
+      auto b =
+          clamp(static_cast<int>(scratch[x]) + (kFwd ? -transfer : transfer));
+      for (auto const& fp : fps[l]) {
+        auto const d = adjusted_transfer_time(
+            tts, static_cast<int>(fp.duration().count()));
+        b = better(b, clamp(static_cast<int>(scratch[to_idx(fp.target())]) +
+                            (kFwd ? -d : d)));
+      }
+      dst_row[x] = b;
+    }
+  }
+
+  return reinterpret_cast<std::array<delta_t, 1U> const*>(dst);
+}
+
+}  // namespace
 
 auto to_tuple(journey const& j) {
   return std::tuple{j.departure_time(), j.arrival_time(), j.transfers_};
@@ -91,6 +181,13 @@ routing_result pong(timetable const& tt,
   // ----
   constexpr auto const kGpu = std::is_same_v<AlgoState, gpu::gpu_raptor_state>;
 
+  // Ping-bounds pruning (experiment): CPU only, no vias. Time-dependent
+  // footpaths (Rt + profile != 0) write projections whose durations cannot
+  // be recovered when building the bounds -> no pruning there.
+  constexpr auto const kBoundsPrune = !kGpu && Vias == 0U;
+  auto const prune =
+      kBoundsPrune && pong_prune.prune_ && !(Rt && q.prf_idx_ != 0U);
+
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
   auto ping_is_via = std::array<bitvec, kMaxVias>{};
@@ -134,6 +231,14 @@ routing_result pong(timetable const& tt,
                           q.prf_idx_ == 2U,
                           q.transfer_time_settings_};
 
+  if constexpr (kBoundsPrune) {
+    if (prune) {
+      // The ping's round_times must cover every stop that can be part of an
+      // equal-arrival (but later-departure) journey the pong needs to find.
+      ping.set_loose_pruning(true);
+    }
+  }
+
   // ====
   // PONG
   // ----
@@ -152,17 +257,23 @@ routing_result pong(timetable const& tt,
   auto const pong_lb_start = std::chrono::steady_clock::now();
   auto pong_lb = std::vector<std::uint16_t>{};
   if constexpr (pong_algo_t::kUseLowerBounds) {
-    dijkstra(tt, q,
-             (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
-                   : tt.fwd_search_lb_graph_[q.prf_idx_]),
-             ((rtt == nullptr || kGpu)
-                  ? nullptr
-                  : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
-                           : rtt->fwd_search_lb_graph_has_edges_)),
-             ((rtt == nullptr || kGpu) ? nullptr
-                                       : &(kFwd ? rtt->bwd_search_lb_graph_
-                                                : rtt->fwd_search_lb_graph_)),
-             pong_lb);
+    if (prune && pong_prune.skip_pong_lb_) {
+      // The ping bounds prune the pong search on their own -> skip the
+      // dijkstra run, use all-zero lower bounds (= no lb pruning).
+      pong_lb.assign(tt.n_locations(), 0U);
+    } else {
+      dijkstra(tt, q,
+               (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
+                     : tt.fwd_search_lb_graph_[q.prf_idx_]),
+               ((rtt == nullptr || kGpu)
+                    ? nullptr
+                    : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
+                             : rtt->fwd_search_lb_graph_has_edges_)),
+               ((rtt == nullptr || kGpu) ? nullptr
+                                         : &(kFwd ? rtt->bwd_search_lb_graph_
+                                                  : rtt->fwd_search_lb_graph_)),
+               pong_lb);
+    }
   }
   lb_time += std::chrono::steady_clock::now() - pong_lb_start;
 
@@ -187,6 +298,8 @@ routing_result pong(timetable const& tt,
   // ========
   // >> PLAY!
   // --------
+  [[maybe_unused]] auto bounds =
+      static_cast<std::array<delta_t, 1U> const*>(nullptr);
   auto starts = std::vector<start>{};
   auto result = routing_result{
       .journeys_ = &s_state.results_,
@@ -268,10 +381,26 @@ routing_result pong(timetable const& tt,
     // ----
     // PONG
     // ----
+    if constexpr (kBoundsPrune) {
+      if (prune) {
+        // Has to happen before pong.reset_arrivals() wipes the shared
+        // round_times the ping search just filled.
+        bounds = fill_bounds<SearchDir>(tt, r_state, q.transfer_time_settings_,
+                                        q.prf_idx_);
+      }
+    }
     q.flip_dir();
     pong.reset_arrivals();
     for (auto& ping_j : ping_results) {
       trace_pong("-- PING RESULT: {}", to_tuple(ping_j));
+
+      if constexpr (kBoundsPrune) {
+        if (prune) {
+          // Round k of this pong leaves bounds_last_k - k rounds for the
+          // journey prefix -> check against the ping's bound for that round.
+          pong.set_bounds(bounds, ping_j.transfers_ + 1U);
+        }
+      }
 
       starts.clear();
       get_starts(flip(SearchDir), tt, rtt, ping_j.dest_time_, q.start_,

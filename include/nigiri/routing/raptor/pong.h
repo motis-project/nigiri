@@ -8,6 +8,16 @@
 
 namespace nigiri::routing {
 
+// Ping-bounds pruning experiment switches. Initialized from the environment
+// (NIGIRI_PONG_PRUNE=0 disables pruning, NIGIRI_PONG_NO_LB=1 skips the
+// dijkstra lower bounds run for the pong direction when pruning is active),
+// can be overridden programmatically (e.g. for A/B benchmark cells).
+struct pong_prune_settings {
+  bool prune_;
+  bool skip_pong_lb_;
+};
+extern pong_prune_settings pong_prune;
+
 std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     timetable const&,
     rt_timetable const*,

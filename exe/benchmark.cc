@@ -94,10 +94,80 @@ void generate_queries(
 }
 
 struct compare_stats {
-  std::uint64_t gpu_misses_{0U};  // CPU journeys not covered by GPU pareto
-  std::uint64_t cpu_misses_{0U};  // GPU journeys not covered by CPU pareto
-  bool compared_{false};  // both engines ran -> the counts are meaningful
+  std::uint64_t missed_by_cmp_{0U};  // ref journeys not covered by cmp pareto
+  std::uint64_t missed_by_ref_{0U};  // cmp journeys not covered by ref pareto
+  bool compared_{false};  // a cross-check ran -> the counts are meaningful
 };
+
+// cross-check two result sets over the same queries: every journey of one
+// side must be covered (dominated or equaled) by the other side's pareto set
+compare_stats cross_check(
+    timetable const& tt,
+    std::string const& ref_name,
+    std::vector<pareto_set<routing::journey>> const& ref,
+    std::string const& cmp_name,
+    std::vector<pareto_set<routing::journey>> const& cmp) {
+  auto stats = compare_stats{};
+  stats.compared_ = true;
+
+  auto const dominates = [](journey const& a, journey const& b) {
+    return a.start_time_ >= b.start_time_ && a.dest_time_ <= b.dest_time_ &&
+           a.transfers_ <= b.transfers_;
+  };
+  auto const covered = [&](journey const& j, auto const& by) {
+    return utl::any_of(by, [&](journey const& o) { return dominates(o, j); });
+  };
+  auto const key = [](journey const& j) {
+    return fmt::format("dep={} arr={} transfers={}", j.start_time_,
+                       j.dest_time_, j.transfers_);
+  };
+  for (auto i = std::size_t{0U}; i != ref.size(); ++i) {
+    auto cmp_misses = 0, ref_misses = 0;
+    for (auto const& r : ref[i]) {
+      if (!covered(r, cmp[i])) {
+        ++cmp_misses;
+      }
+    }
+    for (auto const& c : cmp[i]) {
+      if (!covered(c, ref[i])) {
+        ++ref_misses;
+      }
+    }
+    if (cmp_misses != 0 || ref_misses != 0) {
+      std::cout << "query #" << i << " " << cmp_name << "_MISSES_" << ref_name
+                << "=" << cmp_misses << " " << ref_name << "_MISSES_"
+                << cmp_name << "=" << ref_misses << "\n  " << ref_name
+                << "-pareto: ";
+      for (auto const& r : ref[i]) {
+        std::cout << "[" << key(r) << "] ";
+      }
+      std::cout << "\n  " << cmp_name << "-pareto: ";
+      for (auto const& c : cmp[i]) {
+        std::cout << "[" << key(c) << "] ";
+      }
+      std::cout << "\n";
+      for (auto const& r : ref[i]) {
+        if (!covered(r, cmp[i])) {
+          std::cout << "  === MISSED-BY-" << cmp_name << ": " << key(r)
+                    << " ===\n";
+          r.print(std::cout, tt);
+          std::cout << "\n";
+        }
+      }
+      for (auto const& c : cmp[i]) {
+        if (!covered(c, ref[i])) {
+          std::cout << "  === " << cmp_name << "-EXTRA (not covered by "
+                    << ref_name << "): " << key(c) << " ===\n";
+          c.print(std::cout, tt);
+          std::cout << "\n";
+        }
+      }
+    }
+    stats.missed_by_cmp_ += static_cast<std::uint64_t>(cmp_misses);
+    stats.missed_by_ref_ += static_cast<std::uint64_t>(ref_misses);
+  }
+  return stats;
+}
 
 // one worker thread per state, pulling queries from a shared counter
 template <typename WS, typename SearchFn>
@@ -172,13 +242,17 @@ cell_result run_config(
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
     timetable const& tt,
     std::string const& label,
-    bool const use_pong,
+    std::string const& algo,
     bool const run_cpu,
     [[maybe_unused]] bool const run_gpu,
     std::vector<unsigned> const& cpu_threads_v,
     [[maybe_unused]] std::vector<unsigned> const& gpu_states_v) {
   auto out = cell_result{};
   auto& stats = out.stats_;
+
+  auto const use_pong = algo != "raptor";
+  routing::pong_prune.prune_ = use_pong && algo != "pong-noprune";
+  routing::pong_prune.skip_pong_lb_ = algo == "pong-nolb";
 
   // the sweep's state pool is allocated once at the maximum count; each
   // sweep point borrows a prefix of it
@@ -206,6 +280,7 @@ cell_result run_config(
       states.push_back(std::make_unique<cpu_ws>());
     }
 
+    auto pruned = std::atomic<std::uint64_t>{0U};
     for (auto const t : cpu_threads_v) {
       out.cpu_lat_ = run_load<cpu_ws>(
           queries, label + "-cpu-" + std::to_string(t), prefix(states, t),
@@ -217,7 +292,14 @@ cell_result run_config(
                     : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
                                              std::move(q), direction::kForward);
             cpu_res[i] = *r.journeys_;
+            if (auto const it = r.algo_stats_.find("n_pruned_by_ping_bounds");
+                it != end(r.algo_stats_)) {
+              pruned += it->second;
+            }
           });
+    }
+    if (use_pong) {
+      fmt::print("  [{}] n_pruned_by_ping_bounds={}\n", label, pruned.load());
     }
   }
 
@@ -254,61 +336,7 @@ cell_result run_config(
   if (!run_cpu || !run_gpu) {
     return out;  // single engine -> nothing to compare
   }
-  stats.compared_ = true;
-
-  auto const dominates = [](journey const& a, journey const& b) {
-    return a.start_time_ >= b.start_time_ && a.dest_time_ <= b.dest_time_ &&
-           a.transfers_ <= b.transfers_;
-  };
-  auto const covered = [&](journey const& j, auto const& by) {
-    return utl::any_of(by, [&](journey const& o) { return dominates(o, j); });
-  };
-  auto const key = [](journey const& j) {
-    return fmt::format("dep={} arr={} transfers={}", j.start_time_,
-                       j.dest_time_, j.transfers_);
-  };
-  for (auto i = std::size_t{0U}; i != queries.size(); ++i) {
-    auto gpu_misses = 0, cpu_misses = 0;
-    for (auto const& c : cpu_res[i]) {
-      if (!covered(c, gpu_res[i])) {
-        ++gpu_misses;
-      }
-    }
-    for (auto const& g : gpu_res[i]) {
-      if (!covered(g, cpu_res[i])) {
-        ++cpu_misses;
-      }
-    }
-    if (gpu_misses != 0 || cpu_misses != 0) {
-      std::cout << "query #" << i << " GPU_MISSES_CPU=" << gpu_misses
-                << " CPU_MISSES_GPU=" << cpu_misses << "\n  CPU-pareto: ";
-      for (auto const& c : cpu_res[i]) {
-        std::cout << "[" << key(c) << "] ";
-      }
-      std::cout << "\n  GPU-pareto: ";
-      for (auto const& g : gpu_res[i]) {
-        std::cout << "[" << key(g) << "] ";
-      }
-      std::cout << "\n";
-      for (auto const& c : cpu_res[i]) {
-        if (!covered(c, gpu_res[i])) {
-          std::cout << "  === MISSED-BY-GPU: " << key(c) << " ===\n";
-          c.print(std::cout, tt);
-          std::cout << "\n";
-        }
-      }
-      for (auto const& g : gpu_res[i]) {
-        if (!covered(g, cpu_res[i])) {
-          std::cout << "  === GPU-EXTRA (not dominated by CPU): " << key(g)
-                    << " ===\n";
-          g.print(std::cout, tt);
-          std::cout << "\n";
-        }
-      }
-    }
-    stats.gpu_misses_ += static_cast<std::uint64_t>(gpu_misses);
-    stats.cpu_misses_ += static_cast<std::uint64_t>(cpu_misses);
-  }
+  stats = cross_check(tt, "CPU", cpu_res, "GPU", gpu_res);
 #endif
 
   return out;
@@ -365,7 +393,12 @@ int main(int argc, char* argv[]) {
        "cross-checked per query and the process exits non-zero on any "
        "divergence")  //
       ("algo,a", bpo::value(&algos)->multitoken(),
-       "algorithms: raptor | pong (default: both)")  //
+       "algorithms: raptor | pong | pong-noprune | pong-nolb "
+       "(default: raptor pong); pong = ping-bounds pruning (the default), "
+       "pong-noprune = baseline without pruning, pong-nolb = pruning + no "
+       "lower bounds dijkstra for the pong direction; the CPU pareto sets of "
+       "all pong-family cells of a mode are cross-checked against the first "
+       "pong-family cell of that mode")  //
       ("modes", bpo::value(&modes)->multitoken(),
        "<start>-<dest> query modes with station | coordinate, e.g. "
        "station-station coordinate-coordinate (default: those two); "
@@ -565,8 +598,10 @@ int main(int argc, char* argv[]) {
   }
 #endif
   for (auto const& a : algos) {
-    if (a != "raptor" && a != "pong") {
-      std::cerr << "invalid algo \"" << a << "\", expected raptor | pong\n";
+    if (a != "raptor" && a != "pong" && a != "pong-noprune" &&
+        a != "pong-nolb") {
+      std::cerr << "invalid algo \"" << a
+                << "\", expected raptor | pong | pong-noprune | pong-nolb\n";
       return 1;
     }
   }
@@ -601,6 +636,11 @@ int main(int argc, char* argv[]) {
   auto total = compare_stats{};
   auto qa_cell = std::optional<cell_result>{};
   auto qa_n_cells = 0U;
+  // per mode: first pong-family cell's CPU results = reference for the
+  // pareto cross-check of the other pong-family cells of that mode
+  auto pong_ref = std::map<
+      std::string,
+      std::pair<std::string, std::vector<pareto_set<routing::journey>>>>{};
 
   for (auto const& mode : modes) {
     auto rs = gs;
@@ -625,13 +665,13 @@ int main(int argc, char* argv[]) {
       auto const label = mode + "-" + algo;
       auto cell = cell_result{};
       try {
-        cell = run_config(qs, tt, label, algo == "pong", run_cpu, run_gpu,
-                          threads_v, gpu_states_v);
+        cell = run_config(qs, tt, label, algo, run_cpu, run_gpu, threads_v,
+                          gpu_states_v);
       } catch (std::exception const& e) {
         // e.g. GPU state allocation OOM -- report + fail instead of dying
         std::cerr << "RUN " << label << " failed: " << e.what() << "\n";
         summary.push_back(fmt::format("{:<40} EXCEPTION: {}", label, e.what()));
-        total.gpu_misses_ += 1U;
+        total.missed_by_cmp_ += 1U;
         continue;
       }
 
@@ -640,15 +680,33 @@ int main(int argc, char* argv[]) {
               ? fmt::format(
                     "{:<40} n={:<6} gpu_misses_cpu={:<4} "
                     "cpu_misses_gpu={:<4} {}",
-                    label, qs.size(), cell.stats_.gpu_misses_,
-                    cell.stats_.cpu_misses_,
-                    cell.stats_.gpu_misses_ + cell.stats_.cpu_misses_ == 0U
+                    label, qs.size(), cell.stats_.missed_by_cmp_,
+                    cell.stats_.missed_by_ref_,
+                    cell.stats_.missed_by_cmp_ + cell.stats_.missed_by_ref_ ==
+                            0U
                         ? "PASS"
                         : "FAIL")
               : fmt::format("{:<40} n={:<6} benchmark only ({})", label,
                             qs.size(), run_cpu ? "cpu" : "gpu"));
-      total.gpu_misses_ += cell.stats_.gpu_misses_;
-      total.cpu_misses_ += cell.stats_.cpu_misses_;
+      total.missed_by_cmp_ += cell.stats_.missed_by_cmp_;
+      total.missed_by_ref_ += cell.stats_.missed_by_ref_;
+
+      // cross-check pong-family CPU pareto sets against the first
+      // pong-family cell of this mode
+      if (algo != "raptor" && run_cpu) {
+        if (auto const it = pong_ref.find(mode); it == end(pong_ref)) {
+          pong_ref.emplace(mode, std::pair{label, cell.cpu_res_});
+        } else {
+          auto const st = cross_check(tt, it->second.first, it->second.second,
+                                      label, cell.cpu_res_);
+          summary.push_back(fmt::format(
+              "{:<40} vs {:<36} missed={:<4} extra={:<4} {}", label,
+              it->second.first, st.missed_by_cmp_, st.missed_by_ref_,
+              st.missed_by_cmp_ + st.missed_by_ref_ == 0U ? "PASS" : "FAIL"));
+          total.missed_by_cmp_ += st.missed_by_cmp_;
+          total.missed_by_ref_ += st.missed_by_ref_;
+        }
+      }
 
       ++qa_n_cells;
       qa_cell = std::move(cell);
@@ -690,5 +748,5 @@ int main(int argc, char* argv[]) {
     bm_crit.write(qa_path);
   }
 
-  return total.gpu_misses_ + total.cpu_misses_ == 0U ? 0 : 1;
+  return total.missed_by_cmp_ + total.missed_by_ref_ == 0U ? 0 : 1;
 }

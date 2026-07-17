@@ -108,6 +108,29 @@ struct raptor {
 
   algo_stats_t get_stats() const { return stats_; }
 
+  // === experimental ping-bounds pruning (see pong.cc) =====================
+  // Bounds derived from a preceding opposite-direction "ping" search:
+  // bounds[j * n_locations + l] is the best time the ping search proved
+  // achievable at stop l within j rounds (monotonic over rounds, already
+  // loosened by the stop's transfer time). A label this ("pong") search
+  // writes in round k belongs to a journey whose prefix (in the opposite
+  // direction) has at most bounds_last_k_ - k rounds available -- if the
+  // label lies outside the ping bound for that prefix, no journey through
+  // it can reach the destination optimally and it is pruned.
+  // Only supported for Vias == 0.
+  void set_bounds(std::array<delta_t, Vias + 1> const* const bounds,
+                  unsigned const last_round) {
+    assert(bounds == nullptr || Vias == 0U);
+    bounds_ = bounds;
+    bounds_last_k_ = last_round;
+  }
+
+  // Loose pruning keeps labels that merely *equal* the current time at
+  // destination instead of strictly improving it. The ping search runs with
+  // loose pruning so its round_times cover every stop that can be part of an
+  // equal-arrival (but later-departure) journey the pong search needs.
+  void set_loose_pruning(bool const loose) { loose_pruning_ = loose; }
+
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
     round_times_.reset(kInvalidArray);
@@ -317,6 +340,33 @@ private:
     }
   }
 
+  // is_better, but in loose-pruning mode equality also passes.
+  bool is_better_loose(auto const a, auto const b) const {
+    return is_better(a, b) || (loose_pruning_ && a == b);
+  }
+
+  // Check a label written in round k at stop l against the ping bounds
+  // (no-op without bounds, see set_bounds).
+  bool within_bounds(unsigned const k, std::size_t const l, delta_t const t) {
+    if (bounds_ == nullptr) {
+      return true;
+    }
+    assert(k <= bounds_last_k_);
+    auto const bound = bounds_[(bounds_last_k_ - k) * n_locations_ + l][0];
+    if (is_better_or_eq(t, bound)) {
+      return true;
+    }
+    static bool const trace_bounds =
+        std::getenv("NIGIRI_BOUNDS_TRACE") != nullptr;
+    if (trace_bounds) {
+      fmt::println("BOUNDS_PRUNE k={} last_k={} loc={} t={} bound={}", k,
+                   bounds_last_k_, fmt::streamed(loc{tt_, location_idx_t{l}}),
+                   to_unix(t), to_unix(bound));
+    }
+    ++stats_.n_pruned_by_ping_bounds_;
+    return false;
+  }
+
   template <bool WithClaszFilter,
             bool WithBikeFilter,
             bool WithCarFilter,
@@ -519,10 +569,14 @@ private:
             to_unix(time_at_dest_[k]));
 
         if (is_better(fp_target_time, best_[i][target_v]) &&
-            is_better(fp_target_time, time_at_dest_[k])) {
+            is_better_loose(fp_target_time, time_at_dest_[k])) {
           if (!lb_reachable(i) ||
-              !is_better(fp_target_time + dir(get_lb(i)), time_at_dest_[k])) {
+              !is_better_loose(fp_target_time + dir(get_lb(i)),
+                               time_at_dest_[k])) {
             ++stats_.fp_update_prevented_by_lower_bound_;
+            return;
+          }
+          if (!within_bounds(k, i, fp_target_time)) {
             return;
           }
 
@@ -584,10 +638,10 @@ private:
                              stay.count()));
 
           if (is_better(fp_target_time, best_[target][target_v]) &&
-              is_better(fp_target_time, time_at_dest_[k])) {
+              is_better_loose(fp_target_time, time_at_dest_[k])) {
             if (!lb_reachable(target) ||
-                !is_better(fp_target_time + dir(get_lb(target)),
-                           time_at_dest_[k])) {
+                !is_better_loose(fp_target_time + dir(get_lb(target)),
+                                 time_at_dest_[k])) {
               ++stats_.fp_update_prevented_by_lower_bound_;
               trace_upd(
                   "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
@@ -599,6 +653,9 @@ private:
                   to_unix(fp_target_time), get_lb(target),
                   to_unix(clamp(fp_target_time + dir(get_lb(target)))),
                   to_unix(time_at_dest_[k]));
+              continue;
+            }
+            if (!within_bounds(k, target, fp_target_time)) {
               continue;
             }
 
@@ -681,10 +738,10 @@ private:
               clamp(tmp_time + dir(fp.duration().count() + stay.count()));
 
           if (is_better(fp_target_time, best_[target][target_v]) &&
-              is_better(fp_target_time, time_at_dest_[k])) {
+              is_better_loose(fp_target_time, time_at_dest_[k])) {
             if (!lb_reachable(target) ||
-                !is_better(fp_target_time + dir(get_lb(target)),
-                           time_at_dest_[k])) {
+                !is_better_loose(fp_target_time + dir(get_lb(target)),
+                                 time_at_dest_[k])) {
               ++stats_.fp_update_prevented_by_lower_bound_;
               trace_upd(
                   "┊ ├k={} *** LB NO TD FP UPD: (from={}, tmp={}) --{}--> "
@@ -695,6 +752,9 @@ private:
                   fp_target_time, get_lb(target),
                   to_unix(clamp(fp_target_time + dir(get_lb(target)))),
                   to_unix(time_at_dest_[k]));
+              return utl::cflow::kContinue;
+            }
+            if (!within_bounds(k, target, fp_target_time)) {
               return utl::cflow::kContinue;
             }
 
@@ -902,10 +962,11 @@ private:
                 get_best(round_times_[k - 1][l_idx][target_v],
                          tmp_[l_idx][target_v], best_[l_idx][target_v]);
 
-            if (is_better(by_transport, time_at_dest_[k]) &&
+            if (is_better_loose(by_transport, time_at_dest_[k]) &&
                 lb_reachable(l_idx) &&
-                is_better(by_transport + dir(get_lb(l_idx)),
-                          time_at_dest_[k])) {
+                is_better_loose(by_transport + dir(get_lb(l_idx)),
+                                time_at_dest_[k]) &&
+                within_bounds(k, l_idx, by_transport)) {
               trace_upd(
                   "┊ │k={}    RT | name={}, dbg={}, time_by_transport={}, "
                   "BETTER THAN current_best={} => update, {} marking station "
@@ -1050,9 +1111,11 @@ private:
 
           assert(by_transport != std::numeric_limits<delta_t>::min() &&
                  by_transport != std::numeric_limits<delta_t>::max());
-          if (is_better(by_transport, time_at_dest_[k]) &&
+          if (is_better_loose(by_transport, time_at_dest_[k]) &&
               lb_reachable(l_idx) &&
-              is_better(by_transport + dir(get_lb(l_idx)), time_at_dest_[k])) {
+              is_better_loose(by_transport + dir(get_lb(l_idx)),
+                              time_at_dest_[k]) &&
+              within_bounds(k, l_idx, by_transport)) {
             trace_upd(
                 "┊ │k={} v={}->{}    name={}, dbg={}, time_by_transport={}, "
                 "BETTER THAN current_best={} => update, {} marking station "
@@ -1202,8 +1265,8 @@ private:
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
-        if (is_better_or_eq(time_at_dest_[k],
-                            to_delta(day, ev_mam) + dir(get_lb(to_idx(l))))) {
+        if (!is_better_loose(to_delta(day, ev_mam) + dir(get_lb(to_idx(l))),
+                             time_at_dest_[k])) {
           trace(
               "┊ │k={}      => name={}, dbg={}, day={}={}, best_mam={}, "
               "transport_mam={}, transport_time={} => TIME AT DEST {} IS "
@@ -1334,6 +1397,9 @@ private:
   std::array<delta_t, kMaxTransfers + 2> time_at_dest_;
   day_idx_t base_;
   raptor_stats stats_;
+  std::array<delta_t, Vias + 1> const* bounds_{nullptr};
+  unsigned bounds_last_k_{0U};
+  bool loose_pruning_{false};
   clasz_mask_t allowed_claszes_;
   bool require_bike_transport_;
   bool require_car_transport_;
