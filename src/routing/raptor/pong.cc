@@ -40,73 +40,35 @@ pong_prune_settings pong_prune{
 namespace {
 
 // Transform the ping search's round_times into pruning bounds for the pong
-// search (written to raptor_state::bounds_storage_):
-// - made monotonic over rounds (bounds[k] = best over rounds <= k), which
-//   also fills rounds where the ping found no improvement and wrote nothing
-// - reduced to *trip-level* arrival bounds (the pong checks trip event times
-//   before its own transfer): a stop's trip-level arrival is proven either
-//   by its own round entry (written as arrival + transfer time -> subtract
-//   the transfer time; this also keeps same-trip continuations, which pay
-//   no transfer, within bounds) or by a footpath projection at a neighbor
-//   (written as arrival + fp duration -> subtract the fp duration). The
-//   footpath candidates are required for correctness: the ping only records
-//   arrivals *somewhere* -- the transfer update at the arrival stop itself
-//   may be pruned by the lower bound while the footpath still propagates
-//   from the trip arrival (bypassing the transfer).
-// Only for Vias == 0 (bounds element = std::array<delta_t, 1>).
+// search (written to raptor_state::bounds_storage_): made monotonic over
+// rounds (bounds[k] = best over rounds <= k), which also fills rounds where
+// the ping found no improvement and wrote nothing. Only rows 0..n_rows-1
+// are filled (the maximum round any pong of this batch will look at).
+// Everything else (transfer time subtraction, footpath projections) happens
+// lazily at check time in raptor::within_bounds -- an eager pass over all
+// locations x rounds costs more than the pruning saves on large timetables.
+// Only for Vias == 0.
 template <direction PingDir>
-std::array<delta_t, 1U> const* fill_bounds(timetable const& tt,
-                                           raptor_state& s,
-                                           transfer_time_settings const& tts,
-                                           profile_idx_t const prf_idx) {
+delta_t const* fill_bounds(raptor_state& s, std::size_t const n_rows) {
   constexpr auto const kFwd = PingDir == direction::kForward;
   auto const n = static_cast<std::size_t>(s.n_locations_);
-  auto const n_rounds = static_cast<std::size_t>(kMaxTransfers) + 2U;
 
-  s.bounds_storage_.resize(n * n_rounds);
+  s.bounds_storage_.resize(n * (static_cast<std::size_t>(kMaxTransfers) + 2U));
   auto const* const src = s.round_times_storage_.data();
   auto* const dst = s.bounds_storage_.data();
 
-  auto const better = [](delta_t const a, delta_t const b) {
-    return kFwd ? std::min(a, b) : std::max(a, b);
-  };
-
-  // monotonic fill
   std::memcpy(dst, src, n * sizeof(delta_t));
-  for (auto k = std::size_t{1U}; k != n_rounds; ++k) {
+  for (auto k = std::size_t{1U}; k < n_rows; ++k) {
     auto const* const src_row = src + (k * n);
     auto const* const prev_row = dst + ((k - 1U) * n);
     auto* const dst_row = dst + (k * n);
     for (auto x = std::size_t{0U}; x != n; ++x) {
-      dst_row[x] = better(src_row[x], prev_row[x]);
+      dst_row[x] = kFwd ? std::min(src_row[x], prev_row[x])
+                        : std::max(src_row[x], prev_row[x]);
     }
   }
 
-  // trip-level arrival bounds
-  auto const& fps =
-      (kFwd ? tt.locations_.footpaths_out_ : tt.locations_.footpaths_in_)
-          [prf_idx];
-  auto scratch = std::vector<delta_t>(n);
-  for (auto k = std::size_t{0U}; k != n_rounds; ++k) {
-    auto* const dst_row = dst + (k * n);
-    std::memcpy(scratch.data(), dst_row, n * sizeof(delta_t));
-    for (auto x = std::size_t{0U}; x != n; ++x) {
-      auto const l = location_idx_t{x};
-      auto const transfer = adjusted_transfer_time(
-          tts, static_cast<int>(tt.locations_.transfer_time_[l].count()));
-      auto b =
-          clamp(static_cast<int>(scratch[x]) + (kFwd ? -transfer : transfer));
-      for (auto const& fp : fps[l]) {
-        auto const d = adjusted_transfer_time(
-            tts, static_cast<int>(fp.duration().count()));
-        b = better(b, clamp(static_cast<int>(scratch[to_idx(fp.target())]) +
-                            (kFwd ? -d : d)));
-      }
-      dst_row[x] = b;
-    }
-  }
-
-  return reinterpret_cast<std::array<delta_t, 1U> const*>(dst);
+  return dst;
 }
 
 }  // namespace
@@ -183,7 +145,7 @@ routing_result pong(timetable const& tt,
 
   // Ping-bounds pruning (experiment): CPU only, no vias. Time-dependent
   // footpaths (Rt + profile != 0) write projections whose durations cannot
-  // be recovered when building the bounds -> no pruning there.
+  // be recovered at bounds-check time -> no pruning there.
   constexpr auto const kBoundsPrune = !kGpu && Vias == 0U;
   auto const prune =
       kBoundsPrune && pong_prune.prune_ && !(Rt && q.prf_idx_ != 0U);
@@ -298,8 +260,7 @@ routing_result pong(timetable const& tt,
   // ========
   // >> PLAY!
   // --------
-  [[maybe_unused]] auto bounds =
-      static_cast<std::array<delta_t, 1U> const*>(nullptr);
+  [[maybe_unused]] auto bounds = static_cast<delta_t const*>(nullptr);
   auto starts = std::vector<start>{};
   auto result = routing_result{
       .journeys_ = &s_state.results_,
@@ -384,9 +345,11 @@ routing_result pong(timetable const& tt,
     if constexpr (kBoundsPrune) {
       if (prune) {
         // Has to happen before pong.reset_arrivals() wipes the shared
-        // round_times the ping search just filled.
-        bounds = fill_bounds<SearchDir>(tt, r_state, q.transfer_time_settings_,
-                                        q.prf_idx_);
+        // round_times the ping search just filled. Rows needed: the pong for
+        // ping journey K looks at rows 0..K -> max transfers + 1 rows
+        // (ping_results are sorted by transfers, descending).
+        bounds = fill_bounds<SearchDir>(
+            r_state, ping_results.begin()->transfers_ + std::size_t{1U});
       }
     }
     q.flip_dir();
@@ -398,7 +361,7 @@ routing_result pong(timetable const& tt,
         if (prune) {
           // Round k of this pong leaves bounds_last_k - k rounds for the
           // journey prefix -> check against the ping's bound for that round.
-          pong.set_bounds(bounds, ping_j.transfers_ + 1U);
+          pong.set_bounds(bounds, ping_j.transfers_ + 1U, q.prf_idx_);
         }
       }
 
