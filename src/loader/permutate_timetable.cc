@@ -22,6 +22,43 @@ using route_permutation_t = permutation_t<route_idx_t>;
 using transport_permutation_t = permutation_t<transport_idx_t>;
 using cartesian_t = std::tuple<double, double, double>;
 
+namespace {
+bool has_any_events(timetable const& tt, location_idx_t const loc) {
+  auto const loc_routes = tt.location_routes_[loc];
+  if (loc_routes.empty()) {
+    return false;
+  }
+
+  for (auto const r : loc_routes) {
+    if (tt.bitfields_[tt.route_traffic_days_[r]].any()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+stop_idx_t get_first_stop_with_most_events(timetable const& tt,
+                                           route_idx_t const r) {
+  auto const stop_seq = tt.route_location_seq_[r];
+  utl::verify(!stop_seq.empty(), "Route does not have any stops");
+  stop_idx_t current_max_stop = 0;
+  size_t current_max =
+      tt.n_events_at_location(stop{stop_seq[0]}.location_idx());
+  for (stop_idx_t i = 1U; i < stop_seq.size(); ++i) {
+    auto const stop_loc = stop{stop_seq[i]}.location_idx();
+    auto const events_at_loc = tt.n_events_at_location(stop_loc);
+    if (events_at_loc > current_max) {
+      current_max_stop = i;
+      current_max = events_at_loc;
+    }
+  }
+
+  return current_max_stop;
+}
+}
+
+
 template <typename T>
 void update_refs(permutation_t<T> const& p, T& l) {
   l = l == T::invalid() ? l : p[l];
@@ -182,6 +219,26 @@ vector_map<route_idx_t, geo::latlng> get_route_centroids(timetable const& tt) {
   return ret;
 }
 
+vector_map<route_idx_t, geo::latlng> get_route_coordinates(timetable const& tt) {
+  if constexpr (kRoutePermutationStrategy == route_permutation_strategy::kCentroid) {
+    return get_route_centroids(tt);
+  } else {
+    vector_map<route_idx_t, geo::latlng> ret{};
+    ret.resize(tt.n_routes());
+    for (auto r = route_idx_t{0U}; r < tt.n_routes(); ++r) {
+      auto const stop_seq = tt.route_location_seq_[r];
+      if (stop_seq.empty()) {
+        ret[r] = geo::latlng{};
+        continue;
+      }
+      auto const max_stop_idx = get_first_stop_with_most_events(tt, r);
+      auto const loc = stop{stop_seq[max_stop_idx]}.location_idx();
+      ret[r] = tt.locations_.coordinates_[loc];
+    }
+    return ret;
+  }
+}
+
 std::pair<route_permutation_t, route_permutation_t> get_route_permutation(timetable const& tt) {
   if (tt.n_routes() == 0U) {
     return {};
@@ -194,13 +251,12 @@ std::pair<route_permutation_t, route_permutation_t> get_route_permutation(timeta
   std::generate(begin(p), end(p),
                 [route = route_idx_t{0U}]() mutable { return route++; });
 
-  const auto route_centroids = get_route_centroids(tt);
-
+  const auto route_coords = get_route_coordinates(tt);
 
   std::stable_sort(begin(p), end(p),
                    [&](route_idx_t const a, route_idx_t const b) {
-                     return morton_encode(route_centroids[a]) <
-                            morton_encode(route_centroids[b]);
+                     return morton_encode(route_coords[a]) <
+                            morton_encode(route_coords[b]);
                    });
 
   r.resize(tt.n_routes());
@@ -260,6 +316,10 @@ std::pair<location_permutation_t, location_permutation_t> get_location_permutati
                      return morton_encode(tt.locations_.coordinates_[a]) <
                             morton_encode(tt.locations_.coordinates_[b]);
                    });
+  std::stable_partition(begin(p) + first_idx, end(p),
+                        [&](location_idx_t const l) {
+                          return !has_any_events(tt, l);
+                        });
 
   r.resize(tt.n_locations());
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {

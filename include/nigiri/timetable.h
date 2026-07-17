@@ -159,6 +159,35 @@ struct timetable {
     return bitfields_[route_traffic_days_[r]].test(to_idx(day));
   }
 
+  size_t n_events_at_location(location_idx_t const loc) const {
+    size_t res = 0U;
+    for (const auto r : location_routes_[loc]) {
+      const auto stop_seq = route_location_seq_[r];
+      for (stop_idx_t i = 0U; i < stop_seq.size(); ++i) {
+        const auto stp = stop{stop_seq[i]};
+        if (stp.location_idx() != loc) {
+          continue;
+        }
+
+        size_t n_active_transports = 0U;
+        const auto transport_range = route_transport_ranges_[r];
+        for (const auto t : transport_range) {
+          n_active_transports += bitfields_[transport_traffic_days_[t]].count();
+        }
+        if (i > 0U) {
+          // Arrival Events
+          res += n_active_transports;
+        }
+        if (i < stop_seq.size() - 1) {
+          // Departure Events
+          res += n_active_transports;
+        }
+      }
+    }
+
+    return res;
+  }
+
   std::span<delta const> event_times_at_stop(route_idx_t const r,
                                              stop_idx_t const stop_idx,
                                              event_type const ev_type) const {
