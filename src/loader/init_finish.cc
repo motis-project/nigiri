@@ -231,13 +231,13 @@ void finalize(timetable& tt, finalize_options const opt) {
         });
   }
 
+  rebuild_route_traffic_days(tt);
   if (opt.z_order_) {
     auto const timer = scoped_timer{"loader.z_order"};
     permutate_timetable(tt);
   }
 
   build_footpaths(tt, opt);
-  rebuild_route_traffic_days(tt);
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);
   build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
   build_location_tree(tt);
