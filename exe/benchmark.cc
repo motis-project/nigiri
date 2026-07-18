@@ -110,12 +110,10 @@ compare_stats cross_check(
   auto stats = compare_stats{};
   stats.compared_ = true;
 
-  auto const dominates = [](journey const& a, journey const& b) {
-    return a.start_time_ >= b.start_time_ && a.dest_time_ <= b.dest_time_ &&
-           a.transfers_ <= b.transfers_;
-  };
   auto const covered = [&](journey const& j, auto const& by) {
-    return utl::any_of(by, [&](journey const& o) { return dominates(o, j); });
+    // journey::dominates is direction-aware (bwd journeys have
+    // start_time_ > dest_time_)
+    return utl::any_of(by, [&](journey const& o) { return o.dominates(j); });
   };
   auto const key = [](journey const& j) {
     return fmt::format("dep={} arr={} transfers={}", j.start_time_,
@@ -165,6 +163,66 @@ compare_stats cross_check(
     }
     stats.missed_by_cmp_ += static_cast<std::uint64_t>(cmp_misses);
     stats.missed_by_ref_ += static_cast<std::uint64_t>(ref_misses);
+  }
+  return stats;
+}
+
+// strict check between algorithms that extend the search interval
+// differently (search.h raptor extends both directions, the pong family
+// marches probes one direction and counts differently): on the INTERSECTION
+// of the two final search intervals -- the region both actually searched --
+// the results must agree. Every journey anchored (start_time_, i.e. the
+// interval domain: departure for fwd, arrival for bwd) in the intersection
+// must be covered (equaled or dominated) by the other side's FULL result
+// set; domination by an out-of-intersection journey is legitimate (pareto
+// shadow at the interval edge), a genuinely missing optimal journey is not
+// coverable and is flagged.
+compare_stats common_interval_check(
+    timetable const& tt,
+    std::string const& ref_name,
+    std::vector<pareto_set<routing::journey>> const& ref,
+    std::vector<interval<unixtime_t>> const& ref_iv,
+    std::string const& cmp_name,
+    std::vector<pareto_set<routing::journey>> const& cmp,
+    std::vector<interval<unixtime_t>> const& cmp_iv) {
+  auto stats = compare_stats{};
+  stats.compared_ = true;
+
+  auto const covered = [&](journey const& j, auto const& by) {
+    return utl::any_of(by, [&](journey const& o) { return o.dominates(j); });
+  };
+  auto const key = [](journey const& j) {
+    return fmt::format("dep={} arr={} transfers={}", j.departure_time(),
+                       j.arrival_time(), j.transfers_);
+  };
+
+  for (auto i = std::size_t{0U}; i != ref.size(); ++i) {
+    auto const iv = interval<unixtime_t>{
+        std::max(ref_iv[i].from_, cmp_iv[i].from_),
+        std::min(ref_iv[i].to_, cmp_iv[i].to_)};
+    if (iv.from_ >= iv.to_) {
+      continue;  // nothing searched by both -> nothing to compare
+    }
+    auto misses = 0U;
+    auto const check_side = [&](auto const& side, auto const& other,
+                                std::string const& side_name,
+                                std::string const& other_name) {
+      for (auto const& j : side) {
+        if (iv.contains(j.start_time_) && !covered(j, other)) {
+          ++misses;
+          std::cout << "query #" << i << " " << other_name << " misses ["
+                    << key(j) << "] found by " << side_name
+                    << " (common interval " << iv << ", " << ref_name << " "
+                    << ref_iv[i] << ", " << cmp_name << " " << cmp_iv[i]
+                    << ")\n";
+          j.print(std::cout, tt);
+          std::cout << "\n";
+        }
+      }
+    };
+    check_side(ref[i], cmp[i], ref_name, cmp_name);
+    check_side(cmp[i], ref[i], cmp_name, ref_name);
+    stats.missed_by_cmp_ += misses;
   }
   return stats;
 }
@@ -235,6 +293,7 @@ std::vector<double> run_load(
 struct cell_result {
   compare_stats stats_;
   std::vector<pareto_set<routing::journey>> cpu_res_;
+  std::vector<interval<unixtime_t>> cpu_iv_;  // final searched interval
   std::vector<double> cpu_lat_;
 };
 
@@ -243,6 +302,7 @@ cell_result run_config(
     timetable const& tt,
     std::string const& label,
     std::string const& algo,
+    direction const dir,
     bool const run_cpu,
     [[maybe_unused]] bool const run_gpu,
     std::vector<unsigned> const& cpu_threads_v,
@@ -272,6 +332,7 @@ cell_result run_config(
   };
   auto& cpu_res = out.cpu_res_;
   cpu_res.resize(queries.size());
+  out.cpu_iv_.resize(queries.size());
   if (run_cpu) {
     auto states = std::vector<std::unique_ptr<cpu_ws>>{};
     for (auto i = 0U;
@@ -286,12 +347,12 @@ cell_result run_config(
           queries, label + "-cpu-" + std::to_string(t), prefix(states, t),
           [&](cpu_ws& w, routing::query q, std::size_t const i) {
             auto const r =
-                use_pong
-                    ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
-                                           std::move(q), direction::kForward)
-                    : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
-                                             std::move(q), direction::kForward);
+                use_pong ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
+                                                std::move(q), dir)
+                         : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
+                                                  std::move(q), dir);
             cpu_res[i] = *r.journeys_;
+            out.cpu_iv_[i] = r.interval_;
             if (auto const it = r.algo_stats_.find("n_pruned_by_ping_bounds");
                 it != end(r.algo_stats_)) {
               pruned += it->second;
@@ -323,11 +384,10 @@ cell_result run_config(
           queries, label + "-gpu-" + std::to_string(s), prefix(states, s),
           [&](gpu_ws& w, routing::query q, std::size_t const i) {
             auto const r =
-                use_pong
-                    ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
-                                           std::move(q), direction::kForward)
-                    : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
-                                             std::move(q), direction::kForward);
+                use_pong ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
+                                                std::move(q), dir)
+                         : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
+                                                  std::move(q), dir);
             gpu_res[i] = *r.journeys_;
           });
     }
@@ -377,6 +437,7 @@ int main(int argc, char* argv[]) {
   auto engines = std::vector<std::string>{};
   auto algos = std::vector<std::string>{};
   auto modes = std::vector<std::string>{};
+  auto dirs = std::vector<std::string>{};
   auto threads_v = std::vector<unsigned>{};
   auto gpu_states_v = std::vector<unsigned>{};
 
@@ -397,12 +458,20 @@ int main(int argc, char* argv[]) {
        "(default: raptor pong); pong = ping-bounds pruning (the default), "
        "pong-noprune = baseline without pruning, pong-nolb = pruning + no "
        "lower bounds dijkstra for the pong direction; the CPU pareto sets of "
-       "all pong-family cells of a mode are cross-checked against the first "
-       "pong-family cell of that mode")  //
+       "all pong-family cells of a (mode, dir) are cross-checked against the "
+       "first pong-family cell, and if raptor ran, every pong-family cell is "
+       "additionally checked against it for exact equality of the first "
+       "min(N, M) connections in returned order")  //
       ("modes", bpo::value(&modes)->multitoken(),
        "<start>-<dest> query modes with station | coordinate, e.g. "
        "station-station coordinate-coordinate (default: those two); "
        "coordinate = intermodal offsets (walk)")  //
+      ("dirs", bpo::value(&dirs)->multitoken(),
+       "search directions: fwd | bwd (default: fwd); bwd flips the generated "
+       "queries (start/dest swapped, vias reversed) and searches backward = "
+       "arriveBy with the interval as arrival window; the interval extension "
+       "flags are forced to the search direction (fwd: later only, bwd: "
+       "earlier only), overriding -e/-l")  //
       ("threads", bpo::value(&threads_v)->multitoken(),
        "CPU worker thread counts to sweep (default: hardware "
        "concurrency)")  //
@@ -569,6 +638,15 @@ int main(int argc, char* argv[]) {
   if (modes.empty()) {
     modes = {"station-station", "coordinate-coordinate"};
   }
+  if (dirs.empty()) {
+    dirs = {"fwd"};
+  }
+  for (auto const& d : dirs) {
+    if (d != "fwd" && d != "bwd") {
+      std::cerr << "invalid dir \"" << d << "\", expected fwd | bwd\n";
+      return 1;
+    }
+  }
   if (threads_v.empty()) {
     threads_v = {std::max(std::thread::hardware_concurrency(), 1U)};
   }
@@ -636,11 +714,6 @@ int main(int argc, char* argv[]) {
   auto total = compare_stats{};
   auto qa_cell = std::optional<cell_result>{};
   auto qa_n_cells = 0U;
-  // per mode: first pong-family cell's CPU results = reference for the
-  // pareto cross-check of the other pong-family cells of that mode
-  auto pong_ref = std::map<
-      std::string,
-      std::pair<std::string, std::vector<pareto_set<routing::journey>>>>{};
 
   for (auto const& mode : modes) {
     auto rs = gs;
@@ -656,60 +729,108 @@ int main(int argc, char* argv[]) {
       rs.use_start_footpaths_ = false;  // first mile is in the start offsets
     }
 
-    auto& qs = mode_queries[mode];
-    if (qs.empty()) {
-      generate_queries(qs, n_queries, tt, rs, seed);
+    auto& fwd_qs = mode_queries[mode];
+    if (fwd_qs.empty()) {
+      generate_queries(fwd_qs, n_queries, tt, rs, seed);
     }
 
-    for (auto const& algo : algos) {
-      auto const label = mode + "-" + algo;
-      auto cell = cell_result{};
-      try {
-        cell = run_config(qs, tt, label, algo, run_cpu, run_gpu, threads_v,
-                          gpu_states_v);
-      } catch (std::exception const& e) {
-        // e.g. GPU state allocation OOM -- report + fail instead of dying
-        std::cerr << "RUN " << label << " failed: " << e.what() << "\n";
-        summary.push_back(fmt::format("{:<40} EXCEPTION: {}", label, e.what()));
-        total.missed_by_cmp_ += 1U;
-        continue;
-      }
+    for (auto const& dir_str : dirs) {
+      auto const dir =
+          dir_str == "fwd" ? direction::kForward : direction::kBackward;
 
-      summary.push_back(
-          cell.stats_.compared_
-              ? fmt::format(
-                    "{:<40} n={:<6} gpu_misses_cpu={:<4} "
-                    "cpu_misses_gpu={:<4} {}",
-                    label, qs.size(), cell.stats_.missed_by_cmp_,
-                    cell.stats_.missed_by_ref_,
-                    cell.stats_.missed_by_cmp_ + cell.stats_.missed_by_ref_ ==
-                            0U
-                        ? "PASS"
-                        : "FAIL")
-              : fmt::format("{:<40} n={:<6} benchmark only ({})", label,
-                            qs.size(), run_cpu ? "cpu" : "gpu"));
-      total.missed_by_cmp_ += cell.stats_.missed_by_cmp_;
-      total.missed_by_ref_ += cell.stats_.missed_by_ref_;
-
-      // cross-check pong-family CPU pareto sets against the first
-      // pong-family cell of this mode
-      if (algo != "raptor" && run_cpu) {
-        if (auto const it = pong_ref.find(mode); it == end(pong_ref)) {
-          pong_ref.emplace(mode, std::pair{label, cell.cpu_res_});
-        } else {
-          auto const st = cross_check(tt, it->second.first, it->second.second,
-                                      label, cell.cpu_res_);
-          summary.push_back(fmt::format(
-              "{:<40} vs {:<36} missed={:<4} extra={:<4} {}", label,
-              it->second.first, st.missed_by_cmp_, st.missed_by_ref_,
-              st.missed_by_cmp_ + st.missed_by_ref_ == 0U ? "PASS" : "FAIL"));
-          total.missed_by_cmp_ += st.missed_by_cmp_;
-          total.missed_by_ref_ += st.missed_by_ref_;
+      // bwd = the same workload flipped: start/dest swapped, vias reversed,
+      // the generated interval becomes the arrival window (arriveBy).
+      // The interval only ever extends in the search direction (later for
+      // fwd, earlier for bwd) -- production never sets both flags and the
+      // pong probes only march that way.
+      auto qs = fwd_qs;
+      for (auto& sdq : qs) {
+        if (dir == direction::kBackward) {
+          sdq.q_.flip_dir();
         }
+        sdq.q_.extend_interval_earlier_ = dir == direction::kBackward;
+        sdq.q_.extend_interval_later_ = dir == direction::kForward;
       }
 
-      ++qa_n_cells;
-      qa_cell = std::move(cell);
+      // per (mode, dir): first pong-family cell = pareto cross-check
+      // reference, raptor cell = common-interval check reference
+      struct check_ref {
+        std::string label_;
+        std::vector<pareto_set<routing::journey>> res_;
+        std::vector<interval<unixtime_t>> iv_;
+      };
+      auto pong_ref = std::optional<check_ref>{};
+      auto raptor_ref = std::optional<check_ref>{};
+
+      for (auto const& algo : algos) {
+        auto const label = mode + "-" + dir_str + "-" + algo;
+        auto cell = cell_result{};
+        try {
+          cell = run_config(qs, tt, label, algo, dir, run_cpu, run_gpu,
+                            threads_v, gpu_states_v);
+        } catch (std::exception const& e) {
+          // e.g. GPU state allocation OOM -- report + fail instead of dying
+          std::cerr << "RUN " << label << " failed: " << e.what() << "\n";
+          summary.push_back(
+              fmt::format("{:<44} EXCEPTION: {}", label, e.what()));
+          total.missed_by_cmp_ += 1U;
+          continue;
+        }
+
+        summary.push_back(
+            cell.stats_.compared_
+                ? fmt::format(
+                      "{:<44} n={:<6} gpu_misses_cpu={:<4} "
+                      "cpu_misses_gpu={:<4} {}",
+                      label, qs.size(), cell.stats_.missed_by_cmp_,
+                      cell.stats_.missed_by_ref_,
+                      cell.stats_.missed_by_cmp_ + cell.stats_.missed_by_ref_ ==
+                              0U
+                          ? "PASS"
+                          : "FAIL")
+                : fmt::format("{:<44} n={:<6} benchmark only ({})", label,
+                              qs.size(), run_cpu ? "cpu" : "gpu"));
+        total.missed_by_cmp_ += cell.stats_.missed_by_cmp_;
+        total.missed_by_ref_ += cell.stats_.missed_by_ref_;
+
+        if (run_cpu) {
+          if (algo == "raptor") {
+            raptor_ref.emplace(check_ref{label, cell.cpu_res_, cell.cpu_iv_});
+          } else {
+            // pareto cross-check against the first pong-family cell of this
+            // (mode, dir)
+            if (!pong_ref.has_value()) {
+              pong_ref.emplace(check_ref{label, cell.cpu_res_, cell.cpu_iv_});
+            } else {
+              auto const st = cross_check(tt, pong_ref->label_,
+                                          pong_ref->res_, label,
+                                          cell.cpu_res_);
+              summary.push_back(fmt::format(
+                  "{:<44} vs {:<40} missed={:<4} extra={:<4} {}", label,
+                  pong_ref->label_, st.missed_by_cmp_, st.missed_by_ref_,
+                  st.missed_by_cmp_ + st.missed_by_ref_ == 0U ? "PASS"
+                                                              : "FAIL"));
+              total.missed_by_cmp_ += st.missed_by_cmp_;
+              total.missed_by_ref_ += st.missed_by_ref_;
+            }
+            // strict agreement with search.h raptor on the region both
+            // searched (intersection of the final intervals)
+            if (raptor_ref.has_value()) {
+              auto const st = common_interval_check(
+                  tt, raptor_ref->label_, raptor_ref->res_, raptor_ref->iv_,
+                  label, cell.cpu_res_, cell.cpu_iv_);
+              summary.push_back(fmt::format(
+                  "{:<44} vs {:<40} common-interval misses={:<4} {}", label,
+                  raptor_ref->label_, st.missed_by_cmp_,
+                  st.missed_by_cmp_ == 0U ? "PASS" : "FAIL"));
+              total.missed_by_cmp_ += st.missed_by_cmp_;
+            }
+          }
+        }
+
+        ++qa_n_cells;
+        qa_cell = std::move(cell);
+      }
     }
   }
 

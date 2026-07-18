@@ -1571,3 +1571,176 @@ leg 6: (D, D) [2019-05-01 08:57] -> (E, E) [2019-05-01 09:00]
     EXPECT_EQ(expected_via_test_34_earlier_alternative, results_str);
   }
 }
+
+namespace {
+
+// Loop route RL serving the via V twice: P -> V -> B -> V -> C, plus one
+// feeder TF: S -> P -> B. The optimal journey transfers at B onto TE, which
+// crosses V *after* B. During the round-2 scan of RL, the rider is occupied
+// by TL (boarded at P) and has crossed V, i.e. its via offset is 1 -- the
+// switch to TE at B is only possible from the slot-0 feeder label there.
+constexpr auto const test_files_via_loop = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,location_type,parent_station
+S,S,,0.0,1.0,,
+P,P,,2.0,3.0,,
+V,V,,4.0,5.0,,
+B,B,,6.0,7.0,,
+C,C,,8.0,9.0,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+RF,DB,F,,,3
+RL,DB,L,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+RF,S1,TF,,
+RL,S1,TE,,
+RL,S1,TL,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+TF,10:00:00,10:00:00,S,0
+TF,10:05:00,10:05:00,P,1
+TF,10:12:00,10:12:00,B,2
+TE,09:00:00,09:00:00,P,0
+TE,09:05:00,09:05:00,V,1
+TE,10:13:00,10:15:00,B,2
+TE,10:20:00,10:20:00,V,3
+TE,10:30:00,10:30:00,C,4
+TL,10:07:00,10:07:00,P,0
+TL,10:09:00,10:09:00,V,1
+TL,10:20:00,10:22:00,B,2
+TL,10:27:00,10:27:00,V,3
+TL,11:00:00,11:00:00,C,4
+
+# calendar_dates.txt
+service_id,date,exception_type
+S1,20190501,1
+)"sv;
+
+constexpr auto const expected_S_C_via_V_0min = R"(
+[2019-05-01 08:00, 2019-05-01 08:30]
+TRANSFERS: 1
+     FROM: (S, S) [2019-05-01 08:00]
+       TO: (C, C) [2019-05-01 08:30]
+leg 0: (S, S) [2019-05-01 08:00] -> (B, B) [2019-05-01 08:12]
+   0: S       S...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=F, day=2019-05-01, id=TF, src=0}]
+   1: P       P............................................... a: 01.05 08:05 [01.05 10:05]  d: 01.05 08:05 [01.05 10:05]  [{name=F, day=2019-05-01, id=TF, src=0}]
+   2: B       B............................................... a: 01.05 08:12 [01.05 10:12]
+leg 1: (B, B) [2019-05-01 08:12] -> (B, B) [2019-05-01 08:14]
+  FOOTPATH (duration=2)
+leg 2: (B, B) [2019-05-01 08:15] -> (C, C) [2019-05-01 08:30]
+   2: B       B...............................................                               d: 01.05 08:15 [01.05 10:15]  [{name=L, day=2019-05-01, id=TE, src=0}]
+   3: V       V............................................... a: 01.05 08:20 [01.05 10:20]  d: 01.05 08:20 [01.05 10:20]  [{name=L, day=2019-05-01, id=TE, src=0}]
+   4: C       C............................................... a: 01.05 08:30 [01.05 10:30]
+
+
+)"sv;
+
+}  // namespace
+
+TEST(routing, via_test_35_S_C_via_V_0m_loop) {
+  // S -> C, via V (0 min): S --TF1--> B --TE--> C, TE crosses V after B.
+  // During the round-2 scan of the loop route, the rider is occupied by TL
+  // (boarded at P) and has already crossed V, so its via offset is 1 -- the
+  // switch to TE at B is only possible from the slot-0 feeder label there.
+  // Reading the boarding label at v + v_offset misses it in every round.
+  auto tt = load_timetable(test_files_via_loop);
+
+  for (auto const& [dir, start_time] :
+       {std::pair{direction::kForward, iv("2019-05-01 10:00 Europe/Berlin",
+                                          "2019-05-01 10:01 Europe/Berlin")},
+        std::pair{direction::kBackward,
+                  iv("2019-05-01 10:30 Europe/Berlin",
+                     "2019-05-01 10:31 Europe/Berlin")}}) {
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "S"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "C"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "V"), 0_minutes}}},
+        dir);
+
+    EXPECT_EQ(expected_S_C_via_V_0min, results_to_str(results, tt));
+  }
+}
+
+namespace {
+
+// One trip S -> V -> C where the via V is a pure drive-through stop
+// (pickup_type=1, drop_off_type=1 -> in_allowed=0, out_allowed=0, like the
+// board-only stops of night bus services). Passing through V has to count
+// as visiting the via regardless of the boarding/alighting permissions --
+// gating the in-ride via count on can_finish() makes the two search
+// directions disagree (fwd checks out_allowed, bwd checks in_allowed).
+constexpr auto const test_files_via_no_exit = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,location_type,parent_station
+S,S,,0.0,1.0,,
+V,V,,2.0,3.0,,
+C,C,,4.0,5.0,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,N1,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S1,T1,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:00:00,10:00:00,S,0,0,0
+T1,10:10:00,10:10:00,V,1,1,1
+T1,10:20:00,10:20:00,C,2,0,0
+
+# calendar_dates.txt
+service_id,date,exception_type
+S1,20190501,1
+)"sv;
+
+constexpr auto const expected_S_C_via_V_no_exit = R"(
+[2019-05-01 08:00, 2019-05-01 08:20]
+TRANSFERS: 0
+     FROM: (S, S) [2019-05-01 08:00]
+       TO: (C, C) [2019-05-01 08:20]
+leg 0: (S, S) [2019-05-01 08:00] -> (C, C) [2019-05-01 08:20]
+   0: S       S...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=N1, day=2019-05-01, id=T1, src=0}]
+   2: C       C............................................... a: 01.05 08:20 [01.05 10:20]
+
+
+)"sv;
+
+}  // namespace
+
+TEST(routing, via_test_36_S_C_via_V_0m_no_exit) {
+  // S -> C, via V (0 min): V is ridden through on T1.
+  auto tt = load_timetable(test_files_via_no_exit);
+
+  for (auto const& [dir, start_time] :
+       {std::pair{direction::kForward, iv("2019-05-01 10:00 Europe/Berlin",
+                                          "2019-05-01 10:01 Europe/Berlin")},
+        std::pair{direction::kBackward,
+                  iv("2019-05-01 10:20 Europe/Berlin",
+                     "2019-05-01 10:21 Europe/Berlin")}}) {
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "S"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "C"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "V"), 0_minutes}}},
+        dir);
+
+    EXPECT_EQ(expected_S_C_via_V_no_exit, results_to_str(results, tt));
+  }
+}

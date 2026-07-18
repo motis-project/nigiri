@@ -184,12 +184,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
   auto v = static_cast<via_offset_t>(q.via_stops_.size());
 
-#if defined(NIGIRI_TRACE_RECONSTRUCT)
-  auto const best_state = raptor_state.get_best<Vias>();
-  auto const best = [&](std::uint32_t const k, location_idx_t const l) {
-    return std::min(best_state[to_idx(l)][v], round_times[k][to_idx(l)][v]);
-  };
-#endif
 
   auto const find_entry_in_prev_round =
       [&](unsigned const k, rt::run const& r, stop_idx_t const from_stop_idx,
@@ -198,70 +192,107 @@ void reconstruct_journey_with_vias(timetable const& tt,
           bool const section_wheelchair_filter) -> std::optional<journey::leg> {
     auto const fr = rt::frun{tt, rtt, r};
     auto const n_stops = kFwd ? from_stop_idx + 1U : fr.size() - from_stop_idx;
-    auto new_v = v;
-    for (auto i = 1U; i != n_stops; ++i) {
-      auto const stop_idx =
-          static_cast<stop_idx_t>(kFwd ? from_stop_idx - i : from_stop_idx + i);
-      auto const stp = fr[stop_idx];
-      auto const l = stp.get_location_idx();
+    auto const n_vias = static_cast<via_offset_t>(q.via_stops_.size());
 
-      if (section_bike_filter &&
-          !stp.bikes_allowed(kFwd ? event_type::kDep : event_type::kArr)) {
-        break;
+    // exit_state[s] = via state at the exit stop when entering the transport
+    // with via state s at the current stop of the walk: riding through a
+    // no-stay via stop advances the state that matches it. A label that has
+    // already visited a via also rides *through* the via stop without
+    // consuming it there -> the entry may be possible at more than one slot.
+    // Two passes: the exit stop itself may or may not count as a crossing
+    // for this ride (the search advances riders at a stop *before* the exit
+    // write, so a ride can exit at a no-stay via stop with the crossing
+    // already included in its state -- but a label whose via was consumed by
+    // the following transfer/footpath instead must NOT fold the exit stop).
+    auto const fold_at = [&](std::array<via_offset_t, kMaxVias + 1>& state,
+                             location_idx_t const l) {
+      auto folded = state;
+      for (auto s = via_offset_t{0U}; s != kMaxVias + 1; ++s) {
+        auto const advance =
+            s < n_vias && q.via_stops_[s].stay_ == 0_minutes &&
+            matches(tt, location_match_mode::kEquivalent,
+                    q.via_stops_[s].location_, l);
+        folded[s] = state[advance ? s + 1U : s];
       }
+      state = folded;
+    };
 
-      if (section_car_filter &&
-          !stp.cars_allowed(kFwd ? event_type::kDep : event_type::kArr)) {
-        break;
+    for (auto const exit_fold : {false, true}) {
+      auto exit_state = std::array<via_offset_t, kMaxVias + 1>{};
+      for (auto s = via_offset_t{0U}; s != kMaxVias + 1; ++s) {
+        exit_state[s] = s;
       }
-
-      if (section_wheelchair_filter &&
-          !stp.wheelchair_accessible(kFwd ? event_type::kDep
-                                          : event_type::kArr)) {
-        break;
-      }
-
-      auto const stop_matches_via =
-          new_v != 0 && q.via_stops_[new_v - 1].stay_ == 0_minutes &&
-          matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[new_v - 1].location_, l);
-
-      auto const check_via = [&]() {
-        if (stop_matches_via) {
-          trace_reconstruct(
-              "  [find_entry_in_prev_round] new_v={}->{} (stop matches via)\n",
-              v, new_v, new_v - 1);
-          --new_v;
+      if (exit_fold) {
+        fold_at(exit_state, fr[from_stop_idx].get_location_idx());
+        auto identity = true;
+        for (auto s = via_offset_t{0U}; s != kMaxVias + 1; ++s) {
+          identity = identity && exit_state[s] == s;
         }
-      };
-
-      if ((kFwd && !stp.in_allowed(is_wheelchair)) ||
-          (!kFwd && !stp.out_allowed(is_wheelchair))) {
-        check_via();
-        continue;
+        if (identity) {
+          break;  // exit stop is no matching via -> nothing new to try
+        }
       }
 
-      auto const event_time = unix_to_delta(
-          base, stp.time(kFwd ? event_type::kDep : event_type::kArr));
-      auto const round_time = round_times[k - 1][to_idx(l)][new_v];
+      for (auto i = 1U; i != n_stops; ++i) {
+        auto const stop_idx = static_cast<stop_idx_t>(
+            kFwd ? from_stop_idx - i : from_stop_idx + i);
+        auto const stp = fr[stop_idx];
+        auto const l = stp.get_location_idx();
 
-      if (is_better_or_eq(round_time, event_time) ||
-          // special case: first stop with meta stations
-          (k == 1 && q.start_match_mode_ == location_match_mode::kEquivalent &&
-           is_journey_start(tt, q, l) &&
-           start_matches(round_time, event_time))) {
-        trace_rc_transport_entry_found;
-        v = new_v;
-        return journey::leg{
-            SearchDir,
-            fr[stop_idx].get_location_idx(),
-            fr[from_stop_idx].get_location_idx(),
-            delta_to_unix(base, event_time),
-            fr[from_stop_idx].time(kFwd ? event_type::kArr : event_type::kDep),
-            journey::run_enter_exit{r, stop_idx, from_stop_idx}};
-      } else {
-        trace_rc_transport_entry_not_possible;
-        check_via();
+        if (section_bike_filter &&
+            !stp.bikes_allowed(kFwd ? event_type::kDep : event_type::kArr)) {
+          break;
+        }
+
+        if (section_car_filter &&
+            !stp.cars_allowed(kFwd ? event_type::kDep : event_type::kArr)) {
+          break;
+        }
+
+        if (section_wheelchair_filter &&
+            !stp.wheelchair_accessible(kFwd ? event_type::kDep
+                                            : event_type::kArr)) {
+          break;
+        }
+
+        if ((kFwd && !stp.in_allowed(is_wheelchair)) ||
+            (!kFwd && !stp.out_allowed(is_wheelchair))) {
+          // fold this stop once we move past it (for entries at *earlier*
+          // stops, this stop is ridden through)
+          fold_at(exit_state, l);
+          continue;
+        }
+
+        auto const event_time = unix_to_delta(
+            base, stp.time(kFwd ? event_type::kDep : event_type::kArr));
+
+        for (auto s = via_offset_t{0U}; s <= n_vias; ++s) {
+          if (exit_state[s] != v) {
+            continue;
+          }
+          auto const round_time = round_times[k - 1][to_idx(l)][s];
+          if (is_better_or_eq(round_time, event_time) ||
+              // special case: first stop with meta stations
+              (k == 1 &&
+               q.start_match_mode_ == location_match_mode::kEquivalent &&
+               is_journey_start(tt, q, l) &&
+               start_matches(round_time, event_time))) {
+            trace_rc_transport_entry_found;
+            v = s;
+            return journey::leg{
+                SearchDir,
+                fr[stop_idx].get_location_idx(),
+                fr[from_stop_idx].get_location_idx(),
+                delta_to_unix(base, event_time),
+                fr[from_stop_idx].time(kFwd ? event_type::kArr
+                                            : event_type::kDep),
+                journey::run_enter_exit{r, stop_idx, from_stop_idx}};
+          } else {
+            trace_rc_transport_entry_not_possible;
+          }
+        }
+
+        fold_at(exit_state, l);
       }
     }
 
@@ -528,85 +559,118 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
     auto const backup_v = v;
 
-    auto stay_l = 0_minutes;
-    auto stay_fp_target = 0_minutes;
-    trace_reconstruct("  [check_fp] v={}, l={}, fp.target={}, intermodal={}\n",
-                      v, loc{tt, l}, loc{tt, fp.target()},
-                      q.dest_match_mode_ == location_match_mode::kIntermodal);
-
-    if (v != 0 && matches(tt, location_match_mode::kEquivalent,
-                          q.via_stops_[v - 1].location_, l)) {
-      --v;
-      if (matches(tt, location_match_mode::kEquivalent, l, fp.target())) {
-        stay_fp_target = q.via_stops_[v].stay_;
-        trace_reconstruct(
-            "  [check_fp]: fp start+target matches current via: v={}->{}, "
-            "stay_target={}\n",
-            v + 1, v, stay_fp_target);
-      } else {
-        stay_l = q.via_stops_[v].stay_;
-        trace_reconstruct(
-            "  [check_fp]: fp start matches current via: v={}->{}, stay_l={}\n",
-            v + 1, v, stay_l);
-      }
-    }
-    if (v != 0 && matches(tt, location_match_mode::kEquivalent,
-                          q.via_stops_[v - 1].location_, fp.target())) {
-      --v;
-      assert(stay_fp_target == 0_minutes);
-      stay_fp_target = q.via_stops_[v].stay_;
+    // attempt(adjust_via = true): the via(s) matching this stop / fp target
+    // are consumed by this transfer/footpath (v decremented, stay paid).
+    // attempt(adjust_via = false): the label's via state was already
+    // reached in-ride (the incoming transport passed the via stop) -> the
+    // transfer/footpath consumes nothing. Both are valid write paths of the
+    // search, so both have to be tried.
+    auto const attempt = [&](bool const adjust_via)
+        -> std::optional<std::pair<journey::leg, journey::leg>> {
+      auto adjusted = false;
+      auto stay_l = 0_minutes;
+      auto stay_fp_target = 0_minutes;
       trace_reconstruct(
-          "  [check_fp]: fp target matches current via: v={}->{}, "
-          "stay_fp_target={}\n",
-          v + 1, v, stay_fp_target);
-    }
+          "  [check_fp] v={}, l={}, fp.target={}, intermodal={}, adjust={}\n",
+          v, loc{tt, l}, loc{tt, fp.target()},
+          q.dest_match_mode_ == location_match_mode::kIntermodal, adjust_via);
 
-    auto const fp_plus_stay_l_duration = fp_duration + stay_l.count();
-    auto const fp_plus_both_stay_duration =
-        fp_duration + stay_l.count() + stay_fp_target.count();
-    auto const fp_start =
-        static_cast<delta_t>(curr_time - dir(fp_plus_stay_l_duration));
-    auto const stay_start =
-        static_cast<delta_t>(curr_time - dir(fp_plus_both_stay_duration));
-    trace_reconstruct(
-        "  [check_fp] -> v={}, stay_l={}, stay_fp_target={}, fp={}, "
-        "fp+stay_l={}, fp+stay_l+stay_fp_target={}, curr_time={}, fp_start={}, "
-        "stay_start={}\n",
-        v, stay_l, stay_fp_target, fp_duration, fp_plus_stay_l_duration,
-        fp_plus_both_stay_duration, delta_to_unix(base, curr_time),
-        delta_to_unix(base, fp_start), delta_to_unix(base, stay_start));
-
-    trace_rc_check_fp;
-    auto const transport_leg =
-        get_transport(k, fp.target(), stay_start, is_td_footpath);
-
-    if (transport_leg.has_value()) {
-      trace_rc_legs_found;
-
-#ifdef NIGIRI_TRACE_RECONSTRUCT
-      trace("transport leg found: v={}, fp=({} -> {}), transport=({} -> {})\n",
-            v, loc{tt, fp.target()}, loc{tt, l}, loc{tt, transport_leg->from_},
-            loc{tt, transport_leg->to_});
-      if (v != 0) {
-        trace("current via stop: {}\n", loc{tt, q.via_stops_[v - 1].location_});
-        if (matches(tt, location_match_mode::kEquivalent,
-                    q.via_stops_[v - 1].location_, transport_leg->from_)) {
-          trace_reconstruct("reached via {} -> v={}\n",
-                            loc{tt, q.via_stops_[v - 1].location_}, v - 1);
+      if (adjust_via && v != 0 &&
+          matches(tt, location_match_mode::kEquivalent,
+                  q.via_stops_[v - 1].location_, l)) {
+        --v;
+        adjusted = true;
+        if (matches(tt, location_match_mode::kEquivalent, l, fp.target())) {
+          stay_fp_target = q.via_stops_[v].stay_;
+          trace_reconstruct(
+              "  [check_fp]: fp start+target matches current via: v={}->{}, "
+              "stay_target={}\n",
+              v + 1, v, stay_fp_target);
+        } else {
+          stay_l = q.via_stops_[v].stay_;
+          trace_reconstruct(
+              "  [check_fp]: fp start matches current via: v={}->{}, "
+              "stay_l={}\n",
+              v + 1, v, stay_l);
         }
       }
+      if (adjust_via && v != 0 &&
+          matches(tt, location_match_mode::kEquivalent,
+                  q.via_stops_[v - 1].location_, fp.target())) {
+        --v;
+        adjusted = true;
+        assert(stay_fp_target == 0_minutes);
+        stay_fp_target = q.via_stops_[v].stay_;
+        trace_reconstruct(
+            "  [check_fp]: fp target matches current via: v={}->{}, "
+            "stay_fp_target={}\n",
+            v + 1, v, stay_fp_target);
+      }
+      if (adjust_via && !adjusted) {
+        // nothing matched -> identical to the adjust_via=false attempt,
+        // which always runs -> skip the duplicate
+        return std::nullopt;
+      }
+
+      auto const fp_plus_stay_l_duration = fp_duration + stay_l.count();
+      auto const fp_plus_both_stay_duration =
+          fp_duration + stay_l.count() + stay_fp_target.count();
+      auto const fp_start =
+          static_cast<delta_t>(curr_time - dir(fp_plus_stay_l_duration));
+      auto const stay_start =
+          static_cast<delta_t>(curr_time - dir(fp_plus_both_stay_duration));
+      trace_reconstruct(
+          "  [check_fp] -> v={}, stay_l={}, stay_fp_target={}, fp={}, "
+          "fp+stay_l={}, fp+stay_l+stay_fp_target={}, curr_time={}, "
+          "fp_start={}, stay_start={}\n",
+          v, stay_l, stay_fp_target, fp_duration, fp_plus_stay_l_duration,
+          fp_plus_both_stay_duration, delta_to_unix(base, curr_time),
+          delta_to_unix(base, fp_start), delta_to_unix(base, stay_start));
+
+      trace_rc_check_fp;
+      auto const transport_leg =
+          get_transport(k, fp.target(), stay_start, is_td_footpath);
+
+      if (transport_leg.has_value()) {
+        trace_rc_legs_found;
+
+#ifdef NIGIRI_TRACE_RECONSTRUCT
+        trace(
+            "transport leg found: v={}, fp=({} -> {}), transport=({} -> "
+            "{})\n",
+            v, loc{tt, fp.target()}, loc{tt, l}, loc{tt, transport_leg->from_},
+            loc{tt, transport_leg->to_});
+        if (v != 0) {
+          trace("current via stop: {}\n",
+                loc{tt, q.via_stops_[v - 1].location_});
+          if (matches(tt, location_match_mode::kEquivalent,
+                      q.via_stops_[v - 1].location_, transport_leg->from_)) {
+            trace_reconstruct("reached via {} -> v={}\n",
+                              loc{tt, q.via_stops_[v - 1].location_}, v - 1);
+          }
+        }
 #endif
 
-      auto const fp_leg =
-          journey::leg{SearchDir,
-                       fp.target(),
-                       l,
-                       delta_to_unix(base, fp_start),
-                       delta_to_unix(base, fp_start + dir(fp_duration)),
-                       footpath{fp.target(), fp.duration()}};
-      return std::pair{fp_leg, *transport_leg};
-    } else {
-      trace_reconstruct("nothing found\n");
+        auto const fp_leg =
+            journey::leg{SearchDir,
+                         fp.target(),
+                         l,
+                         delta_to_unix(base, fp_start),
+                         delta_to_unix(base, fp_start + dir(fp_duration)),
+                         footpath{fp.target(), fp.duration()}};
+        return std::pair{fp_leg, *transport_leg};
+      } else {
+        trace_reconstruct("nothing found\n");
+      }
+      v = backup_v;
+      return std::nullopt;
+    };
+
+    if (auto adjusted_attempt = attempt(true); adjusted_attempt.has_value()) {
+      return adjusted_attempt;
+    }
+    if (auto plain_attempt = attempt(false); plain_attempt.has_value()) {
+      return plain_attempt;
     }
     v = backup_v;
     return std::nullopt;

@@ -44,14 +44,19 @@ namespace {
 // rounds (bounds[k] = best over rounds <= k), which also fills rounds where
 // the ping found no improvement and wrote nothing. Only rows 0..n_rows-1
 // are filled (the maximum round any pong of this batch will look at).
-// Everything else (transfer time subtraction, footpath projections) happens
-// lazily at check time in raptor::within_bounds -- an eager pass over all
-// locations x rounds costs more than the pruning saves on large timetables.
-// Only for Vias == 0.
-template <direction PingDir>
+// With vias, each row is additionally made monotonic over via slots
+// (slot v = best over slots >= v, "v or more via stops visited"): the
+// arrival at a via stop is only recorded in the advanced slot, and a prefix
+// that visited more via stops still composes with the pong label's suffix.
+// Everything else (transfer time subtraction, footpath projections, via
+// stay slack) happens lazily at check time in raptor::within_bounds -- an
+// eager pass over all locations x rounds costs more than the pruning saves
+// on large timetables.
+template <direction PingDir, via_offset_t Vias>
 delta_t const* fill_bounds(raptor_state& s, std::size_t const n_rows) {
   constexpr auto const kFwd = PingDir == direction::kForward;
-  auto const n = static_cast<std::size_t>(s.n_locations_);
+  auto const n =
+      static_cast<std::size_t>(s.n_locations_) * (Vias + std::size_t{1U});
 
   s.bounds_storage_.resize(n * (static_cast<std::size_t>(kMaxTransfers) + 2U));
   auto const* const src = s.round_times_storage_.data();
@@ -65,6 +70,18 @@ delta_t const* fill_bounds(raptor_state& s, std::size_t const n_rows) {
     for (auto x = std::size_t{0U}; x != n; ++x) {
       dst_row[x] = kFwd ? std::min(src_row[x], prev_row[x])
                         : std::max(src_row[x], prev_row[x]);
+    }
+  }
+
+  if constexpr (Vias != 0U) {
+    for (auto k = std::size_t{0U}; k != n_rows; ++k) {
+      auto* const row = dst + (k * n);
+      for (auto x = std::size_t{0U}; x != n; x += Vias + 1U) {
+        for (auto v = std::size_t{Vias}; v != 0U; --v) {
+          row[x + v - 1U] = kFwd ? std::min(row[x + v - 1U], row[x + v])
+                                 : std::max(row[x + v - 1U], row[x + v]);
+        }
+      }
     }
   }
 
@@ -143,10 +160,10 @@ routing_result pong(timetable const& tt,
   // ----
   constexpr auto const kGpu = std::is_same_v<AlgoState, gpu::gpu_raptor_state>;
 
-  // Ping-bounds pruning (experiment): CPU only, no vias. Time-dependent
-  // footpaths (Rt + profile != 0) write projections whose durations cannot
-  // be recovered at bounds-check time -> no pruning there.
-  constexpr auto const kBoundsPrune = !kGpu && Vias == 0U;
+  // Ping-bounds pruning (experiment): CPU only. Time-dependent footpaths
+  // (Rt + profile != 0) write projections whose durations cannot be
+  // recovered at bounds-check time -> no pruning there.
+  constexpr auto const kBoundsPrune = !kGpu;
   auto const prune =
       kBoundsPrune && pong_prune.prune_ && !(Rt && q.prf_idx_ != 0U);
 
@@ -348,7 +365,7 @@ routing_result pong(timetable const& tt,
         // round_times the ping search just filled. Rows needed: the pong for
         // ping journey K looks at rows 0..K -> max transfers + 1 rows
         // (ping_results are sorted by transfers, descending).
-        bounds = fill_bounds<SearchDir>(
+        bounds = fill_bounds<SearchDir, Vias>(
             r_state, ping_results.begin()->transfers_ + std::size_t{1U});
       }
     }
