@@ -52,6 +52,20 @@ struct gpu_raptor_state {
   std::unique_ptr<impl> impl_;
 };
 
+// Ping-bounds pruning (see pong.cc): monotone-fill the ping search's device
+// round_times into the state's device bounds buffer (16-bit times, row k =
+// best over rounds <= k). Launches on the state's stream -- ordered before
+// the pong's reset_arrivals wipes the shared round_times, no sync needed.
+// Returns the device pointer to hand to gpu_raptor::set_bounds.
+// Stops whose ping-direction footpaths are time-dependent (rtt != nullptr,
+// prf_idx != 0) get a pass-everything bound instead (see the CPU
+// fill_bounds in pong.cc for the reasoning).
+template <direction SearchDir>
+delta_t const* fill_bounds(gpu_raptor_state&,
+                           std::size_t n_rows,
+                           rt_timetable const* rtt,
+                           profile_idx_t prf_idx);
+
 template <direction SearchDir>
 struct gpu_raptor {
   using algo_state_t = gpu_raptor_state;
@@ -82,6 +96,23 @@ struct gpu_raptor {
   void reset_arrivals();
   void next_start_time();
 
+  // === ping-bounds pruning (see pong.cc) ==================================
+  // bounds = device pointer from gpu::fill_bounds; a label written in round
+  // k is checked against the ping's bound row last_round - k (direct +
+  // footpath rescue) and pruned if no ping journey can complete it.
+  void set_bounds(delta_t const* const bounds,
+                  unsigned const last_round,
+                  profile_idx_t const prf_idx) {
+    bounds_ = bounds;
+    bounds_last_k_ = last_round;
+    bounds_prf_idx_ = prf_idx;
+  }
+
+  // Loose pruning keeps labels that merely *equal* the current time at
+  // destination (the ping runs loose so its round_times cover every stop of
+  // an equal-arrival/later-departure journey the pong needs).
+  void set_loose_pruning(bool const loose) { loose_pruning_ = loose; }
+
   void add_start(location_idx_t, unixtime_t);
 
   void execute(unixtime_t start_time,
@@ -110,6 +141,11 @@ private:
   bool require_car_transport_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
+
+  delta_t const* bounds_{nullptr};
+  unsigned bounds_last_k_{0U};
+  profile_idx_t bounds_prf_idx_{0U};
+  bool loose_pruning_{false};
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
 };

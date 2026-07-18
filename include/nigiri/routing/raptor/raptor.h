@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <span>
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
@@ -108,20 +109,21 @@ struct raptor {
 
   algo_stats_t get_stats() const { return stats_; }
 
-  // === experimental ping-bounds pruning (see pong.cc) =====================
+  // === ping-bounds pruning (see pong.cc) ==================================
   // Bounds derived from a preceding opposite-direction "ping" search:
-  // bounds[(j * n_locations + l) * (Vias + 1) + s] is the best time the ping
-  // search proved achievable at stop l having visited at least s via stops
-  // within j rounds (monotonic over rounds and via slots). A label this
-  // ("pong") search writes in round k belongs to a journey whose prefix
-  // (in the opposite direction) has at most bounds_last_k_ - k rounds
-  // available and must cover the via stops the label has not visited yet --
-  // if the label lies outside every ping bound for that prefix (see
-  // within_bounds), no journey through it can reach the destination
-  // optimally and it is pruned.
-  void set_bounds(delta_t const* const bounds,
-                  unsigned const last_round,
-                  profile_idx_t const prf_idx) {
+  // bounds[j * n_locations + l][s] is the best time the ping search proved
+  // achievable at stop l having visited at least s via stops within j
+  // rounds (monotonic over rounds and via slots). A label this ("pong")
+  // search writes in round k belongs to a journey whose prefix (in the
+  // opposite direction) has at most bounds_last_k_ - k rounds available and
+  // must cover the via stops the label has not visited yet -- if the label
+  // lies outside every ping bound for that prefix (see within_bounds), no
+  // journey through it can reach the destination optimally and it is
+  // pruned.
+  void set_bounds(
+      flat_matrix_view<std::array<delta_t, Vias + 1U> const> const bounds,
+      unsigned const last_round,
+      profile_idx_t const prf_idx) {
     bounds_ = bounds;
     bounds_last_k_ = last_round;
     bounds_prf_idx_ = prf_idx;
@@ -361,18 +363,20 @@ private:
   // stop itself may be pruned by the lower bound while the footpath still
   // propagates from the trip arrival (bypassing the transfer). The footpath
   // candidates are required for correctness, but only consulted when the
-  // direct bound would prune.
+  // direct bound would prune. This rescue inverts a *static* footpath hop;
+  // stops where the ping used time-dependent footpaths instead carry a
+  // pass-everything bound (see pong.cc fill_bounds), so the rescue is never
+  // decisive there.
   bool within_bounds(unsigned const k,
                      std::size_t const l,
                      delta_t const t,
                      std::size_t const v) {
-    if (bounds_ == nullptr) {
+    if (bounds_.entries_.empty()) {
       return true;
     }
     assert(k <= bounds_last_k_);
     assert(v <= Vias);
-    auto const* const row =
-        bounds_ + (bounds_last_k_ - k) * n_locations_ * (Vias + 1U);
+    auto const row = std::as_const(bounds_)[bounds_last_k_ - k];
     auto const slot = Vias - v;
     auto const via_stays = [&](std::size_t const stop) {
       auto stays = 0;
@@ -390,8 +394,7 @@ private:
         transfer_time_settings_,
         static_cast<int>(
             tt_.locations_.transfer_time_[location_idx_t{l}].count())));
-    if (is_better_or_eq(t,
-                        row[l * (Vias + 1U) + slot] + transfer + dir(stays_l))) {
+    if (is_better_or_eq(t, row[l][slot] + transfer + dir(stays_l))) {
       return true;
     }
     // ping direction = flipped search direction: bwd pong reads a fwd ping's
@@ -403,17 +406,11 @@ private:
       auto const target = to_idx(fp.target());
       auto const d = dir(adjusted_transfer_time(
           transfer_time_settings_, static_cast<int>(fp.duration().count())));
-      if (is_better_or_eq(t, row[target * (Vias + 1U) + slot] + d +
-                                 dir(stays_l + via_stays(target)))) {
+      if (is_better_or_eq(t,
+                          row[target][slot] + d +
+                              dir(stays_l + via_stays(target)))) {
         return true;
       }
-    }
-    static bool const trace_bounds =
-        std::getenv("NIGIRI_BOUNDS_TRACE") != nullptr;
-    if (trace_bounds) {
-      fmt::println("BOUNDS_PRUNE k={} last_k={} loc={} v={} t={} bound={}", k,
-                   bounds_last_k_, fmt::streamed(loc{tt_, location_idx_t{l}}),
-                   v, to_unix(t), to_unix(row[l * (Vias + 1U) + slot]));
     }
     ++stats_.n_pruned_by_ping_bounds_;
     return false;
@@ -1426,7 +1423,7 @@ private:
   std::array<delta_t, kMaxTransfers + 2> time_at_dest_;
   day_idx_t base_;
   raptor_stats stats_;
-  delta_t const* bounds_{nullptr};
+  flat_matrix_view<std::array<delta_t, Vias + 1U> const> bounds_{};
   unsigned bounds_last_k_{0U};
   profile_idx_t bounds_prf_idx_{0U};
   bool loose_pruning_{false};

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <iostream>
+#include <limits>
 #include <optional>
 
 // date/date.h (pulled in transitively via nigiri/types.h above) leaks a
@@ -355,6 +356,7 @@ struct gpu_raptor_state::impl {
     route_mark_.resize(tt_.n_routes_ / 32U + 1U);
     any_marked_.resize(1U);
     done_.resize(1U);
+    n_pruned_.resize(1U);
 
     // is_dest + dist_to_dest differ between ping vs pong -> handled in
     // upload_query (called by the gpu_raptor ctor -> one per dir)
@@ -494,6 +496,12 @@ struct gpu_raptor_state::impl {
   thrust::device_vector<std::uint32_t> et_task_count_;
   thrust::device_vector<std::uint32_t> route_list_;
   thrust::device_vector<std::uint32_t> route_list_count_;
+
+  // ping-bounds pruning: 16-bit bounds rows derived from the ping's
+  // round_times (see gpu::fill_bounds); allocated lazily on first use so
+  // plain (non-pong) searches never pay for it
+  device_buffer<delta_t> bounds_dev_;
+  thrust::device_vector<unsigned long long> n_pruned_;
 
   cudaStream_t stream_;
 };
@@ -681,6 +689,80 @@ void launch(Kernel kernel, cudaStream_t stream, Args&&... args) {
   kernel<<<blocks, threads, 0, stream>>>(std::forward<Args>(args)...);
 }
 
+// === ping-bounds fill (see pong.cc) =======================================
+// Strip the 16-bit time keys out of the ping's 64-bit time+breadcrumb round
+// entries and make them monotonic over rounds (row k = best over rounds
+// <= k). The per-direction key bias makes "smaller key" == "better time" for
+// both directions, so the prefix-min runs on raw keys; decode happens once
+// per cell on write.
+template <direction PingDir>
+__global__ void fill_bounds_kernel(std::uint64_t const* const round_times,
+                                   delta_t* const bounds,
+                                   std::uint32_t const n_locations,
+                                   std::uint32_t const n_rows,
+                                   std::uint64_t const* const td_stops) {
+  auto const gid = get_global_thread_id();
+  auto const stride = get_global_stride();
+  for (auto l = gid; l < n_locations; l += stride) {
+    if (td_stops != nullptr &&
+        (td_stops[l >> 6U] & (std::uint64_t{1U} << (l & 63U))) != 0U) {
+      // The ping used time-dependent footpaths at this stop, which
+      // within_bounds' static footpath rescue cannot invert -> pass
+      // everything (see the CPU fill_bounds in pong.cc).
+      constexpr auto const kPassAll = PingDir == direction::kForward
+                                          ? std::numeric_limits<delta_t>::min()
+                                          : std::numeric_limits<delta_t>::max();
+      for (auto k = 0U; k != n_rows; ++k) {
+        bounds[k * n_locations + l] = kPassAll;
+      }
+      continue;
+    }
+    auto best_key = std::uint16_t{0xFFFFU};  // worst key = invalid
+    for (auto k = 0U; k != n_rows; ++k) {
+      auto const key =
+          static_cast<std::uint16_t>(round_times[k * n_locations + l] >> 48U);
+      best_key = key < best_key ? key : best_key;
+      bounds[k * n_locations + l] =
+          device_times<PingDir, 1U>::from_key(best_key);
+    }
+  }
+}
+
+template <direction SearchDir>
+delta_t const* fill_bounds(gpu_raptor_state& state,
+                           std::size_t const n_rows,
+                           rt_timetable const* const rtt,
+                           profile_idx_t const prf_idx) {
+  auto& s = *state.impl_;
+  auto const* td_stops = static_cast<std::uint64_t const*>(nullptr);
+  if (rtt != nullptr && prf_idx != 0U && rtt->gpu_rtt_.ptr_ != nullptr) {
+    auto const* const gpu_rtt =
+        static_cast<gpu_rt_timetable const*>(rtt->gpu_rtt_.ptr_.get());
+    auto const& blocks = SearchDir == direction::kForward
+                             ? gpu_rtt->impl_->has_td_out_[prf_idx]
+                             : gpu_rtt->impl_->has_td_in_[prf_idx];
+    if (!blocks.empty()) {
+      td_stops = thrust::raw_pointer_cast(blocks.data());
+    }
+  }
+  auto* const bounds = s.bounds_dev_.ensure(
+      static_cast<std::size_t>(s.tt_.n_locations_) * (kMaxTransfers + 2U),
+      s.stream_);
+  launch(fill_bounds_kernel<SearchDir>, s.stream_,
+         thrust::raw_pointer_cast(s.round_times_.data()), bounds,
+         s.tt_.n_locations_, static_cast<std::uint32_t>(n_rows), td_stops);
+  return bounds;
+}
+
+template delta_t const* fill_bounds<direction::kForward>(gpu_raptor_state&,
+                                                         std::size_t,
+                                                         rt_timetable const*,
+                                                         profile_idx_t);
+template delta_t const* fill_bounds<direction::kBackward>(gpu_raptor_state&,
+                                                          std::size_t,
+                                                          rt_timetable const*,
+                                                          profile_idx_t);
+
 template <typename Fn>
 void dispatch_filtered(bool const with_clasz,
                        bool const is_wheelchair,
@@ -790,6 +872,15 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
     r.tt_.bitfields_ = r.rtt_.bitfields_;
   }
 
+  r.loose_pruning_ = loose_pruning_;
+  if (bounds_ != nullptr) {
+    r.bounds_ = bounds_;
+    r.bounds_last_k_ = bounds_last_k_;
+    r.bounds_prf_idx_ = bounds_prf_idx_;
+    r.n_pruned_ = thrust::raw_pointer_cast(s.n_pruned_.data());
+    cudaMemsetAsync(r.n_pruned_, 0, sizeof(unsigned long long), s.stream_);
+  }
+
   auto const end_k =
       static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
 
@@ -847,6 +938,14 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
   }
   cudaStreamSynchronize(s.stream_);
   CUDA_CHECK(cudaPeekAtLastError());
+
+  if (bounds_ != nullptr) {
+    auto pruned = static_cast<unsigned long long>(0U);
+    CUDA_CHECK(cudaMemcpy(&pruned,
+                          thrust::raw_pointer_cast(s.n_pruned_.data()),
+                          sizeof(pruned), cudaMemcpyDeviceToHost));
+    stats_.n_pruned_by_ping_bounds_ += static_cast<std::uint64_t>(pruned);
+  }
 
   // === DEVICE RECONSTRUCT ===
   auto dest_list = std::vector<location_idx_t>{};

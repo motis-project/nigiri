@@ -311,8 +311,6 @@ cell_result run_config(
   auto& stats = out.stats_;
 
   auto const use_pong = algo != "raptor";
-  routing::pong_prune.prune_ = use_pong && algo != "pong-noprune";
-  routing::pong_prune.skip_pong_lb_ = algo == "pong-nolb";
 
   // the sweep's state pool is allocated once at the maximum count; each
   // sweep point borrows a prefix of it
@@ -379,6 +377,7 @@ cell_result run_config(
           gpu_ws{search_state{},
                  std::make_unique<routing::gpu::gpu_raptor_state>(gpu_tt)}));
     }
+    auto gpu_pruned = std::atomic<std::uint64_t>{0U};
     for (auto const s : gpu_states_v) {
       run_load<gpu_ws>(
           queries, label + "-gpu-" + std::to_string(s), prefix(states, s),
@@ -389,7 +388,15 @@ cell_result run_config(
                          : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
                                                   std::move(q), dir);
             gpu_res[i] = *r.journeys_;
+            if (auto const it = r.algo_stats_.find("n_pruned_by_ping_bounds");
+                it != end(r.algo_stats_)) {
+              gpu_pruned += it->second;
+            }
           });
+    }
+    if (use_pong) {
+      fmt::print("  [{}-gpu] n_pruned_by_ping_bounds={}\n", label,
+                 gpu_pruned.load());
     }
   }
 
@@ -438,6 +445,7 @@ int main(int argc, char* argv[]) {
   auto algos = std::vector<std::string>{};
   auto modes = std::vector<std::string>{};
   auto dirs = std::vector<std::string>{};
+  auto pong_travel_time_slack_h = 0U;
   auto threads_v = std::vector<unsigned>{};
   auto gpu_states_v = std::vector<unsigned>{};
 
@@ -454,14 +462,9 @@ int main(int argc, char* argv[]) {
        "cross-checked per query and the process exits non-zero on any "
        "divergence")  //
       ("algo,a", bpo::value(&algos)->multitoken(),
-       "algorithms: raptor | pong | pong-noprune | pong-nolb "
-       "(default: raptor pong); pong = ping-bounds pruning (the default), "
-       "pong-noprune = baseline without pruning, pong-nolb = pruning + no "
-       "lower bounds dijkstra for the pong direction; the CPU pareto sets of "
-       "all pong-family cells of a (mode, dir) are cross-checked against the "
-       "first pong-family cell, and if raptor ran, every pong-family cell is "
-       "additionally checked against it for exact equality of the first "
-       "min(N, M) connections in returned order")  //
+       "algorithms: raptor | pong (default: both); if both ran with the cpu "
+       "engine, the pong cell of each (mode, dir) is checked against raptor "
+       "for agreement on the intersection of the final search intervals")  //
       ("modes", bpo::value(&modes)->multitoken(),
        "<start>-<dest> query modes with station | coordinate, e.g. "
        "station-station coordinate-coordinate (default: those two); "
@@ -529,6 +532,13 @@ int main(int argc, char* argv[]) {
        "multiply all transfer times by this factor")  //
       ("vias", bpo::value<unsigned>(&gs.n_vias_)->default_value(0U),
        "number of via stops")  //
+      ("pong-travel-time-slack",
+       bpo::value<unsigned>(&pong_travel_time_slack_h)->default_value(0U),
+       "extra headroom in HOURS for the pong ping's worst_time_at_dest "
+       "beyond the query's max travel time (the cap anchors at the probe, "
+       "so late-departing long journeys can otherwise stay invisible); "
+       "search-space only, results are still filtered by the real max "
+       "travel time")  //
       ("start_coord", bpo::value<std::string>(&start_coord_str),
        "start coordinate for random queries, format: \"(LAT, LON)\", "  //
        "where LAT/LON are given in decimal degrees")  //
@@ -551,6 +561,9 @@ int main(int argc, char* argv[]) {
   }
 
   bpo::notify(vm);
+
+  routing::pong_config.travel_time_slack_ =
+      duration_t{pong_travel_time_slack_h * 60U};
 
   std::cout << "loading timetable...\n";
   auto tt = *nigiri::timetable::read(tt_path);
@@ -676,10 +689,8 @@ int main(int argc, char* argv[]) {
   }
 #endif
   for (auto const& a : algos) {
-    if (a != "raptor" && a != "pong" && a != "pong-noprune" &&
-        a != "pong-nolb") {
-      std::cerr << "invalid algo \"" << a
-                << "\", expected raptor | pong | pong-noprune | pong-nolb\n";
+    if (a != "raptor" && a != "pong") {
+      std::cerr << "invalid algo \"" << a << "\", expected raptor | pong\n";
       return 1;
     }
   }
@@ -752,14 +763,12 @@ int main(int argc, char* argv[]) {
         sdq.q_.extend_interval_later_ = dir == direction::kForward;
       }
 
-      // per (mode, dir): first pong-family cell = pareto cross-check
-      // reference, raptor cell = common-interval check reference
+      // per (mode, dir): raptor cell = common-interval check reference
       struct check_ref {
         std::string label_;
         std::vector<pareto_set<routing::journey>> res_;
         std::vector<interval<unixtime_t>> iv_;
       };
-      auto pong_ref = std::optional<check_ref>{};
       auto raptor_ref = std::optional<check_ref>{};
 
       for (auto const& algo : algos) {
@@ -796,35 +805,17 @@ int main(int argc, char* argv[]) {
         if (run_cpu) {
           if (algo == "raptor") {
             raptor_ref.emplace(check_ref{label, cell.cpu_res_, cell.cpu_iv_});
-          } else {
-            // pareto cross-check against the first pong-family cell of this
-            // (mode, dir)
-            if (!pong_ref.has_value()) {
-              pong_ref.emplace(check_ref{label, cell.cpu_res_, cell.cpu_iv_});
-            } else {
-              auto const st = cross_check(tt, pong_ref->label_,
-                                          pong_ref->res_, label,
-                                          cell.cpu_res_);
-              summary.push_back(fmt::format(
-                  "{:<44} vs {:<40} missed={:<4} extra={:<4} {}", label,
-                  pong_ref->label_, st.missed_by_cmp_, st.missed_by_ref_,
-                  st.missed_by_cmp_ + st.missed_by_ref_ == 0U ? "PASS"
-                                                              : "FAIL"));
-              total.missed_by_cmp_ += st.missed_by_cmp_;
-              total.missed_by_ref_ += st.missed_by_ref_;
-            }
+          } else if (raptor_ref.has_value()) {
             // strict agreement with search.h raptor on the region both
             // searched (intersection of the final intervals)
-            if (raptor_ref.has_value()) {
-              auto const st = common_interval_check(
-                  tt, raptor_ref->label_, raptor_ref->res_, raptor_ref->iv_,
-                  label, cell.cpu_res_, cell.cpu_iv_);
-              summary.push_back(fmt::format(
-                  "{:<44} vs {:<40} common-interval misses={:<4} {}", label,
-                  raptor_ref->label_, st.missed_by_cmp_,
-                  st.missed_by_cmp_ == 0U ? "PASS" : "FAIL"));
-              total.missed_by_cmp_ += st.missed_by_cmp_;
-            }
+            auto const st = common_interval_check(
+                tt, raptor_ref->label_, raptor_ref->res_, raptor_ref->iv_,
+                label, cell.cpu_res_, cell.cpu_iv_);
+            summary.push_back(fmt::format(
+                "{:<44} vs {:<40} common-interval misses={:<4} {}", label,
+                raptor_ref->label_, st.missed_by_cmp_,
+                st.missed_by_cmp_ == 0U ? "PASS" : "FAIL"));
+            total.missed_by_cmp_ += st.missed_by_cmp_;
           }
         }
 

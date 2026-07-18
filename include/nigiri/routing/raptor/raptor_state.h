@@ -81,6 +81,26 @@ struct raptor_state {
             n_locations_};
   }
 
+  // bounds_storage_ has round_times layout (see pong.cc fill_bounds);
+  // only valid after fill_bounds resized it for the current via count
+  template <via_offset_t Vias>
+  flat_matrix_view<std::array<delta_t, Vias + 1>> get_bounds() {
+    return {{reinterpret_cast<std::array<delta_t, Vias + 1>*>(
+                 bounds_storage_.data()),
+             n_locations_ * (kMaxTransfers + 2)},
+            kMaxTransfers + 2U,
+            n_locations_};
+  }
+
+  template <via_offset_t Vias>
+  flat_matrix_view<std::array<delta_t, Vias + 1> const> get_bounds() const {
+    return {{reinterpret_cast<std::array<delta_t, Vias + 1> const*>(
+                 bounds_storage_.data()),
+             n_locations_ * (kMaxTransfers + 2)},
+            kMaxTransfers + 2U,
+            n_locations_};
+  }
+
   unsigned n_locations_{};
   std::vector<delta_t> tmp_storage_;
   std::vector<delta_t> best_storage_;

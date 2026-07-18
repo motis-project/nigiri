@@ -1572,7 +1572,6 @@ leg 6: (D, D) [2019-05-01 08:57] -> (E, E) [2019-05-01 09:00]
   }
 }
 
-namespace {
 
 // Loop route RL serving the via V twice: P -> V -> B -> V -> C, plus one
 // feeder TF: S -> P -> B. The optimal journey transfers at B onto TE, which
@@ -1643,7 +1642,6 @@ leg 2: (B, B) [2019-05-01 08:15] -> (C, C) [2019-05-01 08:30]
 
 )"sv;
 
-}  // namespace
 
 TEST(routing, via_test_35_S_C_via_V_0m_loop) {
   // S -> C, via V (0 min): S --TF1--> B --TE--> C, TE crosses V after B.
@@ -1671,7 +1669,6 @@ TEST(routing, via_test_35_S_C_via_V_0m_loop) {
   }
 }
 
-namespace {
 
 // One trip S -> V -> C where the via V is a pure drive-through stop
 // (pickup_type=1, drop_off_type=1 -> in_allowed=0, out_allowed=0, like the
@@ -1721,7 +1718,6 @@ leg 0: (S, S) [2019-05-01 08:00] -> (C, C) [2019-05-01 08:20]
 
 )"sv;
 
-}  // namespace
 
 TEST(routing, via_test_36_S_C_via_V_0m_no_exit) {
   // S -> C, via V (0 min): V is ridden through on T1.

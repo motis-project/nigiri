@@ -2,7 +2,9 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <ranges>
+#include <span>
 #include <string_view>
 #include <type_traits>
 
@@ -24,71 +26,67 @@
 
 namespace nigiri::routing {
 
-pong_prune_settings pong_prune{
-    .prune_ =
-        []() {
-          auto const* const v = std::getenv("NIGIRI_PONG_PRUNE");
-          return v == nullptr || std::string_view{v} != "0";
-        }(),
-    .skip_pong_lb_ =
-        []() {
-          auto const* const v = std::getenv("NIGIRI_PONG_NO_LB");
-          return v != nullptr && std::string_view{v} == "1";
-        }(),
-};
+pong_settings pong_config{};
 
-namespace {
+constexpr auto const kPruneWithPingBounds = true;
 
-// Transform the ping search's round_times into pruning bounds for the pong
-// search (written to raptor_state::bounds_storage_): made monotonic over
-// rounds (bounds[k] = best over rounds <= k), which also fills rounds where
-// the ping found no improvement and wrote nothing. Only rows 0..n_rows-1
-// are filled (the maximum round any pong of this batch will look at).
-// With vias, each row is additionally made monotonic over via slots
-// (slot v = best over slots >= v, "v or more via stops visited"): the
-// arrival at a via stop is only recorded in the advanced slot, and a prefix
-// that visited more via stops still composes with the pong label's suffix.
-// Everything else (transfer time subtraction, footpath projections, via
-// stay slack) happens lazily at check time in raptor::within_bounds -- an
-// eager pass over all locations x rounds costs more than the pruning saves
-// on large timetables.
 template <direction PingDir, via_offset_t Vias>
-delta_t const* fill_bounds(raptor_state& s, std::size_t const n_rows) {
+flat_matrix_view<std::array<delta_t, Vias + 1U> const> fill_bounds(
+    raptor_state& s,
+    std::size_t const n_rows,
+    bitvec_map<location_idx_t> const* const td_stops) {
   constexpr auto const kFwd = PingDir == direction::kForward;
-  auto const n =
-      static_cast<std::size_t>(s.n_locations_) * (Vias + std::size_t{1U});
+  auto const n = static_cast<std::size_t>(s.n_locations_);
 
-  s.bounds_storage_.resize(n * (static_cast<std::size_t>(kMaxTransfers) + 2U));
-  auto const* const src = s.round_times_storage_.data();
-  auto* const dst = s.bounds_storage_.data();
+  s.bounds_storage_.resize(n * (static_cast<std::size_t>(kMaxTransfers) + 2U) *
+                           (Vias + 1U));
 
-  std::memcpy(dst, src, n * sizeof(delta_t));
+  auto const src = std::as_const(s).get_round_times<Vias>();
+  auto dst = s.get_bounds<Vias>();
+
+  // Copy k=0 verbatim (rest is folded from here).
+  for (auto x = std::size_t{0U}; x != n; ++x) {
+    dst[0U][x] = src[0U][x];
+  }
+
+  // Fill gaps from lower rounds to higher rounds.
   for (auto k = std::size_t{1U}; k < n_rows; ++k) {
-    auto const* const src_row = src + (k * n);
-    auto const* const prev_row = dst + ((k - 1U) * n);
-    auto* const dst_row = dst + (k * n);
     for (auto x = std::size_t{0U}; x != n; ++x) {
-      dst_row[x] = kFwd ? std::min(src_row[x], prev_row[x])
-                        : std::max(src_row[x], prev_row[x]);
+      for (auto v = std::size_t{0U}; v != Vias + 1U; ++v) {
+        dst[k][x][v] = kFwd ? std::min(src[k][x][v], dst[k - 1U][x][v])
+                            : std::max(src[k][x][v], dst[k - 1U][x][v]);
+      }
     }
   }
 
   if constexpr (Vias != 0U) {
+    // Fill gaps from higher vias to lower vias.
     for (auto k = std::size_t{0U}; k != n_rows; ++k) {
-      auto* const row = dst + (k * n);
-      for (auto x = std::size_t{0U}; x != n; x += Vias + 1U) {
+      for (auto x = std::size_t{0U}; x != n; ++x) {
+        auto& slots = dst[k][x];
         for (auto v = std::size_t{Vias}; v != 0U; --v) {
-          row[x + v - 1U] = kFwd ? std::min(row[x + v - 1U], row[x + v])
-                                 : std::max(row[x + v - 1U], row[x + v]);
+          slots[v - 1U] = kFwd ? std::min(slots[v - 1U], slots[v])
+                               : std::max(slots[v - 1U], slots[v]);
         }
       }
     }
   }
 
-  return dst;
-}
+  if (td_stops != nullptr) {
+    // td_footpaths have no upper bound -> disable pruning
+    constexpr auto const kPassAll = kFwd ? std::numeric_limits<delta_t>::min()
+                                         : std::numeric_limits<delta_t>::max();
+    td_stops->for_each_set_bit([&](location_idx_t const x) {
+      for (auto k = std::size_t{0U}; k != n_rows; ++k) {
+        for (auto v = std::size_t{0U}; v != Vias + 1U; ++v) {
+          dst[k][to_idx(x)][v] = kPassAll;
+        }
+      }
+    });
+  }
 
-}  // namespace
+  return std::as_const(s).get_bounds<Vias>();
+}
 
 auto to_tuple(journey const& j) {
   return std::tuple{j.departure_time(), j.arrival_time(), j.transfers_};
@@ -160,13 +158,6 @@ routing_result pong(timetable const& tt,
   // ----
   constexpr auto const kGpu = std::is_same_v<AlgoState, gpu::gpu_raptor_state>;
 
-  // Ping-bounds pruning (experiment): CPU only. Time-dependent footpaths
-  // (Rt + profile != 0) write projections whose durations cannot be
-  // recovered at bounds-check time -> no pruning there.
-  constexpr auto const kBoundsPrune = !kGpu;
-  auto const prune =
-      kBoundsPrune && pong_prune.prune_ && !(Rt && q.prf_idx_ != 0U);
-
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
   auto ping_is_via = std::array<bitvec, kMaxVias>{};
@@ -210,12 +201,10 @@ routing_result pong(timetable const& tt,
                           q.prf_idx_ == 2U,
                           q.transfer_time_settings_};
 
-  if constexpr (kBoundsPrune) {
-    if (prune) {
-      // The ping's round_times must cover every stop that can be part of an
-      // equal-arrival (but later-departure) journey the pong needs to find.
-      ping.set_loose_pruning(true);
-    }
+  if (kPruneWithPingBounds) {
+    // The ping's round_times must cover every stop that can be part of an
+    // equal-arrival (but later-departure) journey the pong needs to find.
+    ping.set_loose_pruning(true);
   }
 
   // ====
@@ -236,9 +225,7 @@ routing_result pong(timetable const& tt,
   auto const pong_lb_start = std::chrono::steady_clock::now();
   auto pong_lb = std::vector<std::uint16_t>{};
   if constexpr (pong_algo_t::kUseLowerBounds) {
-    if (prune && pong_prune.skip_pong_lb_) {
-      // The ping bounds prune the pong search on their own -> skip the
-      // dijkstra run, use all-zero lower bounds (= no lb pruning).
+    if (kPruneWithPingBounds) {
       pong_lb.assign(tt.n_locations(), 0U);
     } else {
       dijkstra(tt, q,
@@ -277,7 +264,12 @@ routing_result pong(timetable const& tt,
   // ========
   // >> PLAY!
   // --------
-  [[maybe_unused]] auto bounds = static_cast<delta_t const*>(nullptr);
+  // CPU: round_times-shaped view into the bounds storage; GPU: raw device
+  // pointer (16-bit bounds buffer on the device, Vias == 0)
+  using bounds_t = std::conditional_t<
+      kGpu, delta_t const*,
+      flat_matrix_view<std::array<delta_t, Vias + 1U> const>>;
+  [[maybe_unused]] auto bounds = bounds_t{};
   auto starts = std::vector<start>{};
   auto result = routing_result{
       .journeys_ = &s_state.results_,
@@ -332,7 +324,9 @@ routing_result pong(timetable const& tt,
       ping.add_start(s.stop_, s.time_at_stop_);
     }
     auto const worst_time_at_dest =
-        start_time + (kFwd ? 1 : -1) * (q.max_travel_time_ + duration_t{1});
+        start_time +
+        (kFwd ? 1 : -1) * (q.max_travel_time_ + pong_config.travel_time_slack_ +
+                           duration_t{1});
     auto ping_results = pareto_set<journey>{};
     ping.execute(start_time, q.max_transfers_, worst_time_at_dest, q.prf_idx_,
                  ping_results);
@@ -352,6 +346,10 @@ routing_result pong(timetable const& tt,
       }
       return dominated;
     });
+    if (ping_results.empty()) {
+      trace_pong("ALL PING RESULTS FILTERED -> QUIT");
+      break;
+    }
     utl::sort(ping_results, [](journey const& a, journey const& b) {
       return a.transfers_ > b.transfers_;
     });
@@ -359,14 +357,24 @@ routing_result pong(timetable const& tt,
     // ----
     // PONG
     // ----
-    if constexpr (kBoundsPrune) {
-      if (prune) {
-        // Has to happen before pong.reset_arrivals() wipes the shared
-        // round_times the ping search just filled. Rows needed: the pong for
-        // ping journey K looks at rows 0..K -> max transfers + 1 rows
-        // (ping_results are sorted by transfers, descending).
+    if (kPruneWithPingBounds) {
+      // Has to happen before pong.reset_arrivals() wipes the shared
+      // round_times the ping search just filled.
+      if constexpr (kGpu) {
+        bounds = gpu::fill_bounds<SearchDir>(
+            r_state, ping_results.begin()->transfers_ + std::size_t{1U}, rtt,
+            q.prf_idx_);
+      } else {
+        auto td_stops = static_cast<bitvec_map<location_idx_t> const*>(nullptr);
+        if constexpr (Rt) {
+          if (q.prf_idx_ != 0U) {
+            td_stops = &(kFwd ? rtt->has_td_footpaths_out_
+                              : rtt->has_td_footpaths_in_)[q.prf_idx_];
+          }
+        }
         bounds = fill_bounds<SearchDir, Vias>(
-            r_state, ping_results.begin()->transfers_ + std::size_t{1U});
+            r_state, ping_results.begin()->transfers_ + std::size_t{1U},
+            td_stops);
       }
     }
     q.flip_dir();
@@ -374,10 +382,16 @@ routing_result pong(timetable const& tt,
     for (auto& ping_j : ping_results) {
       trace_pong("-- PING RESULT: {}", to_tuple(ping_j));
 
-      if constexpr (kBoundsPrune) {
-        if (prune) {
+      if (kPruneWithPingBounds) {
+        if (ping_j.travel_time() > q.max_travel_time_) {
+          // over-span entry admitted by the travel time slack: not certified
+          // by the bounds (intermediate ping labels may be lb-pruned) ->
+          // run this pong unpruned
+          pong.set_bounds({}, 0U, 0U);
+        } else {
           // Round k of this pong leaves bounds_last_k - k rounds for the
-          // journey prefix -> check against the ping's bound for that round.
+          // journey prefix -> check against the ping's bound for that
+          // round.
           pong.set_bounds(bounds, ping_j.transfers_ + 1U, q.prf_idx_);
         }
       }
@@ -407,6 +421,15 @@ routing_result pong(timetable const& tt,
           });
 
       if (match == end(s_state.results_)) {
+        if (ping_j.travel_time() > q.max_travel_time_) {
+          // over-span entry (probe-anchored span, admitted by the travel
+          // time slack): over the limit or dominated by a lower-transfer
+          // journey -> skip instead of failing (erased after this loop)
+          trace_pong("SKIP UNMATCHED OVER-SPAN PING RESULT {}",
+                     to_tuple(ping_j));
+          ping_j.error_ = true;
+          continue;
+        }
         throw utl::fail(
             "no pong for transfers={}, start_time={} found, journeys={}",
             ping_j.transfers_, ping_j.dest_time_,
@@ -421,6 +444,13 @@ routing_result pong(timetable const& tt,
       ping_j.start_time_ = match->dest_time_;
     }
     q.flip_dir();
+
+    // skipped over-span entries must not drive the probe advance (their
+    // start time is still probe-anchored)
+    utl::erase_if(ping_results, [](journey const& j) { return j.error_; });
+    if (ping_results.empty()) {
+      break;
+    }
 
     // NEXT
     auto const first_it =
@@ -580,18 +610,24 @@ routing_result pong_search_with_dir(
     AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> timeout) {
-  switch (q.via_stops_.size()) {
-    case 0:
-      return pong_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state,
-                                          std::move(q), timeout);
-    case 1:
-      return pong_with_vias<SearchDir, 1>(tt, rtt, s_state, r_state,
-                                          std::move(q), timeout);
-    case 2:
-      return pong_with_vias<SearchDir, 2>(tt, rtt, s_state, r_state,
-                                          std::move(q), timeout);
+  if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
+    utl::verify(q.via_stops_.empty(), "GPU raptor does not support vias");
+    return pong_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state, std::move(q),
+                                        timeout);
+  } else {
+    switch (q.via_stops_.size()) {
+      case 0:
+        return pong_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state,
+                                            std::move(q), timeout);
+      case 1:
+        return pong_with_vias<SearchDir, 1>(tt, rtt, s_state, r_state,
+                                            std::move(q), timeout);
+      case 2:
+        return pong_with_vias<SearchDir, 2>(tt, rtt, s_state, r_state,
+                                            std::move(q), timeout);
+    }
+    throw utl::fail("{} vias not supported (max={})", kMaxVias);
   }
-  throw utl::fail("{} vias not supported (max={})", kMaxVias);
 }
 
 template <typename AlgoState>
