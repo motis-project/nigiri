@@ -102,6 +102,14 @@ struct raptor {
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
     reset_arrivals();
+    use_suffix_ = lb_rounds_.enabled();
+    if (use_suffix_) {
+      auto const n_route_stops = tt_.route_location_seq_.data_.size();
+      state_.route_suffix_time_.resize(n_route_stops);
+      state_.route_suffix_legs_.resize(n_route_stops);
+      state_.route_suffix_built_.resize(n_routes_);
+      utl::fill(state_.route_suffix_built_.blocks_, 0U);
+    }
     if (!dist_to_end_.empty()) {
       // only used for intermodal queries (dist_to_dest != empty)
       end_reachable_.resize(n_locations_);
@@ -1003,11 +1011,32 @@ private:
     return any_marked;
   }
 
+  void build_route_suffix(route_idx_t const r) {
+    auto const seq = tt_.route_location_seq_[r];
+    auto const off = tt_.route_location_seq_.bucket_starts_[to_idx(r)];
+    auto run_time = std::numeric_limits<std::uint16_t>::max();
+    auto run_legs = lb_transit_legs<SearchDir>::kUnreachable;
+    for (auto x = 0U; x != seq.size(); ++x) {
+      auto const pos = kFwd ? seq.size() - x - 1U : x;
+      state_.route_suffix_time_[off + pos] = run_time;
+      state_.route_suffix_legs_[off + pos] = run_legs;
+      auto const l = stop{seq[pos]}.location_idx();
+      run_time = std::min(run_time, lb_time_[to_idx(l)]);
+      run_legs = std::min(run_legs, lb_rounds_.get(l));
+    }
+    state_.route_suffix_built_.set(to_idx(r), true);
+  }
+
   template <bool WithSectionBikeFilter,
             bool WithSectionCarFilter,
             bool WithSectionWheelchairFilter>
   bool update_route(unsigned const k, route_idx_t const r) {
     auto const stop_seq = tt_.route_location_seq_[r];
+    auto const suffix_off =
+        use_suffix_ ? tt_.route_location_seq_.bucket_starts_[to_idx(r)] : 0U;
+    if (use_suffix_ && !state_.route_suffix_built_.test(to_idx(r))) {
+      build_route_suffix(r);
+    }
     bool any_marked = false;
 
     auto et = std::array<transport, Vias + 1>{};
@@ -1190,6 +1219,21 @@ private:
             k, loc{tt_, location_idx_t{l_idx}}, lb_time_[l_idx],
             stp_break_lb_rounds, end_k_);
         break;
+      }
+
+      if (use_suffix_) {
+        auto b = round_times_[k - 1][l_idx][0];
+        for (auto v = 1U; v != Vias + 1; ++v) {
+          b = get_best(b, round_times_[k - 1][l_idx][v]);
+        }
+        auto const sfx_dest_k =
+            k + state_.route_suffix_legs_[suffix_off + stop_idx];
+        if (sfx_dest_k >= end_k_ ||
+            !is_better(
+                b + dir(state_.route_suffix_time_[suffix_off + stop_idx]),
+                time_at_dest_[sfx_dest_k])) {
+          continue;
+        }
       }
 
       for (auto v = 0U; v != Vias + 1; ++v) {
@@ -1413,6 +1457,7 @@ private:
   std::uint8_t const* route_lb_rounds_{nullptr};
   unsigned end_k_;
   bool use_lb_rounds_{false};
+  bool use_suffix_{false};
   std::vector<via_stop> const& via_stops_;
   std::array<delta_t, kMaxTransfers + 2> time_at_dest_;
   day_idx_t base_;

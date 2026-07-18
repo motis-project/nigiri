@@ -265,6 +265,8 @@ struct lb_transit_legs {
 
   void set_end_k(std::uint8_t const end_k) { end_k_ = end_k; }
 
+  bool enabled() const { return comps_ != nullptr; }
+
   std::uint8_t max_lb() const {
     return comps_ == nullptr ? std::uint8_t{0U}
            : exhausted_      ? max_finite_lb_
