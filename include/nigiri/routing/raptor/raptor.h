@@ -174,6 +174,9 @@ struct raptor {
         update_time_at_dest(k, best_[i][Vias]);
       });
 
+      use_lb_rounds_ = time_at_dest_[k] != time_at_dest_[end_k_ - 1] ||
+                       k + lb_rounds_.max_lb() >= end_k_;
+
       auto any_marked = false;
       state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
@@ -513,7 +516,9 @@ private:
 
         if (is_better(fp_target_time, best_[i][target_v]) &&
             is_better(fp_target_time, time_at_dest_[k])) {
-          auto const i_lb_rounds = lb_rounds_.get(location_idx_t{i});
+          auto const i_lb_rounds = use_lb_rounds_
+                                       ? lb_rounds_.get(location_idx_t{i})
+                                       : std::uint8_t{0U};
           auto const i_dest_k = k + i_lb_rounds;
           if (lb_time_[i] == kUnreachable || i_dest_k >= end_k_ ||
               !is_better(fp_target_time + dir(lb_time_[i]),
@@ -592,7 +597,8 @@ private:
 
           if (is_better(fp_target_time, best_[target][target_v]) &&
               is_better(fp_target_time, time_at_dest_[k])) {
-            auto const fp_lb_rounds = lb_rounds_.get(fp.target());
+            auto const fp_lb_rounds =
+                use_lb_rounds_ ? lb_rounds_.get(fp.target()) : std::uint8_t{0U};
             auto const fp_dest_k = k + fp_lb_rounds;
             if (lb_time_[target] == kUnreachable || fp_dest_k >= end_k_ ||
                 !is_better(fp_target_time + dir(lb_time_[target]),
@@ -696,7 +702,8 @@ private:
 
           if (is_better(fp_target_time, best_[target][target_v]) &&
               is_better(fp_target_time, time_at_dest_[k])) {
-            auto const td_fp_lb_rounds = lb_rounds_.get(fp.target());
+            auto const td_fp_lb_rounds =
+                use_lb_rounds_ ? lb_rounds_.get(fp.target()) : std::uint8_t{0U};
             auto const td_fp_dest_k = k + td_fp_lb_rounds;
             if (lb_time_[target] == kUnreachable || td_fp_dest_k >= end_k_ ||
                 !is_better(fp_target_time + dir(lb_time_[target]),
@@ -1072,7 +1079,9 @@ private:
 
           assert(by_transport != std::numeric_limits<delta_t>::min() &&
                  by_transport != std::numeric_limits<delta_t>::max());
-          auto const stp_lb_rounds = lb_rounds_.get(stp.location_idx());
+          auto const stp_lb_rounds = use_lb_rounds_
+                                         ? lb_rounds_.get(stp.location_idx())
+                                         : std::uint8_t{0U};
           auto const stp_dest_k = k + stp_lb_rounds;
           if (is_better(by_transport, time_at_dest_[k]) &&
               lb_time_[l_idx] != kUnreachable && stp_dest_k < end_k_ &&
@@ -1149,7 +1158,9 @@ private:
         break;
       }
 
-      auto const stp_break_lb_rounds = lb_rounds_.get(stp.location_idx());
+      auto const stp_break_lb_rounds = use_lb_rounds_
+                                           ? lb_rounds_.get(stp.location_idx())
+                                           : std::uint8_t{0U};
       if (k + stp_break_lb_rounds > end_k_) {
         trace_lb(
             "┊ │k={}    *** NO BOARD: at={}, lb_time={}, lb_rounds={}, "
@@ -1206,6 +1217,10 @@ private:
                                    location_idx_t const l) {
     ++stats_.n_earliest_trip_calls_;
 
+    auto const l_lb_rounds =
+        use_lb_rounds_ ? lb_rounds_.get(l) : std::uint8_t{0U};
+    auto const dest_k = std::max(k, k - 1U + l_lb_rounds);
+
     auto const event_times = tt_.event_times_at_stop(
         r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
 
@@ -1241,8 +1256,6 @@ private:
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
-        auto const l_lb_rounds = lb_rounds_.get(l);
-        auto const dest_k = std::max(k, k - 1U + l_lb_rounds);
         if (dest_k < time_at_dest_.size() &&
             is_better_or_eq(time_at_dest_[dest_k],
                             to_delta(day, ev_mam) + dir(lb_time_[to_idx(l)]))) {
@@ -1376,6 +1389,7 @@ private:
   std::vector<std::uint16_t> const& lb_time_;
   lb_transit_legs<SearchDir>& lb_rounds_;
   unsigned end_k_;
+  bool use_lb_rounds_{false};
   std::vector<via_stop> const& via_stops_;
   std::array<delta_t, kMaxTransfers + 2> time_at_dest_;
   day_idx_t base_;
