@@ -1175,7 +1175,7 @@ private:
             "end_k_={}\n",
             k, loc{tt_, location_idx_t{l_idx}}, lb_time_[l_idx],
             stp_break_lb_rounds, end_k_);
-        continue;
+        break;
       }
 
       for (auto v = 0U; v != Vias + 1; ++v) {
