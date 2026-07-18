@@ -181,6 +181,20 @@ struct raptor {
 
       auto any_marked = false;
       state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+        if (lb_time_[i] == kUnreachable) {
+          return;
+        }
+        auto b = round_times_[k - 1][i][0];
+        for (auto v = 1U; v != Vias + 1; ++v) {
+          b = get_best(b, round_times_[k - 1][i][v]);
+        }
+        auto const lb_legs = use_lb_rounds_ ? lb_rounds_.get(location_idx_t{i})
+                                            : std::uint8_t{0U};
+        auto const dest_k = std::max(k, k - 1U + lb_legs);
+        if (dest_k >= end_k_ ||
+            !is_better(b + dir(lb_time_[i]), time_at_dest_[dest_k])) {
+          return;
+        }
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
           any_marked = true;
           state_.route_mark_.set(to_idx(r), true);
