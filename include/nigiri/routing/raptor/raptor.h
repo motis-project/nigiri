@@ -156,6 +156,8 @@ struct raptor {
                pareto_set<journey>& results) {
     end_k_ = std::min(max_transfers, kMaxTransfers) + 2U;
     lb_rounds_.set_end_k(static_cast<std::uint8_t>(end_k_));
+    auto const& route_lb = lb_rounds_.route_lb();
+    route_lb_rounds_ = route_lb.empty() ? nullptr : route_lb.data();
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
     for (auto& time_at_dest : time_at_dest_) {
@@ -321,6 +323,12 @@ private:
     auto any_marked = false;
     state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
       auto const r = route_idx_t{r_idx};
+
+      if (route_lb_rounds_ != nullptr && k + route_lb_rounds_[r_idx] > end_k_) {
+        trace_lb("┊ ├k={} *** LB NO ROUTE SCAN: route={}, route_lb={}\n", k, r,
+                 route_lb_rounds_[r_idx]);
+        return;
+      }
 
       if constexpr (WithClaszFilter) {
         if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
@@ -1388,6 +1396,7 @@ private:
   hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
   std::vector<std::uint16_t> const& lb_time_;
   lb_transit_legs<SearchDir>& lb_rounds_;
+  std::uint8_t const* route_lb_rounds_{nullptr};
   unsigned end_k_;
   bool use_lb_rounds_{false};
   std::vector<via_stop> const& via_stops_;
