@@ -446,12 +446,11 @@ routing_result pong(timetable const& tt,
         if (over_span) {
           if (!pong_unpruned) {
             // q is flipped to pong orientation here, matching pong's ctor
-            pong_unpruned.emplace(tt, rtt, r_state, pong_is_dest, pong_is_via,
-                                  pong_dist_to_dest, q.td_dest_, pong_lb,
-                                  q.via_stops_, base_day, q.allowed_claszes_,
-                                  q.require_bike_transport_,
-                                  q.require_car_transport_, q.prf_idx_ == 2U,
-                                  q.transfer_time_settings_);
+            pong_unpruned.emplace(
+                tt, rtt, r_state, pong_is_dest, pong_is_via, pong_dist_to_dest,
+                q.td_dest_, pong_lb, q.via_stops_, base_day, q.allowed_claszes_,
+                q.require_bike_transport_, q.require_car_transport_,
+                q.prf_idx_ == 2U, q.transfer_time_settings_);
           }
           run_pong(*pong_unpruned, ping_j);
         } else {

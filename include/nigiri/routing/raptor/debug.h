@@ -142,20 +142,20 @@
 #define trace_rc_transport_not_found \
   trace_reconstruct("    -> no entry found\n")
 
-#define trace_rc_transport_entry_not_possible                   \
-  trace_reconstruct(                                            \
-      "      ENTRY NOT POSSIBLE AT {}: k={} k-1={}, v={}->{}, " \
-      "round_time={}={} > event_time={}={}\n",                  \
-      loc{tt, l}, k, k - 1, v, s, round_time,                   \
-      delta_to_unix(base, round_time), event_time,              \
+#define trace_rc_transport_entry_not_possible                                  \
+  trace_reconstruct(                                                           \
+      "      ENTRY NOT POSSIBLE AT {}: k={} k-1={}, v={}->{}, "                \
+      "round_time={}={} > event_time={}={}\n",                                 \
+      loc{tt, l}, k, k - 1, v, s, round_time, delta_to_unix(base, round_time), \
+      event_time,                                                              \
       fr[stop_idx].time(kFwd ? event_type::kDep : event_type::kArr))
 
-#define trace_rc_transport_entry_found                                \
-  trace_reconstruct(                                                  \
-      "      FOUND ENTRY AT name={}, dbg={}, location={}: {} <= {}, " \
-      "v={}->{}\n",                                                   \
-      fr.name({}), fr.dbg(), loc{tt, l},                              \
-      delta_to_unix(base, round_time), delta_to_unix(base, event_time), v, s)
+#define trace_rc_transport_entry_found                                    \
+  trace_reconstruct(                                                      \
+      "      FOUND ENTRY AT name={}, dbg={}, location={}: {} <= {}, "     \
+      "v={}->{}\n",                                                       \
+      fr.name({}), fr.dbg(), loc{tt, l}, delta_to_unix(base, round_time), \
+      delta_to_unix(base, event_time), v, s)
 
 #define trace_rc_fp_intermodal_dest_mismatch                            \
   trace_reconstruct(                                                    \

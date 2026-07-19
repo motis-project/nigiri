@@ -406,9 +406,8 @@ private:
       auto const target = to_idx(fp.target());
       auto const d = dir(adjusted_transfer_time(
           transfer_time_settings_, static_cast<int>(fp.duration().count())));
-      if (is_better_or_eq(t,
-                          row[target][slot] + d +
-                              dir(stays_l + via_stays(target)))) {
+      if (is_better_or_eq(
+              t, row[target][slot] + d + dir(stays_l + via_stays(target)))) {
         return true;
       }
     }
@@ -1009,9 +1008,8 @@ private:
         for (auto j = 0U; j != Vias + 1; ++j) {
           auto const v = Vias - j;
           if (et[v] && stp.can_finish<SearchDir>(is_wheelchair_)) {
-            auto current_best =
-                get_best(round_times_[k - 1][l_idx][v], tmp_[l_idx][v],
-                         best_[l_idx][v]);
+            auto current_best = get_best(round_times_[k - 1][l_idx][v],
+                                         tmp_[l_idx][v], best_[l_idx][v]);
 
             if (is_better_loose(by_transport, time_at_dest_[k]) &&
                 lb_reachable(l_idx) &&
@@ -1019,7 +1017,8 @@ private:
                                 time_at_dest_[k]) &&
                 within_bounds(k, l_idx, by_transport, v)) {
               trace_upd(
-                  "\u250a \u2502k={}    RT | name={}, dbg={}, time_by_transport={}, "
+                  "\u250a \u2502k={}    RT | name={}, dbg={}, "
+                  "time_by_transport={}, "
                   "BETTER THAN current_best={} => update, {} marking station "
                   "{}!\n",
                   k, rtt_->default_trip_short_name(tt_, rt_t),
@@ -1128,12 +1127,12 @@ private:
                 via_stops_[cs].stay_ == 0_minutes) {
               auto& to = et[e][o];
               if (!to.is_valid() ||
-                  is_better(time_at_stop(r, from, stop_idx,
-                                         kFwd ? event_type::kArr
-                                              : event_type::kDep),
-                            time_at_stop(r, to, stop_idx,
-                                         kFwd ? event_type::kArr
-                                              : event_type::kDep))) {
+                  is_better(
+                      time_at_stop(r, from, stop_idx,
+                                   kFwd ? event_type::kArr : event_type::kDep),
+                      time_at_stop(
+                          r, to, stop_idx,
+                          kFwd ? event_type::kArr : event_type::kDep))) {
                 to = from;
               }
               from = {};
@@ -1176,7 +1175,8 @@ private:
                               time_at_dest_[k]) &&
               within_bounds(k, l_idx, by_transport, cs)) {
             trace_upd(
-                "\u250a \u2502k={} cs={}    name={}, dbg={}, time_by_transport={}, "
+                "\u250a \u2502k={} cs={}    name={}, dbg={}, "
+                "time_by_transport={}, "
                 "BETTER THAN current_best={} => update, {} marking station "
                 "{}!\n",
                 k, cs, tt_.transport_name(ride.t_idx_), tt_.dbg(ride.t_idx_),
@@ -1193,7 +1193,8 @@ private:
             any_marked = true;
           } else {
             trace(
-                "\u250a \u2502k={} cs={}    *** NO UPD: at={}, name={}, dbg={}, "
+                "\u250a \u2502k={} cs={}    *** NO UPD: at={}, name={}, "
+                "dbg={}, "
                 "time_by_transport={}, current_best={}\n",
                 k, cs, loc{tt_, location_idx_t{l_idx}},
                 tt_.transport_name(ride.t_idx_), tt_.dbg(ride.t_idx_),
@@ -1226,8 +1227,8 @@ private:
           auto const [day, mam] = split(prev_round_time);
           auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
                                                      stp.location_idx());
-          current_best[v] = get_best(current_best[v], best_[l_idx][v],
-                                     tmp_[l_idx][v]);
+          current_best[v] =
+              get_best(current_best[v], best_[l_idx][v], tmp_[l_idx][v]);
           if (new_et.is_valid() &&
               (current_best[v] == kInvalid ||
                is_better_or_eq(
@@ -1235,11 +1236,13 @@ private:
                                 kFwd ? event_type::kDep : event_type::kArr),
                    et_time_at_stop))) {
             fresh = new_et;
-            trace("\u250a \u2502k={} v={}    update et: time_at_stop={}\n", k, v,
-                  to_unix(et_time_at_stop));
+            trace("\u250a \u2502k={} v={}    update et: time_at_stop={}\n", k,
+                  v, to_unix(et_time_at_stop));
           } else if (new_et.is_valid()) {
-            trace("\u250a \u2502k={} v={}    update et: no update time_at_stop={}\n",
-                  k, v, to_unix(et_time_at_stop));
+            trace(
+                "\u250a \u2502k={} v={}    update et: no update "
+                "time_at_stop={}\n",
+                k, v, to_unix(et_time_at_stop));
           }
         }
       }

@@ -184,7 +184,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
   auto v = static_cast<via_offset_t>(q.via_stops_.size());
 
-
   auto const find_entry_in_prev_round =
       [&](unsigned const k, rt::run const& r, stop_idx_t const from_stop_idx,
           delta_t, bool const section_bike_filter,
@@ -208,10 +207,9 @@ void reconstruct_journey_with_vias(timetable const& tt,
                              location_idx_t const l) {
       auto folded = state;
       for (auto s = via_offset_t{0U}; s != kMaxVias + 1; ++s) {
-        auto const advance =
-            s < n_vias && q.via_stops_[s].stay_ == 0_minutes &&
-            matches(tt, location_match_mode::kEquivalent,
-                    q.via_stops_[s].location_, l);
+        auto const advance = s < n_vias && q.via_stops_[s].stay_ == 0_minutes &&
+                             matches(tt, location_match_mode::kEquivalent,
+                                     q.via_stops_[s].location_, l);
         folded[s] = state[advance ? s + 1U : s];
       }
       state = folded;
@@ -234,8 +232,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
 
       for (auto i = 1U; i != n_stops; ++i) {
-        auto const stop_idx = static_cast<stop_idx_t>(
-            kFwd ? from_stop_idx - i : from_stop_idx + i);
+        auto const stop_idx = static_cast<stop_idx_t>(kFwd ? from_stop_idx - i
+                                                           : from_stop_idx + i);
         auto const stp = fr[stop_idx];
         auto const l = stp.get_location_idx();
 
