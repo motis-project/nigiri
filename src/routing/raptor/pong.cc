@@ -124,11 +124,11 @@ routing_result pong(timetable const& tt,
 
   using ping_algo_t =
       std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-                         gpu::gpu_raptor<SearchDir>,
+                         gpu::gpu_raptor<SearchDir, false>,
                          raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>>;
   using pong_algo_t = std::conditional_t<
       std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-      gpu::gpu_raptor<flip(SearchDir)>,
+      gpu::gpu_raptor<flip(SearchDir), kPruneWithPingBounds>,
       raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>>;
 
   s_state.results_.clear();
@@ -259,6 +259,14 @@ routing_result pong(timetable const& tt,
                           q.prf_idx_ == 2U,
                           q.transfer_time_settings_};
 
+  // GPU: the pong's WithBounds=false twin for over-span ping journeys (their
+  // pong runs unpruned; on the CPU the same is done with empty runtime
+  // bounds). Built lazily on first use.
+  using pong_unpruned_t =
+      std::conditional_t<kGpu, gpu::gpu_raptor<flip(SearchDir), false>,
+                         pong_algo_t>;
+  auto pong_unpruned = std::optional<pong_unpruned_t>{};
+
   q.flip_dir();
 
   // ========
@@ -379,38 +387,22 @@ routing_result pong(timetable const& tt,
     }
     q.flip_dir();
     pong.reset_arrivals();
-    for (auto& ping_j : ping_results) {
-      trace_pong("-- PING RESULT: {}", to_tuple(ping_j));
-
-      if (kPruneWithPingBounds) {
-        if (ping_j.travel_time() > q.max_travel_time_) {
-          // over-span entry admitted by the travel time slack: not certified
-          // by the bounds (intermediate ping labels may be lb-pruned) ->
-          // run this pong unpruned
-          pong.set_bounds({}, 0U, 0U);
-        } else {
-          // Round k of this pong leaves bounds_last_k - k rounds for the
-          // journey prefix -> check against the ping's bound for that
-          // round.
-          pong.set_bounds(bounds, ping_j.transfers_ + 1U, q.prf_idx_);
-        }
-      }
-
+    auto const run_pong = [&](auto& po, journey& ping_j) {
       starts.clear();
       get_starts(flip(SearchDir), tt, rtt, ping_j.dest_time_, q.start_,
                  q.td_start_, q.via_stops_, q.max_start_offset_,
                  q.start_match_mode_,
                  q.start_match_mode_ != location_match_mode::kIntermodal,
                  starts, false, q.prf_idx_, q.transfer_time_settings_);
-      pong.next_start_time();
+      po.next_start_time();
       for (auto const& s : starts) {
         trace_pong("---- PONG START: {} at time_at_start={} time_at_stop={}",
                    loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
-        pong.add_start(s.stop_, s.time_at_stop_);
+        po.add_start(s.stop_, s.time_at_stop_);
       }
-      pong.execute(ping_j.dest_time_, ping_j.transfers_,
-                   ping_j.start_time_ - duration_t{kFwd ? 1 : -1}, q.prf_idx_,
-                   s_state.results_);
+      po.execute(ping_j.dest_time_, ping_j.transfers_,
+                 ping_j.start_time_ - duration_t{kFwd ? 1 : -1}, q.prf_idx_,
+                 s_state.results_);
       kFwd ? ++result.search_stats_.n_execute_bwd_
            : ++result.search_stats_.n_execute_fwd_;
 
@@ -428,7 +420,7 @@ routing_result pong(timetable const& tt,
           trace_pong("SKIP UNMATCHED OVER-SPAN PING RESULT {}",
                      to_tuple(ping_j));
           ping_j.error_ = true;
-          continue;
+          return;
         }
         throw utl::fail(
             "no pong for transfers={}, start_time={} found, journeys={}",
@@ -439,9 +431,48 @@ routing_result pong(timetable const& tt,
       trace_pong("---- HIT [updating ping start time {} -> {}]\n",
                  ping_j.start_time_, match->dest_time_);
       if (!match->is_reconstructed_ && !match->error_) {
-        pong.reconstruct(q, *match);
+        po.reconstruct(q, *match);
       }
       ping_j.start_time_ = match->dest_time_;
+    };
+    for (auto& ping_j : ping_results) {
+      trace_pong("-- PING RESULT: {}", to_tuple(ping_j));
+
+      // over-span entries admitted by the travel time slack are not certified
+      // by the bounds (intermediate ping labels may be lb-pruned) -> their
+      // pong runs unpruned
+      auto const over_span = ping_j.travel_time() > q.max_travel_time_;
+      if constexpr (kGpu && kPruneWithPingBounds) {
+        if (over_span) {
+          if (!pong_unpruned) {
+            // q is flipped to pong orientation here, matching pong's ctor
+            pong_unpruned.emplace(tt, rtt, r_state, pong_is_dest, pong_is_via,
+                                  pong_dist_to_dest, q.td_dest_, pong_lb,
+                                  q.via_stops_, base_day, q.allowed_claszes_,
+                                  q.require_bike_transport_,
+                                  q.require_car_transport_, q.prf_idx_ == 2U,
+                                  q.transfer_time_settings_);
+          }
+          run_pong(*pong_unpruned, ping_j);
+        } else {
+          // Round k of this pong leaves bounds_last_k - k rounds for the
+          // journey prefix -> check against the ping's bound for that
+          // round.
+          pong.set_bounds(bounds, ping_j.transfers_ + 1U);
+          run_pong(pong, ping_j);
+        }
+      } else {
+        if constexpr (!kGpu) {
+          if (kPruneWithPingBounds) {
+            if (over_span) {
+              pong.set_bounds({}, 0U, 0U);
+            } else {
+              pong.set_bounds(bounds, ping_j.transfers_ + 1U, q.prf_idx_);
+            }
+          }
+        }
+        run_pong(pong, ping_j);
+      }
     }
     q.flip_dir();
 

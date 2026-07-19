@@ -21,7 +21,6 @@ struct raptor_stats {
          fp_update_prevented_by_lower_bound_},
         {"route_update_prevented_by_lower_bound",
          route_update_prevented_by_lower_bound_},
-        {"n_pruned_by_ping_bounds", n_pruned_by_ping_bounds_},
     };
   }
 
@@ -39,7 +38,6 @@ struct raptor_stats {
         o.fp_update_prevented_by_lower_bound_;
     copy.route_update_prevented_by_lower_bound_ +=
         o.route_update_prevented_by_lower_bound_;
-    copy.n_pruned_by_ping_bounds_ += o.n_pruned_by_ping_bounds_;
     return copy;
   }
 
@@ -51,7 +49,6 @@ struct raptor_stats {
   std::uint64_t n_earliest_arrival_updated_by_footpath_{0ULL};
   std::uint64_t fp_update_prevented_by_lower_bound_{0ULL};
   std::uint64_t route_update_prevented_by_lower_bound_{0ULL};
-  std::uint64_t n_pruned_by_ping_bounds_{0ULL};
 };
 
 }  // namespace nigiri::routing

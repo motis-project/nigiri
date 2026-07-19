@@ -339,7 +339,6 @@ cell_result run_config(
       states.push_back(std::make_unique<cpu_ws>());
     }
 
-    auto pruned = std::atomic<std::uint64_t>{0U};
     for (auto const t : cpu_threads_v) {
       out.cpu_lat_ = run_load<cpu_ws>(
           queries, label + "-cpu-" + std::to_string(t), prefix(states, t),
@@ -351,14 +350,7 @@ cell_result run_config(
                                                   std::move(q), dir);
             cpu_res[i] = *r.journeys_;
             out.cpu_iv_[i] = r.interval_;
-            if (auto const it = r.algo_stats_.find("n_pruned_by_ping_bounds");
-                it != end(r.algo_stats_)) {
-              pruned += it->second;
-            }
           });
-    }
-    if (use_pong) {
-      fmt::print("  [{}] n_pruned_by_ping_bounds={}\n", label, pruned.load());
     }
   }
 
@@ -377,7 +369,6 @@ cell_result run_config(
           gpu_ws{search_state{},
                  std::make_unique<routing::gpu::gpu_raptor_state>(gpu_tt)}));
     }
-    auto gpu_pruned = std::atomic<std::uint64_t>{0U};
     for (auto const s : gpu_states_v) {
       run_load<gpu_ws>(
           queries, label + "-gpu-" + std::to_string(s), prefix(states, s),
@@ -388,15 +379,7 @@ cell_result run_config(
                          : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
                                                   std::move(q), dir);
             gpu_res[i] = *r.journeys_;
-            if (auto const it = r.algo_stats_.find("n_pruned_by_ping_bounds");
-                it != end(r.algo_stats_)) {
-              gpu_pruned += it->second;
-            }
           });
-    }
-    if (use_pong) {
-      fmt::print("  [{}-gpu] n_pruned_by_ping_bounds={}\n", label,
-                 gpu_pruned.load());
     }
   }
 

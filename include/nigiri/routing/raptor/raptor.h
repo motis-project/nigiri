@@ -412,7 +412,6 @@ private:
         return true;
       }
     }
-    ++stats_.n_pruned_by_ping_bounds_;
     return false;
   }
 

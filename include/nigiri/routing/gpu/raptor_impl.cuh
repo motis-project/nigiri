@@ -37,7 +37,7 @@ inline constexpr auto kAllLanes = ~std::uint32_t{0};
 using td_dest_group_idx_t = cista::strong<std::uint32_t, struct td_dest_group_>;
 using td_dest_offsets_t = vecvec<td_dest_group_idx_t, td_offset>;
 
-template <direction SearchDir>
+template <direction SearchDir, bool WithBounds>
 struct raptor_impl {
   static constexpr via_offset_t Vias = 0U;
 
@@ -57,55 +57,57 @@ struct raptor_impl {
   __device__ __forceinline__ auto min(auto x, auto y) { return x <= y ? x : y; }
   __device__ __forceinline__ auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
-  // is_better, but in loose-pruning mode equality also passes (the ping of a
-  // ping/pong pair runs loose, see gpu_raptor::set_loose_pruning)
+  // For ping: comparison has to be <= instead of < so cells with equal arrival
+  // times are still populated. Otherwise, the ping bounds are too strict for
+  // pong to still find all optimal journeys.
+  //
+  // Loose pruning with <= instead of < is always enabled on the GPU.
+  // Measured to have ~ the same performance as strict pruning.
   __device__ __forceinline__ bool is_better_loose(auto a, auto b) {
-    return is_better(a, b) || (loose_pruning_ && a == b);
+    return is_better_or_eq(a, b);
   }
 
-  // Check a label written in round k at stop l against the ping bounds
-  // (no-op without bounds). The bounds row holds the opposite-direction
-  // ping's round-monotonic entries, which contain arrival + transfer time
-  // (subtract it; this also keeps same-trip continuations, which pay no
-  // transfer, within bounds). If the direct check fails, check the ping's
-  // footpath projections at the neighbors (arrival + fp duration): the ping
-  // only records arrivals *somewhere* -- required for correctness, but only
-  // consulted when the direct bound would prune.
   __device__ bool within_bounds(unsigned const k,
                                 location_idx_t const l,
                                 delta_t const t) {
-    if (bounds_ == nullptr) {
+    if constexpr (!WithBounds) {
       return true;
-    }
-    auto const* const row = bounds_ + (bounds_last_k_ - k) * tt_.n_locations_;
-    auto const transfer = dir(adjusted_transfer_time(
-        transfer_time_settings_,
-        static_cast<int>(tt_.transfer_time_[l].count())));
-    if (is_better_or_eq(static_cast<int>(t),
-                        static_cast<int>(row[to_idx(l)]) + transfer)) {
-      return true;
-    }
-    // ping direction = flipped search direction: bwd pong reads a fwd ping's
-    // footpaths_out_, fwd pong reads a bwd ping's footpaths_in_
-    auto const fps = kFwd ? tt_.footpaths_in_[bounds_prf_idx_][l]
-                          : tt_.footpaths_out_[bounds_prf_idx_][l];
-    for (auto const& fp : fps) {
-      auto const d = dir(adjusted_transfer_time(
-          transfer_time_settings_, static_cast<int>(fp.duration().count())));
+    } else {
+      auto const* const row = bounds_ + (bounds_last_k_ - k) * tt_.n_locations_;
+
+      // FWD arrival + 5min transfer = earliest departure
+      //   10:00      10:05
+      // >>>>>|-------->*>>>>>
+      //
+      // BWD departure - 5min transfer = latest arrival
+      //   10:00      10:05
+      // <<<<<*<--------|<<<<<
+      //
+      // -> 10:00 < 10:05 would get rejected.
+      // -> ping journey would not be found in pong
+      // -> find a self-transfer or footpath: t - duration is within the bounds
+
+      auto const transfer = dir(adjusted_transfer_time(
+          transfer_time_settings_,
+          static_cast<int>(tt_.transfer_time_[l].count())));
       if (is_better_or_eq(static_cast<int>(t),
-                          static_cast<int>(row[to_idx(fp.target())]) + d)) {
+                          static_cast<int>(row[to_idx(l)]) + transfer)) {
         return true;
       }
-    }
-    if (n_pruned_ != nullptr) {
-      // warp-aggregated increment: one atomic per converged group
-      auto const mask = __activemask();
-      auto const lane = get_global_thread_id() % kWarpSize;
-      if ((mask & ((1U << lane) - 1U)) == 0U) {
-        atomicAdd(n_pruned_, static_cast<unsigned long long>(__popc(mask)));
+
+      auto const fps = kFwd ? tt_.footpaths_in_[prf_idx_][l]
+                            : tt_.footpaths_out_[prf_idx_][l];
+      for (auto const& fp : fps) {
+        auto const d = dir(adjusted_transfer_time(
+            transfer_time_settings_, static_cast<int>(fp.duration().count())));
+        if (is_better_or_eq(static_cast<int>(t),
+                            static_cast<int>(row[to_idx(fp.target())]) + d)) {
+          return true;
+        }
       }
+
+      return false;
     }
-    return false;
   }
 
   __device__ void init_arrivals(unixtime_t const worst_time_at_dest) {
@@ -700,9 +702,6 @@ struct raptor_impl {
     }
   }
 
-  // IsWheelchair == the kernel's dispatch flag -> stop accessibility checks
-  // constant-fold. WithSections + section_mask = the per-route section
-  // filters of the query's required modes (bike/car/wheelchair).
   template <bool IsWheelchair, bool WithSections>
   __device__ bool update_route_warp(
       unsigned const k,
@@ -872,11 +871,10 @@ struct raptor_impl {
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
-        // under loose pruning, an event equal to time-at-dest must still be
-        // boardable (equal-arrival coverage for the pong)
+        // an event equal to time-at-dest must still be boardable
+        // (equal-arrival coverage for the pong)
         auto const ev_t = to_delta(day, ev_mam);
-        if (loose_pruning_ ? is_better(time_at_dest_.get(k), ev_t)
-                           : is_better_or_eq(time_at_dest_.get(k), ev_t)) {
+        if (is_better(time_at_dest_.get(k), ev_t)) {
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
@@ -1144,15 +1142,9 @@ struct raptor_impl {
   cuda::std::span<std::uint32_t> route_list_;
   std::uint32_t* route_list_count_;
 
-  // === ping-bounds pruning (see pong.cc) ===
-  // bounds_[(bounds_last_k_ - k) * n_locations + l] = the opposite-direction
-  // ping's best (round-monotonic) time at l using bounds_last_k_ - k rounds;
-  // 16-bit times only, no breadcrumbs (never reconstructed from)
+  // ping bounds
   delta_t const* bounds_{nullptr};
   std::uint32_t bounds_last_k_{0U};
-  profile_idx_t bounds_prf_idx_{0U};
-  bool loose_pruning_{false};
-  unsigned long long* n_pruned_{nullptr};
 };
 
 }  // namespace nigiri::routing::gpu
