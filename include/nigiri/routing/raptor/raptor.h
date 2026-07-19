@@ -164,8 +164,6 @@ struct raptor {
                pareto_set<journey>& results) {
     end_k_ = std::min(max_transfers, kMaxTransfers) + 2U;
     lb_rounds_.set_end_k(static_cast<std::uint8_t>(end_k_));
-    auto const& route_lb = lb_rounds_.route_lb();
-    route_lb_rounds_ = route_lb.empty() ? nullptr : route_lb.data();
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
     for (auto& time_at_dest : time_at_dest_) {
@@ -345,12 +343,6 @@ private:
     auto any_marked = false;
     state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
       auto const r = route_idx_t{r_idx};
-
-      if (route_lb_rounds_ != nullptr && k + route_lb_rounds_[r_idx] > end_k_) {
-        trace_lb("┊ ├k={} *** LB NO ROUTE SCAN: route={}, route_lb={}\n", k, r,
-                 route_lb_rounds_[r_idx]);
-        return;
-      }
 
       if constexpr (WithClaszFilter) {
         if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
@@ -591,6 +583,25 @@ private:
         }
       }
 
+      if (lb_time_[i] == kUnreachable) {
+        return;
+      }
+      auto src = tmp_[i][0];
+      for (auto v = 1U; v != Vias + 1; ++v) {
+        src = get_best(src, tmp_[i][v]);
+      }
+      auto const src_legs =
+          use_lb_rounds_ ? lb_rounds_.get(l_idx) : std::uint8_t{0U};
+      auto const src_dest_k = k + src_legs;
+      if (src_dest_k >= end_k_ ||
+          !is_better(src + dir(lb_time_[i]), time_at_dest_[src_dest_k])) {
+        trace_lb(
+            "┊ ├k={} *** LB NO FP SOURCE: at={}, tmp={}, lb_time={}, "
+            "legs={}\n",
+            k, loc{tt_, l_idx}, to_unix(src), lb_time_[i], src_legs);
+        return;
+      }
+
       auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx][l_idx]
                              : tt_.locations_.footpaths_in_[prf_idx][l_idx];
 
@@ -695,6 +706,19 @@ private:
       if (!(kFwd ? rtt_->has_td_footpaths_out_
                  : rtt_->has_td_footpaths_in_)[prf_idx]
                .test(l_idx)) {
+        return;
+      }
+
+      if (lb_time_[i] == kUnreachable) {
+        return;
+      }
+      auto src = tmp_[i][0];
+      for (auto v = 1U; v != Vias + 1; ++v) {
+        src = get_best(src, tmp_[i][v]);
+      }
+      if (!is_better(src + dir(lb_time_[i]), time_at_dest_[k])) {
+        trace_lb("┊ ├k={} *** LB NO TD FP SOURCE: at={}, tmp={}, lb_time={}\n",
+                 k, loc{tt_, l_idx}, to_unix(src), lb_time_[i]);
         return;
       }
 
@@ -1454,7 +1478,6 @@ private:
   hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
   std::vector<std::uint16_t> const& lb_time_;
   lb_transit_legs<SearchDir>& lb_rounds_;
-  std::uint8_t const* route_lb_rounds_{nullptr};
   unsigned end_k_;
   bool use_lb_rounds_{false};
   bool use_suffix_{false};

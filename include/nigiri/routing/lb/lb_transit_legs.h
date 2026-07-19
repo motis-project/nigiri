@@ -303,28 +303,6 @@ struct lb_transit_legs {
     return lb_[c];
   }
 
-  std::vector<std::uint8_t> const& route_lb() {
-    if (comps_ != nullptr && route_lb_.empty()) {
-      while (!exhausted_ && k_ < end_k_) {
-        advance();
-      }
-      auto const start_time = std::chrono::steady_clock::now();
-      route_lb_.resize(tt_.n_routes());
-      utl::fill(route_lb_, kUnreachable);
-      for (auto c = std::uint32_t{0U}; c != comps_->n_components_; ++c) {
-        auto const lb = lb_[c] == kUnknown ? kUnreachable : lb_[c];
-        for (auto i = comps_->comp_route_offsets_[c];
-             i != comps_->comp_route_offsets_[c + 1U]; ++i) {
-          auto& entry = route_lb_[to_idx(comps_->comp_routes_[i])];
-          entry = std::min(entry, lb);
-        }
-      }
-      total_time_ += std::chrono::duration_cast<std::chrono::microseconds>(
-          std::chrono::steady_clock::now() - start_time);
-    }
-    return route_lb_;
-  }
-
   timetable const& tt_;
   rt_timetable const* rtt_;
   query const& q_;
@@ -339,7 +317,6 @@ struct lb_transit_legs {
   bitvec route_mark_;
   bitvec rt_transport_mark_;
   std::vector<std::uint8_t> lb_;  // component id -> lower bound
-  std::vector<std::uint8_t> route_lb_;
 };
 
 }  // namespace nigiri::routing
