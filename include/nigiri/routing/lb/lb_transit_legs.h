@@ -145,8 +145,6 @@ struct lb_transit_legs {
         end_k_{static_cast<std::uint8_t>(
             std::min(q.max_transfers_, kMaxTransfers) + 2U)},
         any_marked_{false},
-        max_finite_lb_{0U},
-        exhausted_{false},
         total_time_{0U} {
     if (comps_ == nullptr) {
       return;
@@ -267,20 +265,10 @@ struct lb_transit_legs {
 
   bool enabled() const { return comps_ != nullptr; }
 
-  std::uint8_t max_lb() const {
-    return comps_ == nullptr ? std::uint8_t{0U}
-           : exhausted_      ? max_finite_lb_
-                             : kUnreachable;
-  }
-
   void advance() {
     run_round();
-    if (any_marked_) {
-      max_finite_lb_ = k_;
-    }
     ++k_;
     if (!any_marked_) {
-      exhausted_ = true;
       for (auto& lb : lb_) {
         if (lb == kUnknown) {
           lb = kUnreachable;
@@ -310,8 +298,6 @@ struct lb_transit_legs {
   std::uint8_t k_;
   std::uint8_t end_k_;
   bool any_marked_;
-  std::uint8_t max_finite_lb_;
-  bool exhausted_;
   std::chrono::microseconds total_time_;
   bitvec comp_mark_;
   bitvec route_mark_;
