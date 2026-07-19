@@ -8,6 +8,7 @@
 #include "nigiri/routing/query.h"
 #include "nigiri/types.h"
 
+#include "nigiri/routing/gpu/component_lb.cuh"
 #include "nigiri/routing/gpu/device_bitvec.cuh"
 #include "nigiri/routing/gpu/device_td.cuh"
 #include "nigiri/routing/gpu/device_times.h"
@@ -106,6 +107,77 @@ struct raptor_impl {
       }
     }
     return false;
+  }
+
+  // === component lower bounds (see component_lb.cuh) =====================
+  // comp_lb_[component(l)] = [tt:16|ic:16]: the remaining journey from l
+  // needs >= tt more minutes and >= ic more boardings. A label after k
+  // boardings finishes no earlier than round k + ic -> compare its time
+  // + tt against time_at_dest_[k + ic]. Only set for the ping search of
+  // pong.cc (empty span = disabled).
+
+  // label arrived at l (by transport or footpath) in round k
+  __device__ __forceinline__ bool lb_allows_arr(unsigned const k,
+                                                delta_t const t,
+                                                location_idx_t const l) {
+    if (!comp_lb_.empty()) {
+      auto const lb = comp_lb_[to_idx(location_component_[l])];
+      if (lb == ~std::uint32_t{0U}) {
+        return false;  // destination unreachable from l
+      }
+      auto const idx = k + (lb & 0xFFFFU);
+      if (idx > static_cast<unsigned>(max_transfers_) + 1U) {
+        return false;  // cannot finish within the round budget
+      }
+      return is_better_loose(clamp(t + dir(static_cast<int>(lb >> 16U))),
+                             time_at_dest_.get(static_cast<std::uint8_t>(idx)));
+    }
+    if (!loc_lb_.empty()) {
+      // CPU dijkstra bounds: travel time only, no transfer dimension
+      auto const lb = loc_lb_[to_idx(l)];
+      if (lb == kUnreachable) {
+        return false;
+      }
+      return is_better_loose(clamp(t + dir(static_cast<int>(lb))),
+                             time_at_dest_.get(static_cast<std::uint8_t>(k)));
+    }
+    return true;
+  }
+
+  // boarding the k-th trip at l, departing no earlier than dep
+  __device__ __forceinline__ bool lb_allows_dep(unsigned const k,
+                                                delta_t const dep,
+                                                location_idx_t const l) {
+    if (!comp_lb_.empty()) {
+      auto const lb = comp_lb_[to_idx(location_component_[l])];
+      if (lb == ~std::uint32_t{0U}) {
+        return false;
+      }
+      // the boarding itself counts: >= max(ic, 1) more boardings
+      auto const ic = lb & 0xFFFFU;
+      auto const idx = k - 1U + (ic == 0U ? 1U : ic);
+      if (idx > static_cast<unsigned>(max_transfers_) + 1U) {
+        return false;
+      }
+      return is_better_loose(clamp(dep + dir(static_cast<int>(lb >> 16U))),
+                             time_at_dest_.get(static_cast<std::uint8_t>(idx)));
+    }
+    if (!loc_lb_.empty()) {
+      auto const lb = loc_lb_[to_idx(l)];
+      if (lb == kUnreachable) {
+        return false;
+      }
+      return is_better_loose(clamp(dep + dir(static_cast<int>(lb))),
+                             time_at_dest_.get(static_cast<std::uint8_t>(k)));
+    }
+    return true;
+  }
+
+  // ad-hoc transfer patterns: in restricted mode, trips may only be
+  // entered/exited at stops marked in adhoc_tp_ (transfer stops of
+  // previously found connections) -> time_at_dest_ seeds for the full run
+  __device__ __forceinline__ bool tp_allows(std::uint32_t const l_idx) const {
+    return !restricted_ || adhoc_tp_[l_idx];
   }
 
   __device__ void init_arrivals(unixtime_t const worst_time_at_dest) {
@@ -482,7 +554,8 @@ struct raptor_impl {
         auto const by_transport = rt_time_at_stop(
             rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
         if (is_better_loose(by_transport, time_at_dest_.get(k)) &&
-            within_bounds(k, l, by_transport)) {
+            within_bounds(k, l, by_transport) && tp_allows(l_idx) &&
+            lb_allows_arr(k, by_transport, l)) {
           tmp_.update_min(
               l, 0U, by_transport,
               make_transport_payload(encode_rt_bc_transport(to_idx(rt_t)),
@@ -493,13 +566,14 @@ struct raptor_impl {
       }
 
       if (i == n - 1U || !stp.can_start<SearchDir>(IsWheelchair) ||
-          !prev_station_mark_[l_idx]) {
+          !prev_station_mark_[l_idx] || !tp_allows(l_idx)) {
         continue;
       }
 
       auto const dep = rt_time_at_stop(
           rt_t, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
-      if (is_better_or_eq(round_times_.get(k - 1, l, 0U), dep)) {
+      if (is_better_or_eq(round_times_.get(k - 1, l, 0U), dep) &&
+          lb_allows_dep(k, dep, l)) {
         et = true;
         boarding_stop_idx = stop_idx;
       }
@@ -526,7 +600,8 @@ struct raptor_impl {
                                                   delta_t const t_at_dest) {
     auto const target = to_idx(target_l);
     auto const fp_target_time = clamp(tmp_time + dir(duration));
-    if (!is_better_loose(fp_target_time, t_at_dest)) {
+    if (!is_better_loose(fp_target_time, t_at_dest) ||
+        !lb_allows_arr(k, fp_target_time, target_l)) {
       return;
     }
 
@@ -630,7 +705,8 @@ struct raptor_impl {
                 tmp_time + ((!intermodal && is_dest) ? 0 : loc_transfer_time));
             if (is_better_loose(fp_target_time, t_at_dest) &&
                 is_better(fp_target_time, best_.get(l, Vias)) &&
-                within_bounds(k, l, fp_target_time)) {
+                within_bounds(k, l, fp_target_time) &&
+                lb_allows_arr(k, fp_target_time, l)) {
               round_times_.update_min(k, l, Vias, fp_target_time, bc);
               best_.update_min(l, Vias, fp_target_time);
               station_mark_.mark(my_i);
@@ -806,7 +882,8 @@ struct raptor_impl {
           auto const by_transport = time_at_stop(
               r, t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
           if (is_better_loose(by_transport, time_at_dest_.get(k)) &&
-              within_bounds(k, l, by_transport)) {
+              within_bounds(k, l, by_transport) && tp_allows(l_idx) &&
+              lb_allows_arr(k, by_transport, l)) {
             auto const board_stop = static_cast<stop_idx_t>(
                 kFwd ? et_board_i : n - 1U - et_board_i);
             tmp_.update_min(
@@ -838,6 +915,7 @@ struct raptor_impl {
   get_earliest_transport(unsigned const k,
                          route_idx_t const r,
                          stop_idx_t const stop_idx,
+                         location_idx_t const l,
                          day_idx_t const day_at_stop,
                          minutes_after_midnight_t const mam_at_stop) {
     auto const event_times = tt_.event_times_at_stop(
@@ -872,9 +950,15 @@ struct raptor_impl {
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
+        // candidate departures only get later -> once the departure plus
+        // the lower bound cannot improve the destination anymore, stop the
+        // whole lookup (lb_allows_dep is loose-aware)
+        auto const ev_t = to_delta(day, ev_mam);
+        if (!lb_allows_dep(k, ev_t, l)) {
+          return {transport_idx_t::invalid(), day_idx_t::invalid()};
+        }
         // under loose pruning, an event equal to time-at-dest must still be
         // boardable (equal-arrival coverage for the pong)
-        auto const ev_t = to_delta(day, ev_mam);
         if (loose_pruning_ ? is_better(time_at_dest_.get(k), ev_t)
                            : is_better_or_eq(time_at_dest_.get(k), ev_t)) {
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
@@ -1004,9 +1088,11 @@ struct raptor_impl {
             if (!is_dir_last) {
               auto const stp = stop{stop_seq[s]};
               auto const l = stp.location_idx();
+              auto const t_prev = round_times_.get(k - 1, l, 0U);
               is_task = prev_station_mark_[to_idx(l)] &&
                         stp.can_start<SearchDir>(IsWheelchair) &&
-                        round_times_.get(k - 1, l, 0U) != kInvalid;
+                        t_prev != kInvalid && tp_allows(to_idx(l)) &&
+                        lb_allows_dep(k, t_prev, l);
             }
           }
 
@@ -1046,7 +1132,7 @@ struct raptor_impl {
       auto const l = stp.location_idx();
       auto const [day, mam] = split(round_times_.get(k - 1, l, 0U));
       et_result_[flat] =
-          pack_et(r, get_earliest_transport(k, r, stop_idx, day, mam));
+          pack_et(r, get_earliest_transport(k, r, stop_idx, l, day, mam));
     }
   }
 
@@ -1153,6 +1239,19 @@ struct raptor_impl {
   profile_idx_t bounds_prf_idx_{0U};
   bool loose_pruning_{false};
   unsigned long long* n_pruned_{nullptr};
+
+  // component lower bounds (ping only, empty = disabled):
+  // comp_lb_[location_component_[l]] = [tt:16|ic:16], see lb_allows_*
+  d_vecmap_view<location_idx_t, component_idx_t> location_component_;
+  cuda::std::span<std::uint32_t const> comp_lb_;
+
+  // location-level dijkstra lower bounds (travel time only, ping only,
+  // empty = disabled), see lb_allows_*
+  cuda::std::span<std::uint16_t const> loc_lb_;
+
+  // ad-hoc transfer patterns: restricted prelude run, see tp_allows
+  bool restricted_{false};
+  device_bitvec<std::uint64_t const> adhoc_tp_;
 };
 
 }  // namespace nigiri::routing::gpu

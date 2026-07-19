@@ -22,6 +22,12 @@ struct raptor_stats {
         {"route_update_prevented_by_lower_bound",
          route_update_prevented_by_lower_bound_},
         {"n_pruned_by_ping_bounds", n_pruned_by_ping_bounds_},
+        {"gpu_lb_compute_us", gpu_lb_compute_us_},
+        {"gpu_prelude_us", gpu_prelude_us_},
+        {"gpu_main_us", gpu_main_us_},
+        {"n_prelude_runs", n_prelude_runs_},
+        {"n_prelude_with_connection", n_prelude_with_connection_},
+        {"n_prelude_seed_entries", n_prelude_seed_entries_},
     };
   }
 
@@ -40,6 +46,12 @@ struct raptor_stats {
     copy.route_update_prevented_by_lower_bound_ +=
         o.route_update_prevented_by_lower_bound_;
     copy.n_pruned_by_ping_bounds_ += o.n_pruned_by_ping_bounds_;
+    copy.gpu_lb_compute_us_ += o.gpu_lb_compute_us_;
+    copy.gpu_prelude_us_ += o.gpu_prelude_us_;
+    copy.gpu_main_us_ += o.gpu_main_us_;
+    copy.n_prelude_runs_ += o.n_prelude_runs_;
+    copy.n_prelude_with_connection_ += o.n_prelude_with_connection_;
+    copy.n_prelude_seed_entries_ += o.n_prelude_seed_entries_;
     return copy;
   }
 
@@ -52,6 +64,17 @@ struct raptor_stats {
   std::uint64_t fp_update_prevented_by_lower_bound_{0ULL};
   std::uint64_t route_update_prevented_by_lower_bound_{0ULL};
   std::uint64_t n_pruned_by_ping_bounds_{0ULL};
+
+  // GPU phase split (see gpu/raptor.cu execute/compute_component_bounds)
+  std::uint64_t gpu_lb_compute_us_{0ULL};
+  std::uint64_t gpu_prelude_us_{0ULL};
+  std::uint64_t gpu_main_us_{0ULL};
+
+  // ad-hoc transfer pattern prelude effectiveness: how many restricted
+  // preludes ran / found >= 1 destination arrival / total seeded rounds
+  std::uint64_t n_prelude_runs_{0ULL};
+  std::uint64_t n_prelude_with_connection_{0ULL};
+  std::uint64_t n_prelude_seed_entries_{0ULL};
 };
 
 }  // namespace nigiri::routing

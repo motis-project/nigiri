@@ -379,6 +379,17 @@ cell_result run_config(
     }
     auto gpu_pruned = std::atomic<std::uint64_t>{0U};
     for (auto const s : gpu_states_v) {
+      auto lb_us = std::atomic<std::uint64_t>{0U};
+      auto prelude_us = std::atomic<std::uint64_t>{0U};
+      auto main_us = std::atomic<std::uint64_t>{0U};
+      auto prelude_runs = std::atomic<std::uint64_t>{0U};
+      auto prelude_hits = std::atomic<std::uint64_t>{0U};
+      auto prelude_seeds = std::atomic<std::uint64_t>{0U};
+      auto cpu_lb_ms = std::atomic<std::uint64_t>{0U};
+      auto const get = [](auto const& stats_map, char const* key) {
+        auto const it = stats_map.find(key);
+        return it == end(stats_map) ? std::uint64_t{0U} : it->second;
+      };
       run_load<gpu_ws>(
           queries, label + "-gpu-" + std::to_string(s), prefix(states, s),
           [&](gpu_ws& w, routing::query q, std::size_t const i) {
@@ -392,7 +403,22 @@ cell_result run_config(
                 it != end(r.algo_stats_)) {
               gpu_pruned += it->second;
             }
+            lb_us += get(r.algo_stats_, "gpu_lb_compute_us");
+            prelude_us += get(r.algo_stats_, "gpu_prelude_us");
+            main_us += get(r.algo_stats_, "gpu_main_us");
+            prelude_runs += get(r.algo_stats_, "n_prelude_runs");
+            prelude_hits += get(r.algo_stats_, "n_prelude_with_connection");
+            prelude_seeds += get(r.algo_stats_, "n_prelude_seed_entries");
+            cpu_lb_ms += r.search_stats_.lb_time_;
           });
+      fmt::print(
+          "  [{}-gpu-{}] phase avg per query: cpu_dijkstra_lb={}ms "
+          "lb_compute={}us prelude={}us main={}us | prelude found connection "
+          "in {}/{} runs, {} seeded rounds total\n",
+          label, s, cpu_lb_ms.load() / queries.size(),
+          lb_us.load() / queries.size(), prelude_us.load() / queries.size(),
+          main_us.load() / queries.size(), prelude_hits.load(),
+          prelude_runs.load(), prelude_seeds.load());
     }
     if (use_pong) {
       fmt::print("  [{}-gpu] n_pruned_by_ping_bounds={}\n", label,

@@ -115,6 +115,20 @@ struct gpu_raptor {
 
   void add_start(location_idx_t, unixtime_t);
 
+  // Component lower bounds (pong ping side only): runs the time-independent
+  // component RAPTOR towards this search's destinations on the GPU and
+  // enables per-transfer pruning in execute(). No-op if the component graph
+  // is not uploaded (NIGIRI_GPU_PING_LB=0) or the timetable has realtime
+  // transports (rt trips may undercut the static minimum durations).
+  // Call once per query (destinations don't change between start times).
+  void compute_component_bounds(std::uint16_t max_travel_time);
+
+  // Ad-hoc transfer patterns (pong ping side only): mark l as a transfer
+  // stop of a previously found connection. execute() then runs a restricted
+  // prelude search (enter/exit only at marked stops) whose real arrivals
+  // seed time_at_dest_ for early pruning. No-op with NIGIRI_GPU_ADHOC_TP=0.
+  void add_adhoc_stop(location_idx_t);
+
   void execute(unixtime_t start_time,
                std::uint8_t max_transfers,
                unixtime_t worst_time_at_dest,
@@ -148,6 +162,11 @@ private:
   bool loose_pruning_{false};
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
+
+  bool use_lb_{false};  // component bounds computed for this query
+  bool adhoc_dirty_{false};  // host adhoc bits changed since last upload
+  bool adhoc_any_{false};  // at least one adhoc transfer stop marked
+  bitvec adhoc_tp_;  // host accumulator, uploaded on demand
 };
 
 }  // namespace nigiri::routing::gpu

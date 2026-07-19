@@ -30,6 +30,16 @@ pong_settings pong_config{};
 
 constexpr auto const kPruneWithPingBounds = true;
 
+// GPU ping: use the classic CPU dijkstra lower bounds (travel time only,
+// no transfer dimension) instead of / in addition to the GPU component
+// bounds. Opt-in (experiment control).
+[[maybe_unused]] bool gpu_dijkstra_lb_enabled() {
+  static auto const enabled = []() {
+    auto const* const v = std::getenv("NIGIRI_GPU_PING_DIJKSTRA_LB");
+    return v != nullptr && std::string_view{v} == "1";
+  }();
+  return enabled;
+}
 template <direction PingDir, via_offset_t Vias>
 flat_matrix_view<std::array<delta_t, Vias + 1U> const> fill_bounds(
     raptor_state& s,
@@ -183,6 +193,15 @@ routing_result pong(timetable const& tt,
                                                 : rtt->bwd_search_lb_graph_)),
              ping_lb);
   }
+  if constexpr (kGpu) {
+    if (gpu_dijkstra_lb_enabled() &&
+        (rtt == nullptr || rtt->n_rt_transports() == 0U)) {
+      dijkstra(tt, q,
+               (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
+                     : tt.bwd_search_lb_graph_[q.prf_idx_]),
+               nullptr, nullptr, ping_lb);
+    }
+  }
   lb_time += std::chrono::steady_clock::now() - ping_lb_start;
 
   auto ping = ping_algo_t{tt,
@@ -205,6 +224,16 @@ routing_result pong(timetable const& tt,
     // The ping's round_times must cover every stop that can be part of an
     // equal-arrival (but later-departure) journey the pong needs to find.
     ping.set_loose_pruning(true);
+  }
+
+  if constexpr (kGpu) {
+    // Per-transfer component lower bounds for the ping (GPU-only, computed
+    // by a time-independent component RAPTOR on the device; internally
+    // no-ops when disabled via env or when rt transports exist). The pong
+    // needs no lower bounds: its search is bounded tightly by the ping
+    // journey it reconstructs.
+    ping.compute_component_bounds(static_cast<std::uint16_t>(
+        std::min(q.max_travel_time_, kMaxTravelTime).count()));
   }
 
   // ====
@@ -442,6 +471,23 @@ routing_result pong(timetable const& tt,
         pong.reconstruct(q, *match);
       }
       ping_j.start_time_ = match->dest_time_;
+
+      if constexpr (kGpu) {
+        // Ad-hoc transfer patterns: remember this connection's transfer
+        // stops -- the next iteration's ping runs a restricted prelude
+        // over them to seed its time_at_dest_ ("the same connection, one
+        // interval later" is the common case).
+        if (match->is_reconstructed_) {
+          for (auto const& leg : match->legs_) {
+            if (!is_special(leg.from_)) {
+              ping.add_adhoc_stop(leg.from_);
+            }
+            if (!is_special(leg.to_)) {
+              ping.add_adhoc_stop(leg.to_);
+            }
+          }
+        }
+      }
     }
     q.flip_dir();
 

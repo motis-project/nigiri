@@ -187,6 +187,9 @@ if (NIGIRI_CUDA)
   # propagate the GPU implementations to every consumer of nigiri (motis, tools,
   # tests) so pong.cc's gpu_raptor instantiations resolve at link time
   target_link_libraries(nigiri PUBLIC nigiri-gpu)
+  # raptor.cu calls the host-side component graph builder from libnigiri ->
+  # cyclic static dependency, cmake resolves it by repeating the archives
+  target_link_libraries(nigiri-gpu PRIVATE nigiri)
   target_link_libraries(nigiri-test nigiri-gpu)
   target_link_libraries(nigiri-benchmark PRIVATE nigiri-gpu)
 endif()
