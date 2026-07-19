@@ -165,6 +165,14 @@ struct raptor {
 
       auto any_marked = false;
       state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+        auto b = kInvalid;
+        for (auto v = 0U; v != Vias + 1; ++v) {
+          b = get_best(round_times_[k - 1][i][v], b);
+        }
+        if (!lb_reachable(i) ||
+            !is_better(b + dir(get_lb(i)), time_at_dest_[k])) {
+          return;
+        }
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
           any_marked = true;
           state_.route_mark_.set(to_idx(r), true);
@@ -549,6 +557,15 @@ private:
         }
       }
 
+      auto src = kInvalid;
+      for (auto v = 0U; v != Vias + 1; ++v) {
+        src = get_best(tmp_[i][v], src);
+      }
+      if (!lb_reachable(i) ||
+          !is_better(src + dir(get_lb(i)), time_at_dest_[k])) {
+        return;
+      }
+
       auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx][l_idx]
                              : tt_.locations_.footpaths_in_[prf_idx][l_idx];
 
@@ -645,6 +662,15 @@ private:
       if (!(kFwd ? rtt_->has_td_footpaths_out_
                  : rtt_->has_td_footpaths_in_)[prf_idx]
                .test(l_idx)) {
+        return;
+      }
+
+      auto src = kInvalid;
+      for (auto v = 0U; v != Vias + 1; ++v) {
+        src = get_best(tmp_[i][v], src);
+      }
+      if (!lb_reachable(i) ||
+          !is_better(src + dir(get_lb(i)), time_at_dest_[k])) {
         return;
       }
 
