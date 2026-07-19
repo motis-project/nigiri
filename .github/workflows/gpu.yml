@@ -59,7 +59,6 @@ jobs:
             --algo raptor pong \
             --modes station-station coordinate-coordinate \
             --dirs fwd bwd \
-            --pong-travel-time-slack 24 \
             -n 50
 
       - name: Validate Germany (vias=1, fwd+bwd, cpu)
@@ -70,7 +69,6 @@ jobs:
             --modes station-station coordinate-coordinate \
             --dirs fwd bwd \
             --vias 1 \
-            --pong-travel-time-slack 24 \
             -n 50
 
       - name: Validate Germany (vias=2, fwd+bwd, cpu)
@@ -81,7 +79,6 @@ jobs:
             --modes station-station coordinate-coordinate \
             --dirs fwd bwd \
             --vias 2 \
-            --pong-travel-time-slack 24 \
             -n 30
 
       - name: Save build

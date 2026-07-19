@@ -93,6 +93,13 @@ void generate_queries(
   }
 }
 
+// Journeys at/over this travel time are not counted as misses in the
+// pong-vs-raptor common-interval check: the pong ping's travel time cap
+// anchors at the probe, so a journey departing after the probe with travel
+// time close to kMaxTravelTime can be invisible to every probe's ping while
+// search.h (departure-anchored) still finds it.
+constexpr auto const kCheckedMaxTravelTime = routing::kMaxTravelTime - 1_days;
+
 struct compare_stats {
   std::uint64_t missed_by_cmp_{0U};  // ref journeys not covered by cmp pareto
   std::uint64_t missed_by_ref_{0U};  // cmp journeys not covered by ref pareto
@@ -167,16 +174,7 @@ compare_stats cross_check(
   return stats;
 }
 
-// strict check between algorithms that extend the search interval
-// differently (search.h raptor extends both directions, the pong family
-// marches probes one direction and counts differently): on the INTERSECTION
-// of the two final search intervals -- the region both actually searched --
-// the results must agree. Every journey anchored (start_time_, i.e. the
-// interval domain: departure for fwd, arrival for bwd) in the intersection
-// must be covered (equaled or dominated) by the other side's FULL result
-// set; domination by an out-of-intersection journey is legitimate (pareto
-// shadow at the interval edge), a genuinely missing optimal journey is not
-// coverable and is flagged.
+// Compare search.h vs pong results for min(N, M) journeys after T.
 compare_stats common_interval_check(
     timetable const& tt,
     std::string const& ref_name,
@@ -197,9 +195,9 @@ compare_stats common_interval_check(
   };
 
   for (auto i = std::size_t{0U}; i != ref.size(); ++i) {
-    auto const iv = interval<unixtime_t>{
-        std::max(ref_iv[i].from_, cmp_iv[i].from_),
-        std::min(ref_iv[i].to_, cmp_iv[i].to_)};
+    auto const iv =
+        interval<unixtime_t>{std::max(ref_iv[i].from_, cmp_iv[i].from_),
+                             std::min(ref_iv[i].to_, cmp_iv[i].to_)};
     if (iv.from_ >= iv.to_) {
       continue;  // nothing searched by both -> nothing to compare
     }
@@ -208,6 +206,9 @@ compare_stats common_interval_check(
                                 std::string const& side_name,
                                 std::string const& other_name) {
       for (auto const& j : side) {
+        if (j.travel_time() >= kCheckedMaxTravelTime) {
+          continue;  // probe-anchored pong may miss these, see constant above
+        }
         if (iv.contains(j.start_time_) && !covered(j, other)) {
           ++misses;
           std::cout << "query #" << i << " " << other_name << " misses ["
@@ -428,7 +429,6 @@ int main(int argc, char* argv[]) {
   auto algos = std::vector<std::string>{};
   auto modes = std::vector<std::string>{};
   auto dirs = std::vector<std::string>{};
-  auto pong_travel_time_slack_h = 0U;
   auto threads_v = std::vector<unsigned>{};
   auto gpu_states_v = std::vector<unsigned>{};
 
@@ -515,13 +515,6 @@ int main(int argc, char* argv[]) {
        "multiply all transfer times by this factor")  //
       ("vias", bpo::value<unsigned>(&gs.n_vias_)->default_value(0U),
        "number of via stops")  //
-      ("pong-travel-time-slack",
-       bpo::value<unsigned>(&pong_travel_time_slack_h)->default_value(0U),
-       "extra headroom in HOURS for the pong ping's worst_time_at_dest "
-       "beyond the query's max travel time (the cap anchors at the probe, "
-       "so late-departing long journeys can otherwise stay invisible); "
-       "search-space only, results are still filtered by the real max "
-       "travel time")  //
       ("start_coord", bpo::value<std::string>(&start_coord_str),
        "start coordinate for random queries, format: \"(LAT, LON)\", "  //
        "where LAT/LON are given in decimal degrees")  //
@@ -544,9 +537,6 @@ int main(int argc, char* argv[]) {
   }
 
   bpo::notify(vm);
-
-  routing::pong_config.travel_time_slack_ =
-      duration_t{pong_travel_time_slack_h * 60U};
 
   std::cout << "loading timetable...\n";
   auto tt = *nigiri::timetable::read(tt_path);
@@ -794,10 +784,10 @@ int main(int argc, char* argv[]) {
             auto const st = common_interval_check(
                 tt, raptor_ref->label_, raptor_ref->res_, raptor_ref->iv_,
                 label, cell.cpu_res_, cell.cpu_iv_);
-            summary.push_back(fmt::format(
-                "{:<44} vs {:<40} common-interval misses={:<4} {}", label,
-                raptor_ref->label_, st.missed_by_cmp_,
-                st.missed_by_cmp_ == 0U ? "PASS" : "FAIL"));
+            summary.push_back(
+                fmt::format("{:<44} vs {:<40} common-interval misses={:<4} {}",
+                            label, raptor_ref->label_, st.missed_by_cmp_,
+                            st.missed_by_cmp_ == 0U ? "PASS" : "FAIL"));
             total.missed_by_cmp_ += st.missed_by_cmp_;
           }
         }

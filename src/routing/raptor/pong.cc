@@ -26,8 +26,6 @@
 
 namespace nigiri::routing {
 
-pong_settings pong_config{};
-
 constexpr auto const kPruneWithPingBounds = true;
 
 template <direction PingDir, via_offset_t Vias>
@@ -259,14 +257,6 @@ routing_result pong(timetable const& tt,
                           q.prf_idx_ == 2U,
                           q.transfer_time_settings_};
 
-  // GPU: the pong's WithBounds=false twin for over-span ping journeys (their
-  // pong runs unpruned; on the CPU the same is done with empty runtime
-  // bounds). Built lazily on first use.
-  using pong_unpruned_t =
-      std::conditional_t<kGpu, gpu::gpu_raptor<flip(SearchDir), false>,
-                         pong_algo_t>;
-  auto pong_unpruned = std::optional<pong_unpruned_t>{};
-
   q.flip_dir();
 
   // ========
@@ -332,9 +322,7 @@ routing_result pong(timetable const& tt,
       ping.add_start(s.stop_, s.time_at_stop_);
     }
     auto const worst_time_at_dest =
-        start_time +
-        (kFwd ? 1 : -1) * (q.max_travel_time_ + pong_config.travel_time_slack_ +
-                           duration_t{1});
+        start_time + (kFwd ? 1 : -1) * (q.max_travel_time_ + duration_t{1});
     auto ping_results = pareto_set<journey>{};
     ping.execute(start_time, q.max_transfers_, worst_time_at_dest, q.prf_idx_,
                  ping_results);
@@ -413,15 +401,6 @@ routing_result pong(timetable const& tt,
           });
 
       if (match == end(s_state.results_)) {
-        if (ping_j.travel_time() > q.max_travel_time_) {
-          // over-span entry (probe-anchored span, admitted by the travel
-          // time slack): over the limit or dominated by a lower-transfer
-          // journey -> skip instead of failing (erased after this loop)
-          trace_pong("SKIP UNMATCHED OVER-SPAN PING RESULT {}",
-                     to_tuple(ping_j));
-          ping_j.error_ = true;
-          return;
-        }
         throw utl::fail(
             "no pong for transfers={}, start_time={} found, journeys={}",
             ping_j.transfers_, ping_j.dest_time_,
@@ -438,49 +417,18 @@ routing_result pong(timetable const& tt,
     for (auto& ping_j : ping_results) {
       trace_pong("-- PING RESULT: {}", to_tuple(ping_j));
 
-      // over-span entries admitted by the travel time slack are not certified
-      // by the bounds (intermediate ping labels may be lb-pruned) -> their
-      // pong runs unpruned
-      auto const over_span = ping_j.travel_time() > q.max_travel_time_;
       if constexpr (kGpu && kPruneWithPingBounds) {
-        if (over_span) {
-          if (!pong_unpruned) {
-            // q is flipped to pong orientation here, matching pong's ctor
-            pong_unpruned.emplace(
-                tt, rtt, r_state, pong_is_dest, pong_is_via, pong_dist_to_dest,
-                q.td_dest_, pong_lb, q.via_stops_, base_day, q.allowed_claszes_,
-                q.require_bike_transport_, q.require_car_transport_,
-                q.prf_idx_ == 2U, q.transfer_time_settings_);
-          }
-          run_pong(*pong_unpruned, ping_j);
-        } else {
-          // Round k of this pong leaves bounds_last_k - k rounds for the
-          // journey prefix -> check against the ping's bound for that
-          // round.
-          pong.set_bounds(bounds, ping_j.transfers_ + 1U);
-          run_pong(pong, ping_j);
+        // Round k of this pong leaves bounds_last_k - k rounds for the
+        // journey prefix -> check against the ping's bound for that round.
+        pong.set_bounds(bounds, ping_j.transfers_ + 1U);
+      } else if constexpr (!kGpu) {
+        if (kPruneWithPingBounds) {
+          pong.set_bounds(bounds, ping_j.transfers_ + 1U, q.prf_idx_);
         }
-      } else {
-        if constexpr (!kGpu) {
-          if (kPruneWithPingBounds) {
-            if (over_span) {
-              pong.set_bounds({}, 0U, 0U);
-            } else {
-              pong.set_bounds(bounds, ping_j.transfers_ + 1U, q.prf_idx_);
-            }
-          }
-        }
-        run_pong(pong, ping_j);
       }
+      run_pong(pong, ping_j);
     }
     q.flip_dir();
-
-    // skipped over-span entries must not drive the probe advance (their
-    // start time is still probe-anchored)
-    utl::erase_if(ping_results, [](journey const& j) { return j.error_; });
-    if (ping_results.empty()) {
-      break;
-    }
 
     // NEXT
     auto const first_it =
