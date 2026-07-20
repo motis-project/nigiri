@@ -117,26 +117,30 @@ std::uint64_t compare_results(
     return a.start_time_ == b.start_time_ && a.dest_time_ == b.dest_time_ &&
            a.transfers_ == b.transfers_;
   };
+
   auto const key = [](journey const& j) {
     return fmt::format("dep={} arr={} transfers={}", j.departure_time(),
                        j.arrival_time(), j.transfers_);
   };
+
   auto const max_window = [&](query const& q) {
     return search_dir == direction::kForward
                ? interval_estimator<direction::kForward>{tt, q}.max_interval()
                : interval_estimator<direction::kBackward>{tt, q}.max_interval();
   };
+
   auto const filtered = [](pareto_set<routing::journey> const& set,
                            interval<unixtime_t> const& window) {
     auto v = std::vector<journey const*>{};
     for (auto const& j : set) {
-      if (j.travel_time() < kCheckedMaxTravelTime &&
-          window.contains(j.start_time_)) {
+      if (j.travel_time() < kCheckedMaxTravelTime /* slack for pong */ &&
+          window.contains(j.start_time_) /* range raptor search limit */) {
         v.push_back(&j);
       }
     }
     return v;
   };
+
   auto const print_set = [&](std::string const& name, auto const& journeys) {
     fmt::print("  {}: ", name);
     for (auto const* j : journeys) {
@@ -146,8 +150,6 @@ std::uint64_t compare_results(
   };
 
   for (auto i = std::size_t{0U}; i != ref.size(); ++i) {
-    // Ignore journeys >= kCheckedMaxTravelTime or outside the maximum
-    // search window.
     auto const window = max_window(queries[i].q_);
     auto r = filtered(ref[i], window);
     auto c = filtered(cmp[i], window);
@@ -301,8 +303,8 @@ result_set run_cell(
   out.res_.resize(queries.size());
 
   auto states = std::vector<std::unique_ptr<WS>>{};
-  for (auto i = 0U;
-       i != *std::max_element(begin(n_parallel), end(n_parallel)); ++i) {
+  for (auto i = 0U; i != *std::max_element(begin(n_parallel), end(n_parallel));
+       ++i) {
     states.push_back(std::make_unique<WS>(state_args...));
   }
 
@@ -739,7 +741,8 @@ int main(int argc, char* argv[]) {
       bm_crit.qc_.emplace_back(
           i,
           std::chrono::duration_cast<std::chrono::milliseconds>(
-              std::chrono::duration<double, std::milli>{std::max(latency, 0.0)}),
+              std::chrono::duration<double, std::milli>{
+                  std::max(latency, 0.0)}),
           jc);
     }
     bm_crit.write(qa_path);

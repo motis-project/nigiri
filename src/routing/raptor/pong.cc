@@ -196,7 +196,6 @@ routing_result pong(timetable const& tt,
                           q.prf_idx_ == 2U,
                           q.transfer_time_settings_};
 
-
   // ====
   // PONG
   // ----
