@@ -253,8 +253,6 @@ routing_result pong(timetable const& tt,
   // ========
   // >> PLAY!
   // --------
-  // CPU: round_times-shaped view into the bounds storage; GPU: raw device
-  // pointer (16-bit bounds buffer on the device, Vias == 0)
   using bounds_t = std::conditional_t<
       kGpu, delta_t const*,
       flat_matrix_view<std::array<delta_t, Vias + 1U> const>>;
