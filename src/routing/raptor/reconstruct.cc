@@ -234,8 +234,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
       for (auto i = 1U; i != n_stops; ++i) {
         auto const stop_idx = static_cast<stop_idx_t>(
             kFwd ? finish_stop_idx - i : finish_stop_idx + i);
-        auto const stop_idx = static_cast<stop_idx_t>(kFwd ? from_stop_idx - i
-                                                           : from_stop_idx + i);
         auto const stp = fr[stop_idx];
         auto const l = stp.get_location_idx();
 

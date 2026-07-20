@@ -109,17 +109,6 @@ struct raptor {
 
   algo_stats_t get_stats() const { return stats_; }
 
-  // === ping-bounds pruning (see pong.cc) ==================================
-  // Bounds derived from a preceding opposite-direction "ping" search:
-  // bounds[j * n_locations + l][s] is the best time the ping search proved
-  // achievable at stop l having visited at least s via stops within j
-  // rounds (monotonic over rounds and via slots). A label this ("pong")
-  // search writes in round k belongs to a journey whose prefix (in the
-  // opposite direction) has at most bounds_last_k_ - k rounds available and
-  // must cover the via stops the label has not visited yet -- if the label
-  // lies outside every ping bound for that prefix (see within_bounds), no
-  // journey through it can reach the destination optimally and it is
-  // pruned.
   void set_bounds(
       flat_matrix_view<std::array<delta_t, Vias + 1U> const> const bounds,
       unsigned const last_round,
@@ -129,10 +118,6 @@ struct raptor {
     bounds_prf_idx_ = prf_idx;
   }
 
-  // Loose pruning keeps labels that merely *equal* the current time at
-  // destination instead of strictly improving it. The ping search runs with
-  // loose pruning so its round_times cover every stop that can be part of an
-  // equal-arrival (but later-departure) journey the pong search needs.
   void set_loose_pruning(bool const loose) { loose_pruning_ = loose; }
 
   void reset_arrivals() {
