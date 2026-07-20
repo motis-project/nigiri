@@ -103,8 +103,6 @@ struct raptor_state {
   std::vector<delta_t> tmp_storage_;
   std::vector<delta_t> best_storage_;
   std::vector<delta_t> round_times_storage_;
-  // Pruning bounds for the pong search, derived from the ping search's
-  // round_times (see pong.cc).
   std::vector<delta_t> bounds_storage_;
   bitvec station_mark_;
   bitvec prev_station_mark_;
