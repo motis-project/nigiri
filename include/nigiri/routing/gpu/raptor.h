@@ -55,8 +55,8 @@ struct gpu_raptor_state {
 template <direction SearchDir>
 delta_t const* fill_bounds(gpu_raptor_state&,
                            std::size_t n_rows,
-                           rt_timetable const* rtt,
-                           profile_idx_t prf_idx);
+                           rt_timetable const*,
+                           profile_idx_t);
 
 template <direction SearchDir, bool WithBounds>
 struct gpu_raptor {
@@ -100,7 +100,7 @@ struct gpu_raptor {
   void execute(unixtime_t start_time,
                std::uint8_t max_transfers,
                unixtime_t worst_time_at_dest,
-               profile_idx_t prf_idx,
+               profile_idx_t,
                pareto_set<journey>& results);
 
   void reconstruct(query const&, journey&);

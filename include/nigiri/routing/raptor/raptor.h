@@ -111,11 +111,9 @@ struct raptor {
 
   void set_bounds(
       flat_matrix_view<std::array<delta_t, Vias + 1U> const> const bounds,
-      unsigned const last_round,
-      profile_idx_t const prf_idx) {
+      unsigned const last_round) {
     bounds_ = bounds;
     bounds_last_k_ = last_round;
-    bounds_prf_idx_ = prf_idx;
   }
 
   void reset_arrivals() {
@@ -154,6 +152,7 @@ struct raptor {
                unixtime_t const worst_time_at_dest,
                profile_idx_t const prf_idx,
                pareto_set<journey>& results) {
+    prf_idx_ = prf_idx;
     auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
@@ -372,7 +371,7 @@ private:
     }
 
     auto const& fps = (kFwd ? tt_.locations_.footpaths_in_
-                            : tt_.locations_.footpaths_out_)[bounds_prf_idx_]
+                            : tt_.locations_.footpaths_out_)[prf_idx_]
                                                             [location_idx_t{l}];
     for (auto const& fp : fps) {
       auto const target = to_idx(fp.target());
@@ -1379,7 +1378,7 @@ private:
   raptor_stats stats_;
   flat_matrix_view<std::array<delta_t, Vias + 1U> const> bounds_{};
   unsigned bounds_last_k_{0U};
-  profile_idx_t bounds_prf_idx_{0U};
+  profile_idx_t prf_idx_{0U};
   clasz_mask_t allowed_claszes_;
   bool require_bike_transport_;
   bool require_car_transport_;

@@ -406,14 +406,8 @@ routing_result pong(timetable const& tt,
     for (auto& ping_j : ping_results) {
       trace_pong("-- PING RESULT: {}", to_tuple(ping_j));
 
-      if constexpr (kGpu && kPruneWithPingBounds) {
-        // Round k of this pong leaves bounds_last_k - k rounds for the
-        // journey prefix -> check against the ping's bound for that round.
+      if constexpr (kPruneWithPingBounds) {
         pong.set_bounds(bounds, ping_j.transfers_ + 1U);
-      } else if constexpr (!kGpu) {
-        if (kPruneWithPingBounds) {
-          pong.set_bounds(bounds, ping_j.transfers_ + 1U, q.prf_idx_);
-        }
       }
       run_pong(pong, ping_j);
     }
