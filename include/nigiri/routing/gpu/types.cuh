@@ -21,12 +21,12 @@ using device_flat_matrix_view = base_flat_matrix_view<cuda::std::span<T>>;
 
 template <typename T>
 cuda::std::span<T const> to_view(thrust::device_vector<T> const& v) {
-  return {thrust::raw_pointer_cast(v.data()), v.size()};
+  return cuda::std::span<T const>(thrust::raw_pointer_cast(v.data()), v.size());
 }
 
 template <typename T>
 cuda::std::span<T> to_mutable_view(thrust::device_vector<T>& v) {
-  return {thrust::raw_pointer_cast(v.data()), v.size()};
+  return cuda::std::span<T>(thrust::raw_pointer_cast(v.data()), v.size());
 }
 
 template <typename T>
