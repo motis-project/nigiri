@@ -39,12 +39,12 @@ void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
         [&](nigiri::location_idx_t const l) { algo.add_start(l, t); });
   }
 
-  // Upper bound: Search journeys faster than 'worst_time_at_dest'
-  // It will not find journeys with the same duration
-  constexpr auto const kEpsilon = duration_t{1};
+  // Upper bound: the loose pruning guards (see raptor::is_better_loose) keep
+  // labels equal to the cutoff, so journeys with travel time exactly
+  // max_travel_time_ are found, slower ones are not.
   auto const worst_time_at_dest =
-      start_time + (SearchDir == direction::kForward ? 1 : -1) *
-                       (q.max_travel_time_ + kEpsilon);
+      start_time +
+      (SearchDir == direction::kForward ? 1 : -1) * q.max_travel_time_;
 
   algo.execute(start_time, q.max_transfers_, worst_time_at_dest, q.prf_idx_,
                results);

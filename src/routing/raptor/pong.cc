@@ -36,9 +36,6 @@ flat_matrix_view<std::array<delta_t, Vias + 1U> const> fill_bounds(
   constexpr auto const kFwd = PingDir == direction::kForward;
   auto const n = static_cast<std::size_t>(s.n_locations_);
 
-  s.bounds_storage_.resize(n * (static_cast<std::size_t>(kMaxTransfers) + 2U) *
-                           (Vias + 1U));
-
   auto const src = std::as_const(s).get_round_times<Vias>();
   auto dst = s.get_bounds<Vias>();
 
@@ -199,11 +196,6 @@ routing_result pong(timetable const& tt,
                           q.prf_idx_ == 2U,
                           q.transfer_time_settings_};
 
-  if (kPruneWithPingBounds) {
-    // The ping's round_times must cover every stop that can be part of an
-    // equal-arrival (but later-departure) journey the pong needs to find.
-    ping.set_loose_pruning(true);
-  }
 
   // ====
   // PONG

@@ -95,8 +95,6 @@ struct gpu_raptor {
     bounds_last_k_ = last_round;
   }
 
-  void set_loose_pruning(bool const) {}
-
   void add_start(location_idx_t, unixtime_t);
 
   void execute(unixtime_t start_time,

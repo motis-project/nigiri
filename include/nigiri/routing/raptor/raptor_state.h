@@ -81,8 +81,6 @@ struct raptor_state {
             n_locations_};
   }
 
-  // bounds_storage_ has round_times layout (see pong.cc fill_bounds);
-  // only valid after fill_bounds resized it for the current via count
   template <via_offset_t Vias>
   flat_matrix_view<std::array<delta_t, Vias + 1>> get_bounds() {
     return {{reinterpret_cast<std::array<delta_t, Vias + 1>*>(
@@ -106,7 +104,7 @@ struct raptor_state {
   std::vector<delta_t> best_storage_;
   std::vector<delta_t> round_times_storage_;
   // Pruning bounds for the pong search, derived from the ping search's
-  // round_times (see pong.cc). Sized lazily.
+  // round_times (see pong.cc).
   std::vector<delta_t> bounds_storage_;
   bitvec station_mark_;
   bitvec prev_station_mark_;

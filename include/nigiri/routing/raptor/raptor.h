@@ -118,8 +118,6 @@ struct raptor {
     bounds_prf_idx_ = prf_idx;
   }
 
-  void set_loose_pruning(bool const loose) { loose_pruning_ = loose; }
-
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
     round_times_.reset(kInvalidArray);
@@ -329,9 +327,14 @@ private:
     }
   }
 
-  // is_better, but in loose-pruning mode equality also passes.
+  // For ping: comparison has to be <= instead of < so cells with equal arrival
+  // times are still populated. Otherwise, the ping bounds are too strict for
+  // pong to still find all optimal journeys.
+  //
+  // Loose pruning with <= instead of < is always enabled on the CPU.
+  // Measured to have ~ the same performance as strict pruning.
   bool is_better_loose(auto const a, auto const b) const {
-    return is_better(a, b) || (loose_pruning_ && a == b);
+    return is_better_or_eq(a, b);
   }
 
   // Check a label written in round k at stop l with via state v against the
@@ -1413,7 +1416,6 @@ private:
   flat_matrix_view<std::array<delta_t, Vias + 1U> const> bounds_{};
   unsigned bounds_last_k_{0U};
   profile_idx_t bounds_prf_idx_{0U};
-  bool loose_pruning_{false};
   clasz_mask_t allowed_claszes_;
   bool require_bike_transport_;
   bool require_car_transport_;

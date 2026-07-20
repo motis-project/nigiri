@@ -356,6 +356,11 @@ struct gpu_raptor_state::impl {
     route_mark_.resize(tt_.n_routes_ / 32U + 1U);
     any_marked_.resize(1U);
     done_.resize(1U);
+    // ping-bounds buffer for the pong (see fill_bounds): allocated up front
+    // like everything else so device memory cannot grow after startup
+    bounds_dev_.ensure(
+        static_cast<std::size_t>(tt_.n_locations_) * (kMaxTransfers + 2U),
+        stream_);
 
     // is_dest + dist_to_dest differ between ping vs pong -> handled in
     // upload_query (called by the gpu_raptor ctor -> one per dir)
@@ -739,9 +744,7 @@ delta_t const* fill_bounds(gpu_raptor_state& state,
       td_stops = thrust::raw_pointer_cast(blocks.data());
     }
   }
-  auto* const bounds = s.bounds_dev_.ensure(
-      static_cast<std::size_t>(s.tt_.n_locations_) * (kMaxTransfers + 2U),
-      s.stream_);
+  auto* const bounds = s.bounds_dev_.ptr_;  // allocated at state construction
   launch(fill_bounds_kernel<SearchDir>, s.stream_,
          thrust::raw_pointer_cast(s.round_times_.data()), bounds,
          s.tt_.n_locations_, static_cast<std::uint32_t>(n_rows), td_stops);
