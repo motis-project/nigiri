@@ -184,54 +184,56 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
   auto v = static_cast<via_offset_t>(q.via_stops_.size());
 
-  auto const find_entry_in_prev_round =
-      [&](unsigned const k, rt::run const& r, stop_idx_t const from_stop_idx,
+  auto const find_start_in_prev_round =
+      [&](unsigned const k, rt::run const& r, stop_idx_t const finish_stop_idx,
           delta_t, bool const section_bike_filter,
           bool const section_car_filter,
           bool const section_wheelchair_filter) -> std::optional<journey::leg> {
     auto const fr = rt::frun{tt, rtt, r};
-    auto const n_stops = kFwd ? from_stop_idx + 1U : fr.size() - from_stop_idx;
+    auto const n_stops =
+        kFwd ? finish_stop_idx + 1U : fr.size() - finish_stop_idx;
     auto const n_vias = static_cast<via_offset_t>(q.via_stops_.size());
 
-    // exit_state[s] = via state at the exit stop when entering the transport
-    // with via state s at the current stop of the walk: riding through a
-    // no-stay via stop advances the state that matches it. A label that has
-    // already visited a via also rides *through* the via stop without
-    // consuming it there -> the entry may be possible at more than one slot.
-    // Two passes: the exit stop itself may or may not count as a crossing
-    // for this ride (the search advances riders at a stop *before* the exit
-    // write, so a ride can exit at a no-stay via stop with the crossing
-    // already included in its state -- but a label whose via was consumed by
-    // the following transfer/footpath instead must NOT fold the exit stop).
-    auto const fold_at = [&](std::array<via_offset_t, kMaxVias + 1>& state,
-                             location_idx_t const l) {
-      auto folded = state;
+    for (auto const ride_through_finish : {false, true}) {
+      // finish_state[V]:
+      // The number of vias a rider will have visited by the finish stop if
+      // they board at the walk's current stop having already visited V vias.
+      auto finish_state = std::array<via_offset_t, kMaxVias + 1>{};
       for (auto s = via_offset_t{0U}; s != kMaxVias + 1; ++s) {
-        auto const advance = s < n_vias && q.via_stops_[s].stay_ == 0_minutes &&
-                             matches(tt, location_match_mode::kEquivalent,
-                                     q.via_stops_[s].location_, l);
-        folded[s] = state[advance ? s + 1U : s];
+        finish_state[s] = s;
       }
-      state = folded;
-    };
 
-    for (auto const exit_fold : {false, true}) {
-      auto exit_state = std::array<via_offset_t, kMaxVias + 1>{};
-      for (auto s = via_offset_t{0U}; s != kMaxVias + 1; ++s) {
-        exit_state[s] = s;
-      }
-      if (exit_fold) {
-        fold_at(exit_state, fr[from_stop_idx].get_location_idx());
-        auto identity = true;
+      // Advances each finish_state[via_offset].
+      auto const ride_through = [&](location_idx_t const l) {
         for (auto s = via_offset_t{0U}; s != kMaxVias + 1; ++s) {
-          identity = identity && exit_state[s] == s;
+          auto const advance = s < n_vias &&
+                               q.via_stops_[s].stay_ == 0_minutes &&
+                               matches(tt, location_match_mode::kEquivalent,
+                                       q.via_stops_[s].location_, l);
+          if (advance) {
+            finish_state[s] = finish_state[s + 1U];
+          }
         }
-        if (identity) {
-          break;  // exit stop is no matching via -> nothing new to try
+      };
+
+      // If the finish stop is no no-stay via the ride could cross,
+      // this pass is identical to the already-failed first one -> break.
+      if (ride_through_finish) {
+        ride_through(fr[finish_stop_idx].get_location_idx());
+
+        auto is_identity = true;
+        for (auto s = via_offset_t{0U}; s != kMaxVias + 1; ++s) {
+          is_identity = is_identity && finish_state[s] == s;
+        }
+
+        if (is_identity) {
+          break;
         }
       }
 
       for (auto i = 1U; i != n_stops; ++i) {
+        auto const stop_idx = static_cast<stop_idx_t>(
+            kFwd ? finish_stop_idx - i : finish_stop_idx + i);
         auto const stop_idx = static_cast<stop_idx_t>(kFwd ? from_stop_idx - i
                                                            : from_stop_idx + i);
         auto const stp = fr[stop_idx];
@@ -255,9 +257,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
         if ((kFwd && !stp.in_allowed(is_wheelchair)) ||
             (!kFwd && !stp.out_allowed(is_wheelchair))) {
-          // fold this stop once we move past it (for entries at *earlier*
-          // stops, this stop is ridden through)
-          fold_at(exit_state, l);
+          ride_through(l);
           continue;
         }
 
@@ -265,9 +265,10 @@ void reconstruct_journey_with_vias(timetable const& tt,
             base, stp.time(kFwd ? event_type::kDep : event_type::kArr));
 
         for (auto s = via_offset_t{0U}; s <= n_vias; ++s) {
-          if (exit_state[s] != v) {
+          if (finish_state[s] != v) {
             continue;
           }
+
           auto const round_time = round_times[k - 1][to_idx(l)][s];
           if (is_better_or_eq(round_time, event_time) ||
               // special case: first stop with meta stations
@@ -280,17 +281,17 @@ void reconstruct_journey_with_vias(timetable const& tt,
             return journey::leg{
                 SearchDir,
                 fr[stop_idx].get_location_idx(),
-                fr[from_stop_idx].get_location_idx(),
+                fr[finish_stop_idx].get_location_idx(),
                 delta_to_unix(base, event_time),
-                fr[from_stop_idx].time(kFwd ? event_type::kArr
-                                            : event_type::kDep),
-                journey::run_enter_exit{r, stop_idx, from_stop_idx}};
+                fr[finish_stop_idx].time(kFwd ? event_type::kArr
+                                              : event_type::kDep),
+                journey::run_enter_exit{r, stop_idx, finish_stop_idx}};
           } else {
             trace_rc_transport_entry_not_possible;
           }
         }
 
-        fold_at(exit_state, l);
+        ride_through(l);
       }
     }
 
@@ -360,7 +361,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
 
     found:
-      auto leg = find_entry_in_prev_round(
+      auto leg = find_start_in_prev_round(
           k,
           {.t_ = tr,
            .stop_range_ =
@@ -457,7 +458,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
             continue;
           }
 
-          auto leg = find_entry_in_prev_round(
+          auto leg = find_start_in_prev_round(
               k, fr, stop_idx, time, section_bike_filter, section_car_filter,
               section_wheelchair_filter);
           if (leg.has_value()) {
@@ -557,12 +558,10 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
     auto const backup_v = v;
 
-    // attempt(adjust_via = true): the via(s) matching this stop / fp target
-    // are consumed by this transfer/footpath (v decremented, stay paid).
-    // attempt(adjust_via = false): the label's via state was already
-    // reached in-ride (the incoming transport passed the via stop) -> the
-    // transfer/footpath consumes nothing. Both are valid write paths of the
-    // search, so both have to be tried.
+    // Handles both options:
+    // adjust_via=true => count this stop as via
+    // adjust_via=false => don't count this stop as via
+    // (might have already been visited before -> no via increment in search)
     auto const attempt = [&](bool const adjust_via)
         -> std::optional<std::pair<journey::leg, journey::leg>> {
       auto adjusted = false;
@@ -592,6 +591,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
               v + 1, v, stay_l);
         }
       }
+
       if (adjust_via && v != 0 &&
           matches(tt, location_match_mode::kEquivalent,
                   q.via_stops_[v - 1].location_, fp.target())) {
