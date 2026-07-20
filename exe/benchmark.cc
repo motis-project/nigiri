@@ -270,7 +270,7 @@ std::vector<double> run_load(
 struct result_set {
   std::string label_;
   std::vector<pareto_set<routing::journey>> res_;
-  std::vector<double> lat_;  // per-query latencies of the last sweep point
+  std::vector<double> latencies_;
 };
 
 struct cpu_ws {
@@ -287,33 +287,35 @@ struct gpu_ws {
 };
 #endif
 
-// one (engine, algo) cell: runs every sweep point (#workers, each borrowing
-// a state from a pool allocated once at the maximum count) and keeps the
-// last sweep point's journeys + latencies
+// one (engine, algo) cell: runs the queries once per n_parallel value (each
+// worker borrows a state from a pool allocated once at the maximum count)
+// and keeps the last run's journeys + latencies
 template <typename WS, typename Search, typename... StateArgs>
 result_set run_cell(
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
     std::string const& label,
-    std::vector<unsigned> const& sweep,
+    std::vector<unsigned> const& n_parallel,
     Search&& search,
     StateArgs const&... state_args) {
   auto out = result_set{.label_ = label};
   out.res_.resize(queries.size());
 
   auto states = std::vector<std::unique_ptr<WS>>{};
-  for (auto i = 0U; i != *std::max_element(begin(sweep), end(sweep)); ++i) {
+  for (auto i = 0U;
+       i != *std::max_element(begin(n_parallel), end(n_parallel)); ++i) {
     states.push_back(std::make_unique<WS>(state_args...));
   }
 
-  for (auto const n : sweep) {
+  for (auto const n : n_parallel) {
     auto pool = std::vector<WS*>{};
     for (auto i = 0U; i != n; ++i) {
       pool.push_back(states[i].get());
     }
-    out.lat_ = run_load<WS>(queries, label + "-" + std::to_string(n), pool,
-                            [&](WS& w, routing::query q, std::size_t const i) {
-                              out.res_[i] = search(w, std::move(q));
-                            });
+    out.latencies_ =
+        run_load<WS>(queries, label + "-" + std::to_string(n), pool,
+                     [&](WS& w, routing::query q, std::size_t const i) {
+                       out.res_[i] = search(w, std::move(q));
+                     });
   }
 
   return out;
@@ -351,8 +353,7 @@ int main(int argc, char* argv[]) {
   auto qa_path = std::filesystem::path{};
   auto engines = std::vector<std::string>{"cpu", "gpu"};
   auto algos = std::vector<std::string>{"range", "pong"};
-  auto modes =
-      std::vector<std::string>{"station-station", "coordinate-coordinate"};
+  auto modes = std::vector<std::string>{"s2s", "c2c"};
   auto dirs = std::vector<std::string>{"fwd"};
   auto threads_v =
       std::vector<unsigned>{std::max(std::thread::hardware_concurrency(), 1U)};
@@ -375,9 +376,9 @@ int main(int argc, char* argv[]) {
        "engine, the pong cell of each (mode, dir) is checked against raptor "
        "for agreement on the intersection of the final search intervals")  //
       ("modes", bpo::value(&modes)->multitoken(),
-       "<start>-<dest> query modes with station | coordinate, e.g. "
-       "station-station coordinate-coordinate (default: those two); "
-       "coordinate = intermodal offsets (walk)")  //
+       "<start>2<dest> query modes with s = station, c = coordinate: "
+       "s2s | s2c | c2s | c2c (default: s2s c2c); c = intermodal offsets "
+       "(walk)")  //
       ("dirs", bpo::value(&dirs)->multitoken(),
        "search directions: fwd | bwd (default: fwd); bwd flips the generated "
        "queries (start/dest swapped, vias reversed) and searches backward = "
@@ -576,18 +577,14 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  // apply one end of a <start>-<dest> mode token to the generator settings
+  // apply one end of a <start>2<dest> mode token to the generator settings
   // (the first/last-mile transport modes come from --intermodal_start/_dest)
-  auto const apply_mode = [](std::string const& m, location_match_mode& match) {
-    if (m == "station") {
-      match = location_match_mode::kEquivalent;
-      return true;
+  auto const apply_mode = [](char const m, location_match_mode& match) {
+    switch (m) {
+      case 's': match = location_match_mode::kEquivalent; return true;
+      case 'c': match = location_match_mode::kIntermodal; return true;
+      default: return false;
     }
-    if (m == "coordinate" || m == "intermodal") {
-      match = location_match_mode::kIntermodal;
-      return true;
-    }
-    return false;
   };
 
   // padded markdown: renders as a table AND stays aligned as plain text;
@@ -616,12 +613,11 @@ int main(int argc, char* argv[]) {
 
   for (auto const& mode : modes) {
     auto rs = gs;
-    auto const sep = mode.find('-');
-    if (sep == std::string::npos ||
-        !apply_mode(mode.substr(0, sep), rs.start_match_mode_) ||
-        !apply_mode(mode.substr(sep + 1U), rs.dest_match_mode_)) {
+    if (mode.size() != 3U || mode[1] != '2' ||
+        !apply_mode(mode[0], rs.start_match_mode_) ||
+        !apply_mode(mode[2], rs.dest_match_mode_)) {
       std::cerr << "invalid mode \"" << mode
-                << "\", expected <station|coordinate>-<station|coordinate>\n";
+                << "\", expected s2s | s2c | c2s | c2c\n";
       return 1;
     }
     if (rs.start_match_mode_ == location_match_mode::kIntermodal) {
@@ -692,13 +688,13 @@ int main(int argc, char* argv[]) {
           // e.g. GPU state allocation OOM -- report + fail instead of dying
           std::cerr << "RUN " << label << " failed: " << e.what() << "\n";
           summary.push_back(
-              fmt::format("{:<40} EXCEPTION: {}", label, e.what()));
+              fmt::format("{:<24} EXCEPTION: {}", label, e.what()));
           ++total;
         }
       }
 
       if (cells.size() == 1U) {
-        summary.push_back(fmt::format("{:<40} n={:<6} benchmark only",
+        summary.push_back(fmt::format("{:<24} n={:<6} benchmark only",
                                       cells.front().label_, qs.size()));
       }
       for (auto a = std::size_t{0U}; a < cells.size(); ++a) {
@@ -707,7 +703,7 @@ int main(int argc, char* argv[]) {
               tt, cells[a].label_, cells[a].res_, cells[b].label_,
               cells[b].res_, qs, dir, gs.min_connection_count_);
           summary.push_back(
-              fmt::format("{:<40} vs {:<40} n={:<6} mismatches={:<4} {}",
+              fmt::format("{:<24} vs {:<24} n={:<6} mismatches={:<4} {}",
                           cells[a].label_, cells[b].label_, qs.size(),
                           mismatches, mismatches == 0U ? "PASS" : "FAIL"));
           total += mismatches;
@@ -738,11 +734,12 @@ int main(int argc, char* argv[]) {
             static_cast<double>(j.transfers_));
       }
       utl::sort(jc);
+      auto const latency =
+          i < qa_cell->latencies_.size() ? qa_cell->latencies_[i] : 0.0;
       bm_crit.qc_.emplace_back(
           i,
           std::chrono::duration_cast<std::chrono::milliseconds>(
-              std::chrono::duration<double, std::milli>{std::max(
-                  qa_cell->lat_.size() > i ? qa_cell->lat_[i] : 0.0, 0.0)}),
+              std::chrono::duration<double, std::milli>{std::max(latency, 0.0)}),
           jc);
     }
     bm_crit.write(qa_path);

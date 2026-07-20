@@ -594,9 +594,6 @@ private:
               !is_better_loose(fp_target_time + dir(get_lb(i)),
                                time_at_dest_[k])) {
             ++stats_.fp_update_prevented_by_lower_bound_;
-            // continue with the next via slot -- a "return" here would also
-            // skip the remaining slots of this stop (harmless for Vias == 0
-            // where it is equivalent, lossy for via searches)
             continue;
           }
           if (!within_bounds(k, i, fp_target_time, target_v)) {
@@ -1040,15 +1037,6 @@ private:
     auto const stop_seq = tt_.route_location_seq_[r];
     bool any_marked = false;
 
-    // riders: et[e][o] = the earliest transport boarded from a slot-e label
-    // that has passed o no-stay via stops since boarding; its via state at
-    // the current stop is e + o (only cells with e + o <= Vias are used).
-    // A fresh boarding from a slot-e label always enters (e, 0); passing a
-    // via stop moves (e, o) -> (e, o + 1). Two riders can share a via state
-    // (e.g. (0,1) and (1,0)): they belong to different journey departures
-    // and both have to keep riding -- collapsing them to one rider per
-    // state can suppress the boarding of the later trip and lose the later
-    // departure in interval searches.
     auto et = std::array<std::array<transport, Vias + 1>, Vias + 1>{};
 
     for (auto i = 0U; i != stop_seq.size(); ++i) {
@@ -1082,15 +1070,6 @@ private:
         }
       }
 
-      // passing a no-stay via stop advances every rider whose current state
-      // matches it: (e, o) -> (e, o + 1), o descending = one advance per
-      // stop. Merging is only allowed within the same (e, o) cell (both
-      // rides boarded from slot-e labels and passed the same via stops
-      // since, so the one arriving earlier here is earlier at every later
-      // stop). NOT gated on can_finish: riding *through* the via stop
-      // counts regardless of whether alighting is allowed there (e.g.
-      // board-only night bus stops -- otherwise the two search directions
-      // disagree).
       if constexpr (Vias != 0U) {
         for (auto e = 0U; e != Vias; ++e) {
           for (auto o = Vias - e; o != 0U; --o) {

@@ -57,7 +57,7 @@ jobs:
           ./build/cuda/nigiri-benchmark -p tt.bin \
             --engines cpu gpu \
             --algo range pong \
-            --modes station-station coordinate-coordinate \
+            --modes s2s c2c \
             --dirs fwd bwd \
             -n 50
 
@@ -66,7 +66,7 @@ jobs:
           ./build/cuda/nigiri-benchmark -p tt.bin \
             --engines cpu \
             --algo range pong \
-            --modes station-station coordinate-coordinate \
+            --modes s2s c2c \
             --dirs fwd bwd \
             --vias 1 \
             -n 50
@@ -76,7 +76,7 @@ jobs:
           ./build/cuda/nigiri-benchmark -p tt.bin \
             --engines cpu \
             --algo range pong \
-            --modes station-station coordinate-coordinate \
+            --modes s2s c2c \
             --dirs fwd bwd \
             --vias 2 \
             -n 30
