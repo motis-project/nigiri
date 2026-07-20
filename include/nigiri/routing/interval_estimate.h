@@ -79,6 +79,12 @@ struct interval_estimator {
     return new_itv;
   }
 
+  interval<unixtime_t> max_interval() const {
+    auto itv = interval<unixtime_t>{unixtime_t::min(), unixtime_t::max()};
+    clamp(itv);
+    return itv;
+  }
+
   interval<unixtime_t> extension(interval<unixtime_t> const& itv,
                                  std::uint32_t const num_con_req) const {
     if (num_con_req == 0 ||

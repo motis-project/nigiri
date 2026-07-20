@@ -6,6 +6,7 @@
 #include <map>
 #include <numeric>
 #include <regex>
+#include <span>
 #include <thread>
 
 #include "boost/program_options.hpp"
@@ -14,10 +15,12 @@
 #include "utl/parallel_for.h"
 #include "utl/parser/cstr.h"
 #include "utl/progress_tracker.h"
+#include "utl/zip.h"
 
 #include "nigiri/logging.h"
 #include "nigiri/qa/qa.h"
 #include "nigiri/query_generator/generator.h"
+#include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
@@ -93,139 +96,112 @@ void generate_queries(
   }
 }
 
-// Journeys at/over this travel time are not counted as misses in the
-// pong-vs-raptor common-interval check: the pong ping's travel time cap
-// anchors at the probe, so a journey departing after the probe with travel
-// time close to kMaxTravelTime can be invisible to every probe's ping while
-// search.h (departure-anchored) still finds it.
+// Range-RAPTOR start time == first trip's departure time
+// Pong start time != first trip's departure time
+// -> travel time is not measured from departure
+// -> give Pong some slack
 constexpr auto const kCheckedMaxTravelTime = routing::kMaxTravelTime - 1_days;
 
-struct compare_stats {
-  std::uint64_t missed_by_cmp_{0U};  // ref journeys not covered by cmp pareto
-  std::uint64_t missed_by_ref_{0U};  // cmp journeys not covered by ref pareto
-  bool compared_{false};  // a cross-check ran -> the counts are meaningful
-};
-
-// cross-check two result sets over the same queries: every journey of one
-// side must be covered (dominated or equaled) by the other side's pareto set
-compare_stats cross_check(
+std::uint64_t compare_results(
     timetable const& tt,
     std::string const& ref_name,
     std::vector<pareto_set<routing::journey>> const& ref,
-    std::string const& cmp_name,
-    std::vector<pareto_set<routing::journey>> const& cmp) {
-  auto stats = compare_stats{};
-  stats.compared_ = true;
-
-  auto const covered = [&](journey const& j, auto const& by) {
-    // journey::dominates is direction-aware (bwd journeys have
-    // start_time_ > dest_time_)
-    return utl::any_of(by, [&](journey const& o) { return o.dominates(j); });
-  };
-  auto const key = [](journey const& j) {
-    return fmt::format("dep={} arr={} transfers={}", j.start_time_,
-                       j.dest_time_, j.transfers_);
-  };
-  for (auto i = std::size_t{0U}; i != ref.size(); ++i) {
-    auto cmp_misses = 0, ref_misses = 0;
-    for (auto const& r : ref[i]) {
-      if (!covered(r, cmp[i])) {
-        ++cmp_misses;
-      }
-    }
-    for (auto const& c : cmp[i]) {
-      if (!covered(c, ref[i])) {
-        ++ref_misses;
-      }
-    }
-    if (cmp_misses != 0 || ref_misses != 0) {
-      std::cout << "query #" << i << " " << cmp_name << "_MISSES_" << ref_name
-                << "=" << cmp_misses << " " << ref_name << "_MISSES_"
-                << cmp_name << "=" << ref_misses << "\n  " << ref_name
-                << "-pareto: ";
-      for (auto const& r : ref[i]) {
-        std::cout << "[" << key(r) << "] ";
-      }
-      std::cout << "\n  " << cmp_name << "-pareto: ";
-      for (auto const& c : cmp[i]) {
-        std::cout << "[" << key(c) << "] ";
-      }
-      std::cout << "\n";
-      for (auto const& r : ref[i]) {
-        if (!covered(r, cmp[i])) {
-          std::cout << "  === MISSED-BY-" << cmp_name << ": " << key(r)
-                    << " ===\n";
-          r.print(std::cout, tt);
-          std::cout << "\n";
-        }
-      }
-      for (auto const& c : cmp[i]) {
-        if (!covered(c, ref[i])) {
-          std::cout << "  === " << cmp_name << "-EXTRA (not covered by "
-                    << ref_name << "): " << key(c) << " ===\n";
-          c.print(std::cout, tt);
-          std::cout << "\n";
-        }
-      }
-    }
-    stats.missed_by_cmp_ += static_cast<std::uint64_t>(cmp_misses);
-    stats.missed_by_ref_ += static_cast<std::uint64_t>(ref_misses);
-  }
-  return stats;
-}
-
-// Compare search.h vs pong results for min(N, M) journeys after T.
-compare_stats common_interval_check(
-    timetable const& tt,
-    std::string const& ref_name,
-    std::vector<pareto_set<routing::journey>> const& ref,
-    std::vector<interval<unixtime_t>> const& ref_iv,
     std::string const& cmp_name,
     std::vector<pareto_set<routing::journey>> const& cmp,
-    std::vector<interval<unixtime_t>> const& cmp_iv) {
-  auto stats = compare_stats{};
-  stats.compared_ = true;
+    std::vector<nigiri::query_generation::start_dest_query> const& queries,
+    direction const search_dir,
+    unsigned const min_connection_count) {
+  auto mismatches = std::uint64_t{0U};
 
-  auto const covered = [&](journey const& j, auto const& by) {
-    return utl::any_of(by, [&](journey const& o) { return o.dominates(j); });
+  auto const equal = [](journey const& a, journey const& b) {
+    return a.start_time_ == b.start_time_ && a.dest_time_ == b.dest_time_ &&
+           a.transfers_ == b.transfers_;
   };
   auto const key = [](journey const& j) {
     return fmt::format("dep={} arr={} transfers={}", j.departure_time(),
                        j.arrival_time(), j.transfers_);
   };
+  auto const max_window = [&](query const& q) {
+    return search_dir == direction::kForward
+               ? interval_estimator<direction::kForward>{tt, q}.max_interval()
+               : interval_estimator<direction::kBackward>{tt, q}.max_interval();
+  };
+  auto const filtered = [](pareto_set<routing::journey> const& set,
+                           interval<unixtime_t> const& window) {
+    auto v = std::vector<journey const*>{};
+    for (auto const& j : set) {
+      if (j.travel_time() < kCheckedMaxTravelTime &&
+          window.contains(j.start_time_)) {
+        v.push_back(&j);
+      }
+    }
+    return v;
+  };
+  auto const print_set = [&](std::string const& name, auto const& journeys) {
+    fmt::print("  {}: ", name);
+    for (auto const* j : journeys) {
+      fmt::print("[{}] ", key(*j));
+    }
+    fmt::println("");
+  };
 
   for (auto i = std::size_t{0U}; i != ref.size(); ++i) {
-    auto const iv =
-        interval<unixtime_t>{std::max(ref_iv[i].from_, cmp_iv[i].from_),
-                             std::min(ref_iv[i].to_, cmp_iv[i].to_)};
-    if (iv.from_ >= iv.to_) {
-      continue;  // nothing searched by both -> nothing to compare
+    // Ignore journeys >= kCheckedMaxTravelTime or outside the maximum
+    // search window.
+    auto const window = max_window(queries[i].q_);
+    auto r = filtered(ref[i], window);
+    auto c = filtered(cmp[i], window);
+    if (search_dir == direction::kBackward) {
+      std::reverse(begin(r), end(r));
+      std::reverse(begin(c), end(c));
     }
-    auto misses = 0U;
-    auto const check_side = [&](auto const& side, auto const& other,
-                                std::string const& side_name,
-                                std::string const& other_name) {
-      for (auto const& j : side) {
-        if (j.travel_time() >= kCheckedMaxTravelTime) {
-          continue;  // probe-anchored pong may miss these, see constant above
-        }
-        if (iv.contains(j.start_time_) && !covered(j, other)) {
-          ++misses;
-          std::cout << "query #" << i << " " << other_name << " misses ["
-                    << key(j) << "] found by " << side_name
-                    << " (common interval " << iv << ", " << ref_name << " "
-                    << ref_iv[i] << ", " << cmp_name << " " << cmp_iv[i]
-                    << ")\n";
-          j.print(std::cout, tt);
-          std::cout << "\n";
+
+    auto const r_size = r.size();
+    auto const c_size = c.size();
+    auto const n = std::min(r_size, c_size);
+    auto const r_zip = std::span{r.data(), n};
+    auto const c_zip = std::span{c.data(), n};
+
+    // Count under-deliverying results:
+    // >= min_connection_count reached by one but not the other
+    auto const raw_r = ref[i].size();
+    auto const raw_c = cmp[i].size();
+    auto misses = std::uint64_t{0U};
+    if (r_size >= min_connection_count && raw_c < min_connection_count) {
+      misses += min_connection_count - raw_c;
+    }
+    if (c_size >= min_connection_count && raw_r < min_connection_count) {
+      misses += min_connection_count - raw_r;
+    }
+
+    // Count inequalities.
+    for (auto const [a, b] : utl::zip(r_zip, c_zip)) {
+      if (!equal(*a, *b)) {
+        ++misses;
+      }
+    }
+
+    if (misses != 0U) {
+      fmt::println("query #{} mismatches={} ({} n={}, {} n={})", i, misses,
+                   ref_name, r_size, cmp_name, c_size);
+      print_set(ref_name, r);
+      print_set(cmp_name, c);
+      for (auto const [a, b] : utl::zip(r_zip, c_zip)) {
+        if (!equal(*a, *b)) {
+          fmt::println("  === MISMATCH: {} [{}] vs {} [{}] ===", ref_name,
+                       key(*a), cmp_name, key(*b));
+          a->print(std::cout, tt);
+          fmt::println("");
+          b->print(std::cout, tt);
+          fmt::println("");
         }
       }
-    };
-    check_side(ref[i], cmp[i], ref_name, cmp_name);
-    check_side(cmp[i], ref[i], cmp_name, ref_name);
-    stats.missed_by_cmp_ += misses;
+    }
+
+    mismatches += misses;
   }
-  return stats;
+
+  return mismatches;
 }
 
 // one worker thread per state, pulling queries from a shared counter
@@ -291,104 +267,54 @@ std::vector<double> run_load(
   return lat;
 }
 
-struct cell_result {
-  compare_stats stats_;
-  std::vector<pareto_set<routing::journey>> cpu_res_;
-  std::vector<interval<unixtime_t>> cpu_iv_;  // final searched interval
-  std::vector<double> cpu_lat_;
+struct result_set {
+  std::string label_;
+  std::vector<pareto_set<routing::journey>> res_;
+  std::vector<double> lat_;  // per-query latencies of the last sweep point
 };
 
-cell_result run_config(
-    std::vector<nigiri::query_generation::start_dest_query> const& queries,
-    timetable const& tt,
-    std::string const& label,
-    std::string const& algo,
-    direction const dir,
-    bool const run_cpu,
-    [[maybe_unused]] bool const run_gpu,
-    std::vector<unsigned> const& cpu_threads_v,
-    [[maybe_unused]] std::vector<unsigned> const& gpu_states_v) {
-  auto out = cell_result{};
-  auto& stats = out.stats_;
-
-  auto const use_pong = algo != "raptor";
-
-  // the sweep's state pool is allocated once at the maximum count; each
-  // sweep point borrows a prefix of it
-  auto const prefix = []<typename WS>(
-                          std::vector<std::unique_ptr<WS>> const& owned,
-                          unsigned const n) {
-    auto pool = std::vector<WS*>{};
-    for (auto i = 0U; i != n; ++i) {
-      pool.push_back(owned[i].get());
-    }
-    return pool;
-  };
-
-  struct cpu_ws {
-    search_state ss_;
-    routing::raptor_state rs_;
-  };
-  auto& cpu_res = out.cpu_res_;
-  cpu_res.resize(queries.size());
-  out.cpu_iv_.resize(queries.size());
-  if (run_cpu) {
-    auto states = std::vector<std::unique_ptr<cpu_ws>>{};
-    for (auto i = 0U;
-         i != *std::max_element(begin(cpu_threads_v), end(cpu_threads_v));
-         ++i) {
-      states.push_back(std::make_unique<cpu_ws>());
-    }
-
-    for (auto const t : cpu_threads_v) {
-      out.cpu_lat_ = run_load<cpu_ws>(
-          queries, label + "-cpu-" + std::to_string(t), prefix(states, t),
-          [&](cpu_ws& w, routing::query q, std::size_t const i) {
-            auto const r =
-                use_pong ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
-                                                std::move(q), dir)
-                         : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
-                                                  std::move(q), dir);
-            cpu_res[i] = *r.journeys_;
-            out.cpu_iv_[i] = r.interval_;
-          });
-    }
-  }
+struct cpu_ws {
+  search_state ss_;
+  routing::raptor_state rs_;
+};
 
 #if defined(NIGIRI_CUDA)
-  auto gpu_res = std::vector<pareto_set<routing::journey>>(queries.size());
-  if (run_gpu) {
-    auto const gpu_tt = routing::gpu::gpu_timetable{tt};
-    struct gpu_ws {
-      search_state ss_;
-      std::unique_ptr<routing::gpu::gpu_raptor_state> rs_;
-    };
-    auto states = std::vector<std::unique_ptr<gpu_ws>>{};
-    for (auto i = 0U;
-         i != *std::max_element(begin(gpu_states_v), end(gpu_states_v)); ++i) {
-      states.push_back(std::make_unique<gpu_ws>(
-          gpu_ws{search_state{},
-                 std::make_unique<routing::gpu::gpu_raptor_state>(gpu_tt)}));
-    }
-    for (auto const s : gpu_states_v) {
-      run_load<gpu_ws>(
-          queries, label + "-gpu-" + std::to_string(s), prefix(states, s),
-          [&](gpu_ws& w, routing::query q, std::size_t const i) {
-            auto const r =
-                use_pong ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
-                                                std::move(q), dir)
-                         : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
-                                                  std::move(q), dir);
-            gpu_res[i] = *r.journeys_;
-          });
-    }
+struct gpu_ws {
+  explicit gpu_ws(routing::gpu::gpu_timetable const& gtt)
+      : rs_{std::make_unique<routing::gpu::gpu_raptor_state>(gtt)} {}
+  search_state ss_;
+  std::unique_ptr<routing::gpu::gpu_raptor_state> rs_;
+};
+#endif
+
+// one (engine, algo) cell: runs every sweep point (#workers, each borrowing
+// a state from a pool allocated once at the maximum count) and keeps the
+// last sweep point's journeys + latencies
+template <typename WS, typename Search, typename... StateArgs>
+result_set run_cell(
+    std::vector<nigiri::query_generation::start_dest_query> const& queries,
+    std::string const& label,
+    std::vector<unsigned> const& sweep,
+    Search&& search,
+    StateArgs const&... state_args) {
+  auto out = result_set{.label_ = label};
+  out.res_.resize(queries.size());
+
+  auto states = std::vector<std::unique_ptr<WS>>{};
+  for (auto i = 0U; i != *std::max_element(begin(sweep), end(sweep)); ++i) {
+    states.push_back(std::make_unique<WS>(state_args...));
   }
 
-  if (!run_cpu || !run_gpu) {
-    return out;  // single engine -> nothing to compare
+  for (auto const n : sweep) {
+    auto pool = std::vector<WS*>{};
+    for (auto i = 0U; i != n; ++i) {
+      pool.push_back(states[i].get());
+    }
+    out.lat_ = run_load<WS>(queries, label + "-" + std::to_string(n), pool,
+                            [&](WS& w, routing::query q, std::size_t const i) {
+                              out.res_[i] = search(w, std::move(q));
+                            });
   }
-  stats = cross_check(tt, "CPU", cpu_res, "GPU", gpu_res);
-#endif
 
   return out;
 }
@@ -403,9 +329,7 @@ void print_memory_usage() {
 }
 
 int main(int argc, char* argv[]) {
-  // CI pipes stdout -> fully buffered by default; line-buffer so progress
-  // (table rows) appears immediately (std::cout syncs with stdio)
-  setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);
+  setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);  // line buffering for CI
 
   namespace bpo = boost::program_options;
 
@@ -425,12 +349,14 @@ int main(int argc, char* argv[]) {
   auto seed = std::int64_t{0};
   auto min_transfer_time = duration_t::rep{};
   auto qa_path = std::filesystem::path{};
-  auto engines = std::vector<std::string>{};
-  auto algos = std::vector<std::string>{};
-  auto modes = std::vector<std::string>{};
-  auto dirs = std::vector<std::string>{};
-  auto threads_v = std::vector<unsigned>{};
-  auto gpu_states_v = std::vector<unsigned>{};
+  auto engines = std::vector<std::string>{"cpu", "gpu"};
+  auto algos = std::vector<std::string>{"range", "pong"};
+  auto modes =
+      std::vector<std::string>{"station-station", "coordinate-coordinate"};
+  auto dirs = std::vector<std::string>{"fwd"};
+  auto threads_v =
+      std::vector<unsigned>{std::max(std::thread::hardware_concurrency(), 1U)};
+  auto gpu_states_v = std::vector<unsigned>{2U};
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
@@ -615,29 +541,11 @@ int main(int argc, char* argv[]) {
   // process program options - end
 
   // ---- benchmark matrix: engines x algos x modes (x threads/states) ----
-  if (engines.empty()) {
-    engines = {"cpu", "gpu"};
-  }
-  if (algos.empty()) {
-    algos = {"raptor", "pong"};
-  }
-  if (modes.empty()) {
-    modes = {"station-station", "coordinate-coordinate"};
-  }
-  if (dirs.empty()) {
-    dirs = {"fwd"};
-  }
   for (auto const& d : dirs) {
     if (d != "fwd" && d != "bwd") {
       std::cerr << "invalid dir \"" << d << "\", expected fwd | bwd\n";
       return 1;
     }
-  }
-  if (threads_v.empty()) {
-    threads_v = {std::max(std::thread::hardware_concurrency(), 1U)};
-  }
-  if (gpu_states_v.empty()) {
-    gpu_states_v = {2U};
   }
 
   auto run_cpu = false, run_gpu = false;
@@ -662,7 +570,7 @@ int main(int argc, char* argv[]) {
   }
 #endif
   for (auto const& a : algos) {
-    if (a != "raptor" && a != "pong") {
+    if (a != "range" && a != "pong") {
       std::cerr << "invalid algo \"" << a << "\", expected raptor | pong\n";
       return 1;
     }
@@ -695,9 +603,16 @@ int main(int argc, char* argv[]) {
       std::map<std::string,
                std::vector<nigiri::query_generation::start_dest_query>>{};
   auto summary = std::vector<std::string>{};
-  auto total = compare_stats{};
-  auto qa_cell = std::optional<cell_result>{};
-  auto qa_n_cells = 0U;
+  auto total = std::uint64_t{0U};
+  auto qa_cell = std::optional<result_set>{};
+  auto qa_n_cpu_cells = 0U;
+
+#if defined(NIGIRI_CUDA)
+  auto gpu_tt = std::optional<routing::gpu::gpu_timetable>{};
+  if (run_gpu) {
+    gpu_tt.emplace(tt);
+  }
+#endif
 
   for (auto const& mode : modes) {
     auto rs = gs;
@@ -718,15 +633,12 @@ int main(int argc, char* argv[]) {
       generate_queries(fwd_qs, n_queries, tt, rs, seed);
     }
 
+    // (mode, dir) are the incomparable dimensions -- within one (mode, dir),
+    // every (engine, algo) combination has to agree
     for (auto const& dir_str : dirs) {
       auto const dir =
           dir_str == "fwd" ? direction::kForward : direction::kBackward;
 
-      // bwd = the same workload flipped: start/dest swapped, vias reversed,
-      // the generated interval becomes the arrival window (arriveBy).
-      // The interval only ever extends in the search direction (later for
-      // fwd, earlier for bwd) -- production never sets both flags and the
-      // pong probes only march that way.
       auto qs = fwd_qs;
       for (auto& sdq : qs) {
         if (dir == direction::kBackward) {
@@ -736,64 +648,70 @@ int main(int argc, char* argv[]) {
         sdq.q_.extend_interval_later_ = dir == direction::kForward;
       }
 
-      // per (mode, dir): raptor cell = common-interval check reference
-      struct check_ref {
-        std::string label_;
-        std::vector<pareto_set<routing::journey>> res_;
-        std::vector<interval<unixtime_t>> iv_;
-      };
-      auto raptor_ref = std::optional<check_ref>{};
-
+      auto cells = std::vector<result_set>{};
       for (auto const& algo : algos) {
+        auto const use_pong = algo == "pong";
         auto const label = mode + "-" + dir_str + "-" + algo;
-        auto cell = cell_result{};
+
         try {
-          cell = run_config(qs, tt, label, algo, dir, run_cpu, run_gpu,
-                            threads_v, gpu_states_v);
+          if (run_cpu) {
+            cells.push_back(run_cell<cpu_ws>(
+                qs, label + "-cpu", threads_v,
+                [&](cpu_ws& w, routing::query q) {
+                  auto const r =
+                      use_pong
+                          ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
+                                                 std::move(q), dir)
+                          : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
+                                                   std::move(q), dir);
+                  return *r.journeys_;
+                }));
+            ++qa_n_cpu_cells;
+            if (vm.count("qa_path")) {
+              qa_cell = cells.back();
+            }
+          }
+
+#if defined(NIGIRI_CUDA)
+          if (run_gpu) {
+            cells.push_back(run_cell<gpu_ws>(
+                qs, label + "-gpu", gpu_states_v,
+                [&](gpu_ws& w, routing::query q) {
+                  auto const r =
+                      use_pong
+                          ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
+                                                 std::move(q), dir)
+                          : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
+                                                   std::move(q), dir);
+                  return *r.journeys_;
+                },
+                *gpu_tt));
+          }
+#endif
         } catch (std::exception const& e) {
           // e.g. GPU state allocation OOM -- report + fail instead of dying
           std::cerr << "RUN " << label << " failed: " << e.what() << "\n";
           summary.push_back(
-              fmt::format("{:<44} EXCEPTION: {}", label, e.what()));
-          total.missed_by_cmp_ += 1U;
-          continue;
+              fmt::format("{:<40} EXCEPTION: {}", label, e.what()));
+          ++total;
         }
+      }
 
-        summary.push_back(
-            cell.stats_.compared_
-                ? fmt::format(
-                      "{:<44} n={:<6} gpu_misses_cpu={:<4} "
-                      "cpu_misses_gpu={:<4} {}",
-                      label, qs.size(), cell.stats_.missed_by_cmp_,
-                      cell.stats_.missed_by_ref_,
-                      cell.stats_.missed_by_cmp_ + cell.stats_.missed_by_ref_ ==
-                              0U
-                          ? "PASS"
-                          : "FAIL")
-                : fmt::format("{:<44} n={:<6} benchmark only ({})", label,
-                              qs.size(), run_cpu ? "cpu" : "gpu"));
-        total.missed_by_cmp_ += cell.stats_.missed_by_cmp_;
-        total.missed_by_ref_ += cell.stats_.missed_by_ref_;
-
-        if (run_cpu) {
-          if (algo == "raptor") {
-            raptor_ref.emplace(check_ref{label, cell.cpu_res_, cell.cpu_iv_});
-          } else if (raptor_ref.has_value()) {
-            // strict agreement with search.h raptor on the region both
-            // searched (intersection of the final intervals)
-            auto const st = common_interval_check(
-                tt, raptor_ref->label_, raptor_ref->res_, raptor_ref->iv_,
-                label, cell.cpu_res_, cell.cpu_iv_);
-            summary.push_back(
-                fmt::format("{:<44} vs {:<40} common-interval misses={:<4} {}",
-                            label, raptor_ref->label_, st.missed_by_cmp_,
-                            st.missed_by_cmp_ == 0U ? "PASS" : "FAIL"));
-            total.missed_by_cmp_ += st.missed_by_cmp_;
-          }
+      if (cells.size() == 1U) {
+        summary.push_back(fmt::format("{:<40} n={:<6} benchmark only",
+                                      cells.front().label_, qs.size()));
+      }
+      for (auto a = std::size_t{0U}; a < cells.size(); ++a) {
+        for (auto b = a + 1U; b < cells.size(); ++b) {
+          auto const mismatches = compare_results(
+              tt, cells[a].label_, cells[a].res_, cells[b].label_,
+              cells[b].res_, qs, dir, gs.min_connection_count_);
+          summary.push_back(
+              fmt::format("{:<40} vs {:<40} n={:<6} mismatches={:<4} {}",
+                          cells[a].label_, cells[b].label_, qs.size(),
+                          mismatches, mismatches == 0U ? "PASS" : "FAIL"));
+          total += mismatches;
         }
-
-        ++qa_n_cells;
-        qa_cell = std::move(cell);
       }
     }
   }
@@ -805,17 +723,15 @@ int main(int argc, char* argv[]) {
   print_memory_usage();
 
   if (vm.count("qa_path")) {
-    // qa export needs ONE well-defined result set: exactly one (mode, algo)
-    // cell with the CPU engine.
-    if (qa_n_cells != 1U || !run_cpu || !qa_cell.has_value()) {
-      std::cerr << "--qa_path requires exactly one (mode, algo) cell with the "
-                   "cpu engine (single-element --algo/--modes)\n";
+    if (qa_n_cpu_cells != 1U || !qa_cell.has_value()) {
+      std::cerr << "--qa_path requires exactly one cpu (mode, dir, algo) cell "
+                   "(single-element --algo/--modes/--dirs)\n";
       return 1;
     }
     auto bm_crit = nigiri::qa::benchmark_criteria{};
-    for (auto i = std::size_t{0U}; i != qa_cell->cpu_res_.size(); ++i) {
+    for (auto i = std::size_t{0U}; i != qa_cell->res_.size(); ++i) {
       auto jc = vector<nigiri::qa::criteria_t>{};
-      for (auto const& j : qa_cell->cpu_res_[i]) {
+      for (auto const& j : qa_cell->res_[i]) {
         jc.emplace_back(
             static_cast<double>(j.start_time_.time_since_epoch().count()),
             static_cast<double>(j.dest_time_.time_since_epoch().count()),
@@ -826,12 +742,11 @@ int main(int argc, char* argv[]) {
           i,
           std::chrono::duration_cast<std::chrono::milliseconds>(
               std::chrono::duration<double, std::milli>{std::max(
-                  qa_cell->cpu_lat_.size() > i ? qa_cell->cpu_lat_[i] : 0.0,
-                  0.0)}),
+                  qa_cell->lat_.size() > i ? qa_cell->lat_[i] : 0.0, 0.0)}),
           jc);
     }
     bm_crit.write(qa_path);
   }
 
-  return total.missed_by_cmp_ + total.missed_by_ref_ == 0U ? 0 : 1;
+  return total == 0U ? 0 : 1;
 }

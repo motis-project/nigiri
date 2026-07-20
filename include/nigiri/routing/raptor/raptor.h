@@ -337,34 +337,18 @@ private:
     return is_better_or_eq(a, b);
   }
 
-  // Check a label written in round k at stop l with via state v against the
-  // ping bounds (no-op without bounds, see set_bounds). The bounds row holds
-  // the ping's round entries, which contain arrival + transfer time
-  // (subtract it; this also keeps same-trip continuations, which pay no
-  // transfer, within bounds). The label has Vias - v via stops left for the
-  // journey prefix -> compare against the ping's via-monotonic slot Vias - v
-  // ("at least this many via stops visited"). Via stay times are contained
-  // in the ping's entries *and* paid again by this search's labels at the
-  // via stop -> loosen by them. If the direct check fails, check the ping's
-  // footpath projections at the neighbors (arrival + fp duration): the ping
-  // only records arrivals *somewhere* -- the transfer update at the arrival
-  // stop itself may be pruned by the lower bound while the footpath still
-  // propagates from the trip arrival (bypassing the transfer). The footpath
-  // candidates are required for correctness, but only consulted when the
-  // direct bound would prune. This rescue inverts a *static* footpath hop;
-  // stops where the ping used time-dependent footpaths instead carry a
-  // pass-everything bound (see pong.cc fill_bounds), so the rescue is never
-  // decisive there.
   bool within_bounds(unsigned const k,
                      std::size_t const l,
                      delta_t const t,
-                     std::size_t const v) {
+                     std::size_t const v) const {
     if (bounds_.entries_.empty()) {
       return true;
     }
+
     assert(k <= bounds_last_k_);
     assert(v <= Vias);
-    auto const row = std::as_const(bounds_)[bounds_last_k_ - k];
+
+    auto const row = bounds_[bounds_last_k_ - k];
     auto const slot = Vias - v;
     auto const via_stays = [&](std::size_t const stop) {
       auto stays = 0;
@@ -377,6 +361,7 @@ private:
       }
       return stays;
     };
+
     auto const stays_l = via_stays(l);
     auto const transfer = dir(adjusted_transfer_time(
         transfer_time_settings_,
@@ -385,8 +370,7 @@ private:
     if (is_better_or_eq(t, row[l][slot] + transfer + dir(stays_l))) {
       return true;
     }
-    // ping direction = flipped search direction: bwd pong reads a fwd ping's
-    // footpaths_out_, fwd pong reads a bwd ping's footpaths_in_
+
     auto const& fps = (kFwd ? tt_.locations_.footpaths_in_
                             : tt_.locations_.footpaths_out_)[bounds_prf_idx_]
                                                             [location_idx_t{l}];
@@ -399,6 +383,7 @@ private:
         return true;
       }
     }
+
     return false;
   }
 

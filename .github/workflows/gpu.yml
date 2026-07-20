@@ -56,7 +56,7 @@ jobs:
         run: |
           ./build/cuda/nigiri-benchmark -p tt.bin \
             --engines cpu gpu \
-            --algo raptor pong \
+            --algo range pong \
             --modes station-station coordinate-coordinate \
             --dirs fwd bwd \
             -n 50
@@ -65,7 +65,7 @@ jobs:
         run: |
           ./build/cuda/nigiri-benchmark -p tt.bin \
             --engines cpu \
-            --algo raptor pong \
+            --algo range pong \
             --modes station-station coordinate-coordinate \
             --dirs fwd bwd \
             --vias 1 \
@@ -75,7 +75,7 @@ jobs:
         run: |
           ./build/cuda/nigiri-benchmark -p tt.bin \
             --engines cpu \
-            --algo raptor pong \
+            --algo range pong \
             --modes station-station coordinate-coordinate \
             --dirs fwd bwd \
             --vias 2 \
