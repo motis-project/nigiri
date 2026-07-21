@@ -2,12 +2,15 @@
 
 #include "nigiri/location_match_mode.h"
 #include "nigiri/logging.h"
+#include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/ontrip_train.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
 namespace nigiri::query_generation {
+
+constexpr auto const kMaxDirect = duration_t{45};
 
 generator::generator(timetable const& tt, generator_settings const& settings)
     : tt_{tt},
@@ -155,6 +158,13 @@ std::optional<start_dest_query> generator::random_query() {
     } else {
       sdq.dest_ = dest_loc_idx.value();
       sdq.q_.destination_.emplace_back(dest_loc_idx.value(), 0_minutes, 0U);
+    }
+
+    if (routing::get_fastest_direct(
+            tt_, sdq.q_, direction::kForward,
+            static_cast<routing::label::dist_t>(kMaxDirect.count())) !=
+        routing::kUnreachableDirect) {
+      continue;
     }
 
     // add via stops to query

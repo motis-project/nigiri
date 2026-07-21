@@ -832,8 +832,7 @@ bool frun::is_cancelled() const {
     return rtt_->rt_transport_is_cancelled_[to_idx(rt_)];
   }
   if (is_scheduled()) {
-    return !rtt_->bitfields_[rtt_->transport_traffic_days_[t_.t_idx_]].test(
-        to_idx(t_.day_));
+    return !rtt_->is_transport_active(t_.t_idx_, t_.day_);
   }
   return false;
 }

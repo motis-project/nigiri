@@ -897,7 +897,11 @@ struct raptor_impl {
 
   __device__ __forceinline__ bool is_transport_active(
       transport_idx_t const t, std::size_t const day) const {
-    return tt_.bitfields_[tt_.transport_traffic_days_[t]].test(day);
+    auto const i = to_idx(tt_.transport_traffic_days_[t]);
+    return ((i & kRtBitfieldFlag) != 0U
+                ? rtt_.bitfields_[bitfield_idx_t{i & ~kRtBitfieldFlag}]
+                : tt_.bitfields_[bitfield_idx_t{i}])
+        .test(day);
   }
 
   __device__ __forceinline__ bool is_route_active(route_idx_t const r,

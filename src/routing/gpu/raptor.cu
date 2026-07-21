@@ -238,19 +238,18 @@ struct gpu_rt_timetable::impl {
 
     // Copy td-footpaths.
     for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
-      if (!rtt.td_footpaths_out_[p].empty()) {
-        td_footpaths_out_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_out_[p]};
-        has_td_out_[p] = to_device(rtt.has_td_footpaths_out_[p].blocks_);
-      }
-
-      if (!rtt.td_footpaths_in_[p].empty()) {
-        td_footpaths_in_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_in_[p]};
-        has_td_in_[p] = to_device(rtt.has_td_footpaths_in_[p].blocks_);
-      }
-
       // for the host-side kernel dispatch
       has_td_fps_[p] = rtt.has_td_footpaths_out_[p].any() ||
                        rtt.has_td_footpaths_in_[p].any();
+
+      if (!has_td_fps_[p]) {
+        continue;
+      }
+
+      td_footpaths_out_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_out_[p]};
+      has_td_out_[p] = to_device(rtt.has_td_footpaths_out_[p].blocks_);
+      td_footpaths_in_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_in_[p]};
+      has_td_in_[p] = to_device(rtt.has_td_footpaths_in_[p].blocks_);
     }
 
     // device-resident view struct (the launch-parameter struct only carries
@@ -855,7 +854,6 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
 
   if (rt_active) {
     r.tt_.transport_traffic_days_ = r.rtt_.transport_traffic_days_;
-    r.tt_.bitfields_ = r.rtt_.bitfields_;
   }
 
   if constexpr (WithBounds) {
