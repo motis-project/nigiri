@@ -171,6 +171,7 @@ struct raptor {
         }
         if (!lb_reachable(i) ||
             !is_better(b + dir(get_lb(i)), time_at_dest_[k])) {
+          state_.station_mark_.set(i, false);
           return;
         }
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
@@ -969,7 +970,8 @@ private:
       for (auto v = 0U; v != Vias + 1; ++v) {
         auto const target_v = v + v_offset[v];
         auto const prev_round_time = round_times_[k - 1][l_idx][target_v];
-        if (is_better_or_eq(prev_round_time, by_transport)) {
+        if (is_better_or_eq(prev_round_time, by_transport) &&
+            is_better(prev_round_time + dir(get_lb(l_idx)), time_at_dest_[k])) {
           et[v] = true;
           v_offset[v] = 0;
         }
@@ -1159,7 +1161,8 @@ private:
                 : kInvalid;
         auto const prev_round_time = round_times_[k - 1][l_idx][target_v];
         if (prev_round_time != kInvalid &&
-            is_better_or_eq(prev_round_time, et_time_at_stop)) {
+            is_better_or_eq(prev_round_time, et_time_at_stop) &&
+            is_better(prev_round_time + dir(get_lb(l_idx)), time_at_dest_[k])) {
           auto const [day, mam] = split(prev_round_time);
           auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
                                                      stp.location_idx());
