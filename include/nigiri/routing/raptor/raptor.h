@@ -667,8 +667,8 @@ private:
       auto const l_idx = location_idx_t{i};
       if constexpr (Rt) {
         if (prf_idx_ != 0U && (kFwd ? rtt_->has_td_footpaths_out_
-                                   : rtt_->has_td_footpaths_in_)[prf_idx_]
-                                 .test(l_idx)) {
+                                    : rtt_->has_td_footpaths_in_)[prf_idx_]
+                                  .test(l_idx)) {
           return;
         }
       }
