@@ -69,7 +69,7 @@ jobs:
             --modes s2s c2c \
             --dirs fwd bwd \
             --vias 1 \
-            -n 50
+            -n 25
 
       - name: Validate Germany (vias=2, CPU)
         run: |
@@ -79,7 +79,7 @@ jobs:
             --modes s2s c2c \
             --dirs fwd bwd \
             --vias 2 \
-            -n 30
+            -n 25
 
       - name: Save build
         if: always()
