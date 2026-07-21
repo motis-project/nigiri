@@ -86,6 +86,7 @@ struct raptor {
         lb_{lb},
         via_stops_{via_stops},
         base_{base},
+        bounds_{std::as_const(state_).template get_bounds<Vias>()},
         allowed_claszes_{allowed_claszes},
         require_bike_transport_{require_bike_transport},
         require_car_transport_{require_car_transport},
@@ -109,12 +110,62 @@ struct raptor {
 
   algo_stats_t get_stats() const { return stats_; }
 
-  void set_bounds(
-      flat_matrix_view<std::array<delta_t, Vias + 1U> const> const bounds,
-      unsigned const last_round) {
-    bounds_ = bounds;
-    bounds_last_k_ = last_round;
+  void fill_bounds(std::size_t const n_rows) {
+    auto& s = state_;
+    auto const n = static_cast<std::size_t>(s.n_locations_);
+
+    auto const td_stops = rtt_ != nullptr && prf_idx_ != 0U
+                              ? &(kFwd ? rtt_->has_td_footpaths_out_
+                                       : rtt_->has_td_footpaths_in_)[prf_idx_]
+                              : nullptr;
+
+    auto const src = std::as_const(s).template get_round_times<Vias>();
+    auto dst = s.template get_bounds<Vias>();
+
+    // Copy k=0 verbatim (rest is folded from here).
+    for (auto x = std::size_t{0U}; x != n; ++x) {
+      dst[0U][x] = src[0U][x];
+    }
+
+    // Fill gaps from lower rounds to higher rounds.
+    for (auto k = std::size_t{1U}; k < n_rows; ++k) {
+      for (auto x = std::size_t{0U}; x != n; ++x) {
+        for (auto v = std::size_t{0U}; v != Vias + 1U; ++v) {
+          dst[k][x][v] = kFwd ? std::min(src[k][x][v], dst[k - 1U][x][v])
+                              : std::max(src[k][x][v], dst[k - 1U][x][v]);
+        }
+      }
+    }
+
+    if constexpr (Vias != 0U) {
+      // Fill gaps from higher vias to lower vias.
+      for (auto k = std::size_t{0U}; k != n_rows; ++k) {
+        for (auto x = std::size_t{0U}; x != n; ++x) {
+          auto& slots = dst[k][x];
+          for (auto v = std::size_t{Vias}; v != 0U; --v) {
+            slots[v - 1U] = kFwd ? std::min(slots[v - 1U], slots[v])
+                                 : std::max(slots[v - 1U], slots[v]);
+          }
+        }
+      }
+    }
+
+    if (td_stops != nullptr) {
+      // td_footpaths have no upper bound -> disable pruning
+      constexpr auto const kPassAll = kFwd
+                                          ? std::numeric_limits<delta_t>::min()
+                                          : std::numeric_limits<delta_t>::max();
+      td_stops->for_each_set_bit([&](location_idx_t const x) {
+        for (auto k = std::size_t{0U}; k != n_rows; ++k) {
+          for (auto v = std::size_t{0U}; v != Vias + 1U; ++v) {
+            dst[k][to_idx(x)][v] = kPassAll;
+          }
+        }
+      });
+    }
   }
+
+  void set_bounds(unsigned const last_round) { bounds_last_k_ = last_round; }
 
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
@@ -340,7 +391,7 @@ private:
                      std::size_t const l,
                      delta_t const t,
                      std::size_t const v) const {
-    if (bounds_.entries_.empty()) {
+    if (bounds_last_k_ == 0U) {
       return true;
     }
 
@@ -370,9 +421,9 @@ private:
       return true;
     }
 
-    auto const& fps = (kFwd ? tt_.locations_.footpaths_in_
-                            : tt_.locations_.footpaths_out_)[prf_idx_]
-                                                            [location_idx_t{l}];
+    auto const& fps =
+        (kFwd ? tt_.locations_.footpaths_in_
+              : tt_.locations_.footpaths_out_)[prf_idx_][location_idx_t{l}];
     for (auto const& fp : fps) {
       auto const target = to_idx(fp.target());
       auto const d = dir(adjusted_transfer_time(
@@ -1376,7 +1427,7 @@ private:
   std::array<delta_t, kMaxTransfers + 2> time_at_dest_;
   day_idx_t base_;
   raptor_stats stats_;
-  flat_matrix_view<std::array<delta_t, Vias + 1U> const> bounds_{};
+  flat_matrix_view<std::array<delta_t, Vias + 1U> const> bounds_;
   unsigned bounds_last_k_{0U};
   profile_idx_t prf_idx_{0U};
   clasz_mask_t allowed_claszes_;

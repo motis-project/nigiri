@@ -52,12 +52,6 @@ struct gpu_raptor_state {
   std::unique_ptr<impl> impl_;
 };
 
-template <direction SearchDir>
-delta_t const* fill_bounds(gpu_raptor_state&,
-                           std::size_t n_rows,
-                           rt_timetable const*,
-                           profile_idx_t);
-
 template <direction SearchDir, bool WithBounds>
 struct gpu_raptor {
   using algo_state_t = gpu_raptor_state;
@@ -88,10 +82,11 @@ struct gpu_raptor {
   void reset_arrivals();
   void next_start_time();
 
-  void set_bounds(delta_t const* const bounds, unsigned const last_round)
+  void fill_bounds(std::size_t n_rows);
+
+  void set_bounds(unsigned const last_round)
     requires(WithBounds)
   {
-    bounds_ = bounds;
     bounds_last_k_ = last_round;
   }
 
@@ -124,7 +119,8 @@ private:
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
 
-  delta_t const* bounds_{nullptr};
+  profile_idx_t prf_idx_{0U};
+  delta_t const* bounds_;
   unsigned bounds_last_k_{0U};
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;

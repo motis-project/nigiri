@@ -28,61 +28,6 @@ namespace nigiri::routing {
 
 constexpr auto const kPruneWithPingBounds = true;
 
-template <direction PingDir, via_offset_t Vias>
-flat_matrix_view<std::array<delta_t, Vias + 1U> const> fill_bounds(
-    raptor_state& s,
-    std::size_t const n_rows,
-    bitvec_map<location_idx_t> const* const td_stops) {
-  constexpr auto const kFwd = PingDir == direction::kForward;
-  auto const n = static_cast<std::size_t>(s.n_locations_);
-
-  auto const src = std::as_const(s).get_round_times<Vias>();
-  auto dst = s.get_bounds<Vias>();
-
-  // Copy k=0 verbatim (rest is folded from here).
-  for (auto x = std::size_t{0U}; x != n; ++x) {
-    dst[0U][x] = src[0U][x];
-  }
-
-  // Fill gaps from lower rounds to higher rounds.
-  for (auto k = std::size_t{1U}; k < n_rows; ++k) {
-    for (auto x = std::size_t{0U}; x != n; ++x) {
-      for (auto v = std::size_t{0U}; v != Vias + 1U; ++v) {
-        dst[k][x][v] = kFwd ? std::min(src[k][x][v], dst[k - 1U][x][v])
-                            : std::max(src[k][x][v], dst[k - 1U][x][v]);
-      }
-    }
-  }
-
-  if constexpr (Vias != 0U) {
-    // Fill gaps from higher vias to lower vias.
-    for (auto k = std::size_t{0U}; k != n_rows; ++k) {
-      for (auto x = std::size_t{0U}; x != n; ++x) {
-        auto& slots = dst[k][x];
-        for (auto v = std::size_t{Vias}; v != 0U; --v) {
-          slots[v - 1U] = kFwd ? std::min(slots[v - 1U], slots[v])
-                               : std::max(slots[v - 1U], slots[v]);
-        }
-      }
-    }
-  }
-
-  if (td_stops != nullptr) {
-    // td_footpaths have no upper bound -> disable pruning
-    constexpr auto const kPassAll = kFwd ? std::numeric_limits<delta_t>::min()
-                                         : std::numeric_limits<delta_t>::max();
-    td_stops->for_each_set_bit([&](location_idx_t const x) {
-      for (auto k = std::size_t{0U}; k != n_rows; ++k) {
-        for (auto v = std::size_t{0U}; v != Vias + 1U; ++v) {
-          dst[k][to_idx(x)][v] = kPassAll;
-        }
-      }
-    });
-  }
-
-  return std::as_const(s).get_bounds<Vias>();
-}
-
 auto to_tuple(journey const& j) {
   return std::tuple{j.departure_time(), j.arrival_time(), j.transfers_};
 }
@@ -253,10 +198,6 @@ routing_result pong(timetable const& tt,
   // ========
   // >> PLAY!
   // --------
-  using bounds_t = std::conditional_t<
-      kGpu, delta_t const*,
-      flat_matrix_view<std::array<delta_t, Vias + 1U> const>>;
-  [[maybe_unused]] auto bounds = bounds_t{};
   auto starts = std::vector<start>{};
   auto result = routing_result{
       .journeys_ = &s_state.results_,
@@ -295,7 +236,6 @@ routing_result pong(timetable const& tt,
     // ----
     // PING
     // ----
-
     trace_pong("START_TIME={}", start_time);
 
     starts.clear();
@@ -342,25 +282,10 @@ routing_result pong(timetable const& tt,
     // ----
     // PONG
     // ----
-    if (kPruneWithPingBounds) {
+    if constexpr (kPruneWithPingBounds) {
       // Has to happen before pong.reset_arrivals() wipes the shared
       // round_times the ping search just filled.
-      if constexpr (kGpu) {
-        bounds = gpu::fill_bounds<SearchDir>(
-            r_state, ping_results.begin()->transfers_ + std::size_t{1U}, rtt,
-            q.prf_idx_);
-      } else {
-        auto td_stops = static_cast<bitvec_map<location_idx_t> const*>(nullptr);
-        if constexpr (Rt) {
-          if (q.prf_idx_ != 0U) {
-            td_stops = &(kFwd ? rtt->has_td_footpaths_out_
-                              : rtt->has_td_footpaths_in_)[q.prf_idx_];
-          }
-        }
-        bounds = fill_bounds<SearchDir, Vias>(
-            r_state, ping_results.begin()->transfers_ + std::size_t{1U},
-            td_stops);
-      }
+      ping.fill_bounds(ping_results.begin()->transfers_ + std::size_t{1U});
     }
     q.flip_dir();
     pong.reset_arrivals();
@@ -407,7 +332,7 @@ routing_result pong(timetable const& tt,
       trace_pong("-- PING RESULT: {}", to_tuple(ping_j));
 
       if constexpr (kPruneWithPingBounds) {
-        pong.set_bounds(bounds, ping_j.transfers_ + 1U);
+        pong.set_bounds(ping_j.transfers_ + 1U);
       }
       run_pong(pong, ping_j);
     }
