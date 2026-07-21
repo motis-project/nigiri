@@ -356,8 +356,6 @@ struct gpu_raptor_state::impl {
     route_mark_.resize(tt_.n_routes_ / 32U + 1U);
     any_marked_.resize(1U);
     done_.resize(1U);
-    // ping-bounds buffer for the pong (see fill_bounds): allocated up front
-    // like everything else so device memory cannot grow after startup
     bounds_dev_.ensure(
         static_cast<std::size_t>(tt_.n_locations_) * (kMaxTransfers + 2U),
         stream_);
