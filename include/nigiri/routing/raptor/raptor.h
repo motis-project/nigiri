@@ -68,7 +68,8 @@ struct raptor {
       bool const require_bike_transport,
       bool const require_car_transport,
       bool const is_wheelchair,
-      transfer_time_settings const& tts)
+      transfer_time_settings const& tts,
+      profile_idx_t const prf_idx)
       : tt_{tt},
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},
@@ -87,6 +88,7 @@ struct raptor {
         via_stops_{via_stops},
         base_{base},
         bounds_{std::as_const(state_).template get_bounds<Vias>()},
+        prf_idx_{prf_idx},
         allowed_claszes_{allowed_claszes},
         require_bike_transport_{require_bike_transport},
         require_car_transport_{require_car_transport},
@@ -201,9 +203,7 @@ struct raptor {
   void execute(unixtime_t const start_time,
                std::uint8_t const max_transfers,
                unixtime_t const worst_time_at_dest,
-               profile_idx_t const prf_idx,
                pareto_set<journey>& results) {
-    prf_idx_ = prf_idx;
     auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
@@ -312,8 +312,8 @@ struct raptor {
 
       update_transfers(k);
       update_intermodal_footpaths(k);
-      update_footpaths(k, prf_idx);
-      update_td_offsets(k, prf_idx);
+      update_footpaths(k);
+      update_td_offsets(k);
 
       trace_print_state_after_round();
     }
@@ -662,19 +662,19 @@ private:
     });
   }
 
-  void update_footpaths(unsigned const k, profile_idx_t const prf_idx) {
+  void update_footpaths(unsigned const k) {
     state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
       auto const l_idx = location_idx_t{i};
       if constexpr (Rt) {
-        if (prf_idx != 0U && (kFwd ? rtt_->has_td_footpaths_out_
-                                   : rtt_->has_td_footpaths_in_)[prf_idx]
+        if (prf_idx_ != 0U && (kFwd ? rtt_->has_td_footpaths_out_
+                                   : rtt_->has_td_footpaths_in_)[prf_idx_]
                                  .test(l_idx)) {
           return;
         }
       }
 
-      auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx][l_idx]
-                             : tt_.locations_.footpaths_in_[prf_idx][l_idx];
+      auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx_][l_idx]
+                             : tt_.locations_.footpaths_in_[prf_idx_][l_idx];
 
       for (auto const& fp : fps) {
         ++stats_.n_footpaths_visited_;
@@ -758,25 +758,25 @@ private:
     });
   }
 
-  void update_td_offsets(unsigned const k, profile_idx_t const prf_idx) {
+  void update_td_offsets(unsigned const k) {
     if constexpr (!Rt) {
       return;
     }
 
-    if (prf_idx == 0U) {
+    if (prf_idx_ == 0U) {
       return;
     }
 
     state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
       auto const l_idx = location_idx_t{i};
       if (!(kFwd ? rtt_->has_td_footpaths_out_
-                 : rtt_->has_td_footpaths_in_)[prf_idx]
+                 : rtt_->has_td_footpaths_in_)[prf_idx_]
                .test(l_idx)) {
         return;
       }
 
-      auto const& fps = kFwd ? rtt_->td_footpaths_out_[prf_idx][l_idx]
-                             : rtt_->td_footpaths_in_[prf_idx][l_idx];
+      auto const& fps = kFwd ? rtt_->td_footpaths_out_[prf_idx_][l_idx]
+                             : rtt_->td_footpaths_in_[prf_idx_][l_idx];
 
       for (auto v = 0U; v != Vias + 1; ++v) {
         auto const tmp_time = tmp_[i][v];
@@ -1011,8 +1011,7 @@ private:
 
       if ((kFwd && stop_idx != 0U) ||
           (kBwd && stop_idx != stop_seq.size() - 1U)) {
-        // passing a no-stay via stop moves the ride up one via slot (see
-        // update_route: not gated on can_finish)
+        // passing a no-stay via stop moves the ride up one via slot
         if constexpr (Vias != 0U) {
           for (auto v = Vias; v != 0U; --v) {
             if (et[v - 1U] && is_via_[v - 1U][l_idx] &&
@@ -1037,7 +1036,7 @@ private:
                                 time_at_dest_[k]) &&
                 within_bounds(k, l_idx, by_transport, v)) {
               trace_upd(
-                  "\u250a \u2502k={}    RT | name={}, dbg={}, "
+                  "┊ │k={}    RT | name={}, dbg={}, "
                   "time_by_transport={}, "
                   "BETTER THAN current_best={} => update, {} marking station "
                   "{}!\n",
@@ -1155,7 +1154,7 @@ private:
           }
           if (!stp.can_finish<SearchDir>(is_wheelchair_)) {
             trace(
-                "\u250a \u2502k={} cs={}    *** NO UPD: in_allowed={}, "
+                "┊ │k={} cs={}    *** NO UPD: in_allowed={}, "
                 "out_allowed={}, label_allowed={}\n",
                 k, cs, stp.in_allowed(), stp.out_allowed(),
                 (kFwd ? stp.out_allowed() : stp.in_allowed()));
@@ -1177,7 +1176,7 @@ private:
                               time_at_dest_[k]) &&
               within_bounds(k, l_idx, by_transport, cs)) {
             trace_upd(
-                "\u250a \u2502k={} cs={}    name={}, dbg={}, "
+                "┊ │k={} cs={}    name={}, dbg={}, "
                 "time_by_transport={}, "
                 "BETTER THAN current_best={} => update, {} marking station "
                 "{}!\n",
@@ -1195,7 +1194,7 @@ private:
             any_marked = true;
           } else {
             trace(
-                "\u250a \u2502k={} cs={}    *** NO UPD: at={}, name={}, "
+                "┊ │k={} cs={}    *** NO UPD: at={}, name={}, "
                 "dbg={}, "
                 "time_by_transport={}, current_best={}\n",
                 k, cs, loc{tt_, location_idx_t{l_idx}},
@@ -1238,11 +1237,11 @@ private:
                                 kFwd ? event_type::kDep : event_type::kArr),
                    et_time_at_stop))) {
             fresh = new_et;
-            trace("\u250a \u2502k={} v={}    update et: time_at_stop={}\n", k,
-                  v, to_unix(et_time_at_stop));
+            trace("┊ │k={} v={}    update et: time_at_stop={}\n", k, v,
+                  to_unix(et_time_at_stop));
           } else if (new_et.is_valid()) {
             trace(
-                "\u250a \u2502k={} v={}    update et: no update "
+                "┊ │k={} v={}    update et: no update "
                 "time_at_stop={}\n",
                 k, v, to_unix(et_time_at_stop));
           }

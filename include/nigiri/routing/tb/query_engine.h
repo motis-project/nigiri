@@ -94,7 +94,8 @@ struct query_engine {
                bool,
                bool,
                bool,
-               transfer_time_settings);
+               transfer_time_settings,
+               profile_idx_t);
 
   algo_stats_t get_stats() const { return stats_; }
 
@@ -113,7 +114,6 @@ struct query_engine {
   void execute(unixtime_t const start_time,
                std::uint8_t const max_transfers,
                unixtime_t const worst_time_at_dest,
-               profile_idx_t const,
                pareto_set<journey>& results);
 
   void reconstruct(query const& q, journey& j) const;

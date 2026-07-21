@@ -76,7 +76,8 @@ struct gpu_raptor {
       bool const require_bike_transport,
       bool const require_car_transport,
       bool const is_wheelchair,
-      transfer_time_settings const& tts);
+      transfer_time_settings const& tts,
+      profile_idx_t const prf_idx);
 
   raptor_stats get_stats() const { return stats_; }
   void reset_arrivals();
@@ -95,7 +96,6 @@ struct gpu_raptor {
   void execute(unixtime_t start_time,
                std::uint8_t max_transfers,
                unixtime_t worst_time_at_dest,
-               profile_idx_t,
                pareto_set<journey>& results);
 
   void reconstruct(query const&, journey&);
@@ -119,7 +119,7 @@ private:
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
 
-  profile_idx_t prf_idx_{0U};
+  profile_idx_t prf_idx_;
   delta_t const* bounds_;
   unsigned bounds_last_k_{0U};
 

@@ -139,7 +139,8 @@ routing_result pong(timetable const& tt,
                           q.require_bike_transport_,
                           q.require_car_transport_,
                           q.prf_idx_ == 2U,
-                          q.transfer_time_settings_};
+                          q.transfer_time_settings_,
+                          q.prf_idx_};
 
   // ====
   // PONG
@@ -191,7 +192,8 @@ routing_result pong(timetable const& tt,
                           q.require_bike_transport_,
                           q.require_car_transport_,
                           q.prf_idx_ == 2U,
-                          q.transfer_time_settings_};
+                          q.transfer_time_settings_,
+                          q.prf_idx_};
 
   q.flip_dir();
 
@@ -253,7 +255,7 @@ routing_result pong(timetable const& tt,
     auto const worst_time_at_dest =
         start_time + (kFwd ? 1 : -1) * (q.max_travel_time_ + duration_t{1});
     auto ping_results = pareto_set<journey>{};
-    ping.execute(start_time, q.max_transfers_, worst_time_at_dest, q.prf_idx_,
+    ping.execute(start_time, q.max_transfers_, worst_time_at_dest,
                  ping_results);
     kFwd ? ++result.search_stats_.n_execute_fwd_
          : ++result.search_stats_.n_execute_bwd_;
@@ -303,7 +305,7 @@ routing_result pong(timetable const& tt,
         po.add_start(s.stop_, s.time_at_stop_);
       }
       po.execute(ping_j.dest_time_, ping_j.transfers_,
-                 ping_j.start_time_ - duration_t{kFwd ? 1 : -1}, q.prf_idx_,
+                 ping_j.start_time_ - duration_t{kFwd ? 1 : -1},
                  s_state.results_);
       kFwd ? ++result.search_stats_.n_execute_bwd_
            : ++result.search_stats_.n_execute_fwd_;

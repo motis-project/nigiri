@@ -525,7 +525,8 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
     bool const require_bike_transport,
     bool const require_car_transport,
     bool const is_wheelchair,
-    transfer_time_settings const& tts)
+    transfer_time_settings const& tts,
+    profile_idx_t const prf_idx)
     : tt_{tt},
       rtt_{rtt},
       gpu_rtt_{rtt == nullptr ? nullptr
@@ -540,6 +541,7 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
       require_car_transport_{require_car_transport},
       is_wheelchair_{is_wheelchair},
       transfer_time_settings_{tts},
+      prf_idx_{prf_idx},
       bounds_{state.impl_->bounds_dev_.ptr_} {
   utl::verify(rtt == nullptr || gpu_rtt_ != nullptr,
               "GPU raptor: rt search requires the uploaded device rt "
@@ -788,9 +790,7 @@ template <direction SearchDir, bool WithBounds>
 void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
                                                 std::uint8_t max_transfers,
                                                 unixtime_t worst_time_at_dest,
-                                                profile_idx_t prf_idx,
                                                 pareto_set<journey>& results) {
-  prf_idx_ = prf_idx;
   auto& s = *state_.impl_;
 
   // Copy starts.
@@ -815,7 +815,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
   auto const rt_active = gpu_rtt_ != nullptr;
   auto const with_td_dest = s.td_dest_locs_dev_[kDirIdx].size() > 0U;
   auto const with_td_fps =
-      rt_active && prf_idx != 0U && gpu_rtt_->impl_->has_td_fps_[prf_idx];
+      rt_active && prf_idx_ != 0U && gpu_rtt_->impl_->has_td_fps_[prf_idx_];
   auto r = raptor_impl<SearchDir, WithBounds>{
       .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
       .done_ = thrust::raw_pointer_cast(s.done_.data()),
@@ -825,7 +825,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       .transfer_time_settings_ = transfer_time_settings_,
       .max_transfers_ = max_transfers,
       .allowed_claszes_ = allowed_claszes_,
-      .prf_idx_ = prf_idx,
+      .prf_idx_ = prf_idx_,
       .require_bike_transport_ = require_bike_transport_,
       .require_car_transport_ = require_car_transport_,
       .base_ = base_,
@@ -1044,15 +1044,15 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     }
 
     // Shorten td footpaths to their actual duration (excluding waiting).
-    if (rtt_ != nullptr && prf_idx != 0U &&
-        !(SearchDir == direction::kForward ? rtt_->td_footpaths_in_[prf_idx]
-                                           : rtt_->td_footpaths_out_[prf_idx])
+    if (rtt_ != nullptr && prf_idx_ != 0U &&
+        !(SearchDir == direction::kForward ? rtt_->td_footpaths_in_[prf_idx_]
+                                           : rtt_->td_footpaths_out_[prf_idx_])
              .empty()) {
       constexpr auto const kIsFwd = SearchDir == direction::kForward;
-      auto const& has_td = kIsFwd ? rtt_->has_td_footpaths_in_[prf_idx]
-                                  : rtt_->has_td_footpaths_out_[prf_idx];
-      auto const& td_fps = kIsFwd ? rtt_->td_footpaths_in_[prf_idx]
-                                  : rtt_->td_footpaths_out_[prf_idx];
+      auto const& has_td = kIsFwd ? rtt_->has_td_footpaths_in_[prf_idx_]
+                                  : rtt_->has_td_footpaths_out_[prf_idx_];
+      auto const& td_fps = kIsFwd ? rtt_->td_footpaths_in_[prf_idx_]
+                                  : rtt_->td_footpaths_out_[prf_idx_];
       for (auto& lg : j.legs_) {
         if (!std::holds_alternative<footpath>(lg.uses_)) {
           continue;
