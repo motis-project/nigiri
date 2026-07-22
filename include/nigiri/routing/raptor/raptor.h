@@ -219,20 +219,18 @@ struct raptor {
           best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
         }
       }
-      is_dest_.for_each_set_bit([&](std::uint64_t const i) {
-        update_time_at_dest(k, best_[i][Vias]);
-      });
+      is_dest_.for_each_set_bit(
+          [&](auto const i) { update_time_at_dest(k, best_[i][Vias]); });
 
       auto any_marked = false;
-      state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
-        auto const idx = static_cast<std::uint32_t>(i);
+      state_.station_mark_.for_each_set_bit([&](auto const i) {
         auto b = kInvalid;
         for (auto v = 0U; v != Vias + 1; ++v) {
           b = get_best(round_times_[k - 1][i][v], b);
         }
-        if (!lb_reachable(idx) ||
-            !is_better(b + dir(get_lb(idx)), time_at_dest_[k])) {
-          state_.station_mark_.set(idx, false);
+        if (!lb_reachable(i) ||
+            !is_better(b + dir(get_lb(i)), time_at_dest_[k])) {
+          state_.station_mark_.set(i, false);
           return;
         }
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
@@ -673,7 +671,7 @@ private:
   }
 
   void update_footpaths(unsigned const k) {
-    state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+    state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
       auto const l_idx = location_idx_t{i};
       if constexpr (Rt) {
         if (prf_idx_ != 0U && (kFwd ? rtt_->has_td_footpaths_out_
@@ -687,8 +685,8 @@ private:
       for (auto v = 0U; v != Vias + 1; ++v) {
         src = get_best(tmp_[i][v], src);
       }
-      if (!lb_reachable(to_idx(l_idx)) ||
-          !is_better(src + dir(get_lb(to_idx(l_idx))), time_at_dest_[k])) {
+      if (!lb_reachable(i) ||
+          !is_better(src + dir(get_lb(i)), time_at_dest_[k])) {
         return;
       }
 
@@ -786,7 +784,7 @@ private:
       return;
     }
 
-    state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+    state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
       auto const l_idx = location_idx_t{i};
       if (!(kFwd ? rtt_->has_td_footpaths_out_
                  : rtt_->has_td_footpaths_in_)[prf_idx_]
@@ -798,8 +796,8 @@ private:
       for (auto v = 0U; v != Vias + 1; ++v) {
         src = get_best(tmp_[i][v], src);
       }
-      if (!lb_reachable(to_idx(l_idx)) ||
-          !is_better(src + dir(get_lb(to_idx(l_idx))), time_at_dest_[k])) {
+      if (!lb_reachable(i) ||
+          !is_better(src + dir(get_lb(i)), time_at_dest_[k])) {
         return;
       }
 

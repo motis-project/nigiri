@@ -76,7 +76,7 @@ query_engine<UseLowerBounds>::query_engine(
   };
 
   if (dist_to_dest.empty()) /* Destination is stop. */ {
-    is_dest_.for_each_set_bit([&](std::size_t const i) {
+    is_dest_.for_each_set_bit([&](auto const i) {
       auto const l = location_idx_t{i};
       tb_debug("{} is dest!", loc{tt_, l});
       mark_dest_segments(l, duration_t{0U});
