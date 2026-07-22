@@ -322,10 +322,10 @@ utl::generator<std::vector<journey::leg>> route_gen(
       }
       auto const start_day =
           day_idx_t{static_cast<day_idx_t::value_t>(day_off)};
-      auto const& bitfields = rtt != nullptr ? rtt->bitfields_ : tt.bitfields_;
-      auto const traffic_idx = rtt != nullptr ? rtt->transport_traffic_days_[t]
-                                              : tt.transport_traffic_days_[t];
-      if (to_idx(start_day) >= bitfields[traffic_idx].size()) {
+      auto const& traffic_days =
+          rtt != nullptr ? rtt->traffic_days(rtt->transport_traffic_days_[t])
+                         : tt.bitfields_[tt.transport_traffic_days_[t]];
+      if (to_idx(start_day) >= traffic_days.size()) {
         continue;
       }
       auto const transport_active = rtt != nullptr
