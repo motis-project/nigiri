@@ -37,7 +37,7 @@ inline constexpr auto kAllLanes = ~std::uint32_t{0};
 using td_dest_group_idx_t = cista::strong<std::uint32_t, struct td_dest_group_>;
 using td_dest_offsets_t = vecvec<td_dest_group_idx_t, td_offset>;
 
-template <direction SearchDir>
+template <direction SearchDir, bool WithBounds>
 struct raptor_impl {
   static constexpr via_offset_t Vias = 0U;
 
@@ -56,6 +56,59 @@ struct raptor_impl {
   }
   __device__ __forceinline__ auto min(auto x, auto y) { return x <= y ? x : y; }
   __device__ __forceinline__ auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
+
+  // For ping: comparison has to be <= instead of < so cells with equal arrival
+  // times are still populated. Otherwise, the ping bounds are too strict for
+  // pong to still find all optimal journeys.
+  //
+  // Loose pruning with <= instead of < is always enabled on the GPU.
+  // Measured to have ~ the same performance as strict pruning.
+  __device__ __forceinline__ bool is_better_loose(auto a, auto b) {
+    return is_better_or_eq(a, b);
+  }
+
+  __device__ bool within_bounds(unsigned const k,
+                                location_idx_t const l,
+                                delta_t const t) {
+    if constexpr (!WithBounds) {
+      return true;
+    } else {
+      auto const* const row = bounds_ + (bounds_last_k_ - k) * tt_.n_locations_;
+
+      // FWD arrival + 5min transfer = earliest departure
+      //   10:00      10:05
+      // >>>>>|-------->*>>>>>
+      //
+      // BWD departure - 5min transfer = latest arrival
+      //   10:00      10:05
+      // <<<<<*<--------|<<<<<
+      //
+      // -> 10:00 < 10:05 would get rejected.
+      // -> ping journey would not be found in pong
+      // -> find a self-transfer or footpath: t - duration is within the bounds
+
+      auto const transfer = dir(adjusted_transfer_time(
+          transfer_time_settings_,
+          static_cast<int>(tt_.transfer_time_[l].count())));
+      if (is_better_or_eq(static_cast<int>(t),
+                          static_cast<int>(row[to_idx(l)]) + transfer)) {
+        return true;
+      }
+
+      auto const fps = kFwd ? tt_.footpaths_in_[prf_idx_][l]
+                            : tt_.footpaths_out_[prf_idx_][l];
+      for (auto const& fp : fps) {
+        auto const d = dir(adjusted_transfer_time(
+            transfer_time_settings_, static_cast<int>(fp.duration().count())));
+        if (is_better_or_eq(static_cast<int>(t),
+                            static_cast<int>(row[to_idx(fp.target())]) + d)) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+  }
 
   __device__ void init_arrivals(unixtime_t const worst_time_at_dest) {
     auto const global_t_id = get_global_thread_id();
@@ -430,7 +483,8 @@ struct raptor_impl {
       if (i != 0U && et && stp.can_finish<SearchDir>(IsWheelchair)) {
         auto const by_transport = rt_time_at_stop(
             rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-        if (is_better(by_transport, time_at_dest_.get(k))) {
+        if (is_better_loose(by_transport, time_at_dest_.get(k)) &&
+            within_bounds(k, l, by_transport)) {
           tmp_.update_min(
               l, 0U, by_transport,
               make_transport_payload(encode_rt_bc_transport(to_idx(rt_t)),
@@ -474,11 +528,12 @@ struct raptor_impl {
                                                   delta_t const t_at_dest) {
     auto const target = to_idx(target_l);
     auto const fp_target_time = clamp(tmp_time + dir(duration));
-    if (!is_better(fp_target_time, t_at_dest)) {
+    if (!is_better_loose(fp_target_time, t_at_dest)) {
       return;
     }
 
-    if (is_better(fp_target_time, best_.get(target_l, Vias))) {
+    if (is_better(fp_target_time, best_.get(target_l, Vias)) &&
+        within_bounds(k, target_l, fp_target_time)) {
       round_times_.update_min(k, target_l, Vias, fp_target_time, bc);
       best_.update_min(target_l, Vias, fp_target_time);
       station_mark_.mark(target);
@@ -575,8 +630,9 @@ struct raptor_impl {
           {
             auto const fp_target_time = static_cast<delta_t>(
                 tmp_time + ((!intermodal && is_dest) ? 0 : loc_transfer_time));
-            if (is_better(fp_target_time, t_at_dest) &&
-                is_better(fp_target_time, best_.get(l, Vias))) {
+            if (is_better_loose(fp_target_time, t_at_dest) &&
+                is_better(fp_target_time, best_.get(l, Vias)) &&
+                within_bounds(k, l, fp_target_time)) {
               round_times_.update_min(k, l, Vias, fp_target_time, bc);
               best_.update_min(l, Vias, fp_target_time);
               station_mark_.mark(my_i);
@@ -646,9 +702,6 @@ struct raptor_impl {
     }
   }
 
-  // IsWheelchair == the kernel's dispatch flag -> stop accessibility checks
-  // constant-fold. WithSections + section_mask = the per-route section
-  // filters of the query's required modes (bike/car/wheelchair).
   template <bool IsWheelchair, bool WithSections>
   __device__ bool update_route_warp(
       unsigned const k,
@@ -751,7 +804,8 @@ struct raptor_impl {
           auto const t = unpack_et(r, static_cast<std::uint32_t>(et >> 32U));
           auto const by_transport = time_at_stop(
               r, t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-          if (is_better(by_transport, time_at_dest_.get(k))) {
+          if (is_better_loose(by_transport, time_at_dest_.get(k)) &&
+              within_bounds(k, l, by_transport)) {
             auto const board_stop = static_cast<stop_idx_t>(
                 kFwd ? et_board_i : n - 1U - et_board_i);
             tmp_.update_min(
@@ -817,7 +871,10 @@ struct raptor_impl {
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
-        if (is_better_or_eq(time_at_dest_.get(k), to_delta(day, ev_mam))) {
+        // an event equal to time-at-dest must still be boardable
+        // (equal-arrival coverage for the pong)
+        auto const ev_t = to_delta(day, ev_mam);
+        if (is_better(time_at_dest_.get(k), ev_t)) {
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
@@ -840,7 +897,11 @@ struct raptor_impl {
 
   __device__ __forceinline__ bool is_transport_active(
       transport_idx_t const t, std::size_t const day) const {
-    return tt_.bitfields_[tt_.transport_traffic_days_[t]].test(day);
+    auto const i = to_idx(tt_.transport_traffic_days_[t]);
+    return ((i & kRtBitfieldFlag) != 0U
+                ? rtt_.bitfields_[bitfield_idx_t{i & ~kRtBitfieldFlag}]
+                : tt_.bitfields_[bitfield_idx_t{i}])
+        .test(day);
   }
 
   __device__ __forceinline__ bool is_route_active(route_idx_t const r,
@@ -1084,6 +1145,10 @@ struct raptor_impl {
   // marked routes this round
   cuda::std::span<std::uint32_t> route_list_;
   std::uint32_t* route_list_count_;
+
+  // ping bounds
+  delta_t const* bounds_{nullptr};
+  std::uint32_t bounds_last_k_{0U};
 };
 
 }  // namespace nigiri::routing::gpu

@@ -165,7 +165,8 @@ struct search {
         require_bikes_allowed,
         require_cars_allowed,
         q_.prf_idx_ == 2U,
-        tts};
+        tts,
+        q_.prf_idx_};
   }
 
   search(timetable const& tt,
@@ -449,7 +450,7 @@ private:
                                (std::min(fastest_direct_, q_.max_travel_time_) +
                                 duration_t{1});
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
-                        q_.prf_idx_, state_.results_);
+                        state_.results_);
           kFwd ? ++stats_.n_execute_fwd_ : ++stats_.n_execute_bwd_;
 
           for (auto& j : state_.results_) {

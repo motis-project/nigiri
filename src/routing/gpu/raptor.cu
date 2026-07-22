@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <iostream>
+#include <limits>
 #include <optional>
 
 // date/date.h (pulled in transitively via nigiri/types.h above) leaks a
@@ -237,19 +238,18 @@ struct gpu_rt_timetable::impl {
 
     // Copy td-footpaths.
     for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
-      if (!rtt.td_footpaths_out_[p].empty()) {
-        td_footpaths_out_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_out_[p]};
-        has_td_out_[p] = to_device(rtt.has_td_footpaths_out_[p].blocks_);
-      }
-
-      if (!rtt.td_footpaths_in_[p].empty()) {
-        td_footpaths_in_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_in_[p]};
-        has_td_in_[p] = to_device(rtt.has_td_footpaths_in_[p].blocks_);
-      }
-
       // for the host-side kernel dispatch
       has_td_fps_[p] = rtt.has_td_footpaths_out_[p].any() ||
                        rtt.has_td_footpaths_in_[p].any();
+
+      if (!has_td_fps_[p]) {
+        continue;
+      }
+
+      td_footpaths_out_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_out_[p]};
+      has_td_out_[p] = to_device(rtt.has_td_footpaths_out_[p].blocks_);
+      td_footpaths_in_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_in_[p]};
+      has_td_in_[p] = to_device(rtt.has_td_footpaths_in_[p].blocks_);
     }
 
     // device-resident view struct (the launch-parameter struct only carries
@@ -355,6 +355,9 @@ struct gpu_raptor_state::impl {
     route_mark_.resize(tt_.n_routes_ / 32U + 1U);
     any_marked_.resize(1U);
     done_.resize(1U);
+    bounds_dev_.ensure(
+        static_cast<std::size_t>(tt_.n_locations_) * (kMaxTransfers + 2U),
+        stream_);
 
     // is_dest + dist_to_dest differ between ping vs pong -> handled in
     // upload_query (called by the gpu_raptor ctor -> one per dir)
@@ -495,6 +498,8 @@ struct gpu_raptor_state::impl {
   thrust::device_vector<std::uint32_t> route_list_;
   thrust::device_vector<std::uint32_t> route_list_count_;
 
+  device_buffer<delta_t> bounds_dev_;
+
   cudaStream_t stream_;
 };
 
@@ -503,8 +508,8 @@ gpu_raptor_state::gpu_raptor_state(gpu_timetable const& gtt)
 
 gpu_raptor_state::~gpu_raptor_state() = default;
 
-template <direction SearchDir>
-gpu_raptor<SearchDir>::gpu_raptor(
+template <direction SearchDir, bool WithBounds>
+gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
     timetable const& tt,
     rt_timetable const* rtt,
     gpu_raptor_state& state,
@@ -519,7 +524,8 @@ gpu_raptor<SearchDir>::gpu_raptor(
     bool const require_bike_transport,
     bool const require_car_transport,
     bool const is_wheelchair,
-    transfer_time_settings const& tts)
+    transfer_time_settings const& tts,
+    profile_idx_t const prf_idx)
     : tt_{tt},
       rtt_{rtt},
       gpu_rtt_{rtt == nullptr ? nullptr
@@ -533,7 +539,9 @@ gpu_raptor<SearchDir>::gpu_raptor(
       require_bike_transport_{require_bike_transport},
       require_car_transport_{require_car_transport},
       is_wheelchair_{is_wheelchair},
-      transfer_time_settings_{tts} {
+      transfer_time_settings_{tts},
+      prf_idx_{prf_idx},
+      bounds_{state.impl_->bounds_dev_.ptr_} {
   utl::verify(rtt == nullptr || gpu_rtt_ != nullptr,
               "GPU raptor: rt search requires the uploaded device rt "
               "timetable (rt_timetable::gpu_rtt_)");
@@ -542,31 +550,32 @@ gpu_raptor<SearchDir>::gpu_raptor(
   state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest, td_dist_to_dest);
 }
 
-template <direction SearchDir>
-__global__ void init_arrivals_kernel(raptor_impl<SearchDir> r,
+template <direction SearchDir, bool WithBounds>
+__global__ void init_arrivals_kernel(raptor_impl<SearchDir, WithBounds> r,
                                      unixtime_t const worst_time_at_dest) {
   r.init_arrivals(worst_time_at_dest);
 }
 
-template <direction SearchDir>
-__global__ void reuse_previous_arrivals_kernel(raptor_impl<SearchDir> r,
-                                               unsigned const k) {
+template <direction SearchDir, bool WithBounds>
+__global__ void reuse_previous_arrivals_kernel(
+    raptor_impl<SearchDir, WithBounds> r, unsigned const k) {
   if (*r.done_) {
     return;
   }
   r.reuse_previous_arrivals(k);
 }
 
-template <direction SearchDir>
-__global__ void mark_routes_kernel(raptor_impl<SearchDir> r, unsigned const k) {
+template <direction SearchDir, bool WithBounds>
+__global__ void mark_routes_kernel(raptor_impl<SearchDir, WithBounds> r,
+                                   unsigned const k) {
   if (*r.done_) {
     return;
   }
   r.mark_routes(k);
 }
 
-template <direction SearchDir>
-__global__ void mark_rt_transports_kernel(raptor_impl<SearchDir> r,
+template <direction SearchDir, bool WithBounds>
+__global__ void mark_rt_transports_kernel(raptor_impl<SearchDir, WithBounds> r,
                                           unsigned const k) {
   if (*r.done_) {
     return;
@@ -575,11 +584,12 @@ __global__ void mark_rt_transports_kernel(raptor_impl<SearchDir> r,
 }
 
 template <direction SearchDir,
+          bool WithBounds,
           bool WithClaszFilter,
           bool IsWheelchair,
           bool WithFilters>
-__global__ void update_rt_transports_kernel(raptor_impl<SearchDir> r,
-                                            unsigned const k) {
+__global__ void update_rt_transports_kernel(
+    raptor_impl<SearchDir, WithBounds> r, unsigned const k) {
   if (*r.done_) {
     return;
   }
@@ -587,8 +597,9 @@ __global__ void update_rt_transports_kernel(raptor_impl<SearchDir> r,
       k);
 }
 
-template <direction SearchDir>
-__global__ void begin_transit_phase_kernel(raptor_impl<SearchDir> r) {
+template <direction SearchDir, bool WithBounds>
+__global__ void begin_transit_phase_kernel(
+    raptor_impl<SearchDir, WithBounds> r) {
   if (*r.done_) {
     return;
   }
@@ -601,16 +612,17 @@ __global__ void begin_transit_phase_kernel(raptor_impl<SearchDir> r) {
   r.begin_transit_phase();
 }
 
-template <direction SearchDir>
-__global__ void et_build_route_list_kernel(raptor_impl<SearchDir> r) {
+template <direction SearchDir, bool WithBounds>
+__global__ void et_build_route_list_kernel(
+    raptor_impl<SearchDir, WithBounds> r) {
   if (*r.done_) {
     return;
   }
   r.et_build_route_list();
 }
 
-template <direction SearchDir, bool IsWheelchair>
-__global__ void et_collect_tasks_kernel(raptor_impl<SearchDir> r,
+template <direction SearchDir, bool WithBounds, bool IsWheelchair>
+__global__ void et_collect_tasks_kernel(raptor_impl<SearchDir, WithBounds> r,
                                         unsigned const k) {
   if (*r.done_) {
     return;
@@ -618,8 +630,8 @@ __global__ void et_collect_tasks_kernel(raptor_impl<SearchDir> r,
   r.template et_collect_tasks<IsWheelchair>(k);
 }
 
-template <direction SearchDir>
-__global__ void et_run_lookups_kernel(raptor_impl<SearchDir> r,
+template <direction SearchDir, bool WithBounds>
+__global__ void et_run_lookups_kernel(raptor_impl<SearchDir, WithBounds> r,
                                       unsigned const k) {
   if (*r.done_) {
     return;
@@ -628,18 +640,21 @@ __global__ void et_run_lookups_kernel(raptor_impl<SearchDir> r,
 }
 
 template <direction SearchDir,
+          bool WithBounds,
           bool WithClaszFilter,
           bool IsWheelchair,
           bool WithFilters>
-__global__ void loop_routes_kernel(raptor_impl<SearchDir> r, unsigned const k) {
+__global__ void loop_routes_kernel(raptor_impl<SearchDir, WithBounds> r,
+                                   unsigned const k) {
   if (*r.done_) {
     return;
   }
   r.template loop_routes<WithClaszFilter, IsWheelchair, WithFilters>(k);
 }
 
-template <direction SearchDir>
-__global__ void begin_footpath_phase_kernel(raptor_impl<SearchDir> r) {
+template <direction SearchDir, bool WithBounds>
+__global__ void begin_footpath_phase_kernel(
+    raptor_impl<SearchDir, WithBounds> r) {
   if (*r.done_) {
     return;
   }
@@ -652,8 +667,11 @@ __global__ void begin_footpath_phase_kernel(raptor_impl<SearchDir> r) {
   r.begin_footpath_phase();
 }
 
-template <direction SearchDir, bool WithTdDest, bool WithTdFootpaths>
-__global__ void transfers_footpaths_kernel(raptor_impl<SearchDir> r,
+template <direction SearchDir,
+          bool WithBounds,
+          bool WithTdDest,
+          bool WithTdFootpaths>
+__global__ void transfers_footpaths_kernel(raptor_impl<SearchDir, WithBounds> r,
                                            unsigned const k) {
   if (*r.done_) {
     return;
@@ -681,6 +699,56 @@ void launch(Kernel kernel, cudaStream_t stream, Args&&... args) {
   kernel<<<blocks, threads, 0, stream>>>(std::forward<Args>(args)...);
 }
 
+template <direction PingDir>
+__global__ void fill_bounds_kernel(std::uint64_t const* const round_times,
+                                   delta_t* const bounds,
+                                   std::uint32_t const n_locations,
+                                   std::uint32_t const n_rows,
+                                   std::uint64_t const* const td_stops) {
+  auto const gid = get_global_thread_id();
+  auto const stride = get_global_stride();
+  for (auto l = gid; l < n_locations; l += stride) {
+    if (td_stops != nullptr && test_bit(td_stops, l)) {
+      // Stop has td_footpaths -> no bounds.
+      constexpr auto const kPassAll = PingDir == direction::kForward
+                                          ? std::numeric_limits<delta_t>::min()
+                                          : std::numeric_limits<delta_t>::max();
+      for (auto k = 0U; k != n_rows; ++k) {
+        bounds[k * n_locations + l] = kPassAll;
+      }
+      continue;
+    }
+
+    auto best_key = std::uint16_t{0xFFFFU};  // worst key = invalid
+    for (auto k = 0U; k != n_rows; ++k) {
+      auto const key = static_cast<std::uint16_t>(
+          round_times[k * n_locations + l] >> kBcBits);
+      best_key = key < best_key ? key : best_key;
+      bounds[k * n_locations + l] =
+          device_times<PingDir, 1U>::from_key(best_key);
+    }
+  }
+}
+
+template <direction SearchDir, bool WithBounds>
+void gpu_raptor<SearchDir, WithBounds>::fill_bounds(std::size_t const n_rows) {
+  auto& s = *state_.impl_;
+  auto const* td_stops = static_cast<std::uint64_t const*>(nullptr);
+  if (rtt_ != nullptr && prf_idx_ != 0U && rtt_->gpu_rtt_.ptr_ != nullptr) {
+    auto const* const gpu_rtt =
+        static_cast<gpu_rt_timetable const*>(rtt_->gpu_rtt_.ptr_.get());
+    auto const& blocks = SearchDir == direction::kForward
+                             ? gpu_rtt->impl_->has_td_out_[prf_idx_]
+                             : gpu_rtt->impl_->has_td_in_[prf_idx_];
+    if (!blocks.empty()) {
+      td_stops = thrust::raw_pointer_cast(blocks.data());
+    }
+  }
+  launch(fill_bounds_kernel<SearchDir>, s.stream_,
+         thrust::raw_pointer_cast(s.round_times_.data()), s.bounds_dev_.ptr_,
+         s.tt_.n_locations_, static_cast<std::uint32_t>(n_rows), td_stops);
+}
+
 template <typename Fn>
 void dispatch_filtered(bool const with_clasz,
                        bool const is_wheelchair,
@@ -699,11 +767,11 @@ void dispatch_filtered(bool const with_clasz,
   }
 }
 
-template <direction SearchDir>
+template <direction SearchDir, bool WithBounds>
 __global__ void reconstruct_kernel(location_idx_t const* const dest_list,
                                    std::uint32_t const n_dest,
                                    std::uint32_t const end_k,
-                                   raptor_impl<SearchDir> r,
+                                   raptor_impl<SearchDir, WithBounds> r,
                                    gpu_journey* const out) {
   auto const tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= n_dest * end_k) {
@@ -717,12 +785,11 @@ __global__ void reconstruct_kernel(location_idx_t const* const dest_list,
   r.reconstruct_journey(dest_list[tid / end_k], k, &out[tid]);
 }
 
-template <direction SearchDir>
-void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
-                                    std::uint8_t max_transfers,
-                                    unixtime_t worst_time_at_dest,
-                                    profile_idx_t prf_idx,
-                                    pareto_set<journey>& results) {
+template <direction SearchDir, bool WithBounds>
+void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
+                                                std::uint8_t max_transfers,
+                                                unixtime_t worst_time_at_dest,
+                                                pareto_set<journey>& results) {
   auto& s = *state_.impl_;
 
   // Copy starts.
@@ -747,8 +814,8 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
   auto const rt_active = gpu_rtt_ != nullptr;
   auto const with_td_dest = s.td_dest_locs_dev_[kDirIdx].size() > 0U;
   auto const with_td_fps =
-      rt_active && prf_idx != 0U && gpu_rtt_->impl_->has_td_fps_[prf_idx];
-  auto r = raptor_impl<SearchDir>{
+      rt_active && prf_idx_ != 0U && gpu_rtt_->impl_->has_td_fps_[prf_idx_];
+  auto r = raptor_impl<SearchDir, WithBounds>{
       .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
       .done_ = thrust::raw_pointer_cast(s.done_.data()),
       .tt_ = s.tt_,
@@ -757,7 +824,7 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
       .transfer_time_settings_ = transfer_time_settings_,
       .max_transfers_ = max_transfers,
       .allowed_claszes_ = allowed_claszes_,
-      .prf_idx_ = prf_idx,
+      .prf_idx_ = prf_idx_,
       .require_bike_transport_ = require_bike_transport_,
       .require_car_transport_ = require_car_transport_,
       .base_ = base_,
@@ -787,28 +854,36 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
 
   if (rt_active) {
     r.tt_.transport_traffic_days_ = r.rtt_.transport_traffic_days_;
-    r.tt_.bitfields_ = r.rtt_.bitfields_;
+  }
+
+  if constexpr (WithBounds) {
+    r.bounds_ = bounds_;
+    r.bounds_last_k_ = bounds_last_k_;
   }
 
   auto const end_k =
       static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
 
   // === ROUTING KERNELS ===
-  launch(init_arrivals_kernel<SearchDir>, s.stream_, r, worst_time_at_dest);
+  launch(init_arrivals_kernel<SearchDir, WithBounds>, s.stream_, r,
+         worst_time_at_dest);
   for (auto k = 1U; k != end_k; ++k) {
-    launch(reuse_previous_arrivals_kernel<SearchDir>, s.stream_, r, k);
-    launch(mark_routes_kernel<SearchDir>, s.stream_, r, k);
+    launch(reuse_previous_arrivals_kernel<SearchDir, WithBounds>, s.stream_, r,
+           k);
+    launch(mark_routes_kernel<SearchDir, WithBounds>, s.stream_, r, k);
     if (rt_active) {
-      launch(mark_rt_transports_kernel<SearchDir>, s.stream_, r, k);
+      launch(mark_rt_transports_kernel<SearchDir, WithBounds>, s.stream_, r, k);
     }
-    launch(begin_transit_phase_kernel<SearchDir>, s.stream_, r);
-    launch(et_build_route_list_kernel<SearchDir>, s.stream_, r);
+    launch(begin_transit_phase_kernel<SearchDir, WithBounds>, s.stream_, r);
+    launch(et_build_route_list_kernel<SearchDir, WithBounds>, s.stream_, r);
     if (is_wheelchair_) {
-      launch(et_collect_tasks_kernel<SearchDir, true>, s.stream_, r, k);
+      launch(et_collect_tasks_kernel<SearchDir, WithBounds, true>, s.stream_, r,
+             k);
     } else {
-      launch(et_collect_tasks_kernel<SearchDir, false>, s.stream_, r, k);
+      launch(et_collect_tasks_kernel<SearchDir, WithBounds, false>, s.stream_,
+             r, k);
     }
-    launch(et_run_lookups_kernel<SearchDir>, s.stream_, r, k);
+    launch(et_run_lookups_kernel<SearchDir, WithBounds>, s.stream_, r, k);
     {
       auto const with_clasz = allowed_claszes_ != all_clasz_allowed();
       auto const with_filters =
@@ -816,33 +891,34 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
       dispatch_filtered(
           with_clasz, is_wheelchair_, with_filters,
           [&]<bool WithClasz, bool IsWheelchair, bool WithFilters>() {
-            launch(loop_routes_kernel<SearchDir, WithClasz, IsWheelchair,
-                                      WithFilters>,
+            launch(loop_routes_kernel<SearchDir, WithBounds, WithClasz,
+                                      IsWheelchair, WithFilters>,
                    s.stream_, r, k);
           });
       if (rt_active) {
         dispatch_filtered(
             with_clasz, is_wheelchair_, with_filters,
             [&]<bool WithClasz, bool IsWheelchair, bool WithFilters>() {
-              launch(update_rt_transports_kernel<SearchDir, WithClasz,
-                                                 IsWheelchair, WithFilters>,
-                     s.stream_, r, k);
+              launch(
+                  update_rt_transports_kernel<SearchDir, WithBounds, WithClasz,
+                                              IsWheelchair, WithFilters>,
+                  s.stream_, r, k);
             });
       }
     }
-    launch(begin_footpath_phase_kernel<SearchDir>, s.stream_, r);
+    launch(begin_footpath_phase_kernel<SearchDir, WithBounds>, s.stream_, r);
     if (!with_td_dest && !with_td_fps) {
-      launch(transfers_footpaths_kernel<SearchDir, false, false>, s.stream_, r,
-             k);
+      launch(transfers_footpaths_kernel<SearchDir, WithBounds, false, false>,
+             s.stream_, r, k);
     } else if (with_td_dest && !with_td_fps) {
-      launch(transfers_footpaths_kernel<SearchDir, true, false>, s.stream_, r,
-             k);
+      launch(transfers_footpaths_kernel<SearchDir, WithBounds, true, false>,
+             s.stream_, r, k);
     } else if (!with_td_dest && with_td_fps) {
-      launch(transfers_footpaths_kernel<SearchDir, false, true>, s.stream_, r,
-             k);
+      launch(transfers_footpaths_kernel<SearchDir, WithBounds, false, true>,
+             s.stream_, r, k);
     } else {
-      launch(transfers_footpaths_kernel<SearchDir, true, true>, s.stream_, r,
-             k);
+      launch(transfers_footpaths_kernel<SearchDir, WithBounds, true, true>,
+             s.stream_, r, k);
     }
   }
   cudaStreamSynchronize(s.stream_);
@@ -875,8 +951,9 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
   {
     auto const threads = 128U;
     auto const blocks = (total + threads - 1U) / threads;
-    reconstruct_kernel<SearchDir><<<blocks, threads, 0, s.stream_>>>(
-        dest_dev, n_dest, end_k, r, rec_out_dev);
+    reconstruct_kernel<SearchDir, WithBounds>
+        <<<blocks, threads, 0, s.stream_>>>(dest_dev, n_dest, end_k, r,
+                                            rec_out_dev);
     CUDA_CHECK(cudaMemcpyAsync(rec_host, rec_out_dev,
                                total * sizeof(gpu_journey),
                                cudaMemcpyDeviceToHost, s.stream_));
@@ -965,15 +1042,15 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
     }
 
     // Shorten td footpaths to their actual duration (excluding waiting).
-    if (rtt_ != nullptr && prf_idx != 0U &&
-        !(SearchDir == direction::kForward ? rtt_->td_footpaths_in_[prf_idx]
-                                           : rtt_->td_footpaths_out_[prf_idx])
+    if (rtt_ != nullptr && prf_idx_ != 0U &&
+        !(SearchDir == direction::kForward ? rtt_->td_footpaths_in_[prf_idx_]
+                                           : rtt_->td_footpaths_out_[prf_idx_])
              .empty()) {
       constexpr auto const kIsFwd = SearchDir == direction::kForward;
-      auto const& has_td = kIsFwd ? rtt_->has_td_footpaths_in_[prf_idx]
-                                  : rtt_->has_td_footpaths_out_[prf_idx];
-      auto const& td_fps = kIsFwd ? rtt_->td_footpaths_in_[prf_idx]
-                                  : rtt_->td_footpaths_out_[prf_idx];
+      auto const& has_td = kIsFwd ? rtt_->has_td_footpaths_in_[prf_idx_]
+                                  : rtt_->has_td_footpaths_out_[prf_idx_];
+      auto const& td_fps = kIsFwd ? rtt_->td_footpaths_in_[prf_idx_]
+                                  : rtt_->td_footpaths_out_[prf_idx_];
       for (auto& lg : j.legs_) {
         if (!std::holds_alternative<footpath>(lg.uses_)) {
           continue;
@@ -1002,8 +1079,8 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
   }
 }
 
-template <direction SearchDir>
-void gpu_raptor<SearchDir>::reset_arrivals() {
+template <direction SearchDir, bool WithBounds>
+void gpu_raptor<SearchDir, WithBounds>::reset_arrivals() {
   auto& s = *state_.impl_;
   cudaMemsetAsync(thrust::raw_pointer_cast(s.time_at_dest_.data()), 0xFF,
                   s.time_at_dest_.size() * sizeof(std::uint64_t), s.stream_);
@@ -1011,8 +1088,8 @@ void gpu_raptor<SearchDir>::reset_arrivals() {
                   s.round_times_.size() * sizeof(std::uint64_t), s.stream_);
 }
 
-template <direction SearchDir>
-void gpu_raptor<SearchDir>::next_start_time() {
+template <direction SearchDir, bool WithBounds>
+void gpu_raptor<SearchDir, WithBounds>::next_start_time() {
   starts_.clear();
   auto& s = *state_.impl_;
   cudaMemsetAsync(thrust::raw_pointer_cast(s.best_.data()), 0xFF,
@@ -1035,8 +1112,9 @@ void gpu_raptor<SearchDir>::next_start_time() {
 
 // First/last mile mumo offset and start footpath legs are added here
 // on the host, where the query offsets live.
-template <direction SearchDir>
-void gpu_raptor<SearchDir>::reconstruct(query const& q, journey& j) {
+template <direction SearchDir, bool WithBounds>
+void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
+                                                    journey& j) {
   // The core legs (boarding station -> alighting station) reconstructed by the
   // GPU kernel (breadcrumb pointer chase).
   utl::verify(!j.legs_.empty(), "gpu reconstruct: journey without core legs");
@@ -1230,13 +1308,15 @@ void gpu_raptor<SearchDir>::reconstruct(query const& q, journey& j) {
   j.is_reconstructed_ = true;
 }
 
-template <direction SearchDir>
-void gpu_raptor<SearchDir>::add_start(location_idx_t const l,
-                                      unixtime_t const t) {
+template <direction SearchDir, bool WithBounds>
+void gpu_raptor<SearchDir, WithBounds>::add_start(location_idx_t const l,
+                                                  unixtime_t const t) {
   starts_.emplace_back(l, t);
 }
 
-template class gpu_raptor<direction::kForward>;
-template class gpu_raptor<direction::kBackward>;
+template class gpu_raptor<direction::kForward, false>;
+template class gpu_raptor<direction::kBackward, false>;
+template class gpu_raptor<direction::kForward, true>;
+template class gpu_raptor<direction::kBackward, true>;
 
 }  // namespace nigiri::routing::gpu

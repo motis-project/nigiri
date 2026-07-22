@@ -20,6 +20,9 @@
 
 namespace nigiri {
 
+// If set, the bitfield has to be looked up in the RT timetable.
+constexpr auto const kRtBitfieldFlag = std::uint32_t{0x8000'0000U};
+
 using change_callback_t =
     std::function<void(transport const transport,
                        stop_idx_t const stop_idx,
@@ -29,10 +32,11 @@ using change_callback_t =
                        std::optional<duration_t> const delay)>;
 
 // General note:
-// - The real-time timetable does not use bitfields. It requires an initial copy
-//   of the bitfields from the static timetable to be able to deactivate bits
-//   for transports that are updated with delays, rerouting (incl. track
-//   changes) or cancellations (without changing the static timetable).
+// - To deactivate bits for static transports that are updated with delays,
+//   rerouting (incl. track changes) or cancellations (without changing the
+//   static timetable), it appends a modified copy of the static bitfield to its
+//   own `bitfields_` and re-points the `transport_traffic_days_` entry (tagged
+//   with `kRtBitfieldFlag`) at it.
 // - RT transports represent departure and arrival times relative to a base day.
 // - RT transports are currently not grouped into routes to simplify the code.
 //   If this leads to performance issues during the routing, grouping into
@@ -198,14 +202,27 @@ struct rt_timetable {
            rt_transport_bikes_allowed_[to_idx(r) * 2U + 1U];
   }
 
+  bitfield const& traffic_days(bitfield_idx_t const i) const {
+    return (to_idx(i) & kRtBitfieldFlag) != 0U
+               ? bitfields_[bitfield_idx_t{to_idx(i) & ~kRtBitfieldFlag}]
+               : tt_->bitfields_[i];
+  }
+
+  bitfield_idx_t rt_bitfield_idx() const {
+    return bitfield_idx_t{static_cast<bitfield_idx_t::value_t>(
+        (bitfields_.size() - 1U) | kRtBitfieldFlag)};
+  }
+
   bool is_transport_active(transport_idx_t const t, day_idx_t const day) const {
-    return bitfields_[transport_traffic_days_[t]].test(to_idx(day));
+    return traffic_days(transport_traffic_days_[t]).test(to_idx(day));
   }
 
   bool has_wheelchair_transport(rt_transport_idx_t const r) const {
     return rt_transport_wheelchair_accessibility_[to_idx(r) * 2U] ||
            rt_transport_wheelchair_accessibility_[to_idx(r) * 2U + 1U];
   }
+
+  timetable const* tt_{nullptr};
 
   array<bitvec_map<location_idx_t>, kNProfiles> has_td_footpaths_out_;
   array<bitvec_map<location_idx_t>, kNProfiles> has_td_footpaths_in_;

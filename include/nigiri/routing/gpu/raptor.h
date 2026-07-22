@@ -52,7 +52,7 @@ struct gpu_raptor_state {
   std::unique_ptr<impl> impl_;
 };
 
-template <direction SearchDir>
+template <direction SearchDir, bool WithBounds>
 struct gpu_raptor {
   using algo_state_t = gpu_raptor_state;
   using algo_stats_t = raptor_stats;
@@ -76,18 +76,26 @@ struct gpu_raptor {
       bool const require_bike_transport,
       bool const require_car_transport,
       bool const is_wheelchair,
-      transfer_time_settings const& tts);
+      transfer_time_settings const& tts,
+      profile_idx_t const prf_idx);
 
   raptor_stats get_stats() const { return stats_; }
   void reset_arrivals();
   void next_start_time();
+
+  void fill_bounds(std::size_t n_rows);
+
+  void set_bounds(unsigned const last_round)
+    requires(WithBounds)
+  {
+    bounds_last_k_ = last_round;
+  }
 
   void add_start(location_idx_t, unixtime_t);
 
   void execute(unixtime_t start_time,
                std::uint8_t max_transfers,
                unixtime_t worst_time_at_dest,
-               profile_idx_t prf_idx,
                pareto_set<journey>& results);
 
   void reconstruct(query const&, journey&);
@@ -110,6 +118,10 @@ private:
   bool require_car_transport_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
+
+  profile_idx_t prf_idx_;
+  delta_t const* bounds_;
+  unsigned bounds_last_k_{0U};
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
 };
