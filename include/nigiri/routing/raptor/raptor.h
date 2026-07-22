@@ -681,6 +681,15 @@ private:
 
         auto const target = to_idx(fp.target());
 
+        // EARLY PRUNING (Vias == 0 only): fps are sorted ascending by
+        // duration, so fp_target_time is monotone in fp.duration(). Once a
+        // footpath can no longer beat the per-round destination bound, every
+        // later (longer) footpath fails too — break out after this fp. The
+        // decision reuses the fp_target_time already computed in the inner
+        // loop, so it costs at most one extra comparison and never the
+        // redundant adjusted_transfer_time() of the previous approach.
+        auto ep_prune = false;
+
         for (auto v = 0U; v != Vias + 1; ++v) {
           auto const tmp_time = tmp_[i][v];
           if (tmp_time == kInvalid) {
@@ -745,6 +754,13 @@ private:
               update_time_at_dest(k, fp_target_time);
             }
           } else {
+            // If this footpath cannot beat the destination bound, no longer
+            // footpath can either (Vias == 0: fps sorted by duration).
+            if constexpr (Vias == 0) {
+              if (!is_better(fp_target_time, time_at_dest_[k])) {
+                ep_prune = true;
+              }
+            }
             trace(
                 "┊ ├k={}   NO FP UPDATE: {} [best={}] --{}--> {} "
                 "[best={}, time_at_dest={}]\n",
@@ -753,6 +769,10 @@ private:
                 loc{tt_, fp.target()}, to_unix(best_[target][target_v]),
                 to_unix(time_at_dest_[k]));
           }
+        }
+
+        if (ep_prune) {
+          break;
         }
       }
     });
