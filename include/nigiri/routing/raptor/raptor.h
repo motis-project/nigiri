@@ -225,13 +225,14 @@ struct raptor {
 
       auto any_marked = false;
       state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+        auto const idx = static_cast<std::uint32_t>(i);
         auto b = kInvalid;
         for (auto v = 0U; v != Vias + 1; ++v) {
           b = get_best(round_times_[k - 1][i][v], b);
         }
-        if (!lb_reachable(i) ||
-            !is_better(b + dir(get_lb(i)), time_at_dest_[k])) {
-          state_.station_mark_.set(i, false);
+        if (!lb_reachable(idx) ||
+            !is_better(b + dir(get_lb(idx)), time_at_dest_[k])) {
+          state_.station_mark_.set(idx, false);
           return;
         }
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
@@ -686,8 +687,8 @@ private:
       for (auto v = 0U; v != Vias + 1; ++v) {
         src = get_best(tmp_[i][v], src);
       }
-      if (!lb_reachable(i) ||
-          !is_better(src + dir(get_lb(i)), time_at_dest_[k])) {
+      if (!lb_reachable(to_idx(l_idx)) ||
+          !is_better(src + dir(get_lb(to_idx(l_idx))), time_at_dest_[k])) {
         return;
       }
 
@@ -797,8 +798,8 @@ private:
       for (auto v = 0U; v != Vias + 1; ++v) {
         src = get_best(tmp_[i][v], src);
       }
-      if (!lb_reachable(i) ||
-          !is_better(src + dir(get_lb(i)), time_at_dest_[k])) {
+      if (!lb_reachable(to_idx(l_idx)) ||
+          !is_better(src + dir(get_lb(to_idx(l_idx))), time_at_dest_[k])) {
         return;
       }
 
