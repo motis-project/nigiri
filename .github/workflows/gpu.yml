@@ -1,0 +1,86 @@
+name: GPU Benchmark
+
+on:
+  push:
+    branches: [ master, gouda ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  gpu-benchmark:
+    runs-on: [ self-hosted, linux, x64, gpu ]
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      CUDACXX: /usr/local/cuda/bin/nvcc
+      CLICOLOR_FORCE: 1
+      LD_LIBRARY_PATH: /usr/local/cuda/lib64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get deps
+        run: mkdir -p ~/deps && mv ~/deps .
+
+      - name: Get build
+        run: mkdir -p ~/nigiri-build && mv ~/nigiri-build build
+
+      - name: Configure
+        run: cmake --preset cuda
+
+      - name: Build
+        run: cmake --build --preset cuda --target nigiri-test nigiri-benchmark nigiri-import
+
+      - name: nigiri-test
+        run: ./build/cuda/nigiri-test
+
+      - name: Save deps
+        if: always()
+        run: mv deps ~
+
+      - name: Import Germany
+        run: |
+          ./build/cuda/nigiri-import -r --ignore -i "$HOME/ci-data/ger" \
+            -o tt.bin \
+            -s 2026-07-01 -n 14 \
+            --link_stop_distance 100 \
+            --merge_dupes_intra_source true \
+            --merge_dupes_inter_source true \
+            --adjust_footpaths true \
+            --max_footpath_length 12
+
+      - name: Validate Germany (vias=0, CPU + GPU)
+        run: |
+          ./build/cuda/nigiri-benchmark -p tt.bin \
+            --engines cpu gpu \
+            --algo range pong \
+            --modes s2s c2c \
+            --dirs fwd bwd \
+            -n 50
+
+      - name: Validate Germany (vias=1, CPU)
+        run: |
+          ./build/cuda/nigiri-benchmark -p tt.bin \
+            --engines cpu \
+            --algo range pong \
+            --modes s2s c2c \
+            --dirs fwd bwd \
+            --vias 1 \
+            -n 25
+
+      - name: Validate Germany (vias=2, CPU)
+        run: |
+          ./build/cuda/nigiri-benchmark -p tt.bin \
+            --engines cpu \
+            --algo range pong \
+            --modes s2s c2c \
+            --dirs fwd bwd \
+            --vias 2 \
+            -n 25
+
+      - name: Save build
+        if: always()
+        run: mv build ~/nigiri-build

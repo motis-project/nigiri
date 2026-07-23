@@ -82,6 +82,7 @@ private:
     location_idx_t l_;
     std::string_view id_;
     std::optional<unixtime_t> dep_, arr_, rt_dep_, rt_arr_;
+    std::optional<std::string_view> dep_track_, arr_track_;
     bool in_forbidden_, out_forbidden_, passing_through_, arr_canceled_,
         dep_canceled_;
   };

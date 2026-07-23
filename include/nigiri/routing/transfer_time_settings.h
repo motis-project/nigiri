@@ -18,8 +18,8 @@ struct transfer_time_settings {
 };
 
 template <typename T>
-inline T adjusted_transfer_time(transfer_time_settings const& settings,
-                                T const duration) {
+inline constexpr T adjusted_transfer_time(
+    transfer_time_settings const& settings, T const duration) {
   if (settings.default_) {
     return duration;
   } else {
@@ -31,7 +31,8 @@ inline T adjusted_transfer_time(transfer_time_settings const& settings,
 }
 
 template <typename Rep>
-inline std::chrono::duration<Rep, std::ratio<60>> adjusted_transfer_time(
+inline constexpr std::chrono::duration<Rep, std::ratio<60>>
+adjusted_transfer_time(
     transfer_time_settings const& settings,
     std::chrono::duration<Rep, std::ratio<60>> const duration) {
   if (settings.default_) {

@@ -125,11 +125,23 @@ struct fares {
     string_idx_t name_;
   };
 
+  struct fare_leg_rule_key {
+    network_idx_t network_;
+    area_idx_t from_area_;
+    area_idx_t to_area_;
+    timeframe_group_idx_t from_timeframe_group_;
+    timeframe_group_idx_t to_timeframe_group_;
+  };
+
+  using fare_leg_rule_group_idx_t =
+      cista::strong<std::uint32_t, struct _fare_leg_rule_group_idx_t>;
+
   vector_map<leg_group_idx_t, string_idx_t> leg_group_name_;
   vector_map<fare_media_idx_t, fare_media> fare_media_;
   vecvec<fare_product_idx_t, fare_product> fare_products_;
   vector_map<fare_product_idx_t, string_idx_t> fare_product_id_;
-  vector<fare_leg_rule> fare_leg_rules_;
+  vecvec<fare_leg_rule_group_idx_t, fare_leg_rule> fare_leg_rule_groups_;
+  hash_map<fare_leg_rule_key, fare_leg_rule_group_idx_t> fare_leg_rule_keys_;
   vector<fare_leg_join_rule> fare_leg_join_rules_;
   vector<fare_transfer_rule> fare_transfer_rules_;
   vector_map<rider_category_idx_t, rider_category> rider_categories_;
@@ -139,7 +151,10 @@ struct fares {
   vector_map<network_idx_t, network> networks_;
   vecvec<area_set_idx_t, area_idx_t> area_sets_;
   vector_map<area_set_idx_t, string_idx_t> area_set_ids_;
-  bool has_priority_{false};
+
+  hash_set<network_idx_t> concrete_networks_;
+  hash_set<area_idx_t> concrete_from_areas_;
+  hash_set<area_idx_t> concrete_to_areas_;
 };
 
 struct timetable;

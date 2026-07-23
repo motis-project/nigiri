@@ -38,7 +38,8 @@ query_engine<UseLowerBounds>::query_engine(
     bool,
     bool,
     bool,
-    transfer_time_settings)
+    transfer_time_settings,
+    profile_idx_t)
     : tt_{tt},
       state_{state},
       is_dest_{is_dest},
@@ -97,7 +98,6 @@ template <bool UseLowerBounds>
 void query_engine<UseLowerBounds>::execute(unixtime_t const start_time,
                                            std::uint8_t const max_transfers,
                                            unixtime_t const worst_time_at_dest,
-                                           profile_idx_t const,
                                            pareto_set<journey>& results) {
   tb_queue_dbg("--- EXECUTE START_TIME={}", start_time);
 
@@ -490,6 +490,8 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
       }
     }
   }
+
+  j.is_reconstructed_ = true;
 }
 
 template <bool UseLowerBounds>

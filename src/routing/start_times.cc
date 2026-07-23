@@ -62,7 +62,7 @@ void add_start_times_at_stop(direction const search_dir,
   for (auto t = transport_range.from_; t != transport_range.to_; ++t) {
     auto const& traffic_days =
         rtt == nullptr ? tt.bitfields_[tt.transport_traffic_days_[t]]
-                       : rtt->bitfields_[rtt->transport_traffic_days_[t]];
+                       : rtt->traffic_days(rtt->transport_traffic_days_[t]);
     auto const stop_time =
         tt.event_mam(t, stop_idx,
                      (search_dir == direction::kForward ? event_type::kDep
@@ -342,7 +342,8 @@ void collect_destinations(timetable const& tt,
     for_each_meta(tt, match_mode, d.target_, [&](location_idx_t const l) {
       if (match_mode == location_match_mode::kIntermodal) {
         dist_to_dest[to_idx(l)] =
-            static_cast<std::uint16_t>(d.duration_.count());
+            std::min(dist_to_dest[to_idx(l)],
+                     static_cast<std::uint16_t>(d.duration_.count()));
       } else {
         is_dest.set(to_idx(l), true);
       }

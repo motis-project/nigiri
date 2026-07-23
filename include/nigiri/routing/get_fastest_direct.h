@@ -7,6 +7,9 @@
 
 namespace nigiri::routing {
 
+constexpr auto const kUnreachableDirect =
+    duration_t{std::numeric_limits<duration_t::rep>::max()};
+
 duration_t get_fastest_direct(
     timetable const&,
     query const&,

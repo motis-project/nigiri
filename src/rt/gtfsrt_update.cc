@@ -349,12 +349,35 @@ bool update_run(source_idx_t const src,
   auto upd_it = begin(stus);
   for (; seq_it != end(seq_numbers); ++stop_idx, ++seq_it) {
     auto const loc_idx = stop{location_seq[stop_idx]}.location_idx();
-    auto const matches =
-        upd_it != end(stus) &&
-        ((r.is_scheduled() && upd_it->has_stop_sequence() &&
-          upd_it->stop_sequence() == *seq_it) ||
-         (upd_it->has_stop_id() &&
-          upd_it->stop_id() == tt.locations_.ids_[loc_idx].view()));
+    auto matches = false;
+    while (upd_it != end(stus)) {
+      auto matches_any_loc = false;
+      auto next_seq_it = seq_it;
+      auto next_stop_idx = stop_idx;
+      for (; next_seq_it != end(seq_numbers); ++next_stop_idx, ++next_seq_it) {
+        auto const next_matches =
+            (r.is_scheduled() && upd_it->has_stop_sequence() &&
+             upd_it->stop_sequence() == *next_seq_it) ||
+            (upd_it->has_stop_id() &&
+             upd_it->stop_id() ==
+                 tt.locations_
+                     .ids_[stop{location_seq[next_stop_idx]}.location_idx()]
+                     .view());
+
+        if (next_matches) {
+          if (next_seq_it == seq_it) {
+            matches = next_matches;
+          }
+          matches_any_loc = true;
+          break;
+        }
+      }
+      if (!matches_any_loc) {
+        ++upd_it;
+      } else {
+        break;
+      }
+    }
 
     if (matches) {
       auto& stp = rtt.rt_transport_location_seq_[r.rt_][stop_idx];
@@ -540,10 +563,11 @@ void handle_vehicle_position(timetable const& tt,
     auto const fr = frun::from_t(tt, &rtt_const, r.t_);
 
     // get delay
-    auto const vp_ts = vp.has_timestamp()
-                           ? unixtime_t{std::chrono::duration_cast<i32_minutes>(
-                                 std::chrono::seconds{vp.timestamp()})}
-                           : std::chrono::system_clock::now();
+    auto const vp_ts =
+        vp.has_timestamp()
+            ? unixtime_t{std::chrono::duration_cast<i32_minutes>(
+                  std::chrono::seconds{vp.timestamp()})}
+            : std::chrono::time_point_cast<unixtime_t::duration>(message_time);
     auto const ev_time =
         stopped_at_idx == 0
             ? tt.event_time(r.t_, stopped_at_idx, event_type::kDep)

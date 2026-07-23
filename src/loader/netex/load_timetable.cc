@@ -34,6 +34,7 @@
 #include "nigiri/common/gunzip.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 using namespace std::string_view_literals;
 namespace fs = std::filesystem;
@@ -1338,9 +1339,14 @@ void load_timetable(loader_config const& config,
     auto const tz = gtfs::get_tz_idx(tt, tz_map, im.tz_->name());
 
     for (auto& [id, o] : im.operators_) {
-      auto a = agency{
-          tt, src,   id, tt.register_translation(o->name_), kEmptyTranslation,
-          tz, tz_map};
+      auto a = agency{tt,
+                      src,
+                      id,
+                      tt.register_translation(o->name_),
+                      kEmptyTranslation,
+                      kEmptyTranslation,
+                      tz,
+                      tz_map};
       if (process_agency(r, a)) {
         o->provider_ = register_agency(tt, a);
       }
@@ -1359,12 +1365,13 @@ void load_timetable(loader_config const& config,
                         tt.register_translation(stop->name_),
                         tt.register_translation(stop->public_code_),
                         kEmptyTranslation,
+                        kEmptyTranslation,
                         stop->pos_,
                         location_type::kStation,
                         stop->parent_ != nullptr ? stop->parent_->location_
                                                  : location_idx_t::invalid(),
                         tz,
-                        2_minutes,
+                        config.default_transfer_time_,
                         tz_map};
       if (process_location(r, s)) {
         stop->location_ = register_location(tt, s);
@@ -1383,6 +1390,10 @@ void load_timetable(loader_config const& config,
       if (stop->parent_ != nullptr) {
         add_stop(stop.get());
       }
+    }
+    for (auto const& [id, stop] : im.stop_assignments_) {
+      tt.locations_.location_id_to_idx_.emplace(owning_location_id{id, src},
+                                                stop->location_);
     }
 
     for (auto& [id, dd] : im.destination_displays_) {
@@ -1435,7 +1446,8 @@ void load_timetable(loader_config const& config,
                                                            line.route_type_)},
                   line.color_,
                   op->provider_,
-                  line.category_->category_idx_};
+                  line.category_->category_idx_,
+                  ticketing_link_idx_t::invalid()};
         route_id = line.routes_
                        .emplace_hint(
                            route_it, line::route_key{sj.route_type_, op},
@@ -1796,7 +1808,8 @@ void load_timetable(loader_config const& config,
           auto const dist = std::sqrt(geo::approx_squared_distance(
               pos, neighbor_pos, dist_lng_degrees));
           auto const duration = duration_t{std::max(
-              2, static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
+              static_cast<int>(config.default_transfer_time_.count()),
+              static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
           metas[get_new_location(l)].emplace_back(neighbor, duration);
         }
       },

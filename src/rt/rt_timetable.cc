@@ -3,6 +3,7 @@
 #include "utl/enumerate.h"
 #include "utl/overloaded.h"
 #include "utl/timer.h"
+#include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/route.h"
 
@@ -27,9 +28,9 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     static_trip_lookup_.emplace(t, rt_t_idx);
     rt_transport_static_transport_.emplace_back(t);
 
-    auto const static_bf = bitfields_[transport_traffic_days_[t_idx]];
+    auto const static_bf = traffic_days(transport_traffic_days_[t_idx]);
     bitfields_.emplace_back(static_bf).set(to_idx(day), false);
-    transport_traffic_days_[t_idx] = bitfield_idx_t{bitfields_.size() - 1U};
+    transport_traffic_days_[t_idx] = rt_bitfield_idx();
   } else {
     auto const rt_add_idx =
         rt_add_trip_id_idx_t{additional_trips_.at(src).transports_.size()};
@@ -79,6 +80,8 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     rt_transport_stop_times_.emplace_back(time_seq);
   }
 
+  rt_transport_track_sequence_.add_back_sized(0U);
+
   auto const bikes_allowed_default = false;  // TODO
   auto const cars_allowed_default = false;  // TODO
   auto const wheelchair_accessible_default = false;  // TODO
@@ -86,9 +89,9 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   rt_transport_line_.add_back_sized(0U);
   rt_transport_is_cancelled_.resize(rt_transport_is_cancelled_.size() + 1U);
   rt_transport_bikes_allowed_.resize(rt_transport_bikes_allowed_.size() + 2U);
-  rt_transport_cars_allowed_.resize(rt_transport_bikes_allowed_.size() + 2U);
+  rt_transport_cars_allowed_.resize(rt_transport_cars_allowed_.size() + 2U);
   rt_transport_wheelchair_accessibility_.resize(
-      rt_transport_bikes_allowed_.size() + 2U);
+      rt_transport_wheelchair_accessibility_.size() + 2U);
   rt_transport_section_directions_.add_back_sized(0U);  // TODO outside
   rt_transport_trip_short_names_.emplace_back(trip_short_name);
 
@@ -171,6 +174,45 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   assert(rt_wheelchair_accessible_per_section_.size() == rt_t_idx + 1U);
 
   return rt_transport_idx_t{rt_t_idx};
+}
+
+void rt_timetable::set_track(rt_transport_idx_t const rt_t,
+                             stop_idx_t const stop_idx,
+                             event_type const ev_type,
+                             std::string_view const track) {
+  if (track.empty()) {
+    return;
+  }
+  utl::verify(stop_idx < rt_transport_location_seq_[rt_t].size(),
+              "set_track: invalid stop_idx {} (n_stops={})", stop_idx,
+              rt_transport_location_seq_[rt_t].size());
+  auto bucket = rt_transport_track_sequence_[rt_t];
+  if (bucket.empty()) {
+    bucket.grow(rt_transport_stop_times_[rt_t].size(), track_idx_t::invalid());
+  }
+  auto const ev_idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
+  bucket[static_cast<std::size_t>(ev_idx)] = track_strings_.store(track);
+}
+
+std::optional<std::string_view> rt_timetable::get_track(
+    rt_transport_idx_t const rt_t,
+    stop_idx_t const stop_idx,
+    event_type const ev_type) const {
+  if (to_idx(rt_t) >= rt_transport_track_sequence_.size()) {
+    return std::nullopt;
+  }
+  utl::verify(stop_idx < rt_transport_location_seq_[rt_t].size(),
+              "get_track: invalid stop_idx {} (n_stops={})", stop_idx,
+              rt_transport_location_seq_[rt_t].size());
+  auto const bucket = rt_transport_track_sequence_[rt_t];
+  if (bucket.empty()) {
+    return std::nullopt;
+  }
+  auto const ev_idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
+  if (ev_idx < 0 || static_cast<std::size_t>(ev_idx) >= bucket.size()) {
+    return std::nullopt;
+  }
+  return track_strings_.try_get(bucket[static_cast<std::size_t>(ev_idx)]);
 }
 
 std::string_view rt_timetable::transport_name(
@@ -300,10 +342,9 @@ void rt_timetable::cancel_run(rt::run const& r) {
     rt_transport_is_cancelled_.set(to_idx(r.rt_), true);
   }
   if (r.is_scheduled()) {
-    auto const bf = bitfields_[transport_traffic_days_[r.t_.t_idx_]];
+    auto const bf = traffic_days(transport_traffic_days_[r.t_.t_idx_]);
     bitfields_.emplace_back(bf).set(to_idx(r.t_.day_), false);
-    transport_traffic_days_[r.t_.t_idx_] =
-        bitfield_idx_t{bitfields_.size() - 1U};
+    transport_traffic_days_[r.t_.t_idx_] = rt_bitfield_idx();
 
     for (auto i = r.stop_range_.from_; i != r.stop_range_.to_; ++i) {
       dispatch_stop_change(r, i, event_type::kArr, std::nullopt, false);

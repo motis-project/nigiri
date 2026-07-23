@@ -5,8 +5,10 @@
 
 #include "date/date.h"
 
+#include "utl/helpers/algorithm.h"
 #include "utl/progress_tracker.h"
 
+#include "nigiri/loader/dir.h"
 #include "nigiri/loader/load.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/common/parse_date.h"
@@ -83,10 +85,27 @@ int main(int ac, char** av) {
 
   auto input_files = std::vector<timetable_source>{};
   if (is_directory(in) && recursive) {
+    auto const loaders = get_loaders();
     for (auto const& e : fs::directory_iterator(in)) {
       if (is_directory(e) /* unpacked zip file */ ||
           boost::algorithm::to_lower_copy(
               e.path().extension().generic_string()) == ".zip") {
+        if (ignore) {
+          // skip non-timetable entries here: sources skipped inside load()
+          // still consume a source index, which breaks the per-source
+          // bookkeeping of subsequent loaders
+          try {
+            auto const dir = make_dir(e.path());
+            if (!utl::any_of(loaders,
+                             [&](auto&& l) { return l->applicable(*dir); })) {
+              std::cout << "ignoring " << e.path() << "\n";
+              continue;
+            }
+          } catch (std::exception const& ex) {
+            std::cout << "ignoring " << e.path() << ": " << ex.what() << "\n";
+            continue;
+          }
+        }
         input_files.push_back(
             timetable_source{.tag_ = e.path().filename().generic_string(),
                              .path_ = e.path().generic_string(),
