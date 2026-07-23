@@ -68,16 +68,15 @@ void service_builder::write_services(source_idx_t const src) {
   tt_.route_ids_.emplace_back();
 
   auto const timer = scoped_timer{"loader.hrd.services.write"};
-  auto const empty_bikes_allowed = bitvec{};  // not implemented for hrd
-  auto const empty_cars_allowed = bitvec{};  // not implemented for hrd
-  auto const empty_wheelchair_accessible = bitvec{};  // not implemented for hrd
+  auto const empty_flags = std::array{bitvec{}, bitvec{}, bitvec{},
+                                      bitvec{}};  // not implemented for hrd
+  assert(empty_flags.size() == kNumRouteFlags);
 
   for (auto const& [key, sub_routes] : route_services_) {
     for (auto const& services : sub_routes) {
       auto const& [stop_seq, sections_clasz] = key;
       auto const route_idx =
-          tt_.register_route(stop_seq, sections_clasz, empty_bikes_allowed,
-                             empty_cars_allowed, empty_wheelchair_accessible);
+          tt_.register_route(stop_seq, sections_clasz, empty_flags);
 
       for (auto const& s : stop_seq) {
         auto s_routes = location_routes_[stop{s}.location_idx()];

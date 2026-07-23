@@ -131,9 +131,7 @@ struct timetable {
   route_idx_t register_route(
       basic_string<stop::value_type> const& stop_seq,
       basic_string<clasz> const& clasz_sections,
-      bitvec const& bikes_allowed_per_section,
-      bitvec const& cars_allowed_per_section,
-      bitvec const& wheelchair_accessibility_per_section);
+      std::array<bitvec, route_flag::kNumRouteFlags> const& flags_per_section);
   void finish_route();
 
   provider_idx_t get_provider_idx(std::string_view id, source_idx_t) const;
@@ -269,18 +267,23 @@ struct timetable {
   static cista::wrapped<timetable> read(std::filesystem::path const&);
 
   bool has_car_transport(route_idx_t const r) const {
-    return route_cars_allowed_[to_idx(r) * 2U] ||
-           route_cars_allowed_[to_idx(r) * 2U + 1U];
+    return route_flags_[kCarsAllowed][to_idx(r) * 2U] ||
+           route_flags_[kCarsAllowed][to_idx(r) * 2U + 1U];
   }
 
   bool has_bike_transport(route_idx_t const r) const {
-    return route_bikes_allowed_[to_idx(r) * 2U] ||
-           route_bikes_allowed_[to_idx(r) * 2U + 1U];
+    return route_flags_[kCarsAllowed][to_idx(r) * 2U] ||
+           route_flags_[kBikesAllowed][to_idx(r) * 2U + 1U];
   }
 
   bool has_wheelchair_transport(route_idx_t const r) const {
-    return route_wheelchair_accessible_[to_idx(r) * 2U] ||
-           route_wheelchair_accessible_[to_idx(r) * 2U + 1U];
+    return route_flags_[kWheelchairAccessible][to_idx(r) * 2U] ||
+           route_flags_[kWheelchairAccessible][to_idx(r) * 2U + 1U];
+  }
+
+  bool has_reservation_not_required(route_idx_t const r) const {
+    return route_flags_[kReservationNotRequired][to_idx(r) * 2U] ||
+           route_flags_[kReservationNotRequired][to_idx(r) * 2U + 1U];
   }
 
   // Schedule range.
@@ -362,26 +365,15 @@ struct timetable {
   // Route -> clasz per section
   vecvec<route_idx_t, clasz> route_section_clasz_;
 
-  // Route * 2 -> bikes allowed along the route
-  // Route * 2 + 1 -> bikes along parts of the route
-  bitvec route_bikes_allowed_;
+  // Route * 2 -> flag along the entire route
+  // Route * 2 + 1 -> flag along parts of the route
+  std::array<bitvec, route_flag::kNumRouteFlags> route_flags_;
 
-  // same for cars
-  bitvec route_cars_allowed_;
-
-  // same for wheelchair accssibility
-  bitvec route_wheelchair_accessible_;
-
-  // Route -> bikes allowed per section
-  // Only set for routes where the entry in route_bikes_allowed_bitvec_
-  // is set to "bikes along parts of the route"
-  vecvec<route_idx_t, bool> route_bikes_allowed_per_section_;
-
-  // same for cars
-  vecvec<route_idx_t, bool> route_cars_allowed_per_section_;
-
-  // same for wheelchair accessibility
-  vecvec<route_idx_t, bool> route_wheelchair_accessibility_per_section_;
+  // Route -> flag per section
+  // Only set for routes where the entry in route_flag_
+  // is set to "flag along parts of the route"
+  std::array<vecvec<route_idx_t, bool>, route_flag::kNumRouteFlags>
+      route_flags_per_section_;
 
   // Location -> list of routes
   vecvec<location_idx_t, route_idx_t> location_routes_;

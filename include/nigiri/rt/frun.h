@@ -65,9 +65,11 @@ struct run_stop {
   clasz get_clasz(event_type) const;
   clasz get_scheduled_clasz(event_type) const;
 
+  bool flag_set(route_flag, event_type) const;
   bool bikes_allowed(event_type) const;
   bool cars_allowed(event_type) const;
   bool wheelchair_accessible(event_type) const;
+  bool reservation_not_required(event_type) const;
 
   route_color get_route_color(event_type) const;
 

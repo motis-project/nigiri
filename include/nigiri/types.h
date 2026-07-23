@@ -414,6 +414,14 @@ enum class clasz : std::uint8_t {
 constexpr auto const kNumClasses =
     static_cast<std::underlying_type_t<clasz>>(clasz::kNumClasses);
 
+enum route_flag : std::uint8_t {
+  kBikesAllowed = 0,
+  kCarsAllowed = 1,
+  kWheelchairAccessible = 2,
+  kReservationNotRequired = 3,
+  kNumRouteFlags
+};
+
 constexpr std::string_view to_str(clasz const c) {
   constexpr auto const clasz_str =
       std::array{"AIR",    "HIGHSPEED",    "LONG_DISTANCE", "COACH",

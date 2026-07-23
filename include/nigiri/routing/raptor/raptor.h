@@ -68,6 +68,7 @@ struct raptor {
       bool const require_bike_transport,
       bool const require_car_transport,
       bool const is_wheelchair,
+      bool const no_compulsory_reservation,
       transfer_time_settings const& tts,
       profile_idx_t const prf_idx)
       : tt_{tt},
@@ -93,6 +94,7 @@ struct raptor {
         require_bike_transport_{require_bike_transport},
         require_car_transport_{require_car_transport},
         is_wheelchair_{is_wheelchair},
+        no_compulsory_reservation_{no_compulsory_reservation},
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
     reset_arrivals();
@@ -248,29 +250,47 @@ struct raptor {
 
       bool const clasz_filter = allowed_claszes_ != all_clasz_allowed();
       uint8_t const filters =
-          static_cast<uint8_t>(clasz_filter << 3) |
-          static_cast<uint8_t>(require_bike_transport_ << 2) |
-          static_cast<uint8_t>(require_car_transport_ << 1) |
-          static_cast<uint8_t>(is_wheelchair_ << 0);
+          static_cast<uint8_t>(clasz_filter << 4) |
+          static_cast<uint8_t>(require_bike_transport_ << 3) |
+          static_cast<uint8_t>(require_car_transport_ << 2) |
+          static_cast<uint8_t>(is_wheelchair_ << 1) |
+          static_cast<uint8_t>(no_compulsory_reservation_ << 0);
 
       any_marked |= [&]() {
         switch (filters) {
-          case 0b0000: return loop_routes<false, false, false, false>(k);
-          case 0b0001: return loop_routes<false, false, false, true>(k);
-          case 0b0010: return loop_routes<false, false, true, false>(k);
-          case 0b0011: return loop_routes<false, false, true, true>(k);
-          case 0b0100: return loop_routes<false, true, false, false>(k);
-          case 0b0101: return loop_routes<false, true, false, true>(k);
-          case 0b0110: return loop_routes<false, true, true, false>(k);
-          case 0b0111: return loop_routes<false, true, true, true>(k);
-          case 0b1000: return loop_routes<true, false, false, false>(k);
-          case 0b1001: return loop_routes<true, false, false, true>(k);
-          case 0b1010: return loop_routes<true, false, true, false>(k);
-          case 0b1011: return loop_routes<true, false, true, true>(k);
-          case 0b1100: return loop_routes<true, true, false, false>(k);
-          case 0b1101: return loop_routes<true, true, false, true>(k);
-          case 0b1110: return loop_routes<true, true, true, false>(k);
-          case 0b1111: return loop_routes<true, true, true, true>(k);
+          case 0b00000:
+            return loop_routes<false, false, false, false, false>(k);
+          case 0b00001: return loop_routes<false, false, false, false, true>(k);
+          case 0b00010: return loop_routes<false, false, false, true, false>(k);
+          case 0b00011: return loop_routes<false, false, false, true, true>(k);
+          case 0b00100: return loop_routes<false, false, true, false, false>(k);
+          case 0b00101: return loop_routes<false, false, true, false, true>(k);
+          case 0b00110: return loop_routes<false, false, true, true, false>(k);
+          case 0b00111: return loop_routes<false, false, true, true, true>(k);
+          case 0b01000: return loop_routes<false, true, false, false, false>(k);
+          case 0b01001: return loop_routes<false, true, false, false, true>(k);
+          case 0b01010: return loop_routes<false, true, false, true, false>(k);
+          case 0b01011: return loop_routes<false, true, false, true, true>(k);
+          case 0b01100: return loop_routes<false, true, true, false, false>(k);
+          case 0b01101: return loop_routes<false, true, true, false, true>(k);
+          case 0b01110: return loop_routes<false, true, true, true, false>(k);
+          case 0b01111: return loop_routes<false, true, true, true, true>(k);
+          case 0b10000: return loop_routes<true, false, false, false, false>(k);
+          case 0b10001: return loop_routes<true, false, false, false, true>(k);
+          case 0b10010: return loop_routes<true, false, false, true, false>(k);
+          case 0b10011: return loop_routes<true, false, false, true, true>(k);
+          case 0b10100: return loop_routes<true, false, true, false, false>(k);
+          case 0b10101: return loop_routes<true, false, true, false, true>(k);
+          case 0b10110: return loop_routes<true, false, true, true, false>(k);
+          case 0b10111: return loop_routes<true, false, true, true, true>(k);
+          case 0b11000: return loop_routes<true, true, false, false, false>(k);
+          case 0b11001: return loop_routes<true, true, false, false, true>(k);
+          case 0b11010: return loop_routes<true, true, false, true, false>(k);
+          case 0b11011: return loop_routes<true, true, false, true, true>(k);
+          case 0b11100: return loop_routes<true, true, true, false, false>(k);
+          case 0b11101: return loop_routes<true, true, true, false, true>(k);
+          case 0b11110: return loop_routes<true, true, true, true, false>(k);
+          case 0b11111: return loop_routes<true, true, true, true, true>(k);
           default: std::unreachable();
         }
       }();
@@ -278,22 +298,70 @@ struct raptor {
       if constexpr (Rt) {
         any_marked |= [&]() {
           switch (filters) {
-            case 0b0000: return loop_rt_routes<false, false, false, false>(k);
-            case 0b0001: return loop_rt_routes<false, false, false, true>(k);
-            case 0b0010: return loop_rt_routes<false, false, true, false>(k);
-            case 0b0011: return loop_rt_routes<false, false, true, true>(k);
-            case 0b0100: return loop_rt_routes<false, true, false, false>(k);
-            case 0b0101: return loop_rt_routes<false, true, false, true>(k);
-            case 0b0110: return loop_rt_routes<false, true, true, false>(k);
-            case 0b0111: return loop_rt_routes<false, true, true, true>(k);
-            case 0b1000: return loop_rt_routes<true, false, false, false>(k);
-            case 0b1001: return loop_rt_routes<true, false, false, true>(k);
-            case 0b1010: return loop_rt_routes<true, false, true, false>(k);
-            case 0b1011: return loop_rt_routes<true, false, true, true>(k);
-            case 0b1100: return loop_rt_routes<true, true, false, false>(k);
-            case 0b1101: return loop_rt_routes<true, true, false, true>(k);
-            case 0b1110: return loop_rt_routes<true, true, true, false>(k);
-            case 0b1111: return loop_rt_routes<true, true, true, true>(k);
+            case 0b00000:
+              return loop_rt_routes<false, false, false, false, false>(k);
+            case 0b00001:
+              return loop_rt_routes<false, false, false, false, true>(k);
+            case 0b00010:
+              return loop_rt_routes<false, false, false, true, false>(k);
+            case 0b00011:
+              return loop_rt_routes<false, false, false, true, true>(k);
+            case 0b00100:
+              return loop_rt_routes<false, false, true, false, false>(k);
+            case 0b00101:
+              return loop_rt_routes<false, false, true, false, true>(k);
+            case 0b00110:
+              return loop_rt_routes<false, false, true, true, false>(k);
+            case 0b00111:
+              return loop_rt_routes<false, false, true, true, true>(k);
+            case 0b01000:
+              return loop_rt_routes<false, true, false, false, false>(k);
+            case 0b01001:
+              return loop_rt_routes<false, true, false, false, true>(k);
+            case 0b01010:
+              return loop_rt_routes<false, true, false, true, false>(k);
+            case 0b01011:
+              return loop_rt_routes<false, true, false, true, true>(k);
+            case 0b01100:
+              return loop_rt_routes<false, true, true, false, false>(k);
+            case 0b01101:
+              return loop_rt_routes<false, true, true, false, true>(k);
+            case 0b01110:
+              return loop_rt_routes<false, true, true, true, false>(k);
+            case 0b01111:
+              return loop_rt_routes<false, true, true, true, true>(k);
+            case 0b10000:
+              return loop_rt_routes<true, false, false, false, false>(k);
+            case 0b10001:
+              return loop_rt_routes<true, false, false, false, true>(k);
+            case 0b10010:
+              return loop_rt_routes<true, false, false, true, false>(k);
+            case 0b10011:
+              return loop_rt_routes<true, false, false, true, true>(k);
+            case 0b10100:
+              return loop_rt_routes<true, false, true, false, false>(k);
+            case 0b10101:
+              return loop_rt_routes<true, false, true, false, true>(k);
+            case 0b10110:
+              return loop_rt_routes<true, false, true, true, false>(k);
+            case 0b10111:
+              return loop_rt_routes<true, false, true, true, true>(k);
+            case 0b11000:
+              return loop_rt_routes<true, true, false, false, false>(k);
+            case 0b11001:
+              return loop_rt_routes<true, true, false, false, true>(k);
+            case 0b11010:
+              return loop_rt_routes<true, true, false, true, false>(k);
+            case 0b11011:
+              return loop_rt_routes<true, true, false, true, true>(k);
+            case 0b11100:
+              return loop_rt_routes<true, true, true, false, false>(k);
+            case 0b11101:
+              return loop_rt_routes<true, true, true, false, true>(k);
+            case 0b11110:
+              return loop_rt_routes<true, true, true, true, false>(k);
+            case 0b11111:
+              return loop_rt_routes<true, true, true, true, true>(k);
             default: std::unreachable();
           }
         }();
@@ -440,7 +508,8 @@ private:
   template <bool WithClaszFilter,
             bool WithBikeFilter,
             bool WithCarFilter,
-            bool WithWheelchairFilter>
+            bool WithWheelchairFilter,
+            bool WithReservationNotRequiredFilter>
   bool loop_routes(unsigned const k) {
     auto any_marked = false;
     state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
@@ -452,66 +521,69 @@ private:
         }
       }
 
-      auto section_bike_filter = false;
+      auto filters = static_cast<uint8_t>(0);
+
+      auto const apply_filter = [&](route_flag const f) {
+        auto const flag_set_on_all_sections =
+            tt_.route_flags_[f].test(r_idx * 2);
+        if (!flag_set_on_all_sections) {
+          auto const flag_set_on_some_sections =
+              tt_.route_flags_[f].test(r_idx * 2 + 1);
+          if (!flag_set_on_some_sections) {
+            return false;
+          }
+          filters |=
+              static_cast<uint8_t>(1 << (route_flag::kNumRouteFlags - f - 1));
+          return true;
+        }
+        return true;
+      };
+
       if constexpr (WithBikeFilter) {
-        auto const bikes_allowed_on_all_sections =
-            tt_.route_bikes_allowed_.test(r_idx * 2);
-        if (!bikes_allowed_on_all_sections) {
-          auto const bikes_allowed_on_some_sections =
-              tt_.route_bikes_allowed_.test(r_idx * 2 + 1);
-          if (!bikes_allowed_on_some_sections) {
-            return;
-          }
-          section_bike_filter = true;
+        if (!apply_filter(route_flag::kBikesAllowed)) {
+          return;
         }
       }
 
-      auto section_car_filter = false;
       if constexpr (WithCarFilter) {
-        auto const cars_allowed_on_all_sections =
-            tt_.route_cars_allowed_.test(r_idx * 2);
-        if (!cars_allowed_on_all_sections) {
-          auto const cars_allowed_on_some_sections =
-              tt_.route_cars_allowed_.test(r_idx * 2 + 1);
-          if (!cars_allowed_on_some_sections) {
-            return;
-          }
-          section_car_filter = true;
+        if (!apply_filter(route_flag::kCarsAllowed)) {
+          return;
         }
       }
 
-      auto section_wheelchair_filter = false;
       if constexpr (WithWheelchairFilter) {
-        auto const wheelchair_accessibility_on_all_sections =
-            tt_.route_wheelchair_accessible_.test(r_idx * 2);
-        if (!wheelchair_accessibility_on_all_sections) {
-          auto const wheelchair_accessibility_on_some_sections =
-              tt_.route_wheelchair_accessible_.test(r_idx * 2 + 1);
-          if (!wheelchair_accessibility_on_some_sections) {
-            return;
-          }
-          section_wheelchair_filter = true;
+        if (!apply_filter(route_flag::kWheelchairAccessible)) {
+          return;
+        }
+      }
+
+      if constexpr (WithReservationNotRequiredFilter) {
+        if (!apply_filter(route_flag::kReservationNotRequired)) {
+          return;
         }
       }
 
       ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating route {}\n", k, r);
 
-      uint8_t const filters =
-          static_cast<uint8_t>(section_bike_filter << 2) |
-          static_cast<uint8_t>(section_car_filter << 1) |
-          static_cast<uint8_t>(section_wheelchair_filter << 0);
-
       any_marked |= [&]() {
         switch (filters) {
-          case 0b000: return update_route<false, false, false>(k, r);
-          case 0b001: return update_route<false, false, true>(k, r);
-          case 0b010: return update_route<false, true, false>(k, r);
-          case 0b011: return update_route<false, true, true>(k, r);
-          case 0b100: return update_route<true, false, false>(k, r);
-          case 0b101: return update_route<true, false, true>(k, r);
-          case 0b110: return update_route<true, true, false>(k, r);
-          case 0b111: return update_route<true, true, true>(k, r);
+          case 0b0000: return update_route<false, false, false, false>(k, r);
+          case 0b0001: return update_route<false, false, false, true>(k, r);
+          case 0b0010: return update_route<false, false, true, false>(k, r);
+          case 0b0011: return update_route<false, false, true, true>(k, r);
+          case 0b0100: return update_route<false, true, false, false>(k, r);
+          case 0b0101: return update_route<false, true, false, true>(k, r);
+          case 0b0110: return update_route<false, true, true, false>(k, r);
+          case 0b0111: return update_route<false, true, true, true>(k, r);
+          case 0b1000: return update_route<true, false, false, false>(k, r);
+          case 0b1001: return update_route<true, false, false, true>(k, r);
+          case 0b1010: return update_route<true, false, true, false>(k, r);
+          case 0b1011: return update_route<true, false, true, true>(k, r);
+          case 0b1100: return update_route<true, true, false, false>(k, r);
+          case 0b1101: return update_route<true, true, false, true>(k, r);
+          case 0b1110: return update_route<true, true, true, false>(k, r);
+          case 0b1111: return update_route<true, true, true, true>(k, r);
           default: std::unreachable();
         }
       }();
@@ -522,7 +594,8 @@ private:
   template <bool WithClaszFilter,
             bool WithBikeFilter,
             bool WithCarFilter,
-            bool WithWheelchairFilter>
+            bool WithWheelchairFilter,
+            bool WithReservationNotRequiredFilter>
   bool loop_rt_routes(unsigned const k) {
     auto any_marked = false;
     state_.rt_transport_mark_.for_each_set_bit([&](auto const rt_t_idx) {
@@ -535,67 +608,85 @@ private:
         }
       }
 
-      auto section_bike_filter = false;
+      auto filters = static_cast<uint8_t>(0);
+
+      auto const apply_filter = [&](route_flag const f) {
+        auto const flag_set_on_all_sections =
+            rtt_->rt_transport_flags_[f].test(rt_t_idx * 2);
+        if (!flag_set_on_all_sections) {
+          auto const flag_set_on_some_sections =
+              rtt_->rt_transport_flags_[f].test(rt_t_idx * 2 + 1);
+          if (!flag_set_on_some_sections) {
+            return false;
+          }
+          filters |=
+              static_cast<uint8_t>(1 << (route_flag::kNumRouteFlags - f - 1));
+          return true;
+        }
+        return true;
+      };
+
       if constexpr (WithBikeFilter) {
-        auto const bikes_allowed_on_all_sections =
-            rtt_->rt_transport_bikes_allowed_.test(rt_t_idx * 2);
-        if (!bikes_allowed_on_all_sections) {
-          auto const bikes_allowed_on_some_sections =
-              rtt_->rt_transport_bikes_allowed_.test(rt_t_idx * 2 + 1);
-          if (!bikes_allowed_on_some_sections) {
-            return;
-          }
-          section_bike_filter = true;
+        if (!apply_filter(route_flag::kBikesAllowed)) {
+          return;
         }
       }
 
-      auto section_car_filter = false;
       if constexpr (WithCarFilter) {
-        auto const cars_allowed_on_all_sections =
-            rtt_->rt_transport_cars_allowed_.test(rt_t_idx * 2);
-        if (!cars_allowed_on_all_sections) {
-          auto const cars_allowed_on_some_sections =
-              rtt_->rt_transport_cars_allowed_.test(rt_t_idx * 2 + 1);
-          if (!cars_allowed_on_some_sections) {
-            return;
-          }
-          section_car_filter = true;
+        if (!apply_filter(route_flag::kCarsAllowed)) {
+          return;
         }
       }
 
-      auto section_wheelchair_filter = false;
       if constexpr (WithWheelchairFilter) {
-        auto const wheelchair_accessible_on_all_sections =
-            rtt_->rt_transport_wheelchair_accessibility_.test(rt_t_idx * 2);
-        if (!wheelchair_accessible_on_all_sections) {
-          auto const wheelchair_accessible_on_some_sections =
-              rtt_->rt_transport_wheelchair_accessibility_.test(rt_t_idx * 2 +
-                                                                1);
-          if (!wheelchair_accessible_on_some_sections) {
-            return;
-          }
-          section_wheelchair_filter = true;
+        if (!apply_filter(route_flag::kWheelchairAccessible)) {
+          return;
+        }
+      }
+
+      if constexpr (WithReservationNotRequiredFilter) {
+        if (!apply_filter(route_flag::kReservationNotRequired)) {
+          return;
         }
       }
 
       ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating rt transport {}\n", k, rt_t);
 
-      uint8_t const filters =
-          static_cast<uint8_t>(section_bike_filter << 2) |
-          static_cast<uint8_t>(section_car_filter << 1) |
-          static_cast<uint8_t>(section_wheelchair_filter << 0);
-
       any_marked |= [&]() {
         switch (filters) {
-          case 0b000: return update_rt_transport<false, false, false>(k, rt_t);
-          case 0b001: return update_rt_transport<false, false, true>(k, rt_t);
-          case 0b010: return update_rt_transport<false, true, false>(k, rt_t);
-          case 0b011: return update_rt_transport<false, true, true>(k, rt_t);
-          case 0b100: return update_rt_transport<true, false, false>(k, rt_t);
-          case 0b101: return update_rt_transport<true, false, true>(k, rt_t);
-          case 0b110: return update_rt_transport<true, true, false>(k, rt_t);
-          case 0b111: return update_rt_transport<true, true, true>(k, rt_t);
+          case 0b0000:
+            return update_rt_transport<false, false, false, false>(k, rt_t);
+          case 0b0001:
+            return update_rt_transport<false, false, false, true>(k, rt_t);
+          case 0b0010:
+            return update_rt_transport<false, false, true, false>(k, rt_t);
+          case 0b0011:
+            return update_rt_transport<false, false, true, true>(k, rt_t);
+          case 0b0100:
+            return update_rt_transport<false, true, false, false>(k, rt_t);
+          case 0b0101:
+            return update_rt_transport<false, true, false, true>(k, rt_t);
+          case 0b0110:
+            return update_rt_transport<false, true, true, false>(k, rt_t);
+          case 0b0111:
+            return update_rt_transport<false, true, true, true>(k, rt_t);
+          case 0b1000:
+            return update_rt_transport<true, false, false, false>(k, rt_t);
+          case 0b1001:
+            return update_rt_transport<true, false, false, true>(k, rt_t);
+          case 0b1010:
+            return update_rt_transport<true, false, true, false>(k, rt_t);
+          case 0b1011:
+            return update_rt_transport<true, false, true, true>(k, rt_t);
+          case 0b1100:
+            return update_rt_transport<true, true, false, false>(k, rt_t);
+          case 0b1101:
+            return update_rt_transport<true, true, false, true>(k, rt_t);
+          case 0b1110:
+            return update_rt_transport<true, true, true, false>(k, rt_t);
+          case 0b1111:
+            return update_rt_transport<true, true, true, true>(k, rt_t);
           default: std::unreachable();
         }
       }();
@@ -970,7 +1061,8 @@ private:
 
   template <bool WithSectionBikeFilter,
             bool WithSectionCarFilter,
-            bool WithSectionWheelchairFilter>
+            bool WithSectionWheelchairFilter,
+            bool WithSectionReservationNotRequiredFilter>
   bool update_rt_transport(unsigned const k, rt_transport_idx_t const rt_t) {
     auto const stop_seq = rtt_->rt_transport_location_seq_[rt_t];
     // et[v] = there is an entry point on this transport such that the
@@ -986,27 +1078,28 @@ private:
       auto const is_first = i == 0U;
       auto const is_last = i == stop_seq.size() - 1U;
 
-      if constexpr (WithSectionBikeFilter) {
+      auto const apply_filter = [&](route_flag const f) {
         if (!is_first &&
-            !rtt_->rt_bikes_allowed_per_section_[rt_t][kFwd ? stop_idx - 1
-                                                            : stop_idx]) {
+            !rtt_->rt_flags_per_section_[f][rt_t]
+                                        [kFwd ? stop_idx - 1 : stop_idx]) {
           et.fill(false);
         }
+      };
+
+      if constexpr (WithSectionBikeFilter) {
+        apply_filter(route_flag::kBikesAllowed);
       }
 
       if constexpr (WithSectionCarFilter) {
-        if (!is_first &&
-            !rtt_->rt_cars_allowed_per_section_[rt_t][kFwd ? stop_idx - 1
-                                                           : stop_idx]) {
-          et.fill(false);
-        }
+        apply_filter(route_flag::kCarsAllowed);
       }
 
       if constexpr (WithSectionWheelchairFilter) {
-        if (!is_first && !rtt_->rt_wheelchair_accessible_per_section_
-                              [rt_t][kFwd ? stop_idx - 1 : stop_idx]) {
-          et.fill(false);
-        }
+        apply_filter(route_flag::kWheelchairAccessible);
+      }
+
+      if constexpr (WithSectionReservationNotRequiredFilter) {
+        apply_filter(route_flag::kReservationNotRequired);
       }
 
       if ((kFwd && stop_idx != 0U) ||
@@ -1081,7 +1174,8 @@ private:
 
   template <bool WithSectionBikeFilter,
             bool WithSectionCarFilter,
-            bool WithSectionWheelchairFilter>
+            bool WithSectionWheelchairFilter,
+            bool WithSectionReservationNotRequiredFilter>
   bool update_route(unsigned const k, route_idx_t const r) {
     auto const stop_seq = tt_.route_location_seq_[r];
     bool any_marked = false;
@@ -1096,27 +1190,27 @@ private:
       auto const is_first = i == 0U;
       auto const is_last = i == stop_seq.size() - 1U;
 
-      if constexpr (WithSectionBikeFilter) {
-        if (!is_first &&
-            !tt_.route_bikes_allowed_per_section_[r][kFwd ? stop_idx - 1
-                                                          : stop_idx]) {
+      auto const apply_filter = [&](route_flag const f) {
+        if (!is_first && !tt_.route_flags_per_section_[f][r][kFwd ? stop_idx - 1
+                                                                  : stop_idx]) {
           et = {};
         }
+      };
+
+      if constexpr (WithSectionBikeFilter) {
+        apply_filter(route_flag::kBikesAllowed);
       }
 
       if constexpr (WithSectionCarFilter) {
-        if (!is_first &&
-            !tt_.route_cars_allowed_per_section_[r][kFwd ? stop_idx - 1
-                                                         : stop_idx]) {
-          et = {};
-        }
+        apply_filter(route_flag::kCarsAllowed);
       }
 
       if constexpr (WithSectionWheelchairFilter) {
-        if (!is_first && !tt_.route_wheelchair_accessibility_per_section_
-                              [r][kFwd ? stop_idx - 1 : stop_idx]) {
-          et = {};
-        }
+        apply_filter(route_flag::kWheelchairAccessible);
+      }
+
+      if constexpr (WithSectionReservationNotRequiredFilter) {
+        apply_filter(route_flag::kReservationNotRequired);
       }
 
       if constexpr (Vias != 0U) {
@@ -1433,6 +1527,7 @@ private:
   bool require_bike_transport_;
   bool require_car_transport_;
   bool is_wheelchair_;
+  bool no_compulsory_reservation_;
   transfer_time_settings transfer_time_settings_;
 };
 
