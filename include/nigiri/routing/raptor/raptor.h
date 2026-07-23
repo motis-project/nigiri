@@ -219,12 +219,20 @@ struct raptor {
           best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
         }
       }
-      is_dest_.for_each_set_bit([&](std::uint64_t const i) {
-        update_time_at_dest(k, best_[i][Vias]);
-      });
+      is_dest_.for_each_set_bit(
+          [&](auto const i) { update_time_at_dest(k, best_[i][Vias]); });
 
       auto any_marked = false;
-      state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+      state_.station_mark_.for_each_set_bit([&](auto const i) {
+        auto b = kInvalid;
+        for (auto v = 0U; v != Vias + 1; ++v) {
+          b = get_best(round_times_[k - 1][i][v], b);
+        }
+        if (!lb_reachable(i) ||
+            !is_better_loose(b + dir(get_lb(i)), time_at_dest_[k])) {
+          state_.station_mark_.set(i, false);
+          return;
+        }
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
           any_marked = true;
           state_.route_mark_.set(to_idx(r), true);
@@ -663,7 +671,7 @@ private:
   }
 
   void update_footpaths(unsigned const k) {
-    state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+    state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
       auto const l_idx = location_idx_t{i};
       if constexpr (Rt) {
         if (prf_idx_ != 0U && (kFwd ? rtt_->has_td_footpaths_out_
@@ -671,6 +679,15 @@ private:
                                   .test(l_idx)) {
           return;
         }
+      }
+
+      auto src = kInvalid;
+      for (auto v = 0U; v != Vias + 1; ++v) {
+        src = get_best(tmp_[i][v], src);
+      }
+      if (!lb_reachable(i) ||
+          !is_better_loose(src + dir(get_lb(i)), time_at_dest_[k])) {
+        return;
       }
 
       auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx_][l_idx]
@@ -767,11 +784,20 @@ private:
       return;
     }
 
-    state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+    state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
       auto const l_idx = location_idx_t{i};
       if (!(kFwd ? rtt_->has_td_footpaths_out_
                  : rtt_->has_td_footpaths_in_)[prf_idx_]
                .test(l_idx)) {
+        return;
+      }
+
+      auto src = kInvalid;
+      for (auto v = 0U; v != Vias + 1; ++v) {
+        src = get_best(tmp_[i][v], src);
+      }
+      if (!lb_reachable(i) ||
+          !is_better_loose(src + dir(get_lb(i)), time_at_dest_[k])) {
         return;
       }
 
@@ -789,19 +815,18 @@ private:
 
           auto const target = to_idx(fp.target());
 
-          auto const start_is_via =
-              v != Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
-          auto const start_v = start_is_via ? v + 1 : v;
-
-          auto const target_is_via =
-              start_v != Vias && is_via_[start_v][target];
-          auto const target_v = target_is_via ? start_v + 1 : start_v;
+          auto target_v = v;
           auto stay = 0_minutes;
-          if (start_is_via) {
-            stay += via_stops_[v].stay_;
-          }
-          if (target_is_via) {
-            stay += via_stops_[start_v].stay_;
+          if constexpr (Vias != 0) {
+            auto start_v = v;
+            if (v != Vias && is_via_[v][static_cast<bitvec::size_type>(i)]) {
+              stay += via_stops_[v].stay_;
+              start_v = v + 1;
+            }
+            if (start_v != Vias && is_via_[start_v][target]) {
+              stay += via_stops_[start_v].stay_;
+              target_v = start_v + 1;
+            }
           }
 
           auto const fp_target_time =
@@ -1071,7 +1096,9 @@ private:
           rt_t, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
       for (auto v = 0U; v != Vias + 1; ++v) {
         auto const prev_round_time = round_times_[k - 1][l_idx][v];
-        if (is_better_or_eq(prev_round_time, by_transport)) {
+        if (is_better_or_eq(prev_round_time, by_transport) &&
+            is_better_loose(prev_round_time + dir(get_lb(l_idx)),
+                            time_at_dest_[k])) {
           et[v] = true;
         }
       }
@@ -1224,7 +1251,9 @@ private:
                 : kInvalid;
         auto const prev_round_time = round_times_[k - 1][l_idx][v];
         if (prev_round_time != kInvalid &&
-            is_better_or_eq(prev_round_time, et_time_at_stop)) {
+            is_better_or_eq(prev_round_time, et_time_at_stop) &&
+            is_better_loose(prev_round_time + dir(get_lb(l_idx)),
+                            time_at_dest_[k])) {
           auto const [day, mam] = split(prev_round_time);
           auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
                                                      stp.location_idx());
