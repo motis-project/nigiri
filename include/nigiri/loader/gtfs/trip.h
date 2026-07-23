@@ -77,9 +77,7 @@ struct trip {
        translation_idx_t short_name,
        direction_id_t,
        shape_idx_t,
-       bool bikes_allowed,
-       bool cars_allowed,
-       bool accessible,
+       std::array<bool, kNumRouteFlags> flags,
        std::string ticketing_trip_id,
        bool ticketing_unavailable);
 
@@ -122,9 +120,7 @@ struct trip {
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};
   bool requires_sorting_{false};
-  bool bikes_allowed_{false};
-  bool cars_allowed_{false};
-  bool wheelchair_accessible_{false};
+  std::array<bool, kNumRouteFlags> flags_{false, false, false, true};
   std::uint32_t from_line_{0U}, to_line_{0U};
 
   // GTFS extension (MBTA): trips.txt `trip_route_type` overrides the

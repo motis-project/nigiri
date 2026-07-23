@@ -450,90 +450,44 @@ clasz run_stop::get_scheduled_clasz(event_type const ev_type) const {
                                                        : section_idx(ev_type));
 }
 
-bool run_stop::bikes_allowed(event_type const ev_type) const {
+bool run_stop::flag_set(route_flag const f, event_type const ev_type) const {
   if (fr_->is_rt() && rtt() != nullptr) {
-    if (rtt()->rt_transport_bikes_allowed_[to_idx(fr_->rt_) * 2U]) {
+    if (rtt()->rt_transport_flags_[f][to_idx(fr_->rt_) * 2U]) {
       return true;
-    } else if (!rtt()
-                    ->rt_transport_bikes_allowed_[to_idx(fr_->rt_) * 2U + 1U]) {
+    } else if (!rtt()->rt_transport_flags_[f][to_idx(fr_->rt_) * 2U + 1U]) {
       return false;
     } else {
-      auto const bikes_allowed_seq =
-          rtt()->rt_bikes_allowed_per_section_.at(fr_->rt_);
-      return bikes_allowed_seq.at(
-          bikes_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+      auto const flag_seq = rtt()->rt_flags_per_section_[f].at(fr_->rt_);
+      return flag_seq.at(flag_seq.size() == 1U ? 0U : section_idx(ev_type));
     }
   } else {
     auto const r = tt().transport_route_.at(fr_->t_.t_idx_);
-    if (tt().route_bikes_allowed_[to_idx(r) * 2U]) {
+    if (tt().route_flags_[f][to_idx(r) * 2U]) {
       return true;
-    } else if (!tt().route_bikes_allowed_[to_idx(r) * 2U + 1U]) {
+    } else if (!tt().route_flags_[f][to_idx(r) * 2U + 1U]) {
       return false;
     } else {
-      auto const bikes_allowed_seq = tt().route_bikes_allowed_per_section_.at(
+      auto const flag_seq = tt().route_flags_per_section_[f].at(
           tt().transport_route_.at(fr_->t_.t_idx_));
-      return bikes_allowed_seq.at(
-          bikes_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+      return flag_seq.at(flag_seq.size() == 1U ? 0U : section_idx(ev_type));
     }
   }
+}
+
+bool run_stop::bikes_allowed(event_type const ev_type) const {
+  return flag_set(kBikesAllowed, ev_type);
 }
 
 bool run_stop::cars_allowed(event_type const ev_type) const {
-  if (fr_->is_rt() && rtt() != nullptr) {
-    if (rtt()->rt_transport_cars_allowed_[to_idx(fr_->rt_) * 2U]) {
-      return true;
-    } else if (!rtt()->rt_transport_cars_allowed_[to_idx(fr_->rt_) * 2U + 1U]) {
-      return false;
-    } else {
-      auto const cars_allowed_seq =
-          rtt()->rt_cars_allowed_per_section_.at(fr_->rt_);
-      return cars_allowed_seq.at(
-          cars_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
-    }
-  } else {
-    auto const r = tt().transport_route_.at(fr_->t_.t_idx_);
-    if (tt().route_cars_allowed_[to_idx(r) * 2U]) {
-      return true;
-    } else if (!tt().route_cars_allowed_[to_idx(r) * 2U + 1U]) {
-      return false;
-    } else {
-      auto const cars_allowed_seq = tt().route_cars_allowed_per_section_.at(
-          tt().transport_route_.at(fr_->t_.t_idx_));
-      return cars_allowed_seq.at(
-          cars_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
-    }
-  }
+  return flag_set(kCarsAllowed, ev_type);
 }
 
 bool run_stop::wheelchair_accessible(event_type ev_type) const {
-  if (fr_->is_rt() && rtt() != nullptr) {
-    if (rtt()->rt_transport_wheelchair_accessibility_[to_idx(fr_->rt_) * 2U]) {
-      return true;
-    } else if (!rtt()->rt_transport_wheelchair_accessibility_[to_idx(fr_->rt_) *
-                                                                  2U +
-                                                              1U]) {
-      return false;
-    } else {
-      auto const wheelchair_accessible_seq =
-          rtt()->rt_wheelchair_accessible_per_section_.at(fr_->rt_);
-      return wheelchair_accessible_seq.at(
-          wheelchair_accessible_seq.size() == 1U ? 0U : section_idx(ev_type));
-    }
-  } else {
-    auto const r = tt().transport_route_.at(fr_->t_.t_idx_);
-    if (tt().route_wheelchair_accessible_[to_idx(r) * 2U]) {
-      return true;
-    } else if (!tt().route_wheelchair_accessible_[to_idx(r) * 2U + 1U]) {
-      return false;
-    } else {
-      auto const wheelchair_accessibility_seq =
-          tt().route_wheelchair_accessibility_per_section_.at(
-              tt().transport_route_.at(fr_->t_.t_idx_));
-      return wheelchair_accessibility_seq.at(
-          wheelchair_accessibility_seq.size() == 1U ? 0U
-                                                    : section_idx(ev_type));
-    }
-  }
+  return flag_set(kWheelchairAccessible, ev_type);
+}
+
+bool run_stop::reservation_not_required(event_type ev_type) const {
+  return flag_set(kReservationNotRequired, ev_type);
 }
 
 route_color run_stop::get_route_color(event_type ev_type) const {

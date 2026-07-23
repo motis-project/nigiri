@@ -193,13 +193,23 @@ struct rt_timetable {
   }
 
   bool has_car_transport(rt_transport_idx_t const r) const {
-    return rt_transport_cars_allowed_[to_idx(r) * 2U] ||
-           rt_transport_cars_allowed_[to_idx(r) * 2U + 1U];
+    return rt_transport_flags_[kCarsAllowed][to_idx(r) * 2U] ||
+           rt_transport_flags_[kCarsAllowed][to_idx(r) * 2U + 1U];
   }
 
   bool has_bike_transport(rt_transport_idx_t const r) const {
-    return rt_transport_bikes_allowed_[to_idx(r) * 2U] ||
-           rt_transport_bikes_allowed_[to_idx(r) * 2U + 1U];
+    return rt_transport_flags_[kBikesAllowed][to_idx(r) * 2U] ||
+           rt_transport_flags_[kBikesAllowed][to_idx(r) * 2U + 1U];
+  }
+
+  bool has_wheelchair_transport(rt_transport_idx_t const r) const {
+    return rt_transport_flags_[kWheelchairAccessible][to_idx(r) * 2U] ||
+           rt_transport_flags_[kWheelchairAccessible][to_idx(r) * 2U + 1U];
+  }
+
+  bool has_reservation_not_required(rt_transport_idx_t const r) const {
+    return rt_transport_flags_[kReservationNotRequired][to_idx(r) * 2U] ||
+           rt_transport_flags_[kReservationNotRequired][to_idx(r) * 2U + 1U];
   }
 
   bitfield const& traffic_days(bitfield_idx_t const i) const {
@@ -215,11 +225,6 @@ struct rt_timetable {
 
   bool is_transport_active(transport_idx_t const t, day_idx_t const day) const {
     return traffic_days(transport_traffic_days_[t]).test(to_idx(day));
-  }
-
-  bool has_wheelchair_transport(rt_transport_idx_t const r) const {
-    return rt_transport_wheelchair_accessibility_[to_idx(r) * 2U] ||
-           rt_transport_wheelchair_accessibility_[to_idx(r) * 2U + 1U];
   }
 
   timetable const* tt_{nullptr};
@@ -290,23 +295,11 @@ struct rt_timetable {
 
   // RT transport * 2 -> bikes allowed along the transport
   // RT transport * 2 + 1 -> bikes along parts of the transport
-  bitvec rt_transport_bikes_allowed_;
-
-  // same for cars
-  bitvec rt_transport_cars_allowed_;
-
-  // same for wheelchair accessibility
-  bitvec rt_transport_wheelchair_accessibility_;  // TODO actually fill this
-                                                  // from somewhere
+  std::array<bitvec, kNumRouteFlags> rt_transport_flags_;
 
   // RT transport -> bikes allowed for each section
-  vecvec<rt_transport_idx_t, bool> rt_bikes_allowed_per_section_;
-
-  // same for cars
-  vecvec<rt_transport_idx_t, bool> rt_cars_allowed_per_section_;
-
-  // same for wheelchair accessbility
-  vecvec<rt_transport_idx_t, bool> rt_wheelchair_accessible_per_section_;
+  std::array<vecvec<rt_transport_idx_t, bool>, kNumRouteFlags>
+      rt_flags_per_section_;
 
   // Service alerts
   alerts alerts_;

@@ -18,7 +18,8 @@ pareto_set<routing::journey> raptor_search(
     direction = direction::kForward,
     routing::clasz_mask_t mask = routing::all_clasz_allowed(),
     bool require_bikes_allowed = false,
-    bool require_cars_allowed = false);
+    bool require_cars_allowed = false,
+    bool no_compulsory_reservation = false);
 
 pareto_set<routing::journey> raptor_search(
     timetable const&,
@@ -30,6 +31,7 @@ pareto_set<routing::journey> raptor_search(
     routing::clasz_mask_t mask = routing::all_clasz_allowed(),
     bool require_bikes_allowed = false,
     bool require_cars_allowed = false,
+    bool no_compulsory_reservation = false,
     profile_idx_t const profile = 0U);
 
 pareto_set<routing::journey> raptor_search(timetable const&,

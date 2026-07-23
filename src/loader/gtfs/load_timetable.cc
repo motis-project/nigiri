@@ -238,74 +238,27 @@ void load_timetable(loader_config const& config,
       precompute_noon_offsets(tt, agencies, config.default_tz_);
 
   stop_seq_t stop_seq_cache;
-  bitvec bikes_allowed_seq_cache;
-  auto const get_bikes_allowed_seq =
-      [&](basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
+  std::array<bitvec, kNumRouteFlags> flags_seq_cache;
+  auto const get_flag_seq =
+      [&](route_flag const f,
+          basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
     if (trips.size() == 1U) {
-      return trip_data.get(trips.front()).bikes_allowed_
+      return trip_data.get(trips.front()).flags_[f]
                  ? &kSingleTripTransportationAllowed
                  : &kSingleTripTransportationNotAllowed;
     } else {
-      bikes_allowed_seq_cache.resize(0);
+      flags_seq_cache[f].resize(0);
       for (auto const [i, t_idx] : utl::enumerate(trips)) {
         auto const& trp = trip_data.get(t_idx);
         auto const stop_count = trp.stop_seq_.size();
-        auto const offset = bikes_allowed_seq_cache.size();
-        bikes_allowed_seq_cache.resize(
+        auto const offset = flags_seq_cache[f].size();
+        flags_seq_cache[f].resize(
             static_cast<bitvec::size_type>(offset + stop_count - 1));
         for (auto j = 0U; j < stop_count - 1; ++j) {
-          bikes_allowed_seq_cache.set(offset + j, trp.bikes_allowed_);
+          flags_seq_cache[f].set(offset + j, trp.flags_[f]);
         }
       }
-      return &bikes_allowed_seq_cache;
-    }
-  };
-
-  bitvec cars_allowed_seq_cache;
-  auto const get_cars_allowed_seq =
-      [&](basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
-    if (trips.size() == 1U) {
-      return trip_data.get(trips.front()).cars_allowed_
-                 ? &kSingleTripTransportationAllowed
-                 : &kSingleTripTransportationNotAllowed;
-    } else {
-      cars_allowed_seq_cache.resize(0);
-      for (auto const [i, t_idx] : utl::enumerate(trips)) {
-        auto const& trp = trip_data.get(t_idx);
-        auto const stop_count = trp.stop_seq_.size();
-        auto const offset = cars_allowed_seq_cache.size();
-        cars_allowed_seq_cache.resize(
-            static_cast<bitvec::size_type>(offset + stop_count - 1));
-        for (auto j = 0U; j < stop_count - 1; ++j) {
-          cars_allowed_seq_cache.set(offset + j, trp.cars_allowed_);
-        }
-      }
-      return &cars_allowed_seq_cache;
-    }
-  };
-
-  // TODO bikes, cars and wheelchairs duplicate the same logic -> function?
-  bitvec wheelchair_accessible_seq_cache;
-  auto const get_wheelchair_accessible_seq =
-      [&](basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
-    if (trips.size() == 1U) {
-      return trip_data.get(trips.front()).wheelchair_accessible_
-                 ? &kSingleTripTransportationAllowed
-                 : &kSingleTripTransportationNotAllowed;
-    } else {
-      wheelchair_accessible_seq_cache.resize(0);
-      for (auto const [i, t_idx] : utl::enumerate(trips)) {
-        auto const& trp = trip_data.get(t_idx);
-        auto const stop_count = trp.stop_seq_.size();
-        auto const offset = wheelchair_accessible_seq_cache.size();
-        wheelchair_accessible_seq_cache.resize(
-            static_cast<bitvec::size_type>(offset + stop_count - 1));
-        for (auto j = 0U; j < stop_count - 1; ++j) {
-          wheelchair_accessible_seq_cache.set(offset + j,
-                                              trp.wheelchair_accessible_);
-        }
-      }
-      return &wheelchair_accessible_seq_cache;
+      return &flags_seq_cache[f];
     }
   };
 
@@ -320,13 +273,11 @@ void load_timetable(loader_config const& config,
             ? *front_trip.clasz_
             : to_clasz(
                   to_idx(tt.route_ids_[src].route_id_type_[front_trip.route_]));
-    auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
-    auto const* cars_allowed_seq = get_cars_allowed_seq(s.trips_);
-    auto const* wheelchair_accessible_seq =
-        get_wheelchair_accessible_seq(s.trips_);
-    auto const it = route_services.find(
-        route_key_ptr_t{clasz, stop_seq, bikes_allowed_seq, cars_allowed_seq,
-                        wheelchair_accessible_seq});
+    for (auto f = 0U; f < kNumRouteFlags; ++f) {
+      get_flag_seq(static_cast<route_flag>(f), s.trips_);
+    }
+    auto const it =
+        route_services.find(route_key_ptr_t{clasz, stop_seq, &flags_seq_cache});
     if (it != end(route_services)) {
       for (auto& r : it->second) {
         auto const idx = get_index(r, s);
@@ -337,10 +288,8 @@ void load_timetable(loader_config const& config,
       }
       it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
     } else {
-      route_services.emplace(
-          route_key_t{clasz, *stop_seq, *bikes_allowed_seq, *cars_allowed_seq,
-                      *wheelchair_accessible_seq},
-          std::vector<std::vector<utc_trip>>{{s}});
+      route_services.emplace(route_key_t{clasz, *stop_seq, flags_seq_cache},
+                             std::vector<std::vector<utc_trip>>{{s}});
     }
   };
 
@@ -440,8 +389,7 @@ void load_timetable(loader_config const& config,
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
         auto const route_idx =
-            tt.register_route(key.stop_seq_, {key.clasz_}, key.bikes_allowed_,
-                              key.cars_allowed_, key.wheelchair_accessible_);
+            tt.register_route(key.stop_seq_, {key.clasz_}, key.flags_);
 
         for (auto const& s : key.stop_seq_) {
           auto s_routes = location_routes[stop{s}.location_idx()];
