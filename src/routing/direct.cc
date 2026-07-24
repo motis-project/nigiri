@@ -47,12 +47,12 @@ std::optional<journey::leg> lookup_offset(location_idx_t const loc,
     return std::optional{make_leg(td->first, td->second.transport_mode_id_)};
   }
 
-  // Search for shortest offset.
+  // Search for shortest offset, assuming offsets are sorted ASC
   auto best = std::optional<offset>{};
   for (auto const& o : offsets) {
-    if (o.target() == loc &&
-        (!best.has_value() || o.duration() < best->duration())) {
+    if (o.target() == loc) {
       best = o;
+      break;
     }
   }
 
