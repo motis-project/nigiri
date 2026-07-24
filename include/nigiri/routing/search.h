@@ -195,8 +195,6 @@ struct search {
                    q_.transfer_time_settings_,
                    algo_state)},
         timeout_(timeout) {
-    utl::sort(q_.start_);
-    utl::sort(q_.destination_);
     q_.sanitize(tt);
   }
 
