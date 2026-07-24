@@ -73,8 +73,6 @@ struct raptor_impl {
     if constexpr (!WithBounds) {
       return true;
     } else {
-      auto const* const row = bounds_ + (bounds_last_k_ - k) * tt_.n_locations_;
-
       // FWD arrival + 5min transfer = earliest departure
       //   10:00      10:05
       // >>>>>|-------->*>>>>>
@@ -85,28 +83,12 @@ struct raptor_impl {
       //
       // -> 10:00 < 10:05 would get rejected.
       // -> ping journey would not be found in pong
-      // -> find a self-transfer or footpath: t - duration is within the bounds
-
+      auto const* const row = bounds_ + (bounds_last_k_ - k) * tt_.n_locations_;
       auto const transfer = dir(adjusted_transfer_time(
           transfer_time_settings_,
           static_cast<int>(tt_.transfer_time_[l].count())));
-      if (is_better_or_eq(static_cast<int>(t),
-                          static_cast<int>(row[to_idx(l)]) + transfer)) {
-        return true;
-      }
-
-      auto const fps = kFwd ? tt_.footpaths_in_[prf_idx_][l]
-                            : tt_.footpaths_out_[prf_idx_][l];
-      for (auto const& fp : fps) {
-        auto const d = dir(adjusted_transfer_time(
-            transfer_time_settings_, static_cast<int>(fp.duration().count())));
-        if (is_better_or_eq(static_cast<int>(t),
-                            static_cast<int>(row[to_idx(fp.target())]) + d)) {
-          return true;
-        }
-      }
-
-      return false;
+      return is_better_or_eq(static_cast<int>(t),
+                             static_cast<int>(row[to_idx(l)]) + transfer);
     }
   }
 
@@ -528,6 +510,13 @@ struct raptor_impl {
                                                   delta_t const t_at_dest) {
     auto const target = to_idx(target_l);
     auto const fp_target_time = clamp(tmp_time + dir(duration));
+
+    if constexpr (!WithBounds) {
+      // Unconditionally write rount_times entry
+      // so the pong search can traverse from the target_l backwards.
+      round_times_.update_min(k, target_l, Vias, fp_target_time, bc);
+    }
+
     if (!is_better_loose(fp_target_time, t_at_dest)) {
       return;
     }
@@ -623,24 +612,16 @@ struct raptor_impl {
         if (tmp_time != kInvalid) {
           bc = tmp_.get_bc(0U, l, Vias);
           auto const is_dest = is_dest_[my_i];
-          auto const loc_transfer_time = dir(adjusted_transfer_time(
-              transfer_time_settings_, tt_.transfer_time_[l].count()));
 
           // same-station transfer (former update_transfers)
-          {
-            auto const fp_target_time = static_cast<delta_t>(
-                tmp_time + ((!intermodal && is_dest) ? 0 : loc_transfer_time));
-            if (is_better_loose(fp_target_time, t_at_dest) &&
-                is_better(fp_target_time, best_.get(l, Vias)) &&
-                within_bounds(k, l, fp_target_time)) {
-              round_times_.update_min(k, l, Vias, fp_target_time, bc);
-              best_.update_min(l, Vias, fp_target_time);
-              station_mark_.mark(my_i);
-              if (is_dest) {
-                update_time_at_dest(k, fp_target_time);
-              }
-            }
-          }
+          relax_fp_target(
+              k, l,
+              (!intermodal && is_dest)
+                  ? 0
+                  : adjusted_transfer_time(
+                        transfer_time_settings_,
+                        static_cast<int>(tt_.transfer_time_[l].count())),
+              tmp_time, bc, t_at_dest);
 
           // intermodal egress (former update_intermodal_footpaths)
           if (intermodal && dist_to_end_[my_i] != kUnreachable) {
