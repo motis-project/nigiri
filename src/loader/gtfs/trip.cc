@@ -227,8 +227,7 @@ trip_data read_trips(source_idx_t const src,
     utl::csv_col<std::uint8_t, UTL_NAME("cars_allowed")> cars_allowed_;
     utl::csv_col<std::uint8_t, UTL_NAME("wheelchair_accessible")>
         wheelchair_accessible_;
-    utl::csv_col<std::uint8_t, UTL_NAME("compulsory_reservation")>
-        compulsory_reservation_;
+    utl::csv_col<std::uint8_t, UTL_NAME("pickup_type")> pickup_type_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_route_type")> trip_route_type_;
     // Google Transit ticketing extension
     utl::csv_col<utl::cstr, UTL_NAME("ticketing_trip_id")> ticketing_trip_id;
@@ -301,7 +300,7 @@ trip_data read_trips(source_idx_t const src,
 
         auto wheelchair_accessible = t.wheelchair_accessible_.val() == 1;
 
-        auto compulsory_reservation = t.compulsory_reservation_.val() == 1;
+        auto compulsory_reservation = t.pickup_type_.val() >= 2;
 
         auto const id = t.trip_id_->view();
         auto const trip_short_name = i18n.get(t::kTrips, f::kTripShortName,

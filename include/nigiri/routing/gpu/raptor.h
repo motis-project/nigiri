@@ -75,6 +75,7 @@ struct gpu_raptor {
       clasz_mask_t const allowed_claszes,
       bool const require_bike_transport,
       bool const require_car_transport,
+      bool const no_compulsory_reservation_transport,
       bool const is_wheelchair,
       transfer_time_settings const& tts,
       profile_idx_t const prf_idx);
@@ -116,6 +117,7 @@ private:
   clasz_mask_t allowed_claszes_;
   bool require_bike_transport_;
   bool require_car_transport_;
+  bool no_compulsory_reservation_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
 

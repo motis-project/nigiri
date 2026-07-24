@@ -272,7 +272,7 @@ struct timetable {
   }
 
   bool has_bike_transport(route_idx_t const r) const {
-    return route_flags_[kCarsAllowed][to_idx(r) * 2U] ||
+    return route_flags_[kBikesAllowed][to_idx(r) * 2U] ||
            route_flags_[kBikesAllowed][to_idx(r) * 2U + 1U];
   }
 

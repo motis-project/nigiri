@@ -239,13 +239,11 @@ void load_timetable(loader_config const& config,
 
   stop_seq_t stop_seq_cache;
   std::array<bitvec, kNumRouteFlags> flags_seq_cache;
-  auto const get_flag_seq =
-      [&](route_flag const f,
-          basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
+  auto const apply_flag_seq = [&](route_flag const f,
+                                  basic_string<gtfs_trip_idx_t> const& trips) {
     if (trips.size() == 1U) {
-      return trip_data.get(trips.front()).flags_[f]
-                 ? &kSingleTripTransportationAllowed
-                 : &kSingleTripTransportationNotAllowed;
+      flags_seq_cache[f].resize(1);
+      flags_seq_cache[f].set(0, trip_data.get(trips.front()).flags_[f]);
     } else {
       flags_seq_cache[f].resize(0);
       for (auto const [i, t_idx] : utl::enumerate(trips)) {
@@ -258,7 +256,6 @@ void load_timetable(loader_config const& config,
           flags_seq_cache[f].set(offset + j, trp.flags_[f]);
         }
       }
-      return &flags_seq_cache[f];
     }
   };
 
@@ -274,7 +271,7 @@ void load_timetable(loader_config const& config,
             : to_clasz(
                   to_idx(tt.route_ids_[src].route_id_type_[front_trip.route_]));
     for (auto f = 0U; f < kNumRouteFlags; ++f) {
-      get_flag_seq(static_cast<route_flag>(f), s.trips_);
+      apply_flag_seq(static_cast<route_flag>(f), s.trips_);
     }
     auto const it =
         route_services.find(route_key_ptr_t{clasz, stop_seq, &flags_seq_cache});

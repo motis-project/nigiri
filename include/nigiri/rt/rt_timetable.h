@@ -293,11 +293,11 @@ struct rt_timetable {
   // RT transport -> canceled flag
   bitvec rt_transport_is_cancelled_;
 
-  // RT transport * 2 -> bikes allowed along the transport
-  // RT transport * 2 + 1 -> bikes along parts of the transport
+  // RT transport * 2 -> flags (bikes, cars, wheelchairs, reservtion) along the
+  // transport RT transport * 2 + 1 -> flags along parts of the transport
   std::array<bitvec, kNumRouteFlags> rt_transport_flags_;
 
-  // RT transport -> bikes allowed for each section
+  // RT transport -> flags for each section
   std::array<vecvec<rt_transport_idx_t, bool>, kNumRouteFlags>
       rt_flags_per_section_;
 

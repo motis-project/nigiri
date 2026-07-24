@@ -69,8 +69,7 @@ void service_builder::write_services(source_idx_t const src) {
 
   auto const timer = scoped_timer{"loader.hrd.services.write"};
   auto const empty_flags = std::array{bitvec{}, bitvec{}, bitvec{},
-                                      bitvec{}};  // not implemented for hrd
-  assert(empty_flags.size() == kNumRouteFlags);
+                                      bitvec{"1"}};  // not implemented for hrd
 
   for (auto const& [key, sub_routes] : route_services_) {
     for (auto const& services : sub_routes) {
