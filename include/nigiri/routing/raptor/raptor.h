@@ -947,11 +947,6 @@ private:
           auto const& [duration, _] = *fp;
           auto const end_time = clamp(fp_start_time + dir(duration.count()));
 
-          // time_at_dest_ guard as in the non-td egress cases above: without
-          // it, a td/flex egress can write destination values beyond
-          // worst_time_at_dest (e.g. a pong recording departures before the
-          // search interval via an earlier flex service window) -> phantom
-          // journeys that distort the pong termination count.
           if (is_better(end_time, time_at_dest_[k]) &&
               is_better(end_time, best_[kIntermodalTarget][Vias])) {
             round_times_[k][kIntermodalTarget][Vias] = end_time;
