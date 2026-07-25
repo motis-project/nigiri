@@ -233,14 +233,17 @@ struct raptor_impl {
         auto const t_idx = transport_idx_t{bc_t};
         auto const r = tt_.transport_route_[t_idx];
 
-        // Longest transfer/footpath/offset <24h
-        // -> at most one midnight crossing
-        // -> iterate 2 days
+        // td offsets/footpaths may contain waits bounded only by the search
+        // horizon (see td_footpath.h) -> the label can be displaced from the
+        // transport event by up to kMaxTravelTime -> scan the full horizon
+        // (mirror of the day-shift loop in reconstruct.cc)
+        constexpr auto const kRecMaxDayShift =
+            static_cast<int>(routing::kMaxTravelTime.count() / 1440 + 1);
         auto const event_mam_full =
             tt_.event_mam(r, t_idx, alight, ev_arr_type).count();
         auto const [arr_day, _] = split(arr_at_cur);
         auto found_day = false;
-        for (auto off = 0; off != 2; ++off) {
+        for (auto off = 0; off != kRecMaxDayShift; ++off) {
           auto const cand =
               as_int(arr_day) - event_mam_full / 1440 - (kFwd ? off : -off);
           if (cand < 0) {
