@@ -62,6 +62,8 @@ void query::sanitize(timetable const& tt) {
               "intermodal start is incompatible with use_start_footpaths");
   sanitize_query(*this);
   sanitize_via_stops(tt, *this);
+  utl::sort(start_);
+  utl::sort(destination_);
 }
 
 }  // namespace nigiri::routing
