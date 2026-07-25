@@ -37,10 +37,6 @@ get_td_duration(Collection const& c, unixtime_t const t) {
         continue;
       }
 
-      // Waits for a td connection are bounded by the search horizon like
-      // transit transfers (which have no cap at all) - a tighter cap makes
-      // window reachability non-monotone in the label time, which breaks
-      // per-stop domination soundness (pong_td_domination_test.cc).
       if (i->valid_from_ - t > routing::kMaxTravelTime) {
         break;
       }

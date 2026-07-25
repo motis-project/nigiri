@@ -233,10 +233,6 @@ struct raptor_impl {
         auto const t_idx = transport_idx_t{bc_t};
         auto const r = tt_.transport_route_[t_idx];
 
-        // td offsets/footpaths may contain waits bounded only by the search
-        // horizon (see td_footpath.h) -> the label can be displaced from the
-        // transport event by up to kMaxTravelTime -> scan the full horizon
-        // (mirror of the day-shift loop in reconstruct.cc)
         constexpr auto const kRecMaxDayShift =
             static_cast<int>(routing::kMaxTravelTime.count() / 1440 + 1);
         auto const event_mam_full =
@@ -515,12 +511,7 @@ struct raptor_impl {
     auto const fp_target_time = clamp(tmp_time + dir(duration));
 
     if constexpr (!WithBounds) {
-      // Write the round_times entry even when pruned by time_at_dest
-      // so the pong search can traverse from the target_l backwards.
-      // Values dominated by best_ are skipped: an earlier-or-equal round
-      // already holds a better value, so they can never contribute to the
-      // prefix-min bounds - writing them is pure memory traffic (up to
-      // +13% on dense footpath profiles).
+      // Required for pong search. Target pruning to save writes.
       if (is_better(fp_target_time, best_.get(target_l, Vias))) {
         round_times_.update_min(k, target_l, Vias, fp_target_time, bc);
       }
@@ -572,10 +563,6 @@ struct raptor_impl {
 
       auto const end_time =
           clamp(tmp_time + dir(static_cast<int>(r.duration_.count())));
-      // time_at_dest_ guard as in the non-td egress (see
-      // update_transfers_and_footpaths): without it, a td/flex egress can
-      // write destination values beyond worst_time_at_dest -> phantom
-      // journeys that distort the pong termination count.
       if (is_better(end_time, time_at_dest_.get(k)) &&
           is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
         auto const bc = tmp_.get_bc(0U, l, Vias);

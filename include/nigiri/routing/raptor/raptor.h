@@ -412,11 +412,6 @@ private:
       return stays;
     };
 
-    // The unbounded (ping) search writes every computed padded value into
-    // round_times (see the bounds_last_k_ == 0U writes in update_transfers /
-    // update_footpaths / the td footpath loop), so the row is complete at
-    // every stop the ping touched and the own-row check suffices - no
-    // footpath rescue.
     auto const stays_l = via_stays(l);
     auto const transfer = dir(adjusted_transfer_time(
         transfer_time_settings_,
@@ -622,11 +617,6 @@ private:
 
         if (bounds_last_k_ == 0U &&
             is_better(fp_target_time, best_[i][target_v])) {
-          // Write the round_times entry even when pruned by time_at_dest/lb
-          // (no mark -> no propagation, results unchanged) so a subsequent
-          // bounded (pong) search can prune with a plain own-row lookup in
-          // within_bounds. best_-dominated values are skipped: they can
-          // never contribute to the prefix-min bounds.
           round_times_[k][i][target_v] =
               get_best(fp_target_time, round_times_[k][i][target_v]);
         }
@@ -708,7 +698,6 @@ private:
 
           if (bounds_last_k_ == 0U &&
               is_better(fp_target_time, best_[target][target_v])) {
-            // bounds completeness, see update_transfers
             round_times_[k][target][target_v] =
                 get_best(fp_target_time, round_times_[k][target][target_v]);
           }
@@ -815,7 +804,6 @@ private:
 
           if (bounds_last_k_ == 0U &&
               is_better(fp_target_time, best_[target][target_v])) {
-            // bounds completeness, see update_transfers
             round_times_[k][target][target_v] =
                 get_best(fp_target_time, round_times_[k][target][target_v]);
           }
