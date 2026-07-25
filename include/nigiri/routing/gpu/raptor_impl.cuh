@@ -512,9 +512,15 @@ struct raptor_impl {
     auto const fp_target_time = clamp(tmp_time + dir(duration));
 
     if constexpr (!WithBounds) {
-      // Unconditionally write rount_times entry
+      // Write the round_times entry even when pruned by time_at_dest
       // so the pong search can traverse from the target_l backwards.
-      round_times_.update_min(k, target_l, Vias, fp_target_time, bc);
+      // Values dominated by best_ are skipped: an earlier-or-equal round
+      // already holds a better value, so they can never contribute to the
+      // prefix-min bounds - writing them is pure memory traffic (up to
+      // +13% on dense footpath profiles).
+      if (is_better(fp_target_time, best_.get(target_l, Vias))) {
+        round_times_.update_min(k, target_l, Vias, fp_target_time, bc);
+      }
     }
 
     if (!is_better_loose(fp_target_time, t_at_dest)) {
@@ -563,7 +569,12 @@ struct raptor_impl {
 
       auto const end_time =
           clamp(tmp_time + dir(static_cast<int>(r.duration_.count())));
-      if (is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
+      // time_at_dest_ guard as in the non-td egress (see
+      // update_transfers_and_footpaths): without it, a td/flex egress can
+      // write destination values beyond worst_time_at_dest -> phantom
+      // journeys that distort the pong termination count.
+      if (is_better(end_time, time_at_dest_.get(k)) &&
+          is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
         auto const bc = tmp_.get_bc(0U, l, Vias);
         round_times_.update_min(k, kIntermodalTarget, Vias, end_time, bc);
         best_.update_min(kIntermodalTarget, Vias, end_time);
