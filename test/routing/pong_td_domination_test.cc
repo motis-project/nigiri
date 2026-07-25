@@ -86,18 +86,18 @@ TEST(routing, pong_td_egress_dominated_label) {
   auto const A = tt.find(location_id{"A", source_idx_t{0}}).value();
   auto const C = tt.find(location_id{"C", source_idx_t{0}}).value();
 
-  auto const mon = sys_days{2024_y / June / 17};
+  auto const monday = sys_days{2024_y / June / 17};
   auto q = routing::query{
-      .start_time_ = interval<unixtime_t>{mon + 9h, mon + 10h},
+      .start_time_ = interval<unixtime_t>{monday + 9h, monday + 10h},
       .start_match_mode_ = routing::location_match_mode::kIntermodal,
       .dest_match_mode_ = routing::location_match_mode::kIntermodal,
       .use_start_footpaths_ = false,
       .destination_ = {{C, 0min, 0U}},
       .td_start_ = {{A,
-                     {{.valid_from_ = mon + 9h + 50min,
+                     {{.valid_from_ = monday + 9h + 50min,
                        .duration_ = 5min,
                        .transport_mode_id_ = 5},
-                      {.valid_from_ = mon + 10h,
+                      {.valid_from_ = monday + 10h,
                        .duration_ = footpath::kMaxDuration,
                        .transport_mode_id_ = 5}}}},
       .min_connection_count_ = 1U};
@@ -115,7 +115,7 @@ TEST(routing, pong_td_egress_dominated_label) {
   auto found = false;
   auto got = std::string{};
   for (auto const& j : *result.journeys_) {
-    found |= j.start_time_ == mon + 9h + 59min &&
+    found |= j.start_time_ == monday + 9h + 59min &&
              j.dest_time_ == sys_days{2024_y / June / 21} + 11h + 30min &&
              j.transfers_ == 1U;
     got += fmt::format("({}, {}, {})\n", j.start_time_, j.dest_time_,
