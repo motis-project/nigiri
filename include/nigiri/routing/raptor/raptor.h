@@ -417,24 +417,7 @@ private:
         transfer_time_settings_,
         static_cast<int>(
             tt_.locations_.transfer_time_[location_idx_t{l}].count())));
-    if (is_better_or_eq(t, row[l][slot] + transfer + dir(stays_l))) {
-      return true;
-    }
-
-    auto const& fps =
-        (kFwd ? tt_.locations_.footpaths_in_
-              : tt_.locations_.footpaths_out_)[prf_idx_][location_idx_t{l}];
-    for (auto const& fp : fps) {
-      auto const target = to_idx(fp.target());
-      auto const d = dir(adjusted_transfer_time(
-          transfer_time_settings_, static_cast<int>(fp.duration().count())));
-      if (is_better_or_eq(
-              t, row[target][slot] + d + dir(stays_l + via_stays(target)))) {
-        return true;
-      }
-    }
-
-    return false;
+    return is_better_or_eq(t, row[l][slot] + transfer + dir(stays_l));
   }
 
   template <bool WithClaszFilter,
@@ -632,6 +615,12 @@ private:
         auto const fp_target_time =
             clamp(tmp_time + transfer_time + dir(stay.count()));
 
+        if (bounds_last_k_ == 0U &&
+            is_better(fp_target_time, best_[i][target_v])) {
+          round_times_[k][i][target_v] =
+              get_best(fp_target_time, round_times_[k][i][target_v]);
+        }
+
         trace(
             "    transfer_time={}, fp_target_time={}, best@target={}, "
             "dest={}\n",
@@ -706,6 +695,12 @@ private:
               tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
                                                     fp.duration().count()) +
                              stay.count()));
+
+          if (bounds_last_k_ == 0U &&
+              is_better(fp_target_time, best_[target][target_v])) {
+            round_times_[k][target][target_v] =
+                get_best(fp_target_time, round_times_[k][target][target_v]);
+          }
 
           if (is_better(fp_target_time, best_[target][target_v]) &&
               is_better_loose(fp_target_time, time_at_dest_[k])) {
@@ -806,6 +801,12 @@ private:
 
           auto const fp_target_time =
               clamp(tmp_time + dir(fp.duration().count() + stay.count()));
+
+          if (bounds_last_k_ == 0U &&
+              is_better(fp_target_time, best_[target][target_v])) {
+            round_times_[k][target][target_v] =
+                get_best(fp_target_time, round_times_[k][target][target_v]);
+          }
 
           if (is_better(fp_target_time, best_[target][target_v]) &&
               is_better_loose(fp_target_time, time_at_dest_[k])) {
@@ -946,7 +947,8 @@ private:
           auto const& [duration, _] = *fp;
           auto const end_time = clamp(fp_start_time + dir(duration.count()));
 
-          if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
+          if (is_better(end_time, time_at_dest_[k]) &&
+              is_better(end_time, best_[kIntermodalTarget][Vias])) {
             round_times_[k][kIntermodalTarget][Vias] = end_time;
             best_[kIntermodalTarget][Vias] = end_time;
             update_time_at_dest(k, end_time);
