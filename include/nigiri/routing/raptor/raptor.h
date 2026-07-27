@@ -979,14 +979,15 @@ private:
     // journey has visited v via stops when the transport passes this stop
     auto et = std::array<bool, Vias + 1>{};
     auto any_marked = false;
+    auto const n_stops = stop_seq.size();
 
-    for (auto i = 0U; i != stop_seq.size(); ++i) {
+    for (auto i = 0U; i != n_stops; ++i) {
       auto const stop_idx =
-          static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
+          static_cast<stop_idx_t>(kFwd ? i : n_stops - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l_idx = cista::to_idx(stp.location_idx());
       auto const is_first = i == 0U;
-      auto const is_last = i == stop_seq.size() - 1U;
+      auto const is_last = i == n_stops - 1U;
 
       if constexpr (WithSectionBikeFilter) {
         if (!is_first &&
@@ -1011,8 +1012,7 @@ private:
         }
       }
 
-      if ((kFwd && stop_idx != 0U) ||
-          (kBwd && stop_idx != stop_seq.size() - 1U)) {
+      if ((kFwd && stop_idx != 0U) || (kBwd && stop_idx != n_stops - 1U)) {
         // passing a no-stay via stop moves the ride up one via slot
         if constexpr (Vias != 0U) {
           for (auto v = Vias; v != 0U; --v) {
@@ -1089,14 +1089,15 @@ private:
     bool any_marked = false;
 
     auto et = std::array<std::array<transport, Vias + 1>, Vias + 1>{};
+    auto const n_stops = stop_seq.size();
 
-    for (auto i = 0U; i != stop_seq.size(); ++i) {
+    for (auto i = 0U; i != n_stops; ++i) {
       auto const stop_idx =
-          static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
+          static_cast<stop_idx_t>(kFwd ? i : n_stops - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l_idx = cista::to_idx(stp.location_idx());
       auto const is_first = i == 0U;
-      auto const is_last = i == stop_seq.size() - 1U;
+      auto const is_last = i == n_stops - 1U;
 
       if constexpr (WithSectionBikeFilter) {
         if (!is_first &&
