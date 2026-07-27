@@ -160,15 +160,21 @@ if (NIGIRI_CUDA)
   if (MSVC)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -lineinfo")
   else()
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo --compiler-options -static")
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo")
   endif()
   enable_language(CUDA)
 
   find_package(CUDAToolkit REQUIRED)
   file(GLOB_RECURSE nigiri-gpu-files src/*.cu)
   add_library(nigiri-gpu STATIC ${nigiri-gpu-files})
+  if (CMAKE_CXX_FLAGS MATCHES "-fsanitize")
+    # Keep device assertions when using host sanitizer.
+    set(nigiri-gpu-compile-options "-O3")
+  else()
+    set(nigiri-gpu-compile-options "-O3;-DNDEBUG")
+  endif()
   set_target_properties(nigiri-gpu PROPERTIES
-          COMPILE_OPTIONS "-O3;-DNDEBUG"
+          COMPILE_OPTIONS "${nigiri-gpu-compile-options}"
           WINDOWS_EXPORT_ALL_SYMBOLS ON
           CUDA_ARCHITECTURES native
           CUDA_STANDARD 20
