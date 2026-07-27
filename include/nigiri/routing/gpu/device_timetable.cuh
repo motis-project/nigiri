@@ -55,7 +55,7 @@ struct device_transport_filters {
       return true;
     }
     if ((section_mask & kNoCompulsoryReservationSections) != 0U &&
-        !no_compulsory_reservation_.sections_[el][sec]) {
+        !reservation_not_required_.sections_[el][sec]) {
       return true;
     }
     return false;
