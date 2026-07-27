@@ -64,7 +64,7 @@ struct device_transport_filters {
   device_transport_filter<Key> bike_;
   device_transport_filter<Key> car_;
   device_transport_filter<Key> wheelchair_;
-  device_transport_filter<Key> no_compulsory_reservation_;
+  device_transport_filter<Key> reservation_not_required_;
 };
 
 struct device_rt_timetable {

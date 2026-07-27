@@ -249,8 +249,8 @@ bool sections_violate_constraints(
   }
   for (auto i = from_section_idx; i != to_section_idx; ++i) {
     auto const section_start = static_cast<stop_idx_t>(i);
-    for (auto i = 0U; i < kNumRouteFlags; ++i) {
-      if (flags[i] && !fr[section_start].is_flag_set(static_cast<route_flag>(i),
+    for (auto f = 0U; i < kNumRouteFlags; ++f) {
+      if (flags[f] && !fr[section_start].is_flag_set(static_cast<route_flag>(f),
                                                      event_type::kDep)) {
         return true;
       }

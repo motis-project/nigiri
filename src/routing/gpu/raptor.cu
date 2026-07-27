@@ -110,7 +110,7 @@ struct gpu_timetable::impl {
                         to_view(route_wheelchair_sections_)},
         .reservation_not_required_ = {
             {to_view(route_reservation_not_required_)},
-            to_view(route_reservation_not_required__sections)}};
+            to_view(route_reservation_not_required_sections_)}};
     filters_ctx_.resize(1);
     thrust::copy_n(&f, 1, filters_ctx_.begin());
   }
@@ -163,6 +163,7 @@ struct gpu_timetable::impl {
   thrust::device_vector<std::uint64_t> route_bikes_allowed_;
   thrust::device_vector<std::uint64_t> route_cars_allowed_;
   thrust::device_vector<std::uint64_t> route_wheelchair_accessible_;
+  thrust::device_vector<std::uint64_t> route_reservation_not_required_;
   device_vecvec<decltype(t{}.route_flags_per_section_[0])> route_bike_sections_;
   device_vecvec<decltype(t{}.route_flags_per_section_[0])> route_car_sections_;
   device_vecvec<decltype(t{}.route_flags_per_section_[0])>
