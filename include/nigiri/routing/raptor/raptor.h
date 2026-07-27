@@ -1012,8 +1012,7 @@ private:
         }
       }
 
-      if ((kFwd && stop_idx != 0U) ||
-          (kBwd && stop_idx != n_stops - 1U)) {
+      if ((kFwd && stop_idx != 0U) || (kBwd && stop_idx != n_stops - 1U)) {
         // passing a no-stay via stop moves the ride up one via slot
         if constexpr (Vias != 0U) {
           for (auto v = Vias; v != 0U; --v) {
