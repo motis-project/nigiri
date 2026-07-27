@@ -236,11 +236,16 @@ void reconstruct_journey_with_vias(timetable const& tt,
         auto const stp = fr[stop_idx];
         auto const l = stp.get_location_idx();
 
-        if (utl::any_of(section_flags, [&](auto f) {
-              return section_flags[f] &&
-                     !stp.flag_set(static_cast<route_flag>(f),
-                                   kFwd ? event_type::kDep : event_type::kArr);
-            })) {
+        auto violates_section_flags = false;
+        for (auto f = 0U; f != kNumRouteFlags; ++f) {
+          if (section_flags[f] &&
+              !stp.is_flag_set(static_cast<route_flag>(f),
+                               kFwd ? event_type::kDep : event_type::kArr)) {
+            violates_section_flags = true;
+            break;
+          }
+        }
+        if (violates_section_flags) {
           break;
         }
 

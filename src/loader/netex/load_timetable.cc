@@ -41,6 +41,9 @@ namespace fs = std::filesystem;
 
 namespace nigiri::loader::netex {
 
+static auto const kSingleTripDefaultFlags =
+    std::array{bitvec{}, bitvec{}, bitvec{}, bitvec{"1"}};
+
 // =====
 // UTILS
 // -----
@@ -1575,7 +1578,8 @@ void load_timetable(loader_config const& config,
   auto const add_expanded_trip = [&](utc_trip const& s) {
     auto const c =
         gtfs::to_clasz(to_idx(tt.route_ids_[src].route_id_type_[s.route_id_]));
-    auto const it = route_services.find(gtfs::route_key_ptr_t{c, &s.stop_seq_});
+    auto const it = route_services.find(
+        gtfs::route_key_ptr_t{c, &s.stop_seq_, &kSingleTripDefaultFlags});
     if (it != end(route_services)) {
       for (auto& route : it->second) {
         auto const idx = get_index(route, s);
@@ -1587,8 +1591,7 @@ void load_timetable(loader_config const& config,
       it->second.emplace_back(std::vector<utc_trip>{s});
     } else {
       route_services.emplace(
-          gtfs::route_key_t{
-              c, s.stop_seq_, {bitvec{}, bitvec{}, bitvec{}, bitvec{"1"}}},
+          gtfs::route_key_t{c, s.stop_seq_, kSingleTripDefaultFlags},
           std::vector<std::vector<utc_trip>>{{s}});
     }
   };

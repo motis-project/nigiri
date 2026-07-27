@@ -165,8 +165,8 @@ struct search {
         allowed_claszes,
         require_bikes_allowed,
         require_cars_allowed,
-        no_compulsory_reservation,
         q_.prf_idx_ == 2U,
+        no_compulsory_reservation,
         tts,
         q_.prf_idx_};
   }

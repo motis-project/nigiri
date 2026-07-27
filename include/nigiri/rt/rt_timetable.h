@@ -192,14 +192,14 @@ struct rt_timetable {
     return rt_transport_src_.size();
   }
 
-  bool has_car_transport(rt_transport_idx_t const r) const {
-    return rt_transport_flags_[kCarsAllowed][to_idx(r) * 2U] ||
-           rt_transport_flags_[kCarsAllowed][to_idx(r) * 2U + 1U];
-  }
-
   bool has_bike_transport(rt_transport_idx_t const r) const {
     return rt_transport_flags_[kBikesAllowed][to_idx(r) * 2U] ||
            rt_transport_flags_[kBikesAllowed][to_idx(r) * 2U + 1U];
+  }
+
+  bool has_car_transport(rt_transport_idx_t const r) const {
+    return rt_transport_flags_[kCarsAllowed][to_idx(r) * 2U] ||
+           rt_transport_flags_[kCarsAllowed][to_idx(r) * 2U + 1U];
   }
 
   bool has_wheelchair_transport(rt_transport_idx_t const r) const {

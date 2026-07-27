@@ -93,8 +93,8 @@ struct raptor {
         allowed_claszes_{allowed_claszes},
         require_bike_transport_{require_bike_transport},
         require_car_transport_{require_car_transport},
-        is_wheelchair_{is_wheelchair},
         no_compulsory_reservation_{no_compulsory_reservation},
+        is_wheelchair_{is_wheelchair},
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
     reset_arrivals();
@@ -1526,8 +1526,8 @@ private:
   clasz_mask_t allowed_claszes_;
   bool require_bike_transport_;
   bool require_car_transport_;
-  bool is_wheelchair_;
   bool no_compulsory_reservation_;
+  bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
 };
 

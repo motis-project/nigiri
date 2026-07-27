@@ -368,7 +368,7 @@ struct raptor_impl {
         return false;
       }
     }
-    if (no_compulsory_reservation_transport_ &&
+    if (no_compulsory_reservation_ &&
         !f.reservation_not_required_.allows(i, kNoCompulsoryReservationSections,
                                             section_mask)) {
       return false;
@@ -1127,7 +1127,7 @@ struct raptor_impl {
   profile_idx_t prf_idx_;
   bool require_bike_transport_;
   bool require_car_transport_;
-  bool no_compulsory_reservation_transport_;
+  bool no_compulsory_reservation_;
   day_idx_t base_;
   cuda::std::span<std::pair<location_idx_t, unixtime_t> const> starts_;
   device_bitvec<std::uint64_t const> is_dest_;

@@ -266,14 +266,14 @@ struct timetable {
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(std::filesystem::path const&);
 
-  bool has_car_transport(route_idx_t const r) const {
-    return route_flags_[kCarsAllowed][to_idx(r) * 2U] ||
-           route_flags_[kCarsAllowed][to_idx(r) * 2U + 1U];
-  }
-
   bool has_bike_transport(route_idx_t const r) const {
     return route_flags_[kBikesAllowed][to_idx(r) * 2U] ||
            route_flags_[kBikesAllowed][to_idx(r) * 2U + 1U];
+  }
+
+  bool has_car_transport(route_idx_t const r) const {
+    return route_flags_[kCarsAllowed][to_idx(r) * 2U] ||
+           route_flags_[kCarsAllowed][to_idx(r) * 2U + 1U];
   }
 
   bool has_wheelchair_transport(route_idx_t const r) const {

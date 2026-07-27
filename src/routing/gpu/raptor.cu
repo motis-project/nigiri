@@ -539,8 +539,8 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
     clasz_mask_t const allowed_claszes,
     bool const require_bike_transport,
     bool const require_car_transport,
-    bool const is_wheelchair,
     bool const no_compulsory_reservation,
+    bool const is_wheelchair,
     transfer_time_settings const& tts,
     profile_idx_t const prf_idx)
     : tt_{tt},
@@ -555,8 +555,8 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
       allowed_claszes_{allowed_claszes},
       require_bike_transport_{require_bike_transport},
       require_car_transport_{require_car_transport},
-      is_wheelchair_{is_wheelchair},
       no_compulsory_reservation_{no_compulsory_reservation},
+      is_wheelchair_{is_wheelchair},
       transfer_time_settings_{tts},
       prf_idx_{prf_idx},
       bounds_{state.impl_->bounds_dev_.ptr_} {

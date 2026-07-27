@@ -250,8 +250,8 @@ bool sections_violate_constraints(
   for (auto i = from_section_idx; i != to_section_idx; ++i) {
     auto const section_start = static_cast<stop_idx_t>(i);
     for (auto i = 0U; i < kNumRouteFlags; ++i) {
-      if (flags[i] && !fr[section_start].flag_set(static_cast<route_flag>(i),
-                                                  event_type::kDep)) {
+      if (flags[i] && !fr[section_start].is_flag_set(static_cast<route_flag>(i),
+                                                     event_type::kDep)) {
         return true;
       }
     }

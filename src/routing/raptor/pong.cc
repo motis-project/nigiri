@@ -138,8 +138,8 @@ routing_result pong(timetable const& tt,
                           q.allowed_claszes_,
                           q.require_bike_transport_,
                           q.require_car_transport_,
-                          q.no_compulsory_reservation_,
                           q.prf_idx_ == 2U,
+                          q.no_compulsory_reservation_,
                           q.transfer_time_settings_,
                           q.prf_idx_};
 
@@ -192,8 +192,8 @@ routing_result pong(timetable const& tt,
                           q.allowed_claszes_,
                           q.require_bike_transport_,
                           q.require_car_transport_,
-                          q.no_compulsory_reservation_,
                           q.prf_idx_ == 2U,
+                          q.no_compulsory_reservation_,
                           q.transfer_time_settings_,
                           q.prf_idx_};
 
