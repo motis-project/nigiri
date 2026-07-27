@@ -2,6 +2,7 @@
 
 #include "nigiri/constants.h"
 #include "nigiri/footpath.h"
+#include "nigiri/routing/limits.h"
 #include "nigiri/types.h"
 
 namespace nigiri::routing::gpu {
@@ -21,7 +22,7 @@ __device__ d_td_result d_get_td_duration(Collection const& c,
                                          std::uint32_t const from,
                                          std::uint32_t const to,
                                          unixtime_t const t) {
-  constexpr auto const kMaxWait = i32_minutes{kMaxTransferTime};
+  constexpr auto const kMaxWait = i32_minutes{routing::kMaxTravelTime.count()};
   if constexpr (SearchDir == direction::kForward) {
     for (auto i = from; i != to; ++i) {
       auto const& e = c[i];

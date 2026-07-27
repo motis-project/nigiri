@@ -335,7 +335,9 @@ void reconstruct_journey_with_vias(timetable const& tt,
         // (the unshifted day being inactive must not reject the transport).
         auto const fp_time = delta_to_unix(base, time);
 
-        for (auto i = 0; i != 2; ++i) {
+        constexpr auto const kTdMaxDayShift =
+            static_cast<int>(routing::kMaxTravelTime.count() / 1440 + 1);
+        for (auto i = 0; i != kTdMaxDayShift; ++i) {
           auto const td_day = day_idx_t{traffic_day - (kFwd ? i : -i)};
           if (!is_transport_active(t, td_day)) {
             trace_rc_transport_no_traffic;

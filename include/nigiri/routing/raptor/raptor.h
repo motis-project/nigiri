@@ -534,24 +534,7 @@ private:
         transfer_time_settings_,
         static_cast<int>(
             tt_.locations_.transfer_time_[location_idx_t{l}].count())));
-    if (is_better_or_eq(t, row[l][slot] + transfer + dir(stays_l))) {
-      return true;
-    }
-
-    auto const& fps =
-        (kFwd ? tt_.locations_.footpaths_in_
-              : tt_.locations_.footpaths_out_)[prf_idx_][location_idx_t{l}];
-    for (auto const& fp : fps) {
-      auto const target = to_idx(fp.target());
-      auto const d = dir(adjusted_transfer_time(
-          transfer_time_settings_, static_cast<int>(fp.duration().count())));
-      if (is_better_or_eq(
-              t, row[target][slot] + d + dir(stays_l + via_stays(target)))) {
-        return true;
-      }
-    }
-
-    return false;
+    return is_better_or_eq(t, row[l][slot] + transfer + dir(stays_l));
   }
 
   template <bool WithClaszFilter,
@@ -749,6 +732,12 @@ private:
         auto const fp_target_time =
             clamp(tmp_time + transfer_time + dir(stay.count()));
 
+        if (bounds_last_k_ == 0U &&
+            is_better(fp_target_time, best_[i][target_v])) {
+          round_times_[k][i][target_v] =
+              get_best(fp_target_time, round_times_[k][i][target_v]);
+        }
+
         trace(
             "    transfer_time={}, fp_target_time={}, best@target={}, "
             "dest={}\n",
@@ -820,6 +809,12 @@ private:
               tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
                                                     fp.duration().count()) +
                              stay.count()));
+
+          if (bounds_last_k_ == 0U &&
+              is_better(fp_target_time, best_[target][target_v])) {
+            round_times_[k][target][target_v] =
+                get_best(fp_target_time, round_times_[k][target][target_v]);
+          }
 
           if (is_better(fp_target_time, best_[target][target_v]) &&
               is_better_loose(fp_target_time, time_at_dest_[k])) {
@@ -932,6 +927,12 @@ private:
 
           auto const fp_target_time =
               clamp(tmp_time + dir(fp.duration().count() + stay.count()));
+
+          if (bounds_last_k_ == 0U &&
+              is_better(fp_target_time, best_[target][target_v])) {
+            round_times_[k][target][target_v] =
+                get_best(fp_target_time, round_times_[k][target][target_v]);
+          }
 
           if (is_better(fp_target_time, best_[target][target_v]) &&
               is_better_loose(fp_target_time, time_at_dest_[k])) {
@@ -1076,7 +1077,8 @@ private:
           auto const& [duration, _] = *fp;
           auto const end_time = clamp(fp_start_time + dir(duration.count()));
 
-          if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
+          if (is_better(end_time, time_at_dest_[k]) &&
+              is_better(end_time, best_[kIntermodalTarget][Vias])) {
             auto const newly =
                 k >= raptor_state::kSparseRoundThreshold &&
                 round_times_[k][kIntermodalTarget] == kInvalidArray;
@@ -1111,14 +1113,15 @@ private:
     // journey has visited v via stops when the transport passes this stop
     auto et = std::array<bool, Vias + 1>{};
     auto any_marked = false;
+    auto const n_stops = stop_seq.size();
 
-    for (auto i = 0U; i != stop_seq.size(); ++i) {
+    for (auto i = 0U; i != n_stops; ++i) {
       auto const stop_idx =
-          static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
+          static_cast<stop_idx_t>(kFwd ? i : n_stops - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l_idx = cista::to_idx(stp.location_idx());
       auto const is_first = i == 0U;
-      auto const is_last = i == stop_seq.size() - 1U;
+      auto const is_last = i == n_stops - 1U;
 
       if constexpr (WithSectionBikeFilter) {
         if (!is_first &&
@@ -1143,8 +1146,7 @@ private:
         }
       }
 
-      if ((kFwd && stop_idx != 0U) ||
-          (kBwd && stop_idx != stop_seq.size() - 1U)) {
+      if ((kFwd && stop_idx != 0U) || (kBwd && stop_idx != n_stops - 1U)) {
         // passing a no-stay via stop moves the ride up one via slot
         if constexpr (Vias != 0U) {
           for (auto v = Vias; v != 0U; --v) {
@@ -1211,6 +1213,7 @@ private:
     bool any_marked = false;
 
     auto et = std::array<std::array<transport, Vias + 1>, Vias + 1>{};
+    auto const n_stops = stop_seq.size();
 
     auto const has_ride_at = [&](unsigned const cs) {
       for (auto e = 0U; e != cs + 1U; ++e) {
@@ -1224,16 +1227,16 @@ private:
     auto const time_at_dest_k = time_at_dest_[k];
     auto prev_round_times = round_times_[k - 1];
 
-    for (auto i = 0U; i != stop_seq.size(); ++i) {
+    for (auto i = 0U; i != n_stops; ++i) {
       auto const stop_idx =
-          static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
+          static_cast<stop_idx_t>(kFwd ? i : n_stops - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l_idx = cista::to_idx(stp.location_idx());
       auto const prev_marked = state_.prev_station_mark_[l_idx];
       auto const lb_l = get_lb(l_idx);
       auto const lb_l_reachable = lb_reachable(l_idx);
       auto const is_first = i == 0U;
-      auto const is_last = i == stop_seq.size() - 1U;
+      auto const is_last = i == n_stops - 1U;
 
       if constexpr (WithSectionBikeFilter) {
         if (!is_first &&
