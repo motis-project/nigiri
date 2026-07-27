@@ -6,6 +6,7 @@
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
+#include "nigiri/common/prefetch.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
@@ -53,14 +54,6 @@ struct raptor {
     return x;
   }
   static auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
-
-  static void prefetch(void const* addr) {
-#if defined(__GNUC__) || defined(__clang__)
-    __builtin_prefetch(addr);
-#else
-    (void)addr;
-#endif
-  }
 
   template <typename Fn>
   static void for_each_set(bitvec const& bits, Fn&& fn) {
@@ -1291,6 +1284,12 @@ private:
           if (!ride.is_valid()) {
             continue;
           }
+          if (!is_last) {
+            prefetch(tt_.event_mam_ptr(
+                r, ride.t_idx_,
+                static_cast<stop_idx_t>(kFwd ? stop_idx + 1 : stop_idx - 1),
+                kFwd ? event_type::kArr : event_type::kDep));
+          }
           if (!stp.can_finish<SearchDir>(is_wheelchair_)) {
             trace(
                 "┊ │k={} cs={}    *** NO UPD: in_allowed={}, "
@@ -1301,13 +1300,6 @@ private:
           }
           auto const by_transport = time_at_stop(
               r, ride, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-
-          if (!is_last) {
-            prefetch(tt_.event_mam_ptr(
-                r, ride.t_idx_,
-                static_cast<stop_idx_t>(kFwd ? stop_idx + 1 : stop_idx - 1),
-                kFwd ? event_type::kArr : event_type::kDep));
-          }
 
           assert(by_transport != std::numeric_limits<delta_t>::min() &&
                  by_transport != std::numeric_limits<delta_t>::max());
