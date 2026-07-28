@@ -84,6 +84,8 @@ void service_builder::write_services(source_idx_t const src) {
         }
       }
 
+      auto flags = std::array<bool, kNumRouteFlags>{};
+
       for (auto const& s : services) {
         auto const& ref = store_.get(s.ref_);
         try {
@@ -102,7 +104,7 @@ void service_builder::write_services(source_idx_t const src) {
                    std::string_view{trip_id_buf_.data(), trip_id_buf_.size()},
                    kEmptyTranslation, kEmptyTranslation,
                    tt_.register_translation(ref.display_name(tt_)), "", "",
-                   direction_id_t::invalid(), route_id_idx_t::invalid(),
+                   direction_id_t::invalid(), route_id_idx_t::invalid(), flags,
                    ref.origin_.dbg_});
           tt_.trip_stop_seq_numbers_.emplace_back(
               std::initializer_list<stop_idx_t>{});

@@ -318,6 +318,12 @@ trip_data read_trips(source_idx_t const src,
           return kEmptyTranslation;
         }();
 
+        auto flags = std::array<bool, kNumRouteFlags>{};
+        flags[kBikesAllowed] = bikes_allowed;
+        flags[kCarsAllowed] = cars_allowed;
+        flags[kWheelchairAccessible] = wheelchair_accessible;
+        flags[kReservationNotRequired] = !compulsory_reservation;
+
         auto x = loader::trip{
             tt,
             src,
@@ -330,6 +336,7 @@ trip_data read_trips(source_idx_t const src,
             (t.direction_id_->view() == "1") ? direction_id_t{1U}
                                              : direction_id_t{0U},
             route_id,
+            flags,
             trip_debug{.source_file_idx_ = source_file}};
 
         auto const keep = process_trip(user_script, x);
@@ -347,11 +354,6 @@ trip_data read_trips(source_idx_t const src,
                       .get();
 
         auto const gtfs_trp_idx = gtfs_trip_idx_t{ret.data_.size()};
-        auto flags = std::array<bool, kNumRouteFlags>{};
-        flags[kBikesAllowed] = bikes_allowed;
-        flags[kCarsAllowed] = cars_allowed;
-        flags[kWheelchairAccessible] = wheelchair_accessible;
-        flags[kReservationNotRequired] = !compulsory_reservation;
 
         ret.data_.push_back(trip{
             route_id, traffic_days_it->second.get(), blk, t.trip_id_->to_str(),
