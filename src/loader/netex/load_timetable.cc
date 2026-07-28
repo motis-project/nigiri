@@ -1465,7 +1465,13 @@ void load_timetable(loader_config const& config,
 
       // Create and register trip.
       auto const short_name = fmt::to_string(sj.trip_nr_);
-      auto flags = std::array<bool, kNumRouteFlags>{false, false, false, true};
+
+      auto const clasz = static_cast<std::size_t>(
+          gtfs::to_clasz(to_idx(tt.route_ids_[src].route_id_type_[route_id])));
+      auto flags = std::array<bool, kNumRouteFlags>{
+          config.bikes_allowed_default_[clasz],
+          config.cars_allowed_default_[clasz], false,
+          config.reservation_not_required_default_[clasz]};
       auto t = trip{
           tt,
           src,

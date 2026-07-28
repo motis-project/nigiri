@@ -40,8 +40,8 @@ location_idx_t find_loc(timetable const& tt, std::string_view const id) {
 
 // Per-section bikes_allowed enforcement on block-concatenated trips. The
 // block trip A→B→C has bikes_allowed_seq={false, true} (A→B without bikes,
-// B→C with bikes). `tt.has_bike_transport(r)` returns true at the route
-// level, so the route is a candidate — but the journey A→C requires bikes
+// B→C with bikes). `tt.has_flag_set(kBikesAllowed, r)` returns true at the
+// route level, so the route is a candidate — but the journey A→C requires bikes
 // through both sections and must be rejected because A→B is bikeless.
 TEST(pong, get_earliest_alternative_per_transport_bikes_allowed) {
   constexpr auto const kGTFS = R"(

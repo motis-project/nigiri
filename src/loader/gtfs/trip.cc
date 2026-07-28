@@ -203,17 +203,19 @@ bool trip::has_seated_transfers() const {
   return !seated_in_.empty() || !seated_out_.empty();
 }
 
-trip_data read_trips(source_idx_t const src,
-                     source_file_idx_t const source_file,
-                     timetable& tt,
-                     translator& i18n,
-                     route_map_t const& routes,
-                     traffic_days_t const& services,
-                     shape_loader_state const& shape_states,
-                     std::string_view file_content,
-                     std::array<bool, kNumClasses> const& bikes_allowed_default,
-                     std::array<bool, kNumClasses> const& cars_allowed_default,
-                     script_runner const& user_script) {
+trip_data read_trips(
+    source_idx_t const src,
+    source_file_idx_t const source_file,
+    timetable& tt,
+    translator& i18n,
+    route_map_t const& routes,
+    traffic_days_t const& services,
+    shape_loader_state const& shape_states,
+    std::string_view file_content,
+    std::array<bool, kNumClasses> const& bikes_allowed_default,
+    std::array<bool, kNumClasses> const& cars_allowed_default,
+    std::array<bool, kNumClasses> const& reservation_not_required_default,
+    script_runner const& user_script) {
   struct csv_trip {
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
     utl::csv_col<utl::cstr, UTL_NAME("service_id")> service_id_;
@@ -300,7 +302,16 @@ trip_data read_trips(source_idx_t const src,
 
         auto wheelchair_accessible = t.wheelchair_accessible_.val() == 1;
 
-        auto compulsory_reservation = t.pickup_type_.val() >= 2;
+        auto reservation_not_required = reservation_not_required_default[clasz];
+        if (t.pickup_type_.val() == 2 || t.pickup_type_.val() > 3) {
+          reservation_not_required = false;
+        }
+
+        auto flags = std::array<bool, kNumRouteFlags>{};
+        flags[kBikesAllowed] = bikes_allowed;
+        flags[kCarsAllowed] = cars_allowed;
+        flags[kWheelchairAccessible] = wheelchair_accessible;
+        flags[kReservationNotRequired] = reservation_not_required;
 
         auto const id = t.trip_id_->view();
         auto const trip_short_name = i18n.get(t::kTrips, f::kTripShortName,
@@ -317,12 +328,6 @@ trip_data read_trips(source_idx_t const src,
           }
           return kEmptyTranslation;
         }();
-
-        auto flags = std::array<bool, kNumRouteFlags>{};
-        flags[kBikesAllowed] = bikes_allowed;
-        flags[kCarsAllowed] = cars_allowed;
-        flags[kWheelchairAccessible] = wheelchair_accessible;
-        flags[kReservationNotRequired] = !compulsory_reservation;
 
         auto x = loader::trip{
             tt,

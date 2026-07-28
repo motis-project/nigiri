@@ -118,7 +118,8 @@ void load_timetable(loader_config const& config,
   auto trip_data =
       read_trips(src, source_file_idx, tt, i18n, routes, service, shape_states,
                  load(kTripsFile).data(), config.bikes_allowed_default_,
-                 config.cars_allowed_default_, user_script);
+                 config.cars_allowed_default_,
+                 config.reservation_not_required_default_, user_script);
   auto const booking_rules = parse_booking_rules(
       tt, i18n, load(kBookingRulesFile).data(), service, bitfield_indices);
   auto const location_groups =

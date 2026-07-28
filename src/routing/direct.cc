@@ -502,9 +502,13 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
           [](utl::op, route_idx_t) {},
           [&](route_idx_t const r, route_idx_t) {
             if (!is_allowed(q.allowed_claszes_, tt.route_clasz_[r]) ||
-                (q.require_bike_transport_ && !tt.has_bike_transport(r)) ||
-                (q.require_car_transport_ && !tt.has_car_transport(r)) ||
-                (is_wheelchair && !tt.has_wheelchair_transport(r))) {
+                (q.require_bike_transport_ &&
+                 !tt.is_flag_set(kBikesAllowed, r)) ||
+                (q.require_car_transport_ &&
+                 !tt.is_flag_set(kCarsAllowed, r)) ||
+                (is_wheelchair && !tt.is_flag_set(kWheelchairAccessible, r)) ||
+                (q.no_compulsory_reservation_ &&
+                 !tt.is_flag_set(kReservationNotRequired, r))) {
               return;
             }
 
@@ -545,9 +549,14 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
             [&](rt_transport_idx_t const x, rt_transport_idx_t) {
               if (!is_allowed(q.allowed_claszes_,
                               rtt->rt_transport_section_clasz_[x].front()) ||
-                  (q.require_bike_transport_ && !rtt->has_bike_transport(x)) ||
-                  (q.require_car_transport_ && !rtt->has_car_transport(x)) ||
-                  (is_wheelchair && !rtt->has_wheelchair_transport(x))) {
+                  (q.require_bike_transport_ &&
+                   !rtt->is_flag_set(kBikesAllowed, x)) ||
+                  (q.require_car_transport_ &&
+                   !rtt->is_flag_set(kCarsAllowed, x)) ||
+                  (is_wheelchair &&
+                   !rtt->is_flag_set(kWheelchairAccessible, x)) ||
+                  (q.no_compulsory_reservation_ &&
+                   !rtt->is_flag_set(kReservationNotRequired, x))) {
                 return;
               }
 

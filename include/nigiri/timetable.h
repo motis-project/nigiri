@@ -266,24 +266,9 @@ struct timetable {
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(std::filesystem::path const&);
 
-  bool has_bike_transport(route_idx_t const r) const {
-    return route_flags_[kBikesAllowed][to_idx(r) * 2U] ||
-           route_flags_[kBikesAllowed][to_idx(r) * 2U + 1U];
-  }
-
-  bool has_car_transport(route_idx_t const r) const {
-    return route_flags_[kCarsAllowed][to_idx(r) * 2U] ||
-           route_flags_[kCarsAllowed][to_idx(r) * 2U + 1U];
-  }
-
-  bool has_wheelchair_transport(route_idx_t const r) const {
-    return route_flags_[kWheelchairAccessible][to_idx(r) * 2U] ||
-           route_flags_[kWheelchairAccessible][to_idx(r) * 2U + 1U];
-  }
-
-  bool has_reservation_not_required(route_idx_t const r) const {
-    return route_flags_[kReservationNotRequired][to_idx(r) * 2U] ||
-           route_flags_[kReservationNotRequired][to_idx(r) * 2U + 1U];
+  bool is_flag_set(route_flag const f, route_idx_t const r) const {
+    return route_flags_[f][to_idx(r) * 2U] ||
+           route_flags_[f][to_idx(r) * 2U + 1U];
   }
 
   // Schedule range.
