@@ -239,14 +239,16 @@ void load_timetable(loader_config const& config,
 
   stop_seq_t stop_seq_cache;
   std::array<bitvec, kNumRouteFlags> flags_seq_cache;
+  std::array<bitvec const*, kNumRouteFlags> flags_seq_ptr_cache;
   auto const apply_flag_seq = [&](route_flag const f,
                                   basic_string<gtfs_trip_idx_t> const& trips) {
     if (trips.size() == 1U) {
-      flags_seq_cache[f].resize(1);
-      flags_seq_cache[f].set(0, trip_data.get(trips.front()).flags_[f]);
+      flags_seq_ptr_cache[f] = trip_data.get(trips.front()).flags_[f]
+                                   ? &kSingleTripTransportationAllowed
+                                   : &kSingleTripTransportationNotAllowed;
     } else {
       flags_seq_cache[f].resize(0);
-      for (auto const [i, t_idx] : utl::enumerate(trips)) {
+      for (auto const& t_idx : trips) {
         auto const& trp = trip_data.get(t_idx);
         auto const stop_count = trp.stop_seq_.size();
         auto const offset = flags_seq_cache[f].size();
@@ -256,6 +258,7 @@ void load_timetable(loader_config const& config,
           flags_seq_cache[f].set(offset + j, trp.flags_[f]);
         }
       }
+      flags_seq_ptr_cache[f] = &flags_seq_cache[f];
     }
   };
 
@@ -273,8 +276,8 @@ void load_timetable(loader_config const& config,
     for (auto f = 0U; f < kNumRouteFlags; ++f) {
       apply_flag_seq(static_cast<route_flag>(f), s.trips_);
     }
-    auto const it =
-        route_services.find(route_key_ptr_t{clasz, stop_seq, &flags_seq_cache});
+    auto const it = route_services.find(
+        route_key_ptr_t{clasz, stop_seq, flags_seq_ptr_cache});
     if (it != end(route_services)) {
       for (auto& r : it->second) {
         auto const idx = get_index(r, s);
@@ -285,7 +288,11 @@ void load_timetable(loader_config const& config,
       }
       it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
     } else {
-      route_services.emplace(route_key_t{clasz, *stop_seq, flags_seq_cache},
+      auto flags = std::array<bitvec, kNumRouteFlags>{};
+      for (auto f = 0U; f != kNumRouteFlags; ++f) {
+        flags[f] = *flags_seq_ptr_cache[f];
+      }
+      route_services.emplace(route_key_t{clasz, *stop_seq, std::move(flags)},
                              std::vector<std::vector<utc_trip>>{{s}});
     }
   };

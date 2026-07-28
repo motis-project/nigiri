@@ -43,6 +43,13 @@ namespace nigiri::loader::netex {
 
 static auto const kSingleTripDefaultFlags =
     std::array{bitvec{}, bitvec{}, bitvec{}, bitvec{"1"}};
+static auto const kSingleTripDefaultFlagsPtrs = [] {
+  auto arr = std::array<bitvec const*, kNumRouteFlags>{};
+  for (auto i = 0U; i != kNumRouteFlags; ++i) {
+    arr[i] = &kSingleTripDefaultFlags[i];
+  }
+  return arr;
+}();
 
 // =====
 // UTILS
@@ -1579,7 +1586,7 @@ void load_timetable(loader_config const& config,
     auto const c =
         gtfs::to_clasz(to_idx(tt.route_ids_[src].route_id_type_[s.route_id_]));
     auto const it = route_services.find(
-        gtfs::route_key_ptr_t{c, &s.stop_seq_, &kSingleTripDefaultFlags});
+        gtfs::route_key_ptr_t{c, &s.stop_seq_, kSingleTripDefaultFlagsPtrs});
     if (it != end(route_services)) {
       for (auto& route : it->second) {
         auto const idx = get_index(route, s);
