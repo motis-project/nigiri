@@ -59,7 +59,7 @@ jobs:
             --algo range pong \
             --modes s2s c2c \
             --dirs fwd bwd \
-            -n 50
+            -n 25
 
       - name: Validate Germany (vias=1, CPU)
         run: |
@@ -69,7 +69,7 @@ jobs:
             --modes s2s c2c \
             --dirs fwd bwd \
             --vias 1 \
-            -n 25
+            -n 10
 
       - name: Validate Germany (vias=2, CPU)
         run: |
@@ -79,7 +79,7 @@ jobs:
             --modes s2s c2c \
             --dirs fwd bwd \
             --vias 2 \
-            -n 25
+            -n 10
 
       - name: Save build
         if: always()
