@@ -168,8 +168,10 @@ if (NIGIRI_CUDA)
   file(GLOB_RECURSE nigiri-gpu-files src/*.cu)
   add_library(nigiri-gpu STATIC ${nigiri-gpu-files})
   if (CMAKE_CXX_FLAGS MATCHES "-fsanitize")
-    # Keep device assertions when using host sanitizer.
-    set(nigiri-gpu-compile-options "-O3")
+    # Keep device assertions when using host sanitizer. They push per thread
+    # register usage past what the launch configuration can satisfy, so cap it
+    # here - this build checks correctness, it is not measured.
+    set(nigiri-gpu-compile-options "-O3;-maxrregcount=64")
   else()
     set(nigiri-gpu-compile-options "-O3;-DNDEBUG")
   endif()
