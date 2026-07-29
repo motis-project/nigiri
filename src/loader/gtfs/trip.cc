@@ -116,9 +116,7 @@ trip::trip(route_id_idx_t route,
            translation_idx_t const short_name,
            direction_id_t const direction_id,
            shape_idx_t const shape_idx,
-           bool const bikes_allowed,
-           bool const cars_allowed,
-           bool accessible,
+           std::array<bool, kNumRouteFlags> const flags,
            std::string ticketing_trip_id,
            bool ticketing_unavailable)
     : route_{route},
@@ -129,9 +127,7 @@ trip::trip(route_id_idx_t route,
       direction_id_{direction_id},
       short_name_{std::move(short_name)},
       shape_idx_{shape_idx},
-      bikes_allowed_{bikes_allowed},
-      cars_allowed_{cars_allowed},
-      wheelchair_accessible_{accessible},
+      flags_{flags},
       ticketing_trip_id_{ticketing_trip_id},
       ticketing_unavailable_{ticketing_unavailable} {}
 
@@ -207,17 +203,19 @@ bool trip::has_seated_transfers() const {
   return !seated_in_.empty() || !seated_out_.empty();
 }
 
-trip_data read_trips(source_idx_t const src,
-                     source_file_idx_t const source_file,
-                     timetable& tt,
-                     translator& i18n,
-                     route_map_t const& routes,
-                     traffic_days_t const& services,
-                     shape_loader_state const& shape_states,
-                     std::string_view file_content,
-                     std::array<bool, kNumClasses> const& bikes_allowed_default,
-                     std::array<bool, kNumClasses> const& cars_allowed_default,
-                     script_runner const& user_script) {
+trip_data read_trips(
+    source_idx_t const src,
+    source_file_idx_t const source_file,
+    timetable& tt,
+    translator& i18n,
+    route_map_t const& routes,
+    traffic_days_t const& services,
+    shape_loader_state const& shape_states,
+    std::string_view file_content,
+    std::array<bool, kNumClasses> const& bikes_allowed_default,
+    std::array<bool, kNumClasses> const& cars_allowed_default,
+    std::array<bool, kNumClasses> const& reservation_not_required_default,
+    script_runner const& user_script) {
   struct csv_trip {
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
     utl::csv_col<utl::cstr, UTL_NAME("service_id")> service_id_;
@@ -231,6 +229,7 @@ trip_data read_trips(source_idx_t const src,
     utl::csv_col<std::uint8_t, UTL_NAME("cars_allowed")> cars_allowed_;
     utl::csv_col<std::uint8_t, UTL_NAME("wheelchair_accessible")>
         wheelchair_accessible_;
+    utl::csv_col<std::uint8_t, UTL_NAME("pickup_type")> pickup_type_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_route_type")> trip_route_type_;
     // Google Transit ticketing extension
     utl::csv_col<utl::cstr, UTL_NAME("ticketing_trip_id")> ticketing_trip_id;
@@ -303,6 +302,17 @@ trip_data read_trips(source_idx_t const src,
 
         auto wheelchair_accessible = t.wheelchair_accessible_.val() == 1;
 
+        auto reservation_not_required = reservation_not_required_default[clasz];
+        if (t.pickup_type_.val() == 2 || t.pickup_type_.val() > 3) {
+          reservation_not_required = false;
+        }
+
+        auto flags = std::array<bool, kNumRouteFlags>{};
+        flags[kBikesAllowed] = bikes_allowed;
+        flags[kCarsAllowed] = cars_allowed;
+        flags[kWheelchairAccessible] = wheelchair_accessible;
+        flags[kReservationNotRequired] = reservation_not_required;
+
         auto const id = t.trip_id_->view();
         auto const trip_short_name = i18n.get(t::kTrips, f::kTripShortName,
                                               t.trip_short_name_->view(), id);
@@ -331,6 +341,7 @@ trip_data read_trips(source_idx_t const src,
             (t.direction_id_->view() == "1") ? direction_id_t{1U}
                                              : direction_id_t{0U},
             route_id,
+            flags,
             trip_debug{.source_file_idx_ = source_file}};
 
         auto const keep = process_trip(user_script, x);
@@ -348,10 +359,10 @@ trip_data read_trips(source_idx_t const src,
                       .get();
 
         auto const gtfs_trp_idx = gtfs_trip_idx_t{ret.data_.size()};
+
         ret.data_.push_back(trip{
             route_id, traffic_days_it->second.get(), blk, t.trip_id_->to_str(),
-            x.headsign_, trip_short_name, x.direction_, shape_idx,
-            bikes_allowed, cars_allowed, wheelchair_accessible,
+            x.headsign_, trip_short_name, x.direction_, shape_idx, flags,
             std::string{t.ticketing_trip_id->view()},
             t.ticketing_type.val() == 1});
         ret.data_.back().trip_idx_ = register_trip(tt, x);

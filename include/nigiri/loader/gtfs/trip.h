@@ -77,9 +77,7 @@ struct trip {
        translation_idx_t short_name,
        direction_id_t,
        shape_idx_t,
-       bool bikes_allowed,
-       bool cars_allowed,
-       bool accessible,
+       std::array<bool, kNumRouteFlags> flags,
        std::string ticketing_trip_id,
        bool ticketing_unavailable);
 
@@ -122,9 +120,7 @@ struct trip {
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};
   bool requires_sorting_{false};
-  bool bikes_allowed_{false};
-  bool cars_allowed_{false};
-  bool wheelchair_accessible_{false};
+  std::array<bool, kNumRouteFlags> flags_{false, false, false, true};
   std::uint32_t from_line_{0U}, to_line_{0U};
 
   // GTFS extension (MBTA): trips.txt `trip_route_type` overrides the
@@ -153,17 +149,19 @@ enum class interpolate_result { kOk, kErrorLastMissing, kErrorFirstMissing };
 
 interpolate_result interpolate(std::vector<stop_events>&);
 
-trip_data read_trips(source_idx_t,
-                     source_file_idx_t,
-                     timetable&,
-                     translator&,
-                     route_map_t const&,
-                     traffic_days_t const&,
-                     shape_loader_state const&,
-                     std::string_view file_content,
-                     std::array<bool, kNumClasses> const& bikes_allowed_default,
-                     std::array<bool, kNumClasses> const& cars_allowed_default,
-                     script_runner const& = script_runner{});
+trip_data read_trips(
+    source_idx_t,
+    source_file_idx_t,
+    timetable&,
+    translator&,
+    route_map_t const&,
+    traffic_days_t const&,
+    shape_loader_state const&,
+    std::string_view file_content,
+    std::array<bool, kNumClasses> const& bikes_allowed_default,
+    std::array<bool, kNumClasses> const& cars_allowed_default,
+    std::array<bool, kNumClasses> const& reservation_not_required_default,
+    script_runner const& = script_runner{});
 
 void read_frequencies(trip_data&, std::string_view);
 

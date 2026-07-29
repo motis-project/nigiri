@@ -82,16 +82,19 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
 
   rt_transport_track_sequence_.add_back_sized(0U);
 
-  auto const bikes_allowed_default = false;  // TODO
-  auto const cars_allowed_default = false;  // TODO
-  auto const wheelchair_accessible_default = false;  // TODO
+  auto const flags_defaults = std::array{
+      // TODO
+      false,  // kBikesAllowed
+      false,  // kCarsAllowed
+      false,  // kWheelchairAccessible
+      true,  // kReservationNotRequired
+  };
 
   rt_transport_line_.add_back_sized(0U);
   rt_transport_is_cancelled_.resize(rt_transport_is_cancelled_.size() + 1U);
-  rt_transport_bikes_allowed_.resize(rt_transport_bikes_allowed_.size() + 2U);
-  rt_transport_cars_allowed_.resize(rt_transport_cars_allowed_.size() + 2U);
-  rt_transport_wheelchair_accessibility_.resize(
-      rt_transport_wheelchair_accessibility_.size() + 2U);
+  for (auto i = 0U; i < kNumRouteFlags; ++i) {
+    rt_transport_flags_[i].resize(rt_transport_flags_[i].size() + 2U);
+  }
   rt_transport_section_directions_.add_back_sized(0U);  // TODO outside
   rt_transport_trip_short_names_.emplace_back(trip_short_name);
 
@@ -100,56 +103,38 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
 
   if (r != route_idx_t::invalid()) {
     rt_transport_section_clasz_.emplace_back(tt.route_section_clasz_[r]);
-    rt_transport_bikes_allowed_.set(rt_t_idx * 2,
-                                    tt.route_bikes_allowed_[r.v_ * 2]);
-    rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1,
-                                    tt.route_bikes_allowed_[r.v_ * 2 + 1]);
-    rt_transport_cars_allowed_.set(rt_t_idx * 2,
-                                   tt.route_cars_allowed_[r.v_ * 2]);
-    rt_transport_cars_allowed_.set(rt_t_idx * 2 + 1,
-                                   tt.route_cars_allowed_[r.v_ * 2 + 1]);
-    rt_transport_wheelchair_accessibility_.set(
-        rt_t_idx * 2, tt.route_wheelchair_accessible_[r.v_ * 2]);
-    rt_transport_wheelchair_accessibility_.set(
-        rt_t_idx * 2 + 1, tt.route_wheelchair_accessible_[r.v_ * 2 + 1]);
-
+    for (auto i = 0U; i < kNumRouteFlags; ++i) {
+      rt_transport_flags_[i].set(rt_t_idx * 2, tt.route_flags_[i][r.v_ * 2]);
+      rt_transport_flags_[i].set(rt_t_idx * 2 + 1,
+                                 tt.route_flags_[i][r.v_ * 2 + 1]);
+    }
   } else if (given_r != route_id_idx_t::invalid()) {
     rt_transport_section_clasz_.emplace_back(
         std::vector<clasz>{loader::gtfs::to_clasz(
             tt.route_ids_[src].route_id_type_.at(given_r).v_)});  // TODO
-    rt_transport_bikes_allowed_.set(rt_t_idx * 2, bikes_allowed_default);
-    rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1, false);
-    rt_transport_cars_allowed_.set(rt_t_idx * 2, cars_allowed_default);
-    rt_transport_cars_allowed_.set(rt_t_idx * 2 + 1, false);
-    rt_transport_wheelchair_accessibility_.set(rt_t_idx * 2,
-                                               wheelchair_accessible_default);
-    rt_transport_wheelchair_accessibility_.set(rt_t_idx * 2 + 1, false);
 
+    for (auto i = 0U; i < kNumRouteFlags; ++i) {
+      rt_transport_flags_[i].set(rt_t_idx * 2, flags_defaults[i]);
+      rt_transport_flags_[i].set(rt_t_idx * 2 + 1, false);
+    }
   } else {
     rt_transport_section_clasz_.emplace_back(std::vector<clasz>{clasz::kOther});
-    rt_transport_bikes_allowed_.set(rt_t_idx * 2, bikes_allowed_default);
-    rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1, false);
-    rt_transport_cars_allowed_.set(rt_t_idx * 2, cars_allowed_default);
-    rt_transport_cars_allowed_.set(rt_t_idx * 2 + 1, false);
-    rt_transport_wheelchair_accessibility_.set(rt_t_idx * 2,
-                                               wheelchair_accessible_default);
-    rt_transport_wheelchair_accessibility_.set(rt_t_idx * 2 + 1, false);
+
+    for (auto i = 0U; i < kNumRouteFlags; ++i) {
+      rt_transport_flags_[i].set(rt_t_idx * 2, flags_defaults[i]);
+      rt_transport_flags_[i].set(rt_t_idx * 2 + 1, false);
+    }
   }
   if (r != route_idx_t::invalid() && stop_seq.empty()) {
-    rt_bikes_allowed_per_section_.emplace_back(
-        tt.route_bikes_allowed_per_section_[r]);
-    rt_cars_allowed_per_section_.emplace_back(
-        tt.route_cars_allowed_per_section_[r]);
-    rt_wheelchair_accessible_per_section_.emplace_back(
-        tt.route_wheelchair_accessibility_per_section_[r]);
-
+    for (auto i = 0U; i < kNumRouteFlags; ++i) {
+      rt_flags_per_section_[i].emplace_back(tt.route_flags_per_section_[i][r]);
+    }
   } else {
-    rt_bikes_allowed_per_section_.emplace_back(
-        std::vector<bool>{bikes_allowed_default});
-    rt_cars_allowed_per_section_.emplace_back(
-        std::vector<bool>{cars_allowed_default});
-    rt_wheelchair_accessible_per_section_.emplace_back(
-        std::vector<bool>{cars_allowed_default});
+    for (auto i = 0U; i < kNumRouteFlags; ++i) {
+      rt_flags_per_section_[i].emplace_back(
+          std::vector<bool>{flags_defaults[i]});
+      rt_transport_flags_[i].set(rt_t_idx * 2 + 1, false);
+    }
   }
 
   assert(time_seq.empty() || time_seq.size() == location_seq.size() * 2U - 2U);
@@ -169,9 +154,11 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   assert(rt_transport_trip_short_names_.size() == rt_t_idx + 1U);
   assert(rt_transport_section_clasz_.size() == rt_t_idx + 1U);
   assert(rt_transport_line_.size() == rt_t_idx + 1U);
-  assert(rt_bikes_allowed_per_section_.size() == rt_t_idx + 1U);
-  assert(rt_cars_allowed_per_section_.size() == rt_t_idx + 1U);
-  assert(rt_wheelchair_accessible_per_section_.size() == rt_t_idx + 1U);
+  assert(rt_flags_per_section_[kBikesAllowed].size() == rt_t_idx + 1U);
+  assert(rt_flags_per_section_[kCarsAllowed].size() == rt_t_idx + 1U);
+  assert(rt_flags_per_section_[kWheelchairAccessible].size() == rt_t_idx + 1U);
+  assert(rt_flags_per_section_[kReservationNotRequired].size() ==
+         rt_t_idx + 1U);
 
   return rt_transport_idx_t{rt_t_idx};
 }

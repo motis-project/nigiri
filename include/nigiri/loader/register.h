@@ -194,6 +194,7 @@ struct trip {
        std::string_view vehicle_type_short_name,
        direction_id_t,
        route_id_idx_t,
+       std::array<bool, kNumRouteFlags>&,
        trip_debug);
 
   std::string_view get_id() const;
@@ -218,6 +219,15 @@ struct trip {
 
   route get_route() const;
 
+  bool get_bikes_allowed() const;
+  void set_bikes_allowed(bool) const;
+  bool get_cars_allowed() const;
+  void set_cars_allowed(bool) const;
+  bool get_wheelchair_accessible() const;
+  void set_wheelchair_accessible(bool) const;
+  bool get_compulsory_reservation() const;
+  void set_compulsory_reservation(bool) const;
+
   source_idx_t src_;
   std::string_view id_;
   translation_idx_t headsign_;
@@ -227,6 +237,7 @@ struct trip {
   std::string_view vehicle_type_short_name_;
   direction_id_t direction_;
   route_id_idx_t route_;
+  std::array<bool, kNumRouteFlags>& flags_;
   trip_debug dbg_;
 
   timetable* tt_{nullptr};

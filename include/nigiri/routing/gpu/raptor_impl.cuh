@@ -328,7 +328,7 @@ struct raptor_impl {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
   }
 
-  // Combines the query's required modes (bike/car runtime flags +
+  // Combines the query's required modes (bike/car/reservation runtime flags +
   // IsWheelchair compile-time), delegating the 2-bit decode to each filter.
   // Only called from the WithFilters kernel variants.
   template <bool IsWheelchair, typename Key>
@@ -348,6 +348,11 @@ struct raptor_impl {
       if (!f.wheelchair_.allows(i, kWheelchairSections, section_mask)) {
         return false;
       }
+    }
+    if (no_compulsory_reservation_ &&
+        !f.reservation_not_required_.allows(i, kNoCompulsoryReservationSections,
+                                            section_mask)) {
+      return false;
     }
     return true;
   }
@@ -1104,6 +1109,7 @@ struct raptor_impl {
   profile_idx_t prf_idx_;
   bool require_bike_transport_;
   bool require_car_transport_;
+  bool no_compulsory_reservation_;
   day_idx_t base_;
   cuda::std::span<std::pair<location_idx_t, unixtime_t> const> starts_;
   device_bitvec<std::uint64_t const> is_dest_;

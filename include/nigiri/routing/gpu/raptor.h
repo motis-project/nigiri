@@ -76,6 +76,7 @@ struct gpu_raptor {
       bool const require_bike_transport,
       bool const require_car_transport,
       bool const is_wheelchair,
+      bool const no_compulsory_reservation_,
       transfer_time_settings const& tts,
       profile_idx_t const prf_idx);
 
@@ -117,6 +118,7 @@ private:
   bool require_bike_transport_;
   bool require_car_transport_;
   bool is_wheelchair_;
+  bool no_compulsory_reservation_;
   transfer_time_settings transfer_time_settings_;
 
   profile_idx_t prf_idx_;
