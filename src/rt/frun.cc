@@ -474,22 +474,6 @@ bool run_stop::is_flag_set(route_flag const f, event_type const ev_type) const {
   }
 }
 
-bool run_stop::bikes_allowed(event_type const ev_type) const {
-  return is_flag_set(kBikesAllowed, ev_type);
-}
-
-bool run_stop::cars_allowed(event_type const ev_type) const {
-  return is_flag_set(kCarsAllowed, ev_type);
-}
-
-bool run_stop::wheelchair_accessible(event_type ev_type) const {
-  return is_flag_set(kWheelchairAccessible, ev_type);
-}
-
-bool run_stop::reservation_not_required(event_type ev_type) const {
-  return is_flag_set(kReservationNotRequired, ev_type);
-}
-
 route_color run_stop::get_route_color(event_type ev_type) const {
   auto const [routes, route_id_idx] = get_route(ev_type);
   return routes == nullptr

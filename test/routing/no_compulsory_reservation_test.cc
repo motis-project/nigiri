@@ -28,6 +28,11 @@ using nigiri::test::raptor_search;
 
 namespace {
 
+constexpr auto const default_reservation_not_required =
+    std::array<bool, kNumClasses>{true, true, true, true, true, true,
+                                  true, true, true, true, true, true,
+                                  true, true, true, true};
+
 // Timetable 1:
 // No reservation required in T1, T3, T4, T6, compulsory in T0, T2, T5
 // Connections without compulsory reservation allowed are slower
@@ -66,12 +71,12 @@ R5,DB,5,,,3
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id,pickup_type
 R0,S1,T0,,,2
-R1,S1,T1,,,1
+R1,S1,T1,,,0
 R1,S1,T2,,,2
-R2,S1,T3,,1,1
-R2,S1,T4,,1,1
+R2,S1,T3,,1,0
+R2,S1,T4,,1,0
 R3,S1,T5,,1,2
-R3,S1,T6,,1,1
+R3,S1,T6,,1,0
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -273,8 +278,9 @@ TEST(routing, no_compulsory_reservation_test_1) {
   tt.date_range_ = {date::sys_days{2019_y / May / 1},
                     date::sys_days{2019_y / May / 2}};
   loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({}, source_idx_t{0},
-                               loader::mem_dir::read(test_files_1), tt);
+  loader::gtfs::load_timetable(
+      {.reservation_not_required_default_ = default_reservation_not_required},
+      source_idx_t{0}, loader::mem_dir::read(test_files_1), tt);
   loader::finalize(tt);
 
   for (auto const dir : {direction::kForward, direction::kBackward}) {
@@ -353,9 +359,9 @@ R2,DB,2,,,3
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id,pickup_type
 R1,S1,T1,,1,2
-R1,S1,T3,,2,1
-R2,S1,T2,,1,1
-R2,S1,T4,,2,1
+R1,S1,T3,,2,0
+R2,S1,T2,,1,0
+R2,S1,T4,,2,0
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -441,8 +447,9 @@ TEST(routing, no_compulsory_reservation_test_2) {
   tt.date_range_ = {date::sys_days{2019_y / May / 1},
                     date::sys_days{2019_y / May / 2}};
   loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({}, source_idx_t{0},
-                               loader::mem_dir::read(test_files2), tt);
+  loader::gtfs::load_timetable(
+      {.reservation_not_required_default_ = default_reservation_not_required},
+      source_idx_t{0}, loader::mem_dir::read(test_files2), tt);
   loader::finalize(tt);
 
   for (auto const dir : {direction::kForward, direction::kBackward}) {
@@ -513,12 +520,12 @@ R3,DB,3,,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id,pickup_type
-R1,S1,T1,,1,1
-R1,S1,T4,,2,1
+R1,S1,T1,,1,0
+R1,S1,T4,,2,0
 R2,S1,T2,,1,2
-R2,S1,T5,,2,1
-R3,S1,T3,,1,1
-R3,S1,T6,,2,1
+R2,S1,T5,,2,0
+R3,S1,T3,,1,0
+R3,S1,T6,,2,0
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -576,8 +583,9 @@ TEST(routing, no_compulsory_reservation_test_3) {
   tt.date_range_ = {date::sys_days{2019_y / May / 1},
                     date::sys_days{2019_y / May / 2}};
   loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({}, source_idx_t{0},
-                               loader::mem_dir::read(test_files3), tt);
+  loader::gtfs::load_timetable(
+      {.reservation_not_required_default_ = default_reservation_not_required},
+      source_idx_t{0}, loader::mem_dir::read(test_files3), tt);
   loader::finalize(tt);
 
   for (auto const dir : {direction::kForward, direction::kBackward}) {
