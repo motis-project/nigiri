@@ -481,6 +481,19 @@ route_color run_stop::get_route_color(event_type ev_type) const {
              : routes->route_id_colors_[route_id_idx];
 }
 
+std::optional<date::sys_days> run_stop::looped_calendar_since(
+    event_type ev_type) const {
+  if (!fr_->is_scheduled()) {
+    return std::nullopt;
+  }
+  auto const id_idx = tt().trip_ids_.at(get_trip_idx(ev_type)).front();
+  auto const src = tt().trip_id_src_.at(id_idx);
+  auto const [service_day, _] = get_trip_start(ev_type);
+  return tt().src_end_date_.at(src) < service_day
+             ? std::optional{tt().src_end_date_[src]}
+             : std::nullopt;
+}
+
 bool run_stop::is_cancelled() const { return get_stop().is_cancelled(); }
 
 bool run_stop::in_allowed() const { return get_stop().in_allowed(); }

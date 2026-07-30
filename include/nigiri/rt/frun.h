@@ -69,6 +69,8 @@ struct run_stop {
 
   route_color get_route_color(event_type) const;
 
+  std::optional<date::sys_days> looped_calendar_since(event_type) const;
+
   bool in_allowed() const;
   bool out_allowed() const;
   bool in_allowed_wheelchair() const;
