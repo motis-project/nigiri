@@ -120,6 +120,7 @@ bitfield_idx_t timetable::register_bitfield(bitfield const& b) {
 }
 
 route_idx_t timetable::register_route(
+    source_idx_t const src,
     basic_string<stop::value_type> const& stop_seq,
     basic_string<clasz> const& clasz_sections,
     std::array<bitvec, route_flag::kNumRouteFlags> const& flags_per_section) {
@@ -133,6 +134,7 @@ route_idx_t timetable::register_route(
       transport_idx_t::invalid());
   route_location_seq_.emplace_back(stop_seq);
   route_section_clasz_.emplace_back(clasz_sections);
+  route_src_.emplace_back(src);
   route_clasz_.emplace_back(clasz_sections[0]);
 
   auto const apply_filter = [&](route_flag const f) {
