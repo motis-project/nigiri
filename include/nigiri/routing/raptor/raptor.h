@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cassert>
-#include <bit>
 #include <span>
 
 #include "nigiri/common/delta_t.h"
@@ -54,76 +53,6 @@ struct raptor {
     return x;
   }
   static auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
-
-  template <typename Fn>
-  static void for_each_set(bitvec const& bits, Fn&& fn) {
-    if (bits.empty()) {
-      return;
-    }
-
-    auto const last_block = bits.blocks_.size() - 1U;
-    for (auto block_idx = bitvec::size_type{0U};
-         block_idx != bits.blocks_.size(); ++block_idx) {
-      auto block = block_idx == last_block ? bits.sanitized_last_block()
-                                           : bits.blocks_[block_idx];
-      while (block != 0U) {
-        auto const bit =
-            static_cast<bitvec::size_type>(std::countr_zero(block));
-        fn(block_idx * bitvec::bits_per_block + bit);
-        block &= block - 1U;
-      }
-    }
-  }
-
-  template <typename A, typename B, typename Fn>
-  static void for_each_set(A const& a, B const& b, Fn&& fn) {
-    if (a.empty() || b.empty()) {
-      return;
-    }
-    assert(a.blocks_.size() == b.blocks_.size());
-
-    auto const last_block = a.blocks_.size() - 1U;
-    for (auto block_idx = typename A::size_type{0U};
-         block_idx != a.blocks_.size(); ++block_idx) {
-      auto block = (block_idx == last_block ? a.sanitized_last_block()
-                                            : a.blocks_[block_idx]) &
-                   (block_idx == last_block ? b.sanitized_last_block()
-                                            : b.blocks_[block_idx]);
-      while (block != 0U) {
-        auto const bit =
-            static_cast<typename A::size_type>(std::countr_zero(block));
-        fn(block_idx * A::bits_per_block + bit);
-        block &= block - 1U;
-      }
-    }
-  }
-
-  template <typename A, typename B, typename Fn>
-  static void for_each_set_and_not(A const& a, B const& b, Fn&& fn) {
-    if (a.empty()) {
-      return;
-    }
-    if (b.empty()) {
-      for_each_set(a, std::forward<Fn>(fn));
-      return;
-    }
-    assert(a.blocks_.size() == b.blocks_.size());
-
-    auto const last_block = a.blocks_.size() - 1U;
-    for (auto block_idx = typename A::size_type{0U};
-         block_idx != a.blocks_.size(); ++block_idx) {
-      auto block = (block_idx == last_block ? a.sanitized_last_block()
-                                            : a.blocks_[block_idx]) &
-                   ~(block_idx == last_block ? b.sanitized_last_block()
-                                             : b.blocks_[block_idx]);
-      while (block != 0U) {
-        auto const bit =
-            static_cast<typename A::size_type>(std::countr_zero(block));
-        fn(block_idx * A::bits_per_block + bit);
-        block &= block - 1U;
-      }
-    }
-  }
 
   raptor(
       timetable const& tt,
@@ -295,12 +224,11 @@ struct raptor {
           best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
         }
       }
-      for_each_set(is_dest_, [&](auto const i) {
-        update_time_at_dest(k, best_[i][Vias]);
-      });
+      is_dest_.for_each_set_bit(
+          [&](auto const i) { update_time_at_dest(k, best_[i][Vias]); });
 
       auto any_marked = false;
-      for_each_set(state_.station_mark_, [&](auto const i) {
+      state_.station_mark_.for_each_set_bit([&](auto const i) {
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
           any_marked = true;
           state_.route_mark_.set(to_idx(r), true);
@@ -398,7 +326,7 @@ struct raptor {
       return;
     }
 
-    for_each_set(is_dest_, [&](auto const i) {
+    is_dest_.for_each_set_bit([&](auto const i) {
       for (auto k = 1U; k != end_k; ++k) {
         auto const dest_time = round_times_[k][i][Vias];
         if (dest_time != kInvalid) {
@@ -502,7 +430,7 @@ private:
             bool WithWheelchairFilter>
   bool loop_routes(unsigned const k) {
     auto any_marked = false;
-    for_each_set(state_.route_mark_, [&](auto const r_idx) {
+    state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
       auto const r = route_idx_t{r_idx};
 
       if constexpr (WithClaszFilter) {
@@ -584,7 +512,7 @@ private:
             bool WithWheelchairFilter>
   bool loop_rt_routes(unsigned const k) {
     auto any_marked = false;
-    for_each_set(state_.rt_transport_mark_, [&](auto const rt_t_idx) {
+    state_.rt_transport_mark_.for_each_set_bit([&](auto const rt_t_idx) {
       auto const rt_t = rt_transport_idx_t{rt_t_idx};
 
       if constexpr (WithClaszFilter) {
@@ -663,7 +591,7 @@ private:
   }
 
   void update_transfers(unsigned const k) {
-    for_each_set(state_.prev_station_mark_, [&](auto&& i) {
+    state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
       for (auto v = 0U; v != Vias + 1; ++v) {
         auto const tmp_time = tmp_[i][v];
         if (tmp_time == kInvalid) {
@@ -824,14 +752,14 @@ private:
 
     if constexpr (Rt) {
       if (prf_idx_ != 0U) {
-        for_each_set_and_not(state_.prev_station_mark_,
-                             (kFwd ? rtt_->has_td_footpaths_out_
-                                   : rtt_->has_td_footpaths_in_)[prf_idx_],
-                             process);
+        state_.prev_station_mark_.for_each_set_bit_and_not(
+            (kFwd ? rtt_->has_td_footpaths_out_
+                  : rtt_->has_td_footpaths_in_)[prf_idx_],
+            process);
         return;
       }
     }
-    for_each_set(state_.prev_station_mark_, process);
+    state_.prev_station_mark_.for_each_set_bit(process);
   }
 
   void update_td_offsets(unsigned const k) {
@@ -845,7 +773,7 @@ private:
 
     auto const& has_td = (kFwd ? rtt_->has_td_footpaths_out_
                                : rtt_->has_td_footpaths_in_)[prf_idx_];
-    for_each_set(state_.prev_station_mark_, has_td, [&](auto const i) {
+    state_.prev_station_mark_.for_each_set_bit(has_td, [&](auto const i) {
       auto const l_idx = location_idx_t{i};
       auto const& fps = kFwd ? rtt_->td_footpaths_out_[prf_idx_][l_idx]
                              : rtt_->td_footpaths_in_[prf_idx_][l_idx];
@@ -944,7 +872,7 @@ private:
       return;
     }
 
-    for_each_set(state_.prev_station_mark_, end_reachable_, [&](auto const i) {
+    auto const process = [&](auto const i) {
       trace_upd("┊ ├k={}   end_reachable: {}\n", k,
                 loc{tt_, location_idx_t{i}});
 
@@ -1039,7 +967,8 @@ private:
           }
         }
       }
-    });
+    };
+    state_.prev_station_mark_.for_each_set_bit(end_reachable_, process);
   }
 
   template <bool WithSectionBikeFilter,
