@@ -107,6 +107,8 @@ void agency::set_timezone(std::string_view x) {
 // Location
 // --------
 
+location::location() = default;
+
 location::location(timetable const& tt, location_idx_t const l)
     : src_{tt.locations_.src_[l]},
       id_{tt.locations_.ids_[l].view()},
@@ -733,10 +735,20 @@ location_idx_t register_location(timetable& tt, location const& l) {
 
   auto const next_idx = static_cast<location_idx_t::value_t>(loc.names_.size());
   auto const l_idx = location_idx_t{next_idx};
-  auto const [it, is_new] = loc.location_id_to_idx_.emplace(
-      owning_location_id{.id_ = l.id_, .src_ = l.src_}, l_idx);
 
-  if (is_new) {
+  // locations without id (e.g. virtual transfer locations) are not lookupable
+  if (!l.id_.empty()) {
+    auto const [it, inserted] = loc.location_id_to_idx_.emplace(
+        owning_location_id{.id_ = l.id_, .src_ = l.src_}, l_idx);
+    if (!inserted) {
+      assert(false && "duplicate station");
+      log(log_lvl::error, "timetable.register_location", "duplicate station {}",
+          l.id_);
+      return it->second;
+    }
+  }
+
+  {
     utl::verify(next_idx <= footpath::kMaxTarget, "MAX={} locations reached",
                 footpath::kMaxTarget);
 
@@ -755,10 +767,6 @@ location_idx_t register_location(timetable& tt, location const& l) {
     loc.preprocessing_footpaths_in_.emplace_back();
     loc.transfer_time_.emplace_back(l.transfer_time_);
     loc.parents_.emplace_back(l.parent_);
-  } else {
-    assert(false && "duplicate station");
-    log(log_lvl::error, "timetable.register_location", "duplicate station {}",
-        l.id_);
   }
 
   assert(loc.names_.size() == next_idx + 1);
@@ -777,7 +785,7 @@ location_idx_t register_location(timetable& tt, location const& l) {
   assert(loc.transfer_time_.size() == next_idx + 1);
   assert(loc.parents_.size() == next_idx + 1);
 
-  return it->second;
+  return l_idx;
 }
 
 route_id_idx_t register_route(timetable& tt, route const& r) {

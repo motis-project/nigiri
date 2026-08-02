@@ -31,7 +31,7 @@ void for_each_meta(timetable const& tt,
     fn(l);
     for (auto const& c : tt.locations_.children_.at(l)) {
       if (tt.locations_.types_.at(c) == location_type::kGeneratedTrack ||
-          tt.locations_.types_.at(c) == location_type::kGeneratedTransfer) {
+          tt.locations_.types_.at(c) == location_type::kVirt) {
         fn(c);
       }
     }

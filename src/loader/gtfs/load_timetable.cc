@@ -97,10 +97,10 @@ void load_timetable(loader_config const& config,
   auto [agencies, agency_ticketing] =
       read_agencies(src, tt, i18n, timezones, load(kAgencyFile).data(),
                     config.default_tz_, user_script);
-  auto const [stops, seated_transfers, stops_accessible, transfer_rules] =
+  auto const [stops, stops_accessible] =
       read_stops(src, tt, i18n, timezones, load(kStopFile).data(),
-                 load(kTransfersFile).data(), config.link_stop_distance_,
-                 config.default_transfer_time_, user_script);
+                 config.link_stop_distance_, config.default_transfer_time_,
+                 user_script);
   add_stop_groups(tt, load(kStopGroupElementsFile).data(), stops);
   auto const routes =
       read_routes(src, tt, i18n, timezones, agencies, load(kRoutesFile).data(),
@@ -202,39 +202,9 @@ void load_timetable(loader_config const& config,
     }
   }
 
-  {  // Resolve stay-seated transfers (transfer_type=4).
-    auto const timer =
-        scoped_timer{"loader.gtfs.trips.resolve_seated_transfers"};
-
-    for (auto const& [from_trip_id, to_trip_ids] : seated_transfers) {
-      auto const from_it = trip_data.trips_.find(from_trip_id);
-      if (from_it == end(trip_data.trips_)) {
-        log(log_lvl::error, "nigiri.loader.gtfs.seated", "trip {} not found",
-            from_trip_id);
-        continue;
-      }
-
-      auto& from_trip = trip_data.get(from_trip_id);
-      for (auto const& to_trip_id : to_trip_ids) {
-        auto const to_it = trip_data.trips_.find(to_trip_id);
-        if (to_it == end(trip_data.trips_)) {
-          log(log_lvl::error, "nigiri.loader.gtfs.seated", "trip {} not found",
-              to_trip_id);
-          continue;
-        }
-
-        auto& to_trip = trip_data.data_[to_it->second];
-        to_trip.seated_in_.push_back(
-            gtfs_trip_idx_t{&from_trip - trip_data.data_.data()});
-        from_trip.seated_out_.push_back(
-            gtfs_trip_idx_t{&to_trip - trip_data.data_.data()});
-      }
-    }
-  }
-
-  // transfers.txt rules that need transfer groups or forbidden markers
-  // (rewrites trip stop sequences -> before route building)
-  build_transfer_rules(tt, transfer_rules, stops, routes, trip_data);
+  // transfers.txt: stay-seated transfers, stop transfer times, footpaths,
+  // transfer rules (rewrites trip stop sequences -> before route building)
+  read_transfers(tt, load(kTransfersFile).data(), stops, routes, trip_data);
 
   hash_map<route_key_t, std::vector<std::vector<utc_trip>>, route_key_hash,
            route_key_equals>

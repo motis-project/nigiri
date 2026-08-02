@@ -24,11 +24,6 @@
 namespace nigiri::loader::gtfs {
 
 struct stop {
-  struct footpath {
-    stop const* to_;
-    duration_t duration_;
-  };
-
   void compute_close_stations(geo::point_rtree const& stop_rtree,
                               unsigned const link_stop_distance) {
     if (std::abs(coord_.lat_) < 2.0 && std::abs(coord_.lng_) < 2.0) {
@@ -103,166 +98,21 @@ struct stop {
   stop* parent_{nullptr};
   std::vector<unsigned> close_;
   location_idx_t location_{location_idx_t::invalid()};
-  std::vector<footpath> footpaths_;
-  std::optional<duration_t> transfer_time_;
   bool wheelchair_boarding_;
 };
 
 enum class stop_type { kRegular, kGeneratedParent };
 using stop_map_t = hash_map<std::string_view, std::unique_ptr<stop>>;
 
-enum class transfer_type : std::uint8_t {
-  kRecommended = 0U,
-  kTimed = 1U,
-  kMinimumChangeTime = 2U,
-  kNotPossible = 3U,
-  kStaySeated = 4U,
-  kNoStaySeated = 5U,
-  kGenerated = std::numeric_limits<std::uint8_t>::max()
-};
-
-std::pair<seated_transfers_map_t, std::vector<raw_transfer_rule>>
-read_transfers(stop_map_t& stops, std::string_view file_content) {
-  auto const timer = scoped_timer{"gtfs.loader.stops.transfers"};
-
-  struct csv_transfer {
-    utl::csv_col<utl::cstr, UTL_NAME("from_stop_id")> from_stop_id_;
-    utl::csv_col<utl::cstr, UTL_NAME("to_stop_id")> to_stop_id_;
-    utl::csv_col<int, UTL_NAME("transfer_type")> transfer_type_;
-    utl::csv_col<int, UTL_NAME("min_transfer_time")> min_transfer_time_;
-    utl::csv_col<utl::cstr, UTL_NAME("from_route_id")> from_route_id_;
-    utl::csv_col<utl::cstr, UTL_NAME("to_route_id")> to_route_id_;
-    utl::csv_col<utl::cstr, UTL_NAME("from_trip_id")> from_trip_id_;
-    utl::csv_col<utl::cstr, UTL_NAME("to_trip_id")> to_trip_id_;
-  };
-
-  if (file_content.empty()) {
-    return {};
-  }
-
-  auto progress_tracker = utl::get_active_progress_tracker();
-  progress_tracker->status("Read Transfers")
-      .out_bounds(15.F, 17.F)
-      .in_high(file_content.size());
-
-  auto seated_transfers = seated_transfers_map_t{};
-  auto rules = std::vector<raw_transfer_rule>{};
-  utl::line_range{
-      utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
-      | utl::csv<csv_transfer>()  //
-      | utl::for_each([&](csv_transfer const& t) {
-          auto const type = static_cast<transfer_type>(*t.transfer_type_);
-
-          if (type == transfer_type::kStaySeated) {
-            if (t.from_trip_id_->empty() || t.to_trip_id_->empty()) {
-              log(log_lvl::error, "loader.gtfs.transfers",
-                  "stay seated transfers require from_trip_id and to_trip_id");
-              return;
-            }
-
-            seated_transfers[t.from_trip_id_->to_str()].push_back(
-                t.to_trip_id_->to_str());
-
-            return;
-          }
-
-          auto const add_rule = [&]() {
-            rules.emplace_back(raw_transfer_rule{
-                .from_stop_id_ = t.from_stop_id_->to_str(),
-                .to_stop_id_ = t.to_stop_id_->to_str(),
-                .from_route_id_ = t.from_route_id_->to_str(),
-                .to_route_id_ = t.to_route_id_->to_str(),
-                .from_trip_id_ = t.from_trip_id_->to_str(),
-                .to_trip_id_ = t.to_trip_id_->to_str(),
-                .type_ = static_cast<std::uint8_t>(*t.transfer_type_),
-                .min_transfer_time_ = *t.min_transfer_time_});
-          };
-
-          auto const qualified =
-              !t.from_route_id_->empty() || !t.to_route_id_->empty() ||
-              !t.from_trip_id_->empty() || !t.to_trip_id_->empty();
-
-          if (type == transfer_type::kNotPossible) {
-            add_rule();
-            return;
-          }
-
-          // route-/trip-qualified transfers are handled by the transfer rule
-          // pass (they only apply to a subset of the trips at the stop)
-          if (qualified && (type == transfer_type::kRecommended ||
-                            type == transfer_type::kTimed ||
-                            type == transfer_type::kMinimumChangeTime)) {
-            add_rule();
-            return;
-          }
-
-          auto const from_stop_it = stops.find(t.from_stop_id_->view());
-          if (from_stop_it == end(stops)) {
-            log(log_lvl::error, "loader.gtfs.transfers",
-                "stop \"{}\" not found", t.from_stop_id_->view());
-            return;
-          }
-
-          auto const to_stop_it = stops.find(t.to_stop_id_->view());
-          if (to_stop_it == end(stops)) {
-            log(log_lvl::error, "loader.gtfs.transfers",
-                "stop \"{}\" not found", t.to_stop_id_->view());
-            return;
-          }
-
-          auto const transfer_time = duration_t{*t.min_transfer_time_ / 60};
-          if (from_stop_it == to_stop_it) {
-            if (from_stop_it->second->transfer_time_.has_value()) {
-              from_stop_it->second->transfer_time_ = std::min(
-                  transfer_time, *from_stop_it->second->transfer_time_);
-            } else {
-              from_stop_it->second->transfer_time_ = transfer_time;
-            }
-            // station-level rows cascade to transfers between trip-carrying
-            // child stops - handled by the transfer rule pass
-            if (type == transfer_type::kRecommended ||
-                type == transfer_type::kTimed ||
-                type == transfer_type::kMinimumChangeTime) {
-              add_rule();
-            }
-            return;
-          }
-
-          // cross-stop transfer times from the data are authoritative:
-          // additionally kept as transfer rule so street routing does not
-          // replace them (it only fills transfers not given in the data)
-          if (type == transfer_type::kRecommended ||
-              type == transfer_type::kTimed ||
-              type == transfer_type::kMinimumChangeTime) {
-            add_rule();
-          }
-
-          auto& footpaths = from_stop_it->second->footpaths_;
-          auto const it = std::find_if(
-              begin(footpaths), end(footpaths), [&](stop::footpath const& fp) {
-                return fp.to_ == to_stop_it->second.get();
-              });
-          if (it == end(footpaths)) {
-            footpaths.emplace_back(to_stop_it->second.get(),
-                                   duration_t{*t.min_transfer_time_ / 60});
-          }
-        });
-  return {std::move(seated_transfers), std::move(rules)};
-}
-
-std::tuple<stops_map_t,
-           seated_transfers_map_t,
-           location_accessible_map_t,
-           std::vector<raw_transfer_rule>>
-read_stops(source_idx_t const src,
-           timetable& tt,
-           translator& i18n,
-           tz_map& timezones,
-           std::string_view stops_file_content,
-           std::string_view transfers_file_content,
-           unsigned link_stop_distance,
-           duration_t const default_transfer_time,
-           script_runner const& r) {
+std::pair<stops_map_t, location_accessible_map_t> read_stops(
+    source_idx_t const src,
+    timetable& tt,
+    translator& i18n,
+    tz_map& timezones,
+    std::string_view stops_file_content,
+    unsigned link_stop_distance,
+    duration_t const default_transfer_time,
+    script_runner const& r) {
   auto const timer = scoped_timer{"gtfs.loader.stops"};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
@@ -359,9 +209,7 @@ read_stops(source_idx_t const src,
         progress_tracker->update_fn());
   }
 
-  auto [transfers, transfer_rules] =
-      read_transfers(stops, transfers_file_content);
-  location_accessible_map_t accessible;
+  auto accessible = location_accessible_map_t{};
   for (auto const& [id, s] : stops) {
     auto loc = location{
         tt,
@@ -376,7 +224,7 @@ read_stops(source_idx_t const src,
         location_idx_t::invalid(),
         s->timezone_.empty() ? timezone_idx_t::invalid()
                              : get_tz_idx(tt, timezones, s->timezone_),
-        s->transfer_time_.value_or(default_transfer_time),
+        default_transfer_time,
         timezones};
     if (process_location(r, loc)) {
       locations.emplace(id, s->location_ = register_location(tt, loc));
@@ -390,14 +238,6 @@ read_stops(source_idx_t const src,
         .out_bounds(17.F, 20.F)
         .in_high(stops.size());
 
-    auto const add_if_not_exists = [](auto bucket, footpath fp) {
-      auto const it = utl::find_if(
-          bucket, [&](auto&& x) { return fp.target() == x.target_; });
-      if (it == end(bucket)) {
-        bucket.emplace_back(fp);
-      }
-    };
-
     for (auto const& [id, s] : stops) {
       if (s->parent_ != nullptr) {
         tt.locations_.parents_[s->location_] = s->parent_->location_;
@@ -405,62 +245,21 @@ read_stops(source_idx_t const src,
       for (auto const& c : s->children_) {
         tt.locations_.children_[s->location_].emplace_back(c->location_);
       }
-
-      // GTFS footpaths
-      for (auto const& fp : s->footpaths_) {
-        tt.locations_.preprocessing_footpaths_out_[s->location_].emplace_back(
-            fp.to_->location_, fp.duration_);
-        tt.locations_.preprocessing_footpaths_in_[fp.to_->location_]
-            .emplace_back(s->location_, fp.duration_);
-      }
     }
 
-    // Make GTFS footpaths symmetric (if not already).
-    for (auto const& [id, s] : stops) {
-      for (auto const& fp : s->footpaths_) {
-        add_if_not_exists(
-            tt.locations_.preprocessing_footpaths_out_[fp.to_->location_],
-            {s->location_, fp.duration_});
-        add_if_not_exists(
-            tt.locations_.preprocessing_footpaths_in_[s->location_],
-            {fp.to_->location_, fp.duration_});
-      }
-    }
-
-    // Generate footpaths to connect stops in close proximity.
+    // Collect equivalent stops in close proximity (used for start/destination
+    // expansion; walking transfers between them are derived in
+    // loader::build_footpaths).
     hash_set<stop*> todo, done;
     for (auto const& [id, s] : stops) {
-      auto const dist_lng_degrees = geo::approx_distance_lng_degrees(s->coord_);
       for (auto const& eq : s->get_metas(stop_vec, todo, done)) {
-        auto const dist = std::sqrt(geo::approx_squared_distance(
-            s->coord_, eq->coord_, dist_lng_degrees));
-        auto const duration = duration_t{std::max(
-            2, static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
-
-        if (duration > footpath::kMaxDuration) {
-          continue;
-        }
-
         tt.locations_.equivalences_[s->location_].emplace_back(eq->location_);
-        add_if_not_exists(
-            tt.locations_.preprocessing_footpaths_out_[s->location_],
-            {eq->location_, duration});
-        add_if_not_exists(
-            tt.locations_.preprocessing_footpaths_in_[eq->location_],
-            {s->location_, duration});
-        add_if_not_exists(
-            tt.locations_.preprocessing_footpaths_out_[eq->location_],
-            {s->location_, duration});
-        add_if_not_exists(
-            tt.locations_.preprocessing_footpaths_in_[s->location_],
-            {eq->location_, duration});
       }
       progress_tracker->increment();
     }
   }
 
-  return std::tuple{std::move(locations), std::move(transfers),
-                    std::move(accessible), std::move(transfer_rules)};
+  return std::pair{std::move(locations), std::move(accessible)};
 }
 
 }  // namespace nigiri::loader::gtfs

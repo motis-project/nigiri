@@ -69,6 +69,7 @@ struct agency {
 };
 
 struct location {
+  location();
   location(timetable&,
            source_idx_t,
            std::string_view id,
@@ -111,17 +112,20 @@ struct location {
   duration_t::rep get_transfer_time() const;
   void set_transfer_time(duration_t::rep);
 
-  source_idx_t src_;
+  // defaults for locations that are not read from the input data (e.g.
+  // virtual locations): everything not set explicitly is either empty or
+  // taken from the parent by the consumers
+  source_idx_t src_{source_idx_t::invalid()};
   std::string_view id_;
-  translation_idx_t name_;
-  translation_idx_t platform_code_;
-  translation_idx_t stop_code_;
-  translation_idx_t description_;
-  geo::latlng pos_;
-  location_type type_;
-  location_idx_t parent_;
-  timezone_idx_t timezone_idx_;
-  duration_t transfer_time_;
+  translation_idx_t name_{kEmptyTranslation};
+  translation_idx_t platform_code_{kEmptyTranslation};
+  translation_idx_t stop_code_{kEmptyTranslation};
+  translation_idx_t description_{kEmptyTranslation};
+  geo::latlng pos_{};
+  location_type type_{location_type::kStation};
+  location_idx_t parent_{location_idx_t::invalid()};
+  timezone_idx_t timezone_idx_{timezone_idx_t::invalid()};
+  duration_t transfer_time_{0};
 
   timetable* tt_{nullptr};
   gtfs::tz_map* tz_map_{nullptr};

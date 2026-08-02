@@ -195,7 +195,7 @@ TEST(hrd, transfer_times_umsteigb) {
   // transfer groups at X
   auto n_transfer_children = 0U;
   for (auto const c : tt.locations_.children_[x]) {
-    if (tt.locations_.types_[c] == location_type::kGeneratedTransfer) {
+    if (tt.locations_.types_[c] == location_type::kVirt) {
       ++n_transfer_children;
     }
   }

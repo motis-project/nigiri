@@ -596,10 +596,15 @@ tuple_sides compute_sides(station_rules const& sr, stop_attrs const& t) {
   return s;
 }
 
-u8_minutes resolve_time(station_rules const& sr,
-                        u8_minutes const default_time,
-                        sig_t const& a,
-                        sig_t const& b) {
+struct resolved_transfer {
+  u8_minutes time_{};
+  bool preferred_{false};  // guaranteed transfer ("!")
+};
+
+resolved_transfer resolve_time(station_rules const& sr,
+                               u8_minutes const default_time,
+                               sig_t const& a,
+                               sig_t const& b) {
   // first rule of tier t (rules are ordered by specificity within a tier)
   // with its from side matched by a and its to side matched by b
   auto const find = [&](rule_tier const t) -> std::optional<std::size_t> {
@@ -619,24 +624,27 @@ u8_minutes resolve_time(station_rules const& sr,
   };
 
   if (auto const i = find(rule_tier::kTrip); i.has_value()) {
-    return (*sr.trip_)[*i].time_;
+    auto const& r = (*sr.trip_)[*i];
+    return {r.time_, r.guaranteed_};
   }
   if (auto const i = find(rule_tier::kLineStation); i.has_value()) {
-    return (*sr.line_)[*i].time_;
+    auto const& r = (*sr.line_)[*i];
+    return {r.time_, r.guaranteed_};
   }
   if (auto const i = find(rule_tier::kAdminStation); i.has_value()) {
-    return (*sr.admin_)[*i].time_;
+    return {(*sr.admin_)[*i].time_, false};
   }
   if (sr.has_station_time_) {
-    return sr.station_time_;
+    return {sr.station_time_, false};
   }
   if (auto const i = find(rule_tier::kLineGlobal); i.has_value()) {
-    return (*sr.line_global_)[*i].time_;
+    auto const& r = (*sr.line_global_)[*i];
+    return {r.time_, r.guaranteed_};
   }
   if (auto const i = find(rule_tier::kAdminGlobal); i.has_value()) {
-    return (*sr.admin_global_)[*i].time_;
+    return {(*sr.admin_global_)[*i].time_, false};
   }
-  return default_time;
+  return {default_time, false};
 }
 
 }  // namespace
@@ -651,7 +659,7 @@ void build_transfer_groups(stamm& st,
       std::size_t{kMaxDays},
       static_cast<std::size_t>(st.get_date_range().size().count()) + 8U);
 
-  auto n_group_locations = 0U;
+  auto n_virt_locations = 0U;
   auto n_edges = 0U;
   auto n_stations = 0U;
 
@@ -741,16 +749,16 @@ void build_transfer_groups(stamm& st,
     for (auto g = std::size_t{0U}; g != group_sigs.size(); ++g) {
       auto const& sig = group_sigs[g];
       auto const differs = [&](sig_t const& h) {
-        return time(sig, h) != time(base_sig, h) ||
-               time(h, sig) != time(h, base_sig);
+        return time(sig, h).time_ != time(base_sig, h).time_ ||
+               time(h, sig).time_ != time(h, base_sig).time_;
       };
       useful[g] = differs(base_sig) ||
-                  time(sig, sig) != time(base_sig, base_sig) ||
+                  time(sig, sig).time_ != time(base_sig, base_sig).time_ ||
                   utl::any_of(group_sigs, differs);
     }
 
     // create virtual child locations for useful groups
-    auto group_locations =
+    auto virt_locations =
         std::vector<location_idx_t>(group_sigs.size(), base);
     auto n_created = 0U;
     for (auto g = std::size_t{0U}; g != group_sigs.size(); ++g) {
@@ -758,16 +766,16 @@ void build_transfer_groups(stamm& st,
         continue;
       }
       auto l = location{tt, base};
-      auto const id = fmt::format("TG:{}:{}", l.id_, n_created++);
-      l.id_ = id;
-      l.type_ = location_type::kGeneratedTransfer;
+      l.id_ = {};  // virtual locations are not lookupable by id
+      ++n_created;
+      l.type_ = location_type::kVirt;
       l.parent_ = base;
       auto const child = register_location(tt, l);
       tt.locations_.children_[base].emplace_back(child);
       tt.locations_.transfer_time_[child] =
-          time(group_sigs[g], group_sigs[g]);
-      group_locations[g] = child;
-      ++n_group_locations;
+          time(group_sigs[g], group_sigs[g]).time_;
+      virt_locations[g] = child;
+      ++n_virt_locations;
     }
 
     if (n_created == 0U) {
@@ -777,7 +785,7 @@ void build_transfer_groups(stamm& st,
 
     // store tuple -> location assignment for phase 2
     auto const to_location = [&](std::optional<unsigned> const g) {
-      return g.has_value() ? group_locations[*g] : base;
+      return g.has_value() ? virt_locations[*g] : base;
     };
     for (auto& t : tuples) {
       auto a = transfer_groups::assignment{};
@@ -800,7 +808,7 @@ void build_transfer_groups(stamm& st,
     nodes.emplace_back(base, &base_sig);
     for (auto g = std::size_t{0U}; g != group_sigs.size(); ++g) {
       if (useful[g]) {
-        nodes.emplace_back(group_locations[g], &group_sigs[g]);
+        nodes.emplace_back(virt_locations[g], &group_sigs[g]);
       }
     }
     for (auto const& [from_l, from_sig] : nodes) {
@@ -808,8 +816,13 @@ void build_transfer_groups(stamm& st,
         if (from_l == to_l) {
           continue;
         }
+        auto const resolved = time(*from_sig, *to_sig);
         tt.locations_.transfer_rule_fps_[from_l].emplace_back(
-            footpath{to_l, time(*from_sig, *to_sig)});
+            footpath{to_l, resolved.time_});
+        if (resolved.preferred_) {  // guaranteed transfer ("!")
+          tt.locations_.preferred_transfers_[from_l].emplace_back(
+              preferred_transfer{.to_ = to_l});
+        }
         ++n_edges;
       }
     }
@@ -817,7 +830,7 @@ void build_transfer_groups(stamm& st,
 
   log(log_lvl::info, "loader.hrd.transfer_groups",
       "created {} transfer group locations at {} stations, {} transfer edges",
-      n_group_locations, n_stations, n_edges);
+      n_virt_locations, n_stations, n_edges);
 }
 
 }  // namespace nigiri::loader::hrd

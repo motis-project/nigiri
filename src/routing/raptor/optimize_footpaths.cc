@@ -261,11 +261,60 @@ void optimize_final_egress_footpath(timetable const& tt,
   }
 }
 
+bool is_preferred_transfer(timetable const& tt,
+                           location_idx_t const from,
+                           location_idx_t const to,
+                           trip_idx_t const from_trip,
+                           trip_idx_t const to_trip) {
+  auto const route_of = [&](trip_idx_t const t) {
+    return t != trip_idx_t::invalid() && to_idx(t) < tt.trip_route_id_.size()
+               ? tt.trip_route_id_[t]
+               : route_id_idx_t::invalid();
+  };
+  auto const side_matches = [&](trip_idx_t const rule_trip,
+                                route_id_idx_t const rule_route,
+                                trip_idx_t const observed) {
+    if (rule_trip != trip_idx_t::invalid()) {
+      return rule_trip == observed;
+    }
+    if (rule_route != route_id_idx_t::invalid()) {
+      return rule_route == route_of(observed);
+    }
+    return true;  // unscoped
+  };
+
+  auto const& preferred = tt.locations_.preferred_transfers_;
+  auto const n = static_cast<location_idx_t::value_t>(preferred.size());
+  auto f = from;
+  for (auto i = 0U; i != 8U && f != location_idx_t::invalid();
+       ++i, f = tt.locations_.parents_[f]) {
+    if (to_idx(f) >= n) {
+      continue;
+    }
+    for (auto const& p : preferred[f]) {
+      if (!side_matches(p.from_trip_, p.from_route_, from_trip) ||
+          !side_matches(p.to_trip_, p.to_route_, to_trip)) {
+        continue;
+      }
+      auto t = to;
+      for (auto j = 0U; j != 8U && t != location_idx_t::invalid();
+           ++j, t = tt.locations_.parents_[t]) {
+        if (p.to_ == t) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 double get_penalty(timetable const& tt,
                    duration_t const duration,
                    duration_t const buffer,
                    location_idx_t const from,
-                   location_idx_t const to) {
+                   location_idx_t const to,
+                   trip_idx_t const from_trip,
+                   trip_idx_t const to_trip) {
   // Basic weight: footpath duration.
   auto weight = static_cast<double>(duration.count());
 
@@ -283,6 +332,13 @@ double get_penalty(timetable const& tt,
   weight -= kBufferWeight *
             static_cast<double>(
                 std::clamp(buffer, duration_t{0}, kMaxRewardedBuffer).count());
+
+  // Prefer transfer points recommended by the input data (GTFS transfers.txt
+  // type 0/1, HRD guaranteed transfers "!").
+  constexpr auto kPreferredBonus = 3.0;
+  if (is_preferred_transfer(tt, from, to, from_trip, to_trip)) {
+    weight -= kPreferredBonus;
+  }
 
   return weight;
 }
@@ -388,13 +444,31 @@ void optimize_transfers(timetable const& tt,
       continue;
     }
 
-    auto penalty_best = get_penalty(
-        tt, get<footpath>(leg_footpath.uses_).duration(),
-        leg_to.dep_time_ - leg_footpath.arr_time_, leg_from.from_, leg_to.to_);
+    auto const trip_at = [](rt::frun const& fr, stop_idx_t const stop_idx,
+                            event_type const ev_type) {
+      return fr.is_scheduled()
+                 ? rt::frun{fr}[stop_idx].get_trip_idx(ev_type)
+                 : trip_idx_t::invalid();
+    };
+    auto const cur_from_trip = trip_at(
+        rt::frun{tt, rtt, ree_from.r_},
+        static_cast<stop_idx_t>(ree_from.stop_range_.to_ - 1U),
+        event_type::kArr);
+    auto const cur_to_trip =
+        trip_at(rt::frun{tt, rtt, ree_to.r_}, ree_to.stop_range_.from_,
+                event_type::kDep);
+
+    auto penalty_best =
+        get_penalty(tt, get<footpath>(leg_footpath.uses_).duration(),
+                    leg_to.dep_time_ - leg_footpath.arr_time_, leg_from.from_,
+                    leg_to.to_, cur_from_trip, cur_to_trip);
     for (auto stp_from : fr_from) {
       if (!stp_from.out_allowed()) {
         continue;
       }
+      auto const from_trip = fr_from.is_scheduled()
+                                 ? stp_from.get_trip_idx(event_type::kArr)
+                                 : trip_idx_t::invalid();
       for (auto stp_to : fr_to) {
         if (!stp_to.in_allowed()) {
           continue;
@@ -413,9 +487,12 @@ void optimize_transfers(timetable const& tt,
           auto const dep = stp_to.time(event_type::kDep);
           auto const arr_fp = arr + fp_dur;
           if (arr_fp <= dep) {
-            auto const penalty = get_penalty(tt, fp_dur, dep - arr_fp,
-                                             stp_from.get_location_idx(),
-                                             stp_to.get_location_idx());
+            auto const to_trip = fr_to.is_scheduled()
+                                     ? stp_to.get_trip_idx(event_type::kDep)
+                                     : trip_idx_t::invalid();
+            auto const penalty = get_penalty(
+                tt, fp_dur, dep - arr_fp, stp_from.get_location_idx(),
+                stp_to.get_location_idx(), from_trip, to_trip);
             if (penalty < penalty_best) {
               leg_from.to_ = stp_from.get_location_idx();
               leg_from.arr_time_ = arr;

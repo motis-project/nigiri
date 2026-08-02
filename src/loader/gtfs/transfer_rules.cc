@@ -1,11 +1,18 @@
 #include "nigiri/loader/gtfs/transfer_rules.h"
 
 #include <algorithm>
-#include <map>
+#include <span>
 
 #include "fmt/format.h"
 
+#include "utl/erase_duplicates.h"
+#include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/parser/buf_reader.h"
+#include "utl/parser/csv_range.h"
+#include "utl/parser/line_range.h"
+#include "utl/pipes/for_each.h"
+#include "utl/progress_tracker.h"
 
 #include "nigiri/loader/register.h"
 #include "nigiri/logging.h"
@@ -14,16 +21,104 @@
 
 namespace nigiri::loader::gtfs {
 
-namespace {
+enum class transfer_type : std::uint8_t {
+  kRecommended = 0U,
+  kTimed = 1U,
+  kMinimumChangeTime = 2U,
+  kNotPossible = 3U,
+  kStaySeated = 4U,
+  kNoStaySeated = 5U,
+};
 
-constexpr auto const kNotPossible = std::uint8_t{3U};
+struct csv_transfer {
+  utl::csv_col<utl::cstr, UTL_NAME("from_stop_id")> from_stop_id_;
+  utl::csv_col<utl::cstr, UTL_NAME("to_stop_id")> to_stop_id_;
+  utl::csv_col<int, UTL_NAME("transfer_type")> transfer_type_;
+  utl::csv_col<std::optional<int>, UTL_NAME("min_transfer_time")>
+      min_transfer_time_;
+  utl::csv_col<utl::cstr, UTL_NAME("from_route_id")> from_route_id_;
+  utl::csv_col<utl::cstr, UTL_NAME("to_route_id")> to_route_id_;
+  utl::csv_col<utl::cstr, UTL_NAME("from_trip_id")> from_trip_id_;
+  utl::csv_col<utl::cstr, UTL_NAME("to_trip_id")> to_trip_id_;
+};
+
+// ranking of specificity acc. to the GTFS reference (least specific first)
+enum class specificity : std::uint8_t {
+  kStopsOnly,
+  kOneRoute,
+  kBothRoutes,
+  kOneTrip,
+  kTripAndRoute,
+  kBothTrips
+};
 
 struct rule {
-  bool qualified() const {
-    return from_route_ != route_id_idx_t::invalid() ||
-           to_route_ != route_id_idx_t::invalid() ||
-           from_trip_ != gtfs_trip_idx_t::invalid() ||
-           to_trip_ != gtfs_trip_idx_t::invalid();
+  rule(csv_transfer const& t,
+       transfer_type const type,
+       stops_map_t const& stops,
+       route_map_t const& routes,
+       trip_data const& trips)
+      : forbidden_{type == transfer_type::kNotPossible},
+        time_{(t.min_transfer_time_->value_or(0) + 59) / 60} {
+    auto const resolve_stop = [&](utl::cstr const& id) {
+      auto const it = stops.find(id.view());
+      if (it == end(stops)) {
+        log(log_lvl::error, "loader.gtfs.transfers", "stop \"{}\" not found",
+            id.view());
+        ok_ = false;
+        return location_idx_t::invalid();
+      }
+      return it->second;
+    };
+    auto const resolve_route = [&](utl::cstr const& id) {
+      if (id.empty()) {
+        return route_id_idx_t::invalid();
+      }
+      auto const it = routes.find(id.view());
+      if (it == end(routes)) {
+        ok_ = false;
+        return route_id_idx_t::invalid();
+      }
+      return it->second->route_id_idx_;
+    };
+    auto const resolve_trip = [&](utl::cstr const& id) {
+      if (id.empty()) {
+        return gtfs_trip_idx_t::invalid();
+      }
+      auto const it = trips.trips_.find(id.view());
+      if (it == end(trips.trips_)) {
+        ok_ = false;
+        return gtfs_trip_idx_t::invalid();
+      }
+      return it->second;
+    };
+    from_stop_ = resolve_stop(*t.from_stop_id_);
+    to_stop_ = resolve_stop(*t.to_stop_id_);
+    from_route_ = resolve_route(*t.from_route_id_);
+    to_route_ = resolve_route(*t.to_route_id_);
+    from_trip_ = resolve_trip(*t.from_trip_id_);
+    to_trip_ = resolve_trip(*t.to_trip_id_);
+  }
+
+  specificity get_specificity() const {
+    auto const from_trip = from_trip_ != gtfs_trip_idx_t::invalid();
+    auto const to_trip = to_trip_ != gtfs_trip_idx_t::invalid();
+    auto const from_route = from_route_ != route_id_idx_t::invalid();
+    auto const to_route = to_route_ != route_id_idx_t::invalid();
+
+    if (from_trip && to_trip) {
+      return specificity::kBothTrips;
+    } else if ((from_trip && to_route) || (from_route && to_trip)) {
+      return specificity::kTripAndRoute;
+    } else if (from_trip || to_trip) {
+      return specificity::kOneTrip;
+    } else if (from_route && to_route) {
+      return specificity::kBothRoutes;
+    } else if (from_route || to_route) {
+      return specificity::kOneRoute;
+    } else {
+      return specificity::kStopsOnly;
+    }
   }
 
   location_idx_t from_stop_{location_idx_t::invalid()};
@@ -34,120 +129,53 @@ struct rule {
   gtfs_trip_idx_t to_trip_{gtfs_trip_idx_t::invalid()};
   bool forbidden_{false};
   duration_t time_{0};
+  bool ok_{true};
 };
 
-// side reference: rule index * 2, bit 0 = to-side
-constexpr std::uint32_t side_ref(std::size_t const rule_idx, bool const from) {
-  return static_cast<std::uint32_t>(rule_idx << 1U) | (from ? 0U : 1U);
+using rule_idx_t = cista::strong<std::uint32_t, struct rule_idx_>;
+
+using virt_location_idx_t = location_idx_t;
+
+// one side (from/to) of one rule
+using sided_rule_idx_t = cista::strong<std::uint32_t, struct sided_rule_idx_>;
+
+// all rules that apply to a trip stop
+using sig_t = std::vector<sided_rule_idx_t>;
+
+sided_rule_idx_t side_ref(rule_idx_t const rule_idx, bool const is_from) {
+  return sided_rule_idx_t{static_cast<std::uint32_t>(to_idx(rule_idx) << 1U) |
+                          (is_from ? 0U : 1U)};
 }
 
-// specificity of the stop relation:
-// 2 = exact, 1 = rule stop is ancestor of l (station-level cascade),
-// 0 = rule stop is descendant of l (data error, applied defensively),
-// -1 = unrelated
-int exactness(timetable const& tt,
-              location_idx_t const rule_stop,
-              location_idx_t const l) {
+std::optional<bool /* stop got matched exactly */> rule_applies(
+    timetable const& tt,
+    location_idx_t const rule_stop,
+    location_idx_t const l) {
   if (rule_stop == l) {
-    return 2;
-  }
-  auto const is_ancestor = [&](location_idx_t const anc,
-                               location_idx_t const x) {
-    auto p = tt.locations_.parents_[x];
-    for (auto i = 0U; i != 8U && p != location_idx_t::invalid(); ++i) {
-      if (p == anc) {
-        return true;
-      }
-      p = tt.locations_.parents_[p];
-    }
+    return true;
+  } else if (tt.locations_.parents_[l] == rule_stop) {
     return false;
-  };
-  if (is_ancestor(rule_stop, l)) {
-    return 1;
+  } else {
+    return std::nullopt;  // -> stops are not related
   }
-  if (is_ancestor(l, rule_stop)) {
-    return 0;
-  }
-  return -1;
 }
 
-using sig_t = std::vector<std::uint32_t>;
+struct candidate {
+  auto operator<=>(candidate const&) const = default;
 
-}  // namespace
+  // keep member order for lexicographical comparison
+  specificity specificity_{specificity::kStopsOnly};
+  std::uint8_t n_exact_stops_{0U};  // from+to matches station or stop
+  std::uint32_t rule_idx_{0U};
+};
 
-void build_transfer_rules(timetable& tt,
-                          std::vector<raw_transfer_rule> const& raw,
-                          stops_map_t const& stops,
-                          route_map_t const& routes,
-                          trip_data& trips) {
-  if (raw.empty()) {
-    return;
-  }
-
-  auto const timer = scoped_timer{"loader.gtfs.transfer_rules"};
-
-  // --- resolve ids ---------------------------------------------------------
-  auto rules = std::vector<rule>{};
-  rules.reserve(raw.size());
-  auto n_unresolved = 0U;
-  for (auto const& t : raw) {
-    auto r = rule{};
-    auto ok = true;
-    auto const resolve_stop = [&](std::string const& id) {
-      auto const it = stops.find(id);
-      if (it == end(stops)) {
-        ok = false;
-        return location_idx_t::invalid();
-      }
-      return it->second;
-    };
-    auto const resolve_route = [&](std::string const& id) {
-      if (id.empty()) {
-        return route_id_idx_t::invalid();
-      }
-      auto const it = routes.find(id);
-      if (it == end(routes)) {
-        ok = false;
-        return route_id_idx_t::invalid();
-      }
-      return it->second->route_id_idx_;
-    };
-    auto const resolve_trip = [&](std::string const& id) {
-      if (id.empty()) {
-        return gtfs_trip_idx_t::invalid();
-      }
-      auto const it = trips.trips_.find(id);
-      if (it == end(trips.trips_)) {
-        ok = false;
-        return gtfs_trip_idx_t::invalid();
-      }
-      return it->second;
-    };
-    r.from_stop_ = resolve_stop(t.from_stop_id_);
-    r.to_stop_ = resolve_stop(t.to_stop_id_);
-    r.from_route_ = resolve_route(t.from_route_id_);
-    r.to_route_ = resolve_route(t.to_route_id_);
-    r.from_trip_ = resolve_trip(t.from_trip_id_);
-    r.to_trip_ = resolve_trip(t.to_trip_id_);
-    r.forbidden_ = t.type_ == kNotPossible;
-    r.time_ = duration_t{(t.min_transfer_time_ + 59) / 60};
-    if (!ok) {
-      ++n_unresolved;
-      continue;
-    }
-    rules.emplace_back(r);
-  }
-  if (n_unresolved != 0U) {
-    log(log_lvl::error, "loader.gtfs.transfer_rules",
-        "{} transfer rules dropped (unresolved stop/route/trip id)",
-        n_unresolved);
-  }
-  if (rules.empty()) {
-    return;
-  }
-
-  // --- match qualified rule sides to (trip, stop position) -----------------
-  auto route_trips = hash_map<route_id_idx_t, std::vector<gtfs_trip_idx_t>>{};
+void apply_rules(timetable& tt,
+                 vector_map<rule_idx_t, rule> const& rules,
+                 trip_data& trips,
+                 std::size_t const n_routes) {
+  // Build (route -> trip) map.
+  auto route_trips = vector_map<route_id_idx_t, std::vector<gtfs_trip_idx_t>>{};
+  route_trips.resize(static_cast<unsigned>(n_routes));
   for (auto i = gtfs_trip_idx_t{0U}; i != trips.data_.size(); ++i) {
     auto const& t = trips.data_[i];
     if (!t.stop_seq_.empty() && t.flex_stops_.empty()) {
@@ -155,209 +183,289 @@ void build_transfer_rules(timetable& tt,
     }
   }
 
-  // (trip, stop position) -> matched side references
-  auto memberships =
-      hash_map<pair<gtfs_trip_idx_t, std::uint32_t>, sig_t>{};
-  for (auto rule_idx = std::size_t{0U}; rule_idx != rules.size(); ++rule_idx) {
+  // Build ((trip, stop position) -> matched (sided) rules) map.
+  auto trip_stop_sided_rules =
+      hash_map<pair<gtfs_trip_idx_t, stop_idx_t>, sig_t>{};
+  for (auto rule_idx = rule_idx_t{0U}; rule_idx != rules.size(); ++rule_idx) {
     auto const& r = rules[rule_idx];
-    auto const match_side = [&](location_idx_t const rule_stop,
+    auto const match_side = [&](location_idx_t const rule_stop,  //
                                 route_id_idx_t const route,
                                 gtfs_trip_idx_t const trip,
-                                bool const from) {
+                                bool const is_from_side) {
       if (route == route_id_idx_t::invalid() &&
           trip == gtfs_trip_idx_t::invalid()) {
-        return;  // unqualified side: no split necessary
+        return;  // no split
       }
-      auto const check_trip = [&](gtfs_trip_idx_t const t_idx) {
-        auto const& t = trips.data_[t_idx];
+
+      auto const check_trip = [&](gtfs_trip_idx_t const trp_idx) {
+        auto const& t = trips.data_[trp_idx];
         if (t.stop_seq_.empty() || !t.flex_stops_.empty()) {
           return;
         }
-        for (auto pos = 0U; pos != t.stop_seq_.size(); ++pos) {
+
+        auto const n_stops = static_cast<stop_idx_t>(t.stop_seq_.size());
+        for (auto pos = stop_idx_t{0U}; pos != n_stops; ++pos) {
           auto const l = stop{t.stop_seq_[pos]}.location_idx();
-          if (exactness(tt, rule_stop, l) >= 0) {
-            memberships[{t_idx, pos}].emplace_back(side_ref(rule_idx, from));
+          if (rule_applies(tt, rule_stop, l)) {
+            trip_stop_sided_rules[{trp_idx, pos}].push_back(
+                side_ref(rule_idx, is_from_side));
           }
         }
       };
+
       if (trip != gtfs_trip_idx_t::invalid()) {
         check_trip(trip);
-      } else if (auto const it = route_trips.find(route);
-                 it != end(route_trips)) {
-        for (auto const t_idx : it->second) {
-          check_trip(t_idx);
+      } else {
+        for (auto const trp_idx : route_trips[route]) {
+          check_trip(trp_idx);
         }
       }
     };
+
     match_side(r.from_stop_, r.from_route_, r.from_trip_, true);
     match_side(r.to_stop_, r.to_route_, r.to_trip_, false);
   }
 
-  // --- partition into groups, create virtual locations, rewrite stop seqs --
-  auto group_locations = std::map<std::pair<location_idx_t, sig_t>,
-                                  location_idx_t>{};  // (base, sig) -> child
-  auto base_groups = hash_map<location_idx_t, std::vector<location_idx_t>>{};
-  auto side_groups = hash_map<std::uint32_t, std::vector<location_idx_t>>{};
-  auto n_created = hash_map<location_idx_t, unsigned>{};
-  for (auto& [key, sig] : memberships) {
-    auto const [t_idx, pos] = key;
-    auto& t = trips.data_[t_idx];
+  // Generate virtual locations.
+  auto const first_virt = virt_location_idx_t{tt.n_locations()};
+  auto virt_locs =
+      hash_map<std::pair<location_idx_t, sig_t>, virt_location_idx_t>{};
+  auto side_groups =
+      hash_map<sided_rule_idx_t, std::vector<virt_location_idx_t>>{};
+  for (auto& [trip_stop, sig] : trip_stop_sided_rules) {
+    auto const [trp_idx, pos] = trip_stop;
+    auto& t = trips.data_[trp_idx];
     auto const s = stop{t.stop_seq_[pos]};
     auto const base = s.location_idx();
-    utl::sort(sig);
-    sig.erase(std::unique(begin(sig), end(sig)), end(sig));
+    utl::erase_duplicates(sig);
 
-    auto const it = group_locations.find({base, sig});
-    auto child = location_idx_t::invalid();
-    if (it != end(group_locations)) {
-      child = it->second;
-    } else {
-      auto l = location{tt, base};
-      auto const id = fmt::format("TG:{}:{}", l.id_, n_created[base]++);
-      l.id_ = id;
-      l.type_ = location_type::kGeneratedTransfer;
-      l.parent_ = base;
-      child = register_location(tt, l);
-      tt.locations_.children_[base].emplace_back(child);
-      group_locations.emplace(std::pair{base, sig}, child);
-      base_groups[base].emplace_back(child);
-      for (auto const side : sig) {
-        side_groups[side].emplace_back(child);
-      }
-    }
+    auto const virt =
+        utl::get_or_create(virt_locs, std::pair{base, sig}, [&]() {
+          auto l = location{};
+          l.src_ = tt.locations_.src_[base];
+          l.pos_ = tt.locations_.coordinates_[base];
+          l.type_ = location_type::kVirt;
+          l.parent_ = base;
+          l.transfer_time_ = tt.locations_.transfer_time_[base];
 
-    t.stop_seq_[pos] = stop{child, s.in_allowed(), s.out_allowed(),
-                            s.in_allowed_wheelchair(),
-                            s.out_allowed_wheelchair()}
-                           .value();
+          auto const v = virt_location_idx_t{register_location(tt, l)};
+          tt.locations_.children_[base].emplace_back(v);
+
+          for (auto const side : sig) {
+            side_groups[side].push_back(v);
+          }
+
+          return v;
+        });
+
+    t.stop_seq_[pos] =
+        stop{virt, s.in_allowed(), s.out_allowed(), s.in_allowed_wheelchair(),
+             s.out_allowed_wheelchair()}
+            .value();
   }
 
-  // --- emit rule edges ------------------------------------------------------
-  // locations that carry trips after the rewrite
-  auto trip_carrying = hash_set<location_idx_t>{};
-  for (auto const& t : trips.data_) {
-    for (auto const s : t.stop_seq_) {
-      trip_carrying.emplace(stop{s}.location_idx());
-    }
-  }
-
-  // all nodes an unqualified side with stop s can refer to:
-  // trip-carrying locations in the subtree of s and among the ancestors of s
-  auto const unqualified_nodes = [&](location_idx_t const s) {
-    auto nodes = std::vector<location_idx_t>{};
-    auto stack = std::vector<location_idx_t>{s};
-    while (!stack.empty()) {
-      auto const l = stack.back();
-      stack.pop_back();
-      if (trip_carrying.contains(l)) {
-        nodes.emplace_back(l);
-      }
-      for (auto const c : tt.locations_.children_[l]) {
-        stack.emplace_back(c);
+  // Let rules compete for specificity on all location pairs they apply to.
+  auto const get_subtree_locations = [&](location_idx_t const s,
+                                         std::vector<location_idx_t>& nodes) {
+    nodes.clear();
+    nodes.emplace_back(s);
+    for (auto const platform : tt.locations_.children_[s]) {
+      nodes.emplace_back(platform);
+      for (virt_location_idx_t const virt : tt.locations_.children_[platform]) {
+        nodes.emplace_back(virt);
       }
     }
-    auto p = tt.locations_.parents_[s];
-    for (auto i = 0U; i != 8U && p != location_idx_t::invalid(); ++i) {
-      if (trip_carrying.contains(p)) {
-        nodes.emplace_back(p);
-      }
-      p = tt.locations_.parents_[p];
-    }
-    return nodes;
   };
 
-  // base location of a node (= itself if it is not a transfer group)
   auto const base_of = [&](location_idx_t const l) {
-    return tt.locations_.types_[l] == location_type::kGeneratedTransfer
+    return tt.locations_.types_[l] == location_type::kVirt
                ? tt.locations_.parents_[l]
                : l;
   };
 
-  struct candidate {
-    int score_;
-    std::size_t rule_;
-  };
-  auto best = hash_map<pair<location_idx_t, location_idx_t>, candidate>{};
-  auto from_nodes = std::vector<location_idx_t>{};
-  auto to_nodes = std::vector<location_idx_t>{};
-  for (auto rule_idx = std::size_t{0U}; rule_idx != rules.size(); ++rule_idx) {
+  auto most_specific =
+      hash_map<pair<location_idx_t, location_idx_t>, candidate>{};
+  auto from_buf = std::vector<location_idx_t>{};
+  auto to_buf = std::vector<location_idx_t>{};
+  for (auto rule_idx = rule_idx_t{0U}; rule_idx != rules.size(); ++rule_idx) {
     auto const& r = rules[rule_idx];
-    auto const side_nodes = [&](location_idx_t const rule_stop,
-                                route_id_idx_t const route,
-                                gtfs_trip_idx_t const trip, bool const from,
-                                std::vector<location_idx_t>& nodes) {
-      nodes.clear();
+    auto const get_side_nodes = [&](location_idx_t const rule_stop,  //
+                                    route_id_idx_t const route,  //
+                                    gtfs_trip_idx_t const trip,
+                                    bool const is_from_side,
+                                    std::vector<location_idx_t>& buf)
+        -> std::span<location_idx_t const> {
       if (route == route_id_idx_t::invalid() &&
           trip == gtfs_trip_idx_t::invalid()) {
-        nodes = unqualified_nodes(rule_stop);
-      } else if (auto const it = side_groups.find(side_ref(rule_idx, from));
-                 it != end(side_groups)) {
-        nodes = it->second;
+        get_subtree_locations(rule_stop, buf);
+        return buf;
       }
-    };
-    side_nodes(r.from_stop_, r.from_route_, r.from_trip_, true, from_nodes);
-    side_nodes(r.to_stop_, r.to_route_, r.to_trip_, false, to_nodes);
-
-    auto const side_score = [&](location_idx_t const rule_stop,
-                                route_id_idx_t const route,
-                                gtfs_trip_idx_t const trip,
-                                location_idx_t const node) {
-      auto const qualifier = trip != gtfs_trip_idx_t::invalid() ? 8
-                             : route != route_id_idx_t::invalid() ? 4
-                                                                  : 0;
-      return qualifier + exactness(tt, rule_stop, base_of(node));
+      auto const it = side_groups.find(side_ref(rule_idx, is_from_side));
+      return it == end(side_groups) ? std::span<location_idx_t const>{}
+                                    : std::span{it->second};
     };
 
+    auto const from_nodes = get_side_nodes(r.from_stop_, r.from_route_,
+                                           r.from_trip_, true, from_buf);
+    auto const to_nodes =
+        get_side_nodes(r.to_stop_, r.to_route_, r.to_trip_, false, to_buf);
+
+    auto const rule_specificity = r.get_specificity();
     for (auto const x : from_nodes) {
       for (auto const y : to_nodes) {
         if (x == y) {
-          continue;  // same-location transfers use transfer_time_
-        }
-        auto const score =
-            side_score(r.from_stop_, r.from_route_, r.from_trip_, x) +
-            side_score(r.to_stop_, r.to_route_, r.to_trip_, y);
-        auto const it = best.find({x, y});
-        if (it == end(best) || score > it->second.score_) {
-          best[{x, y}] = candidate{score, rule_idx};
-        }
-      }
-    }
-  }
-
-  auto n_edges = 0U;
-  auto n_forbidden = 0U;
-  for (auto const& [pair, c] : best) {
-    auto const& r = rules[c.rule_];
-    auto const duration = r.forbidden_ ? footpath::kMaxDuration : r.time_;
-    n_forbidden += r.forbidden_ ? 1U : 0U;
-    tt.locations_.transfer_rule_fps_[pair.first].emplace_back(
-        footpath{pair.second, duration});
-    ++n_edges;
-  }
-
-  // same-base safety clique: pairs among {base} + groups without a rule get
-  // the base transfer time (prevents 0-minute street-routed transfers
-  // between co-located virtual locations)
-  for (auto const& [base, groups] : base_groups) {
-    auto nodes = std::vector<location_idx_t>{base};
-    nodes.insert(end(nodes), begin(groups), end(groups));
-    for (auto const x : nodes) {
-      for (auto const y : nodes) {
-        if (x == y || best.contains({x, y})) {
           continue;
         }
-        tt.locations_.transfer_rule_fps_[x].emplace_back(
-            footpath{y, tt.locations_.transfer_time_[base]});
-        ++n_edges;
+
+        auto const c = candidate{
+            .specificity_ = rule_specificity,
+            .n_exact_stops_ = static_cast<std::uint8_t>(
+                rule_applies(tt, r.from_stop_, base_of(x)).value_or(false) +
+                rule_applies(tt, r.to_stop_, base_of(y)).value_or(false)),
+            .rule_idx_ = to_idx(rule_idx)};
+        auto& m =
+            utl::get_or_create(most_specific, pair{x, y}, [&]() { return c; });
+        m = std::max(m, c);
       }
     }
   }
 
-  log(log_lvl::info, "loader.gtfs.transfer_rules",
-      "{} transfer rules: {} transfer group locations at {} stops, {} edges "
-      "({} forbidden)",
-      rules.size(), group_locations.size(), base_groups.size(), n_edges,
-      n_forbidden);
+  // Write most specific transfers.
+  for (auto const& [pair, c] : most_specific) {
+    auto const& r = rules[rule_idx_t{c.rule_idx_}];
+    tt.locations_.transfer_rule_fps_[pair.first].emplace_back(
+        footpath{pair.second, r.forbidden_ ? footpath::kMaxDuration : r.time_});
+  }
+
+  // Apply base transfer time between all virtual locations.
+  for (auto virt = first_virt; virt != tt.n_locations(); ++virt) {
+    auto const base = tt.locations_.parents_[virt];
+    auto const add = [&](location_idx_t const x, location_idx_t const y) {
+      if (!most_specific.contains({x, y})) {
+        tt.locations_.transfer_rule_fps_[x].emplace_back(
+            footpath{y, tt.locations_.transfer_time_[base]});
+      }
+    };
+
+    add(virt, base);
+    add(base, virt);
+    for (virt_location_idx_t const sibling : tt.locations_.children_[base]) {
+      if (sibling != virt &&
+          tt.locations_.types_[sibling] == location_type::kVirt) {
+        add(virt, sibling);  // the other direction is added for the sibling
+      }
+    }
+  }
+}
+
+void read_transfers(timetable& tt,
+                    std::string_view file_content,
+                    stops_map_t const& stops,
+                    route_map_t const& routes,
+                    trip_data& trips) {
+  if (file_content.empty()) {
+    return;
+  }
+
+  auto const timer = scoped_timer{"loader.gtfs.transfers"};
+
+  auto progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Read Transfers").in_high(file_content.size());
+
+  auto rules = vector_map<rule_idx_t, rule>{};
+
+  utl::line_range{
+      utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
+      | utl::csv<csv_transfer>()  //
+      | utl::for_each([&](csv_transfer const& t) {
+          auto const type = static_cast<transfer_type>(*t.transfer_type_);
+
+          switch (type) {
+            case transfer_type::kRecommended:
+            case transfer_type::kTimed:
+            case transfer_type::kMinimumChangeTime: [[fallthrough]];
+            case transfer_type::kNotPossible: {
+              auto const r = rule{t, type, stops, routes, trips};
+              if (!r.ok_) {
+                return;
+              }
+
+              if (type == transfer_type::kRecommended ||
+                  type == transfer_type::kTimed) {
+                auto const trip_idx = [&](gtfs_trip_idx_t const trp_idx) {
+                  return trp_idx == gtfs_trip_idx_t::invalid()
+                             ? trip_idx_t::invalid()
+                             : trips.data_[trp_idx].trip_idx_;
+                };
+                tt.locations_.preferred_transfers_[r.from_stop_].emplace_back(
+                    preferred_transfer{.to_ = r.to_stop_,
+                                       .from_trip_ = trip_idx(r.from_trip_),
+                                       .to_trip_ = trip_idx(r.to_trip_),
+                                       .from_route_ = r.from_route_,
+                                       .to_route_ = r.to_route_});
+              }
+
+              auto const enforceable = type != transfer_type::kRecommended ||
+                                       t.min_transfer_time_->has_value();
+
+              if (!r.forbidden_ &&
+                  r.get_specificity() == specificity::kStopsOnly) {
+                auto const transfer_time =
+                    duration_t{t.min_transfer_time_->value_or(0) / 60};
+                if (r.from_stop_ == r.to_stop_) {
+                  if (enforceable) {
+                    tt.locations_.transfer_time_[r.from_stop_] = transfer_time;
+                  }
+                } else {
+                  tt.locations_.preprocessing_footpaths_out_[r.from_stop_]
+                      .emplace_back(r.to_stop_, transfer_time);
+                  tt.locations_.preprocessing_footpaths_in_[r.to_stop_]
+                      .emplace_back(r.from_stop_, transfer_time);
+                }
+              }
+
+              if (enforceable) {
+                rules.emplace_back(r);
+              }
+
+              return;
+            }
+
+            case transfer_type::kStaySeated: {
+              if (t.from_trip_id_->empty() || t.to_trip_id_->empty()) {
+                log(log_lvl::error, "loader.gtfs.transfers",
+                    "stay seated transfers require from_trip_id and "
+                    "to_trip_id");
+                return;
+              }
+
+              auto const from_it = trips.trips_.find(t.from_trip_id_->view());
+              if (from_it == end(trips.trips_)) {
+                log(log_lvl::error, "nigiri.loader.gtfs.seated",
+                    "trip {} not found", t.from_trip_id_->view());
+                return;
+              }
+
+              auto const to_it = trips.trips_.find(t.to_trip_id_->view());
+              if (to_it == end(trips.trips_)) {
+                log(log_lvl::error, "nigiri.loader.gtfs.seated",
+                    "trip {} not found", t.to_trip_id_->view());
+                return;
+              }
+
+              trips.data_[to_it->second].seated_in_.push_back(from_it->second);
+              trips.data_[from_it->second].seated_out_.push_back(to_it->second);
+              return;
+            }
+
+            case transfer_type::kNoStaySeated: [[fallthrough]];
+            default: return;
+          }
+        });
+
+  if (!rules.empty()) {
+    apply_rules(tt, rules, trips, routes.size());
+  }
 }
 
 }  // namespace nigiri::loader::gtfs
