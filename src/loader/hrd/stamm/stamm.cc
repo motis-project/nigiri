@@ -35,10 +35,16 @@ stamm::stamm(config const& c,
              source_idx_t const src)
     : tt_{tt}, src_{src} {
   auto const files = load_files(c, d);
+  auto const transfer_files = load_transfer_time_files(c, d);
+  auto const transfer_file_content = [&](std::size_t const i) {
+    return transfer_files[i].has_value() ? transfer_files[i].data()
+                                         : std::string_view{};
+  };
+  parse_station_transfer_times(transfer_times_, transfer_file_content(0U));
   timezones_ = parse_timezones(c, tt, files.at(TIMEZONES).data());
-  locations_ =
-      parse_stations(c, src, tt, *this, files.at(STATIONS).data(),
-                     files.at(COORDINATES).data(), files.at(FOOTPATHS).data());
+  locations_ = parse_stations(c, src, tt, *this, files.at(STATIONS).data(),
+                              files.at(COORDINATES).data(),
+                              files.at(FOOTPATHS).data(), transfer_times_);
   bitfields_ = parse_bitfields(c, files.at(BITFIELDS).data());
   categories_ = parse_categories(c, files.at(CATEGORIES).data());
   providers_ = parse_providers(c, src, tt, files.at(PROVIDERS).data());
@@ -46,6 +52,19 @@ stamm::stamm(config const& c,
   directions_ = parse_directions(c, tt, files.at(DIRECTIONS).data());
   date_range_ = parse_interval(files.at(BASIC_DATA).data());
   tracks_ = parse_track_rules(c, *this, tt, files.at(TRACKS).data());
+  parse_transfer_time_rules(transfer_times_, *this, transfer_file_content(1U),
+                            transfer_file_content(2U),
+                            transfer_file_content(3U));
+}
+
+void stamm::scan_transfer_events(config const& c,
+                                 std::string_view const fplan_content) {
+  hrd::scan_transfer_events(c, *this, transfer_times_, transfer_groups_,
+                            fplan_content);
+}
+
+void stamm::build_transfer_groups() {
+  hrd::build_transfer_groups(*this, tt_, transfer_times_, transfer_groups_);
 }
 
 stamm::stamm(timetable& tt, timezone_map_t&& m, source_idx_t const src)

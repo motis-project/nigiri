@@ -34,6 +34,7 @@
 #include "nigiri/loader/gtfs/stop_group.h"
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/loader/gtfs/stop_time.h"
+#include "nigiri/loader/gtfs/transfer_rules.h"
 #include "nigiri/loader/gtfs/ticketing.h"
 #include "nigiri/loader/gtfs/translations.h"
 #include "nigiri/loader/gtfs/trip.h"
@@ -104,7 +105,7 @@ void load_timetable(loader_config const& config,
   auto [agencies, agency_ticketing] =
       read_agencies(src, tt, i18n, timezones, load(kAgencyFile).data(),
                     config.default_tz_, user_script);
-  auto const [stops, seated_transfers, stops_accessible] =
+  auto const [stops, seated_transfers, stops_accessible, transfer_rules] =
       read_stops(src, tt, i18n, timezones, load(kStopFile).data(),
                  load(kTransfersFile).data(), config.link_stop_distance_,
                  config.default_transfer_time_, user_script);
@@ -241,6 +242,10 @@ void load_timetable(loader_config const& config,
       }
     }
   }
+
+  // transfers.txt rules that need transfer groups or forbidden markers
+  // (rewrites trip stop sequences -> before route building)
+  build_transfer_rules(tt, transfer_rules, stops, routes, trip_data);
 
   hash_map<route_key_t, std::vector<std::vector<utc_trip>>, route_key_hash,
            route_key_equals>

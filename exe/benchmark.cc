@@ -699,6 +699,22 @@ int main(int argc, char* argv[]) {
         summary.push_back(fmt::format("{:<24} n={:<6} benchmark only",
                                       cells.front().label_, qs.size()));
       }
+      for (auto const& c : cells) {
+        auto n_journeys = std::size_t{0U};
+        auto n_empty = std::size_t{0U};
+        for (auto const& r : c.res_) {
+          n_journeys += r.size();
+          n_empty += r.size() == 0U ? 1U : 0U;
+        }
+        summary.push_back(fmt::format(
+            "{:<24} n={:<6} journeys={:<7} avg={:<5.2f} no-journey-queries={}",
+            c.label_, c.res_.size(), n_journeys,
+            c.res_.empty()
+                ? 0.0
+                : static_cast<double>(n_journeys) /
+                      static_cast<double>(c.res_.size()),
+            n_empty));
+      }
       for (auto a = std::size_t{0U}; a < cells.size(); ++a) {
         for (auto b = a + 1U; b < cells.size(); ++b) {
           auto const mismatches = compare_results(

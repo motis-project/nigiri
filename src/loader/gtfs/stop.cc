@@ -121,8 +121,8 @@ enum class transfer_type : std::uint8_t {
   kGenerated = std::numeric_limits<std::uint8_t>::max()
 };
 
-seated_transfers_map_t read_transfers(stop_map_t& stops,
-                                      std::string_view file_content) {
+std::pair<seated_transfers_map_t, std::vector<raw_transfer_rule>>
+read_transfers(stop_map_t& stops, std::string_view file_content) {
   auto const timer = scoped_timer{"gtfs.loader.stops.transfers"};
 
   struct csv_transfer {
@@ -130,6 +130,8 @@ seated_transfers_map_t read_transfers(stop_map_t& stops,
     utl::csv_col<utl::cstr, UTL_NAME("to_stop_id")> to_stop_id_;
     utl::csv_col<int, UTL_NAME("transfer_type")> transfer_type_;
     utl::csv_col<int, UTL_NAME("min_transfer_time")> min_transfer_time_;
+    utl::csv_col<utl::cstr, UTL_NAME("from_route_id")> from_route_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("to_route_id")> to_route_id_;
     utl::csv_col<utl::cstr, UTL_NAME("from_trip_id")> from_trip_id_;
     utl::csv_col<utl::cstr, UTL_NAME("to_trip_id")> to_trip_id_;
   };
@@ -144,14 +146,12 @@ seated_transfers_map_t read_transfers(stop_map_t& stops,
       .in_high(file_content.size());
 
   auto seated_transfers = seated_transfers_map_t{};
+  auto rules = std::vector<raw_transfer_rule>{};
   utl::line_range{
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_transfer>()  //
       | utl::for_each([&](csv_transfer const& t) {
           auto const type = static_cast<transfer_type>(*t.transfer_type_);
-          if (type == transfer_type::kNotPossible) {
-            return;
-          }
 
           if (type == transfer_type::kStaySeated) {
             if (t.from_trip_id_->empty() || t.to_trip_id_->empty()) {
@@ -163,6 +163,36 @@ seated_transfers_map_t read_transfers(stop_map_t& stops,
             seated_transfers[t.from_trip_id_->to_str()].push_back(
                 t.to_trip_id_->to_str());
 
+            return;
+          }
+
+          auto const add_rule = [&]() {
+            rules.emplace_back(raw_transfer_rule{
+                .from_stop_id_ = t.from_stop_id_->to_str(),
+                .to_stop_id_ = t.to_stop_id_->to_str(),
+                .from_route_id_ = t.from_route_id_->to_str(),
+                .to_route_id_ = t.to_route_id_->to_str(),
+                .from_trip_id_ = t.from_trip_id_->to_str(),
+                .to_trip_id_ = t.to_trip_id_->to_str(),
+                .type_ = static_cast<std::uint8_t>(*t.transfer_type_),
+                .min_transfer_time_ = *t.min_transfer_time_});
+          };
+
+          auto const qualified =
+              !t.from_route_id_->empty() || !t.to_route_id_->empty() ||
+              !t.from_trip_id_->empty() || !t.to_trip_id_->empty();
+
+          if (type == transfer_type::kNotPossible) {
+            add_rule();
+            return;
+          }
+
+          // route-/trip-qualified transfers are handled by the transfer rule
+          // pass (they only apply to a subset of the trips at the stop)
+          if (qualified && (type == transfer_type::kRecommended ||
+                            type == transfer_type::kTimed ||
+                            type == transfer_type::kMinimumChangeTime)) {
+            add_rule();
             return;
           }
 
@@ -188,7 +218,23 @@ seated_transfers_map_t read_transfers(stop_map_t& stops,
             } else {
               from_stop_it->second->transfer_time_ = transfer_time;
             }
+            // station-level rows cascade to transfers between trip-carrying
+            // child stops - handled by the transfer rule pass
+            if (type == transfer_type::kRecommended ||
+                type == transfer_type::kTimed ||
+                type == transfer_type::kMinimumChangeTime) {
+              add_rule();
+            }
             return;
+          }
+
+          // cross-stop transfer times from the data are authoritative:
+          // additionally kept as transfer rule so street routing does not
+          // replace them (it only fills transfers not given in the data)
+          if (type == transfer_type::kRecommended ||
+              type == transfer_type::kTimed ||
+              type == transfer_type::kMinimumChangeTime) {
+            add_rule();
           }
 
           auto& footpaths = from_stop_it->second->footpaths_;
@@ -201,10 +247,13 @@ seated_transfers_map_t read_transfers(stop_map_t& stops,
                                    duration_t{*t.min_transfer_time_ / 60});
           }
         });
-  return seated_transfers;
+  return {std::move(seated_transfers), std::move(rules)};
 }
 
-std::tuple<stops_map_t, seated_transfers_map_t, location_accessible_map_t>
+std::tuple<stops_map_t,
+           seated_transfers_map_t,
+           location_accessible_map_t,
+           std::vector<raw_transfer_rule>>
 read_stops(source_idx_t const src,
            timetable& tt,
            translator& i18n,
@@ -310,7 +359,8 @@ read_stops(source_idx_t const src,
         progress_tracker->update_fn());
   }
 
-  auto transfers = read_transfers(stops, transfers_file_content);
+  auto [transfers, transfer_rules] =
+      read_transfers(stops, transfers_file_content);
   location_accessible_map_t accessible;
   for (auto const& [id, s] : stops) {
     auto loc = location{
@@ -410,7 +460,7 @@ read_stops(source_idx_t const src,
   }
 
   return std::tuple{std::move(locations), std::move(transfers),
-                    std::move(accessible)};
+                    std::move(accessible), std::move(transfer_rules)};
 }
 
 }  // namespace nigiri::loader::gtfs
