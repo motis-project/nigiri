@@ -39,6 +39,7 @@ timetable load(std::vector<timetable_source> const& sources,
   register_special_stations(tt);
   auto const progress_tracker = utl::get_active_progress_tracker();
   auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
+  auto n_hrd_sources = 0U;
   for (auto const [idx, in] : utl::enumerate(sources)) {
     auto const& [tag, path, local_config] = in;
     auto const is_in_memory = path.starts_with("\n#");
@@ -59,6 +60,9 @@ timetable load(std::vector<timetable_source> const& sources,
       } catch (std::exception const& e) {
         throw utl::fail("failed to load {}: {}", path, e.what());
       }
+      if (dynamic_cast<hrd::hrd_loader const*>(it->get()) != nullptr) {
+        ++n_hrd_sources;
+      }
       progress_tracker->context("");
     } else if (!ignore) {
       throw utl::fail("no loader for {} found", path);
@@ -68,7 +72,15 @@ timetable load(std::vector<timetable_source> const& sources,
   }
 
   progress_tracker->status("Finalizing").out_bounds(98.F, 100.F).in_high(1);
-  finalize(tt, finalize_opt);
+  auto opt = finalize_opt;
+  if (sources.size() == 1U && n_hrd_sources == 1U) {
+    // single HRDF dataset: use direct footpaths (METABHF) and transfer rule
+    // edges as-is, without transitive closure (HAFAS semantics)
+    log(log_lvl::info, "loader.load",
+        "single HRDF dataset: disabling transitive footpaths");
+    opt.transitive_footpaths_ = false;
+  }
+  finalize(tt, opt);
 
   return tt;
 }

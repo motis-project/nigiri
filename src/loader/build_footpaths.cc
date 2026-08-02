@@ -319,26 +319,30 @@ void connect_components(timetable& tt,
   }
 }
 
+bool is_generated(location_type const t) {
+  return t == location_type::kGeneratedTrack ||
+         t == location_type::kGeneratedTransfer;
+}
+
 void add_links_to_and_between_children(timetable& tt) {
   auto fp_out = mutable_fws_multimap<location_idx_t, footpath>{};
   for (auto l = location_idx_t{0U};
        l != tt.locations_.preprocessing_footpaths_out_.size(); ++l) {
     for (auto const& fp : tt.locations_.preprocessing_footpaths_out_[l]) {
       for (auto const& neighbor_child : tt.locations_.children_[fp.target()]) {
-        if (tt.locations_.types_[neighbor_child] ==
-            location_type::kGeneratedTrack) {
+        if (is_generated(tt.locations_.types_[neighbor_child])) {
           fp_out[l].emplace_back(footpath{neighbor_child, fp.duration()});
         }
 
         for (auto const& child : tt.locations_.children_[l]) {
-          if (tt.locations_.types_[child] == location_type::kGeneratedTrack) {
+          if (is_generated(tt.locations_.types_[child])) {
             fp_out[child].emplace_back(footpath{neighbor_child, fp.duration()});
           }
         }
       }
 
       for (auto const& child : tt.locations_.children_[l]) {
-        if (tt.locations_.types_[child] == location_type::kGeneratedTrack) {
+        if (is_generated(tt.locations_.types_[child])) {
           fp_out[child].emplace_back(footpath{fp.target(), fp.duration()});
         }
       }
@@ -409,8 +413,71 @@ void write_footpaths(timetable& tt) {
   tt.locations_.preprocessing_footpaths_out_.clear();
 }
 
+// Overwrite/insert the directed same-station transfer edges emitted from
+// transfer time rules. These are authoritative: any transitively computed or
+// generic parent/child footpath between the same pair is replaced.
+void apply_transfer_rules(timetable& tt) {
+  auto const n = location_idx_t{
+      std::min(static_cast<location_idx_t::value_t>(
+                   tt.locations_.transfer_rule_fps_.size()),
+               static_cast<location_idx_t::value_t>(tt.n_locations()))};
+  for (auto l = location_idx_t{0U}; l != n; ++l) {
+    for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
+      auto replaced = false;
+      for (auto& existing : tt.locations_.preprocessing_footpaths_out_[l]) {
+        if (existing.target() == fp.target()) {
+          existing = fp;
+          replaced = true;
+        }
+      }
+      if (!replaced) {
+        tt.locations_.preprocessing_footpaths_out_[l].emplace_back(fp);
+      }
+
+      auto const reverse = footpath{l, fp.duration()};
+      auto replaced_in = false;
+      for (auto& existing :
+           tt.locations_.preprocessing_footpaths_in_[fp.target()]) {
+        if (existing.target() == l) {
+          existing = reverse;
+          replaced_in = true;
+        }
+      }
+      if (!replaced_in) {
+        tt.locations_.preprocessing_footpaths_in_[fp.target()].emplace_back(
+            reverse);
+      }
+    }
+  }
+}
+
 void build_footpaths(timetable& tt, finalize_options const opt) {
   add_links_to_and_between_children(tt);
+
+  if (!opt.transitive_footpaths_) {
+    // direct footpaths only (e.g. single HRDF input): no transitive closure,
+    // input footpaths + parent/child links + transfer rule edges
+    apply_transfer_rules(tt);
+
+    // rebuild incoming footpaths as the mirror of the outgoing footpaths
+    tt.locations_.preprocessing_footpaths_in_.clear();
+    tt.locations_.preprocessing_footpaths_in_[location_idx_t{
+        tt.locations_.src_.size() - 1}];
+    for (auto l = location_idx_t{0U};
+         l != tt.locations_.preprocessing_footpaths_out_.size(); ++l) {
+      for (auto const fp : tt.locations_.preprocessing_footpaths_out_[l]) {
+        tt.locations_.preprocessing_footpaths_in_[fp.target()].emplace_back(
+            l, fp.duration());
+      }
+    }
+    tt.locations_.preprocessing_footpaths_out_[location_idx_t{
+        tt.locations_.src_.size() - 1}];
+
+    sort_footpaths(tt);
+    write_footpaths(tt);
+    return;
+  }
+
   link_nearby_stations(tt);
   if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_) {
     for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
@@ -431,6 +498,7 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
     }
   }
   connect_components(tt, opt.max_footpath_length_, opt.adjust_footpaths_);
+  apply_transfer_rules(tt);
   sort_footpaths(tt);
   write_footpaths(tt);
 }

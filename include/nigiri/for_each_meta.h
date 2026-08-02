@@ -30,7 +30,8 @@ void for_each_meta(timetable const& tt,
   } else if (mode == location_match_mode::kIntermodal) {
     fn(l);
     for (auto const& c : tt.locations_.children_.at(l)) {
-      if (tt.locations_.types_.at(c) == location_type::kGeneratedTrack) {
+      if (tt.locations_.types_.at(c) == location_type::kGeneratedTrack ||
+          tt.locations_.types_.at(c) == location_type::kGeneratedTransfer) {
         fn(c);
       }
     }

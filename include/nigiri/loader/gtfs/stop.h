@@ -21,7 +21,20 @@ using stops_map_t = hash_map<std::string, location_idx_t>;
 
 using location_accessible_map_t = hash_map<location_idx_t, bool>;
 
-std::tuple<stops_map_t, seated_transfers_map_t, location_accessible_map_t>
+// transfers.txt row kept for the transfer rule pass (build_transfer_rules):
+// all type=3 (not possible) rows and rows with route/trip qualifiers
+struct raw_transfer_rule {
+  std::string from_stop_id_, to_stop_id_;
+  std::string from_route_id_, to_route_id_;
+  std::string from_trip_id_, to_trip_id_;
+  std::uint8_t type_{2U};
+  int min_transfer_time_{0};  // seconds
+};
+
+std::tuple<stops_map_t,
+           seated_transfers_map_t,
+           location_accessible_map_t,
+           std::vector<raw_transfer_rule>>
 read_stops(source_idx_t,
            timetable&,
            translator&,

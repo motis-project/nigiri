@@ -19,7 +19,7 @@ TEST(gtfs, read_stations_example_data) {
   register_special_stations(tt);
 
   auto const files = example_files();
-  auto const [stops, _transfers, _accessibility] = read_stops(
+  auto const [stops, _transfers, _accessibility, _rules] = read_stops(
       source_idx_t{0}, tt, i18n, timezones, files.get_file(kStopFile).data(),
       files.get_file(kTransfersFile).data(), 0U);
 
@@ -67,7 +67,7 @@ TEST(gtfs, read_stations_berlin_data) {
   auto i18n = translator{.tt_ = tt};
 
   auto const files = berlin_files();
-  auto const [stops, _transfers, _accessibility] = read_stops(
+  auto const [stops, _transfers, _accessibility, _rules] = read_stops(
       source_idx_t{0}, tt, i18n, timezones, files.get_file(kStopFile).data(),
       files.get_file(kTransfersFile).data(), 0U);
 
@@ -115,7 +115,7 @@ B,B_CODE,Platform B,,52.0,13.0,0,P,
 C,,Platform C,,52.0,13.0,0,P,
 )"};
 
-  auto const [stops, _transfers, _accessibility] =
+  auto const [stops, _transfers, _accessibility, _rules] =
       read_stops(source_idx_t{0}, tt, i18n, timezones, stops_content,
                  std::string_view{}, 0U);
 

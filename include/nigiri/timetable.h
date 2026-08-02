@@ -100,6 +100,11 @@ struct timetable {
     std::uint32_t max_importance_{0U};
     rtree<location_idx_t> rtree_;
     bitvec_map<location_idx_t> ticketing_unavailable_;
+    // Authoritative same-station transfer edges from transfer time rules
+    // (i.e. HRD UMSTEIGV/UMSTEIGL/UMSTEIGZ). These have to override any
+    // (re)computed footpaths between their endpoints (e.g. after street
+    // routing) - durations may be shorter or longer than walking time.
+    mutable_fws_multimap<location_idx_t, footpath> transfer_rule_fps_;
   } locations_;
 
   struct transport {

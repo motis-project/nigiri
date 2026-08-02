@@ -438,7 +438,11 @@ enum class location_type : std::uint8_t {
   kTrack,  // track from input data (i.e. GTFS) with separate coordinate from
            // parent. No manual connection in routing initialization or
            // additional links between parent<->child necessary.
-  kStation
+  kStation,
+  kGeneratedTransfer  // virtual location generated from transfer time rules
+                      // (i.e. HRD UMSTEIGV/UMSTEIGL/UMSTEIGZ), no separate
+                      // coordinate from parent. Same-station transfer times
+                      // are given by locations::transfer_rule_fps_.
 };
 
 enum class event_type { kArr, kDep };
