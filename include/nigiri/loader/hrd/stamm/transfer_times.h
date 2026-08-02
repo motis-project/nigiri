@@ -108,7 +108,7 @@ void parse_transfer_time_rules(transfer_times&,
 //
 // Trips at a station are partitioned into groups by the set of rule sides
 // matching them. Each group that behaves differently from the default gets a
-// virtual child location (location_type::kGeneratedTransfer). The pairwise
+// virtual child location (location_type::kVirt). The pairwise
 // transfer times between the station and its groups are emitted as directed
 // footpaths into timetable::locations::transfer_rule_fps_.
 

@@ -43,7 +43,7 @@ service_id,date,exception_type
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
 B,A,2,180
 C,B,2,180
-B,C,2,300
+B,C,2,180
 )"sv;
 
 // A <-> B are 222m apart, everything else is hundreds of kilometers away.

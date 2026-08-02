@@ -347,7 +347,50 @@ void connect_components(timetable& tt,
 
 bool is_generated(location_type const t) {
   return t == location_type::kGeneratedTrack ||
-         t == location_type::kGeneratedTransfer;
+         t == location_type::kVirt;
+}
+
+// Walking transfers between equivalent stops (e.g. GTFS same-name / nearby /
+// parent-child stops, HRDF meta stations): the loaders only collect the
+// equivalences, the beeline footpaths are derived here for pairs without a
+// footpath from the input data. With street routing, these are later replaced
+// by routed footpaths (except where a transfer rule fixes the duration).
+void add_missing_equivalence_footpaths(timetable& tt) {
+  auto const add_if_not_exists = [](auto bucket, footpath const fp) {
+    for (auto const existing : bucket) {
+      if (existing.target() == fp.target()) {
+        return;
+      }
+    }
+    bucket.emplace_back(fp);
+  };
+
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    if (tt.locations_.equivalences_[l].empty()) {
+      continue;
+    }
+    auto const& pos = tt.locations_.coordinates_[l];
+    auto const dist_lng_degrees = geo::approx_distance_lng_degrees(pos);
+    for (auto const eq : tt.locations_.equivalences_[l]) {
+      auto const dist = std::sqrt(geo::approx_squared_distance(
+          pos, tt.locations_.coordinates_[eq], dist_lng_degrees));
+      auto const duration = duration_t{std::max(
+          2, static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
+
+      if (duration > footpath::kMaxDuration) {
+        continue;
+      }
+
+      add_if_not_exists(tt.locations_.preprocessing_footpaths_out_[l],
+                        {eq, duration});
+      add_if_not_exists(tt.locations_.preprocessing_footpaths_in_[eq],
+                        {l, duration});
+      add_if_not_exists(tt.locations_.preprocessing_footpaths_out_[eq],
+                        {l, duration});
+      add_if_not_exists(tt.locations_.preprocessing_footpaths_in_[l],
+                        {eq, duration});
+    }
+  }
 }
 
 void add_links_to_and_between_children(timetable& tt) {
@@ -478,6 +521,7 @@ void apply_transfer_rules(timetable& tt) {
 }
 
 void build_footpaths(timetable& tt, finalize_options const opt) {
+  add_missing_equivalence_footpaths(tt);
   add_links_to_and_between_children(tt);
 
   if (!opt.transitive_footpaths_) {

@@ -57,8 +57,26 @@ struct location_id_equals {
   }
 };
 
+// preferred transfer point from the input data (GTFS transfers.txt type 0/1,
+// HRD guaranteed transfers "!"), optionally scoped to a trip or route pair
+// (invalid = unscoped)
+struct preferred_transfer {
+  location_idx_t to_{location_idx_t::invalid()};
+  trip_idx_t from_trip_{trip_idx_t::invalid()};
+  trip_idx_t to_trip_{trip_idx_t::invalid()};
+  route_id_idx_t from_route_{route_id_idx_t::invalid()};
+  route_id_idx_t to_route_{route_id_idx_t::invalid()};
+};
+
 struct timetable {
   struct locations {
+    // virtual locations (location_type::kVirt) have no attributes of their
+    // own (name, platform code, stop code, description, timezone): they are
+    // taken from the location they were generated for
+    location_idx_t get_attribute_idx(location_idx_t const l) const {
+      return types_[l] == location_type::kVirt ? parents_[l] : l;
+    }
+
     location_idx_t get_root_idx(location_idx_t const idx) const {
       auto l = idx;
       auto i = 0;
@@ -105,6 +123,12 @@ struct timetable {
     // (re)computed footpaths between their endpoints (e.g. after street
     // routing) - durations may be shorter or longer than walking time.
     mutable_fws_multimap<location_idx_t, footpath> transfer_rule_fps_;
+    // Preferred transfer points from the input data (GTFS transfers.txt
+    // type 0 = recommended / type 1 = timed, HRD guaranteed transfers "!").
+    // Soft preference used by optimize_footpaths to move transfers here.
+    // Matching includes children (e.g. a station pair covers its platforms).
+    mutable_fws_multimap<location_idx_t, preferred_transfer>
+        preferred_transfers_;
   } locations_;
 
   struct transport {

@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/stop.h"
+#include "nigiri/loader/gtfs/transfer_rules.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/timetable.h"
 
@@ -19,9 +20,14 @@ TEST(gtfs, read_stations_example_data) {
   register_special_stations(tt);
 
   auto const files = example_files();
-  auto const [stops, _transfers, _accessibility, _rules] = read_stops(
+  auto const [stops, _accessibility] = read_stops(
       source_idx_t{0}, tt, i18n, timezones, files.get_file(kStopFile).data(),
-      files.get_file(kTransfersFile).data(), 0U);
+      0U);
+
+  auto routes = route_map_t{};
+  auto trips = trip_data{};
+  read_transfers(tt, files.get_file(kTransfersFile).data(), stops, routes,
+                 trips);
 
   EXPECT_EQ(8, stops.size());
 
@@ -67,9 +73,9 @@ TEST(gtfs, read_stations_berlin_data) {
   auto i18n = translator{.tt_ = tt};
 
   auto const files = berlin_files();
-  auto const [stops, _transfers, _accessibility, _rules] = read_stops(
+  auto const [stops, _accessibility] = read_stops(
       source_idx_t{0}, tt, i18n, timezones, files.get_file(kStopFile).data(),
-      files.get_file(kTransfersFile).data(), 0U);
+      0U);
 
   EXPECT_EQ(3, stops.size());
 
@@ -115,9 +121,8 @@ B,B_CODE,Platform B,,52.0,13.0,0,P,
 C,,Platform C,,52.0,13.0,0,P,
 )"};
 
-  auto const [stops, _transfers, _accessibility, _rules] =
-      read_stops(source_idx_t{0}, tt, i18n, timezones, stops_content,
-                 std::string_view{}, 0U);
+  auto const [stops, _accessibility] =
+      read_stops(source_idx_t{0}, tt, i18n, timezones, stops_content, 0U);
 
   auto const platform_code = [&](std::string_view const id) {
     return tt.get_default_translation(

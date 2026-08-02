@@ -13,36 +13,18 @@ struct timetable;
 
 namespace nigiri::loader::gtfs {
 
-using seated_transfers_map_t =
-    hash_map<std::string /* from_trip_id */,
-             std::vector<std::string> /* to trip ids */>;
-
 using stops_map_t = hash_map<std::string, location_idx_t>;
 
 using location_accessible_map_t = hash_map<location_idx_t, bool>;
 
-// transfers.txt row kept for the transfer rule pass (build_transfer_rules):
-// all type=3 (not possible) rows and rows with route/trip qualifiers
-struct raw_transfer_rule {
-  std::string from_stop_id_, to_stop_id_;
-  std::string from_route_id_, to_route_id_;
-  std::string from_trip_id_, to_trip_id_;
-  std::uint8_t type_{2U};
-  int min_transfer_time_{0};  // seconds
-};
-
-std::tuple<stops_map_t,
-           seated_transfers_map_t,
-           location_accessible_map_t,
-           std::vector<raw_transfer_rule>>
-read_stops(source_idx_t,
-           timetable&,
-           translator&,
-           tz_map&,
-           std::string_view stops_file_content,
-           std::string_view transfers_file_content,
-           unsigned link_stop_distance,
-           duration_t default_transfer_time = duration_t{2},
-           script_runner const& = script_runner{});
+std::pair<stops_map_t, location_accessible_map_t> read_stops(
+    source_idx_t,
+    timetable&,
+    translator&,
+    tz_map&,
+    std::string_view stops_file_content,
+    unsigned link_stop_distance,
+    duration_t default_transfer_time = duration_t{2},
+    script_runner const& = script_runner{});
 
 }  // namespace nigiri::loader::gtfs
