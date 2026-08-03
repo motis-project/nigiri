@@ -29,7 +29,7 @@ jobs:
         run: mkdir -p ~/nigiri-build && mv ~/nigiri-build build
 
       - name: Configure
-        run: cmake --preset cuda
+        run: cmake --preset cuda -DCMAKE_CUDA_ARCHITECTURES="native"
 
       - name: Build
         run: cmake --build --preset cuda --target nigiri-test nigiri-benchmark nigiri-import
