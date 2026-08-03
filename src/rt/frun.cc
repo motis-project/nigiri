@@ -520,9 +520,7 @@ timetable const& run_stop::tt() const { return *fr_->tt_; }
 rt_timetable const* run_stop::rtt() const { return fr_->rtt_; }
 
 frun::iterator& frun::iterator::operator++() {
-  do {
-    ++rs_.stop_idx_;
-  } while (rs_.stop_idx_ != rs_.fr_->stop_range_.to_ && rs_.is_cancelled());
+  ++rs_.stop_idx_;
   return *this;
 }
 
@@ -533,11 +531,7 @@ frun::iterator frun::iterator::operator++(int) {
 }
 
 frun::iterator& frun::iterator::operator--() {
-  do {
-    --rs_.stop_idx_;
-  } while (rs_.stop_idx_ !=
-               static_cast<stop_idx_t>(rs_.fr_->stop_range_.from_ - 1U) &&
-           rs_.is_cancelled());
+  --rs_.stop_idx_;
   return *this;
 }
 
@@ -613,8 +607,7 @@ stop_idx_t frun::last_valid() const {
 }
 
 frun::iterator frun::begin() const {
-  return iterator{
-      run_stop{.fr_ = this, .stop_idx_ = first_valid(stop_range_.from_)}};
+  return iterator{run_stop{.fr_ = this, .stop_idx_ = stop_range_.from_}};
 }
 
 frun::iterator frun::end() const {
