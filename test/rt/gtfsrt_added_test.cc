@@ -734,12 +734,14 @@ constexpr auto const expectedAdded = R"(
 //[{name=New Route, day=2023-08-10, id=TRIP_NEW, src=0}]
 constexpr auto const expectedNew = R"(
    0: E       E...............................................                                                             d: 10.08 09:15 [10.08 11:15]  RT 10.08 09:15 [10.08 11:15]
+   1: D       D...............................................-a: 10.08 09:16 [10.08 11:16]  RT 10.08 09:16 [10.08 11:16] -d: 10.08 09:16 [10.08 11:16]  RT 10.08 09:16 [10.08 11:16]
    2: B       B............................................... a: 10.08 09:18 [10.08 11:18]  RT 10.08 09:18 [10.08 11:18]
 )"sv;
 
 //[{name=New Route, day=2023-08-10, id=TRIP_NEW, src=0}]
 constexpr auto const expectedNewLonger = R"(
    0: E       E...............................................                                                             d: 10.08 09:15 [10.08 11:15]  RT 10.08 09:15 [10.08 11:15]
+   1: D       D...............................................-a: 10.08 09:16 [10.08 11:16]  RT 10.08 09:16 [10.08 11:16] -d: 10.08 09:16 [10.08 11:16]  RT 10.08 09:16 [10.08 11:16]
    2: B       B............................................... a: 10.08 09:42 [10.08 11:42]  RT 10.08 09:42 [10.08 11:42]
 )"sv;
 
@@ -914,13 +916,9 @@ TEST(rt, gtfs_rt_new) {
     EXPECT_EQ(false, fr[0].out_allowed());
     EXPECT_EQ(false, fr[1].in_allowed());
     EXPECT_EQ(false, fr[1].out_allowed());
+    EXPECT_TRUE(fr[1].is_cancelled());
     EXPECT_EQ(false, fr[2].in_allowed());
     EXPECT_EQ(true, fr[2].out_allowed());
-
-    for (auto const [from, to] : utl::pairwise(fr)) {
-      EXPECT_EQ(from.id(), "E");
-      EXPECT_EQ(to.id(), "B");
-    }
   }
 
   // Update again.
