@@ -54,10 +54,6 @@
   url=git@github.com:motis-project/pugixml.git
   branch=master
   commit=bb45e30c5bf21b3599eb5b4b7fa20547043c3e24
-[PROJ]
-  url=git@github.com:motis-project/PROJ.git
-  branch=master
-  commit=27ed257526ddf6e2fd7a1a3c92a1d3de913ce34b
 [sol2]
   url=git@github.com:motis-project/sol2.git
   branch=master
