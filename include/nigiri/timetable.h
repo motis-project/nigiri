@@ -227,31 +227,6 @@ struct timetable {
 
   cista::base_t<provider_idx_t> n_agencies() const { return providers_.size(); }
 
-  bool has_private_srcs() const noexcept { return src_private_.any(); }
-
-  bool is_private(source_idx_t const src) const noexcept {
-    return to_idx(src) < src_private_.size() && src_private_.test(src);
-  }
-
-  bool is_src_allowed(source_idx_t const src,
-                      std::vector<source_idx_t> const& allowed_private) const {
-    if (!is_private(src)) {
-      return true;
-    }
-    for (auto const s : allowed_private) {
-      if (s == src) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  bool is_route_allowed(
-      route_idx_t const r,
-      std::vector<source_idx_t> const& allowed_private) const {
-    return is_src_allowed(route_src_[r], allowed_private);
-  }
-
   interval<unixtime_t> external_interval() const {
     return {std::chrono::time_point_cast<i32_minutes>(date_range_.from_),
             std::chrono::time_point_cast<i32_minutes>(date_range_.to_)};
@@ -305,9 +280,6 @@ struct timetable {
 
   // Source -> feed end date
   vector_map<source_idx_t, date::sys_days> src_end_date_;
-
-  // Source -> feed is private.
-  bitvec_map<source_idx_t> src_private_;
 
   // Trip access: external trip id -> internal trip index
   vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;
