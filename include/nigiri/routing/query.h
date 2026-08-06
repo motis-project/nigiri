@@ -89,6 +89,7 @@ struct query {
   std::optional<interval<unixtime_t>> max_interval_{};
   profile_idx_t prf_idx_{0};
   clasz_mask_t allowed_claszes_{all_clasz_allowed()};
+  bitvec_map<source_idx_t> blocked_srcs_{};
   bool require_bike_transport_{false};
   bool require_car_transport_{false};
   bool no_compulsory_reservation_{false};
