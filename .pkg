@@ -5,15 +5,15 @@
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=master
-  commit=abbbf9cfc1484b3a2737eff7a8f2f96d8dab85e4
+  commit=427f0a873be43f1de94289bd53d5678e07cd243f
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
-  commit=a8c1126b673b0def185b65c1e5010832612e9a78
+  commit=7c78f91a7ae9a9fdb9ed29ce5ba2e8c19acc8cb1
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
-  commit=5ddd9956455b18fc96fd5f8095f7552d5be92c17
+  commit=158339cb270d6cb2ed2d6e2baf876b8c32faeef0
 [miniz]
   url=git@github.com:motis-project/miniz.git
   branch=master
@@ -21,7 +21,7 @@
 [fmt]
   url=git@github.com:motis-project/fmt.git
   branch=master
-  commit=dc10f83be70ac2873d5f8d1ce317596f1fd318a2
+  commit=34a5bee1df1f0d144de0e127807d161d08670472
 [date]
   url=git@github.com:motis-project/date.git
   branch=master
@@ -41,7 +41,7 @@
 [boost]
   url=git@github.com:motis-project/boost.git
   branch=boost-1.89.0
-  commit=77467bf580d98ea06716e2931cbe3b1f28e0cd37
+  commit=b050b3988ba25ea7757462d26a38d225bfe20f75
 [oh]
   url=git@github.com:felixguendling/oh.git
   branch=master
