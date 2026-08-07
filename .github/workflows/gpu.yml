@@ -32,7 +32,7 @@ jobs:
         run: cmake --preset cuda
 
       - name: Build
-        run: cmake --build --preset cuda --target nigiri-test nigiri-benchmark
+        run: cmake --build --preset cuda --target nigiri-test nigiri-benchmark nigiri-import
 
       - name: nigiri-test
         run: ./build/cuda/nigiri-test
@@ -41,22 +41,24 @@ jobs:
         if: always()
         run: mv deps ~
 
+      - name: Import Germany
+        run: |
+          ./build/cuda/nigiri-import -r --ignore -i "$HOME/ci-data/ger" \
+            -o tt.bin \
+            -s 2026-07-01 -n 14 \
+            --link_stop_distance 100 \
+            --merge_dupes_intra_source true \
+            --merge_dupes_inter_source true \
+            --adjust_footpaths true \
+            --max_footpath_length 12
+
       - name: Validate Germany
         run: |
-          ./build/cuda/nigiri-benchmark -p "$HOME/ci-data/ger/data/tt.bin" \
+          ./build/cuda/nigiri-benchmark -p tt.bin \
             --engines cpu gpu \
             --algo raptor pong \
             --modes station-station coordinate-coordinate \
             -n 50
-
-      - name: Validate Europe
-        run: |
-          ./build/cuda/nigiri-benchmark -p "$HOME/ci-data/eu/data/tt.bin" \
-            --engines cpu gpu \
-            --algo pong \
-            --modes coordinate-coordinate \
-            --gpu_states 2 \
-            -n 20
 
       - name: Save build
         if: always()

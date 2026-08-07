@@ -328,6 +328,24 @@ private:
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
   }
 
+  std::uint16_t get_lb(std::uint32_t const i) const {
+    if constexpr (kUseLowerBounds) {
+      assert(i < lb_.size());
+      return lb_[i];
+    } else {
+      return 0U;
+    }
+  }
+
+  bool lb_reachable(std::uint32_t const i) const {
+    if constexpr (kUseLowerBounds) {
+      assert(i < lb_.size());
+      return lb_[i] != kUnreachable;
+    } else {
+      return true;
+    }
+  }
+
   template <bool WithClaszFilter,
             bool WithBikeFilter,
             bool WithCarFilter,

@@ -18,7 +18,7 @@
 #include "nigiri/loader/gtfs/calendar.h"
 #include "nigiri/loader/gtfs/calendar_date.h"
 #include "nigiri/loader/gtfs/fares.h"
-#include "nigiri/loader/gtfs/feed_info_test.h"
+#include "nigiri/loader/gtfs/feed_info.h"
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/flex.h"
 #include "nigiri/loader/gtfs/local_to_utc.h"
@@ -91,7 +91,7 @@ void load_timetable(loader_config const& config,
       tt.register_source_file((d.path() / kStopTimesFile).generic_string());
   auto timezones = tz_map{};
   auto const feed_info = read_feed_info(load(kFeedInfoFile).data());
-  auto i18n = read_translations(tt, feed_info.default_lang_,
+  auto i18n = read_translations(tt, feed_info.feed_lang_,
                                 load(kTranslationsFile).data());
   auto [agencies, agency_ticketing] =
       read_agencies(src, tt, i18n, timezones, load(kAgencyFile).data(),
