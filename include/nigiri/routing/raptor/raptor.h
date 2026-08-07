@@ -5,6 +5,7 @@
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/lb/lb_transit_legs.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/raptor/debug.h"
@@ -16,6 +17,13 @@
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
+
+// #define NIGIRI_LB_TRACING
+#ifdef NIGIRI_LB_TRACING
+#define trace_lb(...) fmt::print(__VA_ARGS__)
+#else
+#define trace_lb(...)
+#endif
 
 namespace nigiri::routing {
 
@@ -60,7 +68,8 @@ struct raptor {
       std::array<bitvec, kMaxVias>& is_via,
       std::vector<std::uint16_t>& dist_to_dest,
       hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
-      std::vector<std::uint16_t>& lb,
+      std::vector<std::uint16_t>& lb_time,
+      lb_transit_legs<SearchDir>& lb_rounds,
       std::vector<via_stop> const& via_stops,
       day_idx_t const base,
       clasz_mask_t const allowed_claszes,
@@ -82,7 +91,8 @@ struct raptor {
         is_via_{is_via},
         dist_to_end_{dist_to_dest},
         td_dist_to_end_{td_dist_to_dest},
-        lb_{lb},
+        lb_time_{lb_time},
+        lb_rounds_{lb_rounds},
         via_stops_{via_stops},
         base_{base},
         allowed_claszes_{allowed_claszes},
@@ -92,6 +102,14 @@ struct raptor {
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
     reset_arrivals();
+    use_suffix_ = lb_rounds_.enabled();
+    if (use_suffix_) {
+      auto const n_route_stops = tt_.route_location_seq_.data_.size();
+      state_.route_suffix_time_.resize(n_route_stops);
+      state_.route_suffix_legs_.resize(n_route_stops);
+      state_.route_suffix_built_.resize(n_routes_);
+      utl::fill(state_.route_suffix_built_.blocks_, 0U);
+    }
     if (!dist_to_end_.empty()) {
       // only used for intermodal queries (dist_to_dest != empty)
       end_reachable_.resize(n_locations_);
@@ -144,7 +162,8 @@ struct raptor {
                unixtime_t const worst_time_at_dest,
                profile_idx_t const prf_idx,
                pareto_set<journey>& results) {
-    auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
+    end_k_ = std::min(max_transfers, kMaxTransfers) + 2U;
+    lb_rounds_.set_end_k(static_cast<std::uint8_t>(end_k_));
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
     for (auto& time_at_dest : time_at_dest_) {
@@ -153,7 +172,7 @@ struct raptor {
 
     trace_print_init_state();
 
-    for (auto k = 1U; k != end_k; ++k) {
+    for (auto k = 1U; k != end_k_; ++k) {
       for (auto i = 0U; i != n_locations_; ++i) {
         for (auto v = 0U; v != Vias + 1; ++v) {
           best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
@@ -165,6 +184,16 @@ struct raptor {
 
       auto any_marked = false;
       state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+        if (lb_time_[i] == kUnreachable) {
+          return;
+        }
+        auto b = round_times_[k - 1][i][0];
+        for (auto v = 1U; v != Vias + 1; ++v) {
+          b = get_best(b, round_times_[k - 1][i][v]);
+        }
+        if (!is_better(b + dir(lb_time_[i]), time_at_dest_[k])) {
+          return;
+        }
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
           any_marked = true;
           state_.route_mark_.set(to_idx(r), true);
@@ -263,7 +292,7 @@ struct raptor {
     }
 
     is_dest_.for_each_set_bit([&](auto const i) {
-      for (auto k = 1U; k != end_k; ++k) {
+      for (auto k = 1U; k != end_k_; ++k) {
         auto const dest_time = round_times_[k][i][Vias];
         if (dest_time != kInvalid) {
           trace("ADDING JOURNEY: start={}, dest={} @ {}, transfers={}\n",
@@ -297,24 +326,6 @@ struct raptor {
 private:
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
-  }
-
-  std::uint16_t get_lb(std::uint32_t const i) const {
-    if constexpr (kUseLowerBounds) {
-      assert(i < lb_.size());
-      return lb_[i];
-    } else {
-      return 0U;
-    }
-  }
-
-  bool lb_reachable(std::uint32_t const i) const {
-    if constexpr (kUseLowerBounds) {
-      assert(i < lb_.size());
-      return lb_[i] != kUnreachable;
-    } else {
-      return true;
-    }
   }
 
   template <bool WithClaszFilter,
@@ -520,10 +531,20 @@ private:
 
         if (is_better(fp_target_time, best_[i][target_v]) &&
             is_better(fp_target_time, time_at_dest_[k])) {
-          if (!lb_reachable(i) ||
-              !is_better(fp_target_time + dir(get_lb(i)), time_at_dest_[k])) {
+          if (lb_time_[i] == kUnreachable ||
+              !is_better(fp_target_time + dir(lb_time_[i]), time_at_dest_[k])) {
             ++stats_.fp_update_prevented_by_lower_bound_;
-            return;
+            trace_lb(
+                "┊ ├k={} *** LB NO TRANSFER UPD: (from={}, tmp={}) --{}--> "
+                "(to={}, "
+                "best={}) --> update => {}, LB={}, LB_AT_DEST={}, "
+                "DEST[{}]={}\n",
+                k, loc{tt_, location_idx_t{i}}, to_unix(tmp_[i][v]),
+                transfer_time, loc{tt_, location_idx_t{i}}, best_[i][target_v],
+                to_unix(fp_target_time), lb_time_[i],
+                to_unix(clamp(fp_target_time + dir(lb_time_[i]))), k,
+                to_unix(time_at_dest_[k]));
+            continue;
           }
 
           ++stats_.n_earliest_arrival_updated_by_footpath_;
@@ -547,6 +568,19 @@ private:
                                  .test(l_idx)) {
           return;
         }
+      }
+
+      if (lb_time_[i] == kUnreachable) {
+        return;
+      }
+      auto src = tmp_[i][0];
+      for (auto v = 1U; v != Vias + 1; ++v) {
+        src = get_best(src, tmp_[i][v]);
+      }
+      if (!is_better(src + dir(lb_time_[i]), time_at_dest_[k])) {
+        trace_lb("┊ ├k={} *** LB NO FP SOURCE: at={}, tmp={}, lb_time={}\n", k,
+                 loc{tt_, l_idx}, to_unix(src), lb_time_[i]);
+        return;
       }
 
       auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx][l_idx]
@@ -585,19 +619,20 @@ private:
 
           if (is_better(fp_target_time, best_[target][target_v]) &&
               is_better(fp_target_time, time_at_dest_[k])) {
-            if (!lb_reachable(target) ||
-                !is_better(fp_target_time + dir(get_lb(target)),
+            if (lb_time_[target] == kUnreachable ||
+                !is_better(fp_target_time + dir(lb_time_[target]),
                            time_at_dest_[k])) {
               ++stats_.fp_update_prevented_by_lower_bound_;
-              trace_upd(
-                  "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
-                  "best={}) --> update => {}, LB={}, LB_AT_DEST={}, DEST={}\n",
+              trace_lb(
+                  "┊ ├k={} *** LB NO FP UPD: (from={}, tmp={}) --{}--> (to={}, "
+                  "best={}) --> update => {}, LB={}, LB_AT_DEST={}, "
+                  "DEST[{}]={}\n",
                   k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
                   adjusted_transfer_time(transfer_time_settings_,
                                          fp.duration()),
                   loc{tt_, fp.target()}, best_[target][target_v],
-                  to_unix(fp_target_time), get_lb(target),
-                  to_unix(clamp(fp_target_time + dir(get_lb(target)))),
+                  to_unix(fp_target_time), lb_time_[target],
+                  to_unix(clamp(fp_target_time + dir(lb_time_[target]))), k,
                   to_unix(time_at_dest_[k]));
               continue;
             }
@@ -648,6 +683,19 @@ private:
         return;
       }
 
+      if (lb_time_[i] == kUnreachable) {
+        return;
+      }
+      auto src = tmp_[i][0];
+      for (auto v = 1U; v != Vias + 1; ++v) {
+        src = get_best(src, tmp_[i][v]);
+      }
+      if (!is_better(src + dir(lb_time_[i]), time_at_dest_[k])) {
+        trace_lb("┊ ├k={} *** LB NO TD FP SOURCE: at={}, tmp={}, lb_time={}\n",
+                 k, loc{tt_, l_idx}, to_unix(src), lb_time_[i]);
+        return;
+      }
+
       auto const& fps = kFwd ? rtt_->td_footpaths_out_[prf_idx][l_idx]
                              : rtt_->td_footpaths_in_[prf_idx][l_idx];
 
@@ -682,18 +730,21 @@ private:
 
           if (is_better(fp_target_time, best_[target][target_v]) &&
               is_better(fp_target_time, time_at_dest_[k])) {
-            if (!lb_reachable(target) ||
-                !is_better(fp_target_time + dir(get_lb(target)),
+            if (lb_time_[target] == kUnreachable ||
+                !is_better(fp_target_time + dir(lb_time_[target]),
                            time_at_dest_[k])) {
               ++stats_.fp_update_prevented_by_lower_bound_;
-              trace_upd(
+              trace_lb(
                   "┊ ├k={} *** LB NO TD FP UPD: (from={}, tmp={}) --{}--> "
-                  "(to={}, best={}) --> update => {}, LB={}, LB_AT_DEST={}, "
-                  "DEST={}\n",
+                  "(to={}, "
+                  "best={}) --> update => {}, LB={}, LB_AT_DEST={}, "
+                  "DEST[{}]={}\n",
                   k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
-                  fp.duration(), loc{tt_, fp.target()}, best_[target][target_v],
-                  fp_target_time, get_lb(target),
-                  to_unix(clamp(fp_target_time + dir(get_lb(target)))),
+                  adjusted_transfer_time(transfer_time_settings_,
+                                         fp.duration()),
+                  loc{tt_, fp.target()}, best_[target][target_v],
+                  to_unix(fp_target_time), lb_time_[target],
+                  to_unix(clamp(fp_target_time + dir(lb_time_[target]))), k,
                   to_unix(time_at_dest_[k]));
               return utl::cflow::kContinue;
             }
@@ -901,10 +952,9 @@ private:
             auto current_best =
                 get_best(round_times_[k - 1][l_idx][target_v],
                          tmp_[l_idx][target_v], best_[l_idx][target_v]);
-
             if (is_better(by_transport, time_at_dest_[k]) &&
-                lb_reachable(l_idx) &&
-                is_better(by_transport + dir(get_lb(l_idx)),
+                lb_time_[l_idx] != kUnreachable &&
+                is_better(by_transport + dir(lb_time_[l_idx]),
                           time_at_dest_[k])) {
               trace_upd(
                   "┊ │k={}    RT | name={}, dbg={}, time_by_transport={}, "
@@ -929,7 +979,7 @@ private:
         }
       }
 
-      if (!lb_reachable(l_idx)) {
+      if (lb_time_[l_idx] == kUnreachable) {
         break;
       }
 
@@ -952,11 +1002,32 @@ private:
     return any_marked;
   }
 
+  void build_route_suffix(route_idx_t const r) {
+    auto const seq = tt_.route_location_seq_[r];
+    auto const off = tt_.route_location_seq_.bucket_starts_[to_idx(r)];
+    auto run_time = std::numeric_limits<std::uint16_t>::max();
+    auto run_legs = lb_transit_legs<SearchDir>::kUnreachable;
+    for (auto x = 0U; x != seq.size(); ++x) {
+      auto const pos = kFwd ? seq.size() - x - 1U : x;
+      state_.route_suffix_time_[off + pos] = run_time;
+      state_.route_suffix_legs_[off + pos] = run_legs;
+      auto const l = stop{seq[pos]}.location_idx();
+      run_time = std::min(run_time, lb_time_[to_idx(l)]);
+      run_legs = std::min(run_legs, lb_rounds_.get(l));
+    }
+    state_.route_suffix_built_.set(to_idx(r), true);
+  }
+
   template <bool WithSectionBikeFilter,
             bool WithSectionCarFilter,
             bool WithSectionWheelchairFilter>
   bool update_route(unsigned const k, route_idx_t const r) {
     auto const stop_seq = tt_.route_location_seq_[r];
+    auto const suffix_off =
+        use_suffix_ ? tt_.route_location_seq_.bucket_starts_[to_idx(r)] : 0U;
+    if (use_suffix_ && !state_.route_suffix_built_.test(to_idx(r))) {
+      build_route_suffix(r);
+    }
     bool any_marked = false;
 
     auto et = std::array<transport, Vias + 1>{};
@@ -1051,8 +1122,9 @@ private:
           assert(by_transport != std::numeric_limits<delta_t>::min() &&
                  by_transport != std::numeric_limits<delta_t>::max());
           if (is_better(by_transport, time_at_dest_[k]) &&
-              lb_reachable(l_idx) &&
-              is_better(by_transport + dir(get_lb(l_idx)), time_at_dest_[k])) {
+              lb_time_[l_idx] != kUnreachable &&
+              is_better(by_transport + dir(lb_time_[l_idx]),
+                        time_at_dest_[k])) {
             trace_upd(
                 "┊ │k={} v={}->{}    name={}, dbg={}, time_by_transport={}, "
                 "BETTER THAN current_best={} => update, {} marking station "
@@ -1062,7 +1134,6 @@ private:
                 to_unix(current_best[v]),
                 !is_better(by_transport, current_best[v]) ? "NOT" : "",
                 loc{tt_, stp.location_idx()});
-
             ++stats_.n_earliest_arrival_updated_by_route_;
             tmp_[l_idx][target_v] =
                 get_best(by_transport, tmp_[l_idx][target_v]);
@@ -1072,11 +1143,11 @@ private:
             }
             any_marked = true;
           } else {
-            trace(
-                "┊ │k={} v={}->{}    *** NO UPD: at={}, name={}, dbg={}, "
+            trace_lb(
+                "┊ │k={} v={}->{}    *** NO ROUTE UPD: at={}, name={}, dbg={}, "
                 "time_by_transport={}, current_best=min({}, {}, {})={} => {} "
                 "- "
-                "LB={}, LB_AT_DEST={}, TIME_AT_DEST={}, "
+                "LB={}, LB_AT_DEST={}, TIME_AT_DEST[{}]={}, "
                 "(is_better(by_transport={}={}, current_best={}={})={}, "
                 "is_better(by_transport={}={}, time_at_dest_={}={})={}, "
                 "reachable={}, "
@@ -1087,19 +1158,20 @@ private:
                 to_unix(round_times_[k - 1][l_idx][target_v]),
                 to_unix(best_[l_idx][target_v]), to_unix(tmp_[l_idx][target_v]),
                 to_unix(current_best[v]), loc{tt_, location_idx_t{l_idx}},
-                get_lb(l_idx), to_unix(time_at_dest_[k]),
-                to_unix(clamp(by_transport + dir(get_lb(l_idx)))), by_transport,
-                to_unix(by_transport), current_best[v],
-                to_unix(current_best[v]),
+                lb_time_[l_idx],
+                to_unix(clamp(by_transport + dir(lb_time_[l_idx]))), k,
+                to_unix(time_at_dest_[k]), by_transport, to_unix(by_transport),
+                current_best[v], to_unix(current_best[v]),
                 is_better(by_transport, current_best[v]), by_transport,
                 to_unix(by_transport), time_at_dest_[k],
                 to_unix(time_at_dest_[k]),
-                is_better(by_transport, time_at_dest_[k]), lb_reachable(l_idx),
-                by_transport + dir(get_lb(l_idx)),
-                to_unix(clamp(by_transport + dir(get_lb(l_idx)))),
+                is_better(by_transport, time_at_dest_[k]),
+                lb_time_[l_idx] != kUnreachable,
+                by_transport + dir(lb_time_[l_idx]),
+                to_unix(clamp(by_transport + dir(lb_time_[l_idx]))),
                 time_at_dest_[k], to_unix(time_at_dest_[k]),
                 to_unix(time_at_dest_[k]),
-                is_better(clamp(by_transport + dir(get_lb(l_idx))),
+                is_better(clamp(by_transport + dir(lb_time_[l_idx])),
                           time_at_dest_[k]));
           }
         } else {
@@ -1116,8 +1188,23 @@ private:
         continue;
       }
 
-      if (!lb_reachable(l_idx)) {
+      if (lb_time_[l_idx] == kUnreachable) {
         break;
+      }
+
+      if (use_suffix_) {
+        auto b = round_times_[k - 1][l_idx][0];
+        for (auto v = 1U; v != Vias + 1; ++v) {
+          b = get_best(b, round_times_[k - 1][l_idx][v]);
+        }
+        auto const sfx_dest_k =
+            k + state_.route_suffix_legs_[suffix_off + stop_idx];
+        if (sfx_dest_k >= end_k_ ||
+            !is_better(
+                b + dir(state_.route_suffix_time_[suffix_off + stop_idx]),
+                time_at_dest_[sfx_dest_k])) {
+          continue;
+        }
       }
 
       for (auto v = 0U; v != Vias + 1; ++v) {
@@ -1203,15 +1290,17 @@ private:
         auto const ev_mam = ev.mam();
 
         if (is_better_or_eq(time_at_dest_[k],
-                            to_delta(day, ev_mam) + dir(get_lb(to_idx(l))))) {
-          trace(
+                            to_delta(day, ev_mam) + dir(lb_time_[to_idx(l)]))) {
+          trace_lb(
               "┊ │k={}      => name={}, dbg={}, day={}={}, best_mam={}, "
-              "transport_mam={}, transport_time={} => TIME AT DEST {} IS "
+              "transport_mam={}, transport_time={}, lb_time={} => "
+              "TIME_AT_DEST[{}] {} IS "
               "BETTER!\n",
               k, tt_.transport_name(tt_.route_transport_ranges_[r][t_offset]),
               tt_.dbg(tt_.route_transport_ranges_[r][t_offset]), day,
               tt_.to_unixtime(day, 0_minutes), mam_at_stop, ev_mam,
               tt_.to_unixtime(day, duration_t{ev_mam}),
+              to_delta(day, ev_mam) + dir(lb_time_[to_idx(l)]), k,
               to_unix(time_at_dest_[k]));
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
@@ -1329,7 +1418,10 @@ private:
   std::array<bitvec, kMaxVias> const& is_via_;
   std::vector<std::uint16_t> const& dist_to_end_;
   hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
-  std::vector<std::uint16_t> const& lb_;
+  std::vector<std::uint16_t> const& lb_time_;
+  lb_transit_legs<SearchDir>& lb_rounds_;
+  unsigned end_k_;
+  bool use_suffix_{false};
   std::vector<via_stop> const& via_stops_;
   std::array<delta_t, kMaxTransfers + 2> time_at_dest_;
   day_idx_t base_;

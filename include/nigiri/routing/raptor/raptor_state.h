@@ -89,6 +89,10 @@ struct raptor_state {
   bitvec prev_station_mark_;
   bitvec route_mark_;
   bitvec rt_transport_mark_;
+
+  std::vector<std::uint16_t> route_suffix_time_;
+  std::vector<std::uint8_t> route_suffix_legs_;
+  bitvec route_suffix_built_;
 };
 
 }  // namespace nigiri::routing
