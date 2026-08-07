@@ -3,9 +3,9 @@
   branch=master
   commit=9758d168fd1ccff2d76f3bd6ef802943d0f8f7e5
 [cista]
-  url=git@github.com:felixguendling/cista.git
-  branch=master
-  commit=abbbf9cfc1484b3a2737eff7a8f2f96d8dab85e4
+  url=git@github.com:Kiarash-Parvizi/cista.git
+  branch=mod-bitvec
+  commit=3f3d69ba1eeb89e1754817ec2995a6ba3baaea6b
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
