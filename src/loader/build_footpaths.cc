@@ -119,32 +119,64 @@ std::vector<assignment> find_components(footgraph const& fgraph) {
   return components;
 }
 
+std::optional<u8_minutes> adjust_to_walk_speed(timetable const& tt,
+                                               location_idx_t const a,
+                                               location_idx_t const b,
+                                               u8_minutes const duration) {
+
+  constexpr auto const kMaxWalkDistance =
+      std::numeric_limits<u8_minutes::rep>::max() * 60.0 * kWalkSpeed;
+
+  auto const distance = geo::distance(tt.locations_.coordinates_[a],
+                                      tt.locations_.coordinates_[b]);
+  if (distance > kMaxWalkDistance) {
+    log(log_lvl::error, "loader.footpath.adjust",
+        "dropping footpath {} -> {}: {:.1f} km apart, not walkable",
+        tt.locations_.ids_[a].view(), tt.locations_.ids_[b].view(),
+        distance / 1000.0);
+    return std::nullopt;
+  }
+
+  return u8_minutes{
+      std::max(static_cast<duration_t::rep>(duration.count()),
+               static_cast<duration_t::rep>(distance / kWalkSpeed / 60))};
+}
+
 void process_2_node_component(timetable& tt,
                               component const& c,
-                              footgraph const& fgraph) {
+                              footgraph const& fgraph,
+                              bool const adjust_footpaths) {
   auto const l_idx_a = c.from_->l_;
   auto const l_idx_b = std::next(c.from_)->l_;
   auto const idx_a = to_idx(l_idx_a);
   auto const idx_b = to_idx(l_idx_b);
 
-  if (!fgraph[idx_a].empty()) {
-    auto const duration = std::max({u8_minutes{fgraph[idx_a].front().duration_},
-                                    tt.locations_.transfer_time_[l_idx_a],
+  auto const write = [&](location_idx_t const from_l, location_idx_t const to_l,
+                         u8_minutes const raw) {
+    auto const duration = std::max({raw, tt.locations_.transfer_time_[l_idx_a],
                                     tt.locations_.transfer_time_[l_idx_b]});
-    tt.locations_.preprocessing_footpaths_out_[l_idx_a].emplace_back(l_idx_b,
-                                                                     duration);
-    tt.locations_.preprocessing_footpaths_in_[l_idx_b].emplace_back(l_idx_a,
-                                                                    duration);
+
+    auto adjusted = duration;
+    if (adjust_footpaths) {
+      auto const a = adjust_to_walk_speed(tt, from_l, to_l, duration);
+      if (!a.has_value()) {
+        return;
+      }
+      adjusted = *a;
+    }
+
+    tt.locations_.preprocessing_footpaths_out_[from_l].emplace_back(to_l,
+                                                                    adjusted);
+    tt.locations_.preprocessing_footpaths_in_[to_l].emplace_back(from_l,
+                                                                 adjusted);
+  };
+
+  if (!fgraph[idx_a].empty()) {
+    write(l_idx_a, l_idx_b, u8_minutes{fgraph[idx_a].front().duration_});
   }
 
   if (!fgraph[idx_b].empty()) {
-    auto const duration = std::max({u8_minutes{fgraph[idx_b].front().duration_},
-                                    tt.locations_.transfer_time_[l_idx_a],
-                                    tt.locations_.transfer_time_[l_idx_b]});
-    tt.locations_.preprocessing_footpaths_out_[l_idx_b].emplace_back(l_idx_a,
-                                                                     duration);
-    tt.locations_.preprocessing_footpaths_in_[l_idx_a].emplace_back(l_idx_b,
-                                                                    duration);
+    write(l_idx_b, l_idx_a, u8_minutes{fgraph[idx_b].front().duration_});
   }
 }
 
@@ -223,7 +255,7 @@ void connect_components(timetable& tt,
         if (c.invalid()) {
           return;
         } else if (c.size() == 2U) {
-          process_2_node_component(tt, c, fgraph);
+          process_2_node_component(tt, c, fgraph, adjust_footpaths);
         } else {
           build_component_graph(tt, c, fgraph, tmp_graph);
           components.emplace_back(std::move(c));
@@ -298,17 +330,11 @@ void connect_components(timetable& tt,
 
       auto adjusted = duration;
       if (adjust_footpaths) {
-        auto const distance = geo::distance(tt.locations_.coordinates_[from_l],
-                                            tt.locations_.coordinates_[to_l]);
-        auto const adjusted_int = static_cast<int>(distance / kWalkSpeed / 60);
-        if (adjusted_int > std::numeric_limits<u8_minutes::rep>::max()) {
-          log(log_lvl::error, "loader.footpath.adjust",
-              "too long after adjust: {}>256", adjusted_int);
-        } else {
-          adjusted = u8_minutes{
-              std::max(static_cast<duration_t::rep>(duration.count()),
-                       static_cast<duration_t::rep>(adjusted_int))};
+        auto const a = adjust_to_walk_speed(tt, from_l, to_l, duration);
+        if (!a.has_value()) {
+          continue;
         }
+        adjusted = *a;
       }
 
       tt.locations_.preprocessing_footpaths_out_[from_l].emplace_back(to_l,
