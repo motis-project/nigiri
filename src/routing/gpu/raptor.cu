@@ -811,6 +811,12 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
                                                 pareto_set<journey>& results) {
   auto& s = *state_.impl_;
 
+  // No start = nothing to do.
+  // guard against UB: starts_pinned with size=0 -> data=NULL -> memcpy to NULL
+  if (starts_.empty()) {
+    return;
+  }
+
   // Copy starts.
   auto* const starts_pinned = s.starts_.ensure(starts_.size());
   std::memset(starts_pinned, 0,  // otherwise initcheck flags
