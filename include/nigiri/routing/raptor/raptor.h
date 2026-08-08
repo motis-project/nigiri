@@ -70,7 +70,8 @@ struct raptor {
       bool const is_wheelchair,
       bool const no_compulsory_reservation,
       transfer_time_settings const& tts,
-      profile_idx_t const prf_idx)
+      profile_idx_t const prf_idx,
+      bitvec_map<source_idx_t> const& blocked_srcs = {})
       : tt_{tt},
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},
@@ -95,7 +96,9 @@ struct raptor {
         require_car_transport_{require_car_transport},
         no_compulsory_reservation_{no_compulsory_reservation},
         is_wheelchair_{is_wheelchair},
-        transfer_time_settings_{tts} {
+        transfer_time_settings_{tts},
+        blocked_srcs_{blocked_srcs},
+        src_filter_{blocked_srcs.any()} {
     assert(Vias == via_stops_.size());
     reset_arrivals();
     if (!dist_to_end_.empty()) {
@@ -256,115 +259,12 @@ struct raptor {
           static_cast<uint8_t>(is_wheelchair_ << 1) |
           static_cast<uint8_t>(no_compulsory_reservation_ << 0);
 
-      any_marked |= [&]() {
-        switch (filters) {
-          case 0b00000:
-            return loop_routes<false, false, false, false, false>(k);
-          case 0b00001: return loop_routes<false, false, false, false, true>(k);
-          case 0b00010: return loop_routes<false, false, false, true, false>(k);
-          case 0b00011: return loop_routes<false, false, false, true, true>(k);
-          case 0b00100: return loop_routes<false, false, true, false, false>(k);
-          case 0b00101: return loop_routes<false, false, true, false, true>(k);
-          case 0b00110: return loop_routes<false, false, true, true, false>(k);
-          case 0b00111: return loop_routes<false, false, true, true, true>(k);
-          case 0b01000: return loop_routes<false, true, false, false, false>(k);
-          case 0b01001: return loop_routes<false, true, false, false, true>(k);
-          case 0b01010: return loop_routes<false, true, false, true, false>(k);
-          case 0b01011: return loop_routes<false, true, false, true, true>(k);
-          case 0b01100: return loop_routes<false, true, true, false, false>(k);
-          case 0b01101: return loop_routes<false, true, true, false, true>(k);
-          case 0b01110: return loop_routes<false, true, true, true, false>(k);
-          case 0b01111: return loop_routes<false, true, true, true, true>(k);
-          case 0b10000: return loop_routes<true, false, false, false, false>(k);
-          case 0b10001: return loop_routes<true, false, false, false, true>(k);
-          case 0b10010: return loop_routes<true, false, false, true, false>(k);
-          case 0b10011: return loop_routes<true, false, false, true, true>(k);
-          case 0b10100: return loop_routes<true, false, true, false, false>(k);
-          case 0b10101: return loop_routes<true, false, true, false, true>(k);
-          case 0b10110: return loop_routes<true, false, true, true, false>(k);
-          case 0b10111: return loop_routes<true, false, true, true, true>(k);
-          case 0b11000: return loop_routes<true, true, false, false, false>(k);
-          case 0b11001: return loop_routes<true, true, false, false, true>(k);
-          case 0b11010: return loop_routes<true, true, false, true, false>(k);
-          case 0b11011: return loop_routes<true, true, false, true, true>(k);
-          case 0b11100: return loop_routes<true, true, true, false, false>(k);
-          case 0b11101: return loop_routes<true, true, true, false, true>(k);
-          case 0b11110: return loop_routes<true, true, true, true, false>(k);
-          case 0b11111: return loop_routes<true, true, true, true, true>(k);
-          default: std::unreachable();
-        }
-      }();
+      any_marked |= src_filter_ ? loop_routes_dispatch<true>(filters, k)
+                                : loop_routes_dispatch<false>(filters, k);
 
       if constexpr (Rt) {
-        any_marked |= [&]() {
-          switch (filters) {
-            case 0b00000:
-              return loop_rt_routes<false, false, false, false, false>(k);
-            case 0b00001:
-              return loop_rt_routes<false, false, false, false, true>(k);
-            case 0b00010:
-              return loop_rt_routes<false, false, false, true, false>(k);
-            case 0b00011:
-              return loop_rt_routes<false, false, false, true, true>(k);
-            case 0b00100:
-              return loop_rt_routes<false, false, true, false, false>(k);
-            case 0b00101:
-              return loop_rt_routes<false, false, true, false, true>(k);
-            case 0b00110:
-              return loop_rt_routes<false, false, true, true, false>(k);
-            case 0b00111:
-              return loop_rt_routes<false, false, true, true, true>(k);
-            case 0b01000:
-              return loop_rt_routes<false, true, false, false, false>(k);
-            case 0b01001:
-              return loop_rt_routes<false, true, false, false, true>(k);
-            case 0b01010:
-              return loop_rt_routes<false, true, false, true, false>(k);
-            case 0b01011:
-              return loop_rt_routes<false, true, false, true, true>(k);
-            case 0b01100:
-              return loop_rt_routes<false, true, true, false, false>(k);
-            case 0b01101:
-              return loop_rt_routes<false, true, true, false, true>(k);
-            case 0b01110:
-              return loop_rt_routes<false, true, true, true, false>(k);
-            case 0b01111:
-              return loop_rt_routes<false, true, true, true, true>(k);
-            case 0b10000:
-              return loop_rt_routes<true, false, false, false, false>(k);
-            case 0b10001:
-              return loop_rt_routes<true, false, false, false, true>(k);
-            case 0b10010:
-              return loop_rt_routes<true, false, false, true, false>(k);
-            case 0b10011:
-              return loop_rt_routes<true, false, false, true, true>(k);
-            case 0b10100:
-              return loop_rt_routes<true, false, true, false, false>(k);
-            case 0b10101:
-              return loop_rt_routes<true, false, true, false, true>(k);
-            case 0b10110:
-              return loop_rt_routes<true, false, true, true, false>(k);
-            case 0b10111:
-              return loop_rt_routes<true, false, true, true, true>(k);
-            case 0b11000:
-              return loop_rt_routes<true, true, false, false, false>(k);
-            case 0b11001:
-              return loop_rt_routes<true, true, false, false, true>(k);
-            case 0b11010:
-              return loop_rt_routes<true, true, false, true, false>(k);
-            case 0b11011:
-              return loop_rt_routes<true, true, false, true, true>(k);
-            case 0b11100:
-              return loop_rt_routes<true, true, true, false, false>(k);
-            case 0b11101:
-              return loop_rt_routes<true, true, true, false, true>(k);
-            case 0b11110:
-              return loop_rt_routes<true, true, true, true, false>(k);
-            case 0b11111:
-              return loop_rt_routes<true, true, true, true, true>(k);
-            default: std::unreachable();
-          }
-        }();
+        any_marked |= src_filter_ ? loop_rt_routes_dispatch<true>(filters, k)
+                                  : loop_rt_routes_dispatch<false>(filters, k);
       }
 
       if (!any_marked) {
@@ -488,7 +388,86 @@ private:
     return is_better_or_eq(t, row[l][slot] + transfer + dir(stays_l));
   }
 
-  template <bool WithClaszFilter,
+  template <bool WithSrcFilter>
+  bool loop_routes_dispatch(std::uint8_t const filters, unsigned const k) {
+    switch (filters) {
+      case 0b00000: return loop_routes<WithSrcFilter, 0, 0, 0, 0, 0>(k);
+      case 0b00001: return loop_routes<WithSrcFilter, 0, 0, 0, 0, 1>(k);
+      case 0b00010: return loop_routes<WithSrcFilter, 0, 0, 0, 1, 0>(k);
+      case 0b00011: return loop_routes<WithSrcFilter, 0, 0, 0, 1, 1>(k);
+      case 0b00100: return loop_routes<WithSrcFilter, 0, 0, 1, 0, 0>(k);
+      case 0b00101: return loop_routes<WithSrcFilter, 0, 0, 1, 0, 1>(k);
+      case 0b00110: return loop_routes<WithSrcFilter, 0, 0, 1, 1, 0>(k);
+      case 0b00111: return loop_routes<WithSrcFilter, 0, 0, 1, 1, 1>(k);
+      case 0b01000: return loop_routes<WithSrcFilter, 0, 1, 0, 0, 0>(k);
+      case 0b01001: return loop_routes<WithSrcFilter, 0, 1, 0, 0, 1>(k);
+      case 0b01010: return loop_routes<WithSrcFilter, 0, 1, 0, 1, 0>(k);
+      case 0b01011: return loop_routes<WithSrcFilter, 0, 1, 0, 1, 1>(k);
+      case 0b01100: return loop_routes<WithSrcFilter, 0, 1, 1, 0, 0>(k);
+      case 0b01101: return loop_routes<WithSrcFilter, 0, 1, 1, 0, 1>(k);
+      case 0b01110: return loop_routes<WithSrcFilter, 0, 1, 1, 1, 0>(k);
+      case 0b01111: return loop_routes<WithSrcFilter, 0, 1, 1, 1, 1>(k);
+      case 0b10000: return loop_routes<WithSrcFilter, 1, 0, 0, 0, 0>(k);
+      case 0b10001: return loop_routes<WithSrcFilter, 1, 0, 0, 0, 1>(k);
+      case 0b10010: return loop_routes<WithSrcFilter, 1, 0, 0, 1, 0>(k);
+      case 0b10011: return loop_routes<WithSrcFilter, 1, 0, 0, 1, 1>(k);
+      case 0b10100: return loop_routes<WithSrcFilter, 1, 0, 1, 0, 0>(k);
+      case 0b10101: return loop_routes<WithSrcFilter, 1, 0, 1, 0, 1>(k);
+      case 0b10110: return loop_routes<WithSrcFilter, 1, 0, 1, 1, 0>(k);
+      case 0b10111: return loop_routes<WithSrcFilter, 1, 0, 1, 1, 1>(k);
+      case 0b11000: return loop_routes<WithSrcFilter, 1, 1, 0, 0, 0>(k);
+      case 0b11001: return loop_routes<WithSrcFilter, 1, 1, 0, 0, 1>(k);
+      case 0b11010: return loop_routes<WithSrcFilter, 1, 1, 0, 1, 0>(k);
+      case 0b11011: return loop_routes<WithSrcFilter, 1, 1, 0, 1, 1>(k);
+      case 0b11100: return loop_routes<WithSrcFilter, 1, 1, 1, 0, 0>(k);
+      case 0b11101: return loop_routes<WithSrcFilter, 1, 1, 1, 0, 1>(k);
+      case 0b11110: return loop_routes<WithSrcFilter, 1, 1, 1, 1, 0>(k);
+      case 0b11111: return loop_routes<WithSrcFilter, 1, 1, 1, 1, 1>(k);
+      default: std::unreachable();
+    }
+  }
+
+  template <bool WithSrcFilter>
+  bool loop_rt_routes_dispatch(std::uint8_t const filters, unsigned const k) {
+    switch (filters) {
+      case 0b00000: return loop_rt_routes<WithSrcFilter, 0, 0, 0, 0, 0>(k);
+      case 0b00001: return loop_rt_routes<WithSrcFilter, 0, 0, 0, 0, 1>(k);
+      case 0b00010: return loop_rt_routes<WithSrcFilter, 0, 0, 0, 1, 0>(k);
+      case 0b00011: return loop_rt_routes<WithSrcFilter, 0, 0, 0, 1, 1>(k);
+      case 0b00100: return loop_rt_routes<WithSrcFilter, 0, 0, 1, 0, 0>(k);
+      case 0b00101: return loop_rt_routes<WithSrcFilter, 0, 0, 1, 0, 1>(k);
+      case 0b00110: return loop_rt_routes<WithSrcFilter, 0, 0, 1, 1, 0>(k);
+      case 0b00111: return loop_rt_routes<WithSrcFilter, 0, 0, 1, 1, 1>(k);
+      case 0b01000: return loop_rt_routes<WithSrcFilter, 0, 1, 0, 0, 0>(k);
+      case 0b01001: return loop_rt_routes<WithSrcFilter, 0, 1, 0, 0, 1>(k);
+      case 0b01010: return loop_rt_routes<WithSrcFilter, 0, 1, 0, 1, 0>(k);
+      case 0b01011: return loop_rt_routes<WithSrcFilter, 0, 1, 0, 1, 1>(k);
+      case 0b01100: return loop_rt_routes<WithSrcFilter, 0, 1, 1, 0, 0>(k);
+      case 0b01101: return loop_rt_routes<WithSrcFilter, 0, 1, 1, 0, 1>(k);
+      case 0b01110: return loop_rt_routes<WithSrcFilter, 0, 1, 1, 1, 0>(k);
+      case 0b01111: return loop_rt_routes<WithSrcFilter, 0, 1, 1, 1, 1>(k);
+      case 0b10000: return loop_rt_routes<WithSrcFilter, 1, 0, 0, 0, 0>(k);
+      case 0b10001: return loop_rt_routes<WithSrcFilter, 1, 0, 0, 0, 1>(k);
+      case 0b10010: return loop_rt_routes<WithSrcFilter, 1, 0, 0, 1, 0>(k);
+      case 0b10011: return loop_rt_routes<WithSrcFilter, 1, 0, 0, 1, 1>(k);
+      case 0b10100: return loop_rt_routes<WithSrcFilter, 1, 0, 1, 0, 0>(k);
+      case 0b10101: return loop_rt_routes<WithSrcFilter, 1, 0, 1, 0, 1>(k);
+      case 0b10110: return loop_rt_routes<WithSrcFilter, 1, 0, 1, 1, 0>(k);
+      case 0b10111: return loop_rt_routes<WithSrcFilter, 1, 0, 1, 1, 1>(k);
+      case 0b11000: return loop_rt_routes<WithSrcFilter, 1, 1, 0, 0, 0>(k);
+      case 0b11001: return loop_rt_routes<WithSrcFilter, 1, 1, 0, 0, 1>(k);
+      case 0b11010: return loop_rt_routes<WithSrcFilter, 1, 1, 0, 1, 0>(k);
+      case 0b11011: return loop_rt_routes<WithSrcFilter, 1, 1, 0, 1, 1>(k);
+      case 0b11100: return loop_rt_routes<WithSrcFilter, 1, 1, 1, 0, 0>(k);
+      case 0b11101: return loop_rt_routes<WithSrcFilter, 1, 1, 1, 0, 1>(k);
+      case 0b11110: return loop_rt_routes<WithSrcFilter, 1, 1, 1, 1, 0>(k);
+      case 0b11111: return loop_rt_routes<WithSrcFilter, 1, 1, 1, 1, 1>(k);
+      default: std::unreachable();
+    }
+  }
+
+  template <bool WithSrcFilter,
+            bool WithClaszFilter,
             bool WithBikeFilter,
             bool WithCarFilter,
             bool WithWheelchairFilter,
@@ -497,6 +476,12 @@ private:
     auto any_marked = false;
     state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
       auto const r = route_idx_t{r_idx};
+
+      if constexpr (WithSrcFilter) {
+        if (blocked_srcs_.test(tt_.route_src_[r])) {
+          return;
+        }
+      }
 
       if constexpr (WithClaszFilter) {
         if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
@@ -574,7 +559,8 @@ private:
     return any_marked;
   }
 
-  template <bool WithClaszFilter,
+  template <bool WithSrcFilter,
+            bool WithClaszFilter,
             bool WithBikeFilter,
             bool WithCarFilter,
             bool WithWheelchairFilter,
@@ -583,6 +569,12 @@ private:
     auto any_marked = false;
     state_.rt_transport_mark_.for_each_set_bit([&](auto const rt_t_idx) {
       auto const rt_t = rt_transport_idx_t{rt_t_idx};
+
+      if constexpr (WithSrcFilter) {
+        if (blocked_srcs_.test(rtt_->rt_transport_src_[rt_t])) {
+          return;
+        }
+      }
 
       if constexpr (WithClaszFilter) {
         if (!is_allowed(allowed_claszes_,
@@ -1532,6 +1524,8 @@ private:
   bool no_compulsory_reservation_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
+  bitvec_map<source_idx_t> blocked_srcs_;
+  bool src_filter_;
 };
 
 }  // namespace nigiri::routing

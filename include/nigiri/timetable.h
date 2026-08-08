@@ -129,6 +129,7 @@ struct timetable {
 
   bitfield_idx_t register_bitfield(bitfield const& b);
   route_idx_t register_route(
+      source_idx_t src,
       basic_string<stop::value_type> const& stop_seq,
       basic_string<clasz> const& clasz_sections,
       std::array<bitvec, route_flag::kNumRouteFlags> const& flags_per_section);
@@ -343,6 +344,9 @@ struct timetable {
 
   // Route -> list of stops
   vecvec<route_idx_t, stop::value_type> route_location_seq_;
+
+  // Route -> source this route was loaded from.
+  vector_map<route_idx_t, source_idx_t> route_src_;
 
   // Route -> clasz
   vector_map<route_idx_t, clasz> route_clasz_;
