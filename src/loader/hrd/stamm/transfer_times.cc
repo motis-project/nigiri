@@ -947,32 +947,39 @@ void build_transfer_groups(stamm& st,
       }
     }
 
-    // a member touched by an elevated cell (slower than the station
-    // default) in either direction is "dirty": it keeps its rows fully
-    // materialized and never takes part in the aggregated group expansion
-    // -- so the search needs no per-pair exclusion logic at all.
-    auto dirty = std::vector<bool>(n_classes, false);
+    // per-member door bits: row_clean = no elevated cell in the member's
+    // ROW (its arrival may be broadcast to everyone at the default),
+    // col_clean = no elevated cell in its COLUMN (it may collect the
+    // pooled arrival at the default). a pair (a -> b) is derived iff
+    // row_clean[a] || col_clean[b]; everything else is materialized.
+    auto row_clean = std::vector<bool>(n_classes, true);
+    auto col_clean = std::vector<bool>(n_classes, true);
     for (auto a = std::size_t{0U}; a != n_classes; ++a) {
       for (auto b = std::size_t{0U}; b != n_classes; ++b) {
         if (a != b && at(class_rep[a], class_rep[b]).time_ > default_time) {
-          dirty[a] = true;
-          dirty[b] = true;
+          row_clean[a] = false;
+          col_clean[b] = false;
         }
       }
     }
 
-    // emit deviating cells (or preferred) plus the full rows of dirty
-    // members; the remaining default-valued cells are derived at query
-    // time: members flagged in virt_group_ are relaxed at the station
-    // default from the best aggregated source.
+    // emit deviating cells (or preferred) plus the default cells the door
+    // bits cannot derive: elevated-source -> elevated-target collateral,
+    // and the full row of both-zero members (they feed no aggregate).
     for (auto a = std::size_t{0U}; a != n_classes; ++a) {
       for (auto b = std::size_t{0U}; b != n_classes; ++b) {
         if (a == b) {
           continue;
         }
         auto const c = at(class_rep[a], class_rep[b]);
-        if (c.time_ == default_time && !c.preferred_ && !dirty[a] &&
-            !dirty[b]) {
+        // elide only cells derivable in BOTH search directions:
+        // fwd offers (a -> b) iff a broadcasts (row-clean) or a and b both
+        // collect; bwd offers it iff b broadcasts (col-clean) or b and a
+        // both row-clean. both-zero members feed no aggregate in either
+        // direction, so cells touching them stay materialized.
+        if (c.time_ == default_time && !c.preferred_ &&
+            (row_clean[a] || (col_clean[a] && col_clean[b])) &&
+            (col_clean[b] || (row_clean[b] && row_clean[a]))) {
           continue;  // implicit
         }
         tt.locations_.transfer_rule_fps_[class_locations[a]].emplace_back(
@@ -984,16 +991,19 @@ void build_transfer_groups(stamm& st,
         ++n_edges;
       }
     }
-    auto& flag = tt.locations_.virt_group_;
+    auto const set_bit = [](bitvec& bv, location_idx_t const l) {
+      if (bv.size() <= to_idx(l)) {
+        bv.resize(to_idx(l) + 1U);
+      }
+      bv.set(to_idx(l), true);
+    };
     for (auto x = std::size_t{0U}; x != n_classes; ++x) {
-      if (dirty[x]) {
-        continue;
+      if (row_clean[x]) {
+        set_bit(tt.locations_.virt_group_out_, class_locations[x]);
       }
-      auto const l = to_idx(class_locations[x]);
-      if (flag.size() <= l) {
-        flag.resize(l + 1U);
+      if (col_clean[x]) {
+        set_bit(tt.locations_.virt_group_in_, class_locations[x]);
       }
-      flag.set(l, true);
     }
   }
 

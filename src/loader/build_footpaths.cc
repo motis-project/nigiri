@@ -395,9 +395,8 @@ void add_missing_equivalence_footpaths(timetable& tt) {
 
 void add_links_to_and_between_children(timetable& tt) {
   // same-station pairs at stations with elided transfer groups are covered
-  // by the rule matrix (materialized cell or derived default): do not
-  // materialize propagated copies. any flagged endpoint (or base) marks
-  // the station as elided.
+  // by the rule matrix (derived via the door bits, or materialized): do
+  // not materialize propagated copies.
   auto const implicit_pair = [&](location_idx_t const a,
                                  location_idx_t const b) {
     auto const pa = tt.locations_.parents_[a] == location_idx_t::invalid()
@@ -409,12 +408,11 @@ void add_links_to_and_between_children(timetable& tt) {
     if (pa != pb) {
       return false;
     }
-    auto const flagged = [&](location_idx_t const x) {
-      auto const i = to_idx(x);
-      return i < tt.locations_.virt_group_.size() &&
-             tt.locations_.virt_group_.test(i);
+    auto const test = [](bitvec const& bv, location_idx_t const x) {
+      return to_idx(x) < bv.size() && bv.test(to_idx(x));
     };
-    return flagged(a) || flagged(b) || flagged(pa);
+    return test(tt.locations_.virt_group_out_, a) ||
+           test(tt.locations_.virt_group_in_, b);
   };
 
   auto fp_out = mutable_fws_multimap<location_idx_t, footpath>{};
@@ -550,7 +548,8 @@ void apply_transfer_rules(timetable& tt) {
 }
 
 void build_footpaths(timetable& tt, finalize_options const opt) {
-  tt.locations_.virt_group_.resize(tt.n_locations());
+  tt.locations_.virt_group_out_.resize(tt.n_locations());
+  tt.locations_.virt_group_in_.resize(tt.n_locations());
   add_missing_equivalence_footpaths(tt);
   add_links_to_and_between_children(tt);
 

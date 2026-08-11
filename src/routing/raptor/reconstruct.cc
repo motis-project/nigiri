@@ -161,16 +161,22 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
         trace_rc_fp_start_no_match;
       }
     }
-    {  // implicit transfer-group start candidates: flagged members
-       // (import: no elevated exception cells) reach every group member
-       // at the station default
+    {  // implicit transfer-group start candidates: pair derived at the
+       // station default iff the real-direction source may broadcast or
+       // the real-direction target may collect (door bits, timetable.h)
       auto const& lcs = tt.locations_;
       auto const grp = lcs.types_[leg_start_location] == location_type::kVirt
                            ? lcs.parents_[leg_start_location]
                            : leg_start_location;
-      auto const flagged = [&](location_idx_t const m) {
-        return to_idx(m) < lcs.virt_group_.size() &&
-               lcs.virt_group_.test(to_idx(m));
+      auto const test = [&](bitvec const& bv, location_idx_t const m) {
+        return to_idx(m) < bv.size() && bv.test(to_idx(m));
+      };
+      auto const l_collects =
+          test(kFwd ? lcs.virt_group_in_ : lcs.virt_group_out_,
+               leg_start_location);
+      auto const derived = [&](location_idx_t const m) {
+        return l_collects ||
+               test(kFwd ? lcs.virt_group_out_ : lcs.virt_group_in_, m);
       };
       auto const has_explicit = [&](location_idx_t const m) {
         for (auto const& fp : footpaths) {
@@ -183,7 +189,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       auto const dur = lcs.transfer_time_[grp];
       auto const try_member =
           [&](location_idx_t const m) -> std::optional<journey::leg> {
-        if (m == leg_start_location || !flagged(m) || has_explicit(m)) {
+        if (m == leg_start_location || !derived(m) || has_explicit(m)) {
           return std::nullopt;
         }
         return try_start_fp(footpath{m, dur});
@@ -814,17 +820,23 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
 
     {  // implicit transfer-group candidates: default-valued same-station
-       // edges are derived, not stored: flagged members (import: no
-       // elevated exception cells) reach every group member at the
-       // station default (skip pairs with an explicit exception edge)
+       // edges are derived, not stored: pair derived at the station
+       // default iff the real-direction source may broadcast or the
+       // real-direction target may collect (door bits, timetable.h);
+       // pairs with an explicit edge are never implicit
       auto const& lcs = tt.locations_;
       auto const grp =
           lcs.types_[l] == location_type::kVirt ? lcs.parents_[l] : l;
       auto const& fps = kFwd ? lcs.footpaths_in_[q.prf_idx_][l]
                              : lcs.footpaths_out_[q.prf_idx_][l];
-      auto const flagged = [&](location_idx_t const m) {
-        return to_idx(m) < lcs.virt_group_.size() &&
-               lcs.virt_group_.test(to_idx(m));
+      auto const test = [&](bitvec const& bv, location_idx_t const m) {
+        return to_idx(m) < bv.size() && bv.test(to_idx(m));
+      };
+      auto const l_collects =
+          test(kFwd ? lcs.virt_group_in_ : lcs.virt_group_out_, l);
+      auto const derived = [&](location_idx_t const m) {
+        return l_collects ||
+               test(kFwd ? lcs.virt_group_out_ : lcs.virt_group_in_, m);
       };
       auto const has_explicit = [&](location_idx_t const m) {
         for (auto const& fp : fps) {
@@ -837,7 +849,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       auto const dur = lcs.transfer_time_[grp];
       auto const try_member = [&](location_idx_t const m)
           -> std::optional<std::pair<journey::leg, journey::leg>> {
-        if (m == l || !flagged(m) || has_explicit(m)) {
+        if (m == l || !derived(m) || has_explicit(m)) {
           return std::nullopt;
         }
         return check_fp(k, l, curr_time, footpath{m, dur}, true, false);

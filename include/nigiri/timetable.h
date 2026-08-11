@@ -130,14 +130,19 @@ struct timetable {
     mutable_fws_multimap<location_idx_t, preferred_transfer>
         preferred_transfers_;
 
-    // Transfer group members (station base or kVirt child) whose
-    // default-valued same-station edges are elided and derived at query
-    // time: a flagged member reaches every group member at the parent
-    // station's transfer_time_ (explicit edges take precedence). Members
-    // with elevated exception cells (slower than the default, in either
-    // direction) are not flagged; import keeps their rows fully
-    // materialized, so the search needs no per-pair exclusion logic.
-    bitvec virt_group_;
+    // Implicit transfer-group derivation: default-valued same-station
+    // edges are elided; a pair (u -> v) of group members (station base +
+    // kVirt children) without an explicit edge is derived at the parent's
+    // transfer_time_ iff virt_group_out_[u] || virt_group_in_[v].
+    //   virt_group_out_: no elevated cell in u's matrix ROW -- u's
+    //     arrival may be broadcast to all members at the default.
+    //   virt_group_in_:  no elevated cell in v's matrix COLUMN -- v may
+    //     collect the pooled member arrival at the default.
+    // Pairs failing both (elevated source AND elevated target) are
+    // materialized at import, so the search needs no per-pair exclusion
+    // logic. In the backward search the two bits swap roles.
+    bitvec virt_group_out_;
+    bitvec virt_group_in_;
   } locations_;
 
   struct transport {
