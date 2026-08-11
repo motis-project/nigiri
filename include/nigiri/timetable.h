@@ -130,10 +130,13 @@ struct timetable {
     mutable_fws_multimap<location_idx_t, preferred_transfer>
         preferred_transfers_;
 
-    // Stations whose virtual transfer groups have their default-valued
-    // same-station edges elided; they are derived at query time: every
-    // group member without an explicit (exception) edge from the source
-    // is relaxed at transfer_time_[station].
+    // Transfer group members (station base or kVirt child) whose
+    // default-valued same-station edges are elided and derived at query
+    // time: a flagged member reaches every group member at the parent
+    // station's transfer_time_ (explicit edges take precedence). Members
+    // with elevated exception cells (slower than the default, in either
+    // direction) are not flagged; import keeps their rows fully
+    // materialized, so the search needs no per-pair exclusion logic.
     bitvec virt_group_;
   } locations_;
 

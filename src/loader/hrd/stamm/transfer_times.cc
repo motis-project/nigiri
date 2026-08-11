@@ -947,16 +947,32 @@ void build_transfer_groups(stamm& st,
       }
     }
 
-    // emit only the matrix cells deviating from the station default (or
-    // preferred): the default-valued clique is derived at query time via
-    // the group expansion in RAPTOR (virt_group_labeled_/expanded_)
+    // a member touched by an elevated cell (slower than the station
+    // default) in either direction is "dirty": it keeps its rows fully
+    // materialized and never takes part in the aggregated group expansion
+    // -- so the search needs no per-pair exclusion logic at all.
+    auto dirty = std::vector<bool>(n_classes, false);
+    for (auto a = std::size_t{0U}; a != n_classes; ++a) {
+      for (auto b = std::size_t{0U}; b != n_classes; ++b) {
+        if (a != b && at(class_rep[a], class_rep[b]).time_ > default_time) {
+          dirty[a] = true;
+          dirty[b] = true;
+        }
+      }
+    }
+
+    // emit deviating cells (or preferred) plus the full rows of dirty
+    // members; the remaining default-valued cells are derived at query
+    // time: members flagged in virt_group_ are relaxed at the station
+    // default from the best aggregated source.
     for (auto a = std::size_t{0U}; a != n_classes; ++a) {
       for (auto b = std::size_t{0U}; b != n_classes; ++b) {
         if (a == b) {
           continue;
         }
         auto const c = at(class_rep[a], class_rep[b]);
-        if (c.time_ == default_time && !c.preferred_) {
+        if (c.time_ == default_time && !c.preferred_ && !dirty[a] &&
+            !dirty[b]) {
           continue;  // implicit
         }
         tt.locations_.transfer_rule_fps_[class_locations[a]].emplace_back(
@@ -969,10 +985,16 @@ void build_transfer_groups(stamm& st,
       }
     }
     auto& flag = tt.locations_.virt_group_;
-    if (flag.size() <= to_idx(base)) {
-      flag.resize(to_idx(base) + 1U);
+    for (auto x = std::size_t{0U}; x != n_classes; ++x) {
+      if (dirty[x]) {
+        continue;
+      }
+      auto const l = to_idx(class_locations[x]);
+      if (flag.size() <= l) {
+        flag.resize(l + 1U);
+      }
+      flag.set(l, true);
     }
-    flag.set(to_idx(base), true);
   }
 
   log(log_lvl::info, "loader.hrd.transfer_groups",
