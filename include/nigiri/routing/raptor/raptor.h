@@ -1,7 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <cassert>
 #include <span>
+#include <vector>
+
+#include "utl/overloaded.h"
+#include "utl/sorted_diff.h"
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
@@ -742,17 +747,6 @@ private:
     });
   }
 
-  // per-station scratch for aggregated group expansion: best + second-best
-  // source time per via state (so a member never receives its own
-  // contribution - an implicit self-transfer at the group default could
-  // undercut the member's own transfer time)
-  struct group_agg_entry {
-    int best_;
-    std::uint32_t best_src_;
-    int second_;
-  };
-  hash_map<location_idx_t, std::array<group_agg_entry, Vias + 1>> group_agg_;
-
   // relax one implicit transfer-group edge (default-valued same-station
   // edge, not materialized). base_time already contains the source-side via
   // stay. Mirrors the explicit footpath relax logic below.
@@ -900,21 +894,21 @@ private:
       }
 
       // implicit transfer-group edges: default-valued same-station edges
-      // are derived, not stored. labeled stations (no elevated
-      // exceptions): aggregate the best source time, expand once after the
-      // scan. expanded stations: per-source expansion, skipping targets
-      // that have an explicit (exception) edge.
+      // are derived, not stored: every group member (base + kVirt children)
+      // without an explicit (exception) edge from the source is relaxed at
+      // the station transfer time. footpaths and children_ are both sorted
+      // by location_idx -> set difference in one parallel sweep.
       auto const grp = tt_.locations_.types_[l_idx] == location_type::kVirt
                            ? tt_.locations_.parents_[l_idx]
                            : l_idx;
       auto const grp_i = to_idx(grp);
-      auto const flagged = [&](bitvec const& bv) {
-        return grp_i < bv.size() && bv.test(grp_i);
-      };
-      auto const labeled = flagged(tt_.locations_.virt_group_labeled_);
-      if (labeled || flagged(tt_.locations_.virt_group_expanded_)) {
+      if (grp_i < tt_.locations_.virt_group_.size() &&
+          tt_.locations_.virt_group_.test(grp_i)) {
         auto const dur =
             static_cast<int>(tt_.locations_.transfer_time_[grp].count());
+
+        auto srcs = std::array<std::pair<unsigned, int>, Vias + 1>{};
+        auto n_srcs = 0U;
         for (auto v = 0U; v != Vias + 1; ++v) {
           auto const tmp_time = tmp_[i][v];
           if (tmp_time == kInvalid) {
@@ -928,83 +922,54 @@ private:
               (start_is_via
                    ? dir(static_cast<int>(via_stops_[v].stay_.count()))
                    : 0);
-          if (labeled) {
-            constexpr auto const kUnreached =
-                kFwd ? std::numeric_limits<int>::max()
-                     : std::numeric_limits<int>::min();
-            auto it = group_agg_.find(grp);
-            if (it == end(group_agg_)) {
-              auto a = std::array<group_agg_entry, Vias + 1>{};
-              a.fill(group_agg_entry{kUnreached, 0U, kUnreached});
-              it = group_agg_.emplace(grp, a).first;
+          srcs[n_srcs++] = {start_v, base_time};
+        }
+
+        if (n_srcs != 0U) {
+          auto const relax_implicit = [&](location_idx_t const c) {
+            if (to_idx(c) == i) {
+              return;  // no self-transfer, transfer_time_ handles same-stop
             }
-            auto& agg = it->second[start_v];
-            if (kFwd ? base_time < agg.best_ : base_time > agg.best_) {
-              if (agg.best_src_ != i) {
-                agg.second_ = agg.best_;
-              }
-              agg.best_ = base_time;
-              agg.best_src_ = static_cast<std::uint32_t>(i);
-            } else if (agg.best_src_ != i &&
-                       (kFwd ? base_time < agg.second_
-                             : base_time > agg.second_)) {
-              agg.second_ = base_time;
+            for (auto x = 0U; x != n_srcs; ++x) {
+              relax_group_target(k, srcs[x].first, srcs[x].second, dur,
+                                 to_idx(c));
             }
-          } else {
-            // note: footpaths are sorted by duration, not target ->
-            // membership scan (exception lists are tiny)
-            auto const has_explicit = [&](location_idx_t const m) {
-              for (auto const& fp : fps) {
-                if (fp.target() == m) {
-                  return true;
-                }
-              }
-              return false;
-            };
-            auto const relax_to = [&](location_idx_t const m) {
-              if (to_idx(m) == i || has_explicit(m)) {
-                return;  // explicit exception edge wins
-              }
-              relax_group_target(k, start_v, base_time, dur, to_idx(m));
-            };
-            relax_to(grp);
-            for (auto const c : tt_.locations_.children_[grp]) {
-              if (tt_.locations_.types_[c] == location_type::kVirt) {
-                relax_to(c);
-              }
+          };
+
+          utl::sorted_diff(
+              fps, tt_.locations_.children_[grp],
+              utl::overloaded{[](footpath const a, location_idx_t const b) {
+                                return a.target() < b;
+                              },
+                              [](location_idx_t const a, footpath const b) {
+                                return a < b.target();
+                              }},
+              [](footpath const, location_idx_t const) {
+                return true;  // match = explicit exception edge -> skip
+              },
+              utl::overloaded{
+                  [](utl::op const, footpath const) {},  // non-member target
+                  [&](utl::op const o, location_idx_t const c) {
+                    if (o == utl::op::kAdd &&
+                        tt_.locations_.types_[c] == location_type::kVirt) {
+                      relax_implicit(c);
+                    }
+                  },
+                  [](footpath const, location_idx_t const) {}});
+
+          if (grp_i != i) {  // base station: implicit unless explicit exists
+            auto const it = std::lower_bound(
+                begin(fps), end(fps), grp,
+                [](footpath const f, location_idx_t const x) {
+                  return f.target() < x;
+                });
+            if (it == end(fps) || it->target() != grp) {
+              relax_implicit(grp);
             }
           }
         }
       }
     });
-
-    // flush aggregated expansions for labeled stations
-    for (auto const& [grp, agg] : group_agg_) {
-      constexpr auto const kUnreached = kFwd
-                                            ? std::numeric_limits<int>::max()
-                                            : std::numeric_limits<int>::min();
-      auto const dur =
-          static_cast<int>(tt_.locations_.transfer_time_[grp].count());
-      for (auto start_v = 0U; start_v != Vias + 1; ++start_v) {
-        auto const& a = agg[start_v];
-        if (a.best_ == kUnreached) {
-          continue;
-        }
-        auto const relax_member = [&](std::uint32_t const m) {
-          auto const bt = a.best_src_ == m ? a.second_ : a.best_;
-          if (bt != kUnreached) {
-            relax_group_target(k, start_v, bt, dur, m);
-          }
-        };
-        relax_member(to_idx(grp));
-        for (auto const c : tt_.locations_.children_[grp]) {
-          if (tt_.locations_.types_[c] == location_type::kVirt) {
-            relax_member(to_idx(c));
-          }
-        }
-      }
-    }
-    group_agg_.clear();
   }
 
   void update_td_offsets(unsigned const k) {

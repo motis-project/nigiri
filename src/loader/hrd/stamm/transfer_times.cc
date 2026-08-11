@@ -950,7 +950,6 @@ void build_transfer_groups(stamm& st,
     // emit only the matrix cells deviating from the station default (or
     // preferred): the default-valued clique is derived at query time via
     // the group expansion in RAPTOR (virt_group_labeled_/expanded_)
-    auto has_elevated = false;
     for (auto a = std::size_t{0U}; a != n_classes; ++a) {
       for (auto b = std::size_t{0U}; b != n_classes; ++b) {
         if (a == b) {
@@ -960,7 +959,6 @@ void build_transfer_groups(stamm& st,
         if (c.time_ == default_time && !c.preferred_) {
           continue;  // implicit
         }
-        has_elevated = has_elevated || c.time_ > default_time;
         tt.locations_.transfer_rule_fps_[class_locations[a]].emplace_back(
             footpath{class_locations[b], c.time_});
         if (c.preferred_) {  // guaranteed transfer ("!")
@@ -970,8 +968,7 @@ void build_transfer_groups(stamm& st,
         ++n_edges;
       }
     }
-    auto& flag = has_elevated ? tt.locations_.virt_group_expanded_
-                              : tt.locations_.virt_group_labeled_;
+    auto& flag = tt.locations_.virt_group_;
     if (flag.size() <= to_idx(base)) {
       flag.resize(to_idx(base) + 1U);
     }

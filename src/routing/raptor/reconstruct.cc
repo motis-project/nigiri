@@ -167,11 +167,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
                            ? lcs.parents_[leg_start_location]
                            : leg_start_location;
       auto const grp_i = to_idx(grp);
-      auto const flagged = [&](bitvec const& bv) {
-        return grp_i < bv.size() && bv.test(grp_i);
-      };
-      if (flagged(lcs.virt_group_labeled_) ||
-          flagged(lcs.virt_group_expanded_)) {
+      if (grp_i < lcs.virt_group_.size() && lcs.virt_group_.test(grp_i)) {
         auto const has_explicit = [&](location_idx_t const m) {
           for (auto const& fp : footpaths) {
             if (fp.target() == m) {
@@ -821,11 +817,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       auto const grp =
           lcs.types_[l] == location_type::kVirt ? lcs.parents_[l] : l;
       auto const grp_i = to_idx(grp);
-      auto const flagged = [&](bitvec const& bv) {
-        return grp_i < bv.size() && bv.test(grp_i);
-      };
-      if (flagged(lcs.virt_group_labeled_) ||
-          flagged(lcs.virt_group_expanded_)) {
+      if (grp_i < lcs.virt_group_.size() && lcs.virt_group_.test(grp_i)) {
         auto const& fps = kFwd ? lcs.footpaths_in_[q.prf_idx_][l]
                                : lcs.footpaths_out_[q.prf_idx_][l];
         auto const has_explicit = [&](location_idx_t const m) {

@@ -408,11 +408,8 @@ void add_links_to_and_between_children(timetable& tt) {
       return false;
     }
     auto const i = to_idx(pa);
-    auto const test = [&](bitvec const& bv) {
-      return i < bv.size() && bv.test(i);
-    };
-    return test(tt.locations_.virt_group_labeled_) ||
-           test(tt.locations_.virt_group_expanded_);
+    return i < tt.locations_.virt_group_.size() &&
+           tt.locations_.virt_group_.test(i);
   };
 
   auto fp_out = mutable_fws_multimap<location_idx_t, footpath>{};
@@ -473,8 +470,11 @@ void add_links_to_and_between_children(timetable& tt) {
 }
 
 void sort_footpaths(timetable& tt) {
+  // sorted by target: consumers can set-operate footpaths against other
+  // target-sorted sequences (e.g. the transfer-group expansion diffing
+  // against children_)
   auto const cmp_fp_dur = [](auto const& a, auto const& b) {
-    return a.duration_ < b.duration_;
+    return std::tie(a.target_, a.duration_) < std::tie(b.target_, b.duration_);
   };
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
     utl::sort(tt.locations_.preprocessing_footpaths_out_[i], cmp_fp_dur);
@@ -545,8 +545,7 @@ void apply_transfer_rules(timetable& tt) {
 }
 
 void build_footpaths(timetable& tt, finalize_options const opt) {
-  tt.locations_.virt_group_labeled_.resize(tt.n_locations());
-  tt.locations_.virt_group_expanded_.resize(tt.n_locations());
+  tt.locations_.virt_group_.resize(tt.n_locations());
   add_missing_equivalence_footpaths(tt);
   add_links_to_and_between_children(tt);
 

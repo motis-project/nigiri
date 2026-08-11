@@ -131,12 +131,10 @@ struct timetable {
         preferred_transfers_;
 
     // Stations whose virtual transfer groups have their default-valued
-    // same-station edges elided; they are derived at query time from
-    // transfer_time_[station]. "labeled" = no elevated exceptions
-    // (aggregated group expansion), "expanded" = has elevated exceptions
-    // (per-source expansion skipping explicit exception edges).
-    bitvec virt_group_labeled_;
-    bitvec virt_group_expanded_;
+    // same-station edges elided; they are derived at query time: every
+    // group member without an explicit (exception) edge from the source
+    // is relaxed at transfer_time_[station].
+    bitvec virt_group_;
   } locations_;
 
   struct transport {
