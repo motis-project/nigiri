@@ -272,6 +272,7 @@ std::vector<double> run_load(
 struct result_set {
   std::string label_;
   std::vector<pareto_set<routing::journey>> res_;
+  std::vector<std::array<std::uint64_t, 2>> stats_;  // routes, fps visited
   std::vector<double> latencies_;
 };
 
@@ -301,6 +302,7 @@ result_set run_cell(
     StateArgs const&... state_args) {
   auto out = result_set{.label_ = label};
   out.res_.resize(queries.size());
+  out.stats_.resize(queries.size());
 
   auto states = std::vector<std::unique_ptr<WS>>{};
   for (auto i = 0U; i != *std::max_element(begin(n_parallel), end(n_parallel));
@@ -316,7 +318,9 @@ result_set run_cell(
     out.latencies_ =
         run_load<WS>(queries, label + "-" + std::to_string(n), pool,
                      [&](WS& w, routing::query q, std::size_t const i) {
-                       out.res_[i] = search(w, std::move(q));
+                       auto [js, st] = search(w, std::move(q));
+                       out.res_[i] = std::move(js);
+                       out.stats_[i] = st;
                      });
   }
 
@@ -662,7 +666,15 @@ int main(int argc, char* argv[]) {
                                                  std::move(q), dir)
                           : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
                                                    std::move(q), dir);
-                  return *r.journeys_;
+                  auto const stat = [&](char const* k) {
+                    auto const it = r.algo_stats_.find(k);
+                    return it == end(r.algo_stats_) ? std::uint64_t{0U}
+                                                    : it->second;
+                  };
+                  return std::pair{*r.journeys_,
+                                   std::array<std::uint64_t, 2>{
+                                       stat("n_routes_visited"),
+                                       stat("n_footpaths_visited")}};
                 }));
             ++qa_n_cpu_cells;
             if (vm.count("qa_path")) {
@@ -681,7 +693,15 @@ int main(int argc, char* argv[]) {
                                                  std::move(q), dir)
                           : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
                                                    std::move(q), dir);
-                  return *r.journeys_;
+                  auto const stat = [&](char const* k) {
+                    auto const it = r.algo_stats_.find(k);
+                    return it == end(r.algo_stats_) ? std::uint64_t{0U}
+                                                    : it->second;
+                  };
+                  return std::pair{*r.journeys_,
+                                   std::array<std::uint64_t, 2>{
+                                       stat("n_routes_visited"),
+                                       stat("n_footpaths_visited")}};
                 },
                 *gpu_tt));
           }
@@ -698,6 +718,23 @@ int main(int argc, char* argv[]) {
       if (cells.size() == 1U) {
         summary.push_back(fmt::format("{:<24} n={:<6} benchmark only",
                                       cells.front().label_, qs.size()));
+      }
+      for (auto const& c : cells) {
+        auto rv = std::uint64_t{0U};
+        auto fv = std::uint64_t{0U};
+        for (auto const& st : c.stats_) {
+          rv += st[0];
+          fv += st[1];
+        }
+        summary.push_back(fmt::format(
+            "{:<24} n={:<6} routes_visited/q={:<9.0f} fps_visited/q={:<11.0f}",
+            c.label_, c.stats_.size(),
+            c.stats_.empty() ? 0.0
+                             : static_cast<double>(rv) /
+                                   static_cast<double>(c.stats_.size()),
+            c.stats_.empty() ? 0.0
+                             : static_cast<double>(fv) /
+                                   static_cast<double>(c.stats_.size())));
       }
       for (auto const& c : cells) {
         auto n_journeys = std::size_t{0U};

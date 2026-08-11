@@ -24,7 +24,9 @@ namespace {
 //     T3: X2 10:42 -> B 11:10 (12 min gap -> ok)
 //
 // (2) route-qualified same-stop rule:
-//     transfers.txt Y->Y type=2 0s from_route=R10 to_route=R11.
+//     transfers.txt Y->Y type=2 0s from_route=R10 to_route=R11,
+//     plus an unqualified Y->Y type=2 120s row (the pair default -> the
+//     qualified rule stays a scoped exception, see majority fold).
 //     U1 (R10): A2 12:00 -> Y 12:30
 //     U2 (R11): Y 12:31 -> C 13:00 (rule 0 min -> reachable)
 //     U3 (R12): Y 12:31 -> D 13:00 (default 2 min -> not reachable)
@@ -38,8 +40,33 @@ namespace {
 //     Z->Z type=2 0s from_route=RZ1 to_route=RZ2 (allows tight transfers),
 //     Z->Z type=3 from_trip=W1 to_trip=W2 (bans this one pair).
 //     W1 (RZ1): A4 16:00 -> Z 16:30
+//     plus an unqualified Z->Z type=2 120s row (pair default).
 //     W2 (RZ2): Z 16:31 -> BZ 17:00 (banned by trip rule)
 //     W3 (RZ2): Z 16:31 -> CZ 17:10 (allowed via route rule)
+//
+// (5) majority fold, uniform pair (MetroNorth pattern):
+//     M,M type=1 trip pair M1->M2, no min_transfer_time -> folds into
+//     transfer_time_[M] = 0, no virtual locations.
+//     M1: A5 18:00 -> M 18:30
+//     M2: M 18:30 -> G 19:00 (0 min -> reachable)
+//     M3: M 18:30 -> H 19:00 (unnamed, gets the folded default too)
+//
+// (6) majority fold with exception:
+//     N,N type=2 60s for trip pairs N1->N2 and N4->N2 (majority ->
+//     transfer_time_[N] = 1 min), N,N type=2 600s for N1->N3 (exception,
+//     kept as virtual location split).
+//     N1: A6 20:00 -> N 20:30
+//     N4: A7 20:05 -> N 20:29
+//     N2: N 20:32 -> I 21:00 (1 min majority -> reachable from N1)
+//     N3: N 20:32 -> J 21:00 (10 min exception -> not reachable)
+//
+// (7) self-pair rule (both sides match the same trips):
+//     P,P type=2 600s from_route=RP to_route=RP -> all RP trips share one
+//     virtual location, the value becomes its transfer time; explicit
+//     P,P type=2 120s row keeps the rule an exception (majority fold).
+//     P1 (RP): A8 22:00 -> P 22:30
+//     P2 (RP): P 22:35 -> K 23:00 (5 min < 10 -> not reachable)
+//     P3 (RQ): P 22:35 -> L 23:00 (unnamed, pair default 2 min -> ok)
 constexpr auto const test_files = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -65,6 +92,19 @@ A4,A4,,53.0,6.0,,,
 Z,Z,,53.0,6.5,,,
 BZ,BZ,,53.0,7.0,,,
 CZ,CZ,,53.0,7.5,,,
+A5,A5,,54.0,6.0,,,
+M,M,,54.0,6.5,,,
+G,G,,54.0,7.0,,,
+H,H,,54.0,7.5,,,
+A6,A6,,55.0,6.0,,,
+A7,A7,,55.0,6.2,,,
+N,N,,55.0,6.5,,,
+I,I,,55.0,7.0,,,
+J,J,,55.0,7.5,,,
+A8,A8,,56.0,6.0,,,
+P,P,,56.0,6.5,,,
+K,K,,56.0,7.0,,,
+L,L,,56.0,7.5,,,
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -78,6 +118,15 @@ R20,AG,20,,,3
 R21,AG,21,,,3
 RZ1,AG,z1,,,3
 RZ2,AG,z2,,,3
+R30,AG,30,,,3
+R31,AG,31,,,3
+R32,AG,32,,,3
+R40,AG,40,,,3
+R41,AG,41,,,3
+R42,AG,42,,,3
+R43,AG,43,,,3
+RP,AG,p,,,3
+RQ,AG,q,,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
@@ -92,6 +141,16 @@ R21,S1,V2,,
 RZ1,S1,W1,,
 RZ2,S1,W2,,
 RZ2,S1,W3,,
+R30,S1,M1,,
+R31,S1,M2,,
+R32,S1,M3,,
+R40,S1,N1,,
+R41,S1,N2,,
+R42,S1,N3,,
+R43,S1,N4,,
+RP,S1,P1,,
+RP,S1,P2,,
+RQ,S1,P3,,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -117,6 +176,26 @@ W2,16:31:00,16:31:00,Z,0
 W2,17:00:00,17:00:00,BZ,1
 W3,16:31:00,16:31:00,Z,0
 W3,17:10:00,17:10:00,CZ,1
+M1,18:00:00,18:00:00,A5,0
+M1,18:30:00,18:30:00,M,1
+M2,18:30:00,18:30:00,M,0
+M2,19:00:00,19:00:00,G,1
+M3,18:30:00,18:30:00,M,0
+M3,19:00:00,19:00:00,H,1
+N1,20:00:00,20:00:00,A6,0
+N1,20:30:00,20:30:00,N,1
+N4,20:05:00,20:05:00,A7,0
+N4,20:29:00,20:29:00,N,1
+N2,20:32:00,20:32:00,N,0
+N2,21:00:00,21:00:00,I,1
+N3,20:32:00,20:32:00,N,0
+N3,21:00:00,21:00:00,J,1
+P1,22:00:00,22:00:00,A8,0
+P1,22:30:00,22:30:00,P,1
+P2,22:35:00,22:35:00,P,0
+P2,23:00:00,23:00:00,K,1
+P3,22:35:00,22:35:00,P,0
+P3,23:00:00,23:00:00,L,1
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -125,10 +204,18 @@ S1,20190501,1
 # transfers.txt
 from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
 XS,XS,2,600,,,,
+Y,Y,2,120,,,,
 Y,Y,2,0,R10,R11,,
 F1,F2,3,,,,,
+Z,Z,2,120,,,,
 Z,Z,2,0,RZ1,RZ2,,
 Z,Z,3,,,,W1,W2
+M,M,1,,,,M1,M2
+N,N,2,60,,,N1,N2
+N,N,2,60,,,N4,N2
+N,N,2,600,,,N1,N3
+P,P,2,120,,,,
+P,P,2,600,RP,RP,,
 )"sv;
 
 timetable load() {
@@ -194,4 +281,59 @@ TEST(gtfs, transfer_rules_trip_beats_route) {
                                     "2019-05-01 16:00 Europe/Berlin");
   ASSERT_EQ(1U, res_cz.size());
   EXPECT_EQ(t("2019-05-01 17:10 Europe/Berlin"), begin(res_cz)->dest_time_);
+}
+
+TEST(gtfs, transfer_rules_majority_fold_uniform) {
+  auto const tt = load();
+
+  // the uniform trip pair rule folds into the stop's transfer time
+  auto const m = tt.locations_.location_id_to_idx_.at({"M", source_idx_t{0}});
+  EXPECT_EQ(duration_t{0}, tt.locations_.transfer_time_[m]);
+
+  // named trip pair: 0 min timed transfer works
+  auto const res_g = raptor_search(tt, nullptr, "A5", "G",
+                                   "2019-05-01 18:00 Europe/Berlin");
+  ASSERT_EQ(1U, res_g.size());
+  EXPECT_EQ(t("2019-05-01 19:00 Europe/Berlin"), begin(res_g)->dest_time_);
+
+  // unnamed trip gets the folded default as well
+  auto const res_h = raptor_search(tt, nullptr, "A5", "H",
+                                   "2019-05-01 18:00 Europe/Berlin");
+  ASSERT_EQ(1U, res_h.size());
+  EXPECT_EQ(t("2019-05-01 19:00 Europe/Berlin"), begin(res_h)->dest_time_);
+}
+
+TEST(gtfs, transfer_rules_majority_fold_exception) {
+  auto const tt = load();
+
+  // majority 60s becomes the stop default
+  auto const n = tt.locations_.location_id_to_idx_.at({"N", source_idx_t{0}});
+  EXPECT_EQ(duration_t{1}, tt.locations_.transfer_time_[n]);
+
+  // N1 -> N2 uses the folded 1 min default (via base stop)
+  auto const res_i = raptor_search(tt, nullptr, "A6", "I",
+                                   "2019-05-01 20:00 Europe/Berlin");
+  ASSERT_EQ(1U, res_i.size());
+  EXPECT_EQ(t("2019-05-01 21:00 Europe/Berlin"), begin(res_i)->dest_time_);
+
+  // N1 -> N3 is the 10 min exception -> not reachable
+  auto const res_j = raptor_search(tt, nullptr, "A6", "J",
+                                   "2019-05-01 20:00 Europe/Berlin");
+  EXPECT_EQ(0U, res_j.size());
+}
+
+TEST(gtfs, transfer_rules_self_pair) {
+  auto const tt = load();
+
+  // RP -> RP: both rule sides match the same trips -> one shared virtual
+  // location; the 10 min value is its transfer time, 5 min gap fails
+  auto const res_k = raptor_search(tt, nullptr, "A8", "K",
+                                   "2019-05-01 22:00 Europe/Berlin");
+  EXPECT_EQ(0U, res_k.size());
+
+  // unnamed RQ departure uses the explicit 2 min pair default
+  auto const res_l = raptor_search(tt, nullptr, "A8", "L",
+                                   "2019-05-01 22:00 Europe/Berlin");
+  ASSERT_EQ(1U, res_l.size());
+  EXPECT_EQ(t("2019-05-01 23:00 Europe/Berlin"), begin(res_l)->dest_time_);
 }

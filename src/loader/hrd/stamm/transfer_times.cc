@@ -1,7 +1,10 @@
 #include "nigiri/loader/hrd/stamm/transfer_times.h"
 
 #include <algorithm>
+#include <map>
 
+#include "utl/erase_duplicates.h"
+#include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/parser/cstr.h"
@@ -683,7 +686,7 @@ void build_transfer_groups(stamm& st,
     sr.has_station_time_ = r.station_.contains(eva);
     sr.station_time_ = tt.locations_.transfer_time_[base];
 
-    auto const default_time = tt.locations_.transfer_time_[base];
+    auto default_time = tt.locations_.transfer_time_[base];
 
     // partition tuples into groups by their matched rule sides
     auto sig_to_group = std::map<sig_t, unsigned>{};
@@ -745,40 +748,181 @@ void build_transfer_groups(stamm& st,
     auto const time = [&](sig_t const& a, sig_t const& b) {
       return resolve_time(sr, default_time, a, b);
     };
-    auto useful = std::vector<bool>(group_sigs.size(), false);
-    for (auto g = std::size_t{0U}; g != group_sigs.size(); ++g) {
-      auto const& sig = group_sigs[g];
-      auto const differs = [&](sig_t const& h) {
-        return time(sig, h).time_ != time(base_sig, h).time_ ||
-               time(h, sig).time_ != time(h, base_sig).time_;
-      };
-      useful[g] = differs(base_sig) ||
-                  time(sig, sig).time_ != time(base_sig, base_sig).time_ ||
-                  utl::any_of(group_sigs, differs);
+    auto useful = std::vector<bool>{};
+    auto node_of_group = std::vector<std::size_t>{};
+    auto node_sig = std::vector<sig_t const*>{};
+    struct cell {
+      bool operator==(cell const&) const = default;
+      u8_minutes time_{};
+      bool preferred_{false};
+    };
+    auto matrix = std::vector<cell>{};
+    auto n = std::size_t{0U};
+
+    // drop groups that behave exactly like the base station, resolve the
+    // matrix over the remaining ones (node 0 = base)
+    auto const build_matrix = [&]() {
+      useful.assign(group_sigs.size(), false);
+      for (auto g = std::size_t{0U}; g != group_sigs.size(); ++g) {
+        auto const& sig = group_sigs[g];
+        auto const differs = [&](sig_t const& h) {
+          return time(sig, h).time_ != time(base_sig, h).time_ ||
+                 time(h, sig).time_ != time(h, base_sig).time_;
+        };
+        useful[g] = differs(base_sig) ||
+                    time(sig, sig).time_ != time(base_sig, base_sig).time_ ||
+                    utl::any_of(group_sigs, differs);
+      }
+
+      node_of_group.assign(group_sigs.size(), 0U);
+      node_sig.clear();
+      node_sig.push_back(&base_sig);
+      for (auto g = std::size_t{0U}; g != group_sigs.size(); ++g) {
+        if (useful[g]) {
+          node_of_group[g] = node_sig.size();
+          node_sig.push_back(&group_sigs[g]);
+        }
+      }
+      n = node_sig.size();
+      matrix.assign(n * n, cell{});
+      for (auto i = std::size_t{0U}; i != n; ++i) {
+        for (auto j = std::size_t{0U}; j != n; ++j) {
+          auto const resolved = time(*node_sig[i], *node_sig[j]);
+          matrix[i * n + j] = cell{resolved.time_, resolved.preferred_};
+        }
+      }
+    };
+    build_matrix();
+    auto const at = [&](std::size_t const i, std::size_t const j) {
+      return matrix[i * n + j];
+    };
+
+    // majority fold (as for GTFS transfers.txt): at stations WITHOUT an
+    // explicit UMSTEIGB time, the most frequent rule value becomes the
+    // station transfer time - the generic 5 min default is a guess while
+    // the rule values are operator-validated for this station. Groups whose
+    // rules state the folded value collapse into the base station; only
+    // deviating rules keep their splits. (Trossingen: 3480 uniform 3 min
+    // trip pairs -> transfer_time_ = 3, zero virtual locations.)
+    if (!sr.has_station_time_ && n > 1U) {
+      auto hist = std::map<u8_minutes, unsigned>{};
+      auto total = 0U;
+      for (auto i = std::size_t{0U}; i != n; ++i) {
+        for (auto j = std::size_t{0U}; j != n; ++j) {
+          auto const c = at(i, j);
+          if (i != j && c.time_ != default_time && !c.preferred_) {
+            ++hist[c.time_];
+            ++total;
+          }
+        }
+      }
+      if (total != 0U) {
+        auto const majority = std::max_element(
+            begin(hist), end(hist), [](auto const& a, auto const& b) {
+              return a.second < b.second;
+            });
+        if (2U * majority->second >= total) {
+          default_time = majority->first;
+          tt.locations_.transfer_time_[base] = default_time;
+          build_matrix();
+        }
+      }
     }
 
-    // create virtual child locations for useful groups
-    auto virt_locations =
-        std::vector<location_idx_t>(group_sigs.size(), base);
-    auto n_created = 0U;
-    for (auto g = std::size_t{0U}; g != group_sigs.size(); ++g) {
-      if (!useful[g]) {
+    // merge groups that are behaviorally identical: same intra-group time and
+    // identical relations to every behavior class (partition refinement, the
+    // base station is pinned as class 0). Merging is only applied where it is
+    // exact: one value per class pair, and pairs merged into one location must
+    // behave like the location's transfer time (no preferred flag to lose).
+    auto cls = std::vector<unsigned>(n, 1U);
+    cls[0] = 0U;
+    auto n_classes = n == 1U ? std::size_t{1U} : std::size_t{2U};
+    while (n_classes < n) {
+      // refine to fixpoint
+      auto changed = true;
+      while (changed) {
+        changed = false;
+        auto sig_to_class = std::map<std::vector<std::uint64_t>, unsigned>{};
+        auto next = std::vector<unsigned>(n, 0U);
+        for (auto i = std::size_t{1U}; i != n; ++i) {
+          auto key = std::vector<std::uint64_t>{cls[i], at(i, i).time_.count()};
+          auto rel = std::vector<std::uint64_t>{};
+          for (auto j = std::size_t{0U}; j != n; ++j) {
+            if (j != i) {
+              auto const out = at(i, j);
+              auto const in = at(j, i);
+              rel.push_back((std::uint64_t{cls[j]} << 20U) |
+                            (std::uint64_t{out.time_.count()} << 12U) |
+                            (std::uint64_t{out.preferred_} << 11U) |
+                            (std::uint64_t{in.time_.count()} << 1U) |
+                            std::uint64_t{in.preferred_});
+            }
+          }
+          utl::erase_duplicates(rel);
+          key.insert(end(key), begin(rel), end(rel));
+          next[i] = 1U + utl::get_or_create(sig_to_class, key, [&]() {
+            return static_cast<unsigned>(sig_to_class.size());
+          });
+        }
+        changed = next != cls;
+        cls = std::move(next);
+        n_classes = 1U + sig_to_class.size();
+      }
+
+      // verify exactness, split on violation and refine again
+      auto rep = std::vector<std::size_t>(n_classes, 0U);
+      for (auto i = n; i != 0U; --i) {
+        rep[cls[i - 1U]] = i - 1U;
+      }
+      auto violation = false;
+      for (auto i = std::size_t{1U}; i != n && !violation; ++i) {
+        for (auto j = std::size_t{1U}; j != n; ++j) {
+          if (i == j) {
+            continue;
+          }
+          auto const bad =
+              cls[i] == cls[j]
+                  ? at(i, j).time_ != at(i, i).time_ || at(i, j).preferred_
+                  : at(i, j) != at(rep[cls[i]], rep[cls[j]]);
+          if (bad) {
+            cls[j] = static_cast<unsigned>(n_classes++);
+            violation = true;
+            break;
+          }
+        }
+      }
+      if (!violation) {
+        break;
+      }
+    }
+
+    // create one virtual child location per behavior class
+    auto class_locations = std::vector<location_idx_t>(n_classes, base);
+    auto class_rep = std::vector<std::size_t>(n_classes, 0U);
+    for (auto i = std::size_t{1U}; i != n; ++i) {
+      class_rep[cls[i]] = i;
+      if (class_locations[cls[i]] != base) {
         continue;
       }
       auto l = location{tt, base};
       l.id_ = {};  // virtual locations are not lookupable by id
-      ++n_created;
       l.type_ = location_type::kVirt;
       l.parent_ = base;
       auto const child = register_location(tt, l);
       tt.locations_.children_[base].emplace_back(child);
-      tt.locations_.transfer_time_[child] =
-          time(group_sigs[g], group_sigs[g]).time_;
-      virt_locations[g] = child;
+      tt.locations_.transfer_time_[child] = at(i, i).time_;
+      class_locations[cls[i]] = child;
       ++n_virt_locations;
     }
 
-    if (n_created == 0U) {
+    auto virt_locations = std::vector<location_idx_t>(group_sigs.size(), base);
+    for (auto g = std::size_t{0U}; g != group_sigs.size(); ++g) {
+      if (useful[g]) {
+        virt_locations[g] = class_locations[cls[node_of_group[g]]];
+      }
+    }
+
+    if (n_classes <= 1U) {
       continue;
     }
     ++n_stations;
@@ -803,25 +947,18 @@ void build_transfer_groups(stamm& st,
       }
     }
 
-    // emit the pairwise transfer time matrix as directed footpaths
-    auto nodes = std::vector<std::pair<location_idx_t, sig_t const*>>{};
-    nodes.emplace_back(base, &base_sig);
-    for (auto g = std::size_t{0U}; g != group_sigs.size(); ++g) {
-      if (useful[g]) {
-        nodes.emplace_back(virt_locations[g], &group_sigs[g]);
-      }
-    }
-    for (auto const& [from_l, from_sig] : nodes) {
-      for (auto const& [to_l, to_sig] : nodes) {
-        if (from_l == to_l) {
+    // emit the pairwise transfer time matrix over behavior classes
+    for (auto a = std::size_t{0U}; a != n_classes; ++a) {
+      for (auto b = std::size_t{0U}; b != n_classes; ++b) {
+        if (a == b) {
           continue;
         }
-        auto const resolved = time(*from_sig, *to_sig);
-        tt.locations_.transfer_rule_fps_[from_l].emplace_back(
-            footpath{to_l, resolved.time_});
-        if (resolved.preferred_) {  // guaranteed transfer ("!")
-          tt.locations_.preferred_transfers_[from_l].emplace_back(
-              preferred_transfer{.to_ = to_l});
+        auto const c = at(class_rep[a], class_rep[b]);
+        tt.locations_.transfer_rule_fps_[class_locations[a]].emplace_back(
+            footpath{class_locations[b], c.time_});
+        if (c.preferred_) {  // guaranteed transfer ("!")
+          tt.locations_.preferred_transfers_[class_locations[a]].emplace_back(
+              preferred_transfer{.to_ = class_locations[b]});
         }
         ++n_edges;
       }

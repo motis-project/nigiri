@@ -51,10 +51,15 @@ stamm::stamm(config const& c,
   attributes_ = parse_attributes(c, tt, files.at(ATTRIBUTES).data());
   directions_ = parse_directions(c, tt, files.at(DIRECTIONS).data());
   date_range_ = parse_interval(files.at(BASIC_DATA).data());
-  tracks_ = parse_track_rules(c, *this, tt, files.at(TRACKS).data());
   parse_transfer_time_rules(transfer_times_, *this, transfer_file_content(1U),
                             transfer_file_content(2U),
                             transfer_file_content(3U));
+  if (!has_transfer_rules()) {
+    // with transfer rules, stops resolve to transfer group locations and
+    // the track substitution is unused - parsing the track rules would only
+    // create unreferenced track locations (track names stay strings)
+    tracks_ = parse_track_rules(c, *this, tt, files.at(TRACKS).data());
+  }
 }
 
 void stamm::scan_transfer_events(config const& c,

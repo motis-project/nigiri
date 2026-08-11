@@ -248,6 +248,35 @@ void apply_rules(timetable& tt,
           l.parent_ = base;
           l.transfer_time_ = tt.locations_.transfer_time_[base];
 
+          // a rule matching this group with BOTH sides (e.g. same-route
+          // rule R5->R5: every R5 trip matches from and to) applies to all
+          // transfers within the group - the pair emission below skips
+          // same-location pairs, so the value has to become the group's
+          // transfer time (from/to side refs of one rule are adjacent in
+          // the sorted signature)
+          auto best_self = std::optional<candidate>{};
+          for (auto j = 0U; j + 1U < sig.size(); ++j) {
+            auto const side = to_idx(sig[j]);
+            if ((side & 1U) == 0U && to_idx(sig[j + 1U]) == side + 1U) {
+              auto const rule_idx = rule_idx_t{side >> 1U};
+              auto const& r = rules[rule_idx];
+              auto const c = candidate{
+                  .specificity_ = r.get_specificity(),
+                  .n_exact_stops_ = static_cast<std::uint8_t>(
+                      rule_applies(tt, r.from_stop_, base).value_or(false) +
+                      rule_applies(tt, r.to_stop_, base).value_or(false)),
+                  .rule_idx_ = to_idx(rule_idx)};
+              if (!best_self.has_value() || c > *best_self) {
+                best_self = c;
+              }
+            }
+          }
+          if (best_self.has_value()) {
+            auto const& r = rules[rule_idx_t{best_self->rule_idx_}];
+            l.transfer_time_ =
+                r.forbidden_ ? duration_t{footpath::kMaxDuration} : r.time_;
+          }
+
           auto const v = virt_location_idx_t{register_location(tt, l)};
           tt.locations_.children_[base].emplace_back(v);
 
@@ -356,6 +385,107 @@ void apply_rules(timetable& tt,
       }
     }
   }
+
+}
+
+// A route-/trip-qualified rule whose value equals the default of its stop
+// pair does not require any trip splitting: the plain stop pair value
+// realizes it for everyone. The default is the value given by an
+// unqualified row for the pair or, if there is none, the most frequent
+// value among the pair's qualified rules (ties: first listed), which is
+// then materialized as the pair's transfer time / footpath. Only rules
+// deviating from their pair's default are kept, so virtual locations are
+// only created for the exceptions. (Feeds like us-ny/MetroNorth state one
+// uniform timed transfer per trip pair: 13k rows fold to zero splits.)
+vector_map<rule_idx_t, rule> drop_pair_default_rules(
+    timetable& tt, vector_map<rule_idx_t, rule> const& rules) {
+  using stop_pair = pair<location_idx_t, location_idx_t>;
+
+  struct value {
+    bool operator==(value const&) const = default;
+    duration_t time_{0};
+    bool forbidden_{false};
+  };
+  auto const value_of = [](rule const& r) {
+    return value{r.time_, r.forbidden_};
+  };
+  struct counted_value {
+    value value_;
+    unsigned n_{0U};
+  };
+
+  auto qualified_values = hash_map<stop_pair, std::vector<counted_value>>{};
+  auto explicit_default = hash_map<stop_pair, value>{};
+  auto exemplar = hash_map<stop_pair, rule_idx_t>{};
+  for (auto i = rule_idx_t{0U}; i != rules.size(); ++i) {
+    auto const& r = rules[i];
+    auto const p = stop_pair{r.from_stop_, r.to_stop_};
+    if (r.get_specificity() == specificity::kStopsOnly) {
+      explicit_default[p] = value_of(r);  // duplicate rows: last one wins
+    } else {
+      exemplar.emplace(p, i);
+      auto& values = qualified_values[p];
+      auto const it = utl::find_if(values, [&](counted_value const& c) {
+        return c.value_ == value_of(r);
+      });
+      if (it == end(values)) {
+        values.push_back({value_of(r), 1U});
+      } else {
+        ++it->n_;
+      }
+    }
+  }
+
+  auto pair_default = hash_map<stop_pair, value>{};
+  auto synthetic = std::vector<rule>{};
+  for (auto const& [p, values] : qualified_values) {
+    if (auto const it = explicit_default.find(p); it != end(explicit_default)) {
+      pair_default.emplace(p, it->second);
+      continue;
+    }
+
+    auto const majority = std::max_element(
+        begin(values), end(values),
+        [](counted_value const& a, counted_value const& b) {
+          return a.n_ < b.n_;
+        });
+    if (majority->value_.forbidden_) {
+      continue;  // banning everyone would restrict unnamed trips
+    }
+    pair_default.emplace(p, majority->value_);
+
+    if (p.first == p.second) {
+      tt.locations_.transfer_time_[p.first] = majority->value_.time_;
+    } else {
+      tt.locations_.preprocessing_footpaths_out_[p.first].emplace_back(
+          p.second, majority->value_.time_);
+      tt.locations_.preprocessing_footpaths_in_[p.second].emplace_back(
+          p.first, majority->value_.time_);
+      // authoritative unqualified rule -> edge survives street routing
+      auto r = rules[exemplar.at(p)];
+      r.from_route_ = route_id_idx_t::invalid();
+      r.to_route_ = route_id_idx_t::invalid();
+      r.from_trip_ = gtfs_trip_idx_t::invalid();
+      r.to_trip_ = gtfs_trip_idx_t::invalid();
+      r.forbidden_ = false;
+      r.time_ = majority->value_.time_;
+      synthetic.push_back(r);
+    }
+  }
+
+  auto kept = vector_map<rule_idx_t, rule>{};
+  for (auto const& r : rules) {
+    auto const it = pair_default.find(stop_pair{r.from_stop_, r.to_stop_});
+    if (r.get_specificity() != specificity::kStopsOnly &&
+        it != end(pair_default) && value_of(r) == it->second) {
+      continue;  // realized by the pair default
+    }
+    kept.emplace_back(r);
+  }
+  for (auto const& r : synthetic) {
+    kept.emplace_back(r);
+  }
+  return kept;
 }
 
 void read_transfers(timetable& tt,
@@ -463,6 +593,9 @@ void read_transfers(timetable& tt,
           }
         });
 
+  if (!rules.empty()) {
+    rules = drop_pair_default_rules(tt, rules);
+  }
   if (!rules.empty()) {
     apply_rules(tt, rules, trips, routes.size());
   }
