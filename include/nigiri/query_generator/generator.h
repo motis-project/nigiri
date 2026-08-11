@@ -85,6 +85,8 @@ private:
 
   // Distributions
   std::uniform_int_distribution<location_idx_t::value_t> location_d_;
+  std::vector<location_idx_t> non_hub_;
+  std::uniform_int_distribution<std::uint32_t> non_hub_d_;
   std::uniform_int_distribution<size_t> locs_in_bbox_d_;
   std::uniform_int_distribution<transport_idx_t::value_t> transport_d_;
   std::uniform_int_distribution<day_idx_t::value_t> day_d_;

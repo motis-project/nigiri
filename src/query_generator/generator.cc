@@ -209,7 +209,21 @@ location_idx_t generator::random_location() {
     log(log_lvl::info, "query_generator.random_location",
         "no locations in bounding box: using all locations instead");
   }
-  return location_idx_t{location_d_(rng_)};
+  // hubs are aggregation nodes, not places: sample by rank among non-hub
+  // locations. rank order and count are independent of interleaved hub
+  // locations, so a fixed seed yields the same physical query sequence
+  // on timetables that only differ in hubs.
+  if (non_hub_.empty()) {
+    for (auto l = location_idx_t{0U}; l != tt_.n_locations(); ++l) {
+      if (tt_.locations_.types_[l] != location_type::kHub) {
+        non_hub_.push_back(l);
+      }
+    }
+    non_hub_d_ = std::uniform_int_distribution<std::uint32_t>{
+        static_cast<std::uint32_t>(special_station::kSpecialStationsSize),
+        static_cast<std::uint32_t>(non_hub_.size() - 1U)};
+  }
+  return non_hub_[non_hub_d_(rng_)];
 }
 
 std::optional<location_idx_t> generator::random_location(
