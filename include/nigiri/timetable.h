@@ -129,6 +129,14 @@ struct timetable {
     // Matching includes children (e.g. a station pair covers its platforms).
     mutable_fws_multimap<location_idx_t, preferred_transfer>
         preferred_transfers_;
+
+    // Stations whose virtual transfer groups have their default-valued
+    // same-station edges elided; they are derived at query time from
+    // transfer_time_[station]. "labeled" = no elevated exceptions
+    // (aggregated group expansion), "expanded" = has elevated exceptions
+    // (per-source expansion skipping explicit exception edges).
+    bitvec virt_group_labeled_;
+    bitvec virt_group_expanded_;
   } locations_;
 
   struct transport {

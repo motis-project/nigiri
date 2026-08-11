@@ -394,24 +394,48 @@ void add_missing_equivalence_footpaths(timetable& tt) {
 }
 
 void add_links_to_and_between_children(timetable& tt) {
+  // same-station pairs at stations with elided transfer groups are implicit
+  // (virt_group_labeled_/expanded_): do not materialize propagated copies
+  auto const implicit_pair = [&](location_idx_t const a,
+                                 location_idx_t const b) {
+    auto const pa = tt.locations_.parents_[a] == location_idx_t::invalid()
+                        ? a
+                        : tt.locations_.parents_[a];
+    auto const pb = tt.locations_.parents_[b] == location_idx_t::invalid()
+                        ? b
+                        : tt.locations_.parents_[b];
+    if (pa != pb) {
+      return false;
+    }
+    auto const i = to_idx(pa);
+    auto const test = [&](bitvec const& bv) {
+      return i < bv.size() && bv.test(i);
+    };
+    return test(tt.locations_.virt_group_labeled_) ||
+           test(tt.locations_.virt_group_expanded_);
+  };
+
   auto fp_out = mutable_fws_multimap<location_idx_t, footpath>{};
   for (auto l = location_idx_t{0U};
        l != tt.locations_.preprocessing_footpaths_out_.size(); ++l) {
     for (auto const& fp : tt.locations_.preprocessing_footpaths_out_[l]) {
       for (auto const& neighbor_child : tt.locations_.children_[fp.target()]) {
-        if (is_generated(tt.locations_.types_[neighbor_child])) {
+        if (is_generated(tt.locations_.types_[neighbor_child]) &&
+            !implicit_pair(l, neighbor_child)) {
           fp_out[l].emplace_back(footpath{neighbor_child, fp.duration()});
         }
 
         for (auto const& child : tt.locations_.children_[l]) {
-          if (is_generated(tt.locations_.types_[child])) {
+          if (is_generated(tt.locations_.types_[child]) &&
+              !implicit_pair(child, neighbor_child)) {
             fp_out[child].emplace_back(footpath{neighbor_child, fp.duration()});
           }
         }
       }
 
       for (auto const& child : tt.locations_.children_[l]) {
-        if (is_generated(tt.locations_.types_[child])) {
+        if (is_generated(tt.locations_.types_[child]) &&
+            !implicit_pair(child, fp.target())) {
           fp_out[child].emplace_back(footpath{fp.target(), fp.duration()});
         }
       }
@@ -521,6 +545,8 @@ void apply_transfer_rules(timetable& tt) {
 }
 
 void build_footpaths(timetable& tt, finalize_options const opt) {
+  tt.locations_.virt_group_labeled_.resize(tt.n_locations());
+  tt.locations_.virt_group_expanded_.resize(tt.n_locations());
   add_missing_equivalence_footpaths(tt);
   add_links_to_and_between_children(tt);
 

@@ -137,21 +137,67 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   } else {
     trace_reconstruct("  direct start mode\n");
 
-    for (auto const& fp : footpaths) {
+    auto const try_start_fp =
+        [&](footpath const fp) -> std::optional<journey::leg> {
       auto const fp_duration = adjusted_transfer_time(q.transfer_time_settings_,
                                                       fp.duration().count());
       if (is_journey_start(tt, q, fp.target()) &&
           fp_target_time != kInvalidDelta<SearchDir> &&
           start_matches(j_start_time + dir(fp_duration), fp_target_time)) {
-        trace_rc_fp_start_found;
         return journey::leg{SearchDir,
                             fp.target(),
                             leg_start_location,
                             j.start_time_,
                             delta_to_unix(base, fp_target_time),
                             footpath{fp.target(), duration_t{fp_duration}}};
+      }
+      return std::nullopt;
+    };
+    for (auto const& fp : footpaths) {
+      if (auto leg = try_start_fp(fp); leg.has_value()) {
+        trace_rc_fp_start_found;
+        return leg;
       } else {
         trace_rc_fp_start_no_match;
+      }
+    }
+    {  // implicit transfer-group start candidates
+      auto const& lcs = tt.locations_;
+      auto const grp = lcs.types_[leg_start_location] == location_type::kVirt
+                           ? lcs.parents_[leg_start_location]
+                           : leg_start_location;
+      auto const grp_i = to_idx(grp);
+      auto const flagged = [&](bitvec const& bv) {
+        return grp_i < bv.size() && bv.test(grp_i);
+      };
+      if (flagged(lcs.virt_group_labeled_) ||
+          flagged(lcs.virt_group_expanded_)) {
+        auto const has_explicit = [&](location_idx_t const m) {
+          for (auto const& fp : footpaths) {
+            if (fp.target() == m) {
+              return true;
+            }
+          }
+          return false;
+        };
+        auto const dur = lcs.transfer_time_[grp];
+        auto const try_member =
+            [&](location_idx_t const m) -> std::optional<journey::leg> {
+          if (m == leg_start_location || has_explicit(m)) {
+            return std::nullopt;
+          }
+          return try_start_fp(footpath{m, dur});
+        };
+        if (auto leg = try_member(grp); leg.has_value()) {
+          return leg;
+        }
+        for (auto const c : lcs.children_[grp]) {
+          if (lcs.types_[c] == location_type::kVirt) {
+            if (auto leg = try_member(c); leg.has_value()) {
+              return leg;
+            }
+          }
+        }
       }
     }
   }
@@ -764,6 +810,49 @@ void reconstruct_journey_with_vias(timetable const& tt,
         auto fp_legs = check_fp(k, l, curr_time, fp, true, false);
         if (fp_legs.has_value()) {
           return std::move(*fp_legs);
+        }
+      }
+    }
+
+    {  // implicit transfer-group candidates: default-valued same-station
+       // edges are derived, not stored (skip pairs with an explicit
+       // exception edge)
+      auto const& lcs = tt.locations_;
+      auto const grp =
+          lcs.types_[l] == location_type::kVirt ? lcs.parents_[l] : l;
+      auto const grp_i = to_idx(grp);
+      auto const flagged = [&](bitvec const& bv) {
+        return grp_i < bv.size() && bv.test(grp_i);
+      };
+      if (flagged(lcs.virt_group_labeled_) ||
+          flagged(lcs.virt_group_expanded_)) {
+        auto const& fps = kFwd ? lcs.footpaths_in_[q.prf_idx_][l]
+                               : lcs.footpaths_out_[q.prf_idx_][l];
+        auto const has_explicit = [&](location_idx_t const m) {
+          for (auto const& fp : fps) {
+            if (fp.target() == m) {
+              return true;
+            }
+          }
+          return false;
+        };
+        auto const dur = lcs.transfer_time_[grp];
+        auto const try_member = [&](location_idx_t const m)
+            -> std::optional<std::pair<journey::leg, journey::leg>> {
+          if (m == l || has_explicit(m)) {
+            return std::nullopt;
+          }
+          return check_fp(k, l, curr_time, footpath{m, dur}, true, false);
+        };
+        if (auto fp_legs = try_member(grp); fp_legs.has_value()) {
+          return std::move(*fp_legs);
+        }
+        for (auto const c : lcs.children_[grp]) {
+          if (lcs.types_[c] == location_type::kVirt) {
+            if (auto fp_legs = try_member(c); fp_legs.has_value()) {
+              return std::move(*fp_legs);
+            }
+          }
         }
       }
     }

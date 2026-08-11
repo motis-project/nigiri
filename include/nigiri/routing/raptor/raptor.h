@@ -742,6 +742,63 @@ private:
     });
   }
 
+  // per-station scratch for aggregated group expansion: best + second-best
+  // source time per via state (so a member never receives its own
+  // contribution - an implicit self-transfer at the group default could
+  // undercut the member's own transfer time)
+  struct group_agg_entry {
+    int best_;
+    std::uint32_t best_src_;
+    int second_;
+  };
+  hash_map<location_idx_t, std::array<group_agg_entry, Vias + 1>> group_agg_;
+
+  // relax one implicit transfer-group edge (default-valued same-station
+  // edge, not materialized). base_time already contains the source-side via
+  // stay. Mirrors the explicit footpath relax logic below.
+  void relax_group_target(unsigned const k,
+                          unsigned const start_v,
+                          int const base_time,
+                          int const dur,
+                          std::uint32_t const target) {
+    ++stats_.n_footpaths_visited_;
+    auto const target_is_via = start_v != Vias && is_via_[start_v][target];
+    auto const target_v = target_is_via ? start_v + 1U : start_v;
+    auto const stay =
+        target_is_via
+            ? static_cast<int>(via_stops_[start_v].stay_.count())
+            : 0;
+    auto const fp_target_time = clamp(
+        base_time +
+        dir(adjusted_transfer_time(transfer_time_settings_, dur) + stay));
+
+    if (bounds_last_k_ == 0U &&
+        is_better(fp_target_time, best_[target][target_v])) {
+      round_times_[k][target][target_v] =
+          get_best(fp_target_time, round_times_[k][target][target_v]);
+    }
+
+    if (is_better(fp_target_time, best_[target][target_v]) &&
+        is_better_loose(fp_target_time, time_at_dest_[k])) {
+      if (!lb_reachable(target) ||
+          !is_better_loose(fp_target_time + dir(get_lb(target)),
+                           time_at_dest_[k])) {
+        ++stats_.fp_update_prevented_by_lower_bound_;
+        return;
+      }
+      if (!within_bounds(k, target, fp_target_time, target_v)) {
+        return;
+      }
+      ++stats_.n_earliest_arrival_updated_by_footpath_;
+      round_times_[k][target][target_v] = fp_target_time;
+      best_[target][target_v] = fp_target_time;
+      state_.station_mark_.set(target, true);
+      if (target_v == Vias && is_dest_[target]) {
+        update_time_at_dest(k, fp_target_time);
+      }
+    }
+  }
+
   void update_footpaths(unsigned const k) {
     state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
       auto const l_idx = location_idx_t{i};
@@ -841,7 +898,113 @@ private:
           }
         }
       }
+
+      // implicit transfer-group edges: default-valued same-station edges
+      // are derived, not stored. labeled stations (no elevated
+      // exceptions): aggregate the best source time, expand once after the
+      // scan. expanded stations: per-source expansion, skipping targets
+      // that have an explicit (exception) edge.
+      auto const grp = tt_.locations_.types_[l_idx] == location_type::kVirt
+                           ? tt_.locations_.parents_[l_idx]
+                           : l_idx;
+      auto const grp_i = to_idx(grp);
+      auto const flagged = [&](bitvec const& bv) {
+        return grp_i < bv.size() && bv.test(grp_i);
+      };
+      auto const labeled = flagged(tt_.locations_.virt_group_labeled_);
+      if (labeled || flagged(tt_.locations_.virt_group_expanded_)) {
+        auto const dur =
+            static_cast<int>(tt_.locations_.transfer_time_[grp].count());
+        for (auto v = 0U; v != Vias + 1; ++v) {
+          auto const tmp_time = tmp_[i][v];
+          if (tmp_time == kInvalid) {
+            continue;
+          }
+          auto const start_is_via =
+              v != Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
+          auto const start_v = start_is_via ? v + 1U : v;
+          auto const base_time =
+              static_cast<int>(tmp_time) +
+              (start_is_via
+                   ? dir(static_cast<int>(via_stops_[v].stay_.count()))
+                   : 0);
+          if (labeled) {
+            constexpr auto const kUnreached =
+                kFwd ? std::numeric_limits<int>::max()
+                     : std::numeric_limits<int>::min();
+            auto it = group_agg_.find(grp);
+            if (it == end(group_agg_)) {
+              auto a = std::array<group_agg_entry, Vias + 1>{};
+              a.fill(group_agg_entry{kUnreached, 0U, kUnreached});
+              it = group_agg_.emplace(grp, a).first;
+            }
+            auto& agg = it->second[start_v];
+            if (kFwd ? base_time < agg.best_ : base_time > agg.best_) {
+              if (agg.best_src_ != i) {
+                agg.second_ = agg.best_;
+              }
+              agg.best_ = base_time;
+              agg.best_src_ = static_cast<std::uint32_t>(i);
+            } else if (agg.best_src_ != i &&
+                       (kFwd ? base_time < agg.second_
+                             : base_time > agg.second_)) {
+              agg.second_ = base_time;
+            }
+          } else {
+            // note: footpaths are sorted by duration, not target ->
+            // membership scan (exception lists are tiny)
+            auto const has_explicit = [&](location_idx_t const m) {
+              for (auto const& fp : fps) {
+                if (fp.target() == m) {
+                  return true;
+                }
+              }
+              return false;
+            };
+            auto const relax_to = [&](location_idx_t const m) {
+              if (to_idx(m) == i || has_explicit(m)) {
+                return;  // explicit exception edge wins
+              }
+              relax_group_target(k, start_v, base_time, dur, to_idx(m));
+            };
+            relax_to(grp);
+            for (auto const c : tt_.locations_.children_[grp]) {
+              if (tt_.locations_.types_[c] == location_type::kVirt) {
+                relax_to(c);
+              }
+            }
+          }
+        }
+      }
     });
+
+    // flush aggregated expansions for labeled stations
+    for (auto const& [grp, agg] : group_agg_) {
+      constexpr auto const kUnreached = kFwd
+                                            ? std::numeric_limits<int>::max()
+                                            : std::numeric_limits<int>::min();
+      auto const dur =
+          static_cast<int>(tt_.locations_.transfer_time_[grp].count());
+      for (auto start_v = 0U; start_v != Vias + 1; ++start_v) {
+        auto const& a = agg[start_v];
+        if (a.best_ == kUnreached) {
+          continue;
+        }
+        auto const relax_member = [&](std::uint32_t const m) {
+          auto const bt = a.best_src_ == m ? a.second_ : a.best_;
+          if (bt != kUnreached) {
+            relax_group_target(k, start_v, bt, dur, m);
+          }
+        };
+        relax_member(to_idx(grp));
+        for (auto const c : tt_.locations_.children_[grp]) {
+          if (tt_.locations_.types_[c] == location_type::kVirt) {
+            relax_member(to_idx(c));
+          }
+        }
+      }
+    }
+    group_agg_.clear();
   }
 
   void update_td_offsets(unsigned const k) {
