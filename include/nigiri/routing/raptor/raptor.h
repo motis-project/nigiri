@@ -744,31 +744,24 @@ private:
     });
   }
 
-  // implicit transfer-group expansion via two directed "hubs" per group
-  // station (door bits classified at import, see timetable.h):
-  //   bcast_: fed by members whose matrix row is default-safe
-  //           (virt_group_out_ in fwd, virt_group_in_ in bwd),
-  //           expanded to ALL members.
-  //   coll_:  fed by the remaining members with a default-safe column,
-  //           expanded only to members whose column is default-safe
-  //           (virt_group_in_ in fwd, virt_group_out_ in bwd).
-  // all implicit edges share the station default, so min_src(arr) is
-  // hoisted per hub and the member set expanded once per station instead
-  // of once per marked member. top-2 (best + second-best from a different
-  // source) covers the one exclusion that always applies: a member must
-  // never receive its own contribution.
+  // implicit transfer-group expansion (door bits + hubs classified at
+  // import, see timetable.h): each marked group member feeds exactly one
+  // aggregation node -- its station (broadcast to ALL members) if its
+  // real-direction row is default-safe, else its profile hub (kHub
+  // location; broadcast to all members except hub_excl_). all implicit
+  // edges share the station default, so min_src(arr) is hoisted per node
+  // and the member set expanded once per node instead of once per marked
+  // member. top-2 (best + second-best from a different source) covers
+  // the one exclusion that always applies: a member must never receive
+  // its own contribution.
   struct group_agg_entry {
     int best_;
     std::uint32_t best_src_;
     int second_;
   };
-  struct station_agg {
-    std::array<group_agg_entry, Vias + 1> bcast_;
-    std::array<group_agg_entry, Vias + 1> coll_;
-  };
   static constexpr auto const kUnreachedGroup =
       kFwd ? std::numeric_limits<int>::max() : std::numeric_limits<int>::min();
-  hash_map<location_idx_t, station_agg> group_agg_;
+  hash_map<location_idx_t, std::array<group_agg_entry, Vias + 1>> group_agg_;
 
   // relax one implicit transfer-group edge (default-valued same-station
   // edge, not materialized). base_time already contains the source-side via
@@ -917,26 +910,28 @@ private:
       }
 
       // implicit transfer-group edges: default-valued same-station edges
-      // are derived, not stored. a member with a default-safe row feeds
-      // the broadcast hub, one with only a default-safe column feeds the
-      // collect hub; both-zero members feed nothing (their rows are
-      // materialized). expansion happens once per round in the flush.
+      // are derived, not stored. a member with a default-safe row (real
+      // direction) feeds its station node (expands to all members); one
+      // with elevated cells feeds its profile hub (expands to all but
+      // the exclusions). expansion happens once per round in the flush.
       auto const test = [](bitvec const& bv, std::uint64_t const x) {
         return x < bv.size() && bv.test(x);
       };
-      auto const may_bcast = test(
-          kFwd ? tt_.locations_.virt_group_out_ : tt_.locations_.virt_group_in_,
-          i);
-      auto const may_coll =
-          !may_bcast &&
-          test(kFwd ? tt_.locations_.virt_group_in_
-                    : tt_.locations_.virt_group_out_,
-               i);
-      if (may_bcast || may_coll) {
-        auto const grp = tt_.locations_.types_[l_idx] == location_type::kVirt
-                             ? tt_.locations_.parents_[l_idx]
-                             : l_idx;
-
+      auto agg_node = location_idx_t::invalid();
+      if (test(kFwd ? tt_.locations_.virt_group_out_
+                    : tt_.locations_.virt_group_in_,
+               i)) {
+        agg_node = tt_.locations_.types_[l_idx] == location_type::kVirt
+                       ? tt_.locations_.parents_[l_idx]
+                       : l_idx;
+      } else {
+        auto const& hubs =
+            kFwd ? tt_.locations_.fwd_hub_ : tt_.locations_.bwd_hub_;
+        if (i < hubs.size()) {
+          agg_node = hubs[l_idx];
+        }
+      }
+      if (agg_node != location_idx_t::invalid()) {
         auto srcs = std::array<std::pair<unsigned, int>, Vias + 1>{};
         auto n_srcs = 0U;
         for (auto v = 0U; v != Vias + 1; ++v) {
@@ -956,16 +951,14 @@ private:
         }
 
         if (n_srcs != 0U) {
-          auto it = group_agg_.find(grp);
+          auto it = group_agg_.find(agg_node);
           if (it == end(group_agg_)) {
-            auto a = station_agg{};
-            a.bcast_.fill(group_agg_entry{kUnreachedGroup, 0U, kUnreachedGroup});
-            a.coll_.fill(group_agg_entry{kUnreachedGroup, 0U, kUnreachedGroup});
-            it = group_agg_.emplace(grp, a).first;
+            auto a = std::array<group_agg_entry, Vias + 1>{};
+            a.fill(group_agg_entry{kUnreachedGroup, 0U, kUnreachedGroup});
+            it = group_agg_.emplace(agg_node, a).first;
           }
-          auto& slots = may_bcast ? it->second.bcast_ : it->second.coll_;
           for (auto x = 0U; x != n_srcs; ++x) {
-            auto& agg = slots[srcs[x].first];
+            auto& agg = it->second[srcs[x].first];
             auto const base_time = srcs[x].second;
             if (kFwd ? base_time < agg.best_ : base_time > agg.best_) {
               if (agg.best_src_ != i) {
@@ -983,42 +976,53 @@ private:
       }
     });
 
-    // flush: one member expansion per hub per station per round. the
-    // broadcast hub relaxes every member, the collect hub only members
-    // with a default-safe column. no per-pair exclusions -- non-derivable
-    // cells are materialized; self via the best/second distinction.
-    for (auto const& [grp, agg] : group_agg_) {
+    // flush: one member expansion per aggregation node per round. a
+    // station node relaxes every member; a hub node relaxes every member
+    // except its exclusion list (members and exclusions are both visited
+    // ascending: base < all children -> one parallel sweep). no other
+    // per-pair logic -- non-derivable cells are materialized; self via
+    // the best/second distinction.
+    for (auto const& [node, slots] : group_agg_) {
+      auto const is_hub = tt_.locations_.types_[node] == location_type::kHub;
+      auto const grp = is_hub ? tt_.locations_.parents_[node] : node;
       auto const dur =
-          static_cast<int>(tt_.locations_.transfer_time_[grp].count());
-      auto const& collect_ok =
-          kFwd ? tt_.locations_.virt_group_in_ : tt_.locations_.virt_group_out_;
-      auto const for_each_member = [&](auto&& fn) {
-        fn(to_idx(grp));
-        for (auto const c : tt_.locations_.children_[grp]) {
-          if (tt_.locations_.types_[c] == location_type::kVirt) {
-            fn(to_idx(c));
-          }
-        }
-      };
+          static_cast<int>(tt_.locations_.transfer_time_[node].count());
       for (auto start_v = 0U; start_v != Vias + 1; ++start_v) {
-        auto const relax_from = [&](group_agg_entry const& a,
-                                    std::uint32_t const m) {
+        auto const& a = slots[start_v];
+        if (a.best_ == kUnreachedGroup) {
+          continue;
+        }
+        auto const relax_member = [&](std::uint32_t const m) {
           auto const bt = a.best_src_ == m ? a.second_ : a.best_;
           if (bt != kUnreachedGroup) {
             relax_group_target(k, start_v, bt, dur, m);
           }
         };
-        auto const& b = agg.bcast_[start_v];
-        if (b.best_ != kUnreachedGroup) {
-          for_each_member([&](std::uint32_t const m) { relax_from(b, m); });
-        }
-        auto const& c = agg.coll_[start_v];
-        if (c.best_ != kUnreachedGroup) {
-          for_each_member([&](std::uint32_t const m) {
-            if (m < collect_ok.size() && collect_ok.test(m)) {
-              relax_from(c, m);
+        if (is_hub) {
+          auto const excl = tt_.locations_.hub_excl_[node];
+          auto ex = excl.begin();
+          auto const relax_unless_excluded = [&](location_idx_t const m) {
+            while (ex != excl.end() && *ex < m) {
+              ++ex;
             }
-          });
+            if (ex != excl.end() && *ex == m) {
+              return;
+            }
+            relax_member(to_idx(m));
+          };
+          relax_unless_excluded(grp);
+          for (auto const c : tt_.locations_.children_[grp]) {
+            if (tt_.locations_.types_[c] == location_type::kVirt) {
+              relax_unless_excluded(c);
+            }
+          }
+        } else {
+          relax_member(to_idx(grp));
+          for (auto const c : tt_.locations_.children_[grp]) {
+            if (tt_.locations_.types_[c] == location_type::kVirt) {
+              relax_member(to_idx(c));
+            }
+          }
         }
       }
     }

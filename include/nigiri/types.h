@@ -439,11 +439,16 @@ enum class location_type : std::uint8_t {
            // parent. No manual connection in routing initialization or
            // additional links between parent<->child necessary.
   kStation,
-  kVirt  // virtual location generated from transfer time rules (HRD
-         // UMSTEIGV/UMSTEIGL/UMSTEIGZ, GTFS route-/trip-qualified
-         // transfers.txt rules), no separate coordinate from parent.
-         // Same-station transfer times are given by
-         // locations::transfer_rule_fps_.
+  kVirt,  // virtual location generated from transfer time rules (HRD
+          // UMSTEIGV/UMSTEIGL/UMSTEIGZ, GTFS route-/trip-qualified
+          // transfers.txt rules), no separate coordinate from parent.
+          // Same-station transfer times are given by
+          // locations::transfer_rule_fps_.
+  kHub  // implicit transfer-group hub: aggregation node for derived
+        // default-valued same-station transfers of members with elevated
+        // exception cells. Not a stop: carries no trips, no footpaths;
+        // parent = station, transfer_time_ = hub time,
+        // locations::hub_excl_ = members not reachable through it.
 };
 
 enum class event_type { kArr, kDep };
