@@ -366,21 +366,60 @@ void apply_rules(timetable& tt,
     }
   }
 
-  // Write most specific transfers.
-  for (auto const& [pair, c] : most_specific) {
+  // Default-valued cells between members of a transfer group (base + its
+  // virtual locations) that the group's hubs derive at query time are
+  // elided (one-sided rule, mirrors the HRDF emission; build_hubs
+  // re-derives the same classification from the surviving cells at
+  // finalize): the broadcast hub carries (x -> *) for quiet row-clean x,
+  // the collect hub (x -> y) for quiet col-clean x and col-clean y. a
+  // member is unclean if a materialized member cell above the group
+  // default sits in its row/column, loud (never gathers) if its own
+  // transfer time exceeds the default. deviating cells always stay
+  // materialized and win the min against the hub-derived default.
+  auto row_unclean = hash_set<location_idx_t>{};
+  auto col_unclean = hash_set<location_idx_t>{};
+  for (auto const& [xy, c] : most_specific) {
+    if (base_of(xy.first) != base_of(xy.second)) {
+      continue;  // not a member pair of one transfer group
+    }
     auto const& r = rules[rule_idx_t{c.rule_idx_}];
-    tt.locations_.transfer_rule_fps_[pair.first].emplace_back(
-        footpath{pair.second, r.forbidden_ ? footpath::kMaxDuration : r.time_});
+    auto const time = r.forbidden_ ? footpath::kMaxDuration : r.time_;
+    if (time > tt.locations_.transfer_time_[base_of(xy.first)]) {
+      row_unclean.insert(xy.first);
+      col_unclean.insert(xy.second);
+    }
+  }
+  auto const derivable = [&](location_idx_t const x, location_idx_t const y,
+                             location_idx_t const g) {
+    auto const quiet =
+        x == g ||
+        tt.locations_.transfer_time_[x] <= tt.locations_.transfer_time_[g];
+    return quiet && (!row_unclean.contains(x) ||
+                     (!col_unclean.contains(x) && !col_unclean.contains(y)));
+  };
+
+  // Write most specific transfers.
+  for (auto const& [xy, c] : most_specific) {
+    auto const& r = rules[rule_idx_t{c.rule_idx_}];
+    auto const time = r.forbidden_ ? footpath::kMaxDuration : r.time_;
+    auto const g = base_of(xy.first);
+    if (g == base_of(xy.second) && time == tt.locations_.transfer_time_[g] &&
+        derivable(xy.first, xy.second, g)) {
+      continue;  // derived through the group's broadcast/collect hub
+    }
+    tt.locations_.transfer_rule_fps_[xy.first].emplace_back(
+        footpath{xy.second, time});
   }
 
   // Apply base transfer time between all virtual locations.
   for (auto virt = first_virt; virt != tt.n_locations(); ++virt) {
     auto const base = tt.locations_.parents_[virt];
+    auto const d = tt.locations_.transfer_time_[base];
     auto const add = [&](location_idx_t const x, location_idx_t const y) {
-      if (!most_specific.contains({x, y})) {
-        tt.locations_.transfer_rule_fps_[x].emplace_back(
-            footpath{y, tt.locations_.transfer_time_[base]});
+      if (most_specific.contains({x, y}) || derivable(x, y, base)) {
+        return;
       }
+      tt.locations_.transfer_rule_fps_[x].emplace_back(footpath{y, d});
     };
 
     add(virt, base);

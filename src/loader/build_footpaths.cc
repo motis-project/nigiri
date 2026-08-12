@@ -592,6 +592,15 @@ void build_hubs(timetable& tt, profile_idx_t const prf) {
     auto const same_station = [&](location_idx_t const t) {
       return t == l || tt.locations_.parents_[t] == l;
     };
+    // cleanliness only counts cells between group members: the transfer
+    // hubs never derive a pair targeting a non-member, so only member
+    // cells can be undercut. real stops (GTFS) can carry same-station
+    // edges to non-member children (e.g. equivalence beelines) that must
+    // not flip the classification the loader elided against.
+    auto const is_member = [&](location_idx_t const t) {
+      return t == l || (tt.locations_.parents_[t] == l &&
+                        tt.locations_.types_[t] == location_type::kVirt);
+    };
 
     auto bcast_in = std::vector<footpath>{};
     auto coll_in = std::vector<footpath>{};
@@ -603,7 +612,7 @@ void build_hubs(timetable& tt, profile_idx_t const prf) {
       auto const quiet = m == l || tt.locations_.transfer_time_[m].count() <= d;
       auto const clean = [&](auto const& fps) {
         for (auto const& fp : fps[m]) {
-          if (same_station(fp.target()) && fp.duration().count() > d) {
+          if (is_member(fp.target()) && fp.duration().count() > d) {
             return false;
           }
         }
