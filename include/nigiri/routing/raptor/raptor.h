@@ -141,9 +141,7 @@ struct raptor {
     utl::fill(state_.hub_mark_.blocks_, 0U);
   }
 
-  void feed_hub(hub_idx_t const h,
-                unsigned const start_v,
-                int const value) {
+  void feed_hub(hub_idx_t const h, unsigned const start_v, int const value) {
     auto& slot =
         state_.hub_slots_[std::size_t{to_idx(h)} * (kMaxVias + 1U) + start_v];
     if (slot == kUnsetHub || (kFwd ? value < slot : value > slot)) {
@@ -160,9 +158,8 @@ struct raptor {
   // edge lists, so every hub's pair set works in both directions by
   // construction. all exclusion logic lives in the lists (build_hubs).
   void expand_hubs(unsigned const k) {
-    auto const& gather_edges = kFwd
-                                   ? tt_.locations_.hub_in_by_loc_[prf_idx_]
-                                   : tt_.locations_.hub_out_by_loc_[prf_idx_];
+    auto const& gather_edges = kFwd ? tt_.locations_.hub_in_by_loc_[prf_idx_]
+                                    : tt_.locations_.hub_out_by_loc_[prf_idx_];
     if (gather_edges.size() == 0U) {
       return;
     }
@@ -194,18 +191,17 @@ struct raptor {
         }
       }
     });
-    auto const& scatter_edges =
-        kFwd ? tt_.locations_.hub_out_[prf_idx_]
-             : tt_.locations_.hub_in_[prf_idx_];
+    auto const& scatter_edges = kFwd ? tt_.locations_.hub_out_[prf_idx_]
+                                     : tt_.locations_.hub_in_[prf_idx_];
     state_.hub_mark_.for_each_set_bit([&](std::uint64_t const h) {
       auto const slot0 = std::size_t{h} * (kMaxVias + 1U);
-      for (auto const& e : scatter_edges[hub_idx_t{
-               static_cast<hub_idx_t::value_t>(h)}]) {
+      for (auto const& e :
+           scatter_edges[hub_idx_t{static_cast<hub_idx_t::value_t>(h)}]) {
         auto const w = adj(e.duration());
         for (auto start_v = 0U; start_v != Vias + 1; ++start_v) {
           if (state_.hub_slots_[slot0 + start_v] != kUnsetHub) {
-            relax_group_target(k, start_v, state_.hub_slots_[slot0 + start_v],
-                               w, to_idx(e.target()));
+            relax_hub_target(k, start_v, state_.hub_slots_[slot0 + start_v], w,
+                             e.target());
           }
         }
       }
@@ -851,18 +847,17 @@ private:
   // duration (transfer_time_settings applied once by the caller, 0 for
   // target-side walk expansion). Mirrors the explicit footpath relax
   // logic below.
-  void relax_group_target(unsigned const k,
-                          unsigned const start_v,
-                          int const base_time,
-                          int const adj_dur,
-                          std::uint32_t const target) {
+  void relax_hub_target(unsigned const k,
+                        unsigned const start_v,
+                        int const base_time,
+                        int const adj_dur,
+                        location_idx_t const target_l) {
     ++stats_.n_footpaths_visited_;
+    auto const target = to_idx(target_l);
     auto const target_is_via = start_v != Vias && is_via_[start_v][target];
     auto const target_v = target_is_via ? start_v + 1U : start_v;
     auto const stay =
-        target_is_via
-            ? static_cast<int>(via_stops_[start_v].stay_.count())
-            : 0;
+        target_is_via ? static_cast<int>(via_stops_[start_v].stay_.count()) : 0;
     auto const fp_target_time = clamp(base_time + dir(adj_dur + stay));
 
     if (bounds_last_k_ == 0U &&
@@ -990,7 +985,6 @@ private:
           }
         }
       }
-
     });
   }
 
@@ -1108,7 +1102,7 @@ private:
 
     state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
       if (!end_reachable_.test(i)) {
-        trace_upd("┊ ├k={}   no end_reachable: {}\n", k,
+        trace_upd("┊ ├k={}   no end_reachab^le: {}\n", k,
                   loc{tt_, location_idx_t{i}});
         [[likely]];
         return;
