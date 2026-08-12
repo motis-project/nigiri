@@ -537,9 +537,141 @@ void apply_transfer_rules(timetable& tt) {
   }
 }
 
+// build the hub edge lists for one profile from the (final) footpaths of
+// that profile: one broadcast + collect + walk-out + walk-in hub per
+// transfer-group station (station or platform with kVirt children). all
+// classification is derived from the materialized cells: a member is
+// "loud" if its own transfer time exceeds the group default (it never
+// gathers -- its echo would undercut the route scan's same-stop value),
+// row/col-clean if it has no same-station cell above the default.
+void build_hubs(timetable& tt, profile_idx_t const prf) {
+  auto const n = tt.n_locations();
+  auto const& fps_out = tt.locations_.footpaths_out_[prf];
+  auto const& fps_in = tt.locations_.footpaths_in_[prf];
+
+  auto in = vecvec<hub_idx_t, hub_edge>{};
+  auto out = vecvec<hub_idx_t, hub_edge>{};
+  auto in_t = std::vector<std::vector<hub_edge>>(n);
+  auto out_t = std::vector<std::vector<hub_edge>>(n);
+
+  auto n_hubs = std::uint32_t{0U};
+  auto const add_hub = [&](std::vector<hub_edge> const& hin,
+                           std::vector<hub_edge> const& hout) {
+    if (hin.empty() || hout.empty()) {
+      return;
+    }
+    auto const h = n_hubs++;
+    in.emplace_back(hin);
+    out.emplace_back(hout);
+    for (auto const& e : hin) {
+      in_t[e.target_].push_back({h, e.duration_});
+    }
+    for (auto const& e : hout) {
+      out_t[e.target_].push_back({h, e.duration_});
+    }
+  };
+
+  auto is_group_parent = std::vector<bool>(n, false);
+  for (auto l = location_idx_t{0U}; l != location_idx_t{n}; ++l) {
+    if (tt.locations_.types_[l] == location_type::kVirt) {
+      is_group_parent[to_idx(tt.locations_.parents_[l])] = true;
+    }
+  }
+
+  for (auto l = location_idx_t{0U}; l != location_idx_t{n}; ++l) {
+    if (!is_group_parent[to_idx(l)]) {
+      continue;
+    }
+    auto members = std::vector<location_idx_t>{l};
+    for (auto const c : tt.locations_.children_[l]) {
+      if (tt.locations_.types_[c] == location_type::kVirt) {
+        members.push_back(c);
+      }
+    }
+    auto const d = static_cast<std::uint16_t>(
+        tt.locations_.transfer_time_[l].count());
+    auto const same_station = [&](location_idx_t const t) {
+      return t == l || tt.locations_.parents_[t] == l;
+    };
+
+    auto bcast_in = std::vector<hub_edge>{};
+    auto coll_in = std::vector<hub_edge>{};
+    auto bcast_out = std::vector<hub_edge>{};
+    auto coll_out = std::vector<hub_edge>{};
+    auto walk_in_out = std::vector<hub_edge>{};
+    auto walk_out_in = std::vector<hub_edge>{};
+    for (auto const m : members) {
+      auto const quiet = m == l || tt.locations_.transfer_time_[m].count() <= d;
+      auto const clean = [&](auto const& fps) {
+        for (auto const& fp : fps[m]) {
+          if (same_station(fp.target()) && fp.duration().count() > d) {
+            return false;
+          }
+        }
+        return true;
+      };
+      auto const row_clean = clean(fps_out);
+      auto const col_clean = clean(fps_in);
+      if (quiet && row_clean) {
+        bcast_in.push_back({to_idx(m), 0U});
+      } else if (quiet && col_clean) {
+        coll_in.push_back({to_idx(m), 0U});
+      }
+      bcast_out.push_back({to_idx(m), d});
+      if (col_clean) {
+        coll_out.push_back({to_idx(m), d});
+      }
+      walk_out_in.push_back({to_idx(m), 0U});
+      if (tt.locations_.types_[m] == location_type::kVirt) {
+        walk_in_out.push_back({to_idx(m), 0U});
+      }
+    }
+
+    auto walk_out_out = std::vector<hub_edge>{};
+    for (auto const& fp : fps_out[l]) {
+      auto const t = fp.target();
+      if (same_station(t)) {
+        continue;  // same-station cells are the transfer channel
+      }
+      auto const w = static_cast<std::uint16_t>(fp.duration().count());
+      walk_out_out.push_back({to_idx(t), w});
+      for (auto const c : tt.locations_.children_[t]) {
+        auto const ct = tt.locations_.types_[c];
+        if (ct == location_type::kVirt ||
+            ct == location_type::kGeneratedTrack) {
+          walk_out_out.push_back({to_idx(c), w});
+        }
+      }
+    }
+    auto walk_in_in = std::vector<hub_edge>{};
+    for (auto const& fp : fps_in[l]) {
+      if (same_station(fp.target())) {
+        continue;
+      }
+      walk_in_in.push_back(
+          {to_idx(fp.target()),
+           static_cast<std::uint16_t>(fp.duration().count())});
+    }
+
+    add_hub(bcast_in, bcast_out);
+    add_hub(coll_in, coll_out);
+    add_hub(walk_out_in, walk_out_out);
+    add_hub(walk_in_in, walk_in_out);
+  }
+
+  auto in_by_loc = vecvec<location_idx_t, hub_edge>{};
+  auto out_by_loc = vecvec<location_idx_t, hub_edge>{};
+  for (auto l = 0U; l != n; ++l) {
+    in_by_loc.emplace_back(in_t[l]);
+    out_by_loc.emplace_back(out_t[l]);
+  }
+  tt.locations_.hub_in_[prf] = std::move(in);
+  tt.locations_.hub_out_[prf] = std::move(out);
+  tt.locations_.hub_in_by_loc_[prf] = std::move(in_by_loc);
+  tt.locations_.hub_out_by_loc_[prf] = std::move(out_by_loc);
+}
+
 void build_footpaths(timetable& tt, finalize_options const opt) {
-  tt.locations_.virt_group_out_.resize(tt.n_locations());
-  tt.locations_.virt_group_in_.resize(tt.n_locations());
   add_missing_equivalence_footpaths(tt);
   add_links_to_and_between_children(tt);
 
@@ -564,6 +696,7 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
 
     sort_footpaths(tt);
     write_footpaths(tt);
+    build_hubs(tt, kDefaultProfile);
     return;
   }
 
@@ -590,6 +723,7 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
   apply_transfer_rules(tt);
   sort_footpaths(tt);
   write_footpaths(tt);
+  build_hubs(tt, kDefaultProfile);
 }
 
 }  // namespace nigiri::loader

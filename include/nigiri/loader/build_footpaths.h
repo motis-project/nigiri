@@ -17,4 +17,10 @@ struct finalize_options {
 
 void build_footpaths(timetable& tt, finalize_options);
 
+// (re)build the implicit-transfer hub edge lists for one profile from that
+// profile's final footpaths. called by build_footpaths for the default
+// profile; street-routing integrations (motis) must call it again for every
+// profile whose footpaths they rebuild.
+void build_hubs(timetable& tt, profile_idx_t prf);
+
 }  // namespace nigiri::loader

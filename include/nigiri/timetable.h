@@ -130,19 +130,22 @@ struct timetable {
     mutable_fws_multimap<location_idx_t, preferred_transfer>
         preferred_transfers_;
 
-    // Implicit transfer-group derivation: default-valued same-station
-    // edges are elided; a pair (u -> v) of group members (station base +
-    // kVirt children) without an explicit edge is derived at the parent's
-    // transfer_time_ iff virt_group_out_[u] || virt_group_in_[v].
-    //   virt_group_out_: no elevated cell in u's matrix ROW -- u's
-    //     arrival may be broadcast to all members at the default.
-    //   virt_group_in_:  no elevated cell in v's matrix COLUMN -- v may
-    //     collect the pooled member arrival at the default.
-    // Pairs failing both (elevated source AND elevated target) are
-    // materialized at import, so the search needs no per-pair exclusion
-    // logic. In the backward search the two bits swap roles.
-    bitvec virt_group_out_;
-    bitvec virt_group_in_;
+    // Implicit ("hub") edges: default-valued same-station transfer-group
+    // cells and the cross-station walk copies of kVirt members are not
+    // materialized. Instead, finalize builds hubs -- aggregation nodes
+    // with weighted in/out edge lists (build_hubs, per profile like the
+    // footpaths they mirror). A pair u -(w1)-> h -(w2)-> v is derived at
+    // w1 + w2 within one footpath phase (raptor expand_hubs: gather
+    // marked locations into hub minima, scatter hub minima over the
+    // out-edges). The backward search swaps the two lists, so a hub's
+    // pair set is derivable in both directions by construction;
+    // reconstruct walks hub_out_by_loc_ x hub_in_. All classification
+    // (door bits, loud members, exclusions) happens in build_hubs and is
+    // encoded purely in list membership.
+    array<vecvec<hub_idx_t, hub_edge>, kNProfiles> hub_in_;
+    array<vecvec<hub_idx_t, hub_edge>, kNProfiles> hub_out_;
+    array<vecvec<location_idx_t, hub_edge>, kNProfiles> hub_in_by_loc_;
+    array<vecvec<location_idx_t, hub_edge>, kNProfiles> hub_out_by_loc_;
   } locations_;
 
   struct transport {

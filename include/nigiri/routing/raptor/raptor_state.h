@@ -109,19 +109,14 @@ struct raptor_state {
   bitvec route_mark_;
   bitvec rt_transport_mark_;
 
-  // implicit transfer-group aggregation (see raptor.h update_footpaths):
-  // dense per-group-station slots instead of a hash map -- the GPU-shaped
-  // layout. group_rank_[station] = dense index (built lazily from the
-  // timetable on first use), slots addressed as
-  // (rank * 2 + hub) * (kMaxVias + 1) + via. epoch stamps make per-round
-  // clearing O(touched) instead of O(all).
-  std::vector<std::uint32_t> group_rank_;
-  std::uint32_t n_group_stations_{0U};
-  std::vector<int> group_slots_;
-  std::vector<std::uint32_t> group_slot_stamp_;
-  std::vector<std::uint32_t> group_rank_stamp_;
-  std::vector<std::uint32_t> group_touched_;
-  std::uint32_t group_epoch_{0U};
+  // implicit-transfer hub values (see raptor.h expand_hubs): one slot per
+  // (hub, via state), addressed hub * (kMaxVias + 1) + via. epoch stamps
+  // make per-round invalidation O(touched) instead of O(all).
+  std::vector<int> hub_slots_;
+  std::vector<std::uint32_t> hub_slot_stamp_;
+  std::vector<std::uint32_t> hub_mark_stamp_;
+  std::vector<std::uint32_t> hub_touched_;
+  std::uint32_t hub_epoch_{0U};
 };
 
 }  // namespace nigiri::routing

@@ -161,76 +161,24 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
         trace_rc_fp_start_no_match;
       }
     }
-    {  // implicit transfer-group start candidates: pair derived at the
-       // station default iff the real-direction source may broadcast or
-       // the real-direction target may collect (door bits, timetable.h)
+    {  // implicit hub start candidates (see get_legs)
       auto const& lcs = tt.locations_;
-      auto const grp = lcs.types_[leg_start_location] == location_type::kVirt
-                           ? lcs.parents_[leg_start_location]
-                           : leg_start_location;
-      auto const test = [&](bitvec const& bv, location_idx_t const m) {
-        return to_idx(m) < bv.size() && bv.test(to_idx(m));
-      };
-      auto const l_collects =
-          test(kFwd ? lcs.virt_group_in_ : lcs.virt_group_out_,
-               leg_start_location);
-      auto const derived = [&](location_idx_t const m) {
-        return l_collects ||
-               test(kFwd ? lcs.virt_group_out_ : lcs.virt_group_in_, m);
-      };
-      auto const has_explicit = [&](location_idx_t const m) {
-        for (auto const& fp : footpaths) {
-          if (fp.target() == m) {
-            return true;
-          }
-        }
-        return false;
-      };
-      auto const dur = lcs.transfer_time_[grp];
-      auto const try_member =
-          [&](location_idx_t const m) -> std::optional<journey::leg> {
-        if (m == leg_start_location || !derived(m) || has_explicit(m)) {
-          return std::nullopt;
-        }
-        return try_start_fp(footpath{m, dur});
-      };
-      if (auto leg = try_member(grp); leg.has_value()) {
-        return leg;
-      }
-      for (auto const c : lcs.children_[grp]) {
-        if (lcs.types_[c] == location_type::kVirt) {
-          if (auto leg = try_member(c); leg.has_value()) {
-            return leg;
-          }
-        }
-      }
-
-      // implicit cross-station walk start candidates (see get_legs)
-      auto const l_is_virt =
-          lcs.types_[leg_start_location] == location_type::kVirt;
-      if (l_is_virt || leg_start_location == grp ||
-          lcs.types_[leg_start_location] == location_type::kGeneratedTrack) {
-        for (auto const& fp : (kFwd ? lcs.footpaths_in_[q.prf_idx_][grp]
-                                    : lcs.footpaths_out_[q.prf_idx_][grp])) {
-          auto const s = fp.target();
-          auto const ps = lcs.parents_[s] == location_idx_t::invalid()
-                              ? s
-                              : lcs.parents_[s];
-          if (ps == grp) {
-            continue;
-          }
-          if (l_is_virt) {
-            if (auto leg = try_start_fp(footpath{s, fp.duration()});
+      auto const& out_by_loc = kFwd ? lcs.hub_out_by_loc_[q.prf_idx_]
+                                    : lcs.hub_in_by_loc_[q.prf_idx_];
+      if (out_by_loc.size() != 0U) {
+        for (auto const& he : out_by_loc[leg_start_location]) {
+          auto const hin = kFwd
+                               ? lcs.hub_in_[q.prf_idx_][hub_idx_t{he.target_}]
+                               : lcs.hub_out_[q.prf_idx_][hub_idx_t{he.target_}];
+          for (auto const& se : hin) {
+            auto const s = location_idx_t{se.target_};
+            if (s == leg_start_location) {
+              continue;
+            }
+            if (auto leg = try_start_fp(
+                    footpath{s, duration_t{se.duration_ + he.duration_}});
                 leg.has_value()) {
               return leg;
-            }
-          }
-          for (auto const c : lcs.children_[s]) {
-            if (lcs.types_[c] == location_type::kVirt) {
-              if (auto leg = try_start_fp(footpath{c, fp.duration()});
-                  leg.has_value()) {
-                return leg;
-              }
             }
           }
         }
@@ -850,82 +798,27 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
     }
 
-    {  // implicit transfer-group candidates: default-valued same-station
-       // edges are derived, not stored: pair derived at the station
-       // default iff the real-direction source may broadcast or the
-       // real-direction target may collect (door bits, timetable.h);
-       // pairs with an explicit edge are never implicit
+    {  // implicit hub candidates: l is an out-target of hub h fed by s
+       // -> pair (s -> l) at w_in + w_out (see raptor expand_hubs)
       auto const& lcs = tt.locations_;
-      auto const grp =
-          lcs.types_[l] == location_type::kVirt ? lcs.parents_[l] : l;
-      auto const& fps = kFwd ? lcs.footpaths_in_[q.prf_idx_][l]
-                             : lcs.footpaths_out_[q.prf_idx_][l];
-      auto const test = [&](bitvec const& bv, location_idx_t const m) {
-        return to_idx(m) < bv.size() && bv.test(to_idx(m));
-      };
-      auto const l_collects =
-          test(kFwd ? lcs.virt_group_in_ : lcs.virt_group_out_, l);
-      auto const derived = [&](location_idx_t const m) {
-        return l_collects ||
-               test(kFwd ? lcs.virt_group_out_ : lcs.virt_group_in_, m);
-      };
-      auto const has_explicit = [&](location_idx_t const m) {
-        for (auto const& fp : fps) {
-          if (fp.target() == m) {
-            return true;
-          }
-        }
-        return false;
-      };
-      auto const dur = lcs.transfer_time_[grp];
-      auto const try_member = [&](location_idx_t const m)
-          -> std::optional<std::pair<journey::leg, journey::leg>> {
-        if (m == l || !derived(m) || has_explicit(m)) {
-          return std::nullopt;
-        }
-        return check_fp(k, l, curr_time, footpath{m, dur}, true, false);
-      };
-      if (auto fp_legs = try_member(grp); fp_legs.has_value()) {
-        return std::move(*fp_legs);
-      }
-      for (auto const c : lcs.children_[grp]) {
-        if (lcs.types_[c] == location_type::kVirt) {
-          if (auto fp_legs = try_member(c); fp_legs.has_value()) {
-            return std::move(*fp_legs);
-          }
-        }
-      }
-
-      // implicit cross-station walk candidates: each edge of the parent
-      // station carries every kVirt member of the source station (walk-out
-      // expansion) and, for kVirt targets, every source of an edge into
-      // the station (walk-in expansion) -- the former propagated copies
-      auto const l_is_virt = lcs.types_[l] == location_type::kVirt;
-      if (l_is_virt || l == grp ||
-          lcs.types_[l] == location_type::kGeneratedTrack) {
-        for (auto const& fp : (kFwd ? lcs.footpaths_in_[q.prf_idx_][grp]
-                                    : lcs.footpaths_out_[q.prf_idx_][grp])) {
-          auto const s = fp.target();
-          auto const ps = lcs.parents_[s] == location_idx_t::invalid()
-                              ? s
-                              : lcs.parents_[s];
-          if (ps == grp) {
-            continue;
-          }
-          if (l_is_virt) {
-            if (auto r =
-                    check_fp(k, l, curr_time,
-                             footpath{s, fp.duration()}, true, false)) {
-              return std::move(*r);
+      auto const& out_by_loc = kFwd ? lcs.hub_out_by_loc_[q.prf_idx_]
+                                    : lcs.hub_in_by_loc_[q.prf_idx_];
+      if (out_by_loc.size() != 0U) {
+        for (auto const& he : out_by_loc[l]) {
+          auto const hin = kFwd
+                               ? lcs.hub_in_[q.prf_idx_][hub_idx_t{he.target_}]
+                               : lcs.hub_out_[q.prf_idx_][hub_idx_t{he.target_}];
+          for (auto const& se : hin) {
+            auto const s = location_idx_t{se.target_};
+            if (s == l) {
+              continue;
             }
-          }
-          for (auto const c : lcs.children_[s]) {
-            if (lcs.types_[c] == location_type::kVirt) {
-              if (auto r =
-                      check_fp(k, l, curr_time,
-                               footpath{c, fp.duration()}, true, false)) {
-                return std::move(*r);
-              }
+            if (auto r = check_fp(
+                    k, l, curr_time,
+                    footpath{s, duration_t{se.duration_ + he.duration_}}, true,
+                    false);
+                r.has_value()) {
+              return std::move(*r);
             }
           }
         }

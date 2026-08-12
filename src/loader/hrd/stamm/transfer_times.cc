@@ -985,15 +985,14 @@ void build_transfer_groups(stamm& st,
           continue;
         }
         auto const c = at(class_rep[a], class_rep[b]);
-        // elide only cells derivable in BOTH search directions:
-        // fwd offers (a -> b) iff a broadcasts (row-clean) or a and b both
-        // collect; bwd offers it iff b broadcasts (col-clean) or b and a
-        // both row-clean. both-zero members feed no aggregate in either
-        // direction, so cells touching them stay materialized.
+        // elide cells covered by a hub (build_hubs derives the same
+        // classification from the materialized cells at finalize): the
+        // broadcast hub carries (a -> *) for quiet row-clean a, the
+        // collect hub (a -> b) for quiet col-clean a and col-clean b.
+        // hubs are direction-symmetric (the backward search swaps their
+        // edge lists), so no separate backward condition is needed.
         if (c.time_ == default_time && !c.preferred_ && !loud[a] &&
-            !loud[b] &&
-            (row_clean[a] || (col_clean[a] && col_clean[b])) &&
-            (col_clean[b] || (row_clean[b] && row_clean[a]))) {
+            (row_clean[a] || (col_clean[a] && col_clean[b]))) {
           continue;  // implicit
         }
         tt.locations_.transfer_rule_fps_[class_locations[a]].emplace_back(
@@ -1003,23 +1002,6 @@ void build_transfer_groups(stamm& st,
               preferred_transfer{.to_ = class_locations[b]});
         }
         ++n_edges;
-      }
-    }
-    auto const set_bit = [](bitvec& bv, location_idx_t const l) {
-      if (bv.size() <= to_idx(l)) {
-        bv.resize(to_idx(l) + 1U);
-      }
-      bv.set(to_idx(l), true);
-    };
-    for (auto x = std::size_t{0U}; x != n_classes; ++x) {
-      if (loud[x]) {
-        continue;  // materialized rows/columns, never scatters
-      }
-      if (row_clean[x]) {
-        set_bit(tt.locations_.virt_group_out_, class_locations[x]);
-      }
-      if (col_clean[x]) {
-        set_bit(tt.locations_.virt_group_in_, class_locations[x]);
       }
     }
   }
