@@ -380,7 +380,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
     if (rtt != nullptr) {
       for (auto const& rt_t : rtt->location_rt_transports_[l]) {
-        if (!is_allowed(q.allowed_claszes_,
+        if (q.blocked_srcs_.test(rtt->rt_transport_src_[rt_t]) ||
+            !is_allowed(q.allowed_claszes_,
                         rtt->rt_transport_section_clasz_[rt_t][0])) {
           continue;
         }
@@ -454,7 +455,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
 
     for (auto const& r : tt.location_routes_[l]) {
-      if (!is_allowed(q.allowed_claszes_, tt.route_clasz_[r])) {
+      if (q.blocked_srcs_.test(tt.route_src_[r]) ||
+          !is_allowed(q.allowed_claszes_, tt.route_clasz_[r])) {
         continue;
       }
 
