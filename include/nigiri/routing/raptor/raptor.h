@@ -988,7 +988,7 @@ private:
                 loc{tt_, location_idx_t{kIntermodalTarget}},
                 to_unix(best_[kIntermodalTarget][Vias]), to_unix(end_time));
 
-            if (is_better(end_time, time_at_dest_[k])) {
+            if (is_better_loose(end_time, time_at_dest_[k])) {
               round_times_[k][kIntermodalTarget][Vias] = end_time;
               best_[kIntermodalTarget][Vias] = end_time;
               update_time_at_dest(k, end_time);
@@ -1015,7 +1015,7 @@ private:
             loc{tt_, location_idx_t{kIntermodalTarget}},
             to_unix(best_[kIntermodalTarget][Vias]), to_unix(end_time));
 
-        if (is_better(end_time, time_at_dest_[k])) {
+        if (is_better_loose(end_time, time_at_dest_[k])) {
           round_times_[k][kIntermodalTarget][Vias] = end_time;
           best_[kIntermodalTarget][Vias] = end_time;
           update_time_at_dest(k, end_time);
@@ -1038,7 +1038,7 @@ private:
           auto const& [duration, _] = *fp;
           auto const end_time = clamp(fp_start_time + dir(duration.count()));
 
-          if (is_better(end_time, time_at_dest_[k]) &&
+          if (is_better_loose(end_time, time_at_dest_[k]) &&
               is_better(end_time, best_[kIntermodalTarget][Vias])) {
             round_times_[k][kIntermodalTarget][Vias] = end_time;
             best_[kIntermodalTarget][Vias] = end_time;
