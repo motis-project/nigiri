@@ -623,13 +623,14 @@ void reconstruct_journey_with_vias(timetable const& tt,
         }
 #endif
 
-        auto const fp_leg =
+        auto fp_leg =
             journey::leg{SearchDir,
                          fp.target(),
                          l,
                          delta_to_unix(base, fp_start),
                          delta_to_unix(base, fp_start + dir(fp_duration)),
                          footpath{fp.target(), fp.duration()}};
+        fp_leg.stay_ = fp_leg.from_ == l ? stay_l : stay_fp_target;
         return std::pair{fp_leg, *transport_leg};
       } else {
         trace_reconstruct("nothing found\n");

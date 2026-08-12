@@ -223,7 +223,7 @@ routing_result pong(timetable const& tt,
     return utl::count_if(*result.journeys_, [&](journey const& j) {
       return is_validated(j) &&
              (include_too_slow || (j.travel_time() < fastest_direct &&
-                                   j.travel_time() < q.max_travel_time_));
+                                   j.travel_time() <= q.max_travel_time_));
     });
   };
   auto const is_timeout_reached = [&]() {
@@ -254,8 +254,16 @@ routing_result pong(timetable const& tt,
                  loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
       ping.add_start(s.stop_, s.time_at_stop_);
     }
+    // anchor the travel budget at the interval end, not the cursor: a
+    // journey departing late in a wide interval must not have the wait
+    // from the cursor counted against max_travel_time_ (range budgets
+    // per departure; the per-journey check happens in the final erase).
+    // during extension the cursor can pass the interval end -> anchor
+    // at whichever is later in search direction.
+    auto const budget_anchor =
+        is_better(start_time, end_time) ? end_time : start_time;
     auto const worst_time_at_dest =
-        start_time + (kFwd ? 1 : -1) * q.max_travel_time_;
+        budget_anchor + (kFwd ? 1 : -1) * q.max_travel_time_;
     auto ping_results = pareto_set<journey>{};
     ping.execute(start_time, q.max_transfers_, worst_time_at_dest,
                  ping_results);
@@ -362,9 +370,16 @@ routing_result pong(timetable const& tt,
   }
 
   utl::erase_if(s_state.results_, [&](journey const& j) {
+    auto const dep = j.dest_time_;  // pre-swap: dest_time_ = departure
+    auto const is_out_of_interval =
+        kFwd ? (dep < search_interval.from_ ||
+                (!q.extend_interval_later_ && dep >= search_interval.to_))
+             : (dep >= search_interval.to_ || (!q.extend_interval_earlier_ &&
+                                               dep < search_interval.from_));
     auto const erase = !j.is_reconstructed_ || !is_validated(j) ||
+                       is_out_of_interval ||
                        j.travel_time() >= fastest_direct ||
-                       j.travel_time() >= q.max_travel_time_;
+                       j.travel_time() > q.max_travel_time_;
     if (erase) {
       trace_pong(
           "ERASE not_reconstructed={}, not_validated={}, "
@@ -396,8 +411,16 @@ routing_result pong(timetable const& tt,
         default: return l;
       }
     };
-    j.legs_.front().from_ = swap(j.legs_.front().from_);
-    j.legs_.back().to_ = swap(j.legs_.back().to_);
+    // the pong pass ran with the flipped query, so intermodal journeys
+    // carry swapped START/END specials at their edges. only touch them
+    // for intermodal queries: without registered special stations (e.g.
+    // pure station-to-station test timetables), raw indices 0/1 are
+    // regular stops that must not be rewritten.
+    if (q.start_match_mode_ == location_match_mode::kIntermodal ||
+        q.dest_match_mode_ == location_match_mode::kIntermodal) {
+      j.legs_.front().from_ = swap(j.legs_.front().from_);
+      j.legs_.back().to_ = swap(j.legs_.back().to_);
+    }
   }
 
   auto const iv = result.interval_;
@@ -465,13 +488,29 @@ routing_result pong(timetable const& tt,
                                    to.get_location_idx(), arr_time, dep_time);
 
       if (earlier.has_value()) {
-        transfer_1 = earlier->at(0);
+        // wait minimization only moves transit_2's departure later while
+        // keeping its arrival -> the reconstructed transfer legs (their
+        // placement convention and via stay marks) stay valid, only the
+        // transit itself is replaced
+        auto const same_stops = [](journey::leg const& a,
+                                   journey::leg const& b) {
+          return a.from_ == b.from_ && a.to_ == b.to_;
+        };
+        if (!same_stops(earlier->at(0), transfer_1) ||
+            !same_stops(earlier->at(2), transfer_2)) {
+          transfer_1 = earlier->at(0);
+          transfer_2 = earlier->at(2);
+        }
         transit_2 = earlier->at(1);
-        transfer_2 = earlier->at(2);
       }
     }
   }
 
+  // normalize footpath placement to the forward-search convention:
+  // the flipped-direction reconstruction places transfer footpaths as
+  // late as possible, forward reconstruction directly after the arrival
+  // (waiting happens at the target stop). only without via stays, which
+  // legitimately sit between legs.
   return result;
 }
 
