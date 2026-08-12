@@ -187,17 +187,6 @@ using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using hub_idx_t = cista::strong<std::uint32_t, struct _hub_idx>;
-
-// weighted edge of an implicit-transfer hub (timetable::locations::hub_*):
-// target_ holds a location_idx_t value in by-hub lists and a hub_idx_t
-// value in by-location (transposed) lists. durations are raw minutes;
-// transfer_time_settings are applied at query time to non-zero weights
-// (every hub has at least one zero-weighted side, so the adjustment is
-// applied exactly once per derived pair).
-struct hub_edge {
-  std::uint32_t target_;
-  std::uint16_t duration_;
-};
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
 using flex_area_idx_t = cista::strong<std::uint32_t, struct _flex_area_idx>;
 using location_group_idx_t =

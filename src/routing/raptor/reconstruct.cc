@@ -167,16 +167,15 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
                                     : lcs.hub_in_by_loc_[q.prf_idx_];
       if (out_by_loc.size() != 0U) {
         for (auto const& he : out_by_loc[leg_start_location]) {
-          auto const hin = kFwd
-                               ? lcs.hub_in_[q.prf_idx_][hub_idx_t{he.target_}]
-                               : lcs.hub_out_[q.prf_idx_][hub_idx_t{he.target_}];
+          auto const hin = kFwd ? lcs.hub_in_[q.prf_idx_][he.hub()]
+                                : lcs.hub_out_[q.prf_idx_][he.hub()];
           for (auto const& se : hin) {
-            auto const s = location_idx_t{se.target_};
+            auto const s = se.target();
             if (s == leg_start_location) {
               continue;
             }
             if (auto leg = try_start_fp(
-                    footpath{s, duration_t{se.duration_ + he.duration_}});
+                    footpath{s, se.duration() + he.duration()});
                 leg.has_value()) {
               return leg;
             }
@@ -805,18 +804,16 @@ void reconstruct_journey_with_vias(timetable const& tt,
                                     : lcs.hub_in_by_loc_[q.prf_idx_];
       if (out_by_loc.size() != 0U) {
         for (auto const& he : out_by_loc[l]) {
-          auto const hin = kFwd
-                               ? lcs.hub_in_[q.prf_idx_][hub_idx_t{he.target_}]
-                               : lcs.hub_out_[q.prf_idx_][hub_idx_t{he.target_}];
+          auto const hin = kFwd ? lcs.hub_in_[q.prf_idx_][he.hub()]
+                                : lcs.hub_out_[q.prf_idx_][he.hub()];
           for (auto const& se : hin) {
-            auto const s = location_idx_t{se.target_};
+            auto const s = se.target();
             if (s == l) {
               continue;
             }
-            if (auto r = check_fp(
-                    k, l, curr_time,
-                    footpath{s, duration_t{se.duration_ + he.duration_}}, true,
-                    false);
+            if (auto r = check_fp(k, l, curr_time,
+                                  footpath{s, se.duration() + he.duration()},
+                                  true, false);
                 r.has_value()) {
               return std::move(*r);
             }

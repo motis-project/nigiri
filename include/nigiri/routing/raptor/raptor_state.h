@@ -110,13 +110,11 @@ struct raptor_state {
   bitvec rt_transport_mark_;
 
   // implicit-transfer hub values (see raptor.h expand_hubs): one slot per
-  // (hub, via state), addressed hub * (kMaxVias + 1) + via. epoch stamps
-  // make per-round invalidation O(touched) instead of O(all).
+  // (hub, via state), addressed hub * (kMaxVias + 1) + via. tmp_-like
+  // monotone minima over one start time; hub_mark_ flags hubs whose
+  // minimum improved this round (station_mark_ idiom).
   std::vector<int> hub_slots_;
-  std::vector<std::uint32_t> hub_slot_stamp_;
-  std::vector<std::uint32_t> hub_mark_stamp_;
-  std::vector<std::uint32_t> hub_touched_;
-  std::uint32_t hub_epoch_{0U};
+  bitvec hub_mark_;
 };
 
 }  // namespace nigiri::routing

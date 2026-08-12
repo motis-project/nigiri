@@ -549,25 +549,25 @@ void build_hubs(timetable& tt, profile_idx_t const prf) {
   auto const& fps_out = tt.locations_.footpaths_out_[prf];
   auto const& fps_in = tt.locations_.footpaths_in_[prf];
 
-  auto in = vecvec<hub_idx_t, hub_edge>{};
-  auto out = vecvec<hub_idx_t, hub_edge>{};
-  auto in_t = std::vector<std::vector<hub_edge>>(n);
-  auto out_t = std::vector<std::vector<hub_edge>>(n);
+  auto in = vecvec<hub_idx_t, footpath>{};
+  auto out = vecvec<hub_idx_t, footpath>{};
+  auto in_t = std::vector<std::vector<hub_ref>>(n);
+  auto out_t = std::vector<std::vector<hub_ref>>(n);
 
-  auto n_hubs = std::uint32_t{0U};
-  auto const add_hub = [&](std::vector<hub_edge> const& hin,
-                           std::vector<hub_edge> const& hout) {
+  auto next_hub = hub_idx_t{0U};
+  auto const add_hub = [&](std::vector<footpath> const& hin,
+                           std::vector<footpath> const& hout) {
     if (hin.empty() || hout.empty()) {
       return;
     }
-    auto const h = n_hubs++;
+    auto const h = next_hub++;
     in.emplace_back(hin);
     out.emplace_back(hout);
     for (auto const& e : hin) {
-      in_t[e.target_].push_back({h, e.duration_});
+      in_t[to_idx(e.target())].push_back({h, e.duration()});
     }
     for (auto const& e : hout) {
-      out_t[e.target_].push_back({h, e.duration_});
+      out_t[to_idx(e.target())].push_back({h, e.duration()});
     }
   };
 
@@ -588,18 +588,17 @@ void build_hubs(timetable& tt, profile_idx_t const prf) {
         members.push_back(c);
       }
     }
-    auto const d = static_cast<std::uint16_t>(
-        tt.locations_.transfer_time_[l].count());
+    auto const d = tt.locations_.transfer_time_[l].count();
     auto const same_station = [&](location_idx_t const t) {
       return t == l || tt.locations_.parents_[t] == l;
     };
 
-    auto bcast_in = std::vector<hub_edge>{};
-    auto coll_in = std::vector<hub_edge>{};
-    auto bcast_out = std::vector<hub_edge>{};
-    auto coll_out = std::vector<hub_edge>{};
-    auto walk_in_out = std::vector<hub_edge>{};
-    auto walk_out_in = std::vector<hub_edge>{};
+    auto bcast_in = std::vector<footpath>{};
+    auto coll_in = std::vector<footpath>{};
+    auto bcast_out = std::vector<footpath>{};
+    auto coll_out = std::vector<footpath>{};
+    auto walk_in_out = std::vector<footpath>{};
+    auto walk_out_in = std::vector<footpath>{};
     for (auto const m : members) {
       auto const quiet = m == l || tt.locations_.transfer_time_[m].count() <= d;
       auto const clean = [&](auto const& fps) {
@@ -613,44 +612,41 @@ void build_hubs(timetable& tt, profile_idx_t const prf) {
       auto const row_clean = clean(fps_out);
       auto const col_clean = clean(fps_in);
       if (quiet && row_clean) {
-        bcast_in.push_back({to_idx(m), 0U});
+        bcast_in.emplace_back(m, duration_t{0});
       } else if (quiet && col_clean) {
-        coll_in.push_back({to_idx(m), 0U});
+        coll_in.emplace_back(m, duration_t{0});
       }
-      bcast_out.push_back({to_idx(m), d});
+      bcast_out.emplace_back(m, duration_t{d});
       if (col_clean) {
-        coll_out.push_back({to_idx(m), d});
+        coll_out.emplace_back(m, duration_t{d});
       }
-      walk_out_in.push_back({to_idx(m), 0U});
+      walk_out_in.emplace_back(m, duration_t{0});
       if (tt.locations_.types_[m] == location_type::kVirt) {
-        walk_in_out.push_back({to_idx(m), 0U});
+        walk_in_out.emplace_back(m, duration_t{0});
       }
     }
 
-    auto walk_out_out = std::vector<hub_edge>{};
+    auto walk_out_out = std::vector<footpath>{};
     for (auto const& fp : fps_out[l]) {
       auto const t = fp.target();
       if (same_station(t)) {
         continue;  // same-station cells are the transfer channel
       }
-      auto const w = static_cast<std::uint16_t>(fp.duration().count());
-      walk_out_out.push_back({to_idx(t), w});
+      walk_out_out.emplace_back(t, fp.duration());
       for (auto const c : tt.locations_.children_[t]) {
         auto const ct = tt.locations_.types_[c];
         if (ct == location_type::kVirt ||
             ct == location_type::kGeneratedTrack) {
-          walk_out_out.push_back({to_idx(c), w});
+          walk_out_out.emplace_back(c, fp.duration());
         }
       }
     }
-    auto walk_in_in = std::vector<hub_edge>{};
+    auto walk_in_in = std::vector<footpath>{};
     for (auto const& fp : fps_in[l]) {
       if (same_station(fp.target())) {
         continue;
       }
-      walk_in_in.push_back(
-          {to_idx(fp.target()),
-           static_cast<std::uint16_t>(fp.duration().count())});
+      walk_in_in.emplace_back(fp.target(), fp.duration());
     }
 
     add_hub(bcast_in, bcast_out);
@@ -659,8 +655,8 @@ void build_hubs(timetable& tt, profile_idx_t const prf) {
     add_hub(walk_in_in, walk_in_out);
   }
 
-  auto in_by_loc = vecvec<location_idx_t, hub_edge>{};
-  auto out_by_loc = vecvec<location_idx_t, hub_edge>{};
+  auto in_by_loc = vecvec<location_idx_t, hub_ref>{};
+  auto out_by_loc = vecvec<location_idx_t, hub_ref>{};
   for (auto l = 0U; l != n; ++l) {
     in_by_loc.emplace_back(in_t[l]);
     out_by_loc.emplace_back(out_t[l]);

@@ -279,18 +279,16 @@ void get_starts(
         auto const& by_loc = fwd ? tt.locations_.hub_in_by_loc_[prf_idx]
                                  : tt.locations_.hub_out_by_loc_[prf_idx];
         if (by_loc.size() != 0U) {
-          auto const adj = [&](std::uint16_t const w) {
-            return w == 0U ? duration_t{0}
-                           : adjusted_transfer_time(tts, duration_t{w});
+          auto const adj = [&](duration_t const w) {
+            return w.count() == 0 ? duration_t{0}
+                                  : adjusted_transfer_time(tts, w);
           };
           for (auto const& he : by_loc[l]) {
-            auto const hout =
-                fwd ? tt.locations_.hub_out_[prf_idx][hub_idx_t{he.target_}]
-                    : tt.locations_.hub_in_[prf_idx][hub_idx_t{he.target_}];
-            auto const w1 = adj(he.duration_);
+            auto const hout = fwd ? tt.locations_.hub_out_[prf_idx][he.hub()]
+                                  : tt.locations_.hub_in_[prf_idx][he.hub()];
+            auto const w1 = adj(he.duration());
             for (auto const& te : hout) {
-              update(location_idx_t{te.target_},
-                     o.duration() + w1 + adj(te.duration_));
+              update(te.target(), o.duration() + w1 + adj(te.duration()));
             }
           }
         }

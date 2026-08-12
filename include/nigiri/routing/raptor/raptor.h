@@ -115,32 +115,40 @@ struct raptor {
     ensure_hub_state();
   }
 
-  // dense hub value slots: one per (hub, via state), epoch-stamped so
-  // per-round invalidation is O(touched). sized lazily per raptor_state.
+  // dense hub value slots: one per (hub, via state), tmp_-like: monotone
+  // minima over the whole start time (reset in next_start_time), so a hub
+  // only scatters in rounds where its minimum actually improved -- a
+  // non-improved delivery would be Pareto-dominated (same time, more
+  // transfers), the same argument that justifies station marks. improved
+  // hubs are tracked in the hub_mark_ bitvec (the station_mark_ idiom:
+  // idempotent set, fixed size, block-cleared after the scatter).
+  // kUnsetHub is tested by equality, never compared, so one sentinel
+  // serves both search directions sharing the state.
+  static constexpr auto const kUnsetHub = std::numeric_limits<int>::min();
+
   void ensure_hub_state() {
     auto const n_hubs = tt_.locations_.hub_in_[prf_idx_].size();
     auto const need = std::size_t{n_hubs} * (kMaxVias + 1U);
-    if (state_.hub_slot_stamp_.size() < need) {
-      state_.hub_slots_.resize(need);
-      state_.hub_slot_stamp_.resize(need, 0U);
-      state_.hub_mark_stamp_.resize(n_hubs, 0U);
+    if (state_.hub_slots_.size() < need) {
+      state_.hub_slots_.assign(need, kUnsetHub);
+      state_.hub_mark_.resize(static_cast<bitvec::size_type>(n_hubs));
+      utl::fill(state_.hub_mark_.blocks_, 0U);
     }
   }
 
-  void feed_hub(std::uint32_t const h,
+  void reset_hubs() {
+    utl::fill(state_.hub_slots_, kUnsetHub);
+    utl::fill(state_.hub_mark_.blocks_, 0U);
+  }
+
+  void feed_hub(hub_idx_t const h,
                 unsigned const start_v,
                 int const value) {
-    if (state_.hub_mark_stamp_[h] != state_.hub_epoch_) {
-      state_.hub_mark_stamp_[h] = state_.hub_epoch_;
-      state_.hub_touched_.push_back(h);
-    }
-    auto const idx = std::size_t{h} * (kMaxVias + 1U) + start_v;
-    if (state_.hub_slot_stamp_[idx] != state_.hub_epoch_) {
-      state_.hub_slot_stamp_[idx] = state_.hub_epoch_;
-      state_.hub_slots_[idx] = value;
-    } else if (kFwd ? value < state_.hub_slots_[idx]
-                    : value > state_.hub_slots_[idx]) {
-      state_.hub_slots_[idx] = value;
+    auto& slot =
+        state_.hub_slots_[std::size_t{to_idx(h)} * (kMaxVias + 1U) + start_v];
+    if (slot == kUnsetHub || (kFwd ? value < slot : value > slot)) {
+      slot = value;
+      state_.hub_mark_.set(to_idx(h), true);
     }
   }
 
@@ -158,15 +166,11 @@ struct raptor {
     if (gather_edges.size() == 0U) {
       return;
     }
-    if (++state_.hub_epoch_ == 0U) {  // wrapped: invalidate all stamps
-      state_.hub_slot_stamp_.assign(state_.hub_slot_stamp_.size(), 0U);
-      state_.hub_mark_stamp_.assign(state_.hub_mark_stamp_.size(), 0U);
-      state_.hub_epoch_ = 1U;
-    }
-    auto const adj = [&](std::uint16_t const w) {
-      return w == 0U ? 0
-                     : adjusted_transfer_time(transfer_time_settings_,
-                                              static_cast<int>(w));
+    auto const adj = [&](duration_t const w) {
+      return w.count() == 0
+                 ? 0
+                 : adjusted_transfer_time(transfer_time_settings_,
+                                          static_cast<int>(w.count()));
     };
     state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
       auto const edges = gather_edges[location_idx_t{i}];
@@ -186,26 +190,27 @@ struct raptor {
             (start_is_via ? dir(static_cast<int>(via_stops_[v].stay_.count()))
                           : 0);
         for (auto const& e : edges) {
-          feed_hub(e.target_, start_v, base_time + dir(adj(e.duration_)));
+          feed_hub(e.hub(), start_v, base_time + dir(adj(e.duration())));
         }
       }
     });
     auto const& scatter_edges =
         kFwd ? tt_.locations_.hub_out_[prf_idx_]
              : tt_.locations_.hub_in_[prf_idx_];
-    for (auto const h : state_.hub_touched_) {
-      for (auto const& e : scatter_edges[hub_idx_t{h}]) {
-        auto const w = adj(e.duration_);
+    state_.hub_mark_.for_each_set_bit([&](std::uint64_t const h) {
+      auto const slot0 = std::size_t{h} * (kMaxVias + 1U);
+      for (auto const& e : scatter_edges[hub_idx_t{
+               static_cast<hub_idx_t::value_t>(h)}]) {
+        auto const w = adj(e.duration());
         for (auto start_v = 0U; start_v != Vias + 1; ++start_v) {
-          auto const idx = std::size_t{h} * (kMaxVias + 1U) + start_v;
-          if (state_.hub_slot_stamp_[idx] == state_.hub_epoch_) {
-            relax_group_target(k, start_v, state_.hub_slots_[idx], w,
-                               e.target_);
+          if (state_.hub_slots_[slot0 + start_v] != kUnsetHub) {
+            relax_group_target(k, start_v, state_.hub_slots_[slot0 + start_v],
+                               w, to_idx(e.target()));
           }
         }
       }
-    }
-    state_.hub_touched_.clear();
+    });
+    utl::fill(state_.hub_mark_.blocks_, 0U);
   }
 
   algo_stats_t get_stats() const { return stats_; }
@@ -273,6 +278,7 @@ struct raptor {
   }
 
   void next_start_time() {
+    reset_hubs();
     utl::fill(best_, kInvalidArray);
     utl::fill(tmp_, kInvalidArray);
     utl::fill(state_.prev_station_mark_.blocks_, 0U);

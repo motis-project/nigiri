@@ -142,10 +142,10 @@ struct timetable {
     // reconstruct walks hub_out_by_loc_ x hub_in_. All classification
     // (door bits, loud members, exclusions) happens in build_hubs and is
     // encoded purely in list membership.
-    array<vecvec<hub_idx_t, hub_edge>, kNProfiles> hub_in_;
-    array<vecvec<hub_idx_t, hub_edge>, kNProfiles> hub_out_;
-    array<vecvec<location_idx_t, hub_edge>, kNProfiles> hub_in_by_loc_;
-    array<vecvec<location_idx_t, hub_edge>, kNProfiles> hub_out_by_loc_;
+    array<vecvec<hub_idx_t, footpath>, kNProfiles> hub_in_;
+    array<vecvec<hub_idx_t, footpath>, kNProfiles> hub_out_;
+    array<vecvec<location_idx_t, hub_ref>, kNProfiles> hub_in_by_loc_;
+    array<vecvec<location_idx_t, hub_ref>, kNProfiles> hub_out_by_loc_;
   } locations_;
 
   struct transport {
