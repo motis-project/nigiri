@@ -75,11 +75,31 @@ footgraph get_footpath_graph(timetable& tt) {
                 end(tt.locations_.preprocessing_footpaths_out_[idx]));
     utl::erase_if(g[i],
                   [&](auto&& fp) { return fp.target() == location_idx_t{i}; });
+  }
+  // mirror all edges: directional inputs (e.g. one-way transfers.txt rows)
+  // must not break the component enumeration, which walks out-edges and
+  // assumes mutual reachability -- an asymmetric edge can otherwise strand
+  // nodes in bogus tiny components. the transitive closure treats every
+  // edge as undirected anyway (build_component_graph inserts both
+  // directions), so mirroring here does not change its result.
+  for (auto i = 0U; i != tt.locations_.src_.size(); ++i) {
+    for (auto const fp :
+         tt.locations_.preprocessing_footpaths_out_[location_idx_t{i}]) {
+      if (fp.target() != location_idx_t{i}) {
+        g[to_idx(fp.target())].emplace_back(location_idx_t{i}, fp.duration());
+      }
+    }
+  }
+  for (auto i = 0U; i != tt.locations_.src_.size(); ++i) {
     utl::erase_duplicates(
-        g[i], [](auto&& a, auto&& b) { return a.target_ < b.target_; },
+        g[i],
+        [](auto&& a, auto&& b) {
+          return a.target_ != b.target_ ? a.target_ < b.target_
+                                        : a.duration_ < b.duration_;
+        },
         [](auto&& a, auto&& b) {
           return a.target_ == b.target_;
-        });  // also sorts
+        });  // also sorts; keeps the shorter of asymmetric pair durations
   }
   return g;
 }
