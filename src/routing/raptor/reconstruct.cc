@@ -174,19 +174,9 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       auto const l_collects =
           test(kFwd ? lcs.virt_group_in_ : lcs.virt_group_out_,
                leg_start_location);
-      auto const& hubs = kFwd ? lcs.fwd_hub_ : lcs.bwd_hub_;
       auto const derived = [&](location_idx_t const m) {
-        if (l_collects ||
-            test(kFwd ? lcs.virt_group_out_ : lcs.virt_group_in_, m)) {
-          return true;
-        }
-        if (to_idx(m) >= hubs.size() ||
-            hubs[m] == location_idx_t::invalid()) {
-          return false;
-        }
-        auto const excl = lcs.hub_excl_[hubs[m]];
-        return std::find(excl.begin(), excl.end(), leg_start_location) ==
-               excl.end();
+        return l_collects ||
+               test(kFwd ? lcs.virt_group_out_ : lcs.virt_group_in_, m);
       };
       auto const has_explicit = [&](location_idx_t const m) {
         for (auto const& fp : footpaths) {
@@ -844,18 +834,9 @@ void reconstruct_journey_with_vias(timetable const& tt,
       };
       auto const l_collects =
           test(kFwd ? lcs.virt_group_in_ : lcs.virt_group_out_, l);
-      auto const& hubs = kFwd ? lcs.fwd_hub_ : lcs.bwd_hub_;
       auto const derived = [&](location_idx_t const m) {
-        if (l_collects ||
-            test(kFwd ? lcs.virt_group_out_ : lcs.virt_group_in_, m)) {
-          return true;
-        }
-        if (to_idx(m) >= hubs.size() ||
-            hubs[m] == location_idx_t::invalid()) {
-          return false;
-        }
-        auto const excl = lcs.hub_excl_[hubs[m]];
-        return std::find(excl.begin(), excl.end(), l) == excl.end();
+        return l_collects ||
+               test(kFwd ? lcs.virt_group_out_ : lcs.virt_group_in_, m);
       };
       auto const has_explicit = [&](location_idx_t const m) {
         for (auto const& fp : fps) {

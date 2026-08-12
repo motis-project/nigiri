@@ -663,7 +663,6 @@ void build_transfer_groups(stamm& st,
       static_cast<std::size_t>(st.get_date_range().size().count()) + 8U);
 
   auto n_virt_locations = 0U;
-  auto n_hubs = 0U;
   auto n_edges = 0U;
   auto n_stations = 0U;
 
@@ -964,75 +963,23 @@ void build_transfer_groups(stamm& st,
       }
     }
 
-    // profile hubs: a member with elevated cells derives its remaining
-    // default cells through one aggregation hub (location_type::kHub) per
-    // distinct elevated profile. fwd side: row profile = the member's
-    // elevated targets; the hub relaxes every member except them. bwd
-    // side mirrors with column profiles (elevated sources). with these,
-    // EVERY default cell is derivable in both search directions and only
-    // deviating cells are materialized.
-    auto const ensure = [](vector_map<location_idx_t, location_idx_t>& m,
-                           location_idx_t const l) {
-      if (m.size() <= to_idx(l)) {
-        auto const old = m.size();
-        m.resize(to_idx(l) + 1U);
-        for (auto i = old; i != m.size(); ++i) {
-          m[location_idx_t{i}] = location_idx_t::invalid();
-        }
-      }
-    };
-    auto const make_hubs = [&](bool const row_side,
-                               vector_map<location_idx_t, location_idx_t>&
-                                   assign) {
-      auto by_profile =
-          std::map<std::vector<std::size_t>, std::vector<std::size_t>>{};
-      for (auto x = std::size_t{0U}; x != n_classes; ++x) {
-        auto profile = std::vector<std::size_t>{};
-        for (auto y = std::size_t{0U}; y != n_classes; ++y) {
-          if (x != y && (row_side ? at(class_rep[x], class_rep[y]).time_
-                                  : at(class_rep[y], class_rep[x]).time_) >
-                            default_time) {
-            profile.push_back(y);
-          }
-        }
-        if (!profile.empty()) {
-          by_profile[std::move(profile)].push_back(x);
-        }
-      }
-      for (auto const& [profile, members] : by_profile) {
-        auto l = location{tt, base};
-        l.id_ = {};  // hubs are not lookupable by id
-        l.type_ = location_type::kHub;
-        l.parent_ = base;
-        auto const hub = register_location(tt, l);
-        tt.locations_.transfer_time_[hub] = default_time;
-        auto excl = std::vector<location_idx_t>{};
-        excl.reserve(profile.size());
-        for (auto const y : profile) {
-          excl.push_back(class_locations[y]);
-        }
-        std::sort(begin(excl), end(excl));
-        for (auto const e : excl) {
-          tt.locations_.hub_excl_[hub].emplace_back(e);
-        }
-        for (auto const x : members) {
-          ensure(assign, class_locations[x]);
-          assign[class_locations[x]] = hub;
-        }
-        ++n_hubs;
-      }
-    };
-    make_hubs(true, tt.locations_.fwd_hub_);
-    make_hubs(false, tt.locations_.bwd_hub_);
-
-    // emit only the deviating (or preferred) cells
+    // emit deviating cells (or preferred) plus the default cells the door
+    // bits cannot derive: elevated-source -> elevated-target collateral,
+    // and the full row of both-zero members (they feed no aggregate).
     for (auto a = std::size_t{0U}; a != n_classes; ++a) {
       for (auto b = std::size_t{0U}; b != n_classes; ++b) {
         if (a == b) {
           continue;
         }
         auto const c = at(class_rep[a], class_rep[b]);
-        if (c.time_ == default_time && !c.preferred_) {
+        // elide only cells derivable in BOTH search directions:
+        // fwd offers (a -> b) iff a broadcasts (row-clean) or a and b both
+        // collect; bwd offers it iff b broadcasts (col-clean) or b and a
+        // both row-clean. both-zero members feed no aggregate in either
+        // direction, so cells touching them stay materialized.
+        if (c.time_ == default_time && !c.preferred_ &&
+            (row_clean[a] || (col_clean[a] && col_clean[b])) &&
+            (col_clean[b] || (row_clean[b] && row_clean[a]))) {
           continue;  // implicit
         }
         tt.locations_.transfer_rule_fps_[class_locations[a]].emplace_back(
@@ -1061,9 +1008,8 @@ void build_transfer_groups(stamm& st,
   }
 
   log(log_lvl::info, "loader.hrd.transfer_groups",
-      "created {} transfer group locations at {} stations, {} transfer edges, "
-      "{} hubs",
-      n_virt_locations, n_stations, n_edges, n_hubs);
+      "created {} transfer group locations at {} stations, {} transfer edges",
+      n_virt_locations, n_stations, n_edges);
 }
 
 }  // namespace nigiri::loader::hrd
