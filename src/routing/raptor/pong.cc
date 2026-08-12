@@ -255,7 +255,7 @@ routing_result pong(timetable const& tt,
       ping.add_start(s.stop_, s.time_at_stop_);
     }
     auto const worst_time_at_dest =
-        start_time + (kFwd ? 1 : -1) * (q.max_travel_time_ + duration_t{1});
+        start_time + (kFwd ? 1 : -1) * q.max_travel_time_;
     auto ping_results = pareto_set<journey>{};
     ping.execute(start_time, q.max_transfers_, worst_time_at_dest,
                  ping_results);
@@ -306,8 +306,7 @@ routing_result pong(timetable const& tt,
                    loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
         po.add_start(s.stop_, s.time_at_stop_);
       }
-      po.execute(ping_j.dest_time_, ping_j.transfers_,
-                 ping_j.start_time_ - duration_t{kFwd ? 1 : -1},
+      po.execute(ping_j.dest_time_, ping_j.transfers_, ping_j.start_time_,
                  s_state.results_);
       kFwd ? ++result.search_stats_.n_execute_bwd_
            : ++result.search_stats_.n_execute_fwd_;
