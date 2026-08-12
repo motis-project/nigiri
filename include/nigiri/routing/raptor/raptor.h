@@ -136,12 +136,46 @@ struct raptor {
       }
     }
     s.n_group_stations_ = n;
-    auto const n_slots = std::size_t{n} * 2U * (kMaxVias + 1U);
+    auto const n_slots = std::size_t{n} * 4U * (kMaxVias + 1U);
     s.group_slots_.assign(n_slots, 0);
     s.group_slot_stamp_.assign(n_slots, 0U);
     s.group_rank_stamp_.assign(n, 0U);
     s.group_touched_.clear();
     s.group_epoch_ = 0U;
+  }
+
+  // hubs: 0 = broadcast (transfer), 1 = collect (transfer),
+  // 2 = walk-out (this station's members depart over the base edges),
+  // 3 = walk-in (arrivals over edges into this station, expanded to its
+  // members at +0)
+  static constexpr auto const kHubBcast = 0U;
+  static constexpr auto const kHubColl = 1U;
+  static constexpr auto const kHubWalkOut = 2U;
+  static constexpr auto const kHubWalkIn = 3U;
+
+  std::size_t slot_idx(std::uint32_t const rank,
+                       unsigned const hub,
+                       unsigned const start_v) const {
+    return (std::size_t{rank} * 4U + hub) * (kMaxVias + 1U) + start_v;
+  }
+
+  void feed_slot(std::uint32_t const grp,
+                 std::uint32_t const rank,
+                 unsigned const hub,
+                 unsigned const start_v,
+                 int const value) {
+    if (state_.group_rank_stamp_[rank] != state_.group_epoch_) {
+      state_.group_rank_stamp_[rank] = state_.group_epoch_;
+      state_.group_touched_.push_back(grp);
+    }
+    auto const idx = slot_idx(rank, hub, start_v);
+    if (state_.group_slot_stamp_[idx] != state_.group_epoch_) {
+      state_.group_slot_stamp_[idx] = state_.group_epoch_;
+      state_.group_slots_[idx] = value;
+    } else if (kFwd ? value < state_.group_slots_[idx]
+                    : value > state_.group_slots_[idx]) {
+      state_.group_slots_[idx] = value;
+    }
   }
 
   algo_stats_t get_stats() const { return stats_; }
@@ -791,13 +825,16 @@ private:
   // withholds the door bits from "loud" members (transfer_time_ above
   // the station default) and materializes their rows and columns.
 
-  // relax one implicit transfer-group edge (default-valued same-station
-  // edge, not materialized). base_time already contains the source-side via
-  // stay. Mirrors the explicit footpath relax logic below.
+  // relax one implicit edge (default-valued same-station transfer or
+  // derived cross-station walk copy, not materialized). base_time already
+  // contains the source-side via stay; adj_dur is the ALREADY-ADJUSTED
+  // duration (transfer_time_settings applied once by the caller, 0 for
+  // target-side walk expansion). Mirrors the explicit footpath relax
+  // logic below.
   void relax_group_target(unsigned const k,
                           unsigned const start_v,
                           int const base_time,
-                          int const dur,
+                          int const adj_dur,
                           std::uint32_t const target) {
     ++stats_.n_footpaths_visited_;
     auto const target_is_via = start_v != Vias && is_via_[start_v][target];
@@ -806,9 +843,7 @@ private:
         target_is_via
             ? static_cast<int>(via_stops_[start_v].stay_.count())
             : 0;
-    auto const fp_target_time = clamp(
-        base_time +
-        dir(adjusted_transfer_time(transfer_time_settings_, dur) + stay));
+    auto const fp_target_time = clamp(base_time + dir(adj_dur + stay));
 
     if (bounds_last_k_ == 0U &&
         is_better(fp_target_time, best_[target][target_v])) {
@@ -860,6 +895,19 @@ private:
         ++stats_.n_footpaths_visited_;
 
         auto const target = to_idx(fp.target());
+        auto const adj_dur = adjusted_transfer_time(transfer_time_settings_,
+                                                    fp.duration().count());
+        // derived cross-station walk copies: an edge into a transfer-group
+        // station also carries every kVirt member of that station (the
+        // flush expands the walk-in slot at +0); fed with the value BEFORE
+        // target-side via handling so member via transitions mirror the
+        // former materialized copies
+        auto const target_rank = state_.group_rank_[target];
+        auto const feed_walk_in =
+            target_rank != std::numeric_limits<std::uint32_t>::max() &&
+            (tt_.locations_.parents_[l_idx] == location_idx_t::invalid()
+                 ? l_idx
+                 : tt_.locations_.parents_[l_idx]) != fp.target();
 
         for (auto v = 0U; v != Vias + 1; ++v) {
           auto const tmp_time = tmp_[i][v];
@@ -870,6 +918,16 @@ private:
           auto const start_is_via =
               v != Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
           auto const start_v = start_is_via ? v + 1 : v;
+
+          if (feed_walk_in) {
+            feed_slot(
+                target, target_rank, kHubWalkIn, start_v,
+                clamp(tmp_time +
+                      dir(adj_dur +
+                          (start_is_via
+                               ? static_cast<int>(via_stops_[v].stay_.count())
+                               : 0))));
+          }
 
           auto const target_is_via =
               start_v != Vias && is_via_[start_v][target];
@@ -882,10 +940,8 @@ private:
             stay += via_stops_[start_v].stay_;
           }
 
-          auto const fp_target_time = clamp(
-              tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
-                                                    fp.duration().count()) +
-                             stay.count()));
+          auto const fp_target_time =
+              clamp(tmp_time + dir(adj_dur + stay.count()));
 
           if (bounds_last_k_ == 0U &&
               is_better(fp_target_time, best_[target][target_v])) {
@@ -942,26 +998,30 @@ private:
         }
       }
 
-      // implicit transfer-group edges: default-valued same-station edges
-      // are derived, not stored. a member with a default-safe row feeds
-      // the broadcast hub, one with only a default-safe column feeds the
-      // collect hub; both-zero members feed nothing (their rows are
-      // materialized). expansion happens once per round in the flush.
-      auto const test = [](bitvec const& bv, std::uint64_t const x) {
-        return x < bv.size() && bv.test(x);
-      };
-      auto const may_bcast = test(
-          kFwd ? tt_.locations_.virt_group_out_ : tt_.locations_.virt_group_in_,
-          i);
-      auto const may_coll =
-          !may_bcast &&
-          test(kFwd ? tt_.locations_.virt_group_in_
-                    : tt_.locations_.virt_group_out_,
-               i);
-      if (may_bcast || may_coll) {
-        auto const grp = tt_.locations_.types_[l_idx] == location_type::kVirt
-                             ? tt_.locations_.parents_[l_idx]
-                             : l_idx;
+      // implicit edges of transfer-group members are derived, not stored.
+      // transfer channel: a member with a default-safe row feeds the
+      // broadcast hub, one with only a default-safe column the collect
+      // hub (loud/both-zero members feed neither; their cells are
+      // materialized). walk channel: EVERY member feeds the walk-out hub
+      // -- its cross-station copies were uniform duplicates of the base
+      // edge list. expansion happens once per round in the flush.
+      auto const grp = tt_.locations_.types_[l_idx] == location_type::kVirt
+                           ? tt_.locations_.parents_[l_idx]
+                           : l_idx;
+      auto const grp_rank = state_.group_rank_[to_idx(grp)];
+      if (grp_rank != std::numeric_limits<std::uint32_t>::max()) {
+        auto const test = [](bitvec const& bv, std::uint64_t const x) {
+          return x < bv.size() && bv.test(x);
+        };
+        auto const may_bcast =
+            test(kFwd ? tt_.locations_.virt_group_out_
+                      : tt_.locations_.virt_group_in_,
+                 i);
+        auto const may_coll =
+            !may_bcast &&
+            test(kFwd ? tt_.locations_.virt_group_in_
+                      : tt_.locations_.virt_group_out_,
+                 i);
 
         auto srcs = std::array<std::pair<unsigned, int>, Vias + 1>{};
         auto n_srcs = 0U;
@@ -981,25 +1041,13 @@ private:
           srcs[n_srcs++] = {start_v, base_time};
         }
 
-        if (n_srcs != 0U) {
-          auto const rank = state_.group_rank_[to_idx(grp)];
-          if (state_.group_rank_stamp_[rank] != state_.group_epoch_) {
-            state_.group_rank_stamp_[rank] = state_.group_epoch_;
-            state_.group_touched_.push_back(to_idx(grp));
+        for (auto x = 0U; x != n_srcs; ++x) {
+          if (may_bcast || may_coll) {
+            feed_slot(to_idx(grp), grp_rank, may_bcast ? kHubBcast : kHubColl,
+                      srcs[x].first, srcs[x].second);
           }
-          auto const slot0 = (std::size_t{rank} * 2U + (may_bcast ? 0U : 1U)) *
-                             (kMaxVias + 1U);
-          for (auto x = 0U; x != n_srcs; ++x) {
-            auto const idx = slot0 + srcs[x].first;
-            auto const base_time = srcs[x].second;
-            if (state_.group_slot_stamp_[idx] != state_.group_epoch_) {
-              state_.group_slot_stamp_[idx] = state_.group_epoch_;
-              state_.group_slots_[idx] = base_time;
-            } else if (kFwd ? base_time < state_.group_slots_[idx]
-                            : base_time > state_.group_slots_[idx]) {
-              state_.group_slots_[idx] = base_time;
-            }
-          }
+          feed_slot(to_idx(grp), grp_rank, kHubWalkOut, srcs[x].first,
+                    srcs[x].second);
         }
       }
     });
@@ -1013,10 +1061,18 @@ private:
     for (auto const grp_i : state_.group_touched_) {
       auto const grp = location_idx_t{grp_i};
       auto const rank = state_.group_rank_[grp_i];
-      auto const dur =
-          static_cast<int>(tt_.locations_.transfer_time_[grp].count());
+      auto const adj_transfer = adjusted_transfer_time(
+          transfer_time_settings_,
+          static_cast<int>(tt_.locations_.transfer_time_[grp].count()));
       auto const& collect_ok =
           kFwd ? tt_.locations_.virt_group_in_ : tt_.locations_.virt_group_out_;
+      auto const slot_at = [&](unsigned const hub, unsigned const start_v,
+                               auto&& fn) {
+        auto const idx = slot_idx(rank, hub, start_v);
+        if (state_.group_slot_stamp_[idx] == state_.group_epoch_) {
+          fn(state_.group_slots_[idx]);
+        }
+      };
       auto const for_each_member = [&](auto&& fn) {
         fn(to_idx(grp));
         for (auto const c : tt_.locations_.children_[grp]) {
@@ -1026,22 +1082,69 @@ private:
         }
       };
       for (auto start_v = 0U; start_v != Vias + 1; ++start_v) {
-        auto const b_idx = (std::size_t{rank} * 2U) * (kMaxVias + 1U) + start_v;
-        if (state_.group_slot_stamp_[b_idx] == state_.group_epoch_) {
-          auto const b = state_.group_slots_[b_idx];
+        slot_at(kHubBcast, start_v, [&](int const b) {
           for_each_member([&](std::uint32_t const m) {
-            relax_group_target(k, start_v, b, dur, m);
+            relax_group_target(k, start_v, b, adj_transfer, m);
           });
-        }
-        auto const c_idx =
-            (std::size_t{rank} * 2U + 1U) * (kMaxVias + 1U) + start_v;
-        if (state_.group_slot_stamp_[c_idx] == state_.group_epoch_) {
-          auto const c = state_.group_slots_[c_idx];
+        });
+        slot_at(kHubColl, start_v, [&](int const c) {
           for_each_member([&](std::uint32_t const m) {
             if (m < collect_ok.size() && collect_ok.test(m)) {
-              relax_group_target(k, start_v, c, dur, m);
+              relax_group_target(k, start_v, c, adj_transfer, m);
             }
           });
+        });
+        // walk-in: arrivals over edges into this station reach its kVirt
+        // members at +0 (the edge duration is already in the slot value)
+        slot_at(kHubWalkIn, start_v, [&](int const w) {
+          for (auto const c : tt_.locations_.children_[grp]) {
+            if (tt_.locations_.types_[c] == location_type::kVirt) {
+              relax_group_target(k, start_v, w, 0, to_idx(c));
+            }
+          }
+        });
+      }
+      // walk-out: expand the base edge list once for all members that fed
+      // the slot; each cross-station edge carries the target and its
+      // generated children (the former materialized copies)
+      {
+        auto any = false;
+        for (auto start_v = 0U; start_v != Vias + 1 && !any; ++start_v) {
+          any = state_.group_slot_stamp_[slot_idx(rank, kHubWalkOut,
+                                                  start_v)] ==
+                state_.group_epoch_;
+        }
+        if (any) {
+          auto const& bfps = kFwd
+                                 ? tt_.locations_.footpaths_out_[prf_idx_][grp]
+                                 : tt_.locations_.footpaths_in_[prf_idx_][grp];
+          for (auto const& fp : bfps) {
+            auto const t = fp.target();
+            auto const pt = tt_.locations_.parents_[t] ==
+                                    location_idx_t::invalid()
+                                ? t
+                                : tt_.locations_.parents_[t];
+            if (pt == grp) {
+              continue;  // same-station cells are the transfer channel
+            }
+            auto const adj_walk = adjusted_transfer_time(
+                transfer_time_settings_, fp.duration().count());
+            auto const relax_walk = [&](std::uint32_t const m) {
+              for (auto start_v = 0U; start_v != Vias + 1; ++start_v) {
+                slot_at(kHubWalkOut, start_v, [&](int const w) {
+                  relax_group_target(k, start_v, w, adj_walk, m);
+                });
+              }
+            };
+            relax_walk(to_idx(t));
+            for (auto const c : tt_.locations_.children_[t]) {
+              auto const ct = tt_.locations_.types_[c];
+              if (ct == location_type::kVirt ||
+                  ct == location_type::kGeneratedTrack) {
+                relax_walk(to_idx(c));
+              }
+            }
+          }
         }
       }
     }

@@ -394,25 +394,15 @@ void add_missing_equivalence_footpaths(timetable& tt) {
 }
 
 void add_links_to_and_between_children(timetable& tt) {
-  // same-station pairs at stations with elided transfer groups are covered
-  // by the rule matrix (derived via the door bits, or materialized): do
-  // not materialize propagated copies.
+  // propagated copies involving kVirt members are never materialized:
+  // same-station pairs are covered by the transfer rule matrix (derived
+  // via the door bits, or materialized as deviating cells), cross-station
+  // pairs are uniform duplicates of the base edge and derived at query
+  // time through the walk channel (raptor update_footpaths).
   auto const implicit_pair = [&](location_idx_t const a,
                                  location_idx_t const b) {
-    auto const pa = tt.locations_.parents_[a] == location_idx_t::invalid()
-                        ? a
-                        : tt.locations_.parents_[a];
-    auto const pb = tt.locations_.parents_[b] == location_idx_t::invalid()
-                        ? b
-                        : tt.locations_.parents_[b];
-    if (pa != pb) {
-      return false;
-    }
-    auto const test = [](bitvec const& bv, location_idx_t const x) {
-      return to_idx(x) < bv.size() && bv.test(to_idx(x));
-    };
-    return test(tt.locations_.virt_group_out_, a) ||
-           test(tt.locations_.virt_group_in_, b);
+    return tt.locations_.types_[a] == location_type::kVirt ||
+           tt.locations_.types_[b] == location_type::kVirt;
   };
 
   auto fp_out = mutable_fws_multimap<location_idx_t, footpath>{};

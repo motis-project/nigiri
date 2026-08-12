@@ -204,6 +204,37 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
           }
         }
       }
+
+      // implicit cross-station walk start candidates (see get_legs)
+      auto const l_is_virt =
+          lcs.types_[leg_start_location] == location_type::kVirt;
+      if (l_is_virt || leg_start_location == grp ||
+          lcs.types_[leg_start_location] == location_type::kGeneratedTrack) {
+        for (auto const& fp : (kFwd ? lcs.footpaths_in_[q.prf_idx_][grp]
+                                    : lcs.footpaths_out_[q.prf_idx_][grp])) {
+          auto const s = fp.target();
+          auto const ps = lcs.parents_[s] == location_idx_t::invalid()
+                              ? s
+                              : lcs.parents_[s];
+          if (ps == grp) {
+            continue;
+          }
+          if (l_is_virt) {
+            if (auto leg = try_start_fp(footpath{s, fp.duration()});
+                leg.has_value()) {
+              return leg;
+            }
+          }
+          for (auto const c : lcs.children_[s]) {
+            if (lcs.types_[c] == location_type::kVirt) {
+              if (auto leg = try_start_fp(footpath{c, fp.duration()});
+                  leg.has_value()) {
+                return leg;
+              }
+            }
+          }
+        }
+      }
     }
   }
 
@@ -861,6 +892,41 @@ void reconstruct_journey_with_vias(timetable const& tt,
         if (lcs.types_[c] == location_type::kVirt) {
           if (auto fp_legs = try_member(c); fp_legs.has_value()) {
             return std::move(*fp_legs);
+          }
+        }
+      }
+
+      // implicit cross-station walk candidates: each edge of the parent
+      // station carries every kVirt member of the source station (walk-out
+      // expansion) and, for kVirt targets, every source of an edge into
+      // the station (walk-in expansion) -- the former propagated copies
+      auto const l_is_virt = lcs.types_[l] == location_type::kVirt;
+      if (l_is_virt || l == grp ||
+          lcs.types_[l] == location_type::kGeneratedTrack) {
+        for (auto const& fp : (kFwd ? lcs.footpaths_in_[q.prf_idx_][grp]
+                                    : lcs.footpaths_out_[q.prf_idx_][grp])) {
+          auto const s = fp.target();
+          auto const ps = lcs.parents_[s] == location_idx_t::invalid()
+                              ? s
+                              : lcs.parents_[s];
+          if (ps == grp) {
+            continue;
+          }
+          if (l_is_virt) {
+            if (auto r =
+                    check_fp(k, l, curr_time,
+                             footpath{s, fp.duration()}, true, false)) {
+              return std::move(*r);
+            }
+          }
+          for (auto const c : lcs.children_[s]) {
+            if (lcs.types_[c] == location_type::kVirt) {
+              if (auto r =
+                      check_fp(k, l, curr_time,
+                               footpath{c, fp.duration()}, true, false)) {
+                return std::move(*r);
+              }
+            }
           }
         }
       }

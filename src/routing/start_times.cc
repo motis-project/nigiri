@@ -268,11 +268,40 @@ void get_starts(
     for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
       update(l, o.duration());
       if (use_start_footpaths) {
+        // a footpath into a transfer-group station also carries its kVirt
+        // members (their materialized copies are elided, see
+        // build_footpaths / raptor walk channel)
+        auto const expand = [&](location_idx_t const tgt, duration_t const d) {
+          update(tgt, d);
+          for (auto const c : tt.locations_.children_[tgt]) {
+            if (tt.locations_.types_[c] == location_type::kVirt) {
+              update(c, d);
+            }
+          }
+        };
         auto const footpaths = fwd ? tt.locations_.footpaths_out_[prf_idx][l]
                                    : tt.locations_.footpaths_in_[prf_idx][l];
         for (auto const& fp : footpaths) {
-          update(fp.target(),
+          expand(fp.target(),
                  o.duration() + adjusted_transfer_time(tts, fp.duration()));
+        }
+        // kVirt members walk over their parent's (elided) edge list
+        if (tt.locations_.types_[l] == location_type::kVirt) {
+          auto const grp = tt.locations_.parents_[l];
+          auto const gfps = fwd ? tt.locations_.footpaths_out_[prf_idx][grp]
+                                : tt.locations_.footpaths_in_[prf_idx][grp];
+          for (auto const& fp : gfps) {
+            auto const t = fp.target();
+            auto const pt = tt.locations_.parents_[t] ==
+                                    location_idx_t::invalid()
+                                ? t
+                                : tt.locations_.parents_[t];
+            if (pt == grp) {
+              continue;  // same-station: transfer rules, not walks
+            }
+            expand(t,
+                   o.duration() + adjusted_transfer_time(tts, fp.duration()));
+          }
         }
       }
     });
