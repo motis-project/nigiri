@@ -95,15 +95,15 @@ S,20240619,1
   {
     auto q_any = routing::query{};
     auto const r_any = routing::get_earliest_alternative(tt, &rtt, q_any, A, C,
-                                                         from_arr, to_dep);
+                                                         from_arr, to_dep, {});
     ASSERT_TRUE(r_any.has_value()) << "block trip A→B→C must be reachable";
   }
 
   auto q = routing::query{};
   q.require_bike_transport_ = true;
 
-  auto const result =
-      routing::get_earliest_alternative(tt, &rtt, q, A, C, from_arr, to_dep);
+  auto const result = routing::get_earliest_alternative(tt, &rtt, q, A, C,
+                                                        from_arr, to_dep, {});
 
   EXPECT_FALSE(result.has_value())
       << "block trip A→B (no bikes) → B→C must be rejected for require_bike";
@@ -161,15 +161,15 @@ S,20240619,1
   {
     auto q_any = routing::query{};
     auto const r_any = routing::get_earliest_alternative(tt, &rtt, q_any, A, C,
-                                                         from_arr, to_dep);
+                                                         from_arr, to_dep, {});
     ASSERT_TRUE(r_any.has_value()) << "block trip A→B→C must be reachable";
   }
 
   auto q = routing::query{};
   q.require_car_transport_ = true;
 
-  auto const result =
-      routing::get_earliest_alternative(tt, &rtt, q, A, C, from_arr, to_dep);
+  auto const result = routing::get_earliest_alternative(tt, &rtt, q, A, C,
+                                                        from_arr, to_dep, {});
 
   EXPECT_FALSE(result.has_value())
       << "block trip A→B (cars) → B→C (no cars) must be rejected";
@@ -250,7 +250,7 @@ S,20240619,1
 
   auto const result = routing::get_earliest_alternative(
       tt, &rtt, q, X, B, unixtime_t{sys_days{2024_y / June / 19}} + 8h + 50min,
-      unixtime_t{sys_days{2024_y / June / 19}} + 12h);
+      unixtime_t{sys_days{2024_y / June / 19}} + 12h, {});
 
   EXPECT_TRUE(result.has_value())
       << "TD footpath X→A should enable boarding T at A 11:00";
@@ -327,7 +327,7 @@ S,20240619,1
 
   auto const result = routing::get_earliest_alternative(
       tt, &rtt, q, A, Y, unixtime_t{sys_days{2024_y / June / 19}} + 8h + 50min,
-      unixtime_t{sys_days{2024_y / June / 19}} + 13h);
+      unixtime_t{sys_days{2024_y / June / 19}} + 13h, {});
 
   EXPECT_TRUE(result.has_value())
       << "TD footpath B→Y should enable alighting T at B 11:30";

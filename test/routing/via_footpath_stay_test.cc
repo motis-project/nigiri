@@ -97,20 +97,17 @@ TEST(routing, via_footpath_stay) {
   auto const C = tt.find(location_id{"C", source_idx_t{0}}).value();
 
   auto const day = sys_days{2024_y / June / 19};
-  auto const results =
-      raptor_search(tt, nullptr,
-                    routing::query{
-                        .start_time_ = interval<unixtime_t>{day + 10h,
-                                                            day + 10h + 15min},
-                        .start_match_mode_ =
-                            routing::location_match_mode::kEquivalent,
-                        .dest_match_mode_ =
-                            routing::location_match_mode::kEquivalent,
-                        .use_start_footpaths_ = false,
-                        .start_ = {{A, 0min, 0U}},
-                        .destination_ = {{C, 0min, 0U}},
-                        .via_stops_ = {{D, 10min}}},
-                    direction::kForward);
+  auto const results = raptor_search(
+      tt, nullptr,
+      routing::query{
+          .start_time_ = interval<unixtime_t>{day + 10h, day + 10h + 15min},
+          .start_match_mode_ = routing::location_match_mode::kEquivalent,
+          .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+          .use_start_footpaths_ = false,
+          .start_ = {{A, 0min, 0U}},
+          .destination_ = {{C, 0min, 0U}},
+          .via_stops_ = {{D, 10min}}},
+      direction::kForward);
 
   constexpr auto const expected = R"(
 [2024-06-19 10:00, 2024-06-19 13:00]

@@ -39,18 +39,46 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     location_idx_t const from,
     location_idx_t const to,
     unixtime_t const from_arr,
-    unixtime_t const to_dep) {
+    unixtime_t const to_dep,
+    std::vector<location_idx_t> const& required_vias) {
+  // a 0min via served in the middle of the replaced transit does not
+  // appear at a leg boundary -- an alternative on another route could
+  // silently skip it, so it has to serve the same vias in order
+  auto const serves_required_vias = [&](journey::leg const& transit) {
+    if (required_vias.empty()) {
+      return true;
+    }
+    if (!std::holds_alternative<journey::run_enter_exit>(transit.uses_)) {
+      return false;
+    }
+    auto const ree = std::get<journey::run_enter_exit>(transit.uses_);
+    auto const fr = rt::frun{tt, rtt, ree.r_};
+    auto it = required_vias.begin();
+    for (auto i = ree.stop_range_.from_;
+         i != ree.stop_range_.to_ && it != end(required_vias); ++i) {
+      if (matches(tt, location_match_mode::kEquivalent, *it,
+                  fr[i].get_location_idx())) {
+        ++it;
+      }
+    }
+    return it == end(required_vias);
+  };
+
   auto const direct_query = make_alternative_query(tt, rtt, q, from, to);
   auto cursor =
       get_direct_journeys<direction::kForward>(tt, rtt, direct_query, from_arr);
-  if (!cursor) {
-    return std::nullopt;
+  while (cursor) {
+    auto legs = cursor();
+    if (legs.back().arr_time_ > to_dep) {
+      return std::nullopt;
+    }
+    if (!serves_required_vias(legs[1])) {
+      continue;
+    }
+    return std::array{std::move(legs[0]), std::move(legs[1]),
+                      std::move(legs[2])};
   }
-  auto legs = cursor();
-  if (legs.back().arr_time_ > to_dep) {
-    return std::nullopt;
-  }
-  return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
+  return std::nullopt;
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias, typename AlgoState>
@@ -374,8 +402,8 @@ routing_result pong(timetable const& tt,
     auto const is_out_of_interval =
         kFwd ? (dep < search_interval.from_ ||
                 (!q.extend_interval_later_ && dep >= search_interval.to_))
-             : (dep >= search_interval.to_ || (!q.extend_interval_earlier_ &&
-                                               dep < search_interval.from_));
+             : (dep >= search_interval.to_ ||
+                (!q.extend_interval_earlier_ && dep < search_interval.from_));
     auto const erase = !j.is_reconstructed_ || !is_validated(j) ||
                        is_out_of_interval ||
                        j.travel_time() >= fastest_direct ||
@@ -439,16 +467,6 @@ routing_result pong(timetable const& tt,
     return result;
   }
 
-  if constexpr (Vias != 0U) {
-    if (utl::any_of(q.via_stops_, [](via_stop const& v) {
-          return v.stay_ == duration_t{0};
-        })) {
-      // Stay duration == 0 means via-stop doesn't require a transfer.
-      // => The via stop could be "optimized away" by get_earliest_alternative!
-      return result;
-    }
-  }
-
   for (auto& j : s_state.results_) {
     auto v = via_offset_t{0};
     for (auto const [transit_1, transfer_1, transit_2, transfer_2, transit_3] :
@@ -483,9 +501,26 @@ routing_result pong(timetable const& tt,
         dep_time -= q.via_stops_[v].stay_;
       }
 
-      auto const earlier =
-          get_earliest_alternative(tt, rtt, q, from.get_location_idx(),
-                                   to.get_location_idx(), arr_time, dep_time);
+      auto required_vias = std::vector<location_idx_t>{};
+      if (std::holds_alternative<journey::run_enter_exit>(transit_2.uses_)) {
+        auto const ree = std::get<journey::run_enter_exit>(transit_2.uses_);
+        auto const fr = rt::frun{tt, rtt, ree.r_};
+        for (auto i = ree.stop_range_.from_; i != ree.stop_range_.to_; ++i) {
+          for (auto const& vs : q.via_stops_) {
+            if (vs.stay_ == 0_minutes &&
+                matches(tt, location_match_mode::kEquivalent, vs.location_,
+                        fr[i].get_location_idx()) &&
+                (required_vias.empty() ||
+                 required_vias.back() != vs.location_)) {
+              required_vias.push_back(vs.location_);
+            }
+          }
+        }
+      }
+
+      auto const earlier = get_earliest_alternative(
+          tt, rtt, q, from.get_location_idx(), to.get_location_idx(), arr_time,
+          dep_time, required_vias);
 
       if (earlier.has_value()) {
         // wait minimization only moves transit_2's departure later while
