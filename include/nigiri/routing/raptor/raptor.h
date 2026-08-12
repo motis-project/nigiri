@@ -112,6 +112,36 @@ struct raptor {
         end_reachable_.set(to_idx(l), true);
       }
     }
+    build_group_ranks();
+  }
+
+  // dense slot addressing for the implicit transfer-group aggregation:
+  // group_rank_[station] -> rank; slot = (rank * 2 + hub) * (kMaxVias + 1)
+  // + via state. built once per raptor_state lifetime.
+  void build_group_ranks() {
+    auto& s = state_;
+    if (s.group_rank_.size() == n_locations_) {
+      return;
+    }
+    s.group_rank_.assign(n_locations_,
+                         std::numeric_limits<std::uint32_t>::max());
+    auto n = std::uint32_t{0U};
+    for (auto l = location_idx_t{0U}; l != location_idx_t{n_locations_};
+         ++l) {
+      if (tt_.locations_.types_[l] == location_type::kVirt) {
+        auto& r = s.group_rank_[to_idx(tt_.locations_.parents_[l])];
+        if (r == std::numeric_limits<std::uint32_t>::max()) {
+          r = n++;
+        }
+      }
+    }
+    s.n_group_stations_ = n;
+    auto const n_slots = std::size_t{n} * 2U * (kMaxVias + 1U);
+    s.group_slots_.assign(n_slots, 0);
+    s.group_slot_stamp_.assign(n_slots, 0U);
+    s.group_rank_stamp_.assign(n, 0U);
+    s.group_touched_.clear();
+    s.group_epoch_ = 0U;
   }
 
   algo_stats_t get_stats() const { return stats_; }
@@ -746,26 +776,20 @@ private:
 
   // implicit transfer-group expansion via two directed "hubs" per group
   // station (door bits classified at import, see timetable.h):
-  //   bcast_: fed by members whose matrix row is default-safe
+  //   hub 0 (broadcast): fed by members whose matrix row is default-safe
   //           (virt_group_out_ in fwd, virt_group_in_ in bwd),
   //           expanded to ALL members.
-  //   coll_:  fed by the remaining members with a default-safe column,
-  //           expanded only to members whose column is default-safe
-  //           (virt_group_in_ in fwd, virt_group_out_ in bwd).
+  //   hub 1 (collect): fed by the remaining members with a default-safe
+  //           column, expanded only to members whose column is
+  //           default-safe (virt_group_in_ in fwd, virt_group_out_ bwd).
   // all implicit edges share the station default, so min_src(arr) is
   // hoisted per hub and the member set expanded once per station instead
-  // of once per marked member. the slots are PLAIN MINIMA -- no source
+  // of once per marked member. the slots are PLAIN MINIMA in a dense
+  // epoch-stamped array (raptor_state) -- no hash map, no source
   // tracking: a member's own echo (tmp + default) can never beat its
   // legitimate same-stop value (tmp + transfer_time_), because import
   // withholds the door bits from "loud" members (transfer_time_ above
   // the station default) and materializes their rows and columns.
-  struct station_agg {
-    std::array<int, Vias + 1> bcast_;
-    std::array<int, Vias + 1> coll_;
-  };
-  static constexpr auto const kUnreachedGroup =
-      kFwd ? std::numeric_limits<int>::max() : std::numeric_limits<int>::min();
-  hash_map<location_idx_t, station_agg> group_agg_;
 
   // relax one implicit transfer-group edge (default-valued same-station
   // edge, not materialized). base_time already contains the source-side via
@@ -814,6 +838,11 @@ private:
   }
 
   void update_footpaths(unsigned const k) {
+    if (++state_.group_epoch_ == 0U) {  // wrapped: invalidate all stamps
+      state_.group_slot_stamp_.assign(state_.group_slot_stamp_.size(), 0U);
+      state_.group_rank_stamp_.assign(state_.group_rank_stamp_.size(), 0U);
+      state_.group_epoch_ = 1U;
+    }
     state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
       auto const l_idx = location_idx_t{i};
       if constexpr (Rt) {
@@ -953,19 +982,22 @@ private:
         }
 
         if (n_srcs != 0U) {
-          auto it = group_agg_.find(grp);
-          if (it == end(group_agg_)) {
-            auto a = station_agg{};
-            a.bcast_.fill(kUnreachedGroup);
-            a.coll_.fill(kUnreachedGroup);
-            it = group_agg_.emplace(grp, a).first;
+          auto const rank = state_.group_rank_[to_idx(grp)];
+          if (state_.group_rank_stamp_[rank] != state_.group_epoch_) {
+            state_.group_rank_stamp_[rank] = state_.group_epoch_;
+            state_.group_touched_.push_back(to_idx(grp));
           }
-          auto& slots = may_bcast ? it->second.bcast_ : it->second.coll_;
+          auto const slot0 = (std::size_t{rank} * 2U + (may_bcast ? 0U : 1U)) *
+                             (kMaxVias + 1U);
           for (auto x = 0U; x != n_srcs; ++x) {
-            auto& agg = slots[srcs[x].first];
+            auto const idx = slot0 + srcs[x].first;
             auto const base_time = srcs[x].second;
-            if (kFwd ? base_time < agg : base_time > agg) {
-              agg = base_time;
+            if (state_.group_slot_stamp_[idx] != state_.group_epoch_) {
+              state_.group_slot_stamp_[idx] = state_.group_epoch_;
+              state_.group_slots_[idx] = base_time;
+            } else if (kFwd ? base_time < state_.group_slots_[idx]
+                            : base_time > state_.group_slots_[idx]) {
+              state_.group_slots_[idx] = base_time;
             }
           }
         }
@@ -978,7 +1010,9 @@ private:
     // cells are materialized, and a member's own echo is always dominated
     // by its same-stop value from the route scan (loud members never
     // scatter), so the slots need no source tracking.
-    for (auto const& [grp, agg] : group_agg_) {
+    for (auto const grp_i : state_.group_touched_) {
+      auto const grp = location_idx_t{grp_i};
+      auto const rank = state_.group_rank_[grp_i];
       auto const dur =
           static_cast<int>(tt_.locations_.transfer_time_[grp].count());
       auto const& collect_ok =
@@ -992,14 +1026,17 @@ private:
         }
       };
       for (auto start_v = 0U; start_v != Vias + 1; ++start_v) {
-        auto const b = agg.bcast_[start_v];
-        if (b != kUnreachedGroup) {
+        auto const b_idx = (std::size_t{rank} * 2U) * (kMaxVias + 1U) + start_v;
+        if (state_.group_slot_stamp_[b_idx] == state_.group_epoch_) {
+          auto const b = state_.group_slots_[b_idx];
           for_each_member([&](std::uint32_t const m) {
             relax_group_target(k, start_v, b, dur, m);
           });
         }
-        auto const c = agg.coll_[start_v];
-        if (c != kUnreachedGroup) {
+        auto const c_idx =
+            (std::size_t{rank} * 2U + 1U) * (kMaxVias + 1U) + start_v;
+        if (state_.group_slot_stamp_[c_idx] == state_.group_epoch_) {
+          auto const c = state_.group_slots_[c_idx];
           for_each_member([&](std::uint32_t const m) {
             if (m < collect_ok.size() && collect_ok.test(m)) {
               relax_group_target(k, start_v, c, dur, m);
@@ -1008,7 +1045,7 @@ private:
         }
       }
     }
-    group_agg_.clear();
+    state_.group_touched_.clear();
   }
 
   void update_td_offsets(unsigned const k) {
