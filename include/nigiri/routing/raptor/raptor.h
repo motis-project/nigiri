@@ -754,17 +754,14 @@ private:
   //           (virt_group_in_ in fwd, virt_group_out_ in bwd).
   // all implicit edges share the station default, so min_src(arr) is
   // hoisted per hub and the member set expanded once per station instead
-  // of once per marked member. top-2 (best + second-best from a different
-  // source) covers the one exclusion that always applies: a member must
-  // never receive its own contribution.
-  struct group_agg_entry {
-    int best_;
-    std::uint32_t best_src_;
-    int second_;
-  };
+  // of once per marked member. the slots are PLAIN MINIMA -- no source
+  // tracking: a member's own echo (tmp + default) can never beat its
+  // legitimate same-stop value (tmp + transfer_time_), because import
+  // withholds the door bits from "loud" members (transfer_time_ above
+  // the station default) and materializes their rows and columns.
   struct station_agg {
-    std::array<group_agg_entry, Vias + 1> bcast_;
-    std::array<group_agg_entry, Vias + 1> coll_;
+    std::array<int, Vias + 1> bcast_;
+    std::array<int, Vias + 1> coll_;
   };
   static constexpr auto const kUnreachedGroup =
       kFwd ? std::numeric_limits<int>::max() : std::numeric_limits<int>::min();
@@ -959,24 +956,16 @@ private:
           auto it = group_agg_.find(grp);
           if (it == end(group_agg_)) {
             auto a = station_agg{};
-            a.bcast_.fill(group_agg_entry{kUnreachedGroup, 0U, kUnreachedGroup});
-            a.coll_.fill(group_agg_entry{kUnreachedGroup, 0U, kUnreachedGroup});
+            a.bcast_.fill(kUnreachedGroup);
+            a.coll_.fill(kUnreachedGroup);
             it = group_agg_.emplace(grp, a).first;
           }
           auto& slots = may_bcast ? it->second.bcast_ : it->second.coll_;
           for (auto x = 0U; x != n_srcs; ++x) {
             auto& agg = slots[srcs[x].first];
             auto const base_time = srcs[x].second;
-            if (kFwd ? base_time < agg.best_ : base_time > agg.best_) {
-              if (agg.best_src_ != i) {
-                agg.second_ = agg.best_;
-              }
-              agg.best_ = base_time;
-              agg.best_src_ = static_cast<std::uint32_t>(i);
-            } else if (agg.best_src_ != i &&
-                       (kFwd ? base_time < agg.second_
-                             : base_time > agg.second_)) {
-              agg.second_ = base_time;
+            if (kFwd ? base_time < agg : base_time > agg) {
+              agg = base_time;
             }
           }
         }
@@ -986,7 +975,9 @@ private:
     // flush: one member expansion per hub per station per round. the
     // broadcast hub relaxes every member, the collect hub only members
     // with a default-safe column. no per-pair exclusions -- non-derivable
-    // cells are materialized; self via the best/second distinction.
+    // cells are materialized, and a member's own echo is always dominated
+    // by its same-stop value from the route scan (loud members never
+    // scatter), so the slots need no source tracking.
     for (auto const& [grp, agg] : group_agg_) {
       auto const dur =
           static_cast<int>(tt_.locations_.transfer_time_[grp].count());
@@ -1001,22 +992,17 @@ private:
         }
       };
       for (auto start_v = 0U; start_v != Vias + 1; ++start_v) {
-        auto const relax_from = [&](group_agg_entry const& a,
-                                    std::uint32_t const m) {
-          auto const bt = a.best_src_ == m ? a.second_ : a.best_;
-          if (bt != kUnreachedGroup) {
-            relax_group_target(k, start_v, bt, dur, m);
-          }
-        };
-        auto const& b = agg.bcast_[start_v];
-        if (b.best_ != kUnreachedGroup) {
-          for_each_member([&](std::uint32_t const m) { relax_from(b, m); });
+        auto const b = agg.bcast_[start_v];
+        if (b != kUnreachedGroup) {
+          for_each_member([&](std::uint32_t const m) {
+            relax_group_target(k, start_v, b, dur, m);
+          });
         }
-        auto const& c = agg.coll_[start_v];
-        if (c.best_ != kUnreachedGroup) {
+        auto const c = agg.coll_[start_v];
+        if (c != kUnreachedGroup) {
           for_each_member([&](std::uint32_t const m) {
             if (m < collect_ok.size() && collect_ok.test(m)) {
-              relax_from(c, m);
+              relax_group_target(k, start_v, c, dur, m);
             }
           });
         }

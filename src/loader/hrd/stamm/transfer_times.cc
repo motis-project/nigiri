@@ -665,6 +665,7 @@ void build_transfer_groups(stamm& st,
   auto n_virt_locations = 0U;
   auto n_edges = 0U;
   auto n_stations = 0U;
+  auto n_loud = 0U;
 
   auto const global_index = global_side_index{r.line_global_, r.admin_global_};
 
@@ -952,8 +953,16 @@ void build_transfer_groups(stamm& st,
     // col_clean = no elevated cell in its COLUMN (it may collect the
     // pooled arrival at the default). a pair (a -> b) is derived iff
     // row_clean[a] || col_clean[b]; everything else is materialized.
+    // "loud" members (own re-boarding buffer above the station default,
+    // the matrix diagonal poking above the constant block) leave the hub
+    // entirely: their echo would undercut the route scan's same-stop
+    // value, and with the necessary max(own, d) in-cost their deliveries
+    // would be too slow anyway. they get no door bits; their rows and
+    // columns are materialized. this makes every hub echo dominated, so
+    // the aggregation needs no source tracking (plain min slots).
     auto row_clean = std::vector<bool>(n_classes, true);
     auto col_clean = std::vector<bool>(n_classes, true);
+    auto loud = std::vector<bool>(n_classes, false);
     for (auto a = std::size_t{0U}; a != n_classes; ++a) {
       for (auto b = std::size_t{0U}; b != n_classes; ++b) {
         if (a != b && at(class_rep[a], class_rep[b]).time_ > default_time) {
@@ -961,11 +970,15 @@ void build_transfer_groups(stamm& st,
           col_clean[b] = false;
         }
       }
+      loud[a] = class_locations[a] != base &&
+                at(class_rep[a], class_rep[a]).time_ > default_time;
+      n_loud += loud[a] ? 1U : 0U;
     }
 
     // emit deviating cells (or preferred) plus the default cells the door
     // bits cannot derive: elevated-source -> elevated-target collateral,
-    // and the full row of both-zero members (they feed no aggregate).
+    // the full row of both-zero members (they feed no aggregate), and the
+    // rows and columns of loud members.
     for (auto a = std::size_t{0U}; a != n_classes; ++a) {
       for (auto b = std::size_t{0U}; b != n_classes; ++b) {
         if (a == b) {
@@ -977,7 +990,8 @@ void build_transfer_groups(stamm& st,
         // collect; bwd offers it iff b broadcasts (col-clean) or b and a
         // both row-clean. both-zero members feed no aggregate in either
         // direction, so cells touching them stay materialized.
-        if (c.time_ == default_time && !c.preferred_ &&
+        if (c.time_ == default_time && !c.preferred_ && !loud[a] &&
+            !loud[b] &&
             (row_clean[a] || (col_clean[a] && col_clean[b])) &&
             (col_clean[b] || (row_clean[b] && row_clean[a]))) {
           continue;  // implicit
@@ -998,6 +1012,9 @@ void build_transfer_groups(stamm& st,
       bv.set(to_idx(l), true);
     };
     for (auto x = std::size_t{0U}; x != n_classes; ++x) {
+      if (loud[x]) {
+        continue;  // materialized rows/columns, never scatters
+      }
       if (row_clean[x]) {
         set_bit(tt.locations_.virt_group_out_, class_locations[x]);
       }
@@ -1008,8 +1025,9 @@ void build_transfer_groups(stamm& st,
   }
 
   log(log_lvl::info, "loader.hrd.transfer_groups",
-      "created {} transfer group locations at {} stations, {} transfer edges",
-      n_virt_locations, n_stations, n_edges);
+      "created {} transfer group locations at {} stations, {} transfer edges, "
+      "{} loud members",
+      n_virt_locations, n_stations, n_edges, n_loud);
 }
 
 }  // namespace nigiri::loader::hrd

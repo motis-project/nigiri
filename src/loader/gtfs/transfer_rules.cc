@@ -21,6 +21,13 @@
 
 namespace nigiri::loader::gtfs {
 
+template <typename Vec, typename El>
+void push_unique(Vec& vec, El&& value) {
+  if (utl::find(vec, value) == end(vec)) {
+    vec.push_back(value);
+  }
+}
+
 enum class transfer_type : std::uint8_t {
   kRecommended = 0U,
   kTimed = 1U,
@@ -385,7 +392,6 @@ void apply_rules(timetable& tt,
       }
     }
   }
-
 }
 
 // A route-/trip-qualified rule whose value equals the default of its stop
@@ -444,11 +450,11 @@ vector_map<rule_idx_t, rule> drop_pair_default_rules(
       continue;
     }
 
-    auto const majority = std::max_element(
-        begin(values), end(values),
-        [](counted_value const& a, counted_value const& b) {
-          return a.n_ < b.n_;
-        });
+    auto const majority =
+        std::max_element(begin(values), end(values),
+                         [](counted_value const& a, counted_value const& b) {
+                           return a.n_ < b.n_;
+                         });
     if (majority->value_.forbidden_) {
       continue;  // banning everyone would restrict unnamed trips
     }
@@ -507,91 +513,93 @@ void read_transfers(timetable& tt,
   utl::line_range{
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_transfer>()  //
-      | utl::for_each([&](csv_transfer const& t) {
-          auto const type = static_cast<transfer_type>(*t.transfer_type_);
+      |
+      utl::for_each([&](csv_transfer const& t) {
+        auto const type = static_cast<transfer_type>(*t.transfer_type_);
 
-          switch (type) {
-            case transfer_type::kRecommended:
-            case transfer_type::kTimed:
-            case transfer_type::kMinimumChangeTime: [[fallthrough]];
-            case transfer_type::kNotPossible: {
-              auto const r = rule{t, type, stops, routes, trips};
-              if (!r.ok_) {
-                return;
-              }
+        switch (type) {
+          case transfer_type::kRecommended:
+          case transfer_type::kTimed:
+          case transfer_type::kMinimumChangeTime: [[fallthrough]];
+          case transfer_type::kNotPossible: {
+            auto const r = rule{t, type, stops, routes, trips};
+            if (!r.ok_) {
+              return;
+            }
 
-              if (type == transfer_type::kRecommended ||
-                  type == transfer_type::kTimed) {
-                auto const trip_idx = [&](gtfs_trip_idx_t const trp_idx) {
-                  return trp_idx == gtfs_trip_idx_t::invalid()
-                             ? trip_idx_t::invalid()
-                             : trips.data_[trp_idx].trip_idx_;
-                };
-                tt.locations_.preferred_transfers_[r.from_stop_].emplace_back(
-                    preferred_transfer{.to_ = r.to_stop_,
-                                       .from_trip_ = trip_idx(r.from_trip_),
-                                       .to_trip_ = trip_idx(r.to_trip_),
-                                       .from_route_ = r.from_route_,
-                                       .to_route_ = r.to_route_});
-              }
+            if (type == transfer_type::kRecommended ||
+                type == transfer_type::kTimed) {
+              auto const trip_idx = [&](gtfs_trip_idx_t const trp_idx) {
+                return trp_idx == gtfs_trip_idx_t::invalid()
+                           ? trip_idx_t::invalid()
+                           : trips.data_[trp_idx].trip_idx_;
+              };
+              tt.locations_.preferred_transfers_[r.from_stop_].emplace_back(
+                  preferred_transfer{.to_ = r.to_stop_,
+                                     .from_trip_ = trip_idx(r.from_trip_),
+                                     .to_trip_ = trip_idx(r.to_trip_),
+                                     .from_route_ = r.from_route_,
+                                     .to_route_ = r.to_route_});
+            }
 
-              auto const enforceable = type != transfer_type::kRecommended ||
-                                       t.min_transfer_time_->has_value();
+            auto const enforceable = type != transfer_type::kRecommended ||
+                                     t.min_transfer_time_->has_value();
 
-              if (!r.forbidden_ &&
-                  r.get_specificity() == specificity::kStopsOnly) {
-                auto const transfer_time =
-                    duration_t{t.min_transfer_time_->value_or(0) / 60};
-                if (r.from_stop_ == r.to_stop_) {
-                  if (enforceable) {
-                    tt.locations_.transfer_time_[r.from_stop_] = transfer_time;
-                  }
-                } else {
-                  tt.locations_.preprocessing_footpaths_out_[r.from_stop_]
-                      .emplace_back(r.to_stop_, transfer_time);
-                  tt.locations_.preprocessing_footpaths_in_[r.to_stop_]
-                      .emplace_back(r.from_stop_, transfer_time);
+            if (!r.forbidden_ &&
+                r.get_specificity() == specificity::kStopsOnly) {
+              auto const transfer_time =
+                  duration_t{t.min_transfer_time_->value_or(0) / 60};
+              if (r.from_stop_ == r.to_stop_) {
+                if (enforceable) {
+                  tt.locations_.transfer_time_[r.from_stop_] = transfer_time;
                 }
+              } else {
+                tt.locations_.preprocessing_footpaths_out_[r.from_stop_]
+                    .emplace_back(r.to_stop_, transfer_time);
+                tt.locations_.preprocessing_footpaths_in_[r.to_stop_]
+                    .emplace_back(r.from_stop_, transfer_time);
               }
-
-              if (enforceable) {
-                rules.emplace_back(r);
-              }
-
-              return;
             }
 
-            case transfer_type::kStaySeated: {
-              if (t.from_trip_id_->empty() || t.to_trip_id_->empty()) {
-                log(log_lvl::error, "loader.gtfs.transfers",
-                    "stay seated transfers require from_trip_id and "
-                    "to_trip_id");
-                return;
-              }
-
-              auto const from_it = trips.trips_.find(t.from_trip_id_->view());
-              if (from_it == end(trips.trips_)) {
-                log(log_lvl::error, "nigiri.loader.gtfs.seated",
-                    "trip {} not found", t.from_trip_id_->view());
-                return;
-              }
-
-              auto const to_it = trips.trips_.find(t.to_trip_id_->view());
-              if (to_it == end(trips.trips_)) {
-                log(log_lvl::error, "nigiri.loader.gtfs.seated",
-                    "trip {} not found", t.to_trip_id_->view());
-                return;
-              }
-
-              trips.data_[to_it->second].seated_in_.push_back(from_it->second);
-              trips.data_[from_it->second].seated_out_.push_back(to_it->second);
-              return;
+            if (enforceable) {
+              rules.emplace_back(r);
             }
 
-            case transfer_type::kNoStaySeated: [[fallthrough]];
-            default: return;
+            return;
           }
-        });
+
+          case transfer_type::kStaySeated: {
+            if (t.from_trip_id_->empty() || t.to_trip_id_->empty()) {
+              log(log_lvl::error, "loader.gtfs.transfers",
+                  "stay seated transfers require from_trip_id and "
+                  "to_trip_id");
+              return;
+            }
+
+            auto const from_it = trips.trips_.find(t.from_trip_id_->view());
+            if (from_it == end(trips.trips_)) {
+              log(log_lvl::error, "nigiri.loader.gtfs.seated",
+                  "trip {} not found", t.from_trip_id_->view());
+              return;
+            }
+
+            auto const to_it = trips.trips_.find(t.to_trip_id_->view());
+            if (to_it == end(trips.trips_)) {
+              log(log_lvl::error, "nigiri.loader.gtfs.seated",
+                  "trip {} not found", t.to_trip_id_->view());
+              return;
+            }
+
+            push_unique(trips.data_[to_it->second].seated_in_, from_it->second);
+            push_unique(trips.data_[from_it->second].seated_out_,
+                        to_it->second);
+            return;
+          }
+
+          case transfer_type::kNoStaySeated: [[fallthrough]];
+          default: return;
+        }
+      });
 
   if (!rules.empty()) {
     rules = drop_pair_default_rules(tt, rules);
