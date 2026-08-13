@@ -37,7 +37,8 @@ namespace nigiri::routing::gpu {
 // word (the high 16 bits are the time key; see device_times).
 using breadcrumb_t = std::uint64_t;
 
-inline constexpr std::uint64_t kBcMask = 0x0000'FFFF'FFFF'FFFFULL;  // 48 bits
+inline constexpr unsigned kBcBits = 48U;
+inline constexpr std::uint64_t kBcMask = (std::uint64_t{1U} << kBcBits) - 1U;
 inline constexpr std::uint64_t kBcTransportMask = 0x03FF'FFFFULL;  // 26 bits
 inline constexpr std::uint64_t kBcStopMask = 0x7FFULL;  // 11 bits
 inline constexpr unsigned kBcBoardShift = 26U;

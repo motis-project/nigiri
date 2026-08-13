@@ -119,8 +119,8 @@ L001I01S1FES,08:31:00,,23,19,,0,0,7.473
   trips.data_
       .emplace_back(route_id_idx_t::invalid(), nullptr, nullptr, "L001I01S1FES",
                     kEmptyTranslation, kEmptyTranslation,
-                    direction_id_t::invalid(), shape_idx_t::invalid(), false,
-                    false, false, "", false)
+                    direction_id_t::invalid(), shape_idx_t::invalid(),
+                    std::array{false, false, false, true}, "", false)
       .trip_idx_ = {};
   auto tt = timetable{};
   tt.trip_debug_.emplace_back().emplace_back(trip_debug{});
@@ -157,8 +157,8 @@ L001I01S1FES,,08:31:00,23,19,,0,0,7.473
   trips.data_
       .emplace_back(route_id_idx_t::invalid(), nullptr, nullptr, "L001I01S1FES",
                     kEmptyTranslation, kEmptyTranslation,
-                    direction_id_t::invalid(), shape_idx_t::invalid(), false,
-                    false, false, "", false)
+                    direction_id_t::invalid(), shape_idx_t::invalid(),
+                    std::array{false, false, false, true}, "", false)
       .trip_idx_ = {};
   auto tt = timetable{};
   tt.trip_debug_.emplace_back().emplace_back(trip_debug{});
@@ -186,8 +186,8 @@ L001I01S1FES,,,23,19,,0,0,7.473
   trips.data_
       .emplace_back(route_id_idx_t::invalid(), nullptr, nullptr, "L001I01S1FES",
                     kEmptyTranslation, kEmptyTranslation,
-                    direction_id_t::invalid(), shape_idx_t::invalid(), false,
-                    false, false, "", false)
+                    direction_id_t::invalid(), shape_idx_t::invalid(),
+                    std::array{false, false, false, true}, "", false)
       .trip_idx_ = {};
   auto tt = timetable{};
   tt.trip_debug_.emplace_back().emplace_back(trip_debug{});
@@ -223,10 +223,10 @@ TEST(gtfs, read_stop_times_example_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto trip_data =
-      read_trips(source_idx_t{}, source_file_idx_t{}, tt, i18n, routes,
-                 services, {}, files.get_file(kTripsFile).data(),
-                 config.bikes_allowed_default_, config.cars_allowed_default_);
+  auto trip_data = read_trips(
+      source_idx_t{}, source_file_idx_t{}, tt, i18n, routes, services, {},
+      files.get_file(kTripsFile).data(), config.bikes_allowed_default_,
+      config.cars_allowed_default_, config.reservation_not_required_default_);
   auto const [stops, _transfers, accessibility] = read_stops(
       source_idx_t{0}, tt, i18n, timezones, files.get_file(kStopFile).data(),
       files.get_file(kTransfersFile).data(), 0U);

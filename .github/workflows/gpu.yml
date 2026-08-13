@@ -29,7 +29,7 @@ jobs:
         run: mkdir -p ~/nigiri-build && mv ~/nigiri-build build
 
       - name: Configure
-        run: cmake --preset cuda
+        run: cmake --preset cuda -DCMAKE_CUDA_ARCHITECTURES="native"
 
       - name: Build
         run: cmake --build --preset cuda --target nigiri-test nigiri-benchmark nigiri-import
@@ -52,13 +52,34 @@ jobs:
             --adjust_footpaths true \
             --max_footpath_length 12
 
-      - name: Validate Germany
+      - name: Validate Germany (vias=0, CPU + GPU)
         run: |
           ./build/cuda/nigiri-benchmark -p tt.bin \
             --engines cpu gpu \
-            --algo raptor pong \
-            --modes station-station coordinate-coordinate \
-            -n 50
+            --algo range pong \
+            --modes s2s c2c \
+            --dirs fwd bwd \
+            -n 25
+
+      - name: Validate Germany (vias=1, CPU)
+        run: |
+          ./build/cuda/nigiri-benchmark -p tt.bin \
+            --engines cpu \
+            --algo range pong \
+            --modes s2s c2c \
+            --dirs fwd bwd \
+            --vias 1 \
+            -n 10
+
+      - name: Validate Germany (vias=2, CPU)
+        run: |
+          ./build/cuda/nigiri-benchmark -p tt.bin \
+            --engines cpu \
+            --algo range pong \
+            --modes s2s c2c \
+            --dirs fwd bwd \
+            --vias 2 \
+            -n 10
 
       - name: Save build
         if: always()

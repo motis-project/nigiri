@@ -1327,6 +1327,8 @@ void load_timetable(loader_config const& config,
   auto sj_utc_trips = vecvec<service_journey_idx_t, utc_trip>{};
   auto sj_ids = string_store<service_journey_idx_t>{};
   auto sj_trips = vector_map<service_journey_idx_t, trip_idx_t>{};
+  auto sj_flags =
+      vector_map<service_journey_idx_t, std::array<bool, kNumRouteFlags>>{};
   auto const add_to_tt = [&](fs::path const& path, intermediate& im) {
     auto lock = std::scoped_lock{tt_mtx};
 
@@ -1463,6 +1465,13 @@ void load_timetable(loader_config const& config,
 
       // Create and register trip.
       auto const short_name = fmt::to_string(sj.trip_nr_);
+
+      auto const clasz = static_cast<std::size_t>(
+          gtfs::to_clasz(to_idx(tt.route_ids_[src].route_id_type_[route_id])));
+      auto flags = std::array<bool, kNumRouteFlags>{
+          config.bikes_allowed_default_[clasz],
+          config.cars_allowed_default_[clasz], false,
+          config.reservation_not_required_default_[clasz]};
       auto t = trip{
           tt,
           src,
@@ -1477,6 +1486,7 @@ void load_timetable(loader_config const& config,
                                     : sj.vehicle_type_->short_name_,
           jp.direction_,
           route_id,
+          flags,
           trip_debug{source_file_idx, static_cast<unsigned>(sj.dbg_offset_),
                      static_cast<unsigned>(sj.dbg_offset_)},
       };
@@ -1526,6 +1536,7 @@ void load_timetable(loader_config const& config,
       assert(sj_idx == sj_utc_trips.size());
       assert(sj_idx == sj_trips.size());
       sj_trips.push_back(trip_idx);
+      sj_flags.push_back(flags);
       auto bucket = sj_utc_trips.add_back_sized(0U);
       for (auto const& [k, traffic_days] :
            expand_local_to_utc(tt, im.tz_, sj)) {
@@ -1572,10 +1583,41 @@ void load_timetable(loader_config const& config,
   auto route_services =
       hash_map<gtfs::route_key_t, std::vector<std::vector<utc_trip>>,
                gtfs::route_key_hash, gtfs::route_key_equals>{};
+
+  auto flags_seq_cache = std::array<bitvec, kNumRouteFlags>{};
+  auto flags_seq_ptr_cache = std::array<bitvec const*, kNumRouteFlags>{};
+  auto const apply_flag_seq =
+      [&](route_flag const f,
+          basic_string<service_journey_idx_t> const& trips) {
+        if (trips.size() == 1U) {
+          flags_seq_ptr_cache[f] =
+              sj_flags[trips.front()][f]
+                  ? &gtfs::kSingleTripTransportationAllowed
+                  : &gtfs::kSingleTripTransportationNotAllowed;
+        } else {
+          flags_seq_cache[f].resize(0);
+          for (auto const& sj_idx : trips) {
+            auto const stop_count =
+                sj_utc_trips[sj_idx].front().stop_seq_.size();
+            auto const offset = flags_seq_cache[f].size();
+            flags_seq_cache[f].resize(
+                static_cast<bitvec::size_type>(offset + stop_count - 1));
+            for (auto j = 0U; j < stop_count - 1; ++j) {
+              flags_seq_cache[f].set(offset + j, sj_flags[sj_idx][f]);
+            }
+          }
+          flags_seq_ptr_cache[f] = &flags_seq_cache[f];
+        }
+      };
+
   auto const add_expanded_trip = [&](utc_trip const& s) {
     auto const c =
         gtfs::to_clasz(to_idx(tt.route_ids_[src].route_id_type_[s.route_id_]));
-    auto const it = route_services.find(gtfs::route_key_ptr_t{c, &s.stop_seq_});
+    for (auto f = 0U; f < kNumRouteFlags; ++f) {
+      apply_flag_seq(static_cast<route_flag>(f), s.trips_);
+    }
+    auto const it = route_services.find(
+        gtfs::route_key_ptr_t{c, &s.stop_seq_, flags_seq_ptr_cache});
     if (it != end(route_services)) {
       for (auto& route : it->second) {
         auto const idx = get_index(route, s);
@@ -1586,8 +1628,13 @@ void load_timetable(loader_config const& config,
       }
       it->second.emplace_back(std::vector<utc_trip>{s});
     } else {
-      route_services.emplace(gtfs::route_key_t{c, s.stop_seq_, {}, {}, {}},
-                             std::vector<std::vector<utc_trip>>{{s}});
+      auto flags = std::array<bitvec, kNumRouteFlags>{};
+      for (auto f = 0U; f != kNumRouteFlags; ++f) {
+        flags[f] = *flags_seq_ptr_cache[f];
+      }
+      route_services.emplace(
+          gtfs::route_key_t{c, s.stop_seq_, std::move(flags)},
+          std::vector<std::vector<utc_trip>>{{s}});
     }
   };
 
@@ -1673,8 +1720,7 @@ void load_timetable(loader_config const& config,
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
         auto const route_idx =
-            tt.register_route(key.stop_seq_, {key.clasz_}, key.bikes_allowed_,
-                              key.cars_allowed_, key.wheelchair_accessible_);
+            tt.register_route(key.stop_seq_, {key.clasz_}, key.flags_);
 
         for (auto const& s : key.stop_seq_) {
           auto s_routes = location_routes[nigiri::stop{s}.location_idx()];

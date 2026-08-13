@@ -81,6 +81,7 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            routing::clasz_mask_t const mask,
                                            bool const require_bikes_allowed,
                                            bool const require_cars_allowed,
+                                           bool const no_compulsory_reservation,
                                            profile_idx_t const profile) {
   auto const src = source_idx_t{0};
   auto q = routing::query{
@@ -93,22 +94,26 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
       .allowed_claszes_ = mask,
       .require_bike_transport_ = require_bikes_allowed,
       .require_car_transport_ = require_cars_allowed,
+      .no_compulsory_reservation_ = no_compulsory_reservation,
       .via_stops_ = {}};
   return raptor_search(tt, rtt, std::move(q), search_dir);
 }
 
-pareto_set<routing::journey> raptor_search(timetable const& tt,
-                                           rt_timetable const* rtt,
-                                           std::string_view from,
-                                           std::string_view to,
-                                           std::string_view time,
-                                           direction const search_dir,
-                                           routing::clasz_mask_t mask,
-                                           bool const require_bikes_allowed,
-                                           bool const require_cars_allowed) {
+pareto_set<routing::journey> raptor_search(
+    timetable const& tt,
+    rt_timetable const* rtt,
+    std::string_view from,
+    std::string_view to,
+    std::string_view time,
+    direction const search_dir,
+    routing::clasz_mask_t mask,
+    bool const require_bikes_allowed,
+    bool const require_cars_allowed,
+    bool const no_compulsory_reservation) {
   return raptor_search(tt, rtt, from, to,
                        parse_time_tz(time, "%Y-%m-%d %H:%M %Z"), search_dir,
-                       mask, require_bikes_allowed, require_cars_allowed, 0U);
+                       mask, require_bikes_allowed, require_cars_allowed,
+                       no_compulsory_reservation, 0U);
 }
 
 pareto_set<routing::journey> raptor_search(timetable const& tt,

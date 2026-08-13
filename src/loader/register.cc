@@ -332,6 +332,7 @@ trip::trip(timetable& tt,
            std::string_view vehicle_type_short_name,
            direction_id_t direction,
            route_id_idx_t route,
+           std::array<bool, kNumRouteFlags>& flags,
            trip_debug dbg)
     : src_{src},
       id_{id},
@@ -342,6 +343,7 @@ trip::trip(timetable& tt,
       vehicle_type_short_name_{vehicle_type_short_name},
       direction_{direction},
       route_{route},
+      flags_{flags},
       dbg_{dbg},
       tt_{&tt} {}
 
@@ -386,6 +388,27 @@ void trip::set_display_name(translated_str_t x) {
 }
 
 route trip::get_route() const { return route{*tt_, src_, route_}; }
+
+bool trip::get_bikes_allowed() const { return flags_[kBikesAllowed]; }
+void trip::set_bikes_allowed(bool const allowed) const {
+  flags_[kBikesAllowed] = allowed;
+}
+bool trip::get_cars_allowed() const { return flags_[kCarsAllowed]; }
+void trip::set_cars_allowed(bool const allowed) const {
+  flags_[kCarsAllowed] = allowed;
+}
+bool trip::get_wheelchair_accessible() const {
+  return flags_[kWheelchairAccessible];
+}
+void trip::set_wheelchair_accessible(bool const accessible) const {
+  flags_[kWheelchairAccessible] = accessible;
+}
+bool trip::get_compulsory_reservation() const {
+  return !flags_[kReservationNotRequired];
+}
+void trip::set_compulsory_reservation(bool const compulsory) const {
+  flags_[kReservationNotRequired] = !compulsory;
+}
 
 // ===========
 // User Script
@@ -609,7 +632,15 @@ script_runner::script_runner(std::string const& user_script)
       "get_display_name_translations",
       &trip::get_display_name_translations,  //
       "set_display_name", &trip::set_display_name,  //
-      "get_route", &trip::get_route  //
+      "get_route", &trip::get_route,  //
+      "get_bikes_allowed", &trip::get_bikes_allowed,  //
+      "set_bikes_allowed", &trip::set_bikes_allowed,  //
+      "get_cars_allowed", &trip::get_cars_allowed,  //
+      "set_cars_allowed", &trip::set_cars_allowed,  //
+      "get_wheelchair_accessible", &trip::get_wheelchair_accessible,  //
+      "set_wheelchair_accessible", &trip::set_wheelchair_accessible,  //
+      "get_compulsory_reservation", &trip::get_compulsory_reservation,  //
+      "set_compulsory_reservation", &trip::set_compulsory_reservation  //
   );
 
   impl_->process_attribute_ = impl_->lua_["process_attribute"];

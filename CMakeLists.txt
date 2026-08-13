@@ -2,9 +2,6 @@ cmake_minimum_required(VERSION 3.22)
 project(nigiri)
 
 option(NIGIRI_CUDA "enable CUDA functions" OFF)
-if (NIGIRI_CUDA)
-  set(CMAKE_CUDA_ARCHITECTURES native)
-endif()
 
 if (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
   if (NIGIRI_MIMALLOC)
@@ -167,17 +164,24 @@ if (NIGIRI_CUDA)
   if (MSVC)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -lineinfo")
   else()
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo --compiler-options -static")
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo")
   endif()
   enable_language(CUDA)
 
   find_package(CUDAToolkit REQUIRED)
   file(GLOB_RECURSE nigiri-gpu-files src/*.cu)
   add_library(nigiri-gpu STATIC ${nigiri-gpu-files})
+  if (CMAKE_CXX_FLAGS MATCHES "-fsanitize")
+    # Keep device assertions when using host sanitizer. They push per thread
+    # register usage past what the launch configuration can satisfy, so cap it
+    # here - this build checks correctness, it is not measured.
+    set(nigiri-gpu-compile-options "-O3;-maxrregcount=64")
+  else()
+    set(nigiri-gpu-compile-options "-O3;-DNDEBUG")
+  endif()
   set_target_properties(nigiri-gpu PROPERTIES
-          COMPILE_OPTIONS "-O3;-DNDEBUG"
+          COMPILE_OPTIONS "${nigiri-gpu-compile-options}"
           WINDOWS_EXPORT_ALL_SYMBOLS ON
-          CUDA_ARCHITECTURES native
           CUDA_STANDARD 20
           COMPILE_WARNING_AS_ERROR OFF
           RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}

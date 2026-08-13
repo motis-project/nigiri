@@ -84,6 +84,7 @@ struct search {
   Algo init(clasz_mask_t const allowed_claszes,
             bool const require_bikes_allowed,
             bool const require_cars_allowed,
+            bool const no_compulsory_reservation,
             transfer_time_settings& tts,
             algo_state_t& algo_state) {
     auto span = get_otel_tracer()->StartSpan("search::init");
@@ -165,7 +166,9 @@ struct search {
         require_bikes_allowed,
         require_cars_allowed,
         q_.prf_idx_ == 2U,
-        tts};
+        no_compulsory_reservation,
+        tts,
+        q_.prf_idx_};
   }
 
   search(timetable const& tt,
@@ -191,11 +194,10 @@ struct search {
         algo_{init(q_.allowed_claszes_,
                    q_.require_bike_transport_,
                    q_.require_car_transport_,
+                   q_.no_compulsory_reservation_,
                    q_.transfer_time_settings_,
                    algo_state)},
         timeout_(timeout) {
-    utl::sort(q_.start_);
-    utl::sort(q_.destination_);
     q_.sanitize(tt);
   }
 
@@ -449,7 +451,7 @@ private:
                                (std::min(fastest_direct_, q_.max_travel_time_) +
                                 duration_t{1});
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
-                        q_.prf_idx_, state_.results_);
+                        state_.results_);
           kFwd ? ++stats_.n_execute_fwd_ : ++stats_.n_execute_bwd_;
 
           for (auto& j : state_.results_) {

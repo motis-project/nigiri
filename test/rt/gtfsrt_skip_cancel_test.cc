@@ -128,8 +128,12 @@ auto const kTripUpdateCanceled =
 })"s;
 
 constexpr auto const expected = R"(
+   0: A       A...............................................                                                            -d: 26.11 09:00 [26.11 10:00]  RT 26.11 09:00 [26.11 10:00]  [{name=Route 1, day=2023-11-26, id=TRIP_1, src=0}]
+   1: B       B...............................................-a: 26.11 10:00 [26.11 11:00]  RT 26.11 10:00 [26.11 11:00] -d: 26.11 10:00 [26.11 11:00]  RT 26.11 10:00 [26.11 11:00]  [{name=Route 1, day=2023-11-26, id=TRIP_1, src=0}]
    2: C       C............................................... a: 26.11 11:00 [26.11 12:00]  RT 26.11 11:00 [26.11 12:00]  d: 26.11 11:00 [26.11 12:00]  RT 26.11 11:00 [26.11 12:00]  [{name=Route 1, day=2023-11-26, id=TRIP_1, src=0}]
+   3: D       D...............................................-a: 26.11 12:00 [26.11 13:00]  RT 26.11 12:00 [26.11 13:00] -d: 26.11 12:00 [26.11 13:00]  RT 26.11 12:00 [26.11 13:00]  [{name=Route 1, day=2023-11-26, id=TRIP_1, src=0}]
    4: E       E............................................... a: 26.11 13:00 [26.11 14:00]  RT 26.11 13:00 [26.11 14:00]  d: 26.11 13:00 [26.11 14:00]  RT 26.11 13:00 [26.11 14:00]  [{name=Route 1, day=2023-11-26, id=TRIP_1, src=0}]
+   5: F       F...............................................-a: 26.11 14:00 [26.11 15:00]  RT 26.11 14:00 [26.11 15:00]
 )"sv;
 
 }  // namespace
@@ -166,10 +170,13 @@ TEST(rt, gtfs_rt_skip) {
   EXPECT_EQ(expected, ss.str());
   ASSERT_FALSE(fr.is_cancelled());
 
-  for (auto const [from, to] : utl::pairwise(fr)) {
-    EXPECT_EQ(from.id(), "C");
-    EXPECT_EQ(to.id(), "E");
-  }
+  // A, B, D, F are skipped -- only C and E remain bookable.
+  EXPECT_TRUE(fr[0].is_cancelled());
+  EXPECT_TRUE(fr[1].is_cancelled());
+  EXPECT_FALSE(fr[2].is_cancelled());
+  EXPECT_TRUE(fr[3].is_cancelled());
+  EXPECT_FALSE(fr[4].is_cancelled());
+  EXPECT_TRUE(fr[5].is_cancelled());
 
   // Update with canceled
   auto const msgCanceled = rt::json_to_protobuf(kTripUpdateCanceled);
