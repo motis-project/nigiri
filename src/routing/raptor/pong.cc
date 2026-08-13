@@ -362,11 +362,11 @@ routing_result pong(timetable const& tt,
   }
 
   utl::erase_if(s_state.results_, [&](journey const& j) {
-    auto const start_time = j.dest_time_;
+    auto const j_start_time = j.dest_time_;
     auto const is_out_of_interval =
-        kFwd
-            ? !q.extend_interval_later_ && start_time >= search_interval.to_
-            : !q.extend_interval_earlier_ && start_time < search_interval.from_;
+        kFwd ? !q.extend_interval_later_ && j_start_time >= search_interval.to_
+             : !q.extend_interval_earlier_ &&
+                   j_start_time < search_interval.from_;
     auto const erase = !j.is_reconstructed_ || !is_validated(j) ||
                        is_out_of_interval ||
                        j.travel_time() >= fastest_direct ||
