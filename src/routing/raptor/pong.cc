@@ -41,19 +41,14 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     unixtime_t const from_arr,
     unixtime_t const to_dep,
     std::vector<location_idx_t> const& required_vias) {
-  // a 0min via served in the middle of the replaced transit does not
-  // appear at a leg boundary -- an alternative on another route could
-  // silently skip it, so it has to serve the same vias in order
-  auto const serves_required_vias = [&](journey::leg const& transit) {
+  auto const serves_required_no_stay_vias = [&](journey::leg const& transit) {
     if (required_vias.empty()) {
       return true;
     }
-    if (!std::holds_alternative<journey::run_enter_exit>(transit.uses_)) {
-      return false;
-    }
+    assert(std::holds_alternative<journey::run_enter_exit>(transit.uses_));
     auto const ree = std::get<journey::run_enter_exit>(transit.uses_);
     auto const fr = rt::frun{tt, rtt, ree.r_};
-    auto it = required_vias.begin();
+    auto it = begin(required_vias);
     for (auto i = ree.stop_range_.from_;
          i != ree.stop_range_.to_ && it != end(required_vias); ++i) {
       if (matches(tt, location_match_mode::kEquivalent, *it,
@@ -72,7 +67,7 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     if (legs.back().arr_time_ > to_dep) {
       return std::nullopt;
     }
-    if (!serves_required_vias(legs[1])) {
+    if (!serves_required_no_stay_vias(legs[1])) {
       continue;
     }
     return std::array{std::move(legs[0]), std::move(legs[1]),
@@ -282,16 +277,8 @@ routing_result pong(timetable const& tt,
                  loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
       ping.add_start(s.stop_, s.time_at_stop_);
     }
-    // anchor the travel budget at the interval end, not the cursor: a
-    // journey departing late in a wide interval must not have the wait
-    // from the cursor counted against max_travel_time_ (range budgets
-    // per departure; the per-journey check happens in the final erase).
-    // during extension the cursor can pass the interval end -> anchor
-    // at whichever is later in search direction.
-    auto const budget_anchor =
-        is_better(start_time, end_time) ? end_time : start_time;
     auto const worst_time_at_dest =
-        budget_anchor + (kFwd ? 1 : -1) * q.max_travel_time_;
+        start_time + (kFwd ? 1 : -1) * kMaxTravelTime;
     auto ping_results = pareto_set<journey>{};
     ping.execute(start_time, q.max_transfers_, worst_time_at_dest,
                  ping_results);
@@ -398,12 +385,11 @@ routing_result pong(timetable const& tt,
   }
 
   utl::erase_if(s_state.results_, [&](journey const& j) {
-    auto const dep = j.dest_time_;  // pre-swap: dest_time_ = departure
+    auto const start_time = j.dest_time_;
     auto const is_out_of_interval =
-        kFwd ? (dep < search_interval.from_ ||
-                (!q.extend_interval_later_ && dep >= search_interval.to_))
-             : (dep >= search_interval.to_ ||
-                (!q.extend_interval_earlier_ && dep < search_interval.from_));
+        kFwd
+            ? !q.extend_interval_later_ && start_time >= search_interval.to_
+            : !q.extend_interval_earlier_ && start_time < search_interval.from_;
     auto const erase = !j.is_reconstructed_ || !is_validated(j) ||
                        is_out_of_interval ||
                        j.travel_time() >= fastest_direct ||
