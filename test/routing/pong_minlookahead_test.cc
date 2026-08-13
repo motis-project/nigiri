@@ -86,9 +86,8 @@ TEST(routing, pong_ignores_interval) {
 
   auto q0 = routing::query{
       .start_time_ = interval<unixtime_t>{sys_days{2026_y / June / 01},
-                                          sys_days{
-                                              2026_y / June / 01
-                                          } + 4_hours + 1_minutes},
+                                          sys_days{2026_y / June / 01} +
+                                              4_hours + 1_minutes},
       .start_match_mode_ = routing::location_match_mode::kEquivalent,
       .dest_match_mode_ = routing::location_match_mode::kEquivalent,
       .use_start_footpaths_ = false,
@@ -96,8 +95,7 @@ TEST(routing, pong_ignores_interval) {
       .destination_ = {{S2, 0min, 0U}},
       .max_travel_time_ = 5h,
       .min_connection_count_ = 1U,
-      .extend_interval_later_ = true
-  };
+      .extend_interval_later_ = true};
 
   auto search_state = routing::search_state{};
   auto raptor_state = routing::raptor_state{};
@@ -109,10 +107,9 @@ TEST(routing, pong_ignores_interval) {
   EXPECT_EQ(kJourneys, to_string(tt, nullptr, *result0.journeys_));
 
   auto q1 = routing::query{
-      .start_time_ = interval<unixtime_t>{sys_days{2026_y / June / 01},
-                                          sys_days{
-                                              2026_y / June / 01
-                                          } + 4_hours},
+      .start_time_ =
+          interval<unixtime_t>{sys_days{2026_y / June / 01},
+                               sys_days{2026_y / June / 01} + 4_hours},
       .start_match_mode_ = routing::location_match_mode::kEquivalent,
       .dest_match_mode_ = routing::location_match_mode::kEquivalent,
       .use_start_footpaths_ = false,
@@ -173,4 +170,4 @@ TEST(routing, pong_min_lookahead) {
   EXPECT_EQ(0U, result1.journeys_->size());
 }
 
-} // namespace
+}  // namespace
