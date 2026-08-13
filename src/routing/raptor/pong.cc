@@ -50,6 +50,12 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   if (legs.back().arr_time_ > to_dep) {
     return std::nullopt;
   }
+  // the generator anchors the boarding walk at the transit departure
+  // (latest start) -> shift to the interior transfer convention:
+  // the walk starts at the previous leg's arrival
+  auto const walk_duration = legs[0].arr_time_ - legs[0].dep_time_;
+  legs[0].dep_time_ = from_arr;
+  legs[0].arr_time_ = from_arr + walk_duration;
   return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
 
@@ -362,7 +368,13 @@ routing_result pong(timetable const& tt,
   }
 
   utl::erase_if(s_state.results_, [&](journey const& j) {
+    auto const j_start_time = j.dest_time_;
+    auto const is_out_of_interval =
+        kFwd ? !q.extend_interval_later_ && j_start_time >= search_interval.to_
+             : !q.extend_interval_earlier_ &&
+                   j_start_time < search_interval.from_;
     auto const erase = !j.is_reconstructed_ || !is_validated(j) ||
+                       is_out_of_interval ||
                        j.travel_time() >= fastest_direct ||
                        j.travel_time() > q.max_travel_time_;
     if (erase) {
@@ -417,17 +429,12 @@ routing_result pong(timetable const& tt,
   }
 
   if constexpr (Vias != 0U) {
-    if (utl::any_of(q.via_stops_, [](via_stop const& v) {
-          return v.stay_ == duration_t{0};
-        })) {
-      // Stay duration == 0 means via-stop doesn't require a transfer.
-      // => The via stop could be "optimized away" by get_earliest_alternative!
-      return result;
-    }
+    // via requirements (order, stays) are invisible to
+    // get_earliest_alternative
+    return result;
   }
 
   for (auto& j : s_state.results_) {
-    auto v = via_offset_t{0};
     for (auto const [transit_1, transfer_1, transit_2, transfer_2, transit_3] :
          utl::nwise<5>(j.legs_)) {
       if (!std::holds_alternative<journey::run_enter_exit>(transit_1.uses_) ||
@@ -442,23 +449,12 @@ routing_result pong(timetable const& tt,
       auto const front_r = rt::frun{tt, rtt, front.r_};
       auto const from = front_r[front.stop_range_.to_ - 1U];
 
-      auto arr_time = from.time(event_type::kArr);
-      if (v < q.via_stops_.size() &&
-          matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[v].location_, from.get_location_idx())) {
-        arr_time += q.via_stops_[v++].stay_;
-      }
+      auto const arr_time = from.time(event_type::kArr);
 
       auto const back_r = rt::frun{tt, rtt, back.r_};
       auto const to = back_r[back.stop_range_.from_];
 
-      auto dep_time = to.time(event_type::kDep);
-      if (v < q.via_stops_.size() &&
-          matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[v].location_, to.get_location_idx())) {
-        // do not increment v, via may be used in next iteration
-        dep_time -= q.via_stops_[v].stay_;
-      }
+      auto const dep_time = to.time(event_type::kDep);
 
       auto const earlier =
           get_earliest_alternative(tt, rtt, q, from.get_location_idx(),

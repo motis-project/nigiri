@@ -34,17 +34,6 @@ using nigiri::test::raptor_search;
 
 namespace {
 
-std::string print_results(timetable const& tt,
-                          pareto_set<nigiri::routing::journey> const& results) {
-  std::stringstream ss;
-  ss << "\n";
-  for (auto const& x : results) {
-    x.print(ss, tt);
-    ss << "\n\n";
-  }
-  return ss.str();
-}
-
 constexpr auto const test_files_1 = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -214,26 +203,7 @@ pareto_set<routing::journey> search(timetable const& tt,
     std::swap(q.start_match_mode_, q.dest_match_mode_);
     std::reverse(begin(q.via_stops_), end(q.via_stops_));
   }
-
-  auto const rraptor_results = raptor_search(tt, rtt, q, dir);
-  auto const rraptor_results_str = print_results(tt, rraptor_results);
-
-  auto pong_results_str = std::string{};
-  {
-    auto search_state = routing::search_state{};
-    auto raptor_state = routing::raptor_state{};
-    auto const pong_results =
-        routing::pong_search(tt, rtt, search_state, raptor_state, q, dir);
-    pong_results_str = print_results(tt, *pong_results.journeys_);
-  }
-
-  EXPECT_EQ(rraptor_results_str, pong_results_str)
-      << "dir=" << to_str(dir)  //
-      << ", from=" << loc{tt, q.start_[0].target()}  //
-      << ", to=" << loc{tt, q.destination_[0].target()}
-      << ", interval=" << std::get<interval<unixtime_t>>(q.start_time_);
-
-  return rraptor_results;
+  return raptor_search(tt, rtt, q, dir);
 }
 
 }  // namespace

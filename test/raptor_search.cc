@@ -7,6 +7,7 @@
 #include "nigiri/common/parse_time.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
+#include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
@@ -40,15 +41,21 @@ unixtime_t parse_time(std::string_view s, char const* format) {
       date::make_zoned(tz, ls).get_sys_time());
 }
 
-pareto_set<routing::journey> raptor_search(timetable const& tt,
-                                           rt_timetable const* rtt,
-                                           routing::query q,
-                                           direction const search_dir) {
+struct range_result {
+  pareto_set<routing::journey> journeys_;
+  interval<unixtime_t> interval_;
+};
+
+static range_result search_range(timetable const& tt,
+                                 rt_timetable const* rtt,
+                                 routing::query q,
+                                 direction const search_dir) {
   auto search_state = routing::search_state{};
   auto algo_state = routing::raptor_state{};
-  auto results =
-      *(routing::raptor_search(tt, rtt, search_state, algo_state, q, search_dir)
-            .journeys_);
+  auto const result =
+      routing::raptor_search(tt, rtt, search_state, algo_state, q, search_dir);
+  auto results = *result.journeys_;
+  auto const delivered = result.interval_;
 
 #if defined(NIGIRI_CUDA)
   if (routing::gpu::gpu_supported(q, rtt)) {
@@ -69,7 +76,7 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
   }
 #endif
 
-  return results;
+  return {std::move(results), delivered};
 }
 
 pareto_set<routing::journey> raptor_search(timetable const& tt,
@@ -160,6 +167,70 @@ pareto_set<routing::journey> raptor_intermodal_search(
       .prf_idx_ = 0,
       .via_stops_ = {}};
   return raptor_search(tt, rtt, std::move(q), search_dir);
+}
+
+static pareto_set<routing::journey> search_pong(timetable const& tt,
+                                                rt_timetable const* rtt,
+                                                routing::query q,
+                                                direction const search_dir) {
+  auto search_state = routing::search_state{};
+  auto algo_state = routing::raptor_state{};
+  auto results =
+      *(routing::pong_search(tt, rtt, search_state, algo_state, q, search_dir)
+            .journeys_);
+
+#if defined(NIGIRI_CUDA)
+  if (routing::gpu::gpu_supported(q, rtt)) {
+    auto gpu_search_state = routing::search_state{};
+    auto gpu_timetable = routing::gpu::gpu_timetable{tt};
+    auto gpu_state = routing::gpu::gpu_raptor_state{gpu_timetable};
+    if (rtt != nullptr) {
+      // Re-upload every call: tests mutate rtt between searches.
+      const_cast<rt_timetable&>(*rtt).gpu_rtt_.ptr_ =
+          routing::gpu::make_gpu_rtt(tt, *rtt);
+    }
+    auto gpu_results = *(routing::pong_search(tt, rtt, gpu_search_state,
+                                              gpu_state, q, search_dir)
+                             .journeys_);
+
+    EXPECT_EQ(print_results(tt, rtt, results),
+              print_results(tt, rtt, gpu_results));
+  }
+#endif
+
+  return results;
+}
+
+pareto_set<routing::journey> raptor_search(timetable const& tt,
+                                           rt_timetable const* rtt,
+                                           routing::query q,
+                                           direction const search_dir) {
+  auto [results, delivered] = search_range(tt, rtt, q, search_dir);
+  if (std::holds_alternative<interval<unixtime_t>>(q.start_time_)) {
+    auto const pong_results = search_pong(tt, rtt, q, search_dir);
+    auto const iv = std::get<interval<unixtime_t>>(q.start_time_);
+    auto const in_window = [&](pareto_set<routing::journey> const& set) {
+      auto filtered = pareto_set<routing::journey>{};
+      for (auto const& j : set) {
+        auto const anchor = search_dir == direction::kForward
+                                ? j.departure_time()
+                                : j.arrival_time();
+        if (!q.extend_interval_earlier_) {
+          EXPECT_GE(anchor, iv.from_);
+        }
+        if (!q.extend_interval_later_) {
+          EXPECT_LT(anchor, iv.to_);
+        }
+        if (iv.contains(anchor)) {
+          filtered.add(routing::journey{j});
+        }
+      }
+      return filtered;
+    };
+    EXPECT_EQ(print_results(tt, rtt, in_window(results)),
+              print_results(tt, rtt, in_window(pong_results)));
+  }
+  return std::move(results);
 }
 
 }  // namespace nigiri::test

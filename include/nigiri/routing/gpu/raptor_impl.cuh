@@ -568,7 +568,7 @@ struct raptor_impl {
 
       auto const end_time =
           clamp(tmp_time + dir(static_cast<int>(r.duration_.count())));
-      if (is_better(end_time, time_at_dest_.get(k)) &&
+      if (is_better_loose(end_time, time_at_dest_.get(k)) &&
           is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
         auto const bc = tmp_.get_bc(0U, l, Vias);
         round_times_.update_min(k, kIntermodalTarget, Vias, end_time, bc);
