@@ -39,41 +39,18 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     location_idx_t const from,
     location_idx_t const to,
     unixtime_t const from_arr,
-    unixtime_t const to_dep,
-    interval<via_offset_t> const required_vias) {
-  auto const serves_required_no_stay_vias = [&](journey::leg const& transit) {
-    if (required_vias.size() == 0U) {
-      return true;
-    }
-    assert(std::holds_alternative<journey::run_enter_exit>(transit.uses_));
-    auto const ree = std::get<journey::run_enter_exit>(transit.uses_);
-    auto const fr = rt::frun{tt, rtt, ree.r_};
-    auto p = required_vias.from_;
-    for (auto i = ree.stop_range_.from_;
-         i != ree.stop_range_.to_ && p != required_vias.to_; ++i) {
-      if (matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[p].location_, fr[i].get_location_idx())) {
-        ++p;
-      }
-    }
-    return p == required_vias.to_;
-  };
-
+    unixtime_t const to_dep) {
   auto const direct_query = make_alternative_query(tt, rtt, q, from, to);
   auto cursor =
       get_direct_journeys<direction::kForward>(tt, rtt, direct_query, from_arr);
-  while (cursor) {
-    auto legs = cursor();
-    if (legs.back().arr_time_ > to_dep) {
-      return std::nullopt;
-    }
-    if (!serves_required_no_stay_vias(legs[1])) {
-      continue;
-    }
-    return std::array{std::move(legs[0]), std::move(legs[1]),
-                      std::move(legs[2])};
+  if (!cursor) {
+    return std::nullopt;
   }
-  return std::nullopt;
+  auto legs = cursor();
+  if (legs.back().arr_time_ > to_dep) {
+    return std::nullopt;
+  }
+  return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias, typename AlgoState>
@@ -445,8 +422,13 @@ routing_result pong(timetable const& tt,
     return result;
   }
 
+  if constexpr (Vias != 0U) {
+    // via requirements (order, stays) are invisible to
+    // get_earliest_alternative
+    return result;
+  }
+
   for (auto& j : s_state.results_) {
-    auto v = via_offset_t{0};
     for (auto const [transit_1, transfer_1, transit_2, transfer_2, transit_3] :
          utl::nwise<5>(j.legs_)) {
       if (!std::holds_alternative<journey::run_enter_exit>(transit_1.uses_) ||
@@ -461,38 +443,20 @@ routing_result pong(timetable const& tt,
       auto const front_r = rt::frun{tt, rtt, front.r_};
       auto const from = front_r[front.stop_range_.to_ - 1U];
 
-      auto arr_time = from.time(event_type::kArr);
-      if (v < q.via_stops_.size() &&
-          matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[v].location_, from.get_location_idx())) {
-        arr_time += q.via_stops_[v++].stay_;
-      }
+      auto const arr_time = from.time(event_type::kArr);
 
       auto const back_r = rt::frun{tt, rtt, back.r_};
       auto const to = back_r[back.stop_range_.from_];
 
-      auto dep_time = to.time(event_type::kDep);
-      if (v < q.via_stops_.size() &&
-          matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[v].location_, to.get_location_idx())) {
-        // do not increment v, via may be used in next iteration
-        dep_time -= q.via_stops_[v].stay_;
-      }
+      auto const dep_time = to.time(event_type::kDep);
 
-      // legs come from the flipped-direction reconstruction -> convert
-      // the credited via window to this query's via order
-      auto const n_vias = static_cast<via_offset_t>(q.via_stops_.size());
-      auto const required_vias = interval<via_offset_t>{
-          static_cast<via_offset_t>(n_vias - transit_2.vias_credited_.to_),
-          static_cast<via_offset_t>(n_vias - transit_2.vias_credited_.from_)};
-      auto const earlier = get_earliest_alternative(
-          tt, rtt, q, from.get_location_idx(), to.get_location_idx(), arr_time,
-          dep_time, required_vias);
+      auto const earlier =
+          get_earliest_alternative(tt, rtt, q, from.get_location_idx(),
+                                   to.get_location_idx(), arr_time, dep_time);
 
       if (earlier.has_value()) {
-        // wait minimization only moves transit_2's departure later while
-        // keeping its arrival -> the reconstructed transfer legs stay
-        // valid, only the transit itself is replaced
+        // the alternative departs after transfer_1 and arrives no later
+        // than transit_2 -> the original transfer legs stay valid
         auto const same_stops = [](journey::leg const& a,
                                    journey::leg const& b) {
           return a.from_ == b.from_ && a.to_ == b.to_;
@@ -502,9 +466,7 @@ routing_result pong(timetable const& tt,
           transfer_1 = earlier->at(0);
           transfer_2 = earlier->at(2);
         }
-        auto const t2_vias = transit_2.vias_credited_;
         transit_2 = earlier->at(1);
-        transit_2.vias_credited_ = t2_vias;
       }
     }
   }

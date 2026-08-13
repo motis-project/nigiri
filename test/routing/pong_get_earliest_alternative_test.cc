@@ -102,8 +102,8 @@ S,20240619,1
   auto q = routing::query{};
   q.require_bike_transport_ = true;
 
-  auto const result = routing::get_earliest_alternative(tt, &rtt, q, A, C,
-                                                        from_arr, to_dep);
+  auto const result =
+      routing::get_earliest_alternative(tt, &rtt, q, A, C, from_arr, to_dep);
 
   EXPECT_FALSE(result.has_value())
       << "block trip A→B (no bikes) → B→C must be rejected for require_bike";
@@ -168,8 +168,8 @@ S,20240619,1
   auto q = routing::query{};
   q.require_car_transport_ = true;
 
-  auto const result = routing::get_earliest_alternative(tt, &rtt, q, A, C,
-                                                        from_arr, to_dep);
+  auto const result =
+      routing::get_earliest_alternative(tt, &rtt, q, A, C, from_arr, to_dep);
 
   EXPECT_FALSE(result.has_value())
       << "block trip A→B (cars) → B→C (no cars) must be rejected";

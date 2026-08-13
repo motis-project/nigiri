@@ -271,7 +271,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
                is_journey_start(tt, q, l) &&
                start_matches(round_time, event_time))) {
             trace_rc_transport_entry_found;
-            auto leg = journey::leg{
+            v = s;
+            return journey::leg{
                 SearchDir,
                 fr[stop_idx].get_location_idx(),
                 fr[finish_stop_idx].get_location_idx(),
@@ -279,9 +280,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
                 fr[finish_stop_idx].time(kFwd ? event_type::kArr
                                               : event_type::kDep),
                 journey::run_enter_exit{r, stop_idx, finish_stop_idx}};
-            leg.vias_credited_ = {s, v};
-            v = s;
-            return leg;
           } else {
             trace_rc_transport_entry_not_possible;
           }
