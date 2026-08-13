@@ -86,6 +86,16 @@ std::string to_string(timetable const& tt,
   return ss.str();
 }
 
+pareto_set<routing::journey> search(timetable const& tt,
+                                    routing::query q,
+                                    direction const dir) {
+  if (dir == direction::kBackward) {
+    std::swap(q.start_, q.destination_);
+    std::reverse(begin(q.via_stops_), end(q.via_stops_));
+  }
+  return raptor_search(tt, nullptr, std::move(q), dir);
+}
+
 }  // namespace
 
 TEST(routing, via_earliest_alternative) {
@@ -100,33 +110,41 @@ TEST(routing, via_earliest_alternative) {
   auto const E = tt.find(location_id{"E", source_idx_t{0}}).value();
 
   auto const day = sys_days{2024_y / June / 19};
-  auto const results = raptor_search(
-      tt, nullptr,
-      routing::query{
-          .start_time_ = interval<unixtime_t>{day + 10h, day + 10h + 15min},
-          .start_match_mode_ = routing::location_match_mode::kEquivalent,
-          .dest_match_mode_ = routing::location_match_mode::kEquivalent,
-          .use_start_footpaths_ = false,
-          .start_ = {{A, 0min, 0U}},
-          .destination_ = {{E, 0min, 0U}},
-          .via_stops_ = {{V, 0min}}},
-      direction::kForward);
+  for (auto const& [dir, start_time] :
+       {std::pair{direction::kForward,
+                  interval<unixtime_t>{day + 10h, day + 10h + 15min}},
+        std::pair{direction::kBackward,
+                  interval<unixtime_t>{day + 13h, day + 13h + 15min}}}) {
+    auto const results = search(
+        tt,
+        routing::query{
+            .start_time_ = start_time,
+            .start_match_mode_ = routing::location_match_mode::kEquivalent,
+            .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+            .use_start_footpaths_ = false,
+            .start_ = {{A, 0min, 0U}},
+            .destination_ = {{E, 0min, 0U}},
+            .via_stops_ = {{V, 0min}}},
+        dir);
 
-  ASSERT_EQ(1U, results.size());
-  // the journey has to serve the 0 minute via V: only T2 does, the
-  // earlier express T2X (which the via-blind wait minimization picks)
-  // skips it
-  auto serves_via = false;
-  for (auto const& l : results.begin()->legs_) {
-    if (std::holds_alternative<routing::journey::run_enter_exit>(l.uses_)) {
-      auto const ree = std::get<routing::journey::run_enter_exit>(l.uses_);
-      auto const fr = rt::frun{tt, nullptr, ree.r_};
-      for (auto i = ree.stop_range_.from_; i != ree.stop_range_.to_; ++i) {
-        serves_via |= fr[i].get_location_idx() == V;
+    ASSERT_EQ(1U, results.size());
+    // the journey has to serve the 0 minute via V: only T2 does, the
+    // earlier express T2X (which the via-blind wait minimization picks)
+    // skips it
+    auto serves_via = false;
+    for (auto const& l : results.begin()->legs_) {
+      if (std::holds_alternative<routing::journey::run_enter_exit>(l.uses_)) {
+        auto const ree = std::get<routing::journey::run_enter_exit>(l.uses_);
+        auto const fr = rt::frun{tt, nullptr, ree.r_};
+        for (auto i = ree.stop_range_.from_; i != ree.stop_range_.to_; ++i) {
+          serves_via |= fr[i].get_location_idx() == V;
+        }
       }
     }
+    EXPECT_TRUE(serves_via)
+        << to_string(tt, results)
+        << " dir=" << (dir == direction::kForward ? "fwd" : "bwd");
   }
-  EXPECT_TRUE(serves_via) << to_string(tt, results);
 }
 
 namespace {
@@ -205,28 +223,36 @@ TEST(routing, via_earliest_alternative_completed_via) {
   auto const D = tt.find(location_id{"D", source_idx_t{0}}).value();
 
   auto const day = sys_days{2024_y / June / 19};
-  auto q = routing::query{
-      .start_time_ = interval<unixtime_t>{day + 10h, day + 10h + 15min},
-      .start_match_mode_ = routing::location_match_mode::kEquivalent,
-      .dest_match_mode_ = routing::location_match_mode::kEquivalent,
-      .use_start_footpaths_ = false,
-      .start_ = {{A, 0min, 0U}},
-      .destination_ = {{D, 0min, 0U}},
-      .via_stops_ = {{V, 0min}}};
+  for (auto const& [dir, start_time] :
+       {std::pair{direction::kForward,
+                  interval<unixtime_t>{day + 10h, day + 10h + 15min}},
+        std::pair{direction::kBackward,
+                  interval<unixtime_t>{day + 13h, day + 13h + 15min}}}) {
+    auto const results = search(
+        tt,
+        routing::query{
+            .start_time_ = start_time,
+            .start_match_mode_ = routing::location_match_mode::kEquivalent,
+            .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+            .use_start_footpaths_ = false,
+            .start_ = {{A, 0min, 0U}},
+            .destination_ = {{D, 0min, 0U}},
+            .via_stops_ = {{V, 0min}}},
+        dir);
 
-  auto const results =
-      raptor_search(tt, nullptr, std::move(q), direction::kForward);
-
-  ASSERT_EQ(1U, results.size());
-  // V is already credited on T1 -> the earlier express T2X (dep 11:00)
-  // may replace T2 even though it skips V
-  auto found = false;
-  for (auto const& l : results.begin()->legs_) {
-    if (l.from_ == B2 &&
-        std::holds_alternative<routing::journey::run_enter_exit>(l.uses_)) {
-      EXPECT_EQ(day + 11h, l.dep_time_) << "spurious via requirement kept T2?";
-      found = true;
+    ASSERT_EQ(1U, results.size());
+    // V is already credited on T1 -> the earlier express T2X (dep 11:00)
+    // may replace T2 even though it skips V
+    auto found = false;
+    for (auto const& l : results.begin()->legs_) {
+      if (l.from_ == B2 &&
+          std::holds_alternative<routing::journey::run_enter_exit>(l.uses_)) {
+        EXPECT_EQ(day + 11h, l.dep_time_)
+            << "spurious via requirement kept T2?"
+            << " dir=" << (dir == direction::kForward ? "fwd" : "bwd");
+        found = true;
+      }
     }
+    EXPECT_TRUE(found);
   }
-  EXPECT_TRUE(found);
 }

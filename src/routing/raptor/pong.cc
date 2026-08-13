@@ -40,23 +40,23 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     location_idx_t const to,
     unixtime_t const from_arr,
     unixtime_t const to_dep,
-    std::vector<location_idx_t> const& required_vias) {
+    interval<via_offset_t> const required_vias) {
   auto const serves_required_no_stay_vias = [&](journey::leg const& transit) {
-    if (required_vias.empty()) {
+    if (required_vias.size() == 0U) {
       return true;
     }
     assert(std::holds_alternative<journey::run_enter_exit>(transit.uses_));
     auto const ree = std::get<journey::run_enter_exit>(transit.uses_);
     auto const fr = rt::frun{tt, rtt, ree.r_};
-    auto it = begin(required_vias);
+    auto p = required_vias.from_;
     for (auto i = ree.stop_range_.from_;
-         i != ree.stop_range_.to_ && it != end(required_vias); ++i) {
-      if (matches(tt, location_match_mode::kEquivalent, *it,
-                  fr[i].get_location_idx())) {
-        ++it;
+         i != ree.stop_range_.to_ && p != required_vias.to_; ++i) {
+      if (matches(tt, location_match_mode::kEquivalent,
+                  q.via_stops_[p].location_, fr[i].get_location_idx())) {
+        ++p;
       }
     }
-    return it == end(required_vias);
+    return p == required_vias.to_;
   };
 
   auto const direct_query = make_alternative_query(tt, rtt, q, from, to);
@@ -479,21 +479,12 @@ routing_result pong(timetable const& tt,
         dep_time -= q.via_stops_[v].stay_;
       }
 
-      auto required_vias = std::vector<location_idx_t>{};
-      auto const ree = std::get<journey::run_enter_exit>(transit_2.uses_);
-      auto const fr = rt::frun{tt, rtt, ree.r_};
-      for (auto i = ree.stop_range_.from_; i != ree.stop_range_.to_; ++i) {
-        for (auto const& vs : q.via_stops_) {
-          if (vs.stay_ == 0_minutes &&
-              matches(tt, location_match_mode::kEquivalent, vs.location_,
-                      fr[i].get_location_idx()) &&
-              (required_vias.empty() ||
-               required_vias.back() != vs.location_)) {
-            required_vias.push_back(vs.location_);
-          }
-        }
-      }
-
+      // legs come from the flipped-direction reconstruction -> convert
+      // the credited via window to this query's via order
+      auto const n_vias = static_cast<via_offset_t>(q.via_stops_.size());
+      auto const required_vias = interval<via_offset_t>{
+          static_cast<via_offset_t>(n_vias - transit_2.vias_credited_.to_),
+          static_cast<via_offset_t>(n_vias - transit_2.vias_credited_.from_)};
       auto const earlier = get_earliest_alternative(
           tt, rtt, q, from.get_location_idx(), to.get_location_idx(), arr_time,
           dep_time, required_vias);
@@ -511,16 +502,13 @@ routing_result pong(timetable const& tt,
           transfer_1 = earlier->at(0);
           transfer_2 = earlier->at(2);
         }
+        auto const t2_vias = transit_2.vias_credited_;
         transit_2 = earlier->at(1);
+        transit_2.vias_credited_ = t2_vias;
       }
     }
   }
 
-  // normalize footpath placement to the forward-search convention:
-  // the flipped-direction reconstruction places transfer footpaths as
-  // late as possible, forward reconstruction directly after the arrival
-  // (waiting happens at the target stop). only without via stays, which
-  // legitimately sit between legs.
   return result;
 }
 
