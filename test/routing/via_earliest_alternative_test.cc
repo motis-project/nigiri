@@ -4,12 +4,12 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 
-#include "../raptor_search.h"
-
 #include "nigiri/rt/frun.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
+
+#include "../raptor_search.h"
 
 using namespace date;
 using namespace nigiri;
