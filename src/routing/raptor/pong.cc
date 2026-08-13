@@ -50,6 +50,12 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   if (legs.back().arr_time_ > to_dep) {
     return std::nullopt;
   }
+  // the generator anchors the boarding walk at the transit departure
+  // (latest start) -> shift to the interior transfer convention:
+  // the walk starts at the previous leg's arrival
+  auto const walk_duration = legs[0].arr_time_ - legs[0].dep_time_;
+  legs[0].dep_time_ = from_arr;
+  legs[0].arr_time_ = from_arr + walk_duration;
   return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
 
@@ -455,19 +461,9 @@ routing_result pong(timetable const& tt,
                                    to.get_location_idx(), arr_time, dep_time);
 
       if (earlier.has_value()) {
-        // the alternative departs after transfer_1 and arrives no later
-        // than transit_2 -> the original transfer legs stay valid
-        auto const same_stops = [](journey::leg const& a,
-                                   journey::leg const& b) {
-          return a.from_ == b.from_ && a.to_ == b.to_;
-        };
-        if (!same_stops(earlier->at(0), transfer_1)) {
-          transfer_1 = earlier->at(0);
-        }
-        if (!same_stops(earlier->at(2), transfer_2)) {
-          transfer_2 = earlier->at(2);
-        }
+        transfer_1 = earlier->at(0);
         transit_2 = earlier->at(1);
+        transfer_2 = earlier->at(2);
       }
     }
   }
