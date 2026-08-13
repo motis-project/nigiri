@@ -357,6 +357,7 @@ routing_result pong(timetable const& tt,
         "AFTER {} [next={}]:\n\t{}", start_time, next,
         fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),
                   "\n\t"));
+
     start_time = next;
   }
 
