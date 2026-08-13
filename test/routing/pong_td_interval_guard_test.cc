@@ -4,10 +4,11 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 
-#include "nigiri/routing/raptor/pong.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
+
+#include "../raptor_search.h"
 
 using namespace date;
 using namespace nigiri;
@@ -76,7 +77,7 @@ T2_13,13:25:00,13:25:00,C,2,0,0
 // count towards 2 x min_connection_count, terminate the sweep early, and
 // real later departures are never found.
 TEST(routing, pong_td_egress_respects_worst_time_at_dest) {
-  timetable tt;
+  auto tt = timetable{};
   tt.date_range_ = {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}};
   register_special_stations(tt);
   load_timetable({}, source_idx_t{0}, test_files(), tt);
@@ -104,14 +105,11 @@ TEST(routing, pong_td_egress_respects_worst_time_at_dest) {
       .min_connection_count_ = 3U,
       .extend_interval_later_ = true};
 
-  auto search_state = routing::search_state{};
-  auto raptor_state = routing::raptor_state{};
-  auto const result =
-      routing::pong_search(tt, nullptr, search_state, raptor_state,
-                           std::move(q), direction::kForward);
+  auto const results =
+      test::raptor_search(tt, nullptr, std::move(q), direction::kForward);
 
   auto deps = std::vector<unixtime_t>{};
-  for (auto const& j : *result.journeys_) {
+  for (auto const& j : results) {
     // no journey may depart before the search interval
     EXPECT_GE(j.start_time_, day + 10h) << "phantom journey in results";
     deps.emplace_back(j.start_time_);

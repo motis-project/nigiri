@@ -9,6 +9,10 @@ struct rt_timetable;
 
 namespace nigiri::test {
 
+std::string print_results(timetable const&,
+                          rt_timetable const*,
+                          pareto_set<routing::journey> const&);
+
 pareto_set<routing::journey> raptor_search(
     timetable const&,
     rt_timetable const*,

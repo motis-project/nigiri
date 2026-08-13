@@ -98,7 +98,8 @@ TEST(rt, delay_test) {
   auto raptor_state = routing::raptor_state{};
 
   auto q = routing::query{
-      .start_time_ = sys_days{2019_y / May / 1} + 7h,
+      .start_time_ = interval<unixtime_t>{sys_days{2019_y / May / 1} + 7h,
+                                          sys_days{2019_y / May / 1} + 9h},
       .start_match_mode_ = routing::location_match_mode::kEquivalent,
       .dest_match_mode_ = routing::location_match_mode::kEquivalent,
       .use_start_footpaths_ = true,
