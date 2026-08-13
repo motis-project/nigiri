@@ -480,18 +480,16 @@ routing_result pong(timetable const& tt,
       }
 
       auto required_vias = std::vector<location_idx_t>{};
-      if (std::holds_alternative<journey::run_enter_exit>(transit_2.uses_)) {
-        auto const ree = std::get<journey::run_enter_exit>(transit_2.uses_);
-        auto const fr = rt::frun{tt, rtt, ree.r_};
-        for (auto i = ree.stop_range_.from_; i != ree.stop_range_.to_; ++i) {
-          for (auto const& vs : q.via_stops_) {
-            if (vs.stay_ == 0_minutes &&
-                matches(tt, location_match_mode::kEquivalent, vs.location_,
-                        fr[i].get_location_idx()) &&
-                (required_vias.empty() ||
-                 required_vias.back() != vs.location_)) {
-              required_vias.push_back(vs.location_);
-            }
+      auto const ree = std::get<journey::run_enter_exit>(transit_2.uses_);
+      auto const fr = rt::frun{tt, rtt, ree.r_};
+      for (auto i = ree.stop_range_.from_; i != ree.stop_range_.to_; ++i) {
+        for (auto const& vs : q.via_stops_) {
+          if (vs.stay_ == 0_minutes &&
+              matches(tt, location_match_mode::kEquivalent, vs.location_,
+                      fr[i].get_location_idx()) &&
+              (required_vias.empty() ||
+               required_vias.back() != vs.location_)) {
+            required_vias.push_back(vs.location_);
           }
         }
       }
