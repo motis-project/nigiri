@@ -439,16 +439,8 @@ routing_result pong(timetable const& tt,
         default: return l;
       }
     };
-    // the pong pass ran with the flipped query, so intermodal journeys
-    // carry swapped START/END specials at their edges. only touch them
-    // for intermodal queries: without registered special stations (e.g.
-    // pure station-to-station test timetables), raw indices 0/1 are
-    // regular stops that must not be rewritten.
-    if (q.start_match_mode_ == location_match_mode::kIntermodal ||
-        q.dest_match_mode_ == location_match_mode::kIntermodal) {
-      j.legs_.front().from_ = swap(j.legs_.front().from_);
-      j.legs_.back().to_ = swap(j.legs_.back().to_);
-    }
+    j.legs_.front().from_ = swap(j.legs_.front().from_);
+    j.legs_.back().to_ = swap(j.legs_.back().to_);
   }
 
   auto const iv = result.interval_;

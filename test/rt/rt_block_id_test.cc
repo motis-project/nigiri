@@ -10,6 +10,7 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/special_stations.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
@@ -92,6 +93,7 @@ TEST(rt, rt_block_id_test) {
   auto tt = timetable{};
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
+  register_special_stations(tt);
   load_timetable({}, source_idx_t{0}, mem_dir::read(test_files), tt);
   finalize(tt);
   auto rtt = rt::create_rt_timetable(tt, May / 1 / 2019);
