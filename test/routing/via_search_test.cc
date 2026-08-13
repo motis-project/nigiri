@@ -16,7 +16,6 @@
 #include "nigiri/loader/gtfs/noon_offsets.h"
 #include "nigiri/loader/init_finish.h"
 
-#include "nigiri/routing/raptor/pong.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -203,6 +202,9 @@ pareto_set<routing::journey> search(timetable const& tt,
     std::swap(q.start_match_mode_, q.dest_match_mode_);
     std::reverse(begin(q.via_stops_), end(q.via_stops_));
   }
+
+  // range-vs-pong (and GPU) consistency is checked inside
+  // test::raptor_search
   return raptor_search(tt, rtt, q, dir);
 }
 

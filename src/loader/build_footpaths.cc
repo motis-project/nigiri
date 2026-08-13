@@ -366,8 +366,7 @@ void connect_components(timetable& tt,
 }
 
 bool is_generated(location_type const t) {
-  return t == location_type::kGeneratedTrack ||
-         t == location_type::kVirt;
+  return t == location_type::kGeneratedTrack || t == location_type::kVirt;
 }
 
 // Walking transfers between equivalent stops (e.g. GTFS same-name / nearby /
@@ -394,8 +393,8 @@ void add_missing_equivalence_footpaths(timetable& tt) {
     for (auto const eq : tt.locations_.equivalences_[l]) {
       auto const dist = std::sqrt(geo::approx_squared_distance(
           pos, tt.locations_.coordinates_[eq], dist_lng_degrees));
-      auto const duration = duration_t{std::max(
-          2, static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
+      auto const duration = duration_t{
+          std::max(2, static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
 
       if (duration > footpath::kMaxDuration) {
         continue;
@@ -521,14 +520,22 @@ void write_footpaths(timetable& tt) {
 
 // Overwrite/insert the directed same-station transfer edges emitted from
 // transfer time rules. These are authoritative: any transitively computed or
-// generic parent/child footpath between the same pair is replaced.
-void apply_transfer_rules(timetable& tt) {
+// generic parent/child footpath between the same pair is replaced. The rule
+// duration is kept as-is (a rule fixes the transfer time), but unwalkable
+// pairs (wormholes, see adjust_to_walk_speed) are still dropped: a transfer
+// time between stops hundreds of km apart is a data error, not a rule.
+void apply_transfer_rules(timetable& tt, bool const adjust_footpaths) {
   auto const n = location_idx_t{
       std::min(static_cast<location_idx_t::value_t>(
                    tt.locations_.transfer_rule_fps_.size()),
                static_cast<location_idx_t::value_t>(tt.n_locations()))};
   for (auto l = location_idx_t{0U}; l != n; ++l) {
     for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
+      if (adjust_footpaths &&
+          !adjust_to_walk_speed(tt, l, fp.target(), fp.duration())
+               .has_value()) {
+        continue;
+      }
       auto replaced = false;
       for (auto& existing : tt.locations_.preprocessing_footpaths_out_[l]) {
         if (existing.target() == fp.target()) {
@@ -703,7 +710,7 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
   if (!opt.transitive_footpaths_) {
     // direct footpaths only (e.g. single HRDF input): no transitive closure,
     // input footpaths + parent/child links + transfer rule edges
-    apply_transfer_rules(tt);
+    apply_transfer_rules(tt, opt.adjust_footpaths_);
 
     // rebuild incoming footpaths as the mirror of the outgoing footpaths
     tt.locations_.preprocessing_footpaths_in_.clear();
@@ -745,7 +752,7 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
     }
   }
   connect_components(tt, opt.max_footpath_length_, opt.adjust_footpaths_);
-  apply_transfer_rules(tt);
+  apply_transfer_rules(tt, opt.adjust_footpaths_);
   sort_footpaths(tt);
   write_footpaths(tt);
   build_hubs(tt, kDefaultProfile);
