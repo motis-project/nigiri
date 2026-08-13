@@ -75,10 +75,6 @@ struct journey {
     location_idx_t from_, to_;
     unixtime_t dep_time_, arr_time_;
     std::variant<run_enter_exit, footpath, offset> uses_;
-    // via stay served at this leg's departure location before it
-    // departs (marked during reconstruction so consumers need not
-    // re-match via stops, which can be visited multiple times)
-    duration_t stay_{0};
   };
 
   bool dominates(journey const& o) const {

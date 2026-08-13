@@ -502,9 +502,8 @@ routing_result pong(timetable const& tt,
 
       if (earlier.has_value()) {
         // wait minimization only moves transit_2's departure later while
-        // keeping its arrival -> the reconstructed transfer legs (their
-        // placement convention and via stay marks) stay valid, only the
-        // transit itself is replaced
+        // keeping its arrival -> the reconstructed transfer legs stay
+        // valid, only the transit itself is replaced
         auto const same_stops = [](journey::leg const& a,
                                    journey::leg const& b) {
           return a.from_ == b.from_ && a.to_ == b.to_;

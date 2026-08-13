@@ -16,7 +16,7 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     location_idx_t to,
     unixtime_t from_arr,
     unixtime_t to_dep,
-    std::vector<location_idx_t> const& required_vias);
+    std::vector<location_idx_t> const& required_vias = {});
 
 template <typename AlgoState>
 routing_result pong_search(
