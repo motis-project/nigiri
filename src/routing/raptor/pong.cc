@@ -264,9 +264,7 @@ routing_result pong(timetable const& tt,
     }
     auto const worst_time_at_dest =
         start_time + (kFwd ? 1 : -1) * (
-          q.max_travel_time_ + search_interval.size() == duration_t{0}
-            ? kMinLookAhead
-            : search_interval.size());
+          q.max_travel_time_ + kMinLookAhead);
     auto ping_results = pareto_set<journey>{};
     ping.execute(start_time, q.max_transfers_, worst_time_at_dest,
                  ping_results);
@@ -370,7 +368,6 @@ routing_result pong(timetable const& tt,
         "AFTER {} [next={}]:\n\t{}", start_time, next,
         fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),
           "\n\t"));
-
     start_time = next;
   }
 

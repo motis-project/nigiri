@@ -19,8 +19,7 @@ using namespace std::chrono_literals;
 
 namespace {
 
-timetable get_tt() {
-  static auto const files = mem_dir::read(R"(
+constexpr auto kTimetable = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
 DTA,Demo Transit Authority,,Europe/London
@@ -51,8 +50,10 @@ R0_MON,05:00:00,05:00:00,S0,0,0,0
 R0_MON,06:00:00,06:00:00,S1,1,0,0
 R1_MON,08:00:00,08:00:00,S1,0,0,0
 R1_MON,10:00:00,10:00:00,S2,1,0,0
-)");
+)";
 
+timetable get_tt() {
+  static auto const files = mem_dir::read(kTimetable);
   timetable tt;
   tt.date_range_ = {sys_days{2026_y / June / 01}, sys_days{2026_y / June / 07}};
   register_special_stations(tt);
@@ -61,33 +62,71 @@ R1_MON,10:00:00,10:00:00,S2,1,0,0
   return tt;
 }
 
-TEST(routing, pong_respect_interval) {
+constexpr auto kJourneys = R"(
+[2026-06-01 04:00, 2026-06-01 09:00]
+TRANSFERS: 1
+     FROM: (S0, S0) [2026-06-01 04:00]
+       TO: (S2, S2) [2026-06-01 09:00]
+leg 0: (S0, S0) [2026-06-01 04:00] -> (S1, S1) [2026-06-01 05:00]
+   0: S0      S0..............................................                               d: 01.06 04:00 [01.06 05:00]  [{name=R0, day=2026-06-01, id=R0_MON, src=0}]
+   1: S1      S1.............................................. a: 01.06 05:00 [01.06 06:00]
+leg 1: (S1, S1) [2026-06-01 05:00] -> (S1, S1) [2026-06-01 05:02]
+  FOOTPATH (duration=2)
+leg 2: (S1, S1) [2026-06-01 07:00] -> (S2, S2) [2026-06-01 09:00]
+   0: S1      S1..............................................                               d: 01.06 07:00 [01.06 08:00]  [{name=R1, day=2026-06-01, id=R1_MON, src=0}]
+   1: S2      S2.............................................. a: 01.06 09:00 [01.06 10:00]
+
+)";
+
+TEST(routing, pong_ignores_interval) {
   timetable tt = get_tt();
 
   auto const S0 = tt.find(location_id{"S0", source_idx_t{0}}).value();
   auto const S2 = tt.find(location_id{"S2", source_idx_t{0}}).value();
 
-  auto q = routing::query{
+  auto q0 = routing::query{
       .start_time_ = interval<unixtime_t>{sys_days{2026_y / June / 01},
-                                          sys_days{2026_y / June / 02}},
+                                          sys_days{
+                                              2026_y / June / 01
+                                          } + 4_hours + 1_minutes},
       .start_match_mode_ = routing::location_match_mode::kEquivalent,
       .dest_match_mode_ = routing::location_match_mode::kEquivalent,
       .use_start_footpaths_ = false,
       .start_ = {{S0, 0min, 0U}},
       .destination_ = {{S2, 0min, 0U}},
+      .max_travel_time_ = 5h,
       .min_connection_count_ = 1U,
       .extend_interval_later_ = true
   };
 
   auto search_state = routing::search_state{};
   auto raptor_state = routing::raptor_state{};
-  auto const result =
+  auto const result0 =
       routing::pong_search(tt, nullptr, search_state, raptor_state,
-                           std::move(q), direction::kForward);
+                           std::move(q0), direction::kForward);
 
-  ASSERT_EQ(1U, result.journeys_->size());
+  ASSERT_EQ(1U, result0.journeys_->size());
+  EXPECT_EQ(kJourneys, to_string(tt, nullptr, *result0.journeys_));
 
-  std::cout << to_string(tt, nullptr, *result.journeys_);
+  auto q1 = routing::query{
+      .start_time_ = interval<unixtime_t>{sys_days{2026_y / June / 01},
+                                          sys_days{
+                                              2026_y / June / 01
+                                          } + 4_hours},
+      .start_match_mode_ = routing::location_match_mode::kEquivalent,
+      .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+      .use_start_footpaths_ = false,
+      .start_ = {{S0, 0min, 0U}},
+      .destination_ = {{S2, 0min, 0U}},
+      .max_travel_time_ = 5h,
+      .min_connection_count_ = 1U,
+      .extend_interval_later_ = true,
+  };
+  auto const result1 =
+      routing::pong_search(tt, nullptr, search_state, raptor_state,
+                           std::move(q1), direction::kForward);
+  ASSERT_EQ(1U, result1.journeys_->size());
+  EXPECT_EQ(kJourneys, to_string(tt, nullptr, *result1.journeys_));
 }
 
 TEST(routing, pong_min_lookahead) {
@@ -113,23 +152,9 @@ TEST(routing, pong_min_lookahead) {
   auto const result0 =
       routing::pong_search(tt, nullptr, search_state, raptor_state,
                            std::move(q0), direction::kForward);
-  ASSERT_EQ(1U, result0.journeys_->size());
-  auto const expected = R"(
-[2026-06-01 04:00, 2026-06-01 09:00]
-TRANSFERS: 1
-     FROM: (S0, S0) [2026-06-01 04:00]
-       TO: (S2, S2) [2026-06-01 09:00]
-leg 0: (S0, S0) [2026-06-01 04:00] -> (S1, S1) [2026-06-01 05:00]
-   0: S0      S0..............................................                               d: 01.06 04:00 [01.06 05:00]  [{name=R0, day=2026-06-01, id=R0_MON, src=0}]
-   1: S1      S1.............................................. a: 01.06 05:00 [01.06 06:00]
-leg 1: (S1, S1) [2026-06-01 05:00] -> (S1, S1) [2026-06-01 05:02]
-  FOOTPATH (duration=2)
-leg 2: (S1, S1) [2026-06-01 07:00] -> (S2, S2) [2026-06-01 09:00]
-   0: S1      S1..............................................                               d: 01.06 07:00 [01.06 08:00]  [{name=R1, day=2026-06-01, id=R1_MON, src=0}]
-   1: S2      S2.............................................. a: 01.06 09:00 [01.06 10:00]
 
-)";
-  EXPECT_EQ(expected, to_string(tt, nullptr, *result0.journeys_));
+  ASSERT_EQ(1U, result0.journeys_->size());
+  EXPECT_EQ(kJourneys, to_string(tt, nullptr, *result0.journeys_));
 
   auto q1 = routing::query{
       .start_time_ = unixtime_t{sys_days{2026_y / June / 01}},
@@ -147,4 +172,5 @@ leg 2: (S1, S1) [2026-06-01 07:00] -> (S2, S2) [2026-06-01 09:00]
                            std::move(q1), direction::kForward);
   EXPECT_EQ(0U, result1.journeys_->size());
 }
+
 } // namespace
