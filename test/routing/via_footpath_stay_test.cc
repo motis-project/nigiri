@@ -72,17 +72,6 @@ T3,13:00:00,13:00:00,C,2,0,0
 )");
 }
 
-std::string to_string(timetable const& tt,
-                      pareto_set<routing::journey> const& results) {
-  std::stringstream ss;
-  ss << "\n";
-  for (auto const& j : results) {
-    j.print(ss, tt);
-    ss << "\n";
-  }
-  return ss.str();
-}
-
 }  // namespace
 
 TEST(routing, via_footpath_stay) {
@@ -128,8 +117,9 @@ leg 4: (D2, D2) [2024-06-19 12:30] -> (C, C) [2024-06-19 13:00]
    0: D2      D2..............................................                               d: 19.06 12:30 [19.06 12:30]  [{name=T3, day=2024-06-19, id=T3, src=0}]
    1: C       C............................................... a: 19.06 13:00 [19.06 13:00]
 
+
 )";
-  EXPECT_EQ(expected, to_string(tt, results));
+  EXPECT_EQ(expected, test::print_results(tt, nullptr, results));
 }
 
 namespace {

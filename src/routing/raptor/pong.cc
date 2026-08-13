@@ -461,9 +461,10 @@ routing_result pong(timetable const& tt,
                                    journey::leg const& b) {
           return a.from_ == b.from_ && a.to_ == b.to_;
         };
-        if (!same_stops(earlier->at(0), transfer_1) ||
-            !same_stops(earlier->at(2), transfer_2)) {
+        if (!same_stops(earlier->at(0), transfer_1)) {
           transfer_1 = earlier->at(0);
+        }
+        if (!same_stops(earlier->at(2), transfer_2)) {
           transfer_2 = earlier->at(2);
         }
         transit_2 = earlier->at(1);

@@ -75,17 +75,6 @@ T4,13:00:00,13:00:00,E,2,0,0
 )");
 }
 
-std::string to_string(timetable const& tt,
-                      pareto_set<routing::journey> const& results) {
-  std::stringstream ss;
-  ss << "\n";
-  for (auto const& j : results) {
-    j.print(ss, tt);
-    ss << "\n";
-  }
-  return ss.str();
-}
-
 pareto_set<routing::journey> search(timetable const& tt,
                                     routing::query q,
                                     direction const dir) {
@@ -142,7 +131,7 @@ TEST(routing, via_earliest_alternative) {
       }
     }
     EXPECT_TRUE(serves_via)
-        << to_string(tt, results)
+        << test::print_results(tt, nullptr, results)
         << " dir=" << (dir == direction::kForward ? "fwd" : "bwd");
   }
 }
