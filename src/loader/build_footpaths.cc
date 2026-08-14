@@ -221,11 +221,11 @@ void write_footpaths(timetable& tt, bool const adjust_footpaths) {
 // Builds the transfer hub edge lists: one broadcast and one collect hub per
 // stop that has virtual locations. A hub always delivers at the stop's
 // transfer time, so nothing slower than that may become derivable through it.
-// The classification is read off the materialized cells: a member (the stop or
-// one of its virtual locations) that is itself slow never gathers - the hub
-// would let travellers leave it faster than its own transfer time allows - and
-// a member with a slow transfer in its row/column is kept off the side where
-// that transfer would be undercut.
+// A member (the stop or one of its virtual locations) that is itself slow
+// never feeds a hub: it would let travellers leave it faster than its own
+// transfer time allows. The rest feed the broadcast hub, which reaches every
+// member, if no slower transfer starts at them - otherwise the collect hub,
+// which only reaches members that no slower transfer leads to.
 void build_hubs(timetable& tt) {
   auto const n = tt.n_locations();
   auto const& fps_out = tt.locations_.footpaths_out_[kDefaultProfile];
@@ -304,7 +304,7 @@ void build_hubs(timetable& tt) {
       auto const slow_to = has_slow_transfer(fps_in, m);
       if (!is_slow(m) && !has_slow_transfer(fps_out, m)) {
         bcast_in.emplace_back(m, duration_t{0});
-      } else if (!is_slow(m) && !slow_to) {
+      } else if (!is_slow(m)) {
         coll_in.emplace_back(m, duration_t{0});
       }
       bcast_out.emplace_back(m, d);
