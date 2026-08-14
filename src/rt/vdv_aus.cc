@@ -157,8 +157,12 @@ statistics& statistics::operator+=(statistics const& o) {
 
 updater::updater(nigiri::timetable const& tt,
                  source_idx_t const src_idx,
-                 xml_format const format)
-    : tt_{tt}, src_idx_{src_idx}, format_{format} {}
+                 xml_format const format,
+                 bool const skip_existing_update)
+    : tt_{tt},
+      src_idx_{src_idx},
+      format_{format},
+      skip_existing_update_{skip_existing_update} {}
 
 void updater::reset_vdv_run_ids_() { matches_.clear(); }
 
@@ -512,6 +516,11 @@ void updater::update_run(rt_timetable& rtt,
   auto fr = rt::frun(tt_, &rtt, r);
   if (!fr.is_rt()) {
     fr.rt_ = rtt.add_rt_transport(src_idx_, tt_, fr.t_);
+  } else if (skip_existing_update_) {
+    log(log_lvl::debug, "rt.vdv.priority",
+        "skipping update for trip_id={}: realtime trip already exists",
+        fr.id().id_);
+    return;
   } else {
     rtt.rt_transport_is_cancelled_.set(to_idx(fr.rt_), false);
   }
