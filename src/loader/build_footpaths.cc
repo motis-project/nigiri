@@ -97,9 +97,9 @@ void add_equivalence_footpaths(timetable& tt,
 // transfer of the parent is therefore a transfer of the child at the same
 // duration - be it a beeline or a transfers.txt row - so they are copied over
 // instead of being recomputed per child. Self loops must not be copied: for a
-// virtual location the copy would land inside its own transfer group and
+// virtual location the copy would land between it and its own stop and
 // undercut the rule matrix (materialized deviations plus the defaults derived
-// by the group's hubs).
+// by that stop's hubs).
 void copy_footpaths_to_generated_children(timetable& tt) {
   auto fp_out = mutable_fws_multimap<location_idx_t, footpath>{};
   for (auto l = location_idx_t{0U};
@@ -219,11 +219,13 @@ void write_footpaths(timetable& tt, bool const adjust_footpaths) {
 }
 
 // Builds the transfer hub edge lists: one broadcast and one collect hub per
-// transfer group (a stop with kVirt children). All classification is derived
-// from the materialized cells: a member is "loud" if its own transfer time
-// exceeds the group default (it never gathers, its echo would undercut the
-// route scan's same-stop value), row/col-clean if it has no same-station cell
-// above the default.
+// stop that has virtual locations. A hub always delivers at the stop's
+// transfer time, so nothing slower than that may become derivable through it.
+// The classification is read off the materialized cells: a member (the stop or
+// one of its virtual locations) that is itself slow never gathers - the hub
+// would let travellers leave it faster than its own transfer time allows - and
+// a member with a slow transfer in its row/column is kept off the side where
+// that transfer would be undercut.
 void build_hubs(timetable& tt) {
   auto const n = tt.n_locations();
   auto const& fps_out = tt.locations_.footpaths_out_[kDefaultProfile];
@@ -250,10 +252,10 @@ void build_hubs(timetable& tt) {
     }
   };
 
-  auto is_group = std::vector<bool>(n, false);
+  auto has_virts = std::vector<bool>(n, false);
   for (auto l = location_idx_t{0U}; l != location_idx_t{n}; ++l) {
     if (tt.locations_.types_[l] == location_type::kVirt) {
-      is_group[to_idx(tt.locations_.parents_[l])] = true;
+      has_virts[to_idx(tt.locations_.parents_[l])] = true;
     }
   }
 
@@ -263,7 +265,7 @@ void build_hubs(timetable& tt) {
   auto coll_in = std::vector<footpath>{};
   auto coll_out = std::vector<footpath>{};
   for (auto l = location_idx_t{0U}; l != location_idx_t{n}; ++l) {
-    if (!is_group[to_idx(l)]) {
+    if (!has_virts[to_idx(l)]) {
       continue;
     }
 
@@ -274,19 +276,23 @@ void build_hubs(timetable& tt) {
       }
     }
 
-    // Cleanliness only counts cells between group members: the hubs never
-    // derive a pair targeting a non-member, so only member cells can be
-    // undercut. Real stops can carry same-station edges to non-member
-    // children (e.g. equivalence beelines) that must not flip the
-    // classification the loader elided against.
+    // Only transfers between members count: the hubs never derive a pair
+    // targeting a non-member, so only those can be undercut. Real stops can
+    // carry same-stop edges to non-member children (e.g. equivalence
+    // beelines) that must not flip the classification the loader elided
+    // against.
     auto const d = tt.locations_.transfer_time_[l];
     auto const is_member = [&](location_idx_t const t) {
       return t == l || (tt.locations_.parents_[t] == l &&
                         tt.locations_.types_[t] == location_type::kVirt);
     };
-    auto const clean = [&](auto const& all_fps, location_idx_t const m) {
-      return utl::all_of(all_fps[m], [&](footpath const fp) {
-        return !is_member(fp.target()) || fp.duration() <= d;
+    auto const is_slow = [&](location_idx_t const m) {
+      return m != l && tt.locations_.transfer_time_[m] > d;
+    };
+    auto const has_slow_transfer = [&](auto const& all_fps,
+                                       location_idx_t const m) {
+      return utl::any_of(all_fps[m], [&](footpath const fp) {
+        return is_member(fp.target()) && fp.duration() > d;
       });
     };
 
@@ -295,15 +301,14 @@ void build_hubs(timetable& tt) {
     coll_in.clear();
     coll_out.clear();
     for (auto const m : members) {
-      auto const quiet = m == l || tt.locations_.transfer_time_[m] <= d;
-      auto const col_clean = clean(fps_in, m);
-      if (quiet && clean(fps_out, m)) {
+      auto const slow_to = has_slow_transfer(fps_in, m);
+      if (!is_slow(m) && !has_slow_transfer(fps_out, m)) {
         bcast_in.emplace_back(m, duration_t{0});
-      } else if (quiet && col_clean) {
+      } else if (!is_slow(m) && !slow_to) {
         coll_in.emplace_back(m, duration_t{0});
       }
       bcast_out.emplace_back(m, d);
-      if (col_clean) {
+      if (!slow_to) {
         coll_out.emplace_back(m, d);
       }
     }
