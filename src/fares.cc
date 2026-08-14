@@ -324,7 +324,8 @@ timeframe_group_idx_t match_timeframe(timetable const& tt,
                                       location_idx_t const l,
                                       transport_idx_t const t,
                                       unixtime_t const time) {
-  auto const stop_tz = tt.locations_.location_timezones_.at(l);
+  auto const stop_tz =
+      tt.locations_.location_timezones_.at(tt.locations_.get_attribute_idx(l));
   auto const& tz = tt.timezones_.at(
       stop_tz == timezone_idx_t::invalid()
           ? tt.providers_[tt.transport_section_providers_.at(t).at(0)].tz_

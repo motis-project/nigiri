@@ -57,8 +57,26 @@ struct location_id_equals {
   }
 };
 
+// Transfer point recommended by the input data (transfers.txt type 0 =
+// recommended / type 1 = timed), optionally scoped to a trip or route pair
+// (invalid = unscoped).
+struct preferred_transfer {
+  location_idx_t to_{location_idx_t::invalid()};
+  trip_idx_t from_trip_{trip_idx_t::invalid()};
+  trip_idx_t to_trip_{trip_idx_t::invalid()};
+  route_id_idx_t from_route_{route_id_idx_t::invalid()};
+  route_id_idx_t to_route_{route_id_idx_t::invalid()};
+};
+
 struct timetable {
   struct locations {
+    // Virtual locations (location_type::kVirt) have no attributes of their own
+    // (name, platform code, stop code, description, timezone): they are taken
+    // from the location they were generated for.
+    location_idx_t get_attribute_idx(location_idx_t const l) const {
+      return types_[l] == location_type::kVirt ? parents_[l] : l;
+    }
+
     location_idx_t get_root_idx(location_idx_t const idx) const {
       auto l = idx;
       auto i = 0;
@@ -93,13 +111,41 @@ struct timetable {
     mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_in_;
     vector_map<location_idx_t, std::uint32_t> location_importance_;
     std::uint32_t max_importance_{0U};
     rtree<location_idx_t> rtree_;
     bitvec_map<location_idx_t> ticketing_unavailable_;
+
+    // Authoritative transfer edges from transfers.txt. These override any
+    // (re)computed footpath between their endpoints (e.g. after street
+    // routing) - a rule fixes the transfer time, which may be shorter or
+    // longer than the walking time.
+    mutable_fws_multimap<location_idx_t, footpath> transfer_rule_fps_;
+
+    // Preferred transfer points (transfers.txt type 0 = recommended,
+    // type 1 = timed). Soft preference used by optimize_footpaths to move
+    // transfers here. Matching includes children, so a station pair covers
+    // its platforms.
+    mutable_fws_multimap<location_idx_t, preferred_transfer>
+        preferred_transfers_;
+
+    // Transfer hubs: aggregation nodes with weighted in/out edge lists that
+    // derive the default-valued transfer cells of a transfer group (a station
+    // with kVirt children) instead of materializing them. A pair
+    // u -(w1)-> h -(w2)-> v is relaxed at w1 + w2 within one footpath phase
+    // (raptor expand_hubs: gather marked locations into hub minima, scatter
+    // hub minima over the out edges). The backward search swaps the two
+    // lists, so a hub's pair set is derivable in both directions by
+    // construction; reconstruct walks hub_out_by_loc_ x hub_in_. All
+    // classification happens in build_hubs and is encoded purely in list
+    // membership. Transfer rules do not depend on the street routing profile,
+    // so one set of hubs serves all profiles.
+    vecvec<hub_idx_t, footpath> hub_in_;
+    vecvec<hub_idx_t, footpath> hub_out_;
+    vecvec<location_idx_t, hub_ref> hub_in_by_loc_;
+    vecvec<location_idx_t, hub_ref> hub_out_by_loc_;
   } locations_;
 
   struct transport {

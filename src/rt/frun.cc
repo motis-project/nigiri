@@ -100,7 +100,7 @@ std::pair<date::sys_days, duration_t> run_stop::get_trip_start(
 }
 
 std::string_view run_stop::track(lang_t const& lang) const {
-  auto const l = get_location_idx();
+  auto const l = tt().locations_.get_attribute_idx(get_location_idx());
   return tt().translate(lang, tt().locations_.platform_codes_.at(l));
 }
 
@@ -227,8 +227,8 @@ duration_t run_stop::delay(event_type const ev_type) const {
 }
 
 timezone_idx_t run_stop::get_tz(event_type const ev_type) const {
-  auto const location_tz =
-      tt().locations_.location_timezones_.at(get_location_idx());
+  auto const location_tz = tt().locations_.location_timezones_.at(
+      tt().locations_.get_attribute_idx(get_location_idx()));
   if (location_tz != timezone_idx_t::invalid()) {
     return location_tz;
   }

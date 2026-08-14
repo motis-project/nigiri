@@ -186,6 +186,7 @@ using timezone_idx_t = cista::strong<std::uint16_t, struct _timezone_idx>;
 using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
+using hub_idx_t = cista::strong<std::uint32_t, struct _hub_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
 using flex_area_idx_t = cista::strong<std::uint32_t, struct _flex_area_idx>;
 using location_group_idx_t =
@@ -438,7 +439,10 @@ enum class location_type : std::uint8_t {
   kTrack,  // track from input data (i.e. GTFS) with separate coordinate from
            // parent. No manual connection in routing initialization or
            // additional links between parent<->child necessary.
-  kStation
+  kStation,
+  kVirt  // virtual location generated from route-/trip-qualified
+         // transfers.txt rules, no separate coordinate from parent. Same
+         // station transfer times are given by locations::transfer_rule_fps_.
 };
 
 enum class event_type { kArr, kDep };

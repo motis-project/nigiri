@@ -80,6 +80,39 @@ inline void serialize(Ctx&, footpath const*, cista::offset_t const) {}
 template <typename Ctx>
 inline void deserialize(Ctx const&, footpath*) {}
 
+// Reference to a transfer hub, packed like footpath (23 bit hub index, 9 bit
+// duration): element of the transposed hub edge lists
+// (timetable::locations::hub_*_by_loc_). All hub edge weights are transfer
+// times, so the 9 bit range always fits.
+struct hub_ref {
+  hub_ref() = default;
+
+  hub_ref(hub_idx_t const h, duration_t const duration)
+      : hub_{to_idx(h)},
+        duration_{static_cast<location_idx_t::value_t>(
+            std::min(duration, footpath::kMaxDuration).count())} {
+    utl::verify(to_idx(h) < footpath::kMaxTarget, "hub index overflow");
+  }
+
+  hub_idx_t hub() const { return hub_idx_t{hub_}; }
+  duration_t duration() const { return duration_t{duration_}; }
+
+  location_idx_t::value_t hub_ : footpath::kTargetBits;
+  location_idx_t::value_t duration_ : footpath::kDurationBits;
+};
+
+template <std::size_t NMaxTypes>
+constexpr auto static_type_hash(hub_ref const*,
+                                cista::hash_data<NMaxTypes> h) noexcept {
+  return h.combine(cista::hash("nigiri::hub_ref"));
+}
+
+template <typename Ctx>
+inline void serialize(Ctx&, hub_ref const*, cista::offset_t const) {}
+
+template <typename Ctx>
+inline void deserialize(Ctx const&, hub_ref*) {}
+
 }  // namespace nigiri
 
 template <>

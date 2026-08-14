@@ -453,6 +453,12 @@ void generator::add_offsets_for_pos(
     geo::latlng const& pos,
     query_generation::transport_mode const& mode) const {
   for (auto const loc : locations_rtree_.in_radius(pos, mode.range())) {
+    if (tt_.locations_.types_[location_idx_t{loc}] == location_type::kVirt) {
+      // virtual locations share their parent's coordinates and are seeded
+      // from the parent's offset by for_each_meta (kIntermodal) -- their own
+      // offsets are redundant duplicates
+      continue;
+    }
     auto const duration = duration_t{
         static_cast<std::int16_t>(
             geo::distance(pos,
