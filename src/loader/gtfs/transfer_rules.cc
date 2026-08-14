@@ -1,5 +1,6 @@
 #include "nigiri/loader/gtfs/transfer_rules.h"
 
+#include <cstdlib>
 #include <algorithm>
 #include <ranges>
 #include <vector>
@@ -366,11 +367,7 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
              });
   }
 
-  // Write only the transfers that have to be explicit: loader::build_hubs
-  // derives the others from what is written here - in groups of members, not
-  // pair by pair, which is why the conditions below are about x and y and not
-  // about the transfer between them. A transfer x -> y can be left out only
-  // if ALL of these hold:
+  // A transfer x -> y can be left out only if ALL of these hold:
   //   - x and y have the same base, because the derivation works per base
   //   - the transfer itself takes exactly the base's transfer time, because
   //     that is the only value the derivation produces
@@ -391,20 +388,72 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
     }
   }
 
+  // NIGIRI_MATERIALIZE_TRANSFERS=1 writes every cell and builds no hubs, so
+  // the result can be compared against the hub-derived one (see build_hubs).
+  auto const materialize =
+      std::getenv("NIGIRI_MATERIALIZE_TRANSFERS") != nullptr;
   auto const derivable = [&](location_idx_t const x, location_idx_t const y,
                              location_idx_t const base) {
+    if (materialize) {
+      return false;
+    }
     auto const is_slow = x != base && tt.locations_.transfer_time_[x] >
                                           tt.locations_.transfer_time_[base];
     return !is_slow && (!slow_from.contains(x) || !slow_to.contains(y));
   };
 
+  // A rule can also state one value for a whole cross product of locations -
+  // typically a stop pair whose sides both carry virtual locations. That costs
+  // |X| * |Y| transfers, where one hub covers it in |X| + |Y| edges. It is
+  // only safe when every pair of the cross product really belongs to this
+  // rule: otherwise the hub would deliver its value for a pair that a more
+  // specific rule gave a slower one.
+  struct cross_rule {
+    std::size_t n_cells_{0U};
+    hash_set<location_idx_t> x_, y_;
+  };
+  auto cross = hash_map<std::uint32_t, cross_rule>{};
+  for (auto const& [xy, c] : most_specific) {
+    if (base_of(xy.from_) == base_of(xy.to_)) {
+      continue;  // covered by the base's own hubs
+    }
+    auto& g = cross[c.rule_idx_];
+    ++g.n_cells_;
+    g.x_.insert(xy.from_);
+    g.y_.insert(xy.to_);
+  }
+
+  auto hub_rules = hash_set<std::uint32_t>{};
+  auto hub_in = std::vector<location_idx_t>{};
+  auto hub_out = std::vector<location_idx_t>{};
+  for (auto const& [rule_idx, g] : cross) {
+    auto const cells = g.x_.size() * g.y_.size();
+    if (materialize || g.n_cells_ != cells ||
+        cells <= g.x_.size() + g.y_.size()) {
+      continue;
+    }
+    hub_rules.insert(rule_idx);
+
+    hub_in.assign(begin(g.x_), end(g.x_));
+    hub_out.assign(begin(g.y_), end(g.y_));
+    std::sort(begin(hub_in), end(hub_in));
+    std::sort(begin(hub_out), end(hub_out));
+    tt.locations_.hub_in_.emplace_back(hub_in);
+    tt.locations_.hub_out_.emplace_back(hub_out);
+    tt.locations_.hub_time_.push_back(rules[rule_idx_t{rule_idx}].duration());
+  }
+
   // Write the most specific transfer per pair.
   for (auto const& [xy, c] : most_specific) {
     auto const d = rules[rule_idx_t{c.rule_idx_}].duration();
     auto const base = base_of(xy.from_);
-    if (base == base_of(xy.to_) && d == tt.locations_.transfer_time_[base] &&
-        derivable(xy.from_, xy.to_, base)) {
-      continue;
+    if (base == base_of(xy.to_)) {
+      if (d == tt.locations_.transfer_time_[base] &&
+          derivable(xy.from_, xy.to_, base)) {
+        continue;
+      }
+    } else if (hub_rules.contains(c.rule_idx_)) {
+      continue;  // derived by this rule's hub
     }
     tt.locations_.transfer_rule_fps_[xy.from_].emplace_back(xy.to_, d);
   }

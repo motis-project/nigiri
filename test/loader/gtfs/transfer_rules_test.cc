@@ -71,7 +71,7 @@ namespace {
 // (8) mutually restricting trip pairs:
 //     Q,Q type=2 600s for Q1->Q2 and for Q2->Q1, plus an unqualified
 //     Q,Q type=2 120s row. Both virtual locations are the source AND the
-//     target of a slower-than-default transfer, so neither can broadcast.
+//     target of a slower-than-default transfer, so neither is unrestricted.
 //     Q1:  A9 08:00 -> Q 08:30
 //     Q2:  Q 08:32 -> QA 09:00 (2 min gap < 10 -> not reachable)
 //     Q2L: Q 08:41 -> QA 09:10 (11 min gap -> ok)

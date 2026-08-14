@@ -131,20 +131,23 @@ struct timetable {
     mutable_fws_multimap<location_idx_t, preferred_transfer>
         preferred_transfers_;
 
-    // Transfer hubs: aggregation nodes with weighted in/out edge lists that
+    // Transfer hubs: aggregation nodes with an in and an out member list that
     // derive the default-valued transfer cells of a stop with kVirt children
-    // instead of materializing them. A pair u -(w1)-> h -(w2)-> v is relaxed at
-    // w1 + w2 within one footpath phase (raptor expand_hubs: gather marked
-    // locations into hub minima, scatter hub minima over the out edges). The
-    // backward search swaps the two lists, so a hub's pair set is derivable in
-    // both directions by construction; reconstruct walks hub_out_by_loc_ x
-    // hub_in_. All classification happens in build_hubs and is encoded purely
-    // in list membership. Transfer rules do not depend on the street routing
-    // profile, so one set of hubs serves all profiles.
-    vecvec<hub_idx_t, footpath> hub_in_;
-    vecvec<hub_idx_t, footpath> hub_out_;
-    vecvec<location_idx_t, hub_ref> hub_in_by_loc_;
-    vecvec<location_idx_t, hub_ref> hub_out_by_loc_;
+    // instead of materializing them. Every pair u -> h -> v derived by hub h
+    // has the same duration hub_time_[h], so the weight is stored once per hub
+    // and not per member. Relaxation happens within one footpath phase (raptor
+    // expand_hubs: gather marked locations into hub minima, scatter hub minima
+    // over the out members at hub_time_). The backward search swaps the two
+    // lists, so a hub's pair set is derivable in both directions by
+    // construction; reconstruct walks hub_out_by_loc_ x hub_in_. All
+    // classification happens in build_hubs and is encoded purely in list
+    // membership. Transfer rules do not depend on the street routing profile,
+    // so one set of hubs serves all profiles.
+    vecvec<hub_idx_t, location_idx_t> hub_in_;
+    vecvec<hub_idx_t, location_idx_t> hub_out_;
+    vector_map<hub_idx_t, duration_t> hub_time_;
+    vecvec<location_idx_t, hub_idx_t> hub_in_by_loc_;
+    vecvec<location_idx_t, hub_idx_t> hub_out_by_loc_;
   } locations_;
 
   struct transport {
