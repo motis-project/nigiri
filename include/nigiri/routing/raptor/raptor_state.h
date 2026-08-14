@@ -108,6 +108,13 @@ struct raptor_state {
   bitvec prev_station_mark_;
   bitvec route_mark_;
   bitvec rt_transport_mark_;
+
+  // transfer hub values (see raptor.h expand_hubs): one slot per (hub, via
+  // state), addressed hub * (kMaxVias + 1) + via. tmp_-like monotone minima
+  // over one start time; hub_mark_ flags the hubs whose minimum improved this
+  // round (station_mark_ idiom).
+  std::vector<int> hub_slots_;
+  bitvec hub_mark_;
 };
 
 }  // namespace nigiri::routing

@@ -227,7 +227,15 @@ routing_result pong(timetable const& tt,
   };
   auto const get_result_count = [&](bool const include_too_slow) {
     return utl::count_if(*result.journeys_, [&](journey const& j) {
-      return is_validated(j) &&
+      // only reconstructed journeys count towards the extension stop
+      // condition: the widened backward-validation bound (-1 below) can
+      // surface journeys departing just before the search interval, and
+      // reconstruction can fail (error_) -- both get erased before delivery
+      // and neither can ever be matched by a ping. counting such
+      // undeliverable entries terminates the extension early and starves
+      // real journeys of their validation (under-delivery, e.g. across
+      // overnight service gaps).
+      return j.is_reconstructed_ && !j.error_ && is_validated(j) &&
              (include_too_slow || (j.travel_time() < fastest_direct &&
                                    j.travel_time() <= q.max_travel_time_));
     });

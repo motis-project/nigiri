@@ -23,7 +23,8 @@ timezone_idx_t timetable::register_timezone(timezone tz) {
 }
 
 std::string_view timetable::get_default_name(location_idx_t const l) const {
-  return get_default_translation(locations_.names_[l]);
+  return get_default_translation(
+      locations_.names_[locations_.get_attribute_idx(l)]);
 }
 
 translated_str_t timetable::get(translation_idx_t const t) const {

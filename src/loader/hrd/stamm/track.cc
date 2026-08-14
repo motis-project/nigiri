@@ -60,6 +60,29 @@ tracks parse_track_rules(config const& c,
     ret.track_rules_[track_rule_key{parent, train_num, admin}].push_back(
         track_rule{bitfield, track_location, minutes_after_midnight_t{time}});
   });
+
+  // Track locations have no position of their own and are not listed as
+  // equivalent stations, so nothing derives their transfers: connect every
+  // track with its station and with the other tracks of that station at the
+  // station's transfer time.
+  auto tracks_at = hash_map<location_idx_t, std::vector<location_idx_t>>{};
+  for (auto const& [key, l] : ret.rack_locations_) {
+    tracks_at[key.parent_station_].push_back(l);
+  }
+  for (auto const& [parent, children] : tracks_at) {
+    auto const t = tt.locations_.transfer_time_[parent];
+    for (auto const child : children) {
+      tt.locations_.preprocessing_footpaths_out_[parent].emplace_back(child, t);
+      tt.locations_.preprocessing_footpaths_out_[child].emplace_back(parent, t);
+      for (auto const other : children) {
+        if (other != child) {
+          tt.locations_.preprocessing_footpaths_out_[child].emplace_back(other,
+                                                                         t);
+        }
+      }
+    }
+  }
+
   return ret;
 }
 

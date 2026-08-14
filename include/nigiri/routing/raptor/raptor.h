@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cassert>
+#include <limits>
 #include <span>
+#include <vector>
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
@@ -38,6 +40,7 @@ struct raptor {
       std::numeric_limits<std::uint16_t>::max();
   static constexpr auto const kIntermodalTarget =
       to_idx(get_special_station(special_station::kEnd));
+  static constexpr auto const kUnsetHub = std::numeric_limits<int>::min();
   static constexpr auto const kInvalidArray = []() {
     auto a = std::array<delta_t, Vias + 1>{};
     a.fill(kInvalid);
@@ -110,6 +113,19 @@ struct raptor {
         end_reachable_.set(to_idx(l), true);
       }
     }
+
+    // dense hub value slots: one per (hub, via state), tmp_-like monotone
+    // minima over the whole start time (reset in next_start_time), so a hub
+    // only scatters in rounds where its minimum actually improved - a
+    // non-improved delivery would be Pareto-dominated (same time, more
+    // transfers), the same argument that justifies station marks. kUnsetHub
+    // is tested by equality, never compared, so one sentinel serves both
+    // search directions sharing the state.
+    auto const n_hubs = tt_.locations_.hub_in_.size();
+    if (state_.hub_slots_.size() < n_hubs * (kMaxVias + 1U)) {
+      state_.hub_slots_.assign(n_hubs * (kMaxVias + 1U), kUnsetHub);
+    }
+    state_.hub_mark_.resize(static_cast<bitvec::size_type>(n_hubs));
   }
 
   algo_stats_t get_stats() const { return stats_; }
@@ -177,6 +193,8 @@ struct raptor {
   }
 
   void next_start_time() {
+    utl::fill(state_.hub_slots_, kUnsetHub);
+    utl::fill(state_.hub_mark_.blocks_, 0U);
     utl::fill(best_, kInvalidArray);
     utl::fill(tmp_, kInvalidArray);
     utl::fill(state_.prev_station_mark_.blocks_, 0U);
@@ -381,6 +399,7 @@ struct raptor {
       update_transfers(k);
       update_intermodal_footpaths(k);
       update_footpaths(k);
+      expand_hubs(k);
       update_td_offsets(k);
 
       trace_print_state_after_round();
@@ -740,6 +759,119 @@ private:
         }
       }
     });
+  }
+
+  // Relax one hub-derived transfer. base_time already contains the source
+  // side via stay, adj_dur is the ALREADY adjusted duration
+  // (transfer_time_settings applied once by the caller). Mirrors the explicit
+  // footpath relax logic below.
+  void relax_hub_target(unsigned const k,
+                        unsigned const start_v,
+                        int const base_time,
+                        int const adj_dur,
+                        location_idx_t const target_l) {
+    ++stats_.n_footpaths_visited_;
+    auto const target = to_idx(target_l);
+    auto const target_is_via = start_v != Vias && is_via_[start_v][target];
+    auto const target_v = target_is_via ? start_v + 1U : start_v;
+    auto const stay =
+        target_is_via ? static_cast<int>(via_stops_[start_v].stay_.count()) : 0;
+    auto const fp_target_time = clamp(base_time + dir(adj_dur + stay));
+
+    if (bounds_last_k_ == 0U &&
+        is_better(fp_target_time, best_[target][target_v])) {
+      round_times_[k][target][target_v] =
+          get_best(fp_target_time, round_times_[k][target][target_v]);
+    }
+
+    if (is_better(fp_target_time, best_[target][target_v]) &&
+        is_better_loose(fp_target_time, time_at_dest_[k])) {
+      if (!lb_reachable(target) ||
+          !is_better_loose(fp_target_time + dir(get_lb(target)),
+                           time_at_dest_[k])) {
+        ++stats_.fp_update_prevented_by_lower_bound_;
+        return;
+      }
+      if (!within_bounds(k, target, fp_target_time, target_v)) {
+        return;
+      }
+      ++stats_.n_earliest_arrival_updated_by_footpath_;
+      round_times_[k][target][target_v] = fp_target_time;
+      best_[target][target_v] = fp_target_time;
+      state_.station_mark_.set(target, true);
+      if (target_v == Vias && is_dest_[target]) {
+        update_time_at_dest(k, fp_target_time);
+      }
+    }
+  }
+
+  // Transfer hubs: two phase expansion, decoupled from the explicit footpath
+  // phase. Gather folds this round's marked locations into per-hub minima
+  // over the in-edges, scatter expands each touched hub's minimum over its
+  // out-edges. A hub traversal is one logical footpath hop (weight
+  // w_in + w_out); the backward search swaps the two edge lists, so every
+  // hub's pair set works in both directions by construction. All exclusion
+  // logic lives in the lists (loader::build_hubs).
+  void expand_hubs(unsigned const k) {
+    auto const& gather_edges =
+        kFwd ? tt_.locations_.hub_in_by_loc_ : tt_.locations_.hub_out_by_loc_;
+    if (gather_edges.size() == 0U) {
+      return;
+    }
+
+    auto const adj = [&](duration_t const w) {
+      return w.count() == 0
+                 ? 0
+                 : adjusted_transfer_time(transfer_time_settings_,
+                                          static_cast<int>(w.count()));
+    };
+
+    state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+      auto const edges = gather_edges[location_idx_t{i}];
+      if (edges.empty()) {
+        return;
+      }
+      for (auto v = 0U; v != Vias + 1; ++v) {
+        auto const tmp_time = tmp_[i][v];
+        if (tmp_time == kInvalid) {
+          continue;
+        }
+        auto const start_is_via =
+            v != Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
+        auto const start_v = start_is_via ? v + 1U : v;
+        auto const base_time =
+            static_cast<int>(tmp_time) +
+            (start_is_via ? dir(static_cast<int>(via_stops_[v].stay_.count()))
+                          : 0);
+        for (auto const& e : edges) {
+          auto& slot =
+              state_.hub_slots_[std::size_t{to_idx(e.hub())} * (kMaxVias + 1U) +
+                                start_v];
+          auto const value = base_time + dir(adj(e.duration()));
+          if (slot == kUnsetHub || (kFwd ? value < slot : value > slot)) {
+            slot = value;
+            state_.hub_mark_.set(to_idx(e.hub()), true);
+          }
+        }
+      }
+    });
+
+    auto const& scatter_edges =
+        kFwd ? tt_.locations_.hub_out_ : tt_.locations_.hub_in_;
+    state_.hub_mark_.for_each_set_bit([&](std::uint64_t const h) {
+      auto const slot0 = std::size_t{h} * (kMaxVias + 1U);
+      for (auto const& e :
+           scatter_edges[hub_idx_t{static_cast<hub_idx_t::value_t>(h)}]) {
+        auto const w = adj(e.duration());
+        for (auto start_v = 0U; start_v != Vias + 1; ++start_v) {
+          if (state_.hub_slots_[slot0 + start_v] != kUnsetHub) {
+            relax_hub_target(k, start_v, state_.hub_slots_[slot0 + start_v], w,
+                             e.target());
+          }
+        }
+      }
+    });
+    utl::fill(state_.hub_mark_.blocks_, 0U);
   }
 
   void update_footpaths(unsigned const k) {
