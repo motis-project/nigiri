@@ -1,12 +1,14 @@
 #include "nigiri/loader/gtfs/transfer_rules.h"
 
 #include <algorithm>
-#include <span>
+#include <ranges>
 #include <vector>
 
 #include "utl/erase_duplicates.h"
+#include "utl/erase_if.h"
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/pairwise.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
@@ -146,15 +148,22 @@ struct rule {
 using rule_idx_t = cista::strong<std::uint32_t, struct rule_idx_>;
 using rule_vec_t = vector_map<rule_idx_t, rule>;
 
-// one side (from/to) of one rule
+// One side (from/to) of one rule, packed as rule << 1 | side. A rule has no
+// other sides, so in a sorted, deduplicated signature its from side sits
+// directly before its to side - which is what lets the scan below find the
+// rules that match with both of their sides by looking at adjacent entries.
 using sided_rule_idx_t = cista::strong<std::uint32_t, struct sided_rule_idx_>;
-
-// all rule sides that apply to a trip stop
-using signature_t = std::vector<sided_rule_idx_t>;
 
 sided_rule_idx_t side_ref(rule_idx_t const rule_idx, bool const is_from) {
   return sided_rule_idx_t{(to_idx(rule_idx) << 1U) | (is_from ? 0U : 1U)};
 }
+
+rule_idx_t rule_of(sided_rule_idx_t const s) {
+  return rule_idx_t{to_idx(s) >> 1U};
+}
+
+// all rule sides that apply to a trip stop
+using signature_t = std::vector<sided_rule_idx_t>;
 
 // An ordered pair of locations: a transfer leads from_ -> to_.
 struct transfer_pair {
@@ -181,16 +190,13 @@ struct candidate {
 };
 
 void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
-  // The base of a virtual location is the stop it was generated for. A stop
-  // and its virtual locations transfer among each other at the stop's transfer
-  // time (the default) unless a rule states otherwise.
   auto const base_of = [&](location_idx_t const l) {
     return tt.locations_.types_[l] == location_type::kVirt
                ? tt.locations_.parents_[l]
                : l;
   };
 
-  // (route -> trips) for the routes referenced by a rule
+  // Map (route -> trips) for the routes referenced by a rule.
   auto route_trips = hash_map<route_id_idx_t, std::vector<gtfs_trip_idx_t>>{};
   for (auto const& r : rules) {
     for (auto const route : {r.from_route_, r.to_route_}) {
@@ -208,7 +214,7 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
     }
   }
 
-  // (trip, stop position) -> matched rule sides
+  // Map (trip, stop position) -> matched rule sides.
   auto trip_stop_signatures =
       hash_map<pair<gtfs_trip_idx_t, stop_idx_t>, signature_t>{};
   for (auto rule_idx = rule_idx_t{0U}; rule_idx != rules.size(); ++rule_idx) {
@@ -249,8 +255,7 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
     match_side(r.to_stop_, r.to_route_, r.to_trip_, false);
   }
 
-  // Generate one virtual location per (stop, signature) and move the matched
-  // trip stops there.
+  // Update all trip stops to virtual locations.
   auto const first_virt = location_idx_t{tt.n_locations()};
   auto virt_locs =
       hash_map<std::pair<location_idx_t, signature_t>, location_idx_t>{};
@@ -271,36 +276,35 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
           l.parent_ = base;
           l.transfer_time_ = tt.locations_.transfer_time_[base];
 
-          // A rule matching this signature with BOTH sides (e.g. the same-route
-          // rule R5 -> R5: every R5 trip matches from and to) applies to all
-          // transfers within the stop. The pair emission below skips
-          // same-location pairs, so the value has to become this location's
-          // transfer time. The from/to side refs of one rule are adjacent in
-          // the sorted signature.
-          auto best_self = std::optional<candidate>{};
-          for (auto j = 0U; j + 1U < sig.size(); ++j) {
-            auto const side = to_idx(sig[j]);
-            if ((side & 1U) == 0U && to_idx(sig[j + 1U]) == side + 1U) {
-              auto const rule_idx = rule_idx_t{side >> 1U};
-              auto const& r = rules[rule_idx];
-              auto const c =
-                  candidate{.specificity_ = r.get_specificity(),
-                            .n_exact_stops_ = static_cast<std::uint8_t>(
-                                (r.from_stop_ == base) + (r.to_stop_ == base)),
-                            .rule_idx_ = to_idx(rule_idx)};
-              best_self = std::max(best_self.value_or(c), c);
-            }
-          }
-          if (best_self.has_value()) {
-            l.transfer_time_ =
-                rules[rule_idx_t{best_self->rule_idx_}].duration();
+          // Rules where from == to side (e.g. transfers from route R -> R)
+          // end up on the same virt node -> set transfer_time to self.
+          auto reflexive_self_rules =
+              utl::pairwise(sig)  //
+              | std::views::filter([](auto const& sides) {
+                  auto const& [from, to] = sides;
+                  return rule_of(from) == rule_of(to);
+                })  //
+              | std::views::transform([&](auto const& sides) {
+                  auto const rule_idx = rule_of(std::get<0>(sides));
+                  auto const& r = rules[rule_idx];
+                  return candidate{
+                      .specificity_ = r.get_specificity(),
+                      .n_exact_stops_ = static_cast<std::uint8_t>(
+                          (r.from_stop_ == base) + (r.to_stop_ == base)),
+                      .rule_idx_ = to_idx(rule_idx)};
+                });
+          if (auto const it = std::ranges::max_element(reflexive_self_rules);
+              it != std::ranges::end(reflexive_self_rules)) {
+            l.transfer_time_ = rules[rule_idx_t{(*it).rule_idx_}].duration();
           }
 
           auto const v = register_location(tt, l);
           tt.locations_.children_[base].emplace_back(v);
+
           for (auto const side : sig) {
             side_virts[side].push_back(v);
           }
+
           return v;
         });
 
@@ -311,69 +315,71 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
   }
 
   // Let the rules compete for specificity on all location pairs they apply to.
-  auto subtree = std::vector<location_idx_t>{};
-  auto const get_subtree = [&](location_idx_t const s) {
-    subtree.assign({s});
-    for (auto const child : tt.locations_.children_[s]) {
-      subtree.emplace_back(child);
-      for (auto const grand_child : tt.locations_.children_[child]) {
-        subtree.emplace_back(grand_child);
-      }
-    }
-    return std::span{subtree};
-  };
+  // An unqualified side applies to the rule stop and everything below it, a
+  // qualified one only to the virtual locations that were split off for it.
+  auto const for_each =
+      [&](rule_idx_t const rule_idx, location_idx_t const rule_stop,
+          route_id_idx_t const route, gtfs_trip_idx_t const trip,
+          bool const from_side, auto&& fn) {
+        if (route == route_id_idx_t::invalid() &&
+            trip == gtfs_trip_idx_t::invalid()) {
+          fn(rule_stop);
+          for (auto const child : tt.locations_.children_[rule_stop]) {
+            fn(child);
+            for (auto const grand_child : tt.locations_.children_[child]) {
+              fn(grand_child);
+            }
+          }
+          return;
+        }
+
+        auto const it = side_virts.find(side_ref(rule_idx, from_side));
+        if (it != end(side_virts)) {
+          for (auto const virt : it->second) {
+            fn(virt);
+          }
+        }
+      };
 
   auto most_specific = hash_map<transfer_pair, candidate>{};
-  auto from_nodes = std::vector<location_idx_t>{};
   for (auto rule_idx = rule_idx_t{0U}; rule_idx != rules.size(); ++rule_idx) {
     auto const& r = rules[rule_idx];
-    auto const get_side_nodes =
-        [&](location_idx_t const rule_stop, route_id_idx_t const route,
-            gtfs_trip_idx_t const trip,
-            bool const is_from_side) -> std::span<location_idx_t const> {
-      if (route == route_id_idx_t::invalid() &&
-          trip == gtfs_trip_idx_t::invalid()) {
-        return get_subtree(rule_stop);
+    auto const update = [&](location_idx_t const x, location_idx_t const y) {
+      if (x == y) {
+        return;
       }
-      auto const it = side_virts.find(side_ref(rule_idx, is_from_side));
-      return it == end(side_virts) ? std::span<location_idx_t const>{}
-                                   : std::span{it->second};
+      auto const c = candidate{
+          .specificity_ = r.get_specificity(),
+          .n_exact_stops_ = static_cast<std::uint8_t>(
+              (r.from_stop_ == base_of(x)) + (r.to_stop_ == base_of(y))),
+          .rule_idx_ = to_idx(rule_idx)};
+      auto const [it, is_new] = most_specific.emplace(transfer_pair{x, y}, c);
+      if (!is_new) {
+        it->second = std::max(it->second, c);
+      }
     };
 
-    // get_subtree reuses one buffer -> the from side needs its own copy
-    auto const from_span =
-        get_side_nodes(r.from_stop_, r.from_route_, r.from_trip_, true);
-    from_nodes.assign(begin(from_span), end(from_span));
-    auto const to_nodes =
-        get_side_nodes(r.to_stop_, r.to_route_, r.to_trip_, false);
-
-    for (auto const x : from_nodes) {
-      for (auto const y : to_nodes) {
-        if (x == y) {
-          continue;
-        }
-        auto const c = candidate{
-            .specificity_ = r.get_specificity(),
-            .n_exact_stops_ = static_cast<std::uint8_t>(
-                (r.from_stop_ == base_of(x)) + (r.to_stop_ == base_of(y))),
-            .rule_idx_ = to_idx(rule_idx)};
-        auto const [it, is_new] = most_specific.emplace(transfer_pair{x, y}, c);
-        if (!is_new) {
-          it->second = std::max(it->second, c);
-        }
-      }
-    }
+    for_each(rule_idx, r.from_stop_, r.from_route_, r.from_trip_, true,
+             [&](location_idx_t const x) {
+               for_each(rule_idx, r.to_stop_, r.to_route_, r.to_trip_, false,
+                        [&](location_idx_t const y) { update(x, y); });
+             });
   }
 
-  // Default-valued cells between a stop and its virtual locations are derived
-  // at query time by the stop's hubs
-  // (loader::build_hubs re-derives the same classification from the surviving
-  // cells) and therefore not emitted. A hub delivers at the default, so a
-  // transfer slower than the default must not become derivable through it:
-  // the broadcast hub carries (x -> *) if x is neither slow itself nor the
-  // source of a slow transfer, the collect hub (x -> y) if x is not slow and
-  // neither x nor y is the target of one. Deviating cells always stay
-  // materialized and win the min against the hub-derived default.
+  // Write only the transfers that have to be explicit: loader::build_hubs
+  // derives the others from what is written here - in groups of members, not
+  // pair by pair, which is why the conditions below are about x and y and not
+  // about the transfer between them. A transfer x -> y can be left out only
+  // if ALL of these hold:
+  //   - x and y have the same base, because the derivation works per base
+  //   - the transfer itself takes exactly the base's transfer time, because
+  //     that is the only value the derivation produces
+  //   - x's own transfer time, the one for changing at x, is not longer than
+  //     the base's, because the derivation also yields x -> x at the base's
+  //     time and would undercut it
+  //   - no slower transfer starts at x, OR none leads to y (either one is
+  //     enough), because the derivation reaches either every member from x,
+  //     or only the members that no slower transfer leads to
   auto slow_from = hash_set<location_idx_t>{};
   auto slow_to = hash_set<location_idx_t>{};
   for (auto const& [xy, c] : most_specific) {
@@ -384,12 +390,12 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
       slow_to.insert(xy.to_);
     }
   }
+
   auto const derivable = [&](location_idx_t const x, location_idx_t const y,
                              location_idx_t const base) {
     auto const is_slow = x != base && tt.locations_.transfer_time_[x] >
                                           tt.locations_.transfer_time_[base];
-    return !is_slow && (!slow_from.contains(x) ||
-                        (!slow_to.contains(x) && !slow_to.contains(y)));
+    return !is_slow && (!slow_from.contains(x) || !slow_to.contains(y));
   };
 
   // Write the most specific transfer per pair.
@@ -407,33 +413,27 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
   for (auto virt = first_virt; virt != tt.n_locations(); ++virt) {
     auto const base = tt.locations_.parents_[virt];
     auto const d = duration_t{tt.locations_.transfer_time_[base]};
-    auto const add = [&](location_idx_t const x, location_idx_t const y) {
+    auto const add_default_rule = [&](location_idx_t const x,
+                                      location_idx_t const y) {
       if (!most_specific.contains({x, y}) && !derivable(x, y, base)) {
         tt.locations_.transfer_rule_fps_[x].emplace_back(y, d);
       }
     };
 
-    add(virt, base);
-    add(base, virt);
+    add_default_rule(virt, base);
+    add_default_rule(base, virt);
     for (auto const sibling : tt.locations_.children_[base]) {
       if (sibling != virt &&
           tt.locations_.types_[sibling] == location_type::kVirt) {
-        add(virt, sibling);  // the other direction is added for the sibling
+        add_default_rule(virt, sibling);  // sibling - virt added from sibling
       }
     }
   }
 }
 
-// A qualified rule whose value equals the default of its stop pair does not
-// require any trip splitting: the plain stop pair value realizes it for
-// everyone. The default is the value given by an unqualified row for the pair
-// or, if there is none, the most frequent value among the pair's qualified
-// rules (ties: first listed), which is then materialized as the pair's
-// transfer time / footpath. Only rules deviating from their pair's default are
-// kept, so virtual locations are only created for the exceptions. (Feeds like
-// us-ny/MetroNorth state one uniform timed transfer per trip pair: 13k rows
-// fold to zero splits.)
-rule_vec_t fold_pair_defaults(timetable& tt, rule_vec_t const& rules) {
+// Detects the most common rule between two stops
+// -> removes them and makes their min_transfer_time the new default
+void fold_pair_defaults(timetable& tt, rule_vec_t& rules) {
   struct counted_duration {
     duration_t d_;
     unsigned n_{0U};
@@ -468,31 +468,33 @@ rule_vec_t fold_pair_defaults(timetable& tt, rule_vec_t const& rules) {
         begin(durations), end(durations),
         [](auto const& a, auto const& b) { return a.n_ < b.n_; });
     if (majority->d_ == footpath::kMaxDuration) {
-      continue;  // banning everyone would restrict unnamed trips, too
+      continue;
     }
     pair_default.emplace(p, majority->d_);
 
     if (p.from_ == p.to_) {
       tt.locations_.transfer_time_[p.from_] = majority->d_;
     } else {
-      // an unqualified rule for the pair: applies to every trip and, being a
-      // rule, stays authoritative against street routing
+      // Add an unqualified rule
+      // -> applies to all trips
+      // -> won't be overwritten by street routing
       synthetic.emplace_back(p.from_, p.to_, majority->d_);
     }
   }
 
-  auto kept = rule_vec_t{};
-  for (auto const& r : rules) {
-    auto const it = pair_default.find(transfer_pair{r.from_stop_, r.to_stop_});
-    if (!r.is_qualified() || it == end(pair_default) ||
-        r.duration() != it->second) {
-      kept.emplace_back(r);
+  // Remove all rules that re-state the default derived from the majority.
+  utl::erase_if(rules, [&](rule const& r) {
+    if (!r.is_qualified()) {
+      return false;
     }
-  }
+    auto const it = pair_default.find(transfer_pair{r.from_stop_, r.to_stop_});
+    return it != end(pair_default) && r.duration() == it->second;
+  });
+
+  // Add the new default rules derived from the majority.
   for (auto const& r : synthetic) {
-    kept.emplace_back(r);
+    rules.emplace_back(r);
   }
-  return kept;
 }
 
 void read_transfers(timetable& tt,
@@ -589,9 +591,7 @@ void read_transfers(timetable& tt,
         }
       });
 
-  if (!rules.empty()) {
-    rules = fold_pair_defaults(tt, rules);
-  }
+  fold_pair_defaults(tt, rules);
   if (!rules.empty()) {
     apply_rules(tt, rules, trips);
   }
