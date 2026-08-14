@@ -67,6 +67,15 @@ namespace {
 //     P1 (RP): A8 22:00 -> P 22:30
 //     P2 (RP): P 22:35 -> K 23:00 (5 min < 10 -> not reachable)
 //     P3 (RQ): P 22:35 -> L 23:00 (unnamed, pair default 2 min -> ok)
+//
+// (8) mutually restricting trip pairs:
+//     Q,Q type=2 600s for Q1->Q2 and for Q2->Q1, plus an unqualified
+//     Q,Q type=2 120s row. Both virtual locations are the source AND the
+//     target of a slower-than-default transfer, so neither can broadcast.
+//     Q1:  A9 08:00 -> Q 08:30
+//     Q2:  Q 08:32 -> QA 09:00 (2 min gap < 10 -> not reachable)
+//     Q2L: Q 08:41 -> QA 09:10 (11 min gap -> ok)
+//     Q3:  Q 08:32 -> QB 09:00 (unnamed, pair default 2 min -> ok)
 constexpr auto const test_files = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -105,6 +114,10 @@ A8,A8,,56.0,6.0,,,
 P,P,,56.0,6.5,,,
 K,K,,56.0,7.0,,,
 L,L,,56.0,7.5,,,
+A9,A9,,57.0,6.0,,,
+Q,Q,,57.0,6.5,,,
+QA,QA,,57.0,7.0,,,
+QB,QB,,57.0,7.5,,,
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -127,6 +140,9 @@ R42,AG,42,,,3
 R43,AG,43,,,3
 RP,AG,p,,,3
 RQ,AG,q,,,3
+RQ1,AG,q1,,,3
+RQ2,AG,q2,,,3
+RQ3,AG,q3,,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
@@ -151,6 +167,10 @@ R43,S1,N4,,
 RP,S1,P1,,
 RP,S1,P2,,
 RQ,S1,P3,,
+RQ1,S1,Q1,,
+RQ2,S1,Q2,,
+RQ2,S1,Q2L,,
+RQ3,S1,Q3,,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -196,6 +216,14 @@ P2,22:35:00,22:35:00,P,0
 P2,23:00:00,23:00:00,K,1
 P3,22:35:00,22:35:00,P,0
 P3,23:00:00,23:00:00,L,1
+Q1,08:00:00,08:00:00,A9,0
+Q1,08:30:00,08:30:00,Q,1
+Q2,08:32:00,08:32:00,Q,0
+Q2,09:00:00,09:00:00,QA,1
+Q2L,08:41:00,08:41:00,Q,0
+Q2L,09:10:00,09:10:00,QA,1
+Q3,08:32:00,08:32:00,Q,0
+Q3,09:00:00,09:00:00,QB,1
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -216,6 +244,9 @@ N,N,2,60,,,N4,N2
 N,N,2,600,,,N1,N3
 P,P,2,120,,,,
 P,P,2,600,RP,RP,,
+Q,Q,2,120,,,,
+Q,Q,2,600,,,Q1,Q2
+Q,Q,2,600,,,Q2,Q1
 )"sv;
 
 timetable load() {
@@ -336,4 +367,20 @@ TEST(gtfs, transfer_rules_self_pair) {
       raptor_search(tt, nullptr, "A8", "L", "2019-05-01 22:00 Europe/Berlin");
   ASSERT_EQ(1U, res_l.size());
   EXPECT_EQ(t("2019-05-01 23:00 Europe/Berlin"), begin(res_l)->dest_time_);
+}
+
+TEST(gtfs, transfer_rules_mutual_restriction) {
+  auto const tt = load();
+
+  // Q1 -> Q2 needs 10 min: the 08:32 departure is out, the 08:41 one works
+  auto const res_qa = raptor_search(tt, nullptr, "A9", "QA",
+                                    "2019-05-01 08:00 Europe/Berlin");
+  ASSERT_EQ(1U, res_qa.size());
+  EXPECT_EQ(t("2019-05-01 09:10 Europe/Berlin"), begin(res_qa)->dest_time_);
+
+  // the unnamed trip still departs from the base stop at the 2 min default
+  auto const res_qb = raptor_search(tt, nullptr, "A9", "QB",
+                                    "2019-05-01 08:00 Europe/Berlin");
+  ASSERT_EQ(1U, res_qb.size());
+  EXPECT_EQ(t("2019-05-01 09:00 Europe/Berlin"), begin(res_qb)->dest_time_);
 }
