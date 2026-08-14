@@ -132,16 +132,15 @@ struct timetable {
         preferred_transfers_;
 
     // Transfer hubs: aggregation nodes with weighted in/out edge lists that
-    // derive the default-valued transfer cells of a transfer group (a station
-    // with kVirt children) instead of materializing them. A pair
-    // u -(w1)-> h -(w2)-> v is relaxed at w1 + w2 within one footpath phase
-    // (raptor expand_hubs: gather marked locations into hub minima, scatter
-    // hub minima over the out edges). The backward search swaps the two
-    // lists, so a hub's pair set is derivable in both directions by
-    // construction; reconstruct walks hub_out_by_loc_ x hub_in_. All
-    // classification happens in build_hubs and is encoded purely in list
-    // membership. Transfer rules do not depend on the street routing profile,
-    // so one set of hubs serves all profiles.
+    // derive the default-valued transfer cells of a stop with kVirt children
+    // instead of materializing them. A pair u -(w1)-> h -(w2)-> v is relaxed at
+    // w1 + w2 within one footpath phase (raptor expand_hubs: gather marked
+    // locations into hub minima, scatter hub minima over the out edges). The
+    // backward search swaps the two lists, so a hub's pair set is derivable in
+    // both directions by construction; reconstruct walks hub_out_by_loc_ x
+    // hub_in_. All classification happens in build_hubs and is encoded purely
+    // in list membership. Transfer rules do not depend on the street routing
+    // profile, so one set of hubs serves all profiles.
     vecvec<hub_idx_t, footpath> hub_in_;
     vecvec<hub_idx_t, footpath> hub_out_;
     vecvec<location_idx_t, hub_ref> hub_in_by_loc_;
