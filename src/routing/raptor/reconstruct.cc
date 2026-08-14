@@ -39,11 +39,11 @@ void for_each_hub_source(timetable const& tt,
   if (by_loc.size() == 0U) {
     return;
   }
-  for (auto const& he : by_loc[l]) {
-    for (auto const& se :
-         (kFwd ? tt.locations_.hub_in_ : tt.locations_.hub_out_)[he.hub()]) {
-      if (se.target() != l &&
-          !fn(footpath{se.target(), se.duration() + he.duration()})) {
+  for (auto const h : by_loc[l]) {
+    auto const d = tt.locations_.hub_time_[h];
+    for (auto const source :
+         (kFwd ? tt.locations_.hub_in_ : tt.locations_.hub_out_)[h]) {
+      if (source != l && !fn(footpath{source, d})) {
         return;
       }
     }

@@ -819,16 +819,9 @@ private:
       return;
     }
 
-    auto const adj = [&](duration_t const w) {
-      return w.count() == 0
-                 ? 0
-                 : adjusted_transfer_time(transfer_time_settings_,
-                                          static_cast<int>(w.count()));
-    };
-
     state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
-      auto const edges = gather_edges[location_idx_t{i}];
-      if (edges.empty()) {
+      auto const hubs = gather_edges[location_idx_t{i}];
+      if (hubs.empty()) {
         return;
       }
       for (auto v = 0U; v != Vias + 1; ++v) {
@@ -839,34 +832,40 @@ private:
         auto const start_is_via =
             v != Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
         auto const start_v = start_is_via ? v + 1U : v;
-        auto const base_time =
+        auto const value =
             static_cast<int>(tmp_time) +
             (start_is_via ? dir(static_cast<int>(via_stops_[v].stay_.count()))
                           : 0);
-        for (auto const& e : edges) {
+        for (auto const h : hubs) {
           auto& slot =
-              state_.hub_slots_[std::size_t{to_idx(e.hub())} * (kMaxVias + 1U) +
+              state_.hub_slots_[std::size_t{to_idx(h)} * (kMaxVias + 1U) +
                                 start_v];
-          auto const value = base_time + dir(adj(e.duration()));
           if (slot == kUnsetHub || (kFwd ? value < slot : value > slot)) {
             slot = value;
-            state_.hub_mark_.set(to_idx(e.hub()), true);
+            state_.hub_mark_.set(to_idx(h), true);
           }
         }
       }
     });
 
+    // A hub derives every one of its pairs at the same duration, so the weight
+    // is applied once per hub here - no matter which of the two lists the
+    // search direction gathers from.
     auto const& scatter_edges =
         kFwd ? tt_.locations_.hub_out_ : tt_.locations_.hub_in_;
     state_.hub_mark_.for_each_set_bit([&](std::uint64_t const h) {
+      auto const h_idx = hub_idx_t{static_cast<hub_idx_t::value_t>(h)};
+      auto const t = tt_.locations_.hub_time_[h_idx];
+      auto const w =
+          t.count() == 0 ? 0
+                         : adjusted_transfer_time(transfer_time_settings_,
+                                                  static_cast<int>(t.count()));
       auto const slot0 = std::size_t{h} * (kMaxVias + 1U);
-      for (auto const& e :
-           scatter_edges[hub_idx_t{static_cast<hub_idx_t::value_t>(h)}]) {
-        auto const w = adj(e.duration());
+      for (auto const target : scatter_edges[h_idx]) {
         for (auto start_v = 0U; start_v != Vias + 1; ++start_v) {
           if (state_.hub_slots_[slot0 + start_v] != kUnsetHub) {
             relax_hub_target(k, start_v, state_.hub_slots_[slot0 + start_v], w,
-                             e.target());
+                             target);
           }
         }
       }

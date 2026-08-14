@@ -1,5 +1,6 @@
 #include "nigiri/loader/build_footpaths.h"
 
+#include <cstdlib>
 #include <optional>
 #include <vector>
 
@@ -218,39 +219,75 @@ void write_footpaths(timetable& tt, bool const adjust_footpaths) {
   tt.locations_.preprocessing_footpaths_out_.clear();
 }
 
-// Builds the transfer hub edge lists: one broadcast and one collect hub per
-// stop that has virtual locations. A hub always delivers at the stop's
+// Builds the transfer hub member lists: one unrestricted and one restricted
+// hub per stop that has virtual locations. A hub always delivers at the stop's
 // transfer time, so nothing slower than that may become derivable through it.
-// A member (the stop or one of its virtual locations) that is itself slow
-// never feeds a hub: it would let travellers leave it faster than its own
-// transfer time allows. The rest feed the broadcast hub, which reaches every
-// member, if no slower transfer starts at them - otherwise the collect hub,
-// which only reaches members that no slower transfer leads to.
+//
+//   hub           from                        to
+//   ------------  --------------------------  ----------------------
+//   unrestricted  nothing slow starts here    all members
+//   restricted    something slow starts here  nothing slow ends here
+//
+// A member is the stop itself or one of its virtual locations. What it may do
+// as a source and what may reach it are decided separately:
+//
+//   as a source                   feeds
+//   ----------------------------  ---------------------------------
+//   nothing slow starts here      unrestricted
+//   something slow starts here    restricted
+//   slower than the stop itself   neither: all its rows are written
+//
+//   as a target                   is reached by
+//   ----------------------------  ---------------------------------
+//   nothing slow ends here        both hubs
+//   something slow ends here      the unrestricted hub only
+//
+// A member slower than the stop is barred as a source because every hub
+// out list holds all of its own sources, so it would derive its own cell at
+// the stop's transfer time - the exact value its own rule overrides. Nothing
+// bars it as a target: what a transfer costs is decided by the rule for the
+// pair, and its own rule speaks only for the pair with itself.
 void build_hubs(timetable& tt) {
+  if (std::getenv("NIGIRI_MATERIALIZE_TRANSFERS") != nullptr) {
+    return;  // see the same switch in gtfs::read_transfers
+  }
+
   auto const n = tt.n_locations();
   auto const& fps_out = tt.locations_.footpaths_out_[kDefaultProfile];
   auto const& fps_in = tt.locations_.footpaths_in_[kDefaultProfile];
 
-  auto in = vecvec<hub_idx_t, footpath>{};
-  auto out = vecvec<hub_idx_t, footpath>{};
-  auto in_by_loc = std::vector<std::vector<hub_ref>>(n);
-  auto out_by_loc = std::vector<std::vector<hub_ref>>(n);
+  auto in = vecvec<hub_idx_t, location_idx_t>{};
+  auto out = vecvec<hub_idx_t, location_idx_t>{};
+  auto time = vector_map<hub_idx_t, duration_t>{};
+  auto in_by_loc = std::vector<std::vector<hub_idx_t>>(n);
+  auto out_by_loc = std::vector<std::vector<hub_idx_t>>(n);
 
-  auto const add_hub = [&](std::vector<footpath> const& hub_in,
-                           std::vector<footpath> const& hub_out) {
+  auto const add_hub = [&](std::vector<location_idx_t> const& hub_in,
+                           std::vector<location_idx_t> const& hub_out,
+                           duration_t const d) {
     if (hub_in.empty() || hub_out.empty()) {
       return;
     }
     auto const h = hub_idx_t{in.size()};
     in.emplace_back(hub_in);
     out.emplace_back(hub_out);
-    for (auto const& e : hub_in) {
-      in_by_loc[to_idx(e.target())].push_back({h, e.duration()});
+    time.push_back(d);
+    for (auto const m : hub_in) {
+      in_by_loc[to_idx(m)].push_back(h);
     }
-    for (auto const& e : hub_out) {
-      out_by_loc[to_idx(e.target())].push_back({h, e.duration()});
+    for (auto const m : hub_out) {
+      out_by_loc[to_idx(m)].push_back(h);
     }
   };
+
+  // hubs the loader already emitted for constant-valued rule cross products
+  for (auto h = hub_idx_t{0U}; h != tt.locations_.hub_in_.size(); ++h) {
+    auto const a = tt.locations_.hub_in_[h];
+    auto const b = tt.locations_.hub_out_[h];
+    add_hub(std::vector<location_idx_t>(begin(a), end(a)),
+            std::vector<location_idx_t>(begin(b), end(b)),
+            tt.locations_.hub_time_[h]);
+  }
 
   auto has_virts = std::vector<bool>(n, false);
   for (auto l = location_idx_t{0U}; l != location_idx_t{n}; ++l) {
@@ -260,10 +297,10 @@ void build_hubs(timetable& tt) {
   }
 
   auto members = std::vector<location_idx_t>{};
-  auto bcast_in = std::vector<footpath>{};
-  auto bcast_out = std::vector<footpath>{};
-  auto coll_in = std::vector<footpath>{};
-  auto coll_out = std::vector<footpath>{};
+  auto unrestricted_in = std::vector<location_idx_t>{};
+  auto unrestricted_out = std::vector<location_idx_t>{};
+  auto restricted_in = std::vector<location_idx_t>{};
+  auto restricted_out = std::vector<location_idx_t>{};
   for (auto l = location_idx_t{0U}; l != location_idx_t{n}; ++l) {
     if (!has_virts[to_idx(l)]) {
       continue;
@@ -296,29 +333,30 @@ void build_hubs(timetable& tt) {
       });
     };
 
-    bcast_in.clear();
-    bcast_out.clear();
-    coll_in.clear();
-    coll_out.clear();
+    unrestricted_in.clear();
+    unrestricted_out.clear();
+    restricted_in.clear();
+    restricted_out.clear();
     for (auto const m : members) {
       auto const slow_to = has_slow_transfer(fps_in, m);
       if (!is_slow(m) && !has_slow_transfer(fps_out, m)) {
-        bcast_in.emplace_back(m, duration_t{0});
+        unrestricted_in.emplace_back(m);
       } else if (!is_slow(m)) {
-        coll_in.emplace_back(m, duration_t{0});
+        restricted_in.emplace_back(m);
       }
-      bcast_out.emplace_back(m, d);
+      unrestricted_out.emplace_back(m);
       if (!slow_to) {
-        coll_out.emplace_back(m, d);
+        restricted_out.emplace_back(m);
       }
     }
 
-    add_hub(bcast_in, bcast_out);
-    add_hub(coll_in, coll_out);
+    add_hub(unrestricted_in, unrestricted_out, d);
+    add_hub(restricted_in, restricted_out, d);
   }
 
   tt.locations_.hub_in_ = std::move(in);
   tt.locations_.hub_out_ = std::move(out);
+  tt.locations_.hub_time_ = std::move(time);
   for (auto l = 0U; l != n; ++l) {
     tt.locations_.hub_in_by_loc_.emplace_back(in_by_loc[l]);
     tt.locations_.hub_out_by_loc_.emplace_back(out_by_loc[l]);
