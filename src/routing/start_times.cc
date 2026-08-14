@@ -275,20 +275,18 @@ void get_starts(
                  o.duration() + adjusted_transfer_time(tts, fp.duration()));
         }
 
-        // hub-derived transfers (see raptor expand_hubs):
-        // l -(w1)-> hub -(w2)-> target
-        auto const adj = [&](duration_t const w) {
-          return w.count() == 0 ? duration_t{0}
-                                : adjusted_transfer_time(tts, w);
-        };
+        // hub-derived transfers (see raptor expand_hubs): l -> hub -> target,
+        // all at the hub's single transfer time
         auto const& by_loc =
             fwd ? tt.locations_.hub_in_by_loc_ : tt.locations_.hub_out_by_loc_;
         if (by_loc.size() != 0U) {
-          for (auto const& he : by_loc[l]) {
-            auto const w1 = adj(he.duration());
-            for (auto const& te : (fwd ? tt.locations_.hub_out_
-                                       : tt.locations_.hub_in_)[he.hub()]) {
-              update(te.target(), o.duration() + w1 + adj(te.duration()));
+          for (auto const h : by_loc[l]) {
+            auto const d = tt.locations_.hub_time_[h];
+            auto const w =
+                d.count() == 0 ? duration_t{0} : adjusted_transfer_time(tts, d);
+            for (auto const target :
+                 (fwd ? tt.locations_.hub_out_ : tt.locations_.hub_in_)[h]) {
+              update(target, o.duration() + w);
             }
           }
         }
