@@ -1866,8 +1866,6 @@ void load_timetable(loader_config const& config,
     for (auto const fp : fps) {
       tt.locations_.equivalences_[from].emplace_back(fp.target());
       tt.locations_.preprocessing_footpaths_out_[from].emplace_back(fp);
-      tt.locations_.preprocessing_footpaths_in_[fp.target()].emplace_back(
-          footpath{from, fp.duration()});
     }
   }
 

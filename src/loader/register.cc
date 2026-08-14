@@ -733,33 +733,36 @@ location_idx_t register_location(timetable& tt, location const& l) {
 
   auto const next_idx = static_cast<location_idx_t::value_t>(loc.names_.size());
   auto const l_idx = location_idx_t{next_idx};
-  auto const [it, is_new] = loc.location_id_to_idx_.emplace(
-      owning_location_id{.id_ = l.id_, .src_ = l.src_}, l_idx);
 
-  if (is_new) {
-    utl::verify(next_idx <= footpath::kMaxTarget, "MAX={} locations reached",
-                footpath::kMaxTarget);
-
-    loc.names_.emplace_back(l.name_);
-    loc.platform_codes_.emplace_back(l.platform_code_);
-    loc.stop_codes_.emplace_back(l.stop_code_);
-    loc.descriptions_.emplace_back(l.description_);
-    loc.coordinates_.emplace_back(l.pos_);
-    loc.ids_.emplace_back(l.id_);
-    loc.src_.emplace_back(l.src_);
-    loc.types_.emplace_back(l.type_);
-    loc.location_timezones_.emplace_back(l.timezone_idx_);
-    loc.equivalences_.emplace_back();
-    loc.children_.emplace_back();
-    loc.preprocessing_footpaths_out_.emplace_back();
-    loc.preprocessing_footpaths_in_.emplace_back();
-    loc.transfer_time_.emplace_back(l.transfer_time_);
-    loc.parents_.emplace_back(l.parent_);
-  } else {
-    assert(false && "duplicate station");
-    log(log_lvl::error, "timetable.register_location", "duplicate station {}",
-        l.id_);
+  // locations without id (i.e. virtual transfer locations) are not lookupable
+  if (!l.id_.empty()) {
+    auto const [it, is_new] = loc.location_id_to_idx_.emplace(
+        owning_location_id{.id_ = l.id_, .src_ = l.src_}, l_idx);
+    if (!is_new) {
+      assert(false && "duplicate station");
+      log(log_lvl::error, "timetable.register_location", "duplicate station {}",
+          l.id_);
+      return it->second;
+    }
   }
+
+  utl::verify(next_idx <= footpath::kMaxTarget, "MAX={} locations reached",
+              footpath::kMaxTarget);
+
+  loc.names_.emplace_back(l.name_);
+  loc.platform_codes_.emplace_back(l.platform_code_);
+  loc.stop_codes_.emplace_back(l.stop_code_);
+  loc.descriptions_.emplace_back(l.description_);
+  loc.coordinates_.emplace_back(l.pos_);
+  loc.ids_.emplace_back(l.id_);
+  loc.src_.emplace_back(l.src_);
+  loc.types_.emplace_back(l.type_);
+  loc.location_timezones_.emplace_back(l.timezone_idx_);
+  loc.equivalences_.emplace_back();
+  loc.children_.emplace_back();
+  loc.preprocessing_footpaths_out_.emplace_back();
+  loc.transfer_time_.emplace_back(l.transfer_time_);
+  loc.parents_.emplace_back(l.parent_);
 
   assert(loc.names_.size() == next_idx + 1);
   assert(loc.platform_codes_.size() == next_idx + 1);
@@ -773,11 +776,10 @@ location_idx_t register_location(timetable& tt, location const& l) {
   assert(loc.equivalences_.size() == next_idx + 1);
   assert(loc.children_.size() == next_idx + 1);
   assert(loc.preprocessing_footpaths_out_.size() == next_idx + 1);
-  assert(loc.preprocessing_footpaths_in_.size() == next_idx + 1);
   assert(loc.transfer_time_.size() == next_idx + 1);
   assert(loc.parents_.size() == next_idx + 1);
 
-  return it->second;
+  return l_idx;
 }
 
 route_id_idx_t register_route(timetable& tt, route const& r) {

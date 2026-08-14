@@ -27,6 +27,29 @@ bool is_journey_start(timetable const& tt,
   });
 }
 
+// Enumerates the sources of the hub-derived transfers into l as footpaths
+// s -> l at w_in + w_out (see raptor expand_hubs). fn returns false to stop.
+template <direction SearchDir>
+void for_each_hub_source(timetable const& tt,
+                         location_idx_t const l,
+                         auto&& fn) {
+  constexpr auto const kFwd = SearchDir == direction::kForward;
+  auto const& by_loc =
+      kFwd ? tt.locations_.hub_out_by_loc_ : tt.locations_.hub_in_by_loc_;
+  if (by_loc.size() == 0U) {
+    return;
+  }
+  for (auto const& he : by_loc[l]) {
+    for (auto const& se :
+         (kFwd ? tt.locations_.hub_in_ : tt.locations_.hub_out_)[he.hub()]) {
+      if (se.target() != l &&
+          !fn(footpath{se.target(), se.duration() + he.duration()})) {
+        return;
+      }
+    }
+  }
+}
+
 template <direction SearchDir, via_offset_t Vias>
 std::optional<journey::leg> find_start_footpath(timetable const& tt,
                                                 query const& q,
@@ -137,22 +160,39 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   } else {
     trace_reconstruct("  direct start mode\n");
 
-    for (auto const& fp : footpaths) {
+    auto const try_fp = [&](footpath const fp) -> std::optional<journey::leg> {
       auto const fp_duration = adjusted_transfer_time(q.transfer_time_settings_,
                                                       fp.duration().count());
       if (is_journey_start(tt, q, fp.target()) &&
           fp_target_time != kInvalidDelta<SearchDir> &&
           start_matches(j_start_time + dir(fp_duration), fp_target_time)) {
-        trace_rc_fp_start_found;
         return journey::leg{SearchDir,
                             fp.target(),
                             leg_start_location,
                             j.start_time_,
                             delta_to_unix(base, fp_target_time),
                             footpath{fp.target(), duration_t{fp_duration}}};
+      }
+      return std::nullopt;
+    };
+
+    for (auto const& fp : footpaths) {
+      if (auto const leg = try_fp(fp); leg.has_value()) {
+        trace_rc_fp_start_found;
+        return *leg;
       } else {
         trace_rc_fp_start_no_match;
       }
+    }
+
+    auto found = std::optional<journey::leg>{};
+    for_each_hub_source<SearchDir>(tt, leg_start_location,
+                                   [&](footpath const fp) {
+                                     found = try_fp(fp);
+                                     return !found.has_value();
+                                   });
+    if (found.has_value()) {
+      return *found;
     }
   }
 
@@ -765,6 +805,18 @@ void reconstruct_journey_with_vias(timetable const& tt,
         if (fp_legs.has_value()) {
           return std::move(*fp_legs);
         }
+      }
+    }
+
+    {  // hub-derived transfers: l is an out-target of hub h fed by s
+       // -> pair (s -> l) at w_in + w_out (see raptor expand_hubs)
+      auto legs = std::optional<std::pair<journey::leg, journey::leg>>{};
+      for_each_hub_source<SearchDir>(tt, l, [&](footpath const fp) {
+        legs = check_fp(k, l, curr_time, fp, true, false);
+        return !legs.has_value();
+      });
+      if (legs.has_value()) {
+        return std::move(*legs);
       }
     }
 
