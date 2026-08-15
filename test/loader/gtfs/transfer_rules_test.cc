@@ -76,6 +76,18 @@ namespace {
 //     Q2:  Q 08:32 -> QA 09:00 (2 min gap < 10 -> not reachable)
 //     Q2L: Q 08:41 -> QA 09:10 (11 min gap -> ok)
 //     Q3:  Q 08:32 -> QB 09:00 (unnamed, pair default 2 min -> ok)
+//
+// (9) a slow member together with a restricted source:
+//     SS,SS type=2 600s from_route=RSS to_route=RSS makes the shared RSS
+//     virtual location slow - its own transfer time is 10 min, so it feeds
+//     no hub. SS,SS type=2 600s TS1->TS2 makes TS1 a restricted source.
+//     Plus an unqualified SS,SS type=2 120s row.
+//     TS0 (RSS): A10 08:50 -> SS 09:20
+//     TS1 (RSX): A10 09:00 -> SS 09:30
+//     TS2:  SS 09:32 -> SSA 10:00 (2 min gap < 10 -> not reachable)
+//     TS3 (RSS): SS 09:33 -> SSB 10:00 (TS1 -> slow member at the 2 min
+//                default: nothing slow leads to it, so it stays reachable)
+//     TS4:  SS 09:23 -> SSC 10:00 (leaving the slow member at the default)
 constexpr auto const test_files = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -118,6 +130,11 @@ A9,A9,,57.0,6.0,,,
 Q,Q,,57.0,6.5,,,
 QA,QA,,57.0,7.0,,,
 QB,QB,,57.0,7.5,,,
+A10,A10,,58.0,6.0,,,
+SS,SS,,58.0,6.5,,,
+SSA,SSA,,58.0,7.0,,,
+SSB,SSB,,58.0,7.5,,,
+SSC,SSC,,58.0,8.0,,,
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -143,6 +160,9 @@ RQ,AG,q,,,3
 RQ1,AG,q1,,,3
 RQ2,AG,q2,,,3
 RQ3,AG,q3,,,3
+RSS,AG,ss,,,3
+RSX,AG,sx,,,3
+RSY,AG,sy,,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
@@ -171,6 +191,11 @@ RQ1,S1,Q1,,
 RQ2,S1,Q2,,
 RQ2,S1,Q2L,,
 RQ3,S1,Q3,,
+RSS,S1,TS0,,
+RSX,S1,TS1,,
+RSY,S1,TS2,,
+RSS,S1,TS3,,
+RSY,S1,TS4,,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -224,6 +249,16 @@ Q2L,08:41:00,08:41:00,Q,0
 Q2L,09:10:00,09:10:00,QA,1
 Q3,08:32:00,08:32:00,Q,0
 Q3,09:00:00,09:00:00,QB,1
+TS0,08:50:00,08:50:00,A10,0
+TS0,09:20:00,09:20:00,SS,1
+TS1,09:00:00,09:00:00,A10,0
+TS1,09:30:00,09:30:00,SS,1
+TS2,09:32:00,09:32:00,SS,0
+TS2,10:00:00,10:00:00,SSA,1
+TS3,09:33:00,09:33:00,SS,0
+TS3,10:00:00,10:00:00,SSB,1
+TS4,09:23:00,09:23:00,SS,0
+TS4,10:00:00,10:00:00,SSC,1
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -247,6 +282,9 @@ P,P,2,600,RP,RP,,
 Q,Q,2,120,,,,
 Q,Q,2,600,,,Q1,Q2
 Q,Q,2,600,,,Q2,Q1
+SS,SS,2,120,,,,
+SS,SS,2,600,RSS,RSS,,
+SS,SS,2,600,,,TS1,TS2
 )"sv;
 
 timetable load() {
@@ -383,4 +421,27 @@ TEST(gtfs, transfer_rules_mutual_restriction) {
                                     "2019-05-01 08:00 Europe/Berlin");
   ASSERT_EQ(1U, res_qb.size());
   EXPECT_EQ(t("2019-05-01 09:00 Europe/Berlin"), begin(res_qb)->dest_time_);
+}
+
+TEST(gtfs, transfer_rules_slow_member) {
+  auto const tt = load();
+
+  // TS1 -> TS2 is the slow pair: 2 min gap is not enough for 10 min
+  auto const res_a = raptor_search(tt, nullptr, "A10", "SSA",
+                                   "2019-05-01 09:00 Europe/Berlin");
+  EXPECT_EQ(0U, res_a.size());
+
+  // the same restricted source still reaches the slow member at the pair
+  // default: nothing slow leads there, so it stays in the restricted hub
+  auto const res_b = raptor_search(tt, nullptr, "A10", "SSB",
+                                   "2019-05-01 09:00 Europe/Berlin");
+  ASSERT_EQ(1U, res_b.size());
+  EXPECT_EQ(t("2019-05-01 10:00 Europe/Berlin"), begin(res_b)->dest_time_);
+
+  // leaving the slow member: it feeds no hub at all, so even this plain
+  // 2 min transfer has to be written
+  auto const res_c = raptor_search(tt, nullptr, "A10", "SSC",
+                                   "2019-05-01 08:45 Europe/Berlin");
+  ASSERT_EQ(1U, res_c.size());
+  EXPECT_EQ(t("2019-05-01 10:00 Europe/Berlin"), begin(res_c)->dest_time_);
 }
