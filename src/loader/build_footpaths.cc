@@ -350,8 +350,10 @@ void build_hubs(timetable& tt) {
 }
 
 void build_footpaths(timetable& tt, finalize_options const opt) {
-  link_nearby_stations(tt);
-  add_equivalence_footpaths(tt, opt.max_footpath_length_);
+  link_nearby_stations(tt, opt.beeline_footpaths_);
+  if (opt.beeline_footpaths_) {
+    add_equivalence_footpaths(tt, opt.max_footpath_length_);
+  }
 
   if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_) {
     for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
@@ -372,7 +374,9 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
     }
   }
 
-  copy_footpaths_to_generated_children(tt);
+  if (opt.beeline_footpaths_) {
+    copy_footpaths_to_generated_children(tt);
+  }
   apply_transfer_rules(tt);
   write_footpaths(tt, opt.adjust_footpaths_);
   build_hubs(tt);

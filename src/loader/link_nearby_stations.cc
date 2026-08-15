@@ -27,7 +27,7 @@ struct dist_at {
   double distance_lng_degrees_;
 };
 
-void link_nearby_stations(timetable& tt) {
+void link_nearby_stations(timetable& tt, bool const emit_footpaths) {
   constexpr auto const kLinkNearbyMaxDistance = 300.0;  // [m];
   constexpr auto const kEqDist = 100.0;  // [m];
 
@@ -70,8 +70,10 @@ void link_nearby_stations(timetable& tt) {
       auto const duration =
           std::max({from_transfer_time, to_transfer_time, walk_duration});
 
-      tt.locations_.preprocessing_footpaths_out_[l_from_idx].emplace_back(
-          l_to_idx, duration);
+      if (emit_footpaths) {
+        tt.locations_.preprocessing_footpaths_out_[l_from_idx].emplace_back(
+            l_to_idx, duration);
+      }
 
       if (dist.lt(to_pos, kEqDist)) {
         tt.locations_.equivalences_[l_from_idx].emplace_back(l_to_idx);
