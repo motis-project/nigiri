@@ -17,11 +17,29 @@
 #include "utl/progress_tracker.h"
 
 #include "nigiri/loader/register.h"
+#include "nigiri/loader/transfer_rules.h"
 #include "nigiri/logging.h"
 #include "nigiri/stop.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::gtfs {
+
+// ranking of specificity acc. to the GTFS reference (least specific first)
+enum class specificity : std::uint8_t {
+  kStopsOnly,
+  kOneRoute,
+  kBothRoutes,
+  kOneTrip,
+  kTripAndRoute,
+  kBothTrips
+};
+
+// The precedence key handed to the shared rule writer: the GTFS ladder first,
+// then whether the rule named the stops exactly rather than their station.
+std::uint16_t rank(specificity const s, std::uint8_t const n_exact_stops) {
+  return static_cast<std::uint16_t>((static_cast<std::uint16_t>(s) << 2U) |
+                                    n_exact_stops);
+}
 
 enum class transfer_type : std::uint8_t {
   kRecommended = 0U,
@@ -42,16 +60,6 @@ struct csv_transfer {
   utl::csv_col<utl::cstr, UTL_NAME("to_route_id")> to_route_id_;
   utl::csv_col<utl::cstr, UTL_NAME("from_trip_id")> from_trip_id_;
   utl::csv_col<utl::cstr, UTL_NAME("to_trip_id")> to_trip_id_;
-};
-
-// ranking of specificity acc. to the GTFS reference (least specific first)
-enum class specificity : std::uint8_t {
-  kStopsOnly,
-  kOneRoute,
-  kBothRoutes,
-  kOneTrip,
-  kTripAndRoute,
-  kBothTrips
 };
 
 struct rule {
@@ -146,49 +154,7 @@ struct rule {
   bool ok_{true};
 };
 
-using rule_idx_t = cista::strong<std::uint32_t, struct rule_idx_>;
 using rule_vec_t = vector_map<rule_idx_t, rule>;
-
-// One side (from/to) of one rule, packed as rule << 1 | side. A rule has no
-// other sides, so in a sorted, deduplicated signature its from side sits
-// directly before its to side - which is what lets the scan below find the
-// rules that match with both of their sides by looking at adjacent entries.
-using sided_rule_idx_t = cista::strong<std::uint32_t, struct sided_rule_idx_>;
-
-sided_rule_idx_t side_ref(rule_idx_t const rule_idx, bool const is_from) {
-  return sided_rule_idx_t{(to_idx(rule_idx) << 1U) | (is_from ? 0U : 1U)};
-}
-
-rule_idx_t rule_of(sided_rule_idx_t const s) {
-  return rule_idx_t{to_idx(s) >> 1U};
-}
-
-// all rule sides that apply to a trip stop
-using signature_t = std::vector<sided_rule_idx_t>;
-
-// An ordered pair of locations: a transfer leads from_ -> to_.
-struct transfer_pair {
-  CISTA_COMPARABLE()
-  location_idx_t from_{location_idx_t::invalid()};
-  location_idx_t to_{location_idx_t::invalid()};
-};
-
-// A rule stop covers an event location if they are the same stop or if the
-// event location is a child of the rule stop (station level cascade).
-bool covers(timetable const& tt,
-            location_idx_t const rule_stop,
-            location_idx_t const l) {
-  return rule_stop == l || tt.locations_.parents_[l] == rule_stop;
-}
-
-struct candidate {
-  auto operator<=>(candidate const&) const = default;
-
-  // keep member order for lexicographical comparison
-  specificity specificity_{specificity::kStopsOnly};
-  std::uint8_t n_exact_stops_{0U};  // from+to match the stop, not the station
-  std::uint32_t rule_idx_{0U};
-};
 
 void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
   auto const base_of = [&](location_idx_t const l) {
@@ -288,15 +254,15 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
               | std::views::transform([&](auto const& sides) {
                   auto const rule_idx = rule_of(std::get<0>(sides));
                   auto const& r = rules[rule_idx];
-                  return candidate{
-                      .specificity_ = r.get_specificity(),
-                      .n_exact_stops_ = static_cast<std::uint8_t>(
-                          (r.from_stop_ == base) + (r.to_stop_ == base)),
-                      .rule_idx_ = to_idx(rule_idx)};
+                  return candidate{.rank_ = rank(r.get_specificity(),
+                                                 static_cast<std::uint8_t>(
+                                                     (r.from_stop_ == base) +
+                                                     (r.to_stop_ == base))),
+                                   .rule_idx_ = rule_idx};
                 });
           if (auto const it = std::ranges::max_element(reflexive_self_rules);
               it != std::ranges::end(reflexive_self_rules)) {
-            l.transfer_time_ = rules[rule_idx_t{(*it).rule_idx_}].duration();
+            l.transfer_time_ = rules[(*it).rule_idx_].duration();
           }
 
           auto const v = register_location(tt, l);
@@ -350,10 +316,10 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
         return;
       }
       auto const c = candidate{
-          .specificity_ = r.get_specificity(),
-          .n_exact_stops_ = static_cast<std::uint8_t>(
-              (r.from_stop_ == base_of(x)) + (r.to_stop_ == base_of(y))),
-          .rule_idx_ = to_idx(rule_idx)};
+          .rank_ = rank(r.get_specificity(),
+                        static_cast<std::uint8_t>((r.from_stop_ == base_of(x)) +
+                                                  (r.to_stop_ == base_of(y)))),
+          .rule_idx_ = rule_idx};
       auto const [it, is_new] = most_specific.emplace(transfer_pair{x, y}, c);
       if (!is_new) {
         it->second = std::max(it->second, c);
@@ -367,188 +333,16 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
              });
   }
 
-  // A transfer x -> y can be left out only if ALL of these hold:
-  //   - x and y have the same base, because the derivation works per base
-  //   - the transfer itself takes exactly the base's transfer time, because
-  //     that is the only value the derivation produces
-  //   - x's own transfer time, the one for changing at x, is not longer than
-  //     the base's, because the derivation also yields x -> x at the base's
-  //     time and would undercut it
-  //   - no slower transfer starts at x, OR none leads to y (either one is
-  //     enough), because the derivation reaches either every member from x,
-  //     or only the members that no slower transfer leads to
-  //
-  // A pair of one location with itself is left out: the only derivation it
-  // could undercut is the one starting at that location, and the check above
-  // already bars it - its slow value is its own transfer time.
-  auto slow_from = hash_set<location_idx_t>{};
-  auto slow_to = hash_set<location_idx_t>{};
-  for (auto const& [xy, c] : most_specific) {
-    if (xy.from_ != xy.to_ && base_of(xy.from_) == base_of(xy.to_) &&
-        rules[rule_idx_t{c.rule_idx_}].duration() >
-            tt.locations_.transfer_time_[base_of(xy.from_)]) {
-      slow_from.insert(xy.from_);
-      slow_to.insert(xy.to_);
-    }
+  auto durations = vector_map<rule_idx_t, duration_t>{};
+  durations.reserve(rules.size());
+  for (auto const& r : rules) {
+    durations.push_back(r.duration());
   }
-
-  // NIGIRI_MATERIALIZE_TRANSFERS=1 writes every cell and builds no hubs, so
-  // the result can be compared against the hub-derived one (see build_hubs).
-  auto const materialize =
-      std::getenv("NIGIRI_MATERIALIZE_TRANSFERS") != nullptr;
-  auto const derivable = [&](location_idx_t const x, location_idx_t const y,
-                             location_idx_t const base) {
-    if (materialize) {
-      return false;
-    }
-    auto const is_slow = x != base && tt.locations_.transfer_time_[x] >
-                                          tt.locations_.transfer_time_[base];
-    return !is_slow && (!slow_from.contains(x) || !slow_to.contains(y));
-  };
-
-  // A rule can also state one value for a whole cross product of locations -
-  // typically a stop pair whose sides both carry virtual locations. That costs
-  // |X| * |Y| transfers, where one hub covers it in |X| + |Y| edges. It is
-  // only safe when every pair of the cross product really belongs to this
-  // rule: otherwise the hub would deliver its value for a pair that a more
-  // specific rule gave a slower one.
-  struct cross_rule {
-    std::size_t n_cells_{0U};
-    hash_set<location_idx_t> x_, y_;
-  };
-  auto cross = hash_map<std::uint32_t, cross_rule>{};
-  for (auto const& [xy, c] : most_specific) {
-    if (base_of(xy.from_) == base_of(xy.to_)) {
-      continue;  // covered by the base's own hubs
-    }
-    auto& g = cross[c.rule_idx_];
-    ++g.n_cells_;
-    g.x_.insert(xy.from_);
-    g.y_.insert(xy.to_);
-  }
-
-  auto hub_rules = hash_set<std::uint32_t>{};
-  auto hub_in = std::vector<location_idx_t>{};
-  auto hub_out = std::vector<location_idx_t>{};
-  for (auto const& [rule_idx, g] : cross) {
-    auto const cells = g.x_.size() * g.y_.size();
-    if (materialize || g.n_cells_ != cells ||
-        cells <= g.x_.size() + g.y_.size()) {
-      continue;
-    }
-    hub_rules.insert(rule_idx);
-
-    hub_in.assign(begin(g.x_), end(g.x_));
-    hub_out.assign(begin(g.y_), end(g.y_));
-    std::sort(begin(hub_in), end(hub_in));
-    std::sort(begin(hub_out), end(hub_out));
-    tt.locations_.hub_in_.emplace_back(hub_in);
-    tt.locations_.hub_out_.emplace_back(hub_out);
-    tt.locations_.hub_time_.push_back(rules[rule_idx_t{rule_idx}].duration());
-  }
-
-  // Write the most specific transfer per pair.
-  for (auto const& [xy, c] : most_specific) {
-    auto const d = rules[rule_idx_t{c.rule_idx_}].duration();
-    auto const base = base_of(xy.from_);
-    if (base == base_of(xy.to_)) {
-      if (d == tt.locations_.transfer_time_[base] &&
-          derivable(xy.from_, xy.to_, base)) {
-        continue;
-      }
-    } else if (hub_rules.contains(c.rule_idx_)) {
-      continue;  // derived by this rule's hub
-    }
-    tt.locations_.transfer_rule_fps_[xy.from_].emplace_back(xy.to_, d);
-  }
-
-  // Apply the default between all pairs without a rule.
-  for (auto virt = first_virt; virt != tt.n_locations(); ++virt) {
-    auto const base = tt.locations_.parents_[virt];
-    auto const d = duration_t{tt.locations_.transfer_time_[base]};
-    auto const add_default_rule = [&](location_idx_t const x,
-                                      location_idx_t const y) {
-      if (!most_specific.contains({x, y}) && !derivable(x, y, base)) {
-        tt.locations_.transfer_rule_fps_[x].emplace_back(y, d);
-      }
-    };
-
-    add_default_rule(virt, base);
-    add_default_rule(base, virt);
-    for (auto const sibling : tt.locations_.children_[base]) {
-      if (sibling != virt &&
-          tt.locations_.types_[sibling] == location_type::kVirt) {
-        add_default_rule(virt, sibling);  // sibling - virt added from sibling
-      }
-    }
-  }
+  write_transfer_rules(tt, most_specific, durations, first_virt);
 }
 
 // Detects the most common rule between two stops
 // -> removes them and makes their min_transfer_time the new default
-void fold_pair_defaults(timetable& tt, rule_vec_t& rules) {
-  struct counted_duration {
-    duration_t d_;
-    unsigned n_{0U};
-  };
-
-  auto qualified = hash_map<transfer_pair, std::vector<counted_duration>>{};
-  auto pair_default = hash_map<transfer_pair, duration_t>{};
-  for (auto const& r : rules) {
-    auto const p = transfer_pair{r.from_stop_, r.to_stop_};
-    if (!r.is_qualified()) {
-      pair_default[p] = r.duration();  // duplicate rows: last one wins
-    } else {
-      auto& durations = qualified[p];
-      auto const it = utl::find_if(durations, [&](counted_duration const& c) {
-        return c.d_ == r.duration();
-      });
-      if (it == end(durations)) {
-        durations.push_back({r.duration(), 1U});
-      } else {
-        ++it->n_;
-      }
-    }
-  }
-
-  auto synthetic = std::vector<rule>{};
-  for (auto const& [p, durations] : qualified) {
-    if (pair_default.contains(p)) {
-      continue;  // explicit unqualified row
-    }
-
-    auto const majority = std::max_element(
-        begin(durations), end(durations),
-        [](auto const& a, auto const& b) { return a.n_ < b.n_; });
-    if (majority->d_ == footpath::kMaxDuration) {
-      continue;
-    }
-    pair_default.emplace(p, majority->d_);
-
-    if (p.from_ == p.to_) {
-      tt.locations_.transfer_time_[p.from_] = majority->d_;
-    } else {
-      // Add an unqualified rule
-      // -> applies to all trips
-      // -> won't be overwritten by street routing
-      synthetic.emplace_back(p.from_, p.to_, majority->d_);
-    }
-  }
-
-  // Remove all rules that re-state the default derived from the majority.
-  utl::erase_if(rules, [&](rule const& r) {
-    if (!r.is_qualified()) {
-      return false;
-    }
-    auto const it = pair_default.find(transfer_pair{r.from_stop_, r.to_stop_});
-    return it != end(pair_default) && r.duration() == it->second;
-  });
-
-  // Add the new default rules derived from the majority.
-  for (auto const& r : synthetic) {
-    rules.emplace_back(r);
-  }
-}
 
 void read_transfers(timetable& tt,
                     std::string_view file_content,

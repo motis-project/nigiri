@@ -11,6 +11,7 @@
 #include "nigiri/loader/hrd/stamm/station.h"
 #include "nigiri/loader/hrd/stamm/timezone.h"
 #include "nigiri/loader/hrd/stamm/track.h"
+#include "nigiri/loader/hrd/stamm/transfer_times.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -36,6 +37,18 @@ struct stamm {
                                day_idx_t) const;
   trip_line_idx_t resolve_line(std::string_view s);
 
+  // transfer time rules (UMSTEIGV/UMSTEIGL/UMSTEIGZ)
+  bool has_transfer_rules() const {
+    return transfer_times_.has_pair_rules();
+  }
+  void scan_transfer_events(config const&, std::string_view fplan_content);
+  void build_transfer_groups();
+  location_idx_t resolve_transfer_group(location_idx_t const base,
+                                        stop_attrs const& attrs,
+                                        std::size_t const day) const {
+    return transfer_groups_.resolve(base, attrs, day);
+  }
+
 private:
   friend std::uint64_t hash(config const&,
                             dir const&,
@@ -49,6 +62,8 @@ private:
   direction_map_t directions_;
   bitfield_map_t bitfields_;
   tracks tracks_;
+  transfer_times transfer_times_;
+  transfer_groups transfer_groups_;
   timezone_map_t timezones_;
   interval<std::chrono::sys_days> date_range_;
   timetable& tt_;

@@ -148,6 +148,14 @@ struct config {
 
   bool convert_utf8_;
 
+  // optional transfer time rule files (empty = not supported for this config)
+  struct transfer_time_files {
+    std::vector<std::string> station_;  // UMSTEIGB: per-station transfer times
+    std::vector<std::string> admin_;  // UMSTEIGV: admin pair transfer times
+    std::vector<std::string> line_;  // UMSTEIGL: line pair transfer times
+    std::vector<std::string> trip_;  // UMSTEIGZ: trip pair transfer times
+  } transfers_{};
+
   char const* files(filename_key k, unsigned index = 0) const {
     return required_files_[k][index].c_str();
   }
@@ -471,6 +479,13 @@ config const hrd_5_20_26 = {
     INIT(.zip_prefix_, "rohdaten"),
     INIT(.fplan_file_extension_, ""),
     INIT(.convert_utf8_, false),
+    INIT(.transfers_,
+         {
+             INIT(.station_, {"umsteigb.txt"}),
+             INIT(.admin_, {"umsteigv.txt"}),
+             INIT(.line_, {"umsteigl.txt"}),
+             INIT(.trip_, {"umsteigz_vt.txt", "umsteigz.txt"}),
+         }),
 };
 
 config const hrd_5_20_39 = {

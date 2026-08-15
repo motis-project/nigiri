@@ -73,6 +73,7 @@ struct service {
     std::optional<category const*> category_;
     std::optional<utl::cstr> line_;
     std::optional<translation_idx_t> direction_;
+    std::optional<char> dir_flag_;  // *R flag, normalized: H -> 1, R -> 2
     std::optional<unsigned> traffic_days_;
   };
 

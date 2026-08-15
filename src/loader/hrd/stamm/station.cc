@@ -1,5 +1,7 @@
 #include "nigiri/loader/hrd/stamm/station.h"
 
+#include "nigiri/loader/hrd/stamm/transfer_times.h"
+
 #include "nigiri/loader/register.h"
 
 #include "utl/parser/arg_parser.h"
@@ -177,7 +179,8 @@ location_map_t parse_stations(config const& c,
                               stamm& st,
                               std::string_view station_names_file,
                               std::string_view station_coordinates_file,
-                              std::string_view station_metabhf_file) {
+                              std::string_view station_metabhf_file,
+                              transfer_times const& transfer_rules) {
   auto const timer = scoped_timer{"parse stations"};
 
   location_map_t stations;
@@ -189,7 +192,16 @@ location_map_t parse_stations(config const& c,
   for (auto& [eva, s] : stations) {
     auto const eva_int = to_idx(eva);
     auto const id = fmt::format("{:07}", eva_int);
-    auto const transfer_time = duration_t{eva_int < 1000000 ? 2 : 5};
+    auto const transfer_time = [&]() -> duration_t {
+      if (auto const it = transfer_rules.station_.find(eva);
+          it != end(transfer_rules.station_)) {
+        return it->second;
+      }
+      if (transfer_rules.default_.has_value()) {
+        return *transfer_rules.default_;
+      }
+      return duration_t{eva_int < 1000000 ? 2 : 5};
+    }();
     auto const name_translation = tt.register_translation(s.name_);
     auto const idx = register_location(
         tt, location{tt, src, id, name_translation, kEmptyTranslation,
