@@ -1,6 +1,5 @@
 #include "nigiri/loader/build_footpaths.h"
 
-#include <cstdlib>
 #include <optional>
 #include <span>
 #include <vector>
@@ -238,10 +237,6 @@ void write_footpaths(timetable& tt, bool const adjust_footpaths) {
 // a transfer costs what the rule for that pair says, and its own rule speaks
 // only for the pair with itself.
 void build_hubs(timetable& tt) {
-  if (std::getenv("NIGIRI_MATERIALIZE_TRANSFERS") != nullptr) {
-    return;  // see the same switch in gtfs::read_transfers
-  }
-
   auto const n = tt.n_locations();
   auto const& fps_out = tt.locations_.footpaths_out_[kDefaultProfile];
   auto const& fps_in = tt.locations_.footpaths_in_[kDefaultProfile];

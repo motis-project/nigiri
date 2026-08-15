@@ -48,6 +48,14 @@ std::uint64_t hash(config const& c, dir const& d, std::uint64_t const seed) {
       h = wyhash(data.data(), data.size(), h, _wyp);
     }
   }
+  for (auto const& f : load_transfer_time_files(c, d)) {
+    if (!f.has_value()) {
+      h = wyhash64(h, _wyp[0]);
+    } else {
+      auto const data = f.data();
+      h = wyhash(data.data(), data.size(), h, _wyp);
+    }
+  }
   for (auto const& path : d.list_files(c.fplan_)) {
     auto const f = d.get_file(path);
     auto const data = f.data();
@@ -72,6 +80,22 @@ void load_timetable(source_idx_t const src,
   auto st = stamm{c, tt, d, src};
 
   auto progress_tracker = utl::get_active_progress_tracker();
+
+  if (st.has_transfer_rules()) {
+    auto const timer = scoped_timer{"loader.hrd.transfer_rule_scan"};
+    progress_tracker->status("Scan Transfer Rules");
+    for (auto const& path : d.list_files(c.prefix(d) / c.fplan_)) {
+      if (path.filename().generic_string().starts_with(".") ||
+          (!c.fplan_file_extension_.empty() &&
+           path.extension() != c.fplan_file_extension_)) {
+        continue;
+      }
+      auto const file = d.get_file(path);
+      st.scan_transfer_events(c, file.data());
+    }
+    st.build_transfer_groups();
+  }
+
   progress_tracker->status("Read Services")
       .in_high(utl::all(d.list_files(c.prefix(d) / c.fplan_))  //
                | utl::remove_if([&](fs::path const& f) {
