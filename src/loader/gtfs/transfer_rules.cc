@@ -377,10 +377,14 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
   //   - no slower transfer starts at x, OR none leads to y (either one is
   //     enough), because the derivation reaches either every member from x,
   //     or only the members that no slower transfer leads to
+  //
+  // A pair of one location with itself is left out: the only derivation it
+  // could undercut is the one starting at that location, and the check above
+  // already bars it - its slow value is its own transfer time.
   auto slow_from = hash_set<location_idx_t>{};
   auto slow_to = hash_set<location_idx_t>{};
   for (auto const& [xy, c] : most_specific) {
-    if (base_of(xy.from_) == base_of(xy.to_) &&
+    if (xy.from_ != xy.to_ && base_of(xy.from_) == base_of(xy.to_) &&
         rules[rule_idx_t{c.rule_idx_}].duration() >
             tt.locations_.transfer_time_[base_of(xy.from_)]) {
       slow_from.insert(xy.from_);

@@ -2,12 +2,14 @@
 
 #include <cstdlib>
 #include <optional>
+#include <span>
 #include <vector>
 
 #include "geo/latlng.h"
 
 #include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/zip.h"
 
 #include "nigiri/loader/link_nearby_stations.h"
 #include "nigiri/loader/merge_duplicates.h"
@@ -223,30 +225,18 @@ void write_footpaths(timetable& tt, bool const adjust_footpaths) {
 // hub per stop that has virtual locations. A hub always delivers at the stop's
 // transfer time, so nothing slower than that may become derivable through it.
 //
-//   hub           from                        to
-//   ------------  --------------------------  ----------------------
-//   unrestricted  nothing slow starts here    all members
-//   restricted    something slow starts here  nothing slow ends here
+//   hub           from                         to
+//   ------------  ---------------------------  ----------------------
+//   unrestricted  nothing slow starts here     all members
+//   restricted    something slow starts here   nothing slow ends here
+//   (neither)     slower than the stop itself  -
 //
-// A member is the stop itself or one of its virtual locations. What it may do
-// as a source and what may reach it are decided separately:
-//
-//   as a source                   feeds
-//   ----------------------------  ---------------------------------
-//   nothing slow starts here      unrestricted
-//   something slow starts here    restricted
-//   slower than the stop itself   neither: all its rows are written
-//
-//   as a target                   is reached by
-//   ----------------------------  ---------------------------------
-//   nothing slow ends here        both hubs
-//   something slow ends here      the unrestricted hub only
-//
-// A member slower than the stop is barred as a source because every hub
-// out list holds all of its own sources, so it would derive its own cell at
-// the stop's transfer time - the exact value its own rule overrides. Nothing
-// bars it as a target: what a transfer costs is decided by the rule for the
-// pair, and its own rule speaks only for the pair with itself.
+// A member is the stop itself or one of its virtual locations. The last row
+// bars sources only: every hub holds its own sources in its to list too, so
+// such a member would derive its own cell at the stop's transfer time - the
+// exact value its own rule overrides. Nothing bars it from a to list, because
+// a transfer costs what the rule for that pair says, and its own rule speaks
+// only for the pair with itself.
 void build_hubs(timetable& tt) {
   if (std::getenv("NIGIRI_MATERIALIZE_TRANSFERS") != nullptr) {
     return;  // see the same switch in gtfs::read_transfers
@@ -259,34 +249,35 @@ void build_hubs(timetable& tt) {
   auto in = vecvec<hub_idx_t, location_idx_t>{};
   auto out = vecvec<hub_idx_t, location_idx_t>{};
   auto time = vector_map<hub_idx_t, duration_t>{};
-  auto in_by_loc = std::vector<std::vector<hub_idx_t>>(n);
-  auto out_by_loc = std::vector<std::vector<hub_idx_t>>(n);
+  auto in_by_loc = mutable_fws_multimap<location_idx_t, hub_idx_t>{};
+  auto out_by_loc = mutable_fws_multimap<location_idx_t, hub_idx_t>{};
 
-  auto const add_hub = [&](std::vector<location_idx_t> const& hub_in,
-                           std::vector<location_idx_t> const& hub_out,
+  auto const add_hub = [&](std::span<location_idx_t const> const ingress,
+                           std::span<location_idx_t const> const egress,
                            duration_t const d) {
-    if (hub_in.empty() || hub_out.empty()) {
+    if (ingress.empty() || egress.empty()) {
       return;
     }
+
     auto const h = hub_idx_t{in.size()};
-    in.emplace_back(hub_in);
-    out.emplace_back(hub_out);
+
+    in.emplace_back(ingress);
+    out.emplace_back(egress);
     time.push_back(d);
-    for (auto const m : hub_in) {
-      in_by_loc[to_idx(m)].push_back(h);
+
+    for (auto const l : ingress) {
+      in_by_loc[l].push_back(h);
     }
-    for (auto const m : hub_out) {
-      out_by_loc[to_idx(m)].push_back(h);
+    for (auto const l : egress) {
+      out_by_loc[l].push_back(h);
     }
   };
 
   // hubs the loader already emitted for constant-valued rule cross products
-  for (auto h = hub_idx_t{0U}; h != tt.locations_.hub_in_.size(); ++h) {
-    auto const a = tt.locations_.hub_in_[h];
-    auto const b = tt.locations_.hub_out_[h];
-    add_hub(std::vector<location_idx_t>(begin(a), end(a)),
-            std::vector<location_idx_t>(begin(b), end(b)),
-            tt.locations_.hub_time_[h]);
+  for (auto const [in, out, d] :
+       utl::zip(tt.locations_.hub_in_, tt.locations_.hub_out_,
+                tt.locations_.hub_time_)) {
+    add_hub(in, out, d);
   }
 
   auto has_virts = std::vector<bool>(n, false);
@@ -301,13 +292,13 @@ void build_hubs(timetable& tt) {
   auto unrestricted_out = std::vector<location_idx_t>{};
   auto restricted_in = std::vector<location_idx_t>{};
   auto restricted_out = std::vector<location_idx_t>{};
-  for (auto l = location_idx_t{0U}; l != location_idx_t{n}; ++l) {
-    if (!has_virts[to_idx(l)]) {
+  for (auto base = location_idx_t{0U}; base != location_idx_t{n}; ++base) {
+    if (!has_virts[to_idx(base)]) {
       continue;
     }
 
-    members.assign({l});
-    for (auto const c : tt.locations_.children_[l]) {
+    members.assign({base});
+    for (auto const c : tt.locations_.children_[base]) {
       if (tt.locations_.types_[c] == location_type::kVirt) {
         members.push_back(c);
       }
@@ -318,13 +309,13 @@ void build_hubs(timetable& tt) {
     // carry same-stop edges to non-member children (e.g. equivalence
     // beelines) that must not flip the classification the loader elided
     // against.
-    auto const d = tt.locations_.transfer_time_[l];
+    auto const d = tt.locations_.transfer_time_[base];
     auto const is_member = [&](location_idx_t const t) {
-      return t == l || (tt.locations_.parents_[t] == l &&
-                        tt.locations_.types_[t] == location_type::kVirt);
+      return t == base || (tt.locations_.parents_[t] == base &&
+                           tt.locations_.types_[t] == location_type::kVirt);
     };
     auto const is_slow = [&](location_idx_t const m) {
-      return m != l && tt.locations_.transfer_time_[m] > d;
+      return m != base && tt.locations_.transfer_time_[m] > d;
     };
     auto const has_slow_transfer = [&](auto const& all_fps,
                                        location_idx_t const m) {
@@ -357,7 +348,7 @@ void build_hubs(timetable& tt) {
   tt.locations_.hub_in_ = std::move(in);
   tt.locations_.hub_out_ = std::move(out);
   tt.locations_.hub_time_ = std::move(time);
-  for (auto l = 0U; l != n; ++l) {
+  for (auto l = location_idx_t{0U}; l != location_idx_t{n}; ++l) {
     tt.locations_.hub_in_by_loc_.emplace_back(in_by_loc[l]);
     tt.locations_.hub_out_by_loc_.emplace_back(out_by_loc[l]);
   }
