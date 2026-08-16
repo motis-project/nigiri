@@ -143,11 +143,23 @@ struct timetable {
     // classification happens in build_hubs and is encoded purely in list
     // membership. Transfer rules do not depend on the street routing profile,
     // so one set of hubs serves all profiles.
-    vecvec<hub_idx_t, location_idx_t> hub_in_;
-    vecvec<hub_idx_t, location_idx_t> hub_out_;
-    vector_map<hub_idx_t, duration_t> hub_time_;
-    vecvec<location_idx_t, hub_idx_t> hub_in_by_loc_;
-    vecvec<location_idx_t, hub_idx_t> hub_out_by_loc_;
+    // Per profile: a hub belongs to exactly one. The default profile's hubs
+    // come from transfers.txt; every other profile ignores the rules - a
+    // wheelchair may not manage the stated time or the stairs at all, a car
+    // transfer has nothing to do with them - and gets hubs built from its own
+    // routed walks, plus one per stop to hold its virtual locations together,
+    // which they still need since the transports are bound to them.
+    array<vecvec<hub_idx_t, location_idx_t>, kNProfiles> hub_in_;
+    array<vecvec<hub_idx_t, location_idx_t>, kNProfiles> hub_out_;
+    array<vector_map<hub_idx_t, duration_t>, kNProfiles> hub_time_;
+    array<vecvec<location_idx_t, hub_idx_t>, kNProfiles> hub_in_by_loc_;
+    array<vecvec<location_idx_t, hub_idx_t>, kNProfiles> hub_out_by_loc_;
+
+    // Generated children carry no walking transfers of their own: the routing
+    // looks them up at the parent and hands every arrival down. Only the
+    // transfers a rule states stay with the child itself.
+    bool share_child_footpaths_{false};
+
   } locations_;
 
   struct transport {

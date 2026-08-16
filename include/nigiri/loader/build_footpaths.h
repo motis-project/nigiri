@@ -15,6 +15,10 @@ struct finalize_options {
   // footpath layer themselves - the transfers a rule states are written
   // either way, they are not walking transfers.
   bool beeline_footpaths_{true};
+
+  // Do not copy the walking transfers onto generated children - the routing
+  // resolves them through the parent instead.
+  bool share_child_footpaths_{false};
 };
 
 void build_footpaths(timetable& tt, finalize_options);

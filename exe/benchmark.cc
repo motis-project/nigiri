@@ -510,6 +510,8 @@ int main(int argc, char* argv[]) {
   std::cout << "loading timetable...\n";
   auto tt = *nigiri::timetable::read(tt_path);
   tt.resolve();
+  fmt::print("timetable: locations={} routes={} transports={}\n",
+             tt.n_locations(), tt.n_routes(), tt.transport_traffic_days_.size());
 
   gs.interval_size_ = duration_t{interval_size};
 

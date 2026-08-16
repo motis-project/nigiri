@@ -31,18 +31,19 @@ bool is_journey_start(timetable const& tt,
 // s -> l at w_in + w_out (see raptor expand_hubs). fn returns false to stop.
 template <direction SearchDir>
 void for_each_hub_source(timetable const& tt,
+                         profile_idx_t const prf_idx,
                          location_idx_t const l,
                          auto&& fn) {
   constexpr auto const kFwd = SearchDir == direction::kForward;
   auto const& by_loc =
-      kFwd ? tt.locations_.hub_out_by_loc_ : tt.locations_.hub_in_by_loc_;
+      kFwd ? tt.locations_.hub_out_by_loc_[prf_idx] : tt.locations_.hub_in_by_loc_[prf_idx];
   if (by_loc.size() == 0U) {
     return;
   }
   for (auto const h : by_loc[l]) {
-    auto const d = tt.locations_.hub_time_[h];
+    auto const d = tt.locations_.hub_time_[prf_idx][h];
     for (auto const source :
-         (kFwd ? tt.locations_.hub_in_ : tt.locations_.hub_out_)[h]) {
+         (kFwd ? tt.locations_.hub_in_[prf_idx] : tt.locations_.hub_out_[prf_idx])[h]) {
       if (source != l && !fn(footpath{source, d})) {
         return;
       }
@@ -186,7 +187,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
     }
 
     auto found = std::optional<journey::leg>{};
-    for_each_hub_source<SearchDir>(tt, leg_start_location,
+    for_each_hub_source<SearchDir>(tt, q.prf_idx_, leg_start_location,
                                    [&](footpath const fp) {
                                      found = try_fp(fp);
                                      return !found.has_value();
@@ -811,7 +812,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
     {  // hub-derived transfers: l is an out-target of hub h fed by s
        // -> pair (s -> l) at w_in + w_out (see raptor expand_hubs)
       auto legs = std::optional<std::pair<journey::leg, journey::leg>>{};
-      for_each_hub_source<SearchDir>(tt, l, [&](footpath const fp) {
+      for_each_hub_source<SearchDir>(tt, q.prf_idx_, l, [&](footpath const fp) {
         legs = check_fp(k, l, curr_time, fp, true, false);
         return !legs.has_value();
       });

@@ -187,6 +187,7 @@ using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using hub_idx_t = cista::strong<std::uint32_t, struct _hub_idx>;
+using walk_group_idx_t = cista::strong<std::uint32_t, struct _walk_group_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
 using flex_area_idx_t = cista::strong<std::uint32_t, struct _flex_area_idx>;
 using location_group_idx_t =
