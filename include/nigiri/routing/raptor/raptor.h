@@ -121,7 +121,7 @@ struct raptor {
     // transfers), the same argument that justifies station marks. kUnsetHub
     // is tested by equality, never compared, so one sentinel serves both
     // search directions sharing the state.
-    auto const n_hubs = tt_.locations_.hub_in_.size();
+    auto const n_hubs = tt_.locations_.hub_in_[prf_idx_].size();
     if (state_.hub_slots_.size() < n_hubs * (kMaxVias + 1U)) {
       state_.hub_slots_.assign(n_hubs * (kMaxVias + 1U), kUnsetHub);
     }
@@ -814,7 +814,8 @@ private:
   // logic lives in the lists (loader::build_hubs).
   void expand_hubs(unsigned const k) {
     auto const& gather_edges =
-        kFwd ? tt_.locations_.hub_in_by_loc_ : tt_.locations_.hub_out_by_loc_;
+        kFwd ? tt_.locations_.hub_in_by_loc_[prf_idx_]
+             : tt_.locations_.hub_out_by_loc_[prf_idx_];
     if (gather_edges.size() == 0U) {
       return;
     }
@@ -852,10 +853,11 @@ private:
     // is applied once per hub here - no matter which of the two lists the
     // search direction gathers from.
     auto const& scatter_edges =
-        kFwd ? tt_.locations_.hub_out_ : tt_.locations_.hub_in_;
+        kFwd ? tt_.locations_.hub_out_[prf_idx_]
+             : tt_.locations_.hub_in_[prf_idx_];
     state_.hub_mark_.for_each_set_bit([&](std::uint64_t const h) {
       auto const h_idx = hub_idx_t{static_cast<hub_idx_t::value_t>(h)};
-      auto const t = tt_.locations_.hub_time_[h_idx];
+      auto const t = tt_.locations_.hub_time_[prf_idx_][h_idx];
       auto const w =
           t.count() == 0 ? 0
                          : adjusted_transfer_time(transfer_time_settings_,

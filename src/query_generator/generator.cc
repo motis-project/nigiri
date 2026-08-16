@@ -49,10 +49,22 @@ generator::generator(timetable const& tt,
 }
 
 void generator::init_geo(generator_settings const& settings) {
+  pool_.reserve(static_cast<std::size_t>(cista::to_idx(tt_.n_locations())));
+  for (auto l = location_idx_t{0U}; l != tt_.n_locations(); ++l) {
+    if (tt_.locations_.types_[l] != location_type::kVirt) {
+      pool_.push_back(l);
+    }
+  }
+  location_d_ = std::uniform_int_distribution<location_idx_t::value_t>{
+      0U, static_cast<location_idx_t::value_t>(pool_.size() - 1U)};
+
   if (settings.start_match_mode_ == routing::location_match_mode::kIntermodal ||
       settings.dest_match_mode_ == routing::location_match_mode::kIntermodal ||
       settings.bbox_.has_value()) {
-    locations_rtree_ = geo::make_point_rtree(tt_.locations_.coordinates_);
+    locations_rtree_ = geo::make_point_rtree(
+        pool_, [&](location_idx_t const l) {
+          return tt_.locations_.coordinates_[l];
+        });
     if (settings.bbox_.has_value()) {
       locs_in_bbox = locations_rtree_.within(s_.bbox_.value());
       locs_in_bbox_d_ =
@@ -204,12 +216,12 @@ std::pair<transport, stop_idx_t> generator::random_transport_active_stop() {
 location_idx_t generator::random_location() {
   if (s_.bbox_.has_value()) {
     if (!locs_in_bbox.empty()) {
-      return location_idx_t{locs_in_bbox[locs_in_bbox_d_(rng_)]};
+      return pool_[locs_in_bbox[locs_in_bbox_d_(rng_)]];
     }
     log(log_lvl::info, "query_generator.random_location",
         "no locations in bounding box: using all locations instead");
   }
-  return location_idx_t{location_d_(rng_)};
+  return pool_[location_d_(rng_)];
 }
 
 std::optional<location_idx_t> generator::random_location(
@@ -222,7 +234,7 @@ std::optional<location_idx_t> generator::random_location(
   }
   auto locs_d =
       std::uniform_int_distribution<std::size_t>{0U, locs_in_range.size() - 1U};
-  return location_idx_t{locs_in_range[locs_d(rng_)]};
+  return pool_[locs_in_range[locs_d(rng_)]];
 }
 
 route_idx_t generator::random_route(location_idx_t const loc_idx) {
