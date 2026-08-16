@@ -5,6 +5,7 @@
 #include <ranges>
 #include <vector>
 
+#include "utl/erase.h"
 #include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
 #include "utl/get_or_create.h"
@@ -338,7 +339,280 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
   for (auto const& r : rules) {
     durations.push_back(r.duration());
   }
+
   write_transfer_rules(tt, most_specific, durations, first_virt);
+
+  // Two virtual locations of one stop are the same node if nothing the routing
+  // can observe tells them apart: their own transfer time, the cells written
+  // for them in either direction, and the hubs they sit in. What splits them
+  // is the rule sides they matched, and different sides regularly end up
+  // stating the same thing - so the trips of one move to the other and the
+  // duplicate is retired, before it can split a route. This runs on the
+  // written state, after elision: cells that a hub derives are gone by now, so
+  // two locations differing only in those are correctly seen as one.
+  if (std::getenv("NIGIRI_NO_VIRT_MERGE") == nullptr) {
+    auto const n = tt.n_locations();
+    constexpr auto const kSelf = 0xFFFFFFFFU;
+
+    auto cols = hash_map<location_idx_t, std::vector<std::pair<std::uint32_t, std::int32_t>>>{};
+    auto rows = cols;
+    for (auto l = location_idx_t{0U};
+         l != location_idx_t{std::min(
+             static_cast<std::size_t>(tt.locations_.transfer_rule_fps_.size()),
+             static_cast<std::size_t>(cista::to_idx(n)))};
+         ++l) {
+      for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
+        if (tt.locations_.types_[l] == location_type::kVirt) {
+          rows[l].emplace_back(fp.target() == l ? kSelf : to_idx(fp.target()),
+                               fp.duration().count());
+        }
+        if (tt.locations_.types_[fp.target()] == location_type::kVirt) {
+          cols[fp.target()].emplace_back(l == fp.target() ? kSelf : to_idx(l),
+                                         fp.duration().count());
+        }
+      }
+    }
+
+    auto hub_mem = hash_map<location_idx_t, std::vector<std::uint32_t>>{};
+    for (auto h = 0U; h != tt.locations_.hub_in_[kDefaultProfile].size(); ++h) {
+      auto const hi = hub_idx_t{h};
+      for (auto const m : tt.locations_.hub_in_[kDefaultProfile][hi]) {
+        hub_mem[m].push_back(h * 2U);
+      }
+      for (auto const m : tt.locations_.hub_out_[kDefaultProfile][hi]) {
+        hub_mem[m].push_back(h * 2U + 1U);
+      }
+    }
+
+    auto const key_of = [&](location_idx_t const v) {
+      auto h = cista::hash_combine(
+          cista::BASE_HASH,
+          static_cast<std::uint64_t>(tt.locations_.transfer_time_[v].count()));
+      for (auto* m : {&rows, &cols}) {
+        if (auto const it = m->find(v); it != end(*m)) {
+          utl::sort(it->second);
+          for (auto const& [t, d] : it->second) {
+            h = cista::hash_combine(cista::hash_combine(h, t),
+                                    static_cast<std::uint64_t>(d));
+          }
+        }
+        h = cista::hash_combine(h, 0x9e3779b9U);
+      }
+      if (auto const it = hub_mem.find(v); it != end(hub_mem)) {
+        utl::sort(it->second);
+        for (auto const x : it->second) {
+          h = cista::hash_combine(h, x);
+        }
+      }
+      return h;
+    };
+
+    auto representative =
+        hash_map<std::pair<location_idx_t, cista::hash_t>, location_idx_t>{};
+    auto remap = hash_map<location_idx_t, location_idx_t>{};
+    for (auto v = first_virt; v != n; ++v) {
+      auto const [it, is_new] = representative.emplace(
+          std::pair{tt.locations_.parents_[v], key_of(v)}, v);
+      if (!is_new) {
+        remap.emplace(v, it->second);
+      }
+    }
+
+    if (!remap.empty()) {
+      auto const merged_away = [&](location_idx_t const l) {
+        return remap.contains(l);
+      };
+
+      for (auto const& [trip_stop, sig] : trip_stop_signatures) {
+        auto const [trp_idx, pos] = trip_stop;
+        auto& t = trips.data_[trp_idx];
+        auto const st = stop{t.stop_seq_[pos]};
+        if (auto const it = remap.find(st.location_idx()); it != end(remap)) {
+          t.stop_seq_[pos] = stop{it->second,
+                                  st.in_allowed(),
+                                  st.out_allowed(),
+                                  st.in_allowed_wheelchair(),
+                                  st.out_allowed_wheelchair()}
+                                 .value();
+        }
+      }
+
+      // the duplicates state exactly what their representative states, so
+      // their cells and hub memberships are dropped rather than moved
+      auto cells = mutable_fws_multimap<location_idx_t, footpath>{};
+      for (auto l = location_idx_t{0U};
+           l != location_idx_t{std::min(
+               static_cast<std::size_t>(
+                   tt.locations_.transfer_rule_fps_.size()),
+               static_cast<std::size_t>(cista::to_idx(n)))};
+           ++l) {
+        if (merged_away(l)) {
+          continue;
+        }
+        for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
+          if (!merged_away(fp.target())) {
+            cells[l].emplace_back(fp);
+          }
+        }
+      }
+      tt.locations_.transfer_rule_fps_ = std::move(cells);
+
+      auto hub_in = vecvec<hub_idx_t, location_idx_t>{};
+      auto hub_out = hub_in;
+      auto hub_time = vector_map<hub_idx_t, duration_t>{};
+      auto keep = std::vector<location_idx_t>{};
+      auto keep_out = std::vector<location_idx_t>{};
+      for (auto h = 0U; h != tt.locations_.hub_in_[kDefaultProfile].size(); ++h) {
+        auto const hi = hub_idx_t{h};
+        keep.clear();
+        keep_out.clear();
+        for (auto const m : tt.locations_.hub_in_[kDefaultProfile][hi]) {
+          if (!merged_away(m)) {
+            keep.push_back(m);
+          }
+        }
+        for (auto const m : tt.locations_.hub_out_[kDefaultProfile][hi]) {
+          if (!merged_away(m)) {
+            keep_out.push_back(m);
+          }
+        }
+        if (keep.empty() || keep_out.empty()) {
+          continue;
+        }
+        hub_in.emplace_back(keep);
+        hub_out.emplace_back(keep_out);
+        hub_time.push_back(tt.locations_.hub_time_[kDefaultProfile][hi]);
+      }
+      tt.locations_.hub_in_[kDefaultProfile] = std::move(hub_in);
+      tt.locations_.hub_out_[kDefaultProfile] = std::move(hub_out);
+      tt.locations_.hub_time_[kDefaultProfile] = std::move(hub_time);
+
+      for (auto const& [dup, rep] : remap) {
+        auto bucket = tt.locations_.children_[tt.locations_.parents_[dup]];
+        utl::erase(bucket, dup);
+      }
+
+      // The duplicates are the last locations there are and nothing refers to
+      // them any more, so the survivors move down into their slots and the
+      // arrays end after them. Only the per-location arrays are shortened -
+      // the multimaps keep their empty tail buckets, which cost an offset
+      // each.
+      auto compact = hash_map<location_idx_t, location_idx_t>{};
+      auto next = first_virt;
+      for (auto v = first_virt; v != n; ++v) {
+        if (remap.contains(v)) {
+          continue;
+        }
+        compact.emplace(v, next);
+        if (next != v) {
+          auto& loc = tt.locations_;
+          loc.names_[next] = loc.names_[v];
+          loc.platform_codes_[next] = loc.platform_codes_[v];
+          loc.stop_codes_[next] = loc.stop_codes_[v];
+          loc.descriptions_[next] = loc.descriptions_[v];
+          loc.coordinates_[next] = loc.coordinates_[v];
+          loc.src_[next] = loc.src_[v];
+          loc.types_[next] = loc.types_[v];
+          loc.location_timezones_[next] = loc.location_timezones_[v];
+          loc.transfer_time_[next] = loc.transfer_time_[v];
+          loc.parents_[next] = loc.parents_[v];
+        }
+        ++next;
+      }
+
+      auto const renumber = [&](location_idx_t const l) {
+        auto const it = compact.find(l);
+        return it == end(compact) ? l : it->second;
+      };
+
+      for (auto const& [trip_stop, sig] : trip_stop_signatures) {
+        auto const [trp_idx, pos] = trip_stop;
+        auto& t = trips.data_[trp_idx];
+        auto const st = stop{t.stop_seq_[pos]};
+        auto const moved = renumber(st.location_idx());
+        if (moved != st.location_idx()) {
+          t.stop_seq_[pos] = stop{moved,
+                                  st.in_allowed(),
+                                  st.out_allowed(),
+                                  st.in_allowed_wheelchair(),
+                                  st.out_allowed_wheelchair()}
+                                 .value();
+        }
+      }
+
+      auto renumbered = mutable_fws_multimap<location_idx_t, footpath>{};
+      for (auto l = location_idx_t{0U};
+           l != location_idx_t{std::min(
+               static_cast<std::size_t>(
+                   tt.locations_.transfer_rule_fps_.size()),
+               static_cast<std::size_t>(cista::to_idx(n)))};
+           ++l) {
+        for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
+          renumbered[renumber(l)].emplace_back(renumber(fp.target()),
+                                               fp.duration());
+        }
+      }
+      tt.locations_.transfer_rule_fps_ = std::move(renumbered);
+
+      auto in2 = vecvec<hub_idx_t, location_idx_t>{};
+      auto out2 = in2;
+      auto members = std::vector<location_idx_t>{};
+      for (auto h = 0U; h != tt.locations_.hub_in_[kDefaultProfile].size(); ++h) {
+        auto const hi = hub_idx_t{h};
+        members.clear();
+        for (auto const m : tt.locations_.hub_in_[kDefaultProfile][hi]) {
+          members.push_back(renumber(m));
+        }
+        in2.emplace_back(members);
+        members.clear();
+        for (auto const m : tt.locations_.hub_out_[kDefaultProfile][hi]) {
+          members.push_back(renumber(m));
+        }
+        out2.emplace_back(members);
+      }
+      tt.locations_.hub_in_[kDefaultProfile] = std::move(in2);
+      tt.locations_.hub_out_[kDefaultProfile] = std::move(out2);
+
+      for (auto b = location_idx_t{0U}; b != first_virt; ++b) {
+        for (auto& c : tt.locations_.children_[b]) {
+          c = renumber(c);
+        }
+      }
+
+      auto const n_left = cista::to_idx(next);
+      tt.locations_.names_.resize(n_left);
+      tt.locations_.platform_codes_.resize(n_left);
+      tt.locations_.stop_codes_.resize(n_left);
+      tt.locations_.descriptions_.resize(n_left);
+      tt.locations_.coordinates_.resize(n_left);
+      tt.locations_.src_.resize(n_left);
+      tt.locations_.types_.resize(n_left);
+      tt.locations_.location_timezones_.resize(n_left);
+      tt.locations_.transfer_time_.resize(n_left);
+      tt.locations_.parents_.resize(n_left);
+
+      // The multimaps have no truncate, so the live buckets are copied into a
+      // fresh one - otherwise their empty tails would be serialised.
+      auto const shrink = [&](auto& m) {
+        auto shrunk = std::decay_t<decltype(m)>{};
+        for (auto l = location_idx_t{0U}; l != location_idx_t{n_left}; ++l) {
+          auto bucket = shrunk[l];
+          for (auto const& x : m[l]) {
+            bucket.push_back(x);
+          }
+        }
+        m = std::move(shrunk);
+      };
+      shrink(tt.locations_.children_);
+      shrink(tt.locations_.equivalences_);
+      shrink(tt.locations_.preprocessing_footpaths_out_);
+      log(log_lvl::info, "loader.gtfs.transfer_rules",
+          "{} virtual locations merged into {}", remap.size(),
+          static_cast<std::size_t>(cista::to_idx(n) -
+                                   cista::to_idx(first_virt)) -
+              remap.size());
+    }
+  }
 }
 
 // Detects the most common rule between two stops

@@ -97,9 +97,9 @@ void write_transfer_rules(
     if (in.empty() || out.empty()) {
       return;
     }
-    tt.locations_.hub_in_.emplace_back(in);
-    tt.locations_.hub_out_.emplace_back(out);
-    tt.locations_.hub_time_.push_back(d);
+    tt.locations_.hub_in_[kDefaultProfile].emplace_back(in);
+    tt.locations_.hub_out_[kDefaultProfile].emplace_back(out);
+    tt.locations_.hub_time_[kDefaultProfile].push_back(d);
   };
   for (auto const& [rule_idx, g] : cross) {
     auto const cells = g.x_.size() * g.y_.size();
@@ -177,9 +177,15 @@ void write_transfer_rules(
     tt.locations_.transfer_rule_fps_[xy.from_].emplace_back(xy.to_, d);
   }
 
-  // Apply the default between all pairs without a rule.
+  // Apply the default between all pairs without a rule. Driven by the stop's
+  // children, not by the range of virtual locations: one that was merged into
+  // another is no longer a child, and nothing should be stated about it.
   for (auto virt = first_virt; virt != tt.n_locations(); ++virt) {
     auto const base = tt.locations_.parents_[virt];
+    if (utl::none_of(tt.locations_.children_[base],
+                     [&](location_idx_t const c) { return c == virt; })) {
+      continue;  // merged into another virtual location of its stop
+    }
     auto const d = duration_t{tt.locations_.transfer_time_[base]};
     auto const add_default_rule = [&](location_idx_t const x,
                                       location_idx_t const y) {

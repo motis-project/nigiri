@@ -78,6 +78,11 @@ private:
 
   // R-Tree
   geo::point_rtree locations_rtree_;
+  // Virtual locations are copies of their stop, down to the coordinates, so a
+  // stop split into thousands of them would draw thousands of times as often
+  // as its neighbour. They are never picked; whatever is generated for their
+  // stop reaches them anyway.
+  std::vector<location_idx_t> pool_;
   std::vector<size_t> locs_in_bbox;
 
   // RNG
