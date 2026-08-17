@@ -53,7 +53,12 @@ void write_transfer_rules(
 
   // Reference mode: nothing is left to a hub, every pair is written out, so
   // the compressed structure can be checked against it (see build_footpaths).
-  static auto const materialize = std::getenv("NIGIRI_MATERIALIZE") != nullptr;
+  // A cell that states the base's own transfer time is left to the hubs on
+  // purpose: written, it would be authoritative and override a shorter walk,
+  // which a hub never does. So elision stays on even in reference mode - the
+  // pairs are materialised from the hubs instead, see build_footpaths.
+  static auto const materialize = false;
+  static auto const no_rule_hubs = std::getenv("NIGIRI_NO_RULE_HUBS") != nullptr;
   auto const is_derivable = [&](location_idx_t const x, location_idx_t const y,
                                 location_idx_t const base) {
     if (materialize) {
@@ -110,7 +115,7 @@ void write_transfer_rules(
     tt.locations_.hub_time_[kDefaultProfile].push_back(d);
   };
   for (auto const& [rule_idx, g] : cross) {
-    if (materialize) {
+    if (no_rule_hubs) {
       continue;  // reference mode: the cells carry it, no hub is emitted
     }
     auto const cells = g.x_.size() * g.y_.size();
