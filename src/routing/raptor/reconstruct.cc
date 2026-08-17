@@ -37,7 +37,10 @@ bool is_journey_start(timetable const& tt,
                       query const& q,
                       location_idx_t const candidate_l) {
   return utl::any_of(q.start_, [&](offset const& o) {
-    return matches(tt, q.start_match_mode_, o.target(), candidate_l);
+    // the search projected this offset onto the stop (see raptor.h), so the
+    // label it produced sits there and not at the virtual location
+    return matches(tt, q.start_match_mode_,
+                   project_virt(tt, q.prf_idx_, o.target()), candidate_l);
   });
 }
 
@@ -127,7 +130,9 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
     trace_reconstruct("  intermodal start mode\n");
 
     for (auto const& o : q.start_) {
-      if (matches(tt, q.start_match_mode_, o.target(), leg_start_location) &&
+      if (matches(tt, q.start_match_mode_,
+                  project_virt(tt, q.prf_idx_, o.target()),
+                  leg_start_location) &&
           is_better_or_eq(j.start_time_, leg_start_time - dir(o.duration()))) {
         trace_rc_intermodal_start_found;
         return journey::leg{
@@ -749,7 +754,10 @@ void reconstruct_journey_with_vias(timetable const& tt,
         round_times[k][to_idx(project_virt(tt, q.prf_idx_, l))][v];
     for_each_meta(
         tt, location_match_mode::kIntermodal, dest_offset.target_,
-        [&](location_idx_t const eq) {
+        [&](location_idx_t const eq_in) {
+          // the search marked the destination at the stop, not at the virtual
+          // location it was split off (see raptor.h)
+          auto const eq = project_virt(tt, q.prf_idx_, eq_in);
           auto intermodal_dest = check_fp(
               k, l, curr_time, {eq, dest_offset.duration_}, false, td_footpath);
           if (intermodal_dest.has_value()) {
