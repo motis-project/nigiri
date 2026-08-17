@@ -514,6 +514,48 @@ int main(int argc, char* argv[]) {
              tt.n_locations(), tt.n_routes(), tt.transport_traffic_days_.size());
 
   if (auto const* id = std::getenv("NIGIRI_FP_DUMP"); id != nullptr &&
+      std::string_view{id} == "ALL") {
+    auto const nm = [&](location_idx_t const l) {
+      auto const v = tt.locations_.ids_[l].view();
+      return v.empty() ? fmt::format("#{}", to_idx(l)) : std::string{v};
+    };
+    fmt::print("locations={}\n", tt.n_locations());
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      auto const p = tt.locations_.parents_[l];
+      fmt::print("loc {:<3} {:<44} type={} parent={:<14} xfer={} base={}\n",
+                 to_idx(l), nm(l),
+                 static_cast<int>(tt.locations_.types_[l]),
+                 p == location_idx_t::invalid()
+                     ? std::string{"-"}
+                     : std::string{tt.locations_.ids_[p].view()},
+                 tt.locations_.transfer_time_[l].count(),
+                 l < location_idx_t{tt.locations_.base_transfer_time_.size()}
+                     ? tt.locations_.base_transfer_time_[l].count()
+                     : -1);
+    }
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      for (auto const& fp : tt.locations_.footpaths_out_[kDefaultProfile][l]) {
+        fmt::print("fp  {} -> {} ({} min)\n", nm(l), nm(fp.target()),
+                   fp.duration().count());
+      }
+    }
+    fmt::print("hubs={}\n", tt.locations_.hub_time_[kDefaultProfile].size());
+    for (auto h = hub_idx_t{0U};
+         h != hub_idx_t{tt.locations_.hub_time_[kDefaultProfile].size()}; ++h) {
+      auto in = std::string{};
+      for (auto const m : tt.locations_.hub_in_[kDefaultProfile][h]) {
+        in += nm(m) + " ";
+      }
+      auto out = std::string{};
+      for (auto const m : tt.locations_.hub_out_[kDefaultProfile][h]) {
+        out += nm(m) + " ";
+      }
+      fmt::print("hub {} d={} in=[ {}] out=[ {}]\n", to_idx(h),
+                 tt.locations_.hub_time_[kDefaultProfile][h].count(), in, out);
+    }
+    return 0;
+  }
+  if (auto const* id = std::getenv("NIGIRI_FP_DUMP"); id != nullptr &&
       std::string_view{id} == "VIRTS") {
     auto n_virt = 0U, no_routes = 0U, empty_id = 0U, no_fp = 0U, dead = 0U;
     for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
