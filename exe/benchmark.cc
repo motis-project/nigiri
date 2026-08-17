@@ -555,6 +555,105 @@ int main(int argc, char* argv[]) {
     }
     return 0;
   }
+  if (auto const* id = std::getenv("NIGIRI_FP_DUMP");
+      id != nullptr && std::string_view{id}.starts_with("IDX:")) {
+    auto const l = location_idx_t{static_cast<std::uint32_t>(
+        std::atoi(std::string{std::string_view{id}.substr(4)}.c_str()))};
+    fmt::print("loc {} parent={} xfer={}\n", to_idx(l),
+               tt.locations_.ids_[tt.locations_.parents_[l]].view(),
+               tt.locations_.transfer_time_[l].count());
+    for (auto const& fp : tt.locations_.footpaths_out_[kDefaultProfile][l]) {
+      fmt::print("  fp -> {} ({} min)\n", to_idx(fp.target()),
+                 fp.duration().count());
+    }
+    for (auto h = hub_idx_t{0U};
+         h != hub_idx_t{tt.locations_.hub_time_[kDefaultProfile].size()}; ++h) {
+      for (auto const u : tt.locations_.hub_in_[kDefaultProfile][h]) {
+        if (u != l) {
+          continue;
+        }
+        for (auto const v : tt.locations_.hub_out_[kDefaultProfile][h]) {
+          fmt::print("  hub{} -> {} ({} min)\n", to_idx(h), to_idx(v),
+                     tt.locations_.hub_time_[kDefaultProfile][h].count());
+        }
+      }
+    }
+    return 0;
+  }
+  if (auto const* id = std::getenv("NIGIRI_FP_DUMP"); id != nullptr &&
+      std::string_view{id} == "RELATION") {
+    // the transfers the routing can actually make: stored footpaths plus the
+    // pairs the hubs derive, minimum per pair. Two timetables that agree here
+    // must answer every query the same way.
+    auto rel = std::vector<hash_map<std::uint32_t, int>>(
+        static_cast<std::size_t>(cista::to_idx(tt.n_locations())));
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      for (auto const& fp : tt.locations_.footpaths_out_[kDefaultProfile][l]) {
+        auto const [it, ins] =
+            rel[to_idx(l)].emplace(to_idx(fp.target()), fp.duration().count());
+        if (!ins) {
+          it->second = std::min(it->second,
+                                static_cast<int>(fp.duration().count()));
+        }
+      }
+    }
+    for (auto h = hub_idx_t{0U};
+         h != hub_idx_t{tt.locations_.hub_time_[kDefaultProfile].size()}; ++h) {
+      auto const w = tt.locations_.hub_time_[kDefaultProfile][h].count();
+      for (auto const u : tt.locations_.hub_in_[kDefaultProfile][h]) {
+        for (auto const v : tt.locations_.hub_out_[kDefaultProfile][h]) {
+          if (u == v) {
+            continue;
+          }
+          auto const [it, ins] = rel[to_idx(u)].emplace(to_idx(v), w);
+          if (!ins) {
+            it->second = std::min(it->second, static_cast<int>(w));
+          }
+        }
+      }
+    }
+    auto total = std::size_t{0U};
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      auto v = std::vector<std::pair<std::uint32_t, int>>{begin(rel[to_idx(l)]),
+                                                          end(rel[to_idx(l)])};
+      utl::sort(v);
+      total += v.size();
+      auto h = cista::BASE_HASH;
+      for (auto const& [t, d] : v) {
+        h = cista::hash_combine(cista::hash_combine(h, t),
+                                static_cast<std::uint64_t>(d));
+      }
+      fmt::print("{} {} {}\n", to_idx(l), v.size(), h);
+    }
+    fmt::print("TOTAL {}\n", total);
+    return 0;
+  }
+  if (auto const* id = std::getenv("NIGIRI_FP_DUMP"); id != nullptr &&
+      std::string_view{id} == "CHECK") {
+    auto self = 0U, dup = 0U, total = 0U, worse_dup = 0U;
+    auto seen = hash_map<std::uint32_t, int>{};
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      seen.clear();
+      for (auto const& fp : tt.locations_.footpaths_out_[kDefaultProfile][l]) {
+        ++total;
+        if (fp.target() == l) {
+          ++self;
+        }
+        auto const [it, ins] =
+            seen.emplace(to_idx(fp.target()), fp.duration().count());
+        if (!ins) {
+          ++dup;
+          if (it->second != fp.duration().count()) {
+            ++worse_dup;
+          }
+        }
+      }
+    }
+    fmt::print("footpaths={} self_loops={} duplicate_targets={} "
+               "duplicates_with_different_duration={}\n",
+               total, self, dup, worse_dup);
+    return 0;
+  }
   if (auto const* id = std::getenv("NIGIRI_FP_DUMP"); id != nullptr &&
       std::string_view{id} == "VIRTS") {
     auto n_virt = 0U, no_routes = 0U, empty_id = 0U, no_fp = 0U, dead = 0U;
