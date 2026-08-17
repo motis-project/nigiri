@@ -513,6 +513,136 @@ int main(int argc, char* argv[]) {
   fmt::print("timetable: locations={} routes={} transports={}\n",
              tt.n_locations(), tt.n_routes(), tt.transport_traffic_days_.size());
 
+  if (auto const* id = std::getenv("NIGIRI_FP_DUMP"); id != nullptr &&
+      std::string_view{id} == "VIRTS") {
+    auto n_virt = 0U, no_routes = 0U, empty_id = 0U, no_fp = 0U, dead = 0U;
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      if (tt.locations_.types_[l] != location_type::kVirt) {
+        continue;
+      }
+      ++n_virt;
+      auto const r = tt.location_routes_[l].size();
+      auto const f = tt.locations_.footpaths_out_[kDefaultProfile][l].size() +
+                     tt.locations_.footpaths_in_[kDefaultProfile][l].size();
+      if (r == 0U) { ++no_routes; }
+      if (f == 0U) { ++no_fp; }
+      if (r == 0U && f == 0U) { ++dead; }
+      if (tt.locations_.ids_[l].view().empty()) { ++empty_id; }
+    }
+    fmt::print("kVirt={} no_routes={} no_footpaths={} dead(both)={} empty_id={}\n",
+               n_virt, no_routes, no_fp, dead, empty_id);
+    return 0;
+  }
+  if (auto const* id = std::getenv("NIGIRI_FP_DUMP"); id != nullptr &&
+      std::string_view{id} == "SYM") {
+    for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
+      if (tt.locations_.footpaths_out_[p].size() == 0U) {
+        continue;
+      }
+      auto out = std::vector<std::array<std::uint64_t, 3>>{};
+      auto in = std::vector<std::array<std::uint64_t, 3>>{};
+      for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+        for (auto const& fp : tt.locations_.footpaths_out_[p][l]) {
+          out.push_back({to_idx(l), to_idx(fp.target()),
+                         static_cast<std::uint64_t>(fp.duration().count())});
+        }
+        for (auto const& fp : tt.locations_.footpaths_in_[p][l]) {
+          in.push_back({to_idx(fp.target()), to_idx(l),
+                        static_cast<std::uint64_t>(fp.duration().count())});
+        }
+      }
+      std::sort(begin(out), end(out));
+      std::sort(begin(in), end(in));
+      fmt::print("prf={} out_edges={} in_edges={} identical={}\n", p,
+                 out.size(), in.size(), out == in);
+      if (out != in) {
+        auto n = 0U;
+        for (auto i = std::size_t{0U}; i < std::min(out.size(), in.size()); ++i) {
+          if (out[i] != in[i]) {
+            fmt::print("  first diff at {}: out=({} -> {}, {}) in=({} -> {}, {})\n",
+                       i, tt.locations_.ids_[location_idx_t{out[i][0]}].view(),
+                       tt.locations_.ids_[location_idx_t{out[i][1]}].view(), out[i][2],
+                       tt.locations_.ids_[location_idx_t{in[i][0]}].view(),
+                       tt.locations_.ids_[location_idx_t{in[i][1]}].view(), in[i][2]);
+            if (++n == 3U) { break; }
+          }
+        }
+      }
+    }
+    return 0;
+  }
+  if (auto const* id = std::getenv("NIGIRI_FP_DUMP"); id != nullptr &&
+      std::string_view{id} == "EMPTY") {
+    auto n = 0U;
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      if (tt.locations_.ids_[l].view().empty()) {
+        ++n;
+        if (n <= 8U) {
+          auto const p = tt.locations_.parents_[l];
+          fmt::print("empty id: idx={} type={} parent={} n_routes={}\n", l,
+                     static_cast<int>(tt.locations_.types_[l]),
+                     p == location_idx_t::invalid()
+                         ? std::string{"-"}
+                         : std::string{tt.locations_.ids_[p].view()},
+                     tt.location_routes_[l].size());
+        }
+      }
+    }
+    fmt::print("total empty ids: {} / {}\n", n, tt.n_locations());
+    return 0;
+  }
+  if (auto const* id = std::getenv("NIGIRI_FP_DUMP"); id != nullptr) {
+    for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
+      fmt::print("prf={} fp_out={} fp_in={}\n", p,
+                 tt.locations_.footpaths_out_[p].size(),
+                 tt.locations_.footpaths_in_[p].size());
+    }
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      if (tt.locations_.ids_[l].view() != std::string_view{id}) {
+        continue;
+      }
+      fmt::print("{} idx={} type={} transfer_time={} base={}\n",
+                 tt.locations_.ids_[l].view(), l,
+                 static_cast<int>(tt.locations_.types_[l]),
+                 tt.locations_.transfer_time_[l].count(),
+                 l < location_idx_t{tt.locations_.base_transfer_time_.size()}
+                     ? tt.locations_.base_transfer_time_[l].count()
+                     : -1);
+      auto n_virt = 0U;
+      for (auto const c : tt.locations_.children_[l]) {
+        if (tt.locations_.types_[c] == location_type::kVirt) {
+          ++n_virt;
+        }
+      }
+      auto n_by_parent = 0U;
+      for (auto x = location_idx_t{0U}; x != tt.n_locations(); ++x) {
+        if (tt.locations_.types_[x] == location_type::kVirt &&
+            tt.locations_.parents_[x] == l) {
+          ++n_by_parent;
+        }
+      }
+      fmt::print("  children={} virt_children={} virts_by_parents={} n_routes={}\n",
+                 tt.locations_.children_[l].size(), n_virt, n_by_parent,
+                 tt.location_routes_[l].size());
+      for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
+        if (tt.locations_.footpaths_out_[p].size() <= to_idx(l)) {
+          continue;
+        }
+        for (auto const& fp : tt.locations_.footpaths_out_[p][l]) {
+          fmt::print("  prf={} -> {} ({} min)\n", p,
+                     tt.locations_.ids_[fp.target()].view(),
+                     fp.duration().count());
+        }
+        for (auto const& fp : tt.locations_.footpaths_in_[p][l]) {
+          fmt::print("  prf={} <- {} ({} min)\n", p,
+                     tt.locations_.ids_[fp.target()].view(),
+                     fp.duration().count());
+        }
+      }
+    }
+    return 0;
+  }
+
   gs.interval_size_ = duration_t{interval_size};
 
   if (!bbox_str.empty()) {
