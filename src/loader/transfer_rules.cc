@@ -1,5 +1,7 @@
 #include "nigiri/loader/transfer_rules.h"
 
+#include <cstdlib>
+
 #include <algorithm>
 #include <vector>
 
@@ -49,8 +51,14 @@ void write_transfer_rules(
     }
   }
 
+  // Reference mode: nothing is left to a hub, every pair is written out, so
+  // the compressed structure can be checked against it (see build_footpaths).
+  static auto const materialize = std::getenv("NIGIRI_MATERIALIZE") != nullptr;
   auto const is_derivable = [&](location_idx_t const x, location_idx_t const y,
                                 location_idx_t const base) {
+    if (materialize) {
+      return false;
+    }
     return derivable(
         {.slow_ = x != base && tt.locations_.transfer_time_[x] >
                                    tt.locations_.transfer_time_[base],
@@ -102,6 +110,9 @@ void write_transfer_rules(
     tt.locations_.hub_time_[kDefaultProfile].push_back(d);
   };
   for (auto const& [rule_idx, g] : cross) {
+    if (materialize) {
+      continue;  // reference mode: the cells carry it, no hub is emitted
+    }
     auto const cells = g.x_.size() * g.y_.size();
     if (cells <= g.x_.size() + g.y_.size()) {
       continue;  // a hub would not even be smaller than the cells
