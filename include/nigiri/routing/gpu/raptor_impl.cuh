@@ -578,6 +578,60 @@ struct raptor_impl {
     }
   }
 
+  // A hub stands for every pair of its two member lists at one weight, so the
+  // pairs are never stored (see raptor.h expand_hubs). Gathering delivers a
+  // marked location's arrival into the minimum of every hub it feeds; the
+  // scatter below hands that minimum to the hub's other side. The slot is the
+  // same packed word round_times uses, so one atomicMin carries the time and
+  // the breadcrumb of the winning source together.
+  __device__ __forceinline__ void gather_hubs(location_idx_t const l,
+                                              delta_t const tmp_time,
+                                              breadcrumb_t const bc) {
+    if (n_hubs_ == 0U || no_hubs_) {
+      return;
+    }
+    auto const& by_loc = kFwd ? tt_.hub_in_by_loc_[prf_idx_]
+                              : tt_.hub_out_by_loc_[prf_idx_];
+    if (by_loc.size() == 0U) {
+      return;
+    }
+    auto const packed = device_times<SearchDir, Vias + 1>::pack(tmp_time, bc);
+    for (auto const h : by_loc[l]) {
+      atomicMin(reinterpret_cast<unsigned long long*>(&hub_slots_[to_idx(h)]),
+                static_cast<unsigned long long>(packed));
+    }
+  }
+
+  __device__ void scatter_hubs(unsigned const k) {
+    if (n_hubs_ == 0U || no_hubs_) {
+      return;
+    }
+    auto const& scatter_edges =
+        kFwd ? tt_.hub_out_[prf_idx_] : tt_.hub_in_[prf_idx_];
+    if (tt_.n_hubs_[prf_idx_] == 0U) {
+      return;
+    }
+    auto const t_at_dest = time_at_dest_.get(k);
+    auto const n = tt_.n_hubs_[prf_idx_];
+    for (auto h = get_global_thread_id(); h < n; h += get_global_stride()) {
+      auto const slot = hub_slots_[h];
+      if (slot == device_times<SearchDir, Vias + 1>::invalid_packed()) {
+        continue;
+      }
+      auto const time = device_times<SearchDir, Vias + 1>::from_key(
+          static_cast<std::uint16_t>(slot >> kBcBits));
+      auto const bc = slot & kBcMask;
+      auto const d = tt_.hub_time_[prf_idx_][hub_idx_t{h}];
+      auto const w = d.count() == 0
+                         ? 0
+                         : adjusted_transfer_time(transfer_time_settings_,
+                                                  static_cast<int>(d.count()));
+      for (auto const target : scatter_edges[hub_idx_t{h}]) {
+        relax_fp_target(k, target, w, time, bc, t_at_dest);
+      }
+    }
+  }
+
   template <bool WithTdDest, bool WithTdFootpaths>
   __device__ void update_transfers_and_footpaths(unsigned const k) {
     constexpr auto const kWarpFpThreshold = 8U;
@@ -618,6 +672,10 @@ struct raptor_impl {
         if (tmp_time != kInvalid) {
           bc = tmp_.get_bc(0U, l, Vias);
           auto const is_dest = is_dest_[my_i];
+
+          // the hubs this location feeds: deliver its arrival into their
+          // minima, scattered over the out-lists after this kernel
+          gather_hubs(l, tmp_time, bc);
 
           // same-station transfer (former update_transfers)
           relax_fp_target(
@@ -1119,6 +1177,10 @@ struct raptor_impl {
   device_times<SearchDir, Vias + 1> round_times_;
   device_times<SearchDir, Vias + 1> best_;
   device_times<SearchDir, Vias + 1> tmp_;
+  // one packed (time, breadcrumb) word per transfer hub, see gather_hubs
+  std::uint64_t* hub_slots_;
+  std::uint32_t n_hubs_;
+  bool no_hubs_;  // A/B switch, see NIGIRI_GPU_NO_HUBS
   device_times<SearchDir, 1U> time_at_dest_;
   device_bitvec<std::uint32_t> station_mark_;
   device_bitvec<std::uint32_t> prev_station_mark_;
