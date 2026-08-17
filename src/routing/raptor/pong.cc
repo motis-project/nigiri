@@ -109,7 +109,8 @@ routing_result pong(timetable const& tt,
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
   auto ping_is_via = std::array<bitvec, kMaxVias>{};
-  collect_destinations(tt, q.destination_, q.dest_match_mode_, ping_is_dest,
+  collect_destinations(tt, q.destination_, q.dest_match_mode_, q.prf_idx_,
+                       ping_is_dest,
                        ping_dist_to_dest);
   for (auto const [i, via] : utl::enumerate(q.via_stops_)) {
     collect_via_destinations(tt, via.location_, ping_is_via[i]);
@@ -158,7 +159,8 @@ routing_result pong(timetable const& tt,
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
   auto pong_is_dest = bitvec{};
-  collect_destinations(tt, q.destination_, q.dest_match_mode_, pong_is_dest,
+  collect_destinations(tt, q.destination_, q.dest_match_mode_, q.prf_idx_,
+                       pong_is_dest,
                        pong_dist_to_dest);
 
   auto pong_is_via = std::array<bitvec, kMaxVias>{};
