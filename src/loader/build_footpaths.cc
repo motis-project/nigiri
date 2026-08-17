@@ -1015,8 +1015,14 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
     }
   }
 
-  auto const share = opt.share_child_footpaths_ ||
-                     std::getenv("NIGIRI_SHARE_CHILD_FP") != nullptr;
+  // Reference mode: every transfer is stored as an ordinary footpath - no
+  // shared walks, no hubs, no elision (see transfer_rules.cc). Combined with
+  // NIGIRI_NO_VIRT_MERGE it is the uncompressed timetable the tricks are
+  // supposed to be equivalent to.
+  auto const materialize = std::getenv("NIGIRI_MATERIALIZE") != nullptr;
+  auto const share = !materialize &&
+                     (opt.share_child_footpaths_ ||
+                      std::getenv("NIGIRI_SHARE_CHILD_FP") != nullptr);
   tt.locations_.share_child_footpaths_ = share;
   if (opt.beeline_footpaths_ && !share) {
     copy_footpaths_to_generated_children(tt);
@@ -1033,7 +1039,9 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
     apply_transfer_rules(tt, hub_ify_rule_cells(tt));
   }
   write_footpaths(tt, opt.adjust_footpaths_);
-  build_hubs(tt, walk_hub_in, walk_hub_out, walk_hub_time);
+  if (!materialize) {
+    build_hubs(tt, walk_hub_in, walk_hub_out, walk_hub_time);
+  }
   if (auto const* spec = std::getenv("NIGIRI_EDGE_DUMP"); spec != nullptr) {
     dump_edges(tt, spec);
   }
