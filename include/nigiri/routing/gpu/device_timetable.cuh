@@ -152,6 +152,24 @@ struct device_timetable {
                    kNProfiles>
       footpaths_in_;
 
+  // Transfer hubs: the pairs they stand for are not stored as footpaths, so
+  // the search has to derive them (see raptor.h expand_hubs). Members by hub
+  // for the scatter, hubs by member for the gather, one weight per hub.
+  cuda::std::array<d_vecvec_view<decltype(t{}.locations_.hub_in_[0])>,
+                   kNProfiles>
+      hub_in_;
+  cuda::std::array<d_vecvec_view<decltype(t{}.locations_.hub_out_[0])>,
+                   kNProfiles>
+      hub_out_;
+  cuda::std::array<d_vecvec_view<decltype(t{}.locations_.hub_in_by_loc_[0])>,
+                   kNProfiles>
+      hub_in_by_loc_;
+  cuda::std::array<d_vecvec_view<decltype(t{}.locations_.hub_out_by_loc_[0])>,
+                   kNProfiles>
+      hub_out_by_loc_;
+  cuda::std::array<d_vecmap_view<hub_idx_t, duration_t>, kNProfiles> hub_time_;
+  cuda::std::array<std::uint32_t, kNProfiles> n_hubs_;
+
   cuda::std::span<delta const> route_stop_times_;
   d_vecmap_view<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
   d_vecmap_view<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
