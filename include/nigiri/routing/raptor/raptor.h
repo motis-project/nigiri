@@ -857,6 +857,11 @@ private:
   // hub's pair set works in both directions by construction. All exclusion
   // logic lives in the lists (loader::build_hubs).
   void expand_hubs(unsigned const k) {
+    static auto const per_round =
+        std::getenv("NIGIRI_HUB_SLOTS_PER_ROUND") != nullptr;
+    if (per_round) {
+      utl::fill(state_.hub_slots_, kUnsetHub);
+    }
     auto const& gather_edges =
         kFwd ? tt_.locations_.hub_in_by_loc_[prf_idx_]
              : tt_.locations_.hub_out_by_loc_[prf_idx_];

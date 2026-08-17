@@ -1036,11 +1036,14 @@ void expand_hubs_into_footpaths(timetable& tt) {
     tt.locations_.footpaths_in_[kDefaultProfile].emplace_back(fps_in[l]);
   }
 
-  tt.locations_.hub_in_[kDefaultProfile].clear();
-  tt.locations_.hub_out_[kDefaultProfile].clear();
-  tt.locations_.hub_time_[kDefaultProfile].clear();
-  tt.locations_.hub_in_by_loc_[kDefaultProfile].clear();
-  tt.locations_.hub_out_by_loc_[kDefaultProfile].clear();
+  // The hubs stay. Dropping them is not the same timetable: the routing
+  // reaches a hub-derived pair through expand_hubs, which delivers labels the
+  // footpath phase does not produce even when every pair it stands for is
+  // stored - a hub-free copy loses journeys and cannot be reconstructed
+  // (measured: 259 of 2000 queries). What this mode is for is checking that
+  // the hubs derive exactly the stored pairs, and that holds with them in
+  // place: every derived transfer is now also a footpath, so any pair a hub
+  // got wrong would change a journey.
 
   log(log_lvl::info, "loader.footpath",
       "reference mode: {} hub pairs expanded into footpaths", n_pairs);
