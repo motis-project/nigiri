@@ -983,6 +983,69 @@ void dump_edges(timetable const& tt, std::string const& spec) {
   }
 }
 
+// Reference mode: replaces every hub by the pairs it stands for. A hub hands
+// its weight to each pair without overriding anything - the routing takes the
+// minimum - so the expansion is min-merged into the footpaths rather than
+// written as rule cells, which would be authoritative. The result routes like
+// the hubs it replaces and lets the compressed timetable be checked against an
+// uncompressed one.
+void expand_hubs_into_footpaths(timetable& tt) {
+  auto const n = static_cast<std::size_t>(cista::to_idx(tt.n_locations()));
+  auto out = std::vector<std::vector<footpath>>(n);
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    for (auto const fp : tt.locations_.footpaths_out_[kDefaultProfile][l]) {
+      out[to_idx(l)].push_back(fp);
+    }
+  }
+
+  auto n_pairs = std::size_t{0U};
+  for (auto h = hub_idx_t{0U};
+       h != hub_idx_t{tt.locations_.hub_time_[kDefaultProfile].size()}; ++h) {
+    auto const d = tt.locations_.hub_time_[kDefaultProfile][h];
+    for (auto const u : tt.locations_.hub_in_[kDefaultProfile][h]) {
+      for (auto const v : tt.locations_.hub_out_[kDefaultProfile][h]) {
+        if (u != v) {
+          out[to_idx(u)].push_back(footpath{v, d});
+          ++n_pairs;
+        }
+      }
+    }
+  }
+
+  auto fps_out = vecvec<location_idx_t, footpath>{};
+  auto fps_in = mutable_fws_multimap<location_idx_t, footpath>{};
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    auto& fps = out[to_idx(l)];
+    utl::erase_duplicates(
+        fps,
+        [](footpath const a, footpath const b) {
+          return std::tie(a.target_, a.duration_) <
+                 std::tie(b.target_, b.duration_);
+        },
+        [](footpath const a, footpath const b) {
+          return a.target_ == b.target_;
+        });  // also sorts; keeps the shortest duration per target
+    fps_out.emplace_back(fps);
+    for (auto const fp : fps) {
+      fps_in[fp.target()].emplace_back(l, fp.duration());
+    }
+  }
+  tt.locations_.footpaths_out_[kDefaultProfile] = std::move(fps_out);
+  tt.locations_.footpaths_in_[kDefaultProfile].clear();
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    tt.locations_.footpaths_in_[kDefaultProfile].emplace_back(fps_in[l]);
+  }
+
+  tt.locations_.hub_in_[kDefaultProfile].clear();
+  tt.locations_.hub_out_[kDefaultProfile].clear();
+  tt.locations_.hub_time_[kDefaultProfile].clear();
+  tt.locations_.hub_in_by_loc_[kDefaultProfile].clear();
+  tt.locations_.hub_out_by_loc_[kDefaultProfile].clear();
+
+  log(log_lvl::info, "loader.footpath",
+      "reference mode: {} hub pairs expanded into footpaths", n_pairs);
+}
+
 void build_footpaths(timetable& tt, finalize_options const opt) {
   // Covers locations created after the last transfers.txt was read (virtual
   // locations, locations from feeds without transfers.txt).
@@ -1019,10 +1082,17 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
   // shared walks, no hubs, no elision (see transfer_rules.cc). Combined with
   // NIGIRI_NO_VIRT_MERGE it is the uncompressed timetable the tricks are
   // supposed to be equivalent to.
+  // Reference mode keeps the shared walks: the hubs are what carries a virtual
+  // location's walks, and they are expanded into ordinary footpaths at the end
+  // (expand_hubs_into_footpaths). Copying to the children instead would miss
+  // every pair created after copy_footpaths_to_generated_children ran.
   auto const materialize = std::getenv("NIGIRI_MATERIALIZE") != nullptr;
-  auto const share = !materialize &&
-                     (opt.share_child_footpaths_ ||
-                      std::getenv("NIGIRI_SHARE_CHILD_FP") != nullptr);
+  auto const no_share = std::getenv("NIGIRI_NO_SHARE") != nullptr;
+  auto const no_hubs = std::getenv("NIGIRI_NO_WALK_HUBS") != nullptr;
+  auto const share = !no_share && (opt.share_child_footpaths_ ||
+                                   std::getenv("NIGIRI_SHARE_CHILD_FP") !=
+                                       nullptr ||
+                                   materialize);
   tt.locations_.share_child_footpaths_ = share;
   if (opt.beeline_footpaths_ && !share) {
     copy_footpaths_to_generated_children(tt);
@@ -1039,8 +1109,11 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
     apply_transfer_rules(tt, hub_ify_rule_cells(tt));
   }
   write_footpaths(tt, opt.adjust_footpaths_);
-  if (!materialize) {
+  if (!no_hubs) {
     build_hubs(tt, walk_hub_in, walk_hub_out, walk_hub_time);
+  }
+  if (materialize) {
+    expand_hubs_into_footpaths(tt);
   }
   if (auto const* spec = std::getenv("NIGIRI_EDGE_DUMP"); spec != nullptr) {
     dump_edges(tt, spec);

@@ -918,6 +918,29 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
     }
 
+    if (std::getenv("NIGIRI_RECONSTRUCT_DEBUG") != nullptr) {
+      // what the label could have come from, and what the candidates say
+      fmt::print("RECFAIL k={} l={} curr={} n_in_fp={}\n", k,
+                 tt.locations_.ids_[l].view(),
+                 delta_to_unix(base, curr_time),
+                 (kFwd ? tt.locations_.footpaths_in_[q.prf_idx_]
+                       : tt.locations_.footpaths_out_[q.prf_idx_])[l]
+                     .size());
+      for (auto const& fp : (kFwd ? tt.locations_.footpaths_in_[q.prf_idx_]
+                                  : tt.locations_.footpaths_out_[q.prf_idx_])[l]) {
+        auto const src = fp.target();
+        auto const nm = tt.locations_.ids_[src].view().empty()
+                            ? fmt::format("#{}(virt of {})", to_idx(src),
+                                          tt.locations_.ids_
+                                              [tt.locations_.parents_[src]]
+                                                  .view())
+                            : std::string{tt.locations_.ids_[src].view()};
+        fmt::print("  cand {} d={} round_times[k]={} round_times[k-1]={}\n",
+                   nm, fp.duration().count(),
+                   static_cast<int>(round_times[k][to_idx(src)][v]),
+                   k == 0U ? 0 : static_cast<int>(round_times[k - 1][to_idx(src)][v]));
+      }
+    }
     throw utl::fail(
         "reconstruction failed at k={}, t={}, v={}, stop={}, time={}", k,
         j.transfers_, v, loc{tt, l}, delta_to_unix(base, curr_time));

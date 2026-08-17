@@ -1181,6 +1181,7 @@ struct raptor_impl {
   std::uint64_t* hub_slots_;
   std::uint32_t n_hubs_;
   bool no_hubs_;  // A/B switch, see NIGIRI_GPU_NO_HUBS
+  bool dbg_egress_;  // NIGIRI_GPU_EGRESS_DEBUG: report ties at the bound
   device_times<SearchDir, 1U> time_at_dest_;
   device_bitvec<std::uint32_t> station_mark_;
   device_bitvec<std::uint32_t> prev_station_mark_;
