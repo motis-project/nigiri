@@ -337,8 +337,17 @@ void get_starts(
 void collect_destinations(timetable const& tt,
                           std::vector<offset> const& dest,
                           location_match_mode const match_mode,
+                          profile_idx_t const prf_idx,
                           bitvec& is_dest,
                           std::vector<std::uint16_t>& dist_to_dest) {
+  // A profile that projects virtual locations away never puts a label on one
+  // (see raptor.h), so a destination found there would never be seen.
+  auto const project = [&](location_idx_t const l) {
+    return prf_idx != kDefaultProfile &&
+                   tt.locations_.types_[l] == location_type::kVirt
+               ? tt.locations_.parents_[l]
+               : l;
+  };
   is_dest.resize(tt.n_locations());
   utl::fill(is_dest.blocks_, 0U);
 
@@ -357,11 +366,11 @@ void collect_destinations(timetable const& tt,
     trace_start("DEST METAS OF {}\n", loc{tt, d.target_});
     for_each_meta(tt, match_mode, d.target_, [&](location_idx_t const l) {
       if (match_mode == location_match_mode::kIntermodal) {
-        dist_to_dest[to_idx(l)] =
-            std::min(dist_to_dest[to_idx(l)],
+        dist_to_dest[to_idx(project(l))] =
+            std::min(dist_to_dest[to_idx(project(l))],
                      static_cast<std::uint16_t>(d.duration_.count()));
       } else {
-        is_dest.set(to_idx(l), true);
+        is_dest.set(to_idx(project(l)), true);
       }
       trace_start("  DEST META: {}, duration={}\n", loc{tt, l}, d.duration_);
     });
