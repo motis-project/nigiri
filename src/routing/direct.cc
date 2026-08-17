@@ -97,8 +97,9 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
             (mode == location_match_mode::kExact
                  // kExact is used for transfers
                  // -> respect reflexive transfer time
-                 ? adjusted_transfer_time(q.transfer_time_settings_,
-                                          tt.locations_.transfer_time_[l])
+                 ? adjusted_transfer_time(
+                       q.transfer_time_settings_,
+                       tt.locations_.min_transfer_time(q.prf_idx_, l))
                  // kIntermodal / kEquivalent: no transfer time access/egress
                  : u8_minutes{0});
         best_source = o.target();

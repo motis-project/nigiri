@@ -29,7 +29,22 @@ routing_result raptor_search_with_vias(
     AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
+  // A profile that has no hubs cannot represent the split: its footpaths were
+  // computed without the rules, so the virtual locations carry nothing it can
+  // use. Those profiles project them onto their stop instead - which is not
+  // the same as "not the default profile", because the routed foot layer does
+  // get the rules and does get hubs.
+  auto const project = tt.locations_.hub_in_[q.prf_idx_].size() == 0U;
   if (rtt == nullptr) {
+    if (project) {
+      using algo_t = std::conditional_t<
+          std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+          gpu::gpu_raptor<SearchDir, false>,
+          raptor<SearchDir, false, Vias, search_mode::kOneToOne, true>>;
+      return search<SearchDir, algo_t>{tt,      rtt,          s_state,
+                                       r_state, std::move(q), timeout}
+          .execute();
+    }
     using algo_t = std::conditional_t<
         std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
         gpu::gpu_raptor<SearchDir, false>,
@@ -38,6 +53,15 @@ routing_result raptor_search_with_vias(
                                      r_state, std::move(q), timeout}
         .execute();
   } else {
+    if (project) {
+      using algo_t = std::conditional_t<
+          std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+          gpu::gpu_raptor<SearchDir, false>,
+          raptor<SearchDir, true, Vias, search_mode::kOneToOne, true>>;
+      return search<SearchDir, algo_t>{tt,      rtt,          s_state,
+                                       r_state, std::move(q), timeout}
+          .execute();
+    }
     using algo_t = std::conditional_t<
         std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
         gpu::gpu_raptor<SearchDir, false>,

@@ -92,6 +92,29 @@ struct timetable {
       return l;
     }
 
+    // Same-stop minimum transfer time as seen by `prf`. Profiles other than
+    // `kDefaultProfile` ignore the qualified transfers.txt rules and the
+    // virtual locations these created (see raptor's `ProjectVirts`), but still
+    // honor the plain minimum transfer time of the stop.
+    u8_minutes min_transfer_time(profile_idx_t const prf,
+                                 location_idx_t const l) const {
+      return prf == kDefaultProfile
+                 ? transfer_time_[l]
+                 : base_transfer_time_[types_[l] == location_type::kVirt
+                                           ? parents_[l]
+                                           : l];
+    }
+
+    // Extends `base_transfer_time_` to cover every location added since the
+    // last call, capturing its transfer time before transfers.txt same-stop
+    // rules are applied on top of `transfer_time_`.
+    void sync_base_transfer_time() {
+      for (auto l = location_idx_t{base_transfer_time_.size()};
+           l != location_idx_t{transfer_time_.size()}; ++l) {
+        base_transfer_time_.push_back(transfer_time_[l]);
+      }
+    }
+
     hash_map<owning_location_id,
              location_idx_t,
              location_id_hash,
@@ -104,7 +127,12 @@ struct timetable {
     vecvec<location_idx_t, char> ids_;
     vector_map<location_idx_t, geo::latlng> coordinates_;
     vector_map<location_idx_t, source_idx_t> src_;
+    // Minimum transfer time at a location. `transfer_time_` has the same-stop
+    // rules from transfers.txt applied, `base_transfer_time_` is the value
+    // before any such rule. Profiles that ignore transfers.txt (everything
+    // except `kDefaultProfile`, see raptor's `ProjectVirts`) read the base.
     vector_map<location_idx_t, u8_minutes> transfer_time_;
+    vector_map<location_idx_t, u8_minutes> base_transfer_time_;
     vector_map<location_idx_t, location_type> types_;
     vector_map<location_idx_t, location_idx_t> parents_;
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
@@ -154,6 +182,9 @@ struct timetable {
     array<vector_map<hub_idx_t, duration_t>, kNProfiles> hub_time_;
     array<vecvec<location_idx_t, hub_idx_t>, kNProfiles> hub_in_by_loc_;
     array<vecvec<location_idx_t, hub_idx_t>, kNProfiles> hub_out_by_loc_;
+    // hubs [0, n_rule_hubs_) of the default profile are rule-derived and hold
+    // in every profile; the rest are that profile's walks
+    std::uint32_t n_rule_hubs_{0U};
 
     // Generated children carry no walking transfers of their own: the routing
     // looks them up at the parent and hands every arrival down. Only the

@@ -59,7 +59,8 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
 
-template <direction SearchDir, bool Rt, via_offset_t Vias, typename AlgoState>
+template <direction SearchDir, bool Rt, via_offset_t Vias, bool Project,
+          typename AlgoState>
 routing_result pong(timetable const& tt,
                     rt_timetable const* rtt,
                     search_state& s_state,
@@ -71,11 +72,12 @@ routing_result pong(timetable const& tt,
   using ping_algo_t =
       std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
                          gpu::gpu_raptor<SearchDir, false>,
-                         raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>>;
+                         raptor<SearchDir, Rt, Vias, search_mode::kOneToOne,
+                                Project>>;
   using pong_algo_t = std::conditional_t<
       std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
       gpu::gpu_raptor<flip(SearchDir), kPruneWithPingBounds>,
-      raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>>;
+      raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne, Project>>;
 
   s_state.results_.clear();
   q.sanitize(tt);
@@ -488,12 +490,19 @@ routing_result pong_with_vias(timetable const& tt,
                               AlgoState& r_state,
                               query q,
                               std::optional<std::chrono::seconds> timeout) {
+  // a profile without hubs cannot represent the split: its virtual locations
+  // are projected onto their stop (see raptor.h)
+  auto const project = tt.locations_.hub_in_[q.prf_idx_].size() == 0U;
   if (rtt == nullptr) {
-    return pong<SearchDir, false, Vias>(tt, rtt, s_state, r_state, std::move(q),
-                                        timeout);
+    return project ? pong<SearchDir, false, Vias, true>(
+                         tt, rtt, s_state, r_state, std::move(q), timeout)
+                   : pong<SearchDir, false, Vias, false>(
+                         tt, rtt, s_state, r_state, std::move(q), timeout);
   } else {
-    return pong<SearchDir, true, Vias>(tt, rtt, s_state, r_state, std::move(q),
-                                       timeout);
+    return project ? pong<SearchDir, true, Vias, true>(
+                         tt, rtt, s_state, r_state, std::move(q), timeout)
+                   : pong<SearchDir, true, Vias, false>(
+                         tt, rtt, s_state, r_state, std::move(q), timeout);
   }
 }
 

@@ -62,6 +62,12 @@ void dijkstra(timetable const& tt,
     auto const lb = dists[i];
     for (auto const c : tt.locations_.children_[location_idx_t{i}]) {
       dists[to_idx(c)] = std::min(lb, dists[to_idx(c)]);
+      // Virtual locations hang off the platform, so they are two levels below
+      // the station the lower bound was computed for. Propagating only one
+      // level leaves them at kUnreachable and the search discards labels there.
+      for (auto const cc : tt.locations_.children_[c]) {
+        dists[to_idx(cc)] = std::min(lb, dists[to_idx(cc)]);
+      }
     }
   }
 }

@@ -26,7 +26,7 @@ void generate_ontrip_train_query(timetable const& tt,
     auto const l_idx = stop{location_seq[i]}.location_idx();
     auto const arrival_time_with_transfer =
         tt.event_time(t, i, event_type::kArr) +
-        tt.locations_.transfer_time_[l_idx];
+        tt.locations_.min_transfer_time(q.prf_idx_, l_idx);
     q.start_.emplace_back(l_idx, arrival_time_with_transfer - time_at_first,
                           static_cast<std::uint8_t>(i));
     trace(

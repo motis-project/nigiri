@@ -4,6 +4,13 @@
 
 namespace nigiri::loader {
 
+// Hubs for a profile whose walking layer is computed elsewhere (street
+// routing): the rule-derived hubs plus walks built from `fps`, which may gain
+// the pairs no hub covers.
+void build_profile_hubs(timetable&,
+                        profile_idx_t,
+                        vector_map<location_idx_t, std::vector<footpath>>&);
+
 struct finalize_options {
   bool adjust_footpaths_{true};
   bool merge_dupes_intra_src_{true};
