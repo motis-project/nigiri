@@ -34,6 +34,27 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       }
     }
 
+    // Transfers a hub stands for are never materialized as footpaths (see
+    // raptor expand_hubs). The lower bound has to know them anyway: a missing
+    // edge makes the bound too large, and the search then prunes labels that
+    // could still reach the destination.
+    auto const& hubs_by_loc = SearchDir == direction::kForward
+                                  ? tt.locations_.hub_out_by_loc_[prf_idx]
+                                  : tt.locations_.hub_in_by_loc_[prf_idx];
+    if (hubs_by_loc.size() != 0U) {
+      for (auto const h : hubs_by_loc[l]) {
+        auto const d = tt.locations_.hub_time_[prf_idx][h];
+        for (auto const m : (SearchDir == direction::kForward
+                                 ? tt.locations_.hub_in_[prf_idx]
+                                 : tt.locations_.hub_out_[prf_idx])[h]) {
+          auto const target = tt.locations_.get_root_idx(m);
+          if (target != parent_l) {
+            update_weight(target, d);
+          }
+        }
+      }
+    }
+
     for (auto const& r : tt.location_routes_[l]) {
       if ((prf_idx == kCarProfile && !tt.is_flag_set(kCarsAllowed, r)) ||
           (prf_idx == kBikeProfile && !tt.is_flag_set(kBikesAllowed, r))) {

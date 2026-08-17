@@ -603,6 +603,17 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
         }
         m = std::move(shrunk);
       };
+      // ids_ is per location too, and build_lb_graph iterates *its* size -
+      // leaving it long makes every consumer read past the other arrays
+      {
+        auto shrunk = vecvec<location_idx_t, char>{};
+        for (auto l = location_idx_t{0U}; l != location_idx_t{n_left}; ++l) {
+          shrunk.emplace_back(tt.locations_.ids_[l].view());
+        }
+        tt.locations_.ids_ = std::move(shrunk);
+      }
+      tt.locations_.ticketing_unavailable_.resize(n_left);
+
       shrink(tt.locations_.children_);
       shrink(tt.locations_.equivalences_);
       shrink(tt.locations_.preprocessing_footpaths_out_);
@@ -623,6 +634,9 @@ void read_transfers(timetable& tt,
                     stops_map_t const& stops,
                     route_map_t const& routes,
                     trip_data& trips) {
+  // Capture transfer times before this feed's rules modify them.
+  tt.locations_.sync_base_transfer_time();
+
   if (file_content.empty()) {
     return;
   }
@@ -658,6 +672,17 @@ void read_transfers(timetable& tt,
   };
 
   auto rules = rule_vec_t{};
+
+  // Profiles that ignore the qualified rules still honor the plain minimum
+  // transfer time of a stop: it is interchange time, not a walk, and street
+  // routing cannot supply it. Folded like a loader without rule support does
+  // it - minimum over every reflexive row, qualified or not, replacing the
+  // default rather than capping it, and rounded down to whole minutes.
+  constexpr auto const kNoRule = duration_t::max();
+  auto reflexive_min = vector_map<location_idx_t, duration_t>{};
+  reflexive_min.resize(tt.n_locations());
+  std::fill(begin(reflexive_min), end(reflexive_min), kNoRule);
+
   utl::line_range{
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_transfer>()  //
@@ -676,6 +701,11 @@ void read_transfers(timetable& tt,
         auto const r = rule{t, type, stops, routes, trips};
         if (!r.ok_) {
           return;
+        }
+
+        if (!r.forbidden_ && r.from_stop_ == r.to_stop_) {
+          auto const d = duration_t{t.min_transfer_time_->value_or(0) / 60};
+          reflexive_min[r.from_stop_] = std::min(reflexive_min[r.from_stop_], d);
         }
 
         // a recommended transfer without a time is only a preference, it
@@ -711,6 +741,14 @@ void read_transfers(timetable& tt,
           rules.emplace_back(r);
         }
       });
+
+  for (auto l = location_idx_t{0U}; l != location_idx_t{reflexive_min.size()};
+       ++l) {
+    if (reflexive_min[l] != kNoRule) {
+      tt.locations_.base_transfer_time_[l] = u8_minutes{
+          static_cast<std::uint8_t>(std::clamp<int>(reflexive_min[l].count(), 0, 255))};
+    }
+  }
 
   fold_pair_defaults(tt, rules);
   if (!rules.empty()) {
