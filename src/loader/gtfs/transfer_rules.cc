@@ -201,6 +201,11 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
         if (!t.flex_stops_.empty()) {
           return;
         }
+        // A trip that never runs produces no transports, so splitting its
+        // stops off would leave virtual locations nothing ever reaches.
+        if (t.service_ != nullptr && t.service_->none()) {
+          return;
+        }
         auto const n_stops = static_cast<stop_idx_t>(t.stop_seq_.size());
         for (auto pos = stop_idx_t{0U}; pos != n_stops; ++pos) {
           if (covers(tt, rule_stop, stop{t.stop_seq_[pos]}.location_idx())) {
