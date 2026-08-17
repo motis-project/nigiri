@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <algorithm>
+#include <optional>
 #include <ranges>
 #include <vector>
 
@@ -257,24 +258,27 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
 
           // Rules where from == to side (e.g. transfers from route R -> R)
           // end up on the same virt node -> set transfer_time to self.
-          auto reflexive_self_rules =
-              utl::pairwise(sig)  //
-              | std::views::filter([](auto const& sides) {
-                  auto const& [from, to] = sides;
-                  return rule_of(from) == rule_of(to);
-                })  //
-              | std::views::transform([&](auto const& sides) {
-                  auto const rule_idx = rule_of(std::get<0>(sides));
-                  auto const& r = rules[rule_idx];
-                  return candidate{.rank_ = rank(r.get_specificity(),
-                                                 static_cast<std::uint8_t>(
-                                                     (r.from_stop_ == base) +
-                                                     (r.to_stop_ == base))),
-                                   .rule_idx_ = rule_idx};
-                });
-          if (auto const it = std::ranges::max_element(reflexive_self_rules);
-              it != std::ranges::end(reflexive_self_rules)) {
-            l.transfer_time_ = rules[(*it).rule_idx_].duration();
+          auto best = std::optional<candidate>{};
+          for (auto i = std::size_t{1U}; i < sig.size(); ++i) {
+            auto const from = sig[i - 1U];
+            auto const to = sig[i];
+            if (rule_of(from) != rule_of(to)) {
+              continue;
+            }
+            auto const rule_idx = rule_of(from);
+            auto const& r = rules[rule_idx];
+            auto const c =
+                candidate{.rank_ = rank(r.get_specificity(),
+                                        static_cast<std::uint8_t>(
+                                            (r.from_stop_ == base) +
+                                            (r.to_stop_ == base))),
+                          .rule_idx_ = rule_idx};
+            if (!best.has_value() || *best < c) {
+              best = c;
+            }
+          }
+          if (best.has_value()) {
+            l.transfer_time_ = rules[best->rule_idx_].duration();
           }
 
           auto const v = location_idx_t{cista::to_idx(first_virt) +
@@ -409,37 +413,68 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
       }
     }
 
-    auto const key_of = [&](location_idx_t const v) {
-      auto h = cista::hash_combine(
-          cista::BASE_HASH,
-          static_cast<std::uint64_t>(tt.locations_.transfer_time_[v].count()));
-      for (auto* m : {&rows, &cols}) {
-        if (auto const it = m->find(v); it != end(*m)) {
-          utl::sort(it->second);
-          for (auto const& [t, d] : it->second) {
-            h = cista::hash_combine(cista::hash_combine(h, t),
-                                    static_cast<std::uint64_t>(d));
+    // Cells that two candidates write about each other are not an observable
+    // that tells them apart: merged, the two become one node and the pair
+    // becomes a self-edge, which the route scan already applies as that node's
+    // own transfer time. That holds only if the pair says exactly that, so a
+    // pair stating anything else keeps them apart.
+    auto const cells_without = [&](auto const& m, location_idx_t const v,
+                                   location_idx_t const partner) {
+      auto out = std::vector<std::pair<std::uint32_t, std::int32_t>>{};
+      if (auto const it = m.find(v); it != end(m)) {
+        for (auto const& [t, d] : it->second) {
+          if (t != to_idx(partner)) {
+            out.emplace_back(t, d);
           }
         }
-        h = cista::hash_combine(h, 0x9e3779b9U);
       }
-      if (auto const it = hub_mem.find(v); it != end(hub_mem)) {
-        utl::sort(it->second);
-        for (auto const x : it->second) {
-          h = cista::hash_combine(h, x);
+      utl::sort(out);
+      return out;
+    };
+    auto const pair_is_own_time = [&](location_idx_t const a,
+                                      location_idx_t const b) {
+      auto const own = tt.locations_.transfer_time_[a].count();
+      auto const states_own_time = [&](location_idx_t const x,
+                                       location_idx_t const y) {
+        auto const it = rows.find(x);
+        if (it == end(rows)) {
+          return true;
         }
+        for (auto const& [t, d] : it->second) {
+          if (t == to_idx(y) && d != own) {
+            return false;
+          }
+        }
+        return true;
+      };
+      return states_own_time(a, b) && states_own_time(b, a);
+    };
+    auto const hubs_of = [&](location_idx_t const v) {
+      auto out = std::vector<std::uint32_t>{};
+      if (auto const it = hub_mem.find(v); it != end(hub_mem)) {
+        out = it->second;
       }
-      return h;
+      utl::sort(out);
+      return out;
+    };
+    auto const same_node = [&](location_idx_t const a, location_idx_t const b) {
+      return tt.locations_.transfer_time_[a] ==
+                 tt.locations_.transfer_time_[b] &&
+             hubs_of(a) == hubs_of(b) && pair_is_own_time(a, b) &&
+             cells_without(rows, a, b) == cells_without(rows, b, a) &&
+             cells_without(cols, a, b) == cells_without(cols, b, a);
     };
 
-    auto representative =
-        hash_map<std::pair<location_idx_t, cista::hash_t>, location_idx_t>{};
+    auto reps = hash_map<location_idx_t, std::vector<location_idx_t>>{};
     auto remap = hash_map<location_idx_t, location_idx_t>{};
     for (auto v = first_virt; v != n; ++v) {
-      auto const [it, is_new] = representative.emplace(
-          std::pair{tt.locations_.parents_[v], key_of(v)}, v);
-      if (!is_new) {
-        remap.emplace(v, it->second);
+      auto& base_reps = reps[tt.locations_.parents_[v]];
+      auto const it = utl::find_if(
+          base_reps, [&](location_idx_t const r) { return same_node(v, r); });
+      if (it == end(base_reps)) {
+        base_reps.push_back(v);
+      } else {
+        remap.emplace(v, *it);
       }
     }
 
