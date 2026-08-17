@@ -857,10 +857,16 @@ void reconstruct_journey_with_vias(timetable const& tt,
       // A projected profile relaxes an edge that ends at a virtual location
       // onto the stop it was split off, so the edges arriving at `l` are its
       // own plus those of its virtual children.
+      static auto const rev = std::getenv("NIGIRI_REC_REVERSE") != nullptr;
       auto const try_fps = [&](location_idx_t const x)
           -> std::optional<std::pair<journey::leg, journey::leg>> {
-        auto const fps = kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][x]
-                              : tt.locations_.footpaths_out_[q.prf_idx_][x];
+        auto const fps_fwd = kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][x]
+                                  : tt.locations_.footpaths_out_[q.prf_idx_][x];
+        auto fps_vec = std::vector<footpath>{begin(fps_fwd), end(fps_fwd)};
+        if (rev) {
+          std::reverse(begin(fps_vec), end(fps_vec));
+        }
+        auto const& fps = fps_vec;
         for (auto const& fp : fps) {
           auto fp_legs = check_fp(k, l, curr_time, fp, true, false);
           if (fp_legs.has_value()) {
@@ -870,6 +876,10 @@ void reconstruct_journey_with_vias(timetable const& tt,
         return std::nullopt;
       };
       if (auto fp_legs = try_fps(l); fp_legs.has_value()) {
+        if (std::getenv("NIGIRI_REC_TRACE") != nullptr) {
+          fmt::print("FPOK k={} l={} curr={}\n", k, to_idx(l),
+                     delta_to_unix(base, curr_time));
+        }
         return std::move(*fp_legs);
       }
       if (q.prf_idx_ != kDefaultProfile) {
@@ -886,11 +896,20 @@ void reconstruct_journey_with_vias(timetable const& tt,
     {  // hub-derived transfers: l is an out-target of hub h fed by s
        // -> pair (s -> l) at w_in + w_out (see raptor expand_hubs)
       auto legs = std::optional<std::pair<journey::leg, journey::leg>>{};
+      auto hub_fp = footpath{};
       for_each_hub_source<SearchDir>(tt, q.prf_idx_, l, [&](footpath const fp) {
         legs = check_fp(k, l, curr_time, fp, true, false);
+        if (legs.has_value()) {
+          hub_fp = fp;
+        }
         return !legs.has_value();
       });
       if (legs.has_value()) {
+        if (std::getenv("NIGIRI_REC_TRACE") != nullptr) {
+          fmt::print("HUBSRC k={} l={} <- {} ({} min) explained by hub\n", k,
+                     to_idx(l), to_idx(hub_fp.target()),
+                     hub_fp.duration().count());
+        }
         return std::move(*legs);
       }
     }
