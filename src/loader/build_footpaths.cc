@@ -226,7 +226,14 @@ void collect_members(timetable const& tt,
 // would, and it is the only place that decides.
 constexpr auto const kMinHubPairs = std::size_t{4U};
 
-void build_walk_hubs(timetable& tt, bool const adjust_footpaths) {
+template <typename Fps, typename AddExtra>
+void build_walk_hubs_impl(timetable& tt,
+                          bool const adjust_footpaths,
+                          Fps&& fps_of,
+                          AddExtra&& add_extra,
+                          vecvec<hub_idx_t, location_idx_t>& walk_hub_in,
+                          vecvec<hub_idx_t, location_idx_t>& walk_hub_out,
+                          vector_map<hub_idx_t, duration_t>& walk_hub_time) {
   auto const idx = rule_index{tt};
   auto const has_rule = [&](location_idx_t const l, footpath const fp) {
     return to_idx(l) < tt.locations_.transfer_rule_fps_.size() &&
@@ -242,6 +249,9 @@ void build_walk_hubs(timetable& tt, bool const adjust_footpaths) {
   auto egress = std::vector<location_idx_t>{};
   auto named = hash_set<location_idx_t>{};
 
+  auto& w_in = walk_hub_in;
+  auto& w_out = walk_hub_out;
+  auto& w_time = walk_hub_time;
   auto const emit = [&](std::vector<location_idx_t> const& ingress,
                         std::vector<location_idx_t> const& eg,
                         duration_t const d) {
@@ -258,9 +268,9 @@ void build_walk_hubs(timetable& tt, bool const adjust_footpaths) {
       }
       return;
     }
-    tt.locations_.hub_in_[kDefaultProfile].emplace_back(ingress);
-    tt.locations_.hub_out_[kDefaultProfile].emplace_back(eg);
-    tt.locations_.hub_time_[kDefaultProfile].push_back(d);
+    w_in.emplace_back(ingress);
+    w_out.emplace_back(eg);
+    w_time.push_back(d);
   };
 
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
@@ -268,9 +278,14 @@ void build_walk_hubs(timetable& tt, bool const adjust_footpaths) {
 
     // group the footpaths by the duration they will end up with
     auto by_duration = std::map<duration_t, std::vector<location_idx_t>>{};
-    for (auto const& fp : tt.locations_.preprocessing_footpaths_out_[l]) {
+    for (auto const& fp : fps_of(l)) {
       if (fp.target() == l) {
         continue;
+      }
+      if (idx.ruled(l, fp.target())) {
+        continue;  // a rule states this pair; it is not a walk and must not
+                   // shape a rectangle - the layer may already contain it
+                   // (street routing merges the rules before this runs)
       }
       auto d = fp.duration();
       if (adjust_footpaths && !has_rule(l, fp)) {
@@ -352,8 +367,80 @@ void build_walk_hubs(timetable& tt, bool const adjust_footpaths) {
 
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
     for (auto const& fp : extra[l]) {
-      tt.locations_.preprocessing_footpaths_out_[l].emplace_back(fp);
+      add_extra(l, fp);
     }
+  }
+}
+
+void build_walk_hubs(timetable& tt,
+                     bool const adjust_footpaths,
+                     vecvec<hub_idx_t, location_idx_t>& walk_hub_in,
+                     vecvec<hub_idx_t, location_idx_t>& walk_hub_out,
+                     vector_map<hub_idx_t, duration_t>& walk_hub_time) {
+  build_walk_hubs_impl(
+      tt, adjust_footpaths,
+      [&](location_idx_t const l) -> decltype(auto) {
+        return tt.locations_.preprocessing_footpaths_out_[l];
+      },
+      [&](location_idx_t const l, footpath const fp) {
+        tt.locations_.preprocessing_footpaths_out_[l].emplace_back(fp);
+      },
+      walk_hub_in, walk_hub_out, walk_hub_time);
+}
+
+// A profile whose walking layer somebody else computes (street routing) gets
+// its hubs here: the rule-derived prefix of the default profile holds in every
+// profile, and the walks are built from that profile's own footpaths. Called
+// with the lists still pending, so the pairs no hub covers can still be added.
+void build_profile_hubs(timetable& tt,
+                        profile_idx_t const prf,
+                        vector_map<location_idx_t, std::vector<footpath>>& fps) {
+  auto& in = tt.locations_.hub_in_[prf];
+  auto& out = tt.locations_.hub_out_[prf];
+  auto& time = tt.locations_.hub_time_[prf];
+  in.clear();
+  out.clear();
+  time.clear();
+  for (auto h = hub_idx_t{0U}; h != hub_idx_t{tt.locations_.n_rule_hubs_};
+       ++h) {
+    auto const i = tt.locations_.hub_in_[kDefaultProfile][h];
+    auto const o = tt.locations_.hub_out_[kDefaultProfile][h];
+    in.emplace_back(i);
+    out.emplace_back(o);
+    time.push_back(tt.locations_.hub_time_[kDefaultProfile][h]);
+  }
+
+  auto w_in = vecvec<hub_idx_t, location_idx_t>{};
+  auto w_out = vecvec<hub_idx_t, location_idx_t>{};
+  auto w_time = vector_map<hub_idx_t, duration_t>{};
+  build_walk_hubs_impl(
+      tt, false,
+      [&](location_idx_t const l) -> decltype(auto) { return fps[l]; },
+      [&](location_idx_t const l, footpath const fp) {
+        fps[l].emplace_back(fp);
+      },
+      w_in, w_out, w_time);
+  for (auto h = hub_idx_t{0U}; h != hub_idx_t{w_in.size()}; ++h) {
+    in.emplace_back(w_in[h]);
+    out.emplace_back(w_out[h]);
+    time.push_back(w_time[h]);
+  }
+
+  auto in_by_loc = mutable_fws_multimap<location_idx_t, hub_idx_t>{};
+  auto out_by_loc = mutable_fws_multimap<location_idx_t, hub_idx_t>{};
+  for (auto h = hub_idx_t{0U}; h != hub_idx_t{in.size()}; ++h) {
+    for (auto const l : in[h]) {
+      in_by_loc[l].push_back(h);
+    }
+    for (auto const l : out[h]) {
+      out_by_loc[l].push_back(h);
+    }
+  }
+  tt.locations_.hub_in_by_loc_[prf].clear();
+  tt.locations_.hub_out_by_loc_[prf].clear();
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    tt.locations_.hub_in_by_loc_[prf].emplace_back(in_by_loc[l]);
+    tt.locations_.hub_out_by_loc_[prf].emplace_back(out_by_loc[l]);
   }
 }
 
@@ -572,7 +659,10 @@ void write_footpaths(timetable& tt, bool const adjust_footpaths) {
 // exact value its own rule overrides. Nothing bars it from a to list, because
 // a transfer costs what the rule for that pair says, and its own rule speaks
 // only for the pair with itself.
-void build_hubs(timetable& tt) {
+void build_hubs(timetable& tt,
+                vecvec<hub_idx_t, location_idx_t> const& walk_hub_in,
+                vecvec<hub_idx_t, location_idx_t> const& walk_hub_out,
+                vector_map<hub_idx_t, duration_t> const& walk_hub_time) {
   auto const n = tt.n_locations();
 
   // Which members a slower transfer starts at / leads to. Taken from the
@@ -689,6 +779,17 @@ void build_hubs(timetable& tt) {
 
     add_hub(unrestricted_in, unrestricted_out, d);
     add_hub(restricted_in, restricted_out, d);
+  }
+
+  // the walks come last: everything before them is rule-derived and therefore
+  // the same in every profile, so a profile with its own walking layer can
+  // take that prefix and append its own
+  tt.locations_.n_rule_hubs_ = static_cast<std::uint32_t>(in.size());
+  for (auto h = hub_idx_t{0U}; h != hub_idx_t{walk_hub_in.size()}; ++h) {
+    auto const w_i = walk_hub_in[h];
+    auto const w_o = walk_hub_out[h];
+    add_hub({w_i.data(), w_i.size()}, {w_o.data(), w_o.size()},
+            walk_hub_time[h]);
   }
 
   if (std::getenv("NIGIRI_HUB_STATS") != nullptr) {
@@ -883,6 +984,13 @@ void dump_edges(timetable const& tt, std::string const& spec) {
 }
 
 void build_footpaths(timetable& tt, finalize_options const opt) {
+  // Covers locations created after the last transfers.txt was read (virtual
+  // locations, locations from feeds without transfers.txt).
+  tt.locations_.sync_base_transfer_time();
+
+  auto walk_hub_in = vecvec<hub_idx_t, location_idx_t>{};
+  auto walk_hub_out = vecvec<hub_idx_t, location_idx_t>{};
+  auto walk_hub_time = vector_map<hub_idx_t, duration_t>{};
   link_nearby_stations(tt, opt.beeline_footpaths_);
   if (opt.beeline_footpaths_) {
     add_equivalence_footpaths(tt, opt.max_footpath_length_);
@@ -920,16 +1028,37 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
   if (share) {
     // The rules themselves are ordinary footpaths - only the walks of the
     // virtual locations are left to the hubs.
-    build_walk_hubs(tt, opt.adjust_footpaths_);
+    build_walk_hubs(tt, opt.adjust_footpaths_, walk_hub_in, walk_hub_out,
+                    walk_hub_time);
     apply_transfer_rules(tt, hub_ify_rule_cells(tt));
   }
   write_footpaths(tt, opt.adjust_footpaths_);
-  build_hubs(tt);
+  build_hubs(tt, walk_hub_in, walk_hub_out, walk_hub_time);
   if (auto const* spec = std::getenv("NIGIRI_EDGE_DUMP"); spec != nullptr) {
     dump_edges(tt, spec);
   }
   if (std::getenv("NIGIRI_VIRT_MERGE") != nullptr) {
     measure_virt_merge(tt);
+  }
+  if (std::getenv("NIGIRI_SIZE_REPORT") != nullptr) {
+    fmt::print("locations={}\n", tt.n_locations());
+    for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
+      fmt::print(
+          "prf={} fp_out={}/{} fp_in={}/{} hubs={} hub_in={}/{} "
+          "hub_out={}/{} in_by_loc={}/{} out_by_loc={}/{}\n",
+          p, tt.locations_.footpaths_out_[p].size(),
+          tt.locations_.footpaths_out_[p].data_.size(),
+          tt.locations_.footpaths_in_[p].size(),
+          tt.locations_.footpaths_in_[p].data_.size(),
+          tt.locations_.hub_time_[p].size(), tt.locations_.hub_in_[p].size(),
+          tt.locations_.hub_in_[p].data_.size(),
+          tt.locations_.hub_out_[p].size(),
+          tt.locations_.hub_out_[p].data_.size(),
+          tt.locations_.hub_in_by_loc_[p].size(),
+          tt.locations_.hub_in_by_loc_[p].data_.size(),
+          tt.locations_.hub_out_by_loc_[p].size(),
+          tt.locations_.hub_out_by_loc_[p].data_.size());
+    }
   }
 }
 

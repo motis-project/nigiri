@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <cstdlib>
 #include <limits>
 #include <span>
 #include <vector>
@@ -24,15 +25,42 @@ namespace nigiri::routing {
 
 enum class search_mode { kOneToOne, kOneToAll };
 
+// A profile that ignores transfers.txt has no use for the virtual locations:
+// they exist only to tell apart trips a rule speaks about, and no rule speaks.
+// Such a profile projects them onto the stop they were split off - labels,
+// footpaths and hubs then only ever see real stops, and the search behaves as
+// if the split had never happened. The default profile projects nothing, and
+// the identity leaves no trace in the generated code.
 template <direction SearchDir,
           bool Rt,
           via_offset_t Vias,
-          search_mode SearchMode>
+          search_mode SearchMode,
+          bool ProjectVirts = false>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
 
   static constexpr bool kUseLowerBounds = true;
+
+  location_idx_t project(location_idx_t const l) const {
+    if constexpr (ProjectVirts) {
+      return tt_.locations_.types_[l] == location_type::kVirt
+                 ? tt_.locations_.parents_[l]
+                 : l;
+    } else {
+      return l;
+    }
+  }
+
+  // Profiles that project virtual locations away also ignore the same-stop
+  // transfer times from transfers.txt (they route on physical times only).
+  u8_minutes min_transfer_time(location_idx_t const l) const {
+    if constexpr (ProjectVirts) {
+      return tt_.locations_.base_transfer_time_[project(l)];
+    } else {
+      return tt_.locations_.transfer_time_[l];
+    }
+  }
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
@@ -205,7 +233,11 @@ struct raptor {
     }
   }
 
-  void add_start(location_idx_t const l, unixtime_t const t) {
+  void add_start(location_idx_t const l_in, unixtime_t const t) {
+    // a start that resolves to a virtual location has to land where this
+    // profile keeps its labels, or the scan reads an empty slot and never
+    // boards
+    auto const l = project(l_in);
     auto const v = (Vias != 0 && is_via_[0][to_idx(l)]) ? 1U : 0U;
     trace_upd(
         "adding start [fwd={}] {}: {}, v={} [current: best={}, round={} => "
@@ -248,6 +280,19 @@ struct raptor {
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
           any_marked = true;
           state_.route_mark_.set(to_idx(r), true);
+        }
+        if constexpr (ProjectVirts) {
+          // the label sits on the stop, but the transports are bound to its
+          // virtual locations: their routes have to be found from here, or
+          // this profile never scans them
+          for (auto const c : tt_.locations_.children_[location_idx_t{i}]) {
+            if (tt_.locations_.types_[c] == location_type::kVirt) {
+              for (auto const& r : tt_.location_routes_[c]) {
+                any_marked = true;
+                state_.route_mark_.set(to_idx(r), true);
+              }
+            }
+          }
         }
         if constexpr (Rt) {
           for (auto const& rt_t :
@@ -503,7 +548,7 @@ private:
     auto const transfer = dir(adjusted_transfer_time(
         transfer_time_settings_,
         static_cast<int>(
-            tt_.locations_.transfer_time_[location_idx_t{l}].count())));
+            min_transfer_time(location_idx_t{l}).count())));
     return is_better_or_eq(t, row[l][slot] + transfer + dir(stays_l));
   }
 
@@ -720,8 +765,7 @@ private:
                 ? 0
                 : dir(adjusted_transfer_time(
                       transfer_time_settings_,
-                      tt_.locations_.transfer_time_[location_idx_t{i}]
-                          .count()));
+                      min_transfer_time(location_idx_t{i}).count()));
         auto const fp_target_time =
             clamp(tmp_time + transfer_time + dir(stay.count()));
 
@@ -892,7 +936,7 @@ private:
       for (auto const& fp : fps) {
         ++stats_.n_footpaths_visited_;
 
-        auto const target = to_idx(fp.target());
+        auto const target = to_idx(project(fp.target()));
 
         for (auto v = 0U; v != Vias + 1; ++v) {
           auto const tmp_time = tmp_[i][v];
@@ -1006,7 +1050,7 @@ private:
             SearchDir>(fps, to_unix(tmp_time), [&](footpath const fp) {
           ++stats_.n_footpaths_visited_;
 
-          auto const target = to_idx(fp.target());
+          auto const target = to_idx(project(fp.target()));
 
           auto const start_is_via =
               v != Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
@@ -1210,7 +1254,7 @@ private:
       auto const stop_idx =
           static_cast<stop_idx_t>(kFwd ? i : n_stops - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
-      auto const l_idx = cista::to_idx(stp.location_idx());
+      auto const l_idx = cista::to_idx(project(stp.location_idx()));
       auto const is_first = i == 0U;
       auto const is_last = i == n_stops - 1U;
 
@@ -1322,7 +1366,7 @@ private:
       auto const stop_idx =
           static_cast<stop_idx_t>(kFwd ? i : n_stops - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
-      auto const l_idx = cista::to_idx(stp.location_idx());
+      auto const l_idx = cista::to_idx(project(stp.location_idx()));
       auto const is_first = i == 0U;
       auto const is_last = i == n_stops - 1U;
 
@@ -1457,7 +1501,7 @@ private:
             is_better_or_eq(prev_round_time, et_time_at_stop)) {
           auto const [day, mam] = split(prev_round_time);
           auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
-                                                     stp.location_idx());
+                                                     project(stp.location_idx()));
           current_best[v] =
               get_best(current_best[v], best_[l_idx][v], tmp_[l_idx][v]);
           if (new_et.is_valid() &&
