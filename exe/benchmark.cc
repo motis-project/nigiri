@@ -578,6 +578,23 @@ int main(int argc, char* argv[]) {
         }
       }
     }
+    // incoming: sources that reach l, by hub and by stored footpath
+    for (auto h = hub_idx_t{0U};
+         h != hub_idx_t{tt.locations_.hub_time_[kDefaultProfile].size()}; ++h) {
+      for (auto const v : tt.locations_.hub_out_[kDefaultProfile][h]) {
+        if (v != l) {
+          continue;
+        }
+        for (auto const u : tt.locations_.hub_in_[kDefaultProfile][h]) {
+          fmt::print("  in-hub{} <- {} ({} min)\n", to_idx(h), to_idx(u),
+                     tt.locations_.hub_time_[kDefaultProfile][h].count());
+        }
+      }
+    }
+    for (auto const& fp : tt.locations_.footpaths_in_[kDefaultProfile][l]) {
+      fmt::print("  in-fp <- {} ({} min)\n", to_idx(fp.target()),
+                 fp.duration().count());
+    }
     return 0;
   }
   if (auto const* id = std::getenv("NIGIRI_FP_DUMP"); id != nullptr &&
