@@ -632,7 +632,7 @@ struct raptor_impl {
           // intermodal egress (former update_intermodal_footpaths)
           if (intermodal && dist_to_end_[my_i] != kUnreachable) {
             auto const end_time = clamp(tmp_time + dir(dist_to_end_[my_i]));
-            if (is_better(end_time, t_at_dest)) {
+            if (is_better_loose(end_time, t_at_dest)) {
               round_times_.update_min(
                   k, kIntermodalTarget, Vias, end_time,
                   bc /* write breadcrumb of last arriving transport */);
