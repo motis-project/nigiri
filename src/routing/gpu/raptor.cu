@@ -768,6 +768,10 @@ __global__ void fill_bounds_kernel(std::uint64_t const* const round_times,
   auto const gid = get_global_thread_id();
   auto const stride = get_global_stride();
   for (auto l = gid; l < n_locations; l += stride) {
+    // The intermodal target is one index standing for two different things:
+    // the query's destination while the ping runs, its start while the pong
+    // runs. Bounding the pong with the ping's arrival there prunes against
+    // the wrong end of the journey, so this location gets no bound.
     if (td_stops != nullptr && test_bit(td_stops, l)) {
       // Stop has td_footpaths -> no bounds.
       constexpr auto const kPassAll = PingDir == direction::kForward
@@ -852,9 +856,25 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
                                                 pareto_set<journey>& results) {
   auto& s = *state_.impl_;
 
+  auto const dbg = std::getenv("NIGIRI_PONG_DEBUG") != nullptr;
+  auto const n_before = results.size();
+  if (dbg) {
+    std::printf(
+        "gpu execute dir=%s start=%lld max_tr=%u worst=%lld n_starts=%zu "
+        "intermodal_dest=%d\n",
+        kFwd ? "fwd" : "bwd",
+        static_cast<long long>(start_time.time_since_epoch().count()),
+        static_cast<unsigned>(max_transfers),
+        static_cast<long long>(worst_time_at_dest.time_since_epoch().count()),
+        starts_.size(), s.is_intermodal_dest_[kDirIdx] ? 1 : 0);
+  }
+
   // No start = nothing to do.
   // guard against UB: starts_pinned with size=0 -> data=NULL -> memcpy to NULL
   if (starts_.empty()) {
+    if (dbg) {
+      std::printf("gpu execute: no starts -> return\n");
+    }
     return;
   }
 
@@ -1158,6 +1178,11 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     // is_reconstructed_ stays false
     // -> only reconstruct() called by pong/search.h might set it to true
     results.add(std::move(j));
+  }
+
+  if (dbg) {
+    std::printf("gpu execute done: results %zu -> %zu\n", n_before,
+                results.size());
   }
 }
 
