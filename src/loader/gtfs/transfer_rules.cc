@@ -224,7 +224,13 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
   }
 
   // Update all trip stops to virtual locations.
+  //
+  // Virtual locations are staged rather than registered right away: they get
+  // the index they would receive on registration, everything below works with
+  // that index, and only the survivors are written into the timetable at the
+  // end. Nothing has to be renumbered afterwards.
   auto const first_virt = location_idx_t{tt.n_locations()};
+  auto staged = std::vector<location>{};
   auto virt_locs =
       hash_map<std::pair<location_idx_t, signature_t>, location_idx_t>{};
   auto side_virts = hash_map<sided_rule_idx_t, std::vector<location_idx_t>>{};
@@ -266,7 +272,10 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
             l.transfer_time_ = rules[(*it).rule_idx_].duration();
           }
 
-          auto const v = register_location(tt, l);
+          auto const v = location_idx_t{cista::to_idx(first_virt) +
+                                       static_cast<std::uint32_t>(
+                                           staged.size())};
+          staged.push_back(l);
           tt.locations_.children_[base].emplace_back(v);
 
           for (auto const side : sig) {
@@ -280,6 +289,17 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
         stop{virt, s.in_allowed(), s.out_allowed(), s.in_allowed_wheelchair(),
              s.out_allowed_wheelchair()}
             .value();
+  }
+
+  // Materialize the staged locations. They are appended in staging order, so
+  // the indices handed out above are the ones they end up with.
+  for (auto const& l : staged) {
+    auto const registered = register_location(tt, l);
+    utl::verify(cista::to_idx(registered) ==
+                    cista::to_idx(first_virt) +
+                        static_cast<std::uint32_t>(&l - staged.data()),
+                "virtual location {} was not registered at its staged index",
+                registered);
   }
 
   // Let the rules compete for specificity on all location pairs they apply to.
