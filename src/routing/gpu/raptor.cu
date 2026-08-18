@@ -25,6 +25,7 @@
 #include "thrust/fill.h"
 #include "thrust/host_vector.h"
 
+#include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/timer.h"
 
@@ -702,14 +703,14 @@ __global__ void transfers_footpaths_kernel(raptor_impl<SearchDir, WithBounds> r,
 
 template <typename Kernel>
 std::pair<int, int> launch_dims(Kernel kernel) {
-  static auto const dims = [&]() {
-    auto blocks = 0;
-    auto threads = 0;
-    // half + quarter benchmarked with less throughput
-    cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
-    return std::pair{blocks, threads};
-  }();
-  return dims;
+  thread_local auto cache = hash_map<void const*, std::pair<int, int>>{};
+  return utl::get_or_create(
+      cache, reinterpret_cast<void const*>(kernel), [&]() {
+        auto blocks = 0;
+        auto threads = 0;
+        cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
+        return std::pair{blocks, threads};
+      });
 }
 
 template <typename Kernel, typename... Args>
