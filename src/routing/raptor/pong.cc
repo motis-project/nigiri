@@ -261,7 +261,9 @@ routing_result pong(timetable const& tt,
       ping.add_start(s.stop_, s.time_at_stop_);
     }
     auto const worst_time_at_dest =
-        start_time + (kFwd ? 1 : -1) * (q.max_travel_time_ + kMinLookAhead);
+        start_time +
+        (kFwd ? 1 : -1) *
+            std::min(q.max_travel_time_ + kMinLookAhead, kMaxTravelTime);
     auto ping_results = pareto_set<journey>{};
     ping.execute(start_time, q.max_transfers_, worst_time_at_dest,
                  ping_results);
