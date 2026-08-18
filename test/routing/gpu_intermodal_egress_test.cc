@@ -95,8 +95,8 @@ TEST(routing, gpu_intermodal_egress_at_bound) {
       // anchored at the departure of the direct journey, so the forward
       // search reports exactly the time the backward run computes - that
       // equality is what the comparison has to accept
-      .start_time_ = interval<unixtime_t>{monday + 9h + 45min,
-                                          monday + 10h + 45min},
+      .start_time_ =
+          interval<unixtime_t>{monday + 9h + 45min, monday + 10h + 45min},
       .start_match_mode_ = routing::location_match_mode::kIntermodal,
       .dest_match_mode_ = routing::location_match_mode::kIntermodal,
       .use_start_footpaths_ = false,
