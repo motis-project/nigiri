@@ -456,6 +456,13 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
       }
     }
   }
+
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    for (auto e : tt.locations_.equivalences_[l]) {
+      connect_by_train_nr(tt, l, e);
+    }
+  }
+
   connect_components(tt, opt.max_footpath_length_, opt.adjust_footpaths_);
   sort_footpaths(tt);
   write_footpaths(tt);
