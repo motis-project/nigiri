@@ -510,9 +510,54 @@ int main(int argc, char* argv[]) {
   std::cout << "loading timetable...\n";
   auto tt = *nigiri::timetable::read(tt_path);
   tt.resolve();
+  if (auto const* id = std::getenv("NIGIRI_FPAT"); id != nullptr) {
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      if (tt.locations_.ids_[l].view() != std::string_view{id}) { continue; }
+      for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
+        if (tt.locations_.footpaths_out_[p].size() <= to_idx(l)) { continue; }
+        auto n = 0U;
+        for (auto const& fp : tt.locations_.footpaths_out_[p][l]) {
+          ++n;
+          if (tt.locations_.ids_[fp.target()].view().find("3000") != std::string_view::npos) {
+            fmt::print("prf={} {} -> {} ({} min)\n", p, id,
+                       tt.locations_.ids_[fp.target()].view(), fp.duration().count());
+          }
+        }
+        fmt::print("prf={} total_out={}\n", p, n);
+      }
+    }
+    return 0;
+  }
+
   fmt::print("timetable: locations={} routes={} transports={}\n",
              tt.n_locations(), tt.n_routes(), tt.transport_traffic_days_.size());
 
+  if (std::getenv("NIGIRI_SCAN_STAT") != nullptr) {
+    auto loc_routes = std::size_t{0U};
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      loc_routes += tt.location_routes_[l].size();
+    }
+    auto seq = std::size_t{0U};
+    for (auto r = route_idx_t{0U}; r != route_idx_t{tt.n_routes()}; ++r) {
+      seq += tt.route_location_seq_[r].size();
+    }
+    fmt::print("locations={} routes={} location_route_entries={} route_stops={}\n",
+               tt.n_locations(), tt.n_routes(), loc_routes, seq);
+    for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
+      auto n = std::size_t{0U}, longest = std::size_t{0U};
+      for (auto l = location_idx_t{0U};
+           l != location_idx_t{tt.locations_.footpaths_out_[p].size()}; ++l) {
+        n += tt.locations_.footpaths_out_[p][l].size();
+        longest = std::max(longest,
+                           static_cast<std::size_t>(
+                               tt.locations_.footpaths_out_[p][l].size()));
+      }
+      if (n != 0U) {
+        fmt::print("  prf={} footpaths={} longest_list={}\n", p, n, longest);
+      }
+    }
+    return 0;
+  }
   if (auto const* id = std::getenv("NIGIRI_FP_DUMP"); id != nullptr &&
       std::string_view{id} == "ALL") {
     auto const nm = [&](location_idx_t const l) {
@@ -747,6 +792,572 @@ int main(int argc, char* argv[]) {
       }
     }
     fmt::print("total empty ids: {} / {}\n", n, tt.n_locations());
+    return 0;
+  }
+  // VIRTSTATS - how many virtual locations carry an own transfer time that
+  // differs from their stop's. Those are the ones the merge cannot fold away
+  // (an unstated pair between them would change price), so they set the floor
+  // on how many locations the search has to walk.
+  if (auto const* spec = std::getenv("NIGIRI_FP_DUMP");
+      spec != nullptr && std::string_view{spec} == "VIRTSTATS") {
+    auto n_virt = 0U, differs = 0U, zero = 0U, no_routes = 0U;
+    auto by_parent = hash_map<location_idx_t, unsigned>{};
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      if (tt.locations_.types_[l] != location_type::kVirt) {
+        continue;
+      }
+      ++n_virt;
+      ++by_parent[tt.locations_.parents_[l]];
+      auto const own = tt.locations_.transfer_time_[l].count();
+      auto const dflt =
+          tt.locations_.transfer_time_[tt.locations_.parents_[l]].count();
+      if (own != dflt) {
+        ++differs;
+      }
+      if (own == 0) {
+        ++zero;
+      }
+      if (tt.location_routes_[l].empty()) {
+        ++no_routes;
+      }
+    }
+    fmt::print(
+        "virts={} own!=stop_default={} own==0={} without_routes={} "
+        "stops_with_virts={}\n",
+        n_virt, differs, zero, no_routes, by_parent.size());
+    // footpath volume per profile, and how much of it survives projecting
+    // virtual locations onto their stop (duplicate targets collapse)
+    for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
+      auto const& fps = tt.locations_.footpaths_out_[p];
+      if (fps.size() == 0U) {
+        continue;
+      }
+      auto total = std::size_t{0U}, projected = std::size_t{0U};
+      auto longest = std::size_t{0U};
+      auto seen = hash_map<std::uint32_t, int>{};
+      for (auto l = location_idx_t{0U}; l != location_idx_t{fps.size()}; ++l) {
+        total += fps[l].size();
+        longest = std::max(longest, static_cast<std::size_t>(fps[l].size()));
+        seen.clear();
+        for (auto const& fp : fps[l]) {
+          auto const t = tt.locations_.types_[fp.target()] == location_type::kVirt
+                             ? tt.locations_.parents_[fp.target()]
+                             : fp.target();
+          auto const [it, ins] = seen.emplace(to_idx(t), fp.duration().count());
+          if (!ins) {
+            it->second = std::min(it->second,
+                                  static_cast<int>(fp.duration().count()));
+          }
+        }
+        projected += seen.size();
+      }
+      fmt::print("prf={} footpaths={} after_projection={} longest_list={}\n", p,
+                 total, projected, longest);
+    }
+    return 0;
+  }
+  // ROUTEPROJ - routes are trips grouped by identical stop sequences, so a
+  // stop split into virts keeps trips apart that would otherwise share a
+  // route. This counts how many routes would collapse if every virt were
+  // projected back onto its stop - the route-side cost of the split.
+  if (auto const* spec = std::getenv("NIGIRI_FP_DUMP");
+      spec != nullptr && std::string_view{spec} == "ROUTEPROJ") {
+    auto seqs = hash_set<cista::hash_t>{};
+    auto with_virt = 0U;
+    auto virt_stops = std::size_t{0U}, total_stops = std::size_t{0U};
+    for (auto r = route_idx_t{0U}; r != route_idx_t{tt.n_routes()}; ++r) {
+      auto h = cista::BASE_HASH;
+      auto has_virt = false;
+      for (auto const s : tt.route_location_seq_[r]) {
+        auto const stp = stop{s};
+        auto const l = stp.location_idx();
+        ++total_stops;
+        auto const proj =
+            tt.locations_.types_[l] == location_type::kVirt
+                ? (++virt_stops, has_virt = true, tt.locations_.parents_[l])
+                : l;
+        h = cista::hash_combine(h, to_idx(proj));
+        h = cista::hash_combine(h, stp.in_allowed() ? 1U : 0U);
+        h = cista::hash_combine(h, stp.out_allowed() ? 1U : 0U);
+      }
+      seqs.insert(h);
+      if (has_virt) {
+        ++with_virt;
+      }
+    }
+    fmt::print(
+        "routes={} distinct_projected_seqs={} routes_touching_a_virt={} "
+        "route_stops={} of_which_virt={}\n",
+        tt.n_routes(), seqs.size(), with_virt, total_stops, virt_stops);
+    return 0;
+  }
+  // PRUNE - how much of the stored foot layer the hubs already derive at the
+  // same weight. Those edges are walked twice by the search: once as a
+  // footpath, once through the hub that stands for the same pair.
+  if (auto const* spec = std::getenv("NIGIRI_FP_DUMP");
+      spec != nullptr && std::string_view{spec} == "PRUNE") {
+    constexpr auto const p = kDefaultProfile;
+    // (from, to) -> best weight a hub derives
+    auto derived = hash_map<std::uint64_t, int>{};
+    for (auto h = hub_idx_t{0U};
+         h != hub_idx_t{tt.locations_.hub_time_[p].size()}; ++h) {
+      auto const w = static_cast<int>(tt.locations_.hub_time_[p][h].count());
+      for (auto const u : tt.locations_.hub_in_[p][h]) {
+        for (auto const v : tt.locations_.hub_out_[p][h]) {
+          if (u == v) {
+            continue;
+          }
+          auto const k = (static_cast<std::uint64_t>(to_idx(u)) << 32) | to_idx(v);
+          auto const [it, ins] = derived.emplace(k, w);
+          if (!ins) {
+            it->second = std::min(it->second, w);
+          }
+        }
+      }
+    }
+    auto stored = std::size_t{0U}, covered_eq = std::size_t{0U},
+         covered_worse = std::size_t{0U}, uncovered = std::size_t{0U};
+    for (auto l = location_idx_t{0U};
+         l != location_idx_t{tt.locations_.footpaths_out_[p].size()}; ++l) {
+      for (auto const& fp : tt.locations_.footpaths_out_[p][l]) {
+        ++stored;
+        auto const k =
+            (static_cast<std::uint64_t>(to_idx(l)) << 32) | to_idx(fp.target());
+        auto const it = derived.find(k);
+        if (it == end(derived)) {
+          ++uncovered;
+        } else if (it->second == static_cast<int>(fp.duration().count())) {
+          ++covered_eq;
+        } else if (it->second < static_cast<int>(fp.duration().count())) {
+          ++covered_worse;  // hub is faster: the footpath never wins
+        } else {
+          ++uncovered;  // footpath is faster: it has to stay
+        }
+      }
+    }
+    fmt::print(
+        "stored={} hub_derived_pairs={} covered_same_weight={} "
+        "covered_hub_faster={} must_stay={}\n",
+        stored, derived.size(), covered_eq, covered_worse, uncovered);
+    // A real-time track change moves a trip onto a base location, which the
+    // schedule timetable may never use because the rules split every trip
+    // onto virts. Edges touching a base therefore have to survive whatever
+    // the hubs derive - so count how much of the prunable set that is.
+    auto virt_virt = std::size_t{0U}, base_incident = std::size_t{0U};
+    auto const is_virt = [&](location_idx_t const l) {
+      return tt.locations_.types_[l] == location_type::kVirt;
+    };
+    for (auto l = location_idx_t{0U};
+         l != location_idx_t{tt.locations_.footpaths_out_[p].size()}; ++l) {
+      for (auto const& fp : tt.locations_.footpaths_out_[p][l]) {
+        auto const it = derived.find(
+            (static_cast<std::uint64_t>(to_idx(l)) << 32) | to_idx(fp.target()));
+        if (it == end(derived) ||
+            it->second > static_cast<int>(fp.duration().count())) {
+          continue;  // not prunable anyway
+        }
+        if (is_virt(l) && is_virt(fp.target())) {
+          ++virt_virt;
+        } else {
+          ++base_incident;
+        }
+      }
+    }
+    fmt::print("  prunable virt->virt={} base_incident={}\n", virt_virt,
+               base_incident);
+    // The other direction: is every pair a hub derives also stored as a
+    // footpath, at least as fast? Only then can the hubs be switched off
+    // without losing or slowing a transfer (the materialized reference is
+    // supposed to guarantee exactly this).
+    auto stored_w = hash_map<std::uint64_t, int>{};
+    for (auto l = location_idx_t{0U};
+         l != location_idx_t{tt.locations_.footpaths_out_[p].size()}; ++l) {
+      for (auto const& fp : tt.locations_.footpaths_out_[p][l]) {
+        auto const k =
+            (static_cast<std::uint64_t>(to_idx(l)) << 32) | to_idx(fp.target());
+        auto const d = static_cast<int>(fp.duration().count());
+        auto const [it, ins] = stored_w.emplace(k, d);
+        if (!ins) {
+          it->second = std::min(it->second, d);
+        }
+      }
+    }
+    auto missing = std::size_t{0U}, slower = std::size_t{0U},
+         ok = std::size_t{0U};
+    for (auto const& [k, w] : derived) {
+      auto const it = stored_w.find(k);
+      if (it == end(stored_w)) {
+        ++missing;
+      } else if (it->second > w) {
+        ++slower;
+      } else {
+        ++ok;
+      }
+    }
+    fmt::print(
+        "  hubs droppable? derived={} stored_at_least_as_fast={} "
+        "stored_slower={} not_stored={}\n",
+        derived.size(), ok, slower, missing);
+    return 0;
+  }
+  // REFINE - what partition refinement (HRD's approach) would yield on the
+  // structure the GTFS loader actually produced. The merge there compares
+  // each virt pairwise against a representative, which is one refinement
+  // step; refining to a fixpoint can merge classes that only become
+  // equivalent after their neighbours merged. This measures the difference
+  // without changing the loader.
+  if (auto const* spec = std::getenv("NIGIRI_FP_DUMP");
+      spec != nullptr && std::string_view{spec} == "REFINE") {
+    constexpr auto const p = kDefaultProfile;
+    constexpr auto const kInf = std::numeric_limits<int>::max();
+    // hub-derived pairs, min per (from,to)
+    auto derived = hash_map<std::uint64_t, int>{};
+    for (auto h = hub_idx_t{0U}; h != hub_idx_t{tt.locations_.hub_time_[p].size()}; ++h) {
+      auto const w = static_cast<int>(tt.locations_.hub_time_[p][h].count());
+      for (auto const u : tt.locations_.hub_in_[p][h]) {
+        for (auto const v : tt.locations_.hub_out_[p][h]) {
+          if (u == v) { continue; }
+          auto const k = (static_cast<std::uint64_t>(to_idx(u)) << 32) | to_idx(v);
+          auto const [it, ins] = derived.emplace(k, w);
+          if (!ins) { it->second = std::min(it->second, w); }
+        }
+      }
+    }
+    auto members_of = hash_map<location_idx_t, std::vector<location_idx_t>>{};
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      if (tt.locations_.types_[l] == location_type::kVirt) {
+        members_of[tt.locations_.parents_[l]].push_back(l);
+      }
+    }
+    auto total_members = std::size_t{0U}, total_classes = std::size_t{0U};
+    auto stops_shrunk = 0U;
+    for (auto& [base, virts] : members_of) {
+      auto m = std::vector<location_idx_t>{base};
+      m.insert(end(m), begin(virts), end(virts));
+      auto const n = m.size();
+      auto const pos = [&](location_idx_t const x) {
+        return static_cast<std::size_t>(utl::find(m, x) - begin(m));
+      };
+      auto mat = std::vector<int>(n * n, kInf);
+      for (auto i = std::size_t{0U}; i != n; ++i) {
+        mat[i * n + i] = tt.locations_.transfer_time_[m[i]].count();
+        for (auto const& fp : tt.locations_.footpaths_out_[p][m[i]]) {
+          if (utl::find(m, fp.target()) == end(m)) { continue; }
+          auto& c = mat[i * n + pos(fp.target())];
+          c = std::min(c, static_cast<int>(fp.duration().count()));
+        }
+        for (auto j = std::size_t{0U}; j != n; ++j) {
+          if (i == j) { continue; }
+          auto const it = derived.find(
+              (static_cast<std::uint64_t>(to_idx(m[i])) << 32) | to_idx(m[j]));
+          if (it != end(derived)) {
+            mat[i * n + j] = std::min(mat[i * n + j], it->second);
+          }
+        }
+      }
+      // refine to fixpoint on (own time, row, col) relative to classes
+      auto cls = std::vector<unsigned>(n, 0U);
+      for (auto changed = true; changed;) {
+        changed = false;
+        auto sig = std::map<std::vector<std::int64_t>, unsigned>{};
+        auto next = std::vector<unsigned>(n, 0U);
+        for (auto i = std::size_t{0U}; i != n; ++i) {
+          auto key = std::vector<std::int64_t>{cls[i], mat[i * n + i]};
+          for (auto j = std::size_t{0U}; j != n; ++j) {
+            if (j == i) { continue; }
+            key.push_back((static_cast<std::int64_t>(cls[j]) << 34) |
+                          (static_cast<std::int64_t>(mat[i * n + j] == kInf ? 1023 : mat[i * n + j]) << 12) |
+                          (mat[j * n + i] == kInf ? 1023 : mat[j * n + i]));
+          }
+          next[i] = sig.emplace(key, static_cast<unsigned>(sig.size())).first->second;
+        }
+        changed = next != cls;
+        cls = std::move(next);
+      }
+      // exactness: same class => pair must cost the class's own time
+      auto bad = true;
+      while (bad) {
+        bad = false;
+        auto n_cls = 1U + *std::max_element(begin(cls), end(cls));
+        for (auto i = std::size_t{0U}; i != n && !bad; ++i) {
+          for (auto j = std::size_t{0U}; j != n; ++j) {
+            if (i != j && cls[i] == cls[j] && mat[i * n + j] != mat[i * n + i]) {
+              cls[j] = n_cls;
+              bad = true;
+              break;
+            }
+          }
+        }
+      }
+      auto uniq = std::vector<unsigned>{begin(cls), end(cls)};
+      std::sort(begin(uniq), end(uniq));
+      uniq.erase(std::unique(begin(uniq), end(uniq)), end(uniq));
+      total_members += n;
+      total_classes += uniq.size();
+      if (uniq.size() < n) { ++stops_shrunk; }
+    }
+    fmt::print(
+        "stops_with_virts={} members(now)={} classes(refined)={} "
+        "stops_that_would_shrink={}\n",
+        members_of.size(), total_members, total_classes, stops_shrunk);
+    return 0;
+  }
+  // MERGEBASE - virts that are indistinguishable from their own stop. The
+  // merge in apply_rules only ever compares virt against virt, so these are
+  // never folded back into the base even though nothing can tell them apart.
+  if (auto const* spec = std::getenv("NIGIRI_FP_DUMP");
+      spec != nullptr && std::string_view{spec} == "MERGEBASE") {
+    constexpr auto const p = kDefaultProfile;
+    auto hub_mem = hash_map<location_idx_t, std::vector<std::uint32_t>>{};
+    for (auto h = 0U; h != tt.locations_.hub_in_[p].size(); ++h) {
+      for (auto const m : tt.locations_.hub_in_[p][hub_idx_t{h}]) {
+        hub_mem[m].push_back(h * 2U);
+      }
+      for (auto const m : tt.locations_.hub_out_[p][hub_idx_t{h}]) {
+        hub_mem[m].push_back(h * 2U + 1U);
+      }
+    }
+    auto const hubs_of = [&](location_idx_t const l) {
+      auto v = std::vector<std::uint32_t>{};
+      if (auto const it = hub_mem.find(l); it != end(hub_mem)) { v = it->second; }
+      utl::sort(v);
+      return v;
+    };
+    auto const edges = [&](auto const& vv, location_idx_t const l,
+                           location_idx_t const partner) {
+      auto v = std::vector<std::pair<std::uint32_t, int>>{};
+      if (to_idx(l) < vv.size()) {
+        for (auto const& fp : vv[l]) {
+          if (fp.target() != partner) {
+            v.emplace_back(to_idx(fp.target()), fp.duration().count());
+          }
+        }
+      }
+      utl::sort(v);
+      return v;
+    };
+    auto n_virt = 0U, same_time = 0U, mergeable = 0U;
+    auto by_parent = hash_map<location_idx_t, unsigned>{};
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      if (tt.locations_.types_[l] != location_type::kVirt) { continue; }
+      ++n_virt;
+      auto const par = tt.locations_.parents_[l];
+      if (tt.locations_.transfer_time_[l] != tt.locations_.transfer_time_[par]) {
+        continue;
+      }
+      ++same_time;
+      if (hubs_of(l) == hubs_of(par) &&
+          edges(tt.locations_.footpaths_out_[p], l, par) ==
+              edges(tt.locations_.footpaths_out_[p], par, l) &&
+          edges(tt.locations_.footpaths_in_[p], l, par) ==
+              edges(tt.locations_.footpaths_in_[p], par, l)) {
+        ++mergeable;
+        ++by_parent[par];
+      }
+    }
+    fmt::print(
+        "virts={} same_own_time_as_stop={} indistinguishable_from_stop={} "
+        "stops_affected={}\n",
+        n_virt, same_time, mergeable, by_parent.size());
+    return 0;
+  }
+  // HUBDEG - how uneven the hub work is: the scatter costs one relaxation per
+  // out-list entry, so the tail of this distribution is what a thread-per-hub
+  // kernel makes a single lane walk alone.
+  if (auto const* spec = std::getenv("NIGIRI_FP_DUMP");
+      spec != nullptr && std::string_view{spec} == "HUBDEG") {
+    for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
+      auto const n = tt.locations_.hub_time_[p].size();
+      if (n == 0U) {
+        continue;
+      }
+      auto degs = std::vector<std::size_t>{};
+      auto total = std::size_t{0U};
+      for (auto h = hub_idx_t{0U}; h != hub_idx_t{n}; ++h) {
+        auto const d = tt.locations_.hub_out_[p][h].size();
+        degs.push_back(d);
+        total += d;
+      }
+      utl::sort(degs);
+      auto const q = [&](double const f) {
+        return degs[std::min(degs.size() - 1U,
+                             static_cast<std::size_t>(f * degs.size()))];
+      };
+      // work above each threshold: what a cooperative path would take over
+      auto over = [&](std::size_t const t) {
+        auto s = std::size_t{0U};
+        for (auto const d : degs) {
+          if (d > t) {
+            s += d;
+          }
+        }
+        return s;
+      };
+      auto in_total = std::size_t{0U};
+      auto pairs = std::size_t{0U};
+      for (auto h = hub_idx_t{0U}; h != hub_idx_t{n}; ++h) {
+        auto const i = tt.locations_.hub_in_[p][h].size();
+        in_total += i;
+        pairs += i * tt.locations_.hub_out_[p][h].size();
+      }
+      auto fps = std::size_t{0U};
+      for (auto l = location_idx_t{0U};
+           l != location_idx_t{tt.locations_.footpaths_out_[p].size()}; ++l) {
+        fps += tt.locations_.footpaths_out_[p][l].size();
+      }
+      fmt::print(
+          "prf={} hubs={} in_total={} out_total={} pairs_derived={} "
+          "stored_footpaths={} min={} q50={} q90={} q99={} max={}\n",
+          p, n, in_total, total, pairs, fps, degs.front(), q(0.5), q(0.9),
+          q(0.99), degs.back());
+      fmt::print(
+          "  work in lists >8: {} ({:.1f}%), >32: {} ({:.1f}%)\n", over(8),
+          100.0 * static_cast<double>(over(8)) /
+              static_cast<double>(std::max(total, std::size_t{1})),
+          over(32),
+          100.0 * static_cast<double>(over(32)) /
+              static_cast<double>(std::max(total, std::size_t{1})));
+    }
+    return 0;
+  }
+  // STOP:<id> - the stop, every virtual location split off it, and the edges
+  // each of them carries (footpaths plus the pairs their hubs derive). Two
+  // timetables that encode the same rules must agree here per (from, to) pair,
+  // whatever their virts are numbered.
+  if (auto const* spec = std::getenv("NIGIRI_FP_DUMP");
+      spec != nullptr && std::string_view{spec}.starts_with("STOP:")) {
+    auto const want = std::string_view{spec}.substr(5);
+    auto const nm = [&](location_idx_t const l) {
+      auto const v = tt.locations_.ids_[l].view();
+      return v.empty() ? fmt::format("virt#{}(of {})", to_idx(l),
+                                     tt.locations_.ids_
+                                         [tt.locations_.parents_[l]]
+                                             .view())
+                       : std::string{v};
+    };
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      if (tt.locations_.ids_[l].view() != want) {
+        continue;
+      }
+      auto members = std::vector<location_idx_t>{l};
+      for (auto const c : tt.locations_.children_[l]) {
+        if (tt.locations_.types_[c] == location_type::kVirt) {
+          members.push_back(c);
+        }
+      }
+      fmt::print("stop {} idx={} members={} xfer={}\n", want, to_idx(l),
+                 members.size(), tt.locations_.transfer_time_[l].count());
+      // effective pairs among the members, minimum per (from, to)
+      auto pairs = std::map<std::pair<std::uint32_t, std::uint32_t>, int>{};
+      auto const add = [&](location_idx_t const a, location_idx_t const b,
+                           int const d) {
+        auto const k = std::pair{to_idx(a), to_idx(b)};
+        auto const it = pairs.find(k);
+        if (it == end(pairs)) {
+          pairs.emplace(k, d);
+        } else {
+          it->second = std::min(it->second, d);
+        }
+      };
+      auto const is_member = [&](location_idx_t const x) {
+        return utl::find(members, x) != end(members);
+      };
+      for (auto const m : members) {
+        add(m, m, tt.locations_.transfer_time_[m].count());
+        for (auto const& fp : tt.locations_.footpaths_out_[kDefaultProfile][m]) {
+          if (is_member(fp.target())) {
+            add(m, fp.target(), fp.duration().count());
+          }
+        }
+      }
+      for (auto h = hub_idx_t{0U};
+           h != hub_idx_t{tt.locations_.hub_time_[kDefaultProfile].size()};
+           ++h) {
+        auto const w = tt.locations_.hub_time_[kDefaultProfile][h].count();
+        for (auto const u : tt.locations_.hub_in_[kDefaultProfile][h]) {
+          if (!is_member(u)) {
+            continue;
+          }
+          for (auto const v : tt.locations_.hub_out_[kDefaultProfile][h]) {
+            if (is_member(v) && u != v) {
+              add(u, v, static_cast<int>(w));
+            }
+          }
+        }
+      }
+      auto hist = std::map<int, unsigned>{};
+      for (auto const& [k, d] : pairs) {
+        ++hist[d];
+      }
+      fmt::print("  internal pairs={} durations:", pairs.size());
+      for (auto const& [d, c] : hist) {
+        fmt::print(" {}min x{}", d, c);
+      }
+      fmt::print("\n");
+
+      // events in a window: which member each trip uses, so a connection can
+      // be priced against the pair table above
+      if (auto const* w = std::getenv("NIGIRI_STOP_WINDOW"); w != nullptr) {
+        auto const comma = std::string_view{w}.find(',');
+        auto const lo = std::stoi(std::string{std::string_view{w}.substr(0, comma)});
+        auto const hi = std::stoi(std::string{std::string_view{w}.substr(comma + 1)});
+        for (auto const m : members) {
+          for (auto const r : tt.location_routes_[m]) {
+            auto const seq = tt.route_location_seq_[r];
+            for (auto i = 0U; i != seq.size(); ++i) {
+              if (stop{seq[i]}.location_idx() != m) {
+                continue;
+              }
+              for (auto t = tt.route_transport_ranges_[r].from_;
+                   t != tt.route_transport_ranges_[r].to_; ++t) {
+                auto const dep =
+                    i + 1U < seq.size()
+                        ? tt.event_mam(r, t, static_cast<stop_idx_t>(i),
+                                       event_type::kDep)
+                              .count() % 1440
+                        : -1;
+                auto const arr =
+                    i > 0U ? tt.event_mam(r, t, static_cast<stop_idx_t>(i),
+                                          event_type::kArr)
+                                 .count() % 1440
+                           : -1;
+                if ((arr >= lo && arr <= hi) || (dep >= lo && dep <= hi)) {
+                  fmt::print(
+                      "  event member={} xfer={} trip={} arr={:02d}:{:02d} "
+                      "dep={:02d}:{:02d}\n",
+                      to_idx(m), tt.locations_.transfer_time_[m].count(),
+                      tt.transport_name(t), arr / 60, arr % 60, dep / 60,
+                      dep % 60);
+                }
+              }
+            }
+          }
+        }
+      }
+      // which trips share a member: a transfer between two trips costs what
+      // the pair of members they use costs, so trips on the same member
+      // transfer at that member's own time
+      for (auto const m : members) {
+        auto names = std::vector<std::string>{};
+        for (auto const r : tt.location_routes_[m]) {
+          auto const range = tt.route_transport_ranges_[r];
+          if (range.size() == 0U) {
+            continue;
+          }
+          names.emplace_back(tt.transport_name(range.from_));
+        }
+        utl::sort(names);
+        names.erase(std::unique(begin(names), end(names)), end(names));
+        if (names.empty()) {
+          continue;
+        }
+        fmt::print("  member {:<7} xfer={} routes={} trips=[{}]\n",
+                   to_idx(m) == to_idx(l) ? std::string{"stop"}
+                                          : fmt::format("virt{}", to_idx(m)),
+                   tt.locations_.transfer_time_[m].count(),
+                   tt.location_routes_[m].size(), fmt::join(names, " "));
+      }
+    }
     return 0;
   }
   if (auto const* id = std::getenv("NIGIRI_FP_DUMP"); id != nullptr) {
