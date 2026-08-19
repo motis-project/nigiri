@@ -1,5 +1,7 @@
 #include "nigiri/rt/create_rt_timetable.h"
 
+#include <algorithm>
+
 #include "utl/enumerate.h"
 #include "utl/verify.h"
 
@@ -21,8 +23,15 @@ rt_timetable create_rt_timetable(timetable const& tt,
   rtt.base_day_idx_ = tt.day_idx(rtt.base_day_);
   // resize for later memory accesses
   rtt.location_rt_transports_[location_idx_t{tt.n_locations() - 1U}];
-  rtt.alerts_.route_type_.resize(tt.n_sources());
-  rtt.alerts_.route_id_.resize(tt.n_sources());
+  // route_ids_ is indexed by source and should hold one entry per source, but
+  // a loader that grows it per input file - or one that never sets n_sources_
+  // because it was called directly instead of through loader::load - breaks
+  // that. Sizing by the larger of the two keeps the loop below in bounds
+  // either way.
+  auto const n_src = std::max(static_cast<std::size_t>(tt.n_sources()),
+                              static_cast<std::size_t>(tt.route_ids_.size()));
+  rtt.alerts_.route_type_.resize(n_src);
+  rtt.alerts_.route_id_.resize(n_src);
   for (auto const [src, r] : utl::enumerate(tt.route_ids_)) {
     rtt.alerts_.route_id_[source_idx_t{src}].resize(r.route_id_type_.size());
   }

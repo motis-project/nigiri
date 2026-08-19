@@ -8,6 +8,7 @@
 #include "utl/helpers/algorithm.h"
 #include "utl/pipes.h"
 #include "utl/progress_tracker.h"
+#include "utl/verify.h"
 
 #include "nigiri/loader/hrd/service/service_builder.h"
 #include "nigiri/loader/hrd/stamm/stamm.h"
@@ -78,6 +79,14 @@ void load_timetable(source_idx_t const src,
                     timetable& tt,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices) {
   auto st = stamm{c, tt, d, src};
+
+  // one entry per source, like the GTFS and NeTEx loaders write: consumers
+  // index it by src (run_stop::looped_calendar_since does .at(src)), so
+  // leaving it empty made every itinerary response throw out_of_range.
+  utl::verify(tt.src_end_date_.size() == to_idx(src),
+              "unexpected tt.src_end_date_.size={}, expected: {}",
+              tt.src_end_date_.size(), src);
+  tt.src_end_date_.push_back(st.get_date_range().to_);
 
   auto progress_tracker = utl::get_active_progress_tracker();
 
