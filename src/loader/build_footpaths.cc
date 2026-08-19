@@ -1049,6 +1049,71 @@ void expand_hubs_into_footpaths(timetable& tt) {
       "reference mode: {} hub pairs expanded into footpaths", n_pairs);
 }
 
+// The hubs derive most of the foot layer a second time: measured on CH, 3.75M
+// of the 4.59M stored edges are exactly the pair a hub already hands out, at
+// the same weight. The routing takes the minimum of both, so keeping the
+// footpath cannot change an answer - it only makes the footpath phase walk
+// five times more edges than it has to. Drop the ones a hub covers at the same
+// weight or better and let the hub stand for them (which is what the shared
+// path already does at write time, see hub_ify_rule_cells).
+void prune_hub_covered_footpaths(timetable& tt) {
+  constexpr auto const p = kDefaultProfile;
+  auto const n = static_cast<std::size_t>(cista::to_idx(tt.n_locations()));
+  auto const key = [](location_idx_t const a, location_idx_t const b) {
+    return (static_cast<std::uint64_t>(to_idx(a)) << 32) | to_idx(b);
+  };
+
+  auto derived = hash_map<std::uint64_t, int>{};
+  for (auto h = hub_idx_t{0U}; h != hub_idx_t{tt.locations_.hub_time_[p].size()};
+       ++h) {
+    auto const w = static_cast<int>(tt.locations_.hub_time_[p][h].count());
+    for (auto const u : tt.locations_.hub_in_[p][h]) {
+      for (auto const v : tt.locations_.hub_out_[p][h]) {
+        if (u == v) {
+          continue;
+        }
+        auto const [it, ins] = derived.emplace(key(u, v), w);
+        if (!ins) {
+          it->second = std::min(it->second, w);
+        }
+      }
+    }
+  }
+
+  auto out = std::vector<std::vector<footpath>>(n);
+  auto n_pruned = std::size_t{0U}, n_kept = std::size_t{0U};
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    for (auto const fp : tt.locations_.footpaths_out_[p][l]) {
+      auto const it = derived.find(key(l, fp.target()));
+      if (it != end(derived) &&
+          it->second <= static_cast<int>(fp.duration().count())) {
+        ++n_pruned;  // the hub already delivers this pair, at least as fast
+        continue;
+      }
+      out[to_idx(l)].push_back(fp);
+      ++n_kept;
+    }
+  }
+
+  auto fps_out = vecvec<location_idx_t, footpath>{};
+  auto fps_in = mutable_fws_multimap<location_idx_t, footpath>{};
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    auto const& fps = out[to_idx(l)];
+    fps_out.emplace_back(fps);
+    for (auto const fp : fps) {
+      fps_in[fp.target()].emplace_back(l, fp.duration());
+    }
+  }
+  tt.locations_.footpaths_out_[p] = std::move(fps_out);
+  tt.locations_.footpaths_in_[p].clear();
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    tt.locations_.footpaths_in_[p].emplace_back(fps_in[l]);
+  }
+
+  log(log_lvl::info, "loader.footpath",
+      "hub-covered footpaths: {} dropped, {} kept", n_pruned, n_kept);
+}
+
 void build_footpaths(timetable& tt, finalize_options const opt) {
   // Covers locations created after the last transfers.txt was read (virtual
   // locations, locations from feeds without transfers.txt).
@@ -1117,6 +1182,14 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
   }
   if (materialize) {
     expand_hubs_into_footpaths(tt);
+  }
+  // On by default: the pruned edges are exactly the ones the hubs hand out
+  // anyway, so this is the same transfer relation with the duplicates left
+  // out. NIGIRI_NO_PRUNE_HUB_FP keeps them for A/B. Reference mode is exempt -
+  // it expands the hubs into footpaths on purpose.
+  if (!no_hubs && !materialize &&
+      std::getenv("NIGIRI_NO_PRUNE_HUB_FP") == nullptr) {
+    prune_hub_covered_footpaths(tt);
   }
   if (auto const* spec = std::getenv("NIGIRI_EDGE_DUMP"); spec != nullptr) {
     dump_edges(tt, spec);
