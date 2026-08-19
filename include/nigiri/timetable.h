@@ -186,10 +186,6 @@ struct timetable {
     // in every profile; the rest are that profile's walks
     std::uint32_t n_rule_hubs_{0U};
 
-    // Generated children carry no walking transfers of their own: the routing
-    // looks them up at the parent and hands every arrival down. Only the
-    // transfers a rule states stay with the child itself.
-    bool share_child_footpaths_{false};
 
   } locations_;
 

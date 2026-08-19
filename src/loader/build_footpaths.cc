@@ -388,61 +388,6 @@ void build_walk_hubs(timetable& tt,
       walk_hub_in, walk_hub_out, walk_hub_time);
 }
 
-// A profile whose walking layer somebody else computes (street routing) gets
-// its hubs here: the rule-derived prefix of the default profile holds in every
-// profile, and the walks are built from that profile's own footpaths. Called
-// with the lists still pending, so the pairs no hub covers can still be added.
-void build_profile_hubs(timetable& tt,
-                        profile_idx_t const prf,
-                        vector_map<location_idx_t, std::vector<footpath>>& fps) {
-  auto& in = tt.locations_.hub_in_[prf];
-  auto& out = tt.locations_.hub_out_[prf];
-  auto& time = tt.locations_.hub_time_[prf];
-  in.clear();
-  out.clear();
-  time.clear();
-  for (auto h = hub_idx_t{0U}; h != hub_idx_t{tt.locations_.n_rule_hubs_};
-       ++h) {
-    auto const i = tt.locations_.hub_in_[kDefaultProfile][h];
-    auto const o = tt.locations_.hub_out_[kDefaultProfile][h];
-    in.emplace_back(i);
-    out.emplace_back(o);
-    time.push_back(tt.locations_.hub_time_[kDefaultProfile][h]);
-  }
-
-  auto w_in = vecvec<hub_idx_t, location_idx_t>{};
-  auto w_out = vecvec<hub_idx_t, location_idx_t>{};
-  auto w_time = vector_map<hub_idx_t, duration_t>{};
-  build_walk_hubs_impl(
-      tt, false,
-      [&](location_idx_t const l) -> decltype(auto) { return fps[l]; },
-      [&](location_idx_t const l, footpath const fp) {
-        fps[l].emplace_back(fp);
-      },
-      w_in, w_out, w_time);
-  for (auto h = hub_idx_t{0U}; h != hub_idx_t{w_in.size()}; ++h) {
-    in.emplace_back(w_in[h]);
-    out.emplace_back(w_out[h]);
-    time.push_back(w_time[h]);
-  }
-
-  auto in_by_loc = mutable_fws_multimap<location_idx_t, hub_idx_t>{};
-  auto out_by_loc = mutable_fws_multimap<location_idx_t, hub_idx_t>{};
-  for (auto h = hub_idx_t{0U}; h != hub_idx_t{in.size()}; ++h) {
-    for (auto const l : in[h]) {
-      in_by_loc[l].push_back(h);
-    }
-    for (auto const l : out[h]) {
-      out_by_loc[l].push_back(h);
-    }
-  }
-  tt.locations_.hub_in_by_loc_[prf].clear();
-  tt.locations_.hub_out_by_loc_[prf].clear();
-  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-    tt.locations_.hub_in_by_loc_[prf].emplace_back(in_by_loc[l]);
-    tt.locations_.hub_out_by_loc_[prf].emplace_back(out_by_loc[l]);
-  }
-}
 
 
 // The rule cells the loader had to write out, one footpath each, are what the
@@ -1157,11 +1102,12 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
   auto const materialize = std::getenv("NIGIRI_MATERIALIZE") != nullptr;
   auto const no_share = std::getenv("NIGIRI_NO_SHARE") != nullptr;
   auto const no_hubs = std::getenv("NIGIRI_NO_WALK_HUBS") != nullptr;
-  auto const share = !no_share && (opt.share_child_footpaths_ ||
-                                   std::getenv("NIGIRI_SHARE_CHILD_FP") !=
-                                       nullptr ||
-                                   materialize);
-  tt.locations_.share_child_footpaths_ = share;
+  // Reference mode keeps the walks on the parent and lets the hubs carry
+  // them; NIGIRI_SHARE_CHILD_FP is the A/B switch for that path, which is
+  // otherwise only exercised by NIGIRI_MATERIALIZE.
+  auto const share =
+      !no_share &&
+      (std::getenv("NIGIRI_SHARE_CHILD_FP") != nullptr || materialize);
   if (opt.beeline_footpaths_ && !share) {
     copy_footpaths_to_generated_children(tt);
     // Otherwise whoever computes the footpath layer merges them in - keeping
