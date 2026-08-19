@@ -65,7 +65,15 @@ void service_builder::add_services(config const& c,
 }
 
 void service_builder::write_services(source_idx_t const src) {
-  tt_.route_ids_.emplace_back();
+  // Called once per fplan file, but route_ids_ is indexed by source (see
+  // register.cc), so there has to be exactly one entry per source - the same
+  // invariant the GTFS loader asserts. Emplacing per file left a feed with N
+  // fplan files holding N entries while n_sources_ stayed 1, and
+  // create_rt_timetable, which sizes its per-source alert lists by
+  // n_sources() and then walks route_ids_, wrote past the end of them.
+  if (tt_.route_ids_.size() == to_idx(src)) {
+    tt_.route_ids_.emplace_back();
+  }
 
   auto const timer = scoped_timer{"loader.hrd.services.write"};
   auto const empty_flags = std::array{bitvec{}, bitvec{}, bitvec{},
