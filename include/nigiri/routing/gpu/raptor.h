@@ -106,6 +106,13 @@ private:
     return tt_.internal_interval_days().from_ + to_idx(base_) * date::days{1};
   }
 
+  location_idx_t project(location_idx_t const l) const {
+    return project_virts_ &&
+                   tt_.locations_.types_[l] == location_type::kVirt
+               ? tt_.locations_.parents_[l]
+               : l;
+  }
+
   timetable const& tt_;
   rt_timetable const* rtt_;
   gpu_rt_timetable const* gpu_rtt_;
@@ -122,6 +129,7 @@ private:
   transfer_time_settings transfer_time_settings_;
 
   profile_idx_t prf_idx_;
+  bool project_virts_;
   delta_t const* bounds_;
   unsigned bounds_last_k_{0U};
 

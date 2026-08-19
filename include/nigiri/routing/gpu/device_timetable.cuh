@@ -170,6 +170,23 @@ struct device_timetable {
   cuda::std::array<d_vecmap_view<hub_idx_t, duration_t>, kNProfiles> hub_time_;
   cuda::std::array<std::uint32_t, kNProfiles> n_hubs_;
 
+  // The same hub edges as a flat (location, hub) / (hub, location) list, so
+  // gather and scatter are one thread per edge instead of one per hub: the
+  // out-lists differ by three orders of magnitude in length (1..820), which
+  // leaves a thread-per-hub kernel waiting on its longest lane. Still the
+  // compressed form - sum(in) + sum(out) entries standing for sum(in*out)
+  // pairs - just walked edge-wise. Kept in both orderings because the reads
+  // want the varying side contiguous, and both directions because ping and
+  // pong swap which side feeds.
+  struct hub_edge_list {
+    cuda::std::span<std::uint32_t const> loc_;  // parallel arrays
+    cuda::std::span<std::uint32_t const> hub_;
+  };
+  cuda::std::array<hub_edge_list, kNProfiles> hub_in_by_loc_flat_;  // fwd in
+  cuda::std::array<hub_edge_list, kNProfiles> hub_out_by_hub_flat_;  // fwd out
+  cuda::std::array<hub_edge_list, kNProfiles> hub_out_by_loc_flat_;  // bwd in
+  cuda::std::array<hub_edge_list, kNProfiles> hub_in_by_hub_flat_;  // bwd out
+
   cuda::std::span<delta const> route_stop_times_;
   d_vecmap_view<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
   d_vecmap_view<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
