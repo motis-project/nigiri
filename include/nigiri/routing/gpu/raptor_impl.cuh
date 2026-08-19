@@ -584,51 +584,59 @@ struct raptor_impl {
   // scatter below hands that minimum to the hub's other side. The slot is the
   // same packed word round_times uses, so one atomicMin carries the time and
   // the breadcrumb of the winning source together.
-  __device__ __forceinline__ void gather_hubs(location_idx_t const l,
-                                              delta_t const tmp_time,
-                                              breadcrumb_t const bc) {
+  // One thread per (location, hub) edge: the marked locations feed their hubs
+  // with no lane walking a list. Runs as its own kernel before the footpath
+  // phase - it only reads tmp_ and the marks, which that phase never writes.
+  __device__ void gather_hubs(unsigned const) {
     if (n_hubs_ == 0U || no_hubs_) {
       return;
     }
-    auto const& by_loc = kFwd ? tt_.hub_in_by_loc_[prf_idx_]
-                              : tt_.hub_out_by_loc_[prf_idx_];
-    if (by_loc.size() == 0U) {
-      return;
-    }
-    auto const packed = device_times<SearchDir, Vias + 1>::pack(tmp_time, bc);
-    for (auto const h : by_loc[l]) {
-      atomicMin(reinterpret_cast<unsigned long long*>(&hub_slots_[to_idx(h)]),
-                static_cast<unsigned long long>(packed));
+    auto const& e = kFwd ? tt_.hub_in_by_loc_flat_[prf_idx_]
+                         : tt_.hub_out_by_loc_flat_[prf_idx_];
+    auto const n = static_cast<unsigned>(e.loc_.size());
+    for (auto i = get_global_thread_id(); i < n; i += get_global_stride()) {
+      auto const l = location_idx_t{e.loc_[i]};
+      if (!prev_station_mark_[to_idx(l)]) {
+        continue;
+      }
+      auto const t = tmp_.get(l, Vias);
+      if (t == kInvalid) {
+        continue;
+      }
+      auto const packed = device_times<SearchDir, Vias + 1>::pack(
+          t, tmp_.get_bc(0U, l, Vias));
+      atomicMin(
+          reinterpret_cast<unsigned long long*>(&hub_slots_[e.hub_[i]]),
+          static_cast<unsigned long long>(packed));
     }
   }
 
+  // One thread per (hub, location) edge. The out-lists run from 1 to 820
+  // entries, so walking them per hub left a warp waiting on its longest lane;
+  // edge-wise the work is spread evenly whatever the shape of the hub.
   __device__ void scatter_hubs(unsigned const k) {
     if (n_hubs_ == 0U || no_hubs_) {
       return;
     }
-    auto const& scatter_edges =
-        kFwd ? tt_.hub_out_[prf_idx_] : tt_.hub_in_[prf_idx_];
-    if (tt_.n_hubs_[prf_idx_] == 0U) {
-      return;
-    }
+    auto const& e = kFwd ? tt_.hub_out_by_hub_flat_[prf_idx_]
+                         : tt_.hub_in_by_hub_flat_[prf_idx_];
+    auto const n = static_cast<unsigned>(e.hub_.size());
     auto const t_at_dest = time_at_dest_.get(k);
-    auto const n = tt_.n_hubs_[prf_idx_];
-    for (auto h = get_global_thread_id(); h < n; h += get_global_stride()) {
-      auto const slot = hub_slots_[h];
+    for (auto i = get_global_thread_id(); i < n; i += get_global_stride()) {
+      // consecutive edges share a hub, so this read is a broadcast
+      auto const slot = hub_slots_[e.hub_[i]];
       if (slot == device_times<SearchDir, Vias + 1>::invalid_packed()) {
         continue;
       }
-      auto const time = device_times<SearchDir, Vias + 1>::from_key(
-          static_cast<std::uint16_t>(slot >> kBcBits));
-      auto const bc = slot & kBcMask;
-      auto const d = tt_.hub_time_[prf_idx_][hub_idx_t{h}];
-      auto const w = d.count() == 0
-                         ? 0
+      auto const d = tt_.hub_time_[prf_idx_][hub_idx_t{e.hub_[i]}];
+      relax_fp_target(
+          k, location_idx_t{e.loc_[i]},
+          d.count() == 0 ? 0
                          : adjusted_transfer_time(transfer_time_settings_,
-                                                  static_cast<int>(d.count()));
-      for (auto const target : scatter_edges[hub_idx_t{h}]) {
-        relax_fp_target(k, target, w, time, bc, t_at_dest);
-      }
+                                                  static_cast<int>(d.count())),
+          device_times<SearchDir, Vias + 1>::from_key(
+              static_cast<std::uint16_t>(slot >> kBcBits)),
+          slot & kBcMask, t_at_dest);
     }
   }
 
@@ -648,14 +656,16 @@ struct raptor_impl {
       }
     }
 
+    // A dense list of the marked locations was measured slower: the lane's
+    // location becomes a dependent load instead of `base + lane`, and the
+    // indirection costs more than the better spread across warps wins.
     for (auto w = warp_id; w < n_blocks; w += n_warps) {
       auto const bits = prev_station_mark_.blocks_[w];
       if (bits == 0U) {  // uniform: all lanes read the same word
         continue;
       }
 
-      auto const base = w * kWarpSize;  // lane i <-> bit i of the mark word
-      auto const my_i = base + lane;
+      auto const my_i = w * kWarpSize + lane;  // lane i <-> bit i of the word
       auto const my_marked = ((bits >> lane) & 1U) != 0U;
 
       // per-lane state; sourced via shuffle by the cooperative hub path
@@ -672,10 +682,6 @@ struct raptor_impl {
         if (tmp_time != kInvalid) {
           bc = tmp_.get_bc(0U, l, Vias);
           auto const is_dest = is_dest_[my_i];
-
-          // the hubs this location feeds: deliver its arrival into their
-          // minima, scattered over the out-lists after this kernel
-          gather_hubs(l, tmp_time, bc);
 
           // same-station transfer (former update_transfers)
           relax_fp_target(
@@ -733,7 +739,10 @@ struct raptor_impl {
       // hubs: all 32 lanes stride one deferred location's footpath list
       auto const deferred = __ballot_sync(kAllLanes, defer);
       for_each_set_bit(deferred, [&](unsigned const b) {
-        auto const l = location_idx_t{base + b};
+        // the lanes no longer hold consecutive locations, so the owner's
+        // index has to come across with the rest of its state
+        auto const l = location_idx_t{
+            __shfl_sync(kAllLanes, my_i, static_cast<int>(b))};
         auto const l_tmp = static_cast<delta_t>(__shfl_sync(
             kAllLanes, static_cast<int>(tmp_time), static_cast<int>(b)));
         auto const l_bc = __shfl_sync(kAllLanes, bc, static_cast<int>(b));
