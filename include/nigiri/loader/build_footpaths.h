@@ -4,13 +4,6 @@
 
 namespace nigiri::loader {
 
-// Hubs for a profile whose walking layer is computed elsewhere (street
-// routing): the rule-derived hubs plus walks built from `fps`, which may gain
-// the pairs no hub covers.
-void build_profile_hubs(timetable&,
-                        profile_idx_t,
-                        vector_map<location_idx_t, std::vector<footpath>>&);
-
 struct finalize_options {
   bool adjust_footpaths_{true};
   bool merge_dupes_intra_src_{true};
@@ -22,10 +15,6 @@ struct finalize_options {
   // footpath layer themselves - the transfers a rule states are written
   // either way, they are not walking transfers.
   bool beeline_footpaths_{true};
-
-  // Do not copy the walking transfers onto generated children - the routing
-  // resolves them through the parent instead.
-  bool share_child_footpaths_{false};
 };
 
 void build_footpaths(timetable& tt, finalize_options);
