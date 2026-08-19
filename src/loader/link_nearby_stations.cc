@@ -28,8 +28,12 @@ struct dist_at {
 };
 
 void link_nearby_stations(timetable& tt, bool const emit_footpaths) {
+  // Both the walking transfer and the "is this the same station" test use the
+  // same 300m: a wider equivalence radius would make the duplicate check see
+  // pairs the walk does not connect, a wider walk radius would copy a much
+  // larger cross-feed footpath set onto every generated child.
   constexpr auto const kLinkNearbyMaxDistance = 300.0;  // [m];
-  constexpr auto const kEqDist = 100.0;  // [m];
+  constexpr auto const kEqDist = 300.0;  // [m];
 
   auto const locations_rtree =
       geo::make_point_rtree(tt.locations_.coordinates_);
