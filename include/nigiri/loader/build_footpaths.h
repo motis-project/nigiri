@@ -13,12 +13,6 @@ struct finalize_options {
   merge_threshold_t merge_threshold_{uniform_merge_threshold(duration_t{1})};
   std::filesystem::path merge_stats_dir_{};
   vector_map<source_idx_t, std::string> src_tags_{};
-
-  // Derive walking transfers (beelines between equivalent stops, copied onto
-  // generated children) while loading. Off for callers that compute the whole
-  // footpath layer themselves - the transfers a rule states are written
-  // either way, they are not walking transfers.
-  bool beeline_footpaths_{true};
 };
 
 void build_footpaths(timetable& tt, finalize_options);

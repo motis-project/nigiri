@@ -27,7 +27,7 @@ struct dist_at {
   double distance_lng_degrees_;
 };
 
-void link_nearby_stations(timetable& tt, bool const emit_footpaths) {
+void link_nearby_stations(timetable& tt) {
   // Both the walking transfer and the "is this the same station" test use the
   // same 300m: a wider equivalence radius would make the duplicate check see
   // pairs the walk does not connect, a wider walk radius would copy a much
@@ -74,10 +74,8 @@ void link_nearby_stations(timetable& tt, bool const emit_footpaths) {
       auto const duration =
           std::max({from_transfer_time, to_transfer_time, walk_duration});
 
-      if (emit_footpaths) {
-        tt.locations_.preprocessing_footpaths_out_[l_from_idx].emplace_back(
-            l_to_idx, duration);
-      }
+      tt.locations_.preprocessing_footpaths_out_[l_from_idx].emplace_back(
+          l_to_idx, duration);
 
       if (dist.lt(to_pos, kEqDist)) {
         tt.locations_.equivalences_[l_from_idx].emplace_back(l_to_idx);
