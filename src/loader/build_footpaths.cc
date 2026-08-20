@@ -1137,10 +1137,11 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
   auto walk_hub_in = vecvec<hub_idx_t, location_idx_t>{};
   auto walk_hub_out = vecvec<hub_idx_t, location_idx_t>{};
   auto walk_hub_time = vector_map<hub_idx_t, duration_t>{};
-  link_nearby_stations(tt, opt.beeline_footpaths_);
-  if (opt.beeline_footpaths_) {
-    add_equivalence_footpaths(tt, opt.max_footpath_length_);
-  }
+  // tt.bin is always a complete timetable on its own: the walks are beelines
+  // here, and whoever computes a routed layer afterwards writes it into
+  // tt_ext.bin instead of taking anything away from this one.
+  link_nearby_stations(tt);
+  add_equivalence_footpaths(tt, opt.max_footpath_length_);
 
   if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_) {
     for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
@@ -1178,7 +1179,7 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
   auto const share =
       !no_share &&
       (std::getenv("NIGIRI_SHARE_CHILD_FP") != nullptr || materialize);
-  if (opt.beeline_footpaths_ && !share) {
+  if (!share) {
     copy_footpaths_to_generated_children(tt);
     // Otherwise whoever computes the footpath layer merges them in - keeping
     // them out here saves storing every rule cell twice more (as an outgoing

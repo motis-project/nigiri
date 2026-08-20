@@ -62,11 +62,6 @@ int main(int ac, char** av) {
        bpo::value(&finalize_opt.merge_dupes_inter_src_)
            ->default_value(finalize_opt.merge_dupes_inter_src_),
        "merge duplicates between different sources")  //
-      ("beeline_footpaths",
-       bpo::value(&finalize_opt.beeline_footpaths_)
-           ->default_value(finalize_opt.beeline_footpaths_),
-       "derive walking transfers while loading (off: only the transfers the "
-       "input data states)")  //
       ("adjust_footpaths",
        bpo::value(&finalize_opt.adjust_footpaths_)
            ->default_value(finalize_opt.adjust_footpaths_),

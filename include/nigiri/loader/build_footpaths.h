@@ -9,12 +9,6 @@ struct finalize_options {
   bool merge_dupes_intra_src_{true};
   bool merge_dupes_inter_src_{true};
   std::uint16_t max_footpath_length_{20};
-
-  // Derive walking transfers (beelines between equivalent stops, copied onto
-  // generated children) while loading. Off for callers that compute the whole
-  // footpath layer themselves - the transfers a rule states are written
-  // either way, they are not walking transfers.
-  bool beeline_footpaths_{true};
 };
 
 void build_footpaths(timetable& tt, finalize_options);
