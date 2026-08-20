@@ -588,6 +588,20 @@ void apply_transfer_rules(
         continue;  // a hub states this cell now
       }
       auto bucket = tt.locations_.preprocessing_footpaths_out_[l];
+      if (fp.duration() == footpath::kMaxDuration) {
+        // transfers.txt type 3: the pair is not a transfer at all. Written as a
+        // very long footpath the routing can still take it - a trip leaving
+        // that many hours later would turn the ban into a journey. The walk
+        // between the two has to go as well, or it survives underneath the
+        // ban. Self loops are dropped when the layer is written, so that is
+        // what a banned pair becomes here.
+        for (auto& existing : bucket) {
+          if (existing.target() == fp.target()) {
+            existing = footpath{l, duration_t{0}};
+          }
+        }
+        continue;
+      }
       auto replaced = false;
       for (auto& existing : bucket) {  // duplicate targets: replace them all
         if (existing.target() == fp.target()) {

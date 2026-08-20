@@ -1006,7 +1006,7 @@ TEST(
   // Loading statistics
   {
     EXPECT_EQ(
-        R"([{"idx":0,"firstDay":"2024-01-01","lastDay":"2024-01-01","noLocations":22,"noTrips":16,"transportsXDays":16}])",
+        R"({"feeds":[{"idx":0,"firstDay":"2024-01-01","lastDay":"2024-01-01","noLocations":22,"noTrips":16,"transportsXDays":16}],"noRoutes":9,"profiles":[{"prf":0,"noFootpaths":2,"noHubs":0,"noRuleHubs":0,"hubPairs":0}]})",
         to_str(get_metrics(tt), tt));
   }
 }

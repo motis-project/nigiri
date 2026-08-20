@@ -35,6 +35,8 @@ namespace {
 //     F1, F2 platforms of FS (walking distance); transfers.txt F1->F2 type=3.
 //     V1: A3 14:00 -> F1 14:30
 //     V2: F2 14:40 -> E 15:00 (would be reachable by foot -> banned)
+//     V2L: F2 23:30 -> E 23:50 (late enough that a banned pair stored as a
+//          very long footpath would become usable -- it must not be)
 //
 // (4) trip-qualified rule beats route-qualified rule:
 //     Z->Z type=2 0s from_route=RZ1 to_route=RZ2 (allows tight transfers),
@@ -174,6 +176,7 @@ R11,S1,U2,,
 R12,S1,U3,,
 R20,S1,V1,,
 R21,S1,V2,,
+R21,S1,V2L,,
 RZ1,S1,W1,,
 RZ2,S1,W2,,
 RZ2,S1,W3,,
@@ -215,6 +218,8 @@ V1,14:00:00,14:00:00,A3,0
 V1,14:30:00,14:30:00,F1,1
 V2,14:40:00,14:40:00,F2,0
 V2,15:00:00,15:00:00,E,1
+V2L,23:30:00,23:30:00,F2,0
+V2L,23:50:00,23:50:00,E,1
 W1,16:00:00,16:00:00,A4,0
 W1,16:30:00,16:30:00,Z,1
 W2,16:31:00,16:31:00,Z,0
@@ -335,6 +340,22 @@ TEST(gtfs, transfer_rules_forbidden) {
   auto const res =
       raptor_search(tt, nullptr, "A3", "E", "2019-05-01 14:00 Europe/Berlin");
   EXPECT_EQ(0U, res.size());
+
+  // A ban is not a very long transfer. Stored as one, the pair stays walkable
+  // and any departure far enough out turns it into a journey: V2L leaves F2 at
+  // 23:30, nine hours after V1 gets in, so a banned pair written at
+  // footpath::kMaxDuration would be reachable here.
+  auto const late = raptor_search(tt, nullptr, "A3", "E",
+                                  interval{t("2019-05-01 14:00 Europe/Berlin"),
+                                           t("2019-05-02 02:00 Europe/Berlin")});
+  EXPECT_EQ(0U, late.size());
+
+  // and nothing may connect the two platforms in the footpath layer either
+  auto const f1 = tt.locations_.location_id_to_idx_.at({"F1", source_idx_t{0}});
+  auto const f2 = tt.locations_.location_id_to_idx_.at({"F2", source_idx_t{0}});
+  for (auto const fp : tt.locations_.footpaths_out_[kDefaultProfile][f1]) {
+    EXPECT_NE(fp.target(), f2) << "the banned pair is still a footpath";
+  }
 }
 
 TEST(gtfs, transfer_rules_trip_beats_route) {
