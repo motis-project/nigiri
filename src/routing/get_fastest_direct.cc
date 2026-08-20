@@ -33,7 +33,12 @@ duration_t get_fastest_direct(timetable const& tt,
         });
   }
   for (auto const& [l, d] : dists) {
-    pq.push(label{l, d});
+    // an offset at or beyond the bound cannot begin a direct connection that
+    // stays below it; the relaxation below applies the same bound, and
+    // dial::push only range-checks under assert()
+    if (d < max_dist) {
+      pq.push(label{l, d});
+    }
   }
 
   auto dest_offsets = hash_map<location_idx_t, label::dist_t>{};
