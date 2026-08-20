@@ -241,6 +241,12 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
   auto virt_locs =
       hash_map<std::pair<location_idx_t, signature_t>, location_idx_t>{};
   auto side_virts = hash_map<sided_rule_idx_t, std::vector<location_idx_t>>{};
+  // which trip stops at which virtual location, and at which position - the
+  // time-aware merge below needs the events to decide whether a pair it would
+  // create is one the timetable could ever use
+  auto virt_stops =
+      hash_map<location_idx_t,
+               std::vector<std::pair<gtfs_trip_idx_t, std::size_t>>>{};
   for (auto& [trip_stop, sig] : trip_stop_signatures) {
     auto const [trp_idx, pos] = trip_stop;
     auto& t = trips.data_[trp_idx];
@@ -295,6 +301,7 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
           return v;
         });
 
+    virt_stops[virt].emplace_back(trp_idx, pos);
     t.stop_seq_[pos] =
         stop{virt, s.in_allowed(), s.out_allowed(), s.in_allowed_wheelchair(),
              s.out_allowed_wheelchair()}
@@ -468,6 +475,123 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
       utl::sort(out);
       return out;
     };
+    // A merge fuses two nodes, so the rule between one of them and a partner
+    // is handed to the other as well. That is only harmless when the pair it
+    // creates is one the timetable cannot use anyway: the partner has already
+    // left, or the gap is wide enough that the stop's own transfer time
+    // already allowed it. Then the rule grants nothing and the fused node
+    // answers exactly as the two did.
+    //
+    // Off by default: it makes the merge depend on the event times, so two
+    // timetables over different date ranges can merge differently.
+    static auto const time_merge_margin = []() -> std::optional<duration_t> {
+      auto const* v = std::getenv("NIGIRI_VIRT_TIME_MERGE");
+      if (v == nullptr) {
+        return std::nullopt;
+      }
+      return duration_t{static_cast<duration_t::rep>(std::atoi(v))};
+    }();
+
+    auto const events_at = [&](location_idx_t const v) {
+      auto out = std::vector<stop_events>{};
+      if (auto const it = virt_stops.find(v); it != end(virt_stops)) {
+        for (auto const& [trp, pos] : it->second) {
+          out.push_back(trips.data_[trp].event_times_[pos]);
+        }
+      }
+      return out;
+    };
+
+    // every trip pair of x -> y is either impossible or already allowed
+    auto const grants_nothing = [&](location_idx_t const x,
+                                    location_idx_t const y,
+                                    duration_t const d,
+                                    duration_t const dflt) {
+      auto const need = std::max(d, dflt) + *time_merge_margin;
+      auto const from = events_at(x), to = events_at(y);
+      if (from.empty() || to.empty()) {
+        return false;
+      }
+      for (auto const& f : from) {
+        for (auto const& t : to) {
+          if (f.arr_ == kInterpolate || t.dep_ == kInterpolate) {
+            return false;
+          }
+          auto const gap = t.dep_ - f.arr_;
+          if (gap < duration_t{0} || gap >= need) {
+            continue;  // gone by then, or wide enough that nothing changes
+          }
+          return false;
+        }
+      }
+      return true;
+    };
+
+    auto const cells_of = [&](auto const& m, location_idx_t const v) {
+      auto out = std::vector<std::pair<std::uint32_t, std::int32_t>>{};
+      if (auto const it = m.find(v); it != end(m)) {
+        out = it->second;
+      }
+      return out;
+    };
+
+    // may `a` take over every cell of `b` (and the other way round) without
+    // changing an answer?
+    auto const time_safe = [&](location_idx_t const a, location_idx_t const b) {
+      if (!time_merge_margin.has_value() ||
+          tt.locations_.transfer_time_[a] != tt.locations_.transfer_time_[b] ||
+          tt.locations_.parents_[a] != tt.locations_.parents_[b]) {
+        return false;
+      }
+      if (!pair_is_own_time(a, b)) {
+        return false;  // the pair between them is not what the fused node
+                       // would charge for it
+      }
+      if (hubs_of(a) != hubs_of(b)) {
+        // the hubs were emitted against these indices before the merge ran, so
+        // fusing two nodes that sit in different ones drops the transfers only
+        // one of them was reached by - the merge would lose journeys, not gain
+        // them
+        return false;
+      }
+      auto const base = tt.locations_.parents_[a];
+      auto const dflt = duration_t{tt.locations_.transfer_time_[base]};
+      auto const check = [&](location_idx_t const owner,
+                             location_idx_t const other) {
+        for (auto const& [t, d] : cells_of(rows, owner)) {
+          if (t == kSelf || location_idx_t{t} == other) {
+            // its own time, or the pair between the two candidates - merged
+            // that pair is a self edge charged at the node's own time, which
+            // is what pair_is_own_time above decides, not a granted cell
+            continue;
+          }
+          auto const target = location_idx_t{t};
+          if (tt.locations_.parents_[target] != base && target != base) {
+            return false;  // crosses to another stop: not modelled here
+          }
+          if (!grants_nothing(other, target, duration_t{static_cast<
+                                  duration_t::rep>(d)}, dflt)) {
+            return false;
+          }
+        }
+        for (auto const& [f, d] : cells_of(cols, owner)) {
+          if (f == kSelf || location_idx_t{f} == other) {
+            continue;
+          }
+          auto const src = location_idx_t{f};
+          if (tt.locations_.parents_[src] != base && src != base) {
+            return false;
+          }
+          if (!grants_nothing(src, other, duration_t{static_cast<
+                                  duration_t::rep>(d)}, dflt)) {
+            return false;
+          }
+        }
+        return true;
+      };
+      return check(a, b) && check(b, a);
+    };
+
     auto const same_node = [&](location_idx_t const a, location_idx_t const b) {
       return tt.locations_.transfer_time_[a] ==
                  tt.locations_.transfer_time_[b] &&
@@ -486,23 +610,38 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
     // simple form is not leaving anything on the table. Refining a partition
     // instead - what the HRD loader can do, because its rules never cross
     // stops - is not applicable here and lands at 6,478.
+    auto group_members =
+        hash_map<location_idx_t, std::vector<location_idx_t>>{};
     auto reps = hash_map<location_idx_t, std::vector<location_idx_t>>{};
     auto remap = hash_map<location_idx_t, location_idx_t>{};
     for (auto v = first_virt; v != n; ++v) {
       auto& base_reps = reps[tt.locations_.parents_[v]];
-      auto const it = utl::find_if(
-          base_reps, [&](location_idx_t const r) { return same_node(v, r); });
+      auto const it = utl::find_if(base_reps, [&](location_idx_t const r) {
+        if (same_node(v, r)) {
+          return true;
+        }
+        if (!time_merge_margin.has_value()) {
+          return false;
+        }
+        // the group answers as one node, so the candidate has to be safe
+        // against every member, not only the representative
+        if (!time_safe(v, r)) {
+          return false;
+        }
+        auto const& members = group_members[r];
+        return utl::all_of(members, [&](location_idx_t const m) {
+          return time_safe(v, m);
+        });
+      });
       if (it == end(base_reps)) {
         base_reps.push_back(v);
       } else {
         remap.emplace(v, *it);
+        group_members[*it].push_back(v);
       }
     }
 
     if (!remap.empty()) {
-      auto const merged_away = [&](location_idx_t const l) {
-        return remap.contains(l);
-      };
 
       for (auto const& [trip_stop, sig] : trip_stop_signatures) {
         auto const [trp_idx, pos] = trip_stop;
@@ -518,21 +657,41 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
         }
       }
 
-      // the duplicates state exactly what their representative states, so
-      // their cells and hub memberships are dropped rather than moved
+      // A duplicate merged on equality states exactly what its representative
+      // states, so dropping its cells and moving them are the same thing. The
+      // time-aware merge fuses nodes that state different cells - certified
+      // harmless, but only if they actually end up on the fused node - so the
+      // cells move, and the ones pointing at a duplicate follow it.
+      auto const rep_of = [&](location_idx_t const l) {
+        auto const it = remap.find(l);
+        return it == end(remap) ? l : it->second;
+      };
       auto cells = mutable_fws_multimap<location_idx_t, footpath>{};
+      auto seen = hash_map<std::pair<location_idx_t, location_idx_t>,
+                           duration_t>{};
       for (auto l = location_idx_t{0U};
            l != location_idx_t{std::min(
                static_cast<std::size_t>(
                    tt.locations_.transfer_rule_fps_.size()),
                static_cast<std::size_t>(cista::to_idx(n)))};
            ++l) {
-        if (merged_away(l)) {
-          continue;
-        }
+        auto const from = rep_of(l);
         for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
-          if (!merged_away(fp.target())) {
-            cells[l].emplace_back(fp);
+          auto const to = rep_of(fp.target());
+          if (from == to) {
+            continue;  // became the node's own time, which it already carries
+          }
+          auto const [it, ins] = seen.emplace(std::pair{from, to},
+                                              fp.duration());
+          if (ins) {
+            cells[from].emplace_back(to, fp.duration());
+          } else if (fp.duration() < it->second) {
+            it->second = fp.duration();
+            for (auto& existing : cells[from]) {
+              if (existing.target() == to) {
+                existing = footpath{to, fp.duration()};
+              }
+            }
           }
         }
       }
@@ -548,15 +707,13 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
         keep.clear();
         keep_out.clear();
         for (auto const m : tt.locations_.hub_in_[kDefaultProfile][hi]) {
-          if (!merged_away(m)) {
-            keep.push_back(m);
-          }
+          keep.push_back(rep_of(m));  // the representative stands in for it
         }
+        utl::erase_duplicates(keep);
         for (auto const m : tt.locations_.hub_out_[kDefaultProfile][hi]) {
-          if (!merged_away(m)) {
-            keep_out.push_back(m);
-          }
+          keep_out.push_back(rep_of(m));
         }
+        utl::erase_duplicates(keep_out);
         if (keep.empty() || keep_out.empty()) {
           continue;
         }
