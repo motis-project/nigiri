@@ -219,6 +219,60 @@ void write_transfer_rules(
       }
     }
   }
+
+  // Every pair inside a base must be reachable: either a cell states it, or a
+  // hub derives it. A pair that is neither is a transfer the feed allows and
+  // the timetable has lost.
+  if (std::getenv("NIGIRI_VERIFY_ELISION") != nullptr) {
+    auto missing = std::size_t{0U}, checked = std::size_t{0U};
+    auto shown = 0;
+    for (auto base = location_idx_t{0U}; base != first_virt; ++base) {
+      auto members = std::vector<location_idx_t>{base};
+      for (auto const c : tt.locations_.children_[base]) {
+        if (tt.locations_.types_[c] == location_type::kVirt) {
+          members.push_back(c);
+        }
+      }
+      if (members.size() < 2U) {
+        continue;
+      }
+      for (auto const x : members) {
+        for (auto const y : members) {
+          if (x == y) {
+            continue;
+          }
+          ++checked;
+          auto stated = false;
+          if (to_idx(x) < tt.locations_.transfer_rule_fps_.size()) {
+            for (auto const fp : tt.locations_.transfer_rule_fps_[x]) {
+              if (fp.target() == y) {
+                stated = true;
+                break;
+              }
+            }
+          }
+          if (stated || is_derivable(x, y, base)) {
+            continue;
+          }
+          ++missing;
+          if (shown++ < 5) {
+            log(log_lvl::info, "elision.verify",
+                "unreachable pair: base={} x={} y={} slow(x)={} slow_from(x)={} "
+                "slow_to(y)={}",
+                tt.locations_.ids_[base].view(), cista::to_idx(x),
+                cista::to_idx(y),
+                tt.locations_.transfer_time_[x] >
+                    tt.locations_.transfer_time_[base],
+                slow_from.contains(x), slow_to.contains(y));
+          }
+        }
+      }
+    }
+    log(log_lvl::info, "elision.verify",
+        "intra-base pairs: {} checked, {} neither written nor derivable",
+        checked, missing);
+  }
+
 }
 
 }  // namespace nigiri::loader

@@ -538,6 +538,59 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
       return it == end(stop_headway) ? duration_t{*time_merge} : it->second;
     };
 
+    // What a hub derives, decided the way build_hubs decides it: a cell longer
+    // than the stop charges makes its source a restricted one and its target
+    // one that the restricted hub drops. Without this the merge has to guess
+    // what an unwritten pair costs, and "it costs the default" is wrong for
+    // exactly the pairs elision left out.
+    auto slow_from_m = hash_set<location_idx_t>{};
+    auto slow_to_m = hash_set<location_idx_t>{};
+    if (time_merge.has_value()) {
+      auto const n_cells = std::min(
+          static_cast<std::size_t>(tt.locations_.transfer_rule_fps_.size()),
+          static_cast<std::size_t>(cista::to_idx(n)));
+      for (auto l = location_idx_t{0U}; l != location_idx_t{n_cells}; ++l) {
+        auto const b = tt.locations_.types_[l] == location_type::kVirt
+                           ? tt.locations_.parents_[l]
+                           : l;
+        for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
+          auto const tb = tt.locations_.types_[fp.target()] == location_type::kVirt
+                              ? tt.locations_.parents_[fp.target()]
+                              : fp.target();
+          if (tb == b && fp.duration() > duration_t{tt.locations_.transfer_time_[b]}) {
+            slow_from_m.insert(l);
+            slow_to_m.insert(fp.target());
+          }
+        }
+      }
+    }
+    auto const hub_derives = [&](location_idx_t const x, location_idx_t const y,
+                                 location_idx_t const base) {
+      if (x != base && tt.locations_.transfer_time_[x] >
+                           tt.locations_.transfer_time_[base]) {
+        return false;  // slow member: in neither in-list
+      }
+      return !slow_from_m.contains(x) || !slow_to_m.contains(y);
+    };
+
+    // what `x` already pays to reach `y`, or nothing if it cannot
+    auto const current_cost = [&](location_idx_t const x, location_idx_t const y,
+                                  location_idx_t const base,
+                                  auto const& cells_of_fn) {
+      auto best = std::optional<duration_t>{};
+      for (auto const& [t, d] : cells_of_fn(rows, x)) {
+        if (t != kSelf && location_idx_t{t} == y) {
+          auto const dd = duration_t{static_cast<duration_t::rep>(d)};
+          best = best.has_value() ? std::min(*best, dd) : dd;
+        }
+      }
+      if (hub_derives(x, y, base)) {
+        auto const dflt = duration_t{tt.locations_.transfer_time_[base]};
+        best = best.has_value() ? std::min(*best, dflt) : dflt;
+      }
+      return best;
+    };
+
     auto const events_at = [&](location_idx_t const v) {
       auto out = std::vector<stop_events>{};
       if (auto const it = virt_stops.find(v); it != end(virt_stops)) {
@@ -551,10 +604,9 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
     // every trip pair of x -> y is either impossible or already allowed
     auto const grants_nothing = [&](location_idx_t const x,
                                     location_idx_t const y,
-                                    duration_t const d,
-                                    duration_t const dflt,
+                                    duration_t const need_base,
                                     duration_t const margin) {
-      auto const need = std::max(d, dflt) + margin;
+      auto const need = need_base + margin;
       auto const from = events_at(x), to = events_at(y);
       if (from.empty() || to.empty()) {
         return false;
@@ -618,23 +670,39 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
       };
       auto const check = [&](location_idx_t const owner,
                              location_idx_t const other) {
+        // Each cell of `owner` is handed to `other` by the merge. It is
+        // harmless when `other` already reaches that partner at least as
+        // cheaply - then the minimum does not move - and otherwise only when
+        // the timetable cannot tell: the partner has gone by, or the gap is
+        // wide enough that what `other` already pays was enough anyway. A
+        // partner `other` cannot reach at all has no such gap, so a cell to it
+        // is never granted.
+        auto const granted = [&](location_idx_t const partner,
+                                 std::int32_t const d, bool const outgoing) {
+          auto const dd = duration_t{static_cast<duration_t::rep>(d)};
+          auto const cur = outgoing ? current_cost(other, partner, base, cells_of)
+                                    : current_cost(partner, other, base, cells_of);
+          if (cur.has_value() && dd >= *cur) {
+            return true;  // the minimum does not move
+          }
+          if (!cur.has_value()) {
+            return false;  // unreachable today: the merge would create it
+          }
+          return outgoing ? grants_nothing(other, partner, *cur, margin)
+                          : grants_nothing(partner, other, *cur, margin);
+        };
         for (auto const& [t, d] : cells_of(rows, owner)) {
           if (already_has(rows, other, t, d)) {
             continue;  // states the same thing already
           }
           if (t == kSelf || location_idx_t{t} == other) {
-            // its own time, or the pair between the two candidates - merged
-            // that pair is a self edge charged at the node's own time, which
-            // is what pair_is_own_time above decides, not a granted cell
-            continue;
+            continue;  // becomes the fused node's own time, see above
           }
           auto const target = location_idx_t{t};
           if (tt.locations_.parents_[target] != base && target != base) {
-            return false;
+            return false;  // crosses to another stop: not modelled here
           }
-          if (!grants_nothing(other, target,
-                              duration_t{static_cast<duration_t::rep>(d)}, dflt,
-                              margin)) {
+          if (!granted(target, d, /*outgoing=*/true)) {
             return false;
           }
         }
@@ -649,9 +717,7 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
           if (tt.locations_.parents_[src] != base && src != base) {
             return false;
           }
-          if (!grants_nothing(src, other,
-                              duration_t{static_cast<duration_t::rep>(d)}, dflt,
-                              margin)) {
+          if (!granted(src, d, /*outgoing=*/false)) {
             return false;
           }
         }
