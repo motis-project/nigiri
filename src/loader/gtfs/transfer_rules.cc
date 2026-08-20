@@ -1,3 +1,5 @@
+#include <map>
+
 #include "nigiri/loader/gtfs/transfer_rules.h"
 
 #include <cstdlib>
@@ -484,13 +486,57 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
     //
     // Off by default: it makes the merge depend on the event times, so two
     // timetables over different date ranges can merge differently.
-    static auto const time_merge_margin = []() -> std::optional<duration_t> {
+    // The margin is how much delay a merge has to survive: a created pair only
+    // starts to matter once the feeder is late by more than gap - default. A
+    // constant is the wrong shape for it - the same number is unreachable at a
+    // stop served every four minutes and trivial at one served hourly. What it
+    // wants to express is "far enough that the next departure of the service is
+    // the relevant one", so it is taken from the stop's own headway. Negative
+    // means a fixed margin in minutes instead, for A/B.
+    static auto const time_merge = []() -> std::optional<int> {
       auto const* v = std::getenv("NIGIRI_VIRT_TIME_MERGE");
-      if (v == nullptr) {
-        return std::nullopt;
-      }
-      return duration_t{static_cast<duration_t::rep>(std::atoi(v))};
+      return v == nullptr ? std::nullopt : std::optional{std::atoi(v)};
     }();
+
+    auto stop_headway = hash_map<location_idx_t, duration_t>{};
+    if (time_merge.has_value() && *time_merge >= 0) {
+      auto deps = hash_map<location_idx_t, std::vector<minutes_after_midnight_t>>{};
+      for (auto const& t : trips.data_) {
+        for (auto const [i, s] : utl::enumerate(t.stop_seq_)) {
+          if (i >= t.event_times_.size()) {
+            break;
+          }
+          auto const d = t.event_times_[i].dep_;
+          if (d != kInterpolate) {
+            deps[stop{s}.location_idx()].push_back(d);
+          }
+        }
+      }
+      for (auto& [l, v] : deps) {
+        if (v.size() < 2U) {
+          continue;
+        }
+        utl::sort(v);
+        auto gaps = std::vector<duration_t>{};
+        for (auto i = std::size_t{1U}; i != v.size(); ++i) {
+          if (v[i] > v[i - 1U]) {
+            gaps.push_back(v[i] - v[i - 1U]);
+          }
+        }
+        if (gaps.empty()) {
+          continue;
+        }
+        std::nth_element(begin(gaps), begin(gaps) + gaps.size() / 2, end(gaps));
+        stop_headway[l] = gaps[gaps.size() / 2U];  // the median headway
+      }
+    }
+    auto const margin_at = [&](location_idx_t const base) {
+      if (*time_merge < 0) {
+        return duration_t{static_cast<duration_t::rep>(-*time_merge)};
+      }
+      auto const it = stop_headway.find(base);
+      return it == end(stop_headway) ? duration_t{*time_merge} : it->second;
+    };
 
     auto const events_at = [&](location_idx_t const v) {
       auto out = std::vector<stop_events>{};
@@ -506,8 +552,9 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
     auto const grants_nothing = [&](location_idx_t const x,
                                     location_idx_t const y,
                                     duration_t const d,
-                                    duration_t const dflt) {
-      auto const need = std::max(d, dflt) + *time_merge_margin;
+                                    duration_t const dflt,
+                                    duration_t const margin) {
+      auto const need = std::max(d, dflt) + margin;
       auto const from = events_at(x), to = events_at(y);
       if (from.empty() || to.empty()) {
         return false;
@@ -538,14 +585,13 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
     // may `a` take over every cell of `b` (and the other way round) without
     // changing an answer?
     auto const time_safe = [&](location_idx_t const a, location_idx_t const b) {
-      if (!time_merge_margin.has_value() ||
+      if (!time_merge.has_value() ||
           tt.locations_.transfer_time_[a] != tt.locations_.transfer_time_[b] ||
           tt.locations_.parents_[a] != tt.locations_.parents_[b]) {
         return false;
       }
       if (!pair_is_own_time(a, b)) {
-        return false;  // the pair between them is not what the fused node
-                       // would charge for it
+        return false;
       }
       if (hubs_of(a) != hubs_of(b)) {
         // the hubs were emitted against these indices before the merge ran, so
@@ -556,9 +602,26 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
       }
       auto const base = tt.locations_.parents_[a];
       auto const dflt = duration_t{tt.locations_.transfer_time_[base]};
+      auto const margin = margin_at(base);
+      // A cell the other side already states identically is not granted by the
+      // merge - both nodes carry it before and after. Every virtual location of
+      // a stop inherits that stop's own rules this way, so this is most of
+      // them.
+      auto const already_has = [&](auto const& m, location_idx_t const l,
+                                   std::uint32_t const partner,
+                                   std::int32_t const d) {
+        auto const it = m.find(l);
+        return it != end(m) &&
+               utl::any_of(it->second, [&](auto const& c) {
+                 return c.first == partner && c.second == d;
+               });
+      };
       auto const check = [&](location_idx_t const owner,
                              location_idx_t const other) {
         for (auto const& [t, d] : cells_of(rows, owner)) {
+          if (already_has(rows, other, t, d)) {
+            continue;  // states the same thing already
+          }
           if (t == kSelf || location_idx_t{t} == other) {
             // its own time, or the pair between the two candidates - merged
             // that pair is a self edge charged at the node's own time, which
@@ -567,14 +630,18 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
           }
           auto const target = location_idx_t{t};
           if (tt.locations_.parents_[target] != base && target != base) {
-            return false;  // crosses to another stop: not modelled here
+            return false;
           }
-          if (!grants_nothing(other, target, duration_t{static_cast<
-                                  duration_t::rep>(d)}, dflt)) {
+          if (!grants_nothing(other, target,
+                              duration_t{static_cast<duration_t::rep>(d)}, dflt,
+                              margin)) {
             return false;
           }
         }
         for (auto const& [f, d] : cells_of(cols, owner)) {
+          if (already_has(cols, other, f, d)) {
+            continue;
+          }
           if (f == kSelf || location_idx_t{f} == other) {
             continue;
           }
@@ -582,8 +649,9 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
           if (tt.locations_.parents_[src] != base && src != base) {
             return false;
           }
-          if (!grants_nothing(src, other, duration_t{static_cast<
-                                  duration_t::rep>(d)}, dflt)) {
+          if (!grants_nothing(src, other,
+                              duration_t{static_cast<duration_t::rep>(d)}, dflt,
+                              margin)) {
             return false;
           }
         }
@@ -620,7 +688,7 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
         if (same_node(v, r)) {
           return true;
         }
-        if (!time_merge_margin.has_value()) {
+        if (!time_merge.has_value()) {
           return false;
         }
         // the group answers as one node, so the candidate has to be safe
