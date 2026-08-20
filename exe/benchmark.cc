@@ -532,6 +532,29 @@ int main(int argc, char* argv[]) {
   fmt::print("timetable: locations={} routes={} transports={}\n",
              tt.n_locations(), tt.n_routes(), tt.transport_traffic_days_.size());
 
+  if (std::getenv("NIGIRI_FP_HIST") != nullptr) {
+    auto const& fps = tt.locations_.footpaths_out_[kDefaultProfile];
+    auto hist = std::map<int, std::size_t>{};
+    auto total = std::size_t{0U}, over = std::size_t{0U};
+    auto worst = duration_t{0};
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      for (auto const fp : fps[l]) {
+        ++total;
+        auto const d = fp.duration();
+        worst = std::max(worst, d);
+        ++hist[d.count() <= 15 ? 0 : (d.count() <= 60 ? 1 : (d.count() <= 200 ? 2 : 3))];
+        if (d.count() > 60) { ++over; }
+      }
+    }
+    fmt::print("footpaths(prf0)={} longest={}min over-60min={} ({:.2f}%)\n", total,
+               worst.count(), over, 100.0 * static_cast<double>(over) /
+                                        static_cast<double>(std::max<std::size_t>(total, 1)));
+    char const* lbl[] = {"<=15min", "16-60min", "61-200min", ">200min"};
+    for (auto const& [k, v] : hist) {
+      fmt::print("   {:<10} {}\n", lbl[k], v);
+    }
+  }
+
   if (std::getenv("NIGIRI_SCAN_STAT") != nullptr) {
     auto loc_routes = std::size_t{0U};
     for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {

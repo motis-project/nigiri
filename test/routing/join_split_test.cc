@@ -259,7 +259,7 @@ TEST(join_split, complex) {
     // x1: 18  // > 48:00
     // jl: 13, 14, 15, 17, 20, 21
     EXPECT_EQ(
-        R"([{"idx":0,"firstDay":"2025-06-11","lastDay":"2025-06-21","noLocations":10,"noTrips":6,"transportsXDays":30}])",
+        R"({"feeds":[{"idx":0,"firstDay":"2025-06-11","lastDay":"2025-06-21","noLocations":10,"noTrips":6,"transportsXDays":30}],"noRoutes":12,"profiles":[{"prf":0,"noFootpaths":12,"noHubs":0,"noRuleHubs":0,"hubPairs":0}]})",
         to_str(get_metrics(tt), tt));
   };
 
