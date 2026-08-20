@@ -94,6 +94,11 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   auto& lb_graph = SearchDir == direction::kForward
                        ? tt.fwd_search_lb_graph_[prf_idx]
                        : tt.bwd_search_lb_graph_[prf_idx];
+  // One entry per location is appended below, so a second call for the same
+  // profile has to start from empty - otherwise it appends past the end and
+  // the search keeps reading the bounds of the layer that has just been
+  // replaced. Whoever recomputes a footpath layer recomputes this too.
+  lb_graph.clear();
   for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
     if (tt.locations_.parents_[i] != location_idx_t::invalid()) {
       lb_graph.emplace_back(std::vector<footpath>{});
