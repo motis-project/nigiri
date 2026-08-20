@@ -464,20 +464,18 @@ void generator::add_offsets_for_pos(
     std::vector<routing::offset>& o,
     geo::latlng const& pos,
     query_generation::transport_mode const& mode) const {
-  for (auto const loc : locations_rtree_.in_radius(pos, mode.range())) {
-    if (tt_.locations_.types_[location_idx_t{loc}] == location_type::kVirt) {
-      // virtual locations share their parent's coordinates and are seeded
-      // from the parent's offset by for_each_meta (kIntermodal) -- their own
-      // offsets are redundant duplicates
-      continue;
-    }
+  // the r-tree is built over pool_, so it yields pool_ positions, not
+  // location indices; pool_ leaves out the virtual locations, which share
+  // their parent's coordinates and are seeded from the parent's offset by
+  // for_each_meta (kIntermodal)
+  for (auto const i : locations_rtree_.in_radius(pos, mode.range())) {
+    auto const loc = pool_[i];
     auto const duration = duration_t{
         static_cast<std::int16_t>(
-            geo::distance(pos,
-                          tt_.locations_.coordinates_[location_idx_t{loc}]) /
+            geo::distance(pos, tt_.locations_.coordinates_[loc]) /
             mode.speed_) +
         1};
-    o.emplace_back(location_idx_t{loc}, duration, mode.mode_id_);
+    o.emplace_back(loc, duration, mode.mode_id_);
   }
 }
 
