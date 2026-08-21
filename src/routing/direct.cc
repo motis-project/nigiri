@@ -501,7 +501,7 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
       utl::overloaded{
           [](utl::op, route_idx_t) {},
           [&](route_idx_t const r, route_idx_t) {
-            if (q.blocked_srcs_.test(tt.route_src_[r]) ||
+            if (q.blocked_srcs_.test(tt.route_src(r)) ||
                 !is_allowed(q.allowed_claszes_, tt.route_clasz_[r]) ||
                 (q.require_bike_transport_ &&
                  !tt.is_flag_set(kBikesAllowed, r)) ||

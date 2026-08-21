@@ -139,7 +139,7 @@ void add_starts_in_interval(direction const search_dir,
 
   // Iterate routes visiting the location.
   for (auto const& r : tt.location_routes_.at(l)) {
-    if (blocked_srcs.test(tt.route_src_[r])) {
+    if (blocked_srcs.test(tt.route_src(r))) {
       continue;
     }
 

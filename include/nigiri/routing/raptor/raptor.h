@@ -478,7 +478,7 @@ private:
       auto const r = route_idx_t{r_idx};
 
       if constexpr (WithSrcFilter) {
-        if (blocked_srcs_.test(tt_.route_src_[r])) {
+        if (blocked_srcs_.test(tt_.route_src(r))) {
           return;
         }
       }

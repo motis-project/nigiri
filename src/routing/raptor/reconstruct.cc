@@ -455,7 +455,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
 
     for (auto const& r : tt.location_routes_[l]) {
-      if (q.blocked_srcs_.test(tt.route_src_[r]) ||
+      if (q.blocked_srcs_.test(tt.route_src(r)) ||
           !is_allowed(q.allowed_claszes_, tt.route_clasz_[r])) {
         continue;
       }
