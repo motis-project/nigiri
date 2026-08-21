@@ -520,132 +520,19 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
         }
       }
     }
-    auto const hub_derives = [&](location_idx_t const x, location_idx_t const y,
-                                 location_idx_t const base) {
-      if (x != base && tt.locations_.transfer_time_[x] >
-                           tt.locations_.transfer_time_[base]) {
-        return false;  // slow member: in neither in-list
-      }
-      return !slow_from_m.contains(x) || !slow_to_m.contains(y);
-    };
+    constexpr auto const kNever =
+        duration_t{std::numeric_limits<duration_t::rep>::max()};
 
-    // what `x` already pays to reach `y`, or nothing if it cannot
-    auto const current_cost = [&](location_idx_t const x, location_idx_t const y,
-                                  location_idx_t const base,
-                                  auto const& cells_of_fn) {
-      auto best = std::optional<duration_t>{};
-      for (auto const& [t, d] : cells_of_fn(rows, x)) {
-        if (t != kSelf && location_idx_t{t} == y) {
-          auto const dd = duration_t{static_cast<duration_t::rep>(d)};
-          best = best.has_value() ? std::min(*best, dd) : dd;
+    // every event a trip has at a stop of this feed, for the check below
+    auto events = hash_map<location_idx_t, std::vector<stop_events>>{};
+    for (auto const& t : trips.data_) {
+      for (auto const [i, s] : utl::enumerate(t.stop_seq_)) {
+        if (i >= t.event_times_.size()) {
+          break;
         }
+        events[stop{s}.location_idx()].push_back(t.event_times_[i]);
       }
-      if (hub_derives(x, y, base)) {
-        auto const dflt = duration_t{tt.locations_.transfer_time_[base]};
-        best = best.has_value() ? std::min(*best, dflt) : dflt;
-      }
-      return best;
-    };
-
-    auto const cells_of = [&](auto const& m, location_idx_t const v) {
-      auto out = std::vector<std::pair<std::uint32_t, std::int32_t>>{};
-      if (auto const it = m.find(v); it != end(m)) {
-        out = it->second;
-      }
-      return out;
-    };
-
-    // may `a` take over every cell of `b` (and the other way round) without
-    // changing an answer?
-    auto const time_safe = [&](location_idx_t const a, location_idx_t const b) {
-      if (!time_merge.has_value() ||
-          tt.locations_.transfer_time_[a] != tt.locations_.transfer_time_[b] ||
-          tt.locations_.parents_[a] != tt.locations_.parents_[b]) {
-        return false;
-      }
-      if (!pair_is_own_time(a, b)) {
-        return false;
-      }
-      if (hubs_of(a) != hubs_of(b)) {
-        // the hubs were emitted against these indices before the merge ran, so
-        // fusing two nodes that sit in different ones drops the transfers only
-        // one of them was reached by - the merge would lose journeys, not gain
-        // them
-        return false;
-      }
-      auto const base = tt.locations_.parents_[a];
-      // A cell the other side already states identically is not granted by the
-      // merge - both nodes carry it before and after. Every virtual location of
-      // a stop inherits that stop's own rules this way, so this is most of
-      // them.
-      auto const already_has = [&](auto const& m, location_idx_t const l,
-                                   std::uint32_t const partner,
-                                   std::int32_t const d) {
-        auto const it = m.find(l);
-        return it != end(m) &&
-               utl::any_of(it->second, [&](auto const& c) {
-                 return c.first == partner && c.second == d;
-               });
-      };
-      auto const check = [&](location_idx_t const owner,
-                             location_idx_t const other) {
-        // Each cell of `owner` is handed to `other` by the merge. It is
-        // harmless when `other` already reaches that partner at least as
-        // cheaply - then the minimum does not move - and otherwise only when
-        // the timetable cannot tell: the partner has gone by, or the gap is
-        // wide enough that what `other` already pays was enough anyway. A
-        // partner `other` cannot reach at all has no such gap, so a cell to it
-        // is never granted.
-        auto const granted = [&](location_idx_t const partner,
-                                 std::int32_t const d, bool const outgoing) {
-          auto const dd = duration_t{static_cast<duration_t::rep>(d)};
-          auto const cur = outgoing ? current_cost(other, partner, base, cells_of)
-                                    : current_cost(partner, other, base, cells_of);
-          // Only a cell that cannot lower what the other side already pays may
-          // be handed over. The tempting alternative - allow a cheaper cell
-          // when the timetable could not use it anyway, because every arrival
-          // at one end and departure at the other are too close together or
-          // far enough apart - reads as safe pair by pair but does not
-          // compose: the partner of a cell is itself a merge candidate, so a
-          // pair ruled out against that partner becomes reachable as soon as
-          // the partner absorbs a node with other events. Two merges that are
-          // each harmless then combine into a transfer the rules never stated.
-          return cur.has_value() && dd >= *cur;
-        };
-        for (auto const& [t, d] : cells_of(rows, owner)) {
-          if (already_has(rows, other, t, d)) {
-            continue;  // states the same thing already
-          }
-          if (t == kSelf || location_idx_t{t} == other) {
-            continue;  // becomes the fused node's own time, see above
-          }
-          auto const target = location_idx_t{t};
-          if (tt.locations_.parents_[target] != base && target != base) {
-            return false;  // crosses to another stop: not modelled here
-          }
-          if (!granted(target, d, /*outgoing=*/true)) {
-            return false;
-          }
-        }
-        for (auto const& [f, d] : cells_of(cols, owner)) {
-          if (already_has(cols, other, f, d)) {
-            continue;
-          }
-          if (f == kSelf || location_idx_t{f} == other) {
-            continue;
-          }
-          auto const src = location_idx_t{f};
-          if (tt.locations_.parents_[src] != base && src != base) {
-            return false;
-          }
-          if (!granted(src, d, /*outgoing=*/false)) {
-            return false;
-          }
-        }
-        return true;
-      };
-      return check(a, b) && check(b, a);
-    };
+    }
 
     auto const same_node = [&](location_idx_t const a, location_idx_t const b) {
       return tt.locations_.transfer_time_[a] ==
@@ -655,42 +542,371 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
              cells_without(cols, a, b) == cells_without(cols, b, a);
     };
 
-    // Merging is a minimum clique cover, not an equivalence: two nodes may
-    // each be mergeable with a third and not with each other, because the
-    // cells a merged pair writes about itself are excluded from the
-    // comparison. So this is first-fit greedy, the usual heuristic. Measured
-    // on Switzerland: ordering the candidates most-constrained-first and
-    // requiring a match against every group member rather than only the
-    // representative gives the identical 4,679 virtual locations, so the
-    // simple form is not leaving anything on the table. Refining a partition
-    // instead - what the HRD loader can do, because its rules never cross
-    // stops - is not applicable here and lands at 6,478.
+    auto members_of = hash_map<location_idx_t, std::vector<location_idx_t>>{};
+    for (auto v = first_virt; v != n; ++v) {
+      members_of[tt.locations_.parents_[v]].push_back(v);
+    }
+
     auto group_members =
         hash_map<location_idx_t, std::vector<location_idx_t>>{};
-    auto reps = hash_map<location_idx_t, std::vector<location_idx_t>>{};
     auto remap = hash_map<location_idx_t, location_idx_t>{};
-    for (auto v = first_virt; v != n; ++v) {
-      auto& base_reps = reps[tt.locations_.parents_[v]];
-      auto const it = utl::find_if(base_reps, [&](location_idx_t const r) {
-        if (!time_merge.has_value()) {
-          return same_node(v, r);
+
+    // Propose, then verify.
+    //
+    // No pairwise rule can decide a merge on its own. What a node answers
+    // depends on every member it ends up with *and* on what the node at the
+    // other end of a rule ends up with, so a pair that is harmless in
+    // isolation can still turn into a transfer once both ends have grown -
+    // and a cell that only looks slower can take a hub derivation away, which
+    // loses one. So the pairwise rule below only proposes: the partition it
+    // produces is then checked against what the stop answered before it, trip
+    // pair by trip pair, and whatever fails is forbidden and the partition
+    // built again. What survives answers exactly what the unmerged stop did.
+    for (auto& [base, virts] : members_of) {
+      auto const dflt = duration_t{tt.locations_.transfer_time_[base]};
+      auto all = std::vector<location_idx_t>{base};
+      all.insert(end(all), begin(virts), end(virts));
+
+      auto const is_slow = [&](location_idx_t const m) {
+        return m != base && duration_t{tt.locations_.transfer_time_[m]} > dflt;
+      };
+
+      // what this stop states about its own members, and who says something
+      // about another stop - those may only merge on literal equality, since
+      // the cost of a pair that leaves the stop is not modelled here
+      auto cell = hash_map<pair<location_idx_t, location_idx_t>, duration_t>{};
+      auto crosses = hash_set<location_idx_t>{};
+      auto const mine = [&](location_idx_t const l) {
+        return l == base || tt.locations_.parents_[l] == base;
+      };
+      for (auto const x : all) {
+        if (cista::to_idx(x) < tt.locations_.transfer_rule_fps_.size()) {
+          for (auto const fp : tt.locations_.transfer_rule_fps_[x]) {
+            if (fp.target() == x) {
+              continue;
+            }
+            if (!mine(fp.target())) {
+              crosses.insert(x);
+              continue;
+            }
+            auto const k = pair{x, fp.target()};
+            if (auto const it = cell.find(k); it != end(cell)) {
+              it->second = std::min(it->second, fp.duration());
+            } else {
+              cell.emplace(k, fp.duration());
+            }
+          }
         }
-        // The group answers as one node, so what it hands the candidate is the
-        // *union* of its members' cells, not the representative's. Being
-        // identical to the representative is therefore not enough: a member
-        // that joined on time brought cells the representative never had, and
-        // nothing would ever have checked the candidate against those. Every
-        // member has to accept the candidate, on either ground.
-        auto const accepts = [&](location_idx_t const m) {
-          return same_node(v, m) || time_safe(v, m);
+        if (auto const it = cols.find(x); it != end(cols)) {
+          for (auto const& [f, d] : it->second) {
+            if (f != kSelf && !mine(location_idx_t{f})) {
+              crosses.insert(x);
+            }
+          }
+        }
+      }
+      // who a member says anything about, so a proposal only has to look at
+      // the partners that can differ instead of at every member of the stop
+      auto out_partners = hash_map<location_idx_t, std::vector<location_idx_t>>{};
+      auto in_partners = hash_map<location_idx_t, std::vector<location_idx_t>>{};
+      for (auto const& [k, d] : cell) {
+        out_partners[k.first].push_back(k.second);
+        in_partners[k.second].push_back(k.first);
+      }
+      auto slow_to_list = std::vector<location_idx_t>{};
+      auto slow_from_list = std::vector<location_idx_t>{};
+      for (auto const m : all) {
+        if (slow_to_m.contains(m)) {
+          slow_to_list.push_back(m);
+        }
+        if (slow_from_m.contains(m)) {
+          slow_from_list.push_back(m);
+        }
+      }
+
+      auto const cell_of = [&](location_idx_t const x, location_idx_t const y) {
+        auto const it = cell.find(pair{x, y});
+        return it == end(cell) ? kNever : it->second;
+      };
+      // what the pair costs today: the cell, or the default where a hub
+      // derives it - the two together are everything the stop states
+      auto const cost_pre = [&](location_idx_t const x, location_idx_t const y) {
+        auto c = cell_of(x, y);
+        if (!is_slow(x) &&
+            (!slow_from_m.contains(x) || !slow_to_m.contains(y))) {
+          c = std::min(c, dflt);
+        }
+        return c;
+      };
+
+      // is there a trip pair that could tell `before` and `after` apart?
+      auto const changes_an_answer = [&](location_idx_t const x,
+                                         location_idx_t const y,
+                                         duration_t const before,
+                                         duration_t const after) {
+        if (before == after) {
+          return false;
+        }
+        auto const lo = std::min(before, after);
+        auto const hi = std::max(before, after);
+        auto const f_it = events.find(x), t_it = events.find(y);
+        if (f_it == end(events) || t_it == end(events)) {
+          return false;  // nothing is ever at both ends
+        }
+        for (auto const& f : f_it->second) {
+          for (auto const& t : t_it->second) {
+            if (f.arr_ == kInterpolate || t.dep_ == kInterpolate) {
+              return true;  // unknown time: assume it matters
+            }
+            auto gap = duration_t{t.dep_ - f.arr_};
+            if (gap < duration_t{0}) {
+              gap += duration_t{1440};  // the departure is on the next day
+            }
+            if (gap >= lo && gap < hi) {
+              return true;
+            }
+          }
+        }
+        return false;
+      };
+
+      // The proposal: would fusing exactly these two change an answer? Only
+      // the partners one of them states something about can differ, plus -
+      // when fusing flips a slow classification - the partners that
+      // classification decides a hub derivation for.
+      auto seen = hash_map<location_idx_t, unsigned>{};
+      auto stamp = 0U;
+      auto todo = std::vector<location_idx_t>{};
+      auto const plausible = [&](location_idx_t const a, location_idx_t const b) {
+        if (tt.locations_.transfer_time_[a] != tt.locations_.transfer_time_[b] ||
+            !pair_is_own_time(a, b) || hubs_of(a) != hubs_of(b) ||
+            crosses.contains(a) || crosses.contains(b)) {
+          return false;
+        }
+        auto const sf_a = slow_from_m.contains(a), sf_b = slow_from_m.contains(b);
+        auto const st_a = slow_to_m.contains(a), st_b = slow_to_m.contains(b);
+        auto const sf = sf_a || sf_b;
+        auto const st = st_a || st_b;
+
+        ++stamp;
+        todo.clear();
+        auto const add = [&](location_idx_t const p) {
+          if (p == a || p == b) {
+            return;
+          }
+          auto& when = seen[p];
+          if (when == stamp) {
+            return;
+          }
+          when = stamp;
+          todo.push_back(p);
         };
-        return accepts(r) && utl::all_of(group_members[r], accepts);
-      });
-      if (it == end(base_reps)) {
-        base_reps.push_back(v);
-      } else {
-        remap.emplace(v, *it);
-        group_members[*it].push_back(v);
+        auto const add_all = [&](auto const& m, location_idx_t const k) {
+          if (auto const it = m.find(k); it != end(m)) {
+            for (auto const p : it->second) {
+              add(p);
+            }
+          }
+        };
+        add_all(out_partners, a);
+        add_all(out_partners, b);
+        add_all(in_partners, a);
+        add_all(in_partners, b);
+        if (sf != sf_a || sf != sf_b) {
+          for (auto const p : slow_to_list) {
+            add(p);  // the fused node stops reaching these through a hub
+          }
+        }
+        if (st != st_a || st != st_b) {
+          for (auto const p : slow_from_list) {
+            add(p);  // these stop reaching the fused node through a hub
+          }
+        }
+
+        for (auto const p : todo) {
+          auto out = std::min(cell_of(a, p), cell_of(b, p));
+          if (!is_slow(a) && (!sf || !slow_to_m.contains(p))) {
+            out = std::min(out, dflt);
+          }
+          if (changes_an_answer(a, p, cost_pre(a, p), out) ||
+              changes_an_answer(b, p, cost_pre(b, p), out)) {
+            return false;
+          }
+          auto in = std::min(cell_of(p, a), cell_of(p, b));
+          if (!is_slow(p) && (!slow_from_m.contains(p) || !st)) {
+            in = std::min(in, dflt);
+          }
+          if (changes_an_answer(p, a, cost_pre(p, a), in) ||
+              changes_an_answer(p, b, cost_pre(p, b), in)) {
+            return false;
+          }
+        }
+        return true;
+      };
+
+      auto forbidden = hash_set<pair<location_idx_t, location_idx_t>>{};
+      auto const banned = [&](location_idx_t const x, location_idx_t const y) {
+        return forbidden.contains(pair{x, y}) || forbidden.contains(pair{y, x});
+      };
+
+      auto constexpr kMaxRounds = 8;
+      auto reps = std::vector<location_idx_t>{};
+      auto mem = hash_map<location_idx_t, std::vector<location_idx_t>>{};
+      auto proposed = false;
+      for (auto round = 0; round <= kMaxRounds; ++round) {
+        proposed = false;
+        // the last round gives up on the proposals and keeps only the nodes
+        // that state literally the same thing, which never needs a check
+        auto const equality_only = round == kMaxRounds;
+        reps.clear();
+        mem.clear();
+        for (auto const v : virts) {
+          auto const it = utl::find_if(reps, [&](location_idx_t const r) {
+            auto const ok = [&](location_idx_t const m) {
+              return !banned(v, m) &&
+                     (same_node(v, m) || (!equality_only &&
+                                          time_merge.has_value() &&
+                                          plausible(v, m)));
+            };
+            return ok(r) && utl::all_of(mem[r], ok);
+          });
+          if (it == end(reps)) {
+            reps.push_back(v);
+            mem[v];
+          } else {
+            mem[*it].push_back(v);
+            if (!same_node(v, *it)) {
+              // joined on a proposal - or on equality with a representative
+              // whose group a proposal had already changed, which set this
+              // when that member joined
+              proposed = true;
+            }
+          }
+        }
+        if (equality_only || !proposed) {
+          break;  // literal equality states the same thing: nothing to check
+        }
+
+        auto g = hash_map<location_idx_t, location_idx_t>{};
+        auto glist = hash_map<location_idx_t, std::vector<location_idx_t>>{};
+        g[base] = base;
+        glist[base] = {base};
+        for (auto const r : reps) {
+          g[r] = r;
+          auto& l = glist[r];
+          l.push_back(r);
+          for (auto const m : mem[r]) {
+            g[m] = r;
+            l.push_back(m);
+          }
+        }
+        // a fused node carries every member's cells, so it is slow in either
+        // direction as soon as one member is
+        auto sf = hash_map<location_idx_t, bool>{};
+        auto st = hash_map<location_idx_t, bool>{};
+        for (auto const& [r, l] : glist) {
+          sf[r] = utl::any_of(l, [&](location_idx_t const m) {
+            return slow_from_m.contains(m);
+          });
+          st[r] = utl::any_of(l, [&](location_idx_t const m) {
+            return slow_to_m.contains(m);
+          });
+        }
+        auto pc = hash_map<pair<location_idx_t, location_idx_t>, duration_t>{};
+        auto const cost_post = [&](location_idx_t const u_grp,
+                                   location_idx_t const v_grp) {
+          if (u_grp == v_grp) {
+            return duration_t{tt.locations_.transfer_time_[u_grp]};
+          }
+          auto const k = pair{u_grp, v_grp};
+          if (auto const it = pc.find(k); it != end(pc)) {
+            return it->second;
+          }
+          auto c = kNever;
+          for (auto const u : glist[u_grp]) {
+            for (auto const v : glist[v_grp]) {
+              c = std::min(c, cell_of(u, v));
+            }
+          }
+          if (!is_slow(u_grp) && (!sf[u_grp] || !st[v_grp])) {
+            c = std::min(c, dflt);
+          }
+          pc.emplace(k, c);
+          return c;
+        };
+
+        auto clean = true;
+        for (auto const x : all) {
+          for (auto const y : all) {
+            if (x == y) {
+              continue;
+            }
+            auto const gx = g[x], gy = g[y];
+            if (glist[gx].size() == 1U && glist[gy].size() == 1U) {
+              continue;  // neither end was fused: nothing can have moved
+            }
+            auto const before = cost_pre(x, y);
+            auto const after = cost_post(gx, gy);
+            if (!changes_an_answer(x, y, before, after)) {
+              continue;
+            }
+            clean = false;
+            auto blamed = false;
+            auto const blame = [&](location_idx_t const keep,
+                                   location_idx_t const drop) {
+              if (keep != drop) {
+                forbidden.insert(pair{keep, drop});
+                blamed = true;
+              }
+            };
+            if (after < before) {
+              // some member reaches the other end more cheaply than x does
+              for (auto const u : glist[gx]) {
+                for (auto const v : glist[gy]) {
+                  if (cell_of(u, v) == after) {
+                    blame(x, u);
+                    blame(y, v);
+                  }
+                }
+              }
+            } else {
+              // slower, or gone: a member took the hub derivation away
+              if (gx == gy) {
+                blame(x, y);
+              }
+              for (auto const m : glist[gx]) {
+                if (slow_from_m.contains(m) && !slow_from_m.contains(x)) {
+                  blame(x, m);
+                }
+              }
+              for (auto const m : glist[gy]) {
+                if (slow_to_m.contains(m) && !slow_to_m.contains(y)) {
+                  blame(y, m);
+                }
+              }
+            }
+            if (!blamed) {
+              // nothing specific to blame - dissolve both groups instead of
+              // risking a round that changes nothing and never terminates
+              for (auto const m : glist[gx]) {
+                blame(x, m);
+              }
+              for (auto const m : glist[gy]) {
+                blame(y, m);
+              }
+            }
+          }
+        }
+        if (clean) {
+          break;
+        }
+      }
+
+      for (auto const r : reps) {
+        for (auto const m : mem[r]) {
+          remap.emplace(m, r);
+          group_members[r].push_back(m);
+        }
       }
     }
 
