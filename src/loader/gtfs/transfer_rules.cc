@@ -477,71 +477,22 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
       utl::sort(out);
       return out;
     };
-    // A merge fuses two nodes, so the rule between one of them and a partner
-    // is handed to the other as well. That is only harmless when the pair it
-    // creates is one the timetable cannot use anyway: the partner has already
-    // left, or the gap is wide enough that the stop's own transfer time
-    // already allowed it. Then the rule grants nothing and the fused node
-    // answers exactly as the two did.
+    // A merge fuses two nodes, so every rule one of them carries is handed to
+    // the other as well. That is harmless exactly when it cannot lower what
+    // the other already pays for the same partner: then the fused node answers
+    // what the two answered separately, for every partner and in both
+    // directions. Anything beyond that - a cheaper cell excused because the
+    // event times look unusable - is not safe, because the partner of a cell
+    // is itself a merge candidate and inherits the cell once it is fused.
     //
-    // On by default. It makes the merge depend on the event times, so the same
-    // feed over another date range can merge differently -
-    // NIGIRI_NO_VIRT_TIME_MERGE turns it off.
-    // The margin is how much delay a merge has to survive: a created pair only
-    // starts to matter once the feeder is late by more than gap - default. A
-    // constant is the wrong shape for it - the same number is unreachable at a
-    // stop served every four minutes and trivial at one served hourly. What it
-    // wants to express is "far enough that the next departure of the service is
-    // the relevant one", so it is taken from the stop's own headway. Negative
-    // means a fixed margin in minutes instead, for A/B.
+    // On by default; NIGIRI_NO_VIRT_TIME_MERGE turns it off and keeps only the
+    // merge of nodes that state literally the same thing.
     static auto const time_merge = []() -> std::optional<int> {
       if (std::getenv("NIGIRI_NO_VIRT_TIME_MERGE") != nullptr) {
         return std::nullopt;
       }
-      auto const* v = std::getenv("NIGIRI_VIRT_TIME_MERGE");
-      return v == nullptr ? std::optional{0} /* the stop's headway */
-                          : std::optional{std::atoi(v)};
+      return std::optional{0};
     }();
-
-    auto stop_headway = hash_map<location_idx_t, duration_t>{};
-    if (time_merge.has_value() && *time_merge >= 0) {
-      auto deps = hash_map<location_idx_t, std::vector<minutes_after_midnight_t>>{};
-      for (auto const& t : trips.data_) {
-        for (auto const [i, s] : utl::enumerate(t.stop_seq_)) {
-          if (i >= t.event_times_.size()) {
-            break;
-          }
-          auto const d = t.event_times_[i].dep_;
-          if (d != kInterpolate) {
-            deps[stop{s}.location_idx()].push_back(d);
-          }
-        }
-      }
-      for (auto& [l, v] : deps) {
-        if (v.size() < 2U) {
-          continue;
-        }
-        utl::sort(v);
-        auto gaps = std::vector<duration_t>{};
-        for (auto i = std::size_t{1U}; i != v.size(); ++i) {
-          if (v[i] > v[i - 1U]) {
-            gaps.push_back(v[i] - v[i - 1U]);
-          }
-        }
-        if (gaps.empty()) {
-          continue;
-        }
-        std::nth_element(begin(gaps), begin(gaps) + gaps.size() / 2, end(gaps));
-        stop_headway[l] = gaps[gaps.size() / 2U];  // the median headway
-      }
-    }
-    auto const margin_at = [&](location_idx_t const base) {
-      if (*time_merge < 0) {
-        return duration_t{static_cast<duration_t::rep>(-*time_merge)};
-      }
-      auto const it = stop_headway.find(base);
-      return it == end(stop_headway) ? duration_t{*time_merge} : it->second;
-    };
 
     // What a hub derives, decided the way build_hubs decides it: a cell longer
     // than the stop charges makes its source a restricted one and its target
@@ -596,41 +547,6 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
       return best;
     };
 
-    auto const events_at = [&](location_idx_t const v) {
-      auto out = std::vector<stop_events>{};
-      if (auto const it = virt_stops.find(v); it != end(virt_stops)) {
-        for (auto const& [trp, pos] : it->second) {
-          out.push_back(trips.data_[trp].event_times_[pos]);
-        }
-      }
-      return out;
-    };
-
-    // every trip pair of x -> y is either impossible or already allowed
-    auto const grants_nothing = [&](location_idx_t const x,
-                                    location_idx_t const y,
-                                    duration_t const need_base,
-                                    duration_t const margin) {
-      auto const need = need_base + margin;
-      auto const from = events_at(x), to = events_at(y);
-      if (from.empty() || to.empty()) {
-        return false;
-      }
-      for (auto const& f : from) {
-        for (auto const& t : to) {
-          if (f.arr_ == kInterpolate || t.dep_ == kInterpolate) {
-            return false;
-          }
-          auto const gap = t.dep_ - f.arr_;
-          if (gap < duration_t{0} || gap >= need) {
-            continue;  // gone by then, or wide enough that nothing changes
-          }
-          return false;
-        }
-      }
-      return true;
-    };
-
     auto const cells_of = [&](auto const& m, location_idx_t const v) {
       auto out = std::vector<std::pair<std::uint32_t, std::int32_t>>{};
       if (auto const it = m.find(v); it != end(m)) {
@@ -658,8 +574,6 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
         return false;
       }
       auto const base = tt.locations_.parents_[a];
-      auto const dflt = duration_t{tt.locations_.transfer_time_[base]};
-      auto const margin = margin_at(base);
       // A cell the other side already states identically is not granted by the
       // merge - both nodes carry it before and after. Every virtual location of
       // a stop inherits that stop's own rules this way, so this is most of
@@ -687,14 +601,16 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
           auto const dd = duration_t{static_cast<duration_t::rep>(d)};
           auto const cur = outgoing ? current_cost(other, partner, base, cells_of)
                                     : current_cost(partner, other, base, cells_of);
-          if (cur.has_value() && dd >= *cur) {
-            return true;  // the minimum does not move
-          }
-          if (!cur.has_value()) {
-            return false;  // unreachable today: the merge would create it
-          }
-          return outgoing ? grants_nothing(other, partner, *cur, margin)
-                          : grants_nothing(partner, other, *cur, margin);
+          // Only a cell that cannot lower what the other side already pays may
+          // be handed over. The tempting alternative - allow a cheaper cell
+          // when the timetable could not use it anyway, because every arrival
+          // at one end and departure at the other are too close together or
+          // far enough apart - reads as safe pair by pair but does not
+          // compose: the partner of a cell is itself a merge candidate, so a
+          // pair ruled out against that partner becomes reachable as soon as
+          // the partner absorbs a node with other events. Two merges that are
+          // each harmless then combine into a transfer the rules never stated.
+          return cur.has_value() && dd >= *cur;
         };
         for (auto const& [t, d] : cells_of(rows, owner)) {
           if (already_has(rows, other, t, d)) {
@@ -756,21 +672,19 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
     for (auto v = first_virt; v != n; ++v) {
       auto& base_reps = reps[tt.locations_.parents_[v]];
       auto const it = utl::find_if(base_reps, [&](location_idx_t const r) {
-        if (same_node(v, r)) {
-          return true;
-        }
         if (!time_merge.has_value()) {
-          return false;
+          return same_node(v, r);
         }
-        // the group answers as one node, so the candidate has to be safe
-        // against every member, not only the representative
-        if (!time_safe(v, r)) {
-          return false;
-        }
-        auto const& members = group_members[r];
-        return utl::all_of(members, [&](location_idx_t const m) {
-          return time_safe(v, m);
-        });
+        // The group answers as one node, so what it hands the candidate is the
+        // *union* of its members' cells, not the representative's. Being
+        // identical to the representative is therefore not enough: a member
+        // that joined on time brought cells the representative never had, and
+        // nothing would ever have checked the candidate against those. Every
+        // member has to accept the candidate, on either ground.
+        auto const accepts = [&](location_idx_t const m) {
+          return same_node(v, m) || time_safe(v, m);
+        };
+        return accepts(r) && utl::all_of(group_members[r], accepts);
       });
       if (it == end(base_reps)) {
         base_reps.push_back(v);
