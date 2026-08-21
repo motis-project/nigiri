@@ -137,6 +137,11 @@ SS,SS,,58.0,6.5,,,
 SSA,SSA,,58.0,7.0,,,
 SSB,SSB,,58.0,7.5,,,
 SSC,SSC,,58.0,8.0,,,
+GO1,GO1,,59.0,6.0,,,
+GO2,GO2,,59.0,6.1,,,
+GO3,GO3,,59.0,6.2,,,
+GU,GU,,59.0,6.5,,,
+GUD,GUD,,59.0,7.0,,,
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -165,6 +170,10 @@ RQ3,AG,q3,,,3
 RSS,AG,ss,,,3
 RSX,AG,sx,,,3
 RSY,AG,sy,,,3
+RGA,AG,ga,,,3
+RGB,AG,gb,,,3
+RGC,AG,gc,,,3
+RGX,AG,gx,,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
@@ -199,6 +208,10 @@ RSX,S1,TS1,,
 RSY,S1,TS2,,
 RSS,S1,TS3,,
 RSY,S1,TS4,,
+RGA,S1,GA,,
+RGB,S1,GB,,
+RGC,S1,GC,,
+RGX,S1,GX,,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -264,6 +277,14 @@ TS3,09:33:00,09:33:00,SS,0
 TS3,10:00:00,10:00:00,SSB,1
 TS4,09:23:00,09:23:00,SS,0
 TS4,10:00:00,10:00:00,SSC,1
+GA,08:00:00,08:00:00,GO1,0
+GA,09:00:00,09:00:00,GU,1
+GB,09:30:00,09:30:00,GO2,0
+GB,10:00:00,10:00:00,GU,1
+GC,09:40:00,09:40:00,GO3,0
+GC,09:55:00,09:55:00,GU,1
+GX,10:01:00,10:01:00,GU,0
+GX,10:30:00,10:30:00,GUD,1
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -290,6 +311,9 @@ Q,Q,2,600,,,Q2,Q1
 SS,SS,2,120,,,,
 SS,SS,2,600,RSS,RSS,,
 SS,SS,2,600,,,TS1,TS2
+GU,GU,2,180,RGA,RGX,,
+GU,GU,2,180,RGB,RGX,,
+GU,GU,2,0,RGC,RGX,,
 )"sv;
 
 timetable load() {
@@ -465,4 +489,31 @@ TEST(gtfs, transfer_rules_slow_member) {
                                    "2019-05-01 08:45 Europe/Berlin");
   ASSERT_EQ(1U, res_c.size());
   EXPECT_EQ(t("2019-05-01 10:00 Europe/Berlin"), begin(res_c)->dest_time_);
+}
+
+// A rule that lets one route transfer without waiting must not become usable
+// for another route at the same stop. Both are merge candidates - GA and GB
+// state the identical slow cell, GC the fast one - and a merge that hands the
+// fast cell to a node that did not state it turns GB's impossible connection
+// into a possible one.
+TEST(gtfs, transfer_rules_fast_rule_stays_on_its_route) {
+  auto const tt = load();
+
+  // GC is the route the 0 min rule names: 09:55 + 0 catches the 10:01
+  auto const res_c = raptor_search(tt, nullptr, "GO3", "GUD",
+                                   "2019-05-01 09:30 Europe/Berlin");
+  ASSERT_EQ(1U, res_c.size());
+  EXPECT_EQ(t("2019-05-01 10:30 Europe/Berlin"), begin(res_c)->dest_time_);
+
+  // GB arrives 10:00 and owes 3 min, so 10:01 is out of reach - it may not
+  // borrow the 0 min rule from GC
+  auto const res_b = raptor_search(tt, nullptr, "GO2", "GUD",
+                                   "2019-05-01 09:00 Europe/Berlin");
+  EXPECT_EQ(0U, res_b.size());
+
+  // GA states the same 3 min as GB and has the slack for it
+  auto const res_a = raptor_search(tt, nullptr, "GO1", "GUD",
+                                   "2019-05-01 07:30 Europe/Berlin");
+  ASSERT_EQ(1U, res_a.size());
+  EXPECT_EQ(t("2019-05-01 10:30 Europe/Berlin"), begin(res_a)->dest_time_);
 }
