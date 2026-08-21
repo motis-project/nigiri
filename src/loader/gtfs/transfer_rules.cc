@@ -484,8 +484,9 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
     // already allowed it. Then the rule grants nothing and the fused node
     // answers exactly as the two did.
     //
-    // Off by default: it makes the merge depend on the event times, so two
-    // timetables over different date ranges can merge differently.
+    // On by default. It makes the merge depend on the event times, so the same
+    // feed over another date range can merge differently -
+    // NIGIRI_NO_VIRT_TIME_MERGE turns it off.
     // The margin is how much delay a merge has to survive: a created pair only
     // starts to matter once the feeder is late by more than gap - default. A
     // constant is the wrong shape for it - the same number is unreachable at a
@@ -494,8 +495,12 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
     // the relevant one", so it is taken from the stop's own headway. Negative
     // means a fixed margin in minutes instead, for A/B.
     static auto const time_merge = []() -> std::optional<int> {
+      if (std::getenv("NIGIRI_NO_VIRT_TIME_MERGE") != nullptr) {
+        return std::nullopt;
+      }
       auto const* v = std::getenv("NIGIRI_VIRT_TIME_MERGE");
-      return v == nullptr ? std::nullopt : std::optional{std::atoi(v)};
+      return v == nullptr ? std::optional{0} /* the stop's headway */
+                          : std::optional{std::atoi(v)};
     }();
 
     auto stop_headway = hash_map<location_idx_t, duration_t>{};
