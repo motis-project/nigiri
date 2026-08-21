@@ -21,7 +21,7 @@
 namespace nigiri::routing::gpu {
 
 inline bool gpu_supported(query const& q, rt_timetable const* = nullptr) {
-  return q.via_stops_.empty();
+  return q.via_stops_.empty() && q.blocked_srcs_.none();
 }
 
 struct gpu_timetable {
@@ -78,7 +78,8 @@ struct gpu_raptor {
       bool const is_wheelchair,
       bool const no_compulsory_reservation_,
       transfer_time_settings const& tts,
-      profile_idx_t const prf_idx);
+      profile_idx_t const prf_idx,
+      bitvec_map<source_idx_t> const& = {});
 
   raptor_stats get_stats() const { return stats_; }
   void reset_arrivals();

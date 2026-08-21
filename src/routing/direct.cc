@@ -501,7 +501,8 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
       utl::overloaded{
           [](utl::op, route_idx_t) {},
           [&](route_idx_t const r, route_idx_t) {
-            if (!is_allowed(q.allowed_claszes_, tt.route_clasz_[r]) ||
+            if (q.blocked_srcs_.test(tt.route_src(r)) ||
+                !is_allowed(q.allowed_claszes_, tt.route_clasz_[r]) ||
                 (q.require_bike_transport_ &&
                  !tt.is_flag_set(kBikesAllowed, r)) ||
                 (q.require_car_transport_ &&
@@ -547,7 +548,8 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
         utl::overloaded{
             [](utl::op, rt_transport_idx_t) {},
             [&](rt_transport_idx_t const x, rt_transport_idx_t) {
-              if (!is_allowed(q.allowed_claszes_,
+              if (q.blocked_srcs_.test(rtt->rt_transport_src_[x]) ||
+                  !is_allowed(q.allowed_claszes_,
                               rtt->rt_transport_section_clasz_[x].front()) ||
                   (q.require_bike_transport_ &&
                    !rtt->is_flag_set(kBikesAllowed, x)) ||

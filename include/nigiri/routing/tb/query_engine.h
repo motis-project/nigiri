@@ -96,7 +96,8 @@ struct query_engine {
                bool,
                bool,
                transfer_time_settings,
-               profile_idx_t);
+               profile_idx_t,
+               bitvec_map<source_idx_t> const& = {});
 
   algo_stats_t get_stats() const { return stats_; }
 

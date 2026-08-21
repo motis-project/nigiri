@@ -544,7 +544,8 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
     bool const is_wheelchair,
     bool const no_compulsory_reservation,
     transfer_time_settings const& tts,
-    profile_idx_t const prf_idx)
+    profile_idx_t const prf_idx,
+    bitvec_map<source_idx_t> const&)
     : tt_{tt},
       rtt_{rtt},
       gpu_rtt_{rtt == nullptr ? nullptr
