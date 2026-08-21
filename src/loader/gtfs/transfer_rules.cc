@@ -553,6 +553,18 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
 
     // Propose, then verify.
     //
+    // The order the candidates are visited in is the order they were created
+    // in, which carries no meaning - and two orderings that do carry meaning
+    // were measured on Sweden and are worse. Sorting the candidates by the
+    // routes calling at them lands at 30,539 virtual locations and 38,815
+    // routes; additionally letting a candidate prefer a group that already
+    // holds one of its routes lands at 30,798 and 38,949; the order below
+    // gives 29,374 and 37,838. Keeping a route whole sounds like it should
+    // pay - a route whose trips sit on different virtual locations no longer
+    // shares a stop sequence and splits in two - but constraining first fit
+    // costs more merges than it saves routes, and fewer virtual locations
+    // turns out to mean fewer routes anyway.
+    //
     // No pairwise rule can decide a merge on its own. What a node answers
     // depends on every member it ends up with *and* on what the node at the
     // other end of a rule ends up with, so a pair that is harmless in
