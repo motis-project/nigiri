@@ -1,9 +1,9 @@
 #include "nigiri/loader/build_footpaths.h"
 
-#include <tuple>
 #include <mutex>
 #include <optional>
 #include <stack>
+#include <tuple>
 
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
@@ -429,6 +429,7 @@ void write_footpaths(timetable& tt) {
     for (auto const fp : tt.locations_.preprocessing_footpaths_out_[i]) {
       fps.push_back(fp);
     }
+    // one edge per target, at the shortest duration offered for it
     utl::erase_duplicates(
         fps,
         [](footpath const a, footpath const b) {
@@ -437,8 +438,10 @@ void write_footpaths(timetable& tt) {
         },
         [](footpath const a, footpath const b) {
           return a.target_ == b.target_;
-        });  // also sorts; keeps the shortest duration per target
+        });  // also sorts by target; keeps the shortest duration per target
     tt.locations_.footpaths_out_[prf_idx].emplace_back(fps);
+    // the in layer is the transpose of out - every writer of the
+    // preprocessing layers fills both directions as a mirrored pair
     for (auto const fp : fps) {
       fps_in[fp.target()].emplace_back(i, fp.duration());
     }
