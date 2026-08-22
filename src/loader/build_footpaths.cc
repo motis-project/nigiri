@@ -422,6 +422,12 @@ void write_footpaths(timetable& tt) {
 
   profile_idx_t const prf_idx{0};
 
+  // shortest duration first, the order sort_footpaths() left the preprocessing
+  // layers in; the target breaks ties so the built timetable is reproducible
+  auto const by_duration = [](footpath const a, footpath const b) {
+    return std::tie(a.duration_, a.target_) < std::tie(b.duration_, b.target_);
+  };
+
   auto fps = std::vector<footpath>{};
   auto fps_in = mutable_fws_multimap<location_idx_t, footpath>{};
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
@@ -438,7 +444,8 @@ void write_footpaths(timetable& tt) {
         },
         [](footpath const a, footpath const b) {
           return a.target_ == b.target_;
-        });  // also sorts by target; keeps the shortest duration per target
+        });  // sorts by target; keeps the shortest duration per target
+    utl::sort(fps, by_duration);
     tt.locations_.footpaths_out_[prf_idx].emplace_back(fps);
     // the in layer is the transpose of out - every writer of the
     // preprocessing layers fills both directions as a mirrored pair
@@ -448,7 +455,12 @@ void write_footpaths(timetable& tt) {
   }
 
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    tt.locations_.footpaths_in_[prf_idx].emplace_back(fps_in[i]);
+    fps.clear();
+    for (auto const fp : fps_in[i]) {
+      fps.push_back(fp);
+    }
+    utl::sort(fps, by_duration);
+    tt.locations_.footpaths_in_[prf_idx].emplace_back(fps);
   }
 
   tt.locations_.preprocessing_footpaths_in_.clear();
