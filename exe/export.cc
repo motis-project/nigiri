@@ -21,7 +21,9 @@ int main(int argc, char* argv[]) {
       ("tt_path,p", bpo::value(&tt_path)->required(),
        "path to a binary file containing a serialized nigiri timetable")  //
       ("gtfs_export_dir,o", bpo::value(&gtfs_dir)->required(),
-       "path to the directory to export the timetable as GTFS");
+       "output path: either a directory (e.g. -o output/) to export the "
+       "individual GTFS files into, or a path ending in \".zip\" (e.g. -o "
+       "output.zip) to export a single zip archive");
   bpo::variables_map vm;
   bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
 

@@ -1,9 +1,17 @@
 #include "nigiri/export_gtfs.h"
 
+#include <cctype>
+#include <chrono>
+#include <algorithm>
 #include <filesystem>
 #include <format>
 #include <fstream>
-#include <limits>
+#include <iostream>
+#include <string>
+
+#include "miniz.h"
+
+#include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/tz_map.h"
 #include "nigiri/common/day_list.h"
@@ -12,10 +20,126 @@
 namespace nigiri {
 
 namespace {
+
+struct progress_timer {
+  explicit progress_timer(std::string label)
+      : label_{std::move(label)}, start_{std::chrono::steady_clock::now()} {
+    std::cout << "writing " << label_ << " ... " << std::flush;
+  }
+  progress_timer(progress_timer const&) = delete;
+  progress_timer(progress_timer&&) = delete;
+  progress_timer& operator=(progress_timer const&) = delete;
+  progress_timer& operator=(progress_timer&&) = delete;
+  ~progress_timer() {
+    auto const elapsed_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start_)
+            .count();
+    std::cout << "done. (" << elapsed_ms << "ms)\n";
+  }
+
+  std::string label_;
+  std::chrono::steady_clock::time_point start_;
+};
+
 // Some agencies do not have a name or / and an url
 constexpr auto const kDummyAgencyName = std::string_view{"Unknown Agency"};
 constexpr auto const kDummyAgencyUrl = std::string_view{"https://example.com"};
+
 }  // namespace
+
+gtfs_dir_export_target::gtfs_dir_export_target(std::filesystem::path dir)
+    : dir_{std::move(dir)} {
+  std::filesystem::create_directories(dir_);
+}
+
+std::ostream& gtfs_dir_export_target::create_file(std::string const& filename) {
+  streams_.push_back(std::make_unique<std::ofstream>(dir_ / filename));
+  utl::verify(streams_.back()->is_open(), "gtfs export: cannot create {}",
+              (dir_ / filename).string());
+  return *streams_.back();
+}
+
+namespace {
+std::filesystem::path make_tmp_export_dir(
+    std::filesystem::path const& zip_path) {
+  auto dir = zip_path;
+  dir += ".tmp_export";
+  auto ec = std::error_code{};
+  std::filesystem::remove_all(dir, ec);
+  std::filesystem::create_directories(dir);
+  return dir;
+}
+}  // namespace
+
+struct gtfs_zip_export_target::impl {
+  explicit impl(std::filesystem::path const& zip_path) {
+    auto const ok =
+        mz_zip_writer_init_file(&ar_, zip_path.string().c_str(), 0U);
+    utl::verify(ok == MZ_TRUE, "gtfs export: cannot create zip archive {}",
+                zip_path.string());
+  }
+  ~impl() { mz_zip_writer_end(&ar_); }
+  impl(impl const&) = delete;
+  impl(impl&&) = delete;
+  impl& operator=(impl const&) = delete;
+  impl& operator=(impl&&) = delete;
+
+  mz_zip_archive ar_{};
+};
+
+gtfs_zip_export_target::gtfs_zip_export_target(std::filesystem::path zip_path)
+    : zip_path_{std::move(zip_path)},
+      tmp_dir_{make_tmp_export_dir(zip_path_)},
+      impl_{std::make_unique<impl>(zip_path_)} {}
+
+gtfs_zip_export_target::~gtfs_zip_export_target() {
+  auto ec = std::error_code{};
+  std::filesystem::remove_all(tmp_dir_, ec);
+}
+
+std::ostream& gtfs_zip_export_target::create_file(std::string const& filename) {
+  filenames_.push_back(filename);
+  streams_.push_back(std::make_unique<std::ofstream>(tmp_dir_ / filename));
+  utl::verify(streams_.back()->is_open(), "gtfs export: cannot create {}",
+              (tmp_dir_ / filename).string());
+  return *streams_.back();
+}
+
+void gtfs_zip_export_target::finalize() {
+  for (auto& s : streams_) {
+    s->flush();
+    s->close();
+  }
+
+  for (auto const& name : filenames_) {
+    auto const src = tmp_dir_ / name;
+    auto const ok =
+        mz_zip_writer_add_file(&impl_->ar_, name.c_str(), src.string().c_str(),
+                               nullptr, 0, MZ_BEST_SPEED);
+    utl::verify(ok == MZ_TRUE, "gtfs export: cannot add {} to zip archive {}",
+                name, zip_path_.string());
+  }
+
+  auto const ok = mz_zip_writer_finalize_archive(&impl_->ar_);
+  utl::verify(ok == MZ_TRUE, "gtfs export: cannot finalize zip archive {}",
+              zip_path_.string());
+
+  auto ec = std::error_code{};
+  std::filesystem::remove_all(tmp_dir_, ec);
+}
+
+std::unique_ptr<gtfs_export_target> make_gtfs_export_target(
+    std::filesystem::path const& output_path) {
+  auto ext = output_path.extension().string();
+  std::ranges::transform(ext, ext.begin(), [](unsigned char const c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  if (ext == ".zip") {
+    return std::make_unique<gtfs_zip_export_target>(output_path);
+  }
+  return std::make_unique<gtfs_dir_export_target>(output_path);
+}
 
 std::string csv_escape(std::string_view input) {
   auto const had_quote = bool{input.find('"') != std::string_view::npos};
@@ -50,8 +174,9 @@ static std::string format_time(delta d) {
   return std::format("{:02}:{:02}:{:02}", h, m, s);
 }
 
-void export_gtfs(timetable const& tt, std::filesystem::path const& dir) {
-  std::filesystem::create_directories(dir);
+void export_gtfs(timetable const& tt,
+                 std::filesystem::path const& output_path) {
+  auto target = make_gtfs_export_target(output_path);
 
   auto route_offsets = std::vector<size_t>(tt.route_ids_.size());
   auto sum = std::size_t{0};
@@ -61,30 +186,30 @@ void export_gtfs(timetable const& tt, std::filesystem::path const& dir) {
     sum += tt.route_ids_[s].ids_.size();
   }
 
-  write_feed_info(dir);
-  write_agencies(tt, dir);
-  write_stops(tt, dir);
-  write_routes(tt, dir, route_offsets);
-  write_trips(tt, dir, route_offsets);
-  write_stop_times(tt, dir);
-  write_calendar(tt, dir);
-  write_transfers(tt, dir);
+  write_feed_info(*target);
+  write_agencies(tt, *target);
+  write_stops(tt, *target);
+  write_routes(tt, *target, route_offsets);
+  write_trips(tt, *target, route_offsets);
+  write_stop_times(tt, *target);
+  write_calendar(tt, *target);
+  write_transfers(tt, *target);
+
+  target->finalize();
 }
 
-void write_feed_info(std::filesystem::path const& dir) {
-  std::cout << "writing feed_info.txt ... ";
+void write_feed_info(gtfs_export_target& out_target) {
+  auto const timer = progress_timer{"feed_info.txt"};
 
-  auto out = std::ofstream{dir / "feed_info.txt"};
+  auto& out = out_target.create_file("feed_info.txt");
   out << "feed_publisher_name,feed_publisher_url,feed_lang,agency_timezone\n";
   out << "MOTIS - Export,github.com/motis-project/motis,EN,Etc/UTC\n";
-
-  std::cout << "done.\n";
 }
 
-void write_agencies(timetable const& tt, std::filesystem::path const& dir) {
-  std::cout << "writing agency.txt ... ";
+void write_agencies(timetable const& tt, gtfs_export_target& out_target) {
+  auto const timer = progress_timer{"agency.txt"};
 
-  auto out = std::ofstream{dir / "agency.txt"};
+  auto& out = out_target.create_file("agency.txt");
   out << "agency_id,agency_name,agency_url,agency_timezone\n";
 
   for (auto p = provider_idx_t{0}; p < tt.providers_.size(); ++p) {
@@ -101,14 +226,12 @@ void write_agencies(timetable const& tt, std::filesystem::path const& dir) {
     out << to_idx(p) << "," << csv_escape(name) << "," << csv_escape(url)
         << ",Etc/UTC\n";
   }
-
-  std::cout << "done.\n";
 }
 
-void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
-  std::cout << "writing stops.txt ... ";
+void write_stops(timetable const& tt, gtfs_export_target& out_target) {
+  auto const timer = progress_timer{"stops.txt"};
 
-  auto out = std::ofstream{output_dir / "stops.txt"};
+  auto& out = out_target.create_file("stops.txt");
   out << "stop_id,original_stop_id,stop_name,stop_desc,stop_lat,stop_lon,"
          "location_type,"
          "parent_station\n";
@@ -157,14 +280,12 @@ void write_stops(timetable const& tt, std::filesystem::path const& output_dir) {
         << "," << csv_escape(desc) << "," << coord.lat_ << "," << coord.lng_
         << ",0," << parent_str << "\n";
   }
-
-  std::cout << "done.\n";
 }
 
-void write_stop_times(timetable const& tt, std::filesystem::path const& dir) {
-  std::cout << "writing stop_times.txt ... ";
+void write_stop_times(timetable const& tt, gtfs_export_target& out_target) {
+  auto const timer = progress_timer{"stop_times.txt"};
 
-  auto out = std::ofstream{dir / "stop_times.txt"};
+  auto& out = out_target.create_file("stop_times.txt");
   out << "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n";
 
   for (auto r = route_idx_t{0}; r < tt.n_routes(); ++r) {
@@ -189,15 +310,14 @@ void write_stop_times(timetable const& tt, std::filesystem::path const& dir) {
       }
     }
   }
-  std::cout << "done.\n";
 }
 
 void write_trips(timetable const& tt,
-                 std::filesystem::path const& dir,
+                 gtfs_export_target& out_target,
                  std::vector<size_t> const& route_offsets) {
-  std::cout << "writing trips.txt ... ";
+  auto const timer = progress_timer{"trips.txt"};
 
-  auto out = std::ofstream{dir / "trips.txt"};
+  auto& out = out_target.create_file("trips.txt");
   out << "route_id,service_id,trip_id,trip_headsign,trip_short_name,"
          "bikes_allowed,cars_allowed\n";
 
@@ -238,15 +358,14 @@ void write_trips(timetable const& tt,
           << bikes_allowed << "," << cars_allowed << "\n";
     }
   }
-  std::cout << "done.\n";
 }
 
 void write_routes(timetable const& tt,
-                  std::filesystem::path const& dir,
+                  gtfs_export_target& out_target,
                   std::vector<size_t> const& route_offsets) {
-  std::cout << "writing routes.txt ... ";
+  auto const timer = progress_timer{"routes.txt"};
 
-  auto out = std::ofstream{dir / "routes.txt"};
+  auto& out = out_target.create_file("routes.txt");
 
   auto const to_global_route_id = [&](source_idx_t s, route_id_idx_t r) {
     return route_offsets[to_idx(s)] + to_idx(r);
@@ -275,13 +394,12 @@ void write_routes(timetable const& tt,
           << text_str << "\n";
     }
   }
-  std::cout << "done.\n";
 }
 
-void write_transfers(timetable const& tt, std::filesystem::path const& dir) {
-  std::cout << "writing transfers.txt ... ";
+void write_transfers(timetable const& tt, gtfs_export_target& out_target) {
+  auto const timer = progress_timer{"transfers.txt"};
 
-  auto out = std::ofstream{dir / "transfers.txt"};
+  auto& out = out_target.create_file("transfers.txt");
   out << "from_stop_id,to_stop_id,transfer_type,min_transfer_time\n";
 
   for (auto l = location_idx_t{stopOffset}; l < tt.n_locations(); ++l) {
@@ -291,14 +409,13 @@ void write_transfers(timetable const& tt, std::filesystem::path const& dir) {
           << ",2," << (fp.duration_ * 60) << "\n";
     }
   }
-  std::cout << "done.\n";
 }
 
-void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
-  std::cout << "writing calendar.txt and calendar_dates.txt ... ";
+void write_calendar(timetable const& tt, gtfs_export_target& out_target) {
+  auto const timer = progress_timer{"calendar.txt and calendar_dates.txt"};
 
-  auto cal = std::ofstream{dir / "calendar.txt"};
-  auto exc = std::ofstream{dir / "calendar_dates.txt"};
+  auto& cal = out_target.create_file("calendar.txt");
+  auto& exc = out_target.create_file("calendar_dates.txt");
 
   cal << "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,"
          "start_date,end_date\n";
@@ -313,10 +430,20 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
                        unsigned(ymd.month()), unsigned(ymd.day()));
   };
 
-  auto const get_weekday = [&](std::size_t day) -> int {
+  auto const get_weekday = [&](std::size_t day) -> unsigned {
     auto const sys_day = base + date::days{static_cast<int>(day)};
-    return static_cast<int>(date::weekday{sys_day}.c_encoding());
+    return static_cast<unsigned>(date::weekday{sys_day}.c_encoding());
   };
+
+  auto const write_as_exceptions_only =
+      [&](bitfield const& bf, std::size_t const first, std::size_t const last,
+          bitfield_idx_t const b) {
+        for (auto d = first; d <= last; ++d) {
+          if (bf.test(d)) {
+            exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
+          }
+        }
+      };
 
   for (auto b = bitfield_idx_t{0}; b < tt.bitfields_.size(); ++b) {
     auto const& bf = tt.bitfields_[b];
@@ -339,109 +466,44 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
       }
     }
 
-    if (last - first < 7) {
-      for (auto d = first; d <= last; ++d) {
-        if (bf.test(d)) {
-          exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
-        }
-      }
+    if (last - first + 1 < 7) {
+      write_as_exceptions_only(bf, first, last, b);
       continue;
     }
 
     auto active_count = std::array<int, 7>{};
     auto total_count = std::array<int, 7>{};
     for (auto d = first; d <= last; ++d) {
-      auto const wd = static_cast<std::size_t>(get_weekday(d));
-      total_count[wd]++;
+      auto const wd = get_weekday(d);
+      ++total_count[wd];
       active_count[wd] += static_cast<int>(bf.test(d));
     }
 
-    auto best_map = uint8_t{0};
-    for (auto wd = std::size_t{0}; wd < 7; ++wd) {
-      if (total_count[wd] > 0 && active_count[wd] * 2 > total_count[wd]) {
-        best_map |= static_cast<uint8_t>(1 << wd);
+    auto weekly_pattern = std::uint8_t{0};
+    for (auto wd = 0U; wd < 7U; ++wd) {
+      if (active_count[wd] * 2 > total_count[wd]) {
+        weekly_pattern |= static_cast<std::uint8_t>(1U << wd);
       }
     }
 
-    if (best_map == 0) {
-      for (auto d = first; d <= last; ++d) {
-        if (bf.test(d)) {
-          exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
-        }
-      }
+    if (weekly_pattern == 0) {
+      write_as_exceptions_only(bf, first, last, b);
       continue;
     }
 
-    auto const am_start = first - static_cast<std::size_t>(get_weekday(first));
-    auto const am_end = last + static_cast<std::size_t>(6 - get_weekday(last));
-    auto const l = static_cast<int>((am_end - am_start) / 7) + 1;
-
-    auto best_e = std::numeric_limits<uint32_t>::max();
-    auto best_a = int{0};
-    auto best_b = int{l - 1};
-
-    for (auto a = int{0}; a < l; ++a) {
-      for (auto bb = int{l - 1}; bb >= a; --bb) {
-        auto e = uint32_t{0};
-        for (auto d = first; d <= last; ++d) {
-          auto const week = static_cast<int>((d - am_start) / 7);
-          auto const in_span = (week >= a && week <= bb);
-          auto const in_pattern = in_span && ((best_map >> get_weekday(d)) & 1);
-          auto const active = bf.test(d);
-          if (active != in_pattern) {
-            e++;
-          }
-        }
-        if (e < best_e) {
-          best_e = e;
-          best_a = a;
-          best_b = bb;
-          if (e == 0) {
-            goto done;
-          }
-        }
-      }
-    }
-  done:
-
-    auto new_begin = static_cast<std::ptrdiff_t>(
-        am_start + static_cast<std::size_t>(best_a) * 7);
-    auto new_end = static_cast<std::ptrdiff_t>(
-        am_start + static_cast<std::size_t>(best_b) * 7 + 6);
-
-    while (new_begin <= new_end &&
-           !bf.test(static_cast<std::size_t>(new_begin)))
-      ++new_begin;
-    while (new_end >= new_begin && !bf.test(static_cast<std::size_t>(new_end)))
-      --new_end;
-
-    if (new_end < new_begin ||
-        static_cast<std::size_t>(new_end - new_begin) < 7) {
-      for (auto d = first; d <= last; ++d) {
-        if (bf.test(d)) {
-          exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
-        }
-      }
-      continue;
-    }
-
-    auto const ub_new_begin = static_cast<std::size_t>(new_begin);
-    auto const ub_new_end = static_cast<std::size_t>(new_end);
-
-    cal << to_idx(b) << "," << ((best_map >> 1) & 1) << ","  // Monday
-        << ((best_map >> 2) & 1) << ","  // Tuesday
-        << ((best_map >> 3) & 1) << ","  // Wednesday
-        << ((best_map >> 4) & 1) << ","  // Thursday
-        << ((best_map >> 5) & 1) << ","  // Friday
-        << ((best_map >> 6) & 1) << ","  // Saturday
-        << ((best_map >> 0) & 1) << ","  // Sunday
-        << to_ymd_str(ub_new_begin) << "," << to_ymd_str(ub_new_end) << "\n";
+    cal << to_idx(b) << ","  //
+        << ((weekly_pattern >> 1U) & 1U) << ","  // Monday
+        << ((weekly_pattern >> 2U) & 1U) << ","  // Tuesday
+        << ((weekly_pattern >> 3U) & 1U) << ","  // Wednesday
+        << ((weekly_pattern >> 4U) & 1U) << ","  // Thursday
+        << ((weekly_pattern >> 5U) & 1U) << ","  // Friday
+        << ((weekly_pattern >> 6U) & 1U) << ","  // Saturday
+        << ((weekly_pattern >> 0U) & 1U) << ","  // Sunday
+        << to_ymd_str(first) << "," << to_ymd_str(last) << "\n";
 
     for (auto d = first; d <= last; ++d) {
       auto const active = bf.test(d);
-      auto const week = static_cast<int>((d - am_start) / 7);
-      auto const in_span = (week >= best_a && week <= best_b);
-      auto const in_pattern = in_span && ((best_map >> get_weekday(d)) & 1);
+      auto const in_pattern = ((weekly_pattern >> get_weekday(d)) & 1U) != 0U;
 
       if (active && !in_pattern) {
         exc << to_idx(b) << "," << to_ymd_str(d) << ",1\n";
@@ -450,6 +512,5 @@ void write_calendar(timetable const& tt, std::filesystem::path const& dir) {
       }
     }
   }
-  std::cout << "done.\n";
 }
 }  // namespace nigiri
