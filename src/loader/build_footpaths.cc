@@ -1,5 +1,6 @@
 #include "nigiri/loader/build_footpaths.h"
 
+#include <tuple>
 #include <mutex>
 #include <optional>
 #include <stack>
@@ -421,14 +422,30 @@ void write_footpaths(timetable& tt) {
 
   profile_idx_t const prf_idx{0};
 
+  auto fps = std::vector<footpath>{};
+  auto fps_in = mutable_fws_multimap<location_idx_t, footpath>{};
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    tt.locations_.footpaths_out_[prf_idx].emplace_back(
-        tt.locations_.preprocessing_footpaths_out_[i]);
+    fps.clear();
+    for (auto const fp : tt.locations_.preprocessing_footpaths_out_[i]) {
+      fps.push_back(fp);
+    }
+    utl::erase_duplicates(
+        fps,
+        [](footpath const a, footpath const b) {
+          return std::tie(a.target_, a.duration_) <
+                 std::tie(b.target_, b.duration_);
+        },
+        [](footpath const a, footpath const b) {
+          return a.target_ == b.target_;
+        });  // also sorts; keeps the shortest duration per target
+    tt.locations_.footpaths_out_[prf_idx].emplace_back(fps);
+    for (auto const fp : fps) {
+      fps_in[fp.target()].emplace_back(i, fp.duration());
+    }
   }
 
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    tt.locations_.footpaths_in_[prf_idx].emplace_back(
-        tt.locations_.preprocessing_footpaths_in_[i]);
+    tt.locations_.footpaths_in_[prf_idx].emplace_back(fps_in[i]);
   }
 
   tt.locations_.preprocessing_footpaths_in_.clear();
