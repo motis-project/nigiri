@@ -43,7 +43,11 @@ struct raptor {
     a.fill(kInvalid);
     return a;
   }();
-
+  static auto make_invalid_owner_array() {
+    auto a = std::array<location_idx_t, Vias + 1>{};
+    a.fill(location_idx_t::invalid());
+    return a;
+  }
   static bool is_better(auto a, auto b) { return kFwd ? a < b : a > b; }
   static bool is_better_or_eq(auto a, auto b) { return kFwd ? a <= b : a >= b; }
   static auto get_best(auto a, auto b) { return is_better(a, b) ? a : b; }
@@ -81,6 +85,8 @@ struct raptor {
         tmp_{state_.get_tmp<Vias>()},
         best_{state_.get_best<Vias>()},
         round_times_{state.get_round_times<Vias>()},
+        owner_{state.get_owner<Vias>()},
+        tmp_owner_{state.get_tmp_owner<Vias>()},
         is_dest_{is_dest},
         is_via_{is_via},
         dist_to_end_{dist_to_dest},
@@ -179,6 +185,8 @@ struct raptor {
   void next_start_time() {
     utl::fill(best_, kInvalidArray);
     utl::fill(tmp_, kInvalidArray);
+    utl::fill(owner_, make_invalid_owner_array());
+    utl::fill(tmp_owner_, make_invalid_owner_array());
     utl::fill(state_.prev_station_mark_.blocks_, 0U);
     utl::fill(state_.station_mark_.blocks_, 0U);
     utl::fill(state_.route_mark_.blocks_, 0U);
@@ -187,7 +195,8 @@ struct raptor {
     }
   }
 
-  void add_start(location_idx_t const l, unixtime_t const t) {
+  void add_start(location_idx_t const l, unixtime_t const t,
+                 location_idx_t const origin = location_idx_t::invalid()) {
     auto const v = (Vias != 0 && is_via_[0][to_idx(l)]) ? 1U : 0U;
     trace_upd(
         "adding start [fwd={}] {}: {}, v={} [current: best={}, round={} => "
@@ -195,6 +204,8 @@ struct raptor {
         kFwd, loc{tt_, l}, t, v, to_unix(best_[to_idx(l)][v]),
         to_unix(round_times_[0U][to_idx(l)][v]),
         get_best(t, to_unix(best_[to_idx(l)][v])));
+    if (origin!=location_idx_t::invalid() && is_better(unix_to_delta(base(),t), best_[to_idx(l)][v]))
+      owner_[to_idx(l)][v] = origin;
     best_[to_idx(l)][v] =
         get_best(unix_to_delta(base(), t), best_[to_idx(l)][v]);
     round_times_[0U][to_idx(l)][v] =
@@ -733,6 +744,7 @@ private:
           ++stats_.n_earliest_arrival_updated_by_footpath_;
           round_times_[k][i][target_v] = fp_target_time;
           best_[i][target_v] = fp_target_time;
+          owner_[i][target_v] = tmp_owner_[i][v];
           state_.station_mark_.set(i, true);
           if (is_dest) {
             update_time_at_dest(k, fp_target_time);
@@ -826,6 +838,7 @@ private:
             ++stats_.n_earliest_arrival_updated_by_footpath_;
             round_times_[k][target][target_v] = fp_target_time;
             best_[target][target_v] = fp_target_time;
+            owner_[target][target_v] = tmp_owner_[i][start_v];
             state_.station_mark_.set(target, true);
             if (target_v == Vias && is_dest_[target]) {
               update_time_at_dest(k, fp_target_time);
@@ -1182,6 +1195,10 @@ private:
     auto const stop_seq = tt_.route_location_seq_[r];
     bool any_marked = false;
 
+    auto et = std::array<transport, Vias + 1>{};
+    auto v_offset = std::array<std::size_t, Vias + 1>{};
+    auto et_owner = make_invalid_owner_array();
+    for (auto i = 0U; i != stop_seq.size(); ++i) {
     auto et = std::array<std::array<transport, Vias + 1>, Vias + 1>{};
     auto const n_stops = stop_seq.size();
 
@@ -1283,6 +1300,10 @@ private:
                 loc{tt_, stp.location_idx()});
 
             ++stats_.n_earliest_arrival_updated_by_route_;
+            if (is_better(by_transport, tmp_[l_idx][target_v]))
+              tmp_owner_[l_idx][target_v] = et_owner[v];
+            tmp_[l_idx][target_v] =
+                get_best(by_transport, tmp_[l_idx][target_v]);
             tmp_[l_idx][cs] = get_best(by_transport, tmp_[l_idx][cs]);
             state_.station_mark_.set(l_idx, true);
             if (is_better(by_transport, current_best[cs])) {
@@ -1333,6 +1354,9 @@ private:
                    time_at_stop(r, new_et, stop_idx,
                                 kFwd ? event_type::kDep : event_type::kArr),
                    et_time_at_stop))) {
+            et[v] = new_et;
+            v_offset[v] = 0;
+            et_owner[v] = owner_[l_idx][target_v];
             fresh = new_et;
             trace("┊ │k={} v={}    update et: time_at_stop={}\n", k, v,
                   to_unix(et_time_at_stop));
@@ -1527,6 +1551,8 @@ private:
   unsigned bounds_last_k_{0U};
   profile_idx_t prf_idx_{0U};
   clasz_mask_t allowed_claszes_;
+  std::span<std::array<location_idx_t, Vias + 1>> owner_;
+  std::span<std::array<location_idx_t, Vias + 1>> tmp_owner_;
   bool require_bike_transport_;
   bool require_car_transport_;
   bool no_compulsory_reservation_;
