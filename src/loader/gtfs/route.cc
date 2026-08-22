@@ -11,6 +11,7 @@
 #include "nigiri/loader/register.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 namespace nigiri::loader::gtfs {
 
@@ -165,6 +166,9 @@ route_map_t read_routes(source_idx_t const src,
     utl::csv_col<utl::cstr, UTL_NAME("route_color")> route_color_;
     utl::csv_col<utl::cstr, UTL_NAME("route_text_color")> route_text_color_;
     utl::csv_col<utl::cstr, UTL_NAME("network_id")> network_id_;
+    // Google Transit Ticketing extension
+    utl::csv_col<utl::cstr, UTL_NAME("ticketing_deep_link_id")>
+        ticketing_deep_link_id_;
   };
 
   auto const progress_tracker = utl::get_active_progress_tracker();
@@ -190,7 +194,7 @@ route_map_t read_routes(source_idx_t const src,
                                           : r.agency_id_->view();
                       return register_agency(
                           tt, agency{tt, src, id, kEmptyTranslation,
-                                     kEmptyTranslation,
+                                     kEmptyTranslation, kEmptyTranslation,
                                      get_tz_idx(tt, timezones, default_tz),
                                      timezones});
                     });
@@ -213,12 +217,17 @@ route_map_t read_routes(source_idx_t const src,
               {.color_ = to_color(r.route_color_->view()),
                .text_color_ = to_color(r.route_text_color_->view())},
               a,
-              category_idx_t::invalid()};
+              category_idx_t::invalid(),
+              ticketing_link_idx_t::invalid(),
+          };
           if (process_route(user_script, x)) {
             map.emplace(r.route_id_->to_str(),
                         std::make_unique<route>(route{
                             .route_id_idx_ = register_route(tt, x),
-                            .network_ = std::string{r.network_id_->view()}}));
+                            .network_ = std::string{r.network_id_->view()},
+                            .ticketing_deep_link_id_ =
+                                std::string{r.ticketing_deep_link_id_->view()},
+                        }));
           }
         });
   return map;

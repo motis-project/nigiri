@@ -9,10 +9,10 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 namespace nigiri::routing {
 
-template <direction SearchDir>
 void optimize_initial_departure(timetable const& tt,
                                 rt_timetable const* rtt,
                                 query const& q,
@@ -27,15 +27,14 @@ void optimize_initial_departure(timetable const& tt,
   auto& ree = get<journey::run_enter_exit>(transport_leg.uses_);
   auto offset_dur_best = get<offset>(offset_leg.uses_).duration();
 
-  auto const& offsets =
-      (SearchDir == direction::kBackward) ? q.destination_ : q.start_;
+  auto const& offsets = q.start_;
 
   auto r = rt::run{ree.r_};
   r.stop_range_ = {0U, static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)};
   for (auto const stp : rt::frun{tt, rtt, r}) {
     if (!q.via_stops_.empty() &&
         matches(tt, location_match_mode::kEquivalent, stp.get_location_idx(),
-                q.via_stops_[0].location_)) {
+                q.via_stops_.front().location_)) {
       // don't skip over via stops
       break;
     }
@@ -65,7 +64,70 @@ void optimize_initial_departure(timetable const& tt,
   }
 }
 
-template <direction SearchDir>
+void optimize_initial_start_footpath(timetable const& tt,
+                                     rt_timetable const* rtt,
+                                     query const& q,
+                                     journey& j) {
+  if (j.legs_.size() <= 1 ||
+      !holds_alternative<footpath>(j.legs_.front().uses_) ||
+      !holds_alternative<journey::run_enter_exit>(j.legs_[1].uses_)) {
+    return;
+  }
+
+  auto& fp_leg = j.legs_.front();
+  auto& transport_leg = j.legs_[1];
+  auto& ree = get<journey::run_enter_exit>(transport_leg.uses_);
+
+  auto const start_loc = fp_leg.from_;
+
+  if (rtt != nullptr && q.prf_idx_ != 0U &&
+      rtt->has_td_footpaths_out_[q.prf_idx_].test(start_loc)) {
+    return;  // TODO(felix) handle shortening of td-footpaths
+  }
+
+  auto fp_dur_best = adjusted_transfer_time(
+      q.transfer_time_settings_, get<footpath>(fp_leg.uses_).duration());
+
+  auto const& footpaths = tt.locations_.footpaths_out_[q.prf_idx_][start_loc];
+
+  auto r = rt::run{ree.r_};
+  r.stop_range_ = {0U, static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)};
+  for (auto const stp : rt::frun{tt, rtt, r}) {
+    if (!q.via_stops_.empty() &&
+        matches(tt, location_match_mode::kEquivalent, stp.get_location_idx(),
+                q.via_stops_[0].location_)) {
+      break;  // don't skip over via stops
+    }
+
+    if (!stp.in_allowed()) {
+      continue;
+    }
+
+    for (auto const& fp : footpaths) {
+      if (fp.target() != stp.get_location_idx()) {
+        continue;
+      }
+      auto const fp_dur =
+          adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
+      if (fp_dur < fp_dur_best) {
+        auto const dep = stp.time(event_type::kDep);
+        auto const fp_start = dep - fp_dur;
+        if (fp_leg.dep_time_ <= fp_start) {
+          fp_leg.to_ = stp.get_location_idx();
+          fp_leg.dep_time_ = fp_start;
+          fp_leg.arr_time_ = dep;
+          fp_leg.uses_ = footpath{stp.get_location_idx(), fp_dur};
+          transport_leg.from_ = stp.get_location_idx();
+          transport_leg.dep_time_ = dep;
+          ree.stop_range_.from_ = stp.stop_idx_;
+          fp_dur_best = fp_dur;
+        }
+      }
+      break;
+    }
+  }
+}
+
 void optimize_last_arrival(timetable const& tt,
                            rt_timetable const* rtt,
                            query const& q,
@@ -82,20 +144,16 @@ void optimize_last_arrival(timetable const& tt,
   auto offset_dur_best = get<offset>(offset_leg.uses_).duration();
 
   auto const* offsets = &q.destination_;
-  if constexpr (SearchDir == direction::kBackward) {
-    offsets = &q.start_;
-  }
 
   auto fr = rt::frun{tt, rtt, ree.r_};
   auto range_from = static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U);
 
   if (!q.via_stops_.empty()) {
     // don't skip the last via stop
-    auto const& last_via = q.via_stops_.back();
     for (auto i = stop_idx_t{0U}; i < fr.size(); ++i) {
       auto idx = static_cast<stop_idx_t>(fr.size() - i - 1U);
       if (matches(tt, location_match_mode::kEquivalent,
-                  fr[idx].get_location_idx(), last_via.location_)) {
+                  fr[idx].get_location_idx(), q.via_stops_.back().location_)) {
         range_from = std::max(range_from, idx);
         break;
       }
@@ -126,6 +184,79 @@ void optimize_last_arrival(timetable const& tt,
         ree.stop_range_.to_ = stp.stop_idx_ + 1U;
         offset_dur_best = o.duration();
       }
+    }
+  }
+}
+
+void optimize_final_egress_footpath(timetable const& tt,
+                                    rt_timetable const* rtt,
+                                    query const& q,
+                                    journey& j) {
+  if (j.legs_.size() <= 1 ||
+      !holds_alternative<footpath>(j.legs_.back().uses_) ||
+      !holds_alternative<journey::run_enter_exit>(rbegin(j.legs_)[1].uses_)) {
+    return;
+  }
+
+  auto& fp_leg = j.legs_.back();
+  auto& transport_leg = rbegin(j.legs_)[1];
+  auto& ree = get<journey::run_enter_exit>(transport_leg.uses_);
+
+  auto const dest_loc = fp_leg.to_;
+
+  if (rtt != nullptr && q.prf_idx_ != 0U &&
+      rtt->has_td_footpaths_in_[q.prf_idx_].test(dest_loc)) {
+    return;  // TODO(felix) handle shortening of td-footpaths
+  }
+
+  auto fp_dur_best = adjusted_transfer_time(
+      q.transfer_time_settings_, get<footpath>(fp_leg.uses_).duration());
+
+  auto const& footpaths = tt.locations_.footpaths_in_[q.prf_idx_][dest_loc];
+
+  auto fr = rt::frun{tt, rtt, ree.r_};
+  auto range_from = static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U);
+
+  if (!q.via_stops_.empty()) {
+    // don't alight before the last via stop
+    auto const& last_via = q.via_stops_.back();
+    for (auto i = stop_idx_t{0U}; i < fr.size(); ++i) {
+      auto idx = static_cast<stop_idx_t>(fr.size() - i - 1U);
+      if (matches(tt, location_match_mode::kEquivalent,
+                  fr[idx].get_location_idx(), last_via.location_)) {
+        range_from = std::max(range_from, idx);
+        break;
+      }
+    }
+  }
+
+  fr.stop_range_ = {range_from, fr.size()};
+
+  for (auto const stp : fr) {
+    if (!stp.out_allowed()) {
+      continue;
+    }
+    for (auto const& fp : footpaths) {
+      if (fp.target() != stp.get_location_idx()) {
+        continue;
+      }
+      auto const fp_dur =
+          adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
+      if (fp_dur < fp_dur_best) {
+        auto const arr = stp.time(event_type::kArr);
+        auto const fp_end = arr + fp_dur;
+        if (fp_end <= fp_leg.arr_time_) {
+          fp_leg.from_ = stp.get_location_idx();
+          fp_leg.dep_time_ = arr;
+          fp_leg.arr_time_ = fp_end;
+          fp_leg.uses_ = footpath{dest_loc, fp_dur};
+          transport_leg.to_ = stp.get_location_idx();
+          transport_leg.arr_time_ = arr;
+          ree.stop_range_.to_ = stp.stop_idx_ + 1U;
+          fp_dur_best = fp_dur;
+        }
+      }
+      break;
     }
   }
 }
@@ -199,8 +330,8 @@ void optimize_transfers(timetable const& tt,
     auto& leg_footpath = j.legs_[i + 1];
     auto& leg_to = j.legs_[i + 2];
     if (!holds_alternative<journey::run_enter_exit>(leg_from.uses_) ||
-        !holds_alternative<footpath>(j.legs_[i + 1].uses_) ||
-        !holds_alternative<journey::run_enter_exit>(j.legs_[i + 2].uses_)) {
+        !holds_alternative<footpath>(leg_footpath.uses_) ||
+        !holds_alternative<journey::run_enter_exit>(leg_to.uses_)) {
       continue;
     }
 
@@ -311,23 +442,15 @@ void optimize_transfers(timetable const& tt,
   }
 }
 
-template <direction SearchDir>
 void optimize_footpaths(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q,
                         journey& j) {
-  optimize_initial_departure<SearchDir>(tt, rtt, q, j);
-  optimize_last_arrival<SearchDir>(tt, rtt, q, j);
+  optimize_initial_departure(tt, rtt, q, j);
+  optimize_initial_start_footpath(tt, rtt, q, j);
+  optimize_last_arrival(tt, rtt, q, j);
+  optimize_final_egress_footpath(tt, rtt, q, j);
   optimize_transfers(tt, rtt, q, j);
 }
-
-template void optimize_footpaths<direction::kForward>(timetable const&,
-                                                      rt_timetable const*,
-                                                      query const&,
-                                                      journey&);
-template void optimize_footpaths<direction::kBackward>(timetable const&,
-                                                       rt_timetable const*,
-                                                       query const&,
-                                                       journey&);
 
 }  // namespace nigiri::routing

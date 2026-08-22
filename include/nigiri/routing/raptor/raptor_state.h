@@ -98,6 +98,11 @@ struct raptor_state {
   std::span<std::array<location_idx_t, Vias + 1>> get_tmp_owner() {
     return {reinterpret_cast<std::array<location_idx_t, Vias + 1>*>(
                 tmp_owner_storage_.data()),
+  flat_matrix_view<std::array<delta_t, Vias + 1>> get_bounds() {
+    return {{reinterpret_cast<std::array<delta_t, Vias + 1>*>(
+                 bounds_storage_.data()),
+             n_locations_ * (kMaxTransfers + 2)},
+            kMaxTransfers + 2U,
             n_locations_};
   }
 
@@ -107,12 +112,21 @@ struct raptor_state {
                 tmp_owner_storage_.data()),
             n_locations_};
   }
+  flat_matrix_view<std::array<delta_t, Vias + 1> const> get_bounds() const {
+    return {{reinterpret_cast<std::array<delta_t, Vias + 1> const*>(
+                 bounds_storage_.data()),
+             n_locations_ * (kMaxTransfers + 2)},
+            kMaxTransfers + 2U,
+            n_locations_};
+  }
+
   unsigned n_locations_{};
   std::vector<delta_t> tmp_storage_;
   std::vector<delta_t> best_storage_;
   std::vector<delta_t> round_times_storage_;
   std::vector<location_idx_t> owner_storage_;      
   std::vector<location_idx_t> tmp_owner_storage_;
+  std::vector<delta_t> bounds_storage_;
   bitvec station_mark_;
   bitvec prev_station_mark_;
   bitvec route_mark_;

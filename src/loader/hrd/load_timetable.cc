@@ -1,6 +1,5 @@
 #include "nigiri/loader/hrd/load_timetable.h"
 
-#include <execution>
 #include <filesystem>
 
 #include "wyhash.h"

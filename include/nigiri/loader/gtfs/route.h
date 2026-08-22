@@ -19,6 +19,7 @@ namespace nigiri::loader::gtfs {
 struct route {
   route_id_idx_t route_id_idx_;
   std::string network_;
+  std::string ticketing_deep_link_id_;
 };
 
 using route_map_t = hash_map<std::string, std::unique_ptr<route>>;

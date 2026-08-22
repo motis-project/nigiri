@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/special_stations.h"
 
 #include "../loader/hrd/hrd_timetable.h"
 
@@ -48,6 +49,7 @@ TEST(routing, raptor_forward) {
 
   timetable tt;
   tt.date_range_ = full_period();
+  register_special_stations(tt);
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   finalize(tt);
 
@@ -94,6 +96,7 @@ TEST(routing, raptor_backward) {
 
   timetable tt;
   tt.date_range_ = full_period();
+  register_special_stations(tt);
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   finalize(tt);
 

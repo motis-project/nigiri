@@ -29,6 +29,7 @@ read_stops(source_idx_t,
            std::string_view stops_file_content,
            std::string_view transfers_file_content,
            unsigned link_stop_distance,
+           duration_t default_transfer_time = duration_t{2},
            script_runner const& = script_runner{});
 
 }  // namespace nigiri::loader::gtfs

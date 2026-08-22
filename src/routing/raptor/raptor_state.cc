@@ -23,6 +23,7 @@ raptor_state& raptor_state::resize(unsigned const n_locations,
                       location_idx_t::invalid());
   tmp_owner_storage_.assign(n_locations * (kMaxVias + 1),
                             location_idx_t::invalid());
+  bounds_storage_.resize(n_locations * (kMaxVias + 1) * (kMaxTransfers + 2));
   station_mark_.resize(n_locations);
   prev_station_mark_.resize(n_locations);
   route_mark_.resize(n_routes);
@@ -95,16 +96,8 @@ void raptor_state::print(timetable const& tt,
 static_assert(kMaxVias == 2,
               "raptor_state.cc needs to be adjusted for kMaxVias");
 
-template void raptor_state::print<0>(timetable const& tt,
-                                     date::sys_days const base,
-                                     delta_t const invalid);
-
-template void raptor_state::print<1>(timetable const& tt,
-                                     date::sys_days const base,
-                                     delta_t const invalid);
-
-template void raptor_state::print<2>(timetable const& tt,
-                                     date::sys_days const base,
-                                     delta_t const invalid);
+template void raptor_state::print<0>(timetable const&, date::sys_days, delta_t);
+template void raptor_state::print<1>(timetable const&, date::sys_days, delta_t);
+template void raptor_state::print<2>(timetable const&, date::sys_days, delta_t);
 
 }  // namespace nigiri::routing

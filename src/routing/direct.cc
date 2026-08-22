@@ -5,6 +5,7 @@
 #include "utl/concat.h"
 #include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
 #include "utl/sorted_diff.h"
 
@@ -16,10 +17,6 @@
 #include "nigiri/timetable.h"
 
 namespace nigiri::routing {
-
-namespace {
-
-enum class side { kBoarding, kAlighting };
 
 std::optional<journey::leg> lookup_offset(location_idx_t const loc,
                                           unixtime_t const t,
@@ -51,12 +48,12 @@ std::optional<journey::leg> lookup_offset(location_idx_t const loc,
     return std::optional{make_leg(td->first, td->second.transport_mode_id_)};
   }
 
-  // Search for shortest offset.
+  // Search for shortest offset, assuming offsets are sorted ASC
   auto best = std::optional<offset>{};
   for (auto const& o : offsets) {
-    if (o.target() == loc &&
-        (!best.has_value() || o.duration() < best->duration())) {
+    if (o.target() == loc) {
       best = o;
+      break;
     }
   }
 
@@ -162,6 +159,8 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
                       footpath{to, best_dur}};
 }
 
+namespace {
+
 std::optional<journey::leg> lookup_access(query const& q,
                                           timetable const& tt,
                                           rt_timetable const* rtt,
@@ -240,26 +239,21 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
   return locs;
 }
 
-bool sections_violate_constraints(rt::frun const& fr,
-                                  unsigned const from_section_idx,
-                                  unsigned const to_section_idx,
-                                  bool const require_bike,
-                                  bool const require_car,
-                                  bool const is_wheelchair) {
-  if (!require_bike && !require_car && !is_wheelchair) {
+bool sections_violate_constraints(
+    rt::frun const& fr,
+    unsigned const from_section_idx,
+    unsigned const to_section_idx,
+    std::array<bool, kNumRouteFlags> const flags) {
+  if (utl::none_of(flags, [](auto f) { return f; })) {
     return false;
   }
   for (auto i = from_section_idx; i != to_section_idx; ++i) {
     auto const section_start = static_cast<stop_idx_t>(i);
-    if (require_bike && !fr[section_start].bikes_allowed(event_type::kDep)) {
-      return true;
-    }
-    if (require_car && !fr[section_start].cars_allowed(event_type::kDep)) {
-      return true;
-    }
-    if (is_wheelchair &&
-        !fr[section_start].wheelchair_accessible(event_type::kDep)) {
-      return true;
+    for (auto f = 0U; f < kNumRouteFlags; ++f) {
+      if (flags[f] && !fr[section_start].is_flag_set(static_cast<route_flag>(f),
+                                                     event_type::kDep)) {
+        return true;
+      }
     }
   }
   return false;
@@ -324,10 +318,10 @@ utl::generator<std::vector<journey::leg>> route_gen(
       }
       auto const start_day =
           day_idx_t{static_cast<day_idx_t::value_t>(day_off)};
-      auto const& bitfields = rtt != nullptr ? rtt->bitfields_ : tt.bitfields_;
-      auto const traffic_idx = rtt != nullptr ? rtt->transport_traffic_days_[t]
-                                              : tt.transport_traffic_days_[t];
-      if (to_idx(start_day) >= bitfields[traffic_idx].size()) {
+      auto const& traffic_days =
+          rtt != nullptr ? rtt->traffic_days(rtt->transport_traffic_days_[t])
+                         : tt.bitfields_[tt.transport_traffic_days_[t]];
+      if (to_idx(start_day) >= traffic_days.size()) {
         continue;
       }
       auto const transport_active = rtt != nullptr
@@ -466,6 +460,8 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
   auto const q = q_in;
   constexpr auto kFwd = Dir == direction::kForward;
   bool const is_wheelchair = q.prf_idx_ == kWheelchairProfile;
+  auto flags = std::array{q.require_bike_transport_, q.require_car_transport_,
+                          is_wheelchair, q.no_compulsory_reservation_};
 
   auto const merge_sorted = [](auto& dst, auto const& src) {
     auto const original_size = static_cast<int>(dst.size());
@@ -506,9 +502,13 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
           [](utl::op, route_idx_t) {},
           [&](route_idx_t const r, route_idx_t) {
             if (!is_allowed(q.allowed_claszes_, tt.route_clasz_[r]) ||
-                (q.require_bike_transport_ && !tt.has_bike_transport(r)) ||
-                (q.require_car_transport_ && !tt.has_car_transport(r)) ||
-                (is_wheelchair && !tt.has_wheelchair_transport(r))) {
+                (q.require_bike_transport_ &&
+                 !tt.is_flag_set(kBikesAllowed, r)) ||
+                (q.require_car_transport_ &&
+                 !tt.is_flag_set(kCarsAllowed, r)) ||
+                (is_wheelchair && !tt.is_flag_set(kWheelchairAccessible, r)) ||
+                (q.no_compulsory_reservation_ &&
+                 !tt.is_flag_set(kReservationNotRequired, r))) {
               return;
             }
 
@@ -522,9 +522,7 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
             for_each_pair(tt.route_location_seq_[r], boarding_locs,
                           alighting_locs, q.prf_idx_,
                           [&](stop_idx_t const a, stop_idx_t const b) {
-                            if (sections_violate_constraints(
-                                    fr, a, b, q.require_bike_transport_,
-                                    q.require_car_transport_, is_wheelchair)) {
+                            if (sections_violate_constraints(fr, a, b, flags)) {
                               return;
                             }
                             add_gen(route_gen<Dir>(tt, rtt, r, a, b, q, time));
@@ -551,9 +549,14 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
             [&](rt_transport_idx_t const x, rt_transport_idx_t) {
               if (!is_allowed(q.allowed_claszes_,
                               rtt->rt_transport_section_clasz_[x].front()) ||
-                  (q.require_bike_transport_ && !rtt->has_bike_transport(x)) ||
-                  (q.require_car_transport_ && !rtt->has_car_transport(x)) ||
-                  (is_wheelchair && !rtt->has_wheelchair_transport(x))) {
+                  (q.require_bike_transport_ &&
+                   !rtt->is_flag_set(kBikesAllowed, x)) ||
+                  (q.require_car_transport_ &&
+                   !rtt->is_flag_set(kCarsAllowed, x)) ||
+                  (is_wheelchair &&
+                   !rtt->is_flag_set(kWheelchairAccessible, x)) ||
+                  (q.no_compulsory_reservation_ &&
+                   !rtt->is_flag_set(kReservationNotRequired, x))) {
                 return;
               }
 
@@ -568,9 +571,7 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
                   rtt->rt_transport_location_seq_[x], boarding_locs,
                   alighting_locs, q.prf_idx_,
                   [&](stop_idx_t const a, stop_idx_t const b) {
-                    if (sections_violate_constraints(
-                            fr, a, b, q.require_bike_transport_,
-                            q.require_car_transport_, is_wheelchair)) {
+                    if (sections_violate_constraints(fr, a, b, flags)) {
                       return;
                     }
                     add_gen(rt_gen<Dir>(tt, *rtt, x, a, b, q, time));

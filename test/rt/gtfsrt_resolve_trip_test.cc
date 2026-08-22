@@ -73,6 +73,7 @@ constexpr auto const kTransportAfterUpdate = std::string_view{
 TEST(rt, gtfsrt_resolve_static_trip) {
   timetable tt;
   rt_timetable rtt;
+  rtt.tt_ = &tt;
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
@@ -242,8 +243,8 @@ TEST(rt, gtfs_rt_update) {
 
   // Create empty RT timetable.
   auto rtt = rt_timetable{};
+  rtt.tt_ = &tt;
   rtt.transport_traffic_days_ = tt.transport_traffic_days_;
-  rtt.bitfields_ = tt.bitfields_;
   rtt.base_day_ = date::sys_days{2019_y / May / 3};
   rtt.base_day_idx_ = tt.day_idx(rtt.base_day_);
   rtt.location_rt_transports_[location_idx_t{tt.n_locations() - 1U}];

@@ -53,6 +53,8 @@ struct search_stats {
          n_events_skipped_by_early_termination_},
         {"search_interval_reduction_by_early_termination",
          search_interval_reduction_by_early_termination_.count()},
+        {"n_execute_fwd", n_execute_fwd_},
+        {"n_execute_bwd", n_execute_bwd_},
     };
   }
 
@@ -62,6 +64,8 @@ struct search_stats {
   std::chrono::milliseconds execute_time_{0LL};
   std::uint64_t n_events_skipped_by_early_termination_{0ULL};
   std::chrono::minutes search_interval_reduction_by_early_termination_{0LL};
+  std::uint64_t n_execute_fwd_{0ULL};
+  std::uint64_t n_execute_bwd_{0ULL};
 };
 
 struct routing_result {
@@ -80,6 +84,7 @@ struct search {
   Algo init(clasz_mask_t const allowed_claszes,
             bool const require_bikes_allowed,
             bool const require_cars_allowed,
+            bool const no_compulsory_reservation,
             transfer_time_settings& tts,
             algo_state_t& algo_state) {
     auto span = get_otel_tracer()->StartSpan("search::init");
@@ -161,7 +166,9 @@ struct search {
         require_bikes_allowed,
         require_cars_allowed,
         q_.prf_idx_ == 2U,
-        tts};
+        no_compulsory_reservation,
+        tts,
+        q_.prf_idx_};
   }
 
   search(timetable const& tt,
@@ -187,11 +194,10 @@ struct search {
         algo_{init(q_.allowed_claszes_,
                    q_.require_bike_transport_,
                    q_.require_car_transport_,
+                   q_.no_compulsory_reservation_,
                    q_.transfer_time_settings_,
                    algo_state)},
         timeout_(timeout) {
-    utl::sort(q_.start_);
-    utl::sort(q_.destination_);
     q_.sanitize(tt);
   }
 
@@ -326,7 +332,8 @@ struct search {
       });
     }
 
-    utl::erase_if(state_.results_, [&](auto&& j) { return j.legs_.empty(); });
+    utl::erase_if(state_.results_,
+                  [&](auto&& j) { return !j.is_reconstructed_; });
 
     stats_.execute_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -444,10 +451,11 @@ private:
                                (std::min(fastest_direct_, q_.max_travel_time_) +
                                 duration_t{1});
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
-                        q_.prf_idx_, state_.results_);
+                        state_.results_);
+          kFwd ? ++stats_.n_execute_fwd_ : ++stats_.n_execute_bwd_;
 
           for (auto& j : state_.results_) {
-            if (j.legs_.empty() && !j.error_ &&
+            if (!j.is_reconstructed_ && !j.error_ &&
                 (is_ontrip() || search_interval_.contains(j.start_time_)) &&
                 j.travel_time() < fastest_direct_) {
               try {

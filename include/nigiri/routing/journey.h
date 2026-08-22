@@ -112,6 +112,7 @@ struct journey {
   location_idx_t dest_{};
   std::uint8_t transfers_{0U};
   bool error_{false};
+  bool is_reconstructed_{false};
 };
 
 }  // namespace nigiri::routing
