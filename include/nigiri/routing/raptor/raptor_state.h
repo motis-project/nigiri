@@ -107,6 +107,13 @@ struct raptor_state {
   bitvec station_mark_;
   bitvec prev_station_mark_;
   bitvec route_mark_;
+  // Per route: the smallest lower bound over its stops (valid for one query,
+  // stamped by route_lb_epoch_/route_lb_gen_) and the best arrival that marked
+  // it this round. Together they let a route be dismissed before it is scanned.
+  std::vector<std::uint16_t> route_min_lb_;
+  std::vector<std::uint32_t> route_lb_epoch_;
+  std::vector<delta_t> route_best_arr_;
+  std::uint32_t route_lb_gen_{0U};
   bitvec rt_transport_mark_;
 };
 
