@@ -3,6 +3,7 @@
 #include "utl/verify.h"
 
 #include "nigiri/for_each_meta.h"
+#include "nigiri/timetable.h"
 
 namespace nigiri::routing {
 
@@ -21,6 +22,53 @@ bool query::operator==(query const& o) const {
             ...);
   }(std::make_index_sequence<
              std::tuple_size_v<decltype(cista::to_tuple(*this))>>());
+}
+
+namespace {
+void set_range(bitvec_map<route_idx_t>& b, interval<route_idx_t> const r) {
+  using block_t = std::decay_t<decltype(b)>::block_t;
+  constexpr auto const kBits = std::decay_t<decltype(b)>::bits_per_block;
+  constexpr auto const kOnes = ~block_t{0U};
+
+  auto const from = static_cast<std::size_t>(to_idx(r.from_));
+  auto const to = static_cast<std::size_t>(to_idx(r.to_));
+  if (from >= to) {
+    return;
+  }
+
+  auto const first = from / kBits;
+  auto const last = (to - 1U) / kBits;
+  auto const head = kOnes << (from % kBits);
+  auto const tail = (to % kBits) == 0U ? kOnes : ~(kOnes << (to % kBits));
+
+  if (first == last) {
+    b.blocks_[first] |= (head & tail);
+    return;
+  }
+  b.blocks_[first] |= head;
+  for (auto i = first + 1U; i != last; ++i) {
+    b.blocks_[i] = kOnes;
+  }
+  b.blocks_[last] |= tail;
+}
+
+}  // namespace
+
+blocked_feeds make_blocked_feeds(timetable const& tt,
+                                 bitvec_map<source_idx_t> blocked_srcs) {
+  auto f = blocked_feeds{};
+  if (!blocked_srcs.any()) {
+    return f;
+  }
+
+  f.srcs_ = std::move(blocked_srcs);
+  f.routes_.resize(tt.n_routes());
+  for (auto src = source_idx_t{0U}; src != tt.src_routes_.size(); ++src) {
+    if (f.srcs_.test(src)) {
+      set_range(f.routes_, tt.src_routes_[src]);
+    }
+  }
+  return f;
 }
 
 void sanitize_query(query& q) {

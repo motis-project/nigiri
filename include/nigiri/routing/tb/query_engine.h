@@ -97,7 +97,7 @@ struct query_engine {
                bool,
                transfer_time_settings,
                profile_idx_t,
-               bitvec_map<source_idx_t> const& = {});
+               blocked_feeds const& = {});
 
   algo_stats_t get_stats() const { return stats_; }
 

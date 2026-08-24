@@ -38,7 +38,7 @@ void get_starts(
     bool add_ontrip,
     profile_idx_t,
     transfer_time_settings const&,
-    bitvec_map<source_idx_t> const& blocked_srcs = {});
+    blocked_feeds const& blocked = {});
 
 void collect_destinations(timetable const&,
                           std::vector<offset> const& destinations,

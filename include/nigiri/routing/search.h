@@ -169,7 +169,7 @@ struct search {
         no_compulsory_reservation,
         tts,
         q_.prf_idx_,
-        q_.blocked_srcs_};
+        q_.blocked_};
   }
 
   search(timetable const& tt,
@@ -405,7 +405,7 @@ private:
     get_starts(SearchDir, tt_, rtt_, start_interval, q_.start_, q_.td_start_,
                q_.via_stops_, q_.max_start_offset_, q_.start_match_mode_,
                q_.use_start_footpaths_, state_.starts_, add_ontrip, q_.prf_idx_,
-               q_.transfer_time_settings_, q_.blocked_srcs_);
+               q_.transfer_time_settings_, q_.blocked_);
     std::sort(
         begin(state_.starts_), end(state_.starts_),
         [&](start const& a, start const& b) { return kFwd ? b < a : a < b; });

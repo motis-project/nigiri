@@ -41,7 +41,7 @@ query_engine<UseLowerBounds>::query_engine(
     bool,
     transfer_time_settings,
     profile_idx_t,
-    bitvec_map<source_idx_t> const&)
+    blocked_feeds const&)
     : tt_{tt},
       state_{state},
       is_dest_{is_dest},

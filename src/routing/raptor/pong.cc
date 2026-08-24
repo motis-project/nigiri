@@ -142,7 +142,7 @@ routing_result pong(timetable const& tt,
                           q.no_compulsory_reservation_,
                           q.transfer_time_settings_,
                           q.prf_idx_,
-                          q.blocked_srcs_};
+                          q.blocked_};
 
   // ====
   // PONG
@@ -197,7 +197,7 @@ routing_result pong(timetable const& tt,
                           q.no_compulsory_reservation_,
                           q.transfer_time_settings_,
                           q.prf_idx_,
-                          q.blocked_srcs_};
+                          q.blocked_};
 
   q.flip_dir();
 
@@ -248,7 +248,7 @@ routing_result pong(timetable const& tt,
     get_starts(SearchDir, tt, rtt, start_time, q.start_, q.td_start_,
                q.via_stops_, q.max_start_offset_, q.start_match_mode_,
                q.use_start_footpaths_, starts, false, q.prf_idx_,
-               q.transfer_time_settings_, q.blocked_srcs_);
+               q.transfer_time_settings_, q.blocked_);
     ping.reset_arrivals();
     ping.next_start_time();
     for (auto const& s : starts) {
@@ -301,7 +301,7 @@ routing_result pong(timetable const& tt,
           flip(SearchDir), tt, rtt, ping_j.dest_time_, q.start_, q.td_start_,
           q.via_stops_, q.max_start_offset_, q.start_match_mode_,
           q.start_match_mode_ != location_match_mode::kIntermodal, starts,
-          false, q.prf_idx_, q.transfer_time_settings_, q.blocked_srcs_);
+          false, q.prf_idx_, q.transfer_time_settings_, q.blocked_);
       po.next_start_time();
       for (auto const& s : starts) {
         trace_pong("---- PONG START: {} at time_at_start={} time_at_stop={}",

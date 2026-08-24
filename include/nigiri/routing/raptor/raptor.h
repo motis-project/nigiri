@@ -71,7 +71,7 @@ struct raptor {
       bool const no_compulsory_reservation,
       transfer_time_settings const& tts,
       profile_idx_t const prf_idx,
-      bitvec_map<source_idx_t> const& blocked_srcs = {})
+      blocked_feeds const& blocked = {})
       : tt_{tt},
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},
@@ -97,8 +97,8 @@ struct raptor {
         no_compulsory_reservation_{no_compulsory_reservation},
         is_wheelchair_{is_wheelchair},
         transfer_time_settings_{tts},
-        blocked_srcs_{blocked_srcs},
-        src_filter_{blocked_srcs.any()} {
+        blocked_{blocked},
+        src_filter_{blocked.any()} {
     assert(Vias == via_stops_.size());
     reset_arrivals();
     if (!dist_to_end_.empty()) {
@@ -478,7 +478,7 @@ private:
       auto const r = route_idx_t{r_idx};
 
       if constexpr (WithSrcFilter) {
-        if (blocked_srcs_.test(tt_.route_src(r))) {
+        if (blocked_.routes_.test(r)) {
           return;
         }
       }
@@ -571,7 +571,7 @@ private:
       auto const rt_t = rt_transport_idx_t{rt_t_idx};
 
       if constexpr (WithSrcFilter) {
-        if (blocked_srcs_.test(rtt_->rt_transport_src_[rt_t])) {
+        if (blocked_.srcs_.test(rtt_->rt_transport_src_[rt_t])) {
           return;
         }
       }
@@ -1524,7 +1524,7 @@ private:
   bool no_compulsory_reservation_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
-  bitvec_map<source_idx_t> blocked_srcs_;
+  blocked_feeds blocked_;
   bool src_filter_;
 };
 
