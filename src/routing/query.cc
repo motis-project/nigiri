@@ -27,6 +27,7 @@ bool query::operator==(query const& o) const {
 namespace {
 void set_range(bitvec_map<route_idx_t>& b, interval<route_idx_t> const r) {
   using block_t = std::decay_t<decltype(b)>::block_t;
+  using idx_t = std::decay_t<decltype(b.blocks_)>::access_type;
   constexpr auto const kBits = std::decay_t<decltype(b)>::bits_per_block;
   constexpr auto const kOnes = ~block_t{0U};
 
@@ -36,8 +37,8 @@ void set_range(bitvec_map<route_idx_t>& b, interval<route_idx_t> const r) {
     return;
   }
 
-  auto const first = from / kBits;
-  auto const last = (to - 1U) / kBits;
+  auto const first = static_cast<idx_t>(from / kBits);
+  auto const last = static_cast<idx_t>((to - 1U) / kBits);
   auto const head = kOnes << (from % kBits);
   auto const tail = (to % kBits) == 0U ? kOnes : ~(kOnes << (to % kBits));
 
@@ -46,7 +47,7 @@ void set_range(bitvec_map<route_idx_t>& b, interval<route_idx_t> const r) {
     return;
   }
   b.blocks_[first] |= head;
-  for (auto i = first + 1U; i != last; ++i) {
+  for (auto i = static_cast<idx_t>(first + 1U); i != last; ++i) {
     b.blocks_[i] = kOnes;
   }
   b.blocks_[last] |= tail;
