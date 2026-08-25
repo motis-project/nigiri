@@ -150,6 +150,10 @@ struct raptor_state {
   std::vector<std::uint64_t> diverged_list_;
   bitvec diverged_best_;
   std::vector<std::uint32_t> diverged_best_list_;
+  // union of both divergence kinds per location, never cleared within a
+  // query: one probe decides "fully clean stop" on the fast-lane gates
+  bitvec diverged_any_;
+  std::vector<std::uint32_t> diverged_any_list_;
   // copy-on-diverge: routes with a transport whose traffic days were
   // re-pointed by rt updates; all other routes scan identically in both
   // worlds (clean-route fast lane); cached per rt_timetable instance

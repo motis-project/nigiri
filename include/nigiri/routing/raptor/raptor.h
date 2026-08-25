@@ -260,6 +260,7 @@ struct basic_raptor {
         utl::fill(best0_, kInvalid);
         utl::fill(state_.diverged_.blocks_, 0U);
         utl::fill(state_.diverged_best_.blocks_, 0U);
+        utl::fill(state_.diverged_any_.blocks_, 0U);
         state_.needs_full_reset_ = false;
         state_.reset_slots_ = kCoDResetTag;
         state_.reset_fwd_ = kFwd;
@@ -277,9 +278,13 @@ struct basic_raptor {
         for (auto const l : state_.diverged_best_list_) {
           state_.diverged_best_.set(l, false);
         }
+        for (auto const l : state_.diverged_any_list_) {
+          state_.diverged_any_.set(l, false);
+        }
       }
       state_.diverged_list_.clear();
       state_.diverged_best_list_.clear();
+      state_.diverged_any_list_.clear();
       utl::fill(state_.touched_.blocks_, 0U);
       if (is_intermodal_dest()) {
         state_.touched_.set(kIntermodalTarget, true);
@@ -393,12 +398,24 @@ struct basic_raptor {
     return rt_diverged(k, l) ? rt1_[k][l][0] : rt0_[k][l][0];
   }
 
+  bool diverged_any(std::size_t const l) const {
+    return state_.diverged_any_.test(static_cast<bitvec::size_type>(l));
+  }
+
+  void mark_diverged_any(std::size_t const l) {
+    if (!diverged_any(l)) {
+      state_.diverged_any_.set(static_cast<bitvec::size_type>(l), true);
+      state_.diverged_any_list_.push_back(static_cast<std::uint32_t>(l));
+    }
+  }
+
   void rt_diverge(unsigned const k, std::size_t const l) {
     auto const i = static_cast<bitvec::size_type>(k * n_locations_ + l);
     if (!state_.diverged_.test(i)) {
       rt1_[k][l][0] = rt0_[k][l][0];
       state_.diverged_.set(i, true);
       state_.diverged_list_.push_back(i);
+      mark_diverged_any(l);
     }
   }
 
@@ -420,6 +437,7 @@ struct basic_raptor {
       tmp1_[l] = tmp0_[l];
       state_.diverged_best_.set(static_cast<bitvec::size_type>(l), true);
       state_.diverged_best_list_.push_back(static_cast<std::uint32_t>(l));
+      mark_diverged_any(l);
     }
   }
 
@@ -1173,7 +1191,7 @@ private:
           }
         }();
         auto const s0 = tmp0_[i];
-        auto const src_clean = !has_td && !bt_diverged(i);
+        auto const src_clean = !has_td && !diverged_any(i);
         // the rt world uses the td footpaths at td locations instead
         auto const s1 = has_td ? kInvalid : tmp_read1(i);
         if (s0 == kInvalid && s1 == kInvalid) {
@@ -1188,7 +1206,7 @@ private:
                                                       fp.duration().count()));
           auto const lb_ok = lb_reachable(target);
           auto const lb_v = dir(get_lb(target));
-          if (src_clean && !bt_diverged(target) && !rt_diverged(k, target)) {
+          if (src_clean && !diverged_any(target)) {
             // clean source + clean target: one eval serves both worlds and
             // the write stays shared (either world's bound admits - bounds
             // only prune, so the wider write is result-neutral)
@@ -1823,7 +1841,7 @@ private:
         auto clean = true;
         for (auto const s : tt_.route_location_seq_[r]) {
           auto const l = to_idx(stop{s}.location_idx());
-          if (rt_diverged(k - 1U, l) || bt_diverged(l)) {
+          if (diverged_any(l)) {
             clean = false;
             break;
           }

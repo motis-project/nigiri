@@ -586,7 +586,7 @@ int main(int argc, char* argv[]) {
 
   // scheduled+rt cells need an rt_timetable (empty = no deviations)
   auto rtt = std::optional<rt_timetable>{};
-  if (utl::any_of(algos, [](auto const& a) {
+  if (!rt_path.empty() || utl::any_of(algos, [](auto const& a) {
         return a == "srt" || a == "srt2" || a == "srtp" || a == "srtp2" ||
                a == "srtc" || a == "srtpc";
       })) {
@@ -888,11 +888,12 @@ int main(int argc, char* argv[]) {
                                : run_srt2<direction::kBackward>(tt, *rtt, w,
                                                                 std::move(q));
                   }
+                  auto const* rt = rtt.has_value() ? &*rtt : nullptr;
                   auto const r =
                       use_pong
-                          ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
+                          ? routing::pong_search(tt, rt, w.ss_, w.rs_,
                                                  std::move(q), dir)
-                          : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
+                          : routing::raptor_search(tt, rt, w.ss_, w.rs_,
                                                    std::move(q), dir);
                   return *r.journeys_;
                 }));

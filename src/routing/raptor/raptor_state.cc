@@ -34,6 +34,7 @@ raptor_state& raptor_state::resize(unsigned const n_locations,
   touched_.resize(n_locations);
   diverged_.resize(n_locations * (kMaxTransfers + 2U));
   diverged_best_.resize(n_locations);
+  diverged_any_.resize(n_locations);
   return *this;
 }
 
