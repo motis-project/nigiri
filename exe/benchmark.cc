@@ -317,10 +317,9 @@ pareto_set<routing::journey> run_srt(timetable const& tt,
                                      rt_timetable const& rtt,
                                      cpu_ws& w,
                                      routing::query q,
-                                     direction const dir,
-                                     bool const cod = false) {
+                                     direction const dir) {
   auto const r = routing::raptor_search_schedrt(
-      tt, &rtt, w.ss_, w.rs_, std::move(q), dir, std::nullopt, cod);
+      tt, &rtt, w.ss_, w.rs_, std::move(q), dir, std::nullopt);
   return *r.journeys_;
 }
 
@@ -328,10 +327,9 @@ pareto_set<routing::journey> run_srtp(timetable const& tt,
                                       rt_timetable const& rtt,
                                       cpu_ws& w,
                                       routing::query q,
-                                      direction const dir,
-                                      bool const cod = false) {
+                                      direction const dir) {
   auto const r = routing::pong_search_srt(tt, &rtt, w.ss_, w.rs_, std::move(q),
-                                          dir, std::nullopt, cod);
+                                          dir, std::nullopt);
   return *r.journeys_;
 }
 
@@ -586,8 +584,7 @@ int main(int argc, char* argv[]) {
   // scheduled+rt cells need an rt_timetable (empty = no deviations)
   auto rtt = std::optional<rt_timetable>{};
   if (!rt_path.empty() || utl::any_of(algos, [](auto const& a) {
-        return a == "srt" || a == "srt2" || a == "srtp" || a == "srtp2" ||
-               a == "srtc" || a == "srtpc";
+        return a == "srt" || a == "srt2" || a == "srtp" || a == "srtp2";
       })) {
     auto const day = rt_day_str.empty()
                          ? tt.internal_interval_days().from_ +
@@ -766,10 +763,9 @@ int main(int argc, char* argv[]) {
 #endif
   for (auto const& a : algos) {
     if (a != "range" && a != "pong" && a != "srt" && a != "srt2" &&
-        a != "srtp" && a != "srtp2" && a != "srtc" && a != "srtpc") {
+        a != "srtp" && a != "srtp2") {
       std::cerr << "invalid algo \"" << a
-                << "\", expected raptor | pong | srt | srt2 | srtp | srtp2 | "
-                   "srtc | srtpc\n";
+                << "\", expected raptor | pong | srt | srt2 | srtp | srtp2\n";
       return 1;
     }
   }
@@ -864,8 +860,6 @@ int main(int argc, char* argv[]) {
         auto const use_srt2 = algo == "srt2";
         auto const use_srtp = algo == "srtp";
         auto const use_srtp2 = algo == "srtp2";
-        auto const use_srtc = algo == "srtc";
-        auto const use_srtpc = algo == "srtpc";
         auto const label = mode + "-" + dir_str + "-" + algo;
 
         try {
@@ -873,14 +867,14 @@ int main(int argc, char* argv[]) {
             cells.push_back(run_cell<cpu_ws>(
                 qs, label + "-cpu", threads_v,
                 [&](cpu_ws& w, routing::query q) {
-                  if (use_srtp || use_srtpc) {
-                    return run_srtp(tt, *rtt, w, std::move(q), dir, use_srtpc);
+                  if (use_srtp) {
+                    return run_srtp(tt, *rtt, w, std::move(q), dir);
                   }
                   if (use_srtp2) {
                     return run_srtp2(tt, *rtt, w, std::move(q), dir);
                   }
-                  if (use_srt || use_srtc) {
-                    return run_srt(tt, *rtt, w, std::move(q), dir, use_srtc);
+                  if (use_srt) {
+                    return run_srt(tt, *rtt, w, std::move(q), dir);
                   }
                   if (use_srt2) {
                     return dir == direction::kForward
@@ -914,8 +908,7 @@ int main(int argc, char* argv[]) {
                 },
                 *gpu_tt));
           }
-          if (run_gpu && !use_srt && !use_srt2 && !use_srtp && !use_srtp2 &&
-              !use_srtc && !use_srtpc) {
+          if (run_gpu && !use_srt && !use_srt2 && !use_srtp && !use_srtp2) {
             cells.push_back(run_cell<gpu_ws>(
                 qs, label + "-gpu", gpu_states_v,
                 [&](gpu_ws& w, routing::query q) {

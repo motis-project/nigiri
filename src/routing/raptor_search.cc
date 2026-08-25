@@ -179,29 +179,15 @@ routing_result raptor_search_schedrt(
     raptor_state& r_state,
     query q,
     direction const search_dir,
-    std::optional<std::chrono::seconds> timeout,
-    bool const copy_on_diverge) {
+    std::optional<std::chrono::seconds> timeout) {
   utl::verify(rtt != nullptr, "combined scheduled+rt search requires rt data");
   utl::verify(q.via_stops_.empty(),
               "combined scheduled+rt search does not support vias");
   q.sanitize(tt);
   auto const run = [&]<direction Dir>() {
-    return copy_on_diverge
-               ? search<Dir,
-                        schedrt_algo<Dir, schedrt_cod_criterion>>{tt,
-                                                                  rtt,
-                                                                  s_state,
-                                                                  r_state,
-                                                                  std::move(q),
-                                                                  timeout}
-                     .execute()
-               : search<Dir, schedrt_algo<Dir, schedrt_criterion>>{tt,
-                                                                   rtt,
-                                                                   s_state,
-                                                                   r_state,
-                                                                   std::move(q),
-                                                                   timeout}
-                     .execute();
+    return search<Dir, schedrt_algo<Dir, schedrt_cod_criterion>>{
+        tt, rtt, s_state, r_state, std::move(q), timeout}
+        .execute();
   };
   return search_dir == direction::kForward
              ? run.template operator()<direction::kForward>()

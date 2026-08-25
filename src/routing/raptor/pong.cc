@@ -655,17 +655,13 @@ routing_result pong_search_srt(timetable const& tt,
                                raptor_state& r_state,
                                query q,
                                direction const search_dir,
-                               std::optional<std::chrono::seconds> timeout,
-                               bool const copy_on_diverge) {
+                               std::optional<std::chrono::seconds> timeout) {
   utl::verify(rtt != nullptr, "combined scheduled+rt search requires rt data");
   utl::verify(q.via_stops_.empty(),
               "combined scheduled+rt search does not support vias");
   auto const run = [&]<direction Dir>() {
-    return copy_on_diverge
-               ? basic_pong<Dir, true, schedrt_cod_criterion, raptor_state>(
-                     tt, rtt, s_state, r_state, std::move(q), timeout)
-               : basic_pong<Dir, true, schedrt_criterion, raptor_state>(
-                     tt, rtt, s_state, r_state, std::move(q), timeout);
+    return basic_pong<Dir, true, schedrt_cod_criterion, raptor_state>(
+        tt, rtt, s_state, r_state, std::move(q), timeout);
   };
   return search_dir == direction::kForward
              ? run.template operator()<direction::kForward>()

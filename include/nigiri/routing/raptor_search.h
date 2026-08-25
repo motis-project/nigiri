@@ -27,7 +27,6 @@ routing_result raptor_search_schedrt(
     raptor_state&,
     query,
     direction search_dir,
-    std::optional<std::chrono::seconds> timeout = std::nullopt,
-    bool copy_on_diverge = false);
+    std::optional<std::chrono::seconds> timeout = std::nullopt);
 
 }  // namespace nigiri::routing

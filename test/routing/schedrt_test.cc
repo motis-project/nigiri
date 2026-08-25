@@ -105,11 +105,10 @@ auto const kUpdate =
 })"s;
 
 template <direction Dir>
-struct srt_test_algo
-    : routing::basic_raptor<Dir,
-                            true,
-                            routing::schedrt_criterion<Dir>,
-                            routing::search_mode::kOneToOne> {
+struct srt_test_algo : routing::basic_raptor<Dir,
+                                             true,
+                                             routing::schedrt_criterion<Dir>,
+                                             routing::search_mode::kOneToOne> {
   using base_t = routing::basic_raptor<Dir,
                                        true,
                                        routing::schedrt_criterion<Dir>,
@@ -155,13 +154,13 @@ pareto_set<routing::journey> run_cod(timetable const& tt,
 
 using jkey_t = std::tuple<std::uint8_t, unixtime_t, unixtime_t, std::uint8_t>;
 
-std::vector<jkey_t> keys(pareto_set<routing::journey> const& js,
-                        std::optional<std::uint8_t> const slot_override =
-                            std::nullopt) {
+std::vector<jkey_t> keys(
+    pareto_set<routing::journey> const& js,
+    std::optional<std::uint8_t> const slot_override = std::nullopt) {
   auto v = std::vector<jkey_t>{};
   for (auto const& j : js) {
-    v.emplace_back(slot_override.value_or(j.slot_), j.start_time_,
-                   j.dest_time_, j.transfers_);
+    v.emplace_back(slot_override.value_or(j.slot_), j.start_time_, j.dest_time_,
+                   j.transfers_);
   }
   std::sort(begin(v), end(v));
   return v;
@@ -177,8 +176,8 @@ routing::query make_query(timetable const& tt) {
       .dest_match_mode_ = routing::location_match_mode::kEquivalent,
       .start_ = {{tt.locations_.location_id_to_idx_.at({"A", src}), 0_minutes,
                   0U}},
-      .destination_ = {{tt.locations_.location_id_to_idx_.at({"B", src}),
-                        0_minutes, 0U}}};
+      .destination_ = {
+          {tt.locations_.location_id_to_idx_.at({"B", src}), 0_minutes, 0U}}};
 }
 
 timetable make_tt() {
@@ -204,15 +203,14 @@ TEST(routing, schedrt_pong) {
 
   auto ss = routing::search_state{};
   auto rs = routing::raptor_state{};
-  auto const combined = *routing::pong_search_srt(tt, &rtt, ss, rs, q,
-                                                  direction::kForward)
-                             .journeys_;
+  auto const combined =
+      *routing::pong_search_srt(tt, &rtt, ss, rs, q, direction::kForward)
+           .journeys_;
   auto const off =
       *routing::pong_search(tt, nullptr, ss, rs, q, direction::kForward)
            .journeys_;
-  auto const on = *routing::pong_search(tt, &rtt, ss, rs, q,
-                                        direction::kForward)
-                       .journeys_;
+  auto const on =
+      *routing::pong_search(tt, &rtt, ss, rs, q, direction::kForward).journeys_;
 
   auto combined_sched = std::vector<jkey_t>{};
   auto combined_rt = std::vector<jkey_t>{};
@@ -222,15 +220,6 @@ TEST(routing, schedrt_pong) {
 
   EXPECT_EQ(keys(off, std::uint8_t{0U}), combined_sched);
   EXPECT_EQ(keys(on, std::uint8_t{1U}), combined_rt);
-
-  // copy-on-diverge pong: identical to the 2-slot combined pong
-  auto ss2 = routing::search_state{};
-  auto rs2 = routing::raptor_state{};
-  auto const cod = *routing::pong_search_srt(tt, &rtt, ss2, rs2, q,
-                                             direction::kForward, std::nullopt,
-                                             /*copy_on_diverge=*/true)
-                        .journeys_;
-  EXPECT_EQ(keys(combined), keys(cod));
 }
 
 TEST(routing, schedrt_intermodal_extension_empty_rtt) {
@@ -255,13 +244,13 @@ TEST(routing, schedrt_intermodal_extension_empty_rtt) {
   auto rs = routing::raptor_state{};
   auto const combined =
       *routing::search<direction::kForward, srt_test_algo<direction::kForward>>{
-           tt, &rtt, ss, rs, q}
+          tt, &rtt, ss, rs, q}
            .execute()
            .journeys_;
   auto const off =
       *routing::search<direction::kForward,
-                       plain_test_algo<direction::kForward, false>>{
-           tt, nullptr, ss, rs, q}
+                       plain_test_algo<direction::kForward, false>>{tt, nullptr,
+                                                                    ss, rs, q}
            .execute()
            .journeys_;
 
@@ -302,20 +291,21 @@ TEST(routing, schedrt_intermodal_extension) {
   auto rs = routing::raptor_state{};
   auto const combined =
       *routing::search<direction::kForward, srt_test_algo<direction::kForward>>{
-           tt, &rtt, ss, rs, q}
+          tt, &rtt, ss, rs, q}
            .execute()
            .journeys_;
   auto const off =
       *routing::search<direction::kForward,
-                       plain_test_algo<direction::kForward, false>>{
-           tt, nullptr, ss, rs, q}
+                       plain_test_algo<direction::kForward, false>>{tt, nullptr,
+                                                                    ss, rs, q}
            .execute()
            .journeys_;
-  auto const on = *routing::search<direction::kForward,
-                                   plain_test_algo<direction::kForward, true>>{
-                       tt, &rtt, ss, rs, q}
-                      .execute()
-                      .journeys_;
+  auto const on =
+      *routing::search<direction::kForward,
+                       plain_test_algo<direction::kForward, true>>{tt, &rtt, ss,
+                                                                   rs, q}
+           .execute()
+           .journeys_;
 
   auto combined_sched = std::vector<jkey_t>{};
   auto combined_rt = std::vector<jkey_t>{};
@@ -352,17 +342,18 @@ TEST(routing, schedrt_combined_search) {
   {  // empty rtt: both slots must equal the scheduled-only search
     auto ss0 = routing::search_state{};
     auto rs0 = routing::raptor_state{};
-    auto const c0 = *routing::search<direction::kForward,
-                                     srt_test_algo<direction::kForward>>{
-                         tt, &rtt, ss0, rs0, q}
-                         .execute()
-                         .journeys_;
-    auto const off0 = *routing::search<direction::kForward,
-                                       plain_test_algo<direction::kForward,
-                                                       false>>{
-                           tt, nullptr, ss0, rs0, q}
-                           .execute()
-                           .journeys_;
+    auto const c0 =
+        *routing::search<direction::kForward,
+                         srt_test_algo<direction::kForward>>{tt, &rtt, ss0, rs0,
+                                                             q}
+             .execute()
+             .journeys_;
+    auto const off0 =
+        *routing::search<direction::kForward,
+                         plain_test_algo<direction::kForward, false>>{
+            tt, nullptr, ss0, rs0, q}
+             .execute()
+             .journeys_;
     auto s0 = std::vector<jkey_t>{};
     auto r0 = std::vector<jkey_t>{};
     for (auto const& k : keys(c0)) {
@@ -381,22 +372,23 @@ TEST(routing, schedrt_combined_search) {
   auto rs = routing::raptor_state{};
   auto const combined =
       *routing::search<direction::kForward, srt_test_algo<direction::kForward>>{
-           tt, &rtt, ss, rs, q}
+          tt, &rtt, ss, rs, q}
            .execute()
            .journeys_;
 
   // reference: two separate searches
   auto const off =
       *routing::search<direction::kForward,
-                       plain_test_algo<direction::kForward, false>>{
-           tt, nullptr, ss, rs, q}
+                       plain_test_algo<direction::kForward, false>>{tt, nullptr,
+                                                                    ss, rs, q}
            .execute()
            .journeys_;
-  auto const on = *routing::search<direction::kForward,
-                                   plain_test_algo<direction::kForward, true>>{
-                       tt, &rtt, ss, rs, q}
-                       .execute()
-                       .journeys_;
+  auto const on =
+      *routing::search<direction::kForward,
+                       plain_test_algo<direction::kForward, true>>{tt, &rtt, ss,
+                                                                   rs, q}
+           .execute()
+           .journeys_;
 
   auto const day = unixtime_t{sys_days{2024_y / June / 10}};
   auto const expected_sched = std::vector<jkey_t>{
@@ -424,9 +416,9 @@ TEST(routing, schedrt_combined_search) {
 
   // reconstruct: every combined journey's legs must match the legs of the
   // corresponding standalone journey of its world
-  auto const find_ref = [](pareto_set<routing::journey> const& ref,
-                           routing::journey const& j)
-      -> routing::journey const* {
+  auto const find_ref =
+      [](pareto_set<routing::journey> const& ref,
+         routing::journey const& j) -> routing::journey const* {
     for (auto const& r : ref) {
       if (r.start_time_ == j.start_time_ && r.dest_time_ == j.dest_time_ &&
           r.transfers_ == j.transfers_) {
