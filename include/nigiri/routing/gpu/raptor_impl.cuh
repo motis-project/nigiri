@@ -37,9 +37,10 @@ inline constexpr auto kAllLanes = ~std::uint32_t{0};
 using td_dest_group_idx_t = cista::strong<std::uint32_t, struct td_dest_group_>;
 using td_dest_offsets_t = vecvec<td_dest_group_idx_t, td_offset>;
 
-template <direction SearchDir, bool WithBounds>
+template <direction SearchDir, bool WithBounds, std::uint8_t NWorlds = 1U>
 struct raptor_impl {
   static constexpr via_offset_t Vias = 0U;
+  static constexpr auto const kNSlots = NWorlds;
 
   __device__ __forceinline__ bool is_better(auto a, auto b) {
     return kFwd ? a < b : a > b;
@@ -103,15 +104,17 @@ struct raptor_impl {
     for (auto i = global_t_id; i < starts_.size(); i += global_stride) {
       auto const l = starts_[i].first;
       auto const t = unix_to_delta(base(), starts_[i].second);
-      auto const v = via_offset_t{0};
-      best_.update_min(l, v, t);
-      round_times_.update_min(0U, l, v, t, make_start_bc());
+      for (auto v = via_offset_t{0}; v != kNSlots; ++v) {
+        best_.update_min(l, v, t);
+        round_times_.update_min(0U, l, v, t, make_start_bc());
+      }
       touch_round(0U, l);
       station_mark_.mark(to_idx(l));
     }
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
-    for (auto i = global_t_id; i < kMaxTransfers + 2U; i += global_stride) {
+    for (auto i = global_t_id; i < (kMaxTransfers + 2U) * NWorlds;
+         i += global_stride) {
       time_at_dest_.update_min(i, d_worst_at_dest);
     }
   }
@@ -134,14 +137,19 @@ struct raptor_impl {
         auto const my_i = w * kWarpSize + lane;
         if (((bits >> lane) & 1U) != 0U && my_i < tt_.n_locations_) {
           auto const l = location_idx_t{my_i};
-          for (auto v = 0U; v != Vias + 1; ++v) {
+          for (auto v = 0U; v != kNSlots; ++v) {
             best_.update_min(l, v, round_times_.get(k, l, v));
           }
         }
       }
 
       for (auto d = global_t_id; d < n_dest_locs_; d += get_global_stride()) {
-        update_time_at_dest(k, best_.get(dest_locs_[d], Vias));
+        if constexpr (NWorlds == 1U) {
+          update_time_at_dest<0U>(k, best_.get(dest_locs_[d], 0U));
+        } else {
+          update_time_at_dest<0U>(k, best_.get(dest_locs_[d], 0U));
+          update_time_at_dest<1U>(k, best_.get(dest_locs_[d], 1U));
+        }
       }
     }
 
@@ -223,11 +231,23 @@ struct raptor_impl {
     prev_station_mark_.swap_reset(station_mark_);
   }
 
+  // runtime world check for reconstruct (thread-indexed world)
+  __device__ __forceinline__ bool is_transport_active_rt(
+      transport_idx_t const t, std::size_t const day, unsigned const w) const {
+    if constexpr (NWorlds == 2U) {
+      if (w == 0U) {
+        return tt_.bitfields_[sched_transport_traffic_days_[t]].test(day);
+      }
+    }
+    return is_transport_active(t, day);
+  }
+
   __device__ void reconstruct_journey(location_idx_t const dest,
                                       unsigned const K,
+                                      unsigned const w,
                                       gpu_journey* out) {
     out->state_ = reconstruction_result::kNotReconstructed;
-    auto cur_v = static_cast<via_offset_t>(Vias);
+    auto cur_v = static_cast<via_offset_t>(w);
     auto const dest_time =
         round_times_.get(static_cast<std::uint8_t>(K), dest, cur_v);
     if (dest_time == kInvalid) {
@@ -289,7 +309,8 @@ struct raptor_impl {
           if (cand < 0) {
             continue;
           }
-          if (!is_transport_active(t_idx, static_cast<std::size_t>(cand))) {
+          if (!is_transport_active_rt(t_idx, static_cast<std::size_t>(cand),
+                                      w)) {
             continue;
           }
           auto const tr = transport{
@@ -497,9 +518,10 @@ struct raptor_impl {
     auto const n = static_cast<unsigned>(stop_seq.size());
     auto local_marked = false;
 
-    // a single concrete transport, so the boarding chain is just "latest
-    // boardable scan index so far" (any valid boarding is a correct
-    // witness; latest = shortest ride, matches the sequential version)
+    // rt world = last slot; a single concrete transport, so the boarding
+    // chain is just "latest boardable scan index so far" (any valid boarding
+    // is a correct witness; latest = shortest ride, matches the sequential
+    // version's behavior)
     constexpr auto kNoBoard = -1;
     auto carried_board = kNoBoard;
 
@@ -517,8 +539,9 @@ struct raptor_impl {
             prev_station_mark_[to_idx(stp.location_idx())]) {
           auto const dep = rt_time_at_stop(
               rt_t, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
-          if (is_better_or_eq(round_times_.get(k - 1, stp.location_idx(), 0U),
-                              dep)) {
+          if (is_better_or_eq(
+                  round_times_.get(k - 1, stp.location_idx(), kNSlots - 1U),
+                  dep)) {
             my_board = static_cast<int>(i);
           }
         }
@@ -585,13 +608,13 @@ struct raptor_impl {
           auto const l = stp.location_idx();
           auto const by_transport = rt_time_at_stop(
               rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-          if (is_better_loose(by_transport, time_at_dest_.get(k)) &&
+          if (is_better_loose(by_transport, t_at_dest(k)) &&
               within_bounds(k, l, by_transport)) {
             auto const board_stop = static_cast<stop_idx_t>(
                 kFwd ? static_cast<unsigned>(board)
                      : n - 1U - static_cast<unsigned>(board));
             tmp_.update_min(
-                l, 0U, by_transport,
+                l, kNSlots - 1U, by_transport,
                 make_transport_payload(encode_rt_bc_transport(to_idx(rt_t)),
                                        board_stop, stop_idx));
             station_mark_.mark(to_idx(l));
@@ -618,17 +641,72 @@ struct raptor_impl {
     return __any_sync(kAllLanes, local_marked);
   }
 
+  // both worlds share value+breadcrumb: one evaluation, writes to both
+  // slots (admission with the looser bound / either-world improvement:
+  // bounds only prune, so the wider write stays correct)
+  __device__ __forceinline__ void relax_fp_target_mirror(
+      unsigned const k,
+      location_idx_t const target_l,
+      int const duration,
+      delta_t const tmp_time,
+      breadcrumb_t const bc,
+      delta_t const t_at_dest_loose) {
+    auto const target = to_idx(target_l);
+    auto const fp_target_time = clamp(tmp_time + dir(duration));
+
+    auto const improves = is_better(fp_target_time, best_.get(target_l, 0U)) ||
+                          is_better(fp_target_time, best_.get(target_l, 1U));
+    if constexpr (!WithBounds) {
+      if (improves) {
+        round_times_.update_min(k, target_l, 0U, fp_target_time, bc);
+        round_times_.update_min(k, target_l, 1U, fp_target_time, bc);
+        touch_round(k, target_l);
+      }
+    }
+
+    if (!is_better_loose(fp_target_time, t_at_dest_loose)) {
+      return;
+    }
+
+    if (improves && within_bounds(k, target_l, fp_target_time)) {
+      round_times_.update_min(k, target_l, 0U, fp_target_time, bc);
+      round_times_.update_min(k, target_l, 1U, fp_target_time, bc);
+      touch_round(k, target_l);
+      best_.update_min(target_l, 0U, fp_target_time);
+      best_.update_min(target_l, 1U, fp_target_time);
+      station_mark_.mark(target);
+      if (is_dest_[target]) {
+        update_time_at_dest<0U>(k, fp_target_time);
+        update_time_at_dest<1U>(k, fp_target_time);
+      }
+    }
+  }
+
+  __device__ __forceinline__ void relax_footpath_mirror(
+      unsigned const k,
+      footpath const fp,
+      delta_t const tmp_time,
+      breadcrumb_t const bc,
+      delta_t const t_at_dest_loose) {
+    relax_fp_target_mirror(
+        k, fp.target(),
+        adjusted_transfer_time(transfer_time_settings_, fp.duration().count()),
+        tmp_time, bc, t_at_dest_loose);
+  }
+
+  template <std::uint8_t W>
   __device__ __forceinline__ void relax_footpath(unsigned const k,
                                                  footpath const fp,
                                                  delta_t const tmp_time,
                                                  breadcrumb_t const bc,
                                                  delta_t const t_at_dest) {
-    relax_fp_target(
+    relax_fp_target<W>(
         k, fp.target(),
         adjusted_transfer_time(transfer_time_settings_, fp.duration().count()),
         tmp_time, bc, t_at_dest);
   }
 
+  template <std::uint8_t W>
   __device__ __forceinline__ void relax_fp_target(unsigned const k,
                                                   location_idx_t const target_l,
                                                   int const duration,
@@ -640,8 +718,8 @@ struct raptor_impl {
 
     if constexpr (!WithBounds) {
       // Required for pong search. Target pruning to save writes.
-      if (is_better(fp_target_time, best_.get(target_l, Vias))) {
-        round_times_.update_min(k, target_l, Vias, fp_target_time, bc);
+      if (is_better(fp_target_time, best_.get(target_l, W))) {
+        round_times_.update_min(k, target_l, W, fp_target_time, bc);
         touch_round(k, target_l);
       }
     }
@@ -650,14 +728,14 @@ struct raptor_impl {
       return;
     }
 
-    if (is_better(fp_target_time, best_.get(target_l, Vias)) &&
+    if (is_better(fp_target_time, best_.get(target_l, W)) &&
         within_bounds(k, target_l, fp_target_time)) {
-      round_times_.update_min(k, target_l, Vias, fp_target_time, bc);
+      round_times_.update_min(k, target_l, W, fp_target_time, bc);
       touch_round(k, target_l);
-      best_.update_min(target_l, Vias, fp_target_time);
+      best_.update_min(target_l, W, fp_target_time);
       station_mark_.mark(target);
       if (is_dest_[target]) {
-        update_time_at_dest(k, fp_target_time);
+        update_time_at_dest<W>(k, fp_target_time);
       }
     }
   }
@@ -668,6 +746,7 @@ struct raptor_impl {
     return !bv.blocks_.empty() && bv[to_idx(l)];
   }
 
+  template <std::uint8_t W>
   __device__ void update_td_dest_offsets(unsigned const k) {
     auto const gid = get_global_thread_id();
     auto const stride = get_global_stride();
@@ -678,7 +757,7 @@ struct raptor_impl {
         continue;
       }
 
-      auto const tmp_time = tmp_.get(l, Vias);
+      auto const tmp_time = tmp_.get(l, W);
       if (tmp_time == kInvalid) {
         continue;
       }
@@ -693,13 +772,13 @@ struct raptor_impl {
 
       auto const end_time =
           clamp(tmp_time + dir(static_cast<int>(r.duration_.count())));
-      if (is_better_loose(end_time, time_at_dest_.get(k)) &&
-          is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
-        auto const bc = tmp_.get_bc(0U, l, Vias);
-        round_times_.update_min(k, kIntermodalTarget, Vias, end_time, bc);
+      if (is_better_loose(end_time, t_at_dest<W>(k)) &&
+          is_better(end_time, best_.get(kIntermodalTarget, W))) {
+        auto const bc = tmp_.get_bc(0U, l, W);
+        round_times_.update_min(k, kIntermodalTarget, W, end_time, bc);
         touch_round(k, location_idx_t{kIntermodalTarget});
-        best_.update_min(kIntermodalTarget, Vias, end_time);
-        update_time_at_dest(k, end_time);
+        best_.update_min(kIntermodalTarget, W, end_time);
+        update_time_at_dest<W>(k, end_time);
       }
     }
   }
@@ -716,7 +795,10 @@ struct raptor_impl {
 
     if constexpr (WithTdDest) {
       if (intermodal && !td_dest_locs_.empty()) {
-        update_td_dest_offsets(k);
+        update_td_dest_offsets<0U>(k);
+        if constexpr (NWorlds == 2U) {
+          update_td_dest_offsets<1U>(k);
+        }
       }
     }
 
@@ -731,40 +813,85 @@ struct raptor_impl {
       auto const my_marked = ((bits >> lane) & 1U) != 0U;
 
       // per-lane state; sourced via shuffle by the cooperative hub path
-      auto tmp_time = kInvalid;
-      auto bc = breadcrumb_t{0U};
+      auto tmp0 = kInvalid;
+      auto bc0 = breadcrumb_t{0U};
+      [[maybe_unused]] auto tmp1 = kInvalid;
+      [[maybe_unused]] auto bc1 = breadcrumb_t{0U};
+      auto mirror = false;
       auto n_fps = 0U;
       auto defer = false;
 
-      auto const t_at_dest = time_at_dest_.get(k);
+      auto const t0 = t_at_dest<0U>(k);
+      [[maybe_unused]] auto const t1 = NWorlds == 2U ? t_at_dest<1U>(k) : t0;
+      auto const t_loose = NWorlds == 2U ? (is_better(t0, t1) ? t1 : t0) : t0;
+
+      // relax one footpath/transfer edge for whatever world state the
+      // source stop carries (mirrored when both worlds agree)
+      auto const relax_edge = [&](location_idx_t const target, int const dur,
+                                  delta_t const s0, breadcrumb_t const b0,
+                                  delta_t const s1, breadcrumb_t const b1,
+                                  bool const mir) {
+        if constexpr (NWorlds == 1U) {
+          relax_fp_target<0U>(k, target, dur, s0, b0, t0);
+        } else if (mir) {
+          relax_fp_target_mirror(k, target, dur, s0, b0, t_loose);
+        } else {
+          if (s0 != kInvalid) {
+            relax_fp_target<0U>(k, target, dur, s0, b0, t0);
+          }
+          if (s1 != kInvalid) {
+            relax_fp_target<1U>(k, target, dur, s1, b1, t1);
+          }
+        }
+      };
 
       if (my_marked) {
         auto const l = location_idx_t{my_i};
-        tmp_time = tmp_.get(l, Vias);
-        if (tmp_time != kInvalid) {
-          bc = tmp_.get_bc(0U, l, Vias);
+        auto const raw0 = tmp_.raw(0U, l, 0U);
+        tmp0 = device_times<SearchDir, kNSlots>::from_key(
+            static_cast<std::uint16_t>(raw0 >> kBcBits));
+        bc0 = raw0 & kBcMask;
+        if constexpr (NWorlds == 2U) {
+          auto const raw1 = tmp_.raw(0U, l, 1U);
+          tmp1 = device_times<SearchDir, kNSlots>::from_key(
+              static_cast<std::uint16_t>(raw1 >> kBcBits));
+          bc1 = raw1 & kBcMask;
+          mirror = raw0 == raw1;
+        }
+        auto const any_valid =
+            tmp0 != kInvalid || (NWorlds == 2U && tmp1 != kInvalid);
+        if (any_valid) {
           auto const is_dest = is_dest_[my_i];
 
           // same-station transfer (former update_transfers)
-          relax_fp_target(
-              k, l,
-              (!intermodal && is_dest)
-                  ? 0
-                  : adjusted_transfer_time(
-                        transfer_time_settings_,
-                        static_cast<int>(tt_.transfer_time_[l].count())),
-              tmp_time, bc, t_at_dest);
+          relax_edge(l,
+                     (!intermodal && is_dest)
+                         ? 0
+                         : adjusted_transfer_time(
+                               transfer_time_settings_,
+                               static_cast<int>(tt_.transfer_time_[l].count())),
+                     tmp0, bc0, tmp1, bc1, mirror);
 
           // intermodal egress (former update_intermodal_footpaths)
           if (intermodal && dist_to_end_[my_i] != kUnreachable) {
-            auto const end_time = clamp(tmp_time + dir(dist_to_end_[my_i]));
-            if (is_better_loose(end_time, t_at_dest)) {
-              round_times_.update_min(
-                  k, kIntermodalTarget, Vias, end_time,
-                  bc /* write breadcrumb of last arriving transport */);
-              touch_round(k, location_idx_t{kIntermodalTarget});
-              best_.update_min(kIntermodalTarget, Vias, end_time);
-              update_time_at_dest(k, end_time);
+            auto const egress = [&]<std::uint8_t W>(delta_t const st,
+                                                    breadcrumb_t const sb) {
+              if (st == kInvalid) {
+                return;
+              }
+              auto const end_time = clamp(st + dir(dist_to_end_[my_i]));
+              if (is_better_loose(end_time, t_at_dest<W>(k))) {
+                round_times_.update_min(
+                    k, kIntermodalTarget, W, end_time,
+                    sb /* write breadcrumb of last arriving transport */);
+                touch_round(k, location_idx_t{kIntermodalTarget});
+                best_.update_min(kIntermodalTarget, W, end_time);
+                update_time_at_dest<W>(k, end_time);
+              }
+            };
+            egress.template operator()<0U>(tmp0, bc0);
+            if constexpr (NWorlds == 2U) {
+              egress.template operator()<1U>(tmp1, bc1);
             }
           }
 
@@ -777,11 +904,15 @@ struct raptor_impl {
             if constexpr (WithTdFootpaths) {
               auto const td_fps = kFwd ? rtt_.td_->out_[prf_idx_][l]
                                        : rtt_.td_->in_[prf_idx_][l];
+              // td footpaths serve the rt world only on the CPU at rt
+              // stops; on the device both worlds use them (superset,
+              // pruning-neutral) -> per-world relax, never mirrored with
+              // the static list semantics
               d_for_each_td_footpath<SearchDir>(
-                  td_fps, to_unix(tmp_time),
+                  td_fps, to_unix(tmp0 != kInvalid ? tmp0 : tmp1),
                   [&](location_idx_t const target, duration_t const d) {
-                    relax_fp_target(k, target, static_cast<int>(d.count()),
-                                    tmp_time, bc, t_at_dest);
+                    relax_edge(target, static_cast<int>(d.count()), tmp0, bc0,
+                               tmp1, bc1, mirror);
                   });
             }
           } else {
@@ -790,8 +921,13 @@ struct raptor_impl {
             n_fps = static_cast<unsigned>(fps.size());
             if (n_fps <= kWarpFpThreshold) {
               for (auto j = 0U; j != n_fps; ++j) {
-                relax_footpath(k, fps[j], tmp_time, bc, t_at_dest);
+                auto const fp = fps[j];
+                relax_edge(fp.target(),
+                           adjusted_transfer_time(transfer_time_settings_,
+                                                  fp.duration().count()),
+                           tmp0, bc0, tmp1, bc1, mirror);
               }
+              n_fps = 0U;
             } else {
               defer = true;
             }
@@ -803,14 +939,24 @@ struct raptor_impl {
       auto const deferred = __ballot_sync(kAllLanes, defer);
       for_each_set_bit(deferred, [&](unsigned const b) {
         auto const l = location_idx_t{base + b};
-        auto const l_tmp = static_cast<delta_t>(__shfl_sync(
-            kAllLanes, static_cast<int>(tmp_time), static_cast<int>(b)));
-        auto const l_bc = __shfl_sync(kAllLanes, bc, static_cast<int>(b));
+        auto const l_tmp0 = static_cast<delta_t>(__shfl_sync(
+            kAllLanes, static_cast<int>(tmp0), static_cast<int>(b)));
+        auto const l_bc0 = __shfl_sync(kAllLanes, bc0, static_cast<int>(b));
+        [[maybe_unused]] auto const l_tmp1 = static_cast<delta_t>(__shfl_sync(
+            kAllLanes, static_cast<int>(tmp1), static_cast<int>(b)));
+        [[maybe_unused]] auto const l_bc1 =
+            __shfl_sync(kAllLanes, bc1, static_cast<int>(b));
+        auto const l_mirror =
+            __shfl_sync(kAllLanes, mirror ? 1U : 0U, static_cast<int>(b)) != 0U;
         auto const l_n = __shfl_sync(kAllLanes, n_fps, static_cast<int>(b));
         auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
                               : tt_.footpaths_in_[prf_idx_][l];
         for (auto j = lane; j < l_n; j += kWarpSize) {
-          relax_footpath(k, fps[j], l_tmp, l_bc, t_at_dest);
+          auto const fp = fps[j];
+          relax_edge(fp.target(),
+                     adjusted_transfer_time(transfer_time_settings_,
+                                            fp.duration().count()),
+                     l_tmp0, l_bc0, l_tmp1, l_bc1, l_mirror);
         }
       });
     }
@@ -834,8 +980,35 @@ struct raptor_impl {
     //
     // Plain unsigned integer comparison yields lexicographical order
     // (transport, stop) selects earliest transport at earliest boarding index
+    //
+    // scheduled+rt (NWorlds == 2): both worlds' chains ride one warp pass;
+    // where the carried transports coincide, one arrival evaluation feeds a
+    // mirrored write into both slots
     constexpr auto kEtKeyInvalid = ~std::uint64_t{0};
     auto carried_et = kEtKeyInvalid;
+    [[maybe_unused]] auto carried_et1 = kEtKeyInvalid;
+
+    auto const arrival = [&](std::uint64_t const et, unsigned const i,
+                             stop_idx_t const stop_idx, auto const& stp,
+                             delta_t const dest_bound, auto&& write) {
+      auto const et_board_i = static_cast<unsigned>(et & 0xFFFF'FFFFU);
+      if (et == kEtKeyInvalid || et_board_i >= i) {
+        return;
+      }
+      auto const l = stp.location_idx();
+      auto const t = unpack_et(r, static_cast<std::uint32_t>(et >> 32U));
+      auto const by_transport = time_at_stop(
+          r, t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+      if (is_better_loose(by_transport, dest_bound) &&
+          within_bounds(k, l, by_transport)) {
+        auto const board_stop =
+            static_cast<stop_idx_t>(kFwd ? et_board_i : n - 1U - et_board_i);
+        write(l, by_transport,
+              make_transport_payload(t.t_idx_.v_, board_stop, stop_idx));
+        station_mark_.mark(to_idx(l));
+        local_marked = true;
+      }
+    };
 
     for (auto chunk = 0U; chunk < n; chunk += kWarpSize) {
       // Note: continue for i >= n would be UB for __shfl_up_sync etc
@@ -843,14 +1016,21 @@ struct raptor_impl {
       auto const i = chunk + lane;
       auto stop_idx = stop_idx_t{};
       auto my_key = kEtKeyInvalid;
+      [[maybe_unused]] auto my_key1 = kEtKeyInvalid;
       [[maybe_unused]] auto kill = false;
 
       if (i < n) {
         stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
 
-        auto const et = et_result_[base_flat + stop_idx];
+        auto const et = et_result_[(base_flat + stop_idx) * NWorlds];
         if (et != kEtInvalid) {
           my_key = (static_cast<std::uint64_t>(et) << 32U) | i;
+        }
+        if constexpr (NWorlds == 2U) {
+          auto const et1 = et_result_[(base_flat + stop_idx) * NWorlds + 1U];
+          if (et1 != kEtInvalid) {
+            my_key1 = (static_cast<std::uint64_t>(et1) << 32U) | i;
+          }
         }
 
         if constexpr (WithSections) {
@@ -864,17 +1044,24 @@ struct raptor_impl {
 
       // Inclusive prefix-min over previous keys in the chunk (including this).
       auto incl = my_key;
+      [[maybe_unused]] auto incl1 = my_key1;
       [[maybe_unused]] auto prefix_contains_kill = 0U;
       if constexpr (WithSections) {
         prefix_contains_kill = kill ? 1U : 0U;
         for (auto off = 1U; off < kWarpSize; off <<= 1) {
           auto const prev_incl = __shfl_up_sync(kAllLanes, incl, off);
+          [[maybe_unused]] auto const prev_incl1 =
+              NWorlds == 2U ? __shfl_up_sync(kAllLanes, incl1, off)
+                            : kEtKeyInvalid;
           auto const prev_prefix_contains_kill =
               __shfl_up_sync(kAllLanes, prefix_contains_kill, off);
           if (lane >= off) {
             if (prefix_contains_kill == 0U) {
               // no kill between lane-off and me
               incl = min(incl, prev_incl);
+              if constexpr (NWorlds == 2U) {
+                incl1 = min(incl1, prev_incl1);
+              }
             }
             prefix_contains_kill |= prev_prefix_contains_kill;
           }
@@ -883,6 +1070,12 @@ struct raptor_impl {
         // no section filters -> plain prefix-min
         for (auto off = 1U; off < kWarpSize; off <<= 1) {
           auto const prev_incl = __shfl_up_sync(kAllLanes, incl, off);
+          if constexpr (NWorlds == 2U) {
+            auto const prev_incl1 = __shfl_up_sync(kAllLanes, incl1, off);
+            if (lane >= off) {
+              incl1 = min(incl1, prev_incl1);
+            }
+          }
           if (lane >= off) {
             incl = min(incl, prev_incl);
           }
@@ -891,42 +1084,63 @@ struct raptor_impl {
 
       // Get earliest transport from previous stop.
       auto et = __shfl_up_sync(kAllLanes, incl, 1);
+      [[maybe_unused]] auto et1 =
+          NWorlds == 2U ? __shfl_up_sync(kAllLanes, incl1, 1) : kEtKeyInvalid;
       if constexpr (WithSections) {
         auto prev_prefix_contains_kill =
             __shfl_up_sync(kAllLanes, prefix_contains_kill, 1);
         if (lane == 0U) {
           et = kEtKeyInvalid;
+          et1 = kEtKeyInvalid;
           prev_prefix_contains_kill = 0U;
         }
         et =  // if no kill between chunk start and incl here -> min(et, carry)
             kill ? kEtKeyInvalid
                  : (prev_prefix_contains_kill != 0U ? et : min(et, carried_et));
+        if constexpr (NWorlds == 2U) {
+          et1 = kill
+                    ? kEtKeyInvalid
+                    : (prev_prefix_contains_kill != 0U ? et1
+                                                       : min(et1, carried_et1));
+        }
       } else {
         if (lane == 0U) {
           et = kEtKeyInvalid;
+          et1 = kEtKeyInvalid;
         }
         et = min(et, carried_et);
+        if constexpr (NWorlds == 2U) {
+          et1 = min(et1, carried_et1);
+        }
       }
 
       // Update stop time.
-      auto const et_board_i = static_cast<unsigned>(et & 0xFFFF'FFFFU);
-      if (i < n && et != kEtKeyInvalid && et_board_i < i) {
+      if (i < n) {
         auto const stp = stop{stop_seq[stop_idx]};
         if (stp.can_finish<SearchDir>(IsWheelchair)) {
-          auto const l = stp.location_idx();
-          auto const l_idx = to_idx(l);
-          auto const t = unpack_et(r, static_cast<std::uint32_t>(et >> 32U));
-          auto const by_transport = time_at_stop(
-              r, t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-          if (is_better_loose(by_transport, time_at_dest_.get(k)) &&
-              within_bounds(k, l, by_transport)) {
-            auto const board_stop = static_cast<stop_idx_t>(
-                kFwd ? et_board_i : n - 1U - et_board_i);
-            tmp_.update_min(
-                l, 0U, by_transport,
-                make_transport_payload(t.t_idx_.v_, board_stop, stop_idx));
-            station_mark_.mark(l_idx);
-            local_marked = true;
+          if constexpr (NWorlds == 1U) {
+            arrival(
+                et, i, stop_idx, stp, t_at_dest<0U>(k),
+                [&](location_idx_t const l, delta_t const v,
+                    breadcrumb_t const bc) { tmp_.update_min(l, 0U, v, bc); });
+          } else if (et == et1) {
+            // both worlds ride the same transport: one evaluation, mirrored
+            // write (looser dest bound: pruning only)
+            arrival(et, i, stop_idx, stp, t_at_dest_worse(k),
+                    [&](location_idx_t const l, delta_t const v,
+                        breadcrumb_t const bc) {
+                      tmp_.update_min(l, 0U, v, bc);
+                      tmp_.update_min(l, 1U, v, bc);
+                    });
+          } else {
+            arrival(
+                et, i, stop_idx, stp, t_at_dest<0U>(k),
+                [&](location_idx_t const l, delta_t const v,
+                    breadcrumb_t const bc) { tmp_.update_min(l, 0U, v, bc); });
+            arrival(
+                et1, i, stop_idx, stp, t_at_dest<1U>(k),
+                [&](location_idx_t const l, delta_t const v,
+                    breadcrumb_t const bc) { tmp_.update_min(l, 1U, v, bc); });
           }
         }
       }
@@ -938,21 +1152,33 @@ struct raptor_impl {
             __shfl_sync(kAllLanes, prefix_contains_kill, kWarpSize - 1U);
         carried_et =
             chunk_contains_kill != 0U ? incl_last : min(incl_last, carried_et);
+        if constexpr (NWorlds == 2U) {
+          auto const incl1_last = __shfl_sync(kAllLanes, incl1, kWarpSize - 1U);
+          carried_et1 = chunk_contains_kill != 0U
+                            ? incl1_last
+                            : min(incl1_last, carried_et1);
+        }
       } else {
         carried_et =
             __shfl_sync(kAllLanes, min(incl, carried_et), kWarpSize - 1U);
+        if constexpr (NWorlds == 2U) {
+          carried_et1 =
+              __shfl_sync(kAllLanes, min(incl1, carried_et1), kWarpSize - 1U);
+        }
       }
     }
 
     return __any_sync(kAllLanes, local_marked);
   }
 
+  template <std::uint8_t W = NWorlds - 1U>
   __device__ transport
   get_earliest_transport(unsigned const k,
                          route_idx_t const r,
                          stop_idx_t const stop_idx,
                          day_idx_t const day_at_stop,
-                         minutes_after_midnight_t const mam_at_stop) {
+                         minutes_after_midnight_t const mam_at_stop,
+                         delta_t const dest_bound) {
     auto const event_times = tt_.event_times_at_stop(
         r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
 
@@ -988,7 +1214,7 @@ struct raptor_impl {
         // an event equal to time-at-dest must still be boardable
         // (equal-arrival coverage for the pong)
         auto const ev_t = to_delta(day, ev_mam);
-        if (is_better(time_at_dest_.get(k), ev_t)) {
+        if (is_better(dest_bound, ev_t)) {
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
@@ -1000,7 +1226,7 @@ struct raptor_impl {
         auto const ev_day_offset = ev.days();
         auto const start_day =
             static_cast<std::size_t>(as_int(day) - ev_day_offset);
-        if (!is_transport_active(t, start_day)) {
+        if (!is_transport_active_w<W>(t, start_day)) {
           continue;
         }
         return {t, static_cast<day_idx_t>(as_int(day) - ev_day_offset)};
@@ -1016,6 +1242,18 @@ struct raptor_impl {
                 ? rtt_.bitfields_[bitfield_idx_t{i & ~kRtBitfieldFlag}]
                 : tt_.bitfields_[bitfield_idx_t{i}])
         .test(day);
+  }
+
+  // scheduled+rt: world 0 rides the original schedule (cancelled trips
+  // included), world 1 = the rt-replaced traffic days (single-world default)
+  template <std::uint8_t W>
+  __device__ __forceinline__ bool is_transport_active_w(
+      transport_idx_t const t, std::size_t const day) const {
+    if constexpr (NWorlds == 1U || W == 1U) {
+      return is_transport_active(t, day);
+    } else {
+      return tt_.bitfields_[sched_transport_traffic_days_[t]].test(day);
+    }
   }
 
   __device__ __forceinline__ bool is_route_active(route_idx_t const r,
@@ -1115,14 +1353,20 @@ struct raptor_impl {
           auto const s = chunk + lane;
           auto is_task = false;
           if (s < n) {
-            et_result_[base_flat + s] = kEtInvalid;
+            for (auto w = 0U; w != NWorlds; ++w) {
+              et_result_[(base_flat + s) * NWorlds + w] = kEtInvalid;
+            }
             auto const is_dir_last = kFwd ? (s + 1U == n) : (s == 0U);
             if (!is_dir_last) {
               auto const stp = stop{stop_seq[s]};
               auto const l = stp.location_idx();
+              auto any_valid = round_times_.get(k - 1, l, 0U) != kInvalid;
+              if constexpr (NWorlds == 2U) {
+                any_valid =
+                    any_valid || round_times_.get(k - 1, l, 1U) != kInvalid;
+              }
               is_task = prev_station_mark_[to_idx(l)] &&
-                        stp.can_start<SearchDir>(IsWheelchair) &&
-                        round_times_.get(k - 1, l, 0U) != kInvalid;
+                        stp.can_start<SearchDir>(IsWheelchair) && any_valid;
             }
           }
 
@@ -1160,9 +1404,35 @@ struct raptor_impl {
       auto const stop_seq = tt_.route_location_seq_[r];
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l = stp.location_idx();
-      auto const [day, mam] = split(round_times_.get(k - 1, l, 0U));
-      et_result_[flat] =
-          pack_et(r, get_earliest_transport(k, r, stop_idx, day, mam));
+      auto const lookup = [&]<std::uint8_t W>() {
+        auto const label = round_times_.get(k - 1, l, W);
+        et_result_[flat * NWorlds + W] =
+            label == kInvalid ? kEtInvalid : pack_et(r, [&] {
+              auto const [day, mam] = split(label);
+              return get_earliest_transport<W>(k, r, stop_idx, day, mam,
+                                               t_at_dest<W>(k));
+            }());
+      };
+      if constexpr (NWorlds == 2U) {
+        auto const l0 = round_times_.get(k - 1, l, 0U);
+        auto const l1 = round_times_.get(k - 1, l, 1U);
+        if (l0 == l1 && route_untouched(r)) {
+          // identical labels + untouched route: one walk serves both worlds
+          // (looser dest bound: pruning only, stays correct for both)
+          auto const res = l0 == kInvalid ? kEtInvalid : pack_et(r, [&] {
+            auto const [day, mam] = split(l0);
+            return get_earliest_transport<0U>(k, r, stop_idx, day, mam,
+                                              t_at_dest_worse(k));
+          }());
+          et_result_[flat * NWorlds] = res;
+          et_result_[flat * NWorlds + 1U] = res;
+        } else {
+          lookup.template operator()<0U>();
+          lookup.template operator()<1U>();
+        }
+      } else {
+        lookup.template operator()<0U>();
+      }
     }
   }
 
@@ -1198,9 +1468,33 @@ struct raptor_impl {
     return !dist_to_end_.empty();
   }
 
+  __device__ __forceinline__ delta_t t_at_dest_worse(unsigned const k) {
+    if constexpr (NWorlds == 1U) {
+      return t_at_dest<0U>(k);
+    } else {
+      auto const a = t_at_dest<0U>(k);
+      auto const b = t_at_dest<1U>(k);
+      return is_better(a, b) ? b : a;  // looser bound admits the union
+    }
+  }
+
+  __device__ __forceinline__ bool route_untouched(route_idx_t const r) const {
+    if constexpr (NWorlds == 1U) {
+      return true;
+    } else {
+      return !rtt_.route_has_rt_[to_idx(r)];
+    }
+  }
+
+  template <std::uint8_t W = NWorlds - 1U>
+  __device__ __forceinline__ delta_t t_at_dest(unsigned const k) {
+    return time_at_dest_.get(static_cast<std::uint8_t>(k * NWorlds + W));
+  }
+
+  template <std::uint8_t W = NWorlds - 1U>
   __device__ void update_time_at_dest(unsigned const k, delta_t const t) {
     for (auto i = k; i != max_transfers_ + 1U; ++i) {
-      time_at_dest_.update_min(i, t);
+      time_at_dest_.update_min(i * NWorlds + W, t);
     }
   }
 
@@ -1243,9 +1537,9 @@ struct raptor_impl {
   cuda::std::span<std::uint16_t const> dist_to_end_;
   cuda::std::span<location_idx_t const> td_dest_locs_;
   d_vecvec_view<td_dest_offsets_t> td_dest_;
-  device_times<SearchDir, Vias + 1> round_times_;
-  device_times<SearchDir, Vias + 1> best_;
-  device_times<SearchDir, Vias + 1> tmp_;
+  device_times<SearchDir, kNSlots> round_times_;
+  device_times<SearchDir, kNSlots> best_;
+  device_times<SearchDir, kNSlots> tmp_;
   device_times<SearchDir, 1U> time_at_dest_;
   device_bitvec<std::uint32_t> station_mark_;
   device_bitvec<std::uint32_t> prev_station_mark_;
@@ -1269,6 +1563,9 @@ struct raptor_impl {
   // marked routes this round
   cuda::std::span<std::uint32_t> route_list_;
   std::uint32_t* route_list_count_;
+
+  // scheduled+rt: original static traffic days for world 0
+  d_vecmap_view<transport_idx_t, bitfield_idx_t> sched_transport_traffic_days_;
 
   // ping bounds
   delta_t const* bounds_{nullptr};

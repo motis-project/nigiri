@@ -1,7 +1,7 @@
 #pragma once
 
-#include <atomic>
 #include <cstdint>
+#include <atomic>
 
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/raptor.h"
@@ -10,6 +10,10 @@
 #include "nigiri/timetable.h"
 
 namespace nigiri::routing {
+
+namespace gpu {
+struct gpu_raptor_state;
+}
 
 static constexpr auto kMinLookAhead = 1_days;
 
@@ -55,5 +59,16 @@ routing_result pong_search_srt(
     direction search_dir,
     std::optional<std::chrono::seconds> timeout = std::nullopt,
     bool copy_on_diverge = false);
+
+#if defined(NIGIRI_CUDA)
+routing_result pong_search_srt(
+    timetable const&,
+    rt_timetable const*,
+    search_state&,
+    gpu::gpu_raptor_state&,
+    query,
+    direction search_dir,
+    std::optional<std::chrono::seconds> timeout = std::nullopt);
+#endif
 
 }  // namespace nigiri::routing

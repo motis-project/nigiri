@@ -88,6 +88,8 @@ struct device_rt_timetable {
       rt_transport_stop_times_;
   d_vecmap_view<rt_transport_idx_t, clasz> rt_transport_clasz_;
 
+  // routes with an rt-re-pointed transport (scheduled+rt fast lanes)
+  device_bitvec<std::uint64_t const> route_has_rt_;
   d_vecmap_view<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
   d_vecmap_view<bitfield_idx_t, bitfield> bitfields_;
 

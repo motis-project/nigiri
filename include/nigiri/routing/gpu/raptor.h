@@ -52,7 +52,7 @@ struct gpu_raptor_state {
   std::unique_ptr<impl> impl_;
 };
 
-template <direction SearchDir, bool WithBounds>
+template <direction SearchDir, bool WithBounds, std::uint8_t NWorlds>
 struct gpu_raptor {
   using algo_state_t = gpu_raptor_state;
   using algo_stats_t = raptor_stats;

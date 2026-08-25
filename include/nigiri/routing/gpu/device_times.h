@@ -50,6 +50,12 @@ struct device_times {
     return from_key(static_cast<std::uint16_t>(data_[i] >> kBcBits));
   }
 
+  __device__ std::uint64_t raw(std::uint8_t const k,
+                               location_idx_t const l,
+                               via_offset_t const via) {
+    return data_[internal_idx(k, l, via)];
+  }
+
   __device__ breadcrumb_t get_bc(std::uint8_t const k,
                                  location_idx_t const l,
                                  via_offset_t const via) {

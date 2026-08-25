@@ -17,6 +17,7 @@
 #include "utl/progress_tracker.h"
 #include "utl/zip.h"
 
+#include "nigiri/common/parse_date.h"
 #include "nigiri/logging.h"
 #include "nigiri/qa/qa.h"
 #include "nigiri/query_generator/generator.h"
@@ -25,7 +26,6 @@
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor/schedrt_criterion.h"
 #include "nigiri/routing/raptor_search.h"
-#include "nigiri/common/parse_date.h"
 #include "nigiri/routing/search.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
@@ -104,9 +104,8 @@ void generate_queries(
     }
     if (window.has_value()) {
       auto const from = std::visit(
-          utl::overloaded{
-              [](interval<unixtime_t> const i) { return i.from_; },
-              [](unixtime_t const t) { return t; }},
+          utl::overloaded{[](interval<unixtime_t> const i) { return i.from_; },
+                          [](unixtime_t const t) { return t; }},
           sdq->q_.start_time_);
       if (!window->contains(from)) {
         continue;
@@ -186,8 +185,8 @@ std::uint64_t compare_results(
     auto const canonical = [](routing::journey const* a,
                               routing::journey const* b) {
       return std::tuple{a->start_time_, a->dest_time_, a->transfers_,
-                        a->slot_} < std::tuple{b->start_time_, b->dest_time_,
-                                               b->transfers_, b->slot_};
+                        a->slot_} <
+             std::tuple{b->start_time_, b->dest_time_, b->transfers_, b->slot_};
     };
     std::sort(begin(r), end(r), canonical);
     std::sort(begin(c), end(c), canonical);
@@ -647,9 +646,8 @@ int main(int argc, char* argv[]) {
         try {
           auto const stats = rt::gtfsrt_update_buf(
               tt, *rtt, it->second, name,
-              std::string_view{
-                  reinterpret_cast<char const*>(f.view().data()),
-                  f.view().size()});
+              std::string_view{reinterpret_cast<char const*>(f.view().data()),
+                               f.view().size()});
           ++n_applied;
           total += stats.total_entities_;
           success += stats.total_entities_success_;
@@ -807,6 +805,9 @@ int main(int argc, char* argv[]) {
   auto gpu_tt = std::optional<routing::gpu::gpu_timetable>{};
   if (run_gpu) {
     gpu_tt.emplace(tt);
+    if (rtt.has_value()) {
+      rtt->gpu_rtt_.ptr_ = routing::gpu::make_gpu_rtt(tt, *rtt);
+    }
   }
 #endif
 
@@ -890,11 +891,10 @@ int main(int argc, char* argv[]) {
                   }
                   auto const* rt = rtt.has_value() ? &*rtt : nullptr;
                   auto const r =
-                      use_pong
-                          ? routing::pong_search(tt, rt, w.ss_, w.rs_,
-                                                 std::move(q), dir)
-                          : routing::raptor_search(tt, rt, w.ss_, w.rs_,
-                                                   std::move(q), dir);
+                      use_pong ? routing::pong_search(tt, rt, w.ss_, w.rs_,
+                                                      std::move(q), dir)
+                               : routing::raptor_search(tt, rt, w.ss_, w.rs_,
+                                                        std::move(q), dir);
                   return *r.journeys_;
                 }));
             ++qa_n_cpu_cells;
@@ -904,17 +904,27 @@ int main(int argc, char* argv[]) {
           }
 
 #if defined(NIGIRI_CUDA)
+          if (run_gpu && use_srtp) {
+            cells.push_back(run_cell<gpu_ws>(
+                qs, label + "-gpu", gpu_states_v,
+                [&](gpu_ws& w, routing::query q) {
+                  auto const r = routing::pong_search_srt(
+                      tt, &*rtt, w.ss_, *w.rs_, std::move(q), dir);
+                  return *r.journeys_;
+                },
+                *gpu_tt));
+          }
           if (run_gpu && !use_srt && !use_srt2 && !use_srtp && !use_srtp2 &&
               !use_srtc && !use_srtpc) {
             cells.push_back(run_cell<gpu_ws>(
                 qs, label + "-gpu", gpu_states_v,
                 [&](gpu_ws& w, routing::query q) {
+                  auto const* rt = rtt.has_value() ? &*rtt : nullptr;
                   auto const r =
-                      use_pong
-                          ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
-                                                 std::move(q), dir)
-                          : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
-                                                   std::move(q), dir);
+                      use_pong ? routing::pong_search(tt, rt, w.ss_, *w.rs_,
+                                                      std::move(q), dir)
+                               : routing::raptor_search(tt, rt, w.ss_, *w.rs_,
+                                                        std::move(q), dir);
                   return *r.journeys_;
                 },
                 *gpu_tt));
@@ -962,18 +972,17 @@ int main(int argc, char* argv[]) {
               << " all_filtered_continues=" << c.all_filtered_continues_.load()
               << " flipped_filtered=" << c.flipped_filtered_.load() << "\n";
   }
-  if (utl::any_of(algos, [](auto const& a) {
-        return a == "srt" || a == "srtp";
-      })) {
+  if (utl::any_of(algos,
+                  [](auto const& a) { return a == "srt" || a == "srtp"; })) {
     auto const& d = routing::get_schedrt_divergence_counters();
     auto const cells = d.cells_equal_.load() + d.cells_diverged_.load();
     auto const boards = d.board_fused_.load() + d.board_split_.load();
     std::cout << "srt divergence: cells_diverged=" << d.cells_diverged_.load()
               << "/" << cells << " ("
-              << (cells == 0U ? 0.0
-                              : 100.0 * static_cast<double>(
-                                            d.cells_diverged_.load()) /
-                                    static_cast<double>(cells))
+              << (cells == 0U
+                      ? 0.0
+                      : 100.0 * static_cast<double>(d.cells_diverged_.load()) /
+                            static_cast<double>(cells))
               << "%) board_split=" << d.board_split_.load() << "/" << boards
               << " et_dual_diverged=" << d.et_dual_diverged_.load() << "/"
               << d.board_fused_.load() << "\n";

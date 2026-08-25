@@ -16,8 +16,8 @@
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/gpu/raptor.h"
-#include "nigiri/routing/raptor/schedrt_criterion.h"
 #include "nigiri/routing/leg_alternatives.h"
+#include "nigiri/routing/raptor/schedrt_criterion.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/types.h"
@@ -85,16 +85,17 @@ routing_result basic_pong(timetable const& tt,
   constexpr auto kFwd = (SearchDir == direction::kForward);
   using crit_t = CritT<SearchDir>;
 
+  // GPU: the world criterion maps onto the device label-slot dimension
+  constexpr auto const kAlgoWorlds =
+      static_cast<std::uint8_t>(crit_t::kAllSlotsRt ? 1U : crit_t::kN);
   using ping_algo_t = std::conditional_t<
       std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-      gpu::gpu_raptor<SearchDir, false>,
+      gpu::gpu_raptor<SearchDir, false, kAlgoWorlds>,
       basic_raptor<SearchDir, Rt, crit_t, search_mode::kOneToOne>>;
   using pong_algo_t = std::conditional_t<
       std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-      gpu::gpu_raptor<flip(SearchDir), kPruneWithPingBounds>,
-      basic_raptor<flip(SearchDir),
-                   Rt,
-                   CritT<flip(SearchDir)>,
+      gpu::gpu_raptor<flip(SearchDir), kPruneWithPingBounds, kAlgoWorlds>,
+      basic_raptor<flip(SearchDir), Rt, CritT<flip(SearchDir)>,
                    search_mode::kOneToOne>>;
 
   s_state.results_.clear();
@@ -374,7 +375,8 @@ routing_result basic_pong(timetable const& tt,
       // Has to happen before pong.reset_arrivals() wipes the shared
       // round_times the ping search just filled.
       auto const max_transfers =
-          utl::max_element(ping_results, [](journey const& a, journey const& b) {
+          utl::max_element(ping_results, [](journey const& a,
+                                            journey const& b) {
             return a.transfers_ < b.transfers_;
           })->transfers_;
       ping.fill_bounds(max_transfers + std::size_t{1U});
@@ -669,6 +671,27 @@ routing_result pong_search_srt(timetable const& tt,
              ? run.template operator()<direction::kForward>()
              : run.template operator()<direction::kBackward>();
 }
+
+#if defined(NIGIRI_CUDA)
+routing_result pong_search_srt(timetable const& tt,
+                               rt_timetable const* rtt,
+                               search_state& s_state,
+                               gpu::gpu_raptor_state& r_state,
+                               query q,
+                               direction const search_dir,
+                               std::optional<std::chrono::seconds> timeout) {
+  utl::verify(rtt != nullptr, "combined scheduled+rt search requires rt data");
+  utl::verify(q.via_stops_.empty(),
+              "combined scheduled+rt search does not support vias");
+  auto const run = [&]<direction Dir>() {
+    return basic_pong<Dir, true, schedrt_criterion, gpu::gpu_raptor_state>(
+        tt, rtt, s_state, r_state, std::move(q), timeout);
+  };
+  return search_dir == direction::kForward
+             ? run.template operator()<direction::kForward>()
+             : run.template operator()<direction::kBackward>();
+}
+#endif
 
 template routing_result pong_search(timetable const&,
                                     rt_timetable const*,
