@@ -104,6 +104,8 @@ struct via_criterion {
     }
   }
 
+  static constexpr auto const kNBoundsSlots = kN;
+
   static constexpr std::size_t bound_slot(std::size_t const v) {
     return kFinalSlot - v;
   }

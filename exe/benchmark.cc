@@ -297,7 +297,7 @@ std::vector<double> run_load(
   auto const avg =
       l.empty() ? 0.0 : std::accumulate(begin(l), end(l), 0.0) / l.size();
   fmt::print(
-      "| {:<36} | {:>6.1f} | {:>6.0f} | {:>6.0f} | {:>6.0f} | "
+      "| {:<36} | {:>6.3f} | {:>6.0f} | {:>6.0f} | {:>6.0f} | "
       "{:>6.0f} |\n",
       tag, qps, avg, q(0.50), q(0.90), q(0.99));
   return lat;

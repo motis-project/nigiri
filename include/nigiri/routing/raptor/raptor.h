@@ -43,6 +43,9 @@ struct basic_raptor {
   static constexpr auto const kCoDResetTag = std::uint8_t{0xC0U};
   // raptor_state is allocated kMaxVias + 1 slots wide
   static constexpr auto const kLastSlot = static_cast<via_offset_t>(kN - 1U);
+  static constexpr auto const kNBounds = Crit::kNBoundsSlots;
+  static constexpr auto const kLastBoundsSlot =
+      static_cast<via_offset_t>(kNBounds - 1U);
   static_assert(kN <= kMaxVias + 1U);
   static_assert(std::is_same_v<bag_t, std::array<delta_t, kN>>);
 
@@ -121,7 +124,7 @@ struct basic_raptor {
         td_dist_to_end_{td_dist_to_dest},
         lb_{lb},
         base_{base},
-        bounds_{std::as_const(state_).template get_bounds<kLastSlot>()},
+        bounds_{std::as_const(state_).template get_bounds<kLastBoundsSlot>()},
         prf_idx_{prf_idx},
         allowed_claszes_{allowed_claszes},
         require_bike_transport_{require_bike_transport},
@@ -175,21 +178,21 @@ struct basic_raptor {
                               : nullptr;
 
     auto const src = std::as_const(s).template get_round_times<kLastSlot>();
-    auto dst = s.template get_bounds<kLastSlot>();
+    auto dst = s.template get_bounds<kLastBoundsSlot>();
 
     if constexpr (kCoD) {
-      // materialize per-world bounds from the base plane + overlay
+      // one shared bounds column: fold both worlds to the looser bound.
+      // bounds are filled in this object's direction but checked by the
+      // flipped pong, so "looser for the pong" = get_best here; the weaker
+      // bound only prunes less and stays correct for both worlds
       for (auto x = std::size_t{0U}; x != n; ++x) {
-        dst[0U][x] = bag_t{rt0_[0U][x][0], rt_read1(0U, x)};
+        dst[0U][x][0] = get_best(rt0_[0U][x][0], rt_read1(0U, x));
       }
       for (auto k = std::size_t{1U}; k < n_rows; ++k) {
         for (auto x = std::size_t{0U}; x != n; ++x) {
-          auto const s0 = rt0_[k][x][0];
-          auto const s1 = rt_read1(static_cast<unsigned>(k), x);
-          dst[k][x][0] = kFwd ? std::min(s0, dst[k - 1U][x][0])
-                              : std::max(s0, dst[k - 1U][x][0]);
-          dst[k][x][1] = kFwd ? std::min(s1, dst[k - 1U][x][1])
-                              : std::max(s1, dst[k - 1U][x][1]);
+          auto const w =
+              get_best(rt0_[k][x][0], rt_read1(static_cast<unsigned>(k), x));
+          dst[k][x][0] = get_best(w, dst[k - 1U][x][0]);
         }
       }
       if (td_stops != nullptr) {
@@ -198,15 +201,47 @@ struct basic_raptor {
                  : std::numeric_limits<delta_t>::max();
         td_stops->for_each_set_bit([&](location_idx_t const x) {
           for (auto k = std::size_t{0U}; k != n_rows; ++k) {
-            for (auto v = std::size_t{0U}; v != kN; ++v) {
-              dst[k][to_idx(x)][v] = kPassAll;
-            }
+            dst[k][to_idx(x)][0] = kPassAll;
           }
         });
       }
       return;
     }
 
+    if constexpr (kNBounds == 1U && kN > 1U) {
+      // shared bounds for the multi-slot criterion (2-slot scheduled+rt)
+      for (auto x = std::size_t{0U}; x != n; ++x) {
+        auto w = src[0U][x][0];
+        for (auto v = std::size_t{1U}; v != kN; ++v) {
+          w = get_best(w, src[0U][x][v]);
+        }
+        dst[0U][x][0] = w;
+      }
+      for (auto k = std::size_t{1U}; k < n_rows; ++k) {
+        for (auto x = std::size_t{0U}; x != n; ++x) {
+          auto w = src[k][x][0];
+          for (auto v = std::size_t{1U}; v != kN; ++v) {
+            w = get_best(w, src[k][x][v]);
+          }
+          dst[k][x][0] = get_best(w, dst[k - 1U][x][0]);
+        }
+      }
+      if (td_stops != nullptr) {
+        constexpr auto const kPassAll =
+            kFwd ? std::numeric_limits<delta_t>::min()
+                 : std::numeric_limits<delta_t>::max();
+        td_stops->for_each_set_bit([&](location_idx_t const x) {
+          for (auto k = std::size_t{0U}; k != n_rows; ++k) {
+            dst[k][to_idx(x)][0] = kPassAll;
+          }
+        });
+      }
+      return;
+    }
+
+    if constexpr (kNBounds != kN) {
+      return;  // handled above; keeps the per-slot path uninstantiated
+    } else {
     // Copy k=0 verbatim (rest is folded from here).
     for (auto x = std::size_t{0U}; x != n; ++x) {
       dst[0U][x] = src[0U][x];
@@ -243,6 +278,7 @@ struct basic_raptor {
           }
         }
       });
+    }
     }
   }
 
@@ -2465,7 +2501,7 @@ private:
   std::array<dest_bounds_t, kMaxTransfers + 2> time_at_dest_;
   day_idx_t base_;
   raptor_stats stats_;
-  flat_matrix_view<bag_t const> bounds_;
+  flat_matrix_view<std::array<delta_t, kNBounds> const> bounds_;
   unsigned bounds_last_k_{0U};
   profile_idx_t prf_idx_{0U};
   clasz_mask_t allowed_claszes_;

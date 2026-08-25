@@ -86,7 +86,11 @@ struct schedrt_criterion {
 
   void fold_bounds(bag_t&) const {}
 
-  static constexpr std::size_t bound_slot(std::size_t const v) { return v; }
+  // ping bounds are shared: one column folded to the looser of both
+  // worlds (bounds only prune, so the weaker bound stays correct and the
+  // packed layout doubles probe-side cache density)
+  static constexpr auto const kNBoundsSlots = std::size_t{1U};
+  static constexpr std::size_t bound_slot(std::size_t) { return 0U; }
 
   int bound_slack(std::size_t) const { return 0; }
 
