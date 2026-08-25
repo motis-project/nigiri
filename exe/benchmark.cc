@@ -23,8 +23,13 @@
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor/raptor.h"
+#include "nigiri/routing/raptor/schedrt_criterion.h"
 #include "nigiri/routing/raptor_search.h"
+#include "nigiri/common/parse_date.h"
 #include "nigiri/routing/search.h"
+#include "nigiri/rt/create_rt_timetable.h"
+#include "nigiri/rt/gtfsrt_update.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -82,17 +87,36 @@ void generate_queries(
     std::uint32_t n_queries,
     nigiri::timetable const& tt,
     query_generation::generator_settings const& gs,
-    std::int64_t const seed) {
+    std::int64_t const seed,
+    std::optional<interval<unixtime_t>> const& window = std::nullopt) {
   auto qg = seed > -1
                 ? query_generation::generator{tt, gs,
                                               static_cast<std::uint32_t>(seed)}
                 : query_generation::generator{tt, gs};
   queries.reserve(n_queries);
-  for (auto i = 0U; i != n_queries; ++i) {
+  auto attempts = 0U;
+  auto const max_attempts = n_queries * 1000U;
+  while (queries.size() != n_queries && attempts != max_attempts) {
+    ++attempts;
     auto const sdq = qg.random_query();
-    if (sdq.has_value()) {
-      queries.emplace_back(sdq.value());
+    if (!sdq.has_value()) {
+      continue;
     }
+    if (window.has_value()) {
+      auto const from = std::visit(
+          utl::overloaded{
+              [](interval<unixtime_t> const i) { return i.from_; },
+              [](unixtime_t const t) { return t; }},
+          sdq->q_.start_time_);
+      if (!window->contains(from)) {
+        continue;
+      }
+    }
+    queries.emplace_back(sdq.value());
+  }
+  if (queries.size() != n_queries) {
+    std::cout << "WARNING: only " << queries.size() << "/" << n_queries
+              << " queries generated (window too narrow?)\n";
   }
 }
 
@@ -157,6 +181,16 @@ std::uint64_t compare_results(
       std::reverse(begin(r), end(r));
       std::reverse(begin(c), end(c));
     }
+    // canonical order: algorithms may emit the same pareto set in
+    // different insertion orders (e.g. srt interleaves slots)
+    auto const canonical = [](routing::journey const* a,
+                              routing::journey const* b) {
+      return std::tuple{a->start_time_, a->dest_time_, a->transfers_,
+                        a->slot_} < std::tuple{b->start_time_, b->dest_time_,
+                                               b->transfers_, b->slot_};
+    };
+    std::sort(begin(r), end(r), canonical);
+    std::sort(begin(c), end(c), canonical);
 
     auto const r_size = r.size();
     auto const c_size = c.size();
@@ -280,6 +314,65 @@ struct cpu_ws {
   routing::raptor_state rs_;
 };
 
+pareto_set<routing::journey> run_srt(timetable const& tt,
+                                     rt_timetable const& rtt,
+                                     cpu_ws& w,
+                                     routing::query q,
+                                     direction const dir,
+                                     bool const cod = false) {
+  auto const r = routing::raptor_search_schedrt(
+      tt, &rtt, w.ss_, w.rs_, std::move(q), dir, std::nullopt, cod);
+  return *r.journeys_;
+}
+
+pareto_set<routing::journey> run_srtp(timetable const& tt,
+                                      rt_timetable const& rtt,
+                                      cpu_ws& w,
+                                      routing::query q,
+                                      direction const dir,
+                                      bool const cod = false) {
+  auto const r = routing::pong_search_srt(tt, &rtt, w.ss_, w.rs_, std::move(q),
+                                          dir, std::nullopt, cod);
+  return *r.journeys_;
+}
+
+pareto_set<routing::journey> run_srtp2(timetable const& tt,
+                                       rt_timetable const& rtt,
+                                       cpu_ws& w,
+                                       routing::query q,
+                                       direction const dir) {
+  auto q2 = q;
+  auto const r_off =
+      routing::pong_search(tt, nullptr, w.ss_, w.rs_, std::move(q), dir);
+  auto merged = *r_off.journeys_;  // slot_ = 0: scheduled world
+  auto const r_on =
+      routing::pong_search(tt, &rtt, w.ss_, w.rs_, std::move(q2), dir);
+  for (auto j : *r_on.journeys_) {
+    j.slot_ = 1U;  // rt world
+    merged.add_not_optimal(std::move(j));
+  }
+  return merged;
+}
+
+template <direction Dir>
+pareto_set<routing::journey> run_srt2(timetable const& tt,
+                                      rt_timetable const& rtt,
+                                      cpu_ws& w,
+                                      routing::query q) {
+  auto q2 = q;
+  auto const dir = Dir;
+  auto const r_off =
+      routing::raptor_search(tt, nullptr, w.ss_, w.rs_, std::move(q), dir);
+  auto merged = *r_off.journeys_;  // slot_ = 0: scheduled world
+  auto const r_on =
+      routing::raptor_search(tt, &rtt, w.ss_, w.rs_, std::move(q2), dir);
+  for (auto j : *r_on.journeys_) {
+    j.slot_ = 1U;  // rt world
+    merged.add_not_optimal(std::move(j));
+  }
+  return merged;
+}
+
 #if defined(NIGIRI_CUDA)
 struct gpu_ws {
   explicit gpu_ws(routing::gpu::gpu_timetable const& gtt)
@@ -353,6 +446,11 @@ int main(int argc, char* argv[]) {
   auto seed = std::int64_t{0};
   auto min_transfer_time = duration_t::rep{};
   auto qa_path = std::filesystem::path{};
+  auto rt_path = std::filesystem::path{};
+  auto rt_tags = std::filesystem::path{};
+  auto rt_day_str = std::string{};
+  auto query_day_str = std::string{};
+  auto query_hours_str = std::string{};
   auto engines = std::vector<std::string>{"cpu", "gpu"};
   auto algos = std::vector<std::string>{"range", "pong"};
   auto modes = std::vector<std::string>{"s2s", "c2c"};
@@ -455,7 +553,22 @@ int main(int argc, char* argv[]) {
       ("dest_loc", bpo::value<location_idx_t::value_t>(&dest_loc_val),
        "destination location for random queries")  //
       ("qa_path,q", bpo::value(&qa_path),
-       "path to write the journey criteria to for qa");
+       "path to write the journey criteria to for qa")  //
+      ("rt_path", bpo::value(&rt_path),
+       "directory with canned GTFS-RT protobuf dumps for the srt/srt2 "
+       "rt_timetable; file names start with '<source-tag>-http' "
+       "('-' and '_' in tags are equivalent)")  //
+      ("rt_tags", bpo::value(&rt_tags),
+       "tags file written by nigiri-import --tags_out "
+       "(line number = source index)")  //
+      ("rt_day", bpo::value(&rt_day_str),
+       "base day YYYY-MM-DD for the rt timetable "
+       "(default: timetable midpoint)")  //
+      ("query_day", bpo::value(&query_day_str),
+       "restrict generated query start times to this day YYYY-MM-DD "
+       "(e.g. the day the rt dump targets)")  //
+      ("query_hours", bpo::value(&query_hours_str),
+       "with --query_day: restrict to hours H-H (UTC), e.g. 10-20");
   bpo::variables_map vm;
   bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
 
@@ -470,6 +583,87 @@ int main(int argc, char* argv[]) {
   std::cout << "loading timetable...\n";
   auto tt = *nigiri::timetable::read(tt_path);
   tt.resolve();
+
+  // scheduled+rt cells need an rt_timetable (empty = no deviations)
+  auto rtt = std::optional<rt_timetable>{};
+  if (utl::any_of(algos, [](auto const& a) {
+        return a == "srt" || a == "srt2" || a == "srtp" || a == "srtp2" ||
+               a == "srtc" || a == "srtpc";
+      })) {
+    auto const day = rt_day_str.empty()
+                         ? tt.internal_interval_days().from_ +
+                               tt.internal_interval_days().size() / 2
+                         : parse_date(rt_day_str);
+    rtt.emplace(rt::create_rt_timetable(tt, day));
+
+    if (!rt_path.empty()) {
+      // canned rt dumps: map file name prefixes to source indices
+      auto const normalize = [](std::string s) {
+        for (auto const suffix : {".gtfs.zip", ".zip", ".gtfs"}) {
+          if (s.ends_with(suffix)) {
+            s.resize(s.size() - std::strlen(suffix));
+          }
+        }
+        std::replace(begin(s), end(s), '-', '_');
+        return s;
+      };
+
+      auto tag_to_src = std::map<std::string, source_idx_t>{};
+      {
+        if (rt_tags.empty()) {
+          std::cerr << "--rt_path requires --rt_tags\n";
+          return 1;
+        }
+        auto f = std::ifstream{rt_tags};
+        auto line = std::string{};
+        auto src = source_idx_t{0U};
+        while (std::getline(f, line)) {
+          tag_to_src.emplace(normalize(line), src++);
+        }
+      }
+
+      auto files = std::vector<std::filesystem::path>{};
+      for (auto const& e : std::filesystem::directory_iterator(rt_path)) {
+        files.push_back(e.path());
+      }
+      std::sort(begin(files), end(files));
+
+      auto n_applied = 0U, n_unmatched = 0U, n_failed = 0U;
+      auto total = 0, success = 0;
+      for (auto const& p : files) {
+        auto const name = p.filename().string();
+        auto const cut = name.find("-http");
+        if (cut == std::string::npos) {
+          ++n_unmatched;
+          continue;
+        }
+        auto const it = tag_to_src.find(normalize(name.substr(0, cut)));
+        if (it == end(tag_to_src)) {
+          ++n_unmatched;
+          continue;
+        }
+        auto const f = cista::mmap{p.generic_string().c_str(),
+                                   cista::mmap::protection::READ};
+        try {
+          auto const stats = rt::gtfsrt_update_buf(
+              tt, *rtt, it->second, name,
+              std::string_view{
+                  reinterpret_cast<char const*>(f.view().data()),
+                  f.view().size()});
+          ++n_applied;
+          total += stats.total_entities_;
+          success += stats.total_entities_success_;
+        } catch (std::exception const& e) {
+          ++n_failed;
+          std::cerr << "rt update " << name << " failed: " << e.what() << "\n";
+        }
+      }
+      std::cout << "rt: applied " << n_applied << " dumps (" << n_unmatched
+                << " unmatched, " << n_failed << " failed), entities "
+                << success << "/" << total << " ok, day "
+                << date::format("%F", day) << "\n";
+    }
+  }
 
   gs.interval_size_ = duration_t{interval_size};
 
@@ -573,8 +767,11 @@ int main(int argc, char* argv[]) {
   }
 #endif
   for (auto const& a : algos) {
-    if (a != "range" && a != "pong") {
-      std::cerr << "invalid algo \"" << a << "\", expected raptor | pong\n";
+    if (a != "range" && a != "pong" && a != "srt" && a != "srt2" &&
+        a != "srtp" && a != "srtp2" && a != "srtc" && a != "srtpc") {
+      std::cerr << "invalid algo \"" << a
+                << "\", expected raptor | pong | srt | srt2 | srtp | srtp2 | "
+                   "srtc | srtpc\n";
       return 1;
     }
   }
@@ -626,9 +823,22 @@ int main(int argc, char* argv[]) {
       rs.use_start_footpaths_ = false;  // first mile is in the start offsets
     }
 
+    auto query_window = std::optional<interval<unixtime_t>>{};
+    if (!query_day_str.empty()) {
+      auto const day = unixtime_t{parse_date(query_day_str)};
+      auto from_h = 0, to_h = 24;
+      if (!query_hours_str.empty() &&
+          std::sscanf(query_hours_str.c_str(), "%d-%d", &from_h, &to_h) != 2) {
+        std::cerr << "invalid --query_hours, expected H-H\n";
+        return 1;
+      }
+      query_window = interval<unixtime_t>{day + std::chrono::hours{from_h},
+                                          day + std::chrono::hours{to_h}};
+    }
+
     auto& fwd_qs = mode_queries[mode];
     if (fwd_qs.empty()) {
-      generate_queries(fwd_qs, n_queries, tt, rs, seed);
+      generate_queries(fwd_qs, n_queries, tt, rs, seed, query_window);
     }
 
     // (mode, dir) are the incomparable dimensions -- within one (mode, dir),
@@ -649,6 +859,12 @@ int main(int argc, char* argv[]) {
       auto cells = std::vector<result_set>{};
       for (auto const& algo : algos) {
         auto const use_pong = algo == "pong";
+        auto const use_srt = algo == "srt";
+        auto const use_srt2 = algo == "srt2";
+        auto const use_srtp = algo == "srtp";
+        auto const use_srtp2 = algo == "srtp2";
+        auto const use_srtc = algo == "srtc";
+        auto const use_srtpc = algo == "srtpc";
         auto const label = mode + "-" + dir_str + "-" + algo;
 
         try {
@@ -656,6 +872,22 @@ int main(int argc, char* argv[]) {
             cells.push_back(run_cell<cpu_ws>(
                 qs, label + "-cpu", threads_v,
                 [&](cpu_ws& w, routing::query q) {
+                  if (use_srtp || use_srtpc) {
+                    return run_srtp(tt, *rtt, w, std::move(q), dir, use_srtpc);
+                  }
+                  if (use_srtp2) {
+                    return run_srtp2(tt, *rtt, w, std::move(q), dir);
+                  }
+                  if (use_srt || use_srtc) {
+                    return run_srt(tt, *rtt, w, std::move(q), dir, use_srtc);
+                  }
+                  if (use_srt2) {
+                    return dir == direction::kForward
+                               ? run_srt2<direction::kForward>(tt, *rtt, w,
+                                                               std::move(q))
+                               : run_srt2<direction::kBackward>(tt, *rtt, w,
+                                                                std::move(q));
+                  }
                   auto const r =
                       use_pong
                           ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
@@ -671,7 +903,8 @@ int main(int argc, char* argv[]) {
           }
 
 #if defined(NIGIRI_CUDA)
-          if (run_gpu) {
+          if (run_gpu && !use_srt && !use_srt2 && !use_srtp && !use_srtp2 &&
+              !use_srtc && !use_srtpc) {
             cells.push_back(run_cell<gpu_ws>(
                 qs, label + "-gpu", gpu_states_v,
                 [&](gpu_ws& w, routing::query q) {
@@ -718,6 +951,33 @@ int main(int argc, char* argv[]) {
   for (auto const& s : summary) {
     std::cout << s << "\n";
   }
+
+  if (utl::any_of(algos, [](auto const& a) { return a == "srtp"; })) {
+    auto const& c = routing::get_srt_pong_counters();
+    std::cout << "srt pong counters: sweep_iterations="
+              << c.sweep_iterations_.load()
+              << " pong_runs=" << c.pong_runs_.load()
+              << " dominated_refinds=" << c.dominated_refinds_.load()
+              << " all_filtered_continues=" << c.all_filtered_continues_.load()
+              << " flipped_filtered=" << c.flipped_filtered_.load() << "\n";
+  }
+  if (utl::any_of(algos, [](auto const& a) {
+        return a == "srt" || a == "srtp";
+      })) {
+    auto const& d = routing::get_schedrt_divergence_counters();
+    auto const cells = d.cells_equal_.load() + d.cells_diverged_.load();
+    auto const boards = d.board_fused_.load() + d.board_split_.load();
+    std::cout << "srt divergence: cells_diverged=" << d.cells_diverged_.load()
+              << "/" << cells << " ("
+              << (cells == 0U ? 0.0
+                              : 100.0 * static_cast<double>(
+                                            d.cells_diverged_.load()) /
+                                    static_cast<double>(cells))
+              << "%) board_split=" << d.board_split_.load() << "/" << boards
+              << " et_dual_diverged=" << d.et_dual_diverged_.load() << "/"
+              << d.board_fused_.load() << "\n";
+  }
+
   print_memory_usage();
 
   if (vm.count("qa_path")) {

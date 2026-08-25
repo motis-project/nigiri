@@ -332,8 +332,10 @@ struct search {
       });
     }
 
-    utl::erase_if(state_.results_,
-                  [&](auto&& j) { return !j.is_reconstructed_; });
+    if constexpr (!requires { Algo::kSkipReconstruct; }) {
+      utl::erase_if(state_.results_,
+                    [&](auto&& j) { return !j.is_reconstructed_; });
+    }
 
     stats_.execute_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -378,13 +380,23 @@ private:
   }
 
   unsigned n_results_in_interval() const {
-    if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
+    auto const n_for = [&](std::optional<std::uint8_t> const slot) {
       auto count = utl::count_if(state_.results_, [&](journey const& j) {
-        return search_interval_.contains(j.start_time_);
+        return (!slot.has_value() || j.slot_ == *slot) &&
+               (!holds_alternative<interval<unixtime_t>>(q_.start_time_) ||
+                search_interval_.contains(j.start_time_));
       });
       return static_cast<unsigned>(count);
+    };
+    if constexpr (requires { Algo::kNResultSlots; }) {
+      // extend until every result slot has enough connections
+      auto n = std::numeric_limits<unsigned>::max();
+      for (auto s = std::uint8_t{0U}; s != Algo::kNResultSlots; ++s) {
+        n = std::min(n, n_for(s));
+      }
+      return n;
     } else {
-      return static_cast<unsigned>(state_.results_.size());
+      return n_for(std::nullopt);
     }
   }
 
@@ -405,6 +417,17 @@ private:
                q_.via_stops_, q_.max_start_offset_, q_.start_match_mode_,
                q_.use_start_footpaths_, state_.starts_, add_ontrip, q_.prf_idx_,
                q_.transfer_time_settings_);
+    if constexpr (requires { Algo::kBothWorldStarts; }) {
+      // combined scheduled+rt search: the scheduled world needs the
+      // scheduled departure events as start labels as well
+      if (rtt_ != nullptr) {
+        get_starts(SearchDir, tt_, nullptr, start_interval, q_.start_,
+                   q_.td_start_, q_.via_stops_, q_.max_start_offset_,
+                   q_.start_match_mode_, q_.use_start_footpaths_,
+                   state_.starts_, add_ontrip, q_.prf_idx_,
+                   q_.transfer_time_settings_);
+      }
+    }
     std::sort(
         begin(state_.starts_), end(state_.starts_),
         [&](start const& a, start const& b) { return kFwd ? b < a : a < b; });
@@ -454,22 +477,24 @@ private:
                         state_.results_);
           kFwd ? ++stats_.n_execute_fwd_ : ++stats_.n_execute_bwd_;
 
-          for (auto& j : state_.results_) {
-            if (!j.is_reconstructed_ && !j.error_ &&
-                (is_ontrip() || search_interval_.contains(j.start_time_)) &&
-                j.travel_time() < fastest_direct_) {
-              try {
-                algo_.reconstruct(q_, j);
-              } catch (std::exception const& e) {
-                j.error_ = true;
-                log(log_lvl::error, "search", "reconstruct failed: {}",
-                    e.what());
-                span->SetStatus(opentelemetry::trace::StatusCode::kError,
-                                "exception");
-                span->AddEvent(
-                    "exception",
-                    {{"exception.message",
-                      fmt::format("reconstruct failed: {}", e.what())}});
+          if constexpr (!requires { Algo::kSkipReconstruct; }) {
+            for (auto& j : state_.results_) {
+              if (!j.is_reconstructed_ && !j.error_ &&
+                  (is_ontrip() || search_interval_.contains(j.start_time_)) &&
+                  j.travel_time() < fastest_direct_) {
+                try {
+                  algo_.reconstruct(q_, j);
+                } catch (std::exception const& e) {
+                  j.error_ = true;
+                  log(log_lvl::error, "search", "reconstruct failed: {}",
+                      e.what());
+                  span->SetStatus(opentelemetry::trace::StatusCode::kError,
+                                  "exception");
+                  span->AddEvent(
+                      "exception",
+                      {{"exception.message",
+                        fmt::format("reconstruct failed: {}", e.what())}});
+                }
               }
             }
           }

@@ -16,6 +16,7 @@
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/gpu/raptor.h"
+#include "nigiri/routing/raptor/schedrt_criterion.h"
 #include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
@@ -27,6 +28,10 @@
 namespace nigiri::routing {
 
 constexpr auto const kPruneWithPingBounds = true;
+
+srt_pong_counters srt_counters;
+
+srt_pong_counters const& get_srt_pong_counters() { return srt_counters; }
 
 auto to_tuple(journey const& j) {
   return std::tuple{j.departure_time(), j.arrival_time(), j.transfers_};
@@ -59,23 +64,38 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
 
-template <direction SearchDir, bool Rt, via_offset_t Vias, typename AlgoState>
-routing_result pong(timetable const& tt,
-                    rt_timetable const* rtt,
-                    search_state& s_state,
-                    AlgoState& r_state,
-                    query q,
-                    std::optional<std::chrono::seconds> timeout) {
-  constexpr auto kFwd = (SearchDir == direction::kForward);
+// binds the via count so the criterion can be re-instantiated with the
+// flipped direction for the pong phase
+template <via_offset_t Vias>
+struct via_crit_bind {
+  template <direction SearchDir>
+  using type = via_criterion<SearchDir, Vias>;
+};
 
-  using ping_algo_t =
-      std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-                         gpu::gpu_raptor<SearchDir, false>,
-                         raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>>;
+template <direction SearchDir,
+          bool Rt,
+          template <direction> typename CritT,
+          typename AlgoState>
+routing_result basic_pong(timetable const& tt,
+                          rt_timetable const* rtt,
+                          search_state& s_state,
+                          AlgoState& r_state,
+                          query q,
+                          std::optional<std::chrono::seconds> timeout) {
+  constexpr auto kFwd = (SearchDir == direction::kForward);
+  using crit_t = CritT<SearchDir>;
+
+  using ping_algo_t = std::conditional_t<
+      std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+      gpu::gpu_raptor<SearchDir, false>,
+      basic_raptor<SearchDir, Rt, crit_t, search_mode::kOneToOne>>;
   using pong_algo_t = std::conditional_t<
       std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
       gpu::gpu_raptor<flip(SearchDir), kPruneWithPingBounds>,
-      raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>>;
+      basic_raptor<flip(SearchDir),
+                   Rt,
+                   CritT<flip(SearchDir)>,
+                   search_mode::kOneToOne>>;
 
   s_state.results_.clear();
   q.sanitize(tt);
@@ -226,11 +246,23 @@ routing_result pong(timetable const& tt,
     return is_better(j.dest_time_, start_time);
   };
   auto const get_result_count = [&](bool const include_too_slow) {
-    return utl::count_if(*result.journeys_, [&](journey const& j) {
-      return is_validated(j) &&
-             (include_too_slow || (j.travel_time() < fastest_direct &&
-                                   j.travel_time() <= q.max_travel_time_));
-    });
+    auto const count_slot = [&](std::optional<std::uint8_t> const slot) {
+      return utl::count_if(*result.journeys_, [&](journey const& j) {
+        return (!slot.has_value() || j.slot_ == *slot) && is_validated(j) &&
+               (include_too_slow || (j.travel_time() < fastest_direct &&
+                                     j.travel_time() <= q.max_travel_time_));
+      });
+    };
+    if constexpr (!crit_t::kAllSlotsRt) {
+      // separate worlds: continue until every world has enough connections
+      auto n = std::numeric_limits<long>::max();
+      for (auto s = std::size_t{0U}; s != crit_t::kN; ++s) {
+        n = std::min(n, count_slot(static_cast<std::uint8_t>(s)));
+      }
+      return n;
+    } else {
+      return count_slot(std::nullopt);
+    }
   };
   auto const is_timeout_reached = [&]() {
     if (timeout) {
@@ -247,12 +279,24 @@ routing_result pong(timetable const& tt,
     // PING
     // ----
     trace_pong("START_TIME={}", start_time);
+    if constexpr (!crit_t::kAllSlotsRt) {
+      ++srt_counters.sweep_iterations_;
+    }
 
     starts.clear();
     get_starts(SearchDir, tt, rtt, start_time, q.start_, q.td_start_,
                q.via_stops_, q.max_start_offset_, q.start_match_mode_,
                q.use_start_footpaths_, starts, false, q.prf_idx_,
                q.transfer_time_settings_);
+    if constexpr (!crit_t::kAllSlotsRt) {
+      // the scheduled world needs the scheduled departure events as well
+      if (rtt != nullptr) {
+        get_starts(SearchDir, tt, nullptr, start_time, q.start_, q.td_start_,
+                   q.via_stops_, q.max_start_offset_, q.start_match_mode_,
+                   q.use_start_footpaths_, starts, false, q.prf_idx_,
+                   q.transfer_time_settings_);
+      }
+    }
     ping.reset_arrivals();
     ping.next_start_time();
     for (auto const& s : starts) {
@@ -276,18 +320,50 @@ routing_result pong(timetable const& tt,
           q.max_transfers_, worst_time_at_dest);
       break;
     }
+    // a dominated re-find means this world's earliest journey is already
+    // known: its dominator's departure still drives the sweep position so
+    // no world gets skipped past (worlds advance at different speeds)
+    auto erased_advance = std::optional<unixtime_t>{};
     utl::erase_if(ping_results, [&](journey const& x) {
-      auto const dominated = result.journeys_->is_dominated(x);
-      if (dominated) {
-        trace_pong("DELETE DOMINATED {}", to_tuple(x));
+      auto const dom = utl::find_if(
+          *result.journeys_, [&](journey const& r) { return r.dominates(x); });
+      if (dom == end(*result.journeys_)) {
+        return false;
       }
-      return dominated;
+      trace_pong("DELETE DOMINATED {}", to_tuple(x));
+      if constexpr (!crit_t::kAllSlotsRt) {
+        ++srt_counters.dominated_refinds_;
+      }
+      erased_advance =
+          erased_advance.has_value()
+              ? (kFwd ? std::min(*erased_advance, dom->start_time_)
+                      : std::max(*erased_advance, dom->start_time_))
+              : dom->start_time_;
+      return true;
     });
     if (ping_results.empty()) {
+      if constexpr (!crit_t::kAllSlotsRt) {
+        if (erased_advance.has_value()) {
+          ++srt_counters.all_filtered_continues_;
+          auto const next = *erased_advance + duration_t{kFwd ? 1 : -1};
+          if (!is_better(start_time, next)) {
+            break;
+          }
+          start_time = next;
+          continue;
+        }
+      }
       trace_pong("ALL PING RESULTS FILTERED -> QUIT");
       break;
     }
-    utl::sort(ping_results, [](journey const& a, journey const& b) {
+    utl::sort(ping_results, [&](journey const& a, journey const& b) {
+      // anchors must run tightest-first: a label seeded under an earlier
+      // dest anchor stays justified under later (looser) ones, never the
+      // other way around (a stale better-looking dep would shadow the
+      // real witness and can no longer be reconstructed)
+      if (a.dest_time_ != b.dest_time_) {
+        return is_better(a.dest_time_, b.dest_time_);
+      }
       return a.transfers_ > b.transfers_;
     });
 
@@ -297,17 +373,33 @@ routing_result pong(timetable const& tt,
     if constexpr (kPruneWithPingBounds) {
       // Has to happen before pong.reset_arrivals() wipes the shared
       // round_times the ping search just filled.
-      ping.fill_bounds(ping_results.begin()->transfers_ + std::size_t{1U});
+      auto const max_transfers =
+          utl::max_element(ping_results, [](journey const& a, journey const& b) {
+            return a.transfers_ < b.transfers_;
+          })->transfers_;
+      ping.fill_bounds(max_transfers + std::size_t{1U});
     }
     q.flip_dir();
     pong.reset_arrivals();
     auto const run_pong = [&](auto& po, journey& ping_j) {
+      if constexpr (!crit_t::kAllSlotsRt) {
+        ++srt_counters.pong_runs_;
+      }
       starts.clear();
       get_starts(flip(SearchDir), tt, rtt, ping_j.dest_time_, q.start_,
                  q.td_start_, q.via_stops_, q.max_start_offset_,
                  q.start_match_mode_,
                  q.start_match_mode_ != location_match_mode::kIntermodal,
                  starts, false, q.prf_idx_, q.transfer_time_settings_);
+      if constexpr (!crit_t::kAllSlotsRt) {
+        if (rtt != nullptr) {
+          get_starts(flip(SearchDir), tt, nullptr, ping_j.dest_time_, q.start_,
+                     q.td_start_, q.via_stops_, q.max_start_offset_,
+                     q.start_match_mode_,
+                     q.start_match_mode_ != location_match_mode::kIntermodal,
+                     starts, false, q.prf_idx_, q.transfer_time_settings_);
+        }
+      }
       po.next_start_time();
       for (auto const& s : starts) {
         trace_pong("---- PONG START: {} at time_at_start={} time_at_stop={}",
@@ -321,14 +413,16 @@ routing_result pong(timetable const& tt,
 
       auto const match =
           utl::find_if(s_state.results_, [&](journey const& pong_j) {
-            return pong_j.transfers_ == ping_j.transfers_ &&
+            return pong_j.slot_ == ping_j.slot_ &&
+                   pong_j.transfers_ == ping_j.transfers_ &&
                    pong_j.start_time_ == ping_j.dest_time_;
           });
 
       if (match == end(s_state.results_)) {
         throw utl::fail(
-            "no pong for transfers={}, start_time={} found, journeys={}",
-            ping_j.transfers_, ping_j.dest_time_,
+            "no pong for slot={}, transfers={}, start_time={} found, "
+            "journeys={}",
+            ping_j.slot_, ping_j.transfers_, ping_j.dest_time_,
             s_state.results_.els_ | std::views::transform(to_tuple));
       }
 
@@ -347,6 +441,12 @@ routing_result pong(timetable const& tt,
       }
       run_pong(pong, ping_j);
     }
+    // execute also surfaces entries for other transfer classes than the
+    // matched ones; they were never validated and the next anchor mutates
+    // the pong state, after which a match on such a stale entry would
+    // reconstruct against foreign labels -> drop them while they are fresh
+    utl::erase_if(s_state.results_,
+                  [](journey const& j) { return !j.is_reconstructed_; });
     q.flip_dir();
 
     // NEXT
@@ -354,7 +454,12 @@ routing_result pong(timetable const& tt,
         utl::min_element(ping_results, [&](journey const& a, journey const& b) {
           return is_better(a.start_time_, b.start_time_);
         });
-    auto const next = first_it->start_time_ + duration_t{kFwd ? 1 : -1};
+    auto advance_from = first_it->start_time_;
+    if (erased_advance.has_value()) {
+      advance_from = kFwd ? std::min(advance_from, *erased_advance)
+                          : std::max(advance_from, *erased_advance);
+    }
+    auto const next = advance_from + duration_t{kFwd ? 1 : -1};
 
     if (!is_better(start_time, next)) {
       throw utl::fail("no pong progress: start_time={}, next={}", start_time,
@@ -375,8 +480,16 @@ routing_result pong(timetable const& tt,
         kFwd ? !q.extend_interval_later_ && j_start_time >= search_interval.to_
              : !q.extend_interval_earlier_ &&
                    j_start_time < search_interval.from_;
+    // interleaved per-world anchors can re-emit rows persisted by a later
+    // anchor under an earlier one -> departure after arrival, meaningless
+    auto const orientation_flipped = is_better(j.start_time_, j.dest_time_);
+    if constexpr (!crit_t::kAllSlotsRt) {
+      if (orientation_flipped) {
+        ++srt_counters.flipped_filtered_;
+      }
+    }
     auto const erase = !j.is_reconstructed_ || !is_validated(j) ||
-                       is_out_of_interval ||
+                       is_out_of_interval || orientation_flipped ||
                        j.travel_time() >= fastest_direct ||
                        j.travel_time() > q.max_travel_time_;
     if (erase) {
@@ -430,9 +543,9 @@ routing_result pong(timetable const& tt,
     return result;
   }
 
-  if constexpr (Vias != 0U) {
-    // via requirements (order, stays) are invisible to
-    // get_earliest_alternative
+  if constexpr (crit_t::kN != 1U) {
+    // multi-slot journeys are world-tagged and via requirements (order,
+    // stays) are invisible to get_earliest_alternative
     return result;
   }
 
@@ -481,11 +594,11 @@ routing_result pong_with_vias(timetable const& tt,
                               query q,
                               std::optional<std::chrono::seconds> timeout) {
   if (rtt == nullptr) {
-    return pong<SearchDir, false, Vias>(tt, rtt, s_state, r_state, std::move(q),
-                                        timeout);
+    return basic_pong<SearchDir, false, via_crit_bind<Vias>::template type>(
+        tt, rtt, s_state, r_state, std::move(q), timeout);
   } else {
-    return pong<SearchDir, true, Vias>(tt, rtt, s_state, r_state, std::move(q),
-                                       timeout);
+    return basic_pong<SearchDir, true, via_crit_bind<Vias>::template type>(
+        tt, rtt, s_state, r_state, std::move(q), timeout);
   }
 }
 
@@ -532,6 +645,29 @@ routing_result pong_search(timetable const& tt,
     return pong_search_with_dir<direction::kBackward>(tt, rtt, s_state, r_state,
                                                       std::move(q), timeout);
   }
+}
+
+routing_result pong_search_srt(timetable const& tt,
+                               rt_timetable const* rtt,
+                               search_state& s_state,
+                               raptor_state& r_state,
+                               query q,
+                               direction const search_dir,
+                               std::optional<std::chrono::seconds> timeout,
+                               bool const copy_on_diverge) {
+  utl::verify(rtt != nullptr, "combined scheduled+rt search requires rt data");
+  utl::verify(q.via_stops_.empty(),
+              "combined scheduled+rt search does not support vias");
+  auto const run = [&]<direction Dir>() {
+    return copy_on_diverge
+               ? basic_pong<Dir, true, schedrt_cod_criterion, raptor_state>(
+                     tt, rtt, s_state, r_state, std::move(q), timeout)
+               : basic_pong<Dir, true, schedrt_criterion, raptor_state>(
+                     tt, rtt, s_state, r_state, std::move(q), timeout);
+  };
+  return search_dir == direction::kForward
+             ? run.template operator()<direction::kForward>()
+             : run.template operator()<direction::kBackward>();
 }
 
 template routing_result pong_search(timetable const&,

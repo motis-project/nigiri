@@ -27,7 +27,39 @@ bool is_journey_start(timetable const& tt,
   });
 }
 
-template <direction SearchDir, via_offset_t Vias>
+// read-through view for the copy-on-diverge rt world: overlay where
+// diverged, scheduled base otherwise
+struct cod_rt_view {
+  struct cell {
+    delta_t operator[](std::size_t) const {
+      return v_->diverged_->test(
+                 static_cast<bitvec::size_type>(k_ * v_->n_ + l_))
+                 ? v_->overlay_[k_][l_][0]
+                 : v_->base_[k_][l_][0];
+    }
+    cod_rt_view const* v_;
+    std::size_t k_, l_;
+  };
+  struct row {
+    cell operator[](std::size_t const l) const { return {v_, k_, l}; }
+    cod_rt_view const* v_;
+    std::size_t k_;
+  };
+  row operator[](std::size_t const k) const { return {this, k}; }
+  flat_matrix_view<std::array<delta_t, 1> const> base_, overlay_;
+  bitvec const* diverged_;
+  std::size_t n_;
+};
+
+// W = number of label slots in the raptor_state layout, B = the slot this
+// journey lives in (W = Vias + 1, B = 0 for plain via searches; the combined
+// scheduled+rt search stores two worlds side by side); CoDRt reads the
+// copy-on-diverge rt world through the overlay instead
+template <direction SearchDir,
+          via_offset_t Vias,
+          via_offset_t W = Vias + 1,
+          via_offset_t B = 0,
+          bool CoDRt = false>
 std::optional<journey::leg> find_start_footpath(timetable const& tt,
                                                 query const& q,
                                                 journey const& j,
@@ -81,20 +113,32 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][leg_start_location]
            : tt.locations_.footpaths_out_[q.prf_idx_][leg_start_location];
   auto const j_start_time = unix_to_delta(base, j.start_time_);
-  auto const round_times = state.get_round_times<Vias>();
-  auto const fp_target_time = round_times[0][to_idx(leg_start_location)][0];
+  auto const round_times = [&] {
+    if constexpr (CoDRt) {
+      return cod_rt_view{state.get_round_times_plane(0U),
+                         state.get_round_times_plane(1U), &state.diverged_,
+                         state.n_locations_};
+    } else {
+      return state.get_round_times<W - 1>();
+    }
+  }();
+  auto const fp_target_time = round_times[0][to_idx(leg_start_location)][B];
 
+  auto n_start_loc_matches = 0U;
   if (q.start_match_mode_ == location_match_mode::kIntermodal) {
     trace_reconstruct("  intermodal start mode\n");
 
     for (auto const& o : q.start_) {
-      if (matches(tt, q.start_match_mode_, o.target(), leg_start_location) &&
-          is_better_or_eq(j.start_time_, leg_start_time - dir(o.duration()))) {
-        trace_rc_intermodal_start_found;
-        return journey::leg{
-            SearchDir,          get_special_station(special_station::kStart),
-            leg_start_location, leg_start_time - dir(o.duration()),
-            leg_start_time,     o};
+      if (matches(tt, q.start_match_mode_, o.target(), leg_start_location)) {
+        ++n_start_loc_matches;
+        if (is_better_or_eq(j.start_time_,
+                            leg_start_time - dir(o.duration()))) {
+          trace_rc_intermodal_start_found;
+          return journey::leg{
+              SearchDir,          get_special_station(special_station::kStart),
+              leg_start_location, leg_start_time - dir(o.duration()),
+              leg_start_time,     o};
+        }
       } else {
         trace_rc_intermodal_no_match;
       }
@@ -156,10 +200,22 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
     }
   }
 
-  throw utl::fail("no valid journey start found");
+  throw utl::fail(
+      "no valid journey start found (slot={}/{}, cod={}, intermodal={}, "
+      "start_loc={}, j_start={}, leg_start={}, round0={}, n_fps={}, "
+      "loc_matches={}, n_offsets={}, transfers={})",
+      B, W, CoDRt,
+      q.start_match_mode_ == location_match_mode::kIntermodal,
+      to_idx(leg_start_location), j.start_time_.time_since_epoch().count(),
+      leg_start_time.time_since_epoch().count(), fp_target_time,
+      footpaths.size(), n_start_loc_matches, q.start_.size(), j.transfers_);
 }
 
-template <direction SearchDir, via_offset_t Vias>
+template <direction SearchDir,
+          via_offset_t Vias,
+          via_offset_t W = Vias + 1,
+          via_offset_t B = 0,
+          bool CoDRt = false>
 void reconstruct_journey_with_vias(timetable const& tt,
                                    rt_timetable const* rtt,
                                    query const& q,
@@ -180,7 +236,15 @@ void reconstruct_journey_with_vias(timetable const& tt,
     return is_ontrip ? is_better_or_eq(a, b) : a == b;
   };
 
-  auto const round_times = raptor_state.get_round_times<Vias>();
+  auto const round_times = [&] {
+    if constexpr (CoDRt) {
+      return cod_rt_view{raptor_state.get_round_times_plane(0U),
+                         raptor_state.get_round_times_plane(1U),
+                         &raptor_state.diverged_, raptor_state.n_locations_};
+    } else {
+      return raptor_state.get_round_times<W - 1>();
+    }
+  }();
 
   auto v = static_cast<via_offset_t>(q.via_stops_.size());
 
@@ -263,7 +327,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
             continue;
           }
 
-          auto const round_time = round_times[k - 1][to_idx(l)][s];
+          auto const round_time = round_times[k - 1][to_idx(l)][B + s];
           if (is_better_or_eq(round_time, event_time) ||
               // special case: first stop with meta stations
               (k == 1 &&
@@ -660,7 +724,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
 
     auto ret = std::optional<std::pair<journey::leg, journey::leg>>{};
-    auto const curr_time = round_times[k][to_idx(l)][v];
+    auto const curr_time = round_times[k][to_idx(l)][B + v];
     for_each_meta(
         tt, location_match_mode::kIntermodal, dest_offset.target_,
         [&](location_idx_t const eq) {
@@ -682,7 +746,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
   auto const get_legs =
       [&](unsigned const k,
           location_idx_t const l) -> std::pair<journey::leg, journey::leg> {
-    auto const curr_time = round_times[k][to_idx(l)][v];
+    auto const curr_time = round_times[k][to_idx(l)][B + v];
     trace_reconstruct("get_legs: k={}, v={}, l={}, curr_time={}\n", k, v,
                       loc{tt, l}, delta_to_unix(base, curr_time));
 
@@ -810,8 +874,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
     j.add(std::move(transport_leg));
   }
 
-  auto init_fp =
-      find_start_footpath<SearchDir, Vias>(tt, q, j, raptor_state, base);
+  auto init_fp = find_start_footpath<SearchDir, Vias, W, B, CoDRt>(
+      tt, q, j, raptor_state, base);
   if (init_fp.has_value()) {
     j.add(std::move(*init_fp));
   }
@@ -900,6 +964,79 @@ void reconstruct_journey(timetable const& tt,
   }
   std::unreachable();
 }
+
+template <direction SearchDir>
+void reconstruct_journey_schedrt(timetable const& tt,
+                                 rt_timetable const* rtt,
+                                 query const& q,
+                                 raptor_state const& raptor_state,
+                                 journey& j,
+                                 date::sys_days const base,
+                                 day_idx_t const base_day_idx) {
+  utl::verify(q.via_stops_.empty(),
+              "combined scheduled+rt reconstruct does not support vias");
+  if (j.slot_ == 0U) {
+    // scheduled world: reconstruct against the static timetable only
+    // (rt-cancelled transports stay usable)
+    reconstruct_journey_with_vias<SearchDir, 0, 2, 0>(
+        tt, nullptr, q, raptor_state, j, base, base_day_idx);
+  } else {
+    reconstruct_journey_with_vias<SearchDir, 0, 2, 1>(
+        tt, rtt, q, raptor_state, j, base, base_day_idx);
+  }
+}
+
+template <direction SearchDir>
+void reconstruct_journey_schedrt_cod(timetable const& tt,
+                                     rt_timetable const* rtt,
+                                     query const& q,
+                                     raptor_state const& raptor_state,
+                                     journey& j,
+                                     date::sys_days const base,
+                                     day_idx_t const base_day_idx) {
+  utl::verify(q.via_stops_.empty(),
+              "combined scheduled+rt reconstruct does not support vias");
+  // rt world only: the scheduled world reconstructs on the base plane via
+  // the plain path
+  reconstruct_journey_with_vias<SearchDir, 0, 1, 0, true>(
+      tt, rtt, q, raptor_state, j, base, base_day_idx);
+}
+
+template void reconstruct_journey_schedrt_cod<direction::kForward>(
+    timetable const&,
+    rt_timetable const*,
+    query const&,
+    raptor_state const&,
+    journey&,
+    date::sys_days const,
+    day_idx_t const);
+
+template void reconstruct_journey_schedrt_cod<direction::kBackward>(
+    timetable const&,
+    rt_timetable const*,
+    query const&,
+    raptor_state const&,
+    journey&,
+    date::sys_days const,
+    day_idx_t const);
+
+template void reconstruct_journey_schedrt<direction::kForward>(
+    timetable const&,
+    rt_timetable const*,
+    query const&,
+    raptor_state const&,
+    journey&,
+    date::sys_days const,
+    day_idx_t const);
+
+template void reconstruct_journey_schedrt<direction::kBackward>(
+    timetable const&,
+    rt_timetable const*,
+    query const&,
+    raptor_state const&,
+    journey&,
+    date::sys_days const,
+    day_idx_t const);
 
 template void reconstruct_journey<direction::kForward>(timetable const&,
                                                        rt_timetable const*,

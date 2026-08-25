@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <fstream>
 #include <vector>
 
 #include "boost/algorithm/string.hpp"
@@ -27,6 +29,7 @@ int main(int ac, char** av) {
   auto in = fs::path{};
   auto out = fs::path{"tt.bin"};
   auto out_shapes = fs::path{"shapes"};
+  auto tags_out = fs::path{};
   auto start_date = "TODAY"s;
   auto assistance_path = fs::path{};
   auto n_days = 365U;
@@ -70,7 +73,9 @@ int main(int ac, char** av) {
        bpo::value(&finalize_opt.max_footpath_length_)
            ->default_value(finalize_opt.max_footpath_length_))  //
       ("assistance_times", bpo::value(&assistance_path))  //
-      ("shapes", bpo::value(&out_shapes));
+      ("shapes", bpo::value(&out_shapes))  //
+      ("tags_out", bpo::value(&tags_out),
+       "write the source tags (one per line, line number = source index)");
   auto const pos = bpo::positional_options_description{}.add("in", -1);
 
   auto vm = bpo::variables_map{};
@@ -122,6 +127,19 @@ int main(int ac, char** av) {
   if (input_files.empty()) {
     std::cerr << "no input path found\n";
     return 1;
+  }
+
+  // deterministic source indices (directory iteration order is unspecified)
+  std::sort(begin(input_files), end(input_files),
+            [](timetable_source const& a, timetable_source const& b) {
+              return a.tag_ < b.tag_;
+            });
+
+  if (!tags_out.empty()) {
+    auto of = std::ofstream{tags_out};
+    for (auto const& s : input_files) {
+      of << s.tag_ << "\n";
+    }
   }
 
   auto assistance = std::unique_ptr<assistance_times>{};

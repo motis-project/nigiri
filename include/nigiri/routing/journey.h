@@ -78,6 +78,11 @@ struct journey {
   };
 
   bool dominates(journey const& o) const {
+    // journeys from different label slots (e.g. scheduled-only vs rt)
+    // are incomparable
+    if (slot_ != o.slot_) {
+      return false;
+    }
     if (start_time_ <= dest_time_) {
       return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
              dest_time_ <= o.dest_time_;
@@ -111,6 +116,7 @@ struct journey {
   unixtime_t dest_time_{};
   location_idx_t dest_{};
   std::uint8_t transfers_{0U};
+  std::uint8_t slot_{0U};
   bool error_{false};
   bool is_reconstructed_{false};
 };

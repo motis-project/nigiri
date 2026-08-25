@@ -212,6 +212,12 @@ struct rt_timetable {
     return traffic_days(transport_traffic_days_[t]).test(to_idx(day));
   }
 
+  // true iff rt updates re-pointed this transport's traffic days
+  // (otherwise rt activity == scheduled activity)
+  bool has_rt_traffic_days(transport_idx_t const t) const {
+    return (to_idx(transport_traffic_days_[t]) & kRtBitfieldFlag) != 0U;
+  }
+
   timetable const* tt_{nullptr};
 
   array<bitvec_map<location_idx_t>, kNProfiles> has_td_footpaths_out_;

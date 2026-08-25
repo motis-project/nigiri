@@ -16,6 +16,7 @@
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/schedrt_criterion.h"
 
 namespace nigiri::routing {
 
@@ -156,6 +157,46 @@ routing_result raptor_search(
     return raptor_search_with_dir<direction::kBackward>(
         tt, rtt, s_state, algo_state, std::move(q), timeout);
   }
+}
+
+namespace {
+
+template <direction Dir, template <direction> typename CritT>
+struct schedrt_algo
+    : basic_raptor<Dir, true, CritT<Dir>, search_mode::kOneToOne> {
+  using base_t = basic_raptor<Dir, true, CritT<Dir>, search_mode::kOneToOne>;
+  using base_t::base_t;
+  static constexpr auto const kBothWorldStarts = true;
+  static constexpr auto const kNResultSlots = std::uint8_t{2U};
+};
+
+}  // namespace
+
+routing_result raptor_search_schedrt(
+    timetable const& tt,
+    rt_timetable const* rtt,
+    search_state& s_state,
+    raptor_state& r_state,
+    query q,
+    direction const search_dir,
+    std::optional<std::chrono::seconds> timeout,
+    bool const copy_on_diverge) {
+  utl::verify(rtt != nullptr, "combined scheduled+rt search requires rt data");
+  utl::verify(q.via_stops_.empty(),
+              "combined scheduled+rt search does not support vias");
+  q.sanitize(tt);
+  auto const run = [&]<direction Dir>() {
+    return copy_on_diverge
+               ? search<Dir, schedrt_algo<Dir, schedrt_cod_criterion>>{
+                     tt, rtt, s_state, r_state, std::move(q), timeout}
+                     .execute()
+               : search<Dir, schedrt_algo<Dir, schedrt_criterion>>{
+                     tt, rtt, s_state, r_state, std::move(q), timeout}
+                     .execute();
+  };
+  return search_dir == direction::kForward
+             ? run.template operator()<direction::kForward>()
+             : run.template operator()<direction::kBackward>();
 }
 
 template routing_result raptor_search(timetable const&,

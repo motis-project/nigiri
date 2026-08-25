@@ -1,5 +1,7 @@
 #include "nigiri/routing/raptor/raptor_state.h"
 
+#include "nigiri/routing/raptor/schedrt_counters.h"
+
 #include <algorithm>
 
 #include "fmt/core.h"
@@ -10,6 +12,11 @@
 #include "nigiri/timetable.h"
 
 namespace nigiri::routing {
+
+schedrt_divergence_counters& get_schedrt_divergence_counters() {
+  static schedrt_divergence_counters c;
+  return c;
+}
 
 raptor_state& raptor_state::resize(unsigned const n_locations,
                                    unsigned const n_routes,
@@ -24,6 +31,9 @@ raptor_state& raptor_state::resize(unsigned const n_locations,
   prev_station_mark_.resize(n_locations);
   route_mark_.resize(n_routes);
   rt_transport_mark_.resize(n_rt_transports);
+  touched_.resize(n_locations);
+  diverged_.resize(n_locations * (kMaxTransfers + 2U));
+  diverged_best_.resize(n_locations);
   return *this;
 }
 
