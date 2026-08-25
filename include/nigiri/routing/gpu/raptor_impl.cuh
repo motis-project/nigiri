@@ -613,12 +613,16 @@ struct raptor_impl {
             auto const board_stop = static_cast<stop_idx_t>(
                 kFwd ? static_cast<unsigned>(board)
                      : n - 1U - static_cast<unsigned>(board));
-            tmp_.update_min(
-                l, kNSlots - 1U, by_transport,
-                make_transport_payload(encode_rt_bc_transport(to_idx(rt_t)),
-                                       board_stop, stop_idx));
-            station_mark_.mark(to_idx(l));
-            local_marked = true;
+            // mark only on actual improvement: a non-improving write can
+            // enable nothing downstream (same rule as the footpath relax
+            // and the cpu engine)
+            if (tmp_.update_min(
+                    l, kNSlots - 1U, by_transport,
+                    make_transport_payload(encode_rt_bc_transport(to_idx(rt_t)),
+                                           board_stop, stop_idx))) {
+              station_mark_.mark(to_idx(l));
+              local_marked = true;
+            }
           }
         }
       }
@@ -1003,10 +1007,12 @@ struct raptor_impl {
           within_bounds(k, l, by_transport)) {
         auto const board_stop =
             static_cast<stop_idx_t>(kFwd ? et_board_i : n - 1U - et_board_i);
-        write(l, by_transport,
-              make_transport_payload(t.t_idx_.v_, board_stop, stop_idx));
-        station_mark_.mark(to_idx(l));
-        local_marked = true;
+        // mark only on actual improvement (either slot for mirrored writes)
+        if (write(l, by_transport,
+                  make_transport_payload(t.t_idx_.v_, board_stop, stop_idx))) {
+          station_mark_.mark(to_idx(l));
+          local_marked = true;
+        }
       }
     };
 
@@ -1119,28 +1125,32 @@ struct raptor_impl {
         auto const stp = stop{stop_seq[stop_idx]};
         if (stp.can_finish<SearchDir>(IsWheelchair)) {
           if constexpr (NWorlds == 1U) {
-            arrival(
-                et, i, stop_idx, stp, t_at_dest<0U>(k),
-                [&](location_idx_t const l, delta_t const v,
-                    breadcrumb_t const bc) { tmp_.update_min(l, 0U, v, bc); });
+            arrival(et, i, stop_idx, stp, t_at_dest<0U>(k),
+                    [&](location_idx_t const l, delta_t const v,
+                        breadcrumb_t const bc) {
+                      return tmp_.update_min(l, 0U, v, bc);
+                    });
           } else if (et == et1) {
             // both worlds ride the same transport: one evaluation, mirrored
             // write (looser dest bound: pruning only)
             arrival(et, i, stop_idx, stp, t_at_dest_worse(k),
                     [&](location_idx_t const l, delta_t const v,
                         breadcrumb_t const bc) {
-                      tmp_.update_min(l, 0U, v, bc);
-                      tmp_.update_min(l, 1U, v, bc);
+                      auto const i0 = tmp_.update_min(l, 0U, v, bc);
+                      auto const i1 = tmp_.update_min(l, 1U, v, bc);
+                      return i0 || i1;
                     });
           } else {
-            arrival(
-                et, i, stop_idx, stp, t_at_dest<0U>(k),
-                [&](location_idx_t const l, delta_t const v,
-                    breadcrumb_t const bc) { tmp_.update_min(l, 0U, v, bc); });
-            arrival(
-                et1, i, stop_idx, stp, t_at_dest<1U>(k),
-                [&](location_idx_t const l, delta_t const v,
-                    breadcrumb_t const bc) { tmp_.update_min(l, 1U, v, bc); });
+            arrival(et, i, stop_idx, stp, t_at_dest<0U>(k),
+                    [&](location_idx_t const l, delta_t const v,
+                        breadcrumb_t const bc) {
+                      return tmp_.update_min(l, 0U, v, bc);
+                    });
+            arrival(et1, i, stop_idx, stp, t_at_dest<1U>(k),
+                    [&](location_idx_t const l, delta_t const v,
+                        breadcrumb_t const bc) {
+                      return tmp_.update_min(l, 1U, v, bc);
+                    });
           }
         }
       }
