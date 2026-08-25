@@ -1235,6 +1235,110 @@ struct raptor_impl {
     return {};
   }
 
+  struct dual_et {
+    transport t0_{};
+    transport t1_{};
+  };
+
+  // one event iteration serving both worlds on rt-touched routes: equal
+  // boarding labels, per-event activity split by world; transports without
+  // re-pointed traffic days share one bitfield test (the common case)
+  __device__ dual_et
+  get_earliest_transport_dual(unsigned const k,
+                              route_idx_t const r,
+                              stop_idx_t const stop_idx,
+                              day_idx_t const day_at_stop,
+                              minutes_after_midnight_t const mam_at_stop) {
+    auto const b0 = t_at_dest<0U>(k);
+    auto const b1 = t_at_dest<NWorlds - 1U>(k);
+    auto const event_times = tt_.event_times_at_stop(
+        r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
+
+    auto const seek_first_day = [&]() {
+      return linear_lb(get_begin_it(event_times), get_end_it(event_times),
+                       mam_at_stop,
+                       [&](delta const a, minutes_after_midnight_t const b) {
+                         return is_better(a.mam(), b.count());
+                       });
+    };
+
+    auto out = dual_et{};
+    auto done0 = false;
+    auto done1 = false;
+
+    constexpr auto const kNDaysToIterate = static_cast<day_idx_t::value_t>(
+        kMaxTravelTime / std::chrono::days{1} + 1U);
+    for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
+      auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
+      if (!is_route_active(r, day)) {
+        continue;
+      }
+
+      auto const ev_time_range =
+          it_range{i == 0U ? seek_first_day() : get_begin_it(event_times),
+                   get_end_it(event_times)};
+      if (ev_time_range.empty()) {
+        continue;
+      }
+
+      for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
+        auto const t_offset =
+            static_cast<std::size_t>(&*it - event_times.data());
+        auto const ev = *it;
+        auto const ev_mam = ev.mam();
+
+        auto const ev_t = to_delta(day, ev_mam);
+        done0 = done0 || is_better(b0, ev_t);
+        done1 = done1 || is_better(b1, ev_t);
+        if (done0 && done1) {
+          return out;
+        }
+
+        auto const t = tt_.route_transport_ranges_[r][t_offset];
+        if (i == 0U && !is_better_or_eq(mam_at_stop.count(), ev_mam)) {
+          continue;
+        }
+
+        auto const ev_day_offset = ev.days();
+        auto const start_day =
+            static_cast<std::size_t>(as_int(day) - ev_day_offset);
+        auto const tr =
+            transport{t, static_cast<day_idx_t>(as_int(day) - ev_day_offset)};
+
+        auto const idx = to_idx(tt_.transport_traffic_days_[t]);
+        if ((idx & kRtBitfieldFlag) == 0U) {
+          // traffic days untouched by rt: one test serves both worlds
+          if (tt_.bitfields_[bitfield_idx_t{idx}].test(start_day)) {
+            if (!done0) {
+              out.t0_ = tr;
+              done0 = true;
+            }
+            if (!done1) {
+              out.t1_ = tr;
+              done1 = true;
+            }
+          }
+        } else {
+          if (!done0 && tt_.bitfields_[sched_transport_traffic_days_[t]].test(
+                            start_day)) {
+            out.t0_ = tr;
+            done0 = true;
+          }
+          if (!done1 &&
+              rtt_.bitfields_[bitfield_idx_t{idx & ~kRtBitfieldFlag}].test(
+                  start_day)) {
+            out.t1_ = tr;
+            done1 = true;
+          }
+        }
+        if (done0 && done1) {
+          return out;
+        }
+      }
+    }
+    return out;
+  }
+
   __device__ __forceinline__ bool is_transport_active(
       transport_idx_t const t, std::size_t const day) const {
     auto const i = to_idx(tt_.transport_traffic_days_[t]);
@@ -1426,6 +1530,17 @@ struct raptor_impl {
           }());
           et_result_[flat * NWorlds] = res;
           et_result_[flat * NWorlds + 1U] = res;
+        } else if (l0 == l1 && l0 != kInvalid) {
+          // rt-touched route, equal labels: one event iteration, per-world
+          // activity (untouched transports need only one bitfield test)
+          auto const [day, mam] = split(l0);
+          auto const ets =
+              get_earliest_transport_dual(k, r, stop_idx, day, mam);
+          et_result_[flat * NWorlds] = pack_et(r, ets.t0_);
+          et_result_[flat * NWorlds + 1U] = pack_et(r, ets.t1_);
+        } else if (l0 == l1) {
+          et_result_[flat * NWorlds] = kEtInvalid;
+          et_result_[flat * NWorlds + 1U] = kEtInvalid;
         } else {
           lookup.template operator()<0U>();
           lookup.template operator()<1U>();
