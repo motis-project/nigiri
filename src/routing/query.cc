@@ -49,7 +49,7 @@ void set_range(bitvec_map<route_idx_t>& b, interval<route_idx_t> const r) {
   }
   b.blocks_[first] |= head;
   for (auto i = static_cast<idx_t>(first + 1U); i != last; ++i) {
-    b.blocks_[i] = kOnes;
+    b.blocks_[i] |= kOnes;
   }
   b.blocks_[last] |= tail;
 }
