@@ -17,7 +17,8 @@
 
 namespace nigiri {
 struct timetable;
-}
+struct rt_timetable;
+}  // namespace nigiri
 
 namespace nigiri::routing {
 
@@ -69,13 +70,16 @@ using td_offsets_t = hash_map<location_idx_t, std::vector<routing::td_offset>>;
 
 struct blocked_feeds {
   bool any() const noexcept { return srcs_.any(); }
+  void verify_rtt(rt_timetable const*) const;
   friend bool operator==(blocked_feeds const&, blocked_feeds const&) = default;
 
   bitvec_map<route_idx_t> routes_{};
+  bitvec_map<rt_transport_idx_t> rt_transports_{};
   bitvec_map<source_idx_t> srcs_{};
 };
 
 blocked_feeds make_blocked_feeds(timetable const&,
+                                 rt_timetable const*,
                                  bitvec_map<source_idx_t> blocked_srcs);
 
 struct query {

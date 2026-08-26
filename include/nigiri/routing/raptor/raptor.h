@@ -100,6 +100,9 @@ struct raptor {
         blocked_{blocked},
         src_filter_{blocked.any()} {
     assert(Vias == via_stops_.size());
+    if constexpr (Rt) {
+      blocked_.verify_rtt(rtt);
+    }
     reset_arrivals();
     if (!dist_to_end_.empty()) {
       // only used for intermodal queries (dist_to_dest != empty)
@@ -571,7 +574,7 @@ private:
       auto const rt_t = rt_transport_idx_t{rt_t_idx};
 
       if constexpr (WithSrcFilter) {
-        if (blocked_.srcs_.test(rtt_->rt_transport_src_[rt_t])) {
+        if (blocked_.rt_transports_.test(rt_t)) {
           return;
         }
       }

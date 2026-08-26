@@ -3,6 +3,7 @@
 #include "utl/verify.h"
 
 #include "nigiri/for_each_meta.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::routing {
@@ -55,7 +56,17 @@ void set_range(bitvec_map<route_idx_t>& b, interval<route_idx_t> const r) {
 
 }  // namespace
 
+void blocked_feeds::verify_rtt(rt_timetable const* rtt) const {
+  if (!any()) {
+    return;
+  }
+  auto const n =
+      rtt == nullptr ? 0U : static_cast<std::size_t>(rtt->n_rt_transports());
+  utl::verify(rt_transports_.size() == n, "rt_transports_.size() != n");
+}
+
 blocked_feeds make_blocked_feeds(timetable const& tt,
+                                 rt_timetable const* rtt,
                                  bitvec_map<source_idx_t> blocked_srcs) {
   auto f = blocked_feeds{};
   if (!blocked_srcs.any()) {
@@ -69,6 +80,16 @@ blocked_feeds make_blocked_feeds(timetable const& tt,
       set_range(f.routes_, tt.src_routes_[src]);
     }
   }
+
+  auto const n_rt = rtt == nullptr ? 0U : rtt->n_rt_transports();
+  f.rt_transports_.resize(n_rt);
+  for (auto i = 0U; i != n_rt; ++i) {
+    auto const rt_t = rt_transport_idx_t{i};
+    if (f.srcs_.test(rtt->rt_transport_src_[rt_t])) {
+      f.rt_transports_.set(rt_t);
+    }
+  }
+
   return f;
 }
 

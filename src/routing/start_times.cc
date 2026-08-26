@@ -180,7 +180,7 @@ void add_starts_in_interval(direction const search_dir,
   // Real-time starts
   if (rtt != nullptr) {
     for (auto const& rt_t : rtt->location_rt_transports_.at(l)) {
-      if (blocked.srcs_.test(rtt->rt_transport_src_[rt_t])) {
+      if (blocked.rt_transports_.test(rt_t)) {
         continue;
       }
       auto const location_seq = rtt->rt_transport_location_seq_.at(rt_t);
