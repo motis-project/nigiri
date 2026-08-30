@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <memory>
 #include <vector>
 
@@ -23,6 +24,13 @@ namespace nigiri::routing::gpu {
 inline bool gpu_supported(query const& q, rt_timetable const* = nullptr) {
   return q.via_stops_.empty();
 }
+
+// Device memory in use, as a single snapshot (cudaMemGetInfo). Cheap enough to
+// call once per query; reports the whole device, not this process's share.
+struct device_mem {
+  std::size_t used_, total_;
+};
+device_mem device_mem_info();
 
 struct gpu_timetable {
   explicit gpu_timetable(timetable const&);

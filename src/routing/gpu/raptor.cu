@@ -42,6 +42,15 @@
 namespace nigiri::routing::gpu {
 
 // words a device_bitvec<std::uint32_t> needs to hold n bits
+device_mem device_mem_info() {
+  auto free = std::size_t{0U};
+  auto total = std::size_t{0U};
+  if (cudaMemGetInfo(&free, &total) != cudaSuccess) {
+    return {0U, 0U};
+  }
+  return {total - free, total};
+}
+
 constexpr std::uint32_t n_bitvec_words(std::uint32_t const n) {
   return n / 32U + 1U;
 }
