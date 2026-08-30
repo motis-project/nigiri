@@ -448,6 +448,7 @@ int main(int argc, char* argv[]) {
   auto rt_day_str = std::string{};
   auto query_day_str = std::string{};
   auto query_hours_str = std::string{};
+  auto query_at_snapshot = false;
   auto engines = std::vector<std::string>{"cpu", "gpu"};
   auto algos = std::vector<std::string>{"range", "pong"};
   auto modes = std::vector<std::string>{"s2s", "c2c"};
@@ -565,7 +566,12 @@ int main(int argc, char* argv[]) {
        "restrict generated query start times to this day YYYY-MM-DD "
        "(e.g. the day the rt dump targets)")  //
       ("query_hours", bpo::value(&query_hours_str),
-       "with --query_day: restrict to hours H-H (UTC), e.g. 10-20");
+       "with --query_day: restrict to hours H-H (UTC), e.g. 10-20")  //
+      ("query_at_snapshot",
+       bpo::bool_switch(&query_at_snapshot)->default_value(false),
+       "pin every generated query's start time to the newest "
+       "FeedHeader.timestamp of the applied rt dumps (requires --rt_path); "
+       "interval queries keep their width, starting at the snapshot");
   bpo::variables_map vm;
   bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
 
@@ -583,6 +589,7 @@ int main(int argc, char* argv[]) {
 
   // scheduled+rt cells need an rt_timetable (empty = no deviations)
   auto rtt = std::optional<rt_timetable>{};
+  auto snapshot_time = std::optional<unixtime_t>{};
   if (!rt_path.empty() || utl::any_of(algos, [](auto const& a) {
         return a == "srt" || a == "srt2" || a == "srtp" || a == "srtp2";
       })) {
@@ -626,6 +633,7 @@ int main(int argc, char* argv[]) {
 
       auto n_applied = 0U, n_unmatched = 0U, n_failed = 0U;
       auto total = 0, success = 0;
+      auto max_feed_ts = date::sys_seconds{};
       for (auto const& p : files) {
         auto const name = p.filename().string();
         auto const cut = name.find("-http");
@@ -648,6 +656,7 @@ int main(int argc, char* argv[]) {
           ++n_applied;
           total += stats.total_entities_;
           success += stats.total_entities_success_;
+          max_feed_ts = std::max(max_feed_ts, stats.feed_timestamp_);
         } catch (std::exception const& e) {
           ++n_failed;
           std::cerr << "rt update " << name << " failed: " << e.what() << "\n";
@@ -657,7 +666,19 @@ int main(int argc, char* argv[]) {
                 << " unmatched, " << n_failed << " failed), entities "
                 << success << "/" << total << " ok, day "
                 << date::format("%F", day) << "\n";
+      if (max_feed_ts.time_since_epoch().count() != 0) {
+        snapshot_time = unixtime_t{std::chrono::duration_cast<i32_minutes>(
+            max_feed_ts.time_since_epoch())};
+        std::cout << "rt: snapshot time "
+                  << date::format("%F %R", *snapshot_time) << "\n";
+      }
     }
+  }
+
+  if (query_at_snapshot && !snapshot_time.has_value()) {
+    std::cerr << "--query_at_snapshot requires applied rt dumps with a "
+                 "FeedHeader timestamp\n";
+    return 1;
   }
 
   gs.interval_size_ = duration_t{interval_size};
@@ -836,6 +857,20 @@ int main(int argc, char* argv[]) {
     auto& fwd_qs = mode_queries[mode];
     if (fwd_qs.empty()) {
       generate_queries(fwd_qs, n_queries, tt, rs, seed, query_window);
+      if (query_at_snapshot) {
+        auto const snap = *snapshot_time;
+        for (auto& sdq : fwd_qs) {
+          sdq.q_.start_time_ = std::visit(
+              utl::overloaded{
+                  [&](interval<unixtime_t> const i) -> decltype(sdq.q_.start_time_) {
+                    return interval<unixtime_t>{snap, snap + i.size()};
+                  },
+                  [&](unixtime_t const) -> decltype(sdq.q_.start_time_) {
+                    return snap;
+                  }},
+              sdq.q_.start_time_);
+        }
+      }
     }
 
     // (mode, dir) are the incomparable dimensions -- within one (mode, dir),
