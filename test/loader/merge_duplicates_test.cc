@@ -806,8 +806,7 @@ TEST(loader, merge_stats_json) {
   load_timetable({}, source_idx_t{1},
                  unsplit_files("b", "SVC,20240903,1\nSVC,20240904,1"), tt);
 
-  auto const dir =
-      std::filesystem::temp_directory_path() / "nigiri_merge_stats";
+  auto const dir = std::filesystem::path{"nigiri_merge_stats"};
   std::filesystem::remove_all(dir);
 
   auto opt = finalize_options{};
