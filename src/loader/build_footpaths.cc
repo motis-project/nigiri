@@ -470,24 +470,13 @@ void write_footpaths(timetable& tt) {
 void build_footpaths(timetable& tt, finalize_options const opt) {
   add_links_to_and_between_children(tt);
   link_nearby_stations(tt);
-  if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_) {
-    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-      if (tt.locations_.src_[l] == source_idx_t{source_idx_t::invalid()}) {
-        continue;
-      }
-      for (auto e : tt.locations_.equivalences_[l]) {
-        if (tt.locations_.src_[e] == source_idx_t{source_idx_t::invalid()} ||
-            (!opt.merge_dupes_intra_src_ &&
-             tt.locations_.src_[l] == tt.locations_.src_[e]) ||
-            (!opt.merge_dupes_inter_src_ &&
-             tt.locations_.src_[l] != tt.locations_.src_[e])) {
-          continue;
-        }
 
-        find_duplicates(tt, l, e);
-      }
-    }
+  if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_) {
+    merge_duplicates(tt, opt.merge_threshold_, opt.merge_dupes_intra_src_,
+                     opt.merge_dupes_inter_src_, opt.merge_stats_dir_,
+                     opt.src_tags_);
   }
+
   connect_components(tt, opt.max_footpath_length_, opt.adjust_footpaths_);
   sort_footpaths(tt);
   write_footpaths(tt);

@@ -258,7 +258,7 @@ TEST(rt, json_to_xml) {
                                       rt::vdv_aus::updater::xml_format::kSiri};
   updater.update(rtt, doc);
 
-  auto const fr_rt = resolve(tt, &rtt, "7621", "20251025");
+  auto const fr_rt = resolve(tt, &rtt, {}, "7621", "20251025");
   ASSERT_EQ(4U, fr_rt.size());
   EXPECT_TRUE(fr_rt.is_rt());
   EXPECT_EQ(base_day + 3h + 1min, fr_rt[0].time(event_type::kDep));

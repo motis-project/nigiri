@@ -165,6 +165,10 @@ using mm_paged_vecvec = mm_paged_vecvec_helper<Key, T>::type;
 using translation_idx_t = cista::strong<std::uint32_t, struct _translation_idx>;
 using string_idx_t = cista::strong<std::uint32_t, struct _string_idx>;
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
+
+// the all-zero bitfield, registered first by register_special_stations - a
+// transport pointing here runs on no day at all
+constexpr auto const kEmptyBitfieldIdx = bitfield_idx_t{0U};
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
 using route_idx_t = cista::strong<std::uint32_t, struct _route_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;

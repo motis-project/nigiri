@@ -4,6 +4,7 @@
 
 #include "utl/enumerate.h"
 #include "utl/progress_tracker.h"
+#include "utl/to_vec.h"
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/loader.h"
@@ -68,7 +69,9 @@ timetable load(std::vector<timetable_source> const& sources,
   }
 
   progress_tracker->status("Finalizing").out_bounds(98.F, 100.F).in_high(1);
-  finalize(tt, finalize_opt);
+  auto opt = finalize_opt;
+  opt.src_tags_ = utl::to_vec(sources, [](auto&& s) { return s.tag_; });
+  finalize(tt, opt);
 
   return tt;
 }
