@@ -32,9 +32,7 @@ void register_special_stations(timetable& tt) {
                                    0_minutes});
   }
   tt.location_routes_.resize(tt.n_locations());
-  utl::verify(tt.bitfields_.size() == to_idx(kEmptyBitfieldIdx),
-              "the empty bitfield has to come first");
-  tt.bitfields_.emplace_back(bitfield{});
+  tt.bitfields_.emplace_back(bitfield{});  // bitfield_idx 0 = 000...00 bitfield
   tt.attribute_combinations_.add_back_sized(0U);  // combination 0 = empty
 }
 
