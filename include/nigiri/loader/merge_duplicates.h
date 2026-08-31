@@ -2,7 +2,6 @@
 
 #include <filesystem>
 #include <string>
-#include <vector>
 
 #include "nigiri/types.h"
 
@@ -22,14 +21,11 @@ constexpr merge_threshold_t uniform_merge_threshold(duration_t const d) {
   return t;
 }
 
-// merges duplicate transports. if stats_dir is set, merge_stats.json and
-// merge_stats.html are written there describing what was found per agency and
-// per feed
 void merge_duplicates(timetable&,
                       merge_threshold_t const&,
                       bool intra_src,
                       bool inter_src,
                       std::filesystem::path const& stats_dir,
-                      std::vector<std::string> const& src_tags);
+                      vector_map<source_idx_t, std::string> const& src_tags);
 
 }  // namespace nigiri::loader

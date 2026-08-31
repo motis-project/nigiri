@@ -12,7 +12,7 @@ struct finalize_options {
   std::uint16_t max_footpath_length_{20};
   merge_threshold_t merge_threshold_{uniform_merge_threshold(duration_t{1})};
   std::filesystem::path merge_stats_dir_{};
-  std::vector<std::string> src_tags_{};  // by source_idx_t
+  vector_map<source_idx_t, std::string> src_tags_{};
 };
 
 void build_footpaths(timetable& tt, finalize_options);

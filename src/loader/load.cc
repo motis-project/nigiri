@@ -70,7 +70,9 @@ timetable load(std::vector<timetable_source> const& sources,
 
   progress_tracker->status("Finalizing").out_bounds(98.F, 100.F).in_high(1);
   auto opt = finalize_opt;
-  opt.src_tags_ = utl::to_vec(sources, [](auto&& s) { return s.tag_; });
+  for (auto const& s : sources) {
+    opt.src_tags_.push_back(s.tag_);
+  }
   finalize(tt, opt);
 
   return tt;

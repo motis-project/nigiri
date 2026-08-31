@@ -30,12 +30,12 @@ merge_stats::merge_stats(timetable const& tt) {
 void write_merge_stats(timetable const& tt,
                        merge_stats const& s,
                        std::filesystem::path const& out,
-                       std::vector<std::string> const& src_tags) {
+                       vector_map<source_idx_t, std::string> const& src_tags) {
   utl::verify(src_tags.size() == tt.n_sources(),
               "merge stats: {} tags for {} sources", src_tags.size(),
               tt.n_sources());
   auto const tag = [&](source_idx_t const src) {
-    return src_tags[to_idx(src)];
+    return src_tags[src];
   };
   auto const unique = [](std::uint32_t const total, std::uint32_t const dup) {
     return total > dup ? total - dup : 0U;
@@ -105,13 +105,13 @@ void write_merge_stats(timetable const& tt,
 void write_merge_html(timetable const& tt,
                       merge_stats const& s,
                       std::filesystem::path const& out,
-                      std::vector<std::string> const& src_tags) {
+                      vector_map<source_idx_t, std::string> const& src_tags) {
   utl::verify(src_tags.size() == tt.n_sources(),
               "merge stats: {} tags for {} sources", src_tags.size(),
               tt.n_sources());
 
   auto const tag = [&](source_idx_t const src) {
-    return src_tags[to_idx(src)];
+    return src_tags[src];
   };
   auto const esc = [](std::string_view const in) {
     auto o = std::string{};

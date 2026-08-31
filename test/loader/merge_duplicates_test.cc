@@ -518,6 +518,47 @@ U_)__" + t + R"__(,09:40:00,09:40:00,S5_)__" +
 )__");
 }
 
+// two identical trips in one feed, only the attributes of the second differ
+mem_dir attr_split_files(std::string_view const bikes_b,
+                         std::string_view const pickup_b) {
+  auto const b = std::string{bikes_b};
+  auto const p = std::string{pickup_b};
+  return mem_dir::read(R"__(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+AG,Agency,https://example.com,Europe/Berlin
+
+# calendar_dates.txt
+service_id,date,exception_type
+SVC,20240902,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_type
+R,AG,1,,3
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon
+S1,Stop 1,49.880015,8.664131
+S2,Stop 2,49.878166,8.661501
+S3,Stop 3,49.875208,8.658878
+
+# trips.txt
+route_id,service_id,trip_id,bikes_allowed
+R,SVC,T_A,0
+R,SVC,T_B,)__" + b + R"__(
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type
+T_A,09:00:00,09:00:00,S1,1,0
+T_A,09:10:00,09:10:00,S2,2,0
+T_A,09:20:00,09:20:00,S3,3,0
+T_B,09:00:00,09:00:00,S1,1,0
+T_B,09:10:00,09:10:00,S2,2,)__" +
+                       p + R"__(
+T_B,09:20:00,09:20:00,S3,3,0
+)__");
+}
+
 mem_dir rbo500_b_files() {
   return mem_dir::read(R"__(
 # trips.txt
@@ -806,6 +847,8 @@ TEST(loader, merge_stats_json) {
   load_timetable({}, source_idx_t{1},
                  unsplit_files("b", "SVC,20240903,1\nSVC,20240904,1"), tt);
 
+  // relative to the test's working directory: a fixed name in the shared
+  // temp dir is owned by whoever runs the suite on this machine first
   auto const dir = std::filesystem::path{"nigiri_merge_stats"};
   std::filesystem::remove_all(dir);
 
@@ -842,4 +885,32 @@ TEST(loader, merge_stats_json) {
     EXPECT_TRUE(e.at("a").as_string() == "feed-a" ||
                 e.at("a").as_string() == "feed-b");
   }
+}
+
+TEST(loader, merge_intra_src_attrs_differ) {
+  auto const n_merged = [](std::string_view const bikes_b,
+                           std::string_view const pickup_b) {
+    auto tt = timetable{};
+    tt.date_range_ = {date::sys_days{2024_y / September / 1},
+                      date::sys_days{2024_y / September / 6}};
+    register_special_stations(tt);
+    load_timetable({}, source_idx_t{0}, attr_split_files(bikes_b, pickup_b),
+                   tt);
+    finalize(tt, false, true, false);
+
+    auto n = 0U;
+    for (auto t = transport_idx_t{0U}; t != tt.next_transport_idx(); ++t) {
+      if (tt.bitfields_[tt.transport_traffic_days_[t]].none()) {
+        ++n;
+      }
+    }
+    return n;
+  };
+
+  // control: identical attributes -> merged
+  EXPECT_EQ(1U, n_merged("0", "0"));
+
+  // bikes_allowed / pickup_type differ -> kept apart
+  EXPECT_EQ(0U, n_merged("1", "0"));
+  EXPECT_EQ(0U, n_merged("0", "1"));
 }

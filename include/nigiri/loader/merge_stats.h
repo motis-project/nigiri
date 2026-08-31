@@ -59,16 +59,17 @@ struct overlap_counters {
   }
 
   std::vector<hit_t> hits_;
-  // (a, b, n): n of a's transports also exist in b. not symmetric - the same
-  // two feeds with a and b swapped is a different number.
-  std::vector<entry_t> entries_;  // sorted by (a, b)
+
+  // sorted by (a, b): n = a's transports that have a duplicate in b. (b, a) is
+  // a different number - b can cover one transport of a with several of its
+  // own (e.g. one trip per weekday vs. one trip for the whole week)
+  std::vector<entry_t> entries_;
 
   // per entity: distinct transports that also exist in some other one
   vector_map<Idx, std::uint32_t> n_duplicated_transports_;
 };
 
 struct merge_stats {
-  // sizes the counters and fills in the per-agency / per-feed totals
   explicit merge_stats(timetable const&);
 
   overlap_counters<provider_idx_t> provider_overlap_;
@@ -85,16 +86,14 @@ struct merge_stats {
   std::uint32_t n_absorbed_transports_{0U};
 };
 
-// what was found, as JSON
 void write_merge_stats(timetable const&,
                        merge_stats const&,
                        std::filesystem::path const&,
-                       std::vector<std::string> const& src_tags);
+                       vector_map<source_idx_t, std::string> const& src_tags);
 
-// the same thing as a self-contained HTML report
 void write_merge_html(timetable const&,
                       merge_stats const&,
                       std::filesystem::path const&,
-                      std::vector<std::string> const& src_tags);
+                      vector_map<source_idx_t, std::string> const& src_tags);
 
 }  // namespace nigiri::loader

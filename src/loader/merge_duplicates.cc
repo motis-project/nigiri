@@ -195,7 +195,7 @@ void merge_duplicates(timetable& tt,
                       bool const intra_src,
                       bool const inter_src,
                       std::filesystem::path const& stats_dir,
-                      std::vector<std::string> const& src_tags) {
+                      vector_map<source_idx_t, std::string> const& src_tags) {
   auto stats = merge_stats{tt};
 
   // Key (root location, stop sequence length) => routes
@@ -321,6 +321,34 @@ void merge_duplicates(timetable& tt,
         .src_[stop{tt.route_location_seq_[r].front()}.location_idx()];
   };
 
+  auto const attrs_match = [&](route_idx_t const a, route_idx_t const b) {
+    for (auto f = 0U; f != route_flag::kNumRouteFlags; ++f) {
+      if (tt.route_flags_[f][to_idx(a) * 2U] !=
+              tt.route_flags_[f][to_idx(b) * 2U] ||
+          tt.route_flags_[f][to_idx(a) * 2U + 1U] !=
+              tt.route_flags_[f][to_idx(b) * 2U + 1U] ||
+          !std::ranges::equal(tt.route_flags_per_section_[f][a],
+                              tt.route_flags_per_section_[f][b])) {
+        return false;
+      }
+    }
+
+    auto const sa = tt.route_location_seq_[a];
+    auto const sb = tt.route_location_seq_[b];
+    for (auto i = 0U; i != sa.size(); ++i) {
+      auto const x = stop{sa[i]};
+      auto const y = stop{sb[i]};
+      if (x.in_allowed() != y.in_allowed() ||
+          x.out_allowed() != y.out_allowed() ||
+          x.in_allowed_wheelchair() != y.in_allowed_wheelchair() ||
+          x.out_allowed_wheelchair() != y.out_allowed_wheelchair()) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
   auto const routes_of = [&](location_idx_t const root) {
     return std::ranges::equal_range(route_starts, root, {},
                                     &route_start::root_);
@@ -344,6 +372,10 @@ void merge_duplicates(timetable& tt,
         // Respect merge flags.
         auto const same_src = route_src(a_route) == route_src(b_route);
         if ((same_src && !intra_src) || (!same_src && !inter_src)) {
+          continue;
+        }
+
+        if (same_src && !attrs_match(a_route, b_route)) {
           continue;
         }
 
