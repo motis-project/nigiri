@@ -16,12 +16,15 @@
 #include "../raptor_search.h"
 #include "results_to_string.h"
 
+#include "../util.h"
+
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using namespace std::chrono_literals;
 using nigiri::test::raptor_search;
+using nigiri::test::to_unix;
 
 namespace {
 
@@ -130,12 +133,6 @@ leg 2: (B, B) [2019-05-03 00:30] -> (D, D) [2019-05-03 01:00]
 }  // namespace
 
 TEST(routing, rt_raptor_forward) {
-  auto const to_unix = [](auto&& x) {
-    return std::chrono::time_point_cast<std::chrono::seconds>(x)
-        .time_since_epoch()
-        .count();
-  };
-
   timetable tt;
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
@@ -213,12 +210,6 @@ leg 2: (B, B) [2019-05-03 00:30] -> (D, D) [2019-05-03 01:00]
 )";
 
 TEST(routing, rt_raptor_backward) {
-  auto const to_unix = [](auto&& x) {
-    return std::chrono::time_point_cast<std::chrono::seconds>(x)
-        .time_since_epoch()
-        .count();
-  };
-
   timetable tt;
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
@@ -296,12 +287,6 @@ leg 2: (B, B) [2019-05-03 00:30] -> (D, D) [2019-05-03 01:00]
 )";
 
 TEST(routing, rt_raptor_unscheduled) {
-  auto const to_unix = [](auto&& x) {
-    return std::chrono::time_point_cast<std::chrono::seconds>(x)
-        .time_since_epoch()
-        .count();
-  };
-
   timetable tt;
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};

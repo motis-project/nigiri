@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -28,13 +30,12 @@ struct trip {
   std::vector<delay> delays_;
 };
 
-template <typename T>
-std::uint64_t to_unix(T&& x) {
-  return static_cast<std::uint64_t>(
-      std::chrono::time_point_cast<std::chrono::seconds>(x)
-          .time_since_epoch()
-          .count());
-};
+template <typename Rep = std::uint64_t>
+constexpr Rep to_unix(auto&& x) {
+  return static_cast<Rep>(std::chrono::time_point_cast<std::chrono::seconds>(x)
+                              .time_since_epoch()
+                              .count());
+}
 
 transit_realtime::FeedMessage to_feed_msg(std::vector<trip> const& trip_delays,
                                           date::sys_seconds const msg_time);

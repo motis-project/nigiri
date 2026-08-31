@@ -76,9 +76,22 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
         break;
       }
     }
+
+    // The times are taken from the static timetable (shifted by `offset`), so
+    // they are final - no `update_time()` call is required to make them valid.
+    extend_coverage(rt_transport_interval(rt_t));
   } else {
     rt_transport_stop_times_.emplace_back(time_seq);
+
+    // NOTE: `time_seq` may be a zero-initialized placeholder that is filled
+    // in afterwards (added/replacement trips) - therefore the coverage is not
+    // extended here but by the `update_time()` calls that write the times.
   }
+
+  // The RT transport replaces the static transport: real-time data is
+  // available for the scheduled times as well (the static transport does not
+  // run as scheduled anymore).
+  extend_coverage(static_transport_interval(tt, t));
 
   rt_transport_track_sequence_.add_back_sized(0U);
 
@@ -200,6 +213,20 @@ std::optional<std::string_view> rt_timetable::get_track(
     return std::nullopt;
   }
   return track_strings_.try_get(bucket[static_cast<std::size_t>(ev_idx)]);
+}
+
+interval<unixtime_t> rt_timetable::static_transport_interval(
+    timetable const& tt, transport const t) const {
+  if (!t.is_valid()) {
+    return {};
+  }
+  auto const n_stops =
+      tt.route_location_seq_[tt.transport_route_[t.t_idx_]].size();
+  assert(n_stops >= 2U);
+  return {tt.event_time(t, stop_idx_t{0U}, event_type::kDep),
+          tt.event_time(t, static_cast<stop_idx_t>(n_stops - 1U),
+                        event_type::kArr) +
+              unixtime_t::duration{1}};
 }
 
 std::string_view rt_timetable::transport_name(
@@ -327,8 +354,11 @@ void rt_timetable::update_lbs(timetable const& tt) {
 void rt_timetable::cancel_run(rt::run const& r) {
   if (r.is_rt()) {
     rt_transport_is_cancelled_.set(to_idx(r.rt_), true);
+    extend_coverage(rt_transport_interval(r.rt_));
   }
   if (r.is_scheduled()) {
+    extend_coverage(static_transport_interval(r.t_));
+
     auto const bf = traffic_days(transport_traffic_days_[r.t_.t_idx_]);
     bitfields_.emplace_back(bf).set(to_idx(r.t_.day_), false);
     transport_traffic_days_[r.t_.t_idx_] = rt_bitfield_idx();

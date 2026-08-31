@@ -9,11 +9,14 @@
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
 
+#include "../util.h"
+
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using namespace std::chrono_literals;
+using nigiri::test::to_unix;
 
 namespace {
 
@@ -50,12 +53,6 @@ T1,11:00:00,11:00:00,B,2,0,0
 }  // namespace
 
 TEST(rt, delay_test) {
-  auto const to_unix = [](auto&& x) {
-    return std::chrono::time_point_cast<std::chrono::seconds>(x)
-        .time_since_epoch()
-        .count();
-  };
-
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2019_y / March / 25},

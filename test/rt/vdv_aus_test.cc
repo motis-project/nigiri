@@ -373,6 +373,14 @@ TEST(vdv_aus, delay_propagation) {
   EXPECT_EQ(fr[4].time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 2_hours);
 
+  // Coverage maintenance for the VDV update path - see
+  // `test/rt/rt_coverage_test.cc` for the GTFS-RT side.
+  // scheduled 22:00 -> 02:00, real-time max 02:00
+  EXPECT_EQ((interval{unixtime_t{date::sys_days{2024_y / July / 9} + 22_hours},
+                      unixtime_t{date::sys_days{2024_y / July / 10} + 2_hours +
+                                 1_minutes}}),
+            rtt.coverage_);
+
   doc.load_string(vdv_aus_msg1);
   u.update(rtt, doc);
 
@@ -410,6 +418,12 @@ TEST(vdv_aus, delay_propagation) {
             date::sys_days{2024_y / July / 10} + 2_hours);
   EXPECT_EQ(fr[4].time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 3_hours);
+
+  // the last arrival moved to 03:00 => coverage extended to the back
+  EXPECT_EQ((interval{unixtime_t{date::sys_days{2024_y / July / 9} + 22_hours},
+                      unixtime_t{date::sys_days{2024_y / July / 10} + 3_hours +
+                                 1_minutes}}),
+            rtt.coverage_);
 
   doc.load_string(vdv_aus_msg2);
   u.update(rtt, doc);
@@ -450,6 +464,12 @@ TEST(vdv_aus, delay_propagation) {
             date::sys_days{2024_y / July / 10} + 2_hours);
   EXPECT_EQ(fr[4].time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 2_hours + 7_minutes);
+
+  // the last arrival moved back to 02:07 => coverage is NOT shrunk
+  EXPECT_EQ((interval{unixtime_t{date::sys_days{2024_y / July / 9} + 22_hours},
+                      unixtime_t{date::sys_days{2024_y / July / 10} + 3_hours +
+                                 1_minutes}}),
+            rtt.coverage_);
 
   EXPECT_EQ(u.get_cumulative_stats().matched_runs_, 1);
   EXPECT_EQ(u.get_cumulative_stats().updated_events_, 14);

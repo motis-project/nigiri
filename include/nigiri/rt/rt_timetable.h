@@ -2,6 +2,7 @@
 
 #include "utl/pairwise.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -71,8 +72,49 @@ struct rt_timetable {
     auto const ev_idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
     assert(ev_idx >= 0 && static_cast<stop_idx_t>(ev_idx) <
                               rt_transport_stop_times_[rt_t].size());
-    rt_transport_stop_times_[rt_t][static_cast<std::size_t>(ev_idx)] =
-        unix_to_delta(new_time);
+    auto const d = unix_to_delta(new_time);
+    rt_transport_stop_times_[rt_t][static_cast<std::size_t>(ev_idx)] = d;
+    extend_coverage(delta_to_unix(base_day_, d));
+  }
+
+  bool affects(interval<unixtime_t> const& itv,
+               profile_idx_t const prf_idx) const noexcept {
+    assert(itv.from_ < itv.to_);
+    return prf_idx != 0U || itv.overlaps(coverage_);
+  }
+
+  void extend_coverage(unixtime_t const t) {
+    extend_coverage(interval{t, t + unixtime_t::duration{1}});
+  }
+
+  void extend_coverage(interval<unixtime_t> const i) {
+    if (i.from_ >= i.to_) {
+      return;  // empty
+    }
+    coverage_ = coverage_.empty() ? i
+                                  : interval{std::min(coverage_.from_, i.from_),
+                                             std::max(coverage_.to_, i.to_)};
+  }
+
+  // Interval covered by the event times of `rt_t`.
+  interval<unixtime_t> rt_transport_interval(
+      rt_transport_idx_t const rt_t) const {
+    auto const times = rt_transport_stop_times_[rt_t];
+    if (times.empty()) {
+      return {};
+    }
+    auto const [min, max] = std::minmax_element(begin(times), end(times));
+    return {delta_to_unix(base_day_, *min),
+            delta_to_unix(base_day_, *max) + unixtime_t::duration{1}};
+  }
+
+  // Interval covered by the event times of the static transport `t`.
+  interval<unixtime_t> static_transport_interval(timetable const&,
+                                                 transport) const;
+
+  interval<unixtime_t> static_transport_interval(transport const t) const {
+    assert(tt_ != nullptr);
+    return static_transport_interval(*tt_, t);
   }
 
   void update_lbs(timetable const& tt,
@@ -308,6 +350,10 @@ struct rt_timetable {
     std::unique_ptr<void, void (*)(void*)> ptr_{nullptr, [](void*) {}};
   };
   gpu_rtt_slot gpu_rtt_;
+
+  // Interval real-time data is available for. Empty (`from_ == to_`) if no
+  // real-time update has been applied yet. See `extend_coverage()`.
+  interval<unixtime_t> coverage_;
 };
 
 }  // namespace nigiri

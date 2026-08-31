@@ -11,12 +11,15 @@
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/timetable.h"
 
+#include "../util.h"
+
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using namespace nigiri::rt;
 using namespace date;
 using namespace std::chrono_literals;
+using nigiri::test::to_unix;
 
 namespace {
 
@@ -227,12 +230,6 @@ TEST(rt, resolve_tz) {
 }
 
 TEST(rt, gtfs_rt_update) {
-  auto const to_unix = [](auto&& x) {
-    return std::chrono::time_point_cast<std::chrono::seconds>(x)
-        .time_since_epoch()
-        .count();
-  };
-
   // Load static timetable.
   timetable tt;
   register_special_stations(tt);
@@ -355,7 +352,7 @@ TEST(rt, gtfs_rt_update) {
         entity->mutable_trip_update()->add_stop_time_update();
     stop_update->set_stop_sequence(1);
     stop_update->mutable_departure()->set_time(
-        to_unix(date::sys_days{2019_y / May / 3} + 22h + 35min));
+        to_unix<std::int64_t>(date::sys_days{2019_y / May / 3} + 22h + 35min));
   }
 
   {

@@ -11,7 +11,7 @@
 #include "nigiri/timetable.h"
 
 #include "../raptor_search.h"
-#include "../rt/util.h"
+#include "../util.h"
 #include "results_to_string.h"
 
 using namespace nigiri;
