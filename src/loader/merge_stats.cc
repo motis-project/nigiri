@@ -34,9 +34,7 @@ void write_merge_stats(timetable const& tt,
   utl::verify(src_tags.size() == tt.n_sources(),
               "merge stats: {} tags for {} sources", src_tags.size(),
               tt.n_sources());
-  auto const tag = [&](source_idx_t const src) {
-    return src_tags[src];
-  };
+  auto const tag = [&](source_idx_t const src) { return src_tags[src]; };
   auto const unique = [](std::uint32_t const total, std::uint32_t const dup) {
     return total > dup ? total - dup : 0U;
   };
@@ -110,9 +108,7 @@ void write_merge_html(timetable const& tt,
               "merge stats: {} tags for {} sources", src_tags.size(),
               tt.n_sources());
 
-  auto const tag = [&](source_idx_t const src) {
-    return src_tags[src];
-  };
+  auto const tag = [&](source_idx_t const src) { return src_tags[src]; };
   auto const esc = [](std::string_view const in) {
     auto o = std::string{};
     for (auto const c : in) {
