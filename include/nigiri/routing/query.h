@@ -17,7 +17,8 @@
 
 namespace nigiri {
 struct timetable;
-}
+struct rt_timetable;
+}  // namespace nigiri
 
 namespace nigiri::routing {
 
@@ -67,6 +68,20 @@ using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
 
 using td_offsets_t = hash_map<location_idx_t, std::vector<routing::td_offset>>;
 
+struct blocked_feeds {
+  bool any() const noexcept { return srcs_.any(); }
+  void verify_rtt(rt_timetable const*) const;
+  friend bool operator==(blocked_feeds const&, blocked_feeds const&) = default;
+
+  bitvec_map<route_idx_t> routes_{};
+  bitvec_map<rt_transport_idx_t> rt_transports_{};
+  bitvec_map<source_idx_t> srcs_{};
+};
+
+blocked_feeds make_blocked_feeds(timetable const&,
+                                 rt_timetable const*,
+                                 bitvec_map<source_idx_t> blocked_srcs);
+
 struct query {
   void flip_dir();
   void sanitize(timetable const&);
@@ -89,6 +104,7 @@ struct query {
   std::optional<interval<unixtime_t>> max_interval_{};
   profile_idx_t prf_idx_{0};
   clasz_mask_t allowed_claszes_{all_clasz_allowed()};
+  blocked_feeds blocked_{};
   bool require_bike_transport_{false};
   bool require_car_transport_{false};
   bool no_compulsory_reservation_{false};

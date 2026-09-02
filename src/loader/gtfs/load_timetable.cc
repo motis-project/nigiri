@@ -405,7 +405,7 @@ void load_timetable(loader_config const& config,
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
         auto const route_idx =
-            tt.register_route(key.stop_seq_, {key.clasz_}, key.flags_);
+            tt.register_route(src, key.stop_seq_, {key.clasz_}, key.flags_);
 
         for (auto const& s : key.stop_seq_) {
           auto s_routes = location_routes[stop{s}.location_idx()];

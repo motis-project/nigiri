@@ -75,7 +75,7 @@ void service_builder::write_services(source_idx_t const src) {
     for (auto const& services : sub_routes) {
       auto const& [stop_seq, sections_clasz] = key;
       auto const route_idx =
-          tt_.register_route(stop_seq, sections_clasz, empty_flags);
+          tt_.register_route(src, stop_seq, sections_clasz, empty_flags);
 
       for (auto const& s : stop_seq) {
         auto s_routes = location_routes_[stop{s}.location_idx()];
