@@ -14,6 +14,7 @@
 #include "nigiri/routing/gpu/device_timetable.cuh"
 #include "nigiri/routing/gpu/journey_pod.h"
 #include "nigiri/routing/gpu/stride.cuh"
+#include "nigiri/routing/gpu/warp.cuh"
 #include "nigiri/routing/gpu/types.cuh"
 
 namespace nigiri::routing::gpu {
@@ -29,10 +30,6 @@ namespace nigiri::routing::gpu {
 #define kBwd (SearchDir == direction::kBackward)
 #define kUnreachable (std::numeric_limits<std::uint16_t>::max())
 #define kIntermodalTarget (get_special_station(special_station::kEnd))
-
-inline constexpr auto kWarpSize = 32U;
-
-inline constexpr auto kAllLanes = ~std::uint32_t{0};
 
 using td_dest_group_idx_t = cista::strong<std::uint32_t, struct td_dest_group_>;
 using td_dest_offsets_t = vecvec<td_dest_group_idx_t, td_offset>;
@@ -152,13 +149,13 @@ struct raptor_impl {
 
   __device__ void touch_round(unsigned const k, location_idx_t const l) {
     auto const i = to_idx(l);
-    atomicOr(&round_touched_[k * round_touched_stride_ + (i / 32U)],
-             std::uint32_t{1U} << (i % 32U));
+    atomic_or(&round_touched_[k * round_touched_stride_ + (i / kWarpSize)],
+              static_cast<mark_block_t>(mark_block_t{1U} << (i % kWarpSize)));
   }
 
   template <typename Lists>
   __device__ void mark_from_locations(Lists const& lists,
-                                      device_bitvec<std::uint32_t>& marks) {
+                                      device_bitvec<mark_block_t>& marks) {
     constexpr auto const kInline = 8U;
     auto const lane = get_global_thread_id() % kWarpSize;
     auto const warp_id = get_global_thread_id() / kWarpSize;
@@ -190,11 +187,11 @@ struct raptor_impl {
         }
       }
 
-      // long lists: all 32 lanes stride one deferred location's list
-      auto const deferred = __ballot_sync(kAllLanes, n != 0U);
+      // long lists: all lanes stride one deferred location's list
+      auto const deferred = warp_ballot(n != 0U);
       for_each_set_bit(deferred, [&](unsigned const b) {
-        auto const src_i = __shfl_sync(kAllLanes, my_i, static_cast<int>(b));
-        auto const cnt = __shfl_sync(kAllLanes, n, static_cast<int>(b));
+        auto const src_i = warp_shfl(my_i, b);
+        auto const cnt = warp_shfl(n, b);
         auto const list = lists[location_idx_t{src_i}];
         for (auto j = lane; j < cnt; j += kWarpSize) {
           marks.mark(to_idx(list[j]));
@@ -405,7 +402,7 @@ struct raptor_impl {
   __device__ void loop_routes(unsigned const k) {
     // One warp per route:
     // - lanes cooperate on the route's stops via update_route_warp
-    // - all lanes share warp_id for the warp shuffles and __any_sync
+    // - all lanes share warp_id for the warp shuffles and warp_any
     auto const lane = get_global_thread_id() % kWarpSize;
     auto const warp_id = get_global_thread_id() / kWarpSize;
     auto const n_warps = get_global_stride() / kWarpSize;
@@ -799,14 +796,14 @@ struct raptor_impl {
         }
       }
 
-      // hubs: all 32 lanes stride one deferred location's footpath list
-      auto const deferred = __ballot_sync(kAllLanes, defer);
+      // hubs: all lanes stride one deferred location's footpath list
+      auto const deferred = warp_ballot(defer);
       for_each_set_bit(deferred, [&](unsigned const b) {
         auto const l = location_idx_t{base + b};
-        auto const l_tmp = static_cast<delta_t>(__shfl_sync(
-            kAllLanes, static_cast<int>(tmp_time), static_cast<int>(b)));
-        auto const l_bc = __shfl_sync(kAllLanes, bc, static_cast<int>(b));
-        auto const l_n = __shfl_sync(kAllLanes, n_fps, static_cast<int>(b));
+        auto const l_tmp =
+            static_cast<delta_t>(warp_shfl(static_cast<int>(tmp_time), b));
+        auto const l_bc = warp_shfl(bc, b);
+        auto const l_n = warp_shfl(n_fps, b);
         auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
                               : tt_.footpaths_in_[prf_idx_][l];
         for (auto j = lane; j < l_n; j += kWarpSize) {
@@ -838,7 +835,7 @@ struct raptor_impl {
     auto carried_et = kEtKeyInvalid;
 
     for (auto chunk = 0U; chunk < n; chunk += kWarpSize) {
-      // Note: continue for i >= n would be UB for __shfl_up_sync etc
+      // Note: continue for i >= n would be UB for warp_shfl_up etc
 
       auto const i = chunk + lane;
       auto stop_idx = stop_idx_t{};
@@ -868,9 +865,9 @@ struct raptor_impl {
       if constexpr (WithSections) {
         prefix_contains_kill = kill ? 1U : 0U;
         for (auto off = 1U; off < kWarpSize; off <<= 1) {
-          auto const prev_incl = __shfl_up_sync(kAllLanes, incl, off);
+          auto const prev_incl = warp_shfl_up(incl, off);
           auto const prev_prefix_contains_kill =
-              __shfl_up_sync(kAllLanes, prefix_contains_kill, off);
+              warp_shfl_up(prefix_contains_kill, off);
           if (lane >= off) {
             if (prefix_contains_kill == 0U) {
               // no kill between lane-off and me
@@ -882,7 +879,7 @@ struct raptor_impl {
       } else {
         // no section filters -> plain prefix-min
         for (auto off = 1U; off < kWarpSize; off <<= 1) {
-          auto const prev_incl = __shfl_up_sync(kAllLanes, incl, off);
+          auto const prev_incl = warp_shfl_up(incl, off);
           if (lane >= off) {
             incl = min(incl, prev_incl);
           }
@@ -890,10 +887,9 @@ struct raptor_impl {
       }
 
       // Get earliest transport from previous stop.
-      auto et = __shfl_up_sync(kAllLanes, incl, 1);
+      auto et = warp_shfl_up(incl, 1U);
       if constexpr (WithSections) {
-        auto prev_prefix_contains_kill =
-            __shfl_up_sync(kAllLanes, prefix_contains_kill, 1);
+        auto prev_prefix_contains_kill = warp_shfl_up(prefix_contains_kill, 1U);
         if (lane == 0U) {
           et = kEtKeyInvalid;
           prev_prefix_contains_kill = 0U;
@@ -933,18 +929,17 @@ struct raptor_impl {
 
       // Carry across chunks (sections: reset if the chunk contains a kill).
       if constexpr (WithSections) {
-        auto const incl_last = __shfl_sync(kAllLanes, incl, kWarpSize - 1U);
+        auto const incl_last = warp_shfl(incl, kWarpSize - 1U);
         auto const chunk_contains_kill =
-            __shfl_sync(kAllLanes, prefix_contains_kill, kWarpSize - 1U);
+            warp_shfl(prefix_contains_kill, kWarpSize - 1U);
         carried_et =
             chunk_contains_kill != 0U ? incl_last : min(incl_last, carried_et);
       } else {
-        carried_et =
-            __shfl_sync(kAllLanes, min(incl, carried_et), kWarpSize - 1U);
+        carried_et = warp_shfl(min(incl, carried_et), kWarpSize - 1U);
       }
     }
 
-    return __any_sync(kAllLanes, local_marked);
+    return warp_any(local_marked);
   }
 
   __device__ transport
@@ -1082,19 +1077,19 @@ struct raptor_impl {
       if (word == 0U) {
         continue;
       }
-      auto pos =
-          atomicAdd(route_list_count_, static_cast<unsigned>(__popc(word)));
-      for_each_set_bit(
-          word, [&](unsigned const b) { route_list_[pos++] = w * 32U + b; });
+      auto pos = atomicAdd(route_list_count_, popcount(word));
+      for_each_set_bit(word, [&](unsigned const b) {
+        route_list_[pos++] = w * kWarpSize + b;
+      });
     }
   }
 
   // et PHASE 2: Write list of marked route stops (flat offsets).
   // -> warp-aggregated stream compaction:
   // 1) Filter: check if route is "boardable" (fwd) / "alightable" (bwd)
-  // 2) Count: __ballot_sync(is_task) collapses 32 lanes to a 32bit mask
+  // 2) Count: warp_ballot(is_task) collapses the warp's lanes to a bitmask
   // 3) Reserve: make space for popcount(ballot sync mask) entries
-  // 4) Rank + Scatter: write flat route stop to ballot & ((1 << lane) - 1)
+  // 4) Rank + Scatter: write flat route stop to ballot & lanes_below(lane)
   // IsWheelchair: kernel-level (see loop_routes) -> can_start constant-folds
   template <bool IsWheelchair>
   __device__ void et_collect_tasks(unsigned const k) {
@@ -1126,19 +1121,16 @@ struct raptor_impl {
             }
           }
 
-          auto const ballot = __ballot_sync(kAllLanes, is_task);
+          auto const ballot = warp_ballot(is_task);
           if (ballot != 0U) {
-            auto const leader =
-                static_cast<int>(__ffs(static_cast<int>(ballot))) - 1;
+            auto const leader = find_first_set(ballot) - 1U;
             auto base_pos = 0U;
-            if (lane == static_cast<unsigned>(leader)) {
-              base_pos = atomicAdd(et_task_count_,
-                                   static_cast<unsigned>(__popc(ballot)));
+            if (lane == leader) {
+              base_pos = atomicAdd(et_task_count_, popcount(ballot));
             }
-            base_pos = __shfl_sync(kAllLanes, base_pos, leader);
+            base_pos = warp_shfl(base_pos, leader);
             if (is_task) {
-              auto const off =
-                  static_cast<unsigned>(__popc(ballot & ((1U << lane) - 1U)));
+              auto const off = popcount(ballot & lanes_below(lane));
               et_task_list_[base_pos + off] = base_flat + s;
             }
           }
@@ -1238,36 +1230,36 @@ struct raptor_impl {
   bool require_car_transport_;
   bool no_compulsory_reservation_;
   day_idx_t base_;
-  cuda::std::span<std::pair<location_idx_t, unixtime_t> const> starts_;
+  d_span<std::pair<location_idx_t, unixtime_t> const> starts_;
   device_bitvec<std::uint64_t const> is_dest_;
-  cuda::std::span<std::uint16_t const> dist_to_end_;
-  cuda::std::span<location_idx_t const> td_dest_locs_;
+  d_span<std::uint16_t const> dist_to_end_;
+  d_span<location_idx_t const> td_dest_locs_;
   d_vecvec_view<td_dest_offsets_t> td_dest_;
   device_times<SearchDir, Vias + 1> round_times_;
   device_times<SearchDir, Vias + 1> best_;
   device_times<SearchDir, Vias + 1> tmp_;
   device_times<SearchDir, 1U> time_at_dest_;
-  device_bitvec<std::uint32_t> station_mark_;
-  device_bitvec<std::uint32_t> prev_station_mark_;
-  device_bitvec<std::uint32_t> route_mark_;
-  device_bitvec<std::uint32_t> rt_transport_mark_;
+  device_bitvec<mark_block_t> station_mark_;
+  device_bitvec<mark_block_t> prev_station_mark_;
+  device_bitvec<mark_block_t> route_mark_;
+  device_bitvec<mark_block_t> rt_transport_mark_;
 
   // tracking for efficient reset in reuse_previous_arrivals
-  cuda::std::span<std::uint32_t> round_touched_;
+  d_span<mark_block_t> round_touched_;
   std::uint32_t round_touched_stride_{0U};
   // true once a round loop has written round_times_; cleared by
   // reset_arrivals(). Gates the reuse_previous_arrivals kernel.
   std::uint32_t has_reusable_round_times_{0U};
-  cuda::std::span<location_idx_t const> dest_locs_;
+  d_span<location_idx_t const> dest_locs_;
   std::uint32_t n_dest_locs_{0U};
 
   // earliest transports per flat (route,stop)
-  cuda::std::span<std::uint32_t> et_result_;
-  cuda::std::span<std::uint32_t> et_task_list_;
+  d_span<std::uint32_t> et_result_;
+  d_span<std::uint32_t> et_task_list_;
   std::uint32_t* et_task_count_;  // number of tasks this round
 
   // marked routes this round
-  cuda::std::span<std::uint32_t> route_list_;
+  d_span<std::uint32_t> route_list_;
   std::uint32_t* route_list_count_;
 
   // ping bounds

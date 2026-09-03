@@ -2,7 +2,7 @@
 
 #include <iterator>
 
-#include "cista/cuda_check.h"
+#include "cista/gpu_compat.h"
 
 #include "nigiri/common/interval.h"
 
@@ -19,28 +19,26 @@ struct it_range {
       typename std::iterator_traits<iterator>::difference_type;
 
   template <typename Collection>
-  explicit CISTA_CUDA_COMPAT it_range(Collection const& c)
+  explicit CISTA_GPU_COMPAT it_range(Collection const& c)
       : begin_{std::cbegin(c)}, end_{std::cend(c)} {}
-  explicit CISTA_CUDA_COMPAT it_range(BeginIt begin, EndIt end)
+  explicit CISTA_GPU_COMPAT it_range(BeginIt begin, EndIt end)
       : begin_{std::move(begin)}, end_{std::move(end)} {}
-  CISTA_CUDA_COMPAT BeginIt begin() const { return begin_; }
-  CISTA_CUDA_COMPAT EndIt end() const { return end_; }
-  CISTA_CUDA_COMPAT reference_type operator[](std::size_t const i) const {
+  CISTA_GPU_COMPAT BeginIt begin() const { return begin_; }
+  CISTA_GPU_COMPAT EndIt end() const { return end_; }
+  CISTA_GPU_COMPAT reference_type operator[](std::size_t const i) const {
     return *std::next(begin_, static_cast<difference_type>(i));
   }
-  CISTA_CUDA_COMPAT value_type const* data() const { return begin_; }
-  CISTA_CUDA_COMPAT friend BeginIt begin(it_range const& r) {
-    return r.begin();
-  }
-  CISTA_CUDA_COMPAT friend EndIt end(it_range const& r) { return r.end(); }
-  CISTA_CUDA_COMPAT reference_type front() const { return *begin_; }
-  CISTA_CUDA_COMPAT reference_type back() const {
+  CISTA_GPU_COMPAT value_type const* data() const { return begin_; }
+  CISTA_GPU_COMPAT friend BeginIt begin(it_range const& r) { return r.begin(); }
+  CISTA_GPU_COMPAT friend EndIt end(it_range const& r) { return r.end(); }
+  CISTA_GPU_COMPAT reference_type front() const { return *begin_; }
+  CISTA_GPU_COMPAT reference_type back() const {
     return *std::next(begin_, static_cast<difference_type>(size() - 1U));
   }
-  CISTA_CUDA_COMPAT std::size_t size() const {
+  CISTA_GPU_COMPAT std::size_t size() const {
     return static_cast<std::size_t>(std::distance(begin_, end_));
   }
-  CISTA_CUDA_COMPAT bool empty() const { return begin_ == end_; }
+  CISTA_GPU_COMPAT bool empty() const { return begin_ == end_; }
   BeginIt begin_;
   EndIt end_;
 };

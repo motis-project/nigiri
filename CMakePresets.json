@@ -138,6 +138,17 @@
         "CMAKE_CUDA_COMPILER": "/usr/local/cuda/bin/nvcc",
         "CMAKE_CUDA_HOST_COMPILER": "g++-15"
       }
+    },
+    {
+      "name": "hip",
+      "displayName": "Linux HIP RelWithDebInfo",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/hip",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "NIGIRI_HIP": "ON",
+        "CMAKE_HIP_COMPILER": "/opt/rocm/llvm/bin/clang++"
+      }
     }
   ],
   "buildPresets": [
@@ -176,6 +187,10 @@
     {
       "name": "cuda",
       "configurePreset": "cuda"
+    },
+    {
+      "name": "hip",
+      "configurePreset": "hip"
     }
   ]
 }

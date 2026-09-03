@@ -11,7 +11,7 @@
 #include "fmt/ostream.h"
 #include "fmt/ranges.h"
 
-#include "cista/cuda_check.h"
+#include "cista/gpu_compat.h"
 #include "cista/reflection/comparable.h"
 #include "cista/strong.h"
 
@@ -106,14 +106,14 @@ struct interval {
     return r.end();
   }
 
-  constexpr CISTA_CUDA_COMPAT auto size() const {
+  constexpr CISTA_GPU_COMPAT auto size() const {
     return cista::to_idx(to_ - from_);
   }
 
-  CISTA_CUDA_COMPAT bool empty() const { return to_ - from_ == 0U; }
+  CISTA_GPU_COMPAT bool empty() const { return to_ - from_ == 0U; }
 
-  CISTA_CUDA_COMPAT T operator[](std::size_t const i) const {
-#ifndef __CUDA_ARCH__
+  CISTA_GPU_COMPAT T operator[](std::size_t const i) const {
+#if !defined(__CUDA_ARCH__) && !defined(__HIP_DEVICE_COMPILE__)
     assert(contains(from_ + static_cast<T>(i)));
 #endif
     return from_ + static_cast<T>(i);

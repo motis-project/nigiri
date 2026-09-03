@@ -280,7 +280,7 @@ struct cpu_ws {
   routing::raptor_state rs_;
 };
 
-#if defined(NIGIRI_CUDA)
+#if defined(NIGIRI_GPU)
 struct gpu_ws {
   explicit gpu_ws(routing::gpu::gpu_timetable const& gtt)
       : rs_{std::make_unique<routing::gpu::gpu_raptor_state>(gtt)} {}
@@ -562,13 +562,13 @@ int main(int argc, char* argv[]) {
       return 1;
     }
   }
-#if !defined(NIGIRI_CUDA)
+#if !defined(NIGIRI_GPU)
   if (run_gpu) {
     if (!run_cpu) {
-      std::cerr << "--engines gpu requires a NIGIRI_CUDA build\n";
+      std::cerr << "--engines gpu requires a GPU build (NIGIRI_CUDA or NIGIRI_HIP)\n";
       return 1;
     }
-    std::cout << "NIGIRI_CUDA not enabled -> running CPU only\n";
+    std::cout << "GPU support not enabled -> running CPU only\n";
     run_gpu = false;
   }
 #endif
@@ -606,7 +606,7 @@ int main(int argc, char* argv[]) {
   auto qa_cell = std::optional<result_set>{};
   auto qa_n_cpu_cells = 0U;
 
-#if defined(NIGIRI_CUDA)
+#if defined(NIGIRI_GPU)
   auto gpu_tt = std::optional<routing::gpu::gpu_timetable>{};
   if (run_gpu) {
     gpu_tt.emplace(tt);
@@ -670,7 +670,7 @@ int main(int argc, char* argv[]) {
             }
           }
 
-#if defined(NIGIRI_CUDA)
+#if defined(NIGIRI_GPU)
           if (run_gpu) {
             cells.push_back(run_cell<gpu_ws>(
                 qs, label + "-gpu", gpu_states_v,
