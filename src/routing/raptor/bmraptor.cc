@@ -30,12 +30,11 @@ constexpr auto const kVias = via_offset_t{0U};
 struct slack_cfg {
   double arr_{1.25};
   double trip_{1.25};
-  // Cap on the anchor-profile closure past the window (phase 1b). The exact
-  // margin is the longest anchor travel time, which on a long-distance query
-  // can be most of a day - an extension search wider than the query itself.
-  // Capping trades a residual window dependence for a bounded cost.
-  // 0 = no closure, negative = uncapped/exact.
-  duration_t anchor_margin_cap_{240};
+  // Fixed, ADDITIVE arrival slack in minutes - an alternative to the
+  // multiplicative sigma_arr above, both applied to the same reference
+  // quantity (see relax_arr()): >= 0 switches to "at most N minutes worse
+  // than the anchor implies", < 0 (the default) keeps sigma_arr.
+  double arr_fixed_min_{-1.0};
   // validation switches: run the same three phases but skip the pruning /
   // the final restriction, so a mismatch can be attributed to one of them
   bool no_bounds_{false};
@@ -51,16 +50,29 @@ slack_cfg const& get_slack() {
     if (auto const* v = std::getenv("NIGIRI_BMRAP_TRIP_SLACK"); v != nullptr) {
       c.trip_ = std::max(1.0, std::atof(v));
     }
-    if (auto const* v = std::getenv("NIGIRI_BMRAP_ANCHOR_MARGIN");
+    if (auto const* v = std::getenv("NIGIRI_BMRAP_ARR_SLACK_MIN");
         v != nullptr) {
-      c.anchor_margin_cap_ =
-          duration_t{static_cast<duration_t::rep>(std::atoi(v))};
+      c.arr_fixed_min_ = std::max(0.0, std::atof(v));
     }
     c.no_bounds_ = std::getenv("NIGIRI_BMRAP_NO_BOUNDS") != nullptr;
     c.no_restrict_ = std::getenv("NIGIRI_BMRAP_NO_RESTRICT") != nullptr;
     return c;
   }();
   return cfg;
+}
+
+// Applies the configured arrival slack to a reference duration (minutes):
+// the paper's sigma_arr * reference, or a fixed number of minutes added to
+// it instead, per NIGIRI_BMRAP_ARR_SLACK_MIN. Both call sites relax the
+// SAME reference quantity - (anchor arrival - this journey's own
+// departure), the paper's tau_arr(A(J)) - tau_dep - so the two slack modes
+// stay directly comparable: sigma_arr scales it, the fixed variant pads it
+// by a constant number of minutes regardless of how long that reference
+// already is.
+double relax_arr(double const reference_minutes) {
+  auto const& cfg = get_slack();
+  return cfg.arr_fixed_min_ >= 0.0 ? reference_minutes + cfg.arr_fixed_min_
+                                   : reference_minutes * cfg.arr_;
 }
 
 // One journey of the anchor pareto set J_A. `anchored_` is the query-side
@@ -80,11 +92,30 @@ std::uint8_t trip_budget(std::uint8_t const trips, std::uint8_t const max) {
       std::clamp<double>(std::floor(b), trips, max));
 }
 
-// the paper's anchor journey A(J) of a journey with `trips` trips departing
-// (arriving, for a backward query) at `anchored`: the anchor with the most
-// trips not greater than `trips` that is still available at that time. In a
-// RANGE query "available" means: not anchored before J - a traveller
-// departing at J's departure can still take an anchor departing later.
+// the anchor journey A(J) of a journey with `trips` trips departing
+// (arriving, for a backward query) at `anchored`: among the anchors that are
+// still AVAILABLE at that time (anchored no earlier than J - a traveller
+// departing at J's departure can still take an anchor departing later) and
+// need AT MOST as many trips as J, the one with the EARLIEST arrival.
+//
+// This is the paper's "highest trip count <= |J|" rule on the raw anchor
+// Pareto set (arrival, trips) alone is monotone there - a higher-trip point
+// only survives dominance by arriving strictly earlier, so "most trips"
+// and "earliest arrival" agree. They stop agreeing once the set is cut down
+// to "available at d": that slice is a slice of the full (dep, arr, trips)
+// Pareto set, and within it a later-departing, higher-trip anchor can still
+// have a WORSE arrival than an earlier-departing, lower-trip one (both
+// survive globally on the departure axis, but only one is the better
+// reference at a shared departure). "Most trips" would then pick the worse
+// arrival; "earliest arrival" always picks the objectively best alternative
+// achievable with no more trips than J - trips_budget()/the arrival-slack
+// check compare J against a reference that cannot be beaten "for free" at
+// its own departure, which is the comparison the restriction actually
+// wants. It also plays better with the phase 1b window closure: closing the
+// anchor profile up to the best arrival within reach is enough to make
+// "earliest arrival with trips <= T" complete, whereas "most trips" has no
+// natural completion bound (the highest-trip anchor's departure is
+// unrelated to arrival time).
 template <direction SearchDir>
 anchor const* anchor_of(std::vector<anchor> const& anchors,
                         unixtime_t const anchored,
@@ -98,8 +129,7 @@ anchor const* anchor_of(std::vector<anchor> const& anchors,
     if (a.trips_ > trips || is_better(a.anchored_, anchored)) {
       continue;
     }
-    if (best == nullptr || a.trips_ > best->trips_ ||
-        (a.trips_ == best->trips_ && is_better(a.found_, best->found_))) {
+    if (best == nullptr || is_better(a.found_, best->found_)) {
       best = &a;
     }
   }
@@ -188,9 +218,9 @@ bmrap_bounds compute_bounds(timetable const& tt,
   auto runs = std::vector<run_t>{};
   runs.reserve(anchors.size());
   for (auto const& a : anchors) {
-    auto const travel = (a.found_ - a.anchored_).count();
-    auto const relaxed = i32_minutes{static_cast<std::int32_t>(
-        std::llround(static_cast<double>(travel) * get_slack().arr_))};
+    auto const travel = static_cast<double>((a.found_ - a.anchored_).count());
+    auto const relaxed = i32_minutes{
+        static_cast<std::int32_t>(std::llround(relax_arr(travel)))};
     runs.emplace_back(a.anchored_ + relaxed, trip_budget(a.trips_, budget));
   }
   // Most trips first (the paper processes anchors from most to fewest used
@@ -333,17 +363,59 @@ routing_result bmrap(timetable const& tt,
   // over one max-anchor-travel-time past the window therefore closes the
   // profile of every departure inside it - and the extension is NOT part of
   // the reported window, it only feeds the restriction.
-  auto anchor_margin = duration_t{0};
-  for (auto const& a : anchors) {
-    anchor_margin = std::max(
-        anchor_margin,
-        duration_t{static_cast<duration_t::rep>(
-            std::abs((a.found_ - a.anchored_).count()))});
+  //
+  // Earlier versions derived that margin heuristically (longest ALREADY
+  // FOUND anchor's own travel time, later just capped at an arbitrary
+  // number of minutes) - a guess that could both over- and undershoot,
+  // and was proven unsound when capped (see the anchor_of() comment
+  // above). There is a PROVABLY sufficient bound instead, and it costs
+  // one cheap probe to get exactly: run a single plain (non-multicriteria)
+  // ontrip earliest-arrival search from the window boundary itself
+  // (unlimited trips). Whatever arrival it finds - A_ceiling - is the
+  // EARLIEST possible arrival for ANY departure at or after the boundary,
+  // by definition (that is what an earliest-arrival search computes).
+  // Travel time is never negative, so nothing departing past A_ceiling can
+  // ever arrive before it, which makes it a hard ceiling: an anchor
+  // departing beyond A_ceiling cannot beat an in-window anchor whose own
+  // arrival is already <= A_ceiling, and one departing before it is
+  // exactly what the 2-criteria closure search below still needs to find.
+  // No calendar-time cap, no per-dataset tuning - just this one search's
+  // own result. (It also subsumes the case where phase 1's own
+  // numItineraries-driven extension already pushed anchor_interval past
+  // where A_ceiling would land: the margin below simply comes out <= 0
+  // and the closure search is skipped, no special-casing needed.)
+  auto a_ceiling = std::optional<unixtime_t>{};
+  {
+    auto q_ceiling = q;
+    q_ceiling.start_time_ = kFwd ? anchor_interval.to_ : anchor_interval.from_;
+    q_ceiling.min_connection_count_ = 0U;
+    q_ceiling.extend_interval_earlier_ = false;
+    q_ceiling.extend_interval_later_ = false;
+    auto ceiling_state = search_state{};
+    auto ceiling_algo = raptor_state{};
+    try {
+      auto const r = raptor_search(tt, rtt, ceiling_state, ceiling_algo,
+                                   q_ceiling, SearchDir, timeout);
+      for (auto const& j : *r.journeys_) {
+        if (!a_ceiling.has_value() ||
+            (kFwd ? j.dest_time_ < *a_ceiling : j.dest_time_ > *a_ceiling)) {
+          a_ceiling = j.dest_time_;
+        }
+      }
+    } catch (std::exception const&) {
+      // no ceiling found (or the probe failed) - nothing reachable beyond
+      // the window at all, so there is nothing to close
+    }
   }
-  anchor_margin = std::min(anchor_margin, q.max_travel_time_);
-  if (get_slack().anchor_margin_cap_ >= duration_t{0}) {
-    anchor_margin = std::min(anchor_margin, get_slack().anchor_margin_cap_);
-  }
+  auto const anchor_margin =
+      a_ceiling.has_value()
+          ? std::min(
+                duration_t{static_cast<duration_t::rep>(std::abs(
+                    (kFwd ? *a_ceiling - anchor_interval.to_
+                          : anchor_interval.from_ - *a_ceiling)
+                        .count()))},
+                q.max_travel_time_)
+          : duration_t{0};
   if (anchor_margin > duration_t{0}) {
     auto q_ext = q;
     q_ext.start_time_ =
@@ -494,9 +566,8 @@ routing_result bmrap(timetable const& tt,
     auto const drop =
         trips > trip_budget(a->trips_, std::uint8_t{kMaxTransfers + 1U}) ||
         static_cast<double>(j.travel_time().count()) >
-            static_cast<double>(
-                std::abs((a->found_ - j.start_time_).count())) *
-                get_slack().arr_;
+            relax_arr(static_cast<double>(
+                std::abs((a->found_ - j.start_time_).count())));
     n_restricted += drop ? 1U : 0U;
     return drop;
   });
@@ -579,6 +650,22 @@ template routing_result bmrap_search(timetable const&,
                                      rt_timetable const*,
                                      search_state&,
                                      mcraptor_walk_air_state&,
+                                     query,
+                                     direction,
+                                     std::optional<std::chrono::seconds>);
+
+template routing_result bmrap_search(timetable const&,
+                                     rt_timetable const*,
+                                     search_state&,
+                                     mcraptor_agency_state&,
+                                     query,
+                                     direction,
+                                     std::optional<std::chrono::seconds>);
+
+template routing_result bmrap_search(timetable const&,
+                                     rt_timetable const*,
+                                     search_state&,
+                                     mcraptor_walk_agency_state&,
                                      query,
                                      direction,
                                      std::optional<std::chrono::seconds>);

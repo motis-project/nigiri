@@ -63,6 +63,14 @@ bool mcraptor_supported(query const&, rt_timetable const*);
 //                    only grow). Used for destination pareto pruning.
 //   apply_to(journey&) write the criteria into the journey so the result
 //                    pareto set keeps the trade-offs
+// What a criterion may know about the trip a label just rode. Passed to
+// from_ride() so criteria can score the vehicle itself rather than only
+// its timing.
+struct ride_attrs {
+  clasz clasz_;
+  provider_idx_t provider_;
+};
+
 struct arr_criteria {
   template <direction SearchDir>
   bool dominates(arr_criteria const& o) const {
@@ -85,7 +93,7 @@ struct arr_criteria {
   carried carry() const { return {}; }
   static arr_criteria from_ride(delta_t const arr,
                                 std::uint16_t /* ride duration */,
-                                clasz /* ride class */,
+                                ride_attrs const&,
                                 carried const&) {
     return {arr};
   }
@@ -175,7 +183,7 @@ struct arr_cost_criteria {
   carried carry() const { return {cost_}; }
   static arr_cost_criteria from_ride(delta_t const arr,
                                      std::uint16_t /* ride duration */,
-                                     clasz /* ride class */,
+                                     ride_attrs const&,
                                      carried const& c) {
     return {arr, static_cast<std::uint16_t>(c.cost_ + kBoardCost)};
   }
@@ -271,7 +279,7 @@ struct arr_walk_criteria {
   carried carry() const { return {walk_}; }
   static arr_walk_criteria from_ride(delta_t const arr,
                                      std::uint16_t /* ride duration */,
-                                     clasz /* ride class */,
+                                     ride_attrs const&,
                                      carried const& c) {
     return {arr, c.walk_};
   }
@@ -378,9 +386,9 @@ struct arr_air_criteria_t {
   carried carry() const { return {walk_, air_}; }
   static arr_air_criteria_t from_ride(delta_t const arr,
                                       std::uint16_t /* ride duration */,
-                                      clasz const c,
+                                      ride_attrs const& ra,
                                       carried const& ca) {
-    return {arr, ca.walk_, ca.air_ || is_avoided(c)};
+    return {arr, ca.walk_, ca.air_ || is_avoided(ra.clasz_)};
   }
   static arr_air_criteria_t at_start(delta_t const arr,
                                      std::uint16_t const ingress) {
@@ -414,6 +422,116 @@ struct arr_air_criteria_t {
   delta_t arr_;
   std::uint16_t walk_;  // minutes on foot, 0 (and ignored) unless WithWalk
   bool air_;  // journey contains at least one leg of an avoided class
+};
+
+// arrival time + number of AGENCY SWITCHES, optionally combined with the
+// walking duration (WithWalk).
+//
+// The label carries the operator of the trip it last rode plus the number
+// of switches so far; boarding the next trip compares the two and charges
+// one switch when they differ. Round-0 labels have no agency yet, so the
+// first boarding is always free.
+//
+// Dominance needs care, because the carried agency is not just baggage -
+// it prices the FUTURE. A label that arrives earlier with the same number
+// of switches but a different operator may still cost one more switch
+// downstream, so it may only dominate when it is a full switch ahead:
+//
+//   penalty = (same agency, or no agency yet) ? 0 : 1
+//   dominates  <=>  arr better-or-equal && switches + penalty <= o.switches
+//
+// A label with no agency yet can board anything for free, which is why it
+// pays no penalty. At the destination the journey is over and the agency
+// stops mattering, so completed_dominates drops the penalty entirely.
+//
+// Like walking and the flight flag this is absolute (independent of the
+// departure time), so the cross-departure rRAPTOR reuse rule is the plain
+// in-bag dominance.
+template <bool WithWalk>
+struct arr_agency_criteria_t {
+  static provider_idx_t no_agency() { return provider_idx_t::invalid(); }
+
+  std::uint8_t switch_penalty(arr_agency_criteria_t const& o) const {
+    return (agency_ == o.agency_ || agency_ == no_agency()) ? 0U : 1U;
+  }
+
+  template <direction SearchDir>
+  bool dominates(arr_agency_criteria_t const& o) const {
+    constexpr auto const kF = SearchDir == direction::kForward;
+    return (kF ? arr_ <= o.arr_ : arr_ >= o.arr_) &&
+           (!WithWalk || walk_ <= o.walk_) &&
+           switches_ + switch_penalty(o) <= o.switches_;
+  }
+
+  // the journey ends here: no further boarding, so the carried agency is
+  // irrelevant and only the realized switch count counts
+  template <direction SearchDir>
+  bool completed_dominates(arr_agency_criteria_t const& o) const {
+    constexpr auto const kF = SearchDir == direction::kForward;
+    return (kF ? arr_ <= o.arr_ : arr_ >= o.arr_) &&
+           (!WithWalk || walk_ <= o.walk_) && switches_ <= o.switches_;
+  }
+
+  struct carried {
+    template <direction SearchDir>
+    bool dominates(carried const& o) const {
+      auto const penalty =
+          (agency_ == o.agency_ || agency_ == provider_idx_t::invalid()) ? 0U
+                                                                        : 1U;
+      return (!WithWalk || walk_ <= o.walk_) &&
+             switches_ + penalty <= o.switches_;
+    }
+    bool operator==(carried const&) const = default;
+    std::uint16_t walk_;
+    provider_idx_t agency_;
+    std::uint8_t switches_;
+  };
+  carried carry() const { return {walk_, agency_, switches_}; }
+
+  static arr_agency_criteria_t from_ride(delta_t const arr,
+                                         std::uint16_t /* ride duration */,
+                                         ride_attrs const& ra,
+                                         carried const& c) {
+    auto const switched = c.agency_ != no_agency() &&
+                          ra.provider_ != no_agency() &&
+                          c.agency_ != ra.provider_;
+    return {arr, c.walk_, ra.provider_,
+            static_cast<std::uint8_t>(c.switches_ + (switched ? 1U : 0U))};
+  }
+  static arr_agency_criteria_t at_start(delta_t const arr,
+                                        std::uint16_t const ingress) {
+    return {arr, WithWalk ? ingress : std::uint16_t{0U}, no_agency(), 0U};
+  }
+  arr_agency_criteria_t with_transfer(int const dt) const {
+    return {clamp(arr_ + dt), walk_, agency_, switches_};
+  }
+  arr_agency_criteria_t with_walk(int const dt,
+                                  std::uint16_t const duration) const {
+    return {clamp(arr_ + dt),
+            static_cast<std::uint16_t>(WithWalk ? walk_ + duration : 0U),
+            agency_, switches_};
+  }
+  arr_agency_criteria_t projected_to(delta_t const arr) const {
+    return {arr, walk_, agency_, switches_};
+  }
+
+  template <direction SearchDir>
+  bool reuse_dominates(arr_agency_criteria_t const& o, delta_t const /*dep*/,
+                       delta_t const /*o_dep*/) const {
+    return dominates<SearchDir>(o);
+  }
+
+  void apply_to(journey& j) const {
+    if constexpr (WithWalk) {
+      j.criteria_cost_ = walk_;
+    }
+    j.criteria_agency_ = switches_;
+  }
+
+  delta_t arr_;
+  std::uint16_t walk_;  // minutes on foot, 0 (and ignored) unless WithWalk
+  provider_idx_t agency_;  // operator of the trip last ridden
+  std::uint8_t switches_;  // agency changes between consecutive trips
 };
 
 template <typename Criteria>
@@ -940,5 +1058,20 @@ using mcraptor_air = basic_mcraptor<SearchDir, arr_air_criteria>;
 
 template <direction SearchDir>
 using mcraptor_walk_air = basic_mcraptor<SearchDir, arr_walk_air_criteria>;
+
+// arrival + agency switches, and the same with walking added
+using arr_agency_criteria = arr_agency_criteria_t<false>;
+using arr_walk_agency_criteria = arr_agency_criteria_t<true>;
+
+using mcraptor_agency_state = basic_mcraptor_state<arr_agency_criteria>;
+using mcraptor_walk_agency_state =
+    basic_mcraptor_state<arr_walk_agency_criteria>;
+
+template <direction SearchDir>
+using mcraptor_agency = basic_mcraptor<SearchDir, arr_agency_criteria>;
+
+template <direction SearchDir>
+using mcraptor_walk_agency =
+    basic_mcraptor<SearchDir, arr_walk_agency_criteria>;
 
 }  // namespace nigiri::routing

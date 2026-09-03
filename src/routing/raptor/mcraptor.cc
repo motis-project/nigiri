@@ -418,8 +418,20 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(unsigned cons
         }
         auto const ride_duration =
             static_cast<std::uint16_t>(dir(by_transport - rl.board_dep_));
-        auto const ride_crit = Criteria::from_ride(
-            by_transport, ride_duration, tt_.route_clasz_[r], rl.carried_);
+        // operator of the ride, taken at the section the passenger
+        // alights from (identical to the trip's operator for the usual
+        // single-provider trip, correct for the ones that hand over
+        // mid-run)
+        auto const secs = tt_.transport_section_providers_[rl.t_.t_idx_];
+        auto const n_secs = static_cast<std::uint32_t>(secs.size());
+        auto const sec = static_cast<std::uint32_t>(kFwd ? stop_idx - 1 : stop_idx);
+        auto const ride =
+            ride_attrs{.clasz_ = tt_.route_clasz_[r],
+                       .provider_ = n_secs == 0U
+                                        ? provider_idx_t::invalid()
+                                        : secs[std::min(sec, n_secs - 1U)]};
+        auto const ride_crit =
+            Criteria::from_ride(by_transport, ride_duration, ride, rl.carried_);
         // destination pareto pruning: optimistic projection to the
         // destination checked against the (round, criteria) frontier
         if (dest_dominates(k, ride_crit.projected_to(
@@ -1158,6 +1170,20 @@ template struct basic_mcraptor<direction::kBackward, arr_walk_air_criteria,
 template struct basic_mcraptor<direction::kForward, arr_walk_air_criteria,
                                true>;
 template struct basic_mcraptor<direction::kBackward, arr_walk_air_criteria,
+                               true>;
+template struct basic_mcraptor<direction::kForward, arr_agency_criteria,
+                               false>;
+template struct basic_mcraptor<direction::kBackward, arr_agency_criteria,
+                               false>;
+template struct basic_mcraptor<direction::kForward, arr_agency_criteria, true>;
+template struct basic_mcraptor<direction::kBackward, arr_agency_criteria, true>;
+template struct basic_mcraptor<direction::kForward, arr_walk_agency_criteria,
+                               false>;
+template struct basic_mcraptor<direction::kBackward, arr_walk_agency_criteria,
+                               false>;
+template struct basic_mcraptor<direction::kForward, arr_walk_agency_criteria,
+                               true>;
+template struct basic_mcraptor<direction::kBackward, arr_walk_agency_criteria,
                                true>;
 
 }  // namespace nigiri::routing
