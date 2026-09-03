@@ -215,6 +215,30 @@ template routing_result raptor_search(timetable const&,
                                       direction,
                                       std::optional<std::chrono::seconds>);
 
+template routing_result raptor_search(timetable const&,
+                                      rt_timetable const*,
+                                      search_state&,
+                                      mcraptor_walk_state&,
+                                      query,
+                                      direction,
+                                      std::optional<std::chrono::seconds>);
+
+template routing_result raptor_search(timetable const&,
+                                      rt_timetable const*,
+                                      search_state&,
+                                      mcraptor_air_state&,
+                                      query,
+                                      direction,
+                                      std::optional<std::chrono::seconds>);
+
+template routing_result raptor_search(timetable const&,
+                                      rt_timetable const*,
+                                      search_state&,
+                                      mcraptor_walk_air_state&,
+                                      query,
+                                      direction,
+                                      std::optional<std::chrono::seconds>);
+
 #if defined(NIGIRI_CUDA)
 template routing_result raptor_search(timetable const&,
                                       rt_timetable const*,

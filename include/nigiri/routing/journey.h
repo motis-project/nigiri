@@ -80,10 +80,12 @@ struct journey {
   bool dominates(journey const& o) const {
     if (start_time_ <= dest_time_) {
       return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
-             dest_time_ <= o.dest_time_ && criteria_cost_ <= o.criteria_cost_;
+             dest_time_ <= o.dest_time_ && criteria_cost_ <= o.criteria_cost_ &&
+             criteria_air_ <= o.criteria_air_;
     } else {
       return transfers_ <= o.transfers_ && start_time_ <= o.start_time_ &&
-             dest_time_ >= o.dest_time_ && criteria_cost_ <= o.criteria_cost_;
+             dest_time_ >= o.dest_time_ && criteria_cost_ <= o.criteria_cost_ &&
+             criteria_air_ <= o.criteria_air_;
     }
   }
 
@@ -130,6 +132,12 @@ struct journey {
   // configurations); 0 for all others, which keeps their dominance
   // identical to (start, dest, transfers).
   std::uint16_t criteria_cost_{0U};
+  // second, independent pareto criterion: does the journey use a flight?
+  // A single packed criteria_cost_ could not express this - it would order
+  // (air, walk) lexicographically instead of pareto-wise and drop the
+  // cheap-but-flying alternative. false for every algorithm that does not
+  // optimize it, which keeps their dominance unchanged.
+  bool criteria_air_{false};
   bool error_{false};
   bool is_reconstructed_{false};
 };

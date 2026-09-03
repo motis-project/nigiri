@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include "fmt/format.h"
 
 #include "utl/enumerate.h"
@@ -207,6 +209,18 @@ struct search {
     // Real-departure point-query semantics (= the motis ontrip journey
     // normalization) would have to land in raptor and mcraptor together.
   }
+
+  // configuration hook between construction (which builds the algorithm,
+  // including the lower-bound dijkstra) and execute(). Used by the
+  // BM-RAPTOR driver to install the restricted-pareto pruning bounds.
+  Algo& algo() { return algo_; }
+
+  // Optional per-start-time transfer limit. A range search otherwise runs
+  // every departure of the window with one global q_.max_transfers_, which
+  // makes a departure's result depend on the whole window rather than on
+  // the departure - BM-RAPTOR's trip budget is derived from the anchor
+  // journeys and is genuinely per-departure.
+  std::function<std::uint8_t(unixtime_t)> max_transfers_fn_{};
 
   routing_result execute() {
     auto span = get_otel_tracer()->StartSpan("search::execute");
@@ -463,7 +477,10 @@ private:
               start_time + (kFwd ? 1 : -1) *
                                (std::min(fastest_direct_, q_.max_travel_time_) +
                                 duration_t{1});
-          algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
+          auto const max_transfers = max_transfers_fn_
+                                         ? max_transfers_fn_(start_time)
+                                         : q_.max_transfers_;
+          algo_.execute(start_time, max_transfers, worst_time_at_dest,
                         q_.prf_idx_, state_.results_);
           kFwd ? ++stats_.n_execute_fwd_ : ++stats_.n_execute_bwd_;
 

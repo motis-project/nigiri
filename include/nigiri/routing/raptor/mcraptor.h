@@ -8,6 +8,7 @@
 #include <array>
 #include <limits>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include "cista/containers/bitvec.h"
@@ -19,6 +20,7 @@
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
+#include "nigiri/routing/raptor/bmrap_bounds.h"
 #include "nigiri/routing/raptor/breadcrumb.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
@@ -83,6 +85,7 @@ struct arr_criteria {
   carried carry() const { return {}; }
   static arr_criteria from_ride(delta_t const arr,
                                 std::uint16_t /* ride duration */,
+                                clasz /* ride class */,
                                 carried const&) {
     return {arr};
   }
@@ -172,6 +175,7 @@ struct arr_cost_criteria {
   carried carry() const { return {cost_}; }
   static arr_cost_criteria from_ride(delta_t const arr,
                                      std::uint16_t /* ride duration */,
+                                     clasz /* ride class */,
                                      carried const& c) {
     return {arr, static_cast<std::uint16_t>(c.cost_ + kBoardCost)};
   }
@@ -219,6 +223,197 @@ struct arr_cost_criteria {
 
   delta_t arr_;
   std::uint16_t cost_;  // extras only: walk surcharge + boarding penalties
+};
+
+// arrival time + WALKING duration in minutes: the third criterion of the
+// classic multicriteria RAPTOR (and of the restricted-pareto paper) -
+// "how much of this journey am I on my feet".
+//
+// Counted: the ingress offset / start footpath (at_start), every footpath
+// relaxation between stops and the intermodal egress offset (with_walk).
+// NOT counted: the same-station transfer buffer (with_transfer) - that is
+// the minimum change time at a stop, i.e. waiting, not walking; and the
+// riding and waiting time, which the arrival criterion already carries.
+//
+// Unlike arr_cost_criteria this is a genuinely independent dimension:
+// nothing about it is a function of the arrival time or the number of
+// transfers, so the pareto set really does gain the "leave later / arrive
+// later but walk less" alternatives. It is also departure-independent,
+// which makes both the completed-journey dominance and the cross-departure
+// rRAPTOR reuse rule identical to the plain in-bag dominance - no
+// departure discounting is needed anywhere.
+struct arr_walk_criteria {
+  template <direction SearchDir>
+  bool dominates(arr_walk_criteria const& o) const {
+    constexpr auto const kF = SearchDir == direction::kForward;
+    return (kF ? arr_ <= o.arr_ : arr_ >= o.arr_) && walk_ <= o.walk_;
+  }
+
+  // walking is realized as soon as it is walked and never shrinks, so the
+  // in-bag rule is already the journey-level rule; it also stays valid
+  // against the lb-projection of an intermediate label (every completion
+  // has arr_f >= projected arr and walk_f >= walk).
+  template <direction SearchDir>
+  bool completed_dominates(arr_walk_criteria const& o) const {
+    return dominates<SearchDir>(o);
+  }
+
+  struct carried {
+    // same boarding => identical future arrivals; only the walking done so
+    // far distinguishes the labels
+    template <direction SearchDir>
+    bool dominates(carried const& o) const {
+      return walk_ <= o.walk_;
+    }
+    bool operator==(carried const&) const = default;
+    std::uint16_t walk_;
+  };
+  carried carry() const { return {walk_}; }
+  static arr_walk_criteria from_ride(delta_t const arr,
+                                     std::uint16_t /* ride duration */,
+                                     clasz /* ride class */,
+                                     carried const& c) {
+    return {arr, c.walk_};
+  }
+  static arr_walk_criteria at_start(delta_t const arr,
+                                    std::uint16_t const ingress) {
+    return {arr, ingress};
+  }
+  arr_walk_criteria with_transfer(int const dt) const {
+    return {clamp(arr_ + dt), walk_};
+  }
+  arr_walk_criteria with_walk(int const dt,
+                              std::uint16_t const duration) const {
+    return {clamp(arr_ + dt), static_cast<std::uint16_t>(walk_ + duration)};
+  }
+  arr_walk_criteria projected_to(delta_t const arr) const {
+    return {arr, walk_};
+  }
+
+  // cross-departure rRAPTOR reuse dominance: both criteria are absolute
+  // (walking does not depend on when you started), so a later-departing
+  // label dominates an earlier one exactly when it dominates it in the bag.
+  template <direction SearchDir>
+  bool reuse_dominates(arr_walk_criteria const& o, delta_t const /*dep*/,
+                       delta_t const /*o_dep*/) const {
+    return dominates<SearchDir>(o);
+  }
+
+  void apply_to(journey& j) const { j.criteria_cost_ = walk_; }
+
+  delta_t arr_;
+  std::uint16_t walk_;  // minutes on foot: offsets + footpaths
+};
+
+// arrival time + "does this journey use a flight" - a BINARY criterion,
+// optionally combined with the walking duration (WithWalk).
+//
+// The point is that this is a pareto dimension rather than a filter: a
+// clasz mask would remove flights from the search entirely, whereas here
+// the result keeps BOTH the fast itinerary that flies and the best one
+// that does not, and lets the caller pick. `false` dominates `true`, so a
+// flight has to pay for itself in arrival time (and walking) to survive.
+//
+// Like walking, the flag is absolute - it does not depend on the departure
+// time and never shrinks once set - so completed-journey dominance and the
+// cross-departure rRAPTOR reuse rule are both just the in-bag dominance.
+//
+// The flag is raised by from_ride() from the boarded route's clasz, which
+// is why from_ride takes it; it then rides along in `carried` for the rest
+// of the journey.
+template <bool WithWalk>
+struct arr_air_criteria_t {
+  static constexpr bool has_walk() { return WithWalk; }
+
+  // Which vehicle classes the criterion counts. Flights by default;
+  // NIGIRI_MC_AVOID_CLASZ takes a comma-separated list of clasz names
+  // ("AIR", "SUBWAY", ...) so the same criterion can express "prefer to
+  // avoid X" for any class.
+  static inline clasz_mask_t const kAvoided = [] {
+    auto const* const v = std::getenv("NIGIRI_MC_AVOID_CLASZ");
+    if (v == nullptr) {
+      return to_mask(clasz::kAir);
+    }
+    auto mask = clasz_mask_t{0U};
+    auto const str = std::string_view{v};
+    for (auto pos = std::size_t{0U}; pos < str.size();) {
+      auto end = str.find(',', pos);
+      if (end == std::string_view::npos) {
+        end = str.size();
+      }
+      auto const name = str.substr(pos, end - pos);
+      for (auto i = std::uint8_t{0U}; i != kNumClasses; ++i) {
+        if (to_str(static_cast<clasz>(i)) == name) {
+          mask |= to_mask(static_cast<clasz>(i));
+        }
+      }
+      pos = end + 1U;
+    }
+    return mask == 0U ? to_mask(clasz::kAir) : mask;
+  }();
+
+  static bool is_avoided(clasz const c) { return is_allowed(kAvoided, c); }
+
+  template <direction SearchDir>
+  bool dominates(arr_air_criteria_t const& o) const {
+    constexpr auto const kF = SearchDir == direction::kForward;
+    return (kF ? arr_ <= o.arr_ : arr_ >= o.arr_) &&
+           (!WithWalk || walk_ <= o.walk_) && air_ <= o.air_;
+  }
+
+  template <direction SearchDir>
+  bool completed_dominates(arr_air_criteria_t const& o) const {
+    return dominates<SearchDir>(o);
+  }
+
+  struct carried {
+    template <direction SearchDir>
+    bool dominates(carried const& o) const {
+      return (!WithWalk || walk_ <= o.walk_) && air_ <= o.air_;
+    }
+    bool operator==(carried const&) const = default;
+    std::uint16_t walk_;
+    bool air_;
+  };
+  carried carry() const { return {walk_, air_}; }
+  static arr_air_criteria_t from_ride(delta_t const arr,
+                                      std::uint16_t /* ride duration */,
+                                      clasz const c,
+                                      carried const& ca) {
+    return {arr, ca.walk_, ca.air_ || is_avoided(c)};
+  }
+  static arr_air_criteria_t at_start(delta_t const arr,
+                                     std::uint16_t const ingress) {
+    return {arr, WithWalk ? ingress : std::uint16_t{0U}, false};
+  }
+  arr_air_criteria_t with_transfer(int const dt) const {
+    return {clamp(arr_ + dt), walk_, air_};
+  }
+  arr_air_criteria_t with_walk(int const dt,
+                               std::uint16_t const duration) const {
+    return {clamp(arr_ + dt),
+            static_cast<std::uint16_t>(WithWalk ? walk_ + duration : 0U), air_};
+  }
+  arr_air_criteria_t projected_to(delta_t const arr) const {
+    return {arr, walk_, air_};
+  }
+
+  template <direction SearchDir>
+  bool reuse_dominates(arr_air_criteria_t const& o, delta_t const /*dep*/,
+                       delta_t const /*o_dep*/) const {
+    return dominates<SearchDir>(o);
+  }
+
+  void apply_to(journey& j) const {
+    if constexpr (WithWalk) {
+      j.criteria_cost_ = walk_;
+    }
+    j.criteria_air_ = air_;
+  }
+
+  delta_t arr_;
+  std::uint16_t walk_;  // minutes on foot, 0 (and ignored) unless WithWalk
+  bool air_;  // journey contains at least one leg of an avoided class
 };
 
 template <typename Criteria>
@@ -493,6 +688,14 @@ struct basic_mcraptor {
   // so ping start times are anchor-internal.
   void set_tight_start() { tight_start_ = true; }
 
+  // BM-RAPTOR main search (restricted pareto sets,
+  // doi:10.1137/1.9781611975499.5): bounds computed by the backward
+  // pruning search discard every arrival that cannot reach the target
+  // within the remaining trip budget and the arrival slack. nullptr (the
+  // default) = plain unbounded McRAPTOR. The bounds must be built on the
+  // same base day as this search.
+  void set_bounds(bmrap_bounds const* b) { bounds_ = b; }
+
   // Core legs are materialized by execute() (breadcrumb chase); this only
   // adds first/last-mile offset legs and the start footpath.
   void reconstruct(query const&, journey&);
@@ -547,6 +750,33 @@ private:
                    typename state_t::breadcrumb const&,
                    std::uint8_t round);
   delta_t transfer_buffer(std::uint64_t l) const;
+
+  // BM-RAPTOR bound check (the paper's main search): an arrival at stop l
+  // in round k with time t is discarded iff t is worse than
+  // tau_dep^<-(l, budget - k). `slack` shifts the bound into the looser
+  // direction for arrivals that do not have to pay l's transfer buffer
+  // before boarding (footpath arrivals): the pruning search stores the
+  // post-transfer value, which is exactly the right reference for transit
+  // arrivals but transfer_time too tight for footpath arrivals.
+  bool bound_prunes(unsigned const k,
+                    std::uint32_t const l,
+                    delta_t const t,
+                    int const slack = 0) const {
+    if (bounds_ == nullptr) {
+      return false;
+    }
+    // the trip budget of the CURRENT start time (execute's max_transfers),
+    // not the matrix-wide maximum: under BM-RAPTOR every departure has its
+    // own budget floor(sigma_tr * K(d)), and the matrix is only sized for
+    // the largest one in the window
+    auto const budget =
+        std::min<unsigned>(cur_budget_, bounds_->budget_);
+    if (k > budget) {
+      return true;
+    }
+    return !is_better_or_eq(
+        t, clamp(static_cast<int>(bounds_->at(budget - k, l)) + slack));
+  }
 
   // Destination pruning (OTP: HeuristicsProvider.qualify +
   // DestinationArrivalPaths): scalar earliest-arrival tightening is wrong
@@ -636,6 +866,11 @@ private:
   // pure search-window bound (never journey-tightened - the dest_bag_
   // pareto frontier owns all destination pruning)
   delta_t worst_at_dest_;
+  // restricted-pareto pruning bounds, nullptr = plain McRAPTOR
+  bmrap_bounds const* bounds_{nullptr};
+  // trip budget of the start time currently being executed (in trips, i.e.
+  // max_transfers + 1); indexes the bound rows
+  unsigned cur_budget_{0U};
   std::vector<dest_entry> dest_bag_;
   // current start's departure (query start time in delta units); tagged
   // onto every label inserted this execute so range reuse can compare
@@ -686,5 +921,24 @@ using mcraptor_cost_state = basic_mcraptor_state<arr_cost_criteria>;
 
 template <direction SearchDir>
 using mcraptor_cost = basic_mcraptor<SearchDir, arr_cost_criteria>;
+
+// arrival + walking duration configuration
+using mcraptor_walk_state = basic_mcraptor_state<arr_walk_criteria>;
+
+template <direction SearchDir>
+using mcraptor_walk = basic_mcraptor<SearchDir, arr_walk_criteria>;
+
+// arrival + no-flight configuration, and the same with walking added
+using arr_air_criteria = arr_air_criteria_t<false>;
+using arr_walk_air_criteria = arr_air_criteria_t<true>;
+
+using mcraptor_air_state = basic_mcraptor_state<arr_air_criteria>;
+using mcraptor_walk_air_state = basic_mcraptor_state<arr_walk_air_criteria>;
+
+template <direction SearchDir>
+using mcraptor_air = basic_mcraptor<SearchDir, arr_air_criteria>;
+
+template <direction SearchDir>
+using mcraptor_walk_air = basic_mcraptor<SearchDir, arr_walk_air_criteria>;
 
 }  // namespace nigiri::routing

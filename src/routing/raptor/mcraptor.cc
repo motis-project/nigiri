@@ -279,6 +279,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
     profile_idx_t const prf_idx,
     pareto_set<journey>& results) {
   auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
+  cur_budget_ = end_k - 1U;  // trips allowed for this start time
 
   worst_at_dest_ =
       get_best(unix_to_delta(base(), worst_time_at_dest), worst_at_dest_);
@@ -349,6 +350,9 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
               [&] {
                 if constexpr (std::is_same_v<Criteria, arr_cost_criteria>) {
                   return static_cast<unsigned>(e.crit_.cost_);
+                } else if constexpr (std::is_same_v<Criteria,
+                                                    arr_walk_criteria>) {
+                  return static_cast<unsigned>(e.crit_.walk_);
                 } else {
                   return 0U;
                 }
@@ -404,10 +408,18 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(unsigned cons
           ++stats_.route_update_prevented_by_lower_bound_;
           continue;
         }
+        // BM-RAPTOR restricted-pareto pruning: this is the paper's
+        // "arrives at stop v in round i with time tau" test - the pruning
+        // search stores the post-transfer-buffer value, so `by_transport`
+        // (the raw transit arrival) is the matching reference.
+        if (bound_prunes(k, static_cast<std::uint32_t>(l_idx), by_transport)) {
+          ++stats_.route_update_prevented_by_lower_bound_;
+          continue;
+        }
         auto const ride_duration =
             static_cast<std::uint16_t>(dir(by_transport - rl.board_dep_));
-        auto const ride_crit =
-            Criteria::from_ride(by_transport, ride_duration, rl.carried_);
+        auto const ride_crit = Criteria::from_ride(
+            by_transport, ride_duration, tt_.route_clasz_[r], rl.carried_);
         // destination pareto pruning: optimistic projection to the
         // destination checked against the (round, criteria) frontier
         if (dest_dominates(k, ride_crit.projected_to(
@@ -643,6 +655,14 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
         }
         if (dest_dominates(k, fp_crit.projected_to(
                                   clamp(fp_target_time + dir(lower_bound))))) {
+          ++stats_.fp_update_prevented_by_lower_bound_;
+          continue;
+        }
+        // BM-RAPTOR restricted-pareto pruning: a footpath arrival boards at
+        // the target without paying its transfer buffer again, so the bound
+        // (which is stored post-transfer) is relaxed by that buffer.
+        if (bound_prunes(k, static_cast<std::uint32_t>(target), fp_target_time,
+                         transfer_buffer(target))) {
           ++stats_.fp_update_prevented_by_lower_bound_;
           continue;
         }
@@ -1123,5 +1143,21 @@ template struct basic_mcraptor<direction::kForward, arr_criteria, true>;
 template struct basic_mcraptor<direction::kBackward, arr_criteria, true>;
 template struct basic_mcraptor<direction::kForward, arr_cost_criteria, true>;
 template struct basic_mcraptor<direction::kBackward, arr_cost_criteria, true>;
+template struct basic_mcraptor<direction::kForward, arr_walk_criteria, false>;
+template struct basic_mcraptor<direction::kBackward, arr_walk_criteria, false>;
+template struct basic_mcraptor<direction::kForward, arr_walk_criteria, true>;
+template struct basic_mcraptor<direction::kBackward, arr_walk_criteria, true>;
+template struct basic_mcraptor<direction::kForward, arr_air_criteria, false>;
+template struct basic_mcraptor<direction::kBackward, arr_air_criteria, false>;
+template struct basic_mcraptor<direction::kForward, arr_air_criteria, true>;
+template struct basic_mcraptor<direction::kBackward, arr_air_criteria, true>;
+template struct basic_mcraptor<direction::kForward, arr_walk_air_criteria,
+                               false>;
+template struct basic_mcraptor<direction::kBackward, arr_walk_air_criteria,
+                               false>;
+template struct basic_mcraptor<direction::kForward, arr_walk_air_criteria,
+                               true>;
+template struct basic_mcraptor<direction::kBackward, arr_walk_air_criteria,
+                               true>;
 
 }  // namespace nigiri::routing
