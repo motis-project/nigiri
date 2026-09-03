@@ -418,18 +418,21 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(unsigned cons
         }
         auto const ride_duration =
             static_cast<std::uint16_t>(dir(by_transport - rl.board_dep_));
-        // operator of the ride, taken at the section the passenger
-        // alights from (identical to the trip's operator for the usual
-        // single-provider trip, correct for the ones that hand over
-        // mid-run)
-        auto const secs = tt_.transport_section_providers_[rl.t_.t_idx_];
-        auto const n_secs = static_cast<std::uint32_t>(secs.size());
-        auto const sec = static_cast<std::uint32_t>(kFwd ? stop_idx - 1 : stop_idx);
-        auto const ride =
-            ride_attrs{.clasz_ = tt_.route_clasz_[r],
-                       .provider_ = n_secs == 0U
-                                        ? provider_idx_t::invalid()
-                                        : secs[std::min(sec, n_secs - 1U)]};
+        // clasz of the ride, taken at the section the passenger alights
+        // from. route_clasz_[r] is only clasz_sections[0] - the FIRST
+        // section of the route - so a run that changes category mid-way
+        // (an IC continuing as a regional service, a through-running
+        // train) would be scored by a class the passenger may never ride.
+        // The API reports the boarding section's clasz, so for those runs
+        // the two can still differ; sections are uniform for the vast
+        // majority of routes, where all of this collapses to one value.
+        auto const sec_clasz = tt_.route_section_clasz_[r];
+        auto const n_sec = static_cast<std::uint32_t>(sec_clasz.size());
+        auto const sec =
+            static_cast<std::uint32_t>(kFwd ? stop_idx - 1 : stop_idx);
+        auto const ride = ride_attrs{
+            .clasz_ = n_sec == 0U ? tt_.route_clasz_[r]
+                                  : sec_clasz[std::min(sec, n_sec - 1U)]};
         auto const ride_crit =
             Criteria::from_ride(by_transport, ride_duration, ride, rl.carried_);
         // destination pareto pruning: optimistic projection to the
@@ -1171,19 +1174,19 @@ template struct basic_mcraptor<direction::kForward, arr_walk_air_criteria,
                                true>;
 template struct basic_mcraptor<direction::kBackward, arr_walk_air_criteria,
                                true>;
-template struct basic_mcraptor<direction::kForward, arr_agency_criteria,
+template struct basic_mcraptor<direction::kForward, arr_clasz_criteria,
                                false>;
-template struct basic_mcraptor<direction::kBackward, arr_agency_criteria,
+template struct basic_mcraptor<direction::kBackward, arr_clasz_criteria,
                                false>;
-template struct basic_mcraptor<direction::kForward, arr_agency_criteria, true>;
-template struct basic_mcraptor<direction::kBackward, arr_agency_criteria, true>;
-template struct basic_mcraptor<direction::kForward, arr_walk_agency_criteria,
+template struct basic_mcraptor<direction::kForward, arr_clasz_criteria, true>;
+template struct basic_mcraptor<direction::kBackward, arr_clasz_criteria, true>;
+template struct basic_mcraptor<direction::kForward, arr_walk_clasz_criteria,
                                false>;
-template struct basic_mcraptor<direction::kBackward, arr_walk_agency_criteria,
+template struct basic_mcraptor<direction::kBackward, arr_walk_clasz_criteria,
                                false>;
-template struct basic_mcraptor<direction::kForward, arr_walk_agency_criteria,
+template struct basic_mcraptor<direction::kForward, arr_walk_clasz_criteria,
                                true>;
-template struct basic_mcraptor<direction::kBackward, arr_walk_agency_criteria,
+template struct basic_mcraptor<direction::kBackward, arr_walk_clasz_criteria,
                                true>;
 
 }  // namespace nigiri::routing

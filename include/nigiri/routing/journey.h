@@ -82,12 +82,12 @@ struct journey {
       return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
              dest_time_ <= o.dest_time_ && criteria_cost_ <= o.criteria_cost_ &&
              criteria_air_ <= o.criteria_air_ &&
-             criteria_agency_ <= o.criteria_agency_;
+             criteria_clasz_ <= o.criteria_clasz_;
     } else {
       return transfers_ <= o.transfers_ && start_time_ <= o.start_time_ &&
              dest_time_ >= o.dest_time_ && criteria_cost_ <= o.criteria_cost_ &&
              criteria_air_ <= o.criteria_air_ &&
-             criteria_agency_ <= o.criteria_agency_;
+             criteria_clasz_ <= o.criteria_clasz_;
     }
   }
 
@@ -140,8 +140,8 @@ struct journey {
   // cheap-but-flying alternative. false for every algorithm that does not
   // optimize it, which keeps their dominance unchanged.
   bool criteria_air_{false};
-  // number of agency (operator) switches between consecutive trips
-  std::uint8_t criteria_agency_{0U};
+  // number of vehicle-class switches between consecutive trips
+  std::uint8_t criteria_clasz_{0U};
   bool error_{false};
   bool is_reconstructed_{false};
 };
