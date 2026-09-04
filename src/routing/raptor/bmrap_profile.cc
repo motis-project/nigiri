@@ -231,14 +231,28 @@ routing_result bmrap_profile(timetable const& tt,
   // meet-in-the-middle bounds for the BACKWARD multicriteria search (mc
   // pong). Costs one extra one-to-all forward RAPTOR per step, so it is
   // opt-in until measured.
-  // 0=off, 1=mc pong only, 2=stage 2 (slacked pong) only, 3=both
+  // tau_arr^-> pruning: 0=off, 1=mc pong only, 2=stage 2 (slacked pong)
+  // only, 3=both (the default).
+  //
+  // ON by default because it is where the time goes: without it mc pong is
+  // unbounded and dominates everything. Measured on the 15-query set,
+  // 188.5s -> 83.8s total; on a Berlin -> Montpellier query, 78.7s -> 22.5s
+  // with mc pong alone falling from 53.6s to 3.4s. It costs ~15-25% on
+  // trivial queries, which is the price of the relaxed ping, and that is a
+  // trade worth making by default.
   auto const fwd_bounds_mode = [] {
+    if (get_slack().no_bounds_) {
+      return 0;  // the unbounded reference: no pruning matrices at all
+    }
     auto const* const e = std::getenv("NIGIRI_BMRAPP_FWD_BOUNDS");
     if (e == nullptr) {
-      return 0;
+      return 3;
     }
     auto const v = std::string_view{e};
-    return v == "mcpong" ? 1 : v == "stage2" ? 2 : 3;
+    return v == "off" || v == "0" || v == "none" ? 0
+           : v == "mcpong"                       ? 1
+           : v == "stage2"                       ? 2
+                                                 : 3;
   }();
   auto const fwd_bounds_on = fwd_bounds_mode != 0;
 
