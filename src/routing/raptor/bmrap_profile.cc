@@ -202,6 +202,10 @@ routing_result bmrap_profile(timetable const& tt,
   // Forward realizations, kept in the FORWARD convention and spliced in
   // after the results are swapped over (see below).
   auto realized = std::vector<journey>{};
+  // A forward search from departure d returns the whole Pareto set at d, so
+  // one realization per departure suffices for the entire scan. Without
+  // this the pass reruns on every step that rediscovers the same journey.
+  auto realized_deps = std::vector<unixtime_t>{};
   auto ms_realize = std::chrono::steady_clock::duration{};
   auto n_realized = std::uint64_t{0U};
   auto const realize_fwd = std::getenv("NIGIRI_BMRAPP_NO_REALIZE") == nullptr;
@@ -563,7 +567,8 @@ routing_result bmrap_profile(timetable const& tt,
       auto deps = std::vector<unixtime_t>{};
       for (auto const& j : step_results) {
         if (!j.error_ && j.is_reconstructed_ &&
-            utl::find(deps, j.dest_time_) == end(deps)) {
+            utl::find(deps, j.dest_time_) == end(deps) &&
+            utl::find(realized_deps, j.dest_time_) == end(realized_deps)) {
           deps.emplace_back(j.dest_time_);  // dest_time_ is the departure
         }
       }
@@ -606,6 +611,7 @@ routing_result bmrap_profile(timetable const& tt,
                 e.what());
           }
         }
+        realized_deps.emplace_back(d);
         for (auto const& f : fwd) {
           if (!f.error_ && f.is_reconstructed_) {
             realized.emplace_back(f);
