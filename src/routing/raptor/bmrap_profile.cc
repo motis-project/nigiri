@@ -199,6 +199,13 @@ routing_result bmrap_profile(timetable const& tt,
   // looser, never tighter - tau_arr^->(v,i) can only be earlier, and
   // compute_bounds()' horizon can only be further back. A looser bound
   // under-prunes, which the final restriction filter then cleans up.
+  // Forward realizations, kept in the FORWARD convention and spliced in
+  // after the results are swapped over (see below).
+  auto realized = std::vector<journey>{};
+  auto ms_realize = std::chrono::steady_clock::duration{};
+  auto n_realized = std::uint64_t{0U};
+  auto const realize_fwd = std::getenv("NIGIRI_BMRAPP_NO_REALIZE") == nullptr;
+
   auto anchors = std::vector<anchor>{};
   auto budget = std::uint8_t{0U};
   auto anchors_valid_until = std::optional<unixtime_t>{};
@@ -543,6 +550,71 @@ routing_result bmrap_profile(timetable const& tt,
     }
     ms_recon += std::chrono::steady_clock::now() - rc0;
 
+    // ---- 5b. RE-REALIZE FORWARD ----
+    // mc pong reconstructs backwards, so every intermediate leg is the
+    // LATEST run that still makes the connection - the traveller gets no
+    // slack at any transfer and one delay loses the chain. Re-running
+    // forward from the departure mc pong just pinned produces the same
+    // tuple with the EARLIEST connections instead. Done here, inside the
+    // step, because tau_dep^<- is live: destination pruning alone (even on
+    // the exact arrival) leaves too much of the network unpruned.
+    if (realize_fwd) {
+      auto const rz0 = std::chrono::steady_clock::now();
+      auto deps = std::vector<unixtime_t>{};
+      for (auto const& j : step_results) {
+        if (!j.error_ && j.is_reconstructed_ &&
+            utl::find(deps, j.dest_time_) == end(deps)) {
+          deps.emplace_back(j.dest_time_);  // dest_time_ is the departure
+        }
+      }
+      for (auto const d : deps) {
+        auto max_tr = std::uint8_t{0U};
+        auto loosest_arr = std::optional<unixtime_t>{};
+        for (auto const& j : step_results) {
+          if (j.error_ || j.dest_time_ != d) {
+            continue;
+          }
+          max_tr = std::max(max_tr, j.transfers_);
+          if (!loosest_arr.has_value() ||
+              is_better(*loosest_arr, j.start_time_)) {
+            loosest_arr = j.start_time_;  // start_time_ is the arrival
+          }
+        }
+        starts.clear();
+        get_starts(SearchDir, tt, rtt, d, q.start_, q.td_start_, q.via_stops_,
+                   q.max_start_offset_, q.start_match_mode_,
+                   q.use_start_footpaths_, starts, false, q.prf_idx_,
+                   q.transfer_time_settings_);
+        mc_ping.reset_arrivals();
+        mc_ping.next_start_time();
+        for (auto const& st : starts) {
+          mc_ping.add_start(st.stop_, st.time_at_stop_);
+        }
+        auto fwd = pareto_set<journey>{};
+        mc_ping.execute(d, max_tr,
+                        *loosest_arr + duration_t{kFwd ? 1 : -1}, q.prf_idx_,
+                        fwd);
+        for (auto& f : fwd) {
+          if (f.is_reconstructed_ || f.error_) {
+            continue;
+          }
+          try {
+            mc_ping.reconstruct(q, f);
+          } catch (std::exception const& e) {
+            f.error_ = true;
+            log(log_lvl::error, "bmrap_profile", "realize failed: {}",
+                e.what());
+          }
+        }
+        for (auto const& f : fwd) {
+          if (!f.error_ && f.is_reconstructed_) {
+            realized.emplace_back(f);
+          }
+        }
+      }
+      ms_realize += std::chrono::steady_clock::now() - rz0;
+    }
+
     // ---- 6. advance ----
     // Advancing on the two-criteria anchors alone is not enough: between
     // two anchor departures the MULTICRITERIA pareto set can still change
@@ -616,6 +688,25 @@ routing_result bmrap_profile(timetable const& tt,
   for (auto& x : s_state.results_) {
     std::swap(x.start_time_, x.dest_time_);
   }
+
+  // Splice in the forward realizations: same journey (identical times,
+  // transfers and criteria), better legs. Only legs_ moves - the tuple must
+  // come out byte-identical, which is what makes this verifiable.
+  if (realize_fwd) {
+    for (auto& x : s_state.results_) {
+      auto const it = utl::find_if(realized, [&](journey const& f) {
+        return f.start_time_ == x.start_time_ && f.dest_time_ == x.dest_time_ &&
+               f.transfers_ == x.transfers_ &&
+               f.criteria_cost_ == x.criteria_cost_ &&
+               f.criteria_air_ == x.criteria_air_ &&
+               f.criteria_clasz_ == x.criteria_clasz_;
+      });
+      if (it != end(realized)) {
+        x.legs_ = it->legs_;
+        ++n_realized;
+      }
+    }
+  }
   for (auto& j : s_state.results_) {
     auto const swap_st = [](location_idx_t const l) -> location_idx_t {
       switch (to_idx(l)) {
@@ -679,6 +770,8 @@ routing_result bmrap_profile(timetable const& tt,
   }
   algo_stats["bmrapp_steps"] = n_steps;
   algo_stats["bmrapp_anchor_recomputes"] = n_anchor_recomputes;
+  algo_stats["bmrapp_ms_realize"] = ms(ms_realize);
+  algo_stats["bmrapp_realized"] = n_realized;
   algo_stats["bmrapp_exit"] = exit_reason;
   algo_stats["bmrapp_bound_builds"] = n_bound_builds;
   algo_stats["bmrapp_anchors"] = all_anchors.size();
