@@ -259,10 +259,49 @@ routing_result bmrap_profile(timetable const& tt,
     });
   };
 
+  // The restriction, applied exactly as the final filter does. Counting
+  // unrestricted journeys stops the scan on results that are about to be
+  // thrown away, so the caller ends up with fewer than numItineraries: on
+  // one query BMRAPP returned 6 journeys where 23 exist, because the
+  // unrestricted mc pong padded the count on the very first step.
+  //
+  // It is applied HERE and not at insertion time: A(J) is only final once
+  // the scan has passed J's departure. Anchors found at later steps have
+  // later-or-equal arrivals and so can never improve A(J), but the anchor
+  // that decides a freshly inserted journey may not be discovered yet -
+  // dropping it on insertion could discard a journey whose verdict later
+  // flips to "keep". Every journey counted below is already is_validated
+  // (departure behind start_time), where the verdict cannot change.
+  auto const restricted_away = [&](journey const& j) {
+    if (get_slack().no_restrict_) {
+      return false;
+    }
+    // NB: inside the scan the journeys still carry mc pong's backward
+    // convention - dest_time_ is the DEPARTURE, start_time_ the ARRIVAL.
+    // They are only swapped after the loop, which is why the field names
+    // here are the mirror of the ones in the final filter.
+    auto const dep = j.dest_time_;
+    auto const arr = j.start_time_;
+    if (utl::any_of(all_anchors, [&](anchor const& a) {
+          return a.trips_ == j.transfers_ + 1U && a.anchored_ == dep &&
+                 a.found_ == arr;
+        })) {
+      return false;  // an anchor is its own A(J)
+    }
+    auto const trips = static_cast<unsigned>(j.transfers_) + 1U;
+    auto const* const a = anchor_of<SearchDir>(all_anchors, dep, trips);
+    return a == nullptr ||
+           trips > trip_budget(a->trips_, std::uint8_t{kMaxTransfers + 1U}) ||
+           misses_deadline<SearchDir>(*a, arr);
+  };
+
   auto const n_results = [&](bool const include_too_slow) {
     return utl::count_if(s_state.results_, [&](journey const& j) {
       if (!is_better(j.dest_time_, start_time)) {
         return false;  // dest_time_ is still the departure here
+      }
+      if (restricted_away(j)) {
+        return false;
       }
       if (!include_too_slow && !(j.travel_time() < fastest_direct &&
                                  j.travel_time() < q.max_travel_time_)) {
