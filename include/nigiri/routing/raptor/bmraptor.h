@@ -38,6 +38,19 @@ namespace nigiri::routing {
 //
 // Slack parameters (defaults sigma_arr = sigma_tr = 1.25) are overridable
 // via NIGIRI_BMRAP_ARR_SLACK / NIGIRI_BMRAP_TRIP_SLACK.
+// Profile variant: a complete single-departure BM-RAPTOR per step of a
+// PONG-style scan (ping, pong, slacked pong, mc ping, mc pong) instead of
+// one window-wide bound matrix. See bmrap_profile.cc for why.
+template <typename AlgoState>
+routing_result bmrap_profile_search(
+    timetable const&,
+    rt_timetable const*,
+    search_state&,
+    AlgoState&,
+    query,
+    direction search_dir,
+    std::optional<std::chrono::seconds> timeout = std::nullopt);
+
 template <typename AlgoState>
 routing_result bmrap_search(
     timetable const&,
