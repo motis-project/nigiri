@@ -183,6 +183,26 @@ routing_result bmrap_profile(timetable const& tt,
 
   auto starts = std::vector<start>{};
   auto bounds = bmrap_bounds{};
+
+  // The anchor set - and everything derived from it - is only invalidated
+  // when start_time passes the EARLIEST anchor departure. Up to that point
+  // every anchor is still available, and no new one can appear: a
+  // two-criteria journey only becomes Pareto-optimal once the journey
+  // dominating it drops out, which cannot happen before that same
+  // breakpoint. So the steps that advance on a MULTICRITERIA breakpoint
+  // (which are the majority - the mc profile has more breakpoints than the
+  // bicriteria one) re-derive an identical anchor set, and the ping, pong,
+  // tau_dep^<- and tau_arr^-> work can all be skipped.
+  //
+  // Reusing the two matrices is safe in the same direction as everything
+  // else here: both were built from an EARLIER departure, which makes them
+  // looser, never tighter - tau_arr^->(v,i) can only be earlier, and
+  // compute_bounds()' horizon can only be further back. A looser bound
+  // under-prunes, which the final restriction filter then cleans up.
+  auto anchors = std::vector<anchor>{};
+  auto budget = std::uint8_t{0U};
+  auto anchors_valid_until = std::optional<unixtime_t>{};
+  auto n_anchor_recomputes = std::uint64_t{0U};
   auto exit_reason = std::uint64_t{0U};  // 0=cond 1=ping 2=anchors 3=stall
 
   // same interval extension PONG uses: keep stepping past the nominal
@@ -263,6 +283,12 @@ routing_result bmrap_profile(timetable const& tt,
           n_found(true) + n_found(false) <
               2 * static_cast<int>(q.min_connection_count_)) &&
          tt.external_interval().contains(start_time) && !is_timeout()) {
+    auto const anchors_stale =
+        !anchors_valid_until.has_value() ||
+        is_better(*anchors_valid_until, start_time);
+    if (anchors_stale) {
+      ++n_anchor_recomputes;
+
     // ---- 1. PING: two-criteria EA from this departure ----
     auto const p0 = std::chrono::steady_clock::now();
     starts.clear();
@@ -292,7 +318,6 @@ routing_result bmrap_profile(timetable const& tt,
                                    duration_t{1}),
                  q.prf_idx_, ping_results);
     ms_ping += std::chrono::steady_clock::now() - p0;
-    ++n_steps;
     utl::sort(ping_results, [&](journey const& a, journey const& b) {
       return is_better(a.dest_time_, b.dest_time_);
     });
@@ -356,7 +381,7 @@ routing_result bmrap_profile(timetable const& tt,
     ms_pong += std::chrono::steady_clock::now() - g0;
 
     // tight journeys are (start_time_ = arrival, dest_time_ = departure)
-    auto anchors = std::vector<anchor>{};
+    anchors.clear();
     auto max_trips = std::uint8_t{0U};
     for (auto const& j : tight) {
       auto const trips = static_cast<std::uint8_t>(j.transfers_ + 1U);
@@ -379,7 +404,11 @@ routing_result bmrap_profile(timetable const& tt,
         all_anchors.emplace_back(a);
       }
     }
-    auto const budget = trip_budget(max_trips, budget_cap);
+    budget = trip_budget(max_trips, budget_cap);
+    anchors_valid_until = utl::min_element(
+        anchors, [&](anchor const& a, anchor const& b) {
+          return is_better(a.anchored_, b.anchored_);
+        })->anchored_;
 
     // ---- 3. SLACKED PONG: bounds anchored at THIS departure ----
     if (!get_slack().no_bounds_) {
@@ -393,6 +422,9 @@ routing_result bmrap_profile(timetable const& tt,
       ++n_bound_builds;
       mc_ping.set_bounds(&bounds);
     }
+
+    }  // anchors_stale
+    ++n_steps;
 
     // ---- 4. MC PING + 5. MC PONG ----
     auto const m0 = std::chrono::steady_clock::now();
@@ -496,8 +528,12 @@ routing_result bmrap_profile(timetable const& tt,
     for (auto const& a : anchors) {
       consider(a.anchored_);
     }
-    for (auto const& j : step_results) {
-      consider(j.dest_time_);  // dest_time_ is the departure here
+    // diagnostic: advance like classical PONG (anchors only). Loses
+    // multicriteria journeys - it is here to attribute cost, not to use.
+    if (std::getenv("NIGIRI_BMRAPP_ADVANCE_ANCHORS") == nullptr) {
+      for (auto const& j : step_results) {
+        consider(j.dest_time_);  // dest_time_ is the departure here
+      }
     }
     if (std::getenv("NIGIRI_BMRAPP_TRACE") != nullptr) {
       std::fprintf(stderr, "STEP start=%lld anchors=[", 
@@ -603,6 +639,7 @@ routing_result bmrap_profile(timetable const& tt,
     algo_stats["prune_" + k] = v;
   }
   algo_stats["bmrapp_steps"] = n_steps;
+  algo_stats["bmrapp_anchor_recomputes"] = n_anchor_recomputes;
   algo_stats["bmrapp_exit"] = exit_reason;
   algo_stats["bmrapp_bound_builds"] = n_bound_builds;
   algo_stats["bmrapp_anchors"] = all_anchors.size();
