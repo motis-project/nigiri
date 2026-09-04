@@ -272,6 +272,16 @@ routing_result bmrap_profile(timetable const& tt,
                q.transfer_time_settings_);
     ping.reset_arrivals();
     ping.next_start_time();
+    if (fwd_bounds_on) {
+      // relax target pruning by the arrival slack, so this search's round
+      // times are a valid tau_arr^->(v, i) matrix (paper, Sec. 4.3)
+      auto const& sc = get_slack();
+      ping.set_dest_relax(start_time,
+                          sc.arr_fixed_min_ >= 0.0 ? 1.0 : sc.arr_,
+                          sc.arr_fixed_min_ >= 0.0
+                              ? static_cast<int>(sc.arr_fixed_min_)
+                              : 0);
+    }
     for (auto const& s : starts) {
       ping.add_start(s.stop_, s.time_at_stop_);
     }
@@ -283,13 +293,32 @@ routing_result bmrap_profile(timetable const& tt,
                  q.prf_idx_, ping_results);
     ms_ping += std::chrono::steady_clock::now() - p0;
     ++n_steps;
-    if (ping_results.empty()) {
-      exit_reason = 1U;
-      break;
-    }
     utl::sort(ping_results, [&](journey const& a, journey const& b) {
       return is_better(a.dest_time_, b.dest_time_);
     });
+
+    if (fwd_bounds_on) {
+      // r2_state still holds the ping's round times here; the pong below
+      // reuses the same state, so the matrix has to be taken now - before
+      // the anchors exist. Size it from the PING's trip counts: re-anchoring
+      // in the pong moves departures, never the number of trips, so this is
+      // the same budget the anchors will produce. Sizing to budget_cap
+      // instead would make the build loop (rounds x locations) dominate
+      // cheap queries.
+      auto ping_trips = std::uint8_t{0U};
+      for (auto const& j : ping_results) {
+        ping_trips = std::max(ping_trips,
+                              static_cast<std::uint8_t>(j.transfers_ + 1U));
+      }
+      auto const f0 = std::chrono::steady_clock::now();
+      fwd_bounds = build_reach_matrix<SearchDir>(
+          tt, q, r2_state, trip_budget(ping_trips, budget_cap));
+      ms_fwd_bounds += std::chrono::steady_clock::now() - f0;
+      ++n_fwd_bound_builds;
+      if ((fwd_bounds_mode & 1) != 0) {
+        mc_pong.set_bounds(&fwd_bounds);
+      }
+    }
 
     // ---- 2. PONG: re-anchor each anchor to its LATEST departure ----
     auto const g0 = std::chrono::steady_clock::now();
@@ -351,38 +380,6 @@ routing_result bmrap_profile(timetable const& tt,
       }
     }
     auto const budget = trip_budget(max_trips, budget_cap);
-
-    // ---- 2b. REACH BOUNDS: tau_arr^->(v, i) from THIS departure ----
-    // The paper's "stage 2 pruned by stage 1". It has to be its own
-    // one-to-all search: the ping runs one-to-one with target and lower-bound
-    // pruning, so its round times are only valid along paths that could still
-    // improve the destination (the paper sidesteps this by relaxing stage 1's
-    // target pruning by sigma_arr, which is only sound because its stage 1 is
-    // effectively one-to-all anyway).
-    //
-    // Built from the same cutoff the searches it prunes use at the origin,
-    // not from start_time: a journey departing one minute earlier still
-    // survives that cutoff, and the bound has to hold for it too.
-    if (fwd_bounds_on) {
-      auto const f0 = std::chrono::steady_clock::now();
-      auto loosest_arr = anchors.front().found_;
-      for (auto const& a : anchors) {
-        auto const travel = static_cast<double>((a.found_ - a.anchored_).count());
-        auto const relaxed = a.anchored_ + i32_minutes{static_cast<std::int32_t>(
-                                               std::llround(relax_arr(travel)))};
-        if (is_better(loosest_arr, relaxed)) {
-          loosest_arr = relaxed;
-        }
-      }
-      fwd_bounds = compute_reach_bounds<SearchDir, Rt>(
-          tt, rtt, q, start_time - duration_t{kFwd ? 1 : -1}, loosest_arr,
-          base_day, budget, r2_state, prune_stats);
-      ms_fwd_bounds += std::chrono::steady_clock::now() - f0;
-      ++n_fwd_bound_builds;
-      if ((fwd_bounds_mode & 1) != 0) {
-        mc_pong.set_bounds(&fwd_bounds);
-      }
-    }
 
     // ---- 3. SLACKED PONG: bounds anchored at THIS departure ----
     if (!get_slack().no_bounds_) {

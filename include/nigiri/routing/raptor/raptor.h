@@ -138,6 +138,29 @@ struct raptor {
   // direction, valid at every stop (one-to-all, no target/local pruning).
   void set_bounds(bmrap_bounds const* b) { bounds_ = b; }
 
+  // BM-RAPTOR stage 1 (paper, Sec. 4.3): "if the first-stage RAP has target
+  // pruning enabled, its target pruning rule must be relaxed in order to
+  // incorporate the arrival time slack into the labels that are used by the
+  // second-stage reverse RAPs. More precisely, the algorithm may only prune
+  // a label tau_arr(k, p) if tau_arr(k, p) > tau*(p_t) + sigma_arr."
+  //
+  // Without this the ping's round_times are only valid along paths that
+  // could still improve the destination, so they cannot be reused as a
+  // tau_arr^->(v, i) bound matrix. With it they can, which saves a whole
+  // separate one-to-all search. `lb_` prunes against the same
+  // time_at_dest_, so relaxing it covers lower-bound pruning too.
+  // `factor` scales the travel time from `origin`, `add_minutes` pads it -
+  // the same two-mode relaxation the restriction itself uses, so the bound
+  // this produces matches anchor_deadline() rather than a looser constant.
+  void set_dest_relax(unixtime_t const origin,
+                      double const factor,
+                      int const add_minutes) {
+    relax_origin_ = unix_to_delta(base(), origin);
+    relax_factor_ = factor;
+    relax_add_ = add_minutes;
+    relax_on_ = true;
+  }
+
   void next_start_time() {
     utl::fill(best_, kInvalidArray);
     utl::fill(tmp_, kInvalidArray);
@@ -1320,8 +1343,21 @@ private:
     if constexpr (SearchMode == search_mode::kOneToAll) {
       return;
     }
+    auto const relaxed = [&]() -> delta_t {
+      if (!relax_on_) {
+        return t;
+      }
+      // dir() makes the travel magnitude positive in both directions
+      auto const travel = static_cast<double>(dir(t - relax_origin_));
+      if (travel <= 0.0) {
+        return t;
+      }
+      return clamp(static_cast<int>(relax_origin_) +
+                   dir(static_cast<int>(std::llround(
+                       travel * relax_factor_ + relax_add_))));
+    }();
     for (auto i = k; i != time_at_dest_.size(); ++i) {
-      time_at_dest_[i] = get_best(time_at_dest_[i], t);
+      time_at_dest_[i] = get_best(time_at_dest_[i], relaxed);
     }
   }
 
@@ -1368,6 +1404,10 @@ private:
   flat_matrix_view<std::array<delta_t, Vias + 1>> round_times_;
   unsigned start_round_{0U};
   bmrap_bounds const* bounds_{nullptr};
+  delta_t relax_origin_{0};
+  double relax_factor_{1.0};
+  int relax_add_{0};
+  bool relax_on_{false};
   bitvec const& is_dest_;
   std::array<bitvec, kMaxVias> const& is_via_;
   std::vector<std::uint16_t> const& dist_to_end_;

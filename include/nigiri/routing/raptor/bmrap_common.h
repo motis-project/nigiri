@@ -245,6 +245,55 @@ routing_result run_anchor_search(timetable const& tt,
 //    trip-budget half of the bound, which is what actually pays off, is
 //    departure-independent anyway. The remaining per-departure exactness is
 //    restored by the final restriction to J_R below.
+// Turn a finished PruneDir search's round times into a tau_arr^->(v, i)
+// matrix. Split out of compute_reach_bounds() so the ping can supply the
+// round times directly - with relaxed target pruning (raptor::set_dest_relax)
+// they are valid at every stop, and a separate one-to-all search is not
+// needed at all.
+template <direction PruneDir>
+bmrap_bounds build_reach_matrix(timetable const& tt,
+                                query const& q,
+                                raptor_state& state,
+                                std::uint8_t const budget) {
+  constexpr auto const kInvalid = kInvalidDelta<PruneDir>;
+  auto const is_looser = [](auto const a, auto const b) {
+    return PruneDir == direction::kForward ? a < b : a > b;
+  };
+  // Relax by one transfer buffer per stop, baked into the matrix so no
+  // consumer has to know. nigiri's round_times_ hold POST-transfer values in
+  // both directions: forward that is "earliest time you can board at p"
+  // (arrival + transfer), backward it is "latest time you may arrive at p"
+  // (boarding - transfer). Comparing the two directly would demand
+  // latest_arrival >= earliest_arrival + transfer, one buffer stricter than
+  // the meet-in-the-middle condition, and would drop short journeys whose
+  // total duration is on the order of a transfer time. Footpath arrivals do
+  // not pay the buffer at all, so subtracting the full transfer time is the
+  // conservative choice: it can only ever weaken the bound.
+  auto const dir_prune = [](auto const x) {
+    return PruneDir == direction::kForward ? x : -x;
+  };
+
+  auto bounds = bmrap_bounds{};
+  bounds.resize(tt.n_locations(), budget, kInvalid);
+  auto const round_times = state.get_round_times<kVias>();
+  for (auto i = 0U; i <= budget; ++i) {
+    for (auto l = 0U; l != tt.n_locations(); ++l) {
+      auto const cur = round_times[i][l][kVias];
+      auto const prev = (i == 0U) ? kInvalid : bounds.at(i - 1U, l);
+      auto const best = is_looser(cur, prev) ? cur : prev;
+      if (best == kInvalid) {
+        bounds.at(i, l) = kInvalid;
+        continue;
+      }
+      auto const tt_min = adjusted_transfer_time(
+          q.transfer_time_settings_,
+          tt.locations_.transfer_time_[location_idx_t{l}].count());
+      bounds.at(i, l) = static_cast<delta_t>(best - dir_prune(tt_min));
+    }
+  }
+  return bounds;
+}
+
 // Reachability bounds for the OPPOSITE search direction: tau_arr^->(v, i),
 // the earliest time the main search's origin can put you at v using at most
 // i trips, departing no earlier than `from`.
@@ -254,10 +303,11 @@ routing_result run_anchor_search(timetable const& tt,
 // a BACKWARD search with "you cannot possibly be at v before this time".
 // Together they are the classic meet-in-the-middle prune.
 //
-// It has to be its own one-to-all search rather than a reuse of the ping's
-// round times: the ping runs one-to-one with destination pruning and lower
-// bounds, so its round_times are only valid along paths that could still
-// improve the destination. As a bound matrix they would over-prune.
+// This variant runs its own one-to-all search, which is only necessary when
+// the ping cannot supply the round times itself - i.e. when its target
+// pruning has NOT been relaxed by the arrival slack. With
+// raptor::set_dest_relax() the ping's own state can be handed straight to
+// build_reach_matrix() instead, which is what the profile driver does.
 template <direction PruneDir, bool Rt>
 bmrap_bounds compute_reach_bounds(timetable const& tt,
                                   rt_timetable const* rtt,
@@ -313,39 +363,7 @@ bmrap_bounds compute_reach_bounds(timetable const& tt,
             results);
   stats = stats + r.get_stats();
 
-  // Relax by one transfer buffer per stop, baked into the matrix so no
-  // consumer has to know. nigiri's round_times_ hold POST-transfer values in
-  // both directions: forward that is "earliest time you can board at p"
-  // (arrival + transfer), backward it is "latest time you may arrive at p"
-  // (boarding - transfer). Comparing the two directly would demand
-  // latest_arrival >= earliest_arrival + transfer, one buffer stricter than
-  // the meet-in-the-middle condition, and would drop short journeys whose
-  // total duration is on the order of a transfer time. Footpath arrivals do
-  // not pay the buffer at all, so subtracting the full transfer time is the
-  // conservative choice: it can only ever weaken the bound.
-  auto const dir_prune = [](auto const x) {
-    return PruneDir == direction::kForward ? x : -x;
-  };
-
-  auto bounds = bmrap_bounds{};
-  bounds.resize(tt.n_locations(), budget, kInvalid);
-  auto const round_times = state.get_round_times<kVias>();
-  for (auto i = 0U; i <= budget; ++i) {
-    for (auto l = 0U; l != tt.n_locations(); ++l) {
-      auto const cur = round_times[i][l][kVias];
-      auto const prev = (i == 0U) ? kInvalid : bounds.at(i - 1U, l);
-      auto const best = is_looser(cur, prev) ? cur : prev;
-      if (best == kInvalid) {
-        bounds.at(i, l) = kInvalid;
-        continue;
-      }
-      auto const tt_min = adjusted_transfer_time(
-          q.transfer_time_settings_,
-          tt.locations_.transfer_time_[location_idx_t{l}].count());
-      bounds.at(i, l) = static_cast<delta_t>(best - dir_prune(tt_min));
-    }
-  }
-  return bounds;
+  return build_reach_matrix<PruneDir>(tt, q, state, budget);
 }
 
 template <direction SearchDir, bool Rt>
