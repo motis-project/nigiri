@@ -763,11 +763,11 @@ void build_hubs(timetable& tt,
   };
 
   // hubs the loader already emitted for constant-valued rule cross products
-  for (auto const [in, out, d] :
+  for (auto const [hub_ingress, hub_egress, hub_time] :
        utl::zip(tt.locations_.hub_in_[kDefaultProfile],
                 tt.locations_.hub_out_[kDefaultProfile],
                 tt.locations_.hub_time_[kDefaultProfile])) {
-    add_hub(in, out, d);
+    add_hub(hub_ingress, hub_egress, hub_time);
   }
 
   auto has_virts = std::vector<bool>(n, false);
