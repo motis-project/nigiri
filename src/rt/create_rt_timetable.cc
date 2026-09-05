@@ -28,8 +28,9 @@ rt_timetable create_rt_timetable(timetable const& tt,
   // because it was called directly instead of through loader::load - breaks
   // that. Sizing by the larger of the two keeps the loop below in bounds
   // either way.
-  auto const n_src = std::max(static_cast<std::size_t>(tt.n_sources()),
-                              static_cast<std::size_t>(tt.route_ids_.size()));
+  auto const n_src = static_cast<cista::base_t<source_idx_t>>(
+      std::max(static_cast<std::size_t>(tt.n_sources()),
+               static_cast<std::size_t>(tt.route_ids_.size())));
   rtt.alerts_.route_type_.resize(n_src);
   rtt.alerts_.route_id_.resize(n_src);
   for (auto const [src, r] : utl::enumerate(tt.route_ids_)) {
