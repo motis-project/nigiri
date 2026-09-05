@@ -1,6 +1,8 @@
 #pragma once
 
+#include <algorithm>
 #include <cassert>
+#include <limits>
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
@@ -152,12 +154,23 @@ struct raptor {
   // `factor` scales the travel time from `origin`, `add_minutes` pads it -
   // the same two-mode relaxation the restriction itself uses, so the bound
   // this produces matches anchor_deadline() rather than a looser constant.
+  // Relaxed target pruning: the destination bound is loosened to
+  // "anchor travel time + sigma_arr", so this search's round times stay a
+  // valid tau_arr^->(v, i) matrix (paper, Sec. 4.3). floor_min/cap_min are
+  // the same absolute clamps relax_arr() applies to the slack - without
+  // them a ratio grants hours on a long-haul journey and the relaxation,
+  // not the search, becomes the dominant cost.
   void set_dest_relax(unixtime_t const origin,
                       double const factor,
-                      int const add_minutes) {
+                      int const add_minutes,
+                      double const floor_min = 0.0,
+                      double const cap_min =
+                          std::numeric_limits<double>::infinity()) {
     relax_origin_ = unix_to_delta(base(), origin);
     relax_factor_ = factor;
     relax_add_ = add_minutes;
+    relax_cap_ = cap_min;
+    relax_floor_ = std::min(floor_min, cap_min);
     relax_on_ = true;
   }
 
@@ -1352,9 +1365,12 @@ private:
       if (travel <= 0.0) {
         return t;
       }
+      // mirrors relax_arr(): reference + clamp(extra, floor, cap)
+      auto const extra = travel * (relax_factor_ - 1.0) + relax_add_;
       return clamp(static_cast<int>(relax_origin_) +
                    dir(static_cast<int>(std::llround(
-                       travel * relax_factor_ + relax_add_))));
+                       travel + std::clamp(extra, relax_floor_,
+                                           relax_cap_)))));
     }();
     for (auto i = k; i != time_at_dest_.size(); ++i) {
       time_at_dest_[i] = get_best(time_at_dest_[i], relaxed);
@@ -1407,6 +1423,8 @@ private:
   delta_t relax_origin_{0};
   double relax_factor_{1.0};
   int relax_add_{0};
+  double relax_floor_{0.0};
+  double relax_cap_{std::numeric_limits<double>::infinity()};
   bool relax_on_{false};
   bitvec const& is_dest_;
   std::array<bitvec, kMaxVias> const& is_via_;

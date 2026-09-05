@@ -38,20 +38,34 @@ namespace nigiri::routing::bmrap_detail {
 constexpr auto const kVias = via_offset_t{0U};
 
 
-// sigma_arr / sigma_tr of the paper. 1.25 each is the configuration
-// BM-RAPTOR is usually evaluated with (Sauer'24).
+// sigma_arr / sigma_tr of the paper. Sauer'24 evaluates BM-RAPTOR at 1.25
+// each; 1.5 widens the restricted set, and the caps/floors below keep that
+// from running away at the extremes.
 struct slack_cfg {
-  double arr_{1.25};
-  double trip_{1.25};
+  double arr_{1.5};
+  double trip_{1.5};
   // Fixed, ADDITIVE arrival slack in minutes - an alternative to the
   // multiplicative sigma_arr above, both applied to the same reference
   // quantity (see relax_arr()): >= 0 switches to "at most N minutes worse
   // than the anchor implies", < 0 (the default) keeps sigma_arr.
   double arr_fixed_min_{-1.0};
   // The paper's sigma_tr is ADDITIVE (a number of extra trips, Eq. 3.1);
-  // sigma_tr = 1.25 above is the multiplicative convention (Sauer'24).
+  // sigma_tr above is the multiplicative convention (Sauer'24).
   // >= 0 switches to "at most N trips more than the anchor".
   double trip_fixed_{-1.0};
+  // Caps on how much slack the multiplicative form may grant. sigma is a
+  // RATIO, so on a 20-hour journey sigma_arr = 1.5 admits arrivals 10 hours
+  // late - a restricted set so wide it stops restricting anything, and the
+  // dominant cost driver on long-haul queries. The caps bound the slack in
+  // absolute terms: at most 3 h later, at most 2 trips more. At sigma = 1.5
+  // the arrival cap binds above 6 h of travel, the trip cap from 4 trips.
+  double arr_cap_min_{180.0};
+  double trip_cap_{2.0};
+  // ...and floors, for the opposite reason: on a 30-minute trip a 50% ratio
+  // grants 15 minutes, which is about one missed connection, so without a
+  // floor the restricted set collapses onto the anchors themselves.
+  double arr_min_min_{20.0};
+  double trip_min_{1.0};
   // validation switches: run the same three phases but skip the pruning /
   // the final restriction, so a mismatch can be attributed to one of them
   bool no_bounds_{false};
@@ -75,6 +89,21 @@ inline slack_cfg const& get_slack() {
         v != nullptr) {
       c.trip_fixed_ = std::max(0.0, std::atof(v));
     }
+    if (auto const* v = std::getenv("NIGIRI_BMRAP_ARR_SLACK_CAP"); v != nullptr) {
+      c.arr_cap_min_ = std::max(0.0, std::atof(v));
+    }
+    if (auto const* v = std::getenv("NIGIRI_BMRAP_TRIP_SLACK_CAP");
+        v != nullptr) {
+      c.trip_cap_ = std::max(0.0, std::atof(v));
+    }
+    if (auto const* v = std::getenv("NIGIRI_BMRAP_ARR_SLACK_FLOOR");
+        v != nullptr) {
+      c.arr_min_min_ = std::max(0.0, std::atof(v));
+    }
+    if (auto const* v = std::getenv("NIGIRI_BMRAP_TRIP_SLACK_FLOOR");
+        v != nullptr) {
+      c.trip_min_ = std::max(0.0, std::atof(v));
+    }
     c.no_bounds_ = std::getenv("NIGIRI_BMRAP_NO_BOUNDS") != nullptr;
     c.no_restrict_ = std::getenv("NIGIRI_BMRAP_NO_RESTRICT") != nullptr;
     return c;
@@ -92,8 +121,12 @@ inline slack_cfg const& get_slack() {
 // already is.
 inline double relax_arr(double const reference_minutes) {
   auto const& cfg = get_slack();
-  return cfg.arr_fixed_min_ >= 0.0 ? reference_minutes + cfg.arr_fixed_min_
-                                   : reference_minutes * cfg.arr_;
+  auto const extra = cfg.arr_fixed_min_ >= 0.0
+                         ? cfg.arr_fixed_min_
+                         : reference_minutes * (cfg.arr_ - 1.0);
+  return reference_minutes +
+         std::clamp(extra, std::min(cfg.arr_min_min_, cfg.arr_cap_min_),
+                    cfg.arr_cap_min_);
 }
 
 // One journey of the anchor pareto set J_A. `anchored_` is the query-side
@@ -134,9 +167,12 @@ bool misses_deadline(anchor const& a, unixtime_t const arrival) {
 inline std::uint8_t trip_budget(std::uint8_t const trips,
                                std::uint8_t const max) {
   auto const& cfg = get_slack();
-  auto const b = cfg.trip_fixed_ >= 0.0
-                     ? static_cast<double>(trips) + cfg.trip_fixed_
-                     : static_cast<double>(trips) * cfg.trip_;
+  auto const extra = cfg.trip_fixed_ >= 0.0
+                         ? cfg.trip_fixed_
+                         : static_cast<double>(trips) * (cfg.trip_ - 1.0);
+  auto const b =
+      static_cast<double>(trips) +
+      std::clamp(extra, std::min(cfg.trip_min_, cfg.trip_cap_), cfg.trip_cap_);
   return static_cast<std::uint8_t>(
       std::clamp<double>(std::floor(b), trips, max));
 }

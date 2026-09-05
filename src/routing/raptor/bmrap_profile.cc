@@ -366,11 +366,16 @@ routing_result bmrap_profile(timetable const& tt,
       // relax target pruning by the arrival slack, so this search's round
       // times are a valid tau_arr^->(v, i) matrix (paper, Sec. 4.3)
       auto const& sc = get_slack();
+      // same clamps relax_arr() applies, so the ping's relaxation matches
+      // the restriction it is meant to bound - an unclamped ratio relaxes
+      // target pruning by hours on a long-haul query, which made the ping
+      // the single most expensive phase (53% of runtime on the EU set).
       ping.set_dest_relax(start_time,
                           sc.arr_fixed_min_ >= 0.0 ? 1.0 : sc.arr_,
                           sc.arr_fixed_min_ >= 0.0
                               ? static_cast<int>(sc.arr_fixed_min_)
-                              : 0);
+                              : 0,
+                          sc.arr_min_min_, sc.arr_cap_min_);
     }
     for (auto const& s : starts) {
       ping.add_start(s.stop_, s.time_at_stop_);
@@ -460,13 +465,27 @@ routing_result bmrap_profile(timetable const& tt,
     // and two anchors with an identical (dep, arr, trips) tuple dominate one
     // another - so leaving duplicates in would cancel them both out of
     // n_anchors() below and the scan would never reach its stopping point.
+    // Keep all_anchors a genuine (departure, arrival, trips) Pareto set.
+    // Exact-duplicate removal is not enough: a later step can re-anchor a
+    // journey to a departure an earlier step already covered with a strictly
+    // better arrival, and that dominated entry then poisons the restriction
+    // twice over - anchor_of() may hand back a looser deadline, and the
+    // is_anchor() early-out treats the dominated journey as its own A(J) and
+    // waves it through. That is how a journey arriving 30 min past its
+    // anchor's deadline survived the filter.
+    auto const dominates = [&](anchor const& x, anchor const& y) {
+      return !is_better(x.anchored_, y.anchored_) &&  // departs no earlier
+             !is_better(y.found_, x.found_) &&        // arrives no later
+             x.trips_ <= y.trips_;
+    };
     for (auto const& a : anchors) {
-      if (!utl::any_of(all_anchors, [&](anchor const& o) {
-            return o.anchored_ == a.anchored_ && o.found_ == a.found_ &&
-                   o.trips_ == a.trips_;
-          })) {
-        all_anchors.emplace_back(a);
+      if (utl::any_of(all_anchors,
+                      [&](anchor const& o) { return dominates(o, a); })) {
+        continue;
       }
+      utl::erase_if(all_anchors,
+                    [&](anchor const& o) { return dominates(a, o); });
+      all_anchors.emplace_back(a);
     }
     budget = trip_budget(max_trips, budget_cap);
     anchors_valid_until = utl::min_element(
@@ -667,11 +686,17 @@ routing_result bmrap_profile(timetable const& tt,
       }
     }
     if (std::getenv("NIGIRI_BMRAPP_TRACE") != nullptr) {
-      std::fprintf(stderr, "STEP start=%lld anchors=[", 
-                   static_cast<long long>(start_time.time_since_epoch().count()));
+      std::fprintf(stderr, "STEP start=%lld budget=%u anchors=[",
+                   static_cast<long long>(start_time.time_since_epoch().count()),
+                   static_cast<unsigned>(budget));
       for (auto const& a : anchors) {
-        std::fprintf(stderr, "%lld ",
-                     static_cast<long long>(a.anchored_.time_since_epoch().count()));
+        // dep/arr/trips + the deadline the bounds are built from
+        std::fprintf(stderr, "%lld:%lld:t%u:dl%lld ",
+                     static_cast<long long>(a.anchored_.time_since_epoch().count()),
+                     static_cast<long long>(a.found_.time_since_epoch().count()),
+                     static_cast<unsigned>(a.trips_),
+                     static_cast<long long>(
+                         anchor_deadline(a).time_since_epoch().count()));
       }
       std::fprintf(stderr, "] step_results=[");
       for (auto const& j : step_results) {
