@@ -75,7 +75,8 @@ struct gpu_timetable::impl {
       : n_locations_{tt.n_locations()},
         n_routes_{tt.n_routes()},
         transfer_time_{to_device(tt.locations_.transfer_time_)},
-        route_stop_times_{to_device(tt.route_stop_times_)},
+        departure_route_stop_times_{to_device(tt.departure_route_stop_times_)},
+        arrival_route_stop_times_{to_device(tt.arrival_route_stop_times_)},
         route_stop_time_ranges_{to_device(tt.route_stop_time_ranges_)},
         route_transport_ranges_{to_device(tt.route_transport_ranges_)},
         route_clasz_{to_device(tt.route_clasz_)},
@@ -126,7 +127,8 @@ struct gpu_timetable::impl {
         .n_locations_ = n_locations_,
         .n_routes_ = n_routes_,
         .transfer_time_ = transfer_time_,
-        .route_stop_times_ = to_view(route_stop_times_),
+        .departure_route_stop_times_ = to_view(departure_route_stop_times_),
+        .arrival_route_stop_times_ = to_view(arrival_route_stop_times_),
         .route_stop_time_ranges_ = to_view(route_stop_time_ranges_),
         .route_transport_ranges_ = to_view(route_transport_ranges_),
         .route_clasz_ = to_view(route_clasz_),
@@ -154,7 +156,8 @@ struct gpu_timetable::impl {
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_out_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_in_;
 
-  thrust::device_vector<delta> route_stop_times_;
+  thrust::device_vector<delta> departure_route_stop_times_;
+  thrust::device_vector<delta> arrival_route_stop_times_;
   thrust::device_vector<interval<std::uint32_t>> route_stop_time_ranges_;
   thrust::device_vector<interval<transport_idx_t>> route_transport_ranges_;
   thrust::device_vector<clasz> route_clasz_;

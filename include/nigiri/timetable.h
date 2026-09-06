@@ -162,17 +162,17 @@ struct timetable {
 
   size_t n_events_at_location(location_idx_t const loc) const {
     size_t res = 0U;
-    for (const auto r : location_routes_[loc]) {
-      const auto stop_seq = route_location_seq_[r];
+    for (auto const r : location_routes_[loc]) {
+      auto const stop_seq = route_location_seq_[r];
       for (stop_idx_t i = 0U; i < stop_seq.size(); ++i) {
-        const auto stp = stop{stop_seq[i]};
+        auto const stp = stop{stop_seq[i]};
         if (stp.location_idx() != loc) {
           continue;
         }
 
         size_t n_active_transports = 0U;
-        const auto transport_range = route_transport_ranges_[r];
-        for (const auto t : transport_range) {
+        auto const transport_range = route_transport_ranges_[r];
+        for (auto const t : transport_range) {
           n_active_transports += bitfields_[transport_traffic_days_[t]].count();
         }
         if (i > 0U) {
@@ -189,28 +189,39 @@ struct timetable {
     return res;
   }
 
+  // departures of stop i (i < n-1) and arrivals of stop i (i > 0) live in
+  // separate arrays with the same per-route base offset
+  unsigned event_times_idx(route_idx_t const r,
+                           stop_idx_t const stop_idx,
+                           event_type const ev_type) const {
+    auto const n_transports =
+        static_cast<unsigned>(route_transport_ranges_[r].size());
+    return static_cast<unsigned>(
+        route_stop_time_ranges_[r].from_ +
+        n_transports * (stop_idx - (ev_type == event_type::kArr ? 1 : 0)));
+  }
+
   std::span<delta const> event_times_at_stop(route_idx_t const r,
                                              stop_idx_t const stop_idx,
                                              event_type const ev_type) const {
     auto const n_transports =
         static_cast<unsigned>(route_transport_ranges_[r].size());
-    auto const idx = static_cast<unsigned>(
-        route_stop_time_ranges_[r].from_ +
-        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    return std::span<delta const>{&route_stop_times_[idx], n_transports};
+    auto const idx = event_times_idx(r, stop_idx, ev_type);
+    return std::span<delta const>{
+        &(ev_type == event_type::kDep ? departure_route_stop_times_
+                                      : arrival_route_stop_times_)[idx],
+        n_transports};
   }
 
   delta event_mam(route_idx_t const r,
                   transport_idx_t t,
                   stop_idx_t const stop_idx,
                   event_type const ev_type) const {
-    auto const range = route_transport_ranges_[r];
-    auto const n_transports = static_cast<unsigned>(range.size());
-    auto const route_stop_begin = static_cast<unsigned>(
-        route_stop_time_ranges_[r].from_ +
-        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    auto const t_idx_in_route = to_idx(t) - to_idx(range.from_);
-    return route_stop_times_[route_stop_begin + t_idx_in_route];
+    auto const t_idx_in_route =
+        to_idx(t) - to_idx(route_transport_ranges_[r].from_);
+    auto const idx = event_times_idx(r, stop_idx, ev_type) + t_idx_in_route;
+    return (ev_type == event_type::kDep ? departure_route_stop_times_
+                                        : arrival_route_stop_times_)[idx];
   }
 
   delta event_mam(transport_idx_t t,
@@ -408,8 +419,15 @@ struct timetable {
   //  stop-1-dep: [...]
   // ...
   // RouteN: ...
+  // departure_route_stop_times_      arrival_route_stop_times_
+  // Route 1:                         Route 1:
+  //   stop-1-dep: [trip1..tripN]       stop-2-arr: [trip1..tripN]
+  //   stop-2-dep: [trip1..tripN]       stop-3-arr: [trip1..tripN]
+  // Route 2: ...                     Route 2: ...
+  // route_stop_time_ranges_ indexes both (same size, same offsets)
   vector_map<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
-  vector<delta> route_stop_times_;
+  vector<delta> departure_route_stop_times_;
+  vector<delta> arrival_route_stop_times_;
 
   // Offset between the stored time and the time given in the GTFS timetable
   // Required to match GTFS-RT with GTFS-static trips.

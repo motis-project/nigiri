@@ -153,7 +153,8 @@ void permutate_route_times(
     vector_map<route_idx_t, interval<transport_idx_t>> const&
         permutated_route_transport_ranges,
     vector_map<route_idx_t, interval<std::uint32_t>>& ranges,
-    vector<delta>& times) {
+    vector<delta>& dep_times,
+    vector<delta>& arr_times) {
   auto const n_routes = ranges.size();
 
   vector_map<route_idx_t, interval<uint32_t>> new_ranges;
@@ -162,28 +163,29 @@ void permutate_route_times(
   for (auto new_idx = route_idx_t{0}; new_idx < n_routes; ++new_idx) {
     auto const n_stops = permutated_route_stops[new_idx].size();
     auto const n_transports = permutated_route_transport_ranges[new_idx].size();
-    auto const n_events_per_route = (2 * n_stops - 2) * n_transports;
+    auto const n_events_per_route = (n_stops - 1) * n_transports;
     new_ranges[new_idx] = {offset, offset + n_events_per_route};
     offset += n_events_per_route;
   }
 
-  vector<delta> new_times;
-  new_times.reserve(times.size());
-
-  for (auto new_route_idx = route_idx_t{0U}; new_route_idx < n_routes;
-       ++new_route_idx) {
-    auto const original_route_idx = p[new_route_idx];
-    auto const old_range = ranges[original_route_idx];
-
-    auto const times_start_it = std::next(times.begin(), *old_range.begin());
-    auto const times_end_it = std::next(times.begin(), *old_range.end());
-
-    new_times.insert(new_times.end(), times_start_it, times_end_it);
-  }
-
-  utl::verify(new_times.size() == times.size(), "Unexpected times dimensions");
+  auto const permutate_times = [&](vector<delta>& times) {
+    vector<delta> new_times;
+    new_times.reserve(times.size());
+    for (auto new_route_idx = route_idx_t{0U}; new_route_idx < n_routes;
+         ++new_route_idx) {
+      auto const original_route_idx = p[new_route_idx];
+      auto const old_range = ranges[original_route_idx];
+      auto const times_start_it = std::next(times.begin(), *old_range.begin());
+      auto const times_end_it = std::next(times.begin(), *old_range.end());
+      new_times.insert(new_times.end(), times_start_it, times_end_it);
+    }
+    utl::verify(new_times.size() == times.size(),
+                "Unexpected times dimensions");
+    times = std::move(new_times);
+  };
+  permutate_times(dep_times);
+  permutate_times(arr_times);
   ranges = std::move(new_ranges);
-  times = std::move(new_times);
 }
 
 cartesian_t get_cartesian(geo::latlng const& ll) {
@@ -415,7 +417,9 @@ void permutate_routes_and_transports(timetable& tt) {
    * are expected to be permutated!!!
    */
   permutate_route_times(p, tt.route_location_seq_, tt.route_transport_ranges_,
-                        tt.route_stop_time_ranges_, tt.route_stop_times_);
+                        tt.route_stop_time_ranges_,
+                        tt.departure_route_stop_times_,
+                        tt.arrival_route_stop_times_);
 
   update_refs(r, tt.location_routes_);
   update_refs(r, tt.transport_route_);
