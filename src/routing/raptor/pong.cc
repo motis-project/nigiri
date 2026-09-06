@@ -185,6 +185,10 @@ routing_result pong(timetable const& tt,
   }
   lb_time += std::chrono::steady_clock::now() - pong_lb_start;
 
+  if constexpr (requires { ping.set_criteria_only(true); }) {
+    ping.set_criteria_only(true);  // legs of ping journeys are never used
+  }
+
   auto pong = pong_algo_t{tt,
                           rtt,
                           r_state,

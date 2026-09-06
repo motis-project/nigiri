@@ -105,7 +105,7 @@ struct raptor_impl {
       auto const t = unix_to_delta(base(), starts_[i].second);
       auto const v = via_offset_t{0};
       best_.update_min(l, v, t);
-      round_times_.update_min(0U, l, v, t, make_start_bc());
+      round_times_.update_min(0U, l, v, t);
       touch_round(0U, l);
       station_mark_.mark(to_idx(l));
     }
@@ -148,6 +148,22 @@ struct raptor_impl {
     if (global_t_id == 0U) {
       *any_marked_ = 0U;
     }
+  }
+
+  // Reconstruction hint per (round, location): low byte of the location the
+  // ride alighted at (same location for a transfer). A hint only orders the
+  // candidate search; a wrong hint (lost race) costs time, not correctness.
+  __device__ __forceinline__ void set_hint(unsigned const k,
+                                           location_idx_t const l,
+                                           location_idx_t const src) {
+    round_hint_[k * tt_.n_locations_ + to_idx(l)] =
+        static_cast<std::uint8_t>(to_idx(src) & 0xFFU);
+  }
+  __device__ __forceinline__ bool hint_matches(unsigned const k,
+                                               location_idx_t const l,
+                                               location_idx_t const cand) {
+    return round_hint_[k * tt_.n_locations_ + to_idx(l)] ==
+           static_cast<std::uint8_t>(to_idx(cand) & 0xFFU);
   }
 
   __device__ void touch_round(unsigned const k, location_idx_t const l) {
@@ -224,149 +240,574 @@ struct raptor_impl {
     prev_station_mark_.swap_reset(station_mark_);
   }
 
-  __device__ void reconstruct_journey(location_idx_t const dest,
-                                      unsigned const K,
-                                      gpu_journey* out) {
+  // ===========================================================================
+  // Journey reconstruction by search (no breadcrumbs stored in round_times_).
+  //
+  // Mirrors routing/raptor/reconstruct.cc: for the label t at location l in
+  // round k, the ride that produced it alighted at some l' with an arrival a
+  // such that a + [transfer | footpath | intermodal offset](l' -> l) == t,
+  // and was boardable at an earlier stop s0 with round_times[k-1][s0] <= dep.
+  // Candidates are tried in the CPU's order: rt transports first, then the
+  // routes of l' in location_routes_ order, stops in sequence order,
+  // transports in route order, boarding stops from the alighting stop
+  // backwards (latest boarding = shortest ride).
+  // ===========================================================================
+  struct rec_leg {
+    bool found_{false};
+    bool is_rt_{false};
+    std::uint32_t t_{0U};  // transport_idx_t / rt_transport_idx_t value
+    day_idx_t day_{};
+    stop_idx_t board_{}, alight_{};
+    location_idx_t board_loc_{}, alight_loc_{};
+    delta_t dep_{}, arr_{};
+  };
+
+  // How a candidate ride's arrival a at l' has to relate to the label:
+  //   kExact:  a == a_            (static transfer / footpath / offset)
+  //   kAtMost: a <= a_ (dir-wise) (rt transports allow earlier arrivals)
+  //   kTdDest: a + td_dest_[td_idx_](a) == a_   (a_ = the kEnd label)
+  //   kTdFp:   a + td footpath l' -> fp_target_ evaluated at a == a_
+  enum class rec_pred : std::uint8_t { kExact, kAtMost, kTdDest, kTdFp };
+  struct rec_target {
+    rec_pred kind_;
+    delta_t a_;
+    std::uint32_t td_idx_;
+    location_idx_t fp_target_;
+  };
+
+  static constexpr auto const kRecMaxDayShift =
+      static_cast<int>(routing::kMaxTravelTime.count() / 1440 + 1);
+
+  __device__ bool rec_matches(rec_target const& tgt,
+                              location_idx_t const lp,
+                              delta_t const arr) {
+    switch (tgt.kind_) {
+      case rec_pred::kExact: return arr == tgt.a_;
+      case rec_pred::kAtMost: return is_better_or_eq(arr, tgt.a_);
+      case rec_pred::kTdDest: {
+        auto const offsets = td_dest_[td_dest_group_idx_t{tgt.td_idx_}];
+        auto const r = d_get_td_duration<SearchDir>(
+            offsets, 0U, static_cast<std::uint32_t>(offsets.size()),
+            to_unix(arr));
+        return r.valid_ &&
+               clamp(arr + dir(static_cast<int>(r.duration_.count()))) ==
+                   tgt.a_;
+      }
+      case rec_pred::kTdFp: {
+        if (rtt_.td_ == nullptr) {
+          return false;
+        }
+        // the search evaluated l' -> target on l'`s out list (fwd) at the
+        // arrival time; find the group of the target and re-evaluate
+        auto const list =
+            kFwd ? rtt_.td_->out_[prf_idx_][lp] : rtt_.td_->in_[prf_idx_][lp];
+        auto const n = static_cast<std::uint32_t>(list.size());
+        auto i = std::uint32_t{0U};
+        while (i < n) {
+          auto j = i + 1U;
+          while (j < n && list[j].target_ == list[i].target_) {
+            ++j;
+          }
+          if (list[i].target_ == tgt.fp_target_) {
+            auto const r =
+                d_get_td_duration<SearchDir>(list, i, j, to_unix(arr));
+            if (!r.valid_) {
+              return false;
+            }
+            auto const d = r.duration_.count() > kMaxFpMinutes
+                               ? kMaxFpMinutes
+                               : r.duration_.count();
+            return clamp(arr + dir(static_cast<int>(d))) == tgt.a_;
+          }
+          i = j;
+        }
+        return false;
+      }
+    }
+    return false;
+  }
+
+  // Filters of the query for a static route (clasz + per-transport flags).
+  __device__ bool rec_route_allowed(route_idx_t const r,
+                                    unsigned& section_mask) {
+    if (allowed_claszes_ != all_clasz_allowed() &&
+        !is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
+      return false;
+    }
+    if (tt_.filters_ != nullptr &&
+        (is_wheelchair_ || require_bike_transport_ || require_car_transport_ ||
+         no_compulsory_reservation_)) {
+      return is_wheelchair_ ? transport_allowed<true>(*tt_.filters_, to_idx(r),
+                                                      section_mask)
+                            : transport_allowed<false>(*tt_.filters_, to_idx(r),
+                                                       section_mask);
+    }
+    return true;
+  }
+
+  __device__ bool rec_rt_allowed(rt_transport_idx_t const rt_t,
+                                 unsigned& section_mask) {
+    if (allowed_claszes_ != all_clasz_allowed() &&
+        !is_allowed(allowed_claszes_, rtt_.rt_transport_clasz_[rt_t])) {
+      return false;
+    }
+    if (rtt_.filters_ != nullptr &&
+        (is_wheelchair_ || require_bike_transport_ || require_car_transport_ ||
+         no_compulsory_reservation_)) {
+      return is_wheelchair_ ? transport_allowed<true>(
+                                  *rtt_.filters_, to_idx(rt_t), section_mask)
+                            : transport_allowed<false>(
+                                  *rtt_.filters_, to_idx(rt_t), section_mask);
+    }
+    return true;
+  }
+
+  // Boarding stop for a static ride (r, t, day) alighting at stop s in
+  // round k: walk from s towards the ride's start; the first stop whose
+  // round k-1 label is not later than the departure wins.
+  __device__ bool rec_try_board(unsigned const k,
+                                route_idx_t const r,
+                                transport_idx_t const t,
+                                day_idx_t const day,
+                                stop_idx_t const s,
+                                unsigned const section_mask,
+                                rec_leg& out) {
+    auto const seq = tt_.route_location_seq_[r];
+    auto const n = static_cast<int>(seq.size());
+    auto const tr = transport{t, day};
+    for (auto s0 = kFwd ? static_cast<int>(s) - 1 : static_cast<int>(s) + 1;
+         kFwd ? s0 >= 0 : s0 < n; s0 += kFwd ? -1 : 1) {
+      if (section_mask != 0U) {
+        auto const sec = static_cast<unsigned>(kFwd ? s0 : s0 - 1);
+        if (tt_.filters_->section_killed(section_mask, r, sec)) {
+          break;
+        }
+      }
+      auto const stp = stop{seq[static_cast<unsigned>(s0)]};
+      if (!stp.can_start<SearchDir>(is_wheelchair_)) {
+        continue;
+      }
+      auto const dep = time_at_stop(r, tr, static_cast<stop_idx_t>(s0),
+                                    kFwd ? event_type::kDep : event_type::kArr);
+      if (is_better_or_eq(round_times_.get(static_cast<std::uint8_t>(k - 1U),
+                                           stp.location_idx(), 0U),
+                          dep)) {
+        out.found_ = true;
+        out.is_rt_ = false;
+        out.t_ = to_idx(t);
+        out.day_ = day;
+        out.board_ = static_cast<stop_idx_t>(s0);
+        out.alight_ = s;
+        out.board_loc_ = stp.location_idx();
+        out.alight_loc_ = stop{seq[s]}.location_idx();
+        out.dep_ = dep;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  __device__ bool rec_try_board_rt(unsigned const k,
+                                   rt_transport_idx_t const rt_t,
+                                   stop_idx_t const s,
+                                   unsigned const section_mask,
+                                   rec_leg& out) {
+    auto const seq = rtt_.rt_transport_location_seq_[rt_t];
+    auto const n = static_cast<int>(seq.size());
+    for (auto s0 = kFwd ? static_cast<int>(s) - 1 : static_cast<int>(s) + 1;
+         kFwd ? s0 >= 0 : s0 < n; s0 += kFwd ? -1 : 1) {
+      if (section_mask != 0U) {
+        auto const sec = static_cast<unsigned>(kFwd ? s0 : s0 - 1);
+        if (rtt_.filters_->section_killed(section_mask, rt_t, sec)) {
+          break;
+        }
+      }
+      auto const stp = stop{seq[static_cast<unsigned>(s0)]};
+      if (!stp.can_start<SearchDir>(is_wheelchair_)) {
+        continue;
+      }
+      auto const dep =
+          rt_time_at_stop(rt_t, static_cast<stop_idx_t>(s0),
+                          kFwd ? event_type::kDep : event_type::kArr);
+      if (is_better_or_eq(round_times_.get(static_cast<std::uint8_t>(k - 1U),
+                                           stp.location_idx(), 0U),
+                          dep)) {
+        out.found_ = true;
+        out.is_rt_ = true;
+        out.t_ = to_idx(rt_t);
+        out.day_ = day_idx_t{0U};
+        out.board_ = static_cast<stop_idx_t>(s0);
+        out.alight_ = s;
+        out.board_loc_ = stp.location_idx();
+        out.alight_loc_ = stop{seq[s]}.location_idx();
+        out.dep_ = dep;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // One rt transport of l': a ride alighting at l' whose arrival satisfies
+  // tgt and is boardable in round k-1.
+  __device__ bool rec_scan_rt(unsigned const k,
+                              location_idx_t const lp,
+                              rec_target const& tgt,
+                              rt_transport_idx_t const rt_t,
+                              rec_leg& out) {
+    auto const arr_type = kFwd ? event_type::kArr : event_type::kDep;
+    auto section_mask = 0U;
+    if (!rec_rt_allowed(rt_t, section_mask)) {
+      return false;
+    }
+    auto const seq = rtt_.rt_transport_location_seq_[rt_t];
+    auto const n = static_cast<unsigned>(seq.size());
+    for (auto s = 0U; s != n; ++s) {
+      auto const stp = stop{seq[s]};
+      if (stp.location_idx() != lp || (kFwd ? s == 0U : s + 1U == n) ||
+          !stp.can_finish<SearchDir>(is_wheelchair_)) {
+        continue;
+      }
+      auto const arr =
+          rt_time_at_stop(rt_t, static_cast<stop_idx_t>(s), arr_type);
+      // rt: an earlier arrival than required is accepted (reconstruct.cc)
+      auto const ok = tgt.kind_ == rec_pred::kExact
+                          ? is_better_or_eq(arr, tgt.a_)
+                          : rec_matches(tgt, lp, arr);
+      if (ok && rec_try_board_rt(k, rt_t, static_cast<stop_idx_t>(s),
+                                 section_mask, out)) {
+        out.arr_ = arr;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // One static route of l'.
+  __device__ bool rec_scan_route(unsigned const k,
+                                 location_idx_t const lp,
+                                 rec_target const& tgt,
+                                 route_idx_t const r,
+                                 rec_leg& out) {
+    auto const arr_type = kFwd ? event_type::kArr : event_type::kDep;
+    auto section_mask = 0U;
+    if (!rec_route_allowed(r, section_mask)) {
+      return false;
+    }
+    auto const seq = tt_.route_location_seq_[r];
+    auto const n = static_cast<unsigned>(seq.size());
+    for (auto s = 0U; s != n; ++s) {
+      auto const stp = stop{seq[s]};
+      if (stp.location_idx() != lp || (kFwd ? s == 0U : s + 1U == n) ||
+          !stp.can_finish<SearchDir>(is_wheelchair_)) {
+        continue;
+      }
+      auto const stop_idx = static_cast<stop_idx_t>(s);
+      auto const range = tt_.route_transport_ranges_[r];
+      if (tgt.kind_ == rec_pred::kExact) {
+        // exact arrival: the traffic day follows from the required time
+        // and the event's day offset; the arrivals of a stop are
+        // contiguous, so this is a linear 2-byte scan
+        auto const [a_day, a_mam] = split(tgt.a_);
+        auto const evs = tt_.event_times_at_stop(r, stop_idx, arr_type);
+        for (auto i = 0U; i != evs.size(); ++i) {
+          auto const ev = evs[i];
+          if (ev.mam() != a_mam.count()) {
+            continue;
+          }
+          auto const t = transport_idx_t{to_idx(range.from_) + i};
+          auto const traffic_day = as_int(a_day) - ev.days();
+          if (traffic_day < 0 ||
+              !is_transport_active(t, static_cast<std::size_t>(traffic_day))) {
+            continue;
+          }
+          auto const day =
+              day_idx_t{static_cast<day_idx_t::value_t>(traffic_day)};
+          if (rec_try_board(k, r, t, day, stop_idx, section_mask, out)) {
+            out.arr_ = tgt.a_;
+            return true;
+          }
+        }
+      } else {
+        auto const [l_day, _] = split(tgt.a_);
+        for (auto t = range.from_; t != range.to_; ++t) {
+          auto const ev = tt_.event_mam(r, t, stop_idx, arr_type);
+          for (auto off = 0; off != kRecMaxDayShift; ++off) {
+            auto const cand = as_int(l_day) - ev.days() - (kFwd ? off : -off);
+            if (cand < 0 ||
+                !is_transport_active(t, static_cast<std::size_t>(cand))) {
+              continue;
+            }
+            auto const day = day_idx_t{static_cast<day_idx_t::value_t>(cand)};
+            auto const arr =
+                time_at_stop(r, transport{t, day}, stop_idx, arr_type);
+            if (!is_better_or_eq(arr, tgt.a_) || !rec_matches(tgt, lp, arr)) {
+              continue;
+            }
+            if (rec_try_board(k, r, t, day, stop_idx, section_mask, out)) {
+              out.arr_ = arr;
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  __device__ __forceinline__ rec_leg rec_leg_from_lane(rec_leg const& l,
+                                                       int const w) {
+    auto r = rec_leg{};
+    r.found_ = true;
+    r.is_rt_ = __shfl_sync(kAllLanes, l.is_rt_ ? 1 : 0, w) != 0;
+    r.t_ = __shfl_sync(kAllLanes, l.t_, w);
+    r.day_ = day_idx_t{static_cast<day_idx_t::value_t>(
+        __shfl_sync(kAllLanes, static_cast<int>(l.day_.v_), w))};
+    r.board_ = static_cast<stop_idx_t>(
+        __shfl_sync(kAllLanes, static_cast<int>(l.board_), w));
+    r.alight_ = static_cast<stop_idx_t>(
+        __shfl_sync(kAllLanes, static_cast<int>(l.alight_), w));
+    r.board_loc_ = location_idx_t{__shfl_sync(kAllLanes, l.board_loc_.v_, w)};
+    r.alight_loc_ = location_idx_t{__shfl_sync(kAllLanes, l.alight_loc_.v_, w)};
+    r.dep_ = static_cast<delta_t>(
+        __shfl_sync(kAllLanes, static_cast<int>(l.dep_), w));
+    r.arr_ = static_cast<delta_t>(
+        __shfl_sync(kAllLanes, static_cast<int>(l.arr_), w));
+    return r;
+  }
+
+  // Warp-cooperative: the lanes stride the rt transports / routes of l' and
+  // the first match in list order wins (= the sequential order of
+  // reconstruct.cc: rt first, then routes; stops and transports in order).
+  // All lanes return the same result.
+  __device__ bool rec_find_ride(unsigned const k,
+                                location_idx_t const lp,
+                                rec_target const& tgt,
+                                rec_leg& out,
+                                unsigned const lane) {
+    auto const search = [&](auto const& list, auto&& scan) {
+      auto const n = static_cast<unsigned>(list.size());
+      for (auto chunk = 0U; chunk < n; chunk += kWarpSize) {
+        auto const i = chunk + lane;
+        auto mine = rec_leg{};
+        auto const found = i < n && scan(list[i], mine);
+        auto const mask = __ballot_sync(kAllLanes, found);
+        if (mask != 0U) {
+          auto const w = static_cast<int>(__ffs(static_cast<int>(mask))) - 1;
+          out = rec_leg_from_lane(mine, w);
+          return true;
+        }
+      }
+      return false;
+    };
+
+    if (rtt_.n_rt_transports_ != 0U &&
+        search(rtt_.location_rt_transports_[lp],
+               [&](rt_transport_idx_t const rt_t, rec_leg& o) {
+                 return rec_scan_rt(k, lp, tgt, rt_t, o);
+               })) {
+      return true;
+    }
+    return search(tt_.location_routes_[lp],
+                  [&](route_idx_t const r, rec_leg& o) {
+                    return rec_scan_route(k, lp, tgt, r, o);
+                  });
+  }
+
+  // Criteria only (ping searches): the pong needs (dest_time, transfers)
+  // per round, never the legs.
+  __device__ void reconstruct_criteria(location_idx_t const dest,
+                                       unsigned const K,
+                                       gpu_journey* out) {
     out->state_ = reconstruction_result::kNotReconstructed;
-    auto cur_v = static_cast<via_offset_t>(Vias);
     auto const dest_time =
-        round_times_.get(static_cast<std::uint8_t>(K), dest, cur_v);
+        round_times_.get(static_cast<std::uint8_t>(K), dest, 0U);
     if (dest_time == kInvalid) {
       return;
     }
     out->dest_l_ = dest;
     out->dest_time_ = dest_time;
     out->transfers_ = static_cast<std::uint8_t>(K - 1U);
+    out->start_l_ = location_idx_t::invalid();
+    out->n_legs_ = 0U;
+    out->state_ = reconstruction_result::kOk;
+  }
 
-    auto const ev_arr_type = kFwd ? event_type::kArr : event_type::kDep;
-    auto const ev_dep_type = kFwd ? event_type::kDep : event_type::kArr;
+  // Warp-cooperative (all 32 lanes call it; lane 0 writes the result).
+  __device__ void reconstruct_journey(location_idx_t const dest,
+                                      unsigned const K,
+                                      gpu_journey* out,
+                                      unsigned const lane) {
+    auto const set_state = [&](reconstruction_result const st) {
+      if (lane == 0U) {
+        out->state_ = st;
+      }
+    };
+    set_state(reconstruction_result::kNotReconstructed);
+    auto const dest_time =
+        round_times_.get(static_cast<std::uint8_t>(K), dest, 0U);
+    if (dest_time == kInvalid) {
+      return;
+    }
+    if (lane == 0U) {
+      out->dest_l_ = dest;
+      out->dest_time_ = dest_time;
+      out->transfers_ = static_cast<std::uint8_t>(K - 1U);
+    }
 
+    auto const intermodal = is_intermodal_dest();
     auto cur_l = dest;
     auto cur_k = K;
     auto n = 0U;
     while (cur_k >= 1U) {
-      auto const bc =
-          round_times_.get_bc(static_cast<std::uint8_t>(cur_k), cur_l, cur_v);
+      auto const t =
+          round_times_.get(static_cast<std::uint8_t>(cur_k), cur_l, 0U);
+      auto leg = rec_leg{};
+      auto const is_egress = intermodal && cur_l == kIntermodalTarget;
 
-      if (bc_is_start(bc)) {
-        break;
-      }
-
-      auto const bc_t = bc_transport(bc);
-      auto const board = static_cast<stop_idx_t>(bc_board(bc));
-      auto const alight = static_cast<stop_idx_t>(bc_alight(bc));
-      auto const arr_at_cur =
-          round_times_.get(static_cast<std::uint8_t>(cur_k), cur_l, cur_v);
-
-      auto const is_rt = is_rt_bc_transport(bc_t, rtt_.n_rt_transports_);
-      auto day = day_idx_t{0U};
-      auto train_arr = kInvalid;
-      auto dep_at_board = kInvalid;
-      auto board_loc = location_idx_t::invalid();
-      auto alight_loc = location_idx_t::invalid();
-
-      if (is_rt) {
-        // rt transport: event times are stored absolute (relative to the rt
-        // base day) -> exact, no traffic-day recovery needed
-        auto const rt_t = rt_transport_idx_t{decode_rt_bc_transport(bc_t)};
-        auto const stop_seq = rtt_.rt_transport_location_seq_[rt_t];
-        board_loc = stop{stop_seq[board]}.location_idx();
-        alight_loc = stop{stop_seq[alight]}.location_idx();
-        train_arr = rt_time_at_stop(rt_t, alight, ev_arr_type);
-        dep_at_board = rt_time_at_stop(rt_t, board, ev_dep_type);
-      } else {
-        auto const t_idx = transport_idx_t{bc_t};
-        auto const r = tt_.transport_route_[t_idx];
-
-        constexpr auto const kRecMaxDayShift =
-            static_cast<int>(routing::kMaxTravelTime.count() / 1440 + 1);
-        auto const event_mam_full =
-            tt_.event_mam(r, t_idx, alight, ev_arr_type).count();
-        auto const [arr_day, _] = split(arr_at_cur);
-        auto found_day = false;
-        for (auto off = 0; off != kRecMaxDayShift; ++off) {
-          auto const cand =
-              as_int(arr_day) - event_mam_full / 1440 - (kFwd ? off : -off);
-          if (cand < 0) {
-            continue;
+      // pass 0: only candidates matching the stored hint; pass 1: the rest
+      for (auto pass = 0U; pass != 2U && !leg.found_; ++pass) {
+        auto const take = [&](location_idx_t const cand) {
+          return hint_matches(cur_k, cur_l, cand) == (pass == 0U);
+        };
+        if (is_egress) {
+          // kEnd label = ride arrival at an offset location + its offset
+          for (auto const lp : dest_offset_locs_) {
+            auto const d = dist_to_end_[to_idx(lp)];
+            if (d == kUnreachable || !take(lp)) {
+              continue;
+            }
+            auto const tgt = rec_target{rec_pred::kExact, clamp(t - dir(d)), 0U,
+                                        location_idx_t::invalid()};
+            if (rec_find_ride(cur_k, lp, tgt, leg, lane)) {
+              break;
+            }
           }
-          if (!is_transport_active(t_idx, static_cast<std::size_t>(cand))) {
-            continue;
+          for (auto g = 0U; !leg.found_ && g < td_dest_locs_.size(); ++g) {
+            if (!take(td_dest_locs_[g])) {
+              continue;
+            }
+            auto const tgt =
+                rec_target{rec_pred::kTdDest, t, g, location_idx_t::invalid()};
+            rec_find_ride(cur_k, td_dest_locs_[g], tgt, leg, lane);
           }
-          auto const tr = transport{
-              t_idx, day_idx_t{static_cast<day_idx_t::value_t>(cand)}};
-          auto const ev = time_at_stop(r, tr, alight, ev_arr_type);
-          if (is_better_or_eq(ev, arr_at_cur)) {
-            day = day_idx_t{static_cast<day_idx_t::value_t>(cand)};
-            train_arr = ev;
-            found_day = true;
-            break;
-          }
-        }
-        if (!found_day) {
-          out->state_ = reconstruction_result::kReconstructionFailed;
-          return;
+          continue;
         }
 
-        auto const tr = transport{t_idx, day};
-        dep_at_board = time_at_stop(r, tr, board, ev_dep_type);
-        auto const stop_seq = tt_.route_location_seq_[r];
-        board_loc = stop{stop_seq[board]}.location_idx();
-        alight_loc = stop{stop_seq[alight]}.location_idx();
+        // same-location transfer
+        if (take(cur_l)) {
+          auto const transfer =
+              (!intermodal && is_dest_[to_idx(cur_l)])
+                  ? 0
+                  : adjusted_transfer_time(
+                        transfer_time_settings_,
+                        static_cast<int>(tt_.transfer_time_[cur_l].count()));
+          auto const tgt =
+              rec_target{rec_pred::kExact, clamp(t - dir(transfer)), 0U,
+                         location_idx_t::invalid()};
+          rec_find_ride(cur_k, cur_l, tgt, leg, lane);
+        }
+        // static footpaths into cur_l
+        if (!leg.found_) {
+          auto const fps = kFwd ? tt_.footpaths_in_[prf_idx_][cur_l]
+                                : tt_.footpaths_out_[prf_idx_][cur_l];
+          for (auto const fp : fps) {
+            if (!take(fp.target())) {
+              continue;
+            }
+            auto const d = adjusted_transfer_time(transfer_time_settings_,
+                                                  fp.duration().count());
+            auto const tgt = rec_target{rec_pred::kExact, clamp(t - dir(d)), 0U,
+                                        location_idx_t::invalid()};
+            if (rec_find_ride(cur_k, fp.target(), tgt, leg, lane)) {
+              break;
+            }
+          }
+        }
+        // time-dependent footpaths into cur_l
+        if (!leg.found_ && rtt_.td_ != nullptr) {
+          auto const& has =
+              kFwd ? rtt_.td_->has_in_[prf_idx_] : rtt_.td_->has_out_[prf_idx_];
+          if (!has.blocks_.empty() && has[to_idx(cur_l)]) {
+            auto const list = kFwd ? rtt_.td_->in_[prf_idx_][cur_l]
+                                   : rtt_.td_->out_[prf_idx_][cur_l];
+            auto last = location_idx_t::invalid();
+            for (auto const& e : list) {
+              if (e.target_ == last || !take(e.target_)) {
+                continue;
+              }
+              last = e.target_;
+              auto const tgt = rec_target{rec_pred::kTdFp, t, 0U, cur_l};
+              if (rec_find_ride(cur_k, e.target_, tgt, leg, lane)) {
+                break;
+              }
+            }
+          }
+        }
       }
 
-      auto const is_egress = is_intermodal_dest() && cur_l == kIntermodalTarget;
+      if (!leg.found_) {
+        set_state(reconstruction_result::kReconstructionFailed);
+        return;
+      }
+
       if (is_egress) {
         // no footpath leg: the last mile alight -> kEnd is the host's mumo
         // leg; the GPU journey's terminal is the ride's alighting stop
-        out->dest_l_ = alight_loc;
-      } else if (n != 0U || alight_loc != cur_l ||
-                 train_arr != arr_at_cur /* skip 0min last leg */) {
+        if (lane == 0U) {
+          out->dest_l_ = leg.alight_loc_;
+        }
+      } else if (n != 0U || leg.alight_loc_ != cur_l ||
+                 leg.arr_ != t /* skip 0min last leg */) {
         // Footpaths are always emitted (even zero minute reflexive transfers).
         // Journey structure: [WALK]? TRANSIT [TRANSIT WALK]*
         if (n >= kMaxRecLegs) {
-          out->state_ = reconstruction_result::kReconstructionFailed;
+          set_state(reconstruction_result::kReconstructionFailed);
           return;
         }
-        auto& lg = out->legs_[n++];
-        lg.is_footpath_ = true;
-        lg.from_l_ = alight_loc;
-        lg.to_l_ = cur_l;
-        lg.dep_ = train_arr;
-        lg.arr_ = arr_at_cur;
-        lg.fp_duration_ = static_cast<std::uint16_t>(
-            kFwd ? (arr_at_cur - train_arr) : (train_arr - arr_at_cur));
+        if (lane == 0U) {
+          auto& lg = out->legs_[n];
+          lg.is_footpath_ = true;
+          lg.from_l_ = leg.alight_loc_;
+          lg.to_l_ = cur_l;
+          lg.dep_ = leg.arr_;
+          lg.arr_ = t;
+          lg.fp_duration_ = static_cast<std::uint16_t>(kFwd ? (t - leg.arr_)
+                                                            : (leg.arr_ - t));
+        }
+        ++n;
       }
 
-      // transport leg board_loc -> alight_loc
       if (n >= kMaxRecLegs) {
-        out->state_ = reconstruction_result::kReconstructionFailed;
+        set_state(reconstruction_result::kReconstructionFailed);
         return;
       }
-      auto& lg = out->legs_[n++];
-      lg.is_footpath_ = false;
-      lg.from_l_ = board_loc;
-      lg.to_l_ = alight_loc;
-      lg.dep_ = dep_at_board;
-      lg.arr_ = train_arr;
-      lg.transport_ =
-          is_rt ? transport_idx_t::invalid() : transport_idx_t{bc_t};
-      lg.rt_transport_ = is_rt
-                             ? rt_transport_idx_t{decode_rt_bc_transport(bc_t)}
-                             : rt_transport_idx_t::invalid();
-      lg.day_ = day;
-      lg.enter_stop_ = board;
-      lg.exit_stop_ = alight;
+      if (lane == 0U) {
+        auto& lg = out->legs_[n];
+        lg.is_footpath_ = false;
+        lg.from_l_ = leg.board_loc_;
+        lg.to_l_ = leg.alight_loc_;
+        lg.dep_ = leg.dep_;
+        lg.arr_ = leg.arr_;
+        lg.transport_ =
+            leg.is_rt_ ? transport_idx_t::invalid() : transport_idx_t{leg.t_};
+        lg.rt_transport_ = leg.is_rt_ ? rt_transport_idx_t{leg.t_}
+                                      : rt_transport_idx_t::invalid();
+        lg.day_ = leg.day_;
+        lg.enter_stop_ = leg.board_;
+        lg.exit_stop_ = leg.alight_;
+      }
+      ++n;
 
-      cur_l = board_loc;
+      cur_l = leg.board_loc_;
       cur_k -= 1U;
     }
 
-    out->start_l_ = cur_l;
-    out->n_legs_ = static_cast<std::uint8_t>(n);
-    // n == 0 with a valid dest label = inconsistent chain, flag loudly
-    out->state_ = (n != 0U) ? reconstruction_result::kOk
-                            : reconstruction_result::kReconstructionFailed;
+    if (lane == 0U) {
+      out->start_l_ = cur_l;
+      out->n_legs_ = static_cast<std::uint8_t>(n);
+      out->state_ = (n != 0U) ? reconstruction_result::kOk
+                              : reconstruction_result::kReconstructionFailed;
+    }
   }
 
   __device__ date::sys_days base() const {
@@ -587,13 +1028,7 @@ struct raptor_impl {
               rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
           if (is_better_loose(by_transport, time_at_dest_.get(k)) &&
               within_bounds(k, l, by_transport)) {
-            auto const board_stop = static_cast<stop_idx_t>(
-                kFwd ? static_cast<unsigned>(board)
-                     : n - 1U - static_cast<unsigned>(board));
-            tmp_.update_min(
-                l, 0U, by_transport,
-                make_transport_payload(encode_rt_bc_transport(to_idx(rt_t)),
-                                       board_stop, stop_idx));
+            tmp_.update_min(l, 0U, by_transport);
             station_mark_.mark(to_idx(l));
             local_marked = true;
           }
@@ -619,21 +1054,21 @@ struct raptor_impl {
   }
 
   __device__ __forceinline__ void relax_footpath(unsigned const k,
+                                                 location_idx_t const src_l,
                                                  footpath const fp,
                                                  delta_t const tmp_time,
-                                                 breadcrumb_t const bc,
                                                  delta_t const t_at_dest) {
     relax_fp_target(
-        k, fp.target(),
+        k, src_l, fp.target(),
         adjusted_transfer_time(transfer_time_settings_, fp.duration().count()),
-        tmp_time, bc, t_at_dest);
+        tmp_time, t_at_dest);
   }
 
   __device__ __forceinline__ void relax_fp_target(unsigned const k,
+                                                  location_idx_t const src_l,
                                                   location_idx_t const target_l,
                                                   int const duration,
                                                   delta_t const tmp_time,
-                                                  breadcrumb_t const bc,
                                                   delta_t const t_at_dest) {
     auto const target = to_idx(target_l);
     auto const fp_target_time = clamp(tmp_time + dir(duration));
@@ -652,11 +1087,12 @@ struct raptor_impl {
         return;
       }
     }
-    if (!round_times_.update_min(k, target_l, Vias, fp_target_time, bc)) {
+    if (!round_times_.update_min(k, target_l, Vias, fp_target_time)) {
       // another lane already wrote an equal or better label (and did the
       // bookkeeping below for it)
       return;
     }
+    set_hint(k, target_l, src_l);
     touch_round(k, target_l);
     if (pruned) {
       return;
@@ -701,8 +1137,9 @@ struct raptor_impl {
           clamp(tmp_time + dir(static_cast<int>(r.duration_.count())));
       if (is_better_loose(end_time, time_at_dest_.get(k)) &&
           is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
-        auto const bc = tmp_.get_bc(0U, l, Vias);
-        round_times_.update_min(k, kIntermodalTarget, Vias, end_time, bc);
+        if (round_times_.update_min(k, kIntermodalTarget, Vias, end_time)) {
+          set_hint(k, location_idx_t{kIntermodalTarget}, l);
+        }
         touch_round(k, location_idx_t{kIntermodalTarget});
         best_.update_min(kIntermodalTarget, Vias, end_time);
         update_time_at_dest(k, end_time);
@@ -738,7 +1175,6 @@ struct raptor_impl {
 
       // per-lane state; sourced via shuffle by the cooperative hub path
       auto tmp_time = kInvalid;
-      auto bc = breadcrumb_t{0U};
       auto n_fps = 0U;
       auto defer = false;
 
@@ -748,26 +1184,31 @@ struct raptor_impl {
         auto const l = location_idx_t{my_i};
         tmp_time = tmp_.get(l, Vias);
         if (tmp_time != kInvalid) {
-          bc = tmp_.get_bc(0U, l, Vias);
           auto const is_dest = is_dest_[my_i];
 
           // same-station transfer (former update_transfers)
           relax_fp_target(
-              k, l,
+              k, l, l,
               (!intermodal && is_dest)
                   ? 0
                   : adjusted_transfer_time(
                         transfer_time_settings_,
                         static_cast<int>(tt_.transfer_time_[l].count())),
-              tmp_time, bc, t_at_dest);
+              tmp_time, t_at_dest);
 
           // intermodal egress (former update_intermodal_footpaths)
           if (intermodal && dist_to_end_[my_i] != kUnreachable) {
             auto const end_time = clamp(tmp_time + dir(dist_to_end_[my_i]));
-            if (is_better_loose(end_time, t_at_dest)) {
-              round_times_.update_min(
-                  k, kIntermodalTarget, Vias, end_time,
-                  bc /* write breadcrumb of last arriving transport */);
+            // best_ guard (as for footpaths and td offsets): tmp_ persists
+            // across rounds, so without it a stale arrival re-labels kEnd in
+            // every later round with a chain that does not exist in that
+            // round
+            if (is_better_loose(end_time, t_at_dest) &&
+                is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
+              if (round_times_.update_min(k, kIntermodalTarget, Vias,
+                                          end_time)) {
+                set_hint(k, location_idx_t{kIntermodalTarget}, l);
+              }
               touch_round(k, location_idx_t{kIntermodalTarget});
               best_.update_min(kIntermodalTarget, Vias, end_time);
               update_time_at_dest(k, end_time);
@@ -786,8 +1227,8 @@ struct raptor_impl {
               d_for_each_td_footpath<SearchDir>(
                   td_fps, to_unix(tmp_time),
                   [&](location_idx_t const target, duration_t const d) {
-                    relax_fp_target(k, target, static_cast<int>(d.count()),
-                                    tmp_time, bc, t_at_dest);
+                    relax_fp_target(k, l, target, static_cast<int>(d.count()),
+                                    tmp_time, t_at_dest);
                   });
             }
           } else {
@@ -796,7 +1237,7 @@ struct raptor_impl {
             n_fps = static_cast<unsigned>(fps.size());
             if (n_fps <= kWarpFpThreshold) {
               for (auto j = 0U; j != n_fps; ++j) {
-                relax_footpath(k, fps[j], tmp_time, bc, t_at_dest);
+                relax_footpath(k, l, fps[j], tmp_time, t_at_dest);
               }
             } else {
               defer = true;
@@ -811,12 +1252,11 @@ struct raptor_impl {
         auto const l = location_idx_t{base + b};
         auto const l_tmp = static_cast<delta_t>(__shfl_sync(
             kAllLanes, static_cast<int>(tmp_time), static_cast<int>(b)));
-        auto const l_bc = __shfl_sync(kAllLanes, bc, static_cast<int>(b));
         auto const l_n = __shfl_sync(kAllLanes, n_fps, static_cast<int>(b));
         auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
                               : tt_.footpaths_in_[prf_idx_][l];
         for (auto j = lane; j < l_n; j += kWarpSize) {
-          relax_footpath(k, fps[j], l_tmp, l_bc, t_at_dest);
+          relax_footpath(k, l, fps[j], l_tmp, t_at_dest);
         }
       });
     }
@@ -926,11 +1366,7 @@ struct raptor_impl {
               r, t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
           if (is_better_loose(by_transport, time_at_dest_.get(k)) &&
               within_bounds(k, l, by_transport)) {
-            auto const board_stop = static_cast<stop_idx_t>(
-                kFwd ? et_board_i : n - 1U - et_board_i);
-            tmp_.update_min(
-                l, 0U, by_transport,
-                make_transport_payload(t.t_idx_.v_, board_stop, stop_idx));
+            tmp_.update_min(l, 0U, by_transport);
             station_mark_.mark(l_idx);
             local_marked = true;
           }
@@ -1476,8 +1912,11 @@ struct raptor_impl {
   bool no_compulsory_reservation_;
   day_idx_t base_;
   cuda::std::span<std::pair<location_idx_t, unixtime_t> const> starts_;
+  bool is_wheelchair_;  // runtime copy for the (untemplated) reconstruction
   device_bitvec<std::uint64_t const> is_dest_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
+  // intermodal destination offsets as a dense location list (reconstruction)
+  cuda::std::span<location_idx_t const> dest_offset_locs_;
   cuda::std::span<location_idx_t const> td_dest_locs_;
   d_vecvec_view<td_dest_offsets_t> td_dest_;
   device_times<SearchDir, Vias + 1> round_times_;
@@ -1490,6 +1929,7 @@ struct raptor_impl {
   device_bitvec<std::uint32_t> rt_transport_mark_;
 
   // tracking for efficient reset in reuse_previous_arrivals
+  cuda::std::span<std::uint8_t> round_hint_;  // see set_hint
   cuda::std::span<std::uint32_t> round_touched_;
   std::uint32_t round_touched_stride_{0U};
   // true once a round loop has written round_times_; cleared by

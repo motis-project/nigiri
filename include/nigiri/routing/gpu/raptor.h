@@ -94,6 +94,8 @@ struct gpu_raptor {
 
   void add_start(location_idx_t, unixtime_t);
 
+  void set_criteria_only(bool const b) { criteria_only_ = b; }
+
   void execute(unixtime_t start_time,
                std::uint8_t max_transfers,
                unixtime_t worst_time_at_dest,
@@ -118,6 +120,9 @@ private:
   bool require_bike_transport_;
   bool require_car_transport_;
   bool is_wheelchair_;
+  // ping searches of the pong: only journey criteria are needed, the device
+  // reconstruction of the legs is skipped
+  bool criteria_only_{false};
   bool no_compulsory_reservation_;
   transfer_time_settings transfer_time_settings_;
 

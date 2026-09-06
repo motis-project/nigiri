@@ -242,11 +242,6 @@ struct gpu_rt_timetable::impl {
             rtt.rt_flags_per_section_[kWheelchairAccessible]},
         rt_reservation_not_required_sections_{
             rtt.rt_flags_per_section_[kReservationNotRequired]} {
-    utl::verify(
-        bc_transport_space_fits(tt.transport_route_.size(), n_rt_transports_),
-        "transport idx space too small: {} static + {} rt",
-        tt.transport_route_.size(), n_rt_transports_);
-
     // Copy filters.
     auto f = device_transport_filters<rt_transport_idx_t>{
         .bike_ = {{to_view(rt_transport_bikes_allowed_)},
@@ -373,15 +368,17 @@ struct gpu_raptor_state::impl {
     best_.resize(tt_.n_locations_);
     round_times_.resize(tt_.n_locations_ * (kMaxTransfers + 2));
     cudaMemsetAsync(thrust::raw_pointer_cast(round_times_.data()), 0xFF,
-                    round_times_.size() * sizeof(std::uint64_t), stream_);
+                    round_times_.size() * sizeof(std::uint16_t), stream_);
     cudaMemsetAsync(thrust::raw_pointer_cast(best_.data()), 0xFF,
-                    best_.size() * sizeof(std::uint64_t), stream_);
+                    best_.size() * sizeof(std::uint16_t), stream_);
     cudaMemsetAsync(thrust::raw_pointer_cast(tmp_.data()), 0xFF,
-                    tmp_.size() * sizeof(std::uint64_t), stream_);
+                    tmp_.size() * sizeof(std::uint16_t), stream_);
     auto const n_loc_words = n_bitvec_words(tt_.n_locations_);
     station_mark_.resize(n_loc_words);
     prev_station_mark_.resize(n_loc_words);
     route_mark_.resize(n_bitvec_words(tt_.n_routes_));
+    round_hint_.resize(static_cast<std::size_t>(tt_.n_locations_) *
+                       (kMaxTransfers + 2U));
     round_touched_stride_ = n_loc_words;
     round_touched_.resize(static_cast<std::size_t>(round_touched_stride_) *
                           (kMaxTransfers + 2U));
@@ -478,6 +475,30 @@ struct gpu_raptor_state::impl {
       }
     }
 
+    // Dense list of the intermodal destination offset locations (needed by
+    // the search-based reconstruction of a kEnd label).
+    {
+      auto locs = std::vector<location_idx_t>{};
+      for (auto i = std::size_t{0U}; i != dist_to_dest.size(); ++i) {
+        if (dist_to_dest[i] != kUnreachable) {
+          locs.push_back(location_idx_t{static_cast<std::uint32_t>(i)});
+        }
+      }
+      if (!locs.empty()) {
+        auto* const pin = dest_offset_locs_pin_[dir].ensure(locs.size());
+        std::copy(locs.begin(), locs.end(), pin);
+        utl::verify(
+            cudaSuccess ==
+                cudaMemcpyAsync(
+                    dest_offset_locs_dev_[dir].ensure(locs.size(), stream_),
+                    pin, locs.size() * sizeof(location_idx_t),
+                    cudaMemcpyHostToDevice, stream_),
+            "could not copy dest offset locs");
+      } else {
+        dest_offset_locs_dev_[dir].clear();
+      }
+    }
+
     // Copy is_dest.
     is_dest_[dir].resize(is_dest.blocks_.size());
     auto* const is_dest_pin = is_dest_pin_[dir].ensure(is_dest.blocks_.size());
@@ -507,16 +528,17 @@ struct gpu_raptor_state::impl {
   thrust::device_vector<std::uint32_t> any_marked_;
   thrust::device_vector<std::uint32_t> done_;
 
-  // 16bit time | 48bit breadcrumb
-  thrust::device_vector<std::uint64_t> time_at_dest_;
-  thrust::device_vector<std::uint64_t> tmp_;
-  thrust::device_vector<std::uint64_t> best_;
-  thrust::device_vector<std::uint64_t> round_times_;
+  // 16bit biased time keys (see device_times.h), no breadcrumbs
+  thrust::device_vector<std::uint16_t> time_at_dest_;
+  thrust::device_vector<std::uint16_t> tmp_;
+  thrust::device_vector<std::uint16_t> best_;
+  thrust::device_vector<std::uint16_t> round_times_;
 
   thrust::device_vector<std::uint32_t> station_mark_;
   thrust::device_vector<std::uint32_t> prev_station_mark_;
   thrust::device_vector<std::uint32_t> route_mark_;
   thrust::device_vector<std::uint32_t> rt_transport_mark_;
+  thrust::device_vector<std::uint8_t> round_hint_;
   thrust::device_vector<std::uint32_t> round_touched_;
   std::uint32_t round_touched_stride_{0U};
   bool has_reusable_round_times_{false};
@@ -532,6 +554,8 @@ struct gpu_raptor_state::impl {
   // used size 0 = no td offsets (device never touched)
   device_buffer<location_idx_t> td_dest_locs_dev_[2];
   device_buffer<location_idx_t> dest_locs_dev_[2];
+  device_buffer<location_idx_t> dest_offset_locs_dev_[2];
+  pinned_host_buffer<location_idx_t> dest_offset_locs_pin_[2];
   pinned_host_buffer<location_idx_t> dest_locs_pin_[2];
   std::uint32_t n_dest_locs_[2]{0U, 0U};
   device_buffer<std::uint32_t> td_dest_ranges_dev_[2];
@@ -773,7 +797,7 @@ void launch(Kernel kernel, cudaStream_t stream, Args&&... args) {
 }
 
 template <direction PingDir>
-__global__ void fill_bounds_kernel(std::uint64_t const* const round_times,
+__global__ void fill_bounds_kernel(std::uint16_t const* const round_times,
                                    delta_t* const bounds,
                                    std::uint32_t const n_locations,
                                    std::uint32_t const n_rows,
@@ -794,8 +818,7 @@ __global__ void fill_bounds_kernel(std::uint64_t const* const round_times,
 
     auto best_key = std::uint16_t{0xFFFFU};  // worst key = invalid
     for (auto k = 0U; k != n_rows; ++k) {
-      auto const key = static_cast<std::uint16_t>(
-          round_times[k * n_locations + l] >> kBcBits);
+      auto const key = round_times[k * n_locations + l];
       best_key = key < best_key ? key : best_key;
       bounds[k * n_locations + l] =
           device_times<PingDir, 1U>::from_key(best_key);
@@ -840,12 +863,37 @@ void dispatch_filtered(bool const with_clasz,
   }
 }
 
+// one warp per (destination, round): the lanes cooperate in the search
 template <direction SearchDir, bool WithBounds>
 __global__ void reconstruct_kernel(location_idx_t const* const dest_list,
                                    std::uint32_t const n_dest,
                                    std::uint32_t const end_k,
                                    raptor_impl<SearchDir, WithBounds> r,
                                    gpu_journey* const out) {
+  auto const tid = blockIdx.x * blockDim.x + threadIdx.x;
+  auto const lane = tid % kWarpSize;
+  auto const w = tid / kWarpSize;
+  if (w >= n_dest * end_k) {
+    return;
+  }
+  auto const k = w % end_k;
+  if (k == 0U) {
+    if (lane == 0U) {
+      out[w].state_ = reconstruction_result::kNotReconstructed;
+    }
+    return;
+  }
+  r.reconstruct_journey(dest_list[w / end_k], k, &out[w], lane);
+}
+
+// ping searches: only (dest_time, transfers) per round are needed
+template <direction SearchDir, bool WithBounds>
+__global__ void reconstruct_criteria_kernel(
+    location_idx_t const* const dest_list,
+    std::uint32_t const n_dest,
+    std::uint32_t const end_k,
+    raptor_impl<SearchDir, WithBounds> r,
+    gpu_journey* const out) {
   auto const tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= n_dest * end_k) {
     return;
@@ -855,7 +903,7 @@ __global__ void reconstruct_kernel(location_idx_t const* const dest_list,
   if (k == 0U) {
     return;
   }
-  r.reconstruct_journey(dest_list[tid / end_k], k, &out[tid]);
+  r.reconstruct_criteria(dest_list[tid / end_k], k, &out[tid]);
 }
 
 template <direction SearchDir, bool WithBounds>
@@ -912,8 +960,11 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       .no_compulsory_reservation_ = no_compulsory_reservation_,
       .base_ = base_,
       .starts_ = starts,
+      .is_wheelchair_ = is_wheelchair_,
       .is_dest_ = {to_view(s.is_dest_[kDirIdx])},
       .dist_to_end_ = to_view(s.dist_to_dest_dev_[kDirIdx]),
+      .dest_offset_locs_ = {s.dest_offset_locs_dev_[kDirIdx].data(),
+                            s.dest_offset_locs_dev_[kDirIdx].size()},
       .td_dest_locs_ = {s.td_dest_locs_dev_[kDirIdx].data(),
                         s.td_dest_locs_dev_[kDirIdx].size()},
       .td_dest_ = {.data_ = {s.td_dest_data_dev_[kDirIdx].data(),
@@ -928,6 +979,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
       .route_mark_ = {to_mutable_view(s.route_mark_)},
       .rt_transport_mark_ = {to_mutable_view(s.rt_transport_mark_)},
+      .round_hint_ = to_mutable_view(s.round_hint_),
       .round_touched_ = to_mutable_view(s.round_touched_),
       .round_touched_stride_ = s.round_touched_stride_,
       .has_reusable_round_times_ = s.has_reusable_round_times_ ? 1U : 0U,
@@ -1047,10 +1099,17 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
 
   {
     auto const threads = 128U;
-    auto const blocks = (total + threads - 1U) / threads;
-    reconstruct_kernel<SearchDir, WithBounds>
-        <<<blocks, threads, 0, s.stream_>>>(dest_dev, n_dest, end_k, r,
-                                            rec_out_dev);
+    if (criteria_only_) {
+      auto const blocks = (total + threads - 1U) / threads;
+      reconstruct_criteria_kernel<SearchDir, WithBounds>
+          <<<blocks, threads, 0, s.stream_>>>(dest_dev, n_dest, end_k, r,
+                                              rec_out_dev);
+    } else {
+      auto const blocks = (total * kWarpSize + threads - 1U) / threads;
+      reconstruct_kernel<SearchDir, WithBounds>
+          <<<blocks, threads, 0, s.stream_>>>(dest_dev, n_dest, end_k, r,
+                                              rec_out_dev);
+    }
     CUDA_CHECK(cudaMemcpyAsync(rec_host, rec_out_dev,
                                total * sizeof(gpu_journey),
                                cudaMemcpyDeviceToHost, s.stream_));
@@ -1065,13 +1124,28 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     if (gj.state_ == reconstruction_result::kReconstructionFailed) {
       // should not happen
       log(log_lvl::error, "search",
-          "reconstruct failed: gpu breadcrumb chain unreconstructable "
+          "reconstruct failed: no ride found for the gpu label chain "
           "(dest={}, k={})",
           to_idx(gj.dest_l_), idx % end_k);
       continue;
     }
 
-    if (gj.state_ != reconstruction_result::kOk || gj.n_legs_ == 0U) {
+    if (gj.state_ != reconstruction_result::kOk) {
+      continue;
+    }
+
+    if (criteria_only_) {
+      // ping: criteria only, the legs are never used
+      auto j = journey{};
+      j.start_time_ = start_time;
+      j.dest_time_ = delta_to_unix(base(), gj.dest_time_);
+      j.dest_ = gj.dest_l_;
+      j.transfers_ = gj.transfers_;
+      results.add(std::move(j));
+      continue;
+    }
+
+    if (gj.n_legs_ == 0U) {
       continue;
     }
 
@@ -1180,12 +1254,12 @@ template <direction SearchDir, bool WithBounds>
 void gpu_raptor<SearchDir, WithBounds>::reset_arrivals() {
   auto& s = *state_.impl_;
   cudaMemsetAsync(thrust::raw_pointer_cast(s.time_at_dest_.data()), 0xFF,
-                  s.time_at_dest_.size() * sizeof(std::uint64_t), s.stream_);
+                  s.time_at_dest_.size() * sizeof(std::uint16_t), s.stream_);
   s.has_reusable_round_times_ = false;
   cudaMemsetAsync(thrust::raw_pointer_cast(s.round_touched_.data()), 0x00,
                   s.round_touched_.size() * sizeof(std::uint32_t), s.stream_);
   cudaMemsetAsync(thrust::raw_pointer_cast(s.round_times_.data()), 0xFF,
-                  s.round_times_.size() * sizeof(std::uint64_t), s.stream_);
+                  s.round_times_.size() * sizeof(std::uint16_t), s.stream_);
 }
 
 template <direction SearchDir, bool WithBounds>
@@ -1193,9 +1267,9 @@ void gpu_raptor<SearchDir, WithBounds>::next_start_time() {
   starts_.clear();
   auto& s = *state_.impl_;
   cudaMemsetAsync(thrust::raw_pointer_cast(s.best_.data()), 0xFF,
-                  s.best_.size() * sizeof(std::uint64_t), s.stream_);
+                  s.best_.size() * sizeof(std::uint16_t), s.stream_);
   cudaMemsetAsync(thrust::raw_pointer_cast(s.tmp_.data()), 0xFF,
-                  s.tmp_.size() * sizeof(std::uint64_t), s.stream_);
+                  s.tmp_.size() * sizeof(std::uint16_t), s.stream_);
   thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
                begin(state_.impl_->prev_station_mark_),
                end(state_.impl_->prev_station_mark_), 0U);
