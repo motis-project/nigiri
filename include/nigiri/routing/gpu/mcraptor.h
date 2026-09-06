@@ -9,6 +9,7 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/bmrap_bounds.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/types.h"
@@ -87,6 +88,10 @@ struct gpu_mcraptor {
   // reports the shift per journey (gpu_journey::start_shift_).
   void set_tight_start() { tight_start_ = true; }
 
+  // BM-RAPTOR: tau_dep^<- / tau_arr^-> pruning, uploaded to the device
+  // here; nullptr disables it. Mirrors basic_mcraptor::set_bounds().
+  void set_bounds(bmrap_bounds const*);
+
   void reset_arrivals();
   void next_start_time();
   void add_start(location_idx_t, unixtime_t);
@@ -125,6 +130,10 @@ private:
   bool tight_start_{false};  // see set_tight_start()
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
+
+  std::uint32_t bounds_n_locations_{0U};
+  std::uint8_t bounds_budget_{0U};
+  bool has_bounds_{false};
 };
 
 }  // namespace nigiri::routing::gpu

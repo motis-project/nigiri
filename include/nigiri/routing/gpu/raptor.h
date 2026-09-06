@@ -10,6 +10,7 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/bmrap_bounds.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/routing/transfer_time_settings.h"
@@ -92,6 +93,25 @@ struct gpu_raptor {
 
   void reconstruct(query const&, journey&);
 
+  // --- BM-RAPTOR hooks, mirroring the CPU raptor ---
+  // tau_dep^<- / tau_arr^-> pruning. The matrix is uploaded to the device
+  // here; nullptr disables pruning.
+  void set_bounds(bmrap_bounds const*);
+  // staggered round alignment: add_start writes round k, the scan runs
+  // start_round_+1 .. end_k
+  void set_start_round(unsigned k) { start_round_ = static_cast<std::uint8_t>(k); }
+  // relaxed target pruning, so this search's round times form a valid
+  // tau_arr^->(v, i) matrix; floor/cap are the clamps relax_arr() applies
+  void set_dest_relax(unixtime_t origin,
+                      double factor,
+                      int add_minutes,
+                      double floor_min = 0.0,
+                      double cap_min = 0.0);
+  // Host copy of the device round times, unpacked and laid out exactly like
+  // raptor_state::get_round_times() so build_reach_matrix() can consume it:
+  // (kMaxTransfers + 2) rows of n_locations entries.
+  void copy_round_times(std::vector<std::array<delta_t, 1>>& out);
+
 private:
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + to_idx(base_) * date::days{1};
@@ -112,6 +132,18 @@ private:
   transfer_time_settings transfer_time_settings_;
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
+
+  // BM-RAPTOR state (see the setters above)
+  std::uint32_t bounds_n_locations_{0U};
+  std::uint8_t bounds_budget_{0U};
+  bool has_bounds_{false};
+  std::uint8_t start_round_{0U};
+  unixtime_t relax_origin_{};
+  double relax_factor_{1.0};
+  double relax_floor_{0.0};
+  double relax_cap_{0.0};
+  int relax_add_{0};
+  bool relax_on_{false};
 };
 
 }  // namespace nigiri::routing::gpu

@@ -41,7 +41,12 @@ namespace nigiri::routing {
 // Profile variant: a complete single-departure BM-RAPTOR per step of a
 // PONG-style scan (ping, pong, slacked pong, mc ping, mc pong) instead of
 // one window-wide bound matrix. See bmrap_profile.cc for why.
-template <typename AlgoState>
+// AlgoState is the SCALAR (two-criteria) state the ping, the pong and the
+// backward pruning searches run on - raptor_state or gpu::gpu_raptor_state,
+// selected exactly the way pong_search selects its engine. Criteria picks
+// the multicriteria configuration of the main search, which always runs on
+// the CPU (see bmrap_algo_for in bmrap_common.h).
+template <typename Criteria, typename AlgoState>
 routing_result bmrap_profile_search(
     timetable const&,
     rt_timetable const*,

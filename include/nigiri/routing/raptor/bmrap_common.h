@@ -23,6 +23,9 @@
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/bmrap_bounds.h"
 #include "nigiri/routing/raptor/raptor.h"
+#if defined(NIGIRI_CUDA)
+#include "nigiri/routing/gpu/raptor.h"
+#endif
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
@@ -36,6 +39,62 @@
 namespace nigiri::routing::bmrap_detail {
 
 constexpr auto const kVias = via_offset_t{0U};
+
+// The scalar (two-criteria) engines BM-RAPTOR runs its ping, its pong and
+// its backward pruning searches on, selected by the state type exactly the
+// way pong_algo_for does it in pong.cc. The multicriteria phases stay on
+// the CPU: they are ~5% of the runtime, and keeping them there means every
+// criteria configuration remains available.
+template <direction SearchDir, bool Rt, typename AlgoState>
+struct bmrap_algo_for {
+  using type = raptor<SearchDir, Rt, kVias, search_mode::kOneToOne>;
+};
+
+// The backward pruning search wants a one-to-all raptor. kOneToAll differs
+// from kOneToOne only in skipping result collection, skipping reconstruct
+// and disabling target pruning - and compute_bounds() runs with an empty
+// destination set, where all three are already no-ops (verified: identical
+// journey sets on 200/200 Berlin queries). So an engine without the mode,
+// like the GPU raptor, can serve here unchanged.
+template <direction SearchDir, bool Rt, typename AlgoState>
+struct bmrap_prune_algo_for {
+  using type = raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>;
+};
+
+#if defined(NIGIRI_CUDA)
+template <direction SearchDir, bool Rt>
+struct bmrap_algo_for<SearchDir, Rt, gpu::gpu_raptor_state> {
+  using type = gpu::gpu_raptor<SearchDir>;
+};
+
+template <direction SearchDir, bool Rt>
+struct bmrap_prune_algo_for<SearchDir, Rt, gpu::gpu_raptor_state> {
+  using type = gpu::gpu_raptor<SearchDir>;
+};
+#endif
+
+// Host view of an engine's round times. The CPU state hands them out
+// directly; the GPU engine copies them back from the device into `buf`
+// (see gpu_raptor::copy_round_times), which is why the buffer outlives the
+// call. Either way the layout is raptor_state's, so build_reach_matrix()
+// and compute_bounds() consume it unchanged.
+template <typename AlgoState, typename Algo>
+flat_matrix_view<std::array<delta_t, kVias + 1> const> host_round_times(
+    AlgoState& state,
+    [[maybe_unused]] Algo& algo,
+    [[maybe_unused]] std::vector<std::array<delta_t, kVias + 1>>& buf,
+    [[maybe_unused]] unsigned const n_locations) {
+#if defined(NIGIRI_CUDA)
+  if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
+    algo.copy_round_times(buf);
+    return {{buf.data(), buf.size()}, kMaxTransfers + 2U, n_locations};
+  } else
+#endif
+  {
+    return static_cast<AlgoState const&>(state)
+        .template get_round_times<kVias>();
+  }
+}
 
 
 // sigma_arr / sigma_tr of the paper. Sauer'24 evaluates BM-RAPTOR at 1.25
@@ -287,10 +346,11 @@ routing_result run_anchor_search(timetable const& tt,
 // they are valid at every stop, and a separate one-to-all search is not
 // needed at all.
 template <direction PruneDir>
-bmrap_bounds build_reach_matrix(timetable const& tt,
-                                query const& q,
-                                raptor_state& state,
-                                std::uint8_t const budget) {
+bmrap_bounds build_reach_matrix(
+    timetable const& tt,
+    query const& q,
+    flat_matrix_view<std::array<delta_t, kVias + 1> const> const round_times,
+    std::uint8_t const budget) {
   constexpr auto const kInvalid = kInvalidDelta<PruneDir>;
   auto const is_looser = [](auto const a, auto const b) {
     return PruneDir == direction::kForward ? a < b : a > b;
@@ -311,7 +371,6 @@ bmrap_bounds build_reach_matrix(timetable const& tt,
 
   auto bounds = bmrap_bounds{};
   bounds.resize(tt.n_locations(), budget, kInvalid);
-  auto const round_times = state.get_round_times<kVias>();
   for (auto i = 0U; i <= budget; ++i) {
     for (auto l = 0U; l != tt.n_locations(); ++l) {
       auto const cur = round_times[i][l][kVias];
@@ -328,6 +387,19 @@ bmrap_bounds build_reach_matrix(timetable const& tt,
     }
   }
   return bounds;
+}
+
+// Same, reading a CPU raptor_state's round times. The view-taking overload
+// above is what lets a GPU engine feed its own (host-copied) round times in
+// without this header knowing anything about device buffers.
+template <direction PruneDir>
+bmrap_bounds build_reach_matrix(timetable const& tt,
+                                query const& q,
+                                raptor_state& state,
+                                std::uint8_t const budget) {
+  return build_reach_matrix<PruneDir>(
+      tt, q,
+      static_cast<raptor_state const&>(state).get_round_times<kVias>(), budget);
 }
 
 // Reachability bounds for the OPPOSITE search direction: tau_arr^->(v, i),
@@ -402,7 +474,7 @@ bmrap_bounds compute_reach_bounds(timetable const& tt,
   return build_reach_matrix<PruneDir>(tt, q, state, budget);
 }
 
-template <direction SearchDir, bool Rt>
+template <direction SearchDir, bool Rt, typename AlgoState>
 bmrap_bounds compute_bounds(timetable const& tt,
                             rt_timetable const* rtt,
                             query const& q,
@@ -410,7 +482,7 @@ bmrap_bounds compute_bounds(timetable const& tt,
                             day_idx_t const base,
                             unixtime_t const horizon,
                             std::uint8_t const budget,
-                            raptor_state& state,
+                            AlgoState& state,
                             raptor_stats& stats,
                             bmrap_bounds const* reach = nullptr) {
   constexpr auto const kPruneDir = flip(SearchDir);
@@ -456,7 +528,7 @@ bmrap_bounds compute_bounds(timetable const& tt,
   auto via_stops = std::vector<via_stop>{};
   auto lb = std::vector<std::uint16_t>(tt.n_locations(), std::uint16_t{0U});
 
-  auto r = raptor<kPruneDir, Rt, kVias, search_mode::kOneToAll>{
+  auto r = typename bmrap_prune_algo_for<kPruneDir, Rt, AlgoState>::type{
       tt,
       rtt,
       state,
@@ -475,6 +547,9 @@ bmrap_bounds compute_bounds(timetable const& tt,
 
   // stage 1 prunes stage 2 (see raptor::set_bounds)
   r.set_bounds(reach);
+
+  // staging for host_round_times() - unused by the CPU engines
+  auto rt_buf = std::vector<std::array<delta_t, kVias + 1>>{};
 
   // the pruning search starts where the main search ends
   auto qf = q;
@@ -527,7 +602,7 @@ bmrap_bounds compute_bounds(timetable const& tt,
               results);
     if (isolated) {
       auto const shift = static_cast<unsigned>(budget - b);
-      auto const rt = state.get_round_times<kVias>();
+      auto const rt = host_round_times(state, r, rt_buf, tt.n_locations());
       for (auto j = 0U; j <= b; ++j) {
         auto& dst_row = acc[static_cast<std::size_t>(j + shift) *
                             tt.n_locations()];
@@ -545,7 +620,7 @@ bmrap_bounds compute_bounds(timetable const& tt,
 
   auto bounds = bmrap_bounds{};
   bounds.resize(tt.n_locations(), budget, kInvalid);
-  auto const round_times = state.get_round_times<kVias>();
+  auto const round_times = host_round_times(state, r, rt_buf, tt.n_locations());
   for (auto i = 0U; i <= budget; ++i) {
     for (auto l = 0U; l != tt.n_locations(); ++l) {
       auto const cur =

@@ -220,6 +220,12 @@ struct gpu_raptor_state::impl {
   thrust::device_vector<std::uint32_t> route_list_;
   thrust::device_vector<std::uint32_t> route_list_count_;
 
+  // BM-RAPTOR bound matrix, (budget+1) x n_locations delta_t, uploaded by
+  // gpu_raptor::set_bounds()
+  thrust::device_vector<delta_t> bmrap_bounds_;
+  // staging buffer for copy_round_times()
+  std::vector<std::uint64_t> round_times_host_;
+
   cudaStream_t stream_;
 };
 
@@ -474,6 +480,22 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
   auto const with_td_fps =
       rt_active && prf_idx != 0U && gpu_rtt_->impl_->has_td_fps_[prf_idx];
   auto r = raptor_impl<SearchDir>{
+      .bounds_ = has_bounds_
+                     ? cuda::std::span<delta_t const>{
+                           thrust::raw_pointer_cast(s.bmrap_bounds_.data()),
+                           s.bmrap_bounds_.size()}
+                     : cuda::std::span<delta_t const>{},
+      .bounds_n_locations_ = bounds_n_locations_,
+      .bounds_budget_ = bounds_budget_,
+      .has_bounds_ = has_bounds_,
+      .start_round_ = start_round_,
+      .relax_origin_ = relax_on_ ? unix_to_delta(base(), relax_origin_)
+                                 : delta_t{0},
+      .relax_factor_ = relax_factor_,
+      .relax_floor_ = relax_floor_,
+      .relax_cap_ = relax_cap_,
+      .relax_add_ = relax_add_,
+      .relax_on_ = relax_on_,
       .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
       .done_ = thrust::raw_pointer_cast(s.done_.data()),
       .tt_ = s.tt_,
@@ -515,12 +537,16 @@ void gpu_raptor<SearchDir>::execute(unixtime_t start_time,
     r.tt_.bitfields_ = r.rtt_.bitfields_;
   }
 
-  auto const end_k =
-      static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
+  // mirrors raptor::execute(): a staggered run writes its round k into slot
+  // k + start_round_, so the scan is shifted by the same amount and clipped
+  // to the matrix
+  auto const end_k = static_cast<std::uint32_t>(
+      std::min(std::min(max_transfers, kMaxTransfers) + 2U + start_round_,
+               static_cast<unsigned>(kMaxTransfers) + 2U));
 
   // === ROUTING KERNELS ===
   launch(init_arrivals_kernel<SearchDir>, s.stream_, r, worst_time_at_dest);
-  for (auto k = 1U; k != end_k; ++k) {
+  for (auto k = start_round_ + 1U; k != end_k; ++k) {
     launch(reuse_previous_arrivals_kernel<SearchDir>, s.stream_, r, k);
     launch(mark_routes_kernel<SearchDir>, s.stream_, r, k);
     if (rt_active) {
@@ -959,6 +985,62 @@ template <direction SearchDir>
 void gpu_raptor<SearchDir>::add_start(location_idx_t const l,
                                       unixtime_t const t) {
   starts_.emplace_back(l, t);
+}
+
+template <direction SearchDir>
+void gpu_raptor<SearchDir>::set_bounds(bmrap_bounds const* b) {
+  if (b == nullptr || b->empty()) {
+    has_bounds_ = false;
+    return;
+  }
+  auto& s = *state_.impl_;
+  if (s.bmrap_bounds_.size() < b->lat_.size()) {
+    s.bmrap_bounds_.resize(b->lat_.size());
+  }
+  CUDA_CHECK(cudaMemcpyAsync(thrust::raw_pointer_cast(s.bmrap_bounds_.data()),
+                             b->lat_.data(),
+                             b->lat_.size() * sizeof(delta_t),
+                             cudaMemcpyHostToDevice, s.stream_));
+  CUDA_CHECK(cudaStreamSynchronize(s.stream_));
+  bounds_n_locations_ = b->n_locations_;
+  bounds_budget_ = b->budget_;
+  has_bounds_ = true;
+}
+
+template <direction SearchDir>
+void gpu_raptor<SearchDir>::set_dest_relax(unixtime_t const origin,
+                                           double const factor,
+                                           int const add_minutes,
+                                           double const floor_min,
+                                           double const cap_min) {
+  relax_origin_ = origin;
+  relax_factor_ = factor;
+  relax_add_ = add_minutes;
+  relax_cap_ = cap_min;
+  relax_floor_ = std::min(floor_min, cap_min);
+  relax_on_ = true;
+}
+
+template <direction SearchDir>
+void gpu_raptor<SearchDir>::copy_round_times(
+    std::vector<std::array<delta_t, 1>>& out) {
+  auto& s = *state_.impl_;
+  auto const n = static_cast<std::size_t>(n_locations_) * (kMaxTransfers + 2U);
+  s.round_times_host_.resize(n);
+  CUDA_CHECK(cudaMemcpyAsync(s.round_times_host_.data(),
+                             thrust::raw_pointer_cast(s.round_times_.data()),
+                             n * sizeof(std::uint64_t), cudaMemcpyDeviceToHost,
+                             s.stream_));
+  CUDA_CHECK(cudaStreamSynchronize(s.stream_));
+  // unpack: the device stores (biased time key << 48) | breadcrumb
+  out.resize(n);
+  using times_t = device_times<SearchDir, 1U>;
+  for (auto i = std::size_t{0U}; i != n; ++i) {
+    auto const w = s.round_times_host_[i];
+    out[i][0] = w == times_t::invalid_packed()
+                    ? kInvalidDelta<SearchDir>
+                    : times_t::from_key(static_cast<std::uint16_t>(w >> 48U));
+  }
 }
 
 template class gpu_raptor<direction::kForward>;

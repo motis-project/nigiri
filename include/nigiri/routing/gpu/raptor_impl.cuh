@@ -66,7 +66,7 @@ struct raptor_impl {
       auto const t = unix_to_delta(base(), starts_[i].second);
       auto const v = via_offset_t{0};
       best_.update_min(l, v, t);
-      round_times_.update_min(0U, l, v, t, make_start_bc());
+      round_times_.update_min(start_round_, l, v, t, make_start_bc());
       station_mark_.mark(to_idx(l));
     }
 
@@ -477,6 +477,9 @@ struct raptor_impl {
     }
 
     if (is_better(fp_target_time, best_.get(target_l, Vias))) {
+      if (bound_prunes(k, to_idx(target_l), fp_target_time)) {
+        return;
+      }
       round_times_.update_min(k, target_l, Vias, fp_target_time, bc);
       best_.update_min(target_l, Vias, fp_target_time);
       station_mark_.mark(target);
@@ -574,7 +577,8 @@ struct raptor_impl {
             auto const fp_target_time = static_cast<delta_t>(
                 tmp_time + ((!intermodal && is_dest) ? 0 : loc_transfer_time));
             if (is_better(fp_target_time, t_at_dest) &&
-                is_better(fp_target_time, best_.get(l, Vias))) {
+                is_better(fp_target_time, best_.get(l, Vias)) &&
+                !bound_prunes(k, my_i, fp_target_time)) {
               round_times_.update_min(k, l, Vias, fp_target_time, bc);
               best_.update_min(l, Vias, fp_target_time);
               station_mark_.mark(my_i);
@@ -1030,9 +1034,42 @@ struct raptor_impl {
     return !dist_to_end_.empty();
   }
 
+  // BM-RAPTOR bound pruning - mirrors raptor::bound_prunes() exactly.
+  // bounds_ holds tau_dep^<-(v, i) as (budget_+1) x n_locations rows of
+  // delta_t; a label produced in round k has bounds_budget_ - k trips left.
+  __device__ __forceinline__ bool bound_prunes(unsigned const k,
+                                               std::uint32_t const l,
+                                               delta_t const t) {
+    if (!has_bounds_) {
+      return false;
+    }
+    if (k > bounds_budget_) {
+      return true;
+    }
+    return !is_better_or_eq(
+        t, bounds_[static_cast<std::size_t>(bounds_budget_ - k) *
+                       bounds_n_locations_ +
+                   l]);
+  }
+
+  // Mirrors raptor::update_time_at_dest(): with relax_on_ the destination
+  // bound is loosened to "travel + clamp(extra, floor, cap)" so this
+  // search's round times stay a valid tau_arr^-> matrix (paper, Sec. 4.3).
   __device__ void update_time_at_dest(unsigned const k, delta_t const t) {
+    auto relaxed = t;
+    if (relax_on_) {
+      auto const travel = static_cast<double>(dir(t - relax_origin_));
+      if (travel > 0.0) {
+        auto const extra = travel * (relax_factor_ - 1.0) + relax_add_;
+        auto const capped = extra < relax_floor_  ? relax_floor_
+                            : extra > relax_cap_  ? relax_cap_
+                                                  : extra;
+        relaxed = clamp(static_cast<int>(relax_origin_) +
+                        dir(static_cast<int>(::llround(travel + capped))));
+      }
+    }
     for (auto i = k; i != max_transfers_ + 1U; ++i) {
-      time_at_dest_.update_min(i, t);
+      time_at_dest_.update_min(i, relaxed);
     }
   }
 
@@ -1057,6 +1094,24 @@ struct raptor_impl {
       return t.rend();
     }
   }
+
+  // --- BM-RAPTOR (see bmrap_bounds.h) ---
+  // (bounds_budget_ + 1) x bounds_n_locations_ rows of tau_dep^<-, empty
+  // when this search is not bound-pruned
+  cuda::std::span<delta_t const> bounds_{};
+  std::uint32_t bounds_n_locations_{0U};
+  std::uint8_t bounds_budget_{0U};
+  bool has_bounds_{false};
+  // staggered round alignment: the starts are written into this round and
+  // the scan runs start_round_+1 .. end_k (paper, Sec. 4.2)
+  std::uint8_t start_round_{0U};
+  // relaxed target pruning, see update_time_at_dest()
+  delta_t relax_origin_{0};
+  double relax_factor_{1.0};
+  double relax_floor_{0.0};
+  double relax_cap_{0.0};
+  int relax_add_{0};
+  bool relax_on_{false};
 
   std::uint32_t* any_marked_;
   std::uint32_t* done_;

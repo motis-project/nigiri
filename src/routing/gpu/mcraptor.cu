@@ -422,6 +422,9 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> livebag_hist_dev_;
   thrust::device_vector<std::uint32_t> len_hist_dev_;
 
+  // BM-RAPTOR bound matrix, uploaded by gpu_mcraptor::set_bounds()
+  thrust::device_vector<delta_t> bmrap_bounds_;
+
   thrust::device_vector<std::uint64_t> is_dest_[2];
   pinned_host_buffer<std::uint64_t> is_dest_pin_[2];
   thrust::device_vector<std::uint16_t> dist_to_dest_dev_[2];
@@ -980,7 +983,7 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
       cudaMemcpyHostToDevice, s.stream_));
 
   auto const d_start_dep = unix_to_delta(base(), start_time);
-  auto const r = make_impl<SearchDir, WithCost>(
+  auto r = make_impl<SearchDir, WithCost>(
       s, kDirIdx, transfer_time_settings_, allowed_claszes_, prf_idx, base_,
       worst_at_dest_, walk_surcharge, d_start_dep,
       cuda::std::span<std::pair<location_idx_t, delta_t> const>{
@@ -989,6 +992,17 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
 
   auto const end_k =
       static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
+
+  // BM-RAPTOR pruning (see mcraptor_impl::bound_prunes)
+  if (has_bounds_) {
+    r.bounds_ = cuda::std::span<delta_t const>{
+        thrust::raw_pointer_cast(s.bmrap_bounds_.data()),
+        s.bmrap_bounds_.size()};
+    r.bounds_n_locations_ = bounds_n_locations_;
+    r.bounds_budget_ = bounds_budget_;
+    r.has_bounds_ = true;
+  }
+  r.cur_budget_ = end_k - 1U;  // trips allowed for this start time
   auto const d_start = unix_to_delta(base(), start_time);
 
   // debug tracing: enabled iff this execute's start matches the env
@@ -1326,6 +1340,26 @@ void gpu_mcraptor<SearchDir, WithCost>::reconstruct(query const& q,
   }
 
   j.is_reconstructed_ = true;
+}
+
+template <direction SearchDir, bool WithCost>
+void gpu_mcraptor<SearchDir, WithCost>::set_bounds(bmrap_bounds const* b) {
+  if (b == nullptr || b->empty()) {
+    has_bounds_ = false;
+    return;
+  }
+  auto& s = *state_.impl_;
+  if (s.bmrap_bounds_.size() < b->lat_.size()) {
+    s.bmrap_bounds_.resize(b->lat_.size());
+  }
+  CUDA_CHECK(cudaMemcpyAsync(thrust::raw_pointer_cast(s.bmrap_bounds_.data()),
+                             b->lat_.data(),
+                             b->lat_.size() * sizeof(delta_t),
+                             cudaMemcpyHostToDevice, s.stream_));
+  CUDA_CHECK(cudaStreamSynchronize(s.stream_));
+  bounds_n_locations_ = b->n_locations_;
+  bounds_budget_ = b->budget_;
+  has_bounds_ = true;
 }
 
 template class gpu_mcraptor<direction::kForward, false>;

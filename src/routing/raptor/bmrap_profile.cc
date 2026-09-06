@@ -53,16 +53,17 @@ using namespace bmrap_detail;
 // slack-departure duplicates then survive the result pareto set whenever
 // their walking differs. Re-anchoring makes every reported departure tight,
 // exactly as PONG does for the two-criteria case.
-template <direction SearchDir, bool Rt, typename Criteria>
+template <direction SearchDir, bool Rt, typename Criteria, typename AlgoState>
 routing_result bmrap_profile(timetable const& tt,
                              rt_timetable const* rtt,
                              search_state& s_state,
-                             basic_mcraptor_state<Criteria>& r_state,
+                             AlgoState& r_state,
                              query q,
                              std::optional<std::chrono::seconds> const timeout) {
   constexpr auto const kFwd = (SearchDir == direction::kForward);
-  using ping_t = raptor<SearchDir, Rt, kVias, search_mode::kOneToOne>;
-  using pong_t = raptor<flip(SearchDir), Rt, kVias, search_mode::kOneToOne>;
+  using ping_t = typename bmrap_algo_for<SearchDir, Rt, AlgoState>::type;
+  using pong_t =
+      typename bmrap_algo_for<flip(SearchDir), Rt, AlgoState>::type;
   using mc_ping_t = basic_mcraptor<SearchDir, Criteria, /*RangeReuse=*/false>;
   using mc_pong_t =
       basic_mcraptor<flip(SearchDir), Criteria, /*RangeReuse=*/false>;
@@ -129,23 +130,28 @@ routing_result bmrap_profile(timetable const& tt,
   };
   static_cast<void>(mk);
 
-  // one raptor_state serves the 2-criteria ping, the 2-criteria pong and
-  // the slacked pong: within a step they run strictly one after another
-  // and each resets what it needs
-  auto r2_state = raptor_state{};
+  // The caller's state serves the 2-criteria ping, the 2-criteria pong and
+  // the slacked pong - exactly as pong.cc hands one state to both its ping
+  // and its pong. Within a step they run strictly one after another and
+  // each resets what it needs, and on the GPU the per-query buffers are
+  // direction-indexed so the two directions coexist.
+  // The multicriteria phases stay on the CPU (see bmrap_algo_for): they are
+  // ~5% of the runtime, and keeping them here means every criteria
+  // configuration remains available regardless of the scalar engine.
+  auto mc_ping_state = basic_mcraptor_state<Criteria>{};
   auto mc_pong_state = basic_mcraptor_state<Criteria>{};
 
-  auto ping = ping_t{tt,       rtt,      r2_state,  fwd_is_dest,
+  auto ping = ping_t{tt,       rtt,      r_state,  fwd_is_dest,
                      is_via,   fwd_dist, q.td_dest_, fwd_lb,
                      no_via,   base_day, q.allowed_claszes_,
                      q.require_bike_transport_, q.require_car_transport_,
                      q.prf_idx_ == 2U, q.transfer_time_settings_};
-  auto pong = pong_t{tt,       rtt,      r2_state,  bwd_is_dest,
+  auto pong = pong_t{tt,       rtt,      r_state,  bwd_is_dest,
                      is_via,   bwd_dist, qf.td_dest_, bwd_lb,
                      no_via,   base_day, q.allowed_claszes_,
                      q.require_bike_transport_, q.require_car_transport_,
                      q.prf_idx_ == 2U, q.transfer_time_settings_};
-  auto mc_ping = mc_ping_t{tt,       rtt,      r_state,   fwd_is_dest,
+  auto mc_ping = mc_ping_t{tt,       rtt,      mc_ping_state, fwd_is_dest,
                            is_via,   fwd_dist, q.td_dest_, fwd_lb,
                            no_via,   base_day, q.allowed_claszes_,
                            q.require_bike_transport_, q.require_car_transport_,
@@ -183,6 +189,8 @@ routing_result bmrap_profile(timetable const& tt,
 
   auto starts = std::vector<start>{};
   auto bounds = bmrap_bounds{};
+  // staging for host_round_times() - unused by the CPU engines
+  auto rt_buf = std::vector<std::array<delta_t, kVias + 1>>{};
 
   // The anchor set - and everything derived from it - is only invalidated
   // when start_time passes the EARLIEST anchor departure. Up to that point
@@ -392,7 +400,7 @@ routing_result bmrap_profile(timetable const& tt,
     });
 
     if (fwd_bounds_on) {
-      // r2_state still holds the ping's round times here; the pong below
+      // r_state still holds the ping's round times here; the pong below
       // reuses the same state, so the matrix has to be taken now - before
       // the anchors exist. Size it from the PING's trip counts: re-anchoring
       // in the pong moves departures, never the number of trips, so this is
@@ -406,7 +414,8 @@ routing_result bmrap_profile(timetable const& tt,
       }
       auto const f0 = std::chrono::steady_clock::now();
       fwd_bounds = build_reach_matrix<SearchDir>(
-          tt, q, r2_state, trip_budget(ping_trips, budget_cap));
+          tt, q, host_round_times(r_state, ping, rt_buf, tt.n_locations()),
+          trip_budget(ping_trips, budget_cap));
       ms_fwd_bounds += std::chrono::steady_clock::now() - f0;
       ++n_fwd_bound_builds;
       if ((fwd_bounds_mode & 1) != 0) {
@@ -498,7 +507,7 @@ routing_result bmrap_profile(timetable const& tt,
       auto const b0 = std::chrono::steady_clock::now();
       bounds = compute_bounds<SearchDir, Rt>(
           tt, rtt, q, anchors, base_day,
-          /*horizon=*/start_time - duration_t{kFwd ? 1 : -1}, budget, r2_state,
+          /*horizon=*/start_time - duration_t{kFwd ? 1 : -1}, budget, r_state,
           prune_stats,
           (fwd_bounds_mode & 2) != 0 ? &fwd_bounds : nullptr);
       ms_bounds += std::chrono::steady_clock::now() - b0;
@@ -844,7 +853,7 @@ routing_result bmrap_profile(timetable const& tt,
 
 }  // namespace
 
-template <typename AlgoState>
+template <typename Criteria, typename AlgoState>
 routing_result bmrap_profile_search(
     timetable const& tt,
     rt_timetable const* rtt,
@@ -854,40 +863,65 @@ routing_result bmrap_profile_search(
     direction const search_dir,
     std::optional<std::chrono::seconds> const timeout) {
   if (search_dir == direction::kForward) {
-    return bmrap_profile<direction::kForward, false>(
+    return bmrap_profile<direction::kForward, false, Criteria>(
         tt, rtt, s_state, algo_state, std::move(q), timeout);
   } else {
-    return bmrap_profile<direction::kBackward, false>(
+    return bmrap_profile<direction::kBackward, false, Criteria>(
         tt, rtt, s_state, algo_state, std::move(q), timeout);
   }
 }
 
-template routing_result bmrap_profile_search(
-    timetable const&, rt_timetable const*, search_state&, mcraptor_state&, query,
+template routing_result bmrap_profile_search<arr_criteria>(
+    timetable const&, rt_timetable const*, search_state&, raptor_state&, query,
+    direction, std::optional<std::chrono::seconds>);
+template routing_result bmrap_profile_search<arr_cost_criteria>(
+    timetable const&, rt_timetable const*, search_state&, raptor_state&, query,
+    direction, std::optional<std::chrono::seconds>);
+template routing_result bmrap_profile_search<arr_walk_criteria>(
+    timetable const&, rt_timetable const*, search_state&, raptor_state&, query,
+    direction, std::optional<std::chrono::seconds>);
+template routing_result bmrap_profile_search<arr_air_criteria>(
+    timetable const&, rt_timetable const*, search_state&, raptor_state&, query,
+    direction, std::optional<std::chrono::seconds>);
+template routing_result bmrap_profile_search<arr_walk_air_criteria>(
+    timetable const&, rt_timetable const*, search_state&, raptor_state&, query,
+    direction, std::optional<std::chrono::seconds>);
+template routing_result bmrap_profile_search<arr_clasz_criteria>(
+    timetable const&, rt_timetable const*, search_state&, raptor_state&, query,
+    direction, std::optional<std::chrono::seconds>);
+template routing_result bmrap_profile_search<arr_walk_clasz_criteria>(
+    timetable const&, rt_timetable const*, search_state&, raptor_state&, query,
     direction, std::optional<std::chrono::seconds>);
 
-template routing_result bmrap_profile_search(
-    timetable const&, rt_timetable const*, search_state&, mcraptor_cost_state&, query,
-    direction, std::optional<std::chrono::seconds>);
-
-template routing_result bmrap_profile_search(
-    timetable const&, rt_timetable const*, search_state&, mcraptor_walk_state&, query,
-    direction, std::optional<std::chrono::seconds>);
-
-template routing_result bmrap_profile_search(
-    timetable const&, rt_timetable const*, search_state&, mcraptor_air_state&, query,
-    direction, std::optional<std::chrono::seconds>);
-
-template routing_result bmrap_profile_search(
-    timetable const&, rt_timetable const*, search_state&, mcraptor_walk_air_state&, query,
-    direction, std::optional<std::chrono::seconds>);
-
-template routing_result bmrap_profile_search(
-    timetable const&, rt_timetable const*, search_state&, mcraptor_clasz_state&, query,
-    direction, std::optional<std::chrono::seconds>);
-
-template routing_result bmrap_profile_search(
-    timetable const&, rt_timetable const*, search_state&, mcraptor_walk_clasz_state&, query,
-    direction, std::optional<std::chrono::seconds>);
+#if defined(NIGIRI_CUDA)
+template routing_result bmrap_profile_search<arr_criteria>(
+    timetable const&, rt_timetable const*, search_state&,
+    gpu::gpu_raptor_state&, query, direction,
+    std::optional<std::chrono::seconds>);
+template routing_result bmrap_profile_search<arr_cost_criteria>(
+    timetable const&, rt_timetable const*, search_state&,
+    gpu::gpu_raptor_state&, query, direction,
+    std::optional<std::chrono::seconds>);
+template routing_result bmrap_profile_search<arr_walk_criteria>(
+    timetable const&, rt_timetable const*, search_state&,
+    gpu::gpu_raptor_state&, query, direction,
+    std::optional<std::chrono::seconds>);
+template routing_result bmrap_profile_search<arr_air_criteria>(
+    timetable const&, rt_timetable const*, search_state&,
+    gpu::gpu_raptor_state&, query, direction,
+    std::optional<std::chrono::seconds>);
+template routing_result bmrap_profile_search<arr_walk_air_criteria>(
+    timetable const&, rt_timetable const*, search_state&,
+    gpu::gpu_raptor_state&, query, direction,
+    std::optional<std::chrono::seconds>);
+template routing_result bmrap_profile_search<arr_clasz_criteria>(
+    timetable const&, rt_timetable const*, search_state&,
+    gpu::gpu_raptor_state&, query, direction,
+    std::optional<std::chrono::seconds>);
+template routing_result bmrap_profile_search<arr_walk_clasz_criteria>(
+    timetable const&, rt_timetable const*, search_state&,
+    gpu::gpu_raptor_state&, query, direction,
+    std::optional<std::chrono::seconds>);
+#endif
 
 }  // namespace nigiri::routing

@@ -885,6 +885,32 @@ struct mcraptor_impl {
 
   // dest-aware same-station transfer buffer (0 at a non-intermodal
   // destination, like the CPU transfer_buffer)
+  // BM-RAPTOR bound pruning - mirrors basic_mcraptor::bound_prunes().
+  // `slack` relaxes the bound by a stop's transfer buffer for footpath
+  // arrivals, which board without paying it again while the pruning search
+  // stored the post-transfer value.
+  __device__ __forceinline__ bool bound_prunes(unsigned const k,
+                                               std::uint32_t const l,
+                                               delta_t const t,
+                                               int const slack = 0) {
+    if (!has_bounds_) {
+      return false;
+    }
+    // the CURRENT start time's trip budget, not the matrix-wide maximum:
+    // every departure has its own floor(sigma_tr * K(d))
+    auto const budget = cur_budget_ < bounds_budget_ ? cur_budget_
+                                                     : bounds_budget_;
+    if (k > budget) {
+      return true;
+    }
+    return !is_better_or_eq(
+        t, clamp(static_cast<int>(
+                     bounds_[static_cast<std::size_t>(budget - k) *
+                                 bounds_n_locations_ +
+                             l]) +
+                 slack));
+  }
+
   __device__ __forceinline__ int transfer_buffer(std::uint32_t const l) const {
     return (!is_intermodal_dest() && is_dest_[l])
                ? 0
@@ -1508,7 +1534,10 @@ struct mcraptor_impl {
       if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
         continue;
       }
-      auto const post_arr = clamp(by_transport + buf);
+      if (bound_prunes(k, l_idx, by_transport)) {
+          continue;
+        }
+        auto const post_arr = clamp(by_transport + buf);
       if (!bag_insert(l_idx, to_key(post_arr), ride_extras, k, true,
                       /*with_bc=*/true,
                       make_transport_payload(
@@ -1739,6 +1768,9 @@ struct mcraptor_impl {
         if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
           continue;
         }
+        if (bound_prunes(k, l_idx, by_transport)) {
+          continue;
+        }
         auto const post_arr = clamp(by_transport + buf);
         if (!bag_insert(
                 l_idx, to_key(post_arr), ride_extras, k, true,
@@ -1822,7 +1854,10 @@ struct mcraptor_impl {
           if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
             continue;
           }
-          auto const post_arr = clamp(by_transport + buf);
+          if (bound_prunes(k, l_idx, by_transport)) {
+          continue;
+        }
+        auto const post_arr = clamp(by_transport + buf);
           if (!bag_insert(
                   l_idx, to_key(post_arr), ride_extras, k, true,
                   /*with_bc=*/true,
@@ -1936,6 +1971,9 @@ struct mcraptor_impl {
                        static_cast<std::uint32_t>(fp_duration * walk_surcharge_)
                  : 0U;
     if (dest_dominates(k, fp_key + target_lb, fp_extras)) {
+      return false;
+    }
+    if (bound_prunes(k, target, fp_arr, transfer_buffer(target))) {
       return false;
     }
     auto const src = bc_read_coherent(te_bc);
@@ -2460,6 +2498,13 @@ struct mcraptor_impl {
   std::uint32_t walk_surcharge_;
 
   cuda::std::span<std::pair<location_idx_t, delta_t> const> starts_;
+  // --- BM-RAPTOR (see bmrap_bounds.h) ---
+  cuda::std::span<delta_t const> bounds_{};
+  std::uint32_t bounds_n_locations_{0U};
+  std::uint8_t bounds_budget_{0U};
+  bool has_bounds_{false};
+  unsigned cur_budget_{0U};  // this start time's trip budget
+
   device_bitvec<std::uint64_t const> is_dest_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
   // per-query lower bounds to the destination (minutes; kUnreachable =
