@@ -638,27 +638,33 @@ struct raptor_impl {
     auto const target = to_idx(target_l);
     auto const fp_target_time = clamp(tmp_time + dir(duration));
 
-    if constexpr (!WithBounds) {
-      // Required for pong search. Target pruning to save writes.
-      if (is_better(fp_target_time, best_.get(target_l, Vias))) {
-        round_times_.update_min(k, target_l, Vias, fp_target_time, bc);
-        touch_round(k, target_l);
-      }
-    }
-
-    if (!is_better_loose(fp_target_time, t_at_dest)) {
+    // one best_ read, one round_times_ atomic per relaxation:
+    //  - ping (!WithBounds): every label better than best_ is written
+    //    (the pong needs complete bounds), pruned or not
+    //  - pong: only labels within the ping bounds and not worse than
+    //    time_at_dest are written
+    if (!is_better(fp_target_time, best_.get(target_l, Vias))) {
       return;
     }
-
-    if (is_better(fp_target_time, best_.get(target_l, Vias)) &&
-        within_bounds(k, target_l, fp_target_time)) {
-      round_times_.update_min(k, target_l, Vias, fp_target_time, bc);
-      touch_round(k, target_l);
-      best_.update_min(target_l, Vias, fp_target_time);
-      station_mark_.mark(target);
-      if (is_dest_[target]) {
-        update_time_at_dest(k, fp_target_time);
+    auto const pruned = !is_better_loose(fp_target_time, t_at_dest);
+    if constexpr (WithBounds) {
+      if (pruned || !within_bounds(k, target_l, fp_target_time)) {
+        return;
       }
+    }
+    if (!round_times_.update_min(k, target_l, Vias, fp_target_time, bc)) {
+      // another lane already wrote an equal or better label (and did the
+      // bookkeeping below for it)
+      return;
+    }
+    touch_round(k, target_l);
+    if (pruned) {
+      return;
+    }
+    best_.update_min(target_l, Vias, fp_target_time);
+    station_mark_.mark(target);
+    if (is_dest_[target]) {
+      update_time_at_dest(k, fp_target_time);
     }
   }
 
