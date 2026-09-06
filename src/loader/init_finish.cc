@@ -6,6 +6,7 @@
 
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/build_lb_graph.h"
+#include "nigiri/loader/permutate_timetable.h"
 #include "nigiri/loader/register.h"
 #include "nigiri/flex.h"
 #include "nigiri/special_stations.h"
@@ -219,8 +220,14 @@ void finalize(timetable& tt, finalize_options const opt) {
                        std::tie(tt.providers_[b].src_, tt.providers_[b].id_);
               });
   }
-  build_footpaths(tt, opt);
+
   rebuild_route_traffic_days(tt);
+  if (opt.z_order_) {
+    auto const timer = scoped_timer{"loader.z_order"};
+    permutate_timetable(tt);
+  }
+
+  build_footpaths(tt, opt);
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);
   build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
   build_location_tree(tt);
@@ -237,9 +244,10 @@ void finalize(timetable& tt,
               bool const adjust_footpaths,
               bool const merge_dupes_intra_src,
               bool const merge_dupes_inter_src,
+              bool const z_order_,
               std::uint16_t const max_footpath_length) {
   finalize(tt, {adjust_footpaths, merge_dupes_intra_src, merge_dupes_inter_src,
-                max_footpath_length});
+                z_order_, max_footpath_length});
 }
 
 }  // namespace nigiri::loader

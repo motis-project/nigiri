@@ -22,6 +22,14 @@
 
 namespace nigiri {
 
+// Warning: for better data locality, locations will be reordered in a way that
+// locations with no traffic (not served by any route) are at the end (high
+// index) while locations with traffic will be at the start (low index).
+// This means that every added data field that (directly or indirectly)
+// references location_idx_t has to be handled in permutate_locations.cc
+// Don't forget to add handling to permutate_locations.cc when adding new fields
+// that either use location_idx_t as index (permutate) or as value
+// (re-reference).
 struct day_list;
 
 struct location_id_hash {
@@ -90,10 +98,10 @@ struct timetable {
     vector_map<location_idx_t, location_type> types_;
     vector_map<location_idx_t, location_idx_t> parents_;
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
-    mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
-    mutable_fws_multimap<location_idx_t, location_idx_t> children_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
+    paged_vecvec<location_idx_t, location_idx_t> equivalences_;
+    paged_vecvec<location_idx_t, location_idx_t> children_;
+    paged_vecvec<location_idx_t, footpath> preprocessing_footpaths_out_;
+    paged_vecvec<location_idx_t, footpath> preprocessing_footpaths_in_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_in_;
     vector_map<location_idx_t, std::uint32_t> location_importance_;
@@ -150,6 +158,35 @@ struct timetable {
 
   bool is_route_active(route_idx_t const r, day_idx_t const day) const {
     return bitfields_[route_traffic_days_[r]].test(to_idx(day));
+  }
+
+  size_t n_events_at_location(location_idx_t const loc) const {
+    size_t res = 0U;
+    for (const auto r : location_routes_[loc]) {
+      const auto stop_seq = route_location_seq_[r];
+      for (stop_idx_t i = 0U; i < stop_seq.size(); ++i) {
+        const auto stp = stop{stop_seq[i]};
+        if (stp.location_idx() != loc) {
+          continue;
+        }
+
+        size_t n_active_transports = 0U;
+        const auto transport_range = route_transport_ranges_[r];
+        for (const auto t : transport_range) {
+          n_active_transports += bitfields_[transport_traffic_days_[t]].count();
+        }
+        if (i > 0U) {
+          // Arrival Events
+          res += n_active_transports;
+        }
+        if (i < stop_seq.size() - 1) {
+          // Departure Events
+          res += n_active_transports;
+        }
+      }
+    }
+
+    return res;
   }
 
   std::span<delta const> event_times_at_stop(route_idx_t const r,
