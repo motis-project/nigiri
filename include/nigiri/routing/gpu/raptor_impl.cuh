@@ -92,7 +92,13 @@ struct raptor_impl {
     }
   }
 
-  __device__ void init_arrivals(unixtime_t const worst_time_at_dest) {
+  // Initial per-round time_at_dest bound (horizon, tightened by journeys the
+  // caller already knows: see gpu_raptor::set_dest_bounds).
+  struct dest_bounds_t {
+    delta_t v_[kMaxTransfers + 2U];
+  };
+
+  __device__ void init_arrivals(dest_bounds_t const bounds) {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
 
@@ -110,9 +116,8 @@ struct raptor_impl {
       station_mark_.mark(to_idx(l));
     }
 
-    auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
     for (auto i = global_t_id; i < kMaxTransfers + 2U; i += global_stride) {
-      time_at_dest_.update_min(i, d_worst_at_dest);
+      time_at_dest_.update_min(i, bounds.v_[i]);
     }
   }
 

@@ -268,6 +268,22 @@ routing_result pong(timetable const& tt,
         start_time +
         (kFwd ? 1 : -1) *
             std::min(q.max_travel_time_ + kMinLookAhead, kMaxTravelTime);
+    if constexpr (requires {
+                    ping.set_dest_bounds(
+                        std::vector<std::pair<std::uint8_t, unixtime_t>>{});
+                  }) {
+      // journeys found so far that depart at/after this ping's start time
+      // are valid from it: seed the ping's per-round pruning bound with
+      // their arrivals (in-loop convention: start_time_ = arrival,
+      // dest_time_ = departure)
+      auto seeds = std::vector<std::pair<std::uint8_t, unixtime_t>>{};
+      for (auto const& j : *result.journeys_) {
+        if (!is_better(j.dest_time_, start_time)) {
+          seeds.emplace_back(j.transfers_, j.start_time_);
+        }
+      }
+      ping.set_dest_bounds(std::move(seeds));
+    }
     auto ping_results = pareto_set<journey>{};
     ping.execute(start_time, q.max_transfers_, worst_time_at_dest,
                  ping_results);

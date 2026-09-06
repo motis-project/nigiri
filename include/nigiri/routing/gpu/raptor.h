@@ -96,6 +96,14 @@ struct gpu_raptor {
 
   void set_criteria_only(bool const b) { criteria_only_ = b; }
 
+  // Known journeys (transfers, arrival at the destination) that are valid
+  // from the next execute()'s start time: they seed the per-round
+  // time_at_dest pruning bound so the search only explores what can beat
+  // them. Consumed by the next execute().
+  void set_dest_bounds(std::vector<std::pair<std::uint8_t, unixtime_t>> seeds) {
+    dest_bound_seeds_ = std::move(seeds);
+  }
+
   void execute(unixtime_t start_time,
                std::uint8_t max_transfers,
                unixtime_t worst_time_at_dest,
@@ -123,6 +131,7 @@ private:
   // ping searches of the pong: only journey criteria are needed, the device
   // reconstruction of the legs is skipped
   bool criteria_only_{false};
+  std::vector<std::pair<std::uint8_t, unixtime_t>> dest_bound_seeds_;
   bool no_compulsory_reservation_;
   transfer_time_settings transfer_time_settings_;
 

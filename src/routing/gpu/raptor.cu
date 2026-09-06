@@ -639,9 +639,10 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
 }
 
 template <direction SearchDir, bool WithBounds>
-__global__ void init_arrivals_kernel(raptor_impl<SearchDir, WithBounds> r,
-                                     unixtime_t const worst_time_at_dest) {
-  r.init_arrivals(worst_time_at_dest);
+__global__ void init_arrivals_kernel(
+    raptor_impl<SearchDir, WithBounds> r,
+    typename raptor_impl<SearchDir, WithBounds>::dest_bounds_t const bounds) {
+  r.init_arrivals(bounds);
 }
 
 template <direction SearchDir, bool WithBounds>
@@ -1008,8 +1009,28 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
 
   // === ROUTING KERNELS ===
-  launch(init_arrivals_kernel<SearchDir, WithBounds>, s.stream_, r,
-         worst_time_at_dest);
+  // per-round initial bound: the horizon, tightened by known journeys
+  // (a journey with t transfers bounds every round >= t + 1)
+  auto bounds = typename raptor_impl<SearchDir, WithBounds>::dest_bounds_t{};
+  {
+    constexpr auto const kIsFwd = SearchDir == direction::kForward;
+    auto const better = [](delta_t const a, delta_t const b) {
+      return kIsFwd ? std::min(a, b) : std::max(a, b);
+    };
+    auto const worst = unix_to_delta(base(), worst_time_at_dest);
+    for (auto& v : bounds.v_) {
+      v = worst;
+    }
+    for (auto const& [transfers, arrival] : dest_bound_seeds_) {
+      auto const d = unix_to_delta(base(), arrival);
+      for (auto k = std::min<unsigned>(transfers + 1U, kMaxTransfers + 1U);
+           k != kMaxTransfers + 2U; ++k) {
+        bounds.v_[k] = better(bounds.v_[k], d);
+      }
+    }
+  }
+  dest_bound_seeds_.clear();
+  launch(init_arrivals_kernel<SearchDir, WithBounds>, s.stream_, r, bounds);
   for (auto k = 1U; k != end_k; ++k) {
     launch(reuse_previous_arrivals_kernel<SearchDir, WithBounds>, s.stream_, r,
            k);
