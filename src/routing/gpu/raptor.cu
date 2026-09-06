@@ -356,7 +356,9 @@ struct gpu_raptor_state::impl {
     auto const n_route_stops = tt_.route_of_stop_.size();
     et_result_.resize(n_route_stops);
     et_task_list_.resize(n_route_stops);
+    et_task_time_.resize(n_route_stops);
     et_task_count_.resize(1U);
+    et_large_task_count_.resize(1U);
     route_list_.resize(tt_.n_routes_);
     route_list_count_.resize(1U);
 
@@ -549,7 +551,9 @@ struct gpu_raptor_state::impl {
 
   thrust::device_vector<std::uint32_t> et_result_;
   thrust::device_vector<std::uint32_t> et_task_list_;
+  thrust::device_vector<delta_t> et_task_time_;
   thrust::device_vector<std::uint32_t> et_task_count_;
+  thrust::device_vector<std::uint32_t> et_large_task_count_;
   thrust::device_vector<std::uint32_t> route_list_;
   thrust::device_vector<std::uint32_t> route_list_count_;
 
@@ -694,6 +698,15 @@ __global__ void et_run_lookups_kernel(raptor_impl<SearchDir, WithBounds> r,
     return;
   }
   r.et_run_lookups(k);
+}
+
+template <direction SearchDir, bool WithBounds>
+__global__ void et_run_lookups_warp_kernel(raptor_impl<SearchDir, WithBounds> r,
+                                           unsigned const k) {
+  if (*r.done_) {
+    return;
+  }
+  r.et_run_lookups_warp(k);
 }
 
 template <direction SearchDir,
@@ -919,7 +932,10 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       .n_dest_locs_ = s.n_dest_locs_[kDirIdx],
       .et_result_ = to_mutable_view(s.et_result_),
       .et_task_list_ = to_mutable_view(s.et_task_list_),
+      .et_task_time_ = to_mutable_view(s.et_task_time_),
       .et_task_count_ = thrust::raw_pointer_cast(s.et_task_count_.data()),
+      .et_large_task_count_ =
+          thrust::raw_pointer_cast(s.et_large_task_count_.data()),
       .route_list_ = to_mutable_view(s.route_list_),
       .route_list_count_ =
           thrust::raw_pointer_cast(s.route_list_count_.data())};
@@ -956,6 +972,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
              r, k);
     }
     launch(et_run_lookups_kernel<SearchDir, WithBounds>, s.stream_, r, k);
+    launch(et_run_lookups_warp_kernel<SearchDir, WithBounds>, s.stream_, r, k);
     {
       auto const with_clasz = allowed_claszes_ != all_clasz_allowed();
       auto const with_filters = is_wheelchair_ || require_bike_transport_ ||

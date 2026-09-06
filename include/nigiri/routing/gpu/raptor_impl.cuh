@@ -215,6 +215,7 @@ struct raptor_impl {
     prev_station_mark_.swap_reset(station_mark_);
     if (get_global_thread_id() == 0U) {
       *et_task_count_ = 0U;
+      *et_large_task_count_ = 0U;
       *route_list_count_ = 0U;
     }
   }
@@ -410,11 +411,10 @@ struct raptor_impl {
     auto const warp_id = get_global_thread_id() / kWarpSize;
     auto const n_warps = get_global_stride() / kWarpSize;
 
-    for (auto i = warp_id; i < tt_.n_routes_; i += n_warps) {
-      if (!route_mark_.test(i)) {
-        continue;
-      }
-
+    // route_list_ holds the marked routes (compacted by et_build_route_list)
+    auto const n_marked = *route_list_count_;
+    for (auto idx = warp_id; idx < n_marked; idx += n_warps) {
+      auto const i = route_list_[idx];
       auto const r = route_idx_t{i};
       if constexpr (WithClaszFilter) {
         if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
@@ -1111,18 +1111,28 @@ struct raptor_impl {
         auto const base_flat = tt_.route_stop_offset_[ri];
         auto const stop_seq = tt_.route_location_seq_[r];
         auto const n = static_cast<unsigned>(stop_seq.size());
+        // Routes with many transports get warp-cooperative lookups: their
+        // tasks are appended from the back of et_task_list_ (uniform per
+        // route, so the whole warp takes the same branch).
+        auto const is_large =
+            tt_.route_transport_ranges_[r].size() > kWarpEtThreshold;
+        auto* const counter = is_large ? et_large_task_count_ : et_task_count_;
+        auto const list_size = static_cast<unsigned>(et_task_list_.size());
         for (auto chunk = 0U; chunk < n; chunk += kWarpSize) {
           auto const s = chunk + lane;
           auto is_task = false;
+          auto prev_time = kInvalid;
           if (s < n) {
             et_result_[base_flat + s] = kEtInvalid;
             auto const is_dir_last = kFwd ? (s + 1U == n) : (s == 0U);
             if (!is_dir_last) {
               auto const stp = stop{stop_seq[s]};
               auto const l = stp.location_idx();
-              is_task = prev_station_mark_[to_idx(l)] &&
-                        stp.can_start<SearchDir>(IsWheelchair) &&
-                        round_times_.get(k - 1, l, 0U) != kInvalid;
+              if (prev_station_mark_[to_idx(l)] &&
+                  stp.can_start<SearchDir>(IsWheelchair)) {
+                prev_time = round_times_.get(k - 1, l, 0U);
+                is_task = prev_time != kInvalid;
+              }
             }
           }
 
@@ -1132,14 +1142,17 @@ struct raptor_impl {
                 static_cast<int>(__ffs(static_cast<int>(ballot))) - 1;
             auto base_pos = 0U;
             if (lane == static_cast<unsigned>(leader)) {
-              base_pos = atomicAdd(et_task_count_,
-                                   static_cast<unsigned>(__popc(ballot)));
+              base_pos =
+                  atomicAdd(counter, static_cast<unsigned>(__popc(ballot)));
             }
             base_pos = __shfl_sync(kAllLanes, base_pos, leader);
             if (is_task) {
               auto const off =
                   static_cast<unsigned>(__popc(ballot & ((1U << lane) - 1U)));
-              et_task_list_[base_pos + off] = base_flat + s;
+              auto const pos = base_pos + off;
+              auto const slot = is_large ? list_size - 1U - pos : pos;
+              et_task_list_[slot] = base_flat + s;
+              et_task_time_[slot] = prev_time;
             }
           }
         }
@@ -1152,18 +1165,236 @@ struct raptor_impl {
     auto const gid = get_global_thread_id();
     auto const stride = get_global_stride();
     auto const n_tasks = *et_task_count_;
+    auto const t_at_dest = time_at_dest_.get(k);
     for (auto i = gid; i < n_tasks; i += stride) {
+      // the task carries the label time: no stop_seq / round_times chase
       auto const flat = et_task_list_[i];
+      auto const prev_time = et_task_time_[i];
       auto const r = route_idx_t{tt_.route_of_stop_[flat]};
       auto const stop_idx =
           static_cast<stop_idx_t>(flat - tt_.route_stop_offset_[to_idx(r)]);
-      auto const stop_seq = tt_.route_location_seq_[r];
-      auto const stp = stop{stop_seq[stop_idx]};
-      auto const l = stp.location_idx();
-      auto const [day, mam] = split(round_times_.get(k - 1, l, 0U));
-      et_result_[flat] =
-          pack_et(r, get_earliest_transport(k, r, stop_idx, day, mam));
+      auto const [day, mam] = split(prev_time);
+      et_result_[flat] = pack_et(
+          r, get_earliest_transport_fast(t_at_dest, r, stop_idx, day, mam));
     }
+  }
+
+  // get_earliest_transport with the same scan order and results, but a
+  // shorter dependent-load chain per call:
+  //  - the route bitfield word holding day_at_stop is loaded once (the day
+  //    loop otherwise re-reads it up to kNDaysToIterate times)
+  //  - the last transport bitfield word is kept in registers (consecutive
+  //    candidates of a route mostly share a calendar)
+  __device__ transport
+  get_earliest_transport_fast(delta_t const t_at_dest,
+                              route_idx_t const r,
+                              stop_idx_t const stop_idx,
+                              day_idx_t const day_at_stop,
+                              minutes_after_midnight_t const mam_at_stop) {
+    auto const event_times = tt_.event_times_at_stop(
+        r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
+    auto const range_from = to_idx(tt_.route_transport_ranges_[r].from_);
+    auto const& route_bf = tt_.bitfields_[tt_.route_traffic_days_[r]];
+
+    constexpr auto const kBits = static_cast<int>(bitfield::bits_per_block);
+    constexpr auto const kNBlocks = static_cast<int>(bitfield::num_blocks);
+
+    auto const d0 = as_int(day_at_stop);
+    auto const rw_idx = (d0 >= 0 && d0 < kMaxDays) ? d0 / kBits : -1;
+    auto const rw = rw_idx >= 0 ? route_bf.blocks_[rw_idx] : std::uint64_t{0U};
+    auto const route_active = [&](int const day) {
+      if (day < 0 || day >= kMaxDays) {
+        return false;  // = bitset::test out of range
+      }
+      auto const wi = day / kBits;
+      auto const w = wi == rw_idx ? rw : route_bf.blocks_[wi];
+      return ((w >> (day % kBits)) & 1ULL) != 0ULL;
+    };
+
+    auto cache_idx = ~std::uint32_t{0U};
+    auto cache_wi = -1;
+    auto cache_w = std::uint64_t{0U};
+    auto const transport_active = [&](transport_idx_t const t,
+                                      int const start_day) {
+      auto const i = to_idx(tt_.transport_traffic_days_[t]);
+      if ((i & kRtBitfieldFlag) != 0U) {
+        return rtt_.bitfields_[bitfield_idx_t{i & ~kRtBitfieldFlag}].test(
+            static_cast<std::size_t>(start_day));
+      }
+      if (start_day < 0 || start_day >= kMaxDays) {
+        return false;
+      }
+      auto const wi = start_day / kBits;
+      if (i != cache_idx || wi != cache_wi) {
+        cache_idx = i;
+        cache_wi = wi;
+        cache_w = tt_.bitfields_[bitfield_idx_t{i}].blocks_[wi];
+      }
+      return ((cache_w >> (start_day % kBits)) & 1ULL) != 0ULL;
+    };
+    static_assert(kNBlocks * kBits == kMaxDays);
+
+    auto const seek_first_day = [&]() {
+      return linear_lb(get_begin_it(event_times), get_end_it(event_times),
+                       mam_at_stop,
+                       [&](delta const a, minutes_after_midnight_t const b) {
+                         return is_better(a.mam(), b.count());
+                       });
+    };
+
+    constexpr auto const kNDaysToIterate = static_cast<day_idx_t::value_t>(
+        kMaxTravelTime / std::chrono::days{1} + 1U);
+    for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
+      auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
+      if (!route_active(as_int(day))) {
+        continue;
+      }
+
+      auto const ev_time_range =
+          it_range{i == 0U ? seek_first_day() : get_begin_it(event_times),
+                   get_end_it(event_times)};
+      if (ev_time_range.empty()) {
+        continue;
+      }
+
+      for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
+        auto const t_offset =
+            static_cast<std::size_t>(&*it - event_times.data());
+        auto const ev = *it;
+        auto const ev_mam = ev.mam();
+
+        auto const ev_t = to_delta(day, ev_mam);
+        if (is_better(t_at_dest, ev_t)) {
+          return {transport_idx_t::invalid(), day_idx_t::invalid()};
+        }
+
+        if (i == 0U && !is_better_or_eq(mam_at_stop.count(), ev_mam)) {
+          continue;
+        }
+
+        auto const t = transport_idx_t{range_from + t_offset};
+        auto const start_day = as_int(day) - ev.days();
+        if (!transport_active(t, start_day)) {
+          continue;
+        }
+        return {t, static_cast<day_idx_t>(start_day)};
+      }
+    }
+    return {};
+  }
+
+  // et PHASE 3b: warp-cooperative lookups for the tasks on routes with more
+  // than kWarpEtThreshold transports (stored from the back of et_task_list_).
+  // One task per warp: the 32 lanes scan 32 events at once, so a lane never
+  // idles behind a long sequential scan of another lane.
+  __device__ void et_run_lookups_warp(unsigned const k) {
+    auto const lane = get_global_thread_id() % kWarpSize;
+    auto const warp_id = get_global_thread_id() / kWarpSize;
+    auto const n_warps = get_global_stride() / kWarpSize;
+    auto const n_tasks = *et_large_task_count_;
+    auto const list_size = static_cast<unsigned>(et_task_list_.size());
+    for (auto i = warp_id; i < n_tasks; i += n_warps) {
+      auto const slot = list_size - 1U - i;
+      auto const flat = et_task_list_[slot];
+      auto const prev_time = et_task_time_[slot];
+      auto const r = route_idx_t{tt_.route_of_stop_[flat]};
+      auto const stop_idx =
+          static_cast<stop_idx_t>(flat - tt_.route_stop_offset_[to_idx(r)]);
+      auto const [day, mam] = split(prev_time);
+      auto const et =
+          get_earliest_transport_warp(k, r, stop_idx, day, mam, lane);
+      if (lane == 0U) {
+        et_result_[flat] = pack_et(r, et);
+      }
+    }
+  }
+
+  // Same result as get_earliest_transport (identical scan order and early
+  // exits), evaluated 32 events per step. All lanes return the same value.
+  __device__ transport
+  get_earliest_transport_warp(unsigned const k,
+                              route_idx_t const r,
+                              stop_idx_t const stop_idx,
+                              day_idx_t const day_at_stop,
+                              minutes_after_midnight_t const mam_at_stop,
+                              unsigned const lane) {
+    auto const event_times = tt_.event_times_at_stop(
+        r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
+    auto const n = static_cast<unsigned>(event_times.size());
+    auto const t_at_dest = time_at_dest_.get(k);
+    auto const x = mam_at_stop.count();
+    auto const range_from = to_idx(tt_.route_transport_ranges_[r].from_);
+
+    constexpr auto const kNDaysToIterate = static_cast<day_idx_t::value_t>(
+        kMaxTravelTime / std::chrono::days{1} + 1U);
+    for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
+      auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
+      if (!is_route_active(r, day)) {
+        continue;
+      }
+
+      // day 0 starts at the first event with !is_better(ev.mam, mam_at_stop)
+      // (= linear_lb in the sequential version); later days scan everything
+      auto seeking = (i == 0U);
+      for (auto chunk = 0U; chunk < n; chunk += kWarpSize) {
+        // scan order p -> array index (bwd scans the array reversed)
+        auto const p = chunk + lane;
+        auto const valid = p < n;
+        auto idx = 0U;
+        auto ev = delta{std::uint16_t{0U}, std::uint16_t{0U}};
+        if (valid) {
+          idx = kFwd ? p : n - 1U - p;
+          ev = event_times[idx];
+        }
+        auto const ev_mam = ev.mam();
+
+        auto visited = valid;
+        if (seeking) {
+          auto const stop_seek =
+              __ballot_sync(kAllLanes, valid && !is_better(ev_mam, x));
+          if (stop_seek == 0U) {
+            continue;  // whole chunk lies before the seek point
+          }
+          auto const first =
+              static_cast<unsigned>(__ffs(static_cast<int>(stop_seek))) - 1U;
+          visited = valid && lane >= first;
+          seeking = false;
+        }
+
+        // sequential scan returns "invalid" at the first event worse than
+        // time_at_dest -> events from there on are never reached
+        auto const worse =
+            visited && is_better(t_at_dest, to_delta(day, ev_mam));
+        auto const worse_mask = __ballot_sync(kAllLanes, worse);
+        auto const cutoff =
+            worse_mask == 0U
+                ? kWarpSize
+                : static_cast<unsigned>(__ffs(static_cast<int>(worse_mask))) -
+                      1U;
+
+        auto active = false;
+        auto start_day = 0;
+        if (visited && lane < cutoff &&
+            !(i == 0U && !is_better_or_eq(x, ev_mam))) {
+          start_day = as_int(day) - ev.days();
+          active = is_transport_active(transport_idx_t{range_from + idx},
+                                       static_cast<std::size_t>(start_day));
+        }
+        auto const active_mask = __ballot_sync(kAllLanes, active);
+        if (active_mask != 0U) {
+          auto const w =
+              static_cast<int>(__ffs(static_cast<int>(active_mask))) - 1;
+          auto const idx_w = __shfl_sync(kAllLanes, idx, w);
+          auto const sd = __shfl_sync(kAllLanes, start_day, w);
+          return {transport_idx_t{range_from + idx_w},
+                  day_idx_t{static_cast<day_idx_t::value_t>(sd)}};
+        }
+        if (worse_mask != 0U) {
+          return {transport_idx_t::invalid(), day_idx_t::invalid()};
+        }
+      }
+    }
+    return {};
   }
 
   __device__ delta_t time_at_stop(route_idx_t const r,
@@ -1263,8 +1494,14 @@ struct raptor_impl {
 
   // earliest transports per flat (route,stop)
   cuda::std::span<std::uint32_t> et_result_;
+  // et_task_list_: per-thread tasks grow from the front, warp tasks (routes
+  // with > kWarpEtThreshold transports) from the back; both fit since a
+  // route stop yields at most one task
   cuda::std::span<std::uint32_t> et_task_list_;
-  std::uint32_t* et_task_count_;  // number of tasks this round
+  cuda::std::span<delta_t> et_task_time_;  // label time per task slot
+  std::uint32_t* et_task_count_;  // number of per-thread tasks this round
+  std::uint32_t* et_large_task_count_;  // number of warp tasks this round
+  static constexpr auto kWarpEtThreshold = 32U;
 
   // marked routes this round
   cuda::std::span<std::uint32_t> route_list_;
