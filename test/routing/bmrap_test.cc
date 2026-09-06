@@ -237,17 +237,37 @@ TEST(bmrap, contains_bicriteria_journeys) {
   expect_contains_prefix(bm, bi, "BMRAPP vs bicriteria RAPTOR");
 }
 
-// Same, with the generalized-cost criterion (the other configuration the
-// GPU mcraptor implements).
-TEST(bmrap, cost_subset_of_mcraptor) {
+// Same, with a COMPOSED criteria (walking + vehicle-class switches). The
+// dimensions are combined by arr_with<>, so this also covers the
+// composition machinery: dominance, the carried state and apply_to all
+// have to fold correctly over more than one dimension.
+TEST(bmrap, composed_subset_of_mcraptor) {
   auto const f = fixture{};
-  auto const full = run_mcraptor<routing::mcraptor_cost_state>(f);
-  auto const restricted = run_bmrapp<routing::arr_cost_criteria>(f);
+  auto const full = run_mcraptor<routing::mcraptor_walk_clasz_state>(f);
+  auto const restricted = run_bmrapp<routing::arr_walk_clasz_criteria>(f);
 
   ASSERT_FALSE(restricted.empty());
   auto const have = std::set<tuple_t>{begin(full), end(full)};
   for (auto const& j : restricted) {
-    EXPECT_TRUE(have.contains(j)) << "BMRAPP(cost) invented a journey";
+    EXPECT_TRUE(have.contains(j))
+        << "BMRAPP(walk+clasz) returned a journey McRAPTOR does not have";
+  }
+}
+
+// A composed criteria must never lose a journey the same search finds with
+// a SUBSET of its dimensions: adding a pareto dimension can only split
+// classes apart, never merge them. This is the property that would break
+// if a dimension's dominance folded the wrong way.
+TEST(bmrap, more_dimensions_never_lose_journeys) {
+  auto const f = fixture{};
+  auto const walk = run_bmrapp<routing::arr_walk_criteria>(f);
+  auto const walk_clasz = run_bmrapp<routing::arr_walk_clasz_criteria>(f);
+
+  ASSERT_FALSE(walk.empty());
+  auto const have = std::set<tuple_t>{begin(walk_clasz), end(walk_clasz)};
+  for (auto const& j : walk) {
+    EXPECT_TRUE(have.contains(j))
+        << "adding the clasz dimension dropped a journey walk-only found";
   }
 }
 
@@ -269,12 +289,18 @@ std::vector<tuple_t> run_bmrapp_gpu(fixture const& f) {
 }
 
 TEST(bmrap, gpu_matches_cpu) {
+  if (!routing::gpu::gpu_available()) {
+    GTEST_SKIP() << "no CUDA device";
+  }
   auto const f = fixture{};
   EXPECT_EQ(run_bmrapp<routing::arr_criteria>(f),
             run_bmrapp_gpu<routing::arr_criteria>(f));
 }
 
 TEST(bmrap, gpu_matches_cpu_walk) {
+  if (!routing::gpu::gpu_available()) {
+    GTEST_SKIP() << "no CUDA device";
+  }
   auto const f = fixture{};
   EXPECT_EQ(run_bmrapp<routing::arr_walk_criteria>(f),
             run_bmrapp_gpu<routing::arr_walk_criteria>(f));

@@ -25,6 +25,11 @@ inline bool gpu_supported(query const& q, rt_timetable const* = nullptr) {
   return q.via_stops_.empty();
 }
 
+// Is there a usable CUDA device? False when the toolkit is present but the
+// driver is not (a CUDA-enabled build on a machine without a GPU), which
+// lets tests skip instead of reporting failures.
+bool gpu_available();
+
 struct gpu_timetable {
   explicit gpu_timetable(timetable const&);
   ~gpu_timetable();

@@ -1043,6 +1043,11 @@ void gpu_raptor<SearchDir>::copy_round_times(
   }
 }
 
+bool gpu_available() {
+  auto n = 0;
+  return cudaGetDeviceCount(&n) == cudaSuccess && n > 0;
+}
+
 template class gpu_raptor<direction::kForward>;
 template class gpu_raptor<direction::kBackward>;
 

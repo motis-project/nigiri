@@ -393,5 +393,13 @@ template routing_result bmrap_search(timetable const&,
                                      query,
                                      direction,
                                      std::optional<std::chrono::seconds>);
+template routing_result bmrap_search(
+    timetable const&, rt_timetable const*, search_state&, mcraptor_air_clasz_state&, query,
+    direction, std::optional<std::chrono::seconds>);
+
+template routing_result bmrap_search(
+    timetable const&, rt_timetable const*, search_state&, mcraptor_walk_air_clasz_state&, query,
+    direction, std::optional<std::chrono::seconds>);
+
 
 }  // namespace nigiri::routing

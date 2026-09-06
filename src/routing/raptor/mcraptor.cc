@@ -350,11 +350,8 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
               [&] {
                 if constexpr (std::is_same_v<Criteria, arr_cost_criteria>) {
                   return static_cast<unsigned>(e.crit_.cost_);
-                } else if constexpr (std::is_same_v<Criteria,
-                                                    arr_walk_criteria>) {
-                  return static_cast<unsigned>(e.crit_.walk_);
                 } else {
-                  return 0U;
+                  return walk_of(e.crit_);
                 }
               }(),
               static_cast<int>(e.dep_));
@@ -1150,43 +1147,25 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::split(delta_t const x) const {
 }
 
 // range reuse OFF (pong ping / EA) and ON (pong pong / search.h interval)
-template struct basic_mcraptor<direction::kForward, arr_criteria, false>;
-template struct basic_mcraptor<direction::kBackward, arr_criteria, false>;
-template struct basic_mcraptor<direction::kForward, arr_cost_criteria, false>;
-template struct basic_mcraptor<direction::kBackward, arr_cost_criteria, false>;
-template struct basic_mcraptor<direction::kForward, arr_criteria, true>;
-template struct basic_mcraptor<direction::kBackward, arr_criteria, true>;
-template struct basic_mcraptor<direction::kForward, arr_cost_criteria, true>;
-template struct basic_mcraptor<direction::kBackward, arr_cost_criteria, true>;
-template struct basic_mcraptor<direction::kForward, arr_walk_criteria, false>;
-template struct basic_mcraptor<direction::kBackward, arr_walk_criteria, false>;
-template struct basic_mcraptor<direction::kForward, arr_walk_criteria, true>;
-template struct basic_mcraptor<direction::kBackward, arr_walk_criteria, true>;
-template struct basic_mcraptor<direction::kForward, arr_air_criteria, false>;
-template struct basic_mcraptor<direction::kBackward, arr_air_criteria, false>;
-template struct basic_mcraptor<direction::kForward, arr_air_criteria, true>;
-template struct basic_mcraptor<direction::kBackward, arr_air_criteria, true>;
-template struct basic_mcraptor<direction::kForward, arr_walk_air_criteria,
-                               false>;
-template struct basic_mcraptor<direction::kBackward, arr_walk_air_criteria,
-                               false>;
-template struct basic_mcraptor<direction::kForward, arr_walk_air_criteria,
-                               true>;
-template struct basic_mcraptor<direction::kBackward, arr_walk_air_criteria,
-                               true>;
-template struct basic_mcraptor<direction::kForward, arr_clasz_criteria,
-                               false>;
-template struct basic_mcraptor<direction::kBackward, arr_clasz_criteria,
-                               false>;
-template struct basic_mcraptor<direction::kForward, arr_clasz_criteria, true>;
-template struct basic_mcraptor<direction::kBackward, arr_clasz_criteria, true>;
-template struct basic_mcraptor<direction::kForward, arr_walk_clasz_criteria,
-                               false>;
-template struct basic_mcraptor<direction::kBackward, arr_walk_clasz_criteria,
-                               false>;
-template struct basic_mcraptor<direction::kForward, arr_walk_clasz_criteria,
-                               true>;
-template struct basic_mcraptor<direction::kBackward, arr_walk_clasz_criteria,
-                               true>;
+// One line per criteria configuration: both directions x range reuse on/off.
+// Adding a dimension combination to the composable set (see arr_with) means
+// adding it here and to the dispatch in routing.cc - nothing else.
+#define NIGIRI_MC_INSTANTIATE(C)                                    \
+  template struct basic_mcraptor<direction::kForward, C, false>;    \
+  template struct basic_mcraptor<direction::kBackward, C, false>;   \
+  template struct basic_mcraptor<direction::kForward, C, true>;     \
+  template struct basic_mcraptor<direction::kBackward, C, true>;
+
+NIGIRI_MC_INSTANTIATE(arr_criteria)
+NIGIRI_MC_INSTANTIATE(arr_cost_criteria)
+NIGIRI_MC_INSTANTIATE(arr_walk_criteria)
+NIGIRI_MC_INSTANTIATE(arr_air_criteria)
+NIGIRI_MC_INSTANTIATE(arr_clasz_criteria)
+NIGIRI_MC_INSTANTIATE(arr_walk_air_criteria)
+NIGIRI_MC_INSTANTIATE(arr_walk_clasz_criteria)
+NIGIRI_MC_INSTANTIATE(arr_air_clasz_criteria)
+NIGIRI_MC_INSTANTIATE(arr_walk_air_clasz_criteria)
+
+#undef NIGIRI_MC_INSTANTIATE
 
 }  // namespace nigiri::routing

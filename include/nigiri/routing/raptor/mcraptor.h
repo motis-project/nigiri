@@ -249,92 +249,52 @@ struct arr_cost_criteria {
 // which makes both the completed-journey dominance and the cross-departure
 // rRAPTOR reuse rule identical to the plain in-bag dominance - no
 // departure discounting is needed anywhere.
-struct arr_walk_criteria {
-  template <direction SearchDir>
-  bool dominates(arr_walk_criteria const& o) const {
-    constexpr auto const kF = SearchDir == direction::kForward;
-    return (kF ? arr_ <= o.arr_ : arr_ >= o.arr_) && walk_ <= o.walk_;
-  }
+// ===== COMPOSABLE CRITERIA =====
+//
+// A DIMENSION is the criteria protocol minus the arrival time, which
+// arr_with<> owns. Adding an optimization axis is one ~20-line struct plus
+// an alias, instead of hand-writing the cross-product with the others (the
+// old arr_air_criteria_t<WithWalk> / arr_clasz_criteria_t<WithWalk> were
+// already a manual 2x expansion along the walking axis).
+//
+//   dominates(o)            in-bag rule; may price the FUTURE (clasz_dim)
+//   completed_dominates(o)  rule at the destination, where nothing follows
+//   at_start(ingress)       round-0 value
+//   from_ride(dur, ra, prev)  value after boarding a trip
+//   with_transfer(dt)       value after a same-stop transfer
+//   with_walk(dt, dur)      value after a footpath / offset
+//   apply_to(journey&)      write the realized value into the result
+//
+// Each dimension owns a DISTINCT journey slot, which is what makes them
+// freely combinable; that is also why the generalized-cost criterion is
+// not a dimension - it writes criteria_cost_, the slot walking uses.
 
-  // walking is realized as soon as it is walked and never shrinks, so the
-  // in-bag rule is already the journey-level rule; it also stays valid
-  // against the lb-projection of an intermediate label (every completion
-  // has arr_f >= projected arr and walk_f >= walk).
-  template <direction SearchDir>
-  bool completed_dominates(arr_walk_criteria const& o) const {
-    return dominates<SearchDir>(o);
+// minutes on foot: offsets + footpaths
+struct walk_dim {
+  bool dominates(walk_dim const& o) const { return walk_ <= o.walk_; }
+  bool completed_dominates(walk_dim const& o) const { return dominates(o); }
+  static walk_dim at_start(std::uint16_t const ingress) { return {ingress}; }
+  static walk_dim from_ride(std::uint16_t,
+                            ride_attrs const&,
+                            walk_dim const& prev) {
+    return prev;
   }
-
-  struct carried {
-    // same boarding => identical future arrivals; only the walking done so
-    // far distinguishes the labels
-    template <direction SearchDir>
-    bool dominates(carried const& o) const {
-      return walk_ <= o.walk_;
-    }
-    bool operator==(carried const&) const = default;
-    std::uint16_t walk_;
-  };
-  carried carry() const { return {walk_}; }
-  static arr_walk_criteria from_ride(delta_t const arr,
-                                     std::uint16_t /* ride duration */,
-                                     ride_attrs const&,
-                                     carried const& c) {
-    return {arr, c.walk_};
+  walk_dim with_transfer(int) const { return *this; }
+  walk_dim with_walk(int, std::uint16_t const duration) const {
+    return {static_cast<std::uint16_t>(walk_ + duration)};
   }
-  static arr_walk_criteria at_start(delta_t const arr,
-                                    std::uint16_t const ingress) {
-    return {arr, ingress};
-  }
-  arr_walk_criteria with_transfer(int const dt) const {
-    return {clamp(arr_ + dt), walk_};
-  }
-  arr_walk_criteria with_walk(int const dt,
-                              std::uint16_t const duration) const {
-    return {clamp(arr_ + dt), static_cast<std::uint16_t>(walk_ + duration)};
-  }
-  arr_walk_criteria projected_to(delta_t const arr) const {
-    return {arr, walk_};
-  }
-
-  // cross-departure rRAPTOR reuse dominance: both criteria are absolute
-  // (walking does not depend on when you started), so a later-departing
-  // label dominates an earlier one exactly when it dominates it in the bag.
-  template <direction SearchDir>
-  bool reuse_dominates(arr_walk_criteria const& o, delta_t const /*dep*/,
-                       delta_t const /*o_dep*/) const {
-    return dominates<SearchDir>(o);
-  }
-
   void apply_to(journey& j) const { j.criteria_cost_ = walk_; }
+  bool operator==(walk_dim const&) const = default;
 
-  delta_t arr_;
-  std::uint16_t walk_;  // minutes on foot: offsets + footpaths
+  std::uint16_t walk_{0U};
 };
 
-// arrival time + "does this journey use a flight" - a BINARY criterion,
-// optionally combined with the walking duration (WithWalk).
-//
-// The point is that this is a pareto dimension rather than a filter: a
-// clasz mask would remove flights from the search entirely, whereas here
-// the result keeps BOTH the fast itinerary that flies and the best one
-// that does not, and lets the caller pick. `false` dominates `true`, so a
-// flight has to pay for itself in arrival time (and walking) to survive.
-//
-// Like walking, the flag is absolute - it does not depend on the departure
-// time and never shrinks once set - so completed-journey dominance and the
-// cross-departure rRAPTOR reuse rule are both just the in-bag dominance.
-//
-// The flag is raised by from_ride() from the boarded route's clasz, which
-// is why from_ride takes it; it then rides along in `carried` for the rest
-// of the journey.
-template <bool WithWalk>
-struct arr_air_criteria_t {
-  static constexpr bool has_walk() { return WithWalk; }
-
-  // Which vehicle classes the criterion counts. Flights by default;
+// binary "uses an avoided vehicle class" (flights by default). The point is
+// that this is a pareto dimension rather than a filter: the result keeps
+// BOTH the fast itinerary that flies and the best one that does not.
+struct air_dim {
   // NIGIRI_MC_AVOID_CLASZ takes a comma-separated list of clasz names
-  // ("AIR", "SUBWAY", ...) so the same criterion can express "prefer to
+  // ("AIR", "SUBWAY", ...) so the same dimension can express "prefer to
   // avoid X" for any class.
   static inline clasz_mask_t const kAvoided = [] {
     auto const* const v = std::getenv("NIGIRI_MC_AVOID_CLASZ");
@@ -358,181 +318,185 @@ struct arr_air_criteria_t {
     }
     return mask == 0U ? to_mask(clasz::kAir) : mask;
   }();
-
   static bool is_avoided(clasz const c) { return is_allowed(kAvoided, c); }
 
-  template <direction SearchDir>
-  bool dominates(arr_air_criteria_t const& o) const {
-    constexpr auto const kF = SearchDir == direction::kForward;
-    return (kF ? arr_ <= o.arr_ : arr_ >= o.arr_) &&
-           (!WithWalk || walk_ <= o.walk_) && air_ <= o.air_;
+  bool dominates(air_dim const& o) const { return air_ <= o.air_; }
+  bool completed_dominates(air_dim const& o) const { return dominates(o); }
+  static air_dim at_start(std::uint16_t) { return {false}; }
+  static air_dim from_ride(std::uint16_t,
+                           ride_attrs const& ra,
+                           air_dim const& prev) {
+    return {prev.air_ || is_avoided(ra.clasz_)};
   }
+  air_dim with_transfer(int) const { return *this; }
+  air_dim with_walk(int, std::uint16_t) const { return *this; }
+  void apply_to(journey& j) const { j.criteria_air_ = air_; }
+  bool operator==(air_dim const&) const = default;
 
-  template <direction SearchDir>
-  bool completed_dominates(arr_air_criteria_t const& o) const {
-    return dominates<SearchDir>(o);
-  }
-
-  struct carried {
-    template <direction SearchDir>
-    bool dominates(carried const& o) const {
-      return (!WithWalk || walk_ <= o.walk_) && air_ <= o.air_;
-    }
-    bool operator==(carried const&) const = default;
-    std::uint16_t walk_;
-    bool air_;
-  };
-  carried carry() const { return {walk_, air_}; }
-  static arr_air_criteria_t from_ride(delta_t const arr,
-                                      std::uint16_t /* ride duration */,
-                                      ride_attrs const& ra,
-                                      carried const& ca) {
-    return {arr, ca.walk_, ca.air_ || is_avoided(ra.clasz_)};
-  }
-  static arr_air_criteria_t at_start(delta_t const arr,
-                                     std::uint16_t const ingress) {
-    return {arr, WithWalk ? ingress : std::uint16_t{0U}, false};
-  }
-  arr_air_criteria_t with_transfer(int const dt) const {
-    return {clamp(arr_ + dt), walk_, air_};
-  }
-  arr_air_criteria_t with_walk(int const dt,
-                               std::uint16_t const duration) const {
-    return {clamp(arr_ + dt),
-            static_cast<std::uint16_t>(WithWalk ? walk_ + duration : 0U), air_};
-  }
-  arr_air_criteria_t projected_to(delta_t const arr) const {
-    return {arr, walk_, air_};
-  }
-
-  template <direction SearchDir>
-  bool reuse_dominates(arr_air_criteria_t const& o, delta_t const /*dep*/,
-                       delta_t const /*o_dep*/) const {
-    return dominates<SearchDir>(o);
-  }
-
-  void apply_to(journey& j) const {
-    if constexpr (WithWalk) {
-      j.criteria_cost_ = walk_;
-    }
-    j.criteria_air_ = air_;
-  }
-
-  delta_t arr_;
-  std::uint16_t walk_;  // minutes on foot, 0 (and ignored) unless WithWalk
-  bool air_;  // journey contains at least one leg of an avoided class
+  bool air_{false};
 };
 
-// arrival time + number of VEHICLE CLASS SWITCHES, optionally combined
-// with the walking duration (WithWalk). A "switch" is a change of clasz
-// between two consecutive trips - bus -> subway counts, subway -> subway
-// does not - so this rewards journeys that stay within one mode.
-//
-// The label carries the clasz of the trip it last rode plus the number of
-// switches so far; boarding the next trip compares the two and charges one
-// switch when they differ. Round-0 labels have no clasz yet, so the first
-// boarding is always free.
+// number of VEHICLE CLASS SWITCHES between consecutive trips (bus ->
+// subway counts, subway -> subway does not), so it rewards journeys that
+// stay within one mode.
 //
 // Dominance needs care, because the carried clasz is not just baggage - it
-// prices the FUTURE. A label that arrives earlier with the same number of
-// switches but in a different vehicle class may still cost one more switch
-// downstream, so it may only dominate when it is a full switch ahead:
-//
-//   penalty = (same clasz, or no clasz yet) ? 0 : 1
-//   dominates  <=>  arr better-or-equal && switches + penalty <= o.switches
-//
-// A label with no clasz yet can board anything for free, which is why it
-// pays no penalty. At the destination the journey is over and the carried
-// clasz stops mattering, so completed_dominates drops the penalty entirely.
-//
-// Like walking and the flight flag this is absolute (independent of the
-// departure time), so the cross-departure rRAPTOR reuse rule is the plain
-// in-bag dominance.
-template <bool WithWalk>
-struct arr_clasz_criteria_t {
-  // no trip ridden yet (round 0). clasz has no invalid value of its own,
-  // so the one-past-the-end enumerator doubles as the sentinel.
+// prices the FUTURE. A label with the same number of switches but in a
+// different class may still cost one more switch downstream, so it may
+// only dominate when it is a full switch ahead. A label that has not
+// ridden anything yet can board anything for free, hence no penalty. At
+// the destination the journey is over and the carried clasz stops
+// mattering, so completed_dominates drops the penalty entirely.
+struct clasz_dim {
+  // clasz has no invalid value of its own, so the one-past-the-end
+  // enumerator doubles as "no trip ridden yet"
   static constexpr clasz no_clasz() { return clasz::kNumClasses; }
 
-  std::uint8_t switch_penalty(arr_clasz_criteria_t const& o) const {
+  std::uint8_t switch_penalty(clasz_dim const& o) const {
     return (clasz_ == o.clasz_ || clasz_ == no_clasz()) ? 0U : 1U;
   }
+  bool dominates(clasz_dim const& o) const {
+    return switches_ + switch_penalty(o) <= o.switches_;
+  }
+  bool completed_dominates(clasz_dim const& o) const {
+    return switches_ <= o.switches_;
+  }
+  static clasz_dim at_start(std::uint16_t) { return {no_clasz(), 0U}; }
+  static clasz_dim from_ride(std::uint16_t,
+                             ride_attrs const& ra,
+                             clasz_dim const& prev) {
+    auto const switched =
+        prev.clasz_ != no_clasz() && prev.clasz_ != ra.clasz_;
+    return {ra.clasz_,
+            static_cast<std::uint8_t>(prev.switches_ + (switched ? 1U : 0U))};
+  }
+  clasz_dim with_transfer(int) const { return *this; }
+  clasz_dim with_walk(int, std::uint16_t) const { return *this; }
+  void apply_to(journey& j) const { j.criteria_clasz_ = switches_; }
+  bool operator==(clasz_dim const&) const = default;
 
-  template <direction SearchDir>
-  bool dominates(arr_clasz_criteria_t const& o) const {
-    constexpr auto const kF = SearchDir == direction::kForward;
-    return (kF ? arr_ <= o.arr_ : arr_ >= o.arr_) &&
-           (!WithWalk || walk_ <= o.walk_) &&
-           switches_ + switch_penalty(o) <= o.switches_;
+  clasz clasz_{clasz::kNumClasses};
+  std::uint8_t switches_{0U};
+};
+
+// Arrival time plus any set of dimensions. Dominance is the strict pareto
+// over (arrival, every dimension): earliness is never traded away.
+template <typename... Dims>
+struct arr_with {
+  using dims_t = std::tuple<Dims...>;
+  using idx_t = std::index_sequence_for<Dims...>;
+
+  template <typename F>
+  static dims_t make(F&& f) {
+    return [&]<std::size_t... I>(std::index_sequence<I...>) {
+      return dims_t{f.template operator()<I>()...};
+    }(idx_t{});
+  }
+  template <typename F>
+  static bool all(dims_t const& a, dims_t const& b, F&& f) {
+    return [&]<std::size_t... I>(std::index_sequence<I...>) {
+      return (f(std::get<I>(a), std::get<I>(b)) && ...);
+    }(idx_t{});
   }
 
-  // the journey ends here: no further boarding, so the carried clasz is
-  // irrelevant and only the realized switch count counts
   template <direction SearchDir>
-  bool completed_dominates(arr_clasz_criteria_t const& o) const {
+  bool dominates(arr_with const& o) const {
     constexpr auto const kF = SearchDir == direction::kForward;
     return (kF ? arr_ <= o.arr_ : arr_ >= o.arr_) &&
-           (!WithWalk || walk_ <= o.walk_) && switches_ <= o.switches_;
+           all(d_, o.d_, [](auto const& x, auto const& y) {
+             return x.dominates(y);
+           });
   }
 
+  template <direction SearchDir>
+  bool completed_dominates(arr_with const& o) const {
+    constexpr auto const kF = SearchDir == direction::kForward;
+    return (kF ? arr_ <= o.arr_ : arr_ >= o.arr_) &&
+           all(d_, o.d_, [](auto const& x, auto const& y) {
+             return x.completed_dominates(y);
+           });
+  }
+
+  // everything except the arrival: what survives a boarding
   struct carried {
     template <direction SearchDir>
     bool dominates(carried const& o) const {
-      auto const penalty =
-          (clasz_ == o.clasz_ || clasz_ == clasz::kNumClasses) ? 0U : 1U;
-      return (!WithWalk || walk_ <= o.walk_) &&
-             switches_ + penalty <= o.switches_;
+      return all(d_, o.d_,
+                 [](auto const& x, auto const& y) { return x.dominates(y); });
     }
     bool operator==(carried const&) const = default;
-    std::uint16_t walk_;
-    clasz clasz_;
-    std::uint8_t switches_;
+    dims_t d_;
   };
-  carried carry() const { return {walk_, clasz_, switches_}; }
+  carried carry() const { return {d_}; }
 
-  static arr_clasz_criteria_t from_ride(delta_t const arr,
-                                        std::uint16_t /* ride duration */,
-                                        ride_attrs const& ra,
-                                        carried const& c) {
-    auto const switched = c.clasz_ != no_clasz() && c.clasz_ != ra.clasz_;
-    return {arr, c.walk_, ra.clasz_,
-            static_cast<std::uint8_t>(c.switches_ + (switched ? 1U : 0U))};
+  static arr_with from_ride(delta_t const arr,
+                            std::uint16_t const ride_duration,
+                            ride_attrs const& ra,
+                            carried const& c) {
+    return {arr, make([&]<std::size_t I>() {
+              return std::tuple_element_t<I, dims_t>::from_ride(
+                  ride_duration, ra, std::get<I>(c.d_));
+            })};
   }
-  static arr_clasz_criteria_t at_start(delta_t const arr,
-                                       std::uint16_t const ingress) {
-    return {arr, WithWalk ? ingress : std::uint16_t{0U}, no_clasz(), 0U};
+  static arr_with at_start(delta_t const arr, std::uint16_t const ingress) {
+    return {arr, make([&]<std::size_t I>() {
+              return std::tuple_element_t<I, dims_t>::at_start(ingress);
+            })};
   }
-  arr_clasz_criteria_t with_transfer(int const dt) const {
-    return {clamp(arr_ + dt), walk_, clasz_, switches_};
+  arr_with with_transfer(int const dt) const {
+    return {clamp(arr_ + dt), make([&]<std::size_t I>() {
+              return std::get<I>(d_).with_transfer(dt);
+            })};
   }
-  arr_clasz_criteria_t with_walk(int const dt,
-                                 std::uint16_t const duration) const {
-    return {clamp(arr_ + dt),
-            static_cast<std::uint16_t>(WithWalk ? walk_ + duration : 0U),
-            clasz_, switches_};
+  arr_with with_walk(int const dt, std::uint16_t const duration) const {
+    return {clamp(arr_ + dt), make([&]<std::size_t I>() {
+              return std::get<I>(d_).with_walk(dt, duration);
+            })};
   }
-  arr_clasz_criteria_t projected_to(delta_t const arr) const {
-    return {arr, walk_, clasz_, switches_};
-  }
+  // all dimensions only ever grow, so their trivial lower bound is
+  // themselves; only the arrival is projected
+  arr_with projected_to(delta_t const arr) const { return {arr, d_}; }
 
+  // every dimension is absolute (independent of when you departed), so the
+  // cross-departure rRAPTOR reuse rule is the plain in-bag dominance
   template <direction SearchDir>
-  bool reuse_dominates(arr_clasz_criteria_t const& o, delta_t const /*dep*/,
+  bool reuse_dominates(arr_with const& o,
+                       delta_t const /*dep*/,
                        delta_t const /*o_dep*/) const {
     return dominates<SearchDir>(o);
   }
 
   void apply_to(journey& j) const {
-    if constexpr (WithWalk) {
-      j.criteria_cost_ = walk_;
-    }
-    j.criteria_clasz_ = switches_;
+    [&]<std::size_t... I>(std::index_sequence<I...>) {
+      (std::get<I>(d_).apply_to(j), ...);
+    }(idx_t{});
+  }
+
+  // dimension access by type, for tracing and tests
+  template <typename D>
+  static constexpr bool has() {
+    return (std::is_same_v<D, Dims> || ...);
+  }
+  template <typename D>
+    requires(has<D>())
+  D const& get() const {
+    return std::get<D>(d_);
   }
 
   delta_t arr_;
-  std::uint16_t walk_;  // minutes on foot, 0 (and ignored) unless WithWalk
-  clasz clasz_;  // vehicle class of the trip last ridden
-  std::uint8_t switches_;  // clasz changes between consecutive trips
+  dims_t d_;
 };
+
+// Tracing helper: the walking minutes of any criteria that carries a walk
+// dimension, 0 for the ones that do not.
+template <typename C>
+unsigned walk_of(C const& c) {
+  if constexpr (requires { c.template get<walk_dim>(); }) {
+    return c.template get<walk_dim>().walk_;
+  } else {
+    return 0U;
+  }
+}
 
 template <typename Criteria>
 struct basic_mcraptor_state {
@@ -1040,38 +1004,35 @@ using mcraptor_cost_state = basic_mcraptor_state<arr_cost_criteria>;
 template <direction SearchDir>
 using mcraptor_cost = basic_mcraptor<SearchDir, arr_cost_criteria>;
 
-// arrival + walking duration configuration
+// Every combination of the dimensions above. These are aliases now, not
+// hand-written types: adding a dimension adds one line per combination
+// that is actually dispatched, and the combinations that never existed
+// before (air+clasz, walk+air+clasz) come for free.
+using arr_walk_criteria = arr_with<walk_dim>;
+using arr_air_criteria = arr_with<air_dim>;
+using arr_clasz_criteria = arr_with<clasz_dim>;
+using arr_walk_air_criteria = arr_with<walk_dim, air_dim>;
+using arr_walk_clasz_criteria = arr_with<walk_dim, clasz_dim>;
+using arr_air_clasz_criteria = arr_with<air_dim, clasz_dim>;
+using arr_walk_air_clasz_criteria = arr_with<walk_dim, air_dim, clasz_dim>;
+
 using mcraptor_walk_state = basic_mcraptor_state<arr_walk_criteria>;
+using mcraptor_air_state = basic_mcraptor_state<arr_air_criteria>;
+using mcraptor_walk_air_state = basic_mcraptor_state<arr_walk_air_criteria>;
+using mcraptor_clasz_state = basic_mcraptor_state<arr_clasz_criteria>;
+using mcraptor_walk_clasz_state =
+    basic_mcraptor_state<arr_walk_clasz_criteria>;
+using mcraptor_air_clasz_state = basic_mcraptor_state<arr_air_clasz_criteria>;
+using mcraptor_walk_air_clasz_state =
+    basic_mcraptor_state<arr_walk_air_clasz_criteria>;
 
 template <direction SearchDir>
 using mcraptor_walk = basic_mcraptor<SearchDir, arr_walk_criteria>;
-
-// arrival + no-flight configuration, and the same with walking added
-using arr_air_criteria = arr_air_criteria_t<false>;
-using arr_walk_air_criteria = arr_air_criteria_t<true>;
-
-using mcraptor_air_state = basic_mcraptor_state<arr_air_criteria>;
-using mcraptor_walk_air_state = basic_mcraptor_state<arr_walk_air_criteria>;
 
 template <direction SearchDir>
 using mcraptor_air = basic_mcraptor<SearchDir, arr_air_criteria>;
 
 template <direction SearchDir>
-using mcraptor_walk_air = basic_mcraptor<SearchDir, arr_walk_air_criteria>;
-
-// arrival + vehicle-class switches, and the same with walking added
-using arr_clasz_criteria = arr_clasz_criteria_t<false>;
-using arr_walk_clasz_criteria = arr_clasz_criteria_t<true>;
-
-using mcraptor_clasz_state = basic_mcraptor_state<arr_clasz_criteria>;
-using mcraptor_walk_clasz_state =
-    basic_mcraptor_state<arr_walk_clasz_criteria>;
-
-template <direction SearchDir>
 using mcraptor_clasz = basic_mcraptor<SearchDir, arr_clasz_criteria>;
-
-template <direction SearchDir>
-using mcraptor_walk_clasz =
-    basic_mcraptor<SearchDir, arr_walk_clasz_criteria>;
 
 }  // namespace nigiri::routing

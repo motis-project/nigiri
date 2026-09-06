@@ -871,57 +871,34 @@ routing_result bmrap_profile_search(
   }
 }
 
-template routing_result bmrap_profile_search<arr_criteria>(
-    timetable const&, rt_timetable const*, search_state&, raptor_state&, query,
-    direction, std::optional<std::chrono::seconds>);
-template routing_result bmrap_profile_search<arr_cost_criteria>(
-    timetable const&, rt_timetable const*, search_state&, raptor_state&, query,
-    direction, std::optional<std::chrono::seconds>);
-template routing_result bmrap_profile_search<arr_walk_criteria>(
-    timetable const&, rt_timetable const*, search_state&, raptor_state&, query,
-    direction, std::optional<std::chrono::seconds>);
-template routing_result bmrap_profile_search<arr_air_criteria>(
-    timetable const&, rt_timetable const*, search_state&, raptor_state&, query,
-    direction, std::optional<std::chrono::seconds>);
-template routing_result bmrap_profile_search<arr_walk_air_criteria>(
-    timetable const&, rt_timetable const*, search_state&, raptor_state&, query,
-    direction, std::optional<std::chrono::seconds>);
-template routing_result bmrap_profile_search<arr_clasz_criteria>(
-    timetable const&, rt_timetable const*, search_state&, raptor_state&, query,
-    direction, std::optional<std::chrono::seconds>);
-template routing_result bmrap_profile_search<arr_walk_clasz_criteria>(
-    timetable const&, rt_timetable const*, search_state&, raptor_state&, query,
-    direction, std::optional<std::chrono::seconds>);
+// One line per criteria configuration, for each scalar engine. The
+// generalized-cost criterion is deliberately absent: it writes the same
+// journey slot as walking, so it is not part of the composable set.
+#define NIGIRI_BMRAPP_INSTANTIATE(C, S)                                    \
+  template routing_result bmrap_profile_search<C>(                        \
+      timetable const&, rt_timetable const*, search_state&, S&, query,     \
+      direction, std::optional<std::chrono::seconds>);
+
+NIGIRI_BMRAPP_INSTANTIATE(arr_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_walk_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_air_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_clasz_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_walk_air_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_walk_clasz_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_air_clasz_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_walk_air_clasz_criteria, raptor_state)
 
 #if defined(NIGIRI_CUDA)
-template routing_result bmrap_profile_search<arr_criteria>(
-    timetable const&, rt_timetable const*, search_state&,
-    gpu::gpu_raptor_state&, query, direction,
-    std::optional<std::chrono::seconds>);
-template routing_result bmrap_profile_search<arr_cost_criteria>(
-    timetable const&, rt_timetable const*, search_state&,
-    gpu::gpu_raptor_state&, query, direction,
-    std::optional<std::chrono::seconds>);
-template routing_result bmrap_profile_search<arr_walk_criteria>(
-    timetable const&, rt_timetable const*, search_state&,
-    gpu::gpu_raptor_state&, query, direction,
-    std::optional<std::chrono::seconds>);
-template routing_result bmrap_profile_search<arr_air_criteria>(
-    timetable const&, rt_timetable const*, search_state&,
-    gpu::gpu_raptor_state&, query, direction,
-    std::optional<std::chrono::seconds>);
-template routing_result bmrap_profile_search<arr_walk_air_criteria>(
-    timetable const&, rt_timetable const*, search_state&,
-    gpu::gpu_raptor_state&, query, direction,
-    std::optional<std::chrono::seconds>);
-template routing_result bmrap_profile_search<arr_clasz_criteria>(
-    timetable const&, rt_timetable const*, search_state&,
-    gpu::gpu_raptor_state&, query, direction,
-    std::optional<std::chrono::seconds>);
-template routing_result bmrap_profile_search<arr_walk_clasz_criteria>(
-    timetable const&, rt_timetable const*, search_state&,
-    gpu::gpu_raptor_state&, query, direction,
-    std::optional<std::chrono::seconds>);
+NIGIRI_BMRAPP_INSTANTIATE(arr_criteria, gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_walk_criteria, gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_air_criteria, gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_clasz_criteria, gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_walk_air_criteria, gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_walk_clasz_criteria, gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_air_clasz_criteria, gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_walk_air_clasz_criteria, gpu::gpu_raptor_state)
 #endif
+
+#undef NIGIRI_BMRAPP_INSTANTIATE
 
 }  // namespace nigiri::routing
