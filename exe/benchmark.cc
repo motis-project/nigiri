@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <atomic>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <numeric>
@@ -75,6 +76,62 @@ std::optional<geo::latlng> parse_coord(std::string const& str) {
   auto const str_trimmed = std::string_view{begin(str) + 1, end(str) - 2};
   auto const tokens = tokenize(str_trimmed, ',');
   return latlng{std::stod(tokens[0]), std::stod(tokens[1])};
+}
+
+// --dump_queries / --load_queries: coordinate-based query exchange so two
+// timetables with different location numbering (e.g. Z-order permutation)
+// can be benchmarked on identical queries (intermodal modes only).
+void dump_queries(
+    std::vector<nigiri::query_generation::start_dest_query> const& queries,
+    std::string const& path) {
+  auto out = std::ofstream{path};
+  for (auto const& sdq : queries) {
+    auto const s = std::get<geo::latlng>(sdq.start_);
+    auto const d = std::get<geo::latlng>(sdq.dest_);
+    auto const to_min = [](unixtime_t const t) {
+      return std::chrono::duration_cast<std::chrono::minutes>(
+                 t.time_since_epoch())
+          .count();
+    };
+    if (std::holds_alternative<unixtime_t>(sdq.q_.start_time_)) {
+      auto const t = std::get<unixtime_t>(sdq.q_.start_time_);
+      out << fmt::format("{:.7f} {:.7f} {:.7f} {:.7f} {} {}\n", s.lat_, s.lng_,
+                         d.lat_, d.lng_, to_min(t), to_min(t));
+    } else {
+      auto const itv = std::get<interval<unixtime_t>>(sdq.q_.start_time_);
+      out << fmt::format("{:.7f} {:.7f} {:.7f} {:.7f} {} {}\n", s.lat_, s.lng_,
+                         d.lat_, d.lng_, to_min(itv.from_), to_min(itv.to_));
+    }
+  }
+}
+
+void load_queries(
+    std::vector<nigiri::query_generation::start_dest_query>& queries,
+    std::string const& path,
+    nigiri::timetable const& tt,
+    query_generation::generator_settings const& gs) {
+  auto qg = query_generation::generator{tt, gs, 0U};
+  auto in = std::ifstream{path};
+  auto slat = 0.0, slng = 0.0, dlat = 0.0, dlng = 0.0;
+  auto from = std::int64_t{0}, to = std::int64_t{0};
+  while (in >> slat >> slng >> dlat >> dlng >> from >> to) {
+    auto sdq = query_generation::start_dest_query{};
+    sdq.start_ = geo::latlng{slat, slng};
+    sdq.dest_ = geo::latlng{dlat, dlng};
+    sdq.q_ = qg.make_query();
+    qg.add_offsets_for_pos(sdq.q_.start_, geo::latlng{slat, slng},
+                           gs.start_mode_);
+    qg.add_offsets_for_pos(sdq.q_.destination_, geo::latlng{dlat, dlng},
+                           gs.dest_mode_);
+    auto const f = unixtime_t{std::chrono::minutes{from}};
+    auto const t = unixtime_t{std::chrono::minutes{to}};
+    if (from == to) {
+      sdq.q_.start_time_ = f;
+    } else {
+      sdq.q_.start_time_ = interval<unixtime_t>{f, t};
+    }
+    queries.emplace_back(std::move(sdq));
+  }
 }
 
 void generate_queries(
@@ -353,6 +410,8 @@ int main(int argc, char* argv[]) {
   auto seed = std::int64_t{0};
   auto min_transfer_time = duration_t::rep{};
   auto qa_path = std::filesystem::path{};
+  auto dump_queries_path = std::string{};
+  auto load_queries_path = std::string{};
   auto engines = std::vector<std::string>{"cpu", "gpu"};
   auto algos = std::vector<std::string>{"range", "pong"};
   auto modes = std::vector<std::string>{"s2s", "c2c"};
@@ -454,8 +513,12 @@ int main(int argc, char* argv[]) {
        "start location for random queries")  //
       ("dest_loc", bpo::value<location_idx_t::value_t>(&dest_loc_val),
        "destination location for random queries")  //
-      ("qa_path,q", bpo::value(&qa_path),
-       "path to write the journey criteria to for qa");
+      ("dump_queries", bpo::value(&dump_queries_path),
+       "write the generated queries (coordinates + times) to this file")(
+          "load_queries", bpo::value(&load_queries_path),
+          "read queries from this file instead of generating them")(
+          "qa_path,q", bpo::value(&qa_path),
+          "path to write the journey criteria to for qa");
   bpo::variables_map vm;
   bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
 
@@ -628,7 +691,14 @@ int main(int argc, char* argv[]) {
 
     auto& fwd_qs = mode_queries[mode];
     if (fwd_qs.empty()) {
-      generate_queries(fwd_qs, n_queries, tt, rs, seed);
+      if (!load_queries_path.empty()) {
+        load_queries(fwd_qs, load_queries_path, tt, rs);
+      } else {
+        generate_queries(fwd_qs, n_queries, tt, rs, seed);
+      }
+      if (!dump_queries_path.empty()) {
+        dump_queries(fwd_qs, dump_queries_path);
+      }
     }
 
     // (mode, dir) are the incomparable dimensions -- within one (mode, dir),
