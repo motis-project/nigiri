@@ -24,17 +24,16 @@ using cartesian_t = std::tuple<double, double, double>;
 
 namespace {
 bool has_any_events(timetable const& tt, location_idx_t const loc) {
-  auto const loc_routes = tt.location_routes_[loc];
-  if (loc_routes.empty()) {
-    return false;
-  }
-
-  for (auto const r : loc_routes) {
-    if (tt.bitfields_[tt.route_traffic_days_[r]].any()) {
-      return true;
+  // transport calendars, not route calendars: route_traffic_days_ is rebuilt
+  // after build_footpaths() (merged duplicates change transport calendars),
+  // i.e. after this permutation
+  for (auto const r : tt.location_routes_[loc]) {
+    for (auto const t : tt.route_transport_ranges_[r]) {
+      if (tt.bitfields_[tt.transport_traffic_days_[t]].any()) {
+        return true;
+      }
     }
   }
-
   return false;
 }
 
