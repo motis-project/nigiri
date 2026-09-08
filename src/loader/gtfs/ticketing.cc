@@ -6,6 +6,7 @@
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/stop.h"
 #include "nigiri/loader/gtfs/trip.h"
+#include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -98,13 +99,26 @@ void load_ticketing(timetable& tt,
       read_ticketing_deep_links(tt, load(kTicketingDeeplinks).data());
 
   for (auto const& [provider_idx, deep_link_id] : agency_ticketing) {
-    tt.providers_[provider_idx].ticketing_link_ = deep_links.at(deep_link_id);
+    auto const it = deep_links.find(deep_link_id);
+    if (it == deep_links.end()) {
+      log(log_lvl::error, "nigiri.loader.gtfs.ticketing",
+          "agency: ticketing_deep_link_id {} not found", deep_link_id);
+      continue;
+    }
+    tt.providers_[provider_idx].ticketing_link_ = it->second;
   }
 
   for (auto const& [route_id, route] : routes) {
     if (!route->ticketing_deep_link_id_.empty()) {
-      ticketing_link_idx_t idx = deep_links.at(route->ticketing_deep_link_id_);
-      tt.route_ids_[src].route_id_ticketing_link_[route->route_id_idx_] = idx;
+      auto const it = deep_links.find(route->ticketing_deep_link_id_);
+      if (it == deep_links.end()) {
+        log(log_lvl::error, "nigiri.loader.gtfs.ticketing",
+            "route {}: ticketing_deep_link_id {} not found", route_id,
+            route->ticketing_deep_link_id_);
+        continue;
+      }
+      tt.route_ids_[src].route_id_ticketing_link_[route->route_id_idx_] =
+          it->second;
     }
   }
 
