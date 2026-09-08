@@ -41,10 +41,9 @@ namespace {
 //   RD (direct)     | 11:00 | 15:00 | 0
 //   RA1 + RA2       | 11:10 | 13:30 | 1
 //
-// Every one of these is pareto-optimal on (departure, arrival, transfers):
-// later departures never dominate earlier arrivals, and each extra
-// transfer buys a strictly earlier arrival. Times below are LOCAL
-// (Europe/Berlin, June => UTC+2).
+// All pareto-optimal on (departure, arrival, transfers): later departures
+// never dominate earlier arrivals, and each extra transfer buys a strictly
+// earlier one. Times below are LOCAL (Europe/Berlin, June => UTC+2).
 constexpr auto const kGTFS = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -108,10 +107,9 @@ S,20240620,1
 
 using tuple_t = std::tuple<unixtime_t, unixtime_t, unsigned>;
 
-// (departure, arrival, transfers), NORMALISED. A backward search reports its
-// journeys in the backward convention - start_time_ is the ARRIVAL and
-// dest_time_ the departure - and departure_time()/arrival_time() undo that,
-// so forward and backward result sets are directly comparable.
+// (departure, arrival, transfers), NORMALISED: a backward search reports
+// start_time_ as the ARRIVAL, and departure_time()/arrival_time() undo that
+// so forward and backward results compare directly.
 std::vector<tuple_t> tuples(pareto_set<routing::journey> const& js) {
   auto v = std::vector<tuple_t>{};
   for (auto const& j : js) {
@@ -134,11 +132,10 @@ struct fixture {
     d_ = tt_.locations_.location_id_to_idx_.at({"D", source_idx_t{0}});
   }
 
-  // Forward: start_ is O and the window is a DEPARTURE window.
-  // Backward (arriveBy): the search starts at the destination, so start_ is
-  // D and the window is an ARRIVAL window - the same convention
-  // query::flip_dir() uses and the one the routing endpoint builds for
-  // arriveBy=true.
+  // Forward: start_ is O, window is a DEPARTURE window. Backward (arriveBy):
+  // the search starts at the destination, so start_ is D and the window is
+  // an ARRIVAL window - query::flip_dir()'s convention, and the one the
+  // routing endpoint builds for arriveBy=true.
   routing::query make_query(direction const dir = direction::kForward) const {
     auto q = routing::query{};
     auto const day = sys_days{2024_y / June / 19};
@@ -182,10 +179,9 @@ run_result bmrapp(fixture const& f, routing::query q, direction const dir) {
   return {tuples(*r.journeys_), r.interval_};
 }
 
-// Reference engine: plain range search over the same state type. With
-// raptor_state that is the two-criteria (arrival, transfers) search - by
-// definition the anchor set J_A that BM-RAPTOR restricts around - and with
-// an mcraptor state it is the unrestricted multicriteria set.
+// Plain range search over the same state type: with raptor_state the
+// two-criteria search, i.e. the anchor set J_A itself; with an mcraptor
+// state the unrestricted multicriteria set.
 template <typename AlgoState>
 run_result reference(fixture const& f, routing::query q, direction const dir) {
   auto ss = routing::search_state{};
@@ -287,10 +283,8 @@ TEST(bmrap, subset_of_mcraptor) {
 }
 
 // Anchors are their own A(J), so no two-criteria journey may be restricted
-// away: everything the plain two-criteria search finds inside the scanned
-// range must come back.
-// This is the invariant that regressed twice during development (anchor
-// pareto-domination, and the filter/bounds reference-point mismatch).
+// away. Regressed twice during development (anchor pareto-domination, and
+// the filter/bounds reference-point mismatch).
 TEST(bmrap, contains_bicriteria_journeys) {
   auto const f = fixture{};
   auto const bm = run_bmrapp<routing::arr_criteria>(f);
@@ -298,10 +292,8 @@ TEST(bmrap, contains_bicriteria_journeys) {
   expect_contains_prefix(bm, bi, "BMRAPP vs bicriteria RAPTOR");
 }
 
-// Same, with a COMPOSED criteria (walking + vehicle-class switches). The
-// dimensions are combined by arr_with<>, so this also covers the
-// composition machinery: dominance, the carried state and apply_to all
-// have to fold correctly over more than one dimension.
+// Same for a COMPOSED criteria, which also covers arr_with<>'s machinery:
+// dominance, the carried state and apply_to must fold over two dimensions.
 TEST(bmrap, composed_subset_of_mcraptor) {
   auto const f = fixture{};
   auto const full = run_mcraptor<routing::mcraptor_walk_clasz_state>(f);
@@ -311,10 +303,9 @@ TEST(bmrap, composed_subset_of_mcraptor) {
   expect_subset(full, restricted, "BMRAPP(walk+clasz) vs McRAPTOR");
 }
 
-// A composed criteria must never lose a journey the same search finds with
-// a SUBSET of its dimensions: adding a pareto dimension can only split
-// classes apart, never merge them. This is the property that would break
-// if a dimension's dominance folded the wrong way.
+// Adding a pareto dimension can only split classes apart, never merge them,
+// so a composed criteria must never lose what a SUBSET of its dimensions
+// finds. This is what breaks if a dimension's dominance folds the wrong way.
 TEST(bmrap, more_dimensions_never_lose_journeys) {
   auto const f = fixture{};
   auto const walk = run_bmrapp<routing::arr_walk_criteria>(f);
@@ -328,11 +319,10 @@ TEST(bmrap, more_dimensions_never_lose_journeys) {
 // ---------------------------------------------------------------------------
 // arriveBy, i.e. SearchDir == kBackward
 // ---------------------------------------------------------------------------
-// Backward, everything mirrors: the scan steps from the LATEST arrival
-// towards earlier ones, the anchors are re-anchored to their earliest
-// arrival, and tau_dep^<- becomes a forward reach bound. The invariants are
-// the same ones, so the tests are the forward ones with the direction and
-// the window flipped.
+// Everything mirrors: the scan steps from the LATEST arrival downwards, the
+// anchors re-anchor to their earliest arrival, and tau_dep^<- becomes a
+// forward reach bound. Same invariants, so these are the forward tests with
+// the direction and the window flipped.
 
 TEST(bmrap, backward_subset_of_mcraptor) {
   auto const f = fixture{};
@@ -370,10 +360,9 @@ TEST(bmrap, backward_composed_subset_of_mcraptor) {
                 "backward BMRAPP(walk+clasz) vs McRAPTOR");
 }
 
-// The same journeys must come back whichever end the search starts from.
-// Compared on the box BOTH scans cover - departure inside the forward
-// window, arrival inside the backward one - because outside it either scan
-// is legitimately blind.
+// The same journeys whichever end the search starts from, compared on the
+// box BOTH scans cover (departure in the forward window, arrival in the
+// backward one) since outside it either scan is legitimately blind.
 TEST(bmrap, backward_matches_forward) {
   auto const f = fixture{};
   auto const qf = f.make_query(direction::kForward);
@@ -404,23 +393,12 @@ TEST(bmrap, backward_matches_forward) {
 // ---------------------------------------------------------------------------
 // interval extension
 // ---------------------------------------------------------------------------
-// BMRAPP extends the search window itself: the scan keeps stepping past the
-// nominal window until min_connection_count_ is met, the way PONG does. The
-// side it grows on is fixed by the SEARCH direction - a forward scan
-// enumerates departures upwards, a backward one arrivals downwards - and
-// that coincides with the side the query asks for only in the two
-// PONG-applicable combinations (same table as in motis' routing endpoint):
-//
-//   arriveBy | extend_later | BMRAPP grows | requested
-//   ---------+--------------+--------------+-----------
-//   false    | true         | later        | later
-//   true     | false        | earlier      | earlier
-//   false    | false        | later        | earlier   <- mismatch
-//   true     | true         | earlier      | later     <- mismatch
-//
-// The mismatched half is reachable through paging - cursor_to_query() takes
-// the extension side from the cursor, independently of arriveBy - and is
-// covered by the DISABLED_ test below.
+// BMRAPP extends the window itself, stepping past it until
+// min_connection_count_ is met. The side it grows on is fixed by the SEARCH
+// direction, and only matches the side the query asked for in the two
+// PONG-applicable combinations; for the opposed pair the driver hands the
+// window to a bicriteria range search up front instead. See "WHERE THE
+// WINDOW COMES FROM" in bmrap_profile.cc. Both halves are covered below.
 
 namespace {
 
@@ -517,11 +495,8 @@ TEST(bmrap, extends_towards_the_search_direction) {
   }
 }
 
-// The scan cannot grow the window on the side these two ask for, so the
-// driver hands the job to a plain bicriteria RANGE search up front and steps
-// over the window that one settles on (see "WHERE THE WINDOW COMES FROM" in
-// bmrap_profile.cc). The window must then be right on both counts, exactly
-// as in the aligned case.
+// The opposed pair: the window comes from the range search instead, and
+// must still be right on both counts, exactly as in the aligned case.
 TEST(bmrap, extends_against_the_search_direction) {
   auto const f = fixture{};
   for (auto const& c : opposed_cases()) {

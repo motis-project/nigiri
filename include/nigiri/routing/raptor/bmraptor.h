@@ -17,14 +17,6 @@ namespace nigiri::routing {
 // slacked pong, mc ping, mc pong) rather than one bound matrix for the
 // whole window. See bmrap_profile.cc for the phases and for why.
 //
-// A range variant - one window-wide tau_dep^<- matrix plus a per-departure
-// trip budget, sharing everything in bmrap_common.h with this one - existed
-// alongside it and was removed: its backward pruning cost grows linearly
-// with the number of window slices (492 -> 916 -> 1431 -> 2143 -> 2762 ms
-// for 1/2/3/5/7 slices) while the main search barely improves (825 -> 723
-// ms), so it lost to the per-departure bounds this driver builds, and the
-// unbounded range McRAPTOR it shared its shape with is available on its own.
-//
 // AlgoState is the SCALAR (two-criteria) state the ping, the pong and the
 // backward pruning searches run on - raptor_state or gpu::gpu_raptor_state,
 // selected exactly the way pong_search selects its engine. Criteria picks

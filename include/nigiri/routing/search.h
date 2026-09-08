@@ -1,7 +1,5 @@
 #pragma once
 
-#include <functional>
-
 #include "fmt/format.h"
 
 #include "utl/enumerate.h"
@@ -209,17 +207,6 @@ struct search {
     // Real-departure point-query semantics (= the motis ontrip journey
     // normalization) would have to land in raptor and mcraptor together.
   }
-
-  // configuration hook between construction (which builds the algorithm,
-  // including the lower-bound dijkstra) and execute(). Used by the
-  // BM-RAPTOR driver to install the restricted-pareto pruning bounds.
-  Algo& algo() { return algo_; }
-
-  // Optional per-start-time transfer limit. A range search otherwise runs
-  // every departure of the window with one global q_.max_transfers_, which
-  // makes a departure's result depend on the whole window rather than on
-  // the departure - BM-RAPTOR's trip budget is derived from the anchor
-  // journeys and is genuinely per-departure.
 
   routing_result execute() {
     auto span = get_otel_tracer()->StartSpan("search::execute");

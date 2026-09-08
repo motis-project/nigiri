@@ -415,14 +415,12 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(unsigned cons
         }
         auto const ride_duration =
             static_cast<std::uint16_t>(dir(by_transport - rl.board_dep_));
-        // clasz of the ride, taken at the section the passenger alights
-        // from. route_clasz_[r] is only clasz_sections[0] - the FIRST
-        // section of the route - so a run that changes category mid-way
-        // (an IC continuing as a regional service, a through-running
-        // train) would be scored by a class the passenger may never ride.
-        // The API reports the boarding section's clasz, so for those runs
-        // the two can still differ; sections are uniform for the vast
-        // majority of routes, where all of this collapses to one value.
+        // Clasz at the section the passenger alights from, not
+        // route_clasz_[r] - that is clasz_sections[0], so a run changing
+        // category mid-way (an IC continuing as a regional service) would
+        // be scored by a class the passenger may never ride. The API
+        // reports the BOARDING section's clasz, so the two can still differ
+        // for such runs; sections are uniform for most routes anyway.
         auto const sec_clasz = tt_.route_section_clasz_[r];
         auto const n_sec = static_cast<std::uint32_t>(sec_clasz.size());
         auto const sec =

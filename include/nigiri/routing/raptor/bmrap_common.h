@@ -1,12 +1,7 @@
 #pragma once
 
-// Pieces shared by the two BM-RAPTOR drivers: the RANGE one
-// (bmraptor.cc - one bound matrix for the whole departure window) and the
-// PROFILE one (bmrap_profile.cc - a full single-departure BM-RAPTOR per
-// step, which is what the paper actually describes). Keeping the slack
-// configuration, the anchor definition and the backward pruning search in
-// one place is what makes the two comparable: any difference between them
-// is then the search structure, not a drifted definition.
+// Slack configuration, anchor definition and pruning searches shared by the
+// BM-RAPTOR driver in bmrap_profile.cc.
 
 #include <algorithm>
 #include <chrono>
@@ -40,22 +35,20 @@ namespace nigiri::routing::bmrap_detail {
 
 constexpr auto const kVias = via_offset_t{0U};
 
-// The scalar (two-criteria) engines BM-RAPTOR runs its ping, its pong and
-// its backward pruning searches on, selected by the state type exactly the
-// way pong_algo_for does it in pong.cc. The multicriteria phases stay on
-// the CPU: they are ~5% of the runtime, and keeping them there means every
-// criteria configuration remains available.
+// The scalar (two-criteria) engine for the ping, the pong and the backward
+// pruning searches, picked by state type the way pong_algo_for does in
+// pong.cc. The multicriteria phases always stay on the CPU, so every
+// criteria configuration works regardless of the scalar engine.
 template <direction SearchDir, bool Rt, typename AlgoState>
 struct bmrap_algo_for {
   using type = raptor<SearchDir, Rt, kVias, search_mode::kOneToOne>;
 };
 
-// The backward pruning search wants a one-to-all raptor. kOneToAll differs
-// from kOneToOne only in skipping result collection, skipping reconstruct
-// and disabling target pruning - and compute_bounds() runs with an empty
-// destination set, where all three are already no-ops (verified: identical
-// journey sets on 200/200 Berlin queries). So an engine without the mode,
-// like the GPU raptor, can serve here unchanged.
+// kOneToAll differs from kOneToOne only in skipping result collection and
+// reconstruct and in disabling target pruning; compute_bounds() runs with an
+// empty destination set, where all three are no-ops (verified: identical
+// journeys on 200/200 Berlin queries). So an engine lacking the mode - the
+// GPU raptor - serves here unchanged.
 template <direction SearchDir, bool Rt, typename AlgoState>
 struct bmrap_prune_algo_for {
   using type = raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>;
@@ -73,11 +66,9 @@ struct bmrap_prune_algo_for<SearchDir, Rt, gpu::gpu_raptor_state> {
 };
 #endif
 
-// Host view of an engine's round times. The CPU state hands them out
-// directly; the GPU engine copies them back from the device into `buf`
-// (see gpu_raptor::copy_round_times), which is why the buffer outlives the
-// call. Either way the layout is raptor_state's, so build_reach_matrix()
-// and compute_bounds() consume it unchanged.
+// Host view of an engine's round times, in raptor_state's layout either way.
+// The GPU engine copies them back into `buf`, which is why the caller owns
+// the buffer.
 template <typename AlgoState, typename Algo>
 flat_matrix_view<std::array<delta_t, kVias + 1> const> host_round_times(
     AlgoState& state,
@@ -97,36 +88,30 @@ flat_matrix_view<std::array<delta_t, kVias + 1> const> host_round_times(
 }
 
 
-// sigma_arr / sigma_tr of the paper. Sauer'24 evaluates BM-RAPTOR at 1.25
-// each; 1.5 widens the restricted set, and the caps/floors below keep that
-// from running away at the extremes.
+// sigma_arr / sigma_tr of the paper (Sauer'24 evaluates 1.25; 1.5 widens the
+// restricted set, and the caps/floors keep that in hand at the extremes).
 struct slack_cfg {
   double arr_{1.5};
   double trip_{1.5};
-  // Fixed, ADDITIVE arrival slack in minutes - an alternative to the
-  // multiplicative sigma_arr above, both applied to the same reference
-  // quantity (see relax_arr()): >= 0 switches to "at most N minutes worse
-  // than the anchor implies", < 0 (the default) keeps sigma_arr.
+  // >= 0 switches that dimension from the multiplicative sigma to the
+  // paper's ADDITIVE form (Eq. 3.1): "at most N minutes / N trips worse than
+  // the anchor". Both forms relax the same reference quantity, see
+  // relax_arr().
   double arr_fixed_min_{-1.0};
-  // The paper's sigma_tr is ADDITIVE (a number of extra trips, Eq. 3.1);
-  // sigma_tr above is the multiplicative convention (Sauer'24).
-  // >= 0 switches to "at most N trips more than the anchor".
   double trip_fixed_{-1.0};
-  // Caps on how much slack the multiplicative form may grant. sigma is a
-  // RATIO, so on a 20-hour journey sigma_arr = 1.5 admits arrivals 10 hours
-  // late - a restricted set so wide it stops restricting anything, and the
-  // dominant cost driver on long-haul queries. The caps bound the slack in
-  // absolute terms: at most 3 h later, at most 2 trips more. At sigma = 1.5
-  // the arrival cap binds above 6 h of travel, the trip cap from 4 trips.
+  // sigma is a RATIO, so on a 20 h journey sigma_arr = 1.5 admits arrivals
+  // 10 h late - a restricted set wide enough to stop restricting, and the
+  // dominant cost on long-haul queries. At sigma = 1.5 the arrival cap binds
+  // above 6 h of travel, the trip cap from 4 trips.
   double arr_cap_min_{180.0};
   double trip_cap_{2.0};
-  // ...and floors, for the opposite reason: on a 30-minute trip a 50% ratio
-  // grants 15 minutes, which is about one missed connection, so without a
-  // floor the restricted set collapses onto the anchors themselves.
+  // Floors, for the opposite reason: a 50% ratio on a 30 min trip grants
+  // 15 min - about one missed connection - and the restricted set collapses
+  // onto the anchors themselves.
   double arr_min_min_{20.0};
   double trip_min_{1.0};
-  // validation switches: run the same three phases but skip the pruning /
-  // the final restriction, so a mismatch can be attributed to one of them
+  // validation switches: same phases, but skip the pruning / the final
+  // restriction, so a mismatch can be attributed to one of them
   bool no_bounds_{false};
   bool no_restrict_{false};
 };
@@ -170,14 +155,9 @@ inline slack_cfg const& get_slack() {
   return cfg;
 }
 
-// Applies the configured arrival slack to a reference duration (minutes):
-// the paper's sigma_arr * reference, or a fixed number of minutes added to
-// it instead, per NIGIRI_BMRAP_ARR_SLACK_MIN. Both call sites relax the
-// SAME reference quantity - (anchor arrival - this journey's own
-// departure), the paper's tau_arr(A(J)) - tau_dep - so the two slack modes
-// stay directly comparable: sigma_arr scales it, the fixed variant pads it
-// by a constant number of minutes regardless of how long that reference
-// already is.
+// Applies the arrival slack to the paper's tau_arr(A(J)) - tau_dep, in
+// minutes. Both slack modes relax that same reference, so they stay directly
+// comparable: sigma_arr scales it, the fixed variant pads it by a constant.
 inline double relax_arr(double const reference_minutes) {
   auto const& cfg = get_slack();
   auto const extra = cfg.arr_fixed_min_ >= 0.0
@@ -188,34 +168,28 @@ inline double relax_arr(double const reference_minutes) {
                     cfg.arr_cap_min_);
 }
 
-// One journey of the anchor pareto set J_A. `anchored_` is the query-side
-// time (the departure for a forward query, the arrival for a backward one),
-// `found_` the time the search produced on the other side - the same
-// convention journey::start_time_ / dest_time_ use.
+// One journey of the anchor pareto set J_A. Same convention as
+// journey::start_time_ / dest_time_: `anchored_` is the query-side time (the
+// departure forward, the arrival backward), `found_` the other end.
 struct anchor {
   unixtime_t anchored_, found_;
   std::uint8_t trips_;
 };
 
-// The absolute deadline an anchor implies: the latest time a journey
-// anchored to it may arrive. Computed ONCE, here, and used by both sides of
-// the restriction - the backward pruning searches start from it, and the
-// final filter tests against it. That is what keeps them consistent: a
-// multiplicative sigma_arr has no canonical origin to scale from, so if the
-// bounds relaxed "from the anchor's departure" while the filter asked
-// "travel(J) <= sigma * (arr(A) - dep(J))", the two would disagree by
-// (sigma - 1) * (dep(A) - dep(J)) and the bounds would prune journeys the
-// restriction keeps. With one shared deadline the question does not arise
-// (and with an additive sigma_arr the origin cancels anyway).
+// Latest time a journey anchored to `a` may arrive. Both sides of the
+// restriction go through here - the pruning searches start from it, the
+// final filter tests against it - and that is the point: a multiplicative
+// sigma_arr has no canonical origin, so bounds relaxed from the anchor's
+// departure and a filter asking travel(J) <= sigma * (arr(A) - dep(J)) would
+// disagree by (sigma - 1) * (dep(A) - dep(J)), and the bounds would prune
+// journeys the restriction keeps.
 inline unixtime_t anchor_deadline(anchor const& a) {
-  // found_ - anchored_ runs FORWARD in time for a forward query (arrival -
-  // departure) and BACKWARD for a backward one (departure - arrival), so the
-  // signed difference is negative in the latter. relax_arr() takes a
-  // duration, and the floor/cap clamp is only meaningful on a magnitude: fed
-  // a negative reference it clamps the negative slack up to the +20 min
-  // floor, which moves the deadline INSIDE the anchor's own travel time and
-  // prunes the anchor journey itself. Relax the magnitude and put the sign
-  // back, the way raptor::update_time_at_dest() does with dir().
+  // found_ - anchored_ is negative for a backward query (departure -
+  // arrival), and relax_arr()'s floor/cap clamp is only meaningful on a
+  // magnitude: fed a negative reference it clamps the slack up to the +20 min
+  // floor, moving the deadline INSIDE the anchor's own travel time so the
+  // anchor prunes itself. Relax the magnitude, put the sign back - the way
+  // raptor::update_time_at_dest() does with dir().
   auto const signed_travel = (a.found_ - a.anchored_).count();
   auto const sign = signed_travel < 0 ? -1 : 1;
   auto const relaxed = std::llround(
@@ -247,30 +221,20 @@ inline std::uint8_t trip_budget(std::uint8_t const trips,
       std::clamp<double>(std::floor(b), trips, max));
 }
 
-// the anchor journey A(J) of a journey with `trips` trips departing
-// (arriving, for a backward query) at `anchored`: among the anchors that are
-// still AVAILABLE at that time (anchored no earlier than J - a traveller
-// departing at J's departure can still take an anchor departing later) and
-// need AT MOST as many trips as J, the one with the EARLIEST arrival.
+// A(J) for a journey with `trips` trips anchored at `anchored`: among the
+// anchors AVAILABLE there (anchored no earlier than J - a traveller can
+// always take a later-departing anchor) and needing at most as many trips,
+// the one with the EARLIEST arrival.
 //
-// This is the paper's "highest trip count <= |J|" rule on the raw anchor
-// Pareto set (arrival, trips) alone is monotone there - a higher-trip point
-// only survives dominance by arriving strictly earlier, so "most trips"
-// and "earliest arrival" agree. They stop agreeing once the set is cut down
-// to "available at d": that slice is a slice of the full (dep, arr, trips)
-// Pareto set, and within it a later-departing, higher-trip anchor can still
-// have a WORSE arrival than an earlier-departing, lower-trip one (both
-// survive globally on the departure axis, but only one is the better
-// reference at a shared departure). "Most trips" would then pick the worse
-// arrival; "earliest arrival" always picks the objectively best alternative
-// achievable with no more trips than J - trips_budget()/the arrival-slack
-// check compare J against a reference that cannot be beaten "for free" at
-// its own departure, which is the comparison the restriction actually
-// wants. It also plays better with the phase 1b window closure: closing the
-// anchor profile up to the best arrival within reach is enough to make
-// "earliest arrival with trips <= T" complete, whereas "most trips" has no
-// natural completion bound (the highest-trip anchor's departure is
-// unrelated to arrival time).
+// The paper says "highest trip count <= |J|", which agrees with "earliest
+// arrival" on the raw (arrival, trips) Pareto set - a higher-trip point only
+// survives by arriving strictly earlier. They stop agreeing on the "available
+// at d" slice of the full (dep, arr, trips) set, where a later-departing,
+// higher-trip anchor can have a WORSE arrival than an earlier-departing one.
+// "Most trips" then picks the worse reference. "Earliest arrival" always
+// compares J against the best alternative it could have had for free at its
+// own anchor time, which is the comparison the restriction wants, and it has
+// a natural completion bound - see close_anchor_profile().
 template <direction SearchDir>
 anchor const* anchor_of(std::vector<anchor> const& anchors,
                         unixtime_t const anchored,
@@ -291,10 +255,10 @@ anchor const* anchor_of(std::vector<anchor> const& anchors,
   return best;
 }
 
-// PHASE 1: forward pruning search. PONG is the fastest engine for the
-// two-criteria range problem, but it only covers the two "good direction"
-// interval-extension configurations (see the table in the motis routing
-// endpoint); rRAPTOR answers the rest. Both return the same anchor set.
+// PHASE 1: the two-criteria range search whose result is the anchor set J_A.
+// PONG is fastest but only covers the two interval-extension configurations
+// that run with the search direction; rRAPTOR answers the rest. Same set
+// either way.
 template <direction SearchDir>
 routing_result run_anchor_search(timetable const& tt,
                                  rt_timetable const* rtt,
@@ -319,45 +283,21 @@ routing_result run_anchor_search(timetable const& tt,
 
 // PHASE 1b: close the anchor profile past the window.
 //
-// A(J) of a departure d is looked up over the anchors "available at d",
-// i.e. anchored at or after d - so an anchor set collected over the query
-// window alone is TRUNCATED for the departures near its end, and the same
-// departure then answers differently under a 1 h and an 8 h searchWindow
-// (measured: 16 of 46 queries, always in the trips dimension, because the
-// budget follows the anchor with the most trips - which is exactly the
-// one a longer window is likely to add).
+// A(J) is looked up over the anchors available at J, so a set collected over
+// the query window alone is TRUNCATED near its far end and the same departure
+// answers differently under a 1 h and an 8 h searchWindow (measured: 16 of 46
+// queries, always in the trips dimension, since the budget follows the anchor
+// with the most trips - exactly the one a longer window adds).
 //
-// The truncation is bounded, though: a journey departing after the best
-// arrival A(d) cannot arrive before it, so the profile of d only depends
-// on journeys departing in [d, A(d)]. Running the anchor search once more
-// over one max-anchor-travel-time past the window therefore closes the
-// profile of every departure inside it - and the extension is NOT part of
-// the reported window, it only feeds the restriction.
-//
-// Earlier versions derived that margin heuristically (longest ALREADY
-// FOUND anchor's own travel time, later just capped at an arbitrary
-// number of minutes) - a guess that could both over- and undershoot,
-// and was proven unsound when capped (see the anchor_of() comment
-// above). There is a PROVABLY sufficient bound instead, and it costs
-// one cheap probe to get exactly: run a single plain (non-multicriteria)
-// ontrip earliest-arrival search from the window boundary itself
-// (unlimited trips). Whatever arrival it finds - A_ceiling - is the
-// EARLIEST possible arrival for ANY departure at or after the boundary,
-// by definition (that is what an earliest-arrival search computes).
-// Travel time is never negative, so nothing departing past A_ceiling can
-// ever arrive before it, which makes it a hard ceiling: an anchor
-// departing beyond A_ceiling cannot beat an in-window anchor whose own
-// arrival is already <= A_ceiling, and one departing before it is
-// exactly what the 2-criteria closure search below still needs to find.
-// No calendar-time cap, no per-dataset tuning - just this one search's
-// own result. (It also subsumes the case where phase 1's own
-// numItineraries-driven extension already pushed anchor_interval past
-// where A_ceiling would land: the margin below simply comes out <= 0
-// and the closure search is skipped, no special-casing needed.)
-//
-// Shared by both drivers: the range one runs it on its single window, and
-// the profile one on the window its interval-extension fallback settled on
-// (see bmrap_profile.cc). Returns the margin it used, for the stats.
+// The truncation is bounded: nothing departing after A(d) can arrive before
+// it, so d's profile only depends on departures in [d, A(d)]. One plain
+// ontrip earliest-arrival probe from the window boundary gives that bound
+// exactly - whatever arrival it finds is by definition the earliest reachable
+// from any departure at or beyond the boundary - and re-running the anchor
+// search over that margin closes every in-window departure's profile. The
+// margin only feeds the restriction; it is not part of the reported window,
+// and it comes out <= 0 (probe skipped) when phase 1 already extended past it.
+// Returns the margin, for the stats.
 template <direction SearchDir>
 duration_t close_anchor_profile(
     timetable const& tt,
@@ -368,41 +308,7 @@ duration_t close_anchor_profile(
     std::optional<std::chrono::seconds> const timeout,
     std::vector<anchor>& anchors) {
   constexpr auto const kFwd = (SearchDir == direction::kForward);
-  // A(J) of a departure d is looked up over the anchors "available at d",
-  // i.e. anchored at or after d - so an anchor set collected over the query
-  // window alone is TRUNCATED for the departures near its end, and the same
-  // departure then answers differently under a 1 h and an 8 h searchWindow
-  // (measured: 16 of 46 queries, always in the trips dimension, because the
-  // budget follows the anchor with the most trips - which is exactly the
-  // one a longer window is likely to add).
-  //
-  // The truncation is bounded, though: a journey departing after the best
-  // arrival A(d) cannot arrive before it, so the profile of d only depends
-  // on journeys departing in [d, A(d)]. Running the anchor search once more
-  // over one max-anchor-travel-time past the window therefore closes the
-  // profile of every departure inside it - and the extension is NOT part of
-  // the reported window, it only feeds the restriction.
-  //
-  // Earlier versions derived that margin heuristically (longest ALREADY
-  // FOUND anchor's own travel time, later just capped at an arbitrary
-  // number of minutes) - a guess that could both over- and undershoot,
-  // and was proven unsound when capped (see the anchor_of() comment
-  // above). There is a PROVABLY sufficient bound instead, and it costs
-  // one cheap probe to get exactly: run a single plain (non-multicriteria)
-  // ontrip earliest-arrival search from the window boundary itself
-  // (unlimited trips). Whatever arrival it finds - A_ceiling - is the
-  // EARLIEST possible arrival for ANY departure at or after the boundary,
-  // by definition (that is what an earliest-arrival search computes).
-  // Travel time is never negative, so nothing departing past A_ceiling can
-  // ever arrive before it, which makes it a hard ceiling: an anchor
-  // departing beyond A_ceiling cannot beat an in-window anchor whose own
-  // arrival is already <= A_ceiling, and one departing before it is
-  // exactly what the 2-criteria closure search below still needs to find.
-  // No calendar-time cap, no per-dataset tuning - just this one search's
-  // own result. (It also subsumes the case where phase 1's own
-  // numItineraries-driven extension already pushed anchor_interval past
-  // where A_ceiling would land: the margin below simply comes out <= 0
-  // and the closure search is skipped, no special-casing needed.)
+
   auto a_ceiling = std::optional<unixtime_t>{};
   {
     auto q_ceiling = q;
@@ -422,8 +328,7 @@ duration_t close_anchor_profile(
         }
       }
     } catch (std::exception const&) {
-      // no ceiling found (or the probe failed) - nothing reachable beyond
-      // the window at all, so there is nothing to close
+      // nothing reachable beyond the window, so nothing to close
     }
   }
   auto const margin =
@@ -457,9 +362,9 @@ duration_t close_anchor_profile(
       // extension is an accuracy refinement, never a hard requirement
     }
   }
-  // the union of two windows is not a pareto set: an anchor that another
-  // one dominates outright must not be able to become somebody's A(J), or
-  // which of the two happened to be found would change the restriction
+  // The union of two windows is not a pareto set, and a dominated anchor must
+  // never become somebody's A(J) - which of the two was found would then
+  // change the restriction.
   {
     auto keep = std::vector<anchor>{};
     auto const is_better = [](unixtime_t const a, unixtime_t const b) {
@@ -482,42 +387,10 @@ duration_t close_anchor_profile(
   return margin;
 }
 
-// PHASE 2: backward pruning search.
-//
-// For every anchor journey the paper runs one reverse search from the
-// target, started at the slack-relaxed time and capped at the slack-relaxed
-// trip budget. Two adaptations:
-//
-//  * The anchors are first reduced to the pareto frontier over
-//    (relaxed time, budget): an anchor whose relaxed start is no looser and
-//    whose budget is no larger than another's cannot contribute anything -
-//    without this a step would run one one-to-all search per anchor, and a
-//    window easily holds a hundred of them. What remains is at most one
-//    search per distinct trip count.
-//
-//  * The remaining searches share ONE round-times matrix (they are just the
-//    start times of one rRAPTOR): the accumulated maximum over the runs is
-//    exactly the union the paper takes.
-//
-// The bound matrix is built PER STEP, anchored at that step's own departure,
-// which is what the paper describes. A range variant that covered the whole
-// window with a single matrix - the union is then dominated by the window's
-// LAST departure, so earlier departures are bounded more loosely than a
-// tight BM-RAPTOR would bound them, by up to the window width (measured:
-// 666 min mean window vs a 41 min mean slack allowance) - was implemented
-// and removed. Slicing it finer to recover the tightness did not pay: the
-// backward pruning cost grows linearly with the number of slices (492 ->
-// 916 -> 1431 -> 2143 -> 2762 ms for 1/2/3/5/7 slices) while the main
-// search barely improves (825 -> 723 ms), because mcraptor's own
-// worst_at_dest_ + dest_bag_ destination pruning already covers most of
-// what the arrival slack adds. What made the per-step bound affordable in
-// the end was not slicing a range search but the profile driver's own
-// structure: one complete single-departure BM-RAPTOR per step, with the
-// anchor set cached across the steps that cannot change it.
-// Turn a finished PruneDir search's round times into a tau_arr^->(v, i)
-// matrix. It is a separate function so the PING can supply the round times
-// directly: with relaxed target pruning (raptor::set_dest_relax) they are
-// valid at every stop, so no dedicated one-to-all search is needed at all.
+// A finished PruneDir search's round times as a tau_arr^->(v, i) matrix.
+// Separate from compute_bounds() so the PING can supply them directly: with
+// relaxed target pruning (raptor::set_dest_relax) they are valid at every
+// stop, so no dedicated one-to-all search is needed.
 template <direction PruneDir>
 bmrap_bounds build_reach_matrix(
     timetable const& tt,
@@ -528,16 +401,12 @@ bmrap_bounds build_reach_matrix(
   auto const is_looser = [](auto const a, auto const b) {
     return PruneDir == direction::kForward ? a < b : a > b;
   };
-  // Relax by one transfer buffer per stop, baked into the matrix so no
-  // consumer has to know. nigiri's round_times_ hold POST-transfer values in
-  // both directions: forward that is "earliest time you can board at p"
-  // (arrival + transfer), backward it is "latest time you may arrive at p"
-  // (boarding - transfer). Comparing the two directly would demand
-  // latest_arrival >= earliest_arrival + transfer, one buffer stricter than
-  // the meet-in-the-middle condition, and would drop short journeys whose
-  // total duration is on the order of a transfer time. Footpath arrivals do
-  // not pay the buffer at all, so subtracting the full transfer time is the
-  // conservative choice: it can only ever weaken the bound.
+  // round_times_ hold POST-transfer values in both directions, so comparing
+  // a forward and a backward matrix directly would demand one transfer buffer
+  // more than meet-in-the-middle needs and would drop journeys whose total
+  // duration is on the order of a transfer time. Subtract the buffer here,
+  // once, so no consumer has to know; footpath arrivals never paid it, which
+  // makes this the conservative direction - it can only weaken the bound.
   auto const dir_prune = [](auto const x) {
     return PruneDir == direction::kForward ? x : -x;
   };
@@ -562,9 +431,9 @@ bmrap_bounds build_reach_matrix(
   return bounds;
 }
 
-// Same, reading a CPU raptor_state's round times. The view-taking overload
-// above is what lets a GPU engine feed its own (host-copied) round times in
-// without this header knowing anything about device buffers.
+// Same for a CPU raptor_state. The view-taking overload above is what lets a
+// GPU engine feed in host-copied round times without this header knowing
+// about device buffers.
 template <direction PruneDir>
 bmrap_bounds build_reach_matrix(timetable const& tt,
                                 query const& q,
@@ -575,6 +444,28 @@ bmrap_bounds build_reach_matrix(timetable const& tt,
       static_cast<raptor_state const&>(state).get_round_times<kVias>(), budget);
 }
 
+// PHASE 2: backward pruning search -> tau_dep^<-(v, i).
+//
+// The paper runs one reverse search per anchor from the target, started at
+// the anchor's slack-relaxed time and capped at its slack-relaxed trip
+// budget. Two adaptations: the anchors are first reduced to the pareto
+// frontier over (relaxed time, budget), leaving at most one search per
+// distinct trip count instead of one per anchor; and the survivors share one
+// round-times matrix as the start times of a single rRAPTOR, whose
+// accumulated maximum is exactly the union the paper takes.
+//
+// The matrix is built PER STEP, anchored at that step's own departure. A
+// range variant covering a whole window with one matrix existed and was
+// removed: the union is then dominated by the window's last departure, so
+// earlier ones are bounded loosely by up to the window width (measured:
+// 666 min mean window against a 41 min mean slack allowance). Slicing it
+// finer did not recover that - backward pruning grows linearly in the slice
+// count (492 -> 916 -> 1431 -> 2143 -> 2762 ms for 1/2/3/5/7) while the main
+// search barely improves (825 -> 723 ms), because mcraptor's own
+// worst_at_dest_ + dest_bag_ pruning already covers most of what the arrival
+// slack adds. What made the per-step bound affordable was the profile
+// driver's structure instead: one single-departure BM-RAPTOR per step, with
+// the anchor set cached across the steps that cannot change it.
 template <direction SearchDir, bool Rt, typename AlgoState>
 bmrap_bounds compute_bounds(timetable const& tt,
                             rt_timetable const* rtt,
@@ -586,6 +477,8 @@ bmrap_bounds compute_bounds(timetable const& tt,
                             AlgoState& state,
                             raptor_stats& stats,
                             bmrap_bounds const* reach = nullptr) {
+  // `horizon` is the far end of the main search's window: it never holds a
+  // label beyond that, so bounds beyond it are dead weight.
   constexpr auto const kPruneDir = flip(SearchDir);
   constexpr auto const kInvalid = kInvalidDelta<kPruneDir>;
   // "better" in the PRUNING search's direction (= looser as a bound)
@@ -600,11 +493,9 @@ bmrap_bounds compute_bounds(timetable const& tt,
   for (auto const& a : anchors) {
     runs.emplace_back(anchor_deadline(a), trip_budget(a.trips_, budget));
   }
-  // Most trips first (the paper processes anchors from most to fewest used
-  // trips), ties broken by looseness, then the pareto reduction: with
-  // budgets non-increasing, a run is redundant as soon as an already-kept
-  // run is at least as loose. What survives is at most one search per
-  // distinct trip count instead of one per anchor journey.
+  // Most trips first (as the paper processes them), ties by looseness. With
+  // budgets non-increasing, a run is redundant as soon as an already-kept one
+  // is at least as loose.
   std::sort(begin(runs), end(runs), [&](run_t const& a, run_t const& b) {
     return a.second != b.second ? a.second > b.second
                                 : is_looser(a.first, b.first);
@@ -656,19 +547,6 @@ bmrap_bounds compute_bounds(timetable const& tt,
   auto qf = q;
   qf.flip_dir();
 
-  // Diagnostic: run every anchor in its OWN search space and merge the
-  // staggered matrices by hand. This gives up the cross-run reuse (the
-  // paper's "search space is not cleared between runs") but also removes
-  // nigiri's always-on local pruning from the picture - which the paper
-  // explicitly forbids in stage 2 - so it isolates the shift arithmetic
-  // from the sharing.
-  auto const isolated = std::getenv("NIGIRI_BMRAP_STAGGER_ISOLATED") != nullptr;
-  auto acc = std::vector<delta_t>{};
-  if (isolated) {
-    acc.assign(static_cast<std::size_t>(budget + 1U) * tt.n_locations(),
-               kInvalid);
-  }
-
   auto starts = std::vector<start>{};
   auto results = pareto_set<journey>{};
   for (auto const& [t, b] : runs) {
@@ -678,44 +556,18 @@ bmrap_bounds compute_bounds(timetable const& tt,
                qf.start_match_mode_ != location_match_mode::kIntermodal,
                starts, false, q.prf_idx_, q.transfer_time_settings_);
     r.next_start_time();
-    // the paper's staggered alignment: this run is allowed b trips out of a
-    // global budget of `budget`, so its rounds occupy slots
-    // (budget - b) + 1 ... budget. Slot i then means "i trips remaining"
-    // on one scale for every anchor, and the run starts from the labels the
-    // previous (higher-budget) run left at slot budget - b.
+    // The paper's staggered alignment: a run allowed b of `budget` trips
+    // occupies slots (budget - b) + 1 ... budget, so slot i means "i trips
+    // remaining" on one scale for every anchor and the run starts from the
+    // labels the previous, higher-budget run left at slot budget - b.
     r.set_start_round(std::getenv("NIGIRI_BMRAP_NO_STAGGER") != nullptr
                           ? 0U
                           : static_cast<unsigned>(budget - b));
     for (auto const& s : starts) {
       r.add_start(s.stop_, s.time_at_stop_);
     }
-    // `horizon` is the far end of the main search's window: the main search
-    // never holds a label beyond it, so bounds beyond it are dead weight.
-    if (isolated) {
-      r.reset_arrivals();
-      r.next_start_time();
-      r.set_start_round(0U);
-      for (auto const& st : starts) {
-        r.add_start(st.stop_, st.time_at_stop_);
-      }
-    }
     r.execute(t, static_cast<std::uint8_t>(b - 1U), horizon, q.prf_idx_,
               results);
-    if (isolated) {
-      auto const shift = static_cast<unsigned>(budget - b);
-      auto const rt = host_round_times(state, r, rt_buf, tt.n_locations());
-      for (auto j = 0U; j <= b; ++j) {
-        auto& dst_row = acc[static_cast<std::size_t>(j + shift) *
-                            tt.n_locations()];
-        auto* dst = &dst_row;
-        for (auto l = 0U; l != tt.n_locations(); ++l) {
-          auto const cur = rt[j][l][kVias];
-          if (cur != kInvalid && is_looser(cur, dst[l])) {
-            dst[l] = cur;
-          }
-        }
-      }
-    }
   }
   stats = stats + r.get_stats();
 
@@ -724,9 +576,7 @@ bmrap_bounds compute_bounds(timetable const& tt,
   auto const round_times = host_round_times(state, r, rt_buf, tt.n_locations());
   for (auto i = 0U; i <= budget; ++i) {
     for (auto l = 0U; l != tt.n_locations(); ++l) {
-      auto const cur =
-          isolated ? acc[static_cast<std::size_t>(i) * tt.n_locations() + l]
-                   : round_times[i][l][kVias];
+      auto const cur = round_times[i][l][kVias];
       auto const prev = (i == 0U) ? kInvalid : bounds.at(i - 1U, l);
       bounds.at(i, l) = is_looser(cur, prev) ? cur : prev;
     }

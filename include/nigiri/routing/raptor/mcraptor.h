@@ -232,30 +232,18 @@ struct arr_cost_criteria {
   std::uint16_t cost_;  // extras only: walk surcharge + boarding penalties
 };
 
-// arrival time + WALKING duration in minutes: the third criterion of the
-// classic multicriteria RAPTOR (and of the restricted-pareto paper) -
-// "how much of this journey am I on my feet".
+// WALKING minutes: the third criterion of the classic multicriteria RAPTOR
+// and of the restricted-pareto paper.
 //
-// Counted: the ingress offset / start footpath (at_start), every footpath
-// relaxation between stops and the intermodal egress offset (with_walk).
-// NOT counted: the same-station transfer buffer (with_transfer) - that is
-// the minimum change time at a stop, i.e. waiting, not walking; and the
-// riding and waiting time, which the arrival criterion already carries.
-//
-// Unlike arr_cost_criteria this is a genuinely independent dimension:
-// nothing about it is a function of the arrival time or the number of
-// transfers, so the pareto set really does gain the "leave later / arrive
-// later but walk less" alternatives. It is also departure-independent,
-// which makes both the completed-journey dominance and the cross-departure
-// rRAPTOR reuse rule identical to the plain in-bag dominance - no
-// departure discounting is needed anywhere.
+// Counted: the ingress offset / start footpath, every footpath relaxation
+// and the intermodal egress offset. NOT counted: the same-station transfer
+// buffer, which is minimum change time - waiting, not walking - and the
+// riding and waiting time the arrival criterion already carries.
 // ===== COMPOSABLE CRITERIA =====
 //
 // A DIMENSION is the criteria protocol minus the arrival time, which
-// arr_with<> owns. Adding an optimization axis is one ~20-line struct plus
-// an alias, instead of hand-writing the cross-product with the others (the
-// old arr_air_criteria_t<WithWalk> / arr_clasz_criteria_t<WithWalk> were
-// already a manual 2x expansion along the walking axis).
+// arr_with<> owns. Adding an optimization axis is then one ~20-line struct
+// plus an alias, rather than hand-writing its cross-product with the others.
 //
 //   dominates(o)            in-bag rule; may price the FUTURE (clasz_dim)
 //   completed_dominates(o)  rule at the destination, where nothing follows
@@ -340,13 +328,11 @@ struct air_dim {
 // subway counts, subway -> subway does not), so it rewards journeys that
 // stay within one mode.
 //
-// Dominance needs care, because the carried clasz is not just baggage - it
-// prices the FUTURE. A label with the same number of switches but in a
-// different class may still cost one more switch downstream, so it may
-// only dominate when it is a full switch ahead. A label that has not
-// ridden anything yet can board anything for free, hence no penalty. At
-// the destination the journey is over and the carried clasz stops
-// mattering, so completed_dominates drops the penalty entirely.
+// The carried clasz is not baggage - it prices the FUTURE: a label with the
+// same switch count in a different class may still cost one more switch
+// downstream, so it may only dominate when a full switch ahead. A label
+// that has ridden nothing yet boards anything for free. At the destination
+// nothing follows, so completed_dominates drops the penalty.
 struct clasz_dim {
   // clasz has no invalid value of its own, so the one-past-the-end
   // enumerator doubles as "no trip ridden yet"
@@ -1004,10 +990,8 @@ using mcraptor_cost_state = basic_mcraptor_state<arr_cost_criteria>;
 template <direction SearchDir>
 using mcraptor_cost = basic_mcraptor<SearchDir, arr_cost_criteria>;
 
-// Every combination of the dimensions above. These are aliases now, not
-// hand-written types: adding a dimension adds one line per combination
-// that is actually dispatched, and the combinations that never existed
-// before (air+clasz, walk+air+clasz) come for free.
+// Every dispatched combination of the dimensions above - one alias each,
+// no hand-written types.
 using arr_walk_criteria = arr_with<walk_dim>;
 using arr_air_criteria = arr_with<air_dim>;
 using arr_clasz_criteria = arr_with<clasz_dim>;

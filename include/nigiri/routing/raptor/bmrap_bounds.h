@@ -12,18 +12,16 @@ namespace nigiri::routing {
 // (Delling, Dibbelt, Pajor: "Fast and Exact Public Transit Routing with
 // Restricted Pareto Sets", ALENEX'19, doi:10.1137/1.9781611975499.5).
 //
-// at(i, v) is the paper's tau_dep^<-(v, i): the last point in time - "last"
-// in the MAIN search's direction, i.e. the worst value still acceptable -
-// at which the main search may be at stop v and still reach the target with
-// i remaining trips without exceeding the arrival slack / trip slack of at
-// least one anchor journey. Times are delta_t minutes relative to the same
-// base day the main search uses.
+// at(i, v) is the paper's tau_dep^<-(v, i): the worst time - in the MAIN
+// search's direction - at which it may be at stop v and still reach the
+// target with i trips left without blowing some anchor's arrival and trip
+// slack. delta_t minutes on the main search's base day.
 //
-// Rows are the MONOTONE PREFIX over the pruning raptor's round times:
-// round_times_[k][v] is "exactly k trips", the bound needs "at most i
-// trips". The prefix is also what makes the rRAPTOR reuse across the
-// per-anchor backward runs sound: a run's label that was self-pruned by a
-// better label of a smaller round is covered by the prefix of that round.
+// Rows are the MONOTONE PREFIX over the pruning raptor's round times, since
+// round_times_[k][v] is "exactly k trips" while the bound needs "at most i".
+// The prefix is also what makes the rRAPTOR reuse across the per-anchor
+// backward runs sound: a label self-pruned by a better one of a smaller
+// round is covered by that round's prefix.
 //
 // budget_ is floor(sigma_tr * K) with K = number of trips of the anchor
 // journey with the most trips: the trip budget of the whole main search. A
