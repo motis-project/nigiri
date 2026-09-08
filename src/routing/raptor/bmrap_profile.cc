@@ -404,7 +404,26 @@ routing_result bmrap_profile(timetable const& tt,
         return false;
       }
       return !utl::any_of(s_state.results_, [&](journey const& o) {
-        return &o != &j && o.tuple_dominates(j);
+        if (&o == &j || !o.tuple_dominates(j)) {
+          return false;
+        }
+        // tuple_dominates() is non-strict on all three components, so two
+        // journeys with an IDENTICAL (departure, arrival, transfers) tuple
+        // dominate ONE ANOTHER and a plain any_of() drops BOTH. The count
+        // then FALLS as criteria are added - the exact opposite of what
+        // tuple_dominates() exists for ("additional criteria add pareto
+        // trade-offs but must not make the search stop earlier") - because
+        // extra criteria are precisely what produces journeys sharing a
+        // tuple. Undercounting keeps n_found() below min_connection_count_,
+        // so the scan steps on past the window: measured on the 50 most
+        // expensive European queries, walk+clasz put 30% of its journeys in
+        // duplicate tuples (walk: 0%) and ended up with a wider window on
+        // 17 of them, which cost 5.9 anchor recomputes per query against
+        // walk's 3.9 - the whole of the two engines' ping/pong difference.
+        // Break the tie deterministically instead, so every distinct tuple
+        // contributes exactly one. Same reasoning as the all_anchors dedup
+        // above, which exists for exactly this reason.
+        return !j.tuple_dominates(o) || &o < &j;
       });
     });
   };
