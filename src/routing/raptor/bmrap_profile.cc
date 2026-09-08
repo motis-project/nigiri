@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #include "utl/erase_if.h"
@@ -177,15 +178,76 @@ routing_result bmrap_profile(timetable const& tt,
   auto n_fwd_bound_builds = std::uint64_t{0U};
   auto fwd_bounds = bmrap_bounds{};
 
-  auto start_time =
-      kFwd ? search_interval.from_ : search_interval.to_ - duration_t{1};
-  auto const end_time =
-      kFwd ? search_interval.to_ : search_interval.from_ - duration_t{1};
   auto const is_timeout = [&]() {
     return timeout && (std::chrono::steady_clock::now() - t0) >= *timeout;
   };
   auto const budget_cap = static_cast<std::uint8_t>(
       std::min<unsigned>(q.max_transfers_ + 1U, kMaxTransfers + 1U));
+
+  // ---- WHERE THE WINDOW COMES FROM ----
+  //
+  // The scan enumerates departures upwards (forward) or arrivals downwards
+  // (backward), so it can only ever GROW the window on the side the search
+  // runs towards. That is the side the query asked for in exactly the two
+  // combinations PONG covers as well:
+  //
+  //   arriveBy | extend_later | scan grows | requested
+  //   ---------+--------------+------------+-----------
+  //   false    | true         | later      | later      aligned
+  //   true     | false        | earlier    | earlier    aligned
+  //   false    | false        | later      | earlier    opposed
+  //   true     | true         | earlier    | later      opposed
+  //
+  // The opposed half is reachable through paging - cursor_to_query() takes
+  // the extension side from the cursor, independently of arriveBy - so it
+  // is not a corner case. There the window cannot come from the scan, and a
+  // plain BICRITERIA RANGE search runs up front instead: it extends the
+  // interval in whichever direction the query asked for (that is search.h's
+  // job, not ours) and its journeys ARE the anchor set, which is all phases
+  // 3-5 need. So this is the mirror image of the range driver in
+  // bmraptor.cc: that one is a bicriteria pong followed by a multicriteria
+  // RANGE search, this one is a bicriteria range search followed by the
+  // multicriteria PONG scan.
+  //
+  // The price is that numItineraries is then satisfied on the BICRITERIA
+  // journeys rather than on the multicriteria ones, so the scan covers a
+  // window wider than it strictly needs and returns more itineraries than
+  // asked for. Over-delivering is the harmless direction.
+  auto const pretrip =
+      std::holds_alternative<interval<unixtime_t>>(q.start_time_);
+  auto const aligned =
+      !pretrip ||
+      ((SearchDir == direction::kBackward) != q.extend_interval_later_);
+
+  auto scan_interval = search_interval;
+  auto ms_range = std::chrono::steady_clock::duration{};
+  auto range_state = raptor_state{};
+  if (!aligned) {
+    auto const r0 = std::chrono::steady_clock::now();
+    auto range_s_state = search_state{};
+    auto const ar = run_anchor_search<SearchDir>(tt, rtt, range_s_state,
+                                                 range_state, q, timeout);
+    scan_interval = ar.interval_;
+    for (auto const& j : *ar.journeys_) {
+      all_anchors.push_back({j.start_time_, j.dest_time_,
+                             static_cast<std::uint8_t>(j.transfers_ + 1U)});
+    }
+    // Same profile closure the range driver needs, for the same reason:
+    // A(J) is looked up over the anchors available AT J, so a set collected
+    // over the window alone is truncated for the steps near its far end.
+    // The per-step ping of the aligned path never has this problem - it
+    // searches forward from each step without a far boundary at all.
+    if (!all_anchors.empty()) {
+      close_anchor_profile<SearchDir>(tt, rtt, q, scan_interval, range_state,
+                                      timeout, all_anchors);
+    }
+    ms_range = std::chrono::steady_clock::now() - r0;
+  }
+
+  auto start_time =
+      kFwd ? scan_interval.from_ : scan_interval.to_ - duration_t{1};
+  auto const end_time =
+      kFwd ? scan_interval.to_ : scan_interval.from_ - duration_t{1};
 
   auto starts = std::vector<start>{};
   auto bounds = bmrap_bounds{};
@@ -219,6 +281,7 @@ routing_result bmrap_profile(timetable const& tt,
   auto const realize_fwd = std::getenv("NIGIRI_BMRAPP_NO_REALIZE") == nullptr;
 
   auto anchors = std::vector<anchor>{};
+  auto max_trips = std::uint8_t{0U};
   auto budget = std::uint8_t{0U};
   auto anchors_valid_until = std::optional<unixtime_t>{};
   auto n_anchor_recomputes = std::uint64_t{0U};
@@ -351,15 +414,80 @@ routing_result bmrap_profile(timetable const& tt,
                          : n_results(include_too_slow);
   };
 
+  // Stepping past the far end is how the window grows, so it is only
+  // allowed when the scan runs towards the side the query asked for. In the
+  // opposed case the range search above already settled the window.
   while ((is_better(start_time, end_time) ||
-          n_found(true) + n_found(false) <
-              2 * static_cast<int>(q.min_connection_count_)) &&
+          (aligned && n_found(true) + n_found(false) <
+                          2 * static_cast<int>(q.min_connection_count_))) &&
          tt.external_interval().contains(start_time) && !is_timeout()) {
     auto const anchors_stale =
         !anchors_valid_until.has_value() ||
         is_better(*anchors_valid_until, start_time);
     if (anchors_stale) {
       ++n_anchor_recomputes;
+
+    if (!aligned) {
+      // The anchor set came from the range search up front, so a step only
+      // slices out the anchors still AVAILABLE at it - the very slice
+      // anchor_of() resolves A(J) in. No ping, no pong.
+      anchors.clear();
+      max_trips = 0U;
+      for (auto const& a : all_anchors) {
+        if (!is_better(a.anchored_, start_time)) {
+          anchors.push_back(a);
+          max_trips = std::max(max_trips, a.trips_);
+        }
+      }
+      if (anchors.empty()) {
+        exit_reason = 2U;
+        break;  // nothing left to restrict against
+      }
+      if (fwd_bounds_on && fwd_bounds.empty()) {
+        // ONE tau_arr^->(v, i) matrix for the whole window instead of one
+        // per step: without a per-step ping there is nothing to take it
+        // from, and a matrix built at the window's near end is a valid -
+        // merely looser - bound for every step inside it, because travel
+        // time is never negative and a later step can only reach v later.
+        // Same window-wide approximation the range driver makes for
+        // tau_dep^<-. Worth its one search: without the matrix mc pong runs
+        // unbounded and dominates everything (78.7s -> 22.5s on a long
+        // query when it was introduced).
+        auto const f0 = std::chrono::steady_clock::now();
+        starts.clear();
+        get_starts(SearchDir, tt, rtt, start_time, q.start_, q.td_start_,
+                   q.via_stops_, q.max_start_offset_, q.start_match_mode_,
+                   q.use_start_footpaths_, starts, false, q.prf_idx_,
+                   q.transfer_time_settings_);
+        ping.reset_arrivals();
+        ping.next_start_time();
+        auto const& sc = get_slack();
+        ping.set_dest_relax(start_time,
+                            sc.arr_fixed_min_ >= 0.0 ? 1.0 : sc.arr_,
+                            sc.arr_fixed_min_ >= 0.0
+                                ? static_cast<int>(sc.arr_fixed_min_)
+                                : 0,
+                            sc.arr_min_min_, sc.arr_cap_min_);
+        for (auto const& st : starts) {
+          ping.add_start(st.stop_, st.time_at_stop_);
+        }
+        auto ping_results = pareto_set<journey>{};
+        ping.execute(start_time, q.max_transfers_,
+                     start_time + (kFwd ? 1 : -1) *
+                                      (std::min(fastest_direct,
+                                                q.max_travel_time_) +
+                                       duration_t{1}),
+                     q.prf_idx_, ping_results);
+        fwd_bounds = build_reach_matrix<SearchDir>(
+            tt, q, host_round_times(r_state, ping, rt_buf, tt.n_locations()),
+            trip_budget(max_trips, budget_cap));
+        ms_fwd_bounds += std::chrono::steady_clock::now() - f0;
+        ++n_fwd_bound_builds;
+        if ((fwd_bounds_mode & 1) != 0) {
+          mc_pong.set_bounds(&fwd_bounds);
+        }
+      }
+    } else {
 
     // ---- 1. PING: two-criteria EA from this departure ----
     auto const p0 = std::chrono::steady_clock::now();
@@ -460,7 +588,7 @@ routing_result bmrap_profile(timetable const& tt,
 
     // tight journeys are (start_time_ = arrival, dest_time_ = departure)
     anchors.clear();
-    auto max_trips = std::uint8_t{0U};
+    max_trips = 0U;
     for (auto const& j : tight) {
       auto const trips = static_cast<std::uint8_t>(j.transfers_ + 1U);
       anchors.push_back({j.dest_time_, j.start_time_, trips});
@@ -496,6 +624,8 @@ routing_result bmrap_profile(timetable const& tt,
                     [&](anchor const& o) { return dominates(a, o); });
       all_anchors.emplace_back(a);
     }
+    }  // aligned
+
     budget = trip_budget(max_trips, budget_cap);
     anchors_valid_until = utl::min_element(
         anchors, [&](anchor const& a, anchor const& b) {
@@ -729,10 +859,13 @@ routing_result bmrap_profile(timetable const& tt,
           mc_pong.get_stats();
 
   // ---- results: still (arrival, departure); make them journeys ----
+  // In the opposed case the range search fixed the window, so report it
+  // whole: the scan stops at its far end rather than defining it.
   auto const scanned =
-      kFwd ? interval<unixtime_t>{search_interval.from_, start_time}
-           : interval<unixtime_t>{start_time + duration_t{1},
-                                  search_interval.to_};
+      aligned ? (kFwd ? interval<unixtime_t>{scan_interval.from_, start_time}
+                      : interval<unixtime_t>{start_time + duration_t{1},
+                                             scan_interval.to_})
+              : scan_interval;
   utl::erase_if(s_state.results_, [&](journey const& j) {
     return !j.is_reconstructed_ || j.error_ ||
            !is_better(j.dest_time_, start_time) ||
@@ -840,6 +973,8 @@ routing_result bmrap_profile(timetable const& tt,
   algo_stats["bmrapp_fwd_bound_builds"] = n_fwd_bound_builds;
   algo_stats["bmrapp_ms_lb"] = static_cast<std::uint64_t>(lb_ms);
   algo_stats["bmrapp_count_anchors"] = count_anchors ? 1U : 0U;
+  algo_stats["bmrapp_aligned"] = aligned ? 1U : 0U;
+  algo_stats["bmrapp_ms_range"] = ms(ms_range);
 
   return routing_result{
       .journeys_ = &s_state.results_,

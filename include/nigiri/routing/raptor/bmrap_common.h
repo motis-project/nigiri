@@ -208,9 +208,20 @@ struct anchor {
 // restriction keeps. With one shared deadline the question does not arise
 // (and with an additive sigma_arr the origin cancels anyway).
 inline unixtime_t anchor_deadline(anchor const& a) {
-  auto const travel = static_cast<double>((a.found_ - a.anchored_).count());
+  // found_ - anchored_ runs FORWARD in time for a forward query (arrival -
+  // departure) and BACKWARD for a backward one (departure - arrival), so the
+  // signed difference is negative in the latter. relax_arr() takes a
+  // duration, and the floor/cap clamp is only meaningful on a magnitude: fed
+  // a negative reference it clamps the negative slack up to the +20 min
+  // floor, which moves the deadline INSIDE the anchor's own travel time and
+  // prunes the anchor journey itself. Relax the magnitude and put the sign
+  // back, the way raptor::update_time_at_dest() does with dir().
+  auto const signed_travel = (a.found_ - a.anchored_).count();
+  auto const sign = signed_travel < 0 ? -1 : 1;
+  auto const relaxed = std::llround(
+      relax_arr(static_cast<double>(std::abs(signed_travel))));
   return a.anchored_ +
-         i32_minutes{static_cast<std::int32_t>(std::llround(relax_arr(travel)))};
+         i32_minutes{static_cast<std::int32_t>(sign * relaxed)};
 }
 
 // Does a journey arriving (departing, for a backward query) at `arrival`
@@ -304,6 +315,171 @@ routing_result run_anchor_search(timetable const& tt,
     }
   }
   return raptor_search(tt, rtt, s_state, r_state, q, SearchDir, timeout);
+}
+
+// PHASE 1b: close the anchor profile past the window.
+//
+// A(J) of a departure d is looked up over the anchors "available at d",
+// i.e. anchored at or after d - so an anchor set collected over the query
+// window alone is TRUNCATED for the departures near its end, and the same
+// departure then answers differently under a 1 h and an 8 h searchWindow
+// (measured: 16 of 46 queries, always in the trips dimension, because the
+// budget follows the anchor with the most trips - which is exactly the
+// one a longer window is likely to add).
+//
+// The truncation is bounded, though: a journey departing after the best
+// arrival A(d) cannot arrive before it, so the profile of d only depends
+// on journeys departing in [d, A(d)]. Running the anchor search once more
+// over one max-anchor-travel-time past the window therefore closes the
+// profile of every departure inside it - and the extension is NOT part of
+// the reported window, it only feeds the restriction.
+//
+// Earlier versions derived that margin heuristically (longest ALREADY
+// FOUND anchor's own travel time, later just capped at an arbitrary
+// number of minutes) - a guess that could both over- and undershoot,
+// and was proven unsound when capped (see the anchor_of() comment
+// above). There is a PROVABLY sufficient bound instead, and it costs
+// one cheap probe to get exactly: run a single plain (non-multicriteria)
+// ontrip earliest-arrival search from the window boundary itself
+// (unlimited trips). Whatever arrival it finds - A_ceiling - is the
+// EARLIEST possible arrival for ANY departure at or after the boundary,
+// by definition (that is what an earliest-arrival search computes).
+// Travel time is never negative, so nothing departing past A_ceiling can
+// ever arrive before it, which makes it a hard ceiling: an anchor
+// departing beyond A_ceiling cannot beat an in-window anchor whose own
+// arrival is already <= A_ceiling, and one departing before it is
+// exactly what the 2-criteria closure search below still needs to find.
+// No calendar-time cap, no per-dataset tuning - just this one search's
+// own result. (It also subsumes the case where phase 1's own
+// numItineraries-driven extension already pushed anchor_interval past
+// where A_ceiling would land: the margin below simply comes out <= 0
+// and the closure search is skipped, no special-casing needed.)
+//
+// Shared by both drivers: the range one runs it on its single window, and
+// the profile one on the window its interval-extension fallback settled on
+// (see bmrap_profile.cc). Returns the margin it used, for the stats.
+template <direction SearchDir>
+duration_t close_anchor_profile(
+    timetable const& tt,
+    rt_timetable const* rtt,
+    query const& q,
+    interval<unixtime_t> const anchor_interval,
+    raptor_state& prune_state,
+    std::optional<std::chrono::seconds> const timeout,
+    std::vector<anchor>& anchors) {
+  constexpr auto const kFwd = (SearchDir == direction::kForward);
+  // A(J) of a departure d is looked up over the anchors "available at d",
+  // i.e. anchored at or after d - so an anchor set collected over the query
+  // window alone is TRUNCATED for the departures near its end, and the same
+  // departure then answers differently under a 1 h and an 8 h searchWindow
+  // (measured: 16 of 46 queries, always in the trips dimension, because the
+  // budget follows the anchor with the most trips - which is exactly the
+  // one a longer window is likely to add).
+  //
+  // The truncation is bounded, though: a journey departing after the best
+  // arrival A(d) cannot arrive before it, so the profile of d only depends
+  // on journeys departing in [d, A(d)]. Running the anchor search once more
+  // over one max-anchor-travel-time past the window therefore closes the
+  // profile of every departure inside it - and the extension is NOT part of
+  // the reported window, it only feeds the restriction.
+  //
+  // Earlier versions derived that margin heuristically (longest ALREADY
+  // FOUND anchor's own travel time, later just capped at an arbitrary
+  // number of minutes) - a guess that could both over- and undershoot,
+  // and was proven unsound when capped (see the anchor_of() comment
+  // above). There is a PROVABLY sufficient bound instead, and it costs
+  // one cheap probe to get exactly: run a single plain (non-multicriteria)
+  // ontrip earliest-arrival search from the window boundary itself
+  // (unlimited trips). Whatever arrival it finds - A_ceiling - is the
+  // EARLIEST possible arrival for ANY departure at or after the boundary,
+  // by definition (that is what an earliest-arrival search computes).
+  // Travel time is never negative, so nothing departing past A_ceiling can
+  // ever arrive before it, which makes it a hard ceiling: an anchor
+  // departing beyond A_ceiling cannot beat an in-window anchor whose own
+  // arrival is already <= A_ceiling, and one departing before it is
+  // exactly what the 2-criteria closure search below still needs to find.
+  // No calendar-time cap, no per-dataset tuning - just this one search's
+  // own result. (It also subsumes the case where phase 1's own
+  // numItineraries-driven extension already pushed anchor_interval past
+  // where A_ceiling would land: the margin below simply comes out <= 0
+  // and the closure search is skipped, no special-casing needed.)
+  auto a_ceiling = std::optional<unixtime_t>{};
+  {
+    auto q_ceiling = q;
+    q_ceiling.start_time_ = kFwd ? anchor_interval.to_ : anchor_interval.from_;
+    q_ceiling.min_connection_count_ = 0U;
+    q_ceiling.extend_interval_earlier_ = false;
+    q_ceiling.extend_interval_later_ = false;
+    auto ceiling_state = search_state{};
+    auto ceiling_algo = raptor_state{};
+    try {
+      auto const r = raptor_search(tt, rtt, ceiling_state, ceiling_algo,
+                                   q_ceiling, SearchDir, timeout);
+      for (auto const& j : *r.journeys_) {
+        if (!a_ceiling.has_value() ||
+            (kFwd ? j.dest_time_ < *a_ceiling : j.dest_time_ > *a_ceiling)) {
+          a_ceiling = j.dest_time_;
+        }
+      }
+    } catch (std::exception const&) {
+      // no ceiling found (or the probe failed) - nothing reachable beyond
+      // the window at all, so there is nothing to close
+    }
+  }
+  auto const margin =
+      a_ceiling.has_value()
+          ? std::min(
+                duration_t{static_cast<duration_t::rep>(std::abs(
+                    (kFwd ? *a_ceiling - anchor_interval.to_
+                          : anchor_interval.from_ - *a_ceiling)
+                        .count()))},
+                q.max_travel_time_)
+          : duration_t{0};
+  if (margin > duration_t{0}) {
+    auto q_ext = q;
+    q_ext.start_time_ =
+        kFwd ? interval<unixtime_t>{anchor_interval.to_,
+                                    anchor_interval.to_ + margin}
+             : interval<unixtime_t>{anchor_interval.from_ - margin,
+                                    anchor_interval.from_};
+    q_ext.min_connection_count_ = 0U;
+    q_ext.extend_interval_earlier_ = false;
+    q_ext.extend_interval_later_ = false;
+    auto ext_state = search_state{};
+    try {
+      auto const ext = run_anchor_search<SearchDir>(tt, rtt, ext_state,
+                                                    prune_state, q_ext, timeout);
+      for (auto const& j : *ext.journeys_) {
+        anchors.push_back({j.start_time_, j.dest_time_,
+                           static_cast<std::uint8_t>(j.transfers_ + 1U)});
+      }
+    } catch (std::exception const&) {
+      // extension is an accuracy refinement, never a hard requirement
+    }
+  }
+  // the union of two windows is not a pareto set: an anchor that another
+  // one dominates outright must not be able to become somebody's A(J), or
+  // which of the two happened to be found would change the restriction
+  {
+    auto keep = std::vector<anchor>{};
+    auto const is_better = [](unixtime_t const a, unixtime_t const b) {
+      return kFwd ? a < b : a > b;
+    };
+    for (auto const& a : anchors) {
+      auto const dominated = utl::any_of(anchors, [&](anchor const& b) {
+        return (&b != &a) && b.trips_ <= a.trips_ &&
+               !is_better(b.anchored_, a.anchored_) &&
+               !is_better(a.found_, b.found_) &&
+               (b.trips_ < a.trips_ || b.anchored_ != a.anchored_ ||
+                b.found_ != a.found_ || &b < &a);
+      });
+      if (!dominated) {
+        keep.push_back(a);
+      }
+    }
+    anchors = std::move(keep);
+  }
+  return margin;
 }
 
 // PHASE 2: backward pruning search.
