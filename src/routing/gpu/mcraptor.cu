@@ -427,7 +427,10 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> len_hist_dev_;
 
   // BM-RAPTOR bound matrix, uploaded by gpu_mcraptor::set_bounds()
-  thrust::device_vector<delta_t> bmrap_bounds_;
+  // per direction, like the other per-query buffers: BM-RAPTOR points its
+  // mc ping at tau_dep^<- and its mc pong at tau_arr^-> on ONE state, so a
+  // single buffer would hand both engines whichever matrix was uploaded last
+  thrust::device_vector<delta_t> bmrap_bounds_[2];
 
   thrust::device_vector<std::uint64_t> is_dest_[2];
   pinned_host_buffer<std::uint64_t> is_dest_pin_[2];
@@ -1000,8 +1003,8 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
   // BM-RAPTOR pruning (see mcraptor_impl::bound_prunes)
   if (has_bounds_) {
     r.bounds_ = cuda::std::span<delta_t const>{
-        thrust::raw_pointer_cast(s.bmrap_bounds_.data()),
-        s.bmrap_bounds_.size()};
+        thrust::raw_pointer_cast(s.bmrap_bounds_[kDirIdx].data()),
+        s.bmrap_bounds_[kDirIdx].size()};
     r.bounds_n_locations_ = bounds_n_locations_;
     r.bounds_budget_ = bounds_budget_;
     r.has_bounds_ = true;
@@ -1353,13 +1356,12 @@ void gpu_mcraptor<SearchDir, WithCost>::set_bounds(bmrap_bounds const* b) {
     return;
   }
   auto& s = *state_.impl_;
-  if (s.bmrap_bounds_.size() < b->lat_.size()) {
-    s.bmrap_bounds_.resize(b->lat_.size());
+  if (s.bmrap_bounds_[kDirIdx].size() < b->lat_.size()) {
+    s.bmrap_bounds_[kDirIdx].resize(b->lat_.size());
   }
-  CUDA_CHECK(cudaMemcpyAsync(thrust::raw_pointer_cast(s.bmrap_bounds_.data()),
-                             b->lat_.data(),
-                             b->lat_.size() * sizeof(delta_t),
-                             cudaMemcpyHostToDevice, s.stream_));
+  CUDA_CHECK(cudaMemcpyAsync(
+      thrust::raw_pointer_cast(s.bmrap_bounds_[kDirIdx].data()), b->lat_.data(),
+      b->lat_.size() * sizeof(delta_t), cudaMemcpyHostToDevice, s.stream_));
   CUDA_CHECK(cudaStreamSynchronize(s.stream_));
   bounds_n_locations_ = b->n_locations_;
   bounds_budget_ = b->budget_;

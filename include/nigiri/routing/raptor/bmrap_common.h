@@ -17,8 +17,10 @@
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/bmrap_bounds.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor/raptor.h"
 #if defined(NIGIRI_CUDA)
+#include "nigiri/routing/gpu/mcraptor.h"
 #include "nigiri/routing/gpu/raptor.h"
 #endif
 #include "nigiri/routing/raptor/raptor_state.h"
@@ -65,6 +67,63 @@ struct bmrap_prune_algo_for<SearchDir, Rt, gpu::gpu_raptor_state> {
   using type = gpu::gpu_raptor<SearchDir>;
 };
 #endif
+
+// Engine for the MULTICRITERIA phases (4, 5 and 5b). The CPU mcraptor takes
+// any composed criteria; the device one implements exactly two label shapes -
+// arrival alone, and arrival plus the generalized-cost extras - so it can
+// only stand in for those. GpuMc is resolved by the caller, which is what
+// keeps the two bodies from both being instantiated for the CPU engines.
+template <direction SearchDir, typename Criteria, bool GpuMc>
+struct bmrap_mc_algo_for {
+  using type = basic_mcraptor<SearchDir, Criteria, /*RangeReuse=*/false>;
+  using state = basic_mcraptor_state<Criteria>;
+};
+
+#if defined(NIGIRI_CUDA)
+// Which criteria have a device equivalent, and whether the scalar engine is
+// on the device at all - running phases 4/5 on the GPU while the ping and
+// pong stay on the CPU would only add transfers.
+template <typename Criteria, typename AlgoState>
+inline constexpr bool kGpuMcSupported =
+    std::is_same_v<AlgoState, gpu::gpu_raptor_state> &&
+    (std::is_same_v<Criteria, arr_criteria> ||
+     std::is_same_v<Criteria, arr_cost_criteria>);
+
+template <direction SearchDir, typename Criteria>
+struct bmrap_mc_algo_for<SearchDir, Criteria, true> {
+  using type =
+      gpu::gpu_mcraptor<SearchDir,
+                        std::is_same_v<Criteria, arr_cost_criteria>>;
+  using state = gpu::gpu_mcraptor_state;
+};
+#else
+template <typename Criteria, typename AlgoState>
+inline constexpr bool kGpuMcSupported = false;
+#endif
+
+// How much of the multicriteria work runs on the device (NIGIRI_BMRAPP_GPU_MC):
+//
+//   0 / unset  everything on the CPU
+//   1 / ping   the mc PING only (phases 4 and 5b)
+//   2 / all    the mc PONG (phase 5) as well
+//
+// Off by default: the device mcraptor covers only the two label shapes above.
+// Splitting at the ping is not arbitrary - phase 4 is one big search per step
+// and gains ~2.5x on the device, while phases 5/5b are a sequence of tiny
+// per-journey searches whose cost is kernel launch plus reconstruct readback,
+// which the device loses (measured 0.48 -> 1.94 ms/query for phase 5). So 1 is
+// the fastest setting and 2 exists to exercise the pong engine.
+inline int bmrap_gpu_mc_mode() {
+  static auto const mode = [] {
+    auto const* const e = std::getenv("NIGIRI_BMRAPP_GPU_MC");
+    if (e == nullptr) {
+      return 0;
+    }
+    auto const v = std::string_view{e};
+    return v == "0" || v == "off" ? 0 : v == "ping" || v == "1" ? 1 : 2;
+  }();
+  return mode;
+}
 
 // Host view of an engine's round times, in raptor_state's layout either way.
 // The GPU engine copies them back into `buf`, which is why the caller owns
@@ -416,15 +475,27 @@ bmrap_bounds build_reach_matrix(
   for (auto i = 0U; i <= budget; ++i) {
     for (auto l = 0U; l != tt.n_locations(); ++l) {
       auto const cur = round_times[i][l][kVias];
-      auto const prev = (i == 0U) ? kInvalid : bounds.at(i - 1U, l);
-      auto const best = is_looser(cur, prev) ? cur : prev;
-      if (best == kInvalid) {
+      auto const prev_out = (i == 0U) ? kInvalid : bounds.at(i - 1U, l);
+      // Most cells are unreachable on a large timetable, so bail out before
+      // the transfer-time lookup: best can only be valid if one of these is.
+      if (cur == kInvalid && prev_out == kInvalid) {
         bounds.at(i, l) = kInvalid;
         continue;
       }
       auto const tt_min = adjusted_transfer_time(
           q.transfer_time_settings_,
           tt.locations_.transfer_time_[location_idx_t{l}].count());
+      // The prefix has to run over the RAW round times for the buffer to come
+      // off once. Row i - 1 already has it taken off, so add it back rather
+      // than keep a second matrix around: carrying the prefix in the output
+      // row - the obvious way to write a running prefix in place - subtracts
+      // the buffer again at every round the prefix survives, which leaves row
+      // i up to i buffers weaker than this comment block promises.
+      auto const prev =
+          prev_out == kInvalid
+              ? kInvalid
+              : static_cast<delta_t>(prev_out + dir_prune(tt_min));
+      auto const best = is_looser(cur, prev) ? cur : prev;
       bounds.at(i, l) = static_cast<delta_t>(best - dir_prune(tt_min));
     }
   }
@@ -442,6 +513,50 @@ bmrap_bounds build_reach_matrix(timetable const& tt,
   return build_reach_matrix<PruneDir>(
       tt, q,
       static_cast<raptor_state const&>(state).get_round_times<kVias>(), budget);
+}
+
+// Build the matrix from `algo`'s finished round times, wherever they live.
+// The GPU engine reduces them in place and returns only the rows the caller
+// keeps; the host engines transform their own state. PruneDir is always the
+// engine's own direction, so the caller never has to reconcile the two.
+template <direction PruneDir, typename AlgoState, typename Algo>
+bmrap_bounds reach_matrix(
+    timetable const& tt,
+    query const& q,
+    AlgoState& state,
+    [[maybe_unused]] Algo& algo,
+    [[maybe_unused]] std::vector<std::array<delta_t, kVias + 1>>& buf,
+    std::uint8_t const budget,
+    bool const sub_transfer) {
+#if defined(NIGIRI_CUDA)
+  if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
+    auto out = bmrap_bounds{};
+    algo.build_reach_bounds(out, budget, sub_transfer);
+    return out;
+  } else
+#endif
+  {
+    if (sub_transfer) {
+      return build_reach_matrix<PruneDir>(tt, q, state, budget);
+    }
+    // PHASE 2b: the prefix without the transfer-buffer subtraction.
+    constexpr auto const kInvalid = kInvalidDelta<PruneDir>;
+    auto const is_looser = [](auto const a, auto const b) {
+      return PruneDir == direction::kForward ? a < b : a > b;
+    };
+    auto const round_times =
+        host_round_times(state, algo, buf, tt.n_locations());
+    auto bounds = bmrap_bounds{};
+    bounds.resize(tt.n_locations(), budget, kInvalid);
+    for (auto i = 0U; i <= budget; ++i) {
+      for (auto l = 0U; l != tt.n_locations(); ++l) {
+        auto const cur = round_times[i][l][kVias];
+        auto const prev = (i == 0U) ? kInvalid : bounds.at(i - 1U, l);
+        bounds.at(i, l) = is_looser(cur, prev) ? cur : prev;
+      }
+    }
+    return bounds;
+  }
 }
 
 // PHASE 2: backward pruning search -> tau_dep^<-(v, i).
@@ -480,7 +595,6 @@ bmrap_bounds compute_bounds(timetable const& tt,
   // `horizon` is the far end of the main search's window: it never holds a
   // label beyond that, so bounds beyond it are dead weight.
   constexpr auto const kPruneDir = flip(SearchDir);
-  constexpr auto const kInvalid = kInvalidDelta<kPruneDir>;
   // "better" in the PRUNING search's direction (= looser as a bound)
   auto const is_looser = [](auto const a, auto const b) {
     return kPruneDir == direction::kForward ? a < b : a > b;
@@ -571,17 +685,8 @@ bmrap_bounds compute_bounds(timetable const& tt,
   }
   stats = stats + r.get_stats();
 
-  auto bounds = bmrap_bounds{};
-  bounds.resize(tt.n_locations(), budget, kInvalid);
-  auto const round_times = host_round_times(state, r, rt_buf, tt.n_locations());
-  for (auto i = 0U; i <= budget; ++i) {
-    for (auto l = 0U; l != tt.n_locations(); ++l) {
-      auto const cur = round_times[i][l][kVias];
-      auto const prev = (i == 0U) ? kInvalid : bounds.at(i - 1U, l);
-      bounds.at(i, l) = is_looser(cur, prev) ? cur : prev;
-    }
-  }
-  return bounds;
+  return reach_matrix<kPruneDir>(tt, q, state, r, rt_buf, budget,
+                                 /*sub_transfer=*/false);
 }
 
 }  // namespace nigiri::routing::bmrap_detail

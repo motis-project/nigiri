@@ -50,9 +50,25 @@ struct gpu_rt_timetable {
 std::unique_ptr<void, void (*)(void*)> make_gpu_rtt(timetable const&,
                                                     rt_timetable const&);
 
+struct gpu_mcraptor_state;
+
 struct gpu_raptor_state {
   explicit gpu_raptor_state(gpu_timetable const&);
   ~gpu_raptor_state();
+
+  // Device state for BM-RAPTOR's multicriteria phases, built on first use
+  // and kept for this state's lifetime (= a pool slot), never per query -
+  // it is far too expensive to allocate per search. One instance serves the
+  // mc ping and the mc pong: gpu_mcraptor's per-query buffers are
+  // direction-indexed, so the two directions coexist.
+  //
+  // It is also a big allocation that a large timetable can fail outright, so
+  // ask with try_mc_state() BEFORE committing to the device engines: the
+  // multicriteria phases are the optional part, and losing them must not cost
+  // the ping/pong/pruning searches their place on the device. A failure is
+  // remembered, so it costs one attempt per state, not one per query.
+  gpu_mcraptor_state* try_mc_state();
+  gpu_mcraptor_state& mc_state();
 
   struct impl;
   std::unique_ptr<impl> impl_;
@@ -112,6 +128,14 @@ struct gpu_raptor {
                       int add_minutes,
                       double floor_min = 0.0,
                       double cap_min = 0.0);
+  // build_reach_matrix() done on the device: only the (budget + 1) rows the
+  // caller keeps come back, instead of staging every round on the host.
+  // sub_transfer subtracts each location's transfer buffer (PHASE 2a, the
+  // tau_arr^-> matrix); PHASE 2b's tau_dep^<- passes false.
+  void build_reach_bounds(bmrap_bounds& out,
+                          std::uint8_t budget,
+                          bool sub_transfer);
+
   // Host copy of the device round times, unpacked and laid out exactly like
   // raptor_state::get_round_times() so build_reach_matrix() can consume it:
   // (kMaxTransfers + 2) rows of n_locations entries.
@@ -127,7 +151,14 @@ private:
   gpu_rt_timetable const* gpu_rtt_;
   std::uint32_t n_locations_;
   gpu_raptor_state& state_;
+  // The per-query device buffers live in the shared state and are keyed by
+  // direction, so two searches running in the same direction on one state -
+  // BM-RAPTOR's pong and its pruning search - would otherwise inherit
+  // whichever was constructed last. Keep the inputs so execute() can re-upload
+  // them when the slot changed hands.
   bitvec const& is_dest_;
+  std::vector<std::uint16_t> const* dist_to_dest_;
+  hash_map<location_idx_t, std::vector<td_offset>> const* td_dist_to_dest_;
   day_idx_t base_;
   raptor_stats stats_;
   clasz_mask_t allowed_claszes_;

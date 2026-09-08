@@ -47,7 +47,11 @@ using namespace bmrap_detail;
 // and those slack-departure duplicates survive the result pareto set
 // whenever their walking differs. Re-anchoring makes every reported
 // departure tight, as PONG does for the two-criteria case.
-template <direction SearchDir, bool Rt, typename Criteria, typename AlgoState>
+template <direction SearchDir,
+          bool Rt,
+          typename Criteria,
+          typename AlgoState,
+          int GpuMc>
 routing_result bmrap_profile(timetable const& tt,
                              rt_timetable const* rtt,
                              search_state& s_state,
@@ -58,9 +62,11 @@ routing_result bmrap_profile(timetable const& tt,
   using ping_t = typename bmrap_algo_for<SearchDir, Rt, AlgoState>::type;
   using pong_t =
       typename bmrap_algo_for<flip(SearchDir), Rt, AlgoState>::type;
-  using mc_ping_t = basic_mcraptor<SearchDir, Criteria, /*RangeReuse=*/false>;
-  using mc_pong_t =
-      basic_mcraptor<flip(SearchDir), Criteria, /*RangeReuse=*/false>;
+  using mc_ping_for = bmrap_mc_algo_for<SearchDir, Criteria, (GpuMc >= 1)>;
+  using mc_pong_for =
+      bmrap_mc_algo_for<flip(SearchDir), Criteria, (GpuMc >= 2)>;
+  using mc_ping_t = typename mc_ping_for::type;
+  using mc_pong_t = typename mc_pong_for::type;
 
   q.sanitize(tt);
   utl::verify(mcraptor_supported(q, rtt),
@@ -127,11 +133,32 @@ routing_result bmrap_profile(timetable const& tt,
   // One state serves the ping, the pong and the slacked pong, as pong.cc
   // does: within a step they run strictly in sequence and each resets what
   // it needs, and the GPU's per-query buffers are direction-indexed so both
-  // directions coexist. The multicriteria phases keep their own CPU state
-  // (see bmrap_algo_for), which is what keeps every criteria configuration
-  // available whatever the scalar engine is.
-  auto mc_ping_state = basic_mcraptor_state<Criteria>{};
-  auto mc_pong_state = basic_mcraptor_state<Criteria>{};
+  // directions coexist.
+  //
+  // The multicriteria phases default to their own CPU state, which is what
+  // keeps every criteria configuration available whatever the scalar engine
+  // is; only the two the device implements can opt in (see GpuMc and
+  // bmrap_mc_algo_for). On the device they too share one state - the same
+  // direction-indexing argument - and it outlives the query, because the
+  // allocation is far too large to repeat per search.
+  auto cpu_mc_ping_state = std::conditional_t<
+      (GpuMc >= 1), std::monostate, basic_mcraptor_state<Criteria>>{};
+  auto cpu_mc_pong_state = std::conditional_t<
+      (GpuMc >= 2), std::monostate, basic_mcraptor_state<Criteria>>{};
+  auto& mc_ping_state = [&]() -> typename mc_ping_for::state& {
+    if constexpr (GpuMc >= 1) {
+      return r_state.mc_state();
+    } else {
+      return cpu_mc_ping_state;
+    }
+  }();
+  auto& mc_pong_state = [&]() -> typename mc_pong_for::state& {
+    if constexpr (GpuMc >= 2) {
+      return r_state.mc_state();
+    } else {
+      return cpu_mc_pong_state;
+    }
+  }();
 
   auto ping = ping_t{tt,       rtt,      r_state,  fwd_is_dest,
                      is_via,   fwd_dist, q.td_dest_, fwd_lb,
@@ -153,6 +180,17 @@ routing_result bmrap_profile(timetable const& tt,
                            no_via,   base_day, q.allowed_claszes_,
                            q.require_bike_transport_, q.require_car_transport_,
                            q.prf_idx_ == 2U, q.transfer_time_settings_};
+
+  if constexpr (GpuMc >= 2) {
+    // Phase 5 runs a sequence of departures under ONE reset_arrivals(), and
+    // the device engine carries its reuse frontier across them while the CPU
+    // engine at RangeReuse=false has no cross-departure reuse at all. Without
+    // this the frontier rejects labels no reported journey dominates (it drops
+    // a later-departing, higher-transfer variant with an equal arrival).
+    // next_start_time() already clears the bags, so within one departure the
+    // two engines agree.
+    mc_pong.set_reuse_same_dep();
+  }
 
   auto stats = raptor_stats{};
   auto prune_stats = raptor_stats{};
@@ -460,9 +498,10 @@ routing_result bmrap_profile(timetable const& tt,
           auto ping_results = pareto_set<journey>{};
           ping.execute(start_time, q.max_transfers_,
                        worst_at_dest(start_time), q.prf_idx_, ping_results);
-          fwd_bounds = build_reach_matrix<SearchDir>(
-              tt, q, host_round_times(r_state, ping, rt_buf, tt.n_locations()),
-              trip_budget(max_trips, budget_cap));
+          fwd_bounds =
+              reach_matrix<SearchDir>(tt, q, r_state, ping, rt_buf,
+                                      trip_budget(max_trips, budget_cap),
+                                      /*sub_transfer=*/true);
           ms_fwd_bounds += std::chrono::steady_clock::now() - f0;
           ++n_fwd_bound_builds;
           if ((fwd_bounds_mode & 1) != 0) {
@@ -508,9 +547,10 @@ routing_result bmrap_profile(timetable const& tt,
                                 static_cast<std::uint8_t>(j.transfers_ + 1U));
         }
         auto const f0 = std::chrono::steady_clock::now();
-        fwd_bounds = build_reach_matrix<SearchDir>(
-            tt, q, host_round_times(r_state, ping, rt_buf, tt.n_locations()),
-            trip_budget(ping_trips, budget_cap));
+        fwd_bounds =
+            reach_matrix<SearchDir>(tt, q, r_state, ping, rt_buf,
+                                    trip_budget(ping_trips, budget_cap),
+                                    /*sub_transfer=*/true);
         ms_fwd_bounds += std::chrono::steady_clock::now() - f0;
         ++n_fwd_bound_builds;
         if ((fwd_bounds_mode & 1) != 0) {
@@ -955,13 +995,27 @@ routing_result bmrap_profile_search(
     query q,
     direction const search_dir,
     std::optional<std::chrono::seconds> const timeout) {
-  if (search_dir == direction::kForward) {
-    return bmrap_profile<direction::kForward, false, Criteria>(
-        tt, rtt, s_state, algo_state, std::move(q), timeout);
-  } else {
-    return bmrap_profile<direction::kBackward, false, Criteria>(
-        tt, rtt, s_state, algo_state, std::move(q), timeout);
+  auto const run = [&]<int GpuMc>() {
+    return search_dir == direction::kForward
+               ? bmrap_profile<direction::kForward, false, Criteria, AlgoState,
+                               GpuMc>(tt, rtt, s_state, algo_state,
+                                      std::move(q), timeout)
+               : bmrap_profile<direction::kBackward, false, Criteria, AlgoState,
+                               GpuMc>(tt, rtt, s_state, algo_state,
+                                      std::move(q), timeout);
+  };
+  // Probe the device multicriteria state here rather than inside: it is a
+  // large allocation that a big timetable can fail, and the mode is a
+  // compile-time choice, so a failure discovered later would take the whole
+  // GPU search down with it instead of just the optional phases.
+  if constexpr (kGpuMcSupported<Criteria, AlgoState>) {
+    auto const mode = bmrap_gpu_mc_mode();
+    if (mode != 0 && algo_state.try_mc_state() != nullptr) {
+      return mode >= 2 ? run.template operator()<2>()
+                       : run.template operator()<1>();
+    }
   }
+  return run.template operator()<0>();
 }
 
 // One line per criteria configuration, for each scalar engine. The

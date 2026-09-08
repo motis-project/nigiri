@@ -548,6 +548,41 @@ std::vector<tuple_t> run_bmrapp_gpu(fixture const& f,
                       .journeys_));
 }
 
+// The device mcraptor on its own, outside BMRAPP: phases 4/5 can only move
+// to the GPU (NIGIRI_BMRAPP_GPU_MC) if this holds, and nothing else in the
+// tree exercises gpu_mcraptor, so this is where a divergence in it shows up
+// rather than as a BMRAPP failure.
+std::vector<tuple_t> run_gpu_mcraptor(fixture const& f,
+                                      routing::query q,
+                                      direction const dir) {
+  auto ss = routing::search_state{};
+  auto gtt = routing::gpu::gpu_timetable{f.tt_};
+  auto as = routing::gpu::gpu_mcraptor_state{gtt};
+  return tuples(
+      *(routing::raptor_search(f.tt_, nullptr, ss, as, std::move(q), dir)
+            .journeys_));
+}
+
+TEST(bmrap, gpu_mcraptor_matches_cpu) {
+  if (!routing::gpu::gpu_available()) {
+    GTEST_SKIP() << "no CUDA device";
+  }
+  auto const f = fixture{};
+  auto const q = f.make_query();
+  EXPECT_EQ(reference<routing::mcraptor_state>(f, q, direction::kForward).js_,
+            run_gpu_mcraptor(f, q, direction::kForward));
+}
+
+TEST(bmrap, gpu_mcraptor_matches_cpu_backward) {
+  if (!routing::gpu::gpu_available()) {
+    GTEST_SKIP() << "no CUDA device";
+  }
+  auto const f = fixture{};
+  auto const q = f.make_query(direction::kBackward);
+  EXPECT_EQ(reference<routing::mcraptor_state>(f, q, direction::kBackward).js_,
+            run_gpu_mcraptor(f, q, direction::kBackward));
+}
+
 TEST(bmrap, gpu_matches_cpu) {
   if (!routing::gpu::gpu_available()) {
     GTEST_SKIP() << "no CUDA device";

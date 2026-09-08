@@ -47,6 +47,12 @@ struct bmrap_bounds {
   std::vector<delta_t> lat_;
   std::uint32_t n_locations_{0U};
   std::uint8_t budget_{0U};
+  // Opaque provenance stamp, set by an engine that built this matrix on a
+  // device and still holds that copy. A device consumer can then recognise
+  // its own output and copy device-to-device instead of pushing `lat_` back
+  // across PCIe. 0 means "no device copy" - host-built, or superseded.
+  // Nothing outside the engine that issued it may interpret the value.
+  std::uint64_t device_tag_{0U};
 };
 
 }  // namespace nigiri::routing
