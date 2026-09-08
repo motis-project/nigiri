@@ -12,35 +12,19 @@ namespace nigiri::routing {
 
 // Restricted pareto sets (Delling, Dibbelt, Pajor: "Fast and Exact Public
 // Transit Routing with Restricted Pareto Sets", ALENEX'19,
-// doi:10.1137/1.9781611975499.5) as a RANGE raptor over the query's
-// departure (resp. arrival) window.
+// doi:10.1137/1.9781611975499.5), as a PROFILE search: a complete
+// single-departure BM-RAPTOR per step of a PONG-style scan (ping, pong,
+// slacked pong, mc ping, mc pong) rather than one bound matrix for the
+// whole window. See bmrap_profile.cc for the phases and for why.
 //
-// Three phases, all of them range searches:
+// A range variant - one window-wide tau_dep^<- matrix plus a per-departure
+// trip budget, sharing everything in bmrap_common.h with this one - existed
+// alongside it and was removed: its backward pruning cost grows linearly
+// with the number of window slices (492 -> 916 -> 1431 -> 2143 -> 2762 ms
+// for 1/2/3/5/7 slices) while the main search barely improves (825 -> 723
+// ms), so it lost to the per-departure bounds this driver builds, and the
+// unbounded range McRAPTOR it shared its shape with is available on its own.
 //
-//  1. FORWARD PRUNING SEARCH - the two-criteria (time, trips) range search
-//     over the whole window. Its result is the anchor pareto set J_A: for
-//     every departure the earliest arrival per number of trips. PONG is
-//     used when it is applicable, plain rRAPTOR otherwise; both produce the
-//     same set.
-//
-//  2. BACKWARD PRUNING SEARCH - one reverse one-to-all raptor per anchor,
-//     started at that anchor's slack-relaxed time and capped at that
-//     anchor's slack-relaxed trip budget, all of them accumulating into one
-//     round-times matrix (rRAPTOR reuse). Yields tau_dep^<-(v, i) - see
-//     bmrap_bounds.
-//
-//  3. MAIN SEARCH - the range McRAPTOR (arrival time + generalized cost,
-//     transfers as an implicit dimension) over the same window, discarding
-//     every arrival the bounds of phase 2 rule out. The result is finally
-//     restricted to the paper's J_R: a journey survives iff neither its
-//     trip count nor its travel time exceeds sigma_tr / sigma_arr times
-//     that of its anchor journey.
-//
-// Slack parameters (defaults sigma_arr = sigma_tr = 1.25) are overridable
-// via NIGIRI_BMRAP_ARR_SLACK / NIGIRI_BMRAP_TRIP_SLACK.
-// Profile variant: a complete single-departure BM-RAPTOR per step of a
-// PONG-style scan (ping, pong, slacked pong, mc ping, mc pong) instead of
-// one window-wide bound matrix. See bmrap_profile.cc for why.
 // AlgoState is the SCALAR (two-criteria) state the ping, the pong and the
 // backward pruning searches run on - raptor_state or gpu::gpu_raptor_state,
 // selected exactly the way pong_search selects its engine. Criteria picks
@@ -48,16 +32,6 @@ namespace nigiri::routing {
 // the CPU (see bmrap_algo_for in bmrap_common.h).
 template <typename Criteria, typename AlgoState>
 routing_result bmrap_profile_search(
-    timetable const&,
-    rt_timetable const*,
-    search_state&,
-    AlgoState&,
-    query,
-    direction search_dir,
-    std::optional<std::chrono::seconds> timeout = std::nullopt);
-
-template <typename AlgoState>
-routing_result bmrap_search(
     timetable const&,
     rt_timetable const*,
     search_state&,

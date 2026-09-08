@@ -486,41 +486,38 @@ duration_t close_anchor_profile(
 //
 // For every anchor journey the paper runs one reverse search from the
 // target, started at the slack-relaxed time and capped at the slack-relaxed
-// trip budget. Three adaptations for the range setting:
+// trip budget. Two adaptations:
 //
 //  * The anchors are first reduced to the pareto frontier over
 //    (relaxed time, budget): an anchor whose relaxed start is no looser and
 //    whose budget is no larger than another's cannot contribute anything -
-//    without this a range query would run one one-to-all search per anchor,
-//    and a window easily holds a hundred of them. What remains is at most
-//    one search per distinct trip count.
+//    without this a step would run one one-to-all search per anchor, and a
+//    window easily holds a hundred of them. What remains is at most one
+//    search per distinct trip count.
 //
 //  * The remaining searches share ONE round-times matrix (they are just the
 //    start times of one rRAPTOR): the accumulated maximum over the runs is
 //    exactly the union the paper takes.
 //
-//  * ONE bound matrix covers the whole departure window. That is the
-//    deliberate range approximation: a departure's slack is measured from
-//    that departure, so the union over the window is dominated by its LAST
-//    departure and earlier departures are bounded more loosely than a tight
-//    per-departure BM-RAPTOR would bound them (by up to the window width;
-//    measured: 666 min mean window vs a 41 min mean slack allowance). The
-//    tight variant - cut the range into slices, give each its own anchors,
-//    bounds and destination cap, down to one slice per departure - was
-//    implemented and measured on this instance: the backward pruning cost
-//    grows linearly with the number of slices (492 -> 916 -> 1431 -> 2143
-//    -> 2762 ms for 1/2/3/5/7 slices) while the main search barely improves
-//    (825 -> 723 ms), because mcraptor's own worst_at_dest_ + dest_bag_
-//    destination pruning already covers most of what the arrival slack adds.
-//    It is a net loss here, so the window-wide bound is what ships; the
-//    trip-budget half of the bound, which is what actually pays off, is
-//    departure-independent anyway. The remaining per-departure exactness is
-//    restored by the final restriction to J_R below.
+// The bound matrix is built PER STEP, anchored at that step's own departure,
+// which is what the paper describes. A range variant that covered the whole
+// window with a single matrix - the union is then dominated by the window's
+// LAST departure, so earlier departures are bounded more loosely than a
+// tight BM-RAPTOR would bound them, by up to the window width (measured:
+// 666 min mean window vs a 41 min mean slack allowance) - was implemented
+// and removed. Slicing it finer to recover the tightness did not pay: the
+// backward pruning cost grows linearly with the number of slices (492 ->
+// 916 -> 1431 -> 2143 -> 2762 ms for 1/2/3/5/7 slices) while the main
+// search barely improves (825 -> 723 ms), because mcraptor's own
+// worst_at_dest_ + dest_bag_ destination pruning already covers most of
+// what the arrival slack adds. What made the per-step bound affordable in
+// the end was not slicing a range search but the profile driver's own
+// structure: one complete single-departure BM-RAPTOR per step, with the
+// anchor set cached across the steps that cannot change it.
 // Turn a finished PruneDir search's round times into a tau_arr^->(v, i)
-// matrix. Split out of compute_reach_bounds() so the ping can supply the
-// round times directly - with relaxed target pruning (raptor::set_dest_relax)
-// they are valid at every stop, and a separate one-to-all search is not
-// needed at all.
+// matrix. It is a separate function so the PING can supply the round times
+// directly: with relaxed target pruning (raptor::set_dest_relax) they are
+// valid at every stop, so no dedicated one-to-all search is needed at all.
 template <direction PruneDir>
 bmrap_bounds build_reach_matrix(
     timetable const& tt,
@@ -576,78 +573,6 @@ bmrap_bounds build_reach_matrix(timetable const& tt,
   return build_reach_matrix<PruneDir>(
       tt, q,
       static_cast<raptor_state const&>(state).get_round_times<kVias>(), budget);
-}
-
-// Reachability bounds for the OPPOSITE search direction: tau_arr^->(v, i),
-// the earliest time the main search's origin can put you at v using at most
-// i trips, departing no earlier than `from`.
-//
-// This is the mirror of compute_bounds(): where that one prunes a forward
-// search with "you must be at v by this time to still make it", this prunes
-// a BACKWARD search with "you cannot possibly be at v before this time".
-// Together they are the classic meet-in-the-middle prune.
-//
-// This variant runs its own one-to-all search, which is only necessary when
-// the ping cannot supply the round times itself - i.e. when its target
-// pruning has NOT been relaxed by the arrival slack. With
-// raptor::set_dest_relax() the ping's own state can be handed straight to
-// build_reach_matrix() instead, which is what the profile driver does.
-template <direction PruneDir, bool Rt>
-bmrap_bounds compute_reach_bounds(timetable const& tt,
-                                  rt_timetable const* rtt,
-                                  query const& q,
-                                  unixtime_t const from,
-                                  unixtime_t const horizon,
-                                  day_idx_t const base,
-                                  std::uint8_t const budget,
-                                  raptor_state& state,
-                                  raptor_stats& stats) {
-  constexpr auto const kInvalid = kInvalidDelta<PruneDir>;
-  auto const is_looser = [](auto const a, auto const b) {
-    return PruneDir == direction::kForward ? a < b : a > b;
-  };
-
-  auto is_dest = bitvec{tt.n_locations()};
-  auto is_via = std::array<bitvec, kMaxVias>{};
-  auto dist_to_dest = std::vector<std::uint16_t>{};
-  auto td_dist_to_dest = hash_map<location_idx_t, std::vector<td_offset>>{};
-  auto via_stops = std::vector<via_stop>{};
-  auto lb = std::vector<std::uint16_t>(tt.n_locations(), std::uint16_t{0U});
-
-  auto r = raptor<PruneDir, Rt, kVias, search_mode::kOneToAll>{
-      tt,
-      rtt,
-      state,
-      is_dest,
-      is_via,
-      dist_to_dest,
-      td_dist_to_dest,
-      lb,
-      via_stops,
-      base,
-      q.allowed_claszes_,
-      q.require_bike_transport_,
-      q.require_car_transport_,
-      q.prf_idx_ == 2U,
-      q.transfer_time_settings_};
-
-  auto starts = std::vector<start>{};
-  get_starts(PruneDir, tt, rtt, from, q.start_, q.td_start_, q.via_stops_,
-             q.max_start_offset_, q.start_match_mode_, q.use_start_footpaths_,
-             starts, false, q.prf_idx_, q.transfer_time_settings_);
-  r.reset_arrivals();
-  r.next_start_time();
-  for (auto const& st : starts) {
-    r.add_start(st.stop_, st.time_at_stop_);
-  }
-  auto results = pareto_set<journey>{};
-  // no destination: `horizon` is the far end of what the search it prunes
-  // can ever look at, and doubles as this one-to-all search's global cutoff
-  r.execute(from, static_cast<std::uint8_t>(budget - 1U), horizon, q.prf_idx_,
-            results);
-  stats = stats + r.get_stats();
-
-  return build_reach_matrix<PruneDir>(tt, q, state, budget);
 }
 
 template <direction SearchDir, bool Rt, typename AlgoState>
