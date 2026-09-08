@@ -1,3 +1,5 @@
+#include <unordered_map>
+
 #include "nigiri/routing/gpu/raptor.h"
 
 #include <cstdio>
@@ -8,8 +10,12 @@
 #include <iostream>
 #include <optional>
 
+// hide date.h's NOEXCEPT from CCCL's token pasting, see device_times.h
+#pragma push_macro("NOEXCEPT")
+#undef NOEXCEPT
 #include "cuda/std/array"
 #include "cuda/std/span"
+#pragma pop_macro("NOEXCEPT")
 
 #include "thrust/copy.h"
 #include "thrust/device_vector.h"
@@ -394,15 +400,26 @@ __global__ void transfers_footpaths_kernel(raptor_impl<SearchDir> r,
   r.rt_transport_mark_.reset();
 }
 
+// NOTE: the cache must be keyed by the kernel ADDRESS, not by the template
+// parameter: every kernel sharing a signature - and most here are
+// (impl, unsigned) - instantiates the SAME launch_dims, so a static-per-type
+// cache hands them all the block size of whichever ran first. The heaviest
+// kernels here use 138 registers, which caps a block at ~474 threads on
+// sm_75, so inheriting a lighter kernel's 1024 is "too many resources
+// requested for launch". Same fix as mc_launch_dims() in mcraptor.cu.
 template <typename Kernel>
 std::pair<int, int> launch_dims(Kernel kernel) {
-  static auto const dims = [&]() {
-    auto blocks = 0;
-    auto threads = 0;
-    // half + quarter benchmarked with less throughput
-    cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
-    return std::pair{blocks, threads};
-  }();
+  static thread_local std::unordered_map<void*, std::pair<int, int>> cache;
+  auto const key = reinterpret_cast<void*>(kernel);
+  if (auto const it = cache.find(key); it != end(cache)) {
+    return it->second;
+  }
+  auto blocks = 0;
+  auto threads = 0;
+  // half + quarter benchmarked with less throughput
+  cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
+  auto const dims = std::pair{blocks, threads};
+  cache.emplace(key, dims);
   return dims;
 }
 

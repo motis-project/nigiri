@@ -238,7 +238,7 @@ template <direction SearchDir, typename Criteria, bool RangeReuse>
 delta_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::transfer_buffer(
     std::uint64_t const l) const {
   return static_cast<delta_t>(
-      (!is_intermodal_dest() && is_dest_[l])
+      (!is_intermodal_dest() && is_dest_[static_cast<std::uint32_t>(l)])
           ? 0
           : dir(adjusted_transfer_time(
                 transfer_time_settings_,
@@ -593,7 +593,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
     auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx][l]
                            : tt_.locations_.footpaths_in_[prf_idx][l];
     auto const egress_ok =
-        intermodal && end_reachable_.test(i) &&
+        intermodal && end_reachable_.test(static_cast<std::uint32_t>(i)) &&
         dist_to_end_[i] != std::numeric_limits<std::uint16_t>::max();
     if (fps.empty() && !egress_ok) {
       return;

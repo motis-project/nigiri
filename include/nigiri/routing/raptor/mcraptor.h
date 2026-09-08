@@ -603,7 +603,7 @@ struct basic_mcraptor_state {
   struct bag_layer {
     void resize(std::size_t const n) {
       bags_.resize(n);
-      touched_.resize(n);
+      touched_.resize(static_cast<std::uint32_t>(n));
     }
 
     label* data(small_bag& b) {
