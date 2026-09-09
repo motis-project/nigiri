@@ -1,5 +1,6 @@
 #include "./raptor_search.h"
 
+#include <iostream>
 #include <sstream>
 #include <tuple>
 
@@ -61,7 +62,11 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                              .journeys_);
 
 #if defined(NIGIRI_CUDA)
-  if (routing::gpu::gpu_available() && routing::gpu::gpu_supported(q, rtt)) {
+  // No gpu_available() gate here on purpose: this binary was built with
+  // CUDA support, so a device is expected. If it's missing or unusable for
+  // some reason, the GPU calls below should fail loudly, not be silently
+  // skipped.
+  if (routing::gpu::gpu_supported(q, rtt)) {
     auto gpu_timetable = routing::gpu::gpu_timetable{tt};
     if (rtt != nullptr) {
       // Re-upload every call: tests mutate rtt between searches.
@@ -96,6 +101,13 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
       EXPECT_EQ(journey_tuples(results), journey_tuples(mc_gpu_results));
     }
   }
+#else
+  [[maybe_unused]] static auto const warn_no_cuda_once = [&] {
+    std::cerr << "\n[raptor_search] WARNING: built without NIGIRI_CUDA - GPU "
+                 "comparison checks are being SKIPPED for this whole test "
+                 "run, tests will still report green.\n\n";
+    return true;
+  }();
 #endif
 
   if (routing::mcraptor_supported(q, rtt)) {
