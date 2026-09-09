@@ -10,6 +10,7 @@
 
 #include "nigiri/routing/gpu/breadcrumb.h"
 #include "nigiri/routing/gpu/device_bitvec.cuh"
+#include "nigiri/routing/gpu/device_td.cuh"
 #include "nigiri/routing/gpu/device_timetable.cuh"
 #include "nigiri/routing/gpu/journey_pod.h"
 #include "nigiri/routing/gpu/stride.cuh"
@@ -63,6 +64,10 @@ namespace nigiri::routing::gpu {
 //  * route scan: one thread per marked route walking the stop sequence
 //    like the CPU loop, with the route bag (pareto over total trip order
 //    x carried extras) in registers/local memory.
+//  * realtime: rt transports are scanned by a second, simpler pass (one
+//    thread per marked rt transport). An rt transport is a single trip with
+//    absolute event times, so its bag is a plain pareto set over the carried
+//    extras and it needs neither the et lookup phase nor traffic days.
 //
 // Capacity overflows (stop bag, route bag, arena) set a device canary
 // that the host checks after every query - a lossy search never goes
@@ -168,6 +173,15 @@ struct mc_seg {
   std::uint16_t end_;
 };
 static_assert(sizeof(mc_seg) == 16U);
+
+// Boarded label of an rt transport scan. route_label's trip identity is
+// gone: an rt transport IS one trip, so the (trip order x extras) pareto
+// degenerates to extras alone.
+struct mc_rt_label {
+  std::uint32_t parent_;
+  std::uint16_t extras_;
+  std::uint16_t board_;
+};
 inline constexpr auto kMcMaxSegs = 128U;  // per route; overflow -> seq path
 inline constexpr auto kMcPrefixK = 4U;  // register route-bag entries/lane
 inline constexpr auto kMcEtGatherCap = 32U;  // sorted lookup candidates
@@ -1953,12 +1967,26 @@ struct mcraptor_impl {
                                            std::uint32_t const te_extras,
                                            std::uint32_t const te_bc,
                                            std::uint32_t const worst_key) {
-    auto const target = to_idx(fp.target());
+    return relax_fp_target(
+        k, source, to_idx(fp.target()),
+        adjusted_transfer_time(transfer_time_settings_, fp.duration().count()),
+        te_arr, te_extras, te_bc, worst_key);
+  }
+
+  // td footpaths carry their own duration (waiting included) and are used
+  // verbatim, static ones go through adjusted_transfer_time - see relax_fp
+  __device__ __forceinline__ bool relax_fp_target(
+      unsigned const k,
+      std::uint32_t const source,
+      std::uint32_t const target,
+      int const fp_duration,
+      delta_t const te_arr,
+      std::uint32_t const te_extras,
+      std::uint32_t const te_bc,
+      std::uint32_t const worst_key) {
     if (target == source) {
       return false;
     }
-    auto const fp_duration =
-        adjusted_transfer_time(transfer_time_settings_, fp.duration().count());
     auto const fp_arr = clamp(te_arr + dir(fp_duration));
     auto const fp_key = to_key(fp_arr);
     auto const target_lb = lb_[target];
@@ -1967,8 +1995,9 @@ struct mcraptor_impl {
       return false;
     }
     auto const fp_extras =
-        WithCost ? te_extras +
-                       static_cast<std::uint32_t>(fp_duration * walk_surcharge_)
+        WithCost ? te_extras + static_cast<std::uint32_t>(
+                                   static_cast<std::uint32_t>(fp_duration) *
+                                   walk_surcharge_)
                  : 0U;
     if (dest_dominates(k, fp_key + target_lb, fp_extras)) {
       return false;
@@ -1987,6 +2016,207 @@ struct mcraptor_impl {
       dest_bag_add(k, fp_key, fp_extras);
     }
     return true;
+  }
+
+  // position of l in the td egress location list (~0U = none). Binary
+  // search: the host uploads the list sorted, and this runs once per marked
+  // stop per round - a linear scan would be |td_dest| x marked stops.
+  __device__ __forceinline__ std::uint32_t td_dest_group_of(
+      location_idx_t const l) const {
+    auto lo = std::uint32_t{0U};
+    auto hi = static_cast<std::uint32_t>(td_dest_locs_.size());
+    while (lo < hi) {
+      auto const mid = lo + (hi - lo) / 2U;
+      if (to_idx(td_dest_locs_[mid]) < to_idx(l)) {
+        lo = mid + 1U;
+      } else {
+        hi = mid;
+      }
+    }
+    return (lo < td_dest_locs_.size() && td_dest_locs_[lo] == l) ? lo : ~0U;
+  }
+
+  __device__ __forceinline__ bool has_td_fps(location_idx_t const l) const {
+    if (rtt_.td_ == nullptr) {
+      return false;
+    }
+    auto const& bv =
+        kFwd ? rtt_.td_->has_out_[prf_idx_] : rtt_.td_->has_in_[prf_idx_];
+    return !bv.blocks_.empty() && bv[to_idx(l)];
+  }
+
+  __device__ void mark_rt_transports() {
+    auto const gid = get_global_thread_id();
+    auto const stride = get_global_stride();
+    for (auto i = gid; i < tt_.n_locations_; i += stride) {
+      if (!station_mark_[i]) {
+        continue;
+      }
+      auto const rt_transports = rtt_.location_rt_transports_[location_idx_t{i}];
+      if (!rt_transports.empty() && !*any_marked_) {
+        atomicOr(any_marked_, 1U);
+      }
+      for (auto const rt_t : rt_transports) {
+        rt_transport_mark_.mark(to_idx(rt_t));
+      }
+    }
+  }
+
+  template <bool WithClaszFilter, bool IsWheelchair>
+  __device__ void scan_rt_transports(unsigned const k) {
+    auto const gid = get_global_thread_id();
+    auto const stride = get_global_stride();
+    auto local_marked = false;
+    for (auto i = gid; i < rtt_.n_rt_transports_; i += stride) {
+      if (!rt_transport_mark_.test(i)) {
+        continue;
+      }
+      if constexpr (WithClaszFilter) {
+        if (!is_allowed(allowed_claszes_,
+                        rtt_.rt_transport_clasz_[rt_transport_idx_t{i}])) {
+          continue;
+        }
+      }
+      local_marked |= scan_rt_transport<IsWheelchair>(k, rt_transport_idx_t{i});
+    }
+    if (local_marked && !*any_marked_) {
+      atomicOr(any_marked_, 1U);
+    }
+  }
+
+  // scan_route for a realtime run: same two-phase stop sweep, but the
+  // boarding frontier is a plain extras pareto set and the boarding test
+  // reads the stop bag directly (no et task list - there is nothing to look
+  // up when the trip and its absolute event times are already known).
+  template <bool IsWheelchair>
+  __device__ bool scan_rt_transport(unsigned const k,
+                                    rt_transport_idx_t const rt_t) {
+    auto const stop_seq = rtt_.rt_transport_location_seq_[rt_t];
+    auto const n = static_cast<unsigned>(stop_seq.size());
+    auto any_marked = false;
+
+    mc_rt_label rt_bag[kMcRouteBagCap];
+    auto bag_size = 0U;
+
+    auto const arr_ev = kFwd ? event_type::kArr : event_type::kDep;
+    auto const dep_ev = kFwd ? event_type::kDep : event_type::kArr;
+    auto const worst_key = to_key(worst_at_dest_);
+
+    for (auto i = 0U; i != n; ++i) {
+      auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - i - 1U);
+      auto const stp = stop{stop_seq[stop_idx]};
+      auto const l_idx = to_idx(stp.location_idx());
+      auto const is_last = i == n - 1U;
+
+      // ---- alight ------------------------------------------------------
+      if (i != 0U && bag_size != 0U && stop_idx <= kBcStopMask &&
+          stp.can_finish<SearchDir>(IsWheelchair)) {
+        auto const buf = transfer_buffer(l_idx);
+        auto const l_lb = lb_[l_idx];
+        auto const by_transport = rt_time_at_stop(rt_t, stop_idx, arr_ev);
+        auto const ride_key = to_key(by_transport);
+        for (auto b = 0U; b != bag_size; ++b) {
+          auto const& rl = rt_bag[b];
+          if (ride_key >= worst_key || l_lb == kUnreachable ||
+              ride_key + l_lb >= worst_key) {
+            continue;
+          }
+          auto const ride_extras =
+              WithCost ? static_cast<std::uint32_t>(rl.extras_) + kBoardCost
+                       : 0U;
+          if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
+            continue;
+          }
+          if (bound_prunes(k, l_idx, by_transport)) {
+            continue;
+          }
+          auto const post_arr = clamp(by_transport + buf);
+          if (!bag_insert(
+                  l_idx, to_key(post_arr), ride_extras, k, true,
+                  /*with_bc=*/true,
+                  make_transport_payload(encode_rt_bc_transport(to_idx(rt_t)),
+                                         rl.board_, stop_idx),
+                  rl.parent_, post_arr)) {
+            continue;
+          }
+          touched_.mark(l_idx);
+          station_mark_.mark(l_idx);
+          any_marked = true;
+          if (is_dest_[l_idx]) {
+            dest_bag_add(k, ride_key, ride_extras);
+          }
+        }
+      }
+
+      // ---- board -------------------------------------------------------
+      if (is_last || stop_idx > kBcStopMask ||
+          !stp.can_start<SearchDir>(IsWheelchair) ||
+          !prev_station_mark_[l_idx]) {
+        continue;
+      }
+      auto const l_lb = lb_[l_idx];
+      if (l_lb == kUnreachable) {
+        break;
+      }
+      auto const stop_hwm = static_cast<std::uint32_t>(bag_hwm_[l_idx]);
+      if (stop_hwm == 0U) {
+        continue;
+      }
+      auto const dep = rt_time_at_stop(rt_t, stop_idx, dep_ev);
+      auto const dep_key = to_key(dep);
+      auto const stop_bag = bag_view(l_idx);
+      for (auto sl = 0U; sl != stop_bag.size(); ++sl) {
+        auto const lab = stop_bag[sl];
+        if (lab == kMcEmptySlot || mc_round(lab) != k - 1U) {
+          continue;
+        }
+        auto const pe_key = mc_arr_key(lab);
+        if (pe_key > dep_key) {
+          continue;  // arrives after this run departs
+        }
+        auto const pe_extras = WithCost ? mc_extras(lab) : 0U;
+        if (dest_dominates(k, pe_key + l_lb, pe_extras)) {
+          continue;
+        }
+        auto const pe_parent = mc_bc(lab);
+
+        // merge into the boarded frontier: pareto over the extras alone
+        auto merged = false;
+        for (auto b = 0U; b != bag_size; ++b) {
+          auto& rl = rt_bag[b];
+          if (rl.extras_ == pe_extras) {
+            // same run, same carried extras: board closest to the exit
+            rl.board_ = stop_idx;
+            rl.parent_ = pe_parent;
+            merged = true;
+            break;
+          }
+          if (rl.extras_ <= pe_extras) {
+            merged = true;  // dominated
+            break;
+          }
+        }
+        if (merged) {
+          continue;
+        }
+        auto w = 0U;
+        for (auto b = 0U; b != bag_size; ++b) {
+          if (!(pe_extras <= rt_bag[b].extras_)) {
+            rt_bag[w] = rt_bag[b];
+            ++w;
+          }
+        }
+        bag_size = w;
+        if (bag_size == kMcRouteBagCap) {
+          atomicOr(overflow_, kMcOverflowRouteBag);
+          continue;
+        }
+        rt_bag[bag_size] = {pe_parent, static_cast<std::uint16_t>(pe_extras),
+                            static_cast<std::uint16_t>(stop_idx)};
+        ++bag_size;
+      }
+    }
+    return any_marked;
   }
 
   __device__ void update_transfers_and_footpaths(unsigned const k) {
@@ -2012,11 +2242,15 @@ struct mcraptor_impl {
       auto defer = false;
       if (my_marked && bag_hwm_coherent(my_i) != 0U) {
         auto const l = location_idx_t{my_i};
+        // a location whose profile has td footpaths is served by the td list
+        // INSTEAD of the static one (raptor_impl / CPU update_footpaths)
+        auto const use_td_fps = has_td_fps(l);
         auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
                               : tt_.footpaths_in_[prf_idx_][l];
-        auto const n_fps = static_cast<unsigned>(fps.size());
+        auto const n_fps = use_td_fps ? 0U : static_cast<unsigned>(fps.size());
         auto const egress_ok = intermodal && dist_to_end_[my_i] != kUnreachable;
-        if (n_fps != 0U || egress_ok) {
+        auto const td_grp = intermodal ? td_dest_group_of(l) : ~0U;
+        if (n_fps != 0U || egress_ok || use_td_fps || td_grp != ~0U) {
           auto const buf = transfer_buffer(my_i);
           auto const stop_hwm = bag_hwm_coherent(my_i);
           if (n_fps > kWarpFpThreshold) {
@@ -2054,7 +2288,42 @@ struct mcraptor_impl {
               }
             }
 
-            if (!defer) {
+            // td egress: time-dependent, so it is evaluated per label
+            if (td_grp != ~0U) {
+              auto const offsets = td_dest_[td_dest_group_idx_t{td_grp}];
+              auto const rr = d_get_td_duration<SearchDir>(
+                  offsets, 0U, static_cast<std::uint32_t>(offsets.size()),
+                  to_unix(te_arr));
+              if (rr.valid_) {
+                auto const dur =
+                    static_cast<std::uint32_t>(rr.duration_.count());
+                auto const end_arr = clamp(te_arr + dir(static_cast<int>(dur)));
+                auto const end_key = to_key(end_arr);
+                auto const end_extras =
+                    WithCost ? te_extras + dur * walk_surcharge_ : 0U;
+                if (end_key < worst_key) {
+                  auto const src = bc_read_coherent(te_bc);
+                  if (bag_insert(to_idx(kIntermodalTarget), end_key, end_extras,
+                                 k, false, /*with_bc=*/true, src.payload_,
+                                 src.parent_, end_arr)) {
+                    touched_.mark(to_idx(kIntermodalTarget));
+                    dest_bag_add(k, end_key, end_extras);
+                  }
+                }
+              }
+            }
+
+            if (use_td_fps) {
+              auto const td_fps = kFwd ? rtt_.td_->out_[prf_idx_][l]
+                                       : rtt_.td_->in_[prf_idx_][l];
+              d_for_each_td_footpath<SearchDir>(
+                  td_fps, to_unix(te_arr),
+                  [&](location_idx_t const target, duration_t const d) {
+                    local_marked |= relax_fp_target(
+                        k, my_i, to_idx(target), static_cast<int>(d.count()),
+                        te_arr, te_extras, te_bc, worst_key);
+                  });
+            } else if (!defer) {
               for (auto f = 0U; f != n_fps; ++f) {
                 local_marked |= relax_fp(k, my_i, fps[f], te_arr, te_extras,
                                          te_bc, worst_key);
@@ -2222,45 +2491,67 @@ struct mcraptor_impl {
     while (li != kMcNoBc) {
       auto const bc = bc_read(li);
       auto const cur_arr = bc.arr_;
-      auto const t_idx = transport_idx_t{bc_transport(bc.payload_)};
+      auto const bc_t = bc_transport(bc.payload_);
+      auto const is_rt = is_rt_bc_transport(bc_t, rtt_.n_rt_transports_);
+      auto const t_idx =
+          is_rt ? transport_idx_t::invalid() : transport_idx_t{bc_t};
+      auto const rt_t = is_rt
+                            ? rt_transport_idx_t{decode_rt_bc_transport(bc_t)}
+                            : rt_transport_idx_t::invalid();
       auto const board = static_cast<stop_idx_t>(bc_board(bc.payload_));
       auto const alight = static_cast<stop_idx_t>(bc_alight(bc.payload_));
-      auto const r = tt_.transport_route_[t_idx];
 
-      // recover the traffic day: a single footpath/transfer crosses
-      // midnight at most once -> two candidate days
-      auto const event_mam_full =
-          tt_.event_mam(r, t_idx, alight, arr_ev).count();
-      auto const arr_day = static_cast<int>(split(cur_arr).first.v_);
-      auto day = day_idx_t::invalid();
+      auto day = day_idx_t{0U};
       auto train_arr = kInvalid;
-      for (auto off = 0; off != 2; ++off) {
-        auto const cand = arr_day - event_mam_full / 1440 - (kFwd ? off : -off);
-        if (cand < 0) {
-          continue;
-        }
-        if (!is_transport_active(t_idx, static_cast<std::size_t>(cand))) {
-          continue;
-        }
-        auto const tr =
-            transport{t_idx, day_idx_t{static_cast<day_idx_t::value_t>(cand)}};
-        auto const ev = time_at_stop(r, tr, alight, arr_ev);
-        if (is_better_or_eq(ev, cur_arr)) {
-          day = day_idx_t{static_cast<day_idx_t::value_t>(cand)};
-          train_arr = ev;
-          break;
-        }
-      }
-      if (day == day_idx_t::invalid()) {
-        out->state_ = reconstruction_result::kReconstructionFailed;
-        return;
-      }
+      auto dep_at_board = kInvalid;
+      auto board_loc = location_idx_t::invalid();
+      auto alight_loc = location_idx_t::invalid();
 
-      auto const tr = transport{t_idx, day};
-      auto const dep_at_board = time_at_stop(r, tr, board, dep_ev);
-      auto const stop_seq = tt_.route_location_seq_[r];
-      auto const board_loc = stop{stop_seq[board]}.location_idx();
-      auto const alight_loc = stop{stop_seq[alight]}.location_idx();
+      if (is_rt) {
+        // rt event times are absolute: no traffic-day recovery
+        auto const stop_seq = rtt_.rt_transport_location_seq_[rt_t];
+        board_loc = stop{stop_seq[board]}.location_idx();
+        alight_loc = stop{stop_seq[alight]}.location_idx();
+        train_arr = rt_time_at_stop(rt_t, alight, arr_ev);
+        dep_at_board = rt_time_at_stop(rt_t, board, dep_ev);
+      } else {
+        auto const r = tt_.transport_route_[t_idx];
+
+        // recover the traffic day: a single footpath/transfer crosses
+        // midnight at most once -> two candidate days
+        auto const event_mam_full =
+            tt_.event_mam(r, t_idx, alight, arr_ev).count();
+        auto const arr_day = static_cast<int>(split(cur_arr).first.v_);
+        auto found = false;
+        for (auto off = 0; off != 2; ++off) {
+          auto const cand =
+              arr_day - event_mam_full / 1440 - (kFwd ? off : -off);
+          if (cand < 0) {
+            continue;
+          }
+          if (!is_transport_active(t_idx, static_cast<std::size_t>(cand))) {
+            continue;
+          }
+          auto const tr = transport{
+              t_idx, day_idx_t{static_cast<day_idx_t::value_t>(cand)}};
+          auto const ev = time_at_stop(r, tr, alight, arr_ev);
+          if (is_better_or_eq(ev, cur_arr)) {
+            day = day_idx_t{static_cast<day_idx_t::value_t>(cand)};
+            train_arr = ev;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          out->state_ = reconstruction_result::kReconstructionFailed;
+          return;
+        }
+
+        dep_at_board = time_at_stop(r, transport{t_idx, day}, board, dep_ev);
+        auto const stop_seq = tt_.route_location_seq_[r];
+        board_loc = stop{stop_seq[board]}.location_idx();
+        alight_loc = stop{stop_seq[alight]}.location_idx();
+      }
 
       auto const is_egress = is_intermodal_dest() && cur_l == kIntermodalTarget;
       if (is_egress) {
@@ -2293,7 +2584,7 @@ struct mcraptor_impl {
       lg.dep_ = dep_at_board;
       lg.arr_ = train_arr;
       lg.transport_ = t_idx;
-      lg.rt_transport_ = rt_transport_idx_t::invalid();
+      lg.rt_transport_ = rt_t;
       lg.day_ = day;
       lg.enter_stop_ = board;
       lg.exit_stop_ = alight;
@@ -2449,6 +2740,23 @@ struct mcraptor_impl {
                     tt_.event_mam(r, t.t_idx_, stop_idx, ev_type).count());
   }
 
+  // rt event times are stored absolute on the rt base day: no traffic day
+  __device__ delta_t rt_time_at_stop(rt_transport_idx_t const rt_t,
+                                     stop_idx_t const stop_idx,
+                                     event_type const ev_type) const {
+    return to_delta(rtt_.base_day_idx_,
+                    rtt_.event_time(rt_t, stop_idx, ev_type));
+  }
+
+  __device__ date::sys_days base() const {
+    return tt_.internal_interval_days().from_ +
+           static_cast<int>(base_.v_) * date::days{1};
+  }
+
+  __device__ unixtime_t to_unix(delta_t const t) const {
+    return delta_to_unix(base(), t);
+  }
+
   __device__ delta_t to_delta(day_idx_t const day,
                               std::int16_t const mam) const {
     return clamp(
@@ -2490,6 +2798,8 @@ struct mcraptor_impl {
   std::uint32_t* livebag_hist_;  // instrumentation (nullptr = off)
   std::uint32_t* len_hist_;  // instrumentation (nullptr = off)
   device_timetable tt_;
+  // empty (n_rt_transports_ == 0) unless the query carries an rt_timetable
+  device_rt_timetable rtt_;
   transfer_time_settings transfer_time_settings_;
   clasz_mask_t allowed_claszes_;
   profile_idx_t prf_idx_;
@@ -2507,6 +2817,9 @@ struct mcraptor_impl {
 
   device_bitvec<std::uint64_t const> is_dest_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
+  // td egress offsets (q.td_dest_), sparse groups; empty = none
+  cuda::std::span<location_idx_t const> td_dest_locs_;
+  d_vecvec_view<td_dest_offsets_t> td_dest_;
   // per-query lower bounds to the destination (minutes; kUnreachable =
   // cannot reach). Pruning only - never changes results. In the biased key
   // domain the optimistic projection is uniformly key + lb for both
@@ -2553,6 +2866,7 @@ struct mcraptor_impl {
   device_bitvec<std::uint32_t> station_mark_;
   device_bitvec<std::uint32_t> prev_station_mark_;
   device_bitvec<std::uint32_t> route_mark_;
+  device_bitvec<std::uint32_t> rt_transport_mark_;
 
   cuda::std::span<std::uint32_t> route_list_;
   std::uint32_t* route_list_count_;

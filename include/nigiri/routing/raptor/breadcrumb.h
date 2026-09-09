@@ -6,17 +6,23 @@
 namespace nigiri::routing {
 
 // Packed reconstruction breadcrumb payload (adapted 1:1 from the gouda GPU
-// raptor's breadcrumb.h; the realtime encoding is dropped - mcraptor does
-// not support realtime). Everything needed to emit a transit leg and recurse
-// is packed into 48 bits:
+// raptor's breadcrumb.h). Everything needed to emit a transit leg and
+// recurse is packed into 48 bits:
 //   [47:37] alight stop_idx (11 bits)
 //   [36:26] board  stop_idx (11 bits)
-//   [25:0]  transport_idx   (26 bits, counting up from 0)
+//   [25:0]  transport        (26 bits)
+//             -> static transport_idx counting up from 0,
+//             -> rt_transport_idx counting down from just below
+//                kStartSentinel (bc_transport_space_fits() verifies the two
+//                ranges plus the sentinel fit into 26 bits, so they never
+//                overlap)
 //
 // NOT stored (recovered at reconstruction time, off the hot path):
-//   * traffic day  - from the arrival time minus the event's over-midnight
-//                    offset (a single footpath/transfer crosses midnight at
-//                    most once, so two candidate days suffice)
+//   * traffic day  - for a static transport, from the arrival time minus the
+//                    event's over-midnight offset (a single footpath/transfer
+//                    crosses midnight at most once, so two candidate days
+//                    suffice). An rt transport needs no recovery: its event
+//                    times are stored absolute.
 //   * the footpath/transfer to the arrival location - derived by comparing
 //     the ride's alight-stop location (route_location_seq_[r][alight]) to the
 //     bag location: equal -> same-station transfer, else a footpath.
@@ -68,9 +74,27 @@ inline bool bc_is_start(breadcrumb_t const bc) {
   return bc_transport(bc) == kStartSentinel;
 }
 
-// device-upload check analog: the transport range must fit in 26 bits
-inline bool bc_transport_space_fits(std::uint64_t const n_transports) {
-  return n_transports + 1U <= kStartSentinel;
+// rt transports occupy the top of the 26-bit transport space, counting DOWN
+// from just below the start sentinel, so the two index spaces share the field
+// without a kind tag (identical encoding to gpu/breadcrumb.h).
+inline std::uint32_t encode_rt_bc_transport(
+    std::uint32_t const rt_transport_idx) {
+  return kStartSentinel - 1U - rt_transport_idx;
+}
+
+inline std::uint32_t decode_rt_bc_transport(std::uint32_t const field) {
+  return kStartSentinel - 1U - field;
+}
+
+inline bool is_rt_bc_transport(std::uint32_t const field,
+                               std::uint32_t const n_rt_transports) {
+  return field != kStartSentinel && field >= kStartSentinel - n_rt_transports;
+}
+
+// the static and rt transport ranges plus the sentinel must fit in 26 bits
+inline bool bc_transport_space_fits(std::uint64_t const n_transports,
+                                    std::uint64_t const n_rt_transports = 0U) {
+  return n_transports + n_rt_transports + 1U <= kStartSentinel;
 }
 
 }  // namespace nigiri::routing

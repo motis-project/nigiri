@@ -35,8 +35,9 @@ struct rt_timetable;
 namespace nigiri::routing {
 
 // McRAPTOR intentionally supports only the plain one-to-one case:
-// no realtime, no via stops, no time-dependent offsets/footpaths and
-// no bike/car transport requirements.
+// no via stops and no bike/car transport requirements. Realtime
+// (rt transports + time-dependent footpaths) and time-dependent
+// first/last-mile offsets ARE supported, like plain raptor.
 bool mcraptor_supported(query const&, rt_timetable const*);
 
 // A criteria set: the pareto dimensions of a label. Each combination is a
@@ -675,11 +676,13 @@ struct basic_mcraptor_state {
   ~basic_mcraptor_state() = default;
 
   basic_mcraptor_state& resize(unsigned const n_locations,
-                               unsigned const n_routes) {
+                               unsigned const n_routes,
+                               unsigned const n_rt_transports) {
     bag_.resize(n_locations);
     station_mark_.resize(n_locations);
     prev_station_mark_.resize(n_locations);
     route_mark_.resize(n_routes);
+    rt_transport_mark_.resize(n_rt_transports);
     return *this;
   }
 
@@ -694,6 +697,8 @@ struct basic_mcraptor_state {
   bitvec station_mark_;
   bitvec prev_station_mark_;
   bitvec route_mark_;
+  // empty unless the query carries an rt_timetable with rt transports
+  bitvec rt_transport_mark_;
 };
 
 // RangeReuse: keep the per-stop bags across start times (rRAPTOR reuse,
@@ -787,10 +792,23 @@ private:
     [[no_unique_address]] typename Criteria::carried carried_;
   };
 
+  // Label boarded onto an rt transport. Same role as route_label minus the
+  // trip identity: an rt transport IS a single trip, so the total trip order
+  // route_label::key_ encodes is constant here and the frontier degenerates
+  // to a plain pareto set over the carried criteria.
+  struct rt_label {
+    delta_t board_dep_;
+    stop_idx_t board_;
+    std::uint32_t parent_;
+    [[no_unique_address]] typename Criteria::carried carried_;
+  };
+
   date::sys_days base() const;
 
   bool loop_routes(unsigned k);
   bool update_route(unsigned k, route_idx_t);
+  bool loop_rt_transports(unsigned k);
+  bool update_rt_transport(unsigned k, rt_transport_idx_t);
   void update_footpaths(unsigned k, profile_idx_t);
   void collect_dest_journeys(unsigned k,
                              unixtime_t start_time,
@@ -899,6 +917,13 @@ private:
                        transport,
                        stop_idx_t,
                        event_type) const;
+  // rt event times are stored absolute on the rt base day, so there is no
+  // traffic-day arithmetic (mirrors raptor.h's rt_time_at_stop)
+  delta_t rt_time_at_stop(rt_transport_idx_t, stop_idx_t, event_type) const;
+  // rt-aware traffic-day test: with an rt_timetable a static transport that
+  // got an rt update reads as inactive, so the static route scan skips it and
+  // the rt scan below picks the updated run up (raptor.h is_transport_active)
+  bool is_transport_active(transport_idx_t, day_idx_t) const;
   delta_t to_delta(day_idx_t day, std::int16_t mam) const;
   unixtime_t to_unix(delta_t) const;
   std::pair<day_idx_t, minutes_after_midnight_t> split(delta_t) const;
@@ -925,11 +950,18 @@ private:
 
   timetable const& tt_;
   rt_timetable const* rtt_{nullptr};
-  std::uint32_t n_locations_, n_routes_;
+  // rtt_ != nullptr: realtime is live for this query. Runtime rather than a
+  // template parameter (unlike raptor.h's Rt) because mcraptor already
+  // instantiates one algorithm per criteria configuration x direction x range
+  // reuse - doubling that for a branch this predictable is not worth the
+  // compile time. The GPU raptor makes the same call.
+  bool has_rt_{false};
+  std::uint32_t n_locations_, n_routes_, n_rt_transports_;
   state_t& state_;
   bitvec end_reachable_;
   bitvec const& is_dest_;
   std::vector<std::uint16_t> const& dist_to_end_;
+  hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
   std::vector<std::uint16_t> const& lb_;
   // pure search-window bound (never journey-tightened - the dest_bag_
   // pareto frontier owns all destination pruning)
@@ -957,6 +989,7 @@ private:
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
   std::vector<route_label> route_bag_;
+  std::vector<rt_label> rt_bag_;
   // departure times of route_bag_ labels at the stop currently scanned
   // (avoids repeated event time lookups)
   std::vector<delta_t> route_bag_dep_;
@@ -968,7 +1001,9 @@ private:
     bool is_footpath_;
     location_idx_t from_, to_;
     delta_t dep_, arr_;
+    // exactly one of the two is valid on a transit leg
     transport_idx_t t_;
+    rt_transport_idx_t rt_;
     day_idx_t day_;
     stop_idx_t enter_, exit_;
     std::uint16_t fp_duration_;

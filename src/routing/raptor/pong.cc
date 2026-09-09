@@ -207,7 +207,20 @@ routing_result pong(timetable const& tt,
     // before they can become pong anchors (the dual of the phantom-wait
     // DROP case below). Tight starts re-anchor every ping journey at its
     // latest feasible departure - search.h semantics.
-    ping.set_tight_start();
+    //
+    // NOT with time-dependent start offsets. The re-anchoring shifts the
+    // departure by the wait at the first boarding stop, which assumes the
+    // ingress duration is the same at the shifted departure - true for a
+    // constant offset, false for a td one. An offset that gets SLOWER later
+    // in the day is then re-anchored PAST every feasible departure, and the
+    // pong bound derived from that anchor (loosest_start) excludes the real
+    // journey, so the anchor finds no match at all. The untightened step
+    // start is always a valid (loose) anchor, and get_starts already prices
+    // each td departure exactly, so nothing is lost but the pricing
+    // refinement - and only for queries that carry td start offsets.
+    if (q.td_start_.empty()) {
+      ping.set_tight_start();
+    }
   }
 
   // ====

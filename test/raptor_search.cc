@@ -1,6 +1,7 @@
 #include "./raptor_search.h"
 
 #include <sstream>
+#include <tuple>
 
 #include "gtest/gtest.h"
 
@@ -11,6 +12,11 @@
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
 #include "nigiri/timetable.h"
+
+#if defined(NIGIRI_CUDA)
+#include "nigiri/routing/gpu/mcraptor.h"
+#include "nigiri/routing/gpu/raptor.h"
+#endif
 
 namespace nigiri::test {
 
@@ -28,6 +34,18 @@ std::string print_results(timetable const& tt,
   return ss.str();
 }
 
+// journey identity for engine-vs-engine comparisons: what every engine
+// must agree on, independent of which equal-value legs it reports
+std::vector<std::tuple<unixtime_t, unixtime_t, std::uint8_t>> journey_tuples(
+    pareto_set<routing::journey> const& js) {
+  auto v = std::vector<std::tuple<unixtime_t, unixtime_t, std::uint8_t>>{};
+  for (auto const& j : js) {
+    v.emplace_back(j.start_time_, j.dest_time_, j.transfers_);
+  }
+  std::sort(begin(v), end(v));
+  return v;
+}
+
 }  // namespace
 
 pareto_set<routing::journey> raptor_search(timetable const& tt,
@@ -41,6 +59,44 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
   auto const results = *(routing::raptor_search(tt, rtt, search_state,
                                                 algo_state, q, search_dir)
                              .journeys_);
+
+#if defined(NIGIRI_CUDA)
+  if (routing::gpu::gpu_available() && routing::gpu::gpu_supported(q, rtt)) {
+    auto gpu_timetable = routing::gpu::gpu_timetable{tt};
+    if (rtt != nullptr) {
+      // Re-upload every call: tests mutate rtt between searches.
+      const_cast<rt_timetable&>(*rtt).gpu_rtt_.ptr_ =
+          routing::gpu::make_gpu_rtt(tt, *rtt);
+    }
+
+    auto gpu_search_state = routing::search_state{};
+    auto gpu_state = routing::gpu::gpu_raptor_state{gpu_timetable};
+    auto gpu_results = *(routing::raptor_search(tt, rtt, gpu_search_state,
+                                                gpu_state, q, search_dir)
+                             .journeys_);
+
+    EXPECT_EQ(print_results(tt, rtt, results),
+              print_results(tt, rtt, gpu_results));
+
+    // Same for the device mcraptor, wherever the CPU one is applicable -
+    // otherwise nothing in the tree exercises its rt / td paths (bmrap_test
+    // runs on a static timetable). Compared on (start, dest, transfers)
+    // rather than on the printed legs: the device bags deliberately tolerate
+    // insert races, so a stop can keep a dominated label and two equal-value
+    // journeys can be reported through different trips (see the
+    // mcraptor_impl.cuh header). Journey level is what that engine
+    // guarantees, and a wrong or missing rt / td connection shows up there.
+    if (routing::mcraptor_supported(q, rtt)) {
+      auto mc_gpu_search_state = routing::search_state{};
+      auto mc_gpu_state = routing::gpu::gpu_mcraptor_state{gpu_timetable};
+      auto const mc_gpu_results =
+          *(routing::raptor_search(tt, rtt, mc_gpu_search_state, mc_gpu_state,
+                                   q, search_dir)
+                .journeys_);
+      EXPECT_EQ(journey_tuples(results), journey_tuples(mc_gpu_results));
+    }
+  }
+#endif
 
   if (routing::mcraptor_supported(q, rtt)) {
     auto mc_search_state = routing::search_state{};
@@ -61,17 +117,8 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
         *(routing::raptor_search(tt, rtt, walk_search_state, walk_state,
                                  std::move(q), search_dir)
               .journeys_);
-    auto const tuples = [](pareto_set<routing::journey> const& js) {
-      auto v = std::vector<
-          std::tuple<unixtime_t, unixtime_t, std::uint8_t>>{};
-      for (auto const& j : js) {
-        v.emplace_back(j.start_time_, j.dest_time_, j.transfers_);
-      }
-      std::sort(begin(v), end(v));
-      return v;
-    };
-    auto const base_tuples = tuples(results);
-    auto const walk_tuples = tuples(walk_results);
+    auto const base_tuples = journey_tuples(results);
+    auto const walk_tuples = journey_tuples(walk_results);
     for (auto const& t : base_tuples) {
       EXPECT_TRUE(std::find(begin(walk_tuples), end(walk_tuples), t) !=
                   end(walk_tuples))

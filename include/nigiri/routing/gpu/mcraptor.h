@@ -17,9 +17,10 @@
 namespace nigiri::routing::gpu {
 
 // GPU McRAPTOR supports the CPU mcraptor scope (see mcraptor_supported):
-// no realtime, no via stops, no time-dependent offsets/footpaths, no
-// bike/car transport requirements. Wheelchair, clasz filters and transfer
-// time settings are supported.
+// no via stops and no bike/car transport requirements. Realtime (rt
+// transports + time-dependent footpaths), time-dependent first/last-mile
+// offsets, wheelchair, clasz filters and transfer time settings are
+// supported.
 //
 // One state serves both criteria configurations (the buffers are
 // identical); the distinct types select the algorithm in the
@@ -113,6 +114,8 @@ private:
   }
 
   timetable const& tt_;
+  rt_timetable const* rtt_;
+  gpu_rt_timetable const* gpu_rtt_;
   std::uint32_t n_locations_;
   gpu_mcraptor_state& state_;
   bitvec const& is_dest_;
