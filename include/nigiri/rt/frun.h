@@ -31,6 +31,7 @@ struct run_stop {
   location_idx_t get_scheduled_location_idx() const;
   std::string_view name(lang_t const&) const;
   std::string_view track(lang_t const&) const;
+  std::optional<std::string_view> get_track_override(event_type) const;
   std::string_view id() const;
   std::pair<date::sys_days, duration_t> get_trip_start(event_type) const;
   provider_idx_t get_provider_idx(event_type) const;
@@ -64,11 +65,11 @@ struct run_stop {
   clasz get_clasz(event_type) const;
   clasz get_scheduled_clasz(event_type) const;
 
-  bool bikes_allowed(event_type) const;
-  bool cars_allowed(event_type) const;
-  bool wheelchair_accessible(event_type) const;
+  bool is_flag_set(route_flag, event_type) const;
 
   route_color get_route_color(event_type) const;
+
+  std::optional<date::sys_days> looped_calendar_since(event_type) const;
 
   bool in_allowed() const;
   bool out_allowed() const;

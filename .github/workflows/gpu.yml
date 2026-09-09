@@ -29,10 +29,10 @@ jobs:
         run: mkdir -p ~/nigiri-build && mv ~/nigiri-build build
 
       - name: Configure
-        run: cmake --preset cuda
+        run: cmake --preset cuda -DCMAKE_CUDA_ARCHITECTURES="native"
 
       - name: Build
-        run: cmake --build --preset cuda --target nigiri-test nigiri-benchmark
+        run: cmake --build --preset cuda --target nigiri-test nigiri-benchmark nigiri-import
 
       - name: nigiri-test
         run: ./build/cuda/nigiri-test
@@ -41,30 +41,64 @@ jobs:
         if: always()
         run: mv deps ~
 
-      - name: Validate Germany
+      - name: Import Germany
         run: |
-          ./build/cuda/nigiri-benchmark -p "$HOME/ci-data/ger/data/tt.bin" \
+          ./build/cuda/nigiri-import -r --ignore -i "$HOME/ci-data/ger" \
+            -o tt.bin \
+            -s 2026-07-01 -n 14 \
+            --link_stop_distance 100 \
+            --merge_dupes_intra_source true \
+            --merge_dupes_inter_source true \
+            --adjust_footpaths true \
+            --max_footpath_length 12
+
+      - name: Validate Germany (vias=0, CPU + GPU)
+        run: |
+          ./build/cuda/nigiri-benchmark -p tt.bin \
             --engines cpu gpu \
-            --algo raptor pong \
-            --modes station-station coordinate-coordinate \
-            -n 50
+            --algo range pong \
+            --modes s2s c2c \
+            --dirs fwd bwd \
+            -n 25
+
+      - name: Validate Germany (vias=1, CPU)
+        run: |
+          ./build/cuda/nigiri-benchmark -p tt.bin \
+            --engines cpu \
+            --algo range pong \
+            --modes s2s c2c \
+            --dirs fwd bwd \
+            --vias 1 \
+            -n 10
+
+      - name: Validate Germany (vias=2, CPU)
+        run: |
+          ./build/cuda/nigiri-benchmark -p tt.bin \
+            --engines cpu \
+            --algo range pong \
+            --modes s2s c2c \
+            --dirs fwd bwd \
+            --vias 2 \
+            -n 10
 
       # strategy cross-validation: pong vs range search (search.h), one
       # invocation per algorithm pair = CPU pong vs CPU range mutually
       # gap-free on the common min(N, M) prefix within the common searched
       # window (relaxed rule - the stopping rules legitimately differ)
-      # PLUS the usual cpu/gpu exactness for each of the two cells.
+      # PLUS the usual cpu/gpu exactness for each cell -- every cell run
+      # within one invocation is cross-checked against every other, so
+      # cpu/gpu agreement per algo comes along for free.
       # --extend_interval_earlier false: pong only extends its window
       # forward; the range search must do the same for window symmetry.
       - name: Cross-validate Germany (pong vs range search x cpu/gpu)
         run: |
-          for pair in "pong raptor" \
+          for pair in "pong range" \
                       "pong-mcraptor mcraptor" \
                       "pong-mcraptor-cost mcraptor-cost"; do
-            ./build/cuda/nigiri-benchmark -p "$HOME/ci-data/ger/data/tt.bin" \
-              --engines cpu gpu --cross \
+            ./build/cuda/nigiri-benchmark -p tt.bin \
+              --engines cpu gpu \
               --algo $pair \
-              --modes coordinate-coordinate \
+              --modes c2c \
               --extend_interval_earlier false \
               -n 50
           done
@@ -74,7 +108,7 @@ jobs:
           ./build/cuda/nigiri-benchmark -p "$HOME/ci-data/eu/data/tt.bin" \
             --engines cpu gpu \
             --algo pong \
-            --modes coordinate-coordinate \
+            --modes c2c \
             --gpu_states 2 \
             -n 20
 

@@ -57,10 +57,11 @@ mc_trace_cfg const& get_trace_cfg() {
 
 bool mcraptor_supported(query const& q, rt_timetable const*) {
   // Realtime (rt transports + time-dependent footpaths) and time-dependent
-  // first/last-mile offsets are handled like plain raptor; via stops and
-  // bike/car transport requirements are still out of scope.
+  // first/last-mile offsets are handled like plain raptor; via stops,
+  // bike/car transport requirements, and the no_compulsory_reservation
+  // route filter are still out of scope.
   return !q.require_bike_transport_ && !q.require_car_transport_ &&
-         q.via_stops_.empty();
+         !q.no_compulsory_reservation_ && q.via_stops_.empty();
 }
 
 template <direction SearchDir, typename Criteria, bool RangeReuse>

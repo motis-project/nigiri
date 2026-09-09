@@ -62,14 +62,18 @@ struct gpu_timetable::impl {
         route_traffic_days_{to_device(tt.route_traffic_days_)},
         transport_route_{to_device(tt.transport_route_)},
         bitfields_{to_device(tt.bitfields_)},
-        route_bikes_allowed_{to_device(tt.route_bikes_allowed_.blocks_)},
-        route_cars_allowed_{to_device(tt.route_cars_allowed_.blocks_)},
+        route_bikes_allowed_{to_device(tt.route_flags_[kBikesAllowed].blocks_)},
+        route_cars_allowed_{to_device(tt.route_flags_[kCarsAllowed].blocks_)},
         route_wheelchair_accessible_{
-            to_device(tt.route_wheelchair_accessible_.blocks_)},
-        route_bike_sections_{tt.route_bikes_allowed_per_section_},
-        route_car_sections_{tt.route_cars_allowed_per_section_},
+            to_device(tt.route_flags_[kWheelchairAccessible].blocks_)},
+        route_reservation_not_required_{
+            to_device(tt.route_flags_[kReservationNotRequired].blocks_)},
+        route_bike_sections_{tt.route_flags_per_section_[kBikesAllowed]},
+        route_car_sections_{tt.route_flags_per_section_[kCarsAllowed]},
         route_wheelchair_sections_{
-            tt.route_wheelchair_accessibility_per_section_},
+            tt.route_flags_per_section_[kWheelchairAccessible]},
+        route_reservation_not_required_sections_{
+            tt.route_flags_per_section_[kReservationNotRequired]},
         internal_interval_days_{tt.internal_interval_days()} {
     auto const off = build_route_stop_offset(tt);
     route_stop_offset_.assign(off.begin(), off.end());
@@ -86,7 +90,10 @@ struct gpu_timetable::impl {
                   to_view(route_bike_sections_)},
         .car_ = {{to_view(route_cars_allowed_)}, to_view(route_car_sections_)},
         .wheelchair_ = {{to_view(route_wheelchair_accessible_)},
-                        to_view(route_wheelchair_sections_)}};
+                        to_view(route_wheelchair_sections_)},
+        .reservation_not_required_ = {
+            {to_view(route_reservation_not_required_)},
+            to_view(route_reservation_not_required_sections_)}};
     filters_ctx_.resize(1);
     thrust::copy_n(&f, 1, filters_ctx_.begin());
   }
@@ -139,12 +146,13 @@ struct gpu_timetable::impl {
   thrust::device_vector<std::uint64_t> route_bikes_allowed_;
   thrust::device_vector<std::uint64_t> route_cars_allowed_;
   thrust::device_vector<std::uint64_t> route_wheelchair_accessible_;
-  device_vecvec<decltype(t{}.route_bikes_allowed_per_section_)>
-      route_bike_sections_;
-  device_vecvec<decltype(t{}.route_cars_allowed_per_section_)>
-      route_car_sections_;
-  device_vecvec<decltype(t{}.route_wheelchair_accessibility_per_section_)>
+  thrust::device_vector<std::uint64_t> route_reservation_not_required_;
+  device_vecvec<decltype(t{}.route_flags_per_section_[0])> route_bike_sections_;
+  device_vecvec<decltype(t{}.route_flags_per_section_[0])> route_car_sections_;
+  device_vecvec<decltype(t{}.route_flags_per_section_[0])>
       route_wheelchair_sections_;
+  device_vecvec<decltype(t{}.route_flags_per_section_[0])>
+      route_reservation_not_required_sections_;
   thrust::device_vector<device_transport_filters<route_idx_t>> filters_ctx_;
   thrust::device_vector<std::uint32_t> route_stop_offset_;
   thrust::device_vector<std::uint32_t> route_of_stop_;
@@ -190,14 +198,19 @@ struct gpu_rt_timetable::impl {
         transport_traffic_days_{to_device(rtt.transport_traffic_days_)},
         bitfields_{to_device(rtt.bitfields_)},
         rt_transport_bikes_allowed_{
-            to_device(rtt.rt_transport_bikes_allowed_.blocks_)},
+            to_device(rtt.rt_transport_flags_[kBikesAllowed].blocks_)},
         rt_transport_cars_allowed_{
-            to_device(rtt.rt_transport_cars_allowed_.blocks_)},
+            to_device(rtt.rt_transport_flags_[kCarsAllowed].blocks_)},
         rt_transport_wheelchair_accessibility_{
-            to_device(rtt.rt_transport_wheelchair_accessibility_.blocks_)},
-        rt_bike_sections_{rtt.rt_bikes_allowed_per_section_},
-        rt_car_sections_{rtt.rt_cars_allowed_per_section_},
-        rt_wheelchair_sections_{rtt.rt_wheelchair_accessible_per_section_} {
+            to_device(rtt.rt_transport_flags_[kWheelchairAccessible].blocks_)},
+        rt_transport_reservation_not_required_{to_device(
+            rtt.rt_transport_flags_[kReservationNotRequired].blocks_)},
+        rt_bike_sections_{rtt.rt_flags_per_section_[kBikesAllowed]},
+        rt_car_sections_{rtt.rt_flags_per_section_[kCarsAllowed]},
+        rt_wheelchair_sections_{
+            rtt.rt_flags_per_section_[kWheelchairAccessible]},
+        rt_reservation_not_required_sections_{
+            rtt.rt_flags_per_section_[kReservationNotRequired]} {
     utl::verify(
         bc_transport_space_fits(tt.transport_route_.size(), n_rt_transports_),
         "transport idx space too small: {} static + {} rt",
@@ -210,25 +223,27 @@ struct gpu_rt_timetable::impl {
         .car_ = {{to_view(rt_transport_cars_allowed_)},
                  to_view(rt_car_sections_)},
         .wheelchair_ = {{to_view(rt_transport_wheelchair_accessibility_)},
-                        to_view(rt_wheelchair_sections_)}};
+                        to_view(rt_wheelchair_sections_)},
+        .reservation_not_required_ = {
+            {to_view(rt_transport_reservation_not_required_)},
+            to_view(rt_reservation_not_required_sections_)}};
     rt_filters_ctx_.resize(1);
     thrust::copy_n(&f, 1, rt_filters_ctx_.begin());
 
     // Copy td-footpaths.
     for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
-      if (!rtt.td_footpaths_out_[p].empty()) {
-        td_footpaths_out_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_out_[p]};
-        has_td_out_[p] = to_device(rtt.has_td_footpaths_out_[p].blocks_);
-      }
-
-      if (!rtt.td_footpaths_in_[p].empty()) {
-        td_footpaths_in_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_in_[p]};
-        has_td_in_[p] = to_device(rtt.has_td_footpaths_in_[p].blocks_);
-      }
-
       // for the host-side kernel dispatch
       has_td_fps_[p] = rtt.has_td_footpaths_out_[p].any() ||
                        rtt.has_td_footpaths_in_[p].any();
+
+      if (!has_td_fps_[p]) {
+        continue;
+      }
+
+      td_footpaths_out_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_out_[p]};
+      has_td_out_[p] = to_device(rtt.has_td_footpaths_out_[p].blocks_);
+      td_footpaths_in_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_in_[p]};
+      has_td_in_[p] = to_device(rtt.has_td_footpaths_in_[p].blocks_);
     }
 
     // device-resident view struct (the launch-parameter struct only carries
@@ -275,12 +290,13 @@ struct gpu_rt_timetable::impl {
   thrust::device_vector<std::uint64_t> rt_transport_bikes_allowed_;
   thrust::device_vector<std::uint64_t> rt_transport_cars_allowed_;
   thrust::device_vector<std::uint64_t> rt_transport_wheelchair_accessibility_;
-  device_vecvec<decltype(rtt_t{}.rt_bikes_allowed_per_section_)>
-      rt_bike_sections_;
-  device_vecvec<decltype(rtt_t{}.rt_cars_allowed_per_section_)>
-      rt_car_sections_;
-  device_vecvec<decltype(rtt_t{}.rt_wheelchair_accessible_per_section_)>
+  thrust::device_vector<std::uint64_t> rt_transport_reservation_not_required_;
+  device_vecvec<decltype(rtt_t{}.rt_flags_per_section_[0])> rt_bike_sections_;
+  device_vecvec<decltype(rtt_t{}.rt_flags_per_section_[0])> rt_car_sections_;
+  device_vecvec<decltype(rtt_t{}.rt_flags_per_section_[0])>
       rt_wheelchair_sections_;
+  device_vecvec<decltype(rtt_t{}.rt_flags_per_section_[0])>
+      rt_reservation_not_required_sections_;
   thrust::device_vector<device_transport_filters<rt_transport_idx_t>>
       rt_filters_ctx_;
 

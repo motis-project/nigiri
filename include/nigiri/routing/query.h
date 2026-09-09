@@ -91,6 +91,7 @@ struct query {
   clasz_mask_t allowed_claszes_{all_clasz_allowed()};
   bool require_bike_transport_{false};
   bool require_car_transport_{false};
+  bool no_compulsory_reservation_{false};
   transfer_time_settings transfer_time_settings_{};
   std::vector<via_stop> via_stops_{};
   std::optional<duration_t> fastest_direct_{};

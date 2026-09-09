@@ -10,6 +10,7 @@
 
 #include "nigiri/constants.h"
 #include "nigiri/footpath.h"
+#include "nigiri/routing/limits.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -36,7 +37,7 @@ get_td_duration(Collection const& c, unixtime_t const t) {
         continue;
       }
 
-      if (i->valid_from_ - t > std::chrono::minutes{kMaxTransferTime}) {
+      if (i->valid_from_ - t > routing::kMaxTravelTime) {
         break;
       }
 
@@ -56,7 +57,7 @@ get_td_duration(Collection const& c, unixtime_t const t) {
               : std::min(
                     t, unixtime_t{(i - 1)->valid_from_ - 1min + i->duration_});
 
-      if (t - latest_arr > std::chrono::minutes{kMaxTransferTime}) {
+      if (t - latest_arr > routing::kMaxTravelTime) {
         break;
       }
 

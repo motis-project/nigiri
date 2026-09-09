@@ -1,6 +1,7 @@
 #include "nigiri/loader/gtfs/translations.h"
 
 #include "utl/get_or_create.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/parser/csv_range.h"
 #include "utl/progress_tracker.h"
 
@@ -13,6 +14,27 @@ translation_idx_t translator::get(t const t,
                                   std::string_view value,
                                   std::string_view record_id,
                                   std::string_view sub_record_id) {
+  auto const build = [&](entry& e) {
+    if (e.idx_ == translation_idx_t::invalid()) {
+      auto translations = e.translations_;
+      auto const has_default =
+          utl::any_of(translations, [&](translation const& tr) {
+            return tr.get_language() == default_lang_;
+          });
+      if (!has_default && !value.empty()) {
+        auto& tr = translations.emplace_back();
+        tr.set_language(default_lang_);
+        tr.set_text(value);
+      }
+      utl::sort(translations, [&](translation const& a, translation const& b) {
+        return (a.get_language() != default_lang_) <
+               (b.get_language() != default_lang_);
+      });
+      e.idx_ = tt_.register_translation(translations);
+    }
+    return e.idx_;
+  };
+
   {  // Lookup translation by record.
     auto const it = i18n_.find(translation_key{
         .record_ =
@@ -24,7 +46,7 @@ translation_idx_t translator::get(t const t,
         .field_ = f,
     });
     if (it != end(i18n_)) {
-      return it->second;
+      return build(it->second);
     }
   }
 
@@ -35,7 +57,7 @@ translation_idx_t translator::get(t const t,
         .field_ = f,
     });
     if (it != end(i18n_)) {
-      return it->second;
+      return build(it->second);
     }
   }
 
@@ -128,7 +150,7 @@ translator read_translations(timetable& tt,
         field_value_;
   };
 
-  auto translations = hash_map<translation_key, std::vector<translation>>{};
+  auto t = translator{.tt_ = tt, .default_lang_ = default_lang};
   utl::for_each_row<translation_row>(
       file_content, [&](translation_row const& a) {
         auto key = translation_key{};
@@ -161,19 +183,10 @@ translator read_translations(timetable& tt,
           return;
         }
 
-        translations[key].push_back(
-            translation{a.language_->view(), a.translation_->view()});
+        auto& tr = t.i18n_[key].translations_.emplace_back();
+        tr.set_language(a.language_->view());
+        tr.set_text(a.translation_->view());
       });
-
-  auto t = translator{.tt_ = tt};
-  for (auto& [key, x] : translations) {
-    auto const unsorted = x;
-    utl::sort(x, [&](translation const& a, translation const& b) {
-      return (a.get_language() != default_lang) <
-             (b.get_language() != default_lang);
-    });
-    t.i18n_.emplace(key, tt.register_translation(x));
-  }
   return t;
 }
 

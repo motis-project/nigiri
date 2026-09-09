@@ -1,6 +1,7 @@
 #pragma once
 
 #include <compare>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <span>
@@ -98,6 +99,7 @@ struct timetable {
     vector_map<location_idx_t, std::uint32_t> location_importance_;
     std::uint32_t max_importance_{0U};
     rtree<location_idx_t> rtree_;
+    bitvec_map<location_idx_t> ticketing_unavailable_;
   } locations_;
 
   struct transport {
@@ -129,9 +131,7 @@ struct timetable {
   route_idx_t register_route(
       basic_string<stop::value_type> const& stop_seq,
       basic_string<clasz> const& clasz_sections,
-      bitvec const& bikes_allowed_per_section,
-      bitvec const& cars_allowed_per_section,
-      bitvec const& wheelchair_accessibility_per_section);
+      std::array<bitvec, route_flag::kNumRouteFlags> const& flags_per_section);
   void finish_route();
 
   provider_idx_t get_provider_idx(std::string_view id, source_idx_t) const;
@@ -266,19 +266,9 @@ struct timetable {
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(std::filesystem::path const&);
 
-  bool has_car_transport(route_idx_t const r) const {
-    return route_cars_allowed_[to_idx(r) * 2U] ||
-           route_cars_allowed_[to_idx(r) * 2U + 1U];
-  }
-
-  bool has_bike_transport(route_idx_t const r) const {
-    return route_bikes_allowed_[to_idx(r) * 2U] ||
-           route_bikes_allowed_[to_idx(r) * 2U + 1U];
-  }
-
-  bool has_wheelchair_transport(route_idx_t const r) const {
-    return route_wheelchair_accessible_[to_idx(r) * 2U] ||
-           route_wheelchair_accessible_[to_idx(r) * 2U + 1U];
+  bool is_flag_set(route_flag const f, route_idx_t const r) const {
+    return route_flags_[f][to_idx(r) * 2U] ||
+           route_flags_[f][to_idx(r) * 2U + 1U];
   }
 
   // Schedule range.
@@ -321,6 +311,7 @@ struct timetable {
     vector_map<route_id_idx_t, route_type_t> route_id_type_;
     vector_map<route_id_idx_t, provider_idx_t> route_id_provider_;
     vector_map<route_id_idx_t, route_color> route_id_colors_;
+    vector_map<route_id_idx_t, ticketing_link_idx_t> route_id_ticketing_link_;
     paged_vecvec<route_id_idx_t, trip_idx_t> route_id_trips_;
     string_store<route_id_idx_t> ids_;
   };
@@ -359,26 +350,15 @@ struct timetable {
   // Route -> clasz per section
   vecvec<route_idx_t, clasz> route_section_clasz_;
 
-  // Route * 2 -> bikes allowed along the route
-  // Route * 2 + 1 -> bikes along parts of the route
-  bitvec route_bikes_allowed_;
+  // Route * 2 -> flag along the entire route
+  // Route * 2 + 1 -> flag along parts of the route
+  std::array<bitvec, route_flag::kNumRouteFlags> route_flags_;
 
-  // same for cars
-  bitvec route_cars_allowed_;
-
-  // same for wheelchair accssibility
-  bitvec route_wheelchair_accessible_;
-
-  // Route -> bikes allowed per section
-  // Only set for routes where the entry in route_bikes_allowed_bitvec_
-  // is set to "bikes along parts of the route"
-  vecvec<route_idx_t, bool> route_bikes_allowed_per_section_;
-
-  // same for cars
-  vecvec<route_idx_t, bool> route_cars_allowed_per_section_;
-
-  // same for wheelchair accessibility
-  vecvec<route_idx_t, bool> route_wheelchair_accessibility_per_section_;
+  // Route -> flag per section
+  // Only set for routes where the entry in route_flag_
+  // is set to "flag along parts of the route"
+  std::array<vecvec<route_idx_t, bool>, route_flag::kNumRouteFlags>
+      route_flags_per_section_;
 
   // Location -> list of routes
   vecvec<location_idx_t, route_idx_t> location_routes_;
@@ -488,6 +468,20 @@ struct timetable {
   string_store<language_idx_t> languages_;
 
   cista::base_t<source_idx_t> n_sources_{};
+
+  // Ticketing
+  vecvec<location_idx_t, pair<provider_idx_t, string_idx_t>>
+      location_ticketing_identifier_;
+  vecvec<trip_idx_t, string_idx_t> trip_ticketing_identifier_;
+  bitvec_map<trip_idx_t> trip_ticketing_unavailable_;
+
+  struct ticketing_links {
+    vecvec<ticketing_link_idx_t, char> web_;
+    vecvec<ticketing_link_idx_t, char> andoid_;
+    vecvec<ticketing_link_idx_t, char> ios_;
+  };
+
+  ticketing_links ticketing_links_;
 };
 
 struct loc {

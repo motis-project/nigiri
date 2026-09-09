@@ -66,6 +66,9 @@ void read_stop_times(trip_data& trips,
         pickup_booking_rule_id_;
     utl::csv_col<utl::cstr, UTL_NAME("drop_off_booking_rule_id")>
         drop_off_booking_rule_id_;
+
+    // Google Transit ticketing extension
+    utl::csv_col<std::uint8_t, UTL_NAME("ticketing_type")> ticketing_type;
   };
 
   auto line_number = 1U;
@@ -125,6 +128,7 @@ void read_stop_times(trip_data& trips,
     if (store_distances) {
       add_distance(*t, *s.distance_);
     }
+    t->stop_ticketing_unavailable_.push_back(s.ticketing_type.val() == 1);
   };
 
   auto last_trip = static_cast<trip*>(nullptr);

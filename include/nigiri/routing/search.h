@@ -84,6 +84,7 @@ struct search {
   Algo init(clasz_mask_t const allowed_claszes,
             bool const require_bikes_allowed,
             bool const require_cars_allowed,
+            bool const no_compulsory_reservation,
             transfer_time_settings& tts,
             algo_state_t& algo_state) {
     auto span = get_otel_tracer()->StartSpan("search::init");
@@ -144,28 +145,71 @@ struct search {
 #endif
     }
 
-    return Algo{
-        tt_,
-        rtt_,
-        algo_state,
-        state_.is_destination_,
-        state_.is_via_,
-        state_.dist_to_dest_,
-        q_.td_dest_,
-        state_.travel_time_lower_bound_,
-        q_.via_stops_,
-        day_idx_t{
-            std::chrono::duration_cast<date::days>(
-                std::chrono::round<std::chrono::days>(
-                    search_interval_.from_ +
-                    ((search_interval_.to_ - search_interval_.from_) / 2)) -
-                tt_.internal_interval().from_)
-                .count()},
-        allowed_claszes,
-        require_bikes_allowed,
-        require_cars_allowed,
-        q_.prf_idx_ == 2U,
-        tts};
+    auto const base = day_idx_t{
+        std::chrono::duration_cast<date::days>(
+            std::chrono::round<std::chrono::days>(
+                search_interval_.from_ +
+                ((search_interval_.to_ - search_interval_.from_) / 2)) -
+            tt_.internal_interval().from_)
+            .count()};
+
+    // raptor / gpu_raptor additionally take no_compulsory_reservation and
+    // prf_idx (moved out of execute() into the ctor); mcraptor's ctor does
+    // not have those yet, so build whichever arg list the resolved Algo
+    // actually accepts.
+    if constexpr (requires {
+                    Algo{tt_,
+                         rtt_,
+                         algo_state,
+                         state_.is_destination_,
+                         state_.is_via_,
+                         state_.dist_to_dest_,
+                         q_.td_dest_,
+                         state_.travel_time_lower_bound_,
+                         q_.via_stops_,
+                         base,
+                         allowed_claszes,
+                         require_bikes_allowed,
+                         require_cars_allowed,
+                         q_.prf_idx_ == 2U,
+                         no_compulsory_reservation,
+                         tts,
+                         q_.prf_idx_};
+                  }) {
+      return Algo{tt_,
+                  rtt_,
+                  algo_state,
+                  state_.is_destination_,
+                  state_.is_via_,
+                  state_.dist_to_dest_,
+                  q_.td_dest_,
+                  state_.travel_time_lower_bound_,
+                  q_.via_stops_,
+                  base,
+                  allowed_claszes,
+                  require_bikes_allowed,
+                  require_cars_allowed,
+                  q_.prf_idx_ == 2U,
+                  no_compulsory_reservation,
+                  tts,
+                  q_.prf_idx_};
+    } else {
+      return Algo{tt_,
+                  rtt_,
+                  algo_state,
+                  state_.is_destination_,
+                  state_.is_via_,
+                  state_.dist_to_dest_,
+                  q_.td_dest_,
+                  state_.travel_time_lower_bound_,
+                  q_.via_stops_,
+                  base,
+                  allowed_claszes,
+                  require_bikes_allowed,
+                  require_cars_allowed,
+                  q_.prf_idx_ == 2U,
+                  tts};
+    }
   }
 
   search(timetable const& tt,
@@ -191,11 +235,10 @@ struct search {
         algo_{init(q_.allowed_claszes_,
                    q_.require_bike_transport_,
                    q_.require_car_transport_,
+                   q_.no_compulsory_reservation_,
                    q_.transfer_time_settings_,
                    algo_state)},
         timeout_(timeout) {
-    utl::sort(q_.start_);
-    utl::sort(q_.destination_);
     q_.sanitize(tt);
     // NOT calling algo_.set_tight_start() here (mcraptor): for interval
     // queries it is a no-op (starts are event-enumerated, so the wait
@@ -463,8 +506,16 @@ private:
               start_time + (kFwd ? 1 : -1) *
                                (std::min(fastest_direct_, q_.max_travel_time_) +
                                 duration_t{1});
-          algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
-                        q_.prf_idx_, state_.results_);
+          if constexpr (requires {
+                          algo_.execute(start_time, q_.max_transfers_,
+                                       worst_time_at_dest, state_.results_);
+                        }) {
+            algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
+                          state_.results_);
+          } else {
+            algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
+                          q_.prf_idx_, state_.results_);
+          }
           kFwd ? ++stats_.n_execute_fwd_ : ++stats_.n_execute_bwd_;
 
           for (auto& j : state_.results_) {

@@ -13,7 +13,7 @@ TEST(gtfs, agency) {
   auto tt = timetable{};
   auto timezones = tz_map{};
   auto i18n = translator{.tt_ = tt};
-  auto const agencies = read_agencies(
+  auto const [agencies, _] = read_agencies(
       source_idx_t{0}, tt, i18n, timezones,
       example_files().get_file(kAgencyFile).data(), "Europe/Berlin");
 

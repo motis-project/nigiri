@@ -57,14 +57,17 @@ struct bmrap_prune_algo_for {
 };
 
 #if defined(NIGIRI_CUDA)
+// BM-RAPTOR prunes via its own bm_bounds_ (set_bounds(bmrap_bounds
+// const*), unconstrained by WithBounds) - never master's round/via bound
+// matrix, so WithBounds=false here.
 template <direction SearchDir, bool Rt>
 struct bmrap_algo_for<SearchDir, Rt, gpu::gpu_raptor_state> {
-  using type = gpu::gpu_raptor<SearchDir>;
+  using type = gpu::gpu_raptor<SearchDir, false>;
 };
 
 template <direction SearchDir, bool Rt>
 struct bmrap_prune_algo_for<SearchDir, Rt, gpu::gpu_raptor_state> {
-  using type = gpu::gpu_raptor<SearchDir>;
+  using type = gpu::gpu_raptor<SearchDir, false>;
 };
 #endif
 
@@ -649,7 +652,9 @@ bmrap_bounds compute_bounds(timetable const& tt,
       q.require_bike_transport_,
       q.require_car_transport_,
       q.prf_idx_ == 2U,
-      q.transfer_time_settings_};
+      q.no_compulsory_reservation_,
+      q.transfer_time_settings_,
+      q.prf_idx_};
 
   // stage 1 prunes stage 2 (see raptor::set_bounds)
   r.set_bounds(reach);
@@ -680,8 +685,7 @@ bmrap_bounds compute_bounds(timetable const& tt,
     for (auto const& s : starts) {
       r.add_start(s.stop_, s.time_at_stop_);
     }
-    r.execute(t, static_cast<std::uint8_t>(b - 1U), horizon, q.prf_idx_,
-              results);
+    r.execute(t, static_cast<std::uint8_t>(b - 1U), horizon, results);
   }
   stats = stats + r.get_stats();
 

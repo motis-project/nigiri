@@ -122,9 +122,7 @@ bitfield_idx_t timetable::register_bitfield(bitfield const& b) {
 route_idx_t timetable::register_route(
     basic_string<stop::value_type> const& stop_seq,
     basic_string<clasz> const& clasz_sections,
-    bitvec const& bikes_allowed_per_section,
-    bitvec const& cars_allowed_per_section,
-    bitvec const& wheelchair_accessibility_per_section) {
+    std::array<bitvec, route_flag::kNumRouteFlags> const& flags_per_section) {
   assert(stop_seq.size() > 1U);
   assert(!clasz_sections.empty());
 
@@ -137,62 +135,27 @@ route_idx_t timetable::register_route(
   route_section_clasz_.emplace_back(clasz_sections);
   route_clasz_.emplace_back(clasz_sections[0]);
 
-  auto const bike_sections = bikes_allowed_per_section.size();
-  auto const sections_with_bikes_allowed = bikes_allowed_per_section.count();
-  auto const bikes_allowed_on_all_sections =
-      sections_with_bikes_allowed == bike_sections && bike_sections != 0;
-  auto const bikes_allowed_on_some_sections = sections_with_bikes_allowed != 0U;
-  route_bikes_allowed_.resize(route_bikes_allowed_.size() + 2U);
-  route_bikes_allowed_.set(idx * 2, bikes_allowed_on_all_sections);
-  route_bikes_allowed_.set(idx * 2 + 1, bikes_allowed_on_some_sections);
+  auto const apply_filter = [&](route_flag const f) {
+    auto const sections = flags_per_section[f].size();
+    auto const sections_with_set_flag = flags_per_section[f].count();
+    auto const flag_set_on_all_sections =
+        sections_with_set_flag == sections && sections != 0;
+    auto const flag_set_on_some_sections = sections_with_set_flag != 0U;
+    route_flags_[f].resize(route_flags_[f].size() + 2U);
+    route_flags_[f].set(idx * 2, flag_set_on_all_sections);
+    route_flags_[f].set(idx * 2 + 1, flag_set_on_some_sections);
 
-  route_bikes_allowed_per_section_.resize(idx + 1);
-  if (bikes_allowed_on_some_sections && !bikes_allowed_on_all_sections) {
-    auto bucket = route_bikes_allowed_per_section_[route_idx_t{idx}];
-    for (auto i = 0U; i < bikes_allowed_per_section.size(); ++i) {
-      bucket.push_back(bikes_allowed_per_section[i]);
+    route_flags_per_section_[f].resize(idx + 1);
+    if (flag_set_on_some_sections && !flag_set_on_all_sections) {
+      auto bucket = route_flags_per_section_[f][route_idx_t{idx}];
+      for (auto i = 0U; i < flags_per_section[f].size(); ++i) {
+        bucket.push_back(flags_per_section[f][i]);
+      }
     }
-  }
+  };
 
-  auto const car_sections = cars_allowed_per_section.size();
-  auto const sections_with_cars_allowed = cars_allowed_per_section.count();
-  auto const cars_allowed_on_all_sections =
-      sections_with_cars_allowed == car_sections && car_sections != 0;
-  auto const cars_allowed_on_some_sections = sections_with_cars_allowed != 0U;
-  route_cars_allowed_.resize(route_cars_allowed_.size() + 2U);
-  route_cars_allowed_.set(idx * 2, cars_allowed_on_all_sections);
-  route_cars_allowed_.set(idx * 2 + 1, cars_allowed_on_some_sections);
-
-  route_cars_allowed_per_section_.resize(idx + 1);
-  if (cars_allowed_on_some_sections && !cars_allowed_on_all_sections) {
-    auto bucket = route_cars_allowed_per_section_[route_idx_t{idx}];
-    for (auto i = 0U; i < cars_allowed_per_section.size(); ++i) {
-      bucket.push_back(cars_allowed_per_section[i]);
-    }
-  }
-
-  auto const wheelchair_sections = wheelchair_accessibility_per_section.size();
-  auto const sections_with_wheelchair_accessibility =
-      wheelchair_accessibility_per_section.count();
-  auto const wheelchair_accessibility_on_all_sections =
-      sections_with_wheelchair_accessibility == wheelchair_sections &&
-      wheelchair_sections != 0;
-  auto const wheelchair_accessibility_on_some_sections =
-      sections_with_wheelchair_accessibility != 0U;
-  route_wheelchair_accessible_.resize(route_wheelchair_accessible_.size() + 2U);
-  route_wheelchair_accessible_.set(idx * 2,
-                                   wheelchair_accessibility_on_all_sections);
-  route_wheelchair_accessible_.set(idx * 2 + 1,
-                                   wheelchair_accessibility_on_some_sections);
-
-  route_wheelchair_accessibility_per_section_.resize(idx + 1);
-  if (wheelchair_accessibility_on_some_sections &&
-      !wheelchair_accessibility_on_all_sections) {
-    auto bucket = route_wheelchair_accessibility_per_section_[route_idx_t{idx}];
-    for (auto i = 0U; i < route_wheelchair_accessibility_per_section_.size();
-         ++i) {
-      bucket.push_back(wheelchair_accessibility_per_section[i]);
-    }
+  for (auto f = 0; f < kNumRouteFlags; ++f) {
+    apply_filter(static_cast<route_flag>(f));
   }
 
   return route_idx_t{idx};

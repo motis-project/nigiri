@@ -21,6 +21,8 @@ constexpr auto const kUnknownProvider =
     provider{.id_ = string_idx_t::invalid(),
              .name_ = kEmptyTranslation,
              .url_ = kEmptyTranslation,
+             .fare_url_ = kEmptyTranslation,
+             .ticketing_link_ = ticketing_link_idx_t::invalid(),
              .src_ = source_idx_t::invalid()};
 
 stop run_stop::get_stop() const {
@@ -100,6 +102,13 @@ std::pair<date::sys_days, duration_t> run_stop::get_trip_start(
 std::string_view run_stop::track(lang_t const& lang) const {
   auto const l = get_location_idx();
   return tt().translate(lang, tt().locations_.platform_codes_.at(l));
+}
+
+std::optional<std::string_view> run_stop::get_track_override(
+    event_type const ev_type) const {
+  return (fr_->is_rt() && rtt() != nullptr)
+             ? rtt()->get_track(fr_->rt_, stop_idx_, ev_type)
+             : std::nullopt;
 }
 
 geo::latlng run_stop::pos() const {
@@ -282,6 +291,11 @@ std::pair<timetable::route_ids const*, route_id_idx_t> run_stop::get_route(
   }
 }
 
+route_id_idx_t run_stop::get_route_id_idx(event_type const ev_type) const {
+  auto const [_, route_id_idx] = get_route(ev_type);
+  return route_id_idx;
+}
+
 std::string_view run_stop::get_route_id(event_type const ev_type) const {
   auto const [route_ids, route_id_idx] = get_route(ev_type);
   return route_ids == nullptr ? "?" : route_ids->ids_.get(route_id_idx);
@@ -436,88 +450,26 @@ clasz run_stop::get_scheduled_clasz(event_type const ev_type) const {
                                                        : section_idx(ev_type));
 }
 
-bool run_stop::bikes_allowed(event_type const ev_type) const {
+bool run_stop::is_flag_set(route_flag const f, event_type const ev_type) const {
   if (fr_->is_rt() && rtt() != nullptr) {
-    if (rtt()->rt_transport_bikes_allowed_[to_idx(fr_->rt_) * 2U]) {
+    if (rtt()->rt_transport_flags_[f][to_idx(fr_->rt_) * 2U]) {
       return true;
-    } else if (!rtt()
-                    ->rt_transport_bikes_allowed_[to_idx(fr_->rt_) * 2U + 1U]) {
+    } else if (!rtt()->rt_transport_flags_[f][to_idx(fr_->rt_) * 2U + 1U]) {
       return false;
     } else {
-      auto const bikes_allowed_seq =
-          rtt()->rt_bikes_allowed_per_section_.at(fr_->rt_);
-      return bikes_allowed_seq.at(
-          bikes_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+      auto const flag_seq = rtt()->rt_flags_per_section_[f].at(fr_->rt_);
+      return flag_seq.at(flag_seq.size() == 1U ? 0U : section_idx(ev_type));
     }
   } else {
     auto const r = tt().transport_route_.at(fr_->t_.t_idx_);
-    if (tt().route_bikes_allowed_[to_idx(r) * 2U]) {
+    if (tt().route_flags_[f][to_idx(r) * 2U]) {
       return true;
-    } else if (!tt().route_bikes_allowed_[to_idx(r) * 2U + 1U]) {
+    } else if (!tt().route_flags_[f][to_idx(r) * 2U + 1U]) {
       return false;
     } else {
-      auto const bikes_allowed_seq = tt().route_bikes_allowed_per_section_.at(
+      auto const flag_seq = tt().route_flags_per_section_[f].at(
           tt().transport_route_.at(fr_->t_.t_idx_));
-      return bikes_allowed_seq.at(
-          bikes_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
-    }
-  }
-}
-
-bool run_stop::cars_allowed(event_type const ev_type) const {
-  if (fr_->is_rt() && rtt() != nullptr) {
-    if (rtt()->rt_transport_cars_allowed_[to_idx(fr_->rt_) * 2U]) {
-      return true;
-    } else if (!rtt()->rt_transport_cars_allowed_[to_idx(fr_->rt_) * 2U + 1U]) {
-      return false;
-    } else {
-      auto const cars_allowed_seq =
-          rtt()->rt_cars_allowed_per_section_.at(fr_->rt_);
-      return cars_allowed_seq.at(
-          cars_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
-    }
-  } else {
-    auto const r = tt().transport_route_.at(fr_->t_.t_idx_);
-    if (tt().route_cars_allowed_[to_idx(r) * 2U]) {
-      return true;
-    } else if (!tt().route_cars_allowed_[to_idx(r) * 2U + 1U]) {
-      return false;
-    } else {
-      auto const cars_allowed_seq = tt().route_cars_allowed_per_section_.at(
-          tt().transport_route_.at(fr_->t_.t_idx_));
-      return cars_allowed_seq.at(
-          cars_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
-    }
-  }
-}
-
-bool run_stop::wheelchair_accessible(event_type ev_type) const {
-  if (fr_->is_rt() && rtt() != nullptr) {
-    if (rtt()->rt_transport_wheelchair_accessibility_[to_idx(fr_->rt_) * 2U]) {
-      return true;
-    } else if (!rtt()->rt_transport_wheelchair_accessibility_[to_idx(fr_->rt_) *
-                                                                  2U +
-                                                              1U]) {
-      return false;
-    } else {
-      auto const wheelchair_accessible_seq =
-          rtt()->rt_wheelchair_accessible_per_section_.at(fr_->rt_);
-      return wheelchair_accessible_seq.at(
-          wheelchair_accessible_seq.size() == 1U ? 0U : section_idx(ev_type));
-    }
-  } else {
-    auto const r = tt().transport_route_.at(fr_->t_.t_idx_);
-    if (tt().route_wheelchair_accessible_[to_idx(r) * 2U]) {
-      return true;
-    } else if (!tt().route_wheelchair_accessible_[to_idx(r) * 2U + 1U]) {
-      return false;
-    } else {
-      auto const wheelchair_accessibility_seq =
-          tt().route_wheelchair_accessibility_per_section_.at(
-              tt().transport_route_.at(fr_->t_.t_idx_));
-      return wheelchair_accessibility_seq.at(
-          wheelchair_accessibility_seq.size() == 1U ? 0U
-                                                    : section_idx(ev_type));
+      return flag_seq.at(flag_seq.size() == 1U ? 0U : section_idx(ev_type));
     }
   }
 }
@@ -527,6 +479,19 @@ route_color run_stop::get_route_color(event_type ev_type) const {
   return routes == nullptr
              ? route_color{.color_ = color_t{0}, .text_color_ = color_t{0}}
              : routes->route_id_colors_[route_id_idx];
+}
+
+std::optional<date::sys_days> run_stop::looped_calendar_since(
+    event_type ev_type) const {
+  if (!fr_->is_scheduled()) {
+    return std::nullopt;
+  }
+  auto const id_idx = tt().trip_ids_.at(get_trip_idx(ev_type)).front();
+  auto const src = tt().trip_id_src_.at(id_idx);
+  auto const [service_day, _] = get_trip_start(ev_type);
+  return tt().src_end_date_.at(src) < service_day
+             ? std::optional{tt().src_end_date_[src]}
+             : std::nullopt;
 }
 
 bool run_stop::is_cancelled() const { return get_stop().is_cancelled(); }
@@ -555,9 +520,7 @@ timetable const& run_stop::tt() const { return *fr_->tt_; }
 rt_timetable const* run_stop::rtt() const { return fr_->rtt_; }
 
 frun::iterator& frun::iterator::operator++() {
-  do {
-    ++rs_.stop_idx_;
-  } while (rs_.stop_idx_ != rs_.fr_->stop_range_.to_ && rs_.is_cancelled());
+  ++rs_.stop_idx_;
   return *this;
 }
 
@@ -568,11 +531,7 @@ frun::iterator frun::iterator::operator++(int) {
 }
 
 frun::iterator& frun::iterator::operator--() {
-  do {
-    --rs_.stop_idx_;
-  } while (rs_.stop_idx_ !=
-               static_cast<stop_idx_t>(rs_.fr_->stop_range_.from_ - 1U) &&
-           rs_.is_cancelled());
+  --rs_.stop_idx_;
   return *this;
 }
 
@@ -648,8 +607,7 @@ stop_idx_t frun::last_valid() const {
 }
 
 frun::iterator frun::begin() const {
-  return iterator{
-      run_stop{.fr_ = this, .stop_idx_ = first_valid(stop_range_.from_)}};
+  return iterator{run_stop{.fr_ = this, .stop_idx_ = stop_range_.from_}};
 }
 
 frun::iterator frun::end() const {
@@ -818,8 +776,7 @@ bool frun::is_cancelled() const {
     return rtt_->rt_transport_is_cancelled_[to_idx(rt_)];
   }
   if (is_scheduled()) {
-    return !rtt_->bitfields_[rtt_->transport_traffic_days_[t_.t_idx_]].test(
-        to_idx(t_.day_));
+    return !rtt_->is_transport_active(t_.t_idx_, t_.day_);
   }
   return false;
 }

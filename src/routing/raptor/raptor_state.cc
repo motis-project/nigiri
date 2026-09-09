@@ -19,6 +19,7 @@ raptor_state& raptor_state::resize(unsigned const n_locations,
   best_storage_.resize(n_locations * (kMaxVias + 1));
   round_times_storage_.resize(n_locations * (kMaxVias + 1) *
                               (kMaxTransfers + 2));
+  bounds_storage_.resize(n_locations * (kMaxVias + 1) * (kMaxTransfers + 2));
   station_mark_.resize(n_locations);
   prev_station_mark_.resize(n_locations);
   route_mark_.resize(n_routes);

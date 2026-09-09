@@ -20,6 +20,7 @@ struct loader_config {
   std::string default_tz_{};
   std::array<bool, kNumClasses> bikes_allowed_default_{};
   std::array<bool, kNumClasses> cars_allowed_default_{};
+  std::array<bool, kNumClasses> reservation_not_required_default_{};
   bool extend_calendar_{false};
   std::string user_script_{};
   hash_set<std::string> base_paths_{};

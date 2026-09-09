@@ -160,16 +160,21 @@ routing_result bmrap_profile(timetable const& tt,
     }
   }();
 
+  // ping_t/pong_t are always plain raptor or gpu_raptor (bmrap_algo_for has
+  // no mcraptor specialization), so the ctor always takes the newer
+  // no_compulsory_reservation/prf_idx trailing args.
   auto ping = ping_t{tt,       rtt,      r_state,  fwd_is_dest,
                      is_via,   fwd_dist, q.td_dest_, fwd_lb,
                      no_via,   base_day, q.allowed_claszes_,
                      q.require_bike_transport_, q.require_car_transport_,
-                     q.prf_idx_ == 2U, q.transfer_time_settings_};
+                     q.prf_idx_ == 2U, q.no_compulsory_reservation_,
+                     q.transfer_time_settings_, q.prf_idx_};
   auto pong = pong_t{tt,       rtt,      r_state,  bwd_is_dest,
                      is_via,   bwd_dist, qf.td_dest_, bwd_lb,
                      no_via,   base_day, q.allowed_claszes_,
                      q.require_bike_transport_, q.require_car_transport_,
-                     q.prf_idx_ == 2U, q.transfer_time_settings_};
+                     q.prf_idx_ == 2U, q.no_compulsory_reservation_,
+                     q.transfer_time_settings_, q.prf_idx_};
   auto mc_ping = mc_ping_t{tt,       rtt,      mc_ping_state, fwd_is_dest,
                            is_via,   fwd_dist, q.td_dest_, fwd_lb,
                            no_via,   base_day, q.allowed_claszes_,
@@ -497,7 +502,7 @@ routing_result bmrap_profile(timetable const& tt,
           }
           auto ping_results = pareto_set<journey>{};
           ping.execute(start_time, q.max_transfers_,
-                       worst_at_dest(start_time), q.prf_idx_, ping_results);
+                       worst_at_dest(start_time), ping_results);
           fwd_bounds =
               reach_matrix<SearchDir>(tt, q, r_state, ping, rt_buf,
                                       trip_budget(max_trips, budget_cap),
@@ -527,7 +532,7 @@ routing_result bmrap_profile(timetable const& tt,
       }
       auto ping_results = pareto_set<journey>{};
       ping.execute(start_time, q.max_transfers_,
-                   worst_at_dest(start_time), q.prf_idx_, ping_results);
+                   worst_at_dest(start_time), ping_results);
       ms_ping += std::chrono::steady_clock::now() - p0;
       utl::sort(ping_results, [&](journey const& a, journey const& b) {
         return is_better(a.dest_time_, b.dest_time_);
@@ -589,7 +594,7 @@ routing_result bmrap_profile(timetable const& tt,
           pong.add_start(s.stop_, s.time_at_stop_);
         }
         pong.execute(g_arr, max_tr, loosest - duration_t{kFwd ? 1 : -1},
-                     q.prf_idx_, tight);
+                     tight);
       }
       ms_pong += std::chrono::steady_clock::now() - g0;
 

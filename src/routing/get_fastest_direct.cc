@@ -47,8 +47,7 @@ duration_t get_fastest_direct(timetable const& tt,
     }
   }
 
-  constexpr auto const kUnreachable =
-      label::dist_t{std::numeric_limits<duration_t::rep>::max()};
+  constexpr auto const kUnreachable = label::dist_t{kUnreachableDirect.count()};
   auto end_dist = kUnreachable;
   while (!pq.empty()) {
     auto l = pq.top();

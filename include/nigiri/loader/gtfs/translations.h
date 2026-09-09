@@ -1,7 +1,9 @@
 #pragma once
 
 #include <array>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -123,6 +125,11 @@ struct translation_key {
 };
 
 struct translator {
+  struct entry {
+    std::vector<translation> translations_;
+    translation_idx_t idx_{translation_idx_t::invalid()};
+  };
+
   translation_idx_t get(t,
                         f,
                         std::string_view value,
@@ -130,8 +137,9 @@ struct translator {
                         std::string_view sub_record_id = "");
 
   timetable& tt_;
-  hash_map<translation_key, translation_idx_t> i18n_{};
+  hash_map<translation_key, entry> i18n_{};
   hash_map<std::string, translation_idx_t> untranslated_{};
+  std::string default_lang_{};
 };
 
 translator read_translations(timetable&,

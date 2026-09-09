@@ -68,16 +68,14 @@ void service_builder::write_services(source_idx_t const src) {
   tt_.route_ids_.emplace_back();
 
   auto const timer = scoped_timer{"loader.hrd.services.write"};
-  auto const empty_bikes_allowed = bitvec{};  // not implemented for hrd
-  auto const empty_cars_allowed = bitvec{};  // not implemented for hrd
-  auto const empty_wheelchair_accessible = bitvec{};  // not implemented for hrd
+  auto const empty_flags = std::array{bitvec{}, bitvec{}, bitvec{},
+                                      bitvec{"1"}};  // not implemented for hrd
 
   for (auto const& [key, sub_routes] : route_services_) {
     for (auto const& services : sub_routes) {
       auto const& [stop_seq, sections_clasz] = key;
       auto const route_idx =
-          tt_.register_route(stop_seq, sections_clasz, empty_bikes_allowed,
-                             empty_cars_allowed, empty_wheelchair_accessible);
+          tt_.register_route(stop_seq, sections_clasz, empty_flags);
 
       for (auto const& s : stop_seq) {
         auto s_routes = location_routes_[stop{s}.location_idx()];
@@ -85,6 +83,8 @@ void service_builder::write_services(source_idx_t const src) {
           s_routes.emplace_back(route_idx);
         }
       }
+
+      auto flags = std::array<bool, kNumRouteFlags>{};
 
       for (auto const& s : services) {
         auto const& ref = store_.get(s.ref_);
@@ -104,7 +104,7 @@ void service_builder::write_services(source_idx_t const src) {
                    std::string_view{trip_id_buf_.data(), trip_id_buf_.size()},
                    kEmptyTranslation, kEmptyTranslation,
                    tt_.register_translation(ref.display_name(tt_)), "", "",
-                   direction_id_t::invalid(), route_id_idx_t::invalid(),
+                   direction_id_t::invalid(), route_id_idx_t::invalid(), flags,
                    ref.origin_.dbg_});
           tt_.trip_stop_seq_numbers_.emplace_back(
               std::initializer_list<stop_idx_t>{});

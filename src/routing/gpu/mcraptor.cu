@@ -1096,15 +1096,19 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
           starts_dev, starts_.size()},
       reuse_same_dep_);
 
-  // Realtime: hand the device the rt timetable and swap the traffic-day
-  // bitfields, so a static transport that got an rt update reads as
-  // inactive in the route scan and the rt scan below picks the updated run
-  // up (same wiring as the scalar GPU raptor).
+  // Realtime: hand the device the rt timetable and swap in its full-size
+  // transport_traffic_days_ ("100% copy from static, then adapted"), so a
+  // static transport that got an rt update reads as inactive in the route
+  // scan and the rt scan below picks the updated run up (same wiring as the
+  // scalar GPU raptor). tt_.bitfields_ itself must stay the untouched
+  // static array - is_transport_active() resolves each transport_traffic_
+  // days_ entry into either rtt_.bitfields_ or tt_.bitfields_ itself
+  // (kRtBitfieldFlag), and is_route_active() always reads tt_.bitfields_
+  // directly (routes are never rt-updated).
   auto const rt_active = gpu_rtt_ != nullptr;
   if (rt_active) {
     r.rtt_ = gpu_rtt_->impl_->to_device_rt_timetable();
     r.tt_.transport_traffic_days_ = r.rtt_.transport_traffic_days_;
-    r.tt_.bitfields_ = r.rtt_.bitfields_;
   }
   auto const with_rt_scan = rt_active && r.rtt_.n_rt_transports_ != 0U;
 
