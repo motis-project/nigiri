@@ -1,10 +1,7 @@
 #include "nigiri/routing/raptor/mcraptor.h"
 
-#include <cstdio>
-#include <cstdlib>
 #include <algorithm>
 #include <optional>
-#include <string>
 
 #include "utl/erase_if.h"
 #include "utl/helpers/algorithm.h"
@@ -23,37 +20,6 @@ namespace nigiri::routing {
 
 constexpr auto const kIntermodalTarget =
     get_special_station(special_station::kEnd);
-
-namespace {
-// debug tracing counterpart of the GPU's NIGIRI_MC_TRACE (see mcraptor.cu)
-struct mc_trace_cfg {
-  std::vector<std::uint32_t> locs_;
-  std::int64_t start_minutes_{-1};
-};
-mc_trace_cfg const& get_trace_cfg() {
-  static auto const cfg = [] {
-    auto c = mc_trace_cfg{};
-    if (auto const* v = std::getenv("NIGIRI_MC_TRACE"); v != nullptr) {
-      auto str = std::string{v};
-      auto pos = std::size_t{0U};
-      while (pos < str.size()) {
-        auto end = str.find(',', pos);
-        if (end == std::string::npos) {
-          end = str.size();
-        }
-        c.locs_.push_back(static_cast<std::uint32_t>(
-            std::atoll(str.substr(pos, end - pos).c_str())));
-        pos = end + 1U;
-      }
-    }
-    if (auto const* v = std::getenv("NIGIRI_MC_TRACE_START"); v != nullptr) {
-      c.start_minutes_ = std::atoll(v);
-    }
-    return c;
-  }();
-  return cfg;
-}
-}  // namespace
 
 bool mcraptor_supported(query const& q, rt_timetable const*) {
   // Realtime (rt transports + time-dependent footpaths) and time-dependent
@@ -361,30 +327,6 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
     update_footpaths(k, prf_idx);
 
     collect_dest_journeys(k, start_time, results);
-
-    if (auto const& tc = get_trace_cfg();
-        !tc.locs_.empty() &&
-        (tc.start_minutes_ < 0 ||
-         tc.start_minutes_ == start_time.time_since_epoch().count())) {
-      for (auto const l : tc.locs_) {
-        for (auto const& e : state_.bag_.span(l)) {
-          std::printf(
-              "CPUTRACE k=%u stop=%u round=%u route=%d arr=%d extras=%u "
-              "dep=%d\n",
-              k, l, static_cast<unsigned>(e.round_),
-              (e.breadcrumb_ & state_t::kByRoute) != 0U ? 1 : 0,
-              static_cast<int>(e.crit_.arr_),
-              [&] {
-                if constexpr (std::is_same_v<Criteria, arr_cost_criteria>) {
-                  return static_cast<unsigned>(e.crit_.cost_);
-                } else {
-                  return non_transit_of(e.crit_);
-                }
-              }(),
-              static_cast<int>(e.dep_));
-        }
-      }
-    }
   }
 }
 

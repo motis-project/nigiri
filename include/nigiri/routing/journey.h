@@ -93,7 +93,7 @@ struct journey {
 
   // dominance on (start, dest, transfers) only - the user-facing
   // connection tuple. Used for counting connections (min_connection_count/
-  // interval extension): additional criteria (walking) add pareto
+  // interval extension): additional criteria (non_transit) add pareto
   // trade-offs but must not make the search stop earlier.
   bool tuple_dominates(journey const& o) const {
     if (start_time_ <= dest_time_) {

@@ -1,14 +1,11 @@
 #pragma once
 
 #include <cassert>
-#include <cinttypes>
-#include <cstdlib>
 #include <algorithm>
 #include <type_traits>
 #include <array>
 #include <limits>
 #include <span>
-#include <string_view>
 #include <vector>
 
 #include "cista/containers/bitvec.h"
@@ -142,13 +139,9 @@ struct arr_criteria {
 // result-neutral for this criteria configuration.
 struct arr_cost_criteria {
   // walk surcharge on top of the elapsed-time charge; total walk
-  // reluctance = 1 (elapsed) + kWalkSurcharge. Default 1 = walkReluctance
-  // 2.0 (OTP default). Env-tunable for reluctance-sweep experiments.
-  static inline std::uint32_t const kWalkSurcharge = [] {
-    auto const* v = std::getenv("NIGIRI_WALK_SURCHARGE");
-    return v == nullptr ? std::uint32_t{1U}
-                        : static_cast<std::uint32_t>(std::atoi(v));
-  }();
+  // reluctance = 1 (elapsed) + kWalkSurcharge = walkReluctance 2.0 (OTP
+  // default).
+  static constexpr auto const kWalkSurcharge = std::uint32_t{1U};
   static constexpr auto const kBoardCost = std::uint32_t{10U};  // minutes
 
   template <direction SearchDir>
@@ -288,31 +281,10 @@ struct non_transit_dim {
 // that this is a pareto dimension rather than a filter: the result keeps
 // BOTH the fast itinerary that flies and the best one that does not.
 struct mode_filter_dim {
-  // NIGIRI_MC_AVOID_CLASZ takes a comma-separated list of clasz names
-  // ("AIR", "SUBWAY", ...) so the same dimension can express "prefer to
-  // avoid X" for any class.
-  static inline clasz_mask_t const kAvoided = [] {
-    auto const* const v = std::getenv("NIGIRI_MC_AVOID_CLASZ");
-    if (v == nullptr) {
-      return to_mask(clasz::kAir);
-    }
-    auto mask = clasz_mask_t{0U};
-    auto const str = std::string_view{v};
-    for (auto pos = std::size_t{0U}; pos < str.size();) {
-      auto end = str.find(',', pos);
-      if (end == std::string_view::npos) {
-        end = str.size();
-      }
-      auto const name = str.substr(pos, end - pos);
-      for (auto i = std::uint8_t{0U}; i != kNumClasses; ++i) {
-        if (to_str(static_cast<clasz>(i)) == name) {
-          mask |= to_mask(static_cast<clasz>(i));
-        }
-      }
-      pos = end + 1U;
-    }
-    return mask == 0U ? to_mask(clasz::kAir) : mask;
-  }();
+  // the classes this dimension prefers to avoid. A mask so the same dimension
+  // could express "avoid X" for any class; only flights are wired up so far
+  // (motis: minimizeWithout=AIR).
+  static constexpr clasz_mask_t kAvoided = to_mask(clasz::kAir);
   static bool is_avoided(clasz const c) { return is_allowed(kAvoided, c); }
 
   bool dominates(mode_filter_dim const& o) const {
@@ -483,17 +455,6 @@ struct arr_with {
   delta_t arr_;
   dims_t d_;
 };
-
-// Tracing helper: the non-transit minutes of any criteria that carries a
-// non_transit dimension, 0 for the ones that do not.
-template <typename C>
-unsigned non_transit_of(C const& c) {
-  if constexpr (requires { c.template get<non_transit_dim>(); }) {
-    return c.template get<non_transit_dim>().non_transit_;
-  } else {
-    return 0U;
-  }
-}
 
 template <typename Criteria>
 struct basic_mcraptor_state {
@@ -889,13 +850,6 @@ private:
   };
 
   bool dest_dominates(unsigned const k, Criteria const& projected) const {
-    // validation switch: disable destination pruning to verify it is
-    // non-lossy (results must stay identical, only slower)
-    static auto const kDisabled =
-        std::getenv("NIGIRI_NO_DEST_PRUNING") != nullptr;
-    if (kDisabled) {
-      return false;
-    }
     for (auto const& e : dest_bag_) {
       if (e.k_ <= k &&
           e.crit_.template completed_dominates<SearchDir>(projected)) {

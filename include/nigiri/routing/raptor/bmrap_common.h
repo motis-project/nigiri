@@ -173,47 +173,14 @@ struct slack_cfg {
   double arr_min_min_{20.0};
   double trip_min_{1.0};
   // validation switches: same phases, but skip the pruning / the final
-  // restriction, so a mismatch can be attributed to one of them
+  // restriction, so a mismatch can be attributed to one of them. Always
+  // false in a normal build; flip here for a local A/B run.
   bool no_bounds_{false};
   bool no_restrict_{false};
 };
 
 inline slack_cfg const& get_slack() {
-  static auto const cfg = [] {
-    auto c = slack_cfg{};
-    if (auto const* v = std::getenv("NIGIRI_BMRAP_ARR_SLACK"); v != nullptr) {
-      c.arr_ = std::max(1.0, std::atof(v));
-    }
-    if (auto const* v = std::getenv("NIGIRI_BMRAP_TRIP_SLACK"); v != nullptr) {
-      c.trip_ = std::max(1.0, std::atof(v));
-    }
-    if (auto const* v = std::getenv("NIGIRI_BMRAP_ARR_SLACK_MIN");
-        v != nullptr) {
-      c.arr_fixed_min_ = std::max(0.0, std::atof(v));
-    }
-    if (auto const* v = std::getenv("NIGIRI_BMRAP_TRIP_SLACK_ADD");
-        v != nullptr) {
-      c.trip_fixed_ = std::max(0.0, std::atof(v));
-    }
-    if (auto const* v = std::getenv("NIGIRI_BMRAP_ARR_SLACK_CAP"); v != nullptr) {
-      c.arr_cap_min_ = std::max(0.0, std::atof(v));
-    }
-    if (auto const* v = std::getenv("NIGIRI_BMRAP_TRIP_SLACK_CAP");
-        v != nullptr) {
-      c.trip_cap_ = std::max(0.0, std::atof(v));
-    }
-    if (auto const* v = std::getenv("NIGIRI_BMRAP_ARR_SLACK_FLOOR");
-        v != nullptr) {
-      c.arr_min_min_ = std::max(0.0, std::atof(v));
-    }
-    if (auto const* v = std::getenv("NIGIRI_BMRAP_TRIP_SLACK_FLOOR");
-        v != nullptr) {
-      c.trip_min_ = std::max(0.0, std::atof(v));
-    }
-    c.no_bounds_ = std::getenv("NIGIRI_BMRAP_NO_BOUNDS") != nullptr;
-    c.no_restrict_ = std::getenv("NIGIRI_BMRAP_NO_RESTRICT") != nullptr;
-    return c;
-  }();
+  static constexpr auto const cfg = slack_cfg{};
   return cfg;
 }
 
@@ -626,9 +593,7 @@ bmrap_bounds compute_bounds(timetable const& tt,
     }
     reduced.push_back(x);
   }
-  if (std::getenv("NIGIRI_BMRAP_NO_REDUCE") == nullptr) {
-    runs = std::move(reduced);
-  }
+  runs = std::move(reduced);
 
   auto is_dest = bitvec{tt.n_locations()};
   auto is_via = std::array<bitvec, kMaxVias>{};
@@ -679,9 +644,7 @@ bmrap_bounds compute_bounds(timetable const& tt,
     // occupies slots (budget - b) + 1 ... budget, so slot i means "i trips
     // remaining" on one scale for every anchor and the run starts from the
     // labels the previous, higher-budget run left at slot budget - b.
-    r.set_start_round(std::getenv("NIGIRI_BMRAP_NO_STAGGER") != nullptr
-                          ? 0U
-                          : static_cast<unsigned>(budget - b));
+    r.set_start_round(static_cast<unsigned>(budget - b));
     for (auto const& s : starts) {
       r.add_start(s.stop_, s.time_at_stop_);
     }

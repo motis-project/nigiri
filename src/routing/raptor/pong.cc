@@ -1,12 +1,9 @@
 #include "nigiri/routing/raptor/pong.h"
 
 #include <algorithm>
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <future>
 #include <limits>
-#include <map>
 #include <ranges>
 #include <span>
 #include <string_view>
@@ -432,12 +429,6 @@ routing_result pong(timetable const& tt,
     }
     return false;
   };
-  // NIGIRI_PONG_STATS: how often is the identical pong anchor re-executed
-  // within one query? (feasibility data for a per-query result cache)
-  static bool const pong_stats = std::getenv("NIGIRI_PONG_STATS") != nullptr;
-  auto pong_exec_total = 0U;
-  auto pong_exec_keys = std::map<std::pair<unixtime_t, std::uint8_t>, unsigned>{};
-
   while ((is_better(start_time, end_time) ||
           get_result_count(true) + get_result_count(false) <
               2 * q.min_connection_count_) &&
@@ -569,10 +560,6 @@ routing_result pong(timetable const& tt,
                      loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
           pong.add_start(s.stop_, s.time_at_stop_);
         }
-        if (pong_stats) {
-          ++pong_exec_total;
-          ++pong_exec_keys[{g_arr, max_transfers}];
-        }
         auto const pong_worst = loosest_start;
         if constexpr (requires {
                         pong.execute(g_arr, max_transfers, pong_worst,
@@ -697,15 +684,6 @@ routing_result pong(timetable const& tt,
                   "\n\t"));
 
     start_time = next;
-  }
-
-  if (pong_stats && pong_exec_total != 0U) {
-    auto repeated = 0U;
-    for (auto const& [k, c] : pong_exec_keys) {
-      repeated += c - 1U;
-    }
-    std::fprintf(stderr, "PONG_EXEC total=%u unique=%zu repeated=%u\n",
-                 pong_exec_total, pong_exec_keys.size(), repeated);
   }
 
   utl::erase_if(s_state.results_, [&](journey const& j) {

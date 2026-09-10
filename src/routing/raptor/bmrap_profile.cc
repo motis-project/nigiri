@@ -1,9 +1,6 @@
 #include "nigiri/routing/raptor/bmraptor.h"
 
 #include <algorithm>
-#include <cstdio>
-#include <cstdlib>
-#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -308,7 +305,8 @@ routing_result bmrap_profile(timetable const& tt,
   auto realized_deps = std::vector<unixtime_t>{};
   auto ms_realize = std::chrono::steady_clock::duration{};
   auto n_realized = std::uint64_t{0U};
-  auto const realize_fwd = std::getenv("NIGIRI_BMRAPP_NO_REALIZE") == nullptr;
+  // step 5b forward realizations are always produced (see below)
+  auto const realize_fwd = true;
 
   auto anchors = std::vector<anchor>{};
   auto max_trips = std::uint8_t{0U};
@@ -318,35 +316,19 @@ routing_result bmrap_profile(timetable const& tt,
   auto exit_reason = std::uint64_t{0U};  // 0=cond 1=ping 2=anchors 3=stall
 
   // tau_arr^-> pruning: 0=off, 1=mc pong only, 2=stage 2 (slacked pong)
-  // only, 3=both. On by default because it is where the time goes - without
-  // it mc pong is unbounded and dominates everything (15-query set 188.5s ->
-  // 83.8s; one Berlin -> Montpellier query 78.7s -> 22.5s, mc pong alone
-  // 53.6s -> 3.4s). It costs ~15-25% on trivial queries, the price of the
-  // relaxed ping, which is a trade worth making.
-  auto const fwd_bounds_mode = [] {
-    if (get_slack().no_bounds_) {
-      return 0;  // the unbounded reference: no pruning matrices at all
-    }
-    auto const* const e = std::getenv("NIGIRI_BMRAPP_FWD_BOUNDS");
-    if (e == nullptr) {
-      return 3;
-    }
-    auto const v = std::string_view{e};
-    return v == "off" || v == "0" || v == "none" ? 0
-           : v == "mcpong"                       ? 1
-           : v == "stage2"                       ? 2
-                                                 : 3;
-  }();
+  // only, 3=both. Always both - it is where the time goes: without it mc pong
+  // is unbounded and dominates everything (15-query set 188.5s -> 83.8s; one
+  // Berlin -> Montpellier query 78.7s -> 22.5s, mc pong alone 53.6s -> 3.4s).
+  // It costs ~15-25% on trivial queries, the price of the relaxed ping, which
+  // is a trade worth making. (get_slack().no_bounds_ can still force it off
+  // for a local A/B run.)
+  auto const fwd_bounds_mode = get_slack().no_bounds_ ? 0 : 3;
   auto const fwd_bounds_on = fwd_bounds_mode != 0;
 
-  // What the interval extension counts, via NIGIRI_BMRAPP_COUNT: "mc"
-  // (default) the multicriteria results this engine actually returns, or
-  // "anchors" for exactly what PONG would report - which reproduces PONG's
-  // stopping point and makes the two scan near-identical windows.
-  auto const count_anchors = [] {
-    auto const* const e = std::getenv("NIGIRI_BMRAPP_COUNT");
-    return e != nullptr && std::string_view{e} == "anchors";
-  }();
+  // The interval extension counts the multicriteria results this engine
+  // actually returns (not the anchor set - that would just reproduce PONG's
+  // stopping point).
+  auto const count_anchors = false;
 
   auto const anchor_travel = [](anchor const& a) {
     return duration_t{static_cast<duration_t::rep>(
@@ -426,12 +408,12 @@ routing_result bmrap_profile(timetable const& tt,
         // tuple_dominates() exists for, since extra criteria are exactly
         // what produces journeys sharing a tuple. The undercount kept
         // n_found() below min_connection_count_ and the scan stepped past
-        // the window: on the 50 most expensive European queries walk+clasz
-        // had 30% of its journeys in duplicate tuples (walk: 0%) and a wider
-        // window on 17 of them, worth 5.9 anchor recomputes per query
-        // against walk's 3.9. Break the tie deterministically so each
-        // distinct tuple contributes one - same reason as the all_anchors
-        // dedup below.
+        // the window: on the 50 most expensive European queries
+        // non_transit+mode_switches had 30% of its journeys in duplicate
+        // tuples (non_transit alone: 0%) and a wider window on 17 of them,
+        // worth 5.9 anchor recomputes per query against non_transit's 3.9.
+        // Break the tie deterministically so each distinct tuple contributes
+        // one - same reason as the all_anchors dedup below.
         return !j.tuple_dominates(o) || &o < &j;
       });
     });
@@ -820,34 +802,8 @@ routing_result bmrap_profile(timetable const& tt,
     for (auto const& a : anchors) {
       consider(a.anchored_);
     }
-    // diagnostic: advance like classical PONG (anchors only). Loses
-    // multicriteria journeys - it is here to attribute cost, not to use.
-    if (std::getenv("NIGIRI_BMRAPP_ADVANCE_ANCHORS") == nullptr) {
-      for (auto const& j : step_results) {
-        consider(j.dest_time_);  // dest_time_ is the departure here
-      }
-    }
-    if (std::getenv("NIGIRI_BMRAPP_TRACE") != nullptr) {
-      std::fprintf(stderr, "STEP start=%lld budget=%u anchors=[",
-                   static_cast<long long>(start_time.time_since_epoch().count()),
-                   static_cast<unsigned>(budget));
-      for (auto const& a : anchors) {
-        // dep/arr/trips + the deadline the bounds are built from
-        std::fprintf(stderr, "%lld:%lld:t%u:dl%lld ",
-                     static_cast<long long>(a.anchored_.time_since_epoch().count()),
-                     static_cast<long long>(a.found_.time_since_epoch().count()),
-                     static_cast<unsigned>(a.trips_),
-                     static_cast<long long>(
-                         anchor_deadline(a).time_since_epoch().count()));
-      }
-      std::fprintf(stderr, "] step_results=[");
-      for (auto const& j : step_results) {
-        std::fprintf(stderr, "%lld ",
-                     static_cast<long long>(j.dest_time_.time_since_epoch().count()));
-      }
-      std::fprintf(stderr, "] loosest=%lld\n",
-                   static_cast<long long>(
-                       loosest_dep.value_or(start_time).time_since_epoch().count()));
+    for (auto const& j : step_results) {
+      consider(j.dest_time_);  // dest_time_ is the departure here
     }
     auto const next = loosest_dep.value_or(start_time) +
                       duration_t{kFwd ? 1 : -1};
