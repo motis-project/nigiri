@@ -72,10 +72,10 @@ struct bmrap_prune_algo_for<SearchDir, Rt, gpu::gpu_raptor_state> {
 #endif
 
 // Engine for the MULTICRITERIA phases (4, 5 and 5b). The CPU mcraptor takes
-// any composed criteria; the device one implements exactly two label shapes -
-// arrival alone, and arrival plus the generalized-cost extras - so it can
-// only stand in for those. GpuMc is resolved by the caller, which is what
-// keeps the two bodies from both being instantiated for the CPU engines.
+// any composed criteria; the device one implements the label shapes that fit
+// its packed 64-bit label (see mc_crit), so it can only stand in for those.
+// GpuMc is resolved by the caller, which is what keeps the two bodies from
+// both being instantiated for the CPU engines.
 template <direction SearchDir, typename Criteria, bool GpuMc>
 struct bmrap_mc_algo_for {
   using type = basic_mcraptor<SearchDir, Criteria, /*RangeReuse=*/false>;
@@ -83,36 +83,53 @@ struct bmrap_mc_algo_for {
 };
 
 #if defined(NIGIRI_CUDA)
-// Which criteria have a device equivalent, and whether the scalar engine is
-// on the device at all - running phases 4/5 on the GPU while the ping and
-// pong stay on the CPU would only add transfers.
+// CPU criteria type -> device label configuration. Only the combinations
+// below have a device equivalent; kGpuMcSupported gates every use of this.
+template <typename Criteria>
+constexpr gpu::mc_crit mc_crit_of() {
+  if constexpr (std::is_same_v<Criteria, arr_criteria>) {
+    return gpu::mc_crit::arr;
+  } else if constexpr (std::is_same_v<Criteria, arr_cost_criteria>) {
+    return gpu::mc_crit::cost;
+  } else if constexpr (std::is_same_v<Criteria, arr_non_transit_criteria>) {
+    return gpu::mc_crit::non_transit;
+  } else if constexpr (std::is_same_v<Criteria, arr_mode_filter_criteria>) {
+    return gpu::mc_crit::mode_filter;
+  } else {
+    static_assert(
+        std::is_same_v<Criteria, arr_non_transit_mode_filter_criteria>,
+        "criteria has no device mcraptor equivalent");
+    return gpu::mc_crit::non_transit_mode_filter;
+  }
+}
+
+// NOTE: the non_transit + mode_filter combo (two live fields in one label
+// slot) needs component-wise dominance in the route-bag merge too and is not
+// wired up yet - it keeps running on the CPU.
+template <typename Criteria>
+inline constexpr bool kMcCritSupported =
+    std::is_same_v<Criteria, arr_criteria> ||
+    std::is_same_v<Criteria, arr_cost_criteria> ||
+    std::is_same_v<Criteria, arr_non_transit_criteria> ||
+    std::is_same_v<Criteria, arr_mode_filter_criteria>;
+
+// Which (criteria, state) combinations move phases 4/5 to the device. The
+// scalar engine must be on the device too - running the mc phases on the GPU
+// while ping/pong stay on the CPU would only add transfers.
 template <typename Criteria, typename AlgoState>
 inline constexpr bool kGpuMcSupported =
     std::is_same_v<AlgoState, gpu::gpu_raptor_state> &&
-    (std::is_same_v<Criteria, arr_criteria> ||
-     std::is_same_v<Criteria, arr_cost_criteria>);
+    kMcCritSupported<Criteria>;
 
 template <direction SearchDir, typename Criteria>
 struct bmrap_mc_algo_for<SearchDir, Criteria, true> {
-  using type =
-      gpu::gpu_mcraptor<SearchDir,
-                        std::is_same_v<Criteria, arr_cost_criteria>>;
+  using type = gpu::gpu_mcraptor<SearchDir, mc_crit_of<Criteria>()>;
   using state = gpu::gpu_mcraptor_state;
 };
 #else
 template <typename Criteria, typename AlgoState>
 inline constexpr bool kGpuMcSupported = false;
 #endif
-
-// How much of the multicriteria work runs on the device, for the two label
-// shapes the device mcraptor implements (arr, arr+cost):
-//
-//   0  everything on the CPU
-//   1  the mc PING only (phases 4 and 5b) - phase 4 is one big search per step
-//      and gains ~2.5x on the device
-//   2  the mc PONG (phase 5) as well - a sequence of tiny per-journey searches
-//      the device loses on (0.48 -> 1.94 ms/query), kept only to exercise it
-constexpr int kBmrapGpuMcMode = 1;
 
 // Host view of an engine's round times, in raptor_state's layout either way.
 // The GPU engine copies them back into `buf`, which is why the caller owns

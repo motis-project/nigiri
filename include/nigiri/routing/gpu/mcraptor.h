@@ -22,8 +22,8 @@ namespace nigiri::routing::gpu {
 // offsets, wheelchair, clasz filters and transfer time settings are
 // supported.
 //
-// One state serves both criteria configurations (the buffers are
-// identical); the distinct types select the algorithm in the
+// One state serves every criteria configuration (the packed 64-bit label is
+// the same width regardless); the distinct types select the algorithm in the
 // raptor_search/benchmark dispatch.
 struct gpu_mcraptor_state {
   explicit gpu_mcraptor_state(gpu_timetable const&);
@@ -37,15 +37,27 @@ struct gpu_mcraptor_cost_state : gpu_mcraptor_state {
   using gpu_mcraptor_state::gpu_mcraptor_state;
 };
 
-// WithCost=false: arrival is the only criterion (labels carry extras == 0,
-// dominance degenerates to arrival-only) - result-equal to CPU
-// mcraptor<arr_criteria> and raptor.
-// WithCost=true: arrival + generalized cost extras (walk surcharge +
-// boarding penalties), result-equal to CPU mcraptor<arr_cost_criteria>.
-template <direction SearchDir, bool WithCost>
+// The label configurations the device mcraptor implements, each result-equal
+// to the CPU mcraptor with the matching criteria (see mc_crit_of in
+// bmrap_common.h). They all fit the 16-bit "crit" slot of the packed label:
+//   arr                      arrival only (crit == 0 everywhere)
+//   cost                     arrival + generalized cost (arr_cost_criteria)
+//   non_transit              arrival + minutes on foot (arr_with<non_transit>)
+//   mode_filter              arrival + "uses an avoided class" bit (AIR)
+//   non_transit_mode_filter  both of the above  (nt in bits 1..15, mf in bit 0)
+enum class mc_crit : std::uint8_t {
+  arr,
+  cost,
+  non_transit,
+  mode_filter,
+  non_transit_mode_filter
+};
+
+template <direction SearchDir, mc_crit Crit>
 struct gpu_mcraptor {
-  using algo_state_t =
-      std::conditional_t<WithCost, gpu_mcraptor_cost_state, gpu_mcraptor_state>;
+  using algo_state_t = std::conditional_t<Crit == mc_crit::cost,
+                                          gpu_mcraptor_cost_state,
+                                          gpu_mcraptor_state>;
   using algo_stats_t = raptor_stats;
 
   // unlike the single-criterion GPU raptor, mcraptor DOES use lower
@@ -55,6 +67,12 @@ struct gpu_mcraptor {
   static constexpr bool kUseLowerBounds = true;
   static constexpr auto const kDirIdx =
       SearchDir == direction::kForward ? 0U : 1U;
+
+  static constexpr bool kHasCost = Crit == mc_crit::cost;
+  static constexpr bool kHasNonTransit =
+      Crit == mc_crit::non_transit || Crit == mc_crit::non_transit_mode_filter;
+  static constexpr bool kHasModeFilter =
+      Crit == mc_crit::mode_filter || Crit == mc_crit::non_transit_mode_filter;
 
   gpu_mcraptor(
       timetable const& tt,

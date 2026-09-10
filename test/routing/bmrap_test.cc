@@ -545,12 +545,14 @@ TEST(bmrap, opposed_extension_is_a_superset_of_pong) {
 template <typename Criteria>
 std::vector<tuple_t> run_bmrapp_gpu(fixture const& f,
                                     routing::query q,
-                                    direction const dir) {
+                                    direction const dir,
+                                    int const gpu_mc_mode = 1) {
   auto ss = routing::search_state{};
   auto gtt = routing::gpu::gpu_timetable{f.tt_};
   auto as = routing::gpu::gpu_raptor_state{gtt};
   return tuples(*(routing::bmrap_profile_search<Criteria>(
-                      f.tt_, nullptr, ss, as, std::move(q), dir)
+                      f.tt_, nullptr, ss, as, std::move(q), dir, std::nullopt,
+                      gpu_mc_mode)
                       .journeys_));
 }
 
@@ -609,6 +611,52 @@ TEST(bmrap, gpu_matches_cpu_walk) {
       bmrapp<routing::arr_non_transit_criteria>(f, q, direction::kForward).js_,
       run_bmrapp_gpu<routing::arr_non_transit_criteria>(f, q,
                                                         direction::kForward));
+}
+
+TEST(bmrap, gpu_matches_cpu_walk_backward) {
+  if (!routing::gpu::gpu_available()) {
+    GTEST_SKIP() << "no CUDA device";
+  }
+  auto const f = fixture{};
+  auto const q = f.make_query(direction::kBackward);
+  EXPECT_EQ(bmrapp<routing::arr_non_transit_criteria>(f, q,
+                                                      direction::kBackward)
+                .js_,
+            run_bmrapp_gpu<routing::arr_non_transit_criteria>(
+                f, q, direction::kBackward));
+}
+
+// mode_filter (avoid AIR) on the device. The test timetable has no flights,
+// so the criterion is all-zeros here - this pins that the extra label field
+// does not perturb the arrival-only result; real-data validation covers the
+// bit itself.
+TEST(bmrap, gpu_matches_cpu_mode_filter) {
+  if (!routing::gpu::gpu_available()) {
+    GTEST_SKIP() << "no CUDA device";
+  }
+  auto const f = fixture{};
+  for (auto const dir : {direction::kForward, direction::kBackward}) {
+    auto const q = f.make_query(dir);
+    EXPECT_EQ(bmrapp<routing::arr_mode_filter_criteria>(f, q, dir).js_,
+              run_bmrapp_gpu<routing::arr_mode_filter_criteria>(f, q, dir))
+        << (dir == direction::kForward ? "fwd" : "bwd");
+  }
+}
+
+// gpu_mc_mode 2 also runs the mc PONG (phase 5) on the device; the journeys
+// must not change.
+TEST(bmrap, gpu_mc_pong_matches_mc_ping) {
+  if (!routing::gpu::gpu_available()) {
+    GTEST_SKIP() << "no CUDA device";
+  }
+  auto const f = fixture{};
+  auto const q = f.make_query();
+  EXPECT_EQ(run_bmrapp_gpu<routing::arr_criteria>(f, q, direction::kForward, 1),
+            run_bmrapp_gpu<routing::arr_criteria>(f, q, direction::kForward, 2));
+  EXPECT_EQ(run_bmrapp_gpu<routing::arr_non_transit_criteria>(
+                f, q, direction::kForward, 1),
+            run_bmrapp_gpu<routing::arr_non_transit_criteria>(
+                f, q, direction::kForward, 2));
 }
 
 // arriveBy on the device: the per-query buffers are direction-indexed, so

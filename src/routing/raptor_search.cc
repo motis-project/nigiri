@@ -52,12 +52,12 @@ struct algo_for<SearchDir, Vias, Rt, gpu::gpu_raptor_state> {
 
 template <direction SearchDir, via_offset_t Vias, bool Rt>
 struct algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_state> {
-  using type = gpu::gpu_mcraptor<SearchDir, /*WithCost=*/false>;
+  using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::arr>;
 };
 
 template <direction SearchDir, via_offset_t Vias, bool Rt>
 struct algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_cost_state> {
-  using type = gpu::gpu_mcraptor<SearchDir, /*WithCost=*/true>;
+  using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::cost>;
 };
 #endif
 

@@ -354,14 +354,14 @@ gpu_mcraptor_state::~gpu_mcraptor_state() = default;
 
 // ---- kernels ----------------------------------------------------------------
 
-template <direction SearchDir, bool WithCost>
-__global__ void mc_init_arrivals_kernel(mcraptor_impl<SearchDir, WithCost> r,
+template <direction SearchDir, mc_crit Crit>
+__global__ void mc_init_arrivals_kernel(mcraptor_impl<SearchDir, Crit> r,
                                         delta_t const d_start) {
   r.init_arrivals(d_start);
 }
 
-template <direction SearchDir, bool WithCost>
-__global__ void mc_begin_round_kernel(mcraptor_impl<SearchDir, WithCost> r) {
+template <direction SearchDir, mc_crit Crit>
+__global__ void mc_begin_round_kernel(mcraptor_impl<SearchDir, Crit> r) {
   if (*r.done_) {
     return;
   }
@@ -370,8 +370,8 @@ __global__ void mc_begin_round_kernel(mcraptor_impl<SearchDir, WithCost> r) {
   }
 }
 
-template <direction SearchDir, bool WithCost>
-__global__ void mc_mark_routes_kernel(mcraptor_impl<SearchDir, WithCost> r) {
+template <direction SearchDir, mc_crit Crit>
+__global__ void mc_mark_routes_kernel(mcraptor_impl<SearchDir, Crit> r) {
   if (*r.done_) {
     return;
   }
@@ -379,17 +379,17 @@ __global__ void mc_mark_routes_kernel(mcraptor_impl<SearchDir, WithCost> r) {
 }
 
 // only launched when the query carries rt transports (see execute)
-template <direction SearchDir, bool WithCost>
-__global__ void mc_mark_rt_kernel(mcraptor_impl<SearchDir, WithCost> r) {
+template <direction SearchDir, mc_crit Crit>
+__global__ void mc_mark_rt_kernel(mcraptor_impl<SearchDir, Crit> r) {
   if (*r.done_) {
     return;
   }
   r.mark_rt_transports();
 }
 
-template <direction SearchDir, bool WithCost, bool WithClaszFilter,
+template <direction SearchDir, mc_crit Crit, bool WithClaszFilter,
           bool IsWheelchair>
-__global__ void mc_scan_rt_kernel(mcraptor_impl<SearchDir, WithCost> r,
+__global__ void mc_scan_rt_kernel(mcraptor_impl<SearchDir, Crit> r,
                                   unsigned const k) {
   if (*r.done_) {
     return;
@@ -397,8 +397,8 @@ __global__ void mc_scan_rt_kernel(mcraptor_impl<SearchDir, WithCost> r,
   r.template scan_rt_transports<WithClaszFilter, IsWheelchair>(k);
 }
 
-template <direction SearchDir, bool WithCost>
-__global__ void mc_begin_transit_kernel(mcraptor_impl<SearchDir, WithCost> r) {
+template <direction SearchDir, mc_crit Crit>
+__global__ void mc_begin_transit_kernel(mcraptor_impl<SearchDir, Crit> r) {
   if (*r.done_) {
     return;
   }
@@ -415,8 +415,8 @@ __global__ void mc_begin_transit_kernel(mcraptor_impl<SearchDir, WithCost> r) {
 // tag 0 = post-sweep: every stop must be pristine (hwm==0, no block).
 // tag 1 = mid-round: a pool block may be owned by at most ONE stop and
 // an owned block implies hwm > inline capacity.
-template <direction SearchDir, bool WithCost>
-__global__ void mc_bag_validate_kernel(mcraptor_impl<SearchDir, WithCost> r,
+template <direction SearchDir, mc_crit Crit>
+__global__ void mc_bag_validate_kernel(mcraptor_impl<SearchDir, Crit> r,
                                        std::uint32_t const n_locations,
                                        std::uint32_t* const claim,
                                        std::uint32_t const tag,
@@ -460,17 +460,17 @@ __global__ void mc_bag_validate_kernel(mcraptor_impl<SearchDir, WithCost> r,
   }
 }
 
-template <direction SearchDir, bool WithCost>
+template <direction SearchDir, mc_crit Crit>
 __global__ void mc_build_route_list_kernel(
-    mcraptor_impl<SearchDir, WithCost> r) {
+    mcraptor_impl<SearchDir, Crit> r) {
   if (*r.done_) {
     return;
   }
   r.build_route_list();
 }
 
-template <direction SearchDir, bool WithCost, bool IsWheelchair>
-__global__ void mc_et_collect_kernel(mcraptor_impl<SearchDir, WithCost> r,
+template <direction SearchDir, mc_crit Crit, bool IsWheelchair>
+__global__ void mc_et_collect_kernel(mcraptor_impl<SearchDir, Crit> r,
                                      unsigned const k) {
   if (*r.done_) {
     return;
@@ -478,8 +478,8 @@ __global__ void mc_et_collect_kernel(mcraptor_impl<SearchDir, WithCost> r,
   r.template et_collect_tasks<IsWheelchair>(k);
 }
 
-template <direction SearchDir, bool WithCost>
-__global__ void mc_et_lookups_kernel(mcraptor_impl<SearchDir, WithCost> r,
+template <direction SearchDir, mc_crit Crit>
+__global__ void mc_et_lookups_kernel(mcraptor_impl<SearchDir, Crit> r,
                                      unsigned const k) {
   if (*r.done_) {
     return;
@@ -487,10 +487,10 @@ __global__ void mc_et_lookups_kernel(mcraptor_impl<SearchDir, WithCost> r,
   r.et_run_lookups(k);
 }
 
-template <direction SearchDir, bool WithCost, bool WithClaszFilter,
+template <direction SearchDir, mc_crit Crit, bool WithClaszFilter,
           bool IsWheelchair>
 __global__ void __launch_bounds__(kMcScanThreads)
-    mc_scan_routes_kernel(mcraptor_impl<SearchDir, WithCost> r,
+    mc_scan_routes_kernel(mcraptor_impl<SearchDir, Crit> r,
                           unsigned const k) {
   extern __shared__ mc_seg seg_smem[];  // kMcMaxSegs per warp
   if (*r.done_) {
@@ -499,8 +499,8 @@ __global__ void __launch_bounds__(kMcScanThreads)
   r.template scan_routes<WithClaszFilter, IsWheelchair>(k, seg_smem);
 }
 
-template <direction SearchDir, bool WithCost>
-__global__ void mc_begin_footpath_kernel(mcraptor_impl<SearchDir, WithCost> r) {
+template <direction SearchDir, mc_crit Crit>
+__global__ void mc_begin_footpath_kernel(mcraptor_impl<SearchDir, Crit> r) {
   if (*r.done_) {
     return;
   }
@@ -512,9 +512,9 @@ __global__ void mc_begin_footpath_kernel(mcraptor_impl<SearchDir, WithCost> r) {
   }
 }
 
-template <direction SearchDir, bool WithCost>
+template <direction SearchDir, mc_crit Crit>
 __global__ void mc_transfers_footpaths_kernel(
-    mcraptor_impl<SearchDir, WithCost> r, unsigned const k) {
+    mcraptor_impl<SearchDir, Crit> r, unsigned const k) {
   if (*r.done_) {
     return;
   }
@@ -522,16 +522,16 @@ __global__ void mc_transfers_footpaths_kernel(
   r.route_mark_.reset();
 }
 
-template <direction SearchDir, bool WithCost>
-__global__ void mc_clear_bags_kernel(mcraptor_impl<SearchDir, WithCost> r) {
+template <direction SearchDir, mc_crit Crit>
+__global__ void mc_clear_bags_kernel(mcraptor_impl<SearchDir, Crit> r) {
   r.clear_bags();
 }
 
-template <direction SearchDir, bool WithCost>
+template <direction SearchDir, mc_crit Crit>
 __global__ void mc_reconstruct_kernel(
     location_idx_t const* const dest_list,
     std::uint32_t const n_dest,
-    mcraptor_impl<SearchDir, WithCost> r,
+    mcraptor_impl<SearchDir, Crit> r,
     gpu_journey* const out) {
   auto const tid = blockIdx.x * blockDim.x + threadIdx.x;
   // full chain capacity: a dest bag can use every slot the u8 hwm
@@ -578,8 +578,8 @@ void mc_launch(Kernel kernel, cudaStream_t stream, Args&&... args) {
 
 // ---- algorithm --------------------------------------------------------------
 
-template <direction SearchDir, bool WithCost>
-gpu_mcraptor<SearchDir, WithCost>::gpu_mcraptor(
+template <direction SearchDir, mc_crit Crit>
+gpu_mcraptor<SearchDir, Crit>::gpu_mcraptor(
     timetable const& tt,
     rt_timetable const* rtt,
     gpu_mcraptor_state& state,
@@ -622,8 +622,8 @@ gpu_mcraptor<SearchDir, WithCost>::gpu_mcraptor(
                              lb);
 }
 
-template <direction SearchDir, bool WithCost>
-void gpu_mcraptor<SearchDir, WithCost>::reset_arrivals() {
+template <direction SearchDir, mc_crit Crit>
+void gpu_mcraptor<SearchDir, Crit>::reset_arrivals() {
   auto& s = *state_.impl_;
   worst_at_dest_ = kInvalidDelta<SearchDir>;
   cudaMemsetAsync(thrust::raw_pointer_cast(s.dest_bag_[kDirIdx].data()), 0xFF,
@@ -643,8 +643,8 @@ void gpu_mcraptor<SearchDir, WithCost>::reset_arrivals() {
                   sizeof(std::uint32_t), s.stream_);
 }
 
-template <direction SearchDir, bool WithCost>
-mcraptor_impl<SearchDir, WithCost> make_impl(
+template <direction SearchDir, mc_crit Crit>
+mcraptor_impl<SearchDir, Crit> make_impl(
     gpu_mcraptor_state::impl& s,
     unsigned const dir_idx,
     transfer_time_settings const& tts,
@@ -656,7 +656,7 @@ mcraptor_impl<SearchDir, WithCost> make_impl(
     delta_t const dep,
     cuda::std::span<std::pair<location_idx_t, delta_t> const> starts,
     bool const reuse_same_dep = false) {
-  return mcraptor_impl<SearchDir, WithCost>{
+  return mcraptor_impl<SearchDir, Crit>{
       .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
       .done_ = thrust::raw_pointer_cast(s.done_.data()),
       .overflow_ = thrust::raw_pointer_cast(s.overflow_.data()),
@@ -730,18 +730,18 @@ mcraptor_impl<SearchDir, WithCost> make_impl(
           thrust::raw_pointer_cast(s.route_single_flat_.data())};
 }
 
-template <direction SearchDir, bool WithCost>
-void gpu_mcraptor<SearchDir, WithCost>::next_start_time() {
+template <direction SearchDir, mc_crit Crit>
+void gpu_mcraptor<SearchDir, Crit>::next_start_time() {
   starts_.clear();
   auto& s = *state_.impl_;
-  auto const r = make_impl<SearchDir, WithCost>(
+  auto const r = make_impl<SearchDir, Crit>(
       s, kDirIdx, transfer_time_settings_, allowed_claszes_, 0U, base_,
       worst_at_dest_, 0U, 0, {});
-  mc_launch(mc_clear_bags_kernel<SearchDir, WithCost>, s.stream_, r);
+  mc_launch(mc_clear_bags_kernel<SearchDir, Crit>, s.stream_, r);
   cudaMemsetAsync(thrust::raw_pointer_cast(s.bag_pool_count_.data()), 0,
                   sizeof(std::uint32_t), s.stream_);
   if constexpr (kMcValidate) {  // everything must be pristine after the sweep
-    mc_bag_validate_kernel<SearchDir, WithCost>
+    mc_bag_validate_kernel<SearchDir, Crit>
         <<<512, 256, 0, s.stream_>>>(r, n_locations_, nullptr, 0U, 0U);
   }
   thrust::fill(thrust::cuda::par.on(s.stream_), s.station_mark_.begin(),
@@ -754,14 +754,14 @@ void gpu_mcraptor<SearchDir, WithCost>::next_start_time() {
                s.rt_transport_mark_.end(), 0U);
 }
 
-template <direction SearchDir, bool WithCost>
-void gpu_mcraptor<SearchDir, WithCost>::add_start(location_idx_t const l,
+template <direction SearchDir, mc_crit Crit>
+void gpu_mcraptor<SearchDir, Crit>::add_start(location_idx_t const l,
                                                   unixtime_t const t) {
   starts_.emplace_back(l, t);
 }
 
-template <direction SearchDir, bool WithCost>
-void gpu_mcraptor<SearchDir, WithCost>::execute(
+template <direction SearchDir, mc_crit Crit>
+void gpu_mcraptor<SearchDir, Crit>::execute(
     unixtime_t const start_time,
     std::uint8_t const max_transfers,
     unixtime_t const worst_time_at_dest,
@@ -774,9 +774,10 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
   worst_at_dest_ = kFwd ? std::min(d_worst, worst_at_dest_)
                         : std::max(d_worst, worst_at_dest_);
 
-  // mirror of the CPU arr_cost_criteria::kWalkSurcharge configuration
+  // mirror of the CPU arr_cost_criteria::kWalkSurcharge configuration; only
+  // the cost dimension weights walking - non_transit counts raw minutes
   auto const walk_surcharge =
-      WithCost ? arr_cost_criteria::kWalkSurcharge : 0U;
+      Crit == mc_crit::cost ? arr_cost_criteria::kWalkSurcharge : 0U;
 
   // upload the seeds (stop, seeded stop time in delta units)
   auto* const starts_pin = s.starts_pin_.ensure(starts_.size());
@@ -791,7 +792,7 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
       cudaMemcpyHostToDevice, s.stream_));
 
   auto const d_start_dep = unix_to_delta(base(), start_time);
-  auto r = make_impl<SearchDir, WithCost>(
+  auto r = make_impl<SearchDir, Crit>(
       s, kDirIdx, transfer_time_settings_, allowed_claszes_, prf_idx, base_,
       worst_at_dest_, walk_surcharge, d_start_dep,
       cuda::std::span<std::pair<location_idx_t, delta_t> const>{
@@ -830,24 +831,24 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
   auto const d_start = unix_to_delta(base(), start_time);
 
   // === ROUTING KERNELS ===
-  mc_launch(mc_init_arrivals_kernel<SearchDir, WithCost>, s.stream_, r,
+  mc_launch(mc_init_arrivals_kernel<SearchDir, Crit>, s.stream_, r,
             d_start);
   for (auto k = 1U; k != end_k; ++k) {
-    mc_launch(mc_begin_round_kernel<SearchDir, WithCost>, s.stream_, r);
-    mc_launch(mc_mark_routes_kernel<SearchDir, WithCost>, s.stream_, r);
+    mc_launch(mc_begin_round_kernel<SearchDir, Crit>, s.stream_, r);
+    mc_launch(mc_mark_routes_kernel<SearchDir, Crit>, s.stream_, r);
     if (with_rt_scan) {
-      mc_launch(mc_mark_rt_kernel<SearchDir, WithCost>, s.stream_, r);
+      mc_launch(mc_mark_rt_kernel<SearchDir, Crit>, s.stream_, r);
     }
-    mc_launch(mc_begin_transit_kernel<SearchDir, WithCost>, s.stream_, r);
-    mc_launch(mc_build_route_list_kernel<SearchDir, WithCost>, s.stream_, r);
+    mc_launch(mc_begin_transit_kernel<SearchDir, Crit>, s.stream_, r);
+    mc_launch(mc_build_route_list_kernel<SearchDir, Crit>, s.stream_, r);
     if (is_wheelchair_) {
-      mc_launch(mc_et_collect_kernel<SearchDir, WithCost, true>, s.stream_, r,
+      mc_launch(mc_et_collect_kernel<SearchDir, Crit, true>, s.stream_, r,
                 k);
     } else {
-      mc_launch(mc_et_collect_kernel<SearchDir, WithCost, false>, s.stream_, r,
+      mc_launch(mc_et_collect_kernel<SearchDir, Crit, false>, s.stream_, r,
                 k);
     }
-    mc_launch(mc_et_lookups_kernel<SearchDir, WithCost>, s.stream_, r, k);
+    mc_launch(mc_et_lookups_kernel<SearchDir, Crit>, s.stream_, r, k);
     // warp-per-route two-pass scan: fixed geometry + per-warp shared
     // segment slab (occupancy-launch cannot size dynamic shared memory)
     auto const scan_blocks = 512U;
@@ -856,18 +857,18 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
     auto const with_clasz = allowed_claszes_ != all_clasz_allowed();
     if (with_clasz) {
       if (is_wheelchair_) {
-        mc_scan_routes_kernel<SearchDir, WithCost, true, true>
+        mc_scan_routes_kernel<SearchDir, Crit, true, true>
             <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
       } else {
-        mc_scan_routes_kernel<SearchDir, WithCost, true, false>
+        mc_scan_routes_kernel<SearchDir, Crit, true, false>
             <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
       }
     } else {
       if (is_wheelchair_) {
-        mc_scan_routes_kernel<SearchDir, WithCost, false, true>
+        mc_scan_routes_kernel<SearchDir, Crit, false, true>
             <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
       } else {
-        mc_scan_routes_kernel<SearchDir, WithCost, false, false>
+        mc_scan_routes_kernel<SearchDir, Crit, false, false>
             <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
       }
     }
@@ -877,30 +878,30 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
     if (with_rt_scan) {
       if (with_clasz) {
         if (is_wheelchair_) {
-          mc_launch(mc_scan_rt_kernel<SearchDir, WithCost, true, true>,
+          mc_launch(mc_scan_rt_kernel<SearchDir, Crit, true, true>,
                     s.stream_, r, k);
         } else {
-          mc_launch(mc_scan_rt_kernel<SearchDir, WithCost, true, false>,
+          mc_launch(mc_scan_rt_kernel<SearchDir, Crit, true, false>,
                     s.stream_, r, k);
         }
       } else {
         if (is_wheelchair_) {
-          mc_launch(mc_scan_rt_kernel<SearchDir, WithCost, false, true>,
+          mc_launch(mc_scan_rt_kernel<SearchDir, Crit, false, true>,
                     s.stream_, r, k);
         } else {
-          mc_launch(mc_scan_rt_kernel<SearchDir, WithCost, false, false>,
+          mc_launch(mc_scan_rt_kernel<SearchDir, Crit, false, false>,
                     s.stream_, r, k);
         }
       }
     }
-    mc_launch(mc_begin_footpath_kernel<SearchDir, WithCost>, s.stream_, r);
-    mc_launch(mc_transfers_footpaths_kernel<SearchDir, WithCost>, s.stream_, r,
+    mc_launch(mc_begin_footpath_kernel<SearchDir, Crit>, s.stream_, r);
+    mc_launch(mc_transfers_footpaths_kernel<SearchDir, Crit>, s.stream_, r,
               k);
     if constexpr (kMcValidate) {  // block ownership must be unique per stop
       cudaMemsetAsync(thrust::raw_pointer_cast(s.validate_claim_.data()),
                       0xFF, s.validate_claim_.size() * sizeof(std::uint32_t),
                       s.stream_);
-      mc_bag_validate_kernel<SearchDir, WithCost><<<512, 256, 0, s.stream_>>>(
+      mc_bag_validate_kernel<SearchDir, Crit><<<512, 256, 0, s.stream_>>>(
           r, n_locations_,
           thrust::raw_pointer_cast(s.validate_claim_.data()), 1U, k);
     }
@@ -936,7 +937,7 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
   {
     auto const threads = 128U;
     auto const blocks = (total + threads - 1U) / threads;
-    mc_reconstruct_kernel<SearchDir, WithCost>
+    mc_reconstruct_kernel<SearchDir, Crit>
         <<<blocks, threads, 0, s.stream_>>>(dest_dev, n_dest, r, rec_out_dev);
     CUDA_CHECK(cudaMemcpyAsync(rec_host, rec_out_dev,
                                total * sizeof(gpu_journey),
@@ -989,11 +990,16 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
     j.dest_time_ = delta_to_unix(base(), gj.dest_time_);
     j.dest_ = gj.dest_l_;
     j.transfers_ = gj.transfers_;
-    if constexpr (WithCost) {
+    if constexpr (Crit == mc_crit::cost) {
       // full generalized cost: common elapsed part + stored extras
       j.criteria_cost_ = static_cast<std::uint16_t>(
           gj.criteria_cost_ +
           static_cast<std::uint16_t>(j.travel_time().count()));
+    } else if constexpr (kHasNonTransit) {
+      j.criteria_cost_ = gj.criteria_cost_;  // raw minutes on foot
+    }
+    if constexpr (kHasModeFilter) {
+      j.criteria_mode_filter_ = gj.criteria_mode_filter_;
     }
 
     for (auto li2 = 0U; li2 != gj.n_legs_; ++li2) {
@@ -1054,8 +1060,8 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
 // First/last mile mumo offset and start footpath legs are added here on the
 // host, where the query offsets live (mirror of the CPU
 // mcraptor::reconstruct, transit-anchored offset legs).
-template <direction SearchDir, bool WithCost>
-void gpu_mcraptor<SearchDir, WithCost>::reconstruct(query const& q,
+template <direction SearchDir, mc_crit Crit>
+void gpu_mcraptor<SearchDir, Crit>::reconstruct(query const& q,
                                                     journey& j) {
   utl::verify(!j.legs_.empty(),
               "gpu mcraptor reconstruct: journey without legs");
@@ -1243,8 +1249,8 @@ void gpu_mcraptor<SearchDir, WithCost>::reconstruct(query const& q,
   j.is_reconstructed_ = true;
 }
 
-template <direction SearchDir, bool WithCost>
-void gpu_mcraptor<SearchDir, WithCost>::set_bounds(bmrap_bounds const* b) {
+template <direction SearchDir, mc_crit Crit>
+void gpu_mcraptor<SearchDir, Crit>::set_bounds(bmrap_bounds const* b) {
   if (b == nullptr || b->empty()) {
     has_bounds_ = false;
     return;
@@ -1262,9 +1268,13 @@ void gpu_mcraptor<SearchDir, WithCost>::set_bounds(bmrap_bounds const* b) {
   has_bounds_ = true;
 }
 
-template class gpu_mcraptor<direction::kForward, false>;
-template class gpu_mcraptor<direction::kBackward, false>;
-template class gpu_mcraptor<direction::kForward, true>;
-template class gpu_mcraptor<direction::kBackward, true>;
+#define NIGIRI_GPU_MCRAPTOR_INSTANTIATE(C)             \
+  template class gpu_mcraptor<direction::kForward, C>; \
+  template class gpu_mcraptor<direction::kBackward, C>;
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::arr)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::cost)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::non_transit)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::mode_filter)
+#undef NIGIRI_GPU_MCRAPTOR_INSTANTIATE
 
 }  // namespace nigiri::routing::gpu

@@ -13,6 +13,7 @@
 #include "nigiri/routing/gpu/device_td.cuh"
 #include "nigiri/routing/gpu/device_timetable.cuh"
 #include "nigiri/routing/gpu/journey_pod.h"
+#include "nigiri/routing/gpu/mcraptor.h"
 #include "nigiri/routing/gpu/stride.cuh"
 #include "nigiri/routing/gpu/types.cuh"
 
@@ -255,11 +256,32 @@ inline constexpr auto kMcOverflowEtBlock = 16U;
 inline constexpr auto kMcOverflowEtTasks = 32U;  // entry pool exhausted
 inline constexpr auto kMcOverflowTaskCap = 64U;  // raise ET_TASKS
 
-template <direction SearchDir, bool WithCost>
+template <direction SearchDir, mc_crit Crit>
 struct mcraptor_impl {
+  // Which pieces of the 16-bit "crit" label slot are live for this config.
+  static constexpr bool kHasCost = Crit == mc_crit::cost;
+  static constexpr bool kHasNonTransit =
+      Crit == mc_crit::non_transit || Crit == mc_crit::non_transit_mode_filter;
+  static constexpr bool kHasModeFilter =
+      Crit == mc_crit::mode_filter || Crit == mc_crit::non_transit_mode_filter;
+  // the crit slot carries something (dominance is not arrival-only)
+  static constexpr bool kHasExtras = Crit != mc_crit::arr;
+  // two live fields in one slot -> component-wise dominance, not a <= compare.
+  // layout: mode_filter in bit 0, non_transit minutes in bits 1..15.
+  static constexpr bool kCombo = kHasNonTransit && kHasModeFilter;
+  static constexpr auto const kNtShift = kCombo ? 1U : 0U;
+  static constexpr auto const kNtMax =
+      kCombo ? 0x7FFFU : 0xFFFFU;  // saturate on overflow (pruning stays exact)
+
   // OTP-default generalized cost parameters (see arr_cost_criteria):
   // total walk reluctance = 1 (elapsed charge) + surcharge
-  static constexpr auto const kBoardCost = WithCost ? 10U : 0U;
+  static constexpr auto const kBoardCost = kHasCost ? 10U : 0U;
+
+  // classes the mode_filter dimension flags (see mode_filter_dim::kAvoided)
+  static constexpr clasz_mask_t kAvoidedMask = to_mask(clasz::kAir);
+  __device__ __forceinline__ static bool is_avoided(clasz const c) {
+    return is_allowed(kAvoidedMask, c);
+  }
 
   __device__ __forceinline__ bool is_better(auto a, auto b) const {
     return kFwd ? a < b : a > b;
@@ -271,30 +293,83 @@ struct mcraptor_impl {
     return (kFwd ? 1 : -1) * a;
   }
 
-  // strict pareto over (arr, extras) - earliness is never traded against
-  // extras (see arr_cost_criteria::dominates: the earlier label must be
-  // assumed to wait for the same connection, and the waiting charge
-  // cancels the arrival advantage). WithCost=false: extras are all 0 and
-  // this degenerates to the plain arrival comparison.
+  // ---- criteria (crit slot) helpers ---------------------------------------
+  // crit of a round-0 seed: `ingress` minutes walked to the seeded stop
+  __device__ __forceinline__ std::uint32_t crit_at_start(
+      std::uint32_t const ingress) const {
+    if constexpr (kHasCost) {
+      return ingress * walk_surcharge_;
+    } else if constexpr (kHasNonTransit) {
+      return umin(ingress, kNtMax) << kNtShift;
+    } else {
+      return 0U;  // mode_filter (false at the start), arr
+    }
+  }
+  // crit after a footpath / mumo offset of `dur` minutes from a carried crit
+  __device__ __forceinline__ std::uint32_t crit_after_walk(
+      std::uint32_t const crit, std::uint32_t const dur) const {
+    if constexpr (kHasCost) {
+      return crit + dur * walk_surcharge_;
+    } else if constexpr (kHasNonTransit) {
+      auto const nt = umin((crit >> kNtShift) + dur, kNtMax) << kNtShift;
+      return kCombo ? (nt | (crit & 1U)) : nt;
+    } else {
+      return crit;  // mode_filter bit unchanged, arr
+    }
+  }
+  // crit after boarding a trip of class `cl` (the from_ride step). Applied at
+  // every alight of a carried boarding - idempotent for the OR, and the CPU
+  // adds the board penalty exactly once per boarded label too.
+  __device__ __forceinline__ std::uint32_t crit_after_ride(
+      std::uint32_t const carried, clasz const cl) const {
+    if constexpr (kHasCost) {
+      return carried + kBoardCost;
+    } else if constexpr (kHasModeFilter) {
+      return carried | (is_avoided(cl) ? 1U : 0U);
+    } else {
+      return carried;  // non_transit, arr
+    }
+  }
+
+  // "a's crit dominates b's" - component-wise for the combo, a plain <= for
+  // the single-field configs (mode_filter is one bit at position 0, so <=
+  // is "false beats true").
+  __device__ __forceinline__ bool crit_le(std::uint32_t const a,
+                                          std::uint32_t const b) const {
+    if constexpr (kCombo) {
+      return (a >> 1) <= (b >> 1) && (a & 1U) <= (b & 1U);
+    } else {
+      return a <= b;
+    }
+  }
+
+  // strict pareto over (arr, crit) - earliness is never traded against the
+  // crit (see arr_cost_criteria::dominates: the earlier label must be
+  // assumed to wait for the same connection, and the waiting charge cancels
+  // the arrival advantage). arr config: crit is 0 everywhere.
   __device__ __forceinline__ bool dominates(
       std::uint32_t const a_key,
       std::uint32_t const a_extras,
       std::uint32_t const b_key,
       std::uint32_t const b_extras) const {
-    return a_key <= b_key && a_extras <= b_extras;
+    return a_key <= b_key && crit_le(a_extras, b_extras);
   }
 
-  // dominance for COMPLETED journeys (the destination frontier): the
-  // elapsed part is realized at the destination, so (key, key + extras)
-  // IS the journey-level cost dominance and stays valid against
-  // lb-projections (see arr_cost_criteria::completed_dominates). Only
-  // the stop bags need the strict rule.
+  // dominance for COMPLETED journeys (the destination frontier). For the
+  // cost config the elapsed part is realized at the destination, so
+  // (key, key + extras) is the journey-level cost dominance and stays valid
+  // against lb-projections (arr_cost_criteria::completed_dominates). Every
+  // other dimension only grows, so its completed rule is the strict one.
   __device__ __forceinline__ bool completed_dominates(
       std::uint32_t const a_key,
       std::uint32_t const a_extras,
       std::uint32_t const b_key,
       std::uint32_t const b_extras) const {
-    return a_key <= b_key && a_key + a_extras <= b_key + b_extras;
+    if constexpr (kHasCost) {
+      return a_key <= b_key && a_key + a_extras <= b_key + b_extras;
+    } else {
+      return a_key <= b_key && crit_le(a_extras, b_extras);
+    }
   }
 
   // biased arrival key (identical bias to device_times<SearchDir>)
@@ -487,6 +562,22 @@ struct mcraptor_impl {
            (kFwd ? static_cast<int>(dep) : -static_cast<int>(dep));
   }
 
+  // "entry a reuse-dominates candidate b on the crit field". Only the cost
+  // dimension discounts by departure (arr_cost_criteria::reuse_dominates);
+  // every other dimension is absolute, so it is the plain in-bag rule
+  // (arr_with::reuse_dominates == dominates), and arr's departure clause is
+  // already covered by the arrival compare (latest-first processing).
+  __device__ __forceinline__ bool reuse_crit_le(std::uint32_t const a_crit,
+                                                delta_t const a_dep,
+                                                std::uint32_t const b_crit,
+                                                delta_t const b_dep) const {
+    if constexpr (kHasCost) {
+      return reuse_term(a_crit, a_dep) <= reuse_term(b_crit, b_dep);
+    } else {
+      return crit_le(a_crit, b_crit);
+    }
+  }
+
   // cross-start rejection: some previously accepted label (any start)
   // with round <= and compatible flags reuse-dominates the candidate.
   // Lock-free racy reads: missed entries only weaken pruning.
@@ -495,7 +586,6 @@ struct mcraptor_impl {
                                  std::uint32_t const extras,
                                  std::uint32_t const round,
                                  bool const by_route) const {
-    auto const cand_term = reuse_term(extras, dep_);
     for (auto i = 0U; i != kMcReuseCap; ++i) {
       auto const v = rslots[i];
       if (v == kMcEmptySlot) {
@@ -506,7 +596,7 @@ struct mcraptor_impl {
       }
       if (mc_reuse_round(v) <= round && (!by_route || mc_reuse_by_route(v)) &&
           mc_reuse_key(v) <= arr_key &&
-          reuse_term(mc_reuse_extras(v), mc_reuse_dep(v)) <= cand_term) {
+          reuse_crit_le(mc_reuse_extras(v), mc_reuse_dep(v), extras, dep_)) {
         return true;
       }
     }
@@ -520,7 +610,6 @@ struct mcraptor_impl {
                                std::uint32_t const extras,
                                std::uint32_t const round,
                                bool const by_route) {
-    auto const cand_term = reuse_term(extras, dep_);
     auto free_slot = ~0U;
     for (auto i = 0U; i != kMcReuseCap; ++i) {
       auto const v = rslots[i];
@@ -530,7 +619,7 @@ struct mcraptor_impl {
       }
       if (mc_reuse_round(v) >= round && (by_route || !mc_reuse_by_route(v)) &&
           arr_key <= mc_reuse_key(v) &&
-          cand_term <= reuse_term(mc_reuse_extras(v), mc_reuse_dep(v))) {
+          reuse_crit_le(extras, dep_, mc_reuse_extras(v), mc_reuse_dep(v))) {
         rslots[i] = kMcEmptySlot;  // evicted by the new entry
         free_slot = free_slot == ~0U ? i : free_slot;
       }
@@ -811,7 +900,7 @@ struct mcraptor_impl {
       auto const arr = starts_[i].second;
       // at_start: ingress = walking between query start and seeded stop
       auto const ingress = static_cast<std::uint32_t>(dir(arr - d_start));
-      auto const extras = WithCost ? ingress * walk_surcharge_ : 0U;
+      auto const extras = crit_at_start(ingress);
       if (bag_insert(l, to_key(arr), extras, 0U, false, /*with_bc=*/false, 0U,
                      kMcNoBc, 0)) {
         touched_.mark(l);
@@ -1135,7 +1224,7 @@ struct mcraptor_impl {
           continue;
         }
         auto const pe_key = mc_arr_key(lab);
-        auto const pe_extras = WithCost ? mc_extras(lab) : 0U;
+        auto const pe_extras = kHasExtras ? mc_extras(lab) : 0U;
         if (dest_dominates(k, pe_key + l_lb, pe_extras)) {
           continue;
         }
@@ -1247,7 +1336,7 @@ struct mcraptor_impl {
         segs[0] = {
             mc_et_key(packed),
             mc_bc(bag_label(l, mc_et_slot(packed))),
-            static_cast<std::uint16_t>(WithCost ? mc_et_extras(packed) : 0U),
+            static_cast<std::uint16_t>(kHasExtras ? mc_et_extras(packed) : 0U),
             static_cast<std::uint16_t>(stop_idx),
             static_cast<std::uint16_t>(pos + 1U),
             static_cast<std::uint16_t>(n)};
@@ -1435,7 +1524,7 @@ struct mcraptor_impl {
     auto const stop_bag = bag_view(l_idx);
     for (auto e = 0U; e != n_ent; ++e) {
       auto const et_key = et_ent_key_[eoff + e];
-      auto const pe_extras = WithCost ? et_ent_ex_[eoff + e] : 0U;
+      auto const pe_extras = kHasExtras ? et_ent_ex_[eoff + e] : 0U;
       auto merged = false;
       for (auto i = 0U; i != K; ++i) {
         if (i < out.cnt_ && !merged) {
@@ -1511,7 +1600,7 @@ struct mcraptor_impl {
         continue;
       }
       auto const ride_extras =
-          WithCost ? (bag.bx_[i] & 0xFFFFU) + kBoardCost : 0U;
+          crit_after_ride(bag.bx_[i] & 0xFFFFU, tt_.route_clasz_[r]);
       if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
         continue;
       }
@@ -1626,7 +1715,7 @@ struct mcraptor_impl {
       auto const stop_bag = bag_view(l_idx);
       for (auto e = 0U; e != n_ent; ++e) {
         auto const et_key = et_ent_key_[eoff + e];
-        auto const pe_extras = WithCost ? et_ent_ex_[eoff + e] : 0U;
+        auto const pe_extras = kHasExtras ? et_ent_ex_[eoff + e] : 0U;
         auto const pe_parent = mc_bc(stop_bag[et_ent_sl_[eoff + e]]);
 
         // merge into the route bag: pareto over (trip order, extras)
@@ -1738,8 +1827,7 @@ struct mcraptor_impl {
         if (ride_key >= worst_key || ride_key + l_lb >= worst_key) {
           continue;
         }
-        auto const ride_extras =
-            WithCost ? static_cast<std::uint32_t>(sg.extras_) + kBoardCost : 0U;
+        auto const ride_extras = crit_after_ride(sg.extras_, tt_.route_clasz_[r]);
         // destination pareto pruning: optimistic projection (key + lb)
         if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
           continue;
@@ -1824,8 +1912,7 @@ struct mcraptor_impl {
             continue;
           }
           auto const ride_extras =
-              WithCost ? static_cast<std::uint32_t>(rl.extras_) + kBoardCost
-                       : 0U;
+              crit_after_ride(rl.extras_, tt_.route_clasz_[r]);
           // destination pareto pruning: optimistic projection (key + lb)
           if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
             continue;
@@ -1877,7 +1964,7 @@ struct mcraptor_impl {
 
       for (auto e = 0U; e != n_ent; ++e) {
         auto const et_key = et_ent_key_[eoff + e];
-        auto const pe_extras = WithCost ? et_ent_ex_[eoff + e] : 0U;
+        auto const pe_extras = kHasExtras ? et_ent_ex_[eoff + e] : 0U;
         auto const pe_parent = mc_bc(stop_bag[et_ent_sl_[eoff + e]]);
 
         // merge into the route bag: pareto over (trip order, extras)
@@ -1957,10 +2044,7 @@ struct mcraptor_impl {
       return false;
     }
     auto const fp_extras =
-        WithCost ? te_extras + static_cast<std::uint32_t>(
-                                   static_cast<std::uint32_t>(fp_duration) *
-                                   walk_surcharge_)
-                 : 0U;
+        crit_after_walk(te_extras, static_cast<std::uint32_t>(fp_duration));
     if (dest_dominates(k, fp_key + target_lb, fp_extras)) {
       return false;
     }
@@ -2083,9 +2167,8 @@ struct mcraptor_impl {
               ride_key + l_lb >= worst_key) {
             continue;
           }
-          auto const ride_extras =
-              WithCost ? static_cast<std::uint32_t>(rl.extras_) + kBoardCost
-                       : 0U;
+          auto const ride_extras = crit_after_ride(
+              rl.extras_, rtt_.rt_transport_clasz_[rt_t]);
           if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
             continue;
           }
@@ -2136,7 +2219,7 @@ struct mcraptor_impl {
         if (pe_key > dep_key) {
           continue;  // arrives after this run departs
         }
-        auto const pe_extras = WithCost ? mc_extras(lab) : 0U;
+        auto const pe_extras = kHasExtras ? mc_extras(lab) : 0U;
         if (dest_dominates(k, pe_key + l_lb, pe_extras)) {
           continue;
         }
@@ -2226,17 +2309,14 @@ struct mcraptor_impl {
               continue;
             }
             auto const te_arr = clamp(from_key(mc_arr_key(lab)) - buf);
-            auto const te_extras = WithCost ? mc_extras(lab) : 0U;
+            auto const te_extras = kHasExtras ? mc_extras(lab) : 0U;
             auto const te_bc = mc_bc(lab);
 
             if (egress_ok) {
               auto const end_arr = clamp(te_arr + dir(dist_to_end_[my_i]));
               auto const end_key = to_key(end_arr);
               auto const end_extras =
-                  WithCost
-                      ? te_extras + static_cast<std::uint32_t>(
-                                        dist_to_end_[my_i] * walk_surcharge_)
-                      : 0U;
+                  crit_after_walk(te_extras, dist_to_end_[my_i]);
               // window bound: pong's reverse searches must not write
               // journeys departing beyond the ping's start time
               if (end_key < worst_key) {
@@ -2261,8 +2341,7 @@ struct mcraptor_impl {
                     static_cast<std::uint32_t>(rr.duration_.count());
                 auto const end_arr = clamp(te_arr + dir(static_cast<int>(dur)));
                 auto const end_key = to_key(end_arr);
-                auto const end_extras =
-                    WithCost ? te_extras + dur * walk_surcharge_ : 0U;
+                auto const end_extras = crit_after_walk(te_extras, dur);
                 if (end_key < worst_key) {
                   auto const src = bc_read_coherent(te_bc);
                   if (bag_insert(to_idx(kIntermodalTarget), end_key, end_extras,
@@ -2329,7 +2408,7 @@ struct mcraptor_impl {
             continue;
           }
           auto const te_arr = clamp(from_key(mc_arr_key(lab)) - buf);
-          auto const te_extras = WithCost ? mc_extras(lab) : 0U;
+          auto const te_extras = kHasExtras ? mc_extras(lab) : 0U;
           auto const te_bc = mc_bc(lab);
           for (auto f = lane; f < n_fps; f += kWarpSize) {
             local_marked |=
@@ -2408,8 +2487,17 @@ struct mcraptor_impl {
     out->dest_l_ = dest_l;
     out->dest_time_ = from_key(mc_arr_key(lab));
     out->transfers_ = static_cast<std::uint8_t>(K - 1U);
-    out->criteria_cost_ =
-        WithCost ? static_cast<std::uint16_t>(mc_extras(lab)) : 0U;
+    {
+      auto const crit = kHasExtras ? mc_extras(lab) : 0U;
+      // criteria_cost_ carries the cost extras / non_transit minutes;
+      // criteria_mode_filter_ the avoided-class bit (see journey_pod.h)
+      out->criteria_cost_ =
+          static_cast<std::uint16_t>(kHasCost || kHasNonTransit
+                                         ? crit >> kNtShift
+                                         : 0U);
+      out->criteria_mode_filter_ =
+          static_cast<std::uint8_t>(kHasModeFilter ? crit & 1U : 0U);
+    }
     out->start_shift_ = 0;
 
     auto const arr_ev = kFwd ? event_type::kArr : event_type::kDep;

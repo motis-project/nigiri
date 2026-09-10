@@ -864,7 +864,8 @@ routing_result bmrap_profile_search(
     AlgoState& algo_state,
     query q,
     direction const search_dir,
-    std::optional<std::chrono::seconds> const timeout) {
+    std::optional<std::chrono::seconds> const timeout,
+    int const gpu_mc_mode) {
   auto const run = [&]<int GpuMc>() {
     return search_dir == direction::kForward
                ? bmrap_profile<direction::kForward, false, Criteria, AlgoState,
@@ -875,13 +876,13 @@ routing_result bmrap_profile_search(
                                       std::move(q), timeout);
   };
   // Probe the device multicriteria state here rather than inside: it is a
-  // large allocation that a big timetable can fail, and the mode is a
-  // compile-time choice, so a failure discovered later would take the whole
-  // GPU search down with it instead of just the optional phases.
-  if constexpr (kGpuMcSupported<Criteria, AlgoState> && kBmrapGpuMcMode != 0) {
-    if (algo_state.try_mc_state() != nullptr) {
-      return kBmrapGpuMcMode >= 2 ? run.template operator()<2>()
-                                  : run.template operator()<1>();
+  // large allocation that a big timetable can fail, so a failure discovered
+  // later would take the whole GPU search down with it instead of just the
+  // optional phases.
+  if constexpr (kGpuMcSupported<Criteria, AlgoState>) {
+    if (gpu_mc_mode != 0 && algo_state.try_mc_state() != nullptr) {
+      return gpu_mc_mode >= 2 ? run.template operator()<2>()
+                              : run.template operator()<1>();
     }
   }
   return run.template operator()<0>();
@@ -893,7 +894,7 @@ routing_result bmrap_profile_search(
 #define NIGIRI_BMRAPP_INSTANTIATE(C, S)                                    \
   template routing_result bmrap_profile_search<C>(                        \
       timetable const&, rt_timetable const*, search_state&, S&, query,     \
-      direction, std::optional<std::chrono::seconds>);
+      direction, std::optional<std::chrono::seconds>, int);
 
 NIGIRI_BMRAPP_INSTANTIATE(arr_criteria, raptor_state)
 NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_criteria, raptor_state)

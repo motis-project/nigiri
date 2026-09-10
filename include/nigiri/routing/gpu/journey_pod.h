@@ -36,9 +36,13 @@ struct gpu_journey {
   std::uint8_t transfers_;
   location_idx_t dest_l_;
   delta_t dest_time_;
-  // generalized-cost extras of the label (mcraptor cost config; the host
-  // adds the elapsed part) - unused by the single-criterion raptor
+  // mcraptor criteria of the winning label, written straight into the host
+  // journey's criteria_* slots. criteria_cost_ carries the cost config's
+  // extras (the host adds the elapsed part) or the non_transit minutes;
+  // criteria_mode_filter_ is the "uses an avoided class" bit. Unused by the
+  // single-criterion raptor and the arr-only mcraptor.
   std::uint16_t criteria_cost_;
+  std::uint8_t criteria_mode_filter_;
   // tight-start shift (mcraptor, see gpu_mcraptor::set_tight_start):
   // journey's latest feasible departure minus the step start, i.e. first
   // boarding departure minus the minimum-walk feasible round-0 label of

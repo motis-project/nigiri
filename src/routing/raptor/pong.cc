@@ -67,13 +67,13 @@ struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_raptor_state, RangeReuse> {
 template <direction SearchDir, via_offset_t Vias, bool Rt, bool RangeReuse>
 struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_state,
                      RangeReuse> {
-  using type = gpu::gpu_mcraptor<SearchDir, /*WithCost=*/false>;
+  using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::arr>;
 };
 
 template <direction SearchDir, via_offset_t Vias, bool Rt, bool RangeReuse>
 struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_cost_state,
                      RangeReuse> {
-  using type = gpu::gpu_mcraptor<SearchDir, /*WithCost=*/true>;
+  using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::cost>;
 };
 #endif
 
