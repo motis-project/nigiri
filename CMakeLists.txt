@@ -2,9 +2,6 @@ cmake_minimum_required(VERSION 3.22)
 project(nigiri)
 
 option(NIGIRI_CUDA "enable CUDA functions" OFF)
-#if (NIGIRI_CUDA)
-#  set(CMAKE_CUDA_ARCHITECTURES native)
-#endif()
 
 if (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
   if (NIGIRI_MIMALLOC)
@@ -178,7 +175,6 @@ if (NIGIRI_CUDA)
   set_target_properties(nigiri-gpu PROPERTIES
           COMPILE_OPTIONS "${nigiri-gpu-compile-options}"
           WINDOWS_EXPORT_ALL_SYMBOLS ON
-          #CUDA_ARCHITECTURES native
           CUDA_STANDARD 20
           COMPILE_WARNING_AS_ERROR OFF
           RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}

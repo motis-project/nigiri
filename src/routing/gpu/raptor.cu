@@ -29,6 +29,7 @@
 #include "thrust/fill.h"
 #include "thrust/host_vector.h"
 
+#include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/timer.h"
 
@@ -47,6 +48,10 @@
 
 namespace nigiri::routing::gpu {
 
+// words a device_bitvec<std::uint32_t> needs to hold n bits
+constexpr std::uint32_t n_bitvec_words(std::uint32_t const n) {
+  return n / 32U + 1U;
+}
 
 // gpu_timetable::impl lives in timetable_impl.cuh (shared with
 // mcraptor.cu).
@@ -94,9 +99,13 @@ struct gpu_raptor_state::impl {
                     best_.size() * sizeof(std::uint64_t), stream_);
     cudaMemsetAsync(thrust::raw_pointer_cast(tmp_.data()), 0xFF,
                     tmp_.size() * sizeof(std::uint64_t), stream_);
-    station_mark_.resize(tt_.n_locations_ / 32U + 1U);
-    prev_station_mark_.resize(tt_.n_locations_ / 32U + 1U);
-    route_mark_.resize(tt_.n_routes_ / 32U + 1U);
+    auto const n_loc_words = n_bitvec_words(tt_.n_locations_);
+    station_mark_.resize(n_loc_words);
+    prev_station_mark_.resize(n_loc_words);
+    route_mark_.resize(n_bitvec_words(tt_.n_routes_));
+    round_touched_stride_ = n_loc_words;
+    round_touched_.resize(static_cast<std::size_t>(round_touched_stride_) *
+                          (kMaxTransfers + 2U));
     any_marked_.resize(1U);
     done_.resize(1U);
     bounds_dev_.ensure(
@@ -112,7 +121,7 @@ struct gpu_raptor_state::impl {
   // the only per-query sizing: the rt timetable may be absent or may have
   // grown (rt updates) since the last query on this state
   void resize_rt(unsigned const n_rt_transports) {
-    rt_transport_mark_.resize(n_rt_transports / 32U + 1U);
+    rt_transport_mark_.resize(n_bitvec_words(n_rt_transports));
   }
 
   void upload_query(
@@ -170,6 +179,28 @@ struct gpu_raptor_state::impl {
           "could not copy td dest offsets");
     }
 
+    // Copy dense list of destination locations.
+    {
+      auto dest_locs = std::vector<location_idx_t>{};
+      for (auto i = std::size_t{0U}; i != is_dest.size(); ++i) {
+        if (is_dest[i]) {
+          dest_locs.push_back(location_idx_t{static_cast<std::uint32_t>(i)});
+        }
+      }
+      n_dest_locs_[dir] = static_cast<std::uint32_t>(dest_locs.size());
+      if (!dest_locs.empty()) {
+        auto* const pin = dest_locs_pin_[dir].ensure(dest_locs.size());
+        std::copy(dest_locs.begin(), dest_locs.end(), pin);
+        utl::verify(
+            cudaSuccess ==
+                cudaMemcpyAsync(
+                    dest_locs_dev_[dir].ensure(dest_locs.size(), stream_), pin,
+                    dest_locs.size() * sizeof(location_idx_t),
+                    cudaMemcpyHostToDevice, stream_),
+            "could not copy dest locs");
+      }
+    }
+
     // Copy is_dest.
     is_dest_[dir].resize(is_dest.blocks_.size());
     auto* const is_dest_pin = is_dest_pin_[dir].ensure(is_dest.blocks_.size());
@@ -215,6 +246,9 @@ struct gpu_raptor_state::impl {
   thrust::device_vector<std::uint32_t> prev_station_mark_;
   thrust::device_vector<std::uint32_t> route_mark_;
   thrust::device_vector<std::uint32_t> rt_transport_mark_;
+  thrust::device_vector<std::uint32_t> round_touched_;
+  std::uint32_t round_touched_stride_{0U};
+  bool has_reusable_round_times_{false};
 
   // per-direction query data: [0]=fwd, [1]=bwd (ping/pong interleave on the
   // shared state, each direction uploads its slot once in the ctor)
@@ -226,6 +260,9 @@ struct gpu_raptor_state::impl {
   // td egress offsets (q.td_dest_), sparse groups per direction;
   // used size 0 = no td offsets (device never touched)
   device_buffer<location_idx_t> td_dest_locs_dev_[2];
+  device_buffer<location_idx_t> dest_locs_dev_[2];
+  pinned_host_buffer<location_idx_t> dest_locs_pin_[2];
+  std::uint32_t n_dest_locs_[2]{0U, 0U};
   device_buffer<std::uint32_t> td_dest_ranges_dev_[2];
   device_buffer<td_offset> td_dest_data_dev_[2];
   pinned_host_buffer<location_idx_t> td_dest_locs_pin_[2];
@@ -483,18 +520,15 @@ __global__ void transfers_footpaths_kernel(raptor_impl<SearchDir, WithBounds> r,
 // requested for launch". Same fix as mc_launch_dims() in mcraptor.cu.
 template <typename Kernel>
 std::pair<int, int> launch_dims(Kernel kernel) {
-  static thread_local std::unordered_map<void*, std::pair<int, int>> cache;
-  auto const key = reinterpret_cast<void*>(kernel);
-  if (auto const it = cache.find(key); it != end(cache)) {
-    return it->second;
-  }
-  auto blocks = 0;
-  auto threads = 0;
-  // half + quarter benchmarked with less throughput
-  cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
-  auto const dims = std::pair{blocks, threads};
-  cache.emplace(key, dims);
-  return dims;
+  thread_local auto cache = hash_map<void const*, std::pair<int, int>>{};
+  return utl::get_or_create(
+      cache, reinterpret_cast<void const*>(kernel), [&]() {
+        auto blocks = 0;
+        auto threads = 0;
+        // half + quarter benchmarked with less throughput
+        cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
+        return std::pair{blocks, threads};
+      });
 }
 
 template <typename Kernel, typename... Args>
@@ -686,6 +720,12 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     s.upload_query(kDirIdx, this, is_dest_, *dist_to_dest_, *td_dist_to_dest_);
   }
 
+  // No start = nothing to do.
+  // guard against UB: starts_pinned with size=0 -> data=NULL -> memcpy to NULL
+  if (starts_.empty()) {
+    return;
+  }
+
   // Copy starts.
   auto* const starts_pinned = s.starts_.ensure(starts_.size());
   std::memset(starts_pinned, 0,  // otherwise initcheck flags
@@ -706,6 +746,9 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
   CUDA_CHECK(cudaPeekAtLastError());
 
   auto const rt_active = gpu_rtt_ != nullptr;
+
+  auto const rt_transports_active =
+      rt_active && gpu_rtt_->impl_->n_rt_transports_ != 0U;
   auto const with_td_dest = s.td_dest_locs_dev_[kDirIdx].size() > 0U;
   auto const with_td_fps =
       rt_active && prf_idx_ != 0U && gpu_rtt_->impl_->has_td_fps_[prf_idx_];
@@ -756,6 +799,11 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
       .route_mark_ = {to_mutable_view(s.route_mark_)},
       .rt_transport_mark_ = {to_mutable_view(s.rt_transport_mark_)},
+      .round_touched_ = to_mutable_view(s.round_touched_),
+      .round_touched_stride_ = s.round_touched_stride_,
+      .has_reusable_round_times_ = s.has_reusable_round_times_ ? 1U : 0U,
+      .dest_locs_ = {s.dest_locs_dev_[kDirIdx].data(), s.n_dest_locs_[kDirIdx]},
+      .n_dest_locs_ = s.n_dest_locs_[kDirIdx],
       .et_result_ = to_mutable_view(s.et_result_),
       .et_task_list_ = to_mutable_view(s.et_task_list_),
       .et_task_count_ = thrust::raw_pointer_cast(s.et_task_count_.data()),
@@ -797,7 +845,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     launch(reuse_previous_arrivals_kernel<SearchDir, WithBounds>, s.stream_, r,
            k);
     launch(mark_routes_kernel<SearchDir, WithBounds>, s.stream_, r, k);
-    if (rt_active) {
+    if (rt_transports_active) {
       launch(mark_rt_transports_kernel<SearchDir, WithBounds>, s.stream_, r, k);
     }
     launch(begin_transit_phase_kernel<SearchDir, WithBounds>, s.stream_, r);
@@ -822,7 +870,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
                                       IsWheelchair, WithFilters>,
                    s.stream_, r, k);
           });
-      if (rt_active) {
+      if (rt_transports_active) {
         dispatch_filtered(
             with_clasz, is_wheelchair_, with_filters,
             [&]<bool WithClasz, bool IsWheelchair, bool WithFilters>() {
@@ -850,6 +898,10 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
   }
   cudaStreamSynchronize(s.stream_);
   CUDA_CHECK(cudaPeekAtLastError());
+
+  // round_times_ now holds this start time's results, so the next execute()
+  // has something to fold; cleared again by reset_arrivals()
+  s.has_reusable_round_times_ = true;
 
   // === DEVICE RECONSTRUCT ===
   auto dest_list = std::vector<location_idx_t>{};
@@ -1011,6 +1063,9 @@ void gpu_raptor<SearchDir, WithBounds>::reset_arrivals() {
   auto& s = *state_.impl_;
   cudaMemsetAsync(thrust::raw_pointer_cast(s.time_at_dest_.data()), 0xFF,
                   s.time_at_dest_.size() * sizeof(std::uint64_t), s.stream_);
+  s.has_reusable_round_times_ = false;
+  cudaMemsetAsync(thrust::raw_pointer_cast(s.round_touched_.data()), 0x00,
+                  s.round_touched_.size() * sizeof(std::uint32_t), s.stream_);
   cudaMemsetAsync(thrust::raw_pointer_cast(s.round_times_.data()), 0xFF,
                   s.round_times_.size() * sizeof(std::uint64_t), s.stream_);
 }

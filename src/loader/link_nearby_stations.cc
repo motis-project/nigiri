@@ -72,8 +72,6 @@ void link_nearby_stations(timetable& tt) {
 
       tt.locations_.preprocessing_footpaths_out_[l_from_idx].emplace_back(
           l_to_idx, duration);
-      tt.locations_.preprocessing_footpaths_in_[l_to_idx].emplace_back(
-          l_from_idx, duration);
 
       if (dist.lt(to_pos, kEqDist)) {
         tt.locations_.equivalences_[l_from_idx].emplace_back(l_to_idx);

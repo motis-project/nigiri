@@ -6,6 +6,7 @@
 #include <string>
 
 #include "utl/get_or_create.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/progress_tracker.h"
 
 #include "cista/hash.h"
@@ -47,6 +48,13 @@
 namespace fs = std::filesystem;
 
 namespace nigiri::loader::gtfs {
+
+template <typename Vec, typename El>
+void push_unique(Vec& vec, El&& value) {
+  if (utl::find(vec, value) == end(vec)) {
+    vec.push_back(value);
+  }
+}
 
 constexpr auto const required_files = {kAgencyFile, kStopFile, kRoutesFile,
                                        kTripsFile, kStopTimesFile};
@@ -223,10 +231,13 @@ void load_timetable(loader_config const& config,
         }
 
         auto& to_trip = trip_data.data_[to_it->second];
-        to_trip.seated_in_.push_back(
-            gtfs_trip_idx_t{&from_trip - trip_data.data_.data()});
-        from_trip.seated_out_.push_back(
-            gtfs_trip_idx_t{&to_trip - trip_data.data_.data()});
+
+        // deduplicate because CH feed introduces duplicate Primary Key
+        // due to additional service_id
+        push_unique(to_trip.seated_in_,
+                    gtfs_trip_idx_t{&from_trip - trip_data.data_.data()});
+        push_unique(from_trip.seated_out_,
+                    gtfs_trip_idx_t{&to_trip - trip_data.data_.data()});
       }
     }
   }

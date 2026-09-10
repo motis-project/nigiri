@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/special_stations.h"
 
 #include "../raptor_search.h"
 #include "results_to_string.h"
@@ -77,6 +78,7 @@ TEST(routing, max_interval) {
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
   auto const src = source_idx_t{0};
+  register_special_stations(tt);
   load_timetable({}, src, test_files(), tt);
   finalize(tt);
 
