@@ -888,8 +888,8 @@ routing_result bmrap_profile(timetable const& tt,
         return f.start_time_ == x.start_time_ && f.dest_time_ == x.dest_time_ &&
                f.transfers_ == x.transfers_ &&
                f.criteria_cost_ == x.criteria_cost_ &&
-               f.criteria_air_ == x.criteria_air_ &&
-               f.criteria_clasz_ == x.criteria_clasz_;
+               f.criteria_mode_filter_ == x.criteria_mode_filter_ &&
+               f.criteria_mode_switches_ == x.criteria_mode_switches_;
       });
       if (it != end(realized)) {
         x.legs_ = it->legs_;
@@ -1032,23 +1032,28 @@ routing_result bmrap_profile_search(
       direction, std::optional<std::chrono::seconds>);
 
 NIGIRI_BMRAPP_INSTANTIATE(arr_criteria, raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_walk_criteria, raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_air_criteria, raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_clasz_criteria, raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_walk_air_criteria, raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_walk_clasz_criteria, raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_air_clasz_criteria, raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_walk_air_clasz_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_mode_filter_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_mode_switches_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_mode_filter_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_mode_switches_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_mode_filter_mode_switches_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_mode_filter_mode_switches_criteria,
+                          raptor_state)
 
 #if defined(NIGIRI_CUDA)
 NIGIRI_BMRAPP_INSTANTIATE(arr_criteria, gpu::gpu_raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_walk_criteria, gpu::gpu_raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_air_criteria, gpu::gpu_raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_clasz_criteria, gpu::gpu_raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_walk_air_criteria, gpu::gpu_raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_walk_clasz_criteria, gpu::gpu_raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_air_clasz_criteria, gpu::gpu_raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_walk_air_clasz_criteria, gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_criteria, gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_mode_filter_criteria, gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_mode_switches_criteria, gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_mode_filter_criteria,
+                          gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_mode_switches_criteria,
+                          gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_mode_filter_mode_switches_criteria,
+                          gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_mode_filter_mode_switches_criteria,
+                          gpu::gpu_raptor_state)
 #endif
 
 #undef NIGIRI_BMRAPP_INSTANTIATE

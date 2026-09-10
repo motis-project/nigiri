@@ -378,7 +378,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
                 if constexpr (std::is_same_v<Criteria, arr_cost_criteria>) {
                   return static_cast<unsigned>(e.crit_.cost_);
                 } else {
-                  return walk_of(e.crit_);
+                  return non_transit_of(e.crit_);
                 }
               }(),
               static_cast<int>(e.dep_));
@@ -1542,13 +1542,13 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::split(delta_t const x) const {
 
 NIGIRI_MC_INSTANTIATE(arr_criteria)
 NIGIRI_MC_INSTANTIATE(arr_cost_criteria)
-NIGIRI_MC_INSTANTIATE(arr_walk_criteria)
-NIGIRI_MC_INSTANTIATE(arr_air_criteria)
-NIGIRI_MC_INSTANTIATE(arr_clasz_criteria)
-NIGIRI_MC_INSTANTIATE(arr_walk_air_criteria)
-NIGIRI_MC_INSTANTIATE(arr_walk_clasz_criteria)
-NIGIRI_MC_INSTANTIATE(arr_air_clasz_criteria)
-NIGIRI_MC_INSTANTIATE(arr_walk_air_clasz_criteria)
+NIGIRI_MC_INSTANTIATE(arr_non_transit_criteria)
+NIGIRI_MC_INSTANTIATE(arr_mode_filter_criteria)
+NIGIRI_MC_INSTANTIATE(arr_mode_switches_criteria)
+NIGIRI_MC_INSTANTIATE(arr_non_transit_mode_filter_criteria)
+NIGIRI_MC_INSTANTIATE(arr_non_transit_mode_switches_criteria)
+NIGIRI_MC_INSTANTIATE(arr_mode_filter_mode_switches_criteria)
+NIGIRI_MC_INSTANTIATE(arr_non_transit_mode_filter_mode_switches_criteria)
 
 #undef NIGIRI_MC_INSTANTIATE
 

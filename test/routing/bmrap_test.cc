@@ -296,8 +296,10 @@ TEST(bmrap, contains_bicriteria_journeys) {
 // dominance, the carried state and apply_to must fold over two dimensions.
 TEST(bmrap, composed_subset_of_mcraptor) {
   auto const f = fixture{};
-  auto const full = run_mcraptor<routing::mcraptor_walk_clasz_state>(f);
-  auto const restricted = run_bmrapp<routing::arr_walk_clasz_criteria>(f);
+  auto const full =
+      run_mcraptor<routing::mcraptor_non_transit_mode_switches_state>(f);
+  auto const restricted =
+      run_bmrapp<routing::arr_non_transit_mode_switches_criteria>(f);
 
   ASSERT_FALSE(restricted.empty());
   expect_subset(full, restricted, "BMRAPP(walk+clasz) vs McRAPTOR");
@@ -308,8 +310,9 @@ TEST(bmrap, composed_subset_of_mcraptor) {
 // finds. This is what breaks if a dimension's dominance folds the wrong way.
 TEST(bmrap, more_dimensions_never_lose_journeys) {
   auto const f = fixture{};
-  auto const walk = run_bmrapp<routing::arr_walk_criteria>(f);
-  auto const walk_clasz = run_bmrapp<routing::arr_walk_clasz_criteria>(f);
+  auto const walk = run_bmrapp<routing::arr_non_transit_criteria>(f);
+  auto const walk_clasz =
+      run_bmrapp<routing::arr_non_transit_mode_switches_criteria>(f);
 
   ASSERT_FALSE(walk.empty());
   expect_subset(walk_clasz, walk,
@@ -350,10 +353,13 @@ TEST(bmrap, backward_composed_subset_of_mcraptor) {
   auto const f = fixture{};
   auto const q = f.make_query(direction::kBackward);
   auto const full =
-      reference<routing::mcraptor_walk_clasz_state>(f, q, direction::kBackward)
+      reference<routing::mcraptor_non_transit_mode_switches_state>(
+          f, q, direction::kBackward)
           .js_;
   auto const restricted =
-      bmrapp<routing::arr_walk_clasz_criteria>(f, q, direction::kBackward).js_;
+      bmrapp<routing::arr_non_transit_mode_switches_criteria>(
+          f, q, direction::kBackward)
+          .js_;
 
   ASSERT_FALSE(restricted.empty());
   expect_subset(full, restricted,
@@ -600,8 +606,9 @@ TEST(bmrap, gpu_matches_cpu_walk) {
   auto const f = fixture{};
   auto const q = f.make_query();
   EXPECT_EQ(
-      bmrapp<routing::arr_walk_criteria>(f, q, direction::kForward).js_,
-      run_bmrapp_gpu<routing::arr_walk_criteria>(f, q, direction::kForward));
+      bmrapp<routing::arr_non_transit_criteria>(f, q, direction::kForward).js_,
+      run_bmrapp_gpu<routing::arr_non_transit_criteria>(f, q,
+                                                        direction::kForward));
 }
 
 // arriveBy on the device: the per-query buffers are direction-indexed, so

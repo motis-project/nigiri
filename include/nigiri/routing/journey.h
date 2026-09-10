@@ -81,13 +81,13 @@ struct journey {
     if (start_time_ <= dest_time_) {
       return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
              dest_time_ <= o.dest_time_ && criteria_cost_ <= o.criteria_cost_ &&
-             criteria_air_ <= o.criteria_air_ &&
-             criteria_clasz_ <= o.criteria_clasz_;
+             criteria_mode_filter_ <= o.criteria_mode_filter_ &&
+             criteria_mode_switches_ <= o.criteria_mode_switches_;
     } else {
       return transfers_ <= o.transfers_ && start_time_ <= o.start_time_ &&
              dest_time_ >= o.dest_time_ && criteria_cost_ <= o.criteria_cost_ &&
-             criteria_air_ <= o.criteria_air_ &&
-             criteria_clasz_ <= o.criteria_clasz_;
+             criteria_mode_filter_ <= o.criteria_mode_filter_ &&
+             criteria_mode_switches_ <= o.criteria_mode_switches_;
     }
   }
 
@@ -134,14 +134,15 @@ struct journey {
   // configurations); 0 for all others, which keeps their dominance
   // identical to (start, dest, transfers).
   std::uint16_t criteria_cost_{0U};
-  // second, independent pareto criterion: does the journey use a flight?
-  // A single packed criteria_cost_ could not express this - it would order
-  // (air, walk) lexicographically instead of pareto-wise and drop the
+  // second, independent pareto criterion: does the journey use an avoided
+  // vehicle class (a flight by default)? A single packed criteria_cost_
+  // could not express this - it would order (mode_filter, non_transit)
+  // lexicographically instead of pareto-wise and drop the
   // cheap-but-flying alternative. false for every algorithm that does not
   // optimize it, which keeps their dominance unchanged.
-  bool criteria_air_{false};
+  bool criteria_mode_filter_{false};
   // number of vehicle-class switches between consecutive trips
-  std::uint8_t criteria_clasz_{0U};
+  std::uint8_t criteria_mode_switches_{0U};
   bool error_{false};
   bool is_reconstructed_{false};
 };

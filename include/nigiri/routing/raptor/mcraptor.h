@@ -233,8 +233,8 @@ struct arr_cost_criteria {
   std::uint16_t cost_;  // extras only: walk surcharge + boarding penalties
 };
 
-// WALKING minutes: the third criterion of the classic multicriteria RAPTOR
-// and of the restricted-pareto paper.
+// NON-TRANSIT minutes (time on foot): the third criterion of the classic
+// multicriteria RAPTOR and of the restricted-pareto paper.
 //
 // Counted: the ingress offset / start footpath, every footpath relaxation
 // and the intermodal egress offset. NOT counted: the same-station transfer
@@ -246,7 +246,7 @@ struct arr_cost_criteria {
 // arr_with<> owns. Adding an optimization axis is then one ~20-line struct
 // plus an alias, rather than hand-writing its cross-product with the others.
 //
-//   dominates(o)            in-bag rule; may price the FUTURE (clasz_dim)
+//   dominates(o)            in-bag rule; may price the FUTURE (mode_switches)
 //   completed_dominates(o)  rule at the destination, where nothing follows
 //   at_start(ingress)       round-0 value
 //   from_ride(dur, ra, prev)  value after boarding a trip
@@ -256,32 +256,38 @@ struct arr_cost_criteria {
 //
 // Each dimension owns a DISTINCT journey slot, which is what makes them
 // freely combinable; that is also why the generalized-cost criterion is
-// not a dimension - it writes criteria_cost_, the slot walking uses.
+// not a dimension - it writes criteria_cost_, the slot non_transit_dim uses.
 
 // minutes on foot: offsets + footpaths
-struct walk_dim {
-  bool dominates(walk_dim const& o) const { return walk_ <= o.walk_; }
-  bool completed_dominates(walk_dim const& o) const { return dominates(o); }
-  static walk_dim at_start(std::uint16_t const ingress) { return {ingress}; }
-  static walk_dim from_ride(std::uint16_t,
-                            ride_attrs const&,
-                            walk_dim const& prev) {
+struct non_transit_dim {
+  bool dominates(non_transit_dim const& o) const {
+    return non_transit_ <= o.non_transit_;
+  }
+  bool completed_dominates(non_transit_dim const& o) const {
+    return dominates(o);
+  }
+  static non_transit_dim at_start(std::uint16_t const ingress) {
+    return {ingress};
+  }
+  static non_transit_dim from_ride(std::uint16_t,
+                                   ride_attrs const&,
+                                   non_transit_dim const& prev) {
     return prev;
   }
-  walk_dim with_transfer(int) const { return *this; }
-  walk_dim with_walk(int, std::uint16_t const duration) const {
-    return {static_cast<std::uint16_t>(walk_ + duration)};
+  non_transit_dim with_transfer(int) const { return *this; }
+  non_transit_dim with_walk(int, std::uint16_t const duration) const {
+    return {static_cast<std::uint16_t>(non_transit_ + duration)};
   }
-  void apply_to(journey& j) const { j.criteria_cost_ = walk_; }
-  bool operator==(walk_dim const&) const = default;
+  void apply_to(journey& j) const { j.criteria_cost_ = non_transit_; }
+  bool operator==(non_transit_dim const&) const = default;
 
-  std::uint16_t walk_{0U};
+  std::uint16_t non_transit_{0U};
 };
 
 // binary "uses an avoided vehicle class" (flights by default). The point is
 // that this is a pareto dimension rather than a filter: the result keeps
 // BOTH the fast itinerary that flies and the best one that does not.
-struct air_dim {
+struct mode_filter_dim {
   // NIGIRI_MC_AVOID_CLASZ takes a comma-separated list of clasz names
   // ("AIR", "SUBWAY", ...) so the same dimension can express "prefer to
   // avoid X" for any class.
@@ -309,20 +315,24 @@ struct air_dim {
   }();
   static bool is_avoided(clasz const c) { return is_allowed(kAvoided, c); }
 
-  bool dominates(air_dim const& o) const { return air_ <= o.air_; }
-  bool completed_dominates(air_dim const& o) const { return dominates(o); }
-  static air_dim at_start(std::uint16_t) { return {false}; }
-  static air_dim from_ride(std::uint16_t,
-                           ride_attrs const& ra,
-                           air_dim const& prev) {
-    return {prev.air_ || is_avoided(ra.clasz_)};
+  bool dominates(mode_filter_dim const& o) const {
+    return mode_filter_ <= o.mode_filter_;
   }
-  air_dim with_transfer(int) const { return *this; }
-  air_dim with_walk(int, std::uint16_t) const { return *this; }
-  void apply_to(journey& j) const { j.criteria_air_ = air_; }
-  bool operator==(air_dim const&) const = default;
+  bool completed_dominates(mode_filter_dim const& o) const {
+    return dominates(o);
+  }
+  static mode_filter_dim at_start(std::uint16_t) { return {false}; }
+  static mode_filter_dim from_ride(std::uint16_t,
+                                   ride_attrs const& ra,
+                                   mode_filter_dim const& prev) {
+    return {prev.mode_filter_ || is_avoided(ra.clasz_)};
+  }
+  mode_filter_dim with_transfer(int) const { return *this; }
+  mode_filter_dim with_walk(int, std::uint16_t) const { return *this; }
+  void apply_to(journey& j) const { j.criteria_mode_filter_ = mode_filter_; }
+  bool operator==(mode_filter_dim const&) const = default;
 
-  bool air_{false};
+  bool mode_filter_{false};
 };
 
 // number of VEHICLE CLASS SWITCHES between consecutive trips (bus ->
@@ -334,33 +344,33 @@ struct air_dim {
 // downstream, so it may only dominate when a full switch ahead. A label
 // that has ridden nothing yet boards anything for free. At the destination
 // nothing follows, so completed_dominates drops the penalty.
-struct clasz_dim {
+struct mode_switches_dim {
   // clasz has no invalid value of its own, so the one-past-the-end
   // enumerator doubles as "no trip ridden yet"
   static constexpr clasz no_clasz() { return clasz::kNumClasses; }
 
-  std::uint8_t switch_penalty(clasz_dim const& o) const {
+  std::uint8_t switch_penalty(mode_switches_dim const& o) const {
     return (clasz_ == o.clasz_ || clasz_ == no_clasz()) ? 0U : 1U;
   }
-  bool dominates(clasz_dim const& o) const {
+  bool dominates(mode_switches_dim const& o) const {
     return switches_ + switch_penalty(o) <= o.switches_;
   }
-  bool completed_dominates(clasz_dim const& o) const {
+  bool completed_dominates(mode_switches_dim const& o) const {
     return switches_ <= o.switches_;
   }
-  static clasz_dim at_start(std::uint16_t) { return {no_clasz(), 0U}; }
-  static clasz_dim from_ride(std::uint16_t,
-                             ride_attrs const& ra,
-                             clasz_dim const& prev) {
+  static mode_switches_dim at_start(std::uint16_t) { return {no_clasz(), 0U}; }
+  static mode_switches_dim from_ride(std::uint16_t,
+                                     ride_attrs const& ra,
+                                     mode_switches_dim const& prev) {
     auto const switched =
         prev.clasz_ != no_clasz() && prev.clasz_ != ra.clasz_;
     return {ra.clasz_,
             static_cast<std::uint8_t>(prev.switches_ + (switched ? 1U : 0U))};
   }
-  clasz_dim with_transfer(int) const { return *this; }
-  clasz_dim with_walk(int, std::uint16_t) const { return *this; }
-  void apply_to(journey& j) const { j.criteria_clasz_ = switches_; }
-  bool operator==(clasz_dim const&) const = default;
+  mode_switches_dim with_transfer(int) const { return *this; }
+  mode_switches_dim with_walk(int, std::uint16_t) const { return *this; }
+  void apply_to(journey& j) const { j.criteria_mode_switches_ = switches_; }
+  bool operator==(mode_switches_dim const&) const = default;
 
   clasz clasz_{clasz::kNumClasses};
   std::uint8_t switches_{0U};
@@ -474,12 +484,12 @@ struct arr_with {
   dims_t d_;
 };
 
-// Tracing helper: the walking minutes of any criteria that carries a walk
-// dimension, 0 for the ones that do not.
+// Tracing helper: the non-transit minutes of any criteria that carries a
+// non_transit dimension, 0 for the ones that do not.
 template <typename C>
-unsigned walk_of(C const& c) {
-  if constexpr (requires { c.template get<walk_dim>(); }) {
-    return c.template get<walk_dim>().walk_;
+unsigned non_transit_of(C const& c) {
+  if constexpr (requires { c.template get<non_transit_dim>(); }) {
+    return c.template get<non_transit_dim>().non_transit_;
   } else {
     return 0U;
   }
@@ -1027,31 +1037,43 @@ using mcraptor_cost = basic_mcraptor<SearchDir, arr_cost_criteria>;
 
 // Every dispatched combination of the dimensions above - one alias each,
 // no hand-written types.
-using arr_walk_criteria = arr_with<walk_dim>;
-using arr_air_criteria = arr_with<air_dim>;
-using arr_clasz_criteria = arr_with<clasz_dim>;
-using arr_walk_air_criteria = arr_with<walk_dim, air_dim>;
-using arr_walk_clasz_criteria = arr_with<walk_dim, clasz_dim>;
-using arr_air_clasz_criteria = arr_with<air_dim, clasz_dim>;
-using arr_walk_air_clasz_criteria = arr_with<walk_dim, air_dim, clasz_dim>;
+using arr_non_transit_criteria = arr_with<non_transit_dim>;
+using arr_mode_filter_criteria = arr_with<mode_filter_dim>;
+using arr_mode_switches_criteria = arr_with<mode_switches_dim>;
+using arr_non_transit_mode_filter_criteria =
+    arr_with<non_transit_dim, mode_filter_dim>;
+using arr_non_transit_mode_switches_criteria =
+    arr_with<non_transit_dim, mode_switches_dim>;
+using arr_mode_filter_mode_switches_criteria =
+    arr_with<mode_filter_dim, mode_switches_dim>;
+using arr_non_transit_mode_filter_mode_switches_criteria =
+    arr_with<non_transit_dim, mode_filter_dim, mode_switches_dim>;
 
-using mcraptor_walk_state = basic_mcraptor_state<arr_walk_criteria>;
-using mcraptor_air_state = basic_mcraptor_state<arr_air_criteria>;
-using mcraptor_walk_air_state = basic_mcraptor_state<arr_walk_air_criteria>;
-using mcraptor_clasz_state = basic_mcraptor_state<arr_clasz_criteria>;
-using mcraptor_walk_clasz_state =
-    basic_mcraptor_state<arr_walk_clasz_criteria>;
-using mcraptor_air_clasz_state = basic_mcraptor_state<arr_air_clasz_criteria>;
-using mcraptor_walk_air_clasz_state =
-    basic_mcraptor_state<arr_walk_air_clasz_criteria>;
+using mcraptor_non_transit_state =
+    basic_mcraptor_state<arr_non_transit_criteria>;
+using mcraptor_mode_filter_state =
+    basic_mcraptor_state<arr_mode_filter_criteria>;
+using mcraptor_non_transit_mode_filter_state =
+    basic_mcraptor_state<arr_non_transit_mode_filter_criteria>;
+using mcraptor_mode_switches_state =
+    basic_mcraptor_state<arr_mode_switches_criteria>;
+using mcraptor_non_transit_mode_switches_state =
+    basic_mcraptor_state<arr_non_transit_mode_switches_criteria>;
+using mcraptor_mode_filter_mode_switches_state =
+    basic_mcraptor_state<arr_mode_filter_mode_switches_criteria>;
+using mcraptor_non_transit_mode_filter_mode_switches_state =
+    basic_mcraptor_state<arr_non_transit_mode_filter_mode_switches_criteria>;
 
 template <direction SearchDir>
-using mcraptor_walk = basic_mcraptor<SearchDir, arr_walk_criteria>;
+using mcraptor_non_transit =
+    basic_mcraptor<SearchDir, arr_non_transit_criteria>;
 
 template <direction SearchDir>
-using mcraptor_air = basic_mcraptor<SearchDir, arr_air_criteria>;
+using mcraptor_mode_filter =
+    basic_mcraptor<SearchDir, arr_mode_filter_criteria>;
 
 template <direction SearchDir>
-using mcraptor_clasz = basic_mcraptor<SearchDir, arr_clasz_criteria>;
+using mcraptor_mode_switches =
+    basic_mcraptor<SearchDir, arr_mode_switches_criteria>;
 
 }  // namespace nigiri::routing
