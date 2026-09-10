@@ -1,9 +1,7 @@
 #include "nigiri/routing/gpu/mcraptor.h"
 
-#include <cinttypes>
-#include <cstdlib>
-#include <cstring>
 #include <algorithm>
+#include <cstring>
 #include <optional>
 #include <unordered_map>
 
@@ -37,16 +35,10 @@
 
 namespace nigiri::routing::gpu {
 
-// host+device popcount for thrust reductions over mark bitvec words
-struct mc_popc {
-  __host__ __device__ std::uint32_t operator()(std::uint32_t const w) const {
-#ifdef __CUDA_ARCH__
-    return static_cast<std::uint32_t>(__popc(w));
-#else
-    return static_cast<std::uint32_t>(__builtin_popcount(w));
-#endif
-  }
-};
+// Flip to true for a local A/B run: after every bag sweep, check the
+// bag-storage invariants (unique block ownership per stop, no stale slots) on
+// the device. Off by default - it adds a full extra kernel per round.
+constexpr bool kMcValidate = false;
 
 struct gpu_mcraptor_state::impl {
   explicit impl(gpu_timetable const& gtt)
@@ -54,28 +46,23 @@ struct gpu_mcraptor_state::impl {
     cudaStreamCreate(&stream_);
 
     auto const n_locations = tt_.n_locations_;
-    auto const env_cap = [](char const* name, std::uint32_t const def,
-                            std::uint32_t const max) {
-      auto const* v = std::getenv(name);
-      auto const x = v == nullptr ? def
-                                  : static_cast<std::uint32_t>(std::atoi(v));
-      utl::verify(x >= 4U && x <= max, "{}={} out of range [4, {}]", name, x,
-                  max);
-      return x;
+    auto const checked_cap = [](char const* what, std::size_t const x,
+                                std::uint32_t const max) {
+      utl::verify(x >= 4U && x <= max, "gpu mcraptor: {} cap {} out of range "
+                  "[4, {}]", what, x, max);
+      return static_cast<std::uint32_t>(x);
     };
     // inline slots per stop; the hwm byte bounds inline + block chain
-    bag_cap_ =
-        env_cap("NIGIRI_GPU_MC_BAG_CAP", kMcBagCapDefault, 255U - kMcBagBlock);
+    bag_cap_ = checked_cap("bag", kMcBagCapDefault, 255U - kMcBagBlock);
     bags_.resize(static_cast<std::size_t>(n_locations) * bag_cap_);
     cudaMemsetAsync(thrust::raw_pointer_cast(bags_.data()), 0xFF,
                     bags_.size() * sizeof(mc_label_t), stream_);
     // chained 8-slot blocks: pool scales with label demand, not with a
     // worst-case per-stop row (68 B/block; the WW flood start needs ~1M)
-    bag_pool_cap_ = env_cap(
-        "NIGIRI_GPU_MC_BAG_POOL",
-        static_cast<std::uint32_t>(std::min<std::size_t>(
-            std::max<std::size_t>(n_locations / 2U, 524'288U),
-            kMcBagPoolDefault * 4U)),
+    bag_pool_cap_ = checked_cap(
+        "bag pool",
+        std::min<std::size_t>(std::max<std::size_t>(n_locations / 2U, 524'288U),
+                              kMcBagPoolDefault * 4U),
         1U << 25U);
     bag_pool_.resize(static_cast<std::size_t>(bag_pool_cap_) * kMcBagBlock);
     cudaMemsetAsync(thrust::raw_pointer_cast(bag_pool_.data()), 0xFF,
@@ -108,17 +95,13 @@ struct gpu_mcraptor_state::impl {
                       sizeof(std::uint32_t), stream_);
     }
 
-    // breadcrumb arena: transit arrivals + footpath copies of one start
-    // time; overflow trips the device canary -> raise via env if it fires
-    // (sized for the strict-dominance frontier: ~2x the bounded rule's)
-    auto arena_cap = std::min<std::size_t>(
+    // breadcrumb arena: transit arrivals + footpath copies of one start time;
+    // overflow trips the device canary (sized for the strict-dominance
+    // frontier: ~2x the bounded rule's)
+    auto const arena_cap = std::min<std::size_t>(
         std::max<std::size_t>(static_cast<std::size_t>(n_locations) * 16U,
                               8'000'000U),
         32'000'000U);
-    if (auto const* env = std::getenv("NIGIRI_GPU_MC_ARENA");
-        env != nullptr) {
-      arena_cap = static_cast<std::size_t>(std::atoll(env));
-    }
     bc_pay_lo_.resize(arena_cap);
     bc_hi_arr_.resize(arena_cap);
     bc_par_.resize(arena_cap);
@@ -143,30 +126,26 @@ struct gpu_mcraptor_state::impl {
     route_single_entry_.resize(tt_.n_routes_);
     route_single_flat_.resize(tt_.n_routes_);
     auto const n_route_stops = tt_.route_of_stop_.size();
-    // exact-size et rows: task list/map/offsets are per flat route-stop
-    // (task count can never exceed that), the entry pool is reserved at
-    // collect time as hwm+1 per task - it scales with the actual frontier
-    // (measured ~3 entries/task mean) instead of a worst-case row width
-    // measured WW peaks (n=20): 38M tasks, 26M arena entries; caps ~1.7x
-    et_tasks_cap_ = env_cap(
-        "NIGIRI_GPU_MC_ET_TASKS",
-        // clamped up to env_cap's own floor: a timetable with fewer than 4
-        // route stops (tests) would otherwise derive a default that
-        // env_cap then rejects as out of range
-        static_cast<std::uint32_t>(std::clamp<std::size_t>(
-            n_route_stops, 4U, 64'000'000U)),
+    // exact-size et rows: task list/map/offsets are per flat route-stop (task
+    // count can never exceed that), the entry pool is reserved at collect time
+    // as hwm+1 per task - it scales with the actual frontier (~3 entries/task
+    // mean) instead of a worst-case row width. WW peaks (n=20): 38M tasks, 26M
+    // arena entries; caps ~1.7x. The clamp keeps a tiny (test) timetable above
+    // checked_cap's floor.
+    et_tasks_cap_ = checked_cap(
+        "et tasks", std::clamp<std::size_t>(n_route_stops, 4U, 64'000'000U),
         1U << 28U);
     et_task_list_.resize(et_tasks_cap_);
     et_task_off_.resize(et_tasks_cap_);
     et_task_cnt_.resize(et_tasks_cap_);
     et_task_count_.resize(1U);
     et_entry_count_.resize(1U);
-    et_pool_cap_ = env_cap("NIGIRI_GPU_MC_ET_POOL",
-                           static_cast<std::uint32_t>(std::min<std::size_t>(
-                               std::max<std::size_t>(8U * n_route_stops,
-                                                     64'000'000U),
-                               224'000'000U)),
-                           1U << 30U);
+    et_pool_cap_ = checked_cap(
+        "et pool",
+        std::min<std::size_t>(std::max<std::size_t>(8U * n_route_stops,
+                                                    64'000'000U),
+                              224'000'000U),
+        1U << 30U);
     et_ent_key_.resize(et_pool_cap_);
     et_ent_ex_.resize(et_pool_cap_);
     et_ent_sl_.resize(et_pool_cap_);
@@ -180,137 +159,12 @@ struct gpu_mcraptor_state::impl {
     cudaMemsetAsync(thrust::raw_pointer_cast(overflow_.data()), 0,
                     sizeof(std::uint32_t), stream_);
 
-    // instrumentation: NIGIRI_GPU_MC_BAG_HIST=1 accumulates a bag
-    // occupancy histogram (non-empty slots per touched bag, sampled after
-    // the last round of every execute) and prints it at teardown
-    hwm_stats_ = std::getenv("NIGIRI_GPU_MC_STATS") != nullptr;
-    if (hwm_stats_) {
-      hwm_stats_dev_.resize(4U);
-      cudaMemsetAsync(thrust::raw_pointer_cast(hwm_stats_dev_.data()), 0,
-                      4U * sizeof(std::uint32_t), stream_);
-      // sparse-storage feasibility: union of touched locations over the
-      // whole run (per-start counts tracked in next_start_time)
-      touched_union_.resize(touched_.size());
-      cudaMemsetAsync(thrust::raw_pointer_cast(touched_union_.data()), 0,
-                      touched_union_.size() * sizeof(std::uint32_t), stream_);
-    }
-    validate_ = std::getenv("NIGIRI_GPU_MC_VALIDATE") != nullptr;
-    if (validate_) {
+    if constexpr (kMcValidate) {
       validate_claim_.resize(bag_pool_cap_);
-    }
-    lock_stats_ = std::getenv("NIGIRI_GPU_MC_LOCK_STATS") != nullptr;
-    if (lock_stats_) {
-      lock_stats_dev_.resize(4U);
-      cudaMemsetAsync(thrust::raw_pointer_cast(lock_stats_dev_.data()), 0,
-                      4U * sizeof(unsigned long long), stream_);
-    }
-    seg_hist_ = std::getenv("NIGIRI_GPU_MC_SEG_HIST") != nullptr;
-    if (seg_hist_) {
-      seg_hist_dev_.resize(kMcMaxSegs + 2U);
-      cudaMemsetAsync(thrust::raw_pointer_cast(seg_hist_dev_.data()), 0,
-                      seg_hist_dev_.size() * sizeof(std::uint32_t), stream_);
-      livebag_hist_dev_.resize(kMcRouteBagCap + 1U);
-      cudaMemsetAsync(thrust::raw_pointer_cast(livebag_hist_dev_.data()), 0,
-                      livebag_hist_dev_.size() * sizeof(std::uint32_t),
-                      stream_);
-      len_hist_dev_.resize(257U);
-      cudaMemsetAsync(thrust::raw_pointer_cast(len_hist_dev_.data()), 0,
-                      len_hist_dev_.size() * sizeof(std::uint32_t), stream_);
-    }
-    bag_hist_ = std::getenv("NIGIRI_GPU_MC_BAG_HIST") != nullptr;
-    if (bag_hist_) {
-      hist_dev_.resize(kMcMaxBagSlots + 1U);
-      cudaMemsetAsync(thrust::raw_pointer_cast(hist_dev_.data()), 0,
-                      hist_dev_.size() * sizeof(std::uint32_t), stream_);
-      hist_acc_.assign(kMcMaxBagSlots + 1U, 0ULL);
     }
   }
 
-  ~impl() {
-    if (hwm_stats_) {
-      auto v = std::vector<std::uint32_t>(4U);
-      cudaMemcpy(v.data(), thrust::raw_pointer_cast(hwm_stats_dev_.data()),
-                 4U * sizeof(std::uint32_t), cudaMemcpyDeviceToHost);
-      auto c = std::uint32_t{0U};  // the last query's count was never swept
-      cudaMemcpy(&c, thrust::raw_pointer_cast(bag_pool_count_.data()),
-                 sizeof(std::uint32_t), cudaMemcpyDeviceToHost);
-      // the final start's bags never pass through the sweep - include them
-      auto const last_max = thrust::reduce(
-          bag_hwm_.begin(), bag_hwm_.end(), std::uint8_t{0U},
-          thrust::maximum<std::uint8_t>{});
-      std::fprintf(stderr,
-                   "MCHWM tasks_per_round=%u pool_entries_per_round=%u "
-                   "arena_per_start=%u bag_blocks=%u bag_hwm_peak=%u\n",
-                   v[0], v[1], v[2], std::max(bag_blocks_hwm_, c),
-                   std::max(v[3], static_cast<std::uint32_t>(last_max)));
-      auto tu = std::uint64_t{0U};
-      if (!touched_union_.empty()) {
-        tu = thrust::transform_reduce(touched_union_.begin(),
-                                      touched_union_.end(), mc_popc{},
-                                      std::uint64_t{0U},
-                                      thrust::plus<std::uint64_t>{});
-      }
-      std::fprintf(
-          stderr,
-          "MCTOUCH max_per_start=%u avg_per_start=%" PRIu64 " starts=%" PRIu64
-          " union=%" PRIu64 " n_locations=%zu\n",
-          touched_start_max_,
-          touched_starts_ != 0U ? touched_start_sum_ / touched_starts_
-                                : std::uint64_t{0U},
-          touched_starts_, tu, bag_hwm_.size());
-    }
-    if (lock_stats_) {
-      auto v = std::vector<unsigned long long>(4U);
-      cudaMemcpy(v.data(), thrust::raw_pointer_cast(lock_stats_dev_.data()),
-                 4U * sizeof(unsigned long long), cudaMemcpyDeviceToHost);
-      std::fprintf(stderr,
-                   "MCLOCKSTATS acq=%llu cas_retries=%llu prescan_rej=%llu "
-                   "accepts=%llu\n",
-                   v[0], v[1], v[2], v[3]);
-    }
-    if (seg_hist_) {
-      auto h = std::vector<std::uint32_t>(seg_hist_dev_.size());
-      cudaMemcpy(h.data(), thrust::raw_pointer_cast(seg_hist_dev_.data()),
-                 h.size() * sizeof(std::uint32_t), cudaMemcpyDeviceToHost);
-      std::fprintf(stderr, "MCSEGHIST fallback=%u\n", h[kMcMaxSegs + 1U]);
-      for (auto n = std::size_t{1U}; n <= kMcMaxSegs; ++n) {
-        if (h[n] != 0U) {
-          std::fprintf(stderr, "MCSEGHIST %zu %u\n", n, h[n]);
-        }
-      }
-      auto ln = std::vector<std::uint32_t>(len_hist_dev_.size());
-      cudaMemcpy(ln.data(), thrust::raw_pointer_cast(len_hist_dev_.data()),
-                 ln.size() * sizeof(std::uint32_t), cudaMemcpyDeviceToHost);
-      for (auto n = std::size_t{2U}; n != ln.size(); ++n) {
-        if (ln[n] != 0U) {
-          std::fprintf(stderr, "MCLENHIST %zu %u\n", n, ln[n]);
-        }
-      }
-      auto lb = std::vector<std::uint32_t>(livebag_hist_dev_.size());
-      cudaMemcpy(lb.data(),
-                 thrust::raw_pointer_cast(livebag_hist_dev_.data()),
-                 lb.size() * sizeof(std::uint32_t), cudaMemcpyDeviceToHost);
-      for (auto n = std::size_t{1U}; n != lb.size(); ++n) {
-        if (lb[n] != 0U) {
-          std::fprintf(stderr, "MCLIVEBAG %zu %u\n", n, lb[n]);
-        }
-      }
-    }
-    if (bag_hist_) {
-      auto total = 0ULL;
-      for (auto const v : hist_acc_) {
-        total += v;
-      }
-      std::fprintf(stderr, "MCBAGHIST total_nonempty=%llu cap=%u\n", total,
-                   bag_cap_);
-      for (auto n = std::size_t{1U}; n != hist_acc_.size(); ++n) {
-        if (hist_acc_[n] != 0ULL) {
-          std::fprintf(stderr, "MCBAGHIST %zu %llu\n", n, hist_acc_[n]);
-        }
-      }
-    }
-    cudaStreamDestroy(stream_);
-  }
+  ~impl() { cudaStreamDestroy(stream_); }
 
   // the only per-query sizing: the rt timetable may be absent or may have
   // grown (rt updates) since the last query on this state
@@ -393,7 +247,7 @@ struct gpu_mcraptor_state::impl {
                 cudaMemcpyHostToDevice, stream_),
         "gpu mcraptor: could not copy dist_to_dest");
 
-    if (lb.empty()) {  // kUseLowerBounds=false experiment: inert zeros
+    if (lb.empty()) {  // no lower bounds supplied: inert zeros
       auto const n = static_cast<std::size_t>(tt_.n_locations_);
       cudaMemsetAsync(lb_dev_[dir].ensure(n, stream_), 0,
                       n * sizeof(std::uint16_t), stream_);
@@ -401,12 +255,6 @@ struct gpu_mcraptor_state::impl {
     }
     auto* const lb_pin = lb_pin_[dir].ensure(lb.size());
     std::copy(lb.begin(), lb.end(), lb_pin);
-    // experiment switch: zero the lower bounds (= disable the lb
-    // projection while keeping plain dest pruning and the host dijkstra)
-    static bool const no_lb = std::getenv("NIGIRI_GPU_MC_NO_LB") != nullptr;
-    if (no_lb) {
-      std::fill(lb_pin, lb_pin + lb.size(), std::uint16_t{0U});
-    }
     utl::verify(cudaSuccess ==
                     cudaMemcpyAsync(lb_dev_[dir].ensure(lb.size(), stream_),
                                     lb_pin, lb.size() * sizeof(std::uint16_t),
@@ -464,25 +312,8 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> done_;
   thrust::device_vector<std::uint32_t> overflow_;
 
-  bool bag_hist_{false};
-  thrust::device_vector<std::uint32_t> hist_dev_;
-  std::vector<unsigned long long> hist_acc_;
-  bool seg_hist_{false};
-  bool hwm_stats_{false};
-  thrust::device_vector<std::uint32_t> hwm_stats_dev_;
-  std::uint32_t bag_blocks_hwm_{0U};
-  std::uint32_t touched_start_max_{0U};
-  std::uint64_t touched_start_sum_{0U};
-  std::uint64_t touched_starts_{0U};
-  thrust::device_vector<std::uint32_t> touched_union_;
-  // debug (NIGIRI_GPU_MC_VALIDATE): bag invariant checks + block claim map
-  bool validate_{false};
+  // block claim map for the kMcValidate bag-invariant check (empty otherwise)
   thrust::device_vector<std::uint32_t> validate_claim_;
-  bool lock_stats_{false};
-  thrust::device_vector<unsigned long long> lock_stats_dev_;
-  thrust::device_vector<std::uint32_t> seg_hist_dev_;
-  thrust::device_vector<std::uint32_t> livebag_hist_dev_;
-  thrust::device_vector<std::uint32_t> len_hist_dev_;
 
   // BM-RAPTOR bound matrix, uploaded by gpu_mcraptor::set_bounds()
   // per direction, like the other per-query buffers: BM-RAPTOR points its
@@ -580,7 +411,7 @@ __global__ void mc_begin_transit_kernel(mcraptor_impl<SearchDir, WithCost> r) {
   r.begin_transit_phase();
 }
 
-// debug (NIGIRI_GPU_MC_VALIDATE): bag-storage invariant checks.
+// bag-storage invariant checks (kMcValidate).
 // tag 0 = post-sweep: every stop must be pristine (hwm==0, no block).
 // tag 1 = mid-round: a pool block may be owned by at most ONE stop and
 // an owned block implies hwm > inline capacity.
@@ -697,43 +528,6 @@ __global__ void mc_clear_bags_kernel(mcraptor_impl<SearchDir, WithCost> r) {
 }
 
 template <direction SearchDir, bool WithCost>
-__global__ void mc_trace_kernel(mcraptor_impl<SearchDir, WithCost> r,
-                                unsigned const k) {
-  r.dump_traced(k);
-}
-
-// debug tracing (NIGIRI_MC_TRACE="l1,l2,..." + NIGIRI_MC_TRACE_START=
-// unixtime minutes): dump the traced stops' bags after every round of the
-// matching start
-struct mc_trace_cfg {
-  std::vector<location_idx_t> locs_;
-  std::int64_t start_minutes_{-1};
-};
-inline mc_trace_cfg const& get_trace_cfg() {
-  static auto const cfg = [] {
-    auto c = mc_trace_cfg{};
-    if (auto const* v = std::getenv("NIGIRI_MC_TRACE"); v != nullptr) {
-      auto str = std::string{v};
-      auto pos = std::size_t{0U};
-      while (pos < str.size()) {
-        auto end = str.find(',', pos);
-        if (end == std::string::npos) {
-          end = str.size();
-        }
-        c.locs_.push_back(location_idx_t{static_cast<std::uint32_t>(
-            std::atoll(str.substr(pos, end - pos).c_str()))});
-        pos = end + 1U;
-      }
-    }
-    if (auto const* v = std::getenv("NIGIRI_MC_TRACE_START"); v != nullptr) {
-      c.start_minutes_ = std::atoll(v);
-    }
-    return c;
-  }();
-  return cfg;
-}
-
-template <direction SearchDir, bool WithCost>
 __global__ void mc_reconstruct_kernel(
     location_idx_t const* const dest_list,
     std::uint32_t const n_dest,
@@ -753,41 +547,6 @@ __global__ void mc_reconstruct_kernel(
     return;
   }
   r.reconstruct_label(dest, lab, &out[tid]);
-}
-
-__global__ void mc_bag_hist_kernel(std::uint64_t const* const bags,
-                                   std::uint64_t const* const pool,
-                                   std::uint32_t const* const ovf,
-                                   std::uint32_t const* const nxt,
-                                   std::uint32_t const n_locations,
-                                   std::uint32_t const cap,
-                                   std::uint32_t* const hist) {
-  auto const gid = blockIdx.x * blockDim.x + threadIdx.x;
-  auto const stride = gridDim.x * blockDim.x;
-  for (auto l = gid; l < n_locations; l += stride) {
-    auto n = 0U;
-    auto const* const b = bags + static_cast<std::size_t>(l) * cap;
-    for (auto i = 0U; i != cap; ++i) {
-      if (b[i] != kMcEmptySlot) {
-        ++n;
-      }
-    }
-    auto blk = ovf[l];
-    auto hops = 0U;
-    while (blk != ~0U && hops != kMcMaxBagSlots / kMcBagBlock) {
-      auto const* const o = pool + static_cast<std::size_t>(blk) * kMcBagBlock;
-      for (auto i = 0U; i != kMcBagBlock; ++i) {
-        if (o[i] != kMcEmptySlot) {
-          ++n;
-        }
-      }
-      blk = nxt[blk];
-      ++hops;
-    }
-    if (n != 0U) {
-      atomicAdd(hist + n, 1U);
-    }
-  }
 }
 
 // NOTE: the cache must be keyed by the kernel ADDRESS, not by the
@@ -901,22 +660,6 @@ mcraptor_impl<SearchDir, WithCost> make_impl(
       .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
       .done_ = thrust::raw_pointer_cast(s.done_.data()),
       .overflow_ = thrust::raw_pointer_cast(s.overflow_.data()),
-      .seg_hist_ = s.seg_hist_
-                       ? thrust::raw_pointer_cast(s.seg_hist_dev_.data())
-                       : nullptr,
-      .hwm_stats_ =
-          s.hwm_stats_ ? thrust::raw_pointer_cast(s.hwm_stats_dev_.data())
-                       : nullptr,
-      .lock_stats_ =
-          s.lock_stats_
-              ? thrust::raw_pointer_cast(s.lock_stats_dev_.data())
-              : nullptr,
-      .livebag_hist_ =
-          s.seg_hist_ ? thrust::raw_pointer_cast(s.livebag_hist_dev_.data())
-                      : nullptr,
-      .len_hist_ = s.seg_hist_
-                       ? thrust::raw_pointer_cast(s.len_hist_dev_.data())
-                       : nullptr,
       .tt_ = s.tt_,
       .rtt_ = device_rt_timetable{},
       .transfer_time_settings_ = tts,
@@ -952,24 +695,6 @@ mcraptor_impl<SearchDir, WithCost> make_impl(
           thrust::raw_pointer_cast(s.dest_best_key_[dir_idx].data()),
       .dest_best_total_ =
           thrust::raw_pointer_cast(s.dest_best_total_[dir_idx].data()),
-      .dest_prune_disabled_ =
-          [] {
-            static bool const v =
-                std::getenv("NIGIRI_NO_DEST_PRUNING") != nullptr;
-            return v;
-          }(),
-      .prefix_disabled_ =
-          [] {
-            static bool const v =
-                std::getenv("NIGIRI_GPU_MC_NO_PREFIX") != nullptr;
-            return v;
-          }(),
-      .reuse_disabled_ =
-          [] {
-            static bool const v =
-                std::getenv("NIGIRI_GPU_MC_NO_REUSE") != nullptr;
-            return v;
-          }(),
       .reuse_same_dep_only_ = reuse_same_dep,
       .bc_pay_lo_ = thrust::raw_pointer_cast(s.bc_pay_lo_.data()),
       .bc_hi_arr_ = thrust::raw_pointer_cast(s.bc_hi_arr_.data()),
@@ -1012,33 +737,10 @@ void gpu_mcraptor<SearchDir, WithCost>::next_start_time() {
   auto const r = make_impl<SearchDir, WithCost>(
       s, kDirIdx, transfer_time_settings_, allowed_claszes_, 0U, base_,
       worst_at_dest_, 0U, 0, {});
-  if (s.hwm_stats_) {
-    // sparse-storage feasibility: distinct locations written this start
-    // (touched_ is consumed by the sweep below, so count first)
-    auto const cnt = thrust::transform_reduce(
-        thrust::cuda::par.on(s.stream_), s.touched_.begin(), s.touched_.end(),
-        mc_popc{}, 0U, thrust::plus<std::uint32_t>{});
-    if (cnt != 0U) {
-      s.touched_start_max_ = std::max(s.touched_start_max_, cnt);
-      s.touched_start_sum_ += cnt;
-      ++s.touched_starts_;
-      thrust::transform(thrust::cuda::par.on(s.stream_), s.touched_.begin(),
-                        s.touched_.end(), s.touched_union_.begin(),
-                        s.touched_union_.begin(),
-                        thrust::bit_or<std::uint32_t>{});
-    }
-  }
   mc_launch(mc_clear_bags_kernel<SearchDir, WithCost>, s.stream_, r);
-  if (s.hwm_stats_) {  // counter is monotone within a query - read = max
-    auto c = std::uint32_t{0U};
-    cudaMemcpyAsync(&c, thrust::raw_pointer_cast(s.bag_pool_count_.data()),
-                    sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_);
-    cudaStreamSynchronize(s.stream_);
-    s.bag_blocks_hwm_ = std::max(s.bag_blocks_hwm_, c);
-  }
   cudaMemsetAsync(thrust::raw_pointer_cast(s.bag_pool_count_.data()), 0,
                   sizeof(std::uint32_t), s.stream_);
-  if (s.validate_) {  // debug: everything must be pristine after the sweep
+  if constexpr (kMcValidate) {  // everything must be pristine after the sweep
     mc_bag_validate_kernel<SearchDir, WithCost>
         <<<512, 256, 0, s.stream_>>>(r, n_locations_, nullptr, 0U, 0U);
   }
@@ -1127,45 +829,25 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
   r.cur_budget_ = end_k - 1U;  // trips allowed for this start time
   auto const d_start = unix_to_delta(base(), start_time);
 
-  // debug tracing: enabled iff this execute's start matches the env
-  auto const& trace_cfg = get_trace_cfg();
-  auto trace_locs_dev = thrust::device_vector<location_idx_t>{};
-  auto trace = r;
-  auto const tracing =
-      !trace_cfg.locs_.empty() &&
-      (trace_cfg.start_minutes_ < 0 ||
-       trace_cfg.start_minutes_ == start_time.time_since_epoch().count());
-  if (tracing) {
-    trace_locs_dev.assign(trace_cfg.locs_.begin(), trace_cfg.locs_.end());
-    trace.trace_locs_ = {thrust::raw_pointer_cast(trace_locs_dev.data()),
-                         trace_locs_dev.size()};
-    std::printf("GPUTRACE begin start=%lld worst=%d\n",
-                static_cast<long long>(start_time.time_since_epoch().count()),
-                static_cast<int>(worst_at_dest_));
-  }
-
   // === ROUTING KERNELS ===
-  // (all launches use the `trace` copy: identical to r, plus trace_locs_
-  // when NIGIRI_MC_TRACE is active - the debug probes live in the phases)
-  mc_launch(mc_init_arrivals_kernel<SearchDir, WithCost>, s.stream_, trace,
+  mc_launch(mc_init_arrivals_kernel<SearchDir, WithCost>, s.stream_, r,
             d_start);
   for (auto k = 1U; k != end_k; ++k) {
-    mc_launch(mc_begin_round_kernel<SearchDir, WithCost>, s.stream_, trace);
-    mc_launch(mc_mark_routes_kernel<SearchDir, WithCost>, s.stream_, trace);
+    mc_launch(mc_begin_round_kernel<SearchDir, WithCost>, s.stream_, r);
+    mc_launch(mc_mark_routes_kernel<SearchDir, WithCost>, s.stream_, r);
     if (with_rt_scan) {
-      mc_launch(mc_mark_rt_kernel<SearchDir, WithCost>, s.stream_, trace);
+      mc_launch(mc_mark_rt_kernel<SearchDir, WithCost>, s.stream_, r);
     }
-    mc_launch(mc_begin_transit_kernel<SearchDir, WithCost>, s.stream_, trace);
-    mc_launch(mc_build_route_list_kernel<SearchDir, WithCost>, s.stream_,
-              trace);
+    mc_launch(mc_begin_transit_kernel<SearchDir, WithCost>, s.stream_, r);
+    mc_launch(mc_build_route_list_kernel<SearchDir, WithCost>, s.stream_, r);
     if (is_wheelchair_) {
-      mc_launch(mc_et_collect_kernel<SearchDir, WithCost, true>, s.stream_,
-                trace, k);
+      mc_launch(mc_et_collect_kernel<SearchDir, WithCost, true>, s.stream_, r,
+                k);
     } else {
-      mc_launch(mc_et_collect_kernel<SearchDir, WithCost, false>, s.stream_,
-                trace, k);
+      mc_launch(mc_et_collect_kernel<SearchDir, WithCost, false>, s.stream_, r,
+                k);
     }
-    mc_launch(mc_et_lookups_kernel<SearchDir, WithCost>, s.stream_, trace, k);
+    mc_launch(mc_et_lookups_kernel<SearchDir, WithCost>, s.stream_, r, k);
     // warp-per-route two-pass scan: fixed geometry + per-warp shared
     // segment slab (occupancy-launch cannot size dynamic shared memory)
     auto const scan_blocks = 512U;
@@ -1175,22 +857,18 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
     if (with_clasz) {
       if (is_wheelchair_) {
         mc_scan_routes_kernel<SearchDir, WithCost, true, true>
-            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(trace,
-                                                                      k);
+            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
       } else {
         mc_scan_routes_kernel<SearchDir, WithCost, true, false>
-            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(trace,
-                                                                      k);
+            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
       }
     } else {
       if (is_wheelchair_) {
         mc_scan_routes_kernel<SearchDir, WithCost, false, true>
-            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(trace,
-                                                                      k);
+            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
       } else {
         mc_scan_routes_kernel<SearchDir, WithCost, false, false>
-            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(trace,
-                                                                      k);
+            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
       }
     }
     // rt runs after the static scan: both insert round-k labels and read
@@ -1200,59 +878,35 @@ void gpu_mcraptor<SearchDir, WithCost>::execute(
       if (with_clasz) {
         if (is_wheelchair_) {
           mc_launch(mc_scan_rt_kernel<SearchDir, WithCost, true, true>,
-                    s.stream_, trace, k);
+                    s.stream_, r, k);
         } else {
           mc_launch(mc_scan_rt_kernel<SearchDir, WithCost, true, false>,
-                    s.stream_, trace, k);
+                    s.stream_, r, k);
         }
       } else {
         if (is_wheelchair_) {
           mc_launch(mc_scan_rt_kernel<SearchDir, WithCost, false, true>,
-                    s.stream_, trace, k);
+                    s.stream_, r, k);
         } else {
           mc_launch(mc_scan_rt_kernel<SearchDir, WithCost, false, false>,
-                    s.stream_, trace, k);
+                    s.stream_, r, k);
         }
       }
     }
-    mc_launch(mc_begin_footpath_kernel<SearchDir, WithCost>, s.stream_,
-              trace);
-    mc_launch(mc_transfers_footpaths_kernel<SearchDir, WithCost>, s.stream_,
-              trace, k);
-    if (s.validate_) {  // debug: block ownership must be unique per stop
+    mc_launch(mc_begin_footpath_kernel<SearchDir, WithCost>, s.stream_, r);
+    mc_launch(mc_transfers_footpaths_kernel<SearchDir, WithCost>, s.stream_, r,
+              k);
+    if constexpr (kMcValidate) {  // block ownership must be unique per stop
       cudaMemsetAsync(thrust::raw_pointer_cast(s.validate_claim_.data()),
                       0xFF, s.validate_claim_.size() * sizeof(std::uint32_t),
                       s.stream_);
       mc_bag_validate_kernel<SearchDir, WithCost><<<512, 256, 0, s.stream_>>>(
-          trace, n_locations_,
+          r, n_locations_,
           thrust::raw_pointer_cast(s.validate_claim_.data()), 1U, k);
-    }
-    if (tracing) {
-      mc_trace_kernel<SearchDir, WithCost><<<1, 1, 0, s.stream_>>>(trace, k);
     }
   }
   cudaStreamSynchronize(s.stream_);
   CUDA_CHECK(cudaPeekAtLastError());
-
-  if (s.bag_hist_) {
-    mc_bag_hist_kernel<<<512, 256, 0, s.stream_>>>(
-        thrust::raw_pointer_cast(s.bags_.data()),
-        thrust::raw_pointer_cast(s.bag_pool_.data()),
-        thrust::raw_pointer_cast(s.bag_ovf_.data()),
-        thrust::raw_pointer_cast(s.bag_next_.data()), s.tt_.n_locations_,
-        s.bag_cap_, thrust::raw_pointer_cast(s.hist_dev_.data()));
-    auto hist = std::vector<std::uint32_t>(kMcMaxBagSlots + 1U);
-    CUDA_CHECK(cudaMemcpyAsync(
-        hist.data(), thrust::raw_pointer_cast(s.hist_dev_.data()),
-        hist.size() * sizeof(std::uint32_t), cudaMemcpyDeviceToHost,
-        s.stream_));
-    cudaStreamSynchronize(s.stream_);
-    for (auto n = std::size_t{0U}; n != hist.size(); ++n) {
-      s.hist_acc_[n] += hist[n];
-    }
-    cudaMemsetAsync(thrust::raw_pointer_cast(s.hist_dev_.data()), 0,
-                    hist.size() * sizeof(std::uint32_t), s.stream_);
-  }
 
   // === DEVICE RECONSTRUCT ===
   auto dest_list = std::vector<location_idx_t>{};

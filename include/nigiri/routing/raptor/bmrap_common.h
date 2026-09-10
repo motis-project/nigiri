@@ -104,29 +104,15 @@ template <typename Criteria, typename AlgoState>
 inline constexpr bool kGpuMcSupported = false;
 #endif
 
-// How much of the multicriteria work runs on the device (NIGIRI_BMRAPP_GPU_MC):
+// How much of the multicriteria work runs on the device, for the two label
+// shapes the device mcraptor implements (arr, arr+cost):
 //
-//   0 / unset  everything on the CPU
-//   1 / ping   the mc PING only (phases 4 and 5b)
-//   2 / all    the mc PONG (phase 5) as well
-//
-// Off by default: the device mcraptor covers only the two label shapes above.
-// Splitting at the ping is not arbitrary - phase 4 is one big search per step
-// and gains ~2.5x on the device, while phases 5/5b are a sequence of tiny
-// per-journey searches whose cost is kernel launch plus reconstruct readback,
-// which the device loses (measured 0.48 -> 1.94 ms/query for phase 5). So 1 is
-// the fastest setting and 2 exists to exercise the pong engine.
-inline int bmrap_gpu_mc_mode() {
-  static auto const mode = [] {
-    auto const* const e = std::getenv("NIGIRI_BMRAPP_GPU_MC");
-    if (e == nullptr) {
-      return 0;
-    }
-    auto const v = std::string_view{e};
-    return v == "0" || v == "off" ? 0 : v == "ping" || v == "1" ? 1 : 2;
-  }();
-  return mode;
-}
+//   0  everything on the CPU
+//   1  the mc PING only (phases 4 and 5b) - phase 4 is one big search per step
+//      and gains ~2.5x on the device
+//   2  the mc PONG (phase 5) as well - a sequence of tiny per-journey searches
+//      the device loses on (0.48 -> 1.94 ms/query), kept only to exercise it
+constexpr int kBmrapGpuMcMode = 1;
 
 // Host view of an engine's round times, in raptor_state's layout either way.
 // The GPU engine copies them back into `buf`, which is why the caller owns
@@ -172,11 +158,6 @@ struct slack_cfg {
   // onto the anchors themselves.
   double arr_min_min_{20.0};
   double trip_min_{1.0};
-  // validation switches: same phases, but skip the pruning / the final
-  // restriction, so a mismatch can be attributed to one of them. Always
-  // false in a normal build; flip here for a local A/B run.
-  bool no_bounds_{false};
-  bool no_restrict_{false};
 };
 
 inline slack_cfg const& get_slack() {
@@ -535,22 +516,17 @@ bmrap_bounds reach_matrix(
 // the anchor's slack-relaxed time and capped at its slack-relaxed trip
 // budget. Two adaptations: the anchors are first reduced to the pareto
 // frontier over (relaxed time, budget), leaving at most one search per
-// distinct trip count instead of one per anchor; and the survivors share one
-// round-times matrix as the start times of a single rRAPTOR, whose
-// accumulated maximum is exactly the union the paper takes.
+// distinct trip count; and the survivors share one round-times matrix as the
+// start times of a single rRAPTOR, whose accumulated maximum is the union the
+// paper takes.
 //
-// The matrix is built PER STEP, anchored at that step's own departure. A
-// range variant covering a whole window with one matrix existed and was
-// removed: the union is then dominated by the window's last departure, so
-// earlier ones are bounded loosely by up to the window width (measured:
-// 666 min mean window against a 41 min mean slack allowance). Slicing it
-// finer did not recover that - backward pruning grows linearly in the slice
-// count (492 -> 916 -> 1431 -> 2143 -> 2762 ms for 1/2/3/5/7) while the main
-// search barely improves (825 -> 723 ms), because mcraptor's own
-// worst_at_dest_ + dest_bag_ pruning already covers most of what the arrival
-// slack adds. What made the per-step bound affordable was the profile
-// driver's structure instead: one single-departure BM-RAPTOR per step, with
-// the anchor set cached across the steps that cannot change it.
+// The matrix is built PER STEP, anchored at that step's own departure - a
+// window-wide variant bounds early departures loosely by up to the window
+// width (666 min mean window vs 41 min mean slack), and slicing finer just
+// grows backward pruning linearly without helping the main search. The
+// per-step bound is affordable only because of the driver's structure: one
+// single-departure BM-RAPTOR per step, anchor set cached across steps that
+// cannot change it.
 template <direction SearchDir, bool Rt, typename AlgoState>
 bmrap_bounds compute_bounds(timetable const& tt,
                             rt_timetable const* rtt,

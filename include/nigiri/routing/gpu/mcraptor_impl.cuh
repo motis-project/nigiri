@@ -84,12 +84,10 @@ using mc_label_t = std::uint64_t;
 
 inline constexpr auto kMcEmptySlot = ~mc_label_t{0};
 inline constexpr auto kMcNoBc = std::uint32_t{(1U << 27U) - 1U};
-// stop bag capacity: RUNTIME (env NIGIRI_GPU_MC_BAG_CAP = inline slots,
-// max 127 = u8 hwm minus the overflow block). The strict (arr, extras)
-// pareto keeps every
-// walk-class trade-off, so frontier sizes vary strongly with the dataset;
-// a fixed compile-time cap either wastes memory or trips the canary.
-inline constexpr auto kMcBagCapDefault = 8U;  // inline slots per stop
+// inline slots per stop, max 127 (u8 hwm minus the overflow block). The
+// strict (arr, extras) pareto keeps every walk-class trade-off, so frontier
+// sizes vary strongly with the dataset; the overflow chain absorbs the rest.
+inline constexpr auto kMcBagCapDefault = 8U;
 // chained bags: stops whose frontier outgrows the inline slots chain
 // small fixed-size blocks from a global pool (bag_ovf_ = head,
 // bag_next_ = links). Sized by the measured occupancy distribution
@@ -575,8 +573,7 @@ struct mcraptor_impl {
                              delta_t const arr) {
     auto* const rslots =
         reuse_bags_ + static_cast<std::size_t>(l) * kMcReuseCap;
-    if (!reuse_disabled_ &&
-        reuse_rejected(rslots, arr_key, extras, round, by_route)) {
+    if (reuse_rejected(rslots, arr_key, extras, round, by_route)) {
       return false;
     }
     // lock-free reject pre-scan: most candidates are dominated and never
@@ -591,24 +588,15 @@ struct mcraptor_impl {
         if (v != kMcEmptySlot && mc_round(v) <= round &&
             (!by_route || mc_by_route(v)) &&
             dominates(mc_arr_key(v), mc_extras(v), arr_key, extras)) {
-          if (lock_stats_ != nullptr) {
-            atomicAdd(lock_stats_ + 2U, 1ULL);  // lock-free reject
-          }
           return false;
         }
       }
     }
     auto* const lock = bag_locks_ + l;
     while (atomicCAS(lock, 0U, 1U) != 0U) {
-      if (lock_stats_ != nullptr) {
-        atomicAdd(lock_stats_ + 1U, 1ULL);  // contended CAS retry
-      }
 #if __CUDA_ARCH__ >= 700
       __nanosleep(32);
 #endif
-    }
-    if (lock_stats_ != nullptr) {
-      atomicAdd(lock_stats_ + 0U, 1ULL);  // acquisition
     }
     __threadfence();  // acquire: see prior holders' plain stores
 
@@ -714,9 +702,6 @@ struct mcraptor_impl {
       }
       reuse_upsert(rslots, arr_key, extras, round, by_route);
       inserted = true;
-      if (lock_stats_ != nullptr) {
-        atomicAdd(lock_stats_ + 3U, 1ULL);  // accepted insert
-      }
     }
   unlock:
     __threadfence();  // release: publish stores before unlocking
@@ -758,11 +743,6 @@ struct mcraptor_impl {
   __device__ bool dest_dominates(std::uint32_t const round,
                                  std::uint32_t const arr_key,
                                  std::uint32_t const extras) const {
-    // validation switch mirroring the CPU's NIGIRI_NO_DEST_PRUNING:
-    // disabling must not change results, only slow the search down
-    if (dest_prune_disabled_) {
-      return false;
-    }
     // necessary conditions first (2 loads); the full frontier scan only
     // runs when domination is still possible
     if (dest_best_key_[round] > arr_key ||
@@ -858,10 +838,6 @@ struct mcraptor_impl {
   __device__ void begin_transit_phase() {
     prev_station_mark_.swap_reset(station_mark_);
     if (get_global_thread_id() == 0U) {
-      if (hwm_stats_ != nullptr) {  // instrumentation (NIGIRI_GPU_MC_STATS)
-        hwm_stats_[0] = umax(hwm_stats_[0], *et_task_count_);
-        hwm_stats_[1] = umax(hwm_stats_[1], *et_entry_count_);
-      }
       *route_list_count_ = 0U;
       *et_task_count_ = 0U;
       *et_entry_count_ = 0U;
@@ -1248,12 +1224,7 @@ struct mcraptor_impl {
       return false;  // all lookups pruned: nothing boards this route
     }
     auto local_marked = false;
-    if (len_hist_ != nullptr && lane == 0U && n_entries > 1U) {
-      auto const nlen =
-          static_cast<unsigned>(tt_.route_location_seq_[r].size());
-      atomicAdd(len_hist_ + (nlen > 256U ? 256U : nlen), 1U);
-    }
-    if (!prefix_disabled_ && n_entries > 1U &&
+    if (n_entries > 1U &&
         (scan_prefix<1U, IsWheelchair>(k, r, lane, local_marked) ||
          scan_prefix<kMcPrefixK, IsWheelchair>(k, r, lane, local_marked))) {
       __syncwarp();
@@ -1286,10 +1257,6 @@ struct mcraptor_impl {
       n_segs = scan_pass1(k, r, segs, lane);
     }
     __syncwarp();
-    if (seg_hist_ != nullptr && lane == 0U) {
-      atomicAdd(seg_hist_ + (n_segs > kMcMaxSegs ? kMcMaxSegs + 1U : n_segs),
-                1U);
-    }
     if (n_segs > kMcMaxSegs) {  // overflow: sequential fallback
       auto m = false;
       if (lane == 0U) {
@@ -1643,7 +1610,6 @@ struct mcraptor_impl {
     open_entry rb[kMcRouteBagCap];
     auto bag_size = 0U;
     auto n_segs = 0U;
-    auto peak_bag = 0U;
 
     for (auto i = 0U; i + 1U < n; ++i) {  // last stop never boards
       auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
@@ -1723,11 +1689,7 @@ struct mcraptor_impl {
                         static_cast<std::uint16_t>(n_segs)};
         ++bag_size;
         ++n_segs;
-        peak_bag = bag_size > peak_bag ? bag_size : peak_bag;
       }
-    }
-    if (livebag_hist_ != nullptr && lane == 0U && peak_bag != 0U) {
-      atomicAdd(livebag_hist_ + peak_bag, 1U);
     }
     return n_segs;
   }
@@ -2391,36 +2353,11 @@ struct mcraptor_impl {
     }
   }
 
-  // debug: dump the traced stops' bag contents after round k
-  // (NIGIRI_MC_TRACE + NIGIRI_MC_TRACE_START, single-thread printf)
-  __device__ void dump_traced(unsigned const k) const {
-    if (get_global_thread_id() != 0U) {
-      return;
-    }
-    for (auto t = 0U; t != trace_locs_.size(); ++t) {
-      auto const l = to_idx(trace_locs_[t]);
-      for (auto i = 0U; i != kMcMaxBagSlots; ++i) {
-        auto const v = bag_label(l, i);
-        if (v == kMcEmptySlot) {
-          continue;
-        }
-        printf(
-            "GPUTRACE k=%u stop=%u slot=%u round=%u route=%d arr=%d "
-            "extras=%u bc=%u\n",
-            k, static_cast<unsigned>(l), i, mc_round(v), mc_by_route(v) ? 1 : 0,
-            static_cast<int>(from_key(mc_arr_key(v))), mc_extras(v), mc_bc(v));
-      }
-    }
-  }
-
   // clear the touched bags + arena between start times (selective sweep)
   __device__ void clear_bags() {
     auto const gid = get_global_thread_id();
     auto const stride = get_global_stride();
     if (gid == 0U) {
-      if (hwm_stats_ != nullptr) {
-        hwm_stats_[2] = umax(hwm_stats_[2], *bc_count_);
-      }
       *bc_count_ = 0U;
     }
     for (auto w = gid; w < touched_.blocks_.size(); w += stride) {
@@ -2432,9 +2369,6 @@ struct mcraptor_impl {
         auto const l = w * 32U + b;
         auto* const slots = bag(l);
         auto const n = static_cast<std::uint32_t>(bag_hwm_[l]);
-        if (hwm_stats_ != nullptr) {
-          atomicMax(hwm_stats_ + 3U, n);  // peak slots used in any one bag
-        }
         auto const na = n < bag_cap_ ? n : bag_cap_;
         for (auto s = 0U; s != na; ++s) {
           slots[s] = kMcEmptySlot;
@@ -2802,11 +2736,6 @@ struct mcraptor_impl {
   std::uint32_t* any_marked_;
   std::uint32_t* done_;
   std::uint32_t* overflow_;
-  std::uint32_t* seg_hist_;  // instrumentation (nullptr = off)
-  std::uint32_t* hwm_stats_;  // instrumentation: [tasks, entries, arena] HWM
-  unsigned long long* lock_stats_;  // instrumentation (nullptr = off)
-  std::uint32_t* livebag_hist_;  // instrumentation (nullptr = off)
-  std::uint32_t* len_hist_;  // instrumentation (nullptr = off)
   device_timetable tt_;
   // empty (n_rt_transports_ == 0) unless the query carries an rt_timetable
   device_rt_timetable rtt_;
@@ -2835,7 +2764,6 @@ struct mcraptor_impl {
   // domain the optimistic projection is uniformly key + lb for both
   // search directions.
   cuda::std::span<std::uint16_t const> lb_;
-  cuda::std::span<location_idx_t const> trace_locs_;  // debug dump only
 
   mc_label_t* bags_;  // n_locations x bag_cap_ inline slots
   mc_label_t* bag_pool_;  // bag_pool_cap_ x kMcBagBlock chained blocks
@@ -2857,10 +2785,6 @@ struct mcraptor_impl {
   // Racy-relaxed reads: stale values only weaken pruning, never results.
   std::uint32_t* dest_best_key_;
   std::uint32_t* dest_best_total_;
-  bool dest_prune_disabled_;
-  bool prefix_disabled_;  // NIGIRI_GPU_MC_NO_PREFIX: force the two-pass path
-  // rejection frontier off entirely (env NIGIRI_GPU_MC_NO_REUSE)
-  bool reuse_disabled_;
   // pong-side engines: only SAME-departure entries may reject (= the
   // same merged anchor run - plain dominance). Cross-anchor rejections
   // were observed to over-prune without a real dominating journey

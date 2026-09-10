@@ -22,12 +22,11 @@ namespace {
 
 using namespace bmrap_detail;
 
-// PROFILE BM-RAPTOR: a COMPLETE single-departure BM-RAPTOR per step of a
-// PONG-style scan, so every departure gets bounds anchored at itself. This
-// is what the paper describes - tau_dep^<-(v,i) bottoms out AT tau_dep - and
-// a range variant that spreads one matrix over a window instead does not
-// work: the bound then bottoms out at the window start, so near the origin
-// it is the window and not the arrival slack that binds.
+// PROFILE BM-RAPTOR: a complete single-departure BM-RAPTOR per step of a
+// PONG-style scan, so every departure gets bounds anchored at itself (the
+// paper's tau_dep^<-(v,i) bottoms out AT tau_dep; a range variant spreading
+// one matrix over a window bottoms out at the window start, where near the
+// origin the window and not the arrival slack binds).
 //
 //   1. ping           2-criteria earliest-arrival from the step's departure
 //   2. pong           backward, re-anchors each anchor to its LATEST
@@ -40,10 +39,8 @@ using namespace bmrap_detail;
 //
 // Step 5 exists because search.h never calls set_tight_start(): a range
 // McRAPTOR reports a journey at whichever enumerated start event found it,
-// which can be earlier than the latest departure that actually achieves it,
-// and those slack-departure duplicates survive the result pareto set
-// whenever their walking differs. Re-anchoring makes every reported
-// departure tight, as PONG does for the two-criteria case.
+// and those slack-departure duplicates survive the result pareto set when
+// their walking differs. Re-anchoring makes every reported departure tight.
 template <direction SearchDir,
           bool Rt,
           typename Criteria,
@@ -119,25 +116,13 @@ routing_result bmrap_profile(timetable const& tt,
 
   auto is_via = std::array<bitvec, kMaxVias>{};
   auto no_via = std::vector<via_stop>{};
-  auto const mk = [&](auto& algo_state, bitvec& is_dest,
-                      std::vector<std::uint16_t>& dist,
-                      std::vector<std::uint16_t>& lb, auto const& qq) {
-    return std::tuple{std::ref(algo_state), std::ref(is_dest), std::ref(dist),
-                      std::ref(lb), std::cref(qq)};
-  };
-  static_cast<void>(mk);
 
-  // One state serves the ping, the pong and the slacked pong, as pong.cc
-  // does: within a step they run strictly in sequence and each resets what
-  // it needs, and the GPU's per-query buffers are direction-indexed so both
-  // directions coexist.
-  //
-  // The multicriteria phases default to their own CPU state, which is what
-  // keeps every criteria configuration available whatever the scalar engine
-  // is; only the two the device implements can opt in (see GpuMc and
-  // bmrap_mc_algo_for). On the device they too share one state - the same
-  // direction-indexing argument - and it outlives the query, because the
-  // allocation is far too large to repeat per search.
+  // One state serves the ping, the pong and the slacked pong, as pong.cc does:
+  // within a step they run strictly in sequence and each resets what it needs,
+  // and the GPU's per-query buffers are direction-indexed so both directions
+  // coexist. The multicriteria phases use their own CPU state unless the two
+  // device-implemented shapes opt in (see GpuMc); on the device they share one
+  // state that outlives the query, the allocation being too large to repeat.
   auto cpu_mc_ping_state = std::conditional_t<
       (GpuMc >= 1), std::monostate, basic_mcraptor_state<Criteria>>{};
   auto cpu_mc_pong_state = std::conditional_t<
@@ -235,29 +220,22 @@ routing_result bmrap_profile(timetable const& tt,
   auto const budget_cap = static_cast<std::uint8_t>(
       std::min<unsigned>(q.max_transfers_ + 1U, kMaxTransfers + 1U));
 
-  // ---- WHERE THE WINDOW COMES FROM ----
-  //
-  // The scan enumerates departures upwards (forward) or arrivals downwards
-  // (backward), so it can only ever GROW the window on the side the search
-  // runs towards. That is the side the query asked for in exactly the two
-  // combinations PONG covers as well:
+  // The scan only GROWS the window on the side it runs towards, which matches
+  // the requested extension side in the two "aligned" cases below (the same
+  // two PONG covers):
   //
   //   arriveBy | extend_later | scan grows | requested
-  //   ---------+--------------+------------+-----------
   //   false    | true         | later      | later      aligned
   //   true     | false        | earlier    | earlier    aligned
   //   false    | false        | later      | earlier    opposed
   //   true     | true         | earlier    | later      opposed
   //
-  // The opposed half is reachable through paging - cursor_to_query() takes
-  // the extension side from the cursor, independently of arriveBy - so it is
-  // not a corner case. There a plain BICRITERIA RANGE search runs up front
-  // instead: it extends the interval whichever way the query asked (that is
-  // search.h's job, not ours) and its journeys ARE the anchor set, which is
-  // all phases 3-5 need. numItineraries is then satisfied on the bicriteria
-  // journeys rather than the multicriteria ones, so the window comes out
-  // wider than strictly needed and more itineraries come back than asked
-  // for - the harmless direction.
+  // The opposed half is reachable through paging (cursor_to_query() takes the
+  // extension side from the cursor). There a plain bicriteria range search
+  // runs up front: it extends the interval as the query asked and its
+  // journeys ARE the anchor set. numItineraries is then satisfied on the
+  // bicriteria journeys, so more itineraries can come back than asked for -
+  // the harmless direction.
   auto const pretrip =
       std::holds_alternative<interval<unixtime_t>>(q.start_time_);
   auto const aligned =
@@ -305,8 +283,6 @@ routing_result bmrap_profile(timetable const& tt,
   auto realized_deps = std::vector<unixtime_t>{};
   auto ms_realize = std::chrono::steady_clock::duration{};
   auto n_realized = std::uint64_t{0U};
-  // step 5b forward realizations are always produced (see below)
-  auto const realize_fwd = true;
 
   auto anchors = std::vector<anchor>{};
   auto max_trips = std::uint8_t{0U};
@@ -315,43 +291,10 @@ routing_result bmrap_profile(timetable const& tt,
   auto n_anchor_recomputes = std::uint64_t{0U};
   auto exit_reason = std::uint64_t{0U};  // 0=cond 1=ping 2=anchors 3=stall
 
-  // tau_arr^-> pruning: 0=off, 1=mc pong only, 2=stage 2 (slacked pong)
-  // only, 3=both. Always both - it is where the time goes: without it mc pong
-  // is unbounded and dominates everything (15-query set 188.5s -> 83.8s; one
-  // Berlin -> Montpellier query 78.7s -> 22.5s, mc pong alone 53.6s -> 3.4s).
-  // It costs ~15-25% on trivial queries, the price of the relaxed ping, which
-  // is a trade worth making. (get_slack().no_bounds_ can still force it off
-  // for a local A/B run.)
-  auto const fwd_bounds_mode = get_slack().no_bounds_ ? 0 : 3;
-  auto const fwd_bounds_on = fwd_bounds_mode != 0;
-
-  // The interval extension counts the multicriteria results this engine
-  // actually returns (not the anchor set - that would just reproduce PONG's
-  // stopping point).
-  auto const count_anchors = false;
-
-  auto const anchor_travel = [](anchor const& a) {
-    return duration_t{static_cast<duration_t::rep>(
-        std::abs((a.found_ - a.anchored_).count()))};
-  };
-  auto const n_anchors = [&](bool const include_too_slow) {
-    return utl::count_if(all_anchors, [&](anchor const& a) {
-      if (!is_better(a.anchored_, start_time)) {
-        return false;  // not scanned past yet
-      }
-      if (!include_too_slow && !(anchor_travel(a) < fastest_direct &&
-                                 anchor_travel(a) < q.max_travel_time_)) {
-        return false;
-      }
-      // duplicates would dominate each other and cancel out, hence the
-      // dedup on insert into all_anchors below
-      return !utl::any_of(all_anchors, [&](anchor const& o) {
-        return &o != &a && o.trips_ <= a.trips_ &&
-               !is_better(o.anchored_, a.anchored_) &&
-               !is_better(a.found_, o.found_);
-      });
-    });
-  };
+  // tau_arr^-> pruning on both the mc pong and stage 2 (slacked pong). Where
+  // the time goes: without it mc pong is unbounded and dominates everything
+  // (15-query set 188.5s -> 83.8s; one Berlin -> Montpellier query 78.7s ->
+  // 22.5s, mc pong alone 53.6s -> 3.4s). Costs ~15-25% on trivial queries.
 
   // The restriction, exactly as the final filter applies it. Counting
   // unrestricted journeys would stop the scan on results about to be thrown
@@ -364,9 +307,6 @@ routing_result bmrap_profile(timetable const& tt,
   // later flips to "keep". Everything counted below is already validated
   // (departure behind start_time), where it cannot change.
   auto const restricted_away = [&](journey const& j) {
-    if (get_slack().no_restrict_) {
-      return false;
-    }
     // NB: inside the scan the journeys still carry mc pong's backward
     // convention - dest_time_ is the DEPARTURE, start_time_ the ARRIVAL.
     // They are only swapped after the loop, which is why the field names
@@ -402,33 +342,21 @@ routing_result bmrap_profile(timetable const& tt,
         if (&o == &j || !o.tuple_dominates(j)) {
           return false;
         }
-        // tuple_dominates() is non-strict, so journeys with an IDENTICAL
-        // tuple dominate ONE ANOTHER and a plain any_of() drops BOTH - the
-        // count FALLS as criteria are added, the opposite of what
-        // tuple_dominates() exists for, since extra criteria are exactly
-        // what produces journeys sharing a tuple. The undercount kept
-        // n_found() below min_connection_count_ and the scan stepped past
-        // the window: on the 50 most expensive European queries
-        // non_transit+mode_switches had 30% of its journeys in duplicate
-        // tuples (non_transit alone: 0%) and a wider window on 17 of them,
-        // worth 5.9 anchor recomputes per query against non_transit's 3.9.
-        // Break the tie deterministically so each distinct tuple contributes
-        // one - same reason as the all_anchors dedup below.
+        // tuple_dominates() is non-strict, so journeys sharing a tuple (which
+        // extra criteria produce) dominate one another and a plain any_of()
+        // would drop both, undercounting past min_connection_count_ and
+        // overshooting the window. Break the tie by address so each distinct
+        // tuple contributes one - same as the all_anchors dedup below.
         return !j.tuple_dominates(o) || &o < &j;
       });
     });
-  };
-
-  auto const n_found = [&](bool const include_too_slow) {
-    return count_anchors ? n_anchors(include_too_slow)
-                         : n_results(include_too_slow);
   };
 
   // Stepping past the far end is how the window grows, so it is only
   // allowed when the scan runs towards the side the query asked for. In the
   // opposed case the range search above already settled the window.
   while ((is_better(start_time, end_time) ||
-          (aligned && n_found(true) + n_found(false) <
+          (aligned && n_results(true) + n_results(false) <
                           2 * static_cast<int>(q.min_connection_count_))) &&
          tt.external_interval().contains(start_time) && !is_timeout()) {
     // The anchor set, and everything derived from it, only goes stale once
@@ -460,16 +388,12 @@ routing_result bmrap_profile(timetable const& tt,
           exit_reason = 2U;
           break;  // nothing left to restrict against
         }
-        if (fwd_bounds_on && fwd_bounds.empty()) {
+        if (fwd_bounds.empty()) {
           // ONE tau_arr^->(v, i) matrix for the whole window instead of one
           // per step: without a per-step ping there is nothing to take it
           // from, and a matrix built at the window's near end is a valid -
           // merely looser - bound for every step inside it, because travel
           // time is never negative and a later step can only reach v later.
-          // Same window-wide approximation the range driver makes for
-          // tau_dep^<-. Worth its one search: without the matrix mc pong runs
-          // unbounded and dominates everything (78.7s -> 22.5s on a long
-          // query when it was introduced).
           auto const f0 = std::chrono::steady_clock::now();
           starts.clear();
           get_starts(SearchDir, tt, rtt, start_time, q.start_, q.td_start_,
@@ -491,9 +415,7 @@ routing_result bmrap_profile(timetable const& tt,
                                       /*sub_transfer=*/true);
           ms_fwd_bounds += std::chrono::steady_clock::now() - f0;
           ++n_fwd_bound_builds;
-          if ((fwd_bounds_mode & 1) != 0) {
-            mc_pong.set_bounds(&fwd_bounds);
-          }
+          mc_pong.set_bounds(&fwd_bounds);
         }
       } else {
 
@@ -506,9 +428,7 @@ routing_result bmrap_profile(timetable const& tt,
                  q.transfer_time_settings_);
       ping.reset_arrivals();
       ping.next_start_time();
-      if (fwd_bounds_on) {
-        relax_ping(ping, start_time);
-      }
+      relax_ping(ping, start_time);
       for (auto const& s : starts) {
         ping.add_start(s.stop_, s.time_at_stop_);
       }
@@ -520,14 +440,13 @@ routing_result bmrap_profile(timetable const& tt,
         return is_better(a.dest_time_, b.dest_time_);
       });
 
-      if (fwd_bounds_on) {
-        // r_state still holds the ping's round times here; the pong below
-        // reuses the same state, so the matrix has to be taken now - before
-        // the anchors exist. Size it from the PING's trip counts: re-anchoring
-        // in the pong moves departures, never the number of trips, so this is
-        // the same budget the anchors will produce. Sizing to budget_cap
-        // instead would make the build loop (rounds x locations) dominate
-        // cheap queries.
+      // r_state still holds the ping's round times here; the pong below reuses
+      // the same state, so the matrix has to be taken now - before the anchors
+      // exist. Size it from the PING's trip counts: re-anchoring in the pong
+      // moves departures, never the number of trips. Sizing to budget_cap
+      // instead would make the build loop (rounds x locations) dominate cheap
+      // queries.
+      {
         auto ping_trips = std::uint8_t{0U};
         for (auto const& j : ping_results) {
           ping_trips = std::max(ping_trips,
@@ -540,9 +459,7 @@ routing_result bmrap_profile(timetable const& tt,
                                     /*sub_transfer=*/true);
         ms_fwd_bounds += std::chrono::steady_clock::now() - f0;
         ++n_fwd_bound_builds;
-        if ((fwd_bounds_mode & 1) != 0) {
-          mc_pong.set_bounds(&fwd_bounds);
-        }
+        mc_pong.set_bounds(&fwd_bounds);
       }
 
       // ---- 2. PONG: re-anchor each anchor to its LATEST departure ----
@@ -593,16 +510,12 @@ routing_result bmrap_profile(timetable const& tt,
         break;
       }
       // Keep all_anchors a genuine (departure, arrival, trips) Pareto set.
-      // Consecutive steps rediscover the same anchors, and identical tuples
-      // dominate one another, so duplicates would cancel each other out of
-      // n_anchors() and the scan would never reach its stopping point.
       // Exact-duplicate removal is not enough: a later step can re-anchor a
-      // journey to a departure an earlier step already covered with a
-      // strictly better arrival, and that dominated entry poisons the
-      // restriction twice - anchor_of() hands back a looser deadline, and
-      // the is_anchor() early-out waves the dominated journey through as its
-      // own A(J). That is how a journey arriving 30 min past its anchor's
-      // deadline once survived the filter.
+      // journey to a departure an earlier step already covered with a strictly
+      // better arrival, and that dominated entry poisons the restriction twice
+      // - anchor_of() hands back a looser deadline, and the is_anchor()
+      // early-out waves the dominated journey through as its own A(J). That is
+      // how a journey arriving 30 min past its deadline once survived.
       auto const dominates = [&](anchor const& x, anchor const& y) {
         return !is_better(x.anchored_, y.anchored_) &&  // departs no earlier
                !is_better(y.found_, x.found_) &&        // arrives no later
@@ -626,13 +539,12 @@ routing_result bmrap_profile(timetable const& tt,
           })->anchored_;
 
       // ---- 3. SLACKED PONG: bounds anchored at THIS departure ----
-      if (!get_slack().no_bounds_) {
+      {
         auto const b0 = std::chrono::steady_clock::now();
         bounds = compute_bounds<SearchDir, Rt>(
             tt, rtt, q, anchors, base_day,
             /*horizon=*/start_time - duration_t{kFwd ? 1 : -1}, budget, r_state,
-            prune_stats,
-            (fwd_bounds_mode & 2) != 0 ? &fwd_bounds : nullptr);
+            prune_stats, &fwd_bounds);
         ms_bounds += std::chrono::steady_clock::now() - b0;
         ++n_bound_builds;
         mc_ping.set_bounds(&bounds);
@@ -722,7 +634,7 @@ routing_result bmrap_profile(timetable const& tt,
     // it just pinned yields the same tuple with the EARLIEST connections.
     // Done inside the step because tau_dep^<- is live here - destination
     // pruning alone leaves too much of the network unpruned.
-    if (realize_fwd) {
+    {
       auto const rz0 = std::chrono::steady_clock::now();
       auto deps = std::vector<unixtime_t>{};
       for (auto const& j : step_results) {
@@ -838,19 +750,17 @@ routing_result bmrap_profile(timetable const& tt,
   // Splice in the forward realizations: same journey (identical times,
   // transfers and criteria), better legs. Only legs_ moves - the tuple must
   // come out byte-identical, which is what makes this verifiable.
-  if (realize_fwd) {
-    for (auto& x : s_state.results_) {
-      auto const it = utl::find_if(realized, [&](journey const& f) {
-        return f.start_time_ == x.start_time_ && f.dest_time_ == x.dest_time_ &&
-               f.transfers_ == x.transfers_ &&
-               f.criteria_cost_ == x.criteria_cost_ &&
-               f.criteria_mode_filter_ == x.criteria_mode_filter_ &&
-               f.criteria_mode_switches_ == x.criteria_mode_switches_;
-      });
-      if (it != end(realized)) {
-        x.legs_ = it->legs_;
-        ++n_realized;
-      }
+  for (auto& x : s_state.results_) {
+    auto const it = utl::find_if(realized, [&](journey const& f) {
+      return f.start_time_ == x.start_time_ && f.dest_time_ == x.dest_time_ &&
+             f.transfers_ == x.transfers_ &&
+             f.criteria_cost_ == x.criteria_cost_ &&
+             f.criteria_mode_filter_ == x.criteria_mode_filter_ &&
+             f.criteria_mode_switches_ == x.criteria_mode_switches_;
+    });
+    if (it != end(realized)) {
+      x.legs_ = it->legs_;
+      ++n_realized;
     }
   }
   for (auto& j : s_state.results_) {
@@ -871,7 +781,7 @@ routing_result bmrap_profile(timetable const& tt,
 
   // ---- restrict to J_R, same definition as the range driver ----
   auto n_restricted = std::uint64_t{0U};
-  if (!get_slack().no_restrict_) {
+  {
     auto const is_anchor = [&](journey const& j) {
       return utl::any_of(all_anchors, [&](anchor const& a) {
         return a.trips_ == j.transfers_ + 1U && a.anchored_ == j.start_time_ &&
@@ -931,7 +841,6 @@ routing_result bmrap_profile(timetable const& tt,
   algo_stats["bmrapp_ms_fwd_bounds"] = ms(ms_fwd_bounds);
   algo_stats["bmrapp_fwd_bound_builds"] = n_fwd_bound_builds;
   algo_stats["bmrapp_ms_lb"] = static_cast<std::uint64_t>(lb_ms);
-  algo_stats["bmrapp_count_anchors"] = count_anchors ? 1U : 0U;
   algo_stats["bmrapp_aligned"] = aligned ? 1U : 0U;
   algo_stats["bmrapp_ms_range"] = ms(ms_range);
 
@@ -969,11 +878,10 @@ routing_result bmrap_profile_search(
   // large allocation that a big timetable can fail, and the mode is a
   // compile-time choice, so a failure discovered later would take the whole
   // GPU search down with it instead of just the optional phases.
-  if constexpr (kGpuMcSupported<Criteria, AlgoState>) {
-    auto const mode = bmrap_gpu_mc_mode();
-    if (mode != 0 && algo_state.try_mc_state() != nullptr) {
-      return mode >= 2 ? run.template operator()<2>()
-                       : run.template operator()<1>();
+  if constexpr (kGpuMcSupported<Criteria, AlgoState> && kBmrapGpuMcMode != 0) {
+    if (algo_state.try_mc_state() != nullptr) {
+      return kBmrapGpuMcMode >= 2 ? run.template operator()<2>()
+                                  : run.template operator()<1>();
     }
   }
   return run.template operator()<0>();
