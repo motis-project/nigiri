@@ -1242,11 +1242,11 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
           if (!fp.has_value() || dep_time - fp->first < j.start_time_) {
             continue;
           }
-          j.legs_.insert(begin(j.legs_),
-                         journey::leg{direction::kForward, special, from,
-                                      dep_time - fp->first, dep_time,
-                                      offset{target, fp->first,
-                                             fp->second.transport_mode_id_}});
+          j.legs_.insert(
+              begin(j.legs_),
+              journey::leg{direction::kForward, special, from,
+                           dep_time - fp->first, dep_time,
+                           offset{target, fp->first, fp->second.mode()}});
         } else {
           auto const t = j.dest_time_;
           auto const fp = get_td_duration<direction::kForward>(tds, t);
@@ -1255,9 +1255,8 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
           }
           j.legs_.insert(
               begin(j.legs_),
-              journey::leg{
-                  direction::kForward, special, from, t, t + fp->first,
-                  offset{target, fp->first, fp->second.transport_mode_id_}});
+              journey::leg{direction::kForward, special, from, t, t + fp->first,
+                           offset{target, fp->first, fp->second.mode()}});
         }
         inserted = true;
         break;
@@ -1307,8 +1306,7 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
 
           j.legs_.push_back(journey::leg{
               direction::kForward, to, special, j.dest_time_ - fp->first,
-              j.dest_time_,
-              offset{target, fp->first, fp->second.transport_mode_id_}});
+              j.dest_time_, offset{target, fp->first, fp->second.mode()}});
         } else {
           auto const fp = get_td_duration<direction::kForward>(tds, arr_time);
           if (!fp.has_value() || arr_time + fp->first > j.start_time_) {
@@ -1317,7 +1315,7 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
 
           j.legs_.push_back(journey::leg{
               direction::kForward, to, special, arr_time, arr_time + fp->first,
-              offset{target, fp->first, fp->second.transport_mode_id_}});
+              offset{target, fp->first, fp->second.mode()}});
         }
 
         j.dest_ = special;

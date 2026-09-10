@@ -38,8 +38,10 @@ void get_direct_for(timetable const& tt,
   auto qq = routing::query{};
   qq.start_match_mode_ = routing::location_match_mode::kEquivalent;
   qq.dest_match_mode_ = routing::location_match_mode::kEquivalent;
-  qq.start_.emplace_back(from, duration_t{0}, transport_mode_id_t{0});
-  qq.destination_.emplace_back(to, duration_t{0}, transport_mode_id_t{0});
+  qq.start_.emplace_back(from, duration_t{0},
+                         routing::transport_mode_t::payload_t{0});
+  qq.destination_.emplace_back(to, duration_t{0},
+                               routing::transport_mode_t::payload_t{0});
   qq.slow_direct_ = true;
   qq.fastest_slow_direct_factor_ = 0.0;  // disable post-filter
 
