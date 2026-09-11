@@ -3,7 +3,11 @@
 #include <cstddef>
 #include <cstdint>
 
+// hide date.h's NOEXCEPT from CCCL's token pasting, see device_times.h
+#pragma push_macro("NOEXCEPT")
+#undef NOEXCEPT
 #include "cuda/std/span"
+#pragma pop_macro("NOEXCEPT")
 #include "cuda_runtime.h"
 
 #include "nigiri/routing/gpu/stride.cuh"

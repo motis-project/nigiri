@@ -2,7 +2,7 @@ name: GPU Benchmark
 
 on:
   push:
-    branches: [ master, gouda ]
+    branches: [ master, gouda, mcgouda, mcgouda-caged ]
   pull_request:
     branches: [ master ]
   workflow_dispatch:
@@ -80,6 +80,37 @@ jobs:
             --dirs fwd bwd \
             --vias 2 \
             -n 10
+
+      # strategy cross-validation: pong vs range search (search.h), one
+      # invocation per algorithm pair = CPU pong vs CPU range mutually
+      # gap-free on the common min(N, M) prefix within the common searched
+      # window (relaxed rule - the stopping rules legitimately differ)
+      # PLUS the usual cpu/gpu exactness for each cell -- every cell run
+      # within one invocation is cross-checked against every other, so
+      # cpu/gpu agreement per algo comes along for free.
+      # --extend_interval_earlier false: pong only extends its window
+      # forward; the range search must do the same for window symmetry.
+      - name: Cross-validate Germany (pong vs range search x cpu/gpu)
+        run: |
+          for pair in "pong range" \
+                      "pong-mcraptor mcraptor" \
+                      "pong-mcraptor-cost mcraptor-cost"; do
+            ./build/cuda/nigiri-benchmark -p tt.bin \
+              --engines cpu gpu \
+              --algo $pair \
+              --modes c2c \
+              --extend_interval_earlier false \
+              -n 50
+          done
+
+      - name: Validate Europe
+        run: |
+          ./build/cuda/nigiri-benchmark -p "$HOME/ci-data/eu/data/tt.bin" \
+            --engines cpu gpu \
+            --algo pong \
+            --modes c2c \
+            --gpu_states 2 \
+            -n 20
 
       - name: Save build
         if: always()

@@ -4,6 +4,9 @@
 
 namespace nigiri::routing::gpu {
 
+inline constexpr auto kWarpSize = 32U;
+inline constexpr auto kAllLanes = ~std::uint32_t{0};
+
 __device__ __forceinline__ unsigned get_block_thread_id() {
   return threadIdx.x + (blockDim.x * threadIdx.y);
 }

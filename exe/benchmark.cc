@@ -6,7 +6,9 @@
 #include <map>
 #include <numeric>
 #include <regex>
+#include <set>
 #include <span>
+#include <sstream>
 #include <thread>
 
 #include "boost/program_options.hpp"
@@ -23,11 +25,13 @@
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor/raptor.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+#include "nigiri/routing/gpu/mcraptor.h"
 #include "nigiri/routing/gpu/raptor.h"
 
 #ifndef _WIN32
@@ -113,14 +117,19 @@ std::uint64_t compare_results(
     unsigned const min_connection_count) {
   auto mismatches = std::uint64_t{0U};
 
+  // cost is only set by algorithms that optimize it (mcraptor-cost
+  // configurations); 0 for all others, so comparing it here is a no-op
+  // unless both sides are cost-aware
   auto const equal = [](journey const& a, journey const& b) {
     return a.start_time_ == b.start_time_ && a.dest_time_ == b.dest_time_ &&
-           a.transfers_ == b.transfers_;
+           a.transfers_ == b.transfers_ &&
+           a.criteria_cost_ == b.criteria_cost_;
   };
 
   auto const key = [](journey const& j) {
-    return fmt::format("dep={} arr={} transfers={}", j.departure_time(),
-                       j.arrival_time(), j.transfers_);
+    return fmt::format("dep={} arr={} transfers={} cost={}",
+                       j.departure_time(), j.arrival_time(), j.transfers_,
+                       j.criteria_cost_);
   };
 
   auto const max_window = [&](query const& q) {
@@ -193,8 +202,16 @@ std::uint64_t compare_results(
           fmt::println("  === MISMATCH: {} [{}] vs {} [{}] ===", ref_name,
                        key(*a), cmp_name, key(*b));
           a->print(std::cout, tt);
+          std::cout << "  leg location indices:";
+          for (auto const& lg : a->legs_) {
+            std::cout << " " << to_idx(lg.from_) << "->" << to_idx(lg.to_);
+          }
           fmt::println("");
           b->print(std::cout, tt);
+          std::cout << "  leg location indices:";
+          for (auto const& lg : b->legs_) {
+            std::cout << " " << to_idx(lg.from_) << "->" << to_idx(lg.to_);
+          }
           fmt::println("");
         }
       }
@@ -220,6 +237,15 @@ std::vector<double> run_load(
     }
   }
 
+  // NIGIRI_BENCH_REPEAT=<n>: run the query set n times in one process
+  // (one timetable load) - repro batteries for schedule-dependent bugs
+  static auto const repeat = []() {
+    auto const* v = std::getenv("NIGIRI_BENCH_REPEAT");
+    return v == nullptr ? std::size_t{1U}
+                        : std::max(std::size_t{1U},
+                                   static_cast<std::size_t>(std::atoll(v)));
+  }();
+
   auto next = std::atomic<std::size_t>{0};
   auto done = std::atomic<std::size_t>{0};
   auto lat = std::vector<double>(queries.size(), -1.0);
@@ -227,8 +253,26 @@ std::vector<double> run_load(
   auto workers = std::vector<std::thread>{};
   for (auto* ws : states) {
     workers.emplace_back([&, ws]() {
-      for (auto i = next.fetch_add(1); i < queries.size();
-           i = next.fetch_add(1)) {
+      for (auto it = next.fetch_add(1); it < queries.size() * repeat;
+           it = next.fetch_add(1)) {
+        auto const i = it % queries.size();
+        // NIGIRI_BENCH_ONLY_QUERY=<idx>[,<idx>...]: single-query deep dives
+        // and minimal multi-query interference repros
+        static auto const only_q = []() {
+          auto set = std::set<std::size_t>{};
+          if (auto const* s = std::getenv("NIGIRI_BENCH_ONLY_QUERY");
+              s != nullptr) {
+            auto ss = std::stringstream{s};
+            auto tok = std::string{};
+            while (std::getline(ss, tok, ',')) {
+              set.insert(static_cast<std::size_t>(std::stoull(tok)));
+            }
+          }
+          return set;
+        }();
+        if (!only_q.empty() && !only_q.contains(i)) {
+          continue;
+        }
         try {
           auto const q0 = std::chrono::steady_clock::now();
           search_one(*ws, queries[i].q_, i);
@@ -263,9 +307,26 @@ std::vector<double> run_load(
   auto const avg =
       l.empty() ? 0.0 : std::accumulate(begin(l), end(l), 0.0) / l.size();
   fmt::print(
-      "| {:<36} | {:>6.1f} | {:>6.0f} | {:>6.0f} | {:>6.0f} | "
-      "{:>6.0f} |\n",
-      tag, qps, avg, q(0.50), q(0.90), q(0.99));
+      "| {:<36} | {:>6.1f} | {:>6.0f} | {:>6.0f} | {:>6.0f} | {:>6.0f} | "
+      "{:>6.0f} | {:>6.0f} |\n",
+      tag, qps, avg, q(0.50), q(0.75), q(0.90), q(0.99),
+      l.empty() ? 0.0 : l.back());
+  {  // slowest queries: the q99 tail is usually 1-2 identifiable queries
+    auto idx = std::vector<std::size_t>{};
+    for (auto i = std::size_t{0U}; i != lat.size(); ++i) {
+      if (lat[i] >= 0.0) {
+        idx.push_back(i);
+      }
+    }
+    std::sort(begin(idx), end(idx),
+              [&](auto const a, auto const b) { return lat[a] > lat[b]; });
+    fmt::print("    slowest:");
+    for (auto i = std::size_t{0U}; i != std::min<std::size_t>(5U, idx.size());
+         ++i) {
+      fmt::print(" #{}={:.0f}ms", idx[i], lat[idx[i]]);
+    }
+    fmt::print("\n");
+  }
   return lat;
 }
 
@@ -275,17 +336,22 @@ struct result_set {
   std::vector<double> latencies_;
 };
 
-struct cpu_ws {
+// worker state, parameterized on the search state type (RS): plain
+// raptor_state for the "range"/"pong" algos, mcraptor_state /
+// mcraptor_cost_state for the "mcraptor" / "mcraptor-cost" families
+template <typename RS>
+struct cpu_ws_t {
   search_state ss_;
-  routing::raptor_state rs_;
+  RS rs_;
 };
 
 #if defined(NIGIRI_CUDA)
-struct gpu_ws {
-  explicit gpu_ws(routing::gpu::gpu_timetable const& gtt)
-      : rs_{std::make_unique<routing::gpu::gpu_raptor_state>(gtt)} {}
+template <typename RS>
+struct gpu_ws_t {
+  explicit gpu_ws_t(routing::gpu::gpu_timetable const& gtt)
+      : rs_{std::make_unique<RS>(gtt)} {}
   search_state ss_;
-  std::unique_ptr<routing::gpu::gpu_raptor_state> rs_;
+  std::unique_ptr<RS> rs_;
 };
 #endif
 
@@ -367,16 +433,18 @@ int main(int argc, char* argv[]) {
        "path to a binary file containing a serialized nigiri timetable")  //
       ("engines", bpo::value(&engines)->multitoken(),
        "engines to benchmark (default: cpu gpu); every axis is a vector -- "
-       "the run is the full cross product of engines x algos x modes (x "
-       "threads/states within an engine), all against the once-loaded "
+       "the run is the full cross product of engines x algos x modes x dirs "
+       "(x threads/states within an engine), all against the once-loaded "
        "timetable, with one PROFILE throughput/latency line per point; "
-       "whenever BOTH engines ran a (mode, algo) cell, their pareto sets are "
-       "cross-checked per query and the process exits non-zero on any "
-       "divergence")  //
+       "whenever more than one (engine, algo) cell ran within a (mode, dir), "
+       "their pareto sets are pairwise cross-checked per query and the "
+       "process exits non-zero on any divergence")  //
       ("algo,a", bpo::value(&algos)->multitoken(),
-       "algorithms: raptor | pong (default: both); if both ran with the cpu "
-       "engine, the pong cell of each (mode, dir) is checked against raptor "
-       "for agreement on the intersection of the final search intervals")  //
+       "algorithms (strategy-algorithm): range | pong | mcraptor | "
+       "mcraptor-cost | pong-mcraptor | pong-mcraptor-cost (default: range "
+       "pong); every ran cell (any engine/algo combination) within a (mode, "
+       "dir) is checked pairwise against every other for agreement on the "
+       "intersection of the final search intervals")  //
       ("modes", bpo::value(&modes)->multitoken(),
        "<start>2<dest> query modes with s = station, c = coordinate: "
        "s2s | s2c | c2s | c2c (default: s2s c2c); c = intermodal offsets "
@@ -471,6 +539,28 @@ int main(int argc, char* argv[]) {
   auto tt = *nigiri::timetable::read(tt_path);
   tt.resolve();
 
+  // NIGIRI_ROUTE_STATS: route stop-sequence length distribution (debug aid
+  // for the 11-bit breadcrumb stop position: positions >= 2048 wrap)
+  if (std::getenv("NIGIRI_ROUTE_STATS") != nullptr) {
+    auto max_len = std::size_t{0U};
+    auto over_2047 = 0U;
+    auto max_r = route_idx_t{0U};
+    for (auto r = route_idx_t{0U}; r != tt.route_location_seq_.size(); ++r) {
+      auto const n = tt.route_location_seq_[r].size();
+      if (n > max_len) {
+        max_len = n;
+        max_r = r;
+      }
+      if (n > 2048U) {
+        ++over_2047;
+      }
+    }
+    std::cout << "ROUTE_STATS n_routes " << tt.route_location_seq_.size()
+              << " max_seq_len " << max_len << " (route " << to_idx(max_r)
+              << ") routes_over_2048 " << over_2047 << "\n";
+    return 0;
+  }
+
   gs.interval_size_ = duration_t{interval_size};
 
   if (!bbox_str.empty()) {
@@ -543,7 +633,7 @@ int main(int argc, char* argv[]) {
   }
   // process program options - end
 
-  // ---- benchmark matrix: engines x algos x modes (x threads/states) ----
+  // ---- benchmark matrix: engines x algos x modes x dirs (x threads/states)
   for (auto const& d : dirs) {
     if (d != "fwd" && d != "bwd") {
       std::cerr << "invalid dir \"" << d << "\", expected fwd | bwd\n";
@@ -573,8 +663,12 @@ int main(int argc, char* argv[]) {
   }
 #endif
   for (auto const& a : algos) {
-    if (a != "range" && a != "pong") {
-      std::cerr << "invalid algo \"" << a << "\", expected raptor | pong\n";
+    if (a != "range" && a != "pong" && a != "mcraptor" &&
+        a != "mcraptor-cost" && a != "pong-mcraptor" &&
+        a != "pong-mcraptor-cost") {
+      std::cerr << "invalid algo \"" << a
+                << "\", expected range | pong | mcraptor | mcraptor-cost | "
+                   "pong-mcraptor | pong-mcraptor-cost\n";
       return 1;
     }
   }
@@ -591,11 +685,12 @@ int main(int argc, char* argv[]) {
 
   // padded markdown: renders as a table AND stays aligned as plain text;
   // one table for the whole matrix
-  fmt::print("| {:<36} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} |\n",  //
-             "config", "q/s", "avg ms", "median", "q90", "q99");
   fmt::print(
-      "| {0:-<36} | {0:->5}: | {0:->5}: | {0:->5}: | {0:->5}: | "
-      "{0:->5}: |\n",
+      "| {:<36} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} |\n",
+      "config", "q/s", "avg ms", "median", "q75", "q90", "q99", "max");
+  fmt::print(
+      "| {0:-<36} | {0:->5}: | {0:->5}: | {0:->5}: | {0:->5}: | {0:->5}: | "
+      "{0:->5}: | {0:->5}: |\n",
       "");
 
   auto mode_queries =
@@ -631,6 +726,42 @@ int main(int argc, char* argv[]) {
       generate_queries(fwd_qs, n_queries, tt, rs, seed);
     }
 
+    // NIGIRI_BENCH_DUMP_QUERY="i,j,...": print the generated queries'
+    // start/dest (debug aid for triaging specific query indices)
+    if (auto const* dump = std::getenv("NIGIRI_BENCH_DUMP_QUERY");
+        dump != nullptr) {
+      auto const print_pos = [&](char const* tag, auto const& v) {
+        std::visit(utl::overloaded{
+                       [&](location_idx_t const l) {
+                         std::cout << tag << " location "
+                                   << tt.locations_.ids_[l].view();
+                       },
+                       [&](geo::latlng const& pos) {
+                         std::cout << tag << " " << pos.lat_ << "," << pos.lng_;
+                       }},
+                   v);
+      };
+      auto ss2 = std::stringstream{dump};
+      auto tok2 = std::string{};
+      while (std::getline(ss2, tok2, ',')) {
+        auto const i = static_cast<std::size_t>(std::atoll(tok2.c_str()));
+        if (i >= fwd_qs.size()) {
+          continue;
+        }
+        std::cout << "QDUMP #" << i << " ";
+        print_pos("from", fwd_qs[i].start_);
+        print_pos("  to", fwd_qs[i].dest_);
+        std::cout << "  start=" << std::visit(
+            utl::overloaded{[](interval<unixtime_t> const& iv) {
+                              return iv.from_;
+                            },
+                            [](unixtime_t const t) { return t; }},
+            fwd_qs[i].q_.start_time_)
+                  << "\n";
+      }
+      return 0;
+    }
+
     // (mode, dir) are the incomparable dimensions -- within one (mode, dir),
     // every (engine, algo) combination has to agree
     for (auto const& dir_str : dirs) {
@@ -648,22 +779,57 @@ int main(int argc, char* argv[]) {
 
       auto cells = std::vector<result_set>{};
       for (auto const& algo : algos) {
-        auto const use_pong = algo == "pong";
+        // token scheme: ${strategy}-${algorithm}; "pong-" prefix selects
+        // the pong strategy, the rest selects the algorithm/state type
+        auto const use_pong = algo == "pong" || algo.starts_with("pong-");
+        auto const algo_part =
+            algo == "pong" ? std::string{"range"}
+                           : (algo.starts_with("pong-") ? algo.substr(5)
+                                                        : algo);
         auto const label = mode + "-" + dir_str + "-" + algo;
+
+        // dispatch to the right search-state type; pong only exists for
+        // the plain raptor state (mcraptor cells are raptor_search-driven
+        // via routing::raptor_search, same as range)
+        auto const run_cpu_cell = [&]<typename RS>() {
+          return run_cell<cpu_ws_t<RS>>(
+              qs, label + "-cpu", threads_v,
+              [&](cpu_ws_t<RS>& w, routing::query q) {
+                auto const r =
+                    use_pong
+                        ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
+                                               std::move(q), dir)
+                        : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
+                                                 std::move(q), dir);
+                return *r.journeys_;
+              });
+        };
+#if defined(NIGIRI_CUDA)
+        auto const run_gpu_cell = [&]<typename RS>() {
+          return run_cell<gpu_ws_t<RS>>(
+              qs, label + "-gpu", gpu_states_v,
+              [&](gpu_ws_t<RS>& w, routing::query q) {
+                auto const r =
+                    use_pong
+                        ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
+                                               std::move(q), dir)
+                        : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
+                                                 std::move(q), dir);
+                return *r.journeys_;
+              },
+              *gpu_tt);
+        };
+#endif
 
         try {
           if (run_cpu) {
-            cells.push_back(run_cell<cpu_ws>(
-                qs, label + "-cpu", threads_v,
-                [&](cpu_ws& w, routing::query q) {
-                  auto const r =
-                      use_pong
-                          ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
-                                                 std::move(q), dir)
-                          : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
-                                                   std::move(q), dir);
-                  return *r.journeys_;
-                }));
+            cells.push_back(
+                algo_part == "mcraptor"
+                    ? run_cpu_cell.template operator()<routing::mcraptor_state>()
+                : algo_part == "mcraptor-cost"
+                    ? run_cpu_cell
+                          .template operator()<routing::mcraptor_cost_state>()
+                    : run_cpu_cell.template operator()<routing::raptor_state>());
             ++qa_n_cpu_cells;
             if (vm.count("qa_path")) {
               qa_cell = cells.back();
@@ -672,18 +838,15 @@ int main(int argc, char* argv[]) {
 
 #if defined(NIGIRI_CUDA)
           if (run_gpu) {
-            cells.push_back(run_cell<gpu_ws>(
-                qs, label + "-gpu", gpu_states_v,
-                [&](gpu_ws& w, routing::query q) {
-                  auto const r =
-                      use_pong
-                          ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
-                                                 std::move(q), dir)
-                          : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
-                                                   std::move(q), dir);
-                  return *r.journeys_;
-                },
-                *gpu_tt));
+            cells.push_back(
+                algo_part == "mcraptor"
+                    ? run_gpu_cell
+                          .template operator()<routing::gpu::gpu_mcraptor_state>()
+                : algo_part == "mcraptor-cost"
+                    ? run_gpu_cell.template operator()<
+                          routing::gpu::gpu_mcraptor_cost_state>()
+                    : run_gpu_cell
+                          .template operator()<routing::gpu::gpu_raptor_state>());
           }
 #endif
         } catch (std::exception const& e) {

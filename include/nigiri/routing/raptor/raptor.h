@@ -1,6 +1,8 @@
 #pragma once
 
+#include <algorithm>
 #include <cassert>
+#include <limits>
 #include <span>
 
 #include "nigiri/common/delta_t.h"
@@ -9,6 +11,7 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/raptor/debug.h"
+#include "nigiri/routing/raptor/bmrap_bounds.h"
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/raptor/reconstruct.h"
@@ -176,6 +179,58 @@ struct raptor {
     round_times_.reset(kInvalidArray);
   }
 
+  // BM-RAPTOR stage 2 (Delling/Dibbelt/Pajor, Sec. 4.3): the per-anchor
+  // reverse searches share one search space, STAGGERED so that a run
+  // allowed n of m trips writes its round k at slot k + (m - n) and slot i
+  // means "i trips remaining" for every anchor alike. Seeding at slot m - n
+  // is the paper's "round k reads tau_dep(k + (m - n) - 1, p) and writes
+  // tau_dep(k + (m - n), p)": each run inherits the previous, higher-budget
+  // run's labels for free.
+  void set_start_round(unsigned const k) { start_round_ = k; }
+
+  // BM-RAPTOR stage 2 pruned by stage 1 (paper, Sec. 4.3): "a departure
+  // time label tau_dep(k, p) can be discarded at stop p if tau_dep(k, p) <
+  // tau_arr(n - k, p)" - a latest-departure label sitting before the
+  // earliest time the origin can reach p at all is useless.
+  //
+  // The staggered alignment above makes slot k mean "k trips remaining" for
+  // every run, so the forward part always has budget - k trips and the rule
+  // takes the same form McRAPTOR uses in stage 3. `b` must therefore come
+  // from a search in the OPPOSITE direction, valid at every stop
+  // (one-to-all, no target/local pruning).
+  void set_bounds(bmrap_bounds const* b) { bm_bounds_ = b; }
+
+  // BM-RAPTOR stage 1 (paper, Sec. 4.3): "its target pruning rule must be
+  // relaxed in order to incorporate the arrival time slack into the labels
+  // that are used by the second-stage reverse RAPs. More precisely, the
+  // algorithm may only prune a label tau_arr(k, p) if tau_arr(k, p) >
+  // tau*(p_t) + sigma_arr."
+  //
+  // Unrelaxed, the round times are only valid along paths that could still
+  // improve the destination and cannot serve as a tau_arr^->(v, i) matrix;
+  // relaxed, they can, which saves a whole separate one-to-all search.
+  // `lb_` prunes against the same time_at_dest_, so this covers lower-bound
+  // pruning too.
+  //
+  // `factor` scales the travel time from `origin` and `add_minutes` pads it
+  // - the restriction's own two-mode relaxation, so the bound matches
+  // anchor_deadline() rather than some looser constant. floor_min/cap_min
+  // are relax_arr()'s absolute clamps: without them a ratio grants hours on
+  // a long-haul journey and the relaxation, not the search, dominates.
+  void set_dest_relax(unixtime_t const origin,
+                      double const factor,
+                      int const add_minutes,
+                      double const floor_min = 0.0,
+                      double const cap_min =
+                          std::numeric_limits<double>::infinity()) {
+    relax_origin_ = unix_to_delta(base(), origin);
+    relax_factor_ = factor;
+    relax_add_ = add_minutes;
+    relax_cap_ = cap_min;
+    relax_floor_ = std::min(floor_min, cap_min);
+    relax_on_ = true;
+  }
+
   void next_start_time() {
     utl::fill(best_, kInvalidArray);
     utl::fill(tmp_, kInvalidArray);
@@ -193,12 +248,12 @@ struct raptor {
         "adding start [fwd={}] {}: {}, v={} [current: best={}, round={} => "
         "best={}]\n",
         kFwd, loc{tt_, l}, t, v, to_unix(best_[to_idx(l)][v]),
-        to_unix(round_times_[0U][to_idx(l)][v]),
+        to_unix(round_times_[start_round_][to_idx(l)][v]),
         get_best(t, to_unix(best_[to_idx(l)][v])));
     best_[to_idx(l)][v] =
         get_best(unix_to_delta(base(), t), best_[to_idx(l)][v]);
-    round_times_[0U][to_idx(l)][v] =
-        get_best(unix_to_delta(base(), t), round_times_[0U][to_idx(l)][v]);
+    round_times_[start_round_][to_idx(l)][v] = get_best(
+        unix_to_delta(base(), t), round_times_[start_round_][to_idx(l)][v]);
     state_.station_mark_.set(to_idx(l), true);
   }
 
@@ -206,7 +261,10 @@ struct raptor {
                std::uint8_t const max_transfers,
                unixtime_t const worst_time_at_dest,
                pareto_set<journey>& results) {
-    auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
+    auto const end_k =
+        std::min<unsigned>(std::min(max_transfers, kMaxTransfers) + 2U +
+                               start_round_,
+                           kMaxTransfers + 2U);
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
     for (auto& time_at_dest : time_at_dest_) {
@@ -215,7 +273,7 @@ struct raptor {
 
     trace_print_init_state();
 
-    for (auto k = 1U; k != end_k; ++k) {
+    for (auto k = start_round_ + 1U; k != end_k; ++k) {
       for (auto i = 0U; i != n_locations_; ++i) {
         for (auto v = 0U; v != Vias + 1; ++v) {
           best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
@@ -730,6 +788,12 @@ private:
             continue;
           }
 
+          if (bound_prunes(k, static_cast<std::uint32_t>(i),
+                           fp_target_time)) {
+            ++stats_.fp_update_prevented_by_lower_bound_;
+            return;
+          }
+
           ++stats_.n_earliest_arrival_updated_by_footpath_;
           round_times_[k][i][target_v] = fp_target_time;
           best_[i][target_v] = fp_target_time;
@@ -822,6 +886,12 @@ private:
                 adjusted_transfer_time(transfer_time_settings_, fp.duration()),
                 loc{tt_, fp.target()}, to_unix(best_[target][target_v]),
                 to_unix(fp_target_time), v, target_v, stay);
+
+            if (bound_prunes(k, static_cast<std::uint32_t>(target),
+                             fp_target_time)) {
+              ++stats_.fp_update_prevented_by_lower_bound_;
+              continue;
+            }
 
             ++stats_.n_earliest_arrival_updated_by_footpath_;
             round_times_[k][target][target_v] = fp_target_time;
@@ -927,6 +997,12 @@ private:
                 fp.duration(), loc{tt_, fp.target()},
                 to_unix(best_[target][target_v]), to_unix(fp_target_time), v,
                 target_v, stay);
+
+            if (bound_prunes(k, static_cast<std::uint32_t>(target),
+                             fp_target_time)) {
+              ++stats_.fp_update_prevented_by_lower_bound_;
+              return utl::cflow::kContinue;
+            }
 
             ++stats_.n_earliest_arrival_updated_by_footpath_;
             round_times_[k][target][target_v] = fp_target_time;
@@ -1480,8 +1556,24 @@ private:
     if constexpr (SearchMode == search_mode::kOneToAll) {
       return;
     }
+    auto const relaxed = [&]() -> delta_t {
+      if (!relax_on_) {
+        return t;
+      }
+      // dir() makes the travel magnitude positive in both directions
+      auto const travel = static_cast<double>(dir(t - relax_origin_));
+      if (travel <= 0.0) {
+        return t;
+      }
+      // mirrors relax_arr(): reference + clamp(extra, floor, cap)
+      auto const extra = travel * (relax_factor_ - 1.0) + relax_add_;
+      return clamp(static_cast<int>(relax_origin_) +
+                   dir(static_cast<int>(std::llround(
+                       travel + std::clamp(extra, relax_floor_,
+                                           relax_cap_)))));
+    }();
     for (auto i = k; i != time_at_dest_.size(); ++i) {
-      time_at_dest_[i] = get_best(time_at_dest_[i], t);
+      time_at_dest_[i] = get_best(time_at_dest_[i], relaxed);
     }
   }
 
@@ -1513,7 +1605,27 @@ private:
   bitvec end_reachable_;
   std::span<std::array<delta_t, Vias + 1>> tmp_;
   std::span<std::array<delta_t, Vias + 1>> best_;
+  bool bound_prunes(unsigned const k,
+                    std::uint32_t const l,
+                    delta_t const t) const {
+    if (bm_bounds_ == nullptr) {
+      return false;
+    }
+    if (k > bm_bounds_->budget_) {
+      return true;
+    }
+    return !is_better_or_eq(t, bm_bounds_->at(bm_bounds_->budget_ - k, l));
+  }
+
   flat_matrix_view<std::array<delta_t, Vias + 1>> round_times_;
+  unsigned start_round_{0U};
+  bmrap_bounds const* bm_bounds_{nullptr};
+  delta_t relax_origin_{0};
+  double relax_factor_{1.0};
+  int relax_add_{0};
+  double relax_floor_{0.0};
+  double relax_cap_{std::numeric_limits<double>::infinity()};
+  bool relax_on_{false};
   bitvec const& is_dest_;
   std::array<bitvec, kMaxVias> const& is_via_;
   std::vector<std::uint16_t> const& dist_to_end_;
