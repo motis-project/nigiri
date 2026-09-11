@@ -1,13 +1,18 @@
 #include "nigiri/loader/dir.h"
 
+#include <cstdint>
+#include <fstream>
+#include <limits>
 #include <optional>
 #include <ranges>
-#include <variant>
 #include <vector>
 
 #include "fmt/ostream.h"
 
-#include "miniz.h"
+#include "mz.h"
+#include "mz_strm.h"
+#include "mz_zip.h"
+#include "mz_zip_rw.h"
 
 #include "cista/mmap.h"
 
@@ -103,28 +108,28 @@ std::uint64_t fs_dir::hash() const {
 }
 
 // --- ZIP directory implementation ---
-std::optional<mz_uint32> find_file_idx(mz_zip_archive* ar,
-                                       std::filesystem::path const& p) {
-  mz_uint32 file_idx = 0U;
-  auto const r = mz_zip_reader_locate_file_v2(ar, p.string().c_str(), nullptr,
-                                              0, &file_idx);
-  return r == MZ_TRUE ? std::make_optional<mz_uint32>(file_idx) : std::nullopt;
-}
-mz_uint32 get_file_idx(mz_zip_archive* ar, std::filesystem::path const& p) {
-  auto const file_idx = find_file_idx(ar, p);
-  utl::verify(file_idx.has_value(), "cannot locate file {} in zip", p);
-  return *file_idx;
-}
-mz_zip_archive_file_stat get_stat(mz_zip_archive* ar,
-                                  mz_uint32 const file_idx) {
-  auto file_stat = mz_zip_archive_file_stat{};
-  auto const r = mz_zip_reader_file_stat(ar, file_idx, &file_stat);
-  utl::verify(r == MZ_TRUE, "zip: cannot stat file {}", file_idx);
-  return file_stat;
-}
-std::filesystem::path get_file_path(mz_zip_archive* ar,
-                                    mz_uint32 const file_idx) {
-  return get_stat(ar, file_idx).m_filename;
+std::string mz_code_str(int32_t const code) {
+  switch (code) {
+    case MZ_OK: return "ok";
+    case MZ_FORMAT_ERROR: return "format error";
+    case MZ_INTERNAL_ERROR: return "internal error";
+    case MZ_OPEN_ERROR: return "open error";
+    case MZ_READ_ERROR: return "read error";
+    case MZ_SEEK_ERROR: return "seek error";
+    case MZ_TELL_ERROR: return "tell error";
+    case MZ_CRC_ERROR: return "crc error";
+    case MZ_MEM_ERROR: return "memory error";
+    case MZ_SUPPORT_ERROR: return "unsupported compression method";
+    case MZ_DATA_ERROR: return "data error";
+    case MZ_END_OF_LIST: return "end of list";
+    case MZ_EXIST_ERROR: return "entry does not exist";
+    case MZ_PASSWORD_ERROR: return "password required";
+    case MZ_SIGN_ERROR: return "signature error";
+    case MZ_SYMLINK_ERROR: return "symlink error";
+    case MZ_PARAM_ERROR: return "parameter error";
+    case MZ_CRYPT_ERROR: return "crypt error";
+    default: return fmt::to_string(code);
+  }
 }
 struct zip_file_content final : public file::content {
   zip_file_content() = delete;
@@ -132,18 +137,26 @@ struct zip_file_content final : public file::content {
   zip_file_content(zip_file_content&&) = delete;
   zip_file_content& operator=(zip_file_content&&) = delete;
   zip_file_content& operator=(zip_file_content const&) = delete;
-  ~zip_file_content() final;
-  zip_file_content(mz_zip_archive* ar,
-                   std::filesystem::path const& p,
-                   mz_uint32 const file_idx) {
-    buf_.resize(get_stat(ar, file_idx).m_uncomp_size);
-    auto const r =
-        mz_zip_reader_extract_to_mem(ar, file_idx, buf_.data(), buf_.size(), 0);
-    utl::verify(r == MZ_TRUE, "cannot extract file {} from zip: {}", p,
-                mz_zip_get_error_string(mz_zip_get_last_error(ar)));
+  ~zip_file_content() final = default;
+  zip_file_content(void* reader, std::filesystem::path const& p) {
+    mz_zip_file* info = nullptr;
+    utl::verify(mz_zip_reader_locate_entry(reader, p.string().c_str(), 0) ==
+                        MZ_OK &&
+                    mz_zip_reader_entry_get_info(reader, &info) == MZ_OK &&
+                    info != nullptr,
+                "zip: cannot locate file {}", p);
+    auto const uncompressed_size = static_cast<std::size_t>(
+        static_cast<std::int64_t>(info->uncompressed_size));
+    buf_.resize(uncompressed_size);
+    auto r = mz_zip_reader_entry_open(reader);
+    utl::verify(r == MZ_OK, "zip: cannot open file {}: {}", p, mz_code_str(r));
+    r = mz_zip_reader_entry_save_buffer(
+        reader, buf_.data(),
+        static_cast<int32_t>(uncompressed_size));
+    utl::verify(r == MZ_OK, "zip: cannot extract file {}: {}", p,
+                mz_code_str(r));
+    // mz_zip_reader_entry_save() already closes the entry once the stream ends.
   }
-  zip_file_content(mz_zip_archive* ar, std::filesystem::path const& p)
-      : zip_file_content{ar, p, get_file_idx(ar, p)} {}
   std::string_view get() const final {
     return {reinterpret_cast<char const*>(buf_.data()), buf_.size()};
   }
@@ -152,30 +165,46 @@ struct zip_file_content final : public file::content {
   std::size_t size() const override { return buf_.size(); }
   std::vector<std::uint8_t> buf_;
 };
-zip_file_content::~zip_file_content() = default;
 struct zip_dir::impl {
   impl() = delete;
   impl(impl const&) = delete;
   impl(impl&&) = delete;
   impl& operator=(impl&&) = delete;
   impl& operator=(impl const&) = delete;
-  explicit impl(std::vector<std::uint8_t> b) : memory_{std::move(b)} {
-    open("inmemory");
-  }
   explicit impl(std::filesystem::path const& p)
-      : memory_{
-            cista::mmap{p.string().c_str(), cista::mmap::protection::READ}} {
-    open(p);
+      : reader_{mz_zip_reader_create()} {
+    utl::verify(reader_ != nullptr, "zip: cannot create reader for {}", p);
+    auto const r = mz_zip_reader_open_file(reader_, p.string().c_str());
+    utl::verify(r == MZ_OK, "unable to open zip at {}, error={}", p,
+                mz_code_str(r));
   }
-  ~impl() { mz_zip_reader_end(&ar_); }
-  void open(std::filesystem::path const& p) {
-    std::visit(
-        [&](auto&& buf) {
-          mz_zip_zero_struct(&ar_);
-          auto r = mz_zip_reader_init_mem(&ar_, buf.data(), buf.size(), 0);
-          utl::verify(r, "unable to open zip at {}, error={}", p, r);
-        },
-        memory_);
+  explicit impl(std::vector<std::uint8_t> b)
+      : memory_{std::move(b)}, reader_{mz_zip_reader_create()} {
+    utl::verify(reader_ != nullptr,
+                "zip: cannot create reader for in-memory archive");
+    utl::verify(memory_.size() < std::numeric_limits<int32_t>::max(),
+                "zip: in-memory archive too large ({} bytes)", memory_.size());
+    auto const r = mz_zip_reader_open_buffer(
+        reader_, memory_.data(), static_cast<int32_t>(memory_.size()), 0);
+    utl::verify(r == MZ_OK, "unable to open in-memory zip, error={}",
+                mz_code_str(r));
+  }
+  ~impl() {
+    if (reader_ != nullptr) {
+      mz_zip_reader_delete(&reader_);
+    }
+  }
+  std::optional<mz_zip_file*> locate(std::filesystem::path const& p) {
+    auto const r =
+        mz_zip_reader_locate_entry(reader_, p.string().c_str(), 0);
+    if (r != MZ_OK) {
+      return std::nullopt;
+    }
+    auto* info = static_cast<mz_zip_file*>(nullptr);
+    utl::verify(mz_zip_reader_entry_get_info(reader_, &info) == MZ_OK &&
+                    info != nullptr,
+                "zip: cannot get info for {}", p);
+    return info;
   }
   std::vector<std::filesystem::path> list_files(
       std::filesystem::path const& p) {
@@ -186,36 +215,42 @@ struct zip_dir::impl {
     if (parent == "./" || parent == "/") {
       parent = "";
     } else {
-      auto const file_idx = get_file_idx(&ar_, parent);
-      auto const is_dir = mz_zip_reader_is_file_a_directory(&ar_, file_idx);
-      if (is_dir != MZ_TRUE) {
+      auto const info = locate(parent);
+      if (!info.has_value()) {
+        throw utl::fail("cannot locate file {} in zip", parent);
+      }
+      if (mz_zip_reader_entry_is_dir(reader_) != MZ_OK) {
         return {p};
       }
     }
 
     std::vector<std::filesystem::path> files;
-    auto const num_files = mz_zip_reader_get_num_files(&ar_);
-    for (auto i = mz_uint32{0U}; i != num_files; ++i) {
-      auto path = get_file_path(&ar_, i);
-      auto const p_str = path.string();
-      if (p_str.starts_with(parent) && p_str != parent) {
-        files.emplace_back(std::move(path));
+    auto r = mz_zip_reader_goto_first_entry(reader_);
+    while (r == MZ_OK) {
+      auto* info = static_cast<mz_zip_file*>(nullptr);
+      utl::verify(mz_zip_reader_entry_get_info(reader_, &info) == MZ_OK &&
+                      info != nullptr,
+                  "zip: cannot get info during listing of {}", p);
+      auto const name = std::string{info->filename};
+      if (name.starts_with(parent) && name != parent) {
+        files.emplace_back(name);
       }
+      r = mz_zip_reader_goto_next_entry(reader_);
     }
+    utl::verify(r == MZ_END_OF_LIST, "zip: error while listing {}: {}", p,
+                mz_code_str(r));
     std::sort(begin(files), end(files));
     return files;
   }
-  bool exists(std::filesystem::path const& p) {
-    return find_file_idx(&ar_, p).has_value();
-  }
+  bool exists(std::filesystem::path const& p) { return locate(p).has_value(); }
   std::size_t file_size(std::filesystem::path const& p) {
-    auto const file_idx = find_file_idx(&ar_, p);
-    utl::verify(file_idx.has_value(), "zip_dir::file_size: not found: {}", p);
-    return get_stat(&ar_, *file_idx).m_uncomp_size;
+    auto const info = locate(p);
+    utl::verify(info.has_value(), "zip_dir::file_size: not found: {}", p);
+    return static_cast<std::size_t>((*info)->uncompressed_size);
   }
 
-  mz_zip_archive ar_{};
-  std::variant<std::vector<std::uint8_t>, cista::mmap> memory_;
+  std::vector<std::uint8_t> memory_;
+  void* reader_{nullptr};
 };
 zip_dir::zip_dir(std::filesystem::path const& p)
     : dir{p}, impl_{std::make_unique<impl>(p)} {}
@@ -228,7 +263,7 @@ std::vector<std::filesystem::path> zip_dir::list_files(
 }
 file zip_dir::get_file(std::filesystem::path const& p) const {
   return file{p.string(),
-              std::make_unique<zip_file_content>(&impl_->ar_, normalize(p))};
+              std::make_unique<zip_file_content>(impl_->reader_, normalize(p))};
 }
 bool zip_dir::exists(std::filesystem::path const& p) const {
   return impl_->exists(normalize(p));
@@ -238,11 +273,18 @@ std::size_t zip_dir::file_size(std::filesystem::path const& p) const {
 }
 dir_type zip_dir::type() const { return dir_type::kZip; }
 std::uint64_t zip_dir::hash() const {
-  return std::visit(
-      [](auto const& data) {
-        return wyhash(data.data(), data.size(), 0, _wyp);
-      },
-      impl_->memory_);
+  if (!impl_->memory_.empty()) {
+    return wyhash(impl_->memory_.data(), impl_->memory_.size(), 0U, _wyp);
+  }
+  auto buf = std::vector<char>{};
+  auto f = std::ifstream{path_, std::ios::binary};
+  f.seekg(0, std::ios::end);
+  auto const size = f.tellg();
+  utl::verify(size >= 0, "zip_dir::hash: cannot read {}", path_);
+  buf.resize(static_cast<std::size_t>(size));
+  f.seekg(0, std::ios::beg);
+  f.read(buf.data(), size);
+  return wyhash(buf.data(), buf.size(), 0U, _wyp);
 }
 
 // --- In-memory directory implementation ---

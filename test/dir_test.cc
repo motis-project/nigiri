@@ -2,6 +2,9 @@
 
 #include "nigiri/loader/dir.h"
 
+#include <fstream>
+#include <iterator>
+
 #include "utl/parser/cstr.h"
 #include "utl/zip.h"
 
@@ -69,6 +72,24 @@ TEST(dir, directory_listing) {
             fs.list_files("stamm/bahnhof.101"));
   EXPECT_EQ(mem.list_files("stamm/bahnhof.101"),
             fs.list_files("stamm/bahnhof.101"));
+}
+
+TEST(dir, in_memory_zip) {
+  auto buf = std::vector<std::uint8_t>{};
+  {
+    auto zip_file = std::ifstream{"test/test_data/mss-dayshift3.zip",
+                                  std::ios::binary};
+    buf.assign(
+        std::istreambuf_iterator<char>{zip_file},
+        std::istreambuf_iterator<char>{});
+  }
+  auto const zip = zip_dir{std::move(buf)};
+
+  EXPECT_TRUE(zip.exists("stamm/bahnhof.101"));
+  EXPECT_FALSE(zip.exists("stamm/BAHNHOF.101"));
+  EXPECT_EQ(zip.file_size("stamm/bahnhof.101"),
+            std::string_view{data}.size());
+  EXPECT_EQ(zip.get_file("stamm/bahnhof.101").data(), std::string_view{data});
 }
 
 TEST(nigiri, to_dir) {

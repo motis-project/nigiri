@@ -112,7 +112,7 @@ target_link_libraries(
   utl
   fmt
   date
-  miniz
+  MINIZIP::minizip
   date-tz
   wyhash
   unordered_dense
