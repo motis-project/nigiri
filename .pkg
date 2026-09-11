@@ -30,6 +30,10 @@
   url=git@github.com:motis-project/miniz.git
   branch=master
   commit=e857234a23de8e5a2d05d266e518220a495db0ce
+[minizip-ng]
+  url=git@github.com:zlib-ng/minizip-ng.git
+  branch=master
+  commit=7b2387161c542fa9f427352dcdef76097d0d692b
 [oh]
   url=git@github.com:felixguendling/oh.git
   branch=master
@@ -62,3 +66,7 @@
   url=git@github.com:motis-project/wyhash.git
   branch=master
   commit=1e012b57fc2227a9e583a57e2eacb3da99816d99
+[zstd]
+  url=git@github.com:facebook/zstd.git
+  branch=dev
+  commit=f8745da6ff1ad1e7bab384bd1f9d742439278e99

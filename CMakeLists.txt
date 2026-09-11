@@ -12,6 +12,26 @@ if (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
 endif ()
 
 include(cmake/buildcache.cmake)
+
+if (NOT DEFINED PROJECT_IS_TOP_LEVEL OR PROJECT_IS_TOP_LEVEL)
+  # minizip-ng (added by pkg) needs these options and the shim configs below
+  # so its package discovery resolves the pinned in-tree dependencies.
+  set(MZ_ZLIB ON CACHE BOOL "Enables ZLIB compression")
+  set(MZ_ZLIB_FLAVOR "zlib" CACHE STRING
+      "Select the preferred zlib flavor - auto searches for zlib-ng then zlib")
+  set(MZ_BZIP2 OFF CACHE BOOL "Enables BZIP2 compression")
+  set(MZ_LZMA OFF CACHE BOOL "Enables LZMA & XZ compression")
+  set(MZ_PPMD OFF CACHE BOOL "Enables PPMD compression")
+  set(MZ_ZSTD ON CACHE BOOL "Enables ZSTD compression")
+  set(MZ_FETCH_LIBS OFF CACHE BOOL "Enables fetching third-party libraries if not found")
+  set(MZ_FORCE_FETCH_LIBS OFF CACHE BOOL "Enables fetching third-party libraries always")
+  set(MZ_PKCRYPT OFF CACHE BOOL "Enables PKWARE traditional encryption")
+  set(MZ_WZAES OFF CACHE BOOL "Enables WinZIP AES encryption")
+  set(MZ_OPENSSL OFF CACHE BOOL "Enables OpenSSL for encryption")
+  set(MZ_LIBBSD OFF CACHE BOOL "Builds with libbsd crypto random")
+  include(cmake/minizip-ng-deps.cmake)
+endif ()
+
 include(cmake/pkg.cmake)
 
 
