@@ -77,7 +77,7 @@ struct raptor {
         n_locations_{tt_.n_locations()},
         n_routes_{tt.n_routes()},
         n_rt_transports_{Rt ? rtt->n_rt_transports() : 0U},
-        state_{state.resize(n_locations_, n_routes_, n_rt_transports_)},
+        state_{state.resize(n_locations_, n_routes_, n_rt_transports_, Vias)},
         tmp_{state_.get_tmp<Vias>()},
         best_{state_.get_best<Vias>()},
         round_times_{state.get_round_times<Vias>()},
