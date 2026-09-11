@@ -339,15 +339,20 @@ routing_result bmrap_profile(timetable const& tt,
         return false;
       }
       return !utl::any_of(s_state.results_, [&](journey const& o) {
-        if (&o == &j || !o.tuple_dominates(j)) {
+        if (&o == &j || !o.dominates(j)) {
           return false;
         }
-        // tuple_dominates() is non-strict, so journeys sharing a tuple (which
-        // extra criteria produce) dominate one another and a plain any_of()
-        // would drop both, undercounting past min_connection_count_ and
-        // overshooting the window. Break the tie by address so each distinct
-        // tuple contributes one - same as the all_anchors dedup below.
-        return !j.tuple_dominates(o) || &o < &j;
+        // Count journeys the way the response presents them: every
+        // Pareto-optimal journey is shown, so every Pareto-optimal journey
+        // counts towards min_connection_count_ - including the several that
+        // an extra criterion (non_transit / mode_filter / mode_switches)
+        // produces on one (departure, arrival, transfers) tuple. Counting by
+        // tuple instead collapses those to one, so the scan kept stepping
+        // (and running a full mc ping/pong per step) long past the point the
+        // user already had numItineraries journeys in hand. dominates() is
+        // non-strict, so exact-duplicate tuples still dominate one another;
+        // break that tie by address so each contributes exactly one.
+        return !j.dominates(o) || &o < &j;
       });
     });
   };
