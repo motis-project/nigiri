@@ -22,6 +22,14 @@
 
 namespace nigiri {
 
+// Warning: for better data locality, locations will be reordered in a way that
+// locations with no traffic (not served by any route) are at the end (high
+// index) while locations with traffic will be at the start (low index).
+// This means that every added data field that (directly or indirectly)
+// references location_idx_t has to be handled in permutate_locations.cc
+// Don't forget to add handling to permutate_locations.cc when adding new fields
+// that either use location_idx_t as index (permutate) or as value
+// (re-reference).
 struct day_list;
 
 struct location_id_hash {
@@ -90,10 +98,10 @@ struct timetable {
     vector_map<location_idx_t, location_type> types_;
     vector_map<location_idx_t, location_idx_t> parents_;
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
-    mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
-    mutable_fws_multimap<location_idx_t, location_idx_t> children_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
+    paged_vecvec<location_idx_t, location_idx_t> equivalences_;
+    paged_vecvec<location_idx_t, location_idx_t> children_;
+    paged_vecvec<location_idx_t, footpath> preprocessing_footpaths_out_;
+    paged_vecvec<location_idx_t, footpath> preprocessing_footpaths_in_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_in_;
     vector_map<location_idx_t, std::uint32_t> location_importance_;
@@ -152,28 +160,68 @@ struct timetable {
     return bitfields_[route_traffic_days_[r]].test(to_idx(day));
   }
 
+  size_t n_events_at_location(location_idx_t const loc) const {
+    size_t res = 0U;
+    for (auto const r : location_routes_[loc]) {
+      auto const stop_seq = route_location_seq_[r];
+      for (stop_idx_t i = 0U; i < stop_seq.size(); ++i) {
+        auto const stp = stop{stop_seq[i]};
+        if (stp.location_idx() != loc) {
+          continue;
+        }
+
+        size_t n_active_transports = 0U;
+        auto const transport_range = route_transport_ranges_[r];
+        for (auto const t : transport_range) {
+          n_active_transports += bitfields_[transport_traffic_days_[t]].count();
+        }
+        if (i > 0U) {
+          // Arrival Events
+          res += n_active_transports;
+        }
+        if (i < stop_seq.size() - 1) {
+          // Departure Events
+          res += n_active_transports;
+        }
+      }
+    }
+
+    return res;
+  }
+
+  // departures of stop i (i < n-1) and arrivals of stop i (i > 0) live in
+  // separate arrays with the same per-route base offset
+  unsigned event_times_idx(route_idx_t const r,
+                           stop_idx_t const stop_idx,
+                           event_type const ev_type) const {
+    auto const n_transports =
+        static_cast<unsigned>(route_transport_ranges_[r].size());
+    return static_cast<unsigned>(
+        route_stop_time_ranges_[r].from_ +
+        n_transports * (stop_idx - (ev_type == event_type::kArr ? 1 : 0)));
+  }
+
   std::span<delta const> event_times_at_stop(route_idx_t const r,
                                              stop_idx_t const stop_idx,
                                              event_type const ev_type) const {
     auto const n_transports =
         static_cast<unsigned>(route_transport_ranges_[r].size());
-    auto const idx = static_cast<unsigned>(
-        route_stop_time_ranges_[r].from_ +
-        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    return std::span<delta const>{&route_stop_times_[idx], n_transports};
+    auto const idx = event_times_idx(r, stop_idx, ev_type);
+    return std::span<delta const>{
+        &(ev_type == event_type::kDep ? departure_route_stop_times_
+                                      : arrival_route_stop_times_)[idx],
+        n_transports};
   }
 
   delta event_mam(route_idx_t const r,
                   transport_idx_t t,
                   stop_idx_t const stop_idx,
                   event_type const ev_type) const {
-    auto const range = route_transport_ranges_[r];
-    auto const n_transports = static_cast<unsigned>(range.size());
-    auto const route_stop_begin = static_cast<unsigned>(
-        route_stop_time_ranges_[r].from_ +
-        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    auto const t_idx_in_route = to_idx(t) - to_idx(range.from_);
-    return route_stop_times_[route_stop_begin + t_idx_in_route];
+    auto const t_idx_in_route =
+        to_idx(t) - to_idx(route_transport_ranges_[r].from_);
+    auto const idx = event_times_idx(r, stop_idx, ev_type) + t_idx_in_route;
+    return (ev_type == event_type::kDep ? departure_route_stop_times_
+                                        : arrival_route_stop_times_)[idx];
   }
 
   delta event_mam(transport_idx_t t,
@@ -371,8 +419,15 @@ struct timetable {
   //  stop-1-dep: [...]
   // ...
   // RouteN: ...
+  // departure_route_stop_times_      arrival_route_stop_times_
+  // Route 1:                         Route 1:
+  //   stop-1-dep: [trip1..tripN]       stop-2-arr: [trip1..tripN]
+  //   stop-2-dep: [trip1..tripN]       stop-3-arr: [trip1..tripN]
+  // Route 2: ...                     Route 2: ...
+  // route_stop_time_ranges_ indexes both (same size, same offsets)
   vector_map<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
-  vector<delta> route_stop_times_;
+  vector<delta> departure_route_stop_times_;
+  vector<delta> arrival_route_stop_times_;
 
   // Offset between the stored time and the time given in the GTFS timetable
   // Required to match GTFS-RT with GTFS-static trips.
