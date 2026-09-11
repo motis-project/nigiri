@@ -28,6 +28,14 @@ constexpr auto const data = std::string_view{R"(0000001     A
 0000016     P
 )"};
 
+std::vector<std::uint8_t> read_file_bytes(char const* path) {
+  auto f = std::ifstream{path, std::ios::binary};
+  auto buf = std::vector<std::uint8_t>{};
+  buf.assign(std::istreambuf_iterator<char>{f},
+             std::istreambuf_iterator<char>{});
+  return buf;
+}
+
 TEST(dir, file_contents) {
   auto const fs = fs_dir{"test/test_data/mss-dayshift3"};
   auto const zip = zip_dir{"test/test_data/mss-dayshift3.zip"};
@@ -75,15 +83,8 @@ TEST(dir, directory_listing) {
 }
 
 TEST(dir, in_memory_zip) {
-  auto buf = std::vector<std::uint8_t>{};
-  {
-    auto zip_file = std::ifstream{"test/test_data/mss-dayshift3.zip",
-                                  std::ios::binary};
-    buf.assign(
-        std::istreambuf_iterator<char>{zip_file},
-        std::istreambuf_iterator<char>{});
-  }
-  auto const zip = zip_dir{std::move(buf)};
+  auto const zip =
+      zip_dir{read_file_bytes("test/test_data/mss-dayshift3.zip")};
 
   EXPECT_TRUE(zip.exists("stamm/bahnhof.101"));
   EXPECT_FALSE(zip.exists("stamm/BAHNHOF.101"));
@@ -106,22 +107,18 @@ TEST(dir, zstd) {
                                          {"stamm/zugart_int.101",
                                           std::string{zugart}}}};
 
+  auto const fs = fs_dir{"test/test_data/mss-dayshift3"};
   EXPECT_EQ(zip.list_files("stamm/"), mem.list_files("stamm/"));
   EXPECT_TRUE(zip.exists("stamm/bahnhof.101"));
   EXPECT_FALSE(zip.exists("stamm/bahnhof.1"));
   EXPECT_EQ(zip.file_size("stamm/bahnhof.101"), std::string_view{data}.size());
   EXPECT_EQ(zip.get_file("stamm/bahnhof.101").data(), std::string_view{data});
+  EXPECT_EQ(zip.get_file("stamm/bahnhof.101").data(),
+            fs.get_file("stamm/bahnhof.101").data());
   EXPECT_EQ(zip.get_file("stamm/zugart_int.101").data(), zugart);
 
-  auto buf = std::vector<std::uint8_t>{};
-  {
-    auto zip_file = std::ifstream{"test/test_data/mss-dayshift3-zstd.zip",
-                                  std::ios::binary};
-    buf.assign(
-        std::istreambuf_iterator<char>{zip_file},
-        std::istreambuf_iterator<char>{});
-  }
-  auto const zip_mem = zip_dir{std::move(buf)};
+  auto const zip_mem =
+      zip_dir{read_file_bytes("test/test_data/mss-dayshift3-zstd.zip")};
   EXPECT_EQ(zip_mem.get_file("stamm/bahnhof.101").data(),
             std::string_view{data});
 }

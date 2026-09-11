@@ -10,9 +10,10 @@ set(ZLIB_FOUND TRUE)
 set(ZLIB_VERSION_STRING "1.3.1")
 set(ZLIB_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/deps/zlib-ng)
 
+# Legacy result variables for consumers reading ZLIB_LIBRARIES directly.
+set(ZLIB_LIBRARIES ZLIB::ZLIB)
+
 add_library(ZLIB::ZLIB INTERFACE IMPORTED)
 set_target_properties(ZLIB::ZLIB PROPERTIES
-      INTERFACE_LINK_LIBRARIES zlibstatic)
-
-# Exported legacy variables for consumers reading ZLIB_LIBRARIES directly
-target_link_libraries(ZLIB::ZLIB INTERFACE zlibstatic)
+      INTERFACE_LINK_LIBRARIES zlibstatic
+      INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_BINARY_DIR}/deps/zlib-ng)

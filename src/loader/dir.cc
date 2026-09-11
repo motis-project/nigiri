@@ -140,22 +140,24 @@ struct zip_file_content final : public file::content {
   ~zip_file_content() final = default;
   zip_file_content(void* reader, std::filesystem::path const& p) {
     mz_zip_file* info = nullptr;
-    utl::verify(mz_zip_reader_locate_entry(reader, p.string().c_str(), 0) ==
-                        MZ_OK &&
-                    mz_zip_reader_entry_get_info(reader, &info) == MZ_OK &&
-                    info != nullptr,
-                "zip: cannot locate file {}", p);
+    auto r = mz_zip_reader_locate_entry(reader, p.string().c_str(), 0);
+    utl::verify(r == MZ_OK, "zip: cannot locate file {}: {}", p,
+                mz_code_str(r));
+    r = mz_zip_reader_entry_get_info(reader, &info);
+    utl::verify(r == MZ_OK && info != nullptr, "zip: cannot read info of {}: {}",
+                p, mz_code_str(r));
     auto const uncompressed_size = static_cast<std::size_t>(
         static_cast<std::int64_t>(info->uncompressed_size));
     buf_.resize(uncompressed_size);
-    auto r = mz_zip_reader_entry_open(reader);
+    r = mz_zip_reader_entry_open(reader);
     utl::verify(r == MZ_OK, "zip: cannot open file {}: {}", p, mz_code_str(r));
     r = mz_zip_reader_entry_save_buffer(
         reader, buf_.data(),
         static_cast<int32_t>(uncompressed_size));
     utl::verify(r == MZ_OK, "zip: cannot extract file {}: {}", p,
                 mz_code_str(r));
-    // mz_zip_reader_entry_save() already closes the entry once the stream ends.
+    // mz_zip_reader_entry_save_buffer() already closes the entry once the
+    // underlying stream ends; an explicit close afterwards fails.
   }
   std::string_view get() const final {
     return {reinterpret_cast<char const*>(buf_.data()), buf_.size()};
