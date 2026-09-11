@@ -281,11 +281,23 @@ struct non_transit_dim {
 // that this is a pareto dimension rather than a filter: the result keeps
 // BOTH the fast itinerary that flies and the best one that does not.
 struct mode_filter_dim {
-  // the classes this dimension prefers to avoid. A mask so the same dimension
-  // could express "avoid X" for any class; only flights are wired up so far
-  // (motis: minimizeWithout=AIR).
-  static constexpr clasz_mask_t kAvoided = to_mask(clasz::kAir);
-  static bool is_avoided(clasz const c) { return is_allowed(kAvoided, c); }
+  // The classes this dimension prefers to avoid, e.g. AIR or AIR|COACH - a
+  // mask, not a single class, so "avoid any of these" is one binary
+  // criterion (motis: minimizeWithout=[AIR,COACH]). A per-request value
+  // rather than a compile-time constant: the criteria TYPE (and so which
+  // template gets instantiated) only encodes THAT mode_filter is active, not
+  // WHICH classes - that is chosen per query. One query's search runs
+  // synchronously start to finish on a single thread (see bmrap_profile /
+  // raptor_search), so a plain thread_local needs no locking; set it via
+  // set_avoided() before the search that reads it, every time - it is never
+  // reset back, so a later query on the same thread must set it again rather
+  // than relying on a previous value going away.
+  static clasz_mask_t& avoided_mask() {
+    thread_local clasz_mask_t mask = to_mask(clasz::kAir);
+    return mask;
+  }
+  static void set_avoided(clasz_mask_t const m) { avoided_mask() = m; }
+  static bool is_avoided(clasz const c) { return is_allowed(avoided_mask(), c); }
 
   bool dominates(mode_filter_dim const& o) const {
     return mode_filter_ <= o.mode_filter_;

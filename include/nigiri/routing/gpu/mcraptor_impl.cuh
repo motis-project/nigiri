@@ -277,7 +277,14 @@ struct mcraptor_impl {
   // total walk reluctance = 1 (elapsed charge) + surcharge
   static constexpr auto const kBoardCost = kHasCost ? 10U : 0U;
 
-  // classes the mode_filter dimension flags (see mode_filter_dim::kAvoided)
+  // classes the mode_filter dimension flags. Still a compile-time constant on
+  // the device, unlike the CPU mode_filter_dim::avoided_mask() (mcraptor.h),
+  // which is now a per-request mask (motis: minimizeWithout=[AIR,COACH,...]):
+  // a device kernel can't read a host thread_local, so a request whose mask
+  // differs from this one would compute the wrong dimension on the GPU. Until
+  // this is threaded through as a per-query device parameter, motis (see
+  // routing.cc) keeps mode_filter on the CPU path whenever the requested mask
+  // is not exactly AIR - this constant MUST keep matching the CPU's default.
   static constexpr clasz_mask_t kAvoidedMask = to_mask(clasz::kAir);
   __device__ __forceinline__ static bool is_avoided(clasz const c) {
     return is_allowed(kAvoidedMask, c);
