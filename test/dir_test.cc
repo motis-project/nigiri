@@ -92,6 +92,40 @@ TEST(dir, in_memory_zip) {
   EXPECT_EQ(zip.get_file("stamm/bahnhof.101").data(), std::string_view{data});
 }
 
+// zstd fixture generation (minizip-ng 4.2.2 CLI):
+//   printf '<data as above>\n' > stamm/bahnhof.101 && printf '0000001E\n0000002E\n' > stamm/zugart_int.101
+//   minizip -9 -t -i <fixture> stamm
+// (-t selects MZ_COMPRESS_METHOD_ZSTD, -i keeps the stamm/ prefixes, adding
+// the top-level directory also creates the stamm/ directory entry required
+// by zip_dir::list_files.)
+TEST(dir, zstd) {
+  auto constexpr const zugart = std::string_view{"0000001E\n0000002E\n"};
+
+  auto const zip = zip_dir{"test/test_data/mss-dayshift3-zstd.zip"};
+  auto const mem = mem_dir{mem_dir::dir_t{{"stamm/bahnhof.101", std::string{data}},
+                                         {"stamm/zugart_int.101",
+                                          std::string{zugart}}}};
+
+  EXPECT_EQ(zip.list_files("stamm/"), mem.list_files("stamm/"));
+  EXPECT_TRUE(zip.exists("stamm/bahnhof.101"));
+  EXPECT_FALSE(zip.exists("stamm/bahnhof.1"));
+  EXPECT_EQ(zip.file_size("stamm/bahnhof.101"), std::string_view{data}.size());
+  EXPECT_EQ(zip.get_file("stamm/bahnhof.101").data(), std::string_view{data});
+  EXPECT_EQ(zip.get_file("stamm/zugart_int.101").data(), zugart);
+
+  auto buf = std::vector<std::uint8_t>{};
+  {
+    auto zip_file = std::ifstream{"test/test_data/mss-dayshift3-zstd.zip",
+                                  std::ios::binary};
+    buf.assign(
+        std::istreambuf_iterator<char>{zip_file},
+        std::istreambuf_iterator<char>{});
+  }
+  auto const zip_mem = zip_dir{std::move(buf)};
+  EXPECT_EQ(zip_mem.get_file("stamm/bahnhof.101").data(),
+            std::string_view{data});
+}
+
 TEST(nigiri, to_dir) {
   using namespace std::string_view_literals;
   constexpr auto const gtfs = R"(
