@@ -24,8 +24,8 @@ struct has_non_transit_dim_t<arr_with<Dims...>>
 template <typename Criteria>
 inline constexpr bool kHasNonTransitDim = has_non_transit_dim_t<Criteria>::value;
 
-constexpr bool kFilterNonTransitTradeoff = true;
-constexpr bool kFilterStationDedup = true;
+constexpr bool kFilterNonTransitTradeoff = false;
+constexpr bool kFilterStationDedup = false;
 // filter 1's rate: a candidate may cost at most this many minutes of EXTRA
 // total journey time per minute of non-transit it saves versus its anchor.
 constexpr double kNonTransitTradeoffMinutesPerMinute = 5.0;
