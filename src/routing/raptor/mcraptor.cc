@@ -369,8 +369,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(unsigned cons
       for (auto const& rl : route_bag_) {
         auto const by_transport = time_at_stop(r, rl.t_, stop_idx, arr_ev);
         if (!is_better(by_transport, worst_at_dest_) ||
-            lb_[l_idx] == kUnreachable ||
-            !is_better(by_transport + dir(lb_[l_idx]), worst_at_dest_)) {
+            effective_lb(l_idx) == kUnreachable ||
+            !is_better(by_transport + dir(effective_lb(l_idx)), worst_at_dest_)) {
           ++stats_.route_update_prevented_by_lower_bound_;
           continue;
         }
@@ -402,7 +402,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(unsigned cons
         // destination pareto pruning: optimistic projection to the
         // destination checked against the (round, criteria) frontier
         if (dest_dominates(k, ride_crit.projected_to(
-                                  clamp(by_transport + dir(lb_[l_idx]))))) {
+                                  clamp(by_transport + dir(effective_lb(l_idx)))))) {
           ++stats_.route_update_prevented_by_lower_bound_;
           continue;
         }
@@ -446,7 +446,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(unsigned cons
       continue;
     }
 
-    if (lb_[l_idx] == kUnreachable) {
+    if (effective_lb(l_idx) == kUnreachable) {
       break;
     }
 
@@ -470,7 +470,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(unsigned cons
       // destination pareto pruning before the boarding search: even
       // the optimistic completion of this breadcrumb is dominated
       if (dest_dominates(
-              k, pe_crit.projected_to(clamp(pe_arr + dir(lb_[l_idx]))))) {
+              k, pe_crit.projected_to(clamp(pe_arr + dir(effective_lb(l_idx)))))) {
         return;
       }
       // Skip the earliest-transport lookup if a route breadcrumb already
@@ -580,8 +580,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
       auto const by_transport = rt_time_at_stop(rt_t, stop_idx, arr_ev);
       for (auto const& rl : rt_bag_) {
         if (!is_better(by_transport, worst_at_dest_) ||
-            lb_[l_idx] == kUnreachable ||
-            !is_better(by_transport + dir(lb_[l_idx]), worst_at_dest_)) {
+            effective_lb(l_idx) == kUnreachable ||
+            !is_better(by_transport + dir(effective_lb(l_idx)), worst_at_dest_)) {
           ++stats_.route_update_prevented_by_lower_bound_;
           continue;
         }
@@ -601,7 +601,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
         auto const ride_crit =
             Criteria::from_ride(by_transport, ride_duration, ride, rl.carried_);
         if (dest_dominates(k, ride_crit.projected_to(
-                                  clamp(by_transport + dir(lb_[l_idx]))))) {
+                                  clamp(by_transport + dir(effective_lb(l_idx)))))) {
           ++stats_.route_update_prevented_by_lower_bound_;
           continue;
         }
@@ -634,7 +634,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
       continue;
     }
 
-    if (lb_[l_idx] == kUnreachable) {
+    if (effective_lb(l_idx) == kUnreachable) {
       break;
     }
 
@@ -657,7 +657,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
             return;  // cannot make this run
           }
           if (dest_dominates(k, pe_crit.projected_to(
-                                    clamp(pe_crit.arr_ + dir(lb_[l_idx]))))) {
+                                    clamp(pe_crit.arr_ + dir(effective_lb(l_idx)))))) {
             return;
           }
           auto const pe_carried = pe_crit.carry();
@@ -784,12 +784,17 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
     auto const relax_fp = [&](typename state_t::label const& te,
                               std::uint32_t const target,
                               std::uint16_t const duration) {
-      auto const fp_crit = te.crit_.with_walk(dir(duration), duration);
+      // is_dest_[target] is known up front - only walks that reach the
+      // destination itself are "egress"; a footpath onto some other stop is
+      // a mid-journey interchange even though the label may also continue
+      // the search from there (see kNonTransitCountsInterchangeWalks).
+      auto const fp_crit =
+          te.crit_.with_walk(dir(duration), duration, is_dest_[target]);
       auto const fp_target_time = fp_crit.arr_;
       if (!is_better(fp_target_time, worst_at_dest_)) {
         return;
       }
-      auto const lower_bound = lb_[target];
+      auto const lower_bound = effective_lb(target);
       if (lower_bound == kUnreachable ||
           !is_better(fp_target_time + dir(lower_bound), worst_at_dest_)) {
         ++stats_.fp_update_prevented_by_lower_bound_;
@@ -917,7 +922,7 @@ transport basic_mcraptor<SearchDir, Criteria, RangeReuse>::get_earliest_transpor
       auto const ev_mam = ev.mam();
 
       if (is_better_or_eq(worst_at_dest_,
-                          to_delta(day, ev_mam) + dir(lb_[to_idx(l)]))) {
+                          to_delta(day, ev_mam) + dir(effective_lb(to_idx(l))))) {
         return {transport_idx_t::invalid(), day_idx_t::invalid()};
       }
 

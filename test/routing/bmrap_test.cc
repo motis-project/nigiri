@@ -5,13 +5,17 @@
 #include <tuple>
 #include <vector>
 
+#include "nigiri/footpath.h"
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/routing/raptor/bmrap_filters.h"
 #include "nigiri/routing/raptor/bmraptor.h"
 #include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor/pong.h"
+#include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
+#include "nigiri/rt/run.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 
@@ -534,6 +538,349 @@ TEST(bmrap, opposed_extension_is_a_superset_of_pong) {
 
     expect_subset(r.js_, ref.js_, c.name_);
   }
+}
+
+// ---------------------------------------------------------------------------
+// non_transit_dim::with_walk's is_egress parameter (kNonTransitCountsInter-
+// changeWalks toggle)
+// ---------------------------------------------------------------------------
+
+// Pins the CURRENT default (kNonTransitCountsInterchangeWalks = true): every
+// footpath relaxation counts towards non_transit_, egress or not. If that
+// constant is ever flipped, the is_egress=false expectation below flips too.
+TEST(bmrap, non_transit_dim_with_walk_is_egress) {
+  static_assert(routing::kNonTransitCountsInterchangeWalks,
+                "flip this test's is_egress=false expectation along with it");
+  auto const before = routing::non_transit_dim{10U};
+  EXPECT_EQ(15U, before.with_walk(0, 5U, /*is_egress=*/true).non_transit_);
+  EXPECT_EQ(15U, before.with_walk(0, 5U, /*is_egress=*/false).non_transit_)
+      << "kNonTransitCountsInterchangeWalks=true: a mid-journey interchange "
+         "walk must count exactly like an egress one";
+}
+
+// mode_filter_dim / mode_switches_dim never look at non-transit time at all,
+// with_walk is a no-op regardless of is_egress - pins that the parameter did
+// not leak into dimensions it has no business affecting.
+TEST(bmrap, non_egress_dims_ignore_is_egress) {
+  auto const mf = routing::mode_filter_dim{true};
+  EXPECT_EQ(mf, mf.with_walk(0, 100U, true));
+  EXPECT_EQ(mf, mf.with_walk(0, 100U, false));
+
+  auto const ms = routing::mode_switches_dim{clasz::kAir, 3U};
+  EXPECT_EQ(ms, ms.with_walk(0, 100U, true));
+  EXPECT_EQ(ms, ms.with_walk(0, 100U, false));
+}
+
+// arr_with<Dims...>::with_walk must forward is_egress to every dimension
+// unchanged, not just default it away - the one thing composing dimensions
+// could get wrong.
+TEST(bmrap, arr_with_with_walk_forwards_is_egress) {
+  using routing::non_transit_dim;
+  auto const c = routing::arr_non_transit_criteria{
+      delta_t{0}, {non_transit_dim{0U}}};
+  EXPECT_EQ(7U, c.with_walk(0, 7U, true).get<non_transit_dim>().non_transit_);
+  EXPECT_EQ(7U, c.with_walk(0, 7U, false).get<non_transit_dim>().non_transit_)
+      << "is_egress must reach the wrapped dimension, not get lost in "
+         "arr_with's own forwarding";
+}
+
+// ---------------------------------------------------------------------------
+// bmrap_filters.h: the two additional non-transit trade-off filters
+// ---------------------------------------------------------------------------
+// Both operate on already-reconstructed journeys, so these are direct unit
+// tests against hand-built journeys, no timetable needed.
+
+namespace {
+
+routing::journey tradeoff_journey(unixtime_t const dest,
+                                  std::uint8_t const transfers,
+                                  unixtime_t const start,
+                                  std::uint16_t const non_transit) {
+  auto j = routing::journey{};
+  j.dest_time_ = dest;
+  j.transfers_ = transfers;
+  j.start_time_ = start;
+  j.criteria_cost_ = non_transit;
+  return j;
+}
+
+routing::journey::leg make_walk_leg(unixtime_t const dep,
+                                    unixtime_t const arr) {
+  auto l = routing::journey::leg{};
+  l.dep_time_ = dep;
+  l.arr_time_ = arr;
+  l.uses_ = footpath{};
+  return l;
+}
+
+routing::journey::leg make_transit_leg(rt::run const& r) {
+  auto l = routing::journey::leg{};
+  l.uses_ = routing::journey::run_enter_exit{r, stop_idx_t{0U}, stop_idx_t{1U}};
+  return l;
+}
+
+rt::run run_with_range(stop_idx_t const from) {
+  auto r = rt::run{};
+  r.stop_range_ = {from, static_cast<stop_idx_t>(from + 1U)};
+  return r;
+}
+
+// A journey with a single transit leg (riding `run`) and, unless `walk` is
+// zero, one walk leg of exactly `walk` duration on the bookend side `B`.
+// `fixed` is the invariant across bookend variants: the physical arrival
+// for kEntry, the physical departure for kExit.
+template <routing::bookend B>
+routing::journey bookend_journey(std::uint8_t const transfers,
+                                 unixtime_t const fixed,
+                                 duration_t const walk,
+                                 rt::run const& run) {
+  auto j = routing::journey{};
+  j.transfers_ = transfers;
+  if constexpr (B == routing::bookend::kEntry) {
+    j.dest_time_ = fixed;  // arrival_time() == fixed
+    j.start_time_ = fixed - walk - 30min;
+    if (walk.count() > 0) {
+      j.legs_.push_back(make_walk_leg(j.start_time_, j.start_time_ + walk));
+    }
+    j.legs_.push_back(make_transit_leg(run));
+  } else {
+    j.start_time_ = fixed;  // departure_time() == fixed
+    j.dest_time_ = fixed + walk + 30min;
+    j.legs_.push_back(make_transit_leg(run));
+    if (walk.count() > 0) {
+      j.legs_.push_back(make_walk_leg(j.dest_time_ - walk, j.dest_time_));
+    }
+  }
+  return j;
+}
+
+}  // namespace
+
+// The anchor is the group member with the shortest travel_time(); a
+// shorter-walk candidate is rejected once its extra travel time exceeds
+// kNonTransitTradeoffMinutesPerMinute per minute saved. A different
+// (arrival, transfers) tuple is its own, untouched group.
+TEST(bmrap, filter_non_transit_tradeoff_keeps_within_budget) {
+  auto const d = unixtime_t{sys_days{2024_y / June / 19}} + 12h;
+  auto const t = std::uint8_t{2U};
+  auto results = std::vector<routing::journey>{
+      tradeoff_journey(d, t, d - 60min, 20U),   // anchor: 20 min walk, 60 min trip
+      tradeoff_journey(d, t, d - 80min, 15U),   // saves 5 min walk, +20 min trip: 4:1, within budget
+      tradeoff_journey(d, t, d - 120min, 10U),  // saves 10 min walk, +60 min trip: 6:1, over budget
+      tradeoff_journey(d + 5min, t, d - 60min, 1U),  // different arrival: separate group
+  };
+  auto rejected = std::vector<bool>(results.size(), false);
+  filter_non_transit_tradeoff(results, rejected);
+
+  EXPECT_FALSE(rejected[0]) << "the anchor itself must always survive";
+  EXPECT_FALSE(rejected[1]) << "4 extra minutes per minute saved is within "
+                               "the 5:1 budget";
+  EXPECT_TRUE(rejected[2]) << "6 extra minutes per minute saved exceeds the "
+                              "5:1 budget";
+  EXPECT_FALSE(rejected[3]) << "a different (arrival, transfers) group "
+                               "must not be touched";
+}
+
+// transfers_ must be part of the join key, not just arrival: merging the two
+// transfers_ groups would move the anchor and change every other verdict.
+TEST(bmrap, filter_non_transit_tradeoff_respects_transfers) {
+  auto const d = unixtime_t{sys_days{2024_y / June / 19}} + 12h;
+  auto results = std::vector<routing::journey>{
+      tradeoff_journey(d, 1U, d - 200min, 30U),  // T=1 anchor: 30 min walk, 200 min trip
+      tradeoff_journey(d, 1U, d - 202min, 29U),  // saves 1 min, +2 min: 2:1, within budget
+      tradeoff_journey(d, 2U, d - 60min, 20U),   // T=2 anchor: 20 min walk, 60 min trip
+      tradeoff_journey(d, 2U, d - 120min, 10U),  // saves 10 min, +60 min: 6:1, over budget
+  };
+  auto rejected = std::vector<bool>(results.size(), false);
+  filter_non_transit_tradeoff(results, rejected);
+
+  EXPECT_FALSE(rejected[0]);
+  EXPECT_FALSE(rejected[1]);
+  EXPECT_FALSE(rejected[2]);
+  EXPECT_TRUE(rejected[3]) << "must be judged against its own (T=2) anchor, "
+                              "not the T=1 group's cheaper one";
+}
+
+// Same scenario as filter_non_transit_tradeoff_keeps_within_budget, but with
+// start_time_/dest_time_ swapped to the mid-scan convention bmrap_profile.cc
+// actually calls this filter under (dest_time_ = departure, start_time_ =
+// arrival). Grouping on the raw dest_time_ field would group by departure
+// instead and never form a group at all; arrival_time() must still find the
+// same group and the same verdicts.
+TEST(bmrap, filter_non_transit_tradeoff_mid_scan_convention) {
+  auto const d = unixtime_t{sys_days{2024_y / June / 19}} + 12h;
+  auto const t = std::uint8_t{2U};
+  auto results = std::vector<routing::journey>{
+      tradeoff_journey(d - 60min, t, d, 20U),   // anchor: 20 min walk, 60 min trip
+      tradeoff_journey(d - 80min, t, d, 15U),   // saves 5 min walk, +20 min trip: 4:1, within budget
+      tradeoff_journey(d - 120min, t, d, 10U),  // saves 10 min walk, +60 min trip: 6:1, over budget
+      tradeoff_journey(d - 60min, t, d + 5min, 1U),  // different arrival: separate group
+  };
+  auto rejected = std::vector<bool>(results.size(), false);
+  filter_non_transit_tradeoff(results, rejected);
+
+  EXPECT_FALSE(rejected[0]) << "the anchor itself must always survive";
+  EXPECT_FALSE(rejected[1]) << "4 extra minutes per minute saved is within "
+                               "the 5:1 budget";
+  EXPECT_TRUE(rejected[2]) << "6 extra minutes per minute saved exceeds the "
+                              "5:1 budget";
+  EXPECT_FALSE(rejected[3]) << "a different arrival_time() group must not be "
+                               "touched";
+}
+
+// Keeps only the longest (anchor) and shortest bookend walk in a group of
+// three sharing the same run, transfers_ and anchor field; the middle one is
+// rejected. Run for both bookend sides and both forward/backward-style
+// journeys (start_time_/dest_time_ swapped) to pin bookend_anchor_field's
+// direction-agnostic arrival_time()/departure_time() use.
+template <routing::bookend B>
+void expect_keeps_longest_and_shortest(bool const backward_style) {
+  auto const fixed = unixtime_t{sys_days{2024_y / June / 19}} + 12h;
+  auto const run = run_with_range(stop_idx_t{0U});
+  auto results = std::vector<routing::journey>{
+      bookend_journey<B>(2U, fixed, 20min, run),  // longest: the anchor
+      bookend_journey<B>(2U, fixed, 10min, run),  // middle: must be rejected
+      bookend_journey<B>(2U, fixed, 2min, run),   // shortest
+  };
+  if (backward_style) {
+    for (auto& j : results) {
+      std::swap(j.start_time_, j.dest_time_);
+    }
+  }
+  auto rejected = std::vector<bool>(results.size(), false);
+  filter_bookend_variants<B>(results, rejected);
+
+  EXPECT_FALSE(rejected[0]) << "longest bookend walk (the anchor) must survive";
+  EXPECT_TRUE(rejected[1]) << "strictly-between walk must be rejected";
+  EXPECT_FALSE(rejected[2]) << "shortest bookend walk must survive";
+}
+
+TEST(bmrap, filter_bookend_variants_entry) {
+  expect_keeps_longest_and_shortest<routing::bookend::kEntry>(false);
+  expect_keeps_longest_and_shortest<routing::bookend::kEntry>(true);
+}
+
+TEST(bmrap, filter_bookend_variants_exit) {
+  expect_keeps_longest_and_shortest<routing::bookend::kExit>(false);
+  expect_keeps_longest_and_shortest<routing::bookend::kExit>(true);
+}
+
+// A different run (a different first/last transit leg entirely) must never
+// be merged into the same group, however close its bookend walk or anchor
+// field.
+TEST(bmrap, filter_bookend_variants_separates_different_runs) {
+  auto const fixed = unixtime_t{sys_days{2024_y / June / 19}} + 12h;
+  auto results = std::vector<routing::journey>{
+      bookend_journey<routing::bookend::kEntry>(2U, fixed, 20min,
+                                                run_with_range(stop_idx_t{0U})),
+      bookend_journey<routing::bookend::kEntry>(2U, fixed, 2min,
+                                                run_with_range(stop_idx_t{5U})),
+  };
+  auto rejected = std::vector<bool>(results.size(), false);
+  filter_bookend_variants<routing::bookend::kEntry>(results, rejected);
+  EXPECT_FALSE(rejected[0]);
+  EXPECT_FALSE(rejected[1]) << "different runs are different groups - "
+                               "neither is 'the middle one'";
+}
+
+// Sharing a run is not enough to group two journeys - the anchor field
+// (arrival, for kEntry variants) must also match, or unrelated journeys that
+// merely happen to board/alight the same run get collapsed.
+TEST(bmrap, filter_bookend_variants_requires_matching_anchor_field) {
+  auto const run = run_with_range(stop_idx_t{0U});
+  auto const arr_a = unixtime_t{sys_days{2024_y / June / 19}} + 12h;
+  auto const arr_b = arr_a + 3h;  // same run, different continuation
+  auto results = std::vector<routing::journey>{
+      bookend_journey<routing::bookend::kEntry>(2U, arr_a, 20min, run),
+      bookend_journey<routing::bookend::kEntry>(2U, arr_a, 2min, run),
+      bookend_journey<routing::bookend::kEntry>(2U, arr_b, 10min, run),
+  };
+  auto rejected = std::vector<bool>(results.size(), false);
+  filter_bookend_variants<routing::bookend::kEntry>(results, rejected);
+  EXPECT_FALSE(rejected[0]);
+  EXPECT_FALSE(rejected[1]);
+  EXPECT_FALSE(rejected[2]) << "different downstream arrival: its own group "
+                               "of one, not the middle of the other group";
+}
+
+// preview_non_transit_filters<Criteria> must be a strict no-op for a
+// Criteria without a non_transit dimension, however the toggles are set.
+TEST(bmrap, preview_non_transit_filters_gated_on_criteria) {
+  auto const d = unixtime_t{sys_days{2024_y / June / 19}} + 12h;
+  auto const results = std::vector<routing::journey>{
+      tradeoff_journey(d, 2U, d - 120min, 10U),
+      tradeoff_journey(d, 2U, d - 60min, 20U),
+  };
+  auto const rejected =
+      routing::preview_non_transit_filters<routing::arr_criteria>(results);
+  EXPECT_TRUE(std::none_of(rejected.begin(), rejected.end(),
+                          [](bool const b) { return b; }))
+      << "arr_criteria has no non_transit dimension - kHasNonTransitDim "
+         "must gate the filters off regardless of their own toggles";
+}
+
+// The same group, run through a Criteria that DOES have the dimension,
+// applies the trade-off filter.
+TEST(bmrap, preview_non_transit_filters_applies_when_supported) {
+  static_assert(routing::kFilterNonTransitTradeoff);
+  auto const d = unixtime_t{sys_days{2024_y / June / 19}} + 12h;
+  auto const results = std::vector<routing::journey>{
+      tradeoff_journey(d, 2U, d - 60min, 20U),   // anchor
+      tradeoff_journey(d, 2U, d - 120min, 10U),  // 6:1, over budget
+  };
+  auto const rejected =
+      routing::preview_non_transit_filters<
+          routing::arr_non_transit_criteria>(results);
+  EXPECT_FALSE(rejected[0]);
+  EXPECT_TRUE(rejected[1]);
+}
+
+// ---------------------------------------------------------------------------
+// bounded_needs_lb<Algo>(): the lower-bound-dijkstra skip trait
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Minimal stand-ins for the three shapes bounded_needs_lb<Algo>() branches
+// on: never uses lb (gpu_raptor), uses lb but declares it unneeded once
+// bounded (raptor/basic_mcraptor), and uses lb with no declared opinion
+// (gpu_mcraptor, the conservative default).
+struct mock_no_lb_algo {
+  static constexpr bool kUseLowerBounds = false;
+};
+struct mock_bounded_skips_lb_algo {
+  static constexpr bool kUseLowerBounds = true;
+  static constexpr bool kNeedsLbWhenBounded = false;
+};
+struct mock_bounded_still_needs_lb_algo {
+  static constexpr bool kUseLowerBounds = true;
+  static constexpr bool kNeedsLbWhenBounded = true;
+};
+struct mock_undeclared_algo {
+  static constexpr bool kUseLowerBounds = true;
+};
+
+}  // namespace
+
+TEST(bmrap, bounded_needs_lb_trait) {
+  EXPECT_FALSE(routing::bounded_needs_lb<mock_no_lb_algo>());
+  EXPECT_FALSE(routing::bounded_needs_lb<mock_bounded_skips_lb_algo>());
+  EXPECT_TRUE(routing::bounded_needs_lb<mock_bounded_still_needs_lb_algo>());
+  EXPECT_TRUE(routing::bounded_needs_lb<mock_undeclared_algo>())
+      << "an engine that declares no opinion must default to needing lb";
+}
+
+// Pins the actual values on the two engines bmrap_profile.cc bounds
+// unconditionally: both must resolve to "does not need lb once bounded",
+// which is what makes skipping the bwd_lb dijkstra there safe.
+TEST(bmrap, bounded_needs_lb_matches_real_engines) {
+  using cpu_raptor =
+      routing::raptor<direction::kForward, false, via_offset_t{0U},
+                      routing::search_mode::kOneToOne>;
+  using cpu_mcraptor =
+      routing::basic_mcraptor<direction::kForward, routing::arr_criteria>;
+  EXPECT_FALSE(routing::bounded_needs_lb<cpu_raptor>());
+  EXPECT_FALSE(routing::bounded_needs_lb<cpu_mcraptor>());
 }
 
 #if defined(NIGIRI_CUDA)

@@ -1,6 +1,7 @@
 #include "nigiri/routing/raptor/bmraptor.h"
 
 #include <algorithm>
+#include <optional>
 #include <variant>
 #include <vector>
 
@@ -12,6 +13,7 @@
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/raptor/bmrap_common.h"
+#include "nigiri/routing/raptor/bmrap_filters.h"
 #include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/special_stations.h"
@@ -102,14 +104,18 @@ routing_result bmrap_profile(timetable const& tt,
   auto fwd_lb = std::vector<std::uint16_t>{};
   auto bwd_lb = std::vector<std::uint16_t>{};
   auto const lb_t0 = std::chrono::steady_clock::now();
-  dijkstra(tt, q,
-           (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
-                 : tt.bwd_search_lb_graph_[q.prf_idx_]),
-           nullptr, nullptr, fwd_lb);
-  dijkstra(tt, qf,
-           (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
-                 : tt.fwd_search_lb_graph_[q.prf_idx_]),
-           nullptr, nullptr, bwd_lb);
+  if constexpr (ping_t::kUseLowerBounds || bounded_needs_lb<mc_ping_t>()) {
+    dijkstra(tt, q,
+             (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
+                   : tt.bwd_search_lb_graph_[q.prf_idx_]),
+             nullptr, nullptr, fwd_lb);
+  }
+  if constexpr (bounded_needs_lb<pong_t>() || bounded_needs_lb<mc_pong_t>()) {
+    dijkstra(tt, qf,
+             (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
+                   : tt.fwd_search_lb_graph_[q.prf_idx_]),
+             nullptr, nullptr, bwd_lb);
+  }
   auto const lb_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                          std::chrono::steady_clock::now() - lb_t0)
                          .count();
@@ -327,11 +333,18 @@ routing_result bmrap_profile(timetable const& tt,
   };
 
   auto const n_results = [&](bool const include_too_slow) {
+    auto const rejected =
+        preview_non_transit_filters<Criteria>(s_state.results_.els_);
     return utl::count_if(s_state.results_, [&](journey const& j) {
       if (!is_better(j.dest_time_, start_time)) {
         return false;  // dest_time_ is still the departure here
       }
       if (restricted_away(j)) {
+        return false;
+      }
+      auto const idx =
+          static_cast<std::size_t>(&j - s_state.results_.els_.data());
+      if (rejected[idx]) {
         return false;
       }
       if (!include_too_slow && !(j.travel_time() < fastest_direct &&
@@ -465,6 +478,7 @@ routing_result bmrap_profile(timetable const& tt,
         ms_fwd_bounds += std::chrono::steady_clock::now() - f0;
         ++n_fwd_bound_builds;
         mc_pong.set_bounds(&fwd_bounds);
+        pong.set_bounds(&fwd_bounds);
       }
 
       // ---- 2. PONG: re-anchor each anchor to its LATEST departure ----
@@ -733,6 +747,16 @@ routing_result bmrap_profile(timetable const& tt,
 
   stats = ping.get_stats() + pong.get_stats() + mc_ping.get_stats() +
           mc_pong.get_stats();
+
+  {
+    auto const rejected =
+        preview_non_transit_filters<Criteria>(s_state.results_.els_);
+    for (auto i = std::size_t{0U}; i != rejected.size(); ++i) {
+      if (rejected[i]) {
+        s_state.results_.els_[i].error_ = true;
+      }
+    }
+  }
 
   // ---- results: still (arrival, departure); make them journeys ----
   // In the opposed case the range search fixed the window, so report it

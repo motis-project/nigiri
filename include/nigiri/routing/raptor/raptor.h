@@ -34,6 +34,7 @@ struct raptor {
   using algo_stats_t = raptor_stats;
 
   static constexpr bool kUseLowerBounds = true;
+  static constexpr bool kNeedsLbWhenBounded = false;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
@@ -486,6 +487,9 @@ private:
   }
 
   std::uint16_t get_lb(std::uint32_t const i) const {
+    if (bm_bounds_ != nullptr) {
+      return 0U;
+    }
     if constexpr (kUseLowerBounds) {
       assert(i < lb_.size());
       return lb_[i];
@@ -495,6 +499,9 @@ private:
   }
 
   bool lb_reachable(std::uint32_t const i) const {
+    if (bm_bounds_ != nullptr) {
+      return true;
+    }
     if constexpr (kUseLowerBounds) {
       assert(i < lb_.size());
       return lb_[i] != kUnreachable;

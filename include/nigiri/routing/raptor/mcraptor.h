@@ -98,7 +98,7 @@ struct arr_criteria {
     return {arr};
   }
   arr_criteria with_transfer(int const dt) const { return {clamp(arr_ + dt)}; }
-  arr_criteria with_walk(int const dt, std::uint16_t) const {
+  arr_criteria with_walk(int const dt, std::uint16_t, bool = true) const {
     return {clamp(arr_ + dt)};
   }
   arr_criteria projected_to(delta_t const arr) const { return {arr}; }
@@ -188,7 +188,8 @@ struct arr_cost_criteria {
     return {clamp(arr_ + dt), cost_};
   }
   arr_cost_criteria with_walk(int const dt,
-                              std::uint16_t const duration) const {
+                              std::uint16_t const duration,
+                              bool = true) const {
     return {clamp(arr_ + dt),
             static_cast<std::uint16_t>(cost_ + duration * kWalkSurcharge)};
   }
@@ -251,6 +252,23 @@ struct arr_cost_criteria {
 // freely combinable; that is also why the generalized-cost criterion is
 // not a dimension - it writes criteria_cost_, the slot non_transit_dim uses.
 
+// Off (default): every footpath relaxation counts towards non_transit_,
+// exactly what the comment above says is counted - ingress, every
+// mid-journey interchange footpath and the egress. On: only the walk before
+// boarding the first transit leg (at_start) and the walk after alighting
+// the last one (egress - to the destination stop or the intermodal target)
+// count; a footpath used to physically change stations mid-journey (a
+// "transfer" in the loose, walking sense - NOT the same-station transfer
+// buffer, which with_transfer() already excludes) does not. Flip this to
+// compare journeys on "how far do I walk before/after transit" rather than
+// "how far do I walk in total", which also strips out short unavoidable
+// interchange hops that are not a meaningful trade-off. A `with_walk()`
+// call is "egress" when its target is the journey's destination - every
+// caller other than update_footpaths()'s mid-journey relax_fp() passes the
+// default `true` (relax_fp is the only one that can land on a
+// non-destination stop and continue the journey from there).
+constexpr bool kNonTransitCountsInterchangeWalks = true;
+
 // minutes on foot: offsets + footpaths
 struct non_transit_dim {
   bool dominates(non_transit_dim const& o) const {
@@ -268,7 +286,11 @@ struct non_transit_dim {
     return prev;
   }
   non_transit_dim with_transfer(int) const { return *this; }
-  non_transit_dim with_walk(int, std::uint16_t const duration) const {
+  non_transit_dim with_walk(int, std::uint16_t const duration,
+                            bool const is_egress = true) const {
+    if (!kNonTransitCountsInterchangeWalks && !is_egress) {
+      return *this;
+    }
     return {static_cast<std::uint16_t>(non_transit_ + duration)};
   }
   void apply_to(journey& j) const { j.criteria_cost_ = non_transit_; }
@@ -312,7 +334,9 @@ struct mode_filter_dim {
     return {prev.mode_filter_ || is_avoided(ra.clasz_)};
   }
   mode_filter_dim with_transfer(int) const { return *this; }
-  mode_filter_dim with_walk(int, std::uint16_t) const { return *this; }
+  mode_filter_dim with_walk(int, std::uint16_t, bool = true) const {
+    return *this;
+  }
   void apply_to(journey& j) const { j.criteria_mode_filter_ = mode_filter_; }
   bool operator==(mode_filter_dim const&) const = default;
 
@@ -352,7 +376,9 @@ struct mode_switches_dim {
             static_cast<std::uint8_t>(prev.switches_ + (switched ? 1U : 0U))};
   }
   mode_switches_dim with_transfer(int) const { return *this; }
-  mode_switches_dim with_walk(int, std::uint16_t) const { return *this; }
+  mode_switches_dim with_walk(int, std::uint16_t, bool = true) const {
+    return *this;
+  }
   void apply_to(journey& j) const { j.criteria_mode_switches_ = switches_; }
   bool operator==(mode_switches_dim const&) const = default;
 
@@ -429,9 +455,10 @@ struct arr_with {
               return std::get<I>(d_).with_transfer(dt);
             })};
   }
-  arr_with with_walk(int const dt, std::uint16_t const duration) const {
+  arr_with with_walk(int const dt, std::uint16_t const duration,
+                     bool const is_egress = true) const {
     return {clamp(arr_ + dt), make([&]<std::size_t I>() {
-              return std::get<I>(d_).with_walk(dt, duration);
+              return std::get<I>(d_).with_walk(dt, duration, is_egress);
             })};
   }
   // all dimensions only ever grow, so their trivial lower bound is
@@ -696,6 +723,17 @@ struct basic_mcraptor {
   using algo_stats_t = raptor_stats;
 
   static constexpr bool kUseLowerBounds = true;
+  // Whether a CALLER that always provides bounds_ (BM-RAPTOR restricted-
+  // pareto pruning, e.g. bmrap_profile.cc's mc ping/mc pong) still needs to
+  // compute a real lb array for this engine. false here: once bounds_ is
+  // set, effective_lb() ignores lb_ outright (bound_prunes() is a tighter,
+  // anchor-slack-aware feasibility cutoff already - see its own comment),
+  // so a caller that unconditionally sets bounds_ may pass an empty/unfilled
+  // lb without changing this engine's behaviour at all. A caller that may
+  // run this engine UNBOUNDED (bounds_ == nullptr, e.g. pong.cc's own ping/
+  // pong pair) must still compute the real lb for that case - this flag only
+  // answers "if you are always going to bound me, do you also need lb".
+  static constexpr bool kNeedsLbWhenBounded = false;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
@@ -845,6 +883,21 @@ private:
     }
     return !is_better_or_eq(
         t, clamp(static_cast<int>(bounds_->at(budget - k, l)) + slack));
+  }
+
+  // Every lb_ read in this file only ever WEAKENS pruning (0 is always a
+  // valid, if trivial, lower bound - see the call sites: a window/
+  // reachability early-out, or the optimistic projection dest_dominates()
+  // compares against). Under BM-RAPTOR (bounds_ != nullptr) bound_prunes()
+  // already provides a tighter, anchor-slack-aware feasibility cutoff than
+  // a generic network distance could - a stop bound_prunes() lets through
+  // is, by construction, still within reach of some anchor within
+  // trip_budget() and the arrival slack, so the coarser lb_ has nothing
+  // left to add there; the plain, unbounded mcraptor (bounds_ == nullptr -
+  // pong.cc's own ping/pong pair for arr_criteria/arr_cost_criteria) still
+  // needs the real value, having no other feasibility bound at all.
+  std::uint16_t effective_lb(std::uint32_t const l_idx) const {
+    return bounds_ == nullptr ? lb_[l_idx] : std::uint16_t{0U};
   }
 
   // Destination pruning (OTP: HeuristicsProvider.qualify +
