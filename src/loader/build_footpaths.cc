@@ -11,6 +11,7 @@
 
 #include "geo/latlng.h"
 
+#include "utl/enumerate.h"
 #include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/zip.h"
@@ -1157,6 +1158,33 @@ void prune_hub_covered_footpaths(timetable& tt) {
       "hub-covered footpaths: {} dropped, {} kept", n_pruned, n_kept);
 }
 
+// Track locations (HRDF) have no position of their own and are not listed as
+// equivalent stations, so nothing derives their transfers: connect every
+// track with its station and with the other tracks of that station at the
+// station's transfer time.
+void link_tracks_with_station(timetable& tt) {
+  auto const is_track = [&](location_idx_t const l) {
+    return tt.locations_.types_[l] == location_type::kGeneratedTrack;
+  };
+  for (auto const [i, children] : utl::enumerate(tt.locations_.children_)) {
+    auto const parent = location_idx_t{i};
+    auto const t = tt.locations_.transfer_time_[parent];
+    for (auto const child : children) {
+      if (!is_track(child)) {
+        continue;
+      }
+      tt.locations_.preprocessing_footpaths_out_[parent].emplace_back(child, t);
+      tt.locations_.preprocessing_footpaths_out_[child].emplace_back(parent, t);
+      for (auto const other : children) {
+        if (other != child && is_track(other)) {
+          tt.locations_.preprocessing_footpaths_out_[child].emplace_back(other,
+                                                                         t);
+        }
+      }
+    }
+  }
+}
+
 void build_footpaths(timetable& tt, finalize_options const opt) {
   // Covers locations created after the last transfers.txt was read (virtual
   // locations, locations from feeds without transfers.txt).
@@ -1168,6 +1196,7 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
   // tt.bin is always a complete timetable on its own: the walks are beelines
   // here, and whoever computes a routed layer afterwards writes it into
   // tt_ext.bin instead of taking anything away from this one.
+  link_tracks_with_station(tt);
   link_nearby_stations(tt);
   add_equivalence_footpaths(tt, opt.max_footpath_length_);
 
