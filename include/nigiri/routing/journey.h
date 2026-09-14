@@ -80,6 +80,24 @@ struct journey {
   bool dominates(journey const& o) const {
     if (start_time_ <= dest_time_) {
       return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
+             dest_time_ <= o.dest_time_ && criteria_cost_ <= o.criteria_cost_ &&
+             criteria_mode_filter_ <= o.criteria_mode_filter_ &&
+             criteria_mode_switches_ <= o.criteria_mode_switches_;
+    } else {
+      return transfers_ <= o.transfers_ && start_time_ <= o.start_time_ &&
+             dest_time_ >= o.dest_time_ && criteria_cost_ <= o.criteria_cost_ &&
+             criteria_mode_filter_ <= o.criteria_mode_filter_ &&
+             criteria_mode_switches_ <= o.criteria_mode_switches_;
+    }
+  }
+
+  // dominance on (start, dest, transfers) only - the user-facing
+  // connection tuple. Used for counting connections (min_connection_count/
+  // interval extension): additional criteria (non_transit) add pareto
+  // trade-offs but must not make the search stop earlier.
+  bool tuple_dominates(journey const& o) const {
+    if (start_time_ <= dest_time_) {
+      return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
              dest_time_ <= o.dest_time_;
     } else {
       return transfers_ <= o.transfers_ && start_time_ <= o.start_time_ &&
@@ -111,6 +129,20 @@ struct journey {
   unixtime_t dest_time_{};
   location_idx_t dest_{};
   std::uint8_t transfers_{0U};
+  // additional pareto criterion value (e.g. generalized cost in weighted
+  // minutes). Only set by algorithms that optimize it (McRAPTOR cost
+  // configurations); 0 for all others, which keeps their dominance
+  // identical to (start, dest, transfers).
+  std::uint16_t criteria_cost_{0U};
+  // second, independent pareto criterion: does the journey use an avoided
+  // vehicle class (a flight by default)? A single packed criteria_cost_
+  // could not express this - it would order (mode_filter, non_transit)
+  // lexicographically instead of pareto-wise and drop the
+  // cheap-but-flying alternative. false for every algorithm that does not
+  // optimize it, which keeps their dominance unchanged.
+  bool criteria_mode_filter_{false};
+  // number of vehicle-class switches between consecutive trips
+  std::uint8_t criteria_mode_switches_{0U};
   bool error_{false};
   bool is_reconstructed_{false};
 };
