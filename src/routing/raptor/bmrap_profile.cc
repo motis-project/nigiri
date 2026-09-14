@@ -592,6 +592,12 @@ routing_result bmrap_profile(timetable const& tt,
 
     // ---- 5. MC PONG: re-anchor each mc journey to its latest departure ----
     auto const mp0 = std::chrono::steady_clock::now();
+
+    // Skip re-tightening journeys an earlier step already validated
+    utl::erase_if(mc_results, [&](journey const& x) {
+      return s_state.results_.is_dominated(x);
+    });
+
     utl::sort(mc_results, [&](journey const& a, journey const& b) {
       return is_better(a.dest_time_, b.dest_time_);
     });
@@ -776,6 +782,30 @@ routing_result bmrap_profile(timetable const& tt,
     std::swap(x.start_time_, x.dest_time_);
   }
 
+  // s_state.results_ legs so far come from mc_pong.reconstruct(qf, ...),
+  // which runs with flip(SearchDir) - its front/back special_station markers
+  // are the mirror image of the final convention, so fix them up first.
+  // Must happen BEFORE the splice below: the realized_ legs it substitutes
+  // come from mc_ping.reconstruct(q, ...), which already runs with the
+  // original SearchDir and is therefore already in the final convention -
+  // swapping those afterwards would corrupt them (e.g. turn a post-transit
+  // leg's real destination back into the query's start).
+  for (auto& j : s_state.results_) {
+    auto const swap_st = [](location_idx_t const l) -> location_idx_t {
+      switch (to_idx(l)) {
+        case to_idx(get_special_station(special_station::kStart)):
+          return get_special_station(special_station::kEnd);
+        case to_idx(get_special_station(special_station::kEnd)):
+          return get_special_station(special_station::kStart);
+        default: return l;
+      }
+    };
+    if (!j.legs_.empty()) {
+      j.legs_.front().from_ = swap_st(j.legs_.front().from_);
+      j.legs_.back().to_ = swap_st(j.legs_.back().to_);
+    }
+  }
+
   // Splice in the forward realizations: same journey (identical times,
   // transfers and criteria), better legs. Only legs_ moves - the tuple must
   // come out byte-identical, which is what makes this verifiable.
@@ -790,21 +820,6 @@ routing_result bmrap_profile(timetable const& tt,
     if (it != end(realized)) {
       x.legs_ = it->legs_;
       ++n_realized;
-    }
-  }
-  for (auto& j : s_state.results_) {
-    auto const swap_st = [](location_idx_t const l) -> location_idx_t {
-      switch (to_idx(l)) {
-        case to_idx(get_special_station(special_station::kStart)):
-          return get_special_station(special_station::kEnd);
-        case to_idx(get_special_station(special_station::kEnd)):
-          return get_special_station(special_station::kStart);
-        default: return l;
-      }
-    };
-    if (!j.legs_.empty()) {
-      j.legs_.front().from_ = swap_st(j.legs_.front().from_);
-      j.legs_.back().to_ = swap_st(j.legs_.back().to_);
     }
   }
 
