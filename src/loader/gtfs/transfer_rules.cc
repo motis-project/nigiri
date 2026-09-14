@@ -1,20 +1,12 @@
-#include <map>
-
 #include "nigiri/loader/gtfs/transfer_rules.h"
 
-#include <cstdlib>
 #include <algorithm>
-#include <numeric>
 #include <optional>
-#include <ranges>
 #include <vector>
 
-#include "utl/erase.h"
 #include "utl/erase_duplicates.h"
-#include "utl/erase_if.h"
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
-#include "utl/pairwise.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
@@ -73,8 +65,11 @@ struct rule {
        stops_map_t const& stops,
        route_map_t const& routes,
        trip_data const& trips)
-      : forbidden_{type == transfer_type::kNotPossible},
-        time_{(t.min_transfer_time_->value_or(0) + 59) / 60} {
+      : forbidden_{type == transfer_type::kNotPossible} {
+    if (t.min_transfer_time_->has_value()) {
+      // seconds in the feed, whole minutes in the timetable: always up
+      min_transfer_time_ = duration_t{(**t.min_transfer_time_ + 59) / 60};
+    }
     auto const resolve_stop = [&](utl::cstr const& id) {
       auto const it = stops.find(id.view());
       if (it == end(stops)) {
@@ -94,6 +89,7 @@ struct rule {
       auto const it = map.find(id.view());
       if (it == end(map)) {
         ok_ = false;
+        unknown_qualifier_ = id.view();
         return invalid;
       }
       return get(it);
@@ -117,7 +113,7 @@ struct rule {
 
   // synthesized unqualified rule, see fold_pair_defaults
   rule(location_idx_t const from, location_idx_t const to, duration_t const d)
-      : from_stop_{from}, to_stop_{to}, time_{d} {}
+      : from_stop_{from}, to_stop_{to}, min_transfer_time_{d} {}
 
   specificity get_specificity() const {
     auto const from_trip = from_trip_ != gtfs_trip_idx_t::invalid();
@@ -144,8 +140,11 @@ struct rule {
     return get_specificity() != specificity::kStopsOnly;
   }
 
+  // A timed transfer (type 1) needs no minimum: the departing vehicle waits,
+  // so the pair costs nothing beyond being there.
   duration_t duration() const {
-    return forbidden_ ? footpath::kMaxDuration : time_;
+    return forbidden_ ? footpath::kMaxDuration
+                      : min_transfer_time_.value_or(duration_t{0});
   }
 
   location_idx_t from_stop_{location_idx_t::invalid()};
@@ -155,19 +154,37 @@ struct rule {
   gtfs_trip_idx_t from_trip_{gtfs_trip_idx_t::invalid()};
   gtfs_trip_idx_t to_trip_{gtfs_trip_idx_t::invalid()};
   bool forbidden_{false};
-  duration_t time_{0};
+  std::optional<duration_t> min_transfer_time_;
   bool ok_{true};
+  std::string_view unknown_qualifier_;  // set when ok_ is false for a qualifier
 };
 
 using rule_vec_t = vector_map<rule_idx_t, rule>;
 
-void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
-  auto const base_of = [&](location_idx_t const l) {
-    return tt.locations_.types_[l] == location_type::kVirt
-               ? tt.locations_.parents_[l]
-               : l;
-  };
+// What one matched rule side states, seen from the trip stop that matched it.
+struct rule_side {
+  CISTA_COMPARABLE()
+  bool is_from_;
+  location_idx_t rule_stop_;  // the stop the rule names on this side
+  location_idx_t other_stop_;
+  route_id_idx_t other_route_;
+  gtfs_trip_idx_t other_trip_;
+  duration_t duration_;
+};
 
+// Everything the routing can observe about a trip stop's rules: two trip
+// stops of one base with the same key are one virtual location.
+struct virt_key {
+  CISTA_COMPARABLE()
+  location_idx_t base_;
+  duration_t own_;
+  std::vector<rule_side> sides_;
+};
+
+void apply_rules(timetable& tt,
+                 rule_vec_t const& rules,
+                 trip_data& trips,
+                 bool const rule_hubs) {
   // Map (route -> trips) for the routes referenced by a rule.
   auto route_trips = hash_map<route_id_idx_t, std::vector<gtfs_trip_idx_t>>{};
   for (auto const& r : rules) {
@@ -233,22 +250,15 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
   }
 
   // Update all trip stops to virtual locations.
-  //
-  // Virtual locations are staged rather than registered right away: they get
-  // the index they would receive on registration, everything below works with
-  // that index, and only the survivors are written into the timetable at the
-  // end. Nothing has to be renumbered afterwards.
   auto const first_virt = location_idx_t{tt.n_locations()};
-  auto staged = std::vector<location>{};
-  auto virt_locs =
-      hash_map<std::pair<location_idx_t, signature_t>, location_idx_t>{};
+  // A trip stop is keyed by what its rules state, not by which rules they
+  // are: per matched side the stop the rule names on this side, the stop and
+  // the qualifier it names on the other side, and the duration - plus the own
+  // transfer time the self rules resolve to. Two trip stops with the same key
+  // have, for every partner, rules of the same value and specificity, so they
+  // are one node from the start and never need to be told apart again.
+  auto virt_locs = hash_map<virt_key, location_idx_t>{};
   auto side_virts = hash_map<sided_rule_idx_t, std::vector<location_idx_t>>{};
-  // which trip stops at which virtual location, and at which position - the
-  // time-aware merge below needs the events to decide whether a pair it would
-  // create is one the timetable could ever use
-  auto virt_stops =
-      hash_map<location_idx_t,
-               std::vector<std::pair<gtfs_trip_idx_t, std::size_t>>>{};
   for (auto& [trip_stop, sig] : trip_stop_signatures) {
     auto const [trp_idx, pos] = trip_stop;
     auto& t = trips.data_[trp_idx];
@@ -256,70 +266,80 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
     auto const base = s.location_idx();
     utl::erase_duplicates(sig);
 
-    auto const virt =
-        utl::get_or_create(virt_locs, std::pair{base, sig}, [&]() {
-          auto l = location{};
-          l.src_ = tt.locations_.src_[base];
-          l.pos_ = tt.locations_.coordinates_[base];
-          l.type_ = location_type::kVirt;
-          l.parent_ = base;
-          l.transfer_time_ = tt.locations_.transfer_time_[base];
+    // Rules where from == to side (e.g. transfers from route R -> R) end up
+    // on the same virt node -> set transfer_time to self. The signature is
+    // sorted and a rule's from side directly precedes its to side (see
+    // side_ref), so such a rule shows up as two adjacent entries.
+    auto own = duration_t{tt.locations_.transfer_time_[base]};
+    auto best = std::optional<candidate>{};
+    for (auto i = std::size_t{1U}; i < sig.size(); ++i) {
+      auto const from = sig[i - 1U];
+      auto const to = sig[i];
+      if (rule_of(from) != rule_of(to)) {
+        continue;
+      }
+      auto const rule_idx = rule_of(from);
+      auto const& r = rules[rule_idx];
+      auto const c = candidate{
+          .rank_ = rank(r.get_specificity(),
+                        static_cast<std::uint8_t>((r.from_stop_ == base) +
+                                                  (r.to_stop_ == base))),
+          .rule_idx_ = rule_idx};
+      if (!best.has_value() || *best < c) {
+        best = c;
+      }
+    }
+    if (best.has_value()) {
+      own = rules[best->rule_idx_].duration();
+    }
 
-          // Rules where from == to side (e.g. transfers from route R -> R)
-          // end up on the same virt node -> set transfer_time to self.
-          auto best = std::optional<candidate>{};
-          for (auto i = std::size_t{1U}; i < sig.size(); ++i) {
-            auto const from = sig[i - 1U];
-            auto const to = sig[i];
-            if (rule_of(from) != rule_of(to)) {
-              continue;
-            }
-            auto const rule_idx = rule_of(from);
-            auto const& r = rules[rule_idx];
-            auto const c =
-                candidate{.rank_ = rank(r.get_specificity(),
-                                        static_cast<std::uint8_t>(
-                                            (r.from_stop_ == base) +
-                                            (r.to_stop_ == base))),
-                          .rule_idx_ = rule_idx};
-            if (!best.has_value() || *best < c) {
-              best = c;
-            }
-          }
-          if (best.has_value()) {
-            l.transfer_time_ = rules[best->rule_idx_].duration();
-          }
+    auto key = virt_key{.base_ = base, .own_ = own, .sides_ = {}};
+    for (auto const side : sig) {
+      auto const& r = rules[rule_of(side)];
+      auto const is_from = side == side_ref(rule_of(side), true);
+      key.sides_.push_back(
+          {.is_from_ = is_from,
+           .rule_stop_ = is_from ? r.from_stop_ : r.to_stop_,
+           .other_stop_ = is_from ? r.to_stop_ : r.from_stop_,
+           .other_route_ = is_from ? r.to_route_ : r.from_route_,
+           .other_trip_ = is_from ? r.to_trip_ : r.from_trip_,
+           .duration_ = r.duration()});
+    }
+    utl::erase_duplicates(key.sides_);
 
-          auto const v = location_idx_t{cista::to_idx(first_virt) +
-                                       static_cast<std::uint32_t>(
-                                           staged.size())};
-          staged.push_back(l);
-          tt.locations_.children_[base].emplace_back(v);
+    auto const virt = utl::get_or_create(virt_locs, std::move(key), [&]() {
+      auto l = location{};
+      l.src_ = tt.locations_.src_[base];
+      l.pos_ = tt.locations_.coordinates_[base];
+      l.type_ = location_type::kVirt;
+      l.parent_ = base;
+      l.transfer_time_ = own;
 
-          for (auto const side : sig) {
-            side_virts[side].push_back(v);
-          }
+      auto const v = register_location(tt, l);
+      tt.locations_.children_[base].emplace_back(v);
+      return v;
+    });
 
-          return v;
-        });
+    // several trip stops with different rule sides can share one virtual
+    // location, so its sides are the union of theirs (deduplicated below)
+    for (auto const side : sig) {
+      side_virts[side].push_back(virt);
+    }
 
-    virt_stops[virt].emplace_back(trp_idx, pos);
     t.stop_seq_[pos] =
         stop{virt, s.in_allowed(), s.out_allowed(), s.in_allowed_wheelchair(),
              s.out_allowed_wheelchair()}
             .value();
   }
-
-  // Materialize the staged locations. They are appended in staging order, so
-  // the indices handed out above are the ones they end up with.
-  for (auto const& l : staged) {
-    auto const registered = register_location(tt, l);
-    utl::verify(cista::to_idx(registered) ==
-                    cista::to_idx(first_virt) +
-                        static_cast<std::uint32_t>(&l - staged.data()),
-                "virtual location {} was not registered at its staged index",
-                registered);
+  for (auto& [side, virts] : side_virts) {
+    utl::erase_duplicates(virts);
   }
+
+  auto const base_of = [&](location_idx_t const l) {
+    return tt.locations_.types_[l] == location_type::kVirt
+               ? tt.locations_.parents_[l]
+               : l;
+  };
 
   // Let the rules compete for specificity on all location pairs they apply to.
   // An unqualified side applies to the rule stop and everything below it, a
@@ -351,25 +371,23 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
   auto most_specific = hash_map<transfer_pair, candidate>{};
   for (auto rule_idx = rule_idx_t{0U}; rule_idx != rules.size(); ++rule_idx) {
     auto const& r = rules[rule_idx];
-    auto const update = [&](location_idx_t const x, location_idx_t const y) {
-      if (x == y) {
-        return;
-      }
-      auto const c = candidate{
-          .rank_ = rank(r.get_specificity(),
-                        static_cast<std::uint8_t>((r.from_stop_ == base_of(x)) +
-                                                  (r.to_stop_ == base_of(y)))),
-          .rule_idx_ = rule_idx};
-      auto const [it, is_new] = most_specific.emplace(transfer_pair{x, y}, c);
-      if (!is_new) {
-        it->second = std::max(it->second, c);
-      }
-    };
-
     for_each(rule_idx, r.from_stop_, r.from_route_, r.from_trip_, true,
              [&](location_idx_t const x) {
                for_each(rule_idx, r.to_stop_, r.to_route_, r.to_trip_, false,
-                        [&](location_idx_t const y) { update(x, y); });
+                        [&](location_idx_t const y) {
+                          if (x == y) {
+                            return;
+                          }
+                          auto& best = most_specific[transfer_pair{x, y}];
+                          best = std::max(
+                              best,
+                              candidate{.rank_ = rank(
+                                            r.get_specificity(),
+                                            static_cast<std::uint8_t>(
+                                                (r.from_stop_ == base_of(x)) +
+                                                (r.to_stop_ == base_of(y)))),
+                                        .rule_idx_ = rule_idx});
+                        });
              });
   }
 
@@ -379,780 +397,18 @@ void apply_rules(timetable& tt, rule_vec_t const& rules, trip_data& trips) {
     durations.push_back(r.duration());
   }
 
-  write_transfer_rules(tt, most_specific, durations, first_virt);
+  write_transfer_rules(tt, most_specific, durations, first_virt, rule_hubs);
 
-  // Two virtual locations of one stop are the same node if nothing the routing
-  // can observe tells them apart: their own transfer time, the cells written
-  // for them in either direction, and the hubs they sit in. What splits them
-  // is the rule sides they matched, and different sides regularly end up
-  // stating the same thing - so the trips of one move to the other and the
-  // duplicate is retired, before it can split a route. This runs on the
-  // written state, after elision: cells that a hub derives are gone by now, so
-  // two locations differing only in those are correctly seen as one.
-  if (std::getenv("NIGIRI_NO_VIRT_MERGE") == nullptr) {
-    auto const n = tt.n_locations();
-    constexpr auto const kSelf = 0xFFFFFFFFU;
-
-    auto cols = hash_map<location_idx_t, std::vector<std::pair<std::uint32_t, std::int32_t>>>{};
-    auto rows = cols;
-    for (auto l = location_idx_t{0U};
-         l != location_idx_t{std::min(
-             static_cast<std::size_t>(tt.locations_.transfer_rule_fps_.size()),
-             static_cast<std::size_t>(cista::to_idx(n)))};
-         ++l) {
-      for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
-        if (tt.locations_.types_[l] == location_type::kVirt) {
-          rows[l].emplace_back(fp.target() == l ? kSelf : to_idx(fp.target()),
-                               fp.duration().count());
-        }
-        if (tt.locations_.types_[fp.target()] == location_type::kVirt) {
-          cols[fp.target()].emplace_back(l == fp.target() ? kSelf : to_idx(l),
-                                         fp.duration().count());
-        }
-      }
-    }
-
-    auto hub_mem = hash_map<location_idx_t, std::vector<std::uint32_t>>{};
-    for (auto h = 0U; h != tt.locations_.hub_in_[kDefaultProfile].size(); ++h) {
-      auto const hi = hub_idx_t{h};
-      for (auto const m : tt.locations_.hub_in_[kDefaultProfile][hi]) {
-        hub_mem[m].push_back(h * 2U);
-      }
-      for (auto const m : tt.locations_.hub_out_[kDefaultProfile][hi]) {
-        hub_mem[m].push_back(h * 2U + 1U);
-      }
-    }
-
-    // Cells that two candidates write about each other are not an observable
-    // that tells them apart: merged, the two become one node and the pair
-    // becomes a self-edge, which the route scan already applies as that node's
-    // own transfer time. That holds only if the pair says exactly that, so a
-    // pair stating anything else keeps them apart.
-    auto const cells_without = [&](auto const& m, location_idx_t const v,
-                                   location_idx_t const partner) {
-      auto out = std::vector<std::pair<std::uint32_t, std::int32_t>>{};
-      if (auto const it = m.find(v); it != end(m)) {
-        for (auto const& [t, d] : it->second) {
-          if (t != to_idx(partner)) {
-            out.emplace_back(t, d);
-          }
-        }
-      }
-      utl::sort(out);
-      return out;
-    };
-    auto const pair_is_own_time = [&](location_idx_t const a,
-                                      location_idx_t const b) {
-      auto const own = tt.locations_.transfer_time_[a].count();
-      // A pair nobody wrote a rule about is not free: it costs what the stop
-      // charges for an unwritten transfer. Merging turns the pair into a
-      // self-edge at `own`, so an unstated pair may only be merged when `own`
-      // is exactly what it already costs - otherwise a virt carrying a 0min
-      // self-rule hands that 0 to every trip merged with it, and the rules
-      // never said those trips may transfer at all.
-      auto const dflt =
-          tt.locations_.transfer_time_[tt.locations_.parents_[a]].count();
-      auto const states_own_time = [&](location_idx_t const x,
-                                       location_idx_t const y) {
-        auto stated = false;
-        if (auto const it = rows.find(x); it != end(rows)) {
-          for (auto const& [t, d] : it->second) {
-            if (t == to_idx(y)) {
-              stated = true;
-              if (d != own) {
-                return false;
-              }
-            }
-          }
-        }
-        return stated || own == dflt;
-      };
-      return states_own_time(a, b) && states_own_time(b, a);
-    };
-    auto const hubs_of = [&](location_idx_t const v) {
-      auto out = std::vector<std::uint32_t>{};
-      if (auto const it = hub_mem.find(v); it != end(hub_mem)) {
-        out = it->second;
-      }
-      utl::sort(out);
-      return out;
-    };
-    // A merge fuses two nodes, so every rule one of them carries is handed to
-    // the other as well. That is harmless exactly when it cannot lower what
-    // the other already pays for the same partner: then the fused node answers
-    // what the two answered separately, for every partner and in both
-    // directions. Anything beyond that - a cheaper cell excused because the
-    // event times look unusable - is not safe, because the partner of a cell
-    // is itself a merge candidate and inherits the cell once it is fused.
-    //
-    // On by default; NIGIRI_NO_VIRT_TIME_MERGE turns it off and keeps only the
-    // merge of nodes that state literally the same thing.
-    static auto const time_merge = []() -> std::optional<int> {
-      if (std::getenv("NIGIRI_NO_VIRT_TIME_MERGE") != nullptr) {
-        return std::nullopt;
-      }
-      return std::optional{0};
-    }();
-
-    // What a hub derives, decided the way build_hubs decides it: a cell longer
-    // than the stop charges makes its source a restricted one and its target
-    // one that the restricted hub drops. Without this the merge has to guess
-    // what an unwritten pair costs, and "it costs the default" is wrong for
-    // exactly the pairs elision left out.
-    auto slow_from_m = hash_set<location_idx_t>{};
-    auto slow_to_m = hash_set<location_idx_t>{};
-    if (time_merge.has_value()) {
-      auto const n_cells = std::min(
-          static_cast<std::size_t>(tt.locations_.transfer_rule_fps_.size()),
-          static_cast<std::size_t>(cista::to_idx(n)));
-      for (auto l = location_idx_t{0U}; l != location_idx_t{n_cells}; ++l) {
-        auto const b = tt.locations_.types_[l] == location_type::kVirt
-                           ? tt.locations_.parents_[l]
-                           : l;
-        for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
-          auto const tb = tt.locations_.types_[fp.target()] == location_type::kVirt
-                              ? tt.locations_.parents_[fp.target()]
-                              : fp.target();
-          if (tb == b && fp.duration() > duration_t{tt.locations_.transfer_time_[b]}) {
-            slow_from_m.insert(l);
-            slow_to_m.insert(fp.target());
-          }
-        }
-      }
-    }
-    constexpr auto const kNever =
-        duration_t{std::numeric_limits<duration_t::rep>::max()};
-
-    // every event a trip has at a stop of this feed, for the check below
-    auto events = hash_map<location_idx_t, std::vector<stop_events>>{};
-    for (auto const& t : trips.data_) {
-      for (auto const [i, s] : utl::enumerate(t.stop_seq_)) {
-        if (i >= t.event_times_.size()) {
-          break;
-        }
-        events[stop{s}.location_idx()].push_back(t.event_times_[i]);
-      }
-    }
-
-    auto const same_node = [&](location_idx_t const a, location_idx_t const b) {
-      return tt.locations_.transfer_time_[a] ==
-                 tt.locations_.transfer_time_[b] &&
-             hubs_of(a) == hubs_of(b) && pair_is_own_time(a, b) &&
-             cells_without(rows, a, b) == cells_without(rows, b, a) &&
-             cells_without(cols, a, b) == cells_without(cols, b, a);
-    };
-
-    auto members_of = hash_map<location_idx_t, std::vector<location_idx_t>>{};
-    for (auto v = first_virt; v != n; ++v) {
-      members_of[tt.locations_.parents_[v]].push_back(v);
-    }
-
-    auto group_members =
-        hash_map<location_idx_t, std::vector<location_idx_t>>{};
-    auto remap = hash_map<location_idx_t, location_idx_t>{};
-
-    // Propose, then verify.
-    //
-    // The order the candidates are visited in is the order they were created
-    // in, which carries no meaning - and two orderings that do carry meaning
-    // were measured on Sweden and are worse. Sorting the candidates by the
-    // routes calling at them lands at 30,539 virtual locations and 38,815
-    // routes; additionally letting a candidate prefer a group that already
-    // holds one of its routes lands at 30,798 and 38,949; the order below
-    // gives 29,374 and 37,838. Keeping a route whole sounds like it should
-    // pay - a route whose trips sit on different virtual locations no longer
-    // shares a stop sequence and splits in two - but constraining first fit
-    // costs more merges than it saves routes, and fewer virtual locations
-    // turns out to mean fewer routes anyway.
-    //
-    // No pairwise rule can decide a merge on its own. What a node answers
-    // depends on every member it ends up with *and* on what the node at the
-    // other end of a rule ends up with, so a pair that is harmless in
-    // isolation can still turn into a transfer once both ends have grown -
-    // and a cell that only looks slower can take a hub derivation away, which
-    // loses one. So the pairwise rule below only proposes: the partition it
-    // produces is then checked against what the stop answered before it, trip
-    // pair by trip pair, and whatever fails is forbidden and the partition
-    // built again. What survives answers exactly what the unmerged stop did.
-    for (auto& [base, virts] : members_of) {
-      auto const dflt = duration_t{tt.locations_.transfer_time_[base]};
-      auto all = std::vector<location_idx_t>{base};
-      all.insert(end(all), begin(virts), end(virts));
-
-      auto const is_slow = [&](location_idx_t const m) {
-        return m != base && duration_t{tt.locations_.transfer_time_[m]} > dflt;
-      };
-
-      // what this stop states about its own members, and who says something
-      // about another stop - those may only merge on literal equality, since
-      // the cost of a pair that leaves the stop is not modelled here
-      auto cell = hash_map<pair<location_idx_t, location_idx_t>, duration_t>{};
-      auto crosses = hash_set<location_idx_t>{};
-      auto const mine = [&](location_idx_t const l) {
-        return l == base || tt.locations_.parents_[l] == base;
-      };
-      for (auto const x : all) {
-        if (cista::to_idx(x) < tt.locations_.transfer_rule_fps_.size()) {
-          for (auto const fp : tt.locations_.transfer_rule_fps_[x]) {
-            if (fp.target() == x) {
-              continue;
-            }
-            if (!mine(fp.target())) {
-              crosses.insert(x);
-              continue;
-            }
-            auto const k = pair{x, fp.target()};
-            if (auto const it = cell.find(k); it != end(cell)) {
-              it->second = std::min(it->second, fp.duration());
-            } else {
-              cell.emplace(k, fp.duration());
-            }
-          }
-        }
-        if (auto const it = cols.find(x); it != end(cols)) {
-          for (auto const& [f, d] : it->second) {
-            if (f != kSelf && !mine(location_idx_t{f})) {
-              crosses.insert(x);
-            }
-          }
-        }
-      }
-      // who a member says anything about, so a proposal only has to look at
-      // the partners that can differ instead of at every member of the stop
-      auto out_partners = hash_map<location_idx_t, std::vector<location_idx_t>>{};
-      auto in_partners = hash_map<location_idx_t, std::vector<location_idx_t>>{};
-      for (auto const& [k, d] : cell) {
-        out_partners[k.first].push_back(k.second);
-        in_partners[k.second].push_back(k.first);
-      }
-      auto slow_to_list = std::vector<location_idx_t>{};
-      auto slow_from_list = std::vector<location_idx_t>{};
-      for (auto const m : all) {
-        if (slow_to_m.contains(m)) {
-          slow_to_list.push_back(m);
-        }
-        if (slow_from_m.contains(m)) {
-          slow_from_list.push_back(m);
-        }
-      }
-
-      auto const cell_of = [&](location_idx_t const x, location_idx_t const y) {
-        auto const it = cell.find(pair{x, y});
-        return it == end(cell) ? kNever : it->second;
-      };
-      // what the pair costs today: the cell, or the default where a hub
-      // derives it - the two together are everything the stop states
-      auto const cost_pre = [&](location_idx_t const x, location_idx_t const y) {
-        auto c = cell_of(x, y);
-        if (!is_slow(x) &&
-            (!slow_from_m.contains(x) || !slow_to_m.contains(y))) {
-          c = std::min(c, dflt);
-        }
-        return c;
-      };
-
-      // is there a trip pair that could tell `before` and `after` apart?
-      auto const changes_an_answer = [&](location_idx_t const x,
-                                         location_idx_t const y,
-                                         duration_t const before,
-                                         duration_t const after) {
-        if (before == after) {
-          return false;
-        }
-        auto const lo = std::min(before, after);
-        auto const hi = std::max(before, after);
-        auto const f_it = events.find(x), t_it = events.find(y);
-        if (f_it == end(events) || t_it == end(events)) {
-          return false;  // nothing is ever at both ends
-        }
-        for (auto const& f : f_it->second) {
-          for (auto const& t : t_it->second) {
-            if (f.arr_ == kInterpolate || t.dep_ == kInterpolate) {
-              return true;  // unknown time: assume it matters
-            }
-            auto gap = duration_t{t.dep_ - f.arr_};
-            if (gap < duration_t{0}) {
-              gap += duration_t{1440};  // the departure is on the next day
-            }
-            if (gap >= lo && gap < hi) {
-              return true;
-            }
-          }
-        }
-        return false;
-      };
-
-      // The proposal: would fusing exactly these two change an answer? Only
-      // the partners one of them states something about can differ, plus -
-      // when fusing flips a slow classification - the partners that
-      // classification decides a hub derivation for.
-      auto seen = hash_map<location_idx_t, unsigned>{};
-      auto stamp = 0U;
-      auto todo = std::vector<location_idx_t>{};
-      auto const plausible = [&](location_idx_t const a, location_idx_t const b) {
-        if (tt.locations_.transfer_time_[a] != tt.locations_.transfer_time_[b] ||
-            !pair_is_own_time(a, b) || hubs_of(a) != hubs_of(b) ||
-            crosses.contains(a) || crosses.contains(b)) {
-          return false;
-        }
-        auto const sf_a = slow_from_m.contains(a), sf_b = slow_from_m.contains(b);
-        auto const st_a = slow_to_m.contains(a), st_b = slow_to_m.contains(b);
-        auto const sf = sf_a || sf_b;
-        auto const st = st_a || st_b;
-
-        ++stamp;
-        todo.clear();
-        auto const add = [&](location_idx_t const p) {
-          if (p == a || p == b) {
-            return;
-          }
-          auto& when = seen[p];
-          if (when == stamp) {
-            return;
-          }
-          when = stamp;
-          todo.push_back(p);
-        };
-        auto const add_all = [&](auto const& m, location_idx_t const k) {
-          if (auto const it = m.find(k); it != end(m)) {
-            for (auto const p : it->second) {
-              add(p);
-            }
-          }
-        };
-        add_all(out_partners, a);
-        add_all(out_partners, b);
-        add_all(in_partners, a);
-        add_all(in_partners, b);
-        if (sf != sf_a || sf != sf_b) {
-          for (auto const p : slow_to_list) {
-            add(p);  // the fused node stops reaching these through a hub
-          }
-        }
-        if (st != st_a || st != st_b) {
-          for (auto const p : slow_from_list) {
-            add(p);  // these stop reaching the fused node through a hub
-          }
-        }
-
-        for (auto const p : todo) {
-          auto out = std::min(cell_of(a, p), cell_of(b, p));
-          if (!is_slow(a) && (!sf || !slow_to_m.contains(p))) {
-            out = std::min(out, dflt);
-          }
-          if (changes_an_answer(a, p, cost_pre(a, p), out) ||
-              changes_an_answer(b, p, cost_pre(b, p), out)) {
-            return false;
-          }
-          auto in = std::min(cell_of(p, a), cell_of(p, b));
-          if (!is_slow(p) && (!slow_from_m.contains(p) || !st)) {
-            in = std::min(in, dflt);
-          }
-          if (changes_an_answer(p, a, cost_pre(p, a), in) ||
-              changes_an_answer(p, b, cost_pre(p, b), in)) {
-            return false;
-          }
-        }
-        return true;
-      };
-
-      auto forbidden = hash_set<pair<location_idx_t, location_idx_t>>{};
-      auto const banned = [&](location_idx_t const x, location_idx_t const y) {
-        return forbidden.contains(pair{x, y}) || forbidden.contains(pair{y, x});
-      };
-
-      auto constexpr kMaxRounds = 8;
-      auto reps = std::vector<location_idx_t>{};
-      auto mem = hash_map<location_idx_t, std::vector<location_idx_t>>{};
-      auto proposed = false;
-      for (auto round = 0; round <= kMaxRounds; ++round) {
-        proposed = false;
-        // the last round gives up on the proposals and keeps only the nodes
-        // that state literally the same thing, which never needs a check
-        auto const equality_only = round == kMaxRounds;
-        reps.clear();
-        mem.clear();
-        for (auto const v : virts) {
-          auto const it = utl::find_if(reps, [&](location_idx_t const r) {
-            auto const ok = [&](location_idx_t const m) {
-              return !banned(v, m) &&
-                     (same_node(v, m) || (!equality_only &&
-                                          time_merge.has_value() &&
-                                          plausible(v, m)));
-            };
-            return ok(r) && utl::all_of(mem[r], ok);
-          });
-          if (it == end(reps)) {
-            reps.push_back(v);
-            mem[v];
-          } else {
-            mem[*it].push_back(v);
-            if (!same_node(v, *it)) {
-              // joined on a proposal - or on equality with a representative
-              // whose group a proposal had already changed, which set this
-              // when that member joined
-              proposed = true;
-            }
-          }
-        }
-        if (equality_only || !proposed) {
-          break;  // literal equality states the same thing: nothing to check
-        }
-
-        auto g = hash_map<location_idx_t, location_idx_t>{};
-        auto glist = hash_map<location_idx_t, std::vector<location_idx_t>>{};
-        g[base] = base;
-        glist[base] = {base};
-        for (auto const r : reps) {
-          g[r] = r;
-          auto& l = glist[r];
-          l.push_back(r);
-          for (auto const m : mem[r]) {
-            g[m] = r;
-            l.push_back(m);
-          }
-        }
-        // a fused node carries every member's cells, so it is slow in either
-        // direction as soon as one member is
-        auto sf = hash_map<location_idx_t, bool>{};
-        auto st = hash_map<location_idx_t, bool>{};
-        for (auto const& [r, l] : glist) {
-          sf[r] = utl::any_of(l, [&](location_idx_t const m) {
-            return slow_from_m.contains(m);
-          });
-          st[r] = utl::any_of(l, [&](location_idx_t const m) {
-            return slow_to_m.contains(m);
-          });
-        }
-        auto pc = hash_map<pair<location_idx_t, location_idx_t>, duration_t>{};
-        auto const cost_post = [&](location_idx_t const u_grp,
-                                   location_idx_t const v_grp) {
-          if (u_grp == v_grp) {
-            return duration_t{tt.locations_.transfer_time_[u_grp]};
-          }
-          auto const k = pair{u_grp, v_grp};
-          if (auto const it = pc.find(k); it != end(pc)) {
-            return it->second;
-          }
-          auto c = kNever;
-          for (auto const u : glist[u_grp]) {
-            for (auto const v : glist[v_grp]) {
-              c = std::min(c, cell_of(u, v));
-            }
-          }
-          if (!is_slow(u_grp) && (!sf[u_grp] || !st[v_grp])) {
-            c = std::min(c, dflt);
-          }
-          pc.emplace(k, c);
-          return c;
-        };
-
-        auto clean = true;
-        for (auto const x : all) {
-          for (auto const y : all) {
-            if (x == y) {
-              continue;
-            }
-            auto const gx = g[x], gy = g[y];
-            if (glist[gx].size() == 1U && glist[gy].size() == 1U) {
-              continue;  // neither end was fused: nothing can have moved
-            }
-            auto const before = cost_pre(x, y);
-            auto const after = cost_post(gx, gy);
-            if (!changes_an_answer(x, y, before, after)) {
-              continue;
-            }
-            clean = false;
-            auto blamed = false;
-            auto const blame = [&](location_idx_t const keep,
-                                   location_idx_t const drop) {
-              if (keep != drop) {
-                forbidden.insert(pair{keep, drop});
-                blamed = true;
-              }
-            };
-            if (after < before) {
-              // some member reaches the other end more cheaply than x does
-              for (auto const u : glist[gx]) {
-                for (auto const v : glist[gy]) {
-                  if (cell_of(u, v) == after) {
-                    blame(x, u);
-                    blame(y, v);
-                  }
-                }
-              }
-            } else {
-              // slower, or gone: a member took the hub derivation away
-              if (gx == gy) {
-                blame(x, y);
-              }
-              for (auto const m : glist[gx]) {
-                if (slow_from_m.contains(m) && !slow_from_m.contains(x)) {
-                  blame(x, m);
-                }
-              }
-              for (auto const m : glist[gy]) {
-                if (slow_to_m.contains(m) && !slow_to_m.contains(y)) {
-                  blame(y, m);
-                }
-              }
-            }
-            if (!blamed) {
-              // nothing specific to blame - dissolve both groups instead of
-              // risking a round that changes nothing and never terminates
-              for (auto const m : glist[gx]) {
-                blame(x, m);
-              }
-              for (auto const m : glist[gy]) {
-                blame(y, m);
-              }
-            }
-          }
-        }
-        if (clean) {
-          break;
-        }
-      }
-
-      for (auto const r : reps) {
-        for (auto const m : mem[r]) {
-          remap.emplace(m, r);
-          group_members[r].push_back(m);
-        }
-      }
-    }
-
-    if (!remap.empty()) {
-
-      for (auto const& [trip_stop, sig] : trip_stop_signatures) {
-        auto const [trp_idx, pos] = trip_stop;
-        auto& t = trips.data_[trp_idx];
-        auto const st = stop{t.stop_seq_[pos]};
-        if (auto const it = remap.find(st.location_idx()); it != end(remap)) {
-          t.stop_seq_[pos] = stop{it->second,
-                                  st.in_allowed(),
-                                  st.out_allowed(),
-                                  st.in_allowed_wheelchair(),
-                                  st.out_allowed_wheelchair()}
-                                 .value();
-        }
-      }
-
-      // A duplicate merged on equality states exactly what its representative
-      // states, so dropping its cells and moving them are the same thing. The
-      // time-aware merge fuses nodes that state different cells - certified
-      // harmless, but only if they actually end up on the fused node - so the
-      // cells move, and the ones pointing at a duplicate follow it.
-      auto const rep_of = [&](location_idx_t const l) {
-        auto const it = remap.find(l);
-        return it == end(remap) ? l : it->second;
-      };
-      auto cells = mutable_fws_multimap<location_idx_t, footpath>{};
-      auto seen = hash_map<std::pair<location_idx_t, location_idx_t>,
-                           duration_t>{};
-      for (auto l = location_idx_t{0U};
-           l != location_idx_t{std::min(
-               static_cast<std::size_t>(
-                   tt.locations_.transfer_rule_fps_.size()),
-               static_cast<std::size_t>(cista::to_idx(n)))};
-           ++l) {
-        auto const from = rep_of(l);
-        for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
-          auto const to = rep_of(fp.target());
-          if (from == to) {
-            continue;  // became the node's own time, which it already carries
-          }
-          auto const [it, ins] = seen.emplace(std::pair{from, to},
-                                              fp.duration());
-          if (ins) {
-            cells[from].emplace_back(to, fp.duration());
-          } else if (fp.duration() < it->second) {
-            it->second = fp.duration();
-            for (auto& existing : cells[from]) {
-              if (existing.target() == to) {
-                existing = footpath{to, fp.duration()};
-              }
-            }
-          }
-        }
-      }
-      tt.locations_.transfer_rule_fps_ = std::move(cells);
-
-      auto hub_in = vecvec<hub_idx_t, location_idx_t>{};
-      auto hub_out = hub_in;
-      auto hub_time = vector_map<hub_idx_t, duration_t>{};
-      auto keep = std::vector<location_idx_t>{};
-      auto keep_out = std::vector<location_idx_t>{};
-      for (auto h = 0U; h != tt.locations_.hub_in_[kDefaultProfile].size(); ++h) {
-        auto const hi = hub_idx_t{h};
-        keep.clear();
-        keep_out.clear();
-        for (auto const m : tt.locations_.hub_in_[kDefaultProfile][hi]) {
-          keep.push_back(rep_of(m));  // the representative stands in for it
-        }
-        utl::erase_duplicates(keep);
-        for (auto const m : tt.locations_.hub_out_[kDefaultProfile][hi]) {
-          keep_out.push_back(rep_of(m));
-        }
-        utl::erase_duplicates(keep_out);
-        if (keep.empty() || keep_out.empty()) {
-          continue;
-        }
-        hub_in.emplace_back(keep);
-        hub_out.emplace_back(keep_out);
-        hub_time.push_back(tt.locations_.hub_time_[kDefaultProfile][hi]);
-      }
-      tt.locations_.hub_in_[kDefaultProfile] = std::move(hub_in);
-      tt.locations_.hub_out_[kDefaultProfile] = std::move(hub_out);
-      tt.locations_.hub_time_[kDefaultProfile] = std::move(hub_time);
-
-      for (auto const& [dup, rep] : remap) {
-        auto bucket = tt.locations_.children_[tt.locations_.parents_[dup]];
-        utl::erase(bucket, dup);
-      }
-
-      // The duplicates are the last locations there are and nothing refers to
-      // them any more, so the survivors move down into their slots and the
-      // arrays end after them. Only the per-location arrays are shortened -
-      // the multimaps keep their empty tail buckets, which cost an offset
-      // each.
-      auto compact = hash_map<location_idx_t, location_idx_t>{};
-      auto next = first_virt;
-      for (auto v = first_virt; v != n; ++v) {
-        if (remap.contains(v)) {
-          continue;
-        }
-        compact.emplace(v, next);
-        if (next != v) {
-          auto& loc = tt.locations_;
-          loc.names_[next] = loc.names_[v];
-          loc.platform_codes_[next] = loc.platform_codes_[v];
-          loc.stop_codes_[next] = loc.stop_codes_[v];
-          loc.descriptions_[next] = loc.descriptions_[v];
-          loc.coordinates_[next] = loc.coordinates_[v];
-          loc.src_[next] = loc.src_[v];
-          loc.types_[next] = loc.types_[v];
-          loc.location_timezones_[next] = loc.location_timezones_[v];
-          loc.transfer_time_[next] = loc.transfer_time_[v];
-          loc.parents_[next] = loc.parents_[v];
-        }
-        ++next;
-      }
-
-      auto const renumber = [&](location_idx_t const l) {
-        auto const it = compact.find(l);
-        return it == end(compact) ? l : it->second;
-      };
-
-      for (auto const& [trip_stop, sig] : trip_stop_signatures) {
-        auto const [trp_idx, pos] = trip_stop;
-        auto& t = trips.data_[trp_idx];
-        auto const st = stop{t.stop_seq_[pos]};
-        auto const moved = renumber(st.location_idx());
-        if (moved != st.location_idx()) {
-          t.stop_seq_[pos] = stop{moved,
-                                  st.in_allowed(),
-                                  st.out_allowed(),
-                                  st.in_allowed_wheelchair(),
-                                  st.out_allowed_wheelchair()}
-                                 .value();
-        }
-      }
-
-      auto renumbered = mutable_fws_multimap<location_idx_t, footpath>{};
-      for (auto l = location_idx_t{0U};
-           l != location_idx_t{std::min(
-               static_cast<std::size_t>(
-                   tt.locations_.transfer_rule_fps_.size()),
-               static_cast<std::size_t>(cista::to_idx(n)))};
-           ++l) {
-        for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
-          renumbered[renumber(l)].emplace_back(renumber(fp.target()),
-                                               fp.duration());
-        }
-      }
-      tt.locations_.transfer_rule_fps_ = std::move(renumbered);
-
-      auto in2 = vecvec<hub_idx_t, location_idx_t>{};
-      auto out2 = in2;
-      auto members = std::vector<location_idx_t>{};
-      for (auto h = 0U; h != tt.locations_.hub_in_[kDefaultProfile].size(); ++h) {
-        auto const hi = hub_idx_t{h};
-        members.clear();
-        for (auto const m : tt.locations_.hub_in_[kDefaultProfile][hi]) {
-          members.push_back(renumber(m));
-        }
-        in2.emplace_back(members);
-        members.clear();
-        for (auto const m : tt.locations_.hub_out_[kDefaultProfile][hi]) {
-          members.push_back(renumber(m));
-        }
-        out2.emplace_back(members);
-      }
-      tt.locations_.hub_in_[kDefaultProfile] = std::move(in2);
-      tt.locations_.hub_out_[kDefaultProfile] = std::move(out2);
-
-      for (auto b = location_idx_t{0U}; b != first_virt; ++b) {
-        for (auto& c : tt.locations_.children_[b]) {
-          c = renumber(c);
-        }
-      }
-
-      auto const n_left = cista::to_idx(next);
-      tt.locations_.names_.resize(n_left);
-      tt.locations_.platform_codes_.resize(n_left);
-      tt.locations_.stop_codes_.resize(n_left);
-      tt.locations_.descriptions_.resize(n_left);
-      tt.locations_.coordinates_.resize(n_left);
-      tt.locations_.src_.resize(n_left);
-      tt.locations_.types_.resize(n_left);
-      tt.locations_.location_timezones_.resize(n_left);
-      tt.locations_.transfer_time_.resize(n_left);
-      tt.locations_.parents_.resize(n_left);
-
-      // The multimaps have no truncate, so the live buckets are copied into a
-      // fresh one - otherwise their empty tails would be serialised.
-      auto const shrink = [&](auto& m) {
-        auto shrunk = std::decay_t<decltype(m)>{};
-        for (auto l = location_idx_t{0U}; l != location_idx_t{n_left}; ++l) {
-          auto bucket = shrunk[l];
-          for (auto const& x : m[l]) {
-            bucket.push_back(x);
-          }
-        }
-        m = std::move(shrunk);
-      };
-      // ids_ is per location too, and build_lb_graph iterates *its* size -
-      // leaving it long makes every consumer read past the other arrays
-      {
-        auto shrunk = vecvec<location_idx_t, char>{};
-        for (auto l = location_idx_t{0U}; l != location_idx_t{n_left}; ++l) {
-          shrunk.emplace_back(tt.locations_.ids_[l].view());
-        }
-        tt.locations_.ids_ = std::move(shrunk);
-      }
-      tt.locations_.ticketing_unavailable_.resize(n_left);
-
-      shrink(tt.locations_.children_);
-      shrink(tt.locations_.equivalences_);
-      shrink(tt.locations_.preprocessing_footpaths_out_);
-      log(log_lvl::info, "loader.gtfs.transfer_rules",
-          "{} virtual locations merged into {}", remap.size(),
-          static_cast<std::size_t>(cista::to_idx(n) -
-                                   cista::to_idx(first_virt)) -
-              remap.size());
-    }
-  }
+  log(log_lvl::info, "loader.gtfs.transfer_rules", "{} virtual locations",
+      tt.n_locations() - first_virt.v_);
 }
-
-// Detects the most common rule between two stops
-// -> removes them and makes their min_transfer_time the new default
 
 void read_transfers(timetable& tt,
                     std::string_view file_content,
                     stops_map_t const& stops,
                     route_map_t const& routes,
-                    trip_data& trips) {
+                    trip_data& trips,
+                    bool const rule_hubs) {
   // Capture transfer times before this feed's rules modify them.
   tt.locations_.sync_base_transfer_time();
 
@@ -1195,12 +451,16 @@ void read_transfers(timetable& tt,
   // Profiles that ignore the qualified rules still honor the plain minimum
   // transfer time of a stop: it is interchange time, not a walk, and street
   // routing cannot supply it. Folded like a loader without rule support does
-  // it - minimum over every reflexive row, qualified or not, replacing the
-  // default rather than capping it, and rounded down to whole minutes.
+  // it - minimum over every reflexive row that states a time, qualified or
+  // not, replacing the default rather than capping it.
   constexpr auto const kNoRule = duration_t::max();
   auto reflexive_min = vector_map<location_idx_t, duration_t>{};
   reflexive_min.resize(tt.n_locations());
   std::fill(begin(reflexive_min), end(reflexive_min), kNoRule);
+
+  auto n_unknown_qualifiers = 0U;
+  auto first_unknown_qualifier = std::string_view{};
+  auto n_same_trip = 0U;
 
   utl::line_range{
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
@@ -1219,18 +479,34 @@ void read_transfers(timetable& tt,
         auto const type = static_cast<transfer_type>(*t.transfer_type_);
         auto const r = rule{t, type, stops, routes, trips};
         if (!r.ok_) {
+          if (!r.unknown_qualifier_.empty()) {
+            if (n_unknown_qualifiers++ == 0U) {
+              first_unknown_qualifier = r.unknown_qualifier_;
+            }
+          }
+          return;
+        }
+        // a trip does not transfer to itself: such a row states nothing
+        if (r.from_trip_ != gtfs_trip_idx_t::invalid() &&
+            r.from_trip_ == r.to_trip_) {
+          ++n_same_trip;
           return;
         }
 
-        if (!r.forbidden_ && r.from_stop_ == r.to_stop_) {
-          auto const d = duration_t{t.min_transfer_time_->value_or(0) / 60};
-          reflexive_min[r.from_stop_] = std::min(reflexive_min[r.from_stop_], d);
-        }
+        // A timed transfer holds the departing vehicle and a forbidden one
+        // needs no time; every other row constrains only if it states a
+        // time. A recommended transfer without one is a preference, and a
+        // minimum change time without one is a defective row - neither says
+        // how long a transfer takes, so neither becomes a rule.
+        auto const enforceable = type == transfer_type::kTimed ||
+                                 type == transfer_type::kNotPossible ||
+                                 r.min_transfer_time_.has_value();
 
-        // a recommended transfer without a time is only a preference, it
-        // does not constrain anything
-        auto const enforceable = type != transfer_type::kRecommended ||
-                                 t.min_transfer_time_->has_value();
+        if (enforceable && !r.forbidden_ && r.from_stop_ == r.to_stop_ &&
+            r.min_transfer_time_.has_value()) {
+          reflexive_min[r.from_stop_] =
+              std::min(reflexive_min[r.from_stop_], *r.min_transfer_time_);
+        }
 
         if (type == transfer_type::kRecommended ||
             type == transfer_type::kTimed) {
@@ -1247,12 +523,20 @@ void read_transfers(timetable& tt,
                                  .to_route_ = r.to_route_});
         }
 
-        if (!r.forbidden_ && !r.is_qualified()) {
-          if (r.from_stop_ != r.to_stop_) {
+        // An unqualified same-stop row is the stop's own transfer time - a
+        // ban included, it becomes kNoTransfer. A cross-stop one is a rule
+        // cell like every other rule (see apply_rules), which is what keeps
+        // it authoritative once street routing recomputes the walks - and it
+        // also seeds the footpath layer, because a cell is only overlaid at
+        // the end while a footpath takes part in the layer's closure, its
+        // hubs and the lower bounds.
+        if (enforceable && !r.is_qualified()) {
+          if (r.from_stop_ == r.to_stop_) {
+            tt.locations_.transfer_time_[r.from_stop_] =
+                to_transfer_time(r.duration());
+          } else if (!r.forbidden_) {
             tt.locations_.preprocessing_footpaths_out_[r.from_stop_]
-                .emplace_back(r.to_stop_, r.time_);
-          } else if (enforceable) {
-            tt.locations_.transfer_time_[r.from_stop_] = r.time_;
+                .emplace_back(r.to_stop_, r.duration());
           }
         }
 
@@ -1261,17 +545,26 @@ void read_transfers(timetable& tt,
         }
       });
 
+  if (n_unknown_qualifiers != 0U) {
+    log(log_lvl::error, "loader.gtfs.transfers",
+        "{} rules dropped: unknown route/trip id (e.g. {:?})",
+        n_unknown_qualifiers, first_unknown_qualifier);
+  }
+  if (n_same_trip != 0U) {
+    log(log_lvl::info, "loader.gtfs.transfers",
+        "{} rows from a trip to itself ignored", n_same_trip);
+  }
+
   for (auto l = location_idx_t{0U}; l != location_idx_t{reflexive_min.size()};
        ++l) {
     if (reflexive_min[l] != kNoRule) {
-      tt.locations_.base_transfer_time_[l] = u8_minutes{
-          static_cast<std::uint8_t>(std::clamp<int>(reflexive_min[l].count(), 0, 255))};
+      tt.locations_.base_transfer_time_[l] = to_transfer_time(reflexive_min[l]);
     }
   }
 
   fold_pair_defaults(tt, rules);
   if (!rules.empty()) {
-    apply_rules(tt, rules, trips);
+    apply_rules(tt, rules, trips, rule_hubs);
   }
 }
 

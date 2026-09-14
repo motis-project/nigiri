@@ -494,7 +494,7 @@ routing_result pong_with_vias(timetable const& tt,
                               std::optional<std::chrono::seconds> timeout) {
   // a profile without hubs cannot represent the split: its virtual locations
   // are projected onto their stop (see raptor.h)
-  auto const project = tt.locations_.hub_in_[q.prf_idx_].size() == 0U;
+  auto const project = q.prf_idx_ != kDefaultProfile;
   if (rtt == nullptr) {
     return project ? pong<SearchDir, false, Vias, true>(
                          tt, rtt, s_state, r_state, std::move(q), timeout)

@@ -204,7 +204,8 @@ void load_timetable(loader_config const& config,
 
   // transfers.txt: stay-seated transfers, stop transfer times, footpaths,
   // transfer rules (rewrites trip stop sequences -> before route building)
-  read_transfers(tt, load(kTransfersFile).data(), stops, routes, trip_data);
+  read_transfers(tt, load(kTransfersFile).data(), stops, routes, trip_data,
+                 config.transfer_rule_hubs_);
 
   hash_map<route_key_t, std::vector<std::vector<utc_trip>>, route_key_hash,
            route_key_equals>

@@ -761,7 +761,7 @@ location_idx_t register_location(timetable& tt, location const& l) {
   loc.equivalences_.emplace_back();
   loc.children_.emplace_back();
   loc.preprocessing_footpaths_out_.emplace_back();
-  loc.transfer_time_.emplace_back(l.transfer_time_);
+  loc.transfer_time_.emplace_back(to_transfer_time(l.transfer_time_));
   loc.parents_.emplace_back(l.parent_);
 
   assert(loc.names_.size() == next_idx + 1);

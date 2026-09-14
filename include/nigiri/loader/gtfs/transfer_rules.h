@@ -40,6 +40,7 @@ void read_transfers(timetable&,
                     std::string_view file_content,
                     stops_map_t const&,
                     route_map_t const&,
-                    trip_data&);
+                    trip_data&,
+                    bool rule_hubs);
 
 }  // namespace nigiri::loader::gtfs

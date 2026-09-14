@@ -34,7 +34,7 @@ routing_result raptor_search_with_vias(
   // use. Those profiles project them onto their stop instead - which is not
   // the same as "not the default profile", because the routed foot layer does
   // get the rules and does get hubs.
-  auto const project = tt.locations_.hub_in_[q.prf_idx_].size() == 0U;
+  auto const project = q.prf_idx_ != kDefaultProfile;
   if (rtt == nullptr) {
     if (project) {
       using algo_t = std::conditional_t<

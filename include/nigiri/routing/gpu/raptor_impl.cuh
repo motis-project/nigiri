@@ -18,6 +18,9 @@
 
 namespace nigiri::routing::gpu {
 
+// device-side twin of nigiri::kNoTransfer (see types.h)
+constexpr auto const kNoTransferMinutes = 255;
+
 #ifndef NIGIRI_CUDA_DEBUG
 #define debug(...)
 #else
@@ -84,9 +87,12 @@ struct raptor_impl {
       // -> 10:00 < 10:05 would get rejected.
       // -> ping journey would not be found in pong
       auto const* const row = bounds_ + (bounds_last_k_ - k) * tt_.n_locations_;
-      auto const transfer = dir(adjusted_transfer_time(
-          transfer_time_settings_,
-          static_cast<int>(tt_.transfer_time_[l].count())));
+      auto const own = static_cast<int>(tt_.transfer_time_[l].count());
+      if (own == kNoTransferMinutes) {
+        return true;  // no change here, so no bound can be derived from one
+      }
+      auto const transfer =
+          dir(adjusted_transfer_time(transfer_time_settings_, own));
       return is_better_or_eq(static_cast<int>(t),
                              static_cast<int>(row[to_idx(l)]) + transfer);
     }
@@ -108,6 +114,15 @@ struct raptor_impl {
       round_times_.update_min(0U, l, v, t, make_start_bc());
       touch_round(0U, l);
       station_mark_.mark(to_idx(l));
+      // A start label at a destination bounds every round, like the CPU's
+      // per-round seeding of time_at_dest from best_ - otherwise a search
+      // whose origin already touches the destination finds transit journeys
+      // that are worse than being there, and pong cannot match them.
+      if (is_dest_[to_idx(l)]) {
+        for (auto k = 0U; k != kMaxTransfers + 2U; ++k) {
+          time_at_dest_.update_min(k, t);
+        }
+      }
     }
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
@@ -729,11 +744,10 @@ struct raptor_impl {
       if (t == kInvalid) {
         continue;
       }
-      auto const packed = device_times<SearchDir, Vias + 1>::pack(
-          t, tmp_.get_bc(0U, l, Vias));
-      atomicMin(
-          reinterpret_cast<unsigned long long*>(&hub_slots_[e.hub_[i]]),
-          static_cast<unsigned long long>(packed));
+      auto const packed =
+          device_times<SearchDir, Vias + 1>::pack(t, tmp_.get_bc(0U, l, Vias));
+      atomicMin(reinterpret_cast<unsigned long long*>(&hub_slots_[e.hub_[i]]),
+                static_cast<unsigned long long>(packed));
     }
   }
 
@@ -755,14 +769,14 @@ struct raptor_impl {
         continue;
       }
       auto const d = tt_.hub_time_[prf_idx_][hub_idx_t{e.hub_[i]}];
-      relax_fp_target(
-          k, location_idx_t{e.loc_[i]},
-          d.count() == 0 ? 0
-                         : adjusted_transfer_time(transfer_time_settings_,
-                                                  static_cast<int>(d.count())),
-          device_times<SearchDir, Vias + 1>::from_key(
-              static_cast<std::uint16_t>(slot >> kBcBits)),
-          slot & kBcMask, t_at_dest);
+      relax_fp_target(k, location_idx_t{e.loc_[i]},
+                      d.count() == 0
+                          ? 0
+                          : adjusted_transfer_time(transfer_time_settings_,
+                                                   static_cast<int>(d.count())),
+                      device_times<SearchDir, Vias + 1>::from_key(
+                          static_cast<std::uint16_t>(slot >> kBcBits)),
+                      slot & kBcMask, t_at_dest);
     }
   }
 
@@ -809,15 +823,17 @@ struct raptor_impl {
           bc = tmp_.get_bc(0U, l, Vias);
           auto const is_dest = is_dest_[my_i];
 
-          // same-station transfer (former update_transfers)
-          relax_fp_target(
-              k, l,
-              (!intermodal && is_dest)
-                  ? 0
-                  : adjusted_transfer_time(
-                        transfer_time_settings_,
-                        static_cast<int>(tt_.transfer_time_[l].count())),
-              tmp_time, bc, t_at_dest);
+          // same-station transfer (former update_transfers); a stop whose
+          // change time is the ban (transfers.txt type 3) allows none
+          auto const own = static_cast<int>(tt_.transfer_time_[l].count());
+          auto const arrives_at_dest = !intermodal && is_dest;
+          if (arrives_at_dest || own != kNoTransferMinutes) {
+            relax_fp_target(k, l,
+                            arrives_at_dest ? 0
+                                            : adjusted_transfer_time(
+                                                  transfer_time_settings_, own),
+                            tmp_time, bc, t_at_dest);
+          }
 
           // intermodal egress (former update_intermodal_footpaths)
           if (intermodal && dist_to_end_[my_i] != kUnreachable) {
@@ -868,8 +884,8 @@ struct raptor_impl {
       for_each_set_bit(deferred, [&](unsigned const b) {
         // the lanes no longer hold consecutive locations, so the owner's
         // index has to come across with the rest of its state
-        auto const l = location_idx_t{
-            __shfl_sync(kAllLanes, my_i, static_cast<int>(b))};
+        auto const l =
+            location_idx_t{__shfl_sync(kAllLanes, my_i, static_cast<int>(b))};
         auto const l_tmp = static_cast<delta_t>(__shfl_sync(
             kAllLanes, static_cast<int>(tmp_time), static_cast<int>(b)));
         auto const l_bc = __shfl_sync(kAllLanes, bc, static_cast<int>(b));

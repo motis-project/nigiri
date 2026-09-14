@@ -119,6 +119,13 @@ A5,A5,,54.0,6.0,,,
 M,M,,54.0,6.5,,,
 G,G,,54.0,7.0,,,
 H,H,,54.0,7.5,,,
+T6A,T6A,,60.0,6.0,,,
+T6N,T6N,,60.0,6.5,,,
+T6J,T6J,,60.0,7.0,,,
+T7A,T7A,,61.0,6.0,,,
+T7Q,T7Q,,61.0,6.5,,,
+T7K,T7K,,61.0,7.0,,,
+T7L,T7L,,61.0,7.5,,,
 A6,A6,,55.0,6.0,,,
 A7,A7,,55.0,6.2,,,
 N,N,,55.0,6.5,,,
@@ -170,6 +177,10 @@ RQ3,AG,q3,,,3
 RSS,AG,ss,,,3
 RSX,AG,sx,,,3
 RSY,AG,sy,,,3
+R76,AG,r40,,,3
+R77,AG,r41,,,3
+R78,AG,r50,,,3
+R79,AG,r51,,,3
 RGA,AG,ga,,,3
 RGB,AG,gb,,,3
 RGC,AG,gc,,,3
@@ -212,6 +223,13 @@ RGA,S1,GA,,
 RGB,S1,GB,,
 RGC,S1,GC,,
 RGX,S1,GX,,
+R76,S1,T6X1,,
+R77,S1,T6Y1,,
+R77,S1,T6Y2,,
+R78,S1,T7X1,,
+R78,S1,T7X2,,
+R78,S1,T7X3,,
+R79,S1,T7Y1,,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -285,6 +303,20 @@ GC,09:40:00,09:40:00,GO3,0
 GC,09:55:00,09:55:00,GU,1
 GX,10:01:00,10:01:00,GU,0
 GX,10:30:00,10:30:00,GUD,1
+T6X1,14:30:00,14:30:00,T6A,0
+T6X1,15:00:00,15:00:00,T6N,1
+T6Y1,15:15:00,15:15:00,T6N,0
+T6Y1,15:30:00,15:30:00,T6J,1
+T6Y2,18:00:00,18:00:00,T6N,0
+T6Y2,18:20:00,18:20:00,T6J,1
+T7X1,14:30:00,14:30:00,T7A,0
+T7X1,15:00:00,15:00:00,T7Q,1
+T7X2,15:15:00,15:15:00,T7Q,0
+T7X2,15:30:00,15:30:00,T7K,1
+T7X3,19:20:00,19:20:00,T7Q,0
+T7X3,19:40:00,19:40:00,T7K,1
+T7Y1,15:15:00,15:15:00,T7Q,0
+T7Y1,15:30:00,15:30:00,T7L,1
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -314,6 +346,9 @@ SS,SS,2,600,,,TS1,TS2
 GU,GU,2,180,RGA,RGX,,
 GU,GU,2,180,RGB,RGX,,
 GU,GU,2,0,RGC,RGX,,
+T6N,T6N,3,,,,,
+T7Q,T7Q,2,120,,,,
+T7Q,T7Q,3,,R78,R78,,
 )"sv;
 
 timetable load() {
@@ -516,4 +551,48 @@ TEST(gtfs, transfer_rules_fast_rule_stays_on_its_route) {
                                    "2019-05-01 07:30 Europe/Berlin");
   ASSERT_EQ(1U, res_a.size());
   EXPECT_EQ(t("2019-05-01 10:30 Europe/Berlin"), begin(res_a)->dest_time_);
+}
+
+// (6) unqualified same-stop ban: transfers.txt T6N->T6N type=3 says no transfer
+//     is possible at T6N, for anyone. It is the stop's own transfer time, and a
+//     ban is not a very long time: neither the 15 min nor the 3 h connection
+//     may exist. Getting off at T6N as the destination is still fine.
+//     T6X1 (R76): T6A 14:30 -> T6N 15:00
+//     T6Y1 (R77): T6N 15:15 -> T6J 15:30
+//     T6Y2 (R77): T6N 18:00 -> T6J 18:20
+TEST(gtfs, transfer_rules_forbidden_same_stop_unqualified) {
+  auto const tt = load();
+
+  auto const to_n =
+      raptor_search(tt, nullptr, "T6A", "T6N", "2019-05-01 14:30 Europe/Berlin");
+  ASSERT_EQ(1U, to_n.size());
+
+  auto const res = raptor_search(tt, nullptr, "T6A", "T6J",
+                                 interval{t("2019-05-01 14:30 Europe/Berlin"),
+                                          t("2019-05-01 22:00 Europe/Berlin")});
+  EXPECT_EQ(0U, res.size());
+}
+
+// (7) route-qualified same-stop ban: T7Q->T7Q type=3 from_route=R78 to_route=R78
+//     bans changing between trips of R78 at T7Q; the unqualified T7Q->T7Q 120s row
+//     is the default for everyone else. The ban becomes the own transfer time
+//     of the virtual location R78 gets at T7Q. Stored as a duration it would
+//     wrap in the 8 bit field and a departure 260 min later would be
+//     reachable - it must not be.
+//     T7X1 (R78): T7A 14:30 -> T7Q 15:00
+//     T7X2 (R78): T7Q 15:15 -> T7K 15:30 (banned)
+//     T7X3 (R78): T7Q 19:20 -> T7K 19:40 (banned, 260 min later)
+//     T7Y1 (R79): T7Q 15:15 -> T7L 15:30 (default 2 min -> reachable)
+TEST(gtfs, transfer_rules_forbidden_same_stop_route) {
+  auto const tt = load();
+
+  auto const allowed =
+      raptor_search(tt, nullptr, "T7A", "T7L", "2019-05-01 14:30 Europe/Berlin");
+  ASSERT_EQ(1U, allowed.size());
+  EXPECT_EQ(t("2019-05-01 15:30 Europe/Berlin"), begin(allowed)->dest_time_);
+
+  auto const banned = raptor_search(tt, nullptr, "T7A", "T7K",
+                                    interval{t("2019-05-01 14:30 Europe/Berlin"),
+                                             t("2019-05-01 22:00 Europe/Berlin")});
+  EXPECT_EQ(0U, banned.size());
 }

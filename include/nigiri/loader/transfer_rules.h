@@ -113,7 +113,7 @@ void fold_pair_defaults(timetable& tt, vector_map<rule_idx_t, Rule>& rules) {
     pair_default.emplace(p, majority->d_);
 
     if (p.from_ == p.to_) {
-      tt.locations_.transfer_time_[p.from_] = majority->d_;
+      tt.locations_.transfer_time_[p.from_] = to_transfer_time(majority->d_);
     } else {
       // Add an unqualified rule
       // -> applies to all trips
@@ -163,11 +163,13 @@ inline bool derivable(member_flags const& from, member_flags const& to) {
 // rules only through their duration, so every loader can feed it whatever rule
 // representation it likes - it just has to resolve its rules to location pairs
 // first (which needs its own notion of route and trip) and split off virtual
-// locations for the qualified ones, starting at first_virt.
+// locations for the qualified ones, starting at first_virt. With rule_hubs
+// off, every cell is written and no hub is emitted.
 void write_transfer_rules(
     timetable&,
     hash_map<transfer_pair, candidate> const& most_specific,
     vector_map<rule_idx_t, duration_t> const& durations,
-    location_idx_t first_virt);
+    location_idx_t first_virt,
+    bool rule_hubs);
 
 }  // namespace nigiri::loader

@@ -78,7 +78,13 @@ struct journey {
   };
 
   bool dominates(journey const& o) const {
-    if (start_time_ <= dest_time_) {
+    // The search direction is read off the journey itself. A zero-duration
+    // journey (start == dest) says nothing about it, so it takes the other
+    // journey's direction - otherwise a backward search would compare it with
+    // forward semantics and keep a worse sibling next to it.
+    auto const fwd = start_time_ != dest_time_ ? start_time_ <= dest_time_
+                                               : o.start_time_ <= o.dest_time_;
+    if (fwd) {
       return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
              dest_time_ <= o.dest_time_;
     } else {

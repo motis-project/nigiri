@@ -22,6 +22,9 @@ struct loader_config {
   std::array<bool, kNumClasses> cars_allowed_default_{};
   std::array<bool, kNumClasses> reservation_not_required_default_{};
   bool extend_calendar_{false};
+  // transfers.txt rules that state one value for a whole cross product of
+  // locations are stored as a hub instead of one cell per pair
+  bool transfer_rule_hubs_{true};
   std::string user_script_{};
   hash_set<std::string> base_paths_{};
 };

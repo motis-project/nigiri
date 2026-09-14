@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "fmt/ostream.h"
 
 #include "utl/verify.h"
@@ -79,6 +81,15 @@ inline void serialize(Ctx&, footpath const*, cista::offset_t const) {}
 
 template <typename Ctx>
 inline void deserialize(Ctx const&, footpath*) {}
+
+// A duration meant as a stop's change time: a ban (footpath::kMaxDuration)
+// becomes kNoTransfer, everything else is clamped into the 8 bit field.
+inline u8_minutes to_transfer_time(duration_t const d) {
+  return d >= footpath::kMaxDuration
+             ? kNoTransfer
+             : u8_minutes{static_cast<std::uint8_t>(
+                   std::clamp<duration_t::rep>(d.count(), 0, 254))};
+}
 
 }  // namespace nigiri
 

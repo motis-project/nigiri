@@ -545,10 +545,12 @@ private:
     };
 
     auto const stays_l = via_stays(l);
+    auto const own = min_transfer_time(location_idx_t{l});
+    if (own == kNoTransfer) {
+      return true;  // no change here, so no bound can be derived from one
+    }
     auto const transfer = dir(adjusted_transfer_time(
-        transfer_time_settings_,
-        static_cast<int>(
-            min_transfer_time(location_idx_t{l}).count())));
+        transfer_time_settings_, static_cast<int>(own.count())));
     return is_better_or_eq(t, row[l][slot] + transfer + dir(stays_l));
   }
 
@@ -760,12 +762,15 @@ private:
             loc{tt_, location_idx_t{i}}, v, to_unix(tmp_time), is_dest, is_via,
             target_v, stay);
 
+        auto const own = min_transfer_time(location_idx_t{i});
+        auto const arrives_at_dest = !is_intermodal_dest() && is_dest;
+        if (own == kNoTransfer && !arrives_at_dest) {
+          continue;  // no change of vehicle at this stop (transfers.txt type 3)
+        }
         auto const transfer_time =
-            (!is_intermodal_dest() && is_dest)
-                ? 0
-                : dir(adjusted_transfer_time(
-                      transfer_time_settings_,
-                      min_transfer_time(location_idx_t{i}).count()));
+            arrives_at_dest ? 0
+                            : dir(adjusted_transfer_time(
+                                  transfer_time_settings_, own.count()));
         auto const fp_target_time =
             clamp(tmp_time + transfer_time + dir(stay.count()));
 
@@ -862,9 +867,8 @@ private:
     if (per_round) {
       utl::fill(state_.hub_slots_, kUnsetHub);
     }
-    auto const& gather_edges =
-        kFwd ? tt_.locations_.hub_in_by_loc_[prf_idx_]
-             : tt_.locations_.hub_out_by_loc_[prf_idx_];
+    auto const& gather_edges = kFwd ? tt_.locations_.hub_in_by_loc_[prf_idx_]
+                                    : tt_.locations_.hub_out_by_loc_[prf_idx_];
     if (gather_edges.size() == 0U) {
       return;
     }
@@ -901,14 +905,13 @@ private:
     // A hub derives every one of its pairs at the same duration, so the weight
     // is applied once per hub here - no matter which of the two lists the
     // search direction gathers from.
-    auto const& scatter_edges =
-        kFwd ? tt_.locations_.hub_out_[prf_idx_]
-             : tt_.locations_.hub_in_[prf_idx_];
+    auto const& scatter_edges = kFwd ? tt_.locations_.hub_out_[prf_idx_]
+                                     : tt_.locations_.hub_in_[prf_idx_];
     state_.hub_mark_.for_each_set_bit([&](std::uint64_t const h) {
       auto const h_idx = hub_idx_t{static_cast<hub_idx_t::value_t>(h)};
       auto const t = tt_.locations_.hub_time_[prf_idx_][h_idx];
-      auto const w =
-          t.count() == 0 ? 0
+      auto const w = t.count() == 0
+                         ? 0
                          : adjusted_transfer_time(transfer_time_settings_,
                                                   static_cast<int>(t.count()));
       auto const slot0 = std::size_t{h} * (kMaxVias + 1U);
@@ -1505,8 +1508,8 @@ private:
         if (prev_round_time != kInvalid &&
             is_better_or_eq(prev_round_time, et_time_at_stop)) {
           auto const [day, mam] = split(prev_round_time);
-          auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
-                                                     project(stp.location_idx()));
+          auto const new_et = get_earliest_transport(
+              k, r, stop_idx, day, mam, project(stp.location_idx()));
           current_best[v] =
               get_best(current_best[v], best_[l_idx][v], tmp_[l_idx][v]);
           if (new_et.is_valid() &&

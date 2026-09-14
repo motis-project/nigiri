@@ -3,9 +3,9 @@
 #include <cstdlib>
 #include <map>
 #include <optional>
-#include <string>
 #include <span>
 #include <stack>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -145,18 +145,14 @@ void copy_footpaths_to_generated_children(timetable& tt) {
   }
 }
 
-
-
-
-
 // Sorted rule targets per location and the bases they sit at. A walk asks
 // only "does this member have a rule into that stop", which is a binary
 // search in the second list; the first is needed for the few that answer yes.
 struct rule_index {
   explicit rule_index(timetable& tt) : tt_{tt} {
     auto const n = static_cast<std::size_t>(cista::to_idx(tt.n_locations()));
-    auto const n_rules =
-        std::min(static_cast<std::size_t>(tt.locations_.transfer_rule_fps_.size()), n);
+    auto const n_rules = std::min(
+        static_cast<std::size_t>(tt.locations_.transfer_rule_fps_.size()), n);
     bases_.resize(n);
     for (auto l = location_idx_t{0U}; l != location_idx_t{n_rules}; ++l) {
       utl::sort(tt.locations_.transfer_rule_fps_[l],
@@ -189,8 +185,9 @@ struct rule_index {
     }
     auto const b = tt_.locations_.transfer_rule_fps_[from];
     auto const it = std::lower_bound(
-        begin(b), end(b), to,
-        [](footpath const fp, location_idx_t const t) { return fp.target() < t; });
+        begin(b), end(b), to, [](footpath const fp, location_idx_t const t) {
+          return fp.target() < t;
+        });
     return it != end(b) && it->target() == to;
   }
 
@@ -240,8 +237,9 @@ void build_walk_hubs_impl(timetable& tt,
   auto const idx = rule_index{tt};
   auto const has_rule = [&](location_idx_t const l, footpath const fp) {
     return to_idx(l) < tt.locations_.transfer_rule_fps_.size() &&
-           utl::any_of(tt.locations_.transfer_rule_fps_[l],
-                       [&](footpath const r) { return r.target() == fp.target(); });
+           utl::any_of(
+               tt.locations_.transfer_rule_fps_[l],
+               [&](footpath const r) { return r.target() == fp.target(); });
   };
 
   auto extra = mutable_fws_multimap<location_idx_t, footpath>{};
@@ -391,16 +389,16 @@ void build_walk_hubs(timetable& tt,
       walk_hub_in, walk_hub_out, walk_hub_time);
 }
 
-
 // A profile whose walking layer somebody else computes (street routing) gets
 // its hubs here: the rule-derived prefix of the default profile holds in every
 // profile - a rule fixes the transfer time and does not care how the walks
 // were derived - and the walks are built from that profile's own footpaths.
 // Called with the lists still pending, so the pairs no hub covers can still be
 // added.
-void build_profile_hubs(timetable& tt,
-                        profile_idx_t const prf,
-                        vector_map<location_idx_t, std::vector<footpath>>& fps) {
+void build_profile_hubs(
+    timetable& tt,
+    profile_idx_t const prf,
+    vector_map<location_idx_t, std::vector<footpath>>& fps) {
   // Snapshot the rule hubs before clearing: for kDefaultProfile the source and
   // the destination are the same lists.
   auto rule_in = std::vector<std::vector<location_idx_t>>{};
@@ -460,8 +458,6 @@ void build_profile_hubs(timetable& tt,
     tt.locations_.hub_out_by_loc_[prf].emplace_back(out_by_loc[l]);
   }
 }
-
-
 
 // The rule cells the loader had to write out, one footpath each, are what the
 // routing walks per marked location - on Switzerland 1.6 million of them. A
@@ -801,6 +797,9 @@ void build_hubs(timetable& tt,
     // beelines) that must not flip the classification the loader elided
     // against.
     auto const d = tt.locations_.transfer_time_[base];
+    if (d == kNoTransfer) {
+      continue;  // nobody changes here, so nothing is derived at "d"
+    }
     auto const is_slow = [&](location_idx_t const m) {
       return m != base && tt.locations_.transfer_time_[m] > d;
     };
@@ -837,7 +836,8 @@ void build_hubs(timetable& tt,
   }
 
   if (std::getenv("NIGIRI_HUB_STATS") != nullptr) {
-    auto in_e = std::uint64_t{0}, out_e = std::uint64_t{0}, pairs = std::uint64_t{0};
+    auto in_e = std::uint64_t{0}, out_e = std::uint64_t{0},
+         pairs = std::uint64_t{0};
     auto max_at = std::size_t{0};
     for (auto h = hub_idx_t{0U}; h != hub_idx_t{in.size()}; ++h) {
       in_e += in[h].size();
@@ -861,7 +861,6 @@ void build_hubs(timetable& tt,
   }
 }
 
-
 // Temporary (NIGIRI_VIRT_MERGE): how many virtual locations are behaviourally
 // the same node? Two can only be one if every transfer they take part in
 // matches - the cells written for them in both directions, and the hubs they
@@ -870,7 +869,8 @@ void build_hubs(timetable& tt,
 // normalised so that a pair differing only in naming itself still matches.
 void measure_virt_merge(timetable const& tt) {
   auto const n = cista::to_idx(tt.n_locations());
-  auto in_cells = std::vector<std::vector<std::pair<location_idx_t, duration_t>>>(n);
+  auto in_cells =
+      std::vector<std::vector<std::pair<location_idx_t, duration_t>>>(n);
   auto const n_rules = std::min(
       static_cast<std::size_t>(tt.locations_.transfer_rule_fps_.size()),
       static_cast<std::size_t>(n));
@@ -924,7 +924,8 @@ void measure_virt_merge(timetable const& tt) {
   };
 
   auto total = std::size_t{0}, classes = std::size_t{0};
-  auto biggest = std::vector<std::tuple<std::size_t, std::size_t, location_idx_t>>{};
+  auto biggest =
+      std::vector<std::tuple<std::size_t, std::size_t, location_idx_t>>{};
   for (auto const& [base, virts] : by_base) {
     auto keys = hash_set<cista::hash_t>{};
     for (auto const v : virts) {
@@ -950,7 +951,6 @@ void measure_virt_merge(timetable const& tt) {
           static_cast<double>(std::max(total, std::size_t{1})),
       top);
 }
-
 
 // Temporary (NIGIRI_EDGE_DUMP=<from-id-substr>,<to-id-substr>): every edge the
 // routing can take between the members of two stops, and where it comes from.
@@ -1004,8 +1004,8 @@ void dump_edges(timetable const& tt, std::string const& spec) {
       auto hub_id = -1;
       for (auto const h : tt.locations_.hub_in_by_loc_[kDefaultProfile][m]) {
         for (auto const x : tt.locations_.hub_out_[kDefaultProfile][h]) {
-          if (x == t &&
-              (hub_d.count() < 0 || tt.locations_.hub_time_[kDefaultProfile][h] < hub_d)) {
+          if (x == t && (hub_d.count() < 0 ||
+                         tt.locations_.hub_time_[kDefaultProfile][h] < hub_d)) {
             hub_d = tt.locations_.hub_time_[kDefaultProfile][h];
             hub_id = static_cast<int>(to_idx(h));
           }
@@ -1108,8 +1108,8 @@ void prune_hub_covered_footpaths(timetable& tt) {
   };
 
   auto derived = hash_map<std::uint64_t, int>{};
-  for (auto h = hub_idx_t{0U}; h != hub_idx_t{tt.locations_.hub_time_[p].size()};
-       ++h) {
+  for (auto h = hub_idx_t{0U};
+       h != hub_idx_t{tt.locations_.hub_time_[p].size()}; ++h) {
     auto const w = static_cast<int>(tt.locations_.hub_time_[p][h].count());
     for (auto const u : tt.locations_.hub_in_[p][h]) {
       for (auto const v : tt.locations_.hub_out_[p][h]) {

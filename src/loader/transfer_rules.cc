@@ -1,7 +1,5 @@
 #include "nigiri/loader/transfer_rules.h"
 
-#include <cstdlib>
-
 #include <algorithm>
 #include <vector>
 
@@ -19,7 +17,8 @@ void write_transfer_rules(
     timetable& tt,
     hash_map<transfer_pair, candidate> const& most_specific,
     vector_map<rule_idx_t, duration_t> const& durations,
-    location_idx_t const first_virt) {
+    location_idx_t const first_virt,
+    bool const rule_hubs) {
   auto const base_of = [&](location_idx_t const l) {
     return tt.locations_.types_[l] == location_type::kVirt
                ? tt.locations_.parents_[l]
@@ -58,7 +57,6 @@ void write_transfer_rules(
   // which a hub never does. So elision stays on even in reference mode - the
   // pairs are materialised from the hubs instead, see build_footpaths.
   static auto const materialize = false;
-  static auto const no_rule_hubs = std::getenv("NIGIRI_NO_RULE_HUBS") != nullptr;
   auto const is_derivable = [&](location_idx_t const x, location_idx_t const y,
                                 location_idx_t const base) {
     if (materialize) {
@@ -87,14 +85,16 @@ void write_transfer_rules(
     hash_set<location_idx_t> x_, y_;
   };
   auto cross = hash_map<rule_idx_t, cross_rule>{};
-  for (auto const& [xy, c] : most_specific) {
-    if (base_of(xy.from_) == base_of(xy.to_)) {
-      continue;  // covered by the base's own hubs
+  if (rule_hubs) {  // otherwise nothing is grouped and the cells carry it all
+    for (auto const& [xy, c] : most_specific) {
+      if (base_of(xy.from_) == base_of(xy.to_)) {
+        continue;  // covered by the base's own hubs
+      }
+      auto& g = cross[c.rule_idx_];
+      ++g.n_cells_;
+      g.x_.insert(xy.from_);
+      g.y_.insert(xy.to_);
     }
-    auto& g = cross[c.rule_idx_];
-    ++g.n_cells_;
-    g.x_.insert(xy.from_);
-    g.y_.insert(xy.to_);
   }
 
   // the slow cells of a hub'd rule, by which side they touch
@@ -115,9 +115,6 @@ void write_transfer_rules(
     tt.locations_.hub_time_[kDefaultProfile].push_back(d);
   };
   for (auto const& [rule_idx, g] : cross) {
-    if (no_rule_hubs) {
-      continue;  // reference mode: the cells carry it, no hub is emitted
-    }
     auto const cells = g.x_.size() * g.y_.size();
     if (cells <= g.x_.size() + g.y_.size()) {
       continue;  // a hub would not even be smaller than the cells
@@ -193,16 +190,12 @@ void write_transfer_rules(
     tt.locations_.transfer_rule_fps_[xy.from_].emplace_back(xy.to_, d);
   }
 
-  // Apply the default between all pairs without a rule. Driven by the stop's
-  // children, not by the range of virtual locations: one that was merged into
-  // another is no longer a child, and nothing should be stated about it.
+  // Apply the default between all pairs without a rule.
   for (auto virt = first_virt; virt != tt.n_locations(); ++virt) {
     auto const base = tt.locations_.parents_[virt];
-    if (utl::none_of(tt.locations_.children_[base],
-                     [&](location_idx_t const c) { return c == virt; })) {
-      continue;  // merged into another virtual location of its stop
-    }
-    auto const d = duration_t{tt.locations_.transfer_time_[base]};
+    auto const own = tt.locations_.transfer_time_[base];
+    auto const d =
+        own == kNoTransfer ? footpath::kMaxDuration : duration_t{own};
     auto const add_default_rule = [&](location_idx_t const x,
                                       location_idx_t const y) {
       if (!most_specific.contains({x, y}) && !is_derivable(x, y, base)) {
@@ -219,60 +212,6 @@ void write_transfer_rules(
       }
     }
   }
-
-  // Every pair inside a base must be reachable: either a cell states it, or a
-  // hub derives it. A pair that is neither is a transfer the feed allows and
-  // the timetable has lost.
-  if (std::getenv("NIGIRI_VERIFY_ELISION") != nullptr) {
-    auto missing = std::size_t{0U}, checked = std::size_t{0U};
-    auto shown = 0;
-    for (auto base = location_idx_t{0U}; base != first_virt; ++base) {
-      auto members = std::vector<location_idx_t>{base};
-      for (auto const c : tt.locations_.children_[base]) {
-        if (tt.locations_.types_[c] == location_type::kVirt) {
-          members.push_back(c);
-        }
-      }
-      if (members.size() < 2U) {
-        continue;
-      }
-      for (auto const x : members) {
-        for (auto const y : members) {
-          if (x == y) {
-            continue;
-          }
-          ++checked;
-          auto stated = false;
-          if (to_idx(x) < tt.locations_.transfer_rule_fps_.size()) {
-            for (auto const fp : tt.locations_.transfer_rule_fps_[x]) {
-              if (fp.target() == y) {
-                stated = true;
-                break;
-              }
-            }
-          }
-          if (stated || is_derivable(x, y, base)) {
-            continue;
-          }
-          ++missing;
-          if (shown++ < 5) {
-            log(log_lvl::info, "elision.verify",
-                "unreachable pair: base={} x={} y={} slow(x)={} slow_from(x)={} "
-                "slow_to(y)={}",
-                tt.locations_.ids_[base].view(), cista::to_idx(x),
-                cista::to_idx(y),
-                tt.locations_.transfer_time_[x] >
-                    tt.locations_.transfer_time_[base],
-                slow_from.contains(x), slow_to.contains(y));
-          }
-        }
-      }
-    }
-    log(log_lvl::info, "elision.verify",
-        "intra-base pairs: {} checked, {} neither written nor derivable",
-        checked, missing);
-  }
-
 }
 
 }  // namespace nigiri::loader
