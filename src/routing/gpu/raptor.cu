@@ -31,6 +31,7 @@
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
+#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/gpu/cuda_check.cuh"
 #include "nigiri/routing/gpu/device_buffer.cuh"
 #include "nigiri/routing/gpu/device_timetable.cuh"
@@ -204,8 +205,8 @@ struct gpu_timetable::impl {
       for (auto l = 0U; l != tt.n_locations(); ++l) {
         auto const p = project(tt, location_idx_t{l});
         // grown lazily (see sync_base_transfer_time), so it can be short
-        btt[l] = to_idx(p) < src.size() ? src[p]
-                                        : tt.locations_.transfer_time_[p];
+        btt[l] =
+            to_idx(p) < src.size() ? src[p] : tt.locations_.transfer_time_[p];
       }
       base_transfer_time_ = to_device(btt);
     }
@@ -219,7 +220,8 @@ struct gpu_timetable::impl {
         footpaths_in_[p] = device_vecvec<fp_t>{
             build_projected_footpaths(tt, tt.locations_.footpaths_in_[p])};
       } else {
-        footpaths_out_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_out_[p]};
+        footpaths_out_[p] =
+            device_vecvec<fp_t>{tt.locations_.footpaths_out_[p]};
         footpaths_in_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_in_[p]};
       }
       hub_in_[p] = device_vecvec<hub_members_t>{tt.locations_.hub_in_[p]};
@@ -250,22 +252,26 @@ struct gpu_timetable::impl {
           }
         }
       };
-      auto in_l = std::vector<std::uint32_t>{}, in_h = std::vector<std::uint32_t>{};
+      auto in_l = std::vector<std::uint32_t>{},
+           in_h = std::vector<std::uint32_t>{};
       by_loc(tt.locations_.hub_in_by_loc_[p], in_l, in_h);
       hub_in_by_loc_flat_l_[p] = to_device(in_l);
       hub_in_by_loc_flat_h_[p] = to_device(in_h);
 
-      auto oh_h = std::vector<std::uint32_t>{}, oh_l = std::vector<std::uint32_t>{};
+      auto oh_h = std::vector<std::uint32_t>{},
+           oh_l = std::vector<std::uint32_t>{};
       by_hub(tt.locations_.hub_out_[p], oh_h, oh_l);
       hub_out_by_hub_flat_h_[p] = to_device(oh_h);
       hub_out_by_hub_flat_l_[p] = to_device(oh_l);
 
-      auto ol_l = std::vector<std::uint32_t>{}, ol_h = std::vector<std::uint32_t>{};
+      auto ol_l = std::vector<std::uint32_t>{},
+           ol_h = std::vector<std::uint32_t>{};
       by_loc(tt.locations_.hub_out_by_loc_[p], ol_l, ol_h);
       hub_out_by_loc_flat_l_[p] = to_device(ol_l);
       hub_out_by_loc_flat_h_[p] = to_device(ol_h);
 
-      auto ih_h = std::vector<std::uint32_t>{}, ih_l = std::vector<std::uint32_t>{};
+      auto ih_h = std::vector<std::uint32_t>{},
+           ih_l = std::vector<std::uint32_t>{};
       by_hub(tt.locations_.hub_in_[p], ih_h, ih_l);
       hub_in_by_hub_flat_h_[p] = to_device(ih_h);
       hub_in_by_hub_flat_l_[p] = to_device(ih_l);
@@ -819,8 +825,8 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
   utl::verify(rtt == nullptr || gpu_rtt_ != nullptr,
               "GPU raptor: rt search requires the uploaded device rt "
               "timetable (rt_timetable::gpu_rtt_)");
-  state_.impl_->tt_ = project_virts_ ? state_.impl_->tt_projected_
-                                     : state_.impl_->tt_base_;
+  state_.impl_->tt_ =
+      project_virts_ ? state_.impl_->tt_projected_ : state_.impl_->tt_base_;
   state_.impl_->resize_rt(rtt == nullptr ? 0U : rtt->n_rt_transports());
   reset_arrivals();
   state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest, td_dist_to_dest);
@@ -1094,28 +1100,11 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
                                                 unixtime_t worst_time_at_dest,
                                                 pareto_set<journey>& results) {
   auto& s = *state_.impl_;
-  auto const has_hubs =
-      !s.hub_slots_.empty() && s.tt_.n_hubs_[prf_idx_] != 0U;
-
-  auto const dbg = std::getenv("NIGIRI_PONG_DEBUG") != nullptr;
-  auto const n_before = results.size();
-  if (dbg) {
-    std::printf(
-        "gpu execute dir=%s start=%lld max_tr=%u worst=%lld n_starts=%zu "
-        "intermodal_dest=%d\n",
-        kFwd ? "fwd" : "bwd",
-        static_cast<long long>(start_time.time_since_epoch().count()),
-        static_cast<unsigned>(max_transfers),
-        static_cast<long long>(worst_time_at_dest.time_since_epoch().count()),
-        starts_.size(), s.is_intermodal_dest_[kDirIdx] ? 1 : 0);
-  }
+  auto const has_hubs = !s.hub_slots_.empty() && s.tt_.n_hubs_[prf_idx_] != 0U;
 
   // No start = nothing to do.
   // guard against UB: starts_pinned with size=0 -> data=NULL -> memcpy to NULL
   if (starts_.empty()) {
-    if (dbg) {
-      std::printf("gpu execute: no starts -> return\n");
-    }
     return;
   }
 
@@ -1173,7 +1162,6 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       .tmp_ = {to_mutable_view(s.tmp_), n_locations_},
       .hub_slots_ = thrust::raw_pointer_cast(s.hub_slots_.data()),
       .n_hubs_ = static_cast<std::uint32_t>(s.hub_slots_.size()),
-      .no_hubs_ = std::getenv("NIGIRI_GPU_NO_HUBS") != nullptr,
       .time_at_dest_ = {to_mutable_view(s.time_at_dest_), n_locations_},
       .station_mark_ = {to_mutable_view(s.station_mark_)},
       .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
@@ -1247,10 +1235,6 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       }
     }
     launch(begin_footpath_phase_kernel<SearchDir, WithBounds>, s.stream_, r);
-    if (std::getenv("NIGIRI_GPU_HUB_DEBUG") != nullptr && k == 1U) {
-      std::printf("gpu: hub_slots=%zu n_hubs[0]=%u\n", s.hub_slots_.size(),
-                  s.tt_.n_hubs_[0]);
-    }
     // Only profiles carrying the transfers.txt rules have hubs. hub_slots_ is
     // sized for the largest profile, so testing it launched both hub kernels
     // every round for the projecting profiles too, just to have them return
@@ -1436,11 +1420,6 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     // is_reconstructed_ stays false
     // -> only reconstruct() called by pong/search.h might set it to true
     results.add(std::move(j));
-  }
-
-  if (dbg) {
-    std::printf("gpu execute done: results %zu -> %zu\n", n_before,
-                results.size());
   }
 }
 
@@ -1640,27 +1619,39 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
     auto const direct_start_ok =
         is_fwd ? j.start_time_ <= start_t : j.start_time_ >= start_t;
     if (!is_journey_start(start_l) || !direct_start_ok) {
-      auto const fps = is_fwd
-                           ? tt_.locations_.footpaths_in_[q.prf_idx_][start_l]
-                           : tt_.locations_.footpaths_out_[q.prf_idx_][start_l];
+      // get_starts seeded the stop from every start it can walk from, over a
+      // footpath or through a hub (see start_times.cc), at the shortest such
+      // walk - so that is the leg to put back
       auto best = std::optional<footpath>{};
-      for (auto const fp : fps) {
+      auto const consider = [&](footpath const fp) {
         if ((!best.has_value() || fp.duration() < best->duration()) &&
             is_journey_start(fp.target())) {
           best = fp;
         }
+        return true;
+      };
+      for (auto const fp :
+           is_fwd ? tt_.locations_.footpaths_in_[q.prf_idx_][start_l]
+                  : tt_.locations_.footpaths_out_[q.prf_idx_][start_l]) {
+        consider(fp);
       }
+      for_each_hub_source<SearchDir>(tt_, q.prf_idx_, start_l, consider);
       if (best.has_value()) {
         auto const dur = duration_t{adjusted_transfer_time(
             q.transfer_time_settings_, best->duration().count())};
         auto const fp_arr = j.start_time_ + (is_fwd ? dur : -dur);
         if (is_fwd ? fp_arr <= start_t : fp_arr >= start_t) {
-          auto const lg = journey::leg{
-              SearchDir,     best->target(), start_l,
-              j.start_time_, fp_arr,         footpath{best->target(), dur}};
+          auto lg = journey::leg{SearchDir, best->target(),
+                                 start_l,   j.start_time_,
+                                 fp_arr,    footpath{best->target(), dur}};
           if (is_fwd) {
             j.legs_.insert(begin(j.legs_), lg);
           } else {
+            // the last walk of the journey starts when the ride before it
+            // ends, not as late as the search start allows - the same
+            // re-anchoring the CPU reconstruct applies to every footpath
+            lg.dep_time_ = j.legs_.back().arr_time_;
+            lg.arr_time_ = lg.dep_time_ + dur;
             j.legs_.push_back(lg);
           }
         }

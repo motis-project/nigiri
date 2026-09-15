@@ -232,10 +232,13 @@ void get_route_neighborhood(timetable const& tt,
     // Location from which we transfer
     auto const from = stop{stop_seq[i]}.location_idx();
 
-    // Transfer: reflexive footpath
-    add_non_uturn_transfers(tt, route_from, from_stop_idx,
-                            footpath{from, tt.locations_.transfer_time_[from]},
-                            neighborhood, stats);
+    // Transfer: reflexive footpath (none at a banned stop)
+    if (tt.locations_.transfer_time_[from] != kNoTransfer) {
+      add_non_uturn_transfers(
+          tt, route_from, from_stop_idx,
+          footpath{from, tt.locations_.transfer_time_[from]}, neighborhood,
+          stats);
+    }
 
     // Outgoing footpaths
     for (auto const& fp : tt.locations_.footpaths_out_[prf_idx][from]) {
@@ -435,9 +438,11 @@ void preprocess_transport(timetable const& tt,
 
     // init the reached reduction data structure
     s.rr_arr_.update(from_stop, t_arr, traffic_days);
-    s.rr_ch_.update(from_stop,
-                    t_arr + tt.locations_.transfer_time_[from_stop].count(),
-                    traffic_days);
+    if (tt.locations_.transfer_time_[from_stop] != kNoTransfer) {
+      s.rr_ch_.update(from_stop,
+                      t_arr + tt.locations_.transfer_time_[from_stop].count(),
+                      traffic_days);
+    }
     for (auto const& fp : tt.locations_.footpaths_out_[prf_idx][from_stop]) {
       s.rr_arr_.update(fp.target(), t_arr + fp.duration_, traffic_days);
       s.rr_ch_.update(fp.target(), t_arr + fp.duration_, traffic_days);
@@ -464,10 +469,12 @@ void preprocess_transport(timetable const& tt,
 
         s.rr_arr_.update(u_stp, u_arr_rel_t_first_dep, transfer->bf_,
                          &improvement);
-        s.rr_ch_.update(
-            u_stp,
-            u_arr_rel_t_first_dep + tt.locations_.transfer_time_[u_stp].count(),
-            transfer->bf_, &improvement);
+        if (tt.locations_.transfer_time_[u_stp] != kNoTransfer) {
+          s.rr_ch_.update(u_stp,
+                          u_arr_rel_t_first_dep +
+                              tt.locations_.transfer_time_[u_stp].count(),
+                          transfer->bf_, &improvement);
+        }
 
         for (auto const& fp_r :
              tt.locations_.footpaths_out_[profile_idx_t{0U}][u_stp]) {

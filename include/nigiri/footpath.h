@@ -91,6 +91,12 @@ inline u8_minutes to_transfer_time(duration_t const d) {
                    std::clamp<duration_t::rep>(d.count(), 0, 254))};
 }
 
+// The inverse: a stored change time as a duration, the ban as
+// footpath::kMaxDuration again - never as 255 minutes.
+inline duration_t from_transfer_time(u8_minutes const t) {
+  return t == kNoTransfer ? footpath::kMaxDuration : duration_t{t};
+}
+
 }  // namespace nigiri
 
 template <>

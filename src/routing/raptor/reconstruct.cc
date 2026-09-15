@@ -10,6 +10,7 @@
 #include "nigiri/common/delta_t.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/location_match_mode.h"
+#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/raptor/raptor_state.h"
@@ -42,30 +43,6 @@ bool is_journey_start(timetable const& tt,
     return matches(tt, q.start_match_mode_,
                    project_virt(tt, q.prf_idx_, o.target()), candidate_l);
   });
-}
-
-// Enumerates the sources of the hub-derived transfers into l as footpaths
-// s -> l at w_in + w_out (see raptor expand_hubs). fn returns false to stop.
-template <direction SearchDir>
-void for_each_hub_source(timetable const& tt,
-                         profile_idx_t const prf_idx,
-                         location_idx_t const l,
-                         auto&& fn) {
-  constexpr auto const kFwd = SearchDir == direction::kForward;
-  auto const& by_loc = kFwd ? tt.locations_.hub_out_by_loc_[prf_idx]
-                            : tt.locations_.hub_in_by_loc_[prf_idx];
-  if (by_loc.size() == 0U) {
-    return;
-  }
-  for (auto const h : by_loc[l]) {
-    auto const d = tt.locations_.hub_time_[prf_idx][h];
-    for (auto const source : (kFwd ? tt.locations_.hub_in_[prf_idx]
-                                   : tt.locations_.hub_out_[prf_idx])[h]) {
-      if (source != l && !fn(footpath{source, d})) {
-        return;
-      }
-    }
-  }
 }
 
 template <direction SearchDir, via_offset_t Vias>
@@ -860,17 +837,11 @@ void reconstruct_journey_with_vias(timetable const& tt,
       // A projected profile relaxes an edge that ends at a virtual location
       // onto the stop it was split off, so the edges arriving at `l` are its
       // own plus those of its virtual children.
-      static auto const rev = std::getenv("NIGIRI_REC_REVERSE") != nullptr;
       auto const try_fps = [&](location_idx_t const x)
           -> std::optional<std::pair<journey::leg, journey::leg>> {
         auto const fps_fwd = kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][x]
                                   : tt.locations_.footpaths_out_[q.prf_idx_][x];
-        auto fps_vec = std::vector<footpath>{begin(fps_fwd), end(fps_fwd)};
-        if (rev) {
-          std::reverse(begin(fps_vec), end(fps_vec));
-        }
-        auto const& fps = fps_vec;
-        for (auto const& fp : fps) {
+        for (auto const fp : fps_fwd) {
           auto fp_legs = check_fp(k, l, curr_time, fp, true, false);
           if (fp_legs.has_value()) {
             return fp_legs;
@@ -879,10 +850,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
         return std::nullopt;
       };
       if (auto fp_legs = try_fps(l); fp_legs.has_value()) {
-        if (std::getenv("NIGIRI_REC_TRACE") != nullptr) {
-          fmt::print("FPOK k={} l={} curr={}\n", k, to_idx(l),
-                     delta_to_unix(base, curr_time));
-        }
         return std::move(*fp_legs);
       }
       if (q.prf_idx_ != kDefaultProfile) {
@@ -899,20 +866,11 @@ void reconstruct_journey_with_vias(timetable const& tt,
     {  // hub-derived transfers: l is an out-target of hub h fed by s
        // -> pair (s -> l) at w_in + w_out (see raptor expand_hubs)
       auto legs = std::optional<std::pair<journey::leg, journey::leg>>{};
-      auto hub_fp = footpath{};
       for_each_hub_source<SearchDir>(tt, q.prf_idx_, l, [&](footpath const fp) {
         legs = check_fp(k, l, curr_time, fp, true, false);
-        if (legs.has_value()) {
-          hub_fp = fp;
-        }
         return !legs.has_value();
       });
       if (legs.has_value()) {
-        if (std::getenv("NIGIRI_REC_TRACE") != nullptr) {
-          fmt::print("HUBSRC k={} l={} <- {} ({} min) explained by hub\n", k,
-                     to_idx(l), to_idx(hub_fp.target()),
-                     hub_fp.duration().count());
-        }
         return std::move(*legs);
       }
     }
@@ -940,30 +898,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
     }
 
-    if (std::getenv("NIGIRI_RECONSTRUCT_DEBUG") != nullptr) {
-      // what the label could have come from, and what the candidates say
-      fmt::print("RECFAIL k={} l={} curr={} n_in_fp={}\n", k,
-                 tt.locations_.ids_[l].view(), delta_to_unix(base, curr_time),
-                 (kFwd ? tt.locations_.footpaths_in_[q.prf_idx_]
-                       : tt.locations_.footpaths_out_[q.prf_idx_])[l]
-                     .size());
-      for (auto const& fp :
-           (kFwd ? tt.locations_.footpaths_in_[q.prf_idx_]
-                 : tt.locations_.footpaths_out_[q.prf_idx_])[l]) {
-        auto const src = fp.target();
-        auto const nm =
-            tt.locations_.ids_[src].view().empty()
-                ? fmt::format(
-                      "#{}(virt of {})", to_idx(src),
-                      tt.locations_.ids_[tt.locations_.parents_[src]].view())
-                : std::string{tt.locations_.ids_[src].view()};
-        fmt::print(
-            "  cand {} d={} round_times[k]={} round_times[k-1]={}\n", nm,
-            fp.duration().count(),
-            static_cast<int>(round_times[k][to_idx(src)][v]),
-            k == 0U ? 0 : static_cast<int>(round_times[k - 1][to_idx(src)][v]));
-      }
-    }
     throw utl::fail(
         "reconstruction failed at k={}, t={}, v={}, stop={}, time={}", k,
         j.transfers_, v, loc{tt, l}, delta_to_unix(base, curr_time));

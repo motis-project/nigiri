@@ -126,6 +126,21 @@ T7A,T7A,,61.0,6.0,,,
 T7Q,T7Q,,61.0,6.5,,,
 T7K,T7K,,61.0,7.0,,,
 T7L,T7L,,61.0,7.5,,,
+T8A,T8A,,62.0,6.0,,,
+T8Q,T8Q,,62.0,6.5,,,
+T8K,T8K,,62.0,7.0,,,
+T8L,T8L,,62.0,7.2,,,
+T8M,T8M,,62.0005,7.5,,,
+T9A,T9A,,63.0,6.0,,,
+T9S,T9S,,63.0,6.5,,1,
+T9S1,T9S1,,63.0001,6.5,,,T9S
+T9S2,T9S2,,63.0002,6.5,,,T9S
+T9T,T9T,,63.0006,6.5,,1,
+T9T1,T9T1,,63.0003,6.5,,,T9T
+T9T2,T9T2,,63.0004,6.5,,,T9T
+T9T3,T9T3,,63.0005,6.5,,,T9T
+T9B,T9B,,63.0,7.0,,,
+T9C,T9C,,63.0,7.5,,,
 A6,A6,,55.0,6.0,,,
 A7,A7,,55.0,6.2,,,
 N,N,,55.0,6.5,,,
@@ -181,6 +196,11 @@ R76,AG,r40,,,3
 R77,AG,r41,,,3
 R78,AG,r50,,,3
 R79,AG,r51,,,3
+R80,AG,r52,,,3
+R81,AG,r53,,,3
+R90,AG,r54,,,3
+R91,AG,r55,,,3
+R92,AG,r56,,,3
 RGA,AG,ga,,,3
 RGB,AG,gb,,,3
 RGC,AG,gc,,,3
@@ -230,6 +250,16 @@ R78,S1,T7X1,,
 R78,S1,T7X2,,
 R78,S1,T7X3,,
 R79,S1,T7Y1,,
+R80,S1,T8X1,,
+R80,S1,T8X2,,
+R81,S1,T8Y1,,
+R90,S1,T9X1,,
+R90,S1,T9X2,,
+R91,S1,T9Y1,,
+R91,S1,T9Y2,,
+R91,S1,T9Y3,,
+R91,S1,T9Y4,,
+R92,S1,T9Z1,,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -317,6 +347,26 @@ T7X3,19:20:00,19:20:00,T7Q,0
 T7X3,19:40:00,19:40:00,T7K,1
 T7Y1,15:15:00,15:15:00,T7Q,0
 T7Y1,15:30:00,15:30:00,T7L,1
+T8X1,09:30:00,09:30:00,T8A,0
+T8X1,10:00:00,10:00:00,T8Q,1
+T8X2,15:00:00,15:00:00,T8Q,0
+T8X2,15:20:00,15:20:00,T8L,1
+T8Y1,10:05:00,10:05:00,T8Q,0
+T8Y1,10:25:00,10:25:00,T8K,1
+T9X1,09:00:00,09:00:00,T9A,0
+T9X1,09:30:00,09:30:00,T9S1,1
+T9X2,09:05:00,09:05:00,T9A,0
+T9X2,09:35:00,09:35:00,T9S2,1
+T9Y1,09:40:00,09:40:00,T9T1,0
+T9Y1,10:00:00,10:00:00,T9B,1
+T9Y2,09:45:00,09:45:00,T9T2,0
+T9Y2,10:05:00,10:05:00,T9B,1
+T9Y3,09:50:00,09:50:00,T9T3,0
+T9Y3,10:10:00,10:10:00,T9B,1
+T9Y4,19:00:00,19:00:00,T9T1,0
+T9Y4,19:20:00,19:20:00,T9B,1
+T9Z1,09:40:00,09:40:00,T9T1,0
+T9Z1,10:00:00,10:00:00,T9C,1
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -349,6 +399,40 @@ GU,GU,2,0,RGC,RGX,,
 T6N,T6N,3,,,,,
 T7Q,T7Q,2,120,,,,
 T7Q,T7Q,3,,R78,R78,,
+T8Q,T8Q,3,,,,,
+T8Q,T8Q,2,120,R80,R81,,
+T9S,T9T,3,,R90,R91,,
+)"sv;
+
+// A second feed with a stop 55 m from T8Q: the two are linked by a beeline
+// walk, which is where a ban stored as a change time would leak into a walk
+// duration (link_nearby_stations links stops of different feeds only).
+constexpr auto const other_feed_files = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+AGB,Agency B,https://example.org,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+T8W,T8W,,62.0005,6.5,,,
+T8V,T8V,,62.0,7.5,,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R82,AGB,r82,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R82,S1,T8Z1,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+T8Z1,10:15:00,10:15:00,T8W,0
+T8Z1,10:35:00,10:35:00,T8V,1
+
+# calendar_dates.txt
+service_id,date,exception_type
+S1,20190501,1
 )"sv;
 
 timetable load() {
@@ -358,6 +442,8 @@ timetable load() {
   loader::register_special_stations(tt);
   loader::gtfs::load_timetable({}, source_idx_t{0},
                                loader::mem_dir::read(test_files), tt);
+  loader::gtfs::load_timetable({}, source_idx_t{1},
+                               loader::mem_dir::read(other_feed_files), tt);
   loader::finalize(tt);
   return tt;
 }
@@ -404,9 +490,10 @@ TEST(gtfs, transfer_rules_forbidden) {
   // and any departure far enough out turns it into a journey: V2L leaves F2 at
   // 23:30, nine hours after V1 gets in, so a banned pair written at
   // footpath::kMaxDuration would be reachable here.
-  auto const late = raptor_search(tt, nullptr, "A3", "E",
-                                  interval{t("2019-05-01 14:00 Europe/Berlin"),
-                                           t("2019-05-02 02:00 Europe/Berlin")});
+  auto const late =
+      raptor_search(tt, nullptr, "A3", "E",
+                    interval{t("2019-05-01 14:00 Europe/Berlin"),
+                             t("2019-05-02 02:00 Europe/Berlin")});
   EXPECT_EQ(0U, late.size());
 
   // and nothing may connect the two platforms in the footpath layer either
@@ -491,14 +578,14 @@ TEST(gtfs, transfer_rules_mutual_restriction) {
   auto const tt = load();
 
   // Q1 -> Q2 needs 10 min: the 08:32 departure is out, the 08:41 one works
-  auto const res_qa = raptor_search(tt, nullptr, "A9", "QA",
-                                    "2019-05-01 08:00 Europe/Berlin");
+  auto const res_qa =
+      raptor_search(tt, nullptr, "A9", "QA", "2019-05-01 08:00 Europe/Berlin");
   ASSERT_EQ(1U, res_qa.size());
   EXPECT_EQ(t("2019-05-01 09:10 Europe/Berlin"), begin(res_qa)->dest_time_);
 
   // the unnamed trip still departs from the base stop at the 2 min default
-  auto const res_qb = raptor_search(tt, nullptr, "A9", "QB",
-                                    "2019-05-01 08:00 Europe/Berlin");
+  auto const res_qb =
+      raptor_search(tt, nullptr, "A9", "QB", "2019-05-01 08:00 Europe/Berlin");
   ASSERT_EQ(1U, res_qb.size());
   EXPECT_EQ(t("2019-05-01 09:00 Europe/Berlin"), begin(res_qb)->dest_time_);
 }
@@ -563,8 +650,8 @@ TEST(gtfs, transfer_rules_fast_rule_stays_on_its_route) {
 TEST(gtfs, transfer_rules_forbidden_same_stop_unqualified) {
   auto const tt = load();
 
-  auto const to_n =
-      raptor_search(tt, nullptr, "T6A", "T6N", "2019-05-01 14:30 Europe/Berlin");
+  auto const to_n = raptor_search(tt, nullptr, "T6A", "T6N",
+                                  "2019-05-01 14:30 Europe/Berlin");
   ASSERT_EQ(1U, to_n.size());
 
   auto const res = raptor_search(tt, nullptr, "T6A", "T6J",
@@ -573,11 +660,12 @@ TEST(gtfs, transfer_rules_forbidden_same_stop_unqualified) {
   EXPECT_EQ(0U, res.size());
 }
 
-// (7) route-qualified same-stop ban: T7Q->T7Q type=3 from_route=R78 to_route=R78
-//     bans changing between trips of R78 at T7Q; the unqualified T7Q->T7Q 120s row
-//     is the default for everyone else. The ban becomes the own transfer time
-//     of the virtual location R78 gets at T7Q. Stored as a duration it would
-//     wrap in the 8 bit field and a departure 260 min later would be
+// (7) route-qualified same-stop ban: T7Q->T7Q type=3 from_route=R78
+// to_route=R78
+//     bans changing between trips of R78 at T7Q; the unqualified T7Q->T7Q 120s
+//     row is the default for everyone else. The ban becomes the own transfer
+//     time of the virtual location R78 gets at T7Q. Stored as a duration it
+//     would wrap in the 8 bit field and a departure 260 min later would be
 //     reachable - it must not be.
 //     T7X1 (R78): T7A 14:30 -> T7Q 15:00
 //     T7X2 (R78): T7Q 15:15 -> T7K 15:30 (banned)
@@ -586,13 +674,90 @@ TEST(gtfs, transfer_rules_forbidden_same_stop_unqualified) {
 TEST(gtfs, transfer_rules_forbidden_same_stop_route) {
   auto const tt = load();
 
-  auto const allowed =
-      raptor_search(tt, nullptr, "T7A", "T7L", "2019-05-01 14:30 Europe/Berlin");
+  auto const allowed = raptor_search(tt, nullptr, "T7A", "T7L",
+                                     "2019-05-01 14:30 Europe/Berlin");
   ASSERT_EQ(1U, allowed.size());
   EXPECT_EQ(t("2019-05-01 15:30 Europe/Berlin"), begin(allowed)->dest_time_);
 
-  auto const banned = raptor_search(tt, nullptr, "T7A", "T7K",
-                                    interval{t("2019-05-01 14:30 Europe/Berlin"),
-                                             t("2019-05-01 22:00 Europe/Berlin")});
+  auto const banned =
+      raptor_search(tt, nullptr, "T7A", "T7K",
+                    interval{t("2019-05-01 14:30 Europe/Berlin"),
+                             t("2019-05-01 22:00 Europe/Berlin")});
   EXPECT_EQ(0U, banned.size());
+}
+
+// (8) unqualified same-stop ban with a qualified exception: T8Q->T8Q type=3
+//     bans every change at T8Q, T8Q->T8Q type=2 120s from_route=R80
+//     to_route=R81 allows R80 -> R81. R80 gets a virtual location at T8Q,
+//     which inherits the ban as its own transfer time - as the ban, not as a
+//     change time of 255 minutes that a long enough wait satisfies. The ban
+//     forbids changing vehicles at T8Q, not leaving it: the beeline walk to
+//     T8W in the other feed keeps its normal duration.
+//     T8X1 (R80): T8A 09:30 -> T8Q 10:00
+//     T8Y1 (R81): T8Q 10:05 -> T8K 10:25 (exception, 2 min -> reachable)
+//     T8X2 (R80): T8Q 15:00 -> T8L 15:20 (same virtual location, banned)
+//     T8Z1 (R82, other feed): T8W 10:15 -> T8V 10:35, walk to T8M 10:37
+TEST(gtfs, transfer_rules_forbidden_same_stop_with_exception) {
+  auto const tt = load();
+
+  auto const allowed = raptor_search(tt, nullptr, "T8A", "T8K",
+                                     "2019-05-01 09:30 Europe/Berlin");
+  ASSERT_EQ(1U, allowed.size());
+  EXPECT_EQ(t("2019-05-01 10:25 Europe/Berlin"), begin(allowed)->dest_time_);
+
+  auto const banned =
+      raptor_search(tt, nullptr, "T8A", "T8L",
+                    interval{t("2019-05-01 09:30 Europe/Berlin"),
+                             t("2019-05-01 16:00 Europe/Berlin")});
+  EXPECT_EQ(0U, banned.size());
+
+  auto const walked = raptor_search(tt, nullptr, "T8A", "T8M",
+                                    "2019-05-01 09:30 Europe/Berlin");
+  ASSERT_EQ(1U, walked.size());
+  EXPECT_EQ(t("2019-05-01 10:37 Europe/Berlin"), begin(walked)->dest_time_);
+}
+
+// The same journey searched backwards (arrive by 12:00). The walk into T8M
+// ends the journey: it starts when the ride before it ends, at 10:35, and not
+// as late as the search start allows. Both devices have to agree on that.
+TEST(gtfs, transfer_rules_walk_at_end_of_backward_search) {
+  auto const tt = load();
+
+  auto q = routing::query{};
+  q.use_start_footpaths_ = true;  // the search starts at T8M, which has no
+                                  // trips: it has to walk out of it
+  auto const res =
+      raptor_search(tt, nullptr, std::move(q), "T8M", "T8A",
+                    "2019-05-01 12:00 Europe/Berlin", direction::kBackward);
+  ASSERT_EQ(1U, res.size());
+  auto const& j = *begin(res);
+  ASSERT_EQ(4U, j.legs_.size());
+  EXPECT_EQ(t("2019-05-01 09:30 Europe/Berlin"), j.legs_.front().dep_time_);
+  EXPECT_EQ(t("2019-05-01 10:35 Europe/Berlin"), j.legs_.back().dep_time_);
+  EXPECT_EQ(t("2019-05-01 10:37 Europe/Berlin"), j.legs_.back().arr_time_);
+}
+
+// (9) forbidden cross product: T9S->T9T type=3 from_route=R90 to_route=R91
+//     bans R90 -> R91 between the two stations (walking distance). R90
+//     arrives at two platforms, R91 departs from three, so the six banned
+//     pairs are a rectangle a hub would cover - but a hub hands out its
+//     weight as a transfer, and a ban is none: written as a hub, the pairs
+//     stay walkable and become reachable after 511 minutes.
+//     T9X1 (R90): T9A 09:00 -> T9S1 09:30, T9X2 (R90): T9A 09:05 -> T9S2 09:35
+//     T9Y1..3 (R91): T9T1 09:40 / T9T2 09:45 / T9T3 09:50 -> T9B (banned)
+//     T9Y4 (R91): T9T1 19:00 -> T9B 19:20 (banned, 570 min later)
+//     T9Z1 (R92): T9T1 09:40 -> T9C 10:00 (no rule -> walk, reachable)
+TEST(gtfs, transfer_rules_forbidden_cross_product) {
+  auto const tt = load();
+
+  auto const banned =
+      raptor_search(tt, nullptr, "T9A", "T9B",
+                    interval{t("2019-05-01 09:00 Europe/Berlin"),
+                             t("2019-05-01 20:00 Europe/Berlin")});
+  EXPECT_EQ(0U, banned.size());
+
+  auto const walked = raptor_search(tt, nullptr, "T9A", "T9C",
+                                    "2019-05-01 09:00 Europe/Berlin");
+  ASSERT_EQ(1U, walked.size());
+  EXPECT_EQ(t("2019-05-01 10:00 Europe/Berlin"), begin(walked)->dest_time_);
 }

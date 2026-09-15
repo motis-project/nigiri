@@ -1,5 +1,6 @@
 #include "nigiri/routing/ontrip_train.h"
 
+#include "utl/helpers/algorithm.h"
 #include "utl/verify.h"
 
 #include "nigiri/routing/query.h"
@@ -24,9 +25,15 @@ void generate_ontrip_train_query(timetable const& tt,
   auto const time_at_first = tt.event_time(t, stop_idx, event_type::kArr);
   for (auto i = stop_idx; i != location_seq.size(); ++i) {
     auto const l_idx = stop{location_seq[i]}.location_idx();
+    auto const change = tt.locations_.min_transfer_time(q.prf_idx_, l_idx);
+    auto const is_dest = utl::any_of(
+        q.destination_, [&](offset const& o) { return o.target() == l_idx; });
+    if (change == kNoTransfer && !is_dest) {
+      continue;  // no changing vehicles here (transfers.txt type 3)
+    }
     auto const arrival_time_with_transfer =
         tt.event_time(t, i, event_type::kArr) +
-        tt.locations_.min_transfer_time(q.prf_idx_, l_idx);
+        (is_dest ? u8_minutes{0} : change);
     q.start_.emplace_back(l_idx, arrival_time_with_transfer - time_at_first,
                           static_cast<std::uint8_t>(i));
     trace(

@@ -65,7 +65,19 @@ struct candidate {
 
 // A rule stop covers an event location if they are the same stop or if the
 // event location is a child of the rule stop (station level cascade).
-bool covers(timetable const&, location_idx_t rule_stop, location_idx_t l);
+inline bool covers(timetable const& tt,
+                   location_idx_t const rule_stop,
+                   location_idx_t const l) {
+  return rule_stop == l || tt.locations_.parents_[l] == rule_stop;
+}
+
+// The stop a location's transfers are derived at: for a virtual location the
+// stop it was split off, for everything else the location itself.
+inline location_idx_t base_of(timetable const& tt, location_idx_t const l) {
+  return tt.locations_.types_[l] == location_type::kVirt
+             ? tt.locations_.parents_[l]
+             : l;
+}
 
 // Detects the most common rule between two stops -> removes them and makes
 // their min_transfer_time the new default. Works on stop pairs and durations

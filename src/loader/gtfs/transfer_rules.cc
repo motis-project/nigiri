@@ -270,7 +270,7 @@ void apply_rules(timetable& tt,
     // on the same virt node -> set transfer_time to self. The signature is
     // sorted and a rule's from side directly precedes its to side (see
     // side_ref), so such a rule shows up as two adjacent entries.
-    auto own = duration_t{tt.locations_.transfer_time_[base]};
+    auto own = from_transfer_time(tt.locations_.transfer_time_[base]);
     auto best = std::optional<candidate>{};
     for (auto i = std::size_t{1U}; i < sig.size(); ++i) {
       auto const from = sig[i - 1U];
@@ -335,12 +335,6 @@ void apply_rules(timetable& tt,
     utl::erase_duplicates(virts);
   }
 
-  auto const base_of = [&](location_idx_t const l) {
-    return tt.locations_.types_[l] == location_type::kVirt
-               ? tt.locations_.parents_[l]
-               : l;
-  };
-
   // Let the rules compete for specificity on all location pairs they apply to.
   // An unqualified side applies to the rule stop and everything below it, a
   // qualified one only to the virtual locations that were split off for it.
@@ -373,21 +367,22 @@ void apply_rules(timetable& tt,
     auto const& r = rules[rule_idx];
     for_each(rule_idx, r.from_stop_, r.from_route_, r.from_trip_, true,
              [&](location_idx_t const x) {
-               for_each(rule_idx, r.to_stop_, r.to_route_, r.to_trip_, false,
-                        [&](location_idx_t const y) {
-                          if (x == y) {
-                            return;
-                          }
-                          auto& best = most_specific[transfer_pair{x, y}];
-                          best = std::max(
-                              best,
-                              candidate{.rank_ = rank(
-                                            r.get_specificity(),
-                                            static_cast<std::uint8_t>(
-                                                (r.from_stop_ == base_of(x)) +
-                                                (r.to_stop_ == base_of(y)))),
-                                        .rule_idx_ = rule_idx});
-                        });
+               for_each(
+                   rule_idx, r.to_stop_, r.to_route_, r.to_trip_, false,
+                   [&](location_idx_t const y) {
+                     if (x == y) {
+                       return;
+                     }
+                     auto& best = most_specific[transfer_pair{x, y}];
+                     best = std::max(
+                         best,
+                         candidate{.rank_ = rank(
+                                       r.get_specificity(),
+                                       static_cast<std::uint8_t>(
+                                           (r.from_stop_ == base_of(tt, x)) +
+                                           (r.to_stop_ == base_of(tt, y)))),
+                                   .rule_idx_ = rule_idx});
+                   });
              });
   }
 

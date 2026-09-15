@@ -105,6 +105,19 @@ struct timetable {
                                            : l];
     }
 
+    // The change time a walk from or to `l` has to cover. A ban (kNoTransfer)
+    // forbids changing vehicles at `l`, not leaving it, so the stop's time
+    // from before any ban counts there - a virtual location leaves through
+    // its stop. Needs `base_transfer_time_` synced, see below.
+    u8_minutes walk_transfer_time(location_idx_t l) const {
+      if (transfer_time_[l] == kNoTransfer &&
+          types_[l] == location_type::kVirt) {
+        l = parents_[l];
+      }
+      return transfer_time_[l] == kNoTransfer ? base_transfer_time_[l]
+                                              : transfer_time_[l];
+    }
+
     // Extends `base_transfer_time_` to cover every location added since the
     // last call, capturing its transfer time before transfers.txt same-stop
     // rules are applied on top of `transfer_time_`.
@@ -185,7 +198,6 @@ struct timetable {
     // hubs [0, n_rule_hubs_) of the default profile are rule-derived and hold
     // in every profile; the rest are that profile's walks
     std::uint32_t n_rule_hubs_{0U};
-
 
   } locations_;
 

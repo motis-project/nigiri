@@ -729,7 +729,7 @@ struct raptor_impl {
   // with no lane walking a list. Runs as its own kernel before the footpath
   // phase - it only reads tmp_ and the marks, which that phase never writes.
   __device__ void gather_hubs(unsigned const) {
-    if (n_hubs_ == 0U || no_hubs_) {
+    if (n_hubs_ == 0U) {
       return;
     }
     auto const& e = kFwd ? tt_.hub_in_by_loc_flat_[prf_idx_]
@@ -755,7 +755,7 @@ struct raptor_impl {
   // entries, so walking them per hub left a warp waiting on its longest lane;
   // edge-wise the work is spread evenly whatever the shape of the hub.
   __device__ void scatter_hubs(unsigned const k) {
-    if (n_hubs_ == 0U || no_hubs_) {
+    if (n_hubs_ == 0U) {
       return;
     }
     auto const& e = kFwd ? tt_.hub_out_by_hub_flat_[prf_idx_]
@@ -1332,7 +1332,6 @@ struct raptor_impl {
   // one packed (time, breadcrumb) word per transfer hub, see gather_hubs
   std::uint64_t* hub_slots_;
   std::uint32_t n_hubs_;
-  bool no_hubs_;  // A/B switch, see NIGIRI_GPU_NO_HUBS
   device_times<SearchDir, 1U> time_at_dest_;
   device_bitvec<std::uint32_t> station_mark_;
   device_bitvec<std::uint32_t> prev_station_mark_;

@@ -65,14 +65,13 @@ void link_nearby_stations(timetable& tt) {
         continue;
       }
 
-      auto const from_transfer_time =
-          duration_t{tt.locations_.transfer_time_[l_from_idx]};
-      auto const to_transfer_time =
-          duration_t{tt.locations_.transfer_time_[l_to_idx]};
+      auto const from_change =
+          duration_t{tt.locations_.walk_transfer_time(l_from_idx)};
+      auto const to_change =
+          duration_t{tt.locations_.walk_transfer_time(l_to_idx)};
       auto const walk_duration = duration_t{static_cast<unsigned>(
           std::round(dist.get(to_pos) / (60 * kWalkSpeed)))};
-      auto const duration =
-          std::max({from_transfer_time, to_transfer_time, walk_duration});
+      auto const duration = std::max({from_change, to_change, walk_duration});
 
       tt.locations_.preprocessing_footpaths_out_[l_from_idx].emplace_back(
           l_to_idx, duration);
