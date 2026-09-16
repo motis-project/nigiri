@@ -1,5 +1,7 @@
 #include "gtest/gtest.h"
 
+#include "utl/helpers/algorithm.h"
+
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
@@ -230,7 +232,7 @@ peak-full-oneway-app,Peak Full App,app,7.00,EUR,adult
 peak-full-day-app,Peak Full Daypass,app,10.00,EUR,adult
 peak-full-week-app,Peak Full Weekpass,app,24.00,EUR,adult
 airport-card,Airport Card,paper-card,10.00,EUR,adult
-peak-full-airport-ext,Full Airport Extension Card,paper-card,12.00,EUR,adult
+peak-full-airport-ext,Full Airport Extension Card,paper-card,6.00,EUR,adult
 reduced-offpeak-pink-oneway-paper-card,Pink Paper Card,paper-card,2.00,EUR,reduced
 reduced-offpeak-pink-oneway-app,Pink App,app,1.50,EUR,reduced
 reduced-offpeak-pink-day-app,Pink Daypass,app,2.50,EUR,reduced
@@ -402,10 +404,14 @@ T4,02:05:00,26:05:00,3600
 
 std::string to_string(timetable const& tt,
                       rt_timetable const* rtt,
-                      std::vector<fare_transfer> const& fare_transfers) {
+                      std::vector<fare_transfer> const& fare_transfers,
+                      bool const main_only = true) {
   auto ss = std::stringstream{};
 
   for (auto const& transfer : fare_transfers) {
+    if (main_only && !transfer.main_) {
+      continue;
+    }
     if (transfer.rule_.has_value()) {
       ss << "FARE TRANSFER START\n";
       auto const f = tt.fares_[transfer.legs_.front().src_];
@@ -741,6 +747,332 @@ FARE LEG:
    0: D       D...............................................                               d: 30.03 02:05 [30.03 04:05]  [{name=Line 4, day=2022-03-30, id=T4, src=0}]
    1: E       E............................................... a: 30.03 02:30 [30.03 04:30]
 PRODUCTS
+
+
+)";
+    EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
+  }
+}
+
+namespace {
+
+// Networks defined only via routes.txt network_id (no networks.txt, no
+// route_networks.txt) as allowed by the GTFS spec, see
+// https://github.com/motis-project/motis/issues/905
+constexpr auto const kRouteNetworkIdTimetable = R"(
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+everyday,1,1,1,1,1,1,1,20220101,20221231
+
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+MBTA,MBTA,https://mbta.com,America/New_York
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,
+B,B,,0.02,1.03,,
+C,C,,0.04,1.05,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type,network_id
+Red,MBTA,Red,Red Line,,1,rapid_transit
+1,MBTA,1,Bus 1,,3,local_bus
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+Red,everyday,T1,T1,
+1,everyday,T2,T2,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:00:00,10:00:00,A,1,0,0
+T1,10:30:00,10:30:00,B,2,0,0
+T2,10:35:00,10:35:00,B,1,0,0
+T2,11:00:00,11:00:00,C,2,0,0
+
+# fare_media.txt
+fare_media_id,fare_media_name,fare_media_type
+cash,Cash,0
+
+# fare_products.txt
+fare_product_id,fare_product_name,fare_media_id,amount,currency
+prod_rapid_transit,Rapid Transit Ticket,cash,2.40,USD
+prod_local_bus,Local Bus Ticket,cash,1.70,USD
+
+# fare_leg_rules.txt
+leg_group_id,network_id,fare_product_id
+leg_rapid_transit,rapid_transit,prod_rapid_transit
+leg_local_bus,local_bus,prod_local_bus
+)";
+
+}  // namespace
+
+TEST(fares, network_id_in_routes_txt) {
+  auto tt = timetable{};
+  tt.date_range_ = {date::sys_days{2022_y / January / 1},
+                    date::sys_days{2022_y / December / 1}};
+  load_timetable({}, source_idx_t{0}, mem_dir::read(kRouteNetworkIdTimetable),
+                 tt);
+  finalize(tt);
+
+  ASSERT_EQ(1U, tt.fares_.size());
+  EXPECT_EQ(2U, tt.fares_[source_idx_t{0}].networks_.size());
+  EXPECT_EQ(2U, tt.fares_[source_idx_t{0}].route_networks_.size());
+
+  auto const results = raptor_search(
+      tt, nullptr, "A", "C", unixtime_t{sys_days{2022_y / March / 30} + 14h});
+  ASSERT_EQ(1U, results.size());
+  auto const fare_legs = get_fares(tt, nullptr, *results.begin());
+
+  // Each leg gets exactly the product of its own network.
+  constexpr auto const kExpected = R"(FARE LEG:
+   0: A       A...............................................                               d: 30.03 14:00 [30.03 10:00]  [{name=Red, day=2022-03-30, id=T1, src=0}]
+   1: B       B............................................... a: 30.03 14:30 [30.03 10:30]
+PRODUCTS
+Rapid Transit Ticket [priority=0]: 2.4 USD, fare_media_name=Cash, fare_type=NONE, ride_category=??
+
+
+FARE LEG:
+   0: B       B...............................................                               d: 30.03 14:35 [30.03 10:35]  [{name=1, day=2022-03-30, id=T2, src=0}]
+   1: C       C............................................... a: 30.03 15:00 [30.03 11:00]
+PRODUCTS
+Local Bus Ticket [priority=0]: 1.7 USD, fare_media_name=Cash, fare_type=NONE, ride_category=??
+
+
+)";
+  EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
+}
+
+namespace {
+
+// Two products (cash, card) per network, free transfer only for card holders.
+// The cash product sorts first (cheaper), so the transfer rule has to be
+// matched against all leg rules, not just the first one. Only the card
+// products take part in the transfer (A+AB without transfer product = the
+// following leg is included).
+constexpr auto const kTransferThinningTimetable = R"(
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+everyday,1,1,1,1,1,1,1,20220101,20221231
+
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+MBTA,MBTA,https://mbta.com,America/New_York
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,
+B,B,,0.02,1.03,,
+C,C,,0.04,1.05,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type,network_id
+Red,MBTA,Red,Red Line,,1,rapid_transit
+1,MBTA,1,Bus 1,,3,local_bus
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+Red,everyday,T1,T1,
+1,everyday,T2,T2,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:00:00,10:00:00,A,1,0,0
+T1,10:30:00,10:30:00,B,2,0,0
+T2,10:35:00,10:35:00,B,1,0,0
+T2,11:00:00,11:00:00,C,2,0,0
+
+# fare_media.txt
+fare_media_id,fare_media_name,fare_media_type
+cash,Cash,0
+card,CharlieCard,2
+
+# fare_products.txt
+fare_product_id,fare_product_name,fare_media_id,amount,currency
+prod_rapid_transit_cash,Subway Cash,cash,2.40,USD
+prod_rapid_transit_card,Subway Card,card,2.90,USD
+prod_local_bus_cash,Bus Cash,cash,1.70,USD
+prod_local_bus_card,Bus Card,card,1.90,USD
+
+# fare_leg_rules.txt
+leg_group_id,network_id,fare_product_id
+leg_rapid_transit_cash,rapid_transit,prod_rapid_transit_cash
+leg_rapid_transit_card,rapid_transit,prod_rapid_transit_card
+leg_local_bus_cash,local_bus,prod_local_bus_cash
+leg_local_bus_card,local_bus,prod_local_bus_card
+
+# fare_transfer_rules.txt
+from_leg_group_id,to_leg_group_id,transfer_count,duration_limit,duration_limit_type,fare_transfer_type,fare_product_id
+leg_rapid_transit_card,leg_local_bus_card,,7200,1,0,
+)";
+
+}  // namespace
+
+TEST(fares, transfer_thins_out_uncovered_products) {
+  auto tt = timetable{};
+  tt.date_range_ = {date::sys_days{2022_y / January / 1},
+                    date::sys_days{2022_y / December / 1}};
+  load_timetable({}, source_idx_t{0}, mem_dir::read(kTransferThinningTimetable),
+                 tt);
+  finalize(tt);
+
+  auto const results = raptor_search(
+      tt, nullptr, "A", "C", unixtime_t{sys_days{2022_y / March / 30} + 14h});
+  ASSERT_EQ(1U, results.size());
+  auto const fare_legs = get_fares(tt, nullptr, *results.begin());
+
+  constexpr auto const kExpected = R"(FARE TRANSFER START
+TRANSFER PRODUCT: 
+RULE: A+AB
+FARE LEG:
+   0: A       A...............................................                               d: 30.03 14:00 [30.03 10:00]  [{name=Red, day=2022-03-30, id=T1, src=0}]
+   1: B       B............................................... a: 30.03 14:30 [30.03 10:30]
+PRODUCTS
+Subway Card [priority=0]: 2.9 USD, fare_media_name=CharlieCard, fare_type=CARD, ride_category=??
+
+
+FARE LEG:
+   0: B       B...............................................                               d: 30.03 14:35 [30.03 10:35]  [{name=1, day=2022-03-30, id=T2, src=0}]
+   1: C       C............................................... a: 30.03 15:00 [30.03 11:00]
+PRODUCTS
+Bus Card [priority=0]: 1.9 USD, fare_media_name=CharlieCard, fare_type=CARD, ride_category=??
+
+
+FARE TRANSFER END
+)";
+  EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
+}
+
+namespace {
+
+// Modeled after Naolib (Nantes), see
+// https://github.com/motis-project/motis/issues/911: free legs on weekends
+// (rule priority) must not be replaced by a transfer with a paid product.
+// On weekdays, the cheapest applicable transfer product (1h, not 24h) is used
+// and legs outside of its duration limit are charged separately.
+constexpr auto const kCheapestTransferFares = R"(
+# networks.txt
+network_id,network_name
+1,Naolib
+
+# route_networks.txt
+network_id,route_id
+1,line1
+1,line2
+1,line3
+1,air
+
+# fare_media.txt
+fare_media_id,fare_media_name,fare_media_type
+ticket,Ticket,1
+none,No ticket needed,0
+
+# fare_products.txt
+fare_product_id,fare_product_name,amount,currency,fare_media_id
+1h,1h,1.80,EUR,ticket
+24h,24h,6.50,EUR,ticket
+gratuit,Gratuit,0.00,EUR,none
+
+# timeframes.txt
+timeframe_group_id,start_time,end_time,service_id
+weekend-free,0:00:00,24:00:00,weekend
+
+# fare_leg_rules.txt
+leg_group_id,network_id,from_timeframe_group_id,to_timeframe_group_id,fare_product_id,rule_priority
+general_network,1,,,1h,
+general_network,1,,,24h,
+general_network,1,weekend-free,weekend-free,gratuit,1
+
+# fare_transfer_rules.txt
+from_leg_group_id,to_leg_group_id,transfer_count,duration_limit,duration_limit_type,fare_transfer_type,fare_product_id
+general_network,general_network,-1,86400,0,2,24h
+general_network,general_network,-1,3600,0,2,1h
+)";
+
+}  // namespace
+
+TEST(fares, cheapest_transfer_or_separate_legs) {
+  auto tt = timetable{};
+  tt.date_range_ = {date::sys_days{2022_y / January / 1},
+                    date::sys_days{2022_y / December / 1}};
+  load_timetable({}, source_idx_t{0},
+                 mem_dir::read(fmt::format("{}{}", kBasicTimetable,
+                                           kCheapestTransferFares)),
+                 tt);
+  finalize(tt);
+
+  // variants = cheapest covers per traveler profile (any media, paper
+  // ticket, no ticket needed): identical to the main cover in both cases
+  auto const n_main = [](std::vector<fare_transfer> const& x) {
+    return utl::count_if(x, [](auto&& t) { return t.main_; });
+  };
+
+  {  // Saturday: all legs free, no transfer product
+    auto const results = raptor_search(
+        tt, nullptr, "A", "D", unixtime_t{sys_days{2022_y / April / 2} + 10h});
+    ASSERT_EQ(1U, results.size());
+    auto const fare_legs = get_fares(tt, nullptr, *results.begin());
+    EXPECT_EQ(3U, fare_legs.size());
+    EXPECT_EQ(3U, n_main(fare_legs));
+    constexpr auto const kExpected = R"(FARE LEG:
+   0: A       A...............................................                               d: 02.04 10:00 [02.04 12:00]  [{name=Line 1, day=2022-04-02, id=T1, src=0}]
+   1: B       B............................................... a: 02.04 10:30 [02.04 12:30]
+PRODUCTS
+Gratuit [priority=1]: 0 EUR, fare_media_name=No ticket needed, fare_type=NONE, ride_category=??
+
+
+FARE LEG:
+   0: B       B...............................................                               d: 02.04 10:35 [02.04 12:35]  [{name=Line 2, day=2022-04-02, id=T2, src=0}]
+   1: C       C............................................... a: 02.04 11:00 [02.04 13:00]
+PRODUCTS
+Gratuit [priority=1]: 0 EUR, fare_media_name=No ticket needed, fare_type=NONE, ride_category=??
+
+
+FARE LEG:
+   0: C       C...............................................                               d: 02.04 11:05 [02.04 13:05]  [{name=Line 3, day=2022-04-02, id=T3, src=0}]
+   1: D       D............................................... a: 02.04 12:00 [02.04 14:00]
+PRODUCTS
+Gratuit [priority=1]: 0 EUR, fare_media_name=No ticket needed, fare_type=NONE, ride_category=??
+
+
+)";
+    EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
+  }
+
+  {  // Wednesday: 1h ticket for the first two legs (60min), third leg separate
+    auto const results = raptor_search(
+        tt, nullptr, "A", "D", unixtime_t{sys_days{2022_y / March / 30} + 10h});
+    ASSERT_EQ(1U, results.size());
+    auto const fare_legs = get_fares(tt, nullptr, *results.begin());
+    EXPECT_EQ(2U, fare_legs.size());
+    EXPECT_EQ(2U, n_main(fare_legs));
+    constexpr auto const kExpected = R"(FARE TRANSFER START
+TRANSFER PRODUCT: 1h
+RULE: AB
+FARE LEG:
+   0: A       A...............................................                               d: 30.03 10:00 [30.03 12:00]  [{name=Line 1, day=2022-03-30, id=T1, src=0}]
+   1: B       B............................................... a: 30.03 10:30 [30.03 12:30]
+PRODUCTS
+1h [priority=0]: 1.8 EUR, fare_media_name=Ticket, fare_type=PAPER, ride_category=??
+24h [priority=0]: 6.5 EUR, fare_media_name=Ticket, fare_type=PAPER, ride_category=??
+
+
+FARE LEG:
+   0: B       B...............................................                               d: 30.03 10:35 [30.03 12:35]  [{name=Line 2, day=2022-03-30, id=T2, src=0}]
+   1: C       C............................................... a: 30.03 11:00 [30.03 13:00]
+PRODUCTS
+1h [priority=0]: 1.8 EUR, fare_media_name=Ticket, fare_type=PAPER, ride_category=??
+24h [priority=0]: 6.5 EUR, fare_media_name=Ticket, fare_type=PAPER, ride_category=??
+
+
+FARE TRANSFER END
+FARE LEG:
+   0: C       C...............................................                               d: 30.03 11:05 [30.03 13:05]  [{name=Line 3, day=2022-03-30, id=T3, src=0}]
+   1: D       D............................................... a: 30.03 12:00 [30.03 14:00]
+PRODUCTS
+1h [priority=0]: 1.8 EUR, fare_media_name=Ticket, fare_type=PAPER, ride_category=??
+24h [priority=0]: 6.5 EUR, fare_media_name=Ticket, fare_type=PAPER, ride_category=??
 
 
 )";
