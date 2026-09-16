@@ -1300,6 +1300,10 @@ void load_timetable(loader_config const& config,
   auto const r = script_runner{config.user_script_};
 
   auto tt_mtx = std::mutex{};
+
+  // operators are declared in every file that references them: register each
+  // one only once (keys are views into the file's document -> copy)
+  auto providers = hash_map<std::string, provider_idx_t>{};
   auto tz_map = gtfs::tz_map{};
 
   auto get_attribute_combination_idx =
@@ -1341,6 +1345,11 @@ void load_timetable(loader_config const& config,
     auto const tz = gtfs::get_tz_idx(tt, tz_map, im.tz_->name());
 
     for (auto& [id, o] : im.operators_) {
+      if (auto const it = providers.find(id); it != end(providers)) {
+        o->provider_ = it->second;
+        continue;
+      }
+
       auto a = agency{tt,
                       src,
                       id,
@@ -1351,6 +1360,7 @@ void load_timetable(loader_config const& config,
                       tz_map};
       if (process_agency(r, a)) {
         o->provider_ = register_agency(tt, a);
+        providers.emplace(id, o->provider_);
       }
     }
 
