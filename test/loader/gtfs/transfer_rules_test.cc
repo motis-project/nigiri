@@ -46,12 +46,13 @@ namespace {
 //     W2 (RZ2): Z 16:31 -> BZ 17:00 (banned by trip rule)
 //     W3 (RZ2): Z 16:31 -> CZ 17:10 (allowed via route rule)
 //
-// (5) majority fold, uniform pair (MetroNorth pattern):
-//     M,M type=1 trip pair M1->M2, no min_transfer_time -> folds into
-//     transfer_time_[M] = 0, no virtual locations.
+// (5) guaranteed connection (MetroNorth pattern):
+//     M,M type=1 trip pair M1->M2, no min_transfer_time: the vehicle waits,
+//     so that pair costs 0 min - but a guarantee says nothing about how long
+//     a change at M takes, so it does not become the stop's default.
 //     M1: A5 18:00 -> M 18:30
 //     M2: M 18:30 -> G 19:00 (0 min -> reachable)
-//     M3: M 18:30 -> H 19:00 (unnamed, gets the folded default too)
+//     M3: M 18:30 -> H 19:00 (unnamed, default 2 min -> not reachable)
 //
 // (6) majority fold with exception:
 //     N,N type=2 60s for trip pairs N1->N2 and N4->N2 (majority ->
@@ -141,6 +142,9 @@ T9T2,T9T2,,63.0004,6.5,,,T9T
 T9T3,T9T3,,63.0005,6.5,,,T9T
 T9B,T9B,,63.0,7.0,,,
 T9C,T9C,,63.0,7.5,,,
+T11O,T11O,,65.0,6.0,,,
+T11S,T11S,,65.0,6.5,,,
+T11K,T11K,,65.0,7.0,,,
 A6,A6,,55.0,6.0,,,
 A7,A7,,55.0,6.2,,,
 N,N,,55.0,6.5,,,
@@ -201,6 +205,9 @@ R81,AG,r53,,,3
 R90,AG,r54,,,3
 R91,AG,r55,,,3
 R92,AG,r56,,,3
+R98,AG,r60,,,3
+R99,AG,r61,,,3
+R100,AG,r62,,,3
 RGA,AG,ga,,,3
 RGB,AG,gb,,,3
 RGC,AG,gc,,,3
@@ -260,6 +267,9 @@ R91,S1,T9Y2,,
 R91,S1,T9Y3,,
 R91,S1,T9Y4,,
 R92,S1,T9Z1,,
+R98,S1,T11P1,,
+R99,S1,T11P2,,
+R100,S1,T11P3,,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -367,6 +377,12 @@ T9Y4,19:00:00,19:00:00,T9T1,0
 T9Y4,19:20:00,19:20:00,T9B,1
 T9Z1,09:40:00,09:40:00,T9T1,0
 T9Z1,10:00:00,10:00:00,T9C,1
+T11P1,09:30:00,09:30:00,T11O,0
+T11P1,10:00:00,10:00:00,T11S,1
+T11P2,09:29:00,09:29:00,T11O,0
+T11P2,10:01:00,10:01:00,T11S,1
+T11P3,10:01:00,10:01:00,T11S,0
+T11P3,10:30:00,10:30:00,T11K,1
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -402,6 +418,7 @@ T7Q,T7Q,3,,R78,R78,,
 T8Q,T8Q,3,,,,,
 T8Q,T8Q,2,120,R80,R81,,
 T9S,T9T,3,,R90,R91,,
+T11S,T11S,1,,,,T11P2,T11P3
 )"sv;
 
 // A second feed with a stop 55 m from T8Q: the two are linked by a beeline
@@ -519,12 +536,12 @@ TEST(gtfs, transfer_rules_trip_beats_route) {
   EXPECT_EQ(t("2019-05-01 17:10 Europe/Berlin"), begin(res_cz)->dest_time_);
 }
 
-TEST(gtfs, transfer_rules_majority_fold_uniform) {
+TEST(gtfs, transfer_rules_guaranteed_connection) {
   auto const tt = load();
 
-  // the uniform trip pair rule folds into the stop's transfer time
+  // a guarantee without a time does not become the stop's transfer time
   auto const m = tt.locations_.location_id_to_idx_.at({"M", source_idx_t{0}});
-  EXPECT_EQ(duration_t{0}, tt.locations_.transfer_time_[m]);
+  EXPECT_EQ(duration_t{2}, tt.locations_.transfer_time_[m]);
 
   // named trip pair: 0 min timed transfer works
   auto const res_g =
@@ -532,11 +549,10 @@ TEST(gtfs, transfer_rules_majority_fold_uniform) {
   ASSERT_EQ(1U, res_g.size());
   EXPECT_EQ(t("2019-05-01 19:00 Europe/Berlin"), begin(res_g)->dest_time_);
 
-  // unnamed trip gets the folded default as well
+  // unnamed trip: the default 2 min apply, 18:30 -> 18:30 is not a change
   auto const res_h =
       raptor_search(tt, nullptr, "A5", "H", "2019-05-01 18:00 Europe/Berlin");
-  ASSERT_EQ(1U, res_h.size());
-  EXPECT_EQ(t("2019-05-01 19:00 Europe/Berlin"), begin(res_h)->dest_time_);
+  EXPECT_EQ(0U, res_h.size());
 }
 
 TEST(gtfs, transfer_rules_majority_fold_exception) {
@@ -760,4 +776,24 @@ TEST(gtfs, transfer_rules_forbidden_cross_product) {
                                     "2019-05-01 09:00 Europe/Berlin");
   ASSERT_EQ(1U, walked.size());
   EXPECT_EQ(t("2019-05-01 10:00 Europe/Berlin"), begin(walked)->dest_time_);
+}
+
+// (11) a guaranteed arrival shadowed by an earlier one: T11P1 reaches T11S
+//      first (10:00, no guarantee), T11P2 a minute later with a guarantee
+//      onto T11P3 (10:01). Only the later arrival may board. A search that
+//      kept one arrival per stop and checked the guarantee when boarding
+//      would hold T11P1's label and lose the connection; the virtual location
+//      of the guaranteed pair keeps it.
+//      T11P1 (R98): T11O 09:30 -> T11S 10:00
+//      T11P2 (R99): T11O 09:29 -> T11S 10:01 (guaranteed onto T11P3)
+//      T11P3 (R100): T11S 10:01 -> T11K 10:30
+TEST(gtfs, transfer_rules_guarantee_not_shadowed) {
+  auto const tt = load();
+
+  auto const res = raptor_search(tt, nullptr, "T11O", "T11K",
+                                 interval{t("2019-05-01 09:29 Europe/Berlin"),
+                                          t("2019-05-01 09:31 Europe/Berlin")});
+  ASSERT_EQ(1U, res.size());
+  EXPECT_EQ(t("2019-05-01 09:29 Europe/Berlin"), begin(res)->start_time_);
+  EXPECT_EQ(t("2019-05-01 10:30 Europe/Berlin"), begin(res)->dest_time_);
 }

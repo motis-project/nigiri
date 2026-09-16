@@ -21,27 +21,19 @@ void write_transfer_rules(
     return from_transfer_time(tt.locations_.transfer_time_[base]);
   };
 
-  // A transfer x -> y can be left out only if ALL of these hold:
-  //   - x and y have the same base, because the derivation works per base
-  //   - the transfer itself takes exactly the base's transfer time, because
-  //     that is the only value the derivation produces
-  //   - x's own transfer time, the one for changing at x, is not longer than
-  //     the base's, because the derivation also yields x -> x at the base's
-  //     time and would undercut it
-  //   - no slower transfer starts at x, OR none leads to y (either one is
-  //     enough), because the derivation reaches either every member from x,
-  //     or only the members that no slower transfer leads to
-  //
-  // A pair of one location with itself is left out: the only derivation it
-  // could undercut is the one starting at that location, and the check above
-  // already bars it - its slow value is its own transfer time.
+  // A transfer x -> y inside one base can be left out if the base's own hubs
+  // derive it: it takes exactly the base's transfer time (the only value the
+  // derivation produces), x's own change time is not longer than the base's
+  // (the derivation also yields x -> x at the base's time and would undercut
+  // it), and the split lets x reach y (hub_split). A pair of one location
+  // with itself is never a cell: the derivation it could undercut starts at
+  // that location, and its own change time already bars it.
   //
   // A rule can also state one value for a whole cross product of locations -
   // typically a stop pair whose sides both carry virtual locations. That costs
   // |X| * |Y| transfers, where one hub covers it in |X| + |Y| edges. The cells
   // are grouped by their rule here, the hubs follow below.
-  auto slow_from = hash_set<location_idx_t>{};
-  auto slow_to = hash_set<location_idx_t>{};
+  auto base_split = hub_split{};
   struct cross_rule {
     hash_set<location_idx_t> x_, y_;
   };
@@ -55,40 +47,23 @@ void write_transfer_rules(
         g.y_.insert(xy.to_);
       }
     } else if (durations[c.rule_idx_] > base_time(base)) {
-      slow_from.insert(xy.from_);
-      slow_to.insert(xy.to_);
+      base_split.mark(xy.from_, xy.to_);
     }
   }
   auto const derivable_at = [&](location_idx_t const x, location_idx_t const y,
                                 location_idx_t const base) {
-    return derivable(
-        {.slow_ = x != base && tt.locations_.transfer_time_[x] >
-                                   tt.locations_.transfer_time_[base],
-         .slow_from_ = slow_from.contains(x)},
-        {.slow_to_ = slow_to.contains(y)});
+    auto const slow = x != base && tt.locations_.transfer_time_[x] >
+                                       tt.locations_.transfer_time_[base];
+    return !slow && base_split.derives(x, y);
   };
 
-  // A hub hands its value to every pair of its two lists, so it may only be
-  // built where that value cannot beat what the data says. A pair a more
-  // specific rule made *faster* is no obstacle: that cell is written and the
-  // routing takes the minimum of the two. A pair it made *slower* is, and the
-  // answer is the same as for a base's own hubs - the sources of slower cells
-  // move to a second hub that only reaches the targets no slower cell leads
-  // to. What neither hub can cover is written.
-  struct hub_split {
-    hash_set<location_idx_t> slow_from_, slow_to_;
-  };
   auto hub_rules = hash_map<rule_idx_t, hub_split>{};
-  auto hub_in = std::vector<location_idx_t>{};
-  auto hub_out = std::vector<location_idx_t>{};
-  auto const emit_hub = [&](std::vector<location_idx_t>& in,
-                            std::vector<location_idx_t>& out,
+  auto const emit_hub = [&](std::vector<location_idx_t> const& in,
+                            std::vector<location_idx_t> const& out,
                             duration_t const d) {
     if (in.empty() || out.empty()) {
       return;
     }
-    utl::sort(in);
-    utl::sort(out);
     tt.locations_.hub_in_[kDefaultProfile].emplace_back(in);
     tt.locations_.hub_out_[kDefaultProfile].emplace_back(out);
     tt.locations_.hub_time_[kDefaultProfile].push_back(d);
@@ -121,32 +96,16 @@ void write_transfer_rules(
                    durations[it->second.rule_idx_] > d;
         }
         if (slower) {
-          split.slow_from_.insert(x);
-          split.slow_to_.insert(y);
+          split.mark(x, y);
         }
       }
     }
 
-    hub_in.clear();
-    for (auto const x : g.x_) {
-      if (!split.slow_from_.contains(x)) {
-        hub_in.push_back(x);
-      }
-    }
-    hub_out.assign(begin(g.y_), end(g.y_));
-    emit_hub(hub_in, hub_out, d);  // unrestricted: reaches all of Y
-
-    if (!split.slow_from_.empty()) {
-      hub_in.assign(begin(split.slow_from_), end(split.slow_from_));
-      hub_out.clear();
-      for (auto const y : g.y_) {
-        if (!split.slow_to_.contains(y)) {
-          hub_out.push_back(y);
-        }
-      }
-      emit_hub(hub_in, hub_out, d);  // restricted: only the clean targets
-    }
-
+    auto xs = std::vector<location_idx_t>{begin(g.x_), end(g.x_)};
+    auto ys = std::vector<location_idx_t>{begin(g.y_), end(g.y_)};
+    utl::sort(xs);
+    utl::sort(ys);
+    emit_split_hubs(xs, ys, d, split, emit_hub);
     hub_rules.emplace(rule_idx, std::move(split));
   }
 
@@ -159,10 +118,7 @@ void write_transfer_rules(
         continue;  // derived by the base's own hubs
       }
     } else if (auto const it = hub_rules.find(c.rule_idx_);
-               it != end(hub_rules) &&
-               derivable(
-                   {.slow_from_ = it->second.slow_from_.contains(xy.from_)},
-                   {.slow_to_ = it->second.slow_to_.contains(xy.to_)})) {
+               it != end(hub_rules) && it->second.derives(xy.from_, xy.to_)) {
       continue;  // derived by one of this rule's hubs
     }
     tt.locations_.transfer_rule_fps_[xy.from_].emplace_back(xy.to_, d);

@@ -80,10 +80,13 @@ inline location_idx_t base_of(timetable const& tt, location_idx_t const l) {
 }
 
 // Detects the most common rule between two stops -> removes them and makes
-// their min_transfer_time the new default. Works on stop pairs and durations
-// only; Rule just has to offer from_stop_, to_stop_, is_qualified(),
-// duration() and a (from, to, duration) constructor for the synthesized
-// unqualified rules.
+// their min_transfer_time the new default. Only rows that state a time vote:
+// a guaranteed connection (type 1 without a time) or a ban says which pairs
+// are special, not how long a change at the stop takes, so they stay
+// exceptions and never become the default for the pairs nobody named. Works
+// on stop pairs and durations only; Rule just has to offer from_stop_,
+// to_stop_, is_qualified(), states_time(), duration() and a (from, to,
+// duration) constructor for the synthesized unqualified rules.
 template <typename Rule>
 void fold_pair_defaults(timetable& tt, vector_map<rule_idx_t, Rule>& rules) {
   struct counted_duration {
@@ -97,7 +100,7 @@ void fold_pair_defaults(timetable& tt, vector_map<rule_idx_t, Rule>& rules) {
     auto const p = transfer_pair{r.from_stop_, r.to_stop_};
     if (!r.is_qualified()) {
       pair_default[p] = r.duration();  // duplicate rows: last one wins
-    } else {
+    } else if (r.states_time()) {
       auto& durations = qualified[p];
       auto const it = utl::find_if(durations, [&](counted_duration const& c) {
         return c.d_ == r.duration();
@@ -119,9 +122,6 @@ void fold_pair_defaults(timetable& tt, vector_map<rule_idx_t, Rule>& rules) {
     auto const majority = std::max_element(
         begin(durations), end(durations),
         [](auto const& a, auto const& b) { return a.n_ < b.n_; });
-    if (majority->d_ == footpath::kMaxDuration) {
-      continue;
-    }
     pair_default.emplace(p, majority->d_);
 
     if (p.from_ == p.to_) {
@@ -149,24 +149,65 @@ void fold_pair_defaults(timetable& tt, vector_map<rule_idx_t, Rule>& rules) {
   }
 }
 
-// What a member of a base is, as far as the derivation is concerned. The
-// loaders find this out differently - one from a rule table, one from a
-// resolved matrix - but the rule below has to be the same for all of them,
-// because build_hubs re-derives the very same classification from the
-// finished footpaths. If the two ever disagree, transfers go missing without
-// a trace.
-struct member_flags {
-  bool slow_{false};  // its own transfer time exceeds the base's
-  bool slow_from_{false};  // some slower transfer starts here
-  bool slow_to_{false};  // some slower transfer leads here
+// A hub stands for every pair of two lists at one weight. It may only be
+// built where that weight cannot beat what the data says: a pair stated
+// slower elsewhere - a rule cell slower than the weight, or a location's own
+// change time slower than it - must stay out of its reach, while a pair
+// stated faster is no obstacle, its cell wins the minimum the routing takes.
+// The split is always the same: the sources of the slower pairs move to a
+// second, restricted hub that reaches only the targets no slower pair leads
+// to, so every other pair is still derived (emit_split_hubs). What the two
+// hubs do not reach the caller states one by one - usually just the slower
+// pairs, which are stated anyway.
+//
+// Who is slow is found differently by each caller - from the rule table, from
+// the written cells, from the walks - but build_hubs re-derives the very
+// same classification from the finished footpaths, so the sets have to agree.
+// If they ever disagree, transfers go missing without a trace.
+struct hub_split {
+  void mark(location_idx_t const from, location_idx_t const to) {
+    slow_from_.insert(from);
+    slow_to_.insert(to);
+  }
+  bool derives(location_idx_t const from, location_idx_t const to) const {
+    return !slow_from_.contains(from) || !slow_to_.contains(to);
+  }
+  hash_set<location_idx_t> slow_from_, slow_to_;
 };
 
-// A transfer at exactly the base's transfer time need not be stored if the
-// hubs of that base derive it: a member that is slow itself feeds no hub at
-// all, and the rest reach either every member (nothing slow starts at them)
-// or the members no slow transfer leads to.
-inline bool derivable(member_flags const& from, member_flags const& to) {
-  return !from.slow_ && (!from.slow_from_ || !to.slow_to_);
+// The hubs standing for x times y at weight d under a split: the unrestricted
+// one, whose sources start no slower pair and which reaches all of y, and -
+// if any source does - the restricted one for the others, reaching only the
+// targets no slower pair leads to. Sorted lists stay sorted.
+template <typename Emit>
+void emit_split_hubs(std::vector<location_idx_t> const& x,
+                     std::vector<location_idx_t> const& y,
+                     duration_t const d,
+                     hub_split const& split,
+                     Emit&& emit) {
+  auto in = std::vector<location_idx_t>{};
+  for (auto const m : x) {
+    if (!split.slow_from_.contains(m)) {
+      in.push_back(m);
+    }
+  }
+  emit(in, y, d);
+  if (in.size() == x.size()) {
+    return;
+  }
+  in.clear();
+  auto out = std::vector<location_idx_t>{};
+  for (auto const m : x) {
+    if (split.slow_from_.contains(m)) {
+      in.push_back(m);
+    }
+  }
+  for (auto const t : y) {
+    if (!split.slow_to_.contains(t)) {
+      out.push_back(t);
+    }
+  }
+  emit(in, out, d);
 }
 
 // Turns the resolved rule cells into timetable entries: writes the transfers

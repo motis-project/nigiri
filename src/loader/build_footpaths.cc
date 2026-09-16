@@ -1,5 +1,7 @@
 #include "nigiri/loader/build_footpaths.h"
 
+#include <cassert>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -45,10 +47,6 @@ std::optional<u8_minutes> adjust_to_walk_speed(timetable const& tt,
   return u8_minutes{
       std::max(static_cast<duration_t::rep>(duration.count()),
                static_cast<duration_t::rep>(distance / kWalkSpeed / 60))};
-}
-
-bool is_generated(location_type const t) {
-  return t == location_type::kGeneratedTrack || t == location_type::kVirt;
 }
 
 // Walking transfers between equivalent stops (e.g. GTFS same-name / nearby /
@@ -98,49 +96,224 @@ void add_equivalence_footpaths(timetable& tt,
   }
 }
 
-// Generated children (HRD track locations, virtual locations) have no
-// position of their own: they sit exactly where their parent sits. Every
-// transfer of the parent is therefore a transfer of the child at the same
-// duration - be it a beeline or a transfers.txt row - so they are copied over
-// instead of being recomputed per child. Self loops must not be copied: for a
-// virtual location the copy would land between it and its own stop and
-// undercut the rule matrix (materialized deviations plus the defaults derived
-// by that stop's hubs).
-void copy_footpaths_to_generated_children(timetable& tt) {
-  auto fp_out = mutable_fws_multimap<location_idx_t, footpath>{};
-  for (auto l = location_idx_t{0U};
-       l != tt.locations_.preprocessing_footpaths_out_.size(); ++l) {
-    for (auto const& fp : tt.locations_.preprocessing_footpaths_out_[l]) {
-      if (fp.target() == l) {
-        continue;  // a self loop is not a transfer, and propagating it would
-                   // connect the children at an unrelated duration
+// Sorted rule targets per location and the bases they sit at. A walk asks
+// only "does this member have a rule into that stop", which is a binary
+// search in the second list; the first is needed for the few that answer yes.
+struct rule_index {
+  explicit rule_index(timetable& tt) : tt_{tt} {
+    auto const n = static_cast<std::size_t>(cista::to_idx(tt.n_locations()));
+    auto const n_rules = std::min(
+        static_cast<std::size_t>(tt.locations_.transfer_rule_fps_.size()), n);
+    bases_.resize(n);
+    for (auto l = location_idx_t{0U}; l != location_idx_t{n_rules}; ++l) {
+      utl::sort(tt.locations_.transfer_rule_fps_[l],
+                [](footpath const a, footpath const b) {
+                  return a.target() < b.target();
+                });
+      auto& b = bases_[to_idx(l)];
+      for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
+        b.push_back(base_of(tt, fp.target()));
       }
-      for (auto const& neighbor_child : tt.locations_.children_[fp.target()]) {
-        if (!is_generated(tt.locations_.types_[neighbor_child])) {
+      utl::erase_duplicates(b);
+    }
+  }
+
+  // does `from` have any rule into `stop` or one of its virtual locations?
+  bool any_at(location_idx_t const from, location_idx_t const stop) const {
+    auto const& b = bases_[to_idx(from)];
+    return std::binary_search(begin(b), end(b), stop);
+  }
+
+  // ... one that takes longer than a walk of `d`? Only such a rule can be
+  // undercut by a hub handing out `d`: a faster one is written as a cell and
+  // wins the minimum the routing takes anyway.
+  bool any_slower_at(location_idx_t const from,
+                     location_idx_t const stop,
+                     duration_t const d) const {
+    return any_at(from, stop) &&
+           utl::any_of(
+               tt_.locations_.transfer_rule_fps_[from], [&](footpath const r) {
+                 return r.duration() > d && base_of(tt_, r.target()) == stop;
+               });
+  }
+
+  bool ruled(location_idx_t const from, location_idx_t const to) const {
+    if (to_idx(from) >= tt_.locations_.transfer_rule_fps_.size()) {
+      return false;
+    }
+    auto const b = tt_.locations_.transfer_rule_fps_[from];
+    auto const it = std::lower_bound(
+        begin(b), end(b), to, [](footpath const fp, location_idx_t const t) {
+          return fp.target() < t;
+        });
+    return it != end(b) && it->target() == to;
+  }
+
+  timetable& tt_;
+  std::vector<std::vector<location_idx_t>> bases_;
+};
+
+// The members of a stop for walking purposes: itself and its virtual
+// locations, which own no footpaths of their own.
+void collect_members(timetable const& tt,
+                     location_idx_t const l,
+                     std::vector<location_idx_t>& out) {
+  out.assign({l});
+  for (auto const c : tt.locations_.children_[l]) {
+    if (tt.locations_.types_[c] == location_type::kVirt) {
+      out.push_back(c);
+    }
+  }
+}
+
+// The walks of the stops with virtual locations, as hubs. One hub stands for
+// every pair of its two lists at one weight, so the footpaths of a stop that
+// share a duration share a hub: the ingress is the same either way and the
+// egress is their union. Pairs a rule speaks about must stay out of the lists
+// - the same split the rule hubs use - and rectangles too small to pay for a
+// hub become ordinary footpaths instead. This runs before the footpath lists
+// are written, so the durations are adjusted here exactly as write_footpaths
+// would, and it is the only place that decides.
+template <typename Fps, typename AddExtra>
+void build_walk_hubs_impl(timetable& tt,
+                          bool const adjust_footpaths,
+                          Fps&& fps_of,
+                          AddExtra&& add_extra,
+                          vecvec<hub_idx_t, location_idx_t>& walk_hub_in,
+                          vecvec<hub_idx_t, location_idx_t>& walk_hub_out,
+                          vector_map<hub_idx_t, duration_t>& walk_hub_time) {
+  auto const idx = rule_index{tt};
+  auto const has_rule = [&](location_idx_t const l, footpath const fp) {
+    return to_idx(l) < tt.locations_.transfer_rule_fps_.size() &&
+           utl::any_of(
+               tt.locations_.transfer_rule_fps_[l],
+               [&](footpath const r) { return r.target() == fp.target(); });
+  };
+
+  auto extra = mutable_fws_multimap<location_idx_t, footpath>{};
+  auto members = std::vector<location_idx_t>{};
+  auto targets = std::vector<location_idx_t>{};
+  auto egress = std::vector<location_idx_t>{};
+
+  auto& w_in = walk_hub_in;
+  auto& w_out = walk_hub_out;
+  auto& w_time = walk_hub_time;
+  auto const emit = [&](std::vector<location_idx_t> const& ingress,
+                        std::vector<location_idx_t> const& eg,
+                        duration_t const d) {
+    if (ingress.empty() || eg.empty()) {
+      return;
+    }
+    if (ingress.size() * eg.size() <= ingress.size() + eg.size()) {
+      for (auto const m : ingress) {  // a hub would not even be smaller
+        for (auto const t : eg) {
+          if (m != t && !idx.ruled(m, t)) {
+            extra[m].emplace_back(t, d);
+          }
+        }
+      }
+      return;
+    }
+    w_in.emplace_back(ingress);
+    w_out.emplace_back(eg);
+    w_time.push_back(d);
+  };
+
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    collect_members(tt, l, members);
+
+    // group the footpaths by the duration they will end up with
+    auto by_duration = std::map<duration_t, std::vector<location_idx_t>>{};
+    for (auto const& fp : fps_of(l)) {
+      if (fp.target() == l) {
+        continue;
+      }
+      if (idx.ruled(l, fp.target())) {
+        continue;  // a rule states this pair; it is not a walk and must not
+                   // shape a rectangle - the layer may already contain it
+                   // (street routing merges the rules before this runs)
+      }
+      auto d = fp.duration();
+      if (adjust_footpaths && !has_rule(l, fp)) {
+        auto const adjusted = adjust_to_walk_speed(tt, l, fp.target(), d);
+        if (!adjusted.has_value()) {
+          continue;  // dropped as unwalkable, by write_footpaths too
+        }
+        d = duration_t{adjusted->count()};
+      }
+      collect_members(tt, fp.target(), targets);
+      if (members.size() == 1U && targets.size() == 1U) {
+        continue;  // the footpath itself is the whole rectangle
+      }
+      by_duration[d].push_back(fp.target());
+    }
+
+    for (auto const& [d, stops] : by_duration) {
+      // Targets no slower rule speaks about can share one hub, whatever stop
+      // they belong to: same ingress, same weight. A rule faster than the walk
+      // is no obstacle, its cell wins the minimum the routing takes. A target
+      // some member has a slower rule into keeps its own pair of hubs -
+      // merging it would make every member of the group restricted at every
+      // stop of the group, and the pairs that fall out of the split would
+      // have to be written one by one.
+      egress.clear();
+      for (auto const t_stop : stops) {
+        collect_members(tt, t_stop, targets);
+
+        auto split = hub_split{};
+        for (auto const m : members) {
+          if (!idx.any_slower_at(m, t_stop, d)) {
+            continue;
+          }
+          for (auto const r : tt.locations_.transfer_rule_fps_[m]) {
+            if (r.duration() > d && base_of(tt, r.target()) == t_stop) {
+              split.mark(m, r.target());
+            }
+          }
+        }
+        if (split.slow_from_.empty()) {
+          egress.insert(end(egress), begin(targets), end(targets));
           continue;
         }
-        fp_out[l].emplace_back(neighbor_child, fp.duration());
-        for (auto const& child : tt.locations_.children_[l]) {
-          if (is_generated(tt.locations_.types_[child])) {
-            fp_out[child].emplace_back(neighbor_child, fp.duration());
+
+        emit_split_hubs(members, targets, d, split, emit);
+        for (auto const m : split.slow_from_) {
+          for (auto const t : split.slow_to_) {
+            if (m != t && !idx.ruled(m, t)) {
+              extra[m].emplace_back(t, d);
+            }
           }
         }
       }
 
-      for (auto const& child : tt.locations_.children_[l]) {
-        if (is_generated(tt.locations_.types_[child])) {
-          fp_out[child].emplace_back(fp.target(), fp.duration());
-        }
+      utl::erase_duplicates(egress);
+      if (!egress.empty()) {
+        emit(members, egress, d);
       }
     }
   }
 
-  for (auto l = location_idx_t{0U};
-       l != tt.locations_.preprocessing_footpaths_out_.size(); ++l) {
-    for (auto const& fp : fp_out[l]) {
-      tt.locations_.preprocessing_footpaths_out_[l].emplace_back(fp);
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    for (auto const& fp : extra[l]) {
+      add_extra(l, fp);
     }
   }
+}
+
+void build_walk_hubs(timetable& tt,
+                     bool const adjust_footpaths,
+                     vecvec<hub_idx_t, location_idx_t>& walk_hub_in,
+                     vecvec<hub_idx_t, location_idx_t>& walk_hub_out,
+                     vector_map<hub_idx_t, duration_t>& walk_hub_time) {
+  build_walk_hubs_impl(
+      tt, adjust_footpaths,
+      [&](location_idx_t const l) -> decltype(auto) {
+        return tt.locations_.preprocessing_footpaths_out_[l];
+      },
+      [&](location_idx_t const l, footpath const fp) {
+        tt.locations_.preprocessing_footpaths_out_[l].emplace_back(fp);
+      },
+      walk_hub_in, walk_hub_out, walk_hub_time);
 }
 
 // Overwrite/insert the directed transfer edges emitted from transfer rules.
@@ -294,15 +467,17 @@ void write_footpaths(timetable& tt, bool const adjust_footpaths) {
 // exact value its own rule overrides. Nothing bars it from a to list, because
 // a transfer costs what the rule for that pair says, and its own rule speaks
 // only for the pair with itself.
-void build_hubs(timetable& tt) {
+void build_hubs(timetable& tt,
+                vecvec<hub_idx_t, location_idx_t> const& walk_hub_in,
+                vecvec<hub_idx_t, location_idx_t> const& walk_hub_out,
+                vector_map<hub_idx_t, duration_t> const& walk_hub_time) {
   auto const n = tt.n_locations();
 
   // Which members a slower transfer starts at / leads to. Taken from the
   // rules rather than from the footpaths, because the footpath layer is not
   // always the loader's to write - and because the loader decided what to
   // leave out from exactly this, so both sides have to read the same source.
-  auto slow_from = hash_set<location_idx_t>{};
-  auto slow_to = hash_set<location_idx_t>{};
+  auto split = hub_split{};
   {
     auto const n_rules = std::min(
         static_cast<std::size_t>(tt.locations_.transfer_rule_fps_.size()),
@@ -312,8 +487,7 @@ void build_hubs(timetable& tt) {
       for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
         if (base_of(tt, fp.target()) == base &&
             fp.duration() > tt.locations_.transfer_time_[base]) {
-          slow_from.insert(l);
-          slow_to.insert(fp.target());
+          split.mark(l, fp.target());
         }
       }
     }
@@ -362,10 +536,13 @@ void build_hubs(timetable& tt) {
   }
 
   auto members = std::vector<location_idx_t>{};
-  auto unrestricted_in = std::vector<location_idx_t>{};
-  auto unrestricted_out = std::vector<location_idx_t>{};
-  auto restricted_in = std::vector<location_idx_t>{};
-  auto restricted_out = std::vector<location_idx_t>{};
+  auto sources = std::vector<location_idx_t>{};
+  auto const emit = [&](std::vector<location_idx_t> const& ingress,
+                        std::vector<location_idx_t> const& egress,
+                        duration_t const d) {
+    add_hub({ingress.data(), ingress.size()}, {egress.data(), egress.size()},
+            d);
+  };
   for (auto base = location_idx_t{0U}; base != location_idx_t{n}; ++base) {
     if (!has_virts[to_idx(base)]) {
       continue;
@@ -387,31 +564,26 @@ void build_hubs(timetable& tt) {
     if (d == kNoTransfer) {
       continue;  // nobody changes here, so nothing is derived at "d"
     }
-    auto const is_slow = [&](location_idx_t const m) {
-      return m != base && tt.locations_.transfer_time_[m] > d;
-    };
-
-    unrestricted_in.clear();
-    unrestricted_out.clear();
-    restricted_in.clear();
-    restricted_out.clear();
+    // a member slower than the stop itself feeds no hub: every hub holds its
+    // own sources in its target list too, so it would derive its own cell at
+    // the stop's time - the exact value its own rule overrides
+    sources.clear();
     for (auto const m : members) {
-      if (!is_slow(m) && !slow_from.contains(m)) {
-        unrestricted_in.emplace_back(m);
-      } else if (!is_slow(m)) {
-        restricted_in.emplace_back(m);
-      }
-      unrestricted_out.emplace_back(m);
-      if (!slow_to.contains(m)) {
-        restricted_out.emplace_back(m);
+      if (m == base || tt.locations_.transfer_time_[m] <= d) {
+        sources.push_back(m);
       }
     }
-
-    add_hub(unrestricted_in, unrestricted_out, d);
-    add_hub(restricted_in, restricted_out, d);
+    emit_split_hubs(sources, members, duration_t{d}, split, emit);
   }
 
+  // the walks come last: everything before them is rule-derived
   tt.locations_.n_rule_hubs_ = static_cast<std::uint32_t>(in.size());
+  for (auto h = hub_idx_t{0U}; h != hub_idx_t{walk_hub_in.size()}; ++h) {
+    auto const w_i = walk_hub_in[h];
+    auto const w_o = walk_hub_out[h];
+    add_hub({w_i.data(), w_i.size()}, {w_o.data(), w_o.size()},
+            walk_hub_time[h]);
+  }
 
   tt.locations_.hub_in_[kDefaultProfile] = std::move(in);
   tt.locations_.hub_out_[kDefaultProfile] = std::move(out);
@@ -431,34 +603,31 @@ void build_hubs(timetable& tt) {
 void prune_hub_covered_footpaths(timetable& tt) {
   constexpr auto const p = kDefaultProfile;
   auto const n = static_cast<std::size_t>(cista::to_idx(tt.n_locations()));
-  auto const key = [](location_idx_t const a, location_idx_t const b) {
-    return (static_cast<std::uint64_t>(to_idx(a)) << 32) | to_idx(b);
+  auto const& hub_out = tt.locations_.hub_out_[p];
+  auto const& hub_time = tt.locations_.hub_time_[p];
+  auto const& hubs_of = tt.locations_.hub_in_by_loc_[p];
+  // does a hub hand out this pair at the footpath's weight or better? Every
+  // producer of a hub list keeps it sorted (write_transfer_rules sorts, the
+  // stop and walk hubs list members in index order), so one binary search
+  // per hub of the source answers it - without spelling out the pairs, of
+  // which a stop with hundreds of virtual locations has tens of thousands.
+  auto const covered = [&](location_idx_t const l, footpath const fp) {
+    return to_idx(l) < hubs_of.size() &&
+           utl::any_of(
+               hubs_of[l],
+               [&](hub_idx_t const h) {
+                 auto const o = hub_out[h];
+                 assert(std::is_sorted(begin(o), end(o)));
+                 return hub_time[h] <= fp.duration() &&
+                        std::binary_search(begin(o), end(o), fp.target());
+               });
   };
-
-  auto derived = hash_map<std::uint64_t, int>{};
-  for (auto h = hub_idx_t{0U};
-       h != hub_idx_t{tt.locations_.hub_time_[p].size()}; ++h) {
-    auto const w = static_cast<int>(tt.locations_.hub_time_[p][h].count());
-    for (auto const u : tt.locations_.hub_in_[p][h]) {
-      for (auto const v : tt.locations_.hub_out_[p][h]) {
-        if (u == v) {
-          continue;
-        }
-        auto const [it, ins] = derived.emplace(key(u, v), w);
-        if (!ins) {
-          it->second = std::min(it->second, w);
-        }
-      }
-    }
-  }
 
   auto out = std::vector<std::vector<footpath>>(n);
   auto n_pruned = std::size_t{0U}, n_kept = std::size_t{0U};
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
     for (auto const fp : tt.locations_.footpaths_out_[p][l]) {
-      auto const it = derived.find(key(l, fp.target()));
-      if (it != end(derived) &&
-          it->second <= static_cast<int>(fp.duration().count())) {
+      if (covered(l, fp)) {
         ++n_pruned;  // the hub already delivers this pair, at least as fast
         continue;
       }
@@ -521,9 +690,12 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
   // tt.bin is always a complete timetable on its own: the walks are beelines
   // here, and whoever computes a routed layer afterwards writes it into
   // tt_ext.bin instead of taking anything away from this one.
-  link_tracks_with_station(tt);
-  link_nearby_stations(tt);
-  add_equivalence_footpaths(tt, opt.max_footpath_length_);
+  {
+    auto const timer = scoped_timer{"loader.footpath.beelines"};
+    link_tracks_with_station(tt);
+    link_nearby_stations(tt);
+    add_equivalence_footpaths(tt, opt.max_footpath_length_);
+  }
 
   if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_) {
     merge_duplicates(tt, opt.merge_threshold_, opt.merge_dupes_intra_src_,
@@ -531,15 +703,33 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
                      opt.src_tags_);
   }
 
-  copy_footpaths_to_generated_children(tt);
-  // Whoever computes the footpath layer merges the rules in - keeping them
-  // out of the copies above saves storing every rule cell twice more (as an
-  // outgoing footpath and again in the incoming mirror).
-  apply_transfer_rules(tt);
-  write_footpaths(tt, opt.adjust_footpaths_);
-  build_hubs(tt);
+  // The rules first: their cells join the layer and the walks a rule hub
+  // speaks for leave it, so the walk hubs below see the final walks. Then
+  // the walks of every stop with virtual locations become hubs instead of
+  // one copy per virtual location.
+  {
+    auto const timer = scoped_timer{"loader.footpath.rules"};
+    apply_transfer_rules(tt);
+  }
+  auto walk_hub_in = vecvec<hub_idx_t, location_idx_t>{};
+  auto walk_hub_out = vecvec<hub_idx_t, location_idx_t>{};
+  auto walk_hub_time = vector_map<hub_idx_t, duration_t>{};
+  {
+    auto const timer = scoped_timer{"loader.footpath.walk_hubs"};
+    build_walk_hubs(tt, opt.adjust_footpaths_, walk_hub_in, walk_hub_out,
+                    walk_hub_time);
+  }
+  {
+    auto const timer = scoped_timer{"loader.footpath.write"};
+    write_footpaths(tt, opt.adjust_footpaths_);
+  }
+  {
+    auto const timer = scoped_timer{"loader.footpath.hubs"};
+    build_hubs(tt, walk_hub_in, walk_hub_out, walk_hub_time);
+  }
   // The pruned edges are exactly the ones the hubs hand out anyway, so this
   // is the same transfer relation with the duplicates left out.
+  auto const timer = scoped_timer{"loader.footpath.prune"};
   prune_hub_covered_footpaths(tt);
 }
 

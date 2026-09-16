@@ -140,6 +140,13 @@ struct rule {
     return get_specificity() != specificity::kStopsOnly;
   }
 
+  // a timed transfer without a time and a ban say nothing about how long a
+  // change takes - only a stated time can become a default (see
+  // fold_pair_defaults)
+  bool states_time() const {
+    return !forbidden_ && min_transfer_time_.has_value();
+  }
+
   // A timed transfer (type 1) needs no minimum: the departing vehicle waits,
   // so the pair costs nothing beyond being there.
   duration_t duration() const {
