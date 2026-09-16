@@ -256,6 +256,57 @@ tr.a[hidden]{display:none}
     ++i;
   }
 
+  // Entities without any counterpart never show up above: they have no pair
+  // to be listed in. Their transports are unique by definition.
+  auto matched = hash_map<provider_idx_t, bool>{};
+  for (auto const& [a, b, _] : s.provider_overlap_.entries_) {
+    matched[a] = true;
+    matched[b] = true;
+  }
+  auto unmatched = std::vector<provider_idx_t>{};
+  for (auto p = provider_idx_t{0U}; p != s.provider_n_transports_.size(); ++p) {
+    if (s.provider_n_transports_[p] != 0U && !matched.contains(p)) {
+      unmatched.push_back(p);
+    }
+  }
+  utl::sort(unmatched, [&](provider_idx_t const a, provider_idx_t const b) {
+    return s.provider_n_transports_[a] > s.provider_n_transports_[b];
+  });
+
+  auto n_unmatched_transports = std::uint32_t{0U};
+  for (auto const p : unmatched) {
+    n_unmatched_transports += s.provider_n_transports_[p];
+  }
+
+  f << fmt::format(
+      R"(</table>
+<h2>no counterpart ({} agencies, {} transports)</h2>
+<table>
+  <colgroup>
+    <col>
+    <col>
+    <col style="width:9em">
+  </colgroup>
+  <tr>
+    <th>agency</th>
+    <th>feed</th>
+    <th>transports</th>
+  </tr>
+)",
+      unmatched.size(), n_unmatched_transports);
+
+  for (auto const p : unmatched) {
+    f << fmt::format(
+        R"(  <tr>
+    <td>{}</td>
+    <td>{}</td>
+    <td>{}</td>
+  </tr>
+)",
+        esc(tt.get_default_translation(tt.providers_[p].name_)),
+        esc(tag(tt.providers_[p].src_)), s.provider_n_transports_[p]);
+  }
+
   f << R"(</table>
 <script>
 function t(i) {
