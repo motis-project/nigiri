@@ -82,13 +82,13 @@ TEST(routing, td_start_times) {
                  std::vector<td_offset>{
                      {.valid_from_ = sys_days{1970_y / January / 1},
                       .duration_ = footpath::kMaxDuration,
-                      .transport_mode_id_ = 0U},
+                      .transport_mode_payload_ = 0U},
                      {.valid_from_ = sys_days{2020_y / March / 30} + 10h,
                       .duration_ = 10min,
-                      .transport_mode_id_ = 0U},
+                      .transport_mode_payload_ = 0U},
                      {.valid_from_ = sys_days{2020_y / March / 30} + 12h,
                       .duration_ = footpath::kMaxDuration,
-                      .transport_mode_id_ = 0U}}}}},
+                      .transport_mode_payload_ = 0U}}}}},
              {}, kMaxTravelTime, location_match_mode::kExact, false, starts,
              true, 0U, {});
   std::sort(begin(starts), end(starts),

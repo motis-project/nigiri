@@ -106,13 +106,13 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
           get_td_duration<flip(SearchDir)>(it->second, leg_start_time);
       if (fp.has_value() &&
           is_better_or_eq(j.start_time_, leg_start_time - dir(fp->first))) {
-        return journey::leg{SearchDir,
-                            get_special_station(special_station::kStart),
-                            leg_start_location,
-                            leg_start_time - dir(fp->first),
-                            leg_start_time,
-                            offset{leg_start_location, fp->first,
-                                   fp->second.transport_mode_id_}};
+        return journey::leg{
+            SearchDir,
+            get_special_station(special_station::kStart),
+            leg_start_location,
+            leg_start_time - dir(fp->first),
+            leg_start_time,
+            offset{leg_start_location, fp->first, fp->second.mode()}};
       } else {
 #ifdef NIGIRI_TRACE_RECONSTRUCT
         for (auto const& x : it->second) {
@@ -661,20 +661,20 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
     auto ret = std::optional<std::pair<journey::leg, journey::leg>>{};
     auto const curr_time = round_times[k][to_idx(l)][v];
-    for_each_meta(
-        tt, location_match_mode::kIntermodal, dest_offset.target_,
-        [&](location_idx_t const eq) {
-          auto intermodal_dest = check_fp(
-              k, l, curr_time, {eq, dest_offset.duration_}, false, td_footpath);
-          if (intermodal_dest.has_value()) {
-            trace_rc_intermodal_dest_match;
-            intermodal_dest->first.uses_ = offset{
-                eq, dest_offset.duration_, dest_offset.transport_mode_id_};
-            ret = std::move(intermodal_dest);
-          } else {
-            trace_rc_intermodal_dest_mismatch;
-          }
-        });
+    for_each_meta(tt, location_match_mode::kIntermodal, dest_offset.target_,
+                  [&](location_idx_t const eq) {
+                    auto intermodal_dest =
+                        check_fp(k, l, curr_time, {eq, dest_offset.duration_},
+                                 false, td_footpath);
+                    if (intermodal_dest.has_value()) {
+                      trace_rc_intermodal_dest_match;
+                      intermodal_dest->first.uses_ =
+                          offset{eq, dest_offset.duration_, dest_offset.mode()};
+                      ret = std::move(intermodal_dest);
+                    } else {
+                      trace_rc_intermodal_dest_mismatch;
+                    }
+                  });
     return ret;
   };
 
@@ -701,8 +701,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
         auto const fp = get_td_duration<flip(SearchDir)>(td, t);
         if (fp.has_value()) {
           auto const [d, td_fp] = *fp;
-          auto const ret =
-              find_dest_leg(k, l, {from, d, td_fp.transport_mode_id_}, true);
+          auto const ret = find_dest_leg(k, l, {from, d, td_fp.mode()}, true);
           if (ret.has_value()) {
             return std::move(*ret);
           } else {
@@ -723,7 +722,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
 #ifdef NIGIRI_TRACE_RECONSTRUCT
           for (auto const& x : td) {
             trace_reconstruct("  valid_from={}, duration={}, id={}\n",
-                              x.valid_from_, x.duration_, x.transport_mode_id_);
+                              x.valid_from_, x.duration_,
+                              x.transport_mode_payload_);
           }
 #endif
         }
