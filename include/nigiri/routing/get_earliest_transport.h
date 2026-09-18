@@ -9,17 +9,17 @@ namespace nigiri::routing {
 template <direction const SearchDir = direction::kForward,
           typename TrafficDaySrc,
           typename Fn>
-transport get_earliest_transport(timetable const& tt,
-                                 TrafficDaySrc const& traffic_day_src,
-                                 [[maybe_unused]] unsigned const k,
-                                 route_idx_t const r,
-                                 stop_idx_t const stop_idx,
-                                 day_idx_t const day_at_stop,
-                                 minutes_after_midnight_t const mam_at_stop,
-                                 [[maybe_unused]] location_idx_t const l,
-                                 Fn&& worse_than_dest,
-                                 day_idx_t::value_t const n_days_to_iterate =
-                                     2U) {
+transport get_earliest_transport(
+    timetable const& tt,
+    TrafficDaySrc const& traffic_day_src,
+    [[maybe_unused]] unsigned const k,
+    route_idx_t const r,
+    stop_idx_t const stop_idx,
+    day_idx_t const day_at_stop,
+    minutes_after_midnight_t const mam_at_stop,
+    [[maybe_unused]] location_idx_t const l,
+    Fn&& worse_than_dest,
+    day_idx_t::value_t const n_days_to_iterate = 2U) {
   constexpr auto const kFwd = SearchDir == direction::kForward;
   constexpr auto const is_better = [](auto a, auto b) {
     return kFwd ? a < b : a > b;
