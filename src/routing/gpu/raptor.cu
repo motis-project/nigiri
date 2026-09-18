@@ -392,7 +392,8 @@ struct gpu_raptor_state::impl {
       unsigned const dir /* fwd=0 bwd=1 -> ping/pong can coexist */,
       nigiri::bitvec const& is_dest,
       std::vector<std::uint16_t> const& dist_to_dest,
-      hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest) {
+      hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
+      blocked_feeds const& blocked) {
     is_intermodal_dest_[dir] = !dist_to_dest.empty();
 
     // td dest offsets: flatten into sorted (loc, range, data) groups.
@@ -464,6 +465,27 @@ struct gpu_raptor_state::impl {
                         dd_pinned, dist_to_dest.size() * sizeof(std::uint16_t),
                         cudaMemcpyHostToDevice, stream_),
                 "could not copy dist to dest");
+
+    auto const copy_bits =
+        [&](auto const& blocks, thrust::device_vector<std::uint64_t>& dev,
+            pinned_host_buffer<std::uint64_t>& pin, char const* const what) {
+          dev.resize(blocks.size());
+          if (blocks.empty()) {
+            return;
+          }
+          auto* const pinned = pin.ensure(blocks.size());
+          std::copy(blocks.begin(), blocks.end(), pinned);
+          utl::verify(
+              cudaSuccess ==
+                  cudaMemcpyAsync(thrust::raw_pointer_cast(dev.data()), pinned,
+                                  blocks.size() * sizeof(std::uint64_t),
+                                  cudaMemcpyHostToDevice, stream_),
+              "copy failed  {}", what);
+        };
+    copy_bits(blocked.routes_.blocks_, blocked_routes_[dir],
+              blocked_routes_pin_[dir], "blocked routes");
+    copy_bits(blocked.rt_transports_.blocks_, blocked_rt_transports_[dir],
+              blocked_rt_transports_pin_[dir], "blocked rt transports");
   }
 
   bool is_intermodal_dest_[2];  // per direction: [0]=fwd, [1]=bwd
@@ -485,6 +507,12 @@ struct gpu_raptor_state::impl {
   // shared state, each direction uploads its slot once in the ctor)
   thrust::device_vector<std::uint64_t> is_dest_[2];
   pinned_host_buffer<std::uint64_t> is_dest_pin_[2];
+
+  // blocked routes / rt transports
+  thrust::device_vector<std::uint64_t> blocked_routes_[2];
+  pinned_host_buffer<std::uint64_t> blocked_routes_pin_[2];
+  thrust::device_vector<std::uint64_t> blocked_rt_transports_[2];
+  pinned_host_buffer<std::uint64_t> blocked_rt_transports_pin_[2];
 
   thrust::device_vector<std::uint16_t> dist_to_dest_dev_[2];
 
@@ -544,7 +572,7 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
     bool const no_compulsory_reservation,
     transfer_time_settings const& tts,
     profile_idx_t const prf_idx,
-    blocked_feeds const&)
+    blocked_feeds const& blocked)
     : tt_{tt},
       rtt_{rtt},
       gpu_rtt_{rtt == nullptr ? nullptr
@@ -565,9 +593,13 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
   utl::verify(rtt == nullptr || gpu_rtt_ != nullptr,
               "GPU raptor: rt search requires the uploaded device rt "
               "timetable (rt_timetable::gpu_rtt_)");
+  if (rtt != nullptr) {
+    blocked.verify_rtt(rtt);
+  }
   state_.impl_->resize_rt(rtt == nullptr ? 0U : rtt->n_rt_transports());
   reset_arrivals();
-  state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest, td_dist_to_dest);
+  state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest, td_dist_to_dest,
+                             blocked);
 }
 
 template <direction SearchDir, bool WithBounds>
@@ -866,6 +898,8 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
       .route_mark_ = {to_mutable_view(s.route_mark_)},
       .rt_transport_mark_ = {to_mutable_view(s.rt_transport_mark_)},
+      .blocked_routes_ = {to_view(s.blocked_routes_[kDirIdx])},
+      .blocked_rt_transports_ = {to_view(s.blocked_rt_transports_[kDirIdx])},
       .et_result_ = to_mutable_view(s.et_result_),
       .et_task_list_ = to_mutable_view(s.et_task_list_),
       .et_task_count_ = thrust::raw_pointer_cast(s.et_task_count_.data()),

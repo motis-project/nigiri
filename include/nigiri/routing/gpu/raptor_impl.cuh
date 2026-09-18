@@ -133,6 +133,16 @@ struct raptor_impl {
     }
   }
 
+  __device__ __forceinline__ bool is_blocked_route(route_idx_t const r) const {
+    return !blocked_routes_.blocks_.empty() && blocked_routes_[to_idx(r)];
+  }
+
+  __device__ __forceinline__ bool is_blocked_rt_transport(
+      rt_transport_idx_t const rt_t) const {
+    return !blocked_rt_transports_.blocks_.empty() &&
+           blocked_rt_transports_[to_idx(rt_t)];
+  }
+
   __device__ void mark_routes(unsigned const k) {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
@@ -142,6 +152,9 @@ struct raptor_impl {
           atomicOr(any_marked_, 1U);
         }
         for (auto r : tt_.location_routes_[location_idx_t{i}]) {
+          if (is_blocked_route(r)) {
+            continue;
+          }
           debug("round %u: marking route %u\n", k, to_idx(r));
           route_mark_.mark(to_idx(r));
         }
@@ -160,6 +173,9 @@ struct raptor_impl {
           atomicOr(any_marked_, 1U);
         }
         for (auto const rt_t : rt_transports) {
+          if (is_blocked_rt_transport(rt_t)) {
+            continue;
+          }
           debug("round %u: marking rt transport %u\n", k, to_idx(rt_t));
           rt_transport_mark_.mark(to_idx(rt_t));
         }
@@ -1124,6 +1140,10 @@ struct raptor_impl {
   device_bitvec<std::uint32_t> prev_station_mark_;
   device_bitvec<std::uint32_t> route_mark_;
   device_bitvec<std::uint32_t> rt_transport_mark_;
+
+  // blocked feeds (empty means no filter)
+  device_bitvec<std::uint64_t const> blocked_routes_;
+  device_bitvec<std::uint64_t const> blocked_rt_transports_;
 
   // earliest transports per flat (route,stop)
   cuda::std::span<std::uint32_t> et_result_;
