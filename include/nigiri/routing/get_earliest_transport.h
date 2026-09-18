@@ -17,7 +17,9 @@ transport get_earliest_transport(timetable const& tt,
                                  day_idx_t const day_at_stop,
                                  minutes_after_midnight_t const mam_at_stop,
                                  [[maybe_unused]] location_idx_t const l,
-                                 Fn&& worse_than_dest) {
+                                 Fn&& worse_than_dest,
+                                 day_idx_t::value_t const n_days_to_iterate =
+                                     2U) {
   constexpr auto const kFwd = SearchDir == direction::kForward;
   constexpr auto const is_better = [](auto a, auto b) {
     return kFwd ? a < b : a > b;
@@ -55,8 +57,7 @@ transport get_earliest_transport(timetable const& tt,
                      });
   };
 
-  constexpr auto const kNDaysToIterate = day_idx_t::value_t{2U};
-  for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
+  for (auto i = day_idx_t::value_t{0U}; i != n_days_to_iterate; ++i) {
     auto const ev_time_range =
         it_range{i == 0U ? seek_first_day() : get_begin_it(event_times),
                  get_end_it(event_times)};
