@@ -534,9 +534,9 @@ struct raptor_impl {
       if constexpr (WithSections) {
         prefix_contains_kill = kill ? 1U : 0U;
         for (auto off = 1U; off < kWarpSize; off <<= 1) {
-          auto const prev_incl = __shfl_up_sync(kAllLanes, incl, off);
+          auto const prev_incl = warp_shfl_up(incl, off);
           auto const prev_prefix_contains_kill =
-              __shfl_up_sync(kAllLanes, prefix_contains_kill, off);
+              warp_shfl_up(prefix_contains_kill, off);
           if (lane >= off) {
             if (prefix_contains_kill == 0U) {
               incl = incl > prev_incl ? incl : prev_incl;
@@ -546,7 +546,7 @@ struct raptor_impl {
         }
       } else {
         for (auto off = 1U; off < kWarpSize; off <<= 1) {
-          auto const prev_incl = __shfl_up_sync(kAllLanes, incl, off);
+          auto const prev_incl = warp_shfl_up(incl, off);
           if (lane >= off) {
             incl = incl > prev_incl ? incl : prev_incl;
           }
@@ -555,10 +555,10 @@ struct raptor_impl {
 
       // Boarding available when entering this stop = chain up to the
       // previous scan index.
-      auto board = __shfl_up_sync(kAllLanes, incl, 1);
+      auto board = warp_shfl_up(incl, 1);
       if constexpr (WithSections) {
         auto prev_prefix_contains_kill =
-            __shfl_up_sync(kAllLanes, prefix_contains_kill, 1);
+            warp_shfl_up(prefix_contains_kill, 1);
         if (lane == 0U) {
           board = kNoBoard;
           prev_prefix_contains_kill = 0U;
@@ -599,20 +599,20 @@ struct raptor_impl {
 
       // Carry across chunks.
       if constexpr (WithSections) {
-        auto const incl_last = __shfl_sync(kAllLanes, incl, kWarpSize - 1U);
+        auto const incl_last = warp_shfl(incl, kWarpSize - 1U);
         auto const chunk_contains_kill =
-            __shfl_sync(kAllLanes, prefix_contains_kill, kWarpSize - 1U);
+            warp_shfl(prefix_contains_kill, kWarpSize - 1U);
         carried_board =
             chunk_contains_kill != 0U
                 ? incl_last
                 : (incl_last > carried_board ? incl_last : carried_board);
       } else {
         auto const m = incl > carried_board ? incl : carried_board;
-        carried_board = __shfl_sync(kAllLanes, m, kWarpSize - 1U);
+        carried_board = warp_shfl(m, kWarpSize - 1U);
       }
     }
 
-    return __any_sync(kAllLanes, local_marked);
+    return warp_any(local_marked);
   }
 
   __device__ __forceinline__ void relax_footpath(unsigned const k,
