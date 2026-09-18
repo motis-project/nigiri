@@ -98,7 +98,7 @@ struct arr_criteria {
     return {arr};
   }
   arr_criteria with_transfer(int const dt) const { return {clamp(arr_ + dt)}; }
-  arr_criteria with_walk(int const dt, std::uint16_t, bool = true) const {
+  arr_criteria with_walk(int const dt, std::uint16_t) const {
     return {clamp(arr_ + dt)};
   }
   arr_criteria projected_to(delta_t const arr) const { return {arr}; }
@@ -188,8 +188,7 @@ struct arr_cost_criteria {
     return {clamp(arr_ + dt), cost_};
   }
   arr_cost_criteria with_walk(int const dt,
-                              std::uint16_t const duration,
-                              bool = true) const {
+                              std::uint16_t const duration) const {
     return {clamp(arr_ + dt),
             static_cast<std::uint16_t>(cost_ + duration * kWalkSurcharge)};
   }
@@ -252,23 +251,6 @@ struct arr_cost_criteria {
 // freely combinable; that is also why the generalized-cost criterion is
 // not a dimension - it writes criteria_cost_, the slot non_transit_dim uses.
 
-// Off (default): every footpath relaxation counts towards non_transit_,
-// exactly what the comment above says is counted - ingress, every
-// mid-journey interchange footpath and the egress. On: only the walk before
-// boarding the first transit leg (at_start) and the walk after alighting
-// the last one (egress - to the destination stop or the intermodal target)
-// count; a footpath used to physically change stations mid-journey (a
-// "transfer" in the loose, walking sense - NOT the same-station transfer
-// buffer, which with_transfer() already excludes) does not. Flip this to
-// compare journeys on "how far do I walk before/after transit" rather than
-// "how far do I walk in total", which also strips out short unavoidable
-// interchange hops that are not a meaningful trade-off. A `with_walk()`
-// call is "egress" when its target is the journey's destination - every
-// caller other than update_footpaths()'s mid-journey relax_fp() passes the
-// default `true` (relax_fp is the only one that can land on a
-// non-destination stop and continue the journey from there).
-constexpr bool kNonTransitCountsInterchangeWalks = true;
-
 // minutes on foot: offsets + footpaths
 struct non_transit_dim {
   bool dominates(non_transit_dim const& o) const {
@@ -286,11 +268,7 @@ struct non_transit_dim {
     return prev;
   }
   non_transit_dim with_transfer(int) const { return *this; }
-  non_transit_dim with_walk(int, std::uint16_t const duration,
-                            bool const is_egress = true) const {
-    if (!kNonTransitCountsInterchangeWalks && !is_egress) {
-      return *this;
-    }
+  non_transit_dim with_walk(int, std::uint16_t const duration) const {
     return {static_cast<std::uint16_t>(non_transit_ + duration)};
   }
   void apply_to(journey& j) const { j.criteria_cost_ = non_transit_; }
@@ -334,9 +312,7 @@ struct mode_filter_dim {
     return {prev.mode_filter_ || is_avoided(ra.clasz_)};
   }
   mode_filter_dim with_transfer(int) const { return *this; }
-  mode_filter_dim with_walk(int, std::uint16_t, bool = true) const {
-    return *this;
-  }
+  mode_filter_dim with_walk(int, std::uint16_t) const { return *this; }
   void apply_to(journey& j) const { j.criteria_mode_filter_ = mode_filter_; }
   bool operator==(mode_filter_dim const&) const = default;
 
@@ -376,9 +352,7 @@ struct mode_switches_dim {
             static_cast<std::uint8_t>(prev.switches_ + (switched ? 1U : 0U))};
   }
   mode_switches_dim with_transfer(int) const { return *this; }
-  mode_switches_dim with_walk(int, std::uint16_t, bool = true) const {
-    return *this;
-  }
+  mode_switches_dim with_walk(int, std::uint16_t) const { return *this; }
   void apply_to(journey& j) const { j.criteria_mode_switches_ = switches_; }
   bool operator==(mode_switches_dim const&) const = default;
 
@@ -455,10 +429,9 @@ struct arr_with {
               return std::get<I>(d_).with_transfer(dt);
             })};
   }
-  arr_with with_walk(int const dt, std::uint16_t const duration,
-                     bool const is_egress = true) const {
+  arr_with with_walk(int const dt, std::uint16_t const duration) const {
     return {clamp(arr_ + dt), make([&]<std::size_t I>() {
-              return std::get<I>(d_).with_walk(dt, duration, is_egress);
+              return std::get<I>(d_).with_walk(dt, duration);
             })};
   }
   // all dimensions only ever grow, so their trivial lower bound is

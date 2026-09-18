@@ -784,12 +784,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
     auto const relax_fp = [&](typename state_t::label const& te,
                               std::uint32_t const target,
                               std::uint16_t const duration) {
-      // is_dest_[target] is known up front - only walks that reach the
-      // destination itself are "egress"; a footpath onto some other stop is
-      // a mid-journey interchange even though the label may also continue
-      // the search from there (see kNonTransitCountsInterchangeWalks).
-      auto const fp_crit =
-          te.crit_.with_walk(dir(duration), duration, is_dest_[target]);
+      auto const fp_crit = te.crit_.with_walk(dir(duration), duration);
       auto const fp_target_time = fp_crit.arr_;
       if (!is_better(fp_target_time, worst_at_dest_)) {
         return;
