@@ -223,6 +223,7 @@ NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_non_transit_mode_switches_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_avoided_modes_mode_switches_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(
     mcraptor_non_transit_avoided_modes_mode_switches_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_night_transfer_state)
 
 #if defined(NIGIRI_CUDA)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_raptor_state)

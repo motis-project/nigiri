@@ -18,8 +18,10 @@
 // A criterion owns fields of mc_fields, the label's 16 bits. Derived from
 // mc_dim (no-op updates, kRide false), it defines what applies of
 //   kRide                    whether a ride changes its fields
+//   kRideTimes               whether it needs the ride's times (CPU only)
 //   at_start(f, minutes)     a start label (minutes walked to it)
 //   after_ride(f, c, ctx)    after riding a trip of class c
+//   after_ride_times(f, board, alight)  after a ride boarded and alighted then
 //   after_walk(f, minutes)   after a walk (offset, footpath)
 //   complete(f)              drops what only counts while the journey goes on
 //   dominates(a, b)          a is no worse than b; on complete() fields, also
@@ -37,7 +39,7 @@ struct mc_fields {
   std::uint16_t avoided_modes_ : 1 {0U};  // avoided_modes_dim
   std::uint16_t group_ : 3 {0U};  // mode_switches_dim: group of the last trip
   std::uint16_t switches_ : 4 {0U};  // mode_switches_dim
-  std::uint16_t spare_ : 1 {0U};
+  std::uint16_t night_ : 1 {0U};  // night_transfer_dim
 };
 static_assert(sizeof(mc_fields) == 2U &&
                   std::has_unique_object_representations_v<mc_fields>,
@@ -50,10 +52,13 @@ CISTA_CUDA_COMPAT constexpr std::uint16_t saturate(std::uint32_t const v,
 
 struct mc_dim {
   static constexpr bool kRide = false;
+  static constexpr bool kRideTimes = false;
   CISTA_CUDA_COMPAT static void at_start(mc_fields&, std::uint32_t) {}
   CISTA_CUDA_COMPAT static void after_ride(mc_fields&,
                                            clasz,
                                            mc_context const&) {}
+  CISTA_CUDA_COMPAT static void after_ride_times(mc_fields&, delta_t, delta_t) {
+  }
   CISTA_CUDA_COMPAT static void after_walk(mc_fields&, std::uint32_t) {}
   CISTA_CUDA_COMPAT static void complete(mc_fields&) {}
 };
@@ -194,6 +199,48 @@ struct mode_switches_dim : mc_dim {
   }
 };
 
+// ---- night transfer ---------------------------------------------------------
+// "Boards or alights a trip between kNightStart and kNightEnd" as a Pareto
+// dimension: the result keeps the fastest journey and the best one without.
+// Every boarding and alighting counts, the first and the last as well. The
+// minute of the day is delta_t % 1440, UTC (delta_t.h), not local time. CPU
+// only: the GPU engine does not call after_ride_times().
+inline constexpr int kNightStart = 0;  // [min after midnight]
+inline constexpr int kNightEnd = 360;
+
+CISTA_CUDA_COMPAT constexpr bool is_night(delta_t const t) {
+  auto const m = ((static_cast<int>(t) % 1440) + 1440) % 1440;
+  return m >= kNightStart && m < kNightEnd;
+}
+
+struct night_transfer_dim : mc_dim {
+  static constexpr bool kRide = true;
+  static constexpr bool kRideTimes = true;
+
+  CISTA_CUDA_COMPAT static void after_ride_times(mc_fields& f,
+                                                 delta_t const board,
+                                                 delta_t const alight) {
+    if (is_night(board) || is_night(alight)) {
+      f.night_ = 1U;
+    }
+  }
+  CISTA_CUDA_COMPAT static bool dominates(mc_fields const a,
+                                          mc_fields const b) {
+    return a.night_ <= b.night_;
+  }
+  CISTA_CUDA_COMPAT static void join(mc_fields const a,
+                                     mc_fields const b,
+                                     mc_fields& out) {
+    out.night_ = static_cast<std::uint16_t>(a.night_ | b.night_);
+  }
+  static void to_journey(mc_fields const f, journey& j) {
+    j.criteria_night_transfer_ = f.night_ != 0U;
+  }
+  static void of_journey(journey const& j, mc_fields& f) {
+    f.night_ = j.criteria_night_transfer_ ? 1U : 0U;
+  }
+};
+
 // ---- the extras -------------------------------------------------------------
 // The criteria Dims on the label's 16 bits as an integer, as the engines store
 // them. Field-wise (complete) dominance implies ordered(a) <= ordered(b),
@@ -202,6 +249,7 @@ template <typename... Dims>
 struct mc_extras {
   static constexpr bool kAny = sizeof...(Dims) != 0U;
   static constexpr bool kRide = (... || Dims::kRide);
+  static constexpr bool kRideTimes = (... || Dims::kRideTimes);
 
   CISTA_CUDA_COMPAT static mc_fields fields(std::uint32_t const x) {
     return std::bit_cast<mc_fields>(static_cast<std::uint16_t>(x));
@@ -227,6 +275,14 @@ struct mc_extras {
       [[maybe_unused]] mc_context const& ctx) {
     auto f = fields(x);
     (Dims::after_ride(f, c, ctx), ...);
+    return bits(f);
+  }
+  CISTA_CUDA_COMPAT static std::uint32_t after_ride_times(
+      std::uint32_t const x,
+      [[maybe_unused]] delta_t const board,
+      [[maybe_unused]] delta_t const alight) {
+    auto f = fields(x);
+    (Dims::after_ride_times(f, board, alight), ...);
     return bits(f);
   }
   CISTA_CUDA_COMPAT static std::uint32_t after_walk(

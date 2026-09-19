@@ -107,7 +107,8 @@ std::uint8_t trips(journey const& j) {
 bool same_criteria(journey const& a, journey const& b) {
   return a.transfers_ == b.transfers_ && a.criteria_cost_ == b.criteria_cost_ &&
          a.criteria_avoided_modes_ == b.criteria_avoided_modes_ &&
-         a.criteria_mode_switches_ == b.criteria_mode_switches_;
+         a.criteria_mode_switches_ == b.criteria_mode_switches_ &&
+         a.criteria_night_transfer_ == b.criteria_night_transfer_;
 }
 
 // The engines keep references to all of these.
@@ -1040,6 +1041,8 @@ NIGIRI_BMRAPP_INSTANTIATE(arr_avoided_modes_mode_switches_criteria,
                           raptor_state)
 NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_avoided_modes_mode_switches_criteria,
                           raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_night_transfer_criteria,
+                          raptor_state)  // CPU only
 
 #if defined(NIGIRI_CUDA)
 NIGIRI_BMRAPP_INSTANTIATE(arr_criteria, gpu::gpu_raptor_state)

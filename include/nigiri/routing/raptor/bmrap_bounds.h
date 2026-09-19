@@ -13,9 +13,9 @@ namespace nigiri::routing {
 // sigma_arr of the paper: a journey of `minutes` travel time may arrive
 // kArrSlack times as late, by kArrSlackMin to kArrSlackCap minutes more. Shared
 // by the anchor deadlines and the relaxed target pruning of the engines.
-inline constexpr auto kArrSlack = 1.5;
+inline constexpr auto kArrSlack = 2.0;
 inline constexpr auto kArrSlackMin = 20.0;
-inline constexpr auto kArrSlackCap = 180.0;
+inline constexpr auto kArrSlackCap = 1800.0;
 
 CISTA_CUDA_COMPAT inline double relax_arr(double const minutes) {
   auto const extra = minutes * (kArrSlack - 1.0);

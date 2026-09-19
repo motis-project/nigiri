@@ -87,7 +87,8 @@ struct journey {
   bool dominates(journey const& o) const {
     return tuple_dominates(o) && criteria_cost_ <= o.criteria_cost_ &&
            criteria_avoided_modes_ <= o.criteria_avoided_modes_ &&
-           criteria_mode_switches_ <= o.criteria_mode_switches_;
+           criteria_mode_switches_ <= o.criteria_mode_switches_ &&
+           criteria_night_transfer_ <= o.criteria_night_transfer_;
   }
 
   // (start, dest, transfers) only: for counting connections
@@ -136,6 +137,7 @@ struct journey {
   std::uint16_t criteria_cost_{0U};  // non_transit minutes
   bool criteria_avoided_modes_{false};  // uses an avoided vehicle class
   std::uint8_t criteria_mode_switches_{0U};  // vehicle-class switches
+  bool criteria_night_transfer_{false};  // boards/alights in the night
   bool error_{false};
   bool is_reconstructed_{false};
 };

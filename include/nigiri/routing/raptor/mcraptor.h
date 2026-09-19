@@ -103,11 +103,14 @@ struct arr_with {
     return arr_no_worse<SearchDir>(arr_, o.arr_) &&
            extras_t::completed_dominates(extras_, o.extras_);
   }
+  // board: the ride's time at its boarding stop, read iff kRideTimes
   static arr_with from_ride(delta_t const arr,
+                            delta_t const board,
                             clasz const c,
                             carried const prev,
                             mc_context const& ctx) {
-    return {arr, static_cast<carried>(extras_t::after_ride(prev, c, ctx))};
+    return {arr, static_cast<carried>(extras_t::after_ride_times(
+                     extras_t::after_ride(prev, c, ctx), board, arr))};
   }
   static arr_with at_start(delta_t const arr, std::uint16_t const ingress) {
     return {arr, static_cast<carried>(extras_t::at_start(ingress))};
@@ -140,6 +143,7 @@ using arr_avoided_modes_mode_switches_criteria =
     arr_with<avoided_modes_dim, mode_switches_dim>;
 using arr_non_transit_avoided_modes_mode_switches_criteria =
     arr_with<non_transit_dim, avoided_modes_dim, mode_switches_dim>;
+using arr_night_transfer_criteria = arr_with<night_transfer_dim>;
 
 template <typename Criteria>
 struct basic_mcraptor_state {
@@ -394,6 +398,7 @@ private:
               std::uint32_t l_idx,
               stop_idx_t,
               delta_t by_transport,
+              delta_t board,
               route_label const&,
               clasz,
               std::uint32_t transport,
@@ -545,5 +550,7 @@ using mcraptor_avoided_modes_mode_switches_state =
     basic_mcraptor_state<arr_avoided_modes_mode_switches_criteria>;
 using mcraptor_non_transit_avoided_modes_mode_switches_state =
     basic_mcraptor_state<arr_non_transit_avoided_modes_mode_switches_criteria>;
+using mcraptor_night_transfer_state =
+    basic_mcraptor_state<arr_night_transfer_criteria>;
 
 }  // namespace nigiri::routing

@@ -666,7 +666,7 @@ TEST(bmrap, finds_departures_beyond_fastest_direct) {
 
 // The restriction references A(J) alone: the earliest-arriving anchor
 // available at J with at most J's trips. Default slack: deadline = departure +
-// travel + clamp(travel / 2, 20 min, 180 min).
+// travel + clamp(travel, 20 min, 1800 min).
 TEST(bmrap, restriction_uses_only_a_of_j) {
   using routing::anchor;
   using routing::outside_restriction;
@@ -675,16 +675,16 @@ TEST(bmrap, restriction_uses_only_a_of_j) {
            std::chrono::minutes{m};
   };
   auto const anchors = std::vector<anchor>{
-      {at(10, 30), at(11, 0), 1U},  // A(J) for J with 2 trips, deadline 11:20
-      {at(10, 0), at(10, 55), 3U},  // arrives before A(J), deadline 11:23
-      {at(10, 0), at(11, 10), 4U},  // arrives after A(J), deadline 11:45
+      {at(10, 30), at(11, 0), 1U},  // A(J) for J with 2 trips, deadline 11:30
+      {at(10, 0), at(10, 55), 3U},  // arrives before A(J), deadline 11:50
+      {at(10, 0), at(11, 10), 4U},  // arrives after A(J), deadline 12:20
   };
   auto const outside = [&](unixtime_t const found) {
     return outside_restriction<direction::kForward>(anchors, at(10, 0), found,
                                                     2U);
   };
-  EXPECT_FALSE(outside(at(11, 20))) << "within A(J)'s deadline";
-  EXPECT_TRUE(outside(at(11, 22)))
+  EXPECT_FALSE(outside(at(11, 30))) << "within A(J)'s deadline";
+  EXPECT_TRUE(outside(at(11, 32)))
       << "past A(J)'s deadline: the other anchors have more trips than J";
 }
 
@@ -718,7 +718,7 @@ TEST(bmrap, restriction_ties_take_fewest_trips) {
 // The anchors of one step of a Europe-wide query (2026-11-24, step 12:30). The
 // pong moved one of them (12:29) before the step. It must not cap the anchor
 // 13:27 -> 16:28: a journey departing at 12:32 with 7 trips (A(J) that anchor,
-// deadline 17:59) departs after it, and the next step (12:33) no longer covers
+// deadline 19:29) departs after it, and the next step (12:33) no longer covers
 // 12:32. Capped by it, the run allowed 6 trips and pruned the journey.
 TEST(bmrap, trip_budget_cap_skips_anchors_before_the_step) {
   using routing::anchor;
@@ -735,11 +735,11 @@ TEST(bmrap, trip_budget_cap_skips_anchors_before_the_step) {
       anchors, /*horizon=*/at(12, 29), /*budget=*/10U);
   ASSERT_EQ(anchors.size(), runs.size());
   // trip_budget() of each, capped only by anchors departing from 12:30 on
-  EXPECT_EQ((routing::bound_run{at(16, 56), 10U}), runs[0]);
-  EXPECT_EQ((routing::bound_run{at(16, 58), 9U}), runs[1]);
-  EXPECT_EQ((routing::bound_run{at(18, 28), 7U}), runs[2]);
-  EXPECT_EQ((routing::bound_run{at(17, 59), 7U}), runs[3]);
-  EXPECT_EQ((routing::bound_run{at(19, 29), 5U}), runs[4]);
+  EXPECT_EQ((routing::bound_run{at(18, 24), 10U}), runs[0]);
+  EXPECT_EQ((routing::bound_run{at(18, 27), 9U}), runs[1]);
+  EXPECT_EQ((routing::bound_run{at(20, 27), 7U}), runs[2]);
+  EXPECT_EQ((routing::bound_run{at(19, 29), 7U}), runs[3]);
+  EXPECT_EQ((routing::bound_run{at(21, 29), 5U}), runs[4]);
 }
 
 namespace {
