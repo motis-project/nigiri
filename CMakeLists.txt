@@ -77,8 +77,6 @@ elseif (NOT MSVC)
         -Wall
         -Wextra
         -Wno-maybe-uninitialized)
-else ()
-  set(nigiri-compile-options /bigobj)
 endif ()
 
 

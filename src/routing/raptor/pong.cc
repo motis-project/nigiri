@@ -16,8 +16,10 @@
 #include "nigiri/location_match_mode.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_earliest_transport.h"
+#include "nigiri/routing/gpu/mcraptor.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/leg_alternatives.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/types.h"
@@ -41,6 +43,19 @@ struct pong_algo_for {
   using type = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>;
 };
 
+template <direction SearchDir,
+          via_offset_t Vias,
+          bool Rt,
+          typename Criteria,
+          bool RangeReuse>
+struct pong_algo_for<SearchDir,
+                     Vias,
+                     Rt,
+                     basic_mcraptor_state<Criteria>,
+                     RangeReuse> {
+  using type = basic_mcraptor<SearchDir, Criteria, RangeReuse>;
+};
+
 // For pong engines with a round-time bound matrix (raptor, gpu_raptor; guarded
 // by `requires` below): mcraptor has none and keeps its dijkstra lower bound.
 constexpr auto const kPruneWithPingBounds = true;
@@ -49,6 +64,22 @@ constexpr auto const kPruneWithPingBounds = true;
 template <direction SearchDir, via_offset_t Vias, bool Rt, bool RangeReuse>
 struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_raptor_state, RangeReuse> {
   using type = gpu::gpu_raptor<SearchDir, RangeReuse>;
+};
+
+// The state's frontiers are per-direction, so ping and pong coexist; the
+// device reuse frontier replaces the CPU's RangeReuse switch.
+template <direction SearchDir, via_offset_t Vias, bool Rt, bool RangeReuse>
+struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_state, RangeReuse> {
+  using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::arr>;
+};
+
+template <direction SearchDir, via_offset_t Vias, bool Rt, bool RangeReuse>
+struct pong_algo_for<SearchDir,
+                     Vias,
+                     Rt,
+                     gpu::gpu_mcraptor_cost_state,
+                     RangeReuse> {
+  using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::cost>;
 };
 #endif
 
@@ -721,6 +752,22 @@ template routing_result pong_search(timetable const&,
                                     direction,
                                     std::optional<std::chrono::seconds>);
 
+template routing_result pong_search(timetable const&,
+                                    rt_timetable const*,
+                                    search_state&,
+                                    mcraptor_state&,
+                                    query,
+                                    direction,
+                                    std::optional<std::chrono::seconds>);
+
+template routing_result pong_search(timetable const&,
+                                    rt_timetable const*,
+                                    search_state&,
+                                    mcraptor_cost_state&,
+                                    query,
+                                    direction,
+                                    std::optional<std::chrono::seconds>);
+
 #if defined(NIGIRI_CUDA)
 template routing_result pong_search(timetable const&,
                                     rt_timetable const*,
@@ -730,6 +777,21 @@ template routing_result pong_search(timetable const&,
                                     direction,
                                     std::optional<std::chrono::seconds>);
 
+template routing_result pong_search(timetable const&,
+                                    rt_timetable const*,
+                                    search_state&,
+                                    gpu::gpu_mcraptor_state&,
+                                    query,
+                                    direction,
+                                    std::optional<std::chrono::seconds>);
+
+template routing_result pong_search(timetable const&,
+                                    rt_timetable const*,
+                                    search_state&,
+                                    gpu::gpu_mcraptor_cost_state&,
+                                    query,
+                                    direction,
+                                    std::optional<std::chrono::seconds>);
 #endif
 
 }  // namespace nigiri::routing
