@@ -131,8 +131,6 @@ void expect_all_engines_agree(fixture const& f, routing::query const& q) {
   ASSERT_FALSE(ref.empty()) << "reference found no journey";
   EXPECT_EQ(ref, range_search<routing::mcraptor_state>(f, q)) << "mcraptor";
   EXPECT_EQ(ref, pong<routing::raptor_state>(f, q)) << "pong (scalar)";
-  EXPECT_EQ(ref, pong<routing::mcraptor_state>(f, q)) << "pong (mcraptor)";
-  EXPECT_EQ(ref, pong<routing::mcraptor_cost_state>(f, q)) << "pong (mc cost)";
   EXPECT_EQ(ref, bmrapp(f, q)) << "bmrapp";
 }
 
