@@ -494,6 +494,34 @@ id=three_zone_single_ticket, name=Children Three Zone Ticket [priority=0]: 2.2 E
   EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
 }
 
+// Qualified transfers.txt rules move trip stops to virtual locations. Fares
+// are stated for the stops: the result has to be the same with and without.
+TEST(fares, area_sets_with_qualified_transfer_rules) {
+  auto const fares_of = [](std::string_view const transfers) {
+    auto tt = timetable{};
+    tt.date_range_ = {date::sys_days{2022_y / January / 1},
+                      date::sys_days{2022_y / December / 1}};
+    load_timetable({}, source_idx_t{0},
+                   mem_dir::read(fmt::format("{}{}{}", kBasicTimetable,
+                                             kAreaSets, transfers)),
+                   tt);
+    finalize(tt);
+    auto const results = raptor_search(
+        tt, nullptr, "A", "C", unixtime_t{sys_days{2022_y / March / 30}});
+    EXPECT_EQ(1U, results.size());
+    return results.size() == 0U
+               ? std::string{"no journey"}
+               : to_string(tt, nullptr,
+                           get_fares(tt, nullptr, *results.begin()));
+  };
+  EXPECT_EQ(fares_of(""), fares_of(R"(
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+B,B,2,120,,,,
+B,B,2,60,line1,line2,,
+)"));
+}
+
 TEST(fares, simple_fares) {
   auto tt = timetable{};
   tt.date_range_ = {date::sys_days{2022_y / January / 1},

@@ -50,6 +50,12 @@ void link_nearby_stations(timetable& tt) {
       continue;  // no dummy stations
     }
 
+    // A virtual location (transfers.txt rules) walks through its stop: linked
+    // on its own it would use its own change time instead of the stop's.
+    if (tt.locations_.types_[l_from_idx] == location_type::kVirt) {
+      continue;
+    }
+
     auto dist = dist_at{from_pos};
     for (auto const& to_idx :
          locations_rtree.in_radius(from_pos, kLinkNearbyMaxDistance)) {
@@ -61,7 +67,8 @@ void link_nearby_stations(timetable& tt) {
       auto const to_src = tt.locations_.src_[l_to_idx];
       auto const to_pos = tt.locations_.coordinates_[l_to_idx];
       if (to_src == source_idx_t::invalid() /* no dummy stations */
-          || from_src == to_src /* don't short-circuit */) {
+          || from_src == to_src /* don't short-circuit */
+          || tt.locations_.types_[l_to_idx] == location_type::kVirt) {
         continue;
       }
 

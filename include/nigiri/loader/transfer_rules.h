@@ -85,8 +85,8 @@ inline location_idx_t base_of(timetable const& tt, location_idx_t const l) {
 // are special, not how long a change at the stop takes, so they stay
 // exceptions and never become the default for the pairs nobody named. Works
 // on stop pairs and durations only; Rule just has to offer from_stop_,
-// to_stop_, is_qualified(), states_time(), duration() and a (from, to,
-// duration) constructor for the synthesized unqualified rules.
+// to_stop_, is_qualified(), get_specificity(), states_time(), duration() and
+// a (from, to, duration) constructor for the synthesized unqualified rules.
 template <typename Rule>
 void fold_pair_defaults(timetable& tt, vector_map<rule_idx_t, Rule>& rules) {
   struct counted_duration {
@@ -126,22 +126,54 @@ void fold_pair_defaults(timetable& tt, vector_map<rule_idx_t, Rule>& rules) {
 
     if (p.from_ == p.to_) {
       tt.locations_.transfer_time_[p.from_] = to_transfer_time(majority->d_);
-    } else {
+    }
+    if (p.from_ != p.to_ || !tt.locations_.children_[p.from_].empty()) {
       // Add an unqualified rule
-      // -> applies to all trips
+      // -> applies to all trips (for a station: to the pairs of its platforms)
       // -> won't be overwritten by street routing
       synthetic.emplace_back(p.from_, p.to_, majority->d_);
     }
   }
 
-  // Remove all rules that re-state the default derived from the majority.
-  utl::erase_if(rules, [&](Rule const& r) {
-    if (!r.is_qualified()) {
-      return false;
+  // A rule that re-states the default is only redundant if the default is what
+  // its pairs would get without it. It is not if a rule that is at most as
+  // specific, on the same stops or their stations, says something else - then
+  // it is the exception to that rule (e.g. a trip pair back at the default
+  // under a route pair that is faster, or banned).
+  auto by_pair = hash_map<transfer_pair, std::vector<rule_idx_t>>{};
+  for (auto i = rule_idx_t{0U}; i != rules.size(); ++i) {
+    if (rules[i].is_qualified()) {
+      by_pair[{rules[i].from_stop_, rules[i].to_stop_}].push_back(i);
     }
+  }
+  auto const is_exception = [&](Rule const& r) {
+    for (auto const from :
+         {r.from_stop_, tt.locations_.parents_[r.from_stop_]}) {
+      for (auto const to : {r.to_stop_, tt.locations_.parents_[r.to_stop_]}) {
+        auto const it = by_pair.find(transfer_pair{from, to});
+        if (from != location_idx_t::invalid() &&
+            to != location_idx_t::invalid() && it != end(by_pair) &&
+            utl::any_of(it->second, [&](rule_idx_t const i) {
+              return rules[i].duration() != r.duration() &&
+                     rules[i].get_specificity() <= r.get_specificity();
+            })) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  // Remove all rules that re-state the default derived from the majority.
+  auto redundant = std::vector<bool>(rules.size());
+  for (auto i = rule_idx_t{0U}; i != rules.size(); ++i) {
+    auto const& r = rules[i];
     auto const it = pair_default.find(transfer_pair{r.from_stop_, r.to_stop_});
-    return it != end(pair_default) && r.duration() == it->second;
-  });
+    redundant[to_idx(i)] = r.is_qualified() && it != end(pair_default) &&
+                           r.duration() == it->second && !is_exception(r);
+  }
+  auto i = 0U;
+  utl::erase_if(rules, [&](Rule const&) { return redundant[i++]; });
 
   // Add the new default rules derived from the majority.
   for (auto const& r : synthetic) {

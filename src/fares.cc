@@ -203,7 +203,10 @@ bool operator==(fares::fare_leg_rule const& a, fares::fare_leg_rule const& b) {
   return a.match_members() == b.match_members();
 }
 
-location_idx_t parent(timetable const& tt, location_idx_t const l) {
+// Fares are stated for the stops of the feed: a virtual location
+// (transfers.txt rules) stands for the stop it was split off.
+location_idx_t parent(timetable const& tt, location_idx_t const virt_or_l) {
+  auto const l = tt.locations_.get_attribute_idx(virt_or_l);
   return tt.locations_.parents_[l] == location_idx_t::invalid()
              ? l
              : tt.locations_.parents_[l];
@@ -220,7 +223,8 @@ network_idx_t get_network(rt::frun const& a) {
 
 vecvec<location_idx_t, area_idx_t>::const_bucket get_areas(
     timetable const& tt, location_idx_t const l) {
-  auto const l_areas = tt.location_areas_.at(l);
+  auto const l_areas =
+      tt.location_areas_.at(tt.locations_.get_attribute_idx(l));
   return l_areas.empty() ? tt.location_areas_.at(parent(tt, l)) : l_areas;
 }
 

@@ -98,8 +98,13 @@ struct alerts {
                                    source_idx_t const src,
                                    trip_idx_t const t,
                                    rt_transport_idx_t const rt_t,
-                                   location_idx_t const l,
+                                   location_idx_t const virt_or_l,
                                    bool const fuzzy_stop) const {
+    // alerts name the stops of the feed: a virtual location (transfers.txt
+    // rules) stands for the stop it was split off
+    auto const l = virt_or_l == location_idx_t::invalid()
+                       ? virt_or_l
+                       : tt.locations_.get_attribute_idx(virt_or_l);
     // HRD trips carry no route id (register.cc only fills route_id_trips_ and
     // trip_direction_id_ when there is one), so route id, route type, agency
     // and direction are all unavailable there - matching on them has to be

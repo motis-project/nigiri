@@ -81,12 +81,13 @@ void add_equivalence_footpaths(timetable& tt,
       }
       auto const dist = std::sqrt(geo::approx_squared_distance(
           pos, tt.locations_.coordinates_[eq], dist_lng_degrees));
-      auto const duration = duration_t{
-          std::max(2, static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
-
-      if (duration > max_duration) {
+      // compare before narrowing: a stop group sits at (0,0), thousands of
+      // kilometers away, and its walk does not fit into duration_t
+      auto const minutes = std::max(2.0, std::ceil((dist / kWalkSpeed) / 60.0));
+      if (minutes > static_cast<double>(max_duration.count())) {
         continue;
       }
+      auto const duration = duration_t{static_cast<duration_t::rep>(minutes)};
 
       add_if_not_exists(tt.locations_.preprocessing_footpaths_out_[l],
                         {eq, duration});

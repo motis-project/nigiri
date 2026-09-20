@@ -43,14 +43,16 @@ stop run_stop::get_scheduled_stop() const {
 }
 
 std::string_view run_stop::name(lang_t const& lang) const {
-  auto const l = get_location_idx();
+  // a virtual location (transfers.txt rules) stands for its stop
+  auto const l = tt().locations_.get_attribute_idx(get_location_idx());
   auto const p = tt().locations_.parents_.at(l);
   auto const x = p == location_idx_t::invalid() ? l : p;
   return tt().translate(lang, tt().locations_.names_.at(x));
 }
 
 std::string_view run_stop::id() const {
-  auto const l = get_location_idx();
+  // a virtual location (transfers.txt rules) stands for its stop
+  auto const l = tt().locations_.get_attribute_idx(get_location_idx());
   auto const p = tt().locations_.parents_.at(l);
   auto const x = p == location_idx_t::invalid() ? l : p;
   return tt().locations_.ids_.at(x).view();
@@ -124,7 +126,9 @@ location_idx_t run_stop::get_location_idx() const {
 }
 
 std::string_view run_stop::get_location_id() const {
-  return tt().locations_.ids_[get_location_idx()].view();
+  return tt()
+      .locations_.ids_[tt().locations_.get_attribute_idx(get_location_idx())]
+      .view();
 }
 
 location_idx_t run_stop::get_scheduled_location_idx() const {
