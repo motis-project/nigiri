@@ -187,8 +187,8 @@ struct raptor_impl {
       }
 
       auto const my_i = w * kWarpSize + lane;
-      auto const my_marked =
-          ((bits >> lane) & 1U) != 0U && my_i < tt_.n_locations_;
+      // a real-time virtual location has no bucket in the static lists
+      auto const my_marked = ((bits >> lane) & 1U) != 0U && my_i < lists.size();
 
       auto n = 0U;
       if (my_marked) {
@@ -865,15 +865,25 @@ struct raptor_impl {
                   });
             }
           } else {
-            auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
-                                  : tt_.footpaths_in_[prf_idx_][l];
-            n_fps = static_cast<unsigned>(fps.size());
-            if (n_fps <= kWarpFpThreshold) {
-              for (auto j = 0U; j != n_fps; ++j) {
-                relax_footpath(k, fps[j], tmp_time, bc, t_at_dest);
+            if (my_i < tt_.n_static_locations_) {
+              auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
+                                    : tt_.footpaths_in_[prf_idx_][l];
+              n_fps = static_cast<unsigned>(fps.size());
+              if (n_fps <= kWarpFpThreshold) {
+                for (auto j = 0U; j != n_fps; ++j) {
+                  relax_footpath(k, fps[j], tmp_time, bc, t_at_dest);
+                }
+              } else {
+                defer = true;
               }
-            } else {
-              defer = true;
+            }
+            // transfers from / to real-time virtual locations (few, inline)
+            if (my_i < rtt_.n_rt_fps_) {
+              auto const rt_fps =
+                  kFwd ? rtt_.rt_fps_out_[l] : rtt_.rt_fps_in_[l];
+              for (auto j = 0U; j != rt_fps.size(); ++j) {
+                relax_footpath(k, rt_fps[j], tmp_time, bc, t_at_dest);
+              }
             }
           }
         }

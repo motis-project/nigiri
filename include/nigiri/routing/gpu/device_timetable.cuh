@@ -88,6 +88,14 @@ struct device_rt_timetable {
       rt_transport_stop_times_;
   d_vecmap_view<rt_transport_idx_t, clasz> rt_transport_clasz_;
 
+  // Transfers from / to real-time virtual locations
+  // (rt_timetable::rt_fps_out_/in_), one bucket per routing location; the own
+  // change time of such a location is its self edge. Empty for a profile that
+  // projects virtual locations away.
+  d_vecvec_view<vecvec<location_idx_t, footpath>> rt_fps_out_;
+  d_vecvec_view<vecvec<location_idx_t, footpath>> rt_fps_in_;
+  std::uint32_t n_rt_fps_{0U};
+
   d_vecmap_view<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
   d_vecmap_view<bitfield_idx_t, bitfield> bitfields_;
 
@@ -141,7 +149,12 @@ struct device_timetable {
     return internal_interval_days_;
   }
 
+  // n_locations_ = label slots: the locations of the timetable plus room for
+  // real-time virtual locations (gpu::kRtVirtCapacity), whose indices follow
+  // the static ones. Per location tables end at n_static_locations_ - except
+  // transfer_time_, which is padded with kNoTransfer.
   std::uint32_t n_locations_;
+  std::uint32_t n_static_locations_;
   std::uint32_t n_routes_;
 
   d_vecmap_view<location_idx_t, u8_minutes> transfer_time_;

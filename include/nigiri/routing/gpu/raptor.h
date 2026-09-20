@@ -21,23 +21,14 @@
 
 namespace nigiri::routing::gpu {
 
-// What the device cannot do yet, so that such a search runs on the CPU:
-// - the default profile with real-time virtual locations in use
-//   (rt_timetable::rt_virts_, trips that changed platform under transfers.txt
-//   rules): the device would route the moved trips at their platform and lose
-//   their rules;
-// - a profile that projects virtual locations away, with real-time data: the
-//   device rt timetable is not projected, so real-time transports that stop at
-//   a virtual location are never found from the platform.
+// Label slots the device keeps for real-time virtual locations
+// (rt_timetable::rt_virts_) behind the static locations. Fixed, so that the
+// layout of the label buffers never changes between rt timetables.
+constexpr auto const kRtVirtCapacity = 4096U;
+
 inline bool gpu_supported(query const& q, rt_timetable const* rtt = nullptr) {
-  if (!q.via_stops_.empty()) {
-    return false;
-  }
-  if (rtt == nullptr) {
-    return true;
-  }
-  return q.prf_idx_ == kDefaultProfile ? rtt->rt_routing_locations_.empty()
-                                       : rtt->tt_->transfer_rules_.empty();
+  return q.via_stops_.empty() &&
+         (rtt == nullptr || rtt->rt_virts_.size() <= kRtVirtCapacity);
 }
 
 // Device memory in use, as a single snapshot (cudaMemGetInfo). Cheap enough to
