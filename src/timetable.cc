@@ -15,6 +15,18 @@
 
 namespace nigiri {
 
+void transfer_rules::finalize() {
+  auto const sort_unique = [](auto& v) {
+    std::sort(begin(v), end(v));
+    v.erase(std::unique(begin(v), end(v)), end(v));
+  };
+  sort_unique(trip_sides_);
+  sort_unique(route_sides_);
+  sort_unique(stop_sides_);
+  sort_unique(side_virts_);
+  sort_unique(virt_sides_);
+}
+
 timezone_idx_t timetable::register_timezone(timezone tz) {
   auto const idx =
       timezone_idx_t{static_cast<timezone_idx_t::value_t>(timezones_.size())};

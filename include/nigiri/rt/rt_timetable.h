@@ -4,8 +4,10 @@
 
 #include <memory>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 #include "utl/visit.h"
 
@@ -192,6 +194,51 @@ struct rt_timetable {
     return rt_transport_src_.size();
   }
 
+  // --- real-time virtual locations (see rt/rt_transfer_rules.h) ---
+  //
+  // A trip that changes platform keeps the transfers.txt rules that are bound
+  // to it and gets the ones of the new platform. If no location with exactly
+  // these rules exists there, one is created here. Such locations only exist
+  // for the routing (default profile): their indices continue after the static
+  // ones, [tt.n_locations(), n_routing_locations()), and never leave it -
+  // rt_transport_location_seq_ keeps the platform, and so do journeys.
+  std::uint32_t n_routing_locations() const noexcept {
+    return tt_->n_locations() + static_cast<std::uint32_t>(rt_virts_.size());
+  }
+  bool is_rt_virt(location_idx_t const l) const noexcept {
+    return to_idx(l) >= tt_->n_locations();
+  }
+  // the platform a routing location stands for outside of the routing
+  location_idx_t physical(location_idx_t const l) const {
+    return is_rt_virt(l) ? rt_virts_[to_idx(l) - tt_->n_locations()].parent_
+                         : l;
+  }
+  template <typename Fn>
+  void for_each_rt_virt(Fn&& fn) const {
+    for (auto i = 0U; i != rt_virts_.size(); ++i) {
+      fn(location_idx_t{tt_->n_locations() + i}, rt_virts_[i]);
+    }
+  }
+  // Where the default profile routes the stops of a transport, if that is not
+  // what rt_transport_location_seq_ says: one entry per stop,
+  // location_idx_t::invalid() = no difference. nullptr = none differs.
+  std::vector<location_idx_t> const* routing_locations(
+      rt_transport_idx_t const rt_t) const {
+    if (rt_routing_locations_.empty()) {
+      return nullptr;
+    }
+    auto const it = rt_routing_locations_.find(rt_t);
+    return it == end(rt_routing_locations_) ? nullptr : &it->second;
+  }
+  location_idx_t routing_location(rt_transport_idx_t const rt_t,
+                                  stop_idx_t const stop_idx) const {
+    auto const* locs = routing_locations(rt_t);
+    return locs != nullptr && (*locs)[stop_idx] != location_idx_t::invalid()
+               ? (*locs)[stop_idx]
+               : stop{rt_transport_location_seq_[rt_t][stop_idx]}
+                     .location_idx();
+  }
+
   bool is_flag_set(route_flag const f, rt_transport_idx_t const r) const {
     return rt_transport_flags_[f][to_idx(r) * 2U] ||
            rt_transport_flags_[f][to_idx(r) * 2U + 1U];
@@ -290,6 +337,25 @@ struct rt_timetable {
   alerts alerts_;
 
   change_callback_t change_callback_;
+
+  // Real-time virtual locations, index i <-> location tt.n_locations() + i.
+  // Never removed: a repeated stop change finds its location again by what it
+  // states, so there are as many as distinct (platform, rules) combinations.
+  struct rt_virt {
+    location_idx_t parent_{location_idx_t::invalid()};  // the platform
+    u8_minutes transfer_time_{0U};  // own change time
+    std::vector<transfer_rule_side_t> sides_;  // sorted, the key
+  };
+  std::vector<rt_virt> rt_virts_;
+  hash_map<rt_transport_idx_t, std::vector<location_idx_t>>
+      rt_routing_locations_;
+
+  // Transfers from / to real-time virtual locations (default profile only).
+  // Keyed by source (out) or target (in), static locations included: whoever
+  // reaches the platform also reaches the locations split off for it. Read
+  // them through routing::for_each_footpath_at.
+  hash_map<location_idx_t, std::vector<footpath>> rt_fps_out_;
+  hash_map<location_idx_t, std::vector<footpath>> rt_fps_in_;
 
   // Lower bound graph extension.
   bitvec_map<location_idx_t> fwd_search_lb_graph_has_edges_;

@@ -2,12 +2,14 @@
 
 #include <compare>
 #include <cstdint>
+#include <algorithm>
 #include <filesystem>
 #include <optional>
 #include <span>
 
 #include "cista/cuda_check.h"
 #include "cista/memory_holder.h"
+#include "cista/reflection/comparable.h"
 
 #include "geo/box.h"
 #include "geo/latlng.h"
@@ -66,6 +68,93 @@ struct preferred_transfer {
   trip_idx_t to_trip_{trip_idx_t::invalid()};
   route_id_idx_t from_route_{route_id_idx_t::invalid()};
   route_id_idx_t to_route_{route_id_idx_t::invalid()};
+};
+
+// One row of transfers.txt as the loader resolved it (after folding the pair
+// defaults). Kept in the timetable so that a real-time stop change can find
+// out which rules apply to a trip at its new platform (see
+// rt/rt_transfer_rules.h) - the footpath layer only knows what the rules meant
+// for the schedule.
+struct stop_transfer_rule {
+  bool from_qualified() const {
+    return from_route_ != route_id_idx_t::invalid() ||
+           from_trip_ != trip_idx_t::invalid();
+  }
+  bool to_qualified() const {
+    return to_route_ != route_id_idx_t::invalid() ||
+           to_trip_ != trip_idx_t::invalid();
+  }
+
+  location_idx_t from_stop_{location_idx_t::invalid()};
+  location_idx_t to_stop_{location_idx_t::invalid()};
+  route_id_idx_t from_route_{route_id_idx_t::invalid()};  // within src_
+  route_id_idx_t to_route_{route_id_idx_t::invalid()};  // within src_
+  trip_idx_t from_trip_{trip_idx_t::invalid()};
+  trip_idx_t to_trip_{trip_idx_t::invalid()};
+  source_idx_t src_{source_idx_t::invalid()};
+  duration_t duration_{0};  // footpath::kMaxDuration = transfer not possible
+  std::uint8_t specificity_{0U};  // format specific ladder, higher wins
+};
+
+// rule << 1 | side, side 0 = from, side 1 = to
+using transfer_rule_side_t = std::uint32_t;
+
+struct transfer_rules {
+  // One (key -> value) pair of a sorted lookup. One plain type for all of the
+  // lookups: the timetable's static type hash has a budget of distinct types.
+  struct entry {
+    CISTA_COMPARABLE()
+    std::uint32_t key_;
+    std::uint32_t value_;
+  };
+
+  static transfer_rule_side_t side(std::uint32_t const rule,
+                                   bool const is_from) {
+    return (rule << 1U) | (is_from ? 0U : 1U);
+  }
+  static std::uint32_t rule_of(transfer_rule_side_t const s) { return s >> 1U; }
+  static bool is_from(transfer_rule_side_t const s) { return (s & 1U) == 0U; }
+
+  // Which rule wins a location pair: the format's specificity ladder first,
+  // then how many of the two stops the rule names exactly (not their station).
+  static std::uint16_t rank(std::uint8_t const specificity,
+                            unsigned const n_exact_stops) {
+    return static_cast<std::uint16_t>((specificity << 2U) | n_exact_stops);
+  }
+
+  bool empty() const { return rules_.empty(); }
+
+  // Sorts the lookups. Has to run once after the last feed was loaded.
+  void finalize();
+
+  template <typename Fn>
+  static void for_each(vector<entry> const& v,
+                       std::uint32_t const key,
+                       Fn&& fn) {
+    auto const [from, to] = std::equal_range(
+        begin(v), end(v), entry{key, 0U},
+        [](entry const& a, entry const& b) { return a.key_ < b.key_; });
+    for (auto it = from; it != to; ++it) {
+      fn(it->value_);
+    }
+  }
+
+  vector<stop_transfer_rule> rules_;
+
+  // qualified sides by what qualifies them: trip_idx_t -> side and
+  // route_id_idx_t -> side (route ids are per source: check the rule's src_)
+  vector<entry> trip_sides_;
+  vector<entry> route_sides_;
+
+  // unqualified sides by the stop the rule names: location_idx_t -> side
+  vector<entry> stop_sides_;
+
+  // qualified side -> virtual locations split off for it
+  vector<entry> side_virts_;
+
+  // virtual location -> the qualified sides of the trip stops it stands for
+  // (all trip stops sharing a virtual location state the same)
+  vector<entry> virt_sides_;
 };
 
 struct timetable {
@@ -515,6 +604,9 @@ struct timetable {
       transport_section_attributes_;
   vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
   vecvec<transport_idx_t, translation_idx_t> transport_section_directions_;
+
+  // transfers.txt rules, for real-time stop changes
+  transfer_rules transfer_rules_;
 
   // Lower bound graph.
   std::array<vecvec<location_idx_t, footpath>, kNProfiles> fwd_search_lb_graph_;

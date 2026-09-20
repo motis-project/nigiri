@@ -219,6 +219,7 @@ void finalize(timetable& tt, finalize_options const opt) {
                        std::tie(tt.providers_[b].src_, tt.providers_[b].id_);
               });
   }
+  tt.transfer_rules_.finalize();
   build_footpaths(tt, opt);
   rebuild_route_traffic_days(tt);
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);

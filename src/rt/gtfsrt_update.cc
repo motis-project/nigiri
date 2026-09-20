@@ -16,6 +16,7 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_alert.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
+#include "nigiri/rt/rt_transfer_rules.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/types.h"
 
@@ -98,6 +99,8 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
   print_if_no_empty("trip_resolve_error", s.trip_resolve_error_, true);
   print_if_no_empty("unsupported_schedule_relationship",
                     s.unsupported_schedule_relationship_, true);
+  print_if_no_empty("stop_assignments", s.stop_assignments_);
+  print_if_no_empty("rt_virtual_locations", s.rt_virtual_locations_);
 
   return out;
 }
@@ -309,7 +312,8 @@ bool update_run(source_idx_t const src,
                 rt_timetable& rtt,
                 trip_idx_t const trip,
                 run& r,
-                gtfsrt::TripUpdate const& tripUpdate) {
+                gtfsrt::TripUpdate const& tripUpdate,
+                statistics& stats) {
   using std::begin;
   using std::end;
 
@@ -348,7 +352,10 @@ bool update_run(source_idx_t const src,
   auto const& stus = tripUpdate.stop_time_update();
   auto upd_it = begin(stus);
   for (; seq_it != end(seq_numbers); ++stop_idx, ++seq_it) {
-    auto const loc_idx = stop{location_seq[stop_idx]}.location_idx();
+    // virtual locations (transfers.txt rules) have no id and no equivalences
+    // of their own: the feed talks about their platform
+    auto const loc_idx =
+        platform_of(tt, stop{location_seq[stop_idx]}.location_idx());
     auto matches = false;
     while (upd_it != end(stus)) {
       auto matches_any_loc = false;
@@ -361,7 +368,8 @@ bool update_run(source_idx_t const src,
             (upd_it->has_stop_id() &&
              upd_it->stop_id() ==
                  tt.locations_
-                     .ids_[stop{location_seq[next_stop_idx]}.location_idx()]
+                     .ids_[platform_of(
+                         tt, stop{location_seq[next_stop_idx]}.location_idx())]
                      .view());
 
         if (next_matches) {
@@ -388,14 +396,14 @@ bool update_run(source_idx_t const src,
         stp = stop{l_idx, false, false, false, false}.value();
         rtt.dispatch_stop_change(r, stop_idx, event_type::kArr, l_idx, false);
         rtt.dispatch_stop_change(r, stop_idx, event_type::kDep, l_idx, false);
-      } else if (upd_it->stop_time_properties().has_assigned_stop_id() ||
-                 (upd_it->has_stop_id() &&
-                  upd_it->stop_id() != tt.locations_.ids_[loc_idx].view())) {
+      } else if (auto const& new_id =
+                     upd_it->stop_time_properties().has_assigned_stop_id()
+                         ? upd_it->stop_time_properties().assigned_stop_id()
+                         : upd_it->stop_id();
+                 (upd_it->stop_time_properties().has_assigned_stop_id() ||
+                  upd_it->has_stop_id()) &&
+                 new_id != tt.locations_.ids_[loc_idx].view()) {
         // Handle track change.
-        auto const& new_id =
-            upd_it->stop_time_properties().has_assigned_stop_id()
-                ? upd_it->stop_time_properties().assigned_stop_id()
-                : upd_it->stop_id();
         auto const l_it = tt.locations_.location_id_to_idx_.find(
             {.id_ = new_id, .src_ = src});
         if (l_it == end(tt.locations_.location_id_to_idx_)) {
@@ -414,13 +422,9 @@ bool update_run(source_idx_t const src,
           continue;
         }
         auto const s = stop{stp};
-        stp = stop{l_it->second, s.in_allowed(), s.out_allowed(),
-                   s.in_allowed_wheelchair(), s.out_allowed_wheelchair()}
-                  .value();
-        auto transports = rtt.location_rt_transports_[l_it->second];
-        if (utl::find(transports, r.rt_) == end(transports)) {
-          transports.push_back(r.rt_);
-        }
+        // the rules of the new platform apply, the ones bound to the trip stay
+        route_stop_at(tt, rtt, r.rt_, stop_idx, l_it->second);
+        ++stats.stop_assignments_;
         rtt.dispatch_stop_change(r, stop_idx, event_type::kArr, l_it->second,
                                  s.out_allowed());
         rtt.dispatch_stop_change(r, stop_idx, event_type::kDep, l_it->second,
@@ -428,13 +432,14 @@ bool update_run(source_idx_t const src,
       } else {
         // Just reset in case a track change / skipped stop got reversed.
         if (location_seq[stop_idx] != stp) {
+          auto const reset_stop = stop{location_seq[stop_idx]};
           stp = location_seq[stop_idx];
-          auto reset_stop = stop{stp};
+          route_stop_at(tt, rtt, r.rt_, stop_idx, reset_stop.location_idx());
           rtt.dispatch_stop_change(r, stop_idx, event_type::kArr,
-                                   reset_stop.location_idx(),
+                                   platform_of(tt, reset_stop.location_idx()),
                                    reset_stop.out_allowed());
           rtt.dispatch_stop_change(r, stop_idx, event_type::kDep,
-                                   reset_stop.location_idx(),
+                                   platform_of(tt, reset_stop.location_idx()),
                                    reset_stop.in_allowed());
         }
       }
@@ -779,7 +784,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
           rtt.cancel_run(r);
           ++stats.total_entities_success_;
         } else if (!added) {
-          if (update_run(src, tt, rtt, trip, r, entity.trip_update())) {
+          if (update_run(src, tt, rtt, trip, r, entity.trip_update(), stats)) {
             ++stats.total_entities_success_;
           }
         }
@@ -793,7 +798,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
         auto r = rt::run{};
         resolve_rt(rtt, r, trip_id.empty() ? td.trip_id() : trip_id, src);
         if (update_run(src, tt, rtt, trip_idx_t::invalid(), r,
-                       entity.trip_update())) {
+                       entity.trip_update(), stats)) {
           ++stats.total_entities_success_;
         }
         continue;
@@ -829,6 +834,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
                       {"message", remove_nl(entity.DebugString())}});
     }
   }
+
+  stats.rt_virtual_locations_ = static_cast<int>(rtt.rt_virts_.size());
 
   return stats;
 }

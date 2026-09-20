@@ -136,8 +136,12 @@ void add_starts_in_interval(direction const search_dir,
       iv, loc{tt, l},  // NOLINT(clang-analyzer-core.CallAndMessage)
       tt.location_routes_.at(l).size());
 
-  // Iterate routes visiting the location.
-  for (auto const& r : tt.location_routes_.at(l)) {
+  // Iterate routes visiting the location (none at a real-time virtual
+  // location, rt_timetable::rt_virts_: only real-time transports stop there).
+  for (auto const& r :
+       rtt != nullptr && rtt->is_rt_virt(l)
+           ? std::span<route_idx_t const>{}
+           : std::span<route_idx_t const>{tt.location_routes_.at(l)}) {
 
     // Iterate the location sequence, searching the given location.
     auto const location_seq = tt.route_location_seq_.at(r);
@@ -179,7 +183,9 @@ void add_starts_in_interval(direction const search_dir,
       auto const location_seq = rtt->rt_transport_location_seq_.at(rt_t);
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         auto const stp = stop{s};
-        if (stp.location_idx() != l) {
+        if ((p == kDefaultProfile
+                 ? rtt->routing_location(rt_t, static_cast<stop_idx_t>(i))
+                 : stp.location_idx()) != l) {
           continue;
         }
 
@@ -284,12 +290,25 @@ void get_starts(
             auto const d = tt.locations_.hub_time_[prf_idx][h];
             auto const w =
                 d.count() == 0 ? duration_t{0} : adjusted_transfer_time(tts, d);
-            for (auto const target : (fwd ? tt.locations_.hub_out_[prf_idx]
-                                          : tt.locations_.hub_in_[prf_idx])[h]) {
+            for (auto const target :
+                 (fwd ? tt.locations_.hub_out_[prf_idx]
+                      : tt.locations_.hub_in_[prf_idx])[h]) {
               update(target, o.duration() + w);
             }
           }
         }
+      }
+    });
+  }
+
+  if (rtt != nullptr && prf_idx == kDefaultProfile) {
+    // Real-time virtual locations are what their platform is: a journey that
+    // starts at the platform can board the trips that were moved there.
+    rtt->for_each_rt_virt([&](location_idx_t const l, auto const& virt) {
+      if (auto const it = shortest_start.find(virt.parent_);
+          it != end(shortest_start)) {
+        auto const offset = it->second;
+        shortest_start.emplace(l, offset);
       }
     });
   }

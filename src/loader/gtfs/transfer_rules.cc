@@ -34,8 +34,7 @@ enum class specificity : std::uint8_t {
 // The precedence key handed to the shared rule writer: the GTFS ladder first,
 // then whether the rule named the stops exactly rather than their station.
 std::uint16_t rank(specificity const s, std::uint8_t const n_exact_stops) {
-  return static_cast<std::uint16_t>((static_cast<std::uint16_t>(s) << 2U) |
-                                    n_exact_stops);
+  return transfer_rules::rank(static_cast<std::uint8_t>(s), n_exact_stops);
 }
 
 enum class transfer_type : std::uint8_t {
@@ -340,6 +339,72 @@ void apply_rules(timetable& tt,
   }
   for (auto& [side, virts] : side_virts) {
     utl::erase_duplicates(virts);
+  }
+
+  // Keep the rules for real-time stop changes (rt/rt_transfer_rules.h): a
+  // trip that moves to another platform has to find the rules that apply
+  // there. Rule indices are local to this feed, so they are shifted.
+  {
+    auto& tr = tt.transfer_rules_;
+    auto const offset = static_cast<std::uint32_t>(tr.rules_.size());
+    auto const global = [&](sided_rule_idx_t const s) {
+      return transfer_rules::side(offset + to_idx(rule_of(s)),
+                                  s == side_ref(rule_of(s), true));
+    };
+    auto const trip_idx = [&](gtfs_trip_idx_t const t) {
+      return t == gtfs_trip_idx_t::invalid() ? trip_idx_t::invalid()
+                                             : trips.data_[t].trip_idx_;
+    };
+    auto const src = tt.locations_.src_[rules[rule_idx_t{0U}].from_stop_];
+    for (auto rule_idx = rule_idx_t{0U}; rule_idx != rules.size(); ++rule_idx) {
+      auto const& r = rules[rule_idx];
+      tr.rules_.emplace_back(stop_transfer_rule{
+          .from_stop_ = r.from_stop_,
+          .to_stop_ = r.to_stop_,
+          .from_route_ = r.from_route_,
+          .to_route_ = r.to_route_,
+          .from_trip_ = trip_idx(r.from_trip_),
+          .to_trip_ = trip_idx(r.to_trip_),
+          .src_ = src,
+          .duration_ = r.duration(),
+          .specificity_ = static_cast<std::uint8_t>(r.get_specificity())});
+      auto const add_side = [&](location_idx_t const stop,
+                                route_id_idx_t const route,
+                                gtfs_trip_idx_t const trip,
+                                bool const is_from) {
+        auto const s = transfer_rules::side(offset + to_idx(rule_idx), is_from);
+        if (trip != gtfs_trip_idx_t::invalid()) {
+          tr.trip_sides_.push_back({to_idx(trip_idx(trip)), s});
+        } else if (route != route_id_idx_t::invalid()) {
+          tr.route_sides_.push_back({to_idx(route), s});
+        } else {
+          tr.stop_sides_.push_back({to_idx(stop), s});
+        }
+      };
+      add_side(r.from_stop_, r.from_route_, r.from_trip_, true);
+      add_side(r.to_stop_, r.to_route_, r.to_trip_, false);
+    }
+    for (auto const& [side, virts] : side_virts) {
+      for (auto const v : virts) {
+        tr.side_virts_.push_back({global(side), to_idx(v)});
+      }
+    }
+    auto const n_virt_sides = tr.virt_sides_.size();
+    for (auto const& [trip_stop, sig] : trip_stop_signatures) {
+      auto const v =
+          stop{trips.data_[trip_stop.first].stop_seq_[trip_stop.second]}
+              .location_idx();
+      for (auto const side : sig) {
+        tr.virt_sides_.push_back({to_idx(v), global(side)});
+      }
+    }
+    // many trip stops share a virtual location and state the same sides:
+    // drop the repetitions right away, they would dominate the size
+    auto const feed_begin =
+        begin(tr.virt_sides_) + static_cast<std::ptrdiff_t>(n_virt_sides);
+    std::sort(feed_begin, end(tr.virt_sides_));
+    tr.virt_sides_.erase(std::unique(feed_begin, end(tr.virt_sides_)),
+                         end(tr.virt_sides_));
   }
 
   // Let the rules compete for specificity on all location pairs they apply to.

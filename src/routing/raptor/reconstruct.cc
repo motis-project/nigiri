@@ -34,6 +34,13 @@ location_idx_t project_virt(timetable const& tt,
              : l;
 }
 
+// The search hands out a hub's weight as it is if it is 0 min and applies the
+// transfer time settings otherwise (raptor expand_hubs, get_starts): retracing
+// has to price the transfer the same way.
+bool is_adjusted_hub(footpath const hub_fp) {
+  return hub_fp.duration() != duration_t{0};
+}
+
 bool is_journey_start(timetable const& tt,
                       query const& q,
                       location_idx_t const candidate_l) {
@@ -47,6 +54,7 @@ bool is_journey_start(timetable const& tt,
 
 template <direction SearchDir, via_offset_t Vias>
 std::optional<journey::leg> find_start_footpath(timetable const& tt,
+                                                rt_timetable const* rtt,
                                                 query const& q,
                                                 journey const& j,
                                                 raptor_state const& state,
@@ -84,8 +92,15 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       (kFwd ? j.legs_.back().dep_time_ : j.legs_.back().arr_time_) -
       dir(search_start_via_stay);
 
+  // a real-time virtual location (rt_timetable::rt_virts_) is its platform
+  // for everything but its transfers
+  auto const platform = [&](location_idx_t const l) {
+    return rtt == nullptr ? l : rtt->physical(l);
+  };
+  auto const leg_start_platform = platform(leg_start_location);
+
   if (q.start_match_mode_ != location_match_mode::kIntermodal &&
-      is_journey_start(tt, q, leg_start_location) &&
+      is_journey_start(tt, q, leg_start_platform) &&
       is_better_or_eq(j.start_time_, leg_start_time)) {
     trace_rc_direct_start_found;
     return std::nullopt;
@@ -95,9 +110,6 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
   trace_rc_checking_start_fp;
 
-  auto const& footpaths =
-      kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][leg_start_location]
-           : tt.locations_.footpaths_out_[q.prf_idx_][leg_start_location];
   auto const j_start_time = unix_to_delta(base, j.start_time_);
   auto const round_times = state.get_round_times<Vias>();
   auto const fp_target_time =
@@ -110,7 +122,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
     for (auto const& o : q.start_) {
       if (matches(tt, q.start_match_mode_,
                   project_virt(tt, q.prf_idx_, o.target()),
-                  leg_start_location) &&
+                  leg_start_platform) &&
           is_better_or_eq(j.start_time_, leg_start_time - dir(o.duration()))) {
         trace_rc_intermodal_start_found;
         return journey::leg{
@@ -122,7 +134,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       }
     }
 
-    if (auto const it = q.td_start_.find(leg_start_location);
+    if (auto const it = q.td_start_.find(leg_start_platform);
         it != end(q.td_start_)) {
       auto const fp =
           get_td_duration<flip(SearchDir)>(it->second, leg_start_time);
@@ -159,10 +171,13 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   } else {
     trace_reconstruct("  direct start mode\n");
 
-    auto const try_fp = [&](footpath const fp) -> std::optional<journey::leg> {
-      auto const fp_duration = adjusted_transfer_time(q.transfer_time_settings_,
-                                                      fp.duration().count());
-      if (is_journey_start(tt, q, fp.target()) &&
+    auto const try_fp = [&](footpath const fp,
+                            bool const adjust) -> std::optional<journey::leg> {
+      auto const fp_duration =
+          adjust ? adjusted_transfer_time(q.transfer_time_settings_,
+                                          fp.duration().count())
+                 : fp.duration().count();
+      if (is_journey_start(tt, q, platform(fp.target())) &&
           fp_target_time != kInvalidDelta<SearchDir> &&
           start_matches(j_start_time + dir(fp_duration), fp_target_time)) {
         return journey::leg{SearchDir,
@@ -175,21 +190,24 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       return std::nullopt;
     };
 
-    for (auto const& fp : footpaths) {
-      if (auto const leg = try_fp(fp); leg.has_value()) {
+    auto found = std::optional<journey::leg>{};
+    auto const try_next = [&](footpath const fp, bool const adjust) {
+      found = try_fp(fp, adjust);
+      if (found.has_value()) {
         trace_rc_fp_start_found;
-        return *leg;
       } else {
         trace_rc_fp_start_no_match;
       }
+      return !found.has_value();
+    };
+    for_each_footpath_at<flip(SearchDir)>(
+        tt, rtt, q.prf_idx_, leg_start_location,
+        [&](footpath const fp) { return try_next(fp, true); });
+    if (!found.has_value()) {
+      for_each_hub_source<SearchDir>(
+          tt, q.prf_idx_, leg_start_location,
+          [&](footpath const fp) { return try_next(fp, is_adjusted_hub(fp)); });
     }
-
-    auto found = std::optional<journey::leg>{};
-    for_each_hub_source<SearchDir>(tt, q.prf_idx_, leg_start_location,
-                                   [&](footpath const fp) {
-                                     found = try_fp(fp);
-                                     return !found.has_value();
-                                   });
     if (found.has_value()) {
       return *found;
     }
@@ -213,6 +231,22 @@ void reconstruct_journey_with_vias(timetable const& tt,
   auto const is_wheelchair = q.prf_idx_ == 2U;
   auto const is_better_or_eq = [](auto a, auto b) {
     return kFwd ? a <= b : a >= b;
+  };
+
+  // Real-time virtual locations (rt_timetable::rt_virts_): the search put its
+  // labels there, so the journey is retraced on them and only handed out with
+  // the platforms they stand for (see the end of this function).
+  auto const is_rt_virt = [&](location_idx_t const x) {
+    return rtt != nullptr && rtt->is_rt_virt(x);
+  };
+  auto const platform = [&](location_idx_t const x) {
+    return rtt == nullptr ? x : rtt->physical(x);
+  };
+  auto const routing_location = [&](rt::frun const& fr,
+                                    stop_idx_t const stop_idx) {
+    return fr.is_rt() && rtt != nullptr && q.prf_idx_ == kDefaultProfile
+               ? rtt->routing_location(fr.rt_, stop_idx)
+               : fr[stop_idx].get_location_idx();
   };
   auto const is_ontrip = holds_alternative<unixtime_t>(q.start_time_);
   auto const start_matches = [&](delta_t const a, delta_t const b) {
@@ -302,8 +336,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
             continue;
           }
 
-          auto const round_time =
-              round_times[k - 1][to_idx(project_virt(tt, q.prf_idx_, l))][s];
+          auto const round_time = round_times[k - 1][to_idx(
+              project_virt(tt, q.prf_idx_, routing_location(fr, stop_idx)))][s];
           if (is_better_or_eq(round_time, event_time) ||
               // special case: first stop with meta stations
               (k == 1 &&
@@ -314,9 +348,9 @@ void reconstruct_journey_with_vias(timetable const& tt,
             v = s;
             return journey::leg{
                 SearchDir,
-                project_virt(tt, q.prf_idx_, fr[stop_idx].get_location_idx()),
+                project_virt(tt, q.prf_idx_, routing_location(fr, stop_idx)),
                 project_virt(tt, q.prf_idx_,
-                             fr[finish_stop_idx].get_location_idx()),
+                             routing_location(fr, finish_stop_idx)),
                 delta_to_unix(base, event_time),
                 fr[finish_stop_idx].time(kFwd ? event_type::kArr
                                               : event_type::kDep),
@@ -498,7 +532,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
             auto const stp = stop{s};
             auto const stop_idx = static_cast<stop_idx_t>(i);
             auto const fr = rt::frun::from_rt(tt, rtt, rt_t);
-            if (project(stp.location_idx()) != l ||  //
+            if (project(routing_location(fr, stop_idx)) != l ||  //
                 (kFwd && (i == 0U || !stp.out_allowed(is_wheelchair))) ||
                 (!kFwd && (i == location_seq.size() - 1 ||
                            !stp.in_allowed(is_wheelchair))) ||
@@ -520,6 +554,9 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
 
     for (auto const scan_l : virt_children) {
+      if (is_rt_virt(scan_l)) {
+        continue;  // only real-time transports stop there
+      }
       for (auto const& r : tt.location_routes_[scan_l]) {
         if (!is_allowed(q.allowed_claszes_, tt.route_clasz_[r])) {
           continue;
@@ -617,10 +654,11 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
       if (adjust_via && v != 0 &&
           matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[v - 1].location_, l)) {
+                  q.via_stops_[v - 1].location_, platform(l))) {
         --v;
         adjusted = true;
-        if (matches(tt, location_match_mode::kEquivalent, l, fp.target())) {
+        if (matches(tt, location_match_mode::kEquivalent, platform(l),
+                    platform(fp.target()))) {
           stay_fp_target = q.via_stops_[v].stay_;
           trace_reconstruct(
               "  [check_fp]: fp start+target matches current via: v={}->{}, "
@@ -637,7 +675,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
       if (adjust_via && v != 0 &&
           matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[v - 1].location_, fp.target())) {
+                  q.via_stops_[v - 1].location_, platform(fp.target()))) {
         --v;
         adjusted = true;
         assert(stay_fp_target == 0_minutes);
@@ -731,21 +769,32 @@ void reconstruct_journey_with_vias(timetable const& tt,
     auto ret = std::optional<std::pair<journey::leg, journey::leg>>{};
     auto const curr_time =
         round_times[k][to_idx(project_virt(tt, q.prf_idx_, l))][v];
+    auto const try_dest = [&](location_idx_t const eq_in) {
+      // the search marked the destination at the stop, not at
+      // the virtual location it was split off (see raptor.h)
+      auto const eq = project_virt(tt, q.prf_idx_, eq_in);
+      auto intermodal_dest = check_fp(
+          k, l, curr_time, {eq, dest_offset.duration_}, false, td_footpath);
+      if (intermodal_dest.has_value()) {
+        trace_rc_intermodal_dest_match;
+        intermodal_dest->first.uses_ =
+            offset{eq, dest_offset.duration_, dest_offset.mode()};
+        ret = std::move(intermodal_dest);
+      } else {
+        trace_rc_intermodal_dest_mismatch;
+      }
+    };
     for_each_meta(tt, location_match_mode::kIntermodal, dest_offset.target_,
-                  [&](location_idx_t const eq_in) {
-                    // the search marked the destination at the stop, not at
-                    // the virtual location it was split off (see raptor.h)
-                    auto const eq = project_virt(tt, q.prf_idx_, eq_in);
-                    auto intermodal_dest =
-                        check_fp(k, l, curr_time, {eq, dest_offset.duration_},
-                                 false, td_footpath);
-                    if (intermodal_dest.has_value()) {
-                      trace_rc_intermodal_dest_match;
-                      intermodal_dest->first.uses_ =
-                          offset{eq, dest_offset.duration_, dest_offset.mode()};
-                      ret = std::move(intermodal_dest);
-                    } else {
-                      trace_rc_intermodal_dest_mismatch;
+                  [&](location_idx_t const eq) {
+                    try_dest(eq);
+                    if (rtt != nullptr && q.prf_idx_ == kDefaultProfile) {
+                      // ... and the real-time virtual locations below it
+                      rtt->for_each_rt_virt(
+                          [&](location_idx_t const w, auto const& virt) {
+                            if (virt.parent_ == eq) {
+                              try_dest(w);
+                            }
+                          });
                     }
                   });
     return ret;
@@ -812,11 +861,15 @@ void reconstruct_journey_with_vias(timetable const& tt,
       throw utl::fail(
           "intermodal destination reconstruction failed at k={}, t={}, v={}, "
           "stop={}, time={}",
-          k, j.transfers_, v, loc{tt, l}, delta_to_unix(base, curr_time));
+          k, j.transfers_, v, loc{tt, platform(l)},
+          delta_to_unix(base, curr_time));
     }
 
     trace_reconstruct("CHECKING TRANSFER AT {}\n", loc{tt, l});
-    auto const own = tt.locations_.min_transfer_time(q.prf_idx_, l);
+    auto const own =
+        is_rt_virt(l)
+            ? rtt->rt_virts_[to_idx(l) - tt.n_locations()].transfer_time_
+            : tt.locations_.min_transfer_time(q.prf_idx_, l);
     auto const is_last_leg = k == j.transfers_ + 1U;
     if (is_last_leg || own != kNoTransfer) {
       auto transfer_at_same_stop = check_fp(
@@ -839,15 +892,13 @@ void reconstruct_journey_with_vias(timetable const& tt,
       // own plus those of its virtual children.
       auto const try_fps = [&](location_idx_t const x)
           -> std::optional<std::pair<journey::leg, journey::leg>> {
-        auto const fps_fwd = kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][x]
-                                  : tt.locations_.footpaths_out_[q.prf_idx_][x];
-        for (auto const fp : fps_fwd) {
-          auto fp_legs = check_fp(k, l, curr_time, fp, true, false);
-          if (fp_legs.has_value()) {
-            return fp_legs;
-          }
-        }
-        return std::nullopt;
+        auto fp_legs = std::optional<std::pair<journey::leg, journey::leg>>{};
+        for_each_footpath_at<flip(SearchDir)>(
+            tt, rtt, q.prf_idx_, x, [&](footpath const fp) {
+              fp_legs = check_fp(k, l, curr_time, fp, true, false);
+              return !fp_legs.has_value();
+            });
+        return fp_legs;
       };
       if (auto fp_legs = try_fps(l); fp_legs.has_value()) {
         return std::move(*fp_legs);
@@ -867,7 +918,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
        // -> pair (s -> l) at w_in + w_out (see raptor expand_hubs)
       auto legs = std::optional<std::pair<journey::leg, journey::leg>>{};
       for_each_hub_source<SearchDir>(tt, q.prf_idx_, l, [&](footpath const fp) {
-        legs = check_fp(k, l, curr_time, fp, true, false);
+        legs = check_fp(k, l, curr_time, fp, is_adjusted_hub(fp), false);
         return !legs.has_value();
       });
       if (legs.has_value()) {
@@ -900,7 +951,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
     throw utl::fail(
         "reconstruction failed at k={}, t={}, v={}, stop={}, time={}", k,
-        j.transfers_, v, loc{tt, l}, delta_to_unix(base, curr_time));
+        j.transfers_, v, loc{tt, platform(l)}, delta_to_unix(base, curr_time));
   };
 
   auto l = j.dest_;
@@ -918,10 +969,20 @@ void reconstruct_journey_with_vias(timetable const& tt,
   }
 
   auto init_fp =
-      find_start_footpath<SearchDir, Vias>(tt, q, j, raptor_state, base);
+      find_start_footpath<SearchDir, Vias>(tt, rtt, q, j, raptor_state, base);
   if (init_fp.has_value()) {
     j.add(std::move(*init_fp));
   }
+
+  // outside of the routing a real-time virtual location is its platform
+  for (auto& leg : j.legs_) {
+    leg.from_ = platform(leg.from_);
+    leg.to_ = platform(leg.to_);
+    if (auto* const fp = std::get_if<footpath>(&leg.uses_); fp != nullptr) {
+      *fp = footpath{platform(fp->target()), fp->duration()};
+    }
+  }
+  j.dest_ = platform(j.dest_);
 
   if constexpr (kFwd) {
     std::reverse(begin(j.legs_), end(j.legs_));

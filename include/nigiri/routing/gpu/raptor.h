@@ -1,7 +1,7 @@
 #pragma once
 
-#include <array>
 #include <cstddef>
+#include <array>
 #include <memory>
 #include <vector>
 
@@ -21,8 +21,23 @@
 
 namespace nigiri::routing::gpu {
 
-inline bool gpu_supported(query const& q, rt_timetable const* = nullptr) {
-  return q.via_stops_.empty();
+// What the device cannot do yet, so that such a search runs on the CPU:
+// - the default profile with real-time virtual locations in use
+//   (rt_timetable::rt_virts_, trips that changed platform under transfers.txt
+//   rules): the device would route the moved trips at their platform and lose
+//   their rules;
+// - a profile that projects virtual locations away, with real-time data: the
+//   device rt timetable is not projected, so real-time transports that stop at
+//   a virtual location are never found from the platform.
+inline bool gpu_supported(query const& q, rt_timetable const* rtt = nullptr) {
+  if (!q.via_stops_.empty()) {
+    return false;
+  }
+  if (rtt == nullptr) {
+    return true;
+  }
+  return q.prf_idx_ == kDefaultProfile ? rtt->rt_routing_locations_.empty()
+                                       : rtt->tt_->transfer_rules_.empty();
 }
 
 // Device memory in use, as a single snapshot (cudaMemGetInfo). Cheap enough to
@@ -115,8 +130,7 @@ private:
   }
 
   location_idx_t project(location_idx_t const l) const {
-    return project_virts_ &&
-                   tt_.locations_.types_[l] == location_type::kVirt
+    return project_virts_ && tt_.locations_.types_[l] == location_type::kVirt
                ? tt_.locations_.parents_[l]
                : l;
   }

@@ -8,6 +8,7 @@
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
+#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
@@ -58,9 +59,26 @@ struct raptor {
     if constexpr (ProjectVirts) {
       return tt_.locations_.base_transfer_time_[project(l)];
     } else {
+      if constexpr (Rt) {
+        if (!is_static(l)) {
+          return rtt_->rt_virts_[to_idx(l) - n_static_locations_]
+              .transfer_time_;
+        }
+      }
       return tt_.locations_.transfer_time_[l];
     }
   }
+
+  // Real-time virtual locations (rt_timetable::rt_virts_) carry the
+  // transfers.txt rules of trips that changed platform. Only the search that
+  // routes through virtual locations sees them: their labels follow the static
+  // ones, [n_static_locations_, n_locations_). Every table of the static
+  // timetable ends at n_static_locations_.
+  static constexpr bool routes_rt_virts() { return Rt && !ProjectVirts; }
+  bool is_static(location_idx_t const l) const {
+    return to_idx(l) < n_static_locations_;
+  }
+
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
@@ -105,7 +123,9 @@ struct raptor {
       : tt_{tt},
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},
-        n_locations_{tt_.n_locations()},
+        n_static_locations_{tt_.n_locations()},
+        n_locations_{routes_rt_virts() ? rtt->n_routing_locations()
+                                       : tt_.n_locations()},
         n_routes_{tt.n_routes()},
         n_rt_transports_{Rt ? rtt->n_rt_transports() : 0U},
         state_{state.resize(n_locations_, n_routes_, n_rt_transports_)},
@@ -128,6 +148,34 @@ struct raptor {
         is_wheelchair_{is_wheelchair},
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
+    if constexpr (routes_rt_virts()) {
+      // The per location inputs were collected on the static timetable. A
+      // real-time virtual location is its platform as far as they go.
+      if (n_locations_ != n_static_locations_) {
+        auto const extend_bits = [&](bitvec& b) {
+          if (b.size() != 0U) {
+            b.resize(n_locations_);
+            rtt_->for_each_rt_virt([&](location_idx_t const l, auto const& x) {
+              b.set(to_idx(l), b.test(to_idx(x.parent_)));
+            });
+          }
+        };
+        auto const extend_values = [&](std::vector<std::uint16_t>& v) {
+          if (!v.empty()) {
+            v.resize(n_locations_, kUnreachable);
+            rtt_->for_each_rt_virt([&](location_idx_t const l, auto const& x) {
+              v[to_idx(l)] = v[to_idx(x.parent_)];
+            });
+          }
+        };
+        extend_bits(is_dest);
+        for (auto& via : is_via) {
+          extend_bits(via);
+        }
+        extend_values(dist_to_dest);
+        extend_values(lb);
+      }
+    }
     reset_arrivals();
     if (!dist_to_end_.empty()) {
       // only used for intermodal queries (dist_to_dest != empty)
@@ -277,9 +325,11 @@ struct raptor {
 
       auto any_marked = false;
       state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
-        for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
-          any_marked = true;
-          state_.route_mark_.set(to_idx(r), true);
+        if (i < n_static_locations_) {
+          for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
+            any_marked = true;
+            state_.route_mark_.set(to_idx(r), true);
+          }
         }
         if constexpr (ProjectVirts) {
           // the label sits on the stop, but the transports are bound to its
@@ -290,6 +340,13 @@ struct raptor {
               for (auto const& r : tt_.location_routes_[c]) {
                 any_marked = true;
                 state_.route_mark_.set(to_idx(r), true);
+              }
+              if constexpr (Rt) {
+                // ... and so are their real-time transports
+                for (auto const& rt_t : rtt_->location_rt_transports_[c]) {
+                  any_marked = true;
+                  state_.rt_transport_mark_.set(to_idx(rt_t), true);
+                }
               }
             }
           }
@@ -869,6 +926,9 @@ private:
     }
 
     state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+      if (i >= n_static_locations_) {
+        return;  // real-time virtual locations state their transfers one by one
+      }
       auto const hubs = gather_edges[location_idx_t{i}];
       if (hubs.empty()) {
         return;
@@ -933,10 +993,7 @@ private:
         }
       }
 
-      auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx_][l_idx]
-                             : tt_.locations_.footpaths_in_[prf_idx_][l_idx];
-
-      for (auto const& fp : fps) {
+      auto const relax = [&](footpath const& fp) {
         ++stats_.n_footpaths_visited_;
 
         auto const target = to_idx(project(fp.target()));
@@ -1020,7 +1077,9 @@ private:
                 to_unix(time_at_dest_[k]));
           }
         }
-      }
+      };
+
+      for_each_footpath_at<SearchDir>(tt_, rtt_, prf_idx_, l_idx, relax);
     });
   }
 
@@ -1247,6 +1306,9 @@ private:
             bool WithSectionReservationNotRequiredFilter>
   bool update_rt_transport(unsigned const k, rt_transport_idx_t const rt_t) {
     auto const stop_seq = rtt_->rt_transport_location_seq_[rt_t];
+    // stops routed at a real-time virtual location, if any
+    [[maybe_unused]] auto const* const routing_locations =
+        rtt_->routing_locations(rt_t);
     // et[v] = there is an entry point on this transport such that the
     // journey has visited v via stops when the transport passes this stop
     auto et = std::array<bool, Vias + 1>{};
@@ -1257,7 +1319,14 @@ private:
       auto const stop_idx =
           static_cast<stop_idx_t>(kFwd ? i : n_stops - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
-      auto const l_idx = cista::to_idx(project(stp.location_idx()));
+      auto l = project(stp.location_idx());
+      if constexpr (routes_rt_virts()) {
+        if (routing_locations != nullptr &&
+            (*routing_locations)[stop_idx] != location_idx_t::invalid()) {
+          l = (*routing_locations)[stop_idx];
+        }
+      }
+      auto const l_idx = cista::to_idx(l);
       auto const is_first = i == 0U;
       auto const is_last = i == n_stops - 1U;
 
@@ -1688,7 +1757,7 @@ private:
   timetable const& tt_;
   rt_timetable const* rtt_{nullptr};
   int n_days_;
-  std::uint32_t n_locations_, n_routes_, n_rt_transports_;
+  std::uint32_t n_static_locations_, n_locations_, n_routes_, n_rt_transports_;
   raptor_state& state_;
   bitvec end_reachable_;
   std::span<std::array<delta_t, Vias + 1>> tmp_;

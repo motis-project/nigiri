@@ -5,6 +5,7 @@
 #include "utl/overloaded.h"
 
 #include "nigiri/for_each_meta.h"
+#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -447,6 +448,12 @@ void optimize_transfers(timetable const& tt,
                                : trip_idx_t::invalid();
     };
 
+    auto const routing_location = [&](rt::run_stop const& stp) {
+      return stp.fr_->is_rt() && rtt != nullptr && q.prf_idx_ == kDefaultProfile
+                 ? rtt->routing_location(stp.fr_->rt_, stp.stop_idx_)
+                 : stp.get_location_idx();
+    };
+
     auto penalty_best = get_penalty(
         tt, get<footpath>(leg_footpath.uses_).duration(),
         leg_to.dep_time_ - leg_footpath.arr_time_, leg_from.from_, leg_to.to_,
@@ -466,46 +473,52 @@ void optimize_transfers(timetable const& tt,
           continue;
         }
 
-        for (auto const& fp :
-             tt.locations_
-                 .footpaths_out_[q.prf_idx_][stp_from.get_location_idx()]) {
-          if (fp.target() != stp_to.get_location_idx()) {
-            continue;
-          }
+        // The transfer between the locations the trips are routed at - for a
+        // trip that changed platform that may be a real-time virtual location
+        // (rt_timetable::rt_virts_) carrying the rules bound to the trip, not
+        // the platform the journey shows.
+        for_each_footpath_at<direction::kForward>(
+            tt, rtt, q.prf_idx_, routing_location(stp_from),
+            [&](footpath const& routing_fp) {
+              if (routing_fp.target() != routing_location(stp_to)) {
+                return true;
+              }
+              auto const fp =
+                  footpath{stp_to.get_location_idx(), routing_fp.duration()};
 
-          auto const fp_dur =
-              adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
-          auto const arr = stp_from.time(event_type::kArr);
-          auto const dep = stp_to.time(event_type::kDep);
-          auto const arr_fp = arr + fp_dur;
-          if (arr_fp <= dep) {
-            auto const to_trip = fr_to.is_scheduled()
-                                     ? stp_to.get_trip_idx(event_type::kDep)
-                                     : trip_idx_t::invalid();
-            auto const penalty = get_penalty(
-                tt, fp_dur, dep - arr_fp, stp_from.get_location_idx(),
-                stp_to.get_location_idx(), from_trip, to_trip);
-            if (penalty < penalty_best) {
-              leg_from.to_ = stp_from.get_location_idx();
-              leg_from.arr_time_ = arr;
-              ree_from.stop_range_.to_ =
-                  stp_from.stop_idx_ + 1U;  // half open interval
+              auto const fp_dur = adjusted_transfer_time(
+                  q.transfer_time_settings_, fp.duration());
+              auto const arr = stp_from.time(event_type::kArr);
+              auto const dep = stp_to.time(event_type::kDep);
+              auto const arr_fp = arr + fp_dur;
+              if (arr_fp <= dep) {
+                auto const to_trip = fr_to.is_scheduled()
+                                         ? stp_to.get_trip_idx(event_type::kDep)
+                                         : trip_idx_t::invalid();
+                auto const penalty = get_penalty(
+                    tt, fp_dur, dep - arr_fp, stp_from.get_location_idx(),
+                    stp_to.get_location_idx(), from_trip, to_trip);
+                if (penalty < penalty_best) {
+                  leg_from.to_ = stp_from.get_location_idx();
+                  leg_from.arr_time_ = arr;
+                  ree_from.stop_range_.to_ =
+                      stp_from.stop_idx_ + 1U;  // half open interval
 
-              leg_to.from_ = stp_to.get_location_idx();
-              leg_to.dep_time_ = dep;
-              ree_to.stop_range_.from_ = stp_to.stop_idx_;
+                  leg_to.from_ = stp_to.get_location_idx();
+                  leg_to.dep_time_ = dep;
+                  ree_to.stop_range_.from_ = stp_to.stop_idx_;
 
-              leg_footpath.from_ = stp_from.get_location_idx();
-              leg_footpath.to_ = stp_to.get_location_idx();
-              leg_footpath.dep_time_ = arr;
-              leg_footpath.arr_time_ = arr_fp;
-              leg_footpath.uses_ = fp;
+                  leg_footpath.from_ = stp_from.get_location_idx();
+                  leg_footpath.to_ = stp_to.get_location_idx();
+                  leg_footpath.dep_time_ = arr;
+                  leg_footpath.arr_time_ = arr_fp;
+                  leg_footpath.uses_ = fp;
 
-              penalty_best = penalty;
-            }
-          }
-          break;
-        }
+                  penalty_best = penalty;
+                }
+              }
+              return false;
+            });
       }
     }
   }
