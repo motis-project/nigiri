@@ -16,15 +16,9 @@
 
 namespace nigiri::routing::gpu {
 
-// GPU McRAPTOR supports the CPU mcraptor scope (see mcraptor_supported):
-// no via stops and no bike/car transport requirements. Realtime (rt
-// transports + time-dependent footpaths), time-dependent first/last-mile
-// offsets, wheelchair, clasz filters and transfer time settings are
-// supported.
-//
-// One state serves every criteria configuration (the packed 64-bit label is
-// the same width regardless); the distinct types select the algorithm in the
-// raptor_search/benchmark dispatch.
+// GPU McRAPTOR supports the CPU mcraptor scope (see mcraptor_supported).
+// One state serves every criteria configuration (the packed label has the same
+// width); the distinct types select the algorithm in the dispatch.
 struct gpu_mcraptor_state {
   explicit gpu_mcraptor_state(gpu_timetable const&);
   ~gpu_mcraptor_state();
@@ -37,14 +31,14 @@ struct gpu_mcraptor_cost_state : gpu_mcraptor_state {
   using gpu_mcraptor_state::gpu_mcraptor_state;
 };
 
-// The label configurations the device mcraptor implements, each result-equal
-// to the CPU mcraptor with the matching criteria (see mc_crit_of in
-// bmrap_common.h). They all fit the 16-bit "crit" slot of the packed label:
-//   arr                      arrival only (crit == 0 everywhere)
-//   cost                     arrival + generalized cost (arr_cost_criteria)
-//   non_transit              arrival + minutes on foot (arr_with<non_transit>)
+// The label configurations the device implements, each result-equal to the CPU
+// mcraptor with the matching criteria (mc_crit_of in bmrap_common.h). All fit
+// the 16-bit "crit" slot of the packed label:
+//   arr                      arrival only
+//   cost                     arrival + generalized cost
+//   non_transit              arrival + minutes on foot
 //   mode_filter              arrival + "uses an avoided class" bit (AIR)
-//   non_transit_mode_filter  both of the above  (nt in bits 1..15, mf in bit 0)
+//   non_transit_mode_filter  both (non_transit in bits 1..15, mode_filter bit 0)
 enum class mc_crit : std::uint8_t {
   arr,
   cost,
@@ -60,10 +54,9 @@ struct gpu_mcraptor {
                                           gpu_mcraptor_state>;
   using algo_stats_t = raptor_stats;
 
-  // unlike the single-criterion GPU raptor, mcraptor DOES use lower
-  // bounds: the lb-projected destination pruning is what keeps the pareto
-  // bags small (without it, labels the CPU never stores flood the
-  // fixed-capacity device bags). lb affects pruning only, never results.
+  // Unlike the scalar GPU raptor this uses lower bounds: the lb-projected
+  // destination pruning keeps the bags small, and without it labels the CPU
+  // never stores flood the fixed-capacity device bags. Pruning only.
   static constexpr bool kUseLowerBounds = true;
   static constexpr auto const kDirIdx =
       SearchDir == direction::kForward ? 0U : 1U;
@@ -89,26 +82,22 @@ struct gpu_mcraptor {
       bool require_bike_transport,
       bool require_car_transport,
       bool is_wheelchair,
-      transfer_time_settings const& tts);
+      bool no_compulsory_reservation,
+      transfer_time_settings const& tts,
+      profile_idx_t prf_idx);
 
   raptor_stats get_stats() const { return stats_; }
 
-  // pong-side engines: reuse-frontier rejections restricted to entries
-  // of the SAME departure (= the same merged anchor run). Cross-anchor
-  // rejections were observed to over-prune without a real dominating
-  // journey behind them (q#45 trace, 2026-07-11).
+  // Pong side: reuse-frontier rejections only against entries of the same
+  // departure (one merged anchor run); cross-anchor ones were seen over-pruning.
   void set_reuse_same_dep() { reuse_same_dep_ = true; }
 
-  // tight starts (pong ping): re-anchor collected journeys at their
-  // latest feasible departure instead of the step start, so the result
-  // pareto prices real dep-normalized cost - the one-step ping window
-  // otherwise collapses cost-pareto variants under phantom waiting
-  // (see basic_mcraptor::set_tight_start). The device reconstruct
-  // reports the shift per journey (gpu_journey::start_shift_).
+  // Tight starts (pong ping), see basic_mcraptor::set_tight_start(); the device
+  // reconstruct reports the shift per journey (gpu_journey::start_shift_).
   void set_tight_start() { tight_start_ = true; }
 
-  // BM-RAPTOR: tau_dep^<- / tau_arr^-> pruning, uploaded to the device
-  // here; nullptr disables it. Mirrors basic_mcraptor::set_bounds().
+  // BM-RAPTOR pruning bounds, uploaded here; nullptr disables. See
+  // basic_mcraptor::set_bounds().
   void set_bounds(bmrap_bounds const*);
 
   void reset_arrivals();
@@ -118,12 +107,10 @@ struct gpu_mcraptor {
   void execute(unixtime_t start_time,
                std::uint8_t max_transfers,
                unixtime_t worst_time_at_dest,
-               profile_idx_t prf_idx,
                pareto_set<journey>& results);
 
-  // Core legs are materialized by the device breadcrumb chase; this only
-  // adds first/last-mile offset legs and the start footpath (host side,
-  // where the query offsets live).
+  // The device breadcrumb chase materializes the core legs; this adds offset
+  // legs and the start footpath on the host.
   void reconstruct(query const&, journey&);
 
 private:
@@ -142,10 +129,9 @@ private:
   clasz_mask_t allowed_claszes_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
+  profile_idx_t prf_idx_;
 
-  // pure search-window bound in delta units, persisted across start times
-  // within one query (never journey-tightened - the device dest frontier
-  // owns all destination pruning)
+  // search-window bound; the device dest frontier owns destination pruning
   delta_t worst_at_dest_;
   bool reuse_same_dep_{false};
   bool tight_start_{false};  // see set_tight_start()

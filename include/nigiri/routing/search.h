@@ -153,63 +153,23 @@ struct search {
             tt_.internal_interval().from_)
             .count()};
 
-    // raptor / gpu_raptor additionally take no_compulsory_reservation and
-    // prf_idx (moved out of execute() into the ctor); mcraptor's ctor does
-    // not have those yet, so build whichever arg list the resolved Algo
-    // actually accepts.
-    if constexpr (requires {
-                    Algo{tt_,
-                         rtt_,
-                         algo_state,
-                         state_.is_destination_,
-                         state_.is_via_,
-                         state_.dist_to_dest_,
-                         q_.td_dest_,
-                         state_.travel_time_lower_bound_,
-                         q_.via_stops_,
-                         base,
-                         allowed_claszes,
-                         require_bikes_allowed,
-                         require_cars_allowed,
-                         q_.prf_idx_ == 2U,
-                         no_compulsory_reservation,
-                         tts,
-                         q_.prf_idx_};
-                  }) {
-      return Algo{tt_,
-                  rtt_,
-                  algo_state,
-                  state_.is_destination_,
-                  state_.is_via_,
-                  state_.dist_to_dest_,
-                  q_.td_dest_,
-                  state_.travel_time_lower_bound_,
-                  q_.via_stops_,
-                  base,
-                  allowed_claszes,
-                  require_bikes_allowed,
-                  require_cars_allowed,
-                  q_.prf_idx_ == 2U,
-                  no_compulsory_reservation,
-                  tts,
-                  q_.prf_idx_};
-    } else {
-      return Algo{tt_,
-                  rtt_,
-                  algo_state,
-                  state_.is_destination_,
-                  state_.is_via_,
-                  state_.dist_to_dest_,
-                  q_.td_dest_,
-                  state_.travel_time_lower_bound_,
-                  q_.via_stops_,
-                  base,
-                  allowed_claszes,
-                  require_bikes_allowed,
-                  require_cars_allowed,
-                  q_.prf_idx_ == 2U,
-                  tts};
-    }
+    return Algo{tt_,
+                rtt_,
+                algo_state,
+                state_.is_destination_,
+                state_.is_via_,
+                state_.dist_to_dest_,
+                q_.td_dest_,
+                state_.travel_time_lower_bound_,
+                q_.via_stops_,
+                base,
+                allowed_claszes,
+                require_bikes_allowed,
+                require_cars_allowed,
+                q_.prf_idx_ == 2U,
+                no_compulsory_reservation,
+                tts,
+                q_.prf_idx_};
   }
 
   search(timetable const& tt,
@@ -240,15 +200,11 @@ struct search {
                    algo_state)},
         timeout_(timeout) {
     q_.sanitize(tt);
-    // NOT calling algo_.set_tight_start() here (mcraptor): for interval
-    // queries it is a no-op (starts are event-enumerated, so the wait
-    // before the first boarding is zero by construction), but for POINT
-    // queries it would report real departures and drop the initial wait
-    // from the generalized cost while plain raptor keeps reporting the
-    // query anchor - the engines would diverge (routing.ontrip_train,
-    // fares.simple_fares, join_split.complex assert raptor == mcraptor).
-    // Real-departure point-query semantics (= the motis ontrip journey
-    // normalization) would have to land in raptor and mcraptor together.
+    // No algo_.set_tight_start() (mcraptor): for point queries it would report
+    // real departures and drop the initial wait from the generalized cost
+    // while plain raptor keeps the query anchor, so the engines would diverge
+    // (routing.ontrip_train, fares.simple_fares, join_split.complex). It would
+    // have to land in raptor and mcraptor together.
   }
 
   routing_result execute() {
@@ -506,16 +462,8 @@ private:
               start_time + (kFwd ? 1 : -1) *
                                (std::min(fastest_direct_, q_.max_travel_time_) +
                                 duration_t{1});
-          if constexpr (requires {
-                          algo_.execute(start_time, q_.max_transfers_,
-                                       worst_time_at_dest, state_.results_);
-                        }) {
-            algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
-                          state_.results_);
-          } else {
-            algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
-                          q_.prf_idx_, state_.results_);
-          }
+          algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
+                        state_.results_);
           kFwd ? ++stats_.n_execute_fwd_ : ++stats_.n_execute_bwd_;
 
           for (auto& j : state_.results_) {

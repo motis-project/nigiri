@@ -21,13 +21,12 @@ using namespace std::chrono_literals;
 
 // Time-dependent START offsets across every engine that can serve them.
 //
-// The window engines (PONG, BM-RAPTOR) do not report the departure their
-// forward ping was seeded with: the ping runs its window as one step and the
-// backward pong re-derives each journey's latest feasible departure. With a
-// td offset the ingress duration is itself a function of the departure, so
-// this is exactly where a re-anchoring that assumes a constant offset
-// produces a departure that does not exist - see pong.cc's tight-start
-// guard, which the `slower_later` case below pins down.
+// PONG and BM-RAPTOR do not report the departure their ping was seeded with:
+// the ping runs its window as one step and the backward pong re-derives each
+// journey's latest feasible departure. With a td offset the ingress duration
+// depends on the departure, so a re-anchoring that assumes a constant one can
+// produce a departure that does not exist (pong.cc's tight-start guard, pinned
+// by `slower_later` below).
 namespace {
 
 mem_dir test_files() {

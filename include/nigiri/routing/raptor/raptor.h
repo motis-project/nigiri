@@ -181,43 +181,26 @@ struct raptor {
   }
 
   // BM-RAPTOR stage 2 (Delling/Dibbelt/Pajor, Sec. 4.3): the per-anchor
-  // reverse searches share one search space, STAGGERED so that a run
-  // allowed n of m trips writes its round k at slot k + (m - n) and slot i
-  // means "i trips remaining" for every anchor alike. Seeding at slot m - n
-  // is the paper's "round k reads tau_dep(k + (m - n) - 1, p) and writes
-  // tau_dep(k + (m - n), p)": each run inherits the previous, higher-budget
-  // run's labels for free.
+  // reverse searches share one search space, staggered so a run allowed n of m
+  // trips writes its round k at slot k + (m - n). Slot i then means "i trips
+  // remaining" for every anchor, and each run inherits the labels of the
+  // previous, higher-budget one.
   void set_start_round(unsigned const k) { start_round_ = k; }
 
-  // BM-RAPTOR stage 2 pruned by stage 1 (paper, Sec. 4.3): "a departure
-  // time label tau_dep(k, p) can be discarded at stop p if tau_dep(k, p) <
-  // tau_arr(n - k, p)" - a latest-departure label sitting before the
-  // earliest time the origin can reach p at all is useless.
-  //
-  // The staggered alignment above makes slot k mean "k trips remaining" for
-  // every run, so the forward part always has budget - k trips and the rule
-  // takes the same form McRAPTOR uses in stage 3. `b` must therefore come
-  // from a search in the OPPOSITE direction, valid at every stop
-  // (one-to-all, no target/local pruning).
+  // Prunes stage 2 by stage 1 (paper, Sec. 4.3): a departure label
+  // tau_dep(k, p) is useless if it lies before the earliest time the origin can
+  // reach p. `b` must come from a search in the opposite direction that is
+  // valid at every stop (one-to-all, no target/local pruning).
   void set_bounds(bmrap_bounds const* b) { bm_bounds_ = b; }
 
-  // BM-RAPTOR stage 1 (paper, Sec. 4.3): "its target pruning rule must be
-  // relaxed in order to incorporate the arrival time slack into the labels
-  // that are used by the second-stage reverse RAPs. More precisely, the
-  // algorithm may only prune a label tau_arr(k, p) if tau_arr(k, p) >
-  // tau*(p_t) + sigma_arr."
+  // BM-RAPTOR stage 1 (paper, Sec. 4.3): the target pruning is relaxed by the
+  // arrival slack, so the round times are valid at every stop and can serve as
+  // a tau_arr^->(v, i) matrix without a separate one-to-all search. `lb_`
+  // prunes against the same time_at_dest_, so it is covered too.
   //
-  // Unrelaxed, the round times are only valid along paths that could still
-  // improve the destination and cannot serve as a tau_arr^->(v, i) matrix;
-  // relaxed, they can, which saves a whole separate one-to-all search.
-  // `lb_` prunes against the same time_at_dest_, so this covers lower-bound
-  // pruning too.
-  //
-  // `factor` scales the travel time from `origin` and `add_minutes` pads it
-  // - the restriction's own two-mode relaxation, so the bound matches
-  // anchor_deadline() rather than some looser constant. floor_min/cap_min
-  // are relax_arr()'s absolute clamps: without them a ratio grants hours on
-  // a long-haul journey and the relaxation, not the search, dominates.
+  // `factor` scales the travel time from `origin` and `add_minutes` pads it (the
+  // restriction's two modes, matching anchor_deadline()); floor_min/cap_min are
+  // relax_arr()'s clamps.
   void set_dest_relax(unixtime_t const origin,
                       double const factor,
                       int const add_minutes,

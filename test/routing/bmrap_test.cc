@@ -1,9 +1,13 @@
 #include "gtest/gtest.h"
 
 #include <algorithm>
+#include <array>
 #include <set>
+#include <string>
 #include <tuple>
 #include <vector>
+
+#include "fmt/format.h"
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
@@ -31,9 +35,9 @@ using namespace std::string_view_literals;
 
 namespace {
 
-// Three ways from O to D, forming a proper (arrival, transfers) pareto set
-// so the restricted set has something to restrict, and several departures
-// so the profile driver takes more than one step:
+// Three ways from O to D forming a proper (arrival, transfers) pareto set, so
+// the restricted set has something to restrict, over several departures, so
+// the profile driver takes more than one step:
 //
 //   route(s)        | dep O | arr D | transfers
 //   ----------------+-------+-------+----------
@@ -43,9 +47,8 @@ namespace {
 //   RD (direct)     | 11:00 | 15:00 | 0
 //   RA1 + RA2       | 11:10 | 13:30 | 1
 //
-// All pareto-optimal on (departure, arrival, transfers): later departures
-// never dominate earlier arrivals, and each extra transfer buys a strictly
-// earlier one. Times below are LOCAL (Europe/Berlin, June => UTC+2).
+// All pareto-optimal on (departure, arrival, transfers). Times below are local
+// (Europe/Berlin, June => UTC+2).
 constexpr auto const kGTFS = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -109,9 +112,8 @@ S,20240620,1
 
 using tuple_t = std::tuple<unixtime_t, unixtime_t, unsigned>;
 
-// (departure, arrival, transfers), NORMALISED: a backward search reports
-// start_time_ as the ARRIVAL, and departure_time()/arrival_time() undo that
-// so forward and backward results compare directly.
+// (departure, arrival, transfers), normalised: a backward search reports
+// start_time_ as the arrival, departure_time()/arrival_time() undo that.
 std::vector<tuple_t> tuples(pareto_set<routing::journey> const& js) {
   auto v = std::vector<tuple_t>{};
   for (auto const& j : js) {
@@ -133,22 +135,19 @@ struct fixture {
     d_ = tt_.locations_.location_id_to_idx_.at({"D", source_idx_t{0}});
   }
 
-  // Forward: start_ is O, window is a DEPARTURE window. Backward (arriveBy):
-  // the search starts at the destination, so start_ is D and the window is
-  // an ARRIVAL window - query::flip_dir()'s convention, and the one the
-  // routing endpoint builds for arriveBy=true.
+  // Backward (arriveBy) starts at the destination, so start_ is D and the
+  // window is an arrival window, as the routing endpoint builds it.
   routing::query make_query(direction const dir = direction::kForward) const {
     auto q = routing::query{};
     auto const day = sys_days{2024_y / June / 19};
     if (dir == direction::kForward) {
-      // local 10:00-12:00 = 08:00-10:00 UTC, covering all five departures
+      // local 10:00-12:00, covering all five departures
       q.start_time_ =
           interval<unixtime_t>{unixtime_t{day} + 8h, unixtime_t{day} + 10h};
       q.start_ = {{o_, 0_minutes, 0U}};
       q.destination_ = {{d_, 0_minutes, 0U}};
     } else {
-      // local 12:00-15:00 = 10:00-13:00 UTC, covering every arrival those
-      // departures reach except the last one (15:00 local)
+      // local 12:00-15:00, covering every arrival except the last (15:00)
       q.start_time_ =
           interval<unixtime_t>{unixtime_t{day} + 10h, unixtime_t{day} + 13h};
       q.start_ = {{d_, 0_minutes, 0U}};
@@ -168,9 +167,8 @@ struct run_result {
   interval<unixtime_t> scanned_{};
 };
 
-// BMRAPP on the CPU scalar engine. The state type is what selects the
-// scalar engine (see bmrap_algo_for), exactly as it does for pong_search,
-// so the GPU variant below runs the identical assertions.
+// BMRAPP on the CPU scalar engine; the state type selects the scalar engine
+// (see bmrap_algo_for), so the GPU variant below runs the same assertions.
 template <typename Criteria>
 run_result bmrapp(fixture const& f, routing::query q, direction const dir) {
   auto ss = routing::search_state{};
@@ -180,9 +178,8 @@ run_result bmrapp(fixture const& f, routing::query q, direction const dir) {
   return {tuples(*r.journeys_), r.interval_};
 }
 
-// Plain range search over the same state type: with raptor_state the
-// two-criteria search, i.e. the anchor set J_A itself; with an mcraptor
-// state the unrestricted multicriteria set.
+// Plain range search: with raptor_state the two-criteria search, i.e. the
+// anchor set J_A itself; with an mcraptor state the unrestricted set.
 template <typename AlgoState>
 run_result reference(fixture const& f, routing::query q, direction const dir) {
   auto ss = routing::search_state{};
@@ -192,8 +189,8 @@ run_result reference(fixture const& f, routing::query q, direction const dir) {
   return {tuples(*r.journeys_), r.interval_};
 }
 
-// "normal PONG operation": the engine that actually serves a window whose
-// extension side matches the search direction.
+// "normal PONG operation": the engine serving a window whose extension side
+// matches the search direction.
 run_result pong_reference(fixture const& f,
                           routing::query q,
                           direction const dir) {
@@ -204,20 +201,10 @@ run_result pong_reference(fixture const& f,
   return {tuples(*r.journeys_), r.interval_};
 }
 
-template <typename Criteria>
-std::vector<tuple_t> run_bmrapp(fixture const& f) {
-  return bmrapp<Criteria>(f, f.make_query(), direction::kForward).js_;
-}
-
-template <typename McState>
-std::vector<tuple_t> run_mcraptor(fixture const& f) {
-  return reference<McState>(f, f.make_query(), direction::kForward).js_;
-}
-
-std::vector<tuple_t> run_bicriteria(fixture const& f) {
-  return reference<routing::raptor_state>(f, f.make_query(),
-                                          direction::kForward)
-      .js_;
+std::string describe(tuple_t const& j) {
+  return fmt::format("dep={} arr={} transfers={}",
+                     std::get<0>(j).time_since_epoch().count(),
+                     std::get<1>(j).time_since_epoch().count(), std::get<2>(j));
 }
 
 void expect_subset(std::vector<tuple_t> const& super,
@@ -227,19 +214,14 @@ void expect_subset(std::vector<tuple_t> const& super,
   auto const have = std::set<tuple_t>{begin(super), end(super)};
   for (auto const& j : sub) {
     EXPECT_TRUE(have.contains(j))
-        << what << ": journey the reference does not have: dep="
-        << std::get<0>(j).time_since_epoch().count()
-        << " arr=" << std::get<1>(j).time_since_epoch().count()
-        << " transfers=" << std::get<2>(j);
+        << what << ": journey the reference does not have: " << describe(j);
   }
 }
 
-// Every element of `sub` inside the range `super` actually scanned must be
-// in `super`. Restricting to the covered range is what makes this
-// meaningful: the two engines stop scanning at different points, so
-// journeys past the shorter scan are legitimately absent. The scan key is
-// the DEPARTURE going forward and the ARRIVAL going backward, and the
-// covered range runs the way the scan does.
+// Every element of `sub` inside the range `super` actually scanned must be in
+// `super`; the engines stop scanning at different points, so journeys beyond
+// the shorter scan are legitimately absent. The scan key is the departure
+// forward and the arrival backward.
 void expect_contains_prefix(std::vector<tuple_t> const& super,
                             std::vector<tuple_t> const& sub,
                             char const* const what,
@@ -261,115 +243,82 @@ void expect_contains_prefix(std::vector<tuple_t> const& super,
     if (fwd ? key(j) < cut : key(j) > cut) {
       ++checked;
       EXPECT_TRUE(have.contains(j))
-          << what << ": missing journey dep="
-          << std::get<0>(j).time_since_epoch().count()
-          << " arr=" << std::get<1>(j).time_since_epoch().count()
-          << " transfers=" << std::get<2>(j);
+          << what << ": missing journey " << describe(j);
     }
   }
-  // guard against a vacuous pass: the two scans must actually overlap
   EXPECT_GT(checked, 0U) << what << ": no journey fell inside the range";
+}
+
+constexpr auto const kDirs =
+    std::array{direction::kForward, direction::kBackward};
+
+char const* name(direction const dir) {
+  return dir == direction::kForward ? "forward" : "backward";
+}
+
+// The restricted set is a subset of the full multicriteria set: BM-RAPTOR may
+// drop journeys the restriction rules out, but must never invent one.
+template <typename Criteria, typename McState>
+void expect_restricted_subset_of_mcraptor(direction const dir) {
+  auto const f = fixture{};
+  auto const q = f.make_query(dir);
+  auto const restricted = bmrapp<Criteria>(f, q, dir).js_;
+  ASSERT_FALSE(restricted.empty());
+  expect_subset(reference<McState>(f, q, dir).js_, restricted, name(dir));
 }
 
 }  // namespace
 
-// The restricted set is a SUBSET of the full multicriteria set: BM-RAPTOR
-// may drop journeys the restriction rules out, but must never invent one.
 TEST(bmrap, subset_of_mcraptor) {
-  auto const f = fixture{};
-  auto const full = run_mcraptor<routing::mcraptor_state>(f);
-  auto const restricted = run_bmrapp<routing::arr_criteria>(f);
+  for (auto const dir : kDirs) {
+    expect_restricted_subset_of_mcraptor<routing::arr_criteria,
+                                         routing::mcraptor_state>(dir);
+  }
+}
 
-  ASSERT_FALSE(restricted.empty());
-  expect_subset(full, restricted, "BMRAPP vs McRAPTOR");
+// Same for composed criteria, covering arr_with<>'s machinery: dominance, the
+// carried state and apply_to must fold over two dimensions.
+TEST(bmrap, composed_subset_of_mcraptor) {
+  for (auto const dir : kDirs) {
+    expect_restricted_subset_of_mcraptor<
+        routing::arr_non_transit_mode_switches_criteria,
+        routing::mcraptor_non_transit_mode_switches_state>(dir);
+  }
 }
 
 // Anchors are their own A(J), so no two-criteria journey may be restricted
-// away. Regressed twice during development (anchor pareto-domination, and
-// the filter/bounds reference-point mismatch).
+// away. Regressed twice (anchor pareto-domination, filter/bounds reference
+// mismatch).
 TEST(bmrap, contains_bicriteria_journeys) {
   auto const f = fixture{};
-  auto const bm = run_bmrapp<routing::arr_criteria>(f);
-  auto const bi = run_bicriteria(f);
-  expect_contains_prefix(bm, bi, "BMRAPP vs bicriteria RAPTOR");
+  for (auto const dir : kDirs) {
+    auto const q = f.make_query(dir);
+    expect_contains_prefix(bmrapp<routing::arr_criteria>(f, q, dir).js_,
+                           reference<routing::raptor_state>(f, q, dir).js_,
+                           name(dir), dir);
+  }
 }
 
-// Same for a COMPOSED criteria, which also covers arr_with<>'s machinery:
-// dominance, the carried state and apply_to must fold over two dimensions.
-TEST(bmrap, composed_subset_of_mcraptor) {
-  auto const f = fixture{};
-  auto const full =
-      run_mcraptor<routing::mcraptor_non_transit_mode_switches_state>(f);
-  auto const restricted =
-      run_bmrapp<routing::arr_non_transit_mode_switches_criteria>(f);
-
-  ASSERT_FALSE(restricted.empty());
-  expect_subset(full, restricted, "BMRAPP(walk+clasz) vs McRAPTOR");
-}
-
-// Adding a pareto dimension can only split classes apart, never merge them,
-// so a composed criteria must never lose what a SUBSET of its dimensions
-// finds. This is what breaks if a dimension's dominance folds the wrong way.
+// Adding a pareto dimension can only split classes apart, so a composed
+// criteria must never lose what a subset of its dimensions finds. This breaks
+// if a dimension's dominance folds the wrong way.
 TEST(bmrap, more_dimensions_never_lose_journeys) {
   auto const f = fixture{};
-  auto const walk = run_bmrapp<routing::arr_non_transit_criteria>(f);
+  auto const walk = bmrapp<routing::arr_non_transit_criteria>(
+                        f, f.make_query(), direction::kForward)
+                        .js_;
   auto const walk_clasz =
-      run_bmrapp<routing::arr_non_transit_mode_switches_criteria>(f);
-
+      bmrapp<routing::arr_non_transit_mode_switches_criteria>(
+          f, f.make_query(), direction::kForward)
+          .js_;
   ASSERT_FALSE(walk.empty());
   expect_subset(walk_clasz, walk,
                 "adding the clasz dimension dropped a journey");
 }
 
-// ---------------------------------------------------------------------------
-// arriveBy, i.e. SearchDir == kBackward
-// ---------------------------------------------------------------------------
-// Everything mirrors: the scan steps from the LATEST arrival downwards, the
-// anchors re-anchor to their earliest arrival, and tau_dep^<- becomes a
-// forward reach bound. Same invariants, so these are the forward tests with
-// the direction and the window flipped.
-
-TEST(bmrap, backward_subset_of_mcraptor) {
-  auto const f = fixture{};
-  auto const q = f.make_query(direction::kBackward);
-  auto const full =
-      reference<routing::mcraptor_state>(f, q, direction::kBackward).js_;
-  auto const restricted =
-      bmrapp<routing::arr_criteria>(f, q, direction::kBackward).js_;
-
-  ASSERT_FALSE(restricted.empty());
-  expect_subset(full, restricted, "backward BMRAPP vs McRAPTOR");
-}
-
-TEST(bmrap, backward_contains_bicriteria_journeys) {
-  auto const f = fixture{};
-  auto const q = f.make_query(direction::kBackward);
-  auto const bm = bmrapp<routing::arr_criteria>(f, q, direction::kBackward).js_;
-  auto const bi =
-      reference<routing::raptor_state>(f, q, direction::kBackward).js_;
-  expect_contains_prefix(bm, bi, "backward BMRAPP vs bicriteria RAPTOR",
-                         direction::kBackward);
-}
-
-TEST(bmrap, backward_composed_subset_of_mcraptor) {
-  auto const f = fixture{};
-  auto const q = f.make_query(direction::kBackward);
-  auto const full =
-      reference<routing::mcraptor_non_transit_mode_switches_state>(
-          f, q, direction::kBackward)
-          .js_;
-  auto const restricted =
-      bmrapp<routing::arr_non_transit_mode_switches_criteria>(
-          f, q, direction::kBackward)
-          .js_;
-
-  ASSERT_FALSE(restricted.empty());
-  expect_subset(full, restricted, "backward BMRAPP(walk+clasz) vs McRAPTOR");
-}
-
-// The same journeys whichever end the search starts from, compared on the
-// box BOTH scans cover (departure in the forward window, arrival in the
-// backward one) since outside it either scan is legitimately blind.
+// The same journeys whichever end the search starts from, compared on the box
+// both scans cover (departure in the forward window, arrival in the backward
+// one); outside it either scan is legitimately blind.
 TEST(bmrap, backward_matches_forward) {
   auto const f = fixture{};
   auto const qf = f.make_query(direction::kForward);
@@ -401,11 +350,10 @@ TEST(bmrap, backward_matches_forward) {
 // interval extension
 // ---------------------------------------------------------------------------
 // BMRAPP extends the window itself, stepping past it until
-// min_connection_count_ is met. The side it grows on is fixed by the SEARCH
-// direction, and only matches the side the query asked for in the two
-// PONG-applicable combinations; for the opposed pair the driver hands the
-// window to a bicriteria range search up front instead. See "WHERE THE
-// WINDOW COMES FROM" in bmrap_profile.cc. Both halves are covered below.
+// min_connection_count_ is met. The side it grows on is fixed by the search
+// direction and only matches the requested side in the two PONG-applicable
+// ("aligned") combinations; for the opposed pair a bicriteria range search
+// settles the window up front (see bmrap_profile.cc).
 
 namespace {
 
@@ -420,7 +368,7 @@ unixtime_t at(std::chrono::hours const h, std::chrono::minutes const m) {
   return unixtime_t{sys_days{2024_y / June / 19}} + h + m;
 }
 
-// the two combinations whose requested side is the side the scan grows on
+// requested side == the side the scan grows on
 std::vector<extend_case> aligned_cases() {
   return {
       // one departure (10:05 local) in the window, more available later
@@ -438,16 +386,15 @@ std::vector<extend_case> aligned_cases() {
   };
 }
 
-// ...and the two where they are opposed
 std::vector<extend_case> opposed_cases() {
   return {
-      // one departure (11:00 local), the others are EARLIER
+      // one departure (11:00 local), the others are earlier
       {direction::kForward,
        true,
        false,
        {at(9h, 0min), at(9h, 6min)},
        "departAfter, extend earlier"},
-      // one arrival (12:00 local), the others are LATER
+      // one arrival (12:00 local), the others are later
       {direction::kBackward,
        false,
        true,
@@ -466,33 +413,31 @@ routing::query extend_query(fixture const& f, extend_case const& c) {
 }
 
 // A query that forbids growing on one side must not grow on it: journeys
-// outside the requested window are not what the caller asked for, and on a
-// paging request they are the ones already shown.
+// outside the requested window are not what was asked for, and on a paging
+// request they are the ones already shown.
 void expect_stays_inside(fixture const& f, extend_case const& c) {
   auto const r = bmrapp<routing::arr_criteria>(f, extend_query(f, c), c.dir_);
   if (!c.earlier_) {
     EXPECT_GE(r.scanned_.from_, c.win_.from_)
-        << c.name_ << ": extended EARLIER although the query forbids it";
+        << c.name_ << ": extended earlier although the query forbids it";
   }
   if (!c.later_) {
     EXPECT_LE(r.scanned_.to_, c.win_.to_)
-        << c.name_ << ": extended LATER although the query forbids it";
+        << c.name_ << ": extended later although the query forbids it";
   }
 }
 
-// ...and it must grow on the side it is allowed to, until
-// min_connection_count_ is met. Each window below holds exactly one journey,
-// so without extension the result would be that single journey.
+// ...and it must grow on the allowed side until min_connection_count_ is met.
+// Each window holds exactly one journey, so without extension that is all
+// there would be.
 void expect_grows_on_allowed_side(fixture const& f, extend_case const& c) {
   auto const q = extend_query(f, c);
   auto const r = bmrapp<routing::arr_criteria>(f, q, c.dir_);
-  // the reference engine on the same query, so the expectation is the
-  // behaviour of the rest of nigiri and not a hard-coded count
   auto const ref = reference<routing::raptor_state>(f, q, c.dir_);
   EXPECT_GE(ref.js_.size(), q.min_connection_count_)
       << c.name_
-      << ": the reference engine did not extend either - the "
-         "fixture cannot support this case";
+      << ": the reference did not extend either - the fixture "
+         "cannot support this case";
   EXPECT_GE(r.js_.size(), q.min_connection_count_)
       << c.name_ << ": stopped at " << r.js_.size() << " journeys";
   if (c.earlier_) {
@@ -515,8 +460,8 @@ TEST(bmrap, extends_towards_the_search_direction) {
   }
 }
 
-// The opposed pair: the window comes from the range search instead, and
-// must still be right on both counts, exactly as in the aligned case.
+// The opposed pair: the window comes from the range search instead and must be
+// right on both counts as well.
 TEST(bmrap, extends_against_the_search_direction) {
   auto const f = fixture{};
   for (auto const& c : opposed_cases()) {
@@ -525,28 +470,26 @@ TEST(bmrap, extends_against_the_search_direction) {
   }
 }
 
-// The fallback must not LOSE anything. numItineraries is satisfied on the
-// BICRITERIA journeys there rather than on the multicriteria ones, so the
-// window comes out wider than strictly needed and the result is a strict
-// SUPERSET of what normal PONG operation returns for that same window -
-// which is the harmless direction, and the property worth pinning down.
+// The fallback must not lose anything. numItineraries is satisfied on the
+// bicriteria journeys there, so the window comes out wider than needed and the
+// result is a superset of what normal PONG operation returns for that window -
+// the harmless direction, and the property worth pinning down.
 TEST(bmrap, opposed_extension_is_a_superset_of_pong) {
   auto const f = fixture{};
   for (auto const& c : opposed_cases()) {
     auto const r = bmrapp<routing::arr_criteria>(f, extend_query(f, c), c.dir_);
     ASSERT_FALSE(r.js_.empty()) << c.name_ << ": no result to compare";
 
-    // the same window, requested the normal way round: interval pinned to
-    // what the fallback settled on, extension side aligned with the search
-    // direction so PONG applies, and no numItineraries growth on top
+    // the window the fallback settled on, requested the normal way round: the
+    // extension side aligned with the search direction so PONG applies, and no
+    // numItineraries growth
     auto q = f.make_query(c.dir_);
     q.start_time_ = r.scanned_;
     q.extend_interval_earlier_ = c.dir_ == direction::kBackward;
     q.extend_interval_later_ = c.dir_ == direction::kForward;
     q.min_connection_count_ = 0U;
-    auto const ref = pong_reference(f, q, c.dir_);
 
-    expect_subset(r.js_, ref.js_, c.name_);
+    expect_subset(r.js_, pong_reference(f, q, c.dir_).js_, c.name_);
   }
 }
 
@@ -556,10 +499,9 @@ TEST(bmrap, opposed_extension_is_a_superset_of_pong) {
 
 namespace {
 
-// Minimal stand-ins for the three shapes bounded_needs_lb<Algo>() branches
-// on: never uses lb (gpu_raptor), uses lb but declares it unneeded once
-// bounded (raptor/basic_mcraptor), and uses lb with no declared opinion
-// (gpu_mcraptor, the conservative default).
+// the three shapes it branches on: never uses lb (gpu_raptor), uses lb but does
+// not need it once bounded (raptor, basic_mcraptor), no declared opinion
+// (gpu_mcraptor, the conservative default)
 struct mock_no_lb_algo {
   static constexpr bool kUseLowerBounds = false;
 };
@@ -585,9 +527,8 @@ TEST(bmrap, bounded_needs_lb_trait) {
       << "an engine that declares no opinion must default to needing lb";
 }
 
-// Pins the actual values on the two engines bmrap_profile.cc bounds
-// unconditionally: both must resolve to "does not need lb once bounded",
-// which is what makes skipping the bwd_lb dijkstra there safe.
+// The two engines bmrap_profile.cc bounds unconditionally must not need lb once
+// bounded, which is what makes skipping the bwd_lb dijkstra there safe.
 TEST(bmrap, bounded_needs_lb_matches_real_engines) {
   using cpu_raptor =
       routing::raptor<direction::kForward, false, via_offset_t{0U},
@@ -599,11 +540,10 @@ TEST(bmrap, bounded_needs_lb_matches_real_engines) {
 }
 
 #if defined(NIGIRI_CUDA)
-// The GPU scalar engine must produce the same restricted set as the CPU one.
-// Only the ping / pong / backward-pruning searches move to the device; the
-// multicriteria phases run on the CPU either way (see bmrap_algo_for), so
-// every criteria configuration is comparable, not just the two the GPU
-// mcraptor implements.
+namespace {
+
+// The multicriteria phases run on the CPU unless gpu_mc_mode says otherwise
+// (see bmrap_algo_for), so every criteria configuration is comparable here.
 template <typename Criteria>
 std::vector<tuple_t> run_bmrapp_gpu(fixture const& f,
                                     routing::query q,
@@ -618,10 +558,8 @@ std::vector<tuple_t> run_bmrapp_gpu(fixture const& f,
           .journeys_));
 }
 
-// The device mcraptor on its own, outside BMRAPP: phases 4/5 can only move
-// to the GPU (NIGIRI_BMRAPP_GPU_MC) if this holds, and nothing else in the
-// tree exercises gpu_mcraptor, so this is where a divergence in it shows up
-// rather than as a BMRAPP failure.
+// The device mcraptor on its own: nothing else exercises gpu_mcraptor, so a
+// divergence shows up here rather than as a BMRAPP failure.
 std::vector<tuple_t> run_gpu_mcraptor(fixture const& f,
                                       routing::query q,
                                       direction const dir) {
@@ -633,83 +571,50 @@ std::vector<tuple_t> run_gpu_mcraptor(fixture const& f,
             .journeys_));
 }
 
+template <typename Criteria>
+void expect_gpu_matches_cpu(direction const dir) {
+  auto const f = fixture{};
+  auto const q = f.make_query(dir);
+  EXPECT_EQ(bmrapp<Criteria>(f, q, dir).js_,
+            run_bmrapp_gpu<Criteria>(f, q, dir))
+      << name(dir);
+}
+
+}  // namespace
+
+#define SKIP_WITHOUT_GPU()              \
+  if (!routing::gpu::gpu_available()) { \
+    GTEST_SKIP() << "no CUDA device";   \
+  }
+
 TEST(bmrap, gpu_mcraptor_matches_cpu) {
-  if (!routing::gpu::gpu_available()) {
-    GTEST_SKIP() << "no CUDA device";
-  }
+  SKIP_WITHOUT_GPU();
   auto const f = fixture{};
-  auto const q = f.make_query();
-  EXPECT_EQ(reference<routing::mcraptor_state>(f, q, direction::kForward).js_,
-            run_gpu_mcraptor(f, q, direction::kForward));
-}
-
-TEST(bmrap, gpu_mcraptor_matches_cpu_backward) {
-  if (!routing::gpu::gpu_available()) {
-    GTEST_SKIP() << "no CUDA device";
-  }
-  auto const f = fixture{};
-  auto const q = f.make_query(direction::kBackward);
-  EXPECT_EQ(reference<routing::mcraptor_state>(f, q, direction::kBackward).js_,
-            run_gpu_mcraptor(f, q, direction::kBackward));
-}
-
-TEST(bmrap, gpu_matches_cpu) {
-  if (!routing::gpu::gpu_available()) {
-    GTEST_SKIP() << "no CUDA device";
-  }
-  auto const f = fixture{};
-  auto const q = f.make_query();
-  EXPECT_EQ(bmrapp<routing::arr_criteria>(f, q, direction::kForward).js_,
-            run_bmrapp_gpu<routing::arr_criteria>(f, q, direction::kForward));
-}
-
-TEST(bmrap, gpu_matches_cpu_walk) {
-  if (!routing::gpu::gpu_available()) {
-    GTEST_SKIP() << "no CUDA device";
-  }
-  auto const f = fixture{};
-  auto const q = f.make_query();
-  EXPECT_EQ(
-      bmrapp<routing::arr_non_transit_criteria>(f, q, direction::kForward).js_,
-      run_bmrapp_gpu<routing::arr_non_transit_criteria>(f, q,
-                                                        direction::kForward));
-}
-
-TEST(bmrap, gpu_matches_cpu_walk_backward) {
-  if (!routing::gpu::gpu_available()) {
-    GTEST_SKIP() << "no CUDA device";
-  }
-  auto const f = fixture{};
-  auto const q = f.make_query(direction::kBackward);
-  EXPECT_EQ(
-      bmrapp<routing::arr_non_transit_criteria>(f, q, direction::kBackward).js_,
-      run_bmrapp_gpu<routing::arr_non_transit_criteria>(f, q,
-                                                        direction::kBackward));
-}
-
-// mode_filter (avoid AIR) on the device. The test timetable has no flights,
-// so the criterion is all-zeros here - this pins that the extra label field
-// does not perturb the arrival-only result; real-data validation covers the
-// bit itself.
-TEST(bmrap, gpu_matches_cpu_mode_filter) {
-  if (!routing::gpu::gpu_available()) {
-    GTEST_SKIP() << "no CUDA device";
-  }
-  auto const f = fixture{};
-  for (auto const dir : {direction::kForward, direction::kBackward}) {
+  for (auto const dir : kDirs) {
     auto const q = f.make_query(dir);
-    EXPECT_EQ(bmrapp<routing::arr_mode_filter_criteria>(f, q, dir).js_,
-              run_bmrapp_gpu<routing::arr_mode_filter_criteria>(f, q, dir))
-        << (dir == direction::kForward ? "fwd" : "bwd");
+    EXPECT_EQ(reference<routing::mcraptor_state>(f, q, dir).js_,
+              run_gpu_mcraptor(f, q, dir))
+        << name(dir);
   }
 }
 
-// gpu_mc_mode 2 also runs the mc PONG (phase 5) on the device; the journeys
-// must not change.
-TEST(bmrap, gpu_mc_pong_matches_mc_ping) {
-  if (!routing::gpu::gpu_available()) {
-    GTEST_SKIP() << "no CUDA device";
+// Only the ping, pong and backward pruning searches move to the device, and
+// arriveBy exercises the other, direction-indexed half of the GPU state.
+TEST(bmrap, gpu_matches_cpu) {
+  SKIP_WITHOUT_GPU();
+  for (auto const dir : kDirs) {
+    expect_gpu_matches_cpu<routing::arr_criteria>(dir);
+    expect_gpu_matches_cpu<routing::arr_non_transit_criteria>(dir);
+    // the timetable has no flights, so this only pins that the extra label
+    // field does not perturb the arrival-only result
+    expect_gpu_matches_cpu<routing::arr_mode_filter_criteria>(dir);
   }
+}
+
+// gpu_mc_mode 2 also runs the mc pong on the device; the journeys must not
+// change.
+TEST(bmrap, gpu_mc_pong_matches_mc_ping) {
+  SKIP_WITHOUT_GPU();
   auto const f = fixture{};
   auto const q = f.make_query();
   EXPECT_EQ(
@@ -721,15 +626,5 @@ TEST(bmrap, gpu_mc_pong_matches_mc_ping) {
                 f, q, direction::kForward, 2));
 }
 
-// arriveBy on the device: the per-query buffers are direction-indexed, so
-// the backward scan exercises a different half of the GPU state.
-TEST(bmrap, gpu_matches_cpu_backward) {
-  if (!routing::gpu::gpu_available()) {
-    GTEST_SKIP() << "no CUDA device";
-  }
-  auto const f = fixture{};
-  auto const q = f.make_query(direction::kBackward);
-  EXPECT_EQ(bmrapp<routing::arr_criteria>(f, q, direction::kBackward).js_,
-            run_bmrapp_gpu<routing::arr_criteria>(f, q, direction::kBackward));
-}
+#undef SKIP_WITHOUT_GPU
 #endif

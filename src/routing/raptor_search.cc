@@ -23,21 +23,15 @@ namespace nigiri::routing {
 
 namespace {
 
-// the algorithm belonging to a state type: gpu_raptor_state selects the GPU
-// raptor, any basic_mcraptor_state<C> the matching basic_mcraptor<Dir, C>
-// (interval search over a fixed destination -> rRAPTOR bag reuse ON),
-// raptor_state the CPU raptor.
+// The algorithm belonging to a state type.
 template <direction SearchDir, via_offset_t Vias, bool Rt, typename AlgoState>
 struct algo_for {
   using type = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>;
 };
 
-// Range reuse is result-neutral for the mcraptor criteria: dominance is
-// the strict pareto over (arr, extras), which is structurally the same
-// comparison as the cross-departure reuse rule (departure-discounted
-// extras) - a reuse rejection can only drop labels whose completions the
-// rejector's completions dominate. The GPU searches each start with
-// fresh bags (no reuse) and produces identical results.
+// Range reuse is result-neutral here: a reuse rejection only drops labels whose
+// completions the rejector's completions dominate. The GPU searches each start
+// with fresh bags and produces identical results.
 template <direction SearchDir, via_offset_t Vias, bool Rt, typename Criteria>
 struct algo_for<SearchDir, Vias, Rt, basic_mcraptor_state<Criteria>> {
   using type = basic_mcraptor<SearchDir, Criteria, /*RangeReuse=*/true>;
@@ -192,111 +186,29 @@ routing_result raptor_search(
   }
 }
 
-template routing_result raptor_search(timetable const&,
-                                      rt_timetable const*,
-                                      search_state&,
-                                      raptor_state&,
-                                      query,
-                                      direction,
-                                      std::optional<std::chrono::seconds>);
+#define NIGIRI_RAPTOR_SEARCH_INSTANTIATE(S)                                    \
+  template routing_result raptor_search(timetable const&, rt_timetable const*, \
+                                        search_state&, S&, query, direction,   \
+                                        std::optional<std::chrono::seconds>);
 
-template routing_result raptor_search(timetable const&,
-                                      rt_timetable const*,
-                                      search_state&,
-                                      mcraptor_state&,
-                                      query,
-                                      direction,
-                                      std::optional<std::chrono::seconds>);
-
-template routing_result raptor_search(timetable const&,
-                                      rt_timetable const*,
-                                      search_state&,
-                                      mcraptor_cost_state&,
-                                      query,
-                                      direction,
-                                      std::optional<std::chrono::seconds>);
-
-template routing_result raptor_search(timetable const&,
-                                      rt_timetable const*,
-                                      search_state&,
-                                      mcraptor_non_transit_state&,
-                                      query,
-                                      direction,
-                                      std::optional<std::chrono::seconds>);
-
-template routing_result raptor_search(timetable const&,
-                                      rt_timetable const*,
-                                      search_state&,
-                                      mcraptor_mode_filter_state&,
-                                      query,
-                                      direction,
-                                      std::optional<std::chrono::seconds>);
-
-template routing_result raptor_search(timetable const&,
-                                      rt_timetable const*,
-                                      search_state&,
-                                      mcraptor_non_transit_mode_filter_state&,
-                                      query,
-                                      direction,
-                                      std::optional<std::chrono::seconds>);
-
-template routing_result raptor_search(timetable const&,
-                                      rt_timetable const*,
-                                      search_state&,
-                                      mcraptor_mode_switches_state&,
-                                      query,
-                                      direction,
-                                      std::optional<std::chrono::seconds>);
-
-template routing_result raptor_search(timetable const&,
-                                      rt_timetable const*,
-                                      search_state&,
-                                      mcraptor_non_transit_mode_switches_state&,
-                                      query,
-                                      direction,
-                                      std::optional<std::chrono::seconds>);
-
-template routing_result raptor_search(timetable const&,
-                                      rt_timetable const*,
-                                      search_state&,
-                                      mcraptor_mode_filter_mode_switches_state&,
-                                      query,
-                                      direction,
-                                      std::optional<std::chrono::seconds>);
-
-template routing_result raptor_search(
-    timetable const&,
-    rt_timetable const*,
-    search_state&,
-    mcraptor_non_transit_mode_filter_mode_switches_state&,
-    query,
-    direction,
-    std::optional<std::chrono::seconds>);
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(raptor_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_cost_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_non_transit_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_mode_filter_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_non_transit_mode_filter_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_mode_switches_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_non_transit_mode_switches_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_mode_filter_mode_switches_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(
+    mcraptor_non_transit_mode_filter_mode_switches_state)
 
 #if defined(NIGIRI_CUDA)
-template routing_result raptor_search(timetable const&,
-                                      rt_timetable const*,
-                                      search_state&,
-                                      gpu::gpu_raptor_state&,
-                                      query,
-                                      direction,
-                                      std::optional<std::chrono::seconds>);
-
-template routing_result raptor_search(timetable const&,
-                                      rt_timetable const*,
-                                      search_state&,
-                                      gpu::gpu_mcraptor_state&,
-                                      query,
-                                      direction,
-                                      std::optional<std::chrono::seconds>);
-
-template routing_result raptor_search(timetable const&,
-                                      rt_timetable const*,
-                                      search_state&,
-                                      gpu::gpu_mcraptor_cost_state&,
-                                      query,
-                                      direction,
-                                      std::optional<std::chrono::seconds>);
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_raptor_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_cost_state)
 #endif
+
+#undef NIGIRI_RAPTOR_SEARCH_INSTANTIATE
 
 }  // namespace nigiri::routing

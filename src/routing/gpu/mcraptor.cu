@@ -126,11 +126,11 @@ struct gpu_mcraptor_state::impl {
     route_single_entry_.resize(tt_.n_routes_);
     route_single_flat_.resize(tt_.n_routes_);
     auto const n_route_stops = tt_.route_of_stop_.size();
-    // exact-size et rows: task list/map/offsets are per flat route-stop (task
-    // count can never exceed that), the entry pool is reserved at collect time
-    // as hwm+1 per task - it scales with the actual frontier (~3 entries/task
-    // mean) instead of a worst-case row width. WW peaks (n=20): 38M tasks, 26M
-    // arena entries; caps ~1.7x. The clamp keeps a tiny (test) timetable above
+    // Exact-size et rows: the task list/map/offsets are per flat route-stop
+    // (an upper bound on the task count), and the entry pool is reserved at
+    // collect time as hwm + 1 per task, so it follows the actual frontier (~3
+    // entries per task) rather than a worst-case row. WW peaks: 38M tasks, 26M
+    // entries; caps ~1.7x. The clamp keeps tiny test timetables above
     // checked_cap's floor.
     et_tasks_cap_ = checked_cap(
         "et tasks", std::clamp<std::size_t>(n_route_stops, 4U, 64'000'000U),
@@ -549,12 +549,10 @@ __global__ void mc_reconstruct_kernel(
   r.reconstruct_label(dest, lab, &out[tid]);
 }
 
-// NOTE: the cache must be keyed by the kernel ADDRESS, not by the
-// template parameter: all kernels sharing one signature instantiate the
-// SAME mc_launch_dims, and a static-per-type cache would reuse the first
-// kernel's occupancy for all of them (a 6-register kernel's 1024-thread
-// block size launched a 70-register kernel -> "too many resources" on
-// sm_75).
+// The cache is keyed by the kernel ADDRESS, not the template parameter:
+// kernels sharing a signature share one mc_launch_dims, and a per-type cache
+// would reuse the first kernel's block size for all (a 1024-thread block from a
+// 6-register kernel fails on a 70-register one: "too many resources").
 template <typename Kernel>
 std::pair<int, int> mc_launch_dims(Kernel kernel) {
   static thread_local std::unordered_map<void*, std::pair<int, int>> cache;
@@ -594,7 +592,9 @@ gpu_mcraptor<SearchDir, Crit>::gpu_mcraptor(
     bool const require_bike_transport,
     bool const require_car_transport,
     bool const is_wheelchair,
-    transfer_time_settings const& tts)
+    bool const no_compulsory_reservation,
+    transfer_time_settings const& tts,
+    profile_idx_t const prf_idx)
     : tt_{tt},
       rtt_{rtt},
       gpu_rtt_{rtt == nullptr ? nullptr
@@ -607,10 +607,13 @@ gpu_mcraptor<SearchDir, Crit>::gpu_mcraptor(
       allowed_claszes_{allowed_claszes},
       is_wheelchair_{is_wheelchair},
       transfer_time_settings_{tts},
+      prf_idx_{prf_idx},
       worst_at_dest_{kInvalidDelta<SearchDir>} {
   utl::verify(via_stops.empty(), "gpu mcraptor: via stops not supported");
-  utl::verify(!require_bike_transport && !require_car_transport,
-              "gpu mcraptor: bike/car transport not supported");
+  utl::verify(!require_bike_transport && !require_car_transport &&
+                  !no_compulsory_reservation,
+              "gpu mcraptor: bike/car transport, reservation filter not "
+              "supported");
   utl::verify(rtt == nullptr || gpu_rtt_ != nullptr,
               "gpu mcraptor: rt search requires the uploaded device rt "
               "timetable (rt_timetable::gpu_rtt_)");
@@ -765,7 +768,6 @@ void gpu_mcraptor<SearchDir, Crit>::execute(
     unixtime_t const start_time,
     std::uint8_t const max_transfers,
     unixtime_t const worst_time_at_dest,
-    profile_idx_t const prf_idx,
     pareto_set<journey>& results) {
   auto& s = *state_.impl_;
   constexpr auto const kFwd = SearchDir == direction::kForward;
@@ -793,21 +795,18 @@ void gpu_mcraptor<SearchDir, Crit>::execute(
 
   auto const d_start_dep = unix_to_delta(base(), start_time);
   auto r = make_impl<SearchDir, Crit>(
-      s, kDirIdx, transfer_time_settings_, allowed_claszes_, prf_idx, base_,
+      s, kDirIdx, transfer_time_settings_, allowed_claszes_, prf_idx_, base_,
       worst_at_dest_, walk_surcharge, d_start_dep,
       cuda::std::span<std::pair<location_idx_t, delta_t> const>{
           starts_dev, starts_.size()},
       reuse_same_dep_);
 
   // Realtime: hand the device the rt timetable and swap in its full-size
-  // transport_traffic_days_ ("100% copy from static, then adapted"), so a
-  // static transport that got an rt update reads as inactive in the route
-  // scan and the rt scan below picks the updated run up (same wiring as the
-  // scalar GPU raptor). tt_.bitfields_ itself must stay the untouched
-  // static array - is_transport_active() resolves each transport_traffic_
-  // days_ entry into either rtt_.bitfields_ or tt_.bitfields_ itself
-  // (kRtBitfieldFlag), and is_route_active() always reads tt_.bitfields_
-  // directly (routes are never rt-updated).
+  // transport_traffic_days_, so a static transport with an rt update reads as
+  // inactive in the route scan and the rt scan picks the updated run up (as in
+  // the scalar GPU raptor). tt_.bitfields_ must stay the static array:
+  // is_transport_active() resolves entries into either bitfield set
+  // (kRtBitfieldFlag) and is_route_active() always reads the static one.
   auto const rt_active = gpu_rtt_ != nullptr;
   if (rt_active) {
     r.rtt_ = gpu_rtt_->impl_->to_device_rt_timetable();
@@ -1202,12 +1201,9 @@ void gpu_mcraptor<SearchDir, Crit>::reconstruct(query const& q,
     }
   }
 
-  // Shorten td footpath legs to their actual duration (excluding the wait
-  // at the source stop): the search stores the wait in the arrival, but a
-  // leg claiming to walk for the whole wait both displays wrong and
-  // misprices the transfer for optimize_transfers below, which would then
-  // swap in a static footpath the search itself rejected. Same
-  // re-derivation as the scalar GPU raptor's host reconstruct.
+  // Shorten td footpath legs to their walking time: the search stores the wait
+  // in the arrival, but showing it as walking is wrong and misprices the
+  // transfer for optimize_footpaths.
   if (rtt_ != nullptr && q.prf_idx_ != 0U) {
     auto const& has_td = is_fwd ? rtt_->has_td_footpaths_in_[q.prf_idx_]
                                 : rtt_->has_td_footpaths_out_[q.prf_idx_];

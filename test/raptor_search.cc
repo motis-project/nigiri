@@ -36,8 +36,7 @@ std::string print_results(timetable const& tt,
 
 namespace {
 
-// journey identity for engine-vs-engine comparisons: what every engine
-// must agree on, independent of which equal-value legs it reports
+// what every engine must agree on, whichever equal-value legs it reports
 std::vector<std::tuple<unixtime_t, unixtime_t, std::uint8_t>> journey_tuples(
     pareto_set<routing::journey> const& js) {
   auto v = std::vector<std::tuple<unixtime_t, unixtime_t, std::uint8_t>>{};
@@ -67,10 +66,8 @@ static range_result search_range(timetable const& tt,
   auto const delivered = result.interval_;
 
 #if defined(NIGIRI_CUDA)
-  // No gpu_available() gate here on purpose: this binary was built with
-  // CUDA support, so a device is expected. If it's missing or unusable for
-  // some reason, the GPU calls below should fail loudly, not be silently
-  // skipped.
+  // No gpu_available() gate on purpose: a CUDA build expects a device, and a
+  // missing one should fail loudly rather than skip silently.
   if (routing::gpu::gpu_supported(q, rtt)) {
     auto gpu_timetable = routing::gpu::gpu_timetable{tt};
     if (rtt != nullptr) {
@@ -88,14 +85,10 @@ static range_result search_range(timetable const& tt,
     EXPECT_EQ(print_results(tt, rtt, results),
               print_results(tt, rtt, gpu_results));
 
-    // Same for the device mcraptor, wherever the CPU one is applicable -
-    // otherwise nothing in the tree exercises its rt / td paths (bmrap_test
-    // runs on a static timetable). Compared on (start, dest, transfers)
-    // rather than on the printed legs: the device bags deliberately tolerate
-    // insert races, so a stop can keep a dominated label and two equal-value
-    // journeys can be reported through different trips (see the
-    // mcraptor_impl.cuh header). Journey level is what that engine
-    // guarantees, and a wrong or missing rt / td connection shows up there.
+    // The device mcraptor as well, since nothing else exercises its rt / td
+    // paths. Compared on (start, dest, transfers) instead of the printed legs:
+    // its bags tolerate insert races, so equal-value journeys may run through
+    // different trips (see the mcraptor_impl.cuh header).
     if (routing::mcraptor_supported(q, rtt)) {
       auto mc_gpu_search_state = routing::search_state{};
       auto mc_gpu_state = routing::gpu::gpu_mcraptor_state{gpu_timetable};
@@ -108,9 +101,8 @@ static range_result search_range(timetable const& tt,
   }
 #else
   [[maybe_unused]] static auto const warn_no_cuda_once = [&] {
-    std::cerr << "\n[raptor_search] WARNING: built without NIGIRI_CUDA - GPU "
-                 "comparison checks are being SKIPPED for this whole test "
-                 "run, tests will still report green.\n\n";
+    std::cerr << "\n[raptor_search] WARNING: built without NIGIRI_CUDA - the "
+                 "GPU comparison checks are SKIPPED for this run.\n\n";
     return true;
   }();
 #endif
@@ -124,10 +116,8 @@ static range_result search_range(timetable const& tt,
     EXPECT_EQ(print_results(tt, rtt, results),
               print_results(tt, rtt, mc_results));
 
-    // generalized-cost criteria: the cost configuration keeps additional
-    // pareto trade-offs (later/more transfers but cheaper), so its
-    // journeys must be a superset of the baseline on
-    // (start, dest, transfers)
+    // The cost configuration keeps extra trade-offs (later or more transfers
+    // but cheaper), so its journeys must be a superset of the baseline.
     auto walk_search_state = routing::search_state{};
     auto walk_state = routing::mcraptor_cost_state{};
     auto const walk_results =
@@ -297,7 +287,7 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
     EXPECT_EQ(print_results(tt, rtt, in_window(results)),
               print_results(tt, rtt, in_window(pong_results)));
   }
-  return std::move(results);
+  return results;
 }
 
 }  // namespace nigiri::test

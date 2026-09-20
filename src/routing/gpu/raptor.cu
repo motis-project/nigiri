@@ -290,16 +290,13 @@ struct gpu_raptor_state::impl {
   // BM-RAPTOR bound matrix, (budget+1) x n_locations delta_t, uploaded by
   // gpu_raptor::set_bounds()
   thrust::device_vector<delta_t> bmrap_bounds_;
-  // Scratch for build_reach_bounds(), separate from bmrap_bounds_ so building
-  // a matrix cannot clobber the one this search is currently pruning with.
-  // One slot per matrix kind (0 = tau_dep^<-, 1 = tau_arr^->) because both are
-  // live at once: PHASE 2a's matrix is still feeding the pruning search when
-  // PHASE 2b builds its own. reach_tag_ is what set_bounds() matches against.
+  // Scratch for build_reach_bounds(), separate from bmrap_bounds_ so building a
+  // matrix cannot clobber the one being pruned with. One slot per kind (0 =
+  // tau_dep^<-, 1 = tau_arr^->) since both are live at once. reach_tag_ is what
+  // set_bounds() matches against.
   thrust::device_vector<delta_t> reach_out_[2];
   std::uint64_t reach_tag_[2]{0U, 0U};
   std::size_t reach_n_[2]{0U, 0U};
-  // staging buffer for copy_round_times()
-  std::vector<std::uint64_t> round_times_host_;
 
   // WithBounds: round/via lower-bound pruning matrix (raptor::fill_bounds())
   device_buffer<delta_t> bounds_dev_;
@@ -511,13 +508,11 @@ __global__ void transfers_footpaths_kernel(raptor_impl<SearchDir, WithBounds> r,
   r.rt_transport_mark_.reset();
 }
 
-// NOTE: the cache must be keyed by the kernel ADDRESS, not by the template
-// parameter: every kernel sharing a signature - and most here are
-// (impl, unsigned) - instantiates the SAME launch_dims, so a static-per-type
-// cache hands them all the block size of whichever ran first. The heaviest
-// kernels here use 138 registers, which caps a block at ~474 threads on
-// sm_75, so inheriting a lighter kernel's 1024 is "too many resources
-// requested for launch". Same fix as mc_launch_dims() in mcraptor.cu.
+// The cache is keyed by the kernel ADDRESS, not the template parameter:
+// kernels sharing a signature share one launch_dims, so a per-type cache would
+// hand all of them the first kernel's block size, and the heaviest ones (138
+// registers, ~474 threads max on sm_75) fail with "too many resources". Same
+// as mc_launch_dims() in mcraptor.cu.
 template <typename Kernel>
 std::pair<int, int> launch_dims(Kernel kernel) {
   thread_local auto cache = hash_map<void const*, std::pair<int, int>>{};
@@ -623,16 +618,11 @@ __global__ void reconstruct_kernel(location_idx_t const* const dest_list,
   r.reconstruct_journey(dest_list[tid / end_k], k, &out[tid]);
 }
 
-// PHASE 2 bound build on the device. `at(i, l)` is the best round time at l
-// over rounds 0..i, less the location's transfer buffer; the host version is
-// build_reach_matrix() in bmrap_common.h and this must stay identical to it.
-// Running it here means only the (budget + 1) rows the caller keeps cross
-// PCIe rather than all (kMaxTransfers + 2) rounds of packed round times.
-//
-// The prefix runs over the raw round times, so a location's transfer buffer
-// is subtracted exactly once - same as build_reach_matrix(), which this must
-// stay identical to. Not templated on WithBounds - it reads round times
-// directly and never touches the round/via lower-bound pruning matrix.
+// Bound build on the device, identical to reach_matrix() in bmrap_common.h:
+// `at(i, l)` is the best round time at l over rounds 0..i, less the location's
+// transfer buffer (subtracted once: the prefix runs over the raw times). Only
+// the (budget + 1) rows the caller keeps cross PCIe. Not templated on
+// WithBounds: it never touches the round/via lower-bound matrix.
 template <direction SearchDir>
 __global__ void reach_bounds_kernel(device_times<SearchDir, 1U> round_times,
                                     device_timetable tt,
@@ -692,11 +682,9 @@ void gpu_raptor<SearchDir, WithBounds>::build_reach_bounds(
   out.budget_ = budget;
   out.device_tag_ = s.reach_tag_[slot] = next_reach_tag();
   s.reach_n_[slot] = n;
-  // Straight into the caller's buffer: staging through pinned memory would
-  // buy back some copy bandwidth and then spend more than that on the extra
-  // host-to-host pass, and on a large timetable this is tens of MB. The host
-  // copy itself is not optional - the multicriteria engines read `lat_`
-  // directly unless they too are on the device.
+  // Straight into the caller's buffer: staging through pinned memory costs more
+  // in the extra host-to-host pass than it saves (tens of MB). The host copy
+  // itself is required, since the mc engines read `lat_` unless on the device.
   out.lat_.resize(n);
   auto const* const src = thrust::raw_pointer_cast(s.reach_out_[slot].data());
   CUDA_CHECK(cudaMemcpyAsync(out.lat_.data(), src, n * sizeof(delta_t),
@@ -1348,28 +1336,6 @@ void gpu_raptor<SearchDir, WithBounds>::set_dest_relax(
   relax_cap_ = cap_min;
   relax_floor_ = std::min(floor_min, cap_min);
   relax_on_ = true;
-}
-
-template <direction SearchDir, bool WithBounds>
-void gpu_raptor<SearchDir, WithBounds>::copy_round_times(
-    std::vector<std::array<delta_t, 1>>& out) {
-  auto& s = *state_.impl_;
-  auto const n = static_cast<std::size_t>(n_locations_) * (kMaxTransfers + 2U);
-  s.round_times_host_.resize(n);
-  CUDA_CHECK(cudaMemcpyAsync(s.round_times_host_.data(),
-                             thrust::raw_pointer_cast(s.round_times_.data()),
-                             n * sizeof(std::uint64_t), cudaMemcpyDeviceToHost,
-                             s.stream_));
-  CUDA_CHECK(cudaStreamSynchronize(s.stream_));
-  // unpack: the device stores (biased time key << 48) | breadcrumb
-  out.resize(n);
-  using times_t = device_times<SearchDir, 1U>;
-  for (auto i = std::size_t{0U}; i != n; ++i) {
-    auto const w = s.round_times_host_[i];
-    out[i][0] = w == times_t::invalid_packed()
-                    ? kInvalidDelta<SearchDir>
-                    : times_t::from_key(static_cast<std::uint16_t>(w >> 48U));
-  }
 }
 
 bool gpu_available() {
