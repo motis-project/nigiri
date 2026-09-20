@@ -811,33 +811,6 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::get_earliest_transport(
   return {};
 }
 
-namespace {
-
-// Label dominance lifted to journeys (see set_intermediate_results): the
-// generalized cost is priced from the departure, so it is compared with the
-// departure discounted (cf. arr_cost_criteria::reuse_dominates), which for a
-// journey is criteria_cost_ -/+ dest_time_ (extras = cost - travel time).
-template <direction SearchDir, typename Criteria>
-bool label_dominates(journey const& a, journey const& b) {
-  constexpr auto const kFwd = SearchDir == direction::kForward;
-  auto const cost = [](journey const& j) {
-    if constexpr (std::is_same_v<Criteria, arr_cost_criteria>) {
-      auto const dest =
-          static_cast<int>(j.dest_time_.time_since_epoch().count());
-      return static_cast<int>(j.criteria_cost_) + (kFwd ? -dest : dest);
-    } else {
-      return static_cast<int>(j.criteria_cost_);
-    }
-  };
-  return a.transfers_ <= b.transfers_ &&
-         (kFwd ? a.dest_time_ <= b.dest_time_ : a.dest_time_ >= b.dest_time_) &&
-         cost(a) <= cost(b) &&
-         a.criteria_mode_filter_ <= b.criteria_mode_filter_ &&
-         a.criteria_mode_switches_ <= b.criteria_mode_switches_;
-}
-
-}  // namespace
-
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 void basic_mcraptor<SearchDir, Criteria, RangeReuse>::collect_dest_journeys(
     unsigned const k,
@@ -860,20 +833,6 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::collect_dest_journeys(
           probe.dest_ = location_idx_t{i};
           probe.transfers_ = static_cast<std::uint8_t>(k - 1U);
           e_crit.apply_to(probe);
-          if (intermediate_results_) {
-            if (utl::any_of(results.els_, [&](journey const& x) {
-                  return label_dominates<SearchDir, Criteria>(x, probe);
-                })) {
-              return;
-            }
-            utl::erase_if(results.els_, [&](journey const& x) {
-              return label_dominates<SearchDir, Criteria>(probe, x);
-            });
-            results.add_not_optimal(
-                materialize(location_idx_t{i}, k, e_crit,
-                            e_breadcrumb & state_t::kBreadcrumbMask, j_start));
-            return;
-          }
           if (results.is_dominated(probe)) {
             return;
           }

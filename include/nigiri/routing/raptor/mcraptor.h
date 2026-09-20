@@ -654,14 +654,6 @@ struct basic_mcraptor {
   // the result-pareto add, as search.h's per-departure steps would.
   void set_tight_start() { tight_start_ = true; }
 
-  // Collect the destination journeys into a set that is only an intermediate
-  // structure (pong ping anchors): journeys are compared by the search's own
-  // departure-aware label dominance instead of the final journey rule. Under
-  // the final rule a journey that is dominated only because of its own
-  // (phantom) departure spread is evicted, although a later departure would
-  // make it pareto again.
-  void set_intermediate_results() { intermediate_results_ = true; }
-
   // BM-RAPTOR main search: bounds from the backward pruning search discard
   // arrivals that cannot reach the target within the remaining trip budget and
   // arrival slack. nullptr = plain McRAPTOR. Must share this search's base day.
@@ -861,7 +853,6 @@ private:
   // current start's departure, tagged onto inserted labels (see label::dep_)
   delta_t cur_dep_{};
   bool tight_start_{false};  // see set_tight_start()
-  bool intermediate_results_{false};  // see set_intermediate_results()
   // round-0 seeds recorded by add_start, inserted at the top of execute once
   // the query start time (hence the ingress duration) is known
   std::vector<std::pair<std::uint32_t, delta_t>> seeds_;

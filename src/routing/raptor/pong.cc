@@ -250,14 +250,6 @@ routing_result pong(timetable const& tt,
     }
   }
 
-  if constexpr (requires { ping.set_intermediate_results(); }) {
-    // The ping's result set only seeds the pong anchors, so it must keep the
-    // journeys the search itself keeps (departure-aware label dominance), not
-    // the final journey rule: a journey evicted for its own departure spread
-    // can be pareto again at a later departure, and its anchor would be lost.
-    ping.set_intermediate_results();
-  }
-
   // ====
   // PONG
   // ----
