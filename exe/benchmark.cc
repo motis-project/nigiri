@@ -795,13 +795,20 @@ int main(int argc, char* argv[]) {
           return run_cell<cpu_ws_t<RS>>(
               qs, label + "-cpu", threads_v,
               [&](cpu_ws_t<RS>& w, routing::query q) {
-                auto const r =
-                    use_pong
-                        ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
-                                               std::move(q), dir)
-                        : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
-                                                 std::move(q), dir);
-                return *r.journeys_;
+                if constexpr (std::is_same_v<RS, routing::raptor_state>) {
+                  auto const r =
+                      use_pong
+                          ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
+                                                 std::move(q), dir)
+                          : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
+                                                   std::move(q), dir);
+                  return *r.journeys_;
+                } else {
+                  utl::verify(!use_pong, "pong only supports raptor_state");
+                  return *routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
+                                                 std::move(q), dir)
+                              .journeys_;
+                }
               });
         };
 #if defined(NIGIRI_CUDA)
@@ -809,13 +816,20 @@ int main(int argc, char* argv[]) {
           return run_cell<gpu_ws_t<RS>>(
               qs, label + "-gpu", gpu_states_v,
               [&](gpu_ws_t<RS>& w, routing::query q) {
-                auto const r =
-                    use_pong
-                        ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
-                                               std::move(q), dir)
-                        : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
-                                                 std::move(q), dir);
-                return *r.journeys_;
+                if constexpr (std::is_same_v<RS, routing::gpu::gpu_raptor_state>) {
+                  auto const r =
+                      use_pong
+                          ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
+                                                 std::move(q), dir)
+                          : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
+                                                   std::move(q), dir);
+                  return *r.journeys_;
+                } else {
+                  utl::verify(!use_pong, "pong only supports gpu_raptor_state");
+                  return *routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
+                                                 std::move(q), dir)
+                              .journeys_;
+                }
               },
               *gpu_tt);
         };
