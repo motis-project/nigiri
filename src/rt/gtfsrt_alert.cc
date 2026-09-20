@@ -17,8 +17,11 @@ unixtime_t sec_to_unixtime(std::uint64_t const s) {
       std::chrono::seconds{s})};
 }
 
+// A TimeRange without start starts at minus infinity, one without end never
+// ends. Mapping them to the epoch would make the range look already over.
 interval<unixtime_t> to_interval(transit_realtime::TimeRange const& t) {
-  return {sec_to_unixtime(t.start()), sec_to_unixtime(t.end())};
+  return {t.has_start() ? sec_to_unixtime(t.start()) : unixtime_t::min(),
+          t.has_end() ? sec_to_unixtime(t.end()) : unixtime_t::max()};
 }
 
 alert_cause convert(transit_realtime::Alert_Cause x) {
@@ -108,18 +111,39 @@ void handle_alert(date::sys_days const today,
                                                : route_type_t::invalid();
 
     if (x.has_trip()) {
-      auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, x.trip());
-      if (!r.valid()) {
-        ++stats.alert_trip_not_found_;
-        log(log_lvl::debug, "rt.gtfs.resolve.alert",
-            "could not resolve (tag={}) {}", tag,
-            remove_nl(x.trip().DebugString()));
-        continue;
+      auto const& td = x.trip();
+
+      // A trip_id without start_date/start_time does not select a single day:
+      // it selects the trip itself, on all of its service days. The alert
+      // period says when the alert applies. Attach it to the static trip,
+      // get_alerts() checks the period against the time it is given.
+      if (td.has_trip_id() && !td.has_start_date() && !td.has_start_time()) {
+        auto found = false;
+        for_each_trip(tt, src, td.trip_id(), [&](trip_idx_t const t) {
+          alerts.trip_[t].push_back({stop, alert_idx});
+          found = true;
+        });
+        if (!found) {
+          ++stats.alert_trip_not_found_;
+          log(log_lvl::debug, "rt.gtfs.resolve.alert",
+              "could not resolve (tag={}) {}", tag,
+              remove_nl(td.DebugString()));
+          continue;
+        }
+      } else {
+        auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, td);
+        if (!r.valid()) {
+          ++stats.alert_trip_not_found_;
+          log(log_lvl::debug, "rt.gtfs.resolve.alert",
+              "could not resolve (tag={}) {}", tag,
+              remove_nl(td.DebugString()));
+          continue;
+        }
+        if (!r.is_rt()) {
+          r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
+        }
+        alerts.rt_transport_[r.rt_].push_back({stop, alert_idx});
       }
-      if (!r.is_rt()) {
-        r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
-      }
-      alerts.rt_transport_[r.rt_].push_back({stop, alert_idx});
     } else if (x.has_route_id()) {  // 1) by route_id / direction_id -> stop_id
       if (x.has_direction_id() && !x.has_route_id()) {
         ++stats.alert_direction_without_route_;

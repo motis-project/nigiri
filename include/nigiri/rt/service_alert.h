@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utl/helpers/algorithm.h"
+
 #include "nigiri/string_store.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -84,6 +86,15 @@ struct alerts {
   using by_route = by_rt_transport;
   using by_route_type = by_rt_transport;
 
+  // No entity selector carries time information, whatever it addresses: the
+  // alert's impact period is what says when the service is affected. An alert
+  // with no period at all applies whenever it is in the feed.
+  bool impacts(alert_idx_t const a, interval<unixtime_t> const& time) const {
+    auto const& periods = impact_period_[a];
+    return periods.empty() ||
+           utl::any_of(periods, [&](auto&& p) { return p.overlaps(time); });
+  }
+
   // fuzzy_stop parameter:
   //   - true: alert.l_=invalid matches everything
   //     => used for stop times
@@ -94,12 +105,17 @@ struct alerts {
   //         (addressing route/trip/agency)
   //     - from/to/intermediateStop:
   //         l != invalid => matches only concrete stop
+  // time parameter:
+  //   - the time range the caller asks about: the stop event for a stop, the
+  //     departure to arrival span for a leg. Alerts are only returned if
+  //     their impact period covers it, whichever selector matched them.
   hash_set<alert_idx_t> get_alerts(timetable const& tt,
                                    source_idx_t const src,
                                    trip_idx_t const t,
                                    rt_transport_idx_t const rt_t,
                                    location_idx_t const l,
-                                   bool const fuzzy_stop) const {
+                                   bool const fuzzy_stop,
+                                   interval<unixtime_t> const& time) const {
     auto const route_id_idx = tt.trip_route_id_[t];
     auto const route_type = tt.route_ids_[src].route_id_type_[route_id_idx];
     auto const agency = tt.route_ids_[src].route_id_provider_[route_id_idx];
@@ -120,16 +136,22 @@ struct alerts {
 
     if (rt_t != rt_transport_idx_t::invalid()) {
       for (auto const& a : rt_transport_[rt_t]) {
-        if (matches_location(a.l_)) {
+        if (matches_location(a.l_) && impacts(a.alert_, time)) {
           alerts.insert(a.alert_);
         }
+      }
+    }
+
+    for (auto const& a : trip_[t]) {
+      if (matches_location(a.l_) && impacts(a.alert_, time)) {
+        alerts.insert(a.alert_);
       }
     }
 
     for (auto const& a : route_id_[src][route_id_idx]) {
       if ((a.direction_ == direction_id_t::invalid() ||
            a.direction_ == direction) &&
-          matches_location(a.l_)) {
+          matches_location(a.l_) && impacts(a.alert_, time)) {
         alerts.insert(a.alert_);
       }
     }
@@ -137,18 +159,17 @@ struct alerts {
     for (auto const& a : agency_[agency]) {
       if ((a.route_type_ == route_type_t::invalid() ||
            a.route_type_ == route_type) &&
-          matches_location(a.l_)) {
+          matches_location(a.l_) && impacts(a.alert_, time)) {
         alerts.insert(a.alert_);
       }
     }
 
-    if (l != location_idx_t::invalid()) {
-      for (auto const& a : location_[l]) {
-        alerts.insert(a);
-      }
-      if (parent != location_idx_t::invalid()) {
-        for (auto const& a : location_[parent]) {
-          alerts.insert(a);
+    for (auto const x : {l, parent}) {
+      if (x != location_idx_t::invalid()) {
+        for (auto const& a : location_[x]) {
+          if (impacts(a, time)) {
+            alerts.insert(a);
+          }
         }
       }
     }
@@ -157,6 +178,7 @@ struct alerts {
   }
 
   paged_vecvec<rt_transport_idx_t, by_rt_transport> rt_transport_;
+  paged_vecvec<trip_idx_t, by_rt_transport> trip_;
   vector_map<source_idx_t, paged_vecvec<route_id_idx_t, by_route_id>> route_id_;
   paged_vecvec<provider_idx_t, by_agency> agency_;
   vector_map<source_idx_t, paged_vecvec<route_type_t, by_route_type>>

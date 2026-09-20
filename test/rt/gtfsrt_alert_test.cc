@@ -203,6 +203,17 @@ TEST(rt, gtfs_rt_alert_agency) {
             rtt.alerts_.communication_period_[idx][0]);
   EXPECT_EQ((interval<unixtime_t>{ut(300), ut(360)}),
             rtt.alerts_.impact_period_[idx][0]);
+
+  // The impact period gates the alert, whatever the selector was.
+  auto const alerts_at = [&](unixtime_t const x) {
+    return rtt.alerts_
+        .get_alerts(tt, source_idx_t{0}, trip_idx_t{0},
+                    rt_transport_idx_t::invalid(), location_idx_t::invalid(),
+                    false, interval<unixtime_t>{x, x + 1_minutes})
+        .size();
+  };
+  EXPECT_EQ(1, alerts_at(ut(300)));
+  EXPECT_EQ(0, alerts_at(ut(600)));
 }
 
 TEST(rt, gtfs_rt_alert_active_period_fallback) {
@@ -237,4 +248,70 @@ TEST(rt, gtfs_rt_alert_active_period_fallback) {
             rtt.alerts_.communication_period_[idx][0]);
   EXPECT_EQ((interval<unixtime_t>{ut(600), ut(1200)}),
             rtt.alerts_.impact_period_[idx][0]);
+}
+
+TEST(rt, gtfs_rt_alert_trip_without_start_date) {
+  // Load static timetable.
+  timetable tt;
+  register_special_stations(tt);
+  auto const today = date::sys_days{2023_y / August / 9};
+  tt.date_range_ = {today, date::sys_days{2023_y / September / 1}};
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+
+  // Create empty RT timetable.
+  auto rtt = rt::create_rt_timetable(tt, today);
+  auto stats = statistics{.total_entities_ = 0, .feed_timestamp_ = {}};
+
+  // Alert on a trip_id without start_date: applies to every run of the trip
+  // within the impact period, not only to the run on the feed day.
+  auto a = transit_realtime::Alert{};
+  a.add_informed_entity()->mutable_trip()->set_trip_id("3248651");
+  auto* active = a.add_active_period();
+  active->set_start(1690848000);  // 2023-08-01T00:00Z
+  active->set_end(1693526400);  // 2023-09-01T00:00Z
+
+  // A second, separate period: the alert applies during all of its periods.
+  auto* second = a.add_active_period();
+  second->set_start(1695600000);  // 2023-09-25T00:00Z
+  second->set_end(1696032000);  // 2023-09-30T00:00Z
+
+  handle_alert(today, tt, rtt, source_idx_t{0}, "tag", a, stats);
+
+  // The trip is not modified: no realtime transport must be created for it.
+  auto const t = trip_idx_t{0};
+  EXPECT_EQ(0, rtt.alerts_.rt_transport_.size());
+  ASSERT_EQ(1, rtt.alerts_.trip_[t].size());
+
+  auto const alerts_at = [&](unixtime_t const x) {
+    return rtt.alerts_.get_alerts(tt, source_idx_t{0}, t,
+                                  rt_transport_idx_t::invalid(),
+                                  location_idx_t::invalid(), false,
+                                  interval<unixtime_t>{x, x + 1_minutes});
+  };
+
+  // 2023-08-11, two days after the feed day, inside the first period.
+  EXPECT_EQ(1, alerts_at(ut(1691730900)).size());
+
+  // 2023-09-20, in the gap between the two periods.
+  EXPECT_EQ(0, alerts_at(ut(1695186900)).size());
+
+  // 2023-09-26, inside the second period.
+  EXPECT_EQ(1, alerts_at(ut(1695705300)).size());
+
+  // A second alert on the same trip, with a period that has no end: it must
+  // not look like it was over in 1970.
+  auto b = transit_realtime::Alert{};
+  b.add_informed_entity()->mutable_trip()->set_trip_id("3248651");
+  b.add_active_period()->set_start(1690848000);  // 2023-08-01T00:00Z
+
+  handle_alert(today, tt, rtt, source_idx_t{0}, "tag", b, stats);
+
+  auto const open_ended = alert_idx_t{1};
+  ASSERT_EQ(2, rtt.alerts_.trip_[t].size());
+  ASSERT_EQ(1, rtt.alerts_.impact_period_[open_ended].size());
+  EXPECT_EQ(unixtime_t::max(), rtt.alerts_.impact_period_[open_ended][0].to_);
+
+  // 2023-09-20 is in the gap of the first alert, the open ended one applies.
+  EXPECT_EQ(1, alerts_at(ut(1695186900)).size());
 }
