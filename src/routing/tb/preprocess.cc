@@ -573,7 +573,7 @@ tb_data preprocess(timetable const& tt, profile_idx_t const prf_idx) {
           for (auto const [segment_idx, src] : utl::zip(
                    segments,
                    std::span{begin(transport_segments), segments.size()})) {
-            auto const dst = d.segment_transfers_.add_back_sized(src.size());
+            auto dst = d.segment_transfers_.add_back_sized(src.size());
             for (auto const [to, from] : utl::zip(dst, src)) {
               to.to_segment_ =
                   d.transport_first_segment_[from.transport_idx_to_] +

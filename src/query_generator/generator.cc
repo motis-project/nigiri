@@ -459,7 +459,8 @@ void generator::add_offsets_for_pos(
                           tt_.locations_.coordinates_[location_idx_t{loc}]) /
             mode.speed_) +
         1};
-    o.emplace_back(location_idx_t{loc}, duration, mode.mode_id_);
+    o.emplace_back(location_idx_t{loc}, duration,
+                   routing::transport_mode_t{.mode_ = mode.mode_});
   }
 }
 
