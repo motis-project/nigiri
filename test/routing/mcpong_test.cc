@@ -131,25 +131,23 @@ TEST(pong, DISABLED_shadowed_cost_variant) {
   auto const arr = unixtime_t{day} + 18h;  // 20:00 local
   auto const expected =
       std::vector<std::tuple<unixtime_t, unixtime_t, unsigned>>{
-          {dep, arr, 0U},   // B: direct + 60' walk, cost 310
+          {dep, arr, 0U},  // B: direct + 60' walk, cost 310
           {dep, arr, 1U}};  // C: one transfer, cost 260 - the cheapest
 
   // reference: the range search finds the full pareto set
   auto ref_ss = routing::search_state{};
   auto ref_as = routing::mcraptor_cost_state{};
-  auto const ref =
-      *(routing::raptor_search(tt, nullptr, ref_ss, ref_as, make_query(),
-                               direction::kForward)
-            .journeys_);
+  auto const ref = *(routing::raptor_search(tt, nullptr, ref_ss, ref_as,
+                                            make_query(), direction::kForward)
+                         .journeys_);
   ASSERT_EQ(expected, tuples(ref));
 
   // pong must find the same set - C's anchor is what the shadow kills
   auto pong_ss = routing::search_state{};
   auto pong_as = routing::mcraptor_cost_state{};
-  auto const png =
-      *(routing::pong_search(tt, nullptr, pong_ss, pong_as, make_query(),
-                             direction::kForward)
-            .journeys_);
+  auto const png = *(routing::pong_search(tt, nullptr, pong_ss, pong_as,
+                                          make_query(), direction::kForward)
+                         .journeys_);
   EXPECT_EQ(expected, tuples(png));
 }
 
@@ -260,24 +258,22 @@ TEST(pong, witness_eviction_departure_tie) {
   auto const dep = unixtime_t{day} + 12h + 7min;  // 14:07 local
   auto const expected =
       std::vector<std::tuple<unixtime_t, unixtime_t, unsigned>>{
-          {dep, unixtime_t{day} + 16h, 1U},        // P-afternoon, cost 260
+          {dep, unixtime_t{day} + 16h, 1U},  // P-afternoon, cost 260
           {dep, unixtime_t{day} + 16h + 6min, 1U}  // Q-afternoon, cost 259
       };
 
   auto ref_ss = routing::search_state{};
   auto ref_as = routing::mcraptor_cost_state{};
-  auto const ref =
-      *(routing::raptor_search(tt, nullptr, ref_ss, ref_as, make_query(),
-                               direction::kForward)
-            .journeys_);
+  auto const ref = *(routing::raptor_search(tt, nullptr, ref_ss, ref_as,
+                                            make_query(), direction::kForward)
+                         .journeys_);
   ASSERT_EQ(expected, tuples(ref));
 
   auto pong_ss = routing::search_state{};
   auto pong_as = routing::mcraptor_cost_state{};
-  auto const png =
-      *(routing::pong_search(tt, nullptr, pong_ss, pong_as, make_query(),
-                             direction::kForward)
-            .journeys_);
+  auto const png = *(routing::pong_search(tt, nullptr, pong_ss, pong_as,
+                                          make_query(), direction::kForward)
+                         .journeys_);
   EXPECT_EQ(expected, tuples(png));
 }
 
@@ -384,23 +380,21 @@ TEST(pong, window_cut_sibling) {
   auto const arr = unixtime_t{day} + 18h;  // 20:00 local
   auto const expected =
       std::vector<std::tuple<unixtime_t, unixtime_t, unsigned>>{
-          {unixtime_t{day} + 12h + 35min, arr, 1U},   // V-early, cost 345
+          {unixtime_t{day} + 12h + 35min, arr, 1U},  // V-early, cost 345
           {unixtime_t{day} + 12h + 38min, arr, 1U}};  // V-late, cost 349
 
   auto ref_ss = routing::search_state{};
   auto ref_as = routing::mcraptor_cost_state{};
-  auto const ref =
-      *(routing::raptor_search(tt, nullptr, ref_ss, ref_as, make_query(),
-                               direction::kForward)
-            .journeys_);
+  auto const ref = *(routing::raptor_search(tt, nullptr, ref_ss, ref_as,
+                                            make_query(), direction::kForward)
+                         .journeys_);
   ASSERT_EQ(expected, tuples(ref));
 
   auto pong_ss = routing::search_state{};
   auto pong_as = routing::mcraptor_cost_state{};
-  auto const png =
-      *(routing::pong_search(tt, nullptr, pong_ss, pong_as, make_query(),
-                             direction::kForward)
-            .journeys_);
+  auto const png = *(routing::pong_search(tt, nullptr, pong_ss, pong_as,
+                                          make_query(), direction::kForward)
+                         .journeys_);
   EXPECT_EQ(expected, tuples(png));
 }
 
@@ -514,22 +508,20 @@ TEST(pong, DISABLED_tie_shadowed_transfer_rung) {
   auto const arr = unixtime_t{day} + 14h + 15min;  // 16:15 local
   auto const expected =
       std::vector<std::tuple<unixtime_t, unixtime_t, unsigned>>{
-          {dep, arr, 0U},   // X2: direct + 10' walk, cost 175
+          {dep, arr, 0U},  // X2: direct + 10' walk, cost 175
           {dep, arr, 1U}};  // Y: one transfer, zero walk, cost 165
 
   auto ref_ss = routing::search_state{};
   auto ref_as = routing::mcraptor_cost_state{};
-  auto const ref =
-      *(routing::raptor_search(tt, nullptr, ref_ss, ref_as, make_query(),
-                               direction::kForward)
-            .journeys_);
+  auto const ref = *(routing::raptor_search(tt, nullptr, ref_ss, ref_as,
+                                            make_query(), direction::kForward)
+                         .journeys_);
   ASSERT_EQ(expected, tuples(ref));
 
   auto pong_ss = routing::search_state{};
   auto pong_as = routing::mcraptor_cost_state{};
-  auto const png =
-      *(routing::pong_search(tt, nullptr, pong_ss, pong_as, make_query(),
-                             direction::kForward)
-            .journeys_);
+  auto const png = *(routing::pong_search(tt, nullptr, pong_ss, pong_as,
+                                          make_query(), direction::kForward)
+                         .journeys_);
   EXPECT_EQ(expected, tuples(png));
 }

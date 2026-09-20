@@ -43,9 +43,11 @@ namespace nigiri::routing::gpu {
 //    disturbs the by-route labels it iterates.
 //  * Breadcrumbs are an append-only arena {payload48, parent, arr} (atomicAdd
 //    bump), read only by the reconstruction kernel (a separate launch).
-//  * Destination pruning: a small global pareto frontier over (round, criteria);
+//  * Destination pruning: a small global pareto frontier over (round,
+//  criteria);
 //    on overflow the insert is skipped (weaker pruning, same results).
-//  * Route scan: one warp per marked route, with the route bag (pareto over trip
+//  * Route scan: one warp per marked route, with the route bag (pareto over
+//  trip
 //    order x carried extras) in registers/local memory.
 //  * Realtime transports get a second, simpler pass: a single trip with
 //    absolute event times needs neither the et lookup nor traffic days.
@@ -231,9 +233,10 @@ struct mcraptor_impl {
   static constexpr auto const kBoardCost = kHasCost ? 10U : 0U;
 
   // Classes the mode_filter dimension flags. A compile-time constant, unlike
-  // the CPU's per-request mode_filter_dim::avoided_mask(), since a kernel cannot
-  // read a host thread_local. It MUST match the CPU default, and motis keeps
-  // mode_filter on the CPU whenever the requested mask is not exactly AIR.
+  // the CPU's per-request mode_filter_dim::avoided_mask(), since a kernel
+  // cannot read a host thread_local. It MUST match the CPU default, and motis
+  // keeps mode_filter on the CPU whenever the requested mask is not exactly
+  // AIR.
   static constexpr clasz_mask_t kAvoidedMask = to_mask(clasz::kAir);
   __device__ __forceinline__ static bool is_avoided(clasz const c) {
     return is_allowed(kAvoidedMask, c);
@@ -409,8 +412,8 @@ struct mcraptor_impl {
       }
       auto const ord = (i - r_->bag_cap_) / kMcBagBlock;
       if (!init_ || ord < cur_ord_ || cur_blk_ == ~0U) {
-        cur_blk_ = *reinterpret_cast<std::uint32_t const volatile*>(
-            r_->bag_ovf_ + l_);
+        cur_blk_ =
+            *reinterpret_cast<std::uint32_t const volatile*>(r_->bag_ovf_ + l_);
         cur_ord_ = 0U;
         init_ = true;
       }
@@ -448,10 +451,10 @@ struct mcraptor_impl {
   // advisory, same-kernel readers only need labels from before the last kernel
   // boundary).
   struct mc_bag_view {
-    mc_label_t const* a_;       // inline slots
-    mc_label_t const* pool_;    // block pool base
+    mc_label_t const* a_;  // inline slots
+    mc_label_t const* pool_;  // block pool base
     std::uint32_t const* nxt_;  // chain links
-    std::uint32_t head_;        // first block (~0U: none)
+    std::uint32_t head_;  // first block (~0U: none)
     std::uint32_t n_, na_;
     mutable std::uint32_t cur_ord_{0U};
     mutable std::uint32_t cur_blk_{~0U};
@@ -482,9 +485,8 @@ struct mcraptor_impl {
     auto const hwm = static_cast<std::uint32_t>(bag_hwm_[l]);
     auto const na = hwm < bag_cap_ ? hwm : bag_cap_;
     auto const head = hwm > bag_cap_ ? bag_ovf_[l] : ~0U;
-    return {bag(l), bag_pool_, bag_next_, head,
-            head == ~0U ? na : hwm,      na,
-            0U,          head};
+    return {bag(l), bag_pool_, bag_next_, head, head == ~0U ? na : hwm,
+            na,     0U,        head};
   }
 
   // The departure-discounted extras term of the reuse rule: for a shared
@@ -893,16 +895,15 @@ struct mcraptor_impl {
     }
     // the CURRENT start time's trip budget, not the matrix-wide maximum:
     // every departure has its own floor(sigma_tr * K(d))
-    auto const budget = cur_budget_ < bounds_budget_ ? cur_budget_
-                                                     : bounds_budget_;
+    auto const budget =
+        cur_budget_ < bounds_budget_ ? cur_budget_ : bounds_budget_;
     if (k > budget) {
       return true;
     }
     return !is_better_or_eq(
-        t, clamp(static_cast<int>(
-                     bounds_[static_cast<std::size_t>(budget - k) *
-                                 bounds_n_locations_ +
-                             l]) +
+        t, clamp(static_cast<int>(bounds_[static_cast<std::size_t>(budget - k) *
+                                              bounds_n_locations_ +
+                                          l]) +
                  slack));
   }
 
@@ -923,8 +924,8 @@ struct mcraptor_impl {
   // mapping is a bitmap plus rank instead of a u32 per flat stop (worldwide 368
   // MB -> 11.5 MB): each marked route gets a contiguous task range with one bit
   // per task, and a reader recovers the index as route_task_start_ + popcount
-  // of the route's bits below `flat`. Collect clears the route's bit range every
-  // round, so no stale state is possible.
+  // of the route's bits below `flat`. Collect clears the route's bit range
+  // every round, so no stale state is possible.
   __device__ __forceinline__ std::uint32_t et_task_for(
       std::uint32_t const ri,
       std::uint32_t const base_flat,
@@ -1505,9 +1506,9 @@ struct mcraptor_impl {
         continue;
       }
       if (bound_prunes(k, l_idx, by_transport)) {
-          continue;
-        }
-        auto const post_arr = clamp(by_transport + buf);
+        continue;
+      }
+      auto const post_arr = clamp(by_transport + buf);
       if (!bag_insert(l_idx, to_key(post_arr), ride_extras, k, true,
                       /*with_bc=*/true,
                       make_transport_payload(
@@ -1727,7 +1728,8 @@ struct mcraptor_impl {
         if (ride_key >= worst_key || ride_key + l_lb >= worst_key) {
           continue;
         }
-        auto const ride_extras = crit_after_ride(sg.extras_, tt_.route_clasz_[r]);
+        auto const ride_extras =
+            crit_after_ride(sg.extras_, tt_.route_clasz_[r]);
         // destination pareto pruning: optimistic projection (key + lb)
         if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
           continue;
@@ -1818,9 +1820,9 @@ struct mcraptor_impl {
             continue;
           }
           if (bound_prunes(k, l_idx, by_transport)) {
-          continue;
-        }
-        auto const post_arr = clamp(by_transport + buf);
+            continue;
+          }
+          auto const post_arr = clamp(by_transport + buf);
           if (!bag_insert(
                   l_idx, to_key(post_arr), ride_extras, k, true,
                   /*with_bc=*/true,
@@ -1853,9 +1855,8 @@ struct mcraptor_impl {
       auto const stop_bag = bag_view(l_idx);
       auto const rsbase = tt_.route_stop_offset_[to_idx(r)];
       auto const flat = rsbase + stop_idx;
-      auto const ti =
-          et_task_for(to_idx(r), static_cast<std::uint32_t>(rsbase),
-                      static_cast<std::uint32_t>(flat));
+      auto const ti = et_task_for(to_idx(r), static_cast<std::uint32_t>(rsbase),
+                                  static_cast<std::uint32_t>(flat));
       if (ti == ~0U || et_task_cnt_[ti] == 0U) {
         continue;
       }
@@ -1998,7 +1999,8 @@ struct mcraptor_impl {
       if (!station_mark_[i]) {
         continue;
       }
-      auto const rt_transports = rtt_.location_rt_transports_[location_idx_t{i}];
+      auto const rt_transports =
+          rtt_.location_rt_transports_[location_idx_t{i}];
       if (!rt_transports.empty() && !*any_marked_) {
         atomicOr(any_marked_, 1U);
       }
@@ -2067,8 +2069,8 @@ struct mcraptor_impl {
               ride_key + l_lb >= worst_key) {
             continue;
           }
-          auto const ride_extras = crit_after_ride(
-              rl.extras_, rtt_.rt_transport_clasz_[rt_t]);
+          auto const ride_extras =
+              crit_after_ride(rl.extras_, rtt_.rt_transport_clasz_[rt_t]);
           if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
             continue;
           }
@@ -2384,10 +2386,8 @@ struct mcraptor_impl {
       auto const crit = kHasExtras ? mc_extras(lab) : 0U;
       // criteria_cost_ carries the cost extras / non_transit minutes;
       // criteria_mode_filter_ the avoided-class bit (see journey_pod.h)
-      out->criteria_cost_ =
-          static_cast<std::uint16_t>(kHasCost || kHasNonTransit
-                                         ? crit >> kNtShift
-                                         : 0U);
+      out->criteria_cost_ = static_cast<std::uint16_t>(
+          kHasCost || kHasNonTransit ? crit >> kNtShift : 0U);
       out->criteria_mode_filter_ =
           static_cast<std::uint8_t>(kHasModeFilter ? crit & 1U : 0U);
     }
@@ -2410,9 +2410,8 @@ struct mcraptor_impl {
       auto const is_rt = is_rt_bc_transport(bc_t, rtt_.n_rt_transports_);
       auto const t_idx =
           is_rt ? transport_idx_t::invalid() : transport_idx_t{bc_t};
-      auto const rt_t = is_rt
-                            ? rt_transport_idx_t{decode_rt_bc_transport(bc_t)}
-                            : rt_transport_idx_t::invalid();
+      auto const rt_t = is_rt ? rt_transport_idx_t{decode_rt_bc_transport(bc_t)}
+                              : rt_transport_idx_t::invalid();
       auto const board = static_cast<stop_idx_t>(bc_board(bc.payload_));
       auto const alight = static_cast<stop_idx_t>(bc_alight(bc.payload_));
 
@@ -2515,8 +2514,7 @@ struct mcraptor_impl {
     // Consumed by the host only when tight starts are on (pong ping).
     if (n != 0U && root_dep != kInvalid) {
       auto best = kInvalid;
-      auto const hwm =
-          static_cast<std::uint32_t>(bag_hwm_[to_idx(cur_l)]);
+      auto const hwm = static_cast<std::uint32_t>(bag_hwm_[to_idx(cur_l)]);
       for (auto s = 0U; s != hwm; ++s) {
         auto const v = bag_label(to_idx(cur_l), s);
         if (v == kMcEmptySlot) {

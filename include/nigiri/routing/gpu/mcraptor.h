@@ -38,7 +38,8 @@ struct gpu_mcraptor_cost_state : gpu_mcraptor_state {
 //   cost                     arrival + generalized cost
 //   non_transit              arrival + minutes on foot
 //   mode_filter              arrival + "uses an avoided class" bit (AIR)
-//   non_transit_mode_filter  both (non_transit in bits 1..15, mode_filter bit 0)
+//   non_transit_mode_filter  both (non_transit in bits 1..15, mode_filter bit
+//   0)
 enum class mc_crit : std::uint8_t {
   arr,
   cost,
@@ -89,7 +90,8 @@ struct gpu_mcraptor {
   raptor_stats get_stats() const { return stats_; }
 
   // Pong side: reuse-frontier rejections only against entries of the same
-  // departure (one merged anchor run); cross-anchor ones were seen over-pruning.
+  // departure (one merged anchor run); cross-anchor ones were seen
+  // over-pruning.
   void set_reuse_same_dep() { reuse_same_dep_ = true; }
 
   // Tight starts (pong ping), see basic_mcraptor::set_tight_start(); the device

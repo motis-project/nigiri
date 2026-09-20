@@ -1,7 +1,7 @@
 #pragma once
 
-#include <algorithm>
 #include <cassert>
+#include <algorithm>
 #include <limits>
 #include <span>
 
@@ -10,8 +10,8 @@
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
-#include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/raptor/bmrap_bounds.h"
+#include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/raptor/reconstruct.h"
@@ -198,15 +198,15 @@ struct raptor {
   // a tau_arr^->(v, i) matrix without a separate one-to-all search. `lb_`
   // prunes against the same time_at_dest_, so it is covered too.
   //
-  // `factor` scales the travel time from `origin` and `add_minutes` pads it (the
-  // restriction's two modes, matching anchor_deadline()); floor_min/cap_min are
-  // relax_arr()'s clamps.
-  void set_dest_relax(unixtime_t const origin,
-                      double const factor,
-                      int const add_minutes,
-                      double const floor_min = 0.0,
-                      double const cap_min =
-                          std::numeric_limits<double>::infinity()) {
+  // `factor` scales the travel time from `origin` and `add_minutes` pads it
+  // (the restriction's two modes, matching anchor_deadline());
+  // floor_min/cap_min are relax_arr()'s clamps.
+  void set_dest_relax(
+      unixtime_t const origin,
+      double const factor,
+      int const add_minutes,
+      double const floor_min = 0.0,
+      double const cap_min = std::numeric_limits<double>::infinity()) {
     relax_origin_ = unix_to_delta(base(), origin);
     relax_factor_ = factor;
     relax_add_ = add_minutes;
@@ -245,10 +245,9 @@ struct raptor {
                std::uint8_t const max_transfers,
                unixtime_t const worst_time_at_dest,
                pareto_set<journey>& results) {
-    auto const end_k =
-        std::min<unsigned>(std::min(max_transfers, kMaxTransfers) + 2U +
-                               start_round_,
-                           kMaxTransfers + 2U);
+    auto const end_k = std::min<unsigned>(
+        std::min(max_transfers, kMaxTransfers) + 2U + start_round_,
+        kMaxTransfers + 2U);
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
     for (auto& time_at_dest : time_at_dest_) {
@@ -778,8 +777,7 @@ private:
             continue;
           }
 
-          if (bound_prunes(k, static_cast<std::uint32_t>(i),
-                           fp_target_time)) {
+          if (bound_prunes(k, static_cast<std::uint32_t>(i), fp_target_time)) {
             ++stats_.fp_update_prevented_by_lower_bound_;
             return;
           }
@@ -1559,8 +1557,7 @@ private:
       auto const extra = travel * (relax_factor_ - 1.0) + relax_add_;
       return clamp(static_cast<int>(relax_origin_) +
                    dir(static_cast<int>(std::llround(
-                       travel + std::clamp(extra, relax_floor_,
-                                           relax_cap_)))));
+                       travel + std::clamp(extra, relax_floor_, relax_cap_)))));
     }();
     for (auto i = k; i != time_at_dest_.size(); ++i) {
       time_at_dest_[i] = get_best(time_at_dest_[i], relaxed);

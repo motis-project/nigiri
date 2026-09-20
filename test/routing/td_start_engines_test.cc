@@ -72,7 +72,8 @@ std::vector<tuple_t> tuples(pareto_set<routing::journey> const& js) {
 
 struct fixture {
   fixture() {
-    tt_.date_range_ = {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}};
+    tt_.date_range_ = {sys_days{2024_y / June / 18},
+                       sys_days{2024_y / June / 20}};
     register_special_stations(tt_);
     load_timetable({}, source_idx_t{0}, test_files(), tt_);
     finalize(tt_);
@@ -150,8 +151,7 @@ TEST(routing, td_start_engines_narrow_validity) {
                   {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 31min,
                    .duration_ = footpath::kMaxDuration,
                    .transport_mode_id_ = 5}},
-                 {sys_days{2024_y / June / 19},
-                  sys_days{2024_y / June / 20}}));
+                 {sys_days{2024_y / June / 19}, sys_days{2024_y / June / 20}}));
 }
 
 // The offset gets SLOWER later in the day (5min before 06:00, 60min after).

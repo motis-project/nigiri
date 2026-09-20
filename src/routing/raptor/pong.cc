@@ -1,7 +1,7 @@
 #include "nigiri/routing/raptor/pong.h"
 
-#include <algorithm>
 #include <cstring>
+#include <algorithm>
 #include <future>
 #include <limits>
 #include <ranges>
@@ -34,15 +34,24 @@ namespace nigiri::routing {
 // gpu_raptor that split doubles as the WithBounds selector: the ping runs
 // unpruned and fills the round-time bound matrix (raptor::fill_bounds()), the
 // pong is pruned against it.
-template <direction SearchDir, via_offset_t Vias, bool Rt, typename AlgoState,
+template <direction SearchDir,
+          via_offset_t Vias,
+          bool Rt,
+          typename AlgoState,
           bool RangeReuse>
 struct pong_algo_for {
   using type = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>;
 };
 
-template <direction SearchDir, via_offset_t Vias, bool Rt, typename Criteria,
+template <direction SearchDir,
+          via_offset_t Vias,
+          bool Rt,
+          typename Criteria,
           bool RangeReuse>
-struct pong_algo_for<SearchDir, Vias, Rt, basic_mcraptor_state<Criteria>,
+struct pong_algo_for<SearchDir,
+                     Vias,
+                     Rt,
+                     basic_mcraptor_state<Criteria>,
                      RangeReuse> {
   using type = basic_mcraptor<SearchDir, Criteria, RangeReuse>;
 };
@@ -60,13 +69,15 @@ struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_raptor_state, RangeReuse> {
 // The state's frontiers are per-direction, so ping and pong coexist; the
 // device reuse frontier replaces the CPU's RangeReuse switch.
 template <direction SearchDir, via_offset_t Vias, bool Rt, bool RangeReuse>
-struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_state,
-                     RangeReuse> {
+struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_state, RangeReuse> {
   using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::arr>;
 };
 
 template <direction SearchDir, via_offset_t Vias, bool Rt, bool RangeReuse>
-struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_cost_state,
+struct pong_algo_for<SearchDir,
+                     Vias,
+                     Rt,
+                     gpu::gpu_mcraptor_cost_state,
                      RangeReuse> {
   using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::cost>;
 };
@@ -164,9 +175,7 @@ routing_result pong(timetable const& tt,
   // set_bounds(bmrap_bounds const*) too.
   constexpr auto const kSkipPongDijkstra =
       kPruneWithPingBounds &&
-      requires(pong_algo_t& p, unsigned const budget) {
-        p.set_bounds(budget);
-      };
+      requires(pong_algo_t& p, unsigned const budget) { p.set_bounds(budget); };
   // the two lb dijkstras are independent (ping: destination-rooted on the
   // search-direction graph; pong: start-rooted on the flipped graph), so
   // overlap them - they dominate the per-query CPU critical path
@@ -185,10 +194,9 @@ routing_result pong(timetable const& tt,
                     ? nullptr
                     : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
                              : rtt->fwd_search_lb_graph_has_edges_)),
-               ((rtt == nullptr || kGpu)
-                    ? nullptr
-                    : &(kFwd ? rtt->bwd_search_lb_graph_
-                             : rtt->fwd_search_lb_graph_)),
+               ((rtt == nullptr || kGpu) ? nullptr
+                                         : &(kFwd ? rtt->bwd_search_lb_graph_
+                                                  : rtt->fwd_search_lb_graph_)),
                pong_lb);
       pong_lb_time = std::chrono::steady_clock::now() - t0;
     });
@@ -619,9 +627,9 @@ routing_result pong(timetable const& tt,
 
   utl::sort(s_state.results_, [](journey const& a, journey const& b) {
     return std::tuple{a.start_time_, a.transfers_, a.dest_time_,
-                      a.criteria_cost_} <
-           std::tuple{b.start_time_, b.transfers_, b.dest_time_,
-                      b.criteria_cost_};
+                      a.criteria_cost_} < std::tuple{b.start_time_,
+                                                     b.transfers_, b.dest_time_,
+                                                     b.criteria_cost_};
   });
 
   trace_pong("RESULT:\n\t{}",
