@@ -7,8 +7,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
-#include <atomic>
 #include <array>
+#include <atomic>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -635,10 +635,9 @@ __global__ void reach_bounds_kernel(device_times<SearchDir, 1U> round_times,
        l += get_global_stride()) {
     auto const li = location_idx_t{l};
     auto const buf =
-        sub_transfer
-            ? (kFwd ? 1 : -1) *
-                  adjusted_transfer_time(tts, tt.transfer_time_[li].count())
-            : 0;
+        sub_transfer ? (kFwd ? 1 : -1) * adjusted_transfer_time(
+                                             tts, tt.transfer_time_[li].count())
+                     : 0;
     auto prefix = kInvalid;
     for (auto i = 0U; i <= budget; ++i) {
       auto const cur =
@@ -741,17 +740,18 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
   auto const with_td_fps =
       rt_active && prf_idx_ != 0U && gpu_rtt_->impl_->has_td_fps_[prf_idx_];
   auto r = raptor_impl<SearchDir, WithBounds>{
-      .bm_bounds_ = has_bounds_
-                        ? cuda::std::span<delta_t const>{
-                              thrust::raw_pointer_cast(s.bmrap_bounds_.data()),
-                              s.bmrap_bounds_.size()}
-                        : cuda::std::span<delta_t const>{},
+      .bm_bounds_ =
+          has_bounds_
+              ? cuda::std::span<delta_t const>{thrust::raw_pointer_cast(
+                                                   s.bmrap_bounds_.data()),
+                                               s.bmrap_bounds_.size()}
+              : cuda::std::span<delta_t const>{},
       .bounds_n_locations_ = bounds_n_locations_,
       .bounds_budget_ = bounds_budget_,
       .has_bounds_ = has_bounds_,
       .start_round_ = start_round_,
-      .relax_origin_ = relax_on_ ? unix_to_delta(base(), relax_origin_)
-                                 : delta_t{0},
+      .relax_origin_ =
+          relax_on_ ? unix_to_delta(base(), relax_origin_) : delta_t{0},
       .relax_factor_ = relax_factor_,
       .relax_floor_ = relax_floor_,
       .relax_cap_ = relax_cap_,
@@ -1311,8 +1311,7 @@ void gpu_raptor<SearchDir, WithBounds>::set_bounds(bmrap_bounds const* b) {
         b->lat_.size() * sizeof(delta_t), cudaMemcpyDeviceToDevice, s.stream_));
   } else {
     CUDA_CHECK(cudaMemcpyAsync(thrust::raw_pointer_cast(s.bmrap_bounds_.data()),
-                               b->lat_.data(),
-                               b->lat_.size() * sizeof(delta_t),
+                               b->lat_.data(), b->lat_.size() * sizeof(delta_t),
                                cudaMemcpyHostToDevice, s.stream_));
   }
   CUDA_CHECK(cudaStreamSynchronize(s.stream_));
@@ -1322,12 +1321,11 @@ void gpu_raptor<SearchDir, WithBounds>::set_bounds(bmrap_bounds const* b) {
 }
 
 template <direction SearchDir, bool WithBounds>
-void gpu_raptor<SearchDir, WithBounds>::set_dest_relax(
-    unixtime_t const origin,
-    double const factor,
-    int const add_minutes,
-    double const floor_min,
-    double const cap_min) {
+void gpu_raptor<SearchDir, WithBounds>::set_dest_relax(unixtime_t const origin,
+                                                       double const factor,
+                                                       int const add_minutes,
+                                                       double const floor_min,
+                                                       double const cap_min) {
   relax_origin_ = origin;
   relax_factor_ = factor;
   relax_add_ = add_minutes;

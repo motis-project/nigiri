@@ -89,7 +89,8 @@ struct fixture {
     q.start_match_mode_ = routing::location_match_mode::kIntermodal;
     q.dest_match_mode_ = routing::location_match_mode::kIntermodal;
     q.use_start_footpaths_ = false;
-    q.destination_ = {{b_, duration_t{0}, transport_mode_id_t{0}}};
+    q.destination_ = {
+        {b_, duration_t{0}, routing::transport_mode_t::payload_t{0}}};
     q.td_start_ = {{a_, std::move(offsets)}};
     return q;
   }
@@ -144,13 +145,13 @@ TEST(routing, td_start_engines_narrow_validity) {
   expect_all_engines_agree(
       f, f.query({{.valid_from_ = unixtime_t{0h},
                    .duration_ = footpath::kMaxDuration,
-                   .transport_mode_id_ = 5},
+                   .transport_mode_payload_ = 5},
                   {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 30min,
                    .duration_ = 10min,
-                   .transport_mode_id_ = 5},
+                   .transport_mode_payload_ = 5},
                   {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 31min,
                    .duration_ = footpath::kMaxDuration,
-                   .transport_mode_id_ = 5}},
+                   .transport_mode_payload_ = 5}},
                  {sys_days{2024_y / June / 19}, sys_days{2024_y / June / 20}}));
 }
 
@@ -164,10 +165,10 @@ TEST(routing, td_start_engines_slower_later) {
   expect_all_engines_agree(
       f, f.query({{.valid_from_ = unixtime_t{0h},
                    .duration_ = 5min,
-                   .transport_mode_id_ = 5},
+                   .transport_mode_payload_ = 5},
                   {.valid_from_ = sys_days{2024_y / June / 19} + 6h,
                    .duration_ = 60min,
-                   .transport_mode_id_ = 5}},
+                   .transport_mode_payload_ = 5}},
                  {sys_days{2024_y / June / 19} + 5h,
                   sys_days{2024_y / June / 19} + 9h}));
 }

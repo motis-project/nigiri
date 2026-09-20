@@ -1125,7 +1125,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::reconstruct(
         auto const start = dep_time - back->first;
         auto const fwd = get_td_duration<direction::kForward>(offs, start);
         if (fwd.has_value()) {
-          front = offset{from, fwd->first, fwd->second.transport_mode_id_};
+          front = offset{from, fwd->first, fwd->second.mode()};
           front_dep = start;
         }
       }
@@ -1172,7 +1172,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::reconstruct(
         auto const bck =
             get_td_duration<direction::kBackward>(offs, journey_end);
         if (bck.has_value() && journey_end - bck->first >= arr_time) {
-          back = offset{to, bck->first, bck->second.transport_mode_id_};
+          back = offset{to, bck->first, bck->second.mode()};
           back_dep = journey_end - bck->first;
         }
       }

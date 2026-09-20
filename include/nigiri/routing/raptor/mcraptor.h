@@ -316,7 +316,7 @@ struct arr_with {
   template <typename F>
   static dims_t make(F&& f) {
     return [&]<std::size_t... I>(std::index_sequence<I...>) {
-      return dims_t { f.template operator()<I>()... };
+      return dims_t{f.template operator()<I>()...};
     }(idx_t{});
   }
   template <typename F>
