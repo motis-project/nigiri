@@ -256,55 +256,90 @@ tr.a[hidden]{display:none}
     ++i;
   }
 
-  // Entities without any counterpart never show up above: they have no pair
-  // to be listed in. Their transports are unique by definition.
-  auto matched = hash_map<provider_idx_t, bool>{};
-  for (auto const& [a, b, _] : s.provider_overlap_.entries_) {
-    matched[a] = true;
-    matched[b] = true;
-  }
-  auto unmatched = std::vector<provider_idx_t>{};
+  // Every agency that has transports the other feeds do not cover. Agencies
+  // without any counterpart at all are the 100% rows in here, so the total
+  // matches the unique count of the feeds above.
+  auto unique = std::vector<provider_idx_t>{};
   for (auto p = provider_idx_t{0U}; p != s.provider_n_transports_.size(); ++p) {
-    if (s.provider_n_transports_[p] != 0U && !matched.contains(p)) {
-      unmatched.push_back(p);
+    auto const total = s.provider_n_transports_[p];
+    if (total != 0U &&
+        total > s.provider_overlap_.n_duplicated_transports_[p]) {
+      unique.push_back(p);
     }
   }
-  utl::sort(unmatched, [&](provider_idx_t const a, provider_idx_t const b) {
-    return s.provider_n_transports_[a] > s.provider_n_transports_[b];
+
+  auto const n_unique = [&](provider_idx_t const p) {
+    return s.provider_n_transports_[p] -
+           s.provider_overlap_.n_duplicated_transports_[p];
+  };
+
+  utl::sort(unique, [&](provider_idx_t const a, provider_idx_t const b) {
+    // by share, biggest first; cross-multiplied to stay in integers
+    auto const lhs = std::uint64_t{n_unique(a)} * s.provider_n_transports_[b];
+    auto const rhs = std::uint64_t{n_unique(b)} * s.provider_n_transports_[a];
+    return lhs != rhs ? lhs > rhs : n_unique(a) > n_unique(b);
   });
 
-  auto n_unmatched_transports = std::uint32_t{0U};
-  for (auto const p : unmatched) {
-    n_unmatched_transports += s.provider_n_transports_[p];
+  auto n_unique_transports = std::uint32_t{0U};
+  for (auto const p : unique) {
+    n_unique_transports += n_unique(p);
   }
 
   f << fmt::format(
       R"(</table>
-<h2>no counterpart ({} agencies, {} transports)</h2>
+<h2>unique ({} agencies, {} transports)</h2>
 <table>
   <colgroup>
     <col>
-    <col>
+    <col style="width:9em">
     <col style="width:9em">
   </colgroup>
   <tr>
-    <th>agency</th>
-    <th>feed</th>
+    <th>feed / agency</th>
+    <th>unique</th>
     <th>transports</th>
   </tr>
 )",
-      unmatched.size(), n_unmatched_transports);
+      unique.size(), n_unique_transports);
 
-  for (auto const p : unmatched) {
+  for (auto src = source_idx_t{0U}; src != s.src_n_transports_.size(); ++src) {
+    auto n_src_unique = std::uint32_t{0U};
+    for (auto const p : unique) {
+      if (tt.providers_[p].src_ == src) {
+        n_src_unique += n_unique(p);
+      }
+    }
+    if (n_src_unique == 0U) {
+      continue;
+    }
+
     f << fmt::format(
-        R"(  <tr>
-    <td>{}</td>
-    <td>{}</td>
-    <td>{}</td>
+        R"(  <tr class="f" onclick='t({0})'>
+    <td>{1}</td>
+    <td>{2}</td>
+    <td>{3}</td>
   </tr>
 )",
-        esc(tt.get_default_translation(tt.providers_[p].name_)),
-        esc(tag(tt.providers_[p].src_)), s.provider_n_transports_[p]);
+        i, esc(tag(src)), pct(n_src_unique, s.src_n_transports_[src]),
+        s.src_n_transports_[src]);
+
+    for (auto const p : unique) {
+      if (tt.providers_[p].src_ != src) {
+        continue;
+      }
+      f << fmt::format(
+          R"(  <tr class="a" data-r="{0}" hidden>
+    <td>{1}</td>
+    <td>{2}</td>
+    <td>{3}</td>
+  </tr>
+)",
+          i, esc(tt.get_default_translation(tt.providers_[p].name_)),
+          pct(n_unique(p), s.provider_n_transports_[p]),
+          s.provider_n_transports_[p]);
+    }
+
+    ++i;
   }
 
   f << R"(</table>

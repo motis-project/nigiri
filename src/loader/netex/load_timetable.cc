@@ -783,14 +783,49 @@ journey_pattern_map_t get_journey_patterns(
 
   auto const get_stop =
       [&](std::string_view stop_point_ref) -> netex::stop const* {
-    auto const timetable_it = stop_assignments.timetable_.find(stop_point_ref);
-    if (timetable_it != end(stop_assignments.timetable_)) {
-      return timetable_it->second;
-    }
+    auto const assigned = [&]() -> netex::stop const* {
+      auto const timetable_it =
+          stop_assignments.timetable_.find(stop_point_ref);
+      if (timetable_it != end(stop_assignments.timetable_)) {
+        return timetable_it->second;
+      }
+      auto const base_it = stop_assignments.base_.find(stop_point_ref);
+      return base_it != end(stop_assignments.base_) ? base_it->second : nullptr;
+    }();
 
-    auto const base_it = stop_assignments.base_.find(stop_point_ref);
-    if (base_it != end(stop_assignments.base_)) {
-      return base_it->second;
+    auto const ssp_pos = [&]() {
+      return get_pos(
+          doc.select_node(fmt::format("//ServiceFrame/scheduledStopPoints/"
+                                      "ScheduledStopPoint[@id='{}']",
+                                      stop_point_ref)
+                              .c_str())
+              .node());
+    };
+
+    // A StopPlace/Quay without Centroid parses as (0, 0). Keep what the
+    // assignment says the stop is - its id is the one the rest of the feed
+    // refers to - but take the position from the ScheduledStopPoint. The
+    // assigned stop may be shared with other files, so copy instead of
+    // writing to it.
+    if (assigned != nullptr) {
+      if (assigned->pos_ != geo::latlng{}) {
+        return assigned;
+      }
+      auto const pos = ssp_pos();
+      if (pos == geo::latlng{}) {
+        return assigned;
+      }
+      return utl::get_or_create(stops.timetable_, stop_point_ref,
+                                [&]() {
+                                  return uniq(stop{
+                                      .parent_ = assigned->parent_,
+                                      .id_ = assigned->id_,
+                                      .name_ = assigned->name_,
+                                      .public_code_ = assigned->public_code_,
+                                      .pos_ = pos,
+                                  });
+                                })
+          .get();
     }
 
     // Invalid - fall back to information from ScheduledStopPoint
@@ -1368,6 +1403,13 @@ void load_timetable(loader_config const& config,
       auto const existing = tt.find(location_id{stop->id_, src});
       if (existing.has_value()) {
         stop->location_ = *existing;
+        // Files disagree about the same id: a StopPlace/Quay without Centroid
+        // parses as (0, 0). A definition that has one wins, no matter which
+        // file happened to register the location first.
+        if (tt.locations_.coordinates_[*existing] == geo::latlng{} &&
+            stop->pos_ != geo::latlng{}) {
+          tt.locations_.coordinates_[*existing] = stop->pos_;
+        }
         return;
       }
 
@@ -1876,8 +1918,6 @@ void load_timetable(loader_config const& config,
     for (auto const fp : fps) {
       tt.locations_.equivalences_[from].emplace_back(fp.target());
       tt.locations_.preprocessing_footpaths_out_[from].emplace_back(fp);
-      tt.locations_.preprocessing_footpaths_in_[fp.target()].emplace_back(
-          footpath{from, fp.duration()});
     }
   }
 
