@@ -2,7 +2,7 @@
 
 #include <cstddef>
 
-#include <cuda_runtime_api.h>
+#include "nigiri/routing/gpu/gpu_runtime.cuh"
 
 namespace nigiri::routing::gpu {
 

@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 
 #include <filesystem>
+#include <random>
 #include <ranges>
 #include <sstream>
 #include <vector>
@@ -17,6 +18,25 @@ namespace fs = std::filesystem;
 using namespace nigiri;
 using namespace nigiri::loader::gtfs;
 
+namespace {
+
+// Unique per run: fixed names in the shared temp dir collide with
+// directories left behind by other users (e.g. on self-hosted CI runners).
+struct temp_dir {
+  explicit temp_dir(std::string_view name)
+      : path_{fs::temp_directory_path() /
+              fmt::format("{}-{:x}", name, std::random_device{}())} {}
+  temp_dir(temp_dir const&) = delete;
+  temp_dir& operator=(temp_dir const&) = delete;
+  ~temp_dir() {
+    auto ec = std::error_code{};
+    fs::remove_all(path_, ec);
+  }
+  fs::path path_;
+};
+
+}  // namespace
+
 TEST(gtfs, shape_get_existing_shape_points) {
   constexpr auto const kShapesData =
       R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
@@ -31,9 +51,8 @@ TEST(gtfs, shape_get_existing_shape_points) {
 3105,50.581956,6.379866,11
 )";
 
-  auto shapes_data =
-      shapes_storage{fs::temp_directory_path() / "shape-test-builder",
-                     cista::mmap::protection::WRITE};
+  auto const dir = temp_dir{"shape-test-builder"};
+  auto shapes_data = shapes_storage{dir.path_, cista::mmap::protection::WRITE};
   auto const shape_states = parse_shapes(kShapesData, shapes_data);
   auto const& shapes = shape_states.id_map_;
 
@@ -66,9 +85,8 @@ TEST(gtfs, shape_not_ascending_sequence) {
 1,50.636259,6.473668,0
 )";
 
-  auto shapes_data = shapes_storage{
-      fs::temp_directory_path() / "shape-test-not-ascending-sequence",
-      cista::mmap::protection::WRITE};
+  auto const dir = temp_dir{"shape-test-not-ascending-sequence"};
+  auto shapes_data = shapes_storage{dir.path_, cista::mmap::protection::WRITE};
   auto const shape_states = parse_shapes(kShapesData, shapes_data);
   auto const& shapes = shape_states.id_map_;
 
@@ -94,9 +112,8 @@ TEST(gtfs, shape_shuffled_rows) {
 235,51.543652,7.217830,1
 )";
 
-  auto shapes_data =
-      shapes_storage{fs::temp_directory_path() / "shape-test-shuffled-rows",
-                     cista::mmap::protection::WRITE};
+  auto const dir = temp_dir{"shape-test-shuffled-rows"};
+  auto shapes_data = shapes_storage{dir.path_, cista::mmap::protection::WRITE};
   auto const shape_states = parse_shapes(kShapesData, shapes_data);
   auto const& shapes = shape_states.id_map_;
 
@@ -146,9 +163,8 @@ TEST(gtfs, shape_delay_insert_no_ascending_sequence) {
 2,51.473214,7.139521,0
 1,50.636259,6.473668,0
 )";
-  auto shapes_data = shapes_storage{
-      fs::temp_directory_path() / "shape-test-not-ascending-sequence",
-      cista::mmap::protection::WRITE};
+  auto const dir = temp_dir{"shape-test-not-ascending-sequence"};
+  auto shapes_data = shapes_storage{dir.path_, cista::mmap::protection::WRITE};
   auto const shape_states = parse_shapes(kShapesData, shapes_data);
   auto const& shapes = shape_states.id_map_;
 

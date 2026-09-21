@@ -1,8 +1,9 @@
 #pragma once
 
 #include <compare>
+#include <bit>
 
-#include "cista/cuda_check.h"
+#include "cista/gpu_compat.h"
 
 #include "nigiri/types.h"
 
@@ -11,9 +12,10 @@ namespace nigiri {
 struct stop {
   using value_type = location_idx_t::value_t;
 
-  CISTA_CUDA_COMPAT stop(location_idx_t::value_t const val) {
-    std::memcpy(this, &val, sizeof(value_type));
-  }
+  // std::bit_cast rather than memcpy: memcpy is a host function, which clang
+  // rejects inside a __host__ __device__ function on the HIP device pass
+  CISTA_GPU_COMPAT stop(location_idx_t::value_t const val)
+      : stop{std::bit_cast<stop>(val)} {}
 
   constexpr stop(location_idx_t const location,
                  bool const in_allowed,
