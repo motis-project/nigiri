@@ -440,8 +440,7 @@ int main(int argc, char* argv[]) {
        "their pareto sets are pairwise cross-checked per query and the "
        "process exits non-zero on any divergence")  //
       ("algo,a", bpo::value(&algos)->multitoken(),
-       "algorithms (strategy-algorithm): range | pong | mcraptor | "
-       "mcraptor-cost | pong-mcraptor | pong-mcraptor-cost (default: range "
+       "algorithms: range | pong | mcraptor | mcraptor-cost (default: range "
        "pong); every ran cell (any engine/algo combination) within a (mode, "
        "dir) is checked pairwise against every other for agreement on the "
        "intersection of the final search intervals")  //
@@ -664,11 +663,9 @@ int main(int argc, char* argv[]) {
 #endif
   for (auto const& a : algos) {
     if (a != "range" && a != "pong" && a != "mcraptor" &&
-        a != "mcraptor-cost" && a != "pong-mcraptor" &&
-        a != "pong-mcraptor-cost") {
+        a != "mcraptor-cost") {
       std::cerr << "invalid algo \"" << a
-                << "\", expected range | pong | mcraptor | mcraptor-cost | "
-                   "pong-mcraptor | pong-mcraptor-cost\n";
+                << "\", expected range | pong | mcraptor | mcraptor-cost\n";
       return 1;
     }
   }
@@ -779,13 +776,10 @@ int main(int argc, char* argv[]) {
 
       auto cells = std::vector<result_set>{};
       for (auto const& algo : algos) {
-        // token scheme: ${strategy}-${algorithm}; "pong-" prefix selects
-        // the pong strategy, the rest selects the algorithm/state type
-        auto const use_pong = algo == "pong" || algo.starts_with("pong-");
-        auto const algo_part =
-            algo == "pong" ? std::string{"range"}
-                           : (algo.starts_with("pong-") ? algo.substr(5)
-                                                        : algo);
+        // "pong" is the pong strategy on the plain raptor state; the other
+        // tokens select the algorithm/state type of a range search
+        auto const use_pong = algo == "pong";
+        auto const algo_part = use_pong ? std::string{"range"} : algo;
         auto const label = mode + "-" + dir_str + "-" + algo;
 
         // dispatch to the right search-state type; pong only exists for
