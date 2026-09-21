@@ -270,8 +270,9 @@ struct mode_filter_dim {
   bool mode_filter_{false};
 };
 
-// Vehicle-class switches between consecutive trips (bus -> subway counts,
-// subway -> subway does not).
+// Vehicle-class switches between consecutive trips. Suburban, subway, tram
+// and bus form one local-transit group: switching within it is free, all other
+// classes count individually (bus -> tram is free, bus -> regional counts).
 //
 // The carried clasz prices the future: the same switch count in another class
 // may cost one more switch downstream, so a label only dominates with a full
@@ -280,6 +281,15 @@ struct mode_filter_dim {
 struct mode_switches_dim {
   // one past the last clasz doubles as "no trip ridden yet"
   static constexpr clasz no_clasz() { return clasz::kNumClasses; }
+
+  static constexpr clasz group_of(clasz const c) {
+    switch (c) {
+      case clasz::kSuburban:
+      case clasz::kSubway:
+      case clasz::kTram: return clasz::kBus;
+      default: return c;
+    }
+  }
 
   std::uint8_t switch_penalty(mode_switches_dim const& o) const {
     return (clasz_ == o.clasz_ || clasz_ == no_clasz()) ? 0U : 1U;
@@ -294,8 +304,9 @@ struct mode_switches_dim {
   static mode_switches_dim from_ride(std::uint16_t,
                                      ride_attrs const& ra,
                                      mode_switches_dim const& prev) {
-    auto const switched = prev.clasz_ != no_clasz() && prev.clasz_ != ra.clasz_;
-    return {ra.clasz_,
+    auto const group = group_of(ra.clasz_);
+    auto const switched = prev.clasz_ != no_clasz() && prev.clasz_ != group;
+    return {group,
             static_cast<std::uint8_t>(prev.switches_ + (switched ? 1U : 0U))};
   }
   mode_switches_dim with_transfer(int) const { return *this; }
