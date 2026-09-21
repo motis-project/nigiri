@@ -31,6 +31,10 @@ struct gpu_mcraptor_cost_state : gpu_mcraptor_state {
   using gpu_mcraptor_state::gpu_mcraptor_state;
 };
 
+struct gpu_mcraptor_non_transit_state : gpu_mcraptor_state {
+  using gpu_mcraptor_state::gpu_mcraptor_state;
+};
+
 // The label configurations the device implements, each result-equal to the CPU
 // mcraptor with the matching criteria (mc_crit_of in bmrap_common.h). All fit
 // the 16-bit "crit" slot of the packed label:

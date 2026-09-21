@@ -12,6 +12,7 @@
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/routing/raptor/bmrap_common.h"
 #include "nigiri/routing/raptor/bmrap_filters.h"
 #include "nigiri/routing/raptor/bmraptor.h"
 #include "nigiri/routing/raptor/mcraptor.h"
@@ -267,12 +268,74 @@ void expect_restricted_subset_of_mcraptor(direction const dir) {
   expect_subset(reference<McState>(f, q, dir).js_, restricted, name(dir));
 }
 
+// The unrestricted range mcraptor set cut down by the restricted-set
+// definition (bmrap_common.h): the anchors are its own journeys that are
+// optimal on (departure, arrival, transfers) alone, and a journey survives if
+// it is an anchor or stays within its A(J)'s trip budget and deadline. This is
+// what bmrap_profile_search computes, only the slow way.
+template <typename McState>
+std::vector<tuple_t> restricted_reference(fixture const& f,
+                                          routing::query const& q,
+                                          direction const dir) {
+  auto const fwd = dir == direction::kForward;
+  auto js = reference<McState>(f, q, dir).js_;
+  // the tuple is (dep, arr, transfers) in both directions
+  auto const dominates = [](tuple_t const& a, tuple_t const& b) {
+    return std::get<2>(a) <= std::get<2>(b) &&
+           std::get<0>(a) >= std::get<0>(b) && std::get<1>(a) <= std::get<1>(b);
+  };
+  auto anchors = std::vector<routing::bmrap_detail::anchor>{};
+  for (auto const& j : js) {
+    if (std::none_of(begin(js), end(js), [&](tuple_t const& o) {
+          return dominates(o, j) && !dominates(j, o);
+        })) {
+      auto const& [dep, arr, transfers] = j;
+      anchors.push_back({fwd ? dep : arr, fwd ? arr : dep,
+                         static_cast<std::uint8_t>(transfers + 1U)});
+    }
+  }
+  std::erase_if(js, [&](tuple_t const& j) {
+    auto const& [dep, arr, transfers] = j;
+    return fwd ? routing::bmrap_detail::outside_restriction<
+                     direction::kForward>(anchors, dep, arr, transfers + 1U)
+               : routing::bmrap_detail::outside_restriction<
+                     direction::kBackward>(anchors, arr, dep, transfers + 1U);
+  });
+  return js;
+}
+
+// bmrap_profile_search must return exactly the restricted set of the range
+// mcraptor, not just a subset of it.
+template <typename Criteria, typename McState>
+void expect_bmrap_equals_restricted_mcraptor(direction const dir) {
+  auto const f = fixture{};
+  auto const q = f.make_query(dir);
+  auto const bm = bmrapp<Criteria>(f, q, dir).js_;
+  ASSERT_FALSE(bm.empty());
+  EXPECT_EQ(restricted_reference<McState>(f, q, dir), bm) << name(dir);
+}
+
 }  // namespace
 
 TEST(bmrap, subset_of_mcraptor) {
   for (auto const dir : kDirs) {
     expect_restricted_subset_of_mcraptor<routing::arr_criteria,
                                          routing::mcraptor_state>(dir);
+  }
+}
+
+TEST(bmrap, equals_restricted_mcraptor) {
+  for (auto const dir : kDirs) {
+    expect_bmrap_equals_restricted_mcraptor<routing::arr_criteria,
+                                            routing::mcraptor_state>(dir);
+  }
+}
+
+TEST(bmrap, composed_equals_restricted_mcraptor) {
+  for (auto const dir : kDirs) {
+    expect_bmrap_equals_restricted_mcraptor<
+        routing::arr_non_transit_mode_switches_criteria,
+        routing::mcraptor_non_transit_mode_switches_state>(dir);
   }
 }
 

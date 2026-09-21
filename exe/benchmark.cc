@@ -23,9 +23,11 @@
 #include "nigiri/qa/qa.h"
 #include "nigiri/query_generator/generator.h"
 #include "nigiri/routing/interval_estimate.h"
+#include "nigiri/routing/raptor/bmrap_common.h"
+#include "nigiri/routing/raptor/bmraptor.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor/raptor.h"
-#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
 #include "nigiri/timetable.h"
@@ -122,14 +124,12 @@ std::uint64_t compare_results(
   // unless both sides are cost-aware
   auto const equal = [](journey const& a, journey const& b) {
     return a.start_time_ == b.start_time_ && a.dest_time_ == b.dest_time_ &&
-           a.transfers_ == b.transfers_ &&
-           a.criteria_cost_ == b.criteria_cost_;
+           a.transfers_ == b.transfers_ && a.criteria_cost_ == b.criteria_cost_;
   };
 
   auto const key = [](journey const& j) {
-    return fmt::format("dep={} arr={} transfers={} cost={}",
-                       j.departure_time(), j.arrival_time(), j.transfers_,
-                       j.criteria_cost_);
+    return fmt::format("dep={} arr={} transfers={} cost={}", j.departure_time(),
+                       j.arrival_time(), j.transfers_, j.criteria_cost_);
   };
 
   auto const max_window = [&](query const& q) {
@@ -355,6 +355,41 @@ struct gpu_ws_t {
 };
 #endif
 
+// Range mcraptor over the non-transit criteria cut down by the restricted-set
+// definition (bmrap_common.h). The anchors are the journeys of its own result
+// that are optimal on (start, dest, transfers) alone, and a journey survives if
+// it is an anchor or stays within its A(J)'s trip budget and deadline. This is
+// what bmrap_profile_search computes, the slow way. The two scan different
+// windows and A(J) needs the anchors past a journey, so they only agree on a
+// contiguous part of the window (see compare_results).
+template <direction SearchDir, typename McState>
+pareto_set<routing::journey> restricted_range_search(timetable const& tt,
+                                                     search_state& ss,
+                                                     McState& mc_state,
+                                                     routing::query q) {
+  auto res = *routing::raptor_search(tt, nullptr, ss, mc_state, std::move(q),
+                                     SearchDir)
+                  .journeys_;
+  auto anchors = std::vector<routing::bmrap_detail::anchor>{};
+  for (auto const& j : res) {
+    if (utl::any_of(res, [&](routing::journey const& o) {
+          return o.tuple_dominates(j) && !j.tuple_dominates(o);
+        })) {
+      continue;
+    }
+    auto const fwd = SearchDir == direction::kForward;
+    anchors.push_back({fwd ? j.start_time_ : j.dest_time_,
+                       fwd ? j.dest_time_ : j.start_time_,
+                       static_cast<std::uint8_t>(j.transfers_ + 1U)});
+  }
+  std::erase_if(res.els_, [&](routing::journey const& j) {
+    return routing::bmrap_detail::outside_restriction<SearchDir>(
+        anchors, j.start_time_, j.dest_time_,
+        static_cast<unsigned>(j.transfers_) + 1U);
+  });
+  return res;
+}
+
 // one (engine, algo) cell: runs the queries once per n_parallel value (each
 // worker borrows a state from a pool allocated once at the maximum count)
 // and keeps the last run's journeys + latencies
@@ -440,8 +475,12 @@ int main(int argc, char* argv[]) {
        "their pareto sets are pairwise cross-checked per query and the "
        "process exits non-zero on any divergence")  //
       ("algo,a", bpo::value(&algos)->multitoken(),
-       "algorithms: range | pong | mcraptor | mcraptor-cost (default: range "
-       "pong); every ran cell (any engine/algo combination) within a (mode, "
+       "algorithms: range | pong | mcraptor | mcraptor-cost | bmrap | "
+       "mcraptor-restricted (default: range pong); bmrap is BM-RAPTOR over "
+       "the non-transit criteria, mcraptor-restricted the range mcraptor over "
+       "the same criteria cut down by the restricted-set definition, so the "
+       "two must agree; every ran cell (any engine/algo combination) within a "
+       "(mode, "
        "dir) is checked pairwise against every other for agreement on the "
        "intersection of the final search intervals")  //
       ("modes", bpo::value(&modes)->multitoken(),
@@ -663,9 +702,10 @@ int main(int argc, char* argv[]) {
 #endif
   for (auto const& a : algos) {
     if (a != "range" && a != "pong" && a != "mcraptor" &&
-        a != "mcraptor-cost") {
+        a != "mcraptor-cost" && a != "bmrap" && a != "mcraptor-restricted") {
       std::cerr << "invalid algo \"" << a
-                << "\", expected range | pong | mcraptor | mcraptor-cost\n";
+                << "\", expected range | pong | mcraptor | mcraptor-cost | "
+                   "bmrap | mcraptor-restricted\n";
       return 1;
     }
   }
@@ -728,14 +768,14 @@ int main(int argc, char* argv[]) {
     if (auto const* dump = std::getenv("NIGIRI_BENCH_DUMP_QUERY");
         dump != nullptr) {
       auto const print_pos = [&](char const* tag, auto const& v) {
-        std::visit(utl::overloaded{
-                       [&](location_idx_t const l) {
-                         std::cout << tag << " location "
-                                   << tt.locations_.ids_[l].view();
-                       },
-                       [&](geo::latlng const& pos) {
-                         std::cout << tag << " " << pos.lat_ << "," << pos.lng_;
-                       }},
+        std::visit(utl::overloaded{[&](location_idx_t const l) {
+                                     std::cout << tag << " location "
+                                               << tt.locations_.ids_[l].view();
+                                   },
+                                   [&](geo::latlng const& pos) {
+                                     std::cout << tag << " " << pos.lat_ << ","
+                                               << pos.lng_;
+                                   }},
                    v);
       };
       auto ss2 = std::stringstream{dump};
@@ -748,12 +788,13 @@ int main(int argc, char* argv[]) {
         std::cout << "QDUMP #" << i << " ";
         print_pos("from", fwd_qs[i].start_);
         print_pos("  to", fwd_qs[i].dest_);
-        std::cout << "  start=" << std::visit(
-            utl::overloaded{[](interval<unixtime_t> const& iv) {
-                              return iv.from_;
-                            },
-                            [](unixtime_t const t) { return t; }},
-            fwd_qs[i].q_.start_time_)
+        std::cout << "  start="
+                  << std::visit(
+                         utl::overloaded{[](interval<unixtime_t> const& iv) {
+                                           return iv.from_;
+                                         },
+                                         [](unixtime_t const t) { return t; }},
+                         fwd_qs[i].q_.start_time_)
                   << "\n";
       }
       return 0;
@@ -779,7 +820,12 @@ int main(int argc, char* argv[]) {
         // "pong" is the pong strategy on the plain raptor state; the other
         // tokens select the algorithm/state type of a range search
         auto const use_pong = algo == "pong";
-        auto const algo_part = use_pong ? std::string{"range"} : algo;
+        auto const use_bmrap = algo == "bmrap";
+        auto const use_restricted = algo == "mcraptor-restricted";
+        auto const algo_part =
+            use_pong || use_bmrap
+                ? std::string{"range"}
+                : (use_restricted ? std::string{"mcraptor-restricted"} : algo);
         auto const label = mode + "-" + dir_str + "-" + algo;
 
         // dispatch to the right search-state type; pong only exists for
@@ -790,6 +836,12 @@ int main(int argc, char* argv[]) {
               qs, label + "-cpu", threads_v,
               [&](cpu_ws_t<RS>& w, routing::query q) {
                 if constexpr (std::is_same_v<RS, routing::raptor_state>) {
+                  if (use_bmrap) {
+                    return *routing::bmrap_profile_search<
+                                routing::arr_non_transit_criteria>(
+                                tt, nullptr, w.ss_, w.rs_, std::move(q), dir)
+                                .journeys_;
+                  }
                   auto const r =
                       use_pong
                           ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
@@ -797,6 +849,14 @@ int main(int argc, char* argv[]) {
                           : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
                                                    std::move(q), dir);
                   return *r.journeys_;
+                } else if constexpr (std::is_same_v<
+                                         RS,
+                                         routing::mcraptor_non_transit_state>) {
+                  return dir == direction::kForward
+                             ? restricted_range_search<direction::kForward>(
+                                   tt, w.ss_, w.rs_, std::move(q))
+                             : restricted_range_search<direction::kBackward>(
+                                   tt, w.ss_, w.rs_, std::move(q));
                 } else {
                   utl::verify(!use_pong, "pong only supports raptor_state");
                   return *routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
@@ -810,7 +870,14 @@ int main(int argc, char* argv[]) {
           return run_cell<gpu_ws_t<RS>>(
               qs, label + "-gpu", gpu_states_v,
               [&](gpu_ws_t<RS>& w, routing::query q) {
-                if constexpr (std::is_same_v<RS, routing::gpu::gpu_raptor_state>) {
+                if constexpr (std::is_same_v<RS,
+                                             routing::gpu::gpu_raptor_state>) {
+                  if (use_bmrap) {
+                    return *routing::bmrap_profile_search<
+                                routing::arr_non_transit_criteria>(
+                                tt, nullptr, w.ss_, *w.rs_, std::move(q), dir)
+                                .journeys_;
+                  }
                   auto const r =
                       use_pong
                           ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
@@ -818,6 +885,14 @@ int main(int argc, char* argv[]) {
                           : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
                                                    std::move(q), dir);
                   return *r.journeys_;
+                } else if constexpr (
+                    std::is_same_v<
+                        RS, routing::gpu::gpu_mcraptor_non_transit_state>) {
+                  return dir == direction::kForward
+                             ? restricted_range_search<direction::kForward>(
+                                   tt, w.ss_, *w.rs_, std::move(q))
+                             : restricted_range_search<direction::kBackward>(
+                                   tt, w.ss_, *w.rs_, std::move(q));
                 } else {
                   utl::verify(!use_pong, "pong only supports gpu_raptor_state");
                   return *routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
@@ -833,11 +908,16 @@ int main(int argc, char* argv[]) {
           if (run_cpu) {
             cells.push_back(
                 algo_part == "mcraptor"
-                    ? run_cpu_cell.template operator()<routing::mcraptor_state>()
+                    ? run_cpu_cell
+                          .template operator()<routing::mcraptor_state>()
+                : algo_part == "mcraptor-restricted"
+                    ? run_cpu_cell.template
+                      operator()<routing::mcraptor_non_transit_state>()
                 : algo_part == "mcraptor-cost"
                     ? run_cpu_cell
                           .template operator()<routing::mcraptor_cost_state>()
-                    : run_cpu_cell.template operator()<routing::raptor_state>());
+                    : run_cpu_cell
+                          .template operator()<routing::raptor_state>());
             ++qa_n_cpu_cells;
             if (vm.count("qa_path")) {
               qa_cell = cells.back();
@@ -848,13 +928,16 @@ int main(int argc, char* argv[]) {
           if (run_gpu) {
             cells.push_back(
                 algo_part == "mcraptor"
-                    ? run_gpu_cell
-                          .template operator()<routing::gpu::gpu_mcraptor_state>()
+                    ? run_gpu_cell.template
+                      operator()<routing::gpu::gpu_mcraptor_state>()
+                : algo_part == "mcraptor-restricted"
+                    ? run_gpu_cell.template
+                      operator()<routing::gpu::gpu_mcraptor_non_transit_state>()
                 : algo_part == "mcraptor-cost"
-                    ? run_gpu_cell.template operator()<
-                          routing::gpu::gpu_mcraptor_cost_state>()
-                    : run_gpu_cell
-                          .template operator()<routing::gpu::gpu_raptor_state>());
+                    ? run_gpu_cell.template
+                      operator()<routing::gpu::gpu_mcraptor_cost_state>()
+                    : run_gpu_cell.template
+                      operator()<routing::gpu::gpu_raptor_state>());
           }
 #endif
         } catch (std::exception const& e) {

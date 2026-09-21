@@ -53,6 +53,11 @@ template <direction SearchDir, via_offset_t Vias, bool Rt>
 struct algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_cost_state> {
   using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::cost>;
 };
+
+template <direction SearchDir, via_offset_t Vias, bool Rt>
+struct algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_non_transit_state> {
+  using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::non_transit>;
+};
 #endif
 
 template <direction SearchDir, via_offset_t Vias, typename AlgoState>
@@ -207,6 +212,7 @@ NIGIRI_RAPTOR_SEARCH_INSTANTIATE(
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_raptor_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_cost_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_non_transit_state)
 #endif
 
 #undef NIGIRI_RAPTOR_SEARCH_INSTANTIATE

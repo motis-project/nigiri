@@ -88,11 +88,14 @@ jobs:
       # PLUS the usual cpu/gpu exactness for each cell -- every cell run
       # within one invocation is cross-checked against every other, so
       # cpu/gpu agreement per algo comes along for free.
+      # bmrap vs mcraptor-restricted: BM-RAPTOR must equal the range mcraptor
+      # cut down by the restricted-set definition (anchors = two-criteria
+      # range search), i.e. identical on the common scanned window.
       # --extend_interval_earlier false: pong only extends its window
       # forward; the range search must do the same for window symmetry.
       - name: Cross-validate Germany (pong vs range search x cpu/gpu)
         run: |
-          for pair in "pong range"; do
+          for pair in "pong range" "bmrap mcraptor-restricted"; do
             ./build/cuda/nigiri-benchmark -p tt.bin \
               --engines cpu gpu \
               --algo $pair \
