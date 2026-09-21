@@ -171,3 +171,36 @@ TEST(gtfs, ticketing_deep_links_file_missing_does_not_abort_load) {
   EXPECT_EQ(ticketing_link_idx_t::invalid(),
             tt.providers_[kDB].ticketing_link_);
 }
+
+// stop_times.txt ticketing_type=1 marks the stop: the per-location flags have
+// to be sized before they are written (used to write into an empty bitvec).
+TEST(gtfs, ticketing_type_unavailable_at_stop) {
+  constexpr auto const stop_times_with_type = std::string_view{
+      R"(trip_id,arrival_time,departure_time,stop_id,stop_sequence,ticketing_type
+TRAIN,08:00:00,08:00:00,S1,1,0
+TRAIN,08:10:00,08:10:00,S2,2,1
+BUS,10:00:00,10:00:00,S1,1,0
+BUS,10:10:00,10:10:00,S2,2,1
+)"};
+
+  using std::filesystem::path;
+  auto const files =
+      mem_dir{{{path{kAgencyFile}, std::string{agency}},
+               {path{kStopFile}, std::string{stops}},
+               {path{kCalenderFile}, std::string{calendar}},
+               {path{kRoutesFile}, std::string{routes}},
+               {path{kTripsFile}, std::string{trips}},
+               {path{kStopTimesFile}, std::string{stop_times_with_type}},
+               {path{kTicketingDeepLinksFile}, std::string{deep_links}}}};
+  ASSERT_TRUE(applicable(files));
+
+  auto tt = timetable{};
+  ASSERT_NO_THROW(load(tt, files));
+
+  auto const loc = [&](std::string_view const id) {
+    return tt.locations_.location_id_to_idx_.at(
+        location_id{.id_ = id, .src_ = source_idx_t{0U}});
+  };
+  EXPECT_FALSE(tt.locations_.ticketing_unavailable_.test(loc("S1")));
+  EXPECT_TRUE(tt.locations_.ticketing_unavailable_.test(loc("S2")));
+}

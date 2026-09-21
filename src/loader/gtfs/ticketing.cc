@@ -123,6 +123,8 @@ void load_ticketing(timetable& tt,
   }
 
   tt.trip_ticketing_identifier_.resize(tt.n_trips());
+  tt.trip_ticketing_unavailable_.resize(tt.n_trips());
+  tt.locations_.ticketing_unavailable_.resize(tt.n_locations());
 
   for (auto const& trip : trips.data_) {
     if (trip.ticketing_unavailable_) {
