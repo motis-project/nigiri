@@ -158,6 +158,19 @@ unixtime_t ut(std::uint64_t const s) {
       std::chrono::seconds{s})};
 }
 
+std::size_t alerts_for(rt_timetable const& rtt,
+                       timetable const& tt,
+                       trip_idx_t const t,
+                       transport const tr,
+                       unixtime_t const x) {
+  auto r = run{};
+  r.t_ = tr;
+  return rtt.alerts_
+      .get_alerts(tt, source_idx_t{0}, t, r, location_idx_t::invalid(), false,
+                  interval<unixtime_t>{x, x + 1_minutes})
+      .size();
+}
+
 }  // namespace
 
 TEST(rt, gtfs_rt_alert_agency) {
@@ -206,11 +219,7 @@ TEST(rt, gtfs_rt_alert_agency) {
 
   // The impact period gates the alert, whatever the selector was.
   auto const alerts_at = [&](unixtime_t const x) {
-    return rtt.alerts_
-        .get_alerts(tt, source_idx_t{0}, trip_idx_t{0},
-                    rt_transport_idx_t::invalid(), location_idx_t::invalid(),
-                    false, interval<unixtime_t>{x, x + 1_minutes})
-        .size();
+    return alerts_for(rtt, tt, trip_idx_t{0}, transport::invalid(), x);
   };
   EXPECT_EQ(1, alerts_at(ut(300)));
   EXPECT_EQ(0, alerts_at(ut(600)));
@@ -284,20 +293,17 @@ TEST(rt, gtfs_rt_alert_trip_without_start_date) {
   ASSERT_EQ(1, rtt.alerts_.trip_[t].size());
 
   auto const alerts_at = [&](unixtime_t const x) {
-    return rtt.alerts_.get_alerts(tt, source_idx_t{0}, t,
-                                  rt_transport_idx_t::invalid(),
-                                  location_idx_t::invalid(), false,
-                                  interval<unixtime_t>{x, x + 1_minutes});
+    return alerts_for(rtt, tt, t, transport::invalid(), x);
   };
 
   // 2023-08-11, two days after the feed day, inside the first period.
-  EXPECT_EQ(1, alerts_at(ut(1691730900)).size());
+  EXPECT_EQ(1, alerts_at(ut(1691730900)));
 
   // 2023-09-20, in the gap between the two periods.
-  EXPECT_EQ(0, alerts_at(ut(1695186900)).size());
+  EXPECT_EQ(0, alerts_at(ut(1695186900)));
 
   // 2023-09-26, inside the second period.
-  EXPECT_EQ(1, alerts_at(ut(1695705300)).size());
+  EXPECT_EQ(1, alerts_at(ut(1695705300)));
 
   // A second alert on the same trip, with a period that has no end: it must
   // not look like it was over in 1970.
@@ -313,5 +319,45 @@ TEST(rt, gtfs_rt_alert_trip_without_start_date) {
   EXPECT_EQ(unixtime_t::max(), rtt.alerts_.impact_period_[open_ended][0].to_);
 
   // 2023-09-20 is in the gap of the first alert, the open ended one applies.
-  EXPECT_EQ(1, alerts_at(ut(1695186900)).size());
+  EXPECT_EQ(1, alerts_at(ut(1695186900)));
+}
+
+TEST(rt, gtfs_rt_alert_trip_with_start_date) {
+  // Load static timetable.
+  timetable tt;
+  register_special_stations(tt);
+  auto const today = date::sys_days{2023_y / August / 9};
+  tt.date_range_ = {today, date::sys_days{2023_y / September / 1}};
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+
+  // Create empty RT timetable.
+  auto rtt = rt::create_rt_timetable(tt, today);
+  auto stats = statistics{.total_entities_ = 0, .feed_timestamp_ = {}};
+
+  // Alert on a trip_id with a start_date: it names one run of the trip.
+  auto a = transit_realtime::Alert{};
+  auto* td = a.add_informed_entity()->mutable_trip();
+  td->set_trip_id("3248651");
+  td->set_start_date("20230810");
+
+  handle_alert(today, tt, rtt, source_idx_t{0}, "tag", a, stats);
+
+  // Naming a run must not copy it into the realtime timetable.
+  auto const t = trip_idx_t{0};
+  EXPECT_EQ(0, rtt.alerts_.rt_transport_.size());
+  ASSERT_EQ(1, rtt.alerts_.trip_[t].size());
+
+  auto const run_on = [&](date::sys_days const d) {
+    auto x = transit_realtime::TripDescriptor{};
+    *x.mutable_trip_id() = "3248651";
+    return rt::gtfsrt_resolve_run(d, tt, nullptr, source_idx_t{0}, x).first.t_;
+  };
+  // The run of 2023-08-10 has the alert, the one of 2023-08-11 does not.
+  EXPECT_EQ(1,
+            alerts_for(rtt, tt, t, run_on(date::sys_days{2023_y / August / 10}),
+                       ut(1691658900)));
+  EXPECT_EQ(0,
+            alerts_for(rtt, tt, t, run_on(date::sys_days{2023_y / August / 11}),
+                       ut(1691745300)));
 }

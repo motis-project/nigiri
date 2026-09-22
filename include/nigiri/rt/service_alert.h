@@ -2,6 +2,7 @@
 
 #include "utl/helpers/algorithm.h"
 
+#include "nigiri/rt/run.h"
 #include "nigiri/string_store.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -83,6 +84,13 @@ struct alerts {
     location_idx_t l_;
     alert_idx_t alert_;
   };
+  struct by_trip {
+    location_idx_t l_;
+    alert_idx_t alert_;
+    // The run the descriptor named, if it named one: a start_date, or the
+    // frequency repetition selected by start_time. Invalid matches every run.
+    transport t_{transport::invalid()};
+  };
   using by_route = by_rt_transport;
   using by_route_type = by_rt_transport;
 
@@ -105,6 +113,9 @@ struct alerts {
   //         (addressing route/trip/agency)
   //     - from/to/intermediateStop:
   //         l != invalid => matches only concrete stop
+  // r parameter:
+  //   - the run being asked about: a selector that named a concrete run
+  //     only matches that one.
   // time parameter:
   //   - the time range the caller asks about: the stop event for a stop, the
   //     departure to arrival span for a leg. Alerts are only returned if
@@ -112,7 +123,7 @@ struct alerts {
   hash_set<alert_idx_t> get_alerts(timetable const& tt,
                                    source_idx_t const src,
                                    trip_idx_t const t,
-                                   rt_transport_idx_t const rt_t,
+                                   rt::run const& r,
                                    location_idx_t const l,
                                    bool const fuzzy_stop,
                                    interval<unixtime_t> const& time) const {
@@ -134,8 +145,8 @@ struct alerts {
 
     auto alerts = hash_set<alert_idx_t>{};
 
-    if (rt_t != rt_transport_idx_t::invalid()) {
-      for (auto const& a : rt_transport_[rt_t]) {
+    if (r.is_rt()) {
+      for (auto const& a : rt_transport_[r.rt_]) {
         if (matches_location(a.l_) && impacts(a.alert_, time)) {
           alerts.insert(a.alert_);
         }
@@ -143,7 +154,8 @@ struct alerts {
     }
 
     for (auto const& a : trip_[t]) {
-      if (matches_location(a.l_) && impacts(a.alert_, time)) {
+      if ((!a.t_.is_valid() || a.t_ == r.t_) && matches_location(a.l_) &&
+          impacts(a.alert_, time)) {
         alerts.insert(a.alert_);
       }
     }
@@ -178,7 +190,7 @@ struct alerts {
   }
 
   paged_vecvec<rt_transport_idx_t, by_rt_transport> rt_transport_;
-  paged_vecvec<trip_idx_t, by_rt_transport> trip_;
+  paged_vecvec<trip_idx_t, by_trip> trip_;
   vector_map<source_idx_t, paged_vecvec<route_id_idx_t, by_route_id>> route_id_;
   paged_vecvec<provider_idx_t, by_agency> agency_;
   vector_map<source_idx_t, paged_vecvec<route_type_t, by_route_type>>

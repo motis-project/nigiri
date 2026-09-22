@@ -112,37 +112,40 @@ void handle_alert(date::sys_days const today,
 
     if (x.has_trip()) {
       auto const& td = x.trip();
+      auto found = false;
 
-      // A trip_id without start_date/start_time does not select a single day:
-      // it selects the trip itself, on all of its service days. The alert
-      // period says when the alert applies. Attach it to the static trip,
-      // get_alerts() checks the period against the time it is given.
+      // Alerts do not need a real-time transport: they are not read by the
+      // routing
       if (td.has_trip_id() && !td.has_start_date() && !td.has_start_time()) {
-        auto found = false;
         for_each_trip(tt, src, td.trip_id(), [&](trip_idx_t const t) {
           alerts.trip_[t].push_back({stop, alert_idx});
           found = true;
         });
-        if (!found) {
-          ++stats.alert_trip_not_found_;
-          log(log_lvl::debug, "rt.gtfs.resolve.alert",
-              "could not resolve (tag={}) {}", tag,
-              remove_nl(td.DebugString()));
-          continue;
-        }
       } else {
-        auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, td);
-        if (!r.valid()) {
-          ++stats.alert_trip_not_found_;
-          log(log_lvl::debug, "rt.gtfs.resolve.alert",
-              "could not resolve (tag={}) {}", tag,
-              remove_nl(td.DebugString()));
-          continue;
+        resolve_static(today, tt, src, td,
+                       [&](run const& r, trip_idx_t const t) {
+                         alerts.trip_[t].push_back({stop, alert_idx, r.t_});
+                         found = true;
+                         return utl::continue_t::kContinue;
+                       });
+      }
+
+      // Additional trips exist only in the real-time timetable, so they are
+      // the one case that still refers to a real-time transport.
+      if (!found) {
+        auto r = run{};
+        resolve_rt(rtt, r, td.trip_id(), src);
+        if (r.is_rt()) {
+          alerts.rt_transport_[r.rt_].push_back({stop, alert_idx});
+          found = true;
         }
-        if (!r.is_rt()) {
-          r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
-        }
-        alerts.rt_transport_[r.rt_].push_back({stop, alert_idx});
+      }
+
+      if (!found) {
+        ++stats.alert_trip_not_found_;
+        log(log_lvl::debug, "rt.gtfs.resolve.alert",
+            "could not resolve (tag={}) {}", tag, remove_nl(td.DebugString()));
+        continue;
       }
     } else if (x.has_route_id()) {  // 1) by route_id / direction_id -> stop_id
       if (x.has_direction_id() && !x.has_route_id()) {
