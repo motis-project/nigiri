@@ -183,9 +183,8 @@ void handle_alert(date::sys_days const today,
       }
 
       auto& by_route_type = alerts.route_type_[src];
-      if (by_route_type.size() <= to_idx(route_type)) {
-        by_route_type.resize(to_idx(route_type) + 1U);
-      }
+      by_route_type.resize(std::max<route_type_t::value_t>(
+          by_route_type.size(), to_idx(route_type) + 1U));
       by_route_type[route_type].push_back({stop, alert_idx});
     } else if (x.has_stop_id()) {  // 4) by stop_id
       rtt.alerts_.location_.at(stop).push_back(alert_idx);

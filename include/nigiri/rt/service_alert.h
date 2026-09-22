@@ -108,13 +108,8 @@ struct alerts {
   //         (addressing route/trip/agency)
   //     - from/to/intermediateStop:
   //         l != invalid => matches only concrete stop
-  // r parameter:
-  //   - the run being asked about: a selector that named a concrete run
-  //     only matches that one.
   // time parameter:
-  //   - the time range the caller asks about: the stop event for a stop, the
-  //     departure to arrival span for a leg. Alerts are only returned if
-  //     their impact period covers it, whichever selector matched them.
+  //   - the stop event for a stop, or the departure to arrival span for a leg.
   hash_set<alert_idx_t> get_alerts(timetable const& tt,
                                    source_idx_t const src,
                                    trip_idx_t const t,
