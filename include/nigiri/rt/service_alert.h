@@ -87,18 +87,13 @@ struct alerts {
   struct by_trip {
     location_idx_t l_;
     alert_idx_t alert_;
-    // The run the descriptor named, if it named one: a start_date, or the
-    // frequency repetition selected by start_time. Invalid matches every run.
     transport t_{transport::invalid()};
   };
   using by_route = by_rt_transport;
   using by_route_type = by_rt_transport;
 
-  // No entity selector carries time information, whatever it addresses: the
-  // alert's impact period is what says when the service is affected. An alert
-  // with no period at all applies whenever it is in the feed.
   bool impacts(alert_idx_t const a, interval<unixtime_t> const& time) const {
-    auto const& periods = impact_period_[a];
+    auto const periods = impact_period_[a];
     return periods.empty() ||
            utl::any_of(periods, [&](auto&& p) { return p.overlaps(time); });
   }
@@ -173,6 +168,15 @@ struct alerts {
            a.route_type_ == route_type) &&
           matches_location(a.l_) && impacts(a.alert_, time)) {
         alerts.insert(a.alert_);
+      }
+    }
+
+    auto const& by_route_type = route_type_[src];
+    if (to_idx(route_type) < by_route_type.size()) {
+      for (auto const& a : by_route_type[route_type]) {
+        if (matches_location(a.l_) && impacts(a.alert_, time)) {
+          alerts.insert(a.alert_);
+        }
       }
     }
 

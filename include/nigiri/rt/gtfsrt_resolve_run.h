@@ -63,7 +63,6 @@ void resolve_trip(date::sys_days const today,
   }
 }
 
-// Calls `fn` for each static trip with the given `trip_id` (day independent).
 template <typename Fn>
 void for_each_trip(timetable const& tt,
                    source_idx_t const src,

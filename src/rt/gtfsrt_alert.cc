@@ -17,8 +17,6 @@ unixtime_t sec_to_unixtime(std::uint64_t const s) {
       std::chrono::seconds{s})};
 }
 
-// A TimeRange without start starts at minus infinity, one without end never
-// ends. Mapping them to the epoch would make the range look already over.
 interval<unixtime_t> to_interval(transit_realtime::TimeRange const& t) {
   return {t.has_start() ? sec_to_unixtime(t.start()) : unixtime_t::min(),
           t.has_end() ? sec_to_unixtime(t.end()) : unixtime_t::max()};
@@ -121,8 +119,6 @@ void handle_alert(date::sys_days const today,
       auto const& td = x.trip();
       auto found = false;
 
-      // Alerts do not need a real-time transport: they are not read by the
-      // routing
       if (td.has_trip_id() && !td.has_start_date() && !td.has_start_time()) {
         for_each_trip(tt, src, td.trip_id(), [&](trip_idx_t const t) {
           alerts.trip_[t].push_back({stop, alert_idx});
@@ -137,8 +133,6 @@ void handle_alert(date::sys_days const today,
                        });
       }
 
-      // Additional trips exist only in the real-time timetable, so they are
-      // the one case that still refers to a real-time transport.
       if (!found) {
         auto r = run{};
         resolve_rt(rtt, r, td.trip_id(), src);
@@ -187,8 +181,12 @@ void handle_alert(date::sys_days const today,
             "tag={}, route_type={} invalid", tag, x.route_type());
         continue;
       }
-      alerts.route_type_[src].resize(to_idx(route_type) + 1U);
-      alerts.route_type_[src][route_type].push_back({stop, alert_idx});
+
+      auto& by_route_type = alerts.route_type_[src];
+      if (by_route_type.size() <= to_idx(route_type)) {
+        by_route_type.resize(to_idx(route_type) + 1U);
+      }
+      by_route_type[route_type].push_back({stop, alert_idx});
     } else if (x.has_stop_id()) {  // 4) by stop_id
       rtt.alerts_.location_.at(stop).push_back(alert_idx);
     } else {

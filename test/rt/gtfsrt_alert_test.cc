@@ -162,11 +162,12 @@ std::size_t alerts_for(rt_timetable const& rtt,
                        timetable const& tt,
                        trip_idx_t const t,
                        transport const tr,
-                       unixtime_t const x) {
+                       unixtime_t const x,
+                       location_idx_t const l = location_idx_t::invalid()) {
   auto r = run{};
   r.t_ = tr;
   return rtt.alerts_
-      .get_alerts(tt, source_idx_t{0}, t, r, location_idx_t::invalid(), false,
+      .get_alerts(tt, source_idx_t{0}, t, r, l, false,
                   interval<unixtime_t>{x, x + 1_minutes})
       .size();
 }
@@ -360,4 +361,55 @@ TEST(rt, gtfs_rt_alert_trip_with_start_date) {
   EXPECT_EQ(0,
             alerts_for(rtt, tt, t, run_on(date::sys_days{2023_y / August / 11}),
                        ut(1691745300)));
+}
+
+TEST(rt, gtfs_rt_alert_route_type) {
+  // Load static timetable.
+  timetable tt;
+  register_special_stations(tt);
+  auto const today = date::sys_days{2023_y / August / 9};
+  tt.date_range_ = {today, date::sys_days{2023_y / August / 12}};
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+
+  // Create empty RT timetable.
+  auto rtt = rt::create_rt_timetable(tt, today);
+  auto stats = statistics{.total_entities_ = 0, .feed_timestamp_ = {}};
+
+  auto const src = source_idx_t{0};
+  auto const handle = [&](transit_realtime::Alert const& a) {
+    handle_alert(today, tt, rtt, src, "tag", a, stats);
+  };
+
+  // The route of the test feed has route_type 0.
+  auto matching = transit_realtime::Alert{};
+  matching.add_informed_entity()->set_route_type(0);
+  handle(matching);
+
+  // Another route type: the trip must not pick this one up.
+  auto other = transit_realtime::Alert{};
+  other.add_informed_entity()->set_route_type(3);
+  handle(other);
+
+  // Same route type, narrowed to one stop.
+  auto at_stop = transit_realtime::Alert{};
+  auto* sel = at_stop.add_informed_entity();
+  sel->set_route_type(0);
+  *sel->mutable_stop_id() = "2351";
+  handle(at_stop);
+
+  ASSERT_EQ(2, rtt.alerts_.route_type_[src][route_type_t{0}].size());
+  ASSERT_EQ(1, rtt.alerts_.route_type_[src][route_type_t{3}].size());
+
+  auto const t = trip_idx_t{0};
+  auto const when = ut(1691658900);
+  auto const selected = tt.find(location_id{"2351", src}).value();
+  auto const elsewhere = tt.find(location_id{"1033", src}).value();
+
+  // For the leg: only the alert that named no stop.
+  EXPECT_EQ(1, alerts_for(rtt, tt, t, transport::invalid(), when));
+
+  // For a stop: only the alert that named it.
+  EXPECT_EQ(1, alerts_for(rtt, tt, t, transport::invalid(), when, selected));
+  EXPECT_EQ(0, alerts_for(rtt, tt, t, transport::invalid(), when, elsewhere));
 }
