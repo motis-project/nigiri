@@ -107,6 +107,13 @@ void handle_alert(date::sys_days const today,
       continue;
     }
 
+    if (x.has_direction_id() && !x.has_route_id()) {
+      ++stats.alert_direction_without_route_;
+      log(log_lvl::debug, "nigiri.gtfs.resolve.alert.route_id",
+          "tag={}, direction without route: {}", tag, x.DebugString());
+      continue;
+    }
+
     auto const route_type = x.has_route_type() ? route_type_t{x.route_type()}
                                                : route_type_t::invalid();
 
@@ -148,13 +155,6 @@ void handle_alert(date::sys_days const today,
         continue;
       }
     } else if (x.has_route_id()) {  // 1) by route_id / direction_id -> stop_id
-      if (x.has_direction_id() && !x.has_route_id()) {
-        ++stats.alert_direction_without_route_;
-        log(log_lvl::debug, "nigiri.gtfs.resolve.alert.route_id",
-            "tag={}, direction without route: {}", tag, x.DebugString());
-        continue;
-      }
-
       auto const route_id = x.has_route_id()
                                 ? tt.route_ids_[src].ids_.find(x.route_id())
                                 : std::nullopt;
