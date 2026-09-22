@@ -15,6 +15,7 @@
 #include "utl/helpers/algorithm.h"
 #include "utl/zip.h"
 
+#include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/link_nearby_stations.h"
 #include "nigiri/loader/merge_duplicates.h"
 #include "nigiri/loader/transfer_rules.h"
@@ -468,10 +469,16 @@ void write_footpaths(timetable& tt, bool const adjust_footpaths) {
 // exact value its own rule overrides. Nothing bars it from a to list, because
 // a transfer costs what the rule for that pair says, and its own rule speaks
 // only for the pair with itself.
+//
+// is_rebuild: the timetable is finished and only its walks changed (see
+// rebuild_default_profile). The rule-derived hubs [0, n_rule_hubs_) depend on
+// the rules and change times alone, so they are kept as they are and only the
+// walk hubs behind them are replaced.
 void build_hubs(timetable& tt,
                 vecvec<hub_idx_t, location_idx_t> const& walk_hub_in,
                 vecvec<hub_idx_t, location_idx_t> const& walk_hub_out,
-                vector_map<hub_idx_t, duration_t> const& walk_hub_time) {
+                vector_map<hub_idx_t, duration_t> const& walk_hub_time,
+                bool const is_rebuild = false) {
   auto const n = tt.n_locations();
 
   // Which members a slower transfer starts at / leads to. Taken from the
@@ -522,11 +529,15 @@ void build_hubs(timetable& tt,
   };
 
   // hubs the loader already emitted for constant-valued rule cross products
-  for (auto const [hub_ingress, hub_egress, hub_time] :
-       utl::zip(tt.locations_.hub_in_[kDefaultProfile],
-                tt.locations_.hub_out_[kDefaultProfile],
-                tt.locations_.hub_time_[kDefaultProfile])) {
-    add_hub(hub_ingress, hub_egress, hub_time);
+  // - on a rebuild every rule-derived one, the per-stop hubs below included
+  auto const n_kept =
+      is_rebuild ? hub_idx_t{tt.locations_.n_rule_hubs_}
+                 : hub_idx_t{tt.locations_.hub_in_[kDefaultProfile].size()};
+  for (auto h = hub_idx_t{0U}; h != n_kept; ++h) {
+    auto const i = tt.locations_.hub_in_[kDefaultProfile][h];
+    auto const o = tt.locations_.hub_out_[kDefaultProfile][h];
+    add_hub({i.data(), i.size()}, {o.data(), o.size()},
+            tt.locations_.hub_time_[kDefaultProfile][h]);
   }
 
   auto has_virts = std::vector<bool>(n, false);
@@ -545,7 +556,7 @@ void build_hubs(timetable& tt,
             d);
   };
   for (auto base = location_idx_t{0U}; base != location_idx_t{n}; ++base) {
-    if (!has_virts[to_idx(base)]) {
+    if (is_rebuild || !has_virts[to_idx(base)]) {
       continue;
     }
 
@@ -589,6 +600,8 @@ void build_hubs(timetable& tt,
   tt.locations_.hub_in_[kDefaultProfile] = std::move(in);
   tt.locations_.hub_out_[kDefaultProfile] = std::move(out);
   tt.locations_.hub_time_[kDefaultProfile] = std::move(time);
+  tt.locations_.hub_in_by_loc_[kDefaultProfile].clear();
+  tt.locations_.hub_out_by_loc_[kDefaultProfile].clear();
   for (auto l = location_idx_t{0U}; l != location_idx_t{n}; ++l) {
     tt.locations_.hub_in_by_loc_[kDefaultProfile].emplace_back(in_by_loc[l]);
     tt.locations_.hub_out_by_loc_[kDefaultProfile].emplace_back(out_by_loc[l]);
@@ -654,6 +667,44 @@ void prune_hub_covered_footpaths(timetable& tt) {
 
   log(log_lvl::info, "loader.footpath",
       "hub-covered footpaths: {} dropped, {} kept", n_pruned, n_kept);
+}
+
+void rebuild_default_profile(
+    timetable& tt,
+    vector_map<location_idx_t, std::vector<footpath>> const& walks) {
+  constexpr auto const p = kDefaultProfile;
+  auto const no_hubs = vecvec<hub_idx_t, location_idx_t>{};
+
+  // The old walk hubs go first: apply_transfer_rules drops every walk a hub
+  // speaks for, which may only be said of the rule-derived ones.
+  build_hubs(tt, no_hubs, no_hubs, {}, true);
+
+  auto& pending = tt.locations_.preprocessing_footpaths_out_;
+  pending.clear();
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    auto bucket = pending.emplace_back();
+    if (to_idx(l) < walks.size()) {
+      for (auto const fp : walks[l]) {
+        bucket.push_back(fp);
+      }
+    }
+  }
+
+  // the same steps build_footpaths takes, without the walk speed adjustment:
+  // these durations are not estimates
+  apply_transfer_rules(tt);
+  auto walk_hub_in = vecvec<hub_idx_t, location_idx_t>{};
+  auto walk_hub_out = vecvec<hub_idx_t, location_idx_t>{};
+  auto walk_hub_time = vector_map<hub_idx_t, duration_t>{};
+  build_walk_hubs(tt, false, walk_hub_in, walk_hub_out, walk_hub_time);
+  tt.locations_.footpaths_out_[p].clear();
+  tt.locations_.footpaths_in_[p].clear();
+  write_footpaths(tt, false);
+  build_hubs(tt, walk_hub_in, walk_hub_out, walk_hub_time, true);
+  prune_hub_covered_footpaths(tt);
+
+  build_lb_graph<direction::kForward>(tt, p);
+  build_lb_graph<direction::kBackward>(tt, p);
 }
 
 // Track locations (HRDF) have no position of their own and are not listed as

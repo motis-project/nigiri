@@ -17,6 +17,17 @@ struct finalize_options {
 
 void build_footpaths(timetable& tt, finalize_options);
 
+// Replaces the walks of the default profile of a finished timetable with
+// `walks` - e.g. those a street router found: the beelines the loader wrote
+// exist only because nigiri cannot route. Everything transfers.txt states stays
+// authoritative (a rule fixes the transfer time, shorter or longer than the
+// walk; a ban removes the walk), the rule-derived hubs are kept, and the walk
+// hubs, which hand a stop's walks to its virtual locations, the footpath
+// layer and the lower bound graphs are rebuilt. `walks` holds stops only: a
+// virtual location walks through its stop.
+void rebuild_default_profile(
+    timetable&, vector_map<location_idx_t, std::vector<footpath>> const& walks);
+
 // Drop the default profile's footpaths that a hub already hands out at the
 // same weight or better.
 void prune_hub_covered_footpaths(timetable&);

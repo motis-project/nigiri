@@ -8,6 +8,7 @@
 
 #include "gtfsrt/gtfs-realtime.pb.h"
 
+#include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
@@ -1001,4 +1002,34 @@ TEST(rt_transfer_rules, guard_delay_at_plain_stop) {
   auto rtt = rt::create_rt_timetable(tt, kDay);
   update(tt, rtt, {{"GL", {{.seq_ = 2U, .stop_id_ = "B", .arr_delay_ = 5}}}});
   EXPECT_EQ(t("2019-05-01 11:35 Europe/Berlin"), arrival(tt, rtt, kAtoB));
+}
+
+// The walks of the default profile can be replaced after the import (street
+// routing, loader::rebuild_default_profile): a trip that moves to another
+// platform walks like that platform does then. F moves to S4, where a rule
+// names it, so it is routed at a real-time location.
+TEST(rt_transfer_rules, track_change_inherits_rebuilt_walks) {
+  auto const moves = std::vector<trip_update>{
+      {"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S4"}}}};
+  auto tt = load("S4,S4,2,120,,,,\nS4,S4,2,900,,,F,HL");
+  {
+    auto rtt = rt::create_rt_timetable(tt, kDay);
+    update(tt, rtt, moves);
+    EXPECT_EQ(1U, rtt.rt_virts_.size());
+    EXPECT_EQ(kGFromF, arrival(tt, rtt, kAtoB));  // beeline S4 -> S2: 2 min
+  }
+
+  auto const s2 = tt.locations_.location_id_to_idx_.at({"S2", source_idx_t{0}});
+  auto const s4 = tt.locations_.location_id_to_idx_.at({"S4", source_idx_t{0}});
+  auto walks = vector_map<location_idx_t, std::vector<footpath>>{};
+  walks.resize(tt.n_locations());
+  walks[s4].emplace_back(s2, duration_t{12});
+  walks[s2].emplace_back(s4, duration_t{12});
+  loader::rebuild_default_profile(tt, walks);
+  {
+    auto rtt = rt::create_rt_timetable(tt, kDay);
+    update(tt, rtt, moves);
+    EXPECT_EQ(1U, rtt.rt_virts_.size());
+    EXPECT_EQ(kGLFromF, arrival(tt, rtt, kAtoB));
+  }
 }
