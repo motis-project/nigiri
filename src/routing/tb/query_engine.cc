@@ -241,7 +241,7 @@ void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
 
       auto const et = get_earliest_transport<direction::kForward>(
           tt_, tt_, 0U, r, i, day, mam, stp.location_idx(),
-          [](day_idx_t, std::int16_t) { return false; });
+          [](day_idx_t, std::int16_t) { return false; }, kTBNDaysToIterate);
       if (!et.is_valid()) {
         continue;
       }

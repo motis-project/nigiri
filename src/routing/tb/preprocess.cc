@@ -11,7 +11,7 @@
 
 #include "nigiri/common/day_list.h"
 #include "nigiri/common/linear_lower_bound.h"
-#include "nigiri/constants.h"
+#include "nigiri/routing/tb/settings.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::routing::tb {
@@ -316,7 +316,7 @@ void preprocess_transport(timetable const& tt,
                                                   earliest_dep->mam_);
 
       // check if max transfer time is exceeded
-      if (dep - t_arr_mam > kMaxTransferTime) {
+      if (dep - t_arr_mam > kTBMaxTransferTime.count()) {
         break;
       }
 
@@ -349,8 +349,13 @@ void preprocess_transport(timetable const& tt,
       auto common_traffic_days =
           remaining_traffic_days & u_shifted_traffic_days;
 
+      // transfer::day_offset_ only holds [-8, 8)
+      auto const day_offset_fits =
+          t_arr_day_offset + transfer_day_offset - u_dep_day_offset >= -8 &&
+          t_arr_day_offset + transfer_day_offset - u_dep_day_offset < 8;
+
       // check for match
-      if (common_traffic_days.any()) {
+      if (day_offset_fits && common_traffic_days.any()) {
         // remove days that are covered by this transport from omega
         remaining_traffic_days &= ~common_traffic_days;
 
