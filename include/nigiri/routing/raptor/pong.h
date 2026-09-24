@@ -8,6 +8,8 @@
 
 namespace nigiri::routing {
 
+static constexpr auto kMinLookAhead = 1_days;
+
 std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     timetable const&,
     rt_timetable const*,

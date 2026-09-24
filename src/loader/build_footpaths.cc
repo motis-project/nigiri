@@ -3,6 +3,7 @@
 #include <mutex>
 #include <optional>
 #include <stack>
+#include <tuple>
 
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
@@ -421,14 +422,45 @@ void write_footpaths(timetable& tt) {
 
   profile_idx_t const prf_idx{0};
 
+  // shortest duration first, the order sort_footpaths() left the preprocessing
+  // layers in; the target breaks ties so the built timetable is reproducible
+  auto const by_duration = [](footpath const a, footpath const b) {
+    return std::tie(a.duration_, a.target_) < std::tie(b.duration_, b.target_);
+  };
+
+  auto fps = std::vector<footpath>{};
+  auto fps_in = mutable_fws_multimap<location_idx_t, footpath>{};
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    tt.locations_.footpaths_out_[prf_idx].emplace_back(
-        tt.locations_.preprocessing_footpaths_out_[i]);
+    fps.clear();
+    for (auto const fp : tt.locations_.preprocessing_footpaths_out_[i]) {
+      fps.push_back(fp);
+    }
+    // one edge per target, at the shortest duration offered for it
+    utl::erase_duplicates(
+        fps,
+        [](footpath const a, footpath const b) {
+          return std::tie(a.target_, a.duration_) <
+                 std::tie(b.target_, b.duration_);
+        },
+        [](footpath const a, footpath const b) {
+          return a.target_ == b.target_;
+        });  // sorts by target; keeps the shortest duration per target
+    utl::sort(fps, by_duration);
+    tt.locations_.footpaths_out_[prf_idx].emplace_back(fps);
+    // the in layer is the transpose of out - every writer of the
+    // preprocessing layers fills both directions as a mirrored pair
+    for (auto const fp : fps) {
+      fps_in[fp.target()].emplace_back(i, fp.duration());
+    }
   }
 
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    tt.locations_.footpaths_in_[prf_idx].emplace_back(
-        tt.locations_.preprocessing_footpaths_in_[i]);
+    fps.clear();
+    for (auto const fp : fps_in[i]) {
+      fps.push_back(fp);
+    }
+    utl::sort(fps, by_duration);
+    tt.locations_.footpaths_in_[prf_idx].emplace_back(fps);
   }
 
   tt.locations_.preprocessing_footpaths_in_.clear();
@@ -438,24 +470,13 @@ void write_footpaths(timetable& tt) {
 void build_footpaths(timetable& tt, finalize_options const opt) {
   add_links_to_and_between_children(tt);
   link_nearby_stations(tt);
-  if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_) {
-    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-      if (tt.locations_.src_[l] == source_idx_t{source_idx_t::invalid()}) {
-        continue;
-      }
-      for (auto e : tt.locations_.equivalences_[l]) {
-        if (tt.locations_.src_[e] == source_idx_t{source_idx_t::invalid()} ||
-            (!opt.merge_dupes_intra_src_ &&
-             tt.locations_.src_[l] == tt.locations_.src_[e]) ||
-            (!opt.merge_dupes_inter_src_ &&
-             tt.locations_.src_[l] != tt.locations_.src_[e])) {
-          continue;
-        }
 
-        find_duplicates(tt, l, e);
-      }
-    }
+  if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_) {
+    merge_duplicates(tt, opt.merge_threshold_, opt.merge_dupes_intra_src_,
+                     opt.merge_dupes_inter_src_, opt.merge_stats_dir_,
+                     opt.src_tags_);
   }
+
   connect_components(tt, opt.max_footpath_length_, opt.adjust_footpaths_);
   sort_footpaths(tt);
   write_footpaths(tt);

@@ -16,6 +16,7 @@
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/special_stations.h"
 
 #include "../loader/hrd/hrd_timetable.h"
 #include "../raptor_search.h"
@@ -92,6 +93,7 @@ TEST(rt, rt_block_id_test) {
   auto tt = timetable{};
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
+  register_special_stations(tt);
   load_timetable({}, source_idx_t{0}, mem_dir::read(test_files), tt);
   finalize(tt);
   auto rtt = rt::create_rt_timetable(tt, May / 1 / 2019);

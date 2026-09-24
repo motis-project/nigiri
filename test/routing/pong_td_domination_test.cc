@@ -4,10 +4,11 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 
-#include "nigiri/routing/raptor/pong.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
+
+#include "../raptor_search.h"
 
 using namespace date;
 using namespace nigiri;
@@ -80,21 +81,18 @@ TEST(routing, pong_td_egress_dominated_label) {
       .td_start_ = {{A,
                      {{.valid_from_ = monday + 9h + 50min,
                        .duration_ = 5min,
-                       .transport_mode_id_ = 5},
+                       .transport_mode_payload_ = 5},
                       {.valid_from_ = monday + 10h,
                        .duration_ = footpath::kMaxDuration,
-                       .transport_mode_id_ = 5}}}},
+                       .transport_mode_payload_ = 5}}}},
       .min_connection_count_ = 1U};
 
-  auto search_state = routing::search_state{};
-  auto raptor_state = routing::raptor_state{};
-
-  auto result = routing::pong_search(tt, nullptr, search_state, raptor_state,
-                                     std::move(q), direction::kForward);
+  auto const results =
+      test::raptor_search(tt, nullptr, std::move(q), direction::kForward);
 
   auto found = false;
   auto got = std::string{};
-  for (auto const& j : *result.journeys_) {
+  for (auto const& j : results) {
     found |= j.start_time_ == monday + 9h + 59min &&
              j.dest_time_ == sys_days{2024_y / June / 21} + 11h + 30min &&
              j.transfers_ == 1U;

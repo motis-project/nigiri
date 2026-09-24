@@ -13,7 +13,7 @@ static_assert(duration_t{kMaxFpMinutes} == footpath::kMaxDuration);
 
 struct d_td_result {
   duration_t duration_{kMaxFpMinutes};
-  std::uint32_t idx_{0U};  // winning entry index (for transport_mode_id_)
+  std::uint32_t idx_{0U};  // winning entry index (for its transport mode)
   bool valid_{false};
 };
 

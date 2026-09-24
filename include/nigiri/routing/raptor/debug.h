@@ -160,11 +160,11 @@
 #define trace_rc_fp_intermodal_dest_mismatch                            \
   trace_reconstruct(                                                    \
       "  BAD intermodal+footpath dest offset: {}@{} --{}--> "           \
-      "{}@{} --{}--> END@{} (type={})\n",                               \
+      "{}@{} --{}--> END@{} (mode={})\n",                               \
       loc{tt, fp.target()}, round_times[k][to_idx(fp.target())],        \
       adjusted_transfer_time(q.transfer_time_settings_, fp.duration()), \
       loc{tt, eq}, round_times[k][to_idx(eq)], dest_offset.duration_,   \
-      curr_time, dest_offset.type())
+      curr_time, dest_offset.mode())
 
 #define trace_rc_fp_intermodal_dest_match                        \
   trace_reconstruct(                                             \
