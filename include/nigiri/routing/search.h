@@ -400,7 +400,7 @@ private:
 
   void add_start_labels(start_time_t const& start_interval,
                         bool const add_ontrip) {
-    state_.starts_.reserve(500'000);
+    state_.starts_.reserve(1024);
     get_starts(SearchDir, tt_, rtt_, start_interval, q_.start_, q_.td_start_,
                q_.via_stops_, q_.max_start_offset_, q_.start_match_mode_,
                q_.use_start_footpaths_, state_.starts_, add_ontrip, q_.prf_idx_,

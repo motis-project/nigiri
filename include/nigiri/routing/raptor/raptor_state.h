@@ -29,7 +29,8 @@ struct raptor_state {
 
   raptor_state& resize(unsigned n_locations,
                        unsigned n_routes,
-                       unsigned n_rt_transports);
+                       unsigned n_rt_transports,
+                       unsigned n_vias = kMaxVias);
 
   template <via_offset_t Vias>
   void print(timetable const& tt, date::sys_days, delta_t invalid);
