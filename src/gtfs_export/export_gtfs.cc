@@ -3,18 +3,19 @@
 #include <cctype>
 #include <chrono>
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <string_view>
 
 #include "miniz.h"
 
 #include "utl/verify.h"
 
-#include "nigiri/loader/gtfs/tz_map.h"
-#include "nigiri/common/day_list.h"
+#include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri {
@@ -141,21 +142,23 @@ std::unique_ptr<gtfs_export_target> make_gtfs_export_target(
   return std::make_unique<gtfs_dir_export_target>(output_path);
 }
 
-std::string csv_escape(std::string_view input) {
-  auto const had_quote = bool{input.find('"') != std::string_view::npos};
-  auto const needs_quoting =
-      bool{had_quote || input.find_first_of(",\n\r") != std::string_view::npos};
+namespace {
 
-  if (!needs_quoting || input.empty()) {
+// RFC 4180: fields containing a separator, a quote or a line break are
+// enclosed in double quotes, quotes inside are escaped by doubling them.
+// Line breaks are replaced by spaces since many GTFS consumers read files
+// line by line.
+std::string csv_escape(std::string_view input) {
+  if (input.find_first_of(",\"\n\r") == std::string_view::npos) {
     return std::string{input};
   }
 
   auto out = std::string{};
-  out.reserve(input.size() + 2);
+  out.reserve(input.size() + 2U);
   out.push_back('"');
   for (auto const c : input) {
     if (c == '"') {
-      continue;
+      out.append("\"\"");
     } else if (c == '\n' || c == '\r') {
       out.push_back(' ');
     } else {
@@ -166,13 +169,41 @@ std::string csv_escape(std::string_view input) {
   return out;
 }
 
-static std::string format_time(delta d) {
-  auto const total_seconds = int{static_cast<int>(d.count()) * 60};
-  auto const h = int{total_seconds / 3600};
-  auto const m = int{(total_seconds % 3600) / 60};
-  auto const s = int{total_seconds % 60};
-  return std::format("{:02}:{:02}:{:02}", h, m, s);
+// GTFS times are relative to "noon minus 12h" of the service day. Since the
+// export uses Etc/UTC (no DST), this is midnight of the service day, which
+// matches nigiri's internal representation (minutes after UTC midnight of
+// the day the bitfield refers to). Values >= 24:00:00 are valid GTFS.
+std::string format_time(delta const d) {
+  auto const total_minutes =
+      std::chrono::duration_cast<std::chrono::minutes>(d.as_duration()).count();
+  return std::format("{:02}:{:02}:00", total_minutes / 60, total_minutes % 60);
 }
+
+std::string format_coord(double const x) {
+  // 8 decimals ~ 1mm. Default ostream precision (6 significant digits) is
+  // only ~10m, shortest round-trip repr. exposes float noise.
+  auto str = std::format("{:.8f}", x);
+  str.erase(str.find_last_not_of('0') + 1U);
+  if (str.back() == '.') {
+    str.pop_back();
+  }
+  return str;
+}
+
+std::size_t stop_id(location_idx_t const l) {
+  return to_idx(l) - kNSpecialStations;
+}
+
+// Stations (location_type=1) must not be referenced in stop_times.txt.
+// Some data sources (e.g. HRD) serve the parent location directly. For those,
+// the location itself is exported as a regular stop (keeping its ID) and an
+// additional station entry is generated to act as parent.
+std::string station_id(location_idx_t const l, bool const served) {
+  return served ? std::format("{}_station", stop_id(l))
+                : std::to_string(stop_id(l));
+}
+
+}  // namespace
 
 void export_gtfs(timetable const& tt,
                  std::filesystem::path const& output_path) {
@@ -202,8 +233,8 @@ void write_feed_info(gtfs_export_target& out_target) {
   auto const timer = progress_timer{"feed_info.txt"};
 
   auto& out = out_target.create_file("feed_info.txt");
-  out << "feed_publisher_name,feed_publisher_url,feed_lang,agency_timezone\n";
-  out << "MOTIS - Export,github.com/motis-project/motis,EN,Etc/UTC\n";
+  out << "feed_publisher_name,feed_publisher_url,feed_lang\n";
+  out << "MOTIS Export,https://github.com/motis-project/nigiri,en\n";
 }
 
 void write_agencies(timetable const& tt, gtfs_export_target& out_target) {
@@ -223,6 +254,8 @@ void write_agencies(timetable const& tt, gtfs_export_target& out_target) {
     auto const url =
         std::string_view{raw_url.empty() ? kDummyAgencyUrl : raw_url};
 
+    // All times are exported in UTC. GTFS requires all agencies to share the
+    // same timezone.
     out << to_idx(p) << "," << csv_escape(name) << "," << csv_escape(url)
         << ",Etc/UTC\n";
   }
@@ -232,53 +265,59 @@ void write_stops(timetable const& tt, gtfs_export_target& out_target) {
   auto const timer = progress_timer{"stops.txt"};
 
   auto& out = out_target.create_file("stops.txt");
-  out << "stop_id,original_stop_id,stop_name,stop_desc,stop_lat,stop_lon,"
-         "location_type,"
-         "parent_station\n";
+  out << "stop_id,original_stop_id,stop_code,stop_name,stop_desc,stop_lat,"
+         "stop_lon,location_type,parent_station,platform_code\n";
 
-  // precompute which locations are actually referenced as a root/parent
+  // GTFS only supports one level of hierarchy (stop -> station).
+  // Nested hierarchies are flattened by attaching every stop to its root.
   auto is_parent = std::vector<bool>(tt.n_locations(), false);
-  for (auto l = location_idx_t{stopOffset}; l < tt.n_locations(); ++l) {
+  for (auto l = location_idx_t{kNSpecialStations}; l < tt.n_locations(); ++l) {
     auto const root = tt.locations_.get_root_idx(l);
     if (root != l) {
       is_parent[to_idx(root)] = true;
     }
   }
 
-  for (auto l = location_idx_t{stopOffset}; l < tt.n_locations(); ++l) {
-    if (!is_parent[to_idx(l)]) {
-      continue;
+  auto is_served = std::vector<bool>(tt.n_locations(), false);
+  for (auto r = route_idx_t{0}; r < tt.n_routes(); ++r) {
+    for (auto const s : tt.route_location_seq_[r]) {
+      is_served[to_idx(stop{s}.location_idx())] = true;
     }
-    auto const id = std::size_t{to_idx(l) - stopOffset};
-    auto const original_id = tt.locations_.ids_[l].view();
-    auto const name = tt.get_default_name(l);
-    auto const desc =
-        tt.get_default_translation(tt.locations_.descriptions_[l]);
-    auto const coord = tt.locations_.coordinates_[l];
-    out << id << "," << csv_escape(original_id) << "," << csv_escape(name)
-        << "," << csv_escape(desc) << "," << coord.lat_ << "," << coord.lng_
-        << ",1,\n";
   }
 
-  for (auto l = location_idx_t{stopOffset}; l < tt.n_locations(); ++l) {
-    auto const id = std::size_t{to_idx(l) - stopOffset};
-    auto const original_id = tt.locations_.ids_[l].view();
-    auto const name = tt.get_default_name(l);
-    auto const desc =
-        tt.get_default_translation(tt.locations_.descriptions_[l]);
+  auto const write_row = [&](location_idx_t const l, std::string_view id,
+                             int const location_type, std::string_view parent) {
     auto const coord = tt.locations_.coordinates_[l];
-    auto const root = tt.locations_.get_root_idx(l);
-    auto const has_parent = bool{root != l};
+    out << id << "," << csv_escape(tt.locations_.ids_[l].view()) << ","
+        << csv_escape(tt.get_default_translation(tt.locations_.stop_codes_[l]))
+        << "," << csv_escape(tt.get_default_name(l)) << ","
+        << csv_escape(
+               tt.get_default_translation(tt.locations_.descriptions_[l]))
+        << "," << format_coord(coord.lat_) << "," << format_coord(coord.lng_)
+        << "," << location_type << "," << parent << ","
+        << csv_escape(location_type == 1
+                          ? ""
+                          : tt.get_default_translation(
+                                tt.locations_.platform_codes_[l]))
+        << "\n";
+  };
 
-    if (is_parent[to_idx(l)] && !has_parent) {
-      continue;
+  for (auto l = location_idx_t{kNSpecialStations}; l < tt.n_locations(); ++l) {
+    if (is_parent[to_idx(l)]) {
+      write_row(l, station_id(l, is_served[to_idx(l)]), 1, "");
     }
+  }
 
-    auto const parent_str = std::string{
-        has_parent ? std::to_string(to_idx(root) - stopOffset) : ""};
-    out << id << "," << csv_escape(original_id) << "," << csv_escape(name)
-        << "," << csv_escape(desc) << "," << coord.lat_ << "," << coord.lng_
-        << ",0," << parent_str << "\n";
+  for (auto l = location_idx_t{kNSpecialStations}; l < tt.n_locations(); ++l) {
+    auto const root = tt.locations_.get_root_idx(l);
+    if (root != l) {
+      write_row(l, std::to_string(stop_id(l)), 0,
+                station_id(root, is_served[to_idx(root)]));
+    } else if (!is_parent[to_idx(l)]) {
+      write_row(l, std::to_string(stop_id(l)), 0, "");
+    } else if (is_served[to_idx(l)]) {
+      write_row(l, std::to_string(stop_id(l)), 0, station_id(l, true));
+    }
   }
 }
 
@@ -286,27 +325,38 @@ void write_stop_times(timetable const& tt, gtfs_export_target& out_target) {
   auto const timer = progress_timer{"stop_times.txt"};
 
   auto& out = out_target.create_file("stop_times.txt");
-  out << "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n";
+  out << "trip_id,arrival_time,departure_time,stop_id,stop_sequence,"
+         "stop_headsign,pickup_type,drop_off_type\n";
 
   for (auto r = route_idx_t{0}; r < tt.n_routes(); ++r) {
     auto const stops = tt.route_location_seq_.at(r);
     auto const transports = tt.route_transport_ranges_.at(r);
+    auto const last = static_cast<stop_idx_t>(stops.size() - 1U);
 
     for (auto t = transports.from_; t != transports.to_; ++t) {
       if (tt.bitfields_[tt.transport_traffic_days_[t]].none()) {
         continue;
       }
+
+      // Directions are either given once for the whole transport (-> trip
+      // headsign) or per section (section i = stop i -> stop i+1).
+      auto const directions = tt.transport_section_directions_.at(t);
+      auto const per_section_directions = directions.size() > 1U;
+
       for (auto s = stop_idx_t{0}; s < stops.size(); ++s) {
-        auto const loc = stop{stops[s]}.location_idx();
-        auto const s_id = std::size_t{to_idx(loc) - stopOffset};
+        auto const stp = stop{stops[s]};
         auto const arr =
-            (s == stop_idx_t{0} ? tt.event_mam(t, s, event_type::kDep)
-                                : tt.event_mam(t, s, event_type::kArr));
-        auto const dep = (s == stop_idx_t(stops.size() - 1)
-                              ? tt.event_mam(t, s, event_type::kArr)
-                              : tt.event_mam(t, s, event_type::kDep));
+            tt.event_mam(t, s, s == 0U ? event_type::kDep : event_type::kArr);
+        auto const dep =
+            tt.event_mam(t, s, s == last ? event_type::kArr : event_type::kDep);
+        auto const headsign = per_section_directions
+                                  ? tt.get_default_translation(
+                                        directions.at(s == last ? s - 1U : s))
+                                  : std::string_view{};
         out << to_idx(t) << "," << format_time(arr) << "," << format_time(dep)
-            << "," << s_id << "," << s << "\n";
+            << "," << stop_id(stp.location_idx()) << "," << s << ","
+            << csv_escape(headsign) << "," << (stp.in_allowed() ? 0 : 1) << ","
+            << (stp.out_allowed() ? 0 : 1) << "\n";
       }
     }
   }
@@ -319,7 +369,7 @@ void write_trips(timetable const& tt,
 
   auto& out = out_target.create_file("trips.txt");
   out << "route_id,service_id,trip_id,trip_headsign,trip_short_name,"
-         "bikes_allowed,cars_allowed\n";
+         "wheelchair_accessible,bikes_allowed,cars_allowed\n";
 
   auto const to_global_route_id = [&](source_idx_t s, route_id_idx_t r) {
     return route_offsets[to_idx(s)] + to_idx(r);
@@ -327,35 +377,42 @@ void write_trips(timetable const& tt,
 
   for (auto r = route_idx_t{0}; r < tt.n_routes(); ++r) {
     auto const transport_range = tt.route_transport_ranges_[r];
-    auto const bikes_allowed = int{tt.has_bike_transport(r) ? 1 : 2};
-    auto const cars_allowed = int{tt.has_car_transport(r) ? 1 : 2};
+    // nigiri does not distinguish "not allowed" from "no information", so
+    // an unset flag is exported as 0 (no information) instead of 2.
+    auto const flag = [&](route_flag const f) {
+      return tt.is_flag_set(f, r) ? 1 : 0;
+    };
+    auto const bikes_allowed = flag(route_flag::kBikesAllowed);
+    auto const cars_allowed = flag(route_flag::kCarsAllowed);
+    auto const wheelchair_accessible = flag(route_flag::kWheelchairAccessible);
 
     for (auto t = transport_range.from_; t != transport_range.to_; ++t) {
+      if (tt.bitfields_[tt.transport_traffic_days_[t]].none()) {
+        continue;
+      }
+
       auto const merged_idx = tt.transport_to_trip_section_[t].front();
       auto const trip_idx = tt.merged_trips_[merged_idx].front();
       auto const source_id = tt.trip_id_src_[tt.trip_ids_[trip_idx].front()];
       auto const route_id = tt.trip_route_id_[trip_idx];
       auto const global_route_id = to_global_route_id(source_id, route_id);
 
-      if (tt.bitfields_[tt.transport_traffic_days_[t]].none()) {
-        continue;
-      }
-
       auto const service_id = to_idx(tt.transport_traffic_days_[t]);
       auto const trip_id = to_idx(t);
       auto const short_name =
           tt.get_default_translation(tt.trip_short_names_[trip_idx]);
-      auto headsign =
-          tt.get_default_translation(tt.trip_display_names_[trip_idx]);
 
-      auto const& headsigns = tt.transport_section_directions_.at(t);
-      if (!headsigns.empty()) {
-        headsign = tt.get_default_translation(headsigns.front());
-      }
+      // Per-section directions are exported as stop_headsign, the trip
+      // headsign is the direction of the first section.
+      auto const directions = tt.transport_section_directions_.at(t);
+      auto const headsign = directions.empty()
+                                ? std::string_view{}
+                                : tt.get_default_translation(directions[0]);
 
       out << global_route_id << "," << service_id << "," << trip_id << ","
           << csv_escape(headsign) << "," << csv_escape(short_name) << ","
-          << bikes_allowed << "," << cars_allowed << "\n";
+          << wheelchair_accessible << "," << bikes_allowed << ","
+          << cars_allowed << "\n";
     }
   }
 }
@@ -376,14 +433,14 @@ void write_routes(timetable const& tt,
 
   for (auto s = source_idx_t{0}; s < tt.route_ids_.size(); ++s) {
     auto const& routes = tt.route_ids_[s];
-    auto const endRouteIds = static_cast<route_id_idx_t>(routes.ids_.size());
-    for (auto r = route_id_idx_t{0}; r < endRouteIds; ++r) {
+    auto const n_route_ids = static_cast<route_id_idx_t>(routes.ids_.size());
+    for (auto r = route_id_idx_t{0}; r < n_route_ids; ++r) {
       auto const global_id = to_global_route_id(s, r);
       auto const short_name =
           tt.get_default_translation(routes.route_id_short_names_[r]);
       auto const long_name =
           tt.get_default_translation(routes.route_id_long_names_[r]);
-      auto const agency = routes.route_id_provider_[r];
+      auto const agency = to_idx(routes.route_id_provider_[r]);
       auto const type = to_idx(routes.route_id_type_[r]);
       auto const& rc = routes.route_id_colors_[r];
       auto const color_str = to_str(rc.color_).value_or("");
@@ -402,11 +459,16 @@ void write_transfers(timetable const& tt, gtfs_export_target& out_target) {
   auto& out = out_target.create_file("transfers.txt");
   out << "from_stop_id,to_stop_id,transfer_type,min_transfer_time\n";
 
-  for (auto l = location_idx_t{stopOffset}; l < tt.n_locations(); ++l) {
+  for (auto l = location_idx_t{kNSpecialStations}; l < tt.n_locations(); ++l) {
+    // from_stop_id == to_stop_id: minimum transfer time at this stop
+    auto const transfer_time = std::chrono::duration_cast<std::chrono::seconds>(
+                                   tt.locations_.transfer_time_[l])
+                                   .count();
+    out << stop_id(l) << "," << stop_id(l) << ",2," << transfer_time << "\n";
+
     for (auto const& fp : tt.locations_.footpaths_out_[0][l]) {
-      auto const to = fp.target();
-      out << (to_idx(l) - stopOffset) << "," << (to_idx(to) - stopOffset)
-          << ",2," << (fp.duration_ * 60) << "\n";
+      out << stop_id(l) << "," << stop_id(fp.target()) << ",2,"
+          << (fp.duration().count() * 60) << "\n";
     }
   }
 }

@@ -13,11 +13,6 @@
 
 namespace nigiri {
 
-struct timetable;
-
-// Skip the first 9 stops, bcs they are sentinels
-constexpr int stopOffset{9};
-
 struct gtfs_export_target {
   virtual ~gtfs_export_target() = default;
 
