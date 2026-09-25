@@ -240,6 +240,7 @@ void load_timetable(loader_config const& config,
   };
 
   auto const add_expanded_trip = [&](utc_trip&& s) {
+    set_junctions(trip_data, s);
     auto const* stop_seq = get_stop_seq(trip_data, s, stop_seq_cache);
     auto const& front_trip = trip_data.get(s.trips_.front());
     // GTFS extension (MBTA): per-trip `trip_route_type` overrides the

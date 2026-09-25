@@ -39,11 +39,11 @@
 #include "nigiri/routing/gpu/pinned_host_buffer.cuh"
 #include "nigiri/routing/gpu/raptor_impl.cuh"
 #include "nigiri/routing/gpu/types.cuh"
+#include "nigiri/rt/rt_transfer_rules.h"
 #include "nigiri/td_footpath.h"
 
 namespace nigiri::routing::gpu {
 
-// words a device_bitvec<std::uint32_t> needs to hold n bits
 device_mem device_mem_info() {
   auto free = std::size_t{0U};
   auto total = std::size_t{0U};
@@ -53,6 +53,7 @@ device_mem device_mem_info() {
   return {total - free, total};
 }
 
+// words a device_bitvec<std::uint32_t> needs to hold n bits
 constexpr std::uint32_t n_bitvec_words(std::uint32_t const n) {
   return n / 32U + 1U;
 }
@@ -60,8 +61,6 @@ constexpr std::uint32_t n_bitvec_words(std::uint32_t const n) {
 struct gpu_timetable::impl {
   using t = timetable;
   using fp_t = decltype(t{}.locations_.footpaths_out_[0]);
-  using hub_members_t = decltype(t{}.locations_.hub_in_[0]);
-  using loc_hubs_t = decltype(t{}.locations_.hub_in_by_loc_[0]);
 
   static std::vector<std::uint32_t> build_route_stop_offset(
       timetable const& tt) {
@@ -97,48 +96,25 @@ struct gpu_timetable::impl {
     });
   }
 
-  static location_idx_t project(timetable const& tt, location_idx_t const l) {
-    return tt.locations_.types_[l] == location_type::kVirt
-               ? tt.locations_.parents_[l]
-               : l;
-  }
-
-  static vecvec<route_idx_t, stop::value_type> build_projected_seq(
-      timetable const& tt) {
-    auto seq = vecvec<route_idx_t, stop::value_type>{};
-    auto tmp = std::vector<stop::value_type>{};
-    for (auto r = 0U; r != tt.n_routes(); ++r) {
+  // what a projecting profile needs (see device_timetable::project_virts_):
+  // the stop of every location and the virtual children of every stop
+  void build_projection(timetable const& tt) {
+    auto base = std::vector<location_idx_t>(tt.n_locations());
+    auto children = vecvec<location_idx_t, location_idx_t>{};
+    auto tmp = std::vector<location_idx_t>{};
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      base[to_idx(l)] = tt.locations_.get_base_idx(l);
       tmp.clear();
-      for (auto const s : tt.route_location_seq_[route_idx_t{r}]) {
-        auto const stp = stop{s};
-        tmp.push_back(stop{project(tt, stp.location_idx()), stp.in_allowed(),
-                           stp.out_allowed(), stp.in_allowed_wheelchair(),
-                           stp.out_allowed_wheelchair()}
-                          .value());
-      }
-      seq.emplace_back(tmp);
-    }
-    return seq;
-  }
-
-  // the stop a virt was generated for has to reach the transports bound to
-  // that virt, or the projecting profile never scans them
-  static vecvec<location_idx_t, route_idx_t> build_projected_location_routes(
-      timetable const& tt, vecvec<route_idx_t, stop::value_type> const& seq) {
-    auto routes = std::vector<std::vector<route_idx_t>>(tt.n_locations());
-    for (auto r = 0U; r != tt.n_routes(); ++r) {
-      for (auto const s : seq[route_idx_t{r}]) {
-        auto& v = routes[to_idx(stop{s}.location_idx())];
-        if (v.empty() || v.back() != route_idx_t{r}) {
-          v.push_back(route_idx_t{r});
+      for (auto const c : tt.locations_.children_[l]) {
+        if (tt.locations_.types_[c] == location_type::kVirt) {
+          tmp.push_back(c);
         }
       }
+      children.emplace_back(tmp);
     }
-    auto v = vecvec<location_idx_t, route_idx_t>{};
-    for (auto const& r : routes) {
-      v.emplace_back(r);
-    }
-    return v;
+    location_base_ = to_device(base);
+    virt_children_ =
+        device_vecvec<vecvec<location_idx_t, location_idx_t>>{children};
   }
 
   // a footpath may end on a virt; the projecting profile keeps its labels on
@@ -152,7 +128,8 @@ struct gpu_timetable::impl {
     for (auto l = 0U; l != fps.size(); ++l) {
       tmp.clear();
       for (auto const fp : fps[location_idx_t{l}]) {
-        tmp.push_back(footpath{project(tt, fp.target()), fp.duration()});
+        tmp.push_back(
+            footpath{tt.locations_.get_base_idx(fp.target()), fp.duration()});
       }
       v.emplace_back(tmp);
     }
@@ -206,30 +183,23 @@ struct gpu_timetable::impl {
     route_of_stop_.assign(ros.begin(), ros.end());
     has_projection_ = has_virts(tt);
     if (has_projection_) {
-      auto const seq = build_projected_seq(tt);
-      location_routes_proj_ = device_vecvec<decltype(t{}.location_routes_)>{
-          build_projected_location_routes(tt, seq)};
-      route_location_seq_proj_ =
-          device_vecvec<decltype(t{}.route_location_seq_)>{seq};
-      // the labels are on stops here, so this is read at the projected
-      // location - built through the timetable's own accessor so it stays in
-      // step with the CPU and covers every location (base_transfer_time_ is
-      // grown lazily, see sync_base_transfer_time)
-      auto const& src = tt.locations_.base_transfer_time_;
-      auto btt = std::vector<u8_minutes>(tt.n_locations());
-      for (auto l = 0U; l != tt.n_locations(); ++l) {
-        auto const p = project(tt, location_idx_t{l});
-        // grown lazily (see sync_base_transfer_time), so it can be short
-        btt[l] =
-            to_idx(p) < src.size() ? src[p] : tt.locations_.transfer_time_[p];
-      }
-      base_transfer_time_ = to_device(btt);
+      build_projection(tt);
     }
+
+    // The same-stop rows of transfers.txt (bans, timed rows) also exist
+    // without virtual locations, so the other profiles need the times from
+    // before them in any case - every projecting profile sees the same ones.
+    auto btt = std::vector<u8_minutes>(tt.n_locations());
+    for (auto l = 0U; l != tt.n_locations(); ++l) {
+      btt[l] = tt.locations_.min_transfer_time(kFootProfile, location_idx_t{l});
+    }
+    btt.resize(btt.size() + kRtVirtCapacity, kNoTransfer);  // as transfer_time_
+    base_transfer_time_ = to_device(btt);
 
     for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
       // a profile that projects never needs the unprojected foot layer, so
       // its targets are moved once here instead of being kept twice
-      if (has_projection_ && p != kDefaultProfile) {
+      if (has_projection_ && projects_virts(p)) {
         footpaths_out_[p] = device_vecvec<fp_t>{
             build_projected_footpaths(tt, tt.locations_.footpaths_out_[p])};
         footpaths_in_[p] = device_vecvec<fp_t>{
@@ -239,57 +209,33 @@ struct gpu_timetable::impl {
             device_vecvec<fp_t>{tt.locations_.footpaths_out_[p]};
         footpaths_in_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_in_[p]};
       }
-      hub_in_[p] = device_vecvec<hub_members_t>{tt.locations_.hub_in_[p]};
-      hub_out_[p] = device_vecvec<hub_members_t>{tt.locations_.hub_out_[p]};
-      hub_in_by_loc_[p] =
-          device_vecvec<loc_hubs_t>{tt.locations_.hub_in_by_loc_[p]};
-      hub_out_by_loc_[p] =
-          device_vecvec<loc_hubs_t>{tt.locations_.hub_out_by_loc_[p]};
       hub_time_[p] = to_device(tt.locations_.hub_time_[p]);
 
       // flat edge lists, both orderings and both directions (see
-      // device_timetable::hub_edge_list)
-      auto const by_loc = [&](auto const& src, std::vector<std::uint32_t>& l,
-                              std::vector<std::uint32_t>& h) {
-        for (auto i = 0U; i != src.size(); ++i) {
-          for (auto const x : src[location_idx_t{i}]) {
-            l.push_back(i);
-            h.push_back(to_idx(x));
+      // device_timetable::hub_edge_list): per entry the bucket and the member
+      auto const flatten = [&](auto const& src, auto& bucket_dst,
+                               auto& member_dst) {
+        auto buckets = std::vector<std::uint32_t>{};
+        auto members = std::vector<std::uint32_t>{};
+        auto i = 0U;
+        for (auto const bucket : src) {
+          for (auto const x : bucket) {
+            buckets.push_back(i);
+            members.push_back(to_idx(x));
           }
+          ++i;
         }
+        bucket_dst = to_device(buckets);
+        member_dst = to_device(members);
       };
-      auto const by_hub = [&](auto const& src, std::vector<std::uint32_t>& h,
-                              std::vector<std::uint32_t>& l) {
-        for (auto i = 0U; i != src.size(); ++i) {
-          for (auto const x : src[hub_idx_t{i}]) {
-            h.push_back(i);
-            l.push_back(to_idx(x));
-          }
-        }
-      };
-      auto in_l = std::vector<std::uint32_t>{},
-           in_h = std::vector<std::uint32_t>{};
-      by_loc(tt.locations_.hub_in_by_loc_[p], in_l, in_h);
-      hub_in_by_loc_flat_l_[p] = to_device(in_l);
-      hub_in_by_loc_flat_h_[p] = to_device(in_h);
-
-      auto oh_h = std::vector<std::uint32_t>{},
-           oh_l = std::vector<std::uint32_t>{};
-      by_hub(tt.locations_.hub_out_[p], oh_h, oh_l);
-      hub_out_by_hub_flat_h_[p] = to_device(oh_h);
-      hub_out_by_hub_flat_l_[p] = to_device(oh_l);
-
-      auto ol_l = std::vector<std::uint32_t>{},
-           ol_h = std::vector<std::uint32_t>{};
-      by_loc(tt.locations_.hub_out_by_loc_[p], ol_l, ol_h);
-      hub_out_by_loc_flat_l_[p] = to_device(ol_l);
-      hub_out_by_loc_flat_h_[p] = to_device(ol_h);
-
-      auto ih_h = std::vector<std::uint32_t>{},
-           ih_l = std::vector<std::uint32_t>{};
-      by_hub(tt.locations_.hub_in_[p], ih_h, ih_l);
-      hub_in_by_hub_flat_h_[p] = to_device(ih_h);
-      hub_in_by_hub_flat_l_[p] = to_device(ih_l);
+      flatten(tt.locations_.hub_in_by_loc_[p], hub_in_by_loc_flat_l_[p],
+              hub_in_by_loc_flat_h_[p]);
+      flatten(tt.locations_.hub_out_[p], hub_out_by_hub_flat_h_[p],
+              hub_out_by_hub_flat_l_[p]);
+      flatten(tt.locations_.hub_out_by_loc_[p], hub_out_by_loc_flat_l_[p],
+              hub_out_by_loc_flat_h_[p]);
+      flatten(tt.locations_.hub_in_[p], hub_in_by_hub_flat_h_[p],
+              hub_in_by_hub_flat_l_[p]);
     }
 
     // device-resident (launch-arg size, see device_transport_filters)
@@ -329,10 +275,6 @@ struct gpu_timetable::impl {
     for (auto p = 0U; p != kNProfiles; ++p) {
       dt.footpaths_out_[p] = to_view(footpaths_out_[p]);
       dt.footpaths_in_[p] = to_view(footpaths_in_[p]);
-      dt.hub_in_[p] = to_view(hub_in_[p]);
-      dt.hub_out_[p] = to_view(hub_out_[p]);
-      dt.hub_in_by_loc_[p] = to_view(hub_in_by_loc_[p]);
-      dt.hub_out_by_loc_[p] = to_view(hub_out_by_loc_[p]);
       dt.hub_time_[p] = hub_time_[p];
       dt.n_hubs_[p] = static_cast<std::uint32_t>(hub_time_[p].size());
       dt.hub_in_by_loc_flat_[p] = {to_view(hub_in_by_loc_flat_l_[p]),
@@ -344,10 +286,13 @@ struct gpu_timetable::impl {
       dt.hub_in_by_hub_flat_[p] = {to_view(hub_in_by_hub_flat_l_[p]),
                                    to_view(hub_in_by_hub_flat_h_[p])};
     }
-    if (projected && has_projection_) {
-      dt.route_location_seq_ = to_view(route_location_seq_proj_);
-      dt.location_routes_ = to_view(location_routes_proj_);
+    if (projected) {
       dt.transfer_time_ = base_transfer_time_;
+    }
+    if (projected && has_projection_) {
+      dt.project_virts_ = true;
+      dt.location_base_ = to_view(location_base_);
+      dt.virt_children_ = to_view(virt_children_);
     }
     return dt;
   }
@@ -359,10 +304,6 @@ struct gpu_timetable::impl {
   thrust::device_vector<u8_minutes> transfer_time_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_out_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_in_;
-  std::array<device_vecvec<hub_members_t>, kNProfiles> hub_in_;
-  std::array<device_vecvec<hub_members_t>, kNProfiles> hub_out_;
-  std::array<device_vecvec<loc_hubs_t>, kNProfiles> hub_in_by_loc_;
-  std::array<device_vecvec<loc_hubs_t>, kNProfiles> hub_out_by_loc_;
   std::array<thrust::device_vector<duration_t>, kNProfiles> hub_time_;
   std::array<thrust::device_vector<std::uint32_t>, kNProfiles>
       hub_in_by_loc_flat_l_, hub_in_by_loc_flat_h_, hub_out_by_hub_flat_l_,
@@ -379,8 +320,10 @@ struct gpu_timetable::impl {
 
   // only filled if the timetable has virtual locations at all
   bool has_projection_{false};
-  device_vecvec<decltype(t{}.route_location_seq_)> route_location_seq_proj_;
-  device_vecvec<decltype(t{}.location_routes_)> location_routes_proj_;
+  thrust::device_vector<location_idx_t> location_base_;
+  device_vecvec<vecvec<location_idx_t, location_idx_t>> virt_children_;
+
+  // the change times of the profiles other than the default one
   thrust::device_vector<u8_minutes> base_transfer_time_;
 
   thrust::device_vector<bitfield_idx_t> transport_traffic_days_;
@@ -436,10 +379,7 @@ struct gpu_rt_timetable::impl {
       if (auto const* locs = rtt.routing_locations(rt_t); locs != nullptr) {
         for (auto i = 0U; i != tmp.size(); ++i) {
           if ((*locs)[i] != location_idx_t::invalid()) {
-            auto const x = stop{tmp[i]};
-            tmp[i] = stop{(*locs)[i], x.in_allowed(), x.out_allowed(),
-                          x.in_allowed_wheelchair(), x.out_allowed_wheelchair()}
-                         .value();
+            tmp[i] = stop{tmp[i]}.with_location((*locs)[i]).value();
           }
         }
       }
@@ -448,74 +388,38 @@ struct gpu_rt_timetable::impl {
     return v;
   }
 
-  // ... and as a profile that projects virtual locations away routes on it:
-  // every virtual location is its stop, so a stop lists the rt transports of
-  // its virtual locations as well (mirrors raptor.h, ProjectVirts).
-  static vecvec<location_idx_t, rt_transport_idx_t> build_projected_location_rt(
-      timetable const& tt, rt_timetable const& rtt) {
-    auto v = vecvec<location_idx_t, rt_transport_idx_t>{};
-    auto tmp = std::vector<rt_transport_idx_t>{};
-    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-      auto const own = rtt.location_rt_transports_[l];
-      tmp.assign(begin(own), end(own));
-      for (auto const c : tt.locations_.children_[l]) {
-        if (tt.locations_.types_[c] == location_type::kVirt) {
-          for (auto const rt_t : rtt.location_rt_transports_[c]) {
-            tmp.push_back(rt_t);
-          }
-        }
-      }
-      utl::erase_duplicates(tmp);
-      v.emplace_back(tmp);
+  // ... and as a profile that projects virtual locations away routes on it
+  // (device_timetable::project_virts_): a real-time virtual location is its
+  // platform
+  static std::vector<location_idx_t> build_rt_virt_parents(
+      rt_timetable const& rtt) {
+    auto v = std::vector<location_idx_t>{};
+    v.reserve(rtt.rt_virts_.size());
+    for (auto const& x : rtt.rt_virts_) {
+      v.push_back(x.parent_);
     }
     return v;
   }
 
-  static vecvec<rt_transport_idx_t, stop::value_type> build_projected_seq(
-      timetable const& tt, rt_timetable const& rtt) {
-    auto v = vecvec<rt_transport_idx_t, stop::value_type>{};
-    auto tmp = std::vector<stop::value_type>{};
-    for (auto rt_t = rt_transport_idx_t{0U}; rt_t != rtt.n_rt_transports();
-         ++rt_t) {
-      auto const seq = rtt.rt_transport_location_seq_[rt_t];
-      tmp.assign(begin(seq), end(seq));
-      for (auto& s : tmp) {
-        auto const x = stop{s};
-        s = stop{gpu_timetable::impl::project(tt, x.location_idx()),
-                 x.in_allowed(), x.out_allowed(), x.in_allowed_wheelchair(),
-                 x.out_allowed_wheelchair()}
-                .value();
-      }
-      v.emplace_back(tmp);
-    }
-    return v;
-  }
-
-  // Transfers from / to real-time virtual locations, one bucket per routing
-  // location. The own change time of such a location is added as a self edge:
-  // its slot in the device's transfer times says kNoTransfer.
+  // Transfers from / to real-time virtual locations, one bucket per such
+  // location (see device_rt_timetable::rt_fps_out_). The own change time of
+  // such a location is added as a self edge: its slot in the device's
+  // transfer times says kNoTransfer.
   static vecvec<location_idx_t, footpath> build_rt_fps(
       rt_timetable const& rtt,
       hash_map<location_idx_t, std::vector<footpath>> const& fps) {
     auto v = vecvec<location_idx_t, footpath>{};
-    if (rtt.rt_virts_.empty()) {
-      return v;
-    }
     auto tmp = std::vector<footpath>{};
-    for (auto l = location_idx_t{0U}; l != rtt.n_routing_locations(); ++l) {
+    rtt.for_each_rt_virt([&](location_idx_t const l, auto const& virt) {
       tmp.clear();
       if (auto const it = fps.find(l); it != end(fps)) {
         tmp = it->second;
       }
-      if (rtt.is_rt_virt(l)) {
-        auto const own =
-            rtt.rt_virts_[to_idx(l) - rtt.tt_->n_locations()].transfer_time_;
-        if (own != kNoTransfer) {
-          tmp.emplace_back(l, duration_t{own});
-        }
+      if (virt.transfer_time_ != kNoTransfer) {
+        tmp.emplace_back(l, duration_t{virt.transfer_time_});
       }
       v.emplace_back(tmp);
-    }
+    });
     return v;
   }
 
@@ -539,7 +443,8 @@ struct gpu_rt_timetable::impl {
         rt_transport_clasz_{to_device(build_rt_transport_clasz(rtt))},
         rt_fps_out_{build_rt_fps(rtt, rtt.rt_fps_out_)},
         rt_fps_in_{build_rt_fps(rtt, rtt.rt_fps_in_)},
-        n_rt_fps_{rtt.rt_virts_.empty() ? 0U : rtt.n_routing_locations()},
+        n_rt_fps_{static_cast<std::uint32_t>(rtt.rt_virts_.size())},
+        rt_virt_parent_{to_device(build_rt_virt_parents(rtt))},
         transport_traffic_days_{to_device(rtt.transport_traffic_days_)},
         bitfields_{to_device(rtt.bitfields_)},
         rt_transport_bikes_allowed_{
@@ -556,15 +461,7 @@ struct gpu_rt_timetable::impl {
             rtt.rt_flags_per_section_[kWheelchairAccessible]},
         rt_reservation_not_required_sections_{
             rtt.rt_flags_per_section_[kReservationNotRequired]} {
-    if (gpu_timetable::impl::has_virts(tt)) {
-      location_rt_transports_proj_ =
-          device_vecvec<vecvec<location_idx_t, rt_transport_idx_t>>{
-              build_projected_location_rt(tt, rtt)};
-      rt_transport_location_seq_proj_ =
-          device_vecvec<decltype(rtt_t{}.rt_transport_location_seq_)>{
-              build_projected_seq(tt, rtt)};
-      has_projection_ = true;
-    }
+    has_projection_ = gpu_timetable::impl::has_virts(tt);
 
     utl::verify(
         bc_transport_space_fits(tt.transport_route_.size(), n_rt_transports_),
@@ -619,16 +516,14 @@ struct gpu_rt_timetable::impl {
     auto d = device_rt_timetable{
         .n_rt_transports_ = n_rt_transports_,
         .base_day_idx_ = base_day_idx_,
-        .location_rt_transports_ = to_view(
-            project ? location_rt_transports_proj_ : location_rt_transports_),
-        .rt_transport_location_seq_ =
-            to_view(project ? rt_transport_location_seq_proj_
-                            : rt_transport_location_seq_),
+        .location_rt_transports_ = to_view(location_rt_transports_),
+        .rt_transport_location_seq_ = to_view(rt_transport_location_seq_),
         .rt_transport_stop_times_ = to_view(rt_transport_stop_times_),
         .rt_transport_clasz_ = to_view(rt_transport_clasz_),
         .rt_fps_out_ = to_view(rt_fps_out_),
         .rt_fps_in_ = to_view(rt_fps_in_),
         .n_rt_fps_ = project ? 0U : n_rt_fps_,
+        .rt_virt_parent_ = to_view(rt_virt_parent_),
         .transport_traffic_days_ = to_view(transport_traffic_days_),
         .bitfields_ = to_view(bitfields_),
         .filters_ = thrust::raw_pointer_cast(rt_filters_ctx_.data()),
@@ -651,12 +546,9 @@ struct gpu_rt_timetable::impl {
   device_vecvec<vecvec<location_idx_t, footpath>> rt_fps_in_;
   std::uint32_t n_rt_fps_;
 
-  // projected variants, only if the timetable has virtual locations
+  // whether the timetable has virtual locations at all
   bool has_projection_{false};
-  device_vecvec<vecvec<location_idx_t, rt_transport_idx_t>>
-      location_rt_transports_proj_;
-  device_vecvec<decltype(rtt_t{}.rt_transport_location_seq_)>
-      rt_transport_location_seq_proj_;
+  thrust::device_vector<location_idx_t> rt_virt_parent_;
 
   thrust::device_vector<bitfield_idx_t> transport_traffic_days_;
   thrust::device_vector<bitfield> bitfields_;
@@ -961,7 +853,7 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
       // default profile routes through the virtual locations the
       // transfers.txt rules created, every other one projects them onto
       // their stop
-      project_virts_{prf_idx != kDefaultProfile},
+      project_virts_{projects_virts(prf_idx)},
       bounds_{state.impl_->bounds_dev_.ptr_} {
   utl::verify(rtt == nullptr || gpu_rtt_ != nullptr,
               "GPU raptor: rt search requires the uploaded device rt "
@@ -975,16 +867,8 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
   // far as the per location query inputs go (mirrors raptor.h).
   auto dist = dist_to_dest;
   if (rtt != nullptr && !project_virts_ && !rtt->rt_virts_.empty()) {
-    is_dest.resize(rtt->n_routing_locations());
-    if (!dist.empty()) {
-      dist.resize(rtt->n_routing_locations(), kUnreachable);
-    }
-    rtt->for_each_rt_virt([&](location_idx_t const l, auto const& virt) {
-      is_dest.set(to_idx(l), is_dest.test(to_idx(virt.parent_)));
-      if (!dist.empty()) {
-        dist[to_idx(l)] = dist[to_idx(virt.parent_)];
-      }
-    });
+    rtt->extend_to_rt_virts(is_dest);
+    rtt->extend_to_rt_virts(dist, std::uint16_t{kUnreachable});
   }
   state_.impl_->upload_query(kDirIdx, is_dest, dist, td_dist_to_dest);
 }
@@ -1123,12 +1007,11 @@ __global__ void transfers_footpaths_kernel(raptor_impl<SearchDir, WithBounds> r,
 // Feeding the hubs is its own launch now: one thread per ingress edge rather
 // than a loop inside the footpath phase, which distributes the work evenly.
 template <direction SearchDir, bool WithBounds>
-__global__ void hub_gather_kernel(raptor_impl<SearchDir, WithBounds> r,
-                                  unsigned const k) {
+__global__ void hub_gather_kernel(raptor_impl<SearchDir, WithBounds> r) {
   if (*r.done_) {
     return;
   }
-  r.gather_hubs(k);
+  r.gather_hubs();
 }
 
 // The hub minima gathered above are handed to the other side of each hub here
@@ -1162,11 +1045,12 @@ void launch(Kernel kernel, cudaStream_t stream, Args&&... args) {
 }
 
 template <direction PingDir>
-__global__ void fill_bounds_kernel(std::uint64_t const* const round_times,
-                                   delta_t* const bounds,
-                                   std::uint32_t const n_locations,
-                                   std::uint32_t const n_rows,
-                                   std::uint64_t const* const td_stops) {
+__global__ void fill_bounds_kernel(
+    std::uint64_t const* const round_times,
+    delta_t* const bounds,
+    std::uint32_t const n_locations,
+    std::uint32_t const n_rows,
+    cuda::std::span<std::uint64_t const> const td_stops) {
   auto const gid = get_global_thread_id();
   auto const stride = get_global_stride();
   for (auto l = gid; l < n_locations; l += stride) {
@@ -1174,7 +1058,10 @@ __global__ void fill_bounds_kernel(std::uint64_t const* const round_times,
     // the query's destination while the ping runs, its start while the pong
     // runs. Bounding the pong with the ping's arrival there prunes against
     // the wrong end of the journey, so this location gets no bound.
-    if (td_stops != nullptr && test_bit(td_stops, l)) {
+    //
+    // td_stops covers the static locations only, not the label slots of the
+    // real-time virtual locations behind them.
+    if (l / 64U < td_stops.size() && test_bit(td_stops.data(), l)) {
       // Stop has td_footpaths -> no bounds.
       constexpr auto const kPassAll = PingDir == direction::kForward
                                           ? std::numeric_limits<delta_t>::min()
@@ -1199,16 +1086,14 @@ __global__ void fill_bounds_kernel(std::uint64_t const* const round_times,
 template <direction SearchDir, bool WithBounds>
 void gpu_raptor<SearchDir, WithBounds>::fill_bounds(std::size_t const n_rows) {
   auto& s = *state_.impl_;
-  auto const* td_stops = static_cast<std::uint64_t const*>(nullptr);
+  auto td_stops = cuda::std::span<std::uint64_t const>{};
   if (rtt_ != nullptr && prf_idx_ != 0U && rtt_->gpu_rtt_.ptr_ != nullptr) {
     auto const* const gpu_rtt =
         static_cast<gpu_rt_timetable const*>(rtt_->gpu_rtt_.ptr_.get());
     auto const& blocks = SearchDir == direction::kForward
                              ? gpu_rtt->impl_->has_td_out_[prf_idx_]
                              : gpu_rtt->impl_->has_td_in_[prf_idx_];
-    if (!blocks.empty()) {
-      td_stops = thrust::raw_pointer_cast(blocks.data());
-    }
+    td_stops = {thrust::raw_pointer_cast(blocks.data()), blocks.size()};
   }
   launch(fill_bounds_kernel<SearchDir>, s.stream_,
          thrust::raw_pointer_cast(s.round_times_.data()), s.bounds_dev_.ptr_,
@@ -1257,7 +1142,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
                                                 unixtime_t worst_time_at_dest,
                                                 pareto_set<journey>& results) {
   auto& s = *state_.impl_;
-  auto const has_hubs = !s.hub_slots_.empty() && s.tt_.n_hubs_[prf_idx_] != 0U;
+  auto const has_hubs = s.tt_.n_hubs_[prf_idx_] != 0U;
 
   // No start = nothing to do.
   // guard against UB: starts_pinned with size=0 -> data=NULL -> memcpy to NULL
@@ -1319,7 +1204,6 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       .best_ = {to_mutable_view(s.best_), n_locations_},
       .tmp_ = {to_mutable_view(s.tmp_), n_locations_},
       .hub_slots_ = thrust::raw_pointer_cast(s.hub_slots_.data()),
-      .n_hubs_ = static_cast<std::uint32_t>(s.hub_slots_.size()),
       .time_at_dest_ = {to_mutable_view(s.time_at_dest_), n_locations_},
       .station_mark_ = {to_mutable_view(s.station_mark_)},
       .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
@@ -1400,7 +1284,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     if (has_hubs) {
       cudaMemsetAsync(thrust::raw_pointer_cast(s.hub_slots_.data()), 0xFF,
                       s.hub_slots_.size() * sizeof(std::uint64_t), s.stream_);
-      launch(hub_gather_kernel<SearchDir, WithBounds>, s.stream_, r, k);
+      launch(hub_gather_kernel<SearchDir, WithBounds>, s.stream_, r);
     }
     if (!with_td_dest && !with_td_fps) {
       launch(transfers_footpaths_kernel<SearchDir, WithBounds, false, false>,
@@ -1531,18 +1415,20 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       }
     }
 
-    // Outside of the routing a real-time virtual location is its platform
-    // (mirrors the CPU reconstruct).
-    if (rtt_ != nullptr && !rtt_->rt_virts_.empty()) {
-      for (auto& leg : j.legs_) {
-        leg.from_ = rtt_->physical(leg.from_);
-        leg.to_ = rtt_->physical(leg.to_);
-        if (auto* const fp = std::get_if<footpath>(&leg.uses_); fp != nullptr) {
-          *fp = footpath{rtt_->physical(fp->target()), fp->duration()};
-        }
+    // A leg states the unadjusted duration of its transfer, like the CPU
+    // reconstruction; only its times carry the transfer time settings. The
+    // device knows the time a transfer took, so the transfer is looked up.
+    auto elapsed = std::vector<duration_t>(j.legs_.size());
+    for (auto i = std::size_t{0U}; i != j.legs_.size(); ++i) {
+      auto& lg = j.legs_[i];
+      if (auto* const fp = std::get_if<footpath>(&lg.uses_); fp != nullptr) {
+        elapsed[i] = fp->duration();
+        *fp = footpath{fp->target(),
+                       raw_transfer(lg.from_, lg.to_, fp->duration())};
       }
-      j.dest_ = rtt_->physical(j.dest_);
     }
+
+    to_platforms(rtt_, j);
 
     // Backward search requires to re-anchor footpath durations
     // to the arrival of the previous trip
@@ -1550,9 +1436,8 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     // No-op for forward search.
     for (auto i = std::size_t{1U}; i < j.legs_.size(); ++i) {
       if (std::holds_alternative<footpath>(j.legs_[i].uses_)) {
-        auto const dur = std::get<footpath>(j.legs_[i].uses_).duration();
         j.legs_[i].dep_time_ = j.legs_[i - 1U].arr_time_;
-        j.legs_[i].arr_time_ = j.legs_[i].dep_time_ + dur;
+        j.legs_[i].arr_time_ = j.legs_[i].dep_time_ + elapsed[i];
       }
     }
 
@@ -1595,14 +1480,39 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
 }
 
 template <direction SearchDir, bool WithBounds>
+duration_t gpu_raptor<SearchDir, WithBounds>::raw_transfer(
+    location_idx_t const from,
+    location_idx_t const to,
+    duration_t const elapsed) const {
+  if (from == to) {
+    if (elapsed == duration_t{0}) {
+      return elapsed;  // arriving at the destination: no change
+    }
+    auto const own =
+        rtt_ != nullptr && rtt_->is_rt_virt(from)
+            ? rtt_->rt_virts_[to_idx(from) - tt_.n_locations()].transfer_time_
+            : tt_.locations_.min_transfer_time(prf_idx_, from);
+    return own == kNoTransfer ? elapsed : duration_t{own.count()};
+  }
+
+  // the shortest footpath or hub pair from -> to that takes `elapsed`
+  auto best = std::optional<duration_t>{};
+  auto const take = [&](location_idx_t const target, duration_t const d) {
+    if (target == to &&
+        adjusted_transfer_time(transfer_time_settings_, d) == elapsed &&
+        (!best.has_value() || d < *best)) {
+      best = d;
+    }
+  };
+  for_each_transfer<direction::kForward>(
+      tt_, rtt_, prf_idx_, from,
+      [&](footpath const fp) { take(project(fp.target()), fp.duration()); });
+  return best.value_or(elapsed);
+}
+
+template <direction SearchDir, bool WithBounds>
 void gpu_raptor<SearchDir, WithBounds>::reset_arrivals() {
   auto& s = *state_.impl_;
-  // the per-round path only releases the slots it consumed, so a query that
-  // stopped early can leave some set - clear them all once per query
-  if (!s.hub_slots_.empty()) {
-    cudaMemsetAsync(thrust::raw_pointer_cast(s.hub_slots_.data()), 0xFF,
-                    s.hub_slots_.size() * sizeof(std::uint64_t), s.stream_);
-  }
   cudaMemsetAsync(thrust::raw_pointer_cast(s.time_at_dest_.data()), 0xFF,
                   s.time_at_dest_.size() * sizeof(std::uint64_t), s.stream_);
   s.has_reusable_round_times_ = false;
@@ -1688,11 +1598,11 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
           if (!fp.has_value() || dep_time - fp->first < j.start_time_) {
             continue;
           }
-          j.legs_.insert(
-              begin(j.legs_),
-              journey::leg{direction::kForward, special, from,
-                           dep_time - fp->first, dep_time,
-                           offset{target, fp->first, fp->second.mode()}});
+          j.legs_.insert(begin(j.legs_),
+                         journey::leg{direction::kForward, special, from,
+                                      dep_time - fp->first, dep_time,
+                                      offset{rt::platform_of(tt_, rtt_, target),
+                                             fp->first, fp->second.mode()}});
         } else {
           auto const t = j.dest_time_;
           auto const fp = get_td_duration<direction::kForward>(tds, t);
@@ -1702,7 +1612,8 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
           j.legs_.insert(
               begin(j.legs_),
               journey::leg{direction::kForward, special, from, t, t + fp->first,
-                           offset{target, fp->first, fp->second.mode()}});
+                           offset{rt::platform_of(tt_, rtt_, target), fp->first,
+                                  fp->second.mode()}});
         }
         inserted = true;
         break;
@@ -1750,9 +1661,11 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
             continue;
           }
 
-          j.legs_.push_back(journey::leg{
-              direction::kForward, to, special, j.dest_time_ - fp->first,
-              j.dest_time_, offset{target, fp->first, fp->second.mode()}});
+          j.legs_.push_back(
+              journey::leg{direction::kForward, to, special,
+                           j.dest_time_ - fp->first, j.dest_time_,
+                           offset{rt::platform_of(tt_, rtt_, target), fp->first,
+                                  fp->second.mode()}});
         } else {
           auto const fp = get_td_duration<direction::kForward>(tds, arr_time);
           if (!fp.has_value() || arr_time + fp->first > j.start_time_) {
@@ -1761,7 +1674,8 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
 
           j.legs_.push_back(journey::leg{
               direction::kForward, to, special, arr_time, arr_time + fp->first,
-              offset{target, fp->first, fp->second.mode()}});
+              offset{rt::platform_of(tt_, rtt_, target), fp->first,
+                     fp->second.mode()}});
         }
 
         j.dest_ = special;
@@ -1801,20 +1715,17 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
         }
         return true;
       };
-      for (auto const fp :
-           is_fwd ? tt_.locations_.footpaths_in_[q.prf_idx_][start_l]
-                  : tt_.locations_.footpaths_out_[q.prf_idx_][start_l]) {
-        consider(fp);
-      }
-      for_each_hub_source<SearchDir>(tt_, q.prf_idx_, start_l, consider);
+      for_each_transfer<flip(SearchDir)>(tt_, rtt_, q.prf_idx_, start_l,
+                                         consider);
       if (best.has_value()) {
         auto const dur = duration_t{adjusted_transfer_time(
             q.transfer_time_settings_, best->duration().count())};
         auto const fp_arr = j.start_time_ + (is_fwd ? dur : -dur);
         if (is_fwd ? fp_arr <= start_t : fp_arr >= start_t) {
-          auto lg = journey::leg{SearchDir, best->target(),
-                                 start_l,   j.start_time_,
-                                 fp_arr,    footpath{best->target(), dur}};
+          auto lg = journey::leg{
+              SearchDir, best->target(),
+              start_l,   j.start_time_,
+              fp_arr,    footpath{best->target(), best->duration()}};
           if (is_fwd) {
             j.legs_.insert(begin(j.legs_), lg);
           } else {

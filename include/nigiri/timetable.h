@@ -119,7 +119,8 @@ struct transfer_rules {
   // then how many of the two stops the rule names exactly (not their station).
   static std::uint16_t rank(std::uint8_t const specificity,
                             unsigned const n_exact_stops) {
-    return static_cast<std::uint16_t>((specificity << 2U) | n_exact_stops);
+    return static_cast<std::uint16_t>(
+        (static_cast<unsigned>(specificity) << 2U) | n_exact_stops);
   }
 
   bool empty() const { return rules_.empty(); }
@@ -159,11 +160,22 @@ struct transfer_rules {
 
 struct timetable {
   struct locations {
-    // Virtual locations (location_type::kVirt) have no attributes of their own
-    // (name, platform code, stop code, description, timezone): they are taken
-    // from the location they were generated for.
-    location_idx_t get_attribute_idx(location_idx_t const l) const {
+    // The stop a virtual location (location_type::kVirt) was split off for
+    // transfers.txt rules, every other location itself.
+    location_idx_t get_base_idx(location_idx_t const l) const {
       return types_[l] == location_type::kVirt ? parents_[l] : l;
+    }
+
+    // Virtual locations have no attributes of their own (name, platform code,
+    // stop code, description, timezone): they are taken from their stop.
+    location_idx_t get_attribute_idx(location_idx_t const l) const {
+      return get_base_idx(l);
+    }
+
+    // The location a search in profile `prf` sees for `l` (projects_virts).
+    location_idx_t project(profile_idx_t const prf,
+                           location_idx_t const l) const {
+      return projects_virts(prf) ? get_base_idx(l) : l;
     }
 
     location_idx_t get_root_idx(location_idx_t const idx) const {
@@ -182,27 +194,20 @@ struct timetable {
     }
 
     // Same-stop minimum transfer time as seen by `prf`. Profiles other than
-    // `kDefaultProfile` ignore the qualified transfers.txt rules and the
-    // virtual locations these created (see raptor's `ProjectVirts`), but still
-    // honor the plain minimum transfer time of the stop.
+    // `kDefaultProfile` are purely routed: they ignore transfers.txt and the
+    // virtual locations it created (see raptor's `ProjectVirts`) and take the
+    // stop's change time from before its rules.
     u8_minutes min_transfer_time(profile_idx_t const prf,
                                  location_idx_t const l) const {
-      return prf == kDefaultProfile
-                 ? transfer_time_[l]
-                 : base_transfer_time_[types_[l] == location_type::kVirt
-                                           ? parents_[l]
-                                           : l];
+      return projects_virts(prf) ? base_transfer_time_[get_base_idx(l)]
+                                 : transfer_time_[l];
     }
 
     // The change time a walk from or to `l` has to cover. A ban (kNoTransfer)
     // forbids changing vehicles at `l`, not leaving it, so the stop's time
-    // from before any ban counts there - a virtual location leaves through
-    // its stop. Needs `base_transfer_time_` synced, see below.
-    u8_minutes walk_transfer_time(location_idx_t l) const {
-      if (transfer_time_[l] == kNoTransfer &&
-          types_[l] == location_type::kVirt) {
-        l = parents_[l];
-      }
+    // from before any ban counts there. Walks never start or end at a virtual
+    // location. Needs `base_transfer_time_` synced, see below.
+    u8_minutes walk_transfer_time(location_idx_t const l) const {
       return transfer_time_[l] == kNoTransfer ? base_transfer_time_[l]
                                               : transfer_time_[l];
     }
@@ -271,14 +276,13 @@ struct timetable {
     // lists, so a hub's pair set is derivable in both directions by
     // construction; reconstruct walks hub_out_by_loc_ x hub_in_. All
     // classification happens in build_hubs and is encoded purely in list
-    // membership. Transfer rules do not depend on the street routing profile,
-    // so one set of hubs serves all profiles.
-    // Per profile: a hub belongs to exactly one. The default profile's hubs
-    // come from transfers.txt; every other profile ignores the rules - a
-    // wheelchair may not manage the stated time or the stairs at all, a car
-    // transfer has nothing to do with them - and gets hubs built from its own
-    // routed walks, plus one per stop to hold its virtual locations together,
-    // which they still need since the transports are bound to them.
+    // membership.
+    // Per profile: a hub belongs to exactly one. Today only the default
+    // profile has hubs (from transfers.txt and its walks); every other profile
+    // ignores the rules - a wheelchair may not manage the stated time or the
+    // stairs at all, a car transfer has nothing to do with them - and sees the
+    // virtual locations as their stop (projects_virts), so it needs none. A
+    // profile that gets hubs later has to project their members as well.
     array<vecvec<hub_idx_t, location_idx_t>, kNProfiles> hub_in_;
     array<vecvec<hub_idx_t, location_idx_t>, kNProfiles> hub_out_;
     array<vector_map<hub_idx_t, duration_t>, kNProfiles> hub_time_;

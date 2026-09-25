@@ -190,7 +190,6 @@ using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using hub_idx_t = cista::strong<std::uint32_t, struct _hub_idx>;
-using walk_group_idx_t = cista::strong<std::uint32_t, struct _walk_group_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
 using flex_area_idx_t = cista::strong<std::uint32_t, struct _flex_area_idx>;
 using location_group_idx_t =
@@ -213,6 +212,13 @@ constexpr auto const kWheelchairProfile = profile_idx_t{2U};
 constexpr auto const kCarProfile = profile_idx_t{3U};
 constexpr auto const kBikeProfile = profile_idx_t{4U};
 static constexpr auto const kNProfiles = profile_idx_t{5U};
+
+// Profiles other than the default one are purely routed: they ignore
+// transfers.txt and see the virtual locations it created as the stop they were
+// split off (see timetable::locations::project).
+constexpr bool projects_virts(profile_idx_t const prf) {
+  return prf != kDefaultProfile;
+}
 
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using rt_add_trip_id_idx_t =

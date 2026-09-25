@@ -14,6 +14,10 @@ struct search_state;
 struct raptor_state;
 struct journey;
 
+// Outside of the routing a real-time virtual location is its platform: maps
+// the locations of every leg and the destination of a reconstructed journey.
+void to_platforms(rt_timetable const*, journey&);
+
 template <direction SearchDir>
 void reconstruct_journey(timetable const&,
                          rt_timetable const*,

@@ -38,7 +38,14 @@ location_idx_t route_stop_at(timetable const&,
 
 // The platform of a (possibly virtual) location from the static timetable.
 inline location_idx_t platform_of(timetable const& tt, location_idx_t const l) {
-  return tt.locations_.get_attribute_idx(l);
+  return tt.locations_.get_base_idx(l);
+}
+
+// ... of any routing location: a real-time virtual location as well.
+inline location_idx_t platform_of(timetable const& tt,
+                                  rt_timetable const* rtt,
+                                  location_idx_t const l) {
+  return platform_of(tt, rtt == nullptr ? l : rtt->physical(l));
 }
 
 }  // namespace nigiri::rt

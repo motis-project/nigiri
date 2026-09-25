@@ -29,6 +29,12 @@ struct stop {
   constexpr location_idx_t location_idx() const {
     return location_idx_t{location_};
   }
+
+  // the same stop (pickup, drop-off) at another location
+  constexpr stop with_location(location_idx_t const l) const {
+    return stop{l, in_allowed(), out_allowed(), in_allowed_wheelchair(),
+                out_allowed_wheelchair()};
+  }
   constexpr bool in_allowed_wheelchair() const {
     return in_allowed_wheelchair_ != 0U;
   }

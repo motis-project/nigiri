@@ -110,10 +110,12 @@ struct raptor_state {
   bitvec rt_transport_mark_;
 
   // transfer hub values (see raptor.h expand_hubs): one slot per (hub, via
-  // state), addressed hub * (kMaxVias + 1) + via. tmp_-like monotone minima
-  // over one start time; hub_mark_ flags the hubs whose minimum improved this
-  // round (station_mark_ idiom).
+  // state), addressed hub * (Vias + 1) + via. tmp_-like monotone minima over
+  // one start time; hub_slots_set_ lists the slots written since then (the
+  // only ones to reset), hub_mark_ flags the slots that improved this round
+  // (station_mark_ idiom).
   std::vector<int> hub_slots_;
+  std::vector<std::size_t> hub_slots_set_;
   bitvec hub_mark_;
 };
 

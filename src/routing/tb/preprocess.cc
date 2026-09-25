@@ -1,6 +1,7 @@
 #include "nigiri/routing/tb/preprocess.h"
 
 #include "nigiri/for_each_meta.h"
+#include "nigiri/routing/for_each_hub_source.h"
 
 #include "utl/enumerate.h"
 #include "utl/get_or_create.h"
@@ -240,11 +241,12 @@ void get_route_neighborhood(timetable const& tt,
           stats);
     }
 
-    // Outgoing footpaths
-    for (auto const& fp : tt.locations_.footpaths_out_[prf_idx][from]) {
-      add_non_uturn_transfers(tt, route_from, from_stop_idx, fp, neighborhood,
-                              stats);
-    }
+    // Outgoing transfers (footpaths and what the hubs hand out)
+    for_each_transfer<direction::kForward>(
+        tt, nullptr, prf_idx, from, [&](footpath const fp) {
+          add_non_uturn_transfers(tt, route_from, from_stop_idx, fp,
+                                  neighborhood, stats);
+        });
   }
 
   utl::sort(neighborhood, [](route_transfer const& a, route_transfer const& b) {
@@ -443,10 +445,11 @@ void preprocess_transport(timetable const& tt,
                       t_arr + tt.locations_.transfer_time_[from_stop].count(),
                       traffic_days);
     }
-    for (auto const& fp : tt.locations_.footpaths_out_[prf_idx][from_stop]) {
-      s.rr_arr_.update(fp.target(), t_arr + fp.duration_, traffic_days);
-      s.rr_ch_.update(fp.target(), t_arr + fp.duration_, traffic_days);
-    }
+    for_each_transfer<direction::kForward>(
+        tt, nullptr, prf_idx, from_stop, [&](footpath const fp) {
+          s.rr_arr_.update(fp.target(), t_arr + fp.duration_, traffic_days);
+          s.rr_ch_.update(fp.target(), t_arr + fp.duration_, traffic_days);
+        });
 
     // iterate transfers found by line-based pruning
     for (auto transfer = segment_transfers[from_stop_idx - 1U].begin();
@@ -476,13 +479,13 @@ void preprocess_transport(timetable const& tt,
                           transfer->bf_, &improvement);
         }
 
-        for (auto const& fp_r :
-             tt.locations_.footpaths_out_[profile_idx_t{0U}][u_stp]) {
-          auto const eta = static_cast<std::uint16_t>(u_arr_rel_t_first_dep +
-                                                      fp_r.duration_);
-          s.rr_arr_.update(fp_r.target(), eta, transfer->bf_, &improvement);
-          s.rr_ch_.update(fp_r.target(), eta, transfer->bf_, &improvement);
-        }
+        for_each_transfer<direction::kForward>(
+            tt, nullptr, profile_idx_t{0U}, u_stp, [&](footpath const fp_r) {
+              auto const eta = static_cast<std::uint16_t>(
+                  u_arr_rel_t_first_dep + fp_r.duration_);
+              s.rr_arr_.update(fp_r.target(), eta, transfer->bf_, &improvement);
+              s.rr_ch_.update(fp_r.target(), eta, transfer->bf_, &improvement);
+            });
       }
 
       transfer->bf_ = improvement;

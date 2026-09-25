@@ -88,7 +88,11 @@ void add_equivalence_footpaths(timetable& tt,
       if (minutes > static_cast<double>(max_duration.count())) {
         continue;
       }
-      auto const duration = duration_t{static_cast<duration_t::rep>(minutes)};
+      // never faster than changing at either end (see link_nearby_stations)
+      auto const duration =
+          std::max({duration_t{static_cast<duration_t::rep>(minutes)},
+                    duration_t{tt.locations_.walk_transfer_time(l)},
+                    duration_t{tt.locations_.walk_transfer_time(eq)}});
 
       add_if_not_exists(tt.locations_.preprocessing_footpaths_out_[l],
                         {eq, duration});
@@ -114,7 +118,7 @@ struct rule_index {
                 });
       auto& b = bases_[to_idx(l)];
       for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
-        b.push_back(base_of(tt, fp.target()));
+        b.push_back(tt.locations_.get_base_idx(fp.target()));
       }
       utl::erase_duplicates(b);
     }
@@ -133,10 +137,11 @@ struct rule_index {
                      location_idx_t const stop,
                      duration_t const d) const {
     return any_at(from, stop) &&
-           utl::any_of(
-               tt_.locations_.transfer_rule_fps_[from], [&](footpath const r) {
-                 return r.duration() > d && base_of(tt_, r.target()) == stop;
-               });
+           utl::any_of(tt_.locations_.transfer_rule_fps_[from],
+                       [&](footpath const r) {
+                         return r.duration() > d &&
+                                tt_.locations_.get_base_idx(r.target()) == stop;
+                       });
   }
 
   bool ruled(location_idx_t const from, location_idx_t const to) const {
@@ -185,12 +190,6 @@ void build_walk_hubs_impl(timetable& tt,
                           vecvec<hub_idx_t, location_idx_t>& walk_hub_out,
                           vector_map<hub_idx_t, duration_t>& walk_hub_time) {
   auto const idx = rule_index{tt};
-  auto const has_rule = [&](location_idx_t const l, footpath const fp) {
-    return to_idx(l) < tt.locations_.transfer_rule_fps_.size() &&
-           utl::any_of(
-               tt.locations_.transfer_rule_fps_[l],
-               [&](footpath const r) { return r.target() == fp.target(); });
-  };
 
   auto extra = mutable_fws_multimap<location_idx_t, footpath>{};
   auto members = std::vector<location_idx_t>{};
@@ -236,7 +235,7 @@ void build_walk_hubs_impl(timetable& tt,
                    // (street routing merges the rules before this runs)
       }
       auto d = fp.duration();
-      if (adjust_footpaths && !has_rule(l, fp)) {
+      if (adjust_footpaths) {
         auto const adjusted = adjust_to_walk_speed(tt, l, fp.target(), d);
         if (!adjusted.has_value()) {
           continue;  // dropped as unwalkable, by write_footpaths too
@@ -268,7 +267,8 @@ void build_walk_hubs_impl(timetable& tt,
             continue;
           }
           for (auto const r : tt.locations_.transfer_rule_fps_[m]) {
-            if (r.duration() > d && base_of(tt, r.target()) == t_stop) {
+            if (r.duration() > d &&
+                tt.locations_.get_base_idx(r.target()) == t_stop) {
               split.mark(m, r.target());
             }
           }
@@ -491,9 +491,9 @@ void build_hubs(timetable& tt,
         static_cast<std::size_t>(tt.locations_.transfer_rule_fps_.size()),
         static_cast<std::size_t>(n));
     for (auto l = location_idx_t{0U}; l != location_idx_t{n_rules}; ++l) {
-      auto const base = base_of(tt, l);
+      auto const base = tt.locations_.get_base_idx(l);
       for (auto const fp : tt.locations_.transfer_rule_fps_[l]) {
-        if (base_of(tt, fp.target()) == base &&
+        if (tt.locations_.get_base_idx(fp.target()) == base &&
             fp.duration() > tt.locations_.transfer_time_[base]) {
           split.mark(l, fp.target());
         }
@@ -669,6 +669,73 @@ void prune_hub_covered_footpaths(timetable& tt) {
       "hub-covered footpaths: {} dropped, {} kept", n_pruned, n_kept);
 }
 
+void materialize_hubs(timetable& tt) {
+  auto& loc = tt.locations_;
+  auto const n = tt.n_locations();
+  auto const by_duration = [](footpath const a, footpath const b) {
+    return std::tie(a.duration_, a.target_) < std::tie(b.duration_, b.target_);
+  };
+  for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
+    if (loc.hub_in_[p].size() == 0U) {
+      continue;
+    }
+
+    auto out = vector_map<location_idx_t, std::vector<footpath>>{};
+    out.resize(n);
+    if (loc.footpaths_out_[p].size() != 0U) {
+      for (auto l = location_idx_t{0U}; l != n; ++l) {
+        for (auto const fp : loc.footpaths_out_[p][l]) {
+          out[l].push_back(fp);
+        }
+      }
+    }
+    for (auto h = hub_idx_t{0U}; h != loc.hub_in_[p].size(); ++h) {
+      auto const d = loc.hub_time_[p][h];
+      for (auto const u : loc.hub_in_[p][h]) {
+        for (auto const v : loc.hub_out_[p][h]) {
+          if (u != v) {  // a change at one location is its own change time
+            out[u].emplace_back(v, d);
+          }
+        }
+      }
+    }
+
+    auto in = vector_map<location_idx_t, std::vector<footpath>>{};
+    in.resize(n);
+    loc.footpaths_out_[p].clear();
+    for (auto l = location_idx_t{0U}; l != n; ++l) {
+      auto& fps = out[l];
+      utl::erase_duplicates(
+          fps,
+          [](footpath const a, footpath const b) {
+            return std::tie(a.target_, a.duration_) <
+                   std::tie(b.target_, b.duration_);
+          },
+          [](footpath const a, footpath const b) {
+            return a.target_ == b.target_;
+          });  // keeps the shortest duration per target
+      utl::sort(fps, by_duration);
+      loc.footpaths_out_[p].emplace_back(fps);
+      for (auto const fp : fps) {
+        in[fp.target()].emplace_back(l, fp.duration());
+      }
+      fps = {};
+    }
+    loc.footpaths_in_[p].clear();
+    for (auto l = location_idx_t{0U}; l != n; ++l) {
+      utl::sort(in[l], by_duration);
+      loc.footpaths_in_[p].emplace_back(in[l]);
+    }
+
+    loc.hub_in_[p].clear();
+    loc.hub_out_[p].clear();
+    loc.hub_time_[p].clear();
+    loc.hub_in_by_loc_[p].clear();
+    loc.hub_out_by_loc_[p].clear();
+  }
+  loc.n_rule_hubs_ = 0U;
+}
+
 void rebuild_default_profile(
     timetable& tt,
     vector_map<location_idx_t, std::vector<footpath>> const& walks) {
@@ -679,13 +746,21 @@ void rebuild_default_profile(
   // speaks for, which may only be said of the rule-derived ones.
   build_hubs(tt, no_hubs, no_hubs, {}, true);
 
+  // A walk is never faster than changing at either end (as the loader's
+  // walks, see link_nearby_stations): the router measures the way between two
+  // points, not getting off and on.
+  auto const change = [&](location_idx_t const l) {
+    return duration_t{tt.locations_.walk_transfer_time(l)};
+  };
   auto& pending = tt.locations_.preprocessing_footpaths_out_;
   pending.clear();
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
     auto bucket = pending.emplace_back();
     if (to_idx(l) < walks.size()) {
       for (auto const fp : walks[l]) {
-        bucket.push_back(fp);
+        bucket.push_back(footpath{
+            fp.target(),
+            std::max({fp.duration(), change(l), change(fp.target())})});
       }
     }
   }
@@ -781,8 +856,14 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
   }
   // The pruned edges are exactly the ones the hubs hand out anyway, so this
   // is the same transfer relation with the duplicates left out.
-  auto const timer = scoped_timer{"loader.footpath.prune"};
-  prune_hub_covered_footpaths(tt);
+  {
+    auto const timer = scoped_timer{"loader.footpath.prune"};
+    prune_hub_covered_footpaths(tt);
+  }
+  if (!opt.hubs_) {
+    auto const timer = scoped_timer{"loader.footpath.materialize_hubs"};
+    materialize_hubs(tt);
+  }
 }
 
 }  // namespace nigiri::loader

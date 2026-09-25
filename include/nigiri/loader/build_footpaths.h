@@ -13,6 +13,9 @@ struct finalize_options {
   merge_threshold_t merge_threshold_{uniform_merge_threshold(duration_t{1})};
   std::filesystem::path merge_stats_dir_{};
   vector_map<source_idx_t, std::string> src_tags_{};
+  // false: no hubs at all, every transfer is an explicit footpath (see
+  // materialize_hubs)
+  bool hubs_{true};
 };
 
 void build_footpaths(timetable& tt, finalize_options);
@@ -31,5 +34,15 @@ void rebuild_default_profile(
 // Drop the default profile's footpaths that a hub already hands out at the
 // same weight or better.
 void prune_hub_covered_footpaths(timetable&);
+
+// Every transfer a hub stands for, as an explicit footpath - in all profiles;
+// the timetable has no hubs afterwards. Routing gives the same journeys on
+// it, which makes it the reference to check the hubs against, and it serves
+// the consumers that read footpaths only (e.g. trip-based routing). The
+// price is the size: a stop with n virtual locations has n^2 transfers.
+// It has to come last: rebuild_default_profile keeps the rule-derived hubs
+// and replaces the rest of the layer, so it cannot run on a timetable whose
+// hubs were materialized.
+void materialize_hubs(timetable&);
 
 }  // namespace nigiri::loader

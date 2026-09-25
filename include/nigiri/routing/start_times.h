@@ -39,6 +39,11 @@ void get_starts(
     profile_idx_t,
     transfer_time_settings const&);
 
+// A virtual location (transfers.txt rules) is its stop: a time-dependent
+// offset at a stop also holds for the trips moved to its virtual locations,
+// like for_each_meta passes the other offsets on to them.
+void add_virt_td_offsets(timetable const&, rt_timetable const*, query&);
+
 void collect_destinations(timetable const&,
                           std::vector<offset> const& destinations,
                           location_match_mode const,

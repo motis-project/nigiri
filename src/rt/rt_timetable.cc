@@ -235,11 +235,20 @@ void rt_timetable::update_lbs(
     return;
   }
 
-  auto const from =
-      tt.locations_.get_root_idx(stop{loc_seq[from_stop_idx]}.location_idx());
-  auto const to =
-      tt.locations_.get_root_idx(stop{loc_seq[to_stop_idx]}.location_idx());
+  update_lbs(
+      tt,
+      tt.locations_.get_root_idx(stop{loc_seq[from_stop_idx]}.location_idx()),
+      tt.locations_.get_root_idx(stop{loc_seq[to_stop_idx]}.location_idx()),
+      travel_time, tmp_fwd, tmp_bwd);
+}
 
+void rt_timetable::update_lbs(
+    timetable const& tt,
+    location_idx_t const from,
+    location_idx_t const to,
+    duration_t const travel_time,
+    vector_map<location_idx_t, std::vector<footpath>>& tmp_fwd,
+    vector_map<location_idx_t, std::vector<footpath>>& tmp_bwd) {
   if (from == to) {
     return;  // e.g. from one child to another within the same parent
   }
@@ -283,6 +292,7 @@ void rt_timetable::update_lbs(
           // The same target did exist already. Update existing.
           it->duration_ = static_cast<location_idx_t::value_t>(
               std::min(footpath::kMaxDuration, travel_time).count());
+          return;
         }
 
         // The same target did not exist yet. Push new.
@@ -308,6 +318,18 @@ void rt_timetable::update_lbs(timetable const& tt) {
     auto const n_segments = static_cast<stop_idx_t>(n_events / 2U);
     for (auto i = stop_idx_t{0U}; i != n_segments; ++i) {
       update_lbs(tt, rt_t, i, tmp_fwd_lbs, tmp_bwd_lbs);
+    }
+  }
+
+  // Real-time virtual locations (rt_virts_) have transfers of their own
+  // (rt_fps_out_), which can be faster than any from their platform.
+  auto const root = [&](location_idx_t const l) {
+    return tt.locations_.get_root_idx(physical(l));
+  };
+  for (auto const& [from, fps] : rt_fps_out_) {
+    for (auto const fp : fps) {
+      update_lbs(tt, root(from), root(fp.target()), fp.duration(), tmp_fwd_lbs,
+                 tmp_bwd_lbs);
     }
   }
 

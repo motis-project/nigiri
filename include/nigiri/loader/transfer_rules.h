@@ -2,6 +2,7 @@
 
 #include <compare>
 #include <cstdint>
+#include <optional>
 #include <tuple>
 #include <vector>
 
@@ -71,22 +72,46 @@ inline bool covers(timetable const& tt,
   return rule_stop == l || tt.locations_.parents_[l] == rule_stop;
 }
 
-// The stop a location's transfers are derived at: for a virtual location the
-// stop it was split off, for everything else the location itself.
-inline location_idx_t base_of(timetable const& tt, location_idx_t const l) {
-  return tt.locations_.types_[l] == location_type::kVirt
-             ? tt.locations_.parents_[l]
-             : l;
+// Whether a side names a trip or a route (its rank) only matters where sides
+// of other durations compete for the same partners: same end of the transfer,
+// the same other stop or its station. Only there can the ranking pick another
+// winner for two trip stops whose rules state the same values - e.g. "trip A
+// -> anything: 5 min" beats "route R -> route Q: 10 min", which beats "route R
+// -> anything: 5 min". Elsewhere the rank is left out of the key, so trips
+// whose rules only agree keep sharing a virtual location. Shared by the
+// loader's key and the real-time one (rt_transfer_rules.cc), which resolve()
+// compares.
+template <typename Side>
+void keep_rank_where_it_decides(timetable const& tt, std::vector<Side>& sides) {
+  auto const& parents = tt.locations_.parents_;
+  auto const same_partners = [&](Side const& a, Side const& b) {
+    return a.is_from_ == b.is_from_ &&
+           (a.other_stop_ == b.other_stop_ ||
+            parents[a.other_stop_] == b.other_stop_ ||
+            parents[b.other_stop_] == a.other_stop_);
+  };
+  auto competes = std::vector<bool>(sides.size());
+  for (auto i = 0U; i != sides.size(); ++i) {
+    competes[i] = utl::any_of(sides, [&](Side const& b) {
+      return b.duration_ != sides[i].duration_ && same_partners(sides[i], b);
+    });
+  }
+  for (auto i = 0U; i != sides.size(); ++i) {
+    sides[i].by_trip_ = sides[i].by_trip_ && competes[i];
+  }
 }
 
 // Detects the most common rule between two stops -> removes them and makes
 // their min_transfer_time the new default. Only rows that state a time vote:
 // a guaranteed connection (type 1 without a time) or a ban says which pairs
 // are special, not how long a change at the stop takes, so they stay
-// exceptions and never become the default for the pairs nobody named. Works
+// exceptions and never become the default for the pairs nobody named. The
+// fold only fills gaps: a pair an explicit unqualified row covers - stated
+// for the pair itself or for its stations - has its default already. Works
 // on stop pairs and durations only; Rule just has to offer from_stop_,
-// to_stop_, is_qualified(), get_specificity(), states_time(), duration() and
-// a (from, to, duration) constructor for the synthesized unqualified rules.
+// to_stop_, is_qualified(), get_specificity(), states_time(), duration(),
+// overlaps(other) (some trip pair both name) and a (from, to, duration)
+// constructor for the synthesized unqualified rules.
 template <typename Rule>
 void fold_pair_defaults(timetable& tt, vector_map<rule_idx_t, Rule>& rules) {
   struct counted_duration {
@@ -94,12 +119,13 @@ void fold_pair_defaults(timetable& tt, vector_map<rule_idx_t, Rule>& rules) {
     unsigned n_{0U};
   };
 
+  auto const& parents = tt.locations_.parents_;
   auto qualified = hash_map<transfer_pair, std::vector<counted_duration>>{};
-  auto pair_default = hash_map<transfer_pair, duration_t>{};
+  auto explicit_default = hash_map<transfer_pair, duration_t>{};
   for (auto const& r : rules) {
     auto const p = transfer_pair{r.from_stop_, r.to_stop_};
     if (!r.is_qualified()) {
-      pair_default[p] = r.duration();  // duplicate rows: last one wins
+      explicit_default[p] = r.duration();  // duplicate rows: last one wins
     } else if (r.states_time()) {
       auto& durations = qualified[p];
       auto const it = utl::find_if(durations, [&](counted_duration const& c) {
@@ -113,10 +139,30 @@ void fold_pair_defaults(timetable& tt, vector_map<rule_idx_t, Rule>& rules) {
     }
   }
 
+  // The explicit unqualified row for a pair: stated for the pair itself, else
+  // for its stations (the most specific first).
+  auto const covering_default =
+      [&](transfer_pair const p) -> std::optional<duration_t> {
+    for (auto const from : {p.from_, parents[p.from_]}) {
+      for (auto const to : {p.to_, parents[p.to_]}) {
+        if (from == location_idx_t::invalid() ||
+            to == location_idx_t::invalid()) {
+          continue;
+        }
+        if (auto const it = explicit_default.find(transfer_pair{from, to});
+            it != end(explicit_default)) {
+          return it->second;
+        }
+      }
+    }
+    return std::nullopt;
+  };
+
+  auto pair_default = hash_map<transfer_pair, duration_t>{};
   auto synthetic = std::vector<Rule>{};
   for (auto const& [p, durations] : qualified) {
-    if (pair_default.contains(p)) {
-      continue;  // explicit unqualified row
+    if (covering_default(p).has_value()) {
+      continue;  // no gap: an explicit unqualified row states the default
     }
 
     auto const majority = std::max_element(
@@ -137,40 +183,78 @@ void fold_pair_defaults(timetable& tt, vector_map<rule_idx_t, Rule>& rules) {
 
   // A rule that re-states the default is only redundant if the default is what
   // its pairs would get without it. It is not if a rule that is at most as
-  // specific, on the same stops or their stations, says something else - then
-  // it is the exception to that rule (e.g. a trip pair back at the default
-  // under a route pair that is faster, or banned).
+  // specific and applies to some of its pairs says something else - on the
+  // same stops, their stations or their child stops (e.g. a trip pair back at
+  // the default under a route pair that is faster, or banned, or a station
+  // trip rule above a platform route rule) - or if its child stops have a
+  // default of their own that differs. A rule for other trips (another trip
+  // pair, a route the trips don't belong to) never applies to its pairs, so
+  // it keeps nothing: one guarantee does not hold every timed row at its stop.
   auto by_pair = hash_map<transfer_pair, std::vector<rule_idx_t>>{};
   for (auto i = rule_idx_t{0U}; i != rules.size(); ++i) {
     if (rules[i].is_qualified()) {
       by_pair[{rules[i].from_stop_, rules[i].to_stop_}].push_back(i);
     }
   }
+  auto const below = [&](location_idx_t const l) {
+    auto v = std::vector<location_idx_t>{l};
+    for (auto const c : tt.locations_.children_[l]) {
+      v.push_back(c);
+    }
+    return v;
+  };
+  auto const around = [&](location_idx_t const l) {
+    auto v = below(l);
+    if (parents[l] != location_idx_t::invalid()) {
+      v.push_back(parents[l]);
+    }
+    return v;
+  };
   auto const is_exception = [&](Rule const& r) {
-    for (auto const from :
-         {r.from_stop_, tt.locations_.parents_[r.from_stop_]}) {
-      for (auto const to : {r.to_stop_, tt.locations_.parents_[r.to_stop_]}) {
+    for (auto const from : around(r.from_stop_)) {
+      for (auto const to : around(r.to_stop_)) {
         auto const it = by_pair.find(transfer_pair{from, to});
-        if (from != location_idx_t::invalid() &&
-            to != location_idx_t::invalid() && it != end(by_pair) &&
+        if (it != end(by_pair) &&
             utl::any_of(it->second, [&](rule_idx_t const i) {
               return rules[i].duration() != r.duration() &&
-                     rules[i].get_specificity() <= r.get_specificity();
+                     rules[i].get_specificity() <= r.get_specificity() &&
+                     rules[i].overlaps(r);
             })) {
           return true;
+        }
+      }
+    }
+    for (auto const from : below(r.from_stop_)) {
+      for (auto const to : below(r.to_stop_)) {
+        auto const p = transfer_pair{from, to};
+        if (p == transfer_pair{r.from_stop_, r.to_stop_}) {
+          continue;
+        }
+        for (auto const* defaults : {&explicit_default, &pair_default}) {
+          if (auto const it = defaults->find(p);
+              it != end(*defaults) && it->second != r.duration()) {
+            return true;
+          }
         }
       }
     }
     return false;
   };
 
-  // Remove all rules that re-state the default derived from the majority.
+  // Remove all rules that re-state the default: the one derived from the
+  // majority, or the explicit one that covers their pair.
   auto redundant = std::vector<bool>(rules.size());
   for (auto i = rule_idx_t{0U}; i != rules.size(); ++i) {
     auto const& r = rules[i];
-    auto const it = pair_default.find(transfer_pair{r.from_stop_, r.to_stop_});
-    redundant[to_idx(i)] = r.is_qualified() && it != end(pair_default) &&
-                           r.duration() == it->second && !is_exception(r);
+    if (!r.is_qualified()) {
+      continue;
+    }
+    auto const p = transfer_pair{r.from_stop_, r.to_stop_};
+    auto const it = pair_default.find(p);
+    auto const d = it != end(pair_default) ? std::optional{it->second}
+                                           : covering_default(p);
+    redundant[to_idx(i)] =
+        d.has_value() && r.duration() == *d && !is_exception(r);
   }
   auto i = 0U;
   utl::erase_if(rules, [&](Rule const&) { return redundant[i++]; });
@@ -178,6 +262,28 @@ void fold_pair_defaults(timetable& tt, vector_map<rule_idx_t, Rule>& rules) {
   // Add the new default rules derived from the majority.
   for (auto const& r : synthetic) {
     rules.emplace_back(r);
+  }
+
+  // A same-stop default of a station - stated or folded - is the change time
+  // of its child stops too, also for a change that stays at one of them (a
+  // station row applies to all its child stops), unless a child has a
+  // same-stop default of its own. Before the virtual locations exist, which
+  // take their own change time from their stop.
+  auto const has_own = [&](location_idx_t const l) {
+    auto const p = transfer_pair{l, l};
+    return explicit_default.contains(p) || pair_default.contains(p);
+  };
+  for (auto const* defaults : {&explicit_default, &pair_default}) {
+    for (auto const& [p, d] : *defaults) {
+      if (p.from_ != p.to_) {
+        continue;
+      }
+      for (auto const c : tt.locations_.children_[p.from_]) {
+        if (tt.locations_.types_[c] != location_type::kVirt && !has_own(c)) {
+          tt.locations_.transfer_time_[c] = to_transfer_time(d);
+        }
+      }
+    }
   }
 }
 
@@ -249,7 +355,9 @@ void emit_split_hubs(std::vector<location_idx_t> const& x,
 // representation it likes - it just has to resolve its rules to location pairs
 // first (which needs its own notion of route and trip) and split off virtual
 // locations for the qualified ones, starting at first_virt. With rule_hubs
-// off, every cell is written and no hub is emitted.
+// off, no cross product gets a hub: every cell between two stops is written.
+// Cells within one stop that its own hubs derive are left out either way,
+// because build_hubs always builds those.
 void write_transfer_rules(
     timetable&,
     hash_map<transfer_pair, candidate> const& most_specific,

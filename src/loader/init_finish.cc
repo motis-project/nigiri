@@ -199,6 +199,9 @@ void rebuild_route_traffic_days(timetable& tt) {
 
 void finalize(timetable& tt, finalize_options const opt) {
   tt.location_routes_.resize(tt.n_locations());
+  // sized by the last feed with location groups: also cover the virtual
+  // locations (transfers.txt rules) and the stops of every later feed
+  tt.location_location_groups_.resize(tt.n_locations());
 
   {
     auto const timer = scoped_timer{"loader.sort_trip_ids"};

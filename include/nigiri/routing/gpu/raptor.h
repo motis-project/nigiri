@@ -121,10 +121,14 @@ private:
   }
 
   location_idx_t project(location_idx_t const l) const {
-    return project_virts_ && tt_.locations_.types_[l] == location_type::kVirt
-               ? tt_.locations_.parents_[l]
-               : l;
+    return project_virts_ ? tt_.locations_.get_base_idx(l) : l;
   }
+
+  // The unadjusted duration of the transfer from -> to that took `elapsed`
+  // with the transfer time settings applied.
+  duration_t raw_transfer(location_idx_t from,
+                          location_idx_t to,
+                          duration_t elapsed) const;
 
   timetable const& tt_;
   rt_timetable const* rtt_;

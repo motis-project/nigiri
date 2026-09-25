@@ -8,6 +8,7 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/common/parse_time.h"
+#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
 
@@ -203,13 +204,20 @@ TZ,12:30:00,12:30:00,Y,2,0,0
 
   auto const s1 = tt.locations_.location_id_to_idx_.at({"S1", source_idx_t{0}});
   auto const z = tt.locations_.location_id_to_idx_.at({"Z", source_idx_t{1}});
+  // the whole transfer relation: footpaths and what the hubs hand out
   auto const walk = [&](location_idx_t const from) {
     auto d = std::optional<duration_t>{};
-    for (auto const fp : tt.locations_.footpaths_out_[kDefaultProfile][from]) {
-      if (fp.target() == z) {
+    auto const take = [&](footpath const fp) {
+      if (fp.target() == z && (!d.has_value() || fp.duration() < *d)) {
         d = fp.duration();
       }
+      return true;
+    };
+    for (auto const fp : tt.locations_.footpaths_out_[kDefaultProfile][from]) {
+      take(fp);
     }
+    routing::for_each_hub_source<direction::kBackward>(tt, kDefaultProfile,
+                                                       from, take);
     return d;
   };
   ASSERT_TRUE(walk(s1).has_value());

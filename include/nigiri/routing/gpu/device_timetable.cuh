@@ -89,12 +89,19 @@ struct device_rt_timetable {
   d_vecmap_view<rt_transport_idx_t, clasz> rt_transport_clasz_;
 
   // Transfers from / to real-time virtual locations
-  // (rt_timetable::rt_fps_out_/in_), one bucket per routing location; the own
-  // change time of such a location is its self edge. Empty for a profile that
-  // projects virtual locations away.
+  // (rt_timetable::rt_fps_out_/in_), one bucket per real-time virtual location
+  // (its index - n_static_locations_), n_rt_fps_ of them; the own change time
+  // of such a location is its self edge. A static location has no list: the
+  // real-time virtual location pulls the transfers from it out of its other
+  // list (see raptor_impl::update_transfers_and_footpaths). Empty for a
+  // profile that projects virtual locations away.
   d_vecvec_view<vecvec<location_idx_t, footpath>> rt_fps_out_;
   d_vecvec_view<vecvec<location_idx_t, footpath>> rt_fps_in_;
   std::uint32_t n_rt_fps_{0U};
+
+  // the platform of each real-time virtual location (for projecting profiles,
+  // see device_timetable::project_virts_)
+  cuda::std::span<location_idx_t const> rt_virt_parent_;
 
   d_vecmap_view<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
   d_vecmap_view<bitfield_idx_t, bitfield> bitfields_;
@@ -166,20 +173,8 @@ struct device_timetable {
       footpaths_in_;
 
   // Transfer hubs: the pairs they stand for are not stored as footpaths, so
-  // the search has to derive them (see raptor.h expand_hubs). Members by hub
-  // for the scatter, hubs by member for the gather, one weight per hub.
-  cuda::std::array<d_vecvec_view<decltype(t{}.locations_.hub_in_[0])>,
-                   kNProfiles>
-      hub_in_;
-  cuda::std::array<d_vecvec_view<decltype(t{}.locations_.hub_out_[0])>,
-                   kNProfiles>
-      hub_out_;
-  cuda::std::array<d_vecvec_view<decltype(t{}.locations_.hub_in_by_loc_[0])>,
-                   kNProfiles>
-      hub_in_by_loc_;
-  cuda::std::array<d_vecvec_view<decltype(t{}.locations_.hub_out_by_loc_[0])>,
-                   kNProfiles>
-      hub_out_by_loc_;
+  // the search has to derive them (see raptor.h expand_hubs). One weight per
+  // hub, the members as the edge lists below.
   cuda::std::array<d_vecmap_view<hub_idx_t, duration_t>, kNProfiles> hub_time_;
   cuda::std::array<std::uint32_t, kNProfiles> n_hubs_;
 
@@ -207,6 +202,16 @@ struct device_timetable {
 
   d_vecvec_view<decltype(t{}.route_location_seq_)> route_location_seq_;
   d_vecvec_view<decltype(t{}.location_routes_)> location_routes_;
+
+  // Profiles other than the default one see a virtual location as the stop it
+  // was split off (projects_virts): a stop location is mapped through
+  // location_base_ (a real-time virtual location is its platform, see
+  // device_rt_timetable::rt_virt_parent_), and a stop also serves the routes
+  // and real-time transports of its virtual children. Empty if the timetable
+  // has no virtual locations or the profile does not project.
+  bool project_virts_{false};
+  cuda::std::span<location_idx_t const> location_base_;
+  d_vecvec_view<vecvec<location_idx_t, location_idx_t>> virt_children_;
 
   d_vecmap_view<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
   d_vecmap_view<route_idx_t, bitfield_idx_t> route_traffic_days_;

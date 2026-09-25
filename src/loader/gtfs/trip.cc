@@ -76,17 +76,31 @@ block::rule_services(trip_data& trips) {
 
       auto& [current_it, collected_trips, traffic_days] = next;
       collected_trips.emplace_back(current_it);
+      // the days a successor may still continue this chain on
+      auto open = traffic_days;
       for (auto succ_it = std::next(current_it); succ_it != end(rule_trips);
            ++succ_it) {
         auto const& curr_trip = trips.data_[current_it->trip_];
         auto const& succ_trip = trips.data_[succ_it->trip_];
         if (stop{curr_trip.stop_seq_.back()}.location_ !=
-            stop{succ_trip.stop_seq_.front()}.location_) {
+                stop{succ_trip.stop_seq_.front()}.location_ &&
+            !trips.junctions_.contains(
+                pair{current_it->trip_, succ_it->trip_})) {
           continue;  // prev last stop != next first stop
         }
 
-        auto const new_intersection = traffic_days & succ_it->traffic_days_;
-        traffic_days &= ~succ_it->traffic_days_;
+        if (trips.no_stay_seated_.contains(
+                pair{current_it->trip_, succ_it->trip_})) {
+          // transfers.txt type 5: the vehicle goes on as succ, but nobody
+          // stays seated - the chain ends here on those days (no later trip
+          // continues it either), succ starts one of its own
+          open &= ~succ_it->traffic_days_;
+          continue;
+        }
+
+        auto const new_intersection = open & succ_it->traffic_days_;
+        open &= ~succ_it->traffic_days_;
+        traffic_days &= ~new_intersection;
         if (new_intersection.any()) {
           q.emplace(queue_entry{succ_it, collected_trips, new_intersection});
         }

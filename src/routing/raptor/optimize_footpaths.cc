@@ -89,7 +89,10 @@ void optimize_initial_start_footpath(timetable const& tt,
   auto fp_dur_best = adjusted_transfer_time(
       q.transfer_time_settings_, get<footpath>(fp_leg.uses_).duration());
 
-  auto const& footpaths = tt.locations_.footpaths_out_[q.prf_idx_][start_loc];
+  auto footpaths = std::vector<footpath>{};
+  for_each_transfer<direction::kForward>(
+      tt, rtt, q.prf_idx_, start_loc,
+      [&](footpath const fp) { footpaths.push_back(fp); });
 
   auto r = rt::run{ree.r_};
   r.stop_range_ = {0U, static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)};
@@ -117,7 +120,7 @@ void optimize_initial_start_footpath(timetable const& tt,
           fp_leg.to_ = stp.get_location_idx();
           fp_leg.dep_time_ = fp_start;
           fp_leg.arr_time_ = dep;
-          fp_leg.uses_ = footpath{stp.get_location_idx(), fp_dur};
+          fp_leg.uses_ = footpath{stp.get_location_idx(), fp.duration()};
           transport_leg.from_ = stp.get_location_idx();
           transport_leg.dep_time_ = dep;
           ree.stop_range_.from_ = stp.stop_idx_;
@@ -213,7 +216,10 @@ void optimize_final_egress_footpath(timetable const& tt,
   auto fp_dur_best = adjusted_transfer_time(
       q.transfer_time_settings_, get<footpath>(fp_leg.uses_).duration());
 
-  auto const& footpaths = tt.locations_.footpaths_in_[q.prf_idx_][dest_loc];
+  auto footpaths = std::vector<footpath>{};
+  for_each_transfer<direction::kBackward>(
+      tt, rtt, q.prf_idx_, dest_loc,
+      [&](footpath const fp) { footpaths.push_back(fp); });
 
   auto fr = rt::frun{tt, rtt, ree.r_};
   auto range_from = static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U);
@@ -250,7 +256,7 @@ void optimize_final_egress_footpath(timetable const& tt,
           fp_leg.from_ = stp.get_location_idx();
           fp_leg.dep_time_ = arr;
           fp_leg.arr_time_ = fp_end;
-          fp_leg.uses_ = footpath{dest_loc, fp_dur};
+          fp_leg.uses_ = footpath{dest_loc, fp.duration()};
           transport_leg.to_ = stp.get_location_idx();
           transport_leg.arr_time_ = arr;
           ree.stop_range_.to_ = stp.stop_idx_ + 1U;
@@ -449,13 +455,15 @@ void optimize_transfers(timetable const& tt,
     };
 
     auto const routing_location = [&](rt::run_stop const& stp) {
-      return stp.fr_->is_rt() && rtt != nullptr && q.prf_idx_ == kDefaultProfile
+      return stp.fr_->is_rt() && rtt != nullptr && !projects_virts(q.prf_idx_)
                  ? rtt->routing_location(stp.fr_->rt_, stp.stop_idx_)
                  : stp.get_location_idx();
     };
 
     auto penalty_best = get_penalty(
-        tt, get<footpath>(leg_footpath.uses_).duration(),
+        tt,
+        adjusted_transfer_time(q.transfer_time_settings_,
+                               get<footpath>(leg_footpath.uses_).duration()),
         leg_to.dep_time_ - leg_footpath.arr_time_, leg_from.from_, leg_to.to_,
         trip_at(ree_from.r_,
                 static_cast<stop_idx_t>(ree_from.stop_range_.to_ - 1U),
@@ -477,7 +485,7 @@ void optimize_transfers(timetable const& tt,
         // trip that changed platform that may be a real-time virtual location
         // (rt_timetable::rt_virts_) carrying the rules bound to the trip, not
         // the platform the journey shows.
-        for_each_footpath_at<direction::kForward>(
+        for_each_transfer<direction::kForward>(
             tt, rtt, q.prf_idx_, routing_location(stp_from),
             [&](footpath const& routing_fp) {
               if (routing_fp.target() != routing_location(stp_to)) {

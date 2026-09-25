@@ -8,6 +8,7 @@
 #include "utl/raii.h"
 
 #include "nigiri/for_each_meta.h"
+#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/raptor/reconstruct.h"
@@ -81,10 +82,10 @@ query_engine<UseLowerBounds>::query_engine(
       auto const l = location_idx_t{i};
       tb_debug("{} is dest!", loc{tt_, l});
       mark_dest_segments(l, duration_t{0U});
-      for (auto const fp :
-           tt_.locations_.footpaths_in_[state_.tbd_.prf_idx_][l]) {
-        mark_dest_segments(fp.target(), fp.duration());
-      }
+      for_each_transfer<direction::kBackward>(
+          tt_, nullptr, state_.tbd_.prf_idx_, l, [&](footpath const fp) {
+            mark_dest_segments(fp.target(), fp.duration());
+          });
     });
   } else /* Destination is coordinate. */ {
     for (auto const [l_idx, dist] : utl::enumerate(dist_to_dest_)) {
@@ -302,14 +303,19 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
     if (from == to) {
       return footpath{to, tt_.locations_.transfer_time_[from]};
     }
-    auto const from_fps =
-        tt_.locations_.footpaths_out_[state_.tbd_.prf_idx_][from];
-    auto const it = utl::find_if(
-        from_fps, [&](footpath const& fp) { return fp.target() == to; });
-    utl::verify(it != end(from_fps),
+    // the shortest one: a pair can come as a footpath and from a hub
+    auto best = std::optional<footpath>{};
+    for_each_transfer<direction::kForward>(
+        tt_, nullptr, state_.tbd_.prf_idx_, from, [&](footpath const fp) {
+          if (fp.target() == to &&
+              (!best.has_value() || fp.duration() < best->duration())) {
+            best = fp;
+          }
+        });
+    utl::verify(best.has_value(),
                 "tb reconstruct: footpath from {} to {} not found",
                 loc{tt_, from}, loc{tt_, to});
-    return *it;
+    return *best;
   };
 
   auto const get_transport_info = [&](segment_idx_t const s,

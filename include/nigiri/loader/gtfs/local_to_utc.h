@@ -259,8 +259,10 @@ inline stop_seq_t const* get_stop_seq(trip_data const& trip_data,
         auto const prev_last = stop{stop_seq_cache.back()};
         auto const curr_first = stop{trp.stop_seq_.front()};
         stop_seq_cache.back() =
-            stop{prev_last.location_idx(), curr_first.in_allowed(),
-                 prev_last.out_allowed(), curr_first.in_allowed_wheelchair(),
+            stop{trip_data.junction(t.trips_[i - 1U], t_idx,
+                                    prev_last.location_idx()),
+                 curr_first.in_allowed(), prev_last.out_allowed(),
+                 curr_first.in_allowed_wheelchair(),
                  prev_last.out_allowed_wheelchair()}
                 .value();
       }
@@ -270,6 +272,28 @@ inline stop_seq_t const* get_stop_seq(trip_data const& trip_data,
           end(trp.stop_seq_));
     }
     return &stop_seq_cache;
+  }
+}
+
+// A transport joined from several trips that already carries its stop
+// sequence (stay-seated chains): the stop where one trip continues as the next
+// is the arriving trip's last stop, which becomes the junction location (see
+// trip_data::junctions_).
+inline void set_junctions(trip_data const& trip_data, utc_trip& t) {
+  if (t.trips_.size() < 2U || t.stop_seq_.empty()) {
+    return;
+  }
+  auto pos = std::size_t{0U};
+  for (auto i = 0U; i + 1U < t.trips_.size(); ++i) {
+    pos += trip_data.get(t.trips_[i]).stop_seq_.size() - 1U;
+    if (pos >= t.stop_seq_.size()) {
+      return;
+    }
+    auto const s = stop{t.stop_seq_[pos]};
+    t.stop_seq_[pos] =
+        s.with_location(trip_data.junction(t.trips_[i], t.trips_[i + 1U],
+                                           s.location_idx()))
+            .value();
   }
 }
 

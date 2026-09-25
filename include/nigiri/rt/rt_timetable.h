@@ -82,6 +82,13 @@ struct rt_timetable {
                   stop_idx_t,
                   vector_map<location_idx_t, std::vector<footpath>>&,
                   vector_map<location_idx_t, std::vector<footpath>>&);
+  // one edge between two root locations
+  void update_lbs(timetable const& tt,
+                  location_idx_t from,
+                  location_idx_t to,
+                  duration_t travel_time,
+                  vector_map<location_idx_t, std::vector<footpath>>&,
+                  vector_map<location_idx_t, std::vector<footpath>>&);
   void update_lbs(timetable const& tt);
 
   void cancel_run(rt::run const&);
@@ -218,6 +225,28 @@ struct rt_timetable {
     for (auto i = 0U; i != rt_virts_.size(); ++i) {
       fn(location_idx_t{tt_->n_locations() + i}, rt_virts_[i]);
     }
+  }
+  // Per location query inputs (destinations, vias, distances, lower bounds)
+  // are collected on the static timetable. A real-time virtual location is
+  // its platform as far as they go. An empty input stays empty.
+  void extend_to_rt_virts(bitvec& b) const {
+    if (b.size() == 0U) {
+      return;
+    }
+    b.resize(n_routing_locations());
+    for_each_rt_virt([&](location_idx_t const l, auto const& x) {
+      b.set(to_idx(l), b.test(to_idx(x.parent_)));
+    });
+  }
+  template <typename T>
+  void extend_to_rt_virts(std::vector<T>& v, T const fill) const {
+    if (v.empty()) {
+      return;
+    }
+    v.resize(n_routing_locations(), fill);
+    for_each_rt_virt([&](location_idx_t const l, auto const& x) {
+      v[to_idx(l)] = v[to_idx(x.parent_)];
+    });
   }
   // Where the default profile routes the stops of a transport, if that is not
   // what rt_transport_location_seq_ says: one entry per stop,

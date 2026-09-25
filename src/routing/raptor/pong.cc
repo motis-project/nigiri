@@ -17,6 +17,7 @@
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/leg_alternatives.h"
+#include "nigiri/routing/start_times.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/types.h"
@@ -59,7 +60,10 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
 
-template <direction SearchDir, bool Rt, via_offset_t Vias, bool Project,
+template <direction SearchDir,
+          bool Rt,
+          via_offset_t Vias,
+          bool Project,
           typename AlgoState>
 routing_result pong(timetable const& tt,
                     rt_timetable const* rtt,
@@ -69,11 +73,10 @@ routing_result pong(timetable const& tt,
                     std::optional<std::chrono::seconds> timeout) {
   constexpr auto kFwd = (SearchDir == direction::kForward);
 
-  using ping_algo_t =
-      std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-                         gpu::gpu_raptor<SearchDir, false>,
-                         raptor<SearchDir, Rt, Vias, search_mode::kOneToOne,
-                                Project>>;
+  using ping_algo_t = std::conditional_t<
+      std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+      gpu::gpu_raptor<SearchDir, false>,
+      raptor<SearchDir, Rt, Vias, search_mode::kOneToOne, Project>>;
   using pong_algo_t = std::conditional_t<
       std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
       gpu::gpu_raptor<flip(SearchDir), kPruneWithPingBounds>,
@@ -110,8 +113,7 @@ routing_result pong(timetable const& tt,
   auto ping_is_dest = bitvec{};
   auto ping_is_via = std::array<bitvec, kMaxVias>{};
   collect_destinations(tt, q.destination_, q.dest_match_mode_, q.prf_idx_,
-                       ping_is_dest,
-                       ping_dist_to_dest);
+                       ping_is_dest, ping_dist_to_dest);
   for (auto const [i, via] : utl::enumerate(q.via_stops_)) {
     collect_via_destinations(tt, via.location_, ping_is_via[i]);
   }
@@ -160,8 +162,7 @@ routing_result pong(timetable const& tt,
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
   auto pong_is_dest = bitvec{};
   collect_destinations(tt, q.destination_, q.dest_match_mode_, q.prf_idx_,
-                       pong_is_dest,
-                       pong_dist_to_dest);
+                       pong_is_dest, pong_dist_to_dest);
 
   auto pong_is_via = std::array<bitvec, kMaxVias>{};
   for (auto const [i, via] : utl::enumerate(q.via_stops_)) {
@@ -492,9 +493,7 @@ routing_result pong_with_vias(timetable const& tt,
                               AlgoState& r_state,
                               query q,
                               std::optional<std::chrono::seconds> timeout) {
-  // a profile without hubs cannot represent the split: its virtual locations
-  // are projected onto their stop (see raptor.h)
-  auto const project = q.prf_idx_ != kDefaultProfile;
+  auto const project = projects_virts(q.prf_idx_);
   if (rtt == nullptr) {
     return project ? pong<SearchDir, false, Vias, true>(
                          tt, rtt, s_state, r_state, std::move(q), timeout)
@@ -544,6 +543,7 @@ routing_result pong_search(timetable const& tt,
                            query q,
                            direction search_dir,
                            std::optional<std::chrono::seconds> timeout) {
+  add_virt_td_offsets(tt, rtt, q);
   if (search_dir == direction::kForward) {
     return pong_search_with_dir<direction::kForward>(tt, rtt, s_state, r_state,
                                                      std::move(q), timeout);

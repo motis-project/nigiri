@@ -24,7 +24,6 @@ using side_t = transfer_rule_side_t;
 
 // What one matched rule side states - the loader's virt_key, side by side.
 struct side_value {
-  CISTA_COMPARABLE()
   bool is_from_;
   location_idx_t rule_stop_;
   location_idx_t other_stop_;
@@ -32,6 +31,16 @@ struct side_value {
   route_id_idx_t other_route_;
   trip_idx_t other_trip_;
   duration_t duration_;
+  bool by_trip_;  // this side names a trip (see keep_rank_where_it_decides)
+
+  // Only what erase_duplicates needs; the anonymous namespace would flag the
+  // unused templates of CISTA_COMPARABLE.
+  bool operator==(side_value const& o) const {
+    return cista::to_tuple(*this) == cista::to_tuple(o);
+  }
+  bool operator<(side_value const& o) const {
+    return cista::to_tuple(*this) < cista::to_tuple(o);
+  }
 };
 
 std::vector<side_value> values_of(timetable const& tt,
@@ -47,8 +56,11 @@ std::vector<side_value> values_of(timetable const& tt,
                  .src_ = r.src_,
                  .other_route_ = is_from ? r.to_route_ : r.from_route_,
                  .other_trip_ = is_from ? r.to_trip_ : r.from_trip_,
-                 .duration_ = r.duration_});
+                 .duration_ = r.duration_,
+                 .by_trip_ = (is_from ? r.from_trip_ : r.to_trip_) !=
+                             trip_idx_t::invalid()});
   }
+  loader::keep_rank_where_it_decides(tt, v);
   utl::erase_duplicates(v);
   return v;
 }
@@ -103,16 +115,24 @@ std::vector<side_t> get_signature(timetable const& tt,
   return sig;
 }
 
-// Rules with both sides on this trip stop state its own change time. In the
-// sorted signature such a rule shows up as two adjacent entries.
+// Rules with both sides on this trip stop state its own change time (same as
+// the loader): a qualified side is on it if it is in the sorted signature, an
+// unqualified one if its stop covers the platform.
 duration_t get_own(timetable const& tt,
                    std::vector<side_t> const& sig,
                    location_idx_t const platform) {
   auto const& rules = tt.transfer_rules_.rules_;
+  auto const applies = [&](std::uint32_t const rule, bool const is_from) {
+    auto const& r = rules[rule];
+    return (is_from ? r.from_qualified() : r.to_qualified())
+               ? std::binary_search(begin(sig), end(sig),
+                                    transfer_rules::side(rule, is_from))
+               : covers(tt, is_from ? r.from_stop_ : r.to_stop_, platform);
+  };
   auto best = std::optional<candidate>{};
-  for (auto i = std::size_t{1U}; i < sig.size(); ++i) {
-    auto const rule = transfer_rules::rule_of(sig[i]);
-    if (transfer_rules::rule_of(sig[i - 1U]) == rule) {
+  for (auto const s : sig) {
+    auto const rule = transfer_rules::rule_of(s);
+    if (applies(rule, true) && applies(rule, false)) {
       best = std::max(best, std::optional{make_candidate(rules[rule], rule,
                                                          platform, platform)});
     }
@@ -144,8 +164,7 @@ void link(timetable const& tt, rt_timetable& rtt, location_idx_t const v) {
       it->second = std::min(it->second, fp.duration());
       return true;
     };
-    routing::for_each_footpath_at<Dir>(tt, nullptr, kDefaultProfile, p, add);
-    routing::for_each_hub_source<flip(Dir)>(tt, kDefaultProfile, p, add);
+    routing::for_each_transfer<Dir>(tt, nullptr, kDefaultProfile, p, add);
 
     // the platform itself and the other real-time virtual locations, which
     // are reached like their platform (kNoTransfer: no change at this stop)
@@ -207,7 +226,7 @@ void link(timetable const& tt, rt_timetable& rtt, location_idx_t const v) {
     for_each_location(rule, !is_from, [&](location_idx_t const y) {
       if (y != v) {
         auto const y_platform =
-            rtt.is_rt_virt(y) ? rtt.physical(y) : loader::base_of(tt, y);
+            rtt.is_rt_virt(y) ? rtt.physical(y) : tt.locations_.get_base_idx(y);
         auto& best = edges[is_from ? 0U : 1U].rules_[y];
         best = std::max(best, make_candidate(tr.rules_[rule], rule,
                                              is_from ? p : y_platform,
@@ -311,9 +330,7 @@ location_idx_t route_stop_at(timetable const& tt,
 
   auto seq = rtt.rt_transport_location_seq_[rt_t];
   auto const s = stop{seq[stop_idx]};
-  seq[stop_idx] = stop{is_rt ? l : routing, s.in_allowed(), s.out_allowed(),
-                       s.in_allowed_wheelchair(), s.out_allowed_wheelchair()}
-                      .value();
+  seq[stop_idx] = s.with_location(is_rt ? l : routing).value();
 
   if (is_rt || rtt.rt_routing_locations_.contains(rt_t)) {
     auto& locs = rtt.rt_routing_locations_[rt_t];

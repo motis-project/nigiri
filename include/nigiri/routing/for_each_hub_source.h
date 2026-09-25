@@ -64,7 +64,7 @@ void for_each_footpath_at(timetable const& tt,
       }
     }
   }
-  if (rtt == nullptr || prf_idx != kDefaultProfile) {
+  if (rtt == nullptr || projects_virts(prf_idx)) {
     return;
   }
   auto const& rt_fps = kFwd ? rtt->rt_fps_out_ : rtt->rt_fps_in_;
@@ -77,6 +77,49 @@ void for_each_footpath_at(timetable const& tt,
         return;
       }
     }
+  }
+}
+
+// The whole transfer relation at `l` in the direction of a search: the
+// footpaths, the transfers of real-time virtual locations and what the hubs
+// hand out - forward the transfers leaving `l`, backward the ones reaching it.
+// Everything that reads transfers pair by pair goes through here, so only this
+// place knows about hubs. A target can come more than once (a footpath and a
+// hub, or two hubs); a caller that looks up one pair takes the minimum. The
+// RAPTOR footpath phase does not use it: it relaxes a hub as a whole
+// (expand_hubs), not pair by pair. `fn` may return false to stop.
+template <direction SearchDir>
+void for_each_transfer(timetable const& tt,
+                       rt_timetable const* rtt,
+                       profile_idx_t const prf_idx,
+                       location_idx_t const l,
+                       auto&& fn) {
+  auto go_on = true;
+  auto const call = [&](footpath const fp) {
+    if constexpr (std::is_void_v<decltype(fn(fp))>) {
+      fn(fp);
+    } else {
+      go_on = fn(fp);
+    }
+    return go_on;
+  };
+  for_each_footpath_at<SearchDir>(tt, rtt, prf_idx, l, call);
+  if (go_on) {
+    for_each_hub_source<flip(SearchDir)>(tt, prf_idx, l, call);
+  }
+}
+
+// ... with the direction known at runtime only
+void for_each_transfer(direction const dir,
+                       timetable const& tt,
+                       rt_timetable const* rtt,
+                       profile_idx_t const prf_idx,
+                       location_idx_t const l,
+                       auto&& fn) {
+  if (dir == direction::kForward) {
+    for_each_transfer<direction::kForward>(tt, rtt, prf_idx, l, fn);
+  } else {
+    for_each_transfer<direction::kBackward>(tt, rtt, prf_idx, l, fn);
   }
 }
 

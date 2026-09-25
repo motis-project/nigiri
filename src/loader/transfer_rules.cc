@@ -39,8 +39,8 @@ void write_transfer_rules(
   };
   auto cross = hash_map<rule_idx_t, cross_rule>{};
   for (auto const& [xy, c] : most_specific) {
-    auto const base = base_of(tt, xy.from_);
-    if (base != base_of(tt, xy.to_)) {
+    auto const base = tt.locations_.get_base_idx(xy.from_);
+    if (base != tt.locations_.get_base_idx(xy.to_)) {
       if (rule_hubs) {
         auto& g = cross[c.rule_idx_];
         g.x_.insert(xy.from_);
@@ -112,8 +112,8 @@ void write_transfer_rules(
   // Write the most specific transfer per pair.
   for (auto const& [xy, c] : most_specific) {
     auto const d = durations[c.rule_idx_];
-    auto const base = base_of(tt, xy.from_);
-    if (base == base_of(tt, xy.to_)) {
+    auto const base = tt.locations_.get_base_idx(xy.from_);
+    if (base == tt.locations_.get_base_idx(xy.to_)) {
       if (d == base_time(base) && derivable_at(xy.from_, xy.to_, base)) {
         continue;  // derived by the base's own hubs
       }

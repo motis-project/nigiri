@@ -140,9 +140,24 @@ struct trip_data {
   trip const& get(std::string_view id) const { return data_[trips_.at(id)]; }
   trip& get(std::string_view id) { return data_[trips_.at(id)]; }
 
+  // The location a joined transport stops at where one vehicle continues from
+  // trip `from` as trip `to` (block_id or stay-seated transfer): it carries
+  // the transfers.txt rule sides of both trip stops, see
+  // loader::gtfs::apply_rules. No entry: the arriving trip's last stop.
+  location_idx_t junction(gtfs_trip_idx_t const from,
+                          gtfs_trip_idx_t const to,
+                          location_idx_t const fallback) const {
+    auto const it = junctions_.find(pair{from, to});
+    return it == end(junctions_) ? fallback : it->second;
+  }
+
   hash_map<std::string, gtfs_trip_idx_t> trips_;
   hash_map<std::string, std::unique_ptr<block>> blocks_;
   vector_map<gtfs_trip_idx_t, trip> data_;
+  hash_map<pair<gtfs_trip_idx_t, gtfs_trip_idx_t>, location_idx_t> junctions_;
+  // transfers.txt type 5: the vehicle continues from trip `first` as trip
+  // `second` (block_id), but nobody may stay seated - see block::rule_services
+  hash_set<pair<gtfs_trip_idx_t, gtfs_trip_idx_t>> no_stay_seated_;
 };
 
 enum class interpolate_result { kOk, kErrorLastMissing, kErrorFirstMissing };

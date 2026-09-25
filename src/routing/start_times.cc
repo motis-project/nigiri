@@ -6,6 +6,7 @@
 #include "utl/overloaded.h"
 
 #include "nigiri/for_each_meta.h"
+#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
 
@@ -130,18 +131,20 @@ void add_starts_in_interval(direction const search_dir,
                             profile_idx_t const p,
                             std::vector<start>& starts,
                             bool const add_ontrip) {
+  // Routes visiting the location (none at a real-time virtual location,
+  // rt_timetable::rt_virts_: only real-time transports stop there, and its
+  // index is past the static tables).
+  auto const routes =
+      rtt != nullptr && rtt->is_rt_virt(l)
+          ? std::span<route_idx_t const>{}
+          : std::span<route_idx_t const>{tt.location_routes_.at(l)};
   trace_start(
       "    add_starts_in_interval(interval={}, stop={}): {} "
       "routes\n",
       iv, loc{tt, l},  // NOLINT(clang-analyzer-core.CallAndMessage)
-      tt.location_routes_.at(l).size());
+      routes.size());
 
-  // Iterate routes visiting the location (none at a real-time virtual
-  // location, rt_timetable::rt_virts_: only real-time transports stop there).
-  for (auto const& r :
-       rtt != nullptr && rtt->is_rt_virt(l)
-           ? std::span<route_idx_t const>{}
-           : std::span<route_idx_t const>{tt.location_routes_.at(l)}) {
+  for (auto const& r : routes) {
 
     // Iterate the location sequence, searching the given location.
     auto const location_seq = tt.route_location_seq_.at(r);
@@ -183,9 +186,9 @@ void add_starts_in_interval(direction const search_dir,
       auto const location_seq = rtt->rt_transport_location_seq_.at(rt_t);
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         auto const stp = stop{s};
-        if ((p == kDefaultProfile
-                 ? rtt->routing_location(rt_t, static_cast<stop_idx_t>(i))
-                 : stp.location_idx()) != l) {
+        if ((projects_virts(p) ? stp.location_idx()
+                               : rtt->routing_location(
+                                     rt_t, static_cast<stop_idx_t>(i))) != l) {
           continue;
         }
 
@@ -260,55 +263,49 @@ void get_starts(
     profile_idx_t const prf_idx,
     transfer_time_settings const& tts) {
   auto shortest_start = hash_map<location_idx_t, duration_t>{};
-  auto const update = [&](location_idx_t const l, duration_t const offset) {
+  auto at_start = hash_map<location_idx_t, duration_t>{};  // not walked to
+  auto const update = [&](location_idx_t const l, duration_t const offset,
+                          bool const walked) {
     auto const d =
         offset + (via_stops.empty() || via_stops.front().location_ != l
                       ? 0_minutes
                       : via_stops.front().stay_);
-    auto& val = utl::get_or_create(shortest_start, l, [d]() { return d; });
-    val = std::min(val, d);
+    auto const keep_min = [&](hash_map<location_idx_t, duration_t>& m) {
+      auto& val = utl::get_or_create(m, l, [d]() { return d; });
+      val = std::min(val, d);
+    };
+    keep_min(shortest_start);
+    if (!walked) {
+      keep_min(at_start);
+    }
   };
 
   auto const fwd = search_dir == direction::kForward;
   for (auto const& o : start_offsets) {
     for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
-      update(l, o.duration());
+      update(l, o.duration(), false);
       if (use_start_footpaths) {
-        auto const footpaths = fwd ? tt.locations_.footpaths_out_[prf_idx][l]
-                                   : tt.locations_.footpaths_in_[prf_idx][l];
-        for (auto const& fp : footpaths) {
+        // footpaths, real-time virtual locations and hubs alike
+        auto const walk = [&](footpath const& fp) {
           update(fp.target(),
-                 o.duration() + adjusted_transfer_time(tts, fp.duration()));
-        }
-
-        // hub-derived transfers (see raptor expand_hubs): l -> hub -> target,
-        // all at the hub's single transfer time
-        auto const& by_loc = fwd ? tt.locations_.hub_in_by_loc_[prf_idx]
-                                 : tt.locations_.hub_out_by_loc_[prf_idx];
-        if (by_loc.size() != 0U) {
-          for (auto const h : by_loc[l]) {
-            auto const d = tt.locations_.hub_time_[prf_idx][h];
-            auto const w =
-                d.count() == 0 ? duration_t{0} : adjusted_transfer_time(tts, d);
-            for (auto const target :
-                 (fwd ? tt.locations_.hub_out_[prf_idx]
-                      : tt.locations_.hub_in_[prf_idx])[h]) {
-              update(target, o.duration() + w);
-            }
-          }
-        }
+                 o.duration() + adjusted_transfer_time(tts, fp.duration()),
+                 true);
+        };
+        for_each_transfer(search_dir, tt, rtt, prf_idx, l, walk);
       }
     });
   }
 
-  if (rtt != nullptr && prf_idx == kDefaultProfile) {
-    // Real-time virtual locations are what their platform is: a journey that
-    // starts at the platform can board the trips that were moved there.
+  if (rtt != nullptr && !projects_virts(prf_idx)) {
+    // Real-time virtual locations are where their platform is: a journey that
+    // starts at the platform boards the trips moved there right away. Walking
+    // there takes their own transfers (above), which a rule for a moved trip
+    // can make slower than the platform's.
     rtt->for_each_rt_virt([&](location_idx_t const l, auto const& virt) {
-      if (auto const it = shortest_start.find(virt.parent_);
-          it != end(shortest_start)) {
-        auto const offset = it->second;
-        shortest_start.emplace(l, offset);
+      if (auto const it = at_start.find(virt.parent_); it != end(at_start)) {
+        auto& val =
+            utl::get_or_create(shortest_start, l, [&]() { return it->second; });
+        val = std::min(val, it->second);
       }
     });
   }
@@ -353,6 +350,37 @@ void get_starts(
   }
 }
 
+void add_virt_td_offsets(timetable const& tt,
+                         rt_timetable const* rtt,
+                         query& q) {
+  if (projects_virts(q.prf_idx_)) {
+    return;  // the search sees the stop only
+  }
+  auto const add = [&](hash_map<location_idx_t, std::vector<td_offset>>& td) {
+    auto virts = std::vector<std::pair<location_idx_t, location_idx_t>>{};
+    for (auto const& [l, _] : td) {
+      for (auto const c : tt.locations_.children_[l]) {
+        if (tt.locations_.types_[c] == location_type::kVirt) {
+          virts.emplace_back(c, l);
+        }
+      }
+    }
+    if (rtt != nullptr && !td.empty()) {
+      rtt->for_each_rt_virt([&](location_idx_t const v, auto const& virt) {
+        if (td.contains(virt.parent_)) {
+          virts.emplace_back(v, virt.parent_);
+        }
+      });
+    }
+    for (auto const& [v, l] : virts) {
+      auto offsets = td.at(l);
+      td.emplace(v, std::move(offsets));
+    }
+  };
+  add(q.td_start_);
+  add(q.td_dest_);
+}
+
 void collect_destinations(timetable const& tt,
                           std::vector<offset> const& dest,
                           location_match_mode const match_mode,
@@ -362,10 +390,7 @@ void collect_destinations(timetable const& tt,
   // A profile that projects virtual locations away never puts a label on one
   // (see raptor.h), so a destination found there would never be seen.
   auto const project = [&](location_idx_t const l) {
-    return prf_idx != kDefaultProfile &&
-                   tt.locations_.types_[l] == location_type::kVirt
-               ? tt.locations_.parents_[l]
-               : l;
+    return tt.locations_.project(prf_idx, l);
   };
   is_dest.resize(tt.n_locations());
   utl::fill(is_dest.blocks_, 0U);

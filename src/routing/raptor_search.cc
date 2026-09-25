@@ -16,6 +16,7 @@
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/start_times.h"
 
 namespace nigiri::routing {
 
@@ -29,12 +30,7 @@ routing_result raptor_search_with_vias(
     AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
-  // A profile that has no hubs cannot represent the split: its footpaths were
-  // computed without the rules, so the virtual locations carry nothing it can
-  // use. Those profiles project them onto their stop instead - which is not
-  // the same as "not the default profile", because the routed foot layer does
-  // get the rules and does get hubs.
-  auto const project = q.prf_idx_ != kDefaultProfile;
+  auto const project = projects_virts(q.prf_idx_);
   if (rtt == nullptr) {
     if (project) {
       using algo_t = std::conditional_t<
@@ -126,6 +122,7 @@ routing_result raptor_search(
     std::optional<std::chrono::seconds> const timeout) {
   auto span = get_otel_tracer()->StartSpan("raptor_search");
   auto scope = opentelemetry::trace::Scope{span};
+  add_virt_td_offsets(tt, rtt, q);
   if (span->IsRecording()) {
     std::visit(utl::overloaded{
                    [&](interval<unixtime_t> const& interval) {

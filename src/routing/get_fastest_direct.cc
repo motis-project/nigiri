@@ -5,6 +5,7 @@
 #include "nigiri/common/dial.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/dijkstra.h"
+#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/special_stations.h"
 
 namespace nigiri::routing {
@@ -66,29 +67,27 @@ duration_t get_fastest_direct(timetable const& tt,
       continue;
     }
 
-    auto const& footpaths =
-        (dir == direction::kForward ? tt.locations_.footpaths_out_[q.prf_idx_]
-                                    : tt.locations_.footpaths_in_[q.prf_idx_]);
-    for (auto const& fp : footpaths[l.l_]) {
-      auto const new_dist =
-          l.d_ + adjusted_transfer_time(
-                     q.transfer_time_settings_,
-                     static_cast<label::dist_t>(fp.duration().count()));
-      if (new_dist > max_dist) {
-        continue;
-      }
+    for_each_transfer(
+        dir, tt, nullptr, q.prf_idx_, l.l_, [&](footpath const fp) {
+          auto const new_dist =
+              l.d_ + adjusted_transfer_time(
+                         q.transfer_time_settings_,
+                         static_cast<label::dist_t>(fp.duration().count()));
+          if (new_dist > max_dist) {
+            return;
+          }
 
-      if (!dest_offsets.contains(fp.target())) {
-        continue;
-      }
+          if (!dest_offsets.contains(fp.target())) {
+            return;
+          }
 
-      auto& target_dist = get_dist(fp.target());
-      if (new_dist < target_dist && new_dist < pq.n_buckets() &&
-          new_dist < max_dist) {
-        target_dist = static_cast<label::dist_t>(new_dist);
-        pq.push(label{fp.target(), static_cast<label::dist_t>(new_dist)});
-      }
-    }
+          auto& target_dist = get_dist(fp.target());
+          if (new_dist < target_dist && new_dist < pq.n_buckets() &&
+              new_dist < max_dist) {
+            target_dist = static_cast<label::dist_t>(new_dist);
+            pq.push(label{fp.target(), static_cast<label::dist_t>(new_dist)});
+          }
+        });
 
     if (auto const it = dest_offsets.find(l.l_); it != end(dest_offsets)) {
       auto const new_dist = l.d_ + static_cast<label::dist_t>(it->second);
