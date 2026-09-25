@@ -158,6 +158,16 @@ unixtime_t ut(std::uint64_t const s) {
       std::chrono::seconds{s})};
 }
 
+// The fixture, loaded for the given date range.
+timetable load_fixture(date::sys_days const from, date::sys_days const to) {
+  auto tt = timetable{};
+  register_special_stations(tt);
+  tt.date_range_ = {from, to};
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+  return tt;
+}
+
 // The run of the fixture's trip on a given day.
 run run_on(timetable const& tt, date::sys_days const d) {
   auto td = transit_realtime::TripDescriptor{};
@@ -178,13 +188,8 @@ std::size_t alerts_for(
 }  // namespace
 
 TEST(rt, gtfs_rt_alert_agency) {
-  // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
   auto const today = date::sys_days{2023_y / August / 9};
-  tt.date_range_ = {today, date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto const tt = load_fixture(today, date::sys_days{2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
@@ -229,13 +234,8 @@ TEST(rt, gtfs_rt_alert_agency) {
 }
 
 TEST(rt, gtfs_rt_alert_active_period_fallback) {
-  // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
   auto const today = date::sys_days{2023_y / August / 9};
-  tt.date_range_ = {today, date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto const tt = load_fixture(today, date::sys_days{2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
@@ -263,13 +263,8 @@ TEST(rt, gtfs_rt_alert_active_period_fallback) {
 }
 
 TEST(rt, gtfs_rt_alert_trip_without_start_date) {
-  // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
   auto const today = date::sys_days{2023_y / August / 9};
-  tt.date_range_ = {today, date::sys_days{2023_y / September / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto const tt = load_fixture(today, date::sys_days{2023_y / September / 1});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, today);
@@ -326,13 +321,8 @@ TEST(rt, gtfs_rt_alert_trip_without_start_date) {
 }
 
 TEST(rt, gtfs_rt_alert_trip_with_start_date) {
-  // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
   auto const today = date::sys_days{2023_y / August / 9};
-  tt.date_range_ = {today, date::sys_days{2023_y / September / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto const tt = load_fixture(today, date::sys_days{2023_y / September / 1});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, today);
@@ -357,13 +347,8 @@ TEST(rt, gtfs_rt_alert_trip_with_start_date) {
 }
 
 TEST(rt, gtfs_rt_alert_route_type) {
-  // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
   auto const today = date::sys_days{2023_y / August / 9};
-  tt.date_range_ = {today, date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto const tt = load_fixture(today, date::sys_days{2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, today);
@@ -404,4 +389,54 @@ TEST(rt, gtfs_rt_alert_route_type) {
   // run, 1033 the second.
   EXPECT_EQ(1, alerts_for(rtt, tt, t, r, stop_idx_t{0}));
   EXPECT_EQ(0, alerts_for(rtt, tt, t, r, stop_idx_t{1}));
+}
+
+TEST(rt, gtfs_rt_alert_bad_trip_descriptor) {
+  auto const today = date::sys_days{2023_y / August / 9};
+  auto const tt = load_fixture(today, date::sys_days{2023_y / September / 1});
+
+  // Create empty RT timetable.
+  auto rtt = rt::create_rt_timetable(tt, today);
+
+  // Route-based descriptor without direction_id, start_date and start_time:
+  // an error per the spec.
+  auto const bad_trip = [](transit_realtime::Alert* a) {
+    a->add_informed_entity()->mutable_trip()->set_route_id("201");
+  };
+  auto const good_trip = [](transit_realtime::Alert* a) {
+    a->add_informed_entity()->mutable_trip()->set_trip_id("3248651");
+  };
+
+  auto msg = transit_realtime::FeedMessage{};
+  msg.mutable_header()->set_gtfs_realtime_version("2.0");
+  msg.mutable_header()->set_timestamp(1691539200);  // 2023-08-09T00:00Z
+
+  // Entity 1: only a bad selector. Discarded.
+  auto* e1 = msg.add_entity();
+  e1->set_id("1");
+  bad_trip(e1->mutable_alert());
+
+  // Entity 2: a good selector recorded first, then a bad one. The bad one
+  // must not abort the alert after the good one was recorded.
+  auto* e2 = msg.add_entity();
+  e2->set_id("2");
+  good_trip(e2->mutable_alert());
+  bad_trip(e2->mutable_alert());
+
+  // Entity 3: comes after the errors and must still be applied.
+  auto* e3 = msg.add_entity();
+  e3->set_id("3");
+  good_trip(e3->mutable_alert());
+
+  auto const stats = gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
+
+  EXPECT_EQ(3, stats.total_alerts_);
+  EXPECT_EQ(2, stats.alert_trip_not_found_);
+
+  // Alerts from entities 2 and 3 exist, nothing dangling from entity 1.
+  ASSERT_EQ(2, rtt.alerts_.communication_period_.size());
+  auto const by_trip = rtt.alerts_.trip_[trip_idx_t{0}];
+  ASSERT_EQ(2, by_trip.size());
+  EXPECT_EQ(alert_idx_t{0}, by_trip[0].alert_);
+  EXPECT_EQ(alert_idx_t{1}, by_trip[1].alert_);
 }

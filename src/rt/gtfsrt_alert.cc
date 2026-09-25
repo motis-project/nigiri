@@ -119,18 +119,25 @@ void handle_alert(date::sys_days const today,
       auto const& td = x.trip();
       auto found = false;
 
-      if (td.has_trip_id() && !td.has_start_date() && !td.has_start_time()) {
-        for_each_trip(tt, src, td.trip_id(), [&](trip_idx_t const t) {
-          alerts.trip_[t].push_back({stop, alert_idx});
-          found = true;
-        });
-      } else {
-        resolve_static(today, tt, src, td,
-                       [&](run const& r, trip_idx_t const t) {
-                         alerts.trip_[t].push_back({stop, alert_idx, r.t_});
-                         found = true;
-                         return utl::continue_t::kContinue;
-                       });
+      // A bad descriptor must not abort the alert half-way: earlier informed
+      // entities were already recorded under alert_idx.
+      try {
+        if (td.has_trip_id() && !td.has_start_date() && !td.has_start_time()) {
+          for_each_trip(tt, src, td.trip_id(), [&](trip_idx_t const t) {
+            alerts.trip_[t].push_back({stop, alert_idx});
+            found = true;
+          });
+        } else {
+          resolve_static(today, tt, src, td,
+                         [&](run const& r, trip_idx_t const t) {
+                           alerts.trip_[t].push_back({stop, alert_idx, r.t_});
+                           found = true;
+                           return utl::continue_t::kContinue;
+                         });
+        }
+      } catch (std::exception const& e) {
+        log(log_lvl::debug, "rt.gtfs.resolve.alert", "tag={}, error={}", tag,
+            e.what());
       }
 
       if (!found) {
