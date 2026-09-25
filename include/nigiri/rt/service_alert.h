@@ -1,7 +1,10 @@
 #pragma once
 
+#include <optional>
+
 #include "utl/helpers/algorithm.h"
 
+#include "nigiri/rt/frun.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/string_store.h"
 #include "nigiri/timetable.h"
@@ -98,25 +101,36 @@ struct alerts {
            utl::any_of(periods, [&](auto&& p) { return p.overlaps(time); });
   }
 
+  // stop_idx: set = that stop, arrival to departure; empty = the whole run,
+  //   first departure to last arrival. The alert period is checked against it.
   // fuzzy_stop parameter:
   //   - true: alert.l_=invalid matches everything
   //     => used for stop times
-  //   - false: alert.l_=invalid matches iff l=invalid
-  //     => used for itineraries
-  //     - leg (overall trip):
-  //         l == invalid => matches only not stop specific alerts
-  //         (addressing route/trip/agency)
-  //     - from/to/intermediateStop:
-  //         l != invalid => matches only concrete stop
-  // time parameter:
-  //   - the stop event for a stop, or the departure to arrival span for a leg.
+  //   - false: alert.l_=invalid matches iff the question is about the run
+  //     => used for itineraries (leg vs. from/to/intermediate stop)
   hash_set<alert_idx_t> get_alerts(timetable const& tt,
+                                   rt_timetable const& rtt,
                                    source_idx_t const src,
                                    trip_idx_t const t,
                                    rt::run const& r,
-                                   location_idx_t const l,
-                                   bool const fuzzy_stop,
-                                   interval<unixtime_t> const& time) const {
+                                   std::optional<stop_idx_t> const stop_idx,
+                                   bool const fuzzy_stop) const {
+    auto const fr = rt::frun{tt, &rtt, r};
+
+    auto const first =
+        stop_idx ? rt::run_stop{.fr_ = &fr, .stop_idx_ = *stop_idx} : fr[0];
+    auto const last =
+        stop_idx ? first
+                 : fr[static_cast<stop_idx_t>(fr.stop_range_.size() - 1)];
+    auto const from = first.time(stop_idx && *stop_idx != 0 ? event_type::kArr
+                                                            : event_type::kDep);
+    auto const to =
+        last.time(stop_idx && *stop_idx + 1 != fr.size() ? event_type::kDep
+                                                         : event_type::kArr);
+    auto const l =
+        stop_idx ? first.get_location_idx() : location_idx_t::invalid();
+    auto const time = interval<unixtime_t>{from, to + duration_t{1}};
+
     auto const route_id_idx = tt.trip_route_id_[t];
     auto const route_type = tt.route_ids_[src].route_id_type_[route_id_idx];
     auto const agency = tt.route_ids_[src].route_id_provider_[route_id_idx];
@@ -135,8 +149,8 @@ struct alerts {
 
     auto alerts = hash_set<alert_idx_t>{};
 
-    if (r.is_rt()) {
-      for (auto const& a : rt_transport_[r.rt_]) {
+    if (fr.is_rt()) {
+      for (auto const& a : rt_transport_[fr.rt_]) {
         if (matches_location(a.l_) && impacts(a.alert_, time)) {
           alerts.insert(a.alert_);
         }
@@ -144,7 +158,7 @@ struct alerts {
     }
 
     for (auto const& a : trip_[t]) {
-      if ((!a.t_.is_valid() || a.t_ == r.t_) && matches_location(a.l_) &&
+      if ((!a.t_.is_valid() || a.t_ == fr.t_) && matches_location(a.l_) &&
           impacts(a.alert_, time)) {
         alerts.insert(a.alert_);
       }

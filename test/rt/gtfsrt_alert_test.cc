@@ -158,17 +158,20 @@ unixtime_t ut(std::uint64_t const s) {
       std::chrono::seconds{s})};
 }
 
-std::size_t alerts_for(rt_timetable const& rtt,
-                       timetable const& tt,
-                       trip_idx_t const t,
-                       transport const tr,
-                       unixtime_t const x,
-                       location_idx_t const l = location_idx_t::invalid()) {
-  auto r = run{};
-  r.t_ = tr;
-  return rtt.alerts_
-      .get_alerts(tt, source_idx_t{0}, t, r, l, false,
-                  interval<unixtime_t>{x, x + 1_minutes})
+// The run of the fixture's trip on a given day.
+run run_on(timetable const& tt, date::sys_days const d) {
+  auto td = transit_realtime::TripDescriptor{};
+  *td.mutable_trip_id() = "3248651";
+  return rt::gtfsrt_resolve_run(d, tt, nullptr, source_idx_t{0}, td).first;
+}
+
+std::size_t alerts_for(
+    rt_timetable const& rtt,
+    timetable const& tt,
+    trip_idx_t const t,
+    run const& r,
+    std::optional<stop_idx_t> const stop_idx = std::nullopt) {
+  return rtt.alerts_.get_alerts(tt, rtt, source_idx_t{0}, t, r, stop_idx, false)
       .size();
 }
 
@@ -194,14 +197,14 @@ TEST(rt, gtfs_rt_alert_agency) {
   // All three periods are given: the more precise communication_period and
   // impact_period must be used, the legacy active_period must be ignored.
   auto* active = a.add_active_period();
-  active->set_start(60);
-  active->set_end(120);
+  active->set_start(1691650800);  // 2023-08-10T07:00Z
+  active->set_end(1691654400);  // 2023-08-10T08:00Z
   auto* comm = a.add_communication_period();
-  comm->set_start(180);
-  comm->set_end(240);
+  comm->set_start(1691654400);  // 2023-08-10T08:00Z
+  comm->set_end(1691658000);  // 2023-08-10T09:00Z
   auto* impact = a.add_impact_period();
-  impact->set_start(300);
-  impact->set_end(360);
+  impact->set_start(1691658000);  // 2023-08-10T09:00Z
+  impact->set_end(1691661600);  // 2023-08-10T10:00Z
 
   // weird
   handle_alert(today, tt, rtt, source_idx_t{1}, "tag", a, stats);
@@ -213,17 +216,16 @@ TEST(rt, gtfs_rt_alert_agency) {
   auto const idx = alert_idx_t{0};
   ASSERT_EQ(1, rtt.alerts_.communication_period_[idx].size());
   ASSERT_EQ(1, rtt.alerts_.impact_period_[idx].size());
-  EXPECT_EQ((interval<unixtime_t>{ut(180), ut(240)}),
+  EXPECT_EQ((interval<unixtime_t>{ut(1691654400), ut(1691658000)}),
             rtt.alerts_.communication_period_[idx][0]);
-  EXPECT_EQ((interval<unixtime_t>{ut(300), ut(360)}),
+  EXPECT_EQ((interval<unixtime_t>{ut(1691658000), ut(1691661600)}),
             rtt.alerts_.impact_period_[idx][0]);
 
-  // The impact period gates the alert, whatever the selector was.
-  auto const alerts_at = [&](unixtime_t const x) {
-    return alerts_for(rtt, tt, trip_idx_t{0}, transport::invalid(), x);
-  };
-  EXPECT_EQ(1, alerts_at(ut(300)));
-  EXPECT_EQ(0, alerts_at(ut(600)));
+  // The impact period gates the alert, whatever the selector was: the run of
+  // the 10th (09:15-09:58Z) overlaps it, the run of the 11th does not.
+  auto const t = trip_idx_t{0};
+  EXPECT_EQ(1, alerts_for(rtt, tt, t, run_on(tt, 2023_y / August / 10)));
+  EXPECT_EQ(0, alerts_for(rtt, tt, t, run_on(tt, 2023_y / August / 11)));
 }
 
 TEST(rt, gtfs_rt_alert_active_period_fallback) {
@@ -279,12 +281,12 @@ TEST(rt, gtfs_rt_alert_trip_without_start_date) {
   a.add_informed_entity()->mutable_trip()->set_trip_id("3248651");
   auto* active = a.add_active_period();
   active->set_start(1690848000);  // 2023-08-01T00:00Z
-  active->set_end(1693526400);  // 2023-09-01T00:00Z
+  active->set_end(1692144000);  // 2023-08-16T00:00Z
 
   // A second, separate period: the alert applies during all of its periods.
   auto* second = a.add_active_period();
-  second->set_start(1695600000);  // 2023-09-25T00:00Z
-  second->set_end(1696032000);  // 2023-09-30T00:00Z
+  second->set_start(1692576000);  // 2023-08-21T00:00Z
+  second->set_end(1693008000);  // 2023-08-26T00:00Z
 
   handle_alert(today, tt, rtt, source_idx_t{0}, "tag", a, stats);
 
@@ -293,18 +295,18 @@ TEST(rt, gtfs_rt_alert_trip_without_start_date) {
   EXPECT_EQ(0, rtt.alerts_.rt_transport_.size());
   ASSERT_EQ(1, rtt.alerts_.trip_[t].size());
 
-  auto const alerts_at = [&](unixtime_t const x) {
-    return alerts_for(rtt, tt, t, transport::invalid(), x);
+  auto const alerts_on = [&](date::year_month_day const d) {
+    return alerts_for(rtt, tt, t, run_on(tt, d));
   };
 
   // 2023-08-11, two days after the feed day, inside the first period.
-  EXPECT_EQ(1, alerts_at(ut(1691730900)));
+  EXPECT_EQ(1, alerts_on(2023_y / August / 11));
 
-  // 2023-09-20, in the gap between the two periods.
-  EXPECT_EQ(0, alerts_at(ut(1695186900)));
+  // 2023-08-17, in the gap between the two periods.
+  EXPECT_EQ(0, alerts_on(2023_y / August / 17));
 
-  // 2023-09-26, inside the second period.
-  EXPECT_EQ(1, alerts_at(ut(1695705300)));
+  // 2023-08-23, inside the second period.
+  EXPECT_EQ(1, alerts_on(2023_y / August / 23));
 
   // A second alert on the same trip, with a period that has no end: it must
   // not look like it was over in 1970.
@@ -319,8 +321,8 @@ TEST(rt, gtfs_rt_alert_trip_without_start_date) {
   ASSERT_EQ(1, rtt.alerts_.impact_period_[open_ended].size());
   EXPECT_EQ(unixtime_t::max(), rtt.alerts_.impact_period_[open_ended][0].to_);
 
-  // 2023-09-20 is in the gap of the first alert, the open ended one applies.
-  EXPECT_EQ(1, alerts_at(ut(1695186900)));
+  // 2023-08-17 is in the gap of the first alert, the open ended one applies.
+  EXPECT_EQ(1, alerts_on(2023_y / August / 17));
 }
 
 TEST(rt, gtfs_rt_alert_trip_with_start_date) {
@@ -349,18 +351,9 @@ TEST(rt, gtfs_rt_alert_trip_with_start_date) {
   EXPECT_EQ(0, rtt.alerts_.rt_transport_.size());
   ASSERT_EQ(1, rtt.alerts_.trip_[t].size());
 
-  auto const run_on = [&](date::sys_days const d) {
-    auto x = transit_realtime::TripDescriptor{};
-    *x.mutable_trip_id() = "3248651";
-    return rt::gtfsrt_resolve_run(d, tt, nullptr, source_idx_t{0}, x).first.t_;
-  };
   // The run of 2023-08-10 has the alert, the one of 2023-08-11 does not.
-  EXPECT_EQ(1,
-            alerts_for(rtt, tt, t, run_on(date::sys_days{2023_y / August / 10}),
-                       ut(1691658900)));
-  EXPECT_EQ(0,
-            alerts_for(rtt, tt, t, run_on(date::sys_days{2023_y / August / 11}),
-                       ut(1691745300)));
+  EXPECT_EQ(1, alerts_for(rtt, tt, t, run_on(tt, 2023_y / August / 10)));
+  EXPECT_EQ(0, alerts_for(rtt, tt, t, run_on(tt, 2023_y / August / 11)));
 }
 
 TEST(rt, gtfs_rt_alert_route_type) {
@@ -402,14 +395,13 @@ TEST(rt, gtfs_rt_alert_route_type) {
   ASSERT_EQ(1, rtt.alerts_.route_type_[src][route_type_t{3}].size());
 
   auto const t = trip_idx_t{0};
-  auto const when = ut(1691658900);
-  auto const selected = tt.find(location_id{"2351", src}).value();
-  auto const elsewhere = tt.find(location_id{"1033", src}).value();
+  auto const r = run_on(tt, 2023_y / August / 10);
 
   // For the leg: only the alert that named no stop.
-  EXPECT_EQ(1, alerts_for(rtt, tt, t, transport::invalid(), when));
+  EXPECT_EQ(1, alerts_for(rtt, tt, t, r));
 
-  // For a stop: only the alert that named it.
-  EXPECT_EQ(1, alerts_for(rtt, tt, t, transport::invalid(), when, selected));
-  EXPECT_EQ(0, alerts_for(rtt, tt, t, transport::invalid(), when, elsewhere));
+  // For a stop: only the alert that named it. 2351 is the first stop of the
+  // run, 1033 the second.
+  EXPECT_EQ(1, alerts_for(rtt, tt, t, r, stop_idx_t{0}));
+  EXPECT_EQ(0, alerts_for(rtt, tt, t, r, stop_idx_t{1}));
 }
