@@ -2,8 +2,12 @@
 
 #include <cinttypes>
 
+// hide date.h's NOEXCEPT from CCCL's token pasting, see device_times.h
+#pragma push_macro("NOEXCEPT")
+#undef NOEXCEPT
 #include <cuda/std/array>
 #include <cuda/std/span>
+#pragma pop_macro("NOEXCEPT")
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/rt/rt_timetable.h"
