@@ -99,10 +99,6 @@ struct device_rt_timetable {
   d_vecvec_view<vecvec<location_idx_t, footpath>> rt_fps_in_;
   std::uint32_t n_rt_fps_{0U};
 
-  // the platform of each real-time virtual location (for projecting profiles,
-  // see device_timetable::project_virts_)
-  cuda::std::span<location_idx_t const> rt_virt_parent_;
-
   d_vecmap_view<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
   d_vecmap_view<bitfield_idx_t, bitfield> bitfields_;
 
@@ -202,16 +198,6 @@ struct device_timetable {
 
   d_vecvec_view<decltype(t{}.route_location_seq_)> route_location_seq_;
   d_vecvec_view<decltype(t{}.location_routes_)> location_routes_;
-
-  // Profiles other than the default one see a virtual location as the stop it
-  // was split off (projects_virts): a stop location is mapped through
-  // location_base_ (a real-time virtual location is its platform, see
-  // device_rt_timetable::rt_virt_parent_), and a stop also serves the routes
-  // and real-time transports of its virtual children. Empty if the timetable
-  // has no virtual locations or the profile does not project.
-  bool project_virts_{false};
-  cuda::std::span<location_idx_t const> location_base_;
-  d_vecvec_view<vecvec<location_idx_t, location_idx_t>> virt_children_;
 
   d_vecmap_view<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
   d_vecmap_view<route_idx_t, bitfield_idx_t> route_traffic_days_;

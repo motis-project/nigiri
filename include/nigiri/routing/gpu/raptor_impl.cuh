@@ -171,19 +171,6 @@ struct raptor_impl {
              std::uint32_t{1U} << (i % 32U));
   }
 
-  // The location a stop's labels are at (see
-  // device_timetable::project_virts_).
-  __device__ location_idx_t loc(stop const s) const {
-    auto const l = s.location_idx();
-    if (!tt_.project_virts_) {
-      return l;
-    }
-    auto const i = to_idx(l);
-    return i < tt_.n_static_locations_
-               ? tt_.location_base_[i]
-               : rtt_.rt_virt_parent_[i - tt_.n_static_locations_];
-  }
-
   template <typename Lists>
   __device__ void mark_from_locations(Lists const& lists,
                                       device_bitvec<std::uint32_t>& marks) {
@@ -215,20 +202,6 @@ struct raptor_impl {
             marks.mark(to_idx(list[j]));
           }
           n = 0U;  // done on this lane
-        }
-
-        // a projecting profile's stop serves its virtual children's lists
-        if (tt_.project_virts_ && my_i < tt_.virt_children_.size()) {
-          auto const children = tt_.virt_children_[location_idx_t{my_i}];
-          for (auto c = 0U; c != children.size(); ++c) {
-            auto const child_list = lists[children[c]];
-            if (child_list.size() != 0U && !*any_marked_) {
-              atomicOr(any_marked_, 1U);
-            }
-            for (auto j = 0U; j != child_list.size(); ++j) {
-              marks.mark(to_idx(child_list[j]));
-            }
-          }
         }
       }
 
@@ -311,8 +284,8 @@ struct raptor_impl {
         // base day) -> exact, no traffic-day recovery needed
         auto const rt_t = rt_transport_idx_t{decode_rt_bc_transport(bc_t)};
         auto const stop_seq = rtt_.rt_transport_location_seq_[rt_t];
-        board_loc = loc(stop{stop_seq[board]});
-        alight_loc = loc(stop{stop_seq[alight]});
+        board_loc = stop{stop_seq[board]}.location_idx();
+        alight_loc = stop{stop_seq[alight]}.location_idx();
         train_arr = rt_time_at_stop(rt_t, alight, ev_arr_type);
         dep_at_board = rt_time_at_stop(rt_t, board, ev_dep_type);
       } else {
@@ -352,8 +325,8 @@ struct raptor_impl {
         auto const tr = transport{t_idx, day};
         dep_at_board = time_at_stop(r, tr, board, ev_dep_type);
         auto const stop_seq = tt_.route_location_seq_[r];
-        board_loc = loc(stop{stop_seq[board]});
-        alight_loc = loc(stop{stop_seq[alight]});
+        board_loc = stop{stop_seq[board]}.location_idx();
+        alight_loc = stop{stop_seq[alight]}.location_idx();
       }
 
       auto const is_egress = is_intermodal_dest() && cur_l == kIntermodalTarget;
@@ -556,10 +529,11 @@ struct raptor_impl {
         auto const stp = stop{stop_seq[stop_idx]};
         auto const is_dir_last = i + 1U == n;
         if (!is_dir_last && stp.can_start<SearchDir>(IsWheelchair) &&
-            prev_station_mark_[to_idx(loc(stp))]) {
+            prev_station_mark_[to_idx(stp.location_idx())]) {
           auto const dep = rt_time_at_stop(
               rt_t, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
-          if (is_better_or_eq(round_times_.get(k - 1, loc(stp), 0U), dep)) {
+          if (is_better_or_eq(round_times_.get(k - 1, stp.location_idx(), 0U),
+                              dep)) {
             my_board = static_cast<int>(i);
           }
         }
@@ -623,7 +597,7 @@ struct raptor_impl {
           board < static_cast<int>(i)) {
         auto const stp = stop{stop_seq[stop_idx]};
         if (stp.can_finish<SearchDir>(IsWheelchair)) {
-          auto const l = loc(stp);
+          auto const l = stp.location_idx();
           auto const by_transport = rt_time_at_stop(
               rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
           if (is_better_loose(by_transport, time_at_dest_.get(k)) &&
@@ -1059,7 +1033,7 @@ struct raptor_impl {
       if (i < n && et != kEtKeyInvalid && et_board_i < i) {
         auto const stp = stop{stop_seq[stop_idx]};
         if (stp.can_finish<SearchDir>(IsWheelchair)) {
-          auto const l = loc(stp);
+          auto const l = stp.location_idx();
           auto const l_idx = to_idx(l);
           auto const t = unpack_et(r, static_cast<std::uint32_t>(et >> 32U));
           auto const by_transport = time_at_stop(
@@ -1265,7 +1239,7 @@ struct raptor_impl {
             auto const is_dir_last = kFwd ? (s + 1U == n) : (s == 0U);
             if (!is_dir_last) {
               auto const stp = stop{stop_seq[s]};
-              auto const l = loc(stp);
+              auto const l = stp.location_idx();
               is_task = prev_station_mark_[to_idx(l)] &&
                         stp.can_start<SearchDir>(IsWheelchair) &&
                         round_times_.get(k - 1, l, 0U) != kInvalid;
@@ -1305,7 +1279,7 @@ struct raptor_impl {
           static_cast<stop_idx_t>(flat - tt_.route_stop_offset_[to_idx(r)]);
       auto const stop_seq = tt_.route_location_seq_[r];
       auto const stp = stop{stop_seq[stop_idx]};
-      auto const l = loc(stp);
+      auto const l = stp.location_idx();
       auto const [day, mam] = split(round_times_.get(k - 1, l, 0U));
       et_result_[flat] =
           pack_et(r, get_earliest_transport(k, r, stop_idx, day, mam));

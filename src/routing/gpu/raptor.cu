@@ -58,6 +58,27 @@ constexpr std::uint32_t n_bitvec_words(std::uint32_t const n) {
   return n / 32U + 1U;
 }
 
+// The first n stop sequences as a profile that projects virtual locations
+// away sees them: every stop at the stop it stands for.
+template <typename Key, typename Seqs>
+vecvec<Key, stop::value_type> build_projected_seq(timetable const& tt,
+                                                  Seqs const& seqs,
+                                                  std::uint32_t const n) {
+  auto v = vecvec<Key, stop::value_type>{};
+  auto tmp = std::vector<stop::value_type>{};
+  for (auto i = Key{0U}; i != Key{n}; ++i) {
+    tmp.clear();
+    for (auto const s : seqs[i]) {
+      auto const stp = stop{s};
+      tmp.push_back(
+          stp.with_location(tt.locations_.get_base_idx(stp.location_idx()))
+              .value());
+    }
+    v.emplace_back(tmp);
+  }
+  return v;
+}
+
 struct gpu_timetable::impl {
   using t = timetable;
   using fp_t = decltype(t{}.locations_.footpaths_out_[0]);
@@ -96,25 +117,24 @@ struct gpu_timetable::impl {
     });
   }
 
-  // what a projecting profile needs (see device_timetable::project_virts_):
-  // the stop of every location and the virtual children of every stop
-  void build_projection(timetable const& tt) {
-    auto base = std::vector<location_idx_t>(tt.n_locations());
-    auto children = vecvec<location_idx_t, location_idx_t>{};
-    auto tmp = std::vector<location_idx_t>{};
-    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-      base[to_idx(l)] = tt.locations_.get_base_idx(l);
-      tmp.clear();
-      for (auto const c : tt.locations_.children_[l]) {
-        if (tt.locations_.types_[c] == location_type::kVirt) {
-          tmp.push_back(c);
+  // the stop a virt was generated for has to reach the transports bound to
+  // that virt, or the projecting profile never scans them
+  static vecvec<location_idx_t, route_idx_t> build_projected_location_routes(
+      timetable const& tt, vecvec<route_idx_t, stop::value_type> const& seq) {
+    auto routes = std::vector<std::vector<route_idx_t>>(tt.n_locations());
+    for (auto r = 0U; r != tt.n_routes(); ++r) {
+      for (auto const s : seq[route_idx_t{r}]) {
+        auto& v = routes[to_idx(stop{s}.location_idx())];
+        if (v.empty() || v.back() != route_idx_t{r}) {
+          v.push_back(route_idx_t{r});
         }
       }
-      children.emplace_back(tmp);
     }
-    location_base_ = to_device(base);
-    virt_children_ =
-        device_vecvec<vecvec<location_idx_t, location_idx_t>>{children};
+    auto v = vecvec<location_idx_t, route_idx_t>{};
+    for (auto const& r : routes) {
+      v.emplace_back(r);
+    }
+    return v;
   }
 
   // a footpath may end on a virt; the projecting profile keeps its labels on
@@ -183,7 +203,12 @@ struct gpu_timetable::impl {
     route_of_stop_.assign(ros.begin(), ros.end());
     has_projection_ = has_virts(tt);
     if (has_projection_) {
-      build_projection(tt);
+      auto const seq = build_projected_seq<route_idx_t>(
+          tt, tt.route_location_seq_, tt.n_routes());
+      location_routes_proj_ = device_vecvec<decltype(t{}.location_routes_)>{
+          build_projected_location_routes(tt, seq)};
+      route_location_seq_proj_ =
+          device_vecvec<decltype(t{}.route_location_seq_)>{seq};
     }
 
     // The same-stop rows of transfers.txt (bans, timed rows) also exist
@@ -290,9 +315,8 @@ struct gpu_timetable::impl {
       dt.transfer_time_ = base_transfer_time_;
     }
     if (projected && has_projection_) {
-      dt.project_virts_ = true;
-      dt.location_base_ = to_view(location_base_);
-      dt.virt_children_ = to_view(virt_children_);
+      dt.route_location_seq_ = to_view(route_location_seq_proj_);
+      dt.location_routes_ = to_view(location_routes_proj_);
     }
     return dt;
   }
@@ -320,8 +344,8 @@ struct gpu_timetable::impl {
 
   // only filled if the timetable has virtual locations at all
   bool has_projection_{false};
-  thrust::device_vector<location_idx_t> location_base_;
-  device_vecvec<vecvec<location_idx_t, location_idx_t>> virt_children_;
+  device_vecvec<decltype(t{}.route_location_seq_)> route_location_seq_proj_;
+  device_vecvec<decltype(t{}.location_routes_)> location_routes_proj_;
 
   // the change times of the profiles other than the default one
   thrust::device_vector<u8_minutes> base_transfer_time_;
@@ -388,15 +412,25 @@ struct gpu_rt_timetable::impl {
     return v;
   }
 
-  // ... and as a profile that projects virtual locations away routes on it
-  // (device_timetable::project_virts_): a real-time virtual location is its
-  // platform
-  static std::vector<location_idx_t> build_rt_virt_parents(
-      rt_timetable const& rtt) {
-    auto v = std::vector<location_idx_t>{};
-    v.reserve(rtt.rt_virts_.size());
-    for (auto const& x : rtt.rt_virts_) {
-      v.push_back(x.parent_);
+  // ... and as a profile that projects virtual locations away routes on it:
+  // every virtual location is its stop, so a stop lists the rt transports of
+  // its virtual locations as well (mirrors raptor.h, ProjectVirts).
+  static vecvec<location_idx_t, rt_transport_idx_t> build_projected_location_rt(
+      timetable const& tt, rt_timetable const& rtt) {
+    auto v = vecvec<location_idx_t, rt_transport_idx_t>{};
+    auto tmp = std::vector<rt_transport_idx_t>{};
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      auto const own = rtt.location_rt_transports_[l];
+      tmp.assign(begin(own), end(own));
+      for (auto const c : tt.locations_.children_[l]) {
+        if (tt.locations_.types_[c] == location_type::kVirt) {
+          for (auto const rt_t : rtt.location_rt_transports_[c]) {
+            tmp.push_back(rt_t);
+          }
+        }
+      }
+      utl::erase_duplicates(tmp);
+      v.emplace_back(tmp);
     }
     return v;
   }
@@ -444,7 +478,6 @@ struct gpu_rt_timetable::impl {
         rt_fps_out_{build_rt_fps(rtt, rtt.rt_fps_out_)},
         rt_fps_in_{build_rt_fps(rtt, rtt.rt_fps_in_)},
         n_rt_fps_{static_cast<std::uint32_t>(rtt.rt_virts_.size())},
-        rt_virt_parent_{to_device(build_rt_virt_parents(rtt))},
         transport_traffic_days_{to_device(rtt.transport_traffic_days_)},
         bitfields_{to_device(rtt.bitfields_)},
         rt_transport_bikes_allowed_{
@@ -461,7 +494,16 @@ struct gpu_rt_timetable::impl {
             rtt.rt_flags_per_section_[kWheelchairAccessible]},
         rt_reservation_not_required_sections_{
             rtt.rt_flags_per_section_[kReservationNotRequired]} {
-    has_projection_ = gpu_timetable::impl::has_virts(tt);
+    if (gpu_timetable::impl::has_virts(tt)) {
+      location_rt_transports_proj_ =
+          device_vecvec<vecvec<location_idx_t, rt_transport_idx_t>>{
+              build_projected_location_rt(tt, rtt)};
+      rt_transport_location_seq_proj_ =
+          device_vecvec<decltype(rtt_t{}.rt_transport_location_seq_)>{
+              build_projected_seq<rt_transport_idx_t>(
+                  tt, rtt.rt_transport_location_seq_, rtt.n_rt_transports())};
+      has_projection_ = true;
+    }
 
     utl::verify(
         bc_transport_space_fits(tt.transport_route_.size(), n_rt_transports_),
@@ -516,14 +558,16 @@ struct gpu_rt_timetable::impl {
     auto d = device_rt_timetable{
         .n_rt_transports_ = n_rt_transports_,
         .base_day_idx_ = base_day_idx_,
-        .location_rt_transports_ = to_view(location_rt_transports_),
-        .rt_transport_location_seq_ = to_view(rt_transport_location_seq_),
+        .location_rt_transports_ = to_view(
+            project ? location_rt_transports_proj_ : location_rt_transports_),
+        .rt_transport_location_seq_ =
+            to_view(project ? rt_transport_location_seq_proj_
+                            : rt_transport_location_seq_),
         .rt_transport_stop_times_ = to_view(rt_transport_stop_times_),
         .rt_transport_clasz_ = to_view(rt_transport_clasz_),
         .rt_fps_out_ = to_view(rt_fps_out_),
         .rt_fps_in_ = to_view(rt_fps_in_),
         .n_rt_fps_ = project ? 0U : n_rt_fps_,
-        .rt_virt_parent_ = to_view(rt_virt_parent_),
         .transport_traffic_days_ = to_view(transport_traffic_days_),
         .bitfields_ = to_view(bitfields_),
         .filters_ = thrust::raw_pointer_cast(rt_filters_ctx_.data()),
@@ -546,9 +590,12 @@ struct gpu_rt_timetable::impl {
   device_vecvec<vecvec<location_idx_t, footpath>> rt_fps_in_;
   std::uint32_t n_rt_fps_;
 
-  // whether the timetable has virtual locations at all
+  // projected variants, only if the timetable has virtual locations
   bool has_projection_{false};
-  thrust::device_vector<location_idx_t> rt_virt_parent_;
+  device_vecvec<vecvec<location_idx_t, rt_transport_idx_t>>
+      location_rt_transports_proj_;
+  device_vecvec<decltype(rtt_t{}.rt_transport_location_seq_)>
+      rt_transport_location_seq_proj_;
 
   thrust::device_vector<bitfield_idx_t> transport_traffic_days_;
   thrust::device_vector<bitfield> bitfields_;
