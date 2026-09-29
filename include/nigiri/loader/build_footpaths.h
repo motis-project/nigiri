@@ -2,6 +2,9 @@
 
 #include <cstdint>
 #include <functional>
+#include <vector>
+
+#include "geo/latlng.h"
 
 #include "nigiri/loader/import_context.h"
 #include "nigiri/loader/merge_duplicates.h"
@@ -25,6 +28,8 @@ struct finalize_options {
   std::function<void(timetable&,
                      mutable_fws_multimap<location_idx_t, footpath>&)>
       compute_walks_{};
+  // hotel locations for stationary night trains (see hotel_trains.h)
+  std::vector<geo::latlng> hotels_{};
 };
 
 void build_footpaths(timetable& tt,
