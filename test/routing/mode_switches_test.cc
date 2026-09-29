@@ -10,7 +10,7 @@ namespace {
 std::uint8_t switches(std::initializer_list<clasz> const rides) {
   auto d = mode_switches_dim::at_start(0U);
   for (auto const c : rides) {
-    d = mode_switches_dim::from_ride(0U, ride_attrs{c}, d);
+    d = mode_switches_dim::from_ride(0, 0, 0U, ride_attrs{c}, d);
   }
   return d.switches_;
 }
