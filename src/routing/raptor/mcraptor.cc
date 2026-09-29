@@ -316,7 +316,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
   auto const ride = ride_attrs{
       .clasz_ = n_sec == 0U ? fallback : sections[std::min(sec, n_sec - 1U)]};
   auto const ride_crit = Criteria::from_ride(
-      by_transport, rl.board_dep_,
+      by_transport,
       static_cast<std::uint16_t>(dir(by_transport - rl.board_dep_)), ride,
       rl.carried_);
   if (dest_dominates(k,
@@ -1326,7 +1326,6 @@ NIGIRI_MC_INSTANTIATE(arr_cost_criteria)
 NIGIRI_MC_INSTANTIATE(arr_non_transit_criteria)
 NIGIRI_MC_INSTANTIATE(arr_mode_filter_criteria)
 NIGIRI_MC_INSTANTIATE(arr_mode_switches_criteria)
-NIGIRI_MC_INSTANTIATE(arr_night_transfer_criteria)
 NIGIRI_MC_INSTANTIATE(arr_non_transit_mode_filter_criteria)
 NIGIRI_MC_INSTANTIATE(arr_non_transit_mode_switches_criteria)
 NIGIRI_MC_INSTANTIATE(arr_mode_filter_mode_switches_criteria)
