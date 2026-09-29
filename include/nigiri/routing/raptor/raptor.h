@@ -1091,7 +1091,7 @@ private:
                 loc{tt_, location_idx_t{kIntermodalTarget}},
                 to_unix(best_[kIntermodalTarget][Vias]), to_unix(end_time));
 
-            if (is_better_loose(end_time, time_at_dest_[k])) {
+            if (improves_intermodal_target(k, end_time)) {
               round_times_[k][kIntermodalTarget][Vias] = end_time;
               best_[kIntermodalTarget][Vias] = end_time;
               update_time_at_dest(k, end_time);
@@ -1118,7 +1118,7 @@ private:
             loc{tt_, location_idx_t{kIntermodalTarget}},
             to_unix(best_[kIntermodalTarget][Vias]), to_unix(end_time));
 
-        if (is_better_loose(end_time, time_at_dest_[k])) {
+        if (improves_intermodal_target(k, end_time)) {
           round_times_[k][kIntermodalTarget][Vias] = end_time;
           best_[kIntermodalTarget][Vias] = end_time;
           update_time_at_dest(k, end_time);
@@ -1605,6 +1605,17 @@ private:
   }
 
   bool is_intermodal_dest() const { return !dist_to_end_.empty(); }
+
+  // Whether reaching the intermodal target at t in round k is worth writing.
+  // time_at_dest_ alone decides that only while it holds the best arrival:
+  // with set_dest_relax() it runs ahead by the slack, and a later end-reachable
+  // stop arriving worse (within the slack) would overwrite the round's best -
+  // the round then reports a journey a fewer-transfer one dominates, and the
+  // faster one is lost. best_ holds the true best arrival over the rounds.
+  bool improves_intermodal_target(unsigned const k, delta_t const t) const {
+    return is_better_loose(t, time_at_dest_[k]) &&
+           is_better_or_eq(t, best_[kIntermodalTarget][Vias]);
+  }
 
   void update_time_at_dest(unsigned const k, delta_t const t) {
     if constexpr (SearchMode == search_mode::kOneToAll) {
