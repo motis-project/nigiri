@@ -15,6 +15,7 @@
 #include "nigiri/routing/raptor/bmrap_common.h"
 #include "nigiri/routing/raptor/bmrap_filters.h"
 #include "nigiri/routing/raptor/mcraptor.h"
+#include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/special_stations.h"
 
@@ -224,10 +225,15 @@ routing_result bmrap_profile(
   auto const is_timeout = [&]() {
     return timeout && (clk::now() - t0) >= *timeout;
   };
-  // nothing slower than the fastest direct connection is of interest
+  // The scan bound, as in pong.cc: it limits the ARRIVAL relative to the
+  // step's departure, so it has to look well past max_travel_time - the next
+  // useful departure can be hours away (a night bus between two stops that are
+  // otherwise only walking distance apart). Bounding it by fastest_direct found
+  // nothing there and ended the scan with no journeys. Travel time is enforced
+  // by the fastest_direct / max_travel_time filters on the results instead.
   auto const worst_at_dest = [&](unixtime_t const t) {
-    return t + (kFwd ? 1 : -1) * (std::min(fastest_direct, q.max_travel_time_) +
-                                  duration_t{1});
+    return t + (kFwd ? 1 : -1) *
+                   std::min(q.max_travel_time_ + kMinLookAhead, kMaxTravelTime);
   };
   // Relaxes the ping's target pruning by the arrival slack, which makes its
   // round times a valid tau_arr^->(v, i) matrix (paper, Sec. 4.3). The clamps
