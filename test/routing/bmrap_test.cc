@@ -552,6 +552,127 @@ TEST(bmrap, opposed_extension_is_a_superset_of_pong) {
   }
 }
 
+// The next departure worth taking can lie far beyond fastest_direct: the scan
+// bound limits the arrival relative to the step's departure, not the travel
+// time. Queried after the last departure of the 18th, the next one leaves ~18h
+// later - a ping bounded by fastest_direct (6h) found nothing and the scan
+// ended empty, while PONG kept looking.
+TEST(bmrap, finds_departures_beyond_fastest_direct) {
+  auto const f = fixture{};
+  auto q = f.make_query();
+  auto const t = unixtime_t{sys_days{2024_y / June / 18}} + 14h;
+  q.start_time_ = interval<unixtime_t>{t, t + 1min};
+  q.extend_interval_later_ = true;
+  q.fastest_direct_ = 6h;
+  auto const pong = pong_reference(f, q, direction::kForward);
+  ASSERT_FALSE(pong.js_.empty()) << "the fixture cannot support this case";
+  EXPECT_EQ(pong.js_,
+            bmrapp<routing::arr_criteria>(f, q, direction::kForward).js_);
+}
+
+// Two destination offsets reached in the same round: D1 at 10:30 (2
+// transfers), then D2 at 10:35. The ping's target pruning is relaxed by the
+// arrival slack, so 10:35 still beats time_at_dest_ - it must not overwrite the
+// round's 10:30, or the journey turns into one a direct trip dominates (10:32
+// from the 10:00 step, 10:33 from the 10:01 step), the anchors keep only one
+// trip, and the trip budget cuts the mc phases off from the 2-transfer
+// journey.
+namespace {
+
+constexpr auto const kTwoDestGTFS = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,DB,https://db.de,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+O,O,0.0,1.0,,
+A,A,2.0,3.0,,
+B,B,4.0,5.0,,
+D1,D1,6.0,7.0,,
+D2,D2,8.0,9.0,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R0,DB,R0,,,3
+R1,DB,R1,,,3
+R2,DB,R2,,,3
+R3,DB,R3,,,3
+R4,DB,R4,,,3
+R5,DB,R5,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R0,S,T0,,
+R1,S,T1,,
+R2,S,T2,,
+R3,S,T3,,
+R4,S,T4,,
+R5,S,T5,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T0,10:00:00,10:00:00,O,0,0,0
+T0,10:32:00,10:32:00,D2,1,0,0
+T1,10:01:00,10:01:00,O,0,0,0
+T1,10:08:00,10:08:00,A,1,0,0
+T2,10:12:00,10:12:00,A,0,0,0
+T2,10:18:00,10:18:00,B,1,0,0
+T3,10:22:00,10:22:00,B,0,0,0
+T3,10:30:00,10:30:00,D1,1,0,0
+T4,10:22:00,10:22:00,B,0,0,0
+T4,10:35:00,10:35:00,D2,1,0,0
+T5,10:02:00,10:02:00,O,0,0,0
+T5,10:33:00,10:33:00,D2,1,0,0
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+)"sv;
+
+}  // namespace
+
+TEST(bmrap, relaxed_ping_keeps_best_intermodal_arrival) {
+  auto tt = timetable{};
+  tt.date_range_ = {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}};
+  register_special_stations(tt);
+  load_timetable({}, source_idx_t{0}, mem_dir::read(std::string{kTwoDestGTFS}),
+                 tt);
+  finalize(tt);
+  auto const loc = [&](char const* id) {
+    return tt.locations_.location_id_to_idx_.at({id, source_idx_t{0}});
+  };
+  ASSERT_LT(loc("D1"), loc("D2")) << "D2 must be written after D1";
+
+  auto q = routing::query{};
+  auto const day = sys_days{2024_y / June / 19};
+  q.start_time_ =
+      interval<unixtime_t>{unixtime_t{day} + 8h, unixtime_t{day} + 8h + 2min};
+  q.start_ = {{loc("O"), 0_minutes, 0U}};
+  q.destination_ = {{loc("D1"), 0_minutes, 0U}, {loc("D2"), 0_minutes, 0U}};
+  q.dest_match_mode_ = routing::location_match_mode::kIntermodal;
+  q.via_stops_ = {};
+  q.min_connection_count_ = 1U;
+  q.extend_interval_later_ = true;  // the per-step ping ("aligned") path
+
+  auto ss = routing::search_state{};
+  auto as = routing::raptor_state{};
+  auto const pong = tuples(*routing::pong_search(tt, nullptr, ss, as, q,
+                                                 direction::kForward)
+                                .journeys_);
+  auto const two_transfers =
+      tuple_t{unixtime_t{day} + 8h + 1min, unixtime_t{day} + 8h + 30min, 2U};
+  ASSERT_TRUE(std::find(begin(pong), end(pong), two_transfers) != end(pong))
+      << "the fixture cannot support this case";
+
+  auto ss2 = routing::search_state{};
+  auto as2 = routing::raptor_state{};
+  expect_subset(tuples(*routing::bmrap_profile_search<routing::arr_criteria>(
+                            tt, nullptr, ss2, as2, q, direction::kForward)
+                            .journeys_),
+                pong, "two destination offsets in one round");
+}
+
 // ---------------------------------------------------------------------------
 // bounded_needs_lb<Algo>(): the lower-bound-dijkstra skip trait
 // ---------------------------------------------------------------------------
