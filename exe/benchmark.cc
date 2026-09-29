@@ -476,10 +476,12 @@ int main(int argc, char* argv[]) {
        "process exits non-zero on any divergence")  //
       ("algo,a", bpo::value(&algos)->multitoken(),
        "algorithms: range | pong | mcraptor | mcraptor-cost | bmrap | "
-       "mcraptor-restricted (default: range pong); bmrap is BM-RAPTOR over "
-       "the non-transit criteria, mcraptor-restricted the range mcraptor over "
+       "bmrap-range | mcraptor-restricted (default: range pong); bmrap is "
+       "BM-RAPTOR over the non-transit criteria, bmrap-range its range "
+       "variant (one bound matrix for the whole window, cpu only), "
+       "mcraptor-restricted the range mcraptor over "
        "the same criteria cut down by the restricted-set definition, so the "
-       "two must agree; every ran cell (any engine/algo combination) within a "
+       "three must agree; every ran cell (any engine/algo combination) within a "
        "(mode, "
        "dir) is checked pairwise against every other for agreement on the "
        "intersection of the final search intervals")  //
@@ -702,10 +704,11 @@ int main(int argc, char* argv[]) {
 #endif
   for (auto const& a : algos) {
     if (a != "range" && a != "pong" && a != "mcraptor" &&
-        a != "mcraptor-cost" && a != "bmrap" && a != "mcraptor-restricted") {
+        a != "mcraptor-cost" && a != "bmrap" && a != "bmrap-range" &&
+        a != "mcraptor-restricted") {
       std::cerr << "invalid algo \"" << a
                 << "\", expected range | pong | mcraptor | mcraptor-cost | "
-                   "bmrap | mcraptor-restricted\n";
+                   "bmrap | bmrap-range | mcraptor-restricted\n";
       return 1;
     }
   }
@@ -821,11 +824,15 @@ int main(int argc, char* argv[]) {
         // tokens select the algorithm/state type of a range search
         auto const use_pong = algo == "pong";
         auto const use_bmrap = algo == "bmrap";
+        auto const use_bmrap_range = algo == "bmrap-range";
         auto const use_restricted = algo == "mcraptor-restricted";
+        // bmrap-range runs on the non-transit mc state, like
+        // mcraptor-restricted
         auto const algo_part =
-            use_pong || use_bmrap
-                ? std::string{"range"}
-                : (use_restricted ? std::string{"mcraptor-restricted"} : algo);
+            use_pong || use_bmrap ? std::string{"range"}
+            : use_restricted || use_bmrap_range
+                ? std::string{"mcraptor-restricted"}
+                : algo;
         auto const label = mode + "-" + dir_str + "-" + algo;
 
         // dispatch to the right search-state type; pong only exists for
@@ -852,6 +859,11 @@ int main(int argc, char* argv[]) {
                 } else if constexpr (std::is_same_v<
                                          RS,
                                          routing::mcraptor_non_transit_state>) {
+                  if (use_bmrap_range) {
+                    return *routing::bmrap_range_search(
+                                tt, nullptr, w.ss_, w.rs_, std::move(q), dir)
+                                .journeys_;
+                  }
                   return dir == direction::kForward
                              ? restricted_range_search<direction::kForward>(
                                    tt, w.ss_, w.rs_, std::move(q))
@@ -925,7 +937,10 @@ int main(int argc, char* argv[]) {
           }
 
 #if defined(NIGIRI_CUDA)
-          if (run_gpu) {
+          if (run_gpu && use_bmrap_range) {
+            std::cout << "bmrap-range has no gpu engine -> " << label
+                      << "-gpu skipped\n";
+          } else if (run_gpu) {
             cells.push_back(
                 algo_part == "mcraptor"
                     ? run_gpu_cell.template

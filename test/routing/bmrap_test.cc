@@ -179,6 +179,16 @@ run_result bmrapp(fixture const& f, routing::query q, direction const dir) {
   return {tuples(*r.journeys_), r.interval_};
 }
 
+// The range variant (one window-wide bound matrix), kept for benchmarking.
+template <typename Criteria>
+run_result bmrap_range(fixture const& f, routing::query q, direction const dir) {
+  auto ss = routing::search_state{};
+  auto as = routing::basic_mcraptor_state<Criteria>{};
+  auto const r =
+      routing::bmrap_range_search(f.tt_, nullptr, ss, as, std::move(q), dir);
+  return {tuples(*r.journeys_), r.interval_};
+}
+
 // Plain range search: with raptor_state the two-criteria search, i.e. the
 // anchor set J_A itself; with an mcraptor state the unrestricted set.
 template <typename AlgoState>
@@ -328,6 +338,18 @@ TEST(bmrap, equals_restricted_mcraptor) {
   for (auto const dir : kDirs) {
     expect_bmrap_equals_restricted_mcraptor<routing::arr_criteria,
                                             routing::mcraptor_state>(dir);
+  }
+}
+
+// The range variant bounds more loosely but restricts to the same J_R.
+TEST(bmrap, range_equals_restricted_mcraptor) {
+  for (auto const dir : kDirs) {
+    auto const f = fixture{};
+    auto const q = f.make_query(dir);
+    auto const bm = bmrap_range<routing::arr_criteria>(f, q, dir).js_;
+    ASSERT_FALSE(bm.empty());
+    EXPECT_EQ(restricted_reference<routing::mcraptor_state>(f, q, dir), bm)
+        << name(dir);
   }
 }
 

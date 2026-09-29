@@ -4,6 +4,7 @@
 #include <optional>
 
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/search.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
@@ -39,5 +40,31 @@ routing_result bmrap_profile_search(
     direction search_dir,
     std::optional<std::chrono::seconds> timeout = std::nullopt,
     int gpu_mc_mode = kBmrapGpuMcModeDefault);
+
+// The RANGE variant bmrap_profile_search replaced, kept for benchmarking the
+// two against each other (bmraptor.cc). Three phases, all range searches over
+// the query window:
+//
+//  1. anchor search: the two-criteria (time, trips) range search (PONG where
+//     applicable, rRAPTOR otherwise) yielding the anchor pareto set J_A,
+//     closed past the window by close_anchor_profile().
+//  2. backward pruning: compute_bounds() over ALL anchors at once, i.e. ONE
+//     tau_dep^<- matrix for the whole window. A departure's slack is measured
+//     from that departure, so the union is dominated by the window's LAST
+//     departure and earlier ones are bounded more loosely, by up to the window
+//     width. The trip budget stays per-departure (search::max_transfers_fn_).
+//  3. main search: the bounded range McRAPTOR over the anchor window, finally
+//     restricted to J_R via outside_restriction().
+//
+// CPU only; runs every phase on its own raptor_state and the given mc state.
+template <typename Criteria>
+routing_result bmrap_range_search(
+    timetable const&,
+    rt_timetable const*,
+    search_state&,
+    basic_mcraptor_state<Criteria>&,
+    query,
+    direction search_dir,
+    std::optional<std::chrono::seconds> timeout = std::nullopt);
 
 }  // namespace nigiri::routing
