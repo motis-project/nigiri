@@ -30,12 +30,9 @@ namespace nigiri::routing::gpu {
 #define kUnreachable (std::numeric_limits<std::uint16_t>::max())
 #define kIntermodalTarget (get_special_station(special_station::kEnd))
 
-inline constexpr auto kWarpSize = 32U;
-
-inline constexpr auto kAllLanes = ~std::uint32_t{0};
-
-using td_dest_group_idx_t = cista::strong<std::uint32_t, struct td_dest_group_>;
-using td_dest_offsets_t = vecvec<td_dest_group_idx_t, td_offset>;
+// kWarpSize / kAllLanes live in stride.cuh; td_dest_group_idx_t /
+// td_dest_offsets_t live in device_td.cuh (shared with mcraptor_impl.cuh,
+// both included above)
 
 template <direction SearchDir, bool WithBounds>
 struct raptor_impl {
@@ -105,8 +102,8 @@ struct raptor_impl {
       auto const t = unix_to_delta(base(), starts_[i].second);
       auto const v = via_offset_t{0};
       best_.update_min(l, v, t);
-      round_times_.update_min(0U, l, v, t, make_start_bc());
-      touch_round(0U, l);
+      round_times_.update_min(start_round_, l, v, t, make_start_bc());
+      touch_round(start_round_, l);
       station_mark_.mark(to_idx(l));
     }
 
@@ -651,7 +648,8 @@ struct raptor_impl {
     }
 
     if (is_better(fp_target_time, best_.get(target_l, Vias)) &&
-        within_bounds(k, target_l, fp_target_time)) {
+        within_bounds(k, target_l, fp_target_time) &&
+        !bound_prunes(k, to_idx(target_l), fp_target_time)) {
       round_times_.update_min(k, target_l, Vias, fp_target_time, bc);
       touch_round(k, target_l);
       best_.update_min(target_l, Vias, fp_target_time);
@@ -745,7 +743,9 @@ struct raptor_impl {
           bc = tmp_.get_bc(0U, l, Vias);
           auto const is_dest = is_dest_[my_i];
 
-          // same-station transfer (former update_transfers)
+          // same-station transfer (former update_transfers); goes through
+          // the shared relax_fp_target so both pruning checks apply
+          // (within_bounds + our BM-RAPTOR bound_prunes)
           relax_fp_target(
               k, l,
               (!intermodal && is_dest)
@@ -803,6 +803,7 @@ struct raptor_impl {
       auto const deferred = __ballot_sync(kAllLanes, defer);
       for_each_set_bit(deferred, [&](unsigned const b) {
         auto const l = location_idx_t{base + b};
+        // full-mask shuffles also reconverge the warp for the strided loop
         auto const l_tmp = static_cast<delta_t>(__shfl_sync(
             kAllLanes, static_cast<int>(tmp_time), static_cast<int>(b)));
         auto const l_bc = __shfl_sync(kAllLanes, bc, static_cast<int>(b));
@@ -910,7 +911,10 @@ struct raptor_impl {
 
       // Update stop time.
       auto const et_board_i = static_cast<unsigned>(et & 0xFFFF'FFFFU);
-      if (i < n && et != kEtKeyInvalid && et_board_i < i) {
+      // stop_idx <= kBcStopMask: no alight at positions the 11-bit
+      // breadcrumb cannot represent (see et_run_lookups)
+      if (i < n && et != kEtKeyInvalid && et_board_i < i &&
+          stop_idx <= kBcStopMask) {
         auto const stp = stop{stop_seq[stop_idx]};
         if (stp.can_finish<SearchDir>(IsWheelchair)) {
           auto const l = stp.location_idx();
@@ -1161,8 +1165,13 @@ struct raptor_impl {
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l = stp.location_idx();
       auto const [day, mam] = split(round_times_.get(k - 1, l, 0U));
+      // the breadcrumb stores stop positions in 11 bits: no boarding at
+      // positions beyond that (a handful of >2048-stop routes exist in
+      // worldwide data; those tails are unreachable for reconstruction)
       et_result_[flat] =
-          pack_et(r, get_earliest_transport(k, r, stop_idx, day, mam));
+          stop_idx > kBcStopMask
+              ? kEtInvalid
+              : pack_et(r, get_earliest_transport(k, r, stop_idx, day, mam));
     }
   }
 
@@ -1198,9 +1207,42 @@ struct raptor_impl {
     return !dist_to_end_.empty();
   }
 
+  // BM-RAPTOR bound pruning - mirrors raptor::bound_prunes() exactly.
+  // bm_bounds_ holds tau_dep^<-(v, i) as (budget_+1) x n_locations rows of
+  // delta_t; a label produced in round k has bounds_budget_ - k trips left.
+  __device__ __forceinline__ bool bound_prunes(unsigned const k,
+                                               std::uint32_t const l,
+                                               delta_t const t) {
+    if (!has_bounds_) {
+      return false;
+    }
+    if (k > bounds_budget_) {
+      return true;
+    }
+    return !is_better_or_eq(
+        t, bm_bounds_[static_cast<std::size_t>(bounds_budget_ - k) *
+                          bounds_n_locations_ +
+                      l]);
+  }
+
+  // Mirrors raptor::update_time_at_dest(): with relax_on_ the destination
+  // bound is loosened to "travel + clamp(extra, floor, cap)" so this
+  // search's round times stay a valid tau_arr^-> matrix (paper, Sec. 4.3).
   __device__ void update_time_at_dest(unsigned const k, delta_t const t) {
+    auto relaxed = t;
+    if (relax_on_) {
+      auto const travel = static_cast<double>(dir(t - relax_origin_));
+      if (travel > 0.0) {
+        auto const extra = travel * (relax_factor_ - 1.0) + relax_add_;
+        auto const capped = extra < relax_floor_  ? relax_floor_
+                            : extra > relax_cap_  ? relax_cap_
+                                                  : extra;
+        relaxed = clamp(static_cast<int>(relax_origin_) +
+                        dir(static_cast<int>(::llround(travel + capped))));
+      }
+    }
     for (auto i = k; i != max_transfers_ + 1U; ++i) {
-      time_at_dest_.update_min(i, t);
+      time_at_dest_.update_min(i, relaxed);
     }
   }
 
@@ -1225,6 +1267,24 @@ struct raptor_impl {
       return t.rend();
     }
   }
+
+  // --- BM-RAPTOR (see bmrap_bounds.h) ---
+  // (bounds_budget_ + 1) x bounds_n_locations_ rows of tau_dep^<-, empty
+  // when this search is not bound-pruned
+  cuda::std::span<delta_t const> bm_bounds_{};
+  std::uint32_t bounds_n_locations_{0U};
+  std::uint8_t bounds_budget_{0U};
+  bool has_bounds_{false};
+  // staggered round alignment: the starts are written into this round and
+  // the scan runs start_round_+1 .. end_k (paper, Sec. 4.2)
+  std::uint8_t start_round_{0U};
+  // relaxed target pruning, see update_time_at_dest()
+  delta_t relax_origin_{0};
+  double relax_factor_{1.0};
+  double relax_floor_{0.0};
+  double relax_cap_{0.0};
+  int relax_add_{0};
+  bool relax_on_{false};
 
   std::uint32_t* any_marked_;
   std::uint32_t* done_;

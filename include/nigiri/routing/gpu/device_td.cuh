@@ -7,6 +7,13 @@
 
 namespace nigiri::routing::gpu {
 
+// Time-dependent egress offsets (q.td_dest_) as uploaded to the device: the
+// sparse set of locations that carry one, plus their offset lists in a flat
+// vecvec indexed by the position in that set. Shared by the raptor and
+// mcraptor engines.
+using td_dest_group_idx_t = cista::strong<std::uint32_t, struct td_dest_group_>;
+using td_dest_offsets_t = vecvec<td_dest_group_idx_t, td_offset>;
+
 inline constexpr auto const kMaxFpMinutes = static_cast<duration_t::rep>(
     (std::int32_t{1} << footpath::kDurationBits) - 1);
 static_assert(duration_t{kMaxFpMinutes} == footpath::kMaxDuration);

@@ -145,30 +145,31 @@ struct search {
 #endif
     }
 
-    return Algo{
-        tt_,
-        rtt_,
-        algo_state,
-        state_.is_destination_,
-        state_.is_via_,
-        state_.dist_to_dest_,
-        q_.td_dest_,
-        state_.travel_time_lower_bound_,
-        q_.via_stops_,
-        day_idx_t{
-            std::chrono::duration_cast<date::days>(
-                std::chrono::round<std::chrono::days>(
-                    search_interval_.from_ +
-                    ((search_interval_.to_ - search_interval_.from_) / 2)) -
-                tt_.internal_interval().from_)
-                .count()},
-        allowed_claszes,
-        require_bikes_allowed,
-        require_cars_allowed,
-        q_.prf_idx_ == 2U,
-        no_compulsory_reservation,
-        tts,
-        q_.prf_idx_};
+    auto const base = day_idx_t{
+        std::chrono::duration_cast<date::days>(
+            std::chrono::round<std::chrono::days>(
+                search_interval_.from_ +
+                ((search_interval_.to_ - search_interval_.from_) / 2)) -
+            tt_.internal_interval().from_)
+            .count()};
+
+    return Algo{tt_,
+                rtt_,
+                algo_state,
+                state_.is_destination_,
+                state_.is_via_,
+                state_.dist_to_dest_,
+                q_.td_dest_,
+                state_.travel_time_lower_bound_,
+                q_.via_stops_,
+                base,
+                allowed_claszes,
+                require_bikes_allowed,
+                require_cars_allowed,
+                q_.prf_idx_ == 2U,
+                no_compulsory_reservation,
+                tts,
+                q_.prf_idx_};
   }
 
   search(timetable const& tt,
@@ -199,6 +200,11 @@ struct search {
                    algo_state)},
         timeout_(timeout) {
     q_.sanitize(tt);
+    // No algo_.set_tight_start() (mcraptor): for point queries it would report
+    // real departures and drop the initial wait from the generalized cost
+    // while plain raptor keeps the query anchor, so the engines would diverge
+    // (routing.ontrip_train, fares.simple_fares, join_split.complex). It would
+    // have to land in raptor and mcraptor together.
   }
 
   routing_result execute() {
@@ -327,8 +333,10 @@ struct search {
                                          state_.results_);
 
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
-        return std::tuple{a.start_time_, a.transfers_} <
-               std::tuple{b.start_time_, b.transfers_};
+        return std::tuple{a.start_time_, a.transfers_, a.dest_time_,
+                          a.criteria_cost_} <
+               std::tuple{b.start_time_, b.transfers_, b.dest_time_,
+                          b.criteria_cost_};
       });
     }
 
@@ -377,15 +385,19 @@ private:
     });
   }
 
+  bool is_tuple_dominated(journey const& j) const {
+    return utl::any_of(state_.results_, [&](journey const& o) {
+      return &o != &j && o.tuple_dominates(j);
+    });
+  }
+
   unsigned n_results_in_interval() const {
-    if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
-      auto count = utl::count_if(state_.results_, [&](journey const& j) {
-        return search_interval_.contains(j.start_time_);
-      });
-      return static_cast<unsigned>(count);
-    } else {
-      return static_cast<unsigned>(state_.results_.size());
-    }
+    auto count = utl::count_if(state_.results_, [&](journey const& j) {
+      return (!holds_alternative<interval<unixtime_t>>(q_.start_time_) ||
+              search_interval_.contains(j.start_time_)) &&
+             !is_tuple_dominated(j);
+    });
+    return static_cast<unsigned>(count);
   }
 
   bool max_interval_reached() const {
