@@ -777,7 +777,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
                                      : rtt->td_footpaths_out_[q.prf_idx_][l];
       auto const unix_now = delta_to_unix(base, curr_time);
       auto legs = std::optional<std::pair<journey::leg, journey::leg>>{};
-      for_each_footpath<SearchDir>(
+      for_each_footpath<flip(SearchDir)>(
           td_footpaths, unix_now, [&](footpath const& fp, auto) {
             auto fp_legs = check_fp(k, l, curr_time, fp, true, true);
             if (fp_legs.has_value()) {
