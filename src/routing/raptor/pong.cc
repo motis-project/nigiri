@@ -28,6 +28,14 @@ namespace nigiri::routing {
 
 constexpr auto const kPruneWithPingBounds = true;
 
+// Pong traverses huge parts of the timetable to collect the requested number
+// of journeys. Journeys departing (kFwd) / arriving (!kFwd) weeks or months
+// after / before the queried start time are most likely not interesting for
+// the user, so the search is capped at this distance from the query start
+// time. Six days (instead of a full week) prevents a query on a Monday from
+// reporting journeys on the following / previous Monday.
+constexpr auto const kMaxLookAhead = 6_days;
+
 auto to_tuple(journey const& j) {
   return std::tuple{j.departure_time(), j.arrival_time(), j.transfers_};
 }
@@ -98,6 +106,9 @@ routing_result pong(timetable const& tt,
                         ((search_interval.to_ - search_interval.from_) / 2)) -
                     tt.internal_interval().from_)
                     .count()};
+
+  auto const lookahead_end = kFwd ? search_interval.from_ + kMaxLookAhead
+                                  : search_interval.to_ - kMaxLookAhead;
 
   // ====
   // PING
@@ -242,7 +253,8 @@ routing_result pong(timetable const& tt,
   while ((is_better(start_time, end_time) ||
           get_result_count(true) + get_result_count(false) <
               2 * q.min_connection_count_) &&
-         tt.external_interval().contains(start_time) && !is_timeout_reached()) {
+         tt.external_interval().contains(start_time) &&
+         is_better(start_time, lookahead_end) && !is_timeout_reached()) {
     // ----
     // PING
     // ----
@@ -375,16 +387,19 @@ routing_result pong(timetable const& tt,
         kFwd ? !q.extend_interval_later_ && j_start_time >= search_interval.to_
              : !q.extend_interval_earlier_ &&
                    j_start_time < search_interval.from_;
+    auto const is_out_of_lookahead = !is_better(j_start_time, lookahead_end);
     auto const erase = !j.is_reconstructed_ || !is_validated(j) ||
-                       is_out_of_interval ||
+                       is_out_of_interval || is_out_of_lookahead ||
                        j.travel_time() >= fastest_direct ||
                        j.travel_time() > q.max_travel_time_;
     if (erase) {
       trace_pong(
           "ERASE not_reconstructed={}, not_validated={}, "
-          "slower_than_direct={}, slower_than_query_max_travel_time={} {}",
+          "slower_than_direct={}, slower_than_query_max_travel_time={}, "
+          "beyond_max_lookahead={} {}",
           j.legs_.empty(), !is_validated(j), j.travel_time() >= fastest_direct,
-          j.travel_time() > q.max_travel_time_, to_tuple(j));
+          j.travel_time() > q.max_travel_time_, is_out_of_lookahead,
+          to_tuple(j));
     }
     return erase;
   });
@@ -393,8 +408,11 @@ routing_result pong(timetable const& tt,
     std::swap(x.start_time_, x.dest_time_);
   }
 
-  result.interval_ = {kFwd ? search_interval.from_ : start_time + duration_t{1},
-                      kFwd ? start_time : search_interval.to_};
+  auto const searched_until =
+      is_better(lookahead_end, start_time) ? lookahead_end : start_time;
+  result.interval_ = {
+      kFwd ? search_interval.from_ : searched_until + duration_t{1},
+      kFwd ? searched_until : search_interval.to_};
   result.algo_stats_ = (ping.get_stats() + pong.get_stats()).to_map();
   result.search_stats_.execute_time_ =
       std::chrono::duration_cast<std::chrono::milliseconds>(
