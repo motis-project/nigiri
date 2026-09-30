@@ -851,6 +851,12 @@ void reconstruct_journey_with_vias(timetable const& tt,
                 }
                 auto const diff =
                     it->dep_time_ - std::prev(it)->arr_time_ - stay;
+                // A time-dependent footpath may only be usable later, so we
+                // don't want to move it.
+                if (diff.count() > 0 && rtt != nullptr && q.prf_idx_ != 0U &&
+                    rtt->has_td_footpaths_out_[q.prf_idx_].test(it->from_)) {
+                  return;
+                }
                 it->dep_time_ -= diff;
                 it->arr_time_ -= diff;
               }},

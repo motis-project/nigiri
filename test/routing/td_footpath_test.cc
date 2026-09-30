@@ -4,6 +4,7 @@
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 
+#include "nigiri/routing/raptor/pong.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "../raptor_search.h"
@@ -247,4 +248,83 @@ TEST(routing, td_footpath) {
       B1, unixtime_t{sys_days{2024_y / June / 19} + 9h + 25min}, 10min});
 
   EXPECT_EQ(kElevatorStartsWorkingAt1125, to_string(tt, run_search()));
+}
+
+// clang-format off
+constexpr auto const kPongElevatorStartsWorkingAt1125 = R"(
+[2024-06-19 08:00, 2024-06-19 10:30]
+TRANSFERS: 1
+     FROM: (A, A) [2024-06-19 08:00]
+       TO: (C, C) [2024-06-19 10:30]
+leg 0: (A, A) [2024-06-19 08:00] -> (B1, B1) [2024-06-19 09:00]
+   0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
+   1: B1      B1.............................................. a: 19.06 09:00 [19.06 11:00]
+leg 1: (B1, B1) [2024-06-19 09:50] -> (B2, B2) [2024-06-19 10:00]
+  FOOTPATH (duration=10)
+leg 2: (B2, B2) [2024-06-19 10:00] -> (C, C) [2024-06-19 10:30]
+   0: B2      B2..............................................                               d: 19.06 10:00 [19.06 12:00]  [{name=RE 1, day=2024-06-19, id=T3, src=0}]
+   1: C       C............................................... a: 19.06 10:30 [19.06 12:30]
+
+)";
+// clang-format on
+
+TEST(routing, td_footpath_pong_keeps_the_wait) {
+  // Scenario 3 with PONG (local times):
+  // T1 arrives at B1 at 11:00, but the footpath B1 -> B2 (elevator) is only
+  // usable from 11:25. The journey must wait at B1 and walk 11:50-12:00 to
+  // catch T3. PONG builds its journeys from a backward search, which used
+  // to move the walk to 11:00. Also, the static footpath (5min) ignores the
+  // outage, so it must not replace the time-dependent one (10min).
+  constexpr auto const kProfile = profile_idx_t{2U};
+
+  timetable tt;
+  tt.date_range_ = {date::sys_days{2024_y / June / 18},
+                    date::sys_days{2024_y / June / 20}};
+  register_special_stations(tt);
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+
+  tt.fwd_search_lb_graph_[kWheelchairProfile] =
+      tt.fwd_search_lb_graph_[kDefaultProfile];
+  tt.bwd_search_lb_graph_[kWheelchairProfile] =
+      tt.bwd_search_lb_graph_[kDefaultProfile];
+
+  auto const A = tt.find(location_id{"A", source_idx_t{0U}}).value();
+  auto const C = tt.find(location_id{"C", source_idx_t{0U}}).value();
+  auto const B1 = tt.find(location_id{"B1", source_idx_t{0U}}).value();
+  auto const B2 = tt.find(location_id{"B2", source_idx_t{0U}}).value();
+
+  tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_out_[kProfile][B1].push_back(footpath{B2, 5min});
+  tt.locations_.footpaths_in_[kProfile][B2].push_back(footpath{B1, 5min});
+
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / June / 19});
+  for (auto const l : {B1, B2}) {
+    rtt.has_td_footpaths_in_[kProfile].set(l, true);
+    rtt.has_td_footpaths_out_[kProfile].set(l, true);
+  }
+  rtt.td_footpaths_out_[kProfile].resize(tt.n_locations());
+  rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
+  rtt.td_footpaths_out_[kProfile][B1].push_back(td_footpath{
+      B2, unixtime_t{sys_days{2024_y / June / 19} + 9h + 25min}, 10min});
+  rtt.td_footpaths_in_[kProfile][B2].push_back(td_footpath{
+      B1, unixtime_t{sys_days{2024_y / June / 19} + 9h + 25min}, 10min});
+
+  auto search_state = routing::search_state{};
+  auto raptor_state = routing::raptor_state{};
+  auto const result = routing::pong_search(
+      tt, &rtt, search_state, raptor_state,
+      routing::query{
+          .start_time_ =
+              interval<unixtime_t>{sys_days{2024_y / June / 19} + 7h,
+                                   sys_days{2024_y / June / 19} + 9h},
+          .start_match_mode_ = routing::location_match_mode::kEquivalent,
+          .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+          .start_ = {{A, 0min, 0U}},
+          .destination_ = {{C, 0min, 0U}},
+          .prf_idx_ = kProfile},
+      direction::kForward);
+  EXPECT_EQ(kPongElevatorStartsWorkingAt1125,
+            to_string(tt, &rtt, *result.journeys_));
 }

@@ -388,6 +388,13 @@ void optimize_transfers(timetable const& tt,
       continue;
     }
 
+    // The static footpaths are not valid where time-dependent ones exist
+    // (e.g. an elevator out of service).
+    if (rtt != nullptr && q.prf_idx_ != 0U &&
+        rtt->has_td_footpaths_out_[q.prf_idx_].test(leg_footpath.from_)) {
+      continue;
+    }
+
     auto penalty_best = get_penalty(
         tt, get<footpath>(leg_footpath.uses_).duration(),
         leg_to.dep_time_ - leg_footpath.arr_time_, leg_from.from_, leg_to.to_);
