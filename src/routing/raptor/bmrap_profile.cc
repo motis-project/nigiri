@@ -59,8 +59,7 @@ void for_each_arrival_group(Journeys& js, Fn&& fn) {
 //                    tau_dep^<-(v, i), horizon = this departure
 //   4. mc ping       bounded multicriteria search from this departure
 //   5. mc pong       backward, re-anchors each mc journey to its latest
-//                    departure: search.h never calls set_tight_start(), so a
-//                    range McRAPTOR would report slack-departure duplicates
+//                    departure (the mc ping reports them at the step's start)
 //   5b. re-realize   forward, for better intermediate legs
 template <direction SearchDir,
           bool Rt,
