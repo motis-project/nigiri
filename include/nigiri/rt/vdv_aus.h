@@ -58,7 +58,10 @@ struct statistics {
 struct updater {
   enum class xml_format : std::uint8_t { kVdv, kSiri, kSiriJson, kNumFormats };
 
-  updater(timetable const&, source_idx_t, xml_format format = xml_format::kVdv);
+  updater(timetable const&,
+          source_idx_t,
+          xml_format format = xml_format::kVdv,
+          bool skip_existing_update = false);
 
   void reset_vdv_run_ids_();
 
@@ -129,6 +132,7 @@ private:
       std::chrono::time_point_cast<std::chrono::seconds>(
           std::chrono::system_clock::now())};
   xml_format format_;
+  bool skip_existing_update_;
 };
 
 }  // namespace nigiri::rt::vdv_aus
