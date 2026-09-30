@@ -386,3 +386,43 @@ TEST(routing, td_footpath_lookup_keeps_the_wait) {
   EXPECT_EQ(unixtime_t{day + 9h + 39min}, boarding->dep_time_);
   EXPECT_EQ(unixtime_t{day + 9h + 49min}, boarding->arr_time_);
 }
+
+TEST(routing, td_offset_lookup_keeps_the_wait) {
+  // The wait for a time-dependent offset is spent at the transport's stop, so
+  // the offset leg only covers the walk.
+  auto const day = sys_days{2024_y / June / 19};
+  auto const l = location_idx_t{42U};
+  auto const td_offsets =
+      routing::td_offsets_t{{l,
+                             {{.valid_from_ = sys_days{1970_y / January / 1},
+                               .duration_ = footpath::kMaxDuration,
+                               .transport_mode_payload_ = 0},
+                              {.valid_from_ = day + 9h + 25min,
+                               .duration_ = 10min,
+                               .transport_mode_payload_ = 0},
+                              {.valid_from_ = day + 9h + 40min,
+                               .duration_ = footpath::kMaxDuration,
+                               .transport_mode_payload_ = 0}}}};
+
+  // Alighting at 09:00, the offset is usable from 09:25: wait until 09:25,
+  // then walk.
+  auto const alighting = routing::lookup_offset(
+      l, unixtime_t{day + 9h}, routing::side::kAlighting, {}, td_offsets);
+  ASSERT_TRUE(alighting.has_value());
+  EXPECT_EQ(l, alighting->from_);
+  EXPECT_EQ(get_special_station(special_station::kEnd), alighting->to_);
+  EXPECT_EQ(unixtime_t{day + 9h + 25min}, alighting->dep_time_);
+  EXPECT_EQ(unixtime_t{day + 9h + 35min}, alighting->arr_time_);
+  EXPECT_EQ(10min, std::get<routing::offset>(alighting->uses_).duration());
+
+  // Boarding at 10:00, the offset is only usable until 09:40: walk until 09:49
+  // at the latest, then wait.
+  auto const boarding = routing::lookup_offset(
+      l, unixtime_t{day + 10h}, routing::side::kBoarding, {}, td_offsets);
+  ASSERT_TRUE(boarding.has_value());
+  EXPECT_EQ(get_special_station(special_station::kStart), boarding->from_);
+  EXPECT_EQ(l, boarding->to_);
+  EXPECT_EQ(unixtime_t{day + 9h + 39min}, boarding->dep_time_);
+  EXPECT_EQ(unixtime_t{day + 9h + 49min}, boarding->arr_time_);
+  EXPECT_EQ(10min, std::get<routing::offset>(boarding->uses_).duration());
+}

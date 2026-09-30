@@ -27,15 +27,20 @@ std::optional<journey::leg> lookup_offset(location_idx_t const loc,
   auto const td_search_dir =
       is_boarding ? direction::kBackward : direction::kForward;
 
-  auto const make_leg = [&](duration_t const dur, transport_mode_t const mode) {
+  // dur includes waiting for a time-dependent offset to become usable (e.g.
+  // an elevator out of service), walk does not.
+  // The waiting time is spent at a stop (boarding: after the walk,
+  // alighting: before the walk).
+  auto const make_leg = [&](duration_t const dur, duration_t const walk,
+                            transport_mode_t const mode) {
     auto const boundary = get_special_station(
         is_boarding ? special_station::kStart : special_station::kEnd);
-    auto const dep = is_boarding ? t - dur : t;
-    auto const arr = is_boarding ? t : t + dur;
+    auto const dep = is_boarding ? t - dur : t + dur - walk;
+    auto const arr = is_boarding ? t - dur + walk : t + dur;
     auto const from = is_boarding ? boundary : loc;
     auto const to = is_boarding ? loc : boundary;
-    return journey::leg{direction::kForward,   from, to, dep, arr,
-                        offset{loc, dur, mode}};
+    return journey::leg{direction::kForward,    from, to, dep, arr,
+                        offset{loc, walk, mode}};
   };
 
   // Time-dependend offsets take precedence.
@@ -44,7 +49,8 @@ std::optional<journey::leg> lookup_offset(location_idx_t const loc,
     if (!td.has_value() || td->first >= footpath::kMaxDuration) {
       return std::nullopt;
     }
-    return std::optional{make_leg(td->first, td->second.mode())};
+    return std::optional{
+        make_leg(td->first, td->second.duration(), td->second.mode())};
   }
 
   // Search for shortest offset, assuming offsets are sorted ASC
@@ -56,8 +62,9 @@ std::optional<journey::leg> lookup_offset(location_idx_t const loc,
     }
   }
 
-  return best.transform(
-      [&](offset const& o) { return make_leg(o.duration(), o.mode()); });
+  return best.transform([&](offset const& o) {
+    return make_leg(o.duration(), o.duration(), o.mode());
+  });
 }
 
 std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
