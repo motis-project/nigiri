@@ -532,10 +532,21 @@ routing_result bmrap_profile(
     ++n_steps;
 
     // ---- 4. MC PING ----
+    // Bounded by the latest deadline of this step's anchors, not by the step's
+    // departure: the scan jumps to the first anchor, so the step can lie days
+    // before the journeys it finds, and "step + max travel time" cut off mc
+    // journeys the restriction keeps. Everything it keeps arrives by the
+    // deadline of an anchor available at the step, so nothing is lost.
+    auto mc_worst = start_time;
+    for (auto const& a : anchors) {
+      if (auto const d = anchor_deadline(a); is_better(mc_worst, d)) {
+        mc_worst = d;
+      }
+    }
     sw = stopwatch{};
     auto mc_results = pareto_set<journey>{};
     run_mc_ping(start_time, static_cast<std::uint8_t>(budget - 1U),
-                worst_at_dest(start_time), mc_results);
+                mc_worst + kDir, mc_results);
     sw.lap(ms_mc);
 
     // ---- 5. MC PONG: re-anchor each mc journey to its latest departure ----

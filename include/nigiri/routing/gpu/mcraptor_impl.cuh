@@ -744,17 +744,18 @@ struct mcraptor_impl {
     if (!has_bounds_) {
       return false;
     }
-    // the CURRENT start time's trip budget, not the matrix-wide maximum:
-    // every departure has its own floor(sigma_tr * K(d))
+    // the CURRENT start time's trip budget limits the rounds, the row is
+    // relative to the matrix budget (see basic_mcraptor::bound_prunes())
     auto const budget =
         cur_budget_ < bounds_budget_ ? cur_budget_ : bounds_budget_;
     if (k > budget) {
       return true;
     }
     return !is_better_or_eq(
-        t, clamp(static_cast<int>(bounds_[static_cast<std::size_t>(budget - k) *
-                                              bounds_n_locations_ +
-                                          l]) +
+        t, clamp(static_cast<int>(
+                     bounds_[static_cast<std::size_t>(bounds_budget_ - k) *
+                                 bounds_n_locations_ +
+                             l]) +
                  slack));
   }
 
