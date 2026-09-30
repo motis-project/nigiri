@@ -166,7 +166,7 @@ template routing_result raptor_search(timetable const&,
                                       direction,
                                       std::optional<std::chrono::seconds>);
 
-#if defined(NIGIRI_CUDA)
+#if defined(NIGIRI_GPU)
 template routing_result raptor_search(timetable const&,
                                       rt_timetable const*,
                                       search_state&,

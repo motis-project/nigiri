@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <optional>
 
@@ -17,8 +18,8 @@
 // concept header. Undo the leak before including any CUDA std header.
 #undef NOEXCEPT
 
-#include "cuda/std/array"
-#include "cuda/std/span"
+#include "nigiri/routing/gpu/gpu_std.cuh"
+#include "nigiri/routing/gpu/warp.cuh"
 
 #include "thrust/copy.h"
 #include "thrust/device_vector.h"
@@ -40,11 +41,6 @@
 #include "nigiri/td_footpath.h"
 
 namespace nigiri::routing::gpu {
-
-// words a device_bitvec<std::uint32_t> needs to hold n bits
-constexpr std::uint32_t n_bitvec_words(std::uint32_t const n) {
-  return n / 32U + 1U;
-}
 
 struct gpu_timetable::impl {
   using t = timetable;
@@ -508,11 +504,11 @@ struct gpu_raptor_state::impl {
   thrust::device_vector<std::uint64_t> best_;
   thrust::device_vector<std::uint64_t> round_times_;
 
-  thrust::device_vector<std::uint32_t> station_mark_;
-  thrust::device_vector<std::uint32_t> prev_station_mark_;
-  thrust::device_vector<std::uint32_t> route_mark_;
-  thrust::device_vector<std::uint32_t> rt_transport_mark_;
-  thrust::device_vector<std::uint32_t> round_touched_;
+  thrust::device_vector<mark_block_t> station_mark_;
+  thrust::device_vector<mark_block_t> prev_station_mark_;
+  thrust::device_vector<mark_block_t> route_mark_;
+  thrust::device_vector<mark_block_t> rt_transport_mark_;
+  thrust::device_vector<mark_block_t> round_touched_;
   std::uint32_t round_touched_stride_{0U};
   bool has_reusable_round_times_{false};
 
@@ -746,6 +742,10 @@ std::pair<int, int> launch_dims(Kernel kernel) {
         auto blocks = 0;
         auto threads = 0;
         cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
+        // lane = global_thread_id % kWarpSize only holds if every block is a
+        // whole number of warps (and, on AMD, of hardware wavefronts)
+        threads = static_cast<int>(threads / kWarpSize * kWarpSize);
+        utl::verify(threads > 0, "gpu: no valid launch config for kernel");
         return std::pair{blocks, threads};
       });
 }
@@ -868,7 +868,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       starts_.size() * sizeof(std::pair<location_idx_t, unixtime_t>),
       cudaMemcpyHostToDevice, s.stream_);
   auto const starts =
-      cuda::std::span<std::pair<location_idx_t, unixtime_t> const>{
+      d_span<std::pair<location_idx_t, unixtime_t> const>{
           thrust::raw_pointer_cast(s.starts_dev_.data()), starts_.size()};
 
   cudaStreamSynchronize(s.stream_);
@@ -1163,7 +1163,7 @@ void gpu_raptor<SearchDir, WithBounds>::reset_arrivals() {
                   s.time_at_dest_.size() * sizeof(std::uint64_t), s.stream_);
   s.has_reusable_round_times_ = false;
   cudaMemsetAsync(thrust::raw_pointer_cast(s.round_touched_.data()), 0x00,
-                  s.round_touched_.size() * sizeof(std::uint32_t), s.stream_);
+                  s.round_touched_.size() * sizeof(mark_block_t), s.stream_);
   cudaMemsetAsync(thrust::raw_pointer_cast(s.round_times_.data()), 0xFF,
                   s.round_times_.size() * sizeof(std::uint64_t), s.stream_);
 }
@@ -1176,18 +1176,18 @@ void gpu_raptor<SearchDir, WithBounds>::next_start_time() {
                   s.best_.size() * sizeof(std::uint64_t), s.stream_);
   cudaMemsetAsync(thrust::raw_pointer_cast(s.tmp_.data()), 0xFF,
                   s.tmp_.size() * sizeof(std::uint64_t), s.stream_);
-  thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
-               begin(state_.impl_->prev_station_mark_),
-               end(state_.impl_->prev_station_mark_), 0U);
-  thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
-               begin(state_.impl_->station_mark_),
-               end(state_.impl_->station_mark_), 0U);
-  thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
-               begin(state_.impl_->route_mark_), end(state_.impl_->route_mark_),
-               0U);
-  thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
-               begin(state_.impl_->rt_transport_mark_),
-               end(state_.impl_->rt_transport_mark_), 0U);
+  thrust::fill(par_on(state_.impl_->stream_),
+               std::begin(state_.impl_->prev_station_mark_),
+               std::end(state_.impl_->prev_station_mark_), 0U);
+  thrust::fill(par_on(state_.impl_->stream_),
+               std::begin(state_.impl_->station_mark_),
+               std::end(state_.impl_->station_mark_), 0U);
+  thrust::fill(par_on(state_.impl_->stream_),
+               std::begin(state_.impl_->route_mark_),
+               std::end(state_.impl_->route_mark_), 0U);
+  thrust::fill(par_on(state_.impl_->stream_),
+               std::begin(state_.impl_->rt_transport_mark_),
+               std::end(state_.impl_->rt_transport_mark_), 0U);
 }
 
 // First/last mile mumo offset and start footpath legs are added here

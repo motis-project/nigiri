@@ -154,6 +154,17 @@
         "CMAKE_CUDA_HOST_COMPILER": "g++-14",
         "CMAKE_CUDA_FLAGS": "-isystem ${sourceDir}/cmake/cuda-glibc-compat"
       }
+    },
+    {
+      "name": "hip",
+      "displayName": "Linux HIP RelWithDebInfo",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/hip",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "NIGIRI_HIP": "ON",
+        "CMAKE_HIP_COMPILER": "/opt/rocm/llvm/bin/clang++"
+      }
     }
   ],
   "buildPresets": [
@@ -196,6 +207,10 @@
     {
       "name": "cuda-pascal",
       "configurePreset": "cuda-pascal"
+    },
+    {
+      "name": "hip",
+      "configurePreset": "hip"
     }
   ]
 }

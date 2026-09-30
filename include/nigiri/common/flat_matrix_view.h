@@ -2,7 +2,7 @@
 
 #include <cassert>
 
-#include "cista/cuda_check.h"
+#include "cista/gpu_compat.h"
 
 namespace nigiri {
 
@@ -12,7 +12,7 @@ struct base_flat_matrix_view {
   using size_type = typename Span::size_type;
 
   struct row {
-    CISTA_CUDA_COMPAT row(base_flat_matrix_view& matrix, size_type const i)
+    CISTA_GPU_COMPAT row(base_flat_matrix_view& matrix, size_type const i)
         : matrix_(matrix), i_(i) {}
 
     using iterator = typename Span::iterator;
@@ -36,7 +36,7 @@ struct base_flat_matrix_view {
     friend iterator begin(row& r) { return r.begin(); }
     friend iterator end(row& r) { return r.end(); }
 
-    CISTA_CUDA_COMPAT value_type& operator[](size_type const j) {
+    CISTA_GPU_COMPAT value_type& operator[](size_type const j) {
       assert(j < matrix_.n_columns_);
       auto const pos = matrix_.n_columns_ * i_ + j;
       return matrix_.entries_[pos];
@@ -47,8 +47,8 @@ struct base_flat_matrix_view {
   };
 
   struct const_row {
-    CISTA_CUDA_COMPAT const_row(base_flat_matrix_view const& matrix,
-                                size_type const i)
+    CISTA_GPU_COMPAT const_row(base_flat_matrix_view const& matrix,
+                               size_type const i)
         : matrix_(matrix), i_(i) {}
 
     using iterator = typename Span::iterator;
@@ -62,7 +62,7 @@ struct base_flat_matrix_view {
     friend iterator begin(const_row const& r) { return r.begin(); }
     friend iterator end(const_row const& r) { return r.end(); }
 
-    CISTA_CUDA_COMPAT value_type const& operator[](size_type const j) const {
+    CISTA_GPU_COMPAT value_type const& operator[](size_type const j) const {
       assert(j < matrix_.n_columns_);
       auto const pos = matrix_.n_columns_ * i_ + j;
       return matrix_.entries_[pos];
@@ -79,11 +79,11 @@ struct base_flat_matrix_view {
     assert(entries_.size() == n_rows_ * n_columns_);
   }
 
-  CISTA_CUDA_COMPAT row operator[](size_type i) {
+  CISTA_GPU_COMPAT row operator[](size_type i) {
     assert(i < n_rows_);
     return {*this, i};
   }
-  CISTA_CUDA_COMPAT const_row operator[](size_type i) const {
+  CISTA_GPU_COMPAT const_row operator[](size_type i) const {
     assert(i < n_rows_);
     return {*this, i};
   }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "cuda_runtime.h"
+#include "nigiri/routing/gpu/gpu_runtime.cuh"
 
 namespace nigiri::routing::gpu {
 

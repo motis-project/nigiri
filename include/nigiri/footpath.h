@@ -8,6 +8,7 @@
 
 #include "nigiri/logging.h"
 #include "nigiri/types.h"
+#include "cista/gpu_compat.h"
 
 namespace nigiri {
 
@@ -40,12 +41,10 @@ struct footpath {
     };
   }
 
-  CISTA_CUDA_COMPAT location_idx_t target() const {
+  CISTA_GPU_COMPAT location_idx_t target() const {
     return location_idx_t{target_};
   }
-  CISTA_CUDA_COMPAT duration_t duration() const {
-    return duration_t{duration_};
-  }
+  CISTA_GPU_COMPAT duration_t duration() const { return duration_t{duration_}; }
 
   location_idx_t::value_t value() const {
     return *reinterpret_cast<location_idx_t::value_t const*>(this);
