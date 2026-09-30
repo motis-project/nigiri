@@ -1138,15 +1138,16 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
           continue;
         }
         auto const t = lg.arr_time_;
-        for_each_footpath<SearchDir>(td_fps[key_l], t, [&](footpath const fp) {
-          if (fp.target() != target_l) {
-            return utl::cflow::kContinue;
-          }
-          lg.dep_time_ = t - fp.duration();
-          lg.arr_time_ = t;
-          lg.uses_ = footpath{lg.to_, fp.duration()};
-          return utl::cflow::kBreak;
-        });
+        for_each_footpath<SearchDir>(
+            td_fps[key_l], t, [&](footpath const fp, auto) {
+              if (fp.target() != target_l) {
+                return utl::cflow::kContinue;
+              }
+              lg.dep_time_ = t - fp.duration();
+              lg.arr_time_ = t;
+              lg.uses_ = footpath{lg.to_, fp.duration()};
+              return utl::cflow::kBreak;
+            });
       }
     }
 

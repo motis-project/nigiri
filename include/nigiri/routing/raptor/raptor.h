@@ -870,7 +870,7 @@ private:
           continue;
         }
         for_each_footpath<
-            SearchDir>(fps, to_unix(tmp_time), [&](footpath const fp) {
+            SearchDir>(fps, to_unix(tmp_time), [&](footpath const fp, auto) {
           ++stats_.n_footpaths_visited_;
 
           auto const target = to_idx(fp.target());

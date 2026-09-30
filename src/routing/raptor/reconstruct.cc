@@ -778,7 +778,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       auto const unix_now = delta_to_unix(base, curr_time);
       auto legs = std::optional<std::pair<journey::leg, journey::leg>>{};
       for_each_footpath<SearchDir>(
-          td_footpaths, unix_now, [&](footpath const& fp) {
+          td_footpaths, unix_now, [&](footpath const& fp, auto) {
             auto fp_legs = check_fp(k, l, curr_time, fp, true, true);
             if (fp_legs.has_value()) {
               legs = std::move(*fp_legs);
