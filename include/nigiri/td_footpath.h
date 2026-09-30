@@ -78,6 +78,8 @@ get_td_duration(direction const search_dir,
              : get_td_duration<direction::kBackward>(c, t);
 }
 
+// Callback: The footpath's duration includes waiting for it to become
+// usable, the second argument is the walking time without waiting.
 template <direction SearchDir, typename Collection, typename Fn>
 void for_each_footpath(Collection const& c, unixtime_t const t, Fn&& f) {
   utl::equal_ranges_linear(
@@ -88,7 +90,7 @@ void for_each_footpath(Collection const& c, unixtime_t const t, Fn&& f) {
       [&](auto&& from, auto&& to) {
         auto const fp = get_td_duration<SearchDir>(std::span{from, to}, t);
         if (fp.has_value()) {
-          f(footpath{from->target_, fp->first});
+          f(footpath{from->target_, fp->first}, fp->second.duration_);
         }
       });
 }

@@ -69,7 +69,7 @@ TEST(td_footpath, simple) {
   };
   auto const now = sys_days{June / 15 / 2024_y} + 11h;
   for_each_footpath<direction::kForward>(
-      td_footpath_out[a], now, [&](footpath const fp) {
+      td_footpath_out[a], now, [&](footpath const fp, auto) {
         EXPECT_EQ(map[fp.target()], now + fp.duration());
         ++count;
         return utl::cflow::kContinue;
@@ -88,7 +88,7 @@ TEST(td_footpath, backward_single) {
 
   auto called = false;
   for_each_footpath<direction::kBackward>(
-      fps, sys_days{2020_y / March / 30} + 7h, [&](auto&&) {
+      fps, sys_days{2020_y / March / 30} + 7h, [&](auto&&, auto&&) {
         called = true;
         return utl::cflow::kBreak;
       });
@@ -97,7 +97,7 @@ TEST(td_footpath, backward_single) {
   called = false;
   auto x = footpath{};
   for_each_footpath<direction::kBackward>(
-      fps, sys_days{2020_y / March / 30} + 11h, [&](footpath const fp) {
+      fps, sys_days{2020_y / March / 30} + 11h, [&](footpath const fp, auto) {
         called = true;
         x = fp;
         return utl::cflow::kBreak;
@@ -142,7 +142,7 @@ TEST(td_footpath, backward) {
   auto called = false;
   auto x = footpath{};
   for_each_footpath<direction::kBackward>(
-      fps, sys_days{2020_y / March / 30} + 12h, [&](footpath const fp) {
+      fps, sys_days{2020_y / March / 30} + 12h, [&](footpath const fp, auto) {
         called = true;
         x = fp;
         return utl::cflow::kBreak;
@@ -152,7 +152,7 @@ TEST(td_footpath, backward) {
 
   called = false;
   for_each_footpath<direction::kBackward>(
-      fps, sys_days{2020_y / March / 30} + 7h, [&](auto&&) {
+      fps, sys_days{2020_y / March / 30} + 7h, [&](auto&&, auto&&) {
         called = true;
         return utl::cflow::kBreak;
       });
@@ -160,7 +160,7 @@ TEST(td_footpath, backward) {
 
   called = false;
   for_each_footpath<direction::kBackward>(
-      fps, sys_days{2020_y / March / 30} + 11h, [&](footpath const fp) {
+      fps, sys_days{2020_y / March / 30} + 11h, [&](footpath const fp, auto) {
         called = true;
         x = fp;
         return utl::cflow::kBreak;
@@ -170,7 +170,7 @@ TEST(td_footpath, backward) {
 
   called = false;
   for_each_footpath<direction::kBackward>(
-      fps, sys_days{2020_y / March / 30} + 13h, [&](footpath const fp) {
+      fps, sys_days{2020_y / March / 30} + 13h, [&](footpath const fp, auto) {
         called = true;
         x = fp;
         return utl::cflow::kBreak;

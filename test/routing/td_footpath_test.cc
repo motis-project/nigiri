@@ -4,6 +4,7 @@
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 
+#include "nigiri/routing/direct.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -327,4 +328,61 @@ TEST(routing, td_footpath_pong_keeps_the_wait) {
       direction::kForward);
   EXPECT_EQ(kPongElevatorStartsWorkingAt1125,
             to_string(tt, &rtt, *result.journeys_));
+}
+
+TEST(routing, td_footpath_lookup_keeps_the_wait) {
+  // The wait for a time-dependent footpath is spent at the transport's stop,
+  // so the footpath leg only covers the walk.
+  constexpr auto const kProfile = profile_idx_t{2U};
+
+  timetable tt;
+  tt.date_range_ = {date::sys_days{2024_y / June / 18},
+                    date::sys_days{2024_y / June / 20}};
+  register_special_stations(tt);
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+
+  auto const B1 = tt.find(location_id{"B1", source_idx_t{0U}}).value();
+  auto const B2 = tt.find(location_id{"B2", source_idx_t{0U}}).value();
+  auto const day = sys_days{2024_y / June / 19};
+
+  tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
+
+  auto rtt = rt::create_rt_timetable(tt, day);
+  for (auto const l : {B1, B2}) {
+    rtt.has_td_footpaths_in_[kProfile].set(l, true);
+    rtt.has_td_footpaths_out_[kProfile].set(l, true);
+  }
+  rtt.td_footpaths_out_[kProfile].resize(tt.n_locations());
+  rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
+
+  // Alighting at B1 at 09:00, the footpath to B2 is usable from 09:25:
+  // wait until 09:25, then walk.
+  rtt.td_footpaths_in_[kProfile][B2].push_back(
+      td_footpath{B1, unixtime_t{day + 9h + 25min}, 10min});
+  auto const q = routing::query{.prf_idx_ = kProfile};
+  auto const alighting = routing::lookup_footpath(
+      B1, unixtime_t{day + 9h}, routing::side::kAlighting, tt, &rtt, q,
+      {{B2, 0min, 0U}}, routing::location_match_mode::kExact, true);
+  ASSERT_TRUE(alighting.has_value());
+  EXPECT_EQ(B1, alighting->from_);
+  EXPECT_EQ(B2, alighting->to_);
+  EXPECT_EQ(unixtime_t{day + 9h + 25min}, alighting->dep_time_);
+  EXPECT_EQ(unixtime_t{day + 9h + 35min}, alighting->arr_time_);
+
+  // Boarding at B2 at 10:00, the footpath from B1 is only usable until 09:40:
+  // walk until 09:49 at the latest, then wait.
+  rtt.td_footpaths_out_[kProfile][B1].push_back(
+      td_footpath{B2, unixtime_t{day + 9h + 25min}, 10min});
+  rtt.td_footpaths_out_[kProfile][B1].push_back(
+      td_footpath{B2, unixtime_t{day + 9h + 40min}, footpath::kMaxDuration});
+  auto const boarding = routing::lookup_footpath(
+      B2, unixtime_t{day + 10h}, routing::side::kBoarding, tt, &rtt, q,
+      {{B1, 0min, 0U}}, routing::location_match_mode::kExact, true);
+  ASSERT_TRUE(boarding.has_value());
+  EXPECT_EQ(B1, boarding->from_);
+  EXPECT_EQ(B2, boarding->to_);
+  EXPECT_EQ(unixtime_t{day + 9h + 39min}, boarding->dep_time_);
+  EXPECT_EQ(unixtime_t{day + 9h + 49min}, boarding->arr_time_);
 }
