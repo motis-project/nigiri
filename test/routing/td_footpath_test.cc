@@ -426,3 +426,108 @@ TEST(routing, td_offset_lookup_keeps_the_wait) {
   EXPECT_EQ(unixtime_t{day + 9h + 49min}, boarding->arr_time_);
   EXPECT_EQ(10min, std::get<routing::offset>(boarding->uses_).duration());
 }
+
+TEST(routing, td_footpath_pong_earliest_alternative_keeps_the_wait) {
+  // With three transports, PONG replaces the middle one with its earliest
+  // alternative (`get_earliest_alternative`). The time-dependent footpath
+  // B1→B2 is only usable from 11:25 (Berlin), after the arrival at B1 (11:00):
+  // the footpath before the middle transport must not start at the arrival.
+  constexpr auto const kProfile = profile_idx_t{2U};
+
+  timetable tt;
+  tt.date_range_ = {date::sys_days{2024_y / June / 18},
+                    date::sys_days{2024_y / June / 20}};
+  register_special_stations(tt);
+  load_timetable({}, source_idx_t{0}, mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,
+B1,B1,,2.0,3.0,,
+B2,B2,,2.0,3.0,,
+C,C,,4.0,5.0,,
+D,D,,6.0,7.0,,
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,RE 1,,,2
+R2,DB,RE 2,,,2
+R3,DB,RE 3,,,2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id,wheelchair_accessible
+R1,S,T1,RE 1,,1
+R2,S,T2,RE 2,,1
+R3,S,T3,RE 3,,1
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:00:00,10:00:00,A,1,0,0
+T1,11:00:00,11:00:00,B1,2,0,0
+T2,12:00:00,12:00:00,B2,1,0,0
+T2,12:30:00,12:30:00,C,2,0,0
+T3,12:40:00,12:40:00,C,1,0,0
+T3,13:00:00,13:00:00,D,2,0,0
+)"),
+                 tt);
+  finalize(tt);
+
+  tt.fwd_search_lb_graph_[kWheelchairProfile] =
+      tt.fwd_search_lb_graph_[kDefaultProfile];
+  tt.bwd_search_lb_graph_[kWheelchairProfile] =
+      tt.bwd_search_lb_graph_[kDefaultProfile];
+
+  auto const A = tt.find(location_id{"A", source_idx_t{0U}}).value();
+  auto const B1 = tt.find(location_id{"B1", source_idx_t{0U}}).value();
+  auto const B2 = tt.find(location_id{"B2", source_idx_t{0U}}).value();
+  auto const D = tt.find(location_id{"D", source_idx_t{0U}}).value();
+  auto const day = sys_days{2024_y / June / 19};
+
+  // The static footpath doesn't know about the elevator outage.
+  tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_out_[kProfile][B1].push_back(footpath{B2, 5min});
+  tt.locations_.footpaths_in_[kProfile][B2].push_back(footpath{B1, 5min});
+
+  auto rtt = rt::create_rt_timetable(tt, day);
+  for (auto const l : {B1, B2}) {
+    rtt.has_td_footpaths_in_[kProfile].set(l, true);
+    rtt.has_td_footpaths_out_[kProfile].set(l, true);
+  }
+  rtt.td_footpaths_out_[kProfile].resize(tt.n_locations());
+  rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
+  rtt.td_footpaths_out_[kProfile][B1].push_back(
+      td_footpath{B2, unixtime_t{day + 9h + 25min}, 10min});
+  rtt.td_footpaths_in_[kProfile][B2].push_back(
+      td_footpath{B1, unixtime_t{day + 9h + 25min}, 10min});
+
+  auto search_state = routing::search_state{};
+  auto raptor_state = routing::raptor_state{};
+  auto const result = routing::pong_search(
+      tt, &rtt, search_state, raptor_state,
+      routing::query{
+          .start_time_ = interval<unixtime_t>{day + 7h, day + 9h},
+          .start_match_mode_ = routing::location_match_mode::kEquivalent,
+          .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+          .start_ = {{A, 0min, 0U}},
+          .destination_ = {{D, 0min, 0U}},
+          .prf_idx_ = kProfile},
+      direction::kForward);
+  ASSERT_EQ(1U, result.journeys_->size());
+
+  auto const& legs = result.journeys_->begin()->legs_;
+  auto const fp = utl::find_if(
+      legs, [&](routing::journey::leg const& l) { return l.from_ == B1; });
+  ASSERT_NE(fp, end(legs)) << to_string(tt, &rtt, *result.journeys_);
+  EXPECT_EQ(B2, fp->to_);
+  EXPECT_GE(fp->dep_time_, unixtime_t{day + 9h + 25min})
+      << to_string(tt, &rtt, *result.journeys_);
+  EXPECT_EQ(10min, fp->arr_time_ - fp->dep_time_);
+}
