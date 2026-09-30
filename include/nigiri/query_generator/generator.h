@@ -43,7 +43,7 @@ struct generator {
   generator_settings const& s_;
   std::uint32_t seed_;
 
-private:
+  // (made public for benchmark query dump/load)
   void init_geo(generator_settings const& settings);
 
   location_idx_t random_location();

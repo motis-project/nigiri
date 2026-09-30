@@ -261,20 +261,20 @@ void service_builder::write_services(source_idx_t const src) {
       // Where D(x, y) is departure of transport x at stop index y in the route
       // location sequence and A(x, y) is the arrival.
 
-      auto const stop_times_begin = tt_.route_stop_times_.size();
+      auto const stop_times_begin = tt_.departure_route_stop_times_.size();
       for (auto const [from, to] :
            utl::pairwise(interval{std::size_t{0U}, stop_seq.size()})) {
         // Write departure times of all route services at stop i.
         for (auto const& s : services) {
-          tt_.route_stop_times_.emplace_back(s.utc_times_[from * 2]);
+          tt_.departure_route_stop_times_.emplace_back(s.utc_times_[from * 2]);
         }
 
         // Write arrival times of all route services at stop i+1.
         for (auto const& s : services) {
-          tt_.route_stop_times_.emplace_back(s.utc_times_[to * 2 - 1]);
+          tt_.arrival_route_stop_times_.emplace_back(s.utc_times_[to * 2 - 1]);
         }
       }
-      auto const stop_times_end = tt_.route_stop_times_.size();
+      auto const stop_times_end = tt_.departure_route_stop_times_.size();
       tt_.route_stop_time_ranges_.emplace_back(
           interval{stop_times_begin, stop_times_end});
     }
