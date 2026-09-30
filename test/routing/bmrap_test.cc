@@ -11,6 +11,7 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/load.h"
+#include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/raptor/bmrap_common.h"
 #include "nigiri/routing/raptor/bmrap_filters.h"
 #include "nigiri/routing/raptor/bmraptor.h"
@@ -570,6 +571,284 @@ TEST(bmrap, finds_departures_beyond_fastest_direct) {
             bmrapp<routing::arr_criteria>(f, q, direction::kForward).js_);
 }
 
+// The restriction references a SET of anchors: A(J) (the earliest-arriving
+// anchor available at J with at most J's trips) plus every available anchor
+// arriving before A(J), whatever its trip count. J stays if any of them has
+// its slack satisfied. Default slack: deadline = departure + travel +
+// clamp(travel / 2, 20 min, 180 min).
+TEST(bmrap, restriction_uses_earlier_arriving_anchors) {
+  using routing::bmrap_detail::anchor;
+  using routing::bmrap_detail::outside_restriction;
+  auto const at = [](int const h, int const m) {
+    return unixtime_t{sys_days{2024_y / June / 19}} + std::chrono::hours{h} +
+           std::chrono::minutes{m};
+  };
+  auto const anchors = std::vector<anchor>{
+      {at(10, 30), at(11, 0), 1U},  // A(J) for J with 2 trips, deadline 11:20
+      {at(10, 0), at(10, 55), 3U},  // arrives before A(J), deadline 11:23
+      {at(10, 0), at(11, 10), 4U},  // arrives after A(J), deadline 11:45
+  };
+  auto const outside = [&](unixtime_t const found) {
+    return outside_restriction<direction::kForward>(anchors, at(10, 0), found,
+                                                    2U);
+  };
+  EXPECT_FALSE(outside(at(11, 20))) << "within A(J)'s deadline";
+  EXPECT_FALSE(outside(at(11, 22)))
+      << "past A(J)'s deadline, within the earlier-arriving anchor's";
+  EXPECT_TRUE(outside(at(11, 24))) << "past both deadlines";
+  EXPECT_TRUE(outside(at(11, 30)))
+      << "only the later-arriving anchor's deadline covers it, and that one "
+         "is not in the set";
+}
+
+// get_fastest_direct() scales the footpath distance by fastest_direct_factor_
+// in 16 bit minutes: benchmarks disable the cap with a large factor, which
+// wrapped around to a tiny bound, and every engine filtered all journeys.
+namespace {
+
+constexpr auto const kFootpathGTFS = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,DB,https://db.de,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+A,A,0.0,1.0,,
+B,B,0.01,1.0,,
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+A,B,2,2400
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R,DB,R,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R,S,T,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T,10:00:00,10:00:00,A,0,0,0
+T,10:30:00,10:30:00,B,1,0,0
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+)"sv;
+
+}  // namespace
+
+TEST(bmrap, fastest_direct_factor_saturates) {
+  auto const tt = loader::load(
+      mem_dir::read(std::string{kFootpathGTFS}),
+      {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}});
+  auto const loc = [&](char const* id) {
+    return tt.locations_.location_id_to_idx_.at({id, source_idx_t{0}});
+  };
+
+  auto q = routing::query{};
+  q.start_ = {{loc("A"), 0_minutes, 0U}};
+  q.destination_ = {{loc("B"), 0_minutes, 0U}};
+  q.start_match_mode_ = routing::location_match_mode::kEquivalent;
+  q.dest_match_mode_ = routing::location_match_mode::kEquivalent;
+
+  auto const fp = routing::get_fastest_direct(tt, q, direction::kForward);
+  ASSERT_GE(fp, 33min) << "the footpath must be long enough to overflow";
+  ASSERT_LT(fp, routing::kUnreachableDirect);
+
+  q.fastest_direct_factor_ = 1000.0;
+  EXPECT_EQ(routing::kUnreachableDirect,
+            routing::get_fastest_direct(tt, q, direction::kForward));
+}
+
+// The mc ping's arrival bound. A step's departure can lie days before the
+// journeys it finds (the scan jumps to the first anchor), so "step + 5 days"
+// cut off mc journeys that depart right away and arrive after it, though an
+// anchor's deadline admits them. Here the query is 5 days before the only
+// departures; A (walk to O2, 08:55 -> 09:50) is the anchor, J (08:00 ->
+// 10:10 from O itself) is optimal by walking less and within A's deadline
+// (10:18), but arrives after query + 5 days (10:00).
+namespace {
+
+constexpr auto const kFarGTFS = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,DB,https://db.de,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+O,O,0.0,1.0,,
+O2,O2,0.001,1.0,,
+D,D,5.0,1.0,,
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+O,O2,2,300
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+RA,DB,RA,,,3
+RJ,DB,RJ,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+RA,S,TA,,
+RJ,S,TJ,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+TA,09:00:00,09:00:00,O2,0,0,0
+TA,09:50:00,09:50:00,D,1,0,0
+TJ,08:00:00,08:00:00,O,0,0,0
+TJ,10:10:00,10:10:00,D,1,0,0
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240616,1
+)"sv;
+
+}  // namespace
+
+TEST(bmrap, mc_ping_bound_follows_anchor_deadlines) {
+  auto const tt = loader::load(
+      mem_dir::read(std::string{kFarGTFS}),
+      {sys_days{2024_y / June / 10}, sys_days{2024_y / June / 20}});
+  auto const loc = [&](char const* id) {
+    return tt.locations_.location_id_to_idx_.at({id, source_idx_t{0}});
+  };
+
+  auto q = routing::query{};
+  // local 2024-06-11 10:00, five days before the only departures
+  auto const t = unixtime_t{sys_days{2024_y / June / 11}} + 8h;
+  q.start_time_ = interval<unixtime_t>{t, t + 1min};
+  q.start_ = {{loc("O"), 0_minutes, 0U}};
+  q.destination_ = {{loc("D"), 0_minutes, 0U}};
+  q.use_start_footpaths_ = true;
+  q.via_stops_ = {};
+  q.min_connection_count_ = 1U;
+  q.extend_interval_later_ = true;
+
+  auto const day = unixtime_t{sys_days{2024_y / June / 16}};
+  auto const j = tuple_t{day + 6h, day + 8h + 10min, 0U};  // 08:00 -> 10:10
+  auto ss = routing::search_state{};
+  auto as = routing::raptor_state{};
+  auto const bm =
+      tuples(*routing::bmrap_profile_search<routing::arr_non_transit_criteria>(
+                  tt, nullptr, ss, as, q, direction::kForward)
+                  .journeys_);
+  ASSERT_FALSE(bm.empty()) << "the anchor itself was not found";
+  EXPECT_TRUE(std::find(begin(bm), end(bm), j) != end(bm))
+      << "the journey walking less, arriving after query + 5 days, is lost";
+}
+
+// close_anchor_profile() has to reach every trip count's A(J): the probe from
+// the window end yields an (arrival, trips) pareto set, and a low-trip A(J)
+// arrives later than the fastest one. Taking the earliest arrival as the
+// margin missed L (1 trip, after the margin), so there was no A(J) for J and
+// it was dropped - by range BMRAP, and by BMRAPP for a window it may not
+// extend (there its anchors come from the same range search).
+namespace {
+
+constexpr auto const kMarginGTFS = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,DB,https://db.de,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+O,O,0.0,1.0,,
+O2,O2,0.001,1.0,,
+X1,X1,1.0,1.0,,
+X2,X2,2.0,1.0,,
+Y1,Y1,1.0,2.0,,
+Y2,Y2,2.0,2.0,,
+D,D,5.0,1.0,,
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+O,O2,2,300
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+H1,DB,H1,,,3
+H2,DB,H2,,,3
+H3,DB,H3,,,3
+E1,DB,E1,,,3
+E2,DB,E2,,,3
+E3,DB,E3,,,3
+RJ,DB,RJ,,,3
+RL,DB,RL,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+H1,S,TH1,,
+H2,S,TH2,,
+H3,S,TH3,,
+E1,S,TE1,,
+E2,S,TE2,,
+E3,S,TE3,,
+RJ,S,TJ,,
+RL,S,TL,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+TH1,10:10:00,10:10:00,O,0,0,0
+TH1,10:15:00,10:15:00,Y1,1,0,0
+TH2,10:20:00,10:20:00,Y1,0,0,0
+TH2,10:25:00,10:25:00,Y2,1,0,0
+TH3,10:30:00,10:30:00,Y2,0,0,0
+TH3,10:40:00,10:40:00,D,1,0,0
+TE1,11:00:00,11:00:00,O,0,0,0
+TE1,11:10:00,11:10:00,X1,1,0,0
+TE2,11:15:00,11:15:00,X1,0,0,0
+TE2,11:20:00,11:20:00,X2,1,0,0
+TE3,11:25:00,11:25:00,X2,0,0,0
+TE3,11:30:00,11:30:00,D,1,0,0
+TJ,10:20:00,10:20:00,O,0,0,0
+TJ,15:00:00,15:00:00,D,1,0,0
+TL,12:00:00,12:00:00,O2,0,0,0
+TL,14:00:00,14:00:00,D,1,0,0
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+)"sv;
+
+}  // namespace
+
+TEST(bmrap, anchor_margin_covers_every_trip_count) {
+  auto const tt = loader::load(
+      mem_dir::read(std::string{kMarginGTFS}),
+      {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}});
+  auto const loc = [&](char const* id) {
+    return tt.locations_.location_id_to_idx_.at({id, source_idx_t{0}});
+  };
+
+  auto const day = unixtime_t{sys_days{2024_y / June / 19}};
+  auto q = routing::query{};
+  // local 10:00 - 10:30, fixed
+  q.start_time_ = interval<unixtime_t>{day + 8h, day + 8h + 30min};
+  q.start_ = {{loc("O"), 0_minutes, 0U}};
+  q.destination_ = {{loc("D"), 0_minutes, 0U}};
+  q.use_start_footpaths_ = true;
+  q.via_stops_ = {};
+  q.min_connection_count_ = 0U;
+
+  auto const j = tuple_t{day + 8h + 20min, day + 13h, 0U};  // 10:20 -> 15:00
+  auto ss = routing::search_state{};
+  auto as = routing::raptor_state{};
+  auto const profile =
+      tuples(*routing::bmrap_profile_search<routing::arr_non_transit_criteria>(
+                  tt, nullptr, ss, as, q, direction::kForward)
+                  .journeys_);
+  // a fixed window is BMRAPP's "opposed" case: its anchors come from the same
+  // range search and close_anchor_profile()
+  EXPECT_TRUE(std::find(begin(profile), end(profile), j) != end(profile))
+      << "BMRAPP: J restricted away, its A(J) lies past the margin";
+}
+
 // Two destination offsets reached in the same round: D1 at 10:30 (2
 // transfers), then D2 at 10:35. The ping's target pruning is relaxed by the
 // arrival slack, so 10:35 still beats time_at_dest_ - it must not overwrite the
@@ -633,12 +912,9 @@ S,20240619,1
 }  // namespace
 
 TEST(bmrap, relaxed_ping_keeps_best_intermodal_arrival) {
-  auto tt = timetable{};
-  tt.date_range_ = {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, mem_dir::read(std::string{kTwoDestGTFS}),
-                 tt);
-  finalize(tt);
+  auto const tt = loader::load(
+      mem_dir::read(std::string{kTwoDestGTFS}),
+      {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}});
   auto const loc = [&](char const* id) {
     return tt.locations_.location_id_to_idx_.at({id, source_idx_t{0}});
   };

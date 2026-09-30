@@ -236,9 +236,15 @@ anchor const* anchor_of(std::vector<anchor> const& anchors,
 }
 
 // Is a journey with `trips` trips, anchored at `anchored` and found at `found`,
-// outside the restricted set? An anchor is its own A(J); anything else must
-// stay within A(J)'s trip budget and deadline - the same deadline the bounds
-// were built from, so pruning and filter cannot disagree.
+// outside the restricted set? An anchor is its own reference. Anything else
+// has a SET of anchors: A(J), plus every anchor available at J that arrives
+// before A(J) - those have more trips than J (A(J) is the earliest arrival with
+// at most as many), and J may still be a reasonable fallback to them. Without
+// an A(J) (every available anchor has more trips), all available anchors are
+// in the set. J stays if it is within the trip budget and deadline of any of
+// them - the same deadlines the bounds were built from; compute_bounds() keeps
+// the union over ALL anchors of a step, a superset, so pruning never removes
+// what this keeps.
 template <direction SearchDir>
 bool outside_restriction(std::vector<anchor> const& anchors,
                          unixtime_t const anchored,
@@ -250,10 +256,19 @@ bool outside_restriction(std::vector<anchor> const& anchors,
       })) {
     return false;
   }
+  auto const within_slack = [&](anchor const& x) {
+    return trips <= trip_budget(x.trips_, std::uint8_t{kMaxTransfers + 1U}) &&
+           !misses_deadline<SearchDir>(x, found);
+  };
   auto const* const a = anchor_of<SearchDir>(anchors, anchored, trips);
-  return a == nullptr ||
-         trips > trip_budget(a->trips_, std::uint8_t{kMaxTransfers + 1U}) ||
-         misses_deadline<SearchDir>(*a, found);
+  if (a != nullptr && within_slack(*a)) {
+    return false;
+  }
+  return utl::none_of(anchors, [&](anchor const& x) {
+    return !is_better<SearchDir>(x.anchored_, anchored) &&  // available at J
+           (a == nullptr || is_better<SearchDir>(x.found_, a->found_)) &&
+           within_slack(x);
+  });
 }
 
 // PHASE 1: the two-criteria range search yielding the anchor set J_A. PONG is
@@ -288,12 +303,14 @@ routing_result run_anchor_search(timetable const& tt,
 // differently under a 1 h and an 8 h searchWindow (16 of 46 queries measured,
 // always in the trips dimension).
 //
-// The truncation is bounded: nothing departing after A(d) arrives before it, so
-// d's profile only depends on departures in [d, A(d)]. One ontrip
-// earliest-arrival probe from the window boundary gives that bound, and
-// re-running the anchor search over the margin closes every in-window
-// departure's profile. The margin only feeds the restriction, not the reported
-// window. Returns it, for the stats.
+// The truncation is bounded, per trip count k: nothing departing after A(d, k)
+// arrives before it, so d's profile only depends on departures in
+// [d, A(d, k)] (and the earlier-arriving anchors of the restriction's set
+// depart before that, too). One ontrip earliest-arrival probe from the window
+// boundary yields A(boundary, k) for every k as its (arrival, trips) pareto
+// set; the LATEST of them bounds all k, and re-running the anchor search over
+// that margin closes every in-window departure's profile. The margin only
+// feeds the restriction, not the reported window. Returns it, for the stats.
 template <direction SearchDir>
 duration_t close_anchor_profile(
     timetable const& tt,
@@ -317,9 +334,12 @@ duration_t close_anchor_profile(
     try {
       auto const r = raptor_search(tt, rtt, ceiling_state, ceiling_algo,
                                    q_ceiling, SearchDir, timeout);
+      // The LATEST arrival of the (arrival, trips) pareto set: A(J) is the
+      // earliest arrival with at most J's trips, so a low-trip J's A(J)
+      // arrives with the fewest-trip probe journey, not the fastest one.
       for (auto const& j : *r.journeys_) {
         if (!a_ceiling.has_value() ||
-            is_better<SearchDir>(j.dest_time_, *a_ceiling)) {
+            is_better<SearchDir>(*a_ceiling, j.dest_time_)) {
           a_ceiling = j.dest_time_;
         }
       }
