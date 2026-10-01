@@ -849,11 +849,15 @@ int main(int argc, char* argv[]) {
       for (auto& sdq : qs) {
         if (dir == direction::kBackward) {
           sdq.q_.flip_dir();
-          // the (coordinate) destination is the start now: its first mile is
-          // in the offsets, start footpaths are not allowed on top
-          if (sdq.q_.start_match_mode_ == location_match_mode::kIntermodal) {
-            sdq.q_.use_start_footpaths_ = false;
-          }
+          // derive the start footpath flag from the new start: a coordinate
+          // has its first mile in the offsets (footpaths on top are not
+          // allowed), a station gets them like in the forward query. Without
+          // them a backward search spends a round on a footpath the forward
+          // search takes for free, which inflates its transfer counts and
+          // makes pong's ping/pong matching fail.
+          sdq.q_.use_start_footpaths_ =
+              sdq.q_.start_match_mode_ != location_match_mode::kIntermodal &&
+              gs.use_start_footpaths_;
         }
         sdq.q_.extend_interval_earlier_ = dir == direction::kBackward;
         sdq.q_.extend_interval_later_ = dir == direction::kForward;
