@@ -744,19 +744,20 @@ struct mcraptor_impl {
     if (!has_bounds_) {
       return false;
     }
-    // the CURRENT start time's trip budget limits the rounds, the row is
-    // relative to the matrix budget (see basic_mcraptor::bound_prunes())
+    // the CURRENT start time's trip budget limits the rounds, the row depends
+    // on the matrix (see basic_mcraptor::bound_prunes())
     auto const budget =
         cur_budget_ < bounds_budget_ ? cur_budget_ : bounds_budget_;
     if (k > budget) {
       return true;
     }
+    auto const row = bounds_staggered_ ? bounds_budget_ - k : budget - k;
     return !is_better_or_eq(
-        t, clamp(static_cast<int>(
-                     bounds_[static_cast<std::size_t>(bounds_budget_ - k) *
-                                 bounds_n_locations_ +
-                             l]) +
-                 slack));
+        t,
+        clamp(static_cast<int>(
+                  bounds_[static_cast<std::size_t>(row) * bounds_n_locations_ +
+                          l]) +
+              slack));
   }
 
   __device__ __forceinline__ int transfer_buffer(std::uint32_t const l) const {
@@ -2467,6 +2468,7 @@ struct mcraptor_impl {
   cuda::std::span<delta_t const> bounds_{};
   std::uint32_t bounds_n_locations_{0U};
   std::uint8_t bounds_budget_{0U};
+  bool bounds_staggered_{false};  // see bmrap_bounds::staggered_
   bool has_bounds_{false};
   unsigned cur_budget_{0U};  // this start time's trip budget
 

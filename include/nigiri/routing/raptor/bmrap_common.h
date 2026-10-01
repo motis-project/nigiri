@@ -294,80 +294,122 @@ routing_result run_anchor_search(timetable const& tt,
 // differently under a 1 h and an 8 h searchWindow (16 of 46 queries measured,
 // always in the trips dimension).
 //
-// The truncation is bounded, per trip count k: nothing departing after A(d, k)
-// arrives before it, so d's profile only depends on departures in
-// [d, A(d, k)] (and the earlier-arriving anchors of the restriction's set
-// depart before that, too). One ontrip earliest-arrival probe from the window
-// boundary yields A(boundary, k) for every k as its (arrival, trips) pareto
-// set; the LATEST of them bounds all k, and re-running the anchor search over
-// that margin closes every in-window departure's profile. The margin only
-// feeds the restriction, not the reported window. Returns it, for the stats.
-template <direction SearchDir>
-duration_t close_anchor_profile(
+// Past the boundary, every in-window departure has the same anchors available:
+// those departing at or after it. For k trips, A(J) can only be the earliest
+// arrival with at most k trips among them - the (arrival, trips) pareto set of
+// a ping from the boundary, re-anchored to its latest departures by a pong:
+// one more step of the anchor search's ping-pong. (The earlier-arriving anchors
+// of the restriction's set are on that front, too.) Returns the number of
+// anchors added.
+template <direction SearchDir, bool Rt>
+std::size_t close_anchor_profile_impl(
     timetable const& tt,
     rt_timetable const* rtt,
     query const& q,
     interval<unixtime_t> const anchor_interval,
-    raptor_state& prune_state,
-    std::optional<std::chrono::seconds> const timeout,
+    raptor_state& state,
     std::vector<anchor>& anchors) {
   constexpr auto const kFwd = (SearchDir == direction::kForward);
+  constexpr auto const kDir = duration_t{kFwd ? 1 : -1};
+  using ping_t = typename bmrap_algo_for<SearchDir, Rt, raptor_state>::type;
+  using pong_t =
+      typename bmrap_algo_for<flip(SearchDir), Rt, raptor_state>::type;
 
-  auto a_ceiling = std::optional<unixtime_t>{};
-  {
-    auto q_ceiling = q;
-    q_ceiling.start_time_ = kFwd ? anchor_interval.to_ : anchor_interval.from_;
-    q_ceiling.min_connection_count_ = 0U;
-    q_ceiling.extend_interval_earlier_ = false;
-    q_ceiling.extend_interval_later_ = false;
-    auto ceiling_state = search_state{};
-    auto ceiling_algo = raptor_state{};
-    try {
-      auto const r = raptor_search(tt, rtt, ceiling_state, ceiling_algo,
-                                   q_ceiling, SearchDir, timeout);
-      // The LATEST arrival of the (arrival, trips) pareto set: A(J) is the
-      // earliest arrival with at most J's trips, so a low-trip J's A(J)
-      // arrives with the fewest-trip probe journey, not the fastest one.
-      for (auto const& j : *r.journeys_) {
-        if (!a_ceiling.has_value() ||
-            is_better<SearchDir>(*a_ceiling, j.dest_time_)) {
-          a_ceiling = j.dest_time_;
-        }
-      }
-    } catch (std::exception const&) {
-      // nothing reachable beyond the window
-    }
+  auto const t = kFwd ? anchor_interval.to_ : anchor_interval.from_;
+  auto const base_day = day_idx_t{std::chrono::duration_cast<date::days>(
+                                      std::chrono::round<std::chrono::days>(t) -
+                                      tt.internal_interval().from_)
+                                      .count()};
+  auto qf = q;
+  qf.flip_dir();
+  auto fwd_is_dest = bitvec{};
+  auto fwd_dist = std::vector<std::uint16_t>{};
+  collect_destinations(tt, q.destination_, q.dest_match_mode_, fwd_is_dest,
+                       fwd_dist);
+  auto bwd_is_dest = bitvec{};
+  auto bwd_dist = std::vector<std::uint16_t>{};
+  collect_destinations(tt, qf.destination_, qf.dest_match_mode_, bwd_is_dest,
+                       bwd_dist);
+  auto is_via = std::array<bitvec, kMaxVias>{};
+  auto no_via = std::vector<via_stop>{};
+  auto lb = std::vector<std::uint16_t>(tt.n_locations(), std::uint16_t{0U});
+  auto const make = [&]<typename Algo>(bitvec& is_dest,
+                                       std::vector<std::uint16_t>& dist,
+                                       auto const& td_dest) {
+    return Algo{tt,
+                rtt,
+                state,
+                is_dest,
+                is_via,
+                dist,
+                td_dest,
+                lb,
+                no_via,
+                base_day,
+                q.allowed_claszes_,
+                q.require_bike_transport_,
+                q.require_car_transport_,
+                q.prf_idx_ == 2U,
+                q.no_compulsory_reservation_,
+                q.transfer_time_settings_,
+                q.prf_idx_};
+  };
+  auto ping =
+      make.template operator()<ping_t>(fwd_is_dest, fwd_dist, q.td_dest_);
+  auto pong =
+      make.template operator()<pong_t>(bwd_is_dest, bwd_dist, qf.td_dest_);
+
+  // PING from the boundary: the earliest arrival for every trip count
+  auto starts = std::vector<start>{};
+  get_starts(SearchDir, tt, rtt, t, q.start_, q.td_start_, q.via_stops_,
+             q.max_start_offset_, q.start_match_mode_, q.use_start_footpaths_,
+             starts, false, q.prf_idx_, q.transfer_time_settings_);
+  ping.reset_arrivals();
+  ping.next_start_time();
+  for (auto const& s : starts) {
+    ping.add_start(s.stop_, s.time_at_stop_);
   }
-  auto const margin =
-      a_ceiling.has_value()
-          ? std::min(duration_t{static_cast<duration_t::rep>(
-                         std::abs((kFwd ? *a_ceiling - anchor_interval.to_
-                                        : anchor_interval.from_ - *a_ceiling)
-                                      .count()))},
-                     q.max_travel_time_)
-          : duration_t{0};
-  if (margin > duration_t{0}) {
-    auto q_ext = q;
-    q_ext.start_time_ =
-        kFwd ? interval<unixtime_t>{anchor_interval.to_,
-                                    anchor_interval.to_ + margin}
-             : interval<unixtime_t>{anchor_interval.from_ - margin,
-                                    anchor_interval.from_};
-    q_ext.min_connection_count_ = 0U;
-    q_ext.extend_interval_earlier_ = false;
-    q_ext.extend_interval_later_ = false;
-    auto ext_state = search_state{};
-    try {
-      auto const ext = run_anchor_search<SearchDir>(
-          tt, rtt, ext_state, prune_state, q_ext, timeout);
-      for (auto const& j : *ext.journeys_) {
-        anchors.push_back({j.start_time_, j.dest_time_,
-                           static_cast<std::uint8_t>(j.transfers_ + 1U)});
-      }
-    } catch (std::exception const&) {
-      // the extension only refines
+  auto front = pareto_set<journey>{};
+  ping.execute(
+      t, q.max_transfers_,
+      t + (kFwd ? 1 : -1) *
+              std::min(q.max_travel_time_ + kMinLookAhead, kMaxTravelTime),
+      front);
+  utl::sort(front, [](journey const& a, journey const& b) {
+    return is_better<SearchDir>(a.dest_time_, b.dest_time_);
+  });
+
+  // PONG: re-anchor each to its latest departure, one run per arrival
+  auto tight = pareto_set<journey>{};
+  pong.reset_arrivals();
+  for (auto it = begin(front); it != end(front);) {
+    auto const arr = it->dest_time_;
+    auto const last = std::find_if(
+        it, end(front), [&](journey const& j) { return j.dest_time_ != arr; });
+    auto max_tr = std::uint8_t{0U};
+    for (auto x = it; x != last; ++x) {
+      max_tr = std::max(max_tr, x->transfers_);
     }
+    starts.clear();
+    get_starts(flip(SearchDir), tt, rtt, arr, qf.start_, qf.td_start_,
+               qf.via_stops_, qf.max_start_offset_, qf.start_match_mode_,
+               qf.start_match_mode_ != location_match_mode::kIntermodal, starts,
+               false, q.prf_idx_, q.transfer_time_settings_);
+    pong.next_start_time();
+    for (auto const& s : starts) {
+      pong.add_start(s.stop_, s.time_at_stop_);
+    }
+    pong.execute(arr, max_tr, t - kDir, tight);
+    it = last;
   }
+
+  // tight journeys are (start_time_ = arrival, dest_time_ = departure)
+  for (auto const& j : tight) {
+    anchors.push_back({j.dest_time_, j.start_time_,
+                       static_cast<std::uint8_t>(j.transfers_ + 1U)});
+  }
+  auto const n_added = tight.size();
+
   // The union of two windows is not a pareto set, and a dominated anchor must
   // never become somebody's A(J).
   {
@@ -386,7 +428,20 @@ duration_t close_anchor_profile(
     }
     anchors = std::move(keep);
   }
-  return margin;
+  return n_added;
+}
+
+template <direction SearchDir>
+std::size_t close_anchor_profile(timetable const& tt,
+                                 rt_timetable const* rtt,
+                                 query const& q,
+                                 interval<unixtime_t> const anchor_interval,
+                                 raptor_state& state,
+                                 std::vector<anchor>& anchors) {
+  return rtt == nullptr ? close_anchor_profile_impl<SearchDir, false>(
+                              tt, rtt, q, anchor_interval, state, anchors)
+                        : close_anchor_profile_impl<SearchDir, true>(
+                              tt, rtt, q, anchor_interval, state, anchors);
 }
 
 // tau_arr^->(v, i) from a finished search's round times: row i is the monotone
@@ -554,8 +609,10 @@ bmrap_bounds compute_bounds(timetable const& tt,
   }
   stats = stats + r.get_stats();
 
-  return reach_matrix<kPruneDir>(tt, q, state, r, budget,
-                                 /*sub_transfer=*/false);
+  auto bounds = reach_matrix<kPruneDir>(tt, q, state, r, budget,
+                                        /*sub_transfer=*/false);
+  bounds.staggered_ = true;
+  return bounds;
 }
 
 }  // namespace nigiri::routing::bmrap_detail

@@ -130,6 +130,7 @@ private:
 
   std::uint32_t bounds_n_locations_{0U};
   std::uint8_t bounds_budget_{0U};
+  bool bounds_staggered_{false};
   bool has_bounds_{false};
 };
 

@@ -620,19 +620,19 @@ private:
     if (bounds_ == nullptr) {
       return false;
     }
-    // The current start time's budget limits the rounds, but the row is
-    // relative to the MATRIX budget: compute_bounds() staggers an anchor run
-    // with budget b into rows (matrix budget - b) + t, so row
-    // matrix budget - k checks every anchor for its own b - k trips left.
-    // Indexing with a smaller per-departure budget (range BMRAP's
-    // max_transfers_fn_) shifted every row by the difference and pruned
-    // anchors of later departures from their own bounds.
-    if (k > std::min<unsigned>(cur_budget_, bounds_->budget_)) {
+    // The current start time's budget limits the rounds; which row answers
+    // "k trips used" depends on the matrix (bmrap_bounds::staggered_): a
+    // staggered one is read relative to its own budget - reading it with a
+    // smaller per-departure budget (range BMRAP's max_transfers_fn_) pruned
+    // anchors of later departures from their own bounds - a reach matrix
+    // relative to this search's budget, the tight row.
+    auto const budget = std::min<unsigned>(cur_budget_, bounds_->budget_);
+    if (k > budget) {
       return true;
     }
+    auto const row = bounds_->staggered_ ? bounds_->budget_ - k : budget - k;
     return !is_better_or_eq(
-        t,
-        clamp(static_cast<int>(bounds_->at(bounds_->budget_ - k, l)) + slack));
+        t, clamp(static_cast<int>(bounds_->at(row, l)) + slack));
   }
 
   // 0 is always a valid lower bound. Under BM-RAPTOR bound_prunes() is already
