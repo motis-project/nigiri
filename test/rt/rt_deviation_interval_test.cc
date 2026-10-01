@@ -8,13 +8,13 @@
 
 #include "../util.h"
 
-// `rt_timetable::coverage_` - the interval real-time data is known for, so
-// that routing can tell whether a query can be influenced by it at all. This
-// file covers the maintenance of that interval by the GTFS-RT update path;
+// `rt_timetable::deviation_interval_` - the interval real-time data is known
+// for, so that routing can tell whether a query can be influenced by it at all.
+// This file covers the maintenance of that interval by the GTFS-RT update path;
 // the VDV path is asserted inside `vdv_aus.delay_propagation`
 // (`test/rt/vdv_aus_test.cc`), which already has the fixture for it.
 //
-// What routing does with the coverage is tested in
+// What routing does with the deviation interval is tested in
 // `test/routing/rt_drop_test.cc`.
 
 using namespace date;
@@ -127,28 +127,29 @@ void delay_msg(timetable const& tt,
 
 }  // namespace
 
-TEST(rt, coverage_delay_and_cancel) {
+TEST(rt, deviation_interval_delay_and_cancel) {
   auto const tt = load_tt();
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{kDay});
 
   // No real-time data yet.
-  EXPECT_TRUE(rtt.coverage_.empty());
-  EXPECT_TRUE(rtt.coverage_.from_ == rtt.coverage_.to_);
+  EXPECT_TRUE(rtt.deviation_interval_.empty());
+  EXPECT_TRUE(rtt.deviation_interval_.from_ == rtt.deviation_interval_.to_);
 
   // T1 departs 10 minutes late, arrives on time
   // => scheduled + real-time times of T1.
   delay_msg(tt, rtt, "T1", "10:00:00", 10, 0);
-  EXPECT_FALSE(rtt.coverage_.empty());
-  EXPECT_EQ((interval{t(8h), t(9h + 1min)}), rtt.coverage_);
+  EXPECT_FALSE(rtt.deviation_interval_.empty());
+  EXPECT_EQ((interval{t(8h), t(9h + 1min)}), rtt.deviation_interval_);
 
   // T1 arrives 30 minutes late => extended to the back.
   delay_msg(tt, rtt, "T1", "10:00:00", std::nullopt, 30);
-  EXPECT_EQ((interval{t(8h), t(9h + 31min)}), rtt.coverage_);
+  EXPECT_EQ((interval{t(8h), t(9h + 31min)}), rtt.deviation_interval_);
 
-  // T1 is on time again => coverage is NOT shrunk (we still have real-time
-  // information about the [9:00, 9:31) window: the trip is not there).
+  // T1 is on time again => the deviation interval is NOT shrunk (we still have
+  // real-time information about the [9:00, 9:31) window: the trip is not
+  // there).
   delay_msg(tt, rtt, "T1", "10:00:00", 0, 0);
-  EXPECT_EQ((interval{t(8h), t(9h + 31min)}), rtt.coverage_);
+  EXPECT_EQ((interval{t(8h), t(9h + 31min)}), rtt.deviation_interval_);
 
   // T2 is canceled => extended over its scheduled times (no RT transport).
   {
@@ -161,26 +162,53 @@ TEST(rt, coverage_delay_and_cancel) {
         rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
     ASSERT_EQ(1U, stats.total_entities_success_);
   }
-  EXPECT_EQ((interval{t(8h), t(13h + 1min)}), rtt.coverage_);
+  EXPECT_EQ((interval{t(8h), t(13h + 1min)}), rtt.deviation_interval_);
 }
 
-// A trip that is EARLIER than scheduled extends the coverage to the front.
-TEST(rt, coverage_negative_delay) {
+// A covered but punctual trip stays on the static scan (see
+// `rt_timetable::finalize_rt_transport()`), so it is no real-time data a query
+// could see: the deviation interval stays empty until something deviates.
+TEST(rt, deviation_interval_on_time_update) {
+  auto const tt = load_tt();
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{kDay});
+
+  delay_msg(tt, rtt, "T1", "10:00:00", 0, 0);
+  EXPECT_TRUE(rtt.deviation_interval_.empty());
+  EXPECT_FALSE(rtt.affects(interval{t(0h), t(24h)}, 0U));
+  EXPECT_EQ(1U, rtt.n_rt_transports());
+  EXPECT_TRUE(rtt.is_unchanged(rt_transport_idx_t{0U}));
+
+  // Only one event of several moves: the whole transport is covered
+  // (scheduled times, because its static day is gone) plus the moved event.
+  delay_msg(tt, rtt, "T1", "10:00:00", 0, 7);
+  EXPECT_FALSE(rtt.is_unchanged(rt_transport_idx_t{0U}));
+  EXPECT_EQ((interval{t(8h), t(9h + 8min)}), rtt.deviation_interval_);
+
+  // Back on time: handed back to the static scan, the deviation interval is not
+  // shrunk.
+  delay_msg(tt, rtt, "T1", "10:00:00", 0, 0);
+  EXPECT_TRUE(rtt.is_unchanged(rt_transport_idx_t{0U}));
+  EXPECT_EQ((interval{t(8h), t(9h + 8min)}), rtt.deviation_interval_);
+}
+
+// A trip that is EARLIER than scheduled extends the deviation interval to the
+// front.
+TEST(rt, deviation_interval_negative_delay) {
   auto const tt = load_tt();
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{kDay});
 
   delay_msg(tt, rtt, "T1", "10:00:00", -10, -5);
-  EXPECT_EQ((interval{t(7h + 50min), t(9h + 1min)}), rtt.coverage_);
+  EXPECT_EQ((interval{t(7h + 50min), t(9h + 1min)}), rtt.deviation_interval_);
 }
 
 // Cancellation of a run that already has an RT transport: both the RT and the
 // scheduled times are covered.
-TEST(rt, coverage_cancel_rt_run) {
+TEST(rt, deviation_interval_cancel_rt_run) {
   auto const tt = load_tt();
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{kDay});
 
   delay_msg(tt, rtt, "T1", "10:00:00", 20, 20);
-  EXPECT_EQ((interval{t(8h), t(9h + 21min)}), rtt.coverage_);
+  EXPECT_EQ((interval{t(8h), t(9h + 21min)}), rtt.deviation_interval_);
 
   {
     auto msg = msg_header();
@@ -192,12 +220,13 @@ TEST(rt, coverage_cancel_rt_run) {
         rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
     ASSERT_EQ(1U, stats.total_entities_success_);
   }
-  EXPECT_EQ((interval{t(8h), t(9h + 21min)}), rtt.coverage_);
+  EXPECT_EQ((interval{t(8h), t(9h + 21min)}), rtt.deviation_interval_);
 }
 
 // Added trips are created with placeholder (zero) times that are filled in
-// afterwards. The coverage must not be anchored at the base day's midnight.
-TEST(rt, coverage_added_trip) {
+// afterwards. The deviation interval must not be anchored at the base day's
+// midnight.
+TEST(rt, deviation_interval_added_trip) {
   auto const tt = load_tt();
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{kDay});
 
@@ -223,54 +252,54 @@ TEST(rt, coverage_added_trip) {
       rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
   ASSERT_EQ(1U, stats.total_entities_success_);
 
-  EXPECT_EQ((interval{t(20h), t(20h + 31min)}), rtt.coverage_);
+  EXPECT_EQ((interval{t(20h), t(20h + 31min)}), rtt.deviation_interval_);
 }
 
-TEST(rt, coverage_extend) {
+TEST(rt, deviation_interval_extend) {
   auto rtt = rt_timetable{};
-  EXPECT_TRUE(rtt.coverage_.empty());
+  EXPECT_TRUE(rtt.deviation_interval_.empty());
 
   // Empty intervals are ignored.
-  rtt.extend_coverage(interval<unixtime_t>{});
-  rtt.extend_coverage(interval{t(12h), t(10h)});  // reversed
-  EXPECT_TRUE(rtt.coverage_.empty());
+  rtt.extend_deviation_interval(interval<unixtime_t>{});
+  rtt.extend_deviation_interval(interval{t(12h), t(10h)});  // reversed
+  EXPECT_TRUE(rtt.deviation_interval_.empty());
 
-  rtt.extend_coverage(interval{t(10h), t(12h)});
-  EXPECT_FALSE(rtt.coverage_.empty());
-  EXPECT_EQ((interval{t(10h), t(12h)}), rtt.coverage_);
+  rtt.extend_deviation_interval(interval{t(10h), t(12h)});
+  EXPECT_FALSE(rtt.deviation_interval_.empty());
+  EXPECT_EQ((interval{t(10h), t(12h)}), rtt.deviation_interval_);
 
-  // Contained intervals do not shrink the coverage.
-  rtt.extend_coverage(interval{t(10h + 30min), t(11h)});
-  rtt.extend_coverage(t(11h));
-  EXPECT_EQ((interval{t(10h), t(12h)}), rtt.coverage_);
+  // Contained intervals do not shrink the deviation interval.
+  rtt.extend_deviation_interval(interval{t(10h + 30min), t(11h)});
+  rtt.extend_deviation_interval(t(11h));
+  EXPECT_EQ((interval{t(10h), t(12h)}), rtt.deviation_interval_);
 
   // Overlapping + disjoint intervals extend it in both directions.
-  rtt.extend_coverage(interval{t(9h), t(11h)});
-  rtt.extend_coverage(interval{t(20h), t(21h)});
-  EXPECT_EQ((interval{t(9h), t(21h)}), rtt.coverage_);
+  rtt.extend_deviation_interval(interval{t(9h), t(11h)});
+  rtt.extend_deviation_interval(interval{t(20h), t(21h)});
+  EXPECT_EQ((interval{t(9h), t(21h)}), rtt.deviation_interval_);
 
   // A single point covers exactly one minute.
   auto rtt1 = rt_timetable{};
-  rtt1.extend_coverage(t(6h));
-  EXPECT_EQ((interval{t(6h), t(6h + 1min)}), rtt1.coverage_);
-  EXPECT_TRUE(rtt1.coverage_.contains(t(6h)));
-  EXPECT_FALSE(rtt1.coverage_.contains(t(6h + 1min)));
+  rtt1.extend_deviation_interval(t(6h));
+  EXPECT_EQ((interval{t(6h), t(6h + 1min)}), rtt1.deviation_interval_);
+  EXPECT_TRUE(rtt1.deviation_interval_.contains(t(6h)));
+  EXPECT_FALSE(rtt1.deviation_interval_.contains(t(6h + 1min)));
 }
 
 // `rt_timetable::affects()` is the single predicate both real-time drop
 // decisions go through: the drivers (`raptor_search.cc` / `pong.cc`) and
 // `raptor<>::execute()` per start time. `test/routing/rt_drop_test.cc` covers
 // the intervals they feed it. Both intervals are half-open.
-TEST(rt, coverage_needs_rt) {
+TEST(rt, deviation_interval_needs_rt) {
   auto rtt = rt_timetable{};
 
   // No real-time data at all: nothing can be affected ...
   EXPECT_FALSE(rtt.affects(interval{t(0h), t(24h)}, 0U));
-  // ... except a profile reading time dependent footpaths, which `coverage_`
-  // does not track.
+  // ... except a profile reading time dependent footpaths, which
+  // `deviation_interval_` does not track.
   EXPECT_TRUE(rtt.affects(interval{t(0h), t(24h)}, 1U));
 
-  rtt.extend_coverage(interval{t(10h), t(12h)});
+  rtt.extend_deviation_interval(interval{t(10h), t(12h)});
 
   // Disjoint on either side.
   EXPECT_FALSE(rtt.affects(interval{t(8h), t(10h)}, 0U));
@@ -285,8 +314,8 @@ TEST(rt, coverage_needs_rt) {
   EXPECT_TRUE(rtt.affects(interval{t(0h), t(24h)}, 0U));
   EXPECT_TRUE(rtt.affects(interval{t(9h), t(11h)}, 0U));
 
-  // Coverage that starts exactly where the search stops looking, and vice
-  // versa: half-open on both sides, so neither touches.
+  // A deviation interval that starts exactly where the search stops looking,
+  // and vice versa: half-open on both sides, so neither touches.
   EXPECT_FALSE(rtt.affects(interval{t(12h), t(12h + 1min)}, 0U));
   EXPECT_FALSE(rtt.affects(interval{t(9h), t(10h)}, 0U));
 }

@@ -16,10 +16,12 @@
 // Dropping the real-time timetable for a query it cannot influence. There are
 // three layers, this file covers the two routing ones:
 //
-//   1. `rt_timetable::coverage_` - the interval real-time data is known for,
-//      maintained by every function that writes to the real-time timetable.
-//      Tested in `test/rt/rt_coverage_test.cc` (GTFS-RT) and, for the VDV
-//      update path, in `test/rt/vdv_aus_test.cc`.
+//   1. `rt_timetable::deviation_interval_` - the hull of the events of every
+//      rt transport that deviates from its schedule, i.e. the time span in
+//      which a result can differ from the scheduled one. Maintained by the
+//      functions that take a transport off the static scan or write its
+//      times. Tested in `test/rt/rt_deviation_interval_test.cc` (GTFS-RT)
+//      and, for the VDV update path, in `test/rt/vdv_aus_test.cc`.
 //
 //   2. Driver level: each driver builds the interval its search can reach
 //      (`raptor_search_interval()` / `pong_search_interval()`) and asks
@@ -31,7 +33,7 @@
 //      the window that one execution can actually produce a journey in. This
 //      is the correctness-complete layer - every driver profits from it - and
 //      it adapts within a query: PONG walks its start time and can leave (or
-//      enter) the coverage in the middle of a search.
+//      enter) the deviation interval in the middle of a search.
 
 using namespace date;
 using namespace nigiri;
@@ -136,11 +138,11 @@ bool pong_needs_rt(timetable const& tt,
 
 }  // namespace
 
-TEST(routing, needs_rt_no_coverage) {
+TEST(routing, needs_rt_no_deviation) {
   auto const tt = load_tt();
   auto const rtt = rt::create_rt_timetable(tt, sys_days{kDay});
 
-  ASSERT_TRUE(rtt.coverage_.empty());
+  ASSERT_TRUE(rtt.deviation_interval_.empty());
 
   // Without any real-time data the query can always be answered statically -
   // regardless of where it is located in time.
@@ -151,7 +153,7 @@ TEST(routing, needs_rt_no_coverage) {
 TEST(routing, needs_rt_overlap) {
   auto const tt = load_tt();
   auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
-  rtt.extend_coverage(interval{t(8h), t(9h + 10min)});
+  rtt.extend_deviation_interval(interval{t(8h), t(9h + 10min)});
 
   // Query right in the covered window.
   EXPECT_TRUE(needs_rt<direction::kForward>(tt, rtt, q_at(t(8h))));
@@ -165,7 +167,7 @@ TEST(routing, needs_rt_overlap) {
 TEST(routing, needs_rt_far_away) {
   auto const tt = load_tt();
   auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
-  rtt.extend_coverage(interval{t(8h), t(9h + 10min)});
+  rtt.extend_deviation_interval(interval{t(8h), t(9h + 10min)});
 
   // A month later / earlier: even with the maximum interval extension (+-2
   // days) and the maximum travel time (5 days) the search cannot reach the
@@ -186,7 +188,7 @@ TEST(routing, needs_rt_far_away) {
 TEST(routing, needs_rt_direction) {
   auto const tt = load_tt();
   auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
-  rtt.extend_coverage(interval{t(8h), t(9h + 10min)});
+  rtt.extend_deviation_interval(interval{t(8h), t(9h + 10min)});
 
   auto const start = at_8(2019_y / May / 5);
 
@@ -201,12 +203,12 @@ TEST(routing, needs_rt_direction) {
   EXPECT_FALSE(needs_rt<direction::kBackward>(tt, rtt, q_at(start, 60min)));
 }
 
-// Time dependent footpaths are not tracked by the coverage.
+// Time dependent footpaths are not tracked by the deviation interval.
 TEST(routing, needs_rt_profile) {
   auto const tt = load_tt();
   auto const rtt = rt::create_rt_timetable(tt, sys_days{kDay});
 
-  ASSERT_TRUE(rtt.coverage_.empty());
+  ASSERT_TRUE(rtt.deviation_interval_.empty());
 
   auto q = q_at(at_8(2019_y / June / 1));
   EXPECT_FALSE(needs_rt<direction::kForward>(tt, rtt, q));
@@ -221,7 +223,7 @@ TEST(routing, needs_rt_profile) {
 TEST(routing, pong_needs_rt_interval_extension) {
   auto const tt = load_tt();
   auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
-  rtt.extend_coverage(interval{t(8h), t(9h + 10min)});
+  rtt.extend_deviation_interval(interval{t(8h), t(9h + 10min)});
 
   // Range RAPTOR cannot reach 05-01 from a month before / after.
   EXPECT_FALSE(
@@ -249,7 +251,7 @@ TEST(routing, pong_needs_rt_min_look_ahead) {
 
   // Real-time data right after the end of the timetable (11-01 00:00).
   auto rtt_after = rt::create_rt_timetable(tt, sys_days{kDay});
-  rtt_after.extend_coverage(
+  rtt_after.extend_deviation_interval(
       interval{unixtime_t{sys_days{2019_y / November / 1} + 12h},
                unixtime_t{sys_days{2019_y / November / 1} + 13h}});
 
@@ -264,7 +266,7 @@ TEST(routing, pong_needs_rt_min_look_ahead) {
 
   // Same for the earliest start time backwards (03-25 00:00).
   auto rtt_before = rt::create_rt_timetable(tt, sys_days{kDay});
-  rtt_before.extend_coverage(
+  rtt_before.extend_deviation_interval(
       interval{unixtime_t{sys_days{2019_y / March / 24} + 11h},
                unixtime_t{sys_days{2019_y / March / 24} + 12h}});
 
@@ -275,16 +277,16 @@ TEST(routing, pong_needs_rt_min_look_ahead) {
                                                   kMinLookAhead));
 }
 
-TEST(routing, pong_needs_rt_no_coverage_and_profile) {
+TEST(routing, pong_needs_rt_no_deviation_and_profile) {
   auto const tt = load_tt();
   auto const rtt = rt::create_rt_timetable(tt, sys_days{kDay});
 
-  ASSERT_TRUE(rtt.coverage_.empty());
+  ASSERT_TRUE(rtt.deviation_interval_.empty());
 
   auto q = q_at(at_8(kDay));
   EXPECT_FALSE(pong_needs_rt<direction::kForward>(tt, rtt, q, kMinLookAhead));
 
-  // Time dependent footpaths are not tracked by the coverage.
+  // Time dependent footpaths are not tracked by the deviation interval.
   q.prf_idx_ = 1U;
   EXPECT_TRUE(pong_needs_rt<direction::kForward>(tt, rtt, q, kMinLookAhead));
 }
@@ -299,7 +301,7 @@ TEST(routing, pong_needs_rt_no_coverage_and_profile) {
 namespace {
 
 // Delays T1 on 2019-05-01 by 30 minutes. That is the only real-time data in
-// the timetable, so the coverage stays inside 05-01.
+// the timetable, so the deviation interval stays inside 05-01.
 void delay_first_day(timetable const& tt, rt_timetable& rtt) {
   auto msg = transit_realtime::FeedMessage{};
   auto const hdr = msg.mutable_header();
@@ -324,12 +326,14 @@ void delay_first_day(timetable const& tt, rt_timetable& rtt) {
   ASSERT_EQ(1U, stats.total_entities_success_);
 }
 
-// Same real-time data, but the coverage is widened to the whole timetable so
-// the gate never fires - the reference for what the search must return.
+// Same real-time data, but the deviation interval is widened to the whole
+// timetable so the gate never fires - the reference for what the search must
+// return.
 rt_timetable never_gated(rt_timetable const& rtt) {
   auto copy = rtt;
-  copy.extend_coverage(interval{unixtime_t{sys_days{2019_y / April / 1}},
-                                unixtime_t{sys_days{2019_y / June / 1}}});
+  copy.extend_deviation_interval(
+      interval{unixtime_t{sys_days{2019_y / April / 1}},
+               unixtime_t{sys_days{2019_y / June / 1}}});
   return copy;
 }
 
@@ -355,8 +359,8 @@ query pong_query(timetable const& tt,
                .extend_interval_later_ = kFwd};
 }
 
-// One PONG search against the real coverage and one against `never_gated()`,
-// asserting that the gate changed nothing about the result.
+// One PONG search against the real deviation interval and one against
+// `never_gated()`, asserting that the gate changed nothing about the result.
 struct gated_vs_reference {
   gated_vs_reference(timetable const& tt,
                      rt_timetable const& rtt,
@@ -402,7 +406,7 @@ TEST(routing, rt_gate_deactivates_within_query) {
 
   auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
   delay_first_day(tt, rtt);
-  ASSERT_FALSE(rtt.coverage_.empty());
+  ASSERT_FALSE(rtt.deviation_interval_.empty());
 
   auto const r = gated_vs_reference{tt, rtt, direction::kForward,
                                     unixtime_t{sys_days{kDay} + 2h}, 3U};
@@ -427,7 +431,7 @@ TEST(routing, rt_gate_activates_within_query) {
       gated_vs_reference{tt, rtt, direction::kBackward,
                          unixtime_t{sys_days{2019_y / May / 5} + 8h}, 10U};
 
-  // It starts outside the coverage and walks into it.
+  // It starts outside the deviation interval and walks into it.
   EXPECT_GT(r.without_rt(), 0U);
   EXPECT_GT(r.with_rt(), 0U);
 

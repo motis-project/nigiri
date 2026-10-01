@@ -244,8 +244,14 @@ struct raptor {
         }
         if constexpr (Rt) {
           if (rt_active_) {
+            // Only the rt transports that actually deviate: the ones identical
+            // to their schedule ride the static scan above and are not on this
+            // list, so they cost nothing here either.
             for (auto const& rt_t :
-                 rtt_->location_rt_transports_[location_idx_t{i}]) {
+                 rtt_->location_rt_scan_[location_idx_t{i}]) {
+              if (rtt_->is_unchanged(rt_t)) {
+                continue;  // registered once, but back on the static scan
+              }
               any_marked = true;
               state_.rt_transport_mark_.set(to_idx(rt_t), true);
             }
