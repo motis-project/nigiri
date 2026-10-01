@@ -1,17 +1,22 @@
 #include <cstdio>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <filesystem>
 #include <iostream>
 #include <map>
 #include <numeric>
 #include <regex>
 #include <span>
+#include <optional>
+#include <random>
+#include <sstream>
 #include <thread>
 
 #include "boost/program_options.hpp"
 
 #include "utl/helpers/algorithm.h"
+#include "utl/overloaded.h"
 #include "utl/parallel_for.h"
 #include "utl/parser/cstr.h"
 #include "utl/progress_tracker.h"
@@ -25,6 +30,9 @@
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
+#include "nigiri/rt/create_rt_timetable.h"
+#include "nigiri/rt/rt_timetable.h"
+#include "nigiri/rt/run.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -94,6 +102,90 @@ void generate_queries(
       queries.emplace_back(sdq.value());
     }
   }
+}
+
+// Synthetic real-time timetable for `day`. The defaults mimic the DELFI
+// GTFS-RT feed (snapshot of 2026-10-01 08:48 UTC against the 2026-09-28
+// schedule, 165,604 trip updates; see rt_synth_params): a share of the
+// transports active on that day gets an rt instance; `p_cancel` of those are
+// cancelled, `punctual` reported on time at minute resolution (the real feed
+// carries second-level delays, most of which round to zero), the rest shifted
+// by a lognormal delay with the measured median and p90, rounded up to whole
+// minutes and capped at `max_delay`. Deterministic in `seed`.
+struct rt_synth_params {
+  double share_{0.55};  // covered share of the transports running in the
+                        // feed's 6 h window (165 k of ~300 k)
+  double p_cancel_{0.035};  // CANCELED trip updates
+  double punctual_{0.45};  // max |delay| < 60 s or no delay field at all
+  double delay_median_{3.4};  // of the late trips, minutes
+  double delay_p90_{15.0};
+  int max_delay_{120};
+  std::uint32_t seed_{1U};
+};
+
+rt_timetable make_synthetic_rtt(timetable const& tt,
+                                date::sys_days const day,
+                                double const share,
+                                rt_synth_params const& p) {
+  auto rtt = rt::create_rt_timetable(tt, day);
+  auto const day_idx = tt.day_idx(day);
+  auto rng = std::mt19937{p.seed_};
+  auto u = std::uniform_real_distribution<double>{0.0, 1.0};
+  // lognormal: median m, p90 q  =>  mu = ln m, sigma = ln(q / m) / 1.2816
+  auto const sigma =
+      std::log(std::max(p.delay_p90_, p.delay_median_ * 1.01) /
+               p.delay_median_) /
+      1.2816;
+  auto delay_d = std::lognormal_distribution<double>{
+      std::log(std::max(p.delay_median_, 0.01)), sigma};
+  auto n_unchanged = 0U, n_cancelled = 0U, n_delayed = 0U;
+  for (auto i = 0U; i != tt.transport_traffic_days_.size(); ++i) {
+    auto const t = transport_idx_t{i};
+    if (!tt.is_transport_active(t, day_idx) || u(rng) >= share) {
+      continue;
+    }
+    auto const tr = transport{t, day_idx};
+    if (u(rng) < p.p_cancel_) {
+      auto const n_stops = static_cast<stop_idx_t>(
+          tt.route_location_seq_[tt.transport_route_[t]].size());
+      rtt.cancel_run(rt::run{.t_ = tr, .stop_range_ = {0U, n_stops}});
+      ++n_cancelled;
+      continue;
+    }
+    auto delay = 0;
+    if (u(rng) >= p.punctual_) {
+      delay = std::clamp(static_cast<int>(std::ceil(delay_d(rng))), 1,
+                         std::max(1, p.max_delay_));
+      ++n_delayed;
+    }
+    auto const rt_t =
+        rtt.add_rt_transport(source_idx_t{0U}, tt, tr, {}, {}, {}, {},
+                             direction_id_t{}, {}, static_cast<delta_t>(delay));
+    n_unchanged += rtt.is_unchanged(rt_t) ? 1U : 0U;
+  }
+  rtt.update_lbs(tt);
+  fmt::print(
+      "synthetic rt: day={}, share={:.2f}, punctual={:.2f}, p_cancel={:.3f}, "
+      "delay median {:.1f} / p90 {:.1f} min -> {} rt transports, {} "
+      "unchanged (static scan), {} delayed, {} cancelled, deviation interval "
+      "{}\n",
+      day, share, p.punctual_, p.p_cancel_, p.delay_median_, p.delay_p90_,
+      rtt.n_rt_transports(), n_unchanged, n_delayed, n_cancelled,
+      rtt.deviation_interval_);
+  return rtt;
+}
+
+// Moves a query's start time (point or interval) onto `day`, keeping the time
+// of day, so that it can see the synthetic real-time data.
+void move_to_day(routing::start_time_t& start_time, date::sys_days const day) {
+  auto const shift = [&](unixtime_t const t) {
+    return unixtime_t{day + (t - std::chrono::floor<date::days>(t))};
+  };
+  std::visit(utl::overloaded{[&](unixtime_t& t) { t = shift(t); },
+                             [&](interval<unixtime_t>& i) {
+                               i = {shift(i.from_), shift(i.to_)};
+                             }},
+             start_time);
 }
 
 // Range-RAPTOR start time == first trip's departure time
@@ -275,6 +367,49 @@ struct result_set {
   std::vector<double> latencies_;
 };
 
+// "<rt cell> rt overhead vs <static cell>: ..." -- latency ratios of the two
+// cells and the number of queries whose result set changed under real-time
+std::string rt_overhead_line(result_set const& rt, result_set const& st) {
+  auto const valid = [](std::vector<double> v) {
+    std::erase_if(v, [](double const x) { return x < 0.0; });
+    std::sort(begin(v), end(v));
+    return v;
+  };
+  auto const avg = [](std::vector<double> const& v) {
+    return v.empty() ? 0.0
+                     : std::accumulate(begin(v), end(v), 0.0) /
+                           static_cast<double>(v.size());
+  };
+  auto const q = [](std::vector<double> const& v, double const p) {
+    return v.empty() ? 0.0
+                     : v[std::min(v.size() - 1U,
+                                  static_cast<std::size_t>(p * v.size()))];
+  };
+  auto const pct = [](double const a, double const b) {
+    return b <= 0.0 ? 0.0 : (a / b - 1.0) * 100.0;
+  };
+  auto const keys = [](pareto_set<routing::journey> const& js) {
+    auto v = std::vector<std::tuple<unixtime_t, unixtime_t, std::uint8_t>>{};
+    for (auto const& j : js) {
+      v.emplace_back(j.start_time_, j.dest_time_, j.transfers_);
+    }
+    std::sort(begin(v), end(v));
+    return v;
+  };
+  auto const a = valid(rt.latencies_), b = valid(st.latencies_);
+  auto n_changed = 0U;
+  for (auto i = std::size_t{0U};
+       i != std::min(rt.res_.size(), st.res_.size()); ++i) {
+    n_changed += keys(rt.res_[i]) != keys(st.res_[i]) ? 1U : 0U;
+  }
+  return fmt::format(
+      "{:<36} rt overhead vs {:<24} avg {:+.1f} %  median {:+.1f} %  q90 "
+      "{:+.1f} %  (ms: {:.0f} vs {:.0f})  result sets changed {}/{}",
+      rt.label_, st.label_, pct(avg(a), avg(b)), pct(q(a, 0.5), q(b, 0.5)),
+      pct(q(a, 0.9), q(b, 0.9)), avg(a), avg(b), n_changed, rt.res_.size());
+}
+
+
 struct cpu_ws {
   search_state ss_;
   routing::raptor_state rs_;
@@ -348,6 +483,9 @@ int main(int argc, char* argv[]) {
   auto prf_idx = std::uint32_t{0};
   auto start_coord_str = std::string{};
   auto dest_coord_str = std::string{};
+  auto rt_shares = std::vector<double>{};
+  auto rt_params = rt_synth_params{};
+  auto rt_day_str = std::string{};
   auto start_loc_val = location_idx_t::value_t{0U};
   auto dest_loc_val = location_idx_t::value_t{0U};
   auto seed = std::int64_t{0};
@@ -454,6 +592,33 @@ int main(int argc, char* argv[]) {
        "start location for random queries")  //
       ("dest_loc", bpo::value<location_idx_t::value_t>(&dest_loc_val),
        "destination location for random queries")  //
+      ("rt_share", bpo::value(&rt_shares)->multitoken(),
+       "additionally run the matrix against synthetic real-time "
+       "timetable(s) and report their overhead against the static run: "
+       "share(s) of the transports active on --rt_day that get an rt "
+       "instance (DELFI feed: ~0.55 of the trips running in its window)")  //
+      ("rt_day", bpo::value(&rt_day_str),
+       "day (YYYY-MM-DD) the synthetic real-time data is generated for; "
+       "query start times are moved onto this day (time of day kept)")  //
+      ("rt_punctual",
+       bpo::value(&rt_params.punctual_)->default_value(0.45),
+       "share of the covered transports reported on time at minute "
+       "resolution (DELFI: 0.45)")  //
+      ("rt_p_cancel",
+       bpo::value(&rt_params.p_cancel_)->default_value(0.035),
+       "share of the covered transports that are cancelled (DELFI: 0.035)")  //
+      ("rt_delay_median",
+       bpo::value(&rt_params.delay_median_)->default_value(3.4),
+       "median delay of the late transports in minutes, lognormal "
+       "(DELFI: 3.4)")  //
+      ("rt_delay_p90",
+       bpo::value(&rt_params.delay_p90_)->default_value(15.0),
+       "90th percentile of that delay in minutes (DELFI: 15)")  //
+      ("rt_max_delay",
+       bpo::value(&rt_params.max_delay_)->default_value(120),
+       "delays are capped at this many minutes")  //
+      ("rt_seed", bpo::value(&rt_params.seed_)->default_value(1U),
+       "seed of the synthetic real-time timetable")  //
       ("qa_path,q", bpo::value(&qa_path),
        "path to write the journey criteria to for qa");
   bpo::variables_map vm;
@@ -470,6 +635,36 @@ int main(int argc, char* argv[]) {
   std::cout << "loading timetable...\n";
   auto tt = *nigiri::timetable::read(tt_path);
   tt.resolve();
+
+  auto rt_day = std::optional<date::sys_days>{};
+  if (!rt_day_str.empty()) {
+    auto d = date::sys_days{};
+    auto ss = std::stringstream{rt_day_str};
+    ss >> date::parse("%F", d);
+    if (ss.fail() || !tt.internal_interval_days().contains(d)) {
+      std::cerr << "--rt_day " << rt_day_str
+                << " is not a day inside the timetable\n";
+      return 1;
+    }
+    rt_day = d;
+  }
+  // the static run first (nullptr), then one real-time timetable per
+  // --rt_share value; without --rt_share this is the plain benchmark
+  auto rtts = std::vector<std::unique_ptr<rt_timetable>>{};
+  rtts.push_back(nullptr);
+  std::erase_if(rt_shares, [](double const x) { return x <= 0.0; });
+  for (auto const share : rt_shares) {
+    if (!rt_day.has_value()) {
+      std::cerr << "--rt_share requires --rt_day\n";
+      return 1;
+    }
+    rtts.push_back(std::make_unique<rt_timetable>(
+        make_synthetic_rtt(tt, *rt_day, share, rt_params)));
+  }
+  rt_shares.insert(begin(rt_shares), 0.0);  // index 0 = static run
+  auto const rt_label = [&](std::size_t const i) {
+    return i == 0U ? std::string{} : fmt::format("-rt{:.2f}", rt_shares[i]);
+  };
 
   gs.interval_size_ = duration_t{interval_size};
 
@@ -610,6 +805,11 @@ int main(int argc, char* argv[]) {
   auto gpu_tt = std::optional<routing::gpu::gpu_timetable>{};
   if (run_gpu) {
     gpu_tt.emplace(tt);
+    for (auto& r : rtts) {
+      if (r != nullptr) {
+        r->gpu_rtt_.ptr_ = routing::gpu::make_gpu_rtt(tt, *r);
+      }
+    }
   }
 #endif
 
@@ -629,6 +829,11 @@ int main(int argc, char* argv[]) {
     auto& fwd_qs = mode_queries[mode];
     if (fwd_qs.empty()) {
       generate_queries(fwd_qs, n_queries, tt, rs, seed);
+      if (rt_day.has_value()) {
+        for (auto& sdq : fwd_qs) {
+          move_to_day(sdq.q_.start_time_, *rt_day);
+        }
+      }
     }
 
     // (mode, dir) are the incomparable dimensions -- within one (mode, dir),
@@ -646,10 +851,17 @@ int main(int argc, char* argv[]) {
         sdq.q_.extend_interval_later_ = dir == direction::kForward;
       }
 
-      auto cells = std::vector<result_set>{};
+      // one cell set per --rt_share value: engines/algos are compared within
+      // a set, every set with real-time data is measured against the static
+      // one
+      auto cells_by_rt = std::vector<std::vector<result_set>>(rtts.size());
+      for (auto rt_i = std::size_t{0U}; rt_i != rtts.size(); ++rt_i) {
+      auto const* const rtt_ptr = rtts[rt_i].get();
+      auto& cells = cells_by_rt[rt_i];
       for (auto const& algo : algos) {
         auto const use_pong = algo == "pong";
-        auto const label = mode + "-" + dir_str + "-" + algo;
+        auto const label =
+            mode + "-" + dir_str + "-" + algo + rt_label(rt_i);
 
         try {
           if (run_cpu) {
@@ -658,9 +870,9 @@ int main(int argc, char* argv[]) {
                 [&](cpu_ws& w, routing::query q) {
                   auto const r =
                       use_pong
-                          ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
+                          ? routing::pong_search(tt, rtt_ptr, w.ss_, w.rs_,
                                                  std::move(q), dir)
-                          : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
+                          : routing::raptor_search(tt, rtt_ptr, w.ss_, w.rs_,
                                                    std::move(q), dir);
                   return *r.journeys_;
                 }));
@@ -677,9 +889,9 @@ int main(int argc, char* argv[]) {
                 [&](gpu_ws& w, routing::query q) {
                   auto const r =
                       use_pong
-                          ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
+                          ? routing::pong_search(tt, rtt_ptr, w.ss_, *w.rs_,
                                                  std::move(q), dir)
-                          : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
+                          : routing::raptor_search(tt, rtt_ptr, w.ss_, *w.rs_,
                                                    std::move(q), dir);
                   return *r.journeys_;
                 },
@@ -694,21 +906,45 @@ int main(int argc, char* argv[]) {
           ++total;
         }
       }
+      }  // rt_i
 
-      if (cells.size() == 1U) {
-        summary.push_back(fmt::format("{:<24} n={:<6} benchmark only",
-                                      cells.front().label_, qs.size()));
+      for (auto const& cells : cells_by_rt) {
+        if (cells.size() == 1U) {
+          summary.push_back(fmt::format("{:<24} n={:<6} benchmark only",
+                                        cells.front().label_, qs.size()));
+        }
+        for (auto a = std::size_t{0U}; a < cells.size(); ++a) {
+          for (auto b = a + 1U; b < cells.size(); ++b) {
+            auto const mismatches = compare_results(
+                tt, cells[a].label_, cells[a].res_, cells[b].label_,
+                cells[b].res_, qs, dir, gs.min_connection_count_);
+            summary.push_back(
+                fmt::format("{:<24} vs {:<24} n={:<6} mismatches={:<4} {}",
+                            cells[a].label_, cells[b].label_, qs.size(),
+                            mismatches, mismatches == 0U ? "PASS" : "FAIL"));
+            total += mismatches;
+          }
+        }
       }
-      for (auto a = std::size_t{0U}; a < cells.size(); ++a) {
-        for (auto b = a + 1U; b < cells.size(); ++b) {
-          auto const mismatches = compare_results(
-              tt, cells[a].label_, cells[a].res_, cells[b].label_,
-              cells[b].res_, qs, dir, gs.min_connection_count_);
-          summary.push_back(
-              fmt::format("{:<24} vs {:<24} n={:<6} mismatches={:<4} {}",
-                          cells[a].label_, cells[b].label_, qs.size(),
-                          mismatches, mismatches == 0U ? "PASS" : "FAIL"));
-          total += mismatches;
+
+      // real-time overhead: every real-time cell against the static cell of
+      // the same (mode, dir, algo, engine); result sets are expected to
+      // differ, their count is reported, not failed
+      {
+        auto const& static_cells = cells_by_rt[0U];
+        for (auto rt_i = std::size_t{1U}; rt_i != rtts.size(); ++rt_i) {
+          for (auto const& c : cells_by_rt[rt_i]) {
+            auto base = c.label_;
+            base.erase(base.find(rt_label(rt_i)), rt_label(rt_i).size());
+            auto const twin =
+                utl::find_if(static_cells, [&](result_set const& x) {
+                  return x.label_ == base;
+                });
+            if (twin == end(static_cells)) {
+              continue;
+            }
+            summary.push_back(rt_overhead_line(c, *twin));
+          }
         }
       }
     }
