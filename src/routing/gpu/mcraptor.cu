@@ -604,6 +604,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(
         s.bmrap_bounds_[kDirIdx].size()};
     r.bounds_n_locations_ = bounds_n_locations_;
     r.bounds_budget_ = bounds_budget_;
+    r.bounds_staggered_ = bounds_staggered_;
     r.has_bounds_ = true;
   }
   r.cur_budget_ = end_k - 1U;  // trips allowed for this start time
@@ -779,6 +780,7 @@ void gpu_mcraptor<SearchDir, Crit>::set_bounds(bmrap_bounds const* b) {
   CUDA_CHECK(cudaStreamSynchronize(s.stream_));
   bounds_n_locations_ = b->n_locations_;
   bounds_budget_ = b->budget_;
+  bounds_staggered_ = b->staggered_;
   has_bounds_ = true;
 }
 
