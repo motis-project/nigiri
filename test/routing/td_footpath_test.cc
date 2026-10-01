@@ -106,7 +106,7 @@ TRANSFERS: 1
      FROM: (START, START) [2024-06-19 07:44]
        TO: (END, END) [2024-06-19 10:10]
 leg 0: (START, START) [2024-06-19 07:44] -> (A, A) [2024-06-19 07:54]
-  MUMO (id=0, duration=10)
+  MUMO (payload=0, duration=10)
 leg 1: (A, A) [2024-06-19 08:00] -> (B1, B1) [2024-06-19 09:00]
    0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
    1: B1      B1.............................................. a: 19.06 09:00 [19.06 11:00]
@@ -116,7 +116,7 @@ leg 3: (B2, B2) [2024-06-19 09:30] -> (C, C) [2024-06-19 10:00]
    0: B2      B2..............................................                               d: 19.06 09:30 [19.06 11:30]  [{name=RE 2, day=2024-06-19, id=T2, src=0}]
    1: C       C............................................... a: 19.06 10:00 [19.06 12:00]
 leg 4: (C, C) [2024-06-19 10:00] -> (END, END) [2024-06-19 10:10]
-  MUMO (id=0, duration=10)
+  MUMO (payload=0, duration=10)
 
 )";
 
@@ -126,7 +126,7 @@ TRANSFERS: 1
      FROM: (START, START) [2024-06-19 07:44]
        TO: (END, END) [2024-06-19 13:40]
 leg 0: (START, START) [2024-06-19 07:44] -> (A, A) [2024-06-19 07:54]
-  MUMO (id=0, duration=10)
+  MUMO (payload=0, duration=10)
 leg 1: (A, A) [2024-06-19 08:00] -> (D, D) [2024-06-19 10:00]
    0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 2, day=2024-06-19, id=T4, src=0}]
    1: D       D............................................... a: 19.06 10:00 [19.06 12:00]
@@ -136,7 +136,7 @@ leg 3: (D, D) [2024-06-19 11:00] -> (C, C) [2024-06-19 13:00]
    0: D       D...............................................                               d: 19.06 11:00 [19.06 13:00]  [{name=RE 1, day=2024-06-19, id=T5, src=0}]
    1: C       C............................................... a: 19.06 13:00 [19.06 15:00]
 leg 4: (C, C) [2024-06-19 13:30] -> (END, END) [2024-06-19 13:40]
-  MUMO (id=0, duration=10)
+  MUMO (payload=0, duration=10)
 
 )";
 
@@ -146,7 +146,7 @@ TRANSFERS: 1
      FROM: (START, START) [2024-06-19 07:44]
        TO: (END, END) [2024-06-19 10:40]
 leg 0: (START, START) [2024-06-19 07:44] -> (A, A) [2024-06-19 07:54]
-  MUMO (id=0, duration=10)
+  MUMO (payload=0, duration=10)
 leg 1: (A, A) [2024-06-19 08:00] -> (B1, B1) [2024-06-19 09:00]
    0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
    1: B1      B1.............................................. a: 19.06 09:00 [19.06 11:00]
@@ -156,7 +156,7 @@ leg 3: (B2, B2) [2024-06-19 10:00] -> (C, C) [2024-06-19 10:30]
    0: B2      B2..............................................                               d: 19.06 10:00 [19.06 12:00]  [{name=RE 1, day=2024-06-19, id=T3, src=0}]
    1: C       C............................................... a: 19.06 10:30 [19.06 12:30]
 leg 4: (C, C) [2024-06-19 10:30] -> (END, END) [2024-06-19 10:40]
-  MUMO (id=0, duration=10)
+  MUMO (payload=0, duration=10)
 
 )";
 
@@ -204,24 +204,24 @@ TEST(routing, td_footpath) {
                 {{{A,
                    {{.valid_from_ = sys_days{1970_y / January / 1},
                      .duration_ = footpath::kMaxDuration,
-                     .transport_mode_id_ = 0},
+                     .transport_mode_payload_ = 0},
                     {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 30min,
                      .duration_ = 10min,
-                     .transport_mode_id_ = 0},
+                     .transport_mode_payload_ = 0},
                     {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 45min,
                      .duration_ = footpath::kMaxDuration,
-                     .transport_mode_id_ = 0}}}}},
+                     .transport_mode_payload_ = 0}}}}},
             .td_dest_ =
                 {{{C,
                    {{.valid_from_ = sys_days{1970_y / January / 1},
                      .duration_ = 10min,
-                     .transport_mode_id_ = 0},
+                     .transport_mode_payload_ = 0},
                     {.valid_from_ = sys_days{2024_y / June / 19} + 12h + 30min,
                      .duration_ = footpath::kMaxDuration,
-                     .transport_mode_id_ = 0},
+                     .transport_mode_payload_ = 0},
                     {.valid_from_ = sys_days{2024_y / June / 19} + 13h + 30min,
                      .duration_ = 10min,
-                     .transport_mode_id_ = 0}}}}},
+                     .transport_mode_payload_ = 0}}}}},
             .prf_idx_ = 2U},
         direction::kForward);
   };

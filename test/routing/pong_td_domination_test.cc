@@ -81,10 +81,10 @@ TEST(routing, pong_td_egress_dominated_label) {
       .td_start_ = {{A,
                      {{.valid_from_ = monday + 9h + 50min,
                        .duration_ = 5min,
-                       .transport_mode_id_ = 5},
+                       .transport_mode_payload_ = 5},
                       {.valid_from_ = monday + 10h,
                        .duration_ = footpath::kMaxDuration,
-                       .transport_mode_id_ = 5}}}},
+                       .transport_mode_payload_ = 5}}}},
       .min_connection_count_ = 1U};
 
   auto const results =
