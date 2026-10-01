@@ -18,6 +18,7 @@
 #include "nigiri/stop.h"
 #include "nigiri/string_store.h"
 #include "nigiri/td_footpath.h"
+#include "nigiri/transfer_rules.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -59,6 +60,28 @@ struct location_id_equals {
 
 struct timetable {
   struct locations {
+    bool is_virt(location_idx_t const l) const {
+      return types_[l] == location_type::kVirt;
+    }
+
+    location_idx_t get_base_idx(location_idx_t const l) const {
+      return is_virt(l) ? parents_[l] : l;
+    }
+
+    template <typename Fn>
+    void for_each_virt(location_idx_t const l, Fn&& fn) const {
+      for (auto const c : children_[l]) {
+        if (is_virt(c)) {
+          fn(c);
+        }
+      }
+    }
+
+    location_idx_t project(profile_idx_t const prf,
+                           location_idx_t const l) const {
+      return projects_virts(prf) ? get_base_idx(l) : l;
+    }
+
     location_idx_t get_root_idx(location_idx_t const idx) const {
       auto l = idx;
       auto i = 0;
@@ -93,13 +116,21 @@ struct timetable {
     mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_in_;
     vector_map<location_idx_t, std::uint32_t> location_importance_;
     std::uint32_t max_importance_{0U};
     rtree<location_idx_t> rtree_;
     bitvec_map<location_idx_t> ticketing_unavailable_;
+
+    mutable_fws_multimap<location_idx_t, preferred_transfer>
+        preferred_transfers_;
+
+    array<vecvec<hub_idx_t, location_idx_t>, kNProfiles> hub_in_;
+    array<vecvec<hub_idx_t, location_idx_t>, kNProfiles> hub_out_;
+    array<vector_map<hub_idx_t, duration_t>, kNProfiles> hub_time_;
+    array<vecvec<location_idx_t, hub_idx_t>, kNProfiles> hub_in_by_loc_;
+    array<vecvec<location_idx_t, hub_idx_t>, kNProfiles> hub_out_by_loc_;
   } locations_;
 
   struct transport {
@@ -416,6 +447,8 @@ struct timetable {
       transport_section_attributes_;
   vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
   vecvec<transport_idx_t, translation_idx_t> transport_section_directions_;
+
+  transfer_rules transfer_rules_;
 
   // Lower bound graph.
   std::array<vecvec<location_idx_t, footpath>, kNProfiles> fwd_search_lb_graph_;

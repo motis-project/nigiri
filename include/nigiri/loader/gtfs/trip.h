@@ -140,9 +140,19 @@ struct trip_data {
   trip const& get(std::string_view id) const { return data_[trips_.at(id)]; }
   trip& get(std::string_view id) { return data_[trips_.at(id)]; }
 
+  location_idx_t handover_stop(gtfs_trip_idx_t const from,
+                               gtfs_trip_idx_t const to,
+                               location_idx_t const fallback) const {
+    auto const it = handover_stops_.find(pair{from, to});
+    return it == end(handover_stops_) ? fallback : it->second;
+  }
+
   hash_map<std::string, gtfs_trip_idx_t> trips_;
   hash_map<std::string, std::unique_ptr<block>> blocks_;
   vector_map<gtfs_trip_idx_t, trip> data_;
+  hash_map<pair<gtfs_trip_idx_t, gtfs_trip_idx_t>, location_idx_t>
+      handover_stops_;
+  hash_set<pair<gtfs_trip_idx_t, gtfs_trip_idx_t>> no_stay_seated_;
 };
 
 enum class interpolate_result { kOk, kErrorLastMissing, kErrorFirstMissing };

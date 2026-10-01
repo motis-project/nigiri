@@ -62,6 +62,9 @@ void dijkstra(timetable const& tt,
     auto const lb = dists[i];
     for (auto const c : tt.locations_.children_[location_idx_t{i}]) {
       dists[to_idx(c)] = std::min(lb, dists[to_idx(c)]);
+      for (auto const cc : tt.locations_.children_[c]) {
+        dists[to_idx(cc)] = std::min(lb, dists[to_idx(cc)]);
+      }
     }
   }
 }

@@ -88,6 +88,10 @@ struct device_rt_timetable {
       rt_transport_stop_times_;
   d_vecmap_view<rt_transport_idx_t, clasz> rt_transport_clasz_;
 
+  d_vecvec_view<vecvec<location_idx_t, footpath>> rt_footpaths_out_;
+  d_vecvec_view<vecvec<location_idx_t, footpath>> rt_footpaths_in_;
+  std::uint32_t n_rt_locations_{0U};
+
   d_vecmap_view<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
   d_vecmap_view<bitfield_idx_t, bitfield> bitfields_;
 
@@ -142,6 +146,7 @@ struct device_timetable {
   }
 
   std::uint32_t n_locations_;
+  std::uint32_t n_static_locations_;
   std::uint32_t n_routes_;
 
   d_vecmap_view<location_idx_t, u8_minutes> transfer_time_;
@@ -151,6 +156,17 @@ struct device_timetable {
   cuda::std::array<d_vecvec_view<decltype(t{}.locations_.footpaths_in_[0])>,
                    kNProfiles>
       footpaths_in_;
+
+  cuda::std::array<d_vecmap_view<hub_idx_t, duration_t>, kNProfiles> hub_time_;
+
+  struct hub_edge_list {
+    cuda::std::span<std::uint32_t const> loc_;
+    cuda::std::span<std::uint32_t const> hub_;
+  };
+  cuda::std::array<hub_edge_list, kNProfiles> hub_in_by_loc_flat_;
+  cuda::std::array<hub_edge_list, kNProfiles> hub_out_by_hub_flat_;
+  cuda::std::array<hub_edge_list, kNProfiles> hub_out_by_loc_flat_;
+  cuda::std::array<hub_edge_list, kNProfiles> hub_in_by_hub_flat_;
 
   cuda::std::span<delta const> route_stop_times_;
   d_vecmap_view<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;

@@ -44,8 +44,9 @@ struct leg_group {
   leg_group_idx_t g_;
 };
 
-struct transfer_rule {
-  friend std::ostream& operator<<(std::ostream& out, transfer_rule const& x) {
+struct fare_transfer_rule {
+  friend std::ostream& operator<<(std::ostream& out,
+                                  fare_transfer_rule const& x) {
     auto const& [tt, f, r] = x;
     return out << "(transfer_type=" << r.fare_transfer_type_
                << ", from_leg_group=" << leg_group{tt, f, r.from_leg_group_}
@@ -152,7 +153,7 @@ template <>
 struct fmt::formatter<nigiri::leg_rule> : ostream_formatter {};
 
 template <>
-struct fmt::formatter<nigiri::transfer_rule> : ostream_formatter {};
+struct fmt::formatter<nigiri::fare_transfer_rule> : ostream_formatter {};
 
 template <>
 struct fmt::formatter<nigiri::journey_leg> : ostream_formatter {};
@@ -203,6 +204,10 @@ bool operator==(fares::fare_leg_rule const& a, fares::fare_leg_rule const& b) {
   return a.match_members() == b.match_members();
 }
 
+location_idx_t stop_of(timetable const& tt, rt::run_stop const& s) {
+  return tt.locations_.get_base_idx(s.get_location_idx());
+}
+
 location_idx_t parent(timetable const& tt, location_idx_t const l) {
   return tt.locations_.parents_[l] == location_idx_t::invalid()
              ? l
@@ -248,9 +253,9 @@ bool join(timetable const& tt,
   }
 
   // Search for matching join rule matching both stops.
-  auto const from = a[r_a.stop_range_.to_ - 1U].get_location_idx();
+  auto const from = stop_of(tt, a[r_a.stop_range_.to_ - 1U]);
   auto const from_station = parent(tt, from);
-  auto const to = b[r_b.stop_range_.from_].get_location_idx();
+  auto const to = stop_of(tt, b[r_b.stop_range_.from_]);
   auto const to_station = parent(tt, to);
   return utl::find_if(
              fare.fare_leg_join_rules_,
@@ -395,13 +400,12 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
 
   trace("from: {}", fmt::streamed(from));
   auto const from_tf =
-      match_timeframe(tt, f, from.get_location_idx(), from.fr_->t_.t_idx_,
+      match_timeframe(tt, f, stop_of(tt, from), from.fr_->t_.t_idx_,
                       from.time(event_type::kDep));
 
   trace("  to: {}", fmt::streamed(to));
-  auto const to_tf =
-      match_timeframe(tt, f, to.get_location_idx(), to.fr_->t_.t_idx_,
-                      to.time(event_type::kArr));
+  auto const to_tf = match_timeframe(tt, f, stop_of(tt, to), to.fr_->t_.t_idx_,
+                                     to.time(event_type::kArr));
 
   auto const has_area = [&](area_idx_t const x) {
     for (auto const& l : joined_legs) {
@@ -410,7 +414,7 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
       auto const a = static_cast<stop_idx_t>(ree.stop_range_.from_);
       auto const b = static_cast<stop_idx_t>(ree.stop_range_.to_);
       for (auto i = a; i < b; ++i) {
-        auto const stop_areas = get_areas(tt, fr[i].get_location_idx());
+        auto const stop_areas = get_areas(tt, stop_of(tt, fr[i]));
         if (utl::find(stop_areas, x) != end(stop_areas)) {
           return true;
         }
@@ -427,7 +431,7 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
           auto const a = static_cast<stop_idx_t>(ree.stop_range_.from_);
           auto const b = static_cast<stop_idx_t>(ree.stop_range_.to_);
           for (auto i = a; i < b; ++i) {
-            auto const stop_areas = get_areas(tt, fr[i].get_location_idx());
+            auto const stop_areas = get_areas(tt, stop_of(tt, fr[i]));
             trace("areas of {}: {}", fmt::streamed(fr[i].get_loc()),
                   stop_areas | std::views::transform([&](area_idx_t const x) {
                     return tt.strings_.get(tt.areas_[x].name_);
@@ -480,8 +484,8 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
 
   namespace sv = std::views;
   auto matching_rules = std::vector<fares::fare_leg_rule>{};
-  for_each_area(from.get_location_idx(), [&](area_idx_t const from_area) {
-    for_each_area(to.get_location_idx(), [&](area_idx_t const to_area) {
+  for_each_area(stop_of(tt, from), [&](area_idx_t const from_area) {
+    for_each_area(stop_of(tt, to), [&](area_idx_t const to_area) {
       auto const x = fares::fare_leg_rule{.network_ = network,
                                           .from_area_ = from_area,
                                           .to_area_ = to_area,

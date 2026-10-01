@@ -17,6 +17,10 @@
 
 namespace nigiri::rt {
 
+location_idx_t base_location(run_stop const& s) {
+  return s.tt().locations_.get_base_idx(s.get_location_idx());
+}
+
 constexpr auto const kUnknownProvider =
     provider{.id_ = string_idx_t::invalid(),
              .name_ = kEmptyTranslation,
@@ -43,14 +47,14 @@ stop run_stop::get_scheduled_stop() const {
 }
 
 std::string_view run_stop::name(lang_t const& lang) const {
-  auto const l = get_location_idx();
+  auto const l = base_location(*this);
   auto const p = tt().locations_.parents_.at(l);
   auto const x = p == location_idx_t::invalid() ? l : p;
   return tt().translate(lang, tt().locations_.names_.at(x));
 }
 
 std::string_view run_stop::id() const {
-  auto const l = get_location_idx();
+  auto const l = base_location(*this);
   auto const p = tt().locations_.parents_.at(l);
   auto const x = p == location_idx_t::invalid() ? l : p;
   return tt().locations_.ids_.at(x).view();
@@ -100,7 +104,7 @@ std::pair<date::sys_days, duration_t> run_stop::get_trip_start(
 }
 
 std::string_view run_stop::track(lang_t const& lang) const {
-  auto const l = get_location_idx();
+  auto const l = base_location(*this);
   return tt().translate(lang, tt().locations_.platform_codes_.at(l));
 }
 
@@ -124,7 +128,7 @@ location_idx_t run_stop::get_location_idx() const {
 }
 
 std::string_view run_stop::get_location_id() const {
-  return tt().locations_.ids_[get_location_idx()].view();
+  return tt().locations_.ids_[base_location(*this)].view();
 }
 
 location_idx_t run_stop::get_scheduled_location_idx() const {
@@ -228,7 +232,7 @@ duration_t run_stop::delay(event_type const ev_type) const {
 
 timezone_idx_t run_stop::get_tz(event_type const ev_type) const {
   auto const location_tz =
-      tt().locations_.location_timezones_.at(get_location_idx());
+      tt().locations_.location_timezones_.at(base_location(*this));
   if (location_tz != timezone_idx_t::invalid()) {
     return location_tz;
   }

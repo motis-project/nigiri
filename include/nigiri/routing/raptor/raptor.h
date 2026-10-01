@@ -1,10 +1,14 @@
 #pragma once
 
 #include <cassert>
+#include <cstdlib>
+#include <limits>
 #include <span>
+#include <vector>
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
+#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
@@ -25,12 +29,40 @@ enum class search_mode { kOneToOne, kOneToAll };
 template <direction SearchDir,
           bool Rt,
           via_offset_t Vias,
-          search_mode SearchMode>
+          search_mode SearchMode,
+          bool ProjectVirts = false>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
 
   static constexpr bool kUseLowerBounds = true;
+
+  location_idx_t project(location_idx_t const l) const {
+    if constexpr (ProjectVirts) {
+      return tt_.locations_.get_base_idx(l);
+    } else {
+      return l;
+    }
+  }
+
+  u8_minutes min_transfer_time(location_idx_t const l) const {
+    if constexpr (ProjectVirts) {
+      return tt_.locations_.transfer_time_[project(l)];
+    } else {
+      if constexpr (Rt) {
+        if (!is_static(l)) {
+          return rtt_->rt_locations_.transfer_time_[rtt_->to_rt_location(l)];
+        }
+      }
+      return tt_.locations_.transfer_time_[l];
+    }
+  }
+
+  static constexpr bool uses_rt_virts() { return Rt && !ProjectVirts; }
+  bool is_static(location_idx_t const l) const {
+    return l < n_static_locations_;
+  }
+
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
@@ -74,7 +106,8 @@ struct raptor {
       : tt_{tt},
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},
-        n_locations_{tt_.n_locations()},
+        n_static_locations_{tt_.n_locations()},
+        n_locations_{uses_rt_virts() ? rtt->n_locations() : tt_.n_locations()},
         n_routes_{tt.n_routes()},
         n_rt_transports_{Rt ? rtt->n_rt_transports() : 0U},
         state_{state.resize(n_locations_, n_routes_, n_rt_transports_)},
@@ -97,6 +130,16 @@ struct raptor {
         is_wheelchair_{is_wheelchair},
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
+    if constexpr (uses_rt_virts()) {
+      if (n_locations_ != n_static_locations_) {
+        rtt_->extend_to_rt_virts(is_dest);
+        for (auto& via : is_via) {
+          rtt_->extend_to_rt_virts(via);
+        }
+        rtt_->extend_to_rt_virts(dist_to_dest, kUnreachable);
+        rtt_->extend_to_rt_virts(lb, kUnreachable);
+      }
+    }
     reset_arrivals();
     if (!dist_to_end_.empty()) {
       // only used for intermodal queries (dist_to_dest != empty)
@@ -110,6 +153,8 @@ struct raptor {
         end_reachable_.set(to_idx(l), true);
       }
     }
+
+    state_.resize_hubs(tt_.locations_.hub_in_[prf_idx_].size());
   }
 
   algo_stats_t get_stats() const { return stats_; }
@@ -177,6 +222,8 @@ struct raptor {
   }
 
   void next_start_time() {
+    utl::fill(state_.hub_reached_.blocks_, 0U);
+    utl::fill(state_.hub_mark_.blocks_, 0U);
     utl::fill(best_, kInvalidArray);
     utl::fill(tmp_, kInvalidArray);
     utl::fill(state_.prev_station_mark_.blocks_, 0U);
@@ -187,7 +234,8 @@ struct raptor {
     }
   }
 
-  void add_start(location_idx_t const l, unixtime_t const t) {
+  void add_start(location_idx_t const l_in, unixtime_t const t) {
+    auto const l = project(l_in);
     auto const v = (Vias != 0 && is_via_[0][to_idx(l)]) ? 1U : 0U;
     trace_upd(
         "adding start [fwd={}] {}: {}, v={} [current: best={}, round={} => "
@@ -227,9 +275,27 @@ struct raptor {
 
       auto any_marked = false;
       state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
-        for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
-          any_marked = true;
-          state_.route_mark_.set(to_idx(r), true);
+        if (i < n_static_locations_) {
+          for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
+            any_marked = true;
+            state_.route_mark_.set(to_idx(r), true);
+          }
+        }
+        if constexpr (ProjectVirts) {
+          for (auto const c : tt_.locations_.children_[location_idx_t{i}]) {
+            if (tt_.locations_.is_virt(c)) {
+              for (auto const& r : tt_.location_routes_[c]) {
+                any_marked = true;
+                state_.route_mark_.set(to_idx(r), true);
+              }
+              if constexpr (Rt) {
+                for (auto const& rt_t : rtt_->location_rt_transports_[c]) {
+                  any_marked = true;
+                  state_.rt_transport_mark_.set(to_idx(rt_t), true);
+                }
+              }
+            }
+          }
         }
         if constexpr (Rt) {
           for (auto const& rt_t :
@@ -381,6 +447,7 @@ struct raptor {
       update_transfers(k);
       update_intermodal_footpaths(k);
       update_footpaths(k);
+      expand_hubs(k);
       update_td_offsets(k);
 
       trace_print_state_after_round();
@@ -481,10 +548,12 @@ private:
     };
 
     auto const stays_l = via_stays(l);
+    auto const own = min_transfer_time(location_idx_t{l});
+    if (own == kNoTransferAllowed) {
+      return true;
+    }
     auto const transfer = dir(adjusted_transfer_time(
-        transfer_time_settings_,
-        static_cast<int>(
-            tt_.locations_.transfer_time_[location_idx_t{l}].count())));
+        transfer_time_settings_, static_cast<int>(own.count())));
     return is_better_or_eq(t, row[l][slot] + transfer + dir(stays_l));
   }
 
@@ -696,13 +765,15 @@ private:
             loc{tt_, location_idx_t{i}}, v, to_unix(tmp_time), is_dest, is_via,
             target_v, stay);
 
+        auto const own = min_transfer_time(location_idx_t{i});
+        auto const is_dest_arrival = !is_intermodal_dest() && is_dest;
+        if (own == kNoTransferAllowed && !is_dest_arrival) {
+          continue;
+        }
         auto const transfer_time =
-            (!is_intermodal_dest() && is_dest)
-                ? 0
-                : dir(adjusted_transfer_time(
-                      transfer_time_settings_,
-                      tt_.locations_.transfer_time_[location_idx_t{i}]
-                          .count()));
+            is_dest_arrival ? 0
+                            : dir(adjusted_transfer_time(
+                                  transfer_time_settings_, own.count()));
         auto const fp_target_time =
             clamp(tmp_time + transfer_time + dir(stay.count()));
 
@@ -742,6 +813,106 @@ private:
     });
   }
 
+  void relax_hub_target(unsigned const k,
+                        unsigned const start_v,
+                        delta_t const base_time,
+                        int const adj_dur,
+                        location_idx_t const target_l) {
+    ++stats_.n_footpaths_visited_;
+    auto const target = to_idx(target_l);
+    auto const target_is_via = start_v != Vias && is_via_[start_v][target];
+    auto const target_v = target_is_via ? start_v + 1U : start_v;
+    auto const stay =
+        target_is_via ? static_cast<int>(via_stops_[start_v].stay_.count()) : 0;
+    auto const fp_target_time = clamp(base_time + dir(adj_dur + stay));
+
+    if (bounds_last_k_ == 0U &&
+        is_better(fp_target_time, best_[target][target_v])) {
+      round_times_[k][target][target_v] =
+          get_best(fp_target_time, round_times_[k][target][target_v]);
+    }
+
+    if (is_better(fp_target_time, best_[target][target_v]) &&
+        is_better_loose(fp_target_time, time_at_dest_[k])) {
+      if (!lb_reachable(target) ||
+          !is_better_loose(fp_target_time + dir(get_lb(target)),
+                           time_at_dest_[k])) {
+        ++stats_.fp_update_prevented_by_lower_bound_;
+        return;
+      }
+      if (!within_bounds(k, target, fp_target_time, target_v)) {
+        return;
+      }
+      ++stats_.n_earliest_arrival_updated_by_footpath_;
+      round_times_[k][target][target_v] = fp_target_time;
+      best_[target][target_v] = fp_target_time;
+      state_.station_mark_.set(target, true);
+      if (target_v == Vias && is_dest_[target]) {
+        update_time_at_dest(k, fp_target_time);
+      }
+    }
+  }
+
+  void expand_hubs(unsigned const k) {
+    auto const& gather_edges = kFwd ? tt_.locations_.hub_in_by_loc_[prf_idx_]
+                                    : tt_.locations_.hub_out_by_loc_[prf_idx_];
+    if (gather_edges.size() == 0U) {
+      return;
+    }
+
+    auto const hub_slots = state_.get_hub_slots<Vias>();
+    state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+      if (i >= n_static_locations_) {
+        return;
+      }
+      auto const hubs = gather_edges[location_idx_t{i}];
+      if (hubs.empty()) {
+        return;
+      }
+      for (auto v = 0U; v != Vias + 1; ++v) {
+        auto const tmp_time = tmp_[i][v];
+        if (tmp_time == kInvalid) {
+          continue;
+        }
+        auto const start_is_via =
+            v != Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
+        auto const start_v = start_is_via ? v + 1U : v;
+        auto const value = clamp(
+            tmp_time + (start_is_via ? dir(via_stops_[v].stay_.count()) : 0));
+        for (auto const h : hubs) {
+          auto& slots = hub_slots[to_idx(h)];
+          if (!state_.hub_reached_.test(to_idx(h))) {
+            state_.hub_reached_.set(to_idx(h), true);
+            slots = kInvalidArray;
+          }
+          if (!is_better(value, slots[start_v])) {
+            continue;
+          }
+          slots[start_v] = value;
+          state_.hub_mark_.set(to_idx(h), true);
+        }
+      }
+    });
+
+    auto const& scatter_edges = kFwd ? tt_.locations_.hub_out_[prf_idx_]
+                                     : tt_.locations_.hub_in_[prf_idx_];
+    state_.hub_mark_.for_each_set_bit([&](std::uint64_t const i) {
+      auto const h = hub_idx_t{static_cast<hub_idx_t::value_t>(i)};
+      auto const t = tt_.locations_.hub_time_[prf_idx_][h];
+      auto const w = adjusted_transfer_time(transfer_time_settings_,
+                                            static_cast<int>(t.count()));
+      for (auto v = 0U; v != Vias + 1; ++v) {
+        if (hub_slots[i][v] == kInvalid) {
+          continue;
+        }
+        for (auto const target : scatter_edges[h]) {
+          relax_hub_target(k, v, hub_slots[i][v], w, target);
+        }
+      }
+    });
+    utl::fill(state_.hub_mark_.blocks_, 0U);
+  }
+
   void update_footpaths(unsigned const k) {
     state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
       auto const l_idx = location_idx_t{i};
@@ -753,13 +924,10 @@ private:
         }
       }
 
-      auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx_][l_idx]
-                             : tt_.locations_.footpaths_in_[prf_idx_][l_idx];
-
-      for (auto const& fp : fps) {
+      auto const relax = [&](footpath const& fp) {
         ++stats_.n_footpaths_visited_;
 
-        auto const target = to_idx(fp.target());
+        auto const target = to_idx(project(fp.target()));
 
         for (auto v = 0U; v != Vias + 1; ++v) {
           auto const tmp_time = tmp_[i][v];
@@ -840,7 +1008,9 @@ private:
                 to_unix(time_at_dest_[k]));
           }
         }
-      }
+      };
+
+      for_each_footpath_at<SearchDir>(tt_, rtt_, prf_idx_, l_idx, relax);
     });
   }
 
@@ -873,7 +1043,7 @@ private:
             SearchDir>(fps, to_unix(tmp_time), [&](footpath const fp) {
           ++stats_.n_footpaths_visited_;
 
-          auto const target = to_idx(fp.target());
+          auto const target = to_idx(project(fp.target()));
 
           auto const start_is_via =
               v != Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
@@ -1067,6 +1237,7 @@ private:
             bool WithSectionReservationNotRequiredFilter>
   bool update_rt_transport(unsigned const k, rt_transport_idx_t const rt_t) {
     auto const stop_seq = rtt_->rt_transport_location_seq_[rt_t];
+    [[maybe_unused]] auto const rt_stop_virts = rtt_->rt_stop_virts(rt_t);
     // et[v] = there is an entry point on this transport such that the
     // journey has visited v via stops when the transport passes this stop
     auto et = std::array<bool, Vias + 1>{};
@@ -1077,7 +1248,14 @@ private:
       auto const stop_idx =
           static_cast<stop_idx_t>(kFwd ? i : n_stops - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
-      auto const l_idx = cista::to_idx(stp.location_idx());
+      auto l = project(stp.location_idx());
+      if constexpr (uses_rt_virts()) {
+        if (!rt_stop_virts.empty() &&
+            rt_stop_virts[stop_idx] != location_idx_t::invalid()) {
+          l = rt_stop_virts[stop_idx];
+        }
+      }
+      auto const l_idx = cista::to_idx(l);
       auto const is_first = i == 0U;
       auto const is_last = i == n_stops - 1U;
 
@@ -1189,7 +1367,7 @@ private:
       auto const stop_idx =
           static_cast<stop_idx_t>(kFwd ? i : n_stops - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
-      auto const l_idx = cista::to_idx(stp.location_idx());
+      auto const l_idx = cista::to_idx(project(stp.location_idx()));
       auto const is_first = i == 0U;
       auto const is_last = i == n_stops - 1U;
 
@@ -1323,8 +1501,8 @@ private:
         if (prev_round_time != kInvalid &&
             is_better_or_eq(prev_round_time, et_time_at_stop)) {
           auto const [day, mam] = split(prev_round_time);
-          auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
-                                                     stp.location_idx());
+          auto const new_et = get_earliest_transport(
+              k, r, stop_idx, day, mam, project(stp.location_idx()));
           current_best[v] =
               get_best(current_best[v], best_[l_idx][v], tmp_[l_idx][v]);
           if (new_et.is_valid() &&
@@ -1508,7 +1686,7 @@ private:
   timetable const& tt_;
   rt_timetable const* rtt_{nullptr};
   int n_days_;
-  std::uint32_t n_locations_, n_routes_, n_rt_transports_;
+  std::uint32_t n_static_locations_, n_locations_, n_routes_, n_rt_transports_;
   raptor_state& state_;
   bitvec end_reachable_;
   std::span<std::array<delta_t, Vias + 1>> tmp_;
@@ -1533,5 +1711,18 @@ private:
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
 };
+
+template <typename Fn>
+auto with_raptor_variant(rt_timetable const* rtt,
+                         profile_idx_t const prf,
+                         Fn&& fn) {
+  if (rtt == nullptr) {
+    return projects_virts(prf) ? fn.template operator()<false, true>()
+                               : fn.template operator()<false, false>();
+  } else {
+    return projects_virts(prf) ? fn.template operator()<true, true>()
+                               : fn.template operator()<true, false>();
+  }
+}
 
 }  // namespace nigiri::routing

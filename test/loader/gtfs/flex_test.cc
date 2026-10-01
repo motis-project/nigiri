@@ -183,6 +183,6 @@ TRANSPORT 5 [odv_j25_1_1_29_29_77+_4]
 
   // 2 x 185 (14-) + 94 (56-) + 2 x 55 (77+) + 48 (55-) + 48 (66-)
   EXPECT_EQ(
-      R"([{"idx":0,"firstDay":"2025-01-01","lastDay":"2025-11-30","noLocations":3,"noTrips":7,"transportsXDays":670}])",
+      R"({"feeds":[{"idx":0,"firstDay":"2025-01-01","lastDay":"2025-11-30","noLocations":3,"noTrips":7,"transportsXDays":670}],"noRoutes":0,"profiles":[]})",
       to_str(get_metrics(tt), tt));
 }

@@ -8,6 +8,8 @@
 #include "utl/raii.h"
 
 #include "nigiri/for_each_meta.h"
+#include "nigiri/location_routes.h"
+#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/raptor/reconstruct.h"
@@ -51,13 +53,15 @@ query_engine<UseLowerBounds>::query_engine(
   stats_.lower_bound_pruning_ = UseLowerBounds;
   state_.reset();
 
+  auto const prf = state_.tbd_.prf_idx_;
   auto const mark_dest_segments = [&](location_idx_t const l,
                                       duration_t const d) {
-    for (auto const r : tt_.location_routes_[l]) {
+    for_each_route_at(tt_, prf, l, [&](route_idx_t const r) {
       auto const stop_seq = tt_.route_location_seq_[r];
       for (auto i = stop_idx_t{1U}; i != stop_seq.size(); ++i) {
         auto const stp = stop{stop_seq[i]};
-        if (stp.location_idx() != l || !stp.out_allowed()) {
+        if (tt_.locations_.project(prf, stp.location_idx()) != l ||
+            !stp.out_allowed()) {
           continue;
         }
 
@@ -73,7 +77,7 @@ query_engine<UseLowerBounds>::query_engine(
           }
         }
       }
-    }
+    });
   };
 
   if (dist_to_dest.empty()) /* Destination is stop. */ {
@@ -81,10 +85,10 @@ query_engine<UseLowerBounds>::query_engine(
       auto const l = location_idx_t{i};
       tb_debug("{} is dest!", loc{tt_, l});
       mark_dest_segments(l, duration_t{0U});
-      for (auto const fp :
-           tt_.locations_.footpaths_in_[state_.tbd_.prf_idx_][l]) {
-        mark_dest_segments(fp.target(), fp.duration());
-      }
+      for_each_transfer<direction::kBackward>(
+          tt_, nullptr, prf, l, [&](footpath const fp) {
+            mark_dest_segments(fp.target(), fp.duration());
+          });
     });
   } else /* Destination is coordinate. */ {
     for (auto const [l_idx, dist] : utl::enumerate(dist_to_dest_)) {
@@ -184,8 +188,10 @@ void query_engine<UseLowerBounds>::seg_prune(std::uint8_t const k,
   auto arr_time = tt_.event_time({t, base_ + qe.transport_query_day_offset_}, i,
                                  event_type::kArr);
   if constexpr (UseLowerBounds) {
-    auto const l = stop{tt_.route_location_seq_[tt_.transport_route_[t]][i]}
-                       .location_idx();
+    auto const l = tt_.locations_.project(
+        state_.tbd_.prf_idx_,
+        stop{tt_.route_location_seq_[tt_.transport_route_[t]][i]}
+            .location_idx());
     arr_time += duration_t{lb_[to_idx(l)]};
   }
   if (arr_time > state_.t_min_[k + 1]) {
@@ -230,12 +236,14 @@ template <bool UseLowerBounds>
 void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
                                              unixtime_t const t) {
   auto const [day, mam] = tt_.day_idx_mam(t);
-  for (auto const r : tt_.location_routes_[l]) {
+  auto const prf = state_.tbd_.prf_idx_;
+  for_each_route_at(tt_, prf, l, [&](route_idx_t const r) {
     // iterate stop sequence of route, skip last stop
     auto const stop_seq = tt_.route_location_seq_[r];
     for (auto i = stop_idx_t{0U}; i < stop_seq.size() - 1; ++i) {
       auto const stp = stop{stop_seq[i]};
-      if (!stp.in_allowed() || stp.location_idx() != l) {
+      if (!stp.in_allowed() ||
+          tt_.locations_.project(prf, stp.location_idx()) != l) {
         continue;
       }
 
@@ -258,7 +266,7 @@ void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
           et.t_idx_, static_cast<query_day_offset_t>(query_day_offset), et.day_,
           stats_.max_pareto_set_size_);
     }
-  }
+  });
 }
 
 template <bool UseLowerBounds>
@@ -298,18 +306,24 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
     throw utl::fail("predecessor not found");
   };
 
+  auto const prf = state_.tbd_.prf_idx_;
   auto const get_fp = [&](location_idx_t const from, location_idx_t const to) {
     if (from == to) {
-      return footpath{to, tt_.locations_.transfer_time_[from]};
+      return footpath{
+          to, tt_.locations_.transfer_time_[tt_.locations_.project(prf, from)]};
     }
-    auto const from_fps =
-        tt_.locations_.footpaths_out_[state_.tbd_.prf_idx_][from];
-    auto const it = utl::find_if(
-        from_fps, [&](footpath const& fp) { return fp.target() == to; });
-    utl::verify(it != end(from_fps),
+    auto best = std::optional<footpath>{};
+    for_each_transfer<direction::kForward>(
+        tt_, nullptr, prf, from, [&](footpath const fp) {
+          if (fp.target() == to &&
+              (!best.has_value() || fp.duration() < best->duration())) {
+            best = fp;
+          }
+        });
+    utl::verify(best.has_value(),
                 "tb reconstruct: footpath from {} to {} not found",
                 loc{tt_, from}, loc{tt_, to});
-    return *it;
+    return *best;
   };
 
   auto const get_transport_info = [&](segment_idx_t const s,
@@ -323,7 +337,7 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
     auto const loc_seq = tt_.route_location_seq_[tt_.transport_route_[t]];
     return {{t, d},
             i,
-            stop{loc_seq[i]}.location_idx(),
+            tt_.locations_.project(prf, stop{loc_seq[i]}.location_idx()),
             tt_.event_time({t, d}, i, ev_type)};
   };
 

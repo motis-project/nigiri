@@ -186,6 +186,41 @@ std::uint64_t compare_results(
     if (misses != 0U) {
       fmt::println("query #{} mismatches={} ({} n={}, {} n={})", i, misses,
                    ref_name, r_size, cmp_name, c_size);
+      auto const loc_str =
+          [&](std::variant<location_idx_t, geo::latlng> const& v) {
+            if (std::holds_alternative<location_idx_t>(v)) {
+              auto const l = std::get<location_idx_t>(v);
+              return fmt::format("{} idx={}", tt.locations_.ids_[l].view(), l);
+            }
+            return fmt::format("({}, {})", std::get<geo::latlng>(v).lat_,
+                               std::get<geo::latlng>(v).lng_);
+          };
+      auto const& q = queries[i].q_;
+      auto const time_str =
+          std::holds_alternative<interval<unixtime_t>>(q.start_time_)
+              ? fmt::format("[{}, {}] epoch=[{}, {}]",
+                            std::get<interval<unixtime_t>>(q.start_time_).from_,
+                            std::get<interval<unixtime_t>>(q.start_time_).to_,
+                            std::get<interval<unixtime_t>>(q.start_time_)
+                                .from_.time_since_epoch()
+                                .count(),
+                            std::get<interval<unixtime_t>>(q.start_time_)
+                                .to_.time_since_epoch()
+                                .count())
+              : fmt::format("{}", std::get<unixtime_t>(q.start_time_));
+      fmt::println("  QUERY from={} to={} start_time={} window=[{}, {}]",
+                   loc_str(queries[i].start_), loc_str(queries[i].dest_),
+                   time_str, window.from_, window.to_);
+      fmt::print("  RAW {}: ", ref_name);
+      for (auto const& j : ref[i]) {
+        fmt::print("[{}] ", key(j));
+      }
+      fmt::println("");
+      fmt::print("  RAW {}: ", cmp_name);
+      for (auto const& j : cmp[i]) {
+        fmt::print("[{}] ", key(j));
+      }
+      fmt::println("");
       print_set(ref_name, r);
       print_set(cmp_name, c);
       for (auto const [a, b] : utl::zip(r_zip, c_zip)) {
@@ -272,6 +307,7 @@ std::vector<double> run_load(
 struct result_set {
   std::string label_;
   std::vector<pareto_set<routing::journey>> res_;
+  std::vector<std::array<std::uint64_t, 2>> stats_;
   std::vector<double> latencies_;
 };
 
@@ -301,6 +337,7 @@ result_set run_cell(
     StateArgs const&... state_args) {
   auto out = result_set{.label_ = label};
   out.res_.resize(queries.size());
+  out.stats_.resize(queries.size());
 
   auto states = std::vector<std::unique_ptr<WS>>{};
   for (auto i = 0U; i != *std::max_element(begin(n_parallel), end(n_parallel));
@@ -316,7 +353,9 @@ result_set run_cell(
     out.latencies_ =
         run_load<WS>(queries, label + "-" + std::to_string(n), pool,
                      [&](WS& w, routing::query q, std::size_t const i) {
-                       out.res_[i] = search(w, std::move(q));
+                       auto [js, st] = search(w, std::move(q));
+                       out.res_[i] = std::move(js);
+                       out.stats_[i] = st;
                      });
   }
 
@@ -662,7 +701,15 @@ int main(int argc, char* argv[]) {
                                                  std::move(q), dir)
                           : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
                                                    std::move(q), dir);
-                  return *r.journeys_;
+                  auto const stat = [&](char const* k) {
+                    auto const it = r.algo_stats_.find(k);
+                    return it == end(r.algo_stats_) ? std::uint64_t{0U}
+                                                    : it->second;
+                  };
+                  return std::pair{*r.journeys_,
+                                   std::array<std::uint64_t, 2>{
+                                       stat("n_routes_visited"),
+                                       stat("n_footpaths_visited")}};
                 }));
             ++qa_n_cpu_cells;
             if (vm.count("qa_path")) {
@@ -681,7 +728,15 @@ int main(int argc, char* argv[]) {
                                                  std::move(q), dir)
                           : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
                                                    std::move(q), dir);
-                  return *r.journeys_;
+                  auto const stat = [&](char const* k) {
+                    auto const it = r.algo_stats_.find(k);
+                    return it == end(r.algo_stats_) ? std::uint64_t{0U}
+                                                    : it->second;
+                  };
+                  return std::pair{*r.journeys_,
+                                   std::array<std::uint64_t, 2>{
+                                       stat("n_routes_visited"),
+                                       stat("n_footpaths_visited")}};
                 },
                 *gpu_tt));
           }
@@ -698,6 +753,38 @@ int main(int argc, char* argv[]) {
       if (cells.size() == 1U) {
         summary.push_back(fmt::format("{:<24} n={:<6} benchmark only",
                                       cells.front().label_, qs.size()));
+      }
+      for (auto const& c : cells) {
+        auto rv = std::uint64_t{0U};
+        auto fv = std::uint64_t{0U};
+        for (auto const& st : c.stats_) {
+          rv += st[0];
+          fv += st[1];
+        }
+        summary.push_back(fmt::format(
+            "{:<24} n={:<6} routes_visited/q={:<9.0f} fps_visited/q={:<11.0f}",
+            c.label_, c.stats_.size(),
+            c.stats_.empty() ? 0.0
+                             : static_cast<double>(rv) /
+                                   static_cast<double>(c.stats_.size()),
+            c.stats_.empty() ? 0.0
+                             : static_cast<double>(fv) /
+                                   static_cast<double>(c.stats_.size())));
+      }
+      for (auto const& c : cells) {
+        auto n_journeys = std::size_t{0U};
+        auto n_empty = std::size_t{0U};
+        for (auto const& r : c.res_) {
+          n_journeys += r.size();
+          n_empty += r.size() == 0U ? 1U : 0U;
+        }
+        summary.push_back(fmt::format(
+            "{:<24} n={:<6} journeys={:<7} avg={:<5.2f} no-journey-queries={}",
+            c.label_, c.res_.size(), n_journeys,
+            c.res_.empty() ? 0.0
+                           : static_cast<double>(n_journeys) /
+                                 static_cast<double>(c.res_.size()),
+            n_empty));
       }
       for (auto a = std::size_t{0U}; a < cells.size(); ++a) {
         for (auto b = a + 1U; b < cells.size(); ++b) {
