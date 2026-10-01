@@ -1,8 +1,10 @@
 #include "nigiri/rt/rt_timetable.h"
 
 #include <algorithm>
+#include <span>
 
 #include "utl/enumerate.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
 #include "utl/timer.h"
 #include "utl/verify.h"
@@ -12,16 +14,43 @@
 namespace nigiri {
 
 void rt_timetable::register_scan(rt_transport_idx_t const rt_t) {
+  auto const t = resolve_static(rt_t);
+  auto const static_seq =
+      t.is_valid() && tt_ != nullptr
+          ? std::span<
+                stop::value_type const>{tt_->route_location_seq_
+                                            [tt_->transport_route_[t.t_idx_]]}
+          : std::span<stop::value_type const>{};
+
+  // The scheduled locations are registered once (cheap: the list is only
+  // appended to, so a back() check suffices while walking one sequence).
   if (to_idx(rt_t) >= rt_transport_scan_registered_.size()) {
     rt_transport_scan_registered_.resize(to_idx(rt_t) + 1U);
   }
-  if (rt_transport_scan_registered_.test(to_idx(rt_t))) {
-    return;
+  if (!rt_transport_scan_registered_.test(to_idx(rt_t))) {
+    rt_transport_scan_registered_.set(to_idx(rt_t), true);
+    for (auto const s : static_seq) {
+      auto scan = location_rt_scan_[stop{s}.location_idx()];
+      if (scan.empty() || scan.back() != rt_t) {
+        scan.push_back(rt_t);
+      }
+    }
   }
-  rt_transport_scan_registered_.set(to_idx(rt_t), true);
-  for (auto const s : rt_transport_location_seq_[rt_t]) {
-    auto scan = location_rt_scan_[stop{s}.location_idx()];
-    if (scan.empty() || scan.back() != rt_t) {
+
+  // The current locations are reconciled on every call: a GTFS-RT track
+  // change moves a stop to another platform (= another location) and a later
+  // update can move it back, so a snapshot taken at the first registration
+  // goes stale. Only locations that differ from the scheduled one at the
+  // same position need the (linear) membership test; for a scheduled copy
+  // without track changes this loop does no work beyond the comparison.
+  auto const cur_seq = rt_transport_location_seq_[rt_t];
+  for (auto i = 0U; i != cur_seq.size(); ++i) {
+    auto const l = stop{cur_seq[i]}.location_idx();
+    if (i < static_seq.size() && stop{static_seq[i]}.location_idx() == l) {
+      continue;  // registered with the scheduled locations above
+    }
+    auto scan = location_rt_scan_[l];
+    if (utl::find(scan, rt_t) == end(scan)) {
       scan.push_back(rt_t);
     }
   }

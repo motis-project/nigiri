@@ -142,11 +142,13 @@ struct rt_timetable {
   void set_rt_traffic_day(transport t, bool active);
 
   // Registers `rt_t` on location_rt_scan_, the list the routing builds its
-  // marks from. Called once: an rt transport's *locations* never change after
-  // add_rt_transport() -- the only in-place edits to rt_transport_location_seq_
-  // cancel a stop, which keeps its location_idx() -- so one registration holds
-  // for the transport's whole life, and a transport that later becomes
-  // identical to schedule is filtered out when the marks are built.
+  // marks from, for every location the transport currently stops at. Called
+  // whenever the transport is (re)marked as deviating. The scheduled
+  // locations are registered once; the current ones are reconciled on every
+  // call, because a track change (gtfsrt_update.cc) moves a stop to another
+  // platform, i.e. another location, and a later update can move it back.
+  // A transport that becomes identical to schedule again stays registered
+  // and is filtered out by is_unchanged() when the marks are built.
   void register_scan(rt_transport_idx_t);
 
   // True if `rt_t` is identical to its static counterpart *for routing*, and
@@ -376,8 +378,12 @@ struct rt_timetable {
 
   // The rt transports the routing has to scan, i.e. the ones that deviate.
   // Building marks from this instead of from location_rt_transports_ keeps the
-  // punctual majority out of the mark-building walk entirely.
+  // punctual majority out of the mark-building walk entirely. Maintained by
+  // register_scan(); must list a transport under every location it currently
+  // stops at (platform changes included), otherwise the routing cannot board
+  // it there.
   mutable_fws_multimap<location_idx_t, rt_transport_idx_t> location_rt_scan_;
+  // Set once the scheduled locations of the transport are on location_rt_scan_.
   bitvec rt_transport_scan_registered_;
 
   // RT transport * 2 -> flags (bikes, cars, wheelchairs, reservtion) along the
