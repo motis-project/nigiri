@@ -12,6 +12,7 @@
 #include "utl/sorted_diff.h"
 #include "utl/timing.h"
 
+#include "nigiri/common/search_interval.h"
 #include "nigiri/location_match_mode.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_earliest_transport.h"
@@ -25,6 +26,23 @@
 // #define trace_pong fmt::println
 
 namespace nigiri::routing {
+
+interval<unixtime_t> pong_search_interval(direction const search_dir,
+                                          timetable const& tt,
+                                          query const& q,
+                                          duration_t const min_look_ahead) {
+  auto const query_itv = start_time_interval(q.start_time_);
+  auto const external_itv = tt.external_interval();
+  auto const start_itv =
+      search_dir == direction::kForward
+          ? interval{query_itv.from_, std::max(query_itv.to_, external_itv.to_)}
+          : interval{std::min(query_itv.from_, external_itv.from_),
+                     query_itv.to_};
+
+  return reachable_events(
+      search_dir, start_itv,
+      std::min(q.max_travel_time_ + min_look_ahead, kMaxTravelTime));
+}
 
 constexpr auto const kPruneWithPingBounds = true;
 
@@ -78,7 +96,6 @@ routing_result pong(timetable const& tt,
       raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>>;
 
   s_state.results_.clear();
-  q.sanitize(tt);
 
   auto const processing_start_time = std::chrono::steady_clock::now();
 
@@ -497,6 +514,14 @@ routing_result pong_search_with_dir(
     AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> timeout) {
+  q.sanitize(tt);
+
+  if (rtt != nullptr &&
+      !rtt->affects(pong_search_interval(SearchDir, tt, q, kMinLookAhead),
+                    q.prf_idx_)) {
+    rtt = nullptr;
+  }
+
   if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
     utl::verify(q.via_stops_.empty(), "GPU raptor does not support vias");
     return pong_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state, std::move(q),

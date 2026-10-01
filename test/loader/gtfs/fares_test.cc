@@ -10,12 +10,15 @@
 #include "../../raptor_search.h"
 #include "../../routing/results_to_string.h"
 
+#include "../../util.h"
+
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using namespace std::chrono_literals;
 using nigiri::test::raptor_search;
+using nigiri::test::to_unix;
 
 namespace {
 
@@ -620,12 +623,6 @@ FARE TRANSFER END
 }
 
 TEST(fares, rt_added_fares) {
-  auto const to_unix = [](auto&& x) {
-    return std::chrono::time_point_cast<std::chrono::seconds>(x)
-        .time_since_epoch()
-        .count();
-  };
-
   auto tt = timetable{};
   tt.date_range_ = {date::sys_days{2022_y / January / 1},
                     date::sys_days{2022_y / December / 1}};

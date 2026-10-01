@@ -15,7 +15,7 @@
 #include "../loader/hrd/hrd_timetable.h"
 #include "../raptor_search.h"
 
-#include "./util.h"
+#include "../util.h"
 
 using namespace date;
 using namespace nigiri;

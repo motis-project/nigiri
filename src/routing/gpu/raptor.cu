@@ -197,8 +197,14 @@ struct gpu_rt_timetable::impl {
     auto tmp = std::vector<rt_transport_idx_t>{};
     for (auto l = 0U; l != tt.n_locations(); ++l) {
       tmp.clear();
-      for (auto const rt_t : rtt.location_rt_transports_[location_idx_t{l}]) {
-        tmp.push_back(rt_t);
+      // Same list the CPU builds its marks from: only the rt transports that
+      // deviate from their schedule. The punctual ones keep their static
+      // traffic day (uploaded below) and ride the static route scan, so
+      // listing them here would walk them a second time.
+      for (auto const rt_t : rtt.location_rt_scan_[location_idx_t{l}]) {
+        if (!rtt.is_unchanged(rt_t)) {
+          tmp.push_back(rt_t);
+        }
       }
       v.emplace_back(tmp);
     }
@@ -874,7 +880,15 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
   cudaStreamSynchronize(s.stream_);
   CUDA_CHECK(cudaPeekAtLastError());
 
-  auto const rt_active = gpu_rtt_ != nullptr;
+  auto const rt_active =
+      gpu_rtt_ != nullptr &&
+      rtt_->affects(interval{std::min(start_time, worst_time_at_dest),
+                             std::max(start_time, worst_time_at_dest) +
+                                 unixtime_t::duration{1}},
+                    prf_idx_);
+  if (gpu_rtt_ != nullptr) {
+    rt_active ? ++stats_.n_executes_with_rt_ : ++stats_.n_executes_without_rt_;
+  }
 
   auto const rt_transports_active =
       rt_active && gpu_rtt_->impl_->n_rt_transports_ != 0U;
