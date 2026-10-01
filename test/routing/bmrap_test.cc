@@ -743,12 +743,12 @@ TEST(bmrap, mc_ping_bound_follows_anchor_deadlines) {
       << "the journey walking less, arriving after query + 5 days, is lost";
 }
 
-// close_anchor_profile() has to reach every trip count's A(J): the probe from
-// the window end yields an (arrival, trips) pareto set, and a low-trip A(J)
-// arrives later than the fastest one. Taking the earliest arrival as the
-// margin missed L (1 trip, after the margin), so there was no A(J) for J and
-// it was dropped - by range BMRAP, and by BMRAPP for a window it may not
-// extend (there its anchors come from the same range search).
+// close_anchor_profile() has to supply every trip count's A(J) past the
+// window: a low-trip A(J) arrives later than the fastest journey from the
+// boundary. With the anchors only reaching the fastest one, L (1 trip, far
+// past the window) was missing, so there was no A(J) for J and it was
+// dropped - by range BMRAP, and by BMRAPP for a window it may not extend
+// (there its anchors come from the same range search).
 namespace {
 
 constexpr auto const kMarginGTFS = R"(
@@ -847,6 +847,96 @@ TEST(bmrap, anchor_margin_covers_every_trip_count) {
   // range search and close_anchor_profile()
   EXPECT_TRUE(std::find(begin(profile), end(profile), j) != end(profile))
       << "BMRAPP: J restricted away, its A(J) lies past the margin";
+}
+
+// The forward re-realization (bmrap_profile.cc 5b) must still replace the mc
+// pong's LATEST connections with the EARLIEST ones under its own bounds (the
+// mc pong's labels). O 10:00 -> M 10:20, then M -> X by 10:25 -> 10:35 or
+// 10:45 -> 10:55, then X 11:00 -> D 11:30: the backward reconstruction takes
+// the later M -> X trip, the realization the earlier one.
+namespace {
+
+constexpr auto const kRealizeGTFS = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,DB,https://db.de,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+O,O,0.0,1.0,,
+M,M,1.0,1.0,,
+X,X,2.0,1.0,,
+D,D,3.0,1.0,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,R1,,,3
+R2,DB,R2,,,3
+R3,DB,R3,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S,T1,,
+R2,S,T2,,
+R2,S,T3,,
+R3,S,T4,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:00:00,10:00:00,O,0,0,0
+T1,10:20:00,10:20:00,M,1,0,0
+T2,10:25:00,10:25:00,M,0,0,0
+T2,10:35:00,10:35:00,X,1,0,0
+T3,10:45:00,10:45:00,M,0,0,0
+T3,10:55:00,10:55:00,X,1,0,0
+T4,11:00:00,11:00:00,X,0,0,0
+T4,11:30:00,11:30:00,D,1,0,0
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+)"sv;
+
+}  // namespace
+
+TEST(bmrap, realization_takes_earliest_connections) {
+  auto const tt = loader::load(
+      mem_dir::read(std::string{kRealizeGTFS}),
+      {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}});
+  auto const loc = [&](char const* id) {
+    return tt.locations_.location_id_to_idx_.at({id, source_idx_t{0}});
+  };
+
+  auto const day = unixtime_t{sys_days{2024_y / June / 19}};
+  auto q = routing::query{};
+  q.start_time_ = interval<unixtime_t>{day + 8h, day + 8h + 1min};
+  q.start_ = {{loc("O"), 0_minutes, 0U}};
+  q.destination_ = {{loc("D"), 0_minutes, 0U}};
+  q.via_stops_ = {};
+  q.min_connection_count_ = 1U;
+  q.extend_interval_later_ = true;
+
+  auto ss = routing::search_state{};
+  auto as = routing::raptor_state{};
+  auto const r =
+      routing::bmrap_profile_search<routing::arr_non_transit_criteria>(
+          tt, nullptr, ss, as, q, direction::kForward);
+  auto const j = std::find_if(begin(*r.journeys_), end(*r.journeys_),
+                              [&](routing::journey const& x) {
+                                return x.departure_time() == day + 8h &&
+                                       x.arrival_time() == day + 9h + 30min;
+                              });
+  ASSERT_NE(j, end(*r.journeys_)) << "O 10:00 -> D 11:30 not found";
+  auto rides = std::vector<routing::journey::leg>{};
+  for (auto const& l : j->legs_) {
+    if (std::holds_alternative<routing::journey::run_enter_exit>(l.uses_)) {
+      rides.push_back(l);
+    }
+  }
+  ASSERT_EQ(3U, rides.size());
+  EXPECT_EQ(day + 8h + 35min, rides[1].arr_time_)
+      << "M -> X is not the earliest connection (10:35 local)";
+  EXPECT_GT(r.algo_stats_.at("bmrapp_realized"), 0U);
 }
 
 // Two destination offsets reached in the same round: D1 at 10:30 (2

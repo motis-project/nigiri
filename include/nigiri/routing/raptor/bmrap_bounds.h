@@ -45,6 +45,14 @@ struct bmrap_bounds {
   std::vector<delta_t> lat_;
   std::uint32_t n_locations_{0U};
   std::uint8_t budget_{0U};
+  // How a search with a trip budget of its own reads the rows. true: the rows
+  // of compute_bounds()' anchor runs are staggered relative to budget_ (a run
+  // with budget b sits at rows budget_ - b + t), so row budget_ - k checks
+  // every anchor for its own b - k trips left, whatever the reader's budget.
+  // false: a single search's reach matrix (row i = at most i trips from the
+  // origin), where a reader with budget B has B - k trips left - row B - k,
+  // tighter than budget_ - k whenever B < budget_.
+  bool staggered_{false};
   // Set by an engine that built this matrix on a device and still holds the
   // copy, so it can copy device-to-device instead of re-uploading `lat_`. 0 =
   // no device copy. Only the issuing engine may interpret it.
