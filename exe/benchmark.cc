@@ -178,12 +178,15 @@ rt_timetable make_synthetic_rtt(timetable const& tt,
 // Moves a query's start time (point or interval) onto `day`, keeping the time
 // of day, so that it can see the synthetic real-time data.
 void move_to_day(routing::start_time_t& start_time, date::sys_days const day) {
-  auto const shift = [&](unixtime_t const t) {
-    return unixtime_t{day + (t - std::chrono::floor<date::days>(t))};
+  // one day delta for both ends, so an interval that crosses midnight keeps
+  // its length instead of being folded onto the day (and inverted)
+  auto const delta = [&](unixtime_t const t) {
+    return day - std::chrono::floor<date::days>(t);
   };
-  std::visit(utl::overloaded{[&](unixtime_t& t) { t = shift(t); },
+  std::visit(utl::overloaded{[&](unixtime_t& t) { t += delta(t); },
                              [&](interval<unixtime_t>& i) {
-                               i = {shift(i.from_), shift(i.to_)};
+                               auto const d = delta(i.from_);
+                               i = {i.from_ + d, i.to_ + d};
                              }},
              start_time);
 }
@@ -846,6 +849,11 @@ int main(int argc, char* argv[]) {
       for (auto& sdq : qs) {
         if (dir == direction::kBackward) {
           sdq.q_.flip_dir();
+          // the (coordinate) destination is the start now: its first mile is
+          // in the offsets, start footpaths are not allowed on top
+          if (sdq.q_.start_match_mode_ == location_match_mode::kIntermodal) {
+            sdq.q_.use_start_footpaths_ = false;
+          }
         }
         sdq.q_.extend_interval_earlier_ = dir == direction::kBackward;
         sdq.q_.extend_interval_later_ = dir == direction::kForward;
