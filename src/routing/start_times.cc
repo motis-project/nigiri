@@ -3,6 +3,7 @@
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
 #include "utl/get_or_create.h"
+#include "utl/lookup.h"
 #include "utl/overloaded.h"
 
 #include "nigiri/for_each_meta.h"
@@ -291,10 +292,9 @@ void get_starts(
 
   if (rtt != nullptr && !is_projected(prf_idx)) {
     rtt->for_each_rt_virt([&](location_idx_t const l, rt_location_idx_t) {
-      if (auto const it = at_start.find(rtt->base(l)); it != end(at_start)) {
-        auto& val =
-            utl::get_or_create(shortest_start, l, [&]() { return it->second; });
-        val = std::min(val, it->second);
+      if (auto const d = utl::lookup(at_start, rtt->base(l))) {
+        auto& val = utl::get_or_create(shortest_start, l, [&]() { return *d; });
+        val = std::min(val, *d);
       }
     });
   }

@@ -226,11 +226,10 @@ void build_seated_trips(timetable& tt,
           copy.trips_.push_back(remaining[remaining_idx].trips_[0]);
           copy.utc_times_.insert(end(copy.utc_times_), begin(next_times),
                                  end(next_times));
-          if (auto const j =
-                  seated.handover_stops_.find(pair{prev_rule_trip, next});
-              j != end(seated.handover_stops_)) {
+          if (auto const h = utl::lookup(seated.handover_stops_,
+                                         pair{prev_rule_trip, next})) {
             copy.stop_seq_.back() =
-                stop{copy.stop_seq_.back()}.with_location(j->second).value();
+                stop{copy.stop_seq_.back()}.with_location(*h).value();
           }
           copy.stop_seq_.insert(end(copy.stop_seq_),
                                 std::next(begin(next_r.stop_seq_)),

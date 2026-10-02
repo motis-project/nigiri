@@ -224,12 +224,13 @@ void fold_pair_defaults(timetable& tt,
     return
         // Does this rule override an explicit/majority default
         // with a different duration? => keep this rule
-        any_pair(any_with_children,  // this/children stop pairs
-                 [&](transfer_pair const p) {
-                   auto const it = default_duration.find(p);
-                   return p != from_to && it != end(default_duration) &&
-                          it->second != r.duration_;
-                 })
+        any_pair(
+            any_with_children,  // this/children stop pairs
+            [&](transfer_pair const p) {
+              return p != from_to &&
+                     utl::lookup(default_duration, p).value_or(r.duration_) !=
+                         r.duration_;
+            })
 
         // Would removing this rule let a less or equally specific overlapping
         // rule with a different duration take effect? => keep this rule
@@ -296,16 +297,15 @@ void read_transfers(source_idx_t const src,
       return std::nullopt;
     }
 
-    auto const from = trips.trips_.find(t.from_trip_id_->view());
-    auto const to = trips.trips_.find(t.to_trip_id_->view());
-    if (from == end(trips.trips_) || to == end(trips.trips_)) {
+    auto const from = utl::lookup(trips.trips_, t.from_trip_id_->view());
+    auto const to = utl::lookup(trips.trips_, t.to_trip_id_->view());
+    if (!from.has_value() || !to.has_value()) {
       log(log_lvl::error, "loader.gtfs.transfers", "trip {} not found",
-          from == end(trips.trips_) ? t.from_trip_id_->view()
-                                    : t.to_trip_id_->view());
+          from.has_value() ? t.to_trip_id_->view() : t.from_trip_id_->view());
       return std::nullopt;
     }
 
-    return pair{from->second, to->second};
+    return pair{*from, *to};
   };
 
   auto const first_rule = transfer_rule_idx_t{tt.transfer_rules_.rules_.size()};

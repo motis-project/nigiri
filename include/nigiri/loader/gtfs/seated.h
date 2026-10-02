@@ -3,6 +3,8 @@
 #include <cassert>
 #include <ranges>
 
+#include "utl/lookup.h"
+
 #include "nigiri/loader/gtfs/local_to_utc.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/timetable.h"
@@ -57,11 +59,10 @@ expanded_seated<gtfs::utc_trip> expand_seated_trips(trip_data const& trip_data,
     ret.seated_in_.emplace_back(trip_data.get(gtfs_trip).seated_in_ |
                                 transform(to_rule_trip_idx));
     for (auto const out : trip_data.get(gtfs_trip).seated_out_) {
-      if (auto const it = trip_data.handover_stops_.find(pair{gtfs_trip, out});
-          it != end(trip_data.handover_stops_)) {
+      if (auto const h =
+              utl::lookup(trip_data.handover_stops_, pair{gtfs_trip, out})) {
         ret.handover_stops_.emplace(
-            pair{rule_trip_idx_t{rule_trip}, to_rule_trip_idx(out)},
-            it->second);
+            pair{rule_trip_idx_t{rule_trip}, to_rule_trip_idx(out)}, *h);
       }
     }
 

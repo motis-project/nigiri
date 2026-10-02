@@ -7,6 +7,7 @@
 
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/lookup.h"
 #include "utl/to_vec.h"
 
 #include "nigiri/footpath.h"
@@ -76,10 +77,9 @@ void add_rt_transfers(timetable const& tt,
       durations.emplace(p, change_time);
     }
     rtt.for_each_rt_virt([&](location_idx_t const w, rt_location_idx_t) {
-      if (auto const it = durations.find(rtt.base(w));
-          w != v && it != end(durations)) {
-        auto const d = it->second;
-        durations.emplace(w, d);
+      if (auto const d = utl::lookup(durations, rtt.base(w));
+          w != v && d.has_value()) {
+        durations.emplace(w, *d);
       }
     });
 

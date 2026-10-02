@@ -8,6 +8,7 @@
 #include "utl/erase_duplicates.h"
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/lookup.h"
 
 #include "nigiri/loader/register.h"
 #include "nigiri/common/merge_sorted.h"
@@ -92,13 +93,14 @@ void add_rule_hubs(
         if (from == to) {
           is_slower = to_fp_duration(tt.locations_.transfer_time_[from]) > d;
         } else {
-          auto const it = most_specific.find(transfer_pair{from, to});
-          if (it == end(most_specific)) {
+          auto const winner =
+              utl::lookup(most_specific, transfer_pair{from, to});
+          if (!winner.has_value()) {
             assert(false && "no winner for a pair of its cross product");
             coverage.mark_slow(from, to);
             continue;
           }
-          is_slower = it->second != rule_idx && rules[it->second].duration_ > d;
+          is_slower = *winner != rule_idx && rules[*winner].duration_ > d;
         }
         if (is_slower) {
           coverage.mark_slow(from, to);
@@ -110,8 +112,8 @@ void add_rule_hubs(
     add_hubs_or_footpaths(
         from_locations, to_locations, d, coverage,
         [&](location_idx_t const from, location_idx_t const to) {
-          auto const it = most_specific.find(transfer_pair{from, to});
-          return it == end(most_specific) || it->second != rule_idx;
+          return utl::lookup(most_specific, transfer_pair{from, to}) !=
+                 rule_idx;
         },
         transfers);
   }
@@ -171,8 +173,8 @@ void add_stop_hubs(
     // Pairs a rule states with another duration -> add_rule_footpaths.
     auto const is_owned = [&](location_idx_t const from,
                               location_idx_t const to) {
-      auto const it = most_specific.find(transfer_pair{from, to});
-      return it != end(most_specific) && rules[it->second].duration_ != d;
+      auto const winner = utl::lookup(most_specific, transfer_pair{from, to});
+      return winner.has_value() && rules[*winner].duration_ != d;
     };
     add_hubs_or_footpaths(members, members, d, coverage, is_owned, transfers);
   }

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "utl/enumerate.h"
+#include "utl/lookup.h"
 
 #include "cista/reflection/comparable.h"
 
@@ -143,8 +144,7 @@ struct trip_data {
   location_idx_t handover_stop(gtfs_trip_idx_t const from,
                                gtfs_trip_idx_t const to,
                                location_idx_t const fallback) const {
-    auto const it = handover_stops_.find(pair{from, to});
-    return it == end(handover_stops_) ? fallback : it->second;
+    return utl::lookup(handover_stops_, pair{from, to}).value_or(fallback);
   }
 
   hash_map<std::string, gtfs_trip_idx_t> trips_;
