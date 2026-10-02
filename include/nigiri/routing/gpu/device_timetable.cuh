@@ -161,8 +161,8 @@ struct device_timetable {
 
   d_vecmap_view<hub_idx_t, duration_t> hub_time_;
   struct hub_edge_list {
-    cuda::std::span<std::uint32_t const> loc_;
-    cuda::std::span<std::uint32_t const> hub_;
+    cuda::std::span<location_idx_t const> loc_;
+    cuda::std::span<hub_idx_t const> hub_;
   };
   hub_edge_list hub_gather_;
   hub_edge_list hub_scatter_;

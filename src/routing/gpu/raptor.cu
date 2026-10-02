@@ -146,25 +146,25 @@ struct gpu_timetable::impl {
     device_timetable::hub_edge_list view() const {
       return {to_view(loc_), to_view(hub_)};
     }
-    thrust::device_vector<std::uint32_t> loc_, hub_;
+    thrust::device_vector<location_idx_t> loc_;
+    thrust::device_vector<hub_idx_t> hub_;
   };
 
   template <typename Lists>
   static hub_edges flatten(Lists const& lists) {
-    auto buckets = std::vector<std::uint32_t>{};
-    auto members = std::vector<std::uint32_t>{};
-    auto i = 0U;
-    for (auto const bucket : lists) {
-      for (auto const x : bucket) {
-        buckets.push_back(i);
-        members.push_back(to_idx(x));
+    using key = typename Lists::key;
+    auto keys = std::vector<key>{};
+    auto values = std::vector<typename Lists::data_value_type>{};
+    for (auto k = key{0U}; k != key{lists.size()}; ++k) {
+      for (auto const x : lists[k]) {
+        keys.push_back(k);
+        values.push_back(x);
       }
-      ++i;
     }
-    if constexpr (std::is_same_v<typename Lists::key, location_idx_t>) {
-      return {to_device(buckets), to_device(members)};
+    if constexpr (std::is_same_v<key, location_idx_t>) {
+      return {to_device(keys), to_device(values)};
     } else {
-      return {to_device(members), to_device(buckets)};
+      return {to_device(values), to_device(keys)};
     }
   }
 
