@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "utl/helpers/algorithm.h"
+
 #include "nigiri/location_match_mode.h"
 #include "nigiri/location_routes.h"
 #include "nigiri/logging.h"
@@ -53,9 +55,8 @@ void generator::init_geo(generator_settings const& settings) {
     }
   }
   auto const distribution = [](std::vector<double> w) {
-    if (std::all_of(begin(w), end(w),
-                    [](double const x) { return x == 0.0; })) {
-      std::fill(begin(w), end(w), 1.0);
+    if (utl::all_of(w, [](double const x) { return x == 0.0; })) {
+      utl::fill(w, 1.0);
     }
     return std::discrete_distribution<std::size_t>{begin(w), end(w)};
   };

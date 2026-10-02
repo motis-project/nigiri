@@ -10,6 +10,7 @@
 
 #include "geo/latlng.h"
 
+#include "utl/equal_ranges_linear.h"
 #include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
 #include "utl/helpers/algorithm.h"
@@ -119,16 +120,17 @@ void collect_members(timetable const& tt,
       l, [&](location_idx_t const c) { out.push_back(c); });
 }
 
-mutable_fws_multimap<location_idx_t, footpath> write_walk_hubs(
-    timetable& tt, rule_index const& idx, bool const adjust_footpaths) {
-  auto walk = mutable_fws_multimap<location_idx_t, footpath>{};
+void add_walk_hubs(timetable& tt,
+                   rule_index const& rule_fps,
+                   bool const adjust_footpaths,
+                   mutable_fws_multimap<location_idx_t, footpath>& walk) {
   auto members = std::vector<location_idx_t>{};
   auto targets = std::vector<location_idx_t>{};
   auto egress = std::vector<location_idx_t>{};
 
   auto const is_footpath_allowed = [&](location_idx_t const from,
                                        location_idx_t const to) {
-    return !idx.contains(from, to);
+    return !rule_fps.contains(from, to);
   };
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
     collect_members(tt, l, members);
@@ -138,7 +140,7 @@ mutable_fws_multimap<location_idx_t, footpath> write_walk_hubs(
       if (fp.target() == l) {
         continue;
       }
-      if (idx.contains(l, fp.target())) {
+      if (rule_fps.contains(l, fp.target())) {
         continue;
       }
       auto d = fp.duration();
@@ -163,7 +165,7 @@ mutable_fws_multimap<location_idx_t, footpath> write_walk_hubs(
 
         auto coverage = hub_coverage{};
         for (auto const m : members) {
-          for (auto const r : idx.footpaths_[m]) {
+          for (auto const r : rule_fps.footpaths_[m]) {
             if (r.duration() > d && tt.base(r.target()) == t_stop) {
               coverage.mark_slow(m, r.target());
             }
@@ -183,8 +185,6 @@ mutable_fws_multimap<location_idx_t, footpath> write_walk_hubs(
                             is_footpath_allowed, tt, walk);
     }
   }
-
-  return walk;
 }
 
 bool is_hub_covered(timetable const& tt,
@@ -201,13 +201,14 @@ bool is_hub_covered(timetable const& tt,
   });
 }
 
-void apply_transfer_rules(timetable& tt, rule_index const& idx) {
+void override_footpaths_with_rules(timetable& tt, rule_index const& rule_fps) {
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
     auto bucket = tt.locations_.preprocessing_footpaths_out_[l];
     utl::erase_if(bucket, [&](footpath const fp) {
-      return idx.contains(l, fp.target()) || is_hub_covered(tt, l, fp.target());
+      return rule_fps.contains(l, fp.target()) ||
+             is_hub_covered(tt, l, fp.target());
     });
-    for (auto const fp : idx.footpaths_[l]) {
+    for (auto const fp : rule_fps.footpaths_[l]) {
       if (fp.duration() != footpath::kMaxDuration) {
         bucket.push_back(fp);
       }
@@ -259,7 +260,7 @@ void write_layer(timetable& tt,
 }
 
 void write_footpaths(timetable& tt,
-                     rule_index const& idx,
+                     rule_index const& rule_fps,
                      bool const adjust_footpaths) {
   auto out = vector_map<location_idx_t, std::vector<footpath>>{};
   out.resize(tt.n_locations());
@@ -275,7 +276,7 @@ void write_footpaths(timetable& tt,
         if (!adjusted.has_value()) {
           continue;
         }
-        if (!idx.contains(l, fp.target())) {
+        if (!rule_fps.contains(l, fp.target())) {
           fp = footpath{fp.target(), *adjusted};
         }
       }
@@ -300,19 +301,42 @@ void write_default_profile(timetable& tt, bool const adjust_footpaths) {
   loc.hub_in_[kDefaultProfile].clear();
   loc.hub_out_[kDefaultProfile].clear();
   loc.hub_time_[kDefaultProfile].clear();
-  auto const idx = rule_index{write_rule_hubs(tt)};
-  index_hubs(tt);
-  apply_transfer_rules(tt, idx);
 
-  auto const walk = write_walk_hubs(tt, idx, adjust_footpaths);
-  for (auto l = location_idx_t{0U}; l != walk.size(); ++l) {
-    for (auto const fp : walk[l]) {
+  auto const& rules = tt.transfer_rules_.rules_;
+  auto rule_footpaths = mutable_fws_multimap<location_idx_t, footpath>{};
+  utl::equal_ranges_linear(
+      rules,
+      [](transfer_rule const& a, transfer_rule const& b) {
+        // Group per feed to keep most_specific map small.
+        return a.src_ == b.src_;
+      },
+      [&](auto const from, auto const to) {
+        auto const feed_rules = interval{
+            transfer_rule_idx_t{static_cast<std::size_t>(from - begin(rules))},
+            transfer_rule_idx_t{static_cast<std::size_t>(to - begin(rules))}};
+        auto const most_specific = get_most_specific(tt, feed_rules);
+        add_rule_hubs(tt, most_specific, rule_footpaths);
+        add_stop_hubs(tt, feed_rules, most_specific, rule_footpaths);
+      });
+
+  // Resize to prevent out-of-bounds access.
+  rule_footpaths[location_idx_t{tt.n_locations() - 1U}];
+
+  index_hubs(tt);
+
+  auto const rule_fps = rule_index{std::move(rule_footpaths)};
+  override_footpaths_with_rules(tt, rule_fps);
+
+  auto walk_footpaths = mutable_fws_multimap<location_idx_t, footpath>{};
+  add_walk_hubs(tt, rule_fps, adjust_footpaths, walk_footpaths);
+  for (auto l = location_idx_t{0U}; l != walk_footpaths.size(); ++l) {
+    for (auto const fp : walk_footpaths[l]) {
       loc.preprocessing_footpaths_out_[l].emplace_back(fp);
     }
   }
   index_hubs(tt);
 
-  write_footpaths(tt, idx, adjust_footpaths);
+  write_footpaths(tt, rule_fps, adjust_footpaths);
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);
   build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
 }

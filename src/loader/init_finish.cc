@@ -1,6 +1,7 @@
 #include "nigiri/loader/init_finish.h"
 
 #include "utl/enumerate.h"
+#include "utl/erase_duplicates.h"
 
 #include "geo/box.h"
 
@@ -218,6 +219,8 @@ void finalize(timetable& tt, finalize_options const opt) {
                        std::tie(tt.providers_[b].src_, tt.providers_[b].id_);
               });
   }
+  utl::erase_duplicates(tt.transfer_rules_.rule_virts_);
+  utl::erase_duplicates(tt.transfer_rules_.virt_rules_);
   build_footpaths(tt, opt);
   rebuild_route_traffic_days(tt);
   build_location_tree(tt);

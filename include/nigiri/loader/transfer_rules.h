@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <functional>
 #include <ranges>
-#include <span>
 #include <vector>
 
 #include "cista/reflection/comparable.h"
@@ -25,11 +24,6 @@ struct transfer_pair {
   location_idx_t to_{location_idx_t::invalid()};
 };
 
-struct virt {
-  location_idx_t location_;
-  std::vector<transfer_rule_side_idx> rules_{};
-};
-
 struct hub_coverage {
   void mark_slow(location_idx_t const from, location_idx_t const to) {
     slow_from_.insert(from);
@@ -43,6 +37,7 @@ void add_hub(timetable& tt, In&& in, Out&& out, duration_t const d) {
   if (std::ranges::empty(in) || std::ranges::empty(out)) {
     return;
   }
+
   auto& loc = tt.locations_;
   loc.hub_in_[kDefaultProfile].emplace_back(in);
   loc.hub_out_[kDefaultProfile].emplace_back(out);
@@ -127,8 +122,17 @@ void add_hubs_or_footpaths(
   add_footpaths(from_slow, to_slow);
 }
 
+hash_map<transfer_pair, transfer_rule_idx_t> get_most_specific(
+    timetable const&, interval<transfer_rule_idx_t> rules);
+
 void add_rule_hubs(
     timetable&,
+    hash_map<transfer_pair, transfer_rule_idx_t> const& most_specific,
+    mutable_fws_multimap<location_idx_t, footpath>& footpaths);
+
+void add_stop_hubs(
+    timetable&,
+    interval<transfer_rule_idx_t> rules,
     hash_map<transfer_pair, transfer_rule_idx_t> const& most_specific,
     mutable_fws_multimap<location_idx_t, footpath>& footpaths);
 
@@ -136,13 +140,8 @@ void store_rule_lookups(timetable&, interval<transfer_rule_idx_t> rules);
 
 location_idx_t get_or_create_virt(
     timetable&,
-    hash_map<virt_key, virt>& virts,
+    hash_map<virt_key, location_idx_t>& virts,
     location_idx_t base,
     std::vector<transfer_rule_side_idx> const& sig);
-
-void store_virt_lookups_to_tt(timetable&,
-                              hash_map<virt_key, virt> const& virts);
-
-mutable_fws_multimap<location_idx_t, footpath> write_rule_hubs(timetable&);
 
 }  // namespace nigiri::loader

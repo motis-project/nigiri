@@ -915,7 +915,7 @@ TEST(gtfs, transfer_rules_very_large_min_transfer_time_is_not_a_ban) {
 }
 
 // ===========================================================================
-// Walk hubs and rule hubs. write_walk_hubs sees rule footpaths, not the pairs
+// Walk hubs and rule hubs. add_walk_hubs sees rule footpaths, not the pairs
 // of a rule hub, so a rule hub is only safe where a rule speaks for its two
 // stops as well - for GTFS, the fold's default does that. add_rule_hubs
 // asserts it; this test builds rules without the GTFS loader to break it.

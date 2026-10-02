@@ -481,7 +481,7 @@ void read_transfers(source_idx_t const src,
            (t.service_ == nullptr || !t.service_->none()) &&
            !t.stop_seq_.empty();
   };
-  auto virts = hash_map<virt_key, virt>{};
+  auto virts = hash_map<virt_key, location_idx_t>{};
   auto trip_rules = std::vector<transfer_rule_side_idx>{};
   auto sig = std::vector<transfer_rule_side_idx>{};
   for (auto& t : trips.data_) {
@@ -555,8 +555,6 @@ void read_transfers(source_idx_t const src,
       add_handover(a, b);
     }
   }
-
-  store_virt_lookups_to_tt(tt, virts);
 
   log(log_lvl::info, "loader.transfer_rules", "{} virtual locations",
       virts.size());
