@@ -9,7 +9,9 @@
 #include "utl/overloaded.h"
 #include "utl/sorted_diff.h"
 
+#include "nigiri/common/merge_sorted.h"
 #include "nigiri/for_each_meta.h"
+#include "nigiri/location_routes.h"
 #include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -466,14 +468,6 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
   auto flags = std::array{q.require_bike_transport_, q.require_car_transport_,
                           is_wheelchair, q.no_compulsory_reservation_};
 
-  auto const merge_sorted = [](auto& dst, auto const& src) {
-    auto const original_size = static_cast<int>(dst.size());
-    dst.resize(dst.size() + src.size());
-    std::copy(begin(src), end(src), begin(dst) + original_size);
-    std::inplace_merge(begin(dst), begin(dst) + original_size, end(dst));
-    dst.erase(std::unique(begin(dst), end(dst)), end(dst));
-  };
-
   // Storage for generators and their current head.
   auto gens = std::vector<utl::generator<std::vector<journey::leg>>>{};
   auto heads = std::vector<std::vector<journey::leg>>{};
@@ -493,10 +487,10 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
   auto from_routes = std::vector<route_idx_t>{};
   auto to_routes = std::vector<route_idx_t>{};
   for (auto const loc : boarding_locs) {
-    merge_sorted(from_routes, tt.location_routes_[loc]);
+    merge_sorted(from_routes, static_routes(tt, rtt, loc));
   }
   for (auto const loc : alighting_locs) {
-    merge_sorted(to_routes, tt.location_routes_[loc]);
+    merge_sorted(to_routes, static_routes(tt, rtt, loc));
   }
   utl::sorted_diff(
       from_routes, to_routes, std::less<route_idx_t>{},

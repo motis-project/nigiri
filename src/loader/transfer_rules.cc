@@ -4,27 +4,50 @@
 #include <algorithm>
 #include <vector>
 
-#include "utl/concat.h"
 #include "utl/equal_ranges_linear.h"
 #include "utl/erase_duplicates.h"
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 
 #include "nigiri/loader/register.h"
+#include "nigiri/common/merge_sorted.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader {
 
 void write_hubs(timetable& tt, hub_lists const& hubs) {
+  constexpr auto const p = kDefaultProfile;
   auto& loc = tt.locations_;
   for (auto h = hub_idx_t{0U}; h != hub_idx_t{hubs.time_.size()}; ++h) {
-    loc.hub_in_[kDefaultProfile].emplace_back(hubs.in_[h]);
-    loc.hub_out_[kDefaultProfile].emplace_back(hubs.out_[h]);
-    loc.hub_time_[kDefaultProfile].push_back(hubs.time_[h]);
-    utl::sort(loc.hub_in_[kDefaultProfile].back());
-    utl::sort(loc.hub_out_[kDefaultProfile].back());
+    loc.hub_in_[p].emplace_back(hubs.in_[h]);
+    loc.hub_out_[p].emplace_back(hubs.out_[h]);
+    loc.hub_time_[p].push_back(hubs.time_[h]);
+    utl::sort(loc.hub_in_[p].back());
+    utl::sort(loc.hub_out_[p].back());
+
+    // l in in and out: routing relaxes l -> l, must not beat l's own change.
+    assert(utl::all_of(loc.hub_in_[p].back(), [&](location_idx_t const l) {
+      auto const out = loc.hub_out_[p].back();
+      return !std::binary_search(begin(out), end(out), l) ||
+             to_fp_duration(loc.transfer_time_[l]) <= hubs.time_[h];
+    }));
   }
+
+  auto const index = [&](auto const& hub_locations, auto& by_location) {
+    auto tmp = mutable_fws_multimap<location_idx_t, hub_idx_t>{};
+    for (auto h = hub_idx_t{0U}; h != hub_idx_t{hub_locations.size()}; ++h) {
+      for (auto const l : hub_locations[h]) {
+        tmp[l].push_back(h);
+      }
+    }
+    by_location.clear();
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      by_location.emplace_back(tmp[l]);
+    }
+  };
+  index(loc.hub_in_[p], loc.hub_in_by_loc_[p]);
+  index(loc.hub_out_[p], loc.hub_out_by_loc_[p]);
 }
 
 void add_rule_hubs(
@@ -40,8 +63,7 @@ void add_rule_hubs(
   };
   auto cross_products = hash_map<transfer_rule_idx_t, cross_product>{};
   for (auto const& [from_to, rule] : most_specific) {
-    if (tt.locations_.get_base_idx(from_to.from_) !=
-        tt.locations_.get_base_idx(from_to.to_)) {
+    if (tt.base(from_to.from_) != tt.base(from_to.to_)) {
       auto& product = cross_products[rule];
       product.from_.insert(from_to.from_);
       product.to_.insert(from_to.to_);
@@ -59,36 +81,27 @@ void add_rule_hubs(
     }
 
     // Mark slow from+to so they will be excluded from the hub.
-    // Small products become footpaths anyway -> no marking needed.
     auto coverage = hub_coverage{};
-    auto const is_small = from_locations.size() * to_locations.size() <=
-                          from_locations.size() + to_locations.size();
-    if (!is_small) {
-      for (auto const from : from_locations) {
-        for (auto const to : to_locations) {
-          assert(d == duration_t{0} ||
-                 tt.locations_.get_base_idx(from) ==
-                     tt.locations_.get_base_idx(to) ||
-                 most_specific.contains(
-                     transfer_pair{tt.locations_.get_base_idx(from),
-                                   tt.locations_.get_base_idx(to)}));
+    for (auto const from : from_locations) {
+      for (auto const to : to_locations) {
+        assert(
+            d == duration_t{0} || tt.base(from) == tt.base(to) ||
+            most_specific.contains(transfer_pair{tt.base(from), tt.base(to)}));
 
-          auto is_slower = false;
-          if (from == to) {
-            is_slower = to_fp_duration(tt.locations_.transfer_time_[from]) > d;
-          } else {
-            auto const it = most_specific.find(transfer_pair{from, to});
-            if (it == end(most_specific)) {
-              assert(false && "no winner for a pair of its cross product");
-              coverage.mark_slow(from, to);
-              continue;
-            }
-            is_slower =
-                it->second != rule_idx && rules[it->second].duration_ > d;
-          }
-          if (is_slower) {
+        auto is_slower = false;
+        if (from == to) {
+          is_slower = to_fp_duration(tt.locations_.transfer_time_[from]) > d;
+        } else {
+          auto const it = most_specific.find(transfer_pair{from, to});
+          if (it == end(most_specific)) {
+            assert(false && "no winner for a pair of its cross product");
             coverage.mark_slow(from, to);
+            continue;
           }
+          is_slower = it->second != rule_idx && rules[it->second].duration_ > d;
+        }
+        if (is_slower) {
+          coverage.mark_slow(from, to);
         }
       }
     }
@@ -118,8 +131,8 @@ void add_stop_hubs(
   // connected via hubs.
   auto coverage = hub_coverage{};
   for (auto const& [from_to, rule] : most_specific) {
-    auto const from_base = loc.get_base_idx(from_to.from_);
-    auto const to_base = loc.get_base_idx(from_to.to_);
+    auto const from_base = tt.base(from_to.from_);
+    auto const to_base = tt.base(from_to.to_);
     if (from_base != to_base) {
       continue;
     }
@@ -135,27 +148,24 @@ void add_stop_hubs(
 
   auto bases = std::vector<location_idx_t>{};
   for (auto const virt : virts) {
-    bases.push_back(loc.get_base_idx(virt));
+    bases.push_back(tt.base(virt));
   }
   utl::erase_duplicates(bases);
 
   auto members = std::vector<location_idx_t>{};
-  auto sources = std::vector<location_idx_t>{};
-  auto non_sources = std::vector<location_idx_t>{};
   for (auto const base : bases) {
     if (loc.transfer_time_[base] == kNoTransferAllowed) {
       continue;
     }
     auto const d = to_fp_duration(loc.transfer_time_[base]);
 
-    // Sources: members that don't change slower than the base itself.
+    // Changes slower than the base: must not reach itself through the hub.
     members.assign({base});
-    sources.assign({base});
-    non_sources.clear();
     loc.for_each_virt(base, [&](location_idx_t const v) {
       members.push_back(v);
-      (to_fp_duration(loc.transfer_time_[v]) <= d ? sources : non_sources)
-          .push_back(v);
+      if (to_fp_duration(loc.transfer_time_[v]) > d) {
+        coverage.mark_slow(v, v);
+      }
     });
 
     // Pairs a rule states with another duration -> add_rule_footpaths.
@@ -164,14 +174,7 @@ void add_stop_hubs(
       auto const it = most_specific.find(transfer_pair{from, to});
       return it != end(most_specific) && rules[it->second].duration_ != d;
     };
-    add_hubs_or_footpaths(sources, members, d, coverage, is_owned, transfers);
-    for (auto const from : non_sources) {
-      for (auto const to : members) {
-        if (from != to && !is_owned(from, to)) {
-          transfers.add_footpath(from, to, d);
-        }
-      }
-    }
+    add_hubs_or_footpaths(members, members, d, coverage, is_owned, transfers);
   }
 }
 
@@ -183,8 +186,8 @@ void add_rule_footpaths(
     rule_transfers& transfers) {
   for (auto const& [from_to, rule] : most_specific) {
     auto const d = tt.transfer_rules_.rules_[rule].duration_;
-    auto const from_base = tt.locations_.get_base_idx(from_to.from_);
-    auto const to_base = tt.locations_.get_base_idx(from_to.to_);
+    auto const from_base = tt.base(from_to.from_);
+    auto const to_base = tt.base(from_to.to_);
     auto const is_hub_duration =
         from_base == to_base
             ? d == to_fp_duration(tt.locations_.transfer_time_[from_base])
@@ -193,14 +196,6 @@ void add_rule_footpaths(
       transfers.add_footpath(from_to.from_, from_to.to_, d);
     }
   }
-}
-
-template <typename T>
-void merge_sorted(vector<T>& v, std::vector<T> added) {
-  utl::erase_duplicates(added);
-  auto const old_size = static_cast<std::ptrdiff_t>(v.size());
-  utl::concat(v, added);
-  std::inplace_merge(begin(v), begin(v) + old_size, end(v));
 }
 
 location_idx_t get_or_create_virt(
@@ -234,26 +229,22 @@ void store_rule_lookups(timetable& tt,
       std::vector<pair<route_id_idx_t, transfer_rule_side_idx>>{};
   auto stop_rules = std::vector<pair<location_idx_t, transfer_rule_side_idx>>{};
   for (auto const rule : rules) {
-    auto const r = tr.rules_[rule];
-    auto const add_side = [&](location_idx_t const stop,
-                              route_id_idx_t const route, trip_idx_t const trip,
-                              bool const is_from) {
+    auto const& r = tr.rules_[rule];
+    for (auto const is_from : {true, false}) {
       auto const s = transfer_rule_side_idx{rule, is_from};
-      if (trip != trip_idx_t::invalid()) {
-        trip_rules.push_back({trip, s});
-      } else if (route != route_id_idx_t::invalid()) {
-        route_rules.push_back({route, s});
+      if (r.trip(is_from) != trip_idx_t::invalid()) {
+        trip_rules.push_back({r.trip(is_from), s});
+      } else if (r.route(is_from) != route_id_idx_t::invalid()) {
+        route_rules.push_back({r.route(is_from), s});
       } else {
-        stop_rules.push_back({stop, s});
+        stop_rules.push_back({r.stop(is_from), s});
       }
-    };
-    add_side(r.from_stop_, r.from_route_, r.from_trip_, true);
-    add_side(r.to_stop_, r.to_route_, r.to_trip_, false);
+    }
   }
 
-  merge_sorted(tr.trip_rules_, std::move(trip_rules));
-  merge_sorted(tr.route_rules_, std::move(route_rules));
-  merge_sorted(tr.stop_rules_, std::move(stop_rules));
+  merge_sorted(tr.trip_rules_, trip_rules);
+  merge_sorted(tr.route_rules_, route_rules);
+  merge_sorted(tr.stop_rules_, stop_rules);
 }
 
 void store_virt_lookups_to_tt(timetable& tt,
@@ -266,8 +257,8 @@ void store_virt_lookups_to_tt(timetable& tt,
       virt_rules.push_back({v.location_, rule});
     }
   }
-  merge_sorted(tt.transfer_rules_.rule_virts_, std::move(rule_virts));
-  merge_sorted(tt.transfer_rules_.virt_rules_, std::move(virt_rules));
+  merge_sorted(tt.transfer_rules_.rule_virts_, rule_virts);
+  merge_sorted(tt.transfer_rules_.virt_rules_, virt_rules);
 }
 
 hash_map<transfer_pair, transfer_rule_idx_t> get_most_specific(

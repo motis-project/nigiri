@@ -296,8 +296,8 @@ X,X,R1,R2,2,0
   gs.dest_match_mode_ = routing::location_match_mode::kEquivalent;
   auto qg = generator{tt, gs, 42U};
 
-  auto x_start = false;
-  auto x_dest = false;
+  auto has_x_start = false;
+  auto has_x_dest = false;
   for (auto i = 0U; i != 100U; ++i) {
     auto const sdq = qg.random_query();
     ASSERT_TRUE(sdq.has_value());
@@ -306,9 +306,9 @@ X,X,R1,R2,2,0
       EXPECT_NE(location_type::kVirt, tt.locations_.types_[o.target()]);
       EXPECT_NE(z, o.target());
     }
-    x_start |= sdq->q_.start_.front().target() == x;
-    x_dest |= sdq->q_.destination_.front().target() == x;
+    has_x_start |= sdq->q_.start_.front().target() == x;
+    has_x_dest |= sdq->q_.destination_.front().target() == x;
   }
-  EXPECT_TRUE(x_start);
-  EXPECT_TRUE(x_dest);
+  EXPECT_TRUE(has_x_start);
+  EXPECT_TRUE(has_x_dest);
 }

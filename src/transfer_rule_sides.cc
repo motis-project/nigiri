@@ -45,8 +45,8 @@ void get_signature(timetable const& tt,
       return;
     }
 
-    auto const& r = rules[s.rule()];
-    if (covers(tt, s.is_from() ? r.from_stop_ : r.to_stop_, base)) {
+    if (tt.locations_.is_self_or_parent(rules[s.rule()].stop(s.is_from()),
+                                        base)) {
       sig.push_back(s);
     }
   };
@@ -59,21 +59,33 @@ void get_signature(timetable const& tt,
   utl::erase_duplicates(sig);
 }
 
+std::optional<std::vector<transfer_rule_side_idx>> get_change_signature(
+    timetable const& tt,
+    std::span<trip_idx_t const> arriving_trips,
+    std::span<trip_idx_t const> departing_trips,
+    bool const is_handover,
+    location_idx_t const base) {
+  auto arriving = std::vector<transfer_rule_side_idx>{};
+  auto departing = std::vector<transfer_rule_side_idx>{};
+  add_trip_rules(tt, arriving_trips, arriving);
+  add_trip_rules(tt, departing_trips, departing);
+  if (arriving.empty() && departing.empty()) {
+    return std::nullopt;
+  }
+  auto sig = std::vector<transfer_rule_side_idx>{};
+  get_signature(tt, arriving, departing, is_handover, base, sig);
+  return sig;
+}
+
 duration_t get_transfer_time(timetable const& tt,
                              std::span<transfer_rule_side_idx const> sig,
                              location_idx_t const base) {
   auto const& rules = tt.transfer_rules_.rules_;
-  auto const applies = [&](transfer_rule_idx_t const rule, bool const is_from) {
-    auto const& r = rules[rule];
-    return (is_from ? r.from_qualified() : r.to_qualified())
-               ? std::binary_search(begin(sig), end(sig),
-                                    transfer_rule_side_idx{rule, is_from})
-               : covers(tt, is_from ? r.from_stop_ : r.to_stop_, base);
-  };
   auto best = transfer_rule_idx_t::invalid();
   for (auto const s : sig) {
     auto const rule = s.rule();
-    if (applies(rule, true) && applies(rule, false)) {
+    if (is_applicable(tt, {rule, true}, sig, base) &&
+        is_applicable(tt, {rule, false}, sig, base)) {
       best = best == transfer_rule_idx_t::invalid()
                  ? rule
                  : get_more_specific(tt, best, rule);
@@ -90,27 +102,25 @@ std::vector<transfer_rule_side> get_transfer_rule_sides(
   auto v = utl::to_vec(rules, [&](transfer_rule_side_idx const s) {
     auto const& r = tt.transfer_rules_.rules_[s.rule()];
     auto const is_from = s.is_from();
-    return transfer_rule_side{
-        .is_from_ = is_from,
-        .rule_stop_ = is_from ? r.from_stop_ : r.to_stop_,
-        .other_stop_ = is_from ? r.to_stop_ : r.from_stop_,
-        .src_ = r.src_,
-        .other_route_ = is_from ? r.to_route_ : r.from_route_,
-        .other_trip_ = is_from ? r.to_trip_ : r.from_trip_,
-        .duration_ = r.duration_,
-        .specificity_ = r.specificity_};
+    return transfer_rule_side{.is_from_ = is_from,
+                              .rule_stop_ = r.stop(is_from),
+                              .other_stop_ = r.stop(!is_from),
+                              .src_ = r.src_,
+                              .other_route_ = r.route(!is_from),
+                              .other_trip_ = r.trip(!is_from),
+                              .duration_ = r.duration_,
+                              .specificity_ = r.specificity_};
   });
 
   // Lower each side's specificity to the lowest value that keeps its order
   // against competing rule sides (same partners, different duration): the same
   // rules win, but more stops get the same key and share a virtual location.
-  auto const& parents = tt.locations_.parents_;
-  auto const same_partners = [&](transfer_rule_side const& a,
-                                 transfer_rule_side const& b) {
+  auto const& loc = tt.locations_;
+  auto const has_same_partners = [&](transfer_rule_side const& a,
+                                     transfer_rule_side const& b) {
     return a.is_from_ == b.is_from_ &&
-           (a.other_stop_ == b.other_stop_ ||
-            parents[a.other_stop_] == b.other_stop_ ||
-            parents[b.other_stop_] == a.other_stop_);
+           (loc.is_self_or_parent(a.other_stop_, b.other_stop_) ||
+            loc.is_self_or_parent(b.other_stop_, a.other_stop_));
   };
   utl::sort(v, [](transfer_rule_side const& a, transfer_rule_side const& b) {
     return a.specificity_ < b.specificity_;
@@ -127,7 +137,7 @@ std::vector<transfer_rule_side> get_transfer_rule_sides(
           // Iterate rules with lower specificity.
           // Higher specificity rules win anyway -> no need to check them.
           for (auto b = begin(v); b != from; ++b) {
-            if (b->duration_ != a->duration_ && same_partners(*a, *b)) {
+            if (b->duration_ != a->duration_ && has_same_partners(*a, *b)) {
               // b has a lower specificity, another duration, and can apply to
               // the same transfers -> stay above it, otherwise a stop where
               // this side loses against b would get the same key and share the

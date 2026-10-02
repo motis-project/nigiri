@@ -23,8 +23,8 @@ inline u8_minutes own_change_time(timetable const& tt,
                                   rt_timetable const* rtt,
                                   profile_idx_t const prf,
                                   location_idx_t const l) {
-  return rtt != nullptr && rtt->is_rt_virt(l)
-             ? rtt->rt_locations_.transfer_time_[rtt->to_rt_location(l)]
+  return rtt != nullptr && rtt->is_rt_location(l)
+             ? rtt->transfer_time(l)
              : tt.locations_.transfer_time_[tt.locations_.project(prf, l)];
 }
 
@@ -66,7 +66,7 @@ bool for_each_footpath_at(timetable const& tt,
       }
     }
   }
-  if (rtt == nullptr || projects_virts(prf_idx)) {
+  if (rtt == nullptr || is_projected(prf_idx)) {
     return true;
   }
   auto const& rt_footpaths =

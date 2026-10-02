@@ -5,6 +5,7 @@
 #include <span>
 #include <vector>
 
+#include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/to_vec.h"
 
@@ -27,21 +28,19 @@ std::vector<side_t> get_stop_signature(timetable const& tt,
 
   auto const arriving_trips = tt.merged_trips_[sections[from]];
   auto const departing_trips = tt.merged_trips_[sections[to - 1U]];
+  auto const is_change = to - from == 2U;
   auto const is_handover =
-      to - from == 2U && utl::none_of(arriving_trips, [&](trip_idx_t const x) {
+      is_change && utl::none_of(arriving_trips, [&](trip_idx_t const x) {
         return utl::find(departing_trips, x) != end(departing_trips);
       });
 
-  auto arriving = std::vector<side_t>{};
-  auto departing = std::vector<side_t>{};
-  add_trip_rules(tt, {begin(arriving_trips), end(arriving_trips)}, arriving);
-  if (to - from == 2U) {
-    add_trip_rules(tt, {begin(departing_trips), end(departing_trips)},
-                   departing);
-  }
-  auto sig = std::vector<side_t>{};
-  get_signature(tt, arriving, departing, is_handover, base, sig);
-  return sig;
+  return get_change_signature(
+             tt, {begin(arriving_trips), end(arriving_trips)},
+             is_change ? std::span<trip_idx_t const>{begin(departing_trips),
+                                                     end(departing_trips)}
+                       : std::span<trip_idx_t const>{},
+             is_handover, base)
+      .value_or(std::vector<side_t>{});
 }
 
 void add_rt_transfers(timetable const& tt,
@@ -49,23 +48,18 @@ void add_rt_transfers(timetable const& tt,
                       location_idx_t const v) {
   auto const& tr = tt.transfer_rules_;
   auto const& loc = tt.locations_;
-  auto const p = rtt.get_base_idx(v);
+  auto const p = rtt.base(v);
   auto const change_time = to_fp_duration(loc.transfer_time_[p]);
 
   auto const for_each_location = [&](side_t const side, auto&& fn) {
     for_each_side_location(tt, side, fn);
-    auto const& r = tr.rules_[side.rule()];
-    auto const is_qualified =
-        side.is_from() ? r.from_qualified() : r.to_qualified();
-    auto const stop = side.is_from() ? r.from_stop_ : r.to_stop_;
-    rtt.for_each_rt_virt(
-        [&](location_idx_t const w, rt_location_idx_t const i) {
-          auto const rules = rtt.rt_virt_rules_[i];
-          if (is_qualified ? std::binary_search(begin(rules), end(rules), side)
-                           : covers(tt, stop, rtt.get_base_idx(w))) {
-            fn(w);
-          }
-        });
+    rtt.for_each_rt_virt([&](location_idx_t const w,
+                             rt_location_idx_t const i) {
+      auto const rules = rtt.rt_virt_rules_[i];
+      if (is_applicable(tt, side, {begin(rules), end(rules)}, rtt.base(w))) {
+        fn(w);
+      }
+    });
   };
 
   for (auto const dir : {direction::kForward, direction::kBackward}) {
@@ -78,21 +72,16 @@ void add_rt_transfers(timetable const& tt,
           it->second = std::min(it->second, fp.duration());
         });
     durations.erase(p);
+    if (change_time != footpath::kMaxDuration) {
+      durations.emplace(p, change_time);
+    }
     rtt.for_each_rt_virt([&](location_idx_t const w, rt_location_idx_t) {
-      if (auto const it = durations.find(rtt.get_base_idx(w));
+      if (auto const it = durations.find(rtt.base(w));
           w != v && it != end(durations)) {
         auto const d = it->second;
         durations.emplace(w, d);
       }
     });
-    if (change_time != footpath::kMaxDuration) {
-      durations.emplace(p, change_time);
-      rtt.for_each_rt_virt([&](location_idx_t const w, rt_location_idx_t) {
-        if (w != v && rtt.get_base_idx(w) == p) {
-          durations.emplace(w, change_time);
-        }
-      });
-    }
 
     auto most_specific = hash_map<location_idx_t, transfer_rule_idx_t>{};
     auto const compete = [&](side_t const s) {
@@ -154,36 +143,25 @@ location_idx_t get_or_create_location(timetable const& tt,
   }
 
   auto const key = get_virt_key(tt, sig, base);
-  auto const matches = [&](u8_minutes const transfer_time,
-                           std::span<side_t const> rules) {
-    return transfer_time == key.transfer_time_ &&
-           get_transfer_rule_sides(tt, rules) == key.sides_;
-  };
-
   auto existing = location_idx_t::invalid();
   tt.locations_.for_each_virt(base, [&](location_idx_t const c) {
     if (existing == location_idx_t::invalid() &&
-        matches(tt.locations_.transfer_time_[c],
-                utl::to_vec(values_of(tt.transfer_rules_.virt_rules_, c)))) {
+        tt.locations_.transfer_time_[c] == key.transfer_time_ &&
+        get_transfer_rule_sides(
+            tt, utl::to_vec(values_of(tt.transfer_rules_.virt_rules_, c))) ==
+            key.sides_) {
       existing = c;
-    }
-  });
-  rtt.for_each_rt_virt([&](location_idx_t const w, rt_location_idx_t const i) {
-    auto const rules = rtt.rt_virt_rules_[i];
-    if (existing == location_idx_t::invalid() && rtt.get_base_idx(w) == base &&
-        matches(rtt.rt_locations_.transfer_time_[i],
-                {begin(rules), end(rules)})) {
-      existing = w;
     }
   });
   if (existing != location_idx_t::invalid()) {
     return existing;
   }
 
-  auto const v =
-      rtt.add_rt_location(location_type::kVirt, base, key.transfer_time_, sig);
-  add_rt_transfers(tt, rtt, v);
-  return v;
+  return utl::get_or_create(rtt.rt_virts_, key, [&]() {
+    auto const v = rtt.add_rt_location(base, key.transfer_time_, sig);
+    add_rt_transfers(tt, rtt, v);
+    return v;
+  });
 }
 
 }  // namespace nigiri::rt

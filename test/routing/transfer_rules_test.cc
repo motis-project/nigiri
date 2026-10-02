@@ -11,6 +11,7 @@
 #include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/leg_alternatives.h"
+#include "nigiri/routing/one_to_all.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/search.h"
 #include "nigiri/routing/tb/preprocess.h"
@@ -66,6 +67,16 @@ std::string zero_min_hub_feed() {
               {"RG3"});
 }
 
+// Q1 and Q2 stop at virtual locations of QS (the rule Q1 -> Q2), and changing
+// between them takes QS's own 2 min.
+std::string virt_change_feed() {
+  return feed({{"QS", 63.0, 22.0}, {"QA", 63.1, 22.0}, {"QB", 63.2, 22.0}},
+              {{"Q1", "RQ1", {{"QA", "10:00"}, {"QS", "10:30"}}},
+               {"Q2", "RQ2", {{"QS", "10:40"}, {"QB", "11:00"}}}},
+              "QS,QS,2,120,,,,\n"
+              "QS,QS,2,0,,,Q1,Q2\n");
+}
+
 unixtime_t arrival_at_o(timetable const& tt,
                         std::string_view const from,
                         routing::transfer_time_settings const tts) {
@@ -115,6 +126,22 @@ TEST(transfer_rules, transfer_time_settings_apply_to_zero_min_hub) {
   }
 }
 
+// W changes in 90 min (W,W,2,5400). With a factor of 3, a change takes 270
+// min: more than an u8 holds. GB (20 min) must stay out of reach, GM (90 min)
+// as well.
+TEST(transfer_rules, transfer_time_settings_beyond_255_min) {
+  auto const tt = load_feeds(
+      {feed({{"W", 56.0, 14.0}, {"N", 56.1, 14.0}, {"O", 56.2, 14.0}},
+            {{"GA", "RG1", {{"N", "10:00"}, {"W", "10:30"}}},
+             {"GB", "RG2", {{"W", "10:50"}, {"O", "11:00"}}},
+             {"GM", "RG2", {{"W", "12:00"}, {"O", "12:10"}}},
+             {"GC", "RG2", {{"W", "15:00"}, {"O", "15:10"}}}},
+            "W,W,2,5400,,,,\n")});
+  EXPECT_EQ(at("12:10"), arrival_at_o(tt, "N", {}));
+  EXPECT_EQ(at("15:10"),
+            arrival_at_o(tt, "N", {.default_ = false, .factor_ = 3.0F}));
+}
+
 // ===========================================================================
 // Consumers of the transfer relation besides RAPTOR: the change FA (virtual
 // location below U) -> FB (at U) exists only through U's hub.
@@ -137,16 +164,10 @@ TEST(transfer_rules, trip_based_routing_sees_hub_transfers) {
 }
 
 // Trip-based routing in a profile that projects virtual locations sees them
-// as their stop, as RAPTOR does: Q1 and Q2 stop at virtual locations of QS
-// (the rule Q1 -> Q2), and changing between them takes QS's own 2 min.
+// as their stop, as RAPTOR does (virt_change_feed).
 TEST(transfer_rules, trip_based_routing_projects_virtual_locations) {
   constexpr auto const kProfile = profile_idx_t{1U};
-  auto tt = load_feeds(
-      {feed({{"QS", 63.0, 22.0}, {"QA", 63.1, 22.0}, {"QB", 63.2, 22.0}},
-            {{"Q1", "RQ1", {{"QA", "10:00"}, {"QS", "10:30"}}},
-             {"Q2", "RQ2", {{"QS", "10:40"}, {"QB", "11:00"}}}},
-            "QS,QS,2,120,,,,\n"
-            "QS,QS,2,0,,,Q1,Q2\n")});
+  auto tt = load_feeds({virt_change_feed()});
   ASSERT_NE(0U, n_virts(tt)) << "precondition: QS has virtual locations";
   add_empty_profile(tt, kProfile);
 
@@ -162,6 +183,76 @@ TEST(transfer_rules, trip_based_routing_projects_virtual_locations) {
   auto const res = tb_search(tt, q);
   ASSERT_EQ(1U, res.size());
   EXPECT_EQ(at("11:00"), begin(res)->dest_time_);
+}
+
+// So does the one-to-all search.
+TEST(transfer_rules, one_to_all_projects_virtual_locations) {
+  constexpr auto const kProfile = profile_idx_t{1U};
+  auto tt = load_feeds({virt_change_feed()});
+  add_empty_profile(tt, kProfile);
+
+  auto const q = routing::query{.start_time_ = at("10:00"),
+                                .start_ = {{lidx(tt, "QA"), 0_minutes, 0U}},
+                                .prf_idx_ = kProfile};
+  auto const state = routing::one_to_all<direction::kForward>(tt, nullptr, q);
+  auto const qb = routing::get_fastest_one_to_all_offsets(
+      tt, state, direction::kForward, lidx(tt, "QB"), at("10:00"),
+      q.max_transfers_);
+  EXPECT_EQ(62, qb.duration_);  // arrival 11:00 + QB's 2 min to change
+  EXPECT_EQ(2U, qb.k_);
+}
+
+// T0 -> T1 can change at station X (X1 -> X2, 15 min buffer) or at station S
+// (S1 -> S2, 8 min): X, unless a recommended transfer (type 0) names S. That
+// holds as well when both trips stop at virtual locations of S1 and S2 (the
+// 1 min T0 -> T1 rule).
+TEST(transfer_rules, recommended_transfer_at_virtual_locations) {
+  auto const changes_at = [](std::string_view const transfers,
+                             std::size_t const n_virtual_locations = 0U) {
+    auto const tt = load_feeds({feed(
+        {{"A", 59.0, 10.0},
+         {"X", 59.1, 10.0, "", true},
+         {"X1", 59.1001, 10.0, "X"},
+         {"X2", 59.1002, 10.0, "X"},
+         {"S", 59.2, 10.0, "", true},
+         {"S1", 59.2001, 10.0, "S"},
+         {"S2", 59.2002, 10.0, "S"},
+         {"E", 59.3, 10.0}},
+        {{"T0", "R0", {{"A", "10:00"}, {"X1", "10:10"}, {"S1", "10:20"}}},
+         {"T1", "R1", {{"X2", "10:27"}, {"S2", "10:30"}, {"E", "10:40"}}}},
+        transfers)});
+    EXPECT_EQ(n_virtual_locations, n_virts(tt));
+    auto const res = search_at(tt, "A", "E", "10:00");
+    EXPECT_EQ(1U, res.size());
+    return res.size() == 0U
+               ? std::string{}
+               : std::string{
+                     tt.locations_.ids_[tt.base(begin(res)->legs_.front().to_)]
+                         .view()};
+  };
+  EXPECT_EQ("X1", changes_at(""));
+  EXPECT_EQ("S1", changes_at("S,S,0,,,,,\n"));
+  EXPECT_EQ("S1",
+            changes_at("S,S,0,,,,,\nS,S,2,120,,,,\nS,S,2,60,,,T0,T1\n", 2U));
+}
+
+// T1 is entered at X, the stop T0 arrives at (15 min buffer). The change at
+// station P (P1 -> P2, 8 min buffer) is no better: both stations are equally
+// important, so X stays.
+TEST(transfer_rules, change_at_same_stop_keeps_its_station_bonus) {
+  auto const tt = load_feeds(
+      {feed({{"A", 59.0, 10.0},
+             {"P", 59.1, 10.0, "", true},
+             {"P1", 59.1001, 10.0, "P"},
+             {"P2", 59.1002, 10.0, "P"},
+             {"X", 59.2, 10.0},
+             {"E", 59.3, 10.0}},
+            {{"T0", "R0", {{"A", "10:00"}, {"P1", "10:10"}, {"X", "10:20"}}},
+             {"T1", "R1", {{"P2", "10:20"}, {"X", "10:37"}, {"E", "10:45"}}}},
+            "")});
+  auto const res = search_at(tt, "A", "E", "10:00");
+  ASSERT_EQ(1U, res.size());
+  EXPECT_EQ(lidx(tt, "X"), begin(res)->legs_.front().to_);
 }
 
 // A time-dependent offset (motis: flex) names the stop. FA arrives at, and FC

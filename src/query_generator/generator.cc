@@ -244,7 +244,7 @@ stop_idx_t generator::get_stop_idx(transport_idx_t const tpt_idx,
                                    location_idx_t const loc_idx) const {
   auto const stops = tt_.route_location_seq_[tt_.transport_route_[tpt_idx]];
   for (auto i = 0U; i != stops.size(); ++i) {
-    if (tt_.locations_.get_base_idx(stop{stops[i]}.location_idx()) == loc_idx) {
+    if (tt_.base(stop{stops[i]}.location_idx()) == loc_idx) {
       return static_cast<stop_idx_t>(i);
     }
   }
@@ -332,9 +332,9 @@ bool generator::arr_in_itv(transport_idx_t const tpt_idx,
 
 bool generator::is_active_dest(location_idx_t const loc,
                                interval<nigiri::unixtime_t> const& itv) const {
-  auto active = false;
+  auto is_active = false;
   for_each_route_at_stop(tt_, loc, [&](route_idx_t const route_idx) {
-    if (active) {
+    if (is_active) {
       return;
     }
     auto const& loc_seq = tt_.route_location_seq_[route_idx];
@@ -342,16 +342,15 @@ bool generator::is_active_dest(location_idx_t const loc,
       for (auto stp_idx = stop_idx_t{1U}; stp_idx != loc_seq.size();
            ++stp_idx) {
         auto const stp = stop{loc_seq[stp_idx]};
-        if (stp.out_allowed() &&
-            tt_.locations_.get_base_idx(stp.location_idx()) == loc &&
+        if (stp.out_allowed() && tt_.base(stp.location_idx()) == loc &&
             arr_in_itv(tpt_idx, stp_idx, itv)) {
-          active = true;
+          is_active = true;
           return;
         }
       }
     }
   });
-  return active;
+  return is_active;
 }
 
 double generator::n_events(location_idx_t const l) const {
@@ -359,8 +358,7 @@ double generator::n_events(location_idx_t const l) const {
   for_each_route_at_stop(tt_, l, [&](route_idx_t const r) {
     auto n_stops = 0U;
     for (auto const s : tt_.route_location_seq_[r]) {
-      n_stops +=
-          tt_.locations_.get_base_idx(stop{s}.location_idx()) == l ? 1U : 0U;
+      n_stops += tt_.base(stop{s}.location_idx()) == l ? 1U : 0U;
     }
     n += static_cast<double>(n_stops) *
          static_cast<double>(tt_.route_transport_ranges_[r].size());

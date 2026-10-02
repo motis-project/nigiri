@@ -213,7 +213,7 @@ constexpr auto const kCarProfile = profile_idx_t{3U};
 constexpr auto const kBikeProfile = profile_idx_t{4U};
 static constexpr auto const kNProfiles = profile_idx_t{5U};
 
-constexpr bool projects_virts(profile_idx_t const prf) {
+constexpr bool is_projected(profile_idx_t const prf) {
   return prf != kDefaultProfile;
 }
 

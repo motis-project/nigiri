@@ -21,7 +21,8 @@
 
 namespace nigiri::routing::gpu {
 
-inline bool gpu_supported(query const& q, rt_timetable const* rtt = nullptr) {
+inline bool is_gpu_supported(query const& q,
+                             rt_timetable const* rtt = nullptr) {
   return q.via_stops_.empty() &&
          (rtt == nullptr || rtt->n_rt_locations() <= kRtLocationCapacity);
 }

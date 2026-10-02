@@ -2,10 +2,12 @@
 
 #include "utl/pairwise.h"
 
+#include <cassert>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string_view>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -122,6 +124,16 @@ struct rt_timetable {
                    std::nullopt);
   }
 
+  // Arrival and departure change to stop s (named by its base).
+  void dispatch_stop_change(rt::run const& r,
+                            stop_idx_t const stop_idx,
+                            stop const s) {
+    dispatch_stop_change(r, stop_idx, event_type::kArr, base(s.location_idx()),
+                         s.out_allowed());
+    dispatch_stop_change(r, stop_idx, event_type::kDep, base(s.location_idx()),
+                         s.in_allowed());
+  }
+
   void set_track(rt_transport_idx_t, stop_idx_t, event_type, std::string_view);
   std::optional<std::string_view> get_track(rt_transport_idx_t,
                                             stop_idx_t,
@@ -198,7 +210,7 @@ struct rt_timetable {
     return tt_->n_locations() + n_rt_locations();
   }
   std::uint32_t n_rt_locations() const noexcept {
-    return static_cast<std::uint32_t>(rt_locations_.types_.size());
+    return static_cast<std::uint32_t>(rt_locations_.parents_.size());
   }
   bool is_rt_location(location_idx_t const l) const noexcept {
     return l >= tt_->n_locations();
@@ -210,43 +222,47 @@ struct rt_timetable {
   location_idx_t to_location(rt_location_idx_t const i) const noexcept {
     return location_idx_t{tt_->n_locations() + to_idx(i)};
   }
-  bool is_rt_virt(location_idx_t const l) const noexcept {
-    return is_rt_location(l) &&
-           rt_locations_.types_[to_rt_location(l)] == location_type::kVirt;
+  // Real-time locations are virtual locations: a base and its static location.
+  location_idx_t base(location_idx_t const l) const {
+    return is_rt_location(l) ? rt_locations_.parents_[to_rt_location(l)]
+                             : tt_->base(l);
   }
-  location_idx_t get_base_idx(location_idx_t const l) const {
-    return is_rt_virt(l) ? rt_locations_.parents_[to_rt_location(l)] : l;
+  location_idx_t static_location(location_idx_t const l) const {
+    return is_rt_location(l) ? rt_locations_.parents_[to_rt_location(l)] : l;
+  }
+  u8_minutes transfer_time(location_idx_t const l) const {
+    return is_rt_location(l) ? rt_locations_.transfer_time_[to_rt_location(l)]
+                             : tt_->locations_.transfer_time_[l];
   }
   template <typename Fn>
   void for_each_rt_virt(Fn&& fn) const {
     for (auto i = rt_location_idx_t{0U}; i != n_rt_locations(); ++i) {
-      if (rt_locations_.types_[i] == location_type::kVirt) {
-        fn(to_location(i), i);
-      }
+      fn(to_location(i), i);
     }
   }
-  location_idx_t add_rt_location(location_type,
-                                 location_idx_t parent,
+  location_idx_t add_rt_location(location_idx_t parent,
                                  u8_minutes transfer_time,
                                  std::span<transfer_rule_side_idx const> rules);
-  void extend_to_rt_virts(bitvec& b) const {
-    if (b.size() == 0U) {
+  void add_location_rt_transport(location_idx_t, rt_transport_idx_t);
+
+  // Extends v (by location) to the real-time locations: each gets its base's
+  // value.
+  template <typename Vec>
+  void extend_to_rt_virts(Vec& v) const {
+    if (v.size() == 0U) {
       return;
     }
-    b.resize(n_locations());
-    for_each_rt_virt([&](location_idx_t const l, rt_location_idx_t) {
-      b.set(to_idx(l), b.test(to_idx(get_base_idx(l))));
-    });
-  }
-  template <typename T>
-  void extend_to_rt_virts(std::vector<T>& v, T const fill) const {
-    if (v.empty()) {
-      return;
+    assert(v.size() >= tt_->n_locations());
+    v.resize(n_locations());
+    for (auto i = rt_location_idx_t{0U}; i != n_rt_locations(); ++i) {
+      auto const l = to_idx(to_location(i));
+      auto const b = to_idx(rt_locations_.parents_[i]);
+      if constexpr (std::is_same_v<Vec, bitvec>) {
+        v.set(l, v.test(b));
+      } else {
+        v[l] = v[b];
+      }
     }
-    v.resize(n_locations(), fill);
-    for_each_rt_virt([&](location_idx_t const l, rt_location_idx_t) {
-      v[to_idx(l)] = v[to_idx(get_base_idx(l))];
-    });
   }
   std::span<location_idx_t const> rt_stop_virts(
       rt_transport_idx_t const rt_t) const {
@@ -366,12 +382,12 @@ struct rt_timetable {
   change_callback_t change_callback_;
 
   struct rt_locations {
-    vector_map<rt_location_idx_t, location_type> types_;
     vector_map<rt_location_idx_t, location_idx_t> parents_;
     vector_map<rt_location_idx_t, u8_minutes> transfer_time_;
   } rt_locations_;
 
   vecvec<rt_location_idx_t, transfer_rule_side_idx> rt_virt_rules_;
+  hash_map<virt_key, location_idx_t> rt_virts_;
 
   mutable_fws_multimap<rt_transport_idx_t, location_idx_t> rt_stop_virts_;
 

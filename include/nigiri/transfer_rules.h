@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <ranges>
 #include <tuple>
+#include <vector>
+
+#include "cista/reflection/comparable.h"
 
 #include "nigiri/types.h"
 
@@ -23,13 +26,18 @@ struct preferred_transfer {
 using transfer_rule_specificity_t = std::uint8_t;
 
 struct transfer_rule {
-  bool from_qualified() const {
-    return from_route_ != route_id_idx_t::invalid() ||
-           from_trip_ != trip_idx_t::invalid();
+  location_idx_t stop(bool const is_from) const {
+    return is_from ? from_stop_ : to_stop_;
   }
-  bool to_qualified() const {
-    return to_route_ != route_id_idx_t::invalid() ||
-           to_trip_ != trip_idx_t::invalid();
+  route_id_idx_t route(bool const is_from) const {
+    return is_from ? from_route_ : to_route_;
+  }
+  trip_idx_t trip(bool const is_from) const {
+    return is_from ? from_trip_ : to_trip_;
+  }
+  bool is_qualified(bool const is_from) const {
+    return route(is_from) != route_id_idx_t::invalid() ||
+           trip(is_from) != trip_idx_t::invalid();
   }
 
   location_idx_t from_stop_{location_idx_t::invalid()};
@@ -62,6 +70,25 @@ struct transfer_rule_side_idx {
   std::uint32_t v_{0U};
 };
 
+struct transfer_rule_side {
+  CISTA_COMPARABLE()
+  bool is_from_;
+  location_idx_t rule_stop_;
+  location_idx_t other_stop_;
+  source_idx_t src_;
+  route_id_idx_t other_route_;
+  trip_idx_t other_trip_;
+  duration_t duration_;
+  transfer_rule_specificity_t specificity_;
+};
+
+struct virt_key {
+  CISTA_COMPARABLE()
+  location_idx_t base_;
+  u8_minutes transfer_time_;
+  std::vector<transfer_rule_side> sides_;
+};
+
 template <typename SortedPairs, typename Key>
 auto values_of(SortedPairs const& v, Key const key) {
   using entry = std::ranges::range_value_t<SortedPairs>;
@@ -83,7 +110,5 @@ struct transfer_rules {
 
   vector<pair<location_idx_t, transfer_rule_side_idx>> virt_rules_;
 };
-
-bool covers(timetable const&, location_idx_t stop, location_idx_t base);
 
 }  // namespace nigiri

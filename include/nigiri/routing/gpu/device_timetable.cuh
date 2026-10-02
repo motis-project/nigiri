@@ -157,16 +157,15 @@ struct device_timetable {
                    kNProfiles>
       footpaths_in_;
 
-  cuda::std::array<d_vecmap_view<hub_idx_t, duration_t>, kNProfiles> hub_time_;
-
+  // Hubs of the search's profile, edges in its direction: the gather edges
+  // (location -> hub) by location, the scatter edges (hub -> location) by hub.
+  d_vecmap_view<hub_idx_t, duration_t> hub_time_;
   struct hub_edge_list {
     cuda::std::span<std::uint32_t const> loc_;
     cuda::std::span<std::uint32_t const> hub_;
   };
-  cuda::std::array<hub_edge_list, kNProfiles> hub_in_by_loc_flat_;
-  cuda::std::array<hub_edge_list, kNProfiles> hub_out_by_hub_flat_;
-  cuda::std::array<hub_edge_list, kNProfiles> hub_out_by_loc_flat_;
-  cuda::std::array<hub_edge_list, kNProfiles> hub_in_by_hub_flat_;
+  hub_edge_list hub_gather_;
+  hub_edge_list hub_scatter_;
 
   cuda::std::span<delta const> route_stop_times_;
   d_vecmap_view<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;

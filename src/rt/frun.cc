@@ -18,7 +18,7 @@
 namespace nigiri::rt {
 
 location_idx_t base_location(run_stop const& s) {
-  return s.tt().locations_.get_base_idx(s.get_location_idx());
+  return s.tt().base(s.get_location_idx());
 }
 
 constexpr auto const kUnknownProvider =

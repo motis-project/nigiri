@@ -6,6 +6,7 @@
 #include "utl/overloaded.h"
 
 #include "nigiri/for_each_meta.h"
+#include "nigiri/location_routes.h"
 #include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/search_location.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -132,10 +133,7 @@ void add_starts_in_interval(direction const search_dir,
                             profile_idx_t const p,
                             std::vector<start>& starts,
                             bool const add_ontrip) {
-  auto const routes =
-      rtt != nullptr && rtt->is_rt_virt(l)
-          ? std::span<route_idx_t const>{}
-          : std::span<route_idx_t const>{tt.location_routes_.at(l)};
+  auto const routes = static_routes(tt, rtt, l);
   trace_start(
       "    add_starts_in_interval(interval={}, stop={}): {} "
       "routes\n",
@@ -291,10 +289,9 @@ void get_starts(
     });
   }
 
-  if (rtt != nullptr && !projects_virts(prf_idx)) {
+  if (rtt != nullptr && !is_projected(prf_idx)) {
     rtt->for_each_rt_virt([&](location_idx_t const l, rt_location_idx_t) {
-      if (auto const it = at_start.find(rtt->get_base_idx(l));
-          it != end(at_start)) {
+      if (auto const it = at_start.find(rtt->base(l)); it != end(at_start)) {
         auto& val =
             utl::get_or_create(shortest_start, l, [&]() { return it->second; });
         val = std::min(val, it->second);
@@ -345,7 +342,7 @@ void get_starts(
 void add_virt_td_offsets(timetable const& tt,
                          rt_timetable const* rtt,
                          query& q) {
-  if (projects_virts(q.prf_idx_)) {
+  if (is_projected(q.prf_idx_)) {
     return;
   }
   auto const add = [&](hash_map<location_idx_t, std::vector<td_offset>>& td) {
@@ -356,7 +353,7 @@ void add_virt_td_offsets(timetable const& tt,
     }
     if (rtt != nullptr && !td.empty()) {
       rtt->for_each_rt_virt([&](location_idx_t const v, rt_location_idx_t) {
-        if (auto const p = rtt->get_base_idx(v); td.contains(p)) {
+        if (auto const p = rtt->base(v); td.contains(p)) {
           virts.emplace_back(v, p);
         }
       });

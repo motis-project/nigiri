@@ -1,7 +1,10 @@
 #include "nigiri/routing/raptor/reconstruct.h"
 
 #include <cassert>
+#include <array>
 #include <iterator>
+#include <optional>
+#include <utility>
 
 #include "utl/enumerate.h"
 #include "utl/helpers/algorithm.h"
@@ -10,6 +13,7 @@
 #include "nigiri/common/delta_t.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/location_match_mode.h"
+#include "nigiri/location_routes.h"
 #include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/raptor/debug.h"
@@ -24,7 +28,7 @@ namespace nigiri::routing {
 
 location_idx_t static_location(rt_timetable const* rtt,
                                location_idx_t const l) {
-  return rtt == nullptr ? l : rtt->get_base_idx(l);
+  return rtt == nullptr ? l : rtt->static_location(l);
 }
 
 void to_static_locations(rt_timetable const* rtt, journey& j) {
@@ -32,13 +36,13 @@ void to_static_locations(rt_timetable const* rtt, journey& j) {
     return;
   }
   for (auto& leg : j.legs_) {
-    leg.from_ = rtt->get_base_idx(leg.from_);
-    leg.to_ = rtt->get_base_idx(leg.to_);
+    leg.from_ = rtt->static_location(leg.from_);
+    leg.to_ = rtt->static_location(leg.to_);
     if (auto* const fp = std::get_if<footpath>(&leg.uses_); fp != nullptr) {
-      *fp = footpath{rtt->get_base_idx(fp->target()), fp->duration()};
+      *fp = footpath{rtt->static_location(fp->target()), fp->duration()};
     }
   }
-  j.dest_ = rtt->get_base_idx(j.dest_);
+  j.dest_ = rtt->static_location(j.dest_);
 }
 
 bool is_journey_start(timetable const& tt,
@@ -132,13 +136,13 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
           get_td_duration<flip(SearchDir)>(it->second, leg_start_time);
       if (fp.has_value() &&
           is_better_or_eq(j.start_time_, leg_start_time - dir(fp->first))) {
-        return journey::leg{SearchDir,
-                            get_special_station(special_station::kStart),
-                            leg_start_location,
-                            leg_start_time - dir(fp->first),
-                            leg_start_time,
-                            offset{rt::get_base_idx(tt, rtt, it->first),
-                                   fp->first, fp->second.mode()}};
+        return journey::leg{
+            SearchDir,
+            get_special_station(special_station::kStart),
+            leg_start_location,
+            leg_start_time - dir(fp->first),
+            leg_start_time,
+            offset{rt::base(tt, rtt, it->first), fp->first, fp->second.mode()}};
       } else {
 #ifdef NIGIRI_TRACE_RECONSTRUCT
         for (auto const& x : it->second) {
@@ -216,9 +220,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
     return kFwd ? a <= b : a >= b;
   };
 
-  auto const is_rt_virt = [&](location_idx_t const x) {
-    return rtt != nullptr && rtt->is_rt_virt(x);
-  };
   auto const project = [&](location_idx_t const x) {
     return tt.locations_.project(q.prf_idx_, x);
   };
@@ -425,6 +426,31 @@ void reconstruct_journey_with_vias(timetable const& tt,
     return std::nullopt;
   };
 
+  // nullopt: a required flag is set on no section.
+  auto const get_section_flags =
+      [&](std::array<bitvec, kNumRouteFlags> const& flags,
+          std::uint32_t const i)
+      -> std::optional<std::array<bool, kNumRouteFlags>> {
+    auto section_flags = std::array<bool, kNumRouteFlags>{};
+    for (auto const& [f, is_required] :
+         {std::pair{kBikesAllowed, q.require_bike_transport_},
+          std::pair{kCarsAllowed, q.require_car_transport_},
+          std::pair{kWheelchairAccessible, is_wheelchair},
+          std::pair{kReservationNotRequired, q.no_compulsory_reservation_}}) {
+      trace_reconstruct("  {}: flag {} on_all={} on_some={}\n", i,
+                        static_cast<int>(f), flags[f].test(i * 2U),
+                        flags[f].test(i * 2U + 1U));
+      if (!is_required || flags[f].test(i * 2U)) {
+        continue;
+      }
+      if (!flags[f].test(i * 2U + 1U)) {
+        return std::nullopt;
+      }
+      section_flags[f] = true;
+    }
+    return section_flags;
+  };
+
   auto virt_children = std::vector<location_idx_t>{};
 
   auto const get_transport =
@@ -434,7 +460,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
     virt_children.clear();
     virt_children.push_back(l);
-    if (projects_virts(q.prf_idx_)) {
+    if (is_projected(q.prf_idx_)) {
       tt.locations_.for_each_virt(
           l, [&](location_idx_t const c) { virt_children.push_back(c); });
     }
@@ -447,47 +473,10 @@ void reconstruct_journey_with_vias(timetable const& tt,
             continue;
           }
 
-          auto section_flags = std::array<bool, kNumRouteFlags>{};
-
-          auto const apply_filter = [&](route_flag const f) {
-            auto const flag_set_on_all_sections =
-                rtt->rt_transport_flags_[f].test(rt_t.v_ * 2);
-            auto const flag_set_on_some_sections =
-                rtt->rt_transport_flags_[f].test(rt_t.v_ * 2 + 1);
-            trace_reconstruct("  rt_t={}: flag {} on_all={} on_some={} (RT)\n",
-                              rt_t, flag_set_on_all_sections,
-                              flag_set_on_some_sections);
-            if (!flag_set_on_all_sections) {
-              if (!flag_set_on_some_sections) {
-                return false;
-              }
-              section_flags[f] = true;
-            }
-            return true;
-          };
-
-          if (q.require_bike_transport_) {
-            if (!apply_filter(kBikesAllowed)) {
-              continue;
-            }
-          }
-
-          if (q.require_car_transport_) {
-            if (!apply_filter(kCarsAllowed)) {
-              continue;
-            }
-          }
-
-          if (is_wheelchair) {
-            if (!apply_filter(kWheelchairAccessible)) {
-              continue;
-            }
-          }
-
-          if (q.no_compulsory_reservation_) {
-            if (!apply_filter(kReservationNotRequired)) {
-              continue;
-            }
+          auto const section_flags =
+              get_section_flags(rtt->rt_transport_flags_, to_idx(rt_t));
+          if (!section_flags.has_value()) {
+            continue;
           }
 
           auto const location_seq = rtt->rt_transport_location_seq_[rt_t];
@@ -507,7 +496,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
             }
 
             auto leg =
-                find_start_in_prev_round(k, fr, stop_idx, time, section_flags);
+                find_start_in_prev_round(k, fr, stop_idx, time, *section_flags);
             if (leg.has_value()) {
               return leg;
             }
@@ -517,55 +506,15 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
 
     for (auto const scan_l : virt_children) {
-      if (is_rt_virt(scan_l)) {
-        continue;
-      }
-      for (auto const& r : tt.location_routes_[scan_l]) {
+      for (auto const& r : static_routes(tt, rtt, scan_l)) {
         if (!is_allowed(q.allowed_claszes_, tt.route_clasz_[r])) {
           continue;
         }
 
-        auto section_flags = std::array<bool, kNumRouteFlags>{};
-
-        auto const apply_filter = [&](route_flag const f) {
-          auto const flag_set_on_all_sections =
-              tt.route_flags_[f].test(r.v_ * 2);
-          auto const flag_set_on_some_sections =
-              tt.route_flags_[f].test(r.v_ * 2 + 1);
-          trace_reconstruct("  rt_t={}: flag {} on_all={} on_some={} (RT)\n",
-                            rt_t, flag_set_on_all_sections,
-                            flag_set_on_some_sections);
-          if (!flag_set_on_all_sections) {
-            if (!flag_set_on_some_sections) {
-              return false;
-            }
-            section_flags[f] = true;
-          }
-          return true;
-        };
-
-        if (q.require_bike_transport_) {
-          if (!apply_filter(kBikesAllowed)) {
-            continue;
-          }
-        }
-
-        if (q.require_car_transport_) {
-          if (!apply_filter(kCarsAllowed)) {
-            continue;
-          }
-        }
-
-        if (is_wheelchair) {
-          if (!apply_filter(kWheelchairAccessible)) {
-            continue;
-          }
-        }
-
-        if (q.no_compulsory_reservation_) {
-          if (!apply_filter(kReservationNotRequired)) {
-            continue;
-          }
+        auto const section_flags =
+            get_section_flags(tt.route_flags_, to_idx(r));
+        if (!section_flags.has_value()) {
+          continue;
         }
 
         auto const location_seq = tt.route_location_seq_[r];
@@ -579,7 +528,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
           }
 
           auto leg = get_route_transport(k, time, r, static_cast<stop_idx_t>(i),
-                                         section_flags, is_td_footpath);
+                                         *section_flags, is_td_footpath);
           if (leg.has_value()) {
             return leg;
           }
@@ -740,7 +689,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       if (intermodal_dest.has_value()) {
         trace_rc_intermodal_dest_match;
         intermodal_dest->first.uses_ =
-            offset{rt::get_base_idx(tt, rtt, dest_offset.target_),
+            offset{rt::base(tt, rtt, dest_offset.target_),
                    dest_offset.duration_, dest_offset.mode()};
         ret = std::move(intermodal_dest);
       } else {
@@ -750,10 +699,10 @@ void reconstruct_journey_with_vias(timetable const& tt,
     for_each_meta(tt, location_match_mode::kIntermodal, dest_offset.target_,
                   [&](location_idx_t const eq) {
                     try_dest(eq);
-                    if (rtt != nullptr && !projects_virts(q.prf_idx_)) {
+                    if (rtt != nullptr && !is_projected(q.prf_idx_)) {
                       rtt->for_each_rt_virt(
                           [&](location_idx_t const w, rt_location_idx_t) {
-                            if (rtt->get_base_idx(w) == eq) {
+                            if (rtt->base(w) == eq) {
                               try_dest(w);
                             }
                           });
@@ -841,9 +790,11 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
 
     trace_reconstruct("CHECKING FOOTPATHS OF {}\n", loc{tt, l});
-    if (rtt == nullptr || !(kFwd ? rtt->has_td_footpaths_in_
-                                 : rtt->has_td_footpaths_out_)[q.prf_idx_]
-                               .test(l)) {
+    auto const has_td_footpaths =
+        rtt != nullptr && (kFwd ? rtt->has_td_footpaths_in_
+                                : rtt->has_td_footpaths_out_)[q.prf_idx_]
+                              .test(l);
+    if (!has_td_footpaths) {
       auto const try_fps = [&](location_idx_t const x)
           -> std::optional<std::pair<journey::leg, journey::leg>> {
         auto fp_legs = std::optional<std::pair<journey::leg, journey::leg>>{};
@@ -855,7 +806,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
         return fp_legs;
       };
       auto fp_legs = try_fps(l);
-      if (!fp_legs.has_value() && projects_virts(q.prf_idx_)) {
+      if (!fp_legs.has_value() && is_projected(q.prf_idx_)) {
         tt.locations_.for_each_virt(l, [&](location_idx_t const c) {
           if (!fp_legs.has_value()) {
             fp_legs = try_fps(c);
@@ -867,10 +818,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
     }
 
-    if (rtt != nullptr && q.prf_idx_ != 0U &&
-        (kFwd ? rtt->has_td_footpaths_in_
-              : rtt->has_td_footpaths_out_)[q.prf_idx_]
-            .test(l)) {
+    if (has_td_footpaths) {
       trace_reconstruct("CHECKING TD FOOTPATHS OF {}\n", loc{tt, l});
       auto const td_footpaths = kFwd ? rtt->td_footpaths_in_[q.prf_idx_][l]
                                      : rtt->td_footpaths_out_[q.prf_idx_][l];

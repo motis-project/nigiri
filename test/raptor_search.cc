@@ -58,7 +58,7 @@ static range_result search_range(timetable const& tt,
   auto const delivered = result.interval_;
 
 #if defined(NIGIRI_CUDA)
-  if (routing::gpu::gpu_supported(q, rtt)) {
+  if (routing::gpu::is_gpu_supported(q, rtt)) {
     auto gpu_search_state = routing::search_state{};
     auto gpu_timetable = routing::gpu::gpu_timetable{tt};
     auto gpu_state = routing::gpu::gpu_raptor_state{gpu_timetable};
@@ -180,7 +180,7 @@ static pareto_set<routing::journey> search_pong(timetable const& tt,
             .journeys_);
 
 #if defined(NIGIRI_CUDA)
-  if (routing::gpu::gpu_supported(q, rtt)) {
+  if (routing::gpu::is_gpu_supported(q, rtt)) {
     auto gpu_search_state = routing::search_state{};
     auto gpu_timetable = routing::gpu::gpu_timetable{tt};
     auto gpu_state = routing::gpu::gpu_raptor_state{gpu_timetable};

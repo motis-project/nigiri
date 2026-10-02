@@ -11,7 +11,7 @@ inline location_idx_t search_location(rt_timetable const& rtt,
                                       profile_idx_t const prf,
                                       rt_transport_idx_t const rt_t,
                                       stop_idx_t const stop_idx) {
-  return projects_virts(prf)
+  return is_projected(prf)
              ? stop{rtt.rt_transport_location_seq_[rt_t][stop_idx]}
                    .location_idx()
              : rtt.stop_location(rt_t, stop_idx);

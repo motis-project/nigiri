@@ -321,7 +321,6 @@ void add_hub(timetable& tt,
   auto hubs = loader::hub_lists{};
   hubs.add(in, out, d);
   loader::write_hubs(tt, hubs);
-  loader::index_hubs(tt);
 }
 
 // Two hubs state u -> v, the slower one first: a hub only has to leave out

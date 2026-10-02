@@ -98,16 +98,16 @@ std::string to_str(timetable_metrics const& m, timetable const& tt) {
         fm.locations_, fm.trips_, fm.transport_days_);
   }
   ss << R"(],"noRoutes":)" << m.routes_ << R"(,"profiles":[)";
-  auto first = true;
+  auto is_first = true;
   for (auto prf = profile_idx_t{0U}; prf != kNProfiles; ++prf) {
     auto const& pm = m.profiles_[prf];
     if (pm.footpaths_ == 0U && pm.hubs_ == 0U) {
       continue;
     }
-    if (!first) {
+    if (!is_first) {
       ss << ',';
     }
-    first = false;
+    is_first = false;
     ss << fmt::format(
         R"({{"prf":{},"noFootpaths":{},"noHubs":{},"hubPairs":{}}})",
         static_cast<unsigned>(prf), pm.footpaths_, pm.hubs_, pm.hub_pairs_);

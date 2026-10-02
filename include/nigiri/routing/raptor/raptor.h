@@ -39,7 +39,7 @@ struct raptor {
 
   location_idx_t project(location_idx_t const l) const {
     if constexpr (ProjectVirts) {
-      return tt_.locations_.get_base_idx(l);
+      return tt_.base(l);
     } else {
       return l;
     }
@@ -51,14 +51,14 @@ struct raptor {
     } else {
       if constexpr (Rt) {
         if (!is_static(l)) {
-          return rtt_->rt_locations_.transfer_time_[rtt_->to_rt_location(l)];
+          return rtt_->transfer_time(l);
         }
       }
       return tt_.locations_.transfer_time_[l];
     }
   }
 
-  static constexpr bool uses_rt_virts() { return Rt && !ProjectVirts; }
+  static constexpr bool has_rt_virts() { return Rt && !ProjectVirts; }
   bool is_static(location_idx_t const l) const {
     return l < n_static_locations_;
   }
@@ -107,7 +107,7 @@ struct raptor {
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},
         n_static_locations_{tt_.n_locations()},
-        n_locations_{uses_rt_virts() ? rtt->n_locations() : tt_.n_locations()},
+        n_locations_{has_rt_virts() ? rtt->n_locations() : tt_.n_locations()},
         n_routes_{tt.n_routes()},
         n_rt_transports_{Rt ? rtt->n_rt_transports() : 0U},
         state_{state.resize(n_locations_, n_routes_, n_rt_transports_)},
@@ -130,14 +130,14 @@ struct raptor {
         is_wheelchair_{is_wheelchair},
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
-    if constexpr (uses_rt_virts()) {
+    if constexpr (has_rt_virts()) {
       if (n_locations_ != n_static_locations_) {
         rtt_->extend_to_rt_virts(is_dest);
         for (auto& via : is_via) {
           rtt_->extend_to_rt_virts(via);
         }
-        rtt_->extend_to_rt_virts(dist_to_dest, kUnreachable);
-        rtt_->extend_to_rt_virts(lb, kUnreachable);
+        rtt_->extend_to_rt_virts(dist_to_dest);
+        rtt_->extend_to_rt_virts(lb);
       }
     }
     reset_arrivals();
@@ -274,35 +274,24 @@ struct raptor {
       });
 
       auto any_marked = false;
-      state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
-        if (i < n_static_locations_) {
-          for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
+      auto const mark = [&](location_idx_t const l) {
+        if (to_idx(l) < n_static_locations_) {
+          for (auto const& r : tt_.location_routes_[l]) {
             any_marked = true;
             state_.route_mark_.set(to_idx(r), true);
           }
         }
-        if constexpr (ProjectVirts) {
-          for (auto const c : tt_.locations_.children_[location_idx_t{i}]) {
-            if (tt_.locations_.is_virt(c)) {
-              for (auto const& r : tt_.location_routes_[c]) {
-                any_marked = true;
-                state_.route_mark_.set(to_idx(r), true);
-              }
-              if constexpr (Rt) {
-                for (auto const& rt_t : rtt_->location_rt_transports_[c]) {
-                  any_marked = true;
-                  state_.rt_transport_mark_.set(to_idx(rt_t), true);
-                }
-              }
-            }
-          }
-        }
         if constexpr (Rt) {
-          for (auto const& rt_t :
-               rtt_->location_rt_transports_[location_idx_t{i}]) {
+          for (auto const& rt_t : rtt_->location_rt_transports_[l]) {
             any_marked = true;
             state_.rt_transport_mark_.set(to_idx(rt_t), true);
           }
+        }
+      };
+      state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+        mark(location_idx_t{i});
+        if constexpr (ProjectVirts) {
+          tt_.locations_.for_each_virt(location_idx_t{i}, mark);
         }
       });
 
@@ -547,14 +536,10 @@ private:
       return stays;
     };
 
-    auto const stays_l = via_stays(l);
-    auto const own = min_transfer_time(location_idx_t{l});
-    if (own == kNoTransferAllowed) {
-      return true;
-    }
-    auto const transfer = dir(adjusted_transfer_time(
-        transfer_time_settings_, static_cast<int>(own.count())));
-    return is_better_or_eq(t, row[l][slot] + transfer + dir(stays_l));
+    auto const change = adjusted_change_time(
+        transfer_time_settings_, min_transfer_time(location_idx_t{l}));
+    return !change.has_value() ||
+           is_better_or_eq(t, row[l][slot] + dir(*change) + dir(via_stays(l)));
   }
 
   template <bool WithClaszFilter,
@@ -771,9 +756,10 @@ private:
           continue;
         }
         auto const transfer_time =
-            is_dest_arrival ? 0
-                            : dir(adjusted_transfer_time(
-                                  transfer_time_settings_, own.count()));
+            is_dest_arrival
+                ? 0
+                : dir(adjusted_transfer_time(transfer_time_settings_,
+                                             static_cast<int>(own.count())));
         auto const fp_target_time =
             clamp(tmp_time + transfer_time + dir(stay.count()));
 
@@ -1102,7 +1088,7 @@ private:
             round_times_[k][target][target_v] = fp_target_time;
             best_[target][target_v] = fp_target_time;
             state_.station_mark_.set(target, true);
-            if (is_dest_[target]) {
+            if (target_v == Vias && is_dest_[target]) {
               update_time_at_dest(k, fp_target_time);
             }
           } else {
@@ -1249,7 +1235,7 @@ private:
           static_cast<stop_idx_t>(kFwd ? i : n_stops - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
       auto l = project(stp.location_idx());
-      if constexpr (uses_rt_virts()) {
+      if constexpr (has_rt_virts()) {
         if (!rt_stop_virts.empty() &&
             rt_stop_virts[stop_idx] != location_idx_t::invalid()) {
           l = rt_stop_virts[stop_idx];
@@ -1717,11 +1703,11 @@ auto with_raptor_variant(rt_timetable const* rtt,
                          profile_idx_t const prf,
                          Fn&& fn) {
   if (rtt == nullptr) {
-    return projects_virts(prf) ? fn.template operator()<false, true>()
-                               : fn.template operator()<false, false>();
+    return is_projected(prf) ? fn.template operator()<false, true>()
+                             : fn.template operator()<false, false>();
   } else {
-    return projects_virts(prf) ? fn.template operator()<true, true>()
-                               : fn.template operator()<true, false>();
+    return is_projected(prf) ? fn.template operator()<true, true>()
+                             : fn.template operator()<true, false>();
   }
 }
 

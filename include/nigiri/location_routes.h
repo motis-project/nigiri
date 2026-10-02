@@ -1,13 +1,24 @@
 #pragma once
 
+#include <span>
 #include <vector>
 
 #include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
 
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri {
+
+inline std::span<route_idx_t const> static_routes(timetable const& tt,
+                                                  rt_timetable const* rtt,
+                                                  location_idx_t const l) {
+  if (rtt != nullptr && rtt->is_rt_location(l)) {
+    return {};
+  }
+  return tt.location_routes_[l];
+}
 
 template <typename Fn>
 void for_each_route_at_stop(timetable const& tt,
@@ -30,7 +41,7 @@ void for_each_route_at(timetable const& tt,
                        profile_idx_t const prf,
                        location_idx_t const l,
                        Fn&& fn) {
-  if (projects_virts(prf)) {
+  if (is_projected(prf)) {
     for_each_route_at_stop(tt, l, fn);
   } else {
     for (auto const r : tt.location_routes_[l]) {

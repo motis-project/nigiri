@@ -81,31 +81,33 @@ transfer_rule_specificity_t get_specificity(
 }
 
 bool is_qualified(transfer_rule const& r) {
-  return r.from_qualified() || r.to_qualified();
+  return r.is_qualified(true) || r.is_qualified(false);
 }
 
-bool overlaps(timetable const& tt,
-              transfer_rule const& a,
-              transfer_rule const& b) {
-  auto const side = [&](trip_idx_t const a_trip, route_id_idx_t const a_route,
-                        trip_idx_t const b_trip, route_id_idx_t const b_route) {
-    auto const has_a_trip = a_trip != trip_idx_t::invalid();
-    auto const has_b_trip = b_trip != trip_idx_t::invalid();
-    auto const has_a_route = a_route != route_id_idx_t::invalid();
-    auto const has_b_route = b_route != route_id_idx_t::invalid();
-    if (has_a_trip && has_b_trip) {
-      return a_trip == b_trip;
-    } else if (has_a_trip && has_b_route) {
-      return tt.trip_route_id_[a_trip] == b_route;
-    } else if (has_a_route && has_b_trip) {
-      return tt.trip_route_id_[b_trip] == a_route;
-    } else if (has_a_route && has_b_route) {
-      return a_route == b_route;
-    }
-    return true;
-  };
-  return side(a.from_trip_, a.from_route_, b.from_trip_, b.from_route_) &&
-         side(a.to_trip_, a.to_route_, b.to_trip_, b.to_route_);
+bool is_overlapping(timetable const& tt,
+                    transfer_rule const& a,
+                    transfer_rule const& b) {
+  auto const is_side_overlapping =
+      [&](trip_idx_t const a_trip, route_id_idx_t const a_route,
+          trip_idx_t const b_trip, route_id_idx_t const b_route) {
+        auto const has_a_trip = a_trip != trip_idx_t::invalid();
+        auto const has_b_trip = b_trip != trip_idx_t::invalid();
+        auto const has_a_route = a_route != route_id_idx_t::invalid();
+        auto const has_b_route = b_route != route_id_idx_t::invalid();
+        if (has_a_trip && has_b_trip) {
+          return a_trip == b_trip;
+        } else if (has_a_trip && has_b_route) {
+          return tt.trip_route_id_[a_trip] == b_route;
+        } else if (has_a_route && has_b_trip) {
+          return tt.trip_route_id_[b_trip] == a_route;
+        } else if (has_a_route && has_b_route) {
+          return a_route == b_route;
+        }
+        return true;
+      };
+  return is_side_overlapping(a.from_trip_, a.from_route_, b.from_trip_,
+                             b.from_route_) &&
+         is_side_overlapping(a.to_trip_, a.to_route_, b.to_trip_, b.to_route_);
 }
 
 void fold_pair_defaults(timetable& tt,
@@ -190,7 +192,7 @@ void fold_pair_defaults(timetable& tt,
     }
   }
 
-  auto const keep_rule = [&](transfer_rule const& r) {
+  auto const is_kept = [&](transfer_rule const& r) {
     // Keep all unqualified rules.
     if (!is_qualified(r)) {
       return true;
@@ -239,14 +241,14 @@ void fold_pair_defaults(timetable& tt,
                         utl::any_of(it->second, [&](transfer_rule const* o) {
                           return o->duration_ != r.duration_ &&
                                  o->specificity_ <= r.specificity_ &&
-                                 overlaps(tt, *o, r);
+                                 is_overlapping(tt, *o, r);
                         });
                });
   };
 
   // Add rules to the timetable.
   for (auto const& r : rules) {
-    if (keep_rule(r)) {
+    if (is_kept(r)) {
       tt.transfer_rules_.rules_.push_back(r);
     }
   }
@@ -510,8 +512,6 @@ void read_transfers(source_idx_t const src,
   }
 
   // Store handover locations of stay-seated trip pairs.
-  auto rules_a = std::vector<transfer_rule_side_idx>{};
-  auto rules_b = std::vector<transfer_rule_side_idx>{};
   auto const add_handover = [&](gtfs_trip_idx_t const a,
                                 gtfs_trip_idx_t const b) {
     auto const& ta = trips.data_[a];
@@ -519,24 +519,20 @@ void read_transfers(source_idx_t const src,
     if (a == b || !has_stop_seq(ta) || !has_stop_seq(tb)) {
       return;
     }
-    auto const base_a =
-        tt.locations_.get_base_idx(stop{ta.stop_seq_.back()}.location_idx());
-    auto const base_b =
-        tt.locations_.get_base_idx(stop{tb.stop_seq_.front()}.location_idx());
+    auto const base_a = tt.base(stop{ta.stop_seq_.back()}.location_idx());
+    auto const base_b = tt.base(stop{tb.stop_seq_.front()}.location_idx());
     if (base_a != base_b) {
       return;
     }
-    rules_a.clear();
-    rules_b.clear();
-    add_trip_rules(tt, {&ta.trip_idx_, 1U}, rules_a);
-    add_trip_rules(tt, {&tb.trip_idx_, 1U}, rules_b);
-    if (rules_a.empty() && rules_b.empty()) {
+    auto const handover_sig = get_change_signature(
+        tt, {&ta.trip_idx_, 1U}, {&tb.trip_idx_, 1U}, true, base_a);
+    if (!handover_sig.has_value()) {
       return;
     }
-    get_signature(tt, rules_a, rules_b, true, base_a, sig);
     trips.handover_stops_.emplace(
-        pair{a, b},
-        sig.empty() ? base_a : get_or_create_virt(tt, virts, base_a, sig));
+        pair{a, b}, handover_sig->empty()
+                        ? base_a
+                        : get_or_create_virt(tt, virts, base_a, *handover_sig));
   };
 
   // Collect stay-seated trip pairs from block_id and transfer_type=4.

@@ -1706,3 +1706,78 @@ TEST(routing, via_test_36_S_C_via_V_0m_no_exit) {
     EXPECT_EQ(expected_S_C_via_V_no_exit, results_to_str(results, tt));
   }
 }
+
+constexpr auto const test_files_via_td_footpath = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,
+X,X,,0.1,1.0,,
+V,V,,0.2,1.0,,
+D,D,,0.3,1.0,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,R1,,,3
+R2,DB,R2,,,3
+R3,DB,R3,,,3
+R4,DB,R4,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S1,T1,,
+R2,S1,T2,,
+R3,S1,T3,,
+R4,S1,T4,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:00:00,10:00:00,A,1,0,0
+T1,10:30:00,10:30:00,X,2,0,0
+T2,10:00:00,10:00:00,A,1,0,0
+T2,10:20:00,10:20:00,V,2,0,0
+T3,10:40:00,10:40:00,V,1,0,0
+T3,11:00:00,11:00:00,D,2,0,0
+T4,10:40:00,10:40:00,X,1,0,0
+T4,10:50:00,10:50:00,D,2,0,0
+
+# calendar_dates.txt
+service_id,date,exception_type
+S1,20190501,1
+)"sv;
+
+TEST(routing, via_test_37_A_D_via_V_td_footpath_to_dest) {
+  // A -> D via V: T2 to V, T3 to D (11:00). T1 reaches X at 10:30, and a
+  // time-dependent footpath walks on to D (10:35) - without having been at V,
+  // so it does not end the search.
+  constexpr auto const kProfile = kFootProfile;
+  auto tt = load_timetable(test_files_via_td_footpath);
+  tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
+  tt.fwd_search_lb_graph_[kProfile] = tt.fwd_search_lb_graph_[kDefaultProfile];
+  tt.bwd_search_lb_graph_[kProfile] = tt.bwd_search_lb_graph_[kDefaultProfile];
+
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
+  auto const x = loc_idx(tt, "X");
+  rtt.has_td_footpaths_out_[kProfile].set(x, true);
+  rtt.td_footpaths_out_[kProfile][x].push_back(td_footpath{
+      loc_idx(tt, "D"), unixtime_t{sys_days{2019_y / May / 1}}, 5min});
+
+  auto const results =
+      search(tt, &rtt,
+             routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
+                                              "2019-05-01 10:01 Europe/Berlin"),
+                            .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                            .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
+                            .prf_idx_ = kProfile,
+                            .via_stops_ = {{loc_idx(tt, "V"), 0_minutes}}},
+             direction::kForward);
+
+  ASSERT_EQ(1U, results.size());
+  EXPECT_EQ(
+      parse_time_tz("2019-05-01 11:00 Europe/Berlin", "%Y-%m-%d %H:%M %Z"),
+      begin(results)->dest_time_);
+}

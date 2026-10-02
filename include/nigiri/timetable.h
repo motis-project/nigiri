@@ -68,6 +68,11 @@ struct timetable {
       return is_virt(l) ? parents_[l] : l;
     }
 
+    bool is_self_or_parent(location_idx_t const stop,
+                           location_idx_t const l) const {
+      return stop == l || parents_[l] == stop;
+    }
+
     template <typename Fn>
     void for_each_virt(location_idx_t const l, Fn&& fn) const {
       for (auto const c : children_[l]) {
@@ -79,7 +84,7 @@ struct timetable {
 
     location_idx_t project(profile_idx_t const prf,
                            location_idx_t const l) const {
-      return projects_virts(prf) ? get_base_idx(l) : l;
+      return is_projected(prf) ? get_base_idx(l) : l;
     }
 
     location_idx_t get_root_idx(location_idx_t const idx) const {
@@ -247,6 +252,10 @@ struct timetable {
 
   cista::base_t<location_idx_t> n_locations() const {
     return locations_.names_.size();
+  }
+
+  location_idx_t base(location_idx_t const l) const {
+    return locations_.get_base_idx(l);
   }
 
   cista::base_t<route_idx_t> n_routes() const {

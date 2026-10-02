@@ -352,8 +352,7 @@ bool update_run(source_idx_t const src,
   auto const& stus = tripUpdate.stop_time_update();
   auto upd_it = begin(stus);
   for (; seq_it != end(seq_numbers); ++stop_idx, ++seq_it) {
-    auto const loc_idx =
-        tt.locations_.get_base_idx(stop{location_seq[stop_idx]}.location_idx());
+    auto const loc_idx = tt.base(stop{location_seq[stop_idx]}.location_idx());
     auto matches = false;
     while (upd_it != end(stus)) {
       auto matches_any_loc = false;
@@ -366,7 +365,7 @@ bool update_run(source_idx_t const src,
             (upd_it->has_stop_id() &&
              upd_it->stop_id() ==
                  tt.locations_
-                     .ids_[tt.locations_.get_base_idx(
+                     .ids_[tt.base(
                          stop{location_seq[next_stop_idx]}.location_idx())]
                      .view());
 
@@ -392,10 +391,7 @@ bool update_run(source_idx_t const src,
         auto l_idx = stop{stp}.location_idx();
         // Cancel skipped stops (in_allowed = out_allowed = false).
         stp = stop{l_idx, false, false, false, false}.value();
-        rtt.dispatch_stop_change(r, stop_idx, event_type::kArr,
-                                 tt.locations_.get_base_idx(l_idx), false);
-        rtt.dispatch_stop_change(r, stop_idx, event_type::kDep,
-                                 tt.locations_.get_base_idx(l_idx), false);
+        rtt.dispatch_stop_change(r, stop_idx, stop{stp});
       } else if (auto const& new_id =
                      upd_it->stop_time_properties().has_assigned_stop_id()
                          ? upd_it->stop_time_properties().assigned_stop_id()
@@ -421,29 +417,18 @@ bool update_run(source_idx_t const src,
               src, tt.locations_.ids_[loc_idx].view(), new_id);
           continue;
         }
-        auto const s = stop{stp};
         rtt.update_stop_location(
             r.rt_, stop_idx,
             get_or_create_location(tt, rtt, r.rt_, stop_idx, l_it->second));
         ++stats.stop_assignments_;
-        rtt.dispatch_stop_change(r, stop_idx, event_type::kArr, l_it->second,
-                                 s.out_allowed());
-        rtt.dispatch_stop_change(r, stop_idx, event_type::kDep, l_it->second,
-                                 s.in_allowed());
+        rtt.dispatch_stop_change(r, stop_idx, stop{stp});
       } else {
         // Just reset in case a track change / skipped stop got reversed.
         if (location_seq[stop_idx] != stp) {
           auto const reset_stop = stop{location_seq[stop_idx]};
           stp = location_seq[stop_idx];
           rtt.update_stop_location(r.rt_, stop_idx, reset_stop.location_idx());
-          rtt.dispatch_stop_change(
-              r, stop_idx, event_type::kArr,
-              tt.locations_.get_base_idx(reset_stop.location_idx()),
-              reset_stop.out_allowed());
-          rtt.dispatch_stop_change(
-              r, stop_idx, event_type::kDep,
-              tt.locations_.get_base_idx(reset_stop.location_idx()),
-              reset_stop.in_allowed());
+          rtt.dispatch_stop_change(r, stop_idx, reset_stop);
         }
       }
     }

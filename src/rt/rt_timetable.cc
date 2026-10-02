@@ -1,5 +1,7 @@
 #include "nigiri/rt/rt_timetable.h"
 
+#include <algorithm>
+
 #include "utl/enumerate.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
@@ -53,10 +55,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   alerts_.rt_transport_.emplace_back_empty();
 
   for (auto const s : location_seq) {
-    auto rt_transports = location_rt_transports_[stop{s}.location_idx()];
-    if (rt_transports.empty() || rt_transports.back() != rt_t) {
-      rt_transports.push_back(rt_t);
-    }
+    add_location_rt_transport(stop{s}.location_idx(), rt_t);
   }
 
   if (time_seq.empty() && r != route_idx_t::invalid()) {
@@ -185,10 +184,10 @@ void rt_timetable::set_track(rt_transport_idx_t const rt_t,
 void rt_timetable::update_stop_location(rt_transport_idx_t const rt_t,
                                         stop_idx_t const stop_idx,
                                         location_idx_t const l) {
-  auto const is_rt = is_rt_virt(l);
+  auto const is_rt = is_rt_location(l);
 
   auto seq = rt_transport_location_seq_[rt_t];
-  seq[stop_idx] = stop{seq[stop_idx]}.with_location(get_base_idx(l)).value();
+  seq[stop_idx] = stop{seq[stop_idx]}.with_location(static_location(l)).value();
 
   if (is_rt || !rt_stop_virts(rt_t).empty()) {
     auto locs = rt_stop_virts_[rt_t];
@@ -202,22 +201,25 @@ void rt_timetable::update_stop_location(rt_transport_idx_t const rt_t,
     }
   }
 
-  for (auto const x : {l, get_base_idx(l)}) {
-    auto transports = location_rt_transports_[x];
-    if (utl::find(transports, rt_t) == end(transports)) {
-      transports.push_back(rt_t);
-    }
+  add_location_rt_transport(l, rt_t);
+  add_location_rt_transport(static_location(l), rt_t);
+}
+
+void rt_timetable::add_location_rt_transport(location_idx_t const l,
+                                             rt_transport_idx_t const rt_t) {
+  auto transports = location_rt_transports_[l];
+  auto const it = std::lower_bound(begin(transports), end(transports), rt_t);
+  if (it == end(transports) || *it != rt_t) {
+    transports.insert(it, rt_t);
   }
 }
 
 location_idx_t rt_timetable::add_rt_location(
-    location_type const type,
     location_idx_t const parent,
     u8_minutes const transfer_time,
     std::span<transfer_rule_side_idx const> rules) {
   auto const l = location_idx_t{n_locations()};
   utl::verify(l < footpath::kMaxTarget, "rt location index overflow");
-  rt_locations_.types_.push_back(type);
   rt_locations_.parents_.push_back(parent);
   rt_locations_.transfer_time_.push_back(transfer_time);
   rt_virt_rules_.emplace_back(rules);
@@ -374,7 +376,7 @@ void rt_timetable::update_lbs(timetable const& tt) {
   }
 
   auto const root = [&](location_idx_t const l) {
-    return tt.locations_.get_root_idx(get_base_idx(l));
+    return tt.locations_.get_root_idx(base(l));
   };
   for (auto from = location_idx_t{0U}; from != rt_footpaths_out_.size();
        ++from) {

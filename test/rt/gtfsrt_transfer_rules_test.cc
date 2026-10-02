@@ -7,6 +7,7 @@
 #include "gtfsrt/gtfs-realtime.pb.h"
 
 #include "nigiri/loader/build_footpaths.h"
+#include "nigiri/routing/direct.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
@@ -39,7 +40,7 @@ std::string leg_stop_id(timetable const& tt, location_idx_t const l) {
   if (l >= tt.n_locations()) {
     return "out-of-range";
   }
-  return std::string{tt.locations_.ids_[tt.locations_.get_base_idx(l)].view()};
+  return std::string{tt.locations_.ids_[tt.base(l)].view()};
 }
 
 // The base location a trip stops at, as seen outside the routing.
@@ -69,6 +70,27 @@ pareto_set<routing::journey> search(
     direction const dir = direction::kForward) {
   return raptor_search(tt, &rtt, station_query(tt, od.first, od.second, t(at)),
                        dir);
+}
+
+// Arrivals of the direct connections (no change) of a station query that
+// depart in [from, to).
+std::vector<unixtime_t> direct_arrivals(
+    timetable const& tt,
+    rt_timetable const& rtt,
+    std::pair<char const*, char const*> const& od,
+    char const* from,
+    char const* to) {
+  auto q = station_query(tt, od.first, od.second, t(from));
+  q.slow_direct_ = true;
+  q.use_start_footpaths_ = true;  // as motis without street routing
+  auto res = pareto_set<routing::journey>{};
+  routing::enrich_with_slow_direct<direction::kForward>(
+      tt, &rtt, q, interval{t(from), t(to)}, res);
+  auto arrivals = std::vector<unixtime_t>{};
+  for (auto const& j : res) {
+    arrivals.push_back(j.dest_time_);
+  }
+  return arrivals;
 }
 
 // Arrivals of A -F-> S -G-> B, A -F-> S -GL-> B, A -F-> S -H-> C and
@@ -464,7 +486,8 @@ TEST(gtfsrt_transfer_rules, journey_shows_new_platform) {
   }
 }
 
-// A query from the station finds the moved trip at its new platform.
+// A query from the station finds the moved trip at its new platform, its
+// direct connections as well.
 TEST(gtfsrt_transfer_rules, start_at_station_with_moved_trip) {
   auto const tt = load_network("S,S,2,120,,,,\nS,S,2,900,,,F,G");
   auto rtt = rt::create_rt_timetable(tt, kDay);
@@ -472,9 +495,14 @@ TEST(gtfsrt_transfer_rules, start_at_station_with_moved_trip) {
   EXPECT_EQ("S4", stop_id_at(tt, rtt, "G", 0U));
   EXPECT_EQ(g_from_f(), arrival(tt, &rtt, std::pair{"S", "B"},
                                 "2019-05-01 10:35 Europe/Berlin"));
+  EXPECT_EQ(std::vector{g_from_f()},
+            direct_arrivals(tt, rtt, std::pair{"S", "B"},
+                            "2019-05-01 10:35 Europe/Berlin",
+                            "2019-05-01 10:45 Europe/Berlin"));
 }
 
-// A query to the station arrives with the moved trip.
+// A query to the station arrives with the moved trip, its direct connections
+// as well.
 TEST(gtfsrt_transfer_rules, destination_at_station_with_moved_trip) {
   auto const tt = load_network("S,S,2,120,,,,\nS,S,2,900,,,F,G");
   auto rtt = rt::create_rt_timetable(tt, kDay);
@@ -485,6 +513,10 @@ TEST(gtfsrt_transfer_rules, destination_at_station_with_moved_trip) {
   // ... and to the new platform itself.
   EXPECT_EQ(t("2019-05-01 10:30 Europe/Berlin"),
             arrival(tt, &rtt, std::pair{"A", "S3"}));
+  EXPECT_EQ(std::vector{t("2019-05-01 10:30 Europe/Berlin")},
+            direct_arrivals(tt, rtt, std::pair{"A", "S"},
+                            "2019-05-01 10:00 Europe/Berlin",
+                            "2019-05-01 10:10 Europe/Berlin"));
 }
 
 // A departure interval instead of one departure time (range search).

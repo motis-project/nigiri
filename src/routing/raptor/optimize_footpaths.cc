@@ -285,9 +285,9 @@ bool is_preferred_transfer(timetable const& tt,
     return t == trip_idx_t::invalid() ? route_id_idx_t::invalid()
                                       : tt.trip_route_id_[t];
   };
-  auto const side_matches = [&](trip_idx_t const rule_trip,
-                                route_id_idx_t const rule_route,
-                                trip_idx_t const observed) {
+  auto const is_side_match = [&](trip_idx_t const rule_trip,
+                                 route_id_idx_t const rule_route,
+                                 trip_idx_t const observed) {
     if (rule_trip != trip_idx_t::invalid()) {
       return rule_trip == observed;
     }
@@ -302,9 +302,9 @@ bool is_preferred_transfer(timetable const& tt,
       continue;
     }
     for (auto const& p : preferred[f]) {
-      if (side_matches(p.from_trip_, p.from_route_, from_trip) &&
-          side_matches(p.to_trip_, p.to_route_, to_trip) &&
-          covers(tt, p.to_, to)) {
+      if (is_side_match(p.from_trip_, p.from_route_, from_trip) &&
+          is_side_match(p.to_trip_, p.to_route_, to_trip) &&
+          tt.locations_.is_self_or_parent(p.to_, tt.base(to))) {
         return true;
       }
     }
@@ -450,7 +450,7 @@ void optimize_transfers(timetable const& tt,
         tt,
         adjusted_transfer_time(q.transfer_time_settings_,
                                get<footpath>(leg_footpath.uses_).duration()),
-        leg_to.dep_time_ - leg_footpath.arr_time_, leg_from.from_, leg_to.to_,
+        leg_to.dep_time_ - leg_footpath.arr_time_, leg_from.to_, leg_to.from_,
         trip_at(rt::frun{tt, rtt, ree_from.r_}[static_cast<stop_idx_t>(
                     ree_from.stop_range_.to_ - 1U)],
                 event_type::kArr),

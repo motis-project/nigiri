@@ -1,6 +1,7 @@
 #include "nigiri/loader/build_footpaths.h"
 
 #include <cassert>
+#include <algorithm>
 #include <map>
 #include <optional>
 #include <span>
@@ -10,6 +11,7 @@
 #include "geo/latlng.h"
 
 #include "utl/erase_duplicates.h"
+#include "utl/erase_if.h"
 #include "utl/helpers/algorithm.h"
 
 #include "nigiri/loader/build_lb_graph.h"
@@ -117,21 +119,10 @@ void collect_members(timetable const& tt,
       l, [&](location_idx_t const c) { out.push_back(c); });
 }
 
-struct walk_hubs {
-  void add_footpath(location_idx_t const from,
-                    location_idx_t const to,
-                    duration_t const d) {
-    footpaths_.push_back({from, footpath{to, d}});
-  }
-
-  hub_lists hubs_;
-  std::vector<pair<location_idx_t, footpath>> footpaths_;
-};
-
-walk_hubs get_walk_hubs(timetable const& tt,
-                        rule_index const& idx,
-                        bool const adjust_footpaths) {
-  auto walk = walk_hubs{};
+rule_transfers get_walk_hubs(timetable const& tt,
+                             rule_index const& idx,
+                             bool const adjust_footpaths) {
+  auto walk = rule_transfers{};
   auto members = std::vector<location_idx_t>{};
   auto targets = std::vector<location_idx_t>{};
   auto egress = std::vector<location_idx_t>{};
@@ -174,8 +165,7 @@ walk_hubs get_walk_hubs(timetable const& tt,
         auto coverage = hub_coverage{};
         for (auto const m : members) {
           for (auto const r : idx.footpaths_[m]) {
-            if (r.duration() > d &&
-                tt.locations_.get_base_idx(r.target()) == t_stop) {
+            if (r.duration() > d && tt.base(r.target()) == t_stop) {
               coverage.mark_slow(m, r.target());
             }
           }
@@ -196,41 +186,29 @@ walk_hubs get_walk_hubs(timetable const& tt,
   return walk;
 }
 
-void apply_transfer_rules(timetable& tt, rule_index const& idx) {
-  auto const& hubs_of = tt.locations_.hub_in_by_loc_[kDefaultProfile];
-  auto const& hub_out = tt.locations_.hub_out_[kDefaultProfile];
-  auto const hub_covers = [&](location_idx_t const from,
-                              location_idx_t const to) {
-    return utl::any_of(hubs_of[from], [&](hub_idx_t const h) {
-      auto const o = hub_out[h];
-      return std::binary_search(begin(o), end(o), to);
-    });
-  };
+// Whether a hub connects from -> to within max.
+bool is_hub_covered(timetable const& tt,
+                    location_idx_t const from,
+                    location_idx_t const to,
+                    duration_t const max = footpath::kMaxDuration) {
+  constexpr auto const p = kDefaultProfile;
+  auto const& loc = tt.locations_;
+  return utl::any_of(loc.hub_in_by_loc_[p][from], [&](hub_idx_t const h) {
+    auto const out = loc.hub_out_[p][h];
+    assert(std::is_sorted(begin(out), end(out)));
+    return loc.hub_time_[p][h] <= max &&
+           std::binary_search(begin(out), end(out), to);
+  });
+}
 
+void apply_transfer_rules(timetable& tt, rule_index const& idx) {
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
     auto bucket = tt.locations_.preprocessing_footpaths_out_[l];
-    for (auto& existing : bucket) {
-      if (existing.target() != l && hub_covers(l, existing.target())) {
-        existing = footpath{l, duration_t{0}};
-      }
-    }
+    utl::erase_if(bucket, [&](footpath const fp) {
+      return idx.contains(l, fp.target()) || is_hub_covered(tt, l, fp.target());
+    });
     for (auto const fp : idx.footpaths_[l]) {
-      if (fp.duration() == footpath::kMaxDuration) {
-        for (auto& existing : bucket) {
-          if (existing.target() == fp.target()) {
-            existing = footpath{l, duration_t{0}};
-          }
-        }
-        continue;
-      }
-      auto replaced = false;
-      for (auto& existing : bucket) {
-        if (existing.target() == fp.target()) {
-          existing = fp;
-          replaced = true;
-        }
-      }
-      if (!replaced) {
+      if (fp.duration() != footpath::kMaxDuration) {
         bucket.push_back(fp);
       }
     }
@@ -280,22 +258,6 @@ void write_layer(timetable& tt,
   }
 }
 
-bool hub_covers_footpath(timetable const& tt,
-                         location_idx_t const l,
-                         footpath const fp) {
-  constexpr auto const p = kDefaultProfile;
-  auto const& hubs_of = tt.locations_.hub_in_by_loc_[p];
-  return l < hubs_of.size() &&
-         utl::any_of(
-             hubs_of[l],
-             [&](hub_idx_t const h) {
-               auto const o = tt.locations_.hub_out_[p][h];
-               assert(std::is_sorted(begin(o), end(o)));
-               return tt.locations_.hub_time_[p][h] <= fp.duration() &&
-                      std::binary_search(begin(o), end(o), fp.target());
-             });
-}
-
 void write_footpaths(timetable& tt,
                      rule_index const& idx,
                      bool const adjust_footpaths) {
@@ -317,7 +279,7 @@ void write_footpaths(timetable& tt,
           fp = footpath{fp.target(), *adjusted};
         }
       }
-      if (hub_covers_footpath(tt, l, fp)) {
+      if (is_hub_covered(tt, l, fp.target(), fp.duration())) {
         ++n_pruned;
         continue;
       }
@@ -331,28 +293,6 @@ void write_footpaths(timetable& tt,
       n_pruned);
 }
 
-void index_hubs(timetable& tt) {
-  constexpr auto const p = kDefaultProfile;
-  auto& loc = tt.locations_;
-
-  auto in_by_loc = mutable_fws_multimap<location_idx_t, hub_idx_t>{};
-  auto out_by_loc = mutable_fws_multimap<location_idx_t, hub_idx_t>{};
-  for (auto h = hub_idx_t{0U}; h != hub_idx_t{loc.hub_time_[p].size()}; ++h) {
-    for (auto const l : loc.hub_in_[p][h]) {
-      in_by_loc[l].push_back(h);
-    }
-    for (auto const l : loc.hub_out_[p][h]) {
-      out_by_loc[l].push_back(h);
-    }
-  }
-  loc.hub_in_by_loc_[p].clear();
-  loc.hub_out_by_loc_[p].clear();
-  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-    loc.hub_in_by_loc_[p].emplace_back(in_by_loc[l]);
-    loc.hub_out_by_loc_[p].emplace_back(out_by_loc[l]);
-  }
-}
-
 void write_default_profile(timetable& tt, bool const adjust_footpaths) {
   auto const timer = scoped_timer{"loader.footpath.default_profile"};
 
@@ -362,17 +302,17 @@ void write_default_profile(timetable& tt, bool const adjust_footpaths) {
   loc.hub_out_[kDefaultProfile].clear();
   loc.hub_time_[kDefaultProfile].clear();
   write_hubs(tt, transfers.hubs_);
-  index_hubs(tt);
 
   auto const idx = rule_index{std::move(transfers.footpaths_)};
   apply_transfer_rules(tt, idx);
 
-  auto const walk = get_walk_hubs(tt, idx, adjust_footpaths);
-  for (auto const& [l, fp] : walk.footpaths_) {
-    loc.preprocessing_footpaths_out_[l].emplace_back(fp);
+  auto walk = get_walk_hubs(tt, idx, adjust_footpaths);
+  for (auto l = location_idx_t{0U}; l != walk.footpaths_.size(); ++l) {
+    for (auto const fp : walk.footpaths_[l]) {
+      loc.preprocessing_footpaths_out_[l].emplace_back(fp);
+    }
   }
   write_hubs(tt, walk.hubs_);
-  index_hubs(tt);
 
   write_footpaths(tt, idx, adjust_footpaths);
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);

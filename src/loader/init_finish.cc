@@ -91,8 +91,7 @@ void assign_importance(timetable& tt) {
                                        /* Bus  */ 2,
                                        /* Ship  */ 10,
                                        /* Other  */ 1};
-    auto const p = tt.locations_.parents_[l];
-    auto& x = importance[p == location_idx_t::invalid() ? l : p];
+    auto& x = importance[tt.locations_.get_root_idx(l)];
     for (auto const [clasz, t_count] : utl::enumerate(transport_counts)) {
       x += prio[clasz] * static_cast<float>(t_count);
     }

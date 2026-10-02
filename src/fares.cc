@@ -205,7 +205,7 @@ bool operator==(fares::fare_leg_rule const& a, fares::fare_leg_rule const& b) {
 }
 
 location_idx_t stop_of(timetable const& tt, rt::run_stop const& s) {
-  return tt.locations_.get_base_idx(s.get_location_idx());
+  return tt.base(s.get_location_idx());
 }
 
 location_idx_t parent(timetable const& tt, location_idx_t const l) {

@@ -183,10 +183,10 @@ struct raptor_impl {
       }
 
       auto const my_i = w * kWarpSize + lane;
-      auto const my_marked = ((bits >> lane) & 1U) != 0U && my_i < lists.size();
+      auto const is_marked = ((bits >> lane) & 1U) != 0U && my_i < lists.size();
 
       auto n = 0U;
-      if (my_marked) {
+      if (is_marked) {
         auto const list = lists[location_idx_t{my_i}];
         n = static_cast<unsigned>(list.size());
         if (n != 0U && !*any_marked_) {
@@ -715,8 +715,7 @@ struct raptor_impl {
   }
 
   __device__ void gather_hubs() {
-    auto const& e = kFwd ? tt_.hub_in_by_loc_flat_[prf_idx_]
-                         : tt_.hub_out_by_loc_flat_[prf_idx_];
+    auto const& e = tt_.hub_gather_;
     auto const n = static_cast<unsigned>(e.loc_.size());
     for (auto i = get_global_thread_id(); i < n; i += get_global_stride()) {
       auto const l = location_idx_t{e.loc_[i]};
@@ -735,8 +734,7 @@ struct raptor_impl {
   }
 
   __device__ void scatter_hubs(unsigned const k) {
-    auto const& e = kFwd ? tt_.hub_out_by_hub_flat_[prf_idx_]
-                         : tt_.hub_in_by_hub_flat_[prf_idx_];
+    auto const& e = tt_.hub_scatter_;
     auto const n = static_cast<unsigned>(e.hub_.size());
     auto const t_at_dest = time_at_dest_.get(k);
     for (auto i = get_global_thread_id(); i < n; i += get_global_stride()) {
@@ -744,7 +742,7 @@ struct raptor_impl {
       if (slot == device_times<SearchDir, Vias + 1>::invalid_packed()) {
         continue;
       }
-      auto const d = tt_.hub_time_[prf_idx_][hub_idx_t{e.hub_[i]}];
+      auto const d = tt_.hub_time_[hub_idx_t{e.hub_[i]}];
       relax_fp_target(k, location_idx_t{e.loc_[i]},
                       adjusted_transfer_time(transfer_time_settings_,
                                              static_cast<int>(d.count())),
@@ -778,7 +776,7 @@ struct raptor_impl {
 
       auto const base = w * kWarpSize;  // lane i <-> bit i of the mark word
       auto const my_i = base + lane;
-      auto const my_marked = ((bits >> lane) & 1U) != 0U;
+      auto const is_marked = ((bits >> lane) & 1U) != 0U;
 
       // per-lane state; sourced via shuffle by the cooperative hub path
       auto tmp_time = kInvalid;
@@ -788,7 +786,7 @@ struct raptor_impl {
 
       auto const t_at_dest = time_at_dest_.get(k);
 
-      if (my_marked) {
+      if (is_marked) {
         auto const l = location_idx_t{my_i};
         tmp_time = tmp_.get(l, Vias);
         if (tmp_time != kInvalid) {

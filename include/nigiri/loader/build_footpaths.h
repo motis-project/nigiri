@@ -21,8 +21,6 @@ void build_footpaths(timetable& tt, finalize_options);
 
 void write_default_profile(timetable&, bool adjust_footpaths);
 
-void index_hubs(timetable&);
-
 inline duration_t max_with_transfer_times(timetable const& tt,
                                           location_idx_t const from,
                                           location_idx_t const to,
