@@ -16,6 +16,7 @@
 #include "utl/parallel_for.h"
 #include "utl/parser/cstr.h"
 #include "utl/progress_tracker.h"
+#include "utl/visit.h"
 #include "utl/zip.h"
 
 #include "nigiri/logging.h"
@@ -197,18 +198,14 @@ std::uint64_t compare_results(
                                std::get<geo::latlng>(v).lng_);
           };
       auto const& q = queries[i].q_;
-      auto const time_str =
-          std::holds_alternative<interval<unixtime_t>>(q.start_time_)
-              ? fmt::format("[{}, {}] epoch=[{}, {}]",
-                            std::get<interval<unixtime_t>>(q.start_time_).from_,
-                            std::get<interval<unixtime_t>>(q.start_time_).to_,
-                            std::get<interval<unixtime_t>>(q.start_time_)
-                                .from_.time_since_epoch()
-                                .count(),
-                            std::get<interval<unixtime_t>>(q.start_time_)
-                                .to_.time_since_epoch()
-                                .count())
-              : fmt::format("{}", std::get<unixtime_t>(q.start_time_));
+      auto const time_str = utl::visit(
+          q.start_time_,
+          [](unixtime_t const t) { return fmt::format("{}", t); },
+          [](interval<unixtime_t> const iv) {
+            return fmt::format("[{}, {}] epoch=[{}, {}]", iv.from_, iv.to_,
+                               iv.from_.time_since_epoch().count(),
+                               iv.to_.time_since_epoch().count());
+          });
       fmt::println("  QUERY from={} to={} start_time={} window=[{}, {}]",
                    loc_str(queries[i].start_), loc_str(queries[i].dest_),
                    time_str, window.from_, window.to_);
