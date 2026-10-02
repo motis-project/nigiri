@@ -73,7 +73,7 @@ void for_each_side_location(timetable const& tt,
       fn(l);
     }
   } else {
-    // Unqualified rules map to all descendant stops.
+    // Unqualified rules map to the stop and all descendants.
     auto const stop = side.is_from() ? r.from_stop_ : r.to_stop_;
     fn(stop);
     for (auto const c : tt.locations_.children_[stop]) {

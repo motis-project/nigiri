@@ -118,6 +118,12 @@ void collect_members(timetable const& tt,
 }
 
 struct walk_hubs {
+  void add_footpath(location_idx_t const from,
+                    location_idx_t const to,
+                    duration_t const d) {
+    footpaths_.push_back({from, footpath{to, d}});
+  }
+
   hub_lists hubs_;
   std::vector<pair<location_idx_t, footpath>> footpaths_;
 };
@@ -130,29 +136,10 @@ walk_hubs get_walk_hubs(timetable const& tt,
   auto targets = std::vector<location_idx_t>{};
   auto egress = std::vector<location_idx_t>{};
 
-  auto const add_footpaths = [&](auto const& from, auto const& to,
-                                 duration_t const d) {
-    for (auto const m : from) {
-      for (auto const t : to) {
-        if (m != t && !idx.contains(m, t)) {
-          walk.footpaths_.push_back({m, footpath{t, d}});
-        }
-      }
-    }
+  auto const is_ruled = [&](location_idx_t const from,
+                            location_idx_t const to) {
+    return idx.contains(from, to);
   };
-  auto const add_hub_or_footpaths =
-      [&](std::vector<location_idx_t> const& ingress,
-          std::vector<location_idx_t> const& eg, duration_t const d) {
-        if (ingress.empty() || eg.empty()) {
-          return;
-        }
-        if (ingress.size() * eg.size() <= ingress.size() + eg.size()) {
-          add_footpaths(ingress, eg, d);
-          return;
-        }
-        walk.hubs_.add(ingress, eg, d);
-      };
-
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
     collect_members(tt, l, members);
 
@@ -198,16 +185,11 @@ walk_hubs get_walk_hubs(timetable const& tt,
           continue;
         }
 
-        for_each_hub(members, targets, coverage,
-                     [&](std::vector<location_idx_t> const& in,
-                         std::vector<location_idx_t> const& out) {
-                       add_hub_or_footpaths(in, out, d);
-                     });
-        add_footpaths(coverage.slow_from_, coverage.slow_to_, d);
+        add_hubs_or_footpaths(members, targets, d, coverage, is_ruled, walk);
       }
 
       utl::erase_duplicates(egress);
-      add_hub_or_footpaths(members, egress, d);
+      add_hubs_or_footpaths(members, egress, d, hub_coverage{}, is_ruled, walk);
     }
   }
 

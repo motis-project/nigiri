@@ -220,8 +220,8 @@ void fold_pair_defaults(timetable& tt,
     };
 
     return
-        // Does this rule override an explicit/majority default with a different
-        // duration? => keep this rule
+        // Does this rule override an explicit/majority default
+        // with a different duration? => keep this rule
         any_pair(any_with_children,  // this/children stop pairs
                  [&](transfer_pair const p) {
                    auto const it = default_duration.find(p);
@@ -468,22 +468,18 @@ void read_transfers(source_idx_t const src,
     return;
   }
 
-  // ====================================================================
-  // Apply rules -> overwrite stop sequence stops with virtual locations.
-  // --------------------------------------------------------------------
-
+  // Store rules (merge sort).
   auto const feed_rules = interval{
       first_rule, transfer_rule_idx_t{tt.transfer_rules_.rules_.size()}};
   store_rule_lookups(tt, feed_rules);
 
+  // Update stop sequences.
   auto const has_stop_seq = [](trip const& t) {
     return t.flex_stops_.empty() &&
            (t.service_ == nullptr || !t.service_->none()) &&
            !t.stop_seq_.empty();
   };
-
-  // Update stop sequences.
-  auto virts = hash_map<virt_key, new_virt>{};
+  auto virts = hash_map<virt_key, virt>{};
   auto trip_rules = std::vector<transfer_rule_side_idx>{};
   auto sig = std::vector<transfer_rule_side_idx>{};
   for (auto& t : trips.data_) {
