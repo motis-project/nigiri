@@ -126,9 +126,9 @@ mutable_fws_multimap<location_idx_t, footpath> write_walk_hubs(
   auto targets = std::vector<location_idx_t>{};
   auto egress = std::vector<location_idx_t>{};
 
-  auto const is_ruled = [&](location_idx_t const from,
-                            location_idx_t const to) {
-    return idx.contains(from, to);
+  auto const is_footpath_allowed = [&](location_idx_t const from,
+                                       location_idx_t const to) {
+    return !idx.contains(from, to);
   };
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
     collect_members(tt, l, members);
@@ -174,13 +174,13 @@ mutable_fws_multimap<location_idx_t, footpath> write_walk_hubs(
           continue;
         }
 
-        add_hubs_or_footpaths(members, targets, d, coverage, is_ruled, tt,
-                              walk);
+        add_hubs_or_footpaths(members, targets, d, coverage,
+                              is_footpath_allowed, tt, walk);
       }
 
       utl::erase_duplicates(egress);
-      add_hubs_or_footpaths(members, egress, d, hub_coverage{}, is_ruled, tt,
-                            walk);
+      add_hubs_or_footpaths(members, egress, d, hub_coverage{},
+                            is_footpath_allowed, tt, walk);
     }
   }
 

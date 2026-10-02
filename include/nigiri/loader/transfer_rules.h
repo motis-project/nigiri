@@ -61,28 +61,27 @@ void add_hub(timetable& tt, In&& in, Out&& out, duration_t const d) {
 
 void index_hubs(timetable&);
 
-// Connects every pair of from x to at duration d, except pairs is_owned leaves
-// to someone else:
+// Connects every pair of from x to at duration d:
 //
 // - unrestricted hub: !slow_from -> all
 // - restricted hub: slow_from -> !slow_to
-// - footpaths: slow_from -> slow_to
+// - footpaths: slow_from -> slow_to IF is_footpath_allowed(slow_from, slow_to)
 //
 // A hub with X sources and Y targets is written as only footpaths instead if:
 // X*Y (minus self-pairs) <= X+Y.
-template <typename From, typename To, typename IsOwned>
+template <typename From, typename To, typename IsFootpathAllowed>
 void add_hubs_or_footpaths(
     From const& from,
     To const& to,
     duration_t const d,
     hub_coverage const& coverage,
-    IsOwned&& is_owned,
+    IsFootpathAllowed&& is_footpath_allowed,
     timetable& tt,
     mutable_fws_multimap<location_idx_t, footpath>& footpaths) {
   auto const add_footpaths = [&](auto&& in, auto&& targets) {
     for (auto const f : in) {
       for (auto const t : targets) {
-        if (f != t && !is_owned(f, t)) {
+        if (f != t && is_footpath_allowed(f, t)) {
           footpaths[f].emplace_back(t, d);
         }
       }

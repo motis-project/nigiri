@@ -97,7 +97,7 @@ void add_rule_hubs(
     add_hubs_or_footpaths(
         from_locations, to_locations, d, coverage,
         [&](location_idx_t const from, location_idx_t const to) {
-          return utl::lookup(most_specific, transfer_pair{from, to}) !=
+          return utl::lookup(most_specific, transfer_pair{from, to}) ==
                  rule_idx;
         },
         tt, footpaths);
@@ -156,13 +156,13 @@ void add_stop_hubs(
     });
 
     // Pairs a rule states with another duration -> add_rule_footpaths.
-    auto const is_owned = [&](location_idx_t const from,
-                              location_idx_t const to) {
+    auto const is_footpath_allowed = [&](location_idx_t const from,
+                                         location_idx_t const to) {
       auto const winner = utl::lookup(most_specific, transfer_pair{from, to});
-      return winner.has_value() && rules[*winner].duration_ != d;
+      return !winner.has_value() || rules[*winner].duration_ == d;
     };
-    add_hubs_or_footpaths(members, members, d, coverage, is_owned, tt,
-                          footpaths);
+    add_hubs_or_footpaths(members, members, d, coverage, is_footpath_allowed,
+                          tt, footpaths);
   }
 }
 
