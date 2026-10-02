@@ -48,8 +48,6 @@ adjusted_transfer_time(
   }
 }
 
-// Adjusted duration of a change at a stop with the own change time own, in int:
-// it may exceed the 255 min of u8_minutes. nullopt: changing is not allowed.
 inline std::optional<int> adjusted_change_time(
     transfer_time_settings const& tts, u8_minutes const own) {
   if (own == kNoTransferAllowed) {

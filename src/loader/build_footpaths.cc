@@ -186,7 +186,6 @@ rule_transfers get_walk_hubs(timetable const& tt,
   return walk;
 }
 
-// Whether a hub connects from -> to within max.
 bool is_hub_covered(timetable const& tt,
                     location_idx_t const from,
                     location_idx_t const to,

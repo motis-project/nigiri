@@ -124,7 +124,6 @@ struct rt_timetable {
                    std::nullopt);
   }
 
-  // Arrival and departure change to stop s (named by its base).
   void dispatch_stop_change(rt::run const& r,
                             stop_idx_t const stop_idx,
                             stop const s) {
@@ -222,7 +221,6 @@ struct rt_timetable {
   location_idx_t to_location(rt_location_idx_t const i) const noexcept {
     return location_idx_t{tt_->n_locations() + to_idx(i)};
   }
-  // Real-time locations are virtual locations: a base and its static location.
   location_idx_t base(location_idx_t const l) const {
     return is_rt_location(l) ? rt_locations_.parents_[to_rt_location(l)]
                              : tt_->base(l);
@@ -245,8 +243,6 @@ struct rt_timetable {
                                  std::span<transfer_rule_side_idx const> rules);
   void add_location_rt_transport(location_idx_t, rt_transport_idx_t);
 
-  // Extends v (by location) to the real-time locations: each gets its base's
-  // value.
   template <typename Vec>
   void extend_to_rt_virts(Vec& v) const {
     if (v.size() == 0U) {

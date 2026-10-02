@@ -157,8 +157,6 @@ struct device_timetable {
                    kNProfiles>
       footpaths_in_;
 
-  // Hubs of the search's profile, edges in its direction: the gather edges
-  // (location -> hub) by location, the scatter edges (hub -> location) by hub.
   d_vecmap_view<hub_idx_t, duration_t> hub_time_;
   struct hub_edge_list {
     cuda::std::span<std::uint32_t const> loc_;

@@ -282,7 +282,6 @@ struct gpu_timetable::impl {
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_out_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_in_;
   std::array<thrust::device_vector<duration_t>, kNProfiles> hub_time_;
-  // [profile][direction]: gather (location -> hub), scatter (hub -> location)
   std::array<std::array<hub_edges, 2U>, kNProfiles> hub_gather_, hub_scatter_;
 
   thrust::device_vector<delta> route_stop_times_;
@@ -1162,7 +1161,6 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
   if (rt_active) {
     r.tt_.transport_traffic_days_ = r.rtt_.transport_traffic_days_;
   }
-  // Not in s.tt_: ping and pong share it.
   r.tt_.hub_gather_ = s.gtt_.impl_->hub_gather_[prf_idx_][kDirIdx].view();
   r.tt_.hub_scatter_ = s.gtt_.impl_->hub_scatter_[prf_idx_][kDirIdx].view();
 

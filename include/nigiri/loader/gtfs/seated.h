@@ -77,4 +77,5 @@ expanded_seated<gtfs::utc_trip> expand_seated_trips(trip_data const& trip_data,
 
   return ret;
 }
+
 }  // namespace nigiri::loader::gtfs

@@ -72,8 +72,6 @@ pareto_set<routing::journey> search(
                        dir);
 }
 
-// Arrivals of the direct connections (no change) of a station query that
-// depart in [from, to).
 std::vector<unixtime_t> direct_arrivals(
     timetable const& tt,
     rt_timetable const& rtt,
@@ -82,7 +80,7 @@ std::vector<unixtime_t> direct_arrivals(
     char const* to) {
   auto q = station_query(tt, od.first, od.second, t(from));
   q.slow_direct_ = true;
-  q.use_start_footpaths_ = true;  // as motis without street routing
+  q.use_start_footpaths_ = true;
   auto res = pareto_set<routing::journey>{};
   routing::enrich_with_slow_direct<direction::kForward>(
       tt, &rtt, q, interval{t(from), t(to)}, res);
@@ -486,8 +484,7 @@ TEST(gtfsrt_transfer_rules, journey_shows_new_platform) {
   }
 }
 
-// A query from the station finds the moved trip at its new platform, its
-// direct connections as well.
+// A query from the station finds the moved trip at its new platform.
 TEST(gtfsrt_transfer_rules, start_at_station_with_moved_trip) {
   auto const tt = load_network("S,S,2,120,,,,\nS,S,2,900,,,F,G");
   auto rtt = rt::create_rt_timetable(tt, kDay);
@@ -501,8 +498,7 @@ TEST(gtfsrt_transfer_rules, start_at_station_with_moved_trip) {
                             "2019-05-01 10:45 Europe/Berlin"));
 }
 
-// A query to the station arrives with the moved trip, its direct connections
-// as well.
+// A query to the station arrives with the moved trip.
 TEST(gtfsrt_transfer_rules, destination_at_station_with_moved_trip) {
   auto const tt = load_network("S,S,2,120,,,,\nS,S,2,900,,,F,G");
   auto rtt = rt::create_rt_timetable(tt, kDay);

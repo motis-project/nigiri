@@ -5,7 +5,6 @@
 
 namespace nigiri {
 
-// Merges src into the sorted dst, keeping each element once.
 template <typename Dst, typename Src>
 void merge_sorted(Dst& dst, Src const& src) {
   auto const n = static_cast<std::ptrdiff_t>(dst.size());
