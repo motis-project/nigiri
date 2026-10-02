@@ -119,10 +119,9 @@ void collect_members(timetable const& tt,
       l, [&](location_idx_t const c) { out.push_back(c); });
 }
 
-rule_transfers get_walk_hubs(timetable const& tt,
-                             rule_index const& idx,
-                             bool const adjust_footpaths) {
-  auto walk = rule_transfers{};
+mutable_fws_multimap<location_idx_t, footpath> write_walk_hubs(
+    timetable& tt, rule_index const& idx, bool const adjust_footpaths) {
+  auto walk = mutable_fws_multimap<location_idx_t, footpath>{};
   auto members = std::vector<location_idx_t>{};
   auto targets = std::vector<location_idx_t>{};
   auto egress = std::vector<location_idx_t>{};
@@ -175,11 +174,13 @@ rule_transfers get_walk_hubs(timetable const& tt,
           continue;
         }
 
-        add_hubs_or_footpaths(members, targets, d, coverage, is_ruled, walk);
+        add_hubs_or_footpaths(members, targets, d, coverage, is_ruled, tt,
+                              walk);
       }
 
       utl::erase_duplicates(egress);
-      add_hubs_or_footpaths(members, egress, d, hub_coverage{}, is_ruled, walk);
+      add_hubs_or_footpaths(members, egress, d, hub_coverage{}, is_ruled, tt,
+                            walk);
     }
   }
 
@@ -295,23 +296,21 @@ void write_footpaths(timetable& tt,
 void write_default_profile(timetable& tt, bool const adjust_footpaths) {
   auto const timer = scoped_timer{"loader.footpath.default_profile"};
 
-  auto transfers = get_rule_transfers(tt);
   auto& loc = tt.locations_;
   loc.hub_in_[kDefaultProfile].clear();
   loc.hub_out_[kDefaultProfile].clear();
   loc.hub_time_[kDefaultProfile].clear();
-  write_hubs(tt, transfers.hubs_);
-
-  auto const idx = rule_index{std::move(transfers.footpaths_)};
+  auto const idx = rule_index{write_rule_hubs(tt)};
+  index_hubs(tt);
   apply_transfer_rules(tt, idx);
 
-  auto walk = get_walk_hubs(tt, idx, adjust_footpaths);
-  for (auto l = location_idx_t{0U}; l != walk.footpaths_.size(); ++l) {
-    for (auto const fp : walk.footpaths_[l]) {
+  auto const walk = write_walk_hubs(tt, idx, adjust_footpaths);
+  for (auto l = location_idx_t{0U}; l != walk.size(); ++l) {
+    for (auto const fp : walk[l]) {
       loc.preprocessing_footpaths_out_[l].emplace_back(fp);
     }
   }
-  write_hubs(tt, walk.hubs_);
+  index_hubs(tt);
 
   write_footpaths(tt, idx, adjust_footpaths);
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);

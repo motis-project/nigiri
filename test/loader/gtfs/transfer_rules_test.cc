@@ -915,7 +915,7 @@ TEST(gtfs, transfer_rules_very_large_min_transfer_time_is_not_a_ban) {
 }
 
 // ===========================================================================
-// Walk hubs and rule hubs. get_walk_hubs sees rule footpaths, not the pairs
+// Walk hubs and rule hubs. write_walk_hubs sees rule footpaths, not the pairs
 // of a rule hub, so a rule hub is only safe where a rule speaks for its two
 // stops as well - for GTFS, the fold's default does that. add_rule_hubs
 // asserts it; this test builds rules without the GTFS loader to break it.
@@ -961,7 +961,7 @@ TEST(transfer_rules_DeathTest, rule_hub_without_stop_pair_rule) {
       most_specific[loader::transfer_pair{x, y}] = rule;
     }
   }
-  auto transfers = loader::rule_transfers{};
-  EXPECT_DEBUG_DEATH(loader::add_rule_hubs(tt, most_specific, transfers),
+  auto footpaths = mutable_fws_multimap<location_idx_t, footpath>{};
+  EXPECT_DEBUG_DEATH(loader::add_rule_hubs(tt, most_specific, footpaths),
                      "most_specific\\.contains");
 }

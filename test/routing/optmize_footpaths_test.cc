@@ -318,9 +318,8 @@ void add_hub(timetable& tt,
              std::vector<location_idx_t> const& in,
              std::vector<location_idx_t> const& out,
              duration_t const d) {
-  auto hubs = loader::hub_lists{};
-  hubs.add(in, out, d);
-  loader::write_hubs(tt, hubs);
+  loader::add_hub(tt, in, out, d);
+  loader::index_hubs(tt);
 }
 
 // Two hubs state u -> v, the slower one first: a hub only has to leave out

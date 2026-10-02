@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <cstdint>
 #include <algorithm>
 #include <functional>
@@ -8,6 +9,8 @@
 #include <vector>
 
 #include "cista/reflection/comparable.h"
+
+#include "utl/helpers/algorithm.h"
 
 #include "nigiri/footpath.h"
 #include "nigiri/timetable.h"
@@ -35,33 +38,28 @@ struct hub_coverage {
   hash_set<location_idx_t> slow_from_, slow_to_;
 };
 
-struct hub_lists {
-  template <typename In, typename Out>
-  void add(In&& in, Out&& out, duration_t const d) {
-    if (std::ranges::empty(in) || std::ranges::empty(out)) {
-      return;
-    }
-    in_.emplace_back(in);
-    out_.emplace_back(out);
-    time_.push_back(d);
+template <typename In, typename Out>
+void add_hub(timetable& tt, In&& in, Out&& out, duration_t const d) {
+  if (std::ranges::empty(in) || std::ranges::empty(out)) {
+    return;
   }
+  auto& loc = tt.locations_;
+  loc.hub_in_[kDefaultProfile].emplace_back(in);
+  loc.hub_out_[kDefaultProfile].emplace_back(out);
+  loc.hub_time_[kDefaultProfile].push_back(d);
+  utl::sort(loc.hub_in_[kDefaultProfile].back());
+  utl::sort(loc.hub_out_[kDefaultProfile].back());
 
-  vecvec<hub_idx_t, location_idx_t> in_, out_;
-  vector_map<hub_idx_t, duration_t> time_;
-};
+  // l in in and out: routing relaxes l -> l, must not beat l's own change.
+  assert(utl::all_of(
+      loc.hub_in_[kDefaultProfile].back(), [&](location_idx_t const l) {
+        auto const hub_out = loc.hub_out_[kDefaultProfile].back();
+        return !std::binary_search(begin(hub_out), end(hub_out), l) ||
+               to_fp_duration(loc.transfer_time_[l]) <= d;
+      }));
+}
 
-void write_hubs(timetable&, hub_lists const&);
-
-struct rule_transfers {
-  void add_footpath(location_idx_t const from,
-                    location_idx_t const to,
-                    duration_t const d) {
-    footpaths_[from].emplace_back(to, d);
-  }
-
-  hub_lists hubs_;
-  mutable_fws_multimap<location_idx_t, footpath> footpaths_;
-};
+void index_hubs(timetable&);
 
 // Connects every pair of from x to at duration d, except pairs is_owned leaves
 // to someone else:
@@ -72,18 +70,20 @@ struct rule_transfers {
 //
 // A hub with X sources and Y targets is written as only footpaths instead if:
 // X*Y (minus self-pairs) <= X+Y.
-template <typename From, typename To, typename IsOwned, typename Out>
-void add_hubs_or_footpaths(From const& from,
-                           To const& to,
-                           duration_t const d,
-                           hub_coverage const& coverage,
-                           IsOwned&& is_owned,
-                           Out& out) {
+template <typename From, typename To, typename IsOwned>
+void add_hubs_or_footpaths(
+    From const& from,
+    To const& to,
+    duration_t const d,
+    hub_coverage const& coverage,
+    IsOwned&& is_owned,
+    timetable& tt,
+    mutable_fws_multimap<location_idx_t, footpath>& footpaths) {
   auto const add_footpaths = [&](auto&& in, auto&& targets) {
     for (auto const f : in) {
       for (auto const t : targets) {
         if (f != t && !is_owned(f, t)) {
-          out.add_footpath(f, t, d);
+          footpaths[f].emplace_back(t, d);
         }
       }
     }
@@ -108,7 +108,7 @@ void add_hubs_or_footpaths(From const& from,
     if (n_pairs <= n_entries) {
       add_footpaths(in, targets);
     } else {
-      out.hubs_.add(in, targets, d);
+      add_hub(tt, in, targets, d);
     }
   };
 
@@ -129,9 +129,9 @@ void add_hubs_or_footpaths(From const& from,
 }
 
 void add_rule_hubs(
-    timetable const&,
+    timetable&,
     hash_map<transfer_pair, transfer_rule_idx_t> const& most_specific,
-    rule_transfers&);
+    mutable_fws_multimap<location_idx_t, footpath>& footpaths);
 
 void store_rule_lookups(timetable&, interval<transfer_rule_idx_t> rules);
 
@@ -144,6 +144,6 @@ location_idx_t get_or_create_virt(
 void store_virt_lookups_to_tt(timetable&,
                               hash_map<virt_key, virt> const& virts);
 
-rule_transfers get_rule_transfers(timetable const&);
+mutable_fws_multimap<location_idx_t, footpath> write_rule_hubs(timetable&);
 
 }  // namespace nigiri::loader

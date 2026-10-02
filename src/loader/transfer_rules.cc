@@ -17,24 +17,9 @@
 
 namespace nigiri::loader {
 
-void write_hubs(timetable& tt, hub_lists const& hubs) {
+void index_hubs(timetable& tt) {
   constexpr auto const p = kDefaultProfile;
   auto& loc = tt.locations_;
-  for (auto h = hub_idx_t{0U}; h != hub_idx_t{hubs.time_.size()}; ++h) {
-    loc.hub_in_[p].emplace_back(hubs.in_[h]);
-    loc.hub_out_[p].emplace_back(hubs.out_[h]);
-    loc.hub_time_[p].push_back(hubs.time_[h]);
-    utl::sort(loc.hub_in_[p].back());
-    utl::sort(loc.hub_out_[p].back());
-
-    // l in in and out: routing relaxes l -> l, must not beat l's own change.
-    assert(utl::all_of(loc.hub_in_[p].back(), [&](location_idx_t const l) {
-      auto const out = loc.hub_out_[p].back();
-      return !std::binary_search(begin(out), end(out), l) ||
-             to_fp_duration(loc.transfer_time_[l]) <= hubs.time_[h];
-    }));
-  }
-
   auto const index = [&](auto const& hub_locations, auto& by_location) {
     auto tmp = mutable_fws_multimap<location_idx_t, hub_idx_t>{};
     for (auto h = hub_idx_t{0U}; h != hub_idx_t{hub_locations.size()}; ++h) {
@@ -52,9 +37,9 @@ void write_hubs(timetable& tt, hub_lists const& hubs) {
 }
 
 void add_rule_hubs(
-    timetable const& tt,
+    timetable& tt,
     hash_map<transfer_pair, transfer_rule_idx_t> const& most_specific,
-    rule_transfers& transfers) {
+    mutable_fws_multimap<location_idx_t, footpath>& footpaths) {
   auto const& rules = tt.transfer_rules_.rules_;
 
   // Per rule: the from and to locations of the pairs it wins between
@@ -115,15 +100,15 @@ void add_rule_hubs(
           return utl::lookup(most_specific, transfer_pair{from, to}) !=
                  rule_idx;
         },
-        transfers);
+        tt, footpaths);
   }
 }
 
 void add_stop_hubs(
-    timetable const& tt,
+    timetable& tt,
     hash_map<transfer_pair, transfer_rule_idx_t> const& most_specific,
     std::span<location_idx_t const> virts,
-    rule_transfers& transfers) {
+    mutable_fws_multimap<location_idx_t, footpath>& footpaths) {
   auto const& loc = tt.locations_;
   auto const& rules = tt.transfer_rules_.rules_;
 
@@ -176,7 +161,8 @@ void add_stop_hubs(
       auto const winner = utl::lookup(most_specific, transfer_pair{from, to});
       return winner.has_value() && rules[*winner].duration_ != d;
     };
-    add_hubs_or_footpaths(members, members, d, coverage, is_owned, transfers);
+    add_hubs_or_footpaths(members, members, d, coverage, is_owned, tt,
+                          footpaths);
   }
 }
 
@@ -185,7 +171,7 @@ void add_stop_hubs(
 void add_rule_footpaths(
     timetable const& tt,
     hash_map<transfer_pair, transfer_rule_idx_t> const& most_specific,
-    rule_transfers& transfers) {
+    mutable_fws_multimap<location_idx_t, footpath>& footpaths) {
   for (auto const& [from_to, rule] : most_specific) {
     auto const d = tt.transfer_rules_.rules_[rule].duration_;
     auto const from_base = tt.base(from_to.from_);
@@ -195,7 +181,7 @@ void add_rule_footpaths(
             ? d == to_fp_duration(tt.locations_.transfer_time_[from_base])
             : d != footpath::kMaxDuration;
     if (!is_hub_duration) {
-      transfers.add_footpath(from_to.from_, from_to.to_, d);
+      footpaths[from_to.from_].emplace_back(from_to.to_, d);
     }
   }
 }
@@ -286,7 +272,7 @@ hash_map<transfer_pair, transfer_rule_idx_t> get_most_specific(
   return most_specific;
 }
 
-rule_transfers get_rule_transfers(timetable const& tt) {
+mutable_fws_multimap<location_idx_t, footpath> write_rule_hubs(timetable& tt) {
   auto const& loc = tt.locations_;
 
   auto virts = vector_map<source_idx_t, std::vector<location_idx_t>>{};
@@ -297,7 +283,7 @@ rule_transfers get_rule_transfers(timetable const& tt) {
     }
   }
 
-  auto transfers = rule_transfers{};
+  auto footpaths = mutable_fws_multimap<location_idx_t, footpath>{};
 
   auto const& rules = tt.transfer_rules_.rules_;
   utl::equal_ranges_linear(
@@ -312,19 +298,19 @@ rule_transfers get_rule_transfers(timetable const& tt) {
         auto const& feed_virts = virts[from->src_];
 
         auto const most_specific = get_most_specific(tt, feed_rules);
-        add_rule_hubs(tt, most_specific, transfers);
-        add_stop_hubs(tt, most_specific, feed_virts, transfers);
-        add_rule_footpaths(tt, most_specific, transfers);
+        add_rule_hubs(tt, most_specific, footpaths);
+        add_stop_hubs(tt, most_specific, feed_virts, footpaths);
+        add_rule_footpaths(tt, most_specific, footpaths);
       });
 
-  while (transfers.footpaths_.size() < tt.n_locations()) {
-    transfers.footpaths_.emplace_back();
+  while (footpaths.size() < tt.n_locations()) {
+    footpaths.emplace_back();
   }
 
   log(log_lvl::info, "loader.transfer_rules", "{} rule and stop hubs",
-      transfers.hubs_.time_.size());
+      loc.hub_time_[kDefaultProfile].size());
 
-  return transfers;
+  return footpaths;
 }
 
 }  // namespace nigiri::loader
