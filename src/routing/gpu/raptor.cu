@@ -354,21 +354,19 @@ struct gpu_rt_timetable::impl {
     return v;
   }
 
-  static vecvec<location_idx_t, footpath> build_rt_footpaths(
-      rt_timetable const& rtt,
-      mutable_fws_multimap<location_idx_t, footpath> const& fps) {
-    auto v = vecvec<location_idx_t, footpath>{};
-    auto tmp = std::vector<footpath>{};
+  static std::vector<device_rt_timetable::rt_footpath> build_rt_footpaths(
+      rt_timetable const& rtt) {
+    auto v = std::vector<device_rt_timetable::rt_footpath>{};
+    for (auto l = location_idx_t{0U}; l != rtt.rt_footpaths_out_.size(); ++l) {
+      for (auto const fp : rtt.rt_footpaths_out_[l]) {
+        v.push_back({l, fp});
+      }
+    }
     for (auto i = rt_location_idx_t{0U}; i != rtt.n_rt_locations(); ++i) {
       auto const l = rtt.to_location(i);
-      tmp.clear();
-      if (l < fps.size()) {
-        tmp.assign(begin(fps[l]), end(fps[l]));
-      }
       if (auto const own = rtt.transfer_time(l); own != kNoTransferAllowed) {
-        tmp.emplace_back(l, duration_t{own});
+        v.push_back({l, footpath{l, duration_t{own}}});
       }
-      v.emplace_back(tmp);
     }
     return v;
   }
@@ -391,9 +389,7 @@ struct gpu_rt_timetable::impl {
         rt_transport_location_seq_{build_location_seq(rtt)},
         rt_transport_stop_times_{rtt.rt_transport_stop_times_},
         rt_transport_clasz_{to_device(build_rt_transport_clasz(rtt))},
-        rt_footpaths_out_{build_rt_footpaths(rtt, rtt.rt_footpaths_out_)},
-        rt_footpaths_in_{build_rt_footpaths(rtt, rtt.rt_footpaths_in_)},
-        n_rt_locations_{rtt.n_rt_locations()},
+        rt_footpaths_{to_device(build_rt_footpaths(rtt))},
         transport_traffic_days_{to_device(rtt.transport_traffic_days_)},
         bitfields_{to_device(rtt.bitfields_)},
         rt_transport_bikes_allowed_{
@@ -483,9 +479,9 @@ struct gpu_rt_timetable::impl {
                                        : rt_transport_location_seq_),
         .rt_transport_stop_times_ = to_view(rt_transport_stop_times_),
         .rt_transport_clasz_ = to_view(rt_transport_clasz_),
-        .rt_footpaths_out_ = to_view(rt_footpaths_out_),
-        .rt_footpaths_in_ = to_view(rt_footpaths_in_),
-        .n_rt_locations_ = is_projection_used ? 0U : n_rt_locations_,
+        .rt_footpaths_ =
+            to_view(rt_footpaths_)
+                .first(is_projection_used ? 0U : rt_footpaths_.size()),
         .transport_traffic_days_ = to_view(transport_traffic_days_),
         .bitfields_ = to_view(bitfields_),
         .filters_ = thrust::raw_pointer_cast(rt_filters_ctx_.data()),
@@ -504,9 +500,7 @@ struct gpu_rt_timetable::impl {
       rt_transport_stop_times_;
   thrust::device_vector<clasz> rt_transport_clasz_;
 
-  device_vecvec<vecvec<location_idx_t, footpath>> rt_footpaths_out_;
-  device_vecvec<vecvec<location_idx_t, footpath>> rt_footpaths_in_;
-  std::uint32_t n_rt_locations_;
+  thrust::device_vector<device_rt_timetable::rt_footpath> rt_footpaths_;
 
   bool has_projection_{false};
   device_vecvec<vecvec<location_idx_t, rt_transport_idx_t>>

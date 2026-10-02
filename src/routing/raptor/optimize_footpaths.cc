@@ -466,11 +466,17 @@ void optimize_transfers(timetable const& tt,
           continue;
         }
 
+        auto const from_l = search_location(q.prf_idx_, stp_from);
         auto const to_l = search_location(q.prf_idx_, stp_to);
         auto shortest = std::optional<duration_t>{};
+        if (auto const own = rtt == nullptr
+                                 ? tt.locations_.transfer_time_[from_l]
+                                 : rtt->transfer_time(from_l);
+            from_l == to_l && own != kNoTransferAllowed) {
+          shortest = duration_t{own};
+        }
         for_each_transfer<direction::kForward>(
-            tt, rtt, q.prf_idx_, search_location(q.prf_idx_, stp_from),
-            [&](footpath const& fp) {
+            tt, rtt, q.prf_idx_, from_l, [&](footpath const& fp) {
               if (fp.target() == to_l &&
                   (!shortest.has_value() || fp.duration() < *shortest)) {
                 shortest = fp.duration();

@@ -88,9 +88,11 @@ struct device_rt_timetable {
       rt_transport_stop_times_;
   d_vecmap_view<rt_transport_idx_t, clasz> rt_transport_clasz_;
 
-  d_vecvec_view<vecvec<location_idx_t, footpath>> rt_footpaths_out_;
-  d_vecvec_view<vecvec<location_idx_t, footpath>> rt_footpaths_in_;
-  std::uint32_t n_rt_locations_{0U};
+  struct rt_footpath {
+    location_idx_t from_;
+    footpath fp_;
+  };
+  cuda::std::span<rt_footpath const> rt_footpaths_;
 
   d_vecmap_view<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
   d_vecmap_view<bitfield_idx_t, bitfield> bitfields_;

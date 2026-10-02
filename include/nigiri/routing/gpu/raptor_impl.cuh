@@ -845,15 +845,6 @@ struct raptor_impl {
                 defer = true;
               }
             }
-            if (my_i >= tt_.n_static_locations_ &&
-                my_i - tt_.n_static_locations_ < rtt_.n_rt_locations_) {
-              auto const v = location_idx_t{my_i - tt_.n_static_locations_};
-              auto const rt_footpaths =
-                  kFwd ? rtt_.rt_footpaths_out_[v] : rtt_.rt_footpaths_in_[v];
-              for (auto j = 0U; j != rt_footpaths.size(); ++j) {
-                relax_footpath(k, rt_footpaths[j], tmp_time, bc, t_at_dest);
-              }
-            }
           }
         }
       }
@@ -874,26 +865,27 @@ struct raptor_impl {
       });
     }
 
-    for (auto i = get_global_thread_id(); i < rtt_.n_rt_locations_;
+    for (auto i = get_global_thread_id(); i < rtt_.rt_footpaths_.size();
          i += get_global_stride()) {
-      auto const v = location_idx_t{tt_.n_static_locations_ + i};
-      auto const sources = kFwd ? rtt_.rt_footpaths_in_[location_idx_t{i}]
-                                : rtt_.rt_footpaths_out_[location_idx_t{i}];
-      auto const t_at_dest = time_at_dest_.get(k);
-      for (auto j = 0U; j != sources.size(); ++j) {
-        auto const y = sources[j].target();
-        if (y >= tt_.n_static_locations_ || !prev_station_mark_[to_idx(y)]) {
-          continue;
-        }
-        auto const tmp_time = tmp_.get(y, Vias);
-        if (tmp_time == kInvalid) {
-          continue;
-        }
-        relax_fp_target(k, v,
-                        adjusted_transfer_time(transfer_time_settings_,
-                                               sources[j].duration().count()),
-                        tmp_time, tmp_.get_bc(0U, y, Vias), t_at_dest);
+      auto const& e = rtt_.rt_footpaths_[i];
+      auto const src = kFwd ? e.from_ : e.fp_.target();
+      if (!prev_station_mark_[to_idx(src)]) {
+        continue;
       }
+      if constexpr (WithTdFootpaths) {
+        if (has_td_fps(src)) {
+          continue;
+        }
+      }
+      auto const tmp_time = tmp_.get(src, Vias);
+      if (tmp_time == kInvalid) {
+        continue;
+      }
+      relax_fp_target(k, kFwd ? e.fp_.target() : e.from_,
+                      adjusted_transfer_time(transfer_time_settings_,
+                                             e.fp_.duration().count()),
+                      tmp_time, tmp_.get_bc(0U, src, Vias),
+                      time_at_dest_.get(k));
     }
   }
 
