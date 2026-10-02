@@ -190,12 +190,14 @@ std::uint64_t compare_results(
                    ref_name, r_size, cmp_name, c_size);
       auto const loc_str =
           [&](std::variant<location_idx_t, geo::latlng> const& v) {
-            if (std::holds_alternative<location_idx_t>(v)) {
-              auto const l = std::get<location_idx_t>(v);
-              return fmt::format("{} idx={}", tt.locations_.ids_[l].view(), l);
-            }
-            return fmt::format("({}, {})", std::get<geo::latlng>(v).lat_,
-                               std::get<geo::latlng>(v).lng_);
+            return utl::visit(
+                v,
+                [&](location_idx_t const l) {
+                  return fmt::format("{} idx={}", loc{tt, l}, l);
+                },
+                [](geo::latlng const& p) {
+                  return fmt::format("({}, {})", p.lat_, p.lng_);
+                });
           };
       auto const& q = queries[i].q_;
       auto const time_str = utl::visit(

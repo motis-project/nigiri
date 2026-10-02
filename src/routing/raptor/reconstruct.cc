@@ -9,6 +9,7 @@
 #include "utl/enumerate.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
+#include "utl/visit.h"
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/for_each_meta.h"
@@ -38,9 +39,9 @@ void to_static_locations(rt_timetable const* rtt, journey& j) {
   for (auto& leg : j.legs_) {
     leg.from_ = rtt->static_location(leg.from_);
     leg.to_ = rtt->static_location(leg.to_);
-    if (auto* const fp = std::get_if<footpath>(&leg.uses_); fp != nullptr) {
-      *fp = footpath{rtt->static_location(fp->target()), fp->duration()};
-    }
+    utl::visit(leg.uses_, [&](footpath& fp) {
+      fp = footpath{rtt->static_location(fp.target()), fp.duration()};
+    });
   }
   j.dest_ = rtt->static_location(j.dest_);
 }

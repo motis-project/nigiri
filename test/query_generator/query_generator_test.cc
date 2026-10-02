@@ -1,5 +1,7 @@
 #include "gtest/gtest.h"
 
+#include "utl/visit.h"
+
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/query_generator/generator.h"
@@ -217,17 +219,15 @@ TEST(query_generation, intermodal_offsets_skip_virtual_locations) {
     auto const check = [&](std::variant<location_idx_t, geo::latlng> const& p,
                            std::vector<routing::offset> const& offsets,
                            transport_mode const& mode) {
-      auto const* pos = std::get_if<geo::latlng>(&p);
-      if (pos == nullptr) {
-        return;
-      }
-      for (auto const& o : offsets) {
-        EXPECT_NE(tt.locations_.types_[o.target()], location_type::kVirt);
-        EXPECT_LE(geo::distance(*pos, tt.locations_.coordinates_[o.target()]),
-                  static_cast<double>(mode.range()) + 1.0)
-            << "offset points outside the search radius";
-        ++checked;
-      }
+      utl::visit(p, [&](geo::latlng const& pos) {
+        for (auto const& o : offsets) {
+          EXPECT_NE(tt.locations_.types_[o.target()], location_type::kVirt);
+          EXPECT_LE(geo::distance(pos, tt.locations_.coordinates_[o.target()]),
+                    static_cast<double>(mode.range()) + 1.0)
+              << "offset points outside the search radius";
+          ++checked;
+        }
+      });
     };
     check(sdq->start_, sdq->q_.start_, gs.start_mode_);
     check(sdq->dest_, sdq->q_.destination_, gs.dest_mode_);

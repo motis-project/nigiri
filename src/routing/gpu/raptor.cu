@@ -29,6 +29,7 @@
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/timer.h"
+#include "utl/visit.h"
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
@@ -1353,11 +1354,11 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     auto elapsed = std::vector<duration_t>(j.legs_.size());
     for (auto i = std::size_t{0U}; i != j.legs_.size(); ++i) {
       auto& lg = j.legs_[i];
-      if (auto* const fp = std::get_if<footpath>(&lg.uses_); fp != nullptr) {
-        elapsed[i] = fp->duration();
-        *fp = footpath{fp->target(),
-                       raw_transfer(lg.from_, lg.to_, fp->duration())};
-      }
+      utl::visit(lg.uses_, [&](footpath& fp) {
+        elapsed[i] = fp.duration();
+        fp = footpath{fp.target(),
+                      raw_transfer(lg.from_, lg.to_, fp.duration())};
+      });
     }
 
     to_static_locations(rtt_, j);
