@@ -186,6 +186,7 @@ TEST(routing, td_footpath) {
   auto const C = find_loc("C");
   auto const B1 = find_loc("B1");
   auto const B2 = find_loc("B2");
+  auto const D = find_loc("D");
 
   tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
   tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
@@ -231,14 +232,26 @@ TEST(routing, td_footpath) {
   // Base: elevator available, no real-time information.
   EXPECT_EQ(kEverythingWorks, to_string(tt, run_search()));
 
+  // Only footpaths from a source with time-dependent footpaths are
+  // time-dependent: an (unusable) time-dependent footpath D -> B2 doesn't
+  // affect the static footpath B1 -> B2.
+  rtt.has_td_footpaths_out_[kProfile].set(D, true);
+  rtt.has_td_footpaths_in_[kProfile].set(B2, true);
+  rtt.td_footpaths_out_[kProfile].resize(tt.n_locations());
+  rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
+  rtt.td_footpaths_out_[kProfile][D].push_back(
+      td_footpath{B2, unixtime_t{0min}, footpath::kMaxDuration});
+  rtt.td_footpaths_in_[kProfile][B2].push_back(
+      td_footpath{D, unixtime_t{0min}, footpath::kMaxDuration});
+
+  EXPECT_EQ(kEverythingWorks, to_string(tt, run_search()));
+
   // Switch to real-time footpaths but don't add any footpaths.
   // Represents "elevator broken forever".
   rtt.has_td_footpaths_in_[kProfile].set(B1, true);
   rtt.has_td_footpaths_in_[kProfile].set(B2, true);
   rtt.has_td_footpaths_out_[kProfile].set(B1, true);
   rtt.has_td_footpaths_out_[kProfile].set(B2, true);
-  rtt.td_footpaths_out_[kProfile].resize(tt.n_locations());
-  rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
 
   EXPECT_EQ(kElevatorOutOfOrder, to_string(tt, run_search()));
 
@@ -356,6 +369,8 @@ TEST(routing, td_footpath_lookup_keeps_the_wait) {
 
   // Alighting at B1 at 09:00, the footpath to B2 is usable from 09:25:
   // wait until 09:25, then walk.
+  rtt.td_footpaths_out_[kProfile][B1].push_back(
+      td_footpath{B2, unixtime_t{day + 9h + 25min}, 10min});
   rtt.td_footpaths_in_[kProfile][B2].push_back(
       td_footpath{B1, unixtime_t{day + 9h + 25min}, 10min});
   auto const q = routing::query{.prf_idx_ = kProfile};
@@ -371,9 +386,9 @@ TEST(routing, td_footpath_lookup_keeps_the_wait) {
   // Boarding at B2 at 10:00, the footpath from B1 is only usable until 09:40:
   // walk until 09:49 at the latest, then wait.
   rtt.td_footpaths_out_[kProfile][B1].push_back(
-      td_footpath{B2, unixtime_t{day + 9h + 25min}, 10min});
-  rtt.td_footpaths_out_[kProfile][B1].push_back(
       td_footpath{B2, unixtime_t{day + 9h + 40min}, footpath::kMaxDuration});
+  rtt.td_footpaths_in_[kProfile][B2].push_back(
+      td_footpath{B1, unixtime_t{day + 9h + 40min}, footpath::kMaxDuration});
   auto const boarding = routing::lookup_footpath(
       B2, unixtime_t{day + 10h}, routing::side::kBoarding, tt, &rtt, q,
       {{B1, 0min, 0U}}, routing::location_match_mode::kExact, true);
@@ -610,6 +625,7 @@ TEST(routing, td_footpath_walk_right_before_outage) {
   // down at 09:15, and usable again from 09:20. The forward search walks from
   // 09:00 to 09:10. The footpath must be looked up for an arrival at 09:10, not
   // a departure at 09:10 (which would wait for 09:20 and start at 08:50).
+  // Transfer time settings don't apply to time-dependent footpaths.
   constexpr auto const kProfile = profile_idx_t{2U};
 
   timetable tt;
@@ -658,7 +674,8 @@ TEST(routing, td_footpath_walk_right_before_outage) {
           .dest_match_mode_ = routing::location_match_mode::kEquivalent,
           .start_ = {{A, 0min, 0U}},
           .destination_ = {{C, 0min, 0U}},
-          .prf_idx_ = kProfile},
+          .prf_idx_ = kProfile,
+          .transfer_time_settings_ = {.default_ = false, .factor_ = 2.0F}},
       direction::kForward);
   EXPECT_EQ(kWalkRightBeforeOutage, to_string(tt, &rtt, result));
 }

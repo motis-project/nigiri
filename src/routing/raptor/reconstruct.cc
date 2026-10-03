@@ -755,12 +755,19 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
 
     trace_reconstruct("CHECKING FOOTPATHS OF {}\n", loc{tt, l});
-    if (rtt == nullptr || !(kFwd ? rtt->has_td_footpaths_in_
-                                 : rtt->has_td_footpaths_out_)[q.prf_idx_]
-                               .test(l)) {
+    // As in the search: footpaths from a source with td footpaths are
+    // time-dependent, all others are static.
+    auto const is_td_source = [&](location_idx_t const x) {
+      return rtt != nullptr && q.prf_idx_ != 0U &&
+             rtt->has_td_footpaths_out_[q.prf_idx_].test(x);
+    };
+    if (kFwd || !is_td_source(l)) {
       auto const footpaths = kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][l]
                                   : tt.locations_.footpaths_out_[q.prf_idx_][l];
       for (auto const& fp : footpaths) {
+        if (kFwd && is_td_source(fp.target())) {
+          continue;
+        }
         auto fp_legs = check_fp(k, l, curr_time, fp, true, false);
         if (fp_legs.has_value()) {
           return std::move(*fp_legs);
@@ -778,8 +785,13 @@ void reconstruct_journey_with_vias(timetable const& tt,
       auto const unix_now = delta_to_unix(base, curr_time);
       auto legs = std::optional<std::pair<journey::leg, journey::leg>>{};
       for_each_footpath<flip(SearchDir)>(
-          td_footpaths, unix_now, [&](footpath const& fp, auto) {
-            auto fp_legs = check_fp(k, l, curr_time, fp, true, true);
+          td_footpaths, unix_now,
+          [&](location_idx_t const target, duration_t const duration, auto) {
+            if (duration >= footpath::kMaxDuration) {
+              return utl::cflow::kContinue;
+            }
+            auto fp_legs = check_fp(k, l, curr_time, footpath{target, duration},
+                                    false, true);
             if (fp_legs.has_value()) {
               legs = std::move(*fp_legs);
               return utl::cflow::kBreak;

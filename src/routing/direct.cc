@@ -86,14 +86,12 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
   auto best_walk = footpath::kMaxDuration;
   auto best_source = location_idx_t{};
 
-  auto const has_td_arr = rtt == nullptr
-                              ? nullptr
-                              : (is_boarding ? &rtt->has_td_footpaths_out_
-                                             : &rtt->has_td_footpaths_in_);
-  auto const td_fps_arr =
-      rtt == nullptr
-          ? nullptr
-          : (is_boarding ? &rtt->td_footpaths_out_ : &rtt->td_footpaths_in_);
+  // As in the search: footpaths from a source with td footpaths are
+  // time-dependent, all others are static.
+  auto const is_td_source = [&](location_idx_t const x) {
+    return rtt != nullptr && q.prf_idx_ != 0U &&
+           rtt->has_td_footpaths_out_[q.prf_idx_].test(x);
+  };
 
   for (auto const& o : offs) {
     auto const o_duration = o.duration();
@@ -119,17 +117,19 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
 
       auto eff_dur = footpath::kMaxDuration;
       auto eff_walk = footpath::kMaxDuration;
-      if (has_td_arr != nullptr && q.prf_idx_ < has_td_arr->size() &&
-          to_idx(l) < (*has_td_arr)[q.prf_idx_].size() &&
-          (*has_td_arr)[q.prf_idx_][l]) {
+      auto const fp_from = is_boarding ? l : loc;
+      auto const fp_to = is_boarding ? loc : l;
+      if (is_td_source(fp_from)) {
         // td footpaths take precedence
-        for_each_footpath(td_search_dir, (*td_fps_arr)[q.prf_idx_][l], t,
-                          [&](footpath const fp, duration_t const walk) {
-                            if (fp.target() == loc && fp.duration() < eff_dur) {
-                              eff_dur = fp.duration();
-                              eff_walk = walk;
-                            }
-                          });
+        for_each_footpath(
+            td_search_dir, rtt->td_footpaths_out_[q.prf_idx_][fp_from], t,
+            [&](location_idx_t const target, duration_t const duration,
+                duration_t const walk) {
+              if (target == fp_to && duration < eff_dur) {
+                eff_dur = duration;
+                eff_walk = walk;
+              }
+            });
       } else {
         // no td footpath -> take shortest regular footpath
         auto const& fps = is_boarding
