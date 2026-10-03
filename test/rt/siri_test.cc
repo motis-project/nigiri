@@ -1059,6 +1059,89 @@ TEST(siri_update, matching) {
   19: de:09574:7000:3:2 Lauf a.d.Pegnitz Bahnhof links der Pegnitz...... a: 03.07 09:26 [03.07 11:26]  RT 03.07 09:26 [03.07 11:26]
 )";
   EXPECT_EQ(kExpected, (std::stringstream{} << rt::frun{tt, &rtt, r}).str());
+
+  // RecordedCall -> observed, EstimatedCall -> predicted.
+  auto const fr = rt::frun{tt, &rtt, r};
+  EXPECT_EQ(rt_data_state::kObserved, fr[0].data_state(event_type::kDep));
+  for (auto i = stop_idx_t{1U}; i != fr.size(); ++i) {
+    EXPECT_EQ(rt_data_state::kPredicted, fr[i].data_state(event_type::kArr))
+        << "i=" << i;
+    if (i != fr.size() - 1U) {
+      EXPECT_EQ(rt_data_state::kPredicted, fr[i].data_state(event_type::kDep))
+          << "i=" << i;
+    }
+  }
+}
+
+TEST(siri_update, observed_arrival_only) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2025_y / July / 1},
+                    date::sys_days{2025_y / July / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, siri_test_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2025_y / July / 3});
+
+  auto u = rt::vdv_aus::updater{tt, src_idx,
+                                rt::vdv_aus::updater::xml_format::kSiri};
+
+  // Same as kMsg, but the second stop is a RecordedCall with arrival only.
+  constexpr auto const kSecondStop =
+      R"(            <EstimatedCall>
+              <StopPointRef>8005440</StopPointRef>
+              <PredictionInaccurate>false</PredictionInaccurate>
+              <AimedArrivalTime>2025-07-03T10:41:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>2025-07-03T10:40:00+02:00</ExpectedArrivalTime>
+              <ArrivalPlatformName>1</ArrivalPlatformName>
+              <AimedDepartureTime>2025-07-03T10:41:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>2025-07-03T10:41:00+02:00</ExpectedDepartureTime>
+              <DeparturePlatformName>1</DeparturePlatformName>
+            </EstimatedCall>
+)";
+  constexpr auto const kSecondStopRecorded =
+      R"(            <RecordedCall>
+              <StopPointRef>8005440</StopPointRef>
+              <AimedArrivalTime>2025-07-03T10:41:00+02:00</AimedArrivalTime>
+              <ActualArrivalTime>2025-07-03T10:40:00+02:00</ActualArrivalTime>
+            </RecordedCall>
+          </RecordedCalls>)";
+  auto msg = std::string{kMsg};
+  auto const second_stop_pos = msg.find(kSecondStop);
+  ASSERT_NE(std::string::npos, second_stop_pos);
+  msg.erase(second_stop_pos, std::string_view{kSecondStop}.size());
+  auto const recorded_end_pos = msg.find("          </RecordedCalls>");
+  ASSERT_NE(std::string::npos, recorded_end_pos);
+  msg.replace(recorded_end_pos,
+              std::string_view{"          </RecordedCalls>"}.size(),
+              kSecondStopRecorded);
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(msg.c_str());
+  u.update(rtt, doc);
+
+  auto td = transit_realtime::TripDescriptor{};
+  td.set_trip_id("2867631759");
+  td.set_start_date("20250703");
+  td.set_start_time("10:39:00");
+  auto const [r, trip] =
+      gtfsrt_resolve_run(date::sys_days{2025_y / July / 3}, tt, &rtt, {}, td);
+  ASSERT_TRUE(r.valid());
+  ASSERT_TRUE(r.is_rt());
+
+  auto const fr = rt::frun{tt, &rtt, r};
+  EXPECT_EQ(rt_data_state::kObserved, fr[0].data_state(event_type::kDep));
+
+  // Arrival observed, departure propagated.
+  EXPECT_EQ(date::sys_days{2025_y / July / 3} + 8h + 40min,
+            fr[1].time(event_type::kArr));
+  EXPECT_EQ(date::sys_days{2025_y / July / 3} + 8h + 40min,
+            fr[1].time(event_type::kDep));
+  EXPECT_EQ(rt_data_state::kObserved, fr[1].data_state(event_type::kArr));
+  EXPECT_EQ(rt_data_state::kPropagated, fr[1].data_state(event_type::kDep));
+
+  EXPECT_EQ(rt_data_state::kPredicted, fr[2].data_state(event_type::kArr));
 }
 
 TEST(siri_update, matching_multiple) {

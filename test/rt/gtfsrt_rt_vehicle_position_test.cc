@@ -448,4 +448,13 @@ TEST(rt, gtfs_rt_vehicle_position_update) {
   EXPECT_EQ(expected_stats1, stats_ss1.str());
 
   ASSERT_FALSE(fr.is_cancelled());
+
+  // Vehicle at stop 3: arrival observed, subsequent events propagated,
+  // preceding events adjusted to keep the event times monotonic.
+  EXPECT_EQ(rt_data_state::kInconsistent, fr[0].data_state(event_type::kDep));
+  EXPECT_EQ(rt_data_state::kInconsistent, fr[2].data_state(event_type::kArr));
+  EXPECT_EQ(rt_data_state::kInconsistent, fr[2].data_state(event_type::kDep));
+  EXPECT_EQ(rt_data_state::kObserved, fr[3].data_state(event_type::kArr));
+  EXPECT_EQ(rt_data_state::kPropagated, fr[3].data_state(event_type::kDep));
+  EXPECT_EQ(rt_data_state::kPropagated, fr[27].data_state(event_type::kArr));
 }

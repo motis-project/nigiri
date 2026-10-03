@@ -23,6 +23,7 @@ struct trip {
     std::optional<unsigned> seq_{};
     event_type ev_type_;
     int delay_minutes_{0};
+    bool no_data_{false};
   };
   std::string trip_id_;
   std::vector<delay> delays_;
