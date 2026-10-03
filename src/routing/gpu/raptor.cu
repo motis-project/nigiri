@@ -404,7 +404,6 @@ struct gpu_raptor_state::impl {
       std::vector<std::uint16_t> const& dist_to_dest,
       hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest) {
     is_intermodal_dest_[dir] = !dist_to_dest.empty();
-
     // td dest offsets: flatten into sorted (loc, range, data) groups.
     if (td_dist_to_dest.empty()) {
       // reset used sizes: the state may have served a flex query before
@@ -1144,11 +1143,13 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
         // t is the arrival in both search directions.
         auto const t = lg.arr_time_;
         for_each_footpath<direction::kBackward>(
-            td_fps[key_l], t, [&](footpath const fp, duration_t const walk) {
-              if (fp.target() != target_l) {
+            td_fps[key_l], t,
+            [&](location_idx_t const target, duration_t const duration,
+                duration_t const walk) {
+              if (target != target_l) {
                 return utl::cflow::kContinue;
               }
-              lg.dep_time_ = t - fp.duration();
+              lg.dep_time_ = t - duration;
               lg.arr_time_ = lg.dep_time_ + walk;
               lg.uses_ = footpath{lg.to_, walk};
               return utl::cflow::kBreak;
