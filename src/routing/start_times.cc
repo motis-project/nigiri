@@ -201,6 +201,10 @@ void add_starts_in_interval(direction const search_dir,
             (search_dir == direction::kForward ? event_type::kDep
                                                : event_type::kArr));
         auto const d = get_duration(search_dir, ev_time, location_offset);
+        if (d == footpath::kMaxDuration) {
+          trace_start("        {} => infeasible\n", ev_time);
+          continue;
+        }
         auto const time_at_start =
             search_dir == direction::kForward ? ev_time - d : ev_time + d;
 

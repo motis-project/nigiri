@@ -672,10 +672,19 @@ struct raptor_impl {
     }
   }
 
-  __device__ __forceinline__ bool has_td_fps(location_idx_t const l) const {
-    auto const& bv =
-        kFwd ? rtt_.td_->has_out_[prf_idx_] : rtt_.td_->has_in_[prf_idx_];
-    return !bv.blocks_.empty() && bv[to_idx(l)];
+  // Footpaths from a source with td footpaths are time-dependent and replace
+  // all its static footpaths. out: l is such a source, !out: l is the target
+  // of td footpaths or of replaced static footpaths.
+  template <bool WithTdFootpaths>
+  __device__ __forceinline__ bool has_td_fps(location_idx_t const l,
+                                             bool const out) const {
+    if constexpr (WithTdFootpaths) {
+      auto const& bv =
+          out ? rtt_.td_->has_out_[prf_idx_] : rtt_.td_->has_in_[prf_idx_];
+      return !bv.blocks_.empty() && bv[to_idx(l)];
+    } else {
+      return false;
+    }
   }
 
   __device__ void update_td_dest_offsets(unsigned const k) {
@@ -784,6 +793,7 @@ struct raptor_impl {
       auto bc = breadcrumb_t{0U};
       auto n_fps = 0U;
       auto defer = false;
+      auto use_td_fps = false;
 
       auto const t_at_dest = time_at_dest_.get(k);
 
@@ -818,10 +828,7 @@ struct raptor_impl {
           }
 
           // footpaths: short lists inline, hubs deferred to the whole warp
-          auto use_td_fps = false;
-          if constexpr (WithTdFootpaths) {
-            use_td_fps = has_td_fps(l);
-          }
+          use_td_fps = has_td_fps<WithTdFootpaths>(l, kFwd);
           if (use_td_fps) {
             if constexpr (WithTdFootpaths) {
               auto const td_fps = kFwd ? rtt_.td_->out_[prf_idx_][l]
@@ -833,18 +840,21 @@ struct raptor_impl {
                                     tmp_time, bc, t_at_dest);
                   });
             }
-          } else {
-            if (my_i < tt_.n_static_locations_) {
-              auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
-                                    : tt_.footpaths_in_[prf_idx_][l];
-              n_fps = static_cast<unsigned>(fps.size());
-              if (n_fps <= kWarpFpThreshold) {
-                for (auto j = 0U; j != n_fps; ++j) {
-                  relax_footpath(k, fps[j], tmp_time, bc, t_at_dest);
+          }
+          if ((!kFwd || !use_td_fps) && my_i < tt_.n_static_locations_) {
+            auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
+                                  : tt_.footpaths_in_[prf_idx_][l];
+            n_fps = static_cast<unsigned>(fps.size());
+            if (n_fps <= kWarpFpThreshold) {
+              for (auto j = 0U; j != n_fps; ++j) {
+                if (!kFwd && use_td_fps &&
+                    has_td_fps<WithTdFootpaths>(fps[j].target(), true)) {
+                  continue;
                 }
-              } else {
-                defer = true;
+                relax_footpath(k, fps[j], tmp_time, bc, t_at_dest);
               }
+            } else {
+              defer = true;
             }
           }
         }
@@ -858,9 +868,17 @@ struct raptor_impl {
             kAllLanes, static_cast<int>(tmp_time), static_cast<int>(b)));
         auto const l_bc = __shfl_sync(kAllLanes, bc, static_cast<int>(b));
         auto const l_n = __shfl_sync(kAllLanes, n_fps, static_cast<int>(b));
+        auto const l_use_td_fps =
+            WithTdFootpaths && !kFwd &&
+            __shfl_sync(kAllLanes, static_cast<int>(use_td_fps),
+                        static_cast<int>(b)) != 0;
         auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
                               : tt_.footpaths_in_[prf_idx_][l];
         for (auto j = lane; j < l_n; j += kWarpSize) {
+          if (l_use_td_fps &&
+              has_td_fps<WithTdFootpaths>(fps[j].target(), true)) {
+            continue;
+          }
           relax_footpath(k, fps[j], l_tmp, l_bc, t_at_dest);
         }
       });
@@ -873,10 +891,8 @@ struct raptor_impl {
       if (!prev_station_mark_[to_idx(src)]) {
         continue;
       }
-      if constexpr (WithTdFootpaths) {
-        if (has_td_fps(src)) {
-          continue;
-        }
+      if (has_td_fps<WithTdFootpaths>(e.from_, true)) {
+        continue;
       }
       auto const tmp_time = tmp_.get(src, Vias);
       if (tmp_time == kInvalid) {

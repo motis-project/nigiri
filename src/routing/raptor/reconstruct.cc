@@ -791,43 +791,57 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
 
     trace_reconstruct("CHECKING FOOTPATHS OF {}\n", loc{tt, l});
-    auto const has_td_footpaths =
-        rtt != nullptr && (kFwd ? rtt->has_td_footpaths_in_
-                                : rtt->has_td_footpaths_out_)[q.prf_idx_]
-                              .test(l);
-    if (!has_td_footpaths) {
-      auto const try_fps = [&](location_idx_t const x)
-          -> std::optional<std::pair<journey::leg, journey::leg>> {
-        auto fp_legs = std::optional<std::pair<journey::leg, journey::leg>>{};
-        for_each_transfer<flip(SearchDir)>(
-            tt, rtt, q.prf_idx_, x, [&](footpath const fp) {
-              fp_legs = check_fp(k, l, curr_time, fp, true, false);
-              return !fp_legs.has_value();
-            });
+    // As in the search: footpaths from a source with td footpaths are
+    // time-dependent, all others are static.
+    auto const is_td_source = [&](location_idx_t const x) {
+      return rtt != nullptr && q.prf_idx_ != 0U &&
+             rtt->has_td_footpaths_out_[q.prf_idx_].test(x);
+    };
+    auto const try_fps = [&](location_idx_t const x)
+        -> std::optional<std::pair<journey::leg, journey::leg>> {
+      auto fp_legs = std::optional<std::pair<journey::leg, journey::leg>>{};
+      if (!kFwd && is_td_source(x)) {
         return fp_legs;
-      };
-      auto fp_legs = try_fps(l);
-      if (!fp_legs.has_value() && is_projected(q.prf_idx_)) {
-        tt.locations_.for_each_virt(l, [&](location_idx_t const c) {
-          if (!fp_legs.has_value()) {
-            fp_legs = try_fps(c);
-          }
-        });
       }
-      if (fp_legs.has_value()) {
-        return std::move(*fp_legs);
-      }
+      for_each_transfer<flip(SearchDir)>(
+          tt, rtt, q.prf_idx_, x, [&](footpath const fp) {
+            if (kFwd && is_td_source(fp.target())) {
+              return true;
+            }
+            fp_legs = check_fp(k, l, curr_time, fp, true, false);
+            return !fp_legs.has_value();
+          });
+      return fp_legs;
+    };
+    auto static_legs = try_fps(l);
+    if (!static_legs.has_value() && is_projected(q.prf_idx_)) {
+      tt.locations_.for_each_virt(l, [&](location_idx_t const c) {
+        if (!static_legs.has_value()) {
+          static_legs = try_fps(c);
+        }
+      });
+    }
+    if (static_legs.has_value()) {
+      return std::move(*static_legs);
     }
 
-    if (has_td_footpaths) {
+    if (rtt != nullptr && q.prf_idx_ != 0U &&
+        (kFwd ? rtt->has_td_footpaths_in_
+              : rtt->has_td_footpaths_out_)[q.prf_idx_]
+            .test(l)) {
       trace_reconstruct("CHECKING TD FOOTPATHS OF {}\n", loc{tt, l});
       auto const td_footpaths = kFwd ? rtt->td_footpaths_in_[q.prf_idx_][l]
                                      : rtt->td_footpaths_out_[q.prf_idx_][l];
       auto const unix_now = delta_to_unix(base, curr_time);
       auto legs = std::optional<std::pair<journey::leg, journey::leg>>{};
-      for_each_footpath<SearchDir>(
-          td_footpaths, unix_now, [&](footpath const& fp) {
-            auto fp_legs = check_fp(k, l, curr_time, fp, true, true);
+      for_each_footpath<flip(SearchDir)>(
+          td_footpaths, unix_now,
+          [&](location_idx_t const target, duration_t const duration, auto) {
+            if (duration >= footpath::kMaxDuration) {
+              return utl::cflow::kContinue;
+            }
+            auto fp_legs = check_fp(k, l, curr_time, footpath{target, duration},
+                                    false, true);
             if (fp_legs.has_value()) {
               legs = std::move(*fp_legs);
               return utl::cflow::kBreak;
@@ -912,6 +926,13 @@ void reconstruct_journey_with_vias(timetable const& tt,
                 }
                 auto const diff =
                     it->dep_time_ - std::prev(it)->arr_time_ - stay;
+                // A time-dependent footpath may only be usable later, so we
+                // don't want to move it.
+                if (diff.count() > 0 && it->from_ != it->to_ &&
+                    rtt != nullptr && q.prf_idx_ != 0U &&
+                    rtt->has_td_footpaths_out_[q.prf_idx_].test(it->from_)) {
+                  return;
+                }
                 it->dep_time_ -= diff;
                 it->arr_time_ -= diff;
               }},
