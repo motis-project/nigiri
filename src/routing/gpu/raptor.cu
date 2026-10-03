@@ -1110,8 +1110,12 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     // to the arrival of the previous trip
     // instead of the departure of the next trip.
     // No-op for forward search.
+    // A time-dependent footpath may only be usable later, so we don't want
+    // to move it.
     for (auto i = std::size_t{1U}; i < j.legs_.size(); ++i) {
-      if (std::holds_alternative<footpath>(j.legs_[i].uses_)) {
+      if (std::holds_alternative<footpath>(j.legs_[i].uses_) &&
+          !(rtt_ != nullptr && prf_idx_ != 0U &&
+            rtt_->has_td_footpaths_out_[prf_idx_].test(j.legs_[i].from_))) {
         auto const dur = std::get<footpath>(j.legs_[i].uses_).duration();
         j.legs_[i].dep_time_ = j.legs_[i - 1U].arr_time_;
         j.legs_[i].arr_time_ = j.legs_[i].dep_time_ + dur;
@@ -1137,15 +1141,16 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
         if (!has_td.test(key_l)) {
           continue;
         }
+        // t is the arrival in both search directions.
         auto const t = lg.arr_time_;
-        for_each_footpath<SearchDir>(
-            td_fps[key_l], t, [&](footpath const fp, auto) {
+        for_each_footpath<direction::kBackward>(
+            td_fps[key_l], t, [&](footpath const fp, duration_t const walk) {
               if (fp.target() != target_l) {
                 return utl::cflow::kContinue;
               }
               lg.dep_time_ = t - fp.duration();
-              lg.arr_time_ = t;
-              lg.uses_ = footpath{lg.to_, fp.duration()};
+              lg.arr_time_ = lg.dep_time_ + walk;
+              lg.uses_ = footpath{lg.to_, walk};
               return utl::cflow::kBreak;
             });
       }
