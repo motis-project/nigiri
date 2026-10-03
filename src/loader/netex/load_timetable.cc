@@ -802,19 +802,26 @@ journey_pattern_map_t get_journey_patterns(
               .node());
     };
 
-    // A StopPlace/Quay without Centroid parses as (0, 0). Keep what the
-    // assignment says the stop is - its id is the one the rest of the feed
-    // refers to - but take the position from the ScheduledStopPoint. The
-    // assigned stop may be shared with other files, so copy instead of
-    // writing to it.
     if (assigned != nullptr) {
       if (assigned->pos_ != geo::latlng{}) {
+        // StopPlace/Quay has coordinates.
+        // -> keep StopPlace/Quay
         return assigned;
       }
+
       auto const pos = ssp_pos();
       if (pos == geo::latlng{}) {
+        // ScheduledStopPoint and StopPlace/Quay at (0, 0)
+        // -> keep StopPlace/Quay
         return assigned;
       }
+
+      // StopPlace/Quay at (0, 0)
+      // ScheduledStopPoint NOT at (0, 0)
+      // -> create new netex::stop (existing might be used in other files -
+      // parallel modification!) for ScheduledStopPoint with StopPlace/Quay
+      // attributes (including ID -> add_stop won't add it 2x) but
+      // ScheduledStopPoint's coordinates.
       return utl::get_or_create(stops.timetable_, stop_point_ref,
                                 [&]() {
                                   return uniq(stop{
@@ -828,7 +835,8 @@ journey_pattern_map_t get_journey_patterns(
           .get();
     }
 
-    // Invalid - fall back to information from ScheduledStopPoint
+    // Invalid (missing PassengerStopAssignment)
+    // -> fall back to information from ScheduledStopPoint
     return utl::get_or_create(
                stops.timetable_, stop_point_ref,
                [&]() {
