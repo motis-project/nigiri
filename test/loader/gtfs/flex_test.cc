@@ -193,6 +193,6 @@ TRANSPORT 7 [odv_j25_1_fixed]
   // 2 x 185 (14-) + 94 (56-) + 2 x 55 (77+) + 48 (55-) + 48 (66-)
   // + 185 (14-, the fixed departure)
   EXPECT_EQ(
-      R"([{"idx":0,"firstDay":"2025-01-01","lastDay":"2025-11-30","noLocations":3,"noTrips":8,"transportsXDays":855}])",
+      R"({"feeds":[{"idx":0,"firstDay":"2025-01-01","lastDay":"2025-11-30","noLocations":3,"noTrips":8,"transportsXDays":855}],"noRoutes":0,"profiles":[]})",
       to_str(get_metrics(tt), tt));
 }

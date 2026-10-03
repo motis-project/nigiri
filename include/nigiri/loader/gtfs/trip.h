@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "utl/enumerate.h"
+#include "utl/lookup.h"
 
 #include "cista/reflection/comparable.h"
 
@@ -140,9 +141,18 @@ struct trip_data {
   trip const& get(std::string_view id) const { return data_[trips_.at(id)]; }
   trip& get(std::string_view id) { return data_[trips_.at(id)]; }
 
+  location_idx_t handover_stop(gtfs_trip_idx_t const from,
+                               gtfs_trip_idx_t const to,
+                               location_idx_t const fallback) const {
+    return utl::lookup(handover_stops_, pair{from, to}).value_or(fallback);
+  }
+
   hash_map<std::string, gtfs_trip_idx_t> trips_;
   hash_map<std::string, std::unique_ptr<block>> blocks_;
   vector_map<gtfs_trip_idx_t, trip> data_;
+  hash_map<pair<gtfs_trip_idx_t, gtfs_trip_idx_t>, location_idx_t>
+      handover_stops_;
+  hash_set<pair<gtfs_trip_idx_t, gtfs_trip_idx_t>> no_stay_seated_;
 };
 
 enum class interpolate_result { kOk, kErrorLastMissing, kErrorFirstMissing };

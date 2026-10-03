@@ -14,9 +14,9 @@ using namespace std::string_view_literals;
 
 namespace {
 
-// ROUTING CONNECTIONS:
-// 10:00 - 11:00 A-C    airplane direct
-// 10:00 - 12:00 A-B-C  train, one transfer
+// Footpaths are the transfers.txt rows in the direction they are stated:
+// B->A and B->C exist, A->B does not. There is no transitive closure either:
+// A and C stay unconnected although both connect to B.
 constexpr auto const test_files = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -105,23 +105,18 @@ TEST(loader, build_footpaths) {
     }
   }
 
-  EXPECT_EQ(R"((A, A)
-  00:03.0->(B, B)
-  00:06.0->(C, C)
-(B, B)
+  EXPECT_EQ(R"((B, B)
   00:03.0->(A, A)
-  00:03.0->(C, C)
+  00:05.0->(C, C)
 (C, C)
   00:03.0->(B, B)
-  00:06.0->(A, A)
 )"sv,
             ss.str());
 }
 
 // A 5 minute "transfer" between stops 300km apart is not walkable. It has to
 // be dropped - writing it with its input duration teleports passengers across
-// the map. Covers both the transitive closure (A/B/X form one component) and
-// the two node shortcut (P/Q).
+// the map.
 TEST(loader, build_footpaths_drop_unwalkable) {
   auto tt = timetable{};
 
@@ -145,8 +140,6 @@ TEST(loader, build_footpaths_drop_unwalkable) {
 
   EXPECT_EQ(R"((A, A)
   00:03.0->(B, B)
-(B, B)
-  00:03.0->(A, A)
 )"sv,
             ss.str());
 }

@@ -1,17 +1,25 @@
 #include "nigiri/routing/raptor/reconstruct.h"
 
 #include <algorithm>
+#include <optional>
 
 #include "utl/overloaded.h"
 
 #include "nigiri/for_each_meta.h"
+#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/search_location.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
 namespace nigiri::routing {
+
+trip_idx_t trip_at(rt::run_stop const& stp, event_type const ev_type) {
+  return stp.fr_->is_scheduled() ? stp.get_trip_idx(ev_type)
+                                 : trip_idx_t::invalid();
+}
 
 void optimize_initial_departure(timetable const& tt,
                                 rt_timetable const* rtt,
@@ -88,7 +96,10 @@ void optimize_initial_start_footpath(timetable const& tt,
   auto fp_dur_best = adjusted_transfer_time(
       q.transfer_time_settings_, get<footpath>(fp_leg.uses_).duration());
 
-  auto const& footpaths = tt.locations_.footpaths_out_[q.prf_idx_][start_loc];
+  auto footpaths = std::vector<footpath>{};
+  for_each_transfer<direction::kForward>(
+      tt, rtt, q.prf_idx_, start_loc,
+      [&](footpath const fp) { footpaths.push_back(fp); });
 
   auto r = rt::run{ree.r_};
   r.stop_range_ = {0U, static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)};
@@ -103,8 +114,9 @@ void optimize_initial_start_footpath(timetable const& tt,
       continue;
     }
 
+    auto const l = search_location(q.prf_idx_, stp);
     for (auto const& fp : footpaths) {
-      if (fp.target() != stp.get_location_idx()) {
+      if (fp.target() != l) {
         continue;
       }
       auto const fp_dur =
@@ -116,14 +128,13 @@ void optimize_initial_start_footpath(timetable const& tt,
           fp_leg.to_ = stp.get_location_idx();
           fp_leg.dep_time_ = fp_start;
           fp_leg.arr_time_ = dep;
-          fp_leg.uses_ = footpath{stp.get_location_idx(), fp_dur};
+          fp_leg.uses_ = footpath{stp.get_location_idx(), fp.duration()};
           transport_leg.from_ = stp.get_location_idx();
           transport_leg.dep_time_ = dep;
           ree.stop_range_.from_ = stp.stop_idx_;
           fp_dur_best = fp_dur;
         }
       }
-      break;
     }
   }
 }
@@ -212,7 +223,10 @@ void optimize_final_egress_footpath(timetable const& tt,
   auto fp_dur_best = adjusted_transfer_time(
       q.transfer_time_settings_, get<footpath>(fp_leg.uses_).duration());
 
-  auto const& footpaths = tt.locations_.footpaths_in_[q.prf_idx_][dest_loc];
+  auto footpaths = std::vector<footpath>{};
+  for_each_transfer<direction::kBackward>(
+      tt, rtt, q.prf_idx_, dest_loc,
+      [&](footpath const fp) { footpaths.push_back(fp); });
 
   auto fr = rt::frun{tt, rtt, ree.r_};
   auto range_from = static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U);
@@ -236,8 +250,9 @@ void optimize_final_egress_footpath(timetable const& tt,
     if (!stp.out_allowed()) {
       continue;
     }
+    auto const l = search_location(q.prf_idx_, stp);
     for (auto const& fp : footpaths) {
-      if (fp.target() != stp.get_location_idx()) {
+      if (fp.target() != l) {
         continue;
       }
       auto const fp_dur =
@@ -249,23 +264,61 @@ void optimize_final_egress_footpath(timetable const& tt,
           fp_leg.from_ = stp.get_location_idx();
           fp_leg.dep_time_ = arr;
           fp_leg.arr_time_ = fp_end;
-          fp_leg.uses_ = footpath{dest_loc, fp_dur};
+          fp_leg.uses_ = footpath{dest_loc, fp.duration()};
           transport_leg.to_ = stp.get_location_idx();
           transport_leg.arr_time_ = arr;
           ree.stop_range_.to_ = stp.stop_idx_ + 1U;
           fp_dur_best = fp_dur;
         }
       }
-      break;
     }
   }
+}
+
+bool is_preferred_transfer(timetable const& tt,
+                           location_idx_t const from,
+                           location_idx_t const to,
+                           trip_idx_t const from_trip,
+                           trip_idx_t const to_trip) {
+  auto const& preferred = tt.locations_.preferred_transfers_;
+  auto const route_of = [&](trip_idx_t const t) {
+    return t == trip_idx_t::invalid() ? route_id_idx_t::invalid()
+                                      : tt.trip_route_id_[t];
+  };
+  auto const is_side_match = [&](trip_idx_t const rule_trip,
+                                 route_id_idx_t const rule_route,
+                                 trip_idx_t const observed) {
+    if (rule_trip != trip_idx_t::invalid()) {
+      return rule_trip == observed;
+    }
+    if (rule_route != route_id_idx_t::invalid()) {
+      return rule_route == route_of(observed);
+    }
+    return true;
+  };
+  for (auto f = from; f != location_idx_t::invalid();
+       f = tt.locations_.parents_[f]) {
+    if (f >= preferred.size()) {
+      continue;
+    }
+    for (auto const& p : preferred[f]) {
+      if (is_side_match(p.from_trip_, p.from_route_, from_trip) &&
+          is_side_match(p.to_trip_, p.to_route_, to_trip) &&
+          tt.locations_.is_self_or_parent(p.to_, tt.base(to))) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 double get_penalty(timetable const& tt,
                    duration_t const duration,
                    duration_t const buffer,
                    location_idx_t const from,
-                   location_idx_t const to) {
+                   location_idx_t const to,
+                   trip_idx_t const from_trip,
+                   trip_idx_t const to_trip) {
   // Basic weight: footpath duration.
   auto weight = static_cast<double>(duration.count());
 
@@ -283,6 +336,11 @@ double get_penalty(timetable const& tt,
   weight -= kBufferWeight *
             static_cast<double>(
                 std::clamp(buffer, duration_t{0}, kMaxRewardedBuffer).count());
+
+  constexpr auto kPreferredBonus = 3.0;
+  if (is_preferred_transfer(tt, from, to, from_trip, to_trip)) {
+    weight -= kPreferredBonus;
+  }
 
   return weight;
 }
@@ -396,53 +454,75 @@ void optimize_transfers(timetable const& tt,
     }
 
     auto penalty_best = get_penalty(
-        tt, get<footpath>(leg_footpath.uses_).duration(),
-        leg_to.dep_time_ - leg_footpath.arr_time_, leg_from.from_, leg_to.to_);
+        tt,
+        adjusted_transfer_time(q.transfer_time_settings_,
+                               get<footpath>(leg_footpath.uses_).duration()),
+        leg_to.dep_time_ - leg_footpath.arr_time_, leg_from.to_, leg_to.from_,
+        trip_at(rt::frun{tt, rtt, ree_from.r_}[static_cast<stop_idx_t>(
+                    ree_from.stop_range_.to_ - 1U)],
+                event_type::kArr),
+        trip_at(rt::frun{tt, rtt, ree_to.r_}[ree_to.stop_range_.from_],
+                event_type::kDep));
     for (auto stp_from : fr_from) {
       if (!stp_from.out_allowed()) {
         continue;
       }
+      auto const from_trip = trip_at(stp_from, event_type::kArr);
       for (auto stp_to : fr_to) {
         if (!stp_to.in_allowed()) {
           continue;
         }
 
-        for (auto const& fp :
-             tt.locations_
-                 .footpaths_out_[q.prf_idx_][stp_from.get_location_idx()]) {
-          if (fp.target() != stp_to.get_location_idx()) {
-            continue;
-          }
+        auto const from_l = search_location(q.prf_idx_, stp_from);
+        auto const to_l = search_location(q.prf_idx_, stp_to);
+        auto shortest = std::optional<duration_t>{};
+        if (auto const own = rtt == nullptr
+                                 ? tt.locations_.transfer_time_[from_l]
+                                 : rtt->transfer_time(from_l);
+            from_l == to_l && own != kNoTransferAllowed) {
+          shortest = duration_t{own};
+        }
+        for_each_transfer<direction::kForward>(
+            tt, rtt, q.prf_idx_, from_l, [&](footpath const& fp) {
+              if (fp.target() == to_l &&
+                  (!shortest.has_value() || fp.duration() < *shortest)) {
+                shortest = fp.duration();
+              }
+            });
+        if (!shortest.has_value()) {
+          continue;
+        }
 
-          auto const fp_dur =
-              adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
-          auto const arr = stp_from.time(event_type::kArr);
-          auto const dep = stp_to.time(event_type::kDep);
-          auto const arr_fp = arr + fp_dur;
-          if (arr_fp <= dep) {
-            auto const penalty = get_penalty(tt, fp_dur, dep - arr_fp,
-                                             stp_from.get_location_idx(),
-                                             stp_to.get_location_idx());
-            if (penalty < penalty_best) {
-              leg_from.to_ = stp_from.get_location_idx();
-              leg_from.arr_time_ = arr;
-              ree_from.stop_range_.to_ =
-                  stp_from.stop_idx_ + 1U;  // half open interval
+        auto const fp = footpath{stp_to.get_location_idx(), *shortest};
+        auto const fp_dur =
+            adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
+        auto const arr = stp_from.time(event_type::kArr);
+        auto const dep = stp_to.time(event_type::kDep);
+        auto const arr_fp = arr + fp_dur;
+        if (arr_fp > dep) {
+          continue;
+        }
+        auto const to_trip = trip_at(stp_to, event_type::kDep);
+        auto const penalty =
+            get_penalty(tt, fp_dur, dep - arr_fp, stp_from.get_location_idx(),
+                        stp_to.get_location_idx(), from_trip, to_trip);
+        if (penalty < penalty_best) {
+          leg_from.to_ = stp_from.get_location_idx();
+          leg_from.arr_time_ = arr;
+          ree_from.stop_range_.to_ =
+              stp_from.stop_idx_ + 1U;  // half open interval
 
-              leg_to.from_ = stp_to.get_location_idx();
-              leg_to.dep_time_ = dep;
-              ree_to.stop_range_.from_ = stp_to.stop_idx_;
+          leg_to.from_ = stp_to.get_location_idx();
+          leg_to.dep_time_ = dep;
+          ree_to.stop_range_.from_ = stp_to.stop_idx_;
 
-              leg_footpath.from_ = stp_from.get_location_idx();
-              leg_footpath.to_ = stp_to.get_location_idx();
-              leg_footpath.dep_time_ = arr;
-              leg_footpath.arr_time_ = arr_fp;
-              leg_footpath.uses_ = fp;
+          leg_footpath.from_ = stp_from.get_location_idx();
+          leg_footpath.to_ = stp_to.get_location_idx();
+          leg_footpath.dep_time_ = arr;
+          leg_footpath.arr_time_ = arr_fp;
+          leg_footpath.uses_ = fp;
 
-              penalty_best = penalty;
-            }
-          }
-          break;
+          penalty_best = penalty;
         }
       }
     }

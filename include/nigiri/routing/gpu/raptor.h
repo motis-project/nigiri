@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "nigiri/common/delta_t.h"
+#include "nigiri/constants.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
@@ -20,8 +21,10 @@
 
 namespace nigiri::routing::gpu {
 
-inline bool gpu_supported(query const& q, rt_timetable const* = nullptr) {
-  return q.via_stops_.empty();
+inline bool is_gpu_supported(query const& q,
+                             rt_timetable const* rtt = nullptr) {
+  return q.via_stops_.empty() &&
+         (rtt == nullptr || rtt->n_rt_locations() <= kRtLocationCapacity);
 }
 
 struct gpu_timetable {
@@ -105,6 +108,10 @@ private:
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + to_idx(base_) * date::days{1};
   }
+
+  duration_t raw_transfer(location_idx_t from,
+                          location_idx_t to,
+                          duration_t elapsed) const;
 
   timetable const& tt_;
   rt_timetable const* rtt_;

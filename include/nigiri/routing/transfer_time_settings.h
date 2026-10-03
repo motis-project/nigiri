@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "nigiri/types.h"
 
 namespace nigiri::routing {
@@ -44,6 +46,14 @@ adjusted_transfer_time(
                  static_cast<Rep>(static_cast<float>(duration.count()) *
                                   settings.factor_))};
   }
+}
+
+inline std::optional<int> adjusted_change_time(
+    transfer_time_settings const& tts, u8_minutes const own) {
+  if (own == kNoTransferAllowed) {
+    return std::nullopt;
+  }
+  return adjusted_transfer_time(tts, static_cast<int>(own.count()));
 }
 
 }  // namespace nigiri::routing

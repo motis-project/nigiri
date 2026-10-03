@@ -23,11 +23,12 @@ day_idx_t make_base(timetable const& tt, unixtime_t start_time) {
                        .count()};
 }
 
-template <direction SearchDir, bool Rt>
-void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
-                timetable const& tt,
-                unixtime_t const& start_time,
-                query const& q) {
+template <direction SearchDir, bool Rt, bool ProjectVirts>
+void run_raptor(
+    raptor<SearchDir, Rt, kVias, search_mode::kOneToAll, ProjectVirts>&& algo,
+    timetable const& tt,
+    unixtime_t const& start_time,
+    query const& q) {
   auto results = pareto_set<journey>{};
   algo.next_start_time();
   for (auto const& s : q.start_) {
@@ -49,7 +50,7 @@ void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
   algo.execute(start_time, q.max_transfers_, worst_time_at_dest, results);
 }
 
-template <direction SearchDir, bool Rt>
+template <direction SearchDir, bool Rt, bool ProjectVirts>
 raptor_state one_to_all(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q) {
@@ -68,7 +69,7 @@ raptor_state one_to_all(timetable const& tt,
   auto const base = make_base(tt, start_time);
   auto const is_wheelchair = q.prf_idx_ == kWheelchairProfile;
 
-  auto r = raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>{
+  auto r = raptor<SearchDir, Rt, kVias, search_mode::kOneToAll, ProjectVirts>{
       tt,
       rtt,
       state,
@@ -96,11 +97,9 @@ template <direction SearchDir>
 raptor_state one_to_all(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q) {
-  if (rtt == nullptr) {
-    return one_to_all<SearchDir, false>(tt, rtt, q);
-  } else {
-    return one_to_all<SearchDir, true>(tt, rtt, q);
-  }
+  return with_raptor_variant(rtt, q.prf_idx_, [&]<bool Rt, bool Project>() {
+    return one_to_all<SearchDir, Rt, Project>(tt, rtt, q);
+  });
 }
 
 fastest_offset get_fastest_one_to_all_offsets(timetable const& tt,

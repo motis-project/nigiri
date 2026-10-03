@@ -3,6 +3,7 @@
 #include "utl/pairwise.h"
 
 #include "nigiri/logging.h"
+#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -24,15 +25,13 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   auto const add_edges = [&](location_idx_t const l) {
     auto const parent_l = tt.locations_.get_root_idx(l);
 
-    auto const& footpaths = SearchDir == direction::kForward
-                                ? tt.locations_.footpaths_in_[prf_idx][l]
-                                : tt.locations_.footpaths_out_[prf_idx][l];
-    for (auto const& fp : footpaths) {
-      auto const target = tt.locations_.get_root_idx(fp.target());
-      if (target != parent_l) {
-        update_weight(target, fp.duration());
-      }
-    }
+    routing::for_each_transfer<flip(SearchDir)>(
+        tt, nullptr, prf_idx, l, [&](footpath const fp) {
+          auto const target = tt.locations_.get_root_idx(fp.target());
+          if (target != parent_l) {
+            update_weight(target, fp.duration());
+          }
+        });
 
     for (auto const& r : tt.location_routes_[l]) {
       if ((prf_idx == kCarProfile && !tt.is_flag_set(kCarsAllowed, r)) ||
@@ -73,6 +72,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   auto& lb_graph = SearchDir == direction::kForward
                        ? tt.fwd_search_lb_graph_[prf_idx]
                        : tt.bwd_search_lb_graph_[prf_idx];
+  lb_graph.clear();
   for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
     if (tt.locations_.parents_[i] != location_idx_t::invalid()) {
       lb_graph.emplace_back(std::vector<footpath>{});

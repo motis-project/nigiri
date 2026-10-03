@@ -3,6 +3,8 @@
 #include <cassert>
 #include <ranges>
 
+#include "utl/lookup.h"
+
 #include "nigiri/loader/gtfs/local_to_utc.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/timetable.h"
@@ -18,6 +20,8 @@ struct expanded_seated {
   vecvec<rule_trip_idx_t, rule_trip_idx_t> seated_out_;
   vecvec<rule_trip_idx_t, UtcTrip> expanded_;
   vector_map<remaining_idx_t, rule_trip_idx_t> remaining_rule_trip_;
+  hash_map<pair<rule_trip_idx_t, rule_trip_idx_t>, location_idx_t>
+      handover_stops_;
 };
 
 template <typename UtcTrip, typename TripIdx>
@@ -54,6 +58,13 @@ expanded_seated<gtfs::utc_trip> expand_seated_trips(trip_data const& trip_data,
                                  transform(to_rule_trip_idx));
     ret.seated_in_.emplace_back(trip_data.get(gtfs_trip).seated_in_ |
                                 transform(to_rule_trip_idx));
+    for (auto const out : trip_data.get(gtfs_trip).seated_out_) {
+      if (auto const h =
+              utl::lookup(trip_data.handover_stops_, pair{gtfs_trip, out})) {
+        ret.handover_stops_.emplace(
+            pair{rule_trip_idx_t{rule_trip}, to_rule_trip_idx(out)}, *h);
+      }
+    }
 
     auto bucket = ret.expanded_.add_back_sized(0U);
     expand(gtfs_trip, [&](utc_trip&& s) {
@@ -67,4 +78,5 @@ expanded_seated<gtfs::utc_trip> expand_seated_trips(trip_data const& trip_data,
 
   return ret;
 }
+
 }  // namespace nigiri::loader::gtfs

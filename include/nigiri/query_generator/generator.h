@@ -37,8 +37,6 @@ struct generator {
   // uses dest transport mode to randomize coordinates near a location
   geo::latlng pos_near_dest(location_idx_t);
 
-  std::pair<transport, stop_idx_t> random_transport_active_stop();
-
   timetable const& tt_;
   generator_settings const& s_;
   std::uint32_t seed_;
@@ -50,11 +48,8 @@ private:
   std::optional<location_idx_t> random_location(geo::latlng const&,
                                                 transport_mode const&);
   route_idx_t random_route(location_idx_t);
-  transport_idx_t random_transport();
   transport_idx_t random_transport(route_idx_t);
   stop_idx_t get_stop_idx(transport_idx_t, location_idx_t) const;
-
-  std::optional<stop_idx_t> random_active_stop(transport_idx_t);
 
   bool can_dep(transport_idx_t, stop_idx_t) const;
   std::optional<day_idx_t> random_active_day(transport_idx_t);
@@ -64,6 +59,7 @@ private:
                   stop_idx_t,
                   interval<unixtime_t> const&) const;
   bool is_active_dest(location_idx_t, interval<unixtime_t> const&) const;
+  double n_events(location_idx_t) const;
 
   geo::latlng random_point_in_range(
       geo::latlng const&, std::uniform_int_distribution<std::uint32_t>&);
@@ -78,15 +74,16 @@ private:
 
   // R-Tree
   geo::point_rtree locations_rtree_;
+  std::vector<location_idx_t> pool_;
+  std::vector<double> pool_weights_;
   std::vector<size_t> locs_in_bbox;
 
   // RNG
   std::mt19937 rng_;
 
   // Distributions
-  std::uniform_int_distribution<location_idx_t::value_t> location_d_;
-  std::uniform_int_distribution<size_t> locs_in_bbox_d_;
-  std::uniform_int_distribution<transport_idx_t::value_t> transport_d_;
+  std::discrete_distribution<std::size_t> location_d_;
+  std::discrete_distribution<std::size_t> locs_in_bbox_d_;
   std::uniform_int_distribution<day_idx_t::value_t> day_d_;
   std::uniform_int_distribution<std::uint32_t> start_mode_range_d_;
   std::uniform_int_distribution<std::uint32_t> dest_mode_range_d_;

@@ -27,6 +27,13 @@ raptor_state& raptor_state::resize(unsigned const n_locations,
   return *this;
 }
 
+void raptor_state::resize_hubs(std::size_t const n_hubs) {
+  n_hubs_ = n_hubs;
+  hub_slots_storage_.resize(n_hubs * (kMaxVias + 1));
+  hub_reached_.resize(static_cast<bitvec::size_type>(n_hubs));
+  hub_mark_.resize(static_cast<bitvec::size_type>(n_hubs));
+}
+
 template <via_offset_t Vias>
 void raptor_state::print(timetable const& tt,
                          date::sys_days const base,

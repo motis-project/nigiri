@@ -46,6 +46,8 @@ struct statistics {
   int trip_update_without_trip_{0};
   int trip_resolve_error_{0};
   int unsupported_schedule_relationship_{0};
+  int stop_assignments_{0};
+  int rt_locations_{0};
   date::sys_seconds feed_timestamp_{};
 };
 

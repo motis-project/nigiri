@@ -1,11 +1,11 @@
 #include "nigiri/loader/init_finish.h"
 
 #include "utl/enumerate.h"
+#include "utl/erase_duplicates.h"
 
 #include "geo/box.h"
 
 #include "nigiri/loader/build_footpaths.h"
-#include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/register.h"
 #include "nigiri/flex.h"
 #include "nigiri/special_stations.h"
@@ -92,8 +92,7 @@ void assign_importance(timetable& tt) {
                                        /* Bus  */ 2,
                                        /* Ship  */ 10,
                                        /* Other  */ 1};
-    auto const p = tt.locations_.parents_[l];
-    auto& x = importance[p == location_idx_t::invalid() ? l : p];
+    auto& x = importance[tt.locations_.get_root_idx(l)];
     for (auto const [clasz, t_count] : utl::enumerate(transport_counts)) {
       x += prio[clasz] * static_cast<float>(t_count);
     }
@@ -199,6 +198,7 @@ void rebuild_route_traffic_days(timetable& tt) {
 
 void finalize(timetable& tt, finalize_options const opt) {
   tt.location_routes_.resize(tt.n_locations());
+  tt.location_location_groups_.resize(tt.n_locations());
 
   {
     auto const timer = scoped_timer{"loader.sort_trip_ids"};
@@ -219,10 +219,10 @@ void finalize(timetable& tt, finalize_options const opt) {
                        std::tie(tt.providers_[b].src_, tt.providers_[b].id_);
               });
   }
+  utl::erase_duplicates(tt.transfer_rules_.rule_virts_);
+  utl::erase_duplicates(tt.transfer_rules_.virt_rules_);
   build_footpaths(tt, opt);
   rebuild_route_traffic_days(tt);
-  build_lb_graph<direction::kForward>(tt, kDefaultProfile);
-  build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
   build_location_tree(tt);
   assign_stops_to_flex_areas(tt);
   assign_importance(tt);

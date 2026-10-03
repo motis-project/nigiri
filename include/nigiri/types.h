@@ -189,6 +189,7 @@ using timezone_idx_t = cista::strong<std::uint16_t, struct _timezone_idx>;
 using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
+using hub_idx_t = cista::strong<std::uint32_t, struct _hub_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
 using flex_area_idx_t = cista::strong<std::uint32_t, struct _flex_area_idx>;
 using location_group_idx_t =
@@ -212,12 +213,19 @@ constexpr auto const kCarProfile = profile_idx_t{3U};
 constexpr auto const kBikeProfile = profile_idx_t{4U};
 static constexpr auto const kNProfiles = profile_idx_t{5U};
 
+constexpr bool is_projected(profile_idx_t const prf) {
+  return prf != kDefaultProfile;
+}
+
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using rt_add_trip_id_idx_t =
     cista::strong<std::uint32_t, struct _trip_id_str_idx>;
 using rt_route_idx_t = cista::strong<std::uint32_t, struct _rt_route_idx>;
 using rt_transport_idx_t =
     cista::strong<std::uint32_t, struct _rt_transport_idx>;
+using rt_location_idx_t = cista::strong<std::uint32_t, struct _rt_location_idx>;
+using transfer_rule_idx_t =
+    cista::strong<std::uint32_t, struct _transfer_rule_idx>;
 using rt_merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using rt_transport_direction_string_idx_t =
@@ -359,6 +367,8 @@ struct transport {
 using i32_minutes = std::chrono::duration<std::int32_t, std::ratio<60>>;
 using i16_minutes = std::chrono::duration<std::int16_t, std::ratio<60>>;
 using u8_minutes = std::chrono::duration<std::uint8_t, std::ratio<60>>;
+
+constexpr auto const kNoTransferAllowed = u8_minutes{255};
 using duration_t = i16_minutes;
 using unixtime_t = std::chrono::sys_time<i32_minutes>;
 using local_time = date::local_time<i32_minutes>;
@@ -441,7 +451,8 @@ enum class location_type : std::uint8_t {
   kTrack,  // track from input data (i.e. GTFS) with separate coordinate from
            // parent. No manual connection in routing initialization or
            // additional links between parent<->child necessary.
-  kStation
+  kStation,
+  kVirt
 };
 
 enum class event_type { kArr, kDep };

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "nigiri/loader/merge_duplicates.h"
 #include "nigiri/timetable.h"
 
@@ -16,5 +18,18 @@ struct finalize_options {
 };
 
 void build_footpaths(timetable& tt, finalize_options);
+
+void write_default_profile(timetable&, bool adjust_footpaths);
+
+inline duration_t max_with_transfer_times(timetable const& tt,
+                                          location_idx_t const from,
+                                          location_idx_t const to,
+                                          duration_t const walk) {
+  auto const transfer_time = [&](location_idx_t const l) {
+    auto const t = tt.locations_.transfer_time_[l];
+    return t == kNoTransferAllowed ? duration_t{0} : duration_t{t};
+  };
+  return std::max({walk, transfer_time(from), transfer_time(to)});
+}
 
 }  // namespace nigiri::loader

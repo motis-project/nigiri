@@ -494,6 +494,58 @@ id=three_zone_single_ticket, name=Children Three Zone Ticket [priority=0]: 2.2 E
   EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
 }
 
+// The fares of the journey A -> C (joined at B) with these fare files and
+// transfers.txt.
+std::string fares_a_to_c(std::string_view const fares,
+                         std::string_view const transfers,
+                         std::string_view const tt_files = kBasicTimetable) {
+  auto tt = timetable{};
+  tt.date_range_ = {date::sys_days{2022_y / January / 1},
+                    date::sys_days{2022_y / December / 1}};
+  load_timetable(
+      {}, source_idx_t{0},
+      mem_dir::read(fmt::format("{}{}{}", tt_files, fares, transfers)), tt);
+  finalize(tt);
+  auto const results = raptor_search(tt, nullptr, "A", "C",
+                                     unixtime_t{sys_days{2022_y / March / 30}});
+  EXPECT_EQ(1U, results.size());
+  return results.size() == 0U
+             ? std::string{"no journey"}
+             : to_string(tt, nullptr, get_fares(tt, nullptr, *results.begin()));
+}
+
+// Moves the trip stops at B to virtual locations.
+constexpr auto const kQualifiedRulesAtB = R"(
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+B,B,2,120,,,,
+B,B,2,60,line1,line2,,
+)";
+
+// Fares are stated for the stops: the result has to be the same with and
+// without qualified transfers.txt rules.
+TEST(fares, area_sets_with_qualified_transfer_rules) {
+  EXPECT_EQ(fares_a_to_c(kAreaSets, ""),
+            fares_a_to_c(kAreaSets, kQualifiedRulesAtB));
+}
+
+// ... also for a leg join rule that names the stop B of the station BS.
+TEST(fares, leg_join_rule_stop_with_qualified_transfer_rules) {
+  auto const replace = [](std::string s, std::string_view const from,
+                          std::string_view const to) {
+    auto const pos = s.find(from);
+    EXPECT_NE(std::string::npos, pos);
+    return pos == std::string::npos ? s : s.replace(pos, from.size(), to);
+  };
+  auto const b_in_station =
+      replace(std::string{kBasicTimetable}, "B,B,,0.02,1.03,,\n",
+              "BS,BS,,0.02,1.03,,1,\nB,B,,0.02,1.03,,,BS\n");
+  auto const joined_at_b =
+      replace(std::string{kAreaSets}, "HSL,HSL,,\n", "HSL,HSL,B,B\n");
+  EXPECT_EQ(fares_a_to_c(joined_at_b, "", b_in_station),
+            fares_a_to_c(joined_at_b, kQualifiedRulesAtB, b_in_station));
+}
+
 TEST(fares, simple_fares) {
   auto tt = timetable{};
   tt.date_range_ = {date::sys_days{2022_y / January / 1},
