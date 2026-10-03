@@ -2,12 +2,12 @@
 
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
-#include "nigiri/routing/raptor/pong.h"
-#include "nigiri/routing/raptor/raptor_state.h"
-#include "nigiri/routing/search.h"
+#include "nigiri/routing/query.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
+
+#include "../raptor_search.h"
 
 using namespace date;
 using namespace nigiri;
@@ -94,9 +94,6 @@ TEST(rt, delay_test) {
   EXPECT_EQ(stats.total_entities_success_, 1U);
   rtt.update_lbs(tt);
 
-  auto search_state = routing::search_state{};
-  auto raptor_state = routing::raptor_state{};
-
   auto q = routing::query{
       .start_time_ = interval<unixtime_t>{sys_days{2019_y / May / 1} + 7h,
                                           sys_days{2019_y / May / 1} + 9h},
@@ -119,11 +116,10 @@ TEST(rt, delay_test) {
       .via_stops_ = {}};
 
   auto const result =
-      routing::pong_search(tt, &rtt, search_state, raptor_state, std::move(q),
-                           nigiri::direction::kForward);
+      nigiri::test::search_pong(tt, &rtt, std::move(q), direction::kForward);
 
-  ASSERT_FALSE(result.journeys_->empty());
-  auto const& journey = result.journeys_->begin();
+  ASSERT_FALSE(result.empty());
+  auto const& journey = result.begin();
 
   auto const expected_arrival = sys_days{2019_y / May / 1} + 9h;
   EXPECT_EQ(to_unix(journey->dest_time_), to_unix(expected_arrival));

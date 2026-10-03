@@ -312,10 +312,8 @@ TEST(routing, td_footpath_pong_keeps_the_wait) {
   rtt.td_footpaths_in_[kProfile][B2].push_back(td_footpath{
       B1, unixtime_t{sys_days{2024_y / June / 19} + 9h + 25min}, 10min});
 
-  auto search_state = routing::search_state{};
-  auto raptor_state = routing::raptor_state{};
-  auto const result = routing::pong_search(
-      tt, &rtt, search_state, raptor_state,
+  auto const result = nigiri::test::search_pong(
+      tt, &rtt,
       routing::query{
           .start_time_ =
               interval<unixtime_t>{sys_days{2024_y / June / 19} + 7h,
@@ -326,8 +324,7 @@ TEST(routing, td_footpath_pong_keeps_the_wait) {
           .destination_ = {{C, 0min, 0U}},
           .prf_idx_ = kProfile},
       direction::kForward);
-  EXPECT_EQ(kPongElevatorStartsWorkingAt1125,
-            to_string(tt, &rtt, *result.journeys_));
+  EXPECT_EQ(kPongElevatorStartsWorkingAt1125, to_string(tt, &rtt, result));
 }
 
 TEST(routing, td_footpath_lookup_keeps_the_wait) {
@@ -508,10 +505,8 @@ T3,13:00:00,13:00:00,D,2,0,0
   rtt.td_footpaths_in_[kProfile][B2].push_back(
       td_footpath{B1, unixtime_t{day + 9h + 25min}, 10min});
 
-  auto search_state = routing::search_state{};
-  auto raptor_state = routing::raptor_state{};
-  auto const result = routing::pong_search(
-      tt, &rtt, search_state, raptor_state,
+  auto const result = nigiri::test::search_pong(
+      tt, &rtt,
       routing::query{
           .start_time_ = interval<unixtime_t>{day + 7h, day + 9h},
           .start_match_mode_ = routing::location_match_mode::kEquivalent,
@@ -520,15 +515,15 @@ T3,13:00:00,13:00:00,D,2,0,0
           .destination_ = {{D, 0min, 0U}},
           .prf_idx_ = kProfile},
       direction::kForward);
-  ASSERT_EQ(1U, result.journeys_->size());
+  ASSERT_EQ(1U, result.size());
 
-  auto const& legs = result.journeys_->begin()->legs_;
+  auto const& legs = result.begin()->legs_;
   auto const fp = utl::find_if(
       legs, [&](routing::journey::leg const& l) { return l.from_ == B1; });
-  ASSERT_NE(fp, end(legs)) << to_string(tt, &rtt, *result.journeys_);
+  ASSERT_NE(fp, end(legs)) << to_string(tt, &rtt, result);
   EXPECT_EQ(B2, fp->to_);
   EXPECT_GE(fp->dep_time_, unixtime_t{day + 9h + 25min})
-      << to_string(tt, &rtt, *result.journeys_);
+      << to_string(tt, &rtt, result);
   EXPECT_EQ(10min, fp->arr_time_ - fp->dep_time_);
 }
 
@@ -579,10 +574,8 @@ TEST(routing, td_footpath_pong_walk_right_after_usable) {
     rtt.td_footpaths_in_[kProfile][B2].push_back(td_footpath{B1, from, dur});
   }
 
-  auto search_state = routing::search_state{};
-  auto raptor_state = routing::raptor_state{};
-  auto const result = routing::pong_search(
-      tt, &rtt, search_state, raptor_state,
+  auto const result = nigiri::test::search_pong(
+      tt, &rtt,
       routing::query{
           .start_time_ = interval<unixtime_t>{day + 7h, day + 9h},
           .start_match_mode_ = routing::location_match_mode::kEquivalent,
@@ -591,8 +584,7 @@ TEST(routing, td_footpath_pong_walk_right_after_usable) {
           .destination_ = {{C, 0min, 0U}},
           .prf_idx_ = kProfile},
       direction::kForward);
-  EXPECT_EQ(kPongElevatorStartsWorkingAt1125,
-            to_string(tt, &rtt, *result.journeys_));
+  EXPECT_EQ(kPongElevatorStartsWorkingAt1125, to_string(tt, &rtt, result));
 }
 
 // clang-format off
@@ -615,8 +607,9 @@ leg 2: (B2, B2) [2024-06-19 09:30] -> (C, C) [2024-06-19 10:00]
 
 TEST(routing, td_footpath_walk_right_before_outage) {
   // The footpath B1→B2 (10min) is unusable from 09:06, as the elevator breaks
-  // down at 09:15. The forward search walks from 09:00 to 09:10. The footpath
-  // must be looked up for an arrival at 09:10, not a departure at 09:10.
+  // down at 09:15, and usable again from 09:20. The forward search walks from
+  // 09:00 to 09:10. The footpath must be looked up for an arrival at 09:10, not
+  // a departure at 09:10 (which would wait for 09:20 and start at 08:50).
   constexpr auto const kProfile = profile_idx_t{2U};
 
   timetable tt;
@@ -651,7 +644,8 @@ TEST(routing, td_footpath_walk_right_before_outage) {
   rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
   for (auto const& [from, dur] :
        {std::pair{unixtime_t{0min}, duration_t{10min}},
-        std::pair{unixtime_t{day + 9h + 6min}, footpath::kMaxDuration}}) {
+        std::pair{unixtime_t{day + 9h + 6min}, footpath::kMaxDuration},
+        std::pair{unixtime_t{day + 9h + 20min}, duration_t{10min}}}) {
     rtt.td_footpaths_out_[kProfile][B1].push_back(td_footpath{B2, from, dur});
     rtt.td_footpaths_in_[kProfile][B2].push_back(td_footpath{B1, from, dur});
   }
