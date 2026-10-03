@@ -104,11 +104,20 @@ void read_stop_times(trip_data& trips,
     t->flex_stops_.push_back(l_group == location_group_idx_t::invalid()
                                  ? flex_stop_t{flex_area}
                                  : flex_stop_t{l_group});
-    t->flex_time_windows_.push_back(stop_time_window{
-        .pickup_booking_rule_ = pickup_booking,
-        .drop_off_booking_rule_ = drop_off_booking,
-        .start_ = hhmm_to_min(*s.start_pickup_drop_off_window_),
-        .end_ = hhmm_to_min(*s.end_pickup_drop_off_window_)});
+    // Windows are half-open [start, end). A zero-length window [T, T] is
+    // invalid in GTFS-Flex, but feeds use it for a fixed departure at T
+    // (e.g. call-taxis in the Austrian feeds): read it as the single minute
+    // [T, T + 1) so that everything downstream can treat windows uniformly.
+    auto const start = hhmm_to_min(*s.start_pickup_drop_off_window_);
+    auto end = hhmm_to_min(*s.end_pickup_drop_off_window_);
+    if (end == start) {
+      end += minutes_after_midnight_t{1};
+    }
+    t->flex_time_windows_.push_back(
+        stop_time_window{.pickup_booking_rule_ = pickup_booking,
+                         .drop_off_booking_rule_ = drop_off_booking,
+                         .start_ = start,
+                         .end_ = end});
   };
 
   // Parse regular trip.
