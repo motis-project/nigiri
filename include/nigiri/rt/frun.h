@@ -12,6 +12,7 @@
 #include "nigiri/types.h"
 
 namespace nigiri {
+enum class rt_data_state : std::uint8_t;
 struct shapes_storage;
 struct rt_timetable;
 struct timetable;
@@ -55,6 +56,8 @@ struct run_stop {
   unixtime_t scheduled_time(event_type) const;
   unixtime_t time(event_type) const;
   duration_t delay(event_type) const;
+  rt_data_state data_state(event_type) const;
+  bool has_rt_data(event_type) const;
   timezone_idx_t get_tz(event_type) const;
   std::optional<std::string> get_tz_name(event_type) const;
 
