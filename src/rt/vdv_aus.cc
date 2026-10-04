@@ -16,6 +16,7 @@
 #include "nigiri/common/mam_dist.h"
 #include "nigiri/common/parse_time.h"
 #include "nigiri/for_each_meta.h"
+#include "nigiri/location_routes.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -335,10 +336,10 @@ void updater::match_run(run_id const& vdv_id,
     }
     auto no_transport_found_at_stop = true;
     for (auto const l : tt_.locations_.equivalences_[vdv_stop.l_]) {
-      for (auto const r : tt_.location_routes_[l]) {
+      for_each_route_at_stop(tt_, l, [&](route_idx_t const r) {
         auto const location_seq = tt_.route_location_seq_[r];
         for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
-          if (stop{s}.location_idx() != l) {
+          if (tt_.base(stop{s}.location_idx()) != l) {
             continue;
           }
           auto const vdv_ev = stop_idx == 0
@@ -396,7 +397,7 @@ void updater::match_run(run_id const& vdv_id,
             }
           }
         }
-      }
+      });
     }
     if (no_transport_found_at_stop) {
       ++stats.no_transport_found_at_stop_;

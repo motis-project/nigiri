@@ -891,9 +891,6 @@ struct raptor_impl {
       if (!prev_station_mark_[to_idx(src)]) {
         continue;
       }
-      if (has_td_fps<WithTdFootpaths>(e.from_, true)) {
-        continue;
-      }
       auto const tmp_time = tmp_.get(src, Vias);
       if (tmp_time == kInvalid) {
         continue;

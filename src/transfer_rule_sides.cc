@@ -18,8 +18,11 @@ void add_trip_rules(timetable const& tt,
                     std::vector<transfer_rule_side_idx>& out) {
   auto const& tr = tt.transfer_rules_;
   for (auto const trip : trips) {
+    // Collect all rules applying to the trip.
     auto const trip_rules = values_of(tr.trip_rules_, trip);
     out.insert(end(out), trip_rules.begin(), trip_rules.end());
+
+    // Collect all rules applying to the route.
     auto const src = tt.trip_id_src_[tt.trip_ids_[trip].front()];
     for (auto const s : values_of(tr.route_rules_, tt.trip_route_id_[trip])) {
       if (tr.rules_[s.rule()].src_ == src) {
@@ -35,7 +38,6 @@ void get_signature(timetable const& tt,
                    bool const is_handover,
                    location_idx_t const base,
                    std::vector<transfer_rule_side_idx>& sig) {
-  auto const& rules = tt.transfer_rules_.rules_;
   sig.clear();
   auto const add = [&](transfer_rule_side_idx const s, bool const is_arriving) {
     if (is_handover && s.is_from() != is_arriving) {
@@ -45,8 +47,8 @@ void get_signature(timetable const& tt,
       return;
     }
 
-    if (tt.locations_.is_self_or_parent(rules[s.rule()].stop(s.is_from()),
-                                        base)) {
+    auto const stop = tt.transfer_rules_.rules_[s.rule()].stop(s.is_from());
+    if (tt.locations_.is_self_or_parent(stop, base)) {
       sig.push_back(s);
     }
   };

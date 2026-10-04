@@ -169,6 +169,8 @@ void fold_pair_defaults(timetable& tt,
       continue;
     }
 
+    // Convert the majority of qualified rules
+    // for this stop pair into an unqualified rule.
     auto const majority = std::max_element(
         begin(durations), end(durations),
         [](auto const& a, auto const& b) { return a.second < b.second; });
@@ -205,6 +207,7 @@ void fold_pair_defaults(timetable& tt,
       return true;
     }
 
+    // Check if a majority rule conflict with an existing rule?
     auto const any_with_children = [&](location_idx_t const l, auto&& fn) {
       return fn(l) || utl::any_of(tt.locations_.children_[l], fn);
     };
@@ -464,7 +467,7 @@ void read_transfers(source_idx_t const src,
         votes.push_back(!is_forbidden && !is_timed);
       });
 
-  // Write rules to the timetable.
+  // Majority fold.
   fold_pair_defaults(tt, src, rules, votes);
   if (first_rule == tt.transfer_rules_.rules_.size()) {
     return;
@@ -498,8 +501,7 @@ void read_transfers(source_idx_t const src,
     }
 
     // For each stop with qualified transfer rules
-    // -> generate a virtual location according to its signature
-    // -> reuses existing virtual locations if the signature is identical
+    // -> get or create a virtual location according to its signature
     for (auto& x : t.stop_seq_) {
       auto const s = stop{x};
       get_signature(tt, trip_rules, {}, false, s.location_idx(), sig);
@@ -535,7 +537,6 @@ void read_transfers(source_idx_t const src,
                         : get_or_create_virt(tt, virts, base_a, *handover_sig));
   };
 
-  // Collect stay-seated trip pairs from block_id and transfer_type=4.
   for (auto const& [_, blk] : trips.blocks_) {
     for (auto const a : blk->trips_) {
       for (auto const b : blk->trips_) {
