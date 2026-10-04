@@ -15,6 +15,7 @@
 #include "utl/progress_tracker.h"
 #include "utl/verify.h"
 
+#include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/transfer_rules.h"
 #include "nigiri/logging.h"
 #include "nigiri/stop.h"
@@ -282,7 +283,8 @@ void read_transfers(source_idx_t const src,
                     timetable& tt,
                     std::string_view file_content,
                     stops_map_t const& stops,
-                    trip_data& trips) {
+                    trip_data& trips,
+                    bool const adjust_footpaths) {
   if (file_content.empty()) {
     return;
   }
@@ -386,6 +388,19 @@ void read_transfers(source_idx_t const src,
         auto const to_stop = utl::lookup(stops, t.to_stop_id_->view());
         if (!to_stop) {
           return;
+        }
+
+        // Drop transfer rule if adjusted footpath exceeds kMaxDuration.
+        if (adjust_footpaths) {
+          auto const adjusted =
+              adjust_to_walk_speed(tt, *from_stop, *to_stop,
+                                   min_transfer_time.value_or(duration_t{0}));
+          if (!adjusted.has_value()) {
+            return;
+          }
+          if (min_transfer_time.has_value()) {
+            min_transfer_time = *adjusted;
+          }
         }
 
         // Resolve from_route_id and to_route_id.

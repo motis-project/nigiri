@@ -55,16 +55,18 @@ inline location_idx_t lidx(timetable const& tt,
 }
 
 // Loads the feeds (one source each), valid on kDay.
-inline timetable load_feeds(std::vector<std::string> const& feeds) {
+inline timetable load_feeds(std::vector<std::string> const& feeds,
+                            bool const adjust_footpaths = false) {
   auto tt = timetable{};
   tt.date_range_ = {kDay, kDay + date::days{1}};
   loader::register_special_stations(tt);
   for (auto i = 0U; i != feeds.size(); ++i) {
     loader::gtfs::load_timetable(
-        {}, source_idx_t{static_cast<source_idx_t::value_t>(i)},
+        {.adjust_footpaths_ = adjust_footpaths},
+        source_idx_t{static_cast<source_idx_t::value_t>(i)},
         loader::mem_dir::read(feeds[i]), tt);
   }
-  loader::finalize(tt);
+  loader::finalize(tt, adjust_footpaths);
   return tt;
 }
 

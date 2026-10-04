@@ -914,6 +914,30 @@ TEST(gtfs, transfer_rules_very_large_min_transfer_time_is_not_a_ban) {
   EXPECT_EQ(at("21:30"), begin(res)->dest_time_);
 }
 
+// FA and FB are ~33 km apart, too far to walk, so adjusting footpaths drops
+// the transfer. The route rules give both stops virtual locations, which turns
+// FA -> FB into a rule hub instead of footpaths - it has to be dropped too.
+TEST(gtfs, transfer_rules_unwalkable_rule_hub_is_dropped) {
+  auto const tt =
+      load_feeds({feed({{"FA", 63.0, 22.0},
+                        {"FB", 63.3, 22.0},
+                        {"F0", 62.9, 22.0},
+                        {"F9", 63.4, 22.0}},
+                       {{"FT1", "RF1", {{"F0", "10:00"}, {"FA", "10:30"}}},
+                        {"FT3", "RF3", {{"F0", "10:01"}, {"FA", "10:31"}}},
+                        {"FT2", "RF2", {{"FB", "11:00"}, {"F9", "11:30"}}},
+                        {"FT4", "RF4", {{"FB", "11:01"}, {"F9", "11:31"}}}},
+                       "FA,FB,2,1200,,,,\n"
+                       "FA,FA,2,120,,,,\n"
+                       "FA,FA,2,600,RF1,,,\n"
+                       "FA,FA,2,900,RF3,,,\n"
+                       "FB,FB,2,120,,,,\n"
+                       "FB,FB,2,600,,RF2,,\n"
+                       "FB,FB,2,900,,RF4,,\n")},
+                 true);
+  EXPECT_TRUE(search_at(tt, "F0", "F9", "10:00").empty());
+}
+
 // ===========================================================================
 // Walk hubs and rule hubs. add_walk_hubs sees rule footpaths, not the pairs
 // of a rule hub, so a rule hub is only safe where a rule speaks for its two

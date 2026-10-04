@@ -25,10 +25,10 @@
 
 namespace nigiri::loader {
 
-std::optional<u8_minutes> adjust_to_walk_speed(timetable const& tt,
+std::optional<duration_t> adjust_to_walk_speed(timetable const& tt,
                                                location_idx_t const a,
                                                location_idx_t const b,
-                                               u8_minutes const duration) {
+                                               duration_t const duration) {
   constexpr auto const kMaxWalkDistance =
       std::numeric_limits<u8_minutes::rep>::max() * 60.0 * kWalkSpeed;
 
@@ -42,9 +42,9 @@ std::optional<u8_minutes> adjust_to_walk_speed(timetable const& tt,
     return std::nullopt;
   }
 
-  return u8_minutes{
-      std::max(static_cast<duration_t::rep>(duration.count()),
-               static_cast<duration_t::rep>(distance / kWalkSpeed / 60))};
+  return std::max(
+      duration,
+      duration_t{static_cast<duration_t::rep>(distance / kWalkSpeed / 60)});
 }
 
 void add_equivalence_footpaths(timetable& tt,
@@ -149,7 +149,7 @@ void add_walk_hubs(timetable& tt,
         if (!adjusted.has_value()) {
           continue;
         }
-        d = duration_t{adjusted->count()};
+        d = *adjusted;
       }
       collect_members(tt, fp.target(), targets);
       if (members.size() == 1U && targets.size() == 1U) {
@@ -270,15 +270,13 @@ void write_footpaths(timetable& tt,
       if (fp.target() == l) {
         continue;
       }
-      if (adjust_footpaths) {
+      if (adjust_footpaths && !rule_fps.contains(l, fp.target())) {
         auto const adjusted =
             adjust_to_walk_speed(tt, l, fp.target(), fp.duration());
         if (!adjusted.has_value()) {
           continue;
         }
-        if (!rule_fps.contains(l, fp.target())) {
-          fp = footpath{fp.target(), *adjusted};
-        }
+        fp = footpath{fp.target(), *adjusted};
       }
       if (is_hub_covered(tt, l, fp.target(), fp.duration())) {
         ++n_pruned;

@@ -27,7 +27,7 @@ TEST(gtfs, read_stations_example_data) {
   tt.route_ids_.emplace_back();
   auto trips = trip_data{};
   read_transfers(source_idx_t{0}, tt, files.get_file(kTransfersFile).data(),
-                 stops, trips);
+                 stops, trips, false);
 
   EXPECT_EQ(8, stops.size());
 

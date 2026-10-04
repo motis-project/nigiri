@@ -81,6 +81,7 @@ int main(int ac, char** av) {
   bpo::store(
       bpo::command_line_parser(ac, av).options(desc).positional(pos).run(), vm);
   bpo::notify(vm);
+  c.adjust_footpaths_ = finalize_opt.adjust_footpaths_;
 
   if (vm.count("help") != 0U) {
     std::cout << desc << "\n";

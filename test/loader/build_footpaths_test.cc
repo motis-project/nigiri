@@ -76,7 +76,7 @@ service_id,date,exception_type
 
 # transfers.txt
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
-A,B,2,180
+A,B,2,60
 B,X,2,300
 P,Q,2,300
 Q,P,2,300
@@ -116,16 +116,17 @@ TEST(loader, build_footpaths) {
 
 // A 5 minute "transfer" between stops 300km apart is not walkable. It has to
 // be dropped - writing it with its input duration teleports passengers across
-// the map.
+// the map. A transfer shorter than the walk (1 min for 222 m) is raised to the
+// walking time.
 TEST(loader, build_footpaths_drop_unwalkable) {
   auto tt = timetable{};
 
   tt.date_range_ = {date::sys_days{2024_y / March / 1},
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({.default_tz_ = "Europe/Berlin"},
-                               source_idx_t{0},
-                               loader::mem_dir::read(unwalkable_files), tt);
+  loader::gtfs::load_timetable(
+      {.adjust_footpaths_ = true, .default_tz_ = "Europe/Berlin"},
+      source_idx_t{0}, loader::mem_dir::read(unwalkable_files), tt);
   loader::finalize(tt, /* adjust_footpaths */ true);
 
   auto ss = std::stringstream{};
@@ -139,7 +140,7 @@ TEST(loader, build_footpaths_drop_unwalkable) {
   }
 
   EXPECT_EQ(R"((A, A)
-  00:03.0->(B, B)
+  00:02.0->(B, B)
 )"sv,
             ss.str());
 }

@@ -15,6 +15,7 @@ void read_transfers(source_idx_t,
                     timetable&,
                     std::string_view file_content,
                     stops_map_t const&,
-                    trip_data&);
+                    trip_data&,
+                    bool adjust_footpaths);
 
 }  // namespace nigiri::loader::gtfs

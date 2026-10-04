@@ -202,7 +202,8 @@ void load_timetable(loader_config const& config,
     }
   }
 
-  read_transfers(src, tt, load(kTransfersFile).data(), stops, trip_data);
+  read_transfers(src, tt, load(kTransfersFile).data(), stops, trip_data,
+                 config.adjust_footpaths_);
 
   hash_map<route_key_t, std::vector<std::vector<utc_trip>>, route_key_hash,
            route_key_equals>
