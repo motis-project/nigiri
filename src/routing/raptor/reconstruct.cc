@@ -814,13 +814,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
       return fp_legs;
     };
     auto static_legs = try_fps(l);
-    if (!static_legs.has_value() && is_projected(q.prf_idx_)) {
-      tt.locations_.for_each_virt(l, [&](location_idx_t const c) {
-        if (!static_legs.has_value()) {
-          static_legs = try_fps(c);
-        }
-      });
-    }
     if (static_legs.has_value()) {
       return std::move(*static_legs);
     }

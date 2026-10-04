@@ -891,6 +891,7 @@ private:
         }
         for (auto const target : scatter_edges[h]) {
           ++stats_.n_footpaths_visited_;
+          assert(!ProjectVirts || !tt_.locations_.is_virt(target));
           relax(k, v, hub_slots[i][v], w, to_idx(target));
         }
       }
@@ -925,7 +926,8 @@ private:
 
             ++stats_.n_footpaths_visited_;
 
-            auto const target = to_idx(project(fp.target()));
+            assert(!ProjectVirts || !tt_.locations_.is_virt(fp.target()));
+            auto const target = to_idx(fp.target());
             auto const duration = static_cast<int>(adjusted_transfer_time(
                 transfer_time_settings_, fp.duration().count()));
             for (auto v = 0U; v != Vias + 1; ++v) {
@@ -966,15 +968,16 @@ private:
           continue;
         }
         auto const start = leave(i, v, tmp_time);
-        for_each_footpath<SearchDir>(fps, to_unix(tmp_time),
-                                     [&](location_idx_t const fp_target,
-                                         duration_t const duration, auto) {
-                                       ++stats_.n_footpaths_visited_;
-                                       relax(k, start.v_, start.time_,
-                                             duration.count(),
-                                             to_idx(project(fp_target)));
-                                       return utl::cflow::kContinue;
-                                     });
+        for_each_footpath<SearchDir>(
+            fps, to_unix(tmp_time),
+            [&](location_idx_t const fp_target, duration_t const duration,
+                auto) {
+              ++stats_.n_footpaths_visited_;
+              assert(!ProjectVirts || !tt_.locations_.is_virt(fp_target));
+              relax(k, start.v_, start.time_, duration.count(),
+                    to_idx(fp_target));
+              return utl::cflow::kContinue;
+            });
       }
     });
   }

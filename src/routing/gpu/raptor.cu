@@ -51,42 +51,47 @@ constexpr std::uint32_t n_bitvec_words(std::uint32_t const n) {
   return n / 32U + 1U;
 }
 
-template <typename Key, typename Seqs>
-vecvec<Key, stop::value_type> build_projected_seq(timetable const& tt,
-                                                  Seqs const& seqs,
-                                                  std::uint32_t const n) {
-  auto v = vecvec<Key, stop::value_type>{};
-  auto tmp = std::vector<stop::value_type>{};
-  for (auto i = Key{0U}; i != Key{n}; ++i) {
+template <typename Key, typename T, typename Fn>
+vecvec<Key, T> build_vecvec(std::uint32_t const n, Fn&& fill) {
+  auto v = vecvec<Key, T>{};
+  auto tmp = std::vector<T>{};
+  for (auto i = 0U; i != n; ++i) {
     tmp.clear();
-    for (auto const s : seqs[i]) {
-      auto const stp = stop{s};
-      tmp.push_back(stp.with_location(tt.base(stp.location_idx())).value());
-    }
+    fill(Key{i}, tmp);
     v.emplace_back(tmp);
   }
   return v;
 }
 
+template <typename Key, typename Seqs>
+vecvec<Key, stop::value_type> build_projected_seq(timetable const& tt,
+                                                  Seqs const& seqs,
+                                                  std::uint32_t const n) {
+  return build_vecvec<Key, stop::value_type>(
+      n, [&](Key const i, std::vector<stop::value_type>& out) {
+        for (auto const s : seqs[i]) {
+          auto const stp = stop{s};
+          out.push_back(stp.with_location(tt.base(stp.location_idx())).value());
+        }
+      });
+}
+
 template <typename T, typename Index>
 vecvec<location_idx_t, T> build_projected_index(timetable const& tt,
                                                 Index const& idx) {
-  auto v = vecvec<location_idx_t, T>{};
-  auto tmp = std::vector<T>{};
-  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-    tmp.clear();
-    if (!tt.locations_.is_virt(l)) {
-      auto const own = idx[l];
-      tmp.assign(begin(own), end(own));
-      tt.locations_.for_each_virt(l, [&](location_idx_t const c) {
-        auto const virt = idx[c];
-        tmp.insert(end(tmp), begin(virt), end(virt));
+  return build_vecvec<location_idx_t, T>(
+      tt.n_locations(), [&](location_idx_t const l, std::vector<T>& out) {
+        if (tt.locations_.is_virt(l)) {
+          return;
+        }
+        auto const own = idx[l];
+        out.assign(begin(own), end(own));
+        tt.locations_.for_each_virt(l, [&](location_idx_t const c) {
+          auto const virt = idx[c];
+          out.insert(end(out), begin(virt), end(virt));
+        });
+        utl::erase_duplicates(out);
       });
-      utl::erase_duplicates(tmp);
-    }
-    v.emplace_back(tmp);
-  }
-  return v;
 }
 
 struct gpu_timetable::impl {
@@ -118,20 +123,6 @@ struct gpu_timetable::impl {
     return utl::any_of(tt.locations_.types_, [](location_type const t) {
       return t == location_type::kVirt;
     });
-  }
-
-  static vecvec<location_idx_t, footpath> build_projected_footpaths(
-      timetable const& tt, vecvec<location_idx_t, footpath> const& fps) {
-    auto v = vecvec<location_idx_t, footpath>{};
-    auto tmp = std::vector<footpath>{};
-    for (auto l = 0U; l != fps.size(); ++l) {
-      tmp.clear();
-      for (auto const fp : fps[location_idx_t{l}]) {
-        tmp.push_back(footpath{tt.base(fp.target()), fp.duration()});
-      }
-      v.emplace_back(tmp);
-    }
-    return v;
   }
 
   static std::vector<u8_minutes> pad_transfer_times(
@@ -212,16 +203,8 @@ struct gpu_timetable::impl {
     }
 
     for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
-      if (has_projection_ && is_projected(p)) {
-        footpaths_out_[p] = device_vecvec<fp_t>{
-            build_projected_footpaths(tt, tt.locations_.footpaths_out_[p])};
-        footpaths_in_[p] = device_vecvec<fp_t>{
-            build_projected_footpaths(tt, tt.locations_.footpaths_in_[p])};
-      } else {
-        footpaths_out_[p] =
-            device_vecvec<fp_t>{tt.locations_.footpaths_out_[p]};
-        footpaths_in_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_in_[p]};
-      }
+      footpaths_out_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_out_[p]};
+      footpaths_in_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_in_[p]};
       hub_time_[p] = to_device(tt.locations_.hub_time_[p]);
       hub_gather_[p] = {flatten(tt.locations_.hub_in_by_loc_[p]),
                         flatten(tt.locations_.hub_out_by_loc_[p])};
@@ -328,30 +311,27 @@ struct gpu_rt_timetable::impl {
 
   static vecvec<location_idx_t, rt_transport_idx_t> build_location_rt(
       rt_timetable const& rtt) {
-    auto v = vecvec<location_idx_t, rt_transport_idx_t>{};
-    for (auto l = 0U; l != rtt.n_locations(); ++l) {
-      v.emplace_back(rtt.location_rt_transports_[location_idx_t{l}]);
-    }
-    return v;
+    return build_vecvec<location_idx_t, rt_transport_idx_t>(
+        rtt.n_locations(),
+        [&](location_idx_t const l, std::vector<rt_transport_idx_t>& out) {
+          auto const transports = rtt.location_rt_transports_[l];
+          out.assign(begin(transports), end(transports));
+        });
   }
 
   static vecvec<rt_transport_idx_t, stop::value_type> build_location_seq(
       rt_timetable const& rtt) {
-    auto v = vecvec<rt_transport_idx_t, stop::value_type>{};
-    auto tmp = std::vector<stop::value_type>{};
-    for (auto rt_t = rt_transport_idx_t{0U}; rt_t != rtt.n_rt_transports();
-         ++rt_t) {
-      auto const seq = rtt.rt_transport_location_seq_[rt_t];
-      tmp.clear();
-      for (auto i = 0U; i != seq.size(); ++i) {
-        tmp.push_back(stop{seq[i]}
-                          .with_location(rtt.stop_location(
-                              rt_t, static_cast<stop_idx_t>(i)))
-                          .value());
-      }
-      v.emplace_back(tmp);
-    }
-    return v;
+    return build_vecvec<rt_transport_idx_t, stop::value_type>(
+        rtt.n_rt_transports(),
+        [&](rt_transport_idx_t const rt_t, std::vector<stop::value_type>& out) {
+          auto const seq = rtt.rt_transport_location_seq_[rt_t];
+          for (auto i = 0U; i != seq.size(); ++i) {
+            out.push_back(stop{seq[i]}
+                              .with_location(rtt.stop_location(
+                                  rt_t, static_cast<stop_idx_t>(i)))
+                              .value());
+          }
+        });
   }
 
   static std::vector<device_rt_timetable::rt_footpath> build_rt_footpaths(
@@ -1504,136 +1484,88 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
   constexpr auto const is_fwd = SearchDir == direction::kForward;
 
   // Front-side mumo leg: special_station -> first transit stop.
-  auto const from = j.legs_.front().from_;
-  auto const dep_time = j.legs_.front().dep_time_;
-  auto const front_match_mode =
-      is_fwd ? q.start_match_mode_ : q.dest_match_mode_;
-  if (front_match_mode == location_match_mode::kIntermodal) {
-    auto const& offsets = is_fwd ? q.start_ : q.destination_;
-    auto const& td_offsets = is_fwd ? q.td_start_ : q.td_dest_;
-    auto const special = get_special_station(is_fwd ? special_station::kStart
-                                                    : special_station::kEnd);
-    auto const o = utl::find_if(offsets, [&](offset const& x) {
-      return matches(tt_, front_match_mode,
-                     tt_.locations_.project(prf_idx_, x.target()), from) &&
-             (is_fwd
-                  // fwd: query start, check feasibility (allows ontrip start)
-                  ? dep_time - x.duration() >= j.start_time_
-                  // bwd: destination, anchored exactly at j.dest_time_
-                  : dep_time - x.duration() == j.dest_time_);
-    });
-    if (o != end(offsets)) {
-      auto const dep = dep_time - o->duration();
-      j.legs_.insert(begin(j.legs_), journey::leg{direction::kForward, special,
-                                                  from, dep, dep_time, *o});
-    } else {
-      // td offset (e.g. flex), mirrors the CPU reconstruct:
-      // - fwd = query start side (find_start_footpath): evaluated backward
-      //   from the first transit departure, feasible if not before the
-      //   journey start
-      // - bwd = td egress side (get_legs intermodal dest): evaluated forward
-      //   from the final label j.dest_time_
-      // specify_td_offsets() refines both to the raw entry duration below.
-      auto inserted = false;
-      for (auto const& [target, tds] : td_offsets) {
-        if (!matches(tt_, front_match_mode,
-                     tt_.locations_.project(prf_idx_, target), from)) {
-          continue;
-        }
-        if (is_fwd) {
-          auto const fp = get_td_duration<direction::kBackward>(tds, dep_time);
-          if (!fp.has_value() || dep_time - fp->first < j.start_time_) {
-            continue;
-          }
-          j.legs_.insert(begin(j.legs_),
-                         journey::leg{direction::kForward, special, from,
-                                      dep_time - fp->first, dep_time,
-                                      offset{rt::base(tt_, rtt_, target),
-                                             fp->first, fp->second.mode()}});
-        } else {
-          auto const t = j.dest_time_;
-          auto const fp = get_td_duration<direction::kForward>(tds, t);
-          if (!fp.has_value() || t + fp->first > dep_time) {
-            continue;  // must reach the stop before the transit departure
-          }
-          j.legs_.insert(
-              begin(j.legs_),
-              journey::leg{direction::kForward, special, from, t, t + fp->first,
-                           offset{rt::base(tt_, rtt_, target), fp->first,
-                                  fp->second.mode()}});
-        }
-        inserted = true;
-        break;
-      }
-      utl::verify(inserted, "gpu reconstruct: no front mumo offset");
-    }
-  }
-
   // offset: last transit stop -> special_station.
-  auto const to = j.legs_.back().to_;
-  auto const arr_time = j.legs_.back().arr_time_;
-  auto const back_match_mode =
-      is_fwd ? q.dest_match_mode_ : q.start_match_mode_;
-  if (back_match_mode == location_match_mode::kIntermodal) {
-    auto const& offsets = is_fwd ? q.destination_ : q.start_;
-    auto const& td_offsets = is_fwd ? q.td_dest_ : q.td_start_;
-    auto const special = get_special_station(is_fwd ? special_station::kEnd
-                                                    : special_station::kStart);
+  auto const add_mumo = [&](bool const is_front) {
+    auto const is_start = is_front == is_fwd;
+    auto const match_mode = is_start ? q.start_match_mode_ : q.dest_match_mode_;
+    if (match_mode != location_match_mode::kIntermodal) {
+      return;
+    }
+
+    auto const& offsets = is_start ? q.start_ : q.destination_;
+    auto const& td_offsets = is_start ? q.td_start_ : q.td_dest_;
+    auto const special = get_special_station(is_start ? special_station::kStart
+                                                      : special_station::kEnd);
+    auto const l = is_front ? j.legs_.front().from_ : j.legs_.back().to_;
+    auto const t =
+        is_front ? j.legs_.front().dep_time_ : j.legs_.back().arr_time_;
+    auto const is_match = [&](location_idx_t const target) {
+      return matches(tt_, match_mode, tt_.locations_.project(prf_idx_, target),
+                     l);
+    };
+    auto const add_leg = [&](unixtime_t const dep, unixtime_t const arr,
+                             offset const& o) {
+      if (is_front) {
+        j.legs_.insert(begin(j.legs_), journey::leg{direction::kForward,
+                                                    special, l, dep, arr, o});
+      } else {
+        j.legs_.push_back(
+            journey::leg{direction::kForward, l, special, dep, arr, o});
+        j.dest_ = special;
+      }
+    };
+
     auto const o = utl::find_if(offsets, [&](offset const& x) {
-      return matches(tt_, back_match_mode,
-                     tt_.locations_.project(prf_idx_, x.target()), to) &&
-             (is_fwd
-                  // fwd: destination, anchored exactly at j.dest_time_
-                  ? arr_time + x.duration() == j.dest_time_
-                  // bwd: query start, anchored by feasibility
-                  : arr_time + x.duration() <= j.start_time_);
+      auto const outer = is_front ? t - x.duration() : t + x.duration();
+      return is_match(x.target()) &&
+             (is_start
+                  // query start, check feasibility (allows ontrip start)
+                  ? (is_front ? outer >= j.start_time_ : outer <= j.start_time_)
+                  // destination, anchored exactly at j.dest_time_
+                  : outer == j.dest_time_);
     });
     if (o != end(offsets)) {
-      auto const arr = arr_time + o->duration();
-      j.legs_.push_back(
-          journey::leg{direction::kForward, to, special, arr_time, arr, *o});
-      j.dest_ = special;
-    } else {
-      // dest td offset
-      auto inserted = false;
-      for (auto const& [target, tds] : td_offsets) {
-        if (!matches(tt_, back_match_mode,
-                     tt_.locations_.project(prf_idx_, target), to)) {
-          continue;
-        }
-
-        if (is_fwd) {
-          auto const fp =
-              get_td_duration<direction::kBackward>(tds, j.dest_time_);
-          if (!fp.has_value() ||
-              j.dest_time_ - fp->first /* duration*/ < arr_time) {
-            continue;
-          }
-
-          j.legs_.push_back(journey::leg{direction::kForward, to, special,
-                                         j.dest_time_ - fp->first, j.dest_time_,
-                                         offset{rt::base(tt_, rtt_, target),
-                                                fp->first, fp->second.mode()}});
-        } else {
-          auto const fp = get_td_duration<direction::kForward>(tds, arr_time);
-          if (!fp.has_value() || arr_time + fp->first > j.start_time_) {
-            continue;
-          }
-
-          j.legs_.push_back(journey::leg{direction::kForward, to, special,
-                                         arr_time, arr_time + fp->first,
-                                         offset{rt::base(tt_, rtt_, target),
-                                                fp->first, fp->second.mode()}});
-        }
-
-        j.dest_ = special;
-        inserted = true;
-
-        break;
-      }
-      utl::verify(inserted, "gpu reconstruct: no back mumo offset");
+      auto const outer = is_front ? t - o->duration() : t + o->duration();
+      add_leg(is_front ? outer : t, is_front ? t : outer, *o);
+      return;
     }
-  }
+
+    // td offset (e.g. flex), mirrors the CPU reconstruct:
+    // - fwd = query start side (find_start_footpath): evaluated backward
+    //   from the first transit departure, feasible if not before the
+    //   journey start
+    // - bwd = td egress side (get_legs intermodal dest): evaluated forward
+    //   from the final label j.dest_time_
+    // specify_td_offsets() refines both to the raw entry duration below.
+    auto const anchor = is_start ? t : j.dest_time_;
+    auto const bound = is_start ? j.start_time_ : j.dest_time_;
+    auto inserted = false;
+    for (auto const& [target, tds] : td_offsets) {
+      if (!is_match(target)) {
+        continue;
+      }
+      auto const fp = is_fwd
+                          ? get_td_duration<direction::kBackward>(tds, anchor)
+                          : get_td_duration<direction::kForward>(tds, anchor);
+      if (!fp.has_value()) {
+        continue;
+      }
+      auto const dep = is_fwd ? anchor - fp->first : anchor;
+      auto const arr = is_fwd ? anchor : anchor + fp->first;
+      if (is_front ? (dep < bound || arr > t) : (dep < t || arr > bound)) {
+        continue;
+      }
+      add_leg(
+          dep, arr,
+          offset{rt::base(tt_, rtt_, target), fp->first, fp->second.mode()});
+      inserted = true;
+      break;
+    }
+    utl::verify(inserted, "gpu reconstruct: no {} mumo offset",
+                is_front ? "front" : "back");
+  };
+  add_mumo(true);
+  add_mumo(false);
 
   // use_start_footpaths_ == true:
   // reconstruct the start footpath that seeded round k=0 at the first stop.
