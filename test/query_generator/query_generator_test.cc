@@ -16,13 +16,13 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 
 #include "../loader/hrd/hrd_timetable.h"
+#include "../transfer_rules_util.h"
 
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::test_data::hrd_timetable;
 using namespace nigiri::query_generation;
-using namespace std::string_view_literals;
 
 TEST(query_generation, pretrip_station) {
   constexpr auto const src = source_idx_t{0U};
@@ -89,101 +89,30 @@ TEST(query_generation, reproducibility) {
   }
 }
 
-// Feed 0: a route-qualified same-stop rule next to the unqualified pair
-// default gives the trip stops at BY virtual locations.
-constexpr auto const kFeedRules = R"(
-# agency.txt
-agency_id,agency_name,agency_url,agency_timezone
-AG0,Agency0,https://example.com,Europe/Berlin
-
-# calendar_dates.txt
-service_id,date,exception_type
-S0,20190501,1
-
-# stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
-BA,BA,,52.50,13.30,,,
-BY,BY,,52.50,13.40,,,
-BC,BC,,52.50,13.50,,,
-BD,BD,,52.50,13.60,,,
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_type
-R10,AG0,R10,,3
-R11,AG0,R11,,3
-R12,AG0,R12,,3
-
-# trips.txt
-route_id,service_id,trip_id
-R10,S0,U1
-R11,S0,U2
-R12,S0,U3
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence
-U1,12:00:00,12:00:00,BA,0
-U1,12:30:00,12:30:00,BY,1
-U2,12:31:00,12:31:00,BY,0
-U2,13:00:00,13:00:00,BC,1
-U3,12:31:00,12:31:00,BY,0
-U3,13:00:00,13:00:00,BD,1
-
-# transfers.txt
-from_stop_id,to_stop_id,from_route_id,to_route_id,transfer_type,min_transfer_time
-BY,BY,,,2,120
-BY,BY,R10,R11,2,0
-)"sv;
-
-// Feed 1 is loaded after feed 0, so its stops come after feed 0's virtual
-// locations. They are far enough apart that the generator does not discard
-// every query for having a short direct walk.
-constexpr auto const kFeedPlain = R"(
-# agency.txt
-agency_id,agency_name,agency_url,agency_timezone
-AG1,Agency1,https://example.com,Europe/Paris
-
-# calendar_dates.txt
-service_id,date,exception_type
-S1,20190501,1
-
-# stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
-PA,PA,,48.8500,2.3500,,,
-PB,PB,,48.8500,2.4200,,,
-PC,PC,,48.8500,2.4900,,,
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_type
-RP,AG1,RP,,3
-
-# trips.txt
-route_id,service_id,trip_id
-RP,S1,P1
-RP,S1,P2
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence
-P1,09:00:00,09:00:00,PA,0
-P1,09:10:00,09:10:00,PB,1
-P1,09:20:00,09:20:00,PC,2
-P2,10:00:00,10:00:00,PA,0
-P2,10:10:00,10:10:00,PB,1
-P2,10:20:00,10:20:00,PC,2
-)"sv;
-
 // The location r-tree only holds the non-virtual locations and yields
 // positions in that pool. Taken as location indices, they would point the
 // intermodal offsets at unrelated, far away stops.
 TEST(query_generation, intermodal_offsets_skip_virtual_locations) {
-  auto tt = timetable{};
-  tt.date_range_ = {date::sys_days{2019_y / May / 1},
-                    date::sys_days{2019_y / May / 2}};
-  loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({}, source_idx_t{0},
-                               loader::mem_dir::read(kFeedRules), tt);
-  loader::gtfs::load_timetable({}, source_idx_t{1},
-                               loader::mem_dir::read(kFeedPlain), tt);
-  loader::finalize(tt);
+  // Feed 0: a route-qualified same-stop rule next to the unqualified pair
+  // default gives the trip stops at BY virtual locations. Feed 1 is loaded
+  // after feed 0, so its stops come after feed 0's virtual locations. They are
+  // far enough apart that the generator does not discard every query for
+  // having a short direct walk.
+  auto const tt = test::load_feeds(
+      {test::feed({{"BA", 52.50, 13.30},
+                   {"BY", 52.50, 13.40},
+                   {"BC", 52.50, 13.50},
+                   {"BD", 52.50, 13.60}},
+                  {{"U1", "R10", {{"BA", "12:00"}, {"BY", "12:30"}}},
+                   {"U2", "R11", {{"BY", "12:31"}, {"BC", "13:00"}}},
+                   {"U3", "R12", {{"BY", "12:31"}, {"BD", "13:00"}}}},
+                  "BY,BY,2,120,,,,\n"
+                  "BY,BY,2,0,R10,R11,,\n"),
+       test::feed(
+           {{"PA", 48.85, 2.35}, {"PB", 48.85, 2.42}, {"PC", 48.85, 2.49}},
+           {{"P1", "RP", {{"PA", "09:00"}, {"PB", "09:10"}, {"PC", "09:20"}}},
+            {"P2", "RP", {{"PA", "10:00"}, {"PB", "10:10"}, {"PC", "10:20"}}}},
+           "")});
 
   // Pool positions and location indices only differ if virtual locations
   // exist and real locations follow them.
@@ -240,52 +169,15 @@ TEST(query_generation, intermodal_offsets_skip_virtual_locations) {
 // R1 -> R2), yet X is a start and a destination. Z has no events and virtual
 // locations are no stops: neither is ever drawn.
 TEST(query_generation, draws_stops_by_events) {
-  constexpr auto const kFeed = R"(
-# agency.txt
-agency_id,agency_name,agency_url,agency_timezone
-AG0,Agency0,https://example.com,Europe/Berlin
-
-# calendar_dates.txt
-service_id,date,exception_type
-S0,20190501,1
-
-# stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
-XA,XA,,52.50,13.30,,,
-X,X,,52.50,13.40,,,
-XB,XB,,52.50,13.50,,,
-Z,Z,,52.50,13.60,,,
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_type
-R1,AG0,R1,,3
-R2,AG0,R2,,3
-
-# trips.txt
-route_id,service_id,trip_id
-R1,S0,T1
-R2,S0,T2
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence
-T1,12:00:00,12:00:00,XA,0
-T1,12:30:00,12:30:00,X,1
-T2,12:31:00,12:31:00,X,0
-T2,13:00:00,13:00:00,XB,1
-
-# transfers.txt
-from_stop_id,to_stop_id,from_route_id,to_route_id,transfer_type,min_transfer_time
-X,X,,,2,120
-X,X,R1,R2,2,0
-)"sv;
-
-  auto tt = timetable{};
-  tt.date_range_ = {date::sys_days{2019_y / May / 1},
-                    date::sys_days{2019_y / May / 2}};
-  loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({}, source_idx_t{0},
-                               loader::mem_dir::read(kFeed), tt);
-  loader::finalize(tt);
+  auto const tt = test::load_feeds(
+      {test::feed({{"XA", 52.50, 13.30},
+                   {"X", 52.50, 13.40},
+                   {"XB", 52.50, 13.50},
+                   {"Z", 52.50, 13.60}},
+                  {{"T1", "R1", {{"XA", "12:00"}, {"X", "12:30"}}},
+                   {"T2", "R2", {{"X", "12:31"}, {"XB", "13:00"}}}},
+                  "X,X,2,120,,,,\n"
+                  "X,X,2,0,R1,R2,,\n")});
   auto const x = tt.locations_.location_id_to_idx_.at({"X", source_idx_t{0}});
   auto const z = tt.locations_.location_id_to_idx_.at({"Z", source_idx_t{0}});
   ASSERT_TRUE(tt.location_routes_[x].empty())

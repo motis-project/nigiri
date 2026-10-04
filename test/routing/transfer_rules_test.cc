@@ -29,6 +29,7 @@
 
 using namespace nigiri;
 using nigiri::test::add_empty_profile;
+using nigiri::test::arrival_at;
 using nigiri::test::at;
 using nigiri::test::feed;
 using nigiri::test::lidx;
@@ -36,6 +37,7 @@ using nigiri::test::load_feeds;
 using nigiri::test::n_virts;
 using nigiri::test::raptor_search;
 using nigiri::test::search_at;
+using nigiri::test::transfer_duration;
 
 // The shared feed of the tests that change out of a trip at a virtual
 // location: FA (route RF1) stops at a virtual location of U (the RF1 -> RF3
@@ -77,17 +79,16 @@ std::string virt_change_feed() {
               "QS,QS,2,0,,,Q1,Q2\n");
 }
 
-unixtime_t arrival_at_o(timetable const& tt,
-                        std::string_view const from,
-                        routing::transfer_time_settings const tts) {
-  auto const res = raptor_search(
+std::optional<unixtime_t> arrival_at_o(
+    timetable const& tt,
+    std::string_view const from,
+    routing::transfer_time_settings const tts) {
+  return nigiri::test::arrival(raptor_search(
       tt, nullptr,
       routing::query{.start_time_ = at("10:00"),
                      .start_ = {{lidx(tt, from), 0_minutes, 0U}},
                      .destination_ = {{lidx(tt, "O"), 0_minutes, 0U}},
-                     .transfer_time_settings_ = tts});
-  EXPECT_EQ(1U, res.size());
-  return res.size() == 0U ? unixtime_t{} : begin(res)->dest_time_;
+                     .transfer_time_settings_ = tts}));
 }
 
 // Trip-based routing, forward, on the profile of the query.
@@ -151,9 +152,7 @@ TEST(transfer_rules, trip_based_routing_sees_hub_transfers) {
   auto const tt = load_feeds({virt_feed()});
 
   // Control: RAPTOR finds FA -> FB.
-  auto const raptor = search_at(tt, "L", "M", "10:00");
-  ASSERT_EQ(1U, raptor.size());
-  EXPECT_EQ(at("11:00"), begin(raptor)->dest_time_);
+  EXPECT_EQ(at("11:00"), arrival_at(tt, "L", "M", "10:00"));
 
   auto const res = tb_search(
       tt, routing::query{.start_time_ = at("10:00"),
@@ -399,14 +398,7 @@ TEST(transfer_rules, fastest_direct_sees_walk_hubs) {
   EXPECT_TRUE(
       utl::none_of(tt.locations_.footpaths_out_[kDefaultProfile][p],
                    [&](footpath const fp) { return fp.target() == q; }));
-  auto hub_walk = std::optional<duration_t>{};
-  routing::for_each_hub_source<direction::kForward>(
-      tt, kDefaultProfile, q, [&](footpath const fp) {
-        if (fp.target() == p) {
-          hub_walk = fp.duration();
-        }
-        return true;
-      });
+  auto const hub_walk = transfer_duration(tt, p, q);
   ASSERT_TRUE(hub_walk.has_value());
 
   auto const direct = routing::get_fastest_direct(
@@ -446,17 +438,9 @@ TEST(transfer_rules, same_feed_walk_respects_transfer_time_like_cross_feed) {
        feed({{"E3", 60.5, 20.0004}, {"E9", 60.6, 20.3}},
             {{"ET3", "RE3", {{"E3", "10:40"}, {"E9", "11:00"}}}}, "")});
   auto const e1 = lidx(tt, "E1");
-  auto const walk_to = [&](location_idx_t const target) {
-    auto best = std::optional<duration_t>{};
-    for (auto const fp : tt.locations_.footpaths_out_[kDefaultProfile][e1]) {
-      if (fp.target() == target) {
-        best = fp.duration();
-      }
-    }
-    return best;
-  };
-  auto const to_e2 = walk_to(lidx(tt, "E2"));
-  auto const to_e3 = walk_to(lidx(tt, "E3", source_idx_t{1U}));
+  auto const to_e2 = transfer_duration(tt, e1, lidx(tt, "E2"));
+  auto const to_e3 =
+      transfer_duration(tt, e1, lidx(tt, "E3", source_idx_t{1U}));
   ASSERT_TRUE(to_e2.has_value());
   ASSERT_TRUE(to_e3.has_value());
   EXPECT_EQ(to_e3->count(), to_e2->count());

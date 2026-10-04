@@ -19,6 +19,7 @@
 using namespace nigiri;
 using namespace std::string_view_literals;
 using nigiri::test::add_empty_profile;
+using nigiri::test::arrival_at;
 using nigiri::test::at;
 using nigiri::test::feed;
 using nigiri::test::lidx;
@@ -28,6 +29,7 @@ using nigiri::test::n_virts;
 using nigiri::test::raptor_search;
 using nigiri::test::search_at;
 using nigiri::test::t;
+using nigiri::test::transfer_duration;
 
 // A station-level rule cascades to the station's stops: XS,XS type=2 600s.
 // Every change within XS takes 10 min, X1 -> X2 as well as a change at X1
@@ -48,9 +50,7 @@ TEST(gtfs, transfer_rules_station_level_min_time) {
                         {"T3", "R2", {{"X2", "10:42"}, {"B", "11:10"}}},
                         {"T4", "R2", {{"X1", "10:35"}, {"B", "11:05"}}}},
                        "XS,XS,2,600,,,,\n")});
-  auto const res = search_at(tt, "A", "B", "10:00");
-  ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(at("11:10"), begin(res)->dest_time_);
+  EXPECT_EQ(at("11:10"), arrival_at(tt, "A", "B", "10:00"));
 }
 
 // Directed forbidden transfer: F1,F2 type=3, two stops of the station FS
@@ -112,9 +112,7 @@ TEST(gtfs, transfer_rules_trip_beats_route) {
 
   EXPECT_EQ(0U, search_at(tt, "A4", "BZ", "16:00").size());
 
-  auto const res_cz = search_at(tt, "A4", "CZ", "16:00");
-  ASSERT_EQ(1U, res_cz.size());
-  EXPECT_EQ(at("17:10"), begin(res_cz)->dest_time_);
+  EXPECT_EQ(at("17:10"), arrival_at(tt, "A4", "CZ", "16:00"));
 }
 
 // Guaranteed connection (MetroNorth pattern): M,M type=1 for the trip pair
@@ -134,9 +132,7 @@ TEST(gtfs, transfer_rules_guaranteed_connection) {
 
   EXPECT_EQ(duration_t{2}, tt.locations_.transfer_time_[lidx(tt, "M")]);
 
-  auto const res_g = search_at(tt, "A5", "G", "18:00");
-  ASSERT_EQ(1U, res_g.size());
-  EXPECT_EQ(at("19:00"), begin(res_g)->dest_time_);
+  EXPECT_EQ(at("19:00"), arrival_at(tt, "A5", "G", "18:00"));
 
   EXPECT_EQ(0U, search_at(tt, "A5", "H", "18:00").size());
 }
@@ -159,9 +155,7 @@ TEST(gtfs, transfer_rules_self_pair) {
 
   EXPECT_EQ(0U, search_at(tt, "A8", "K", "22:00").size());
 
-  auto const res_l = search_at(tt, "A8", "L", "22:00");
-  ASSERT_EQ(1U, res_l.size());
-  EXPECT_EQ(at("23:00"), begin(res_l)->dest_time_);
+  EXPECT_EQ(at("23:00"), arrival_at(tt, "A8", "L", "22:00"));
 }
 
 // Mutually restricting trip pairs: Q,Q type=2 600s for Q1 -> Q2 and for
@@ -186,14 +180,10 @@ TEST(gtfs, transfer_rules_mutual_restriction) {
                        "Q,Q,2,600,,,Q1,Q2\n"
                        "Q,Q,2,600,,,Q2,Q1\n")});
 
-  auto const res_qa = search_at(tt, "A9", "QA", "08:00");
-  ASSERT_EQ(1U, res_qa.size());
-  EXPECT_EQ(at("09:10"), begin(res_qa)->dest_time_);
+  EXPECT_EQ(at("09:10"), arrival_at(tt, "A9", "QA", "08:00"));
 
   // The unnamed trip still departs from the stop Q itself at the default.
-  auto const res_qb = search_at(tt, "A9", "QB", "08:00");
-  ASSERT_EQ(1U, res_qb.size());
-  EXPECT_EQ(at("09:00"), begin(res_qb)->dest_time_);
+  EXPECT_EQ(at("09:00"), arrival_at(tt, "A9", "QB", "08:00"));
 }
 
 // A slow member together with a restricted source: SS,SS type=2 600s
@@ -229,15 +219,11 @@ TEST(gtfs, transfer_rules_slow_member) {
 
   // The same restricted source still reaches the slow member at the pair
   // default: nothing slow leads there, so it stays in the restricted hub.
-  auto const res_b = search_at(tt, "A10", "SSB", "09:00");
-  ASSERT_EQ(1U, res_b.size());
-  EXPECT_EQ(at("10:00"), begin(res_b)->dest_time_);
+  EXPECT_EQ(at("10:00"), arrival_at(tt, "A10", "SSB", "09:00"));
 
   // Leaving the slow member: it feeds no hub at all, so even this plain
   // 2 min transfer has to be written explicitly.
-  auto const res_c = search_at(tt, "A10", "SSC", "08:45");
-  ASSERT_EQ(1U, res_c.size());
-  EXPECT_EQ(at("10:00"), begin(res_c)->dest_time_);
+  EXPECT_EQ(at("10:00"), arrival_at(tt, "A10", "SSC", "08:45"));
 }
 
 // A rule that lets one route change without waiting must not become usable
@@ -261,18 +247,14 @@ TEST(gtfs, transfer_rules_fast_rule_stays_on_its_route) {
                        "GU,GU,2,0,RGC,RGX,,\n")});
 
   // GC is the route the 0 min rule names: 09:55 + 0 catches the 10:01.
-  auto const res_c = search_at(tt, "GO3", "GUD", "09:30");
-  ASSERT_EQ(1U, res_c.size());
-  EXPECT_EQ(at("10:30"), begin(res_c)->dest_time_);
+  EXPECT_EQ(at("10:30"), arrival_at(tt, "GO3", "GUD", "09:30"));
 
   // GB arrives 10:00 and owes 3 min, so 10:01 is out of reach - it may not
   // borrow the 0 min rule from GC.
   EXPECT_EQ(0U, search_at(tt, "GO2", "GUD", "09:00").size());
 
   // GA states the same 3 min as GB and has the slack for it.
-  auto const res_a = search_at(tt, "GO1", "GUD", "07:30");
-  ASSERT_EQ(1U, res_a.size());
-  EXPECT_EQ(at("10:30"), begin(res_a)->dest_time_);
+  EXPECT_EQ(at("10:30"), arrival_at(tt, "GO1", "GUD", "07:30"));
 }
 
 // Unqualified same-stop ban: T6N,T6N type=3 says no change is possible at
@@ -319,9 +301,7 @@ TEST(gtfs, transfer_rules_forbidden_same_stop_route) {
                        "T7Q,T7Q,2,120,,,,\n"
                        "T7Q,T7Q,3,,R78,R78,,\n")});
 
-  auto const allowed = search_at(tt, "T7A", "T7L", "14:30");
-  ASSERT_EQ(1U, allowed.size());
-  EXPECT_EQ(at("15:30"), begin(allowed)->dest_time_);
+  EXPECT_EQ(at("15:30"), arrival_at(tt, "T7A", "T7L", "14:30"));
 
   EXPECT_EQ(0U, raptor_search(tt, nullptr, "T7A", "T7K",
                               interval{at("14:30"), at("22:00")})
@@ -359,17 +339,13 @@ timetable load_banned_stop_with_exception() {
 TEST(gtfs, transfer_rules_forbidden_same_stop_with_exception) {
   auto const tt = load_banned_stop_with_exception();
 
-  auto const allowed = search_at(tt, "T8A", "T8K", "09:30");
-  ASSERT_EQ(1U, allowed.size());
-  EXPECT_EQ(at("10:25"), begin(allowed)->dest_time_);
+  EXPECT_EQ(at("10:25"), arrival_at(tt, "T8A", "T8K", "09:30"));
 
   EXPECT_EQ(0U, raptor_search(tt, nullptr, "T8A", "T8L",
                               interval{at("09:30"), at("16:00")})
                     .size());
 
-  auto const walked = search_at(tt, "T8A", "T8M", "09:30");
-  ASSERT_EQ(1U, walked.size());
-  EXPECT_EQ(at("10:37"), begin(walked)->dest_time_);
+  EXPECT_EQ(at("10:37"), arrival_at(tt, "T8A", "T8M", "09:30"));
 }
 
 // The same journey searched backwards (arrive by 12:00). The walk into T8M
@@ -427,9 +403,7 @@ TEST(gtfs, transfer_rules_forbidden_cross_product) {
                               interval{at("09:00"), at("20:00")})
                     .size());
 
-  auto const walked = search_at(tt, "T9A", "T9C", "09:00");
-  ASSERT_EQ(1U, walked.size());
-  EXPECT_EQ(at("10:00"), begin(walked)->dest_time_);
+  EXPECT_EQ(at("10:00"), arrival_at(tt, "T9A", "T9C", "09:00"));
 }
 
 // A guaranteed arrival shadowed by an earlier one: T10P1 reaches T10S first
@@ -462,46 +436,15 @@ TEST(gtfs, transfer_rules_guarantee_not_shadowed) {
 // the handover stop, so no rule applies there and the vehicle runs through: b
 // leaves when a arrives, too early for a change.
 TEST(gtfs, transfer_rules_block_handover_stop_without_rules) {
-  constexpr auto const kBlockFeed = R"(
-# agency.txt
-agency_id,agency_name,agency_url,agency_timezone
-AG,Agency,https://example.com,Europe/Berlin
-
-# stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,location_type,parent_station
-BA,BA,,50.0,6.0,,
-BS,BS,,50.0,6.5,,
-BB,BB,,50.0,7.0,,
-BX,BX,,50.0,8.0,,
-
-# calendar_dates.txt
-service_id,date,exception_type
-S1,20190501,1
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
-BR,AG,BR,,,3
-BQ,AG,BQ,,,3
-
-# trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-BR,S1,a,,blk
-BQ,S1,b,,blk
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence
-a,10:00:00,10:00:00,BA,1
-a,10:30:00,10:30:00,BS,2
-b,10:30:00,10:30:00,BS,1
-b,11:00:00,11:00:00,BB,2
-
-# transfers.txt
-from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id
-BX,BS,2,120,,
-BX,BS,2,300,,BR
-)"sv;
-
-  auto const tt = load_feeds({std::string{kBlockFeed}});
+  auto const tt =
+      load_feeds({feed({{"BA", 50.0, 6.0},
+                        {"BS", 50.0, 6.5},
+                        {"BB", 50.0, 7.0},
+                        {"BX", 50.0, 8.0}},
+                       {{"a", "BR", {{"BA", "10:00"}, {"BS", "10:30"}}, "blk"},
+                        {"b", "BQ", {{"BS", "10:30"}, {"BB", "11:00"}}, "blk"}},
+                       "BX,BS,2,120,,,,\n"
+                       "BX,BS,2,300,,BR,,\n")});
   ASSERT_EQ(1U, n_virts(tt))
       << "precondition: a's last stop is a virtual location";
 
@@ -512,59 +455,22 @@ BX,BS,2,300,,BR
 }
 
 // A virtual location must not get walks of its own into other feeds: it
-// leaves through its stop. On test::kNetwork, S1 takes 5 min to change, the
+// leaves through its stop. On test::network(), S1 takes 5 min to change, the
 // RF trips among themselves 0 min - their virtual location must not reach the
 // other feed's stop Z (50 m away) faster than S1 does.
 TEST(gtfs, transfer_rules_virtual_location_not_linked_to_other_feeds) {
-  constexpr auto const kOtherFeed = R"(
-# agency.txt
-agency_id,agency_name,agency_url,agency_timezone
-AG2,Agency 2,https://example.com,Europe/Berlin
-
-# stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
-Z,Z,,50.0005,6.5,,,
-Y,Y,,50.5,6.5,,,
-
-# calendar_dates.txt
-service_id,date,exception_type
-X,20190501,1
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
-RZ,AG2,RZ,,,3
-
-# trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-RZ,X,TZ,,
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
-TZ,12:00:00,12:00:00,Z,1,0,0
-TZ,12:30:00,12:30:00,Y,2,0,0
-)";
   auto const tt =
       load_feeds({test::network("S1,S1,2,300,,,,\nS1,S1,2,0,RF,RF,,"),
-                  std::string{kOtherFeed}});
+                  feed({{"Z", 50.0005, 6.5}, {"Y", 50.5, 6.5}},
+                       {{"TZ", "RZ", {{"Z", "12:00"}, {"Y", "12:30"}}}}, "")});
 
   auto const s1 = lidx(tt, "S1");
   auto const z = lidx(tt, "Z", source_idx_t{1});
   // The whole transfer relation: footpaths and what the hubs cover.
   auto const walk = [&](location_idx_t const from) {
-    auto d = std::optional<duration_t>{};
-    auto const take = [&](footpath const fp) {
-      if (fp.target() == z && (!d.has_value() || fp.duration() < *d)) {
-        d = fp.duration();
-      }
-      return true;
-    };
-    for (auto const fp : tt.locations_.footpaths_out_[kDefaultProfile][from]) {
-      take(fp);
-    }
-    routing::for_each_hub_source<direction::kBackward>(tt, kDefaultProfile,
-                                                       from, take);
-    return d;
+    return transfer_duration(tt, from, z);
   };
+
   ASSERT_TRUE(walk(s1).has_value());
   auto n_virts = 0U;
   for (auto const c : tt.locations_.children_[s1]) {
@@ -624,9 +530,7 @@ TEST(gtfs, transfer_rules_majority_does_not_override_explicit_row) {
                        "MS1,MP2,2,600,,,TA,TB\n")});
 
   // Unnamed trips: only the explicit 3 min apply, the 5 min change works.
-  auto const unnamed = search_at(tt, "MC", "MD", "10:00");
-  ASSERT_EQ(1U, unnamed.size());
-  EXPECT_EQ(at("11:00"), begin(unnamed)->dest_time_);
+  EXPECT_EQ(at("11:00"), arrival_at(tt, "MC", "MD", "10:00"));
 
   // TA -> TB: the trip-qualified 10 min are more specific, 5 min fail.
   EXPECT_EQ(0U, search_at(tt, "MC2", "MD2", "10:00").size());
@@ -655,14 +559,10 @@ TEST(gtfs, transfer_rules_one_sided_rule_applies_between_trips_of_its_route) {
                        "Z,Z,2,600,RB,,,\n")});
 
   // Control: RB -> RB2 respects the 10 min.
-  auto const other_route = search_at(tt, "E2", "F2", "12:00");
-  ASSERT_EQ(1U, other_route.size());
-  EXPECT_EQ(at("13:15"), begin(other_route)->dest_time_);
+  EXPECT_EQ(at("13:15"), arrival_at(tt, "E2", "F2", "12:00"));
 
   // RB -> RB: the same rule, so TB2 (5 min) cannot be reached either.
-  auto const same_route = search_at(tt, "E", "F", "12:00");
-  ASSERT_EQ(1U, same_route.size());
-  EXPECT_EQ(at("13:15"), begin(same_route)->dest_time_);
+  EXPECT_EQ(at("13:15"), arrival_at(tt, "E", "F", "12:00"));
 }
 
 // ===========================================================================
@@ -688,14 +588,10 @@ TEST(gtfs, transfer_rules_virtual_location_key_keeps_specificity) {
                        "S,S2,2,600,RC,RC2,,\n")});
 
   // Control: CA -> CC, the trip rule (one trip beats both routes) gives 5 min.
-  auto const ca = search_at(tt, "G", "H", "13:00");
-  ASSERT_EQ(1U, ca.size());
-  EXPECT_EQ(at("14:00"), begin(ca)->dest_time_);
+  EXPECT_EQ(at("14:00"), arrival_at(tt, "G", "H", "13:00"));
 
   // CA2 -> CC2 (6 min) needs the route pair's 10 min: CC3.
-  auto const ca2 = search_at(tt, "G", "H", "14:00");
-  ASSERT_EQ(1U, ca2.size());
-  EXPECT_EQ(at("15:10"), begin(ca2)->dest_time_);
+  EXPECT_EQ(at("15:10"), arrival_at(tt, "G", "H", "14:00"));
 }
 
 // Without a rule of another duration in between, the specificity does not
@@ -719,9 +615,7 @@ TEST(
                        "S,S2,2,300,,,CA,\n"
                        "S,S2,2,300,RC,,,\n")});
   EXPECT_EQ(1U, n_virts(tt));
-  auto const ca2 = search_at(tt, "G", "H", "14:00");
-  ASSERT_EQ(1U, ca2.size());
-  EXPECT_EQ(at("15:00"), begin(ca2)->dest_time_);
+  EXPECT_EQ(at("15:00"), arrival_at(tt, "G", "H", "14:00"));
 }
 
 // The lowered specificity also has to keep the order against rules outside
@@ -749,14 +643,10 @@ TEST(gtfs, transfer_rules_virtual_location_key_keeps_order_against_stop_rules) {
                        {"RO1", "RO2", "RO3"})});
 
   // KTA -> KT: a (trip -> route) beats the ban e (stop -> trip).
-  auto const kta = search_at(tt, "KA", "KD", "10:00");
-  ASSERT_EQ(1U, kta.size());
-  EXPECT_EQ(at("11:00"), begin(kta)->dest_time_);
+  EXPECT_EQ(at("11:00"), arrival_at(tt, "KA", "KD", "10:00"));
 
   // KTR -> KT: e beats c (route -> route), KTR has to wait for KT2.
-  auto const ktr = search_at(tt, "KB", "KD", "10:00");
-  ASSERT_EQ(1U, ktr.size());
-  EXPECT_EQ(at("11:20"), begin(ktr)->dest_time_);
+  EXPECT_EQ(at("11:20"), arrival_at(tt, "KB", "KD", "10:00"));
 }
 
 // ===========================================================================
@@ -811,9 +701,7 @@ TEST(gtfs, transfer_rules_stay_seated_chain_keeps_rule_of_second_trip) {
                        "SS,SS,2,600,,,SX,ST2\n")});
 
   // Control: the chain itself works.
-  auto const chain = search_at(tt, "SA", "SB", "10:00");
-  ASSERT_EQ(1U, chain.size());
-  EXPECT_EQ(at("11:00"), begin(chain)->dest_time_);
+  EXPECT_EQ(at("11:00"), arrival_at(tt, "SA", "SB", "10:00"));
 
   EXPECT_EQ(0U, search_at(tt, "SX0", "SB", "09:00").size());
 }
@@ -844,14 +732,10 @@ TEST(gtfs, transfer_rules_handover_stop_rule_of_arriving_trip_decides) {
 
   // Control: without the block, JT1's stop only carries RJA's rules.
   auto const plain = load_feeds({make("")});
-  auto const control = search_at(plain, "JA", "JB", "06:17");
-  ASSERT_EQ(1U, control.size());
-  EXPECT_EQ(at("07:10"), begin(control)->dest_time_);
+  EXPECT_EQ(at("07:10"), arrival_at(plain, "JA", "JB", "06:17"));
 
   auto const joined = load_feeds({make("BLJ")});
-  auto const res = search_at(joined, "JA", "JB", "06:17");
-  ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(at("07:10"), begin(res)->dest_time_);
+  EXPECT_EQ(at("07:10"), arrival_at(joined, "JA", "JB", "06:17"));
 }
 
 // ===========================================================================
@@ -880,9 +764,7 @@ TEST(gtfs, transfer_rules_timed_transfer_with_min_time_is_guaranteed) {
              {"TT2L", "RT2", {{"TTS", "10:50"}, {"TTB", "11:20"}}}},
             "TTS,TTS,2,120,,,,\n"
             "TTS,TTS,1,300,,,TT1,TT2\n")});
-  auto const res = search_at(tt, "TTA", "TTB", "10:00");
-  ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(at("11:00"), begin(res)->dest_time_);
+  EXPECT_EQ(at("11:00"), arrival_at(tt, "TTA", "TTB", "10:00"));
 }
 
 // A profile that ignores the qualified rules keeps the stop's plain change
@@ -927,9 +809,7 @@ TEST(gtfs, transfer_rules_negative_min_transfer_time_is_not_a_ban) {
                        {{"NT1", "RN1", {{"N0", "10:00"}, {"NA1", "10:30"}}},
                         {"NT2", "RN2", {{"NA2", "10:40"}, {"N9", "11:00"}}}},
                        "NA1,NA2,2,-120,,,,\n")});
-  auto const res = search_at(tt, "N0", "N9", "10:00");
-  ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(at("11:00"), begin(res)->dest_time_);
+  EXPECT_EQ(at("11:00"), arrival_at(tt, "N0", "N9", "10:00"));
 }
 
 // 36000 s = 600 min is a valid (if long) min_transfer_time. It exceeds
@@ -944,9 +824,7 @@ TEST(gtfs, transfer_rules_very_large_min_transfer_time_is_not_a_ban) {
                        {{"NBT1", "RNB1", {{"NB0", "10:00"}, {"NB1", "10:30"}}},
                         {"NBT2", "RNB2", {{"NB2", "21:00"}, {"NB9", "21:30"}}}},
                        "NB1,NB2,2,36000,,,,\n")});
-  auto const res = search_at(tt, "NB0", "NB9", "10:00");
-  ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(at("21:30"), begin(res)->dest_time_);
+  EXPECT_EQ(at("21:30"), arrival_at(tt, "NB0", "NB9", "10:00"));
 }
 
 // FA and FB are ~33 km apart, too far to walk, so adjusting footpaths drops
@@ -1004,7 +882,5 @@ TEST(gtfs, transfer_rules_walk_hub_respects_rule_hub) {
                        "BY1,BY1,2,300,,,,BU1\n"
                        "BY1,BY1,2,400,,,,BU2\n")});
 
-  auto const res = search_at(tt, "BA", "BD", "10:00");
-  ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(at("11:10"), begin(res)->dest_time_);
+  EXPECT_EQ(at("11:10"), arrival_at(tt, "BA", "BD", "10:00"));
 }

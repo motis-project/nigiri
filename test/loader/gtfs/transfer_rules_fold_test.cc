@@ -7,12 +7,13 @@
 #include "../../transfer_rules_util.h"
 
 // Folding the pair defaults (the GTFS loader's majority fold) must not change
-// what the rules state. The first tests run on test::kNetwork
+// what the rules state. The first tests run on test::network()
 // (transfer_rules_util.h): F arrives S1 10:30, G leaves S2 10:40 (fallback GL
 // 11:10), H leaves S1 10:31 (fallback HL 11:01).
 
 using namespace nigiri;
 using nigiri::test::arrival;
+using nigiri::test::arrival_at;
 using nigiri::test::at;
 using nigiri::test::feed;
 using nigiri::test::lidx;
@@ -21,7 +22,6 @@ using nigiri::test::load_network;
 using nigiri::test::n_virts;
 using nigiri::test::raptor_search;
 using nigiri::test::search_at;
-using nigiri::test::t;
 
 // A trip rule that restates the default (2 min) is not redundant if a less
 // specific rule states something else (route pair: 0 min). F -> H has 1 min,
@@ -29,8 +29,7 @@ using nigiri::test::t;
 TEST(gtfs, transfer_rules_fold_keeps_exception_to_faster_rule) {
   auto const tt =
       load_network("S1,S1,2,120,,,,\nS1,S1,2,0,RF,RH,,\nS1,S1,2,120,,,F,H");
-  EXPECT_EQ(t("2019-05-01 11:30 Europe/Berlin"),
-            arrival(tt, nullptr, {"A", "C"}));
+  EXPECT_EQ(at("11:30"), arrival(tt, nullptr, {"A", "C"}));
 }
 
 // ... same with a ban: RF may not transfer from S1 to S2, but the trip F may,
@@ -38,24 +37,21 @@ TEST(gtfs, transfer_rules_fold_keeps_exception_to_faster_rule) {
 TEST(gtfs, transfer_rules_fold_keeps_exception_to_ban) {
   auto const tt =
       load_network("S1,S2,2,120,,,,\nS1,S2,3,,RF,,,\nS1,S2,2,120,,,F,");
-  EXPECT_EQ(t("2019-05-01 11:00 Europe/Berlin"),
-            arrival(tt, nullptr, {"A", "B"}));
+  EXPECT_EQ(at("11:00"), arrival(tt, nullptr, {"A", "B"}));
 }
 
 // Rules stated for a station: their majority (15 min) is the default for the
 // pairs of its child stops as well, not only for the station itself.
 TEST(gtfs, transfer_rules_fold_station_majority_reaches_base_locations) {
   auto const tt = load_network("S,S,2,900,RF,RG,,\nS,S,2,900,RF,RH,,");
-  EXPECT_EQ(t("2019-05-01 11:30 Europe/Berlin"),
-            arrival(tt, nullptr, {"A", "B"}));
+  EXPECT_EQ(at("11:30"), arrival(tt, nullptr, {"A", "B"}));
 }
 
 // ... and an exception to that majority survives: F -> G is quick.
 TEST(gtfs, transfer_rules_fold_station_majority_with_exception) {
   auto const tt =
       load_network("S,S,2,900,RF,RG,,\nS,S,2,900,RF,RH,,\nS,S,2,60,,,F,G");
-  EXPECT_EQ(t("2019-05-01 11:00 Europe/Berlin"),
-            arrival(tt, nullptr, {"A", "B"}));
+  EXPECT_EQ(at("11:00"), arrival(tt, nullptr, {"A", "B"}));
 }
 
 // ===========================================================================
@@ -80,9 +76,7 @@ TEST(
                        "T,T,2,120,,,DA,DB\n"
                        "T1,T2,2,300,,,,\n"
                        "T1,T2,2,480,RD1,RD2,,\n")});
-  auto const res = search_at(tt, "J", "K", "16:00");
-  ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(at("17:00"), begin(res)->dest_time_);
+  EXPECT_EQ(at("17:00"), arrival_at(tt, "J", "K", "16:00"));
 }
 
 // SJ,SJ,2,600 states the default for every pair of SJ's stops. The one
@@ -101,9 +95,7 @@ TEST(gtfs, transfer_rules_fold_keeps_explicit_station_default) {
                        "SJ,SJ,2,600,,,,\n"
                        "J1,J2,2,180,RJ1,RJ2,,\n",
                        {"RJ2"})});
-  auto const res = search_at(tt, "JA", "JB", "10:00");
-  ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(at("11:15"), begin(res)->dest_time_);
+  EXPECT_EQ(at("11:15"), arrival_at(tt, "JA", "JB", "10:00"));
 }
 
 // The station states its default (LS,LS: 1 min), so the qualified rows at
@@ -131,14 +123,10 @@ TEST(gtfs, transfer_rules_fold_station_default_holds_at_virtual_locations) {
                        {"RL1", "RL2", "RL3", "RL4"})});
 
   // A plain arrival at L1 makes LT7 (2 min later).
-  auto const plain = search_at(tt, "LO2", "LD2", "10:00");
-  ASSERT_EQ(1U, plain.size());
-  EXPECT_EQ(at("11:00"), begin(plain)->dest_time_);
+  EXPECT_EQ(at("11:00"), arrival_at(tt, "LO2", "LD2", "10:00"));
 
   // LT5 arrives at its virtual location below L1: the same.
-  auto const virt = search_at(tt, "LO", "LD2", "10:00");
-  ASSERT_EQ(1U, virt.size());
-  EXPECT_EQ(at("11:00"), begin(virt)->dest_time_);
+  EXPECT_EQ(at("11:00"), arrival_at(tt, "LO", "LD2", "10:00"));
 }
 
 // One guarantee (KT1 -> KT2) next to three 5 min trip pairs at K: the 5 min
@@ -165,11 +153,7 @@ TEST(gtfs,
   EXPECT_EQ(5, tt.locations_.transfer_time_[lidx(tt, "K")].count());
   EXPECT_EQ(2U, n_virts(tt));
 
-  auto const guaranteed = search_at(tt, "KA", "KB", "08:00");
-  ASSERT_EQ(1U, guaranteed.size());
-  EXPECT_EQ(at("09:00"), begin(guaranteed)->dest_time_);
+  EXPECT_EQ(at("09:00"), arrival_at(tt, "KA", "KB", "08:00"));
 
-  auto const missed = search_at(tt, "KA", "KB", "09:30");
-  ASSERT_EQ(1U, missed.size());
-  EXPECT_EQ(at("10:40"), begin(missed)->dest_time_);
+  EXPECT_EQ(at("10:40"), arrival_at(tt, "KA", "KB", "09:30"));
 }

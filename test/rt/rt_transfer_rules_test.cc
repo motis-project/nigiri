@@ -23,14 +23,14 @@
 // interval searches, lower bounds, start offsets, reverts and rule precedence.
 
 using namespace nigiri;
+using nigiri::test::at;
 using nigiri::test::kDay;
 using nigiri::test::raptor_search;
 using nigiri::test::station_query;
-using nigiri::test::t;
 using nigiri::test::trip_update;
 using nigiri::test::update;
 
-// test::kNetwork (S: station with platforms S1..S4, X: station with platforms
+// test::network() (S: station with platforms S1..S4, X: station with platforms
 // X1, X2), plus:
 //   T0  (R0): A0 09:30 -> A 09:50       feeder to F
 //   DAB (RD): A0 10:00 -> B 10:45       direct, no change
@@ -38,33 +38,13 @@ using nigiri::test::update;
 //   ST1 (RS1): A2 10:00 -> S1 10:30     first half of a stay-seated chain
 //   ST2 (RS2): S1 10:30 -> C 11:00      second half
 //   Z: a stop about 180 m north of S4, not walkable except through rules
-constexpr auto const kRows =
-    test::network_rows{.stops_ =
-                           "A0,A0,,50.0,5.9,,,\n"
-                           "Z,Z,,50.0020,6.5,,,\n",
-                       .routes_ =
-                           "R0,AG,R0,,,3\n"
-                           "RD,AG,RD,,,3\n"
-                           "RX,AG,RX,,,3\n"
-                           "RS1,AG,RS1,,,3\n"
-                           "RS2,AG,RS2,,,3\n",
-                       .trips_ =
-                           "R0,X,T0,,\n"
-                           "RD,X,DAB,,\n"
-                           "RX,X,XB,,\n"
-                           "RS1,X,ST1,,\n"
-                           "RS2,X,ST2,,\n",
-                       .stop_times_ =
-                           "T0,09:30:00,09:30:00,A0,1,0,0\n"
-                           "T0,09:50:00,09:50:00,A,2,0,0\n"
-                           "DAB,10:00:00,10:00:00,A0,1,0,0\n"
-                           "DAB,10:45:00,10:45:00,B,2,0,0\n"
-                           "XB,10:31:00,10:31:00,X1,1,0,0\n"
-                           "XB,10:40:00,10:40:00,B,2,0,0\n"
-                           "ST1,10:00:00,10:00:00,A2,1,0,0\n"
-                           "ST1,10:30:00,10:30:00,S1,2,0,0\n"
-                           "ST2,10:30:00,10:30:00,S1,1,0,0\n"
-                           "ST2,11:00:00,11:00:00,C,2,0,0\n"};
+test::network_rows const kRows{
+    .stops_ = {{"A0", 50.0, 5.9}, {"Z", 50.0020, 6.5}},
+    .trips_ = {{"T0", "R0", {{"A0", "09:30"}, {"A", "09:50"}}},
+               {"DAB", "RD", {{"A0", "10:00"}, {"B", "10:45"}}},
+               {"XB", "RX", {{"X1", "10:31"}, {"B", "10:40"}}},
+               {"ST1", "RS1", {{"A2", "10:00"}, {"S1", "10:30"}}},
+               {"ST2", "RS2", {{"S1", "10:30"}, {"C", "11:00"}}}}};
 
 // Two real-time virtual locations exist (F moved to S3, G moved to S4). An
 // interval search from S puts both into its start set and must not throw. The
@@ -81,13 +61,11 @@ TEST(rt_transfer_rules, interval_search_with_two_real_time_virtual_locations) {
   EXPECT_NO_THROW(
       res = raptor_search(
           tt, &rtt,
-          station_query(tt, "S", "B",
-                        interval{t("2019-05-01 10:35 Europe/Berlin"),
-                                 t("2019-05-01 10:50 Europe/Berlin")}),
+          station_query(tt, "S", "B", interval{at("10:35"), at("10:50")}),
           direction::kForward));
   ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(t("2019-05-01 10:40 Europe/Berlin"), begin(res)->start_time_);
-  EXPECT_EQ(t("2019-05-01 11:00 Europe/Berlin"), begin(res)->dest_time_);
+  EXPECT_EQ(at("10:40"), begin(res)->start_time_);
+  EXPECT_EQ(at("11:00"), begin(res)->dest_time_);
 }
 
 // The timed rule S4 -> X1 for route RF only binds F once F is moved to S4 -
@@ -105,19 +83,15 @@ TEST(rt_transfer_rules, lower_bound_knows_real_time_rule_edges) {
   // Control: from A, F is the first vehicle and nothing is known about B yet
   // when it arrives - the rule's transfer takes F + XB to B at 10:40.
   auto const control = raptor_search(
-      tt, &rtt,
-      station_query(tt, "A", "B", t("2019-05-01 10:00 Europe/Berlin")),
-      direction::kForward);
+      tt, &rtt, station_query(tt, "A", "B", at("10:00")), direction::kForward);
   ASSERT_TRUE(utl::any_of(control, [](routing::journey const& j) {
-    return j.dest_time_ == t("2019-05-01 10:40 Europe/Berlin");
+    return j.dest_time_ == at("10:40");
   })) << "precondition: the real-time rule edge works";
 
   auto const res = raptor_search(
-      tt, &rtt,
-      station_query(tt, "A0", "B", t("2019-05-01 09:30 Europe/Berlin")),
-      direction::kForward);
+      tt, &rtt, station_query(tt, "A0", "B", at("09:30")), direction::kForward);
   EXPECT_TRUE(utl::any_of(res, [](routing::journey const& j) {
-    return j.dest_time_ == t("2019-05-01 10:40 Europe/Berlin");
+    return j.dest_time_ == at("10:40");
   }));
 }
 
@@ -135,12 +109,12 @@ TEST(rt_transfer_rules, start_offset_of_real_time_location_honours_rule) {
           {"GL", {{.seq_ = 1U, .stop_id_ = "S2", .assigned_ = "S4"}}}});
   ASSERT_EQ(1U, rtt.n_rt_locations()) << "precondition";
 
-  auto q = station_query(tt, "Z", "B", t("2019-05-01 10:32 Europe/Berlin"));
+  auto q = station_query(tt, "Z", "B", at("10:32"));
   q.start_match_mode_ = routing::location_match_mode::kExact;
   q.use_start_footpaths_ = true;
   auto const res = raptor_search(tt, &rtt, std::move(q), direction::kForward);
   ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(t("2019-05-01 11:30 Europe/Berlin"), begin(res)->dest_time_);
+  EXPECT_EQ(at("11:30"), begin(res)->dest_time_);
 }
 
 // ST1 -> ST2 stay seated at S1; a rule names ST2 there. Moving the handover
@@ -158,11 +132,7 @@ TEST(rt_transfer_rules, revert_at_stay_seated_handover_stop_restores_schedule) {
   });
 
   auto const handover_location = [&]() {
-    auto td = transit_realtime::TripDescriptor{};
-    td.set_trip_id("ST2");
-    td.set_start_date("20190501");
-    auto const [r, _] =
-        rt::gtfsrt_resolve_run(kDay, tt, &rtt, source_idx_t{0}, td);
+    auto const [r, _] = test::resolve(tt, rtt, "ST2");
     return r.valid() ? rt::frun{tt, &rtt, r}[0U].get_location_idx()
                      : location_idx_t::invalid();
   };
@@ -201,11 +171,9 @@ TEST(rt_transfer_rules,
       {{"ST1",
         {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3", .arr_delay_ = 6}}}});
   auto const res = raptor_search(
-      tt, &rtt,
-      station_query(tt, "A2", "B", t("2019-05-01 10:00 Europe/Berlin")),
-      direction::kForward);
+      tt, &rtt, station_query(tt, "A2", "B", at("10:00")), direction::kForward);
   ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(t("2019-05-01 11:30 Europe/Berlin"), begin(res)->dest_time_);
+  EXPECT_EQ(at("11:30"), begin(res)->dest_time_);
 }
 
 // F is named by a trip rule (15 min, one trip), F0 and F2 only by the route
@@ -219,18 +187,14 @@ TEST(rt_transfer_rules, real_time_key_keeps_specificity) {
       kRows);
   auto rtt = rt::create_rt_timetable(tt, kDay);
   auto const before = raptor_search(
-      tt, &rtt,
-      station_query(tt, "A", "B", t("2019-05-01 10:00 Europe/Berlin")),
-      direction::kForward);
+      tt, &rtt, station_query(tt, "A", "B", at("10:00")), direction::kForward);
   ASSERT_EQ(1U, before.size());
-  ASSERT_EQ(t("2019-05-01 11:30 Europe/Berlin"), begin(before)->dest_time_)
+  ASSERT_EQ(at("11:30"), begin(before)->dest_time_)
       << "precondition: F -> G takes 15 min in the schedule";
 
   update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}}});
   auto const after = raptor_search(
-      tt, &rtt,
-      station_query(tt, "A", "B", t("2019-05-01 10:00 Europe/Berlin")),
-      direction::kForward);
+      tt, &rtt, station_query(tt, "A", "B", at("10:00")), direction::kForward);
   ASSERT_EQ(1U, after.size());
-  EXPECT_EQ(t("2019-05-01 11:30 Europe/Berlin"), begin(after)->dest_time_);
+  EXPECT_EQ(at("11:30"), begin(after)->dest_time_);
 }
