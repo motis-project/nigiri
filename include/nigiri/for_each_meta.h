@@ -19,7 +19,8 @@ void for_each_meta(timetable const& tt,
     }
   };
   auto const handle_equivalences = [&](auto const& loc) {
-    for (auto const& eq : tt.locations_.equivalences_.at(loc)) {
+    for (auto const& eq :
+         tt.locations_.equivalences_.at(tt.locations_.get_base_idx(loc))) {
       fn(eq);
       handle_children(eq);
     }
@@ -27,6 +28,7 @@ void for_each_meta(timetable const& tt,
 
   if (mode == location_match_mode::kExact) {
     fn(l);
+    tt.locations_.for_each_virt(l, fn);
   } else if (mode == location_match_mode::kIntermodal) {
     fn(l);
     for (auto const& c : tt.locations_.children_.at(l)) {
@@ -50,24 +52,14 @@ inline bool matches(timetable const& tt,
                     location_match_mode const mode,
                     location_idx_t const a,
                     location_idx_t const b) {
-  switch (mode) {
-    case location_match_mode::kExact: return a == b;
-    case location_match_mode::kIntermodal:
-    case location_match_mode::kOnlyChildren: [[fallthrough]];
-    case location_match_mode::kEquivalent:
-      if (a == b) {
-        return true;
-      }
-
-      {
-        auto matches = false;
-        for_each_meta(tt, mode, a, [&](location_idx_t const candidate) {
-          matches = matches || (candidate == b);
-        });
-        return matches;
-      }
+  if (a == b) {
+    return true;
   }
-  return true;
+  auto is_match = false;
+  for_each_meta(tt, mode, a, [&](location_idx_t const candidate) {
+    is_match = is_match || candidate == b;
+  });
+  return is_match;
 }
 
 }  // namespace nigiri::routing

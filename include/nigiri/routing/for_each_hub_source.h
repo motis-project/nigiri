@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <type_traits>
 
 #include "nigiri/footpath.h"
@@ -90,6 +91,28 @@ void for_each_transfer(timetable const& tt,
   if (for_each_footpath_at<SearchDir>(tt, rtt, prf_idx, l, fn)) {
     for_each_hub_source<flip(SearchDir)>(tt, prf_idx, l, fn);
   }
+}
+
+inline std::optional<duration_t> shortest_transfer(timetable const& tt,
+                                                   rt_timetable const* rtt,
+                                                   profile_idx_t const prf_idx,
+                                                   location_idx_t const from,
+                                                   location_idx_t const to) {
+  auto shortest = std::optional<duration_t>{};
+  if (from == to) {
+    if (auto const own = own_change_time(tt, rtt, prf_idx, from);
+        own != kNoTransferAllowed) {
+      shortest = duration_t{own.count()};
+    }
+  }
+  for_each_transfer<direction::kForward>(
+      tt, rtt, prf_idx, from, [&](footpath const& fp) {
+        if (fp.target() == to &&
+            (!shortest.has_value() || fp.duration() < *shortest)) {
+          shortest = fp.duration();
+        }
+      });
+  return shortest;
 }
 
 void for_each_transfer(direction const dir,

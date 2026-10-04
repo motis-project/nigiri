@@ -183,7 +183,8 @@ void add_starts_in_interval(direction const search_dir,
       auto const location_seq = rtt->rt_transport_location_seq_.at(rt_t);
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         auto const stp = stop{s};
-        if (search_location(*rtt, p, rt_t, static_cast<stop_idx_t>(i)) != l) {
+        if (search_location(*rtt, p, rt_t, static_cast<stop_idx_t>(i)) !=
+            tt.locations_.project(p, l)) {
           continue;
         }
 

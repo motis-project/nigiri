@@ -52,22 +52,28 @@ TEST(gpu_transfer_rules, other_profile_without_virtual_locations) {
 }
 
 // W2's own transfer time is 0 (type 1 row), and the R9 -> R5 rule gives R5's
-// departures a virtual location, so the start W2 reaches GD's virtual location
-// through W2's 0 min hub. With min_transfer_time_ = 5 min, that start walk
-// takes 5 min like any transfer: from 09:55, GD (10:02) is reached. The
-// device's start leg has to be the host's.
+// departures (GE) a virtual location. A start at that virtual location reaches
+// W2, where GD leaves, through W2's 0 min hub. With min_transfer_time_ = 5
+// min, that start walk takes 5 min like any transfer: from 09:55, GD (10:02)
+// is reached. The device's start leg has to be the host's.
 TEST(gpu_transfer_rules, start_leg_through_zero_min_hub) {
   auto const tt =
       load_feeds({feed({{"W2", 65.5, 24.5}, {"WD", 65.6, 24.5}},
-                       {{"GD", "R5", {{"W2", "10:02"}, {"WD", "10:30"}}}},
+                       {{"GD", "R6", {{"W2", "10:02"}, {"WD", "10:30"}}},
+                        {"GE", "R5", {{"W2", "11:02"}, {"WD", "11:30"}}}},
                        "W2,W2,1,,,,,\n"
                        "W2,W2,2,300,R9,R5,,\n",
                        {"R9"})});
+  auto virt = location_idx_t::invalid();
+  tt.locations_.for_each_virt(lidx(tt, "W2"),
+                              [&](location_idx_t const l) { virt = l; });
+  ASSERT_NE(location_idx_t::invalid(), virt);
+
   auto const res = test::raptor_search(
       tt, nullptr,
       routing::query{.start_time_ = at("09:55"),
                      .use_start_footpaths_ = true,
-                     .start_ = {{lidx(tt, "W2"), 0_minutes, 0U}},
+                     .start_ = {{virt, 0_minutes, 0U}},
                      .destination_ = {{lidx(tt, "WD"), 0_minutes, 0U}},
                      .transfer_time_settings_ = {
                          .default_ = false, .min_transfer_time_ = 5_minutes}});

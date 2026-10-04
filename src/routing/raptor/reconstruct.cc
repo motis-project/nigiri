@@ -226,7 +226,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
   };
   auto const label_location = [&](rt::frun const& fr,
                                   stop_idx_t const stop_idx) {
-    return project(search_location(q.prf_idx_, fr[stop_idx]));
+    return search_location(q.prf_idx_, fr[stop_idx]);
   };
   auto const is_ontrip = holds_alternative<unixtime_t>(q.start_time_);
   auto const start_matches = [&](delta_t const a, delta_t const b) {

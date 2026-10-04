@@ -201,6 +201,60 @@ TEST(transfer_rules, one_to_all_projects_virtual_locations) {
   EXPECT_EQ(2U, qb.k_);
 }
 
+// An exact start or destination (the default match mode) includes the stop's
+// virtual locations, as it includes its real-time ones: Q1 arrives at, and Q2
+// leaves from, virtual locations of QS without a change at QS.
+TEST(transfer_rules, exact_match_includes_virtual_locations) {
+  auto const tt = load_feeds({virt_change_feed()});
+  ASSERT_NE(0U, n_virts(tt)) << "precondition: QS has virtual locations";
+
+  EXPECT_EQ(at("10:30"), arrival_at(tt, "QA", "QS", "10:00"));
+  EXPECT_EQ(at("11:00"), arrival_at(tt, "QS", "QB", "10:40"));
+
+  auto const q = routing::query{.start_time_ = at("10:40"),
+                                .start_ = {{lidx(tt, "QS"), 0_minutes, 0U}}};
+  auto const state = routing::one_to_all<direction::kForward>(tt, nullptr, q);
+  auto const qb = routing::get_fastest_one_to_all_offsets(
+      tt, state, direction::kForward, lidx(tt, "QB"), at("10:40"),
+      q.max_transfers_);
+  EXPECT_EQ(22, qb.duration_);  // arrival 11:00 + QB's 2 min to change
+  EXPECT_EQ(1U, qb.k_);
+}
+
+// T0 and T1 (route R) stop at the same virtual location of S: the R -> R rule
+// lets them change there in 1 min, at X they change in X's own 2 min with
+// 3 min to spare. A profile that projects virtual locations changes at S in
+// S's own 2 min, which T1 (1 min after T0) does not leave: the transfer
+// optimization keeps X.
+TEST(transfer_rules, projected_profile_optimizes_transfers_with_stop_time) {
+  constexpr auto const kProfile = profile_idx_t{1U};
+  auto tt = load_feeds(
+      {feed({{"A", 64.0, 23.0},
+             {"S", 64.1, 23.0},
+             {"X", 64.2, 23.0},
+             {"E", 64.3, 23.0}},
+            {{"T0", "R", {{"A", "10:00"}, {"S", "10:10"}, {"X", "10:20"}}},
+             {"T1", "R", {{"S", "10:11"}, {"X", "10:25"}, {"E", "10:40"}}}},
+            "S,S,2,120,,,,\n"
+            "S,S,2,60,R,R,,\n")});
+  ASSERT_EQ(1U, n_virts(tt)) << "precondition: T0 and T1 share S's virt";
+  add_empty_profile(tt, kProfile);
+
+  auto const changes_at = [&](profile_idx_t const prf) {
+    auto const res = raptor_search(
+        tt, nullptr,
+        routing::query{.start_time_ = at("10:00"),
+                       .start_ = {{lidx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{lidx(tt, "E"), 0_minutes, 0U}},
+                       .prf_idx_ = prf});
+    EXPECT_EQ(1U, res.size());
+    return res.size() == 0U ? location_idx_t::invalid()
+                            : tt.base(begin(res)->legs_.front().to_);
+  };
+  EXPECT_EQ(lidx(tt, "S"), changes_at(0U));
+  EXPECT_EQ(lidx(tt, "X"), changes_at(kProfile));
+}
+
 // T0 -> T1 can change at station X (X1 -> X2, 15 min buffer) or at station S
 // (S1 -> S2, 8 min): X, unless a recommended transfer (type 0) names S. That
 // holds as well when both trips stop at virtual locations of S1 and S2 (the

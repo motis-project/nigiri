@@ -21,6 +21,18 @@
 
 namespace nigiri::routing {
 
+template <typename Fn>
+void for_each_access(timetable const& tt,
+                     location_match_mode const mode,
+                     location_idx_t const l,
+                     Fn&& fn) {
+  if (mode == location_match_mode::kExact) {
+    fn(l);
+  } else {
+    for_each_meta(tt, mode, l, std::forward<Fn>(fn));
+  }
+}
+
 std::optional<journey::leg> lookup_offset(location_idx_t const loc,
                                           unixtime_t const t,
                                           side const s,
@@ -100,27 +112,19 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
 
   for (auto const& o : offs) {
     auto const o_duration = o.duration();
-    for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
+    for_each_access(tt, mode, o.target(), [&](location_idx_t const l) {
       // Direct match - boarding/alighting at the input loc itself.
-      if (l == loc && o_duration < best_dur) {
-        if (mode != location_match_mode::kExact) {
+      if (l == loc && mode != location_match_mode::kExact) {
+        if (o_duration < best_dur) {
           best_dur = o_duration;
           best_walk = o_duration;
           best_raw = o_duration;
           best_source = o.target();
-        } else if (auto const own =
-                       tt.locations_.transfer_time_[tt.locations_.project(
-                           q.prf_idx_, l)];
-                   own != kNoTransferAllowed) {
-          best_dur = o_duration +
-                     adjusted_transfer_time(q.transfer_time_settings_, own);
-          best_walk = best_dur;
-          best_raw = o_duration + duration_t{own.count()};
-          best_source = o.target();
         }
+        return;
       }
 
-      if (!use_footpaths) {
+      if (l != loc && !use_footpaths) {
         return;
       }
 
@@ -129,7 +133,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
       auto eff_raw = footpath::kMaxDuration;
       auto const fp_from = is_boarding ? l : loc;
       auto const fp_to = is_boarding ? loc : l;
-      if (is_td_source(fp_from)) {
+      if (l != loc && is_td_source(fp_from)) {
         // td footpaths take precedence
         for_each_footpath(
             td_search_dir, rtt->td_footpaths_out_[q.prf_idx_][fp_from], t,
@@ -141,21 +145,12 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
                 eff_raw = walk;
               }
             });
-      } else {
-        for_each_transfer(
-            is_boarding ? direction::kForward : direction::kBackward, tt, rtt,
-            q.prf_idx_, l, [&](footpath const fp) {
-              if (fp.target() != loc) {
-                return;
-              }
-              auto const adj = adjusted_transfer_time(q.transfer_time_settings_,
-                                                      fp.duration());
-              if (adj < eff_dur) {
-                eff_dur = adj;
-                eff_walk = adj;
-                eff_raw = fp.duration();
-              }
-            });
+      } else if (auto const raw =
+                     shortest_transfer(tt, rtt, q.prf_idx_, fp_from, fp_to);
+                 raw.has_value()) {
+        eff_dur = adjusted_transfer_time(q.transfer_time_settings_, *raw);
+        eff_walk = eff_dur;
+        eff_raw = *raw;
       }
 
       if (eff_dur >= footpath::kMaxDuration) {
@@ -232,7 +227,7 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
             ? nullptr
             : (is_boarding ? &rtt->td_footpaths_out_ : &rtt->td_footpaths_in_);
     for (auto const& o : offsets) {
-      for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
+      for_each_access(tt, mode, o.target(), [&](location_idx_t const l) {
         locs.insert(l);
         if (!use_footpaths) {
           return;

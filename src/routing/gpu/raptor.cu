@@ -1445,25 +1445,16 @@ duration_t gpu_raptor<SearchDir, WithBounds>::raw_transfer(
     location_idx_t const from,
     location_idx_t const to,
     duration_t const elapsed) const {
-  if (from == to) {
-    if (elapsed == duration_t{0}) {
-      return elapsed;
-    }
-    auto const own = own_change_time(tt_, rtt_, prf_idx_, from);
-    return own == kNoTransferAllowed ? elapsed : duration_t{own.count()};
+  if (from == to && elapsed == duration_t{0}) {
+    return elapsed;
   }
-
-  auto best = std::optional<duration_t>{};
-  for_each_transfer<direction::kForward>(
-      tt_, rtt_, prf_idx_, from, [&](footpath const fp) {
-        auto const d = fp.duration();
-        if (tt_.locations_.project(prf_idx_, fp.target()) == to &&
-            adjusted_transfer_time(transfer_time_settings_, d) == elapsed &&
-            (!best.has_value() || d < *best)) {
-          best = d;
-        }
-      });
-  return best.value_or(elapsed);
+  auto const d = shortest_transfer(tt_, rtt_, prf_idx_, from, to);
+  if (!d.has_value() ||
+      (from != to &&
+       adjusted_transfer_time(transfer_time_settings_, *d) != elapsed)) {
+    return elapsed;
+  }
+  return *d;
 }
 
 template <direction SearchDir, bool WithBounds>
