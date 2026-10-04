@@ -79,10 +79,6 @@ void add_rule_hubs(
     auto coverage = hub_coverage{};
     for (auto const from : from_locations) {
       for (auto const to : to_locations) {
-        assert(
-            d == duration_t{0} || tt.base(from) == tt.base(to) ||
-            most_specific.contains(transfer_pair{tt.base(from), tt.base(to)}));
-
         auto is_slower = false;
         if (from == to) {
           is_slower = to_fp_duration(tt.locations_.transfer_time_[from]) > d;

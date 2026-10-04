@@ -279,6 +279,7 @@ TEST(gtfsrt_transfer_rules, track_change_keeps_route_rule_existing_location) {
   EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, kAtoB));
   update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}}});
   EXPECT_EQ("S3", stop_id_at(tt, rtt, "F", 1U));
+  EXPECT_EQ(0U, rtt.n_rt_locations());  // F0's location, no new one
   EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, kAtoB));
 }
 

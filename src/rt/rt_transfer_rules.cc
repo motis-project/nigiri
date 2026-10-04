@@ -148,8 +148,8 @@ location_idx_t get_or_create_location(timetable const& tt,
     if (existing == location_idx_t::invalid() &&
         tt.locations_.transfer_time_[c] == key.transfer_time_ &&
         get_transfer_rule_sides(
-            tt, utl::to_vec(values_of(tt.transfer_rules_.virt_rules_, c))) ==
-            key.sides_) {
+            tt, utl::to_vec(values_of(tt.transfer_rules_.virt_rules_, c)),
+            base) == key.sides_) {
       existing = c;
     }
   });

@@ -724,6 +724,41 @@ TEST(
   EXPECT_EQ(at("15:00"), begin(ca2)->dest_time_);
 }
 
+// The lowered specificity also has to keep the order against rules outside
+// the signature. e (forbidden, any trip at KS -> trip KT, spec 12) sits
+// between a (trip KTA -> route RY, 5 min, spec 16) and c (route RK -> route
+// RY, 5 min, spec 8); three 7 min rows make 7 min the default, so a and c are
+// kept. a beats e, e beats c: KTA and KTR must not share a virtual location.
+TEST(gtfs, transfer_rules_virtual_location_key_keeps_order_against_stop_rules) {
+  auto const tt =
+      load_feeds({feed({{"KS", 54.0, 11.0},
+                        {"KY", 54.0005, 11.0},
+                        {"KA", 54.1, 11.0},
+                        {"KB", 54.1, 11.1},
+                        {"KD", 54.2, 11.0}},
+                       {{"KTA", "RA", {{"KA", "10:00"}, {"KS", "10:30"}}},
+                        {"KTR", "RK", {{"KB", "10:00"}, {"KS", "10:30"}}},
+                        {"KT", "RY", {{"KY", "10:40"}, {"KD", "11:00"}}},
+                        {"KT2", "RY", {{"KY", "11:00"}, {"KD", "11:20"}}}},
+                       "KS,KY,2,300,,RY,KTA,\n"
+                       "KS,KY,2,300,RK,RY,,\n"
+                       "KS,KY,3,,,,,KT\n"
+                       "KS,KY,2,420,RO1,RY,,\n"
+                       "KS,KY,2,420,RO2,RY,,\n"
+                       "KS,KY,2,420,RO3,RY,,\n",
+                       {"RO1", "RO2", "RO3"})});
+
+  // KTA -> KT: a (trip -> route) beats the ban e (stop -> trip).
+  auto const kta = search_at(tt, "KA", "KD", "10:00");
+  ASSERT_EQ(1U, kta.size());
+  EXPECT_EQ(at("11:00"), begin(kta)->dest_time_);
+
+  // KTR -> KT: e beats c (route -> route), KTR has to wait for KT2.
+  auto const ktr = search_at(tt, "KB", "KD", "10:00");
+  ASSERT_EQ(1U, ktr.size());
+  EXPECT_EQ(at("11:20"), begin(ktr)->dest_time_);
+}
+
 // ===========================================================================
 // Block through-services and stay-seated chains.
 // ===========================================================================
@@ -939,53 +974,37 @@ TEST(gtfs, transfer_rules_unwalkable_rule_hub_is_dropped) {
 }
 
 // ===========================================================================
-// Walk hubs and rule hubs. add_walk_hubs sees rule footpaths, not the pairs
-// of a rule hub, so a rule hub is only safe where a rule speaks for its two
-// stops as well - for GTFS, the fold's default does that. add_rule_hubs
-// asserts it; this test builds rules without the GTFS loader to break it.
+// Walk hubs and rule hubs. add_walk_hubs treats the pairs of a rule hub like
+// rule footpaths: a slower rule hub keeps the pair out of the walk hub, and
+// the pair gets no walk footpath.
 // ===========================================================================
 
-// A rule states 10 min from A's virtual locations to everything at B: a cross
-// product of 2 x 3 pairs, so it becomes a rule hub instead of rule footpaths.
-// No rule speaks for A -> B itself, so a 3 min walk A -> B would go into a walk
-// hub that takes the virtual locations along and undercuts the rule.
-TEST(transfer_rules_DeathTest, rule_hub_without_stop_pair_rule) {
-  auto tt = timetable{};
-  loader::register_special_stations(tt);
-  auto const add = [&](std::string_view const id, geo::latlng const pos,
-                       location_type const type, location_idx_t const parent) {
-    auto l = loader::location{};
-    l.src_ = source_idx_t{0U};
-    l.id_ = id;
-    l.pos_ = pos;
-    l.type_ = type;
-    l.parent_ = parent;
-    l.transfer_time_ = duration_t{2};
-    auto const idx = loader::register_location(tt, l);
-    if (parent != location_idx_t::invalid()) {
-      tt.locations_.children_[parent].push_back(idx);
-    }
-    return idx;
-  };
-  auto const a =
-      add("A", {50.0, 8.0}, location_type::kStation, location_idx_t::invalid());
-  auto const b = add("B", {50.01, 8.0}, location_type::kStation,
-                     location_idx_t::invalid());
-  auto const va1 = add("", {50.0, 8.0}, location_type::kVirt, a);
-  auto const va2 = add("", {50.0, 8.0}, location_type::kVirt, a);
-  auto const vb1 = add("", {50.01, 8.0}, location_type::kVirt, b);
-  auto const vb2 = add("", {50.01, 8.0}, location_type::kVirt, b);
+// A rule from station BS (route RB) to the platform BY1 of station BY states
+// 10 min: 2 virtual locations at BP1 x 3 locations at BY1, a rule hub. BS ->
+// BY1 is a mixed pair, so the fold gives no default for BP1 -> BY1, and the
+// 2 min walk BP1 -> BY1 stays. Its walk hub must not take BP1's virtual
+// locations along at 2 min: BT1 (10:30) misses BU1 (10:35) and takes BU3.
+TEST(gtfs, transfer_rules_walk_hub_respects_rule_hub) {
+  auto const tt =
+      load_feeds({feed({{"BS", 55.0, 11.0, "", true},
+                        {"BP1", 55.0, 11.0, "BS"},
+                        {"BY", 55.0005, 11.0, "", true},
+                        {"BY1", 55.0005, 11.0, "BY"},
+                        {"BA", 55.1, 11.0},
+                        {"BD", 55.2, 11.0}},
+                       {{"BT1", "RB", {{"BA", "10:00"}, {"BP1", "10:30"}}},
+                        {"BT2", "RB", {{"BA", "10:01"}, {"BP1", "10:31"}}},
+                        {"BU1", "RU1", {{"BY1", "10:35"}, {"BD", "11:00"}}},
+                        {"BU2", "RU2", {{"BY1", "11:30"}, {"BD", "12:00"}}},
+                        {"BU3", "RU3", {{"BY1", "10:45"}, {"BD", "11:10"}}}},
+                       "BS,BY1,2,600,RB,,,\n"
+                       "BP1,BP1,2,120,,,,\n"
+                       "BP1,BP1,2,300,,,BT1,\n"
+                       "BY1,BY1,2,120,,,,\n"
+                       "BY1,BY1,2,300,,,,BU1\n"
+                       "BY1,BY1,2,400,,,,BU2\n")});
 
-  tt.transfer_rules_.rules_.push_back(transfer_rule{
-      .from_stop_ = a, .to_stop_ = b, .duration_ = duration_t{10}});
-  auto const rule = transfer_rule_idx_t{0U};
-  auto most_specific = hash_map<loader::transfer_pair, transfer_rule_idx_t>{};
-  for (auto const x : {va1, va2}) {
-    for (auto const y : {b, vb1, vb2}) {
-      most_specific[loader::transfer_pair{x, y}] = rule;
-    }
-  }
-  auto footpaths = mutable_fws_multimap<location_idx_t, footpath>{};
-  EXPECT_DEBUG_DEATH(loader::add_rule_hubs(tt, most_specific, footpaths),
-                     "most_specific\\.contains");
+  auto const res = search_at(tt, "BA", "BD", "10:00");
+  ASSERT_EQ(1U, res.size());
+  EXPECT_EQ(at("11:10"), begin(res)->dest_time_);
 }

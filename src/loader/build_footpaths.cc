@@ -98,16 +98,31 @@ void collect_members(timetable const& tt,
       l, [&](location_idx_t const c) { out.push_back(c); });
 }
 
+bool is_hub_covered(timetable const& tt,
+                    location_idx_t const from,
+                    location_idx_t const to,
+                    duration_t const max = footpath::kMaxDuration) {
+  constexpr auto const p = kDefaultProfile;
+  auto const& loc = tt.locations_;
+  return utl::any_of(loc.hub_in_by_loc_[p][from], [&](hub_idx_t const h) {
+    auto const out = loc.hub_out_[p][h];
+    assert(std::is_sorted(begin(out), end(out)));
+    return loc.hub_time_[p][h] <= max &&
+           std::binary_search(begin(out), end(out), to);
+  });
+}
+
 void add_walk_hubs(timetable& tt,
                    rule_index const& rule_fps,
                    mutable_fws_multimap<location_idx_t, footpath>& walk) {
+  auto const& loc = tt.locations_;
   auto l_and_virts = std::vector<location_idx_t>{};
   auto targets = std::vector<location_idx_t>{};
   auto egress = std::vector<location_idx_t>{};
 
   auto const is_footpath_allowed = [&](location_idx_t const from,
                                        location_idx_t const to) {
-    return !rule_fps.contains(from, to);
+    return !rule_fps.contains(from, to) && !is_hub_covered(tt, from, to);
   };
 
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
@@ -117,11 +132,11 @@ void add_walk_hubs(timetable& tt,
     auto by_duration = std::map<duration_t, std::vector<location_idx_t>>{};
 
     if (l_and_virts.size() != 1U &&
-        tt.locations_.transfer_time_[l] != kNoTransferAllowed) {
-      by_duration[to_fp_duration(tt.locations_.transfer_time_[l])].push_back(l);
+        loc.transfer_time_[l] != kNoTransferAllowed) {
+      by_duration[to_fp_duration(loc.transfer_time_[l])].push_back(l);
     }
 
-    for (auto const& fp : tt.locations_.preprocessing_footpaths_out_[l]) {
+    for (auto const& fp : loc.preprocessing_footpaths_out_[l]) {
       // Self-transfer -> covered by transfer time => skip.
       if (fp.target() == l) {
         continue;
@@ -151,13 +166,25 @@ void add_walk_hubs(timetable& tt,
         // Marks slow pairs.
         auto coverage = hub_coverage{};
         for (auto const m : l_and_virts) {
-          if (to == l && to_fp_duration(tt.locations_.transfer_time_[m]) > d) {
+          if (to == l && to_fp_duration(loc.transfer_time_[m]) > d) {
             coverage.mark_slow(m, m);
           }
 
           for (auto const r : rule_fps.footpaths_[m]) {
             if (r.duration() > d && tt.base(r.target()) == to) {
               coverage.mark_slow(m, r.target());
+            }
+          }
+
+          for (auto const h : loc.hub_in_by_loc_[kDefaultProfile][m]) {
+            if (loc.hub_time_[kDefaultProfile][h] <= d) {
+              continue;
+            }
+            auto const out = loc.hub_out_[kDefaultProfile][h];
+            for (auto const t : targets) {
+              if (std::binary_search(begin(out), end(out), t)) {
+                coverage.mark_slow(m, t);
+              }
             }
           }
         }
@@ -181,20 +208,6 @@ void add_walk_hubs(timetable& tt,
                             is_footpath_allowed, tt, walk);
     }
   }
-}
-
-bool is_hub_covered(timetable const& tt,
-                    location_idx_t const from,
-                    location_idx_t const to,
-                    duration_t const max = footpath::kMaxDuration) {
-  constexpr auto const p = kDefaultProfile;
-  auto const& loc = tt.locations_;
-  return utl::any_of(loc.hub_in_by_loc_[p][from], [&](hub_idx_t const h) {
-    auto const out = loc.hub_out_[p][h];
-    assert(std::is_sorted(begin(out), end(out)));
-    return loc.hub_time_[p][h] <= max &&
-           std::binary_search(begin(out), end(out), to);
-  });
 }
 
 void override_footpaths_with_rules(timetable& tt, rule_index const& rule_fps) {

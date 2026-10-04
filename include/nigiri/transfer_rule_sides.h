@@ -56,7 +56,9 @@ inline bool is_applicable(timetable const& tt,
 }
 
 std::vector<transfer_rule_side> get_transfer_rule_sides(
-    timetable const&, std::span<transfer_rule_side_idx const>);
+    timetable const&,
+    std::span<transfer_rule_side_idx const>,
+    location_idx_t base);
 
 virt_key get_virt_key(timetable const&,
                       std::span<transfer_rule_side_idx const> sig,

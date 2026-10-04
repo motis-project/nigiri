@@ -99,9 +99,10 @@ duration_t get_transfer_time(timetable const& tt,
 }
 
 std::vector<transfer_rule_side> get_transfer_rule_sides(
-    timetable const& tt, std::span<transfer_rule_side_idx const> rules) {
-  // Transform to rule sides.
-  auto v = utl::to_vec(rules, [&](transfer_rule_side_idx const s) {
+    timetable const& tt,
+    std::span<transfer_rule_side_idx const> rules,
+    location_idx_t const base) {
+  auto const to_side = [&](transfer_rule_side_idx const s) {
     auto const& r = tt.transfer_rules_.rules_[s.rule()];
     auto const is_from = s.is_from();
     return transfer_rule_side{.is_from_ = is_from,
@@ -112,7 +113,21 @@ std::vector<transfer_rule_side> get_transfer_rule_sides(
                               .other_trip_ = r.trip(!is_from),
                               .duration_ = r.duration_,
                               .specificity_ = r.specificity_};
-  });
+  };
+
+  // Transform to rule sides.
+  auto v = utl::to_vec(rules, to_side);
+
+  // Sides unqualified at this stop (or its parent): they apply to every trip
+  // here, so they're in no signature, but they compete with its sides.
+  auto unqualified = std::vector<transfer_rule_side>{};
+  for (auto const stop : {base, tt.locations_.parents_[base]}) {
+    if (stop != location_idx_t::invalid()) {
+      for (auto const s : values_of(tt.transfer_rules_.stop_rules_, stop)) {
+        unqualified.push_back(to_side(s));
+      }
+    }
+  }
 
   // Lower each side's specificity to the lowest value that keeps its order
   // against competing rule sides (same partners, different duration): the same
@@ -149,6 +164,14 @@ std::vector<transfer_rule_side> get_transfer_rule_sides(
                                         b->specificity_ + 1U));
             }
           }
+          for (auto const& b : unqualified) {
+            if (b.specificity_ < a->specificity_ &&
+                b.duration_ != a->duration_ && has_same_partners(*a, b)) {
+              lowered =
+                  std::max(lowered, static_cast<transfer_rule_specificity_t>(
+                                        b.specificity_ + 1U));
+            }
+          }
 
           a->specificity_ = lowered;
         }
@@ -164,7 +187,7 @@ virt_key get_virt_key(timetable const& tt,
                       location_idx_t const base) {
   return {.base_ = base,
           .transfer_time_ = to_transfer_time(get_transfer_time(tt, sig, base)),
-          .sides_ = get_transfer_rule_sides(tt, sig)};
+          .sides_ = get_transfer_rule_sides(tt, sig, base)};
 }
 
 }  // namespace nigiri
