@@ -531,17 +531,36 @@ struct loc {
   location_idx_t l_;
 };
 
-inline auto format_as(loc const& l)
-    -> std::pair<std::string_view, std::string_view> {
-  if (l.l_ == location_idx_t::invalid()) {
-    return {};
-  }
-  return {l.tt_.get_default_name(l.l_), l.tt_.locations_.ids_[l.l_].view()};
-}
-
 inline std::ostream& operator<<(std::ostream& out, loc const& l) {
-  auto const [id, name] = format_as(l);
-  return out << '(' << id << ", " << name << ')';
+  if (l.l_ == location_idx_t::invalid()) {
+    return out << "(, )";
+  }
+  if (to_idx(l.l_) >= l.tt_.n_locations()) {
+    return out << "(, rt " << to_idx(l.l_) << ')';
+  }
+  auto const& locations = l.tt_.locations_;
+  return out << '(' << l.tt_.get_default_name(l.l_) << ", "
+             << (locations.is_virt(l.l_) ? "V#" : "")
+             << locations.ids_[l.tt_.base(l.l_)].view() << ')';
 }
 
 }  // namespace nigiri
+
+template <>
+struct fmt::formatter<nigiri::loc> {
+  constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
+
+  auto format(nigiri::loc const& l, fmt::format_context& ctx) const {
+    if (l.l_ == nigiri::location_idx_t::invalid()) {
+      return fmt::format_to(ctx.out(), "(\"\", \"\")");
+    }
+    if (to_idx(l.l_) >= l.tt_.n_locations()) {
+      return fmt::format_to(ctx.out(), "(\"\", \"rt {}\")", to_idx(l.l_));
+    }
+    auto const& locations = l.tt_.locations_;
+    return fmt::format_to(ctx.out(), "({:?}, \"{}{}\")",
+                          l.tt_.get_default_name(l.l_),
+                          locations.is_virt(l.l_) ? "V#" : "",
+                          locations.ids_[l.tt_.base(l.l_)].view());
+  }
+};

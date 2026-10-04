@@ -38,6 +38,9 @@ void register_special_stations(timetable& tt) {
 
 void build_location_tree(timetable& tt) {
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    if (tt.locations_.is_virt(l)) {
+      continue;
+    }
     auto box = geo::box{};
     box.extend(tt.locations_.coordinates_[l]);
     tt.locations_.rtree_.insert(box.min_.lnglat_float(),
@@ -234,12 +237,11 @@ void finalize(timetable& tt, finalize_options const opt) {
 }
 
 void finalize(timetable& tt,
-              bool const adjust_footpaths,
               bool const merge_dupes_intra_src,
               bool const merge_dupes_inter_src,
               std::uint16_t const max_footpath_length) {
-  finalize(tt, {adjust_footpaths, merge_dupes_intra_src, merge_dupes_inter_src,
-                max_footpath_length});
+  finalize(tt,
+           {merge_dupes_intra_src, merge_dupes_inter_src, max_footpath_length});
 }
 
 }  // namespace nigiri::loader

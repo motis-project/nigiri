@@ -118,18 +118,16 @@ trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_t
 T,10:00:00,10:00:00,M1,1,0,0
 T,10:30:00,10:30:00,M2,2,0,0
 )";
-  for (auto const adjust_footpaths : {true, false}) {
-    auto tt = timetable{};
-    tt.date_range_ = {sys_days{2019_y / May / 1}, sys_days{2019_y / May / 2}};
-    loader::register_special_stations(tt);
-    loader::gtfs::load_timetable({}, source_idx_t{0},
-                                 loader::mem_dir::read(kGroupFeed), tt);
-    loader::finalize(tt, {.adjust_footpaths_ = adjust_footpaths});
+  auto tt = timetable{};
+  tt.date_range_ = {sys_days{2019_y / May / 1}, sys_days{2019_y / May / 2}};
+  loader::register_special_stations(tt);
+  loader::gtfs::load_timetable({}, source_idx_t{0},
+                               loader::mem_dir::read(kGroupFeed), tt);
+  loader::finalize(tt, loader::finalize_options{});
 
-    auto const grp =
-        tt.locations_.location_id_to_idx_.at({"GRP", source_idx_t{0}});
-    ASSERT_FALSE(tt.locations_.equivalences_[grp].empty());
-    EXPECT_TRUE(tt.locations_.footpaths_out_[kDefaultProfile][grp].empty());
-    EXPECT_TRUE(tt.locations_.footpaths_in_[kDefaultProfile][grp].empty());
-  }
+  auto const grp =
+      tt.locations_.location_id_to_idx_.at({"GRP", source_idx_t{0}});
+  ASSERT_FALSE(tt.locations_.equivalences_[grp].empty());
+  EXPECT_TRUE(tt.locations_.footpaths_out_[kDefaultProfile][grp].empty());
+  EXPECT_TRUE(tt.locations_.footpaths_in_[kDefaultProfile][grp].empty());
 }

@@ -130,12 +130,6 @@ void add_rule_hubs(
     hash_map<transfer_pair, transfer_rule_idx_t> const& most_specific,
     mutable_fws_multimap<location_idx_t, footpath>& footpaths);
 
-void add_stop_hubs(
-    timetable&,
-    interval<transfer_rule_idx_t> rules,
-    hash_map<transfer_pair, transfer_rule_idx_t> const& most_specific,
-    mutable_fws_multimap<location_idx_t, footpath>& footpaths);
-
 void store_rule_lookups(timetable&, interval<transfer_rule_idx_t> rules);
 
 location_idx_t get_or_create_virt(

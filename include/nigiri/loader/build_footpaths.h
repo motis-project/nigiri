@@ -1,7 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <optional>
 
 #include "nigiri/loader/merge_duplicates.h"
 #include "nigiri/timetable.h"
@@ -9,7 +8,6 @@
 namespace nigiri::loader {
 
 struct finalize_options {
-  bool adjust_footpaths_{true};
   bool merge_dupes_intra_src_{true};
   bool merge_dupes_inter_src_{true};
   std::uint16_t max_footpath_length_{20};
@@ -20,12 +18,7 @@ struct finalize_options {
 
 void build_footpaths(timetable& tt, finalize_options);
 
-std::optional<duration_t> adjust_to_walk_speed(timetable const&,
-                                               location_idx_t a,
-                                               location_idx_t b,
-                                               duration_t);
-
-void write_default_profile(timetable&, bool adjust_footpaths);
+void write_default_profile(timetable&);
 
 inline duration_t max_with_transfer_times(timetable const& tt,
                                           location_idx_t const from,

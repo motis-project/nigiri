@@ -66,7 +66,7 @@ inline timetable load_feeds(std::vector<std::string> const& feeds,
         source_idx_t{static_cast<source_idx_t::value_t>(i)},
         loader::mem_dir::read(feeds[i]), tt);
   }
-  loader::finalize(tt, adjust_footpaths);
+  loader::finalize(tt);
   return tt;
 }
 
@@ -335,7 +335,7 @@ inline void rebuild_default_profile(timetable& tt,
     pending[b].push_back(
         footpath{a, loader::max_with_transfer_times(tt, b, a, d)});
   }
-  loader::write_default_profile(tt, false);
+  loader::write_default_profile(tt);
 }
 
 }  // namespace nigiri::test

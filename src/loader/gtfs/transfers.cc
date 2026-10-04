@@ -5,6 +5,8 @@
 #include <span>
 #include <vector>
 
+#include "geo/latlng.h"
+
 #include "utl/enumerate.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/lookup.h"
@@ -15,8 +17,8 @@
 #include "utl/progress_tracker.h"
 #include "utl/verify.h"
 
-#include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/transfer_rules.h"
+#include "nigiri/constants.h"
 #include "nigiri/logging.h"
 #include "nigiri/stop.h"
 #include "nigiri/timetable.h"
@@ -277,6 +279,28 @@ void fold_pair_defaults(timetable& tt,
       }
     }
   }
+}
+
+std::optional<duration_t> adjust_to_walk_speed(timetable const& tt,
+                                               location_idx_t const a,
+                                               location_idx_t const b,
+                                               duration_t const duration) {
+  constexpr auto const kMaxWalkDistance =
+      std::numeric_limits<u8_minutes::rep>::max() * 60.0 * kWalkSpeed;
+
+  auto const distance = geo::distance(tt.locations_.coordinates_[a],
+                                      tt.locations_.coordinates_[b]);
+  if (distance > kMaxWalkDistance) {
+    log(log_lvl::error, "loader.gtfs.transfers",
+        "{} -> {}: {:.1f} km apart, not walkable, row ignored",
+        tt.locations_.ids_[a].view(), tt.locations_.ids_[b].view(),
+        distance / 1000.0);
+    return std::nullopt;
+  }
+
+  return std::max(
+      duration,
+      duration_t{static_cast<duration_t::rep>(distance / kWalkSpeed / 60)});
 }
 
 void read_transfers(source_idx_t const src,

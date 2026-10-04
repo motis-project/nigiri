@@ -127,7 +127,7 @@ TEST(loader, build_footpaths_drop_unwalkable) {
   loader::gtfs::load_timetable(
       {.adjust_footpaths_ = true, .default_tz_ = "Europe/Berlin"},
       source_idx_t{0}, loader::mem_dir::read(unwalkable_files), tt);
-  loader::finalize(tt, /* adjust_footpaths */ true);
+  loader::finalize(tt);
 
   auto ss = std::stringstream{};
   for (auto const [i, x] : utl::enumerate(tt.locations_.footpaths_out_[0])) {
