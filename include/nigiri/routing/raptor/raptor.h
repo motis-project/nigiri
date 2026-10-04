@@ -758,7 +758,7 @@ private:
                                  unsigned const start_v,
                                  delta_t const start_time,
                                  int const duration,
-                                 std::size_t const target) {
+                                 std::uint32_t const target) {
     auto const target_is_via = start_v != Vias && is_via_[start_v][target];
     auto const target_v = target_is_via ? start_v + 1U : start_v;
     auto const stay =
@@ -836,7 +836,7 @@ private:
                 ? 0
                 : adjusted_transfer_time(transfer_time_settings_,
                                          static_cast<int>(own.count()));
-        relax(k, v, tmp_time, transfer_time, i);
+        relax(k, v, tmp_time, transfer_time, static_cast<std::uint32_t>(i));
       }
     });
   }
