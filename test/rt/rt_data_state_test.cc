@@ -374,3 +374,150 @@ TEST(rt, data_state_incremental_update_keeps_previous_stops) {
   EXPECT_EQ(scheduled(10h + 40min), fr[3].time(event_type::kArr));
   EXPECT_EQ(scheduled(10h + 50min), fr[4].time(event_type::kArr));
 }
+
+namespace {
+
+// T1 and T2 share block_id 1 and are merged into one transport A-B-C-D-E.
+mem_dir block_test_files() {
+  return mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,
+B,B,,0.01,1.01,,
+C,C,,0.02,1.02,,
+D,D,,0.03,1.03,,
+E,E,,0.04,1.04,,
+
+# calendar_dates.txt
+service_id,date,exception_type
+S1,20190501,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,RE 1,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S1,T1,RE 1,1
+R1,S1,T2,RE 1,1
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:00:00,10:00:00,A,1,0,0
+T1,10:10:00,10:10:00,B,2,0,0
+T1,10:20:00,10:20:00,C,3,0,0
+T2,10:30:00,10:30:00,C,1,0,0
+T2,10:40:00,10:40:00,D,2,0,0
+T2,10:50:00,10:50:00,E,3,0,0
+)");
+}
+
+run resolve_block_trip(timetable const& tt,
+                       rt_timetable const& rtt,
+                       std::string const& trip_id,
+                       std::string const& start_time) {
+  auto td = transit_realtime::TripDescriptor{};
+  td.set_trip_id(trip_id);
+  td.set_start_date("20190501");
+  td.set_start_time(start_time);
+  return rt::gtfsrt_resolve_run(kBaseDay, tt, &rtt, source_idx_t{0}, td).first;
+}
+
+// Full transport (both trips).
+frun get_block_frun(timetable const& tt, rt_timetable const& rtt) {
+  auto const r = resolve_block_trip(tt, rtt, "T1", "10:00:00");
+  return frun::from_t(tt, &rtt, r.t_);
+}
+
+// Event order: A dep, B arr, B dep, C arr (T1) | C dep, D arr, D dep, E arr
+// (T2)
+states_t get_block_states(timetable const& tt, rt_timetable const& rtt) {
+  auto const fr = get_block_frun(tt, rtt);
+  auto states = states_t{};
+  for (auto const rs : fr) {
+    if (rs.stop_idx_ != 0U) {
+      states.push_back(rs.data_state(event_type::kArr));
+    }
+    if (rs.stop_idx_ != fr.size() - 1U) {
+      states.push_back(rs.data_state(event_type::kDep));
+    }
+  }
+  return states;
+}
+
+void load_block_timetable(timetable& tt) {
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2019_y / March / 25},
+                    date::sys_days{2019_y / November / 1}};
+  load_timetable({}, source_idx_t{0}, block_test_files(), tt);
+  finalize(tt);
+}
+
+}  // namespace
+
+TEST(rt, data_state_block_id_no_update_for_later_trip) {
+  timetable tt;
+  load_block_timetable(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, kBaseDay);
+
+  // Both trips are part of the same transport.
+  auto const r1 = resolve_block_trip(tt, rtt, "T1", "10:00:00");
+  auto const r2 = resolve_block_trip(tt, rtt, "T2", "10:30:00");
+  ASSERT_TRUE(r1.valid());
+  ASSERT_TRUE(r2.valid());
+  ASSERT_EQ(r1.t_, r2.t_);
+  ASSERT_EQ(5U, get_block_frun(tt, rtt).size());
+
+  // Update for T1 only. The delay at C (10:25) does not affect T2's
+  // departure at C (10:30) -> T2 has no real-time data.
+  auto const stats = rt::gtfsrt_update_msg(
+      tt, rtt, source_idx_t{0}, "tag",
+      test::to_feed_msg(
+          {{.trip_id_ = "T1",
+            .delays_ = {{.seq_ = 1U, .ev_type_ = kDep, .delay_minutes_ = 5}}}},
+          kBaseDay + 7h));
+  EXPECT_EQ(1U, stats.total_entities_success_);
+
+  EXPECT_EQ((states_t{kPredicted, kPropagated, kPropagated, kPropagated,
+                      kNoRtData, kNoRtData, kNoRtData, kNoRtData}),
+            get_block_states(tt, rtt));
+
+  auto const fr = get_block_frun(tt, rtt);
+  EXPECT_EQ(scheduled(10h + 25min), fr[2].time(event_type::kArr));
+  EXPECT_EQ(scheduled(10h + 30min), fr[2].time(event_type::kDep));
+  EXPECT_EQ(scheduled(10h + 40min), fr[3].time(event_type::kArr));
+  EXPECT_EQ(scheduled(10h + 50min), fr[4].time(event_type::kArr));
+}
+
+TEST(rt, data_state_block_id_later_trip_inconsistent) {
+  timetable tt;
+  load_block_timetable(tt);
+
+  // Update for T1 only. The arrival at C (10:45) is after T2's scheduled
+  // departure at C (10:30) -> T2's times are adjusted to avoid time travel
+  // and marked inconsistent until the scheduled times are reached again (E).
+  auto rtt = rt::create_rt_timetable(tt, kBaseDay);
+  auto const stats = rt::gtfsrt_update_msg(
+      tt, rtt, source_idx_t{0}, "tag",
+      test::to_feed_msg(
+          {{.trip_id_ = "T1",
+            .delays_ = {{.seq_ = 1U, .ev_type_ = kDep, .delay_minutes_ = 25}}}},
+          kBaseDay + 7h));
+  EXPECT_EQ(1U, stats.total_entities_success_);
+
+  EXPECT_EQ((states_t{kPredicted, kPropagated, kPropagated, kPropagated,
+                      kInconsistent, kInconsistent, kInconsistent, kNoRtData}),
+            get_block_states(tt, rtt));
+
+  auto const fr = get_block_frun(tt, rtt);
+  EXPECT_EQ(scheduled(10h + 45min), fr[2].time(event_type::kArr));
+  EXPECT_EQ(scheduled(10h + 45min), fr[2].time(event_type::kDep));
+  EXPECT_EQ(scheduled(10h + 45min), fr[3].time(event_type::kArr));
+  EXPECT_EQ(scheduled(10h + 45min), fr[3].time(event_type::kDep));
+  EXPECT_EQ(scheduled(10h + 50min), fr[4].time(event_type::kArr));
+}
