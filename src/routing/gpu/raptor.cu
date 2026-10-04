@@ -1408,6 +1408,32 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       }
     }
 
+    // Backward search: time-dependent footpaths start as soon as they are
+    // usable after the arrival (as in the reconstruction).
+    if constexpr (SearchDir == direction::kBackward) {
+      if (rtt_ != nullptr && prf_idx_ != 0U) {
+        for (auto i = std::size_t{1U}; i < j.legs_.size(); ++i) {
+          auto& lg = j.legs_[i];
+          if (!std::holds_alternative<footpath>(lg.uses_) ||
+              lg.from_ == lg.to_ ||
+              !rtt_->has_td_footpaths_out_[prf_idx_].test(lg.from_)) {
+            continue;
+          }
+          auto const t = j.legs_[i - 1U].arr_time_;
+          for_each_footpath<direction::kForward>(
+              rtt_->td_footpaths_out_[prf_idx_][lg.from_], t,
+              [&](location_idx_t const target, duration_t const duration,
+                  duration_t const walk) {
+                if (target == lg.to_ && t + duration <= lg.arr_time_) {
+                  lg.dep_time_ = t + duration - walk;
+                  lg.arr_time_ = lg.dep_time_ + walk;
+                  lg.uses_ = footpath{lg.to_, walk};
+                }
+              });
+        }
+      }
+    }
+
     // is_reconstructed_ stays false
     // -> only reconstruct() called by pong/search.h might set it to true
     results.add(std::move(j));

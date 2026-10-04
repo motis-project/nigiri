@@ -273,7 +273,23 @@ TRANSFERS: 1
 leg 0: (A, A) [2024-06-19 08:00] -> (B1, B1) [2024-06-19 09:00]
    0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
    1: B1      B1.............................................. a: 19.06 09:00 [19.06 11:00]
-leg 1: (B1, B1) [2024-06-19 09:50] -> (B2, B2) [2024-06-19 10:00]
+leg 1: (B1, B1) [2024-06-19 09:25] -> (B2, B2) [2024-06-19 09:35]
+  FOOTPATH (duration=10)
+leg 2: (B2, B2) [2024-06-19 10:00] -> (C, C) [2024-06-19 10:30]
+   0: B2      B2..............................................                               d: 19.06 10:00 [19.06 12:00]  [{name=RE 1, day=2024-06-19, id=T3, src=0}]
+   1: C       C............................................... a: 19.06 10:30 [19.06 12:30]
+
+)";
+
+constexpr auto const kPongElevatorUsableAgainAt1145 = R"(
+[2024-06-19 08:00, 2024-06-19 10:30]
+TRANSFERS: 1
+     FROM: (A, A) [2024-06-19 08:00]
+       TO: (C, C) [2024-06-19 10:30]
+leg 0: (A, A) [2024-06-19 08:00] -> (B1, B1) [2024-06-19 09:00]
+   0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
+   1: B1      B1.............................................. a: 19.06 09:00 [19.06 11:00]
+leg 1: (B1, B1) [2024-06-19 09:45] -> (B2, B2) [2024-06-19 09:55]
   FOOTPATH (duration=10)
 leg 2: (B2, B2) [2024-06-19 10:00] -> (C, C) [2024-06-19 10:30]
    0: B2      B2..............................................                               d: 19.06 10:00 [19.06 12:00]  [{name=RE 1, day=2024-06-19, id=T3, src=0}]
@@ -285,10 +301,11 @@ leg 2: (B2, B2) [2024-06-19 10:00] -> (C, C) [2024-06-19 10:30]
 TEST(routing, td_footpath_pong_keeps_the_wait) {
   // Scenario 3 with PONG (local times):
   // T1 arrives at B1 at 11:00, but the footpath B1 -> B2 (elevator) is only
-  // usable from 11:25. The journey must wait at B1 and walk 11:50-12:00 to
-  // catch T3. PONG builds its journeys from a backward search, which used
-  // to move the walk to 11:00. Also, the static footpath (5min) ignores the
-  // outage, so it must not replace the time-dependent one (10min).
+  // usable from 11:25. The journey must wait at B1 and walk 11:25-11:35 (as
+  // in the forward search) to catch T3. PONG builds its journeys from a
+  // backward search, which used to move the walk to 11:00. Also, the static
+  // footpath (5min) ignores the outage, so it must not replace the
+  // time-dependent one (10min).
   constexpr auto const kProfile = profile_idx_t{2U};
 
   timetable tt;
@@ -547,6 +564,7 @@ TEST(routing, td_footpath_pong_walk_right_after_usable) {
   // footpath at B1 at 09:50, only 5min after it becomes usable (09:45) with a
   // 10min duration. The footpath must be looked up for a departure at 09:50,
   // not an arrival at 09:50 (which would require the footpath from 09:40).
+  // The walk then starts as soon as it is usable (09:45).
   constexpr auto const kProfile = profile_idx_t{2U};
 
   timetable tt;
@@ -599,7 +617,7 @@ TEST(routing, td_footpath_pong_walk_right_after_usable) {
           .destination_ = {{C, 0min, 0U}},
           .prf_idx_ = kProfile},
       direction::kForward);
-  EXPECT_EQ(kPongElevatorStartsWorkingAt1125, to_string(tt, &rtt, result));
+  EXPECT_EQ(kPongElevatorUsableAgainAt1145, to_string(tt, &rtt, result));
 }
 
 // clang-format off

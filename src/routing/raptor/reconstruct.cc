@@ -926,11 +926,29 @@ void reconstruct_journey_with_vias(timetable const& tt,
                 }
                 auto const diff =
                     it->dep_time_ - std::prev(it)->arr_time_ - stay;
-                // A time-dependent footpath may only be usable later, so we
-                // don't want to move it.
+                // A time-dependent footpath may only be usable later: it
+                // starts as soon as it is usable after the arrival.
                 if (diff.count() > 0 && it->from_ != it->to_ &&
                     rtt != nullptr && q.prf_idx_ != 0U &&
                     rtt->has_td_footpaths_out_[q.prf_idx_].test(it->from_)) {
+                  auto const t = std::prev(it)->arr_time_ + stay;
+                  auto earliest =
+                      std::optional<std::pair<unixtime_t, duration_t>>{};
+                  for_each_footpath<direction::kForward>(
+                      rtt->td_footpaths_out_[q.prf_idx_][it->from_], t,
+                      [&](location_idx_t const target,
+                          duration_t const duration, duration_t const walk) {
+                        if (target == it->to_ &&
+                            t + duration <= it->arr_time_) {
+                          earliest = std::pair{t + duration - walk, walk};
+                        }
+                      });
+                  if (earliest.has_value()) {
+                    auto const [dep, walk] = *earliest;
+                    it->dep_time_ = dep;
+                    it->arr_time_ = dep + walk;
+                    it->uses_ = footpath{it->to_, walk};
+                  }
                   return;
                 }
                 it->dep_time_ -= diff;
