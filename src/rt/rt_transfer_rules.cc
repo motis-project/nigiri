@@ -36,12 +36,11 @@ std::vector<side_t> get_stop_signature(timetable const& tt,
       });
 
   return get_change_signature(
-             tt, {begin(arriving_trips), end(arriving_trips)},
-             is_change ? std::span<trip_idx_t const>{begin(departing_trips),
-                                                     end(departing_trips)}
-                       : std::span<trip_idx_t const>{},
-             is_handover, base)
-      .value_or(std::vector<side_t>{});
+      tt, {begin(arriving_trips), end(arriving_trips)},
+      is_change ? std::span<trip_idx_t const>{begin(departing_trips),
+                                              end(departing_trips)}
+                : std::span<trip_idx_t const>{},
+      is_handover, base);
 }
 
 void add_rt_transfers(timetable const& tt,

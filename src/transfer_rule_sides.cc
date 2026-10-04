@@ -61,7 +61,7 @@ void get_signature(timetable const& tt,
   utl::erase_duplicates(sig);
 }
 
-std::optional<std::vector<transfer_rule_side_idx>> get_change_signature(
+std::vector<transfer_rule_side_idx> get_change_signature(
     timetable const& tt,
     std::span<trip_idx_t const> arriving_trips,
     std::span<trip_idx_t const> departing_trips,
@@ -71,9 +71,6 @@ std::optional<std::vector<transfer_rule_side_idx>> get_change_signature(
   auto departing = std::vector<transfer_rule_side_idx>{};
   add_trip_rules(tt, arriving_trips, arriving);
   add_trip_rules(tt, departing_trips, departing);
-  if (arriving.empty() && departing.empty()) {
-    return std::nullopt;
-  }
   auto sig = std::vector<transfer_rule_side_idx>{};
   get_signature(tt, arriving, departing, is_handover, base, sig);
   return sig;

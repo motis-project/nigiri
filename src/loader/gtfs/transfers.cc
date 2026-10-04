@@ -1,6 +1,7 @@
 #include "nigiri/loader/gtfs/transfers.h"
 
 #include <algorithm>
+#include <functional>
 #include <optional>
 #include <span>
 #include <vector>
@@ -8,6 +9,7 @@
 #include "geo/latlng.h"
 
 #include "utl/enumerate.h"
+#include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/lookup.h"
 #include "utl/parser/buf_reader.h"
@@ -90,27 +92,27 @@ bool is_qualified(transfer_rule const& r) {
 bool is_overlapping(timetable const& tt,
                     transfer_rule const& a,
                     transfer_rule const& b) {
-  auto const is_side_overlapping =
-      [&](trip_idx_t const a_trip, route_id_idx_t const a_route,
-          trip_idx_t const b_trip, route_id_idx_t const b_route) {
-        auto const has_a_trip = a_trip != trip_idx_t::invalid();
-        auto const has_b_trip = b_trip != trip_idx_t::invalid();
-        auto const has_a_route = a_route != route_id_idx_t::invalid();
-        auto const has_b_route = b_route != route_id_idx_t::invalid();
-        if (has_a_trip && has_b_trip) {
-          return a_trip == b_trip;
-        } else if (has_a_trip && has_b_route) {
-          return tt.trip_route_id_[a_trip] == b_route;
-        } else if (has_a_route && has_b_trip) {
-          return tt.trip_route_id_[b_trip] == a_route;
-        } else if (has_a_route && has_b_route) {
-          return a_route == b_route;
-        }
-        return true;
-      };
-  return is_side_overlapping(a.from_trip_, a.from_route_, b.from_trip_,
-                             b.from_route_) &&
-         is_side_overlapping(a.to_trip_, a.to_route_, b.to_trip_, b.to_route_);
+  auto const is_side_overlapping = [&](bool const is_from) {
+    auto const a_trip = a.trip(is_from);
+    auto const b_trip = b.trip(is_from);
+    auto const a_route = a.route(is_from);
+    auto const b_route = b.route(is_from);
+    auto const has_a_trip = a_trip != trip_idx_t::invalid();
+    auto const has_b_trip = b_trip != trip_idx_t::invalid();
+    auto const has_a_route = a_route != route_id_idx_t::invalid();
+    auto const has_b_route = b_route != route_id_idx_t::invalid();
+    if (has_a_trip && has_b_trip) {
+      return a_trip == b_trip;
+    } else if (has_a_trip && has_b_route) {
+      return tt.trip_route_id_[a_trip] == b_route;
+    } else if (has_a_route && has_b_trip) {
+      return tt.trip_route_id_[b_trip] == a_route;
+    } else if (has_a_route && has_b_route) {
+      return a_route == b_route;
+    }
+    return true;
+  };
+  return is_side_overlapping(true) && is_side_overlapping(false);
 }
 
 void fold_pair_defaults(timetable& tt,
@@ -122,12 +124,17 @@ void fold_pair_defaults(timetable& tt,
   auto qualified =
       hash_map<transfer_pair, std::vector<pair<duration_t, unsigned>>>{};
   auto default_duration = hash_map<transfer_pair, duration_t>{};
+  // Prepare for lookup by stop pair.
+  auto by_pair = hash_map<transfer_pair, std::vector<transfer_rule const*>>{};
   for (auto const [i, r] : utl::enumerate(rules)) {
     auto const p = transfer_pair{r.from_stop_, r.to_stop_};
     if (!is_qualified(r)) {
       // Store explicit unqualified transfer durations.
       default_duration[p] = r.duration_;
-    } else if (votes[i]) {
+      continue;
+    }
+    by_pair[p].push_back(&rules[i]);
+    if (votes[i]) {
       // Count durations of qualified transfer rules for each stop pair.
       // Forbidden and recommended (=0min) transfers are not counted.
       auto& durations = qualified[p];
@@ -189,14 +196,6 @@ void fold_pair_defaults(timetable& tt,
                              r.duration_);
   }
 
-  // Prepare for lookup by stop pair.
-  auto by_pair = hash_map<transfer_pair, std::vector<transfer_rule const*>>{};
-  for (auto const& r : rules) {
-    if (is_qualified(r)) {
-      by_pair[{r.from_stop_, r.to_stop_}].push_back(&r);
-    }
-  }
-
   auto const is_kept = [&](transfer_rule const& r) {
     // Keep all unqualified rules.
     if (!is_qualified(r)) {
@@ -233,9 +232,8 @@ void fold_pair_defaults(timetable& tt,
         any_pair(
             any_with_children,  // this/children stop pairs
             [&](transfer_pair const p) {
-              return p != from_to &&
-                     utl::lookup(default_duration, p).value_or(r.duration_) !=
-                         r.duration_;
+              return utl::lookup(default_duration, p).value_or(r.duration_) !=
+                     r.duration_;
             })
 
         // Would removing this rule let a less or equally specific overlapping
@@ -318,23 +316,19 @@ void read_transfers(source_idx_t const src,
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Read Transfers").in_high(file_content.size());
 
-  auto const resolve_trips = [&](csv_transfer const& t)
-      -> std::optional<pair<gtfs_trip_idx_t, gtfs_trip_idx_t>> {
-    if (t.from_trip_id_->empty() || t.to_trip_id_->empty()) {
-      log(log_lvl::error, "loader.gtfs.transfers",
-          "in-seat transfers (type 4, 5) require from_trip_id and to_trip_id");
-      return std::nullopt;
+  auto const& route_ids = tt.route_ids_[src].ids_;
+  auto const find_trip = [&](utl::cstr const id) {
+    return id.empty() ? std::optional{gtfs_trip_idx_t::invalid()}
+                      : utl::lookup(trips.trips_, id.view());
+  };
+  auto const find_route = [&](utl::cstr const id) {
+    return id.empty() ? std::optional{route_id_idx_t::invalid()}
+                      : route_ids.find(id.view());
+  };
+  auto const push_unique = [](auto& vec, auto const value) {
+    if (utl::find(vec, value) == end(vec)) {
+      vec.push_back(value);
     }
-
-    auto const from = utl::lookup(trips.trips_, t.from_trip_id_->view());
-    auto const to = utl::lookup(trips.trips_, t.to_trip_id_->view());
-    if (!from.has_value() || !to.has_value()) {
-      log(log_lvl::error, "loader.gtfs.transfers", "trip {} not found",
-          from.has_value() ? t.to_trip_id_->view() : t.from_trip_id_->view());
-      return std::nullopt;
-    }
-
-    return pair{*from, *to};
   };
 
   auto const first_rule = transfer_rule_idx_t{tt.transfer_rules_.rules_.size()};
@@ -354,30 +348,34 @@ void read_transfers(source_idx_t const src,
         }
 
         auto const type = static_cast<transfer_type>(*t.transfer_type_);
+        auto const from_gtfs_trip = find_trip(*t.from_trip_id_);
+        auto const to_gtfs_trip = find_trip(*t.to_trip_id_);
 
-        // Stay seated transfer: annotate seated_in / seated out.
-        if (type == transfer_type::kStaySeated) {
-          auto const resolved_trips = resolve_trips(t);
-          if (!resolved_trips.has_value()) {
+        if (type == transfer_type::kStaySeated ||
+            type == transfer_type::kNoStaySeated) {
+          if (t.from_trip_id_->empty() || t.to_trip_id_->empty()) {
+            log(log_lvl::error, "loader.gtfs.transfers",
+                "in-seat transfers (type 4, 5) require from_trip_id and "
+                "to_trip_id");
+            return;
+          }
+          if (!from_gtfs_trip.has_value() || !to_gtfs_trip.has_value()) {
+            log(log_lvl::error, "loader.gtfs.transfers", "trip {} not found",
+                from_gtfs_trip.has_value() ? t.to_trip_id_->view()
+                                           : t.from_trip_id_->view());
             return;
           }
 
-          auto const [from, to] = *resolved_trips;
-          auto const push_unique = [](auto& vec, auto const value) {
-            if (utl::find(vec, value) == end(vec)) {
-              vec.push_back(value);
-            }
-          };
-          push_unique(trips.data_[to].seated_in_, from);
-          push_unique(trips.data_[from].seated_out_, to);
-          return;
-        }
-
-        // Store transfer_type=5 - no in-seat transfer allowed
-        // -> prevents stay-seated transfers for block_id trips.
-        if (type == transfer_type::kNoStaySeated) {
-          if (auto const linked = resolve_trips(t); linked.has_value()) {
-            trips.no_stay_seated_.emplace(*linked);
+          auto const from = *from_gtfs_trip;
+          auto const to = *to_gtfs_trip;
+          if (type == transfer_type::kStaySeated) {
+            // Stay seated transfer: annotate seated_in / seated out.
+            push_unique(trips.data_[to].seated_in_, from);
+            push_unique(trips.data_[from].seated_out_, to);
+          } else {
+            // Store transfer_type=5 - no in-seat transfer allowed
+            // -> prevents stay-seated transfers for block_id trips.
+            trips.no_stay_seated_.emplace(from, to);
           }
           return;
         }
@@ -406,11 +404,8 @@ void read_transfers(source_idx_t const src,
 
         // Resolve from_stop_id and to_stop_id.
         auto const from_stop = utl::lookup(stops, t.from_stop_id_->view());
-        if (!from_stop) {
-          return;
-        }
         auto const to_stop = utl::lookup(stops, t.to_stop_id_->view());
-        if (!to_stop) {
+        if (!from_stop.has_value() || !to_stop.has_value()) {
           return;
         }
 
@@ -428,36 +423,22 @@ void read_transfers(source_idx_t const src,
         }
 
         // Resolve from_route_id and to_route_id.
-        auto const& route_ids = tt.route_ids_[src].ids_;
-        auto const from_route = route_ids.find(t.from_route_id_->view())
-                                    .value_or(route_id_idx_t::invalid());
-        if (from_route == route_id_idx_t::invalid() &&
-            !t.from_route_id_->empty()) {
-          return;
-        }
-        auto const to_route = route_ids.find(t.to_route_id_->view())
-                                  .value_or(route_id_idx_t::invalid());
-        if (to_route == route_id_idx_t::invalid() && !t.to_route_id_->empty()) {
+        auto const from_route = find_route(*t.from_route_id_);
+        auto const to_route = find_route(*t.to_route_id_);
+        if (!from_route.has_value() || !to_route.has_value()) {
           return;
         }
 
         // Resolve from_trip_id and to_trip_id.
+        if (!from_gtfs_trip.has_value() || !to_gtfs_trip.has_value()) {
+          return;
+        }
         auto const trip_idx = [&](gtfs_trip_idx_t const g) {
-          return trips.data_[g].trip_idx_;
+          return g == gtfs_trip_idx_t::invalid() ? trip_idx_t::invalid()
+                                                 : trips.data_[g].trip_idx_;
         };
-        auto const from_trip =
-            utl::lookup(trips.trips_, t.from_trip_id_->view())
-                .transform(trip_idx)
-                .value_or(trip_idx_t::invalid());
-        if (from_trip == trip_idx_t::invalid() && !t.from_trip_id_->empty()) {
-          return;
-        }
-        auto const to_trip = utl::lookup(trips.trips_, t.to_trip_id_->view())
-                                 .transform(trip_idx)
-                                 .value_or(trip_idx_t::invalid());
-        if (to_trip == trip_idx_t::invalid() && !t.to_trip_id_->empty()) {
-          return;
-        }
+        auto const from_trip = trip_idx(*from_gtfs_trip);
+        auto const to_trip = trip_idx(*to_gtfs_trip);
 
         // Skip trip self-transfer rules:
         // Transferring into the same trip can't yield a better journey.
@@ -472,8 +453,8 @@ void read_transfers(source_idx_t const src,
               preferred_transfer{.to_ = *to_stop,
                                  .from_trip_ = from_trip,
                                  .to_trip_ = to_trip,
-                                 .from_route_ = from_route,
-                                 .to_route_ = to_route});
+                                 .from_route_ = *from_route,
+                                 .to_route_ = *to_route});
         }
 
         auto const is_forbidden = type == transfer_type::kNotPossible;
@@ -489,15 +470,15 @@ void read_transfers(source_idx_t const src,
 
         auto const r = transfer_rule{.from_stop_ = *from_stop,
                                      .to_stop_ = *to_stop,
-                                     .from_route_ = from_route,
-                                     .to_route_ = to_route,
+                                     .from_route_ = *from_route,
+                                     .to_route_ = *to_route,
                                      .from_trip_ = from_trip,
                                      .to_trip_ = to_trip,
                                      .src_ = src,
                                      .duration_ = *duration,
                                      .specificity_ = get_specificity(
-                                         tt, *from_stop, *to_stop, from_route,
-                                         to_route, from_trip, to_trip)};
+                                         tt, *from_stop, *to_stop, *from_route,
+                                         *to_route, from_trip, to_trip)};
 
         rules.push_back(r);
 
@@ -523,6 +504,9 @@ void read_transfers(source_idx_t const src,
            (t.service_ == nullptr || !t.service_->none()) &&
            !t.stop_seq_.empty();
   };
+  auto& tr = tt.transfer_rules_;
+  auto const first_rule_virt = tr.rule_virts_.size();
+  auto const first_virt_rule = tr.virt_rules_.size();
   auto virts = hash_map<virt_key, location_idx_t>{};
   auto trip_rules = std::vector<transfer_rule_side_idx>{};
   auto sig = std::vector<transfer_rule_side_idx>{};
@@ -567,13 +551,10 @@ void read_transfers(source_idx_t const src,
     }
     auto const handover_sig = get_change_signature(
         tt, {&ta.trip_idx_, 1U}, {&tb.trip_idx_, 1U}, true, base_a);
-    if (!handover_sig.has_value()) {
-      return;
-    }
     trips.handover_stops_.emplace(
-        pair{a, b}, handover_sig->empty()
+        pair{a, b}, handover_sig.empty()
                         ? base_a
-                        : get_or_create_virt(tt, virts, base_a, *handover_sig));
+                        : get_or_create_virt(tt, virts, base_a, handover_sig));
   };
 
   for (auto const& [_, blk] : trips.blocks_) {
@@ -595,6 +576,13 @@ void read_transfers(source_idx_t const src,
       add_handover(a, b);
     }
   }
+
+  utl::erase_duplicates(tr.rule_virts_,
+                        std::next(begin(tr.rule_virts_), first_rule_virt),
+                        end(tr.rule_virts_), std::less<>{}, std::equal_to<>{});
+  utl::erase_duplicates(tr.virt_rules_,
+                        std::next(begin(tr.virt_rules_), first_virt_rule),
+                        end(tr.virt_rules_), std::less<>{}, std::equal_to<>{});
 
   log(log_lvl::info, "loader.transfer_rules", "{} virtual locations",
       virts.size());

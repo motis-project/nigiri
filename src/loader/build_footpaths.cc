@@ -142,11 +142,6 @@ void add_walk_hubs(timetable& tt,
         continue;
       }
 
-      // Covered by transfer rule => skip.
-      if (rule_fps.contains(l, fp.target())) {
-        continue;
-      }
-
       // Neither side has virts -> skip.
       collect_members(tt, fp.target(), targets);
       if (l_and_virts.size() == 1U && targets.size() == 1U) {
@@ -219,19 +214,10 @@ void override_footpaths_with_rules(timetable& tt, rule_index const& rule_fps) {
       return rule_fps.contains(l, fp.target()) ||
              is_hub_covered(tt, l, fp.target());
     });
-
-    // Add rule footpaths (skip forbidden transfers).
-    for (auto const fp : rule_fps.footpaths_[l]) {
-      if (fp.duration() != footpath::kMaxDuration) {
-        bucket.push_back(fp);
-      }
-    }
   }
 }
 
-void write_layer(timetable& tt,
-                 profile_idx_t const prf,
-                 vector_map<location_idx_t, std::vector<footpath>>& out) {
+void write_footpaths(timetable& tt, rule_index const& rule_fps) {
   // shortest duration first, the order sort_footpaths() left the preprocessing
   // layers in; the target breaks ties so the built timetable is reproducible
   auto const by_duration = [](footpath const a, footpath const b) {
@@ -239,11 +225,32 @@ void write_layer(timetable& tt,
   };
 
   auto& loc = tt.locations_;
-  auto in = vector_map<location_idx_t, std::vector<footpath>>{};
-  in.resize(tt.n_locations());
-  loc.footpaths_out_[prf].clear();
+  auto& out = loc.footpaths_out_[kDefaultProfile];
+  auto n_pruned = std::size_t{0U};
+  auto fps = std::vector<footpath>{};
+  out.clear();
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-    auto& fps = out[l];
+    fps.clear();
+    auto const add = [&](footpath const fp) {
+      if (fp.target() == l) {
+        return;
+      }
+      if (is_hub_covered(tt, l, fp.target(), fp.duration())) {
+        ++n_pruned;
+        return;
+      }
+      fps.push_back(fp);
+    };
+    for (auto const fp : loc.preprocessing_footpaths_out_[l]) {
+      add(fp);
+    }
+
+    // Add rule footpaths (skip forbidden transfers).
+    for (auto const fp : rule_fps.footpaths_[l]) {
+      if (fp.duration() != footpath::kMaxDuration) {
+        add(fp);
+      }
+    }
 
     // Sort by target; keeps the shortest duration per target.
     utl::erase_duplicates(
@@ -256,43 +263,24 @@ void write_layer(timetable& tt,
           return a.target_ == b.target_;
         });
     utl::sort(fps, by_duration);  // re-sort by duration
+    out.emplace_back(fps);
+  }
+  loc.preprocessing_footpaths_out_ = {};
 
-    loc.footpaths_out_[prf].emplace_back(fps);
-
-    // Mirror out to in.
-    for (auto const fp : fps) {
+  // Mirror out to in.
+  auto in = vector_map<location_idx_t, std::vector<footpath>>{};
+  in.resize(tt.n_locations());
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    for (auto const fp : out[l]) {
       in[fp.target()].emplace_back(l, fp.duration());
     }
-
-    fps = {};
   }
-
-  loc.footpaths_in_[prf].clear();
+  loc.footpaths_in_[kDefaultProfile].clear();
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
     utl::sort(in[l], by_duration);
-    loc.footpaths_in_[prf].emplace_back(in[l]);
+    loc.footpaths_in_[kDefaultProfile].emplace_back(in[l]);
     in[l] = {};
   }
-}
-
-void write_footpaths(timetable& tt) {
-  auto out = vector_map<location_idx_t, std::vector<footpath>>{};
-  out.resize(tt.n_locations());
-  auto n_pruned = std::size_t{0U};
-  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-    for (auto const fp : tt.locations_.preprocessing_footpaths_out_[l]) {
-      if (fp.target() == l) {
-        continue;
-      }
-      if (is_hub_covered(tt, l, fp.target(), fp.duration())) {
-        ++n_pruned;
-        continue;
-      }
-      out[l].push_back(fp);
-    }
-  }
-  tt.locations_.preprocessing_footpaths_out_.clear();
-  write_layer(tt, kDefaultProfile, out);
 
   log(log_lvl::info, "loader.footpath", "hub-covered footpaths dropped: {}",
       n_pruned);
@@ -339,7 +327,7 @@ void write_default_profile(timetable& tt) {
   }
   index_hubs(tt);
 
-  write_footpaths(tt);
+  write_footpaths(tt, rule_fps);
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);
   build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
 }

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <optional>
 #include <span>
 #include <tuple>
 #include <vector>
@@ -37,8 +36,7 @@ void get_signature(timetable const&,
                    location_idx_t base,
                    std::vector<transfer_rule_side_idx>& sig);
 
-// nullopt: none of the trips has rules.
-std::optional<std::vector<transfer_rule_side_idx>> get_change_signature(
+std::vector<transfer_rule_side_idx> get_change_signature(
     timetable const&,
     std::span<trip_idx_t const> arriving,
     std::span<trip_idx_t const> departing,

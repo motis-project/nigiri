@@ -79,19 +79,13 @@ void add_rule_hubs(
     auto coverage = hub_coverage{};
     for (auto const from : from_locations) {
       for (auto const to : to_locations) {
-        auto is_slower = false;
-        if (from == to) {
-          is_slower = to_fp_duration(tt.locations_.transfer_time_[from]) > d;
-        } else {
-          auto const winner =
-              utl::lookup(most_specific, transfer_pair{from, to});
-          if (!winner.has_value()) {
-            assert(false && "no winner for a pair of its cross product");
-            coverage.mark_slow(from, to);
-            continue;
-          }
-          is_slower = *winner != rule_idx && rules[*winner].duration_ > d;
-        }
+        auto const winner = utl::lookup(most_specific, transfer_pair{from, to});
+        assert((from == to || winner.has_value()) &&
+               "no winner for a pair of its cross product");
+        auto const is_slower =
+            from == to ? to_fp_duration(tt.locations_.transfer_time_[from]) > d
+                       : !winner.has_value() || (*winner != rule_idx &&
+                                                 rules[*winner].duration_ > d);
         if (is_slower) {
           coverage.mark_slow(from, to);
         }
