@@ -773,12 +773,14 @@ struct raptor_impl {
     auto const n_blocks =
         static_cast<unsigned>(prev_station_mark_.blocks_.size());
 
+    // time-dependent offsets to the intermodal destination
     if constexpr (WithTdDest) {
       if (intermodal && !td_dest_locs_.empty()) {
         update_td_dest_offsets(k);
       }
     }
 
+    // marked locations: one warp per 32-bit mark word
     for (auto w = warp_id; w < n_blocks; w += n_warps) {
       auto const bits = prev_station_mark_.blocks_[w];
       if (bits == 0U) {  // uniform: all lanes read the same word
@@ -789,7 +791,7 @@ struct raptor_impl {
       auto const my_i = base + lane;
       auto const is_marked = ((bits >> lane) & 1U) != 0U;
 
-      // per-lane state; sourced via shuffle by the cooperative hub path
+      // per-lane state; read via shuffle by the long-list path below
       auto tmp_time = kInvalid;
       auto bc = breadcrumb_t{0U};
       auto n_fps = 0U;
@@ -831,7 +833,7 @@ struct raptor_impl {
             }
           }
 
-          // footpaths: short lists inline, hubs deferred to the whole warp
+          // td footpaths
           use_td_fps = has_td_fps<WithTdFootpaths>(l, kFwd);
           if (use_td_fps) {
             if constexpr (WithTdFootpaths) {
@@ -845,6 +847,9 @@ struct raptor_impl {
                   });
             }
           }
+
+          // static footpaths:
+          // short lists inline, long lists deferred to the whole warp;
           if ((!kFwd || !use_td_fps) && my_i < tt_.n_static_locations_) {
             auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
                                   : tt_.footpaths_in_[prf_idx_][l];
@@ -853,6 +858,7 @@ struct raptor_impl {
               for (auto j = 0U; j != n_fps; ++j) {
                 if (!kFwd && use_td_fps &&
                     has_td_fps<WithTdFootpaths>(fps[j].target(), true)) {
+                  // bwd: skip sources replaced by their td footpaths
                   continue;
                 }
                 relax_footpath(k, fps[j], tmp_time, bc, t_at_dest);
@@ -864,7 +870,7 @@ struct raptor_impl {
         }
       }
 
-      // hubs: all 32 lanes stride one deferred location's footpath list
+      // long lists: all 32 lanes stride one deferred location's footpath list
       auto const deferred = __ballot_sync(kAllLanes, defer);
       for_each_set_bit(deferred, [&](unsigned const b) {
         auto const l = location_idx_t{base + b};
@@ -888,7 +894,7 @@ struct raptor_impl {
       });
     }
 
-    // expand all rt footpaths at once
+    // rt footpaths: expand all at once
     for (auto i = get_global_thread_id(); i < rtt_.rt_footpaths_.size();
          i += get_global_stride()) {
       auto const& e = rtt_.rt_footpaths_[i];
