@@ -13,7 +13,8 @@ namespace nigiri::routing {
 
 raptor_state& raptor_state::resize(unsigned const n_locations,
                                    unsigned const n_routes,
-                                   unsigned const n_rt_transports) {
+                                   unsigned const n_rt_transports,
+                                   std::size_t const n_hubs) {
   n_locations_ = n_locations;
   tmp_storage_.resize(n_locations * (kMaxVias + 1));
   best_storage_.resize(n_locations * (kMaxVias + 1));
@@ -24,14 +25,11 @@ raptor_state& raptor_state::resize(unsigned const n_locations,
   prev_station_mark_.resize(n_locations);
   route_mark_.resize(n_routes);
   rt_transport_mark_.resize(n_rt_transports);
-  return *this;
-}
-
-void raptor_state::resize_hubs(std::size_t const n_hubs) {
   n_hubs_ = n_hubs;
   hub_slots_storage_.resize(n_hubs * (kMaxVias + 1));
   hub_reached_.resize(static_cast<bitvec::size_type>(n_hubs));
   hub_mark_.resize(static_cast<bitvec::size_type>(n_hubs));
+  return *this;
 }
 
 template <via_offset_t Vias>

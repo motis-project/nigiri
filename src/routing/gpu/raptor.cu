@@ -791,8 +791,8 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
   auto dist = dist_to_dest;
   if (rtt != nullptr && !is_projected(prf_idx_) &&
       rtt->n_rt_locations() != 0U) {
-    rtt->extend_to_rt_virts(is_dest);
-    rtt->extend_to_rt_virts(dist);
+    extend_to_rt_virts(*rtt, is_dest);
+    extend_to_rt_virts(*rtt, dist);
   }
   state_.impl_->upload_query(kDirIdx, is_dest, dist, td_dist_to_dest);
 }

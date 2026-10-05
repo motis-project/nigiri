@@ -15,6 +15,7 @@
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/raptor/reconstruct.h"
+#include "nigiri/routing/search_location.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/routing/transfers.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -115,7 +116,10 @@ struct raptor {
         n_locations_{has_rt_virts() ? rtt->n_locations() : tt_.n_locations()},
         n_routes_{tt.n_routes()},
         n_rt_transports_{Rt ? rtt->n_rt_transports() : 0U},
-        state_{state.resize(n_locations_, n_routes_, n_rt_transports_)},
+        state_{state.resize(n_locations_,
+                            n_routes_,
+                            n_rt_transports_,
+                            tt.locations_.hub_in_[prf_idx].size())},
         tmp_{state_.get_tmp<Vias>()},
         best_{state_.get_best<Vias>()},
         round_times_{state.get_round_times<Vias>()},
@@ -135,17 +139,20 @@ struct raptor {
         is_wheelchair_{is_wheelchair},
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
+
     if constexpr (has_rt_virts()) {
       if (n_locations_ != n_static_locations_) {
-        rtt_->extend_to_rt_virts(is_dest);
+        extend_to_rt_virts(*rtt_, is_dest);
         for (auto& via : is_via) {
-          rtt_->extend_to_rt_virts(via);
+          extend_to_rt_virts(*rtt_, via);
         }
-        rtt_->extend_to_rt_virts(dist_to_dest);
-        rtt_->extend_to_rt_virts(lb);
+        extend_to_rt_virts(*rtt_, dist_to_dest);
+        extend_to_rt_virts(*rtt_, lb);
       }
     }
+
     reset_arrivals();
+
     if (!dist_to_end_.empty()) {
       // only used for intermodal queries (dist_to_dest != empty)
       end_reachable_.resize(n_locations_);
@@ -158,8 +165,6 @@ struct raptor {
         end_reachable_.set(to_idx(l), true);
       }
     }
-
-    state_.resize_hubs(tt_.locations_.hub_in_[prf_idx_].size());
   }
 
   algo_stats_t get_stats() const { return stats_; }

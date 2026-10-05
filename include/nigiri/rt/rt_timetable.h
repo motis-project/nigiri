@@ -7,7 +7,6 @@
 #include <optional>
 #include <span>
 #include <string_view>
-#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -243,23 +242,6 @@ struct rt_timetable {
                                  std::span<transfer_rule_side_idx const> rules);
   void add_location_rt_transport(location_idx_t, rt_transport_idx_t);
 
-  template <typename Vec>
-  void extend_to_rt_virts(Vec& v) const {
-    if (v.size() == 0U) {
-      return;
-    }
-    assert(v.size() >= tt_->n_locations());
-    v.resize(n_locations());
-    for (auto i = rt_location_idx_t{0U}; i != n_rt_locations(); ++i) {
-      auto const l = to_idx(to_location(i));
-      auto const b = to_idx(rt_locations_.parents_[i]);
-      if constexpr (std::is_same_v<Vec, bitvec>) {
-        v.set(l, v.test(b));
-      } else {
-        v[l] = v[b];
-      }
-    }
-  }
   std::span<location_idx_t const> rt_stop_virts(
       rt_transport_idx_t const rt_t) const {
     if (rt_t >= rt_stop_virts_.size()) {

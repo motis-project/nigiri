@@ -29,9 +29,8 @@ struct raptor_state {
 
   raptor_state& resize(unsigned n_locations,
                        unsigned n_routes,
-                       unsigned n_rt_transports);
-
-  void resize_hubs(std::size_t n_hubs);
+                       unsigned n_rt_transports,
+                       std::size_t n_hubs);
 
   template <via_offset_t Vias>
   void print(timetable const& tt, date::sys_days, delta_t invalid);
