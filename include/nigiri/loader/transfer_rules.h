@@ -113,12 +113,12 @@ void add_hubs_or_footpaths(
     return coverage.slow_to_.contains(l);
   };
   auto from_slow = from | std::views::filter(is_slow_from);
-  auto from_other = from | std::views::filter(std::not_fn(is_slow_from));
+  auto from_not_slow = from | std::views::filter(std::not_fn(is_slow_from));
   auto to_slow = to | std::views::filter(is_slow_to);
-  auto to_other = to | std::views::filter(std::not_fn(is_slow_to));
+  auto to_not_slow = to | std::views::filter(std::not_fn(is_slow_to));
 
-  add_hub_or_footpaths(from_other, to);
-  add_hub_or_footpaths(from_slow, to_other);
+  add_hub_or_footpaths(from_not_slow, to);
+  add_hub_or_footpaths(from_slow, to_not_slow);
   add_footpaths(from_slow, to_slow);
 }
 

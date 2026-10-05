@@ -1329,8 +1329,8 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       auto& lg = j.legs_[i];
       utl::visit(lg.uses_, [&](footpath& fp) {
         elapsed[i] = fp.duration();
-        fp = footpath{fp.target(),
-                      raw_transfer(lg.from_, lg.to_, fp.duration())};
+        fp = footpath{fp.target(), get_unadjusted_transfer_time(
+                                       lg.from_, lg.to_, fp.duration())};
       });
     }
 
@@ -1421,18 +1421,18 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
 }
 
 template <direction SearchDir, bool WithBounds>
-duration_t gpu_raptor<SearchDir, WithBounds>::raw_transfer(
+duration_t gpu_raptor<SearchDir, WithBounds>::get_unadjusted_transfer_time(
     location_idx_t const from,
     location_idx_t const to,
-    duration_t const elapsed) const {
-  if (from == to && elapsed == duration_t{0}) {
-    return elapsed;
+    duration_t const adjusted) const {
+  if (from == to && adjusted == duration_t{0}) {
+    return adjusted;
   }
   auto const d = shortest_transfer(tt_, rtt_, prf_idx_, from, to);
   if (!d.has_value() ||
       (from != to &&
-       adjusted_transfer_time(transfer_time_settings_, *d) != elapsed)) {
-    return elapsed;
+       adjusted_transfer_time(transfer_time_settings_, *d) != adjusted)) {
+    return adjusted;
   }
   return *d;
 }
