@@ -739,19 +739,19 @@ private:
     return any_marked;
   }
 
-  struct leg_start {
+  struct via_state {
     unsigned v_;
     delta_t time_;
   };
 
-  NIGIRI_FORCE_INLINE leg_start leave(std::uint64_t const i,
-                                      unsigned const v,
-                                      delta_t const time) const {
+  NIGIRI_FORCE_INLINE via_state pass_via(std::uint64_t const i,
+                                         unsigned const v,
+                                         delta_t const time) const {
     auto const is_via =
         v != Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
-    return is_via ? leg_start{v + 1U,
+    return is_via ? via_state{v + 1U,
                               clamp(time + dir(via_stops_[v].stay_.count()))}
-                  : leg_start{v, time};
+                  : via_state{v, time};
   }
 
   NIGIRI_FORCE_INLINE void relax(unsigned const k,
@@ -862,7 +862,7 @@ private:
         if (tmp_time == kInvalid) {
           continue;
         }
-        auto const start = leave(i, v, tmp_time);
+        auto const start = pass_via(i, v, tmp_time);
         for (auto const h : hubs) {
           auto& slots = hub_slots[to_idx(h)];
           if (!state_.hub_reached_.test(to_idx(h))) {
@@ -935,7 +935,7 @@ private:
               if (tmp_time == kInvalid) {
                 continue;
               }
-              auto const start = leave(i, v, tmp_time);
+              auto const start = pass_via(i, v, tmp_time);
               relax(k, start.v_, start.time_, duration, target);
             }
           });
@@ -967,7 +967,7 @@ private:
         if (tmp_time == kInvalid) {
           continue;
         }
-        auto const start = leave(i, v, tmp_time);
+        auto const start = pass_via(i, v, tmp_time);
         for_each_footpath<SearchDir>(
             fps, to_unix(tmp_time),
             [&](location_idx_t const fp_target, duration_t const duration,
