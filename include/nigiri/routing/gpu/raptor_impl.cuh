@@ -804,13 +804,16 @@ struct raptor_impl {
           bc = tmp_.get_bc(0U, l, Vias);
           auto const is_dest = is_dest_[my_i];
 
-          auto const own = static_cast<int>(tt_.transfer_time_[l].count());
+          // same-stop transfer
+          auto const transfer_time =
+              static_cast<int>(tt_.transfer_time_[l].count());
           auto const is_dest_arrival = !intermodal && is_dest;
-          if (is_dest_arrival || own != kNoTransferAllowedMinutes) {
+          if (is_dest_arrival || transfer_time != kNoTransferAllowedMinutes) {
             relax_fp_target(k, l,
-                            is_dest_arrival ? 0
-                                            : adjusted_transfer_time(
-                                                  transfer_time_settings_, own),
+                            is_dest_arrival
+                                ? 0
+                                : adjusted_transfer_time(
+                                      transfer_time_settings_, transfer_time),
                             tmp_time, bc, t_at_dest);
           }
 
