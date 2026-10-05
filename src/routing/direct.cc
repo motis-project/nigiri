@@ -13,8 +13,10 @@
 #include "nigiri/for_each_meta.h"
 #include "nigiri/location_routes.h"
 #include "nigiri/routing/for_each_hub_source.h"
+#include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/rt/rt_transfer_rules.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/td_footpath.h"
 #include "nigiri/timetable.h"
@@ -174,8 +176,8 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
   // after the walk when boarding, before it when alighting.
   auto const dep = is_boarding ? t - best_dur : t + best_dur - best_walk;
   auto const arr = is_boarding ? t - best_dur + best_walk : t + best_dur;
-  auto const from = is_boarding ? best_source : loc;
-  auto const to = is_boarding ? loc : best_source;
+  auto const from = rt::base(tt, rtt, is_boarding ? best_source : loc);
+  auto const to = rt::base(tt, rtt, is_boarding ? loc : best_source);
   return journey::leg{direction::kForward,   from, to, dep, arr,
                       footpath{to, best_raw}};
 }
@@ -278,23 +280,26 @@ bool sections_violate_constraints(
   return false;
 }
 
-std::vector<journey::leg> assemble_legs(journey::leg const& boarding_walk,
+std::vector<journey::leg> assemble_legs(timetable const& tt,
+                                        rt_timetable const* rtt,
+                                        journey::leg const& boarding_walk,
                                         journey::leg&& transit,
                                         journey::leg const& alighting_walk) {
   auto const drop_at_boundary = [](journey::leg const& l) {
     return std::holds_alternative<offset>(l.uses_) &&
            l.dep_time_ == l.arr_time_;
   };
-  auto legs = std::vector<journey::leg>{};
-  legs.reserve(3);
+  auto j = journey{};
+  j.legs_.reserve(3);
   if (!drop_at_boundary(boarding_walk)) {
-    legs.push_back(boarding_walk);
+    j.legs_.push_back(boarding_walk);
   }
-  legs.push_back(std::move(transit));
+  j.legs_.push_back(std::move(transit));
   if (!drop_at_boundary(alighting_walk)) {
-    legs.push_back(alighting_walk);
+    j.legs_.push_back(alighting_walk);
   }
-  return legs;
+  map_to_bases(tt, rtt, j);
+  return std::move(j.legs_);
 }
 
 template <direction Dir>
@@ -382,7 +387,7 @@ utl::generator<std::vector<journey::leg>> route_gen(
                                                        loc_seq.size())}}},
               boarding_idx, alighting_idx}};
 
-      co_yield assemble_legs(*boarding_walk, std::move(transit),
+      co_yield assemble_legs(tt, rtt, *boarding_walk, std::move(transit),
                              *alighting_walk);
     }
 
@@ -442,7 +447,8 @@ utl::generator<std::vector<journey::leg>> rt_gen(
                            .rt_ = rt_idx}},
           boarding_idx, alighting_idx}};
 
-  co_yield assemble_legs(*boarding_walk, std::move(transit), *alighting_walk);
+  co_yield assemble_legs(tt, &rtt, *boarding_walk, std::move(transit),
+                         *alighting_walk);
 }
 
 template <typename LocSeq, typename Fn>

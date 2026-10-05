@@ -47,8 +47,8 @@ bool is_journey_start(timetable const& tt,
                       query const& q,
                       location_idx_t const candidate_l) {
   return utl::any_of(q.start_, [&](offset const& o) {
-    return matches(tt, q.start_match_mode_,
-                   tt.locations_.project(q.prf_idx_, o.target()), candidate_l);
+    return matches(tt, q.start_match_mode_, project(tt, q.prf_idx_, o.target()),
+                   candidate_l);
   });
 }
 
@@ -107,15 +107,14 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
   auto const j_start_time = unix_to_delta(base, j.start_time_);
   auto const round_times = state.get_round_times<Vias>();
-  auto const fp_target_time = round_times[0][to_idx(
-      tt.locations_.project(q.prf_idx_, leg_start_location))][0];
+  auto const fp_target_time =
+      round_times[0][to_idx(project(tt, q.prf_idx_, leg_start_location))][0];
 
   if (q.start_match_mode_ == location_match_mode::kIntermodal) {
     trace_reconstruct("  intermodal start mode\n");
 
     for (auto const& o : q.start_) {
-      if (matches(tt, q.start_match_mode_,
-                  tt.locations_.project(q.prf_idx_, o.target()),
+      if (matches(tt, q.start_match_mode_, project(tt, q.prf_idx_, o.target()),
                   static_leg_start) &&
           is_better_or_eq(j.start_time_, leg_start_time - dir(o.duration()))) {
         trace_rc_intermodal_start_found;
@@ -134,13 +133,12 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
           get_td_duration<flip(SearchDir)>(it->second, leg_start_time);
       if (fp.has_value() &&
           is_better_or_eq(j.start_time_, leg_start_time - dir(fp->first))) {
-        return journey::leg{
-            SearchDir,
-            get_special_station(special_station::kStart),
-            leg_start_location,
-            leg_start_time - dir(fp->first),
-            leg_start_time,
-            offset{rt::base(tt, rtt, it->first), fp->first, fp->second.mode()}};
+        return journey::leg{SearchDir,
+                            get_special_station(special_station::kStart),
+                            leg_start_location,
+                            leg_start_time - dir(fp->first),
+                            leg_start_time,
+                            offset{it->first, fp->first, fp->second.mode()}};
       } else {
 #ifdef NIGIRI_TRACE_RECONSTRUCT
         for (auto const& x : it->second) {
@@ -218,9 +216,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
     return kFwd ? a <= b : a >= b;
   };
 
-  auto const project = [&](location_idx_t const x) {
-    return tt.locations_.project(q.prf_idx_, x);
-  };
   auto const label_location = [&](rt::frun const& fr,
                                   stop_idx_t const stop_idx) {
     return search_location(q.prf_idx_, fr[stop_idx]);
@@ -518,7 +513,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
         auto const location_seq = tt.route_location_seq_[r];
         for (auto const [i, s] : utl::enumerate(location_seq)) {
           auto const stp = stop{s};
-          if (project(stp.location_idx()) != l ||  //
+          if (project(tt, q.prf_idx_, stp.location_idx()) != l ||  //
               (kFwd && (i == 0U || !stp.out_allowed(is_wheelchair))) ||
               (!kFwd && (i == location_seq.size() - 1 ||
                          !stp.in_allowed(is_wheelchair)))) {
@@ -679,16 +674,16 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
 
     auto ret = std::optional<std::pair<journey::leg, journey::leg>>{};
-    auto const curr_time = round_times[k][to_idx(project(l))][v];
+    auto const curr_time =
+        round_times[k][to_idx(project(tt, q.prf_idx_, l))][v];
     auto const try_dest = [&](location_idx_t const eq_in) {
-      auto const eq = project(eq_in);
+      auto const eq = project(tt, q.prf_idx_, eq_in);
       auto intermodal_dest = check_fp(
           k, l, curr_time, {eq, dest_offset.duration_}, false, td_footpath);
       if (intermodal_dest.has_value()) {
         trace_rc_intermodal_dest_match;
-        intermodal_dest->first.uses_ =
-            offset{rt::base(tt, rtt, dest_offset.target_),
-                   dest_offset.duration_, dest_offset.mode()};
+        intermodal_dest->first.uses_ = offset{
+            dest_offset.target_, dest_offset.duration_, dest_offset.mode()};
         ret = std::move(intermodal_dest);
       } else {
         trace_rc_intermodal_dest_mismatch;
@@ -713,7 +708,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
   auto const get_legs =
       [&](unsigned const k,
           location_idx_t const l) -> std::pair<journey::leg, journey::leg> {
-    auto const curr_time = round_times[k][to_idx(project(l))][v];
+    auto const curr_time =
+        round_times[k][to_idx(project(tt, q.prf_idx_, l))][v];
     trace_reconstruct("get_legs: k={}, v={}, l={}, curr_time={}\n", k, v,
                       loc{tt, l}, delta_to_unix(base, curr_time));
 

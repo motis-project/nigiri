@@ -184,7 +184,7 @@ void add_starts_in_interval(direction const search_dir,
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         auto const stp = stop{s};
         if (search_location(*rtt, p, rt_t, static_cast<stop_idx_t>(i)) !=
-            tt.locations_.project(p, l)) {
+            project(tt, p, l)) {
           continue;
         }
 
@@ -378,9 +378,6 @@ void collect_destinations(timetable const& tt,
                           profile_idx_t const prf_idx,
                           bitvec& is_dest,
                           std::vector<std::uint16_t>& dist_to_dest) {
-  auto const project = [&](location_idx_t const l) {
-    return tt.locations_.project(prf_idx, l);
-  };
   is_dest.resize(tt.n_locations());
   utl::fill(is_dest.blocks_, 0U);
 
@@ -399,11 +396,11 @@ void collect_destinations(timetable const& tt,
     trace_start("DEST METAS OF {}\n", loc{tt, d.target_});
     for_each_meta(tt, match_mode, d.target_, [&](location_idx_t const l) {
       if (match_mode == location_match_mode::kIntermodal) {
-        dist_to_dest[to_idx(project(l))] =
-            std::min(dist_to_dest[to_idx(project(l))],
+        dist_to_dest[to_idx(project(tt, prf_idx, l))] =
+            std::min(dist_to_dest[to_idx(project(tt, prf_idx, l))],
                      static_cast<std::uint16_t>(d.duration_.count()));
       } else {
-        is_dest.set(to_idx(project(l)), true);
+        is_dest.set(to_idx(project(tt, prf_idx, l)), true);
       }
       trace_start("  DEST META: {}, duration={}\n", loc{tt, l}, d.duration_);
     });

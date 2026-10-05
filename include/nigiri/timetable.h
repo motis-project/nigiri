@@ -82,11 +82,6 @@ struct timetable {
       }
     }
 
-    location_idx_t project(profile_idx_t const prf,
-                           location_idx_t const l) const {
-      return is_projected(prf) ? get_base_idx(l) : l;
-    }
-
     location_idx_t get_root_idx(location_idx_t const idx) const {
       auto l = idx;
       auto i = 0;

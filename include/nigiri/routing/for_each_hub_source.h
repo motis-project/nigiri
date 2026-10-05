@@ -4,6 +4,7 @@
 #include <type_traits>
 
 #include "nigiri/footpath.h"
+#include "nigiri/routing/search_location.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -26,7 +27,7 @@ inline u8_minutes own_change_time(timetable const& tt,
                                   location_idx_t const l) {
   return rtt != nullptr && rtt->is_rt_location(l)
              ? rtt->transfer_time(l)
-             : tt.locations_.transfer_time_[tt.locations_.project(prf, l)];
+             : tt.locations_.transfer_time_[project(tt, prf, l)];
 }
 
 template <direction SearchDir>

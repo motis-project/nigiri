@@ -304,7 +304,7 @@ bool is_preferred_transfer(timetable const& tt,
     for (auto const& p : preferred[f]) {
       if (is_side_match(p.from_trip_, p.from_route_, from_trip) &&
           is_side_match(p.to_trip_, p.to_route_, to_trip) &&
-          tt.locations_.is_self_or_parent(p.to_, tt.base(to))) {
+          tt.locations_.is_self_or_parent(p.to_, to)) {
         return true;
       }
     }

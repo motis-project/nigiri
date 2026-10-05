@@ -13,6 +13,7 @@
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/raptor/reconstruct.h"
+#include "nigiri/routing/search_location.h"
 #include "nigiri/routing/tb/query_engine.h"
 #include "nigiri/routing/tb/segment_info.h"
 #include "nigiri/routing/tb/settings.h"
@@ -60,8 +61,7 @@ query_engine<UseLowerBounds>::query_engine(
       auto const stop_seq = tt_.route_location_seq_[r];
       for (auto i = stop_idx_t{1U}; i != stop_seq.size(); ++i) {
         auto const stp = stop{stop_seq[i]};
-        if (tt_.locations_.project(prf, stp.location_idx()) != l ||
-            !stp.out_allowed()) {
+        if (project(tt_, prf, stp.location_idx()) != l || !stp.out_allowed()) {
           continue;
         }
 
@@ -188,10 +188,10 @@ void query_engine<UseLowerBounds>::seg_prune(std::uint8_t const k,
   auto arr_time = tt_.event_time({t, base_ + qe.transport_query_day_offset_}, i,
                                  event_type::kArr);
   if constexpr (UseLowerBounds) {
-    auto const l = tt_.locations_.project(
-        state_.tbd_.prf_idx_,
-        stop{tt_.route_location_seq_[tt_.transport_route_[t]][i]}
-            .location_idx());
+    auto const l =
+        project(tt_, state_.tbd_.prf_idx_,
+                stop{tt_.route_location_seq_[tt_.transport_route_[t]][i]}
+                    .location_idx());
     arr_time += duration_t{lb_[to_idx(l)]};
   }
   if (arr_time > state_.t_min_[k + 1]) {
@@ -242,8 +242,7 @@ void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
     auto const stop_seq = tt_.route_location_seq_[r];
     for (auto i = stop_idx_t{0U}; i < stop_seq.size() - 1; ++i) {
       auto const stp = stop{stop_seq[i]};
-      if (!stp.in_allowed() ||
-          tt_.locations_.project(prf, stp.location_idx()) != l) {
+      if (!stp.in_allowed() || project(tt_, prf, stp.location_idx()) != l) {
         continue;
       }
 
@@ -309,8 +308,8 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
   auto const prf = state_.tbd_.prf_idx_;
   auto const get_fp = [&](location_idx_t const from, location_idx_t const to) {
     if (from == to) {
-      return footpath{
-          to, tt_.locations_.transfer_time_[tt_.locations_.project(prf, from)]};
+      return footpath{to,
+                      tt_.locations_.transfer_time_[project(tt_, prf, from)]};
     }
     auto best = std::optional<footpath>{};
     for_each_transfer<direction::kForward>(
@@ -337,7 +336,7 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
     auto const loc_seq = tt_.route_location_seq_[tt_.transport_route_[t]];
     return {{t, d},
             i,
-            tt_.locations_.project(prf, stop{loc_seq[i]}.location_idx()),
+            project(tt_, prf, stop{loc_seq[i]}.location_idx()),
             tt_.event_time({t, d}, i, ev_type)};
   };
 

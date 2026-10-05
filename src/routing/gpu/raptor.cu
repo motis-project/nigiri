@@ -41,6 +41,7 @@
 #include "nigiri/routing/gpu/raptor_impl.cuh"
 #include "nigiri/routing/gpu/types.cuh"
 #include "nigiri/routing/raptor/reconstruct.h"
+#include "nigiri/routing/search_location.h"
 #include "nigiri/rt/rt_transfer_rules.h"
 #include "nigiri/td_footpath.h"
 
@@ -1499,8 +1500,7 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
     auto const t =
         is_front ? j.legs_.front().dep_time_ : j.legs_.back().arr_time_;
     auto const is_match = [&](location_idx_t const target) {
-      return matches(tt_, match_mode, tt_.locations_.project(prf_idx_, target),
-                     l);
+      return matches(tt_, match_mode, project(tt_, prf_idx_, target), l);
     };
     auto const add_leg = [&](unixtime_t const dep, unixtime_t const arr,
                              offset const& o) {
@@ -1638,7 +1638,7 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
 template <direction SearchDir, bool WithBounds>
 void gpu_raptor<SearchDir, WithBounds>::add_start(location_idx_t const l,
                                                   unixtime_t const t) {
-  starts_.emplace_back(tt_.locations_.project(prf_idx_, l), t);
+  starts_.emplace_back(project(tt_, prf_idx_, l), t);
 }
 
 template class gpu_raptor<direction::kForward, false>;

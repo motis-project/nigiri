@@ -98,10 +98,8 @@ struct alerts {
                                    source_idx_t const src,
                                    trip_idx_t const t,
                                    rt_transport_idx_t const rt_t,
-                                   location_idx_t const virt_or_l,
+                                   location_idx_t const l,
                                    bool const fuzzy_stop) const {
-    auto const l =
-        virt_or_l == location_idx_t::invalid() ? virt_or_l : tt.base(virt_or_l);
     auto const route_id_idx = tt.trip_route_id_[t];
     auto const route_type = tt.route_ids_[src].route_id_type_[route_id_idx];
     auto const agency = tt.route_ids_[src].route_id_provider_[route_id_idx];

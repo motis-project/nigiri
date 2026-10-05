@@ -7,6 +7,12 @@
 
 namespace nigiri::routing {
 
+inline location_idx_t project(timetable const& tt,
+                              profile_idx_t const prf,
+                              location_idx_t const l) {
+  return is_projected(prf) ? tt.base(l) : l;
+}
+
 inline location_idx_t search_location(rt_timetable const& rtt,
                                       profile_idx_t const prf,
                                       rt_transport_idx_t const rt_t,

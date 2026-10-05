@@ -3,6 +3,7 @@
 #include "nigiri/for_each_meta.h"
 #include "nigiri/location_routes.h"
 #include "nigiri/routing/for_each_hub_source.h"
+#include "nigiri/routing/search_location.h"
 
 #include "utl/enumerate.h"
 #include "utl/get_or_create.h"
@@ -180,7 +181,7 @@ struct state {
 location_idx_t stop_location(timetable const& tt,
                              profile_idx_t const prf_idx,
                              stop const s) {
-  return tt.locations_.project(prf_idx, s.location_idx());
+  return project(tt, prf_idx, s.location_idx());
 }
 
 void add_non_uturn_transfers(timetable const& tt,
@@ -212,8 +213,7 @@ void add_non_uturn_transfers(timetable const& tt,
       auto const is_uturn =
           prev_src == next_tgt && prev_src_stop.out_allowed() &&
           next_tgt_stop.in_allowed() &&
-          tt.locations_
-                  .transfer_time_[tt.locations_.project(prf_idx, prev_src)] <=
+          tt.locations_.transfer_time_[project(tt, prf_idx, prev_src)] <=
               fp.duration();
 
       if (!is_uturn && !is_uturn_target_route_terminates) {
@@ -244,7 +244,7 @@ void get_route_neighborhood(timetable const& tt,
     auto const from = stop_location(tt, prf_idx, stop{stop_seq[i]});
 
     if (auto const change =
-            tt.locations_.transfer_time_[tt.locations_.project(prf_idx, from)];
+            tt.locations_.transfer_time_[project(tt, prf_idx, from)];
         change != kNoTransferAllowed) {
       add_non_uturn_transfers(tt, prf_idx, route_from, from_stop_idx,
                               footpath{from, change}, neighborhood, stats);
@@ -450,8 +450,7 @@ void preprocess_transport(timetable const& tt,
     // init the reached reduction data structure
     s.rr_arr_.update(from_stop, t_arr, traffic_days);
     if (auto const change =
-            tt.locations_
-                .transfer_time_[tt.locations_.project(prf_idx, from_stop)];
+            tt.locations_.transfer_time_[project(tt, prf_idx, from_stop)];
         change != kNoTransferAllowed) {
       s.rr_ch_.update(from_stop, t_arr + change.count(), traffic_days);
     }
@@ -483,8 +482,7 @@ void preprocess_transport(timetable const& tt,
         s.rr_arr_.update(u_stp, u_arr_rel_t_first_dep, transfer->bf_,
                          &improvement);
         if (auto const change =
-                tt.locations_
-                    .transfer_time_[tt.locations_.project(prf_idx, u_stp)];
+                tt.locations_.transfer_time_[project(tt, prf_idx, u_stp)];
             change != kNoTransferAllowed) {
           s.rr_ch_.update(u_stp, u_arr_rel_t_first_dep + change.count(),
                           transfer->bf_, &improvement);
