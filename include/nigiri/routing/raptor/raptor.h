@@ -53,12 +53,12 @@ struct raptor {
     }
   }
 
-  u8_minutes min_transfer_time(location_idx_t const l) const {
+  u8_minutes get_transfer_time(location_idx_t const l) const {
     if constexpr (ProjectVirts) {
       return tt_.locations_.transfer_time_[project(l)];
     } else {
       if constexpr (Rt) {
-        if (!is_static(l)) {
+        if (l >= n_static_locations_) {
           return rtt_->transfer_time(l);
         }
       }
@@ -67,9 +67,6 @@ struct raptor {
   }
 
   static constexpr bool has_rt_virts() { return Rt && !ProjectVirts; }
-  bool is_static(location_idx_t const l) const {
-    return l < n_static_locations_;
-  }
 
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
@@ -544,7 +541,7 @@ private:
       return stays;
     };
 
-    auto const transfer_time = min_transfer_time(location_idx_t{l});
+    auto const transfer_time = get_transfer_time(location_idx_t{l});
     return transfer_time == kNoTransferAllowed ||
            is_better_or_eq(t,
                            row[l][slot] +
@@ -830,7 +827,7 @@ private:
               loc{tt_, location_idx_t{i}}, v, to_unix(tmp_time), is_dest,
               is_via, target_v);
 
-        auto const transfer_time = min_transfer_time(location_idx_t{i});
+        auto const transfer_time = get_transfer_time(location_idx_t{i});
         auto const is_dest_arrival = !is_intermodal_dest() && is_dest;
         if (transfer_time == kNoTransferAllowed && !is_dest_arrival) {
           continue;
