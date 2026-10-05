@@ -101,9 +101,9 @@ inline std::optional<duration_t> shortest_transfer(timetable const& tt,
                                                    location_idx_t const to) {
   auto shortest = std::optional<duration_t>{};
   if (from == to) {
-    if (auto const own = get_transfer_time(tt, rtt, prf_idx, from);
-        own != kNoTransferAllowed) {
-      shortest = duration_t{own.count()};
+    if (auto const transfer_time = get_transfer_time(tt, rtt, prf_idx, from);
+        transfer_time != kNoTransferAllowed) {
+      shortest = duration_t{transfer_time.count()};
     }
   }
   for_each_transfer<direction::kForward>(
@@ -116,10 +116,10 @@ inline std::optional<duration_t> shortest_transfer(timetable const& tt,
   return shortest;
 }
 
-void for_each_transfer(direction const dir,
-                       timetable const& tt,
+void for_each_transfer(timetable const& tt,
                        rt_timetable const* rtt,
                        profile_idx_t const prf_idx,
+                       direction const dir,
                        location_idx_t const l,
                        auto&& fn) {
   if (dir == direction::kForward) {

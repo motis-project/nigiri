@@ -770,14 +770,14 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
 
     trace_reconstruct("CHECKING TRANSFER AT {}\n", loc{tt, l});
-    auto const own = get_transfer_time(tt, rtt, q.prf_idx_, l);
+    auto const transfer_time = get_transfer_time(tt, rtt, q.prf_idx_, l);
     auto const is_last_leg = k == j.transfers_ + 1U;
-    if (is_last_leg || own != kNoTransferAllowed) {
+    if (is_last_leg || transfer_time != kNoTransferAllowed) {
       auto transfer_at_same_stop =
-          is_last_leg
-              ? check_fp(k, l, curr_time, footpath{l, 0_u8_minutes}, false,
-                         false)
-              : check_fp(k, l, curr_time, footpath{l, own}, true, false);
+          is_last_leg ? check_fp(k, l, curr_time, footpath{l, 0_u8_minutes},
+                                 false, false)
+                      : check_fp(k, l, curr_time, footpath{l, transfer_time},
+                                 true, false);
       if (transfer_at_same_stop.has_value()) {
         return std::move(*transfer_at_same_stop);
       }

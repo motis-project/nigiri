@@ -67,7 +67,7 @@ void add_rt_transfers(timetable const& tt,
 
     auto durations = hash_map<location_idx_t, duration_t>{};
     routing::for_each_transfer(
-        dir, tt, nullptr, kDefaultProfile, p, [&](footpath const fp) {
+        tt, nullptr, kDefaultProfile, dir, p, [&](footpath const fp) {
           auto const it = durations.emplace(fp.target(), fp.duration()).first;
           it->second = std::min(it->second, fp.duration());
         });

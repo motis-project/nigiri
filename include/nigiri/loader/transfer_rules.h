@@ -45,7 +45,7 @@ void add_hub(timetable& tt, In&& in, Out&& out, duration_t const d) {
   utl::sort(loc.hub_in_[kDefaultProfile].back());
   utl::sort(loc.hub_out_[kDefaultProfile].back());
 
-  // l in in and out: routing relaxes l -> l, must not beat l's own change.
+  // l in in and out: routing relaxes l -> l, must not beat l's transfer time.
   assert(utl::all_of(
       loc.hub_in_[kDefaultProfile].back(), [&](location_idx_t const l) {
         auto const hub_out = loc.hub_out_[kDefaultProfile].back();

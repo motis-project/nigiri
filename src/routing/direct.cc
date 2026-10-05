@@ -236,8 +236,8 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
         }
 
         for_each_transfer(
-            is_boarding ? direction::kForward : direction::kBackward, tt, rtt,
-            q.prf_idx_, l,
+            tt, rtt, q.prf_idx_,
+            is_boarding ? direction::kForward : direction::kBackward, l,
             [&](footpath const fp) { locs.insert(fp.target()); });
 
         if (has_td_arr == nullptr || q.prf_idx_ >= has_td_arr->size() ||

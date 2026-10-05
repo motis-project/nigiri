@@ -826,17 +826,17 @@ private:
               loc{tt_, location_idx_t{i}}, v, to_unix(tmp_time), is_dest,
               is_via, target_v);
 
-        auto const own = min_transfer_time(location_idx_t{i});
+        auto const transfer_time = min_transfer_time(location_idx_t{i});
         auto const is_dest_arrival = !is_intermodal_dest() && is_dest;
-        if (own == kNoTransferAllowed && !is_dest_arrival) {
+        if (transfer_time == kNoTransferAllowed && !is_dest_arrival) {
           continue;
         }
-        auto const transfer_time =
-            is_dest_arrival
-                ? 0
-                : adjusted_transfer_time(transfer_time_settings_,
-                                         static_cast<int>(own.count()));
-        relax(k, v, tmp_time, transfer_time, static_cast<std::uint32_t>(i));
+        auto const duration =
+            is_dest_arrival ? 0
+                            : adjusted_transfer_time(
+                                  transfer_time_settings_,
+                                  static_cast<int>(transfer_time.count()));
+        relax(k, v, tmp_time, duration, static_cast<std::uint32_t>(i));
       }
     });
   }

@@ -85,11 +85,11 @@ vecvec<location_idx_t, T> build_projected_index(timetable const& tt,
         if (tt.locations_.is_virt(l)) {
           return;
         }
-        auto const own = idx[l];
-        out.assign(begin(own), end(own));
+        auto const base_entries = idx[l];
+        out.assign(begin(base_entries), end(base_entries));
         tt.locations_.for_each_virt(l, [&](location_idx_t const c) {
-          auto const virt = idx[c];
-          out.insert(end(out), begin(virt), end(virt));
+          auto const virt_entries = idx[c];
+          out.insert(end(out), begin(virt_entries), end(virt_entries));
         });
         utl::erase_duplicates(out);
       });
@@ -345,8 +345,9 @@ struct gpu_rt_timetable::impl {
     }
     for (auto i = rt_location_idx_t{0U}; i != rtt.n_rt_locations(); ++i) {
       auto const l = rtt.to_location(i);
-      if (auto const own = rtt.transfer_time(l); own != kNoTransferAllowed) {
-        v.push_back({l, footpath{l, duration_t{own}}});
+      if (auto const transfer_time = rtt.transfer_time(l);
+          transfer_time != kNoTransferAllowed) {
+        v.push_back({l, footpath{l, duration_t{transfer_time}}});
       }
     }
     return v;

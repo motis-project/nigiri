@@ -290,7 +290,7 @@ void get_starts(
                  o.duration() + adjusted_transfer_time(tts, fp.duration()),
                  true);
         };
-        for_each_transfer(search_dir, tt, rtt, prf_idx, l, walk);
+        for_each_transfer(tt, rtt, prf_idx, search_dir, l, walk);
       }
     });
   }

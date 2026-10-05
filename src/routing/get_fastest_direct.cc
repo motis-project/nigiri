@@ -65,7 +65,7 @@ duration_t get_fastest_direct(timetable const& tt,
     }
 
     for_each_transfer(
-        dir, tt, nullptr, q.prf_idx_, l.l_, [&](footpath const fp) {
+        tt, nullptr, q.prf_idx_, dir, l.l_, [&](footpath const fp) {
           auto const new_dist =
               l.d_ + adjusted_transfer_time(
                          q.transfer_time_settings_,
