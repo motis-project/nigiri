@@ -256,6 +256,20 @@ TEST(transfer_rules, projected_profile_optimizes_transfers_with_stop_time) {
   EXPECT_EQ(lidx(tt, "X"), changes_at(kProfile));
 }
 
+// P1 and P2 are each other's parent_station. Optimizing the change P1 -> P2
+// looks for recommended transfers up the parent chain: it has to end.
+TEST(transfer_rules, change_between_circular_parents_terminates) {
+  auto const tt =
+      load_feeds({feed({{"A", 59.0, 10.0},
+                        {"P1", 59.1001, 10.0, "P2"},
+                        {"P2", 59.1002, 10.0, "P1"},
+                        {"E", 59.3, 10.0}},
+                       {{"T0", "R0", {{"A", "10:00"}, {"P1", "10:10"}}},
+                        {"T1", "R1", {{"P2", "10:20"}, {"E", "10:30"}}}},
+                       "")});
+  EXPECT_EQ(at("10:30"), arrival_at(tt, "A", "E", "10:00"));
+}
+
 // T0 -> T1 can change at station X (X1 -> X2, 15 min buffer) or at station S
 // (S1 -> S2, 8 min): X, unless a recommended transfer (type 0) names S. That
 // holds as well when both trips stop at virtual locations of S1 and S2 (the

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <optional>
 
+#include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
 
 #include "nigiri/for_each_meta.h"
@@ -296,20 +297,23 @@ bool is_preferred_transfer(timetable const& tt,
     }
     return true;
   };
-  for (auto f = from; f != location_idx_t::invalid();
-       f = tt.locations_.parents_[f]) {
-    if (f >= preferred.size()) {
-      continue;
+
+  auto const root = tt.locations_.get_root_idx(from);
+  for (auto f = from;; f = tt.locations_.parents_[f]) {
+    if (f < preferred.size() &&
+        utl::any_of(
+            preferred[f],
+            [&](auto const& p) {
+              return is_side_match(p.from_trip_, p.from_route_, from_trip) &&
+                     is_side_match(p.to_trip_, p.to_route_, to_trip) &&
+                     tt.locations_.is_self_or_parent(p.to_, to);
+            })) {
+      return true;
     }
-    for (auto const& p : preferred[f]) {
-      if (is_side_match(p.from_trip_, p.from_route_, from_trip) &&
-          is_side_match(p.to_trip_, p.to_route_, to_trip) &&
-          tt.locations_.is_self_or_parent(p.to_, to)) {
-        return true;
-      }
+    if (f == root) {
+      return false;
     }
   }
-  return false;
 }
 
 double get_penalty(timetable const& tt,
