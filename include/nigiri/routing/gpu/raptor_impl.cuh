@@ -87,12 +87,13 @@ struct raptor_impl {
       // -> 10:00 < 10:05 would get rejected.
       // -> ping journey would not be found in pong
       auto const* const row = bounds_ + (bounds_last_k_ - k) * tt_.n_locations_;
-      auto const own = static_cast<int>(tt_.transfer_time_[l].count());
-      if (own == kNoTransferAllowedMinutes) {
+      auto const transfer_time =
+          static_cast<int>(tt_.transfer_time_[l].count());
+      if (transfer_time == kNoTransferAllowedMinutes) {
         return true;
       }
       auto const transfer =
-          dir(adjusted_transfer_time(transfer_time_settings_, own));
+          dir(adjusted_transfer_time(transfer_time_settings_, transfer_time));
       return is_better_or_eq(static_cast<int>(t),
                              static_cast<int>(row[to_idx(l)]) + transfer);
     }
