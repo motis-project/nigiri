@@ -5,8 +5,8 @@
 
 #include "nigiri/loader/register.h"
 #include "nigiri/loader/transfer_rules.h"
-#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/transfers.h"
 #include "nigiri/timetable.h"
 
 #include "../../raptor_search.h"

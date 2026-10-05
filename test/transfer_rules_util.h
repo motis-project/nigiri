@@ -23,9 +23,9 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/common/parse_time.h"
-#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/transfers.h"
 #include "nigiri/timetable.h"
 
 #include "./raptor_search.h"

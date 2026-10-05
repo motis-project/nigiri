@@ -8,7 +8,6 @@
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
-#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
@@ -17,6 +16,7 @@
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/routing/transfer_time_settings.h"
+#include "nigiri/routing/transfers.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"

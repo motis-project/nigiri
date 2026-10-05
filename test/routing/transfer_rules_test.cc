@@ -8,7 +8,6 @@
 #include "utl/helpers/algorithm.h"
 
 #include "nigiri/routing/direct.h"
-#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/one_to_all.h"
@@ -16,6 +15,7 @@
 #include "nigiri/routing/search.h"
 #include "nigiri/routing/tb/preprocess.h"
 #include "nigiri/routing/tb/query_engine.h"
+#include "nigiri/routing/transfers.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
 

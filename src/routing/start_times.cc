@@ -8,8 +8,8 @@
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/location_routes.h"
-#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/search_location.h"
+#include "nigiri/routing/transfers.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
 
@@ -285,12 +285,12 @@ void get_starts(
     for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
       update(l, o.duration(), false);
       if (use_start_footpaths) {
-        auto const walk = [&](footpath const& fp) {
-          update(fp.target(),
-                 o.duration() + adjusted_transfer_time(tts, fp.duration()),
-                 true);
-        };
-        for_each_transfer(tt, rtt, prf_idx, search_dir, l, walk);
+        for_each_transfer(
+            tt, rtt, prf_idx, search_dir, l, [&](footpath const& fp) {
+              update(fp.target(),
+                     o.duration() + adjusted_transfer_time(tts, fp.duration()),
+                     true);
+            });
       }
     });
   }

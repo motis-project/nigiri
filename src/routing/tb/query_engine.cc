@@ -9,7 +9,6 @@
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/location_routes.h"
-#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/raptor/reconstruct.h"
@@ -17,6 +16,7 @@
 #include "nigiri/routing/tb/query_engine.h"
 #include "nigiri/routing/tb/segment_info.h"
 #include "nigiri/routing/tb/settings.h"
+#include "nigiri/routing/transfers.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/special_stations.h"
 

@@ -33,7 +33,6 @@
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
-#include "nigiri/routing/for_each_hub_source.h"
 #include "nigiri/routing/gpu/cuda_check.cuh"
 #include "nigiri/routing/gpu/device_buffer.cuh"
 #include "nigiri/routing/gpu/device_timetable.cuh"
@@ -42,6 +41,7 @@
 #include "nigiri/routing/gpu/types.cuh"
 #include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/routing/search_location.h"
+#include "nigiri/routing/transfers.h"
 #include "nigiri/rt/rt_transfer_rules.h"
 #include "nigiri/td_footpath.h"
 
