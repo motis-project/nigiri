@@ -95,7 +95,7 @@ routing_result raptor_search(
     std::optional<std::chrono::seconds> const timeout) {
   auto span = get_otel_tracer()->StartSpan("raptor_search");
   auto scope = opentelemetry::trace::Scope{span};
-  add_virt_td_offsets(tt, rtt, q);
+  expand_td_offsets(tt, rtt, q);
   if (span->IsRecording()) {
     std::visit(utl::overloaded{
                    [&](interval<unixtime_t> const& interval) {

@@ -1377,3 +1377,9 @@ struct raptor_impl {
 };
 
 }  // namespace nigiri::routing::gpu
+
+#undef kInvalid
+#undef kFwd
+#undef kBwd
+#undef kUnreachable
+#undef kIntermodalTarget

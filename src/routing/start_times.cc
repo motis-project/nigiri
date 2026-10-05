@@ -344,28 +344,27 @@ void get_starts(
   }
 }
 
-void add_virt_td_offsets(timetable const& tt,
-                         rt_timetable const* rtt,
-                         query& q) {
-  if (is_projected(q.prf_idx_)) {
-    return;
-  }
+void expand_td_offsets(timetable const& tt, rt_timetable const* rtt, query& q) {
   auto const add = [&](hash_map<location_idx_t, std::vector<td_offset>>& td) {
-    auto virts = std::vector<std::pair<location_idx_t, location_idx_t>>{};
+    auto children = std::vector<std::pair<location_idx_t, location_idx_t>>{};
     for (auto const& [l, _] : td) {
-      tt.locations_.for_each_virt(
-          l, [&](location_idx_t const c) { virts.emplace_back(c, l); });
+      for_each_meta(tt, location_match_mode::kIntermodal, l,
+                    [&](location_idx_t const c) {
+                      if (c != l) {
+                        children.emplace_back(c, l);
+                      }
+                    });
     }
     if (rtt != nullptr && !td.empty()) {
       rtt->for_each_rt_virt([&](location_idx_t const v, rt_location_idx_t) {
         if (auto const p = rtt->base(v); td.contains(p)) {
-          virts.emplace_back(v, p);
+          children.emplace_back(v, p);
         }
       });
     }
-    for (auto const& [v, l] : virts) {
+    for (auto const& [c, l] : children) {
       auto offsets = td.at(l);
-      td.emplace(v, std::move(offsets));
+      td.emplace(c, std::move(offsets));
     }
   };
   add(q.td_start_);

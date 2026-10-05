@@ -544,10 +544,14 @@ private:
       return stays;
     };
 
-    auto const change = adjusted_change_time(
-        transfer_time_settings_, min_transfer_time(location_idx_t{l}));
-    return !change.has_value() ||
-           is_better_or_eq(t, row[l][slot] + dir(*change) + dir(via_stays(l)));
+    auto const transfer_time = min_transfer_time(location_idx_t{l});
+    return transfer_time == kNoTransferAllowed ||
+           is_better_or_eq(t,
+                           row[l][slot] +
+                               dir(adjusted_transfer_time(
+                                   transfer_time_settings_,
+                                   static_cast<int>(transfer_time.count()))) +
+                               dir(via_stays(l)));
   }
 
   template <bool WithClaszFilter,

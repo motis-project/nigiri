@@ -85,12 +85,10 @@ vecvec<location_idx_t, T> build_projected_index(timetable const& tt,
         if (tt.locations_.is_virt(l)) {
           return;
         }
-        auto const base_entries = idx[l];
-        out.assign(begin(base_entries), end(base_entries));
-        tt.locations_.for_each_virt(l, [&](location_idx_t const c) {
-          auto const virt_entries = idx[c];
-          out.insert(end(out), begin(virt_entries), end(virt_entries));
-        });
+        for_each_meta(tt, location_match_mode::kExact, l,
+                      [&](location_idx_t const c) {
+                        out.insert(end(out), begin(idx[c]), end(idx[c]));
+                      });
         utl::erase_duplicates(out);
       });
 }

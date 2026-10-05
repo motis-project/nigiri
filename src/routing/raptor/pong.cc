@@ -533,7 +533,7 @@ routing_result pong_search(timetable const& tt,
                            query q,
                            direction search_dir,
                            std::optional<std::chrono::seconds> timeout) {
-  add_virt_td_offsets(tt, rtt, q);
+  expand_td_offsets(tt, rtt, q);
   if (search_dir == direction::kForward) {
     return pong_search_with_dir<direction::kForward>(tt, rtt, s_state, r_state,
                                                      std::move(q), timeout);

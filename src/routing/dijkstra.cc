@@ -60,12 +60,10 @@ void dijkstra(timetable const& tt,
 
   for (auto i = 0U; i != tt.n_locations(); ++i) {
     auto const lb = dists[i];
-    for (auto const c : tt.locations_.children_[location_idx_t{i}]) {
-      dists[to_idx(c)] = std::min(lb, dists[to_idx(c)]);
-      for (auto const cc : tt.locations_.children_[c]) {
-        dists[to_idx(cc)] = std::min(lb, dists[to_idx(cc)]);
-      }
-    }
+    for_each_meta(tt, location_match_mode::kOnlyChildren, location_idx_t{i},
+                  [&](location_idx_t const c) {
+                    dists[to_idx(c)] = std::min(lb, dists[to_idx(c)]);
+                  });
   }
 }
 
