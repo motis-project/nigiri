@@ -1334,8 +1334,6 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       });
     }
 
-    to_static_locations(rtt_, j);
-
     // Backward search requires to re-anchor footpath durations
     // to the arrival of the previous trip
     // instead of the departure of the next trip.
@@ -1496,7 +1494,8 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
     auto const& td_offsets = is_start ? q.td_start_ : q.td_dest_;
     auto const special = get_special_station(is_start ? special_station::kStart
                                                       : special_station::kEnd);
-    auto const l = is_front ? j.legs_.front().from_ : j.legs_.back().to_;
+    auto const l = rt::base(
+        tt_, rtt_, is_front ? j.legs_.front().from_ : j.legs_.back().to_);
     auto const t =
         is_front ? j.legs_.front().dep_time_ : j.legs_.back().arr_time_;
     auto const is_match = [&](location_idx_t const target) {
@@ -1555,9 +1554,7 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
       if (is_front ? (dep < bound || arr > t) : (dep < t || arr > bound)) {
         continue;
       }
-      add_leg(
-          dep, arr,
-          offset{rt::base(tt_, rtt_, target), fp->first, fp->second.mode()});
+      add_leg(dep, arr, offset{target, fp->first, fp->second.mode()});
       inserted = true;
       break;
     }
@@ -1573,7 +1570,8 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
     auto const is_journey_start = [&](location_idx_t const l) {
       return routing::is_journey_start(tt_, q, l);
     };
-    auto const start_l = is_fwd ? j.legs_.front().from_ : j.legs_.back().to_;
+    auto const start_l = rt::base(
+        tt_, rtt_, is_fwd ? j.legs_.front().from_ : j.legs_.back().to_);
     auto const start_t =
         is_fwd ? j.legs_.front().dep_time_ : j.legs_.back().arr_time_;
     auto const direct_start_ok =
@@ -1620,6 +1618,8 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
       }
     }
   }
+
+  map_to_bases(tt_, rtt_, j);
 
   if constexpr (is_fwd) {
     optimize_footpaths(tt_, rtt_, q, j);

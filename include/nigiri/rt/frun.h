@@ -22,11 +22,12 @@ namespace nigiri::rt {
 struct frun;
 
 struct run_stop {
-  stop get_stop() const;
-  stop get_scheduled_stop() const;
+  stop get_raw_stop() const;
+  stop get_raw_scheduled_stop() const;
   geo::latlng pos() const;
   loc get_loc() const;
   location_idx_t get_location_idx() const;
+  std::optional<location_idx_t> get_virt() const;
   std::string_view get_location_id() const;
   location_idx_t get_scheduled_location_idx() const;
   std::string_view name(lang_t const&) const;

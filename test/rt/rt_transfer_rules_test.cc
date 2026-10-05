@@ -133,7 +133,7 @@ TEST(rt_transfer_rules, revert_at_stay_seated_handover_stop_restores_schedule) {
 
   auto const handover_location = [&]() {
     auto const [r, _] = test::resolve(tt, rtt, "ST2");
-    return r.valid() ? rt::frun{tt, &rtt, r}[0U].get_location_idx()
+    return r.valid() ? rt::frun{tt, &rtt, r}[0U].get_raw_stop().location_idx()
                      : location_idx_t::invalid();
   };
   auto const scheduled = handover_location();

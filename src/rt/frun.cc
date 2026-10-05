@@ -17,10 +17,6 @@
 
 namespace nigiri::rt {
 
-location_idx_t base_location(run_stop const& s) {
-  return s.tt().base(s.get_location_idx());
-}
-
 constexpr auto const kUnknownProvider =
     provider{.id_ = string_idx_t::invalid(),
              .name_ = kEmptyTranslation,
@@ -29,7 +25,7 @@ constexpr auto const kUnknownProvider =
              .ticketing_link_ = ticketing_link_idx_t::invalid(),
              .src_ = source_idx_t::invalid()};
 
-stop run_stop::get_stop() const {
+stop run_stop::get_raw_stop() const {
   assert(fr_->size() > stop_idx_);
   return stop{
       (fr_->is_rt() && rtt() != nullptr)
@@ -38,7 +34,7 @@ stop run_stop::get_stop() const {
                                     [stop_idx_]};
 }
 
-stop run_stop::get_scheduled_stop() const {
+stop run_stop::get_raw_scheduled_stop() const {
   assert(fr_->size() > stop_idx_);
   return fr_->is_scheduled()
              ? tt().route_location_seq_[tt().transport_route_[fr_->t_.t_idx_]]
@@ -47,14 +43,14 @@ stop run_stop::get_scheduled_stop() const {
 }
 
 std::string_view run_stop::name(lang_t const& lang) const {
-  auto const l = base_location(*this);
+  auto const l = get_location_idx();
   auto const p = tt().locations_.parents_.at(l);
   auto const x = p == location_idx_t::invalid() ? l : p;
   return tt().translate(lang, tt().locations_.names_.at(x));
 }
 
 std::string_view run_stop::id() const {
-  auto const l = base_location(*this);
+  auto const l = get_location_idx();
   auto const p = tt().locations_.parents_.at(l);
   auto const x = p == location_idx_t::invalid() ? l : p;
   return tt().locations_.ids_.at(x).view();
@@ -104,7 +100,7 @@ std::pair<date::sys_days, duration_t> run_stop::get_trip_start(
 }
 
 std::string_view run_stop::track(lang_t const& lang) const {
-  auto const l = base_location(*this);
+  auto const l = get_location_idx();
   return tt().translate(lang, tt().locations_.platform_codes_.at(l));
 }
 
@@ -117,23 +113,31 @@ std::optional<std::string_view> run_stop::get_track_override(
 
 geo::latlng run_stop::pos() const {
   assert(fr_->size() > stop_idx_);
-  return fr_->tt_->locations_.coordinates_[get_stop().location_idx()];
+  return fr_->tt_->locations_.coordinates_[get_raw_stop().location_idx()];
 }
 
 loc run_stop::get_loc() const { return {tt(), get_location_idx()}; }
 
 location_idx_t run_stop::get_location_idx() const {
   assert(fr_->size() > stop_idx_);
-  return get_stop().location_idx();
+  return tt().base(get_raw_stop().location_idx());
+}
+
+std::optional<location_idx_t> run_stop::get_virt() const {
+  assert(fr_->size() > stop_idx_);
+  auto const l = fr_->is_rt() && rtt() != nullptr
+                     ? rtt()->stop_location(fr_->rt_, stop_idx_)
+                     : get_raw_stop().location_idx();
+  return l == get_location_idx() ? std::nullopt : std::optional{l};
 }
 
 std::string_view run_stop::get_location_id() const {
-  return tt().locations_.ids_[base_location(*this)].view();
+  return tt().locations_.ids_[get_location_idx()].view();
 }
 
 location_idx_t run_stop::get_scheduled_location_idx() const {
   assert(fr_->size() > stop_idx_);
-  return get_scheduled_stop().location_idx();
+  return tt().base(get_raw_scheduled_stop().location_idx());
 }
 
 run_stop run_stop::get_first_trip_stop(event_type const ev_type) const {
@@ -232,7 +236,7 @@ duration_t run_stop::delay(event_type const ev_type) const {
 
 timezone_idx_t run_stop::get_tz(event_type const ev_type) const {
   auto const location_tz =
-      tt().locations_.location_timezones_.at(base_location(*this));
+      tt().locations_.location_timezones_.at(get_location_idx());
   if (location_tz != timezone_idx_t::invalid()) {
     return location_tz;
   }
@@ -498,18 +502,18 @@ std::optional<date::sys_days> run_stop::looped_calendar_since(
              : std::nullopt;
 }
 
-bool run_stop::is_cancelled() const { return get_stop().is_cancelled(); }
+bool run_stop::is_cancelled() const { return get_raw_stop().is_cancelled(); }
 
-bool run_stop::in_allowed() const { return get_stop().in_allowed(); }
+bool run_stop::in_allowed() const { return get_raw_stop().in_allowed(); }
 
-bool run_stop::out_allowed() const { return get_stop().out_allowed(); }
+bool run_stop::out_allowed() const { return get_raw_stop().out_allowed(); }
 
 bool run_stop::in_allowed_wheelchair() const {
-  return get_stop().in_allowed_wheelchair();
+  return get_raw_stop().in_allowed_wheelchair();
 }
 
 bool run_stop::out_allowed_wheelchair() const {
-  return get_stop().out_allowed_wheelchair();
+  return get_raw_stop().out_allowed_wheelchair();
 }
 
 bool run_stop::in_allowed(bool const wheelchair) const {

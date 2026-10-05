@@ -15,7 +15,9 @@ location_idx_t get_or_create_location(timetable const&,
 inline location_idx_t base(timetable const& tt,
                            rt_timetable const* rtt,
                            location_idx_t const l) {
-  return rtt == nullptr ? tt.base(l) : rtt->base(l);
+  return l == location_idx_t::invalid() ? l
+         : rtt == nullptr               ? tt.base(l)
+                                        : rtt->base(l);
 }
 
 }  // namespace nigiri::rt

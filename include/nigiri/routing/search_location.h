@@ -19,10 +19,8 @@ inline location_idx_t search_location(rt_timetable const& rtt,
 
 inline location_idx_t search_location(profile_idx_t const prf,
                                       rt::run_stop const& stp) {
-  auto const& fr = *stp.fr_;
-  return fr.is_rt() && fr.rtt_ != nullptr
-             ? search_location(*fr.rtt_, prf, fr.rt_, stp.stop_idx_)
-             : fr.tt_->locations_.project(prf, stp.get_location_idx());
+  return is_projected(prf) ? stp.get_location_idx()
+                           : stp.get_virt().value_or(stp.get_location_idx());
 }
 
 }  // namespace nigiri::routing

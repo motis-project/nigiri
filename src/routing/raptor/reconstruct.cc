@@ -32,18 +32,15 @@ location_idx_t static_location(rt_timetable const* rtt,
   return rtt == nullptr ? l : rtt->static_location(l);
 }
 
-void to_static_locations(rt_timetable const* rtt, journey& j) {
-  if (rtt == nullptr || rtt->n_rt_locations() == 0U) {
-    return;
-  }
+void map_to_bases(timetable const& tt, rt_timetable const* rtt, journey& j) {
   for (auto& leg : j.legs_) {
-    leg.from_ = rtt->static_location(leg.from_);
-    leg.to_ = rtt->static_location(leg.to_);
-    utl::visit(leg.uses_, [&](footpath& fp) {
-      fp = footpath{rtt->static_location(fp.target()), fp.duration()};
-    });
+    leg.from_ = rt::base(tt, rtt, leg.from_);
+    leg.to_ = rt::base(tt, rtt, leg.to_);
+    utl::visit(
+        leg.uses_, [&](footpath& fp) { fp.target_ = to_idx(leg.to_); },
+        [&](offset& o) { o.target_ = rt::base(tt, rtt, o.target_); });
   }
-  j.dest_ = rtt->static_location(j.dest_);
+  j.dest_ = rt::base(tt, rtt, j.dest_);
 }
 
 bool is_journey_start(timetable const& tt,
@@ -882,7 +879,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
     j.add(std::move(*init_fp));
   }
 
-  to_static_locations(rtt, j);
+  map_to_bases(tt, rtt, j);
 
   if constexpr (kFwd) {
     std::reverse(begin(j.legs_), end(j.legs_));

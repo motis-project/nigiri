@@ -469,9 +469,9 @@ routing_result pong(timetable const& tt,
 
       auto const dep_time = to.time(event_type::kDep);
 
-      auto const earlier =
-          get_earliest_alternative(tt, rtt, q, from.get_location_idx(),
-                                   to.get_location_idx(), arr_time, dep_time);
+      auto const earlier = get_earliest_alternative(
+          tt, rtt, q, from.get_raw_stop().location_idx(),
+          to.get_raw_stop().location_idx(), arr_time, dep_time);
 
       if (earlier.has_value()) {
         transfer_1 = earlier->at(0);

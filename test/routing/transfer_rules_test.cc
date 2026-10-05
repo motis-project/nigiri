@@ -16,6 +16,7 @@
 #include "nigiri/routing/search.h"
 #include "nigiri/routing/tb/preprocess.h"
 #include "nigiri/routing/tb/query_engine.h"
+#include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
 
 #include "../raptor_search.h"
@@ -403,10 +404,14 @@ TEST(transfer_rules, lookup_footpath_from_virtual_location_to_its_stop) {
   auto const& fa = begin(res)->legs_.front();
   ASSERT_TRUE(
       std::holds_alternative<routing::journey::run_enter_exit>(fa.uses_));
-  ASSERT_EQ(location_type::kVirt, tt.locations_.types_[fa.to_]);
+  auto const& ree = std::get<routing::journey::run_enter_exit>(fa.uses_);
+  auto const virt =
+      rt::frun{tt, nullptr, ree.r_}[ree.stop_range_.to_ - 1U].get_virt();
+  ASSERT_TRUE(virt.has_value());
+  EXPECT_EQ(lidx(tt, "U"), fa.to_);
 
   auto const fp = routing::lookup_footpath(
-      fa.to_, fa.arr_time_, routing::side::kAlighting, tt, nullptr,
+      *virt, fa.arr_time_, routing::side::kAlighting, tt, nullptr,
       routing::query{}, {{lidx(tt, "U"), 0_minutes, 0U}},
       routing::location_match_mode::kExact, true);
   EXPECT_TRUE(fp.has_value());

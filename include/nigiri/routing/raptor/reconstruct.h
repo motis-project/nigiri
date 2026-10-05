@@ -14,7 +14,7 @@ struct search_state;
 struct raptor_state;
 struct journey;
 
-void to_static_locations(rt_timetable const*, journey&);
+void map_to_bases(timetable const&, rt_timetable const*, journey&);
 
 bool is_journey_start(timetable const&,
                       query const&,
