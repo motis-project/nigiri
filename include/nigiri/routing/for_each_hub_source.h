@@ -21,10 +21,10 @@ bool call_and_go_on(Fn&& fn, footpath const& fp) {
   }
 }
 
-inline u8_minutes own_change_time(timetable const& tt,
-                                  rt_timetable const* rtt,
-                                  profile_idx_t const prf,
-                                  location_idx_t const l) {
+inline u8_minutes get_transfer_time(timetable const& tt,
+                                    rt_timetable const* rtt,
+                                    profile_idx_t const prf,
+                                    location_idx_t const l) {
   return rtt != nullptr && rtt->is_rt_location(l)
              ? rtt->transfer_time(l)
              : tt.locations_.transfer_time_[project(tt, prf, l)];
@@ -101,7 +101,7 @@ inline std::optional<duration_t> shortest_transfer(timetable const& tt,
                                                    location_idx_t const to) {
   auto shortest = std::optional<duration_t>{};
   if (from == to) {
-    if (auto const own = own_change_time(tt, rtt, prf_idx, from);
+    if (auto const own = get_transfer_time(tt, rtt, prf_idx, from);
         own != kNoTransferAllowed) {
       shortest = duration_t{own.count()};
     }
