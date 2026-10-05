@@ -888,6 +888,7 @@ struct raptor_impl {
       });
     }
 
+    // expand all rt footpaths at once
     for (auto i = get_global_thread_id(); i < rtt_.rt_footpaths_.size();
          i += get_global_stride()) {
       auto const& e = rtt_.rt_footpaths_[i];
@@ -895,10 +896,12 @@ struct raptor_impl {
       if (!prev_station_mark_[to_idx(src)]) {
         continue;
       }
+
       auto const tmp_time = tmp_.get(src, Vias);
       if (tmp_time == kInvalid) {
         continue;
       }
+
       relax_fp_target(k, kFwd ? e.fp_.target() : e.from_,
                       adjusted_transfer_time(transfer_time_settings_,
                                              e.fp_.duration().count()),
