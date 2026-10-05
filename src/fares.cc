@@ -1,8 +1,14 @@
 #include "nigiri/fares.h"
 
+#include <cmath>
+#include <algorithm>
 #include <array>
+#include <iterator>
+#include <limits>
 #include <ranges>
 
+#include "utl/enumerate.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/to_vec.h"
 
 #include "nigiri/routing/journey.h"
@@ -562,26 +568,40 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
   return {src, matching_rules};
 }
 
-bool matches([[maybe_unused]] timetable const& tt,
-             [[maybe_unused]] fares const& f,
-             fares::fare_transfer_rule const& r,
-             fare_leg const& from,
-             fare_leg const& a,
-             fare_leg const& b,
-             auto&& concrete_from,
-             auto&& concrete_to) {
+// Leg rules of a fare leg that are covered by a transfer rule's leg group.
+// An unset leg group covers all leg groups not named by any transfer rule.
+std::vector<fares::fare_leg_rule> covered_rules(
+    std::vector<fares::fare_leg_rule> const& rules,
+    leg_group_idx_t const leg_group,
+    auto&& concrete) {
+  auto covered = std::vector<fares::fare_leg_rule>{};
+  std::ranges::copy_if(rules, std::back_inserter(covered),
+                       [&](fares::fare_leg_rule const& x) {
+                         return leg_group == leg_group_idx_t::invalid()
+                                    ? !contains(concrete, x.leg_group_idx_)
+                                    : leg_group == x.leg_group_idx_;
+                       });
+  return covered;
+}
+
+// Returns the leg rules of `a` and `b` taking part in the transfer if the
+// transfer rule `r` applies to the transfer from `a` to `b`. Leg rules not
+// covered by the transfer rule's from/to leg groups are thinned out.
+using transfer_match_t = std::pair<std::vector<fares::fare_leg_rule>,
+                                   std::vector<fares::fare_leg_rule>>;
+std::optional<transfer_match_t> matches([[maybe_unused]] timetable const& tt,
+                                        [[maybe_unused]] fares const& f,
+                                        fares::fare_transfer_rule const& r,
+                                        fare_leg const& from,
+                                        fare_leg const& a,
+                                        fare_leg const& b,
+                                        auto&& concrete_from,
+                                        auto&& concrete_to) {
   using duration_limit_type = fares::fare_transfer_rule::duration_limit_type;
 
   utl::verify(!from.joined_leg_.empty(), "from no joined leg");
   utl::verify(!a.joined_leg_.empty(), "a no joined leg");
   utl::verify(!b.joined_leg_.empty(), "b no joined leg");
-
-  if (a.rule_.empty() || b.rule_.empty()) {
-    return false;
-  }
-
-  auto const& curr_rule = a.rule_.front();
-  auto const& next_rule = b.rule_.front();
 
   auto const get_start_time = [&]() {
     switch (r.duration_limit_type_) {
@@ -612,14 +632,8 @@ bool matches([[maybe_unused]] timetable const& tt,
   auto const transfer_limit_ok =
       (r.duration_limit_ == fares::fare_transfer_rule::kNoDurationLimit ||
        r.duration_limit_ >= (get_end_time() - get_start_time()));
-  auto const from_leg_group_matches =
-      ((r.from_leg_group_ == leg_group_idx_t::invalid() &&
-        !contains(concrete_from, curr_rule.leg_group_idx_)) ||
-       r.from_leg_group_ == curr_rule.leg_group_idx_);
-  auto const to_leg_group_matches =
-      ((r.to_leg_group_ == leg_group_idx_t::invalid() &&
-        !contains(concrete_to, next_rule.leg_group_idx_)) ||
-       r.to_leg_group_ == next_rule.leg_group_idx_);
+  auto from_rules = covered_rules(a.rule_, r.from_leg_group_, concrete_from);
+  auto to_rules = covered_rules(b.rule_, r.to_leg_group_, concrete_to);
 
   if (!transfer_limit_ok) {
     trace(
@@ -629,35 +643,163 @@ bool matches([[maybe_unused]] timetable const& tt,
         r.duration_limit_,
         r.duration_limit_ == fares::fare_transfer_rule::kNoDurationLimit);
   }
-  if (!from_leg_group_matches) {
+  if (from_rules.empty()) {
     trace(
         "      from leg group mismatch\n"
         "        r.from_leg_group: {}\n"
-        "        curr_rule.leg_group: {}\n"
+        "        curr leg groups: {}\n"
         "        concrete_from: {}",
         leg_group{tt, f, r.from_leg_group_},
-        leg_group{tt, f, curr_rule.leg_group_idx_},
+        a.rule_ | std::views::transform([&](auto&& x) {
+          return leg_group{tt, f, x.leg_group_idx_};
+        }),
         concrete_from | std::views::transform(
                             [&](auto&& x) { return leg_group{tt, f, x}; }));
   }
-  if (!to_leg_group_matches) {
+  if (to_rules.empty()) {
     trace(
         "      to leg group mismatch\n"
         "        r.to_leg_group: {}\n"
-        "        next_rule.leg_group: {}\n"
+        "        next leg groups: {}\n"
         "        concrete_to: {}",
         leg_group{tt, f, r.to_leg_group_},
-        leg_group{tt, f, next_rule.leg_group_idx_},
+        b.rule_ | std::views::transform([&](auto&& x) {
+          return leg_group{tt, f, x.leg_group_idx_};
+        }),
         concrete_to | std::views::transform(
                           [&](auto&& x) { return leg_group{tt, f, x}; }));
   }
-  if (transfer_limit_ok && from_leg_group_matches && to_leg_group_matches) {
-    trace("      rule matched!");
-  }
 
-  return transfer_limit_ok && from_leg_group_matches && to_leg_group_matches;
+  if (!transfer_limit_ok || from_rules.empty() || to_rules.empty()) {
+    return std::nullopt;
+  }
+  trace("      rule matched!");
+  return transfer_match_t{std::move(from_rules), std::move(to_rules)};
 }
 
+// A traveler profile: rider category (invalid = default category) and fare
+// media (invalid = any media). Products are applicable to a profile if one of
+// their variants matches.
+struct profile {
+  bool operator==(profile const&) const = default;
+  rider_category_idx_t rider_category_{rider_category_idx_t::invalid()};
+  fare_media_idx_t media_{fare_media_idx_t::invalid()};
+};
+
+bool is_applicable(fares const& f,
+                   fares::fare_product const& p,
+                   profile const& pr) {
+  auto const has_default_category =
+      utl::any_of(f.rider_categories_,
+                  [](auto const& c) { return c.is_default_fare_category_; });
+  auto const rider_ok =
+      p.rider_category_ == rider_category_idx_t::invalid() ||
+      (pr.rider_category_ == rider_category_idx_t::invalid()
+           ? !has_default_category || f.rider_categories_[p.rider_category_]
+                                          .is_default_fare_category_
+           : p.rider_category_ == pr.rider_category_);
+  // "no fare media" products (e.g. cash, no ticket needed) apply to everyone
+  auto const media_ok = p.media_ == fare_media_idx_t::invalid() ||
+                        f.fare_media_[p.media_].type_ ==
+                            fares::fare_media::fare_media_type::kNone ||
+                        pr.media_ == fare_media_idx_t::invalid() ||
+                        p.media_ == pr.media_;
+  return rider_ok && media_ok;
+}
+
+// Cheapest applicable variant of a fare product, infinity if not applicable.
+// Unset product = free.
+float product_cost(fares const& f,
+                   fare_product_idx_t const p,
+                   profile const& pr) {
+  if (p == fare_product_idx_t::invalid()) {
+    return 0.F;
+  }
+  auto min = std::numeric_limits<float>::infinity();
+  for (auto const& x : f.fare_products_[p]) {
+    if (is_applicable(f, x, pr)) {
+      min = std::min(min, x.amount_);
+    }
+  }
+  return min;
+}
+
+float leg_cost(fares const& f, fare_leg const& l, profile const& pr) {
+  return l.rule_.empty()
+             ? 0.F
+             : std::ranges::min(l.rule_ | std::views::transform([&](auto&& r) {
+                                  return product_cost(f, r.fare_product_, pr);
+                                }));
+}
+
+// Cost of a sequence of legs joined by transfer rule r.
+// Assumption for sequences with more than one transfer: the transfer product
+// is paid once for AB (e.g. day pass) and once per transfer otherwise.
+float transfer_cost(fares const& f,
+                    fares::fare_transfer_rule const& r,
+                    std::vector<fare_leg> const& legs,
+                    profile const& pr) {
+  using fare_transfer_type = fares::fare_transfer_rule::fare_transfer_type;
+  auto const ab = product_cost(f, r.fare_product_, pr);
+  auto const n_transfers = static_cast<float>(legs.size() - 1U);
+  auto const sum = [&](auto&& range) {
+    auto x = 0.F;
+    for (auto const& l : range) {
+      x += leg_cost(f, l, pr);
+    }
+    return x;
+  };
+  switch (r.fare_transfer_type_) {
+    case fare_transfer_type::kAB: return ab;
+    case fare_transfer_type::kAPlusAB:
+      return leg_cost(f, legs.front(), pr) + n_transfers * ab;
+    case fare_transfer_type::kAPlusABPlusB: return sum(legs) + n_transfers * ab;
+  }
+  std::unreachable();
+}
+
+// Longest sequence of legs starting at `from` joined by transfer rule r with
+// the leg rules thinned out to the ones taking part in the transfers.
+// Empty if r does not apply to the first transfer.
+template <typename It>
+std::vector<fare_leg> build_transfer(timetable const& tt,
+                                     fares const& f,
+                                     fares::fare_transfer_rule const& r,
+                                     It const from,
+                                     It const end,
+                                     auto&& concrete_from,
+                                     auto&& concrete_to) {
+  auto legs = std::vector<fare_leg>{*from};
+  auto remaining_transfers = r.transfer_count_;
+  for (auto next = std::next(from);
+       next != end && remaining_transfers != 0;  // -1=infinite won't reach 0
+       ++next, --remaining_transfers) {
+    // legs.back() is the current leg thinned out to the leg rules covered by
+    // the previous transfer (or the unthinned first leg)
+    auto m = matches(tt, f, r, *from, legs.back(), *next, concrete_from,
+                     concrete_to);
+    if (!m.has_value()) {
+      break;
+    }
+    legs.back().rule_ = std::move(m->first);
+    auto next_leg = *next;
+    next_leg.rule_ = std::move(m->second);
+    legs.emplace_back(std::move(next_leg));
+  }
+  if (legs.size() == 1U) {
+    legs.clear();
+  }
+  return legs;
+}
+
+// Fare transfer variants of the legs (same source): candidates are one
+// standalone entry per leg and one entry per transfer rule and start leg.
+// A candidate is a variant if it is part of the cheapest cover of the legs
+// for some traveler profile (rider category, fare media) - a transfer is not
+// necessarily cheaper than separate leg products (e.g. free legs on weekends
+// vs. day pass transfer product) and vice versa. The cover for the default
+// traveler (default rider category, any media) is flagged as main and listed
+// first.
 std::vector<fare_transfer> join_transfers(
     timetable const& tt, std::vector<fare_leg> const& fare_legs) {
   auto transfers = std::vector<fare_transfer>{};
@@ -666,13 +808,8 @@ std::vector<fare_transfer> join_transfers(
       [](fare_leg const& a, fare_leg const& b) { return a.src_ == b.src_; },
       [&](std::vector<fare_leg>::const_iterator const from_it,
           std::vector<fare_leg>::const_iterator const to_it) {
-        auto const size = static_cast<unsigned>(std::distance(from_it, to_it));
-        utl::verify(size != 0U, "invalid zero-size range");
-
-        if (size == 1U) {
-          transfers.push_back({std::nullopt, {*from_it}});
-          return;
-        }
+        auto const n = static_cast<std::size_t>(std::distance(from_it, to_it));
+        utl::verify(n != 0U, "invalid zero-size range");
 
         auto const& f = tt.fares_[from_it->src_];
 
@@ -686,48 +823,90 @@ std::vector<fare_transfer> join_transfers(
             sv::transform([](auto const& r) { return r.to_leg_group_; }) |
             sv::filter([](auto a) { return a != leg_group_idx_t::invalid(); });
 
-        auto last_matched = false;
-        for (auto it = from_it, next = std::next(from_it); next != to_it;
-             ++it, ++next) {
-          utl::verify(it >= from_it && it < to_it, "curr it not in range");
-          utl::verify(next >= from_it && next < to_it, "next it not in range");
-
-          auto const match_it = utl::find_if(
-              f.fare_transfer_rules_, [&](fares::fare_transfer_rule const& r) {
-                return matches(tt, f, r, *it, *it, *next, concrete_from,
-                               concrete_to);
-              });
-          if (match_it == end(f.fare_transfer_rules_)) {
-            last_matched = false;
-            transfers.push_back({std::nullopt, {*it}});
-            continue;
+        auto candidates = std::vector<fare_transfer>{};
+        auto standalone = std::vector<std::size_t>(n);  // candidate per leg
+        auto chains = std::vector<std::vector<std::size_t>>(n);  // per start
+        auto profiles = std::vector<profile>{{}};  // default traveler first
+        auto const add_profiles = [&](fare_product_idx_t const p) {
+          if (p == fare_product_idx_t::invalid()) {
+            return;
           }
-
-          last_matched = true;
-          auto matched = std::vector<fare_leg>{*it};
-          auto remaining_transfers = match_it->transfer_count_;
-          auto const from = it;
-          for (; next != to_it &&
-                 remaining_transfers != 0;  // -1=infinite will not reach 0
-               ++it, ++next, --remaining_transfers) {
-            if (!matches(tt, f, *match_it, *from, *it, *next, concrete_from,
-                         concrete_to)) {
-              break;
+          for (auto const& x : f.fare_products_[p]) {
+            auto const pr = profile{x.rider_category_, x.media_};
+            if (utl::find(profiles, pr) == end(profiles)) {
+              profiles.push_back(pr);
             }
-            matched.emplace_back(*next);
+          }
+        };
+        for (auto i = 0U; i != n; ++i) {
+          auto const leg_it = std::next(from_it, i);
+          for (auto const& r : leg_it->rule_) {
+            add_profiles(r.fare_product_);
           }
 
-          transfers.push_back({*match_it, std::move(matched)});
+          standalone[i] = candidates.size();
+          candidates.push_back({std::nullopt, {*leg_it}});
 
-          // last one could not be matched by this rule
-          // -> go back and try with all rules again
-          --it;
-          --next;
+          for (auto const& r : f.fare_transfer_rules_) {
+            auto legs = build_transfer(tt, f, r, leg_it, to_it, concrete_from,
+                                       concrete_to);
+            if (!legs.empty()) {
+              add_profiles(r.fare_product_);
+              chains[i].push_back(candidates.size());
+              candidates.push_back({r, std::move(legs)});
+            }
+          }
         }
 
-        if (!last_matched) {
-          transfers.push_back({std::nullopt, {*std::next(from_it, size - 1U)}});
+        // Cheapest cover of legs [i, n) by standalone legs and transfers.
+        struct cover {
+          float cost_;
+          std::size_t candidate_;
+        };
+        auto used = std::vector<bool>(candidates.size());
+        for (auto const [p, pr] : utl::enumerate(profiles)) {
+          auto best = std::vector<cover>(n + 1U, {0.F, 0U});
+          for (auto i = n; i-- != 0U;) {
+            best[i] = {
+                leg_cost(f, *std::next(from_it, i), pr) + best[i + 1U].cost_,
+                standalone[i]};
+            for (auto const c : chains[i]) {
+              auto const& t = candidates[c];
+              auto const cost = transfer_cost(f, *t.rule_, t.legs_, pr) +
+                                best[i + t.legs_.size()].cost_;
+              // on ties: prefer transfers over standalone legs, earlier rules
+              // over later rules
+              auto const is_better = best[i].candidate_ == standalone[i]
+                                         ? cost <= best[i].cost_
+                                         : cost < best[i].cost_;
+              if (is_better) {
+                best[i] = {cost, c};
+              }
+            }
+          }
+
+          auto const is_main = p == 0U;
+          if (!is_main && std::isinf(best[0].cost_)) {
+            continue;  // no cover for this profile
+          }
+          for (auto i = 0U; i != n;) {
+            auto& t = candidates[best[i].candidate_];
+            used[best[i].candidate_] = true;
+            t.main_ |= is_main;
+            i += t.legs_.size();
+          }
         }
+
+        auto variants = std::vector<fare_transfer>{};
+        for (auto const [i, c] : utl::enumerate(candidates)) {
+          if (used[i]) {
+            variants.emplace_back(std::move(c));
+          }
+        }
+        std::ranges::stable_partition(variants,
+                                      [](auto const& t) { return t.main_; });
+        transfers.insert(end(transfers), std::move_iterator{begin(variants)},
+                         std::move_iterator{end(variants)});
       });
   return transfers;
 }
