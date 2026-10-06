@@ -27,15 +27,20 @@ std::optional<journey::leg> lookup_offset(location_idx_t const loc,
   auto const td_search_dir =
       is_boarding ? direction::kBackward : direction::kForward;
 
-  auto const make_leg = [&](duration_t const dur, transport_mode_t const mode) {
+  // dur includes waiting for a time-dependent offset to become usable (e.g.
+  // an elevator out of service), walk does not.
+  // The waiting time is spent at a stop (boarding: after the walk,
+  // alighting: before the walk).
+  auto const make_leg = [&](duration_t const dur, duration_t const walk,
+                            transport_mode_t const mode) {
     auto const boundary = get_special_station(
         is_boarding ? special_station::kStart : special_station::kEnd);
-    auto const dep = is_boarding ? t - dur : t;
-    auto const arr = is_boarding ? t : t + dur;
+    auto const dep = is_boarding ? t - dur : t + dur - walk;
+    auto const arr = is_boarding ? t - dur + walk : t + dur;
     auto const from = is_boarding ? boundary : loc;
     auto const to = is_boarding ? loc : boundary;
-    return journey::leg{direction::kForward,   from, to, dep, arr,
-                        offset{loc, dur, mode}};
+    return journey::leg{direction::kForward,    from, to, dep, arr,
+                        offset{loc, walk, mode}};
   };
 
   // Time-dependend offsets take precedence.
@@ -44,7 +49,8 @@ std::optional<journey::leg> lookup_offset(location_idx_t const loc,
     if (!td.has_value() || td->first >= footpath::kMaxDuration) {
       return std::nullopt;
     }
-    return std::optional{make_leg(td->first, td->second.mode())};
+    return std::optional{
+        make_leg(td->first, td->second.duration(), td->second.mode())};
   }
 
   // Search for shortest offset, assuming offsets are sorted ASC
@@ -56,8 +62,9 @@ std::optional<journey::leg> lookup_offset(location_idx_t const loc,
     }
   }
 
-  return best.transform(
-      [&](offset const& o) { return make_leg(o.duration(), o.mode()); });
+  return best.transform([&](offset const& o) {
+    return make_leg(o.duration(), o.duration(), o.mode());
+  });
 }
 
 std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
@@ -73,17 +80,18 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
   auto const td_search_dir =
       is_boarding ? direction::kBackward : direction::kForward;
 
+  // best_dur includes waiting for a time-dependent footpath to become usable
+  // (e.g. an elevator out of service), best_walk does not.
   auto best_dur = footpath::kMaxDuration;
+  auto best_walk = footpath::kMaxDuration;
   auto best_source = location_idx_t{};
 
-  auto const has_td_arr = rtt == nullptr
-                              ? nullptr
-                              : (is_boarding ? &rtt->has_td_footpaths_out_
-                                             : &rtt->has_td_footpaths_in_);
-  auto const td_fps_arr =
-      rtt == nullptr
-          ? nullptr
-          : (is_boarding ? &rtt->td_footpaths_out_ : &rtt->td_footpaths_in_);
+  // As in the search: footpaths from a source with td footpaths are
+  // time-dependent, all others are static.
+  auto const is_td_source = [&](location_idx_t const x) {
+    return rtt != nullptr && q.prf_idx_ != 0U &&
+           rtt->has_td_footpaths_out_[q.prf_idx_].test(x);
+  };
 
   for (auto const& o : offs) {
     auto const o_duration = o.duration();
@@ -99,6 +107,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
                                           tt.locations_.transfer_time_[l])
                  // kIntermodal / kEquivalent: no transfer time access/egress
                  : u8_minutes{0});
+        best_walk = best_dur;
         best_source = o.target();
       }
 
@@ -107,16 +116,20 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
       }
 
       auto eff_dur = footpath::kMaxDuration;
-      if (has_td_arr != nullptr && q.prf_idx_ < has_td_arr->size() &&
-          to_idx(l) < (*has_td_arr)[q.prf_idx_].size() &&
-          (*has_td_arr)[q.prf_idx_][l]) {
+      auto eff_walk = footpath::kMaxDuration;
+      auto const fp_from = is_boarding ? l : loc;
+      auto const fp_to = is_boarding ? loc : l;
+      if (is_td_source(fp_from)) {
         // td footpaths take precedence
-        for_each_footpath(td_search_dir, (*td_fps_arr)[q.prf_idx_][l], t,
-                          [&](footpath const fp) {
-                            if (fp.target() == loc && fp.duration() < eff_dur) {
-                              eff_dur = fp.duration();
-                            }
-                          });
+        for_each_footpath(
+            td_search_dir, rtt->td_footpaths_out_[q.prf_idx_][fp_from], t,
+            [&](location_idx_t const target, duration_t const duration,
+                duration_t const walk) {
+              if (target == fp_to && duration < eff_dur) {
+                eff_dur = duration;
+                eff_walk = walk;
+              }
+            });
       } else {
         // no td footpath -> take shortest regular footpath
         auto const& fps = is_boarding
@@ -130,6 +143,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
               adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
           if (adj < eff_dur) {
             eff_dur = adj;
+            eff_walk = adj;
           }
         }
       }
@@ -140,6 +154,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
       auto const total = o_duration + eff_dur;
       if (total < best_dur) {
         best_dur = total;
+        best_walk = o_duration + eff_walk;
         best_source = o.target();
       }
     });
@@ -149,12 +164,14 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
     return std::nullopt;
   }
 
-  auto const dep = is_boarding ? t - best_dur : t;
-  auto const arr = is_boarding ? t : t + best_dur;
+  // Any wait is spent at the transport's stop (as in the reconstruction):
+  // after the walk when boarding, before it when alighting.
+  auto const dep = is_boarding ? t - best_dur : t + best_dur - best_walk;
+  auto const arr = is_boarding ? t - best_dur + best_walk : t + best_dur;
   auto const from = is_boarding ? best_source : loc;
   auto const to = is_boarding ? loc : best_source;
-  return journey::leg{direction::kForward,   from, to, dep, arr,
-                      footpath{to, best_dur}};
+  return journey::leg{direction::kForward,    from, to, dep, arr,
+                      footpath{to, best_walk}};
 }
 
 namespace {

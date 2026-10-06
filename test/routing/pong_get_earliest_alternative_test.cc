@@ -332,3 +332,82 @@ S,20240619,1
   EXPECT_TRUE(result.has_value())
       << "TD footpath B→Y should enable alighting T at B 11:30";
 }
+
+// A TD footpath at the ingress side that only becomes usable after the
+// arrival at the previous stop (e.g. an elevator out of service until 10:55):
+// the walk must not be moved to that arrival, the wait comes before it.
+TEST(pong, get_earliest_alternative_td_footpath_keeps_the_wait) {
+  constexpr auto const kGTFS = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,DB,https://db.de,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station,wheelchair_boarding
+X,X,0.0,1.0,,,1
+A,A,0.0,1.0,,,1
+B,B,2.0,3.0,,,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R,DB,R,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,wheelchair_accessible
+R,S,T,,1
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+T,11:00:00,11:00:00,A,0
+T,11:30:00,11:30:00,B,1
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+)"sv;
+
+  constexpr auto const kProfile = profile_idx_t{2U};
+  auto tt = timetable{};
+  load(tt, kGTFS);
+
+  auto const X = find_loc(tt, "X");
+  auto const A = find_loc(tt, "A");
+  auto const B = find_loc(tt, "B");
+  auto const day = unixtime_t{sys_days{2024_y / June / 19}};
+
+  // The static footpath X→A (5min) doesn't know about the outage.
+  tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_out_[kProfile][X].push_back(footpath(A, 5min));
+  tt.locations_.footpaths_in_[kProfile][A].push_back(footpath(X, 5min));
+
+  // Trip T departs A at 11:00 Berlin local = 09:00 UTC (CEST). The footpath
+  // X→A is only usable from 10:40 Berlin (= 08:40 UTC).
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / June / 19});
+  rtt.has_td_footpaths_out_[kProfile].resize(tt.n_locations());
+  rtt.has_td_footpaths_in_[kProfile].resize(tt.n_locations());
+  rtt.td_footpaths_out_[kProfile].resize(tt.n_locations());
+  rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
+  rtt.has_td_footpaths_out_[kProfile].set(X, true);
+  rtt.has_td_footpaths_in_[kProfile].set(A, true);
+  rtt.td_footpaths_out_[kProfile][X].push_back(
+      td_footpath{A, day + 8h + 40min, 5min});
+  rtt.td_footpaths_in_[kProfile][A].push_back(
+      td_footpath{X, day + 8h + 40min, 5min});
+
+  auto q = routing::query{};
+  q.prf_idx_ = kProfile;
+
+  // Arrival at X at 08:30 UTC, before the footpath is usable.
+  auto const result = routing::get_earliest_alternative(
+      tt, &rtt, q, X, B, day + 8h + 30min, day + 12h);
+  ASSERT_TRUE(result.has_value());
+
+  auto const& walk = result->at(0);
+  EXPECT_EQ(X, walk.from_);
+  EXPECT_EQ(A, walk.to_);
+  EXPECT_GE(walk.dep_time_, day + 8h + 40min)
+      << "the walk must not start before the footpath is usable";
+  EXPECT_EQ(5min, walk.arr_time_ - walk.dep_time_);
+  EXPECT_LE(walk.arr_time_, result->at(1).dep_time_);
+}

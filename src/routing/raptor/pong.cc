@@ -70,10 +70,16 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   }
   // the generator anchors the boarding walk at the transit departure
   // (latest start) -> shift to the interior transfer convention:
-  // the walk starts at the previous leg's arrival
-  auto const walk_duration = legs[0].arr_time_ - legs[0].dep_time_;
-  legs[0].dep_time_ = from_arr;
-  legs[0].arr_time_ = from_arr + walk_duration;
+  // the walk starts at the previous leg's arrival.
+  // A time-dependent footpath may only be usable later (e.g. an elevator out
+  // of service): keep the wait before it, as in the reconstruction.
+  auto const is_td = rtt != nullptr && q.prf_idx_ != 0U &&
+                     rtt->has_td_footpaths_out_[q.prf_idx_].test(legs[0].from_);
+  if (!is_td) {
+    auto const walk_duration = legs[0].arr_time_ - legs[0].dep_time_;
+    legs[0].dep_time_ = from_arr;
+    legs[0].arr_time_ = from_arr + walk_duration;
+  }
   return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
 

@@ -34,11 +34,12 @@ TEST(td_footpath, simple) {
       td_footpath{b, sys_days{June / 17 / 2024_y} + 12h, 5min},
 
       /*
-       *                      |  2024/06/21 12:00 am   |   not possible
-       * 2024/06/17 12:00 am  |                        |   5 min
+       *                      |  2024/06/15  9:00 pm   |   not possible
+       * 2024/06/15  9:00 pm  |                        |   5 min
+       * (waiting longer than footpath::kMaxDuration)
        */
       td_footpath{c, kNull, footpath::kMaxDuration},
-      td_footpath{c, sys_days{June / 15 / 2024_y} + 13h, 5min},
+      td_footpath{c, sys_days{June / 15 / 2024_y} + 21h, 5min},
 
       /*
        * not possible
@@ -62,15 +63,16 @@ TEST(td_footpath, simple) {
   auto const map = vector_map<location_idx_t, unixtime_t>{
       kNull,
       sys_days{June / 15 / 2024_y} + 11h + 10min,
-      sys_days{June / 15 / 2024_y} + 13h + 5min,
+      sys_days{June / 15 / 2024_y} + 21h + 5min,
       kNull,
       sys_days{June / 15 / 2024_y} + 12h + 5min,
       sys_days{June / 15 / 2024_y} + 11h + 7min,
   };
   auto const now = sys_days{June / 15 / 2024_y} + 11h;
   for_each_footpath<direction::kForward>(
-      td_footpath_out[a], now, [&](footpath const fp) {
-        EXPECT_EQ(map[fp.target()], now + fp.duration());
+      td_footpath_out[a], now,
+      [&](location_idx_t const target, duration_t const duration, auto) {
+        EXPECT_EQ(map[target], now + duration);
         ++count;
         return utl::cflow::kContinue;
       });
@@ -88,22 +90,23 @@ TEST(td_footpath, backward_single) {
 
   auto called = false;
   for_each_footpath<direction::kBackward>(
-      fps, sys_days{2020_y / March / 30} + 7h, [&](auto&&) {
+      fps, sys_days{2020_y / March / 30} + 7h, [&](auto&&, auto&&, auto&&) {
         called = true;
         return utl::cflow::kBreak;
       });
   EXPECT_TRUE(!called);
 
   called = false;
-  auto x = footpath{};
+  auto x = duration_t{};
   for_each_footpath<direction::kBackward>(
-      fps, sys_days{2020_y / March / 30} + 11h, [&](footpath const fp) {
+      fps, sys_days{2020_y / March / 30} + 11h,
+      [&](auto, duration_t const duration, auto) {
         called = true;
-        x = fp;
+        x = duration;
         return utl::cflow::kBreak;
       });
   EXPECT_TRUE(called);
-  EXPECT_EQ(10min, x.duration());
+  EXPECT_EQ(10min, x);
 
   EXPECT_FALSE(get_td_duration<direction::kBackward>(
       fps, sys_days{2020_y / March / 30} + 10h));
@@ -140,19 +143,20 @@ TEST(td_footpath, backward) {
        .duration_ = footpath::kMaxDuration}};
 
   auto called = false;
-  auto x = footpath{};
+  auto x = duration_t{};
   for_each_footpath<direction::kBackward>(
-      fps, sys_days{2020_y / March / 30} + 12h, [&](footpath const fp) {
+      fps, sys_days{2020_y / March / 30} + 12h,
+      [&](auto, duration_t const duration, auto) {
         called = true;
-        x = fp;
+        x = duration;
         return utl::cflow::kBreak;
       });
   EXPECT_TRUE(called);
-  EXPECT_EQ(10min, x.duration());
+  EXPECT_EQ(10min, x);
 
   called = false;
   for_each_footpath<direction::kBackward>(
-      fps, sys_days{2020_y / March / 30} + 7h, [&](auto&&) {
+      fps, sys_days{2020_y / March / 30} + 7h, [&](auto&&, auto&&, auto&&) {
         called = true;
         return utl::cflow::kBreak;
       });
@@ -160,23 +164,25 @@ TEST(td_footpath, backward) {
 
   called = false;
   for_each_footpath<direction::kBackward>(
-      fps, sys_days{2020_y / March / 30} + 11h, [&](footpath const fp) {
+      fps, sys_days{2020_y / March / 30} + 11h,
+      [&](auto, duration_t const duration, auto) {
         called = true;
-        x = fp;
+        x = duration;
         return utl::cflow::kBreak;
       });
   EXPECT_TRUE(called);
-  EXPECT_EQ(10min, x.duration());
+  EXPECT_EQ(10min, x);
 
   called = false;
   for_each_footpath<direction::kBackward>(
-      fps, sys_days{2020_y / March / 30} + 13h, [&](footpath const fp) {
+      fps, sys_days{2020_y / March / 30} + 13h,
+      [&](auto, duration_t const duration, auto) {
         called = true;
-        x = fp;
+        x = duration;
         return utl::cflow::kBreak;
       });
   EXPECT_TRUE(called);
-  EXPECT_EQ(1h + 1min, x.duration());
+  EXPECT_EQ(1h + 1min, x);
 }
 
 TEST(td_footpath, backward_last) {

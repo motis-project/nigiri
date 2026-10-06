@@ -139,6 +139,7 @@ void merge_route_pair(timetable& tt,
                       route_idx_t const b_route,
                       stop_idx_t const n_stops,
                       duration_t const threshold,
+                      vector_map<transport_idx_t, bitfield_idx_t> const& before,
                       merge_stats& stats) {
   auto const budget = static_cast<int>(2U * (n_stops - 1U)) * threshold.count();
   auto const a_range = tt.route_transport_ranges_[a_route];
@@ -163,15 +164,22 @@ void merge_route_pair(timetable& tt,
       }
 
       auto const b_t = transport_idx_t{to_idx(b_range.from_) + bi};
-      auto const has_common_traffic_days =
-          (tt.bitfields_[tt.transport_traffic_days_[a_t]] &
-           tt.bitfields_[tt.transport_traffic_days_[b_t]])
-              .any();
-      if (!has_common_traffic_days) {
+
+      // Whether the two are duplicates of each other is a property of the
+      // input: ask the traffic days as they were before any merging. Merging
+      // empties the absorbed transport's days, so the live state would hide
+      // every further duplicate of it - and report it as unique instead.
+      if (!(tt.bitfields_[before[a_t]] & tt.bitfields_[before[b_t]]).any() ||
+          !is_duplicate(tt, a_route, b_route, a_t, b_t, n_stops, budget)) {
         continue;
       }
 
-      if (!is_duplicate(tt, a_route, b_route, a_t, b_t, n_stops, budget)) {
+      count_overlap(tt, a_t, b_t, stats);
+
+      // Merging itself has to respect what is left.
+      if (!(tt.bitfields_[tt.transport_traffic_days_[a_t]] &
+            tt.bitfields_[tt.transport_traffic_days_[b_t]])
+               .any()) {
         continue;
       }
 
@@ -184,8 +192,6 @@ void merge_route_pair(timetable& tt,
         ++stats.provider_n_absorbed_transports_[p];
         ++stats.src_n_absorbed_transports_[tt.providers_[p].src_];
       }
-
-      count_overlap(tt, a_t, b_t, stats);
     }
   }
 }
@@ -197,6 +203,9 @@ void merge_duplicates(timetable& tt,
                       std::filesystem::path const& stats_dir,
                       vector_map<source_idx_t, std::string> const& src_tags) {
   auto stats = merge_stats{tt};
+
+  // Duplicate detection reports on the input, not on the half-merged state.
+  auto const traffic_days_before = tt.transport_traffic_days_;
 
   // Key (root location, stop sequence length) => routes
   struct route_start {
@@ -389,7 +398,8 @@ void merge_duplicates(timetable& tt,
         auto const threshold = std::min(
             clasz_threshold[static_cast<unsigned>(tt.route_clasz_[a_route])],
             clasz_threshold[static_cast<unsigned>(tt.route_clasz_[b_route])]);
-        merge_route_pair(tt, a_route, b_route, a.n_stops_, threshold, stats);
+        merge_route_pair(tt, a_route, b_route, a.n_stops_, threshold,
+                         traffic_days_before, stats);
       }
     }
   };
