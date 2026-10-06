@@ -103,7 +103,6 @@ target_link_libraries(
   boost-json
   sol2
   libluajit
-  proj
   PRIVATE
   boost-iostreams
   zlibstatic
