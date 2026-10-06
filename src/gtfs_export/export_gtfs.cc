@@ -288,9 +288,17 @@ void write_stops(timetable const& tt, gtfs_export_target& out_target) {
   auto const write_row = [&](location_idx_t const l, std::string_view id,
                              int const location_type, std::string_view parent) {
     auto const coord = tt.locations_.coordinates_[l];
+    // stop_name is required: fall back to the root's name, then the stop id.
+    auto name = tt.get_default_name(l);
+    if (name.empty()) {
+      name = tt.get_default_name(tt.locations_.get_root_idx(l));
+    }
+    if (name.empty()) {
+      name = tt.locations_.ids_[l].view();
+    }
     out << id << "," << csv_escape(tt.locations_.ids_[l].view()) << ","
         << csv_escape(tt.get_default_translation(tt.locations_.stop_codes_[l]))
-        << "," << csv_escape(tt.get_default_name(l)) << ","
+        << "," << csv_escape(name) << ","
         << csv_escape(
                tt.get_default_translation(tt.locations_.descriptions_[l]))
         << "," << format_coord(coord.lat_) << "," << format_coord(coord.lng_)
@@ -431,15 +439,46 @@ void write_routes(timetable const& tt,
   out << "route_id,agency_id,route_short_name,route_long_name,route_type,"
          "route_color,route_text_color\n";
 
+  // Only export routes referenced by at least one exported trip.
+  auto used = std::vector<bool>(
+      route_offsets.empty() ? 0U
+                            : route_offsets.back() +
+                                  tt.route_ids_.back().ids_.size(),
+      false);
+  for (auto r = route_idx_t{0}; r < tt.n_routes(); ++r) {
+    auto const transport_range = tt.route_transport_ranges_[r];
+    for (auto t = transport_range.from_; t != transport_range.to_; ++t) {
+      if (tt.bitfields_[tt.transport_traffic_days_[t]].none()) {
+        continue;
+      }
+      auto const merged_idx = tt.transport_to_trip_section_[t].front();
+      auto const trip_idx = tt.merged_trips_[merged_idx].front();
+      auto const source_id = tt.trip_id_src_[tt.trip_ids_[trip_idx].front()];
+      used[to_global_route_id(source_id, tt.trip_route_id_[trip_idx])] = true;
+    }
+  }
+
   for (auto s = source_idx_t{0}; s < tt.route_ids_.size(); ++s) {
     auto const& routes = tt.route_ids_[s];
     auto const n_route_ids = static_cast<route_id_idx_t>(routes.ids_.size());
     for (auto r = route_id_idx_t{0}; r < n_route_ids; ++r) {
       auto const global_id = to_global_route_id(s, r);
+      if (!used[global_id]) {
+        continue;
+      }
       auto const short_name =
           tt.get_default_translation(routes.route_id_short_names_[r]);
-      auto const long_name =
+      auto long_name =
           tt.get_default_translation(routes.route_id_long_names_[r]);
+      // GTFS requires route_short_name or route_long_name.
+      auto fallback = std::string{};
+      if (short_name.empty() && long_name.empty()) {
+        long_name = routes.ids_.get(r);
+        if (long_name.empty()) {
+          fallback = std::to_string(global_id);
+          long_name = fallback;
+        }
+      }
       auto const agency = to_idx(routes.route_id_provider_[r]);
       auto const type = to_idx(routes.route_id_type_[r]);
       auto const& rc = routes.route_id_colors_[r];
