@@ -46,6 +46,8 @@ struct run_stop {
   category_idx_t get_category(event_type) const;
   std::string_view route_short_name(event_type, lang_t const&) const;
   std::string_view route_long_name(event_type, lang_t const&) const;
+  display_type route_short_name_display(event_type) const;
+  display_type route_long_name_display(event_type) const;
   std::string_view route_url(event_type, lang_t const&) const;
   std::string_view trip_short_name(event_type, lang_t const&) const;
   std::string_view display_name(event_type, lang_t const&) const;

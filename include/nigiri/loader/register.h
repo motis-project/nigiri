@@ -132,7 +132,9 @@ struct route {
         source_idx_t,
         std::string_view id,
         translation_idx_t short_name,
+        display_type short_name_display,
         translation_idx_t long_name,
+        display_type long_name_display,
         translation_idx_t url,
         route_type_t,
         route_color,
@@ -172,7 +174,9 @@ struct route {
   source_idx_t src_;
   std::string_view id_;
   translation_idx_t short_name_;
+  display_type short_name_display_;
   translation_idx_t long_name_;
+  display_type long_name_display_;
   translation_idx_t url_;
   route_type_t route_type_;
   route_color color_;
@@ -189,6 +193,7 @@ struct trip {
        std::string_view id,
        translation_idx_t headsign,
        translation_idx_t short_name,
+       display_type trip_short_name_display,
        translation_idx_t display_name,
        std::string_view vehicle_type_name,
        std::string_view vehicle_type_short_name,
@@ -232,6 +237,7 @@ struct trip {
   std::string_view id_;
   translation_idx_t headsign_;
   translation_idx_t short_name_;
+  display_type display_type_;
   translation_idx_t display_name_;
   std::string_view vehicle_type_name_;
   std::string_view vehicle_type_short_name_;

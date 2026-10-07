@@ -8,6 +8,7 @@
 #include "nigiri/loader/get_index.h"
 #include "nigiri/loader/hrd/service/read_services.h"
 #include "nigiri/loader/register.h"
+#include "nigiri/types.h"
 
 namespace nigiri::loader::hrd {
 
@@ -102,7 +103,7 @@ void service_builder::write_services(source_idx_t const src) {
               tt_,
               trip{tt_, src,
                    std::string_view{trip_id_buf_.data(), trip_id_buf_.size()},
-                   kEmptyTranslation, kEmptyTranslation,
+                   kEmptyTranslation, kEmptyTranslation, kUnset,
                    tt_.register_translation(ref.display_name(tt_)), "", "",
                    direction_id_t::invalid(), route_id_idx_t::invalid(), flags,
                    ref.origin_.dbg_});

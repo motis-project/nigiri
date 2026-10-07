@@ -306,7 +306,9 @@ struct timetable {
   struct route_ids {
     vector_map<route_id_idx_t, category_idx_t> route_id_category_;
     vector_map<route_id_idx_t, translation_idx_t> route_id_short_names_;
+    vector_map<route_id_idx_t, display_type> route_id_short_names_display_;
     vector_map<route_id_idx_t, translation_idx_t> route_id_long_names_;
+    vector_map<route_id_idx_t, display_type> route_id_long_names_display_;
     vector_map<route_id_idx_t, translation_idx_t> route_id_url_;
     vector_map<route_id_idx_t, route_type_t> route_id_type_;
     vector_map<route_id_idx_t, provider_idx_t> route_id_provider_;
@@ -334,6 +336,9 @@ struct timetable {
 
   // Trip index -> trip name
   vector_map<trip_idx_t, translation_idx_t> trip_short_names_;
+
+  // Trip index -> trip name display type
+  vector_map<trip_idx_t, display_type> trip_short_names_display_;
 
   // Trip index -> display name
   vector_map<trip_idx_t, translation_idx_t> trip_display_names_;
