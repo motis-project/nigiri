@@ -194,35 +194,37 @@ void add_non_uturn_transfers(timetable const& tt,
   auto const prev_src_stop =
       stop{tt.route_location_seq_[route_from][from_stop_idx - 1]};
   auto const prev_src = stop_location(tt, prf_idx, prev_src_stop);
-  for_each_route_at(tt, prf_idx, fp.target(), [&](route_idx_t const route_to) {
-    auto const stop_seq_to = tt.route_location_seq_[route_to];
-    for (auto j = 0U; j < stop_seq_to.size() - 1; ++j) {
-      auto const target_stop = stop{stop_seq_to[j]};
-      if (stop_location(tt, prf_idx, target_stop) != fp.target() ||
-          !target_stop.in_allowed()) {
-        continue;
-      }
+  for_each_route_at(
+      tt, prf_idx, fp.target(),
+      [&](location_idx_t const c, route_idx_t const route_to) {
+        auto const stop_seq_to = tt.route_location_seq_[route_to];
+        for (auto j = 0U; j < stop_seq_to.size() - 1; ++j) {
+          auto const target_stop = stop{stop_seq_to[j]};
+          if (target_stop.location_idx() != c || !target_stop.in_allowed()) {
+            continue;
+          }
 
-      auto const next_tgt_stop = stop{stop_seq_to[j + 1]};
-      auto const next_tgt = stop_location(tt, prf_idx, next_tgt_stop);
+          auto const next_tgt_stop = stop{stop_seq_to[j + 1]};
+          auto const next_tgt = stop_location(tt, prf_idx, next_tgt_stop);
 
-      auto const is_uturn_target_route_terminates =
-          j + 1 == stop_seq_to.size() - 1 && prev_src == next_tgt &&
-          prev_src_stop.out_allowed();
+          auto const is_uturn_target_route_terminates =
+              j + 1 == stop_seq_to.size() - 1 && prev_src == next_tgt &&
+              prev_src_stop.out_allowed();
 
-      auto const is_uturn =
-          prev_src == next_tgt && prev_src_stop.out_allowed() &&
-          next_tgt_stop.in_allowed() &&
-          tt.locations_.transfer_time_[project(tt, prf_idx, prev_src)] <=
-              fp.duration();
+          auto const is_uturn =
+              prev_src == next_tgt && prev_src_stop.out_allowed() &&
+              next_tgt_stop.in_allowed() &&
+              tt.locations_.transfer_time_[project(tt, prf_idx, prev_src)] <=
+                  fp.duration();
 
-      if (!is_uturn && !is_uturn_target_route_terminates) {
-        neighborhood.emplace_back(from_stop_idx, route_to, j, fp.duration());
-      } else {
-        ++stats.n_uturn_transfers_;
-      }
-    }
-  });
+          if (!is_uturn && !is_uturn_target_route_terminates) {
+            neighborhood.emplace_back(from_stop_idx, route_to, j,
+                                      fp.duration());
+          } else {
+            ++stats.n_uturn_transfers_;
+          }
+        }
+      });
 }
 
 void get_route_neighborhood(timetable const& tt,

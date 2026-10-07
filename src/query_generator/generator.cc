@@ -227,8 +227,9 @@ std::optional<location_idx_t> generator::random_location(
 
 route_idx_t generator::random_route(location_idx_t const loc_idx) {
   auto routes = std::vector<route_idx_t>{};
-  for_each_route_at_stop(tt_, loc_idx,
-                         [&](route_idx_t const r) { routes.push_back(r); });
+  for_each_route_at_stop(
+      tt_, loc_idx,
+      [&](location_idx_t, route_idx_t const r) { routes.push_back(r); });
   auto routes_d =
       std::uniform_int_distribution<std::size_t>{0U, routes.size() - 1U};
   return routes[routes_d(rng_)];
@@ -334,36 +335,38 @@ bool generator::arr_in_itv(transport_idx_t const tpt_idx,
 bool generator::is_active_dest(location_idx_t const loc,
                                interval<nigiri::unixtime_t> const& itv) const {
   auto is_active = false;
-  for_each_route_at_stop(tt_, loc, [&](route_idx_t const route_idx) {
-    if (is_active) {
-      return;
-    }
-    auto const& loc_seq = tt_.route_location_seq_[route_idx];
-    for (auto const tpt_idx : tt_.route_transport_ranges_[route_idx]) {
-      for (auto stp_idx = stop_idx_t{1U}; stp_idx != loc_seq.size();
-           ++stp_idx) {
-        auto const stp = stop{loc_seq[stp_idx]};
-        if (stp.out_allowed() && tt_.base(stp.location_idx()) == loc &&
-            arr_in_itv(tpt_idx, stp_idx, itv)) {
-          is_active = true;
+  for_each_route_at_stop(
+      tt_, loc, [&](location_idx_t const c, route_idx_t const route_idx) {
+        if (is_active) {
           return;
         }
-      }
-    }
-  });
+        auto const& loc_seq = tt_.route_location_seq_[route_idx];
+        for (auto const tpt_idx : tt_.route_transport_ranges_[route_idx]) {
+          for (auto stp_idx = stop_idx_t{1U}; stp_idx != loc_seq.size();
+               ++stp_idx) {
+            auto const stp = stop{loc_seq[stp_idx]};
+            if (stp.out_allowed() && stp.location_idx() == c &&
+                arr_in_itv(tpt_idx, stp_idx, itv)) {
+              is_active = true;
+              return;
+            }
+          }
+        }
+      });
   return is_active;
 }
 
 double generator::n_events(location_idx_t const l) const {
   auto n = 0.0;
-  for_each_route_at_stop(tt_, l, [&](route_idx_t const r) {
-    auto n_stops = 0U;
-    for (auto const s : tt_.route_location_seq_[r]) {
-      n_stops += tt_.base(stop{s}.location_idx()) == l ? 1U : 0U;
-    }
-    n += static_cast<double>(n_stops) *
-         static_cast<double>(tt_.route_transport_ranges_[r].size());
-  });
+  for_each_route_at_stop(
+      tt_, l, [&](location_idx_t const c, route_idx_t const r) {
+        auto n_stops = 0U;
+        for (auto const s : tt_.route_location_seq_[r]) {
+          n_stops += stop{s}.location_idx() == c ? 1U : 0U;
+        }
+        n += static_cast<double>(n_stops) *
+             static_cast<double>(tt_.route_transport_ranges_[r].size());
+      });
   return n;
 }
 

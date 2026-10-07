@@ -1,9 +1,7 @@
 #pragma once
 
 #include <span>
-#include <vector>
 
-#include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
 
 #include "nigiri/for_each_meta.h"
@@ -25,16 +23,12 @@ template <typename Fn>
 void for_each_route_at_stop(timetable const& tt,
                             location_idx_t const l,
                             Fn&& fn) {
-  auto routes = std::vector<route_idx_t>{};
-  routing::for_each_meta(
-      tt, routing::location_match_mode::kExact, l, [&](location_idx_t const c) {
-        routes.insert(end(routes), begin(tt.location_routes_[c]),
-                      end(tt.location_routes_[c]));
-      });
-  utl::erase_duplicates(routes);
-  for (auto const r : routes) {
-    fn(r);
-  }
+  routing::for_each_meta(tt, routing::location_match_mode::kExact, l,
+                         [&](location_idx_t const c) {
+                           for (auto const r : tt.location_routes_[c]) {
+                             fn(c, r);
+                           }
+                         });
 }
 
 template <typename Fn>
@@ -46,19 +40,18 @@ void for_each_route_at(timetable const& tt,
     for_each_route_at_stop(tt, l, fn);
   } else {
     for (auto const r : tt.location_routes_[l]) {
-      fn(r);
+      fn(l, r);
     }
   }
 }
 
 template <typename Pred>
 bool any_route_at(timetable const& tt, location_idx_t const l, Pred&& pred) {
-  auto has_match = false;
-  routing::for_each_meta(
-      tt, routing::location_match_mode::kExact, l, [&](location_idx_t const c) {
-        has_match = has_match || utl::any_of(tt.location_routes_[c], pred);
-      });
-  return has_match;
+  return utl::any_of(tt.location_routes_[l], pred) ||
+         utl::any_of(tt.locations_.children_[l], [&](location_idx_t const c) {
+           return tt.locations_.is_virt(c) &&
+                  utl::any_of(tt.location_routes_[c], pred);
+         });
 }
 
 inline bool has_routes(timetable const& tt, location_idx_t const l) {

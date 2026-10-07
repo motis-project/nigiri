@@ -57,27 +57,29 @@ query_engine<UseLowerBounds>::query_engine(
   auto const prf = state_.tbd_.prf_idx_;
   auto const mark_dest_segments = [&](location_idx_t const l,
                                       duration_t const d) {
-    for_each_route_at(tt_, prf, l, [&](route_idx_t const r) {
-      auto const stop_seq = tt_.route_location_seq_[r];
-      for (auto i = stop_idx_t{1U}; i != stop_seq.size(); ++i) {
-        auto const stp = stop{stop_seq[i]};
-        if (project(tt_, prf, stp.location_idx()) != l || !stp.out_allowed()) {
-          continue;
-        }
+    for_each_route_at(
+        tt_, prf, l, [&](location_idx_t const c, route_idx_t const r) {
+          auto const stop_seq = tt_.route_location_seq_[r];
+          for (auto i = stop_idx_t{1U}; i != stop_seq.size(); ++i) {
+            auto const stp = stop{stop_seq[i]};
+            if (stp.location_idx() != c || !stp.out_allowed()) {
+              continue;
+            }
 
-        for (auto const t : tt_.route_transport_ranges_[r]) {
-          auto const segment = state_.tbd_.transport_first_segment_[t] + i - 1;
-          state_.end_reachable_.set(segment, true);
+            for (auto const t : tt_.route_transport_ranges_[r]) {
+              auto const segment =
+                  state_.tbd_.transport_first_segment_[t] + i - 1;
+              state_.end_reachable_.set(segment, true);
 
-          auto const it = state_.dist_to_dest_.find(segment);
-          if (it == end(state_.dist_to_dest_)) {
-            state_.dist_to_dest_.emplace_hint(it, segment, d);
-          } else {
-            it->second = std::min(it->second, d);
+              auto const it = state_.dist_to_dest_.find(segment);
+              if (it == end(state_.dist_to_dest_)) {
+                state_.dist_to_dest_.emplace_hint(it, segment, d);
+              } else {
+                it->second = std::min(it->second, d);
+              }
+            }
           }
-        }
-      }
-    });
+        });
   };
 
   if (dist_to_dest.empty()) /* Destination is stop. */ {
@@ -237,35 +239,36 @@ void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
                                              unixtime_t const t) {
   auto const [day, mam] = tt_.day_idx_mam(t);
   auto const prf = state_.tbd_.prf_idx_;
-  for_each_route_at(tt_, prf, l, [&](route_idx_t const r) {
-    // iterate stop sequence of route, skip last stop
-    auto const stop_seq = tt_.route_location_seq_[r];
-    for (auto i = stop_idx_t{0U}; i < stop_seq.size() - 1; ++i) {
-      auto const stp = stop{stop_seq[i]};
-      if (!stp.in_allowed() || project(tt_, prf, stp.location_idx()) != l) {
-        continue;
-      }
+  for_each_route_at(
+      tt_, prf, l, [&](location_idx_t const c, route_idx_t const r) {
+        // iterate stop sequence of route, skip last stop
+        auto const stop_seq = tt_.route_location_seq_[r];
+        for (auto i = stop_idx_t{0U}; i < stop_seq.size() - 1; ++i) {
+          auto const stp = stop{stop_seq[i]};
+          if (!stp.in_allowed() || stp.location_idx() != c) {
+            continue;
+          }
 
-      auto const et = get_earliest_transport<direction::kForward>(
-          tt_, tt_, 0U, r, i, day, mam, stp.location_idx(),
-          [](day_idx_t, std::int16_t) { return false; });
-      if (!et.is_valid()) {
-        continue;
-      }
+          auto const et = get_earliest_transport<direction::kForward>(
+              tt_, tt_, 0U, r, i, day, mam, stp.location_idx(),
+              [](day_idx_t, std::int16_t) { return false; });
+          if (!et.is_valid()) {
+            continue;
+          }
 
-      auto const query_day_offset = to_idx(et.day_) - to_idx(base_);
-      if (query_day_offset < 0 || query_day_offset >= kTBMaxDayOffset) {
-        continue;
-      }
+          auto const query_day_offset = to_idx(et.day_) - to_idx(base_);
+          if (query_day_offset < 0 || query_day_offset >= kTBMaxDayOffset) {
+            continue;
+          }
 
-      auto const transport_first_segment =
-          state_.tbd_.transport_first_segment_[et.t_idx_];
-      state_.q_n_.initial_enqueue(
-          state_.tbd_, transport_first_segment, transport_first_segment + i, r,
-          et.t_idx_, static_cast<query_day_offset_t>(query_day_offset), et.day_,
-          stats_.max_pareto_set_size_);
-    }
-  });
+          auto const transport_first_segment =
+              state_.tbd_.transport_first_segment_[et.t_idx_];
+          state_.q_n_.initial_enqueue(
+              state_.tbd_, transport_first_segment, transport_first_segment + i,
+              r, et.t_idx_, static_cast<query_day_offset_t>(query_day_offset),
+              et.day_, stats_.max_pareto_set_size_);
+        }
+      });
 }
 
 template <bool UseLowerBounds>
