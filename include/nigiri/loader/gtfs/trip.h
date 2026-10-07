@@ -143,6 +143,9 @@ struct trip_data {
   hash_map<std::string, gtfs_trip_idx_t> trips_;
   hash_map<std::string, std::unique_ptr<block>> blocks_;
   vector_map<gtfs_trip_idx_t, trip> data_;
+  hash_map<pair<gtfs_trip_idx_t, gtfs_trip_idx_t>, location_idx_t>
+      handover_stops_;
+  hash_set<pair<gtfs_trip_idx_t, gtfs_trip_idx_t>> no_stay_seated_;
 };
 
 enum class interpolate_result { kOk, kErrorLastMissing, kErrorFirstMissing };

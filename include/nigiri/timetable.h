@@ -18,6 +18,7 @@
 #include "nigiri/stop.h"
 #include "nigiri/string_store.h"
 #include "nigiri/td_footpath.h"
+#include "nigiri/transfer_rules.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -59,6 +60,28 @@ struct location_id_equals {
 
 struct timetable {
   struct locations {
+    bool is_virt(location_idx_t const l) const {
+      return types_[l] == location_type::kVirt;
+    }
+
+    location_idx_t get_base_idx(location_idx_t const l) const {
+      return is_virt(l) ? parents_[l] : l;
+    }
+
+    bool is_self_or_parent(location_idx_t const stop,
+                           location_idx_t const l) const {
+      return stop == l || parents_[l] == stop;
+    }
+
+    template <typename Fn>
+    void for_each_virt(location_idx_t const l, Fn&& fn) const {
+      for (auto const c : children_[l]) {
+        if (is_virt(c)) {
+          fn(c);
+        }
+      }
+    }
+
     location_idx_t get_root_idx(location_idx_t const idx) const {
       auto l = idx;
       auto i = 0;
@@ -93,13 +116,21 @@ struct timetable {
     mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_in_;
     vector_map<location_idx_t, std::uint32_t> location_importance_;
     std::uint32_t max_importance_{0U};
     rtree<location_idx_t> rtree_;
     bitvec_map<location_idx_t> ticketing_unavailable_;
+
+    mutable_fws_multimap<location_idx_t, preferred_transfer>
+        preferred_transfers_;
+
+    array<vecvec<hub_idx_t, location_idx_t>, kNProfiles> hub_in_;
+    array<vecvec<hub_idx_t, location_idx_t>, kNProfiles> hub_out_;
+    array<vector_map<hub_idx_t, duration_t>, kNProfiles> hub_time_;
+    array<vecvec<location_idx_t, hub_idx_t>, kNProfiles> hub_in_by_loc_;
+    array<vecvec<location_idx_t, hub_idx_t>, kNProfiles> hub_out_by_loc_;
   } locations_;
 
   struct transport {
@@ -216,6 +247,10 @@ struct timetable {
 
   cista::base_t<location_idx_t> n_locations() const {
     return locations_.names_.size();
+  }
+
+  location_idx_t base(location_idx_t const l) const {
+    return locations_.get_base_idx(l);
   }
 
   cista::base_t<route_idx_t> n_routes() const {
@@ -417,6 +452,8 @@ struct timetable {
   vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
   vecvec<transport_idx_t, translation_idx_t> transport_section_directions_;
 
+  transfer_rules transfer_rules_;
+
   // Lower bound graph.
   std::array<vecvec<location_idx_t, footpath>, kNProfiles> fwd_search_lb_graph_;
   std::array<vecvec<location_idx_t, footpath>, kNProfiles> bwd_search_lb_graph_;
@@ -489,17 +526,36 @@ struct loc {
   location_idx_t l_;
 };
 
-inline auto format_as(loc const& l)
-    -> std::pair<std::string_view, std::string_view> {
-  if (l.l_ == location_idx_t::invalid()) {
-    return {};
-  }
-  return {l.tt_.get_default_name(l.l_), l.tt_.locations_.ids_[l.l_].view()};
-}
-
 inline std::ostream& operator<<(std::ostream& out, loc const& l) {
-  auto const [id, name] = format_as(l);
-  return out << '(' << id << ", " << name << ')';
+  if (l.l_ == location_idx_t::invalid()) {
+    return out << "(, )";
+  }
+  if (to_idx(l.l_) >= l.tt_.n_locations()) {
+    return out << "(, rt " << to_idx(l.l_) << ')';
+  }
+  auto const& locations = l.tt_.locations_;
+  return out << '(' << l.tt_.get_default_name(l.l_) << ", "
+             << (locations.is_virt(l.l_) ? "V#" : "")
+             << locations.ids_[l.tt_.base(l.l_)].view() << ')';
 }
 
 }  // namespace nigiri
+
+template <>
+struct fmt::formatter<nigiri::loc> {
+  constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
+
+  auto format(nigiri::loc const& l, fmt::format_context& ctx) const {
+    if (l.l_ == nigiri::location_idx_t::invalid()) {
+      return fmt::format_to(ctx.out(), "(\"\", \"\")");
+    }
+    if (to_idx(l.l_) >= l.tt_.n_locations()) {
+      return fmt::format_to(ctx.out(), "(\"\", \"rt {}\")", to_idx(l.l_));
+    }
+    auto const& locations = l.tt_.locations_;
+    return fmt::format_to(ctx.out(), "({:?}, \"{}{}\")",
+                          l.tt_.get_default_name(l.l_),
+                          locations.is_virt(l.l_) ? "V#" : "",
+                          locations.ids_[l.tt_.base(l.l_)].view());
+  }
+};

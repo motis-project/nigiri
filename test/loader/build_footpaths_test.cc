@@ -14,9 +14,9 @@ using namespace std::string_view_literals;
 
 namespace {
 
-// ROUTING CONNECTIONS:
-// 10:00 - 11:00 A-C    airplane direct
-// 10:00 - 12:00 A-B-C  train, one transfer
+// Footpaths are the transfers.txt rows in the direction they are stated:
+// B->A and B->C exist, A->B does not. There is no transitive closure either:
+// A and C stay unconnected although both connect to B.
 constexpr auto const test_files = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -76,7 +76,7 @@ service_id,date,exception_type
 
 # transfers.txt
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
-A,B,2,180
+A,B,2,60
 B,X,2,300
 P,Q,2,300
 Q,P,2,300
@@ -105,33 +105,29 @@ TEST(loader, build_footpaths) {
     }
   }
 
-  EXPECT_EQ(R"((A, A)
-  00:03.0->(B, B)
-  00:06.0->(C, C)
-(B, B)
+  EXPECT_EQ(R"((B, B)
   00:03.0->(A, A)
-  00:03.0->(C, C)
+  00:05.0->(C, C)
 (C, C)
   00:03.0->(B, B)
-  00:06.0->(A, A)
 )"sv,
             ss.str());
 }
 
 // A 5 minute "transfer" between stops 300km apart is not walkable. It has to
 // be dropped - writing it with its input duration teleports passengers across
-// the map. Covers both the transitive closure (A/B/X form one component) and
-// the two node shortcut (P/Q).
+// the map. A transfer shorter than the walk (1 min for 222 m) is raised to the
+// walking time.
 TEST(loader, build_footpaths_drop_unwalkable) {
   auto tt = timetable{};
 
   tt.date_range_ = {date::sys_days{2024_y / March / 1},
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({.default_tz_ = "Europe/Berlin"},
-                               source_idx_t{0},
-                               loader::mem_dir::read(unwalkable_files), tt);
-  loader::finalize(tt, /* adjust_footpaths */ true);
+  loader::gtfs::load_timetable(
+      {.adjust_footpaths_ = true, .default_tz_ = "Europe/Berlin"},
+      source_idx_t{0}, loader::mem_dir::read(unwalkable_files), tt);
+  loader::finalize(tt);
 
   auto ss = std::stringstream{};
   for (auto const [i, x] : utl::enumerate(tt.locations_.footpaths_out_[0])) {
@@ -144,9 +140,7 @@ TEST(loader, build_footpaths_drop_unwalkable) {
   }
 
   EXPECT_EQ(R"((A, A)
-  00:03.0->(B, B)
-(B, B)
-  00:03.0->(A, A)
+  00:02.0->(B, B)
 )"sv,
             ss.str());
 }

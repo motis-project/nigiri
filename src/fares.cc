@@ -44,8 +44,9 @@ struct leg_group {
   leg_group_idx_t g_;
 };
 
-struct transfer_rule {
-  friend std::ostream& operator<<(std::ostream& out, transfer_rule const& x) {
+struct fare_transfer_rule {
+  friend std::ostream& operator<<(std::ostream& out,
+                                  fare_transfer_rule const& x) {
     auto const& [tt, f, r] = x;
     return out << "(transfer_type=" << r.fare_transfer_type_
                << ", from_leg_group=" << leg_group{tt, f, r.from_leg_group_}
@@ -152,7 +153,7 @@ template <>
 struct fmt::formatter<nigiri::leg_rule> : ostream_formatter {};
 
 template <>
-struct fmt::formatter<nigiri::transfer_rule> : ostream_formatter {};
+struct fmt::formatter<nigiri::fare_transfer_rule> : ostream_formatter {};
 
 template <>
 struct fmt::formatter<nigiri::journey_leg> : ostream_formatter {};

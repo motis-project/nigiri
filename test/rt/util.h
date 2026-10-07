@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -35,6 +36,32 @@ std::uint64_t to_unix(T&& x) {
           .time_since_epoch()
           .count());
 };
+
+// One stop time update, stated the way real feeds do it.
+struct stu {
+  unsigned seq_;
+  std::string stop_id_;  // the scheduled stop id
+  std::optional<std::string> assigned_{};  // track change
+  std::optional<int> arr_delay_{};  // minutes
+  std::optional<int> dep_delay_{};  // minutes
+  bool has_seq_{true};
+  bool has_stop_id_{true};
+  // Track change stated the old way: stop_id differs from the schedule and
+  // there is no stop_time_properties.
+  bool is_assigned_as_stop_id_{false};
+  bool is_skipped_{false};
+};
+
+struct trip_update {
+  std::string trip_id_;
+  std::vector<stu> stus_;
+};
+
+// One trip update per entry; start_date goes into every trip descriptor.
+transit_realtime::FeedMessage to_msg(
+    std::vector<trip_update> const&,
+    date::sys_seconds msg_time,
+    std::optional<std::string> const& start_date = std::nullopt);
 
 transit_realtime::FeedMessage to_feed_msg(std::vector<trip> const& trip_delays,
                                           date::sys_seconds const msg_time);

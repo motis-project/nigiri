@@ -1,7 +1,12 @@
 #include "gtest/gtest.h"
 
+#include <string_view>
+#include <vector>
+
+#include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/transfer_rules.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/common/parse_time.h"
 #include "nigiri/footpath.h"
@@ -9,7 +14,8 @@
 #include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/types.h"
-#include <string_view>
+
+#include "../transfer_rules_util.h"
 
 using namespace nigiri;
 using namespace date;
@@ -40,10 +46,6 @@ timetable load_timetable(std::string_view s) {
 
 location_idx_t loc_idx(timetable const& tt, std::string_view const id) {
   return tt.find(location_id{id, source_idx_t{0}}).value();
-}
-
-unixtime_t time(std::string_view const time) {
-  return parse_time_tz(time, "%Y-%m-%d %H:%M %Z");
 }
 
 constexpr auto const test_files_1 = R"(
@@ -114,20 +116,18 @@ leg 1: (A, A) [2019-05-01 08:10] -> (C, C) [2019-05-01 08:15]
 
   auto journey = routing::journey{};
   journey.transfers_ = 0U;
-  journey.start_time_ = time("2019-05-01 10:00 Europe/Berlin");
-  journey.dest_time_ = time("2019-05-01 10:15 Europe/Berlin");
+  journey.start_time_ = test::at("10:00");
+  journey.dest_time_ = test::at("10:15");
 
   // Start -> A
   journey.add(routing::journey::leg{
       direction::kForward, get_special_station(special_station::kStart), A,
-      time("2019-05-01 10:00 Europe/Berlin"),
-      time("2019-05-01 10:10 Europe/Berlin"),
+      test::at("10:00"), test::at("10:10"),
       routing::offset{A, 10_minutes, 0U}});
 
   // A -> B -> C
   journey.add(routing::journey::leg{
-      direction::kForward, A, C, time("2019-05-01 10:10 Europe/Berlin"),
-      time("2019-05-01 10:15 Europe/Berlin"),
+      direction::kForward, A, C, test::at("10:10"), test::at("10:15"),
       routing::journey::run_enter_exit{
           {
               .t_ = {transport_idx_t{0U}, day_idx_t{5U}},
@@ -165,13 +165,12 @@ leg 1: (C, C) [2019-05-01 08:15] -> (END, END) [2019-05-01 08:25]
 
   auto journey = routing::journey{};
   journey.transfers_ = 0U;
-  journey.start_time_ = time("2019-05-01 10:10 Europe/Berlin");
-  journey.dest_time_ = time("2019-05-01 10:25 Europe/Berlin");
+  journey.start_time_ = test::at("10:10");
+  journey.dest_time_ = test::at("10:25");
 
   // A -> B -> C
   journey.add(routing::journey::leg{
-      direction::kForward, A, C, time("2019-05-01 10:10 Europe/Berlin"),
-      time("2019-05-01 10:15 Europe/Berlin"),
+      direction::kForward, A, C, test::at("10:10"), test::at("10:15"),
       routing::journey::run_enter_exit{
           {
               .t_ = {transport_idx_t{0U}, day_idx_t{5U}},
@@ -183,8 +182,7 @@ leg 1: (C, C) [2019-05-01 08:15] -> (END, END) [2019-05-01 08:25]
   // C -> END
   journey.add(routing::journey::leg{
       direction::kForward, C, get_special_station(special_station::kEnd),
-      time("2019-05-01 10:15 Europe/Berlin"),
-      time("2019-05-01 10:25 Europe/Berlin"),
+      test::at("10:15"), test::at("10:25"),
       routing::offset{get_special_station(special_station::kEnd), 10_minutes,
                       0U}});
 
@@ -226,13 +224,12 @@ leg 2: (C, C) [2019-05-01 08:17] -> (E, E) [2019-05-01 08:40]
 
   auto journey = routing::journey{};
   journey.transfers_ = 1U;
-  journey.start_time_ = time("2019-05-01 10:10 Europe/Berlin");
-  journey.dest_time_ = time("2019-05-01 10:40 Europe/Berlin");
+  journey.start_time_ = test::at("10:10");
+  journey.dest_time_ = test::at("10:40");
 
   // A -> B -> C
   journey.add(routing::journey::leg{
-      direction::kForward, A, C, time("2019-05-01 10:10 Europe/Berlin"),
-      time("2019-05-01 10:15 Europe/Berlin"),
+      direction::kForward, A, C, test::at("10:10"), test::at("10:15"),
       routing::journey::run_enter_exit{
           {
               .t_ = {transport_idx_t{0U}, day_idx_t{5U}},
@@ -242,14 +239,13 @@ leg 2: (C, C) [2019-05-01 08:17] -> (E, E) [2019-05-01 08:40]
           2}});
 
   // Transfer C
-  journey.add(routing::journey::leg{
-      direction::kForward, C, C, time("2019-05-01 10:15 Europe/Berlin"),
-      time("2019-05-01 10:17 Europe/Berlin"), footpath{C, 2_minutes}});
+  journey.add(routing::journey::leg{direction::kForward, C, C,
+                                    test::at("10:15"), test::at("10:17"),
+                                    footpath{C, 2_minutes}});
 
   // C -> D -> E
   journey.add(routing::journey::leg{
-      direction::kForward, C, E, time("2019-05-01 10:17 Europe/Berlin"),
-      time("2019-05-01 10:40 Europe/Berlin"),
+      direction::kForward, C, E, test::at("10:17"), test::at("10:40"),
       routing::journey::run_enter_exit{
           {
               .t_ = {transport_idx_t{1U}, day_idx_t{5U}},
@@ -260,4 +256,131 @@ leg 2: (C, C) [2019-05-01 08:17] -> (E, E) [2019-05-01 08:40]
 
   optimize_footpaths(tt, nullptr, q, journey);
   EXPECT_EQ(expected_optimize_transfers, print_journey(tt, journey));
+}
+
+// Stops far apart: no walks between them, only the hubs added below.
+std::string test_files_2() {
+  return test::feed(
+      {{"A", 0.0, 0.0},
+       {"B", 1.0, 0.0},
+       {"C", 2.0, 0.0},
+       {"G", 3.0, 0.0},
+       {"D", 4.0, 0.0},
+       {"E", 5.0, 0.0},
+       {"F", 6.0, 0.0},
+       {"S", 7.0, 0.0},
+       {"Z", 8.0, 0.0}},
+      {{"T0",
+        "R0",
+        {{"A", "10:00"}, {"B", "10:10"}, {"C", "10:20"}, {"G", "10:30"}}},
+       {"T1", "R1", {{"D", "10:15"}, {"E", "10:25"}, {"F", "10:40"}}}},
+      "C,E,2,300,,,,\n");
+}
+
+// Appends the hub u -> v at d for every u in `in` and v in `out` to the
+// default profile.
+void add_hub(timetable& tt,
+             std::vector<location_idx_t> const& in,
+             std::vector<location_idx_t> const& out,
+             duration_t const d) {
+  loader::add_hub(tt, in, out, d);
+  loader::index_hubs(tt);
+}
+
+// Two hubs state u -> v, the slower one first: a hub only has to leave out
+// the pairs stated slower elsewhere, so a pair can be in a slow and a fast
+// hub. The transfer is the faster one.
+void add_slow_and_fast_hub(timetable& tt,
+                           location_idx_t const u,
+                           location_idx_t const v) {
+  add_hub(tt, {u}, {v}, 10_minutes);
+  add_hub(tt, {u}, {v}, 3_minutes);
+}
+
+routing::journey::run_enter_exit ride(std::uint32_t const t,
+                                      stop_idx_t const from,
+                                      stop_idx_t const to) {
+  return {{.t_ = {transport_idx_t{t}, day_idx_t{5U}},
+           .stop_range_ = interval<stop_idx_t>{from, to}},
+          from,
+          static_cast<stop_idx_t>(to - 1U)};
+}
+
+TEST(routing, optimize_initial_start_footpath_takes_shortest_transfer) {
+  auto tt = load_timetable(test_files_2());
+  auto const S = loc_idx(tt, "S");
+  auto const B = loc_idx(tt, "B");
+  auto const C = loc_idx(tt, "C");
+  auto const G = loc_idx(tt, "G");
+  add_slow_and_fast_hub(tt, S, B);
+
+  auto j = routing::journey{};
+  j.start_time_ = test::at("10:00");
+  j.dest_time_ = test::at("10:30");
+  j.add(routing::journey::leg{direction::kForward, S, C, test::at("10:00"),
+                              test::at("10:20"), footpath{C, 20_minutes}});
+  j.add(routing::journey::leg{direction::kForward, C, G, test::at("10:20"),
+                              test::at("10:30"), ride(0U, 2U, 4U)});
+
+  optimize_footpaths(tt, nullptr, routing::query{}, j);
+
+  ASSERT_EQ(2U, j.legs_.size());
+  EXPECT_EQ(B, j.legs_[0].to_);
+  EXPECT_EQ(3_minutes, get<footpath>(j.legs_[0].uses_).duration());
+  EXPECT_EQ(test::at("10:07"), j.legs_[0].dep_time_);
+}
+
+TEST(routing, optimize_final_egress_footpath_takes_shortest_transfer) {
+  auto tt = load_timetable(test_files_2());
+  auto const A = loc_idx(tt, "A");
+  auto const B = loc_idx(tt, "B");
+  auto const G = loc_idx(tt, "G");
+  auto const Z = loc_idx(tt, "Z");
+  add_slow_and_fast_hub(tt, B, Z);
+
+  auto j = routing::journey{};
+  j.start_time_ = test::at("10:00");
+  j.dest_time_ = test::at("10:50");
+  j.add(routing::journey::leg{direction::kForward, A, G, test::at("10:00"),
+                              test::at("10:30"), ride(0U, 0U, 4U)});
+  j.add(routing::journey::leg{direction::kForward, G, Z, test::at("10:30"),
+                              test::at("10:50"), footpath{Z, 20_minutes}});
+
+  optimize_footpaths(tt, nullptr, routing::query{}, j);
+
+  ASSERT_EQ(2U, j.legs_.size());
+  EXPECT_EQ(B, j.legs_[1].from_);
+  EXPECT_EQ(3_minutes, get<footpath>(j.legs_[1].uses_).duration());
+  EXPECT_EQ(test::at("10:13"), j.legs_[1].arr_time_);
+}
+
+TEST(routing, optimize_transfers_takes_shortest_transfer) {
+  auto tt = load_timetable(test_files_2());
+  auto const A = loc_idx(tt, "A");
+  auto const B = loc_idx(tt, "B");
+  auto const C = loc_idx(tt, "C");
+  auto const D = loc_idx(tt, "D");
+  auto const E = loc_idx(tt, "E");
+  auto const F = loc_idx(tt, "F");
+  add_slow_and_fast_hub(tt, B, D);
+
+  // Only the fast hub fits between B (10:10) and D (10:15), and it beats
+  // the rule transfer C -> E.
+  auto j = routing::journey{};
+  j.start_time_ = test::at("10:00");
+  j.dest_time_ = test::at("10:40");
+  j.transfers_ = 1U;
+  j.add(routing::journey::leg{direction::kForward, A, C, test::at("10:00"),
+                              test::at("10:20"), ride(0U, 0U, 3U)});
+  j.add(routing::journey::leg{direction::kForward, C, E, test::at("10:20"),
+                              test::at("10:25"), footpath{E, 5_minutes}});
+  j.add(routing::journey::leg{direction::kForward, E, F, test::at("10:25"),
+                              test::at("10:40"), ride(1U, 1U, 3U)});
+
+  optimize_footpaths(tt, nullptr, routing::query{}, j);
+
+  ASSERT_EQ(3U, j.legs_.size());
+  EXPECT_EQ(B, j.legs_[1].from_);
+  EXPECT_EQ(D, j.legs_[1].to_);
+  EXPECT_EQ(3_minutes, get<footpath>(j.legs_[1].uses_).duration());
 }

@@ -9,14 +9,31 @@
 #include "utl/overloaded.h"
 #include "utl/sorted_diff.h"
 
+#include "nigiri/common/merge_sorted.h"
 #include "nigiri/for_each_meta.h"
+#include "nigiri/location_routes.h"
+#include "nigiri/routing/raptor/reconstruct.h"
+#include "nigiri/routing/transfers.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/rt/rt_transfer_rules.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/td_footpath.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::routing {
+
+template <typename Fn>
+void for_each_access(timetable const& tt,
+                     location_match_mode const mode,
+                     location_idx_t const l,
+                     Fn&& fn) {
+  if (mode == location_match_mode::kExact) {
+    fn(l);
+  } else {
+    for_each_meta(tt, mode, l, std::forward<Fn>(fn));
+  }
+}
 
 std::optional<journey::leg> lookup_offset(location_idx_t const loc,
                                           unixtime_t const t,
@@ -81,9 +98,11 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
       is_boarding ? direction::kBackward : direction::kForward;
 
   // best_dur includes waiting for a time-dependent footpath to become usable
-  // (e.g. an elevator out of service), best_walk does not.
+  // (e.g. an elevator out of service), best_walk does not. best_raw is the
+  // footpath duration without transfer time settings.
   auto best_dur = footpath::kMaxDuration;
   auto best_walk = footpath::kMaxDuration;
+  auto best_raw = footpath::kMaxDuration;
   auto best_source = location_idx_t{};
 
   // As in the search: footpaths from a source with td footpaths are
@@ -95,31 +114,28 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
 
   for (auto const& o : offs) {
     auto const o_duration = o.duration();
-    for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
+    for_each_access(tt, mode, o.target(), [&](location_idx_t const l) {
       // Direct match - boarding/alighting at the input loc itself.
-      if (l == loc && o_duration < best_dur) {
-        best_dur =
-            o_duration +
-            (mode == location_match_mode::kExact
-                 // kExact is used for transfers
-                 // -> respect reflexive transfer time
-                 ? adjusted_transfer_time(q.transfer_time_settings_,
-                                          tt.locations_.transfer_time_[l])
-                 // kIntermodal / kEquivalent: no transfer time access/egress
-                 : u8_minutes{0});
-        best_walk = best_dur;
-        best_source = o.target();
+      if (l == loc && mode != location_match_mode::kExact) {
+        if (o_duration < best_dur) {
+          best_dur = o_duration;
+          best_walk = o_duration;
+          best_raw = o_duration;
+          best_source = o.target();
+        }
+        return;
       }
 
-      if (!use_footpaths) {
+      if (l != loc && !use_footpaths) {
         return;
       }
 
       auto eff_dur = footpath::kMaxDuration;
       auto eff_walk = footpath::kMaxDuration;
+      auto eff_raw = footpath::kMaxDuration;
       auto const fp_from = is_boarding ? l : loc;
       auto const fp_to = is_boarding ? loc : l;
-      if (is_td_source(fp_from)) {
+      if (l != loc && is_td_source(fp_from)) {
         // td footpaths take precedence
         for_each_footpath(
             td_search_dir, rtt->td_footpaths_out_[q.prf_idx_][fp_from], t,
@@ -128,24 +144,15 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
               if (target == fp_to && duration < eff_dur) {
                 eff_dur = duration;
                 eff_walk = walk;
+                eff_raw = walk;
               }
             });
-      } else {
-        // no td footpath -> take shortest regular footpath
-        auto const& fps = is_boarding
-                              ? tt.locations_.footpaths_out_[q.prf_idx_][l]
-                              : tt.locations_.footpaths_in_[q.prf_idx_][l];
-        for (auto const& fp : fps) {
-          if (fp.target() != loc) {
-            continue;
-          }
-          auto const adj =
-              adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
-          if (adj < eff_dur) {
-            eff_dur = adj;
-            eff_walk = adj;
-          }
-        }
+      } else if (auto const raw =
+                     shortest_transfer(tt, rtt, q.prf_idx_, fp_from, fp_to);
+                 raw.has_value()) {
+        eff_dur = adjusted_transfer_time(q.transfer_time_settings_, *raw);
+        eff_walk = eff_dur;
+        eff_raw = *raw;
       }
 
       if (eff_dur >= footpath::kMaxDuration) {
@@ -155,6 +162,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
       if (total < best_dur) {
         best_dur = total;
         best_walk = o_duration + eff_walk;
+        best_raw = o_duration + eff_raw;
         best_source = o.target();
       }
     });
@@ -168,10 +176,10 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
   // after the walk when boarding, before it when alighting.
   auto const dep = is_boarding ? t - best_dur : t + best_dur - best_walk;
   auto const arr = is_boarding ? t - best_dur + best_walk : t + best_dur;
-  auto const from = is_boarding ? best_source : loc;
-  auto const to = is_boarding ? loc : best_source;
-  return journey::leg{direction::kForward,    from, to, dep, arr,
-                      footpath{to, best_walk}};
+  auto const from = rt::base(tt, rtt, is_boarding ? best_source : loc);
+  auto const to = rt::base(tt, rtt, is_boarding ? loc : best_source);
+  return journey::leg{direction::kForward,   from, to, dep, arr,
+                      footpath{to, best_raw}};
 }
 
 namespace {
@@ -221,18 +229,16 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
             ? nullptr
             : (is_boarding ? &rtt->td_footpaths_out_ : &rtt->td_footpaths_in_);
     for (auto const& o : offsets) {
-      for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
+      for_each_access(tt, mode, o.target(), [&](location_idx_t const l) {
         locs.insert(l);
         if (!use_footpaths) {
           return;
         }
 
-        auto const& fps = is_boarding
-                              ? tt.locations_.footpaths_out_[q.prf_idx_][l]
-                              : tt.locations_.footpaths_in_[q.prf_idx_][l];
-        for (auto const& fp : fps) {
-          locs.insert(fp.target());
-        }
+        for_each_transfer(
+            tt, rtt, q.prf_idx_,
+            is_boarding ? direction::kForward : direction::kBackward, l,
+            [&](footpath const fp) { locs.insert(fp.target()); });
 
         if (has_td_arr == nullptr || q.prf_idx_ >= has_td_arr->size() ||
             to_idx(l) >= (*has_td_arr)[q.prf_idx_].size() ||
@@ -274,23 +280,26 @@ bool sections_violate_constraints(
   return false;
 }
 
-std::vector<journey::leg> assemble_legs(journey::leg const& boarding_walk,
+std::vector<journey::leg> assemble_legs(timetable const& tt,
+                                        rt_timetable const* rtt,
+                                        journey::leg const& boarding_walk,
                                         journey::leg&& transit,
                                         journey::leg const& alighting_walk) {
   auto const drop_at_boundary = [](journey::leg const& l) {
     return std::holds_alternative<offset>(l.uses_) &&
            l.dep_time_ == l.arr_time_;
   };
-  auto legs = std::vector<journey::leg>{};
-  legs.reserve(3);
+  auto j = journey{};
+  j.legs_.reserve(3);
   if (!drop_at_boundary(boarding_walk)) {
-    legs.push_back(boarding_walk);
+    j.legs_.push_back(boarding_walk);
   }
-  legs.push_back(std::move(transit));
+  j.legs_.push_back(std::move(transit));
   if (!drop_at_boundary(alighting_walk)) {
-    legs.push_back(alighting_walk);
+    j.legs_.push_back(alighting_walk);
   }
-  return legs;
+  map_to_bases(tt, rtt, j);
+  return std::move(j.legs_);
 }
 
 template <direction Dir>
@@ -378,7 +387,7 @@ utl::generator<std::vector<journey::leg>> route_gen(
                                                        loc_seq.size())}}},
               boarding_idx, alighting_idx}};
 
-      co_yield assemble_legs(*boarding_walk, std::move(transit),
+      co_yield assemble_legs(tt, rtt, *boarding_walk, std::move(transit),
                              *alighting_walk);
     }
 
@@ -438,7 +447,8 @@ utl::generator<std::vector<journey::leg>> rt_gen(
                            .rt_ = rt_idx}},
           boarding_idx, alighting_idx}};
 
-  co_yield assemble_legs(*boarding_walk, std::move(transit), *alighting_walk);
+  co_yield assemble_legs(tt, &rtt, *boarding_walk, std::move(transit),
+                         *alighting_walk);
 }
 
 template <typename LocSeq, typename Fn>
@@ -478,14 +488,6 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
   auto flags = std::array{q.require_bike_transport_, q.require_car_transport_,
                           is_wheelchair, q.no_compulsory_reservation_};
 
-  auto const merge_sorted = [](auto& dst, auto const& src) {
-    auto const original_size = static_cast<int>(dst.size());
-    dst.resize(dst.size() + src.size());
-    std::copy(begin(src), end(src), begin(dst) + original_size);
-    std::inplace_merge(begin(dst), begin(dst) + original_size, end(dst));
-    dst.erase(std::unique(begin(dst), end(dst)), end(dst));
-  };
-
   // Storage for generators and their current head.
   auto gens = std::vector<utl::generator<std::vector<journey::leg>>>{};
   auto heads = std::vector<std::vector<journey::leg>>{};
@@ -505,10 +507,10 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
   auto from_routes = std::vector<route_idx_t>{};
   auto to_routes = std::vector<route_idx_t>{};
   for (auto const loc : boarding_locs) {
-    merge_sorted(from_routes, tt.location_routes_[loc]);
+    merge_sorted(from_routes, static_routes(tt, rtt, loc));
   }
   for (auto const loc : alighting_locs) {
-    merge_sorted(to_routes, tt.location_routes_[loc]);
+    merge_sorted(to_routes, static_routes(tt, rtt, loc));
   }
   utl::sorted_diff(
       from_routes, to_routes, std::less<route_idx_t>{},

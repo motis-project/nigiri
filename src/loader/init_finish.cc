@@ -5,7 +5,6 @@
 #include "geo/box.h"
 
 #include "nigiri/loader/build_footpaths.h"
-#include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/register.h"
 #include "nigiri/flex.h"
 #include "nigiri/special_stations.h"
@@ -38,6 +37,9 @@ void register_special_stations(timetable& tt) {
 
 void build_location_tree(timetable& tt) {
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    if (tt.locations_.is_virt(l)) {
+      continue;
+    }
     auto box = geo::box{};
     box.extend(tt.locations_.coordinates_[l]);
     tt.locations_.rtree_.insert(box.min_.lnglat_float(),
@@ -92,8 +94,7 @@ void assign_importance(timetable& tt) {
                                        /* Bus  */ 2,
                                        /* Ship  */ 10,
                                        /* Other  */ 1};
-    auto const p = tt.locations_.parents_[l];
-    auto& x = importance[p == location_idx_t::invalid() ? l : p];
+    auto& x = importance[tt.locations_.get_root_idx(l)];
     for (auto const [clasz, t_count] : utl::enumerate(transport_counts)) {
       x += prio[clasz] * static_cast<float>(t_count);
     }
@@ -199,6 +200,7 @@ void rebuild_route_traffic_days(timetable& tt) {
 
 void finalize(timetable& tt, finalize_options const opt) {
   tt.location_routes_.resize(tt.n_locations());
+  tt.location_location_groups_.resize(tt.n_locations());
 
   {
     auto const timer = scoped_timer{"loader.sort_trip_ids"};
@@ -221,8 +223,6 @@ void finalize(timetable& tt, finalize_options const opt) {
   }
   build_footpaths(tt, opt);
   rebuild_route_traffic_days(tt);
-  build_lb_graph<direction::kForward>(tt, kDefaultProfile);
-  build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
   build_location_tree(tt);
   assign_stops_to_flex_areas(tt);
   assign_importance(tt);
@@ -234,12 +234,11 @@ void finalize(timetable& tt, finalize_options const opt) {
 }
 
 void finalize(timetable& tt,
-              bool const adjust_footpaths,
               bool const merge_dupes_intra_src,
               bool const merge_dupes_inter_src,
               std::uint16_t const max_footpath_length) {
-  finalize(tt, {adjust_footpaths, merge_dupes_intra_src, merge_dupes_inter_src,
-                max_footpath_length});
+  finalize(tt,
+           {merge_dupes_intra_src, merge_dupes_inter_src, max_footpath_length});
 }
 
 }  // namespace nigiri::loader

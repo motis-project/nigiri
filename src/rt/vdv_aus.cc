@@ -16,6 +16,7 @@
 #include "nigiri/common/mam_dist.h"
 #include "nigiri/common/parse_time.h"
 #include "nigiri/for_each_meta.h"
+#include "nigiri/location_routes.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -335,68 +336,69 @@ void updater::match_run(run_id const& vdv_id,
     }
     auto no_transport_found_at_stop = true;
     for (auto const l : tt_.locations_.equivalences_[vdv_stop.l_]) {
-      for (auto const r : tt_.location_routes_[l]) {
-        auto const location_seq = tt_.route_location_seq_[r];
-        for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
-          if (stop{s}.location_idx() != l) {
-            continue;
-          }
-          auto const vdv_ev = stop_idx == 0
-                                  ? vdv_stop.get_event(event_type::kDep)
-                              : stop_idx == location_seq.size() - 1
-                                  ? vdv_stop.get_event(event_type::kArr)
-                                  : vdv_stop.get_event();
-          if (!vdv_ev.has_value()) {
-            continue;
-          }
-
-          auto const [vdv_time, ev_type] = *vdv_ev;
-          auto const [vdv_day_idx, vdv_mam] = tt_.day_idx_mam(vdv_time);
-
-          for (auto const [nigiri_ev_time_idx, nigiri_ev_time] :
-               utl::enumerate(tt_.event_times_at_stop(
-                   r, static_cast<stop_idx_t>(stop_idx), ev_type))) {
-            auto const [error, day_shift] =
-                mam_dist(vdv_mam, i32_minutes{nigiri_ev_time.mam()});
-            auto const local_score =
-                kExactMatchScore - error.count() * error.count();
-            if (local_score < 0) {
-              continue;
-            }
-
-            auto const tr = transport{
-                tt_.route_transport_ranges_[r][nigiri_ev_time_idx],
-                vdv_day_idx -
-                    day_idx_t{nigiri_ev_time.days() - day_shift.count()}};
-
-            if (tt_.is_transport_active(tr.t_idx_, tr.day_)) {
-              auto candidate =
-                  std::find_if(begin(candidates), end(candidates),
-                               [&](auto const& c) { return c.r_.t_ == tr; });
-
-              if (candidate != end(candidates) &&
-                  stop_idx < candidate->r_.stop_range_.from_) {
+      for_each_route_at_stop(
+          tt_, l, [&](location_idx_t const loc, route_idx_t const r) {
+            auto const location_seq = tt_.route_location_seq_[r];
+            for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
+              if (stop{s}.location_idx() != loc) {
+                continue;
+              }
+              auto const vdv_ev = stop_idx == 0
+                                      ? vdv_stop.get_event(event_type::kDep)
+                                  : stop_idx == location_seq.size() - 1
+                                      ? vdv_stop.get_event(event_type::kArr)
+                                      : vdv_stop.get_event();
+              if (!vdv_ev.has_value()) {
                 continue;
               }
 
-              if (candidate == end(candidates)) {
-                candidates.emplace_back(
-                    run{tr,
-                        interval{static_cast<stop_idx_t>(stop_idx),
-                                 static_cast<stop_idx_t>(location_seq.size())}},
-                    location_seq.size());
-                candidate = end(candidates) - 1;
+              auto const [vdv_time, ev_type] = *vdv_ev;
+              auto const [vdv_day_idx, vdv_mam] = tt_.day_idx_mam(vdv_time);
+
+              for (auto const [nigiri_ev_time_idx, nigiri_ev_time] :
+                   utl::enumerate(tt_.event_times_at_stop(
+                       r, static_cast<stop_idx_t>(stop_idx), ev_type))) {
+                auto const [error, day_shift] =
+                    mam_dist(vdv_mam, i32_minutes{nigiri_ev_time.mam()});
+                auto const local_score =
+                    kExactMatchScore - error.count() * error.count();
+                if (local_score < 0) {
+                  continue;
+                }
+
+                auto const tr = transport{
+                    tt_.route_transport_ranges_[r][nigiri_ev_time_idx],
+                    vdv_day_idx -
+                        day_idx_t{nigiri_ev_time.days() - day_shift.count()}};
+
+                if (tt_.is_transport_active(tr.t_idx_, tr.day_)) {
+                  auto candidate = std::find_if(
+                      begin(candidates), end(candidates),
+                      [&](auto const& c) { return c.r_.t_ == tr; });
+
+                  if (candidate != end(candidates) &&
+                      stop_idx < candidate->r_.stop_range_.from_) {
+                    continue;
+                  }
+
+                  if (candidate == end(candidates)) {
+                    candidates.emplace_back(
+                        run{tr, interval{static_cast<stop_idx_t>(stop_idx),
+                                         static_cast<stop_idx_t>(
+                                             location_seq.size())}},
+                        location_seq.size());
+                    candidate = end(candidates) - 1;
+                  }
+
+                  candidate->local_best_ =
+                      std::max(candidate->local_best_,
+                               static_cast<std::uint32_t>(local_score));
+
+                  no_transport_found_at_stop = false;
+                }
               }
-
-              candidate->local_best_ =
-                  std::max(candidate->local_best_,
-                           static_cast<std::uint32_t>(local_score));
-
-              no_transport_found_at_stop = false;
             }
-          }
-        }
-      }
+          });
     }
     if (no_transport_found_at_stop) {
       ++stats.no_transport_found_at_stop_;

@@ -3,6 +3,7 @@
 #include "geo/latlng.h"
 #include "geo/point_rtree.h"
 
+#include "nigiri/loader/build_footpaths.h"
 #include "nigiri/constants.h"
 #include "nigiri/timetable.h"
 
@@ -46,6 +47,10 @@ void link_nearby_stations(timetable& tt) {
       continue;  // no dummy stations
     }
 
+    if (tt.locations_.is_virt(l_from_idx)) {
+      continue;
+    }
+
     auto dist = dist_at{from_pos};
     for (auto const& to_idx :
          locations_rtree.in_radius(from_pos, kLinkNearbyMaxDistance)) {
@@ -57,21 +62,15 @@ void link_nearby_stations(timetable& tt) {
       auto const to_src = tt.locations_.src_[l_to_idx];
       auto const to_pos = tt.locations_.coordinates_[l_to_idx];
       if (to_src == source_idx_t::invalid() /* no dummy stations */
-          || from_src == to_src /* don't short-circuit */) {
+          || from_src == to_src /* don't short-circuit */
+          || tt.locations_.is_virt(l_to_idx)) {
         continue;
       }
 
-      auto const from_transfer_time =
-          duration_t{tt.locations_.transfer_time_[l_from_idx]};
-      auto const to_transfer_time =
-          duration_t{tt.locations_.transfer_time_[l_to_idx]};
-      auto const walk_duration = duration_t{static_cast<unsigned>(
+      auto const walk = duration_t{static_cast<unsigned>(
           std::round(dist.get(to_pos) / (60 * kWalkSpeed)))};
-      auto const duration =
-          std::max({from_transfer_time, to_transfer_time, walk_duration});
-
       tt.locations_.preprocessing_footpaths_out_[l_from_idx].emplace_back(
-          l_to_idx, duration);
+          l_to_idx, max_with_transfer_times(tt, l_from_idx, l_to_idx, walk));
 
       if (dist.lt(to_pos, kEqDist)) {
         tt.locations_.equivalences_[l_from_idx].emplace_back(l_to_idx);

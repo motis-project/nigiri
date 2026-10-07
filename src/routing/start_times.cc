@@ -3,9 +3,13 @@
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
 #include "utl/get_or_create.h"
+#include "utl/lookup.h"
 #include "utl/overloaded.h"
 
 #include "nigiri/for_each_meta.h"
+#include "nigiri/location_routes.h"
+#include "nigiri/routing/search_location.h"
+#include "nigiri/routing/transfers.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
 
@@ -130,14 +134,14 @@ void add_starts_in_interval(direction const search_dir,
                             profile_idx_t const p,
                             std::vector<start>& starts,
                             bool const add_ontrip) {
+  auto const routes = static_routes(tt, rtt, l);
   trace_start(
       "    add_starts_in_interval(interval={}, stop={}): {} "
       "routes\n",
       iv, loc{tt, l},  // NOLINT(clang-analyzer-core.CallAndMessage)
-      tt.location_routes_.at(l).size());
+      routes.size());
 
-  // Iterate routes visiting the location.
-  for (auto const& r : tt.location_routes_.at(l)) {
+  for (auto const& r : routes) {
 
     // Iterate the location sequence, searching the given location.
     auto const location_seq = tt.route_location_seq_.at(r);
@@ -179,7 +183,8 @@ void add_starts_in_interval(direction const search_dir,
       auto const location_seq = rtt->rt_transport_location_seq_.at(rt_t);
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         auto const stp = stop{s};
-        if (stp.location_idx() != l) {
+        if (search_location(*rtt, p, rt_t, static_cast<stop_idx_t>(i)) !=
+            project(tt, p, l)) {
           continue;
         }
 
@@ -258,26 +263,43 @@ void get_starts(
     profile_idx_t const prf_idx,
     transfer_time_settings const& tts) {
   auto shortest_start = hash_map<location_idx_t, duration_t>{};
-  auto const update = [&](location_idx_t const l, duration_t const offset) {
+  auto at_start = hash_map<location_idx_t, duration_t>{};
+  auto const update = [&](location_idx_t const l, duration_t const offset,
+                          bool const is_walked) {
     auto const d =
         offset + (via_stops.empty() || via_stops.front().location_ != l
                       ? 0_minutes
                       : via_stops.front().stay_);
-    auto& val = utl::get_or_create(shortest_start, l, [d]() { return d; });
-    val = std::min(val, d);
+    auto const keep_min = [&](hash_map<location_idx_t, duration_t>& m) {
+      auto& val = utl::get_or_create(m, l, [d]() { return d; });
+      val = std::min(val, d);
+    };
+    keep_min(shortest_start);
+    if (!is_walked) {
+      keep_min(at_start);
+    }
   };
 
   auto const fwd = search_dir == direction::kForward;
   for (auto const& o : start_offsets) {
     for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
-      update(l, o.duration());
+      update(l, o.duration(), false);
       if (use_start_footpaths) {
-        auto const footpaths = fwd ? tt.locations_.footpaths_out_[prf_idx][l]
-                                   : tt.locations_.footpaths_in_[prf_idx][l];
-        for (auto const& fp : footpaths) {
-          update(fp.target(),
-                 o.duration() + adjusted_transfer_time(tts, fp.duration()));
-        }
+        for_each_transfer(
+            tt, rtt, prf_idx, search_dir, l, [&](footpath const& fp) {
+              update(fp.target(),
+                     o.duration() + adjusted_transfer_time(tts, fp.duration()),
+                     true);
+            });
+      }
+    });
+  }
+
+  if (rtt != nullptr && !is_projected(prf_idx)) {
+    rtt->for_each_rt_virt([&](location_idx_t const l, rt_location_idx_t) {
+      if (auto const d = utl::lookup(at_start, rtt->base(l))) {
+        auto& val = utl::get_or_create(shortest_start, l, [&]() { return *d; });
+        val = std::min(val, *d);
       }
     });
   }
@@ -322,9 +344,37 @@ void get_starts(
   }
 }
 
+void expand_td_offsets(timetable const& tt, rt_timetable const* rtt, query& q) {
+  auto const add = [&](hash_map<location_idx_t, std::vector<td_offset>>& td) {
+    auto children = std::vector<std::pair<location_idx_t, location_idx_t>>{};
+    for (auto const& [l, _] : td) {
+      for_each_meta(tt, location_match_mode::kIntermodal, l,
+                    [&](location_idx_t const c) {
+                      if (c != l) {
+                        children.emplace_back(c, l);
+                      }
+                    });
+    }
+    if (rtt != nullptr && !td.empty()) {
+      rtt->for_each_rt_virt([&](location_idx_t const v, rt_location_idx_t) {
+        if (auto const p = rtt->base(v); td.contains(p)) {
+          children.emplace_back(v, p);
+        }
+      });
+    }
+    for (auto const& [c, l] : children) {
+      auto offsets = td.at(l);
+      td.emplace(c, std::move(offsets));
+    }
+  };
+  add(q.td_start_);
+  add(q.td_dest_);
+}
+
 void collect_destinations(timetable const& tt,
                           std::vector<offset> const& dest,
                           location_match_mode const match_mode,
+                          profile_idx_t const prf_idx,
                           bitvec& is_dest,
                           std::vector<std::uint16_t>& dist_to_dest) {
   is_dest.resize(tt.n_locations());
@@ -345,11 +395,11 @@ void collect_destinations(timetable const& tt,
     trace_start("DEST METAS OF {}\n", loc{tt, d.target_});
     for_each_meta(tt, match_mode, d.target_, [&](location_idx_t const l) {
       if (match_mode == location_match_mode::kIntermodal) {
-        dist_to_dest[to_idx(l)] =
-            std::min(dist_to_dest[to_idx(l)],
+        dist_to_dest[to_idx(project(tt, prf_idx, l))] =
+            std::min(dist_to_dest[to_idx(project(tt, prf_idx, l))],
                      static_cast<std::uint16_t>(d.duration_.count()));
       } else {
-        is_dest.set(to_idx(l), true);
+        is_dest.set(to_idx(project(tt, prf_idx, l)), true);
       }
       trace_start("  DEST META: {}, duration={}\n", loc{tt, l}, d.duration_);
     });

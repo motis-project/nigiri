@@ -5,6 +5,7 @@
 #include "utl/enumerate.h"
 #include "utl/erase_if.h"
 #include "utl/get_or_create.h"
+#include "utl/lookup.h"
 #include "utl/pairwise.h"
 #include "utl/pipes/accumulate.h"
 #include "utl/zip.h"
@@ -259,8 +260,11 @@ inline stop_seq_t const* get_stop_seq(trip_data const& trip_data,
         auto const prev_last = stop{stop_seq_cache.back()};
         auto const curr_first = stop{trp.stop_seq_.front()};
         stop_seq_cache.back() =
-            stop{prev_last.location_idx(), curr_first.in_allowed(),
-                 prev_last.out_allowed(), curr_first.in_allowed_wheelchair(),
+            stop{utl::lookup(trip_data.handover_stops_,
+                             pair{t.trips_[i - 1U], t_idx})
+                     .value_or(prev_last.location_idx()),
+                 curr_first.in_allowed(), prev_last.out_allowed(),
+                 curr_first.in_allowed_wheelchair(),
                  prev_last.out_allowed_wheelchair()}
                 .value();
       }

@@ -12,9 +12,11 @@
 #include "boost/program_options.hpp"
 
 #include "utl/helpers/algorithm.h"
+#include "utl/lookup.h"
 #include "utl/parallel_for.h"
 #include "utl/parser/cstr.h"
 #include "utl/progress_tracker.h"
+#include "utl/visit.h"
 #include "utl/zip.h"
 
 #include "nigiri/logging.h"
@@ -186,6 +188,39 @@ std::uint64_t compare_results(
     if (misses != 0U) {
       fmt::println("query #{} mismatches={} ({} n={}, {} n={})", i, misses,
                    ref_name, r_size, cmp_name, c_size);
+      auto const loc_str =
+          [&](std::variant<location_idx_t, geo::latlng> const& v) {
+            return utl::visit(
+                v,
+                [&](location_idx_t const l) {
+                  return fmt::format("{} idx={}", loc{tt, l}, l);
+                },
+                [](geo::latlng const& p) {
+                  return fmt::format("({}, {})", p.lat_, p.lng_);
+                });
+          };
+      auto const& q = queries[i].q_;
+      auto const time_str = utl::visit(
+          q.start_time_,
+          [](unixtime_t const t) { return fmt::format("{}", t); },
+          [](interval<unixtime_t> const iv) {
+            return fmt::format("[{}, {}] epoch=[{}, {}]", iv.from_, iv.to_,
+                               iv.from_.time_since_epoch().count(),
+                               iv.to_.time_since_epoch().count());
+          });
+      fmt::println("  QUERY from={} to={} start_time={} window=[{}, {}]",
+                   loc_str(queries[i].start_), loc_str(queries[i].dest_),
+                   time_str, window.from_, window.to_);
+      fmt::print("  RAW {}: ", ref_name);
+      for (auto const& j : ref[i]) {
+        fmt::print("[{}] ", key(j));
+      }
+      fmt::println("");
+      fmt::print("  RAW {}: ", cmp_name);
+      for (auto const& j : cmp[i]) {
+        fmt::print("[{}] ", key(j));
+      }
+      fmt::println("");
       print_set(ref_name, r);
       print_set(cmp_name, c);
       for (auto const [a, b] : utl::zip(r_zip, c_zip)) {
@@ -269,9 +304,15 @@ std::vector<double> run_load(
   return lat;
 }
 
+struct stats {
+  std::uint64_t n_routes_visited_{0U};
+  std::uint64_t n_footpaths_visited_{0U};
+};
+
 struct result_set {
   std::string label_;
   std::vector<pareto_set<routing::journey>> res_;
+  std::vector<stats> stats_;
   std::vector<double> latencies_;
 };
 
@@ -289,6 +330,16 @@ struct gpu_ws {
 };
 #endif
 
+std::pair<pareto_set<routing::journey>, stats> journeys_and_stats(
+    routing::routing_result const& r) {
+  auto const stat = [&](char const* k) {
+    return utl::lookup(r.algo_stats_, k).value_or(std::uint64_t{0U});
+  };
+  return {*r.journeys_,
+          {.n_routes_visited_ = stat("n_routes_visited"),
+           .n_footpaths_visited_ = stat("n_footpaths_visited")}};
+}
+
 // one (engine, algo) cell: runs the queries once per n_parallel value (each
 // worker borrows a state from a pool allocated once at the maximum count)
 // and keeps the last run's journeys + latencies
@@ -301,6 +352,7 @@ result_set run_cell(
     StateArgs const&... state_args) {
   auto out = result_set{.label_ = label};
   out.res_.resize(queries.size());
+  out.stats_.resize(queries.size());
 
   auto states = std::vector<std::unique_ptr<WS>>{};
   for (auto i = 0U; i != *std::max_element(begin(n_parallel), end(n_parallel));
@@ -316,7 +368,9 @@ result_set run_cell(
     out.latencies_ =
         run_load<WS>(queries, label + "-" + std::to_string(n), pool,
                      [&](WS& w, routing::query q, std::size_t const i) {
-                       out.res_[i] = search(w, std::move(q));
+                       auto [js, st] = search(w, std::move(q));
+                       out.res_[i] = std::move(js);
+                       out.stats_[i] = st;
                      });
   }
 
@@ -662,7 +716,7 @@ int main(int argc, char* argv[]) {
                                                  std::move(q), dir)
                           : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
                                                    std::move(q), dir);
-                  return *r.journeys_;
+                  return journeys_and_stats(r);
                 }));
             ++qa_n_cpu_cells;
             if (vm.count("qa_path")) {
@@ -681,7 +735,7 @@ int main(int argc, char* argv[]) {
                                                  std::move(q), dir)
                           : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
                                                    std::move(q), dir);
-                  return *r.journeys_;
+                  return journeys_and_stats(r);
                 },
                 *gpu_tt));
           }
@@ -698,6 +752,37 @@ int main(int argc, char* argv[]) {
       if (cells.size() == 1U) {
         summary.push_back(fmt::format("{:<24} n={:<6} benchmark only",
                                       cells.front().label_, qs.size()));
+      }
+      for (auto const& c : cells) {
+        auto sum = stats{};
+        for (auto const& st : c.stats_) {
+          sum.n_routes_visited_ += st.n_routes_visited_;
+          sum.n_footpaths_visited_ += st.n_footpaths_visited_;
+        }
+        auto const per_query = [&](std::uint64_t const x) {
+          return c.stats_.empty() ? 0.0
+                                  : static_cast<double>(x) /
+                                        static_cast<double>(c.stats_.size());
+        };
+        summary.push_back(fmt::format(
+            "{:<24} n={:<6} routes_visited/q={:<9.0f} fps_visited/q={:<11.0f}",
+            c.label_, c.stats_.size(), per_query(sum.n_routes_visited_),
+            per_query(sum.n_footpaths_visited_)));
+      }
+      for (auto const& c : cells) {
+        auto n_journeys = std::size_t{0U};
+        auto n_empty = std::size_t{0U};
+        for (auto const& r : c.res_) {
+          n_journeys += r.size();
+          n_empty += r.size() == 0U ? 1U : 0U;
+        }
+        summary.push_back(fmt::format(
+            "{:<24} n={:<6} journeys={:<7} avg={:<5.2f} no-journey-queries={}",
+            c.label_, c.res_.size(), n_journeys,
+            c.res_.empty() ? 0.0
+                           : static_cast<double>(n_journeys) /
+                                 static_cast<double>(c.res_.size()),
+            n_empty));
       }
       for (auto a = std::size_t{0U}; a < cells.size(); ++a) {
         for (auto b = a + 1U; b < cells.size(); ++b) {

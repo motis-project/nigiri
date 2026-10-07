@@ -2,10 +2,13 @@
 
 #include "utl/pairwise.h"
 
+#include <cassert>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 #include "utl/visit.h"
 
@@ -120,6 +123,15 @@ struct rt_timetable {
                    std::nullopt);
   }
 
+  void dispatch_stop_change(rt::run const& r,
+                            stop_idx_t const stop_idx,
+                            stop const s) {
+    dispatch_stop_change(r, stop_idx, event_type::kArr, base(s.location_idx()),
+                         s.out_allowed());
+    dispatch_stop_change(r, stop_idx, event_type::kDep, base(s.location_idx()),
+                         s.in_allowed());
+  }
+
   void set_track(rt_transport_idx_t, stop_idx_t, event_type, std::string_view);
   std::optional<std::string_view> get_track(rt_transport_idx_t,
                                             stop_idx_t,
@@ -191,6 +203,62 @@ struct rt_timetable {
   std::uint32_t n_rt_transports() const noexcept {
     return rt_transport_src_.size();
   }
+
+  std::uint32_t n_locations() const noexcept {
+    return tt_->n_locations() + n_rt_locations();
+  }
+  std::uint32_t n_rt_locations() const noexcept {
+    return static_cast<std::uint32_t>(rt_locations_.parents_.size());
+  }
+  bool is_rt_location(location_idx_t const l) const noexcept {
+    return l >= tt_->n_locations();
+  }
+  rt_location_idx_t to_rt_location(location_idx_t const l) const noexcept {
+    assert(is_rt_location(l));
+    return rt_location_idx_t{to_idx(l) - tt_->n_locations()};
+  }
+  location_idx_t to_location(rt_location_idx_t const i) const noexcept {
+    return location_idx_t{tt_->n_locations() + to_idx(i)};
+  }
+  location_idx_t base(location_idx_t const l) const {
+    return is_rt_location(l) ? rt_locations_.parents_[to_rt_location(l)]
+                             : tt_->base(l);
+  }
+  location_idx_t static_location(location_idx_t const l) const {
+    return is_rt_location(l) ? rt_locations_.parents_[to_rt_location(l)] : l;
+  }
+  u8_minutes transfer_time(location_idx_t const l) const {
+    return is_rt_location(l) ? rt_locations_.transfer_time_[to_rt_location(l)]
+                             : tt_->locations_.transfer_time_[l];
+  }
+  template <typename Fn>
+  void for_each_rt_virt(Fn&& fn) const {
+    for (auto i = rt_location_idx_t{0U}; i != n_rt_locations(); ++i) {
+      fn(to_location(i), i);
+    }
+  }
+  location_idx_t add_rt_location(location_idx_t parent,
+                                 u8_minutes transfer_time,
+                                 std::span<transfer_rule_side_idx const> rules);
+  void add_location_rt_transport(location_idx_t, rt_transport_idx_t);
+
+  std::span<location_idx_t const> rt_stop_virts(
+      rt_transport_idx_t const rt_t) const {
+    if (rt_t >= rt_stop_virts_.size()) {
+      return {};
+    }
+    auto const b = rt_stop_virts_[rt_t];
+    return {b.begin(), b.size()};
+  }
+  location_idx_t stop_location(rt_transport_idx_t const rt_t,
+                               stop_idx_t const stop_idx) const {
+    auto const locs = rt_stop_virts(rt_t);
+    return !locs.empty() && locs[stop_idx] != location_idx_t::invalid()
+               ? locs[stop_idx]
+               : stop{rt_transport_location_seq_[rt_t][stop_idx]}
+                     .location_idx();
+  }
+  void update_stop_location(rt_transport_idx_t, stop_idx_t, location_idx_t l);
 
   bool is_flag_set(route_flag const f, rt_transport_idx_t const r) const {
     return rt_transport_flags_[f][to_idx(r) * 2U] ||
@@ -290,6 +358,19 @@ struct rt_timetable {
   alerts alerts_;
 
   change_callback_t change_callback_;
+
+  struct rt_locations {
+    vector_map<rt_location_idx_t, location_idx_t> parents_;
+    vector_map<rt_location_idx_t, u8_minutes> transfer_time_;
+  } rt_locations_;
+
+  vecvec<rt_location_idx_t, transfer_rule_side_idx> rt_virt_rules_;
+  hash_map<virt_key, location_idx_t> rt_virts_;
+
+  mutable_fws_multimap<rt_transport_idx_t, location_idx_t> rt_stop_virts_;
+
+  mutable_fws_multimap<location_idx_t, footpath> rt_footpaths_out_;
+  mutable_fws_multimap<location_idx_t, footpath> rt_footpaths_in_;
 
   // Lower bound graph extension.
   bitvec_map<location_idx_t> fwd_search_lb_graph_has_edges_;

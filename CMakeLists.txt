@@ -76,7 +76,10 @@ elseif (NOT MSVC)
   set(nigiri-compile-options
         -Wall
         -Wextra
+        -Wno-array-bounds
         -Wno-maybe-uninitialized)
+else ()
+  set(nigiri-compile-options /bigobj)
 endif ()
 
 

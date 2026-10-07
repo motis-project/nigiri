@@ -1,9 +1,13 @@
 #include "nigiri/query_generator/generator.h"
 
+#include <algorithm>
+
+#include "utl/helpers/algorithm.h"
+
 #include "nigiri/location_match_mode.h"
+#include "nigiri/location_routes.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/get_fastest_direct.h"
-#include "nigiri/routing/ontrip_train.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -17,10 +21,6 @@ generator::generator(timetable const& tt, generator_settings const& settings)
       s_{settings},
       seed_{std::random_device{}()},
       rng_{seed_},
-      location_d_{
-          static_cast<std::uint32_t>(special_station::kSpecialStationsSize),
-          tt_.n_locations() - 1},
-      transport_d_{0U, tt_.transport_traffic_days_.size() - 1U},
       day_d_{kTimetableOffset.count(),
              static_cast<day_idx_t::value_t>(kTimetableOffset.count() +
                                              tt_n_days() - 1)},
@@ -36,10 +36,6 @@ generator::generator(timetable const& tt,
       s_{settings},
       seed_{seed},
       rng_{seed_},
-      location_d_{
-          static_cast<std::uint32_t>(special_station::kSpecialStationsSize),
-          tt_.n_locations() - 1U},
-      transport_d_{0U, tt_.transport_traffic_days_.size() - 1U},
       day_d_{kTimetableOffset.count(),
              static_cast<day_idx_t::value_t>(kTimetableOffset.count() +
                                              tt_n_days() - 1)},
@@ -49,14 +45,36 @@ generator::generator(timetable const& tt,
 }
 
 void generator::init_geo(generator_settings const& settings) {
+  pool_.reserve(tt_.n_locations());
+  for (auto l = location_idx_t{static_cast<location_idx_t::value_t>(
+           special_station::kSpecialStationsSize)};
+       l != tt_.n_locations(); ++l) {
+    if (!tt_.locations_.is_virt(l)) {
+      pool_.push_back(l);
+      pool_weights_.push_back(n_events(l));
+    }
+  }
+  auto const distribution = [](std::vector<double> w) {
+    if (utl::all_of(w, [](double const x) { return x == 0.0; })) {
+      utl::fill(w, 1.0);
+    }
+    return std::discrete_distribution<std::size_t>{begin(w), end(w)};
+  };
+  location_d_ = distribution(pool_weights_);
+
   if (settings.start_match_mode_ == routing::location_match_mode::kIntermodal ||
       settings.dest_match_mode_ == routing::location_match_mode::kIntermodal ||
       settings.bbox_.has_value()) {
-    locations_rtree_ = geo::make_point_rtree(tt_.locations_.coordinates_);
+    locations_rtree_ = geo::make_point_rtree(
+        pool_,
+        [&](location_idx_t const l) { return tt_.locations_.coordinates_[l]; });
     if (settings.bbox_.has_value()) {
       locs_in_bbox = locations_rtree_.within(s_.bbox_.value());
-      locs_in_bbox_d_ =
-          std::uniform_int_distribution<size_t>{0U, locs_in_bbox.size() - 1U};
+      auto weights = std::vector<double>{};
+      for (auto const i : locs_in_bbox) {
+        weights.push_back(pool_weights_[i]);
+      }
+      locs_in_bbox_d_ = distribution(std::move(weights));
     }
   }
 }
@@ -83,8 +101,7 @@ std::optional<start_dest_query> generator::random_query() {
       start_loc_idx = random_location();
     }
 
-    if (!start_loc_idx.has_value() ||
-        tt_.location_routes_[start_loc_idx.value()].empty()) {
+    if (!start_loc_idx.has_value() || n_events(*start_loc_idx) == 0.0) {
       continue;
     }
 
@@ -184,32 +201,15 @@ std::optional<start_dest_query> generator::random_query() {
   return std::nullopt;
 }
 
-std::pair<transport, stop_idx_t> generator::random_transport_active_stop() {
-  transport tpt;
-  std::optional<stop_idx_t> stop_idx = std::nullopt;
-  while (!stop_idx.has_value()) {
-    auto const tpt_idx = random_transport();
-    auto const day_idx = random_active_day(tpt_idx);
-    if (!day_idx.has_value()) {
-      continue;
-    }
-    tpt.t_idx_ = tpt_idx;
-    tpt.day_ = day_idx.value();
-
-    stop_idx = random_active_stop(tpt_idx);
-  }
-  return {tpt, stop_idx.value()};
-}
-
 location_idx_t generator::random_location() {
   if (s_.bbox_.has_value()) {
     if (!locs_in_bbox.empty()) {
-      return location_idx_t{locs_in_bbox[locs_in_bbox_d_(rng_)]};
+      return pool_[locs_in_bbox[locs_in_bbox_d_(rng_)]];
     }
     log(log_lvl::info, "query_generator.random_location",
         "no locations in bounding box: using all locations instead");
   }
-  return location_idx_t{location_d_(rng_)};
+  return pool_[location_d_(rng_)];
 }
 
 std::optional<location_idx_t> generator::random_location(
@@ -222,18 +222,17 @@ std::optional<location_idx_t> generator::random_location(
   }
   auto locs_d =
       std::uniform_int_distribution<std::size_t>{0U, locs_in_range.size() - 1U};
-  return location_idx_t{locs_in_range[locs_d(rng_)]};
+  return pool_[locs_in_range[locs_d(rng_)]];
 }
 
 route_idx_t generator::random_route(location_idx_t const loc_idx) {
-  auto const& routes = tt_.location_routes_[loc_idx];
+  auto routes = std::vector<route_idx_t>{};
+  for_each_route_at_stop(
+      tt_, loc_idx,
+      [&](location_idx_t, route_idx_t const r) { routes.push_back(r); });
   auto routes_d =
-      std::uniform_int_distribution<std::uint32_t>{0U, routes.size() - 1U};
+      std::uniform_int_distribution<std::size_t>{0U, routes.size() - 1U};
   return routes[routes_d(rng_)];
-}
-
-transport_idx_t generator::random_transport() {
-  return transport_idx_t{transport_d_(rng_)};
 }
 
 transport_idx_t generator::random_transport(route_idx_t const route_idx) {
@@ -247,74 +246,12 @@ stop_idx_t generator::get_stop_idx(transport_idx_t const tpt_idx,
                                    location_idx_t const loc_idx) const {
   auto const stops = tt_.route_location_seq_[tt_.transport_route_[tpt_idx]];
   for (auto i = 0U; i != stops.size(); ++i) {
-    if (stop{stops[i]}.location_idx() == loc_idx) {
+    if (tt_.base(stop{stops[i]}.location_idx()) == loc_idx) {
       return static_cast<stop_idx_t>(i);
     }
   }
   assert(false);
   return std::numeric_limits<stop_idx_t>::max();
-}
-
-std::optional<stop_idx_t> generator::random_active_stop(
-    transport_idx_t const tpt_idx) {
-
-  // distribution for stop index
-  // initial stop is not valid for arrival events
-  std::uniform_int_distribution<stop_idx_t> stop_d{
-      stop_idx_t{1U},
-      static_cast<stop_idx_t>(
-          tt_.route_location_seq_[tt_.transport_route_[tpt_idx]].size() - 1U)};
-
-  auto const random_stop = [&]() { return stop_idx_t{stop_d(rng_)}; };
-
-  auto const can_exit = [&](stop_idx_t const& stop_idx) {
-    auto const s =
-        stop{tt_.route_location_seq_[tt_.transport_route_[tpt_idx]][stop_idx]};
-    return s.out_allowed();
-  };
-
-  auto const is_in_bbox = [&](stop_idx_t const& stop_idx) {
-    return !s_.bbox_.has_value() ||
-           s_.bbox_.value().contains(
-               tt_.locations_.coordinates_[stop{
-                   tt_.route_location_seq_[tt_.transport_route_[tpt_idx]]
-                                          [stop_idx]}
-                                               .location_idx()]);
-  };
-
-  auto const is_valid = [&](stop_idx_t const& stop_idx) {
-    return can_exit(stop_idx) && is_in_bbox(stop_idx);
-  };
-
-  // try randomize
-  for (auto i = 0U; i < 10; ++i) {
-    auto const stop_idx = random_stop();
-    if (is_valid(stop_idx)) {
-      return stop_idx;
-    }
-  }
-
-  // fallback: linear search from random stop
-  auto stop_idx = random_stop();
-  // search stops after randomized stop
-  auto stop_idx_itv = interval<stop_idx_t>{
-      stop_idx, static_cast<stop_idx_t>(
-                    stop_d.max() + 1U)};  // +1 since distribution endpoints
-                                          // are [a,b] and interval's are [a,b)
-  auto found_stop =
-      std::find_if(begin(stop_idx_itv), end(stop_idx_itv), is_valid);
-  if (found_stop != end(stop_idx_itv)) {
-    return *found_stop;
-  }
-  // search stops until randomized stop
-  stop_idx_itv = interval<stop_idx_t>{stop_d.min(), stop_idx};
-  found_stop = std::find_if(begin(stop_idx_itv), end(stop_idx_itv), is_valid);
-  if (found_stop != end(stop_idx_itv)) {
-    return *found_stop;
-  }
-
-  // no active stop found
-  return std::nullopt;
 }
 
 bool generator::can_dep(transport_idx_t const tpt_idx,
@@ -397,20 +334,40 @@ bool generator::arr_in_itv(transport_idx_t const tpt_idx,
 
 bool generator::is_active_dest(location_idx_t const loc,
                                interval<nigiri::unixtime_t> const& itv) const {
-  for (auto const& route_idx : tt_.location_routes_[loc]) {
-    for (auto const tpt_idx : tt_.route_transport_ranges_[route_idx]) {
-      auto const& loc_seq = tt_.route_location_seq_[route_idx];
-      for (auto stp_idx = stop_idx_t{1U}; stp_idx != loc_seq.size();
-           ++stp_idx) {
-        auto const stp = stop{loc_seq[stp_idx]};
-        if (stp.out_allowed() && stp.location_idx() == loc &&
-            arr_in_itv(tpt_idx, stp_idx, itv)) {
-          return true;
+  auto is_active = false;
+  for_each_route_at_stop(
+      tt_, loc, [&](location_idx_t const c, route_idx_t const route_idx) {
+        if (is_active) {
+          return;
         }
-      }
-    }
-  }
-  return false;
+        auto const& loc_seq = tt_.route_location_seq_[route_idx];
+        for (auto const tpt_idx : tt_.route_transport_ranges_[route_idx]) {
+          for (auto stp_idx = stop_idx_t{1U}; stp_idx != loc_seq.size();
+               ++stp_idx) {
+            auto const stp = stop{loc_seq[stp_idx]};
+            if (stp.out_allowed() && stp.location_idx() == c &&
+                arr_in_itv(tpt_idx, stp_idx, itv)) {
+              is_active = true;
+              return;
+            }
+          }
+        }
+      });
+  return is_active;
+}
+
+double generator::n_events(location_idx_t const l) const {
+  auto n = 0.0;
+  for_each_route_at_stop(
+      tt_, l, [&](location_idx_t const c, route_idx_t const r) {
+        auto n_stops = 0U;
+        for (auto const s : tt_.route_location_seq_[r]) {
+          n_stops += stop{s}.location_idx() == c ? 1U : 0U;
+        }
+        n += static_cast<double>(n_stops) *
+             static_cast<double>(tt_.route_transport_ranges_[r].size());
+      });
+  return n;
 }
 
 geo::latlng generator::pos_near_start(location_idx_t const loc_idx) {
@@ -452,14 +409,14 @@ void generator::add_offsets_for_pos(
     std::vector<routing::offset>& o,
     geo::latlng const& pos,
     query_generation::transport_mode const& mode) const {
-  for (auto const loc : locations_rtree_.in_radius(pos, mode.range())) {
-    auto const duration = duration_t{
-        static_cast<std::int16_t>(
-            geo::distance(pos,
-                          tt_.locations_.coordinates_[location_idx_t{loc}]) /
-            mode.speed_) +
-        1};
-    o.emplace_back(location_idx_t{loc}, duration,
+  for (auto const i : locations_rtree_.in_radius(pos, mode.range())) {
+    auto const loc = pool_[i];
+    auto const duration =
+        duration_t{static_cast<std::int16_t>(
+                       geo::distance(pos, tt_.locations_.coordinates_[loc]) /
+                       mode.speed_) +
+                   1};
+    o.emplace_back(loc, duration,
                    routing::transport_mode_t{.mode_ = mode.mode_});
   }
 }

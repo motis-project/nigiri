@@ -29,7 +29,8 @@ struct raptor_state {
 
   raptor_state& resize(unsigned n_locations,
                        unsigned n_routes,
-                       unsigned n_rt_transports);
+                       unsigned n_rt_transports,
+                       std::size_t n_hubs);
 
   template <via_offset_t Vias>
   void print(timetable const& tt, date::sys_days, delta_t invalid);
@@ -60,6 +61,13 @@ struct raptor_state {
     return {reinterpret_cast<std::array<delta_t, Vias + 1> const*>(
                 best_storage_.data()),
             n_locations_};
+  }
+
+  template <via_offset_t Vias>
+  std::span<std::array<delta_t, Vias + 1>> get_hub_slots() {
+    return {reinterpret_cast<std::array<delta_t, Vias + 1>*>(
+                hub_slots_storage_.data()),
+            n_hubs_};
   }
 
   template <via_offset_t Vias>
@@ -108,6 +116,11 @@ struct raptor_state {
   bitvec prev_station_mark_;
   bitvec route_mark_;
   bitvec rt_transport_mark_;
+
+  std::size_t n_hubs_{};
+  std::vector<delta_t> hub_slots_storage_;
+  bitvec hub_reached_;
+  bitvec hub_mark_;
 };
 
 }  // namespace nigiri::routing

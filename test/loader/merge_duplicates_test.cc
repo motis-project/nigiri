@@ -166,7 +166,7 @@ TEST(loader, merge_intra_src) {
   ASSERT_TRUE(!tt.bitfields_.empty() &&
               tt.bitfields_[bitfield_idx_t{0U}].none());
 
-  finalize(tt, false, true, false);
+  finalize(tt, true, false);
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
@@ -367,16 +367,21 @@ TEST(loader, merge_inter_src) {
   ASSERT_TRUE(!tt.bitfields_.empty() &&
               tt.bitfields_[bitfield_idx_t{0U}].none());
 
+  // {0}: the second feed's transport days, {1}: the metrics of the default
+  // profile's footpath layer, which only exists once footpaths are built.
   constexpr auto const kMetricTemplate = std::string_view{
-      "["
+      R"({{"feeds":[)"
       R"({{"idx":0,"firstDay":"2024-08-14","lastDay":"2024-12-13","noLocations":16,"noTrips":1,"transportsXDays":102}},)"
       R"({{"idx":1,"firstDay":"2024-08-14","lastDay":"2024-12-13","noLocations":16,"noTrips":1,"transportsXDays":{0}}})"
-      "]"};
+      R"(],"noRoutes":2,"profiles":[{1}]}})"};
   // No duplicates removed; No transfers on Thursdays for 2593402613
-  EXPECT_EQ(fmt::format(kMetricTemplate, 86), to_str(get_metrics(tt), tt));
-  finalize(tt, false, false, true);
+  EXPECT_EQ(fmt::format(kMetricTemplate, 86, ""), to_str(get_metrics(tt), tt));
+  finalize(tt, false, true);
   // With duplicates removed; With transfers on Thursdays for both trips
-  EXPECT_EQ(fmt::format(kMetricTemplate, 102), to_str(get_metrics(tt), tt));
+  EXPECT_EQ(
+      fmt::format(kMetricTemplate, 102,
+                  R"({"prf":0,"noFootpaths":44,"noHubs":0,"hubPairs":0})"),
+      to_str(get_metrics(tt), tt));
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
@@ -708,7 +713,7 @@ TEST(loader, merge_reflexive_matching) {
   ASSERT_TRUE(!tt.bitfields_.empty() &&
               tt.bitfields_[bitfield_idx_t{0U}].none());
 
-  finalize(tt, false, true, false);
+  finalize(tt, true, false);
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
@@ -770,7 +775,7 @@ TEST(loader, merge_stay_seated_keeps_stop_range) {
   }
   ASSERT_NE(0U, n_mid_route) << "fixture did not produce a stay-seated block";
 
-  finalize(tt, false, false, true);
+  finalize(tt, false, true);
 
   auto n_extra = 0U;
   for (auto trp = trip_idx_t{0U}; trp != tt.trip_transport_ranges_.size();
@@ -815,7 +820,7 @@ TEST(loader, merge_stay_seated_different_split) {
       interval{trip_idx_t{0U}, trip_idx_t{tt.trip_transport_ranges_.size()}},
       range_of);
 
-  finalize(tt, false, false, true);
+  finalize(tt, false, true);
 
   // the merge has to have actually pointed a trip at the other transport,
   // otherwise this proves nothing
@@ -853,7 +858,6 @@ TEST(loader, merge_stats_json) {
   std::filesystem::remove_all(dir);
 
   auto opt = finalize_options{};
-  opt.adjust_footpaths_ = false;
   opt.merge_dupes_intra_src_ = false;
   opt.merge_dupes_inter_src_ = true;
   opt.merge_stats_dir_ = dir;
@@ -896,7 +900,7 @@ TEST(loader, merge_intra_src_attrs_differ) {
     register_special_stations(tt);
     load_timetable({}, source_idx_t{0}, attr_split_files(bikes_b, pickup_b),
                    tt);
-    finalize(tt, false, true, false);
+    finalize(tt, true, false);
 
     auto n = 0U;
     for (auto t = transport_idx_t{0U}; t != tt.next_transport_idx(); ++t) {
