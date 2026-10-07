@@ -89,9 +89,9 @@ bool is_qualified(transfer_rule const& r) {
   return r.is_qualified(true) || r.is_qualified(false);
 }
 
-bool is_overlapping(timetable const& tt,
-                    transfer_rule const& a,
-                    transfer_rule const& b) {
+bool is_qualifier_overlapping(timetable const& tt,
+                              transfer_rule const& a,
+                              transfer_rule const& b) {
   auto const is_side_overlapping = [&](bool const is_from) {
     auto const a_trip = a.trip(is_from);
     auto const b_trip = b.trip(is_from);
@@ -246,7 +246,7 @@ void fold_pair_defaults(timetable& tt,
                         utl::any_of(it->second, [&](transfer_rule const* o) {
                           return o->duration_ != r.duration_ &&
                                  o->specificity_ <= r.specificity_ &&
-                                 is_overlapping(tt, *o, r);
+                                 is_qualifier_overlapping(tt, *o, r);
                         });
                });
   };
