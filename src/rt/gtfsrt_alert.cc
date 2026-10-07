@@ -118,6 +118,7 @@ void handle_alert(date::sys_days const today,
       }
       if (!r.is_rt()) {
         r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
+        rtt.finalize_rt_transport(tt, r.rt_);
       }
       alerts.rt_transport_[r.rt_].push_back({stop, alert_idx});
     } else if (x.has_route_id()) {  // 1) by route_id / direction_id -> stop_id

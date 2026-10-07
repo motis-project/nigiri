@@ -489,8 +489,7 @@ void monotonize(frun& fr, rt_timetable& rtt) {
 
 void handle_first_last_cancelation(frun& fr, rt_timetable& rtt) {
   auto const cancel_stop = [&](auto& rs) {
-    auto& stp = rtt.rt_transport_location_seq_[fr.rt_][rs.stop_idx_];
-    stp = stop{stop{stp}.location_idx(), false, false, false, false}.value();
+    rtt.cancel_stop(fr.rt_, rs.stop_idx_);
   };
 
   auto first = fr[0U];
@@ -635,6 +634,7 @@ void updater::update_run(rt_timetable& rtt,
 
   if (!fr.is_cancelled()) {
     monotonize(fr, rtt);
+    rtt.finalize_rt_transport(tt_, fr.rt_);
   }
 }
 
@@ -769,6 +769,7 @@ void updater::affects_alerts(rt_timetable& rtt,
       // NOTE: A realtime trip doesn't exist for cancelled trips, for example.
       if (!fr.is_rt()) {
         fr.rt_ = rtt.add_rt_transport(src_idx_, tt_, fr.t_);
+        rtt.finalize_rt_transport(tt_, fr.rt_);
       }
 
       rtt.alerts_.rt_transport_[fr.rt_].push_back(
