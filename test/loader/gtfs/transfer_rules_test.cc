@@ -260,22 +260,36 @@ TEST(gtfs, transfer_rules_fast_rule_stays_on_its_route) {
 // Unqualified same-stop ban: T6N,T6N type=3 says no change is possible at
 // T6N, for anyone. It becomes the stop's own transfer time, and a ban is not a
 // very long time: neither the 15 min nor the 3 h connection may exist.
-// Getting off at T6N as the destination is still fine.
+// Getting off at T6N as the destination is still fine. No rule is qualified,
+// so there is no virtual location, and every profile has the stop's transfer
+// time: a profile that ignores transfers.txt finds no connection either.
 //     T6X1 (R76): T6A 14:30 -> T6N 15:00
 //     T6Y1 (R77): T6N 15:15 -> T6J 15:30
 //     T6Y2 (R77): T6N 18:00 -> T6J 18:20
 TEST(gtfs, transfer_rules_forbidden_same_stop_unqualified) {
-  auto const tt = load_feeds(
+  constexpr auto const kProfile = profile_idx_t{1U};
+  auto tt = load_feeds(
       {feed({{"T6A", 60.0, 6.0}, {"T6N", 60.0, 6.5}, {"T6J", 60.0, 7.0}},
             {{"T6X1", "R76", {{"T6A", "14:30"}, {"T6N", "15:00"}}},
              {"T6Y1", "R77", {{"T6N", "15:15"}, {"T6J", "15:30"}}},
              {"T6Y2", "R77", {{"T6N", "18:00"}, {"T6J", "18:20"}}}},
             "T6N,T6N,3,,,,,\n")});
+  ASSERT_EQ(0U, n_virts(tt)) << "precondition";
+  add_empty_profile(tt, kProfile);
 
   EXPECT_EQ(1U, search_at(tt, "T6A", "T6N", "14:30").size());
-  EXPECT_EQ(0U, raptor_search(tt, nullptr, "T6A", "T6J",
-                              interval{at("14:30"), at("22:00")})
-                    .size());
+  for (auto const prf : {kDefaultProfile, kProfile}) {
+    SCOPED_TRACE(prf);
+    EXPECT_EQ(0U, raptor_search(
+                      tt, nullptr,
+                      routing::query{
+                          .start_time_ = interval{at("14:30"), at("22:00")},
+                          .start_ = {{lidx(tt, "T6A"), 0_minutes, 0U}},
+                          .destination_ = {{lidx(tt, "T6J"), 0_minutes, 0U}},
+                          .prf_idx_ = prf},
+                      direction::kForward)
+                      .size());
+  }
 }
 
 // Route-qualified same-stop ban: T7Q,T7Q type=3 from_route=R78 to_route=R78
@@ -350,7 +364,7 @@ TEST(gtfs, transfer_rules_forbidden_same_stop_with_exception) {
 
 // The same journey searched backwards (arrive by 12:00). The walk into T8M
 // ends the journey: it starts when the ride before it ends, at 10:35, and not
-// as late as the search start allows. CPU and GPU search have to agree.
+// as late as the search start allows.
 TEST(gtfs, transfer_rules_walk_at_end_of_backward_search) {
   auto const tt = load_banned_stop_with_exception();
 
@@ -472,16 +486,14 @@ TEST(gtfs, transfer_rules_virtual_location_not_linked_to_other_feeds) {
   };
 
   ASSERT_TRUE(walk(s1).has_value());
-  auto n_virts = 0U;
-  for (auto const c : tt.locations_.children_[s1]) {
-    if (tt.locations_.types_[c] == location_type::kVirt) {
-      ++n_virts;
-      EXPECT_TRUE(!walk(c).has_value() || *walk(c) >= *walk(s1))
-          << "virtual location reaches Z in " << walk(c)->count()
-          << " min, its stop in " << walk(s1)->count();
-    }
-  }
-  EXPECT_NE(0U, n_virts);
+  auto n_checked = 0U;
+  tt.locations_.for_each_virt(s1, [&](location_idx_t const v) {
+    ++n_checked;
+    EXPECT_TRUE(!walk(v).has_value() || *walk(v) >= *walk(s1))
+        << "virtual location reaches Z in " << walk(v)->count()
+        << " min, its stop in " << walk(s1)->count();
+  });
+  EXPECT_NE(0U, n_checked);
 }
 
 // ===========================================================================
@@ -571,21 +583,27 @@ TEST(gtfs, transfer_rules_one_sided_rule_applies_between_trips_of_its_route) {
 // specific rule is RC -> RC2 (10 min), not CA's trip rule.
 // ===========================================================================
 
+// CA and CA2 (route RC) arrive at S, the RC2 trips leave S2: CC 6 min after
+// CA, CC2 6 min after CA2, CC3 15 min after CA2. CA is named by a trip rule,
+// RC by a route rule (both 5 min), plus the given rows.
+timetable load_key_feed(std::string const& rows) {
+  return load_feeds({feed({{"S", 53.0, 11.0},
+                           {"S2", 53.0005, 11.0},
+                           {"G", 53.1, 11.0},
+                           {"H", 53.2, 11.0}},
+                          {{"CA", "RC", {{"G", "13:00"}, {"S", "13:30"}}},
+                           {"CA2", "RC", {{"G", "14:00"}, {"S", "14:30"}}},
+                           {"CC", "RC2", {{"S2", "13:36"}, {"H", "14:00"}}},
+                           {"CC2", "RC2", {{"S2", "14:36"}, {"H", "15:00"}}},
+                           {"CC3", "RC2", {{"S2", "14:45"}, {"H", "15:10"}}}},
+                          "S,S2,2,180,,,,\n"
+                          "S,S2,2,300,,,CA,\n"
+                          "S,S2,2,300,RC,,,\n" +
+                              rows)});
+}
+
 TEST(gtfs, transfer_rules_virtual_location_key_keeps_specificity) {
-  auto const tt =
-      load_feeds({feed({{"S", 53.0, 11.0},
-                        {"S2", 53.0005, 11.0},
-                        {"G", 53.1, 11.0},
-                        {"H", 53.2, 11.0}},
-                       {{"CA", "RC", {{"G", "13:00"}, {"S", "13:30"}}},
-                        {"CA2", "RC", {{"G", "14:00"}, {"S", "14:30"}}},
-                        {"CC", "RC2", {{"S2", "13:36"}, {"H", "14:00"}}},
-                        {"CC2", "RC2", {{"S2", "14:36"}, {"H", "15:00"}}},
-                        {"CC3", "RC2", {{"S2", "14:45"}, {"H", "15:10"}}}},
-                       "S,S2,2,180,,,,\n"
-                       "S,S2,2,300,,,CA,\n"
-                       "S,S2,2,300,RC,,,\n"
-                       "S,S2,2,600,RC,RC2,,\n")});
+  auto const tt = load_key_feed("S,S2,2,600,RC,RC2,,\n");
 
   // Control: CA -> CC, the trip rule (one trip beats both routes) gives 5 min.
   EXPECT_EQ(at("14:00"), arrival_at(tt, "G", "H", "13:00"));
@@ -601,19 +619,7 @@ TEST(gtfs, transfer_rules_virtual_location_key_keeps_specificity) {
 TEST(
     gtfs,
     transfer_rules_virtual_location_key_merges_equal_values_without_competition) {
-  auto const tt =
-      load_feeds({feed({{"S", 53.0, 11.0},
-                        {"S2", 53.0005, 11.0},
-                        {"G", 53.1, 11.0},
-                        {"H", 53.2, 11.0}},
-                       {{"CA", "RC", {{"G", "13:00"}, {"S", "13:30"}}},
-                        {"CA2", "RC", {{"G", "14:00"}, {"S", "14:30"}}},
-                        {"CC", "RC2", {{"S2", "13:36"}, {"H", "14:00"}}},
-                        {"CC2", "RC2", {{"S2", "14:36"}, {"H", "15:00"}}},
-                        {"CC3", "RC2", {{"S2", "14:45"}, {"H", "15:10"}}}},
-                       "S,S2,2,180,,,,\n"
-                       "S,S2,2,300,,,CA,\n"
-                       "S,S2,2,300,RC,,,\n")});
+  auto const tt = load_key_feed("");
   EXPECT_EQ(1U, n_virts(tt));
   EXPECT_EQ(at("15:00"), arrival_at(tt, "G", "H", "14:00"));
 }

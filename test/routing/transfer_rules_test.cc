@@ -16,7 +16,9 @@
 #include "nigiri/routing/tb/preprocess.h"
 #include "nigiri/routing/tb/query_engine.h"
 #include "nigiri/routing/transfers.h"
+#include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 
 #include "../raptor_search.h"
@@ -142,6 +144,37 @@ TEST(transfer_rules, transfer_time_settings_beyond_255_min) {
   EXPECT_EQ(at("12:10"), arrival_at_o(tt, "N", {}));
   EXPECT_EQ(at("15:10"),
             arrival_at_o(tt, "N", {.default_ = false, .factor_ = 3.0F}));
+}
+
+// W2's own transfer time is 0 (type 1 row), and the R9 -> R5 rule gives R5's
+// departures (GE) a virtual location. A start at that virtual location reaches
+// W2, where GD leaves, through W2's 0 min hub. With min_transfer_time_ = 5
+// min, that start walk takes 5 min like any transfer: from 09:55, GD (10:02)
+// is reached.
+TEST(transfer_rules, start_leg_through_zero_min_hub) {
+  auto const tt =
+      load_feeds({feed({{"W2", 65.5, 24.5}, {"WD", 65.6, 24.5}},
+                       {{"GD", "R6", {{"W2", "10:02"}, {"WD", "10:30"}}},
+                        {"GE", "R5", {{"W2", "11:02"}, {"WD", "11:30"}}}},
+                       "W2,W2,1,,,,,\n"
+                       "W2,W2,2,300,R9,R5,,\n",
+                       {"R9"})});
+  auto virt = location_idx_t::invalid();
+  tt.locations_.for_each_virt(lidx(tt, "W2"),
+                              [&](location_idx_t const l) { virt = l; });
+  ASSERT_NE(location_idx_t::invalid(), virt);
+
+  auto const res = raptor_search(
+      tt, nullptr,
+      routing::query{.start_time_ = at("09:55"),
+                     .use_start_footpaths_ = true,
+                     .start_ = {{virt, 0_minutes, 0U}},
+                     .destination_ = {{lidx(tt, "WD"), 0_minutes, 0U}},
+                     .transfer_time_settings_ = {
+                         .default_ = false, .min_transfer_time_ = 5_minutes}});
+  ASSERT_EQ(1U, res.size());
+  EXPECT_EQ(at("10:30"), begin(res)->dest_time_);
+  EXPECT_EQ(at("10:00"), begin(res)->legs_.front().arr_time_);
 }
 
 // ===========================================================================
@@ -503,4 +536,38 @@ TEST(transfer_rules, same_feed_walk_respects_transfer_time_like_cross_feed) {
   ASSERT_TRUE(to_e2.has_value());
   ASSERT_TRUE(to_e3.has_value());
   EXPECT_EQ(to_e3->count(), to_e2->count());
+}
+
+// GT1 arrives at GX 10:30, GT2 leaves it 10:40.
+std::string gx_feed() {
+  return feed({{"GX", 65.0, 24.0}, {"GA", 65.1, 24.0}, {"GB", 65.2, 24.0}},
+              {{"GT1", "R1", {{"GA", "10:00"}, {"GX", "10:30"}}},
+               {"GT2", "R2", {{"GX", "10:40"}, {"GB", "11:00"}}}},
+              "");
+}
+
+// A profile other than the default one with real-time time-dependent
+// footpaths (an elevator outage at GX) makes the device pong fill its bounds
+// from the bit vector of locations with such footpaths. The kernel also walks
+// the label slots of real-time virtual locations, which that bit vector does
+// not cover: it must not read past its end (visible under compute-sanitizer).
+TEST(transfer_rules, fill_bounds_with_td_footpaths) {
+  constexpr auto const kProfile = profile_idx_t{1U};
+  auto tt = load_feeds({gx_feed()});
+  add_empty_profile(tt, kProfile);
+  auto rtt = rt::create_rt_timetable(tt, nigiri::test::kDay);
+  auto const gx = lidx(tt, "GX");
+  rtt.has_td_footpaths_out_[kProfile].set(gx, true);
+  rtt.has_td_footpaths_in_[kProfile].set(gx, true);
+  rtt.td_footpaths_out_[kProfile].resize(tt.n_locations());
+  rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
+
+  auto const res = raptor_search(
+      tt, &rtt,
+      routing::query{.start_time_ = interval{at("09:30"), at("10:30")},
+                     .start_ = {{lidx(tt, "GA"), 0_minutes, 0U}},
+                     .destination_ = {{lidx(tt, "GB"), 0_minutes, 0U}},
+                     .prf_idx_ = kProfile},
+      direction::kForward);
+  EXPECT_EQ(1U, res.size());
 }

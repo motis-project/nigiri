@@ -1,5 +1,8 @@
 #include "gtest/gtest.h"
 
+#include <string_view>
+#include <vector>
+
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
@@ -12,8 +15,6 @@
 #include "nigiri/special_stations.h"
 #include "nigiri/types.h"
 
-#include <string_view>
-#include <vector>
 #include "../transfer_rules_util.h"
 
 using namespace nigiri;
