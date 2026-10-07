@@ -25,7 +25,7 @@ constexpr auto const kUnknownProvider =
              .ticketing_link_ = ticketing_link_idx_t::invalid(),
              .src_ = source_idx_t::invalid()};
 
-stop run_stop::get_raw_stop() const {
+stop run_stop::get_stop() const {
   assert(fr_->size() > stop_idx_);
   return stop{
       (fr_->is_rt() && rtt() != nullptr)
@@ -34,7 +34,7 @@ stop run_stop::get_raw_stop() const {
                                     [stop_idx_]};
 }
 
-stop run_stop::get_raw_scheduled_stop() const {
+stop run_stop::get_scheduled_stop() const {
   assert(fr_->size() > stop_idx_);
   return fr_->is_scheduled()
              ? tt().route_location_seq_[tt().transport_route_[fr_->t_.t_idx_]]
@@ -113,21 +113,21 @@ std::optional<std::string_view> run_stop::get_track_override(
 
 geo::latlng run_stop::pos() const {
   assert(fr_->size() > stop_idx_);
-  return fr_->tt_->locations_.coordinates_[get_raw_stop().location_idx()];
+  return fr_->tt_->locations_.coordinates_[get_stop().location_idx()];
 }
 
 loc run_stop::get_loc() const { return {tt(), get_location_idx()}; }
 
 location_idx_t run_stop::get_location_idx() const {
   assert(fr_->size() > stop_idx_);
-  return tt().base(get_raw_stop().location_idx());
+  return tt().base(get_stop().location_idx());
 }
 
 std::optional<location_idx_t> run_stop::get_virt() const {
   assert(fr_->size() > stop_idx_);
   auto const l = fr_->is_rt() && rtt() != nullptr
                      ? rtt()->stop_location(fr_->rt_, stop_idx_)
-                     : get_raw_stop().location_idx();
+                     : get_stop().location_idx();
   return l == get_location_idx() ? std::nullopt : std::optional{l};
 }
 
@@ -137,7 +137,7 @@ std::string_view run_stop::get_location_id() const {
 
 location_idx_t run_stop::get_scheduled_location_idx() const {
   assert(fr_->size() > stop_idx_);
-  return tt().base(get_raw_scheduled_stop().location_idx());
+  return tt().base(get_scheduled_stop().location_idx());
 }
 
 run_stop run_stop::get_first_trip_stop(event_type const ev_type) const {
@@ -502,18 +502,18 @@ std::optional<date::sys_days> run_stop::looped_calendar_since(
              : std::nullopt;
 }
 
-bool run_stop::is_cancelled() const { return get_raw_stop().is_cancelled(); }
+bool run_stop::is_cancelled() const { return get_stop().is_cancelled(); }
 
-bool run_stop::in_allowed() const { return get_raw_stop().in_allowed(); }
+bool run_stop::in_allowed() const { return get_stop().in_allowed(); }
 
-bool run_stop::out_allowed() const { return get_raw_stop().out_allowed(); }
+bool run_stop::out_allowed() const { return get_stop().out_allowed(); }
 
 bool run_stop::in_allowed_wheelchair() const {
-  return get_raw_stop().in_allowed_wheelchair();
+  return get_stop().in_allowed_wheelchair();
 }
 
 bool run_stop::out_allowed_wheelchair() const {
-  return get_raw_stop().out_allowed_wheelchair();
+  return get_stop().out_allowed_wheelchair();
 }
 
 bool run_stop::in_allowed(bool const wheelchair) const {

@@ -22,8 +22,8 @@ namespace nigiri::rt {
 struct frun;
 
 struct run_stop {
-  stop get_raw_stop() const;
-  stop get_raw_scheduled_stop() const;
+  stop get_stop() const;
+  stop get_scheduled_stop() const;
   geo::latlng pos() const;
   loc get_loc() const;
   location_idx_t get_location_idx() const;

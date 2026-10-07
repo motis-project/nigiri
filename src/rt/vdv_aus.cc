@@ -592,9 +592,9 @@ void updater::update_run(rt_timetable& rtt,
 
           stp = stop{stop{stp}.location_idx(), in_allowed_update,
                      out_allowed_update,
-                     rs.get_raw_scheduled_stop().in_allowed_wheelchair() &&
+                     rs.get_scheduled_stop().in_allowed_wheelchair() &&
                          in_allowed_update,
-                     rs.get_raw_scheduled_stop().out_allowed_wheelchair() &&
+                     rs.get_scheduled_stop().out_allowed_wheelchair() &&
                          out_allowed_update}
                     .value();
 
