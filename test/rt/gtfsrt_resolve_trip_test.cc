@@ -119,6 +119,16 @@ TEST(rt, gtfsrt_resolve_static_trip) {
     ASSERT_TRUE(r.valid());
   }
 
+  {  // without start_date, a day the trip does not run must not resolve:
+     // the descriptor applies to the current date instance, not to the trip
+    auto td = transit_realtime::TripDescriptor();
+    *td.mutable_trip_id() = "T_RE2";
+
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2019_y / May / 6}, tt, nullptr, source_idx_t{0}, td);
+    EXPECT_FALSE(r.valid());
+  }
+
   {  // test with route_id + start_date + start_time + direction_id
     auto td = transit_realtime::TripDescriptor();
     *td.mutable_start_time() = "00:30:00";

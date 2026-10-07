@@ -18,7 +18,8 @@ unixtime_t sec_to_unixtime(std::uint64_t const s) {
 }
 
 interval<unixtime_t> to_interval(transit_realtime::TimeRange const& t) {
-  return {sec_to_unixtime(t.start()), sec_to_unixtime(t.end())};
+  return {t.has_start() ? sec_to_unixtime(t.start()) : unixtime_t::min(),
+          t.has_end() ? sec_to_unixtime(t.end()) : unixtime_t::max()};
 }
 
 alert_cause convert(transit_realtime::Alert_Cause x) {
@@ -104,30 +105,57 @@ void handle_alert(date::sys_days const today,
       continue;
     }
 
+    if (x.has_direction_id() && !x.has_route_id()) {
+      ++stats.alert_direction_without_route_;
+      log(log_lvl::debug, "nigiri.gtfs.resolve.alert.route_id",
+          "tag={}, direction without route: {}", tag, x.DebugString());
+      continue;
+    }
+
     auto const route_type = x.has_route_type() ? route_type_t{x.route_type()}
                                                : route_type_t::invalid();
 
     if (x.has_trip()) {
-      auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, x.trip());
-      if (!r.valid()) {
-        ++stats.alert_trip_not_found_;
-        log(log_lvl::debug, "rt.gtfs.resolve.alert",
-            "could not resolve (tag={}) {}", tag,
-            remove_nl(x.trip().DebugString()));
-        continue;
-      }
-      if (!r.is_rt()) {
-        r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
-      }
-      alerts.rt_transport_[r.rt_].push_back({stop, alert_idx});
-    } else if (x.has_route_id()) {  // 1) by route_id / direction_id -> stop_id
-      if (x.has_direction_id() && !x.has_route_id()) {
-        ++stats.alert_direction_without_route_;
-        log(log_lvl::debug, "nigiri.gtfs.resolve.alert.route_id",
-            "tag={}, direction without route: {}", tag, x.DebugString());
-        continue;
+      auto const& td = x.trip();
+      auto found = false;
+
+      // A bad descriptor must not abort the alert half-way: earlier informed
+      // entities were already recorded under alert_idx.
+      try {
+        if (td.has_trip_id() && !td.has_start_date() && !td.has_start_time()) {
+          for_each_trip(tt, src, td.trip_id(), [&](trip_idx_t const t) {
+            alerts.trip_[t].push_back({stop, alert_idx});
+            found = true;
+          });
+        } else {
+          resolve_static(today, tt, src, td,
+                         [&](run const& r, trip_idx_t const t) {
+                           alerts.trip_[t].push_back({stop, alert_idx, r.t_});
+                           found = true;
+                           return utl::continue_t::kContinue;
+                         });
+        }
+      } catch (std::exception const& e) {
+        log(log_lvl::debug, "rt.gtfs.resolve.alert", "tag={}, error={}", tag,
+            e.what());
       }
 
+      if (!found) {
+        auto r = run{};
+        resolve_rt(rtt, r, td.trip_id(), src);
+        if (r.is_rt()) {
+          alerts.rt_transport_[r.rt_].push_back({stop, alert_idx});
+          found = true;
+        }
+      }
+
+      if (!found) {
+        ++stats.alert_trip_not_found_;
+        log(log_lvl::debug, "rt.gtfs.resolve.alert",
+            "could not resolve (tag={}) {}", tag, remove_nl(td.DebugString()));
+        continue;
+      }
+    } else if (x.has_route_id()) {  // 1) by route_id / direction_id -> stop_id
       auto const route_id = x.has_route_id()
                                 ? tt.route_ids_[src].ids_.find(x.route_id())
                                 : std::nullopt;
@@ -160,8 +188,11 @@ void handle_alert(date::sys_days const today,
             "tag={}, route_type={} invalid", tag, x.route_type());
         continue;
       }
-      alerts.route_type_[src].resize(to_idx(route_type) + 1U);
-      alerts.route_type_[src][route_type].push_back({stop, alert_idx});
+
+      auto& by_route_type = alerts.route_type_[src];
+      by_route_type.resize(std::max<route_type_t::value_t>(
+          by_route_type.size(), to_idx(route_type) + 1U));
+      by_route_type[route_type].push_back({stop, alert_idx});
     } else if (x.has_stop_id()) {  // 4) by stop_id
       rtt.alerts_.location_.at(stop).push_back(alert_idx);
     } else {
