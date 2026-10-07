@@ -351,6 +351,7 @@ void read_transfers(source_idx_t const src,
         auto const from_gtfs_trip = find_trip(*t.from_trip_id_);
         auto const to_gtfs_trip = find_trip(*t.to_trip_id_);
 
+        // Store stay-seated transfers + not stay seated transfers.
         if (type == transfer_type::kStaySeated ||
             type == transfer_type::kNoStaySeated) {
           if (t.from_trip_id_->empty() || t.to_trip_id_->empty()) {
