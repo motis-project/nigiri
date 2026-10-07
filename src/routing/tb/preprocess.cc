@@ -1,9 +1,6 @@
 #include "nigiri/routing/tb/preprocess.h"
 
 #include "nigiri/for_each_meta.h"
-#include "nigiri/location_routes.h"
-#include "nigiri/routing/search_location.h"
-#include "nigiri/routing/transfers.h"
 
 #include "utl/enumerate.h"
 #include "utl/get_or_create.h"
@@ -178,14 +175,7 @@ struct state {
   reached_reduction rr_ch_;
 };
 
-location_idx_t stop_location(timetable const& tt,
-                             profile_idx_t const prf_idx,
-                             stop const s) {
-  return project(tt, prf_idx, s.location_idx());
-}
-
 void add_non_uturn_transfers(timetable const& tt,
-                             profile_idx_t const prf_idx,
                              route_idx_t const route_from,
                              stop_idx_t const from_stop_idx,
                              footpath const fp,
@@ -193,38 +183,35 @@ void add_non_uturn_transfers(timetable const& tt,
                              stats& stats) {
   auto const prev_src_stop =
       stop{tt.route_location_seq_[route_from][from_stop_idx - 1]};
-  auto const prev_src = stop_location(tt, prf_idx, prev_src_stop);
-  for_each_route_at(
-      tt, prf_idx, fp.target(),
-      [&](location_idx_t const c, route_idx_t const route_to) {
-        auto const stop_seq_to = tt.route_location_seq_[route_to];
-        for (auto j = 0U; j < stop_seq_to.size() - 1; ++j) {
-          auto const target_stop = stop{stop_seq_to[j]};
-          if (target_stop.location_idx() != c || !target_stop.in_allowed()) {
-            continue;
-          }
+  for (auto const route_to : tt.location_routes_[fp.target()]) {
+    auto const stop_seq_to = tt.route_location_seq_[route_to];
+    for (auto j = 0U; j < stop_seq_to.size() - 1; ++j) {
+      auto const target_stop = stop{stop_seq_to[j]};
+      if (target_stop.location_idx() != fp.target() ||
+          !target_stop.in_allowed()) {
+        continue;
+      }
 
-          auto const next_tgt_stop = stop{stop_seq_to[j + 1]};
-          auto const next_tgt = stop_location(tt, prf_idx, next_tgt_stop);
+      auto const next_tgt_stop = stop{stop_seq_to[j + 1]};
 
-          auto const is_uturn_target_route_terminates =
-              j + 1 == stop_seq_to.size() - 1 && prev_src == next_tgt &&
-              prev_src_stop.out_allowed();
+      auto const is_uturn_target_route_terminates =
+          j + 1 == stop_seq_to.size() - 1 &&
+          prev_src_stop.location_idx() == next_tgt_stop.location_idx() &&
+          prev_src_stop.out_allowed();
 
-          auto const is_uturn =
-              prev_src == next_tgt && prev_src_stop.out_allowed() &&
-              next_tgt_stop.in_allowed() &&
-              tt.locations_.transfer_time_[project(tt, prf_idx, prev_src)] <=
-                  fp.duration();
+      auto const is_uturn =
+          prev_src_stop.location_idx() == next_tgt_stop.location_idx() &&
+          prev_src_stop.out_allowed() && next_tgt_stop.in_allowed() &&
+          tt.locations_.transfer_time_[prev_src_stop.location_idx()] <=
+              fp.duration();
 
-          if (!is_uturn && !is_uturn_target_route_terminates) {
-            neighborhood.emplace_back(from_stop_idx, route_to, j,
-                                      fp.duration());
-          } else {
-            ++stats.n_uturn_transfers_;
-          }
-        }
-      });
+      if (!is_uturn && !is_uturn_target_route_terminates) {
+        neighborhood.emplace_back(from_stop_idx, route_to, j, fp.duration());
+      } else {
+        ++stats.n_uturn_transfers_;
+      }
+    }
+  }
 }
 
 void get_route_neighborhood(timetable const& tt,
@@ -243,20 +230,18 @@ void get_route_neighborhood(timetable const& tt,
     }
 
     // Location from which we transfer
-    auto const from = stop_location(tt, prf_idx, stop{stop_seq[i]});
+    auto const from = stop{stop_seq[i]}.location_idx();
 
-    if (auto const change =
-            tt.locations_.transfer_time_[project(tt, prf_idx, from)];
-        change != kNoTransferAllowed) {
-      add_non_uturn_transfers(tt, prf_idx, route_from, from_stop_idx,
-                              footpath{from, change}, neighborhood, stats);
+    // Transfer: reflexive footpath
+    add_non_uturn_transfers(tt, route_from, from_stop_idx,
+                            footpath{from, tt.locations_.transfer_time_[from]},
+                            neighborhood, stats);
+
+    // Outgoing footpaths
+    for (auto const& fp : tt.locations_.footpaths_out_[prf_idx][from]) {
+      add_non_uturn_transfers(tt, route_from, from_stop_idx, fp, neighborhood,
+                              stats);
     }
-
-    for_each_transfer<direction::kForward>(
-        tt, nullptr, prf_idx, from, [&](footpath const fp) {
-          add_non_uturn_transfers(tt, prf_idx, route_from, from_stop_idx, fp,
-                                  neighborhood, stats);
-        });
   }
 
   utl::sort(neighborhood, [](route_transfer const& a, route_transfer const& b) {
@@ -442,8 +427,7 @@ void preprocess_transport(timetable const& tt,
     }
 
     // the location index from which we are transferring
-    auto const from_stop =
-        stop_location(tt, prf_idx, stop{stop_seq_from[from_stop_idx]});
+    auto const from_stop = stop{stop_seq_from[from_stop_idx]}.location_idx();
 
     // tau_arr(t,i)
     auto const arr = tt.event_mam(t, from_stop_idx, event_type::kArr);
@@ -451,16 +435,13 @@ void preprocess_transport(timetable const& tt,
 
     // init the reached reduction data structure
     s.rr_arr_.update(from_stop, t_arr, traffic_days);
-    if (auto const change =
-            tt.locations_.transfer_time_[project(tt, prf_idx, from_stop)];
-        change != kNoTransferAllowed) {
-      s.rr_ch_.update(from_stop, t_arr + change.count(), traffic_days);
+    s.rr_ch_.update(from_stop,
+                    t_arr + tt.locations_.transfer_time_[from_stop].count(),
+                    traffic_days);
+    for (auto const& fp : tt.locations_.footpaths_out_[prf_idx][from_stop]) {
+      s.rr_arr_.update(fp.target(), t_arr + fp.duration_, traffic_days);
+      s.rr_ch_.update(fp.target(), t_arr + fp.duration_, traffic_days);
     }
-    for_each_transfer<direction::kForward>(
-        tt, nullptr, prf_idx, from_stop, [&](footpath const fp) {
-          s.rr_arr_.update(fp.target(), t_arr + fp.duration_, traffic_days);
-          s.rr_ch_.update(fp.target(), t_arr + fp.duration_, traffic_days);
-        });
 
     // iterate transfers found by line-based pruning
     for (auto transfer = segment_transfers[from_stop_idx - 1U].begin();
@@ -478,25 +459,23 @@ void preprocess_transport(timetable const& tt,
                                            .count());
 
         // locations after p_u_j
-        auto const u_stp = stop_location(
-            tt, prf_idx, stop{tt.route_location_seq_[route_u][stop_idx]});
+        auto const u_stp =
+            stop{tt.route_location_seq_[route_u][stop_idx]}.location_idx();
 
         s.rr_arr_.update(u_stp, u_arr_rel_t_first_dep, transfer->bf_,
                          &improvement);
-        if (auto const change =
-                tt.locations_.transfer_time_[project(tt, prf_idx, u_stp)];
-            change != kNoTransferAllowed) {
-          s.rr_ch_.update(u_stp, u_arr_rel_t_first_dep + change.count(),
-                          transfer->bf_, &improvement);
-        }
+        s.rr_ch_.update(
+            u_stp,
+            u_arr_rel_t_first_dep + tt.locations_.transfer_time_[u_stp].count(),
+            transfer->bf_, &improvement);
 
-        for_each_transfer<direction::kForward>(
-            tt, nullptr, prf_idx, u_stp, [&](footpath const fp_r) {
-              auto const eta = static_cast<std::uint16_t>(
-                  u_arr_rel_t_first_dep + fp_r.duration_);
-              s.rr_arr_.update(fp_r.target(), eta, transfer->bf_, &improvement);
-              s.rr_ch_.update(fp_r.target(), eta, transfer->bf_, &improvement);
-            });
+        for (auto const& fp_r :
+             tt.locations_.footpaths_out_[profile_idx_t{0U}][u_stp]) {
+          auto const eta = static_cast<std::uint16_t>(u_arr_rel_t_first_dep +
+                                                      fp_r.duration_);
+          s.rr_arr_.update(fp_r.target(), eta, transfer->bf_, &improvement);
+          s.rr_ch_.update(fp_r.target(), eta, transfer->bf_, &improvement);
+        }
       }
 
       transfer->bf_ = improvement;

@@ -31,20 +31,6 @@ void for_each_route_at_stop(timetable const& tt,
                          });
 }
 
-template <typename Fn>
-void for_each_route_at(timetable const& tt,
-                       profile_idx_t const prf,
-                       location_idx_t const l,
-                       Fn&& fn) {
-  if (is_projected(prf)) {
-    for_each_route_at_stop(tt, l, fn);
-  } else {
-    for (auto const r : tt.location_routes_[l]) {
-      fn(l, r);
-    }
-  }
-}
-
 template <typename Pred>
 bool any_route_at(timetable const& tt, location_idx_t const l, Pred&& pred) {
   return utl::any_of(tt.location_routes_[l], pred) ||

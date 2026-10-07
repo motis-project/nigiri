@@ -12,9 +12,6 @@
 #include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/one_to_all.h"
 #include "nigiri/routing/query.h"
-#include "nigiri/routing/search.h"
-#include "nigiri/routing/tb/preprocess.h"
-#include "nigiri/routing/tb/query_engine.h"
 #include "nigiri/routing/transfers.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
@@ -25,8 +22,8 @@
 #include "../transfer_rules_util.h"
 
 // Consumers of transfers.txt rules, virtual locations and hubs: transfer time
-// settings, trip-based routing, offsets, leg alternatives, footpath lookups,
-// direct connections and walks. What the rules mean is tested with the GTFS
+// settings, offsets, leg alternatives, footpath lookups, direct connections
+// and walks. What the rules mean is tested with the GTFS
 // loader (test/loader/gtfs/transfer_rules_test.cc). All feeds run on
 // 2019-05-01 in Europe/Berlin; the default transfer time at a stop is 2 min.
 
@@ -92,18 +89,6 @@ std::optional<unixtime_t> arrival_at_o(
                      .start_ = {{lidx(tt, from), 0_minutes, 0U}},
                      .destination_ = {{lidx(tt, "O"), 0_minutes, 0U}},
                      .transfer_time_settings_ = tts}));
-}
-
-// Trip-based routing, forward, on the profile of the query.
-pareto_set<routing::journey> tb_search(timetable const& tt, routing::query q) {
-  auto const tbd = routing::tb::preprocess(tt, q.prf_idx_);
-  auto search_state = routing::search_state{};
-  auto algo_state = routing::tb::query_state{tt, tbd};
-  return *(
-      routing::search<direction::kForward, routing::tb::query_engine<false>>{
-          tt, nullptr, search_state, algo_state, std::move(q)}
-          .execute()
-          .journeys_);
 }
 
 // ===========================================================================
@@ -178,47 +163,11 @@ TEST(transfer_rules, start_leg_through_zero_min_hub) {
 }
 
 // ===========================================================================
-// Consumers of the transfer relation besides RAPTOR: the change FA (virtual
-// location below U) -> FB (at U) exists only through U's hub.
+// Consumers of the transfer relation besides RAPTOR.
 // ===========================================================================
 
-TEST(transfer_rules, trip_based_routing_sees_hub_transfers) {
-  auto const tt = load_feeds({virt_feed()});
-
-  // Control: RAPTOR finds FA -> FB.
-  EXPECT_EQ(at("11:00"), arrival_at(tt, "L", "M", "10:00"));
-
-  auto const res = tb_search(
-      tt, routing::query{.start_time_ = at("10:00"),
-                         .start_ = {{lidx(tt, "L"), 0_minutes, 0U}},
-                         .destination_ = {{lidx(tt, "M"), 0_minutes, 0U}}});
-  ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(at("11:00"), begin(res)->dest_time_);
-}
-
-// Trip-based routing in a profile that projects virtual locations sees them
-// as their stop, as RAPTOR does (virt_change_feed).
-TEST(transfer_rules, trip_based_routing_projects_virtual_locations) {
-  constexpr auto const kProfile = profile_idx_t{1U};
-  auto tt = load_feeds({virt_change_feed()});
-  ASSERT_NE(0U, n_virts(tt)) << "precondition: QS has virtual locations";
-  add_empty_profile(tt, kProfile);
-
-  auto const q =
-      routing::query{.start_time_ = at("10:00"),
-                     .start_ = {{lidx(tt, "QA"), 0_minutes, 0U}},
-                     .destination_ = {{lidx(tt, "QB"), 0_minutes, 0U}},
-                     .prf_idx_ = kProfile};
-  auto const raptor = raptor_search(tt, nullptr, routing::query{q});
-  ASSERT_EQ(1U, raptor.size());
-  EXPECT_EQ(at("11:00"), begin(raptor)->dest_time_);
-
-  auto const res = tb_search(tt, q);
-  ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(at("11:00"), begin(res)->dest_time_);
-}
-
-// So does the one-to-all search.
+// The one-to-all search in a profile that projects virtual locations sees
+// them as their stop, as RAPTOR does (virt_change_feed).
 TEST(transfer_rules, one_to_all_projects_virtual_locations) {
   constexpr auto const kProfile = profile_idx_t{1U};
   auto tt = load_feeds({virt_change_feed()});
