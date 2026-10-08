@@ -342,6 +342,21 @@ std::string_view run_stop::route_long_name(event_type const ev_type,
                               route_ids->route_id_long_names_.at(route_id_idx));
 }
 
+display_type run_stop::route_short_name_display(
+    event_type const ev_type) const {
+  auto const [route_ids, route_id_idx] = get_route(ev_type);
+  return route_ids == nullptr
+             ? display_type::kUnset
+             : route_ids->route_id_short_names_display_.at(route_id_idx);
+}
+
+display_type run_stop::route_long_name_display(event_type const ev_type) const {
+  auto const [route_ids, route_id_idx] = get_route(ev_type);
+  return route_ids == nullptr
+             ? display_type::kUnset
+             : route_ids->route_id_long_names_display_.at(route_id_idx);
+}
+
 std::string_view run_stop::route_url(event_type const ev_type,
                                      lang_t const& lang) const {
   auto const [route_ids, route_id_idx] = get_route(ev_type);

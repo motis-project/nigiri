@@ -517,6 +517,13 @@ inline scoped_shape_idx_t to_scoped_shape_idx(shape_idx_t const local_idx,
       (source == shape_source::kRouted ? kShapeSourceBit : std::uint32_t{0U})};
 }
 
+enum display_type : std::uint8_t {
+  kRequired,
+  kOptional,
+  kDetailsOnly,
+  kUnset,
+};
+
 }  // namespace nigiri
 
 #include <iomanip>
