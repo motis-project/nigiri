@@ -2,6 +2,7 @@
 #include "nigiri/rt/vdv_aus.h"
 
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -112,6 +113,13 @@ std::optional<unixtime_t> get_opt_time(pugi::xml_node const& node,
 std::optional<unixtime_t> get_opt_time_siri(pugi::xml_node const& node,
                                             char const* str) {
   return get_opt_time(node, str, "%FT%T%Ez", "%FT%TZ");
+}
+
+std::optional<date::sys_days> parse_service_date(std::string_view const s) {
+  auto in = std::istringstream{std::string{s.substr(0U, 10U)}};
+  auto d = date::sys_days{};
+  in >> date::parse("%F", d);
+  return in.fail() ? std::nullopt : std::optional{d};
 }
 
 std::ostream& operator<<(std::ostream& out, statistics const& s) {
@@ -316,13 +324,15 @@ void updater::match_run(run_id const& vdv_id,
   matches_[vdv_run_id] = match{};
   auto candidates = std::vector<candidate>{};
 
-  if (!vdv_id.run_.empty() && vdv_id.date_.has_value()) {
-    auto td = transit_realtime::TripDescriptor{};
-    td.set_trip_id(vdv_id.run_);
-    td.set_start_date(*vdv_id.date_);
-
-    auto const [r, _] =
-        gtfsrt_resolve_run(date::sys_days{}, tt_, nullptr, src_idx_, td);
+  auto const start_date = vdv_id.date_.and_then(parse_service_date);
+  if (!vdv_id.run_.empty() && start_date.has_value()) {
+    auto r = run{};
+    resolve_static_trip_id(date::sys_days{}, tt_, src_idx_, vdv_id.run_,
+                           start_date, std::nullopt,
+                           [&](run const& x, trip_idx_t) {
+                             r = x;
+                             return utl::continue_t::kBreak;
+                           });
     if (r.valid()) {
       matches_[vdv_run_id].runs_.emplace_back(r);
       return;
