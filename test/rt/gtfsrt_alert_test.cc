@@ -14,7 +14,7 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
-#include "./util.h"
+#include "../util.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;

@@ -385,7 +385,7 @@ bool update_run(source_idx_t const src,
           gtfsrt::TripUpdate_StopTimeUpdate_ScheduleRelationship_SKIPPED) {
         auto l_idx = stop{stp}.location_idx();
         // Cancel skipped stops (in_allowed = out_allowed = false).
-        stp = stop{l_idx, false, false, false, false}.value();
+        rtt.cancel_stop(r.rt_, stop_idx);
         rtt.dispatch_stop_change(r, stop_idx, event_type::kArr, l_idx, false);
         rtt.dispatch_stop_change(r, stop_idx, event_type::kDep, l_idx, false);
       } else if (upd_it->stop_time_properties().has_assigned_stop_id() ||
@@ -503,6 +503,8 @@ bool update_run(source_idx_t const src,
       [](stop::value_type const s) { return !stop{s}.is_cancelled(); });
   if (n_not_cancelled_stops <= 1U) {
     rtt.cancel_run(r);
+  } else {
+    rtt.finalize_rt_transport(tt, r.rt_);
   }
   return true;
 }
@@ -537,6 +539,7 @@ void handle_vehicle_position(timetable const& tt,
     // add rt_transport if not existent
     if (!r.is_rt()) {
       r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
+      rtt.finalize_rt_transport(tt, r.rt_);
     }
 
     // match position to stop

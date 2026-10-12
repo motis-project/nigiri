@@ -12,7 +12,7 @@
 #include "nigiri/rt/util.h"
 #include "nigiri/timetable.h"
 
-#include "./util.h"
+#include "../util.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
