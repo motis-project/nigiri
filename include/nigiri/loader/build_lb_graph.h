@@ -1,6 +1,7 @@
 #pragma once
 
 #include "utl/pairwise.h"
+#include "utl/parallel_for.h"
 
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
@@ -10,10 +11,10 @@ namespace nigiri::loader {
 
 template <direction SearchDir>
 void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
-  hash_map<location_idx_t, duration_t> weights;
+  using weights_t = hash_map<location_idx_t, duration_t>;
 
-  auto const update_weight = [&](location_idx_t const target,
-                                 duration_t const d) {
+  auto const update_weight = [](weights_t& weights, location_idx_t const target,
+                                duration_t const d) {
     if (auto const it = weights.find(target); it != end(weights)) {
       it->second = std::min(it->second, d);
     } else {
@@ -21,7 +22,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     }
   };
 
-  auto const add_edges = [&](location_idx_t const l) {
+  auto const add_edges = [&](weights_t& weights, location_idx_t const l) {
     auto const parent_l = tt.locations_.get_root_idx(l);
 
     auto const& footpaths = SearchDir == direction::kForward
@@ -30,7 +31,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     for (auto const& fp : footpaths) {
       auto const target = tt.locations_.get_root_idx(fp.target());
       if (target != parent_l) {
-        update_weight(target, fp.duration());
+        update_weight(weights, target, fp.duration());
       }
     }
 
@@ -63,38 +64,42 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           auto const to_time = tt.event_mam(t, to, event_type::kArr);
           min = std::min((to_time - from_time).as_duration(), min);
         }
-        update_weight(target, min);
+        update_weight(weights, target, min);
       }
     }
   };
 
   auto const timer = scoped_timer{"nigiri.loader.lb"};
-  std::vector<footpath> footpaths;
+
+  // A location's edges only read the timetable: collect them in parallel,
+  // then append them in location order.
+  auto edges = std::vector<std::vector<footpath>>(tt.locations_.ids_.size());
+  utl::parallel_for_run_threadlocal<weights_t>(
+      edges.size(), [&](weights_t& weights, std::size_t const idx) {
+        auto const i = location_idx_t{idx};
+        if (tt.locations_.parents_[i] != location_idx_t::invalid()) {
+          return;
+        }
+
+        for (auto const& c : tt.locations_.children_[i]) {
+          add_edges(weights, c);
+          for (auto const& cc : tt.locations_.children_[c]) {
+            add_edges(weights, cc);
+          }
+        }
+        add_edges(weights, i);
+
+        for (auto const& [target, duration] : weights) {
+          edges[idx].emplace_back(footpath{target, duration});
+        }
+        weights.clear();
+      });
+
   auto& lb_graph = SearchDir == direction::kForward
                        ? tt.fwd_search_lb_graph_[prf_idx]
                        : tt.bwd_search_lb_graph_[prf_idx];
-  for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
-    if (tt.locations_.parents_[i] != location_idx_t::invalid()) {
-      lb_graph.emplace_back(std::vector<footpath>{});
-      continue;
-    }
-
-    for (auto const& c : tt.locations_.children_[i]) {
-      add_edges(c);
-      for (auto const& cc : tt.locations_.children_[c]) {
-        add_edges(cc);
-      }
-    }
-    add_edges(i);
-
-    for (auto const& [target, duration] : weights) {
-      footpaths.emplace_back(footpath{target, duration});
-    }
-
-    lb_graph.emplace_back(footpaths);
-
-    footpaths.clear();
-    weights.clear();
+  for (auto const& e : edges) {
+    lb_graph.emplace_back(e);
   }
 }
 
