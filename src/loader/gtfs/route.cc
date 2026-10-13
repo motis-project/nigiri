@@ -158,8 +158,10 @@ route_map_t read_routes(source_idx_t const src,
   struct csv_route {
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
     utl::csv_col<utl::cstr, UTL_NAME("agency_id")> agency_id_;
-    utl::csv_col<utl::cstr, UTL_NAME("route_short_name")> route_short_name_;
-    utl::csv_col<utl::cstr, UTL_NAME("route_long_name")> route_long_name_;
+    utl::csv_col<cista::raw::generic_string, UTL_NAME("route_short_name")>
+        route_short_name_;
+    utl::csv_col<cista::raw::generic_string, UTL_NAME("route_long_name")>
+        route_long_name_;
     utl::csv_col<utl::cstr, UTL_NAME("route_url")> route_url_;
     utl::csv_col<utl::cstr, UTL_NAME("route_desc")> route_desc_;
     utl::csv_col<std::uint16_t, UTL_NAME("route_type")> route_type_;
