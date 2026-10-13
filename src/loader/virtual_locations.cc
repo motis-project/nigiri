@@ -543,7 +543,8 @@ void resolve(timetable const& tt, state& st) {
   auto part_members = std::vector<std::pair<std::uint32_t, std::uint32_t>>{};
   auto const refresh = [&](route_state const& route, stop_state& c) {
     part_members.clear();
-    for (auto a = 0U; a != route.part_.size(); ++a) {
+    for (auto a = 0U; a != static_cast<std::uint32_t>(route.part_.size());
+         ++a) {
       part_members.emplace_back(route.part_[a],
                                 c.member_[route_transport_idx_t{a}]);
     }
@@ -579,7 +580,8 @@ void resolve(timetable const& tt, state& st) {
     types.clear();
     type_of.clear();
     auto key = std::vector<std::uint32_t>{};
-    for (auto a = route_transport_idx_t{0U}; a != route.part_.size(); ++a) {
+    for (auto a = route_transport_idx_t{0U};
+         a != static_cast<std::uint32_t>(route.part_.size()); ++a) {
       key.clear();
       for (auto const c : stops) {
         key.push_back(c->member_[a]);
@@ -682,7 +684,7 @@ void resolve(timetable const& tt, state& st) {
     c.member_[t] = static_cast<std::uint32_t>(
         it == end(c.members_)
             ? (c.members_.push_back(std::move(m)), c.members_.size() - 1U)
-            : std::distance(begin(c.members_), it));
+            : static_cast<std::size_t>(std::distance(begin(c.members_), it)));
     touched.push_back(rs);
     return true;
   };
@@ -873,7 +875,7 @@ void resolve(timetable const& tt, state& st) {
         }
       }
       utl::sort(parts);
-      for (auto const& [_, __, rs, part] : parts) {
+      for (auto const& [loc, n_required, rs, part] : parts) {
         place(rs, part);
       }
     }
