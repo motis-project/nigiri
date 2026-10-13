@@ -194,7 +194,7 @@ TEST(transfer_rules, start_leg_through_zero_min_transfer) {
 }
 
 // ===========================================================================
-// Consumers of the transfer relation besides RAPTOR.
+// Consumers of the footpaths and transfer times besides RAPTOR.
 // ===========================================================================
 
 // The one-to-all search in a profile that ignores transfer rules reaches the

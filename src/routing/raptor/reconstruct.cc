@@ -416,31 +416,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
     return std::nullopt;
   };
 
-  // nullopt: a required flag is set on no section.
-  auto const get_section_flags =
-      [&](std::array<bitvec, kNumRouteFlags> const& flags,
-          std::uint32_t const i)
-      -> std::optional<std::array<bool, kNumRouteFlags>> {
-    auto section_flags = std::array<bool, kNumRouteFlags>{};
-    for (auto const& [f, is_required] :
-         {std::pair{kBikesAllowed, q.require_bike_transport_},
-          std::pair{kCarsAllowed, q.require_car_transport_},
-          std::pair{kWheelchairAccessible, is_wheelchair},
-          std::pair{kReservationNotRequired, q.no_compulsory_reservation_}}) {
-      trace_reconstruct("  {}: flag {} on_all={} on_some={}\n", i,
-                        static_cast<int>(f), flags[f].test(i * 2U),
-                        flags[f].test(i * 2U + 1U));
-      if (!is_required || flags[f].test(i * 2U)) {
-        continue;
-      }
-      if (!flags[f].test(i * 2U + 1U)) {
-        return std::nullopt;
-      }
-      section_flags[f] = true;
-    }
-    return section_flags;
-  };
-
   auto const get_transport =
       [&](unsigned const k, location_idx_t const l, delta_t const time,
           bool const is_td_footpath) -> std::optional<journey::leg> {
@@ -453,10 +428,47 @@ void reconstruct_journey_with_vias(timetable const& tt,
           continue;
         }
 
-        auto const section_flags =
-            get_section_flags(rtt->rt_transport_flags_, to_idx(rt_t));
-        if (!section_flags.has_value()) {
-          continue;
+        auto section_flags = std::array<bool, kNumRouteFlags>{};
+
+        auto const apply_filter = [&](route_flag const f) {
+          auto const flag_set_on_all_sections =
+              rtt->rt_transport_flags_[f].test(rt_t.v_ * 2);
+          auto const flag_set_on_some_sections =
+              rtt->rt_transport_flags_[f].test(rt_t.v_ * 2 + 1);
+          trace_reconstruct("  rt_t={}: flag {} on_all={} on_some={} (RT)\n",
+                            rt_t, flag_set_on_all_sections,
+                            flag_set_on_some_sections);
+          if (!flag_set_on_all_sections) {
+            if (!flag_set_on_some_sections) {
+              return false;
+            }
+            section_flags[f] = true;
+          }
+          return true;
+        };
+
+        if (q.require_bike_transport_) {
+          if (!apply_filter(kBikesAllowed)) {
+            continue;
+          }
+        }
+
+        if (q.require_car_transport_) {
+          if (!apply_filter(kCarsAllowed)) {
+            continue;
+          }
+        }
+
+        if (is_wheelchair) {
+          if (!apply_filter(kWheelchairAccessible)) {
+            continue;
+          }
+        }
+
+        if (q.no_compulsory_reservation_) {
+          if (!apply_filter(kReservationNotRequired)) {
+            continue;
+          }
         }
 
         auto const location_seq = rtt->rt_transport_location_seq_[rt_t];
@@ -476,7 +488,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
           }
 
           auto leg =
-              find_start_in_prev_round(k, fr, stop_idx, time, *section_flags);
+              find_start_in_prev_round(k, fr, stop_idx, time, section_flags);
           if (leg.has_value()) {
             return leg;
           }
@@ -489,9 +501,46 @@ void reconstruct_journey_with_vias(timetable const& tt,
         continue;
       }
 
-      auto const section_flags = get_section_flags(tt.route_flags_, to_idx(r));
-      if (!section_flags.has_value()) {
-        continue;
+      auto section_flags = std::array<bool, kNumRouteFlags>{};
+
+      auto const apply_filter = [&](route_flag const f) {
+        auto const flag_set_on_all_sections = tt.route_flags_[f].test(r.v_ * 2);
+        auto const flag_set_on_some_sections =
+            tt.route_flags_[f].test(r.v_ * 2 + 1);
+        trace_reconstruct("  rt_t={}: flag {} on_all={} on_some={} (RT)\n",
+                          rt_t, flag_set_on_all_sections,
+                          flag_set_on_some_sections);
+        if (!flag_set_on_all_sections) {
+          if (!flag_set_on_some_sections) {
+            return false;
+          }
+          section_flags[f] = true;
+        }
+        return true;
+      };
+
+      if (q.require_bike_transport_) {
+        if (!apply_filter(kBikesAllowed)) {
+          continue;
+        }
+      }
+
+      if (q.require_car_transport_) {
+        if (!apply_filter(kCarsAllowed)) {
+          continue;
+        }
+      }
+
+      if (is_wheelchair) {
+        if (!apply_filter(kWheelchairAccessible)) {
+          continue;
+        }
+      }
+
+      if (q.no_compulsory_reservation_) {
+        if (!apply_filter(kReservationNotRequired)) {
+          continue;
+        }
       }
 
       auto const location_seq = tt.route_location_seq_[r];
@@ -505,7 +554,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
         }
 
         auto leg = get_route_transport(k, time, r, static_cast<stop_idx_t>(i),
-                                       *section_flags, is_td_footpath);
+                                       section_flags, is_td_footpath);
         if (leg.has_value()) {
           return leg;
         }

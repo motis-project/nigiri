@@ -485,14 +485,15 @@ void expand_td_footpaths_to_virts(
 }
 
 void apply_transfer_rules(timetable& tt, shapes_storage* shapes) {
+  // the walks grow with the virtual locations (see register_location)
   auto walks = tt.locations_.preprocessing_footpaths_out_;
   write_default_profile(tt);
+  tt.locations_.preprocessing_footpaths_out_ = std::move(walks);
   if (!add_virtual_locations(tt, shapes)) {
+    tt.locations_.preprocessing_footpaths_out_ = {};
     return;
   }
   auto const n = tt.n_locations();
-  walks[location_idx_t{n - 1U}];
-  tt.locations_.preprocessing_footpaths_out_ = std::move(walks);
   write_default_profile(tt);
 
   // Routed walks of other profiles (computed before) reach the virtual

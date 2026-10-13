@@ -552,7 +552,7 @@ void resolve(timetable const& tt, state& st) {
     c.required_.assign(route.n_parts_, {});
     c.forbidden_.assign(route.n_parts_, {});
     c.unshared_.resize(route.n_parts_);
-    for (auto const [part, m] : part_members) {
+    for (auto const& [part, m] : part_members) {
       unite(c.required_[part], c.members_[m].required_);
       unite(c.forbidden_[part], c.members_[m].forbidden_);
     }

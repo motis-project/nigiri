@@ -33,44 +33,36 @@ inline u8_minutes get_transfer_time(timetable const& tt,
                    .transfer_time_[prf == kDefaultProfile ? l : tt.base(l)];
 }
 
-template <direction SearchDir>
-bool for_each_footpath_at(timetable const& tt,
-                          rt_timetable const* rtt,
-                          profile_idx_t const prf_idx,
-                          location_idx_t const l,
-                          auto&& fn) {
-  constexpr auto const kFwd = SearchDir == direction::kForward;
-  auto const& fps = kFwd ? tt.locations_.footpaths_out_[prf_idx]
-                         : tt.locations_.footpaths_in_[prf_idx];
-  if (l < fps.size()) {
-    for (auto const& fp : fps[l]) {
-      if (!call_and_go_on(fn, fp)) {
-        return false;
-      }
-    }
-  }
-  if (rtt == nullptr || prf_idx != kDefaultProfile) {
-    return true;
-  }
-  auto const& rt_footpaths =
-      kFwd ? rtt->rt_footpaths_out_ : rtt->rt_footpaths_in_;
-  if (l < rt_footpaths.size()) {
-    for (auto const& fp : rt_footpaths[l]) {
-      if (!call_and_go_on(fn, fp)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
+// The footpaths of a location, the real-time ones included (only the default
+// profile has real-time virtual locations).
 template <direction SearchDir>
 void for_each_transfer(timetable const& tt,
                        rt_timetable const* rtt,
                        profile_idx_t const prf_idx,
                        location_idx_t const l,
                        auto&& fn) {
-  for_each_footpath_at<SearchDir>(tt, rtt, prf_idx, l, fn);
+  constexpr auto const kFwd = SearchDir == direction::kForward;
+  auto const& fps = kFwd ? tt.locations_.footpaths_out_[prf_idx]
+                         : tt.locations_.footpaths_in_[prf_idx];
+  if (l < fps.size()) {
+    for (auto const& fp : fps[l]) {
+      if (!call_and_go_on(fn, fp)) {
+        return;
+      }
+    }
+  }
+  if (rtt == nullptr || prf_idx != kDefaultProfile) {
+    return;
+  }
+  auto const& rt_footpaths =
+      kFwd ? rtt->rt_footpaths_out_ : rtt->rt_footpaths_in_;
+  if (l < rt_footpaths.size()) {
+    for (auto const& fp : rt_footpaths[l]) {
+      if (!call_and_go_on(fn, fp)) {
+        return;
+      }
+    }
+  }
 }
 
 inline std::optional<duration_t> shortest_transfer(timetable const& tt,
