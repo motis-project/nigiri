@@ -300,16 +300,9 @@ void override_footpaths_with_rules(timetable& tt, rule_index const& rule_fps) {
   }
 }
 
-void write_footpaths(timetable& tt, rule_index const& rule_fps) {
-  // shortest duration first, the order sort_footpaths() left the preprocessing
-  // layers in; the target breaks ties so the built timetable is reproducible
-  auto const by_duration = [](footpath const a, footpath const b) {
-    return std::tie(a.duration_, a.target_) < std::tie(b.duration_, b.target_);
-  };
-
-  // Nothing departs at a virtual location without departures: no walk leads
-  // there (journeys ending there walk to its stop).
-  auto& loc = tt.locations_;
+// Nothing departs at a virtual location without departures: no walk leads
+// there (journeys ending there walk to its stop).
+std::vector<bool> get_departures(timetable const& tt) {
   auto is_departure = std::vector<bool>(tt.n_locations(), false);
   for (auto const seq : tt.route_location_seq_) {
     for (auto i = 0U; i + 1U < seq.size(); ++i) {
@@ -318,16 +311,57 @@ void write_footpaths(timetable& tt, rule_index const& rule_fps) {
       }
     }
   }
+  return is_departure;
+}
 
-  auto& out = loc.footpaths_out_[kDefaultProfile];
-  auto fps = std::vector<footpath>{};
+// The footpaths of a profile: the shortest per target, shortest first (the
+// target breaks ties so the built timetable is reproducible), and their mirror.
+void write_profile(timetable& tt,
+                   profile_idx_t const prf,
+                   vector_map<location_idx_t, std::vector<footpath>>& fps) {
+  auto const by_duration = [](footpath const a, footpath const b) {
+    return std::tie(a.duration_, a.target_) < std::tie(b.duration_, b.target_);
+  };
+  auto& out = tt.locations_.footpaths_out_[prf];
+  auto in = vector_map<location_idx_t, std::vector<footpath>>{};
+  in.resize(tt.n_locations());
   out.clear();
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-    fps.clear();
+    utl::erase_duplicates(
+        fps[l],
+        [](footpath const a, footpath const b) {
+          return std::tie(a.target_, a.duration_) <
+                 std::tie(b.target_, b.duration_);
+        },
+        [](footpath const a, footpath const b) {
+          return a.target_ == b.target_;
+        });
+    utl::sort(fps[l], by_duration);
+    for (auto const fp : fps[l]) {
+      in[fp.target()].emplace_back(l, fp.duration());
+    }
+    out.emplace_back(fps[l]);
+    fps[l] = {};
+  }
+  auto& in_fps = tt.locations_.footpaths_in_[prf];
+  in_fps.clear();
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    utl::sort(in[l], by_duration);
+    in_fps.emplace_back(in[l]);
+    in[l] = {};
+  }
+}
+
+void write_footpaths(timetable& tt, rule_index const& rule_fps) {
+  auto& loc = tt.locations_;
+  auto const is_departure = get_departures(tt);
+  auto fps = vector_map<location_idx_t, std::vector<footpath>>{};
+  fps.resize(tt.n_locations());
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
     auto const add = [&](footpath const fp) {
       if (fp.target() != l &&
           (!loc.is_virt(fp.target()) || is_departure[to_idx(fp.target())])) {
-        fps.push_back(fp);
+        fps[l].push_back(fp);
       }
     };
     for (auto const fp : loc.preprocessing_footpaths_out_[l]) {
@@ -340,36 +374,9 @@ void write_footpaths(timetable& tt, rule_index const& rule_fps) {
         add(fp);
       }
     }
-
-    // Sort by target; keeps the shortest duration per target.
-    utl::erase_duplicates(
-        fps,
-        [](footpath const a, footpath const b) {
-          return std::tie(a.target_, a.duration_) <
-                 std::tie(b.target_, b.duration_);
-        },
-        [](footpath const a, footpath const b) {
-          return a.target_ == b.target_;
-        });
-    utl::sort(fps, by_duration);  // re-sort by duration
-    out.emplace_back(fps);
   }
   loc.preprocessing_footpaths_out_ = {};
-
-  // Mirror out to in.
-  auto in = vector_map<location_idx_t, std::vector<footpath>>{};
-  in.resize(tt.n_locations());
-  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-    for (auto const fp : out[l]) {
-      in[fp.target()].emplace_back(l, fp.duration());
-    }
-  }
-  loc.footpaths_in_[kDefaultProfile].clear();
-  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-    utl::sort(in[l], by_duration);
-    loc.footpaths_in_[kDefaultProfile].emplace_back(in[l]);
-    in[l] = {};
-  }
+  write_profile(tt, kDefaultProfile, fps);
 }
 
 void write_default_profile(timetable& tt) {
@@ -411,6 +418,72 @@ void write_default_profile(timetable& tt) {
   build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
 }
 
+void expand_profile_to_virts(timetable& tt, profile_idx_t const prf) {
+  auto const& loc = tt.locations_;
+  auto const is_departure = get_departures(tt);
+  auto fps = vector_map<location_idx_t, std::vector<footpath>>{};
+  fps.resize(tt.n_locations());
+  auto from = std::vector<location_idx_t>{};
+  auto to = std::vector<location_idx_t>{};
+  auto const add = [&](duration_t const d) {
+    for (auto const f : from) {
+      for (auto const t : to) {
+        if (f != t && (!loc.is_virt(t) || is_departure[to_idx(t)])) {
+          fps[f].emplace_back(t, d);
+        }
+      }
+    }
+  };
+  for (auto l = location_idx_t{0U}; l != loc.footpaths_out_[prf].size(); ++l) {
+    if (loc.is_virt(l)) {
+      continue;
+    }
+    collect_members(tt, l, from);
+    if (from.size() != 1U && loc.transfer_time_[l] != kNoTransferAllowed) {
+      to = from;
+      add(to_fp_duration(loc.transfer_time_[l]));
+    }
+    for (auto const fp : loc.footpaths_out_[prf][l]) {
+      collect_members(tt, fp.target(), to);
+      add(fp.duration());
+    }
+  }
+  write_profile(tt, prf, fps);
+  build_lb_graph<direction::kForward>(tt, prf);
+  build_lb_graph<direction::kBackward>(tt, prf);
+}
+
+void expand_td_footpaths_to_virts(
+    timetable const& tt,
+    std::map<location_idx_t, std::vector<td_footpath>>& fps) {
+  auto const& loc = tt.locations_;
+  auto members = std::vector<location_idx_t>{};
+  auto expanded = std::map<location_idx_t, std::vector<td_footpath>>{};
+  for (auto const& [l, l_fps] : fps) {
+    auto out = std::vector<td_footpath>{};
+    for (auto const& fp : l_fps) {
+      collect_members(tt, fp.target_, members);
+      for (auto const m : members) {
+        out.push_back({m, fp.valid_from_, fp.duration_});
+      }
+    }
+    collect_members(tt, l, members);
+    for (auto const from : members) {
+      auto& from_fps = expanded[from] = out;
+      if (loc.transfer_time_[l] != kNoTransferAllowed) {
+        for (auto const to : members) {
+          if (to != from) {
+            from_fps.push_back(
+                {to, kNull, to_fp_duration(loc.transfer_time_[l])});
+          }
+        }
+      }
+      utl::sort(from_fps);
+    }
+  }
+  fps = std::move(expanded);
+}
+
 void apply_transfer_rules(timetable& tt, shapes_storage* shapes) {
   auto walks = tt.locations_.preprocessing_footpaths_out_;
   write_default_profile(tt);
@@ -422,16 +495,11 @@ void apply_transfer_rules(timetable& tt, shapes_storage* shapes) {
   tt.locations_.preprocessing_footpaths_out_ = std::move(walks);
   write_default_profile(tt);
 
-  // Virtual locations have nothing of their own here: other profiles project
-  // them to their stop, importance counts at the root. Updates what finalize
-  // already computed (routed walks come after finalize).
+  // Routed walks of other profiles (computed before) reach the virtual
+  // locations as well, importance counts at the root.
   for (auto prf = profile_idx_t{1U}; prf != kNProfiles; ++prf) {
-    for (auto* v :
-         {&tt.locations_.footpaths_out_[prf], &tt.locations_.footpaths_in_[prf],
-          &tt.fwd_search_lb_graph_[prf], &tt.bwd_search_lb_graph_[prf]}) {
-      if (!v->empty()) {
-        v->resize(n);
-      }
+    if (!tt.locations_.footpaths_out_[prf].empty()) {
+      expand_profile_to_virts(tt, prf);
     }
   }
   tt.location_location_groups_.resize(n);

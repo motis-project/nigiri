@@ -47,8 +47,7 @@ bool is_journey_start(timetable const& tt,
                       query const& q,
                       location_idx_t const candidate_l) {
   return utl::any_of(q.start_, [&](offset const& o) {
-    return matches(tt, q.start_match_mode_, project(tt, q.prf_idx_, o.target()),
-                   candidate_l);
+    return matches(tt, q.start_match_mode_, o.target(), candidate_l);
   });
 }
 
@@ -107,15 +106,13 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
   auto const j_start_time = unix_to_delta(base, j.start_time_);
   auto const round_times = state.get_round_times<Vias>();
-  auto const fp_target_time =
-      round_times[0][to_idx(project(tt, q.prf_idx_, leg_start_location))][0];
+  auto const fp_target_time = round_times[0][to_idx(leg_start_location)][0];
 
   if (q.start_match_mode_ == location_match_mode::kIntermodal) {
     trace_reconstruct("  intermodal start mode\n");
 
     for (auto const& o : q.start_) {
-      if (matches(tt, q.start_match_mode_, project(tt, q.prf_idx_, o.target()),
-                  static_leg_start) &&
+      if (matches(tt, q.start_match_mode_, o.target(), static_leg_start) &&
           is_better_or_eq(j.start_time_, leg_start_time - dir(o.duration()))) {
         trace_rc_intermodal_start_found;
         return journey::leg{
@@ -444,87 +441,73 @@ void reconstruct_journey_with_vias(timetable const& tt,
     return section_flags;
   };
 
-  auto virt_children = std::vector<location_idx_t>{};
-
   auto const get_transport =
       [&](unsigned const k, location_idx_t const l, delta_t const time,
           bool const is_td_footpath) -> std::optional<journey::leg> {
     trace_reconstruct(" time={}\n", delta_to_unix(base, time));
 
-    virt_children.clear();
-    virt_children.push_back(l);
-    if (is_projected(q.prf_idx_)) {
-      tt.locations_.for_each_virt(
-          l, [&](location_idx_t const c) { virt_children.push_back(c); });
-    }
-
     if (rtt != nullptr) {
-      for (auto const scan_l : virt_children) {
-        for (auto const& rt_t : rtt->location_rt_transports_[scan_l]) {
-          if (!is_allowed(q.allowed_claszes_,
-                          rtt->rt_transport_section_clasz_[rt_t][0])) {
+      for (auto const& rt_t : rtt->location_rt_transports_[l]) {
+        if (!is_allowed(q.allowed_claszes_,
+                        rtt->rt_transport_section_clasz_[rt_t][0])) {
+          continue;
+        }
+
+        auto const section_flags =
+            get_section_flags(rtt->rt_transport_flags_, to_idx(rt_t));
+        if (!section_flags.has_value()) {
+          continue;
+        }
+
+        auto const location_seq = rtt->rt_transport_location_seq_[rt_t];
+        for (auto const [i, s] : utl::enumerate(location_seq)) {
+          auto const stp = stop{s};
+          auto const stop_idx = static_cast<stop_idx_t>(i);
+          auto const fr = rt::frun::from_rt(tt, rtt, rt_t);
+          if (label_location(fr, stop_idx) != l ||  //
+              (kFwd && (i == 0U || !stp.out_allowed(is_wheelchair))) ||
+              (!kFwd && (i == location_seq.size() - 1 ||
+                         !stp.in_allowed(is_wheelchair))) ||
+              // Allow earlier arrivals, e.g. if path was blocked
+              !is_better_or_eq(
+                  fr[stop_idx].time(kFwd ? event_type::kArr : event_type::kDep),
+                  delta_to_unix(base, time))) {
             continue;
           }
 
-          auto const section_flags =
-              get_section_flags(rtt->rt_transport_flags_, to_idx(rt_t));
-          if (!section_flags.has_value()) {
-            continue;
-          }
-
-          auto const location_seq = rtt->rt_transport_location_seq_[rt_t];
-          for (auto const [i, s] : utl::enumerate(location_seq)) {
-            auto const stp = stop{s};
-            auto const stop_idx = static_cast<stop_idx_t>(i);
-            auto const fr = rt::frun::from_rt(tt, rtt, rt_t);
-            if (label_location(fr, stop_idx) != l ||  //
-                (kFwd && (i == 0U || !stp.out_allowed(is_wheelchair))) ||
-                (!kFwd && (i == location_seq.size() - 1 ||
-                           !stp.in_allowed(is_wheelchair))) ||
-                // Allow earlier arrivals, e.g. if path was blocked
-                !is_better_or_eq(fr[stop_idx].time(kFwd ? event_type::kArr
-                                                        : event_type::kDep),
-                                 delta_to_unix(base, time))) {
-              continue;
-            }
-
-            auto leg =
-                find_start_in_prev_round(k, fr, stop_idx, time, *section_flags);
-            if (leg.has_value()) {
-              return leg;
-            }
+          auto leg =
+              find_start_in_prev_round(k, fr, stop_idx, time, *section_flags);
+          if (leg.has_value()) {
+            return leg;
           }
         }
       }
     }
 
-    for (auto const scan_l : virt_children) {
-      for (auto const& r : static_routes(tt, rtt, scan_l)) {
-        if (!is_allowed(q.allowed_claszes_, tt.route_clasz_[r])) {
+    for (auto const& r : static_routes(tt, rtt, l)) {
+      if (!is_allowed(q.allowed_claszes_, tt.route_clasz_[r])) {
+        continue;
+      }
+
+      auto const section_flags = get_section_flags(tt.route_flags_, to_idx(r));
+      if (!section_flags.has_value()) {
+        continue;
+      }
+
+      auto const location_seq = tt.route_location_seq_[r];
+      for (auto const [i, s] : utl::enumerate(location_seq)) {
+        auto const stp = stop{s};
+        if (stp.location_idx() != l ||  //
+            (kFwd && (i == 0U || !stp.out_allowed(is_wheelchair))) ||
+            (!kFwd && (i == location_seq.size() - 1 ||
+                       !stp.in_allowed(is_wheelchair)))) {
           continue;
         }
 
-        auto const section_flags =
-            get_section_flags(tt.route_flags_, to_idx(r));
-        if (!section_flags.has_value()) {
-          continue;
-        }
-
-        auto const location_seq = tt.route_location_seq_[r];
-        for (auto const [i, s] : utl::enumerate(location_seq)) {
-          auto const stp = stop{s};
-          if (project(tt, q.prf_idx_, stp.location_idx()) != l ||  //
-              (kFwd && (i == 0U || !stp.out_allowed(is_wheelchair))) ||
-              (!kFwd && (i == location_seq.size() - 1 ||
-                         !stp.in_allowed(is_wheelchair)))) {
-            continue;
-          }
-
-          auto leg = get_route_transport(k, time, r, static_cast<stop_idx_t>(i),
-                                         *section_flags, is_td_footpath);
-          if (leg.has_value()) {
-            return leg;
-          }
+        auto leg = get_route_transport(k, time, r, static_cast<stop_idx_t>(i),
+                                       *section_flags, is_td_footpath);
+        if (leg.has_value()) {
+          return leg;
         }
       }
     }
@@ -674,10 +657,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
 
     auto ret = std::optional<std::pair<journey::leg, journey::leg>>{};
-    auto const curr_time =
-        round_times[k][to_idx(project(tt, q.prf_idx_, l))][v];
-    auto const try_dest = [&](location_idx_t const eq_in) {
-      auto const eq = project(tt, q.prf_idx_, eq_in);
+    auto const curr_time = round_times[k][to_idx(l)][v];
+    auto const try_dest = [&](location_idx_t const eq) {
       auto intermodal_dest = check_fp(
           k, l, curr_time, {eq, dest_offset.duration_}, false, td_footpath);
       if (intermodal_dest.has_value()) {
@@ -692,7 +673,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
     for_each_meta(tt, location_match_mode::kIntermodal, dest_offset.target_,
                   [&](location_idx_t const eq) {
                     try_dest(eq);
-                    if (rtt != nullptr && !is_projected(q.prf_idx_)) {
+                    if (rtt != nullptr && q.prf_idx_ == kDefaultProfile) {
                       rtt->for_each_rt_virt(
                           [&](location_idx_t const w, rt_location_idx_t) {
                             if (rtt->base(w) == eq) {
@@ -708,8 +689,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
   auto const get_legs =
       [&](unsigned const k,
           location_idx_t const l) -> std::pair<journey::leg, journey::leg> {
-    auto const curr_time =
-        round_times[k][to_idx(project(tt, q.prf_idx_, l))][v];
+    auto const curr_time = round_times[k][to_idx(l)][v];
     trace_reconstruct("get_legs: k={}, v={}, l={}, curr_time={}\n", k, v,
                       loc{tt, l}, delta_to_unix(base, curr_time));
 

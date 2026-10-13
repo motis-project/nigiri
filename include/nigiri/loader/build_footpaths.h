@@ -2,10 +2,13 @@
 
 #include <cstdint>
 #include <algorithm>
+#include <map>
 #include <optional>
+#include <vector>
 
 #include "nigiri/loader/merge_duplicates.h"
 #include "nigiri/loader/transfer_rules.h"
+#include "nigiri/td_footpath.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri {
@@ -31,6 +34,16 @@ void build_footpaths(timetable& tt,
 void write_default_profile(timetable&);
 
 void apply_transfer_rules(timetable&, shapes_storage*);
+
+// Profiles ignore transfer rules: a virtual location walks like its stop (a
+// walk between two stops connects all their locations, the stop's transfer
+// time connects its own locations). Rebuilds the profile's lower bound graphs.
+void expand_profile_to_virts(timetable&, profile_idx_t);
+
+// The same for time-dependent walks between stops (by their source): they
+// replace all static walks of their source, so they connect its locations.
+void expand_td_footpaths_to_virts(
+    timetable const&, std::map<location_idx_t, std::vector<td_footpath>>&);
 
 inline duration_t max_with_transfer_times(timetable const& tt,
                                           location_idx_t const from,

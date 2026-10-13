@@ -21,13 +21,16 @@ bool call_and_go_on(Fn&& fn, footpath const& fp) {
   }
 }
 
+// Profiles ignore transfer rules: a virtual location has its stop's transfer
+// time.
 inline u8_minutes get_transfer_time(timetable const& tt,
                                     rt_timetable const* rtt,
                                     profile_idx_t const prf,
                                     location_idx_t const l) {
   return rtt != nullptr && rtt->is_rt_location(l)
              ? rtt->transfer_time(l)
-             : tt.locations_.transfer_time_[project(tt, prf, l)];
+             : tt.locations_
+                   .transfer_time_[prf == kDefaultProfile ? l : tt.base(l)];
 }
 
 template <direction SearchDir>
@@ -46,7 +49,7 @@ bool for_each_footpath_at(timetable const& tt,
       }
     }
   }
-  if (rtt == nullptr || is_projected(prf_idx)) {
+  if (rtt == nullptr || prf_idx != kDefaultProfile) {
     return true;
   }
   auto const& rt_footpaths =

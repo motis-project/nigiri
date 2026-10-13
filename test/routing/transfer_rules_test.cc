@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -7,6 +8,7 @@
 
 #include "utl/helpers/algorithm.h"
 
+#include "nigiri/loader/build_footpaths.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/leg_alternatives.h"
@@ -195,9 +197,9 @@ TEST(transfer_rules, start_leg_through_zero_min_transfer) {
 // Consumers of the transfer relation besides RAPTOR.
 // ===========================================================================
 
-// The one-to-all search in a profile that projects virtual locations sees
-// them as their stop, as RAPTOR does (virt_change_feed).
-TEST(transfer_rules, one_to_all_projects_virtual_locations) {
+// The one-to-all search in a profile that ignores transfer rules reaches the
+// stop from its virtual locations, as RAPTOR does (virt_change_feed).
+TEST(transfer_rules, one_to_all_profile_at_virtual_locations) {
   constexpr auto const kProfile = profile_idx_t{1U};
   auto tt = load_feeds({virt_change_feed()});
   add_empty_profile(tt, kProfile);
@@ -211,6 +213,42 @@ TEST(transfer_rules, one_to_all_projects_virtual_locations) {
       q.max_transfers_);
   EXPECT_EQ(62, qb.duration_);  // arrival 11:00 + QB's 2 min to change
   EXPECT_EQ(2U, qb.k_);
+}
+
+// Time-dependent walks are routed between stops: every location of the stop
+// walks to every location of the target, and to the stop's other locations in
+// its transfer time (virt_change_feed).
+TEST(transfer_rules, td_footpaths_reach_virtual_locations) {
+  auto const tt = load_feeds({virt_change_feed()});
+  auto const members = [&](location_idx_t const l) {
+    auto m = std::vector<location_idx_t>{l};
+    tt.locations_.for_each_virt(
+        l, [&](location_idx_t const v) { m.push_back(v); });
+    return m;
+  };
+  auto const qs = lidx(tt, "QS");
+  auto const qb = lidx(tt, "QB");
+  ASSERT_LT(1U, members(qs).size()) << "precondition";
+
+  auto fps = std::map<location_idx_t, std::vector<td_footpath>>{
+      {qs, {{qb, kNull, 5_minutes}}}};
+  loader::expand_td_footpaths_to_virts(tt, fps);
+
+  EXPECT_EQ(members(qs).size(), fps.size());
+  for (auto const from : members(qs)) {
+    auto expected = std::vector<td_footpath>{};
+    for (auto const to : members(qb)) {
+      expected.push_back({to, kNull, 5_minutes});
+    }
+    for (auto const to : members(qs)) {
+      if (to != from) {
+        expected.push_back(
+            {to, kNull, to_fp_duration(tt.locations_.transfer_time_[qs])});
+      }
+    }
+    utl::sort(expected);
+    EXPECT_EQ(expected, fps.at(from));
+  }
 }
 
 // An exact start or destination (the default match mode) includes where the
@@ -233,10 +271,10 @@ TEST(transfer_rules, exact_match_includes_virtual_locations) {
 }
 
 // T0 and T1 (route R) change at S in 1 min through the R -> R rule, at X in
-// X's own 2 min with 3 min to spare. A profile that projects virtual locations
+// X's own 2 min with 3 min to spare. A profile that ignores transfer rules
 // changes at S in S's own 2 min, which T1 (1 min after T0) does not leave: the
 // transfer optimization keeps X.
-TEST(transfer_rules, projected_profile_optimizes_transfers_with_stop_time) {
+TEST(transfer_rules, profile_optimizes_transfers_with_stop_time) {
   constexpr auto const kProfile = profile_idx_t{1U};
   auto tt = load_feeds(
       {feed({{"A", 64.0, 23.0},

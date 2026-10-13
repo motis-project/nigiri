@@ -43,8 +43,7 @@ void expand_td_offsets(timetable const&, rt_timetable const*, query&);
 
 void collect_destinations(timetable const&,
                           std::vector<offset> const& destinations,
-                          location_match_mode,
-                          profile_idx_t,
+                          location_match_mode const,
                           bitvec& is_destination,
                           std::vector<std::uint16_t>& dist_to_dest);
 

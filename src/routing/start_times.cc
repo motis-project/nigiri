@@ -183,8 +183,7 @@ void add_starts_in_interval(direction const search_dir,
       auto const location_seq = rtt->rt_transport_location_seq_.at(rt_t);
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         auto const stp = stop{s};
-        if (search_location(*rtt, p, rt_t, static_cast<stop_idx_t>(i)) !=
-            project(tt, p, l)) {
+        if (search_location(*rtt, p, rt_t, static_cast<stop_idx_t>(i)) != l) {
           continue;
         }
 
@@ -295,7 +294,7 @@ void get_starts(
     });
   }
 
-  if (rtt != nullptr && !is_projected(prf_idx)) {
+  if (rtt != nullptr && prf_idx == kDefaultProfile) {
     rtt->for_each_rt_virt([&](location_idx_t const l, rt_location_idx_t) {
       if (auto const d = utl::lookup(at_start, rtt->base(l))) {
         auto& val = utl::get_or_create(shortest_start, l, [&]() { return *d; });
@@ -374,7 +373,6 @@ void expand_td_offsets(timetable const& tt, rt_timetable const* rtt, query& q) {
 void collect_destinations(timetable const& tt,
                           std::vector<offset> const& dest,
                           location_match_mode const match_mode,
-                          profile_idx_t const prf_idx,
                           bitvec& is_dest,
                           std::vector<std::uint16_t>& dist_to_dest) {
   is_dest.resize(tt.n_locations());
@@ -395,11 +393,11 @@ void collect_destinations(timetable const& tt,
     trace_start("DEST METAS OF {}\n", loc{tt, d.target_});
     for_each_meta(tt, match_mode, d.target_, [&](location_idx_t const l) {
       if (match_mode == location_match_mode::kIntermodal) {
-        dist_to_dest[to_idx(project(tt, prf_idx, l))] =
-            std::min(dist_to_dest[to_idx(project(tt, prf_idx, l))],
+        dist_to_dest[to_idx(l)] =
+            std::min(dist_to_dest[to_idx(l)],
                      static_cast<std::uint16_t>(d.duration_.count()));
       } else {
-        is_dest.set(to_idx(project(tt, prf_idx, l)), true);
+        is_dest.set(to_idx(l), true);
       }
       trace_start("  DEST META: {}, duration={}\n", loc{tt, l}, d.duration_);
     });

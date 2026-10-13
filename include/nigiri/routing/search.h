@@ -104,7 +104,7 @@ struct search {
                    && tts.min_transfer_time_ == 0_minutes  //
                    && tts.additional_time_ == 0_minutes;
 
-    collect_destinations(tt_, q_.destination_, q_.dest_match_mode_, q_.prf_idx_,
+    collect_destinations(tt_, q_.destination_, q_.dest_match_mode_,
                          state_.is_destination_, state_.dist_to_dest_);
 
     for (auto const [i, via] : utl::enumerate(q_.via_stops_)) {

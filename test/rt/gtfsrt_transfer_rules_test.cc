@@ -706,11 +706,10 @@ TEST(gtfsrt_transfer_rules, assignment_to_scheduled_platform) {
   EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, kAtoB));  // 5 min < 8 min
 }
 
-// A profile that ignores transfers.txt routes on the base locations (virtual
-// locations are projected away): F -> HL is forbidden for the default profile
-// but fine for this one - also once HL is a real-time transport, which is
-// registered at its virtual location and has to be found from the base
-// location.
+// A profile that ignores transfers.txt changes between the locations of a
+// stop in its transfer time: F -> HL is forbidden for the default profile but
+// fine for this one - also once HL is a real-time transport, which the profile
+// finds at its scheduled location (not the real-time virtual location).
 TEST(gtfsrt_transfer_rules, other_profile_finds_real_time_trips_at_rule_stops) {
   constexpr auto const kProfile = profile_idx_t{1U};
   auto tt = load_network("S,S,2,120,,,,\nS,S,3,,,,F,HL");
@@ -898,12 +897,11 @@ TEST(gtfsrt_transfer_rules, start_walk_to_real_time_virtual_location) {
   EXPECT_EQ(30_minutes, get<footpath>(j.legs_.front().uses_).duration());
 }
 
-// A profile that projects virtual locations sees G at the platform S4, not at
-// its real-time virtual location with the rule's 5 min from S1: the profile
-// has no footpaths, so after F arrives at S1 (10:30), G (10:40) is out of
+// A profile that ignores transfer rules sees G at the platform S4, not at its
+// real-time virtual location with the rule's 5 min from S1: the profile has no
+// walks between stops, so after F arrives at S1 (10:30), G (10:40) is out of
 // reach.
-TEST(gtfsrt_transfer_rules,
-     projecting_profile_ignores_real_time_virtual_location) {
+TEST(gtfsrt_transfer_rules, profile_ignores_real_time_virtual_location) {
   constexpr auto const kProfile = profile_idx_t{1U};
   auto tt = load_network("S1,S4,2,120,,,,\nS1,S4,2,300,,,,G");
   add_empty_profile(tt, kProfile);

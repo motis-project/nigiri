@@ -30,15 +30,23 @@ routing_result raptor_search_with_vias(
     AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
-  return with_raptor_variant(rtt, q.prf_idx_, [&]<bool Rt, bool Project>() {
+  if (rtt == nullptr) {
     using algo_t = std::conditional_t<
         std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
         gpu::gpu_raptor<SearchDir, false>,
-        raptor<SearchDir, Rt, Vias, search_mode::kOneToOne, Project>>;
+        raptor<SearchDir, false, Vias, search_mode::kOneToOne>>;
     return search<SearchDir, algo_t>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();
-  });
+  } else {
+    using algo_t = std::conditional_t<
+        std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+        gpu::gpu_raptor<SearchDir, false>,
+        raptor<SearchDir, true, Vias, search_mode::kOneToOne>>;
+    return search<SearchDir, algo_t>{tt,      rtt,          s_state,
+                                     r_state, std::move(q), timeout}
+        .execute();
+  }
 }
 
 template <direction SearchDir, typename AlgoState>

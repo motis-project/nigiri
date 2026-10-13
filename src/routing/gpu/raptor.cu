@@ -52,47 +52,6 @@ constexpr std::uint32_t n_bitvec_words(std::uint32_t const n) {
   return n / 32U + 1U;
 }
 
-template <typename Key, typename T, typename Fn>
-vecvec<Key, T> build_vecvec(std::uint32_t const n, Fn&& fill) {
-  auto v = vecvec<Key, T>{};
-  auto tmp = std::vector<T>{};
-  for (auto i = 0U; i != n; ++i) {
-    tmp.clear();
-    fill(Key{i}, tmp);
-    v.emplace_back(tmp);
-  }
-  return v;
-}
-
-template <typename Key, typename Seqs>
-vecvec<Key, stop::value_type> build_projected_seq(timetable const& tt,
-                                                  Seqs const& seqs,
-                                                  std::uint32_t const n) {
-  return build_vecvec<Key, stop::value_type>(
-      n, [&](Key const i, std::vector<stop::value_type>& out) {
-        for (auto const s : seqs[i]) {
-          auto const stp = stop{s};
-          out.push_back(stp.with_location(tt.base(stp.location_idx())).value());
-        }
-      });
-}
-
-template <typename T, typename Index>
-vecvec<location_idx_t, T> build_projected_index(timetable const& tt,
-                                                Index const& idx) {
-  return build_vecvec<location_idx_t, T>(
-      tt.n_locations(), [&](location_idx_t const l, std::vector<T>& out) {
-        if (tt.locations_.is_virt(l)) {
-          return;
-        }
-        for_each_meta(tt, location_match_mode::kExact, l,
-                      [&](location_idx_t const c) {
-                        out.insert(end(out), begin(idx[c]), end(idx[c]));
-                      });
-        utl::erase_duplicates(out);
-      });
-}
-
 struct gpu_timetable::impl {
   using t = timetable;
   using fp_t = decltype(t{}.locations_.footpaths_out_[0]);
@@ -132,7 +91,6 @@ struct gpu_timetable::impl {
     return v;
   }
 
-
   explicit impl(timetable const& tt)
       : n_locations_{tt.n_locations() + kRtLocationCapacity},
         n_static_locations_{tt.n_locations()},
@@ -166,14 +124,15 @@ struct gpu_timetable::impl {
     route_stop_offset_.assign(off.begin(), off.end());
     auto const ros = build_route_of_stop(tt, off);
     route_of_stop_.assign(ros.begin(), ros.end());
-    has_projection_ = has_virts(tt);
-    if (has_projection_) {
-      auto const seq = build_projected_seq<route_idx_t>(
-          tt, tt.route_location_seq_, tt.n_routes());
-      location_routes_proj_ = device_vecvec<decltype(t{}.location_routes_)>{
-          build_projected_index<route_idx_t>(tt, tt.location_routes_)};
-      route_location_seq_proj_ =
-          device_vecvec<decltype(t{}.route_location_seq_)>{seq};
+    // Profiles ignore transfer rules: a virtual location has its stop's
+    // transfer time.
+    if (has_virts(tt)) {
+      auto stop_transfer_time = vector_map<location_idx_t, u8_minutes>{};
+      for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+        stop_transfer_time.push_back(tt.locations_.transfer_time_[tt.base(l)]);
+      }
+      profile_transfer_time_ =
+          to_device(pad_transfer_times(stop_transfer_time));
     }
 
     for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
@@ -200,7 +159,10 @@ struct gpu_timetable::impl {
         .n_locations_ = n_locations_,
         .n_static_locations_ = n_static_locations_,
         .n_routes_ = n_routes_,
-        .transfer_time_ = transfer_time_,
+        .transfer_time_ =
+            prf == kDefaultProfile || profile_transfer_time_.empty()
+                ? transfer_time_
+                : profile_transfer_time_,
         .route_stop_times_ = to_view(route_stop_times_),
         .route_stop_time_ranges_ = to_view(route_stop_time_ranges_),
         .route_transport_ranges_ = to_view(route_transport_ranges_),
@@ -219,10 +181,6 @@ struct gpu_timetable::impl {
       dt.footpaths_out_[p] = to_view(footpaths_out_[p]);
       dt.footpaths_in_[p] = to_view(footpaths_in_[p]);
     }
-    if (is_projected(prf) && has_projection_) {
-      dt.route_location_seq_ = to_view(route_location_seq_proj_);
-      dt.location_routes_ = to_view(location_routes_proj_);
-    }
     return dt;
   }
 
@@ -231,6 +189,7 @@ struct gpu_timetable::impl {
   std::uint32_t n_routes_;
 
   thrust::device_vector<u8_minutes> transfer_time_;
+  thrust::device_vector<u8_minutes> profile_transfer_time_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_out_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_in_;
 
@@ -241,10 +200,6 @@ struct gpu_timetable::impl {
 
   device_vecvec<decltype(t{}.route_location_seq_)> route_location_seq_;
   device_vecvec<decltype(t{}.location_routes_)> location_routes_;
-
-  bool has_projection_{false};
-  device_vecvec<decltype(t{}.route_location_seq_)> route_location_seq_proj_;
-  device_vecvec<decltype(t{}.location_routes_)> location_routes_proj_;
 
   thrust::device_vector<bitfield_idx_t> transport_traffic_days_;
   thrust::device_vector<bitfield_idx_t> route_traffic_days_;
@@ -277,27 +232,36 @@ struct gpu_rt_timetable::impl {
 
   static vecvec<location_idx_t, rt_transport_idx_t> build_location_rt(
       rt_timetable const& rtt) {
-    return build_vecvec<location_idx_t, rt_transport_idx_t>(
-        rtt.n_locations(),
-        [&](location_idx_t const l, std::vector<rt_transport_idx_t>& out) {
-          auto const transports = rtt.location_rt_transports_[l];
-          out.assign(begin(transports), end(transports));
-        });
+    auto v = vecvec<location_idx_t, rt_transport_idx_t>{};
+    auto tmp = std::vector<rt_transport_idx_t>{};
+    for (auto l = 0U; l != rtt.n_locations(); ++l) {
+      tmp.clear();
+      for (auto const rt_t : rtt.location_rt_transports_[location_idx_t{l}]) {
+        tmp.push_back(rt_t);
+      }
+      v.emplace_back(tmp);
+    }
+    return v;
   }
 
-  static vecvec<rt_transport_idx_t, stop::value_type> build_location_seq(
+  // The stops at real-time virtual locations (only for the default profile).
+  static vecvec<rt_transport_idx_t, stop::value_type> build_rt_virt_seq(
       rt_timetable const& rtt) {
-    return build_vecvec<rt_transport_idx_t, stop::value_type>(
-        rtt.n_rt_transports(),
-        [&](rt_transport_idx_t const rt_t, std::vector<stop::value_type>& out) {
-          auto const seq = rtt.rt_transport_location_seq_[rt_t];
-          for (auto i = 0U; i != seq.size(); ++i) {
-            out.push_back(stop{seq[i]}
-                              .with_location(rtt.stop_location(
-                                  rt_t, static_cast<stop_idx_t>(i)))
-                              .value());
-          }
-        });
+    auto v = vecvec<rt_transport_idx_t, stop::value_type>{};
+    auto tmp = std::vector<stop::value_type>{};
+    for (auto rt_t = rt_transport_idx_t{0U}; rt_t != rtt.n_rt_transports();
+         ++rt_t) {
+      tmp.clear();
+      auto const seq = rtt.rt_transport_location_seq_[rt_t];
+      for (auto i = 0U; i != seq.size(); ++i) {
+        tmp.push_back(stop{seq[i]}
+                          .with_location(rtt.stop_location(
+                              rt_t, static_cast<stop_idx_t>(i)))
+                          .value());
+      }
+      v.emplace_back(tmp);
+    }
+    return v;
   }
 
   static std::vector<device_rt_timetable::rt_footpath> build_rt_footpaths(
@@ -333,7 +297,7 @@ struct gpu_rt_timetable::impl {
       : n_rt_transports_{rtt.n_rt_transports()},
         base_day_idx_{rtt.base_day_idx_},
         location_rt_transports_{build_location_rt(rtt)},
-        rt_transport_location_seq_{build_location_seq(rtt)},
+        rt_transport_location_seq_{rtt.rt_transport_location_seq_},
         rt_transport_stop_times_{rtt.rt_transport_stop_times_},
         rt_transport_clasz_{to_device(build_rt_transport_clasz(rtt))},
         rt_footpaths_{to_device(build_rt_footpaths(rtt))},
@@ -353,16 +317,11 @@ struct gpu_rt_timetable::impl {
             rtt.rt_flags_per_section_[kWheelchairAccessible]},
         rt_reservation_not_required_sections_{
             rtt.rt_flags_per_section_[kReservationNotRequired]} {
-    if (gpu_timetable::impl::has_virts(tt) || rtt.n_rt_locations() != 0U) {
-      location_rt_transports_proj_ =
-          device_vecvec<vecvec<location_idx_t, rt_transport_idx_t>>{
-              build_projected_index<rt_transport_idx_t>(
-                  tt, rtt.location_rt_transports_)};
-      rt_transport_location_seq_proj_ =
+    has_rt_virts_ = rtt.n_rt_locations() != 0U;
+    if (has_rt_virts_) {
+      rt_virt_seq_ =
           device_vecvec<decltype(rtt_t{}.rt_transport_location_seq_)>{
-              build_projected_seq<rt_transport_idx_t>(
-                  tt, rtt.rt_transport_location_seq_, rtt.n_rt_transports())};
-      has_projection_ = true;
+              build_rt_virt_seq(rtt)};
     }
 
     utl::verify(
@@ -414,21 +373,18 @@ struct gpu_rt_timetable::impl {
   }
 
   device_rt_timetable to_device_rt_timetable(profile_idx_t const prf) const {
-    auto const is_projection_used = is_projected(prf) && has_projection_;
+    auto const is_default = prf == kDefaultProfile;
     auto d = device_rt_timetable{
         .n_rt_transports_ = n_rt_transports_,
         .base_day_idx_ = base_day_idx_,
-        .location_rt_transports_ =
-            to_view(is_projection_used ? location_rt_transports_proj_
-                                       : location_rt_transports_),
+        .location_rt_transports_ = to_view(location_rt_transports_),
         .rt_transport_location_seq_ =
-            to_view(is_projection_used ? rt_transport_location_seq_proj_
-                                       : rt_transport_location_seq_),
+            to_view(is_default && has_rt_virts_ ? rt_virt_seq_
+                                                : rt_transport_location_seq_),
         .rt_transport_stop_times_ = to_view(rt_transport_stop_times_),
         .rt_transport_clasz_ = to_view(rt_transport_clasz_),
-        .rt_footpaths_ =
-            to_view(rt_footpaths_)
-                .first(is_projection_used ? 0U : rt_footpaths_.size()),
+        .rt_footpaths_ = to_view(rt_footpaths_)
+                             .first(is_default ? rt_footpaths_.size() : 0U),
         .transport_traffic_days_ = to_view(transport_traffic_days_),
         .bitfields_ = to_view(bitfields_),
         .filters_ = thrust::raw_pointer_cast(rt_filters_ctx_.data()),
@@ -449,11 +405,8 @@ struct gpu_rt_timetable::impl {
 
   thrust::device_vector<device_rt_timetable::rt_footpath> rt_footpaths_;
 
-  bool has_projection_{false};
-  device_vecvec<vecvec<location_idx_t, rt_transport_idx_t>>
-      location_rt_transports_proj_;
-  device_vecvec<decltype(rtt_t{}.rt_transport_location_seq_)>
-      rt_transport_location_seq_proj_;
+  bool has_rt_virts_{false};
+  device_vecvec<decltype(rtt_t{}.rt_transport_location_seq_)> rt_virt_seq_;
 
   thrust::device_vector<bitfield_idx_t> transport_traffic_days_;
   thrust::device_vector<bitfield> bitfields_;
@@ -750,7 +703,7 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
   reset_arrivals();
 
   auto dist = dist_to_dest;
-  if (rtt != nullptr && !is_projected(prf_idx_) &&
+  if (rtt != nullptr && prf_idx_ == kDefaultProfile &&
       rtt->n_rt_locations() != 0U) {
     extend_to_rt_virts(*rtt, is_dest);
     extend_to_rt_virts(*rtt, dist);
@@ -1431,7 +1384,7 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
     auto const t =
         is_front ? j.legs_.front().dep_time_ : j.legs_.back().arr_time_;
     auto const is_match = [&](location_idx_t const target) {
-      return matches(tt_, match_mode, project(tt_, prf_idx_, target), l);
+      return matches(tt_, match_mode, target, l);
     };
     auto const add_leg = [&](unixtime_t const dep, unixtime_t const arr,
                              offset const& o) {
@@ -1518,7 +1471,7 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
       auto const search_start_l = [&]() {
         auto const& lg = is_fwd ? j.legs_.front() : j.legs_.back();
         auto const* ree = std::get_if<journey::run_enter_exit>(&lg.uses_);
-        if (ree == nullptr || rtt_ == nullptr || is_projected(prf_idx_) ||
+        if (ree == nullptr || rtt_ == nullptr || prf_idx_ != kDefaultProfile ||
             !ree->r_.is_rt()) {
           return start_l;
         }
@@ -1569,7 +1522,7 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
 template <direction SearchDir, bool WithBounds>
 void gpu_raptor<SearchDir, WithBounds>::add_start(location_idx_t const l,
                                                   unixtime_t const t) {
-  starts_.emplace_back(project(tt_, prf_idx_, l), t);
+  starts_.emplace_back(l, t);
 }
 
 template class gpu_raptor<direction::kForward, false>;

@@ -19,7 +19,6 @@
 #include "utl/helpers/algorithm.h"
 
 #include "nigiri/loader/build_footpaths.h"
-#include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
@@ -225,13 +224,11 @@ inline routing::query station_query(timetable const& tt,
       .destination_ = {{lidx(tt, to), 0_minutes, 0U}}};
 }
 
-// Sets up the profile prf without any walks, next to the loaded ones: a
-// profile that ignores transfers.txt.
+// Sets up the profile prf without walks between stops, next to the loaded
+// ones: a profile that ignores transfers.txt.
 inline void add_empty_profile(timetable& tt, profile_idx_t const prf) {
   tt.locations_.footpaths_out_[prf].resize(tt.n_locations());
-  tt.locations_.footpaths_in_[prf].resize(tt.n_locations());
-  loader::build_lb_graph<direction::kForward>(tt, prf);
-  loader::build_lb_graph<direction::kBackward>(tt, prf);
+  loader::expand_profile_to_virts(tt, prf);
 }
 
 // Stop-to-stop search, departing at hhmm on kDay.
