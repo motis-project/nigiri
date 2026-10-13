@@ -1500,9 +1500,11 @@ void load_timetable(loader_config const& config,
                   id,
                   tt.register_translation(
                       line.short_name_.empty() ? line.name_ : line.short_name_),
+                  kUnset,
                   tt.register_translation(line.category_ == nullptr
                                               ? line.name_
                                               : line.category_->short_name_),
+                  kUnset,
                   kEmptyTranslation,
                   route_type_t{get_more_precise_route_type(sj.route_type_,
                                                            line.route_type_)},
@@ -1540,6 +1542,7 @@ void load_timetable(loader_config const& config,
               ->stop_points_.front()
               .destination_display_->trip_direction_,
           tt.register_translation(short_name),
+          kUnset,
           tt.route_ids_[src].route_id_short_names_[route_id],
           sj.vehicle_type_->name_,
           !sj.branding_ref_.empty() ? sj.branding_ref_
