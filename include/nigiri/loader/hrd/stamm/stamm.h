@@ -11,6 +11,7 @@
 #include "nigiri/loader/hrd/stamm/station.h"
 #include "nigiri/loader/hrd/stamm/timezone.h"
 #include "nigiri/loader/hrd/stamm/track.h"
+#include "nigiri/loader/hrd/stamm/transfer_times.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -36,6 +37,11 @@ struct stamm {
                                day_idx_t) const;
   trip_line_idx_t resolve_line(std::string_view s);
 
+  // HRDF transfer time rules, nullptr without pair rules
+  transfer_rule_builder* transfer_rules() {
+    return transfer_rules_.has_value() ? &*transfer_rules_ : nullptr;
+  }
+
 private:
   friend std::uint64_t hash(config const&,
                             dir const&,
@@ -49,6 +55,8 @@ private:
   direction_map_t directions_;
   bitfield_map_t bitfields_;
   tracks tracks_;
+  transfer_times transfer_times_;
+  std::optional<transfer_rule_builder> transfer_rules_;
   timezone_map_t timezones_;
   interval<std::chrono::sys_days> date_range_;
   timetable& tt_;

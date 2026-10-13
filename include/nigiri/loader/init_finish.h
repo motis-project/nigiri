@@ -7,12 +7,14 @@
 
 namespace nigiri {
 struct timetable;
-}
+struct shapes_storage;
+}  // namespace nigiri
 
 namespace nigiri::loader {
 
 void register_special_stations(timetable&);
-void finalize(timetable&, finalize_options);
+void rebuild_route_traffic_days(timetable&);
+void finalize(timetable&, finalize_options, shapes_storage* = nullptr);
 void finalize(timetable&,
               bool merge_dupes_intra_src = false,
               bool merge_dupes_inter_src = false,

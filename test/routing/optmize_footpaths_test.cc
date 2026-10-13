@@ -258,7 +258,7 @@ leg 2: (C, C) [2019-05-01 08:17] -> (E, E) [2019-05-01 08:40]
   EXPECT_EQ(expected_optimize_transfers, print_journey(tt, journey));
 }
 
-// Stops far apart: no walks between them, only the hubs added below.
+// Stops far apart: no walks between them, only the walks added below.
 std::string test_files_2() {
   return test::feed(
       {{"A", 0.0, 0.0},
@@ -277,24 +277,11 @@ std::string test_files_2() {
       "C,E,2,300,,,,\n");
 }
 
-// Appends the hub u -> v at d for every u in `in` and v in `out` to the
-// default profile.
-void add_hub(timetable& tt,
-             std::vector<location_idx_t> const& in,
-             std::vector<location_idx_t> const& out,
-             duration_t const d) {
-  loader::add_hub(tt, in, out, d);
-  loader::index_hubs(tt);
-}
-
-// Two hubs state u -> v, the slower one first: a hub only has to leave out
-// the pairs stated slower elsewhere, so a pair can be in a slow and a fast
-// hub. The transfer is the faster one.
-void add_slow_and_fast_hub(timetable& tt,
-                           location_idx_t const u,
-                           location_idx_t const v) {
-  add_hub(tt, {u}, {v}, 10_minutes);
-  add_hub(tt, {u}, {v}, 3_minutes);
+// Two walks u <-> v, the slower one first: the transfer is the faster one.
+void add_slow_and_fast_walk(timetable& tt,
+                            std::string_view const u,
+                            std::string_view const v) {
+  test::rebuild_default_profile(tt, {{u, v, 10}, {u, v, 3}});
 }
 
 routing::journey::run_enter_exit ride(std::uint32_t const t,
@@ -312,7 +299,7 @@ TEST(routing, optimize_initial_start_footpath_takes_shortest_transfer) {
   auto const B = loc_idx(tt, "B");
   auto const C = loc_idx(tt, "C");
   auto const G = loc_idx(tt, "G");
-  add_slow_and_fast_hub(tt, S, B);
+  add_slow_and_fast_walk(tt, "S", "B");
 
   auto j = routing::journey{};
   j.start_time_ = test::at("10:00");
@@ -336,7 +323,7 @@ TEST(routing, optimize_final_egress_footpath_takes_shortest_transfer) {
   auto const B = loc_idx(tt, "B");
   auto const G = loc_idx(tt, "G");
   auto const Z = loc_idx(tt, "Z");
-  add_slow_and_fast_hub(tt, B, Z);
+  add_slow_and_fast_walk(tt, "B", "Z");
 
   auto j = routing::journey{};
   j.start_time_ = test::at("10:00");
@@ -362,9 +349,9 @@ TEST(routing, optimize_transfers_takes_shortest_transfer) {
   auto const D = loc_idx(tt, "D");
   auto const E = loc_idx(tt, "E");
   auto const F = loc_idx(tt, "F");
-  add_slow_and_fast_hub(tt, B, D);
+  add_slow_and_fast_walk(tt, "B", "D");
 
-  // Only the fast hub fits between B (10:10) and D (10:15), and it beats
+  // Only the fast walk fits between B (10:10) and D (10:15), and it beats
   // the rule transfer C -> E.
   auto j = routing::journey{};
   j.start_time_ = test::at("10:00");

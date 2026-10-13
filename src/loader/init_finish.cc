@@ -167,6 +167,7 @@ void correct_color_contrast(timetable& tt) {
 }
 
 void rebuild_route_traffic_days(timetable& tt) {
+  auto const n_computed = tt.route_traffic_days_.size();
   tt.route_traffic_days_.resize(tt.n_routes());
 
   for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
@@ -193,12 +194,18 @@ void rebuild_route_traffic_days(timetable& tt) {
       }
     }
 
-    tt.bitfields_.emplace_back(combined);
-    tt.route_traffic_days_[r] = bitfield_idx_t{tt.bitfields_.size() - 1U};
+    if (r < n_computed) {
+      tt.bitfields_[tt.route_traffic_days_[r]] = combined;
+    } else {
+      tt.bitfields_.emplace_back(combined);
+      tt.route_traffic_days_[r] = bitfield_idx_t{tt.bitfields_.size() - 1U};
+    }
   }
 }
 
-void finalize(timetable& tt, finalize_options const opt) {
+void finalize(timetable& tt,
+              finalize_options const opt,
+              shapes_storage* shapes) {
   tt.location_routes_.resize(tt.n_locations());
   tt.location_location_groups_.resize(tt.n_locations());
 
@@ -221,7 +228,7 @@ void finalize(timetable& tt, finalize_options const opt) {
                        std::tie(tt.providers_[b].src_, tt.providers_[b].id_);
               });
   }
-  build_footpaths(tt, opt);
+  build_footpaths(tt, opt, shapes);
   rebuild_route_traffic_days(tt);
   build_location_tree(tt);
   assign_stops_to_flex_areas(tt);

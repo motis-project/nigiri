@@ -834,16 +834,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
             }
             return utl::cflow::kContinue;
           });
-      if (!legs.has_value()) {
-        for_each_hub_source<SearchDir>(
-            tt, q.prf_idx_, l, [&](footpath const fp) {
-              if (auto fp_legs = check_fp(k, l, curr_time, fp, true, false);
-                  fp_legs.has_value()) {
-                legs = std::move(*fp_legs);
-              }
-              return !legs.has_value();
-            });
-      }
       if (legs) {
         return *legs;
       }

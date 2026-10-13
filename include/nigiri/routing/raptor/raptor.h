@@ -116,10 +116,7 @@ struct raptor {
         n_locations_{has_rt_virts() ? rtt->n_locations() : tt_.n_locations()},
         n_routes_{tt.n_routes()},
         n_rt_transports_{Rt ? rtt->n_rt_transports() : 0U},
-        state_{state.resize(n_locations_,
-                            n_routes_,
-                            n_rt_transports_,
-                            tt.locations_.hub_in_[prf_idx].size())},
+        state_{state.resize(n_locations_, n_routes_, n_rt_transports_)},
         tmp_{state_.get_tmp<Vias>()},
         best_{state_.get_best<Vias>()},
         round_times_{state.get_round_times<Vias>()},
@@ -232,8 +229,6 @@ struct raptor {
   }
 
   void next_start_time() {
-    utl::fill(state_.hub_reached_.blocks_, 0U);
-    utl::fill(state_.hub_mark_.blocks_, 0U);
     utl::fill(best_, kInvalidArray);
     utl::fill(tmp_, kInvalidArray);
     utl::fill(state_.prev_station_mark_.blocks_, 0U);
@@ -446,7 +441,6 @@ struct raptor {
       update_transfers(k);
       update_intermodal_footpaths(k);
       update_footpaths(k);
-      expand_hubs(k);
       update_td_offsets(k);
 
       trace_print_state_after_round();
@@ -845,64 +839,6 @@ private:
         relax(k, v, tmp_time, duration, static_cast<std::uint32_t>(i));
       }
     });
-  }
-
-  void expand_hubs(unsigned const k) {
-    auto const& gather_edges = kFwd ? tt_.locations_.hub_in_by_loc_[prf_idx_]
-                                    : tt_.locations_.hub_out_by_loc_[prf_idx_];
-    if (gather_edges.size() == 0U) {
-      return;
-    }
-
-    auto const hub_slots = state_.get_hub_slots<Vias>();
-    state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
-      if (i >= n_static_locations_) {
-        return;
-      }
-      auto const hubs = gather_edges[location_idx_t{i}];
-      if (hubs.empty()) {
-        return;
-      }
-      for (auto v = 0U; v != Vias + 1; ++v) {
-        auto const tmp_time = tmp_[i][v];
-        if (tmp_time == kInvalid) {
-          continue;
-        }
-        auto const start = pass_via(i, v, tmp_time);
-        for (auto const h : hubs) {
-          auto& slots = hub_slots[to_idx(h)];
-          if (!state_.hub_reached_.test(to_idx(h))) {
-            state_.hub_reached_.set(to_idx(h), true);
-            slots = kInvalidArray;
-          }
-          if (!is_better(start.time_, slots[start.v_])) {
-            continue;
-          }
-          slots[start.v_] = start.time_;
-          state_.hub_mark_.set(to_idx(h), true);
-        }
-      }
-    });
-
-    auto const& scatter_edges = kFwd ? tt_.locations_.hub_out_[prf_idx_]
-                                     : tt_.locations_.hub_in_[prf_idx_];
-    state_.hub_mark_.for_each_set_bit([&](std::uint64_t const i) {
-      auto const h = hub_idx_t{static_cast<hub_idx_t::value_t>(i)};
-      auto const t = tt_.locations_.hub_time_[prf_idx_][h];
-      auto const w = adjusted_transfer_time(transfer_time_settings_,
-                                            static_cast<int>(t.count()));
-      for (auto v = 0U; v != Vias + 1; ++v) {
-        if (hub_slots[i][v] == kInvalid) {
-          continue;
-        }
-        for (auto const target : scatter_edges[h]) {
-          ++stats_.n_footpaths_visited_;
-          assert(!ProjectVirts || !tt_.locations_.is_virt(target));
-          relax(k, v, hub_slots[i][v], w, to_idx(target));
-        }
-      }
-    });
-    utl::fill(state_.hub_mark_.blocks_, 0U);
   }
 
   void update_footpaths(unsigned const k) {

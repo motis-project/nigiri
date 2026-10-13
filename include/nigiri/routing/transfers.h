@@ -31,28 +31,6 @@ inline u8_minutes get_transfer_time(timetable const& tt,
 }
 
 template <direction SearchDir>
-void for_each_hub_source(timetable const& tt,
-                         profile_idx_t const prf_idx,
-                         location_idx_t const l,
-                         auto&& fn) {
-  constexpr auto const kFwd = SearchDir == direction::kForward;
-  auto const& by_loc = kFwd ? tt.locations_.hub_out_by_loc_[prf_idx]
-                            : tt.locations_.hub_in_by_loc_[prf_idx];
-  if (l >= by_loc.size()) {
-    return;
-  }
-  for (auto const h : by_loc[l]) {
-    auto const d = tt.locations_.hub_time_[prf_idx][h];
-    for (auto const source : (kFwd ? tt.locations_.hub_in_[prf_idx]
-                                   : tt.locations_.hub_out_[prf_idx])[h]) {
-      if (source != l && !call_and_go_on(fn, footpath{source, d})) {
-        return;
-      }
-    }
-  }
-}
-
-template <direction SearchDir>
 bool for_each_footpath_at(timetable const& tt,
                           rt_timetable const* rtt,
                           profile_idx_t const prf_idx,
@@ -89,9 +67,7 @@ void for_each_transfer(timetable const& tt,
                        profile_idx_t const prf_idx,
                        location_idx_t const l,
                        auto&& fn) {
-  if (for_each_footpath_at<SearchDir>(tt, rtt, prf_idx, l, fn)) {
-    for_each_hub_source<flip(SearchDir)>(tt, prf_idx, l, fn);
-  }
+  for_each_footpath_at<SearchDir>(tt, rtt, prf_idx, l, fn);
 }
 
 inline std::optional<duration_t> shortest_transfer(timetable const& tt,

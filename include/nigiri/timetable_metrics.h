@@ -20,8 +20,6 @@ struct timetable_metrics {
   };
   struct profile_metrics {
     std::uint64_t footpaths_{0U};
-    std::uint64_t hub_pairs_{0U};
-    std::uint32_t hubs_{0U};
   };
 
   vector_map<source_idx_t, feed_metrics> feeds_;

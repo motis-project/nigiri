@@ -48,6 +48,14 @@ std::uint64_t hash(config const& c, dir const& d, std::uint64_t const seed) {
       h = wyhash(data.data(), data.size(), h, _wyp);
     }
   }
+  for (auto const& f : load_transfer_time_files(c, d)) {
+    if (!f.has_value()) {
+      h = wyhash64(h, _wyp[0]);
+    } else {
+      auto const data = f.data();
+      h = wyhash(data.data(), data.size(), h, _wyp);
+    }
+  }
   for (auto const& path : d.list_files(c.fplan_)) {
     auto const f = d.get_file(path);
     auto const data = f.data();
@@ -104,6 +112,12 @@ void load_timetable(source_idx_t const src,
   }
 
   sb.write_location_routes();
+  tt.complete_transfers_.resize(
+      std::max(tt.complete_transfers_.size(), to_idx(src) + 1U));
+  tt.complete_transfers_.set(to_idx(src), true);
+  if (auto* const rules = st.transfer_rules(); rules != nullptr) {
+    rules->write();
+  }
 }
 
 }  // namespace nigiri::loader::hrd

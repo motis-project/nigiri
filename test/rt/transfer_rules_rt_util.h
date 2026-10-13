@@ -12,6 +12,7 @@
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/rt/rt_transfer_rules.h"
 #include "nigiri/timetable.h"
 
 #include "../transfer_rules_util.h"
@@ -33,14 +34,15 @@ inline std::pair<rt::run, trip_idx_t> resolve(timetable const& tt,
   return rt::gtfsrt_resolve_run(kDay, tt, &rtt, source_idx_t{0}, td);
 }
 
-// Applies the updates; the lower bounds follow, as motis does after every
-// update.
+// Applies the updates; the transfer rules and the lower bounds follow, as
+// motis does after every update.
 inline void update(timetable const& tt,
                    rt_timetable& rtt,
                    std::vector<trip_update> const& updates) {
   rt::gtfsrt_update_msg(
       tt, rtt, source_idx_t{0}, "",
       to_msg(updates, kDay + std::chrono::hours{8}, "20190501"));
+  rt::resolve_conflicts(tt, rtt);
   rtt.update_lbs(tt);
 }
 

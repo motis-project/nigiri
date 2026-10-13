@@ -2,7 +2,15 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
+#include "fmt/format.h"
+
+#include "nigiri/loader/dir.h"
+#include "nigiri/loader/gtfs/load_timetable.h"
+#include "nigiri/loader/init_finish.h"
 #include "nigiri/loader/register.h"
 #include "nigiri/loader/transfer_rules.h"
 #include "nigiri/routing/query.h"
@@ -29,7 +37,6 @@ using nigiri::test::n_virts;
 using nigiri::test::raptor_search;
 using nigiri::test::search_at;
 using nigiri::test::t;
-using nigiri::test::transfer_duration;
 
 // A station-level rule cascades to the station's stops: XS,XS type=2 600s.
 // Every change within XS takes 10 min, X1 -> X2 as well as a change at X1
@@ -188,7 +195,7 @@ TEST(gtfs, transfer_rules_mutual_restriction) {
 
 // A slow member together with a restricted source: SS,SS type=2 600s
 // from_route=RSS to_route=RSS makes the shared RSS virtual location slow - its
-// own transfer time is 10 min, so it feeds no hub. SS,SS type=2 600s
+// own transfer time is 10 min, so it gets no 2 min walk. SS,SS type=2 600s
 // TS1 -> TS2 makes TS1 a restricted source. Plus the unqualified SS,SS type=2
 // 120s row.
 //     TS0 (RSS): A10 08:50 -> SS 09:20
@@ -218,11 +225,11 @@ TEST(gtfs, transfer_rules_slow_member) {
   EXPECT_EQ(0U, search_at(tt, "A10", "SSA", "09:00").size());
 
   // The same restricted source still reaches the slow member at the pair
-  // default: nothing slow leads there, so it stays in the restricted hub.
+  // default: nothing slow leads there.
   EXPECT_EQ(at("10:00"), arrival_at(tt, "A10", "SSB", "09:00"));
 
-  // Leaving the slow member: it feeds no hub at all, so even this plain
-  // 2 min transfer has to be written explicitly.
+  // Leaving the slow member: this plain 2 min transfer has to be written
+  // explicitly.
   EXPECT_EQ(at("10:00"), arrival_at(tt, "A10", "SSC", "08:45"));
 }
 
@@ -274,7 +281,6 @@ TEST(gtfs, transfer_rules_forbidden_same_stop_unqualified) {
              {"T6Y1", "R77", {{"T6N", "15:15"}, {"T6J", "15:30"}}},
              {"T6Y2", "R77", {{"T6N", "18:00"}, {"T6J", "18:20"}}}},
             "T6N,T6N,3,,,,,\n")});
-  ASSERT_EQ(0U, n_virts(tt)) << "precondition";
   add_empty_profile(tt, kProfile);
 
   EXPECT_EQ(1U, search_at(tt, "T6A", "T6N", "14:30").size());
@@ -385,9 +391,9 @@ TEST(gtfs, transfer_rules_walk_at_end_of_backward_search) {
 // Forbidden cross product: T9S,T9T type=3 from_route=R90 to_route=R91 bans
 // R90 -> R91 between the two stations (walking distance). R90 arrives at two
 // stops, R91 departs from three, so the six banned pairs are a rectangle a
-// hub would cover - but a hub gives each of its pairs its weight, and a ban is
-// none: written as a hub, the pairs stay walkable and become reachable after
-// 511 minutes.
+// one footpath per pair would cover - but a ban has no weight: written as a
+// footpath of the maximum duration, the pairs stay walkable and become
+// reachable after 511 minutes.
 //     T9X1 (R90): T9A 09:00 -> T9S1 09:30, T9X2 (R90): T9A 09:05 -> T9S2 09:35
 //     T9Y1..3 (R91): T9T1 09:40 / T9T2 09:45 / T9T3 09:50 -> T9B (banned)
 //     T9Y4 (R91): T9T1 19:00 -> T9B 19:20 (banned, 570 min later)
@@ -444,23 +450,22 @@ TEST(gtfs, transfer_rules_guarantee_not_shadowed) {
   EXPECT_EQ(at("10:30"), begin(res)->dest_time_);
 }
 
-// A block where only the arriving trip's last stop gets a virtual location:
-// trip a (route BR) ends at BS, where a rule for boarding route BR applies,
-// and the vehicle goes on as b (route BQ). Nobody boards a or gets off b at
-// the handover stop, so no rule applies there and the vehicle runs through: b
-// leaves when a arrives, too early for a change.
-TEST(gtfs, transfer_rules_block_handover_stop_without_rules) {
+// Trip a (route BR) ends at BS and the vehicle goes on as b (route BQ). At
+// BS, the rule for leaving route BR (5 min) forbids the change to c, which
+// leaves 3 min after a arrives. The vehicle still runs through BS: b leaves
+// when a arrives, too early for a change.
+TEST(gtfs, transfer_rules_block_runs_through_rule_stop) {
   auto const tt =
       load_feeds({feed({{"BA", 50.0, 6.0},
                         {"BS", 50.0, 6.5},
                         {"BB", 50.0, 7.0},
                         {"BX", 50.0, 8.0}},
                        {{"a", "BR", {{"BA", "10:00"}, {"BS", "10:30"}}, "blk"},
-                        {"b", "BQ", {{"BS", "10:30"}, {"BB", "11:00"}}, "blk"}},
-                       "BX,BS,2,120,,,,\n"
-                       "BX,BS,2,300,,BR,,\n")});
-  ASSERT_EQ(1U, n_virts(tt))
-      << "precondition: a's last stop is a virtual location";
+                        {"b", "BQ", {{"BS", "10:30"}, {"BB", "11:00"}}, "blk"},
+                        {"c", "BC", {{"BS", "10:33"}, {"BX", "11:00"}}}},
+                       "BS,BS,2,120,,,,\n"
+                       "BS,BS,2,300,BR,,,\n")});
+  ASSERT_EQ(std::nullopt, arrival_at(tt, "BA", "BX", "09:50"));
 
   auto const res = search_at(tt, "BA", "BB", "09:50");
   ASSERT_EQ(1U, res.size());
@@ -468,32 +473,30 @@ TEST(gtfs, transfer_rules_block_handover_stop_without_rules) {
   EXPECT_EQ(at("11:00"), begin(res)->dest_time_);
 }
 
-// A virtual location must not get walks of its own into other feeds: it
-// leaves through its stop. On test::network(), S1 takes 5 min to change, the
-// RF trips among themselves 0 min - their virtual location must not reach the
-// other feed's stop Z (50 m away) faster than S1 does.
+// A trip at a location of its own must not get walks of its own into other
+// feeds: it leaves through its stop. On test::network(), S1 takes 5 min to
+// change, the RF trips among themselves 0 min, and F3 (RF) leaves 3 min after
+// F arrives. The other feed's TZ1 leaves Z (50 m away) 4 min after F arrives:
+// out of reach, like from S1 itself - TZ2 is the next.
 TEST(gtfs, transfer_rules_virtual_location_not_linked_to_other_feeds) {
-  auto const tt =
-      load_feeds({test::network("S1,S1,2,300,,,,\nS1,S1,2,0,RF,RF,,"),
-                  feed({{"Z", 50.0005, 6.5}, {"Y", 50.5, 6.5}},
-                       {{"TZ", "RZ", {{"Z", "12:00"}, {"Y", "12:30"}}}}, "")});
-
-  auto const s1 = lidx(tt, "S1");
-  auto const z = lidx(tt, "Z", source_idx_t{1});
-  // The whole transfer relation: footpaths and what the hubs cover.
-  auto const walk = [&](location_idx_t const from) {
-    return transfer_duration(tt, from, z);
-  };
-
-  ASSERT_TRUE(walk(s1).has_value());
-  auto n_checked = 0U;
-  tt.locations_.for_each_virt(s1, [&](location_idx_t const v) {
-    ++n_checked;
-    EXPECT_TRUE(!walk(v).has_value() || *walk(v) >= *walk(s1))
-        << "virtual location reaches Z in " << walk(v)->count()
-        << " min, its stop in " << walk(s1)->count();
-  });
-  EXPECT_NE(0U, n_checked);
+  auto const tt = load_feeds(
+      {test::network(
+           "S1,S1,2,300,,,,\nS1,S1,2,0,RF,RF,,",
+           {.stops_ = {{"D3", 50.0, 9.0}},
+            .trips_ = {{"F3", "RF", {{"S1", "10:33"}, {"D3", "11:00"}}}}}),
+       feed({{"Z", 50.0005, 6.5}, {"Y", 50.5, 6.5}},
+            {{"TZ1", "RZ", {{"Z", "10:34"}, {"Y", "11:00"}}},
+             {"TZ2", "RZ", {{"Z", "10:40"}, {"Y", "11:10"}}}},
+            "")});
+  ASSERT_EQ(at("11:00"), arrival_at(tt, "A", "D3", "10:00"));
+  EXPECT_EQ(
+      at("11:10"),
+      test::arrival(raptor_search(
+          tt, nullptr,
+          routing::query{.start_time_ = at("10:00"),
+                         .start_ = {{lidx(tt, "A"), 0_minutes, 0U}},
+                         .destination_ = {{lidx(tt, "Y", source_idx_t{1U}),
+                                           0_minutes, 0U}}})));
 }
 
 // ===========================================================================
@@ -578,9 +581,9 @@ TEST(gtfs, transfer_rules_one_sided_rule_applies_between_trips_of_its_route) {
 }
 
 // ===========================================================================
-// The virtual location key has to keep the rule's specificity: CA is named by
-// a trip rule (5 min), CA2 only by the route rules. For CA2 -> CC2 the most
-// specific rule is RC -> RC2 (10 min), not CA's trip rule.
+// A shared location has to keep the rules' specificity: CA is named by a trip
+// rule (5 min), CA2 only by the route rules. For CA2 -> CC2 the most specific
+// rule is RC -> RC2 (10 min), not CA's trip rule.
 // ===========================================================================
 
 // CA and CA2 (route RC) arrive at S, the RC2 trips leave S2: CC 6 min after
@@ -602,7 +605,7 @@ timetable load_key_feed(std::string const& rows) {
                               rows)});
 }
 
-TEST(gtfs, transfer_rules_virtual_location_key_keeps_specificity) {
+TEST(gtfs, transfer_rules_shared_location_keeps_specificity) {
   auto const tt = load_key_feed("S,S2,2,600,RC,RC2,,\n");
 
   // Control: CA -> CC, the trip rule (one trip beats both routes) gives 5 min.
@@ -614,22 +617,18 @@ TEST(gtfs, transfer_rules_virtual_location_key_keeps_specificity) {
 
 // Without a rule of another duration in between, the specificity does not
 // decide: CA ("trip CA -> anything: 5 min") and CA2 ("route RC -> anything: 5
-// min") get 5 min for every partner either way, so they keep sharing one
-// virtual location - and CA2 makes CC2 (6 min).
-TEST(
-    gtfs,
-    transfer_rules_virtual_location_key_merges_equal_values_without_competition) {
+// min") get 5 min for every partner either way - CA2 makes CC2 (6 min).
+TEST(gtfs, transfer_rules_equal_values_without_competition) {
   auto const tt = load_key_feed("");
-  EXPECT_EQ(1U, n_virts(tt));
   EXPECT_EQ(at("15:00"), arrival_at(tt, "G", "H", "14:00"));
 }
 
-// The lowered specificity also has to keep the order against rules outside
-// the signature. e (forbidden, any trip at KS -> trip KT, spec 12) sits
+// The specificity also has to keep the order against rules outside the
+// signature. e (forbidden, any trip at KS -> trip KT, spec 12) sits
 // between a (trip KTA -> route RY, 5 min, spec 16) and c (route RK -> route
 // RY, 5 min, spec 8); three 7 min rows make 7 min the default, so a and c are
 // kept. a beats e, e beats c: KTA and KTR must not share a virtual location.
-TEST(gtfs, transfer_rules_virtual_location_key_keeps_order_against_stop_rules) {
+TEST(gtfs, transfer_rules_keeps_order_against_stop_rules) {
   auto const tt =
       load_feeds({feed({{"KS", 54.0, 11.0},
                         {"KY", 54.0005, 11.0},
@@ -745,6 +744,125 @@ TEST(gtfs, transfer_rules_handover_stop_rule_of_arriving_trip_decides) {
 }
 
 // ===========================================================================
+// Changes across days. Times are UTC (agency_timezone UTC): a trip runs on
+// 2019-05-01 + its day, the timetable spans four days. A -R1-> S -R2-> B, S
+// changes in 5 min.
+// ===========================================================================
+
+namespace {
+
+struct dated_trip {
+  std::string_view id_;
+  std::string_view route_;
+  unsigned day_;
+  std::vector<std::pair<std::string_view, std::string_view>> times_;
+};
+
+timetable load_utc_feed(std::vector<dated_trip> const& trips,
+                        std::string_view const transfers) {
+  auto f = std::string{
+      "# agency.txt\n"
+      "agency_id,agency_name,agency_url,agency_timezone\n"
+      "AG,Agency,https://example.com,UTC\n\n"
+      "# calendar_dates.txt\n"
+      "service_id,date,exception_type\n"
+      "D0,20190501,1\n"
+      "D1,20190502,1\n"
+      "D2,20190503,1\n\n"
+      "# stops.txt\n"
+      "stop_id,stop_name,stop_lat,stop_lon\n"
+      "A,A,50.0,6.0\n"
+      "S,S,50.0,6.5\n"
+      "B,B,50.0,7.0\n\n"
+      "# routes.txt\n"
+      "route_id,agency_id,route_short_name,route_long_name,route_type\n"
+      "R1,AG,R1,,3\n"
+      "R2,AG,R2,,3\n\n"
+      "# trips.txt\n"
+      "route_id,service_id,trip_id\n"};
+  for (auto const& x : trips) {
+    f += fmt::format("{},D{},{}\n", x.route_, x.day_, x.id_);
+  }
+  f += "\n# stop_times.txt\n"
+       "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n";
+  for (auto const& x : trips) {
+    auto seq = 1U;
+    for (auto const& [stop, hhmm] : x.times_) {
+      f +=
+          fmt::format("{},{}:00,{}:00,{},{}\n", x.id_, hhmm, hhmm, stop, seq++);
+    }
+  }
+  f += "\n# transfers.txt\n"
+       "from_stop_id,to_stop_id,transfer_type,min_transfer_time,"
+       "from_route_id,to_route_id,from_trip_id,to_trip_id\n"
+       "S,S,2,300,,,,\n";
+  f += transfers;
+
+  auto tt = timetable{};
+  tt.date_range_ = {test::kDay, test::kDay + date::days{4}};
+  loader::register_special_stations(tt);
+  loader::gtfs::load_timetable({}, source_idx_t{0U}, loader::mem_dir::read(f),
+                               tt);
+  loader::finalize(tt);
+  return tt;
+}
+
+std::optional<unixtime_t> utc_arrival(timetable const& tt,
+                                      std::string_view const time) {
+  return test::arrival(
+      raptor_search(tt, nullptr, "A", "B", fmt::format("{} UTC", time)));
+}
+
+}  // namespace
+
+// T2 leaves S 3 min after T1 arrives, on the next day: only the guarantee
+// makes the change.
+TEST(gtfs, transfer_rules_guarantee_across_midnight) {
+  auto const trips = std::vector<dated_trip>{
+      {"T1", "R1", 0U, {{"A", "23:30"}, {"S", "23:58"}}},
+      {"T2", "R2", 1U, {{"S", "00:01"}, {"B", "00:30"}}},
+      {"T2L", "R2", 1U, {{"S", "00:20"}, {"B", "00:50"}}}};
+
+  auto const without = load_utc_feed(trips, "");
+  EXPECT_EQ(t("2019-05-02 00:50 UTC"),
+            utc_arrival(without, "2019-05-01 23:00"));
+
+  auto const with = load_utc_feed(trips, "S,S,1,,,,T1,T2\n");
+  EXPECT_EQ(t("2019-05-02 00:30 UTC"), utc_arrival(with, "2019-05-01 23:00"));
+}
+
+// T1 runs for more than two days: it arrives at S at 49:58, T2 leaves 3 min
+// later, two days after T1 started.
+TEST(gtfs, transfer_rules_guarantee_two_days_after_start) {
+  auto const trips = std::vector<dated_trip>{
+      {"T1", "R1", 0U, {{"A", "22:00"}, {"S", "49:58"}}},
+      {"T2", "R2", 2U, {{"S", "02:01"}, {"B", "02:30"}}},
+      {"T2L", "R2", 2U, {{"S", "02:20"}, {"B", "02:50"}}}};
+
+  auto const without = load_utc_feed(trips, "");
+  EXPECT_EQ(t("2019-05-03 02:50 UTC"),
+            utc_arrival(without, "2019-05-01 21:00"));
+
+  auto const with = load_utc_feed(trips, "S,S,1,,,,T1,T2\n");
+  EXPECT_EQ(t("2019-05-03 02:30 UTC"), utc_arrival(with, "2019-05-01 21:00"));
+}
+
+// T1G and T1 run on R1 one minute apart. Only T1G has a guarantee onto T2
+// (next day, 4 min). T1 must not share T1G's virtual location: its change to
+// T2 (3 min, across midnight) would get the guarantee.
+TEST(gtfs, transfer_rules_change_across_midnight_separates_trips) {
+  auto const tt =
+      load_utc_feed({{"T1G", "R1", 0U, {{"A", "23:27"}, {"S", "23:57"}}},
+                     {"T1", "R1", 0U, {{"A", "23:28"}, {"S", "23:58"}}},
+                     {"T2", "R2", 1U, {{"S", "00:01"}, {"B", "00:30"}}},
+                     {"T2L", "R2", 1U, {{"S", "00:20"}, {"B", "00:50"}}}},
+                    "S,S,1,,,,T1G,T2\n");
+
+  EXPECT_EQ(t("2019-05-02 00:30 UTC"), utc_arrival(tt, "2019-05-01 23:27"));
+  EXPECT_EQ(t("2019-05-02 00:50 UTC"), utc_arrival(tt, "2019-05-01 23:28"));
+}
+
+// ===========================================================================
 // GTFS transfers.txt semantics.
 // ===========================================================================
 
@@ -835,8 +953,8 @@ TEST(gtfs, transfer_rules_very_large_min_transfer_time_is_not_a_ban) {
 
 // FA and FB are ~33 km apart, too far to walk, so adjusting footpaths drops
 // the transfer. The route rules give both stops virtual locations, which turns
-// FA -> FB into a rule hub instead of footpaths - it has to be dropped too.
-TEST(gtfs, transfer_rules_unwalkable_rule_hub_is_dropped) {
+// FA -> FB into rule footpaths between them - they have to be dropped too.
+TEST(gtfs, transfer_rules_unwalkable_rule_pair_is_dropped) {
   auto const tt =
       load_feeds({feed({{"FA", 63.0, 22.0},
                         {"FB", 63.3, 22.0},
@@ -858,17 +976,16 @@ TEST(gtfs, transfer_rules_unwalkable_rule_hub_is_dropped) {
 }
 
 // ===========================================================================
-// Walk hubs and rule hubs. add_walk_hubs treats the pairs of a rule hub like
-// rule footpaths: a slower rule hub keeps the pair out of the walk hub, and
-// the pair gets no walk footpath.
+// Walks of virtual locations and rule footpaths: a slower rule keeps the pair
+// out of the walks, the pair gets no walk footpath.
 // ===========================================================================
 
 // A rule from station BS (route RB) to the platform BY1 of station BY states
-// 10 min: 2 virtual locations at BP1 x 3 locations at BY1, a rule hub. BS ->
-// BY1 is a mixed pair, so the fold gives no default for BP1 -> BY1, and the
-// 2 min walk BP1 -> BY1 stays. Its walk hub must not take BP1's virtual
-// locations along at 2 min: BT1 (10:30) misses BU1 (10:35) and takes BU3.
-TEST(gtfs, transfer_rules_walk_hub_respects_rule_hub) {
+// 10 min: 2 virtual locations at BP1 x 3 locations at BY1. BS -> BY1 is a
+// mixed pair, so the fold gives no default for BP1 -> BY1, and the 2 min walk
+// BP1 -> BY1 stays. It must not take BP1's virtual locations along at 2 min:
+// BT1 (10:30) misses BU1 (10:35) and takes BU3.
+TEST(gtfs, transfer_rules_virt_walk_respects_rule_pair) {
   auto const tt =
       load_feeds({feed({{"BS", 55.0, 11.0, "", true},
                         {"BP1", 55.0, 11.0, "BS"},

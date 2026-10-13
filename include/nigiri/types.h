@@ -189,7 +189,6 @@ using timezone_idx_t = cista::strong<std::uint16_t, struct _timezone_idx>;
 using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
-using hub_idx_t = cista::strong<std::uint32_t, struct _hub_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
 using flex_area_idx_t = cista::strong<std::uint32_t, struct _flex_area_idx>;
 using location_group_idx_t =
@@ -459,6 +458,10 @@ enum class event_type { kArr, kDep };
 
 inline std::string_view to_str(event_type const d) {
   return d == event_type::kArr ? "ARR" : "DEP";
+}
+
+inline constexpr event_type flip(event_type const ev) noexcept {
+  return ev == event_type::kArr ? event_type::kDep : event_type::kArr;
 }
 
 enum class direction {

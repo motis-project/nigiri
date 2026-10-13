@@ -724,45 +724,6 @@ struct raptor_impl {
     }
   }
 
-  __device__ void gather_hubs() {
-    auto const& e = tt_.hub_gather_;
-    auto const n = static_cast<unsigned>(e.loc_.size());
-    for (auto i = get_global_thread_id(); i < n; i += get_global_stride()) {
-      auto const l = e.loc_[i];
-      if (!prev_station_mark_[to_idx(l)]) {
-        continue;
-      }
-      auto const t = tmp_.get(l, Vias);
-      if (t == kInvalid) {
-        continue;
-      }
-      auto const packed =
-          device_times<SearchDir, Vias + 1>::pack(t, tmp_.get_bc(0U, l, Vias));
-      atomicMin(
-          reinterpret_cast<unsigned long long*>(&hub_slots_[to_idx(e.hub_[i])]),
-          static_cast<unsigned long long>(packed));
-    }
-  }
-
-  __device__ void scatter_hubs(unsigned const k) {
-    auto const& e = tt_.hub_scatter_;
-    auto const n = static_cast<unsigned>(e.hub_.size());
-    auto const t_at_dest = time_at_dest_.get(k);
-    for (auto i = get_global_thread_id(); i < n; i += get_global_stride()) {
-      auto const slot = hub_slots_[to_idx(e.hub_[i])];
-      if (slot == device_times<SearchDir, Vias + 1>::invalid_packed()) {
-        continue;
-      }
-      auto const d = tt_.hub_time_[e.hub_[i]];
-      relax_fp_target(k, e.loc_[i],
-                      adjusted_transfer_time(transfer_time_settings_,
-                                             static_cast<int>(d.count())),
-                      device_times<SearchDir, Vias + 1>::from_key(
-                          static_cast<std::uint16_t>(slot >> kBcBits)),
-                      slot & kBcMask, t_at_dest);
-    }
-  }
-
   template <bool WithTdDest, bool WithTdFootpaths>
   __device__ void update_transfers_and_footpaths(unsigned const k) {
     constexpr auto const kWarpFpThreshold = 8U;
@@ -1346,7 +1307,6 @@ struct raptor_impl {
   device_times<SearchDir, Vias + 1> round_times_;
   device_times<SearchDir, Vias + 1> best_;
   device_times<SearchDir, Vias + 1> tmp_;
-  std::uint64_t* hub_slots_;
   device_times<SearchDir, 1U> time_at_dest_;
   device_bitvec<std::uint32_t> station_mark_;
   device_bitvec<std::uint32_t> prev_station_mark_;

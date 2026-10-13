@@ -132,31 +132,6 @@ struct gpu_timetable::impl {
     return v;
   }
 
-  struct hub_edges {
-    device_timetable::hub_edge_list view() const {
-      return {to_view(loc_), to_view(hub_)};
-    }
-    thrust::device_vector<location_idx_t> loc_;
-    thrust::device_vector<hub_idx_t> hub_;
-  };
-
-  template <typename Lists>
-  static hub_edges flatten(Lists const& lists) {
-    using key = typename Lists::key;
-    auto keys = std::vector<key>{};
-    auto values = std::vector<typename Lists::data_value_type>{};
-    for (auto k = key{0U}; k != key{lists.size()}; ++k) {
-      for (auto const x : lists[k]) {
-        keys.push_back(k);
-        values.push_back(x);
-      }
-    }
-    if constexpr (std::is_same_v<key, location_idx_t>) {
-      return {to_device(keys), to_device(values)};
-    } else {
-      return {to_device(values), to_device(keys)};
-    }
-  }
 
   explicit impl(timetable const& tt)
       : n_locations_{tt.n_locations() + kRtLocationCapacity},
@@ -204,11 +179,6 @@ struct gpu_timetable::impl {
     for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
       footpaths_out_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_out_[p]};
       footpaths_in_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_in_[p]};
-      hub_time_[p] = to_device(tt.locations_.hub_time_[p]);
-      hub_gather_[p] = {flatten(tt.locations_.hub_in_by_loc_[p]),
-                        flatten(tt.locations_.hub_out_by_loc_[p])};
-      hub_scatter_[p] = {flatten(tt.locations_.hub_out_[p]),
-                         flatten(tt.locations_.hub_in_[p])};
     }
 
     // device-resident (launch-arg size, see device_transport_filters)
@@ -249,7 +219,6 @@ struct gpu_timetable::impl {
       dt.footpaths_out_[p] = to_view(footpaths_out_[p]);
       dt.footpaths_in_[p] = to_view(footpaths_in_[p]);
     }
-    dt.hub_time_ = hub_time_[prf];
     if (is_projected(prf) && has_projection_) {
       dt.route_location_seq_ = to_view(route_location_seq_proj_);
       dt.location_routes_ = to_view(location_routes_proj_);
@@ -264,8 +233,6 @@ struct gpu_timetable::impl {
   thrust::device_vector<u8_minutes> transfer_time_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_out_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_in_;
-  std::array<thrust::device_vector<duration_t>, kNProfiles> hub_time_;
-  std::array<std::array<hub_edges, 2U>, kNProfiles> hub_gather_, hub_scatter_;
 
   thrust::device_vector<delta> route_stop_times_;
   thrust::device_vector<interval<std::uint32_t>> route_stop_time_ranges_;
@@ -548,11 +515,6 @@ struct gpu_raptor_state::impl {
                     best_.size() * sizeof(std::uint64_t), stream_);
     cudaMemsetAsync(thrust::raw_pointer_cast(tmp_.data()), 0xFF,
                     tmp_.size() * sizeof(std::uint64_t), stream_);
-    auto n_hubs = std::size_t{0U};
-    for (auto p = 0U; p != kNProfiles; ++p) {
-      n_hubs = std::max(n_hubs, gtt.impl_->hub_time_[p].size());
-    }
-    hub_slots_.resize(std::max(std::size_t{1U}, n_hubs));
     auto const n_loc_words = n_bitvec_words(tt_.n_locations_);
     station_mark_.resize(n_loc_words);
     prev_station_mark_.resize(n_loc_words);
@@ -684,7 +646,6 @@ struct gpu_raptor_state::impl {
   // 16bit time | 48bit breadcrumb
   thrust::device_vector<std::uint64_t> time_at_dest_;
   thrust::device_vector<std::uint64_t> tmp_;
-  thrust::device_vector<std::uint64_t> hub_slots_;
   thrust::device_vector<std::uint64_t> best_;
   thrust::device_vector<std::uint64_t> round_times_;
 
@@ -928,23 +889,6 @@ __global__ void transfers_footpaths_kernel(raptor_impl<SearchDir, WithBounds> r,
   r.rt_transport_mark_.reset();
 }
 
-template <direction SearchDir, bool WithBounds>
-__global__ void hub_gather_kernel(raptor_impl<SearchDir, WithBounds> r) {
-  if (*r.done_) {
-    return;
-  }
-  r.gather_hubs();
-}
-
-template <direction SearchDir, bool WithBounds>
-__global__ void hub_scatter_kernel(raptor_impl<SearchDir, WithBounds> r,
-                                   unsigned const k) {
-  if (*r.done_) {
-    return;
-  }
-  r.scatter_hubs(k);
-}
-
 template <typename Kernel>
 std::pair<int, int> launch_dims(Kernel kernel) {
   thread_local auto cache = hash_map<void const*, std::pair<int, int>>{};
@@ -1054,7 +998,6 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
                                                 unixtime_t worst_time_at_dest,
                                                 pareto_set<journey>& results) {
   auto& s = *state_.impl_;
-  auto const has_hubs = !s.tt_.hub_time_.data_.empty();
 
   // No start = nothing to do.
   // guard against UB: starts_pinned with size=0 -> data=NULL -> memcpy to NULL
@@ -1114,7 +1057,6 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       .round_times_ = {to_mutable_view(s.round_times_), n_locations_},
       .best_ = {to_mutable_view(s.best_), n_locations_},
       .tmp_ = {to_mutable_view(s.tmp_), n_locations_},
-      .hub_slots_ = thrust::raw_pointer_cast(s.hub_slots_.data()),
       .time_at_dest_ = {to_mutable_view(s.time_at_dest_), n_locations_},
       .station_mark_ = {to_mutable_view(s.station_mark_)},
       .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
@@ -1135,8 +1077,6 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
   if (rt_active) {
     r.tt_.transport_traffic_days_ = r.rtt_.transport_traffic_days_;
   }
-  r.tt_.hub_gather_ = s.gtt_.impl_->hub_gather_[prf_idx_][kDirIdx].view();
-  r.tt_.hub_scatter_ = s.gtt_.impl_->hub_scatter_[prf_idx_][kDirIdx].view();
 
   if constexpr (WithBounds) {
     r.bounds_ = bounds_;
@@ -1190,11 +1130,6 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       }
     }
     launch(begin_footpath_phase_kernel<SearchDir, WithBounds>, s.stream_, r);
-    if (has_hubs) {
-      cudaMemsetAsync(thrust::raw_pointer_cast(s.hub_slots_.data()), 0xFF,
-                      s.hub_slots_.size() * sizeof(std::uint64_t), s.stream_);
-      launch(hub_gather_kernel<SearchDir, WithBounds>, s.stream_, r);
-    }
     if (!with_td_dest && !with_td_fps) {
       launch(transfers_footpaths_kernel<SearchDir, WithBounds, false, false>,
              s.stream_, r, k);
@@ -1207,9 +1142,6 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     } else {
       launch(transfers_footpaths_kernel<SearchDir, WithBounds, true, true>,
              s.stream_, r, k);
-    }
-    if (has_hubs) {
-      launch(hub_scatter_kernel<SearchDir, WithBounds>, s.stream_, r, k);
     }
   }
   cudaStreamSynchronize(s.stream_);

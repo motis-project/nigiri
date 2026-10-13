@@ -196,7 +196,20 @@ std::optional<journey::leg> lookup_access(query const& q,
   auto const mode = is_boarding ? q.start_match_mode_ : q.dest_match_mode_;
 
   if (mode == location_match_mode::kIntermodal) {
-    return lookup_offset(loc, t, s, offs, td_offs);
+    auto best = std::optional<journey::leg>{};
+    for (auto const l : {loc, tt.locations_.parents_[loc]}) {
+      if (l == location_idx_t::invalid() || !matches(tt, mode, l, loc)) {
+        continue;
+      }
+      auto const leg = lookup_offset(l, t, s, offs, td_offs);
+      if (leg.has_value() &&
+          (!best.has_value() ||
+           (is_boarding ? leg->dep_time_ > best->dep_time_
+                        : leg->arr_time_ < best->arr_time_))) {
+        best = leg;
+      }
+    }
+    return best;
   }
 
   auto const use_footpaths = is_boarding ? q.use_start_footpaths_ : true;
@@ -215,9 +228,10 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
 
   auto locs = hash_set<location_idx_t>{};
 
+  auto const insert = [&](location_idx_t const l) { locs.insert(l); };
   if (mode == location_match_mode::kIntermodal) {
     for (auto const& o : offsets) {
-      locs.insert(o.target());
+      for_each_meta(tt, mode, o.target(), insert);
     }
   } else {
     auto const has_td_arr = rtt == nullptr
@@ -254,7 +268,7 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
   }
 
   for (auto const& [loc, _] : td_offsets) {
-    locs.insert(loc);
+    for_each_meta(tt, location_match_mode::kIntermodal, loc, insert);
   }
 
   return locs;

@@ -159,14 +159,6 @@ struct device_timetable {
                    kNProfiles>
       footpaths_in_;
 
-  d_vecmap_view<hub_idx_t, duration_t> hub_time_;
-  struct hub_edge_list {
-    cuda::std::span<location_idx_t const> loc_;
-    cuda::std::span<hub_idx_t const> hub_;
-  };
-  hub_edge_list hub_gather_;
-  hub_edge_list hub_scatter_;
-
   cuda::std::span<delta const> route_stop_times_;
   d_vecmap_view<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
   d_vecmap_view<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;

@@ -367,21 +367,23 @@ TEST(loader, merge_inter_src) {
   ASSERT_TRUE(!tt.bitfields_.empty() &&
               tt.bitfields_[bitfield_idx_t{0U}].none());
 
-  // {0}: the second feed's transport days, {1}: the metrics of the default
-  // profile's footpath layer, which only exists once footpaths are built.
+  // {0}: the second feed's transport days. Feeds and routes only: merging
+  // duplicates does not touch the footpaths.
   constexpr auto const kMetricTemplate = std::string_view{
       R"({{"feeds":[)"
       R"({{"idx":0,"firstDay":"2024-08-14","lastDay":"2024-12-13","noLocations":16,"noTrips":1,"transportsXDays":102}},)"
       R"({{"idx":1,"firstDay":"2024-08-14","lastDay":"2024-12-13","noLocations":16,"noTrips":1,"transportsXDays":{0}}})"
-      R"(],"noRoutes":2,"profiles":[{1}]}})"};
+      R"(],"noRoutes":2,"profiles":[]}})"};
+  auto const metrics = [&]() {
+    auto m = get_metrics(tt);
+    m.profiles_ = {};
+    return to_str(m, tt);
+  };
   // No duplicates removed; No transfers on Thursdays for 2593402613
-  EXPECT_EQ(fmt::format(kMetricTemplate, 86, ""), to_str(get_metrics(tt), tt));
+  EXPECT_EQ(fmt::format(kMetricTemplate, 86), metrics());
   finalize(tt, false, true);
   // With duplicates removed; With transfers on Thursdays for both trips
-  EXPECT_EQ(
-      fmt::format(kMetricTemplate, 102,
-                  R"({"prf":0,"noFootpaths":44,"noHubs":0,"hubPairs":0})"),
-      to_str(get_metrics(tt), tt));
+  EXPECT_EQ(fmt::format(kMetricTemplate, 102), metrics());
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {

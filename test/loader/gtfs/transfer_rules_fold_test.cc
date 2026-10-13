@@ -19,7 +19,6 @@ using nigiri::test::feed;
 using nigiri::test::lidx;
 using nigiri::test::load_feeds;
 using nigiri::test::load_network;
-using nigiri::test::n_virts;
 using nigiri::test::raptor_search;
 using nigiri::test::search_at;
 
@@ -132,7 +131,7 @@ TEST(gtfs, transfer_rules_fold_station_default_holds_at_virtual_locations) {
 // One guarantee (KT1 -> KT2) next to three 5 min trip pairs at K: the 5 min
 // rows are the majority and become K's transfer time. The guarantee names other
 // trips, so it applies to none of their pairs: the three rows are redundant
-// and only KT1/KT2 get virtual locations. KT3 -> KT4 (4 min) still misses.
+// and only the guarantee is left. KT3 -> KT4 (4 min) still misses.
 TEST(gtfs,
      transfer_rules_fold_drops_default_rows_next_to_rules_for_other_trips) {
   auto const tt = load_feeds(
@@ -151,7 +150,7 @@ TEST(gtfs,
             "K,K,2,300,,,KT5,KT6\n"
             "K,K,2,300,,,KT7,KT8\n")});
   EXPECT_EQ(5, tt.locations_.transfer_time_[lidx(tt, "K")].count());
-  EXPECT_EQ(2U, n_virts(tt));
+  EXPECT_EQ(1U, tt.transfer_rules_.rules_.size());
 
   EXPECT_EQ(at("09:00"), arrival_at(tt, "KA", "KB", "08:00"));
 

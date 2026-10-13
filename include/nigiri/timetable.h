@@ -126,11 +126,6 @@ struct timetable {
     mutable_fws_multimap<location_idx_t, preferred_transfer>
         preferred_transfers_;
 
-    array<vecvec<hub_idx_t, location_idx_t>, kNProfiles> hub_in_;
-    array<vecvec<hub_idx_t, location_idx_t>, kNProfiles> hub_out_;
-    array<vector_map<hub_idx_t, duration_t>, kNProfiles> hub_time_;
-    array<vecvec<location_idx_t, hub_idx_t>, kNProfiles> hub_in_by_loc_;
-    array<vecvec<location_idx_t, hub_idx_t>, kNProfiles> hub_out_by_loc_;
   } locations_;
 
   struct transport {
@@ -314,6 +309,13 @@ struct timetable {
 
   // Source -> feed end date
   vector_map<source_idx_t, date::sys_days> src_end_date_;
+
+  // sources whose transfers are complete (HRDF): no fill-in walks
+  bitvec complete_transfers_;
+  bool has_complete_transfers(source_idx_t const src) const {
+    return to_idx(src) < complete_transfers_.size() &&
+           complete_transfers_.test(to_idx(src));
+  }
 
   // Trip access: external trip id -> internal trip index
   vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;

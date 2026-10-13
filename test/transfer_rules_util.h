@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -57,7 +58,8 @@ inline location_idx_t lidx(timetable const& tt,
 
 // Loads the feeds (one source each), valid on kDay.
 inline timetable load_feeds(std::vector<std::string> const& feeds,
-                            bool const adjust_footpaths = false) {
+                            bool const adjust_footpaths = false,
+                            bool const apply_transfer_rules = true) {
   auto tt = timetable{};
   tt.date_range_ = {kDay, kDay + date::days{1}};
   loader::register_special_stations(tt);
@@ -67,7 +69,11 @@ inline timetable load_feeds(std::vector<std::string> const& feeds,
         source_idx_t{static_cast<source_idx_t::value_t>(i)},
         loader::mem_dir::read(feeds[i]), tt);
   }
-  loader::finalize(tt);
+  loader::finalize(
+      tt, {.merge_dupes_intra_src_ = false,
+           .merge_dupes_inter_src_ = false,
+           .max_footpath_length_ = std::numeric_limits<std::uint16_t>::max(),
+           .apply_transfer_rules_ = apply_transfer_rules});
   return tt;
 }
 
@@ -274,7 +280,7 @@ inline std::optional<unixtime_t> arrival(
                                direction::kForward));
 }
 
-// The fastest transfer from -> to in the default profile (footpaths and hubs),
+// The fastest transfer from -> to in the default profile,
 // nullopt if there is none.
 inline std::optional<duration_t> transfer_duration(timetable const& tt,
                                                    location_idx_t const from,
@@ -304,8 +310,7 @@ struct walk {
 // Replaces the walks of the default profile like motis does with the routed
 // walks (osr_footpath): never shorter than the transfer time at either end,
 // then the profile is written again.
-inline void rebuild_default_profile(timetable& tt,
-                                    std::vector<walk> const& walks) {
+inline void set_walks(timetable& tt, std::vector<walk> const& walks) {
   auto& pending = tt.locations_.preprocessing_footpaths_out_;
   pending.clear();
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
@@ -320,7 +325,23 @@ inline void rebuild_default_profile(timetable& tt,
     pending[b].push_back(
         footpath{a, loader::max_with_transfer_times(tt, b, a, d)});
   }
+}
+
+inline void rebuild_default_profile(timetable& tt,
+                                    std::vector<walk> const& walks) {
+  set_walks(tt, walks);
   loader::write_default_profile(tt);
+}
+
+// osr_footpath: the walks of a street router replace the loader's before the
+// rules apply.
+inline timetable load_network_with_walks(std::string_view const transfers,
+                                         network_rows const& rows,
+                                         std::vector<walk> const& walks) {
+  auto tt = load_feeds({network(transfers, rows)}, false, false);
+  set_walks(tt, walks);
+  loader::apply_transfer_rules(tt, nullptr);
+  return tt;
 }
 
 }  // namespace nigiri::test

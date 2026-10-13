@@ -16,7 +16,6 @@ using nigiri::test::at;
 using nigiri::test::g_from_f;
 using nigiri::test::gl_from_f;
 using nigiri::test::hl_from_f;
-using nigiri::test::n_virts;
 using nigiri::test::rebuild_default_profile;
 
 // test::network(): F arrives S1 10:30. G leaves S2 10:40 (fallback GL 11:10)
@@ -64,14 +63,13 @@ TEST(rebuild_default_profile, rule_beats_faster_walk) {
 
 TEST(rebuild_default_profile, forbidden_trip_pair_stays_forbidden) {
   auto tt = test::load_network("S1,S2,2,120,,,,\nS1,S2,3,,,,F,G", kRows);
-  ASSERT_NE(0U, n_virts(tt));
   EXPECT_EQ(gl_from_f(), arrival(tt, nullptr, {"A", "B"}));
   rebuild_default_profile(tt, {{"S1", "S2", 1}});
   EXPECT_EQ(gl_from_f(), arrival(tt, nullptr, {"A", "B"}));
 }
 
-// A rule for a whole station is a hub, which never overrides: the routing takes
-// the minimum of hub and footpath, so the walk underneath has to go.
+// A rule for a whole station applies to all pairs of its stops: the walk
+// underneath has to go, the routing would take the faster one.
 TEST(rebuild_default_profile, station_rule_beats_faster_walk) {
   auto tt = test::load_network("S,S,2,900,,,,", kRows);
   EXPECT_EQ(gl_from_f(), arrival(tt, nullptr, {"A", "B"}));
@@ -81,12 +79,13 @@ TEST(rebuild_default_profile, station_rule_beats_faster_walk) {
   EXPECT_EQ(hl_from_f(), arrival(tt, nullptr, {"A", "C"}));
 }
 
-// F stops at a virtual location below S1 (the F -> H rule). It owns no walks:
-// the walk hubs hand it those of S1, so they have to follow the new walks.
+// F2 leaves S1 6 min after F arrives, the F -> F2 rule asks for 30 min: F
+// stops at a location of its own below S1. It owns no walks: it gets those of
+// S1, so they have to follow the new walks.
 TEST(rebuild_default_profile, virtual_location_walks_like_its_stop) {
-  auto tt = test::load_network("S1,S1,2,120,,,,\nS1,S1,2,1800,,,F,H", kRows);
-  ASSERT_NE(0U, n_virts(tt));
-  EXPECT_EQ(hl_from_f(), arrival(tt, nullptr, {"A", "C"}));  // the rule: 30 min
+  auto tt = test::load_network("S1,S1,2,120,,,,\nS1,S1,2,1800,,,F,F2", kRows);
+  ASSERT_EQ(std::nullopt, arrival(tt, nullptr, {"A", "D"}));
+  EXPECT_EQ(hl_from_f(), arrival(tt, nullptr, {"A", "C"}));  // H: 1 min
   EXPECT_EQ(g_from_f(), arrival(tt, nullptr, {"A", "B"}));  // beeline
   rebuild_default_profile(tt, {{"S1", "S2", 12}});
   EXPECT_EQ(gl_from_f(), arrival(tt, nullptr, {"A", "B"}));
@@ -96,22 +95,35 @@ TEST(rebuild_default_profile, virtual_location_walks_like_its_stop) {
   EXPECT_EQ(via_k(), arrival(tt, nullptr, {"A", "E"}));
 }
 
-// A second rebuild changes nothing: rule and stop hubs are built again from
+// A second rebuild changes nothing: the rule footpaths are built again from
 // the rules in the timetable, with the same result.
 TEST(rebuild_default_profile, is_repeatable) {
-  auto tt = test::load_network("S,S,2,120,,,,\nS,S,2,1800,,,F,H", kRows);
-  ASSERT_NE(0U, n_virts(tt));
-  ASSERT_NE(0U, tt.locations_.hub_in_[kDefaultProfile].size());
+  auto tt = test::load_network("S,S,2,120,,,,\nS,S,2,1800,,,F,F2", kRows);
+  ASSERT_EQ(std::nullopt, arrival(tt, nullptr, {"A", "D"}));
 
   rebuild_default_profile(tt, {{"S1", "T", 6}});
-  auto const n_hubs = tt.locations_.hub_in_[kDefaultProfile].size();
   auto const n_fps = tt.locations_.footpaths_out_[kDefaultProfile].data_.size();
   rebuild_default_profile(tt, {{"S1", "T", 6}});
 
-  EXPECT_EQ(n_hubs, tt.locations_.hub_in_[kDefaultProfile].size());
   EXPECT_EQ(n_fps, tt.locations_.footpaths_out_[kDefaultProfile].data_.size());
   EXPECT_EQ(g_from_f(),
             arrival(tt, nullptr, {"A", "B"}));  // the station rule: 2 min
   EXPECT_EQ(hl_from_f(), arrival(tt, nullptr, {"A", "C"}));
   EXPECT_EQ(via_k(), arrival(tt, nullptr, {"A", "E"}));
+}
+
+// The timed F -> G transfer (0 min) matters only once the walk S1 -> S2 is
+// longer than the 10 min between F and G: it is decided on the routed walk,
+// not on the beeline (2 min).
+TEST(rebuild_default_profile, rules_apply_to_routed_walks) {
+  constexpr auto const kRule = "S1,S2,1,,,,F,G";
+  ASSERT_EQ(0U, test::n_virts(test::load_network(kRule, kRows)));
+  auto const tt =
+      test::load_network_with_walks(kRule, kRows, {{"S1", "S2", 12}});
+  EXPECT_NE(0U, test::n_virts(tt));
+  EXPECT_EQ(g_from_f(), arrival(tt, nullptr, {"A", "B"}));
+  EXPECT_EQ(hl_from_f(), arrival(tt, nullptr, {"A", "C"}));
+  // what finalize computed covers the routes and locations added
+  EXPECT_EQ(tt.n_routes(), tt.route_traffic_days_.size());
+  EXPECT_EQ(tt.n_locations(), tt.locations_.location_importance_.size());
 }

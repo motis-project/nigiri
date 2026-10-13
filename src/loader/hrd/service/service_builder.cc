@@ -98,14 +98,21 @@ void service_builder::write_services(source_idx_t const src) {
               s.utc_times_.front().count(), to_idx(stops.back().eva_num_),
               s.utc_times_.back().count(), s.line_info(store_));
 
+          auto* const rules = stamm_.transfer_rules();
+          auto const group =
+              rules == nullptr
+                  ? route_id_idx_t::invalid()
+                  : rules->get_group(ref, s.split_info_.stop_range());
           auto const id = register_trip(
               tt_,
               trip{tt_, src,
                    std::string_view{trip_id_buf_.data(), trip_id_buf_.size()},
                    kEmptyTranslation, kEmptyTranslation,
                    tt_.register_translation(ref.display_name(tt_)), "", "",
-                   direction_id_t::invalid(), route_id_idx_t::invalid(), flags,
-                   ref.origin_.dbg_});
+                   direction_id_t::invalid(), group, flags, ref.origin_.dbg_});
+          if (rules != nullptr) {
+            rules->add_trip(id, ref, s.split_info_.stop_range());
+          }
           tt_.trip_stop_seq_numbers_.emplace_back(
               std::initializer_list<stop_idx_t>{});
           tt_.trip_transport_ranges_[id].emplace_back(transport_range_t{

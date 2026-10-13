@@ -12,6 +12,8 @@ location_idx_t get_or_create_location(timetable const&,
                                       stop_idx_t,
                                       location_idx_t base);
 
+void resolve_conflicts(timetable const&, rt_timetable&);
+
 inline location_idx_t base(timetable const& tt,
                            rt_timetable const* rtt,
                            location_idx_t const l) {

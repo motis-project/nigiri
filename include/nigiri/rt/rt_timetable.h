@@ -365,7 +365,6 @@ struct rt_timetable {
   } rt_locations_;
 
   vecvec<rt_location_idx_t, transfer_rule_side_idx> rt_virt_rules_;
-  hash_map<virt_key, location_idx_t> rt_virts_;
 
   mutable_fws_multimap<rt_transport_idx_t, location_idx_t> rt_stop_virts_;
 

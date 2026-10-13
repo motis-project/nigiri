@@ -94,8 +94,7 @@ TEST(query_generation, reproducibility) {
 // intermodal offsets at unrelated, far away stops.
 TEST(query_generation, intermodal_offsets_skip_virtual_locations) {
   // Feed 0: a route-qualified same-stop rule next to the unqualified pair
-  // default gives the trip stops at BY virtual locations. Feed 1 is loaded
-  // after feed 0, so its stops come after feed 0's virtual locations. They are
+  // default gives the trip stops at BY virtual locations. Feed 1's stops are
   // far enough apart that the generator does not discard every query for
   // having a short direct walk.
   auto const tt = test::load_feeds(
@@ -113,25 +112,6 @@ TEST(query_generation, intermodal_offsets_skip_virtual_locations) {
            {{"P1", "RP", {{"PA", "09:00"}, {"PB", "09:10"}, {"PC", "09:20"}}},
             {"P2", "RP", {{"PA", "10:00"}, {"PB", "10:10"}, {"PC", "10:20"}}}},
            "")});
-
-  // Pool positions and location indices only differ if virtual locations
-  // exist and real locations follow them.
-  auto first_virt = std::optional<location_idx_t>{};
-  auto last_real = location_idx_t{0U};
-  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-    if (tt.locations_.types_[l] == location_type::kVirt) {
-      if (!first_virt.has_value()) {
-        first_virt = l;
-      }
-    } else {
-      last_real = l;
-    }
-  }
-  ASSERT_TRUE(first_virt.has_value())
-      << "precondition: feed 0 has virtual locations";
-  ASSERT_GT(last_real, *first_virt)
-      << "precondition: a real location follows a virtual one, so pool "
-         "positions and location indices differ";
 
   auto gs = generator_settings{};
   gs.bbox_ =

@@ -1,7 +1,6 @@
 #include "nigiri/loader/gtfs/transfers.h"
 
 #include <algorithm>
-#include <functional>
 #include <optional>
 #include <span>
 #include <vector>
@@ -9,7 +8,6 @@
 #include "geo/latlng.h"
 
 #include "utl/enumerate.h"
-#include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/lookup.h"
 #include "utl/parser/buf_reader.h"
@@ -17,12 +15,10 @@
 #include "utl/parser/line_range.h"
 #include "utl/pipes/for_each.h"
 #include "utl/progress_tracker.h"
-#include "utl/verify.h"
 
 #include "nigiri/loader/transfer_rules.h"
 #include "nigiri/constants.h"
 #include "nigiri/logging.h"
-#include "nigiri/stop.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::gtfs {
@@ -86,17 +82,17 @@ transfer_rule_specificity_t get_specificity(
 }
 
 bool is_qualified(transfer_rule const& r) {
-  return r.is_qualified(true) || r.is_qualified(false);
+  return r.is_qualified(event_type::kArr) || r.is_qualified(event_type::kDep);
 }
 
 bool is_qualifier_overlapping(timetable const& tt,
                               transfer_rule const& a,
                               transfer_rule const& b) {
-  auto const is_side_overlapping = [&](bool const is_from) {
-    auto const a_trip = a.trip(is_from);
-    auto const b_trip = b.trip(is_from);
-    auto const a_route = a.route(is_from);
-    auto const b_route = b.route(is_from);
+  auto const is_side_overlapping = [&](event_type const ev) {
+    auto const a_trip = a.trip(ev);
+    auto const b_trip = b.trip(ev);
+    auto const a_route = a.route(ev);
+    auto const b_route = b.route(ev);
     auto const has_a_trip = a_trip != trip_idx_t::invalid();
     auto const has_b_trip = b_trip != trip_idx_t::invalid();
     auto const has_a_route = a_route != route_id_idx_t::invalid();
@@ -112,7 +108,8 @@ bool is_qualifier_overlapping(timetable const& tt,
     }
     return true;
   };
-  return is_side_overlapping(true) && is_side_overlapping(false);
+  return is_side_overlapping(event_type::kArr) &&
+         is_side_overlapping(event_type::kDep);
 }
 
 void fold_pair_defaults(timetable& tt,
@@ -490,103 +487,11 @@ void read_transfers(source_idx_t const src,
 
   // Majority fold.
   fold_pair_defaults(tt, src, rules, votes);
-  if (first_rule == tt.transfer_rules_.rules_.size()) {
-    return;
-  }
 
   // Store rules (merge sort).
-  auto const feed_rules = interval{
-      first_rule, transfer_rule_idx_t{tt.transfer_rules_.rules_.size()}};
-  store_rule_lookups(tt, feed_rules);
-
-  // Update stop sequences.
-  auto const has_stop_seq = [](trip const& t) {
-    return t.flex_stops_.empty() &&
-           (t.service_ == nullptr || !t.service_->none()) &&
-           !t.stop_seq_.empty();
-  };
-  auto& tr = tt.transfer_rules_;
-  auto const first_rule_virt = tr.rule_virts_.size();
-  auto const first_virt_rule = tr.virt_rules_.size();
-  auto virts = hash_map<virt_key, location_idx_t>{};
-  auto trip_rules = std::vector<transfer_rule_side_idx>{};
-  auto sig = std::vector<transfer_rule_side_idx>{};
-  for (auto& t : trips.data_) {
-    if (!has_stop_seq(t)) {
-      continue;
-    }
-
-    // Get all qualified transfer rules
-    // that apply to this trip at any stop.
-    trip_rules.clear();
-    add_trip_rules(tt, {&t.trip_idx_, 1U}, trip_rules);
-    if (trip_rules.empty()) {
-      continue;
-    }
-
-    // For each stop with qualified transfer rules
-    // -> get or create a virtual location according to its signature
-    for (auto& x : t.stop_seq_) {
-      auto const s = stop{x};
-      get_signature(tt, trip_rules, {}, false, s.location_idx(), sig);
-      if (!sig.empty()) {
-        x = s.with_location(
-                 get_or_create_virt(tt, virts, s.location_idx(), sig))
-                .value();
-      }
-    }
-  }
-
-  // Store handover locations of stay-seated trip pairs.
-  auto const add_handover = [&](gtfs_trip_idx_t const a,
-                                gtfs_trip_idx_t const b) {
-    auto const& ta = trips.data_[a];
-    auto const& tb = trips.data_[b];
-    if (a == b || !has_stop_seq(ta) || !has_stop_seq(tb)) {
-      return;
-    }
-    auto const base_a = tt.base(stop{ta.stop_seq_.back()}.location_idx());
-    auto const base_b = tt.base(stop{tb.stop_seq_.front()}.location_idx());
-    if (base_a != base_b) {
-      return;
-    }
-    auto const handover_sig = get_change_signature(
-        tt, {&ta.trip_idx_, 1U}, {&tb.trip_idx_, 1U}, true, base_a);
-    trips.handover_stops_.emplace(
-        pair{a, b}, handover_sig.empty()
-                        ? base_a
-                        : get_or_create_virt(tt, virts, base_a, handover_sig));
-  };
-
-  for (auto const& [_, blk] : trips.blocks_) {
-    for (auto const a : blk->trips_) {
-      for (auto const b : blk->trips_) {
-        auto const& ta = trips.data_[a];
-        auto const& tb = trips.data_[b];
-        if (!ta.event_times_.empty() && !tb.event_times_.empty() &&
-            ta.service_ != nullptr && tb.service_ != nullptr &&
-            ta.event_times_.front().dep_ <= tb.event_times_.front().dep_ &&
-            (*ta.service_ & *tb.service_).any()) {
-          add_handover(a, b);
-        }
-      }
-    }
-  }
-  for (auto a = gtfs_trip_idx_t{0U}; a != trips.data_.size(); ++a) {
-    for (auto const b : trips.data_[a].seated_out_) {
-      add_handover(a, b);
-    }
-  }
-
-  utl::erase_duplicates(tr.rule_virts_,
-                        std::next(begin(tr.rule_virts_), first_rule_virt),
-                        end(tr.rule_virts_), std::less<>{}, std::equal_to<>{});
-  utl::erase_duplicates(tr.virt_rules_,
-                        std::next(begin(tr.virt_rules_), first_virt_rule),
-                        end(tr.virt_rules_), std::less<>{}, std::equal_to<>{});
-
-  log(log_lvl::info, "loader.transfer_rules", "{} virtual locations",
-      virts.size());
+  store_rule_lookups(
+      tt, interval{first_rule,
+                   transfer_rule_idx_t{tt.transfer_rules_.rules_.size()}});
 }
 
 }  // namespace nigiri::loader::gtfs

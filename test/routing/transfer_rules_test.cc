@@ -21,7 +21,7 @@
 #include "../raptor_search.h"
 #include "../transfer_rules_util.h"
 
-// Consumers of transfers.txt rules, virtual locations and hubs: transfer time
+// Consumers of transfers.txt rules and virtual locations: transfer time
 // settings, offsets, leg alternatives, footpath lookups, direct connections
 // and walks. What the rules mean is tested with the GTFS
 // loader (test/loader/gtfs/transfer_rules_test.cc). All feeds run on
@@ -34,49 +34,66 @@ using nigiri::test::at;
 using nigiri::test::feed;
 using nigiri::test::lidx;
 using nigiri::test::load_feeds;
-using nigiri::test::n_virts;
 using nigiri::test::raptor_search;
 using nigiri::test::search_at;
 using nigiri::test::transfer_duration;
 
 // The shared feed of the tests that change out of a trip at a virtual
-// location: FA (route RF1) stops at a virtual location of U (the RF1 -> RF3
-// rule), FB and FB2 (RF2) leave from U itself, FA -> FB is a plain change at
-// U (2 min).
+// location: FA (route RF1) arrives at U 3 min before FC (RF3) leaves, which
+// the RF1 -> RF3 rule (5 min) forbids, so FA and FC stop at locations of their
+// own. FB and FB2 (RF2) leave from U itself, FA -> FB is a plain change at U
+// (2 min).
 std::string virt_feed() {
-  return feed({{"U", 55.0, 13.0}, {"L", 55.1, 13.0}, {"M", 55.2, 13.0}},
+  return feed({{"U", 55.0, 13.0},
+               {"L", 55.1, 13.0},
+               {"M", 55.2, 13.0},
+               {"N", 55.3, 13.0}},
               {{"FA", "RF1", {{"L", "10:00"}, {"U", "10:30"}}},
                {"FB", "RF2", {{"U", "10:33"}, {"M", "11:00"}}},
-               {"FB2", "RF2", {{"U", "10:50"}, {"M", "11:20"}}}},
+               {"FB2", "RF2", {{"U", "10:50"}, {"M", "11:20"}}},
+               {"FC", "RF3", {{"U", "10:33"}, {"N", "11:00"}}}},
               "U,U,2,120,,,,\n"
-              "U,U,2,300,RF1,RF3,,\n",
-              {"RF3"});
+              "U,U,2,300,RF1,RF3,,\n");
 }
 
-// W,W,1 makes W's own transfer time 0 min, and the RG1 -> RG3 rule gives GA a
-// virtual location of W, so W gets a hub of weight 0.
-std::string zero_min_hub_feed() {
+// W,W,1 makes W's own transfer time 0 min. GA (RG1) arrives at W 3 min before
+// GD (RG3) leaves, which the RG1 -> RG3 rule (5 min) forbids, so GA stops at a
+// location of its own and W gets 0 min transfers.
+std::string zero_min_transfer_feed() {
   return feed({{"W", 56.0, 14.0},
                {"N", 56.1, 14.0},
                {"N2", 56.1, 14.2},
-               {"O", 56.2, 14.0}},
+               {"O", 56.2, 14.0},
+               {"P", 56.3, 14.0}},
               {{"GA", "RG1", {{"N", "10:00"}, {"W", "10:30"}}},
                {"GB", "RG2", {{"W", "10:32"}, {"O", "11:00"}}},
                {"GB2", "RG2", {{"W", "10:40"}, {"O", "11:10"}}},
-               {"GC", "RG4", {{"N2", "10:00"}, {"W", "10:30"}}}},
+               {"GC", "RG4", {{"N2", "10:00"}, {"W", "10:30"}}},
+               {"GD", "RG3", {{"W", "10:33"}, {"P", "11:00"}}}},
               "W,W,1,,,,,\n"
-              "W,W,2,300,RG1,RG3,,\n",
-              {"RG3"});
+              "W,W,2,300,RG1,RG3,,\n");
 }
 
-// Q1 and Q2 stop at virtual locations of QS (the rule Q1 -> Q2), and changing
-// between them takes QS's own 2 min.
+// Q2 leaves QS 10 min after Q1 arrives, the Q1 -> Q2 rule asks for 15 min: Q1
+// and Q2 stop at locations of their own. Without the rule, changing between
+// them takes QS's own 2 min.
 std::string virt_change_feed() {
   return feed({{"QS", 63.0, 22.0}, {"QA", 63.1, 22.0}, {"QB", 63.2, 22.0}},
               {{"Q1", "RQ1", {{"QA", "10:00"}, {"QS", "10:30"}}},
                {"Q2", "RQ2", {{"QS", "10:40"}, {"QB", "11:00"}}}},
               "QS,QS,2,120,,,,\n"
-              "QS,QS,2,0,,,Q1,Q2\n");
+              "QS,QS,2,900,,,Q1,Q2\n");
+}
+
+// The rules of the shared feeds decide a change: without them, each of these
+// connections would exist.
+TEST(transfer_rules, shared_feed_rules_decide) {
+  EXPECT_EQ(std::nullopt,
+            arrival_at(load_feeds({virt_feed()}), "L", "N", "10:00"));
+  EXPECT_EQ(std::nullopt, arrival_at(load_feeds({zero_min_transfer_feed()}),
+                                     "N", "P", "10:00"));
+  EXPECT_EQ(std::nullopt,
+            arrival_at(load_feeds({virt_change_feed()}), "QA", "QB", "10:00"));
 }
 
 std::optional<unixtime_t> arrival_at_o(
@@ -92,17 +109,17 @@ std::optional<unixtime_t> arrival_at_o(
 }
 
 // ===========================================================================
-// Transfer time settings and hubs of weight 0 (zero_min_hub_feed). Without
-// settings, GB (2 min after the arrival at W) is reachable. With a
+// Transfer time settings and transfers of weight 0 (zero_min_transfer_feed).
+// Without settings, GB (2 min after the arrival at W) is reachable. With a
 // min_transfer_time_ of 5 min or 3 min additional_time_, every change at W
 // takes longer than 2 min: GB2 (10 min) is the next. The same holds for GA,
-// which arrives at its virtual location and changes through W's 0 min hub,
+// which arrives at its virtual location and changes through W's 0 min transfer,
 // and for GC, which arrives at W itself - and in both cases the search and
 // the reconstruction have to agree on what the change costs.
 // ===========================================================================
 
-TEST(transfer_rules, transfer_time_settings_apply_to_zero_min_hub) {
-  auto const tt = load_feeds({zero_min_hub_feed()});
+TEST(transfer_rules, transfer_time_settings_apply_to_zero_min_transfer) {
+  auto const tt = load_feeds({zero_min_transfer_feed()});
   for (auto const from : {"N", "N2"}) {
     SCOPED_TRACE(from);
     EXPECT_EQ(at("11:00"), arrival_at_o(tt, from, {}));
@@ -131,29 +148,41 @@ TEST(transfer_rules, transfer_time_settings_beyond_255_min) {
             arrival_at_o(tt, "N", {.default_ = false, .factor_ = 3.0F}));
 }
 
-// W2's own transfer time is 0 (type 1 row), and the R9 -> R5 rule gives R5's
-// departures (GE) a virtual location. A start at that virtual location reaches
-// W2, where GD leaves, through W2's 0 min hub. With min_transfer_time_ = 5
-// min, that start walk takes 5 min like any transfer: from 09:55, GD (10:02)
-// is reached.
-TEST(transfer_rules, start_leg_through_zero_min_hub) {
-  auto const tt =
-      load_feeds({feed({{"W2", 65.5, 24.5}, {"WD", 65.6, 24.5}},
-                       {{"GD", "R6", {{"W2", "10:02"}, {"WD", "10:30"}}},
-                        {"GE", "R5", {{"W2", "11:02"}, {"WD", "11:30"}}}},
-                       "W2,W2,1,,,,,\n"
-                       "W2,W2,2,300,R9,R5,,\n",
-                       {"R9"})});
-  auto virt = location_idx_t::invalid();
-  tt.locations_.for_each_virt(lidx(tt, "W2"),
-                              [&](location_idx_t const l) { virt = l; });
-  ASSERT_NE(location_idx_t::invalid(), virt);
+// W2's own transfer time is 0 (type 1 row). GF (R9) arrives 2 min before GE
+// (R5) leaves, which the R9 -> R5 rule (5 min) forbids, so GE leaves from a
+// location of its own. A start where GE leaves (as a leg alternative or an
+// itinerary refresh starts) reaches W2, where GD (no rule, via WM) leaves,
+// through W2's 0 min transfer. With min_transfer_time_ = 5 min, that start walk
+// takes 5 min like any transfer: from 09:55, GD (10:02) is reached.
+TEST(transfer_rules, start_leg_through_zero_min_transfer) {
+  auto const tt = load_feeds(
+      {feed({{"W2", 65.5, 24.5},
+             {"WD", 65.6, 24.5},
+             {"WN", 65.4, 24.5},
+             {"WM", 65.55, 24.5}},
+            {{"GD", "R6", {{"W2", "10:02"}, {"WM", "10:15"}, {"WD", "10:30"}}},
+             {"GF", "R9", {{"WN", "10:30"}, {"W2", "11:00"}}},
+             {"GE", "R5", {{"W2", "11:02"}, {"WD", "11:30"}}}},
+            "W2,W2,1,,,,,\n"
+            "W2,W2,2,300,R9,R5,,\n")});
+  ASSERT_EQ(std::nullopt, arrival_at(tt, "WN", "WD", "10:30"));
+
+  auto const ge = search_at(tt, "W2", "WD", "11:00");
+  ASSERT_EQ(1U, ge.size());
+  auto const& legs = begin(ge)->legs_;
+  auto const ge_leg = utl::find_if(legs, [](routing::journey::leg const& l) {
+    return std::holds_alternative<routing::journey::run_enter_exit>(l.uses_);
+  });
+  ASSERT_NE(end(legs), ge_leg);
+  auto const& ree = std::get<routing::journey::run_enter_exit>(ge_leg->uses_);
+  auto const start = routing::search_location(
+      kDefaultProfile, rt::frun{tt, nullptr, ree.r_}[ree.stop_range_.from_]);
 
   auto const res = raptor_search(
       tt, nullptr,
       routing::query{.start_time_ = at("09:55"),
                      .use_start_footpaths_ = true,
-                     .start_ = {{virt, 0_minutes, 0U}},
+                     .start_ = {{start, 0_minutes, 0U}},
                      .destination_ = {{lidx(tt, "WD"), 0_minutes, 0U}},
                      .transfer_time_settings_ = {
                          .default_ = false, .min_transfer_time_ = 5_minutes}});
@@ -184,12 +213,11 @@ TEST(transfer_rules, one_to_all_projects_virtual_locations) {
   EXPECT_EQ(2U, qb.k_);
 }
 
-// An exact start or destination (the default match mode) includes the stop's
-// virtual locations, as it includes its real-time ones: Q1 arrives at, and Q2
-// leaves from, virtual locations of QS without a change at QS.
+// An exact start or destination (the default match mode) includes where the
+// trips at the stop stop, as it includes its real-time locations: Q1 arrives
+// at, and Q2 leaves from, QS without a change at QS.
 TEST(transfer_rules, exact_match_includes_virtual_locations) {
   auto const tt = load_feeds({virt_change_feed()});
-  ASSERT_NE(0U, n_virts(tt)) << "precondition: QS has virtual locations";
 
   EXPECT_EQ(at("10:30"), arrival_at(tt, "QA", "QS", "10:00"));
   EXPECT_EQ(at("11:00"), arrival_at(tt, "QS", "QB", "10:40"));
@@ -204,11 +232,10 @@ TEST(transfer_rules, exact_match_includes_virtual_locations) {
   EXPECT_EQ(1U, qb.k_);
 }
 
-// T0 and T1 (route R) stop at the same virtual location of S: the R -> R rule
-// lets them change there in 1 min, at X they change in X's own 2 min with
-// 3 min to spare. A profile that projects virtual locations changes at S in
-// S's own 2 min, which T1 (1 min after T0) does not leave: the transfer
-// optimization keeps X.
+// T0 and T1 (route R) change at S in 1 min through the R -> R rule, at X in
+// X's own 2 min with 3 min to spare. A profile that projects virtual locations
+// changes at S in S's own 2 min, which T1 (1 min after T0) does not leave: the
+// transfer optimization keeps X.
 TEST(transfer_rules, projected_profile_optimizes_transfers_with_stop_time) {
   constexpr auto const kProfile = profile_idx_t{1U};
   auto tt = load_feeds(
@@ -220,7 +247,6 @@ TEST(transfer_rules, projected_profile_optimizes_transfers_with_stop_time) {
              {"T1", "R", {{"S", "10:11"}, {"X", "10:25"}, {"E", "10:40"}}}},
             "S,S,2,120,,,,\n"
             "S,S,2,60,R,R,,\n")});
-  ASSERT_EQ(1U, n_virts(tt)) << "precondition: T0 and T1 share S's virt";
   add_empty_profile(tt, kProfile);
 
   auto const changes_at = [&](profile_idx_t const prf) {
@@ -240,11 +266,10 @@ TEST(transfer_rules, projected_profile_optimizes_transfers_with_stop_time) {
 
 // T0 -> T1 can change at station X (X1 -> X2, 15 min buffer) or at station S
 // (S1 -> S2, 8 min): X, unless a recommended transfer (type 0) names S. That
-// holds as well when both trips stop at virtual locations of S1 and S2 (the
-// 1 min T0 -> T1 rule).
+// holds as well when S asks for 15 min and only the 1 min T0 -> T1 rule
+// allows the change there.
 TEST(transfer_rules, recommended_transfer_at_virtual_locations) {
-  auto const changes_at = [](std::string_view const transfers,
-                             std::size_t const n_virtual_locations = 0U) {
+  auto const changes_at = [](std::string_view const transfers) {
     auto const tt = load_feeds({feed(
         {{"A", 59.0, 10.0},
          {"X", 59.1, 10.0, "", true},
@@ -257,7 +282,6 @@ TEST(transfer_rules, recommended_transfer_at_virtual_locations) {
         {{"T0", "R0", {{"A", "10:00"}, {"X1", "10:10"}, {"S1", "10:20"}}},
          {"T1", "R1", {{"X2", "10:27"}, {"S2", "10:30"}, {"E", "10:40"}}}},
         transfers)});
-    EXPECT_EQ(n_virtual_locations, n_virts(tt));
     auto const res = search_at(tt, "A", "E", "10:00");
     EXPECT_EQ(1U, res.size());
     return res.size() == 0U
@@ -268,8 +292,7 @@ TEST(transfer_rules, recommended_transfer_at_virtual_locations) {
   };
   EXPECT_EQ("X1", changes_at(""));
   EXPECT_EQ("S1", changes_at("S,S,0,,,,,\n"));
-  EXPECT_EQ("S1",
-            changes_at("S,S,0,,,,,\nS,S,2,120,,,,\nS,S,2,60,,,T0,T1\n", 2U));
+  EXPECT_EQ("S1", changes_at("S,S,0,,,,,\nS,S,2,900,,,,\nS,S,2,60,,,T0,T1\n"));
 }
 
 // T1 is entered at X, the stop T0 arrives at (15 min buffer). The change at
@@ -291,18 +314,19 @@ TEST(transfer_rules, change_at_same_stop_keeps_its_station_bonus) {
   EXPECT_EQ(lidx(tt, "X"), begin(res)->legs_.front().to_);
 }
 
-// A time-dependent offset (motis: flex) names the stop. FA arrives at, and FC
-// leaves from, virtual locations of U (the RF1 -> RF3 rule): the offset holds
-// there too, like any other offset at U.
+// A time-dependent offset (motis: flex) names the stop. FC leaves U 4 min
+// after FA arrives, the RF1 -> RF3 rule asks for 5 min: FA and FC stop at
+// locations of their own. The offset holds there too, like any other offset
+// at U.
 TEST(transfer_rules, td_offsets_hold_at_virtual_locations) {
   auto const tt = load_feeds(
       {feed({{"U", 55.0, 13.0}, {"L", 55.1, 13.0}, {"M", 55.2, 13.0}},
             {{"FA", "RF1", {{"L", "10:00"}, {"U", "10:30"}}},
-             {"FC", "RF3", {{"U", "10:35"}, {"M", "11:00"}}}},
+             {"FC", "RF3", {{"U", "10:34"}, {"M", "11:00"}}}},
             "U,U,2,120,,,,\n"
             "U,U,2,300,RF1,RF3,,\n")});
   auto const u = lidx(tt, "U");
-  ASSERT_NE(0U, n_virts(tt)) << "precondition: U has virtual locations";
+  ASSERT_EQ(std::nullopt, arrival_at(tt, "L", "M", "10:00"));
   auto const td = [](std::string_view const hhmm, duration_t const d) {
     return std::vector<routing::td_offset>{
         {.valid_from_ = at(hhmm), .duration_ = d, .transport_mode_payload_ = 0},
@@ -377,7 +401,7 @@ TEST(transfer_rules, leg_alternatives_after_trip_at_virtual_location) {
   }));
 }
 
-// The walk FA's virtual location -> U, as motis' itinerary refresh looks it
+// The walk from where FA arrives to U, as motis' itinerary refresh looks it
 // up between two transit legs.
 TEST(transfer_rules, lookup_footpath_from_virtual_location_to_its_stop) {
   auto const tt = load_feeds({virt_feed()});
@@ -387,13 +411,12 @@ TEST(transfer_rules, lookup_footpath_from_virtual_location_to_its_stop) {
   ASSERT_TRUE(
       std::holds_alternative<routing::journey::run_enter_exit>(fa.uses_));
   auto const& ree = std::get<routing::journey::run_enter_exit>(fa.uses_);
-  auto const virt =
-      rt::frun{tt, nullptr, ree.r_}[ree.stop_range_.to_ - 1U].get_virt();
-  ASSERT_TRUE(virt.has_value());
+  auto const arrived_at = routing::search_location(
+      kDefaultProfile, rt::frun{tt, nullptr, ree.r_}[ree.stop_range_.to_ - 1U]);
   EXPECT_EQ(lidx(tt, "U"), fa.to_);
 
   auto const fp = routing::lookup_footpath(
-      *virt, fa.arr_time_, routing::side::kAlighting, tt, nullptr,
+      arrived_at, fa.arr_time_, routing::side::kAlighting, tt, nullptr,
       routing::query{}, {{lidx(tt, "U"), 0_minutes, 0U}},
       routing::location_match_mode::kExact, true);
   EXPECT_TRUE(fp.has_value());
@@ -412,42 +435,79 @@ TEST(transfer_rules, egress_offset_names_the_query_stop) {
   EXPECT_EQ(lidx(tt, "U"), std::get<routing::offset>(egress.uses_).target());
 }
 
-// P and Q (44 m apart) both carry two virtual locations, so their walk is a
-// walk hub and the stored footpath P -> Q is pruned. The fastest direct
-// connection P -> Q is still that 2 min walk.
-TEST(transfer_rules, fastest_direct_sees_walk_hubs) {
+// Door to door, the direct connections L -> U (FA arrives at a location of
+// its own) and U -> N (FC leaves from one) exist as in the search, and their
+// offsets name the query's stops.
+TEST(transfer_rules, direct_intermodal_reaches_virtual_locations) {
+  auto const tt = load_feeds({virt_feed()});
+  auto const direct = [&](std::string_view const from,
+                          std::string_view const to) {
+    auto const q = routing::query{
+        .start_time_ = at("09:55"),
+        .start_match_mode_ = routing::location_match_mode::kIntermodal,
+        .dest_match_mode_ = routing::location_match_mode::kIntermodal,
+        .start_ = {{lidx(tt, from), 1_minutes, 0U}},
+        .destination_ = {{lidx(tt, to), 3_minutes, 0U}}};
+    auto journeys = std::vector<std::vector<routing::journey::leg>>{};
+    for (auto&& legs : routing::get_direct_journeys<direction::kForward>(
+             tt, nullptr, q, at("09:55"))) {
+      journeys.push_back(std::move(legs));
+    }
+    return journeys;
+  };
+  auto const offset_target = [](routing::journey::leg const& l) {
+    return std::holds_alternative<routing::offset>(l.uses_)
+               ? std::get<routing::offset>(l.uses_).target()
+               : location_idx_t::invalid();
+  };
+
+  auto const to_u = direct("L", "U");
+  ASSERT_EQ(1U, to_u.size());
+  EXPECT_EQ(at("10:33"), to_u.front().back().arr_time_);
+  EXPECT_EQ(lidx(tt, "U"), offset_target(to_u.front().back()));
+
+  auto const from_u = direct("U", "N");
+  ASSERT_EQ(1U, from_u.size());
+  EXPECT_EQ(at("10:32"), from_u.front().front().dep_time_);
+  EXPECT_EQ(lidx(tt, "U"), offset_target(from_u.front().front()));
+}
+
+// P and Q are 44 m apart. At both, the rules toward RX decide the changes of
+// two trips (RX leaves 3 and 5 min after them), so P and Q carry locations of
+// their own and their walk is the walk of their stop. The fastest direct
+// connection P -> Q is the walk the routing takes.
+TEST(transfer_rules, fastest_direct_sees_virt_walks) {
   auto const tt =
       load_feeds({feed({{"P", 57.0, 15.0},
                         {"Q", 57.0004, 15.0},
                         {"PA", 57.1, 15.0},
-                        {"QA", 57.1, 15.2}},
+                        {"QA", 57.1, 15.2},
+                        {"XE", 57.2, 15.0}},
                        {{"TP1", "RP1", {{"PA", "09:00"}, {"P", "09:30"}}},
                         {"TP2", "RP2", {{"PA", "09:10"}, {"P", "09:40"}}},
                         {"TQ1", "RQ1", {{"QA", "09:00"}, {"Q", "09:30"}}},
-                        {"TQ2", "RQ2", {{"QA", "09:10"}, {"Q", "09:40"}}}},
+                        {"TQ2", "RQ2", {{"QA", "09:10"}, {"Q", "09:40"}}},
+                        {"XP1", "RX", {{"P", "09:33"}, {"XE", "10:00"}}},
+                        {"XP2", "RX", {{"P", "09:45"}, {"XE", "10:10"}}},
+                        {"XQ1", "RX", {{"Q", "09:33"}, {"XE", "10:20"}}},
+                        {"XQ2", "RX", {{"Q", "09:45"}, {"XE", "10:30"}}}},
                        "P,P,2,120,,,,\n"
                        "P,P,2,300,RP1,RX,,\n"
                        "P,P,2,420,RP2,RX,,\n"
                        "Q,Q,2,120,,,,\n"
                        "Q,Q,2,300,RQ1,RX,,\n"
-                       "Q,Q,2,420,RQ2,RX,,\n",
-                       {"RX"})});
+                       "Q,Q,2,420,RQ2,RX,,\n")});
   auto const p = lidx(tt, "P");
   auto const q = lidx(tt, "Q");
-
-  // Precondition: P -> Q exists only through a hub.
-  EXPECT_TRUE(
-      utl::none_of(tt.locations_.footpaths_out_[kDefaultProfile][p],
-                   [&](footpath const fp) { return fp.target() == q; }));
-  auto const hub_walk = transfer_duration(tt, p, q);
-  ASSERT_TRUE(hub_walk.has_value());
+  auto const virt_walk = transfer_duration(tt, p, q);
+  ASSERT_TRUE(virt_walk.has_value());
 
   auto const direct = routing::get_fastest_direct(
       tt,
       routing::query{.start_ = {{p, 0_minutes, 0U}},
                      .destination_ = {{q, 0_minutes, 0U}}},
       direction::kForward);
-  EXPECT_EQ(hub_walk->count(), direct.count());
+  EXPECT_EQ(virt_walk->count(), direct.count());
 }
 
 // ===========================================================================
@@ -458,7 +518,6 @@ TEST(transfer_rules, fastest_direct_sees_walk_hubs) {
 // near a coordinate, virtual ones included.
 TEST(transfer_rules, location_group_table_covers_virtual_locations) {
   auto const tt = load_feeds({virt_feed()});
-  ASSERT_NE(0U, n_virts(tt)) << "precondition";
   EXPECT_EQ(tt.n_locations(), tt.location_location_groups_.size());
 }
 
