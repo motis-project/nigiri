@@ -309,7 +309,8 @@ bool update_run(source_idx_t const src,
                 rt_timetable& rtt,
                 trip_idx_t const trip,
                 run& r,
-                gtfsrt::TripUpdate const& tripUpdate) {
+                gtfsrt::TripUpdate const& tripUpdate,
+                bool const skip_existing_update) {
   using std::begin;
   using std::end;
 
@@ -317,6 +318,11 @@ bool update_run(source_idx_t const src,
     if (!add_rt_trip(src, tt, rtt, r, tripUpdate)) {
       return false;
     }
+  } else if (skip_existing_update) {
+    log(log_lvl::debug, "rt.gtfs.priority",
+        "skipping update for trip_id={}: realtime trip already exists",
+        tripUpdate.trip().trip_id());
+    return true;
   } else {
     rtt.rt_transport_is_cancelled_.set(to_idx(r.rt_), false);
   }
@@ -629,7 +635,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
                              source_idx_t const src,
                              std::string_view tag,
                              gtfsrt::FeedMessage const& msg,
-                             bool const use_vehicle_position) {
+                             bool const use_vehicle_position,
+                             bool const skip_existing_update) {
   auto span = get_otel_tracer()->StartSpan("gtfsrt_update_msg", {{"tag", tag}});
   auto scope = opentelemetry::trace::Scope{span};
 
@@ -779,7 +786,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
           rtt.cancel_run(r);
           ++stats.total_entities_success_;
         } else if (!added) {
-          if (update_run(src, tt, rtt, trip, r, entity.trip_update())) {
+          if (update_run(src, tt, rtt, trip, r, entity.trip_update(),
+                         skip_existing_update)) {
             ++stats.total_entities_success_;
           }
         }
@@ -793,7 +801,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
         auto r = rt::run{};
         resolve_rt(rtt, r, trip_id.empty() ? td.trip_id() : trip_id, src);
         if (update_run(src, tt, rtt, trip_idx_t::invalid(), r,
-                       entity.trip_update())) {
+                       entity.trip_update(), skip_existing_update)) {
           ++stats.total_entities_success_;
         }
         continue;
@@ -839,7 +847,8 @@ statistics gtfsrt_update_buf(timetable const& tt,
                              std::string_view tag,
                              std::string_view protobuf,
                              gtfsrt::FeedMessage& msg,
-                             bool const use_vehicle_position) {
+                             bool const use_vehicle_position,
+                             bool const skip_existing_update) {
   msg.Clear();
 
   auto const success =
@@ -851,7 +860,8 @@ statistics gtfsrt_update_buf(timetable const& tt,
     return {.parser_error_ = true};
   }
 
-  return gtfsrt_update_msg(tt, rtt, src, tag, msg, use_vehicle_position);
+  return gtfsrt_update_msg(tt, rtt, src, tag, msg, use_vehicle_position,
+                           skip_existing_update);
 }
 
 statistics gtfsrt_update_buf(timetable const& tt,
@@ -859,10 +869,11 @@ statistics gtfsrt_update_buf(timetable const& tt,
                              source_idx_t const src,
                              std::string_view tag,
                              std::string_view protobuf,
-                             bool const use_vehicle_position) {
+                             bool const use_vehicle_position,
+                             bool const skip_existing_update) {
   auto msg = gtfsrt::FeedMessage{};
   return gtfsrt_update_buf(tt, rtt, src, tag, protobuf, msg,
-                           use_vehicle_position);
+                           use_vehicle_position, skip_existing_update);
 }
 
 }  // namespace nigiri::rt
