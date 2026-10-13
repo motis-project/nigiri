@@ -383,8 +383,9 @@ std::vector<event> get_events(timetable const& tt,
       }
     }
   };
-  if (auto const trip = rule.trip(ev); trip != trip_idx_t::invalid()) {
-    add_trip(trip);
+  if (auto const rule_trip = rule.trip(ev);
+      rule_trip != trip_idx_t::invalid()) {
+    add_trip(rule_trip);
   } else if (rule.route(ev) == route_id_idx_t::invalid()) {
     for (auto const& [trip, s] : tr.trip_rules_) {  // trip set (HRDF)
       if (s == q) {

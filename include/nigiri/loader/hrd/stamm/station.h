@@ -7,7 +7,6 @@
 #include "nigiri/loader/hrd/eva_number.h"
 #include "nigiri/loader/hrd/parser_config.h"
 #include "nigiri/loader/hrd/stamm/timezone.h"
-#include "nigiri/loader/hrd/stamm/transfer_times.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -33,7 +32,6 @@ location_map_t parse_stations(config const&,
                               stamm&,
                               std::string_view station_names_file,
                               std::string_view station_coordinates_file,
-                              std::string_view station_metabhf_file,
-                              transfer_times const&);
+                              std::string_view station_metabhf_file);
 
 }  // namespace nigiri::loader::hrd

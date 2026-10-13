@@ -469,7 +469,8 @@ void build_footpaths(timetable& tt,
     // than the rule.
     for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
       auto bucket = fps[l];
-      for (auto i = n_loaded[to_idx(l)]; i < bucket.size(); ++i) {
+      for (auto i = static_cast<std::uint32_t>(n_loaded[to_idx(l)]);
+           i < bucket.size(); ++i) {
         auto const t = bucket[i].target();
         auto const walk = std::max(bucket[i].duration(),
                                    utl::lookup(rule_walks, transfer_pair{l, t})
