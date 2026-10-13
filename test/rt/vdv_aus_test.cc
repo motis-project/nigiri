@@ -13,6 +13,8 @@
 #include "nigiri/timetable.h"
 #include "nigiri/timetable_metrics.h"
 
+#include "../transfer_rules_util.h"
+
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
@@ -341,6 +343,7 @@ TEST(vdv_aus, delay_propagation) {
   auto const src_idx = source_idx_t{0};
   load_timetable({}, src_idx, vdv_test_files(), tt);
   finalize(tt);
+  ASSERT_LT(0U, test::n_virts(tt));
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
 
@@ -479,6 +482,7 @@ TEST(vdv_aus, all_stops_canceled) {
   auto const src_idx = source_idx_t{0};
   load_timetable({}, src_idx, vdv_test_files(), tt);
   finalize(tt);
+  ASSERT_LT(0U, test::n_virts(tt));
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
 

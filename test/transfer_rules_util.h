@@ -25,7 +25,6 @@
 #include "nigiri/common/parse_time.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/query.h"
-#include "nigiri/routing/transfers.h"
 #include "nigiri/timetable.h"
 
 #include "./raptor_search.h"
@@ -275,21 +274,6 @@ inline std::optional<unixtime_t> arrival(
   return arrival(raptor_search(tt, rtt,
                                station_query(tt, od.first, od.second, at(hhmm)),
                                direction::kForward));
-}
-
-// The fastest transfer from -> to in the default profile,
-// nullopt if there is none.
-inline std::optional<duration_t> transfer_duration(timetable const& tt,
-                                                   location_idx_t const from,
-                                                   location_idx_t const to) {
-  auto d = std::optional<duration_t>{};
-  routing::for_each_transfer<direction::kForward>(
-      tt, nullptr, kDefaultProfile, from, [&](footpath const fp) {
-        if (fp.target() == to && (!d.has_value() || fp.duration() < *d)) {
-          d = fp.duration();
-        }
-      });
-  return d;
 }
 
 inline std::size_t n_virts(timetable const& tt) {

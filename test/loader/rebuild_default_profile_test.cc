@@ -48,35 +48,29 @@ TEST(rebuild_default_profile, walk_the_router_did_not_find) {
             arrival(tt, nullptr, {"A", "C"}));  // changing at S1 is no walk
 }
 
-TEST(rebuild_default_profile, rule_beats_slower_walk) {
-  auto tt = test::load_network("S1,S2,2,180,,,,", kRows);
-  rebuild_default_profile(tt, {{"S1", "S2", 12}});
-  EXPECT_EQ(g_from_f(), arrival(tt, nullptr, {"A", "B"}));
-}
-
-TEST(rebuild_default_profile, rule_beats_faster_walk) {
-  auto tt = test::load_network("S1,S2,2,900,,,,", kRows);
-  EXPECT_EQ(gl_from_f(), arrival(tt, nullptr, {"A", "B"}));
-  rebuild_default_profile(tt, {{"S1", "S2", 1}});
-  EXPECT_EQ(gl_from_f(), arrival(tt, nullptr, {"A", "B"}));
-}
-
-TEST(rebuild_default_profile, forbidden_trip_pair_stays_forbidden) {
-  auto tt = test::load_network("S1,S2,2,120,,,,\nS1,S2,3,,,,F,G", kRows);
-  EXPECT_EQ(gl_from_f(), arrival(tt, nullptr, {"A", "B"}));
-  rebuild_default_profile(tt, {{"S1", "S2", 1}});
-  EXPECT_EQ(gl_from_f(), arrival(tt, nullptr, {"A", "B"}));
-}
-
-// A rule for a whole station applies to all pairs of its stops: the walk
-// underneath has to go, the routing would take the faster one.
-TEST(rebuild_default_profile, station_rule_beats_faster_walk) {
-  auto tt = test::load_network("S,S,2,900,,,,", kRows);
-  EXPECT_EQ(gl_from_f(), arrival(tt, nullptr, {"A", "B"}));
-  EXPECT_EQ(hl_from_f(), arrival(tt, nullptr, {"A", "C"}));
-  rebuild_default_profile(tt, {{"S1", "S2", 1}});
-  EXPECT_EQ(gl_from_f(), arrival(tt, nullptr, {"A", "B"}));
-  EXPECT_EQ(hl_from_f(), arrival(tt, nullptr, {"A", "C"}));
+// A rule beats the walk between its stops, slower or faster than the rule -
+// a ban of one trip pair as well, and a rule for a whole station, which applies
+// to all pairs of its stops: the walk underneath has to go, the routing would
+// take the faster one.
+TEST(rebuild_default_profile, rule_beats_walk) {
+  struct test_case {
+    char const* rows_;
+    int walk_;
+    unixtime_t (*a_to_b_)();
+  };
+  for (auto const& c : std::initializer_list<test_case>{
+           {"S1,S2,2,180,,,,", 12, g_from_f},
+           {"S1,S2,2,900,,,,", 1, gl_from_f},
+           {"S1,S2,2,120,,,,\nS1,S2,3,,,,F,G", 1, gl_from_f},
+           {"S,S,2,900,,,,", 1, gl_from_f}}) {
+    SCOPED_TRACE(c.rows_);
+    auto tt = test::load_network(c.rows_, kRows);
+    EXPECT_EQ(c.a_to_b_(), arrival(tt, nullptr, {"A", "B"}));
+    EXPECT_EQ(hl_from_f(), arrival(tt, nullptr, {"A", "C"}));
+    rebuild_default_profile(tt, {{"S1", "S2", c.walk_}});
+    EXPECT_EQ(c.a_to_b_(), arrival(tt, nullptr, {"A", "B"}));
+    EXPECT_EQ(hl_from_f(), arrival(tt, nullptr, {"A", "C"}));
+  }
 }
 
 // F2 leaves S1 6 min after F arrives, the F -> F2 rule asks for 30 min: F
@@ -126,4 +120,6 @@ TEST(rebuild_default_profile, rules_apply_to_routed_walks) {
   // what finalize computed covers the routes and locations added
   EXPECT_EQ(tt.n_routes(), tt.route_traffic_days_.size());
   EXPECT_EQ(tt.n_locations(), tt.locations_.location_importance_.size());
+  // motis' flex routing indexes it with every location near a coordinate
+  EXPECT_EQ(tt.n_locations(), tt.location_location_groups_.size());
 }

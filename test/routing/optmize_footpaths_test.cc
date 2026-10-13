@@ -371,3 +371,22 @@ TEST(routing, optimize_transfers_takes_shortest_transfer) {
   EXPECT_EQ(D, j.legs_[1].to_);
   EXPECT_EQ(3_minutes, get<footpath>(j.legs_[1].uses_).duration());
 }
+
+// T1 is entered at X, the stop T0 arrives at (15 min buffer). The change at
+// station P (P1 -> P2, 8 min buffer) is no better: both stations are equally
+// important, so X stays.
+TEST(routing, optimize_transfers_keeps_station_bonus_of_same_stop_change) {
+  auto const tt = test::load_feeds({test::feed(
+      {{"A", 59.0, 10.0},
+       {"P", 59.1, 10.0, "", true},
+       {"P1", 59.1001, 10.0, "P"},
+       {"P2", 59.1002, 10.0, "P"},
+       {"X", 59.2, 10.0},
+       {"E", 59.3, 10.0}},
+      {{"T0", "R0", {{"A", "10:00"}, {"P1", "10:10"}, {"X", "10:20"}}},
+       {"T1", "R1", {{"P2", "10:20"}, {"X", "10:37"}, {"E", "10:45"}}}},
+      "")});
+  auto const res = test::search_at(tt, "A", "E", "10:00");
+  ASSERT_EQ(1U, res.size());
+  EXPECT_EQ(loc_idx(tt, "X"), begin(res)->legs_.front().to_);
+}

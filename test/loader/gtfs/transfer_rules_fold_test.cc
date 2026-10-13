@@ -19,38 +19,40 @@ using nigiri::test::feed;
 using nigiri::test::lidx;
 using nigiri::test::load_feeds;
 using nigiri::test::load_network;
+using nigiri::test::n_virts;
 using nigiri::test::raptor_search;
 using nigiri::test::search_at;
 
-// A trip rule that restates the default (2 min) is not redundant if a less
-// specific rule states something else (route pair: 0 min). F -> H has 1 min,
-// so the trip rule sends F's passengers to HL.
-TEST(gtfs, transfer_rules_fold_keeps_exception_to_faster_rule) {
-  auto const tt =
-      load_network("S1,S1,2,120,,,,\nS1,S1,2,0,RF,RH,,\nS1,S1,2,120,,,F,H");
-  EXPECT_EQ(at("11:30"), arrival(tt, nullptr, {"A", "C"}));
-}
-
-// ... same with a ban: RF may not transfer from S1 to S2, but the trip F may,
-// at the default time.
-TEST(gtfs, transfer_rules_fold_keeps_exception_to_ban) {
-  auto const tt =
-      load_network("S1,S2,2,120,,,,\nS1,S2,3,,RF,,,\nS1,S2,2,120,,,F,");
-  EXPECT_EQ(at("11:00"), arrival(tt, nullptr, {"A", "B"}));
-}
-
-// Rules stated for a station: their majority (15 min) is the default for the
-// pairs of its child stops as well, not only for the station itself.
-TEST(gtfs, transfer_rules_fold_station_majority_reaches_base_locations) {
-  auto const tt = load_network("S,S,2,900,RF,RG,,\nS,S,2,900,RF,RH,,");
-  EXPECT_EQ(at("11:30"), arrival(tt, nullptr, {"A", "B"}));
-}
-
-// ... and an exception to that majority survives: F -> G is quick.
-TEST(gtfs, transfer_rules_fold_station_majority_with_exception) {
-  auto const tt =
-      load_network("S,S,2,900,RF,RG,,\nS,S,2,900,RF,RH,,\nS,S,2,60,,,F,G");
-  EXPECT_EQ(at("11:00"), arrival(tt, nullptr, {"A", "B"}));
+// What the rules state survives the fold.
+TEST(gtfs, transfer_rules_fold_keeps_what_rules_state) {
+  struct test_case {
+    char const* rows_;
+    std::pair<char const*, char const*> od_;
+    char const* arrival_;
+  };
+  for (auto const& c : std::initializer_list<test_case>{
+           // A trip rule that restates the default (2 min) is not redundant if
+           // a less specific rule states something else (route pair: 0 min).
+           // F -> H has 1 min, so the trip rule sends F's passengers to HL.
+           {"S1,S1,2,120,,,,\nS1,S1,2,0,RF,RH,,\nS1,S1,2,120,,,F,H",
+            {"A", "C"},
+            "11:30"},
+           // ... same with a ban: RF may not transfer from S1 to S2, but the
+           // trip F may, at the default time.
+           {"S1,S2,2,120,,,,\nS1,S2,3,,RF,,,\nS1,S2,2,120,,,F,",
+            {"A", "B"},
+            "11:00"},
+           // Rules stated for a station: their majority (15 min) is the
+           // default for the pairs of its child stops as well, not only for
+           // the station itself.
+           {"S,S,2,900,RF,RG,,\nS,S,2,900,RF,RH,,", {"A", "B"}, "11:30"},
+           // ... and an exception to that majority survives: F -> G is quick.
+           {"S,S,2,900,RF,RG,,\nS,S,2,900,RF,RH,,\nS,S,2,60,,,F,G",
+            {"A", "B"},
+            "11:00"}}) {
+    SCOPED_TRACE(c.rows_);
+    EXPECT_EQ(at(c.arrival_), arrival(load_network(c.rows_), nullptr, c.od_));
+  }
 }
 
 // ===========================================================================
@@ -111,7 +113,7 @@ TEST(gtfs, transfer_rules_fold_station_default_holds_at_virtual_locations) {
                         {"LD", 61.2, 19.0},
                         {"LD2", 61.2, 19.2}},
                        {{"LT5", "RL5", {{"LO", "10:00"}, {"L1", "10:30"}}},
-                        {"LT6", "RL6", {{"L1", "10:40"}, {"LD", "11:00"}}},
+                        {"LT6", "RL6", {{"L1", "10:30"}, {"LD", "11:00"}}},
                         {"LT7", "RL7", {{"L1", "10:32"}, {"LD2", "11:00"}}},
                         {"LT8", "RL7", {{"L1", "10:36"}, {"LD2", "11:05"}}},
                         {"LT9", "RL9", {{"LO2", "10:00"}, {"L1", "10:30"}}}},
@@ -120,12 +122,42 @@ TEST(gtfs, transfer_rules_fold_station_default_holds_at_virtual_locations) {
                        "L1,L1,2,300,RL3,RL4,,\n"
                        "L1,L1,2,0,,,LT5,LT6\n",
                        {"RL1", "RL2", "RL3", "RL4"})});
+  ASSERT_LT(0U, n_virts(tt));
 
   // A plain arrival at L1 makes LT7 (2 min later).
   EXPECT_EQ(at("11:00"), arrival_at(tt, "LO2", "LD2", "10:00"));
 
   // LT5 arrives at its virtual location below L1: the same.
   EXPECT_EQ(at("11:00"), arrival_at(tt, "LO", "LD2", "10:00"));
+}
+
+// The fold's majority must not override an explicit row. MS1 -> MP2 only has
+// a trip-qualified row (TA -> TB, 10 min), from which the fold takes a
+// 10 min default for MS1 -> MP2. At MP1 -> MP2 that default would be as
+// specific as the explicit row MP1 -> MS2 (3 min) and win the tie, so the
+// unnamed trips TX -> TY would get 10 min instead of the stated 3 min.
+TEST(gtfs, transfer_rules_fold_majority_does_not_override_explicit_row) {
+  auto const tt =
+      load_feeds({feed({{"MS1", 49.5, 9.5, "", true},
+                        {"MP1", 49.5, 9.5, "MS1"},
+                        {"MS2", 49.5003, 9.5, "", true},
+                        {"MP2", 49.5003, 9.5, "MS2"},
+                        {"MC", 49.6, 9.5},
+                        {"MD", 49.7, 9.5},
+                        {"MC2", 49.6, 9.7},
+                        {"MD2", 49.7, 9.7}},
+                       {{"TX", "RX", {{"MC", "10:00"}, {"MP1", "10:30"}}},
+                        {"TY", "RY", {{"MP2", "10:35"}, {"MD", "11:00"}}},
+                        {"TA", "RA", {{"MC2", "10:00"}, {"MP1", "10:30"}}},
+                        {"TB", "RB", {{"MP2", "10:35"}, {"MD2", "11:00"}}}},
+                       "MP1,MS2,2,180,,,,\n"
+                       "MS1,MP2,2,600,,,TA,TB\n")});
+
+  // Unnamed trips: only the explicit 3 min apply, the 5 min change works.
+  EXPECT_EQ(at("11:00"), arrival_at(tt, "MC", "MD", "10:00"));
+
+  // TA -> TB: the trip-qualified 10 min are more specific, 5 min fail.
+  EXPECT_EQ(0U, search_at(tt, "MC2", "MD2", "10:00").size());
 }
 
 // One guarantee (KT1 -> KT2) next to three 5 min trip pairs at K: the 5 min

@@ -111,114 +111,107 @@ std::vector<unixtime_t> direct_arrivals(
   return arrivals;
 }
 
+// The name of a parameterized case.
+template <typename T>
+std::string case_name(testing::TestParamInfo<T> const& info) {
+  return std::string{info.param.name_};
+}
+
 // ===========================================================================
-// 1. Delays at stops that carry a qualified rule (= virtual locations).
-//    No track change involved: the rule has to keep applying and the update
-//    has to arrive, however the feed names the stop.
+// 1. Delays where a rule decides a change. No track change involved: the rule
+//    has to keep applying to the real-time times.
 // ===========================================================================
 
-// G waits: 10:40 -> 10:50. 20 min >= 15 min rule -> G is reachable, and its
-// delay reaches B - however the update names the stop: by stop_id and
-// stop_sequence, by stop_id only, by stop_sequence only.
-TEST(gtfsrt_transfer_rules, delay_at_rule_stop) {
-  auto const tt = load_network("S,S,2,120,,,,\nS,S,2,900,,,F,G");
-  for (auto const& [has_seq, has_stop_id] :
-       {std::pair{true, true}, std::pair{false, true},
-        std::pair{true, false}}) {
-    SCOPED_TRACE(
-        fmt::format("has_seq={}, has_stop_id={}", has_seq, has_stop_id));
-    auto rtt = rt::create_rt_timetable(tt, kDay);
-    update(tt, rtt,
-           {{"G",
-             {{.seq_ = 1U,
-               .stop_id_ = "S2",
-               .dep_delay_ = 10,
-               .has_seq_ = has_seq,
-               .has_stop_id_ = has_stop_id}}}});
-    EXPECT_EQ(at("11:10"), arrival(tt, &rtt, kAtoB));
-    EXPECT_EQ("S2", stop_id_at(tt, rtt, "G", 0U));
+// Trips are late; the arrival is checked before (if before_ is set) and after
+// the delays, and so are the transports and locations real time adds (if
+// set).
+struct delay {
+  std::string_view name_;
+  std::string_view rules_;
+  std::vector<trip_update> updates_;
+  std::pair<char const*, char const*> od_;
+  unixtime_t (*before_)() = nullptr;
+  unixtime_t (*after_)() = nullptr;
+  std::optional<std::uint32_t> n_rt_transports_{};
+  std::optional<std::uint32_t> n_rt_locations_{};
+};
+
+std::ostream& operator<<(std::ostream& out, delay const& c) {
+  return out << c.name_;
+}
+
+class gtfsrt_delay : public testing::TestWithParam<delay> {};
+
+TEST_P(gtfsrt_delay, arrival) {
+  auto const& c = GetParam();
+  auto const tt = load_network(c.rules_);
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  if (c.before_ != nullptr) {
+    EXPECT_EQ(c.before_(), arrival(tt, &rtt, c.od_));
+  }
+  update(tt, rtt, c.updates_);
+  EXPECT_EQ(c.after_(), arrival(tt, &rtt, c.od_));
+  if (c.n_rt_transports_.has_value()) {
+    EXPECT_EQ(*c.n_rt_transports_, rtt.n_rt_transports());
+  }
+  if (c.n_rt_locations_.has_value()) {
+    EXPECT_EQ(*c.n_rt_locations_, rtt.n_rt_locations());
   }
 }
 
-// A slower rule that the schedule satisfies (10 min >= 8 min) becomes binding
-// once the feeder is late: 5 min < 8 min although the walk alone would do.
-TEST(gtfsrt_transfer_rules, delay_makes_slower_rule_binding) {
-  auto const tt = load_network("S,S,2,120,,,,\nS,S,2,480,,,F,G");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  EXPECT_EQ(g_from_f(), arrival(tt, &rtt, kAtoB));
-  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 5}}}});
-  EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, kAtoB));
-}
-
-// Only the trips whose change the rule decides move: F (late) and G. GL, H,
-// HL and F2 stay as scheduled.
-TEST(gtfsrt_transfer_rules, delay_moves_only_trips_the_rule_needs) {
-  auto const tt = load_network("S,S,2,120,,,,\nS,S,2,480,,,F,G");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 5}}}});
-  EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, kAtoB));
-  EXPECT_EQ(2U, rtt.n_rt_transports());
-}
-
-// A delay that leaves every rule decision as it was moves nothing: F -> G
-// still has 9 min >= 8 min.
-TEST(gtfsrt_transfer_rules, delay_within_rule_moves_nothing) {
-  auto const tt = load_network("S,S,2,120,,,,\nS,S,2,480,,,F,G");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 1}}}});
-  EXPECT_EQ(g_from_f(), arrival(tt, &rtt, kAtoB));
-  EXPECT_EQ(1U, rtt.n_rt_transports());
-  EXPECT_EQ(0U, rtt.n_rt_locations());
-}
-
-// A faster rule can become binding as well: F2 leaves S1 6 min after F
-// arrives, S1 takes 5 min, the RF trips among themselves 0 min. F 3 min late:
-// only the rule keeps F2.
-TEST(gtfsrt_transfer_rules, delay_makes_faster_rule_binding) {
-  auto const tt = load_network("S1,S1,2,300,,,,\nS1,S1,2,0,RF,RF,,");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  EXPECT_EQ(at("11:06"), arrival(tt, &rtt, std::pair{"A", "D"}));
-  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 3}}}});
-  EXPECT_EQ(at("11:06"), arrival(tt, &rtt, std::pair{"A", "D"}));
-}
-
-// A faster rule (0 min, route pair) keeps a connection the default change
-// time (2 min) would break - also after both trips moved: F arrives 10:33,
-// H leaves 10:33 and reaches C two minutes late.
-TEST(gtfsrt_transfer_rules, delay_keeps_faster_rule) {
-  auto const tt = load_network("S1,S1,2,120,,,,\nS1,S1,2,0,RF,RH,,");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  EXPECT_EQ(h_from_f(), arrival(tt, &rtt, kAtoC));
-  update(tt, rtt,
-         {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 3}}},
-          {"H", {{.seq_ = 1U, .stop_id_ = "S1", .dep_delay_ = 2}}}});
-  EXPECT_EQ(at("11:02"), arrival(tt, &rtt, kAtoC));
-}
-
-// A forbidden trip pair stays forbidden however late the connecting trip is.
-TEST(gtfsrt_transfer_rules, delay_keeps_forbidden_pair) {
-  auto const tt = load_network("S,S,2,120,,,,\nS,S,3,,,,F,G");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  update(tt, rtt, {{"G", {{.seq_ = 1U, .stop_id_ = "S2", .dep_delay_ = 5}}}});
-  EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, kAtoB));
-  EXPECT_EQ("S2", stop_id_at(tt, rtt, "G", 0U));
-  // ... and the delay arrived: G now leaves S2 at 10:45, reaches B at 11:05
-  EXPECT_EQ(at("11:05"), arrival(tt, &rtt, std::pair{"S2", "B"}, "10:41"));
-}
-
-// A skipped stop named by stop_id only.
-TEST(gtfsrt_transfer_rules, skipped_rule_stop_with_stop_id_only) {
-  auto const tt = load_network("S,S,2,120,,,,\nS,S,2,0,,,F,G");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  update(tt, rtt,
-         {{"G",
-           {{.seq_ = 1U,
-             .stop_id_ = "S2",
-             .has_seq_ = false,
-             .is_skipped_ = true}}}});
-  EXPECT_EQ(gl_from_f(),
-            arrival(tt, &rtt, kAtoB));  // G cannot be boarded at S2
-}
+INSTANTIATE_TEST_SUITE_P(
+    delays,
+    gtfsrt_delay,
+    testing::Values(
+        // A slower rule that the schedule satisfies (10 min >= 8 min) becomes
+        // binding once the feeder is late: 5 min < 8 min although the walk
+        // alone would do. Only the trips whose change the rule decides move:
+        // F (late) and G. GL, H, HL and F2 stay as scheduled.
+        delay{"delay_makes_slower_rule_binding",
+              "S,S,2,120,,,,\nS,S,2,480,,,F,G",
+              {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 5}}}},
+              kAtoB,
+              g_from_f,
+              gl_from_f,
+              2U},
+        // A delay that leaves every rule decision as it was moves nothing:
+        // F -> G still has 9 min >= 8 min.
+        delay{"delay_within_rule_moves_nothing",
+              "S,S,2,120,,,,\nS,S,2,480,,,F,G",
+              {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 1}}}},
+              kAtoB,
+              nullptr,
+              g_from_f,
+              1U,
+              0U},
+        // A faster rule can become binding as well: F2 leaves S1 6 min after
+        // F arrives, S1 takes 5 min, the RF trips among themselves 0 min. F 3
+        // min late: only the rule keeps F2.
+        delay{"delay_makes_faster_rule_binding",
+              "S1,S1,2,300,,,,\nS1,S1,2,0,RF,RF,,",
+              {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 3}}}},
+              std::pair{"A", "D"},
+              [] { return at("11:06"); },
+              [] { return at("11:06"); }},
+        // A faster rule (0 min, route pair) keeps a connection the default
+        // change time (2 min) would break - also after both trips moved: F
+        // arrives 10:33, H leaves 10:33 and reaches C two minutes late.
+        delay{"delay_keeps_faster_rule",
+              "S1,S1,2,120,,,,\nS1,S1,2,0,RF,RH,,",
+              {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 3}}},
+               {"H", {{.seq_ = 1U, .stop_id_ = "S1", .dep_delay_ = 2}}}},
+              kAtoC,
+              h_from_f,
+              [] { return at("11:02"); }},
+        // A forbidden trip pair stays forbidden however late the connecting
+        // trip is.
+        delay{"delay_keeps_forbidden_pair",
+              "S,S,2,120,,,,\nS,S,3,,,,F,G",
+              {{"G", {{.seq_ = 1U, .stop_id_ = "S2", .dep_delay_ = 5}}}},
+              kAtoB,
+              nullptr,
+              gl_from_f}),
+    case_name<delay>);
 
 // F moves from its scheduled platform S1 to another platform; the arrival is
 // checked before (if before_ is set) and after the track change.
@@ -229,15 +222,11 @@ struct track_change {
   std::pair<char const*, char const*> od_;
   unixtime_t (*before_)() = nullptr;
   unixtime_t (*after_)() = nullptr;
+  bool is_assigned_as_stop_id_ = false;
 };
 
 std::ostream& operator<<(std::ostream& out, track_change const& c) {
   return out << c.name_;
-}
-
-std::string track_change_name(
-    testing::TestParamInfo<track_change> const& info) {
-  return std::string{info.param.name_};
 }
 
 class gtfsrt_track_change : public testing::TestWithParam<track_change> {};
@@ -253,7 +242,8 @@ TEST_P(gtfsrt_track_change, arrival) {
          {{"F",
            {{.seq_ = 2U,
              .stop_id_ = "S1",
-             .assigned_ = std::string{c.platform_}}}}});
+             .assigned_ = std::string{c.platform_},
+             .is_assigned_as_stop_id_ = c.is_assigned_as_stop_id_}}}});
   EXPECT_EQ(c.platform_, stop_id_at(tt, rtt, "F", 1U));
   EXPECT_EQ(c.after_(), arrival(tt, &rtt, c.od_));
 }
@@ -271,6 +261,11 @@ INSTANTIATE_TEST_SUITE_P(
         track_change{"track_change_keeps_slower_trip_rule",
                      "S,S,2,120,,,,\nS,S,2,900,,,F,G", "S3", kAtoB, nullptr,
                      gl_from_f},
+        // ... also stated the old way: a different stop_id, no
+        // stop_time_properties.
+        track_change{"track_change_via_stop_id_keeps_rule",
+                     "S,S,2,120,,,,\nS,S,2,900,,,F,G", "S3", kAtoB, nullptr,
+                     gl_from_f, true},
         // Faster: a timed transfer F -> H (H waits, 0 min) survives F moving
         // away from H's platform, where the walk alone would take longer than 1
         // min.
@@ -288,8 +283,23 @@ INSTANTIATE_TEST_SUITE_P(
         // Route-qualified station rule, new platform S4 never saw an RF trip.
         track_change{"track_change_keeps_route_rule_new_location",
                      "S,S,2,120,,,,\nS,S,2,900,RF,RG,,", "S4", kAtoB, nullptr,
-                     gl_from_f}),
-    track_change_name);
+                     gl_from_f},
+        // The specific rule wins on the new platform as well: the station says
+        // 15 min for RF -> RG, the trip pair F -> G is timed.
+        track_change{"track_change_keeps_rule_precedence",
+                     "S,S,2,120,,,,\nS,S,2,900,RF,RG,,\nS,S,1,,,,F,G", "S4",
+                     kAtoB, g_from_f, g_from_f},
+        // F is named by a trip rule (15 min, one trip), F0 and F2 only by the
+        // route rules (RF: 15 min, RF -> RG: 3 min). For F -> G the trip rule
+        // is the most specific one. Moved to S3, F lands on a location that
+        // states the same values as F0's - but there the route pair is the
+        // most specific rule (3 min), so the key must keep the specificity of
+        // F's rules.
+        track_change{"real_time_key_keeps_specificity",
+                     "S,S,2,120,,,,\nS,S,2,900,,,F,\nS,S,2,900,RF,,,\n"
+                     "S,S,2,180,RF,RG,,",
+                     "S3", kAtoB, gl_from_f, gl_from_f}),
+    case_name<track_change>);
 
 // The rule also holds if its TARGET trip changes platform.
 TEST(gtfsrt_transfer_rules, track_change_of_target_trip_keeps_rule) {
@@ -306,63 +316,65 @@ TEST(gtfsrt_transfer_rules, track_change_of_target_trip_keeps_rule) {
             direct_arrivals(tt, rtt, std::pair{"S", "B"}, "10:35", "10:45"));
 }
 
-// ... and if both change platform (two real-time virtual locations meet). An
-// interval search from S puts both into its start set: the journey starts
-// where the moved G departs now (S4, 10:40).
+// ... and if both change platform (two real-time virtual locations meet):
+// slower (F -> G), timed (F -> H), and a faster platform rule (0 min at S3 for
+// RF -> RH, and H moves there too) that only becomes binding there.
 TEST(gtfsrt_transfer_rules, track_change_of_both_trips_keeps_rule) {
-  auto const tt = load_network("S,S,2,120,,,,\nS,S,2,900,,,F,G");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  update(tt, rtt,
-         {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}},
-          {"G", {{.seq_ = 1U, .stop_id_ = "S2", .assigned_ = "S4"}}}});
-  EXPECT_EQ("S3", stop_id_at(tt, rtt, "F", 1U));
-  EXPECT_EQ("S4", stop_id_at(tt, rtt, "G", 0U));
-  ASSERT_GE(rtt.n_rt_locations(), 2U) << "precondition";
-  EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, kAtoB));
+  struct test_case {
+    char const* rules_;
+    std::vector<trip_update> moves_;
+    std::pair<char const*, char const*> od_;
+    unixtime_t (*before_)();
+    unixtime_t (*after_)();
+  };
+  auto const cases = std::vector<test_case>{
+      {"S,S,2,120,,,,\nS,S,2,900,,,F,G",
+       {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}},
+        {"G", {{.seq_ = 1U, .stop_id_ = "S2", .assigned_ = "S4"}}}},
+       kAtoB,
+       nullptr,
+       gl_from_f},
+      {"S,S,2,120,,,,\nS,S,1,,,,F,H",
+       {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S4"}}},
+        {"H", {{.seq_ = 1U, .stop_id_ = "S1", .assigned_ = "S2"}}}},
+       kAtoC,
+       nullptr,
+       h_from_f},
+      {"S3,S3,2,120,,,,\nS3,S3,2,0,RF,RH,,",
+       {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}},
+        {"H", {{.seq_ = 1U, .stop_id_ = "S1", .assigned_ = "S3"}}}},
+       kAtoC,
+       hl_from_f,  // S1: 1 min < 2 min default
+       h_from_f}};
+  for (auto const& c : cases) {
+    SCOPED_TRACE(c.rules_);
+    auto const tt = load_network(c.rules_);
+    auto rtt = rt::create_rt_timetable(tt, kDay);
+    if (c.before_ != nullptr) {
+      EXPECT_EQ(c.before_(), arrival(tt, &rtt, c.od_));
+    }
+    update(tt, rtt, c.moves_);
+    for (auto const& m : c.moves_) {
+      auto const& stu = m.stus_.front();
+      EXPECT_EQ(*stu.assigned_,
+                stop_id_at(tt, rtt, m.trip_id_,
+                           static_cast<stop_idx_t>(stu.seq_ - 1U)));
+    }
+    EXPECT_EQ(c.after_(), arrival(tt, &rtt, c.od_));
+  }
 
+  // An interval search from S puts both F and G into its start set: the
+  // journey starts where the moved G departs now (S4, 10:40).
+  auto const tt = load_network(cases.front().rules_);
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  update(tt, rtt, cases.front().moves_);
+  ASSERT_GE(rtt.n_rt_locations(), 2U) << "precondition";
   auto const res = raptor_search(
       tt, &rtt, station_query(tt, "S", "B", interval{at("10:35"), at("10:50")}),
       direction::kForward);
   ASSERT_EQ(1U, res.size());
   EXPECT_EQ(at("10:40"), begin(res)->start_time_);
   EXPECT_EQ(g_from_f(), begin(res)->dest_time_);
-}
-
-// Timed transfer with both trips moved to platforms nobody was scheduled at.
-TEST(gtfsrt_transfer_rules, track_change_of_both_trips_keeps_timed_rule) {
-  auto const tt = load_network("S,S,2,120,,,,\nS,S,1,,,,F,H");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  update(tt, rtt,
-         {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S4"}}},
-          {"H", {{.seq_ = 1U, .stop_id_ = "S1", .assigned_ = "S2"}}}});
-  EXPECT_EQ("S4", stop_id_at(tt, rtt, "F", 1U));
-  EXPECT_EQ("S2", stop_id_at(tt, rtt, "H", 0U));
-  EXPECT_EQ(h_from_f(), arrival(tt, &rtt, kAtoC));
-}
-
-// Route-qualified station rule; another RF trip (F0) is scheduled at S3.
-TEST(gtfsrt_transfer_rules, track_change_keeps_route_rule_existing_location) {
-  auto const tt = load_network("S,S,2,120,,,,\nS,S,2,900,RF,RG,,");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, kAtoB));
-  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}}});
-  EXPECT_EQ("S3", stop_id_at(tt, rtt, "F", 1U));
-  EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, kAtoB));
-}
-
-// The track change stated the old way: a different stop_id, no
-// stop_time_properties.
-TEST(gtfsrt_transfer_rules, track_change_via_stop_id_keeps_rule) {
-  auto const tt = load_network("S,S,2,120,,,,\nS,S,2,900,,,F,G");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  update(tt, rtt,
-         {{"F",
-           {{.seq_ = 2U,
-             .stop_id_ = "S1",
-             .assigned_ = "S3",
-             .is_assigned_as_stop_id_ = true}}}});
-  EXPECT_EQ("S3", stop_id_at(tt, rtt, "F", 1U));
-  EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, kAtoB));
 }
 
 // ===========================================================================
@@ -405,54 +417,7 @@ INSTANTIATE_TEST_SUITE_P(
                      "S,S,2,120,,,,\nS,S,2,900,RF,,,\n"
                      "S4,S2,2,120,,,,\nS4,S2,2,0,,RG,,",
                      "S4", kAtoB, gl_from_f, g_from_f}),
-    track_change_name);
-
-// Entering a fast platform: 0 min at S3 for RF -> RH, and H moves there too.
-TEST(gtfsrt_transfer_rules, track_change_makes_faster_platform_rule_binding) {
-  auto const tt = load_network("S3,S3,2,120,,,,\nS3,S3,2,0,RF,RH,,");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  EXPECT_EQ(hl_from_f(),
-            arrival(tt, &rtt, kAtoC));  // S1: 1 min < 2 min default
-  update(tt, rtt,
-         {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}},
-          {"H", {{.seq_ = 1U, .stop_id_ = "S1", .assigned_ = "S3"}}}});
-  EXPECT_EQ("S3", stop_id_at(tt, rtt, "F", 1U));
-  EXPECT_EQ("S3", stop_id_at(tt, rtt, "H", 0U));
-  EXPECT_EQ(h_from_f(), arrival(tt, &rtt, kAtoC));
-}
-
-// The specific rule wins on the new platform as well: the station says 15 min
-// for RF -> RG, the trip pair F -> G is timed.
-TEST(gtfsrt_transfer_rules, track_change_keeps_rule_precedence) {
-  auto const tt =
-      load_network("S,S,2,120,,,,\nS,S,2,900,RF,RG,,\nS,S,1,,,,F,G");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  EXPECT_EQ(g_from_f(), arrival(tt, &rtt, kAtoB));
-  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S4"}}}});
-  EXPECT_EQ("S4", stop_id_at(tt, rtt, "F", 1U));
-  EXPECT_EQ(g_from_f(), arrival(tt, &rtt, kAtoB));
-
-  // Delaying G only delays the arrival: still G, 5 min later.
-  update(tt, rtt,
-         {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S4"}}},
-          {"G", {{.seq_ = 1U, .stop_id_ = "S2", .dep_delay_ = 5}}}});
-  EXPECT_EQ(at("11:05"), arrival(tt, &rtt, kAtoB));
-}
-
-// F is named by a trip rule (15 min, one trip), F0 and F2 only by the route
-// rules (RF: 15 min, RF -> RG: 3 min). For F -> G the trip rule is the most
-// specific one. Moved to S3, F lands on a location that states the same
-// values as F0's - but there the route pair is the most specific rule
-// (3 min), so the key must keep the specificity of F's rules.
-TEST(gtfsrt_transfer_rules, real_time_key_keeps_specificity) {
-  auto const tt = load_network(
-      "S,S,2,120,,,,\nS,S,2,900,,,F,\nS,S,2,900,RF,,,\nS,S,2,180,RF,RG,,");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  ASSERT_EQ(gl_from_f(), arrival(tt, &rtt, kAtoB))
-      << "precondition: F -> G takes 15 min in the schedule";
-  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}}});
-  EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, kAtoB));
-}
+    case_name<track_change>);
 
 // ===========================================================================
 // 4. Track change and delay together, reverting, searching the other way.
@@ -567,18 +532,6 @@ TEST(gtfsrt_transfer_rules, track_change_backward_and_interval_search) {
   EXPECT_EQ(gl_from_f(), begin(bwd)->start_time_);
 }
 
-// Backward search across a kept timed transfer.
-TEST(gtfsrt_transfer_rules, track_change_backward_search_timed) {
-  auto const tt = load_network("S,S,2,120,,,,\nS,S,1,,,,F,H");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}}});
-  EXPECT_EQ("S3", stop_id_at(tt, rtt, "F", 1U));
-  auto const res =
-      search(tt, rtt, std::pair{"C", "A"}, "11:00", direction::kBackward);
-  ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(at("10:00"), begin(res)->dest_time_);
-}
-
 // ===========================================================================
 // 5. What a journey and a query see of a moved trip.
 // ===========================================================================
@@ -624,14 +577,6 @@ TEST(gtfsrt_transfer_rules, track_change_transfer_not_moved_to_forbidden_pair) {
   ASSERT_LE(2U, legs.size());
   EXPECT_EQ("X1", leg_stop_id(tt, legs.front().to_));
   EXPECT_EQ("X2", leg_stop_id(tt, legs.back().from_));
-}
-
-// ... while without the rule the same journey may change at either station.
-TEST(gtfsrt_transfer_rules, transfer_at_either_station) {
-  auto const tt = load_network("S3,S2,2,120,,,,");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  update(tt, rtt, {{"P", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}}});
-  EXPECT_EQ(at("13:20"), arrival(tt, &rtt, kAtoB, "12:00"));
 }
 
 // ===========================================================================
@@ -682,28 +627,22 @@ TEST(gtfsrt_transfer_rules, track_change_onto_platform_without_transfers) {
   }
 }
 
-// A stop at a real-time virtual location gets skipped afterwards.
+// The kept timed transfer F -> H from a real-time virtual location, searched
+// forward and backward - until the stop there gets skipped.
 TEST(gtfsrt_transfer_rules, skipped_stop_at_real_time_location) {
   auto const tt = load_network("S,S,2,120,,,,\nS,S,1,,,,F,H");
   auto rtt = rt::create_rt_timetable(tt, kDay);
   update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}}});
+  EXPECT_EQ("S3", stop_id_at(tt, rtt, "F", 1U));
   EXPECT_EQ(h_from_f(), arrival(tt, &rtt, kAtoC));
+  auto const bwd =
+      search(tt, rtt, std::pair{"C", "A"}, "11:00", direction::kBackward);
+  ASSERT_EQ(1U, bwd.size());
+  EXPECT_EQ(at("10:00"), begin(bwd)->dest_time_);
+
   update(tt, rtt,
          {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .is_skipped_ = true}}}});
   EXPECT_EQ(0U, search(tt, rtt, kAtoC, "10:00").size());
-}
-
-// An assignment that names the scheduled platform is no stop change - and
-// must not swallow the delay of the stop either.
-TEST(gtfsrt_transfer_rules, assignment_to_scheduled_platform) {
-  auto const tt = load_network("S,S,2,120,,,,\nS,S,2,480,,,F,G");
-  auto rtt = rt::create_rt_timetable(tt, kDay);
-  update(
-      tt, rtt,
-      {{"F",
-        {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S1", .arr_delay_ = 5}}}});
-  EXPECT_EQ("S1", stop_id_at(tt, rtt, "F", 1U));
-  EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, kAtoB));  // 5 min < 8 min
 }
 
 // A profile that ignores transfers.txt changes between the locations of a

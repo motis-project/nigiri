@@ -16,6 +16,7 @@
 #include "nigiri/timetable.h"
 
 #include "../raptor_search.h"
+#include "../transfer_rules_util.h"
 #include "results_to_string.h"
 
 using namespace nigiri;
@@ -341,4 +342,27 @@ TEST(routing, transfer_travel_test) {
                                  .max_travel_time_ = 35_minutes});
     EXPECT_EQ("\n", to_string(tt, results));
   }
+}
+
+// B changes in 90 min (B,B,2,5400). With a factor of 3, a change takes 270
+// min: more than an u8 holds. T2 (20 min) must stay out of reach, T3 (90 min)
+// as well.
+TEST(routing, transfer_time_settings_beyond_255_min) {
+  auto const tt = test::load_feeds(
+      {test::feed({{"A", 56.1, 14.0}, {"B", 56.0, 14.0}, {"C", 56.2, 14.0}},
+                  {{"T1", "R1", {{"A", "10:00"}, {"B", "10:30"}}},
+                   {"T2", "R2", {{"B", "10:50"}, {"C", "11:00"}}},
+                   {"T3", "R2", {{"B", "12:00"}, {"C", "12:10"}}},
+                   {"T4", "R2", {{"B", "15:00"}, {"C", "15:10"}}}},
+                  "B,B,2,5400,,,,\n")});
+  auto const arrival = [&](routing::transfer_time_settings const tts) {
+    return test::arrival(raptor_search(
+        tt, nullptr,
+        routing::query{.start_time_ = test::at("10:00"),
+                       .start_ = {{test::lidx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{test::lidx(tt, "C"), 0_minutes, 0U}},
+                       .transfer_time_settings_ = tts}));
+  };
+  EXPECT_EQ(test::at("12:10"), arrival({}));
+  EXPECT_EQ(test::at("15:10"), arrival({.default_ = false, .factor_ = 3.0F}));
 }

@@ -5,7 +5,10 @@
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/routing/transfers.h"
 #include "nigiri/timetable.h"
+
+#include "../transfer_rules_util.h"
 
 using namespace nigiri;
 using namespace date;
@@ -143,4 +146,35 @@ TEST(loader, build_footpaths_drop_unwalkable) {
   00:02.0->(B, B)
 )"sv,
             ss.str());
+}
+
+// E1 has a 5 min transfer time. E2 (same feed, 22 m) and E3 (other feed, 21 m)
+// are equally close: leaving E1 on foot has to cost the same either way. The
+// cross-feed link takes max(transfer times, walk), so the same-feed one has to
+// as well.
+TEST(loader, build_footpaths_same_feed_walk_respects_transfer_time) {
+  auto const tt = test::load_feeds(
+      {test::feed(
+           {{"E1", 60.5, 20.0}, {"E2", 60.5002, 20.0}, {"E0", 60.6, 20.0}},
+           {{"ET1", "RE1", {{"E0", "10:00"}, {"E1", "10:30"}}},
+            {"ET2", "RE2", {{"E2", "10:40"}, {"E0", "11:00"}}}},
+           "E1,E1,2,300,,,,\n"),
+       test::feed({{"E3", 60.5, 20.0004}, {"E9", 60.6, 20.3}},
+                  {{"ET3", "RE3", {{"E3", "10:40"}, {"E9", "11:00"}}}}, "")});
+  auto const walk = [&](location_idx_t const to) {
+    auto d = std::optional<duration_t>{};
+    routing::for_each_transfer<direction::kForward>(
+        tt, nullptr, kDefaultProfile, test::lidx(tt, "E1"),
+        [&](footpath const fp) {
+          if (fp.target() == to && (!d.has_value() || fp.duration() < *d)) {
+            d = fp.duration();
+          }
+        });
+    return d;
+  };
+  auto const to_e2 = walk(test::lidx(tt, "E2"));
+  auto const to_e3 = walk(test::lidx(tt, "E3", source_idx_t{1U}));
+  ASSERT_TRUE(to_e2.has_value());
+  ASSERT_TRUE(to_e3.has_value());
+  EXPECT_EQ(*to_e3, *to_e2);
 }

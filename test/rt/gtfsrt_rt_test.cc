@@ -10,6 +10,7 @@
 #include "nigiri/rt/util.h"
 #include "nigiri/timetable.h"
 
+#include "../transfer_rules_util.h"
 #include "./util.h"
 
 using namespace nigiri;
@@ -23,6 +24,8 @@ using namespace std::string_view_literals;
 
 namespace {
 
+// The rules for route 201 at 3146, 1972 and 1223 put the trip on virtual
+// locations there: the updates and the printed trip still name the stops.
 mem_dir test_files() {
   return mem_dir::read(R"(
      "(
@@ -147,9 +150,20 @@ trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_t
 3248651,05:55:00,05:55:00,1916,26,0,0
 3248651,05:56:00,05:56:00,1918,27,0,0
 3248651,05:58:00,05:58:00,1127,28,1,0
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+3146,3146,2,120,,,,
+3146,3146,2,600,201,,,
+1972,1972,2,120,,,,
+1972,1972,2,600,201,,,
+1223,1223,2,120,,,,
+1223,1223,2,600,201,,,
 )");
 }
 
+// The update of stop sequence 15 assigns the scheduled stop: no track change,
+// its delay applies.
 auto const kTripUpdate =
     R"({
  "header": {
@@ -178,7 +192,10 @@ auto const kTripUpdate =
         "time": "1691660288"
        },
        "stopId": "3146",
-       "scheduleRelationship": "SCHEDULED"
+       "scheduleRelationship": "SCHEDULED",
+       "stopTimeProperties": {
+        "assignedStopId": "3146"
+       }
       },
       {
        "stopSequence": 16,
@@ -567,6 +584,7 @@ TEST(rt, gtfs_rt_update_1) {
                     date::sys_days{2023_y / August / 12}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
+  ASSERT_EQ(3U, test::n_virts(tt));
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
@@ -599,6 +617,7 @@ TEST(rt, gtfs_rt_update_without_seq_1) {
                     date::sys_days{2023_y / August / 12}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
+  ASSERT_EQ(3U, test::n_virts(tt));
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});

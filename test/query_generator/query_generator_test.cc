@@ -112,6 +112,7 @@ TEST(query_generation, intermodal_offsets_skip_virtual_locations) {
            {{"P1", "RP", {{"PA", "09:00"}, {"PB", "09:10"}, {"PC", "09:20"}}},
             {"P2", "RP", {{"PA", "10:00"}, {"PB", "10:10"}, {"PC", "10:20"}}}},
            "")});
+  ASSERT_LT(0U, test::n_virts(tt));
 
   auto gs = generator_settings{};
   gs.bbox_ =

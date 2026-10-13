@@ -12,6 +12,7 @@
 #include "nigiri/rt/util.h"
 #include "nigiri/timetable.h"
 
+#include "../transfer_rules_util.h"
 #include "./util.h"
 
 using namespace nigiri;
@@ -25,6 +26,8 @@ using namespace std::string_view_literals;
 
 namespace {
 
+// The ROUTE_1 rules put TRIP_1 on virtual locations: skipping and cancelling
+// still names the stops.
 mem_dir test_files() {
   return mem_dir::read(R"(
      "(
@@ -61,6 +64,21 @@ TRIP_1,12:00:00,12:00:00,C,3,0,0
 TRIP_1,13:00:00,13:00:00,D,4,0,0
 TRIP_1,14:00:00,14:00:00,E,5,0,0
 TRIP_1,15:00:00,15:00:00,F,6,0,0
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+A,A,2,120,,,,
+A,A,2,600,ROUTE_1,,,
+B,B,2,120,,,,
+B,B,2,600,ROUTE_1,,,
+C,C,2,120,,,,
+C,C,2,600,ROUTE_1,,,
+D,D,2,120,,,,
+D,D,2,600,ROUTE_1,,,
+E,E,2,120,,,,
+E,E,2,600,ROUTE_1,,,
+F,F,2,120,,,,
+F,F,2,600,ROUTE_1,,,
 )");
 }
 
@@ -146,6 +164,7 @@ TEST(rt, gtfs_rt_skip) {
                     date::sys_days{2023_y / November / 27}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
+  ASSERT_LT(0U, test::n_virts(tt));
 
   // Create empty RT timetable.
   auto rtt =
@@ -193,6 +212,7 @@ TEST(rt, gtfs_rt_cancel) {
                     date::sys_days{2023_y / November / 27}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
+  ASSERT_LT(0U, test::n_virts(tt));
 
   // Create empty RT timetable.
   auto rtt =
