@@ -1,6 +1,7 @@
 #include "nigiri/timetable.h"
 
 #include <ranges>
+#include <set>
 
 #include "cista/io.h"
 
@@ -12,6 +13,12 @@
 #include "nigiri/logging.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/translations_view.h"
+
+#include "unicode/schriter.h"
+#include "unicode/translit.h"
+#include "unicode/uchar.h"
+#include "unicode/uloc.h"
+#include "unicode/uscript.h"
 
 namespace nigiri {
 
@@ -43,6 +50,96 @@ translation_idx_t timetable::register_translation(std::string const& s) {
   return register_translation(std::string_view{s});
 }
 
+/// lang_code needs to be null-terminated
+std::vector<UScriptCode> lang_get_scripts(char const* lang_code) {
+  UErrorCode status = U_ZERO_ERROR;
+  char locale[ULOC_FULLNAME_CAPACITY];
+
+  int32_t locale_len =
+      uloc_addLikelySubtags(lang_code, locale, sizeof(locale), &status);
+
+  if (U_FAILURE(status)) {
+    log(log_lvl::error, "timetable.lang_get_scripts", "icu error: {}",
+        u_errorName(status));
+    return {};
+  }
+
+  if (static_cast<std::size_t>(locale_len) >= sizeof(locale)) {
+    return {};
+  }
+
+  char script[USCRIPT_CODE_LIMIT];
+  status = U_ZERO_ERROR;
+
+  int32_t script_len = uloc_getScript(locale, script, sizeof(script), &status);
+
+  if (U_FAILURE(status)) {
+    log(log_lvl::error, "timetable.lang_get_scripts", "icu error: {}",
+        u_errorName(status));
+    return {};
+  }
+
+  if (script_len == 0 ||
+      static_cast<std::size_t>(script_len) >= sizeof(script)) {
+    return {};
+  }
+
+  UScriptCode codes[10];
+  status = U_ZERO_ERROR;
+
+  int32_t count = uscript_getCode(script, codes, 10, &status);
+
+  if (U_FAILURE(status)) {
+    log(log_lvl::error, "timetable.lang_get_scripts", "icu error: {}",
+        u_errorName(status));
+    return {};
+  }
+
+  if (count <= 0) {
+    return {};
+  };
+
+  return {codes, codes + count};
+}
+
+std::optional<translation> transliterate(std::string_view source_string,
+                                         std::string_view source_lang) {
+  auto sl = std::string(source_lang);
+  if (std::ranges::contains(lang_get_scripts(sl.c_str()),
+                            UScriptCode::USCRIPT_LATIN)) {
+    return std::nullopt;
+  }
+
+  auto const target_lang = std::format("{}-Latn", source_lang);
+  UErrorCode ec = U_ZERO_ERROR;
+  auto const transliterator = icu::Transliterator::createInstance(
+      icu::UnicodeString::fromUTF8(target_lang),
+      UTransDirection::UTRANS_FORWARD, ec);
+  if (!transliterator) {
+    log(log_lvl::debug, "timetable.transliterate", "No transliterator to {} :(",
+        target_lang);
+    return std::nullopt;
+  }
+  auto replaceable = icu::UnicodeString::fromUTF8(source_string);
+  transliterator->transliterate(replaceable);
+  std::string transliterated = replaceable.toUTF8String<std::string>();
+
+  if (transliterated == source_string) {
+    return std::nullopt;
+  }
+
+  translation transliteration;
+  transliteration.set_language(target_lang);
+  transliteration.set_text(transliterated);
+  return std::optional{transliteration};
+}
+
+translation_idx_t timetable::register_translation(std::string_view source_str,
+                                                  std::string_view feed_lang) {
+  return register_translation(
+      translated_str_t{std::vector{translation{feed_lang, source_str}}});
+}
+
 translation_idx_t timetable::register_translation(std::string_view s) {
   auto idx = translations_.size();
   translations_.emplace_back(std::initializer_list<std::string_view>{s});
@@ -57,10 +154,25 @@ translation_idx_t timetable::register_translation(translated_str_t const& s) {
       s,
       [&](std::vector<translation> const& x) {
         using std::views::transform;
+
+        std::vector<translation> transliterations = x;
+        for (auto const& t : x) {
+          auto const translit = transliterate(t.get_text(), t.get_language());
+          if (!translit) {
+            continue;
+          }
+          if (std::ranges::find_if(x, [&](auto const& tr) {
+                return tr.get_text() == translit->get_text();
+              }) == x.end()) {
+            transliterations.emplace_back(*translit);
+          }
+        }
+
         translations_.emplace_back(
-            x | transform([](translation const& t) { return t.get_text(); }));
+            transliterations |
+            transform([](translation const& t) { return t.get_text(); }));
         translation_language_.emplace_back(
-            x | transform([&](translation const& t) {
+            transliterations | transform([&](translation const& t) {
               return languages_.store(t.get_language());
             }));
       },
@@ -92,6 +204,37 @@ std::string_view timetable::translate(lang_t const& lang,
       if (translation_lang == preferred_lang) {
         return text;
       }
+    }
+  }
+
+  std::set<UScriptCode> readable_scripts;
+  for (auto const& preferred_lang : *lang) {
+    for (auto const& script : lang_get_scripts(preferred_lang.c_str())) {
+      readable_scripts.insert(script);
+    }
+  }
+
+  // matching script for user requested languages
+  for (auto const [translation_lang, text] : get_translation_view(*this, t)) {
+    auto const tl = std::string(languages_.get(translation_lang));
+    auto const required_scripts = lang_get_scripts(tl.c_str());
+
+    auto const readable = std::ranges::all_of(
+        required_scripts, [&readable_scripts](auto const s) {
+          return readable_scripts.contains(s);
+        });
+
+    if (readable) {
+      return text;
+    }
+  }
+
+  // Assume latin is more understandable than local script
+  for (auto const [translation_lang, text] : get_translation_view(*this, t)) {
+    auto const tl = std::string(languages_.get(translation_lang));
+    auto const required_scripts = lang_get_scripts(tl.c_str());
+    if (std::ranges::contains(required_scripts, UScriptCode::USCRIPT_LATIN)) {
+      return text;
     }
   }
 
