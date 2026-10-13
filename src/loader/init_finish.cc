@@ -15,6 +15,8 @@
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 
+#include "unicode/translit.h"
+
 namespace nigiri::loader {
 
 void register_special_stations(timetable& tt, import_context& ctx) {

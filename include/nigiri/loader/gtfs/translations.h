@@ -140,10 +140,12 @@ struct translator {
   hash_map<translation_key, entry> i18n_{};
   hash_map<std::string, translation_idx_t> untranslated_{};
   std::string default_lang_{};
+  std::optional<std::string> source_lang_;
 };
 
 translator read_translations(timetable&,
                              std::string const& default_lang,
+                             std::optional<std::string> const& source_lang,
                              std::string_view file_content);
 
 }  // namespace nigiri::loader::gtfs
