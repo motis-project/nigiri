@@ -340,6 +340,18 @@ hash_map<std::string, area_idx_t> parse_areas(timetable& tt,
   return m;
 }
 
+network_idx_t get_or_create_network(timetable& tt,
+                                    fares& f,
+                                    hash_map<std::string, network_idx_t>& m,
+                                    std::string_view id,
+                                    string_idx_t const name) {
+  return utl::get_or_create(m, id, [&]() {
+    f.networks_.push_back(
+        fares::network{.id_ = tt.strings_.store(id), .name_ = name});
+    return network_idx_t{f.networks_.size() - 1U};
+  });
+}
+
 hash_map<std::string, network_idx_t> parse_networks(
     timetable& tt, std::string_view file_content, fares& f) {
   struct network_record {
@@ -350,50 +362,41 @@ hash_map<std::string, network_idx_t> parse_networks(
 
   auto m = hash_map<std::string, network_idx_t>{};
   utl::for_each_row<network_record>(file_content, [&](network_record const& r) {
-    m.emplace(r.network_id_->view(), network_idx_t{m.size()});
-    f.networks_.push_back(fares::network{
-        .id_ = tt.strings_.store(r.network_id_->view()),
-        .name_ = r.network_name_
-                     ->and_then([&](utl::cstr const& x) {
-                       return std::optional{tt.strings_.store(x.view())};
-                     })
-                     .value_or(string_idx_t::invalid())});
+    get_or_create_network(
+        tt, f, m, r.network_id_->view(),
+        r.network_name_
+            ->and_then([&](utl::cstr const& x) {
+              return std::optional{tt.strings_.store(x.view())};
+            })
+            .value_or(string_idx_t::invalid()));
   });
   return m;
 }
 
-void parse_route_networks(
-    std::string_view file_content,
-    fares& f,
-    route_map_t const& routes,
-    hash_map<std::string, network_idx_t> const& networks) {
+void parse_route_networks(timetable& tt,
+                          std::string_view file_content,
+                          fares& f,
+                          route_map_t const& routes,
+                          hash_map<std::string, network_idx_t>& networks) {
   struct route_network_record {
     utl::csv_col<utl::cstr, UTL_NAME("network_id")> network_id_;
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
   };
 
+  // Networks may be defined implicitly by routes.txt network_id or
+  // route_networks.txt without a corresponding networks.txt entry.
+  auto const network = [&](std::string_view const id) {
+    return get_or_create_network(tt, f, networks, id, string_idx_t::invalid());
+  };
+
   for (auto const& [_, route] : routes) {
     if (!route->network_.empty()) {
-      auto const network_idx = find(networks, route->network_);
-      if (!network_idx.has_value()) {
-        log(log_lvl::error, "nigiri.loader.gtfs.fares",
-            "routes.txt: network {} not found", route->network_);
-        continue;
-      }
-
-      f.route_networks_.emplace(route->route_id_idx_, *network_idx);
+      f.route_networks_.emplace(route->route_id_idx_, network(route->network_));
     }
   }
 
   utl::for_each_row<route_network_record>(
       file_content, [&](route_network_record const& r) {
-        auto const network_idx = find(networks, r.network_id_->view());
-        if (!network_idx.has_value()) {
-          log(log_lvl::error, "nigiri.loader.gtfs.fares",
-              "route_networks: network {} not found", r.network_id_->view());
-          return;
-        }
-
         auto const route_it = routes.find(r.route_id_->view());
         if (route_it == end(routes)) {
           log(log_lvl::error, "nigiri.loader.gtfs.fares",
@@ -402,7 +405,7 @@ void parse_route_networks(
         }
 
         f.route_networks_.emplace(route_it->second->route_id_idx_,
-                                  *network_idx);
+                                  network(r.network_id_->view()));
       });
 }
 
@@ -599,8 +602,9 @@ void load_fares(timetable& tt,
   auto const areas = parse_areas(tt, load(kAreasFile).data());
   auto const area_sets =
       parse_area_sets(tt, f, areas, load(kAreaSetElementsFile).data());
-  auto const networks = parse_networks(tt, load(kNetworksFile).data(), f);
-  parse_route_networks(load(kRouteNetworksFile).data(), f, routes, networks);
+  auto networks = parse_networks(tt, load(kNetworksFile).data(), f);
+  parse_route_networks(tt, load(kRouteNetworksFile).data(), f, routes,
+                       networks);
   auto const timeframes =
       parse_timeframes(tt, load(kTimeframesFile).data(), f, services);
   auto const leg_groups =
