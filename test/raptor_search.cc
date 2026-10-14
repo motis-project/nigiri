@@ -169,10 +169,10 @@ pareto_set<routing::journey> raptor_intermodal_search(
   return raptor_search(tt, rtt, std::move(q), search_dir);
 }
 
-static pareto_set<routing::journey> search_pong(timetable const& tt,
-                                                rt_timetable const* rtt,
-                                                routing::query q,
-                                                direction const search_dir) {
+pareto_set<routing::journey> search_pong(timetable const& tt,
+                                         rt_timetable const* rtt,
+                                         routing::query q,
+                                         direction const search_dir) {
   auto search_state = routing::search_state{};
   auto algo_state = routing::raptor_state{};
   auto results =

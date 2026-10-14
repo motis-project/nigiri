@@ -4,11 +4,12 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 
-#include "nigiri/routing/raptor/pong.h"
+#include "nigiri/routing/query.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+#include "../raptor_search.h"
 #include "results_to_string.h"
 
 using namespace date;
@@ -97,14 +98,11 @@ TEST(routing, pong_ignores_interval) {
       .min_connection_count_ = 1U,
       .extend_interval_later_ = true};
 
-  auto search_state = routing::search_state{};
-  auto raptor_state = routing::raptor_state{};
-  auto const result0 =
-      routing::pong_search(tt, nullptr, search_state, raptor_state,
-                           std::move(q0), direction::kForward);
+  auto const result0 = nigiri::test::search_pong(tt, nullptr, std::move(q0),
+                                                 direction::kForward);
 
-  ASSERT_EQ(1U, result0.journeys_->size());
-  EXPECT_EQ(kJourneys, to_string(tt, nullptr, *result0.journeys_));
+  ASSERT_EQ(1U, result0.size());
+  EXPECT_EQ(kJourneys, to_string(tt, nullptr, result0));
 
   auto q1 = routing::query{
       .start_time_ =
@@ -119,11 +117,10 @@ TEST(routing, pong_ignores_interval) {
       .min_connection_count_ = 1U,
       .extend_interval_later_ = true,
   };
-  auto const result1 =
-      routing::pong_search(tt, nullptr, search_state, raptor_state,
-                           std::move(q1), direction::kForward);
-  ASSERT_EQ(1U, result1.journeys_->size());
-  EXPECT_EQ(kJourneys, to_string(tt, nullptr, *result1.journeys_));
+  auto const result1 = nigiri::test::search_pong(tt, nullptr, std::move(q1),
+                                                 direction::kForward);
+  ASSERT_EQ(1U, result1.size());
+  EXPECT_EQ(kJourneys, to_string(tt, nullptr, result1));
 }
 
 TEST(routing, pong_min_lookahead) {
@@ -144,14 +141,11 @@ TEST(routing, pong_min_lookahead) {
       .extend_interval_later_ = true,
   };
 
-  auto search_state = routing::search_state{};
-  auto raptor_state = routing::raptor_state{};
-  auto const result0 =
-      routing::pong_search(tt, nullptr, search_state, raptor_state,
-                           std::move(q0), direction::kForward);
+  auto const result0 = nigiri::test::search_pong(tt, nullptr, std::move(q0),
+                                                 direction::kForward);
 
-  ASSERT_EQ(1U, result0.journeys_->size());
-  EXPECT_EQ(kJourneys, to_string(tt, nullptr, *result0.journeys_));
+  ASSERT_EQ(1U, result0.size());
+  EXPECT_EQ(kJourneys, to_string(tt, nullptr, result0));
 
   auto q1 = routing::query{
       .start_time_ = unixtime_t{sys_days{2026_y / June / 01}},
@@ -164,10 +158,9 @@ TEST(routing, pong_min_lookahead) {
       .min_connection_count_ = 1U,
       .extend_interval_later_ = true,
   };
-  auto const result1 =
-      routing::pong_search(tt, nullptr, search_state, raptor_state,
-                           std::move(q1), direction::kForward);
-  EXPECT_EQ(0U, result1.journeys_->size());
+  auto const result1 = nigiri::test::search_pong(tt, nullptr, std::move(q1),
+                                                 direction::kForward);
+  EXPECT_EQ(0U, result1.size());
 }
 
 }  // namespace
