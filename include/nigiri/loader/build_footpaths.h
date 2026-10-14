@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <optional>
 #include <vector>
@@ -25,10 +26,10 @@ struct finalize_options {
   std::filesystem::path merge_stats_dir_{};
   vector_map<source_idx_t, std::string> src_tags_{};
   bool apply_transfer_rules_{true};
-  // false: no beeline walks, no default profile - the caller adds its walks
-  // (preprocessing_footpaths_out_) and calls apply_transfer_rules (motis:
-  // walks routed on OSM).
-  bool beeline_walks_{true};
+  // Walks instead of the beelines (motis: routed on OSM): fills
+  // preprocessing_footpaths_out_ (default profile) and the footpaths of the
+  // other profiles, the transfer rules apply on them.
+  std::function<void(timetable&)> walks_{};
 };
 
 void build_footpaths(timetable& tt,
@@ -36,8 +37,6 @@ void build_footpaths(timetable& tt,
                      shapes_storage* = nullptr);
 
 void write_default_profile(timetable&);
-
-void apply_transfer_rules(timetable&, shapes_storage*);
 
 // Profiles ignore transfer rules: a virtual location walks like its stop (a
 // walk between two stops connects all their locations, the stop's transfer

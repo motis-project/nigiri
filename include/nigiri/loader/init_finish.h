@@ -13,7 +13,6 @@ struct shapes_storage;
 namespace nigiri::loader {
 
 void register_special_stations(timetable&);
-void rebuild_route_traffic_days(timetable&);
 void finalize(timetable&, finalize_options, shapes_storage* = nullptr);
 void finalize(timetable&,
               bool merge_dupes_intra_src = false,

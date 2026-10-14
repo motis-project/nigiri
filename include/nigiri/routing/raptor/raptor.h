@@ -220,10 +220,9 @@ struct raptor {
         kFwd, loc{tt_, l}, t, v, to_unix(best_[to_idx(l)][v]),
         to_unix(round_times_[0U][to_idx(l)][v]),
         get_best(t, to_unix(best_[to_idx(l)][v])));
-    best_[to_idx(l)][v] =
-        get_best(unix_to_delta(base(), t), best_[to_idx(l)][v]);
+    best_[to_idx(l)][v] = get_best(to_delta(t), best_[to_idx(l)][v]);
     round_times_[0U][to_idx(l)][v] =
-        get_best(unix_to_delta(base(), t), round_times_[0U][to_idx(l)][v]);
+        get_best(to_delta(t), round_times_[0U][to_idx(l)][v]);
     state_.station_mark_.set(to_idx(l), true);
   }
 
@@ -233,7 +232,7 @@ struct raptor {
                pareto_set<journey>& results) {
     auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
 
-    auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
+    auto const d_worst_at_dest = to_delta(worst_time_at_dest);
     for (auto& time_at_dest : time_at_dest_) {
       time_at_dest = get_best(d_worst_at_dest, time_at_dest);
     }
@@ -447,6 +446,10 @@ struct raptor {
     trace("reconstruct({} - {}, {} transfers", j.departure_time(),
           j.arrival_time(), j.transfers_);
     reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_);
+  }
+
+  delta_t to_delta(unixtime_t const t) const {
+    return unix_to_delta(base(), t);
   }
 
 private:

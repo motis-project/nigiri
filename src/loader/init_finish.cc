@@ -167,7 +167,6 @@ void correct_color_contrast(timetable& tt) {
 }
 
 void rebuild_route_traffic_days(timetable& tt) {
-  auto const n_computed = tt.route_traffic_days_.size();
   tt.route_traffic_days_.resize(tt.n_routes());
 
   for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
@@ -194,12 +193,8 @@ void rebuild_route_traffic_days(timetable& tt) {
       }
     }
 
-    if (r < n_computed) {
-      tt.bitfields_[tt.route_traffic_days_[r]] = combined;
-    } else {
-      tt.bitfields_.emplace_back(combined);
-      tt.route_traffic_days_[r] = bitfield_idx_t{tt.bitfields_.size() - 1U};
-    }
+    tt.bitfields_.emplace_back(combined);
+    tt.route_traffic_days_[r] = bitfield_idx_t{tt.bitfields_.size() - 1U};
   }
 }
 

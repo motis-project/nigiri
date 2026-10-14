@@ -295,7 +295,8 @@ TEST(transfer_rules, direct_trip_pair_rule_walk_holds_for_its_trip) {
 }
 
 // One-to-all reaches D, where changing is forbidden, at the arrival (other
-// stops include their time to change), but nothing beyond it.
+// stops include their time to change), but nothing beyond it. Its users take
+// the best times for what is reached.
 TEST(transfer_rules, one_to_all_reaches_stop_without_changes) {
   auto const tt = load_feeds(
       {feed({{"A", 55.0, 13.0}, {"D", 55.1, 13.0}, {"E", 55.2, 13.0}},
@@ -310,8 +311,15 @@ TEST(transfer_rules, one_to_all_reaches_stop_without_changes) {
         dir == direction::kForward
             ? routing::one_to_all<direction::kForward>(tt, nullptr, q)
             : routing::one_to_all<direction::kBackward>(tt, nullptr, q);
-    return routing::get_fastest_one_to_all_offsets(tt, state, dir, lidx(tt, to),
-                                                   at(time), q.max_transfers_);
+    auto const f = routing::get_fastest_one_to_all_offsets(
+        tt, state, dir, lidx(tt, to), at(time), q.max_transfers_);
+    auto const invalid = dir == direction::kForward
+                             ? kInvalidDelta<direction::kForward>
+                             : kInvalidDelta<direction::kBackward>;
+    EXPECT_EQ(f.k_ != routing::fastest_offset{}.k_,
+              state.get_best<0U>()[to_idx(lidx(tt, to))][0] != invalid)
+        << from << " -> " << to;
+    return f;
   };
   EXPECT_EQ(30, fastest(direction::kForward, "A", "D", "10:00").duration_);
   EXPECT_EQ(routing::fastest_offset{}.k_,
@@ -319,6 +327,45 @@ TEST(transfer_rules, one_to_all_reaches_stop_without_changes) {
   EXPECT_EQ(-20, fastest(direction::kBackward, "E", "D", "11:00").duration_);
   EXPECT_EQ(routing::fastest_offset{}.k_,
             fastest(direction::kBackward, "E", "A", "11:00").k_);
+}
+
+// One-to-all reaches a stop where its trips stop: FA arrives at, and FB leaves
+// from, virtual locations of U, where the RF1 -> RF2 rule changes in 1 min (U
+// itself: 2 min). The virtual locations are no stops of their own.
+TEST(transfer_rules, one_to_all_stop_includes_its_virtual_locations) {
+  auto const tt = load_feeds(
+      {feed({{"L", 55.0, 13.0}, {"U", 55.1, 13.0}, {"M", 55.2, 13.0}},
+            {{"FA", "RF1", {{"L", "10:00"}, {"U", "10:30"}}},
+             {"FB", "RF2", {{"U", "10:31"}, {"M", "11:00"}}}},
+            "U,U,2,120,,,,\n"
+            "U,U,2,60,RF1,RF2,,\n")});
+  ASSERT_LT(0U, n_virts(tt));
+  auto const one_to_all = [&](direction const dir, std::string_view const from,
+                              std::string_view const time) {
+    auto const q = routing::query{.start_time_ = at(time),
+                                  .start_ = {{lidx(tt, from), 0_minutes, 0U}}};
+    auto state =
+        dir == direction::kForward
+            ? routing::one_to_all<direction::kForward>(tt, nullptr, q)
+            : routing::one_to_all<direction::kBackward>(tt, nullptr, q);
+    auto const u = routing::get_fastest_one_to_all_offsets(
+        tt, state, dir, lidx(tt, "U"), at(time), q.max_transfers_);
+    auto const invalid = dir == direction::kForward
+                             ? kInvalidDelta<direction::kForward>
+                             : kInvalidDelta<direction::kBackward>;
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      if (tt.locations_.is_virt(l)) {
+        EXPECT_EQ(invalid, state.get_best<0U>()[to_idx(l)][0]) << loc{tt, l};
+      }
+    }
+    return std::pair{u.duration_, u.k_};
+  };
+  // arrival 10:30 + 1 min to change to RF2
+  EXPECT_EQ(std::pair(delta_t{31}, std::uint8_t{1U}),
+            one_to_all(direction::kForward, "L", "10:00"));
+  // departure 10:31 - 1 min to change from RF1
+  EXPECT_EQ(std::pair(delta_t{-30}, std::uint8_t{1U}),
+            one_to_all(direction::kBackward, "M", "11:00"));
 }
 
 // T0 and T1 (route R) change at S in 1 min through the R -> R rule, at X in

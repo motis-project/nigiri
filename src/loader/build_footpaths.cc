@@ -457,6 +457,8 @@ void expand_td_footpaths_to_virts(
   fps = std::move(expanded);
 }
 
+namespace {
+
 void apply_transfer_rules(timetable& tt, shapes_storage* shapes) {
   // the walks grow with the virtual locations (see register_location)
   auto walks = tt.locations_.preprocessing_footpaths_out_;
@@ -480,18 +482,14 @@ void apply_transfer_rules(timetable& tt, shapes_storage* shapes) {
   if (!tt.location_areas_.empty()) {
     tt.location_areas_.resize(n);
   }
-  if (!tt.locations_.location_importance_.empty()) {
-    tt.locations_.location_importance_.resize(n);
-  }
-  if (!tt.route_traffic_days_.empty()) {
-    rebuild_route_traffic_days(tt);
-  }
 }
+
+}  // namespace
 
 void build_footpaths(timetable& tt,
                      finalize_options const opt,
                      shapes_storage* shapes) {
-  if (!opt.beeline_walks_) {
+  if (opt.walks_) {
     link_nearby_stations(tt);  // the equivalences
   } else {
     auto const timer = scoped_timer{"loader.footpath.beelines"};
@@ -537,8 +535,8 @@ void build_footpaths(timetable& tt,
                      opt.src_tags_);
   }
 
-  if (!opt.beeline_walks_) {
-    return;
+  if (opt.walks_) {
+    opt.walks_(tt);
   }
   if (opt.apply_transfer_rules_) {
     apply_transfer_rules(tt, shapes);

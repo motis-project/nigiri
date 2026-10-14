@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <string>
@@ -54,12 +55,12 @@ inline location_idx_t lidx(timetable const& tt,
   return tt.locations_.location_id_to_idx_.at({id, src});
 }
 
-// Loads the feeds (one source each), valid on kDay. Without beeline walks,
-// the caller adds walks and applies the rules (see load_feeds_with_walks).
+// Loads the feeds (one source each), valid on kDay. walks: instead of the
+// beelines (see load_feeds_with_walks).
 inline timetable load_feeds(std::vector<std::string> const& feeds,
                             bool const adjust_footpaths = false,
                             bool const apply_transfer_rules = true,
-                            bool const beeline_walks = true) {
+                            std::function<void(timetable&)> walks = {}) {
   auto tt = timetable{};
   tt.date_range_ = {kDay, kDay + date::days{1}};
   loader::register_special_stations(tt);
@@ -74,7 +75,7 @@ inline timetable load_feeds(std::vector<std::string> const& feeds,
            .merge_dupes_inter_src_ = false,
            .max_footpath_length_ = std::numeric_limits<std::uint16_t>::max(),
            .apply_transfer_rules_ = apply_transfer_rules,
-           .beeline_walks_ = beeline_walks});
+           .walks_ = std::move(walks)});
   return tt;
 }
 
@@ -313,10 +314,8 @@ inline void set_walks(timetable& tt, std::vector<walk> const& walks) {
 // These walks instead of the loader's beelines, before the rules apply.
 inline timetable load_feeds_with_walks(std::vector<std::string> const& feeds,
                                        std::vector<walk> const& walks) {
-  auto tt = load_feeds(feeds, false, true, false);
-  set_walks(tt, walks);
-  loader::apply_transfer_rules(tt, nullptr);
-  return tt;
+  return load_feeds(feeds, false, true,
+                    [&](timetable& tt) { set_walks(tt, walks); });
 }
 
 inline timetable load_network_with_walks(std::string_view const transfers,
