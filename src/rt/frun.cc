@@ -221,6 +221,22 @@ unixtime_t run_stop::time(event_type const ev_type) const {
              : tt().event_time(fr_->t_, stop_idx_, ev_type);
 }
 
+rt_data_state run_stop::data_state(event_type const ev_type) const {
+  assert(fr_->size() > stop_idx_);
+  auto const exists = ev_type == event_type::kArr
+                          ? stop_idx_ != 0U
+                          : stop_idx_ != fr_->size() - 1U;
+  return (exists && fr_->is_rt() && rtt() != nullptr)
+             ? rtt()->data_state(fr_->rt_, stop_idx_, ev_type)
+             : rt_data_state::kNoRtData;
+}
+
+bool run_stop::has_rt_data(event_type const ev_type) const {
+  auto const state = data_state(ev_type);
+  return state != rt_data_state::kNoRtData &&
+         state != rt_data_state::kInconsistent;
+}
+
 duration_t run_stop::delay(event_type const ev_type) const {
   assert(fr_->size() > stop_idx_);
   return time(ev_type) - scheduled_time(ev_type);

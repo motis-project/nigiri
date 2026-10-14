@@ -20,6 +20,14 @@
 
 namespace nigiri {
 
+enum class rt_data_state : std::uint8_t {
+  kNoRtData,
+  kInconsistent,
+  kObserved,
+  kPropagated,
+  kPredicted
+};
+
 // If set, the bitfield has to be looked up in the RT timetable.
 constexpr auto const kRtBitfieldFlag = std::uint32_t{0x8000'0000U};
 
@@ -64,15 +72,36 @@ struct rt_timetable {
     return clamp(d);
   }
 
-  void update_time(rt_transport_idx_t const rt_t,
-                   stop_idx_t const stop_idx,
-                   event_type const ev_type,
-                   unixtime_t const new_time) {
+  std::size_t event_idx([[maybe_unused]] rt_transport_idx_t const rt_t,
+                        stop_idx_t const stop_idx,
+                        event_type const ev_type) const {
     auto const ev_idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
     assert(ev_idx >= 0 && static_cast<stop_idx_t>(ev_idx) <
                               rt_transport_stop_times_[rt_t].size());
-    rt_transport_stop_times_[rt_t][static_cast<std::size_t>(ev_idx)] =
-        unix_to_delta(new_time);
+    return static_cast<std::size_t>(ev_idx);
+  }
+
+  void update_time(rt_transport_idx_t const rt_t,
+                   stop_idx_t const stop_idx,
+                   event_type const ev_type,
+                   unixtime_t const new_time,
+                   rt_data_state const state = rt_data_state::kPredicted) {
+    auto const ev_idx = event_idx(rt_t, stop_idx, ev_type);
+    rt_transport_stop_times_[rt_t][ev_idx] = unix_to_delta(new_time);
+    rt_transport_data_states_[rt_t][ev_idx] = state;
+  }
+
+  void set_data_state(rt_transport_idx_t const rt_t,
+                      stop_idx_t const stop_idx,
+                      event_type const ev_type,
+                      rt_data_state const state) {
+    rt_transport_data_states_[rt_t][event_idx(rt_t, stop_idx, ev_type)] = state;
+  }
+
+  rt_data_state data_state(rt_transport_idx_t const rt_t,
+                           stop_idx_t const stop_idx,
+                           event_type const ev_type) const {
+    return rt_transport_data_states_[rt_t][event_idx(rt_t, stop_idx, ev_type)];
   }
 
   void update_lbs(timetable const& tt,
@@ -261,6 +290,9 @@ struct rt_timetable {
   // RT transport -> event times (dep, arr, dep, arr, ...)
   vecvec<rt_transport_idx_t, delta_t> rt_transport_stop_times_;
   vecvec<rt_transport_idx_t, stop::value_type> rt_transport_location_seq_;
+
+  // RT transport -> real-time data state for each event (dep, arr, dep, ...)
+  vecvec<rt_transport_idx_t, rt_data_state> rt_transport_data_states_;
 
   // RT transport -> real-time track (dep, arr, dep, arr, ...)
   // - empty if no overwrite exists at all
