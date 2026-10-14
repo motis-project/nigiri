@@ -763,9 +763,9 @@ TEST(gtfs, transfer_rules_type5_prevents_block_through_service) {
   EXPECT_EQ(0U, search_at(tt, "K5A", "K5B", "10:00").size());
 }
 
-// A profile that ignores the qualified rules keeps the stop's plain change
-// time (2 min). The 0 s row for the trip pair Q1 -> Q2 says nothing about
-// Q3 -> Q4 (1 min gap).
+// A profile keeps the stop's plain change time (2 min) for trips no rule names:
+// the 0 s row for the trip pair Q1 -> Q2 says nothing about Q3 -> Q4 (1 min
+// gap).
 TEST(gtfs,
      transfer_rules_qualified_row_does_not_set_stop_time_for_other_profiles) {
   constexpr auto const kProfile = profile_idx_t{1U};

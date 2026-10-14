@@ -21,16 +21,12 @@ bool call_and_go_on(Fn&& fn, footpath const& fp) {
   }
 }
 
-// Profiles ignore transfer rules: a virtual location has its stop's transfer
-// time.
 inline u8_minutes get_transfer_time(timetable const& tt,
                                     rt_timetable const* rtt,
-                                    profile_idx_t const prf,
                                     location_idx_t const l) {
   return rtt != nullptr && rtt->is_rt_location(l)
              ? rtt->transfer_time(l)
-             : tt.locations_
-                   .transfer_time_[prf == kDefaultProfile ? l : tt.base(l)];
+             : tt.locations_.transfer_time_[l];
 }
 
 // The footpaths of a location, the real-time ones included (only the default
@@ -72,7 +68,7 @@ inline std::optional<duration_t> shortest_transfer(timetable const& tt,
                                                    location_idx_t const to) {
   auto shortest = std::optional<duration_t>{};
   if (from == to) {
-    if (auto const transfer_time = get_transfer_time(tt, rtt, prf_idx, from);
+    if (auto const transfer_time = get_transfer_time(tt, rtt, from);
         transfer_time != kNoTransferAllowed) {
       shortest = duration_t{transfer_time.count()};
     }

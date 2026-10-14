@@ -751,7 +751,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
 
     trace_reconstruct("CHECKING TRANSFER AT {}\n", loc{tt, l});
-    auto const transfer_time = get_transfer_time(tt, rtt, q.prf_idx_, l);
+    auto const transfer_time = get_transfer_time(tt, rtt, l);
     auto const is_last_leg = k == j.transfers_ + 1U;
     if (is_last_leg || transfer_time != kNoTransferAllowed) {
       auto transfer_at_same_stop =

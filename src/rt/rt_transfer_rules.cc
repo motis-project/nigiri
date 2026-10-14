@@ -435,7 +435,7 @@ std::vector<move> find_conflict(timetable const& tt,
         is_arr ? direction::kForward : direction::kBackward, l,
         [&](footpath const fp) { window = std::max(window, fp.duration()); });
     // where changes are banned, an exception holds at any gap
-    auto const t = routing::get_transfer_time(tt, &rtt, kDefaultProfile, l);
+    auto const t = routing::get_transfer_time(tt, &rtt, l);
     window = std::max(window, t == kNoTransferAllowed ? footpath::kMaxDuration
                                                       : duration_t{t.count()});
   }

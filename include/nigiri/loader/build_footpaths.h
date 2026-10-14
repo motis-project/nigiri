@@ -38,9 +38,10 @@ void build_footpaths(timetable& tt,
 
 void write_default_profile(timetable&);
 
-// Profiles ignore transfer rules: a virtual location walks like its stop (a
-// walk between two stops connects all their locations, the stop's transfer
-// time connects its own locations). Rebuilds the profile's lower bound graphs.
+// A profile's walks ignore transfer rules: a virtual location walks like its
+// stop (a walk between two stops connects all their locations, the stop's
+// transfer time connects its own locations). Rebuilds the profile's lower bound
+// graphs.
 void expand_profile_to_virts(timetable&, profile_idx_t);
 
 // The same for time-dependent walks between stops (by their source): they

@@ -28,8 +28,8 @@ void extend_to_rt_virts(rt_timetable const& rtt, Vec& v) {
   }
 }
 
-// Real-time virtual locations are for the default profile only: the other
-// profiles ignore transfer rules.
+// Real-time virtual locations are for the default profile only: only it has
+// the real-time walks that connect them.
 inline location_idx_t search_location(rt_timetable const& rtt,
                                       profile_idx_t const prf,
                                       rt_transport_idx_t const rt_t,

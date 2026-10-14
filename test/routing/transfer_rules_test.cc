@@ -368,11 +368,13 @@ TEST(transfer_rules, one_to_all_stop_includes_its_virtual_locations) {
             one_to_all(direction::kBackward, "M", "11:00"));
 }
 
+// A profile changes at a virtual location in its transfer time, as the
+// default profile does (between the locations of a stop: the stop's own time).
 // T0 and T1 (route R) change at S in 1 min through the R -> R rule, at X in
-// X's own 2 min with 3 min to spare. A profile that ignores transfer rules
-// changes at S in S's own 2 min, which T1 (1 min after T0) does not leave: the
-// transfer optimization keeps X.
-TEST(transfer_rules, profile_optimizes_transfers_with_stop_time) {
+// X's own 2 min: every profile changes at S. FA (RF1) -> FC (RF3) at their
+// location of U (3 min) is too short for the RF1 -> RF3 rule (5 min), not for
+// U's 2 min.
+TEST(transfer_rules, profile_changes_in_virtual_location_transfer_time) {
   constexpr auto const kProfile = profile_idx_t{1U};
   auto tt = load_feeds(
       {feed({{"A", 64.0, 23.0},
@@ -398,7 +400,22 @@ TEST(transfer_rules, profile_optimizes_transfers_with_stop_time) {
                             : tt.base(begin(res)->legs_.front().to_);
   };
   EXPECT_EQ(lidx(tt, "S"), changes_at(0U));
-  EXPECT_EQ(lidx(tt, "X"), changes_at(kProfile));
+  EXPECT_EQ(lidx(tt, "S"), changes_at(kProfile));
+
+  auto u = load_feeds({virt_feed()});
+  ASSERT_LT(0U, n_virts(u));
+  add_empty_profile(u, kProfile);
+  auto const n_journeys = [&](profile_idx_t const prf) {
+    return raptor_search(
+               u, nullptr,
+               routing::query{.start_time_ = at("10:00"),
+                              .start_ = {{lidx(u, "L"), 0_minutes, 0U}},
+                              .destination_ = {{lidx(u, "N"), 0_minutes, 0U}},
+                              .prf_idx_ = prf})
+        .size();
+  };
+  EXPECT_EQ(0U, n_journeys(0U));
+  EXPECT_EQ(0U, n_journeys(kProfile));
 }
 
 // T0 -> T1 can change at station X (X1 -> X2, 15 min buffer) or at station S

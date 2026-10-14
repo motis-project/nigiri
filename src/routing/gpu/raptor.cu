@@ -77,12 +77,6 @@ struct gpu_timetable::impl {
     return v;
   }
 
-  static bool has_virts(timetable const& tt) {
-    return utl::any_of(tt.locations_.types_, [](location_type const t) {
-      return t == location_type::kVirt;
-    });
-  }
-
   static std::vector<u8_minutes> pad_transfer_times(
       vector_map<location_idx_t, u8_minutes> const& transfer_times) {
     auto v =
@@ -124,17 +118,6 @@ struct gpu_timetable::impl {
     route_stop_offset_.assign(off.begin(), off.end());
     auto const ros = build_route_of_stop(tt, off);
     route_of_stop_.assign(ros.begin(), ros.end());
-    // Profiles ignore transfer rules: a virtual location has its stop's
-    // transfer time.
-    if (has_virts(tt)) {
-      auto stop_transfer_time = vector_map<location_idx_t, u8_minutes>{};
-      for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-        stop_transfer_time.push_back(tt.locations_.transfer_time_[tt.base(l)]);
-      }
-      profile_transfer_time_ =
-          to_device(pad_transfer_times(stop_transfer_time));
-    }
-
     for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
       footpaths_out_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_out_[p]};
       footpaths_in_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_in_[p]};
@@ -154,15 +137,12 @@ struct gpu_timetable::impl {
     thrust::copy_n(&f, 1, filters_ctx_.begin());
   }
 
-  device_timetable to_device_timetable(profile_idx_t const prf) const {
+  device_timetable to_device_timetable() const {
     auto dt = device_timetable{
         .n_locations_ = n_locations_,
         .n_static_locations_ = n_static_locations_,
         .n_routes_ = n_routes_,
-        .transfer_time_ =
-            prf == kDefaultProfile || profile_transfer_time_.empty()
-                ? transfer_time_
-                : profile_transfer_time_,
+        .transfer_time_ = transfer_time_,
         .route_stop_times_ = to_view(route_stop_times_),
         .route_stop_time_ranges_ = to_view(route_stop_time_ranges_),
         .route_transport_ranges_ = to_view(route_transport_ranges_),
@@ -189,7 +169,6 @@ struct gpu_timetable::impl {
   std::uint32_t n_routes_;
 
   thrust::device_vector<u8_minutes> transfer_time_;
-  thrust::device_vector<u8_minutes> profile_transfer_time_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_out_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_in_;
 
@@ -447,7 +426,7 @@ std::unique_ptr<void, void (*)(void*)> make_gpu_rtt(timetable const& tt,
 
 struct gpu_raptor_state::impl {
   explicit impl(gpu_timetable const& gtt)
-      : gtt_{gtt}, tt_{gtt.impl_->to_device_timetable(kDefaultProfile)} {
+      : tt_{gtt.impl_->to_device_timetable()} {
     cudaStreamCreate(&stream_);
 
     auto const n_route_stops = tt_.route_of_stop_.size();
@@ -657,8 +636,6 @@ struct gpu_raptor_state::impl {
   device_buffer<gpu_journey> rec_out_;
   pinned_host_buffer<gpu_journey> rec_host_out_;
 
-  gpu_timetable const& gtt_;
-
   device_timetable tt_;
 
   thrust::device_vector<std::uint32_t> et_result_;
@@ -716,7 +693,6 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
   utl::verify(rtt == nullptr || gpu_rtt_ != nullptr,
               "GPU raptor: rt search requires the uploaded device rt "
               "timetable (rt_timetable::gpu_rtt_)");
-  state_.impl_->tt_ = state_.impl_->gtt_.impl_->to_device_timetable(prf_idx_);
   state_.impl_->resize_rt(rtt == nullptr ? 0U : rtt->n_rt_transports());
   reset_arrivals();
 

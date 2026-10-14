@@ -682,31 +682,28 @@ TEST(gtfsrt_transfer_rules, skipped_stop_at_real_time_location) {
   EXPECT_EQ(0U, search(tt, rtt, kAtoC, "10:00").size());
 }
 
-// A profile that ignores transfers.txt changes between the locations of a
-// stop in its transfer time: F -> HL is forbidden for the default profile but
-// fine for this one - also once HL is a real-time transport, which the profile
-// finds at its scheduled location (not the real-time virtual location).
+// A profile changes at a virtual location in its transfer time: F -> H (1 min)
+// only through the F -> H rule - also once H is a real-time transport (5 min
+// late at C), which the profile finds at its scheduled location (not at a
+// real-time virtual location).
 TEST(gtfsrt_transfer_rules, other_profile_finds_real_time_trips_at_rule_stops) {
   constexpr auto const kProfile = profile_idx_t{1U};
-  auto tt = load_network("S,S,2,120,,,,\nS,S,3,,,,F,HL");
+  auto tt = load_network("S,S,2,120,,,,\nS,S,2,60,,,F,H");
   add_empty_profile(tt, kProfile);
 
   auto rtt = rt::create_rt_timetable(tt, kDay);
-  auto const run = [&](profile_idx_t const prf) {
+  auto const arrival_at_c = [&](profile_idx_t const prf) {
     auto q = station_query(tt, "A", "C", at("10:00"));
     q.prf_idx_ = prf;
-    return raptor_search(tt, &rtt, std::move(q), direction::kForward);
+    auto const res = raptor_search(tt, &rtt, std::move(q), direction::kForward);
+    return res.size() == 1U ? begin(res)->dest_time_ : unixtime_t{};
   };
-  EXPECT_EQ(0U, run(kDefaultProfile).size());
-  auto const scheduled = run(kProfile);
-  ASSERT_EQ(1U, scheduled.size());
-  EXPECT_EQ(hl_from_f(), begin(scheduled)->dest_time_);
+  EXPECT_EQ(h_from_f(), arrival_at_c(kDefaultProfile));
+  EXPECT_EQ(h_from_f(), arrival_at_c(kProfile));
 
-  update(tt, rtt, {{"HL", {{.seq_ = 1U, .stop_id_ = "S1", .dep_delay_ = 1}}}});
-  EXPECT_EQ(0U, run(kDefaultProfile).size());
-  auto const delayed = run(kProfile);
-  ASSERT_EQ(1U, delayed.size());
-  EXPECT_EQ(at("11:31"), begin(delayed)->dest_time_);
+  update(tt, rtt, {{"H", {{.seq_ = 2U, .stop_id_ = "C", .arr_delay_ = 5}}}});
+  EXPECT_EQ(at("11:05"), arrival_at_c(kDefaultProfile));
+  EXPECT_EQ(at("11:05"), arrival_at_c(kProfile));
 }
 
 // Door to door: offsets to the platforms the moved trips use now.
@@ -868,8 +865,8 @@ TEST(gtfsrt_transfer_rules, start_walk_to_real_time_virtual_location) {
   EXPECT_EQ(30_minutes, get<footpath>(j.legs_.front().uses_).duration());
 }
 
-// A profile that ignores transfer rules sees G at the platform S4, not at its
-// real-time virtual location with the rule's 5 min from S1: the profile has no
+// A profile sees G at the platform S4, not at its real-time virtual location
+// (the default profile's) with the rule's 5 min from S1: the profile has no
 // walks between stops, so after F arrives at S1 (10:30), G (10:40) is out of
 // reach.
 TEST(gtfsrt_transfer_rules, profile_ignores_real_time_virtual_location) {
