@@ -10,6 +10,7 @@
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/raptor/reconstruct.h"
+#include "nigiri/routing/search_location.h"
 #include "nigiri/routing/transfer_time_settings.h"
 
 namespace nigiri::routing {
@@ -136,10 +137,22 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
   auto const has_prev = prev_it != std::rend(j.legs_);
   auto const has_next = next_it != end(j.legs_);
 
-  // Create direct query.
+  // Create direct query: the changes are those of the journey, from where the
+  // previous trip arrives to where the next one leaves (the legs name the
+  // stops, the runs the locations the rules apply to).
+  auto const location = [&](journey::leg const& l, bool const is_exit) {
+    auto const& ree = std::get<journey::run_enter_exit>(l.uses_);
+    return search_location(
+        q.prf_idx_,
+        rt::frun{
+            tt, rtt,
+            ree.r_}[is_exit ? static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)
+                            : ree.stop_range_.from_]);
+  };
   auto direct_query = make_alternative_query(
-      tt, rtt, q, has_prev ? prev_it->to_ : location_idx_t::invalid(),
-      has_next ? next_it->from_ : location_idx_t::invalid());
+      tt, rtt, q,
+      has_prev ? location(*prev_it, true) : location_idx_t::invalid(),
+      has_next ? location(*next_it, false) : location_idx_t::invalid());
   if (!has_prev) {
     direct_query.start_match_mode_ = q.start_match_mode_;
     direct_query.use_start_footpaths_ = q.use_start_footpaths_;

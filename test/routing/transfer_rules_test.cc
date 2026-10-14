@@ -16,6 +16,7 @@
 #include "nigiri/routing/transfers.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
+#include "nigiri/timetable_metrics.h"
 
 #include "../raptor_search.h"
 #include "../transfer_rules_util.h"
@@ -214,6 +215,112 @@ TEST(transfer_rules, exact_match_includes_virtual_locations) {
   EXPECT_EQ(1U, qb.k_);
 }
 
+// A rule for a trip pair holds for the riders of its trip: F -> Z changes from
+// S1 to S2 in 1 min (type 1: 0 min), a walk takes 2 min. A journey that starts
+// at S1 or ends at S2 walks, though an exact start or destination includes the
+// virtual locations F and Z stop at.
+TEST(transfer_rules, trip_pair_rule_walk_holds_for_its_trip) {
+  for (auto const rule : {"S1,S2,2,60,RF,RZ,,\n", "S1,S2,1,,RF,RZ,,\n"}) {
+    auto const tt = test::load_network(
+        fmt::format("S1,S2,2,120,,,,\n{}", rule),
+        {.stops_ = {{"E", 50.0, 9.0}},
+         .trips_ = {{"Z", "RZ", {{"S2", "10:31"}, {"E", "11:00"}}},
+                    {"ZL", "RZL", {{"S2", "11:01"}, {"E", "11:30"}}}}});
+    ASSERT_LT(0U, n_virts(tt));
+    auto const search =
+        [&](std::string_view const from, std::string_view const to,
+            interval<unixtime_t> const times, direction const dir) {
+          auto const res = raptor_search(
+              tt, nullptr,
+              routing::query{.start_time_ = times,
+                             .use_start_footpaths_ = true,
+                             .start_ = {{lidx(tt, from), 0_minutes, 0U}},
+                             .destination_ = {{lidx(tt, to), 0_minutes, 0U}}},
+              dir);
+          EXPECT_EQ(1U, res.size())
+              << rule << test::print_results(tt, nullptr, res);
+          return res.empty() ? std::pair<unixtime_t, unixtime_t>{}
+                             : std::pair{res.begin()->departure_time(),
+                                         res.begin()->arrival_time()};
+        };
+    EXPECT_EQ(std::pair(at("10:00"), at("11:00")),
+              search("A", "E", {at("10:00"), at("10:01")}, direction::kForward))
+        << rule;
+    EXPECT_EQ(
+        std::pair(at("10:59"), at("11:30")),
+        search("S1", "E", {at("10:30"), at("11:00")}, direction::kForward))
+        << rule;
+    EXPECT_EQ(
+        std::pair(at("10:59"), at("11:30")),
+        search("E", "S1", {at("11:30"), at("11:31")}, direction::kBackward))
+        << rule;
+    EXPECT_EQ(
+        std::pair(at("10:00"), at("10:32")),
+        search("A", "S2", {at("10:00"), at("10:01")}, direction::kForward))
+        << rule;
+  }
+}
+
+// The same for direct connections between stations: F -> Z changes from S1 to
+// Y1 in 5 min, a walk takes 15 min.
+TEST(transfer_rules, direct_trip_pair_rule_walk_holds_for_its_trip) {
+  auto const tt = test::load_network(
+      "S1,Y1,2,900,,,,\nS1,Y1,2,300,RF,RZ,,\n",
+      {.stops_ = {{"Y", 50.0, 6.51, "", true},
+                  {"Y1", 50.0001, 6.51, "Y"},
+                  {"E", 50.0, 9.0}},
+       .trips_ = {{"Z", "RZ", {{"Y1", "10:40"}, {"E", "11:00"}}},
+                  {"ZL", "RZL", {{"Y1", "11:10"}, {"E", "11:30"}}}}});
+  ASSERT_LT(0U, n_virts(tt));
+  EXPECT_EQ(at("11:00"),
+            test::arrival(tt, nullptr, {"A", "E"}, "10:00"));  // F -> Z
+
+  auto const first_direct = [&](std::string_view const from,
+                                std::string_view const to,
+                                std::string_view const hhmm) {
+    auto q = test::station_query(tt, from, to, at(hhmm));
+    q.use_start_footpaths_ = true;
+    auto first = std::optional<unixtime_t>{};
+    for (auto&& legs : routing::get_direct_journeys<direction::kForward>(
+             tt, nullptr, q, at(hhmm))) {
+      if (!first.has_value() || legs.back().arr_time_ < *first) {
+        first = legs.back().arr_time_;
+      }
+    }
+    return first;
+  };
+  EXPECT_EQ(at("11:30"), first_direct("S", "E", "10:30"));
+  EXPECT_EQ(at("10:45"), first_direct("A", "Y", "10:00"));
+  EXPECT_EQ(at("10:45"), test::arrival(tt, nullptr, {"A", "Y"}, "10:00"));
+}
+
+// One-to-all reaches D, where changing is forbidden, at the arrival (other
+// stops include their time to change), but nothing beyond it.
+TEST(transfer_rules, one_to_all_reaches_stop_without_changes) {
+  auto const tt = load_feeds(
+      {feed({{"A", 55.0, 13.0}, {"D", 55.1, 13.0}, {"E", 55.2, 13.0}},
+            {{"T1", "R1", {{"A", "10:00"}, {"D", "10:30"}}},
+             {"T2", "R2", {{"D", "10:40"}, {"E", "11:00"}}}},
+            "D,D,3,,,,,\n")});
+  auto const fastest = [&](direction const dir, std::string_view const from,
+                           std::string_view const to, std::string_view time) {
+    auto const q = routing::query{.start_time_ = at(time),
+                                  .start_ = {{lidx(tt, from), 0_minutes, 0U}}};
+    auto const state =
+        dir == direction::kForward
+            ? routing::one_to_all<direction::kForward>(tt, nullptr, q)
+            : routing::one_to_all<direction::kBackward>(tt, nullptr, q);
+    return routing::get_fastest_one_to_all_offsets(tt, state, dir, lidx(tt, to),
+                                                   at(time), q.max_transfers_);
+  };
+  EXPECT_EQ(30, fastest(direction::kForward, "A", "D", "10:00").duration_);
+  EXPECT_EQ(routing::fastest_offset{}.k_,
+            fastest(direction::kForward, "A", "E", "10:00").k_);
+  EXPECT_EQ(-20, fastest(direction::kBackward, "E", "D", "11:00").duration_);
+  EXPECT_EQ(routing::fastest_offset{}.k_,
+            fastest(direction::kBackward, "E", "A", "11:00").k_);
+}
+
 // T0 and T1 (route R) change at S in 1 min through the R -> R rule, at X in
 // X's own 2 min with 3 min to spare. A profile that ignores transfer rules
 // changes at S in S's own 2 min, which T1 (1 min after T0) does not leave: the
@@ -281,9 +388,10 @@ TEST(transfer_rules, recommended_transfer_at_virtual_locations) {
   EXPECT_EQ("S1", changes_at("S,S,0,,,,,\nS,S,2,900,,,,\nS,S,2,60,,,T0,T1\n"));
 }
 
-// FB2 (10:50) is an alternative for the FB leg of L -> FA -> FB -> M. The
-// walk from where FA arrives to U is found as motis' itinerary refresh looks
-// it up between two transit legs.
+// FB2 (10:50) is an alternative for the FB leg of L -> FA -> FB -> M, FC
+// (10:33) is not: the alternatives follow the rule of the change they
+// replace (FA -> FC: 5 min). The walk from where FA arrives to U is found as
+// motis' itinerary refresh looks it up between two transit legs.
 TEST(transfer_rules, leg_alternatives_after_trip_at_virtual_location) {
   auto const tt = load_feeds({virt_feed()});
   ASSERT_LT(0U, n_virts(tt));
@@ -321,13 +429,24 @@ TEST(transfer_rules, leg_alternatives_after_trip_at_virtual_location) {
 
   auto const alternatives =
       routing::get_leg_alternatives(tt, nullptr, q, j, fb_leg, 3U);
-  EXPECT_TRUE(utl::any_of(alternatives, [&](routing::journey const& alt) {
-    return utl::any_of(alt.legs_, [&](routing::journey::leg const& l) {
-      return std::holds_alternative<routing::journey::run_enter_exit>(
-                 l.uses_) &&
-             l.dep_time_ == at("10:50");
+  auto const offers = [&](std::string_view const dep) {
+    return utl::any_of(alternatives, [&](routing::journey const& alt) {
+      return utl::any_of(alt.legs_, [&](routing::journey::leg const& l) {
+        return std::holds_alternative<routing::journey::run_enter_exit>(
+                   l.uses_) &&
+               l.dep_time_ == at(dep);
+      });
     });
-  }));
+  };
+  EXPECT_TRUE(offers("10:50"));
+  EXPECT_FALSE(offers("10:33"));
+}
+
+// The metrics count the stops a feed has, not their virtual locations.
+TEST(transfer_rules, metrics_count_stops) {
+  auto const tt = load_feeds({virt_feed()});
+  ASSERT_LT(0U, n_virts(tt));
+  EXPECT_EQ(4U, get_metrics(tt).feeds_.front().locations_);
 }
 
 // Door to door, the direct connections L -> U (FA arrives at a location of
@@ -366,4 +485,43 @@ TEST(transfer_rules, direct_intermodal_reaches_virtual_locations) {
   ASSERT_EQ(1U, from_u.size());
   EXPECT_EQ(at("10:32"), from_u.front().front().dep_time_);
   EXPECT_EQ(lidx(tt, "U"), offset_target(from_u.front().front()));
+
+  // An exact start at U includes the location FC leaves from.
+  auto const exact =
+      routing::query{.start_time_ = at("10:30"),
+                     .start_ = {{lidx(tt, "U"), 0_minutes, 0U}},
+                     .destination_ = {{lidx(tt, "N"), 0_minutes, 0U}}};
+  auto n_fc = 0U;
+  for (auto&& legs : routing::get_direct_journeys<direction::kForward>(
+           tt, nullptr, exact, at("10:30"))) {
+    n_fc += static_cast<unsigned>(
+        utl::count_if(legs, [](routing::journey::leg const& l) {
+          return std::holds_alternative<routing::journey::run_enter_exit>(
+                     l.uses_) &&
+                 l.dep_time_ == at("10:33");
+        }));
+  }
+  EXPECT_EQ(1U, n_fc);
+}
+
+// Via = start with a stay: X arrives at S 3 min before Y leaves, the RX -> RY
+// rule (5 min) forbids it, so Y leaves from a location of its own. From S at
+// 10:00 with a 10 min stay at S, Y (10:05) is too early, Y2 (10:20) is not -
+// at every location of S.
+TEST(transfer_rules, via_stay_at_start_holds_at_virtual_locations) {
+  auto const tt = load_feeds(
+      {feed({{"S", 55.0, 13.0}, {"A", 55.1, 13.0}, {"B", 55.2, 13.0}},
+            {{"X", "RX", {{"A", "09:00"}, {"S", "10:02"}}},
+             {"Y", "RY", {{"S", "10:05"}, {"B", "10:30"}}},
+             {"Y2", "RY2", {{"S", "10:20"}, {"B", "10:45"}}}},
+            "S,S,2,120,,,,\nS,S,2,300,RX,RY,,\n")});
+  ASSERT_LT(0U, n_virts(tt));
+  auto const res = raptor_search(
+      tt, nullptr,
+      routing::query{.start_time_ = at("10:00"),
+                     .start_ = {{lidx(tt, "S"), 0_minutes, 0U}},
+                     .destination_ = {{lidx(tt, "B"), 0_minutes, 0U}},
+                     .via_stops_ = {{lidx(tt, "S"), 10_minutes}}});
+  ASSERT_EQ(1U, res.size());
+  EXPECT_EQ(at("10:45"), begin(res)->dest_time_);
 }

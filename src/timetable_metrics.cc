@@ -31,8 +31,9 @@ timetable_metrics get_metrics(timetable const& tt) {
   auto m = timetable_metrics{};
   m.feeds_.resize(tt.n_sources());
 
-  for (auto const src : tt.locations_.src_) {
-    if (src == source_idx_t::invalid()) {
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    auto const src = tt.locations_.src_[l];
+    if (src == source_idx_t::invalid() || tt.locations_.is_virt(l)) {
       continue;
     }
     ++m.feeds_[src].locations_;

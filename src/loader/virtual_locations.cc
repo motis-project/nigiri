@@ -15,6 +15,7 @@
 #include "utl/lookup.h"
 #include "utl/to_vec.h"
 
+#include "nigiri/loader/register.h"
 #include "nigiri/loader/transfer_rules.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/limits.h"
@@ -199,34 +200,7 @@ hash_map<location_idx_t, std::vector<transfer_rule_idx_t>> get_global_rules(
 
 state get_state(timetable const& tt) {
   auto const& tr = tt.transfer_rules_;
-  auto const& parents = tt.locations_.parents_;
   auto const global_rules = get_global_rules(tt);
-
-  // the sides of a section's trips per stop and event type
-  using section_sides_t = hash_map<pair<location_idx_t, event_type>, sides_t>;
-  auto by_section = hash_map<merged_trips_idx_t, section_sides_t>{};
-  auto const get_sides = [&](merged_trips_idx_t const m) -> auto const& {
-    return utl::get_or_create(by_section, m, [&]() {
-      auto sides = section_sides_t{};
-      auto const add = [&](transfer_rule_side_idx const s) {
-        sides[pair{tr.rules_[s.rule()].stop(s.ev_type()), s.ev_type()}]
-            .push_back(s);
-      };
-      for (auto const trip : tt.merged_trips_[m]) {
-        for (auto const s : values_of(tr.trip_rules_, trip)) {
-          add(s);
-        }
-        auto const src = tt.trip_id_src_[tt.trip_ids_[trip].front()];
-        for (auto const s :
-             values_of(tr.route_rules_, tt.trip_route_id_[trip])) {
-          if (tr.rules_[s.rule()].src_ == src) {
-            add(s);
-          }
-        }
-      }
-      return sides;
-    });
-  };
 
   auto st = state{};
   st.routes_.resize(tt.n_routes());
@@ -250,39 +224,17 @@ state get_state(timetable const& tt) {
       if (!has_transfer_rules(tt, t)) {
         continue;
       }
-      by_section.clear();
-      auto const sections = tt.transport_to_trip_section_[t];
       for (auto i = stop_idx_t{0U}; i != seq.size(); ++i) {
-        auto const stp = stop{seq[i]};
-        auto const base = stp.location_idx();
+        auto const base = stop{seq[i]}.location_idx();
+        get_stop_signature(tt, t, i, base, sig);
+        // a global rule only where both its sides occur at the station
         auto const globals =
             global_rules.find(tt.locations_.get_root_idx(base));
-        auto const add = [&](stop_idx_t const section, event_type const ev) {
-          auto const& sides =
-              get_sides(sections[sections.size() == 1U ? 0U : section]);
-          for (auto const l : {base, parents[base]}) {
-            if (auto const it = sides.find(pair{l, ev});
-                l != location_idx_t::invalid() && it != end(sides)) {
-              sig.insert(end(sig), begin(it->second), end(it->second));
-            }
-          }
-          if (auto const it = sides.find(pair{location_idx_t::invalid(), ev});
-              it != end(sides) && globals != end(global_rules)) {
-            for (auto const s : it->second) {
-              if (std::ranges::binary_search(globals->second, s.rule())) {
-                sig.push_back(s);
-              }
-            }
-          }
-        };
-        sig.clear();
-        if (i != 0U && stp.out_allowed()) {
-          add(static_cast<stop_idx_t>(i - 1U), event_type::kArr);
-        }
-        if (i + 1U != seq.size() && stp.in_allowed()) {
-          add(i, event_type::kDep);
-        }
-        utl::erase_duplicates(sig);
+        std::erase_if(sig, [&](transfer_rule_side_idx const s) {
+          return tr.rules_[s.rule()].is_global() &&
+                 (globals == end(global_rules) ||
+                  !std::ranges::binary_search(globals->second, s.rule()));
+        });
         if (sig.empty()) {
           continue;
         }
@@ -1046,9 +998,6 @@ void split_routes(timetable& tt,
   };
   permute(tt.transport_first_dep_offset_);
   permute(tt.transport_traffic_days_);
-  if (tt.initial_day_offset_.size() == order.size()) {
-    permute(tt.initial_day_offset_);
-  }
   permute_buckets(tt.transport_to_trip_section_);
   permute_buckets(tt.transport_section_attributes_);
   permute_buckets(tt.transport_section_providers_);
@@ -1080,6 +1029,30 @@ void split_routes(timetable& tt,
   }
 }
 
+// The virtual location of the base for these sides (created on first use).
+location_idx_t get_or_create_virt(
+    timetable& tt,
+    hash_map<pair<location_idx_t, sides_t>, location_idx_t>& virts,
+    location_idx_t const base,
+    sides_t const& sides) {
+  return utl::get_or_create(virts, pair{base, sides}, [&]() {
+    auto l = location{};
+    l.src_ = tt.locations_.src_[base];
+    l.pos_ = tt.locations_.coordinates_[base];
+    l.type_ = location_type::kVirt;
+    l.parent_ = base;
+    l.transfer_time_ =
+        to_fp_duration(to_transfer_time(get_transfer_time(tt, sides, base)));
+    auto const v = register_location(tt, l);
+    tt.locations_.children_[base].push_back(v);
+    for (auto const side : sides) {
+      tt.transfer_rules_.rule_virts_.push_back({side, v});
+      tt.transfer_rules_.virt_rules_.push_back({v, side});
+    }
+    return v;
+  });
+}
+
 bool write(timetable& tt, state const& st, shapes_storage* shapes) {
   auto& tr = tt.transfer_rules_;
   auto virts = hash_map<pair<location_idx_t, sides_t>, location_idx_t>{};
@@ -1100,14 +1073,14 @@ bool write(timetable& tt, state const& st, shapes_storage* shapes) {
       continue;
     }
     auto const transports = tt.route_transport_ranges_[r];
-    seqs.assign(transports.size(), stop_seq_t{tt.route_location_seq_[r].begin(),
-                                              tt.route_location_seq_[r].end()});
+    seqs.assign(route.n_parts_, stop_seq_t{tt.route_location_seq_[r].begin(),
+                                           tt.route_location_seq_[r].end()});
     for (auto const& [k, c] : route.stops_) {
       auto const base = st.locations_[c.location_].l_;
-      for (auto u = 0U; u != seqs.size(); ++u) {
-        auto const& sides = c.sides_[route.part_[u]];
-        seqs[u][k] =
-            stop{seqs[u][k]}
+      for (auto part = 0U; part != seqs.size(); ++part) {
+        auto const& sides = c.sides_[part];
+        seqs[part][k] =
+            stop{seqs[part][k]}
                 .with_location(sides.empty()
                                    ? base
                                    : get_or_create_virt(tt, virts, base, sides))
@@ -1115,13 +1088,15 @@ bool write(timetable& tt, state const& st, shapes_storage* shapes) {
       }
     }
 
+    // parts with the same locations everywhere stay one route
     auto parts =
         std::vector<std::pair<stop_seq_t, std::vector<transport_idx_t>>>{};
-    for (auto u = 0U; u != seqs.size(); ++u) {
+    for (auto u = 0U; u != transports.size(); ++u) {
+      auto const& seq = seqs[route.part_[u]];
       auto it = utl::find_if(
-          parts, [&](auto const& part) { return part.first == seqs[u]; });
+          parts, [&](auto const& part) { return part.first == seq; });
       if (it == end(parts)) {
-        it = parts.insert(end(parts), {seqs[u], {}});
+        it = parts.insert(end(parts), {seq, {}});
       }
       it->second.push_back(transports.from_ + u);
     }
@@ -1138,8 +1113,7 @@ bool write(timetable& tt, state const& st, shapes_storage* shapes) {
   }
   split_routes(tt, shapes, origin, route_transports);
 
-  utl::erase_duplicates(tr.rule_virts_);
-  utl::erase_duplicates(tr.virt_rules_);
+  utl::sort(tr.rule_virts_);
 
   log(log_lvl::info, "loader.virtual_locations",
       "{} virtual locations, {} routes -> {}", virts.size(), n_routes,

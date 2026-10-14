@@ -7,7 +7,9 @@
 
 #include "geo/latlng.h"
 
+#include "utl/concat.h"
 #include "utl/enumerate.h"
+#include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/lookup.h"
 #include "utl/parser/buf_reader.h"
@@ -120,14 +122,20 @@ void fold_pair_defaults(timetable& tt,
 
   auto qualified =
       hash_map<transfer_pair, std::vector<pair<duration_t, unsigned>>>{};
-  auto default_duration = hash_map<transfer_pair, duration_t>{};
+  // Unqualified durations per stop pair with their order: the most specific
+  // one applies, the later one on a tie (as get_more_specific decides).
+  struct default_duration_t {
+    duration_t duration_;
+    std::size_t order_;
+  };
+  auto default_duration = hash_map<transfer_pair, default_duration_t>{};
   // Prepare for lookup by stop pair.
   auto by_pair = hash_map<transfer_pair, std::vector<transfer_rule const*>>{};
   for (auto const [i, r] : utl::enumerate(rules)) {
     auto const p = transfer_pair{r.from_stop_, r.to_stop_};
     if (!is_qualified(r)) {
       // Store explicit unqualified transfer durations.
-      default_duration[p] = r.duration_;
+      default_duration[p] = {r.duration_, i};
       continue;
     }
     by_pair[p].push_back(&rules[i]);
@@ -148,15 +156,22 @@ void fold_pair_defaults(timetable& tt,
   // Resolves the duration of the stop pair taking into account stop hierarchy.
   auto const get_default_duration =
       [&](transfer_pair const p) -> std::optional<duration_t> {
+    auto best = std::optional<duration_t>{};
+    auto best_key = std::pair<transfer_rule_specificity_t, std::size_t>{};
     for (auto const from : {p.from_, parents[p.from_]}) {
       for (auto const to : {p.to_, parents[p.to_]}) {
         auto const d = utl::lookup(default_duration, transfer_pair{from, to});
-        if (d.has_value()) {
-          return d;
+        if (!d.has_value()) {
+          continue;
+        }
+        auto const key = std::pair{get_specificity(tt, from, to), d->order_};
+        if (!best.has_value() || best_key < key) {
+          best = d->duration_;
+          best_key = key;
         }
       }
     }
-    return std::nullopt;
+    return best;
   };
 
   // Add majority transfer durations to explicit unqualified rules durations.
@@ -188,9 +203,9 @@ void fold_pair_defaults(timetable& tt,
                       .duration_ = majority->first,
                       .specificity_ = get_specificity(tt, p.from_, p.to_)});
   }
-  for (auto const& r : majority_rules) {
+  for (auto const [i, r] : utl::enumerate(majority_rules)) {
     default_duration.emplace(transfer_pair{r.from_stop_, r.to_stop_},
-                             r.duration_);
+                             default_duration_t{r.duration_, rules.size() + i});
   }
 
   auto const is_kept = [&](transfer_rule const& r) {
@@ -226,12 +241,11 @@ void fold_pair_defaults(timetable& tt,
     return
         // Does this rule override an explicit/majority default
         // with a different duration? => keep this rule
-        any_pair(
-            any_with_children,  // this/children stop pairs
-            [&](transfer_pair const p) {
-              return utl::lookup(default_duration, p).value_or(r.duration_) !=
-                     r.duration_;
-            })
+        any_pair(any_with_children,  // this/children stop pairs
+                 [&](transfer_pair const p) {
+                   auto const d = utl::lookup(default_duration, p);
+                   return d.has_value() && d->duration_ != r.duration_;
+                 })
 
         // Would removing this rule let a less or equally specific overlapping
         // rule with a different duration take effect? => keep this rule
@@ -254,25 +268,25 @@ void fold_pair_defaults(timetable& tt,
       tt.transfer_rules_.rules_.push_back(r);
     }
   }
-  for (auto const& r : majority_rules) {
-    if (r.from_stop_ != r.to_stop_ ||
-        !tt.locations_.children_[r.from_stop_].empty()) {
-      tt.transfer_rules_.rules_.push_back(r);
+  utl::concat(tt.transfer_rules_.rules_, majority_rules);
+
+  // A change at a stop takes its default: its own, between it and its station,
+  // or the station's.
+  auto stops = std::vector<location_idx_t>{};
+  for (auto const& [p, _] : default_duration) {
+    if (p.from_ == p.to_) {
+      stops.push_back(p.from_);
+      utl::concat(stops, tt.locations_.children_[p.from_]);
+    } else if (parents[p.from_] == p.to_) {
+      stops.push_back(p.from_);
+    } else if (parents[p.to_] == p.from_) {
+      stops.push_back(p.to_);
     }
   }
-
-  // Convert default durations for self-transfers to location transfer times.
-  for (auto const& [p, d] : default_duration) {
-    if (p.from_ != p.to_) {
-      continue;
-    }
-    tt.locations_.transfer_time_[p.from_] = to_transfer_time(d);
-    for (auto const c : tt.locations_.children_[p.from_]) {
-      auto const self_transfer = transfer_pair{c, c};
-      if (!default_duration.contains(self_transfer)) {
-        tt.locations_.transfer_time_[c] = to_transfer_time(d);
-      }
-    }
+  utl::erase_duplicates(stops);
+  for (auto const l : stops) {
+    tt.locations_.transfer_time_[l] =
+        to_transfer_time(*get_default_duration({l, l}));
   }
 }
 
@@ -366,6 +380,11 @@ void read_transfers(source_idx_t const src,
 
           auto const from = *from_gtfs_trip;
           auto const to = *to_gtfs_trip;
+          if (from == to) {
+            log(log_lvl::error, "loader.gtfs.transfers",
+                "trip {} stays seated in itself", t.from_trip_id_->view());
+            return;
+          }
           if (type == transfer_type::kStaySeated) {
             // Stay seated transfer: annotate seated_in / seated out.
             push_unique(trips.data_[to].seated_in_, from);
@@ -378,10 +397,12 @@ void read_transfers(source_idx_t const src,
           return;
         }
 
-        // Parse min_transfer_time if available.
+        // Parse min_transfer_time if available (types 0 and 2 only).
         auto min_transfer_time = std::optional<duration_t>{};
-        if (t.min_transfer_time_->has_value()) {
-          auto const seconds = **t.min_transfer_time_;
+        if (t.min_transfer_time_->has_value() &&
+            (type == transfer_type::kRecommended ||
+             type == transfer_type::kMinimumChangeTime)) {
+          auto const seconds = std::int64_t{**t.min_transfer_time_};
           if (seconds < 0) {
             log(log_lvl::error, "loader.gtfs.transfers",
                 "{} -> {}: negative min_transfer_time {}, row ignored",
@@ -389,15 +410,15 @@ void read_transfers(source_idx_t const src,
             return;
           }
 
-          auto const minutes = duration_t{(seconds + 59) / 60};
           auto const longest = footpath::kMaxDuration - duration_t{1};
-          if (minutes > longest) {
+          if ((seconds + 59) / 60 > longest.count()) {
             log(log_lvl::info, "loader.gtfs.transfers",
                 "{} -> {}: min_transfer_time {} s capped to {} min",
                 t.from_stop_id_->view(), t.to_stop_id_->view(), seconds,
                 longest.count());
           }
-          min_transfer_time = std::min(minutes, longest);
+          min_transfer_time = duration_t{static_cast<duration_t::rep>(
+              std::min((seconds + 59) / 60, std::int64_t{longest.count()}))};
         }
 
         // Resolve from_stop_id and to_stop_id.

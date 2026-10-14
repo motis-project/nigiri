@@ -434,10 +434,10 @@ std::vector<move> find_conflict(timetable const& tt,
         tt, &rtt, kDefaultProfile,
         is_arr ? direction::kForward : direction::kBackward, l,
         [&](footpath const fp) { window = std::max(window, fp.duration()); });
-    if (auto const t = routing::get_transfer_time(tt, &rtt, kDefaultProfile, l);
-        t != kNoTransferAllowed) {
-      window = std::max(window, duration_t{t.count()});
-    }
+    // where changes are banned, an exception holds at any gap
+    auto const t = routing::get_transfer_time(tt, &rtt, kDefaultProfile, l);
+    window = std::max(window, t == kNoTransferAllowed ? footpath::kMaxDuration
+                                                      : duration_t{t.count()});
   }
   auto const from = is_arr ? x.time_ : x.time_ - window - x.delay_;
   auto const to = is_arr ? x.time_ + window : x.time_;
@@ -499,9 +499,9 @@ std::vector<stop_event> get_changed_stops(
       if (((is_rule_transport && is_rule_stop(rtt.base(l))) ||
            rtt.is_rt_location(l) || tt.locations_.is_virt(l)) &&
           (i >= seq.size() || l != stop{seq[i]}.location_idx() ||
-           (i != 0U && stp.time(event_type::kArr) >
+           (i != 0U && stp.time(event_type::kArr) !=
                            stp.scheduled_time(event_type::kArr)) ||
-           (i + 1U != fr.size() && stp.time(event_type::kDep) >
+           (i + 1U != fr.size() && stp.time(event_type::kDep) !=
                                        stp.scheduled_time(event_type::kDep)))) {
         changed.emplace_back(rt_t, i);
       }
@@ -521,8 +521,8 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
   auto st = state{};
   st.rule_times_.resize(tt.n_locations(), duration_t{0});
   for (auto const& r : tt.transfer_rules_.rules_) {
-    auto const d =
-        r.duration_ < footpath::kMaxDuration ? r.duration_ : duration_t{1};
+    // A ban holds at any gap; a timed rule (0 min) decides changes too.
+    auto const d = std::max(r.duration_, duration_t{1});
     for (auto const l : {r.from_stop_, r.to_stop_}) {
       if (l != location_idx_t::invalid()) {  // global rules: not in RT
         st.rule_times_[l] = std::max(st.rule_times_[l], d);

@@ -797,12 +797,12 @@ TEST(gtfs,
 // min_transfer_time is a non-negative number of seconds. A negative value is
 // invalid input: at most it means "no time", never "no transfer". 36000 s =
 // 600 min is valid (if long): it exceeds what a footpath can hold (511 min),
-// but it is no ban either - the 21:00 departure 10.5 h after the arrival is
-// reachable.
+// so it is capped - but it is no ban, and neither wraps a huge value. NT2
+// leaves 10 min, NT2L 9 h after NT1 arrives.
 TEST(gtfs, transfer_rules_min_transfer_time_is_not_a_ban) {
-  for (auto const [seconds, dep, arr] :
-       {std::tuple{"-120", "10:40", "11:00"},
-        std::tuple{"36000", "21:00", "21:30"}}) {
+  for (auto const& [seconds, arr] :
+       {std::tuple{"-120", "11:00"}, std::tuple{"36000", "19:50"},
+        std::tuple{"2000000", "19:50"}}) {
     SCOPED_TRACE(seconds);
     auto const tt =
         load_feeds({feed({{"NA1", 64.0, 23.0},
@@ -810,10 +810,29 @@ TEST(gtfs, transfer_rules_min_transfer_time_is_not_a_ban) {
                           {"N0", 64.1, 23.0},
                           {"N9", 64.2, 23.0}},
                          {{"NT1", "RN1", {{"N0", "10:00"}, {"NA1", "10:30"}}},
-                          {"NT2", "RN2", {{"NA2", dep}, {"N9", arr}}}},
+                          {"NT2", "RN2", {{"NA2", "10:40"}, {"N9", "11:00"}}},
+                          {"NT2L", "RN2", {{"NA2", "19:30"}, {"N9", "19:50"}}}},
                          fmt::format("NA1,NA2,2,{},,,,\n", seconds))});
     EXPECT_EQ(at(arr), arrival_at(tt, "N0", "N9", "10:00"));
   }
+}
+
+// min_transfer_time only matters for types 0 and 2: an invalid one does not
+// cost a ban (type 3) or a guarantee (type 1) its row.
+TEST(gtfs, transfer_rules_min_transfer_time_of_other_types_is_ignored) {
+  auto const load = [](std::string_view const rows) {
+    return load_feeds(
+        {feed({{"K", 50.0, 6.5}, {"O", 50.0, 6.0}, {"D", 50.0, 7.0}},
+              {{"F", "RF", {{"O", "10:00"}, {"K", "10:30"}}},
+               {"G", "RG", {{"K", "10:31"}, {"D", "11:00"}}},
+               {"GL", "RG", {{"K", "10:45"}, {"D", "11:10"}}}},
+              rows)});
+  };
+  EXPECT_EQ(std::nullopt,
+            arrival_at(load("K,K,3,-60,,,F,G\nK,K,3,-60,,,F,GL\n"), "O", "D",
+                       "10:00"));
+  EXPECT_EQ(at("11:00"),
+            arrival_at(load("K,K,1,-60,,,F,G\n"), "O", "D", "10:00"));
 }
 
 // ===========================================================================
@@ -848,4 +867,37 @@ TEST(gtfs, transfer_rules_virt_walk_respects_rule_pair) {
   ASSERT_LT(0U, n_virts(tt));
 
   EXPECT_EQ(at("11:10"), arrival_at(tt, "BA", "BD", "10:00"));
+}
+
+// A rule qualified by a route binds only that route's trips: BS -> BY1 (RB,
+// 10 min) leaves the walk BP1 -> BY1 (55 m: 2 min) of the unnamed trip X
+// alone, and a qualified ban between two stops 2 km apart creates no walk
+// between them for anyone else.
+TEST(gtfs, transfer_rules_qualified_rule_keeps_walks_of_other_trips) {
+  auto const tt =
+      load_feeds({feed({{"BS", 55.0, 11.0, "", true},
+                        {"BP1", 55.0, 11.0, "BS"},
+                        {"BY", 55.0005, 11.0, "", true},
+                        {"BY1", 55.0005, 11.0, "BY"},
+                        {"BA", 55.1, 11.0},
+                        {"BA2", 55.1, 11.2},
+                        {"BD", 55.2, 11.0}},
+                       {{"BT", "RB", {{"BA2", "10:00"}, {"BP1", "10:30"}}},
+                        {"X", "RX", {{"BA", "10:00"}, {"BP1", "10:30"}}},
+                        {"Y", "RY", {{"BY1", "10:35"}, {"BD", "11:00"}}},
+                        {"YL", "RY", {{"BY1", "10:45"}, {"BD", "11:10"}}}},
+                       "BS,BY1,2,600,RB,,,\n")});
+  ASSERT_LT(0U, n_virts(tt));
+  EXPECT_EQ(at("11:10"), arrival_at(tt, "BA2", "BD", "10:00"));
+  EXPECT_EQ(at("11:00"), arrival_at(tt, "BA", "BD", "10:00"));
+
+  auto const far =
+      load_feeds({feed({{"P", 56.0, 12.0},
+                        {"Q", 56.018, 12.0},
+                        {"PA", 56.1, 12.0},
+                        {"QB", 56.2, 12.0}},
+                       {{"TP", "RP", {{"PA", "10:00"}, {"P", "10:30"}}},
+                        {"TQ", "RQ", {{"Q", "11:30"}, {"QB", "12:00"}}}},
+                       "P,Q,3,,RX1,RX2,,\n", {"RX1", "RX2"})});
+  EXPECT_EQ(std::nullopt, arrival_at(far, "PA", "QB", "10:00"));
 }

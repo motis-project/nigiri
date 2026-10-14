@@ -310,13 +310,6 @@ struct timetable {
   // Source -> feed end date
   vector_map<source_idx_t, date::sys_days> src_end_date_;
 
-  // sources whose transfers are complete (HRDF): no fill-in walks
-  bitvec complete_transfers_;
-  bool has_complete_transfers(source_idx_t const src) const {
-    return to_idx(src) < complete_transfers_.size() &&
-           complete_transfers_.test(to_idx(src));
-  }
-
   // Trip access: external trip id -> internal trip index
   vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;
 

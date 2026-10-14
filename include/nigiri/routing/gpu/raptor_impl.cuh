@@ -634,10 +634,38 @@ struct raptor_impl {
                                                  delta_t const tmp_time,
                                                  breadcrumb_t const bc,
                                                  delta_t const t_at_dest) {
-    relax_fp_target(
+    relax_walk(
         k, fp.target(),
         adjusted_transfer_time(transfer_time_settings_, fp.duration().count()),
         tmp_time, bc, t_at_dest);
+  }
+
+  // A walk reaches a destination at its stop: the walks to its virtual
+  // locations hold for the trips stopping there.
+  __device__ __forceinline__ void relax_walk(unsigned const k,
+                                             location_idx_t const target_l,
+                                             int const duration,
+                                             delta_t const tmp_time,
+                                             breadcrumb_t const bc,
+                                             delta_t const t_at_dest) {
+    auto const target = to_idx(target_l);
+    if (is_better(clamp(tmp_time + dir(duration)), best_.get(target_l, Vias)) &&
+        is_dest_[target]) {
+      auto lo = std::size_t{0U};
+      auto hi = walk_skip_.size();
+      while (lo < hi) {
+        auto const mid = (lo + hi) / 2U;
+        if (to_idx(walk_skip_[mid]) < target) {
+          lo = mid + 1U;
+        } else {
+          hi = mid;
+        }
+      }
+      if (lo != walk_skip_.size() && to_idx(walk_skip_[lo]) == target) {
+        return;
+      }
+    }
+    relax_fp_target(k, target_l, duration, tmp_time, bc, t_at_dest);
   }
 
   __device__ __forceinline__ void relax_fp_target(unsigned const k,
@@ -801,8 +829,8 @@ struct raptor_impl {
               d_for_each_td_footpath<SearchDir>(
                   td_fps, to_unix(tmp_time),
                   [&](location_idx_t const target, duration_t const d) {
-                    relax_fp_target(k, target, static_cast<int>(d.count()),
-                                    tmp_time, bc, t_at_dest);
+                    relax_walk(k, target, static_cast<int>(d.count()), tmp_time,
+                               bc, t_at_dest);
                   });
             }
           }
@@ -863,11 +891,10 @@ struct raptor_impl {
         continue;
       }
 
-      relax_fp_target(k, kFwd ? e.fp_.target() : e.from_,
-                      adjusted_transfer_time(transfer_time_settings_,
-                                             e.fp_.duration().count()),
-                      tmp_time, tmp_.get_bc(0U, src, Vias),
-                      time_at_dest_.get(k));
+      relax_walk(k, kFwd ? e.fp_.target() : e.from_,
+                 adjusted_transfer_time(transfer_time_settings_,
+                                        e.fp_.duration().count()),
+                 tmp_time, tmp_.get_bc(0U, src, Vias), time_at_dest_.get(k));
     }
   }
 
@@ -1315,6 +1342,9 @@ struct raptor_impl {
   std::uint32_t has_reusable_round_times_{0U};
   cuda::std::span<location_idx_t const> dest_locs_;
   std::uint32_t n_dest_locs_{0U};
+  // Destinations walks do not reach (sorted): virtual locations of a
+  // destination stop.
+  cuda::std::span<location_idx_t const> walk_skip_;
 
   // earliest transports per flat (route,stop)
   cuda::std::span<std::uint32_t> et_result_;

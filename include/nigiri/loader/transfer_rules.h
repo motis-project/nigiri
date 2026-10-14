@@ -35,11 +35,4 @@ void add_rule_footpaths(
 
 void store_rule_lookups(timetable&, interval<transfer_rule_idx_t> rules);
 
-location_idx_t get_or_create_virt(
-    timetable&,
-    hash_map<pair<location_idx_t, std::vector<transfer_rule_side_idx>>,
-             location_idx_t>& virts,
-    location_idx_t base,
-    std::vector<transfer_rule_side_idx> const& sig);
-
 }  // namespace nigiri::loader

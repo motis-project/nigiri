@@ -385,21 +385,21 @@ bool update_run(source_idx_t const src,
     }
 
     if (matches) {
-      auto& stp = rtt.rt_transport_location_seq_[r.rt_][stop_idx];
-      if (upd_it->schedule_relationship() ==
-          gtfsrt::TripUpdate_StopTimeUpdate_ScheduleRelationship_SKIPPED) {
-        auto l_idx = stop{stp}.location_idx();
-        // Cancel skipped stops (in_allowed = out_allowed = false).
-        stp = stop{l_idx, false, false, false, false}.value();
-        rtt.dispatch_stop_change(r, stop_idx, stop{stp});
-      } else if (auto const& new_id =
-                     upd_it->stop_time_properties().has_assigned_stop_id()
-                         ? upd_it->stop_time_properties().assigned_stop_id()
+      // The stop the update assigns within the station (a track change). An
+      // unknown or far one, or the scheduled one, is none: only the times of
+      // the update apply.
+      auto const get_track_change = [&]() -> std::optional<location_idx_t> {
+        auto const has_assigned =
+            upd_it->stop_time_properties().has_assigned_stop_id();
+        if (!has_assigned && !upd_it->has_stop_id()) {
+          return std::nullopt;
+        }
+        auto const& new_id =
+            has_assigned ? upd_it->stop_time_properties().assigned_stop_id()
                          : upd_it->stop_id();
-                 (upd_it->stop_time_properties().has_assigned_stop_id() ||
-                  upd_it->has_stop_id()) &&
-                 new_id != tt.locations_.ids_[loc_idx].view()) {
-        // Handle track change.
+        if (new_id == tt.locations_.ids_[loc_idx].view()) {
+          return std::nullopt;
+        }
         auto const l_it = tt.locations_.location_id_to_idx_.find(
             {.id_ = new_id, .src_ = src});
         if (l_it == end(tt.locations_.location_id_to_idx_)) {
@@ -407,7 +407,7 @@ bool update_run(source_idx_t const src,
               "stop assignment: src={}, old_stop_id=\"{}\", new_stop_id=\"{}\" "
               "not found",
               src, tt.locations_.ids_[loc_idx].view(), new_id);
-          continue;
+          return std::nullopt;
         }
         auto const& equiv_locs = tt.locations_.equivalences_.at(loc_idx);
         if (utl::find(equiv_locs, l_it->second) == end(equiv_locs)) {
@@ -415,11 +415,24 @@ bool update_run(source_idx_t const src,
               "stop assignment: src={}, old_stop_id=\"{}\", new_stop_id=\"{}\" "
               "is not a mere track change, skipping",
               src, tt.locations_.ids_[loc_idx].view(), new_id);
-          continue;
+          return std::nullopt;
         }
+        return l_it->second;
+      };
+
+      auto& stp = rtt.rt_transport_location_seq_[r.rt_][stop_idx];
+      if (upd_it->schedule_relationship() ==
+          gtfsrt::TripUpdate_StopTimeUpdate_ScheduleRelationship_SKIPPED) {
+        auto l_idx = stop{stp}.location_idx();
+        // Cancel skipped stops (in_allowed = out_allowed = false).
+        stp = stop{l_idx, false, false, false, false}.value();
+        rtt.dispatch_stop_change(r, stop_idx, stop{stp});
+      } else if (auto const track = get_track_change(); track.has_value()) {
+        // The stop's scheduled flags: a track change revokes a skip.
+        stp = location_seq[stop_idx];
         rtt.update_stop_location(
             r.rt_, stop_idx,
-            get_or_create_location(tt, rtt, r.rt_, stop_idx, l_it->second));
+            get_or_create_location(tt, rtt, r.rt_, stop_idx, *track));
         ++stats.stop_assignments_;
         rtt.dispatch_stop_change(r, stop_idx, stop{stp});
       } else {

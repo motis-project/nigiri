@@ -145,8 +145,12 @@ std::uint64_t compare_results(
 
   auto const print_set = [&](std::string const& name, auto const& journeys) {
     fmt::print("  {}: ", name);
-    for (auto const* j : journeys) {
-      fmt::print("[{}] ", key(*j));
+    for (auto const& j : journeys) {
+      if constexpr (std::is_pointer_v<std::decay_t<decltype(j)>>) {
+        fmt::print("[{}] ", key(*j));
+      } else {
+        fmt::print("[{}] ", key(j));
+      }
     }
     fmt::println("");
   };
@@ -211,16 +215,8 @@ std::uint64_t compare_results(
       fmt::println("  QUERY from={} to={} start_time={} window=[{}, {}]",
                    loc_str(queries[i].start_), loc_str(queries[i].dest_),
                    time_str, window.from_, window.to_);
-      fmt::print("  RAW {}: ", ref_name);
-      for (auto const& j : ref[i]) {
-        fmt::print("[{}] ", key(j));
-      }
-      fmt::println("");
-      fmt::print("  RAW {}: ", cmp_name);
-      for (auto const& j : cmp[i]) {
-        fmt::print("[{}] ", key(j));
-      }
-      fmt::println("");
+      print_set(fmt::format("RAW {}", ref_name), ref[i]);
+      print_set(fmt::format("RAW {}", cmp_name), cmp[i]);
       print_set(ref_name, r);
       print_set(cmp_name, c);
       for (auto const [a, b] : utl::zip(r_zip, c_zip)) {
@@ -759,29 +755,25 @@ int main(int argc, char* argv[]) {
           sum.n_routes_visited_ += st.n_routes_visited_;
           sum.n_footpaths_visited_ += st.n_footpaths_visited_;
         }
-        auto const per_query = [&](std::uint64_t const x) {
-          return c.stats_.empty() ? 0.0
-                                  : static_cast<double>(x) /
-                                        static_cast<double>(c.stats_.size());
-        };
-        summary.push_back(fmt::format(
-            "{:<24} n={:<6} routes_visited/q={:<9.0f} fps_visited/q={:<11.0f}",
-            c.label_, c.stats_.size(), per_query(sum.n_routes_visited_),
-            per_query(sum.n_footpaths_visited_)));
-      }
-      for (auto const& c : cells) {
         auto n_journeys = std::size_t{0U};
         auto n_empty = std::size_t{0U};
         for (auto const& r : c.res_) {
           n_journeys += r.size();
           n_empty += r.size() == 0U ? 1U : 0U;
         }
+        // stats_ and res_ hold one entry per query
+        auto const per_query = [&](std::uint64_t const x) {
+          return c.res_.empty() ? 0.0
+                                : static_cast<double>(x) /
+                                      static_cast<double>(c.res_.size());
+        };
+        summary.push_back(fmt::format(
+            "{:<24} n={:<6} routes_visited/q={:<9.0f} fps_visited/q={:<11.0f}",
+            c.label_, c.res_.size(), per_query(sum.n_routes_visited_),
+            per_query(sum.n_footpaths_visited_)));
         summary.push_back(fmt::format(
             "{:<24} n={:<6} journeys={:<7} avg={:<5.2f} no-journey-queries={}",
-            c.label_, c.res_.size(), n_journeys,
-            c.res_.empty() ? 0.0
-                           : static_cast<double>(n_journeys) /
-                                 static_cast<double>(c.res_.size()),
+            c.label_, c.res_.size(), n_journeys, per_query(n_journeys),
             n_empty));
       }
       for (auto a = std::size_t{0U}; a < cells.size(); ++a) {

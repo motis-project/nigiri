@@ -13,10 +13,12 @@
 #include "utl/timing.h"
 
 #include "nigiri/location_match_mode.h"
+#include "nigiri/logging.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/leg_alternatives.h"
+#include "nigiri/routing/search_location.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
@@ -342,7 +344,12 @@ routing_result pong(timetable const& tt,
       trace_pong("---- HIT [updating ping start time {} -> {}]\n",
                  ping_j.start_time_, match->dest_time_);
       if (!match->is_reconstructed_ && !match->error_) {
-        po.reconstruct(q, *match);
+        try {
+          po.reconstruct(q, *match);
+        } catch (std::exception const& e) {
+          match->error_ = true;
+          log(log_lvl::error, "pong", "reconstruct failed: {}", e.what());
+        }
       }
       ping_j.start_time_ = match->dest_time_;
     };
@@ -466,8 +473,8 @@ routing_result pong(timetable const& tt,
       auto const dep_time = to.time(event_type::kDep);
 
       auto const earlier = get_earliest_alternative(
-          tt, rtt, q, from.get_stop().location_idx(),
-          to.get_stop().location_idx(), arr_time, dep_time);
+          tt, rtt, q, search_location(q.prf_idx_, from),
+          search_location(q.prf_idx_, to), arr_time, dep_time);
 
       if (earlier.has_value()) {
         transfer_1 = earlier->at(0);

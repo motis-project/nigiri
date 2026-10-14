@@ -349,45 +349,69 @@ double get_penalty(timetable const& tt,
   return weight;
 }
 
+via_counts count_vias(timetable const& tt,
+                      rt_timetable const* rtt,
+                      query const& q,
+                      journey const& j) {
+  auto counts = via_counts{.before_ = std::vector<via_offset_t>(j.legs_.size()),
+                           .stay_ = std::vector<duration_t>(j.legs_.size())};
+  if (q.via_stops_.empty()) {
+    return counts;
+  }
+  auto v = via_offset_t{0U};
+  auto const is_via = [&](location_idx_t const l) {
+    return v != q.via_stops_.size() &&
+           matches(tt, location_match_mode::kEquivalent,
+                   q.via_stops_[v].location_, l);
+  };
+  for (auto i = 0U; i != j.legs_.size(); ++i) {
+    auto const& leg = j.legs_[i];
+    counts.before_[i] = v;
+    auto const count_walk = [&](duration_t walk) {
+      auto const from = i == 0U ? leg.dep_time_ : j.legs_[i - 1U].arr_time_;
+      auto const to =
+          i + 1U == j.legs_.size() ? leg.arr_time_ : j.legs_[i + 1U].dep_time_;
+      for (auto const l : {leg.from_, leg.to_}) {
+        if (is_via(l) && from + walk + q.via_stops_[v].stay_ <= to) {
+          walk += q.via_stops_[v].stay_;
+          if (l == leg.from_) {
+            counts.stay_[i] += q.via_stops_[v].stay_;
+          }
+          ++v;
+        }
+        if (leg.from_ == leg.to_) {
+          break;
+        }
+      }
+    };
+    std::visit(
+        utl::overloaded{[&](journey::run_enter_exit const& t) {
+                          auto const fr = rt::frun{tt, rtt, t.r_};
+                          for (auto s = t.stop_range_.from_;
+                               s != t.stop_range_.to_; ++s) {
+                            if (v != q.via_stops_.size() &&
+                                q.via_stops_[v].stay_ == 0_minutes &&
+                                is_via(fr[s].get_location_idx())) {
+                              ++v;
+                            }
+                          }
+                        },
+                        [&](footpath const& fp) {
+                          count_walk(adjusted_transfer_time(
+                              q.transfer_time_settings_, fp.duration()));
+                        },
+                        [&](offset const& o) { count_walk(o.duration()); }},
+        leg.uses_);
+  }
+  return counts;
+}
+
 void optimize_transfers(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q,
                         journey& j) {
-  // v = vias reached in previous legs
-  auto v = via_offset_t{0};
-
+  auto const vias = count_vias(tt, rtt, q, j);
   for (auto i = 0U; i + 2 < j.legs_.size(); ++i) {
-    if (i > 0U) {
-      auto const& prev_leg = j.legs_[i - 1];
-      std::visit(utl::overloaded{
-                     [&](journey::run_enter_exit const& t) {
-                       auto const fr = rt::frun{tt, rtt, t.r_};
-                       for (auto s = t.stop_range_.from_;
-                            s != t.stop_range_.to_; ++s) {
-                         if (v != q.via_stops_.size() &&
-                             q.via_stops_[v].stay_ == 0_minutes &&
-                             matches(tt, location_match_mode::kEquivalent,
-                                     q.via_stops_[v].location_,
-                                     fr[s].get_location_idx())) {
-                           ++v;
-                         }
-                       }
-                     },
-                     [&](footpath const&) {
-                       if (v != q.via_stops_.size() &&
-                           matches(tt, location_match_mode::kEquivalent,
-                                   q.via_stops_[v].location_, prev_leg.from_)) {
-                         ++v;
-                       }
-                       if (v != q.via_stops_.size() &&
-                           matches(tt, location_match_mode::kEquivalent,
-                                   q.via_stops_[v].location_, prev_leg.to_)) {
-                         ++v;
-                       }
-                     }},
-                 prev_leg.uses_);
-    }
-
     auto& leg_from = j.legs_[i];
     auto& leg_footpath = j.legs_[i + 1];
     auto& leg_to = j.legs_[i + 2];
@@ -400,7 +424,7 @@ void optimize_transfers(timetable const& tt,
     auto& ree_from = get<journey::run_enter_exit>(leg_from.uses_);
     auto& ree_to = get<journey::run_enter_exit>(leg_to.uses_);
 
-    auto current_v = v;
+    auto current_v = vias.before_[i];
     // footpaths from or to a via stop with stay duration != 0 are kept as is
     auto keep_transfer = false;
 

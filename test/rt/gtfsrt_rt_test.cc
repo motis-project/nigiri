@@ -1,5 +1,7 @@
 #include "gtest/gtest.h"
 
+#include "fmt/format.h"
+
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
@@ -586,27 +588,38 @@ TEST(rt, gtfs_rt_update_1) {
   finalize(tt);
   ASSERT_EQ(3U, test::n_virts(tt));
 
-  // Create empty RT timetable.
-  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
+  // The same with a stop far away assigned: no track change either.
+  for (auto const assigned : {"3146", "2351"}) {
+    SCOPED_TRACE(assigned);
 
-  // Update.
-  auto const msg = rt::json_to_protobuf(kTripUpdate);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+    // Create empty RT timetable.
+    auto rtt =
+        rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
 
-  // Print trip.
-  transit_realtime::TripDescriptor td;
-  td.set_start_date("20230810");
-  td.set_trip_id("3248651");
-  td.set_start_time("05:15:00");
-  auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{May / 1 / 2019}, tt,
-                                             &rtt, source_idx_t{0}, td);
-  ASSERT_TRUE(r.valid());
+    // Update.
+    auto update = std::string{kTripUpdate};
+    auto const pos = update.find(R"("assignedStopId": "3146")");
+    ASSERT_NE(std::string::npos, pos);
+    update.replace(pos, std::string_view{R"("assignedStopId": "3146")"}.size(),
+                   fmt::format(R"("assignedStopId": "{}")", assigned));
+    auto const msg = rt::json_to_protobuf(update);
+    gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
 
-  auto const fr = rt::frun{tt, &rtt, r};
-  auto ss = std::stringstream{};
-  ss << "\n" << fr;
-  EXPECT_EQ(expected, ss.str());
-  ASSERT_FALSE(fr.is_cancelled());
+    // Print trip.
+    transit_realtime::TripDescriptor td;
+    td.set_start_date("20230810");
+    td.set_trip_id("3248651");
+    td.set_start_time("05:15:00");
+    auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{May / 1 / 2019},
+                                               tt, &rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
+
+    auto const fr = rt::frun{tt, &rtt, r};
+    auto ss = std::stringstream{};
+    ss << "\n" << fr;
+    EXPECT_EQ(expected, ss.str());
+    ASSERT_FALSE(fr.is_cancelled());
+  }
 }
 
 TEST(rt, gtfs_rt_update_without_seq_1) {
@@ -640,4 +653,50 @@ TEST(rt, gtfs_rt_update_without_seq_1) {
   ss << "\n" << fr;
   EXPECT_EQ(expectedWithoutSeq, ss.str());
   ASSERT_FALSE(fr.is_cancelled());
+}
+
+// A skipped stop that gets a track change afterwards is served again: 1992
+// is skipped, then assigned the stop 10000 at the same place.
+TEST(rt, gtfs_rt_track_change_after_skip) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2023_y / August / 9},
+                    date::sys_days{2023_y / August / 12}};
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
+
+  auto const update = [&](std::string_view const stop_time_update) {
+    gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "",
+                      rt::json_to_protobuf(fmt::format(
+                          R"({{"header": {{"gtfsRealtimeVersion": "2.0",
+                 "incrementality": "FULL_DATASET", "timestamp": "1691660324"}},
+                 "entity": [{{"id": "1", "tripUpdate": {{
+                   "trip": {{"tripId": "3248651", "startTime": "05:15:00",
+                             "startDate": "20230810", "routeId": "201"}},
+                   "stopTimeUpdate": [{}]}}}}]}})",
+                          stop_time_update)));
+  };
+  auto const run = [&]() {
+    transit_realtime::TripDescriptor td;
+    td.set_start_date("20230810");
+    td.set_trip_id("3248651");
+    td.set_start_time("05:15:00");
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2023_y / August / 10}, tt, &rtt, source_idx_t{0}, td);
+    return rt::frun{tt, &rtt, r};
+  };
+
+  update(R"({"stopSequence": 16, "stopId": "1992",
+             "scheduleRelationship": "SKIPPED"})");
+  {
+    auto const fr = run();  // the run stop points into it
+    EXPECT_TRUE(fr[15U].is_cancelled());
+  }
+
+  update(R"({"stopSequence": 16, "stopId": "1992",
+             "stopTimeProperties": {"assignedStopId": "10000"}})");
+  auto const fr = run();
+  EXPECT_FALSE(fr[15U].is_cancelled());
+  EXPECT_EQ("10000", fr[15U].id());
 }

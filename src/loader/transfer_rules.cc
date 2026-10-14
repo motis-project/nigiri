@@ -5,11 +5,9 @@
 #include <vector>
 
 #include "utl/erase_duplicates.h"
-#include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/lookup.h"
 
-#include "nigiri/loader/register.h"
 #include "nigiri/common/merge_sorted.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
@@ -31,32 +29,6 @@ void add_rule_footpaths(
     }
     footpaths[from_to.from_].emplace_back(from_to.to_, d);
   }
-}
-
-location_idx_t get_or_create_virt(
-    timetable& tt,
-    hash_map<pair<location_idx_t, std::vector<transfer_rule_side_idx>>,
-             location_idx_t>& virts,
-    location_idx_t const base,
-    std::vector<transfer_rule_side_idx> const& sig) {
-  auto const v = utl::get_or_create(virts, pair{base, sig}, [&]() {
-    auto l = location{};
-    l.src_ = tt.locations_.src_[base];
-    l.pos_ = tt.locations_.coordinates_[base];
-    l.type_ = location_type::kVirt;
-    l.parent_ = base;
-    l.transfer_time_ =
-        to_fp_duration(to_transfer_time(get_transfer_time(tt, sig, base)));
-
-    auto const idx = register_location(tt, l);
-    tt.locations_.children_[base].push_back(idx);
-    return idx;
-  });
-  for (auto const side : sig) {
-    tt.transfer_rules_.rule_virts_.push_back({side, v});
-    tt.transfer_rules_.virt_rules_.push_back({v, side});
-  }
-  return v;
 }
 
 void store_rule_lookups(timetable& tt,

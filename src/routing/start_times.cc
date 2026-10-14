@@ -180,6 +180,9 @@ void add_starts_in_interval(direction const search_dir,
   // Real-time starts
   if (rtt != nullptr) {
     for (auto const& rt_t : rtt->location_rt_transports_.at(l)) {
+      if (rtt->rt_transport_is_cancelled_[to_idx(rt_t)]) {
+        continue;
+      }
       auto const location_seq = rtt->rt_transport_location_seq_.at(rt_t);
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         auto const stp = stop{s};
@@ -261,14 +264,21 @@ void get_starts(
     bool const add_ontrip,
     profile_idx_t const prf_idx,
     transfer_time_settings const& tts) {
+  // A via at the start holds wherever the search counts it (see
+  // collect_via_destinations).
+  auto start_via = hash_set<location_idx_t>{};
+  if (!via_stops.empty()) {
+    for_each_meta(tt, location_match_mode::kEquivalent,
+                  via_stops.front().location_,
+                  [&](location_idx_t const l) { start_via.emplace(l); });
+  }
+
   auto shortest_start = hash_map<location_idx_t, duration_t>{};
   auto at_start = hash_map<location_idx_t, duration_t>{};
   auto const update = [&](location_idx_t const l, duration_t const offset,
                           bool const is_walked) {
     auto const d =
-        offset + (via_stops.empty() || via_stops.front().location_ != l
-                      ? 0_minutes
-                      : via_stops.front().stay_);
+        offset + (start_via.contains(l) ? via_stops.front().stay_ : 0_minutes);
     auto const keep_min = [&](hash_map<location_idx_t, duration_t>& m) {
       auto& val = utl::get_or_create(m, l, [d]() { return d; });
       val = std::min(val, d);
@@ -283,15 +293,24 @@ void get_starts(
   for (auto const& o : start_offsets) {
     for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
       update(l, o.duration(), false);
-      if (use_start_footpaths) {
+    });
+  }
+  if (use_start_footpaths) {
+    for (auto const& o : start_offsets) {
+      for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
+        // A walk leaves a start stop from the stop: the walks of its virtual
+        // locations hold for the trips stopping there.
+        if (tt.locations_.is_virt(l) && at_start.contains(tt.base(l))) {
+          return;
+        }
         for_each_transfer(
             tt, rtt, prf_idx, search_dir, l, [&](footpath const& fp) {
               update(fp.target(),
                      o.duration() + adjusted_transfer_time(tts, fp.duration()),
                      true);
             });
-      }
-    });
+      });
+    }
   }
 
   if (rtt != nullptr && prf_idx == kDefaultProfile) {

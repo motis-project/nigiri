@@ -25,6 +25,10 @@ struct finalize_options {
   std::filesystem::path merge_stats_dir_{};
   vector_map<source_idx_t, std::string> src_tags_{};
   bool apply_transfer_rules_{true};
+  // false: no beeline walks, no default profile - the caller adds its walks
+  // (preprocessing_footpaths_out_) and calls apply_transfer_rules (motis:
+  // walks routed on OSM).
+  bool beeline_walks_{true};
 };
 
 void build_footpaths(timetable& tt,
@@ -55,19 +59,5 @@ inline duration_t max_with_transfer_times(timetable const& tt,
   };
   return std::max({walk, transfer_time(from), transfer_time(to)});
 }
-
-// Stop pairs named by a transfer rule (a station for each of its stops) with
-// the longest duration of their rules (0 for a ban).
-hash_map<transfer_pair, duration_t> get_rule_walks(timetable const&);
-
-// The beeline fill-in walk from a to b, nullopt if there is none: between
-// equivalent stops (at most max_footpath_length) and between stops named by a
-// rule (not faster than the rule, not capped).
-std::optional<duration_t> get_beeline_walk(
-    timetable const&,
-    hash_map<transfer_pair, duration_t> const& rule_walks,
-    std::uint16_t max_footpath_length,
-    location_idx_t a,
-    location_idx_t b);
 
 }  // namespace nigiri::loader

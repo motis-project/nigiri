@@ -1,5 +1,7 @@
 #include "gtest/gtest.h"
 
+#include "utl/helpers/algorithm.h"
+
 #include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
 
@@ -163,7 +165,7 @@ TEST(gtfs, transfer_rules_fold_majority_does_not_override_explicit_row) {
 // One guarantee (KT1 -> KT2) next to three 5 min trip pairs at K: the 5 min
 // rows are the majority and become K's transfer time. The guarantee names other
 // trips, so it applies to none of their pairs: the three rows are redundant
-// and only the guarantee is left. KT3 -> KT4 (4 min) still misses.
+// and only the guarantee is left of them. KT3 -> KT4 (4 min) still misses.
 TEST(gtfs,
      transfer_rules_fold_drops_default_rows_next_to_rules_for_other_trips) {
   auto const tt = load_feeds(
@@ -182,9 +184,96 @@ TEST(gtfs,
             "K,K,2,300,,,KT5,KT6\n"
             "K,K,2,300,,,KT7,KT8\n")});
   EXPECT_EQ(5, tt.locations_.transfer_time_[lidx(tt, "K")].count());
-  EXPECT_EQ(1U, tt.transfer_rules_.rules_.size());
+  EXPECT_EQ(
+      1, utl::count_if(tt.transfer_rules_.rules_, [](transfer_rule const& r) {
+        return r.from_trip_ != trip_idx_t::invalid();
+      }));
 
   EXPECT_EQ(at("09:00"), arrival_at(tt, "KA", "KB", "08:00"));
 
   EXPECT_EQ(at("10:40"), arrival_at(tt, "KA", "KB", "09:30"));
+}
+
+namespace {
+
+// Station S with S1, S2. F (RF) arrives at S2 10:30, G (RG) leaves S2 10:35,
+// GL (RG) 10:45.
+std::string station_feed(std::string_view const rows) {
+  return feed({{"S", 50.0, 6.5, "", true},
+               {"S1", 50.0001, 6.5, "S"},
+               {"S2", 50.0002, 6.5, "S"},
+               {"O", 50.0, 6.0},
+               {"D", 50.0, 7.0}},
+              {{"F", "RF", {{"O", "10:00"}, {"S2", "10:30"}}},
+               {"G", "RG", {{"S2", "10:35"}, {"D", "11:00"}}},
+               {"GL", "RG", {{"S2", "10:45"}, {"D", "11:10"}}}},
+              rows);
+}
+
+}  // namespace
+
+// A row between a station and its stop covers the change at the stop itself
+// (a station stands for all its stops) - also as the default a qualified row
+// restates.
+TEST(gtfs, transfer_rules_fold_station_row_covers_change_at_its_stop) {
+  for (auto const rows : {"S,S2,2,600,,,,\n", "S2,S,2,600,,,,\n",
+                          "S,S2,2,600,,,,\nS2,S2,2,600,RF,RG,,\n"}) {
+    SCOPED_TRACE(rows);
+    EXPECT_EQ(at("11:10"),
+              arrival_at(load_feeds({station_feed(rows)}), "O", "D", "10:00"));
+  }
+  // S2,S (1 min) is more specific than S,S (10 min) for the change at S2.
+  EXPECT_EQ(
+      at("11:00"),
+      arrival_at(load_feeds({station_feed("S,S,2,600,,,,\nS2,S,2,60,,,,\n")}),
+                 "O", "D", "10:00"));
+}
+
+// A1 -> B1 has two defaults of the same specificity, A1,SB (5 min) and SA,B1
+// (10 min): the later row wins, as in the routing. The RF -> RG rule (5 min)
+// overrides it, it does not restate it.
+TEST(gtfs, transfer_rules_fold_ties_like_the_routing) {
+  auto const load = [](std::string_view const rows) {
+    return load_feeds({feed({{"SA", 50.0, 6.5, "", true},
+                             {"A1", 50.0001, 6.5, "SA"},
+                             {"SB", 50.0003, 6.5, "", true},
+                             {"B1", 50.0004, 6.5, "SB"},
+                             {"O", 50.0, 6.0},
+                             {"D", 50.0, 7.0}},
+                            {{"F", "RF", {{"O", "10:00"}, {"A1", "10:30"}}},
+                             {"G", "RG", {{"B1", "10:36"}, {"D", "11:00"}}},
+                             {"GL", "RG", {{"B1", "10:45"}, {"D", "11:10"}}}},
+                            rows)});
+  };
+  EXPECT_EQ(at("11:10"), arrival_at(load("A1,SB,2,300,,,,\nSA,B1,2,600,,,,\n"),
+                                    "O", "D", "10:00"));
+  EXPECT_EQ(at("11:00"), arrival_at(load("A1,SB,2,300,,,,\nSA,B1,2,600,,,,\n"
+                                         "A1,B1,2,300,RF,RG,,\n"),
+                                    "O", "D", "10:00"));
+}
+
+// The fold makes 4 min the default of X2 (its majority), 1 min the default of
+// station X. A change at X2 takes 4 min at its virtual locations as well: V
+// leaves X2 from one (the W -> V rule binds).
+//     U (RU): A 10:00 -> X2 10:30, W (RW): B 10:00 -> X2 10:31
+//     V (RV): X2 10:32 -> C 11:00, VL (RV): X2 11:00 -> C 11:30
+TEST(gtfs, transfer_rules_fold_majority_holds_at_virtual_locations) {
+  auto const tt =
+      load_feeds({feed({{"X", 50.0, 6.5, "", true},
+                        {"X2", 50.0001, 6.5, "X"},
+                        {"A", 50.0, 6.0},
+                        {"B", 50.1, 6.0},
+                        {"C", 50.0, 7.0}},
+                       {{"U", "RU", {{"A", "10:00"}, {"X2", "10:30"}}},
+                        {"W", "RW", {{"B", "10:00"}, {"X2", "10:31"}}},
+                        {"V", "RV", {{"X2", "10:32"}, {"C", "11:00"}}},
+                        {"VL", "RV", {{"X2", "11:00"}, {"C", "11:30"}}}},
+                       "X,X,2,60,RZ5,RZ6,,\n"
+                       "X2,X2,2,240,RZ1,RZ2,,\n"
+                       "X2,X2,2,240,RZ3,RZ4,,\n"
+                       "X2,X2,2,0,RW,RV,,\n",
+                       {"RZ1", "RZ2", "RZ3", "RZ4", "RZ5", "RZ6"})});
+  ASSERT_LT(0U, n_virts(tt));
+  EXPECT_EQ(at("11:00"), arrival_at(tt, "B", "C", "10:00"));  // the rule
+  EXPECT_EQ(at("11:30"), arrival_at(tt, "A", "C", "10:00"));
 }

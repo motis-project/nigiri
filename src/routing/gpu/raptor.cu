@@ -237,7 +237,9 @@ struct gpu_rt_timetable::impl {
     for (auto l = 0U; l != rtt.n_locations(); ++l) {
       tmp.clear();
       for (auto const rt_t : rtt.location_rt_transports_[location_idx_t{l}]) {
-        tmp.push_back(rt_t);
+        if (!rtt.rt_transport_is_cancelled_[to_idx(rt_t)]) {
+          tmp.push_back(rt_t);
+        }
       }
       v.emplace_back(tmp);
     }
@@ -497,8 +499,21 @@ struct gpu_raptor_state::impl {
       unsigned const dir /* fwd=0 bwd=1 -> ping/pong can coexist */,
       nigiri::bitvec const& is_dest,
       std::vector<std::uint16_t> const& dist_to_dest,
-      hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest) {
+      hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
+      std::vector<location_idx_t> const& walk_skip) {
     is_intermodal_dest_[dir] = !dist_to_dest.empty();
+
+    n_walk_skip_[dir] = static_cast<std::uint32_t>(walk_skip.size());
+    if (!walk_skip.empty()) {
+      auto* const pin = walk_skip_pin_[dir].ensure(walk_skip.size());
+      std::copy(walk_skip.begin(), walk_skip.end(), pin);
+      utl::verify(cudaSuccess ==
+                      cudaMemcpyAsync(
+                          walk_skip_dev_[dir].ensure(walk_skip.size(), stream_),
+                          pin, walk_skip.size() * sizeof(location_idx_t),
+                          cudaMemcpyHostToDevice, stream_),
+                  "could not copy walk skip");
+    }
     // td dest offsets: flatten into sorted (loc, range, data) groups.
     if (td_dist_to_dest.empty()) {
       // reset used sizes: the state may have served a flex query before
@@ -623,6 +638,9 @@ struct gpu_raptor_state::impl {
   device_buffer<location_idx_t> dest_locs_dev_[2];
   pinned_host_buffer<location_idx_t> dest_locs_pin_[2];
   std::uint32_t n_dest_locs_[2]{0U, 0U};
+  device_buffer<location_idx_t> walk_skip_dev_[2];
+  pinned_host_buffer<location_idx_t> walk_skip_pin_[2];
+  std::uint32_t n_walk_skip_[2]{0U, 0U};
   device_buffer<std::uint32_t> td_dest_ranges_dev_[2];
   device_buffer<td_offset> td_dest_data_dev_[2];
   pinned_host_buffer<location_idx_t> td_dest_locs_pin_[2];
@@ -708,7 +726,19 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
     extend_to_rt_virts(*rtt, is_dest);
     extend_to_rt_virts(*rtt, dist);
   }
-  state_.impl_->upload_query(kDirIdx, is_dest, dist, td_dist_to_dest);
+  // Walks reach a destination stop at the stop, not at its virtual locations
+  // (see raptor.h).
+  auto walk_skip = std::vector<location_idx_t>{};
+  is_dest.for_each_set_bit([&](std::uint64_t const i) {
+    auto const l = location_idx_t{static_cast<std::uint32_t>(i)};
+    auto const is_rt = i >= tt.n_locations();
+    if ((is_rt || tt.locations_.is_virt(l)) &&
+        is_dest.test(to_idx(is_rt ? rtt->base(l) : tt.base(l)))) {
+      walk_skip.push_back(l);
+    }
+  });
+  state_.impl_->upload_query(kDirIdx, is_dest, dist, td_dist_to_dest,
+                             walk_skip);
 }
 
 template <direction SearchDir, bool WithBounds>
@@ -1020,6 +1050,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       .has_reusable_round_times_ = s.has_reusable_round_times_ ? 1U : 0U,
       .dest_locs_ = {s.dest_locs_dev_[kDirIdx].data(), s.n_dest_locs_[kDirIdx]},
       .n_dest_locs_ = s.n_dest_locs_[kDirIdx],
+      .walk_skip_ = {s.walk_skip_dev_[kDirIdx].data(), s.n_walk_skip_[kDirIdx]},
       .et_result_ = to_mutable_view(s.et_result_),
       .et_task_list_ = to_mutable_view(s.et_task_list_),
       .et_task_count_ = thrust::raw_pointer_cast(s.et_task_count_.data()),
@@ -1506,22 +1537,27 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
     if (!is_journey_start(start_l) || !direct_start_ok) {
       auto best = std::optional<footpath>{};
       auto const consider = [&](footpath const fp) {
+        // A walk leaves a start stop from the stop (see get_starts).
+        auto const src = fp.target();
         if ((!best.has_value() || fp.duration() < best->duration()) &&
-            is_journey_start(fp.target())) {
+            to_idx(src) < tt_.n_locations() && is_journey_start(src) &&
+            !(tt_.locations_.is_virt(src) && is_journey_start(tt_.base(src)))) {
           best = fp;
         }
       };
+      // The location the search boarded at (as the CPU reconstruct).
       auto const search_start_l = [&]() {
         auto const& lg = is_fwd ? j.legs_.front() : j.legs_.back();
         auto const* ree = std::get_if<journey::run_enter_exit>(&lg.uses_);
-        if (ree == nullptr || rtt_ == nullptr || prf_idx_ != kDefaultProfile ||
-            !ree->r_.is_rt()) {
+        if (ree == nullptr) {
           return start_l;
         }
-        return rtt_->stop_location(
-            ree->r_.rt_,
-            is_fwd ? ree->stop_range_.from_
-                   : static_cast<stop_idx_t>(ree->stop_range_.to_ - 1U));
+        return search_location(
+            q.prf_idx_,
+            rt::frun{tt_, rtt_,
+                     ree->r_}[is_fwd ? ree->stop_range_.from_
+                                     : static_cast<stop_idx_t>(
+                                           ree->stop_range_.to_ - 1U)]);
       }();
       for_each_transfer<flip(SearchDir)>(tt_, rtt_, q.prf_idx_, search_start_l,
                                          consider);

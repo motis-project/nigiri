@@ -23,18 +23,6 @@
 
 namespace nigiri::routing {
 
-template <typename Fn>
-void for_each_access(timetable const& tt,
-                     location_match_mode const mode,
-                     location_idx_t const l,
-                     Fn&& fn) {
-  if (mode == location_match_mode::kExact) {
-    fn(l);
-  } else {
-    for_each_meta(tt, mode, l, std::forward<Fn>(fn));
-  }
-}
-
 std::optional<journey::leg> lookup_offset(location_idx_t const loc,
                                           unixtime_t const t,
                                           side const s,
@@ -114,7 +102,13 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
 
   for (auto const& o : offs) {
     auto const o_duration = o.duration();
-    for_each_access(tt, mode, o.target(), [&](location_idx_t const l) {
+    for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
+      // kExact: changes and walks start at the stop itself, not at the
+      // locations of its trips.
+      if (mode == location_match_mode::kExact && l != o.target()) {
+        return;
+      }
+
       // Direct match - boarding/alighting at the input loc itself.
       if (l == loc && mode != location_match_mode::kExact) {
         if (o_duration < best_dur) {
@@ -126,7 +120,16 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
         return;
       }
 
-      if (l != loc && !use_footpaths) {
+      // A walk leaves (reaches) a start (destination) stop at the stop: the
+      // walks of its virtual locations hold for the trips stopping there.
+      if (tt.locations_.is_virt(l) &&
+          matches(tt, mode, o.target(), tt.base(l))) {
+        return;
+      }
+
+      // Changing to a location of the same stop is no walk.
+      if (l != loc && !use_footpaths &&
+          rt::base(tt, rtt, l) != rt::base(tt, rtt, loc)) {
         return;
       }
 
@@ -243,7 +246,7 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
             ? nullptr
             : (is_boarding ? &rtt->td_footpaths_out_ : &rtt->td_footpaths_in_);
     for (auto const& o : offsets) {
-      for_each_access(tt, mode, o.target(), [&](location_idx_t const l) {
+      for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
         locs.insert(l);
         if (!use_footpaths) {
           return;
@@ -569,6 +572,9 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
     for (auto const loc : boarding_locs) {
       merge_sorted(from_rt, rtt->location_rt_transports_[loc]);
     }
+    std::erase_if(from_rt, [&](rt_transport_idx_t const t) {
+      return rtt->rt_transport_is_cancelled_[to_idx(t)];
+    });
     for (auto const loc : alighting_locs) {
       merge_sorted(to_rt, rtt->location_rt_transports_[loc]);
     }

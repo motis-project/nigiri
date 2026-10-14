@@ -278,10 +278,9 @@ std::string test_files_2() {
 }
 
 // Two walks u <-> v, the slower one first: the transfer is the faster one.
-void add_slow_and_fast_walk(timetable& tt,
-                            std::string_view const u,
-                            std::string_view const v) {
-  test::rebuild_default_profile(tt, {{u, v, 10}, {u, v, 3}});
+timetable load_with_slow_and_fast_walk(std::string_view const u,
+                                       std::string_view const v) {
+  return test::load_feeds_with_walks({test_files_2()}, {{u, v, 10}, {u, v, 3}});
 }
 
 routing::journey::run_enter_exit ride(std::uint32_t const t,
@@ -294,12 +293,11 @@ routing::journey::run_enter_exit ride(std::uint32_t const t,
 }
 
 TEST(routing, optimize_initial_start_footpath_takes_shortest_transfer) {
-  auto tt = load_timetable(test_files_2());
+  auto const tt = load_with_slow_and_fast_walk("S", "B");
   auto const S = loc_idx(tt, "S");
   auto const B = loc_idx(tt, "B");
   auto const C = loc_idx(tt, "C");
   auto const G = loc_idx(tt, "G");
-  add_slow_and_fast_walk(tt, "S", "B");
 
   auto j = routing::journey{};
   j.start_time_ = test::at("10:00");
@@ -318,12 +316,11 @@ TEST(routing, optimize_initial_start_footpath_takes_shortest_transfer) {
 }
 
 TEST(routing, optimize_final_egress_footpath_takes_shortest_transfer) {
-  auto tt = load_timetable(test_files_2());
+  auto const tt = load_with_slow_and_fast_walk("B", "Z");
   auto const A = loc_idx(tt, "A");
   auto const B = loc_idx(tt, "B");
   auto const G = loc_idx(tt, "G");
   auto const Z = loc_idx(tt, "Z");
-  add_slow_and_fast_walk(tt, "B", "Z");
 
   auto j = routing::journey{};
   j.start_time_ = test::at("10:00");
@@ -342,14 +339,13 @@ TEST(routing, optimize_final_egress_footpath_takes_shortest_transfer) {
 }
 
 TEST(routing, optimize_transfers_takes_shortest_transfer) {
-  auto tt = load_timetable(test_files_2());
+  auto const tt = load_with_slow_and_fast_walk("B", "D");
   auto const A = loc_idx(tt, "A");
   auto const B = loc_idx(tt, "B");
   auto const C = loc_idx(tt, "C");
   auto const D = loc_idx(tt, "D");
   auto const E = loc_idx(tt, "E");
   auto const F = loc_idx(tt, "F");
-  add_slow_and_fast_walk(tt, "B", "D");
 
   // Only the fast walk fits between B (10:10) and D (10:15), and it beats
   // the rule transfer C -> E.
