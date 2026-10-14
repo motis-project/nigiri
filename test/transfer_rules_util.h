@@ -54,10 +54,12 @@ inline location_idx_t lidx(timetable const& tt,
   return tt.locations_.location_id_to_idx_.at({id, src});
 }
 
-// Loads the feeds (one source each), valid on kDay.
+// Loads the feeds (one source each), valid on kDay. Without beeline walks,
+// the caller adds walks and applies the rules (see load_feeds_with_walks).
 inline timetable load_feeds(std::vector<std::string> const& feeds,
                             bool const adjust_footpaths = false,
-                            bool const apply_transfer_rules = true) {
+                            bool const apply_transfer_rules = true,
+                            bool const beeline_walks = true) {
   auto tt = timetable{};
   tt.date_range_ = {kDay, kDay + date::days{1}};
   loader::register_special_stations(tt);
@@ -71,7 +73,8 @@ inline timetable load_feeds(std::vector<std::string> const& feeds,
       tt, {.merge_dupes_intra_src_ = false,
            .merge_dupes_inter_src_ = false,
            .max_footpath_length_ = std::numeric_limits<std::uint16_t>::max(),
-           .apply_transfer_rules_ = apply_transfer_rules});
+           .apply_transfer_rules_ = apply_transfer_rules,
+           .beeline_walks_ = beeline_walks});
   return tt;
 }
 
@@ -288,9 +291,8 @@ struct walk {
   int minutes_;
 };
 
-// Replaces the walks of the default profile like motis does with the routed
-// walks (osr_footpath): never shorter than the transfer time at either end,
-// then the profile is written again.
+// The walks a street router found (motis: osr_footpath) between stops, both
+// ways: never shorter than the transfer time at either end.
 inline void set_walks(timetable& tt, std::vector<walk> const& walks) {
   auto& pending = tt.locations_.preprocessing_footpaths_out_;
   pending.clear();
@@ -308,21 +310,19 @@ inline void set_walks(timetable& tt, std::vector<walk> const& walks) {
   }
 }
 
-inline void rebuild_default_profile(timetable& tt,
-                                    std::vector<walk> const& walks) {
-  set_walks(tt, walks);
-  loader::write_default_profile(tt);
-}
-
-// osr_footpath: the walks of a street router replace the loader's before the
-// rules apply.
-inline timetable load_network_with_walks(std::string_view const transfers,
-                                         network_rows const& rows,
-                                         std::vector<walk> const& walks) {
-  auto tt = load_feeds({network(transfers, rows)}, false, false);
+// These walks instead of the loader's beelines, before the rules apply.
+inline timetable load_feeds_with_walks(std::vector<std::string> const& feeds,
+                                       std::vector<walk> const& walks) {
+  auto tt = load_feeds(feeds, false, true, false);
   set_walks(tt, walks);
   loader::apply_transfer_rules(tt, nullptr);
   return tt;
+}
+
+inline timetable load_network_with_walks(std::string_view const transfers,
+                                         network_rows const& rows,
+                                         std::vector<walk> const& walks) {
+  return load_feeds_with_walks({network(transfers, rows)}, walks);
 }
 
 }  // namespace nigiri::test

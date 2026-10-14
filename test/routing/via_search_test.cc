@@ -1781,3 +1781,57 @@ TEST(routing, via_test_37_A_D_via_V_td_footpath_to_dest) {
       parse_time_tz("2019-05-01 11:00 Europe/Berlin", "%Y-%m-%d %H:%M %Z"),
       begin(results)->dest_time_);
 }
+
+constexpr auto const test_files_via_start_station = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+AG,Agency,https://example.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+S,S,55.0,13.0,1,
+S1,S1,55.0001,13.0,0,S
+B,B,55.2,13.0,0,
+
+# calendar_dates.txt
+service_id,date,exception_type
+S1,20190501,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_type
+RY,AG,RY,,3
+
+# trips.txt
+route_id,service_id,trip_id
+RY,S1,Y
+RY,S1,Y2
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+Y,10:05:00,10:05:00,S1,1
+Y,10:30:00,10:30:00,B,2
+Y2,10:20:00,10:20:00,S1,1
+Y2,10:45:00,10:45:00,B,2
+)"sv;
+
+TEST(routing, via_test_38_S_B_via_S_10m_start_station) {
+  // S -> B via the start station S with a 10 min stay: the stay holds at its
+  // stop S1 as well. From 10:00, Y (10:05) is too early, Y2 (10:20) is not.
+  auto const tt = load_timetable(test_files_via_start_station);
+  auto const results =
+      search(tt, nullptr,
+             routing::query{
+                 .start_time_ = parse_time_tz("2019-05-01 10:00 Europe/Berlin",
+                                              "%Y-%m-%d %H:%M %Z"),
+                 .start_match_mode_ = routing::location_match_mode::kEquivalent,
+                 .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+                 .start_ = {{loc_idx(tt, "S"), 0_minutes, 0U}},
+                 .destination_ = {{loc_idx(tt, "B"), 0_minutes, 0U}},
+                 .via_stops_ = {{loc_idx(tt, "S"), 10_minutes}}},
+             direction::kForward);
+
+  ASSERT_EQ(1U, results.size());
+  EXPECT_EQ(
+      parse_time_tz("2019-05-01 10:45 Europe/Berlin", "%Y-%m-%d %H:%M %Z"),
+      begin(results)->dest_time_);
+}

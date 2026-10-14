@@ -12,6 +12,7 @@
 #include "nigiri/rt/util.h"
 #include "nigiri/timetable.h"
 
+#include "../raptor_search.h"
 #include "../transfer_rules_util.h"
 #include "./util.h"
 
@@ -197,11 +198,22 @@ TEST(rt, gtfs_rt_skip) {
   EXPECT_FALSE(fr[4].is_cancelled());
   EXPECT_TRUE(fr[5].is_cancelled());
 
+  // The real-time trip runs from C to E ...
+  auto const c_to_e = [&]() {
+    return test::raptor_search(tt, &rtt, "C", "E",
+                               "2023-11-26 11:00 Europe/Berlin")
+        .size();
+  };
+  EXPECT_EQ(1U, c_to_e());
+
   // Update with canceled
   auto const msgCanceled = rt::json_to_protobuf(kTripUpdateCanceled);
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msgCanceled);
 
   ASSERT_TRUE(fr.is_cancelled());
+
+  // ... and not once it is cancelled.
+  EXPECT_EQ(0U, c_to_e());
 }
 
 TEST(rt, gtfs_rt_cancel) {
