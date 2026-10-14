@@ -357,12 +357,7 @@ bool update_run(source_idx_t const src,
                 std::span<stop_idx_t>{},
                 static_cast<stop_idx_t>(location_seq.size())};
 
-  auto pred = r.is_scheduled() && r.stop_range_.from_ > 0U
-                  ? std::make_optional<delay_propagation>(delay_propagation{
-                        .pred_time_ = rtt.unix_event_time(
-                            r.rt_, r.stop_range_.from_, event_type::kArr),
-                        .pred_delay_ = 0_minutes})
-                  : std::nullopt;
+  auto pred = std::optional<delay_propagation>{};
   auto stop_idx =
       r.is_scheduled() ? r.stop_range_.from_ : static_cast<unsigned short>(0U);
   auto const last_stop_idx_of_trip =

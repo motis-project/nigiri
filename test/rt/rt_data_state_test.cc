@@ -521,3 +521,31 @@ TEST(rt, data_state_block_id_later_trip_inconsistent) {
   EXPECT_EQ(scheduled(10h + 45min), fr[3].time(event_type::kDep));
   EXPECT_EQ(scheduled(10h + 50min), fr[4].time(event_type::kArr));
 }
+
+TEST(rt, data_state_block_id_later_trip_update_starts_at_second_stop) {
+  timetable tt;
+  load_block_timetable(tt);
+
+  // Update for T2 only, starting at D (seq=2). T1 has no real-time data.
+  // C dep (first stop of T2) has no real-time data either: nothing is
+  // propagated from T1 and the update does not cover it.
+  auto rtt = rt::create_rt_timetable(tt, kBaseDay);
+  auto const stats = rt::gtfsrt_update_msg(
+      tt, rtt, source_idx_t{0}, "tag",
+      test::to_feed_msg(
+          {{.trip_id_ = "T2",
+            .delays_ = {{.seq_ = 2U, .ev_type_ = kArr, .delay_minutes_ = 5}}}},
+          kBaseDay + 7h));
+  EXPECT_EQ(1U, stats.total_entities_success_);
+
+  EXPECT_EQ((states_t{kNoRtData, kNoRtData, kNoRtData, kNoRtData, kNoRtData,
+                      kPredicted, kPropagated, kPropagated}),
+            get_block_states(tt, rtt));
+
+  auto const fr = get_block_frun(tt, rtt);
+  EXPECT_EQ(scheduled(10h + 20min), fr[2].time(event_type::kArr));
+  EXPECT_EQ(scheduled(10h + 30min), fr[2].time(event_type::kDep));
+  EXPECT_EQ(scheduled(10h + 45min), fr[3].time(event_type::kArr));
+  EXPECT_EQ(scheduled(10h + 45min), fr[3].time(event_type::kDep));
+  EXPECT_EQ(scheduled(10h + 55min), fr[4].time(event_type::kArr));
+}
