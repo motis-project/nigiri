@@ -720,14 +720,7 @@ private:
   // there only). Only asked for destinations.
   std::size_t counts_at(std::size_t const l) const {
     auto const loc = location_idx_t{static_cast<unsigned>(l)};
-    auto stop = l;
-    if (l >= n_static_locations_) {
-      if constexpr (Rt) {
-        stop = to_idx(rtt_->base(loc));
-      }
-    } else if (tt_.locations_.is_virt(loc)) {
-      stop = to_idx(tt_.locations_.parents_[loc]);
-    }
+    auto const stop = to_idx(Rt ? rtt_->base(loc) : tt_.base(loc));
     return is_dest_[stop] ? stop : l;
   }
 
@@ -745,6 +738,21 @@ private:
     }
     if (is_via) {
       fn(v + 1U, stay + via_stops_[v].stay_);
+    }
+  }
+
+  // No change at l, but one-to-all reports the arrival (not marked: nothing
+  // departs from it).
+  void report_arrival(unsigned const k,
+                      std::size_t const l,
+                      unsigned const v,
+                      delta_t const t) {
+    auto best = kInvalid;
+    for (auto x = 0U; x <= k; ++x) {
+      best = get_best(best, round_times_[x][l][v]);
+    }
+    if (is_better(t, best)) {
+      round_times_[k][l][v] = t;
     }
   }
 
@@ -769,18 +777,22 @@ private:
               auto const is_dest_arrival = !is_intermodal_dest() && is_dest;
               auto const stop_transfer_time =
                   get_transfer_time(location_idx_t{i});
+              if constexpr (SearchMode == search_mode::kOneToAll) {
+                // A stop that bans changes has no walks to its virtual
+                // locations (a walk would be a change there, its trips can
+                // depart from the stop): a trip arriving at one arrives at
+                // the stop.
+                auto const l = location_idx_t{static_cast<unsigned>(i)};
+                if (auto const stop = Rt ? rtt_->base(l) : tt_.base(l);
+                    stop != l &&
+                    get_transfer_time(stop) == kNoTransferAllowed) {
+                  report_arrival(k, to_idx(stop), target_v, tmp_time);
+                }
+              }
               if (!is_dest_arrival &&
                   stop_transfer_time == kNoTransferAllowed) {
                 if constexpr (SearchMode == search_mode::kOneToAll) {
-                  // No change here, but one-to-all reports the arrival (not
-                  // marked: nothing departs from it).
-                  auto best = kInvalid;
-                  for (auto x = 0U; x <= k; ++x) {
-                    best = get_best(best, round_times_[x][i][target_v]);
-                  }
-                  if (is_better(tmp_time, best)) {
-                    round_times_[k][i][target_v] = tmp_time;
-                  }
+                  report_arrival(k, i, target_v, tmp_time);
                 }
                 return;
               }

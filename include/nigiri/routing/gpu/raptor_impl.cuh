@@ -18,13 +18,6 @@
 
 namespace nigiri::routing::gpu {
 
-// A virtual location of a destination stop: arrivals there count at the stop
-// (see raptor.h counts_at).
-struct dest_virt {
-  location_idx_t virt_;
-  location_idx_t stop_;
-};
-
 constexpr auto const kNoTransferAllowedMinutes =
     static_cast<int>(kNoTransferAllowed.count());
 
@@ -653,20 +646,12 @@ struct raptor_impl {
   // destinations.
   __device__ __forceinline__ location_idx_t
   counts_at(location_idx_t const l) const {
-    auto lo = std::size_t{0U};
-    auto hi = dest_virts_.size();
-    while (lo < hi) {
-      auto const mid = (lo + hi) / 2U;
-      if (to_idx(dest_virts_[mid].virt_) < to_idx(l)) {
-        lo = mid + 1U;
-      } else {
-        hi = mid;
-      }
-    }
-    return lo != dest_virts_.size() &&
-                   to_idx(dest_virts_[lo].virt_) == to_idx(l)
-               ? dest_virts_[lo].stop_
-               : l;
+    auto const i = to_idx(l);
+    auto const stop =
+        i < tt_.n_static_locations_
+            ? tt_.base_[l]
+            : rtt_.rt_base_[rt_location_idx_t{i - tt_.n_static_locations_}];
+    return is_dest_[to_idx(stop)] ? stop : l;
   }
 
   __device__ __forceinline__ void relax_fp_target(unsigned const k,
@@ -1353,8 +1338,6 @@ struct raptor_impl {
   std::uint32_t has_reusable_round_times_{0U};
   cuda::std::span<location_idx_t const> dest_locs_;
   std::uint32_t n_dest_locs_{0U};
-  // Virtual locations of destination stops (sorted by virt_).
-  cuda::std::span<dest_virt const> dest_virts_;
 
   // earliest transports per flat (route,stop)
   cuda::std::span<std::uint32_t> et_result_;

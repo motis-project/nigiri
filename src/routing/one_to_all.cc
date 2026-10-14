@@ -57,31 +57,18 @@ void finish_one_to_all(timetable const& tt,
   auto best = state.get_best<kVias>();
   auto round_times = state.get_round_times<kVias>();
 
-  // Project round_times virt to base and reset virts to kInvalid:
-  // round_times[base] = best(all virts, base)
+  // Virtual locations are no stops: a trip arriving at one reaches its stop by
+  // the walk to it (the stop's time to change) or, where the stop bans
+  // changes, at the arrival (reported by raptor). Their own labels can be rule
+  // walks and rule times, they stay kInvalid.
+  // Stops: round_times -> best (within worst_at_dest).
   for (auto l = location_idx_t{0U}; l != state.n_locations_; ++l) {
-    auto const base = rt::base(tt, rtt, l);
-    if (l == base) {
-      continue;
-    }
-
-    for (auto k = 0U; k != kMaxTransfers + 2U; ++k) {
-      auto& t = round_times[k][to_idx(l)][kVias];
-      auto& base_t = round_times[k][to_idx(base)][kVias];
-      if (is_better(t, base_t)) {
-        base_t = t;
-      }
-      t = kInvalid;
-    }
-  }
-
-  // Project round_times -> best.
-  for (auto i = 0U; i != state.n_locations_; ++i) {
-    auto& b = best[i][kVias];
+    auto const is_stop = rt::base(tt, rtt, l) == l;
+    auto& b = best[to_idx(l)][kVias];
     b = kInvalid;
     for (auto k = 0U; k != kMaxTransfers + 2U; ++k) {
-      auto& t = round_times[k][i][kVias];
-      if (is_better(t, b) && !is_better(worst_at_dest, t)) {
+      auto& t = round_times[k][to_idx(l)][kVias];
+      if (is_stop && is_better(t, b) && !is_better(worst_at_dest, t)) {
         b = t;
       } else {
         t = kInvalid;

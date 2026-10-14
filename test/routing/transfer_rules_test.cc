@@ -258,6 +258,16 @@ TEST(transfer_rules, trip_pair_rule_walk_holds_for_its_trip) {
         std::pair(at("10:00"), at("10:32")),
         search("A", "S2", {at("10:00"), at("10:01")}, direction::kForward))
         << rule;
+
+    // one-to-all as well
+    auto const q = routing::query{.start_time_ = at("10:00"),
+                                  .start_ = {{lidx(tt, "A"), 0_minutes, 0U}}};
+    auto const state = routing::one_to_all<direction::kForward>(tt, nullptr, q);
+    EXPECT_EQ(32, routing::get_fastest_one_to_all_offsets(
+                      tt, state, direction::kForward, lidx(tt, "S2"),
+                      at("10:00"), q.max_transfers_)
+                      .duration_)
+        << rule;
   }
 }
 
@@ -329,10 +339,11 @@ TEST(transfer_rules, one_to_all_reaches_stop_without_changes) {
             fastest(direction::kBackward, "E", "A", "11:00").k_);
 }
 
-// One-to-all reaches a stop where its trips stop: FA arrives at, and FB leaves
-// from, virtual locations of U, where the RF1 -> RF2 rule changes in 1 min (U
-// itself: 2 min). The virtual locations are no stops of their own.
-TEST(transfer_rules, one_to_all_stop_includes_its_virtual_locations) {
+// One-to-all reaches a stop in its own time, its virtual locations are no
+// stops of their own: FA arrives at, and FB leaves from, virtual locations of
+// U. The RF1 -> RF2 rule (1 min) holds for changing to RF2 only, U itself takes
+// 2 min.
+TEST(transfer_rules, one_to_all_reaches_stop_in_its_own_time) {
   auto const tt = load_feeds(
       {feed({{"L", 55.0, 13.0}, {"U", 55.1, 13.0}, {"M", 55.2, 13.0}},
             {{"FA", "RF1", {{"L", "10:00"}, {"U", "10:30"}}},
@@ -360,12 +371,39 @@ TEST(transfer_rules, one_to_all_stop_includes_its_virtual_locations) {
     }
     return std::pair{u.duration_, u.k_};
   };
-  // arrival 10:30 + 1 min to change to RF2
-  EXPECT_EQ(std::pair(delta_t{31}, std::uint8_t{1U}),
+  // arrival 10:30 + U's 2 min
+  EXPECT_EQ(std::pair(delta_t{32}, std::uint8_t{1U}),
             one_to_all(direction::kForward, "L", "10:00"));
-  // departure 10:31 - 1 min to change from RF1
-  EXPECT_EQ(std::pair(delta_t{-30}, std::uint8_t{1U}),
+  // departure 10:31 - U's 2 min
+  EXPECT_EQ(std::pair(delta_t{-31}, std::uint8_t{1U}),
             one_to_all(direction::kBackward, "M", "11:00"));
+}
+
+// One-to-all reaches a stop that bans changes at the arrival (departure), also
+// where its trips stop at virtual locations for an exception: S1 bans changes
+// except RF -> RH (1 min), F arrives at 10:30, H leaves at 10:31.
+TEST(transfer_rules, one_to_all_reaches_stop_without_changes_by_exception) {
+  auto const tt = test::load_network("S1,S1,3,,,,,\nS1,S1,2,60,RF,RH,,");
+  ASSERT_LT(0U, n_virts(tt));
+  auto const fastest = [&](direction const dir, std::string_view const from,
+                           std::string_view const to, std::string_view time) {
+    auto const q = routing::query{.start_time_ = at(time),
+                                  .start_ = {{lidx(tt, from), 0_minutes, 0U}}};
+    auto const state =
+        dir == direction::kForward
+            ? routing::one_to_all<direction::kForward>(tt, nullptr, q)
+            : routing::one_to_all<direction::kBackward>(tt, nullptr, q);
+    auto const f = routing::get_fastest_one_to_all_offsets(
+        tt, state, dir, lidx(tt, to), at(time), q.max_transfers_);
+    return std::pair{f.duration_, f.k_};
+  };
+  EXPECT_EQ(std::pair(delta_t{30}, std::uint8_t{1U}),
+            fastest(direction::kForward, "A", "S1", "10:00"));
+  // H arrives at 11:00, C's 2 min
+  EXPECT_EQ(std::pair(delta_t{62}, std::uint8_t{2U}),
+            fastest(direction::kForward, "A", "C", "10:00"));
+  EXPECT_EQ(std::pair(delta_t{-29}, std::uint8_t{1U}),
+            fastest(direction::kBackward, "C", "S1", "11:00"));
 }
 
 // A profile changes at a virtual location in its transfer time, as the

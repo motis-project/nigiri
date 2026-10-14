@@ -52,18 +52,13 @@ constexpr std::uint32_t n_bitvec_words(std::uint32_t const n) {
   return n / 32U + 1U;
 }
 
-// The stop an arrival at the destination l counts at if l is a virtual
-// location of a destination stop (see raptor.h counts_at), else invalid.
-location_idx_t dest_stop(timetable const& tt,
-                         rt_timetable const* rtt,
-                         bitvec const& is_dest,
-                         location_idx_t const l) {
-  auto const is_rt = to_idx(l) >= tt.n_locations();
-  if (!is_rt && !tt.locations_.is_virt(l)) {
-    return location_idx_t::invalid();
-  }
-  auto const stop = is_rt ? rtt->base(l) : tt.base(l);
-  return is_dest.test(to_idx(stop)) ? stop : location_idx_t::invalid();
+// A destination that counts at its stop (see raptor.h counts_at).
+bool counts_at_stop(timetable const& tt,
+                    rt_timetable const* rtt,
+                    bitvec const& is_dest,
+                    location_idx_t const l) {
+  auto const stop = rt::base(tt, rtt, l);
+  return stop != l && is_dest.test(to_idx(stop));
 }
 
 struct gpu_timetable::impl {
@@ -91,6 +86,14 @@ struct gpu_timetable::impl {
     return v;
   }
 
+  static std::vector<location_idx_t> build_base(timetable const& tt) {
+    auto v = std::vector<location_idx_t>(tt.n_locations());
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      v[to_idx(l)] = tt.base(l);
+    }
+    return v;
+  }
+
   static std::vector<u8_minutes> pad_transfer_times(
       vector_map<location_idx_t, u8_minutes> const& transfer_times) {
     auto v =
@@ -105,6 +108,7 @@ struct gpu_timetable::impl {
         n_routes_{tt.n_routes()},
         transfer_time_{
             to_device(pad_transfer_times(tt.locations_.transfer_time_))},
+        base_{to_device(build_base(tt))},
         route_stop_times_{to_device(tt.route_stop_times_)},
         route_stop_time_ranges_{to_device(tt.route_stop_time_ranges_)},
         route_transport_ranges_{to_device(tt.route_transport_ranges_)},
@@ -157,6 +161,7 @@ struct gpu_timetable::impl {
         .n_static_locations_ = n_static_locations_,
         .n_routes_ = n_routes_,
         .transfer_time_ = transfer_time_,
+        .base_ = to_view(base_),
         .route_stop_times_ = to_view(route_stop_times_),
         .route_stop_time_ranges_ = to_view(route_stop_time_ranges_),
         .route_transport_ranges_ = to_view(route_transport_ranges_),
@@ -183,6 +188,7 @@ struct gpu_timetable::impl {
   std::uint32_t n_routes_;
 
   thrust::device_vector<u8_minutes> transfer_time_;
+  thrust::device_vector<location_idx_t> base_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_out_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_in_;
 
@@ -296,6 +302,7 @@ struct gpu_rt_timetable::impl {
         rt_transport_stop_times_{rtt.rt_transport_stop_times_},
         rt_transport_clasz_{to_device(build_rt_transport_clasz(rtt))},
         rt_footpaths_{to_device(build_rt_footpaths(rtt))},
+        rt_base_{to_device(rtt.rt_locations_.parents_)},
         transport_traffic_days_{to_device(rtt.transport_traffic_days_)},
         bitfields_{to_device(rtt.bitfields_)},
         rt_transport_bikes_allowed_{
@@ -380,6 +387,7 @@ struct gpu_rt_timetable::impl {
         .rt_transport_clasz_ = to_view(rt_transport_clasz_),
         .rt_footpaths_ = to_view(rt_footpaths_)
                              .first(is_default ? rt_footpaths_.size() : 0U),
+        .rt_base_ = to_view(rt_base_),
         .transport_traffic_days_ = to_view(transport_traffic_days_),
         .bitfields_ = to_view(bitfields_),
         .filters_ = thrust::raw_pointer_cast(rt_filters_ctx_.data()),
@@ -399,6 +407,7 @@ struct gpu_rt_timetable::impl {
   thrust::device_vector<clasz> rt_transport_clasz_;
 
   thrust::device_vector<device_rt_timetable::rt_footpath> rt_footpaths_;
+  thrust::device_vector<location_idx_t> rt_base_;
 
   bool has_rt_virts_{false};
   device_vecvec<decltype(rtt_t{}.rt_transport_location_seq_)> rt_virt_seq_;
@@ -493,20 +502,9 @@ struct gpu_raptor_state::impl {
       nigiri::bitvec const& is_dest,
       std::vector<std::uint16_t> const& dist_to_dest,
       hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
-      std::vector<dest_virt> const& dest_virts) {
+      std::vector<location_idx_t> const& dest_locs) {
     is_intermodal_dest_[dir] = !dist_to_dest.empty();
 
-    n_dest_virts_[dir] = static_cast<std::uint32_t>(dest_virts.size());
-    if (!dest_virts.empty()) {
-      auto* const pin = dest_virts_pin_[dir].ensure(dest_virts.size());
-      std::copy(dest_virts.begin(), dest_virts.end(), pin);
-      utl::verify(cudaSuccess == cudaMemcpyAsync(
-                                     dest_virts_dev_[dir].ensure(
-                                         dest_virts.size(), stream_),
-                                     pin, dest_virts.size() * sizeof(dest_virt),
-                                     cudaMemcpyHostToDevice, stream_),
-                  "could not copy dest virts");
-    }
     // td dest offsets: flatten into sorted (loc, range, data) groups.
     if (td_dist_to_dest.empty()) {
       // reset used sizes: the state may have served a flex query before
@@ -555,19 +553,6 @@ struct gpu_raptor_state::impl {
 
     // Copy dense list of destination locations (counting themselves).
     {
-      auto dest_locs = std::vector<location_idx_t>{};
-      auto next_virt = begin(dest_virts);
-      for (auto i = std::size_t{0U}; i != is_dest.size(); ++i) {
-        if (!is_dest[i]) {
-          continue;
-        }
-        auto const l = location_idx_t{static_cast<std::uint32_t>(i)};
-        if (next_virt != end(dest_virts) && next_virt->virt_ == l) {
-          ++next_virt;
-          continue;
-        }
-        dest_locs.push_back(l);
-      }
       n_dest_locs_[dir] = static_cast<std::uint32_t>(dest_locs.size());
       if (!dest_locs.empty()) {
         auto* const pin = dest_locs_pin_[dir].ensure(dest_locs.size());
@@ -638,9 +623,6 @@ struct gpu_raptor_state::impl {
   device_buffer<location_idx_t> dest_locs_dev_[2];
   pinned_host_buffer<location_idx_t> dest_locs_pin_[2];
   std::uint32_t n_dest_locs_[2]{0U, 0U};
-  device_buffer<dest_virt> dest_virts_dev_[2];
-  pinned_host_buffer<dest_virt> dest_virts_pin_[2];
-  std::uint32_t n_dest_virts_[2]{0U, 0U};
   device_buffer<std::uint32_t> td_dest_ranges_dev_[2];
   device_buffer<td_offset> td_dest_data_dev_[2];
   pinned_host_buffer<location_idx_t> td_dest_locs_pin_[2];
@@ -723,16 +705,15 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
     extend_to_rt_virts(*rtt, is_dest);
     extend_to_rt_virts(*rtt, dist);
   }
-  auto dest_virts = std::vector<dest_virt>{};
+  auto dest_locs = std::vector<location_idx_t>{};
   is_dest.for_each_set_bit([&](std::uint64_t const i) {
     auto const l = location_idx_t{static_cast<std::uint32_t>(i)};
-    if (auto const stop = dest_stop(tt, rtt, is_dest, l);
-        stop != location_idx_t::invalid()) {
-      dest_virts.push_back({l, stop});
+    if (!counts_at_stop(tt, rtt, is_dest, l)) {
+      dest_locs.push_back(l);
     }
   });
   state_.impl_->upload_query(kDirIdx, is_dest, dist, td_dist_to_dest,
-                             dest_virts);
+                             dest_locs);
 }
 
 template <direction SearchDir, bool WithBounds>
@@ -1044,8 +1025,6 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       .has_reusable_round_times_ = s.has_reusable_round_times_ ? 1U : 0U,
       .dest_locs_ = {s.dest_locs_dev_[kDirIdx].data(), s.n_dest_locs_[kDirIdx]},
       .n_dest_locs_ = s.n_dest_locs_[kDirIdx],
-      .dest_virts_ = {s.dest_virts_dev_[kDirIdx].data(),
-                      s.n_dest_virts_[kDirIdx]},
       .et_result_ = to_mutable_view(s.et_result_),
       .et_task_list_ = to_mutable_view(s.et_task_list_),
       .et_task_count_ = thrust::raw_pointer_cast(s.et_task_count_.data()),
@@ -1137,7 +1116,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
   } else {
     is_dest_.for_each_set_bit([&](auto const i) {
       auto const l = location_idx_t{static_cast<std::uint32_t>(i)};
-      if (dest_stop(tt_, rtt_, is_dest_, l) == location_idx_t::invalid()) {
+      if (!counts_at_stop(tt_, rtt_, is_dest_, l)) {
         dest_list.push_back(l);
       }
     });
