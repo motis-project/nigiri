@@ -246,7 +246,9 @@ struct raptor {
         }
       }
       is_dest_.for_each_set_bit([&](std::uint64_t const i) {
-        update_time_at_dest(k, best_[i][Vias]);
+        if (counts_at(i) == i) {
+          update_time_at_dest(k, best_[i][Vias]);
+        }
       });
 
       auto any_marked = false;
@@ -417,6 +419,9 @@ struct raptor {
     }
 
     is_dest_.for_each_set_bit([&](auto const i) {
+      if (counts_at(i) != i) {
+        return;
+      }
       for (auto k = 1U; k != end_k; ++k) {
         auto const dest_time = round_times_[k][i][Vias];
         if (dest_time != kInvalid) {
@@ -709,22 +714,21 @@ private:
     return any_marked;
   }
 
-  // A walk reaches a destination stop at the stop: the walks to its virtual
-  // locations hold for the trips stopping there. (Hot path: only asked for
-  // walks that improve the label.)
-  bool is_walk_skip(std::size_t const l) const {
-    if (!is_dest_[l]) {
-      return false;
-    }
+  // Where an arrival at the destination l counts: a virtual location of a
+  // destination stop counts at the stop - a trip arriving there arrives at the
+  // stop, a walk to it does not (it can be a rule's, for the trips stopping
+  // there only). Only asked for destinations.
+  std::size_t counts_at(std::size_t const l) const {
     auto const loc = location_idx_t{static_cast<unsigned>(l)};
+    auto stop = l;
     if (l >= n_static_locations_) {
       if constexpr (Rt) {
-        return is_dest_[to_idx(rtt_->base(loc))];
+        stop = to_idx(rtt_->base(loc));
       }
-      return false;
+    } else if (tt_.locations_.is_virt(loc)) {
+      stop = to_idx(tt_.locations_.parents_[loc]);
     }
-    return tt_.locations_.is_virt(loc) &&
-           is_dest_[to_idx(tt_.locations_.parents_[loc])];
+    return is_dest_[stop] ? stop : l;
   }
 
   // The via states after stopping at l in via state v, with the stays so far:
@@ -788,6 +792,16 @@ private:
                             static_cast<int>(stop_transfer_time.count())));
               auto const fp_target_time =
                   clamp(tmp_time + transfer_time + dir(stay.count()));
+
+              if (is_dest_arrival) {
+                if (auto const stop = counts_at(i);
+                    stop != i && is_better(fp_target_time, best_[stop][Vias]) &&
+                    is_better_loose(fp_target_time, time_at_dest_[k])) {
+                  round_times_[k][stop][Vias] = fp_target_time;
+                  best_[stop][Vias] = fp_target_time;
+                  update_time_at_dest(k, fp_target_time);
+                }
+              }
 
               if (bounds_last_k_ == 0U &&
                   is_better(fp_target_time, best_[i][target_v])) {
@@ -872,12 +886,6 @@ private:
                                                    transfer_time_settings_,
                                                    fp.duration().count()) +
                                                stay.count()));
-                      if (target_v == Vias &&
-                          is_better(fp_target_time, best_[target][target_v]) &&
-                          is_walk_skip(target)) {
-                        return;
-                      }
-
                       if (bounds_last_k_ == 0U &&
                           is_better(fp_target_time, best_[target][target_v])) {
                         round_times_[k][target][target_v] = get_best(
@@ -927,7 +935,8 @@ private:
                         round_times_[k][target][target_v] = fp_target_time;
                         best_[target][target_v] = fp_target_time;
                         state_.station_mark_.set(target, true);
-                        if (target_v == Vias && is_dest_[target]) {
+                        if (target_v == Vias && is_dest_[target] &&
+                            counts_at(target) == target) {
                           update_time_at_dest(k, fp_target_time);
                         }
                       } else {
@@ -990,13 +999,6 @@ private:
                         [&](unsigned const target_v, duration_t const stay) {
                           auto const fp_target_time = clamp(
                               tmp_time + dir(duration.count() + stay.count()));
-                          if (target_v == Vias &&
-                              is_better(fp_target_time,
-                                        best_[target][target_v]) &&
-                              is_walk_skip(target)) {
-                            return;
-                          }
-
                           if (bounds_last_k_ == 0U &&
                               is_better(fp_target_time,
                                         best_[target][target_v])) {
@@ -1050,7 +1052,8 @@ private:
                             round_times_[k][target][target_v] = fp_target_time;
                             best_[target][target_v] = fp_target_time;
                             state_.station_mark_.set(target, true);
-                            if (target_v == Vias && is_dest_[target]) {
+                            if (target_v == Vias && is_dest_[target] &&
+                                counts_at(target) == target) {
                               update_time_at_dest(k, fp_target_time);
                             }
                           } else {

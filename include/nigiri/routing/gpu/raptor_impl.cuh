@@ -18,6 +18,13 @@
 
 namespace nigiri::routing::gpu {
 
+// A virtual location of a destination stop: arrivals there count at the stop
+// (see raptor.h counts_at).
+struct dest_virt {
+  location_idx_t virt_;
+  location_idx_t stop_;
+};
+
 constexpr auto const kNoTransferAllowedMinutes =
     static_cast<int>(kNoTransferAllowed.count());
 
@@ -330,7 +337,8 @@ struct raptor_impl {
         // no footpath leg: the last mile alight -> kEnd is the host's mumo
         // leg; the GPU journey's terminal is the ride's alighting stop
         out->dest_l_ = alight_loc;
-      } else if (n != 0U || alight_loc != cur_l ||
+      } else if (n != 0U ||
+                 (alight_loc != cur_l && counts_at(alight_loc) != cur_l) ||
                  train_arr != arr_at_cur /* skip 0min last leg */) {
         // Footpaths are always emitted (even zero minute reflexive transfers).
         // Journey structure: [WALK]? TRANSIT [TRANSIT WALK]*
@@ -634,38 +642,31 @@ struct raptor_impl {
                                                  delta_t const tmp_time,
                                                  breadcrumb_t const bc,
                                                  delta_t const t_at_dest) {
-    relax_walk(
+    relax_fp_target(
         k, fp.target(),
         adjusted_transfer_time(transfer_time_settings_, fp.duration().count()),
         tmp_time, bc, t_at_dest);
   }
 
-  // A walk reaches a destination at its stop: the walks to its virtual
-  // locations hold for the trips stopping there.
-  __device__ __forceinline__ void relax_walk(unsigned const k,
-                                             location_idx_t const target_l,
-                                             int const duration,
-                                             delta_t const tmp_time,
-                                             breadcrumb_t const bc,
-                                             delta_t const t_at_dest) {
-    auto const target = to_idx(target_l);
-    if (is_better(clamp(tmp_time + dir(duration)), best_.get(target_l, Vias)) &&
-        is_dest_[target]) {
-      auto lo = std::size_t{0U};
-      auto hi = walk_skip_.size();
-      while (lo < hi) {
-        auto const mid = (lo + hi) / 2U;
-        if (to_idx(walk_skip_[mid]) < target) {
-          lo = mid + 1U;
-        } else {
-          hi = mid;
-        }
-      }
-      if (lo != walk_skip_.size() && to_idx(walk_skip_[lo]) == target) {
-        return;
+  // Where an arrival at the destination l counts: a virtual location of a
+  // destination stop counts at the stop (see raptor.h). Only asked for
+  // destinations.
+  __device__ __forceinline__ location_idx_t
+  counts_at(location_idx_t const l) const {
+    auto lo = std::size_t{0U};
+    auto hi = dest_virts_.size();
+    while (lo < hi) {
+      auto const mid = (lo + hi) / 2U;
+      if (to_idx(dest_virts_[mid].virt_) < to_idx(l)) {
+        lo = mid + 1U;
+      } else {
+        hi = mid;
       }
     }
-    relax_fp_target(k, target_l, duration, tmp_time, bc, t_at_dest);
+    return lo != dest_virts_.size() &&
+                   to_idx(dest_virts_[lo].virt_) == to_idx(l)
+               ? dest_virts_[lo].stop_
+               : l;
   }
 
   __device__ __forceinline__ void relax_fp_target(unsigned const k,
@@ -695,7 +696,7 @@ struct raptor_impl {
       touch_round(k, target_l);
       best_.update_min(target_l, Vias, fp_target_time);
       station_mark_.mark(target);
-      if (is_dest_[target]) {
+      if (is_dest_[target] && counts_at(target_l) == target_l) {
         update_time_at_dest(k, fp_target_time);
       }
     }
@@ -806,6 +807,15 @@ struct raptor_impl {
                                       transfer_time_settings_, transfer_time),
                             tmp_time, bc, t_at_dest);
           }
+          if (is_dest_arrival) {
+            if (auto const stop = counts_at(l);
+                stop != l && is_better_loose(tmp_time, t_at_dest)) {
+              round_times_.update_min(k, stop, Vias, tmp_time, bc);
+              touch_round(k, stop);
+              best_.update_min(stop, Vias, tmp_time);
+              update_time_at_dest(k, tmp_time);
+            }
+          }
 
           // intermodal egress (former update_intermodal_footpaths)
           if (intermodal && dist_to_end_[my_i] != kUnreachable) {
@@ -829,8 +839,8 @@ struct raptor_impl {
               d_for_each_td_footpath<SearchDir>(
                   td_fps, to_unix(tmp_time),
                   [&](location_idx_t const target, duration_t const d) {
-                    relax_walk(k, target, static_cast<int>(d.count()), tmp_time,
-                               bc, t_at_dest);
+                    relax_fp_target(k, target, static_cast<int>(d.count()),
+                                    tmp_time, bc, t_at_dest);
                   });
             }
           }
@@ -891,10 +901,11 @@ struct raptor_impl {
         continue;
       }
 
-      relax_walk(k, kFwd ? e.fp_.target() : e.from_,
-                 adjusted_transfer_time(transfer_time_settings_,
-                                        e.fp_.duration().count()),
-                 tmp_time, tmp_.get_bc(0U, src, Vias), time_at_dest_.get(k));
+      relax_fp_target(k, kFwd ? e.fp_.target() : e.from_,
+                      adjusted_transfer_time(transfer_time_settings_,
+                                             e.fp_.duration().count()),
+                      tmp_time, tmp_.get_bc(0U, src, Vias),
+                      time_at_dest_.get(k));
     }
   }
 
@@ -1342,9 +1353,8 @@ struct raptor_impl {
   std::uint32_t has_reusable_round_times_{0U};
   cuda::std::span<location_idx_t const> dest_locs_;
   std::uint32_t n_dest_locs_{0U};
-  // Destinations walks do not reach (sorted): virtual locations of a
-  // destination stop.
-  cuda::std::span<location_idx_t const> walk_skip_;
+  // Virtual locations of destination stops (sorted by virt_).
+  cuda::std::span<dest_virt const> dest_virts_;
 
   // earliest transports per flat (route,stop)
   cuda::std::span<std::uint32_t> et_result_;

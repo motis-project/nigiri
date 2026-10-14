@@ -764,6 +764,29 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
     }
 
+    if (is_last_leg) {
+      // A trip arriving at a virtual location of the destination stop arrives
+      // at the stop (as counted in the search).
+      auto at_virt = std::optional<std::pair<journey::leg, journey::leg>>{};
+      auto const try_virt = [&](location_idx_t const x) {
+        if (!at_virt.has_value()) {
+          at_virt = check_fp(k, l, curr_time, footpath{x, 0_u8_minutes}, false,
+                             false);
+        }
+      };
+      tt.locations_.for_each_virt(l, try_virt);
+      if (rtt != nullptr && q.prf_idx_ == kDefaultProfile) {
+        rtt->for_each_rt_virt([&](location_idx_t const x, rt_location_idx_t) {
+          if (rtt->base(x) == l) {
+            try_virt(x);
+          }
+        });
+      }
+      if (at_virt.has_value()) {
+        return std::move(*at_virt);
+      }
+    }
+
     trace_reconstruct("CHECKING FOOTPATHS OF {}\n", loc{tt, l});
     // As in the search: footpaths from a source with td footpaths are
     // time-dependent, all others are static.
@@ -833,7 +856,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
     auto [fp_leg, transport_leg] = get_legs(k, l);
     l = kFwd ? transport_leg.from_ : transport_leg.to_;
     // don't add a 0-minute footpath at the end (fwd) or beginning (bwd)
-    if (i != 0 || fp_leg.from_ != fp_leg.to_ ||
+    if (i != 0 ||
+        rt::base(tt, rtt, fp_leg.from_) != rt::base(tt, rtt, fp_leg.to_) ||
         fp_leg.dep_time_ != fp_leg.arr_time_) {
       j.add(std::move(fp_leg));
     }
