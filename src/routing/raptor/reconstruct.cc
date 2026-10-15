@@ -27,6 +27,63 @@ bool is_journey_start(timetable const& tt,
   });
 }
 
+via_counts count_vias(timetable const& tt,
+                      rt_timetable const* rtt,
+                      query const& q,
+                      journey const& j) {
+  auto counts = via_counts{.before_ = std::vector<via_offset_t>(j.legs_.size()),
+                           .stay_ = std::vector<duration_t>(j.legs_.size())};
+  if (q.via_stops_.empty()) {
+    return counts;
+  }
+  auto v = via_offset_t{0U};
+  auto const is_via = [&](location_idx_t const l) {
+    return v != q.via_stops_.size() &&
+           matches(tt, location_match_mode::kEquivalent,
+                   q.via_stops_[v].location_, l);
+  };
+  for (auto i = 0U; i != j.legs_.size(); ++i) {
+    auto const& leg = j.legs_[i];
+    counts.before_[i] = v;
+    auto const count_walk = [&](duration_t walk) {
+      auto const from = i == 0U ? leg.dep_time_ : j.legs_[i - 1U].arr_time_;
+      auto const to =
+          i + 1U == j.legs_.size() ? leg.arr_time_ : j.legs_[i + 1U].dep_time_;
+      for (auto const l : {leg.from_, leg.to_}) {
+        if (is_via(l) && from + walk + q.via_stops_[v].stay_ <= to) {
+          walk += q.via_stops_[v].stay_;
+          if (l == leg.from_) {
+            counts.stay_[i] += q.via_stops_[v].stay_;
+          }
+          ++v;
+        }
+        if (leg.from_ == leg.to_) {
+          break;
+        }
+      }
+    };
+    std::visit(
+        utl::overloaded{[&](journey::run_enter_exit const& t) {
+                          auto const fr = rt::frun{tt, rtt, t.r_};
+                          for (auto s = t.stop_range_.from_;
+                               s != t.stop_range_.to_; ++s) {
+                            if (v != q.via_stops_.size() &&
+                                q.via_stops_[v].stay_ == 0_minutes &&
+                                is_via(fr[s].get_location_idx())) {
+                              ++v;
+                            }
+                          }
+                        },
+                        [&](footpath const& fp) {
+                          count_walk(adjusted_transfer_time(
+                              q.transfer_time_settings_, fp.duration()));
+                        },
+                        [&](offset const& o) { count_walk(o.duration()); }},
+        leg.uses_);
+  }
+  return counts;
+}
+
 template <direction SearchDir, via_offset_t Vias>
 std::optional<journey::leg> find_start_footpath(timetable const& tt,
                                                 query const& q,
@@ -828,39 +885,27 @@ void reconstruct_journey_with_vias(timetable const& tt,
     j.add(std::move(*init_fp));
   }
 
+  // Journey is always returned in order START -> END (as presented to user) but
+  // is reconstructed in opposite direction as search direction (query
+  // direction). If direction is kBackward, flip query to match journey
+  auto journey_q = q;
+  if constexpr (!kFwd) {
+    journey_q.flip_dir();
+  }
+
   if constexpr (kFwd) {
     std::reverse(begin(j.legs_), end(j.legs_));
   } else {
     // adjust footpaths so that they always begin at the arrival time of
-    // the previous leg
-    v = static_cast<via_offset_t>(q.via_stops_.size());
+    // the previous leg (and the via stay there)
+    auto const vias = count_vias(tt, rtt, journey_q, j);
     for (auto it = std::next(j.legs_.begin()); it != j.legs_.end(); ++it) {
       std::visit(
           utl::overloaded{
-              [&](journey::run_enter_exit const& t) {
-                auto const fr = rt::frun{tt, rtt, t.r_};
-                for (auto i = t.stop_range_.from_; i != t.stop_range_.to_;
-                     ++i) {
-                  if (v != 0 && q.via_stops_[v - 1].stay_ == 0_minutes &&
-                      matches(tt, location_match_mode::kEquivalent,
-                              q.via_stops_[v - 1].location_,
-                              fr[i].get_location_idx())) {
-                    --v;
-                  }
-                }
-              },
+              [&](journey::run_enter_exit const&) {},
               [&](footpath const&) {
-                auto stay = 0_minutes;
-                if (v != 0 &&
-                    matches(tt, location_match_mode::kEquivalent,
-                            q.via_stops_[v - 1].location_, it->from_)) {
-                  stay = q.via_stops_[v - 1].stay_;
-                  --v;
-                }
-                if (v != 0 && matches(tt, location_match_mode::kEquivalent,
-                                      q.via_stops_[v - 1].location_, it->to_)) {
-                  --v;
-                }
+                auto const stay = vias.stay_[static_cast<std::size_t>(
+                    std::distance(j.legs_.begin(), it))];
                 auto const diff =
                     it->dep_time_ - std::prev(it)->arr_time_ - stay;
                 // A time-dependent footpath may only be usable later: it
@@ -893,14 +938,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
               }},
           it->uses_);
     }
-  }
-
-  // Journey is always returned in order START -> END (as presented to user) but
-  // is reconstructed in opposite direction as search direction (query
-  // direction). If direction is kBackward, flip query to match journey
-  auto journey_q = q;
-  if constexpr (!kFwd) {
-    journey_q.flip_dir();
   }
 
   optimize_footpaths(tt, rtt, journey_q, j);
