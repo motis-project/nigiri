@@ -310,3 +310,85 @@ TEST(routing, DISABLED_via_stay_with_changed_transfer_stop) {
     }
   }
 }
+
+namespace {
+
+// A --T1--> S1 --T2--> S2 --T3--> B, S1 and S2 are stops of the via station S
+// (too far apart to walk). The 10 minute stay fits only at S2: staying at S1
+// misses T2.
+mem_dir pass_through_files() {
+  return mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Etc/UTC
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,0,
+S,S,,1.0,2.0,,1,
+S1,S1,,1.0,2.0,,0,S
+S2,S2,,1.1,2.0,,0,S
+B,B,,2.0,4.0,,0,
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,T1,,,2
+R2,DB,T2,,,2
+R3,DB,T3,,,2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S,T1,,
+R2,S,T2,,
+R3,S,T3,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:00:00,10:00:00,A,1,0,0
+T1,10:10:00,10:10:00,S1,2,0,0
+T2,10:15:00,10:15:00,S1,1,0,0
+T2,10:25:00,10:25:00,S2,2,0,0
+T3,10:40:00,10:40:00,S2,1,0,0
+T3,10:50:00,10:50:00,B,2,0,0
+)");
+}
+
+}  // namespace
+
+TEST(routing, via_stay_at_later_stop_of_the_station) {
+  auto tt = timetable{};
+  tt.date_range_ = {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}};
+  register_special_stations(tt);
+  load_timetable({}, source_idx_t{0}, pass_through_files(), tt);
+  finalize(tt);
+
+  auto const A = tt.find(location_id{"A", source_idx_t{0}}).value();
+  auto const S = tt.find(location_id{"S", source_idx_t{0}}).value();
+  auto const B = tt.find(location_id{"B", source_idx_t{0}}).value();
+
+  auto const day = sys_days{2024_y / June / 19};
+  for (auto const dir : {direction::kForward, direction::kBackward}) {
+    auto const results = raptor_search(
+        tt, nullptr,
+        routing::query{
+            .start_time_ =
+                dir == direction::kForward
+                    ? interval<unixtime_t>{day + 10h, day + 10h + 15min}
+                    : interval<unixtime_t>{day + 10h + 45min, day + 11h},
+            .start_match_mode_ = routing::location_match_mode::kEquivalent,
+            .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+            .use_start_footpaths_ = false,
+            .start_ = {{dir == direction::kForward ? A : B, 0min, 0U}},
+            .destination_ = {{dir == direction::kForward ? B : A, 0min, 0U}},
+            .via_stops_ = {{S, 10min}}},
+        dir);
+    ASSERT_EQ(1U, results.size()) << to_str(dir);
+    EXPECT_EQ(day + 10h, results.begin()->departure_time()) << to_str(dir);
+    EXPECT_EQ(day + 10h + 50min, results.begin()->arrival_time())
+        << to_str(dir);
+  }
+}

@@ -291,41 +291,8 @@ void optimize_transfers(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q,
                         journey& j) {
-  // v = vias reached in previous legs
-  auto v = via_offset_t{0};
-
+  auto const vias = count_vias(tt, rtt, q, j);
   for (auto i = 0U; i + 2 < j.legs_.size(); ++i) {
-    if (i > 0U) {
-      auto const& prev_leg = j.legs_[i - 1];
-      std::visit(utl::overloaded{
-                     [&](journey::run_enter_exit const& t) {
-                       auto const fr = rt::frun{tt, rtt, t.r_};
-                       for (auto s = t.stop_range_.from_;
-                            s != t.stop_range_.to_; ++s) {
-                         if (v != q.via_stops_.size() &&
-                             q.via_stops_[v].stay_ == 0_minutes &&
-                             matches(tt, location_match_mode::kEquivalent,
-                                     q.via_stops_[v].location_,
-                                     fr[s].get_location_idx())) {
-                           ++v;
-                         }
-                       }
-                     },
-                     [&](footpath const&) {
-                       if (v != q.via_stops_.size() &&
-                           matches(tt, location_match_mode::kEquivalent,
-                                   q.via_stops_[v].location_, prev_leg.from_)) {
-                         ++v;
-                       }
-                       if (v != q.via_stops_.size() &&
-                           matches(tt, location_match_mode::kEquivalent,
-                                   q.via_stops_[v].location_, prev_leg.to_)) {
-                         ++v;
-                       }
-                     }},
-                 prev_leg.uses_);
-    }
-
     auto& leg_from = j.legs_[i];
     auto& leg_footpath = j.legs_[i + 1];
     auto& leg_to = j.legs_[i + 2];
@@ -338,7 +305,7 @@ void optimize_transfers(timetable const& tt,
     auto& ree_from = get<journey::run_enter_exit>(leg_from.uses_);
     auto& ree_to = get<journey::run_enter_exit>(leg_to.uses_);
 
-    auto current_v = v;
+    auto current_v = vias.before_[i];
     // footpaths from or to a via stop with stay duration != 0 are kept as is
     auto keep_transfer = false;
 
