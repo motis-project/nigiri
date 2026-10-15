@@ -47,6 +47,12 @@ transit_realtime::FeedMessage to_msg(
           x->mutable_stop_time_properties()->set_assigned_stop_id(*s.assigned_);
         }
       }
+      if (s.is_no_data_) {
+        x->set_schedule_relationship(
+            transit_realtime::
+                TripUpdate_StopTimeUpdate_ScheduleRelationship_NO_DATA);
+        continue;
+      }
       if (s.arr_delay_.has_value()) {
         x->mutable_arrival()->set_delay(*s.arr_delay_ * 60);
       }
@@ -79,7 +85,8 @@ transit_realtime::FeedMessage to_feed_msg(std::vector<trip> const& trip_delays,
                              .arr_delay_ = is_dep ? std::nullopt : delay,
                              .dep_delay_ = is_dep ? delay : std::nullopt,
                              .has_seq_ = d.seq_.has_value(),
-                             .has_stop_id_ = d.stop_id_.has_value()};
+                             .has_stop_id_ = d.stop_id_.has_value(),
+                             .is_no_data_ = d.no_data_};
                 })};
           }),
       msg_time);

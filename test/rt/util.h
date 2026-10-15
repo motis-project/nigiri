@@ -24,6 +24,7 @@ struct trip {
     std::optional<unsigned> seq_{};
     event_type ev_type_;
     int delay_minutes_{0};
+    bool no_data_{false};
   };
   std::string trip_id_;
   std::vector<delay> delays_;
@@ -50,6 +51,7 @@ struct stu {
   // there is no stop_time_properties.
   bool is_assigned_as_stop_id_{false};
   bool is_skipped_{false};
+  bool is_no_data_{false};
 };
 
 struct trip_update {

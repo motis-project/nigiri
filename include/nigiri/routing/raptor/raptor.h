@@ -724,21 +724,25 @@ private:
     return is_dest_[stop] ? stop : l;
   }
 
-  // The via states after stopping at l in via state v, with the stays so far:
-  // a via with a stay counts here or later (stay at another of its stops), a
-  // via without a stay always counts here (never later than not counting).
-  template <typename Fn>
-  void for_each_via_state(std::size_t const l,
-                          unsigned const v,
-                          duration_t const stay,
-                          Fn&& fn) const {
-    auto const is_via = v != Vias && is_via_[v][l];
-    if (!is_via || via_stops_[v].stay_ != 0_minutes) {
-      fn(v, stay);
-    }
-    if (is_via) {
-      fn(v + 1U, stay + via_stops_[v].stay_);
-    }
+  // Via states [first, last] at l, reached with v vias:
+  // l is not the next via:
+  //   -> v
+  // Via stay duration == 0:
+  //   -> v+1
+  // Via stay duration != 0:
+  //   - v (option not to spend the stay -> leave earlier)
+  //   - v+1 (spend the stay -> leave later)
+  std::pair<unsigned, unsigned> next_via_states(std::size_t const l,
+                                                unsigned const v) const {
+    auto const is_via =
+        v < Vias && is_via_[v][static_cast<bitvec::size_type>(l)];
+    auto const last = is_via ? v + 1U : v;
+    auto const first = is_via && via_stops_[v].stay_ == 0_minutes ? last : v;
+    return {first, last};
+  }
+
+  duration_t via_stay(unsigned const v, unsigned const target_v) const {
+    return target_v == v ? 0_minutes : via_stops_[v].stay_;
   }
 
   // No change at l, but one-to-all reports the arrival (not marked: nothing
@@ -764,90 +768,86 @@ private:
           continue;
         }
 
-        for_each_via_state(
-            i, v, 0_minutes,
-            [&](unsigned const target_v, duration_t const stay) {
-              auto const is_dest = target_v == Vias && is_dest_[i];
+        auto const [first_v, last_v] = next_via_states(i, v);
+        for (auto target_v = first_v; target_v <= last_v; ++target_v) {
+          auto const stay = via_stay(v, target_v);
+          auto const is_dest = target_v == Vias && is_dest_[i];
 
-              trace(
-                  "  loc={}, v={}, tmp={}, is_dest={}, target_v={}, stay={}\n",
-                  loc{tt_, location_idx_t{i}}, v, to_unix(tmp_time), is_dest,
-                  target_v, stay);
+          trace("  loc={}, v={}, tmp={}, is_dest={}, target_v={}, stay={}\n",
+                loc{tt_, location_idx_t{i}}, v, to_unix(tmp_time), is_dest,
+                target_v, stay);
 
-              auto const is_dest_arrival = !is_intermodal_dest() && is_dest;
-              auto const stop_transfer_time =
-                  get_transfer_time(location_idx_t{i});
-              if constexpr (SearchMode == search_mode::kOneToAll) {
-                // A stop that bans changes has no walks to its virtual
-                // locations (a walk would be a change there, its trips can
-                // depart from the stop): a trip arriving at one arrives at
-                // the stop.
-                auto const l = location_idx_t{static_cast<unsigned>(i)};
-                if (auto const stop = Rt ? rtt_->base(l) : tt_.base(l);
-                    stop != l &&
-                    get_transfer_time(stop) == kNoTransferAllowed) {
-                  report_arrival(k, to_idx(stop), target_v, tmp_time);
-                }
-              }
-              if (!is_dest_arrival &&
-                  stop_transfer_time == kNoTransferAllowed) {
-                if constexpr (SearchMode == search_mode::kOneToAll) {
-                  report_arrival(k, i, target_v, tmp_time);
-                }
-                return;
-              }
-              auto const transfer_time =
-                  is_dest_arrival
-                      ? 0
-                      : dir(adjusted_transfer_time(
-                            transfer_time_settings_,
-                            static_cast<int>(stop_transfer_time.count())));
-              auto const fp_target_time =
-                  clamp(tmp_time + transfer_time + dir(stay.count()));
+          auto const is_dest_arrival = !is_intermodal_dest() && is_dest;
+          auto const stop_transfer_time = get_transfer_time(location_idx_t{i});
+          if constexpr (SearchMode == search_mode::kOneToAll) {
+            // A stop that bans changes has no walks to its virtual
+            // locations (a walk would be a change there, its trips can
+            // depart from the stop): a trip arriving at one arrives at
+            // the stop.
+            auto const l = location_idx_t{static_cast<unsigned>(i)};
+            if (auto const stop = Rt ? rtt_->base(l) : tt_.base(l);
+                stop != l && get_transfer_time(stop) == kNoTransferAllowed) {
+              report_arrival(k, to_idx(stop), target_v, tmp_time);
+            }
+          }
+          if (!is_dest_arrival && stop_transfer_time == kNoTransferAllowed) {
+            if constexpr (SearchMode == search_mode::kOneToAll) {
+              report_arrival(k, i, target_v, tmp_time);
+            }
+            continue;
+          }
+          auto const transfer_time =
+              is_dest_arrival
+                  ? 0
+                  : dir(adjusted_transfer_time(
+                        transfer_time_settings_,
+                        static_cast<int>(stop_transfer_time.count())));
+          auto const fp_target_time =
+              clamp(tmp_time + transfer_time + dir(stay.count()));
 
-              if (is_dest_arrival) {
-                if (auto const stop = counts_at(i);
-                    stop != i && is_better(fp_target_time, best_[stop][Vias]) &&
-                    is_better_loose(fp_target_time, time_at_dest_[k])) {
-                  round_times_[k][stop][Vias] = fp_target_time;
-                  best_[stop][Vias] = fp_target_time;
-                  update_time_at_dest(k, fp_target_time);
-                }
-              }
+          if (is_dest_arrival) {
+            if (auto const stop = counts_at(i);
+                stop != i && is_better(fp_target_time, best_[stop][Vias]) &&
+                is_better_loose(fp_target_time, time_at_dest_[k])) {
+              round_times_[k][stop][Vias] = fp_target_time;
+              best_[stop][Vias] = fp_target_time;
+              update_time_at_dest(k, fp_target_time);
+            }
+          }
 
-              if (bounds_last_k_ == 0U &&
-                  is_better(fp_target_time, best_[i][target_v])) {
-                round_times_[k][i][target_v] =
-                    get_best(fp_target_time, round_times_[k][i][target_v]);
-              }
+          if (bounds_last_k_ == 0U &&
+              is_better(fp_target_time, best_[i][target_v])) {
+            round_times_[k][i][target_v] =
+                get_best(fp_target_time, round_times_[k][i][target_v]);
+          }
 
-              trace(
-                  "    transfer_time={}, fp_target_time={}, best@target={}, "
-                  "dest={}\n",
-                  transfer_time, to_unix(fp_target_time),
-                  to_unix(best_[i][target_v]), to_unix(time_at_dest_[k]));
+          trace(
+              "    transfer_time={}, fp_target_time={}, best@target={}, "
+              "dest={}\n",
+              transfer_time, to_unix(fp_target_time),
+              to_unix(best_[i][target_v]), to_unix(time_at_dest_[k]));
 
-              if (is_better(fp_target_time, best_[i][target_v]) &&
-                  is_better_loose(fp_target_time, time_at_dest_[k])) {
-                if (!lb_reachable(i) ||
-                    !is_better_loose(fp_target_time + dir(get_lb(i)),
-                                     time_at_dest_[k])) {
-                  ++stats_.fp_update_prevented_by_lower_bound_;
-                  return;
-                }
-                if (!within_bounds(k, i, fp_target_time, target_v)) {
-                  return;
-                }
+          if (is_better(fp_target_time, best_[i][target_v]) &&
+              is_better_loose(fp_target_time, time_at_dest_[k])) {
+            if (!lb_reachable(i) ||
+                !is_better_loose(fp_target_time + dir(get_lb(i)),
+                                 time_at_dest_[k])) {
+              ++stats_.fp_update_prevented_by_lower_bound_;
+              continue;
+            }
+            if (!within_bounds(k, i, fp_target_time, target_v)) {
+              continue;
+            }
 
-                ++stats_.n_earliest_arrival_updated_by_footpath_;
-                round_times_[k][i][target_v] = fp_target_time;
-                best_[i][target_v] = fp_target_time;
-                state_.station_mark_.set(i, true);
-                if (is_dest) {
-                  update_time_at_dest(k, fp_target_time);
-                }
-              }
-            });
+            ++stats_.n_earliest_arrival_updated_by_footpath_;
+            round_times_[k][i][target_v] = fp_target_time;
+            best_[i][target_v] = fp_target_time;
+            state_.station_mark_.set(i, true);
+            if (is_dest) {
+              update_time_at_dest(k, fp_target_time);
+            }
+          }
+        }
       }
     });
   }
@@ -871,102 +871,97 @@ private:
         return;
       }
 
-      for_each_transfer<
-          SearchDir>(tt_, rtt_, prf_idx_, l_idx, [&](footpath const& fp) {
-        if (!kFwd && use_td_fps && has_td_fps(fp.target(), true)) {
-          return;
-        }
+      for_each_transfer<SearchDir>(
+          tt_, rtt_, prf_idx_, l_idx, [&](footpath const& fp) {
+            if (!kFwd && use_td_fps && has_td_fps(fp.target(), true)) {
+              return;
+            }
 
-        ++stats_.n_footpaths_visited_;
+            ++stats_.n_footpaths_visited_;
 
-        auto const target = to_idx(fp.target());
+            auto const target = to_idx(fp.target());
 
-        for (auto v = 0U; v != Vias + 1; ++v) {
-          auto const tmp_time = tmp_[i][v];
-          if (tmp_time == kInvalid) {
-            continue;
-          }
+            for (auto v = 0U; v != Vias + 1; ++v) {
+              auto const tmp_time = tmp_[i][v];
+              if (tmp_time == kInvalid) {
+                continue;
+              }
 
-          for_each_via_state(
-              i, v, 0_minutes,
-              [&](unsigned const start_v, duration_t const start_stay) {
-                for_each_via_state(
-                    target, start_v, start_stay,
-                    [&](unsigned const target_v, duration_t const stay) {
-                      auto const fp_target_time =
-                          clamp(tmp_time + dir(adjusted_transfer_time(
-                                                   transfer_time_settings_,
-                                                   fp.duration().count()) +
-                                               stay.count()));
-                      if (bounds_last_k_ == 0U &&
-                          is_better(fp_target_time, best_[target][target_v])) {
-                        round_times_[k][target][target_v] = get_best(
-                            fp_target_time, round_times_[k][target][target_v]);
-                      }
+              auto const [first_start_v, last_start_v] = next_via_states(i, v);
+              for (auto start_v = first_start_v; start_v <= last_start_v;
+                   ++start_v) {
+                auto const [first_v, last_v] = next_via_states(target, start_v);
+                for (auto target_v = first_v; target_v <= last_v; ++target_v) {
+                  auto const stay =
+                      via_stay(v, start_v) + via_stay(start_v, target_v);
+                  auto const fp_target_time =
+                      clamp(tmp_time +
+                            dir(adjusted_transfer_time(transfer_time_settings_,
+                                                       fp.duration().count()) +
+                                stay.count()));
+                  if (bounds_last_k_ == 0U &&
+                      is_better(fp_target_time, best_[target][target_v])) {
+                    round_times_[k][target][target_v] = get_best(
+                        fp_target_time, round_times_[k][target][target_v]);
+                  }
 
-                      if (is_better(fp_target_time, best_[target][target_v]) &&
-                          is_better_loose(fp_target_time, time_at_dest_[k])) {
-                        if (!lb_reachable(target) ||
-                            !is_better_loose(
-                                fp_target_time + dir(get_lb(target)),
-                                time_at_dest_[k])) {
-                          ++stats_.fp_update_prevented_by_lower_bound_;
-                          trace_upd(
-                              "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) "
-                              "--{}--> (to={}, "
-                              "best={}) --> update => {}, LB={}, "
-                              "LB_AT_DEST={}, DEST={}\n",
-                              k, loc{tt_, l_idx},
-                              to_unix(tmp_[to_idx(l_idx)][v]),
-                              adjusted_transfer_time(transfer_time_settings_,
-                                                     fp.duration()),
-                              loc{tt_, fp.target()}, best_[target][target_v],
-                              to_unix(fp_target_time), get_lb(target),
-                              to_unix(
-                                  clamp(fp_target_time + dir(get_lb(target)))),
-                              to_unix(time_at_dest_[k]));
-                          return;
-                        }
-                        if (!within_bounds(k, target, fp_target_time,
-                                           target_v)) {
-                          return;
-                        }
+                  if (is_better(fp_target_time, best_[target][target_v]) &&
+                      is_better_loose(fp_target_time, time_at_dest_[k])) {
+                    if (!lb_reachable(target) ||
+                        !is_better_loose(fp_target_time + dir(get_lb(target)),
+                                         time_at_dest_[k])) {
+                      ++stats_.fp_update_prevented_by_lower_bound_;
+                      trace_upd(
+                          "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) "
+                          "--{}--> (to={}, "
+                          "best={}) --> update => {}, LB={}, "
+                          "LB_AT_DEST={}, DEST={}\n",
+                          k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
+                          adjusted_transfer_time(transfer_time_settings_,
+                                                 fp.duration()),
+                          loc{tt_, fp.target()}, best_[target][target_v],
+                          to_unix(fp_target_time), get_lb(target),
+                          to_unix(clamp(fp_target_time + dir(get_lb(target)))),
+                          to_unix(time_at_dest_[k]));
+                      continue;
+                    }
+                    if (!within_bounds(k, target, fp_target_time, target_v)) {
+                      continue;
+                    }
 
-                        trace_upd(
-                            "┊ ├k={}   footpath: ({}, tmp={}) --{}--> ({}, "
-                            "best={}) --> "
-                            "update => {}, v={}->{}, stay={}\n",
-                            k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
-                            adjusted_transfer_time(transfer_time_settings_,
-                                                   fp.duration()),
-                            loc{tt_, fp.target()},
-                            to_unix(best_[target][target_v]),
-                            to_unix(fp_target_time), v, target_v, stay);
+                    trace_upd(
+                        "┊ ├k={}   footpath: ({}, tmp={}) --{}--> ({}, "
+                        "best={}) --> "
+                        "update => {}, v={}->{}, stay={}\n",
+                        k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
+                        adjusted_transfer_time(transfer_time_settings_,
+                                               fp.duration()),
+                        loc{tt_, fp.target()}, to_unix(best_[target][target_v]),
+                        to_unix(fp_target_time), v, target_v, stay);
 
-                        ++stats_.n_earliest_arrival_updated_by_footpath_;
-                        round_times_[k][target][target_v] = fp_target_time;
-                        best_[target][target_v] = fp_target_time;
-                        state_.station_mark_.set(target, true);
-                        if (target_v == Vias && is_dest_[target] &&
-                            counts_at(target) == target) {
-                          update_time_at_dest(k, fp_target_time);
-                        }
-                      } else {
-                        trace(
-                            "┊ ├k={}   NO FP UPDATE: {} [best={}] --{}--> {} "
-                            "[best={}, time_at_dest={}]\n",
-                            k, loc{tt_, l_idx},
-                            to_unix(best_[to_idx(l_idx)][target_v]),
-                            adjusted_transfer_time(transfer_time_settings_,
-                                                   fp.duration()),
-                            loc{tt_, fp.target()},
-                            to_unix(best_[target][target_v]),
-                            to_unix(time_at_dest_[k]));
-                      }
-                    });
-              });
-        }
-      });
+                    ++stats_.n_earliest_arrival_updated_by_footpath_;
+                    round_times_[k][target][target_v] = fp_target_time;
+                    best_[target][target_v] = fp_target_time;
+                    state_.station_mark_.set(target, true);
+                    if (target_v == Vias && is_dest_[target] &&
+                        counts_at(target) == target) {
+                      update_time_at_dest(k, fp_target_time);
+                    }
+                  } else {
+                    trace(
+                        "┊ ├k={}   NO FP UPDATE: {} [best={}] --{}--> {} "
+                        "[best={}, time_at_dest={}]\n",
+                        k, loc{tt_, l_idx},
+                        to_unix(best_[to_idx(l_idx)][target_v]),
+                        adjusted_transfer_time(transfer_time_settings_,
+                                               fp.duration()),
+                        loc{tt_, fp.target()}, to_unix(best_[target][target_v]),
+                        to_unix(time_at_dest_[k]));
+                  }
+                }
+              }
+            }
+          });
     });
   }
 
@@ -1003,84 +998,76 @@ private:
 
               auto const target = to_idx(fp_target);
 
-              for_each_via_state(
-                  i, v, 0_minutes,
-                  [&](unsigned const start_v, duration_t const start_stay) {
-                    for_each_via_state(
-                        target, start_v, start_stay,
-                        [&](unsigned const target_v, duration_t const stay) {
-                          auto const fp_target_time = clamp(
-                              tmp_time + dir(duration.count() + stay.count()));
-                          if (bounds_last_k_ == 0U &&
-                              is_better(fp_target_time,
-                                        best_[target][target_v])) {
-                            round_times_[k][target][target_v] =
-                                get_best(fp_target_time,
-                                         round_times_[k][target][target_v]);
-                          }
+              auto const [first_start_v, last_start_v] = next_via_states(i, v);
+              for (auto start_v = first_start_v; start_v <= last_start_v;
+                   ++start_v) {
+                auto const [first_v, last_v] = next_via_states(target, start_v);
+                for (auto target_v = first_v; target_v <= last_v; ++target_v) {
+                  auto const stay =
+                      via_stay(v, start_v) + via_stay(start_v, target_v);
+                  auto const fp_target_time =
+                      clamp(tmp_time + dir(duration.count() + stay.count()));
+                  if (bounds_last_k_ == 0U &&
+                      is_better(fp_target_time, best_[target][target_v])) {
+                    round_times_[k][target][target_v] = get_best(
+                        fp_target_time, round_times_[k][target][target_v]);
+                  }
 
-                          if (is_better(fp_target_time,
-                                        best_[target][target_v]) &&
-                              is_better_loose(fp_target_time,
-                                              time_at_dest_[k])) {
-                            if (!lb_reachable(target) ||
-                                !is_better_loose(
-                                    fp_target_time + dir(get_lb(target)),
-                                    time_at_dest_[k])) {
-                              ++stats_.fp_update_prevented_by_lower_bound_;
-                              trace_upd(
-                                  "┊ ├k={} *** LB NO TD FP UPD: (from={}, "
-                                  "tmp={}) --{}--> "
-                                  "(to={}, best={}) --> update => {}, LB={}, "
-                                  "LB_AT_DEST={}, "
-                                  "DEST={}\n",
-                                  k, loc{tt_, l_idx},
-                                  to_unix(tmp_[to_idx(l_idx)][v]),
-                                  fp.duration(), loc{tt_, fp.target()},
-                                  best_[target][target_v], fp_target_time,
-                                  get_lb(target),
-                                  to_unix(clamp(fp_target_time +
-                                                dir(get_lb(target)))),
-                                  to_unix(time_at_dest_[k]));
-                              return;
-                            }
-                            if (!within_bounds(k, target, fp_target_time,
-                                               target_v)) {
-                              return;
-                            }
+                  if (is_better(fp_target_time, best_[target][target_v]) &&
+                      is_better_loose(fp_target_time, time_at_dest_[k])) {
+                    if (!lb_reachable(target) ||
+                        !is_better_loose(fp_target_time + dir(get_lb(target)),
+                                         time_at_dest_[k])) {
+                      ++stats_.fp_update_prevented_by_lower_bound_;
+                      trace_upd(
+                          "┊ ├k={} *** LB NO TD FP UPD: (from={}, "
+                          "tmp={}) --{}--> "
+                          "(to={}, best={}) --> update => {}, LB={}, "
+                          "LB_AT_DEST={}, "
+                          "DEST={}\n",
+                          k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
+                          fp.duration(), loc{tt_, fp.target()},
+                          best_[target][target_v], fp_target_time,
+                          get_lb(target),
+                          to_unix(clamp(fp_target_time + dir(get_lb(target)))),
+                          to_unix(time_at_dest_[k]));
+                      continue;
+                    }
+                    if (!within_bounds(k, target, fp_target_time, target_v)) {
+                      continue;
+                    }
 
-                            trace_upd(
-                                "┊ ├k={}   td footpath: ({}, tmp={}) --{}--> "
-                                "({}, best={}) "
-                                "--> "
-                                "update => {}, v={}->{}, stay={}\n",
-                                k, loc{tt_, l_idx},
-                                to_unix(tmp_[to_idx(l_idx)][v]), fp.duration(),
-                                loc{tt_, fp.target()},
-                                to_unix(best_[target][target_v]),
-                                to_unix(fp_target_time), v, target_v, stay);
+                    trace_upd(
+                        "┊ ├k={}   td footpath: ({}, tmp={}) --{}--> "
+                        "({}, best={}) "
+                        "--> "
+                        "update => {}, v={}->{}, stay={}\n",
+                        k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
+                        fp.duration(), loc{tt_, fp.target()},
+                        to_unix(best_[target][target_v]),
+                        to_unix(fp_target_time), v, target_v, stay);
 
-                            ++stats_.n_earliest_arrival_updated_by_footpath_;
-                            round_times_[k][target][target_v] = fp_target_time;
-                            best_[target][target_v] = fp_target_time;
-                            state_.station_mark_.set(target, true);
-                            if (target_v == Vias && is_dest_[target] &&
-                                counts_at(target) == target) {
-                              update_time_at_dest(k, fp_target_time);
-                            }
-                          } else {
-                            trace(
-                                "┊ ├k={}   NO TD FP UPDATE: {} [best={}] "
-                                "--{}--> {} "
-                                "[best={}, time_at_dest={}]\n",
-                                k, loc{tt_, l_idx}, best_[to_idx(l_idx)][v],
-                                adjusted_transfer_time(transfer_time_settings_,
-                                                       fp.duration()),
-                                loc{tt_, fp.target()}, best_[target][v],
-                                to_unix(time_at_dest_[k]));
-                          }
-                        });
-                  });
+                    ++stats_.n_earliest_arrival_updated_by_footpath_;
+                    round_times_[k][target][target_v] = fp_target_time;
+                    best_[target][target_v] = fp_target_time;
+                    state_.station_mark_.set(target, true);
+                    if (target_v == Vias && is_dest_[target] &&
+                        counts_at(target) == target) {
+                      update_time_at_dest(k, fp_target_time);
+                    }
+                  } else {
+                    trace(
+                        "┊ ├k={}   NO TD FP UPDATE: {} [best={}] "
+                        "--{}--> {} "
+                        "[best={}, time_at_dest={}]\n",
+                        k, loc{tt_, l_idx}, best_[to_idx(l_idx)][v],
+                        adjusted_transfer_time(transfer_time_settings_,
+                                               fp.duration()),
+                        loc{tt_, fp.target()}, best_[target][v],
+                        to_unix(time_at_dest_[k]));
+                  }
+                }
+              }
 
               return utl::cflow::kContinue;
             });

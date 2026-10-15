@@ -67,7 +67,7 @@ template <typename Fn>
 void resolve_static_trip_id(date::sys_days const today,
                             timetable const& tt,
                             source_idx_t const src,
-                            std::string const& trip_id,
+                            std::string_view const trip_id,
                             std::optional<date::sys_days> const& start_date,
                             std::optional<duration_t> const& start_time,
                             Fn&& fn) {
