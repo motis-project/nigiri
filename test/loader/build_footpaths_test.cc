@@ -163,13 +163,12 @@ TEST(loader, build_footpaths_same_feed_walk_respects_transfer_time) {
                   {{"ET3", "RE3", {{"E3", "10:40"}, {"E9", "11:00"}}}}, "")});
   auto const walk = [&](location_idx_t const to) {
     auto d = std::optional<duration_t>{};
-    routing::for_each_transfer<direction::kForward>(
-        tt, nullptr, kDefaultProfile, test::lidx(tt, "E1"),
-        [&](footpath const fp) {
-          if (fp.target() == to && (!d.has_value() || fp.duration() < *d)) {
-            d = fp.duration();
-          }
-        });
+    for (auto const fp : routing::get_transfers<direction::kForward>(
+             tt, nullptr, kDefaultProfile, test::lidx(tt, "E1"))) {
+      if (fp.target() == to && (!d.has_value() || fp.duration() < *d)) {
+        d = fp.duration();
+      }
+    }
     return d;
   };
   auto const to_e2 = walk(test::lidx(tt, "E2"));

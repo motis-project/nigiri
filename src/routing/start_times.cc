@@ -303,12 +303,11 @@ void get_starts(
         if (tt.locations_.is_virt(l) && at_start.contains(tt.base(l))) {
           return;
         }
-        for_each_transfer(
-            tt, rtt, prf_idx, search_dir, l, [&](footpath const& fp) {
-              update(fp.target(),
-                     o.duration() + adjusted_transfer_time(tts, fp.duration()),
-                     true);
-            });
+        for (auto const fp : get_transfers(tt, rtt, prf_idx, search_dir, l)) {
+          update(fp.target(),
+                 o.duration() + adjusted_transfer_time(tts, fp.duration()),
+                 true);
+        }
       });
     }
   }

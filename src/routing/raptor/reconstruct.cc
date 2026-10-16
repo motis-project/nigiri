@@ -238,17 +238,15 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
     };
 
     auto found = std::optional<journey::leg>{};
-    auto const try_next = [&](footpath const fp) {
+    for (auto const fp : get_transfers<flip(SearchDir)>(tt, rtt, q.prf_idx_,
+                                                        leg_start_location)) {
       found = try_fp(fp);
       if (found.has_value()) {
         trace_rc_fp_start_found;
-      } else {
-        trace_rc_fp_start_no_match;
+        break;
       }
-      return !found.has_value();
-    };
-    for_each_transfer<flip(SearchDir)>(tt, rtt, q.prf_idx_, leg_start_location,
-                                       try_next);
+      trace_rc_fp_start_no_match;
+    }
     if (found.has_value()) {
       return *found;
     }
@@ -857,14 +855,16 @@ void reconstruct_journey_with_vias(timetable const& tt,
       if (!kFwd && is_td_source(x)) {
         return fp_legs;
       }
-      for_each_transfer<flip(SearchDir)>(
-          tt, rtt, q.prf_idx_, x, [&](footpath const fp) {
-            if (kFwd && is_td_source(fp.target())) {
-              return true;
-            }
-            fp_legs = check_fp(k, l, curr_time, fp, true, false);
-            return !fp_legs.has_value();
-          });
+      for (auto const fp :
+           get_transfers<flip(SearchDir)>(tt, rtt, q.prf_idx_, x)) {
+        if (kFwd && is_td_source(fp.target())) {
+          continue;
+        }
+        fp_legs = check_fp(k, l, curr_time, fp, true, false);
+        if (fp_legs.has_value()) {
+          break;
+        }
+      }
       return fp_legs;
     };
     auto static_legs = try_fps(l);

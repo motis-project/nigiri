@@ -1514,15 +1514,6 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
         is_fwd ? j.start_time_ <= start_t : j.start_time_ >= start_t;
     if (!is_journey_start(start_l) || !direct_start_ok) {
       auto best = std::optional<footpath>{};
-      auto const consider = [&](footpath const fp) {
-        // A walk leaves a start stop from the stop (see get_starts).
-        auto const src = fp.target();
-        if ((!best.has_value() || fp.duration() < best->duration()) &&
-            to_idx(src) < tt_.n_locations() && is_journey_start(src) &&
-            !(tt_.locations_.is_virt(src) && is_journey_start(tt_.base(src)))) {
-          best = fp;
-        }
-      };
       // The location the search boarded at (as the CPU reconstruct).
       auto const search_start_l = [&]() {
         auto const& lg = is_fwd ? j.legs_.front() : j.legs_.back();
@@ -1537,8 +1528,16 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
                                      : static_cast<stop_idx_t>(
                                            ree->stop_range_.to_ - 1U)]);
       }();
-      for_each_transfer<flip(SearchDir)>(tt_, rtt_, q.prf_idx_, search_start_l,
-                                         consider);
+      for (auto const fp : get_transfers<flip(SearchDir)>(tt_, rtt_, q.prf_idx_,
+                                                          search_start_l)) {
+        // A walk leaves a start stop from the stop (see get_starts).
+        auto const src = fp.target();
+        if ((!best.has_value() || fp.duration() < best->duration()) &&
+            to_idx(src) < tt_.n_locations() && is_journey_start(src) &&
+            !(tt_.locations_.is_virt(src) && is_journey_start(tt_.base(src)))) {
+          best = fp;
+        }
+      }
       if (best.has_value()) {
         auto const dur = duration_t{adjusted_transfer_time(
             q.transfer_time_settings_, best->duration().count())};

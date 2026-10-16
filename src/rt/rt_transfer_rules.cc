@@ -46,11 +46,11 @@ void add_rt_transfers(timetable const& tt,
         dir == direction::kForward ? event_type::kArr : event_type::kDep;
 
     auto durations = hash_map<location_idx_t, duration_t>{};
-    routing::for_each_transfer(
-        tt, nullptr, kDefaultProfile, dir, p, [&](footpath const fp) {
-          auto const it = durations.emplace(fp.target(), fp.duration()).first;
-          it->second = std::min(it->second, fp.duration());
-        });
+    for (auto const fp :
+         routing::get_transfers(tt, nullptr, kDefaultProfile, dir, p)) {
+      auto const it = durations.emplace(fp.target(), fp.duration()).first;
+      it->second = std::min(it->second, fp.duration());
+    }
     durations.erase(p);
     if (change_time != footpath::kMaxDuration) {
       durations.emplace(p, change_time);
@@ -430,10 +430,11 @@ std::vector<move> find_conflict(timetable const& tt,
                                          ? duration_t{0}
                                          : st.rule_times_[parent]);
   for (auto const l : {x.location_, base}) {
-    routing::for_each_transfer(
-        tt, &rtt, kDefaultProfile,
-        is_arr ? direction::kForward : direction::kBackward, l,
-        [&](footpath const fp) { window = std::max(window, fp.duration()); });
+    for (auto const fp : routing::get_transfers(
+             tt, &rtt, kDefaultProfile,
+             is_arr ? direction::kForward : direction::kBackward, l)) {
+      window = std::max(window, fp.duration());
+    }
     // where changes are banned, an exception holds at any gap
     auto const t = routing::get_transfer_time(tt, &rtt, l);
     window = std::max(window, t == kNoTransferAllowed ? footpath::kMaxDuration

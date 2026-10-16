@@ -252,10 +252,11 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
           return;
         }
 
-        for_each_transfer(
-            tt, rtt, q.prf_idx_,
-            is_boarding ? direction::kForward : direction::kBackward, l,
-            [&](footpath const fp) { locs.insert(fp.target()); });
+        for (auto const fp : get_transfers(
+                 tt, rtt, q.prf_idx_,
+                 is_boarding ? direction::kForward : direction::kBackward, l)) {
+          locs.insert(fp.target());
+        }
 
         if (has_td_arr == nullptr || q.prf_idx_ >= has_td_arr->size() ||
             to_idx(l) >= (*has_td_arr)[q.prf_idx_].size() ||
