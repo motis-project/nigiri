@@ -8,7 +8,6 @@
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
-#include "nigiri/location_routes.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
@@ -251,18 +250,21 @@ struct raptor {
 
       auto any_marked = false;
       state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
-        for (auto const& r : static_routes(tt_, rtt_, location_idx_t{i})) {
-          any_marked = true;
-          state_.route_mark_.set(to_idx(r), true);
-        }
+        auto const l = location_idx_t{i};
         if constexpr (Rt) {
-          for (auto const& rt_t :
-               rtt_->location_rt_transports_[location_idx_t{i}]) {
+          for (auto const& rt_t : rtt_->location_rt_transports_[l]) {
             if (!rtt_->rt_transport_is_cancelled_[to_idx(rt_t)]) {
               any_marked = true;
               state_.rt_transport_mark_.set(to_idx(rt_t), true);
             }
           }
+          if (rtt_->is_rt_location(l)) {
+            return;
+          }
+        }
+        for (auto const& r : tt_.location_routes_[l]) {
+          any_marked = true;
+          state_.route_mark_.set(to_idx(r), true);
         }
       });
 
