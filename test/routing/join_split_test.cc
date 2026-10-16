@@ -456,6 +456,61 @@ std::optional<unixtime_t> seated_arrival(timetable const& tt,
                           : std::optional{begin(res)->dest_time_};
 }
 
+// Two identical copies (a, b) of a chain of trips where every trip has
+// stay-seated transfers to both copies of the next trip
+// => exponentially many stay-seated combinations.
+std::string cross_linked_duplicates_test_files(unsigned const n) {
+  auto stops = std::string{};
+  auto trips = std::string{};
+  auto stop_times = std::string{};
+  auto transfers = std::string{};
+  for (auto i = 0U; i <= n; ++i) {
+    stops += fmt::format("S{0},S{0},,{0}.0,{0}.0,,\n", i);
+  }
+  for (auto i = 0U; i != n; ++i) {
+    auto const dep = 360U + 10U * i;
+    auto const arr = dep + 5U;
+    for (auto const c : {'a', 'b'}) {
+      trips += fmt::format("R,S,{}{},,\n", c, i);
+      stop_times += fmt::format(
+          "{0}{1},{2:02}:{3:02}:00,{2:02}:{3:02}:00,S{1},1,0,0\n"
+          "{0}{1},{4:02}:{5:02}:00,{4:02}:{5:02}:00,S{6},2,0,0\n",
+          c, i, dep / 60U, dep % 60U, arr / 60U, arr % 60U, i + 1U);
+      if (i + 1U != n) {
+        transfers +=
+            fmt::format("4,{0}{1},a{2}\n4,{0}{1},b{2}\n", c, i, i + 1U);
+      }
+    }
+  }
+  return fmt::format(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+{}
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+S,1,1,1,1,1,1,1,20260327,20260327
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R,DB,R,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+{}
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+{}
+# transfers.txt
+transfer_type,from_trip_id,to_trip_id
+{}
+)",
+                     stops, trips, stop_times, transfers);
+}
+
 }  // namespace
 
 // A trip that stays seated in itself is just a trip.
@@ -478,4 +533,22 @@ TEST(join_split, back_edge_keeps_trips) {
                               "B,B,4,,T1,T2\nA,A,4,,T2,T1\n");
   EXPECT_EQ(seated_at("10:30"), seated_arrival(tt, "A", "B", "10:00"));
   EXPECT_EQ(seated_at("11:00"), seated_arrival(tt, "B", "A", "10:35"));
+}
+
+TEST(join_split, cross_linked_duplicates) {
+  constexpr auto const kN = 20U;
+  auto const tt =
+      loader::load({{.tag_ = "test",
+                     .path_ = cross_linked_duplicates_test_files(kN),
+                     .loader_config_ = {.default_tz_ = "Europe/Berlin"}}},
+                   {},
+                   {date::sys_days{2026_y / March / 27},
+                    date::sys_days{2026_y / March / 28}});
+
+  // Too many combinations: all trips added without stay-seated transfers.
+  EXPECT_EQ(2U * kN, tt.transport_traffic_days_.size());
+  for (auto const ranges : tt.trip_transport_ranges_) {
+    ASSERT_EQ(1U, ranges.size());
+    EXPECT_EQ((interval<stop_idx_t>{0U, 2U}), ranges[0].second);
+  }
 }
