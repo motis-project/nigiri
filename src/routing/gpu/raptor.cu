@@ -52,15 +52,6 @@ constexpr std::uint32_t n_bitvec_words(std::uint32_t const n) {
   return n / 32U + 1U;
 }
 
-// A destination that counts at its stop (see raptor.h counts_at).
-bool counts_at_stop(timetable const& tt,
-                    rt_timetable const* rtt,
-                    bitvec const& is_dest,
-                    location_idx_t const l) {
-  auto const stop = rt::base(tt, rtt, l);
-  return stop != l && is_dest.test(to_idx(stop));
-}
-
 struct gpu_timetable::impl {
   using t = timetable;
   using fp_t = decltype(t{}.locations_.footpaths_out_[0]);
@@ -702,15 +693,12 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
   auto dist = dist_to_dest;
   if (rtt != nullptr && prf_idx_ == kDefaultProfile &&
       rtt->n_rt_locations() != 0U) {
-    extend_to_rt_virts(*rtt, is_dest);
+    is_dest.resize(rtt->n_locations());
     extend_to_rt_virts(*rtt, dist);
   }
   auto dest_locs = std::vector<location_idx_t>{};
   is_dest.for_each_set_bit([&](std::uint64_t const i) {
-    auto const l = location_idx_t{static_cast<std::uint32_t>(i)};
-    if (!counts_at_stop(tt, rtt, is_dest, l)) {
-      dest_locs.push_back(l);
-    }
+    dest_locs.push_back(location_idx_t{static_cast<std::uint32_t>(i)});
   });
   state_.impl_->upload_query(kDirIdx, is_dest, dist, td_dist_to_dest,
                              dest_locs);
@@ -1115,10 +1103,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     dest_list.push_back(get_special_station(special_station::kEnd));
   } else {
     is_dest_.for_each_set_bit([&](auto const i) {
-      auto const l = location_idx_t{static_cast<std::uint32_t>(i)};
-      if (!counts_at_stop(tt_, rtt_, is_dest_, l)) {
-        dest_list.push_back(l);
-      }
+      dest_list.push_back(location_idx_t{static_cast<std::uint32_t>(i)});
     });
   }
   if (dest_list.empty()) {

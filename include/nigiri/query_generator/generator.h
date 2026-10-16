@@ -37,6 +37,12 @@ struct generator {
   // uses dest transport mode to randomize coordinates near a location
   geo::latlng pos_near_dest(location_idx_t);
 
+  routing::query make_query() const;
+
+  void add_offsets_for_pos(std::vector<routing::offset>&,
+                           geo::latlng const&,
+                           query_generation::transport_mode const&) const;
+
   timetable const& tt_;
   generator_settings const& s_;
   std::uint32_t seed_;
@@ -65,12 +71,6 @@ private:
       geo::latlng const&, std::uniform_int_distribution<std::uint32_t>&);
 
   std::uint16_t tt_n_days() const;
-
-  routing::query make_query() const;
-
-  void add_offsets_for_pos(std::vector<routing::offset>&,
-                           geo::latlng const&,
-                           query_generation::transport_mode const&) const;
 
   // R-Tree
   geo::point_rtree locations_rtree_;

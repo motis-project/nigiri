@@ -243,8 +243,10 @@ void fold_pair_defaults(timetable& tt,
         // with a different duration? => keep this rule
         any_pair(any_with_children,  // this/children stop pairs
                  [&](transfer_pair const p) {
-                   auto const d = utl::lookup(default_duration, p);
-                   return d.has_value() && d->duration_ != r.duration_;
+                   return utl::lookup(default_duration, p)
+                       .transform([&](default_duration_t const& x) {
+                         return x.duration_ != r.duration_;
+                       });
                  })
 
         // Would removing this rule let a less or equally specific overlapping

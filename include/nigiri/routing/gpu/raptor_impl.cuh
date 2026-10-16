@@ -330,8 +330,7 @@ struct raptor_impl {
         // no footpath leg: the last mile alight -> kEnd is the host's mumo
         // leg; the GPU journey's terminal is the ride's alighting stop
         out->dest_l_ = alight_loc;
-      } else if (n != 0U ||
-                 (alight_loc != cur_l && counts_at(alight_loc) != cur_l) ||
+      } else if (n != 0U || base_location(alight_loc) != cur_l ||
                  train_arr != arr_at_cur /* skip 0min last leg */) {
         // Footpaths are always emitted (even zero minute reflexive transfers).
         // Journey structure: [WALK]? TRANSIT [TRANSIT WALK]*
@@ -641,17 +640,12 @@ struct raptor_impl {
         tmp_time, bc, t_at_dest);
   }
 
-  // Where an arrival at the destination l counts: a virtual location of a
-  // destination stop counts at the stop (see raptor.h). Only asked for
-  // destinations.
   __device__ __forceinline__ location_idx_t
-  counts_at(location_idx_t const l) const {
+  base_location(location_idx_t const l) const {
     auto const i = to_idx(l);
-    auto const stop =
-        i < tt_.n_static_locations_
-            ? tt_.base_[l]
-            : rtt_.rt_base_[rt_location_idx_t{i - tt_.n_static_locations_}];
-    return is_dest_[to_idx(stop)] ? stop : l;
+    return i < tt_.n_static_locations_
+               ? tt_.base_[l]
+               : rtt_.rt_base_[rt_location_idx_t{i - tt_.n_static_locations_}];
   }
 
   __device__ __forceinline__ void relax_fp_target(unsigned const k,
@@ -681,7 +675,7 @@ struct raptor_impl {
       touch_round(k, target_l);
       best_.update_min(target_l, Vias, fp_target_time);
       station_mark_.mark(target);
-      if (is_dest_[target] && counts_at(target_l) == target_l) {
+      if (is_dest_[target]) {
         update_time_at_dest(k, fp_target_time);
       }
     }
@@ -778,12 +772,12 @@ struct raptor_impl {
         tmp_time = tmp_.get(l, Vias);
         if (tmp_time != kInvalid) {
           bc = tmp_.get_bc(0U, l, Vias);
-          auto const is_dest = is_dest_[my_i];
+          auto const stop = intermodal ? l : base_location(l);
 
           // same-station transfer (former update_transfers)
           auto const transfer_time =
               static_cast<int>(tt_.transfer_time_[l].count());
-          auto const is_dest_arrival = !intermodal && is_dest;
+          auto const is_dest_arrival = !intermodal && is_dest_[to_idx(stop)];
           if (is_dest_arrival || transfer_time != kNoTransferAllowedMinutes) {
             relax_fp_target(k, l,
                             is_dest_arrival
@@ -792,14 +786,12 @@ struct raptor_impl {
                                       transfer_time_settings_, transfer_time),
                             tmp_time, bc, t_at_dest);
           }
-          if (is_dest_arrival) {
-            if (auto const stop = counts_at(l);
-                stop != l && is_better_loose(tmp_time, t_at_dest)) {
-              round_times_.update_min(k, stop, Vias, tmp_time, bc);
-              touch_round(k, stop);
-              best_.update_min(stop, Vias, tmp_time);
-              update_time_at_dest(k, tmp_time);
-            }
+          if (is_dest_arrival && stop != l &&
+              is_better_loose(tmp_time, t_at_dest)) {
+            round_times_.update_min(k, stop, Vias, tmp_time, bc);
+            touch_round(k, stop);
+            best_.update_min(stop, Vias, tmp_time);
+            update_time_at_dest(k, tmp_time);
           }
 
           // intermodal egress (former update_intermodal_footpaths)

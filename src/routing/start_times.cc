@@ -414,7 +414,7 @@ void collect_destinations(timetable const& tt,
         dist_to_dest[to_idx(l)] =
             std::min(dist_to_dest[to_idx(l)],
                      static_cast<std::uint16_t>(d.duration_.count()));
-      } else {
+      } else if (!tt.locations_.is_virt(l)) {
         is_dest.set(to_idx(l), true);
       }
       trace_start("  DEST META: {}, duration={}\n", loc{tt, l}, d.duration_);
