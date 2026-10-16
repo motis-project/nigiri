@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "fmt/ostream.h"
 
 #include "utl/verify.h"
@@ -79,6 +81,16 @@ inline void serialize(Ctx&, footpath const*, cista::offset_t const) {}
 
 template <typename Ctx>
 inline void deserialize(Ctx const&, footpath*) {}
+
+inline u8_minutes to_transfer_time(duration_t const d) {
+  return d >= footpath::kMaxDuration
+             ? kNoTransferAllowed
+             : u8_minutes{std::clamp(d, duration_t{0}, duration_t{254})};
+}
+
+inline duration_t to_fp_duration(u8_minutes const t) {
+  return t == kNoTransferAllowed ? footpath::kMaxDuration : duration_t{t};
+}
 
 }  // namespace nigiri
 

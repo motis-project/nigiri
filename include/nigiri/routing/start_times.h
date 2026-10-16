@@ -39,6 +39,8 @@ void get_starts(
     profile_idx_t,
     transfer_time_settings const&);
 
+void expand_td_offsets(timetable const&, rt_timetable const*, query&);
+
 void collect_destinations(timetable const&,
                           std::vector<offset> const& destinations,
                           location_match_mode const,

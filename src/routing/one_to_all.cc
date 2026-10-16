@@ -11,6 +11,7 @@
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/start_times.h"
+#include "nigiri/rt/rt_transfer_rules.h"
 
 namespace nigiri::routing {
 
@@ -27,6 +28,7 @@ template <direction SearchDir, bool Rt>
 void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
                 timetable const& tt,
                 unixtime_t const& start_time,
+                unixtime_t const worst_time_at_dest,
                 query const& q) {
   auto results = pareto_set<journey>{};
   algo.next_start_time();
@@ -39,14 +41,40 @@ void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
         [&](nigiri::location_idx_t const l) { algo.add_start(l, t); });
   }
 
-  // Upper bound: the loose pruning guards (see raptor::is_better_loose) keep
-  // labels equal to the cutoff, so journeys with travel time exactly
-  // max_travel_time_ are found, slower ones are not.
-  auto const worst_time_at_dest =
-      start_time +
-      (SearchDir == direction::kForward ? 1 : -1) * q.max_travel_time_;
-
   algo.execute(start_time, q.max_transfers_, worst_time_at_dest, results);
+}
+
+template <direction SearchDir>
+void finish_one_to_all(timetable const& tt,
+                       rt_timetable const* rtt,
+                       delta_t const worst_at_dest,
+                       raptor_state& state) {
+  constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
+  auto const is_better = [](delta_t const a, delta_t const b) {
+    return SearchDir == direction::kForward ? a < b : a > b;
+  };
+
+  auto best = state.get_best<kVias>();
+  auto round_times = state.get_round_times<kVias>();
+
+  // Virtual locations are no stops: a trip arriving at one reaches its stop by
+  // the walk to it (the stop's time to change) or, where the stop bans
+  // changes, at the arrival (reported by raptor). Their own labels can be rule
+  // walks and rule times, they stay kInvalid.
+  // Stops: round_times -> best (within worst_at_dest).
+  for (auto l = location_idx_t{0U}; l != state.n_locations_; ++l) {
+    auto const is_stop = rt::base(tt, rtt, l) == l;
+    auto& b = best[to_idx(l)][kVias];
+    b = kInvalid;
+    for (auto k = 0U; k != kMaxTransfers + 2U; ++k) {
+      auto& t = round_times[k][to_idx(l)][kVias];
+      if (is_stop && is_better(t, b) && !is_better(worst_at_dest, t)) {
+        b = t;
+      } else {
+        t = kInvalid;
+      }
+    }
+  }
 }
 
 template <direction SearchDir, bool Rt>
@@ -87,7 +115,12 @@ raptor_state one_to_all(timetable const& tt,
       q.transfer_time_settings_,
       q.prf_idx_};
 
-  run_raptor(std::move(r), tt, start_time, q);
+  auto const worst_time_at_dest =
+      start_time +
+      (SearchDir == direction::kForward ? 1 : -1) * q.max_travel_time_;
+  auto const worst_at_dest = r.to_delta(worst_time_at_dest);
+  run_raptor(std::move(r), tt, start_time, worst_time_at_dest, q);
+  finish_one_to_all<SearchDir>(tt, rtt, worst_at_dest, state);
 
   return state;
 }

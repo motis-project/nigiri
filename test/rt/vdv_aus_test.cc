@@ -15,6 +15,8 @@
 #include "nigiri/timetable.h"
 #include "nigiri/timetable_metrics.h"
 
+#include "../transfer_rules_util.h"
+
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
@@ -24,6 +26,8 @@ using namespace std::chrono_literals;
 
 namespace {
 
+// The route rules in transfers.txt give AE_TRIP virtual locations at all its
+// stops, so VDV run matching has to find routes of virtual locations too.
 mem_dir vdv_test_files() {
   return mem_dir::read(R"__(
 
@@ -68,6 +72,19 @@ BC_TRIP,02:00,02:00,C,1,0,0
 BD_TRIP,01:00,01:00,B,0,0,0
 BD_TRIP,02:00,02:00,C,1,0,0
 BD_TRIP,03:00,03:00,D,2,0,0
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+A,A,2,120,,,,
+A,A,2,600,AE,,,
+B,B,2,120,,,,
+B,B,2,600,AE,,,
+C,C,2,120,,,,
+C,C,2,600,AE,,,
+D,D,2,120,,,,
+D,D,2,600,AE,,,
+E,E,2,120,,,,
+E,E,2,600,AE,,,
 
 )__");
 }
@@ -342,6 +359,7 @@ TEST(vdv_aus, delay_propagation) {
   auto const src_idx = source_idx_t{0};
   load_timetable({}, src_idx, vdv_test_files(), tt);
   finalize(tt);
+  ASSERT_LT(0U, test::n_virts(tt));
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
 
@@ -686,6 +704,7 @@ TEST(vdv_aus, all_stops_canceled) {
   auto const src_idx = source_idx_t{0};
   load_timetable({}, src_idx, vdv_test_files(), tt);
   finalize(tt);
+  ASSERT_LT(0U, test::n_virts(tt));
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
 
@@ -903,7 +922,7 @@ TEST(vdv_aus, tt_after_midnight_update_before_midnight) {
   EXPECT_TRUE(fr.is_rt());
 
   EXPECT_EQ(
-      R"([{"idx":0,"firstDay":"2024-07-10","lastDay":"2024-07-10","noLocations":2,"noTrips":1,"transportsXDays":1}])",
+      R"({"feeds":[{"idx":0,"firstDay":"2024-07-10","lastDay":"2024-07-10","noLocations":2,"noTrips":1,"transportsXDays":1}],"noRoutes":1,"profiles":[]})",
       to_str(get_metrics(tt), tt));
 }
 
@@ -1523,7 +1542,7 @@ TEST(vdv_aus, exact_match_1) {
   EXPECT_FALSE(fr.is_cancelled());
 
   EXPECT_EQ(
-      R"([{"idx":0,"firstDay":"2024-08-14","lastDay":"2024-08-30","noLocations":41,"noTrips":1,"transportsXDays":13}])",
+      R"({"feeds":[{"idx":0,"firstDay":"2024-08-14","lastDay":"2024-08-30","noLocations":41,"noTrips":1,"transportsXDays":13}],"noRoutes":1,"profiles":[{"prf":0,"noFootpaths":34}]})",
       to_str(get_metrics(tt), tt));
 }
 

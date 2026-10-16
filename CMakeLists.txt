@@ -69,6 +69,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         -Wno-ctad-maybe-unsupported
         -Wno-nrvo
         -Wno-thread-safety-negative
+        -Wno-unused-template
         -Wno-unused-private-field)
 elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
   set(nigiri-compile-options -Wall -Wextra)
@@ -76,7 +77,10 @@ elseif (NOT MSVC)
   set(nigiri-compile-options
         -Wall
         -Wextra
+        -Wno-array-bounds
         -Wno-maybe-uninitialized)
+else ()
+  set(nigiri-compile-options /bigobj)
 endif ()
 
 

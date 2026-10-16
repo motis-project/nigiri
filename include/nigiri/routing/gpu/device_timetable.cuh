@@ -88,6 +88,15 @@ struct device_rt_timetable {
       rt_transport_stop_times_;
   d_vecmap_view<rt_transport_idx_t, clasz> rt_transport_clasz_;
 
+  struct rt_footpath {
+    location_idx_t from_;
+    footpath fp_;
+  };
+  cuda::std::span<rt_footpath const> rt_footpaths_;
+
+  // The stops of the real-time virtual locations.
+  d_vecmap_view<rt_location_idx_t, location_idx_t> rt_base_;
+
   d_vecmap_view<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
   d_vecmap_view<bitfield_idx_t, bitfield> bitfields_;
 
@@ -142,9 +151,12 @@ struct device_timetable {
   }
 
   std::uint32_t n_locations_;
+  std::uint32_t n_static_locations_;
   std::uint32_t n_routes_;
 
   d_vecmap_view<location_idx_t, u8_minutes> transfer_time_;
+  // A location's stop: the parent of a virtual location, else itself.
+  d_vecmap_view<location_idx_t, location_idx_t> base_;
   cuda::std::array<d_vecvec_view<decltype(t{}.locations_.footpaths_out_[0])>,
                    kNProfiles>
       footpaths_out_;

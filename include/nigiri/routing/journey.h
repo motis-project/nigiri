@@ -78,7 +78,10 @@ struct journey {
   };
 
   bool dominates(journey const& o) const {
-    if (start_time_ <= dest_time_) {
+    auto const is_fwd = start_time_ != dest_time_
+                            ? start_time_ <= dest_time_
+                            : o.start_time_ <= o.dest_time_;
+    if (is_fwd) {
       return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
              dest_time_ <= o.dest_time_;
     } else {
