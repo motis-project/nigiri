@@ -1706,3 +1706,87 @@ TEST(routing, via_test_36_S_C_via_V_0m_no_exit) {
     EXPECT_EQ(expected_S_C_via_V_no_exit, results_to_str(results, tt));
   }
 }
+
+constexpr auto const test_files_via_walk = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+AG,Agency,https://example.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+A,A,55.0,13.0,,
+V1,V1,55.1,13.0,,
+V2,V2,55.2,13.0,,
+B,B,55.3,13.0,,
+
+# calendar_dates.txt
+service_id,date,exception_type
+S1,20190501,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_type
+R1,AG,R1,,3
+
+# trips.txt
+route_id,service_id,trip_id
+R1,S1,T
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+T,10:40:00,10:40:00,V1,1
+T,11:00:00,11:00:00,V2,2
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+A,V1,2,300
+V2,B,2,300
+)"sv;
+
+unixtime_t at_may_1(std::string_view const hhmm) {
+  return parse_time_tz(fmt::format("2019-05-01 {} Europe/Berlin", hhmm),
+                       "%Y-%m-%d %H:%M %Z");
+}
+
+TEST(routing, via_test_39_A_B_via_V1_V2_walks) {
+  // A -walk-> V1 -T-> V2 -walk-> B (walks 5 min, T V1 10:40 -> V2 11:00) with
+  // vias at the walks' trip ends: the search's first walk reaches a via -
+  // forward A -> V1, backward B -> V2. A stay at V1 makes A earlier, one at V2
+  // makes B later. The walks reach / leave the vias outside of the stays.
+  auto const tt = load_timetable(test_files_via_walk);
+  auto const v1 = [&](duration_t const stay) {
+    return routing::via_stop{loc_idx(tt, "V1"), stay};
+  };
+  auto const v2 = [&](duration_t const stay) {
+    return routing::via_stop{loc_idx(tt, "V2"), stay};
+  };
+  for (auto const dir : {direction::kForward, direction::kBackward}) {
+    auto const times = dir == direction::kForward
+                           ? interval{at_may_1("10:00"), at_may_1("10:40")}
+                           : interval{at_may_1("11:00"), at_may_1("11:30")};
+    for (auto const& [vias, dep, arr] : {
+             std::tuple{std::vector{v1(10_minutes)}, "10:25", "11:05"},
+             std::tuple{std::vector{v1(0_minutes)}, "10:35", "11:05"},
+             std::tuple{std::vector{v2(10_minutes)}, "10:35", "11:15"},
+             std::tuple{std::vector{v1(10_minutes), v2(10_minutes)}, "10:25",
+                        "11:15"},
+         }) {
+      auto const results = search(
+          tt, nullptr,
+          routing::query{.start_time_ = times,
+                         .use_start_footpaths_ = true,
+                         .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                         .destination_ = {{loc_idx(tt, "B"), 0_minutes, 0U}},
+                         .via_stops_ = vias},
+          dir);
+      ASSERT_EQ(1U, results.size()) << to_str(dir) << " " << dep << "-" << arr;
+      auto const& j = *begin(results);
+      EXPECT_EQ(at_may_1(dep), j.departure_time()) << to_str(dir);
+      EXPECT_EQ(at_may_1(arr), j.arrival_time()) << to_str(dir);
+      ASSERT_EQ(3U, j.legs_.size()) << to_str(dir);
+      EXPECT_EQ(at_may_1(dep) + 5_minutes, j.legs_.front().arr_time_)
+          << to_str(dir);
+      EXPECT_EQ(at_may_1(arr) - 5_minutes, j.legs_.back().dep_time_)
+          << to_str(dir);
+    }
+  }
+}

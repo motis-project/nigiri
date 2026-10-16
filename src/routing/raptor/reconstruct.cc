@@ -106,19 +106,15 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
   auto const leg_start_location =
       kFwd ? j.legs_.back().from_ : j.legs_.back().to_;
+  auto const is_start_via =
+      !q.via_stops_.empty() &&
+      matches(tt, location_match_mode::kEquivalent,
+              q.via_stops_.front().location_, leg_start_location);
   // Anchor for the start offset: the first transit event, shifted by a via
   // stay at the search-start location (the offset must not overlap the
   // mandatory stay between the transit event and the offset leg).
-  auto const search_start_via_stay = [&]() {
-    if (q.via_stops_.empty()) {
-      return duration_t{0};
-    }
-    auto const& via = kFwd ? q.via_stops_.front() : q.via_stops_.back();
-    return matches(tt, location_match_mode::kEquivalent, via.location_,
-                   leg_start_location)
-               ? via.stay_
-               : duration_t{0};
-  }();
+  auto const search_start_via_stay =
+      is_start_via ? q.via_stops_.front().stay_ : duration_t{0};
   auto const leg_start_time =
       (kFwd ? j.legs_.back().dep_time_ : j.legs_.back().arr_time_) -
       dir(search_start_via_stay);
@@ -139,7 +135,10 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
            : tt.locations_.footpaths_out_[q.prf_idx_][leg_start_location];
   auto const j_start_time = unix_to_delta(base, j.start_time_);
   auto const round_times = state.get_round_times<Vias>();
-  auto const fp_target_time = round_times[0][to_idx(leg_start_location)][0];
+  auto const fp_target_time =
+      round_times[0][to_idx(leg_start_location)][is_start_via ? 1U : 0U];
+  auto const fp_arrival_time =
+      static_cast<delta_t>(fp_target_time - dir(search_start_via_stay.count()));
 
   if (q.start_match_mode_ == location_match_mode::kIntermodal) {
     trace_reconstruct("  intermodal start mode\n");
@@ -199,13 +198,13 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
                                                       fp.duration().count());
       if (is_journey_start(tt, q, fp.target()) &&
           fp_target_time != kInvalidDelta<SearchDir> &&
-          start_matches(j_start_time + dir(fp_duration), fp_target_time)) {
+          start_matches(j_start_time + dir(fp_duration), fp_arrival_time)) {
         trace_rc_fp_start_found;
         return journey::leg{SearchDir,
                             fp.target(),
                             leg_start_location,
                             j.start_time_,
-                            delta_to_unix(base, fp_target_time),
+                            delta_to_unix(base, fp_arrival_time),
                             footpath{fp.target(), duration_t{fp_duration}}};
       } else {
         trace_rc_fp_start_no_match;
