@@ -142,7 +142,7 @@ struct raptor {
     auto& s = state_;
     auto const n = static_cast<std::size_t>(s.n_locations_);
 
-    auto const td_stops = rtt_ != nullptr && prf_idx_ != 0U
+    auto const td_stops = Rt && prf_idx_ != 0U
                               ? &(kFwd ? rtt_->has_td_footpaths_out_
                                        : rtt_->has_td_footpaths_in_)[prf_idx_]
                               : nullptr;
@@ -860,8 +860,8 @@ private:
         return;
       }
 
-      for (auto const& fp :
-           get_transfers<SearchDir>(tt_, rtt_, prf_idx_, l_idx)) {
+      for (auto const& fp : get_transfers<SearchDir>(tt_, Rt ? rtt_ : nullptr,
+                                                     prf_idx_, l_idx)) {
         if (!kFwd && use_td_fps && has_td_fps(fp.target(), true)) {
           continue;
         }
