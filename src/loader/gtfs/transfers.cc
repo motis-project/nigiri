@@ -246,7 +246,8 @@ void fold_pair_defaults(timetable& tt,
                    return utl::lookup(default_duration, p)
                        .transform([&](default_duration_t const& x) {
                          return x.duration_ != r.duration_;
-                       });
+                       })
+                       .value_or(false);
                  })
 
         // Would removing this rule let a less or equally specific overlapping
