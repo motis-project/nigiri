@@ -1,8 +1,8 @@
 #include "nigiri/loader/virtual_locations.h"
 
+#include <chrono>
 #include <cstdint>
 #include <algorithm>
-#include <chrono>
 #include <deque>
 #include <iterator>
 #include <limits>
@@ -397,18 +397,18 @@ hash_set<pair<location_idx_t, location_idx_t>> get_stop_pairs(
   // with a rule stop on one side; all of them inside a station of global rules.
   auto const add = [&](location_idx_t const from, location_idx_t const to,
                        bool const is_global) {
-    routing::for_each_meta(
-        tt, routing::location_match_mode::kOnlyChildren, from,
-        [&](location_idx_t const f) {
-          routing::for_each_meta(
-              tt, routing::location_match_mode::kOnlyChildren, to,
-              [&](location_idx_t const t) {
-                if (is_global || rule_stops.contains(f) ||
-                    rule_stops.contains(t)) {
-                  pairs.insert(pair{f, t});
-                }
-              });
-        });
+    routing::for_each_meta(tt, routing::location_match_mode::kOnlyChildren,
+                           from, [&](location_idx_t const f) {
+                             routing::for_each_meta(
+                                 tt,
+                                 routing::location_match_mode::kOnlyChildren,
+                                 to, [&](location_idx_t const t) {
+                                   if (is_global || rule_stops.contains(f) ||
+                                       rule_stops.contains(t)) {
+                                     pairs.insert(pair{f, t});
+                                   }
+                                 });
+                           });
   };
   auto has_global = false;
   for (auto const& r : tt.transfer_rules_.rules_) {
@@ -450,8 +450,7 @@ void add_transfers(timetable const& tt, virt_state& vs) {
     return sigs != nullptr ? virt_node{rs, location_idx_t::invalid()}
                            : base_node(location_of(rs));
   };
-  auto const sig = [](signatures_t const* sigs,
-                      route_transport_idx_t const u) {
+  auto const sig = [](signatures_t const* sigs, route_transport_idx_t const u) {
     return sigs == nullptr ? signature_id_t{0U} : (*sigs)[u];
   };
 
@@ -851,8 +850,8 @@ bool join(timetable const& tt,
   for (auto const& [key, m] : merged) {
     auto const [a, b] = key;
     if (is_base(vs, a) && is_base(vs, b)
-            ? !m.first.contains(get_fallback(tt, vs, vs.units_[a].stop_,
-                                             vs.units_[b].stop_))
+            ? !m.first.contains(
+                  get_fallback(tt, vs, vs.units_[a].stop_, vs.units_[b].stop_))
             : !is_admissible(m.first, a == b)) {
       return false;
     }

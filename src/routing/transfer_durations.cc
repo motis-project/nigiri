@@ -1,7 +1,7 @@
 #include "nigiri/routing/transfer_durations.h"
 
-#include <algorithm>
 #include <chrono>
+#include <algorithm>
 #include <optional>
 #include <variant>
 #include <vector>
@@ -14,12 +14,13 @@
 
 namespace nigiri::routing {
 
-std::optional<duration_t> get_rule_transfer_time(timetable const& tt,
-                                                 rt_timetable const* rtt,
-                                                 journey::run_enter_exit const& a,
-                                                 journey::run_enter_exit const& b,
-                                                 location_idx_t const from,
-                                                 location_idx_t const to) {
+std::optional<duration_t> get_rule_transfer_time(
+    timetable const& tt,
+    rt_timetable const* rtt,
+    journey::run_enter_exit const& a,
+    journey::run_enter_exit const& b,
+    location_idx_t const from,
+    location_idx_t const to) {
   auto const signature = [&](rt::run const& r, stop_idx_t const i,
                              location_idx_t const base) {
     auto sig = std::vector<transfer_rule_side_idx>{};
@@ -76,18 +77,16 @@ void fix_transfer_durations(timetable const& tt,
     leg.uses_ = footpath{fp->target(), *d};
     if (i == 0U) {
       auto const arr_prev =
-          rt::frun{tt, rtt, a->r_}[static_cast<stop_idx_t>(
-                                       a->stop_range_.to_ - 1U)]
+          rt::frun{tt, rtt,
+                   a->r_}[static_cast<stop_idx_t>(a->stop_range_.to_ - 1U)]
               .time(event_type::kArr);
-      leg.dep_time_ =
-          leg.arr_time_ - clamp(duration, leg.arr_time_ - arr_prev);
+      leg.dep_time_ = leg.arr_time_ - clamp(duration, leg.arr_time_ - arr_prev);
     } else {
       auto const dep_next =
           i + 1U == n ? rt::frun{tt, rtt, b->r_}[b->stop_range_.from_].time(
                             event_type::kDep)
                       : j.legs_[i + 1U].dep_time_;
-      leg.arr_time_ =
-          leg.dep_time_ + clamp(duration, dep_next - leg.dep_time_);
+      leg.arr_time_ = leg.dep_time_ + clamp(duration, dep_next - leg.dep_time_);
     }
   }
 }
