@@ -1546,16 +1546,14 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
 
   map_to_bases(tt_, rtt_, j);
 
-  if constexpr (is_fwd) {
-    optimize_footpaths(tt_, rtt_, q, j);
-    specify_td_offsets(q, j);
-  } else {
-    // The journey's legs are chronological, but q is in search direction.
-    auto journey_q = q;
+  // The journey's legs are chronological, but q is in search direction.
+  auto journey_q = q;
+  if constexpr (!is_fwd) {
     journey_q.flip_dir();
-    optimize_footpaths(tt_, rtt_, journey_q, j);
-    specify_td_offsets(journey_q, j);
   }
+  optimize_footpaths(tt_, rtt_, journey_q, j);
+  specify_td_offsets(journey_q, j);
+  finalize_journey(tt_, rtt_, journey_q, j);
 
   j.is_reconstructed_ = true;
 }

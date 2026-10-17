@@ -300,6 +300,7 @@ bool sections_violate_constraints(
 
 std::vector<journey::leg> assemble_legs(timetable const& tt,
                                         rt_timetable const* rtt,
+                                        query const& q,
                                         journey::leg const& boarding_walk,
                                         journey::leg&& transit,
                                         journey::leg const& alighting_walk) {
@@ -316,7 +317,7 @@ std::vector<journey::leg> assemble_legs(timetable const& tt,
   if (!drop_at_boundary(alighting_walk)) {
     j.legs_.push_back(alighting_walk);
   }
-  map_to_bases(tt, rtt, j);
+  finalize_journey(tt, rtt, q, j);
   return std::move(j.legs_);
 }
 
@@ -405,7 +406,7 @@ utl::generator<std::vector<journey::leg>> route_gen(
                                                        loc_seq.size())}}},
               boarding_idx, alighting_idx}};
 
-      co_yield assemble_legs(tt, rtt, *boarding_walk, std::move(transit),
+      co_yield assemble_legs(tt, rtt, q, *boarding_walk, std::move(transit),
                              *alighting_walk);
     }
 
@@ -465,7 +466,7 @@ utl::generator<std::vector<journey::leg>> rt_gen(
                            .rt_ = rt_idx}},
           boarding_idx, alighting_idx}};
 
-  co_yield assemble_legs(tt, &rtt, *boarding_walk, std::move(transit),
+  co_yield assemble_legs(tt, &rtt, q, *boarding_walk, std::move(transit),
                          *alighting_walk);
 }
 

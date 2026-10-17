@@ -1,6 +1,7 @@
 #include "nigiri/transfer_rule_sides.h"
 
 #include <algorithm>
+#include <span>
 #include <vector>
 
 #include "utl/equal_ranges_linear.h"
@@ -25,46 +26,59 @@ bool has_transfer_rules(timetable const& tt, transport_idx_t const t) {
   });
 }
 
+void get_section_sides(timetable const& tt,
+                       merged_trips_idx_t const section,
+                       std::vector<transfer_rule_side_idx>& sides) {
+  auto const& tr = tt.transfer_rules_;
+  sides.clear();
+  for (auto const trip : tt.merged_trips_[section]) {
+    for (auto const s : values_of(tr.trip_rules_, trip)) {
+      sides.push_back(s);
+    }
+    auto const src = tt.trip_id_src_[tt.trip_ids_[trip].front()];
+    for (auto const s : values_of(tr.route_rules_, tt.trip_route_id_[trip])) {
+      if (tr.rules_[s.rule()].src_ == src) {
+        sides.push_back(s);
+      }
+    }
+  }
+}
+
+void add_stop_sides(timetable const& tt,
+                    std::span<transfer_rule_side_idx const> section_sides,
+                    event_type const ev,
+                    location_idx_t const base,
+                    std::vector<transfer_rule_side_idx>& sig) {
+  for (auto const s : section_sides) {
+    if (s.ev_type() == ev &&
+        is_rule_stop(tt, tt.transfer_rules_.rules_[s.rule()].stop(ev), base)) {
+      sig.push_back(s);
+    }
+  }
+}
+
+// The from sides of the arriving trips' rules, the to sides of the departing
+// trips' rules (block_id / stay seated: they are not the same trips).
 void get_stop_signature(timetable const& tt,
                         transport_idx_t const t,
                         stop_idx_t const i,
                         location_idx_t const base,
                         std::vector<transfer_rule_side_idx>& sig) {
-  auto const& tr = tt.transfer_rules_;
   auto const seq = tt.route_location_seq_[tt.transport_route_[t]];
   auto const stp = stop{seq[i]};
   auto const sections = tt.transport_to_trip_section_[t];
-
-  // The from sides of the arriving trips' rules, the to sides of the departing
-  // trips' rules (block_id / stay seated: they are not the same trips).
-  auto const add = [&](stop_idx_t const section, event_type const ev) {
-    auto const add_side = [&](transfer_rule_side_idx const s) {
-      if (s.ev_type() == ev &&
-          is_rule_stop(tt, tr.rules_[s.rule()].stop(ev), base)) {
-        sig.push_back(s);
-      }
-    };
-    auto const trips =
-        tt.merged_trips_[sections[sections.size() == 1U ? 0U : section]];
-    for (auto const trip : trips) {
-      for (auto const s : values_of(tr.trip_rules_, trip)) {
-        add_side(s);
-      }
-      auto const src = tt.trip_id_src_[tt.trip_ids_[trip].front()];
-      for (auto const s : values_of(tr.route_rules_, tt.trip_route_id_[trip])) {
-        if (tr.rules_[s.rule()].src_ == src) {
-          add_side(s);
-        }
-      }
-    }
+  auto const section = [&](stop_idx_t const k) {
+    return sections[sections.size() == 1U ? 0U : k];
   };
-
+  auto sides = std::vector<transfer_rule_side_idx>{};
   sig.clear();
   if (i != 0U && stp.out_allowed()) {
-    add(static_cast<stop_idx_t>(i - 1U), event_type::kArr);
+    get_section_sides(tt, section(static_cast<stop_idx_t>(i - 1U)), sides);
+    add_stop_sides(tt, sides, event_type::kArr, base, sig);
   }
   if (i + 1U != seq.size() && stp.in_allowed()) {
-    add(i, event_type::kDep);
+    get_section_sides(tt, section(i), sides);
+    add_stop_sides(tt, sides, event_type::kDep, base, sig);
   }
   utl::erase_duplicates(sig);
 }

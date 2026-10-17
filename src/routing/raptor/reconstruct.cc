@@ -19,6 +19,7 @@
 #include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/routing/search_location.h"
+#include "nigiri/routing/transfer_durations.h"
 #include "nigiri/routing/transfers.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -41,6 +42,14 @@ void map_to_bases(timetable const& tt, rt_timetable const* rtt, journey& j) {
         [&](offset& o) { o.target_ = rt::base(tt, rtt, o.target_); });
   }
   j.dest_ = rt::base(tt, rtt, j.dest_);
+}
+
+void finalize_journey(timetable const& tt,
+                      rt_timetable const* rtt,
+                      query const& q,
+                      journey& j) {
+  fix_transfer_durations(tt, rtt, q, j);
+  map_to_bases(tt, rtt, j);
 }
 
 bool is_journey_start(timetable const& tt,
@@ -985,6 +994,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
   optimize_footpaths(tt, rtt, journey_q, j);
   specify_td_offsets(journey_q, j);
+  finalize_journey(tt, rtt, journey_q, j);
 
   j.is_reconstructed_ = true;
 

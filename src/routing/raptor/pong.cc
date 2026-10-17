@@ -18,6 +18,7 @@
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/leg_alternatives.h"
+#include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/routing/search_location.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/routing/transfer_time_settings.h"
@@ -451,6 +452,7 @@ routing_result pong(timetable const& tt,
   }
 
   for (auto& j : s_state.results_) {
+    auto has_alternative = false;
     for (auto const [transit_1, transfer_1, transit_2, transfer_2, transit_3] :
          utl::nwise<5>(j.legs_)) {
       if (!std::holds_alternative<journey::run_enter_exit>(transit_1.uses_) ||
@@ -480,7 +482,11 @@ routing_result pong(timetable const& tt,
         transfer_1 = earlier->at(0);
         transit_2 = earlier->at(1);
         transfer_2 = earlier->at(2);
+        has_alternative = true;
       }
+    }
+    if (has_alternative) {
+      finalize_journey(tt, rtt, q, j);
     }
   }
 

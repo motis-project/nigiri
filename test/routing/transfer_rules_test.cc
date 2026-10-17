@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 
+#include <algorithm>
 #include <map>
 #include <optional>
 #include <string>
@@ -13,6 +14,8 @@
 #include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/one_to_all.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/pong.h"
+#include "nigiri/routing/transfer_durations.h"
 #include "nigiri/routing/transfers.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
@@ -38,6 +41,7 @@ using nigiri::test::load_feeds;
 using nigiri::test::n_virts;
 using nigiri::test::raptor_search;
 using nigiri::test::search_at;
+using nigiri::test::search_pong;
 
 // The shared feed of the tests that change out of a trip at a virtual
 // location: FA (route RF1) arrives at U 3 min before FC (RF3) leaves, which
@@ -627,3 +631,191 @@ TEST(transfer_rules, via_stay_at_start_holds_at_virtual_locations) {
   ASSERT_EQ(1U, res.size());
   EXPECT_EQ(at("10:45"), begin(res)->dest_time_);
 }
+
+// A footpath leg between two transport legs shows the time the rules state
+// for the two transports, whatever the footpath of their virtual locations
+// says: T0 -> T1 at S is their 1 min rule. The leg stays anchored to T0's
+// arrival, the wait before T1 absorbs the difference.
+TEST(transfer_rules, journey_shows_rule_transfer_time) {
+  auto const tt = load_feeds({feed(
+      {{"A", 59.0, 10.0},
+       {"X", 59.1, 10.0, "", true},
+       {"X1", 59.1001, 10.0, "X"},
+       {"X2", 59.1002, 10.0, "X"},
+       {"S", 59.2, 10.0, "", true},
+       {"S1", 59.2001, 10.0, "S"},
+       {"S2", 59.2002, 10.0, "S"},
+       {"E", 59.3, 10.0}},
+      {{"T0", "R0", {{"A", "10:00"}, {"X1", "10:10"}, {"S1", "10:20"}}},
+       {"T1", "R1", {{"X2", "10:27"}, {"S2", "10:30"}, {"E", "10:40"}}}},
+      "S,S,0,,,,,\nS,S,2,900,,,,\nS,S,2,60,,,T0,T1\n")});
+  ASSERT_LT(0U, n_virts(tt));
+  auto const res = search_at(tt, "A", "E", "10:00");
+  ASSERT_EQ(1U, res.size());
+  auto j = *begin(res);
+  ASSERT_EQ(3U, j.legs_.size());
+  auto& fp = j.legs_[1];
+  ASSERT_TRUE(std::holds_alternative<footpath>(fp.uses_));
+  EXPECT_EQ("S1", tt.locations_.ids_[tt.base(fp.from_)].view());
+  fp.uses_ = footpath{fp.to_, 7_minutes};
+  fp.arr_time_ = fp.dep_time_ + 7_minutes;
+  routing::fix_transfer_durations(tt, nullptr, routing::query{}, j);
+  EXPECT_EQ(1_minutes, std::get<footpath>(j.legs_[1].uses_).duration());
+  EXPECT_EQ(j.legs_[0].arr_time_, j.legs_[1].dep_time_);
+  EXPECT_EQ(j.legs_[1].dep_time_ + 1_minutes, j.legs_[1].arr_time_);
+}
+
+// Between the trips before and after it, the ping-pong search replaces a
+// transit leg by the earliest alternative: a direct connection from where the
+// trip before arrives to where the trip after leaves. After T0 (X 10:10) the
+// earliest X -> S trip is T1b (10:13) with X's 2 min, T1 (10:20) when X asks
+// for 5 min, T1b again when the T0 -> T1b rule asks for 1 min, and T1 when a
+// rule forbids T0 -> T1b at X or T1b -> T2 at S.
+TEST(transfer_rules, pong_alternative_follows_rules_at_virtual_locations) {
+  auto const alternative_departs = [](std::string_view const transfers) {
+    auto const tt = load_feeds({feed({{"A", 60.0, 10.0},
+                                      {"X", 60.1, 10.0},
+                                      {"S", 60.2, 10.0},
+                                      {"E", 60.3, 10.0}},
+                                     {{"T0", "R0", {{"A", "10:00"}, {"X", "10:10"}}},
+                                      {"T1", "R1", {{"X", "10:20"}, {"S", "10:30"}}},
+                                      {"T1b", "R1", {{"X", "10:13"}, {"S", "10:23"}}},
+                                      {"T2", "R2", {{"S", "10:40"}, {"E", "10:50"}}}},
+                                     transfers)});
+    auto const res = search_at(tt, "A", "E", "10:00");
+    EXPECT_EQ(1U, res.size());
+    if (res.size() != 1U) {
+      return unixtime_t{};
+    }
+    auto const& legs = begin(res)->legs_;
+    auto const is_transit = [](routing::journey::leg const& l) {
+      return std::holds_alternative<routing::journey::run_enter_exit>(l.uses_);
+    };
+    auto const& before = std::get<routing::journey::run_enter_exit>(
+        utl::find_if(legs, is_transit)->uses_);
+    auto const& after = std::get<routing::journey::run_enter_exit>(
+        std::find_if(rbegin(legs), rend(legs), is_transit)->uses_);
+    auto const run_before = rt::frun{tt, nullptr, before.r_};
+    auto const run_after = rt::frun{tt, nullptr, after.r_};
+    auto const from =
+        run_before[static_cast<stop_idx_t>(before.stop_range_.to_ - 1U)];
+    auto const to = run_after[after.stop_range_.from_];
+    auto const earlier = routing::get_earliest_alternative(
+        tt, nullptr, routing::query{},
+        routing::search_location(kDefaultProfile, from),
+        routing::search_location(kDefaultProfile, to),
+        from.time(event_type::kArr), to.time(event_type::kDep));
+    EXPECT_TRUE(earlier.has_value());
+    return earlier.has_value() ? earlier->at(1).dep_time_ : unixtime_t{};
+  };
+  EXPECT_EQ(at("10:13"), alternative_departs(""));
+  EXPECT_EQ(at("10:20"), alternative_departs("X,X,2,300,,,,\n"));
+  EXPECT_EQ(at("10:13"),
+            alternative_departs("X,X,2,300,,,,\nX,X,2,60,,,T0,T1b\n"));
+  EXPECT_EQ(at("10:20"), alternative_departs("X,X,3,,,,T0,T1b\n"));
+  EXPECT_EQ(at("10:20"), alternative_departs("S,S,3,,,,T1b,T2\n"));
+}
+
+// The footpath of a virtual location answers which changes work, not how long
+// they take: at X one footpath serves T0 -> T1 (1 min by rule), T0b -> T1b (2
+// min by rule) and T0b -> T1c (X's 5 min), so the search sees one duration for
+// all three.
+std::string fold_feed() {
+  return feed({{"A", 61.0, 10.0},
+               {"X", 61.1, 10.0},
+               {"S", 61.2, 10.0},
+               {"E", 61.3, 10.0}},
+              {{"T0", "R0", {{"A", "10:00"}, {"X", "10:10"}}},
+               {"T0b", "R0", {{"A", "11:00"}, {"X", "11:10"}}},
+               {"T1", "R1", {{"X", "10:13"}, {"S", "10:23"}}},
+               {"T1b", "R1", {{"X", "11:12"}, {"S", "11:22"}}},
+               {"T1c", "R1", {{"X", "11:20"}, {"S", "11:30"}}},
+               {"T2", "R2", {{"S", "10:40"}, {"E", "10:50"}}},
+               {"T2b", "R2", {{"S", "11:40"}, {"E", "11:50"}}}},
+              "X,X,2,300,,,,\nX,X,2,60,,,T0,T1\nX,X,2,120,,,T0b,T1b\n");
+}
+
+// The journeys show each rule's time, in the ping-pong search (which rebuilds
+// the middle leg from a direct connection) as well.
+TEST(transfer_rules, journeys_show_rule_transfer_times) {
+  auto const tt = load_feeds({fold_feed()});
+  ASSERT_LT(0U, n_virts(tt));
+  auto const q = routing::query{
+      .start_time_ = interval<unixtime_t>{at("10:00"), at("12:00")},
+      .start_ = {{lidx(tt, "A"), 0_minutes, 0U}},
+      .destination_ = {{lidx(tt, "E"), 0_minutes, 0U}}};
+  auto const location = [&](routing::journey::leg const& l, bool const is_exit) {
+    auto const& ree = std::get<routing::journey::run_enter_exit>(l.uses_);
+    return routing::search_location(
+        kDefaultProfile,
+        rt::frun{tt, nullptr, ree.r_}
+                [is_exit ? static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)
+                         : ree.stop_range_.from_]);
+  };
+  for (auto const& res : {raptor_search(tt, nullptr, routing::query{q}),
+                          search_pong(tt, nullptr, routing::query{q})}) {
+    ASSERT_EQ(2U, res.size());
+    auto const& first = *begin(res);
+    auto const& second = *std::next(begin(res));
+    ASSERT_EQ(5U, first.legs_.size());
+    ASSERT_EQ(5U, second.legs_.size());
+    // One footpath serves both changes at X.
+    EXPECT_EQ(location(first.legs_[0], true), location(second.legs_[0], true));
+    EXPECT_EQ(location(first.legs_[2], false),
+              location(second.legs_[2], false));
+    auto const d = routing::shortest_transfer(
+        tt, nullptr, kDefaultProfile, location(first.legs_[0], true),
+        location(first.legs_[2], false));
+    ASSERT_TRUE(d.has_value());
+    EXPECT_LT(*d, 3_minutes);
+    for (auto const& j : res) {
+      auto const expected = j.start_time_ == at("10:00") ? 1_minutes : 2_minutes;
+      auto const& fp = j.legs_[1];
+      ASSERT_TRUE(std::holds_alternative<footpath>(fp.uses_));
+      EXPECT_EQ(expected, std::get<footpath>(fp.uses_).duration());
+      EXPECT_EQ(j.legs_[0].arr_time_, fp.dep_time_);
+      EXPECT_EQ(fp.dep_time_ + expected, fp.arr_time_);
+      ASSERT_TRUE(std::holds_alternative<footpath>(j.legs_[3].uses_));
+      EXPECT_EQ(2_minutes, std::get<footpath>(j.legs_[3].uses_).duration());
+    }
+  }
+}
+
+// The alternatives of a leg are direct connections from where the trip before
+// arrives to where the trip after leaves, their walks come from the search's
+// footpaths. T1c is the alternative to T1b in the 11:00 journey; its walk from
+// T0b shows X's 5 min (no rule for T0b -> T1c), not the shared footpath's
+// duration, and ends when T1c leaves.
+TEST(transfer_rules, leg_alternatives_show_rule_transfer_times) {
+  auto const tt = load_feeds({fold_feed()});
+  auto const q =
+      routing::query{.start_time_ = at("11:00"),
+                     .start_ = {{lidx(tt, "A"), 0_minutes, 0U}},
+                     .destination_ = {{lidx(tt, "E"), 0_minutes, 0U}}};
+  auto const res = raptor_search(tt, nullptr, routing::query{q});
+  ASSERT_EQ(1U, res.size());
+  auto const& j = *begin(res);
+  ASSERT_EQ(5U, j.legs_.size());
+  EXPECT_EQ(at("11:12"), j.legs_[2].dep_time_);
+  auto const alternatives =
+      routing::get_leg_alternatives(tt, nullptr, q, j, 2U, 3U);
+  ASSERT_EQ(1U, alternatives.size());
+  auto const& legs = alternatives.front().legs_;
+  auto const transit = utl::find_if(legs, [](routing::journey::leg const& l) {
+    return std::holds_alternative<routing::journey::run_enter_exit>(l.uses_);
+  });
+  ASSERT_NE(end(legs), transit);
+  ASSERT_NE(begin(legs), transit);
+  ASSERT_NE(end(legs), std::next(transit));
+  EXPECT_EQ(at("11:20"), transit->dep_time_);
+  auto const& walk_before = *std::prev(transit);
+  ASSERT_TRUE(std::holds_alternative<footpath>(walk_before.uses_));
+  EXPECT_EQ(5_minutes, std::get<footpath>(walk_before.uses_).duration());
+  EXPECT_EQ(at("11:15"), walk_before.dep_time_);
+  EXPECT_EQ(at("11:20"), walk_before.arr_time_);
+  auto const& walk_after = *std::next(transit);
+  ASSERT_TRUE(std::holds_alternative<footpath>(walk_after.uses_));
+  EXPECT_EQ(2_minutes, std::get<footpath>(walk_after.uses_).duration());
+  EXPECT_EQ(walk_after.dep_time_ + 2_minutes, walk_after.arr_time_);
+}
+

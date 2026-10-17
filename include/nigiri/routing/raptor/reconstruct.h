@@ -18,6 +18,11 @@ struct journey;
 
 void map_to_bases(timetable const&, rt_timetable const*, journey&);
 
+void finalize_journey(timetable const&,
+                      rt_timetable const*,
+                      query const&,
+                      journey&);
+
 bool is_journey_start(timetable const&,
                       query const&,
                       location_idx_t candidate_l);

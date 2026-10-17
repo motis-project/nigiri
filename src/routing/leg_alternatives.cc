@@ -11,6 +11,7 @@
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/routing/search_location.h"
+#include "nigiri/routing/transfer_durations.h"
 #include "nigiri/routing/transfer_time_settings.h"
 
 namespace nigiri::routing {
@@ -52,6 +53,8 @@ std::vector<journey> get_leg_alternatives(
     unixtime_t const anchor_time,
     std::optional<unixtime_t> const max_arrival,
     journey::run_enter_exit const& original,
+    std::optional<journey::run_enter_exit> const prev,
+    std::optional<journey::run_enter_exit> const next,
     std::size_t const max_alternatives) {
   auto const is_transit = [](journey::leg const& l) {
     return std::holds_alternative<journey::run_enter_exit>(l.uses_);
@@ -64,6 +67,7 @@ std::vector<journey> get_leg_alternatives(
     auto j_alt = journey{};
     j_alt.legs_ = legs;
     optimize_footpaths(tt, rtt, direct_query, j_alt);
+    fix_transfer_durations(tt, rtt, direct_query, j_alt, prev, next);
     j_alt.start_time_ = j_alt.legs_.front().dep_time_;
     j_alt.dest_time_ = j_alt.legs_.back().arr_time_;
     j_alt.dest_ = j_alt.legs_.back().to_;
@@ -136,6 +140,11 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
 
   auto const has_prev = prev_it != std::rend(j.legs_);
   auto const has_next = next_it != end(j.legs_);
+  auto const run_of = [](journey::leg const& l) {
+    return std::get<journey::run_enter_exit>(l.uses_);
+  };
+  auto const prev = has_prev ? std::optional{run_of(*prev_it)} : std::nullopt;
+  auto const next = has_next ? std::optional{run_of(*next_it)} : std::nullopt;
 
   // Create direct query: the changes are those of the journey, from where the
   // previous trip arrives to where the next one leaves (the legs name the
@@ -171,8 +180,8 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
     // First transit leg with a successor:
     // search backward from the next leg's departure.
     return get_leg_alternatives(tt, rtt, direct_query, direction::kBackward,
-                                next_dep, std::nullopt, original_ree,
-                                max_alternatives);
+                                next_dep, std::nullopt, original_ree, prev,
+                                next, max_alternatives);
   }
 
   // Intermediate / single / last transit leg: search forward from the previous
@@ -183,7 +192,7 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
   return get_leg_alternatives(tt, rtt, direct_query, direction::kForward,
                               prev_arr,
                               has_next ? std::optional{next_dep} : std::nullopt,
-                              original_ree, max_alternatives);
+                              original_ree, prev, next, max_alternatives);
 }
 
 }  // namespace nigiri::routing

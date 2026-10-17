@@ -53,6 +53,18 @@ void get_stop_signature(timetable const&,
                         location_idx_t base,
                         std::vector<transfer_rule_side_idx>& sig);
 
+// The sides of the qualified rules of the trips of a section (merged trips).
+void get_section_sides(timetable const&,
+                       merged_trips_idx_t,
+                       std::vector<transfer_rule_side_idx>& sides);
+
+// Appends the sides of the event type whose rule stop covers the base.
+void add_stop_sides(timetable const&,
+                    std::span<transfer_rule_side_idx const> section_sides,
+                    event_type,
+                    location_idx_t base,
+                    std::vector<transfer_rule_side_idx>& sig);
+
 inline bool is_applicable(timetable const& tt,
                           transfer_rule_side_idx const side,
                           std::span<transfer_rule_side_idx const> sig,
