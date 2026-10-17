@@ -80,7 +80,7 @@ elseif (NOT MSVC)
         -Wno-array-bounds
         -Wno-maybe-uninitialized)
 else ()
-  set(nigiri-compile-options /bigobj)
+  set(nigiri-compile-options /bigobj /constexpr:steps10000000)
 endif ()
 
 

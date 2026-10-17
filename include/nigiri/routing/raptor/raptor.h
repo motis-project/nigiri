@@ -142,11 +142,6 @@ struct raptor {
     auto& s = state_;
     auto const n = static_cast<std::size_t>(s.n_locations_);
 
-    auto const td_stops = Rt && prf_idx_ != 0U
-                              ? &(kFwd ? rtt_->has_td_footpaths_out_
-                                       : rtt_->has_td_footpaths_in_)[prf_idx_]
-                              : nullptr;
-
     auto const src = std::as_const(s).template get_round_times<Vias>();
     auto dst = s.template get_bounds<Vias>();
 
@@ -178,18 +173,22 @@ struct raptor {
       }
     }
 
-    if (td_stops != nullptr) {
-      // td_footpaths have no upper bound -> disable pruning
-      constexpr auto const kPassAll = kFwd
-                                          ? std::numeric_limits<delta_t>::min()
-                                          : std::numeric_limits<delta_t>::max();
-      td_stops->for_each_set_bit([&](location_idx_t const x) {
-        for (auto k = std::size_t{0U}; k != n_rows; ++k) {
-          for (auto v = std::size_t{0U}; v != Vias + 1U; ++v) {
-            dst[k][to_idx(x)][v] = kPassAll;
+    if constexpr (Rt) {
+      if (prf_idx_ != 0U) {
+        // td_footpaths have no upper bound -> disable pruning
+        constexpr auto const kPassAll =
+            kFwd ? std::numeric_limits<delta_t>::min()
+                 : std::numeric_limits<delta_t>::max();
+        auto const& td_stops = (kFwd ? rtt_->has_td_footpaths_out_
+                                     : rtt_->has_td_footpaths_in_)[prf_idx_];
+        td_stops.for_each_set_bit([&](location_idx_t const x) {
+          for (auto k = std::size_t{0U}; k != n_rows; ++k) {
+            for (auto v = std::size_t{0U}; v != Vias + 1U; ++v) {
+              dst[k][to_idx(x)][v] = kPassAll;
+            }
           }
-        }
-      });
+        });
+      }
     }
   }
 

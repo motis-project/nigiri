@@ -242,8 +242,8 @@ void fold_pair_defaults(timetable& tt,
         // Does this rule override an explicit/majority default
         // with a different duration? => keep this rule
         any_pair(any_with_children,  // this/children stop pairs
-                 [&](transfer_pair const p) {
-                   return utl::lookup(default_duration, p)
+                 [&](transfer_pair const stop_pair) {
+                   return utl::lookup(default_duration, stop_pair)
                        .transform([&](default_duration_t const& x) {
                          return x.duration_ != r.duration_;
                        })
@@ -254,8 +254,8 @@ void fold_pair_defaults(timetable& tt,
         // rule with a different duration take effect? => keep this rule
         || any_pair(
                any_with_children_and_parent,  // this/parent/children stop pairs
-               [&](transfer_pair const p) {
-                 auto const it = by_pair.find(p);
+               [&](transfer_pair const stop_pair) {
+                 auto const it = by_pair.find(stop_pair);
                  return it != end(by_pair) &&
                         utl::any_of(it->second, [&](transfer_rule const* o) {
                           return o->duration_ != r.duration_ &&

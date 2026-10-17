@@ -891,7 +891,7 @@ TEST(gtfs, transfer_rules_qualified_rule_keeps_walks_of_other_trips) {
   EXPECT_EQ(at("11:10"), arrival_at(tt, "BA2", "BD", "10:00"));
   EXPECT_EQ(at("11:00"), arrival_at(tt, "BA", "BD", "10:00"));
 
-  auto const far =
+  auto const distant =
       load_feeds({feed({{"P", 56.0, 12.0},
                         {"Q", 56.018, 12.0},
                         {"PA", 56.1, 12.0},
@@ -899,5 +899,5 @@ TEST(gtfs, transfer_rules_qualified_rule_keeps_walks_of_other_trips) {
                        {{"TP", "RP", {{"PA", "10:00"}, {"P", "10:30"}}},
                         {"TQ", "RQ", {{"Q", "11:30"}, {"QB", "12:00"}}}},
                        "P,Q,3,,RX1,RX2,,\n", {"RX1", "RX2"})});
-  EXPECT_EQ(std::nullopt, arrival_at(far, "PA", "QB", "10:00"));
+  EXPECT_EQ(std::nullopt, arrival_at(distant, "PA", "QB", "10:00"));
 }
