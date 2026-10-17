@@ -358,7 +358,9 @@ void write_footpaths(timetable& tt, rule_index const& rule_fps) {
   write_profile(tt, kDefaultProfile, fps);
 }
 
-void write_default_profile(timetable& tt) {
+void write_default_profile(
+    timetable& tt,
+    mutable_fws_multimap<location_idx_t, footpath> const& durations) {
   auto const timer = scoped_timer{"loader.footpath.default_profile"};
 
   auto& loc = tt.locations_;
@@ -380,6 +382,14 @@ void write_default_profile(timetable& tt) {
 
   // Resize to prevent out-of-bounds access.
   rule_footpaths[location_idx_t{tt.n_locations() - 1U}];
+  for (auto l = location_idx_t{0U}; l != durations.size(); ++l) {
+    auto bucket = rule_footpaths[l];
+    for (auto const fp : durations[l]) {
+      utl::erase_if(
+          bucket, [&](footpath const x) { return x.target() == fp.target(); });
+      bucket.push_back(fp);
+    }
+  }
 
   // Remove every walk a rule decides.
   auto const rule_fps = rule_index{std::move(rule_footpaths)};
@@ -464,12 +474,13 @@ void apply_transfer_rules(timetable& tt, shapes_storage* shapes) {
   auto walks = tt.locations_.preprocessing_footpaths_out_;
   write_default_profile(tt);
   tt.locations_.preprocessing_footpaths_out_ = std::move(walks);
-  if (!add_virtual_locations(tt, shapes)) {
+  auto durations = mutable_fws_multimap<location_idx_t, footpath>{};
+  if (!add_virtual_locations(tt, shapes, durations)) {
     tt.locations_.preprocessing_footpaths_out_ = {};
     return;
   }
   auto const n = tt.n_locations();
-  write_default_profile(tt);
+  write_default_profile(tt, durations);
 
   // Routed walks of other profiles (computed before) reach the virtual
   // locations as well, importance counts at the root.

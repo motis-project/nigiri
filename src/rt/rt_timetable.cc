@@ -217,15 +217,12 @@ void rt_timetable::add_location_rt_transport(location_idx_t const l,
   }
 }
 
-location_idx_t rt_timetable::add_rt_location(
-    location_idx_t const parent,
-    u8_minutes const transfer_time,
-    std::span<transfer_rule_side_idx const> rules) {
+location_idx_t rt_timetable::add_rt_location(location_idx_t const parent,
+                                             u8_minutes const transfer_time) {
   auto const l = location_idx_t{n_locations()};
   utl::verify(l < footpath::kMaxTarget, "rt location index overflow");
   rt_locations_.parents_.push_back(parent);
   rt_locations_.transfer_time_.push_back(transfer_time);
-  rt_virt_rules_.emplace_back(rules);
   location_rt_transports_[l];
   return l;
 }

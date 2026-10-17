@@ -13,6 +13,7 @@
 
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/routing/direct.h"
+#include "nigiri/routing/one_to_all.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
@@ -816,7 +817,6 @@ TEST(gtfsrt_transfer_rules, track_change_follows_routed_walks) {
                   gl_from_f()}}) {
     auto rtt = rt::create_rt_timetable(tt, kDay);
     update(tt, rtt, moves);
-    EXPECT_EQ(1U, rtt.n_rt_locations());
     EXPECT_EQ(expected, arrival(tt, &rtt, kAtoB));
   }
 }
@@ -863,6 +863,44 @@ TEST(gtfsrt_transfer_rules, start_walk_to_real_time_virtual_location) {
   ASSERT_TRUE(holds_alternative<footpath>(j.legs_.front().uses_));
   EXPECT_EQ("S4", leg_stop_id(tt, j.legs_.front().to_));
   EXPECT_EQ(30_minutes, get<footpath>(j.legs_.front().uses_).duration());
+}
+
+// One-to-all from S4 at 10:30 boards G, moved there: G leaves from its
+// real-time virtual location at S4, which starts like the stop itself. B is
+// reached with G at 11:00 (+ B's 2 min to change).
+TEST(gtfsrt_transfer_rules, one_to_all_starts_at_real_time_virtual_location) {
+  auto const tt = load_network("S1,S4,2,120,,,,\nS1,S4,2,1800,,,,G");
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  update(tt, rtt, {{"G", {{.seq_ = 1U, .stop_id_ = "S2", .assigned_ = "S4"}}}});
+  ASSERT_EQ(1U, rtt.n_rt_locations()) << "precondition";
+
+  auto const q = routing::query{.start_time_ = at("10:30"),
+                                .start_ = {{lidx(tt, "S4"), 0_minutes, 0U}}};
+  auto const state = routing::one_to_all<direction::kForward>(tt, &rtt, q);
+  auto const b = routing::get_fastest_one_to_all_offsets(
+      tt, state, direction::kForward, lidx(tt, "B"), at("10:30"),
+      q.max_transfers_);
+  EXPECT_EQ(1U, b.k_);
+  EXPECT_EQ(32, b.duration_);
+}
+
+// The via S4 (10 min) holds at G's real-time virtual location there as it
+// does at the stop: Z -> S4 is a 10 min rule walk for G, so G (S4 10:40)
+// leaves Z at 10:20 at the latest - not at 10:30, without the stay.
+TEST(gtfsrt_transfer_rules, start_walk_to_real_time_virtual_location_of_via) {
+  auto const tt = load_network("Z,S4,2,300,,,,\nZ,S4,2,600,,,,G", kRows);
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  update(tt, rtt, {{"G", {{.seq_ = 1U, .stop_id_ = "S2", .assigned_ = "S4"}}}});
+  ASSERT_EQ(1U, rtt.n_rt_locations()) << "precondition";
+
+  auto q = station_query(tt, "Z", "B", interval{at("10:00"), at("10:35")});
+  q.start_match_mode_ = routing::location_match_mode::kExact;
+  q.use_start_footpaths_ = true;
+  q.via_stops_ = {{lidx(tt, "S4"), 10_minutes}};
+  auto const res = raptor_search(tt, &rtt, std::move(q), direction::kForward);
+  ASSERT_EQ(1U, res.size());
+  EXPECT_EQ(at("10:20"), begin(res)->start_time_);
+  EXPECT_EQ(g_from_f(), begin(res)->dest_time_);
 }
 
 // A profile sees G at the platform S4, not at its real-time virtual location

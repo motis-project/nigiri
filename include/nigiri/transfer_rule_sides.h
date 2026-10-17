@@ -81,12 +81,7 @@ void for_each_side_location(timetable const& tt,
                             transfer_rule_side_idx const side,
                             Fn&& fn) {
   auto const& r = tt.transfer_rules_.rules_[side.rule()];
-  if (r.is_qualified(side.ev_type())) {
-    // Qualified rules map to virt locations.
-    for (auto const l : values_of(tt.transfer_rules_.rule_virts_, side)) {
-      fn(l);
-    }
-  } else {
+  if (!r.is_qualified(side.ev_type())) {
     // Unqualified rules map to the stop and all descendants.
     routing::for_each_meta(tt, routing::location_match_mode::kOnlyChildren,
                            r.stop(side.ev_type()), fn);

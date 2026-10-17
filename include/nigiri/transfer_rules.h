@@ -102,10 +102,6 @@ struct transfer_rules {
 
   vector<pair<location_idx_t, transfer_rule_side_idx>> stop_rules_;
 
-  vector<pair<transfer_rule_side_idx, location_idx_t>> rule_virts_;
-
-  vector<pair<location_idx_t, transfer_rule_side_idx>> virt_rules_;
-
   // stations where global rules do not apply (HRDF: own transfer time)
   bitvec global_excluded_;
 };

@@ -6,12 +6,6 @@
 
 namespace nigiri::rt {
 
-location_idx_t get_or_create_location(timetable const&,
-                                      rt_timetable&,
-                                      rt_transport_idx_t,
-                                      stop_idx_t,
-                                      location_idx_t base);
-
 void resolve_conflicts(timetable const&, rt_timetable&);
 
 inline location_idx_t base(timetable const& tt,

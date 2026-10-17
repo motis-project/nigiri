@@ -267,7 +267,7 @@ routing_result pong(timetable const& tt,
     for (auto const& s : starts) {
       trace_pong("--- PING START: {} at time_at_start={} time_at_stop={}",
                  loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
-      ping.add_start(s.stop_, s.time_at_stop_);
+      ping.add_start(s.stop_, s.time_at_stop_, s.v_);
     }
     auto const worst_time_at_dest =
         start_time +
@@ -321,7 +321,7 @@ routing_result pong(timetable const& tt,
       for (auto const& s : starts) {
         trace_pong("---- PONG START: {} at time_at_start={} time_at_stop={}",
                    loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
-        po.add_start(s.stop_, s.time_at_stop_);
+        po.add_start(s.stop_, s.time_at_stop_, s.v_);
       }
       po.execute(ping_j.dest_time_, ping_j.transfers_, ping_j.start_time_,
                  s_state.results_);

@@ -267,8 +267,7 @@ struct rt_timetable {
     }
   }
   location_idx_t add_rt_location(location_idx_t parent,
-                                 u8_minutes transfer_time,
-                                 std::span<transfer_rule_side_idx const> rules);
+                                 u8_minutes transfer_time);
   void add_location_rt_transport(location_idx_t, rt_transport_idx_t);
 
   std::span<location_idx_t const> rt_stop_virts(
@@ -395,8 +394,6 @@ struct rt_timetable {
     vector_map<rt_location_idx_t, location_idx_t> parents_;
     vector_map<rt_location_idx_t, u8_minutes> transfer_time_;
   } rt_locations_;
-
-  vecvec<rt_location_idx_t, transfer_rule_side_idx> rt_virt_rules_;
 
   mutable_fws_multimap<rt_transport_idx_t, location_idx_t> rt_stop_virts_;
 

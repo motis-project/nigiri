@@ -211,8 +211,9 @@ struct raptor {
     }
   }
 
-  void add_start(location_idx_t const l, unixtime_t const t) {
-    auto const v = (Vias != 0 && is_via_[0][to_idx(l)]) ? 1U : 0U;
+  void add_start(location_idx_t const l,
+                 unixtime_t const t,
+                 via_offset_t const v = 0U) {
     trace_upd(
         "adding start [fwd={}] {}: {}, v={} [current: best={}, round={} => "
         "best={}]\n",

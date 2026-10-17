@@ -114,7 +114,8 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
                                                 query const& q,
                                                 journey const& j,
                                                 raptor_state const& state,
-                                                date::sys_days const base) {
+                                                date::sys_days const base,
+                                                via_offset_t const v) {
   trace_rc_find_start_footpath;
 
   constexpr auto const kFwd = SearchDir == direction::kForward;
@@ -131,19 +132,15 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
   auto const leg_start_location =
       kFwd ? j.legs_.back().from_ : j.legs_.back().to_;
+  auto const is_start_via =
+      v != 0U && matches(tt, location_match_mode::kEquivalent,
+                         q.via_stops_.front().location_,
+                         static_location(rtt, leg_start_location));
   // Anchor for the start offset: the first transit event, shifted by a via
   // stay at the search-start location (the offset must not overlap the
   // mandatory stay between the transit event and the offset leg).
-  auto const search_start_via_stay = [&]() {
-    if (q.via_stops_.empty()) {
-      return duration_t{0};
-    }
-    auto const& via = kFwd ? q.via_stops_.front() : q.via_stops_.back();
-    return matches(tt, location_match_mode::kEquivalent, via.location_,
-                   leg_start_location)
-               ? via.stay_
-               : duration_t{0};
-  }();
+  auto const search_start_via_stay =
+      is_start_via ? q.via_stops_.front().stay_ : duration_t{0};
   auto const leg_start_time =
       (kFwd ? j.legs_.back().dep_time_ : j.legs_.back().arr_time_) -
       dir(search_start_via_stay);
@@ -163,7 +160,9 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
   auto const j_start_time = unix_to_delta(base, j.start_time_);
   auto const round_times = state.get_round_times<Vias>();
-  auto const fp_target_time = round_times[0][to_idx(leg_start_location)][0];
+  auto const fp_target_time = round_times[0][to_idx(leg_start_location)][v];
+  auto const fp_arrival_time =
+      static_cast<delta_t>(fp_target_time - dir(search_start_via_stay.count()));
 
   if (q.start_match_mode_ == location_match_mode::kIntermodal) {
     trace_reconstruct("  intermodal start mode\n");
@@ -226,12 +225,12 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
           !(tt.locations_.is_virt(src) &&
             is_journey_start(tt, q, tt.base(src))) &&
           fp_target_time != kInvalidDelta<SearchDir> &&
-          start_matches(j_start_time + dir(fp_duration), fp_target_time)) {
+          start_matches(j_start_time + dir(fp_duration), fp_arrival_time)) {
         return journey::leg{SearchDir,
                             fp.target(),
                             leg_start_location,
                             j.start_time_,
-                            delta_to_unix(base, fp_target_time),
+                            delta_to_unix(base, fp_arrival_time),
                             footpath{fp.target(), fp.duration()}};
       }
       return std::nullopt;
@@ -921,8 +920,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
     j.add(std::move(transport_leg));
   }
 
-  auto init_fp =
-      find_start_footpath<SearchDir, Vias>(tt, rtt, q, j, raptor_state, base);
+  auto init_fp = find_start_footpath<SearchDir, Vias>(tt, rtt, q, j,
+                                                      raptor_state, base, v);
   if (init_fp.has_value()) {
     j.add(std::move(*init_fp));
   }

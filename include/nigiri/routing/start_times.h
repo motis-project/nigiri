@@ -21,6 +21,7 @@ struct start {
   unixtime_t time_at_start_;
   unixtime_t time_at_stop_;
   location_idx_t stop_;
+  via_offset_t v_{0U};
 };
 
 void get_starts(

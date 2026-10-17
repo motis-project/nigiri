@@ -450,9 +450,7 @@ bool update_run(source_idx_t const src,
       } else if (auto const track = get_track_change(); track.has_value()) {
         // The stop's scheduled flags: a track change revokes a skip.
         stp = location_seq[stop_idx];
-        rtt.update_stop_location(
-            r.rt_, stop_idx,
-            get_or_create_location(tt, rtt, r.rt_, stop_idx, *track));
+        rtt.update_stop_location(r.rt_, stop_idx, *track);
         ++stats.stop_assignments_;
         rtt.dispatch_stop_change(r, stop_idx, stop{stp});
       } else {

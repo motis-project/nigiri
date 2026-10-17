@@ -36,7 +36,8 @@ void build_footpaths(timetable& tt,
                      finalize_options,
                      shapes_storage* = nullptr);
 
-void write_default_profile(timetable&);
+void write_default_profile(
+    timetable&, mutable_fws_multimap<location_idx_t, footpath> const& = {});
 
 // A profile's walks ignore transfer rules: a virtual location walks like its
 // stop (a walk between two stops connects all their locations, the stop's
