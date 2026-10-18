@@ -969,6 +969,7 @@ struct service_journey {
   std::variant<journey_pattern const*, journey_pattern> journey_pattern_{};
   bitfield const* traffic_days_;
   operätor const* operator_;
+  line* line_;
   std::vector<stop_times> stop_times_{};
   ptrdiff_t dbg_offset_;
 };
@@ -1028,6 +1029,8 @@ std::vector<service_journey> get_service_journeys(
                                        .attribute()
                                        .as_string()),
         .operator_ = operators.at(ref(n, "OperatorRef")).get(),
+        // AT-MVO
+        .line_ = lines.at(ref(n, "LineRef")).get(),
         .dbg_offset_ = n.offset_debug()};
 
     auto const calls = n.child("calls");
@@ -1501,7 +1504,7 @@ void load_timetable(loader_config const& config,
       auto const& jp = *sj.get_journey_pattern();
 
       // Check if provider got filtered by script.
-      auto& line = *jp.line_;
+      auto& line = jp.line_->id_ != "" ? *jp.line_ : *sj.line_;
       auto const op = sj.operator_->id_.empty() ? line.operator_ : sj.operator_;
       if (op->provider_ == provider_idx_t::invalid()) {
         continue;
