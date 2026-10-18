@@ -100,10 +100,19 @@ struct alerts {
                                    rt_transport_idx_t const rt_t,
                                    location_idx_t const l,
                                    bool const fuzzy_stop) const {
+    // HRD trips carry no route id (register.cc only fills route_id_trips_ and
+    // trip_direction_id_ when there is one), so route id, route type, agency
+    // and direction are all unavailable there - matching on them has to be
+    // skipped rather than looked up at index "invalid".
     auto const route_id_idx = tt.trip_route_id_[t];
-    auto const route_type = tt.route_ids_[src].route_id_type_[route_id_idx];
-    auto const agency = tt.route_ids_[src].route_id_provider_[route_id_idx];
-    auto const direction = tt.trip_direction_id_.test(t);
+    auto const has_route_id = route_id_idx != route_id_idx_t::invalid();
+    auto const route_type =
+        has_route_id ? tt.route_ids_[src].route_id_type_[route_id_idx]
+                     : route_type_t::invalid();
+    auto const agency =
+        has_route_id ? tt.route_ids_[src].route_id_provider_[route_id_idx]
+                     : provider_idx_t::invalid();
+    auto const direction = has_route_id && tt.trip_direction_id_.test(t);
     auto const parent =
         l == location_idx_t::invalid() ? l : tt.locations_.parents_[l];
     auto const grandparent = parent == location_idx_t::invalid()
@@ -126,19 +135,21 @@ struct alerts {
       }
     }
 
-    for (auto const& a : route_id_[src][route_id_idx]) {
-      if ((a.direction_ == direction_id_t::invalid() ||
-           a.direction_ == direction) &&
-          matches_location(a.l_)) {
-        alerts.insert(a.alert_);
+    if (has_route_id) {
+      for (auto const& a : route_id_[src][route_id_idx]) {
+        if ((a.direction_ == direction_id_t::invalid() ||
+             a.direction_ == direction) &&
+            matches_location(a.l_)) {
+          alerts.insert(a.alert_);
+        }
       }
-    }
 
-    for (auto const& a : agency_[agency]) {
-      if ((a.route_type_ == route_type_t::invalid() ||
-           a.route_type_ == route_type) &&
-          matches_location(a.l_)) {
-        alerts.insert(a.alert_);
+      for (auto const& a : agency_[agency]) {
+        if ((a.route_type_ == route_type_t::invalid() ||
+             a.route_type_ == route_type) &&
+            matches_location(a.l_)) {
+          alerts.insert(a.alert_);
+        }
       }
     }
 

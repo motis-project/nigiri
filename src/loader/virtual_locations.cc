@@ -158,11 +158,6 @@ bool is_admissible(window_t const& w, bool const is_self) {
       .has_value();
 }
 
-struct signatures {
-  vector_map<signature_idx_t, sides_t> sides_;
-  hash_map<route_stop, transport_signatures_t> transport_signatures_;
-};
-
 bool is_base(route_stop const& s) {
   return s.route_ == split_route_idx_t::invalid();
 }
@@ -260,10 +255,18 @@ duration_t get_walk(timetable const& tt,
       .value_or(kNever);
 }
 
+// ==========
+// Signatures
+// ----------
+
+struct signatures {
+  vector_map<signature_idx_t, sides_t> sides_;
+  hash_map<route_stop, transport_signatures_t> transport_signatures_;
+};
+
 signatures get_signatures(timetable const& tt) {
   auto sigs = signatures{};
   auto const& tr = tt.transfer_rules_;
-  auto const global_rules = get_global_rules(tt);
   auto ids = hash_map<sides_t, signature_idx_t>{};
   sigs.sides_.emplace_back();
   ids.emplace(sides_t{}, signature_idx_t{0U});
@@ -274,8 +277,11 @@ signatures get_signatures(timetable const& tt) {
     auto const seq = tt.route_location_seq_[r];
     for (auto const t : transports) {
       auto const sections = tt.transport_to_trip_section_[t];
+      auto const providers = tt.transport_section_providers_[t];
       section_sides.resize(sections.size());
-      auto has_sides = false;
+      auto has_sides = utl::any_of(providers, [&](provider_idx_t const p) {
+        return tr.has_provider_rules(p);
+      });
       for (auto k = 0U; k != sections.size(); ++k) {
         get_section_sides(tt, sections[k], section_sides[k]);
         has_sides |= !section_sides[k].empty();
@@ -283,28 +289,26 @@ signatures get_signatures(timetable const& tt) {
       if (!has_sides) {
         continue;
       }
-      auto const section = [&](stop_idx_t const k) -> sides_t const& {
-        return section_sides[sections.size() == 1U ? 0U : k];
+      auto const add = [&](stop_idx_t const k, event_type const ev,
+                           location_idx_t const base) {
+        add_stop_sides(tt, section_sides[sections.size() == 1U ? 0U : k], ev,
+                       base, sig);
+        if (!providers.empty()) {
+          add_provider_sides(tt, providers[providers.size() == 1U ? 0U : k], ev,
+                             base, sig);
+        }
       };
       for (auto i = stop_idx_t{0U}; i != seq.size(); ++i) {
         auto const stp = stop{seq[i]};
         auto const base = stp.location_idx();
         sig.clear();
         if (i != 0U && stp.out_allowed()) {
-          add_stop_sides(tt, section(static_cast<stop_idx_t>(i - 1U)),
-                         event_type::kArr, base, sig);
+          add(static_cast<stop_idx_t>(i - 1U), event_type::kArr, base);
         }
         if (i + 1U != seq.size() && stp.in_allowed()) {
-          add_stop_sides(tt, section(i), event_type::kDep, base, sig);
+          add(i, event_type::kDep, base);
         }
         utl::erase_duplicates(sig);
-        auto const globals =
-            global_rules.find(tt.locations_.get_root_idx(base));
-        std::erase_if(sig, [&](transfer_rule_side_idx const s) {
-          return tr.rules_[s.rule()].is_global() &&
-                 (globals == end(global_rules) ||
-                  !std::ranges::binary_search(globals->second, s.rule()));
-        });
         if (sig.empty()) {
           continue;
         }
@@ -347,49 +351,26 @@ hash_map<pair<location_idx_t, location_idx_t>, stop_pair> get_stop_pairs(
         extend_by(a, b);
       }
     }
-    if (auto const station = locs.get_root_idx(from);
-        station == locs.get_root_idx(to) &&
-        !tt.transfer_rules_.is_global_excluded(station)) {
-      extend_by(location_idx_t::invalid(), location_idx_t::invalid());
-    }
     return stop_pair{fallback, window};
   };
   auto pairs = hash_map<pair<location_idx_t, location_idx_t>, stop_pair>{};
-  auto const add = [&](location_idx_t const from, location_idx_t const to,
-                       bool const is_global) {
-    routing::for_each_meta(
-        tt, routing::location_match_mode::kOnlyChildren, from,
-        [&](location_idx_t const f) {
-          routing::for_each_meta(
-              tt, routing::location_match_mode::kOnlyChildren, to,
-              [&](location_idx_t const t) {
-                if (is_global || rule_stops.contains(f) ||
-                    rule_stops.contains(t)) {
-                  utl::get_or_create(pairs, pair{f, t},
-                                     [&]() { return get_stop_pair(f, t); });
-                }
-              });
-        });
-  };
-  auto has_global = false;
   for (auto const& r : tt.transfer_rules_.rules_) {
     if (!r.is_qualified(event_type::kArr) &&
         !r.is_qualified(event_type::kDep)) {
       continue;
     }
-    if (r.is_global()) {
-      has_global = true;
-      continue;
-    }
-    add(r.from_stop_, r.to_stop_, false);
-  }
-  if (has_global) {
-    for (auto const l : rule_stops) {
-      auto const root = locs.get_root_idx(l);
-      if (!tt.transfer_rules_.is_global_excluded(root)) {
-        add(root, root, true);
-      }
-    }
+    routing::for_each_meta(
+        tt, routing::location_match_mode::kOnlyChildren, r.from_stop_,
+        [&](location_idx_t const f) {
+          routing::for_each_meta(
+              tt, routing::location_match_mode::kOnlyChildren, r.to_stop_,
+              [&](location_idx_t const t) {
+                if (rule_stops.contains(f) || rule_stops.contains(t)) {
+                  utl::get_or_create(pairs, pair{f, t},
+                                     [&]() { return get_stop_pair(f, t); });
+                }
+              });
+        });
   }
   return pairs;
 }

@@ -42,6 +42,9 @@ void store_rule_lookups(timetable& tt,
     auto const& r = tr.rules_[rule];
     for (auto const ev : {event_type::kArr, event_type::kDep}) {
       auto const s = transfer_rule_side_idx{rule, ev};
+      if ((r.listed_ & (ev == event_type::kArr ? 1U : 2U)) != 0U) {
+        continue;  // listed by the loader
+      }
       if (r.trip(ev) != trip_idx_t::invalid()) {
         trip_rules.push_back({r.trip(ev), s});
       } else if (r.route(ev) != route_id_idx_t::invalid()) {
@@ -73,26 +76,6 @@ hash_map<transfer_pair, transfer_rule_idx_t> get_most_specific(
         it->second = get_more_specific(tt, it->second, rule);
       }
     };
-    if (tt.transfer_rules_.rules_[rule].is_global()) {
-      // both ends at the same station
-      auto const root = [&](location_idx_t const l) {
-        return tt.locations_.get_root_idx(l);
-      };
-      auto to_by_station =
-          hash_map<location_idx_t, std::vector<location_idx_t>>{};
-      for_each_side_location(tt, to_side, [&](location_idx_t const to) {
-        to_by_station[root(to)].push_back(to);
-      });
-      for_each_side_location(tt, from_side, [&](location_idx_t const from) {
-        if (auto const it = to_by_station.find(root(from));
-            it != end(to_by_station)) {
-          for (auto const to : it->second) {
-            add(from, to);
-          }
-        }
-      });
-      continue;
-    }
     for_each_side_location(tt, from_side, [&](location_idx_t const from) {
       for_each_side_location(tt, to_side,
                              [&](location_idx_t const to) { add(from, to); });

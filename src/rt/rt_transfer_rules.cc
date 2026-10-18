@@ -138,15 +138,12 @@ std::vector<side_t> const& get_signature(timetable const& tt,
       x.stop_ >= tt.route_location_seq_[tt.transport_route_[t]].size()) {
     return kNoSides;
   }
-  return utl::get_or_create(
-      st.signatures_, pair{t, pair{x.stop_, base}}, [&]() {
-        auto sig = std::vector<side_t>{};
-        get_stop_signature(tt, t, x.stop_, base, sig);
-        std::erase_if(sig, [&](side_t const s) {
-          return tt.transfer_rules_.rules_[s.rule()].is_global();
-        });
-        return sig;
-      });
+  return utl::get_or_create(st.signatures_, pair{t, pair{x.stop_, base}},
+                            [&]() {
+                              auto sig = std::vector<side_t>{};
+                              get_stop_signature(tt, t, x.stop_, base, sig);
+                              return sig;
+                            });
 }
 
 duration_t get_expected(timetable const& tt,
@@ -569,8 +566,8 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
         st.rule_times_[l] = std::max(st.rule_times_[l], d);
       }
     }
-    if (r.is_global() || (!r.is_qualified(event_type::kArr) &&
-                          !r.is_qualified(event_type::kDep))) {
+    if (!r.is_qualified(event_type::kArr) &&
+        !r.is_qualified(event_type::kDep)) {
       continue;
     }
     for (auto const f : covered(r.from_stop_)) {

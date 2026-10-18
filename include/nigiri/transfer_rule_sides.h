@@ -27,24 +27,11 @@ inline transfer_rule_idx_t get_more_specific(timetable const& tt,
 
 bool has_transfer_rules(timetable const&, transport_idx_t);
 
-// the rule stop covers location l: l itself or its parent, any station that
-// is not excluded for a global rule
+// the rule stop covers location l: l itself or its parent
 inline bool is_rule_stop(timetable const& tt,
                          location_idx_t const rule_stop,
                          location_idx_t const l) {
-  return rule_stop == location_idx_t::invalid()
-             ? !tt.transfer_rules_.is_global_excluded(
-                   tt.locations_.get_root_idx(l))
-             : tt.locations_.is_self_or_parent(rule_stop, l);
-}
-
-// a global rule only applies between ends at the same station
-inline bool is_same_station(timetable const& tt,
-                            transfer_rule const& r,
-                            location_idx_t const from,
-                            location_idx_t const to) {
-  return !r.is_global() ||
-         tt.locations_.get_root_idx(from) == tt.locations_.get_root_idx(to);
+  return tt.locations_.is_self_or_parent(rule_stop, l);
 }
 
 void get_stop_signature(timetable const&,
@@ -52,9 +39,6 @@ void get_stop_signature(timetable const&,
                         stop_idx_t,
                         location_idx_t base,
                         std::vector<transfer_rule_side_idx>& sig);
-
-hash_map<location_idx_t, std::vector<transfer_rule_idx_t>> get_global_rules(
-    timetable const&);
 
 // The sides of the qualified rules of the trips of a section (merged trips).
 void get_section_sides(timetable const&,
@@ -67,6 +51,14 @@ void add_stop_sides(timetable const&,
                     event_type,
                     location_idx_t base,
                     std::vector<transfer_rule_side_idx>& sig);
+
+// Appends the sides of the event type of the provider's rules at the base's
+// station.
+void add_provider_sides(timetable const&,
+                        provider_idx_t,
+                        event_type,
+                        location_idx_t base,
+                        std::vector<transfer_rule_side_idx>& sig);
 
 inline bool is_applicable(timetable const& tt,
                           transfer_rule_side_idx const side,
