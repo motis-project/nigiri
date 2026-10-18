@@ -863,15 +863,29 @@ journey_pattern_map_t get_journey_patterns(
 
     auto stop_points = std::vector<journey_pattern::stop_point>{};
     for (auto const sp : n.child("pointsInSequence").children()) {
-      stop_points.push_back({
-          .id_ = id(sp),
-          .stop_ = get_stop(ref(sp, "ScheduledStopPointRef")),
-          .destination_display_ =
-              destination_displays.at(ref(sp, "DestinationDisplayRef")).get(),
-          .in_allowed_ = is_true_or_empty(val(sp, "ForBoarding")),
-          .out_allowed_ = is_true_or_empty(val(sp, "ForAlighting")),
-          .notices_ = get_notice_assignments(notices, sp),
-      });
+      auto stop_use = val(sp, "StopUse");
+      // AT-MVO generates these stops with nonsensical attributes
+      if (stop_use == "passthrough" or stop_use == "noBoardingOrAlighting") {
+        stop_points.push_back({
+            .id_ = id(sp),
+            .stop_ = get_stop(ref(sp, "ScheduledStopPointRef")),
+            .destination_display_ =
+                destination_displays.at(ref(sp, "DestinationDisplayRef")).get(),
+            .in_allowed_ = false,
+            .out_allowed_ = false,
+            .notices_ = get_notice_assignments(notices, sp),
+        });
+      } else {
+        stop_points.push_back({
+            .id_ = id(sp),
+            .stop_ = get_stop(ref(sp, "ScheduledStopPointRef")),
+            .destination_display_ =
+                destination_displays.at(ref(sp, "DestinationDisplayRef")).get(),
+            .in_allowed_ = is_true_or_empty(val(sp, "ForBoarding")),
+            .out_allowed_ = is_true_or_empty(val(sp, "ForAlighting")),
+            .notices_ = get_notice_assignments(notices, sp),
+        });
+      }
     }
 
     if (stop_points.size() < 2U) {
