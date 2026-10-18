@@ -649,7 +649,9 @@ operating_period_map_t get_operating_periods(
 
   for (auto const s : doc.select_nodes(
            "//ServiceCalendarFrame//operatingPeriods/UicOperatingPeriod |"
-           "//ServiceCalendarFrame/validityConditions/AvailabilityCondition")) {
+           "//ServiceCalendarFrame/validityConditions/AvailabilityCondition |"
+           // AT-MVO
+           "//ServiceFrame/validityConditions/AvailabilityCondition")) {
     auto const sn = s.node();
     auto const from = parse_date(val(sn, "FromDate"));
     auto const to = parse_date(val(sn, "ToDate"));
