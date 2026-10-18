@@ -1073,27 +1073,36 @@ std::vector<service_journey> get_service_journeys(
 
       auto const& jp = *std::get<journey_pattern const*>(sj.journey_pattern_);
 
-      for (auto const [passing_time, stop_point] :
-           utl::zip(n.select_nodes("passingTimes/TimetabledPassingTime"),
-                    jp.stop_points_)) {
+      // TimetabledPassingTime may leave out stops by referencing
+      // StopPointInJourneyPattern out of order. Deal with this by
+      // pre-allocating a vector of stop times and filling it out one by one.
+      // First observed in AT-MVO.
+      sj.stop_times_.resize(jp.stop_points_.size());
+      for (auto const passing_time :
+           n.select_nodes("passingTimes/TimetabledPassingTime")) {
         auto const pn = passing_time.node();
 
         auto stop_point_id = ref(pn, "StopPointInJourneyPatternRef");  // DELFI
         if (stop_point_id.empty()) {
           stop_point_id = ref(pn, "PointInJourneyPatternRef");  // SNCF
         }
+        auto stop_point_it =
+            utl::find_if(jp.stop_points_, [&stop_point_id](auto const& sp) {
+              return sp.id_ == stop_point_id;
+            });
+        if (stop_point_it == jp.stop_points_.end()) {
+          utl::log_error("NeTEx", "Could not find stop point id {}",
+                         stop_point_id);
+          continue;
+        }
+        auto stop_point_idx =
+            std::distance(jp.stop_points_.begin(), stop_point_it);
 
-        utl::verify(
-            stop_point.id_ == stop_point_id,
-            "expected pointsInSequence.StopPointInJourneyPattern.id={}, "
-            "got TimetabledPassingTime.StopPointInJourneyPatternRef={}",
-            stop_point.id_, stop_point_id);
-
-        sj.stop_times_.push_back(
-            {.arr_ = parse_time(val(pn, "ArrivalTime"),
-                                val(pn, "ArrivalDayOffset")),
-             .dep_ = parse_time(val(pn, "DepartureTime"),
-                                val(pn, "DepartureDayOffset"))});
+        sj.stop_times_.at(stop_point_idx) = {
+            .arr_ =
+                parse_time(val(pn, "ArrivalTime"), val(pn, "ArrivalDayOffset")),
+            .dep_ = parse_time(val(pn, "DepartureTime"),
+                               val(pn, "DepartureDayOffset"))};
       }
     }
 
