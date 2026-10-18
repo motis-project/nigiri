@@ -865,27 +865,16 @@ journey_pattern_map_t get_journey_patterns(
     for (auto const sp : n.child("pointsInSequence").children()) {
       auto stop_use = val(sp, "StopUse");
       // AT-MVO generates these stops with nonsensical attributes
-      if (stop_use == "passthrough" or stop_use == "noBoardingOrAlighting") {
-        stop_points.push_back({
-            .id_ = id(sp),
-            .stop_ = get_stop(ref(sp, "ScheduledStopPointRef")),
-            .destination_display_ =
-                destination_displays.at(ref(sp, "DestinationDisplayRef")).get(),
-            .in_allowed_ = false,
-            .out_allowed_ = false,
-            .notices_ = get_notice_assignments(notices, sp),
-        });
-      } else {
-        stop_points.push_back({
-            .id_ = id(sp),
-            .stop_ = get_stop(ref(sp, "ScheduledStopPointRef")),
-            .destination_display_ =
-                destination_displays.at(ref(sp, "DestinationDisplayRef")).get(),
-            .in_allowed_ = is_true_or_empty(val(sp, "ForBoarding")),
-            .out_allowed_ = is_true_or_empty(val(sp, "ForAlighting")),
-            .notices_ = get_notice_assignments(notices, sp),
-        });
-      }
+      auto const is_pass = stop_use == "passthrough" || stop_use == "noBoardingOrAlighting";
+      stop_points.push_back({
+          .id_ = id(sp),
+          .stop_ = get_stop(ref(sp, "ScheduledStopPointRef")),
+          .destination_display_ =
+              destination_displays.at(ref(sp, "DestinationDisplayRef")).get(),
+          .in_allowed_ = !is_pass && is_true_or_empty(val(sp, "ForBoarding")),
+          .out_allowed_ = !is_pass && is_true_or_empty(val(sp, "ForAlighting")),
+          .notices_ = get_notice_assignments(notices, sp),
+      });
     }
 
     if (stop_points.size() < 2U) {
@@ -1078,25 +1067,31 @@ std::vector<service_journey> get_service_journeys(
       // pre-allocating a vector of stop times and filling it out one by one.
       // First observed in AT-MVO.
       sj.stop_times_.resize(jp.stop_points_.size());
-      for (auto const passing_time :
-           n.select_nodes("passingTimes/TimetabledPassingTime")) {
+      for (auto const [passing_time_idx, passing_time] :
+           std::views::enumerate(n.select_nodes("passingTimes/TimetabledPassingTime"))) {
         auto const pn = passing_time.node();
 
         auto stop_point_id = ref(pn, "StopPointInJourneyPatternRef");  // DELFI
         if (stop_point_id.empty()) {
           stop_point_id = ref(pn, "PointInJourneyPatternRef");  // SNCF
         }
-        auto stop_point_it =
-            utl::find_if(jp.stop_points_, [&stop_point_id](auto const& sp) {
-              return sp.id_ == stop_point_id;
-            });
-        if (stop_point_it == jp.stop_points_.end()) {
-          utl::log_error("NeTEx", "Could not find stop point id {}",
-                         stop_point_id);
-          continue;
+        std::size_t stop_point_idx;
+        if (
+          (static_cast<std::size_t>(passing_time_idx) < jp.stop_points_.size()) &&
+          (jp.stop_points_.at(static_cast<std::size_t>(passing_time_idx)).id_ == stop_point_id)) {
+            stop_point_idx = static_cast<std::size_t>(passing_time_idx);
+        } else {
+          auto stop_point_it =
+              utl::find_if(jp.stop_points_, [&stop_point_id](auto const& sp) {
+                return sp.id_ == stop_point_id;
+              });
+          if (stop_point_it == jp.stop_points_.end()) {
+            utl::log_error("NeTEx", "Could not find stop point id {}",
+                          stop_point_id);
+            continue;
+          }
+          stop_point_idx = static_cast<std::size_t>(std::distance(jp.stop_points_.begin(), stop_point_it));
         }
-        auto stop_point_idx =
-            std::distance(jp.stop_points_.begin(), stop_point_it);
 
         sj.stop_times_.at(stop_point_idx) = {
             .arr_ =
