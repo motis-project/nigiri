@@ -16,6 +16,7 @@
 #include "pugixml.hpp"
 
 #include "utl/concat.h"
+#include "utl/enumerate.h"
 #include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/parallel_for.h"
@@ -1068,7 +1069,7 @@ std::vector<service_journey> get_service_journeys(
       // pre-allocating a vector of stop times and filling it out one by one.
       // First observed in AT-MVO.
       sj.stop_times_.resize(jp.stop_points_.size());
-      for (auto const [passing_time_idx, passing_time] : std::views::enumerate(
+      for (auto const [passing_time_idx, passing_time] : utl::enumerate(
                n.select_nodes("passingTimes/TimetabledPassingTime"))) {
         auto const pn = passing_time.node();
 
@@ -1083,7 +1084,7 @@ std::vector<service_journey> get_service_journeys(
             (jp.stop_points_.at(static_cast<std::size_t>(passing_time_idx))
                  .id_ == stop_point_id)) {
           stop_point_idx = static_cast<std::size_t>(passing_time_idx);
-        // Fall back to linear lookup if stop points are not in order
+          // Fall back to linear lookup if stop points are not in order
         } else {
           auto stop_point_it =
               utl::find_if(jp.stop_points_, [&stop_point_id](auto const& sp) {
