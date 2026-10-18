@@ -1103,7 +1103,7 @@ bool write(timetable& tt,
        r != route_idx_t{vs.route_base_route_.size()}; ++r) {
     base_route_routes[vs.route_base_route_[r]].push_back(r);
   }
-  auto seqs = hash_map<route_idx_t, stop_seq_t>{};
+  auto seqs = std::vector<stop_seq_t>{};
   auto n_regrouped = std::size_t{0U};
   for (auto r = route_idx_t{0U}; r != n_routes; ++r) {
     if (vs.route_route_stop_pairs_[r].empty()) {
@@ -1116,25 +1116,25 @@ bool write(timetable& tt,
         it != end(base_route_routes)) {
       routes.insert(end(routes), begin(it->second), end(it->second));
     }
-    seqs.clear();
-    for (auto const route : routes) {
-      auto& route_seq = seqs[route];
-      route_seq.assign(seq.begin(), seq.end());
+    seqs.assign(routes.size(), stop_seq_t{seq.begin(), seq.end()});
+    for (auto k = 0U; k != routes.size(); ++k) {
       for (auto i = stop_idx_t{0U}; i != seq.size(); ++i) {
         auto const s = vs.route_stop_of_.find(
-            route_stop{route, i, stop{seq[i]}.location_idx()});
+            route_stop{routes[k], i, stop{seq[i]}.location_idx()});
         if (s != end(vs.route_stop_of_)) {
-          route_seq[i] = stop{seq[i]}
-                             .with_location(location_of(
-                                 vs.route_stop_location_[s->second]))
-                             .value();
+          seqs[k][i] = stop{seq[i]}
+                           .with_location(
+                               location_of(vs.route_stop_location_[s->second]))
+                           .value();
         }
       }
     }
     auto groups =
         std::vector<std::pair<stop_seq_t, std::vector<transport_idx_t>>>{};
     for (auto t = route_transport_idx_t{0U}; t != transports.size(); ++t) {
-      auto const& s = seqs.at(get_route(vs, r, t));
+      auto const route = get_route(vs, r, t);
+      auto const& s = seqs[static_cast<std::size_t>(utl::find(routes, route) -
+                                                    begin(routes))];
       auto g = utl::find_if(
           groups, [&](auto const& group) { return group.first == s; });
       if (g == end(groups)) {
