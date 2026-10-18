@@ -53,6 +53,9 @@ void get_stop_signature(timetable const&,
                         location_idx_t base,
                         std::vector<transfer_rule_side_idx>& sig);
 
+hash_map<location_idx_t, std::vector<transfer_rule_idx_t>> get_global_rules(
+    timetable const&);
+
 // The sides of the qualified rules of the trips of a section (merged trips).
 void get_section_sides(timetable const&,
                        merged_trips_idx_t,

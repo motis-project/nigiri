@@ -1,7 +1,9 @@
 #include "nigiri/transfer_rule_sides.h"
 
 #include <algorithm>
+#include <iterator>
 #include <span>
+#include <tuple>
 #include <vector>
 
 #include "utl/equal_ranges_linear.h"
@@ -131,6 +133,87 @@ transfer_rule_idx_t get_change_rule(
     }
   }
   return best;
+}
+
+hash_map<location_idx_t, std::vector<transfer_rule_idx_t>> get_global_rules(
+    timetable const& tt) {
+  auto const& tr = tt.transfer_rules_;
+  auto global_rules =
+      hash_map<location_idx_t, std::vector<transfer_rule_idx_t>>{};
+  if (utl::none_of(tr.rules_,
+                   [](transfer_rule const& r) { return r.is_global(); })) {
+    return global_rules;
+  }
+
+  // the route ids (attribute groups) arriving / departing at each station
+  using event_t =
+      std::tuple<location_idx_t, route_id_idx_t, source_idx_t, event_type>;
+  auto events = hash_set<event_t>{};
+  for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
+    auto const seq = tt.route_location_seq_[r];
+    for (auto const t : tt.route_transport_ranges_[r]) {
+      if (!has_transfer_rules(tt, t)) {
+        continue;
+      }
+      auto const sections = tt.transport_to_trip_section_[t];
+      for (auto i = stop_idx_t{0U}; i != seq.size(); ++i) {
+        auto const stp = stop{seq[i]};
+        auto const station = tt.locations_.get_root_idx(stp.location_idx());
+        if (tr.is_global_excluded(station)) {
+          continue;
+        }
+        auto const add = [&](std::size_t const section, event_type const ev) {
+          for (auto const trip :
+               tt.merged_trips_[sections[sections.size() == 1U ? 0U
+                                                               : section]]) {
+            if (auto const route = tt.trip_route_id_[trip];
+                route != route_id_idx_t::invalid()) {
+              events.emplace(station, route,
+                             tt.trip_id_src_[tt.trip_ids_[trip].front()], ev);
+            }
+          }
+        };
+        if (i != 0U && stp.out_allowed()) {
+          add(i - 1U, event_type::kArr);
+        }
+        if (i + 1U != seq.size() && stp.in_allowed()) {
+          add(i, event_type::kDep);
+        }
+      }
+    }
+  }
+
+  auto sorted = utl::to_vec(events);
+  events = {};
+  utl::sort(sorted);
+  auto arr = std::vector<transfer_rule_idx_t>{};
+  auto dep = std::vector<transfer_rule_idx_t>{};
+  utl::equal_ranges_linear(
+      sorted,
+      [](event_t const& a, event_t const& b) {
+        return std::get<0>(a) == std::get<0>(b);
+      },
+      [&](auto const from, auto const to) {
+        arr.clear();
+        dep.clear();
+        for (auto it = from; it != to; ++it) {
+          auto const [_, route, src, ev] = *it;
+          for (auto const s : values_of(tr.route_rules_, route)) {
+            auto const& rule = tr.rules_[s.rule()];
+            if (rule.is_global() && rule.src_ == src && s.ev_type() == ev) {
+              (ev == event_type::kArr ? arr : dep).push_back(s.rule());
+            }
+          }
+        }
+        utl::erase_duplicates(arr);
+        utl::erase_duplicates(dep);
+        auto both = std::vector<transfer_rule_idx_t>{};
+        std::ranges::set_intersection(arr, dep, std::back_inserter(both));
+        if (!both.empty()) {
+          global_rules.emplace(std::get<0>(*from), std::move(both));
+        }
+      });
+  return global_rules;
 }
 
 }  // namespace nigiri
