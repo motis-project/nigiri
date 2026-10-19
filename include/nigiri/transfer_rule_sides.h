@@ -27,38 +27,28 @@ inline transfer_rule_idx_t get_more_specific(timetable const& tt,
 
 bool has_transfer_rules(timetable const&, transport_idx_t);
 
-// the rule stop covers location l: l itself or its parent
-inline bool is_rule_stop(timetable const& tt,
-                         location_idx_t const rule_stop,
-                         location_idx_t const l) {
-  return tt.locations_.is_self_or_parent(rule_stop, l);
-}
-
 void get_stop_signature(timetable const&,
                         transport_idx_t,
                         stop_idx_t,
                         location_idx_t base,
                         std::vector<transfer_rule_side_idx>& sig);
 
-// The sides of the qualified rules of the trips of a section (merged trips).
-void get_section_sides(timetable const&,
-                       merged_trips_idx_t,
-                       std::vector<transfer_rule_side_idx>& sides);
+struct section_rules {
+  bool empty() const { return trips_.empty() && routes_.empty(); }
+
+  std::vector<std::span<qualified_side<trip_idx_t> const>> trips_;
+  std::vector<std::span<qualified_side<route_id_idx_t> const>> routes_;
+  std::vector<source_idx_t> route_srcs_;
+};
+
+void get_section_rules(timetable const&, merged_trips_idx_t, section_rules&);
 
 // Appends the sides of the event type whose rule stop covers the base.
 void add_stop_sides(timetable const&,
-                    std::span<transfer_rule_side_idx const> section_sides,
+                    section_rules const&,
                     event_type,
                     location_idx_t base,
                     std::vector<transfer_rule_side_idx>& sig);
-
-// Appends the sides of the event type of the provider's rules at the base's
-// station.
-void add_provider_sides(timetable const&,
-                        provider_idx_t,
-                        event_type,
-                        location_idx_t base,
-                        std::vector<transfer_rule_side_idx>& sig);
 
 inline bool is_applicable(timetable const& tt,
                           transfer_rule_side_idx const side,

@@ -15,59 +15,56 @@ namespace nigiri {
 
 bool has_transfer_rules(timetable const& tt, transport_idx_t const t) {
   auto const& tr = tt.transfer_rules_;
-  return utl::any_of(tt.transport_section_providers_[t],
-                     [&](provider_idx_t const p) {
-                       return tr.has_provider_rules(p);
-                     }) ||
-         utl::any_of(tt.transport_to_trip_section_[t], [&](auto const s) {
-           return utl::any_of(tt.merged_trips_[s], [&](trip_idx_t const trip) {
-             return !std::ranges::empty(values_of(tr.trip_rules_, trip)) ||
-                    !std::ranges::empty(
-                        values_of(tr.route_rules_, tt.trip_route_id_[trip]));
-           });
-         });
+  return utl::any_of(tt.transport_to_trip_section_[t], [&](auto const s) {
+    return utl::any_of(tt.merged_trips_[s], [&](trip_idx_t const trip) {
+      return !rules_of(tr.trip_rules_, trip).empty() ||
+             !rules_of(tr.route_rules_, tt.trip_route_id_[trip]).empty();
+    });
+  });
 }
 
-void get_section_sides(timetable const& tt,
+void get_section_rules(timetable const& tt,
                        merged_trips_idx_t const section,
-                       std::vector<transfer_rule_side_idx>& sides) {
+                       section_rules& out) {
   auto const& tr = tt.transfer_rules_;
-  sides.clear();
+  out.trips_.clear();
+  out.routes_.clear();
+  out.route_srcs_.clear();
   for (auto const trip : tt.merged_trips_[section]) {
-    for (auto const s : values_of(tr.trip_rules_, trip)) {
-      sides.push_back(s);
+    if (auto const rules = rules_of(tr.trip_rules_, trip); !rules.empty()) {
+      out.trips_.push_back(rules);
     }
-    auto const src = tt.trip_id_src_[tt.trip_ids_[trip].front()];
-    for (auto const s : values_of(tr.route_rules_, tt.trip_route_id_[trip])) {
-      if (tr.rules_[s.rule()].src_ == src) {
-        sides.push_back(s);
-      }
+    if (auto const rules = rules_of(tr.route_rules_, tt.trip_route_id_[trip]);
+        !rules.empty()) {
+      out.routes_.push_back(rules);
+      out.route_srcs_.push_back(tt.trip_id_src_[tt.trip_ids_[trip].front()]);
     }
   }
 }
 
 void add_stop_sides(timetable const& tt,
-                    std::span<transfer_rule_side_idx const> section_sides,
+                    section_rules const& section,
                     event_type const ev,
                     location_idx_t const base,
                     std::vector<transfer_rule_side_idx>& sig) {
-  for (auto const s : section_sides) {
+  auto const& tr = tt.transfer_rules_;
+  auto const station = tt.locations_.get_root_idx(base);
+  auto const add = [&](transfer_rule_side_idx const s, source_idx_t const src) {
+    auto const& r = tr.rules_[s.rule()];
     if (s.ev_type() == ev &&
-        is_rule_stop(tt, tt.transfer_rules_.rules_[s.rule()].stop(ev), base)) {
+        (src == source_idx_t::invalid() || r.src_ == src) &&
+        tt.locations_.is_self_or_parent(r.stop(ev), base)) {
       sig.push_back(s);
     }
+  };
+  for (auto const rules : section.trips_) {
+    for (auto const s : rules_at(rules, station)) {
+      add(s, source_idx_t::invalid());
+    }
   }
-}
-
-void add_provider_sides(timetable const& tt,
-                        provider_idx_t const p,
-                        event_type const ev,
-                        location_idx_t const base,
-                        std::vector<transfer_rule_side_idx>& sig) {
-  for (auto const s : values_of(tt.transfer_rules_.provider_rules_,
-                                pair{p, tt.locations_.get_root_idx(base)})) {
-    if (s.ev_type() == ev) {
-      sig.push_back(s);
+  for (auto k = 0U; k != section.routes_.size(); ++k) {
+    for (auto const s : rules_at(section.routes_[k], station)) {
+      add(s, section.route_srcs_[k]);
     }
   }
 }
@@ -82,25 +79,15 @@ void get_stop_signature(timetable const& tt,
   auto const seq = tt.route_location_seq_[tt.transport_route_[t]];
   auto const stp = stop{seq[i]};
   auto const sections = tt.transport_to_trip_section_[t];
-  auto const providers = tt.transport_section_providers_[t];
-  auto const section = [&](stop_idx_t const k) {
-    return sections[sections.size() == 1U ? 0U : k];
-  };
-  auto sides = std::vector<transfer_rule_side_idx>{};
-  auto const add = [&](stop_idx_t const k, event_type const ev) {
-    get_section_sides(tt, section(k), sides);
-    add_stop_sides(tt, sides, ev, base, sig);
-    if (!providers.empty()) {
-      add_provider_sides(tt, providers[providers.size() == 1U ? 0U : k], ev,
-                         base, sig);
-    }
-  };
+  auto rules = section_rules{};
   sig.clear();
   if (i != 0U && stp.out_allowed()) {
-    add(static_cast<stop_idx_t>(i - 1U), event_type::kArr);
+    get_section_rules(tt, sections[sections.size() == 1U ? 0U : i - 1U], rules);
+    add_stop_sides(tt, rules, event_type::kArr, base, sig);
   }
   if (i + 1U != seq.size() && stp.in_allowed()) {
-    add(i, event_type::kDep);
+    get_section_rules(tt, sections[sections.size() == 1U ? 0U : i], rules);
+    add_stop_sides(tt, rules, event_type::kDep, base, sig);
   }
   utl::erase_duplicates(sig);
 }

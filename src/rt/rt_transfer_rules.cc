@@ -284,19 +284,27 @@ std::vector<rule_event> get_rule_events(timetable const& tt,
       }
     }
   };
+  auto const& route_ids = tt.route_ids_[rule.src_];
+  auto const add_route = [&](route_id_idx_t const route) {
+    for (auto const trip : route_ids.route_id_trips_[route]) {
+      add_trip(trip);
+    }
+  };
   if (auto const rule_trip = rule.trip(ev);
       rule_trip != trip_idx_t::invalid()) {
     add_trip(rule_trip);
-  } else if (rule.route(ev) == route_id_idx_t::invalid()) {
-    for (auto const& [trip, s] : tr.trip_rules_) {
-      if (s == q) {
-        add_trip(trip);
+  } else if (rule.route(ev) != route_id_idx_t::invalid()) {
+    add_route(rule.route(ev));
+  } else {
+    for (auto const& x : tr.trip_rules_) {
+      if (x.side_ == q) {
+        add_trip(x.qualifier_);
       }
     }
-  } else {
-    for (auto const trip :
-         tt.route_ids_[rule.src_].route_id_trips_[rule.route(ev)]) {
-      add_trip(trip);
+    for (auto const& x : tr.route_rules_) {
+      if (x.side_ == q) {
+        add_route(x.qualifier_);
+      }
     }
   }
   std::ranges::sort(events, {}, &rule_event::time_);

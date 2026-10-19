@@ -34,9 +34,8 @@ void add_rule_footpaths(
 void store_rule_lookups(timetable& tt,
                         interval<transfer_rule_idx_t> const rules) {
   auto& tr = tt.transfer_rules_;
-  auto trip_rules = std::vector<pair<trip_idx_t, transfer_rule_side_idx>>{};
-  auto route_rules =
-      std::vector<pair<route_id_idx_t, transfer_rule_side_idx>>{};
+  auto trip_rules = qualified_sides_t<trip_idx_t>{};
+  auto route_rules = qualified_sides_t<route_id_idx_t>{};
   auto stop_rules = std::vector<pair<location_idx_t, transfer_rule_side_idx>>{};
   for (auto const rule : rules) {
     auto const& r = tr.rules_[rule];
@@ -45,10 +44,11 @@ void store_rule_lookups(timetable& tt,
       if ((r.listed_ & (ev == event_type::kArr ? 1U : 2U)) != 0U) {
         continue;  // listed by the loader
       }
+      auto const station = tt.locations_.get_root_idx(r.stop(ev));
       if (r.trip(ev) != trip_idx_t::invalid()) {
-        trip_rules.push_back({r.trip(ev), s});
+        trip_rules.push_back({r.trip(ev), station, s});
       } else if (r.route(ev) != route_id_idx_t::invalid()) {
-        route_rules.push_back({r.route(ev), s});
+        route_rules.push_back({r.route(ev), station, s});
       } else {
         stop_rules.push_back({r.stop(ev), s});
       }

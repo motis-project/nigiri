@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <deque>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <utility>
 #include <vector>
@@ -38,15 +39,13 @@ using route_stop_pair_idx_t =
     cista::strong<std::uint32_t, struct route_stop_pair_>;
 using split_route_idx_t = cista::strong<std::uint32_t, struct split_route_>;
 using signature_idx_t = cista::strong<std::uint32_t, struct signature_idx_>;
-using sides_t = std::vector<transfer_rule_side_idx>;
 using stop_seq_t = std::vector<stop::value_type>;
 using route_stop_pair_t = pair<route_stop_idx_t, route_stop_idx_t>;
-using transport_signatures_t =
-    vector_map<route_transport_idx_t, signature_idx_t>;
 using histogram_t = std::vector<pair<duration_t, std::uint32_t>>;
 using window_t = interval<duration_t>;
 
 constexpr auto const kBaseTransport = route_transport_idx_t{0U};
+constexpr auto const kEmptySig = signature_idx_t{0U};
 constexpr auto const kNever = duration_t{routing::kMaxTravelTime};
 constexpr auto const kAnyDuration =
     window_t{duration_t::min(), duration_t::max()};
@@ -73,6 +72,7 @@ struct stop_pair {
 };
 
 struct location_pair {
+  route_stop_idx_t to_;
   window_t window_;
   histogram_t expected_;
 };
@@ -142,15 +142,13 @@ std::optional<duration_t> pick_duration(window_t const& w,
   if (w.from_ >= to) {
     return std::nullopt;
   }
-  auto best = to - duration_t{1};
-  auto best_n = std::uint32_t{0U};
-  for (auto const& [e, n] : expected) {
-    if (w.from_ <= e && e < to && (n > best_n || (n == best_n && e < best))) {
-      best = e;
-      best_n = n;
-    }
-  }
-  return best;
+  auto in_window = expected | std::views::filter([&](auto const& x) {
+                     return w.from_ <= x.first && x.first < to;
+                   });
+  auto const best = std::ranges::max_element(in_window, {}, [](auto const& x) {
+    return std::pair{x.second, -x.first.count()};
+  });
+  return best == in_window.end() ? to - duration_t{1} : best->first;
 }
 
 bool is_admissible(window_t const& w, bool const is_self) {
@@ -244,8 +242,19 @@ struct route_stop_pairs {
 };
 
 struct route_stop_locations {
+  location_pair const* find(route_stop_idx_t const from,
+                            route_stop_idx_t const to) const {
+    auto const& v = pairs_[from];
+    auto const it =
+        std::lower_bound(begin(v), end(v), to,
+                         [](location_pair const& x, route_stop_idx_t const t) {
+                           return x.to_ < t;
+                         });
+    return it != end(v) && it->to_ == to ? &*it : nullptr;
+  }
+
   vector_map<route_stop_idx_t, route_stop_idx_t> location_;
-  hash_map<route_stop_pair_t, location_pair> pairs_;
+  vector_map<route_stop_idx_t, std::vector<location_pair>> pairs_;
 };
 
 duration_t get_walk(timetable const& tt,
@@ -259,67 +268,64 @@ duration_t get_walk(timetable const& tt,
 // Signatures
 // ----------
 
+using sig_t = std::vector<transfer_rule_side_idx>;
+using transport_sigs_t = vector_map<route_transport_idx_t, signature_idx_t>;
+
 struct signatures {
-  vector_map<signature_idx_t, sides_t> sides_;
-  hash_map<route_stop, transport_signatures_t> transport_signatures_;
+  vector_map<signature_idx_t, sig_t> sides_;
+  hash_map<route_stop, transport_sigs_t> transport_signatures_;
 };
 
 signatures get_signatures(timetable const& tt) {
+  auto signature_of = hash_map<sig_t, signature_idx_t>{};
+
   auto sigs = signatures{};
-  auto const& tr = tt.transfer_rules_;
-  auto ids = hash_map<sides_t, signature_idx_t>{};
-  sigs.sides_.emplace_back();
-  ids.emplace(sides_t{}, signature_idx_t{0U});
-  auto sig = sides_t{};
-  auto section_sides = std::vector<sides_t>{};
+  sigs.sides_.emplace_back();  // kEmptySig
+
+  auto sig = sig_t{};
+  auto rules = std::vector<section_rules>{};
+
   for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
     auto const transports = tt.route_transport_ranges_[r];
     auto const seq = tt.route_location_seq_[r];
     for (auto const t : transports) {
+      auto const t_in_r_idx =
+          route_transport_idx_t{to_idx(t - transports.from_)};
+
       auto const sections = tt.transport_to_trip_section_[t];
-      auto const providers = tt.transport_section_providers_[t];
-      section_sides.resize(sections.size());
-      auto has_sides = utl::any_of(providers, [&](provider_idx_t const p) {
-        return tr.has_provider_rules(p);
-      });
+      rules.resize(sections.size());
       for (auto k = 0U; k != sections.size(); ++k) {
-        get_section_sides(tt, sections[k], section_sides[k]);
-        has_sides |= !section_sides[k].empty();
+        get_section_rules(tt, sections[k], rules[k]);
       }
-      if (!has_sides) {
+      if (utl::all_of(rules, [](auto&& x) { return x.empty(); })) {
         continue;
       }
-      auto const add = [&](stop_idx_t const k, event_type const ev,
-                           location_idx_t const base) {
-        add_stop_sides(tt, section_sides[sections.size() == 1U ? 0U : k], ev,
-                       base, sig);
-        if (!providers.empty()) {
-          add_provider_sides(tt, providers[providers.size() == 1U ? 0U : k], ev,
-                             base, sig);
-        }
-      };
+
       for (auto i = stop_idx_t{0U}; i != seq.size(); ++i) {
         auto const stp = stop{seq[i]};
         auto const base = stp.location_idx();
+
         sig.clear();
         if (i != 0U && stp.out_allowed()) {
-          add(static_cast<stop_idx_t>(i - 1U), event_type::kArr, base);
+          auto const arr_rules = rules[sections.size() == 1U ? 0U : i - 1U];
+          add_stop_sides(tt, arr_rules, event_type::kArr, base, sig);
         }
         if (i + 1U != seq.size() && stp.in_allowed()) {
-          add(i, event_type::kDep, base);
+          auto const dep_rules = rules[sections.size() == 1U ? 0U : i];
+          add_stop_sides(tt, dep_rules, event_type::kDep, base, sig);
         }
-        utl::erase_duplicates(sig);
+
         if (sig.empty()) {
           continue;
         }
-        auto& ids_at =
-            utl::get_or_create(sigs.transport_signatures_,
-                               route_stop{to_split_route(r), i, base}, [&]() {
-                                 return transport_signatures_t(
-                                     transports.size(), signature_idx_t{0U});
-                               });
-        ids_at[route_transport_idx_t{to_idx(t - transports.from_)}] =
-            utl::get_or_create(ids, sig, [&]() {
+
+        utl::erase_duplicates(sig);
+
+        auto& transport_signatures = utl::get_or_create(
+            sigs.transport_signatures_, route_stop{to_split_route(r), i, base},
+            [&]() { return transport_sigs_t(transports.size(), kEmptySig); });
+        transport_signatures[t_in_r_idx] =
+            utl::get_or_create(signature_of, sig, [&]() {
               sigs.sides_.push_back(sig);
               return signature_idx_t{sigs.sides_.size() - 1U};
             });
@@ -425,19 +431,18 @@ route_stop_pairs get_route_stop_pairs(timetable const& tt,
   auto pairs = route_stop_pairs{};
   pairs.stop_pairs_ = get_stop_pairs(tt, sigs);
   pairs.of_route_.resize(tt.n_routes());
-  auto const sigs_of =
-      [&](route_stop const rs) -> transport_signatures_t const* {
+  auto const sigs_of = [&](route_stop const rs) -> transport_sigs_t const* {
     auto const it = sigs.transport_signatures_.find(rs);
     return it == end(sigs.transport_signatures_) ? nullptr : &it->second;
   };
   auto const stop_of = [&](route_stop const rs,
-                           transport_signatures_t const* ids) {
+                           transport_sigs_t const* sigs_at) {
     return pairs.get_or_create_route_stop(
-        ids != nullptr ? rs : get_base_stop(rs.stop_));
+        sigs_at != nullptr ? rs : get_base_stop(rs.stop_));
   };
-  auto const sig = [](transport_signatures_t const* ids,
+  auto const sig = [](transport_sigs_t const* sigs_at,
                       route_transport_idx_t const u) {
-    return ids == nullptr ? signature_idx_t{0U} : (*ids)[u];
+    return sigs_at == nullptr ? kEmptySig : (*sigs_at)[u];
   };
 
   auto route_stops =
@@ -495,23 +500,23 @@ route_stop_pairs get_route_stop_pairs(timetable const& tt,
       auto const l = is_arr ? lx : ly;
       for (auto const [r, i] : get_route_stops(l)) {
         auto const rs = route_stop{to_split_route(r), i, l};
-        auto const* ids = sigs_of(rs);
-        if (ids == nullptr ||
+        auto const* sigs_at = sigs_of(rs);
+        if (sigs_at == nullptr ||
             !has_event(tt, r, i,
                        is_arr ? event_type::kArr : event_type::kDep)) {
           continue;
         }
         auto const x = is_arr
-                           ? stop_of(rs, ids)
+                           ? stop_of(rs, sigs_at)
                            : pairs.get_or_create_route_stop(get_base_stop(lx));
         auto const y = is_arr
                            ? pairs.get_or_create_route_stop(get_base_stop(ly))
-                           : stop_of(rs, ids);
+                           : stop_of(rs, sigs_at);
         auto const p = pairs.get_or_create_pair(x, y, sp.window_);
         for (auto t = route_transport_idx_t{0U};
              t != tt.route_transport_ranges_[r].size(); ++t) {
-          auto const e = is_arr ? get_expected(sig(ids, t), {})
-                                : get_expected({}, sig(ids, t));
+          auto const e = is_arr ? get_expected(sig(sigs_at, t), kEmptySig)
+                                : get_expected(kEmptySig, sig(sigs_at, t));
           for (auto const gap : {e, e - duration_t{1}}) {
             pairs.add_transfer(p,
                                transfer{is_arr ? t : kBaseTransport,
@@ -715,44 +720,58 @@ route_stop_locations merge_locations(route_stop_pairs const& pairs) {
   auto locations = route_stop_locations{};
   auto& location = locations.location_;
   auto& lps = locations.pairs_;
+  lps.resize(pairs.route_stops_.size());
   for (auto s = route_stop_idx_t{0U}; s != pairs.route_stops_.size(); ++s) {
     location.push_back(s);
   }
   for (auto p = route_stop_pair_idx_t{0U}; p != pairs.pairs_.size(); ++p) {
-    lps.emplace(pairs.pairs_[p],
-                location_pair{pairs.windows_[p], pairs.expected_[p]});
+    auto const [a, b] = pairs.pairs_[p];
+    lps[a].push_back({b, pairs.windows_[p], pairs.expected_[p]});
   }
+  auto const by_to = [](location_pair const& a, location_pair const& b) {
+    return a.to_ < b.to_;
+  };
+  for (auto& v : lps) {
+    utl::sort(v, by_to);
+  }
+  auto partners = std::vector<route_stop_idx_t>{};
+  auto folds = std::vector<pair<route_stop_pair_t, route_stop_pair_t>>{};
+  auto merged = std::vector<pair<route_stop_idx_t, location_pair>>{};
+  auto const locations_of = [&](std::vector<route_stop_idx_t> const& v) {
+    partners.clear();
+    for (auto const x : v) {
+      partners.push_back(location[x]);
+    }
+    utl::erase_duplicates(partners);
+  };
   auto const join = [&](route_stop_idx_t const s, route_stop_idx_t const l) {
-    auto merged = hash_map<route_stop_pair_t, location_pair>{};
-    auto const fold = [&](route_stop_pair_t const into,
-                          route_stop_pair_t const old_pair) {
-      auto& m = utl::get_or_create(merged, into, [&]() {
-        auto const it = lps.find(into);
-        return it == end(lps) ? location_pair{kAnyDuration, {}} : it->second;
-      });
-      auto const& o = lps.at(old_pair);
-      m.window_ = m.window_.intersect(o.window_);
-      for (auto const& [e, n] : o.expected_) {
-        count(m.expected_, e, n);
-      }
-    };
-    auto const locations_of = [&](std::vector<route_stop_idx_t> const& v) {
-      auto ls =
-          utl::to_vec(v, [&](route_stop_idx_t const x) { return location[x]; });
-      utl::erase_duplicates(ls);
-      return ls;
-    };
-    auto const out = locations_of(pairs.out_[s]);
-    auto const in = locations_of(pairs.in_[s]);
-    for (auto const q : out) {
-      fold(route_stop_pair_t{l, q == s ? l : q}, route_stop_pair_t{s, q});
+    folds.clear();
+    locations_of(pairs.out_[s]);
+    for (auto const q : partners) {
+      folds.push_back({{l, q == s ? l : q}, {s, q}});
     }
-    for (auto const q : in) {
+    locations_of(pairs.in_[s]);
+    for (auto const q : partners) {
       if (q != s) {
-        fold(route_stop_pair_t{q, l}, route_stop_pair_t{q, s});
+        folds.push_back({{q, l}, {q, s}});
       }
     }
-    for (auto const& [into, m] : merged) {
+    utl::sort(folds);
+    merged.clear();
+    for (auto it = begin(folds); it != end(folds);) {
+      auto const into = it->first;
+      auto const* e = locations.find(into.first, into.second);
+      auto m =
+          location_pair{into.second, e != nullptr ? e->window_ : kAnyDuration,
+                        e != nullptr ? e->expected_ : histogram_t{}};
+      for (; it != end(folds) && it->first == into; ++it) {
+        auto const* o = locations.find(it->second.first, it->second.second);
+        utl::verify(o != nullptr, "location pair missing");
+        m.window_ = m.window_.intersect(o->window_);
+        for (auto const& [d, n] : o->expected_) {
+          count(m.expected_, d, n);
+        }
+      }
       auto const [a, b] = into;
       if (pairs.is_base(a) && pairs.is_base(b)
               ? !m.window_.contains(pairs.stop_pairs_
@@ -762,9 +781,22 @@ route_stop_locations merge_locations(route_stop_pairs const& pairs) {
               : !is_admissible(m.window_, a == b)) {
         return false;
       }
+      merged.push_back({into.first, std::move(m)});
     }
-    for (auto& [into, m] : merged) {
-      lps[into] = std::move(m);
+    for (auto it = begin(merged); it != end(merged);) {
+      auto const from = it->first;
+      auto& v = lps[from];
+      auto const n = static_cast<std::ptrdiff_t>(v.size());
+      for (; it != end(merged) && it->first == from; ++it) {
+        auto const pos =
+            std::lower_bound(begin(v), begin(v) + n, it->second, by_to);
+        if (pos != begin(v) + n && pos->to_ == it->second.to_) {
+          *pos = std::move(it->second);
+        } else {
+          v.push_back(std::move(it->second));
+        }
+      }
+      std::inplace_merge(begin(v), begin(v) + n, end(v), by_to);
     }
     location[s] = l;
     return true;
@@ -935,12 +967,11 @@ vector_map<route_stop_idx_t, location_idx_t> add_virts(
       continue;
     }
     auto const fallback = get_walk(tt, st, st);
-    auto const self = locations.pairs_.find(pair{s, s});
-    auto const d =
-        self == end(locations.pairs_)
-            ? std::optional{fallback}
-            : pick_duration(self->second.window_, fallback, kMaxTransferTime,
-                            self->second.expected_);
+    auto const* self = locations.find(s, s);
+    auto const d = self == nullptr
+                       ? std::optional{fallback}
+                       : pick_duration(self->window_, fallback,
+                                       kMaxTransferTime, self->expected_);
     utl::verify(d.has_value(), "virtual location without transfer time");
     auto l = location{};
     l.src_ = tt.locations_.src_[st];
@@ -964,24 +995,29 @@ void add_footpaths(timetable const& tt,
                    mutable_fws_multimap<location_idx_t, footpath>& durations) {
   durations[location_idx_t{tt.n_locations() - 1U}];
   auto n_footpaths = std::size_t{0U};
-  for (auto const& [lp, m] : locations.pairs_) {
-    auto const [a, c] = lp;
-    if (a == c || locations.location_[a] != a || locations.location_[c] != c ||
-        (pairs.is_base(a) && pairs.is_base(c))) {
+  for (auto a = route_stop_idx_t{0U}; a != locations.pairs_.size(); ++a) {
+    if (locations.location_[a] != a) {
       continue;
     }
-    auto const fallback =
-        pairs.stop_pairs_
-            .at(pair{pairs.route_stops_[a].stop_, pairs.route_stops_[c].stop_})
-            .fallback_;
-    auto const d =
-        pick_duration(m.window_, fallback, kMaxFootpath, m.expected_);
-    utl::verify(d.has_value(), "location pair without duration");
-    if (*d == fallback) {
-      continue;
+    for (auto const& m : locations.pairs_[a]) {
+      auto const c = m.to_;
+      if (a == c || locations.location_[c] != c ||
+          (pairs.is_base(a) && pairs.is_base(c))) {
+        continue;
+      }
+      auto const fallback = pairs.stop_pairs_
+                                .at(pair{pairs.route_stops_[a].stop_,
+                                         pairs.route_stops_[c].stop_})
+                                .fallback_;
+      auto const d =
+          pick_duration(m.window_, fallback, kMaxFootpath, m.expected_);
+      utl::verify(d.has_value(), "location pair without duration");
+      if (*d == fallback) {
+        continue;
+      }
+      durations[virts[a]].push_back(footpath{virts[c], to_duration(*d)});
+      ++n_footpaths;
     }
-    durations[virts[a]].push_back(footpath{virts[c], to_duration(*d)});
-    ++n_footpaths;
   }
   log(log_lvl::info, "loader.virtual_locations", "{} footpaths", n_footpaths);
 }
