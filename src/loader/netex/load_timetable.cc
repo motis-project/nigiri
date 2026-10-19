@@ -1446,12 +1446,17 @@ void load_timetable(loader_config const& config,
         }
       }
     };
-    for (auto& [id, stop] : im.stops_) {
+    // parents first: children store their parent's location
+    auto const ordered = in_morton_order(
+        im.stops_, [](auto const& x) { return x.second->pos_; });
+    for (auto* entry : ordered) {
+      auto& [id, stop] = *entry;
       if (stop->parent_ == nullptr) {
         add_stop(stop.get());
       }
     }
-    for (auto& [id, stop] : im.stops_) {
+    for (auto* entry : ordered) {
+      auto& [id, stop] = *entry;
       if (stop->parent_ != nullptr) {
         add_stop(stop.get());
       }

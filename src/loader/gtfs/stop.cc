@@ -312,7 +312,9 @@ read_stops(source_idx_t const src,
 
   auto transfers = read_transfers(stops, transfers_file_content);
   location_accessible_map_t accessible;
-  for (auto const& [id, s] : stops) {
+  for (auto const* entry :
+       in_morton_order(stops, [](auto const& x) { return x.second->coord_; })) {
+    auto const& [id, s] = *entry;
     auto loc = location{
         tt,
         src,

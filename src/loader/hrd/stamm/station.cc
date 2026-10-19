@@ -186,7 +186,9 @@ location_map_t parse_stations(config const& c,
   parse_equivilant_stations(c, stations, station_metabhf_file);
   parse_footpaths(c, stations, station_metabhf_file);
 
-  for (auto& [eva, s] : stations) {
+  for (auto* entry :
+       in_morton_order(stations, [](auto const& x) { return x.second.pos_; })) {
+    auto& [eva, s] = *entry;
     auto const eva_int = to_idx(eva);
     auto const id = fmt::format("{:07}", eva_int);
     auto const transfer_time = duration_t{eva_int < 1000000 ? 2 : 5};

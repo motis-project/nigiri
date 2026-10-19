@@ -1,6 +1,11 @@
 #pragma once
 
+#include <algorithm>
 #include <span>
+#include <utility>
+#include <vector>
+
+#include "utl/to_vec.h"
 
 #include "nigiri/loader/gtfs/tz_map.h"
 #include "nigiri/types.h"
@@ -263,5 +268,23 @@ provider_idx_t register_agency(timetable&, agency const&);
 location_idx_t register_location(timetable&, location const&);
 route_id_idx_t register_route(timetable&, route const&);
 trip_idx_t register_trip(timetable&, trip const&);
+
+// The position's index on a Z-order (Morton) curve; invalid positions get 0.
+std::uint64_t morton_key(geo::latlng const&);
+
+// Pointers to the elements of `c`, ordered by the morton_key of
+// `get_pos(element)`; elements with equal keys keep the order of `c`.
+// Loaders register the locations of a source in this order, so nearby
+// locations get nearby indices and the per-location routing state read along
+// footpaths shares cache lines and pages.
+template <typename Container, typename GetPos>
+auto in_morton_order(Container& c, GetPos&& get_pos) {
+  auto ordered = utl::to_vec(
+      c, [&](auto& x) { return std::pair{morton_key(get_pos(x)), &x}; });
+  std::stable_sort(
+      begin(ordered), end(ordered),
+      [](auto const& a, auto const& b) { return a.first < b.first; });
+  return utl::to_vec(ordered, [](auto const& x) { return x.second; });
+}
 
 }  // namespace nigiri::loader
