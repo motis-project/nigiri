@@ -11,6 +11,7 @@
 #include "nigiri/loader/hrd/stamm/station.h"
 #include "nigiri/loader/hrd/stamm/timezone.h"
 #include "nigiri/loader/hrd/stamm/track.h"
+#include "nigiri/loader/hrd/stamm/transfer_times.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -35,6 +36,10 @@ struct stamm {
                                minutes_after_midnight_t,
                                day_idx_t) const;
   trip_line_idx_t resolve_line(std::string_view s);
+
+  // transfer time rules (UMSTEIGV/UMSTEIGL/UMSTEIGZ)
+  bool has_transfer_rules() const { return transfer_times_.has_pair_rules(); }
+  transfer_times transfer_times_;
 
 private:
   friend std::uint64_t hash(config const&,

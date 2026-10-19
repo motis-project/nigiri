@@ -8,6 +8,7 @@
 #include "utl/helpers/algorithm.h"
 #include "utl/pipes.h"
 #include "utl/progress_tracker.h"
+#include "utl/verify.h"
 
 #include "nigiri/loader/hrd/service/service_builder.h"
 #include "nigiri/loader/hrd/stamm/stamm.h"
@@ -48,6 +49,14 @@ std::uint64_t hash(config const& c, dir const& d, std::uint64_t const seed) {
       h = wyhash(data.data(), data.size(), h, _wyp);
     }
   }
+  for (auto const& f : load_transfer_time_files(c, d)) {
+    if (!f.has_value()) {
+      h = wyhash64(h, _wyp[0]);
+    } else {
+      auto const data = f.data();
+      h = wyhash(data.data(), data.size(), h, _wyp);
+    }
+  }
   for (auto const& path : d.list_files(c.fplan_)) {
     auto const f = d.get_file(path);
     auto const data = f.data();
@@ -71,7 +80,16 @@ void load_timetable(source_idx_t const src,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices) {
   auto st = stamm{c, tt, d, src};
 
+  // one entry per source, like the GTFS and NeTEx loaders write: consumers
+  // index it by src (run_stop::looped_calendar_since does .at(src)), so
+  // leaving it empty made every itinerary response throw out_of_range.
+  utl::verify(tt.src_end_date_.size() == to_idx(src),
+              "unexpected tt.src_end_date_.size={}, expected: {}",
+              tt.src_end_date_.size(), src);
+  tt.src_end_date_.push_back(st.get_date_range().to_);
+
   auto progress_tracker = utl::get_active_progress_tracker();
+
   progress_tracker->status("Read Services")
       .in_high(utl::all(d.list_files(c.prefix(d) / c.fplan_))  //
                | utl::remove_if([&](fs::path const& f) {
@@ -104,6 +122,9 @@ void load_timetable(source_idx_t const src,
   }
 
   sb.write_location_routes();
+  if (st.has_transfer_rules()) {
+    write_transfer_rules(st.transfer_times_, st, tt, src);
+  }
 }
 
 }  // namespace nigiri::loader::hrd

@@ -65,7 +65,15 @@ void service_builder::add_services(config const& c,
 }
 
 void service_builder::write_services(source_idx_t const src) {
-  tt_.route_ids_.emplace_back();
+  // Called once per fplan file, but route_ids_ is indexed by source (see
+  // register.cc), so there has to be exactly one entry per source - the same
+  // invariant the GTFS loader asserts. Emplacing per file left a feed with N
+  // fplan files holding N entries while n_sources_ stayed 1, and
+  // create_rt_timetable, which sizes its per-source alert lists by
+  // n_sources() and then walks route_ids_, wrote past the end of them.
+  if (tt_.route_ids_.size() == to_idx(src)) {
+    tt_.route_ids_.emplace_back();
+  }
 
   auto const timer = scoped_timer{"loader.hrd.services.write"};
   auto const empty_flags = std::array{bitvec{}, bitvec{}, bitvec{},
@@ -98,13 +106,16 @@ void service_builder::write_services(source_idx_t const src) {
               s.utc_times_.front().count(), to_idx(stops.back().eva_num_),
               s.utc_times_.back().count(), s.line_info(store_));
 
+          auto const route_id =
+              get_or_create_route_id(stamm_.transfer_times_, tt_, src, ref,
+                                     s.split_info_.stop_range().from_);
           auto const id = register_trip(
               tt_,
               trip{tt_, src,
                    std::string_view{trip_id_buf_.data(), trip_id_buf_.size()},
                    kEmptyTranslation, kEmptyTranslation,
                    tt_.register_translation(ref.display_name(tt_)), "", "",
-                   direction_id_t::invalid(), route_id_idx_t::invalid(), flags,
+                   direction_id_t::invalid(), route_id, flags,
                    ref.origin_.dbg_});
           tt_.trip_stop_seq_numbers_.emplace_back(
               std::initializer_list<stop_idx_t>{});
@@ -112,6 +123,10 @@ void service_builder::write_services(source_idx_t const src) {
               tt_.next_transport_idx(),
               interval<stop_idx_t>{0U,
                                    static_cast<stop_idx_t>(stop_seq.size())}});
+          if (stamm_.has_transfer_rules()) {
+            add_trip_sides(stamm_.transfer_times_, stamm_, id, route_id, ref,
+                           s.split_info_.stop_range());
+          }
 
           auto const get_attribute_combination_idx =
               [&](std::optional<std::vector<service::attribute>> const& a,

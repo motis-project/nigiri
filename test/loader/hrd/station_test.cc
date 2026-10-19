@@ -46,7 +46,8 @@ TEST(hrd, parse_station) {
               src};
     auto const locations =
         parse_stations(c, src, tt, st, stations_file_content,
-                       station_geo_file_content, station_metabhf_content);
+                       station_geo_file_content, station_metabhf_content,
+                       transfer_times{});
     loader::finalize(tt);
 
     auto const l1 = tt.find(location_id{"0000001", src});

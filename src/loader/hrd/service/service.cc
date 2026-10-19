@@ -369,6 +369,18 @@ service::service(config const& c,
                   return st.resolve_direction({line.substr(c.s_info_.dir_)});
                 }
               });
+
+  parse_range(spec.directions_, c.direction_parse_info_, stops_, sections_,
+              begin_to_end_info_, &section::dir_flag_,
+              [&](utl::cstr line, range const&) -> std::optional<char> {
+                auto const f = line.len > 3U ? line[3] : ' ';
+                switch (f) {
+                  case 'H': return '1';
+                  case 'R': return '2';
+                  case ' ': return std::nullopt;
+                  default: return f;
+                }
+              });
 }
 
 std::string service::display_name(nigiri::timetable& tt) const {
