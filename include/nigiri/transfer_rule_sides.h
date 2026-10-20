@@ -7,7 +7,6 @@
 
 #include "cista/reflection/comparable.h"
 
-#include "nigiri/for_each_meta.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -44,7 +43,7 @@ struct section_rules {
 void get_section_rules(timetable const&, merged_trips_idx_t, section_rules&);
 
 // Appends the sides of the event type whose rule stop covers the base.
-void add_stop_sides(timetable const&,
+void add_stop_rules(timetable const&,
                     section_rules const&,
                     event_type,
                     location_idx_t base,
@@ -60,29 +59,11 @@ inline bool is_applicable(timetable const& tt,
              : tt.locations_.is_self_or_parent(r.stop(side.ev_type()), base);
 }
 
-// Transfer time within a location carrying the sides sig: the most specific
-// rule applying to both of its sides, else the base's transfer time.
-duration_t get_transfer_time(timetable const&,
-                             std::span<transfer_rule_side_idx const> sig,
-                             location_idx_t base);
-
 transfer_rule_idx_t get_change_rule(
     timetable const&,
     std::span<transfer_rule_side_idx const> from,
     std::span<transfer_rule_side_idx const> to,
     location_idx_t from_base,
     location_idx_t to_base);
-
-template <typename Fn>
-void for_each_side_location(timetable const& tt,
-                            transfer_rule_side_idx const side,
-                            Fn&& fn) {
-  auto const& r = tt.transfer_rules_.rules_[side.rule()];
-  if (!r.is_qualified(side.ev_type())) {
-    // Unqualified rules map to the stop and all descendants.
-    routing::for_each_meta(tt, routing::location_match_mode::kOnlyChildren,
-                           r.stop(side.ev_type()), fn);
-  }
-}
 
 }  // namespace nigiri

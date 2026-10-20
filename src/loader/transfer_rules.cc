@@ -9,6 +9,7 @@
 #include "utl/lookup.h"
 
 #include "nigiri/common/merge_sorted.h"
+#include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
@@ -44,11 +45,11 @@ void store_rule_lookups(timetable& tt,
       if ((r.listed_ & (ev == event_type::kArr ? 1U : 2U)) != 0U) {
         continue;  // listed by the loader
       }
-      auto const station = tt.locations_.get_root_idx(r.stop(ev));
+      auto const root = tt.locations_.get_root_idx(r.stop(ev));
       if (r.trip(ev) != trip_idx_t::invalid()) {
-        trip_rules.push_back({r.trip(ev), station, s});
+        trip_rules.push_back({r.trip(ev), root, s});
       } else if (r.route(ev) != route_id_idx_t::invalid()) {
-        route_rules.push_back({r.route(ev), station, s});
+        route_rules.push_back({r.route(ev), root, s});
       } else {
         stop_rules.push_back({r.stop(ev), s});
       }
@@ -58,6 +59,18 @@ void store_rule_lookups(timetable& tt,
   merge_sorted(tr.trip_rules_, trip_rules);
   merge_sorted(tr.route_rules_, route_rules);
   merge_sorted(tr.stop_rules_, stop_rules);
+}
+
+template <typename Fn>
+void for_each_side_location(timetable const& tt,
+                            transfer_rule_side_idx const side,
+                            Fn&& fn) {
+  auto const& r = tt.transfer_rules_.rules_[side.rule()];
+  if (!r.is_qualified(side.ev_type())) {
+    // Unqualified rules map to the stop and all descendants.
+    routing::for_each_meta(tt, routing::location_match_mode::kOnlyChildren,
+                           r.stop(side.ev_type()), fn);
+  }
 }
 
 hash_map<transfer_pair, transfer_rule_idx_t> get_most_specific(

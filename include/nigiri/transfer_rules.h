@@ -82,7 +82,7 @@ template <typename Qualifier>
 struct qualified_side {
   CISTA_COMPARABLE()
   Qualifier qualifier_;
-  location_idx_t station_;
+  location_idx_t l_;
   transfer_rule_side_idx side_;
 };
 
@@ -99,9 +99,9 @@ std::span<qualified_side<Qualifier> const> rules_of(
 
 template <typename Qualifier>
 auto rules_at(std::span<qualified_side<Qualifier> const> rules,
-              location_idx_t const station) {
-  return std::ranges::equal_range(rules, station, {},
-                                  &qualified_side<Qualifier>::station_) |
+              location_idx_t const l) {
+  return std::ranges::equal_range(rules, l, {},
+                                  &qualified_side<Qualifier>::l_) |
          std::views::transform(&qualified_side<Qualifier>::side_);
 }
 
