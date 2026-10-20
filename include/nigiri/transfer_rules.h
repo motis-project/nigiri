@@ -10,6 +10,7 @@
 
 #include "cista/reflection/comparable.h"
 
+#include "nigiri/footpath.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -41,6 +42,7 @@ struct transfer_rule {
            trip(ev) != trip_idx_t::invalid() ||
            (listed_ & (ev == event_type::kArr ? 1U : 2U)) != 0U;
   }
+  bool is_forbidden() const { return duration_ == footpath::kMaxDuration; }
 
   location_idx_t from_stop_{location_idx_t::invalid()};
   location_idx_t to_stop_{location_idx_t::invalid()};

@@ -597,8 +597,8 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
   for (auto const [rt_t, i] : queue) {
     auto const t = rtt.unix_event_time(
         rt_t, i, i == 0U ? event_type::kDep : event_type::kArr);
-    st.horizon_.from_ = std::min(st.horizon_.from_, t - footpath::kMaxDuration);
-    st.horizon_.to_ = std::max(st.horizon_.to_, t + footpath::kMaxDuration);
+    st.horizon_ = st.horizon_.extend(
+        {t - footpath::kMaxDuration, t + footpath::kMaxDuration});
   }
 
   auto const n_transports = rtt.n_rt_transports();

@@ -12,19 +12,16 @@
 
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
-#include "utl/lookup.h"
 #include "utl/to_vec.h"
 #include "utl/verify.h"
 
 #include "nigiri/loader/register.h"
 #include "nigiri/loader/transfer_rules.h"
 #include "nigiri/loader/virt/signatures.h"
+#include "nigiri/loader/virt/transfer_durations.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/footpath.h"
-#include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
-#include "nigiri/routing/limits.h"
-#include "nigiri/routing/transfers.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/stop.h"
 #include "nigiri/timetable.h"
@@ -39,10 +36,8 @@ using route_stop_pair_idx_t =
     cista::strong<std::uint32_t, struct route_stop_pair_>;
 using stop_seq_t = std::vector<stop::value_type>;
 using route_stop_pair_t = pair<route_stop_idx_t, route_stop_idx_t>;
-using window_t = interval<duration_t>;
 
 constexpr auto const kBaseTransport = route_transport_idx_t{0U};
-constexpr auto const kNever = duration_t{routing::kMaxTravelTime};
 constexpr auto const kAnyDuration =
     window_t{duration_t::min(), duration_t::max()};
 constexpr auto const kMaxFootpath = footpath::kMaxDuration - duration_t{1};
@@ -63,13 +58,6 @@ struct route_stop {
   signature_idx_t sig_{signature_idx_t::invalid()};
 };
 
-struct transfer_durations {
-  duration_t fallback_;
-  window_t window_;
-};
-
-using transfer_durations_t = hash_map<transfer_pair, transfer_durations>;
-
 struct location_pair {
   route_stop_idx_t to_;
   window_t window_;
@@ -81,30 +69,6 @@ void narrow(window_t& w, duration_t const gap, bool const must_work) {
   } else {
     w.from_ = std::max(w.from_, gap + duration_t{1});
   }
-}
-
-void extend(window_t& a, window_t const& b) {
-  a.from_ = std::min(a.from_, b.from_);
-  a.to_ = std::max(a.to_, b.to_);
-}
-
-duration_t get_minutes(transfer_rule const& r) {
-  return r.duration_ == footpath::kMaxDuration ? kNever
-                                               : duration_t{r.duration_};
-}
-
-hash_map<transfer_pair, window_t> get_rule_times(timetable const& tt) {
-  auto rule_times = hash_map<transfer_pair, window_t>{};
-  for (auto const& rule : tt.transfer_rules_.rules_) {
-    auto const m = get_minutes(rule);
-    auto const w = window_t{m, m + duration_t{1}};
-    auto const [it, is_new] =
-        rule_times.emplace(transfer_pair{rule.from_stop_, rule.to_stop_}, w);
-    if (!is_new) {
-      extend(it->second, w);
-    }
-  }
-  return rule_times;
 }
 
 bool has_event(timetable const& tt,
@@ -238,73 +202,14 @@ struct route_stop_locations {
   vector_map<route_stop_idx_t, std::vector<location_pair>> pairs_;
 };
 
-duration_t get_walk(timetable const& tt,
-                    location_idx_t const from,
-                    location_idx_t const to) {
-  return routing::shortest_transfer(tt, nullptr, kDefaultProfile, from, to)
-      .value_or(kNever);
-}
-
-transfer_durations_t get_transfer_durations(timetable const& tt,
-                                            signatures const& sigs) {
-  auto const& locs = tt.locations_;
-  auto const rule_times = get_rule_times(tt);
-  auto rule_stops = hash_set<location_idx_t>{};
-  for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
-    if (sigs.route_stop_sigs_[r].size() == 0U) {
-      continue;
-    }
-    auto const seq = tt.route_location_seq_[r];
-    for (auto i = 0U; i != seq.size(); ++i) {
-      if (!sigs.route_stop_sigs_[r][i].empty()) {
-        rule_stops.insert(stop{seq[i]}.location_idx());
-      }
-    }
-  }
-
-  auto durations_of = transfer_durations_t{};
-  auto const add_pair = [&](location_idx_t const from,
-                            location_idx_t const to) {
-    if (!rule_stops.contains(from) && !rule_stops.contains(to)) {
-      return;
-    }
-    utl::get_or_create(durations_of, transfer_pair{from, to}, [&]() {
-      auto const fallback = get_walk(tt, from, to);
-      auto window = window_t{fallback, fallback + duration_t{1}};
-      for (auto const a : {from, locs.parents_[from]}) {
-        for (auto const b : {to, locs.parents_[to]}) {
-          if (auto const w = utl::lookup(rule_times, transfer_pair{a, b})) {
-            extend(window, *w);
-          }
-        }
-      }
-      return transfer_durations{fallback, window};
-    });
-  };
-  for (auto const& r : tt.transfer_rules_.rules_) {
-    if (!r.is_qualified(event_type::kArr) &&
-        !r.is_qualified(event_type::kDep)) {
-      continue;
-    }
-    routing::for_each_meta(
-        tt, routing::location_match_mode::kOnlyChildren, r.from_stop_,
-        [&](location_idx_t const f) {
-          routing::for_each_meta(
-              tt, routing::location_match_mode::kOnlyChildren, r.to_stop_,
-              [&](location_idx_t const t) { add_pair(f, t); });
-        });
-  }
-  return durations_of;
-}
-
 template <typename Fn>
-void for_each_meeting(timetable const& tt,
-                      route_idx_t const rx,
-                      route_idx_t const ry,
-                      std::span<delta const> arrivals,
-                      std::span<delta const> departures,
-                      window_t const& w,
-                      Fn&& fn) {
+void for_each_transfer(timetable const& tt,
+                       route_idx_t const rx,
+                       route_idx_t const ry,
+                       std::span<delta const> arrivals,
+                       std::span<delta const> departures,
+                       window_t const& w,
+                       Fn&& fn) {
   auto const traffic_days =
       [&](route_idx_t const r,
           route_transport_idx_t const u) -> bitfield const& {
@@ -370,7 +275,7 @@ using location_route_stops_t =
 location_route_stops_t get_location_route_stops(
     timetable const& tt,
     signatures const& sigs,
-    transfer_durations_t const& durations_of) {
+    hash_map<transfer_pair, transfer_durations> const& durations_of) {
   auto route_stops = location_route_stops_t{};
   for (auto const& [stops, _] : durations_of) {
     for (auto const l : {stops.from_, stops.to_}) {
@@ -434,9 +339,11 @@ struct expected_durations {
     return utl::get_or_create(cache_, pair{from, to}, [&]() {
       auto const rule = get_change_rule(
           tt_, sigs_.rules_[from], sigs_.rules_[to], stops_.from_, stops_.to_);
-      return rule == transfer_rule_idx_t::invalid()
-                 ? fallback_
-                 : get_minutes(tt_.transfer_rules_.rules_[rule]);
+      if (rule == transfer_rule_idx_t::invalid()) {
+        return fallback_;
+      }
+      auto const& r = tt_.transfer_rules_.rules_[rule];
+      return r.is_forbidden() ? kNever : r.duration_;
     });
   }
 
@@ -483,13 +390,13 @@ void add_base_transfers(timetable const& tt,
   }
 }
 
-void add_meeting_transfers(timetable const& tt,
-                           transfer_pair const stops,
-                           transfer_durations const& pair_durations,
-                           std::vector<location_route_stop>& at_from,
-                           std::vector<location_route_stop>& at_to,
-                           expected_durations& expected,
-                           route_stop_pairs& pairs) {
+void add_transport_transfers(timetable const& tt,
+                             transfer_pair const stops,
+                             transfer_durations const& pair_durations,
+                             std::vector<location_route_stop>& at_from,
+                             std::vector<location_route_stop>& at_to,
+                             expected_durations& expected,
+                             route_stop_pairs& pairs) {
   for (auto& x : at_from) {
     if (!x.has_arr_) {
       continue;
@@ -502,7 +409,7 @@ void add_meeting_transfers(timetable const& tt,
           x.sigs_.size() > 1U || y.sigs_.size() > 1U;
       auto single_expected = std::optional<duration_t>{};
       auto p = route_stop_pair_idx_t::invalid();
-      for_each_meeting(
+      for_each_transfer(
           tt, x.route_, y.route_,
           tt.event_times_at_stop(x.route_, x.idx_, event_type::kArr),
           tt.event_times_at_stop(y.route_, y.idx_, event_type::kDep),
@@ -527,9 +434,10 @@ void add_meeting_transfers(timetable const& tt,
   }
 }
 
-transport_routes split_routes(timetable const& tt,
-                              transfer_durations_t const& durations_of,
-                              route_stop_pairs& pairs) {
+transport_routes split_routes(
+    timetable const& tt,
+    hash_map<transfer_pair, transfer_durations> const& durations_of,
+    route_stop_pairs& pairs) {
   auto routes = transport_routes{};
   for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
     routes.base_route_.push_back(r);
@@ -590,6 +498,7 @@ transport_routes split_routes(timetable const& tt,
     }
     pairs.transfers_[p] = std::vector<transfer>(begin(transfers), kept);
   };
+
   auto const get_groups = [&](route_stop_pair_idx_t const p, bool const is_from)
       -> std::vector<std::vector<route_transport_idx_t>> {
     auto const [a, b] = pairs.pairs_[p];
@@ -626,6 +535,7 @@ transport_routes split_routes(timetable const& tt,
       });
       return v;
     }();
+
     auto groups =
         std::vector<std::pair<window_t, std::vector<route_transport_idx_t>>>{};
     for (auto const& [t, tw] : items) {
@@ -638,9 +548,11 @@ transport_routes split_routes(timetable const& tt,
         groups.push_back({tw, {t}});
       }
     }
+
     if (groups.size() < 2U) {
       return {};
     }
+
     return utl::to_vec(groups, [](auto& g) { return std::move(g.second); });
   };
   auto pair_groups =
@@ -777,8 +689,9 @@ transport_routes split_routes(timetable const& tt,
   return routes;
 }
 
-route_stop_locations merge_locations(transfer_durations_t const& durations_of,
-                                     route_stop_pairs const& pairs) {
+route_stop_locations merge_locations(
+    hash_map<transfer_pair, transfer_durations> const& durations_of,
+    route_stop_pairs const& pairs) {
   auto locations = route_stop_locations{};
   auto& location = locations.location_;
   auto& lps = locations.pairs_;
@@ -1114,12 +1027,13 @@ vector_map<route_stop_idx_t, location_idx_t> add_virts(
   return virts;
 }
 
-void add_footpaths(timetable const& tt,
-                   transfer_durations_t const& durations_of,
-                   route_stop_pairs const& pairs,
-                   route_stop_locations const& locations,
-                   vector_map<route_stop_idx_t, location_idx_t> const& virts,
-                   mutable_fws_multimap<location_idx_t, footpath>& durations) {
+void add_footpaths(
+    timetable const& tt,
+    hash_map<transfer_pair, transfer_durations> const& durations_of,
+    route_stop_pairs const& pairs,
+    route_stop_locations const& locations,
+    vector_map<route_stop_idx_t, location_idx_t> const& virts,
+    mutable_fws_multimap<location_idx_t, footpath>& durations) {
   durations[location_idx_t{tt.n_locations() - 1U}];
   auto n_footpaths = std::size_t{0U};
   for (auto a = route_stop_idx_t{0U}; a != locations.pairs_.size(); ++a) {
@@ -1229,8 +1143,8 @@ bool add_virtual_locations(
       auto& at_to = location_route_stops.at(stops.to_);
       add_base_transfers(tt, stops, pair_durations, at_from, at_to, expected,
                          pairs);
-      add_meeting_transfers(tt, stops, pair_durations, at_from, at_to, expected,
-                            pairs);
+      add_transport_transfers(tt, stops, pair_durations, at_from, at_to,
+                              expected, pairs);
     }
   }
 

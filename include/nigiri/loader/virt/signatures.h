@@ -21,9 +21,11 @@ struct signatures {
   // route_stop_sigs_[R][I][T] = active rules for route R, stop I, transport T
   //
   // compaction rules:
-  // [R][I].empty() => no transport at stop I has rules
-  // [R][I].size() == 1 => transports at stop I all have the same rules
-  // [R][I].size() = n > 1 => different rules for all N transports of the route
+  // [R].empty()            => no transport of route R has rules
+  // [R].size >= 1          => stop_seq[R].size() stop entries
+  // [R][I].empty()         => no transport at stop I has rules
+  // [R][I].size() == 1     => transports at stop I all have the same rules
+  // [R][I].size() = n > 1  => different rules for all N transports of the route
   nvec<route_idx_t, signature_idx_t, 2U> route_stop_sigs_;
 };
 

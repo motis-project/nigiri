@@ -57,8 +57,7 @@ hash_map<transfer_pair, duration_t> get_rule_walks(timetable const& tt) {
         r.is_qualified(event_type::kDep)) {
       continue;
     }
-    auto const d =
-        r.duration_ == footpath::kMaxDuration ? duration_t{0} : r.duration_;
+    auto const d = r.is_forbidden() ? duration_t{0} : r.duration_;
     for (auto const from : stops(r.from_stop_)) {
       for (auto const to : stops(r.to_stop_)) {
         if (from != to) {
