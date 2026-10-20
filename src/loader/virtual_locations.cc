@@ -175,8 +175,6 @@ struct route_stop_pairs {
     auto const idx = route_stop_idx_t{route_stops_.size()};
     route_stops_.push_back(s);
     route_stop_of_.emplace(s, idx);
-    out_.emplace_back();
-    in_.emplace_back();
     return idx;
   }
 
@@ -199,8 +197,6 @@ struct route_stop_pairs {
       pairs_.push_back(route_stop_pair_t{a, b});
       transfers_.emplace_back();
       windows_.push_back(window);
-      out_[a].push_back(b);
-      in_[b].push_back(a);
       auto const& x = route_stops_[a];
       auto const& y = route_stops_[b];
       if (has_route(x)) {
@@ -223,7 +219,6 @@ struct route_stop_pairs {
 
   vector_map<route_stop_idx_t, route_stop> route_stops_;
   hash_map<route_stop, route_stop_idx_t> route_stop_of_;
-  vector_map<route_stop_idx_t, std::vector<route_stop_idx_t>> out_, in_;
   vector_map<route_stop_pair_idx_t, route_stop_pair_t> pairs_;
   hash_map<route_stop_pair_t, route_stop_pair_idx_t> pair_of_;
   vector_map<route_stop_pair_idx_t, std::vector<transfer>> transfers_;
@@ -798,12 +793,31 @@ route_stop_locations merge_locations(transfer_durations_t const& durations_of,
   for (auto& v : lps) {
     std::ranges::sort(v, {}, &location_pair::to_);
   }
+  auto const get_partners = [&](bool const is_out) {
+    auto n = vector_map<route_stop_idx_t, std::uint32_t>(
+        pairs.route_stops_.size(), 0U);
+    for (auto const [a, b] : pairs.pairs_) {
+      ++n[is_out ? a : b];
+    }
+    auto partners = vecvec<route_stop_idx_t, route_stop_idx_t>{};
+    for (auto const k : n) {
+      partners.add_back_sized(k);
+    }
+    std::ranges::fill(n, 0U);
+    for (auto const [a, b] : pairs.pairs_) {
+      auto const x = is_out ? a : b;
+      partners[x][n[x]++] = is_out ? b : a;
+    }
+    return partners;
+  };
+  auto const out = get_partners(true);
+  auto const in = get_partners(false);
   auto out_partners = std::vector<route_stop_idx_t>{};
   auto in_partners = std::vector<route_stop_idx_t>{};
   auto added = std::vector<location_pair>{};
   auto is_partner = bitvec_map<route_stop_idx_t>{};
   is_partner.resize(pairs.route_stops_.size());
-  auto const locations_of = [&](std::vector<route_stop_idx_t> const& v,
+  auto const locations_of = [&](auto const& v,
                                 std::vector<route_stop_idx_t>& partners) {
     partners.clear();
     for (auto const x : v) {
@@ -845,8 +859,8 @@ route_stop_locations merge_locations(transfer_durations_t const& durations_of,
                : is_admissible(w, a == b);
   };
   auto const join = [&](route_stop_idx_t const s, route_stop_idx_t const l) {
-    locations_of(pairs.out_[s], out_partners);
-    locations_of(pairs.in_[s], in_partners);
+    locations_of(out[s], out_partners);
+    locations_of(in[s], in_partners);
     auto has_self = false;
     auto has_in_self = false;
     auto self = window_of(l, l);
@@ -949,22 +963,21 @@ route_stop_locations merge_locations(transfer_durations_t const& durations_of,
   return locations;
 }
 
-void rewrite_routes(timetable& tt,
-                    shapes_storage* shapes,
-                    vector_map<route_idx_t, route_idx_t> const& base_route,
-                    vector_map<route_idx_t, std::vector<transport_idx_t>> const&
-                        route_transports) {
+void rewrite_routes(
+    timetable& tt,
+    shapes_storage* shapes,
+    vector_map<route_idx_t, route_idx_t> const& base_route,
+    vecvec<route_idx_t, transport_idx_t> const& route_transports) {
   auto const n_routes = tt.route_transport_ranges_.size();
   auto ranges = vector_map<route_idx_t, interval<transport_idx_t>>{};
   auto time_ranges = vector_map<route_idx_t, interval<std::uint32_t>>{};
   auto times = vector<delta>{};
-  auto order = vector_map<transport_idx_t, transport_idx_t>{};
+  auto const& starts = route_transports.bucket_starts_;
   for (auto r = route_idx_t{0U}; r != base_route.size(); ++r) {
     auto const o = base_route[r];
-    auto const& transports = route_transports[r];
-    ranges.emplace_back(transport_idx_t{order.size()},
-                        transport_idx_t{order.size() + transports.size()});
-    order.insert(end(order), begin(transports), end(transports));
+    auto const transports = route_transports[r];
+    ranges.emplace_back(transport_idx_t{starts[to_idx(r)]},
+                        transport_idx_t{starts[to_idx(r) + 1U]});
 
     auto const begin_times = times.size();
     auto const n_stops =
@@ -1007,15 +1020,16 @@ void rewrite_routes(timetable& tt,
   tt.route_stop_time_ranges_ = std::move(time_ranges);
   tt.route_stop_times_ = std::move(times);
 
+  auto const& order = route_transports.data_;
   auto inverse = vector_map<transport_idx_t, transport_idx_t>{};
   inverse.resize(order.size());
   for (auto t = transport_idx_t{0U}; t != order.size(); ++t) {
-    inverse[order[t]] = t;
+    inverse[order[to_idx(t)]] = t;
   }
   auto const permute = [&](auto& v) {
     auto copy = v;
     for (auto t = transport_idx_t{0U}; t != order.size(); ++t) {
-      copy[t] = v[order[t]];
+      copy[t] = v[order[to_idx(t)]];
     }
     v = std::move(copy);
   };
@@ -1142,16 +1156,19 @@ void write_routes(timetable& tt,
                   vector_map<route_stop_idx_t, location_idx_t> const& virts,
                   shapes_storage* shapes) {
   auto const n_routes = tt.n_routes();
-  auto route_transports =
-      vector_map<route_idx_t, std::vector<transport_idx_t>>{};
-  route_transports.resize(routes.base_route_.size());
-  for (auto r = route_idx_t{0U}; r != n_routes; ++r) {
-    auto const transports = tt.route_transport_ranges_[r];
+  auto route_transports = vecvec<route_idx_t, transport_idx_t>{};
+  auto transports = std::vector<transport_idx_t>{};
+  for (auto q = route_idx_t{0U}; q != routes.base_route_.size(); ++q) {
+    auto const r = routes.base_route_[q];
+    auto const range = tt.route_transport_ranges_[r];
+    transports.clear();
     for (auto t = route_transport_idx_t{0U};
-         t != route_transport_idx_t{transports.size()}; ++t) {
-      route_transports[routes.get_route(r, t)].push_back(transports.from_ +
-                                                         to_idx(t));
+         t != route_transport_idx_t{range.size()}; ++t) {
+      if (routes.get_route(r, t) == q) {
+        transports.push_back(range.from_ + to_idx(t));
+      }
     }
+    route_transports.emplace_back(transports);
   }
   auto seq = stop_seq_t{};
   auto const get_seq = [&](route_idx_t const q) -> stop_seq_t const& {
