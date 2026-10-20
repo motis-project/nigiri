@@ -36,7 +36,6 @@ n_to_all_result raptor_n_to_all(
     rt_timetable const* rtt,
     std::vector<location_idx_t> const& origins,
     unixtime_t start_time,
-    std::uint8_t max_transfers = kMaxTransfers,
-    duration_t max_travel_time = kMaxTravelTime);
+    query const& q);
 
 }  // namespace nigiri::routing
