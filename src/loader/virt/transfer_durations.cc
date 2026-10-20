@@ -26,7 +26,7 @@ hash_map<transfer_pair, transfer_durations> get_transfer_durations(
   auto rule_stops = bitvec_map<location_idx_t>{};
   rule_stops.resize(tt.n_locations());
   for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
-    if (sigs.route_stop_sigs_[r].size() == 0U) {
+    if (!sigs.has_rules(r)) {
       continue;
     }
     for (auto const [s, stop_sigs] :
@@ -37,8 +37,10 @@ hash_map<transfer_pair, transfer_durations> get_transfer_durations(
     }
   }
 
-  // For each from/to stop pair:
-  // Build convex hull interval of all qualified transfer rule durations.
+  // For each from/to stop pair where either stop has qualified rules:
+  // Build convex hull interval of
+  // - the fallback duration (unqualified rule / routed / beelined)
+  // - and all qualified transfer rule durations (forbidden => max=kNever)
   auto durations_of = hash_map<transfer_pair, transfer_durations>{};
   auto const for_each_stop = [&](location_idx_t const l, auto&& fn) {
     fn(l);
