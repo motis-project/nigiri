@@ -6,7 +6,7 @@
 #include "nigiri/routing/search.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/common/delta_t.h"
-#include "nigiri/routing/pareto_set.h"     
+#include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/transfer_time_settings.h"
@@ -62,9 +62,9 @@ raptor_state run_raptor_n_to_all(timetable const& tt,
                      profile_idx_t{0U}};
 
   algo.next_start_time();
-  for (auto const& origin : origins) {
-    for (auto t =start_time;t<=start_time+duration_t{15};t+=duration_t{1})
-      algo.add_start(origin,t,origin);
+  for (auto const& s : q.start_) {
+    for (auto t =start_time+s.duration();t<=start_time+s.duration()+duration_t{15};t+=duration_t{1})
+      algo.add_start(s.target(),t,s.target());
   }
   //label
   auto const worst_time =
