@@ -384,8 +384,6 @@ struct rt_timetable {
   };
   gpu_rtt_slot gpu_rtt_;
 
-  // Interval real-time data is available for. Empty (`from_ == to_`) if no
-  // real-time update has been applied yet. See `extend_coverage()`.
   interval<unixtime_t> coverage_;
 };
 
