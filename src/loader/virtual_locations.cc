@@ -45,7 +45,8 @@ constexpr auto const kMaxTransferTime =
     duration_t{kNoTransferAllowed} - duration_t{1};
 
 struct transfer {
-  route_transport_idx_t from_, to_;
+  route_transport_idx_t from_;
+  route_transport_idx_t to_;
   duration_t gap_;
   duration_t expected_;
 };
@@ -89,29 +90,25 @@ bool is_admissible(window_t const& w, bool const is_self) {
       .has_value();
 }
 
-bool is_base(route_stop const& s) {
-  return s.route_ == route_idx_t::invalid() &&
-         s.sig_ == signature_idx_t::invalid();
-}
+bool is_base(route_stop const& s) { return s.sig_ == kEmptySig; }
 
 bool has_route(route_stop const& s) {
   return s.route_ != route_idx_t::invalid();
 }
 
 route_stop get_base_stop(location_idx_t const l) {
-  return {route_idx_t::invalid(), stop_idx_t{0U}, l};
+  return {route_idx_t::invalid(), stop_idx_t{0U}, l, kEmptySig};
 }
 
 struct transport_routes {
-  route_idx_t get_route(route_idx_t const base_route,
+  route_idx_t get_route(timetable const& tt,
+                        route_idx_t const r,
                         route_transport_idx_t const t) const {
-    auto const& route = transport_route_[base_route];
-    return route.empty() ? base_route : route[t];
+    return route_[tt.route_transport_ranges_[base_route_[r]].from_ + to_idx(t)];
   }
 
   vector_map<route_idx_t, route_idx_t> base_route_;
-  vector_map<route_idx_t, vector_map<route_transport_idx_t, route_idx_t>>
-      transport_route_;
+  vector_map<transport_idx_t, route_idx_t> route_;
 };
 
 struct route_stop_pairs {
@@ -134,9 +131,6 @@ struct route_stop_pairs {
 
   route_stop_idx_t get_or_create_route_stop(route_stop const& rs,
                                             signature_idx_t const sig) {
-    if (auto const it = route_stop_of_.find(rs); it != end(route_stop_of_)) {
-      return it->second;
-    }
     auto const s = get_or_create_route_stop(
         route_stop{route_idx_t::invalid(), stop_idx_t{0U}, rs.stop_, sig});
     route_stop_of_.emplace(rs, s);
@@ -262,47 +256,20 @@ route_stop_idx_t get_route_stop(route_stop_pairs& pairs,
                                 location_idx_t const l) {
   if (s.route_stop_ == route_stop_idx_t::invalid()) {
     auto const rs = route_stop{s.route_, s.idx_, l};
-    s.route_stop_ = s.sigs_.size() == 1U
-                        ? pairs.get_or_create_route_stop(rs, s.sigs_.front())
-                    : !s.sigs_.empty()
+    auto const sig = get_signature(s, kBaseTransport);
+    s.route_stop_ = s.sigs_.size() > 1U
                         ? pairs.get_or_create_route_stop(rs)
-                        : pairs.get_or_create_route_stop(get_base_stop(l));
+                        : pairs.get_or_create_route_stop(rs, sig);
   }
   return s.route_stop_;
 }
-
-struct expected_durations {
-  void reset(transfer_pair const stops, duration_t const fallback) {
-    stops_ = stops;
-    fallback_ = fallback;
-    cache_.clear();
-  }
-
-  duration_t operator()(signature_idx_t const from, signature_idx_t const to) {
-    return utl::get_or_create(cache_, pair{from, to}, [&]() {
-      auto const rule = get_change_rule(
-          tt_, sigs_.rules_[from], sigs_.rules_[to], stops_.from_, stops_.to_);
-      if (rule == transfer_rule_idx_t::invalid()) {
-        return fallback_;
-      }
-      auto const& r = tt_.transfer_rules_.rules_[rule];
-      return r.is_forbidden() ? kNever : r.duration_;
-    });
-  }
-
-  timetable const& tt_;
-  signatures const& sigs_;
-  transfer_pair stops_{};
-  duration_t fallback_{};
-  hash_map<pair<signature_idx_t, signature_idx_t>, duration_t> cache_{};
-};
 
 void add_base_transfers(timetable const& tt,
                         transfer_pair const stops,
                         transfer_durations const& pair_durations,
                         location_route_stops_t::bucket at_from,
                         location_route_stops_t::bucket at_to,
-                        expected_durations& expected,
+                        auto const& expected,
                         route_stop_pairs& pairs) {
   for (auto const is_arr : {true, false}) {
     auto const l = is_arr ? stops.from_ : stops.to_;
@@ -338,7 +305,7 @@ void add_transport_transfers(timetable const& tt,
                              transfer_durations const& pair_durations,
                              location_route_stops_t::bucket at_from,
                              location_route_stops_t::bucket at_to,
-                             expected_durations& expected,
+                             auto const& expected,
                              route_stop_pairs& pairs) {
   for (auto& x : at_from) {
     if (!x.has_arr_) {
@@ -385,40 +352,21 @@ transport_routes split_routes(
   for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
     routes.base_route_.push_back(r);
   }
-  routes.transport_route_.resize(tt.n_routes());
+  routes.route_ = tt.transport_route_;
   auto const is_pair_admissible = [&](route_stop_pair_idx_t const p) {
     auto const [a, b] = pairs.pairs_[p];
     return is_admissible(pairs.windows_[p], a == b);
   };
-  auto targets = std::vector<route_stop_pair_idx_t>{};
   auto const repartition = [&](route_stop_pair_idx_t const p) {
     auto const [a, b] = pairs.pairs_[p];
     auto const x = pairs.route_stops_[a];
     auto const y = pairs.route_stops_[b];
     auto const route_of = [&](route_stop const& s,
                               route_transport_idx_t const t) {
-      return !has_route(s) ? s.route_
-                           : routes.get_route(routes.base_route_[s.route_], t);
+      return !has_route(s) ? s.route_ : routes.get_route(tt, s.route_, t);
     };
     auto const window =
         durations_of.at(transfer_pair{x.stop_, y.stop_}).window_;
-    targets.clear();
-    auto const get_target = [&](route_idx_t const rx, route_idx_t const ry) {
-      for (auto const q : targets) {
-        auto const [qa, qb] = pairs.pairs_[q];
-        if (pairs.route_stops_[qa].route_ == rx &&
-            pairs.route_stops_[qb].route_ == ry) {
-          return q;
-        }
-      }
-      auto const a2 = pairs.get_or_create_route_stop(
-          route_stop{rx, x.idx_, x.stop_, x.sig_});
-      auto const b2 = pairs.get_or_create_route_stop(
-          route_stop{ry, y.idx_, y.stop_, y.sig_});
-      auto const q = pairs.get_or_create_pair(a2, b2, window);
-      targets.push_back(q);
-      return q;
-    };
     auto transfers = std::move(pairs.transfers_[p]);
     auto kept = begin(transfers);
     for (auto const& t : transfers) {
@@ -427,7 +375,11 @@ transport_routes split_routes(
       if (rx == x.route_ && ry == y.route_) {
         *kept++ = t;
       } else {
-        pairs.add_transfer(get_target(rx, ry), t);
+        auto const a2 = pairs.get_or_create_route_stop(
+            route_stop{rx, x.idx_, x.stop_, x.sig_});
+        auto const b2 = pairs.get_or_create_route_stop(
+            route_stop{ry, y.idx_, y.stop_, y.sig_});
+        pairs.add_transfer(pairs.get_or_create_pair(a2, b2, window), t);
       }
     }
     if (kept == end(transfers)) {
@@ -531,8 +483,8 @@ transport_routes split_routes(
     auto const [a, b] = pairs.pairs_[p];
     auto const r = pairs.route_stops_[use_from ? a : b].route_;
     auto const base_route = routes.base_route_[r];
-    auto const n_transports =
-        route_transport_idx_t{tt.route_transport_ranges_[base_route].size()};
+    auto const range = tt.route_transport_ranges_[base_route];
+    auto const n_transports = route_transport_idx_t{range.size()};
 
     pair_groups.clear();
     for (auto const q : pairs.of_route_[r]) {
@@ -555,7 +507,7 @@ transport_routes split_routes(
     new_route_of.clear();
     new_route_of.resize(to_idx(n_transports), kNoGroup);
     for (auto t = route_transport_idx_t{0U}; t != n_transports; ++t) {
-      if (routes.get_route(base_route, t) != r ||
+      if (routes.get_route(tt, r, t) != r ||
           utl::all_of(pair_groups,
                       [&](auto const& g) { return g[t] == kNoGroup; })) {
         continue;
@@ -586,11 +538,6 @@ transport_routes split_routes(
     auto const kept_route = static_cast<std::uint32_t>(
         std::ranges::max_element(route_sizes) - begin(route_sizes));
 
-    auto& route = routes.transport_route_[base_route];
-    if (route.empty()) {
-      route = vector_map<route_transport_idx_t, route_idx_t>(
-          to_idx(n_transports), base_route);
-    }
     auto changed = std::vector{r};
     for (auto k = 0U; k != route_sizes.size(); ++k) {
       if (k == kept_route) {
@@ -602,7 +549,7 @@ transport_routes split_routes(
       pairs.of_route_.emplace_back();
       for (auto t = route_transport_idx_t{0U}; t != n_transports; ++t) {
         if (new_route_of[t] == k) {
-          route[t] = new_route;
+          routes.route_[range.from_ + to_idx(t)] = new_route;
         }
       }
     }
@@ -1006,13 +953,10 @@ void write_routes(timetable& tt,
   auto route_transports = vecvec<route_idx_t, transport_idx_t>{};
   auto transports = std::vector<transport_idx_t>{};
   for (auto q = route_idx_t{0U}; q != routes.base_route_.size(); ++q) {
-    auto const r = routes.base_route_[q];
-    auto const range = tt.route_transport_ranges_[r];
     transports.clear();
-    for (auto t = route_transport_idx_t{0U};
-         t != route_transport_idx_t{range.size()}; ++t) {
-      if (routes.get_route(r, t) == q) {
-        transports.push_back(range.from_ + to_idx(t));
+    for (auto const t : tt.route_transport_ranges_[routes.base_route_[q]]) {
+      if (routes.route_[t] == q) {
+        transports.push_back(t);
       }
     }
     route_transports.emplace_back(transports);
@@ -1069,14 +1013,27 @@ bool add_virtual_locations(
   {
     auto location_route_stops =
         get_location_route_stops(tt, sigs, durations_of);
-    auto expected = expected_durations{.tt_ = tt, .sigs_ = sigs};
-    for (auto const& [stops, pair_durations] : durations_of) {
-      expected.reset(stops, pair_durations.fallback_);
-      auto const at_from = location_route_stops[stops.from_];
-      auto const at_to = location_route_stops[stops.to_];
-      add_base_transfers(tt, stops, pair_durations, at_from, at_to, expected,
+    auto cache = hash_map<pair<signature_idx_t, signature_idx_t>, duration_t>{};
+    for (auto const& [from_to, pair_durations] : durations_of) {
+      auto const& [from, to] = from_to;
+      cache.clear();
+      auto const expected = [&](signature_idx_t const x,
+                                signature_idx_t const y) {
+        return utl::get_or_create(cache, pair{x, y}, [&]() {
+          auto const rule =
+              get_change_rule(tt, sigs.rules_[x], sigs.rules_[y], from, to);
+          if (rule == transfer_rule_idx_t::invalid()) {
+            return pair_durations.fallback_;
+          }
+          auto const& r = tt.transfer_rules_.rules_[rule];
+          return r.is_forbidden() ? kNever : r.duration_;
+        });
+      };
+      auto const at_from = location_route_stops[from];
+      auto const at_to = location_route_stops[to];
+      add_base_transfers(tt, from_to, pair_durations, at_from, at_to, expected,
                          pairs);
-      add_transport_transfers(tt, stops, pair_durations, at_from, at_to,
+      add_transport_transfers(tt, from_to, pair_durations, at_from, at_to,
                               expected, pairs);
     }
   }
