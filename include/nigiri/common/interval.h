@@ -110,7 +110,7 @@ struct interval {
     return cista::to_idx(to_ - from_);
   }
 
-  CISTA_CUDA_COMPAT bool empty() const { return to_ - from_ == 0U; }
+  CISTA_CUDA_COMPAT bool empty() const { return to_ == from_; }
 
   CISTA_CUDA_COMPAT T operator[](std::size_t const i) const {
 #ifndef __CUDA_ARCH__
