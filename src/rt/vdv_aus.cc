@@ -364,6 +364,9 @@ void updater::match_run(run_id const& vdv_id,
 
           auto const [vdv_time, ev_type] = *vdv_ev;
           auto const [vdv_day_idx, vdv_mam] = tt_.day_idx_mam(vdv_time);
+          if (vdv_mam < i32_minutes{0}) {
+            continue;
+          }
 
           for (auto const [nigiri_ev_time_idx, nigiri_ev_time] :
                utl::enumerate(tt_.event_times_at_stop(
