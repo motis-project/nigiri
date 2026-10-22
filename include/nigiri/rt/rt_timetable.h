@@ -107,12 +107,12 @@ struct rt_timetable {
     return rt_transport_data_states_[rt_t][event_idx(rt_t, stop_idx, ev_type)];
   }
 
-  bool affects(interval<unixtime_t> const itv,
+  bool affects(interval<unixtime_t> const iv,
                profile_idx_t const prf_idx) const noexcept {
     return (has_profile_td_footpaths(prf_idx) &&
             (has_td_footpaths_out_[prf_idx].any() ||
              has_td_footpaths_in_[prf_idx].any())) ||
-           itv.overlaps(coverage_);
+           iv.overlaps(coverage_);
   }
 
   void extend_coverage(unixtime_t const t) {

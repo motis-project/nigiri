@@ -24,19 +24,19 @@ namespace nigiri::routing {
 interval<unixtime_t> raptor_search_interval(direction const search_dir,
                                             timetable const& tt,
                                             query const& q) {
-  auto const query_itv = start_time_interval(q.start_time_);
-  auto const max_itv =
+  auto const query_iv = start_time_interval(q.start_time_);
+  auto const max_iv =
       search_dir == direction::kForward
           ? interval_estimator<direction::kForward>{tt, q}.max_interval()
           : interval_estimator<direction::kBackward>{tt, q}.max_interval();
   auto const extends = q.min_connection_count_ != 0U;
-  auto const max_search_itv = interval{
+  auto const max_search_iv = interval{
       extends && q.extend_interval_earlier_
-          ? std::min(query_itv.from_, max_itv.from_)
-          : query_itv.from_,
-      extends && q.extend_interval_later_ ? std::max(query_itv.to_, max_itv.to_)
-                                          : query_itv.to_};
-  return reachable_events(search_dir, max_search_itv, q.max_travel_time_);
+          ? std::min(query_iv.from_, max_iv.from_)
+          : query_iv.from_,
+      extends && q.extend_interval_later_ ? std::max(query_iv.to_, max_iv.to_)
+                                          : query_iv.to_};
+  return reachable_events(search_dir, max_search_iv, q.max_travel_time_);
 }
 
 namespace {

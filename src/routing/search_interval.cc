@@ -13,11 +13,11 @@ interval<unixtime_t> start_time_interval(
 }
 
 interval<unixtime_t> reachable_events(direction const search_dir,
-                                      interval<unixtime_t> const max_search_itv,
+                                      interval<unixtime_t> const max_search_iv,
                                       duration_t const max_reach) {
   return search_dir == direction::kForward
-             ? interval{max_search_itv.from_, max_search_itv.to_ + max_reach}
-             : interval{max_search_itv.from_ - max_reach, max_search_itv.to_};
+             ? interval{max_search_iv.from_, max_search_iv.to_ + max_reach}
+             : interval{max_search_iv.from_ - max_reach, max_search_iv.to_};
 }
 
 }  // namespace nigiri::routing

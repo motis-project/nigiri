@@ -31,14 +31,14 @@ interval<unixtime_t> pong_search_interval(direction const search_dir,
                                           timetable const& tt,
                                           query const& q,
                                           duration_t const min_look_ahead) {
-  auto const query_itv = start_time_interval(q.start_time_);
-  auto const tt_itv = tt.external_interval();
-  auto const max_search_itv = search_dir == direction::kForward
-                                  ? interval{query_itv.from_, tt_itv.to_}
-                                  : interval{tt_itv.from_, query_itv.to_};
+  auto const query_iv = start_time_interval(q.start_time_);
+  auto const tt_iv = tt.external_interval();
+  auto const max_search_iv = search_dir == direction::kForward
+                                 ? interval{query_iv.from_, tt_iv.to_}
+                                 : interval{tt_iv.from_, query_iv.to_};
 
   return reachable_events(
-      search_dir, max_search_itv,
+      search_dir, max_search_iv,
       std::min(q.max_travel_time_ + min_look_ahead, kMaxTravelTime));
 }
 
