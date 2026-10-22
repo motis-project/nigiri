@@ -32,7 +32,7 @@ interval<unixtime_t> reachable_events(direction const search_dir,
     return static_cast<std::int64_t>(t.time_since_epoch().count());
   };
 
-  auto const reach = std::int64_t{max_reach.count()} + 1;
+  auto const reach = std::int64_t{max_reach.count()};
   return search_dir == direction::kForward
              ? interval{start_itv.from_, clamped(mins(start_itv.to_) + reach)}
              : interval{clamped(mins(start_itv.from_) - reach), start_itv.to_};
