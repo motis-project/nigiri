@@ -11,7 +11,7 @@ interval<unixtime_t> start_time_interval(
     std::variant<unixtime_t, interval<unixtime_t>> const&);
 
 interval<unixtime_t> reachable_events(direction,
-                                      interval<unixtime_t> const& start_itv,
+                                      interval<unixtime_t> start_itv,
                                       duration_t max_reach);
 
 }  // namespace nigiri::routing

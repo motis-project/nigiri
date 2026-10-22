@@ -13,7 +13,7 @@ interval<unixtime_t> start_time_interval(
 }
 
 interval<unixtime_t> reachable_events(direction const search_dir,
-                                      interval<unixtime_t> const& start_itv,
+                                      interval<unixtime_t> const start_itv,
                                       duration_t const max_reach) {
   return search_dir == direction::kForward
              ? interval{start_itv.from_, start_itv.to_ + max_reach}
