@@ -90,7 +90,7 @@ struct rt_timetable {
     auto const d = unix_to_delta(new_time);
     rt_transport_stop_times_[rt_t][ev_idx] = d;
     rt_transport_data_states_[rt_t][ev_idx] = state;
-    extend_coverage(delta_to_unix(base_day_, d));
+    coverage_.extend(delta_to_unix(base_day_, d));
   }
 
   void set_data_state(rt_transport_idx_t const rt_t,
@@ -112,18 +112,6 @@ struct rt_timetable {
             (has_td_footpaths_out_[prf_idx].any() ||
              has_td_footpaths_in_[prf_idx].any())) ||
            iv.overlaps(coverage_);
-  }
-
-  void extend_coverage(unixtime_t const t) {
-    extend_coverage(interval{t, t + unixtime_t::duration{1}});
-  }
-
-  void extend_coverage(interval<unixtime_t> const i) {
-    assert(i.valid());
-    if (i.empty()) {
-      return;
-    }
-    coverage_ = coverage_.empty() ? i : coverage_.hull(i);
   }
 
   interval<unixtime_t> rt_transport_interval(

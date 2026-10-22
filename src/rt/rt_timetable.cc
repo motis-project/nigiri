@@ -77,7 +77,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
       }
     }
 
-    extend_coverage(rt_transport_interval(rt_t));
+    coverage_ = coverage_.hull(rt_transport_interval(rt_t));
   } else {
     rt_transport_stop_times_.emplace_back(time_seq);
   }
@@ -85,7 +85,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   rt_transport_data_states_.add_back_sized(
       rt_transport_stop_times_[rt_t].size());
 
-  extend_coverage(static_transport_interval(tt, t));
+  coverage_ = coverage_.hull(static_transport_interval(tt, t));
 
   rt_transport_track_sequence_.add_back_sized(0U);
 
@@ -349,10 +349,10 @@ void rt_timetable::update_lbs(timetable const& tt) {
 void rt_timetable::cancel_run(rt::run const& r) {
   if (r.is_rt()) {
     rt_transport_is_cancelled_.set(to_idx(r.rt_), true);
-    extend_coverage(rt_transport_interval(r.rt_));
+    coverage_ = coverage_.hull(rt_transport_interval(r.rt_));
   }
   if (r.is_scheduled()) {
-    extend_coverage(static_transport_interval(r.t_));
+    coverage_ = coverage_.hull(static_transport_interval(r.t_));
 
     auto const bf = traffic_days(transport_traffic_days_[r.t_.t_idx_]);
     bitfields_.emplace_back(bf).set(to_idx(r.t_.day_), false);

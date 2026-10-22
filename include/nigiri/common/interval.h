@@ -88,9 +88,25 @@ struct interval {
     }
   }
 
-  // smallest interval containing both
+  // Smallest interval containing both. An empty interval contains no points
+  // and therefore does not contribute (whatever its position).
   interval hull(interval const& o) const {
+    assert(valid() && o.valid());
+    if (empty()) {
+      return o;
+    }
+    if (o.empty()) {
+      return *this;
+    }
     return {std::min(from_, o.from_), std::max(to_, o.to_)};
+  }
+
+  // Grows this interval to contain the point `t`.
+  interval& extend(T const t) {
+    auto next = t;
+    ++next;
+    *this = hull(interval{t, next});
+    return *this;
   }
 
   iterator begin() const { return {from_}; }

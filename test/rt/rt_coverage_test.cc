@@ -222,27 +222,27 @@ TEST(rt, coverage_extend) {
   EXPECT_TRUE(rtt.coverage_.empty());
 
   // Empty intervals are ignored.
-  rtt.extend_coverage(interval<unixtime_t>{});
-  rtt.extend_coverage(interval{t(12h), t(12h)});
+  rtt.coverage_ = rtt.coverage_.hull(interval<unixtime_t>{});
+  rtt.coverage_ = rtt.coverage_.hull(interval{t(12h), t(12h)});
   EXPECT_TRUE(rtt.coverage_.empty());
 
-  rtt.extend_coverage(interval{t(10h), t(12h)});
+  rtt.coverage_ = rtt.coverage_.hull(interval{t(10h), t(12h)});
   EXPECT_FALSE(rtt.coverage_.empty());
   EXPECT_EQ((interval{t(10h), t(12h)}), rtt.coverage_);
 
   // Contained intervals do not shrink the coverage.
-  rtt.extend_coverage(interval{t(10h + 30min), t(11h)});
-  rtt.extend_coverage(t(11h));
+  rtt.coverage_ = rtt.coverage_.hull(interval{t(10h + 30min), t(11h)});
+  rtt.coverage_.extend(t(11h));
   EXPECT_EQ((interval{t(10h), t(12h)}), rtt.coverage_);
 
   // Overlapping + disjoint intervals extend it in both directions.
-  rtt.extend_coverage(interval{t(9h), t(11h)});
-  rtt.extend_coverage(interval{t(20h), t(21h)});
+  rtt.coverage_ = rtt.coverage_.hull(interval{t(9h), t(11h)});
+  rtt.coverage_ = rtt.coverage_.hull(interval{t(20h), t(21h)});
   EXPECT_EQ((interval{t(9h), t(21h)}), rtt.coverage_);
 
   // A single point covers exactly one minute.
   auto rtt1 = rt_timetable{};
-  rtt1.extend_coverage(t(6h));
+  rtt1.coverage_.extend(t(6h));
   EXPECT_EQ((interval{t(6h), t(6h + 1min)}), rtt1.coverage_);
   EXPECT_TRUE(rtt1.coverage_.contains(t(6h)));
   EXPECT_FALSE(rtt1.coverage_.contains(t(6h + 1min)));
@@ -270,7 +270,7 @@ TEST(rt, coverage_needs_rt) {
   rtt.has_td_footpaths_out_[1U].set(location_idx_t{0U}, false);
   EXPECT_FALSE(rtt.affects(interval{t(0h), t(24h)}, 1U));
 
-  rtt.extend_coverage(interval{t(10h), t(12h)});
+  rtt.coverage_ = rtt.coverage_.hull(interval{t(10h), t(12h)});
 
   // Disjoint on either side.
   EXPECT_FALSE(rtt.affects(interval{t(8h), t(10h)}, 0U));

@@ -122,7 +122,7 @@ TEST(routing, needs_rt_no_coverage) {
 TEST(routing, needs_rt_overlap) {
   auto const tt = load_tt();
   auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
-  rtt.extend_coverage(interval{t(8h), t(9h + 10min)});
+  rtt.coverage_ = rtt.coverage_.hull(interval{t(8h), t(9h + 10min)});
 
   // Query right in the covered window.
   EXPECT_TRUE(needs_rt<direction::kForward>(tt, rtt, q_at(t(8h))));
@@ -136,7 +136,7 @@ TEST(routing, needs_rt_overlap) {
 TEST(routing, needs_rt_far_away) {
   auto const tt = load_tt();
   auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
-  rtt.extend_coverage(interval{t(8h), t(9h + 10min)});
+  rtt.coverage_ = rtt.coverage_.hull(interval{t(8h), t(9h + 10min)});
 
   // A month later / earlier: even with the maximum interval extension (+-2
   // days) and the maximum travel time (5 days) the search cannot reach the
@@ -157,7 +157,7 @@ TEST(routing, needs_rt_far_away) {
 TEST(routing, needs_rt_direction) {
   auto const tt = load_tt();
   auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
-  rtt.extend_coverage(interval{t(8h), t(9h + 10min)});
+  rtt.coverage_ = rtt.coverage_.hull(interval{t(8h), t(9h + 10min)});
 
   auto const start = at_8(2019_y / May / 5);
 
@@ -177,7 +177,7 @@ TEST(routing, needs_rt_direction) {
 TEST(routing, needs_rt_next_day) {
   auto const tt = load_tt();
   auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
-  rtt.extend_coverage(interval{t(8h), t(9h + 10min)});
+  rtt.coverage_ = rtt.coverage_.hull(interval{t(8h), t(9h + 10min)});
 
   auto const next_day = at_8(2019_y / May / 2);
 
@@ -234,7 +234,7 @@ TEST(routing, needs_rt_profile) {
 TEST(routing, pong_needs_rt_interval_extension) {
   auto const tt = load_tt();
   auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
-  rtt.extend_coverage(interval{t(8h), t(9h + 10min)});
+  rtt.coverage_ = rtt.coverage_.hull(interval{t(8h), t(9h + 10min)});
 
   // Range RAPTOR cannot reach 05-01 from a month before / after.
   EXPECT_FALSE(
@@ -262,7 +262,7 @@ TEST(routing, pong_needs_rt_min_look_ahead) {
 
   // Real-time data right after the end of the timetable (11-01 00:00).
   auto rtt_after = rt::create_rt_timetable(tt, sys_days{kDay});
-  rtt_after.extend_coverage(
+  rtt_after.coverage_ = rtt_after.coverage_.hull(
       interval{unixtime_t{sys_days{2019_y / November / 1} + 12h},
                unixtime_t{sys_days{2019_y / November / 1} + 13h}});
 
@@ -277,7 +277,7 @@ TEST(routing, pong_needs_rt_min_look_ahead) {
 
   // Same for the earliest start time backwards (03-25 00:00).
   auto rtt_before = rt::create_rt_timetable(tt, sys_days{kDay});
-  rtt_before.extend_coverage(
+  rtt_before.coverage_ = rtt_before.coverage_.hull(
       interval{unixtime_t{sys_days{2019_y / March / 24} + 11h},
                unixtime_t{sys_days{2019_y / March / 24} + 12h}});
 
