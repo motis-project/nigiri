@@ -83,7 +83,7 @@ TEST(gtfs, transfer_rules_forbidden) {
   // A ban is not a very long transfer. Stored as one, the pair stays walkable
   // and any departure far enough out turns it into a journey: V2L leaves F2 at
   // 23:30, nine hours after V1 gets in, so a banned pair written at
-  // footpath::kMaxDuration would be reachable here.
+  // footpath::kBan would be reachable here.
   auto const late =
       raptor_search(tt, nullptr, "A3", "E",
                     interval{at("14:00"), t("2019-05-02 02:00 Europe/Berlin")});
@@ -900,4 +900,81 @@ TEST(gtfs, transfer_rules_qualified_rule_keeps_walks_of_other_trips) {
                         {"TQ", "RQ", {{"Q", "11:30"}, {"QB", "12:00"}}}},
                        "P,Q,3,,RX1,RX2,,\n", {"RX1", "RX2"})});
   EXPECT_EQ(std::nullopt, arrival_at(distant, "PA", "QB", "10:00"));
+}
+
+// A route that visits S twice: the rule R1 -> R2 (2 min) binds both visits.
+// At the first visit the change works (3 min gap), at the second it does not
+// (1 min gap), although both are the same route at the same stop.
+//     T1 (R1): A 09:50 -> S 10:00 -> B 10:10 -> S 10:20 -> C 10:30
+//     T2 (R2): S 10:03 -> D 10:30 (3 min after the first visit -> ok)
+//     T3 (R2): S 10:21 -> D 10:48 (1 min after the second visit < 2 -> not)
+//     T4 (R2): S 10:40 -> D 11:07
+TEST(gtfs, transfer_rules_route_visits_stop_twice) {
+  auto const tt =
+      load_feeds({feed({{"A", 53.0, 9.0},
+                        {"S", 53.1, 9.0},
+                        {"B", 53.2, 9.0},
+                        {"C", 53.3, 9.0},
+                        {"D", 53.1, 9.3}},
+                       {{"T1",
+                         "R1",
+                         {{"A", "09:50"},
+                          {"S", "10:00"},
+                          {"B", "10:10"},
+                          {"S", "10:20"},
+                          {"C", "10:30"}}},
+                        {"T2", "R2", {{"S", "10:03"}, {"D", "10:30"}}},
+                        {"T3", "R2", {{"S", "10:21"}, {"D", "10:48"}}},
+                        {"T4", "R2", {{"S", "10:40"}, {"D", "11:07"}}}},
+                       "S,S,2,300,,,,\n"
+                       "S,S,2,120,R1,R2,,\n")});
+  ASSERT_LT(0U, n_virts(tt));
+
+  EXPECT_EQ(at("10:30"), arrival_at(tt, "A", "D", "09:50"));
+  EXPECT_EQ(at("11:07"), arrival_at(tt, "B", "D", "10:10"));
+}
+
+// The same, but the rule names only trip T1 of R1: T1 and T5 have the same
+// stops, so they share a route, but their signatures at S differ. Each visit
+// is its own route node, the first visit splits R1, and T1's two visits end up
+// in different locations (first: 2 min, second: S's 5 min).
+//     T1 (R1): A 09:50 -> S 10:00 -> B 10:10 -> S 10:20 -> C 10:30
+//     T5 (R1): A 10:50 -> S 11:00 -> B 11:10 -> S 11:20 -> C 11:30
+//     T2/T3/T4 (R2): S 10:03/10:21/10:40 -> D 10:30/10:48/11:07
+//     T6/T7/T8 (R2): S 11:03/11:21/11:40 -> D 11:30/11:48/12:07
+TEST(gtfs, transfer_rules_route_visits_stop_twice_trips_differ) {
+  auto const tt =
+      load_feeds({feed({{"A", 53.0, 9.0},
+                        {"S", 53.1, 9.0},
+                        {"B", 53.2, 9.0},
+                        {"C", 53.3, 9.0},
+                        {"D", 53.1, 9.3}},
+                       {{"T1",
+                         "R1",
+                         {{"A", "09:50"},
+                          {"S", "10:00"},
+                          {"B", "10:10"},
+                          {"S", "10:20"},
+                          {"C", "10:30"}}},
+                        {"T5",
+                         "R1",
+                         {{"A", "10:50"},
+                          {"S", "11:00"},
+                          {"B", "11:10"},
+                          {"S", "11:20"},
+                          {"C", "11:30"}}},
+                        {"T2", "R2", {{"S", "10:03"}, {"D", "10:30"}}},
+                        {"T3", "R2", {{"S", "10:21"}, {"D", "10:48"}}},
+                        {"T4", "R2", {{"S", "10:40"}, {"D", "11:07"}}},
+                        {"T6", "R2", {{"S", "11:03"}, {"D", "11:30"}}},
+                        {"T7", "R2", {{"S", "11:21"}, {"D", "11:48"}}},
+                        {"T8", "R2", {{"S", "11:40"}, {"D", "12:07"}}}},
+                       "S,S,2,300,,,,\n"
+                       "S,S,2,120,,R2,T1,\n")});
+  ASSERT_LT(0U, n_virts(tt));
+
+  EXPECT_EQ(at("10:30"), arrival_at(tt, "A", "D", "09:50"));
+  EXPECT_EQ(at("11:07"), arrival_at(tt, "B", "D", "10:10"));
+  EXPECT_EQ(at("11:48"), arrival_at(tt, "A", "D", "10:50"));
+  EXPECT_EQ(at("12:07"), arrival_at(tt, "B", "D", "11:10"));
 }

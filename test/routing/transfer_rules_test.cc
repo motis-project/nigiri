@@ -191,7 +191,7 @@ TEST(transfer_rules, td_footpaths_reach_virtual_locations) {
     for (auto const to : members(qs)) {
       if (to != from) {
         expected.push_back(
-            {to, kNull, to_fp_duration(tt.locations_.transfer_time_[qs])});
+            {to, kNull, duration_t{tt.locations_.transfer_time_[qs]}});
       }
     }
     utl::sort(expected);

@@ -6,6 +6,7 @@
 #include "utl/helpers/algorithm.h"
 #include "utl/lookup.h"
 #include "utl/overloaded.h"
+#include "utl/visit.h"
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/location_routes.h"
@@ -20,19 +21,16 @@ constexpr auto const kTracing = false;
 
 using location_offset_t = std::variant<duration_t, std::span<td_offset const>>;
 
-duration_t get_duration(direction const search_dir,
-                        unixtime_t const t,
-                        location_offset_t const o,
-                        bool const invert = true) {
-  return std::visit(
-      utl::overloaded{[](duration_t const x) { return x; },
-                      [&](std::span<td_offset const> td) {
-                        auto duration = get_td_duration(
-                            invert ? flip(search_dir) : search_dir, td, t);
-                        return duration.has_value() ? duration->first
-                                                    : footpath::kMaxDuration;
-                      }},
-      o);
+std::optional<duration_t> get_duration(direction const search_dir,
+                                       unixtime_t const t,
+                                       location_offset_t const o,
+                                       bool const invert = true) {
+  return utl::visit(
+      o, [](duration_t const x) -> std::optional<duration_t> { return x; },
+      [&](std::span<td_offset const> td) {
+        return get_td_duration(invert ? flip(search_dir) : search_dir, td, t)
+            .transform([](auto const& x) { return x.first; });
+      });
 }
 
 template <typename... Args>
@@ -87,13 +85,13 @@ void add_start_times_at_stop(direction const search_dir,
           iv_at_stop.contains(tt.to_unixtime(day, stop_time_mam))) {
         auto const ev_time = tt.to_unixtime(day, stop_time_mam);
         auto const d = get_duration(search_dir, ev_time, offset);
-        if (d == footpath::kMaxDuration) {
+        if (!d.has_value()) {
           trace_start("        {} => infeasible\n", ev_time);
           continue;
         }
-        trace_start("        {} => duration={}\n", ev_time, d);
+        trace_start("        {} => duration={}\n", ev_time, *d);
         auto const time_at_start =
-            search_dir == direction::kForward ? ev_time - d : ev_time + d;
+            search_dir == direction::kForward ? ev_time - *d : ev_time + *d;
         if (!iv_at_start.contains(time_at_start)) {
           trace_start("      iv_at_start={} doesn't contain time_at_start={}\n",
                       iv_at_start, time_at_start);
@@ -209,12 +207,12 @@ void add_starts_in_interval(direction const search_dir,
             (search_dir == direction::kForward ? event_type::kDep
                                                : event_type::kArr));
         auto const d = get_duration(search_dir, ev_time, location_offset);
-        if (d == footpath::kMaxDuration) {
+        if (!d.has_value()) {
           trace_start("        {} => infeasible\n", ev_time);
           continue;
         }
         auto const time_at_start =
-            search_dir == direction::kForward ? ev_time - d : ev_time + d;
+            search_dir == direction::kForward ? ev_time - *d : ev_time + *d;
 
         if (!iv.contains(time_at_start)) {
           continue;
@@ -244,12 +242,12 @@ void add_starts_in_interval(direction const search_dir,
         search_dir == direction::kForward ? iv.to_ : iv.from_ - 1_minutes;
     auto const d =
         get_duration(search_dir, time_at_start, location_offset, false);
-    if (d != footpath::kMaxDuration) {
+    if (d.has_value()) {
       starts.emplace_back(
           start{.time_at_start_ = time_at_start,
                 .time_at_stop_ = search_dir == direction::kForward
-                                     ? iv.to_ + d
-                                     : iv.from_ - 1_minutes - d,
+                                     ? iv.to_ + *d
+                                     : iv.from_ - 1_minutes - *d,
                 .stop_ = l,
                 .v_ = v});
     }
@@ -366,24 +364,24 @@ void get_starts(
         start_via.contains(rtt == nullptr ? stop : rtt->static_location(stop))
             ? 1U
             : 0U);
-    std::visit(
-        utl::overloaded{
-            [&](interval<unixtime_t> const interval) {
-              add_starts_in_interval(search_dir, tt, rtt, interval, stop,
-                                     location_offset_t{std::span{offsets}}, v,
-                                     max_start_offset, prf_idx, starts,
-                                     add_ontrip);
-            },
-            [&](unixtime_t const t) {
-              auto const d = get_duration(search_dir, t, offsets, false);
-              if (d != footpath::kMaxDuration) {
-                starts.emplace_back(start{.time_at_start_ = t,
-                                          .time_at_stop_ = fwd ? t + d : t - d,
-                                          .stop_ = stop,
-                                          .v_ = v});
-              }
-            }},
-        start_time);
+    std::visit(utl::overloaded{
+                   [&](interval<unixtime_t> const interval) {
+                     add_starts_in_interval(
+                         search_dir, tt, rtt, interval, stop,
+                         location_offset_t{std::span{offsets}}, v,
+                         max_start_offset, prf_idx, starts, add_ontrip);
+                   },
+                   [&](unixtime_t const t) {
+                     auto const d = get_duration(search_dir, t, offsets, false);
+                     if (d.has_value()) {
+                       starts.emplace_back(
+                           start{.time_at_start_ = t,
+                                 .time_at_stop_ = fwd ? t + *d : t - *d,
+                                 .stop_ = stop,
+                                 .v_ = v});
+                     }
+                   }},
+               start_time);
   }
 }
 

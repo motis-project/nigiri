@@ -83,7 +83,7 @@ TEST(routing, pong_td_egress_dominated_label) {
                        .duration_ = 5min,
                        .transport_mode_payload_ = 5},
                       {.valid_from_ = monday + 10h,
-                       .duration_ = footpath::kMaxDuration,
+                       .duration_ = kTdFootpathBan,
                        .transport_mode_payload_ = 5}}}},
       .min_connection_count_ = 1U};
 

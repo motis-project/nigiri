@@ -17,8 +17,10 @@ namespace nigiri::loader {
 using route_stop_idx_t = cista::strong<std::uint32_t, struct route_stop_>;
 
 struct location_route_stop {
+  bool is_uniform() const { return sigs_.size() <= 1U; }
+
   route_idx_t route_;
-  stop_idx_t idx_;
+  stop_idx_t stop_idx_;
   std::span<signature_idx_t const> sigs_;
   bool has_arr_;
   bool has_dep_;

@@ -39,8 +39,7 @@ void dijkstra(timetable const& tt,
 
   for (auto const& [from, td] : q.td_dest_) {
     for (auto const& fp : td) {
-      if (fp.duration_ != footpath::kMaxDuration &&
-          fp.duration_ < q.max_travel_time_) {
+      if (fp.duration_ != kTdFootpathBan && fp.duration_ < q.max_travel_time_) {
         update_min(from, fp.duration_);
       }
     }

@@ -19,7 +19,7 @@ constexpr auto const kNever = duration_t{routing::kMaxTravelTime};
 
 struct transfer_durations {
   duration_t fallback_;
-  window_t window_;
+  window_t hull_;
 };
 
 duration_t get_walk(timetable const&, location_idx_t from, location_idx_t to);

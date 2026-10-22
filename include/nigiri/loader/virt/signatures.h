@@ -13,6 +13,8 @@ struct timetable;
 namespace nigiri::loader {
 
 using signature_idx_t = cista::strong<std::uint32_t, struct signature_idx_>;
+using route_transport_idx_t =
+    cista::strong<std::uint16_t, struct route_transport_>;
 
 constexpr auto const kEmptySig = signature_idx_t{0U};
 
@@ -28,6 +30,13 @@ struct signatures {
     }
     auto const b = route_stop_sigs_[r][i];
     return {b.begin(), b.end()};
+  }
+
+  static signature_idx_t get(std::span<signature_idx_t const> stop_sigs,
+                             route_transport_idx_t const t) {
+    return stop_sigs.empty()        ? kEmptySig
+           : stop_sigs.size() == 1U ? stop_sigs.front()
+                                    : stop_sigs[to_idx(t)];
   }
 
   vecvec<signature_idx_t, transfer_rule_side_idx> rules_;

@@ -413,7 +413,7 @@ void read_transfers(source_idx_t const src,
             return;
           }
 
-          auto const longest = footpath::kMaxDuration - duration_t{1};
+          auto const longest = footpath::kMax;
           if ((seconds + 59) / 60 > longest.count()) {
             log(log_lvl::info, "loader.gtfs.transfers",
                 "{} -> {}: min_transfer_time {} s capped to {} min",
@@ -431,7 +431,7 @@ void read_transfers(source_idx_t const src,
           return;
         }
 
-        // Drop transfer rule if adjusted footpath exceeds kMaxDuration.
+        // Drop transfer rule if adjusted footpath exceeds kMax.
         if (adjust_footpaths) {
           auto const adjusted =
               adjust_to_walk_speed(tt, *from_stop, *to_stop,
@@ -481,10 +481,9 @@ void read_transfers(source_idx_t const src,
 
         auto const is_forbidden = type == transfer_type::kNotPossible;
         auto const is_timed = type == transfer_type::kTimed;
-        auto const duration = is_forbidden
-                                  ? std::optional{footpath::kMaxDuration}
-                              : is_timed ? std::optional{duration_t{0}}
-                                         : min_transfer_time;
+        auto const duration = is_forbidden ? std::optional{footpath::kBan}
+                              : is_timed   ? std::optional{duration_t{0}}
+                                           : min_transfer_time;
         if (!duration.has_value()) {
           // Don't store non-binding rules.
           return;

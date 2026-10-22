@@ -70,7 +70,7 @@ void fix_transfer_durations(timetable const& tt,
       continue;
     }
     auto const d = get_rule_transfer_time(tt, rtt, *a, *b, leg.from_, leg.to_);
-    if (!d.has_value() || *d == footpath::kMaxDuration) {
+    if (!d.has_value() || *d == footpath::kBan) {
       continue;
     }
     auto const duration = adjusted_transfer_time(q.transfer_time_settings_, *d);

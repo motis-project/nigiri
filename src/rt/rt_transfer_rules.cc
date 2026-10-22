@@ -123,7 +123,7 @@ duration_t get_duration(timetable const& tt,
   return utl::get_or_create(st.durations_, key, [&]() {
     return routing::shortest_transfer(tt, &rtt, kDefaultProfile, key.first,
                                       key.second)
-        .value_or(footpath::kMaxDuration);
+        .value_or(footpath::kBan);
   });
 }
 
@@ -163,7 +163,7 @@ duration_t get_expected(timetable const& tt,
 }
 
 bool is_possible(duration_t const gap, duration_t const d) {
-  return d < footpath::kMaxDuration && gap >= d;
+  return d < footpath::kBan && gap >= d;
 }
 
 duration_t get_gap(change_side const& x, change_end const& y) {
@@ -445,9 +445,7 @@ std::pair<location_idx_t, std::vector<change_end>> add_location(
       auto const it = durations.emplace(fp.target(), fp.duration()).first;
       it->second = std::min(it->second, fp.duration());
     }
-    if (auto const t = rtt.transfer_time(base); t != kNoTransferAllowed) {
-      durations[base] = duration_t{t.count()};
-    }
+    durations[base] = duration_t{rtt.transfer_time(base)};
     rtt.for_each_rt_virt([&](location_idx_t const w, rt_location_idx_t) {
       if (auto const d = utl::lookup(durations, rtt.base(w));
           w != v && d.has_value()) {
@@ -495,8 +493,8 @@ std::pair<location_idx_t, std::vector<change_end>> add_location(
       if (p.is_out_ != is_out) {
         continue;
       }
-      auto const d = utl::lookup(durations, p.y_.location_)
-                         .value_or(footpath::kMaxDuration);
+      auto const d =
+          utl::lookup(durations, p.y_.location_).value_or(footpath::kBan);
       if (is_possible(p.gap_, d) != is_possible(p.gap_, p.expected_)) {
         moved.push_back(p.y_);
       }
@@ -504,7 +502,7 @@ std::pair<location_idx_t, std::vector<change_end>> add_location(
     auto& out = is_out ? rtt.rt_footpaths_out_ : rtt.rt_footpaths_in_;
     auto& in = is_out ? rtt.rt_footpaths_in_ : rtt.rt_footpaths_out_;
     for (auto const& [l, d] : durations) {
-      if (d != footpath::kMaxDuration) {
+      if (d != footpath::kBan) {
         out[v].emplace_back(l, d);
         in[l].emplace_back(v, d);
       }
@@ -597,8 +595,7 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
   for (auto const [rt_t, i] : queue) {
     auto const t = rtt.unix_event_time(
         rt_t, i, i == 0U ? event_type::kDep : event_type::kArr);
-    st.horizon_ = st.horizon_.extend(
-        {t - footpath::kMaxDuration, t + footpath::kMaxDuration});
+    st.horizon_ = st.horizon_.extend({t - footpath::kMax, t + footpath::kMax});
   }
 
   auto const n_transports = rtt.n_rt_transports();

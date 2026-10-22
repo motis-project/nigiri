@@ -25,7 +25,7 @@ void add_rule_footpaths(
     auto const d = rules[rule].duration_;
     auto const base = tt.base(from_to.from_);
     if (base == tt.base(from_to.to_) &&
-        d == to_fp_duration(tt.locations_.transfer_time_[base])) {
+        d == duration_t{tt.locations_.transfer_time_[base]}) {
       continue;
     }
     footpaths[from_to.from_].emplace_back(from_to.to_, d);

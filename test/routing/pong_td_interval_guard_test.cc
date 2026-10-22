@@ -100,7 +100,7 @@ TEST(routing, pong_td_egress_respects_worst_time_at_dest) {
                        .duration_ = 10min,
                        .transport_mode_payload_ = 5},
                       {.valid_from_ = day + 5h,
-                       .duration_ = footpath::kMaxDuration,
+                       .duration_ = kTdFootpathBan,
                        .transport_mode_payload_ = 5}}}},
       .min_connection_count_ = 3U,
       .extend_interval_later_ = true};

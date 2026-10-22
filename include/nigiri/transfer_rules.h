@@ -42,7 +42,7 @@ struct transfer_rule {
            trip(ev) != trip_idx_t::invalid() ||
            (listed_ & (ev == event_type::kArr ? 1U : 2U)) != 0U;
   }
-  bool is_forbidden() const { return duration_ == footpath::kMaxDuration; }
+  bool is_forbidden() const { return duration_ == footpath::kBan; }
 
   location_idx_t from_stop_{location_idx_t::invalid()};
   location_idx_t to_stop_{location_idx_t::invalid()};

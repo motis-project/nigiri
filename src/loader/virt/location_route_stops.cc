@@ -43,7 +43,7 @@ location_route_stops_t get_location_route_stops(
           }
           v.push_back(location_route_stop{
               .route_ = r,
-              .idx_ = i,
+              .stop_idx_ = i,
               .sigs_ = sigs.get(r, i),
               .has_arr_ = has_event(tt, r, i, event_type::kArr),
               .has_dep_ = has_event(tt, r, i, event_type::kDep)});

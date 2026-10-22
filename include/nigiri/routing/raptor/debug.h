@@ -184,20 +184,18 @@
       "offset={}\n",                                    \
       curr_time, loc{tt, dest_offset.target_}, dest_offset.duration_)
 
-#define trace_rc_legs_found                                             \
-  trace_reconstruct("found:\n");                                        \
-  transport_leg->print(std::cout, tt, rtt, 1, true);                    \
-  trace_reconstruct(                                                    \
-      " fp leg: {} {} --{}--> {} {}\n", loc{tt, l},                     \
-      delta_to_unix(base, fp_start),                                    \
-      adjusted_transfer_time(q.transfer_time_settings_, fp.duration()), \
-      loc{tt, fp.target()}, delta_to_unix(base, curr_time))
+#define trace_rc_legs_found                                       \
+  trace_reconstruct("found:\n");                                  \
+  transport_leg->print(std::cout, tt, rtt, 1, true);              \
+  trace_reconstruct(" fp leg: {} {} --{}--> {} {}\n", loc{tt, l}, \
+                    delta_to_unix(base, fp_start), fp_duration,   \
+                    loc{tt, target}, delta_to_unix(base, curr_time))
 
 #define trace_rc_check_fp                                                   \
   trace_reconstruct(                                                        \
       "round {}: searching for transports at {} with curr_time={} --{}--> " \
       "fp_start={}, v={}, stay_l={}, stay_fp_target={}, stay_start={}\n ",  \
-      k, loc{tt, fp.target()}, delta_to_unix(base, curr_time), fp_duration, \
+      k, loc{tt, target}, delta_to_unix(base, curr_time), fp_duration,      \
       delta_to_unix(base, fp_start), v, stay_l, stay_fp_target,             \
       delta_to_unix(base, stay_start))
 

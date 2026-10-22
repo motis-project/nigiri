@@ -51,7 +51,7 @@ std::optional<journey::leg> lookup_offset(location_idx_t const loc,
   // Time-dependend offsets take precedence.
   if (auto const it = td_offsets.find(loc); it != end(td_offsets)) {
     auto const td = get_td_duration(td_search_dir, it->second, t);
-    if (!td.has_value() || td->first >= footpath::kMaxDuration) {
+    if (!td.has_value()) {
       return std::nullopt;
     }
     return std::optional{
@@ -88,9 +88,9 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
   // best_dur includes waiting for a time-dependent footpath to become usable
   // (e.g. an elevator out of service), best_walk does not. best_raw is the
   // footpath duration without transfer time settings.
-  auto best_dur = footpath::kMaxDuration;
-  auto best_walk = footpath::kMaxDuration;
-  auto best_raw = footpath::kMaxDuration;
+  auto best_dur = duration_t::max();
+  auto best_walk = duration_t::max();
+  auto best_raw = duration_t::max();
   auto best_source = location_idx_t{};
 
   // As in the search: footpaths from a source with td footpaths are
@@ -133,9 +133,9 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
         return;
       }
 
-      auto eff_dur = footpath::kMaxDuration;
-      auto eff_walk = footpath::kMaxDuration;
-      auto eff_raw = footpath::kMaxDuration;
+      auto eff_dur = duration_t::max();
+      auto eff_walk = duration_t::max();
+      auto eff_raw = duration_t::max();
       auto const fp_from = is_boarding ? l : loc;
       auto const fp_to = is_boarding ? loc : l;
       if (l != loc && is_td_source(fp_from)) {
@@ -158,7 +158,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
         eff_raw = *raw;
       }
 
-      if (eff_dur >= footpath::kMaxDuration) {
+      if (eff_dur == duration_t::max()) {
         return;
       }
       auto const total = o_duration + eff_dur;
@@ -171,7 +171,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
     });
   }
 
-  if (best_dur >= footpath::kMaxDuration) {
+  if (best_dur == duration_t::max()) {
     return std::nullopt;
   }
 

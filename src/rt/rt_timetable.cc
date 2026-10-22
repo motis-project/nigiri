@@ -344,8 +344,7 @@ void add_lb_edge(timetable const& tt,
 
         if (it != end(lbs)) {
           // The same target did exist already. Update existing.
-          it->duration_ = static_cast<location_idx_t::value_t>(
-              std::min(footpath::kMaxDuration, travel_time).count());
+          *it = new_fp;
           return;
         }
 

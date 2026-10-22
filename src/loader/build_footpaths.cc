@@ -92,11 +92,10 @@ std::optional<duration_t> get_beeline_minutes(
       std::max({2.0, std::ceil((dist / kWalkSpeed) / 60.0),
                 static_cast<double>(rule.value_or(duration_t{0}).count())});
   // A walk named by transfers.txt is not capped by max_footpath_length - only
-  // by what a footpath can store (kMaxDuration means forbidden).
-  auto const max =
-      rule.has_value()
-          ? footpath::kMaxDuration.count() - 1
-          : std::min<int>(max_footpath_length, footpath::kMaxDuration.count());
+  // by what a footpath can store (kBan means forbidden).
+  auto const max = rule.has_value() ? footpath::kMax.count()
+                                    : std::min<int>(max_footpath_length,
+                                                    footpath::kMax.count());
   if (minutes > max) {
     return std::nullopt;
   }
@@ -165,8 +164,8 @@ void add_transitive_walks(timetable& tt,
 
   auto& fps = tt.locations_.preprocessing_footpaths_out_;
   auto const n = tt.n_locations();
-  auto const max = static_cast<std::uint16_t>(std::min<unsigned>(
-      max_footpath_length, footpath::kMaxDuration.count() - 1U));
+  auto const max = static_cast<std::uint16_t>(
+      std::min<unsigned>(max_footpath_length, footpath::kMax.count()));
   fps[location_idx_t{n - 1U}];  // resize
   auto chains = std::vector<std::vector<footpath>>(n);
   utl::parallel_for_run_threadlocal<search>(
@@ -284,7 +283,7 @@ void add_virt_walks(timetable const& tt,
           });
     };
     if (loc.transfer_time_[l] != kNoTransferAllowed) {
-      add(l, to_fp_duration(loc.transfer_time_[l]));
+      add(l, duration_t{loc.transfer_time_[l]});
     }
     for (auto const& fp : loc.preprocessing_footpaths_out_[l]) {
       add(fp.target(), fp.duration());
@@ -348,7 +347,7 @@ void write_footpaths(timetable& tt, rule_index const& rule_fps) {
 
     // Add rule footpaths (skip forbidden transfers).
     for (auto const fp : rule_fps.footpaths_[l]) {
-      if (fp.duration() != footpath::kMaxDuration) {
+      if (fp.duration() != footpath::kBan) {
         add(fp);
       }
     }
@@ -426,7 +425,7 @@ void expand_profile_to_virts(timetable& tt, profile_idx_t const prf) {
       continue;
     }
     if (loc.transfer_time_[l] != kNoTransferAllowed) {
-      add(l, to_fp_duration(loc.transfer_time_[l]));
+      add(l, duration_t{loc.transfer_time_[l]});
     }
     for (auto const fp : loc.footpaths_out_[prf][l]) {
       add(fp.target(), fp.duration());
@@ -454,7 +453,7 @@ void expand_td_footpaths_to_virts(
     expanded[l];
     loc.for_each_virt(l, [&](location_idx_t const v) { expanded[v]; });
     if (loc.transfer_time_[l] != kNoTransferAllowed) {
-      add(l, kNull, to_fp_duration(loc.transfer_time_[l]));
+      add(l, kNull, duration_t{loc.transfer_time_[l]});
     }
     for (auto const& fp : l_fps) {
       add(fp.target_, fp.valid_from_, fp.duration_);
