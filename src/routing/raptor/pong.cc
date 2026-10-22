@@ -33,14 +33,12 @@ interval<unixtime_t> pong_search_interval(direction const search_dir,
                                           duration_t const min_look_ahead) {
   auto const query_itv = start_time_interval(q.start_time_);
   auto const external_itv = tt.external_interval();
-  auto const start_itv =
-      search_dir == direction::kForward
-          ? interval{query_itv.from_, std::max(query_itv.to_, external_itv.to_)}
-          : interval{std::min(query_itv.from_, external_itv.from_),
-                     query_itv.to_};
+  auto const max_search_itv = search_dir == direction::kForward
+                                  ? interval{query_itv.from_, external_itv.to_}
+                                  : interval{external_itv.from_, query_itv.to_};
 
   return reachable_events(
-      search_dir, start_itv,
+      search_dir, max_search_itv,
       std::min(q.max_travel_time_ + min_look_ahead, kMaxTravelTime));
 }
 

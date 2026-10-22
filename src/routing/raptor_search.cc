@@ -30,13 +30,13 @@ interval<unixtime_t> raptor_search_interval(direction const search_dir,
           ? interval_estimator<direction::kForward>{tt, q}.max_interval()
           : interval_estimator<direction::kBackward>{tt, q}.max_interval();
   auto const extends = q.min_connection_count_ != 0U;
-  auto const start_itv = interval{extends && q.extend_interval_earlier_
-                                      ? std::min(query_itv.from_, max_itv.from_)
-                                      : query_itv.from_,
-                                  extends && q.extend_interval_later_
-                                      ? std::max(query_itv.to_, max_itv.to_)
-                                      : query_itv.to_};
-  return reachable_events(search_dir, start_itv, q.max_travel_time_);
+  auto const max_search_itv = interval{
+      extends && q.extend_interval_earlier_
+          ? std::min(query_itv.from_, max_itv.from_)
+          : query_itv.from_,
+      extends && q.extend_interval_later_ ? std::max(query_itv.to_, max_itv.to_)
+                                          : query_itv.to_};
+  return reachable_events(search_dir, max_search_itv, q.max_travel_time_);
 }
 
 namespace {
