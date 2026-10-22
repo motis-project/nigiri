@@ -109,7 +109,9 @@ struct rt_timetable {
 
   bool affects(interval<unixtime_t> const& itv,
                profile_idx_t const prf_idx) const noexcept {
-    assert(itv.from_ < itv.to_);
+    if (!(itv.from_ < itv.to_)) {
+      return true;  // degenerate window: fail safe, keep real-time data
+    }
     return prf_idx != 0U || itv.overlaps(coverage_);
   }
 
