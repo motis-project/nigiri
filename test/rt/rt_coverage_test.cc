@@ -248,18 +248,27 @@ TEST(rt, coverage_extend) {
   EXPECT_FALSE(rtt1.coverage_.contains(t(6h + 1min)));
 }
 
-// `rt_timetable::affects()` is the single predicate both real-time drop
-// decisions go through: the drivers (`raptor_search.cc` / `pong.cc`) and
-// `raptor<>::execute()` per start time. `test/routing/rt_drop_test.cc` covers
-// the intervals they feed it. Both intervals are half-open.
+// `rt_timetable::affects()` is the single predicate the real-time drop
+// decisions of the drivers (`raptor_search.cc` / `pong.cc`) go through;
+// `test/routing/rt_drop_test.cc` covers the intervals they feed it. Both
+// intervals are half-open.
 TEST(rt, coverage_needs_rt) {
   auto rtt = rt_timetable{};
+  for (auto p = 0U; p != kNProfiles; ++p) {
+    rtt.has_td_footpaths_out_[p].resize(1U);
+    rtt.has_td_footpaths_in_[p].resize(1U);
+  }
 
-  // No real-time data at all: nothing can be affected ...
+  // No real-time data at all: nothing can be affected, for any profile ...
   EXPECT_FALSE(rtt.affects(interval{t(0h), t(24h)}, 0U));
-  // ... except a profile reading time dependent footpaths, which `coverage_`
+  EXPECT_FALSE(rtt.affects(interval{t(0h), t(24h)}, 1U));
+  // ... except a profile that has time dependent footpaths, which `coverage_`
   // does not track.
+  rtt.has_td_footpaths_out_[1U].set(location_idx_t{0U}, true);
   EXPECT_TRUE(rtt.affects(interval{t(0h), t(24h)}, 1U));
+  EXPECT_FALSE(rtt.affects(interval{t(0h), t(24h)}, 0U));
+  rtt.has_td_footpaths_out_[1U].set(location_idx_t{0U}, false);
+  EXPECT_FALSE(rtt.affects(interval{t(0h), t(24h)}, 1U));
 
   rtt.extend_coverage(interval{t(10h), t(12h)});
 

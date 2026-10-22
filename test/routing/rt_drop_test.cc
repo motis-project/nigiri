@@ -200,10 +200,12 @@ TEST(routing, needs_rt_next_day) {
   EXPECT_FALSE(needs_rt<direction::kBackward>(tt, rtt, q_at(next_day, 60min)));
 }
 
-// Time dependent footpaths are not tracked by the coverage.
+// Time dependent footpaths are not tracked by the coverage: a profile that has
+// any keeps the real-time timetable, regardless of the query's position in
+// time. A profile without is treated like the default profile.
 TEST(routing, needs_rt_profile) {
   auto const tt = load_tt();
-  auto const rtt = rt::create_rt_timetable(tt, sys_days{kDay});
+  auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
 
   ASSERT_TRUE(rtt.coverage_.empty());
 
@@ -211,6 +213,18 @@ TEST(routing, needs_rt_profile) {
   EXPECT_FALSE(needs_rt<direction::kForward>(tt, rtt, q));
 
   q.prf_idx_ = 1U;
+  EXPECT_FALSE(needs_rt<direction::kForward>(tt, rtt, q));
+
+  // The bitvecs are only sized for the timetable's profiles; the test
+  // timetable has just the default one.
+  rtt.has_td_footpaths_out_[1U].resize(tt.n_locations());
+  rtt.has_td_footpaths_in_[1U].resize(tt.n_locations());
+  rtt.has_td_footpaths_out_[1U].set(location_idx_t{0U}, true);
+  EXPECT_TRUE(needs_rt<direction::kForward>(tt, rtt, q));
+  EXPECT_FALSE(needs_rt<direction::kForward>(tt, rtt, q_at(q.start_time_)));
+
+  rtt.has_td_footpaths_out_[1U].set(location_idx_t{0U}, false);
+  rtt.has_td_footpaths_in_[1U].set(location_idx_t{0U}, true);
   EXPECT_TRUE(needs_rt<direction::kForward>(tt, rtt, q));
 }
 
@@ -276,14 +290,19 @@ TEST(routing, pong_needs_rt_min_look_ahead) {
 
 TEST(routing, pong_needs_rt_no_coverage_and_profile) {
   auto const tt = load_tt();
-  auto const rtt = rt::create_rt_timetable(tt, sys_days{kDay});
+  auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
 
   ASSERT_TRUE(rtt.coverage_.empty());
 
   auto q = q_at(at_8(kDay));
   EXPECT_FALSE(pong_needs_rt<direction::kForward>(tt, rtt, q, kMinLookAhead));
 
-  // Time dependent footpaths are not tracked by the coverage.
+  // A profile without time dependent footpaths does not need it either ...
   q.prf_idx_ = 1U;
+  EXPECT_FALSE(pong_needs_rt<direction::kForward>(tt, rtt, q, kMinLookAhead));
+
+  // ... one with does: they are not tracked by the coverage.
+  rtt.has_td_footpaths_in_[1U].resize(tt.n_locations());
+  rtt.has_td_footpaths_in_[1U].set(location_idx_t{0U}, true);
   EXPECT_TRUE(pong_needs_rt<direction::kForward>(tt, rtt, q, kMinLookAhead));
 }

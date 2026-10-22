@@ -109,10 +109,10 @@ struct rt_timetable {
 
   bool affects(interval<unixtime_t> const& itv,
                profile_idx_t const prf_idx) const noexcept {
-    if (!(itv.from_ < itv.to_)) {
-      return true;  // degenerate window: fail safe, keep real-time data
-    }
-    return prf_idx != 0U || itv.overlaps(coverage_);
+    return (prf_idx != kDefaultProfile &&
+            (has_td_footpaths_out_[prf_idx].any() ||
+             has_td_footpaths_in_[prf_idx].any())) ||
+           itv.overlaps(coverage_);
   }
 
   void extend_coverage(unixtime_t const t) {
