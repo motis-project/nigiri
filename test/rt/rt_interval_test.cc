@@ -142,9 +142,9 @@ transit_realtime::FeedMessage gtfsrt_new_trip_msg(std::string const& trip_id,
   first->mutable_departure()->set_time(
       static_cast<std::int64_t>(test::to_unix(dep)));
 
-  auto const last = e->mutable_trip_update()->add_stop_time_update();
-  last->set_stop_id("C");
-  last->mutable_arrival()->set_time(
+  auto const last_stu = e->mutable_trip_update()->add_stop_time_update();
+  last_stu->set_stop_id("C");
+  last_stu->mutable_arrival()->set_time(
       static_cast<std::int64_t>(test::to_unix(arr)));
 
   return msg;
@@ -178,12 +178,12 @@ void expect_delayed(timetable const& tt,
   ASSERT_TRUE(r.is_rt()) << trip_id << " " << start_date;
 
   auto const fr = rt::frun{tt, &rtt, r};
-  auto const last = static_cast<stop_idx_t>(fr.size() - 1U);
+  auto const last_stop = static_cast<stop_idx_t>(fr.size() - 1U);
   EXPECT_EQ(fr[0].scheduled_time(event_type::kDep) + kDelay * 1min,
             fr[0].time(event_type::kDep))
       << trip_id << " " << start_date;
-  EXPECT_EQ(fr[last].scheduled_time(event_type::kArr) + kDelay * 1min,
-            fr[last].time(event_type::kArr))
+  EXPECT_EQ(fr[last_stop].scheduled_time(event_type::kArr) + kDelay * 1min,
+            fr[last_stop].time(event_type::kArr))
       << trip_id << " " << start_date;
 }
 
@@ -593,9 +593,9 @@ TEST(rt_interval, gtfsrt_event_outside_rt_interval) {
   auto msg = gtfsrt_msg("DAY", d);
   auto const tu = msg.mutable_entity(0)->mutable_trip_update();
   tu->mutable_stop_time_update(0)->mutable_departure()->set_delay(30 * 86400);
-  auto const last = tu->add_stop_time_update();
-  last->set_stop_sequence(3U);
-  last->mutable_arrival()->set_delay(kDelay * 60);
+  auto const last_stu = tu->add_stop_time_update();
+  last_stu->set_stop_sequence(3U);
+  last_stu->mutable_arrival()->set_delay(kDelay * 60);
   EXPECT_EQ(1, rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg)
                    .total_entities_success_);
 
