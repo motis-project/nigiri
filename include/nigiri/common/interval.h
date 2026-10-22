@@ -88,6 +88,11 @@ struct interval {
     }
   }
 
+  // smallest interval containing both
+  interval hull(interval const& o) const {
+    return {std::min(from_, o.from_), std::max(to_, o.to_)};
+  }
+
   iterator begin() const { return {from_}; }
   iterator end() const { return {to_}; }
   friend iterator begin(interval const& r) { return r.begin(); }

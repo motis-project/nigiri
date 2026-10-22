@@ -2,7 +2,6 @@
 
 #include "utl/pairwise.h"
 
-#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -124,9 +123,7 @@ struct rt_timetable {
     if (i.empty()) {
       return;
     }
-    coverage_ = coverage_.empty() ? i
-                                  : interval{std::min(coverage_.from_, i.from_),
-                                             std::max(coverage_.to_, i.to_)};
+    coverage_ = coverage_.empty() ? i : coverage_.hull(i);
   }
 
   interval<unixtime_t> rt_transport_interval(
