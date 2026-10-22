@@ -10,13 +10,12 @@ namespace nigiri::routing {
 
 interval<unixtime_t> start_time_interval(
     std::variant<unixtime_t, interval<unixtime_t>> const& start_time) {
-  return std::visit(
-      utl::overloaded{
-          [](unixtime_t const t) { return interval{t, t + i32_minutes{1}}; },
-          [](interval<unixtime_t> const i) {
-            return interval{i.from_, std::max(i.to_, i.from_ + i32_minutes{1})};
-          }},
-      start_time);
+  return utl::visit(
+      start_time,
+      [](unixtime_t const t) { return interval{t, t + i32_minutes{1}}; },
+      [](interval<unixtime_t> const i) {
+        return interval{i.from_, std::max(i.to_, i.from_ + i32_minutes{1})};
+      });
 }
 
 interval<unixtime_t> reachable_events(direction const search_dir,
