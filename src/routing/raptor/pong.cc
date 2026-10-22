@@ -12,12 +12,12 @@
 #include "utl/sorted_diff.h"
 #include "utl/timing.h"
 
-#include "nigiri/common/search_interval.h"
 #include "nigiri/location_match_mode.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/leg_alternatives.h"
+#include "nigiri/routing/search_interval.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/types.h"

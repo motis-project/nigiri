@@ -13,11 +13,11 @@
 #include "utl/to_vec.h"
 #include "utl/verify.h"
 
-#include "nigiri/common/search_interval.h"
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/search_interval.h"
 
 namespace nigiri::routing {
 

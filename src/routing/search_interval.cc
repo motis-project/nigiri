@@ -1,4 +1,4 @@
-#include "nigiri/common/search_interval.h"
+#include "nigiri/routing/search_interval.h"
 
 #include <cstdint>
 #include <algorithm>
@@ -6,7 +6,7 @@
 
 #include "utl/overloaded.h"
 
-namespace nigiri {
+namespace nigiri::routing {
 
 interval<unixtime_t> start_time_interval(
     std::variant<unixtime_t, interval<unixtime_t>> const& start_time) {
@@ -38,4 +38,4 @@ interval<unixtime_t> reachable_events(direction const search_dir,
              : interval{clamped(mins(start_itv.from_) - reach), start_itv.to_};
 }
 
-}  // namespace nigiri
+}  // namespace nigiri::routing
