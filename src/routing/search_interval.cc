@@ -1,10 +1,8 @@
 #include "nigiri/routing/search_interval.h"
 
-#include <cstdint>
 #include <algorithm>
-#include <limits>
 
-#include "utl/overloaded.h"
+#include "utl/visit.h"
 
 namespace nigiri::routing {
 
