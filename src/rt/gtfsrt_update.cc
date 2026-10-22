@@ -104,7 +104,7 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
 
 struct delay_propagation {
   unixtime_t pred_time_;
-  duration_t pred_delay_;
+  i32_minutes pred_delay_;
 };
 
 std::string remove_nl(std::string s) {
@@ -117,7 +117,7 @@ delay_propagation update_delay(timetable const& tt,
                                run const& r,
                                stop_idx_t const stop_idx,
                                event_type const ev_type,
-                               duration_t const delay,
+                               i32_minutes const delay,
                                std::optional<unixtime_t> const min,
                                rt_data_state const state) {
   auto const static_time =
@@ -125,12 +125,13 @@ delay_propagation update_delay(timetable const& tt,
   auto const new_time = static_time + delay;
   auto const lower_bounded_new_time =
       min.has_value() ? std::max(*min, new_time) : new_time;
-  rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time,
-                  lower_bounded_new_time != new_time
-                      ? rt_data_state::kInconsistent
-                      : state);
-  rtt.dispatch_delay(r, stop_idx, ev_type,
-                     lower_bounded_new_time - static_time);
+  if (rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time,
+                      lower_bounded_new_time != new_time
+                          ? rt_data_state::kInconsistent
+                          : state)) {
+    rtt.dispatch_delay(r, stop_idx, ev_type,
+                       lower_bounded_new_time - static_time);
+  }
   return {rtt.unix_event_time(r.rt_, stop_idx, ev_type), delay};
 }
 
@@ -154,13 +155,15 @@ delay_propagation update_event(timetable const& tt,
         r.is_scheduled() ? tt.event_time(r.t_, stop_idx, ev_type) : new_time;
     auto const lower_bounded_new_time =
         pred_time.has_value() ? std::max(*pred_time, new_time) : new_time;
-    rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time,
-                    lower_bounded_new_time != new_time
-                        ? rt_data_state::kInconsistent
-                        : rt_data_state::kPredicted);
-    rtt.dispatch_delay(r, stop_idx, ev_type,
-                       lower_bounded_new_time - static_time);
-    return {lower_bounded_new_time, lower_bounded_new_time - static_time};
+    if (rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time,
+                        lower_bounded_new_time != new_time
+                            ? rt_data_state::kInconsistent
+                            : rt_data_state::kPredicted)) {
+      rtt.dispatch_delay(r, stop_idx, ev_type,
+                         lower_bounded_new_time - static_time);
+    }
+    auto const t = rtt.unix_event_time(r.rt_, stop_idx, ev_type);
+    return {t, t - static_time};
   }
 }
 
@@ -208,6 +211,9 @@ bool add_rt_trip(source_idx_t const src,
                  rt_timetable& rtt,
                  run& r,
                  gtfsrt::TripUpdate const& tripUpdate) {
+  utl::verify(!r.is_scheduled() || rtt.is_in_rt_interval(tt, r.t_),
+              "run outside of real-time interval {}", rtt.rt_interval());
+
   auto const& stus = tripUpdate.stop_time_update();
   auto const sr = tripUpdate.trip().schedule_relationship();
   auto const added_or_replaced =
@@ -229,6 +235,9 @@ bool add_rt_trip(source_idx_t const src,
       } else {
         throw utl::fail("absolute times are required for unscheduled trips");
       }
+      utl::verify(rtt.rt_interval().contains(new_time),
+                  "time {} outside of real-time interval {}", new_time,
+                  rtt.rt_interval());
       utl::verify(stu.has_stop_id(),
                   "stop_id is required for unscheduled trips");
       auto const it =
@@ -577,6 +586,8 @@ void handle_vehicle_position(timetable const& tt,
 
     // add rt_transport if not existent
     if (!r.is_rt()) {
+      utl::verify(rtt.is_in_rt_interval(tt, r.t_),
+                  "run outside of real-time interval {}", rtt.rt_interval());
       r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
     }
 
@@ -614,7 +625,7 @@ void handle_vehicle_position(timetable const& tt,
             ? tt.event_time(r.t_, stopped_at_idx, event_type::kDep)
             : tt.event_time(r.t_, stopped_at_idx, event_type::kArr);
     auto const delay_cast =
-        std::chrono::duration_cast<duration_t>(vp_ts - ev_time);
+        std::chrono::duration_cast<i32_minutes>(vp_ts - ev_time);
 
     // update delay for remaining stops
     auto const stops_after = interval{stopped_at_idx, fr.stop_range_.to_};

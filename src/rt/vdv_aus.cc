@@ -363,10 +363,10 @@ void updater::match_run(run_id const& vdv_id,
           }
 
           auto const [vdv_time, ev_type] = *vdv_ev;
-          auto const [vdv_day_idx, vdv_mam] = tt_.day_idx_mam(vdv_time);
-          if (vdv_mam < i32_minutes{0}) {
+          if (!tt_.internal_interval().contains(vdv_time)) {
             continue;
           }
+          auto const [vdv_day_idx, vdv_mam] = tt_.day_idx_mam(vdv_time);
 
           for (auto const [nigiri_ev_time_idx, nigiri_ev_time] :
                utl::enumerate(tt_.event_times_at_stop(
@@ -478,7 +478,9 @@ void update_event(rt_timetable& rtt,
             rs.get_loc(), et == event_type::kArr ? "ARR" : "DEP",
             rs.scheduled_time(et), delay.count() >= 0 ? "+" : "",
             delay.count());
-  rtt.update_time(rs.fr_->rt_, rs.stop_idx_, et, new_time, state);
+  if (!rtt.update_time(rs.fr_->rt_, rs.stop_idx_, et, new_time, state)) {
+    return;
+  }
   rtt.dispatch_delay(*rs.fr_, rs.stop_idx_, et, delay);
   if (delay_propagation != nullptr) {
     *delay_propagation = delay;
@@ -532,6 +534,9 @@ void updater::update_run(rt_timetable& rtt,
                          statistics& stats) {
   auto fr = rt::frun(tt_, &rtt, r);
   if (!fr.is_rt()) {
+    if (!rtt.is_in_rt_interval(tt_, fr.t_)) {
+      return;
+    }
     fr.rt_ = rtt.add_rt_transport(src_idx_, tt_, fr.t_);
   } else {
     rtt.rt_transport_is_cancelled_.set(to_idx(fr.rt_), false);
@@ -544,9 +549,11 @@ void updater::update_run(rt_timetable& rtt,
               rs.get_loc(), et == event_type::kArr ? "ARR" : "DEP",
               rs.scheduled_time(et), delay->count() >= 0 ? "+" : "",
               delay->count());
-    rtt.update_time(fr.rt_, rs.stop_idx_, et, rs.scheduled_time(et) + *delay,
-                    rt_data_state::kPropagated);
-    rtt.dispatch_delay(fr, rs.stop_idx_, et, *delay);
+    if (rtt.update_time(fr.rt_, rs.stop_idx_, et,
+                        rs.scheduled_time(et) + *delay,
+                        rt_data_state::kPropagated)) {
+      rtt.dispatch_delay(fr, rs.stop_idx_, et, *delay);
+    }
     ++stats.propagated_delays_;
   };
 
