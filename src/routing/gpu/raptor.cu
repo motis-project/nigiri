@@ -790,7 +790,8 @@ template <direction SearchDir, bool WithBounds>
 void gpu_raptor<SearchDir, WithBounds>::fill_bounds(std::size_t const n_rows) {
   auto& s = *state_.impl_;
   auto const* td_stops = static_cast<std::uint64_t const*>(nullptr);
-  if (rtt_ != nullptr && prf_idx_ != 0U && rtt_->gpu_rtt_.ptr_ != nullptr) {
+  if (rtt_ != nullptr && has_profile_td_footpaths(prf_idx_) &&
+      rtt_->gpu_rtt_.ptr_ != nullptr) {
     auto const* const gpu_rtt =
         static_cast<gpu_rt_timetable const*>(rtt_->gpu_rtt_.ptr_.get());
     auto const& blocks = SearchDir == direction::kForward
@@ -878,8 +879,8 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
   auto const rt_transports_active =
       rt_active && gpu_rtt_->impl_->n_rt_transports_ != 0U;
   auto const with_td_dest = s.td_dest_locs_dev_[kDirIdx].size() > 0U;
-  auto const with_td_fps =
-      rt_active && prf_idx_ != 0U && gpu_rtt_->impl_->has_td_fps_[prf_idx_];
+  auto const with_td_fps = rt_active && has_profile_td_footpaths(prf_idx_) &&
+                           gpu_rtt_->impl_->has_td_fps_[prf_idx_];
   auto r = raptor_impl<SearchDir, WithBounds>{
       .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
       .done_ = thrust::raw_pointer_cast(s.done_.data()),
@@ -1114,7 +1115,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     for (auto i = std::size_t{1U}; i < j.legs_.size(); ++i) {
       if (std::holds_alternative<footpath>(j.legs_[i].uses_) &&
           !(j.legs_[i].from_ != j.legs_[i].to_ && rtt_ != nullptr &&
-            prf_idx_ != 0U &&
+            has_profile_td_footpaths(prf_idx_) &&
             rtt_->has_td_footpaths_out_[prf_idx_].test(j.legs_[i].from_))) {
         auto const dur = std::get<footpath>(j.legs_[i].uses_).duration();
         j.legs_[i].dep_time_ = j.legs_[i - 1U].arr_time_;
@@ -1123,7 +1124,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     }
 
     // Shorten td footpaths to their actual duration (excluding waiting).
-    if (rtt_ != nullptr && prf_idx_ != 0U &&
+    if (rtt_ != nullptr && has_profile_td_footpaths(prf_idx_) &&
         !(SearchDir == direction::kForward ? rtt_->td_footpaths_in_[prf_idx_]
                                            : rtt_->td_footpaths_out_[prf_idx_])
              .empty()) {
@@ -1161,7 +1162,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     // Backward search: time-dependent footpaths start as soon as they are
     // usable after the arrival (as in the reconstruction).
     if constexpr (SearchDir == direction::kBackward) {
-      if (rtt_ != nullptr && prf_idx_ != 0U) {
+      if (rtt_ != nullptr && has_profile_td_footpaths(prf_idx_)) {
         for (auto i = std::size_t{1U}; i < j.legs_.size(); ++i) {
           auto& lg = j.legs_[i];
           if (!std::holds_alternative<footpath>(lg.uses_) ||

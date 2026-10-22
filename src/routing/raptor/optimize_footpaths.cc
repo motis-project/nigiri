@@ -80,7 +80,7 @@ void optimize_initial_start_footpath(timetable const& tt,
 
   auto const start_loc = fp_leg.from_;
 
-  if (rtt != nullptr && q.prf_idx_ != 0U &&
+  if (rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
       rtt->has_td_footpaths_out_[q.prf_idx_].test(start_loc)) {
     return;  // TODO(felix) handle shortening of td-footpaths
   }
@@ -204,7 +204,7 @@ void optimize_final_egress_footpath(timetable const& tt,
 
   auto const dest_loc = fp_leg.to_;
 
-  if (rtt != nullptr && q.prf_idx_ != 0U &&
+  if (rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
       rtt->has_td_footpaths_in_[q.prf_idx_].test(dest_loc)) {
     return;  // TODO(felix) handle shortening of td-footpaths
   }
@@ -357,7 +357,7 @@ void optimize_transfers(timetable const& tt,
 
     // The static footpaths are not valid where time-dependent ones exist
     // (e.g. an elevator out of service).
-    if (rtt != nullptr && q.prf_idx_ != 0U &&
+    if (rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
         rtt->has_td_footpaths_out_[q.prf_idx_].test(leg_footpath.from_)) {
       continue;
     }

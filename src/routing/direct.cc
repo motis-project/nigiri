@@ -89,7 +89,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
   // As in the search: footpaths from a source with td footpaths are
   // time-dependent, all others are static.
   auto const is_td_source = [&](location_idx_t const x) {
-    return rtt != nullptr && q.prf_idx_ != 0U &&
+    return rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
            rtt->has_td_footpaths_out_[q.prf_idx_].test(x);
   };
 

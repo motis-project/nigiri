@@ -17,6 +17,7 @@
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/leg_alternatives.h"
+#include "nigiri/routing/search_interval.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/types.h"
@@ -25,6 +26,21 @@
 // #define trace_pong fmt::println
 
 namespace nigiri::routing {
+
+interval<unixtime_t> pong_search_interval(direction const search_dir,
+                                          timetable const& tt,
+                                          query const& q,
+                                          duration_t const min_look_ahead) {
+  auto const query_iv = start_time_interval(q.start_time_);
+  auto const tt_iv = tt.external_interval();
+  auto const max_search_iv = search_dir == direction::kForward
+                                 ? interval{query_iv.from_, tt_iv.to_}
+                                 : interval{tt_iv.from_, query_iv.to_};
+
+  return reachable_events(
+      search_dir, max_search_iv,
+      std::min(q.max_travel_time_ + min_look_ahead, kMaxTravelTime));
+}
 
 constexpr auto const kPruneWithPingBounds = true;
 
@@ -55,7 +71,7 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   // the walk starts at the previous leg's arrival.
   // A time-dependent footpath may only be usable later (e.g. an elevator out
   // of service): keep the wait before it, as in the reconstruction.
-  auto const is_td = rtt != nullptr && q.prf_idx_ != 0U &&
+  auto const is_td = rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
                      rtt->has_td_footpaths_out_[q.prf_idx_].test(legs[0].from_);
   if (!is_td) {
     auto const walk_duration = legs[0].arr_time_ - legs[0].dep_time_;
@@ -84,7 +100,6 @@ routing_result pong(timetable const& tt,
       raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>>;
 
   s_state.results_.clear();
-  q.sanitize(tt);
 
   auto const processing_start_time = std::chrono::steady_clock::now();
 
@@ -503,6 +518,14 @@ routing_result pong_search_with_dir(
     AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> timeout) {
+  q.sanitize(tt);
+
+  if (rtt != nullptr &&
+      !rtt->affects(pong_search_interval(SearchDir, tt, q, kMinLookAhead),
+                    q.prf_idx_)) {
+    rtt = nullptr;
+  }
+
   if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
     utl::verify(q.via_stops_.empty(), "GPU raptor does not support vias");
     return pong_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state, std::move(q),

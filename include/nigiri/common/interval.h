@@ -88,6 +88,27 @@ struct interval {
     }
   }
 
+  // Smallest interval containing both. An empty interval contains no points
+  // and therefore does not contribute (whatever its position).
+  interval hull(interval const& o) const {
+    assert(valid() && o.valid());
+    if (empty()) {
+      return o;
+    }
+    if (o.empty()) {
+      return *this;
+    }
+    return {std::min(from_, o.from_), std::max(to_, o.to_)};
+  }
+
+  // Grows this interval to contain the point `t`.
+  interval& extend(T const t) {
+    auto next = t;
+    ++next;
+    *this = hull(interval{t, next});
+    return *this;
+  }
+
   iterator begin() const { return {from_}; }
   iterator end() const { return {to_}; }
   friend iterator begin(interval const& r) { return r.begin(); }
@@ -110,7 +131,8 @@ struct interval {
     return cista::to_idx(to_ - from_);
   }
 
-  CISTA_CUDA_COMPAT bool empty() const { return to_ - from_ == 0U; }
+  CISTA_CUDA_COMPAT bool empty() const { return to_ == from_; }
+  CISTA_CUDA_COMPAT bool valid() const { return from_ <= to_; }
 
   CISTA_CUDA_COMPAT T operator[](std::size_t const i) const {
 #ifndef __CUDA_ARCH__
