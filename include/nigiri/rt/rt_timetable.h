@@ -128,16 +128,14 @@ struct rt_timetable {
                                              std::max(coverage_.to_, i.to_)};
   }
 
-  // Interval covered by the event times of `rt_t`.
   interval<unixtime_t> rt_transport_interval(
       rt_transport_idx_t const rt_t) const {
     auto const times = rt_transport_stop_times_[rt_t];
     if (times.empty()) {
       return {};
     }
-    auto const [min, max] = std::minmax_element(begin(times), end(times));
-    return {delta_to_unix(base_day_, *min),
-            delta_to_unix(base_day_, *max) + unixtime_t::duration{1}};
+    return {delta_to_unix(base_day_, times.front()),
+            delta_to_unix(base_day_, times.back()) + unixtime_t::duration{1}};
   }
 
   // Interval covered by the event times of the static transport `t`.
