@@ -120,8 +120,9 @@ struct rt_timetable {
   }
 
   void extend_coverage(interval<unixtime_t> const i) {
-    if (i.from_ >= i.to_) {
-      return;  // empty
+    assert(i.valid());
+    if (i.empty()) {
+      return;
     }
     coverage_ = coverage_.empty() ? i
                                   : interval{std::min(coverage_.from_, i.from_),
