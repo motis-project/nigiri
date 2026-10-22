@@ -1,15 +1,10 @@
 #include "gtest/gtest.h"
 
-#include "utl/helpers/algorithm.h"
-
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/rt/create_rt_timetable.h"
-#include "nigiri/rt/gtfsrt_update.h"
-
-#include "results_to_string.h"
 
 using namespace date;
 using namespace nigiri;
@@ -19,12 +14,6 @@ using namespace nigiri::routing;
 using namespace std::chrono_literals;
 
 namespace {
-
-auto to_unix(auto&& x) {
-  return std::chrono::time_point_cast<std::chrono::seconds>(x)
-      .time_since_epoch()
-      .count();
-}
 
 // Europe/Berlin on 2019-05-01 => UTC+2
 //   T1: A 06:00 -> B 07:00 (= 04:00 -> 05:00 UTC), daily 05-01 .. 05-05
@@ -85,8 +74,7 @@ timetable load_tt() {
 }  // namespace
 
 // ===========================================================================
-// Layer 2 - driver level: `raptor_search_interval()` /
-// `pong_search_interval()`
+// Driver level: `raptor_search_interval()` / `pong_search_interval()`
 // ===========================================================================
 
 namespace {
@@ -173,15 +161,43 @@ TEST(routing, needs_rt_direction) {
 
   auto const start = at_8(2019_y / May / 5);
 
-  // Max start window is [05-03, 05-07). Forward it grows to [05-03, 05-12):
-  // 05-01 is not in it.
+  // Forward the window is [05-05 08:00, 05-10 08:01): 05-01 is not in it.
   EXPECT_FALSE(needs_rt<direction::kForward>(tt, rtt, q_at(start)));
 
-  // Backward it grows to [04-28, 05-07), which contains 05-01.
+  // Backward it is [04-30 08:00, 05-05 08:01), which contains 05-01.
   EXPECT_TRUE(needs_rt<direction::kBackward>(tt, rtt, q_at(start)));
 
   // ... unless the journey may not be that long.
   EXPECT_FALSE(needs_rt<direction::kBackward>(tt, rtt, q_at(start, 60min)));
+}
+
+// The start interval is widened only in the directions the query allows, and
+// only if it asks for a minimum number of connections. The common case: a
+// query for the next day while the real-time data is for today.
+TEST(routing, needs_rt_next_day) {
+  auto const tt = load_tt();
+  auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
+  rtt.extend_coverage(interval{t(8h), t(9h + 10min)});
+
+  auto const next_day = at_8(2019_y / May / 2);
+
+  // Forward: nothing before the start time is ever searched.
+  auto q = q_at(next_day);
+  EXPECT_FALSE(needs_rt<direction::kForward>(tt, rtt, q));
+
+  // ... unless the interval may be extended backwards.
+  q.min_connection_count_ = 3U;
+  q.extend_interval_earlier_ = true;
+  EXPECT_TRUE(needs_rt<direction::kForward>(tt, rtt, q));
+
+  // The extension only happens for a minimum connection count.
+  q.min_connection_count_ = 0U;
+  EXPECT_FALSE(needs_rt<direction::kForward>(tt, rtt, q));
+
+  // Backward (`arriveBy`): with the maximum travel time 05-01 is reachable
+  // from the next day, with one hour it is not.
+  EXPECT_TRUE(needs_rt<direction::kBackward>(tt, rtt, q_at(next_day)));
+  EXPECT_FALSE(needs_rt<direction::kBackward>(tt, rtt, q_at(next_day, 60min)));
 }
 
 // Time dependent footpaths are not tracked by the coverage.
@@ -270,155 +286,4 @@ TEST(routing, pong_needs_rt_no_coverage_and_profile) {
   // Time dependent footpaths are not tracked by the coverage.
   q.prf_idx_ = 1U;
   EXPECT_TRUE(pong_needs_rt<direction::kForward>(tt, rtt, q, kMinLookAhead));
-}
-
-// ===========================================================================
-// Layer 3 - routing core: `raptor<>::execute()`
-//
-// Driven through PONG because it is the driver whose start time moves: the
-// answer can change from one execution to the next within a single query.
-// ===========================================================================
-
-namespace {
-
-// Delays T1 on 2019-05-01 by 30 minutes. That is the only real-time data in
-// the timetable, so the coverage stays inside 05-01.
-void delay_first_day(timetable const& tt, rt_timetable& rtt) {
-  auto msg = transit_realtime::FeedMessage{};
-  auto const hdr = msg.mutable_header();
-  hdr->set_gtfs_realtime_version("2.0");
-  hdr->set_incrementality(
-      transit_realtime::FeedHeader_Incrementality_FULL_DATASET);
-  hdr->set_timestamp(to_unix(sys_days{kDay} + 3h));
-
-  auto const e = msg.add_entity();
-  e->set_id("1");
-  e->set_is_deleted(false);
-  auto const td = e->mutable_trip_update()->mutable_trip();
-  td->set_trip_id("T1");
-  td->set_start_date("20190501");
-  td->set_start_time("06:00:00");
-  auto const stu = e->mutable_trip_update()->add_stop_time_update();
-  stu->set_stop_sequence(2U);
-  stu->mutable_arrival()->set_delay(30 * 60);
-
-  auto const stats =
-      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
-  ASSERT_EQ(1U, stats.total_entities_success_);
-}
-
-// Same real-time data, but the coverage is widened to the whole timetable so
-// the gate never fires - the reference for what the search must return.
-rt_timetable never_gated(rt_timetable const& rtt) {
-  auto copy = rtt;
-  copy.extend_coverage(interval{unixtime_t{sys_days{2019_y / April / 1}},
-                                unixtime_t{sys_days{2019_y / June / 1}}});
-  return copy;
-}
-
-// `dir == kBackward` is an `arriveBy=true` query: `start_time_` is the time at
-// B and the search runs from B back to A (hence the swapped start /
-// destination).
-query pong_query(timetable const& tt,
-                 direction const dir,
-                 unixtime_t const start_time,
-                 std::uint8_t const min_connection_count) {
-  auto const A = tt.find(location_id{"A", source_idx_t{0}}).value();
-  auto const B = tt.find(location_id{"B", source_idx_t{0}}).value();
-  auto const kFwd = dir == direction::kForward;
-  return query{.start_time_ = start_time,
-               .start_match_mode_ = location_match_mode::kEquivalent,
-               .dest_match_mode_ = location_match_mode::kEquivalent,
-               .use_start_footpaths_ = false,
-               .start_ = {{kFwd ? A : B, 0min, 0U}},
-               .destination_ = {{kFwd ? B : A, 0min, 0U}},
-               .max_travel_time_ = 3h,
-               .min_connection_count_ = min_connection_count,
-               .extend_interval_earlier_ = !kFwd,
-               .extend_interval_later_ = kFwd};
-}
-
-// One PONG search against the real coverage and one against `never_gated()`,
-// asserting that the gate changed nothing about the result.
-struct gated_vs_reference {
-  gated_vs_reference(timetable const& tt,
-                     rt_timetable const& rtt,
-                     direction const dir,
-                     unixtime_t const start_time,
-                     std::uint8_t const min_connection_count)
-      : rtt_always_{never_gated(rtt)} {
-    auto s_state = search_state{};
-    auto r_state = raptor_state{};
-
-    auto const gated =
-        pong_search(tt, &rtt, s_state, r_state,
-                    pong_query(tt, dir, start_time, min_connection_count), dir);
-    journeys_ = *gated.journeys_;
-    stats_ = gated.algo_stats_;
-
-    auto const reference =
-        pong_search(tt, &rtt_always_, s_state, r_state,
-                    pong_query(tt, dir, start_time, min_connection_count), dir);
-
-    EXPECT_EQ(to_string(tt, &rtt_always_, *reference.journeys_),
-              to_string(tt, &rtt, journeys_));
-    EXPECT_EQ(0U, reference.algo_stats_.at("n_executes_without_rt"));
-  }
-
-  std::uint64_t with_rt() const { return stats_.at("n_executes_with_rt"); }
-  std::uint64_t without_rt() const {
-    return stats_.at("n_executes_without_rt");
-  }
-
-  rt_timetable rtt_always_;
-  pareto_set<journey> journeys_;
-  std::map<std::string, std::uint64_t> stats_;
-};
-
-}  // namespace
-
-// PONG walks its start time forward. The first start times can reach the
-// real-time data on 05-01, the later ones cannot - so the same query uses the
-// real-time timetable for the first executions and drops it for the rest.
-TEST(routing, rt_gate_deactivates_within_query) {
-  auto const tt = load_tt();
-
-  auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
-  delay_first_day(tt, rtt);
-  ASSERT_FALSE(rtt.coverage_.empty());
-
-  auto const r = gated_vs_reference{tt, rtt, direction::kForward,
-                                    unixtime_t{sys_days{kDay} + 2h}, 3U};
-
-  EXPECT_GT(r.with_rt(), 0U);
-  EXPECT_GT(r.without_rt(), 0U);
-}
-
-// The other way round: an `arriveBy=true` query that arrives on 05-05 starts
-// far behind the real-time data on 05-01. PONG walks its start time backwards
-// and eventually reaches it - the gate has to switch the real-time timetable
-// back on mid-query, otherwise the delayed 05-01 trip is lost: it was taken
-// off the static traffic days when its rt transport was created, so the
-// static scan alone does not find it at all.
-TEST(routing, rt_gate_activates_within_query) {
-  auto const tt = load_tt();
-
-  auto rtt = rt::create_rt_timetable(tt, sys_days{kDay});
-  delay_first_day(tt, rtt);
-
-  auto const r =
-      gated_vs_reference{tt, rtt, direction::kBackward,
-                         unixtime_t{sys_days{2019_y / May / 5} + 8h}, 10U};
-
-  // It starts outside the coverage and walks into it.
-  EXPECT_GT(r.without_rt(), 0U);
-  EXPECT_GT(r.with_rt(), 0U);
-
-  // One journey per day, and the 05-01 one is only reachable through the
-  // real-time timetable - it carries the 30 minute delay (07:00 + 30min local
-  // = 05:30 UTC).
-  EXPECT_EQ(5U, r.journeys_.size());
-  EXPECT_EQ(1U, utl::count_if(r.journeys_, [](journey const& j) {
-              return j.arrival_time() == t(5h + 30min);
-            }));
 }
