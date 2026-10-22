@@ -21,20 +21,9 @@ interval<unixtime_t> start_time_interval(
 interval<unixtime_t> reachable_events(direction const search_dir,
                                       interval<unixtime_t> const& start_itv,
                                       duration_t const max_reach) {
-  using rep_t = unixtime_t::duration::rep;
-  auto const clamped = [](std::int64_t const v) {
-    return unixtime_t{unixtime_t::duration{static_cast<rep_t>(
-        std::clamp(v, std::int64_t{std::numeric_limits<rep_t>::min()},
-                   std::int64_t{std::numeric_limits<rep_t>::max()}))}};
-  };
-  auto const mins = [](unixtime_t const t) {
-    return static_cast<std::int64_t>(t.time_since_epoch().count());
-  };
-
-  auto const reach = std::int64_t{max_reach.count()};
   return search_dir == direction::kForward
-             ? interval{start_itv.from_, clamped(mins(start_itv.to_) + reach)}
-             : interval{clamped(mins(start_itv.from_) - reach), start_itv.to_};
+             ? interval{start_itv.from_, start_itv.to_ + max_reach}
+             : interval{start_itv.from_ - max_reach, start_itv.to_};
 }
 
 }  // namespace nigiri::routing
