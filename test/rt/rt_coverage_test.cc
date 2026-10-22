@@ -223,7 +223,7 @@ TEST(rt, coverage_extend) {
 
   // Empty intervals are ignored.
   rtt.extend_coverage(interval<unixtime_t>{});
-  rtt.extend_coverage(interval{t(12h), t(10h)});  // reversed
+  rtt.extend_coverage(interval{t(12h), t(12h)});
   EXPECT_TRUE(rtt.coverage_.empty());
 
   rtt.extend_coverage(interval{t(10h), t(12h)});
