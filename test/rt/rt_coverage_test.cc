@@ -6,19 +6,16 @@
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
 
+#include "./util.h"
+
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using namespace std::chrono_literals;
+using nigiri::test::to_unix;
 
 namespace {
-
-auto to_unix(auto&& x) {
-  return std::chrono::time_point_cast<std::chrono::seconds>(x)
-      .time_since_epoch()
-      .count();
-}
 
 // Europe/Berlin on 2019-05-01 => UTC+2
 //   T1: A 10:00 -> B 11:00  (=  8:00 ->  9:00 UTC)
@@ -204,12 +201,14 @@ TEST(rt, coverage_added_trip) {
   auto const dep = tu->add_stop_time_update();
   dep->set_stop_sequence(1U);
   dep->set_stop_id("A");
-  dep->mutable_departure()->set_time(to_unix(sys_days{kDay} + 20h));
+  dep->mutable_departure()->set_time(
+      static_cast<std::int64_t>(to_unix(sys_days{kDay} + 20h)));
 
   auto const arr = tu->add_stop_time_update();
   arr->set_stop_sequence(2U);
   arr->set_stop_id("B");
-  arr->mutable_arrival()->set_time(to_unix(sys_days{kDay} + 20h + 30min));
+  arr->mutable_arrival()->set_time(
+      static_cast<std::int64_t>(to_unix(sys_days{kDay} + 20h + 30min)));
 
   auto const stats =
       rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
