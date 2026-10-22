@@ -109,7 +109,7 @@ struct rt_timetable {
 
   bool affects(interval<unixtime_t> const& itv,
                profile_idx_t const prf_idx) const noexcept {
-    return (prf_idx != kDefaultProfile &&
+    return (has_profile_td_footpaths(prf_idx) &&
             (has_td_footpaths_out_[prf_idx].any() ||
              has_td_footpaths_in_[prf_idx].any())) ||
            itv.overlaps(coverage_);

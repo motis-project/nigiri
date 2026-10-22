@@ -73,7 +73,7 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   // the walk starts at the previous leg's arrival.
   // A time-dependent footpath may only be usable later (e.g. an elevator out
   // of service): keep the wait before it, as in the reconstruction.
-  auto const is_td = rtt != nullptr && q.prf_idx_ != 0U &&
+  auto const is_td = rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
                      rtt->has_td_footpaths_out_[q.prf_idx_].test(legs[0].from_);
   if (!is_td) {
     auto const walk_duration = legs[0].arr_time_ - legs[0].dep_time_;
