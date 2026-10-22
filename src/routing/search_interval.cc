@@ -1,7 +1,5 @@
 #include "nigiri/routing/search_interval.h"
 
-#include <algorithm>
-
 #include "utl/visit.h"
 
 namespace nigiri::routing {
@@ -11,9 +9,7 @@ interval<unixtime_t> start_time_interval(
   return utl::visit(
       start_time,
       [](unixtime_t const t) { return interval{t, t + i32_minutes{1}}; },
-      [](interval<unixtime_t> const i) {
-        return interval{i.from_, std::max(i.to_, i.from_ + i32_minutes{1})};
-      });
+      [](interval<unixtime_t> const i) { return i; });
 }
 
 interval<unixtime_t> reachable_events(direction const search_dir,
