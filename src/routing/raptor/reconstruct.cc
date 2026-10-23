@@ -89,7 +89,8 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
                                                 query const& q,
                                                 journey const& j,
                                                 raptor_state const& state,
-                                                date::sys_days const base) {
+                                                date::sys_days const base,
+                                                via_offset_t const v) {
   trace_rc_find_start_footpath;
 
   constexpr auto const kFwd = SearchDir == direction::kForward;
@@ -107,9 +108,8 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   auto const leg_start_location =
       kFwd ? j.legs_.back().from_ : j.legs_.back().to_;
   auto const is_start_via =
-      !q.via_stops_.empty() &&
-      matches(tt, location_match_mode::kEquivalent,
-              q.via_stops_.front().location_, leg_start_location);
+      v != 0U && matches(tt, location_match_mode::kEquivalent,
+                         q.via_stops_.front().location_, leg_start_location);
   // Anchor for the start offset: the first transit event, shifted by a via
   // stay at the search-start location (the offset must not overlap the
   // mandatory stay between the transit event and the offset leg).
@@ -135,8 +135,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
            : tt.locations_.footpaths_out_[q.prf_idx_][leg_start_location];
   auto const j_start_time = unix_to_delta(base, j.start_time_);
   auto const round_times = state.get_round_times<Vias>();
-  auto const fp_target_time =
-      round_times[0][to_idx(leg_start_location)][is_start_via ? 1U : 0U];
+  auto const fp_target_time = round_times[0][to_idx(leg_start_location)][v];
   auto const fp_arrival_time =
       static_cast<delta_t>(fp_target_time - dir(search_start_via_stay.count()));
 
@@ -879,7 +878,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
   }
 
   auto init_fp =
-      find_start_footpath<SearchDir, Vias>(tt, q, j, raptor_state, base);
+      find_start_footpath<SearchDir, Vias>(tt, q, j, raptor_state, base, v);
   if (init_fp.has_value()) {
     j.add(std::move(*init_fp));
   }

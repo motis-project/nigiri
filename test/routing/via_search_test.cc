@@ -4,6 +4,7 @@
 #include <regex>
 
 #include "utl/erase_if.h"
+#include "utl/helpers/algorithm.h"
 
 #include "nigiri/common/parse_time.h"
 
@@ -1787,6 +1788,90 @@ TEST(routing, via_test_39_A_B_via_V1_V2_walks) {
           << to_str(dir);
       EXPECT_EQ(at_may_1(arr) - 5_minutes, j.legs_.back().dep_time_)
           << to_str(dir);
+    }
+  }
+}
+
+constexpr auto const test_files_via_stay_later = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+AG,Agency,https://example.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+A,A,55.0,13.0,,
+A0,A0,55.0,13.5,,
+S,S,56.0,13.0,1,
+S1,S1,56.0,13.0,,S
+S2,S2,56.1,13.0,,S
+B,B,57.0,13.0,,
+B0,B0,57.0,13.5,,
+
+# calendar_dates.txt
+service_id,date,exception_type
+S1,20190501,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_type
+R1,AG,R1,,3
+R2,AG,R2,,3
+R3,AG,R3,,3
+
+# trips.txt
+route_id,service_id,trip_id
+R1,S1,T1
+R2,S1,T2
+R3,S1,T3
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+T1,09:50:00,09:50:00,A,1
+T1,10:00:00,10:00:00,S1,2
+T2,10:15:00,10:15:00,S1,1
+T2,10:25:00,10:25:00,S2,2
+T3,10:40:00,10:40:00,S2,1
+T3,10:50:00,10:50:00,B,2
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+A0,S1,2,300
+S2,B0,2,300
+)"sv;
+
+TEST(routing, via_test_40_via_stay_later_at_search_start) {
+  // S1 and S2 are stops of the via station S (10 min), 11 km apart:
+  // A -T1-> S1 (10:00), S1 -T2-> S2 (10:15 - 10:25), S2 -T3-> B (10:40 -
+  // 10:50), walks A0 -> S1 and S2 -> B0 (5 min). Each journey with T2 visits S
+  // twice, the stay fits at one visit only: S2 from S1 / A0, S1 to S2 / B0. A
+  // search starting at the other visit (directly or by its first walk) has to
+  // leave it without the stay and spend it later. Walking between S1 and S2
+  // (2 h) gives further journeys without a transfer.
+  auto const tt = load_timetable(test_files_via_stay_later);
+  for (auto const dir : {direction::kForward, direction::kBackward}) {
+    for (auto const& [from, to, dep, arr] : {
+             std::tuple{"S1", "B", "10:15", "10:50"},
+             std::tuple{"A", "S2", "09:50", "10:25"},
+             std::tuple{"A0", "B", "10:10", "10:50"},
+             std::tuple{"A", "B0", "09:50", "10:30"},
+         }) {
+      auto const anchor = at_may_1(dir == direction::kForward ? dep : arr);
+      auto const results = search(
+          tt, nullptr,
+          routing::query{
+              .start_time_ = interval{anchor - 5_minutes, anchor + 5_minutes},
+              .use_start_footpaths_ = true,
+              .start_ = {{loc_idx(tt, from), 0_minutes, 0U}},
+              .destination_ = {{loc_idx(tt, to), 0_minutes, 0U}},
+              .via_stops_ = {{loc_idx(tt, "S"), 10_minutes}}},
+          dir);
+      auto const j = utl::find_if(results, [](routing::journey const& x) {
+        return x.transfers_ == 1U;
+      });
+      ASSERT_NE(end(results), j) << to_str(dir) << " " << from << " -> " << to;
+      EXPECT_EQ(at_may_1(dep), j->departure_time())
+          << to_str(dir) << " " << from << " -> " << to;
+      EXPECT_EQ(at_may_1(arr), j->arrival_time())
+          << to_str(dir) << " " << from << " -> " << to;
     }
   }
 }
