@@ -978,3 +978,56 @@ TEST(gtfs, transfer_rules_route_visits_stop_twice_trips_differ) {
   EXPECT_EQ(at("11:48"), arrival_at(tt, "A", "D", "10:50"));
   EXPECT_EQ(at("12:07"), arrival_at(tt, "B", "D", "11:10"));
 }
+
+timetable load_two_day_loop(bool const apply_transfer_rules) {
+  auto tt = timetable{};
+  tt.date_range_ = {test::kDay, test::kDay + date::days{2}};
+  loader::register_special_stations(tt);
+  loader::gtfs::load_timetable({}, source_idx_t{0U}, loader::mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+AG,Agency,https://example.com,Europe/Berlin
+
+# calendar_dates.txt
+service_id,date,exception_type
+S1,20190501,1
+S1,20190502,1
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+X,X,50.0,6.0,0,
+Y,Y,50.0,6.1,0,
+W,W,50.0,6.2,0,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_type
+R,AG,R,,3
+
+# trips.txt
+route_id,service_id,trip_id,block_id
+R,S1,T,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+T,10:00:00,10:00:00,X,1
+T,10:20:00,10:20:00,Y,2
+T,10:30:00,10:30:00,W,3
+T,10:40:00,10:40:00,X,4
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+X,X,3,,R,R,,
+)"),
+                               tt);
+  loader::finalize(tt, {.merge_dupes_intra_src_ = false,
+                        .merge_dupes_inter_src_ = false,
+                        .apply_transfer_rules_ = apply_transfer_rules});
+  return tt;
+}
+
+TEST(gtfs, transfer_rules_forbid_change_to_next_day_run_of_same_transport) {
+  EXPECT_EQ(t("2019-05-02 10:20 Europe/Berlin"),
+            arrival_at(load_two_day_loop(false), "W", "Y", "10:25"));
+  EXPECT_EQ(std::nullopt,
+            arrival_at(load_two_day_loop(true), "W", "Y", "10:25"));
+}

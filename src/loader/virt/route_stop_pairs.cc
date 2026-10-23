@@ -56,7 +56,7 @@ void for_each_transfer(timetable const& tt,
                                : a_days >> static_cast<std::size_t>(-n);
       for (; it != end(departures) && mam_of(*it) < dep_to; ++it) {
         auto const b = route_transport_idx_t{it - begin(departures)};
-        if (rx == ry && a == b) {
+        if (rx == ry && a == b && n == 0) {
           continue;
         }
         if ((days & traffic_days(ry, b)).none()) {
