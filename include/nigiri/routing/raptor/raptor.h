@@ -120,6 +120,9 @@ struct raptor {
       }
     }
 
+    if constexpr (SearchMode == search_mode::kOneToAll) {
+      state_.one_to_all_arrivals_.resize(kMaxTransfers + 2U, n_locations_);
+    }
     reset_arrivals();
 
     if (!dist_to_end_.empty()) {
@@ -202,6 +205,9 @@ struct raptor {
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
     round_times_.reset(kInvalidArray);
+    if constexpr (SearchMode == search_mode::kOneToAll) {
+      utl::fill(state_.one_to_all_arrivals_.entries_, kInvalid);
+    }
   }
 
   void next_start_time() {
@@ -243,6 +249,9 @@ struct raptor {
 
     trace_print_init_state();
 
+    if constexpr (SearchMode == search_mode::kOneToAll) {
+      update_one_to_all_arrivals(0U);
+    }
     for (auto k = 1U; k != end_k; ++k) {
       for (auto i = 0U; i != n_locations_; ++i) {
         for (auto v = 0U; v != Vias + 1; ++v) {
@@ -415,6 +424,9 @@ struct raptor {
       update_intermodal_footpaths(k);
       update_footpaths(k);
       update_td_offsets(k);
+      if constexpr (SearchMode == search_mode::kOneToAll) {
+        update_one_to_all_arrivals(k);
+      }
 
       trace_print_state_after_round();
     }
@@ -737,18 +749,19 @@ private:
     return target_v == v ? 0_minutes : via_stops_[v].stay_;
   }
 
-  // No change at l, but one-to-all reports the arrival (not marked: nothing
-  // departs from it).
-  void report_arrival(unsigned const k,
-                      std::size_t const l,
-                      unsigned const v,
-                      delta_t const t) {
-    auto best = kInvalid;
-    for (auto x = 0U; x <= k; ++x) {
-      best = get_best(best, round_times_[x][l][v]);
-    }
-    if (is_better(t, best)) {
-      round_times_[k][l][v] = t;
+  // One-to-all reports a stop at the arrival of a trip at any of its locations
+  // and at its labels (walks), not at a virtual location's label (a rule). The
+  // labels stay what the next round boards from.
+  void update_one_to_all_arrivals(unsigned const k) {
+    for (auto i = 0U; i != n_locations_; ++i) {
+      auto const l = location_idx_t{i};
+      auto const stop = Rt ? rtt_->base(l) : tt_.base(l);
+      auto& by_transport = state_.one_to_all_arrivals_[k][to_idx(stop)];
+      by_transport = get_best(by_transport, tmp_[i][Vias]);
+      if (stop == l) {
+        auto& at_stop = state_.one_to_all_arrivals_[k][i];
+        at_stop = get_best(at_stop, round_times_[k][i][Vias]);
+      }
     }
   }
 
@@ -777,19 +790,7 @@ private:
                                        target_v == Vias &&
                                        is_dest_[to_idx(stop)];
           auto const stop_transfer_time = get_transfer_time(l);
-          if constexpr (SearchMode == search_mode::kOneToAll) {
-            // A stop that bans changes has no walks to its virtual
-            // locations (a walk would be a change there, its trips can
-            // depart from the stop): a trip arriving at one arrives at
-            // the stop.
-            if (stop != l && get_transfer_time(stop) == kNoTransferAllowed) {
-              report_arrival(k, to_idx(stop), target_v, tmp_time);
-            }
-          }
           if (!is_dest_arrival && stop_transfer_time == kNoTransferAllowed) {
-            if constexpr (SearchMode == search_mode::kOneToAll) {
-              report_arrival(k, i, target_v, tmp_time);
-            }
             continue;
           }
           auto const transfer_time =

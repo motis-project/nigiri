@@ -120,7 +120,7 @@ struct transfer_rules {
   vector_map<transfer_rule_idx_t, transfer_rule> rules_;
 
   qualified_sides_t<trip_idx_t> trip_rules_;
-  qualified_sides_t<route_id_idx_t> route_rules_;
+  qualified_sides_t<pair<source_idx_t, route_id_idx_t>> route_rules_;
 
   vector<pair<location_idx_t, transfer_rule_side_idx>> stop_rules_;
 };

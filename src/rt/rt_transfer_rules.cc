@@ -300,7 +300,7 @@ std::vector<rule_event> get_rule_events(timetable const& tt,
     }
     for (auto const& x : tr.route_rules_) {
       if (x.side_ == q) {
-        add_route(x.qualifier_);
+        add_route(x.qualifier_.second);
       }
     }
   }

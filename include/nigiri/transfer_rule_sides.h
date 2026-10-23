@@ -36,8 +36,9 @@ struct section_rules {
   bool empty() const { return trips_.empty() && routes_.empty(); }
 
   std::vector<std::span<qualified_side<trip_idx_t> const>> trips_;
-  std::vector<std::span<qualified_side<route_id_idx_t> const>> routes_;
-  std::vector<source_idx_t> route_srcs_;
+  std::vector<
+      std::span<qualified_side<pair<source_idx_t, route_id_idx_t>> const>>
+      routes_;
 };
 
 void get_section_rules(timetable const&, merged_trips_idx_t, section_rules&);

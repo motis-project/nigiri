@@ -216,7 +216,7 @@ TEST(transfer_rules, exact_match_includes_virtual_locations) {
   auto const qb = routing::get_fastest_one_to_all_offsets(
       tt, state, direction::kForward, lidx(tt, "QB"), at("10:40"),
       q.max_transfers_);
-  EXPECT_EQ(22, qb.duration_);  // arrival 11:00 + QB's 2 min to change
+  EXPECT_EQ(20, qb.duration_);  // arrival 11:00
   EXPECT_EQ(1U, qb.k_);
 }
 
@@ -344,11 +344,10 @@ TEST(transfer_rules, one_to_all_reaches_stop_without_changes) {
             fastest(direction::kBackward, "E", "A", "11:00").k_);
 }
 
-// One-to-all reaches a stop in its own time, its virtual locations are no
+// One-to-all reaches a stop at the arrival, its virtual locations are no
 // stops of their own: FA arrives at, and FB leaves from, virtual locations of
-// U. The RF1 -> RF2 rule (1 min) holds for changing to RF2 only, U itself takes
-// 2 min.
-TEST(transfer_rules, one_to_all_reaches_stop_in_its_own_time) {
+// U. The RF1 -> RF2 rule (1 min) holds for changing to RF2 only.
+TEST(transfer_rules, one_to_all_reaches_stop_at_the_arrival) {
   auto const tt = load_feeds(
       {feed({{"L", 55.0, 13.0}, {"U", 55.1, 13.0}, {"M", 55.2, 13.0}},
             {{"FA", "RF1", {{"L", "10:00"}, {"U", "10:30"}}},
@@ -376,11 +375,11 @@ TEST(transfer_rules, one_to_all_reaches_stop_in_its_own_time) {
     }
     return std::pair{u.duration_, u.k_};
   };
-  // arrival 10:30 + U's 2 min
-  EXPECT_EQ(std::pair(delta_t{32}, std::uint8_t{1U}),
+  // arrival 10:30
+  EXPECT_EQ(std::pair(delta_t{30}, std::uint8_t{1U}),
             one_to_all(direction::kForward, "L", "10:00"));
-  // departure 10:31 - U's 2 min
-  EXPECT_EQ(std::pair(delta_t{-31}, std::uint8_t{1U}),
+  // departure 10:31
+  EXPECT_EQ(std::pair(delta_t{-29}, std::uint8_t{1U}),
             one_to_all(direction::kBackward, "M", "11:00"));
 }
 
@@ -404,8 +403,8 @@ TEST(transfer_rules, one_to_all_reaches_stop_without_changes_by_exception) {
   };
   EXPECT_EQ(std::pair(delta_t{30}, std::uint8_t{1U}),
             fastest(direction::kForward, "A", "S1", "10:00"));
-  // H arrives at 11:00, C's 2 min
-  EXPECT_EQ(std::pair(delta_t{62}, std::uint8_t{2U}),
+  // H arrives at 11:00
+  EXPECT_EQ(std::pair(delta_t{60}, std::uint8_t{2U}),
             fastest(direction::kForward, "A", "C", "10:00"));
   EXPECT_EQ(std::pair(delta_t{-29}, std::uint8_t{1U}),
             fastest(direction::kBackward, "C", "S1", "11:00"));
@@ -844,4 +843,49 @@ TEST(transfer_rules,
   EXPECT_EQ(30_minutes,
             routing::get_fastest_direct(tt, q, direction::kForward));
   EXPECT_EQ(at("10:15"), nigiri::test::arrival(raptor_search(tt, nullptr, q)));
+}
+
+TEST(transfer_rules, one_to_all_reaches_stop_at_the_arrival_with_rule_to_any) {
+  auto const load = [](std::string_view const rule) {
+    return load_feeds(
+        {feed({{"L", 55.0, 13.0}, {"U", 55.1, 13.0}, {"M", 55.2, 13.0}},
+              {{"FA", "RF1", {{"L", "10:00"}, {"U", "10:30"}}},
+               {"FB", "RF2", {{"U", "10:31"}, {"M", "11:00"}}},
+               {"FC", "RF3", {{"U", "10:35"}, {"M", "11:05"}}}},
+              std::string{"U,U,2,120,,,,\n"} + std::string{rule})});
+  };
+  auto const fastest = [](timetable const& tt, direction const dir,
+                          std::string_view const from,
+                          std::string_view const to,
+                          std::string_view const time) {
+    auto const q = routing::query{.start_time_ = at(time),
+                                  .start_ = {{lidx(tt, from), 0_minutes, 0U}}};
+    auto const state =
+        dir == direction::kForward
+            ? routing::one_to_all<direction::kForward>(tt, nullptr, q)
+            : routing::one_to_all<direction::kBackward>(tt, nullptr, q);
+    return routing::get_fastest_one_to_all_offsets(tt, state, dir, lidx(tt, to),
+                                                   at(time), q.max_transfers_)
+        .duration_;
+  };
+  constexpr auto const kUnreachable = routing::fastest_offset{}.duration_;
+
+  auto const plain = load("");
+  EXPECT_EQ(delta_t{30},
+            fastest(plain, direction::kForward, "L", "U", "10:00"));
+  EXPECT_NE(kUnreachable,
+            fastest(plain, direction::kForward, "L", "M", "10:00"));
+
+  for (auto const rule : {"U,U,3,,RF1,,,\n", "U,U,2,600,RF1,,,\n"}) {
+    auto const tt = load(rule);
+    ASSERT_LT(0U, n_virts(tt)) << rule;
+    EXPECT_EQ(delta_t{30}, fastest(tt, direction::kForward, "L", "U", "10:00"))
+        << rule;
+    EXPECT_EQ(delta_t{-29},
+              fastest(tt, direction::kBackward, "M", "U", "11:00"))
+        << rule;
+    // FB (10:31) and FC (10:35) leave before the rule allows a change.
+    EXPECT_EQ(kUnreachable, fastest(tt, direction::kForward, "L", "M", "10:00"))
+        << rule;
+  }
 }

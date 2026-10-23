@@ -15,7 +15,9 @@
 #include "nigiri/loader/transfer_rules.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/transfers.h"
+#include "nigiri/stop.h"
 #include "nigiri/timetable.h"
+#include "nigiri/transfer_rule_sides.h"
 
 #include "../../raptor_search.h"
 #include "../../transfer_rules_util.h"
@@ -1030,4 +1032,46 @@ TEST(gtfs, transfer_rules_forbid_change_to_next_day_run_of_same_transport) {
             arrival_at(load_two_day_loop(false), "W", "Y", "10:25"));
   EXPECT_EQ(std::nullopt,
             arrival_at(load_two_day_loop(true), "W", "Y", "10:25"));
+}
+
+// Route ids are numbered per source: the first route of every feed has the
+// same route_id_idx_t. A route rule of feed 0 binds no route of feed 1.
+TEST(transfer_rules, route_rule_binds_only_routes_of_its_feed) {
+  auto const f0 = feed({{"A", 50.0, 6.0}, {"B", 50.0, 6.1}},
+                       {{"TA", "RA", {{"A", "10:00"}, {"B", "10:10"}}},
+                        {"TB", "RB", {{"B", "10:20"}, {"A", "10:40"}}}},
+                       "B,B,2,120,,,,\n"
+                       "B,B,2,300,RA,RB,,\n");
+  auto const f1 = feed({{"C", 51.0, 6.0}, {"D", 51.0, 6.1}},
+                       {{"TX", "RX", {{"C", "10:00"}, {"D", "10:10"}}}}, "");
+  auto const tt = load_feeds({f0, f1});
+  ASSERT_FALSE(tt.transfer_rules_.route_rules_.empty());
+  ASSERT_EQ(3U, tt.next_transport_idx().v_);
+  for (auto t = transport_idx_t{0U}; t != tt.next_transport_idx(); ++t) {
+    auto const seq = tt.route_location_seq_[tt.transport_route_[t]];
+    auto const src =
+        tt.locations_.src_[tt.base(stop{seq.front()}.location_idx())];
+    EXPECT_EQ(src == source_idx_t{0U}, has_transfer_rules(tt, t)) << t;
+  }
+}
+
+// adjust_footpaths raises a row's time to the walk at 1.5 m/s. The walk has to
+// fit a footpath: 254 min is the longest, 255 min would be a ban.
+TEST(transfer_rules, adjusted_walk_fits_a_footpath) {
+  auto const walk = [](double const metres) {
+    // one degree of latitude is 111,195 m
+    auto const tt = load_feeds(
+        {feed({{"A", 50.0, 8.0}, {"B", 50.0 + metres / 111194.9, 8.0}},
+              {{"T", "R", {{"A", "10:00"}, {"B", "16:00"}}}},
+              "A,B,2,60,,,,\n")},
+        true);
+    for (auto const fp : tt.locations_.footpaths_out_[0][lidx(tt, "A")]) {
+      if (fp.target() == lidx(tt, "B")) {
+        return std::optional{fp.duration()};
+      }
+    }
+    return std::optional<duration_t>{};
+  };
+  EXPECT_EQ(253_minutes, walk(22800.0));
+  EXPECT_EQ(std::nullopt, walk(22905.0));  // 254.5 min: too far, row ignored
 }

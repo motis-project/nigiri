@@ -298,7 +298,7 @@ std::optional<duration_t> adjust_to_walk_speed(timetable const& tt,
                                                location_idx_t const b,
                                                duration_t const duration) {
   constexpr auto const kMaxWalkDistance =
-      std::numeric_limits<u8_minutes::rep>::max() * 60.0 * kWalkSpeed;
+      footpath::kMax.count() * 60.0 * kWalkSpeed;
 
   auto const distance = geo::distance(tt.locations_.coordinates_[a],
                                       tt.locations_.coordinates_[b]);

@@ -990,7 +990,7 @@ TEST(gtfsrt_transfer_rules, start_walk_to_real_time_virtual_location) {
 
 // One-to-all from S4 at 10:30 boards G, moved there: G leaves from its
 // real-time virtual location at S4, which starts like the stop itself. B is
-// reached with G at 11:00 (+ B's 2 min to change).
+// reached with G at 11:00.
 TEST(gtfsrt_transfer_rules, one_to_all_starts_at_real_time_virtual_location) {
   auto const tt = load_network("S1,S4,2,120,,,,\nS1,S4,2,1800,,,,G");
   auto rtt = rt::create_rt_timetable(tt, kDay);
@@ -1004,7 +1004,7 @@ TEST(gtfsrt_transfer_rules, one_to_all_starts_at_real_time_virtual_location) {
       tt, state, direction::kForward, lidx(tt, "B"), at("10:30"),
       q.max_transfers_);
   EXPECT_EQ(1U, b.k_);
-  EXPECT_EQ(32, b.duration_);
+  EXPECT_EQ(30, b.duration_);
 }
 
 // The via S4 (10 min) holds at G's real-time virtual location there as it

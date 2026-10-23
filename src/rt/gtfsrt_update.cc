@@ -100,7 +100,6 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
   print_if_no_empty("unsupported_schedule_relationship",
                     s.unsupported_schedule_relationship_, true);
   print_if_no_empty("stop_assignments", s.stop_assignments_);
-  print_if_no_empty("rt_locations", s.rt_locations_);
 
   return out;
 }
@@ -886,8 +885,6 @@ statistics gtfsrt_update_msg(timetable const& tt,
                       {"message", remove_nl(entity.DebugString())}});
     }
   }
-
-  stats.rt_locations_ = static_cast<int>(rtt.n_rt_locations());
 
   return stats;
 }

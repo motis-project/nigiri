@@ -46,30 +46,23 @@ void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
 }
 
 template <direction SearchDir>
-void finish_one_to_all(timetable const& tt,
-                       rt_timetable const* rtt,
-                       delta_t const worst_at_dest,
-                       raptor_state& state) {
+void finish_one_to_all(delta_t const worst_at_dest, raptor_state& state) {
   constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
   auto const is_better = [](delta_t const a, delta_t const b) {
     return SearchDir == direction::kForward ? a < b : a > b;
   };
 
   auto best = state.get_best<kVias>();
-  auto round_times = state.get_round_times<kVias>();
+  auto& arrivals = state.one_to_all_arrivals_;
 
-  // Virtual locations are no stops: a trip arriving at one reaches its stop by
-  // the walk to it (the stop's time to change) or, where the stop bans
-  // changes, at the arrival (reported by raptor). Their own labels can be rule
-  // walks and rule times, they stay kInvalid.
-  // Stops: round_times -> best (within worst_at_dest).
+  // Stops: arrivals (see raptor::update_one_to_all_arrivals) -> best (within
+  // worst_at_dest). Virtual locations have none.
   for (auto l = location_idx_t{0U}; l != state.n_locations_; ++l) {
-    auto const is_stop = rt::base(tt, rtt, l) == l;
     auto& b = best[to_idx(l)][kVias];
     b = kInvalid;
     for (auto k = 0U; k != kMaxTransfers + 2U; ++k) {
-      auto& t = round_times[k][to_idx(l)][kVias];
-      if (is_stop && is_better(t, b) && !is_better(worst_at_dest, t)) {
+      auto& t = arrivals[k][to_idx(l)];
+      if (is_better(t, b) && !is_better(worst_at_dest, t)) {
         b = t;
       } else {
         t = kInvalid;
@@ -121,7 +114,7 @@ raptor_state one_to_all(timetable const& tt,
       (SearchDir == direction::kForward ? 1 : -1) * q.max_travel_time_;
   auto const worst_at_dest = r.to_delta(worst_time_at_dest);
   run_raptor(std::move(r), tt, rtt, start_time, worst_time_at_dest, q);
-  finish_one_to_all<SearchDir>(tt, rtt, worst_at_dest, state);
+  finish_one_to_all<SearchDir>(worst_at_dest, state);
 
   return state;
 }
@@ -146,14 +139,14 @@ fastest_offset get_fastest_one_to_all_offsets(timetable const& tt,
   auto const invalid_delta = search_dir == direction::kForward
                                  ? kInvalidDelta<direction::kForward>
                                  : kInvalidDelta<direction::kBackward>;
-  auto const& round_times = state.get_round_times<kVias>();
+  auto const& arrivals = state.one_to_all_arrivals_;
   for (auto const k : std::views::iota(std::uint8_t{0U}, transfers + 2U)  //
                           | std::views::reverse) {
-    if (round_times[k][to_idx(l)][kVias] != invalid_delta) {
+    if (arrivals[k][to_idx(l)] != invalid_delta) {
       auto const base =
           tt.internal_interval_days().from_ +
           static_cast<int>(to_idx(make_base(tt, start_time))) * date::days{1};
-      auto end_time = delta_to_unix(base, round_times[k][to_idx(l)][0]);
+      auto end_time = delta_to_unix(base, arrivals[k][to_idx(l)]);
       return {
           .duration_ = static_cast<delta_t>((end_time - start_time).count()),
           .k_ = k,
@@ -174,13 +167,13 @@ void for_each_one_to_all_round_time(
   auto const invalid_delta = search_dir == direction::kForward
                                  ? kInvalidDelta<direction::kForward>
                                  : kInvalidDelta<direction::kBackward>;
-  auto const& round_times = state.get_round_times<kVias>();
+  auto const& arrivals = state.one_to_all_arrivals_;
   auto const base =
       tt.internal_interval_days().from_ +
       static_cast<int>(to_idx(make_base(tt, start_time))) * date::days{1};
   for (auto const k : std::views::iota(std::uint8_t{0U}, transfers + 2U)) {
-    if (round_times[k][to_idx(l)][kVias] != invalid_delta) {
-      auto end_time = delta_to_unix(base, round_times[k][to_idx(l)][kVias]);
+    if (arrivals[k][to_idx(l)] != invalid_delta) {
+      auto end_time = delta_to_unix(base, arrivals[k][to_idx(l)]);
       cb(k, search_dir == direction::kForward ? end_time - start_time
                                               : start_time - end_time);
     }

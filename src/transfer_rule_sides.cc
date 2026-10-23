@@ -12,12 +12,17 @@
 
 namespace nigiri {
 
+pair<source_idx_t, route_id_idx_t> route_id_of(timetable const& tt,
+                                               trip_idx_t const trip) {
+  return {tt.trip_id_src_[tt.trip_ids_[trip].front()], tt.trip_route_id_[trip]};
+}
+
 bool has_transfer_rules(timetable const& tt, transport_idx_t const t) {
   auto const& tr = tt.transfer_rules_;
   return utl::any_of(tt.transport_to_trip_section_[t], [&](auto const s) {
     return utl::any_of(tt.merged_trips_[s], [&](trip_idx_t const trip) {
       return !rules_of(tr.trip_rules_, trip).empty() ||
-             !rules_of(tr.route_rules_, tt.trip_route_id_[trip]).empty();
+             !rules_of(tr.route_rules_, route_id_of(tt, trip)).empty();
     });
   });
 }
@@ -27,7 +32,6 @@ void get_section_rules(timetable const& tt,
                        section_rules& out) {
   out.trips_.clear();
   out.routes_.clear();
-  out.route_srcs_.clear();
 
   auto const& tr = tt.transfer_rules_;
   for (auto const trip : tt.merged_trips_[section]) {
@@ -36,10 +40,9 @@ void get_section_rules(timetable const& tt,
       out.trips_.push_back(trip_rules);
     }
 
-    auto const route_rules = rules_of(tr.route_rules_, tt.trip_route_id_[trip]);
+    auto const route_rules = rules_of(tr.route_rules_, route_id_of(tt, trip));
     if (!route_rules.empty()) {
       out.routes_.push_back(route_rules);
-      out.route_srcs_.push_back(tt.trip_id_src_[tt.trip_ids_[trip].front()]);
     }
   }
 }
@@ -51,22 +54,21 @@ void add_stop_rules(timetable const& tt,
                     std::vector<transfer_rule_side_idx>& sig) {
   auto const& tr = tt.transfer_rules_;
   auto const root = tt.locations_.get_root_idx(base);
-  auto const add = [&](transfer_rule_side_idx const s, source_idx_t const src) {
+  auto const add = [&](transfer_rule_side_idx const s) {
     auto const& r = tr.rules_[s.rule()];
     if (s.ev_type() == ev &&
-        (src == source_idx_t::invalid() || r.src_ == src) &&
         tt.locations_.is_self_or_parent(r.stop(ev), base)) {
       sig.push_back(s);
     }
   };
   for (auto const rules : section.trips_) {
     for (auto const s : rules_at(rules, root)) {
-      add(s, source_idx_t::invalid());
+      add(s);
     }
   }
-  for (auto k = 0U; k != section.routes_.size(); ++k) {
-    for (auto const s : rules_at(section.routes_[k], root)) {
-      add(s, section.route_srcs_[k]);
+  for (auto const rules : section.routes_) {
+    for (auto const s : rules_at(rules, root)) {
+      add(s);
     }
   }
 }
