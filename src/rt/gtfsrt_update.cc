@@ -376,13 +376,22 @@ bool update_run(source_idx_t const src,
     auto matches = false;
     while (upd_it != end(stus)) {
       auto matches_any_loc = false;
+      auto const remaining_trip_stops = location_seq.subspan(
+          stop_idx,
+          static_cast<std::size_t>(last_stop_idx_of_trip + 1 - stop_idx));
+      auto const has_seq = r.is_scheduled() && upd_it->has_stop_sequence();
+      auto const use_stop_id =
+          !has_seq ||
+          utl::count_if(remaining_trip_stops, [&](stop::value_type const s) {
+            return tt.locations_.ids_[tt.base(stop{s}.location_idx())].view() ==
+                   upd_it->stop_id();
+          }) < 2;
       auto next_seq_it = seq_it;
       auto next_stop_idx = stop_idx;
       for (; next_seq_it != end(seq_numbers); ++next_stop_idx, ++next_seq_it) {
         auto const next_matches =
-            (r.is_scheduled() && upd_it->has_stop_sequence() &&
-             upd_it->stop_sequence() == *next_seq_it) ||
-            (upd_it->has_stop_id() &&
+            (has_seq && upd_it->stop_sequence() == *next_seq_it) ||
+            (use_stop_id && upd_it->has_stop_id() &&
              upd_it->stop_id() ==
                  tt.locations_
                      .ids_[tt.base(

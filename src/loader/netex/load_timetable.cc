@@ -1244,20 +1244,23 @@ std::optional<intermediate> get_intermediate(intermediate const& base,
     utl::verify(parse_result, "Unable to parse XML buffer {}: {} at offset {}",
                 path, parse_result.description(), parse_result.offset);
 
-    try {
-      im.tz_ = date::locate_zone(
-          utl::parse<int>(
-              doc.select_node(
-                     "//FrameDefaults/DefaultLocale/SummerTimeZoneOffset")
-                  .node()
-                  .child_value()) == 2
-              ? "CET"
-              : doc.select_node("//FrameDefaults/DefaultLocale/TimeZone")
-                    .node()
-                    .child_value());
-    } catch (...) {
-      im.tz_ = date::locate_zone(default_tz);
+    auto tz_name = default_tz;
+    if (utl::parse<int>(
+            doc.select_node(
+                   "//FrameDefaults/DefaultLocale/SummerTimeZoneOffset")
+                .node()
+                .child_value()) == 2) {
+      tz_name = "CET";
+    } else {
+      auto tz_node =
+          doc.select_node("//FrameDefaults/DefaultLocale/TimeZone").node();
+      if (tz_node) {
+        tz_name = tz_node.child_value();
+      }
     }
+    utl::verify(!tz_name.empty(), "missing timezone");
+    im.tz_ = date::locate_zone(tz_name);
+
     im.notices_ = get_notices(doc);
     im.authorities_ = get_authorities(doc);
     im.operators_ = get_operators(doc);
