@@ -28,6 +28,9 @@ duration_t get_fastest_direct(timetable const& tt,
   for (auto const& s : q.start_) {
     for_each_meta(tt, nullptr, q.start_match_mode_, s.target_,
                   [&](location_idx_t const start) {
+                    if (tt.locations_.is_virt(start)) {
+                      return;
+                    }
                     auto& d = get_dist(start);
                     d = std::min(
                         static_cast<label::dist_t>(s.duration_.count()), d);

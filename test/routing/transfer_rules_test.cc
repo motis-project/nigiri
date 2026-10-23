@@ -11,6 +11,7 @@
 
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/routing/direct.h"
+#include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/one_to_all.h"
 #include "nigiri/routing/query.h"
@@ -821,4 +822,26 @@ TEST(transfer_rules, leg_alternatives_show_rule_transfer_times) {
   ASSERT_TRUE(std::holds_alternative<footpath>(walk_after.uses_));
   EXPECT_EQ(2_minutes, std::get<footpath>(walk_after.uses_).duration());
   EXPECT_EQ(walk_after.dep_time_ + 2_minutes, walk_after.arr_time_);
+}
+
+TEST(transfer_rules,
+     fastest_direct_ignores_rule_footpaths_of_virtual_locations) {
+  auto const tt =
+      load_feeds({feed({{"A", 55.0, 13.0},
+                        {"X", 55.1, 13.0},
+                        {"Y", 55.11, 13.0},
+                        {"E", 55.3, 13.0}},
+                       {{"F", "RF", {{"A", "09:00"}, {"X", "09:30"}}},
+                        {"P", "RP", {{"A", "09:05"}, {"X", "09:35"}}},
+                        {"B", "RB", {{"X", "10:00"}, {"Y", "10:15"}}},
+                        {"Q", "RQ", {{"Y", "10:20"}, {"E", "10:50"}}}},
+                       "X,Y,2,1800,,,,\nX,Y,2,120,RF,,,\n")});
+  ASSERT_LT(0U, n_virts(tt));
+  auto const q =
+      routing::query{.start_time_ = at("10:00"),
+                     .start_ = {{lidx(tt, "X"), 0_minutes, 0U}},
+                     .destination_ = {{lidx(tt, "Y"), 0_minutes, 0U}}};
+  EXPECT_EQ(30_minutes,
+            routing::get_fastest_direct(tt, q, direction::kForward));
+  EXPECT_EQ(at("10:15"), nigiri::test::arrival(raptor_search(tt, nullptr, q)));
 }
