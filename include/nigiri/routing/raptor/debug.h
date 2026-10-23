@@ -69,14 +69,15 @@
       "j_start_time={}, offset={}\n",                                     \
       loc{tt, o.target()}, leg_start_time, j.start_time_, o.duration())
 
-#define trace_rc_intermodal_no_match                                    \
-  trace_reconstruct(                                                    \
-      "    no start: INTERMODAL DIRECT START -> {}  matches={}, "       \
-      "leg_start_location={}, leg_start_time={}, j_start_time={}, "     \
-      "offset={}\n",                                                    \
-      loc{tt, o.target()},                                              \
-      matches(tt, q.start_match_mode_, o.target(), leg_start_location), \
-      loc{tt, leg_start_location}, leg_start_time, j.start_time_,       \
+#define trace_rc_intermodal_no_match                                          \
+  trace_reconstruct(                                                          \
+      "    no start: INTERMODAL DIRECT START -> {}  matches={}, "             \
+      "leg_start_location={}, leg_start_time={}, j_start_time={}, "           \
+      "offset={}\n",                                                          \
+      loc{tt, o.target()},                                                    \
+      matches(tt, rt_virts(rtt, q.prf_idx_), q.start_match_mode_, o.target(), \
+              leg_start_location),                                            \
+      loc{tt, leg_start_location}, leg_start_time, j.start_time_,             \
       o.duration())
 
 #define trace_rc_intermodal_fp_start_found                                  \
@@ -94,7 +95,8 @@
       "leg_start_location={}, leg_start_time={}, j_start_time={}, offset={}, " \
       "footpath=({}, {})\n",                                                   \
       loc{tt, o.target()},                                                     \
-      matches(tt, q.start_match_mode_, o.target(), leg_start_location),        \
+      matches(tt, rt_virts(rtt, q.prf_idx_), q.start_match_mode_, o.target(),  \
+              leg_start_location),                                             \
       loc{tt, leg_start_location}, leg_start_time, j.start_time_,              \
       o.duration(),                                                            \
       adjusted_transfer_time(q.transfer_time_settings_, fp.duration()),        \

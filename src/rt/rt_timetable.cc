@@ -223,6 +223,7 @@ location_idx_t rt_timetable::add_rt_location(location_idx_t const parent,
   utl::verify(l < footpath::kMaxTarget, "rt location index overflow");
   rt_locations_.parents_.push_back(parent);
   rt_locations_.transfer_time_.push_back(transfer_time);
+  rt_virts_[parent].push_back(l);
   location_rt_transports_[l];
   return l;
 }

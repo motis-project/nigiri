@@ -33,7 +33,7 @@ void dijkstra(timetable const& tt,
 
   for (auto const& start : q.destination_) {
     for_each_meta(
-        tt, q.dest_match_mode_, start.target_,
+        tt, nullptr, q.dest_match_mode_, start.target_,
         [&](location_idx_t const x) { update_min(x, start.duration()); });
   }
 
@@ -48,19 +48,20 @@ void dijkstra(timetable const& tt,
   auto pq = dial<label, get_bucket>{kMaxTravelTime.count()};
   for (auto const& [l, duration] : min) {
     auto const d = duration;
-    for_each_meta(tt, q.dest_match_mode_, l, [&](location_idx_t const meta) {
-      pq.push(label{meta, d});
-      dists[to_idx(meta)] = std::min(d, dists[to_idx(meta)]);
-      trace("DIJKSTRA INIT @{}: {}\n", loc{tt, meta}, duration);
-    });
+    for_each_meta(tt, nullptr, q.dest_match_mode_, l,
+                  [&](location_idx_t const meta) {
+                    pq.push(label{meta, d});
+                    dists[to_idx(meta)] = std::min(d, dists[to_idx(meta)]);
+                    trace("DIJKSTRA INIT @{}: {}\n", loc{tt, meta}, duration);
+                  });
   }
 
   dijkstra(lb_graph, has_rt, rt_lb_graph, pq, dists);
 
   for (auto i = 0U; i != tt.n_locations(); ++i) {
     auto const lb = dists[i];
-    for_each_meta(tt, location_match_mode::kOnlyChildren, location_idx_t{i},
-                  [&](location_idx_t const c) {
+    for_each_meta(tt, nullptr, location_match_mode::kOnlyChildren,
+                  location_idx_t{i}, [&](location_idx_t const c) {
                     dists[to_idx(c)] = std::min(lb, dists[to_idx(c)]);
                   });
   }

@@ -13,6 +13,7 @@
 
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/routing/direct.h"
+#include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/one_to_all.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/rt/create_rt_timetable.h"
@@ -169,7 +170,9 @@ INSTANTIATE_TEST_SUITE_P(
         // alone would do. Only the trips whose change the rule decides move:
         // F (late) and G. GL, H, HL and F2 stay as scheduled.
         delay{"delay_makes_slower_rule_binding",
-              "S,S,2,120,,,,\nS,S,2,480,,,F,G",
+              "S,S,2,120,,,,\n"
+              "S,S,2,480,,,F,G\n"
+              "S,S,2,600,RF,RG,,",
               {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 5}}}},
               kAtoB,
               g_from_f,
@@ -244,6 +247,126 @@ INSTANTIATE_TEST_SUITE_P(
               [] { return at("11:06"); },
               [] { return at("11:06"); }}),
     case_name<delay>);
+
+TEST(gtfsrt_transfer_rules, delay_moves_both_visits_of_partner) {
+  auto const tt = load_network(
+      "S,S,2,120,,,,\n"
+      "S,S,2,480,,,F,GO",
+      {.stops_ = {{"Y", 50.2, 6.5}},
+       .trips_ = {{"GO",
+                   "RO",
+                   {{"S2", "10:40"},
+                    {"Y", "10:41"},
+                    {"S2", "10:42"},
+                    {"B", "10:55"}}}}});
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  EXPECT_EQ(at("10:55"), arrival(tt, &rtt, kAtoB));
+  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 5}}}});
+  EXPECT_EQ(g_from_f(), arrival(tt, &rtt, kAtoB));
+  EXPECT_EQ(2U, rtt.n_rt_transports());
+}
+
+TEST(gtfsrt_transfer_rules, track_change_of_one_visit_keeps_rule) {
+  auto const tt = load_network(
+      "S,S,2,120,,,,\n"
+      "S,S,2,900,,,F,GO\n"
+      "S,S,2,900,,,FO,GQ",
+      {.stops_ = {{"Y", 50.2, 6.5},
+                  {"Z", 50.3, 6.5},
+                  {"A3", 50.0, 5.5},
+                  {"E", 50.0, 9.0}},
+       .trips_ = {
+           {"GO",
+            "RO",
+            {{"S2", "10:40"}, {"Y", "10:41"}, {"S2", "10:42"}, {"B", "10:55"}}},
+           {"FO",
+            "RFO",
+            {{"A3", "10:00"},
+             {"S1", "10:28"},
+             {"Z", "10:29"},
+             {"S1", "10:32"}}},
+           {"GQ", "RGQ", {{"S2", "10:40"}, {"E", "11:00"}}},
+           {"GQL", "RGQ", {{"S2", "11:10"}, {"E", "11:30"}}}}});
+  for (auto const& [trip, moved, other, scheduled, od, expected] :
+       {std::tuple{"GO", stop_idx_t{0U}, stop_idx_t{2U}, "S2", kAtoB, "11:00"},
+        std::tuple{"GO", stop_idx_t{2U}, stop_idx_t{0U}, "S2", kAtoB, "11:00"},
+        std::tuple{"FO", stop_idx_t{1U}, stop_idx_t{3U}, "S1",
+                   std::pair{"A3", "E"}, "11:30"},
+        std::tuple{"FO", stop_idx_t{3U}, stop_idx_t{1U}, "S1",
+                   std::pair{"A3", "E"}, "11:30"}}) {
+    auto rtt = rt::create_rt_timetable(tt, kDay);
+    update(
+        tt, rtt,
+        {{trip,
+          {{.seq_ = moved + 1U, .stop_id_ = scheduled, .assigned_ = "S3"}}}});
+    EXPECT_EQ("S3", stop_id_at(tt, rtt, trip, moved));
+    EXPECT_EQ(scheduled, stop_id_at(tt, rtt, trip, other));
+    EXPECT_EQ(at(expected), arrival(tt, &rtt, od));
+  }
+}
+
+std::vector<unixtime_t> alternative_arrivals(
+    timetable const& tt,
+    rt_timetable const& rtt,
+    std::pair<char const*, char const*> const od) {
+  auto const q = station_query(tt, od.first, od.second, at("10:00"));
+  auto const res = raptor_search(tt, &rtt, q);
+  if (res.size() != 1U) {
+    return {};
+  }
+  auto const& j = *begin(res);
+  auto last_transit = j.legs_.size();
+  for (auto i = 0U; i != j.legs_.size(); ++i) {
+    if (holds_alternative<routing::journey::run_enter_exit>(j.legs_[i].uses_)) {
+      last_transit = i;
+    }
+  }
+  auto arrivals = std::vector<unixtime_t>{};
+  for (auto const& a :
+       routing::get_leg_alternatives(tt, &rtt, q, j, last_transit, 5U)) {
+    arrivals.push_back(a.dest_time_);
+  }
+  return arrivals;
+}
+
+TEST(gtfsrt_transfer_rules, leg_alternatives_from_real_time_location) {
+  auto const tt = load_network("S,S,2,120,,,,\nS,S,2,900,,,F,G");
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}}});
+  EXPECT_EQ(std::vector{at("13:20")}, alternative_arrivals(tt, rtt, kAtoB));
+}
+
+TEST(gtfsrt_transfer_rules, leg_alternatives_to_moved_trip) {
+  auto const tt = load_network("S,S,2,120,,,,\nS,S,2,900,,,F,G");
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  update(tt, rtt, {{"G", {{.seq_ = 1U, .stop_id_ = "S2", .assigned_ = "S4"}}}});
+  EXPECT_EQ(std::vector{at("13:20")}, alternative_arrivals(tt, rtt, kAtoB));
+}
+
+TEST(gtfsrt_transfer_rules, leg_alternatives_after_delayed_feeder) {
+  auto const tt = load_network("S,S,2,120,,,,\nS,S,2,480,,,F,G");
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 5}}}});
+  EXPECT_EQ(std::vector{at("13:20")}, alternative_arrivals(tt, rtt, kAtoB));
+}
+
+TEST(gtfsrt_transfer_rules, td_offset_at_stop_with_real_time_location) {
+  auto const tt = load_network("S,S,2,120,,,,\nS,S,2,900,,,F,G");
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}}});
+  auto const res = raptor_search(
+      tt, &rtt,
+      routing::query{
+          .start_time_ = at("09:50"),
+          .start_match_mode_ = routing::location_match_mode::kIntermodal,
+          .dest_match_mode_ = routing::location_match_mode::kIntermodal,
+          .start_ = {{lidx(tt, "A"), 3_minutes, 0U}},
+          .td_dest_ = {{lidx(tt, "S3"),
+                        {routing::td_offset{.valid_from_ = at("00:00"),
+                                            .duration_ = 4_minutes,
+                                            .transport_mode_ = 0U}}}}});
+  EXPECT_EQ(at("10:34"), arrival(res));
+}
 
 // F moves from its scheduled platform S1 to another platform; the arrival is
 // checked before (if before_ is set) and after the track change.

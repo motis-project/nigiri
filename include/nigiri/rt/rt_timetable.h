@@ -266,6 +266,14 @@ struct rt_timetable {
       fn(to_location(i), i);
     }
   }
+  template <typename Fn>
+  void for_each_rt_virt(location_idx_t const base, Fn&& fn) const {
+    if (auto const it = rt_virts_.find(base); it != end(rt_virts_)) {
+      for (auto const v : it->second) {
+        fn(v);
+      }
+    }
+  }
   location_idx_t add_rt_location(location_idx_t parent,
                                  u8_minutes transfer_time);
   void add_location_rt_transport(location_idx_t, rt_transport_idx_t);
@@ -394,6 +402,7 @@ struct rt_timetable {
     vector_map<rt_location_idx_t, location_idx_t> parents_;
     vector_map<rt_location_idx_t, u8_minutes> transfer_time_;
   } rt_locations_;
+  hash_map<location_idx_t, vector<location_idx_t>> rt_virts_;
 
   mutable_fws_multimap<rt_transport_idx_t, location_idx_t> rt_stop_virts_;
 

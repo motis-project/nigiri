@@ -23,7 +23,7 @@ template <typename Fn>
 void for_each_route_at_stop(timetable const& tt,
                             location_idx_t const l,
                             Fn&& fn) {
-  routing::for_each_meta(tt, routing::location_match_mode::kExact, l,
+  routing::for_each_meta(tt, nullptr, routing::location_match_mode::kExact, l,
                          [&](location_idx_t const c) {
                            for (auto const r : tt.location_routes_[c]) {
                              fn(c, r);

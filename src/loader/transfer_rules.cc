@@ -68,7 +68,8 @@ void for_each_side_location(timetable const& tt,
   auto const& r = tt.transfer_rules_.rules_[side.rule()];
   if (!r.is_qualified(side.ev_type())) {
     // Unqualified rules map to the stop and all descendants.
-    routing::for_each_meta(tt, routing::location_match_mode::kOnlyChildren,
+    routing::for_each_meta(tt, nullptr,
+                           routing::location_match_mode::kOnlyChildren,
                            r.stop(side.ev_type()), fn);
   }
 }

@@ -56,7 +56,7 @@ bool is_journey_start(timetable const& tt,
                       query const& q,
                       location_idx_t const candidate_l) {
   return utl::any_of(q.start_, [&](offset const& o) {
-    return matches(tt, q.start_match_mode_, o.target(), candidate_l);
+    return matches(tt, nullptr, q.start_match_mode_, o.target(), candidate_l);
   });
 }
 
@@ -71,9 +71,9 @@ via_counts count_vias(timetable const& tt,
   }
   auto v = via_offset_t{0U};
   auto const is_via = [&](location_idx_t const l) {
-    return v != q.via_stops_.size() &&
-           matches(tt, location_match_mode::kEquivalent,
-                   q.via_stops_[v].location_, l);
+    return v != q.via_stops_.size() && matches(tt, rt_virts(rtt, q.prf_idx_),
+                                               location_match_mode::kEquivalent,
+                                               q.via_stops_[v].location_, l);
   };
   for (auto i = 0U; i != j.legs_.size(); ++i) {
     auto const& leg = j.legs_[i];
@@ -142,9 +142,10 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   auto const leg_start_location =
       kFwd ? j.legs_.back().from_ : j.legs_.back().to_;
   auto const is_start_via =
-      v != 0U && matches(tt, location_match_mode::kEquivalent,
-                         q.via_stops_.front().location_,
-                         static_location(rtt, leg_start_location));
+      v != 0U &&
+      matches(tt, rt_virts(rtt, q.prf_idx_), location_match_mode::kEquivalent,
+              q.via_stops_.front().location_,
+              static_location(rtt, leg_start_location));
   // Anchor for the start offset: the first transit event, shifted by a via
   // stay at the search-start location (the offset must not overlap the
   // mandatory stay between the transit event and the offset leg).
@@ -177,7 +178,8 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
     trace_reconstruct("  intermodal start mode\n");
 
     for (auto const& o : q.start_) {
-      if (matches(tt, q.start_match_mode_, o.target(), static_leg_start) &&
+      if (matches(tt, rt_virts(rtt, q.prf_idx_), q.start_match_mode_,
+                  o.target(), static_leg_start) &&
           is_better_or_eq(j.start_time_, leg_start_time - dir(o.duration()))) {
         trace_rc_intermodal_start_found;
         return journey::leg{
@@ -316,7 +318,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
         for (auto s = via_offset_t{0U}; s != kMaxVias + 1; ++s) {
           auto const advance = s < n_vias &&
                                q.via_stops_[s].stay_ == 0_minutes &&
-                               matches(tt, location_match_mode::kEquivalent,
+                               matches(tt, rt_virts(rtt, q.prf_idx_),
+                                       location_match_mode::kEquivalent,
                                        q.via_stops_[s].location_, l);
           if (advance) {
             finish_state[s] = finish_state[s + 1U];
@@ -378,7 +381,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
               // special case: first stop with meta stations
               (k == 1 &&
                q.start_match_mode_ == location_match_mode::kEquivalent &&
-               is_journey_start(tt, q, l) &&
+               is_journey_start(tt, q, static_location(rtt, l)) &&
                start_matches(round_time, event_time))) {
             trace_rc_transport_entry_found;
             v = s;
@@ -605,12 +608,14 @@ void reconstruct_journey_with_vias(timetable const& tt,
           q.dest_match_mode_ == location_match_mode::kIntermodal, adjust_via);
 
       if (adjust_via && v != 0 &&
-          matches(tt, location_match_mode::kEquivalent,
+          matches(tt, rt_virts(rtt, q.prf_idx_),
+                  location_match_mode::kEquivalent,
                   q.via_stops_[v - 1].location_, static_location(rtt, l))) {
         --v;
         adjusted = true;
-        if (matches(tt, location_match_mode::kEquivalent,
-                    static_location(rtt, l), static_location(rtt, target))) {
+        if (matches(tt, rt_virts(rtt, q.prf_idx_),
+                    location_match_mode::kEquivalent, static_location(rtt, l),
+                    static_location(rtt, target))) {
           stay_fp_target = q.via_stops_[v].stay_;
           trace_reconstruct(
               "  [check_fp]: fp start+target matches current via: v={}->{}, "
@@ -626,9 +631,9 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
 
       if (adjust_via && v != 0 &&
-          matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[v - 1].location_,
-                  static_location(rtt, target))) {
+          matches(
+              tt, rt_virts(rtt, q.prf_idx_), location_match_mode::kEquivalent,
+              q.via_stops_[v - 1].location_, static_location(rtt, target))) {
         --v;
         adjusted = true;
         assert(stay_fp_target == 0_minutes);
@@ -675,7 +680,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
         if (v != 0) {
           trace("current via stop: {}\n",
                 loc{tt, q.via_stops_[v - 1].location_});
-          if (matches(tt, location_match_mode::kEquivalent,
+          if (matches(tt, rt_virts(rtt, q.prf_idx_),
+                      location_match_mode::kEquivalent,
                       q.via_stops_[v - 1].location_, transport_leg->from_)) {
             trace_reconstruct("reached via {} -> v={}\n",
                               loc{tt, q.via_stops_[v - 1].location_}, v - 1);
@@ -726,18 +732,9 @@ void reconstruct_journey_with_vias(timetable const& tt,
         trace_rc_intermodal_dest_mismatch;
       }
     };
-    for_each_meta(tt, location_match_mode::kIntermodal, dest_offset.target_,
-                  [&](location_idx_t const eq) {
-                    try_dest(eq);
-                    if (rtt != nullptr && q.prf_idx_ == kDefaultProfile) {
-                      rtt->for_each_rt_virt(
-                          [&](location_idx_t const w, rt_location_idx_t) {
-                            if (rtt->base(w) == eq) {
-                              try_dest(w);
-                            }
-                          });
-                    }
-                  });
+    for_each_meta(tt, rt_virts(rtt, q.prf_idx_),
+                  location_match_mode::kIntermodal, dest_offset.target_,
+                  try_dest);
     return ret;
   };
 
@@ -829,12 +826,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
         }
       };
       tt.locations_.for_each_virt(l, try_virt);
-      if (rtt != nullptr && q.prf_idx_ == kDefaultProfile) {
-        rtt->for_each_rt_virt([&](location_idx_t const x, rt_location_idx_t) {
-          if (rtt->base(x) == l) {
-            try_virt(x);
-          }
-        });
+      if (auto const r = rt_virts(rtt, q.prf_idx_); r != nullptr) {
+        r->for_each_rt_virt(l, try_virt);
       }
       if (at_virt.has_value()) {
         return std::move(*at_virt);

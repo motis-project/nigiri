@@ -38,17 +38,8 @@ void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
                                                     : start_time - s.duration();
     trace("init: time_at_stop={} at {}\n", t, location_idx_t{s.target()});
     nigiri::routing::for_each_meta(
-        tt, q.start_match_mode_, s.target(),
+        tt, rt_virts(rtt, q.prf_idx_), q.start_match_mode_, s.target(),
         [&](nigiri::location_idx_t const l) { algo.add_start(l, t); });
-    if constexpr (Rt) {
-      if (q.prf_idx_ == kDefaultProfile) {
-        rtt->for_each_rt_virt([&](location_idx_t const l, rt_location_idx_t) {
-          if (matches(tt, q.start_match_mode_, s.target(), rtt->base(l))) {
-            algo.add_start(l, t);
-          }
-        });
-      }
-    }
   }
 
   algo.execute(start_time, q.max_transfers_, worst_time_at_dest, results);

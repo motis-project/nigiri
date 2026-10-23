@@ -581,7 +581,7 @@ void updater::update_run(rt_timetable& rtt,
     skipped_stops.clear();
     for (auto vdv_stop = cursor; vdv_stop != end(vdv_stops); ++vdv_stop) {
       if (vdv_stop->l_ != location_idx_t::invalid() &&
-          matches(tt_, routing::location_match_mode::kEquivalent,
+          matches(tt_, nullptr, routing::location_match_mode::kEquivalent,
                   rs.get_location_idx(), vdv_stop->l_)) {
         if (rs.stop_idx_ != 0 && vdv_stop->arr_.has_value() &&
             (static_cast<std::uint32_t>(std::abs(

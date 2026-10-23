@@ -61,7 +61,7 @@ struct location_id_equals {
 struct timetable {
   struct locations {
     bool is_virt(location_idx_t const l) const {
-      return types_[l] == location_type::kVirt;
+      return to_idx(l) >= types_.size() || types_[l] == location_type::kVirt;
     }
 
     location_idx_t get_base_idx(location_idx_t const l) const {
@@ -75,6 +75,9 @@ struct timetable {
 
     template <typename Fn>
     void for_each_virt(location_idx_t const l, Fn&& fn) const {
+      if (to_idx(l) >= children_.size()) {
+        return;
+      }
       for (auto const c : children_[l]) {
         if (is_virt(c)) {
           fn(c);

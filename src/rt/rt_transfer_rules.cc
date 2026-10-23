@@ -177,11 +177,8 @@ std::vector<location_idx_t> get_locations(timetable const& tt,
   auto locations = std::vector<location_idx_t>{base};
   tt.locations_.for_each_virt(
       base, [&](location_idx_t const v) { locations.push_back(v); });
-  rtt.for_each_rt_virt([&](location_idx_t const w, rt_location_idx_t) {
-    if (rtt.base(w) == base) {
-      locations.push_back(w);
-    }
-  });
+  rtt.for_each_rt_virt(base,
+                       [&](location_idx_t const w) { locations.push_back(w); });
   return locations;
 }
 
@@ -654,10 +651,11 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
     rtt.update_stop_location(rt_t, i, to);
     ++n_moves;
     for (auto const& y : moved) {
-      auto const y_rt =
-          y.r_.is_rt() ? y.r_.rt_
-                       : rtt.add_rt_transport(
-                             rt::frun{tt, &rtt, y.r_}.id().src_, tt, y.r_.t_);
+      auto y_rt = y.r_.is_rt() ? y.r_.rt_ : rtt.resolve_rt(y.r_.t_);
+      if (y_rt == rt_transport_idx_t::invalid()) {
+        y_rt = rtt.add_rt_transport(rt::frun{tt, &rtt, y.r_}.id().src_, tt,
+                                    y.r_.t_);
+      }
       queue.emplace_back(y_rt, y.stop_);
     }
   }
