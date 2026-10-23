@@ -392,3 +392,116 @@ TEST(routing, via_stay_at_later_stop_of_the_station) {
         << to_str(dir);
   }
 }
+
+// A is the via (10 min stay); B and D are a 5 min walk from A.
+// T1 leaves B 10:15 for C, T2 leaves A 10:00 for D, T3 leaves C 11:00 for B.
+mem_dir via_start_walk_files() {
+  return mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Etc/UTC
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,
+B,B,,0.0,1.1,,
+C,C,,1.0,2.0,,
+D,D,,0.0,0.9,,
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+A,B,2,300
+B,A,2,300
+A,D,2,300
+D,A,2,300
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,T1,,,2
+R2,DB,T2,,,2
+R3,DB,T3,,,2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S,T1,,
+R2,S,T2,,
+R3,S,T3,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:15:00,10:15:00,B,1,0,0
+T1,10:45:00,10:45:00,C,2,0,0
+T2,10:00:00,10:00:00,A,1,0,0
+T2,10:30:00,10:30:00,D,2,0,0
+T3,11:00:00,11:00:00,C,1,0,0
+T3,11:30:00,11:30:00,B,2,0,0
+)");
+}
+
+timetable load_via_start_walk() {
+  auto tt = timetable{};
+  tt.date_range_ = {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}};
+  register_special_stations(tt);
+  load_timetable({}, source_idx_t{0}, via_start_walk_files(), tt);
+  finalize(tt);
+  return tt;
+}
+
+// The stay at the via A is next to a walk: before the walk to B when the
+// journey starts at A (T1), after the walk from B when it ends at A (T3).
+// Both directions find both journeys.
+TEST(routing, via_stay_next_to_start_walk) {
+  auto const tt = load_via_start_walk();
+  auto const day = sys_days{2024_y / June / 19};
+  auto const stop = [&](std::string_view const id) {
+    return tt.find(location_id{id, source_idx_t{0}}).value();
+  };
+  struct journey_case {
+    std::string_view from_, to_;
+    unixtime_t dep_, arr_;
+  };
+  for (auto const& c : {journey_case{"A", "C", day + 10h, day + 10h + 45min},
+                        journey_case{"C", "A", day + 11h, day + 11h + 45min}}) {
+    for (auto const dir : {direction::kForward, direction::kBackward}) {
+      auto const is_fwd = dir == direction::kForward;
+      auto const t = is_fwd ? c.dep_ : c.arr_;
+      auto const results = raptor_search(
+          tt, nullptr,
+          routing::query{
+              .start_time_ = interval<unixtime_t>{t, t + 1min},
+              .use_start_footpaths_ = true,
+              .start_ = {{stop(is_fwd ? c.from_ : c.to_), 0min, 0U}},
+              .destination_ = {{stop(is_fwd ? c.to_ : c.from_), 0min, 0U}},
+              .via_stops_ = {{stop("A"), 10min}}},
+          dir);
+      ASSERT_EQ(1U, results.size())
+          << c.from_ << "->" << c.to_ << " " << to_str(dir);
+      EXPECT_EQ(c.dep_, results.begin()->departure_time()) << to_str(dir);
+      EXPECT_EQ(c.arr_, results.begin()->arrival_time()) << to_str(dir);
+    }
+  }
+}
+
+// Staying at A and walking to D (15 min) beats T2 (leave 09:50, arrive
+// 10:30). Ping has to see the walk as well, otherwise pong finds no journey
+// matching ping's T2 and throws.
+TEST(routing, pong_via_stay_at_start_before_direct_walk) {
+  auto const tt = load_via_start_walk();
+  auto const A = tt.find(location_id{"A", source_idx_t{0}}).value();
+  auto const D = tt.find(location_id{"D", source_idx_t{0}}).value();
+  auto const day = sys_days{2024_y / June / 19};
+  auto const results = raptor_search(
+      tt, nullptr,
+      routing::query{
+          .start_time_ = interval<unixtime_t>{day + 9h + 45min, day + 10h},
+          .use_start_footpaths_ = true,
+          .start_ = {{A, 0min, 0U}},
+          .destination_ = {{D, 0min, 0U}},
+          .via_stops_ = {{A, 10min}}},
+      direction::kForward);
+  EXPECT_TRUE(results.empty());
+}

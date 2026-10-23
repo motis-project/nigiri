@@ -271,12 +271,14 @@ void get_starts(
   }
 
   auto shortest_start = std::array<hash_map<location_idx_t, duration_t>, 2>{};
-  auto const update = [&](location_idx_t const l, duration_t const offset) {
+  // is_walked_from_via: the stay can be spent at the via before the walk.
+  auto const update = [&](location_idx_t const l, duration_t const offset,
+                          bool const is_walked_from_via = false) {
     auto const keep_min = [&](via_offset_t const v, duration_t const d) {
       auto& val = utl::get_or_create(shortest_start[v], l, [d]() { return d; });
       val = std::min(val, d);
     };
-    if (!start_via.contains(l)) {
+    if (!is_walked_from_via && !start_via.contains(l)) {
       keep_min(0U, offset);
       return;
     }
@@ -295,7 +297,8 @@ void get_starts(
                                    : tt.locations_.footpaths_in_[prf_idx][l];
         for (auto const& fp : footpaths) {
           update(fp.target(),
-                 o.duration() + adjusted_transfer_time(tts, fp.duration()));
+                 o.duration() + adjusted_transfer_time(tts, fp.duration()),
+                 start_via.contains(l));
         }
       }
     });

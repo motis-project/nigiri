@@ -195,14 +195,23 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
     for (auto const& fp : footpaths) {
       auto const fp_duration = adjusted_transfer_time(q.transfer_time_settings_,
                                                       fp.duration().count());
+      // The stay at the via before the walk to a stop that is no via.
+      auto const stay =
+          v != 0U && !is_start_via &&
+                  matches(tt, location_match_mode::kEquivalent,
+                          q.via_stops_.front().location_, fp.target())
+              ? q.via_stops_.front().stay_
+              : duration_t{0};
       if (is_journey_start(tt, q, fp.target()) &&
           fp_target_time != kInvalidDelta<SearchDir> &&
-          start_matches(j_start_time + dir(fp_duration), fp_arrival_time)) {
+          start_matches(static_cast<delta_t>(j_start_time +
+                                             dir(stay.count() + fp_duration)),
+                        fp_arrival_time)) {
         trace_rc_fp_start_found;
         return journey::leg{SearchDir,
                             fp.target(),
                             leg_start_location,
-                            j.start_time_,
+                            j.start_time_ + dir(stay),
                             delta_to_unix(base, fp_arrival_time),
                             footpath{fp.target(), duration_t{fp_duration}}};
       } else {
