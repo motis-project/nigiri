@@ -109,7 +109,6 @@ S2,S2,,,,,,
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
 MON,1,0,0,0,0,0,0,20210301,20210307
-THU,0,0,0,1,0,0,0,20210301,20210307
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -119,17 +118,19 @@ R1,DTA,R1,R1,"S1 -> S2",2
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
 R0,MON,R0_MON,R0_MON,1
-R1,THU,R1_THU,R1_THU,2
+R1,MON,R1_MON,R1_MON,2
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
 R0_MON,00:00:00,00:00:00,S0,0,0,0
 R0_MON,12:00:00,12:00:00,S1,1,0,0
-R1_THU,06:00:00,06:00:00,S1,0,0,0
-R1_THU,07:00:00,07:00:00,S2,1,0,0
+R1_MON,06:00:00,06:00:00,S1,0,0,0
+R1_MON,07:00:00,07:00:00,S2,1,0,0
 )");
 }
 
+// R1 leaves 6h before R0 arrives and runs only on Mondays: the next
+// departure is 6.75 days later, beyond kTBMaxTransferTime.
 TEST(tb_preprocess, no_transfer) {
   auto const tt = load_gtfs(no_transfer_files);
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
