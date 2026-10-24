@@ -25,7 +25,6 @@
 #include "thrust/fill.h"
 #include "thrust/host_vector.h"
 
-#include "utl/erase_duplicates.h"
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/timer.h"
@@ -40,9 +39,8 @@
 #include "nigiri/routing/gpu/raptor_impl.cuh"
 #include "nigiri/routing/gpu/types.cuh"
 #include "nigiri/routing/raptor/reconstruct.h"
-#include "nigiri/routing/search_location.h"
 #include "nigiri/routing/transfers.h"
-#include "nigiri/rt/rt_transfer_rules.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/td_footpath.h"
 
 namespace nigiri::routing::gpu {
@@ -293,7 +291,7 @@ struct gpu_rt_timetable::impl {
         rt_transport_stop_times_{rtt.rt_transport_stop_times_},
         rt_transport_clasz_{to_device(build_rt_transport_clasz(rtt))},
         rt_footpaths_{to_device(build_rt_footpaths(rtt))},
-        rt_base_{to_device(rtt.rt_locations_.parents_)},
+        rt_base_{to_device(rtt.rt_location_parents_)},
         transport_traffic_days_{to_device(rtt.transport_traffic_days_)},
         bitfields_{to_device(rtt.bitfields_)},
         rt_transport_bikes_allowed_{
@@ -337,6 +335,10 @@ struct gpu_rt_timetable::impl {
     thrust::copy_n(&f, 1, rt_filters_ctx_.begin());
 
     // Copy td-footpaths.
+    auto const pad_to_rt_capacity = [&](bitvec_map<location_idx_t> v) {
+      v.resize(tt.n_locations() + kRtLocationCapacity);
+      return v.blocks_;
+    };
     for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
       // for the host-side kernel dispatch
       has_td_fps_[p] = rtt.has_td_footpaths_out_[p].any() ||
@@ -347,9 +349,11 @@ struct gpu_rt_timetable::impl {
       }
 
       td_footpaths_out_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_out_[p]};
-      has_td_out_[p] = to_device(rtt.has_td_footpaths_out_[p].blocks_);
+      has_td_out_[p] =
+          to_device(pad_to_rt_capacity(rtt.has_td_footpaths_out_[p]));
       td_footpaths_in_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_in_[p]};
-      has_td_in_[p] = to_device(rtt.has_td_footpaths_in_[p].blocks_);
+      has_td_in_[p] =
+          to_device(pad_to_rt_capacity(rtt.has_td_footpaths_in_[p]));
     }
 
     // device-resident view struct (the launch-parameter struct only carries
@@ -492,8 +496,7 @@ struct gpu_raptor_state::impl {
       unsigned const dir /* fwd=0 bwd=1 -> ping/pong can coexist */,
       nigiri::bitvec const& is_dest,
       std::vector<std::uint16_t> const& dist_to_dest,
-      hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
-      std::vector<location_idx_t> const& dest_locs) {
+      hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest) {
     is_intermodal_dest_[dir] = !dist_to_dest.empty();
 
     // td dest offsets: flatten into sorted (loc, range, data) groups.
@@ -542,8 +545,12 @@ struct gpu_raptor_state::impl {
           "could not copy td dest offsets");
     }
 
-    // Copy dense list of destination locations (counting themselves).
+    // Copy dense list of destination locations.
     {
+      auto dest_locs = std::vector<location_idx_t>{};
+      is_dest.for_each_set_bit([&](std::uint64_t const i) {
+        dest_locs.push_back(location_idx_t{static_cast<std::uint32_t>(i)});
+      });
       n_dest_locs_[dir] = static_cast<std::uint32_t>(dest_locs.size());
       if (!dest_locs.empty()) {
         auto* const pin = dest_locs_pin_[dir].ensure(dest_locs.size());
@@ -655,7 +662,7 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
     gpu_raptor_state& state,
     nigiri::bitvec& is_dest,
     std::array<nigiri::bitvec, kMaxVias> const& /* is_via (GPU: no vias) */,
-    std::vector<std::uint16_t> const& dist_to_dest,
+    std::vector<std::uint16_t>& dist_to_dest,
     hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
     std::vector<std::uint16_t> const& /* lb (GPU: no lower bounds) */,
     std::vector<via_stop> const& via_stops,
@@ -690,23 +697,18 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
   state_.impl_->resize_rt(rtt == nullptr ? 0U : rtt->n_rt_transports());
   reset_arrivals();
 
-  auto dist = dist_to_dest;
   auto td_dist = td_dist_to_dest;
   if (rtt != nullptr && prf_idx_ == kDefaultProfile &&
       rtt->n_rt_locations() != 0U) {
     is_dest.resize(rtt->n_locations());
-    extend_to_rt_virts(*rtt, dist);
+    extend_to_rt_virts(*rtt, dist_to_dest);
     // A td destination at a stop also holds at its real-time locations.
     for (auto const& [l, offsets] : td_dist_to_dest) {
       rtt->for_each_rt_virt(
           l, [&](location_idx_t const v) { td_dist.emplace(v, offsets); });
     }
   }
-  auto dest_locs = std::vector<location_idx_t>{};
-  is_dest.for_each_set_bit([&](std::uint64_t const i) {
-    dest_locs.push_back(location_idx_t{static_cast<std::uint32_t>(i)});
-  });
-  state_.impl_->upload_query(kDirIdx, is_dest, dist, td_dist, dest_locs);
+  state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest, td_dist);
 }
 
 template <direction SearchDir, bool WithBounds>
@@ -1208,11 +1210,8 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       }
     }
 
-    auto elapsed = std::vector<duration_t>(j.legs_.size());
-    for (auto i = std::size_t{0U}; i != j.legs_.size(); ++i) {
-      auto& lg = j.legs_[i];
+    for (auto& lg : j.legs_) {
       utl::visit(lg.uses_, [&](footpath& fp) {
-        elapsed[i] = fp.duration();
         fp = footpath{fp.target(), get_unadjusted_transfer_time(
                                        lg.from_, lg.to_, fp.duration())};
       });
@@ -1229,8 +1228,9 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
           !(j.legs_[i].from_ != j.legs_[i].to_ && rtt_ != nullptr &&
             prf_idx_ != 0U &&
             rtt_->has_td_footpaths_out_[prf_idx_].test(j.legs_[i].from_))) {
+        auto const elapsed = j.legs_[i].arr_time_ - j.legs_[i].dep_time_;
         j.legs_[i].dep_time_ = j.legs_[i - 1U].arr_time_;
-        j.legs_[i].arr_time_ = j.legs_[i].dep_time_ + elapsed[i];
+        j.legs_[i].arr_time_ = j.legs_[i].dep_time_ + elapsed;
       }
     }
 
@@ -1494,38 +1494,24 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
   // use_start_footpaths_ == true:
   // reconstruct the start footpath that seeded round k=0 at the first stop.
   if (q.start_match_mode_ != location_match_mode::kIntermodal) {
-    auto const is_journey_start = [&](location_idx_t const l) {
-      return routing::is_journey_start(tt_, q, l);
-    };
-    auto const start_l = rt::base(
-        tt_, rtt_, is_fwd ? j.legs_.front().from_ : j.legs_.back().to_);
+    auto const search_start_l =
+        is_fwd ? j.legs_.front().from_ : j.legs_.back().to_;
+    auto const start_l = rt::base(tt_, rtt_, search_start_l);
     auto const start_t =
         is_fwd ? j.legs_.front().dep_time_ : j.legs_.back().arr_time_;
     auto const direct_start_ok =
         is_fwd ? j.start_time_ <= start_t : j.start_time_ >= start_t;
-    if (!is_journey_start(start_l) || !direct_start_ok) {
+    if (!routing::is_journey_start(tt_, q, start_l) || !direct_start_ok) {
       auto best = std::optional<footpath>{};
-      // The location the search boarded at (as the CPU reconstruct).
-      auto const search_start_l = [&]() {
-        auto const& lg = is_fwd ? j.legs_.front() : j.legs_.back();
-        auto const* ree = std::get_if<journey::run_enter_exit>(&lg.uses_);
-        if (ree == nullptr) {
-          return start_l;
-        }
-        return search_location(
-            q.prf_idx_,
-            rt::frun{tt_, rtt_,
-                     ree->r_}[is_fwd ? ree->stop_range_.from_
-                                     : static_cast<stop_idx_t>(
-                                           ree->stop_range_.to_ - 1U)]);
-      }();
       for (auto const fp : get_transfers<flip(SearchDir)>(tt_, rtt_, q.prf_idx_,
                                                           search_start_l)) {
         // A walk leaves a start stop from the stop (see get_starts).
         auto const src = fp.target();
         if ((!best.has_value() || fp.duration() < best->duration()) &&
-            to_idx(src) < tt_.n_locations() && is_journey_start(src) &&
-            !(tt_.locations_.is_virt(src) && is_journey_start(tt_.base(src)))) {
+            to_idx(src) < tt_.n_locations() &&
+            routing::is_journey_start(tt_, q, src) &&
+            !(tt_.locations_.is_virt(src) &&
+              routing::is_journey_start(tt_, q, tt_.base(src)))) {
           best = fp;
         }
       }

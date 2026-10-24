@@ -4,13 +4,81 @@
 #include <chrono>
 #include <cstdint>
 #include <span>
+#include <vector>
 
 #include "utl/get_or_create.h"
 
+#include "nigiri/stop.h"
 #include "nigiri/timetable.h"
 #include "nigiri/transfer_rule_sides.h"
 
 namespace nigiri::loader {
+
+struct location_route_stop {
+  bool is_uniform() const { return sigs_.size() <= 1U; }
+
+  route_idx_t route_;
+  stop_idx_t stop_idx_;
+  std::span<signature_idx_t const> sigs_;
+  bool has_arr_;
+  bool has_dep_;
+  route_stop_idx_t route_stop_{route_stop_idx_t::invalid()};
+};
+
+using location_route_stops_t = vecvec<location_idx_t, location_route_stop>;
+
+location_route_stops_t get_location_route_stops(
+    timetable const& tt,
+    signatures const& sigs,
+    hash_map<transfer_pair, transfer_durations> const& durations_of) {
+  // Mark any stop that's involved in a transfer rule.
+  auto is_needed = bitvec_map<location_idx_t>{};
+  is_needed.resize(tt.n_locations());
+  for (auto const& [stops, _] : durations_of) {
+    is_needed.set(stops.from_);
+    is_needed.set(stops.to_);
+  }
+
+  // For each location: collect all route stops with their signatures.
+  auto route_stops = location_route_stops_t{};
+  auto v = std::vector<location_route_stop>{};
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    v.clear();
+    if (is_needed.test(l)) {
+      for (auto const r : tt.location_routes_[l]) {
+        auto const seq = tt.route_location_seq_[r];
+        for (auto i = stop_idx_t{0U}; i != seq.size(); ++i) {
+          auto const stp = stop{seq[i]};
+          if (stp.location_idx() != l || sigs.get(r, i).empty()) {
+            continue;
+          }
+          v.push_back(location_route_stop{
+              .route_ = r,
+              .stop_idx_ = i,
+              .sigs_ = sigs.get(r, i),
+              .has_arr_ = i != 0U && stp.out_allowed(),
+              .has_dep_ = i + 1U != seq.size() && stp.in_allowed()});
+        }
+      }
+    }
+    route_stops.emplace_back(v);
+  }
+  return route_stops;
+}
+
+route_stop_idx_t get_or_create_route_stop(route_stop_pairs& pairs,
+                                          location_route_stop& s,
+                                          location_idx_t const l) {
+  if (s.route_stop_ == route_stop_idx_t::invalid()) {
+    auto const rs = route_stop{s.route_, s.stop_idx_, l};
+    s.route_stop_ = pairs.get_or_create_route_stop(
+        s.is_uniform() ? route_stop{route_idx_t::invalid(), stop_idx_t{0U}, l,
+                                    signatures::get(s.sigs_, kBaseTransport)}
+                       : rs);
+    pairs.route_stop_of_.emplace(rs, s.route_stop_);
+  }
+  return s.route_stop_;
+}
 
 template <typename Fn>
 void for_each_transfer(timetable const& tt,
@@ -79,11 +147,11 @@ void add_transport_transfers(timetable const& tt,
                              auto&& get_expected_duration,
                              route_stop_pairs& pairs) {
   for (auto& from_route_stop : from_route_stops) {
-    if (!from_route_stop.has_arr_ || from_route_stop.sigs_.empty()) {
+    if (!from_route_stop.has_arr_) {
       continue;
     }
     for (auto& to_route_stop : to_route_stops) {
-      if (!to_route_stop.has_dep_ || to_route_stop.sigs_.empty()) {
+      if (!to_route_stop.has_dep_) {
         continue;
       }
       auto const is_uniform =
@@ -101,9 +169,9 @@ void add_transport_transfers(timetable const& tt,
               duration_t const gap) {
             if (p == route_stop_pair_idx_t::invalid()) {
               auto const from_route_stop_idx =
-                  pairs.get_or_create_route_stop(from_route_stop, from);
+                  get_or_create_route_stop(pairs, from_route_stop, from);
               auto const to_route_stop_idx =
-                  pairs.get_or_create_route_stop(to_route_stop, to);
+                  get_or_create_route_stop(pairs, to_route_stop, to);
               p = pairs.get_or_create_pair(
                   from_route_stop_idx, to_route_stop_idx, pair_durations.hull_);
               uniform_expected_duration = get_expected_duration(
@@ -132,15 +200,15 @@ void add_base_transfers(timetable const& tt,
   for (auto const is_arr : {true, false}) {
     auto const l = is_arr ? from : to;
     for (auto& s : is_arr ? from_route_stops : to_route_stops) {
-      if (s.sigs_.empty() || !(is_arr ? s.has_arr_ : s.has_dep_)) {
+      if (!(is_arr ? s.has_arr_ : s.has_dep_)) {
         continue;
       }
       auto const from_route_stop_idx =
-          is_arr ? pairs.get_or_create_route_stop(s, l)
+          is_arr ? get_or_create_route_stop(pairs, s, l)
                  : pairs.get_or_create_route_stop(to_base_stop(from));
       auto const to_route_stop_idx =
           is_arr ? pairs.get_or_create_route_stop(to_base_stop(to))
-                 : pairs.get_or_create_route_stop(s, l);
+                 : get_or_create_route_stop(pairs, s, l);
       auto const p = pairs.get_or_create_pair(
           from_route_stop_idx, to_route_stop_idx, pair_durations.hull_);
       auto const n = static_cast<std::uint32_t>(

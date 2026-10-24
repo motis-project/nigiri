@@ -1,6 +1,8 @@
 #pragma once
 
+#include <map>
 #include <span>
+#include <vector>
 
 #include "cista/reflection/comparable.h"
 
@@ -14,6 +16,8 @@
 #include "nigiri/types.h"
 
 namespace nigiri {
+
+struct timetable;
 
 constexpr auto const kNull = unixtime_t{0_minutes};
 constexpr auto const kTdFootpathBan = duration_t::max();
@@ -105,5 +109,11 @@ void for_each_footpath(direction const search_dir,
       ? for_each_footpath<direction::kForward>(c, t, std::forward<Fn>(f))
       : for_each_footpath<direction::kBackward>(c, t, std::forward<Fn>(f));
 }
+
+// Time-dependent walks between stops (by their source) ignore transfer rules:
+// a virtual location walks like its stop. They replace all static walks of
+// their source, so they connect its locations.
+void expand_td_footpaths_to_virts(
+    timetable const&, std::map<location_idx_t, std::vector<td_footpath>>&);
 
 }  // namespace nigiri

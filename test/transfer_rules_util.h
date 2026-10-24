@@ -17,7 +17,6 @@
 #include "fmt/format.h"
 
 #include "utl/erase_duplicates.h"
-#include "utl/helpers/algorithm.h"
 
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/dir.h"
@@ -25,6 +24,7 @@
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/common/parse_time.h"
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/one_to_all.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
 
@@ -57,12 +57,15 @@ inline location_idx_t lidx(timetable const& tt,
 
 // Loads the feeds (one source each), valid on kDay. walks: instead of the
 // beelines (see load_feeds_with_walks).
-inline timetable load_feeds(std::vector<std::string> const& feeds,
-                            bool const adjust_footpaths = false,
-                            bool const apply_transfer_rules = true,
-                            std::function<void(timetable&)> walks = {}) {
+inline timetable load_feeds(
+    std::vector<std::string> const& feeds,
+    bool const adjust_footpaths = false,
+    std::function<void(timetable&,
+                       mutable_fws_multimap<location_idx_t, footpath>&)> walks =
+        {},
+    date::days const n_days = date::days{1}) {
   auto tt = timetable{};
-  tt.date_range_ = {kDay, kDay + date::days{1}};
+  tt.date_range_ = {kDay, kDay + n_days};
   loader::register_special_stations(tt);
   for (auto i = 0U; i != feeds.size(); ++i) {
     loader::gtfs::load_timetable(
@@ -74,7 +77,6 @@ inline timetable load_feeds(std::vector<std::string> const& feeds,
       tt, {.merge_dupes_intra_src_ = false,
            .merge_dupes_inter_src_ = false,
            .max_footpath_length_ = std::numeric_limits<std::uint16_t>::max(),
-           .apply_transfer_rules_ = apply_transfer_rules,
            .walks_ = std::move(walks)});
   return tt;
 }
@@ -93,23 +95,33 @@ struct trip_def {
   std::string_view route_;
   std::vector<std::pair<std::string_view, std::string_view>> times_;
   std::string_view block_{};
+  unsigned day_{0U};
 };
 
 // Routes are taken from the trips, plus the ones rules name without a trip.
-inline std::string feed(
-    std::vector<stop_def> const& stops,
-    std::vector<trip_def> const& trips,
-    std::string_view const transfers,
-    std::vector<std::string_view> const& extra_routes = {}) {
-  auto s = std::string{
+inline std::string feed(std::vector<stop_def> const& stops,
+                        std::vector<trip_def> const& trips,
+                        std::string_view const transfers,
+                        std::vector<std::string_view> const& extra_routes = {},
+                        std::string_view const tz = "Europe/Berlin") {
+  auto s = fmt::format(
       "# agency.txt\n"
       "agency_id,agency_name,agency_url,agency_timezone\n"
-      "AG,Agency,https://example.com,Europe/Berlin\n\n"
+      "AG,Agency,https://example.com,{}\n\n"
       "# calendar_dates.txt\n"
-      "service_id,date,exception_type\n"
-      "S1,20190501,1\n\n"
-      "# stops.txt\n"
-      "stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station\n"};
+      "service_id,date,exception_type\n",
+      tz);
+  auto days = std::vector<unsigned>{0U};
+  for (auto const& x : trips) {
+    days.push_back(x.day_);
+  }
+  utl::erase_duplicates(days);
+  for (auto const d : days) {
+    s += fmt::format("S{},{},1\n", d + 1U,
+                     date::format("%Y%m%d", kDay + date::days{d}));
+  }
+  s += "\n# stops.txt\n"
+       "stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station\n";
   for (auto const& x : stops) {
     s += fmt::format("{},{},{},{},{},{}\n", x.id_, x.id_, x.lat_, x.lng_,
                      x.is_station_ ? 1 : 0, x.parent_);
@@ -128,7 +140,7 @@ inline std::string feed(
 
   s += "\n# trips.txt\nroute_id,service_id,trip_id,block_id\n";
   for (auto const& x : trips) {
-    s += fmt::format("{},S1,{},{}\n", x.route_, x.id_, x.block_);
+    s += fmt::format("{},S{},{},{}\n", x.route_, x.day_ + 1U, x.id_, x.block_);
   }
 
   s += "\n# stop_times.txt\n"
@@ -147,6 +159,12 @@ inline std::string feed(
   return s;
 }
 
+// Stops and trips added to the network.
+struct network_rows {
+  std::vector<stop_def> stops_{};
+  std::vector<trip_def> trips_{};
+};
+
 // S is a station with the child stops S1..S4 a few meters apart (mutually
 // equivalent -> valid track changes). Default transfer time at a stop: 2 min,
 // S1 <-> S2 walk: a few minutes.
@@ -162,40 +180,29 @@ inline std::string feed(
 // P and Q meet twice, at S and at the station X (child stops X1, X2):
 //   P  (RP): A  12:00 -> S1 12:30 -> X1 12:50
 //   Q  (RQ): S2 12:40 -> X2 13:00 -> B 13:20
-inline std::vector<stop_def> network_stops() {
-  return {{"A", 50.0, 6.0},           {"A2", 50.0, 6.1},
-          {"S", 50.0, 6.5, "", true}, {"S1", 50.0001, 6.5, "S"},
-          {"S2", 50.0002, 6.5, "S"},  {"S3", 50.0003, 6.5, "S"},
-          {"S4", 50.0004, 6.5, "S"},  {"B", 50.0, 7.0},
-          {"C", 50.0, 7.5},           {"D", 50.0, 8.0},
-          {"X", 50.0, 6.8, "", true}, {"X1", 50.0001, 6.8, "X"},
-          {"X2", 50.0002, 6.8, "X"}};
-}
-
-inline std::vector<trip_def> network_trips() {
-  return {{"F", "RF", {{"A", "10:00"}, {"S1", "10:30"}}},
-          {"F0", "RF", {{"A2", "09:00"}, {"S3", "09:30"}}},
-          {"F2", "RF", {{"S1", "10:36"}, {"D", "11:06"}}},
-          {"G", "RG", {{"S2", "10:40"}, {"B", "11:00"}}},
-          {"GL", "RG", {{"S2", "11:10"}, {"B", "11:30"}}},
-          {"H", "RH", {{"S1", "10:31"}, {"C", "11:00"}}},
-          {"HL", "RH", {{"S1", "11:01"}, {"C", "11:30"}}},
-          {"P", "RP", {{"A", "12:00"}, {"S1", "12:30"}, {"X1", "12:50"}}},
-          {"Q", "RQ", {{"S2", "12:40"}, {"X2", "13:00"}, {"B", "13:20"}}}};
-}
-
-// Stops and trips added to the network.
-struct network_rows {
-  std::vector<stop_def> stops_{};
-  std::vector<trip_def> trips_{};
-};
-
+//
 // The network with the given transfers.txt rows (and further stops and trips).
 inline std::string network(std::string_view const transfers,
                            network_rows const& rows = {}) {
-  auto stops = network_stops();
+  auto stops = std::vector<stop_def>{
+      {"A", 50.0, 6.0},           {"A2", 50.0, 6.1},
+      {"S", 50.0, 6.5, "", true}, {"S1", 50.0001, 6.5, "S"},
+      {"S2", 50.0002, 6.5, "S"},  {"S3", 50.0003, 6.5, "S"},
+      {"S4", 50.0004, 6.5, "S"},  {"B", 50.0, 7.0},
+      {"C", 50.0, 7.5},           {"D", 50.0, 8.0},
+      {"X", 50.0, 6.8, "", true}, {"X1", 50.0001, 6.8, "X"},
+      {"X2", 50.0002, 6.8, "X"}};
   stops.insert(end(stops), begin(rows.stops_), end(rows.stops_));
-  auto trips = network_trips();
+  auto trips = std::vector<trip_def>{
+      {"F", "RF", {{"A", "10:00"}, {"S1", "10:30"}}},
+      {"F0", "RF", {{"A2", "09:00"}, {"S3", "09:30"}}},
+      {"F2", "RF", {{"S1", "10:36"}, {"D", "11:06"}}},
+      {"G", "RG", {{"S2", "10:40"}, {"B", "11:00"}}},
+      {"GL", "RG", {{"S2", "11:10"}, {"B", "11:30"}}},
+      {"H", "RH", {{"S1", "10:31"}, {"C", "11:00"}}},
+      {"HL", "RH", {{"S1", "11:01"}, {"C", "11:30"}}},
+      {"P", "RP", {{"A", "12:00"}, {"S1", "12:30"}, {"X1", "12:50"}}},
+      {"Q", "RQ", {{"S2", "12:40"}, {"X2", "13:00"}, {"B", "13:20"}}}};
   trips.insert(end(trips), begin(rows.trips_), end(rows.trips_));
   return feed(stops, trips, transfers);
 }
@@ -210,8 +217,6 @@ inline timetable load_network(std::string_view const transfers,
 // zone database is not loaded yet.
 inline unixtime_t g_from_f() { return at("11:00"); }
 inline unixtime_t gl_from_f() { return at("11:30"); }
-inline unixtime_t h_from_f() { return at("11:00"); }
-inline unixtime_t hl_from_f() { return at("11:30"); }
 
 // Stop-to-stop query the way a server asks it: a stop stands for its station,
 // so everything below it (child stops, virtual locations) is a start / target.
@@ -225,6 +230,15 @@ inline routing::query station_query(timetable const& tt,
       .dest_match_mode_ = routing::location_match_mode::kEquivalent,
       .start_ = {{lidx(tt, from), 0_minutes, 0U}},
       .destination_ = {{lidx(tt, to), 0_minutes, 0U}}};
+}
+
+inline routing::query exact_query(timetable const& tt,
+                                  std::string_view const from,
+                                  std::string_view const to,
+                                  routing::start_time_t const time) {
+  return routing::query{.start_time_ = time,
+                        .start_ = {{lidx(tt, from), 0_minutes, 0U}},
+                        .destination_ = {{lidx(tt, to), 0_minutes, 0U}}};
 }
 
 // Sets up the profile prf without walks between stops, next to the loaded
@@ -243,12 +257,29 @@ inline pareto_set<routing::journey> search_at(timetable const& tt,
                        fmt::format("2019-05-01 {} Europe/Berlin", hhmm));
 }
 
-inline std::size_t n_transit_legs(routing::journey const& j) {
-  return static_cast<std::size_t>(
-      utl::count_if(j.legs_, [](routing::journey::leg const& l) {
-        return std::holds_alternative<routing::journey::run_enter_exit>(
-            l.uses_);
-      }));
+inline bool is_transit(routing::journey::leg const& l) {
+  return std::holds_alternative<routing::journey::run_enter_exit>(l.uses_);
+}
+
+struct one_to_all_result {
+  routing::fastest_offset fastest_;
+  routing::raptor_state state_;
+};
+
+inline one_to_all_result one_to_all(timetable const& tt,
+                                    rt_timetable const* rtt,
+                                    direction const dir,
+                                    std::string_view const from,
+                                    std::string_view const to,
+                                    std::string_view const hhmm) {
+  auto const q = routing::query{.start_time_ = at(hhmm),
+                                .start_ = {{lidx(tt, from), 0_minutes, 0U}}};
+  auto state = dir == direction::kForward
+                   ? routing::one_to_all<direction::kForward>(tt, rtt, q)
+                   : routing::one_to_all<direction::kBackward>(tt, rtt, q);
+  auto const fastest = routing::get_fastest_one_to_all_offsets(
+      tt, state, dir, lidx(tt, to), at(hhmm), q.max_transfers_);
+  return {fastest, std::move(state)};
 }
 
 // The arrival of the only journey in res (at most one expected), nullopt if
@@ -292,30 +323,24 @@ struct walk {
   int minutes_;
 };
 
-// The walks a street router found (motis: osr_footpath) between stops, both
-// ways: never shorter than the transfer time at either end.
-inline void set_walks(timetable& tt, std::vector<walk> const& walks) {
-  auto& pending = tt.locations_.preprocessing_footpaths_out_;
-  pending.clear();
-  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-    pending.emplace_back();
-  }
-  for (auto const& w : walks) {
-    auto const a = lidx(tt, w.a_);
-    auto const b = lidx(tt, w.b_);
-    auto const d = duration_t{w.minutes_};
-    pending[a].push_back(
-        footpath{b, loader::max_with_transfer_times(tt, a, b, d)});
-    pending[b].push_back(
-        footpath{a, loader::max_with_transfer_times(tt, b, a, d)});
-  }
-}
-
 // These walks instead of the loader's beelines, before the rules apply.
 inline timetable load_feeds_with_walks(std::vector<std::string> const& feeds,
                                        std::vector<walk> const& walks) {
-  return load_feeds(feeds, false, true,
-                    [&](timetable& tt) { set_walks(tt, walks); });
+  return load_feeds(feeds, false, [&](timetable& tt, auto& pending) {
+    // The walks a street router found (motis: osr_footpath) between stops, both
+    // ways.
+    pending.clear();
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      pending.emplace_back();
+    }
+    for (auto const& w : walks) {
+      auto const a = lidx(tt, w.a_);
+      auto const b = lidx(tt, w.b_);
+      auto const d = duration_t{w.minutes_};
+      pending[a].push_back(footpath{b, d});
+      pending[b].push_back(footpath{a, d});
+    }
+  });
 }
 
 inline timetable load_network_with_walks(std::string_view const transfers,

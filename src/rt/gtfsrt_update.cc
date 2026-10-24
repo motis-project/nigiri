@@ -16,7 +16,6 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_alert.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
-#include "nigiri/rt/rt_transfer_rules.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/types.h"
 
@@ -99,7 +98,6 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
   print_if_no_empty("trip_resolve_error", s.trip_resolve_error_, true);
   print_if_no_empty("unsupported_schedule_relationship",
                     s.unsupported_schedule_relationship_, true);
-  print_if_no_empty("stop_assignments", s.stop_assignments_);
 
   return out;
 }
@@ -332,8 +330,7 @@ bool update_run(source_idx_t const src,
                 rt_timetable& rtt,
                 trip_idx_t const trip,
                 run& r,
-                gtfsrt::TripUpdate const& tripUpdate,
-                statistics& stats) {
+                gtfsrt::TripUpdate const& tripUpdate) {
   using std::begin;
   using std::end;
 
@@ -459,7 +456,6 @@ bool update_run(source_idx_t const src,
         // The stop's scheduled flags: a track change revokes a skip.
         stp = location_seq[stop_idx];
         rtt.update_stop_location(r.rt_, stop_idx, *track);
-        ++stats.stop_assignments_;
         rtt.dispatch_stop_change(r, stop_idx, stop{stp});
       } else {
         // Just reset in case a track change / skipped stop got reversed.
@@ -835,7 +831,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
           rtt.cancel_run(r);
           ++stats.total_entities_success_;
         } else if (!added) {
-          if (update_run(src, tt, rtt, trip, r, entity.trip_update(), stats)) {
+          if (update_run(src, tt, rtt, trip, r, entity.trip_update())) {
             ++stats.total_entities_success_;
           }
         }
@@ -849,7 +845,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
         auto r = rt::run{};
         resolve_rt(rtt, r, trip_id.empty() ? td.trip_id() : trip_id, src);
         if (update_run(src, tt, rtt, trip_idx_t::invalid(), r,
-                       entity.trip_update(), stats)) {
+                       entity.trip_update())) {
           ++stats.total_entities_success_;
         }
         continue;

@@ -11,7 +11,6 @@
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/start_times.h"
-#include "nigiri/rt/rt_transfer_rules.h"
 
 namespace nigiri::routing {
 

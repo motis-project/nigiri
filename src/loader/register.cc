@@ -759,7 +759,6 @@ location_idx_t register_location(timetable& tt, location const& l) {
   loc.location_timezones_.push_back(l.timezone_idx_);
   loc.equivalences_.emplace_back();
   loc.children_.emplace_back();
-  loc.preprocessing_footpaths_out_.emplace_back();
   loc.transfer_time_.push_back(to_transfer_time(l.transfer_time_));
   loc.parents_.push_back(l.parent_);
 
@@ -774,7 +773,6 @@ location_idx_t register_location(timetable& tt, location const& l) {
   assert(loc.location_timezones_.size() == next_idx + 1);
   assert(loc.equivalences_.size() == next_idx + 1);
   assert(loc.children_.size() == next_idx + 1);
-  assert(loc.preprocessing_footpaths_out_.size() == next_idx + 1);
   assert(loc.transfer_time_.size() == next_idx + 1);
   assert(loc.parents_.size() == next_idx + 1);
 

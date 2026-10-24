@@ -23,7 +23,6 @@
 #include "nigiri/routing/transfers.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
-#include "nigiri/rt/rt_transfer_rules.h"
 #include "nigiri/special_stations.h"
 
 namespace nigiri::routing {
@@ -227,7 +226,8 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   } else {
     trace_reconstruct("  direct start mode\n");
 
-    auto const try_fp = [&](footpath const fp) -> std::optional<journey::leg> {
+    for (auto const fp : get_transfers<flip(SearchDir)>(tt, rtt, q.prf_idx_,
+                                                        leg_start_location)) {
       auto const fp_duration = adjusted_transfer_time(q.transfer_time_settings_,
                                                       fp.duration().count());
       // A walk leaves a start stop from the stop (see get_starts).
@@ -247,6 +247,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
           start_matches(static_cast<delta_t>(j_start_time +
                                              dir(stay.count() + fp_duration)),
                         fp_arrival_time)) {
+        trace_rc_fp_start_found;
         return journey::leg{SearchDir,
                             fp.target(),
                             leg_start_location,
@@ -254,21 +255,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
                             delta_to_unix(base, fp_arrival_time),
                             footpath{fp.target(), fp.duration()}};
       }
-      return std::nullopt;
-    };
-
-    auto found = std::optional<journey::leg>{};
-    for (auto const fp : get_transfers<flip(SearchDir)>(tt, rtt, q.prf_idx_,
-                                                        leg_start_location)) {
-      found = try_fp(fp);
-      if (found.has_value()) {
-        trace_rc_fp_start_found;
-        break;
-      }
       trace_rc_fp_start_no_match;
-    }
-    if (found.has_value()) {
-      return *found;
     }
   }
 
@@ -851,28 +838,18 @@ void reconstruct_journey_with_vias(timetable const& tt,
       return rtt != nullptr && q.prf_idx_ != 0U &&
              rtt->has_td_footpaths_out_[q.prf_idx_].test(x);
     };
-    auto const try_fps = [&](location_idx_t const x)
-        -> std::optional<std::pair<journey::leg, journey::leg>> {
-      auto fp_legs = std::optional<std::pair<journey::leg, journey::leg>>{};
-      if (!kFwd && is_td_source(x)) {
-        return fp_legs;
-      }
+    if (kFwd || !is_td_source(l)) {
       for (auto const fp :
-           get_transfers<flip(SearchDir)>(tt, rtt, q.prf_idx_, x)) {
+           get_transfers<flip(SearchDir)>(tt, rtt, q.prf_idx_, l)) {
         if (kFwd && is_td_source(fp.target())) {
           continue;
         }
-        fp_legs =
+        auto fp_legs =
             check_fp(k, l, curr_time, fp.target(), fp.duration(), true, false);
         if (fp_legs.has_value()) {
-          break;
+          return std::move(*fp_legs);
         }
       }
-      return fp_legs;
-    };
-    auto static_legs = try_fps(l);
-    if (static_legs.has_value()) {
-      return std::move(*static_legs);
     }
 
     if (rtt != nullptr && q.prf_idx_ != 0U &&

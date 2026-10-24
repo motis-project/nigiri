@@ -6,7 +6,6 @@
 #include <ranges>
 #include <span>
 #include <tuple>
-#include <vector>
 
 #include "cista/reflection/comparable.h"
 
@@ -39,8 +38,10 @@ struct transfer_rule {
   }
   bool is_qualified(event_type const ev) const {
     return route(ev) != route_id_idx_t::invalid() ||
-           trip(ev) != trip_idx_t::invalid() ||
-           (listed_ & (ev == event_type::kArr ? 1U : 2U)) != 0U;
+           trip(ev) != trip_idx_t::invalid();
+  }
+  bool is_qualified() const {
+    return is_qualified(event_type::kArr) || is_qualified(event_type::kDep);
   }
   bool is_forbidden() const { return duration_ == footpath::kBan; }
 
@@ -53,10 +54,6 @@ struct transfer_rule {
   source_idx_t src_{source_idx_t::invalid()};
   duration_t duration_{0};
   transfer_rule_specificity_t specificity_{0U};
-
-  // side qualified by the trips or routes the loader listed in
-  // trip_rules_ or route_rules_ (HRDF); bit 0: from side, bit 1: to side
-  std::uint8_t listed_{0U};
 };
 
 struct transfer_rule_side_idx {
@@ -107,16 +104,7 @@ auto rules_at(std::span<qualified_side<Qualifier> const> rules,
          std::views::transform(&qualified_side<Qualifier>::side_);
 }
 
-template <typename SortedPairs, typename Key>
-auto values_of(SortedPairs const& v, Key const key) {
-  using entry = std::ranges::range_value_t<SortedPairs>;
-  return std::ranges::equal_range(v, key, {}, &entry::first) |
-         std::views::transform(&entry::second);
-}
-
 struct transfer_rules {
-  bool empty() const { return rules_.empty(); }
-
   vector_map<transfer_rule_idx_t, transfer_rule> rules_;
 
   qualified_sides_t<trip_idx_t> trip_rules_;

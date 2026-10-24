@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <algorithm>
+#include <numeric>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -10,8 +11,10 @@
 #include "utl/to_vec.h"
 #include "utl/verify.h"
 
+#include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/register.h"
 #include "nigiri/loader/transfer_rules.h"
+#include "nigiri/loader/virt/footpaths.h"
 #include "nigiri/loader/virt/route_stop_pairs.h"
 #include "nigiri/loader/virt/signatures.h"
 #include "nigiri/loader/virt/transfer_durations.h"
@@ -80,9 +83,9 @@ transport_routes split_routes(
   // - Map each route to iself.
   // - Map each transport to its base route.
   auto routes = transport_routes{};
-  for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
-    routes.base_route_.push_back(r);
-  }
+  routes.base_route_.resize(tt.n_routes());
+  std::iota(begin(routes.base_route_), end(routes.base_route_),
+            route_idx_t{0U});
   routes.route_ = tt.transport_route_;
 
   auto const repartition = [&](route_stop_pair_idx_t const p) {
@@ -117,7 +120,7 @@ transport_routes split_routes(
     auto& w = pairs.windows_[p];
     w = hull;
     for (auto it = begin(transfers); it != kept; ++it) {
-      narrow(w, it->gap_, it->gap_ >= it->expected_);
+      narrow(w, *it);
     }
     pairs.transfers_[p] = std::vector<transfer>(begin(transfers), kept);
   };
@@ -145,22 +148,19 @@ transport_routes split_routes(
       if (!tw.has_value()) {
         tw = pair_durations.hull_;
       }
-      narrow(*tw, t.gap_, t.gap_ >= t.expected_);
+      narrow(*tw, t);
     }
 
-    auto const items = [&]() {
-      auto v = std::vector<std::pair<route_transport_idx_t, window_t>>{};
-      for (auto i = route_transport_idx_t{0U}; i != n_transports; ++i) {
-        if (w[i].has_value()) {
-          v.emplace_back(i, *w[i]);
-        }
+    auto items = std::vector<std::pair<route_transport_idx_t, window_t>>{};
+    for (auto i = route_transport_idx_t{0U}; i != n_transports; ++i) {
+      if (w[i].has_value()) {
+        items.emplace_back(i, *w[i]);
       }
-      utl::sort(v, [](auto const& l, auto const& r) {
-        return std::pair{l.second.to_, l.first} <
-               std::pair{r.second.to_, r.first};
-      });
-      return v;
-    }();
+    }
+    utl::sort(items, [](auto const& l, auto const& r) {
+      return std::pair{l.second.to_, l.first} <
+             std::pair{r.second.to_, r.first};
+    });
 
     auto groups = transport_groups{};
     groups.group_.resize(to_idx(n_transports), group_idx_t::invalid());
@@ -321,9 +321,8 @@ route_stop_locations merge_locations(
   auto& location = locations.location_;
   auto& lps = locations.pairs_;
   lps.resize(pairs.route_stops_.size());
-  for (auto s = route_stop_idx_t{0U}; s != pairs.route_stops_.size(); ++s) {
-    location.push_back(s);
-  }
+  location.resize(pairs.route_stops_.size());
+  std::iota(begin(location), end(location), route_stop_idx_t{0U});
   for (auto p = route_stop_pair_idx_t{0U}; p != pairs.pairs_.size(); ++p) {
     auto const [from, to] = pairs.pairs_[p];
     lps[from].push_back({to, pairs.windows_[p]});
@@ -369,13 +368,9 @@ route_stop_locations merge_locations(
       is_partner.set(q, false);
     }
   };
-  auto const find = [&](route_stop_idx_t const from,
-                        route_stop_idx_t const to) {
-    return find_pair(lps[from], to);
-  };
   auto const get = [&](route_stop_idx_t const from,
                        route_stop_idx_t const to) -> location_pair const& {
-    auto const* o = find(from, to);
+    auto const* o = find_pair(lps[from], to);
     utl::verify(o != nullptr, "location pair missing");
     return *o;
   };
@@ -399,7 +394,7 @@ route_stop_locations merge_locations(
   auto const join = [&](route_stop_idx_t const s, route_stop_idx_t const l) {
     locations_of(out[s], out_partners);
     locations_of(in[s], in_partners);
-    auto* const self_pair = find(l, l);
+    auto* const self_pair = find_pair(lps[l], l);
     auto self = self_pair != nullptr ? self_pair->window_ : kAnyDuration;
     auto has_self = false;
     out_updates.clear();
@@ -411,7 +406,7 @@ route_stop_locations merge_locations(
         self = self.intersect(o);
         continue;
       }
-      auto* const m = find(l, q);
+      auto* const m = find_pair(lps[l], q);
       auto const w = (m != nullptr ? m->window_ : kAnyDuration).intersect(o);
       if (!is_ok(l, q, w)) {
         return false;
@@ -428,7 +423,7 @@ route_stop_locations merge_locations(
         self = self.intersect(o);
         continue;
       }
-      auto* const m = find(q, l);
+      auto* const m = find_pair(lps[q], l);
       auto const w = (m != nullptr ? m->window_ : kAnyDuration).intersect(o);
       if (!is_ok(q, l, w)) {
         return false;
@@ -614,6 +609,8 @@ duration_t to_duration(duration_t const d) {
 
 vector_map<route_stop_idx_t, location_idx_t> add_virts(
     timetable& tt,
+    mutable_fws_multimap<location_idx_t, footpath> const& walks,
+    rule_index const& stop_rules,
     route_stop_pairs const& pairs,
     route_stop_locations const& locations) {
   auto virts = vector_map<route_stop_idx_t, location_idx_t>(
@@ -628,7 +625,7 @@ vector_map<route_stop_idx_t, location_idx_t> add_virts(
       virts[s] = st;
       continue;
     }
-    auto const fallback = get_walk(tt, st, st);
+    auto const fallback = get_walk(tt, walks, stop_rules, st, st);
     auto const* self = find_pair(locations.pairs_[s], s);
     auto const d = self == nullptr ? std::optional{fallback}
                                    : pick_duration(self->window_, fallback);
@@ -729,7 +726,7 @@ void write_routes(timetable& tt,
     tt.route_location_seq_.emplace_back(get_seq(q));
   }
   for (auto r = route_idx_t{0U}; r != n_routes; ++r) {
-    if (pairs.of_route_[r].empty() && !sigs.has_rules(r)) {
+    if (!sigs.has_rules(r)) {
       continue;
     }
     std::ranges::copy(get_seq(r), tt.route_location_seq_[r].begin());
@@ -739,27 +736,45 @@ void write_routes(timetable& tt,
       tt.n_routes());
 }
 
-bool add_virtual_locations(
+void apply_transfer_rules(
     timetable& tt,
     shapes_storage* shapes,
-    mutable_fws_multimap<location_idx_t, footpath>& durations) {
+    mutable_fws_multimap<location_idx_t, footpath> const& walks) {
+  auto& loc = tt.locations_;
   if (tt.transfer_rules_.rules_.empty()) {
-    return false;
+    write_default_profile(tt, walks);
+    return;
   }
+
   auto const timer = scoped_timer{"loader.virtual_locations"};
+  auto const stop_rules = get_rule_index(tt);
   auto const sigs = get_signatures(tt);
-  auto const durations_of = get_transfer_durations(tt, sigs);
+  auto const durations_of = get_transfer_durations(tt, walks, stop_rules, sigs);
   auto pairs = get_route_stop_pairs(tt, sigs, durations_of);
   auto const routes = split_routes(tt, durations_of, pairs);
   auto const locations = merge_locations(durations_of, pairs);
   auto const n_locations = tt.n_locations();
-  auto const virts = add_virts(tt, pairs, locations);
+  auto const virts = add_virts(tt, walks, stop_rules, pairs, locations);
   if (tt.n_locations() == n_locations) {
-    return false;
+    write_default_profile(tt, walks);
+    return;
   }
+  auto durations = mutable_fws_multimap<location_idx_t, footpath>{};
   add_footpaths(tt, durations_of, pairs, locations, virts, durations);
   write_routes(tt, sigs, pairs, routes, locations, virts, shapes);
-  return true;
+  write_default_profile(tt, walks, durations);
+
+  // Routed walks of other profiles (computed before) reach the virtual
+  // locations as well, importance counts at the root.
+  for (auto prf = profile_idx_t{1U}; prf != kNProfiles; ++prf) {
+    if (!loc.footpaths_out_[prf].empty()) {
+      expand_profile_to_virts(tt, prf);
+    }
+  }
+  tt.location_location_groups_.resize(tt.n_locations());
+  if (!tt.location_areas_.empty()) {
+    tt.location_areas_.resize(tt.n_locations());
+  }
 }
 
 }  // namespace nigiri::loader

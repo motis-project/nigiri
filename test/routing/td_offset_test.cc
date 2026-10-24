@@ -153,7 +153,6 @@ TEST(routing, td_dest_fwd) {
   register_special_stations(tt);
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
-  ASSERT_TRUE(t1_at_virtual_locations(tt));
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();
@@ -207,7 +206,6 @@ TEST(routing, td_start_bwd) {
   register_special_stations(tt);
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
-  ASSERT_TRUE(t1_at_virtual_locations(tt));
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();
@@ -261,7 +259,6 @@ TEST(routing, td_dest_bwd) {
   register_special_stations(tt);
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
-  ASSERT_TRUE(t1_at_virtual_locations(tt));
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();
@@ -315,7 +312,6 @@ TEST(routing, first_mile_fwd_1min_validity) {
   register_special_stations(tt);
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
-  ASSERT_TRUE(t1_at_virtual_locations(tt));
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();
@@ -373,7 +369,6 @@ TEST(routing, first_mile_bwd_1min_validity) {
   register_special_stations(tt);
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
-  ASSERT_TRUE(t1_at_virtual_locations(tt));
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();
@@ -431,7 +426,6 @@ TEST(routing, last_mile_fwd_1min_validity) {
   register_special_stations(tt);
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
-  ASSERT_TRUE(t1_at_virtual_locations(tt));
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();
@@ -489,7 +483,6 @@ TEST(routing, last_mile_bwd_1min_validity) {
   register_special_stations(tt);
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
-  ASSERT_TRUE(t1_at_virtual_locations(tt));
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();

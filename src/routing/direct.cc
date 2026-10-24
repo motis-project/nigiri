@@ -17,7 +17,6 @@
 #include "nigiri/routing/transfers.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
-#include "nigiri/rt/rt_transfer_rules.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/td_footpath.h"
 #include "nigiri/timetable.h"
@@ -124,8 +123,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
 
       // A walk leaves (reaches) a start (destination) stop at the stop: the
       // walks of its virtual locations hold for the trips stopping there.
-      if (tt.locations_.is_virt(l) &&
-          matches(tt, virt_rtt, mode, o.target(), rt::base(tt, rtt, l))) {
+      if (l != o.target() && tt.locations_.is_virt(l)) {
         return;
       }
 

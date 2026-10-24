@@ -25,15 +25,6 @@
 
 namespace nigiri::loader::gtfs {
 
-enum class specificity : std::uint8_t {
-  kStopsOnly,
-  kOneRoute,
-  kBothRoutes,
-  kOneTrip,
-  kTripAndRoute,
-  kBothTrips
-};
-
 enum class transfer_type : std::uint8_t {
   kRecommended = 0U,
   kTimed = 1U,
@@ -54,38 +45,6 @@ struct csv_transfer {
   utl::csv_col<utl::cstr, UTL_NAME("from_trip_id")> from_trip_id_;
   utl::csv_col<utl::cstr, UTL_NAME("to_trip_id")> to_trip_id_;
 };
-
-transfer_rule_specificity_t get_specificity(
-    timetable const& tt,
-    location_idx_t const from_stop,
-    location_idx_t const to_stop,
-    route_id_idx_t const from_route = route_id_idx_t::invalid(),
-    route_id_idx_t const to_route = route_id_idx_t::invalid(),
-    trip_idx_t const from_trip = trip_idx_t::invalid(),
-    trip_idx_t const to_trip = trip_idx_t::invalid()) {
-  auto const has_from_trip = from_trip != trip_idx_t::invalid();
-  auto const has_to_trip = to_trip != trip_idx_t::invalid();
-  auto const has_from_route = from_route != route_id_idx_t::invalid();
-  auto const has_to_route = to_route != route_id_idx_t::invalid();
-  auto const level =
-      has_from_trip && has_to_trip ? specificity::kBothTrips
-      : (has_from_trip && has_to_route) || (has_from_route && has_to_trip)
-          ? specificity::kTripAndRoute
-      : has_from_trip || has_to_trip   ? specificity::kOneTrip
-      : has_from_route && has_to_route ? specificity::kBothRoutes
-      : has_from_route || has_to_route ? specificity::kOneRoute
-                                       : specificity::kStopsOnly;
-  auto const has_parent = [&](location_idx_t const stop) {
-    return tt.locations_.parents_[stop] != location_idx_t::invalid() ? 1U : 0U;
-  };
-  return static_cast<transfer_rule_specificity_t>(
-      (static_cast<unsigned>(level) << 2U) |
-      (has_parent(from_stop) + has_parent(to_stop)));
-}
-
-bool is_qualified(transfer_rule const& r) {
-  return r.is_qualified(event_type::kArr) || r.is_qualified(event_type::kDep);
-}
 
 bool is_qualifier_overlapping(timetable const& tt,
                               transfer_rule const& a,
@@ -117,7 +76,7 @@ bool is_qualifier_overlapping(timetable const& tt,
 void fold_pair_defaults(timetable& tt,
                         source_idx_t const src,
                         std::span<transfer_rule const> rules,
-                        std::vector<bool> const& votes) {
+                        std::vector<bool> const& is_voting) {
   auto const& parents = tt.locations_.parents_;
 
   auto qualified =
@@ -133,13 +92,13 @@ void fold_pair_defaults(timetable& tt,
   auto by_pair = hash_map<transfer_pair, std::vector<transfer_rule const*>>{};
   for (auto const [i, r] : utl::enumerate(rules)) {
     auto const p = transfer_pair{r.from_stop_, r.to_stop_};
-    if (!is_qualified(r)) {
+    if (!r.is_qualified()) {
       // Store explicit unqualified transfer durations.
       default_duration[p] = {r.duration_, i};
       continue;
     }
     by_pair[p].push_back(&rules[i]);
-    if (votes[i]) {
+    if (is_voting[i]) {
       // Count durations of qualified transfer rules for each stop pair.
       // Forbidden and recommended (=0min) transfers are not counted.
       auto& durations = qualified[p];
@@ -210,7 +169,7 @@ void fold_pair_defaults(timetable& tt,
 
   auto const is_kept = [&](transfer_rule const& r) {
     // Keep all unqualified rules.
-    if (!is_qualified(r)) {
+    if (!r.is_qualified()) {
       return true;
     }
 
@@ -347,7 +306,7 @@ void read_transfers(source_idx_t const src,
 
   auto const first_rule = transfer_rule_idx_t{tt.transfer_rules_.rules_.size()};
   auto rules = std::vector<transfer_rule>{};
-  auto votes = std::vector<bool>{};
+  auto is_voting = std::vector<bool>{};
 
   utl::line_range{
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
@@ -505,11 +464,11 @@ void read_transfers(source_idx_t const src,
 
         // Forbidden and timed transfers should not be
         // included in the majority fold.
-        votes.push_back(!is_forbidden && !is_timed);
+        is_voting.push_back(!is_forbidden && !is_timed);
       });
 
   // Majority fold.
-  fold_pair_defaults(tt, src, rules, votes);
+  fold_pair_defaults(tt, src, rules, is_voting);
 
   // Store rules (merge sort).
   store_rule_lookups(

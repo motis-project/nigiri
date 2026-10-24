@@ -13,7 +13,6 @@
 #include "nigiri/routing/search_location.h"
 #include "nigiri/routing/transfers.h"
 #include "nigiri/rt/rt_timetable.h"
-#include "nigiri/rt/rt_transfer_rules.h"
 #include "nigiri/special_stations.h"
 
 namespace nigiri::routing {

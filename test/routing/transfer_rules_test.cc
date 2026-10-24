@@ -19,6 +19,7 @@
 #include "nigiri/routing/transfer_durations.h"
 #include "nigiri/routing/transfers.h"
 #include "nigiri/rt/frun.h"
+#include "nigiri/td_footpath.h"
 #include "nigiri/timetable.h"
 #include "nigiri/timetable_metrics.h"
 
@@ -91,17 +92,16 @@ std::string virt_change_feed() {
               "QS,QS,2,900,,,Q1,Q2\n");
 }
 
-// The location the trip of the journey's first transit leg leaves from.
-location_idx_t first_departure(timetable const& tt, routing::journey const& j) {
-  auto const leg = utl::find_if(j.legs_, [](routing::journey::leg const& l) {
-    return std::holds_alternative<routing::journey::run_enter_exit>(l.uses_);
-  });
-  if (leg == end(j.legs_)) {
-    return location_idx_t::invalid();
-  }
-  auto const& ree = std::get<routing::journey::run_enter_exit>(leg->uses_);
+location_idx_t leg_location(timetable const& tt,
+                            routing::journey::leg const& l,
+                            bool const is_exit) {
+  auto const& ree = std::get<routing::journey::run_enter_exit>(l.uses_);
   return routing::search_location(
-      kDefaultProfile, rt::frun{tt, nullptr, ree.r_}[ree.stop_range_.from_]);
+      kDefaultProfile,
+      rt::frun{
+          tt, nullptr,
+          ree.r_}[is_exit ? static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)
+                          : ree.stop_range_.from_]);
 }
 
 pareto_set<routing::journey> search_to_o(
@@ -135,7 +135,11 @@ TEST(transfer_rules, transfer_time_settings_apply_to_zero_min_transfer) {
 
   auto const gd = search_at(tt, "W", "P", "10:30");
   ASSERT_EQ(1U, gd.size());
-  auto const gd_start = first_departure(tt, *begin(gd));
+  // The location the trip of the journey's first transit leg leaves from.
+  auto const& gd_legs = begin(gd)->legs_;
+  auto const gd_leg = utl::find_if(gd_legs, test::is_transit);
+  ASSERT_NE(end(gd_legs), gd_leg);
+  auto const gd_start = leg_location(tt, *gd_leg, false);
   ASSERT_NE(lidx(tt, "W"), gd_start);
 
   auto const starts = std::vector<std::pair<location_idx_t, std::string_view>>{
@@ -181,7 +185,7 @@ TEST(transfer_rules, td_footpaths_reach_virtual_locations) {
 
   auto fps = std::map<location_idx_t, std::vector<td_footpath>>{
       {qs, {{qb, kNull, 5_minutes}}}};
-  loader::expand_td_footpaths_to_virts(tt, fps);
+  expand_td_footpaths_to_virts(tt, fps);
 
   EXPECT_EQ(members(qs).size(), fps.size());
   for (auto const from : members(qs)) {
@@ -210,12 +214,9 @@ TEST(transfer_rules, exact_match_includes_virtual_locations) {
   EXPECT_EQ(at("10:30"), arrival_at(tt, "QA", "QS", "10:00"));
   EXPECT_EQ(at("11:00"), arrival_at(tt, "QS", "QB", "10:40"));
 
-  auto const q = routing::query{.start_time_ = at("10:40"),
-                                .start_ = {{lidx(tt, "QS"), 0_minutes, 0U}}};
-  auto const state = routing::one_to_all<direction::kForward>(tt, nullptr, q);
-  auto const qb = routing::get_fastest_one_to_all_offsets(
-      tt, state, direction::kForward, lidx(tt, "QB"), at("10:40"),
-      q.max_transfers_);
+  auto const qb =
+      test::one_to_all(tt, nullptr, direction::kForward, "QS", "QB", "10:40")
+          .fastest_;
   EXPECT_EQ(20, qb.duration_);  // arrival 11:00
   EXPECT_EQ(1U, qb.k_);
 }
@@ -235,13 +236,9 @@ TEST(transfer_rules, trip_pair_rule_walk_holds_for_its_trip) {
     auto const search =
         [&](std::string_view const from, std::string_view const to,
             interval<unixtime_t> const times, direction const dir) {
-          auto const res = raptor_search(
-              tt, nullptr,
-              routing::query{.start_time_ = times,
-                             .use_start_footpaths_ = true,
-                             .start_ = {{lidx(tt, from), 0_minutes, 0U}},
-                             .destination_ = {{lidx(tt, to), 0_minutes, 0U}}},
-              dir);
+          auto q = test::exact_query(tt, from, to, times);
+          q.use_start_footpaths_ = true;
+          auto const res = raptor_search(tt, nullptr, std::move(q), dir);
           EXPECT_EQ(1U, res.size())
               << rule << test::print_results(tt, nullptr, res);
           return res.empty() ? std::pair<unixtime_t, unixtime_t>{}
@@ -265,13 +262,9 @@ TEST(transfer_rules, trip_pair_rule_walk_holds_for_its_trip) {
         << rule;
 
     // one-to-all as well
-    auto const q = routing::query{.start_time_ = at("10:00"),
-                                  .start_ = {{lidx(tt, "A"), 0_minutes, 0U}}};
-    auto const state = routing::one_to_all<direction::kForward>(tt, nullptr, q);
-    EXPECT_EQ(32, routing::get_fastest_one_to_all_offsets(
-                      tt, state, direction::kForward, lidx(tt, "S2"),
-                      at("10:00"), q.max_transfers_)
-                      .duration_)
+    EXPECT_EQ(32, test::one_to_all(tt, nullptr, direction::kForward, "A", "S2",
+                                   "10:00")
+                      .fastest_.duration_)
         << rule;
   }
 }
@@ -320,14 +313,7 @@ TEST(transfer_rules, one_to_all_reaches_stop_without_changes) {
             "D,D,3,,,,,\n")});
   auto const fastest = [&](direction const dir, std::string_view const from,
                            std::string_view const to, std::string_view time) {
-    auto const q = routing::query{.start_time_ = at(time),
-                                  .start_ = {{lidx(tt, from), 0_minutes, 0U}}};
-    auto const state =
-        dir == direction::kForward
-            ? routing::one_to_all<direction::kForward>(tt, nullptr, q)
-            : routing::one_to_all<direction::kBackward>(tt, nullptr, q);
-    auto const f = routing::get_fastest_one_to_all_offsets(
-        tt, state, dir, lidx(tt, to), at(time), q.max_transfers_);
+    auto const [f, state] = test::one_to_all(tt, nullptr, dir, from, to, time);
     auto const invalid = dir == direction::kForward
                              ? kInvalidDelta<direction::kForward>
                              : kInvalidDelta<direction::kBackward>;
@@ -357,14 +343,7 @@ TEST(transfer_rules, one_to_all_reaches_stop_at_the_arrival) {
   ASSERT_LT(0U, n_virts(tt));
   auto const one_to_all = [&](direction const dir, std::string_view const from,
                               std::string_view const time) {
-    auto const q = routing::query{.start_time_ = at(time),
-                                  .start_ = {{lidx(tt, from), 0_minutes, 0U}}};
-    auto state =
-        dir == direction::kForward
-            ? routing::one_to_all<direction::kForward>(tt, nullptr, q)
-            : routing::one_to_all<direction::kBackward>(tt, nullptr, q);
-    auto const u = routing::get_fastest_one_to_all_offsets(
-        tt, state, dir, lidx(tt, "U"), at(time), q.max_transfers_);
+    auto const [u, state] = test::one_to_all(tt, nullptr, dir, from, "U", time);
     auto const invalid = dir == direction::kForward
                              ? kInvalidDelta<direction::kForward>
                              : kInvalidDelta<direction::kBackward>;
@@ -391,14 +370,7 @@ TEST(transfer_rules, one_to_all_reaches_stop_without_changes_by_exception) {
   ASSERT_LT(0U, n_virts(tt));
   auto const fastest = [&](direction const dir, std::string_view const from,
                            std::string_view const to, std::string_view time) {
-    auto const q = routing::query{.start_time_ = at(time),
-                                  .start_ = {{lidx(tt, from), 0_minutes, 0U}}};
-    auto const state =
-        dir == direction::kForward
-            ? routing::one_to_all<direction::kForward>(tt, nullptr, q)
-            : routing::one_to_all<direction::kBackward>(tt, nullptr, q);
-    auto const f = routing::get_fastest_one_to_all_offsets(
-        tt, state, dir, lidx(tt, to), at(time), q.max_transfers_);
+    auto const f = test::one_to_all(tt, nullptr, dir, from, to, time).fastest_;
     return std::pair{f.duration_, f.k_};
   };
   EXPECT_EQ(std::pair(delta_t{30}, std::uint8_t{1U}),
@@ -431,12 +403,9 @@ TEST(transfer_rules, profile_changes_in_virtual_location_transfer_time) {
   add_empty_profile(tt, kProfile);
 
   auto const changes_at = [&](profile_idx_t const prf) {
-    auto const res = raptor_search(
-        tt, nullptr,
-        routing::query{.start_time_ = at("10:00"),
-                       .start_ = {{lidx(tt, "A"), 0_minutes, 0U}},
-                       .destination_ = {{lidx(tt, "E"), 0_minutes, 0U}},
-                       .prf_idx_ = prf});
+    auto q = test::exact_query(tt, "A", "E", at("10:00"));
+    q.prf_idx_ = prf;
+    auto const res = raptor_search(tt, nullptr, std::move(q));
     EXPECT_EQ(1U, res.size());
     return res.size() == 0U ? location_idx_t::invalid()
                             : tt.base(begin(res)->legs_.front().to_);
@@ -448,16 +417,27 @@ TEST(transfer_rules, profile_changes_in_virtual_location_transfer_time) {
   ASSERT_LT(0U, n_virts(u));
   add_empty_profile(u, kProfile);
   auto const n_journeys = [&](profile_idx_t const prf) {
-    return raptor_search(
-               u, nullptr,
-               routing::query{.start_time_ = at("10:00"),
-                              .start_ = {{lidx(u, "L"), 0_minutes, 0U}},
-                              .destination_ = {{lidx(u, "N"), 0_minutes, 0U}},
-                              .prf_idx_ = prf})
-        .size();
+    auto q = test::exact_query(u, "L", "N", at("10:00"));
+    q.prf_idx_ = prf;
+    return raptor_search(u, nullptr, std::move(q)).size();
   };
   EXPECT_EQ(0U, n_journeys(0U));
   EXPECT_EQ(0U, n_journeys(kProfile));
+}
+
+std::string recommended_transfer_feed(std::string_view const transfers) {
+  return feed(
+      {{"A", 59.0, 10.0},
+       {"X", 59.1, 10.0, "", true},
+       {"X1", 59.1001, 10.0, "X"},
+       {"X2", 59.1002, 10.0, "X"},
+       {"S", 59.2, 10.0, "", true},
+       {"S1", 59.2001, 10.0, "S"},
+       {"S2", 59.2002, 10.0, "S"},
+       {"E", 59.3, 10.0}},
+      {{"T0", "R0", {{"A", "10:00"}, {"X1", "10:10"}, {"S1", "10:20"}}},
+       {"T1", "R1", {{"X2", "10:27"}, {"S2", "10:30"}, {"E", "10:40"}}}},
+      transfers);
 }
 
 // T0 -> T1 can change at station X (X1 -> X2, 15 min buffer) or at station S
@@ -466,18 +446,7 @@ TEST(transfer_rules, profile_changes_in_virtual_location_transfer_time) {
 // allows the change there.
 TEST(transfer_rules, recommended_transfer_at_virtual_locations) {
   auto const changes_at = [](std::string_view const transfers) {
-    auto const tt = load_feeds({feed(
-        {{"A", 59.0, 10.0},
-         {"X", 59.1, 10.0, "", true},
-         {"X1", 59.1001, 10.0, "X"},
-         {"X2", 59.1002, 10.0, "X"},
-         {"S", 59.2, 10.0, "", true},
-         {"S1", 59.2001, 10.0, "S"},
-         {"S2", 59.2002, 10.0, "S"},
-         {"E", 59.3, 10.0}},
-        {{"T0", "R0", {{"A", "10:00"}, {"X1", "10:10"}, {"S1", "10:20"}}},
-         {"T1", "R1", {{"X2", "10:27"}, {"S2", "10:30"}, {"E", "10:40"}}}},
-        transfers)});
+    auto const tt = load_feeds({recommended_transfer_feed(transfers)});
     if (transfers.find("T0,T1") != std::string_view::npos) {
       EXPECT_LT(0U, n_virts(tt));
     }
@@ -501,21 +470,15 @@ TEST(transfer_rules, recommended_transfer_at_virtual_locations) {
 TEST(transfer_rules, leg_alternatives_after_trip_at_virtual_location) {
   auto const tt = load_feeds({virt_feed()});
   ASSERT_LT(0U, n_virts(tt));
-  auto const q =
-      routing::query{.start_time_ = at("10:00"),
-                     .start_ = {{lidx(tt, "L"), 0_minutes, 0U}},
-                     .destination_ = {{lidx(tt, "M"), 0_minutes, 0U}}};
+  auto const q = test::exact_query(tt, "L", "M", at("10:00"));
   auto const res = raptor_search(tt, nullptr, routing::query{q});
   ASSERT_EQ(1U, res.size());
   auto const& j = *begin(res);
 
   auto const& fa = j.legs_.front();
-  ASSERT_TRUE(
-      std::holds_alternative<routing::journey::run_enter_exit>(fa.uses_));
+  ASSERT_TRUE(test::is_transit(fa));
   EXPECT_EQ(lidx(tt, "U"), fa.to_);
-  auto const& ree = std::get<routing::journey::run_enter_exit>(fa.uses_);
-  auto const arrived_at = routing::search_location(
-      kDefaultProfile, rt::frun{tt, nullptr, ree.r_}[ree.stop_range_.to_ - 1U]);
+  auto const arrived_at = leg_location(tt, fa, true);
   ASSERT_NE(lidx(tt, "U"), arrived_at);
   EXPECT_TRUE(routing::lookup_footpath(
                   arrived_at, fa.arr_time_, routing::side::kAlighting, tt,
@@ -525,9 +488,7 @@ TEST(transfer_rules, leg_alternatives_after_trip_at_virtual_location) {
 
   auto fb_leg = j.legs_.size();
   for (auto i = 0U; i != j.legs_.size(); ++i) {
-    if (std::holds_alternative<routing::journey::run_enter_exit>(
-            j.legs_[i].uses_) &&
-        j.legs_[i].dep_time_ == at("10:33")) {
+    if (test::is_transit(j.legs_[i]) && j.legs_[i].dep_time_ == at("10:33")) {
       fb_leg = i;
     }
   }
@@ -538,9 +499,7 @@ TEST(transfer_rules, leg_alternatives_after_trip_at_virtual_location) {
   auto const offers = [&](std::string_view const dep) {
     return utl::any_of(alternatives, [&](routing::journey const& alt) {
       return utl::any_of(alt.legs_, [&](routing::journey::leg const& l) {
-        return std::holds_alternative<routing::journey::run_enter_exit>(
-                   l.uses_) &&
-               l.dep_time_ == at(dep);
+        return test::is_transit(l) && l.dep_time_ == at(dep);
       });
     });
   };
@@ -593,43 +552,57 @@ TEST(transfer_rules, direct_intermodal_reaches_virtual_locations) {
   EXPECT_EQ(lidx(tt, "U"), offset_target(from_u.front().front()));
 
   // An exact start at U includes the location FC leaves from.
-  auto const exact =
-      routing::query{.start_time_ = at("10:30"),
-                     .start_ = {{lidx(tt, "U"), 0_minutes, 0U}},
-                     .destination_ = {{lidx(tt, "N"), 0_minutes, 0U}}};
+  auto const exact = test::exact_query(tt, "U", "N", at("10:30"));
   auto n_fc = 0U;
   for (auto&& legs : routing::get_direct_journeys<direction::kForward>(
            tt, nullptr, exact, at("10:30"))) {
     n_fc += static_cast<unsigned>(
         utl::count_if(legs, [](routing::journey::leg const& l) {
-          return std::holds_alternative<routing::journey::run_enter_exit>(
-                     l.uses_) &&
-                 l.dep_time_ == at("10:33");
+          return test::is_transit(l) && l.dep_time_ == at("10:33");
         }));
   }
   EXPECT_EQ(1U, n_fc);
 }
 
+// S -> B via the start station S with a 10 min stay: the stay holds at its
+// stop S1 as well. From 10:00, Y (10:05) is too early, Y2 (10:20) is not.
+//
 // Via = start with a stay: X arrives at S 3 min before Y leaves, the RX -> RY
 // rule (5 min) forbids it, so Y leaves from a location of its own. From S at
 // 10:00 with a 10 min stay at S, Y (10:05) is too early, Y2 (10:20) is not -
 // at every location of S.
-TEST(transfer_rules, via_stay_at_start_holds_at_virtual_locations) {
-  auto const tt = load_feeds(
-      {feed({{"S", 55.0, 13.0}, {"A", 55.1, 13.0}, {"B", 55.2, 13.0}},
-            {{"X", "RX", {{"A", "09:00"}, {"S", "10:02"}}},
-             {"Y", "RY", {{"S", "10:05"}, {"B", "10:30"}}},
-             {"Y2", "RY2", {{"S", "10:20"}, {"B", "10:45"}}}},
-            "S,S,2,120,,,,\nS,S,2,300,RX,RY,,\n")});
-  ASSERT_LT(0U, n_virts(tt));
-  auto const res = raptor_search(
-      tt, nullptr,
-      routing::query{.start_time_ = at("10:00"),
-                     .start_ = {{lidx(tt, "S"), 0_minutes, 0U}},
-                     .destination_ = {{lidx(tt, "B"), 0_minutes, 0U}},
-                     .via_stops_ = {{lidx(tt, "S"), 10_minutes}}});
-  ASSERT_EQ(1U, res.size());
-  EXPECT_EQ(at("10:45"), begin(res)->dest_time_);
+TEST(transfer_rules, via_stay_at_start_holds_at_every_location) {
+  struct layout {
+    std::string feed_;
+    routing::location_match_mode match_mode_;
+    bool has_virts_;
+  };
+  for (auto const& [f, match_mode, has_virts] : std::vector<layout>{
+           {feed({{"S", 55.0, 13.0, "", true},
+                  {"S1", 55.0001, 13.0, "S"},
+                  {"B", 55.2, 13.0}},
+                 {{"Y", "RY", {{"S1", "10:05"}, {"B", "10:30"}}},
+                  {"Y2", "RY", {{"S1", "10:20"}, {"B", "10:45"}}}},
+                 ""),
+            routing::location_match_mode::kEquivalent, false},
+           {feed({{"S", 55.0, 13.0}, {"A", 55.1, 13.0}, {"B", 55.2, 13.0}},
+                 {{"X", "RX", {{"A", "09:00"}, {"S", "10:02"}}},
+                  {"Y", "RY", {{"S", "10:05"}, {"B", "10:30"}}},
+                  {"Y2", "RY2", {{"S", "10:20"}, {"B", "10:45"}}}},
+                 "S,S,2,120,,,,\nS,S,2,300,RX,RY,,\n"),
+            routing::location_match_mode::kExact, true}}) {
+    auto const tt = load_feeds({f});
+    if (has_virts) {
+      ASSERT_LT(0U, n_virts(tt));
+    }
+    auto q = test::exact_query(tt, "S", "B", at("10:00"));
+    q.start_match_mode_ = match_mode;
+    q.dest_match_mode_ = match_mode;
+    q.via_stops_ = {{lidx(tt, "S"), 10_minutes}};
+    auto const res = raptor_search(tt, nullptr, std::move(q));
+    ASSERT_EQ(1U, res.size());
+    EXPECT_EQ(at("10:45"), begin(res)->dest_time_);
+  }
 }
 
 // A footpath leg between two transport legs shows the time the rules state
@@ -637,18 +610,8 @@ TEST(transfer_rules, via_stay_at_start_holds_at_virtual_locations) {
 // says: T0 -> T1 at S is their 1 min rule. The leg stays anchored to T0's
 // arrival, the wait before T1 absorbs the difference.
 TEST(transfer_rules, journey_shows_rule_transfer_time) {
-  auto const tt = load_feeds(
-      {feed({{"A", 59.0, 10.0},
-             {"X", 59.1, 10.0, "", true},
-             {"X1", 59.1001, 10.0, "X"},
-             {"X2", 59.1002, 10.0, "X"},
-             {"S", 59.2, 10.0, "", true},
-             {"S1", 59.2001, 10.0, "S"},
-             {"S2", 59.2002, 10.0, "S"},
-             {"E", 59.3, 10.0}},
-            {{"T0", "R0", {{"A", "10:00"}, {"X1", "10:10"}, {"S1", "10:20"}}},
-             {"T1", "R1", {{"X2", "10:27"}, {"S2", "10:30"}, {"E", "10:40"}}}},
-            "S,S,0,,,,,\nS,S,2,900,,,,\nS,S,2,60,,,T0,T1\n")});
+  auto const tt = load_feeds({recommended_transfer_feed(
+      "S,S,0,,,,,\nS,S,2,900,,,,\nS,S,2,60,,,T0,T1\n")});
   ASSERT_LT(0U, n_virts(tt));
   auto const res = search_at(tt, "A", "E", "10:00");
   ASSERT_EQ(1U, res.size());
@@ -689,13 +652,10 @@ TEST(transfer_rules, pong_alternative_follows_rules_at_virtual_locations) {
       return unixtime_t{};
     }
     auto const& legs = begin(res)->legs_;
-    auto const is_transit = [](routing::journey::leg const& l) {
-      return std::holds_alternative<routing::journey::run_enter_exit>(l.uses_);
-    };
     auto const& before = std::get<routing::journey::run_enter_exit>(
-        utl::find_if(legs, is_transit)->uses_);
+        utl::find_if(legs, test::is_transit)->uses_);
     auto const& after = std::get<routing::journey::run_enter_exit>(
-        std::find_if(rbegin(legs), rend(legs), is_transit)->uses_);
+        std::find_if(rbegin(legs), rend(legs), test::is_transit)->uses_);
     auto const run_before = rt::frun{tt, nullptr, before.r_};
     auto const run_after = rt::frun{tt, nullptr, after.r_};
     auto const from =
@@ -741,20 +701,8 @@ std::string fold_feed() {
 TEST(transfer_rules, journeys_show_rule_transfer_times) {
   auto const tt = load_feeds({fold_feed()});
   ASSERT_LT(0U, n_virts(tt));
-  auto const q = routing::query{
-      .start_time_ = interval<unixtime_t>{at("10:00"), at("12:00")},
-      .start_ = {{lidx(tt, "A"), 0_minutes, 0U}},
-      .destination_ = {{lidx(tt, "E"), 0_minutes, 0U}}};
-  auto const location = [&](routing::journey::leg const& l,
-                            bool const is_exit) {
-    auto const& ree = std::get<routing::journey::run_enter_exit>(l.uses_);
-    return routing::search_location(
-        kDefaultProfile,
-        rt::frun{
-            tt, nullptr,
-            ree.r_}[is_exit ? static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)
-                            : ree.stop_range_.from_]);
-  };
+  auto const q = test::exact_query(
+      tt, "A", "E", interval<unixtime_t>{at("10:00"), at("12:00")});
   for (auto const& res : {raptor_search(tt, nullptr, routing::query{q}),
                           search_pong(tt, nullptr, routing::query{q})}) {
     ASSERT_EQ(2U, res.size());
@@ -763,12 +711,13 @@ TEST(transfer_rules, journeys_show_rule_transfer_times) {
     ASSERT_EQ(5U, first.legs_.size());
     ASSERT_EQ(5U, second.legs_.size());
     // One footpath serves both changes at X.
-    EXPECT_EQ(location(first.legs_[0], true), location(second.legs_[0], true));
-    EXPECT_EQ(location(first.legs_[2], false),
-              location(second.legs_[2], false));
-    auto const d = routing::shortest_transfer(tt, nullptr, kDefaultProfile,
-                                              location(first.legs_[0], true),
-                                              location(first.legs_[2], false));
+    EXPECT_EQ(leg_location(tt, first.legs_[0], true),
+              leg_location(tt, second.legs_[0], true));
+    EXPECT_EQ(leg_location(tt, first.legs_[2], false),
+              leg_location(tt, second.legs_[2], false));
+    auto const d = routing::shortest_transfer(
+        tt, nullptr, kDefaultProfile, leg_location(tt, first.legs_[0], true),
+        leg_location(tt, first.legs_[2], false));
     ASSERT_TRUE(d.has_value());
     EXPECT_LT(*d, 3_minutes);
     for (auto const& j : res) {
@@ -792,10 +741,7 @@ TEST(transfer_rules, journeys_show_rule_transfer_times) {
 // duration, and ends when T1c leaves.
 TEST(transfer_rules, leg_alternatives_show_rule_transfer_times) {
   auto const tt = load_feeds({fold_feed()});
-  auto const q =
-      routing::query{.start_time_ = at("11:00"),
-                     .start_ = {{lidx(tt, "A"), 0_minutes, 0U}},
-                     .destination_ = {{lidx(tt, "E"), 0_minutes, 0U}}};
+  auto const q = test::exact_query(tt, "A", "E", at("11:00"));
   auto const res = raptor_search(tt, nullptr, routing::query{q});
   ASSERT_EQ(1U, res.size());
   auto const& j = *begin(res);
@@ -805,9 +751,7 @@ TEST(transfer_rules, leg_alternatives_show_rule_transfer_times) {
       routing::get_leg_alternatives(tt, nullptr, q, j, 2U, 3U);
   ASSERT_EQ(1U, alternatives.size());
   auto const& legs = alternatives.front().legs_;
-  auto const transit = utl::find_if(legs, [](routing::journey::leg const& l) {
-    return std::holds_alternative<routing::journey::run_enter_exit>(l.uses_);
-  });
+  auto const transit = utl::find_if(legs, test::is_transit);
   ASSERT_NE(end(legs), transit);
   ASSERT_NE(begin(legs), transit);
   ASSERT_NE(end(legs), std::next(transit));
@@ -836,10 +780,7 @@ TEST(transfer_rules,
                         {"Q", "RQ", {{"Y", "10:20"}, {"E", "10:50"}}}},
                        "X,Y,2,1800,,,,\nX,Y,2,120,RF,,,\n")});
   ASSERT_LT(0U, n_virts(tt));
-  auto const q =
-      routing::query{.start_time_ = at("10:00"),
-                     .start_ = {{lidx(tt, "X"), 0_minutes, 0U}},
-                     .destination_ = {{lidx(tt, "Y"), 0_minutes, 0U}}};
+  auto const q = test::exact_query(tt, "X", "Y", at("10:00"));
   EXPECT_EQ(30_minutes,
             routing::get_fastest_direct(tt, q, direction::kForward));
   EXPECT_EQ(at("10:15"), nigiri::test::arrival(raptor_search(tt, nullptr, q)));
@@ -854,20 +795,12 @@ TEST(transfer_rules, one_to_all_reaches_stop_at_the_arrival_with_rule_to_any) {
                {"FC", "RF3", {{"U", "10:35"}, {"M", "11:05"}}}},
               std::string{"U,U,2,120,,,,\n"} + std::string{rule})});
   };
-  auto const fastest = [](timetable const& tt, direction const dir,
-                          std::string_view const from,
-                          std::string_view const to,
-                          std::string_view const time) {
-    auto const q = routing::query{.start_time_ = at(time),
-                                  .start_ = {{lidx(tt, from), 0_minutes, 0U}}};
-    auto const state =
-        dir == direction::kForward
-            ? routing::one_to_all<direction::kForward>(tt, nullptr, q)
-            : routing::one_to_all<direction::kBackward>(tt, nullptr, q);
-    return routing::get_fastest_one_to_all_offsets(tt, state, dir, lidx(tt, to),
-                                                   at(time), q.max_transfers_)
-        .duration_;
-  };
+  auto const fastest =
+      [](timetable const& tt, direction const dir, std::string_view const from,
+         std::string_view const to, std::string_view const time) {
+        return test::one_to_all(tt, nullptr, dir, from, to, time)
+            .fastest_.duration_;
+      };
   constexpr auto const kUnreachable = routing::fastest_offset{}.duration_;
 
   auto const plain = load("");

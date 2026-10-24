@@ -237,7 +237,7 @@ struct rt_timetable {
     return tt_->n_locations() + n_rt_locations();
   }
   std::uint32_t n_rt_locations() const noexcept {
-    return static_cast<std::uint32_t>(rt_locations_.parents_.size());
+    return static_cast<std::uint32_t>(rt_location_parents_.size());
   }
   bool is_rt_location(location_idx_t const l) const noexcept {
     return l >= tt_->n_locations();
@@ -250,15 +250,14 @@ struct rt_timetable {
     return location_idx_t{tt_->n_locations() + to_idx(i)};
   }
   location_idx_t base(location_idx_t const l) const {
-    return is_rt_location(l) ? rt_locations_.parents_[to_rt_location(l)]
+    return is_rt_location(l) ? rt_location_parents_[to_rt_location(l)]
                              : tt_->base(l);
   }
   location_idx_t static_location(location_idx_t const l) const {
-    return is_rt_location(l) ? rt_locations_.parents_[to_rt_location(l)] : l;
+    return is_rt_location(l) ? rt_location_parents_[to_rt_location(l)] : l;
   }
   u8_minutes transfer_time(location_idx_t const l) const {
-    return is_rt_location(l) ? rt_locations_.transfer_time_[to_rt_location(l)]
-                             : tt_->locations_.transfer_time_[l];
+    return tt_->locations_.transfer_time_[static_location(l)];
   }
   template <typename Fn>
   void for_each_rt_virt(Fn&& fn) const {
@@ -274,8 +273,7 @@ struct rt_timetable {
       }
     }
   }
-  location_idx_t add_rt_location(location_idx_t parent,
-                                 u8_minutes transfer_time);
+  location_idx_t add_rt_location(location_idx_t parent);
   void add_location_rt_transport(location_idx_t, rt_transport_idx_t);
 
   std::span<location_idx_t const> rt_stop_virts(
@@ -398,10 +396,7 @@ struct rt_timetable {
 
   change_callback_t change_callback_;
 
-  struct rt_locations {
-    vector_map<rt_location_idx_t, location_idx_t> parents_;
-    vector_map<rt_location_idx_t, u8_minutes> transfer_time_;
-  } rt_locations_;
+  vector_map<rt_location_idx_t, location_idx_t> rt_location_parents_;
   hash_map<location_idx_t, vector<location_idx_t>> rt_virts_;
 
   mutable_fws_multimap<rt_transport_idx_t, location_idx_t> rt_stop_virts_;
@@ -427,5 +422,17 @@ struct rt_timetable {
   };
   gpu_rtt_slot gpu_rtt_;
 };
+
+namespace rt {
+
+inline location_idx_t base(timetable const& tt,
+                           rt_timetable const* rtt,
+                           location_idx_t const l) {
+  return l == location_idx_t::invalid() ? l
+         : rtt == nullptr               ? tt.base(l)
+                                        : rtt->base(l);
+}
+
+}  // namespace rt
 
 }  // namespace nigiri

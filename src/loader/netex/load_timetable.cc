@@ -1881,7 +1881,7 @@ void load_timetable(loader_config const& config,
     }
   }
 
-  // Generate default footpaths.
+  // Equivalences between nearby stops (finalize builds their walks).
   auto const locations_end = location_idx_t{tt.n_locations()};
   auto const new_locations = interval{locations_start, locations_end};
   auto const get_location = [&](std::size_t const i) {
@@ -1895,7 +1895,7 @@ void load_timetable(loader_config const& config,
       new_locations,
       [&](location_idx_t const l) { return tt.locations_.coordinates_[l]; });
 
-  auto metas = std::vector<std::vector<footpath>>{};
+  auto metas = std::vector<std::vector<location_idx_t>>{};
   metas.resize(new_locations.size());
 
   pt->status("Stop Neighbors")
@@ -1909,26 +1909,17 @@ void load_timetable(loader_config const& config,
         if (std::abs(pos.lat_) < 2.0 && std::abs(pos.lng_) < 2.0) {
           return;
         }
-        auto const dist_lng_degrees = geo::approx_distance_lng_degrees(pos);
         for (auto const& eq :
              stop_rtree.in_radius(pos, config.link_stop_distance_)) {
-          auto const neighbor = get_location(eq);
-          auto const neighbor_pos = tt.locations_.coordinates_[neighbor];
-          auto const dist = std::sqrt(geo::approx_squared_distance(
-              pos, neighbor_pos, dist_lng_degrees));
-          auto const duration = duration_t{std::max(
-              static_cast<int>(config.default_transfer_time_.count()),
-              static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
-          metas[get_new_location(l)].emplace_back(neighbor, duration);
+          metas[get_new_location(l)].emplace_back(get_location(eq));
         }
       },
       pt->update_fn());
 
-  for (auto const [i, fps] : utl::enumerate(metas)) {
+  for (auto const [i, eqs] : utl::enumerate(metas)) {
     auto const from = get_location(i);
-    for (auto const fp : fps) {
-      tt.locations_.equivalences_[from].emplace_back(fp.target());
-      tt.locations_.preprocessing_footpaths_out_[from].emplace_back(fp);
+    for (auto const eq : eqs) {
+      tt.locations_.equivalences_[from].emplace_back(eq);
     }
   }
 

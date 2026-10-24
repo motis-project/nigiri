@@ -1,25 +1,44 @@
 #include "nigiri/loader/virt/transfer_durations.h"
 
+#include <algorithm>
+
 #include "utl/get_or_create.h"
 #include "utl/zip.h"
 
+#include "nigiri/loader/virt/footpaths.h"
 #include "nigiri/loader/virt/signatures.h"
 #include "nigiri/footpath.h"
-#include "nigiri/routing/transfers.h"
 #include "nigiri/stop.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader {
 
 duration_t get_walk(timetable const& tt,
+                    mutable_fws_multimap<location_idx_t, footpath> const& walks,
+                    rule_index const& stop_rules,
                     location_idx_t const from,
                     location_idx_t const to) {
-  return routing::shortest_transfer(tt, nullptr, kDefaultProfile, from, to)
-      .value_or(kNever);
+  if (from == to) {
+    auto const t = tt.locations_.transfer_time_[from];
+    return t == kNoTransferAllowed ? kNever : duration_t{t};
+  }
+  if (auto const rule = stop_rules.get(from, to); rule.has_value()) {
+    return *rule == footpath::kBan ? kNever : *rule;
+  }
+  auto walk = kNever;
+  for (auto const fp : walks[from]) {
+    if (fp.target() == to) {
+      walk = std::min(walk, fp.duration());
+    }
+  }
+  return walk;
 }
 
 hash_map<transfer_pair, transfer_durations> get_transfer_durations(
-    timetable const& tt, signatures const& sigs) {
+    timetable const& tt,
+    mutable_fws_multimap<location_idx_t, footpath> const& walks,
+    rule_index const& stop_rules,
+    signatures const& sigs) {
   auto const& locs = tt.locations_;
 
   // Mark stops with qualified transfer rules.
@@ -49,8 +68,7 @@ hash_map<transfer_pair, transfer_durations> get_transfer_durations(
     }
   };
   for (auto const& r : tt.transfer_rules_.rules_) {
-    if (!r.is_qualified(event_type::kArr) &&
-        !r.is_qualified(event_type::kDep)) {
+    if (!r.is_qualified()) {
       continue;
     }
     auto const m = r.is_forbidden() ? kNever : r.duration_;
@@ -61,7 +79,7 @@ hash_map<transfer_pair, transfer_durations> get_transfer_durations(
         }
         auto& d =
             utl::get_or_create(durations_of, transfer_pair{from, to}, [&]() {
-              auto const fallback = get_walk(tt, from, to);
+              auto const fallback = get_walk(tt, walks, stop_rules, from, to);
               return transfer_durations{
                   fallback, window_t{fallback, fallback + duration_t{1}}};
             });

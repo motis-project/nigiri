@@ -9,7 +9,7 @@
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/routing/transfers.h"
 #include "nigiri/rt/frun.h"
-#include "nigiri/rt/rt_transfer_rules.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/transfer_rule_sides.h"
 
 namespace nigiri::routing {
@@ -42,6 +42,11 @@ std::optional<duration_t> get_rule_transfer_time(
   return shortest_transfer(tt, rtt, kDefaultProfile, from_base, to_base);
 }
 
+std::optional<journey::run_enter_exit> run_of(journey::leg const& l) {
+  auto const* r = std::get_if<journey::run_enter_exit>(&l.uses_);
+  return r == nullptr ? std::nullopt : std::optional{*r};
+}
+
 void fix_transfer_durations(timetable const& tt,
                             rt_timetable const* rtt,
                             query const& q,
@@ -51,11 +56,6 @@ void fix_transfer_durations(timetable const& tt,
   if (q.prf_idx_ != kDefaultProfile || tt.transfer_rules_.rules_.empty()) {
     return;
   }
-  auto const run_of =
-      [](journey::leg const& l) -> std::optional<journey::run_enter_exit> {
-    auto const* r = std::get_if<journey::run_enter_exit>(&l.uses_);
-    return r == nullptr ? std::nullopt : std::optional{*r};
-  };
   auto const clamp = [](duration_t const d, unixtime_t::duration const gap) {
     return std::min(d, std::max(duration_t{0},
                                 std::chrono::duration_cast<duration_t>(gap)));

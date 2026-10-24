@@ -11,6 +11,7 @@ struct timetable;
 
 namespace nigiri::loader {
 
+struct rule_index;
 struct signatures;
 
 using window_t = interval<duration_t>;
@@ -22,9 +23,16 @@ struct transfer_durations {
   window_t hull_;
 };
 
-duration_t get_walk(timetable const&, location_idx_t from, location_idx_t to);
+duration_t get_walk(timetable const&,
+                    mutable_fws_multimap<location_idx_t, footpath> const& walks,
+                    rule_index const&,
+                    location_idx_t from,
+                    location_idx_t to);
 
 hash_map<transfer_pair, transfer_durations> get_transfer_durations(
-    timetable const&, signatures const&);
+    timetable const&,
+    mutable_fws_multimap<location_idx_t, footpath> const& walks,
+    rule_index const&,
+    signatures const&);
 
 }  // namespace nigiri::loader

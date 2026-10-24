@@ -294,8 +294,8 @@ bool is_preferred_transfer(timetable const& tt,
     return true;
   };
 
-  auto const root = tt.locations_.get_root_idx(from);
-  for (auto f = from;; f = tt.locations_.parents_[f]) {
+  for (auto f = from; f != location_idx_t::invalid();
+       f = tt.locations_.parents_[f]) {
     if (f < preferred.size() &&
         utl::any_of(
             preferred[f],
@@ -306,10 +306,8 @@ bool is_preferred_transfer(timetable const& tt,
             })) {
       return true;
     }
-    if (f == root) {
-      return false;
-    }
   }
+  return false;
 }
 
 double get_penalty(timetable const& tt,

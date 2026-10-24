@@ -112,8 +112,8 @@ struct raptor {
     if constexpr (Rt) {
       if (n_locations_ != n_static_locations_) {
         is_dest.resize(n_locations_);
-        for (auto& via : is_via) {
-          extend_to_rt_virts(*rtt_, via);
+        for (auto v = 0U; v != Vias; ++v) {
+          extend_to_rt_virts(*rtt_, is_via[v]);
         }
         extend_to_rt_virts(*rtt_, dist_to_dest);
         extend_to_rt_virts(*rtt_, lb);

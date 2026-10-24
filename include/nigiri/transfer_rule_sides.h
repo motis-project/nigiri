@@ -5,8 +5,6 @@
 #include <tuple>
 #include <vector>
 
-#include "cista/reflection/comparable.h"
-
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 

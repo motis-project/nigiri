@@ -3,7 +3,6 @@
 #include "utl/enumerate.h"
 #include "utl/verify.h"
 
-#include "nigiri/constants.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 
@@ -31,10 +30,8 @@ rt_timetable create_rt_timetable(timetable const& tt,
   rtt.alerts_.agency_.resize(tt.n_agencies());
   for (auto i = 0U; i != kNProfiles; ++i) {
     if (!tt.locations_.footpaths_out_[i].empty()) {
-      rtt.has_td_footpaths_out_[i].resize(tt.n_locations() +
-                                          kRtLocationCapacity);
-      rtt.has_td_footpaths_in_[i].resize(tt.n_locations() +
-                                         kRtLocationCapacity);
+      rtt.has_td_footpaths_out_[i].resize(tt.n_locations());
+      rtt.has_td_footpaths_in_[i].resize(tt.n_locations());
       rtt.td_footpaths_out_[i].resize(tt.n_locations());
       rtt.td_footpaths_in_[i].resize(tt.n_locations());
     }

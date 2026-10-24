@@ -9,7 +9,6 @@
 #include "utl/get_or_create.h"
 
 #include "nigiri/loader/transfer_rules.h"
-#include "nigiri/loader/virt/location_route_stops.h"
 #include "nigiri/loader/virt/signatures.h"
 #include "nigiri/loader/virt/transfer_durations.h"
 #include "nigiri/types.h"
@@ -20,6 +19,7 @@ struct timetable;
 
 namespace nigiri::loader {
 
+using route_stop_idx_t = cista::strong<std::uint32_t, struct route_stop_>;
 using route_stop_pair_idx_t =
     cista::strong<std::uint32_t, struct route_stop_pair_>;
 
@@ -55,11 +55,11 @@ struct route_stop {
   signature_idx_t sig_{signature_idx_t::invalid()};
 };
 
-inline void narrow(window_t& w, duration_t const gap, bool const must_work) {
-  if (must_work) {
-    w.to_ = std::min(w.to_, gap + duration_t{1});
+inline void narrow(window_t& w, transfer const& t) {
+  if (t.gap_ >= t.expected_) {
+    w.to_ = std::min(w.to_, t.gap_ + duration_t{1});
   } else {
-    w.from_ = std::max(w.from_, gap + duration_t{1});
+    w.from_ = std::max(w.from_, t.gap_ + duration_t{1});
   }
 }
 
@@ -82,19 +82,6 @@ struct route_stop_pairs {
       route_stops_.push_back(s);
       return route_stop_idx_t{route_stops_.size() - 1U};
     });
-  }
-
-  route_stop_idx_t get_or_create_route_stop(location_route_stop& s,
-                                            location_idx_t const l) {
-    if (s.route_stop_ == route_stop_idx_t::invalid()) {
-      auto const rs = route_stop{s.route_, s.stop_idx_, l};
-      s.route_stop_ = get_or_create_route_stop(
-          s.is_uniform() ? route_stop{route_idx_t::invalid(), stop_idx_t{0U}, l,
-                                      signatures::get(s.sigs_, kBaseTransport)}
-                         : rs);
-      route_stop_of_.emplace(rs, s.route_stop_);
-    }
-    return s.route_stop_;
   }
 
   route_stop_pair_idx_t get_or_create_pair(route_stop_idx_t const from,
@@ -122,7 +109,7 @@ struct route_stop_pairs {
     if (route_stops_[from].has_route() || route_stops_[to].has_route()) {
       transfers_[p].push_back(t);
     }
-    narrow(windows_[p], t.gap_, t.gap_ >= t.expected_);
+    narrow(windows_[p], t);
   }
 
   vector_map<route_stop_idx_t, route_stop> route_stops_;

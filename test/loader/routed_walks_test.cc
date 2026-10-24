@@ -15,7 +15,6 @@ using nigiri::test::arrival;
 using nigiri::test::at;
 using nigiri::test::g_from_f;
 using nigiri::test::gl_from_f;
-using nigiri::test::hl_from_f;
 using nigiri::test::load_network;
 using nigiri::test::load_network_with_walks;
 
@@ -45,7 +44,7 @@ TEST(routed_walks, replace_beelines) {
 TEST(routed_walks, walk_the_router_did_not_find) {
   auto const tt = load_network_with_walks("", kRows, {});
   EXPECT_EQ(std::nullopt, arrival(tt, nullptr, {"A", "B"}));
-  EXPECT_EQ(hl_from_f(),
+  EXPECT_EQ(gl_from_f(),
             arrival(tt, nullptr, {"A", "C"}));  // changing at S1 is no walk
 }
 
@@ -69,7 +68,7 @@ TEST(routed_walks, rule_beats_walk) {
          {load_network(c.rows_, kRows),
           load_network_with_walks(c.rows_, kRows, {{"S1", "S2", c.walk_}})}) {
       EXPECT_EQ(c.a_to_b_(), arrival(tt, nullptr, {"A", "B"}));
-      EXPECT_EQ(hl_from_f(), arrival(tt, nullptr, {"A", "C"}));
+      EXPECT_EQ(gl_from_f(), arrival(tt, nullptr, {"A", "C"}));
     }
   }
 }
@@ -82,12 +81,12 @@ TEST(routed_walks, virtual_location_walks_like_its_stop) {
   auto const beelines = load_network(kRules, kRows);
   ASSERT_LT(0U, test::n_virts(beelines));
   EXPECT_EQ(std::nullopt, arrival(beelines, nullptr, {"A", "D"}));
-  EXPECT_EQ(hl_from_f(), arrival(beelines, nullptr, {"A", "C"}));  // H: 1 min
+  EXPECT_EQ(gl_from_f(), arrival(beelines, nullptr, {"A", "C"}));  // H: 1 min
   EXPECT_EQ(g_from_f(), arrival(beelines, nullptr, {"A", "B"}));
 
   auto const slow = load_network_with_walks(kRules, kRows, {{"S1", "S2", 12}});
   EXPECT_EQ(gl_from_f(), arrival(slow, nullptr, {"A", "B"}));
-  EXPECT_EQ(hl_from_f(), arrival(slow, nullptr, {"A", "C"}));
+  EXPECT_EQ(gl_from_f(), arrival(slow, nullptr, {"A", "C"}));
 
   auto const fast =
       load_network_with_walks(kRules, kRows, {{"S1", "S2", 3}, {"S1", "T", 6}});
@@ -104,7 +103,7 @@ TEST(routed_walks, rules_apply_to_routed_walks) {
   auto const tt = load_network_with_walks(kRule, kRows, {{"S1", "S2", 12}});
   EXPECT_NE(0U, test::n_virts(tt));
   EXPECT_EQ(g_from_f(), arrival(tt, nullptr, {"A", "B"}));
-  EXPECT_EQ(hl_from_f(), arrival(tt, nullptr, {"A", "C"}));
+  EXPECT_EQ(gl_from_f(), arrival(tt, nullptr, {"A", "C"}));
   // what finalize computed covers the routes and locations added
   EXPECT_EQ(tt.n_routes(), tt.route_traffic_days_.size());
   EXPECT_EQ(tt.n_locations(), tt.locations_.location_importance_.size());
