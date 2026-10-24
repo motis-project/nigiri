@@ -46,6 +46,7 @@ void add_start_times_at_stop(direction const search_dir,
                              interval<unixtime_t> const& iv_at_start,
                              interval<unixtime_t> const& iv_at_stop,
                              location_offset_t const offset,
+                             via_offset_t const v,
                              std::vector<start>& starts) {
   auto const is_better_or_eq = [&](auto a, auto b) {
     return search_dir == direction::kForward ? a <= b : a >= b;
@@ -94,6 +95,7 @@ void add_start_times_at_stop(direction const search_dir,
           continue;
         }
         if (!starts.empty() && starts.back().time_at_start_ == time_at_start &&
+            starts.back().v_ == v &&
             is_better_or_eq(starts.back().time_at_stop_, ev_time)) {
           trace_start("      time_at_start={} -> no improvement\n", iv_at_start,
                       time_at_start);
@@ -102,7 +104,8 @@ void add_start_times_at_stop(direction const search_dir,
         auto const& s =
             starts.emplace_back(start{.time_at_start_ = time_at_start,
                                       .time_at_stop_ = ev_time,
-                                      .stop_ = location_idx});
+                                      .stop_ = location_idx,
+                                      .v_ = v});
         trace_start(
             "        => ADD START: time_at_start={}, time_at_stop={}, "
             "stop={}\n",
@@ -126,6 +129,7 @@ void add_starts_in_interval(direction const search_dir,
                             interval<unixtime_t> const& iv,
                             location_idx_t const l,
                             location_offset_t const location_offset,
+                            via_offset_t const v,
                             duration_t const max_start_offset,
                             profile_idx_t const p,
                             std::vector<start>& starts,
@@ -169,7 +173,7 @@ void add_starts_in_interval(direction const search_dir,
           search_dir == direction::kForward
               ? interval{iv.from_, iv.to_ + max_start_offset}
               : interval{iv.from_ - max_start_offset, iv.to_},
-          location_offset, starts);
+          location_offset, v, starts);
     }
   }
 
@@ -211,7 +215,8 @@ void add_starts_in_interval(direction const search_dir,
         auto const& inserted =
             starts.emplace_back(start{.time_at_start_ = time_at_start,
                                       .time_at_stop_ = ev_time,
-                                      .stop_ = l});
+                                      .stop_ = l,
+                                      .v_ = v});
         trace_start(
             "        => ADD RT START: time_at_start={}, time_at_stop={}, "
             "stop={}\n",
@@ -237,7 +242,8 @@ void add_starts_in_interval(direction const search_dir,
                 .time_at_stop_ = search_dir == direction::kForward
                                      ? iv.to_ + d
                                      : iv.from_ - 1_minutes - d,
-                .stop_ = l});
+                .stop_ = l,
+                .v_ = v});
     }
   }
 }
@@ -257,14 +263,31 @@ void get_starts(
     bool const add_ontrip,
     profile_idx_t const prf_idx,
     transfer_time_settings const& tts) {
-  auto shortest_start = hash_map<location_idx_t, duration_t>{};
-  auto const update = [&](location_idx_t const l, duration_t const offset) {
-    auto const d =
-        offset + (via_stops.empty() || via_stops.front().location_ != l
-                      ? 0_minutes
-                      : via_stops.front().stay_);
-    auto& val = utl::get_or_create(shortest_start, l, [d]() { return d; });
+  auto start_via = hash_set<location_idx_t>{};
+  if (!via_stops.empty()) {
+    for_each_meta(tt, location_match_mode::kEquivalent,
+                  via_stops.front().location_,
+                  [&](location_idx_t const l) { start_via.emplace(l); });
+  }
+
+  auto shortest_start = std::array<hash_map<location_idx_t, duration_t>, 2>{};
+  auto const update_min = [&](via_offset_t const v, location_idx_t const l,
+                              duration_t const d) {
+    auto& val = utl::get_or_create(shortest_start[v], l, [d]() { return d; });
     val = std::min(val, d);
+  };
+
+  // is_walked_from_via: the stay can be spent at the via before the walk.
+  auto const update = [&](location_idx_t const l, duration_t const offset,
+                          bool const is_walked_from_via = false) {
+    if (!is_walked_from_via && !start_via.contains(l)) {
+      update_min(0U, l, offset);
+      return;
+    }
+    update_min(1U, l, offset + via_stops.front().stay_);
+    if (via_stops.front().stay_ != 0_minutes) {
+      update_min(0U, l, offset);
+    }
   };
 
   auto const fwd = search_dir == direction::kForward;
@@ -276,37 +299,40 @@ void get_starts(
                                    : tt.locations_.footpaths_in_[prf_idx][l];
         for (auto const& fp : footpaths) {
           update(fp.target(),
-                 o.duration() + adjusted_transfer_time(tts, fp.duration()));
+                 o.duration() + adjusted_transfer_time(tts, fp.duration()),
+                 start_via.contains(l));
         }
       }
     });
   }
 
-  for (auto const& s : shortest_start) {
-    auto const l = s.first;
-    auto const o = s.second;
-
-    std::visit(utl::overloaded{[&](interval<unixtime_t> const interval) {
-                                 add_starts_in_interval(
-                                     search_dir, tt, rtt, interval, l, o,
-                                     max_start_offset, prf_idx, starts,
-                                     add_ontrip);
-                               },
-                               [&](unixtime_t const t) {
-                                 starts.emplace_back(
-                                     start{.time_at_start_ = t,
-                                           .time_at_stop_ = fwd ? t + o : t - o,
-                                           .stop_ = l});
-                               }},
-               start_time);
+  for (auto v = via_offset_t{0U}; v != shortest_start.size(); ++v) {
+    for (auto const& [l, o] : shortest_start[v]) {
+      std::visit(utl::overloaded{[&](interval<unixtime_t> const interval) {
+                                   add_starts_in_interval(
+                                       search_dir, tt, rtt, interval, l, o, v,
+                                       max_start_offset, prf_idx, starts,
+                                       add_ontrip);
+                                 },
+                                 [&](unixtime_t const t) {
+                                   starts.emplace_back(start{
+                                       .time_at_start_ = t,
+                                       .time_at_stop_ = fwd ? t + o : t - o,
+                                       .stop_ = l,
+                                       .v_ = v});
+                                 }},
+                 start_time);
+    }
   }
 
   for (auto const& [stop, offsets] : start_td_offsets) {
+    auto const v =
+        static_cast<via_offset_t>(start_via.contains(stop) ? 1U : 0U);
     std::visit(
         utl::overloaded{
             [&](interval<unixtime_t> const interval) {
               add_starts_in_interval(search_dir, tt, rtt, interval, stop,
-                                     location_offset_t{std::span{offsets}},
+                                     location_offset_t{std::span{offsets}}, v,
                                      max_start_offset, prf_idx, starts,
                                      add_ontrip);
             },
@@ -315,7 +341,8 @@ void get_starts(
               if (d != footpath::kMaxDuration) {
                 starts.emplace_back(start{.time_at_start_ = t,
                                           .time_at_stop_ = fwd ? t + d : t - d,
-                                          .stop_ = stop});
+                                          .stop_ = stop,
+                                          .v_ = v});
               }
             }},
         start_time);
