@@ -749,16 +749,20 @@ private:
     return target_v == v ? 0_minutes : via_stops_[v].stay_;
   }
 
-  // One-to-all reports a stop at the arrival of a trip at any of its locations
-  // and at its labels (walks), not at a virtual location's label (a rule). The
-  // labels stay what the next round boards from.
   void update_one_to_all_arrivals(unsigned const k) {
     for (auto i = 0U; i != n_locations_; ++i) {
       auto const l = location_idx_t{i};
-      auto const stop = Rt ? rtt_->base(l) : tt_.base(l);
-      auto& by_transport = state_.one_to_all_arrivals_[k][to_idx(stop)];
+
+      // Arrivals are tracked only at the base.
+      auto const base = Rt ? rtt_->base(l) : tt_.base(l);
+
+      // Take best over all transport arrivals.
+      auto& by_transport = state_.one_to_all_arrivals_[k][to_idx(base)];
       by_transport = get_best(by_transport, tmp_[i][Vias]);
-      if (stop == l) {
+
+      // Take best over all walk arrivals.
+      // (also contains unqualified transfer rule sides)
+      if (base == l) {
         auto& at_stop = state_.one_to_all_arrivals_[k][i];
         at_stop = get_best(at_stop, round_times_[k][i][Vias]);
       }
