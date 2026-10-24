@@ -9,12 +9,14 @@
 
 #include "../../raptor_search.h"
 #include "../../routing/results_to_string.h"
+#include "../../transfer_rules_util.h"
 
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using namespace std::chrono_literals;
+using nigiri::test::n_virts;
 using nigiri::test::raptor_search;
 
 namespace {
@@ -459,14 +461,26 @@ std::string to_string(timetable const& tt,
   return ss.str();
 }
 
+// B's 10 min forbid the 5 min change T1 -> T2 that the line1 -> line2 rule
+// allows: T1 and T2 stop at virtual locations of B. Fares are stated for the
+// stops, so they stay the same.
+constexpr auto const kRulesAtB = R"(
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+B,B,2,600,,,,
+B,B,2,0,line1,line2,,
+)";
+
 TEST(fares, area_sets) {
   auto tt = timetable{};
   tt.date_range_ = {date::sys_days{2022_y / January / 1},
                     date::sys_days{2022_y / December / 1}};
   load_timetable({}, source_idx_t{0},
-                 mem_dir::read(fmt::format("{}{}", kBasicTimetable, kAreaSets)),
+                 mem_dir::read(fmt::format("{}{}{}", kBasicTimetable, kAreaSets,
+                                           kRulesAtB)),
                  tt);
   finalize(tt);
+  ASSERT_LT(0U, n_virts(tt));
 
   auto const results = raptor_search(tt, nullptr, "A", "C",
                                      unixtime_t{sys_days{2022_y / March / 30}});
@@ -492,6 +506,45 @@ id=three_zone_single_ticket, name=Children Three Zone Ticket [priority=0]: 2.2 E
 
 )";
   EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
+}
+
+// The fares of the journey A -> C (joined at B) with these fare files and
+// transfers.txt.
+std::string fares_a_to_c(std::string_view const fares,
+                         std::string_view const transfers,
+                         std::string_view const tt_files) {
+  auto tt = timetable{};
+  tt.date_range_ = {date::sys_days{2022_y / January / 1},
+                    date::sys_days{2022_y / December / 1}};
+  load_timetable(
+      {}, source_idx_t{0},
+      mem_dir::read(fmt::format("{}{}{}", tt_files, fares, transfers)), tt);
+  finalize(tt);
+  EXPECT_EQ(transfers.empty(), n_virts(tt) == 0U);
+  auto const results = raptor_search(tt, nullptr, "A", "C",
+                                     unixtime_t{sys_days{2022_y / March / 30}});
+  EXPECT_EQ(1U, results.size());
+  return results.size() == 0U
+             ? std::string{"no journey"}
+             : to_string(tt, nullptr, get_fares(tt, nullptr, *results.begin()));
+}
+
+// A leg join rule names the stop B of the station BS, where T1 and T2 stop at
+// virtual locations.
+TEST(fares, leg_join_rule_stop_with_transfer_rules) {
+  auto const replace = [](std::string s, std::string_view const from,
+                          std::string_view const to) {
+    auto const pos = s.find(from);
+    EXPECT_NE(std::string::npos, pos);
+    return pos == std::string::npos ? s : s.replace(pos, from.size(), to);
+  };
+  auto const b_in_station =
+      replace(std::string{kBasicTimetable}, "B,B,,0.02,1.03,,\n",
+              "BS,BS,,0.02,1.03,,1,\nB,B,,0.02,1.03,,,BS\n");
+  auto const joined_at_b =
+      replace(std::string{kAreaSets}, "HSL,HSL,,\n", "HSL,HSL,B,B\n");
+  EXPECT_EQ(fares_a_to_c(joined_at_b, "", b_in_station),
+            fares_a_to_c(joined_at_b, kRulesAtB, b_in_station));
 }
 
 TEST(fares, simple_fares) {

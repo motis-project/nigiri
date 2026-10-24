@@ -5,7 +5,7 @@
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=master
-  commit=f89fd090dadf63db8b6aa651c20336eea7186464
+  commit=6b58d446ae4a95c22ed9e7b8f0b63d836029af69
 [date]
   url=git@github.com:motis-project/date.git
   branch=master
@@ -57,7 +57,7 @@
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
-  commit=158339cb270d6cb2ed2d6e2baf876b8c32faeef0
+  commit=9c0c2674d03912eb463fefd10141e864856a58f5
 [wyhash]
   url=git@github.com:motis-project/wyhash.git
   branch=master

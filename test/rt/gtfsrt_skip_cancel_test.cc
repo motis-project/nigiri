@@ -12,6 +12,8 @@
 #include "nigiri/rt/util.h"
 #include "nigiri/timetable.h"
 
+#include "../raptor_search.h"
+#include "../transfer_rules_util.h"
 #include "./util.h"
 
 using namespace nigiri;
@@ -25,6 +27,8 @@ using namespace std::string_view_literals;
 
 namespace {
 
+// The ROUTE_1 rules put TRIP_1 on virtual locations: skipping and cancelling
+// still names the stops.
 mem_dir test_files() {
   return mem_dir::read(R"(
      "(
@@ -61,6 +65,21 @@ TRIP_1,12:00:00,12:00:00,C,3,0,0
 TRIP_1,13:00:00,13:00:00,D,4,0,0
 TRIP_1,14:00:00,14:00:00,E,5,0,0
 TRIP_1,15:00:00,15:00:00,F,6,0,0
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+A,A,2,120,,,,
+A,A,2,600,ROUTE_1,,,
+B,B,2,120,,,,
+B,B,2,600,ROUTE_1,,,
+C,C,2,120,,,,
+C,C,2,600,ROUTE_1,,,
+D,D,2,120,,,,
+D,D,2,600,ROUTE_1,,,
+E,E,2,120,,,,
+E,E,2,600,ROUTE_1,,,
+F,F,2,120,,,,
+F,F,2,600,ROUTE_1,,,
 )");
 }
 
@@ -146,6 +165,7 @@ TEST(rt, gtfs_rt_skip) {
                     date::sys_days{2023_y / November / 27}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
+  ASSERT_LT(0U, test::n_virts(tt));
 
   // Create empty RT timetable.
   auto rtt =
@@ -178,11 +198,22 @@ TEST(rt, gtfs_rt_skip) {
   EXPECT_FALSE(fr[4].is_cancelled());
   EXPECT_TRUE(fr[5].is_cancelled());
 
+  // The real-time trip runs from C to E ...
+  auto const c_to_e = [&]() {
+    return test::raptor_search(tt, &rtt, "C", "E",
+                               "2023-11-26 11:00 Europe/Berlin")
+        .size();
+  };
+  EXPECT_EQ(1U, c_to_e());
+
   // Update with canceled
   auto const msgCanceled = rt::json_to_protobuf(kTripUpdateCanceled);
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msgCanceled);
 
   ASSERT_TRUE(fr.is_cancelled());
+
+  // ... and not once it is cancelled.
+  EXPECT_EQ(0U, c_to_e());
 }
 
 TEST(rt, gtfs_rt_cancel) {
@@ -193,6 +224,7 @@ TEST(rt, gtfs_rt_cancel) {
                     date::sys_days{2023_y / November / 27}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
+  ASSERT_LT(0U, test::n_virts(tt));
 
   // Create empty RT timetable.
   auto rtt =

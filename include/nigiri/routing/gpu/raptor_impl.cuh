@@ -18,6 +18,9 @@
 
 namespace nigiri::routing::gpu {
 
+constexpr auto const kNoTransferAllowedMinutes =
+    static_cast<int>(kNoTransferAllowed.count());
+
 #ifndef NIGIRI_CUDA_DEBUG
 #define debug(...)
 #else
@@ -84,9 +87,13 @@ struct raptor_impl {
       // -> 10:00 < 10:05 would get rejected.
       // -> ping journey would not be found in pong
       auto const* const row = bounds_ + (bounds_last_k_ - k) * tt_.n_locations_;
-      auto const transfer = dir(adjusted_transfer_time(
-          transfer_time_settings_,
-          static_cast<int>(tt_.transfer_time_[l].count())));
+      auto const transfer_time =
+          static_cast<int>(tt_.transfer_time_[l].count());
+      if (transfer_time == kNoTransferAllowedMinutes) {
+        return true;
+      }
+      auto const transfer =
+          dir(adjusted_transfer_time(transfer_time_settings_, transfer_time));
       return is_better_or_eq(static_cast<int>(t),
                              static_cast<int>(row[to_idx(l)]) + transfer);
     }
@@ -108,6 +115,11 @@ struct raptor_impl {
       round_times_.update_min(0U, l, v, t, make_start_bc());
       touch_round(0U, l);
       station_mark_.mark(to_idx(l));
+      if (is_dest_[to_idx(l)]) {
+        for (auto k = 0U; k != kMaxTransfers + 2U; ++k) {
+          time_at_dest_.update_min(k, t);
+        }
+      }
     }
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
@@ -172,8 +184,7 @@ struct raptor_impl {
       }
 
       auto const my_i = w * kWarpSize + lane;
-      auto const my_marked =
-          ((bits >> lane) & 1U) != 0U && my_i < tt_.n_locations_;
+      auto const my_marked = ((bits >> lane) & 1U) != 0U && my_i < lists.size();
 
       auto n = 0U;
       if (my_marked) {
@@ -319,7 +330,7 @@ struct raptor_impl {
         // no footpath leg: the last mile alight -> kEnd is the host's mumo
         // leg; the GPU journey's terminal is the ride's alighting stop
         out->dest_l_ = alight_loc;
-      } else if (n != 0U || alight_loc != cur_l ||
+      } else if (n != 0U || base_location(alight_loc) != cur_l ||
                  train_arr != arr_at_cur /* skip 0min last leg */) {
         // Footpaths are always emitted (even zero minute reflexive transfers).
         // Journey structure: [WALK]? TRANSIT [TRANSIT WALK]*
@@ -629,6 +640,14 @@ struct raptor_impl {
         tmp_time, bc, t_at_dest);
   }
 
+  __device__ __forceinline__ location_idx_t
+  base_location(location_idx_t const l) const {
+    auto const i = to_idx(l);
+    return i < tt_.n_static_locations_
+               ? tt_.base_[l]
+               : rtt_.rt_base_[rt_location_idx_t{i - tt_.n_static_locations_}];
+  }
+
   __device__ __forceinline__ void relax_fp_target(unsigned const k,
                                                   location_idx_t const target_l,
                                                   int const duration,
@@ -753,17 +772,27 @@ struct raptor_impl {
         tmp_time = tmp_.get(l, Vias);
         if (tmp_time != kInvalid) {
           bc = tmp_.get_bc(0U, l, Vias);
-          auto const is_dest = is_dest_[my_i];
+          auto const stop = intermodal ? l : base_location(l);
 
           // same-station transfer (former update_transfers)
-          relax_fp_target(
-              k, l,
-              (!intermodal && is_dest)
-                  ? 0
-                  : adjusted_transfer_time(
-                        transfer_time_settings_,
-                        static_cast<int>(tt_.transfer_time_[l].count())),
-              tmp_time, bc, t_at_dest);
+          auto const transfer_time =
+              static_cast<int>(tt_.transfer_time_[l].count());
+          auto const is_dest_arrival = !intermodal && is_dest_[to_idx(stop)];
+          if (is_dest_arrival || transfer_time != kNoTransferAllowedMinutes) {
+            relax_fp_target(k, l,
+                            is_dest_arrival
+                                ? 0
+                                : adjusted_transfer_time(
+                                      transfer_time_settings_, transfer_time),
+                            tmp_time, bc, t_at_dest);
+          }
+          if (is_dest_arrival && stop != l &&
+              is_better_loose(tmp_time, t_at_dest)) {
+            round_times_.update_min(k, stop, Vias, tmp_time, bc);
+            touch_round(k, stop);
+            best_.update_min(stop, Vias, tmp_time);
+            update_time_at_dest(k, tmp_time);
+          }
 
           // intermodal egress (former update_intermodal_footpaths)
           if (intermodal && dist_to_end_[my_i] != kUnreachable) {
@@ -792,7 +821,7 @@ struct raptor_impl {
                   });
             }
           }
-          if (!kFwd || !use_td_fps) {
+          if ((!kFwd || !use_td_fps) && my_i < tt_.n_static_locations_) {
             auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
                                   : tt_.footpaths_in_[prf_idx_][l];
             n_fps = static_cast<unsigned>(fps.size());
@@ -833,6 +862,27 @@ struct raptor_impl {
           relax_footpath(k, fps[j], l_tmp, l_bc, t_at_dest);
         }
       });
+    }
+
+    // rt footpaths: expand all at once
+    for (auto i = get_global_thread_id(); i < rtt_.rt_footpaths_.size();
+         i += get_global_stride()) {
+      auto const& e = rtt_.rt_footpaths_[i];
+      auto const src = kFwd ? e.from_ : e.fp_.target();
+      if (!prev_station_mark_[to_idx(src)]) {
+        continue;
+      }
+
+      auto const tmp_time = tmp_.get(src, Vias);
+      if (tmp_time == kInvalid) {
+        continue;
+      }
+
+      relax_fp_target(k, kFwd ? e.fp_.target() : e.from_,
+                      adjusted_transfer_time(transfer_time_settings_,
+                                             e.fp_.duration().count()),
+                      tmp_time, tmp_.get_bc(0U, src, Vias),
+                      time_at_dest_.get(k));
     }
   }
 
@@ -1296,3 +1346,9 @@ struct raptor_impl {
 };
 
 }  // namespace nigiri::routing::gpu
+
+#undef kInvalid
+#undef kFwd
+#undef kBwd
+#undef kUnreachable
+#undef kIntermodalTarget

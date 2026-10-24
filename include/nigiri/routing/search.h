@@ -208,6 +208,9 @@ struct search {
     state_.results_.clear();
 
     if (start_dest_overlap()) {
+      stats_.execute_time_ =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::steady_clock::now() - start_time_);
       return {&state_.results_, search_interval_, stats_,
               algo_.get_stats().to_map()};
     }
@@ -337,7 +340,7 @@ struct search {
 
     stats_.execute_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(
-            (std::chrono::steady_clock::now() - processing_start_time));
+            (std::chrono::steady_clock::now() - start_time_));
     return {.journeys_ = &state_.results_,
             .interval_ = search_interval_,
             .search_stats_ = stats_,
@@ -361,7 +364,7 @@ private:
       return utl::any_of(q_.start_, [&](offset const& o) {
         bool overlaps = false;
         for_each_meta(
-            tt_, q_.start_match_mode_, o.target(),
+            tt_, nullptr, q_.start_match_mode_, o.target(),
             [&](location_idx_t const eq) { overlaps = overlaps || eq == x; });
         return overlaps;
       });
@@ -369,7 +372,7 @@ private:
 
     return utl::any_of(q_.destination_, [&](offset const& o) {
       auto overlaps = false;
-      for_each_meta(tt_, q_.dest_match_mode_, o.target(),
+      for_each_meta(tt_, nullptr, q_.dest_match_mode_, o.target(),
                     [&](location_idx_t const eq) {
                       overlaps = overlaps || overlaps_start(eq);
                     });
@@ -493,6 +496,8 @@ private:
         });
   }
 
+  std::chrono::steady_clock::time_point start_time_{
+      std::chrono::steady_clock::now()};
   timetable const& tt_;
   rt_timetable const* rtt_;
   search_state& state_;
