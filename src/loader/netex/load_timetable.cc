@@ -16,6 +16,7 @@
 #include "pugixml.hpp"
 
 #include "utl/concat.h"
+#include "utl/enumerate.h"
 #include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/parallel_for.h"
@@ -649,7 +650,9 @@ operating_period_map_t get_operating_periods(
 
   for (auto const s : doc.select_nodes(
            "//ServiceCalendarFrame//operatingPeriods/UicOperatingPeriod |"
-           "//ServiceCalendarFrame/validityConditions/AvailabilityCondition")) {
+           "//ServiceCalendarFrame/validityConditions/AvailabilityCondition |"
+           // AT-MVO
+           "//ServiceFrame/validityConditions/AvailabilityCondition")) {
     auto const sn = s.node();
     auto const from = parse_date(val(sn, "FromDate"));
     auto const to = parse_date(val(sn, "ToDate"));
@@ -861,13 +864,17 @@ journey_pattern_map_t get_journey_patterns(
 
     auto stop_points = std::vector<journey_pattern::stop_point>{};
     for (auto const sp : n.child("pointsInSequence").children()) {
+      auto stop_use = val(sp, "StopUse");
+      // AT-MVO generates these stops with nonsensical attributes
+      auto const is_pass =
+          stop_use == "passthrough" || stop_use == "noBoardingOrAlighting";
       stop_points.push_back({
           .id_ = id(sp),
           .stop_ = get_stop(ref(sp, "ScheduledStopPointRef")),
           .destination_display_ =
               destination_displays.at(ref(sp, "DestinationDisplayRef")).get(),
-          .in_allowed_ = is_true_or_empty(val(sp, "ForBoarding")),
-          .out_allowed_ = is_true_or_empty(val(sp, "ForAlighting")),
+          .in_allowed_ = !is_pass && is_true_or_empty(val(sp, "ForBoarding")),
+          .out_allowed_ = !is_pass && is_true_or_empty(val(sp, "ForAlighting")),
           .notices_ = get_notice_assignments(notices, sp),
       });
     }
@@ -953,6 +960,7 @@ struct service_journey {
   std::variant<journey_pattern const*, journey_pattern> journey_pattern_{};
   bitfield const* traffic_days_;
   operätor const* operator_;
+  line* line_;
   std::vector<stop_times> stop_times_{};
   ptrdiff_t dbg_offset_;
 };
@@ -1012,6 +1020,8 @@ std::vector<service_journey> get_service_journeys(
                                        .attribute()
                                        .as_string()),
         .operator_ = operators.at(ref(n, "OperatorRef")).get(),
+        // AT-MVO
+        .line_ = lines.at(ref(n, "LineRef")).get(),
         .dbg_offset_ = n.offset_debug()};
 
     auto const calls = n.child("calls");
@@ -1054,27 +1064,46 @@ std::vector<service_journey> get_service_journeys(
 
       auto const& jp = *std::get<journey_pattern const*>(sj.journey_pattern_);
 
-      for (auto const [passing_time, stop_point] :
-           utl::zip(n.select_nodes("passingTimes/TimetabledPassingTime"),
-                    jp.stop_points_)) {
+      // TimetabledPassingTime may leave out stops by referencing
+      // StopPointInJourneyPattern out of order. Deal with this by
+      // pre-allocating a vector of stop times and filling it out one by one.
+      // First observed in AT-MVO.
+      sj.stop_times_.resize(jp.stop_points_.size());
+      for (auto const [passing_time_idx, passing_time] : utl::enumerate(
+               n.select_nodes("passingTimes/TimetabledPassingTime"))) {
         auto const pn = passing_time.node();
 
         auto stop_point_id = ref(pn, "StopPointInJourneyPatternRef");  // DELFI
         if (stop_point_id.empty()) {
           stop_point_id = ref(pn, "PointInJourneyPatternRef");  // SNCF
         }
+        std::size_t stop_point_idx;
+        // Fast path in case the order is the same
+        if ((static_cast<std::size_t>(passing_time_idx) <
+             jp.stop_points_.size()) &&
+            (jp.stop_points_.at(static_cast<std::size_t>(passing_time_idx))
+                 .id_ == stop_point_id)) {
+          stop_point_idx = static_cast<std::size_t>(passing_time_idx);
+          // Fall back to linear lookup if stop points are not in order
+        } else {
+          auto stop_point_it =
+              utl::find_if(jp.stop_points_, [&stop_point_id](auto const& sp) {
+                return sp.id_ == stop_point_id;
+              });
+          if (stop_point_it == jp.stop_points_.end()) {
+            utl::log_error("NeTEx", "Could not find stop point id {}",
+                           stop_point_id);
+            continue;
+          }
+          stop_point_idx = static_cast<std::size_t>(
+              std::distance(jp.stop_points_.begin(), stop_point_it));
+        }
 
-        utl::verify(
-            stop_point.id_ == stop_point_id,
-            "expected pointsInSequence.StopPointInJourneyPattern.id={}, "
-            "got TimetabledPassingTime.StopPointInJourneyPatternRef={}",
-            stop_point.id_, stop_point_id);
-
-        sj.stop_times_.push_back(
-            {.arr_ = parse_time(val(pn, "ArrivalTime"),
-                                val(pn, "ArrivalDayOffset")),
-             .dep_ = parse_time(val(pn, "DepartureTime"),
-                                val(pn, "DepartureDayOffset"))});
+        sj.stop_times_.at(stop_point_idx) = {
+            .arr_ =
+                parse_time(val(pn, "ArrivalTime"), val(pn, "ArrivalDayOffset")),
+            .dep_ = parse_time(val(pn, "DepartureTime"),
+                               val(pn, "DepartureDayOffset"))};
       }
     }
 
@@ -1485,7 +1514,7 @@ void load_timetable(loader_config const& config,
       auto const& jp = *sj.get_journey_pattern();
 
       // Check if provider got filtered by script.
-      auto& line = *jp.line_;
+      auto& line = jp.line_->id_ != "" ? *jp.line_ : *sj.line_;
       auto const op = sj.operator_->id_.empty() ? line.operator_ : sj.operator_;
       if (op->provider_ == provider_idx_t::invalid()) {
         continue;
