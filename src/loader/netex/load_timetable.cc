@@ -3,6 +3,7 @@
 #include "nigiri/loader/get_index.h"
 
 #include <filesystem>
+#include <functional>
 #include <ranges>
 #include <string>
 
@@ -1412,7 +1413,8 @@ void load_timetable(loader_config const& config,
 
     // Parents have to be registered before their children (arbitrary depth).
     auto visited = hash_set<stop const*>{};
-    auto const add_stop = [&](this auto&& add_stop, stop* stop) -> void {
+    auto add_stop = std::function<void(stop*)>{};
+    add_stop = [&](stop* stop) {
       if (!visited.emplace(stop).second) {
         return;
       }
