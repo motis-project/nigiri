@@ -691,17 +691,22 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
   reset_arrivals();
 
   auto dist = dist_to_dest;
+  auto td_dist = td_dist_to_dest;
   if (rtt != nullptr && prf_idx_ == kDefaultProfile &&
       rtt->n_rt_locations() != 0U) {
     is_dest.resize(rtt->n_locations());
     extend_to_rt_virts(*rtt, dist);
+    // A td destination at a stop also holds at its real-time locations.
+    for (auto const& [l, offsets] : td_dist_to_dest) {
+      rtt->for_each_rt_virt(
+          l, [&](location_idx_t const v) { td_dist.emplace(v, offsets); });
+    }
   }
   auto dest_locs = std::vector<location_idx_t>{};
   is_dest.for_each_set_bit([&](std::uint64_t const i) {
     dest_locs.push_back(location_idx_t{static_cast<std::uint32_t>(i)});
   });
-  state_.impl_->upload_query(kDirIdx, is_dest, dist, td_dist_to_dest,
-                             dest_locs);
+  state_.impl_->upload_query(kDirIdx, is_dest, dist, td_dist, dest_locs);
 }
 
 template <direction SearchDir, bool WithBounds>
@@ -1359,6 +1364,7 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
 
   // The legs are chronological (materialization reverses forward device order).
   constexpr auto const is_fwd = SearchDir == direction::kForward;
+  auto const virt_rtt = rt_virts(rtt_, q.prf_idx_);
 
   // Front-side mumo leg: special_station -> first transit stop.
   auto const from = rt::base(tt_, rtt_, j.legs_.front().from_);
@@ -1371,7 +1377,7 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
     auto const special = get_special_station(is_fwd ? special_station::kStart
                                                     : special_station::kEnd);
     auto const o = utl::find_if(offsets, [&](offset const& x) {
-      return matches(tt_, front_match_mode, x.target(), from) &&
+      return matches(tt_, virt_rtt, front_match_mode, x.target(), from) &&
              (is_fwd
                   // fwd: query start, check feasibility (allows ontrip start)
                   ? dep_time - x.duration() >= j.start_time_
@@ -1392,7 +1398,7 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
       // specify_td_offsets() refines both to the raw entry duration below.
       auto inserted = false;
       for (auto const& [target, tds] : td_offsets) {
-        if (!matches(tt_, front_match_mode, target, from)) {
+        if (!matches(tt_, virt_rtt, front_match_mode, target, from)) {
           continue;
         }
         if (is_fwd) {
@@ -1434,7 +1440,7 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
     auto const special = get_special_station(is_fwd ? special_station::kEnd
                                                     : special_station::kStart);
     auto const o = utl::find_if(offsets, [&](offset const& x) {
-      return matches(tt_, back_match_mode, x.target(), to) &&
+      return matches(tt_, virt_rtt, back_match_mode, x.target(), to) &&
              (is_fwd
                   // fwd: destination, anchored exactly at j.dest_time_
                   ? arr_time + x.duration() == j.dest_time_
@@ -1450,7 +1456,7 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
       // dest td offset
       auto inserted = false;
       for (auto const& [target, tds] : td_offsets) {
-        if (!matches(tt_, back_match_mode, target, to)) {
+        if (!matches(tt_, virt_rtt, back_match_mode, target, to)) {
           continue;
         }
 
