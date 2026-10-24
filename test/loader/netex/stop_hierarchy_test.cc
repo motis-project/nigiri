@@ -40,15 +40,17 @@ std::string make_stop_chain_xml(unsigned const levels) {
     xml += "<keyList><KeyValue><Key>GlobalID</Key><Value>" + id +
            "</Value></KeyValue></keyList>";
     xml += "<Name>" + id + "</Name>";
-    xml += "<Centroid><Location><Longitude>8.0</Longitude><Latitude>50.0"
-           "</Latitude></Location></Centroid>";
+    xml +=
+        "<Centroid><Location><Longitude>8.0</Longitude><Latitude>50.0"
+        "</Latitude></Location></Centroid>";
     if (i != 0U) {
       xml += "<ParentSiteRef ref=\"SP:s" + std::to_string(i - 1U) + "\"/>";
     }
     if (i == levels - 1U) {
-      xml += "<quays><Quay id=\"Q:q\"><keyList><KeyValue><Key>GlobalID</Key>"
-             "<Value>q</Value></KeyValue></keyList><Name>q</Name></Quay>"
-             "</quays>";
+      xml +=
+          "<quays><Quay id=\"Q:q\"><keyList><KeyValue><Key>GlobalID</Key>"
+          "<Value>q</Value></KeyValue></keyList><Name>q</Name></Quay>"
+          "</quays>";
     }
     xml += "</StopPlace>\n";
   }
@@ -93,9 +95,9 @@ TEST(netex, stop_hierarchy_with_more_than_two_levels) {
     auto const l = find(id);
     ASSERT_NE(location_idx_t::invalid(), l) << id;
     EXPECT_EQ(parent, tt.locations_.parents_[l]) << id;
-    EXPECT_EQ((std::vector{l}),
-              (std::vector<location_idx_t>{tt.locations_.children_[parent].begin(),
-                                           tt.locations_.children_[parent].end()}))
+    EXPECT_EQ((std::vector{l}), (std::vector<location_idx_t>{
+                                    tt.locations_.children_[parent].begin(),
+                                    tt.locations_.children_[parent].end()}))
         << id;
     parent = l;
   }
