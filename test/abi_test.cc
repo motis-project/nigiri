@@ -334,6 +334,20 @@ auto const kTripUpdate =
 
 }  // namespace
 
+// location index of a stop id (the loaders order locations by position)
+std::uint32_t location_idx(nigiri_timetable_t const* t, std::string_view id) {
+  for (auto i = 0U; i != nigiri_get_location_count(t); ++i) {
+    auto const l = nigiri_get_location(t, i);
+    auto const match = std::string_view{l->id, l->id_len} == id;
+    nigiri_destroy_location(l);
+    if (match) {
+      return i;
+    }
+  }
+  ADD_FAILURE() << "location " << id << " not found";
+  return UINT32_MAX;
+}
+
 TEST(rt, abi_timetable) {
 
   auto const t = nigiri_load_from_dir(
@@ -358,7 +372,7 @@ TEST(rt, abi_timetable) {
   EXPECT_EQ(0, l0->n_footpaths);
   nigiri_destroy_location(l0);
 
-  auto const l9 = nigiri_get_location(t, 9);
+  auto const l9 = nigiri_get_location(t, location_idx(t, "2351"));
   auto const l9_name = std::string{l9->name, l9->name_len};
   EXPECT_EQ("Block Line Station", l9_name);
   auto const l9_id = std::string{l9->id, l9->id_len};
@@ -370,22 +384,23 @@ TEST(rt, abi_timetable) {
   EXPECT_EQ(0, l9->parent);
   nigiri_destroy_location(l9);
 
-  auto const l35 = nigiri_get_location_with_footpaths(t, 35, false);
+  auto const l35 =
+      nigiri_get_location_with_footpaths(t, location_idx(t, "1918"), false);
   auto const l35_name = std::string{l35->name, l35->name_len};
   EXPECT_EQ("King / Manulife", l35_name);
   auto const l35_id = std::string{l35->id, l35->id_len};
   EXPECT_EQ("1918", l35_id);
   EXPECT_EQ(2, l35->n_footpaths);
-  EXPECT_EQ(34, l35->footpaths[0].target_location_idx);
+  EXPECT_EQ(location_idx(t, "1916"), l35->footpaths[0].target_location_idx);
   EXPECT_EQ(8, l35->footpaths[0].duration);
   EXPECT_FLOAT_EQ(43.491207, l35->lat);
   EXPECT_FLOAT_EQ(-80.528026, l35->lon);
   EXPECT_EQ(2, l35->transfer_time);
-  EXPECT_EQ(33, l35->parent);
+  EXPECT_EQ(location_idx(t, "4073"), l35->parent);
   nigiri_destroy_location(l35);
 
   auto const l36 =
-      nigiri_get_location_with_footpaths(t, location_count - 1, true);
+      nigiri_get_location_with_footpaths(t, location_idx(t, "1127"), true);
   auto const l36_name = std::string{l36->name, l36->name_len};
   EXPECT_EQ("Conestoga Station", l36_name);
   auto const l36_id = std::string{l36->id, l36->id_len};
@@ -416,10 +431,11 @@ TEST(rt, abi_timetable) {
   auto const route = nigiri_get_route(t, transport->route_idx);
   EXPECT_EQ(28, route->n_stops);
   EXPECT_EQ(9, route->clasz);
-  EXPECT_EQ(9, route->stops[0].location_idx);
+  EXPECT_EQ(location_idx(t, "2351"), route->stops[0].location_idx);
   EXPECT_EQ(1, route->stops[0].in_allowed);
   EXPECT_EQ(1, route->stops[0].out_allowed);
-  EXPECT_EQ(36, route->stops[route->n_stops - 1].location_idx);
+  EXPECT_EQ(location_idx(t, "1127"),
+            route->stops[route->n_stops - 1].location_idx);
   EXPECT_EQ(0, route->stops[route->n_stops - 1].in_allowed);
   EXPECT_EQ(1, route->stops[route->n_stops - 1].out_allowed);
 
@@ -562,7 +578,9 @@ TEST(rt, abi_journeys) {
           date::sys_days{2023_y / August / 12}),
       0);
 
-  auto const journeys = nigiri_get_journeys(t, 10, 15, 1691660000, false);
+  auto const from = location_idx(t, "1033");
+  auto const to = location_idx(t, "3895");
+  auto const journeys = nigiri_get_journeys(t, from, to, 1691660000, false);
 
   ASSERT_EQ(1, journeys->n_journeys);
   EXPECT_EQ(1691659980, journeys->journeys[0].start_time);
@@ -574,9 +592,9 @@ TEST(rt, abi_journeys) {
   EXPECT_EQ(0, l0.transport_idx);
   EXPECT_EQ(7, l0.day_idx);
   EXPECT_EQ(1, l0.from_stop_idx);
-  EXPECT_EQ(10, l0.from_location_idx);
+  EXPECT_EQ(from, l0.from_location_idx);
   EXPECT_EQ(6, l0.to_stop_idx);
-  EXPECT_EQ(15, l0.to_location_idx);
+  EXPECT_EQ(to, l0.to_location_idx);
   EXPECT_EQ(8, l0.duration);
 
   nigiri_destroy_journeys(journeys);

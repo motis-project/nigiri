@@ -2,6 +2,8 @@
 
 #include <cassert>
 
+#include "geo/latlng.h"
+
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/tz_map.h"
 
@@ -818,6 +820,12 @@ trip_idx_t register_trip(timetable& tt, trip const& t) {
   tt.trip_transport_ranges_.emplace_back_empty();
 
   return trip_idx;
+}
+
+std::uint64_t morton_key(geo::latlng const& pos) {
+  auto const valid = pos.lat() >= -90.0 && pos.lat() <= 90.0 &&
+                     pos.lng() >= -180.0 && pos.lng() <= 180.0;
+  return valid ? geo::morton_encode(pos) : 0U;
 }
 
 }  // namespace nigiri::loader
