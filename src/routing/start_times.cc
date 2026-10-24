@@ -282,25 +282,30 @@ void get_starts(
   auto const virt_rtt = rt_virts(rtt, prf_idx);
   auto shortest_start = std::array<hash_map<location_idx_t, duration_t>, 2>{};
   auto at_start = std::array<hash_map<location_idx_t, duration_t>, 2>{};
-  auto const update = [&](location_idx_t const l, duration_t const offset,
-                          bool const is_walked) {
-    auto const keep_min = [&](via_offset_t const v, duration_t const d) {
-      auto const keep = [&](hash_map<location_idx_t, duration_t>& m) {
-        auto& val = utl::get_or_create(m, l, [d]() { return d; });
-        val = std::min(val, d);
-      };
-      keep(shortest_start[v]);
-      if (!is_walked) {
-        keep(at_start[v]);
-      }
+  auto const update_min = [&](via_offset_t const v, location_idx_t const l,
+                              duration_t const d, bool const is_walked) {
+    auto const keep = [&](hash_map<location_idx_t, duration_t>& m) {
+      auto& val = utl::get_or_create(m, l, [d]() { return d; });
+      val = std::min(val, d);
     };
-    if (!start_via.contains(rtt == nullptr ? l : rtt->static_location(l))) {
-      keep_min(0U, offset);
+    keep(shortest_start[v]);
+    if (!is_walked) {
+      keep(at_start[v]);
+    }
+  };
+
+  // is_walked_from_via: the stay can be spent at the via before the walk.
+  auto const update = [&](location_idx_t const l, duration_t const offset,
+                          bool const is_walked,
+                          bool const is_walked_from_via = false) {
+    if (!is_walked_from_via &&
+        !start_via.contains(rtt == nullptr ? l : rtt->static_location(l))) {
+      update_min(0U, l, offset, is_walked);
       return;
     }
-    keep_min(1U, offset + via_stops.front().stay_);
+    update_min(1U, l, offset + via_stops.front().stay_, is_walked);
     if (via_stops.front().stay_ != 0_minutes) {
-      keep_min(0U, offset);
+      update_min(0U, l, offset, is_walked);
     }
   };
 
@@ -322,11 +327,13 @@ void get_starts(
                 })) {
               return;
             }
+            auto const is_via = start_via.contains(
+                rtt == nullptr ? l : rtt->static_location(l));
             for (auto const fp :
                  get_transfers(tt, rtt, prf_idx, search_dir, l)) {
               update(fp.target(),
                      o.duration() + adjusted_transfer_time(tts, fp.duration()),
-                     true);
+                     true, is_via);
             }
           });
     }

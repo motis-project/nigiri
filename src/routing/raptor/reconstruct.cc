@@ -232,15 +232,25 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
                                                       fp.duration().count());
       // A walk leaves a start stop from the stop (see get_starts).
       auto const src = fp.target();
+      // The stay at the via before the walk to a stop that is no via.
+      auto const stay = v != 0U && !is_start_via &&
+                                matches(tt, rt_virts(rtt, q.prf_idx_),
+                                        location_match_mode::kEquivalent,
+                                        q.via_stops_.front().location_,
+                                        static_location(rtt, src))
+                            ? q.via_stops_.front().stay_
+                            : duration_t{0};
       if (to_idx(src) < tt.n_locations() && is_journey_start(tt, q, src) &&
           !(tt.locations_.is_virt(src) &&
             is_journey_start(tt, q, tt.base(src))) &&
           fp_target_time != kInvalidDelta<SearchDir> &&
-          start_matches(j_start_time + dir(fp_duration), fp_arrival_time)) {
+          start_matches(static_cast<delta_t>(j_start_time +
+                                             dir(stay.count() + fp_duration)),
+                        fp_arrival_time)) {
         return journey::leg{SearchDir,
                             fp.target(),
                             leg_start_location,
-                            j.start_time_,
+                            j.start_time_ + dir(stay),
                             delta_to_unix(base, fp_arrival_time),
                             footpath{fp.target(), fp.duration()}};
       }
