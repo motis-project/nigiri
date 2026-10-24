@@ -2,6 +2,7 @@
 
 #include "utl/pairwise.h"
 
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -30,6 +31,8 @@ enum class rt_data_state : std::uint8_t {
 
 // If set, the bitfield has to be looked up in the RT timetable.
 constexpr auto const kRtBitfieldFlag = std::uint32_t{0x8000'0000U};
+
+constexpr auto const kRtIntervalBuffer = i32_minutes{1440};
 
 using change_callback_t =
     std::function<void(transport const transport,
@@ -72,6 +75,24 @@ struct rt_timetable {
     return clamp(d);
   }
 
+  interval<unixtime_t> rt_interval() const {
+    auto const base =
+        std::chrono::time_point_cast<unixtime_t::duration>(base_day_);
+    return {base + i32_minutes{std::numeric_limits<delta_t>::min() + 1},
+            base + i32_minutes{std::numeric_limits<delta_t>::max()}};
+  }
+
+  bool is_in_rt_interval(timetable const& tt, transport const t) const {
+    auto const n_stops =
+        tt.route_location_seq_[tt.transport_route_[t.t_idx_]].size();
+    auto const rt_iv = rt_interval();
+    auto const iv = interval<unixtime_t>{rt_iv.from_ + kRtIntervalBuffer,
+                                         rt_iv.to_ - kRtIntervalBuffer};
+    return iv.contains(tt.event_time(t, 0U, event_type::kDep)) &&
+           iv.contains(tt.event_time(t, static_cast<stop_idx_t>(n_stops - 1U),
+                                     event_type::kArr));
+  }
+
   std::size_t event_idx([[maybe_unused]] rt_transport_idx_t const rt_t,
                         stop_idx_t const stop_idx,
                         event_type const ev_type) const {
@@ -81,14 +102,18 @@ struct rt_timetable {
     return static_cast<std::size_t>(ev_idx);
   }
 
-  void update_time(rt_transport_idx_t const rt_t,
+  bool update_time(rt_transport_idx_t const rt_t,
                    stop_idx_t const stop_idx,
                    event_type const ev_type,
                    unixtime_t const new_time,
                    rt_data_state const state = rt_data_state::kPredicted) {
+    if (!rt_interval().contains(new_time)) {
+      return false;
+    }
     auto const ev_idx = event_idx(rt_t, stop_idx, ev_type);
     rt_transport_stop_times_[rt_t][ev_idx] = unix_to_delta(new_time);
     rt_transport_data_states_[rt_t][ev_idx] = state;
+    return true;
   }
 
   void set_data_state(rt_transport_idx_t const rt_t,
