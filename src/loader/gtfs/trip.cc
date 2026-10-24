@@ -222,6 +222,8 @@ trip_data read_trips(
     utl::csv_col<utl::cstr, UTL_NAME("trip_id")> trip_id_;
     utl::csv_col<generic_string, UTL_NAME("trip_headsign")> trip_headsign_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_short_name")> trip_short_name_;
+    utl::csv_col<std::uint8_t, UTL_NAME("trip_short_name_display")>
+        trip_short_name_display_;
     utl::csv_col<utl::cstr, UTL_NAME("direction_id")> direction_id_;
     utl::csv_col<utl::cstr, UTL_NAME("block_id")> block_id_;
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> shape_id_;
@@ -317,6 +319,35 @@ trip_data read_trips(
         auto const trip_short_name = i18n.get(t::kTrips, f::kTripShortName,
                                               t.trip_short_name_->view(), id);
         auto const display_name = [&]() {
+          auto const trip_short_display =
+              parse_display_type(t.trip_short_name_display_.val());
+          auto const route_short_display =
+              tt.route_ids_[src].route_id_short_names_display_[route_id];
+          auto const route_long_display =
+              tt.route_ids_[src].route_id_long_names_display_[route_id];
+
+          if (trip_short_display != display_type::kUnset ||
+              route_short_display != display_type::kUnset ||
+              route_long_display != display_type::kUnset) {
+            if (route_short_display != display_type::kDetailsOnly &&
+                trip_short_display != display_type::kDetailsOnly) {
+              auto const display = std::format(
+                  "{} {}",
+                  tt.get_default_translation(
+                      tt.route_ids_[src].route_id_short_names_[route_id]),
+                  t.trip_short_name_->view());
+              return tt.register_translation(display);
+            }
+
+            if (route_short_display == display_type::kDetailsOnly) {
+              return trip_short_name;
+            }
+
+            if (route_short_display == display_type::kDetailsOnly) {
+              return trip_short_name;
+            }
+          }
+
           for (auto const str : {
                    tt.route_ids_[src].route_id_short_names_[route_id],
                    trip_short_name,
@@ -335,6 +366,7 @@ trip_data read_trips(
             id,
             i18n.get(t::kTrips, f::kTripHeadsign, t.trip_headsign_->view(), id),
             trip_short_name,
+            parse_display_type(t.trip_short_name_display_.val()),
             display_name,
             "",
             "",

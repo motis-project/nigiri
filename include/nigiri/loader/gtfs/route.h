@@ -27,6 +27,19 @@ using route_map_t = hash_map<std::string, std::unique_ptr<route>>;
 clasz to_clasz(std::uint16_t);
 clasz to_clasz(route_type_t);
 
+inline display_type parse_display_type(std::uint8_t val) {
+  switch (val) {
+    case 0: return display_type::kUnset;
+    case 1: return display_type::kRequired;
+    case 2: return display_type::kOptional;
+    case 3: return display_type::kDetailsOnly;
+  }
+
+  log(log_lvl::error, "gtfs.route", "Unknown display type {}", val);
+
+  return display_type::kUnset;
+}
+
 route_map_t read_routes(source_idx_t,
                         timetable&,
                         translator&,
