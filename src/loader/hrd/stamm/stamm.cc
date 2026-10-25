@@ -54,7 +54,6 @@ stamm::stamm(config const& c,
   parse_transfer_time_rules(
       transfer_times_, *this, tt, src, transfer_file_content(1U),
       transfer_file_content(2U), transfer_file_content(3U));
-  tracks_ = parse_track_rules(c, *this, tt, files.at(TRACKS).data());
 }
 
 stamm::stamm(timetable& tt, timezone_map_t&& m, source_idx_t const src)
@@ -137,25 +136,6 @@ std::pair<timezone_idx_t, tz_offsets> const& stamm::get_tz(
 attribute_idx_t stamm::resolve_attribute(utl::cstr s) const {
   auto const it = attributes_.find(s.view());
   return it == end(attributes_) ? attribute_idx_t::invalid() : it->second;
-}
-
-location_idx_t stamm::resolve_track(track_rule_key const& k,
-                                    minutes_after_midnight_t const mam,
-                                    day_idx_t day_idx) const {
-  auto it = tracks_.track_rules_.find(k);
-  if (it == end(tracks_.track_rules_)) {
-    return k.location_;
-  } else {
-    auto const track_rule_it =
-        utl::find_if(it->second, [&](track_rule const& r) {
-          return (r.mam_ == track_rule::kTimeNotSet || r.mam_ == mam) &&
-                 resolve_bitfield(r.bitfield_num_).test(to_idx(day_idx));
-        });
-    if (track_rule_it != end(it->second)) {
-      return track_rule_it->track_location_;
-    }
-    return k.location_;
-  }
 }
 
 trip_line_idx_t stamm::resolve_line(std::string_view s) {

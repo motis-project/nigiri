@@ -12,36 +12,13 @@ namespace nigiri::loader::hrd {
 void build_stop_seq(ref_service const& s,
                     service_store const& store,
                     stamm const& st,
-                    std::size_t const hrd_local_day_idx,
-                    std::vector<duration_t> const& local_times,
                     basic_string<stop::value_type>& stop_seq) {
   auto const& ref = store.get(s.ref_);
   auto const n_stops = s.stops(store).size();
   for (auto i = 0U; i != n_stops; ++i) {
-    auto const is_last = (i == n_stops - 1);
-    auto const section_idx =
-        s.split_info_.sections_.from_ + i - (is_last ? 1U : 0U);
-    auto const time_idx = i * 2 - (is_last ? 1U : 0U);
     auto const stop_idx = s.split_info_.stop_range().from_ + i;
-
-    auto const train_nr =
-        ref.begin_to_end_info_.train_num_.has_value()
-            ? ref.begin_to_end_info_.train_num_.value()
-            : s.sections(store)[section_idx].train_num_.value();
-    auto const admin = ref.begin_to_end_info_.admin_.has_value()
-                           ? ref.begin_to_end_info_.admin_.value()
-                           : s.sections(store)[section_idx].admin_.value();
-    auto const day_offset = static_cast<cista::base_t<day_idx_t>>(
-        local_times[time_idx].count() / 1440);
-    auto const mam = duration_t{local_times[time_idx].count() % 1440};
-    auto const l_idx = st.resolve_track(
-        track_rule_key{st.resolve_location(ref.stops_[stop_idx].eva_num_),
-                       train_nr, admin},
-        mam,
-        day_idx_t{
-            static_cast<day_idx_t::value_t>(hrd_local_day_idx + day_offset)});
-
-    stop_seq[i] = stop{l_idx, ref.stops_[stop_idx].dep_.in_out_allowed_,
+    stop_seq[i] = stop{st.resolve_location(ref.stops_[stop_idx].eva_num_),
+                       ref.stops_[stop_idx].dep_.in_out_allowed_,
                        ref.stops_[stop_idx].arr_.in_out_allowed_, true, true}
                       .value();
   }
@@ -105,6 +82,7 @@ void to_utc(service_store const& store,
 
   auto& stop_seq = key.second;
   stop_seq.resize(s.split_info_.stop_range().size());
+  build_stop_seq(s, store, st, stop_seq);
 
   auto const offset =
       (selection.from_ - hrd_interval.from_ - kTimetableOffset).count();
@@ -127,8 +105,6 @@ void to_utc(service_store const& store,
     if (!first_day_offset.has_value()) {
       continue;
     }
-    build_stop_seq(s, store, st, static_cast<std::size_t>(hrd_local_day_idx),
-                   local_times, stop_seq);
 
     auto const utc_traffic_day =
         hrd_local_day_idx - offset + first_day_offset.value() / 1_days;
