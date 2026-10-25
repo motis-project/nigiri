@@ -1022,7 +1022,7 @@ private:
                           "LB_AT_DEST={}, "
                           "DEST={}\n",
                           k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
-                          fp.duration(), loc{tt_, fp.target()},
+                          duration, loc{tt_, location_idx_t{target}},
                           best_[target][target_v], fp_target_time,
                           get_lb(target),
                           to_unix(clamp(fp_target_time + dir(get_lb(target)))),
@@ -1039,7 +1039,7 @@ private:
                         "--> "
                         "update => {}, v={}->{}, stay={}\n",
                         k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
-                        fp.duration(), loc{tt_, fp.target()},
+                        duration, loc{tt_, location_idx_t{target}},
                         to_unix(best_[target][target_v]),
                         to_unix(fp_target_time), v, target_v, stay);
 
