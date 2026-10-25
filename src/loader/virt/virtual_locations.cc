@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <numeric>
 #include <optional>
+#include <ranges>
 #include <utility>
 #include <vector>
 
@@ -330,25 +331,19 @@ route_stop_locations merge_locations(
   for (auto& v : lps) {
     std::ranges::sort(v, {}, &location_pair::to_);
   }
-  auto const get_partners = [&](bool const is_out) {
-    auto n = vector_map<route_stop_idx_t, std::uint32_t>(
-        pairs.route_stops_.size(), 0U);
-    for (auto const [from, to] : pairs.pairs_) {
-      ++n[is_out ? from : to];
-    }
-    auto partners = vecvec<route_stop_idx_t, route_stop_idx_t>{};
-    for (auto const k : n) {
-      partners.add_back_sized(k);
-    }
-    std::ranges::fill(n, 0U);
-    for (auto const [from, to] : pairs.pairs_) {
-      auto const x = is_out ? from : to;
-      partners[x][n[x]++] = is_out ? to : from;
-    }
-    return partners;
-  };
-  auto const out = get_partners(true);
-  auto const in = get_partners(false);
+  auto n_in = vector_map<route_stop_idx_t, std::uint32_t>(
+      pairs.route_stops_.size(), 0U);
+  for (auto const [_, to] : pairs.pairs_) {
+    ++n_in[to];
+  }
+  auto in = vecvec<route_stop_idx_t, route_stop_idx_t>{};
+  for (auto const k : n_in) {
+    in.add_back_sized(k);
+  }
+  std::ranges::fill(n_in, 0U);
+  for (auto const [from, to] : pairs.pairs_) {
+    in[to][n_in[to]++] = from;
+  }
   auto out_partners = std::vector<route_stop_idx_t>{};
   auto in_partners = std::vector<route_stop_idx_t>{};
   auto added = std::vector<location_pair>{};
@@ -392,7 +387,8 @@ route_stop_locations merge_locations(
   auto out_updates = std::vector<pair_update>{};
   auto in_updates = std::vector<pair_update>{};
   auto const join = [&](route_stop_idx_t const s, route_stop_idx_t const l) {
-    locations_of(out[s], out_partners);
+    locations_of(lps[s] | std::views::transform(&location_pair::to_),
+                 out_partners);
     locations_of(in[s], in_partners);
     auto* const self_pair = find_pair(lps[l], l);
     auto self = self_pair != nullptr ? self_pair->window_ : kAnyDuration;

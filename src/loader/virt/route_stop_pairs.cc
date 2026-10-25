@@ -154,9 +154,6 @@ void add_transport_transfers(timetable const& tt,
       if (!to_route_stop.has_dep_) {
         continue;
       }
-      auto const is_uniform =
-          from_route_stop.is_uniform() && to_route_stop.is_uniform();
-      auto uniform_expected_duration = duration_t{};
       auto p = route_stop_pair_idx_t::invalid();
       for_each_transfer(
           tt, from_route_stop.route_, to_route_stop.route_,
@@ -174,16 +171,12 @@ void add_transport_transfers(timetable const& tt,
                   get_or_create_route_stop(pairs, to_route_stop, to);
               p = pairs.get_or_create_pair(
                   from_route_stop_idx, to_route_stop_idx, pair_durations.hull_);
-              uniform_expected_duration = get_expected_duration(
-                  signatures::get(from_route_stop.sigs_, a),
-                  signatures::get(to_route_stop.sigs_, b));
             }
-            auto const e = is_uniform
-                               ? uniform_expected_duration
-                               : get_expected_duration(
-                                     signatures::get(from_route_stop.sigs_, a),
-                                     signatures::get(to_route_stop.sigs_, b));
-            pairs.add_transfer(p, transfer{a, b, gap, e});
+            pairs.add_transfer(
+                p, transfer{a, b, gap,
+                            get_expected_duration(
+                                signatures::get(from_route_stop.sigs_, a),
+                                signatures::get(to_route_stop.sigs_, b))});
           });
     }
   }
