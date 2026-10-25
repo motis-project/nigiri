@@ -1,5 +1,6 @@
 #include "nigiri/loader/hrd/load_timetable.h"
 
+#include <algorithm>
 #include <filesystem>
 
 #include "wyhash.h"
@@ -70,6 +71,7 @@ void load_timetable(source_idx_t const src,
                     dir const& d,
                     timetable& tt) {
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
+  tt.n_sources_ = std::max(tt.n_sources_, to_idx(src + 1U));
   return load_timetable(src, c, d, tt, local_bitfield_indices);
 }
 
