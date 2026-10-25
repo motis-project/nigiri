@@ -326,10 +326,14 @@ date::sys_days parse_date(utl::cstr s) {
   return date::sys_days{date};
 }
 
+// Marks stop times that are not given in the data.
+// Can't use 0 because 00:00 is a valid HH:MM time.
+constexpr auto const kNoTime = duration_t::min();
+
 // Parses HH:MM
 duration_t parse_time(utl::cstr s, utl::cstr day_offset) {
   if (s.len < 5) {
-    return duration_t{0};
+    return kNoTime;
   }
   return duration_t{utl::parse<int>(day_offset) * 1440 +
                     60 * utl::parse_verify<int>(s.substr(0, utl::size(2))) +
@@ -1068,7 +1072,7 @@ std::vector<service_journey> get_service_journeys(
       // StopPointInJourneyPattern out of order. Deal with this by
       // pre-allocating a vector of stop times and filling it out one by one.
       // First observed in AT-MVO.
-      sj.stop_times_.resize(jp.stop_points_.size());
+      sj.stop_times_.resize(jp.stop_points_.size(), {kNoTime, kNoTime});
       for (auto const [passing_time_idx, passing_time] : utl::enumerate(
                n.select_nodes("passingTimes/TimetabledPassingTime"))) {
         auto const pn = passing_time.node();
@@ -1077,29 +1081,29 @@ std::vector<service_journey> get_service_journeys(
         if (stop_point_id.empty()) {
           stop_point_id = ref(pn, "PointInJourneyPatternRef");  // SNCF
         }
-        std::size_t stop_point_idx;
-        // Fast path in case the order is the same
-        if ((static_cast<std::size_t>(passing_time_idx) <
-             jp.stop_points_.size()) &&
-            (jp.stop_points_.at(static_cast<std::size_t>(passing_time_idx))
-                 .id_ == stop_point_id)) {
-          stop_point_idx = static_cast<std::size_t>(passing_time_idx);
-          // Fall back to linear lookup if stop points are not in order
-        } else {
-          auto stop_point_it =
-              utl::find_if(jp.stop_points_, [&stop_point_id](auto const& sp) {
-                return sp.id_ == stop_point_id;
-              });
-          if (stop_point_it == jp.stop_points_.end()) {
-            utl::log_error("NeTEx", "Could not find stop point id {}",
-                           stop_point_id);
-            continue;
+
+        auto const stop_point_idx = [&]() -> std::optional<std::size_t> {
+          if (passing_time_idx < jp.stop_points_.size() &&
+              jp.stop_points_[passing_time_idx].id_ == stop_point_id) {
+            // Passing times and stop points have the same order.
+            return passing_time_idx;
           }
-          stop_point_idx = static_cast<std::size_t>(
-              std::distance(jp.stop_points_.begin(), stop_point_it));
+
+          // Fall back: linear lookup
+          auto const it = utl::find_if(jp.stop_points_, [&](auto&& sp) {
+            return sp.id_ == stop_point_id;
+          });
+          if (it == end(jp.stop_points_)) {
+            return std::nullopt;
+          }
+          return std::distance(begin(jp.stop_points_), it);
+        }();
+
+        if (!stop_point_idx.has_value()) {
+          continue;
         }
 
-        sj.stop_times_.at(stop_point_idx) = {
+        sj.stop_times_[*stop_point_idx] = {
             .arr_ =
                 parse_time(val(pn, "ArrivalTime"), val(pn, "ArrivalDayOffset")),
             .dep_ = parse_time(val(pn, "DepartureTime"),
@@ -1109,6 +1113,34 @@ std::vector<service_journey> get_service_journeys(
 
     if (sj.get_journey_pattern()->stop_points_.size() < 2U) {
       continue;
+    }
+
+    // Replace missing times (kNoTime) in the order arr0, dep0, arr1, dep1, ...
+    auto const time_at = [&](std::size_t const i) -> duration_t& {
+      auto& t = sj.stop_times_[i / 2U];
+      return i % 2U == 0U ? t.arr_ : t.dep_;
+    };
+
+    // Find first valid time.
+    auto const n_times = sj.stop_times_.size() * 2U;
+    auto first_time = std::size_t{0U};
+    while (first_time != n_times && time_at(first_time) == kNoTime) {
+      ++first_time;
+    }
+
+    if (first_time == n_times) {
+      continue;  // not a single valid time
+    }
+
+    // Fill first valid time until `first_time`.
+    // Use previous time otherwise.
+    auto pred = time_at(first_time);
+    for (auto i = std::size_t{0U}; i != n_times; ++i) {
+      if (time_at(i) == kNoTime) {
+        time_at(i) = pred;
+      } else {
+        pred = time_at(i);
+      }
     }
 
     service_journeys.emplace_back(std::move(sj));
