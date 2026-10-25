@@ -873,7 +873,7 @@ journey_pattern_map_t get_journey_patterns(
 
     auto stop_points = std::vector<journey_pattern::stop_point>{};
     for (auto const sp : n.child("pointsInSequence").children()) {
-      auto stop_use = val(sp, "StopUse");
+      auto const stop_use = val(sp, "StopUse");
       // AT-MVO generates these stops with nonsensical attributes
       auto const is_pass =
           stop_use == "passthrough" || stop_use == "noBoardingOrAlighting";
@@ -1562,7 +1562,7 @@ void load_timetable(loader_config const& config,
       auto const& jp = *sj.get_journey_pattern();
 
       // Check if provider got filtered by script.
-      auto& line = jp.line_->id_ != "" ? *jp.line_ : *sj.line_;
+      auto& line = !jp.line_->id_.empty() ? *jp.line_ : *sj.line_;
       auto const op = sj.operator_->id_.empty() ? line.operator_ : sj.operator_;
       if (op->provider_ == provider_idx_t::invalid()) {
         continue;
