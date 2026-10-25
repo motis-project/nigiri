@@ -10,8 +10,9 @@ struct shapes_storage;
 
 namespace nigiri::loader {
 
-bool add_virtual_locations(timetable&,
-                           shapes_storage*,
-                           mutable_fws_multimap<location_idx_t, footpath>&);
+void apply_transfer_rules(
+    timetable&,
+    shapes_storage*,
+    mutable_fws_multimap<location_idx_t, footpath> const& walks);
 
 }  // namespace nigiri::loader

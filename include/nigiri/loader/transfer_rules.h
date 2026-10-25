@@ -1,19 +1,8 @@
 #pragma once
 
-#include <cassert>
-#include <cstdint>
-#include <algorithm>
-#include <functional>
-#include <ranges>
-#include <vector>
-
 #include "cista/reflection/comparable.h"
 
-#include "utl/helpers/algorithm.h"
-
-#include "nigiri/footpath.h"
 #include "nigiri/timetable.h"
-#include "nigiri/transfer_rule_sides.h"
 #include "nigiri/types.h"
 
 namespace nigiri::loader {
@@ -24,14 +13,14 @@ struct transfer_pair {
   location_idx_t to_{location_idx_t::invalid()};
 };
 
-hash_map<transfer_pair, transfer_rule_idx_t> get_most_specific(
-    timetable const&, interval<transfer_rule_idx_t> rules);
-
-// One footpath per stop pair a rule wins, with the rule's duration.
-void add_rule_footpaths(
+transfer_rule_specificity_t get_specificity(
     timetable const&,
-    hash_map<transfer_pair, transfer_rule_idx_t> const& most_specific,
-    mutable_fws_multimap<location_idx_t, footpath>& footpaths);
+    location_idx_t from_stop,
+    location_idx_t to_stop,
+    route_id_idx_t from_route = route_id_idx_t::invalid(),
+    route_id_idx_t to_route = route_id_idx_t::invalid(),
+    trip_idx_t from_trip = trip_idx_t::invalid(),
+    trip_idx_t to_trip = trip_idx_t::invalid());
 
 void store_rule_lookups(timetable&, interval<transfer_rule_idx_t> rules);
 

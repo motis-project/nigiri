@@ -217,12 +217,10 @@ void parse_transfer_time_rules(transfer_times& r,
     if (station == location_idx_t::invalid()) {
       return;
     }
-    auto const idx = add_rule(tt, src, station, rule.time_, kAdminStation,
-                              kFromListed | kToListed);
-    r.provider_sides_.push_back(
-        {{rule.from_, station}, {idx, event_type::kArr}});
-    r.provider_sides_.push_back({{rule.to_, station}, {idx, event_type::kDep}});
-    r.admin_[parse_eva_number(line.substr(col::v_eva))].push_back(rule);
+    auto a = rule;
+    a.rule_ = add_rule(tt, src, station, rule.time_, kAdminStation,
+                       kFromListed | kToListed);
+    r.admin_[parse_eva_number(line.substr(col::v_eva))].push_back(a);
   });
 
   // --- umsteigl ---
@@ -460,11 +458,13 @@ void add_trip_sides(transfer_times& r,
                     route_id_idx_t const route,
                     service const& ref,
                     interval<std::size_t> const stops) {
-  auto const add = [&](transfer_rule_idx_t const rule, event_type const ev) {
-    r.trip_sides_.push_back({trip, transfer_rule_side_idx{rule, ev}});
-  };
   for (auto i = stops.from_; i != stops.to_; ++i) {
     auto const eva = ref.stops_[i].eva_num_;
+    auto const station = st.resolve_location(eva);
+    auto const add = [&](transfer_rule_idx_t const rule, event_type const ev) {
+      r.trip_sides_.push_back(
+          {trip, station, transfer_rule_side_idx{rule, ev}});
+    };
     auto attrs = get_stop_attrs(ref, i);
     attrs.arr_.valid_ = attrs.arr_.valid_ && i != stops.from_;
     attrs.dep_.valid_ = attrs.dep_.valid_ && i + 1U != stops.to_;
@@ -481,23 +481,21 @@ void add_trip_sides(transfer_times& r,
       }
     }
     auto const has_own_time = r.station_.contains(eva);
-    auto const station = st.resolve_location(eva);
-    if (r.line_.contains(eva) || (!has_own_time && !r.line_global_.empty())) {
-      if (attrs.arr_.valid_) {
-        r.arr_routes_.insert({station, route});
-      }
-      if (attrs.dep_.valid_) {
-        r.dep_routes_.insert({station, route});
-      }
+    if (attrs.arr_.valid_) {
+      r.arr_routes_.insert({station, route});
+    }
+    if (attrs.dep_.valid_) {
+      r.dep_routes_.insert({station, route});
     }
     if (has_own_time) {
       continue;  // own transfer time: the global rules do not apply
     }
-    if (attrs.arr_.valid_ && r.admin_global_from_.contains(attrs.arr_.admin_)) {
-      r.arr_admins_.insert({station, attrs.arr_.admin_});
+    auto const admin = r.route_attrs_[route].admin_;
+    if (attrs.arr_.valid_ && r.admin_global_from_.contains(admin)) {
+      r.arr_admins_.insert({station, admin});
     }
-    if (attrs.dep_.valid_ && r.admin_global_to_.contains(attrs.dep_.admin_)) {
-      r.dep_admins_.insert({station, attrs.dep_.admin_});
+    if (attrs.dep_.valid_ && r.admin_global_to_.contains(admin)) {
+      r.dep_admins_.insert({station, admin});
     }
   }
 }
@@ -519,12 +517,12 @@ void write_transfer_rules(transfer_times& r,
       };
   auto const arr_routes = by_station(r.arr_routes_);
   auto const dep_routes = by_station(r.dep_routes_);
-  auto const kNoRoutes = std::vector<route_id_idx_t>{};
+  auto const no_routes = std::vector<route_id_idx_t>{};
   auto const routes_at =
       [&](auto const& m,
           location_idx_t const l) -> std::vector<route_id_idx_t> const& {
     auto const it = m.find(l);
-    return it == end(m) ? kNoRoutes : it->second;
+    return it == end(m) ? no_routes : it->second;
   };
   auto const add_route_sides = [&](transfer_rule_idx_t const rule,
                                    line_rule const& l,
@@ -532,14 +530,16 @@ void write_transfer_rules(transfer_times& r,
     if (is_listed(l.from_)) {
       for (auto const route : routes_at(arr_routes, station)) {
         if (matches(l.from_, r.route_attrs_[route])) {
-          r.route_sides_.push_back({route, {rule, event_type::kArr}});
+          r.route_sides_.push_back(
+              {{src, route}, station, {rule, event_type::kArr}});
         }
       }
     }
     if (is_listed(l.to_)) {
       for (auto const route : routes_at(dep_routes, station)) {
         if (matches(l.to_, r.route_attrs_[route])) {
-          r.route_sides_.push_back({route, {rule, event_type::kDep}});
+          r.route_sides_.push_back(
+              {{src, route}, station, {rule, event_type::kDep}});
         }
       }
     }
@@ -619,13 +619,39 @@ void write_transfer_rules(transfer_times& r,
             add_rule(tt, src, station, l.time_,
                      get_line_specificity(kLineGlobal, l), get_listed(l));
         for (auto const route : matched_from[g]) {
-          r.route_sides_.push_back({route, {rule, event_type::kArr}});
+          r.route_sides_.push_back(
+              {{src, route}, station, {rule, event_type::kArr}});
         }
         for (auto const route : matched_to[g]) {
-          r.route_sides_.push_back({route, {rule, event_type::kDep}});
+          r.route_sides_.push_back(
+              {{src, route}, station, {rule, event_type::kDep}});
         }
         ++n_line_copies;
       }
+    }
+  }
+
+  // the admin pair rules: the route ids of the two admins at the station
+  auto const add_admin_route_sides = [&](transfer_rule_idx_t const rule,
+                                         admin_rule const& a,
+                                         location_idx_t const station) {
+    for (auto const route : routes_at(arr_routes, station)) {
+      if (r.route_attrs_[route].admin_ == a.from_) {
+        r.route_sides_.push_back(
+            {{src, route}, station, {rule, event_type::kArr}});
+      }
+    }
+    for (auto const route : routes_at(dep_routes, station)) {
+      if (r.route_attrs_[route].admin_ == a.to_) {
+        r.route_sides_.push_back(
+            {{src, route}, station, {rule, event_type::kDep}});
+      }
+    }
+  };
+  for (auto const& [eva, rules] : r.admin_) {
+    auto const station = st.resolve_location(eva);
+    for (auto const& a : rules) {
+      add_admin_route_sides(a.rule_, a, station);
     }
   }
 
@@ -637,31 +663,22 @@ void write_transfer_rules(transfer_times& r,
       if (!r.dep_admins_.contains(pair{station, rule.to_})) {
         continue;
       }
-      auto const idx = add_rule(tt, src, station, rule.time_, kAdminGlobal,
-                                kFromListed | kToListed);
-      r.provider_sides_.push_back(
-          {{rule.from_, station}, {idx, event_type::kArr}});
-      r.provider_sides_.push_back(
-          {{rule.to_, station}, {idx, event_type::kDep}});
+      add_admin_route_sides(add_rule(tt, src, station, rule.time_, kAdminGlobal,
+                                     kFromListed | kToListed),
+                            rule, station);
       ++n_admin_copies;
     }
   }
 
   merge_sorted(tr.trip_rules_, r.trip_sides_);
   merge_sorted(tr.route_rules_, r.route_sides_);
-  merge_sorted(tr.provider_rules_, r.provider_sides_);
-  tr.provider_has_rules_.resize(
-      std::max(tr.provider_has_rules_.size(), tt.providers_.size()));
-  for (auto const& [key, _] : r.provider_sides_) {
-    tr.provider_has_rules_.set(to_idx(key.first), true);
-  }
   store_rule_lookups(
       tt, interval{r.first_rule_, transfer_rule_idx_t{tr.rules_.size()}});
   log(log_lvl::info, "loader.hrd.transfer_rules",
       "{} rules at stations, {} line rule copies, {} admin rule copies, {} "
-      "trip sides, {} route sides, {} provider sides, {} route ids",
+      "trip sides, {} route sides, {} route ids",
       r.n_station_rules_, n_line_copies, n_admin_copies, r.trip_sides_.size(),
-      r.route_sides_.size(), r.provider_sides_.size(), r.route_ids_.size());
+      r.route_sides_.size(), r.route_ids_.size());
 }
 
 }  // namespace nigiri::loader::hrd

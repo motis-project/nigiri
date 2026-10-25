@@ -12,9 +12,6 @@
 #include "geo/box.h"
 #include "geo/latlng.h"
 
-#include "nigiri/loader/dir.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
-
 #include "../loader/hrd/hrd_timetable.h"
 #include "../transfer_rules_util.h"
 
@@ -159,8 +156,8 @@ TEST(query_generation, draws_stops_by_events) {
                    {"T2", "R2", {{"X", "12:31"}, {"XB", "13:00"}}}},
                   "X,X,2,120,,,,\n"
                   "X,X,2,0,R1,R2,,\n")});
-  auto const x = tt.locations_.location_id_to_idx_.at({"X", source_idx_t{0}});
-  auto const z = tt.locations_.location_id_to_idx_.at({"Z", source_idx_t{0}});
+  auto const x = test::lidx(tt, "X");
+  auto const z = test::lidx(tt, "Z");
   ASSERT_TRUE(tt.location_routes_[x].empty())
       << "precondition: X is served at its virtual locations only";
 

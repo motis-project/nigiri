@@ -81,9 +81,6 @@ query_engine<UseLowerBounds>::query_engine(
       auto const l = location_idx_t{i};
       tb_debug("{} is dest!", loc{tt_, l});
       mark_dest_segments(l, duration_t{0U});
-      tt_.locations_.for_each_virt(l, [&](location_idx_t const v) {
-        mark_dest_segments(v, duration_t{0U});
-      });
       for (auto const fp :
            tt_.locations_.footpaths_in_[state_.tbd_.prf_idx_][l]) {
         mark_dest_segments(fp.target(), fp.duration());
@@ -280,7 +277,7 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
                               location_match_mode const match_mode,
                               location_idx_t const l) {
     return utl::any_of(offsets, [&](offset const& o) {
-      return matches(tt_, match_mode, o.target(), l);
+      return matches(tt_, nullptr, match_mode, o.target(), l);
     });
   };
 

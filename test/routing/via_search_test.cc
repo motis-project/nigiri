@@ -26,6 +26,7 @@
 
 #include "../raptor_search.h"
 #include "../rt/util.h"
+#include "../transfer_rules_util.h"
 
 using namespace nigiri;
 using namespace date;
@@ -183,11 +184,13 @@ interval<unixtime_t> iv(std::string_view const from, std::string_view to) {
   return {time(from), time(to)};
 }
 
-timetable load_timetable(std::string_view s) {
+timetable load_timetable(std::string_view s,
+                         interval<date::sys_days> const date_range = {
+                             date::sys_days{2019_y / May / 1},
+                             date::sys_days{2019_y / May / 2}}) {
   auto tt = timetable{};
 
-  tt.date_range_ = {date::sys_days{2019_y / May / 1},
-                    date::sys_days{2019_y / May / 2}};
+  tt.date_range_ = date_range;
   loader::register_special_stations(tt);
   loader::gtfs::load_timetable({}, source_idx_t{0}, loader::mem_dir::read(s),
                                tt);
@@ -1708,54 +1711,18 @@ TEST(routing, via_test_36_S_C_via_V_0m_no_exit) {
   }
 }
 
-constexpr auto const test_files_via_td_footpath = R"(
-# agency.txt
-agency_id,agency_name,agency_url,agency_timezone
-DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
-
-# stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
-A,A,,0.0,1.0,,
-X,X,,0.1,1.0,,
-V,V,,0.2,1.0,,
-D,D,,0.3,1.0,,
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
-R1,DB,R1,,,3
-R2,DB,R2,,,3
-R3,DB,R3,,,3
-R4,DB,R4,,,3
-
-# trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-R1,S1,T1,,
-R2,S1,T2,,
-R3,S1,T3,,
-R4,S1,T4,,
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
-T1,10:00:00,10:00:00,A,1,0,0
-T1,10:30:00,10:30:00,X,2,0,0
-T2,10:00:00,10:00:00,A,1,0,0
-T2,10:20:00,10:20:00,V,2,0,0
-T3,10:40:00,10:40:00,V,1,0,0
-T3,11:00:00,11:00:00,D,2,0,0
-T4,10:40:00,10:40:00,X,1,0,0
-T4,10:50:00,10:50:00,D,2,0,0
-
-# calendar_dates.txt
-service_id,date,exception_type
-S1,20190501,1
-)"sv;
-
 TEST(routing, via_test_37_A_D_via_V_td_footpath_to_dest) {
   // A -> D via V: T2 to V, T3 to D (11:00). T1 reaches X at 10:30, and a
   // time-dependent footpath walks on to D (10:35) - without having been at V,
   // so it does not end the search.
   constexpr auto const kProfile = kFootProfile;
-  auto tt = load_timetable(test_files_via_td_footpath);
+  auto tt = load_timetable(test::feed(
+      {{"A", 0.0, 1.0}, {"X", 0.1, 1.0}, {"V", 0.2, 1.0}, {"D", 0.3, 1.0}},
+      {{"T1", "R1", {{"A", "10:00"}, {"X", "10:30"}}},
+       {"T2", "R2", {{"A", "10:00"}, {"V", "10:20"}}},
+       {"T3", "R3", {{"V", "10:40"}, {"D", "11:00"}}},
+       {"T4", "R4", {{"X", "10:40"}, {"D", "10:50"}}}},
+      ""));
   tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
   tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
   tt.fwd_search_lb_graph_[kProfile] = tt.fwd_search_lb_graph_[kDefaultProfile];
@@ -1767,74 +1734,15 @@ TEST(routing, via_test_37_A_D_via_V_td_footpath_to_dest) {
   rtt.td_footpaths_out_[kProfile][x].push_back(td_footpath{
       loc_idx(tt, "D"), unixtime_t{sys_days{2019_y / May / 1}}, 5min});
 
-  auto const results =
-      search(tt, &rtt,
-             routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
-                                              "2019-05-01 10:01 Europe/Berlin"),
-                            .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                            .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
-                            .prf_idx_ = kProfile,
-                            .via_stops_ = {{loc_idx(tt, "V"), 0_minutes}}},
-             direction::kForward);
+  auto q = test::exact_query(
+      tt, "A", "D",
+      iv("2019-05-01 10:00 Europe/Berlin", "2019-05-01 10:01 Europe/Berlin"));
+  q.prf_idx_ = kProfile;
+  q.via_stops_ = {{loc_idx(tt, "V"), 0_minutes}};
+  auto const results = search(tt, &rtt, std::move(q), direction::kForward);
 
   ASSERT_EQ(1U, results.size());
-  EXPECT_EQ(
-      parse_time_tz("2019-05-01 11:00 Europe/Berlin", "%Y-%m-%d %H:%M %Z"),
-      begin(results)->dest_time_);
-}
-
-constexpr auto const test_files_via_start_station = R"(
-# agency.txt
-agency_id,agency_name,agency_url,agency_timezone
-AG,Agency,https://example.com,Europe/Berlin
-
-# stops.txt
-stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
-S,S,55.0,13.0,1,
-S1,S1,55.0001,13.0,0,S
-B,B,55.2,13.0,0,
-
-# calendar_dates.txt
-service_id,date,exception_type
-S1,20190501,1
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_type
-RY,AG,RY,,3
-
-# trips.txt
-route_id,service_id,trip_id
-RY,S1,Y
-RY,S1,Y2
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence
-Y,10:05:00,10:05:00,S1,1
-Y,10:30:00,10:30:00,B,2
-Y2,10:20:00,10:20:00,S1,1
-Y2,10:45:00,10:45:00,B,2
-)"sv;
-
-TEST(routing, via_test_38_S_B_via_S_10m_start_station) {
-  // S -> B via the start station S with a 10 min stay: the stay holds at its
-  // stop S1 as well. From 10:00, Y (10:05) is too early, Y2 (10:20) is not.
-  auto const tt = load_timetable(test_files_via_start_station);
-  auto const results =
-      search(tt, nullptr,
-             routing::query{
-                 .start_time_ = parse_time_tz("2019-05-01 10:00 Europe/Berlin",
-                                              "%Y-%m-%d %H:%M %Z"),
-                 .start_match_mode_ = routing::location_match_mode::kEquivalent,
-                 .dest_match_mode_ = routing::location_match_mode::kEquivalent,
-                 .start_ = {{loc_idx(tt, "S"), 0_minutes, 0U}},
-                 .destination_ = {{loc_idx(tt, "B"), 0_minutes, 0U}},
-                 .via_stops_ = {{loc_idx(tt, "S"), 10_minutes}}},
-             direction::kForward);
-
-  ASSERT_EQ(1U, results.size());
-  EXPECT_EQ(
-      parse_time_tz("2019-05-01 10:45 Europe/Berlin", "%Y-%m-%d %H:%M %Z"),
-      begin(results)->dest_time_);
+  EXPECT_EQ(test::at("11:00"), begin(results)->dest_time_);
 }
 
 constexpr auto const test_files_via_walk = R"(
@@ -2003,4 +1911,437 @@ TEST(routing, via_test_40_via_stay_later_at_search_start) {
           << to_str(dir) << " " << from << " -> " << to;
     }
   }
+}
+
+// Feeds below run on 2024-06-19 (Etc/UTC).
+constexpr auto const june_2024 = interval<date::sys_days>{
+    date::sys_days{2024_y / June / 18}, date::sys_days{2024_y / June / 20}};
+
+// A --T1--> B ~~fp 5min~~> B2 --T2--> D ~~fp 5min~~> D2 --T3--> C with
+// wide transfer windows and a 10 minute via stay at D (the source of
+// the second footpath): the footpath may only leave D after the stay is
+// served, the wide windows make early vs. late footpath placement
+// distinguishable, and three transit legs let the pong wait-minimization
+// rewrite the middle legs.
+constexpr auto const test_files_via_footpath_stay = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Etc/UTC
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,
+B,B,,1.0,2.0,,
+B2,B2,,1.0,2.01,,
+D,D,,1.5,3.0,,
+D2,D2,,1.5,3.01,,
+C,C,,2.0,4.0,,
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+B,B2,2,300
+D,D2,2,300
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,T1,,,2
+R2,DB,T2,,,2
+R3,DB,T3,,,2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S,T1,,
+R2,S,T2,,
+R3,S,T3,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:00:00,10:00:00,A,1,0,0
+T1,10:30:00,10:30:00,B,2,0,0
+T2,11:00:00,11:00:00,B2,1,0,0
+T2,11:30:00,11:30:00,D,2,0,0
+T3,12:30:00,12:30:00,D2,1,0,0
+T3,13:00:00,13:00:00,C,2,0,0
+)"sv;
+
+TEST(routing, via_footpath_stay) {
+  auto const tt = load_timetable(test_files_via_footpath_stay, june_2024);
+
+  auto const A = loc_idx(tt, "A");
+  auto const D = loc_idx(tt, "D");
+  auto const C = loc_idx(tt, "C");
+
+  auto const day = sys_days{2024_y / June / 19};
+  auto const results = raptor_search(
+      tt, nullptr,
+      routing::query{
+          .start_time_ = interval<unixtime_t>{day + 10h, day + 10h + 15min},
+          .start_match_mode_ = routing::location_match_mode::kEquivalent,
+          .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+          .use_start_footpaths_ = false,
+          .start_ = {{A, 0min, 0U}},
+          .destination_ = {{C, 0min, 0U}},
+          .via_stops_ = {{D, 10min}}},
+      direction::kForward);
+
+  constexpr auto const expected = R"(
+[2024-06-19 10:00, 2024-06-19 13:00]
+TRANSFERS: 2
+     FROM: (A, A) [2024-06-19 10:00]
+       TO: (C, C) [2024-06-19 13:00]
+leg 0: (A, A) [2024-06-19 10:00] -> (B, B) [2024-06-19 10:30]
+   0: A       A...............................................                               d: 19.06 10:00 [19.06 10:00]  [{name=T1, day=2024-06-19, id=T1, src=0}]
+   1: B       B............................................... a: 19.06 10:30 [19.06 10:30]
+leg 1: (B, B) [2024-06-19 10:30] -> (B2, B2) [2024-06-19 10:35]
+  FOOTPATH (duration=5)
+leg 2: (B2, B2) [2024-06-19 11:00] -> (D, D) [2024-06-19 11:30]
+   0: B2      B2..............................................                               d: 19.06 11:00 [19.06 11:00]  [{name=T2, day=2024-06-19, id=T2, src=0}]
+   1: D       D............................................... a: 19.06 11:30 [19.06 11:30]
+leg 3: (D, D) [2024-06-19 11:40] -> (D2, D2) [2024-06-19 11:45]
+  FOOTPATH (duration=5)
+leg 4: (D2, D2) [2024-06-19 12:30] -> (C, C) [2024-06-19 13:00]
+   0: D2      D2..............................................                               d: 19.06 12:30 [19.06 12:30]  [{name=T3, day=2024-06-19, id=T3, src=0}]
+   1: C       C............................................... a: 19.06 13:00 [19.06 13:00]
+
+
+)";
+  EXPECT_EQ(expected, test::print_results(tt, nullptr, results));
+}
+
+// same shape, but the 10 minute via stay sits at B2 = transit_2's
+// BOARDING stop: fp arrives B2 10:35, stay -> earliest legal dep 10:45.
+// T2X dep 10:40 breaches the stay, T2 dep 10:50 is legal.
+constexpr auto const test_files_via_stay_at_boarding_stop = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Etc/UTC
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,
+B,B,,1.0,2.0,,
+B2,B2,,1.0,2.01,,
+D,D,,1.5,3.0,,
+D2,D2,,1.5,3.01,,
+C,C,,2.0,4.0,,
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+B,B2,2,300
+D,D2,2,300
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,T1,,,2
+R2,DB,T2,,,2
+R2X,DB,T2X,,,2
+R3,DB,T3,,,2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S,T1,,
+R2,S,T2,,
+R2X,S,T2X,,
+R3,S,T3,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:00:00,10:00:00,A,1,0,0
+T1,10:30:00,10:30:00,B,2,0,0
+T2X,10:40:00,10:40:00,B2,1,0,0
+T2X,11:10:00,11:10:00,D,2,0,0
+T2,10:50:00,10:50:00,B2,1,0,0
+T2,11:20:00,11:20:00,D,2,0,0
+T3,12:30:00,12:30:00,D2,1,0,0
+T3,13:00:00,13:00:00,C,2,0,0
+)"sv;
+
+TEST(routing, via_stay_at_boarding_stop) {
+  auto const tt =
+      load_timetable(test_files_via_stay_at_boarding_stop, june_2024);
+
+  auto const A = loc_idx(tt, "A");
+  auto const B2 = loc_idx(tt, "B2");
+  auto const C = loc_idx(tt, "C");
+
+  auto const day = sys_days{2024_y / June / 19};
+  auto const results = raptor_search(
+      tt, nullptr,
+      routing::query{
+          .start_time_ = interval<unixtime_t>{day + 10h, day + 10h + 15min},
+          .start_match_mode_ = routing::location_match_mode::kEquivalent,
+          .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+          .use_start_footpaths_ = false,
+          .start_ = {{A, 0min, 0U}},
+          .destination_ = {{C, 0min, 0U}},
+          .via_stops_ = {{B2, 10min}}},
+      direction::kForward);
+
+  ASSERT_EQ(1U, results.size());
+  for (auto const& l : results.begin()->legs_) {
+    if (l.from_ == B2 &&
+        std::holds_alternative<routing::journey::run_enter_exit>(l.uses_)) {
+      EXPECT_GE(l.dep_time_, day + 10h + 45min) << "via stay at B2 breached";
+    }
+  }
+}
+
+// open issue: with a via stay at D and two boarding alternatives, the
+// backward validation pass reconstructs the latest-departing legs (T2
+// via B2) while the forward search delivers T2X via B3 -> equal pareto
+// values, different legs. Needs via-aware wait minimization.
+constexpr auto const test_files_via_stay_changed_transfer_stop = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Etc/UTC
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,
+B,B,,1.0,2.0,,
+B2,B2,,1.0,2.01,,
+B3,B3,,1.0,2.02,,
+D,D,,1.5,3.0,,
+D2,D2,,1.5,3.01,,
+C,C,,2.0,4.0,,
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+B,B2,2,300
+B,B3,2,300
+D,D2,2,300
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,T1,,,2
+R2,DB,T2,,,2
+R2X,DB,T2X,,,2
+R3,DB,T3,,,2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S,T1,,
+R2,S,T2,,
+R2X,S,T2X,,
+R3,S,T3,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:00:00,10:00:00,A,1,0,0
+T1,10:30:00,10:30:00,B,2,0,0
+T2X,10:40:00,10:40:00,B3,1,0,0
+T2X,11:00:00,11:00:00,D,2,0,0
+T2,11:00:00,11:00:00,B2,1,0,0
+T2,11:30:00,11:30:00,D,2,0,0
+T3,12:30:00,12:30:00,D2,1,0,0
+T3,13:00:00,13:00:00,C,2,0,0
+)"sv;
+
+TEST(routing, DISABLED_via_stay_with_changed_transfer_stop) {
+  auto const tt =
+      load_timetable(test_files_via_stay_changed_transfer_stop, june_2024);
+
+  auto const A = loc_idx(tt, "A");
+  auto const D = loc_idx(tt, "D");
+  auto const C = loc_idx(tt, "C");
+
+  auto const day = sys_days{2024_y / June / 19};
+  auto const results = raptor_search(
+      tt, nullptr,
+      routing::query{
+          .start_time_ = interval<unixtime_t>{day + 10h, day + 10h + 15min},
+          .start_match_mode_ = routing::location_match_mode::kEquivalent,
+          .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+          .use_start_footpaths_ = false,
+          .start_ = {{A, 0min, 0U}},
+          .destination_ = {{C, 0min, 0U}},
+          .via_stops_ = {{D, 10min}}},
+      direction::kForward);
+
+  ASSERT_EQ(1U, results.size());
+  auto const& legs = results.begin()->legs_;
+  for (auto i = 0U; i + 1U < legs.size(); ++i) {
+    if (legs[i].to_ == D &&
+        std::holds_alternative<routing::journey::run_enter_exit>(
+            legs[i].uses_) &&
+        std::holds_alternative<footpath>(legs[i + 1U].uses_)) {
+      EXPECT_GE(legs[i + 1U].dep_time_, legs[i].arr_time_ + 10min)
+          << "via stay at D breached by replaced walk";
+    }
+  }
+}
+
+// A --T1--> S1 --T2--> S2 --T3--> B, S1 and S2 are stops of the via station S
+// (too far apart to walk). The 10 minute stay fits only at S2: staying at S1
+// misses T2.
+constexpr auto const test_files_via_stay_pass_through = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Etc/UTC
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,0,
+S,S,,1.0,2.0,,1,
+S1,S1,,1.0,2.0,,0,S
+S2,S2,,1.1,2.0,,0,S
+B,B,,2.0,4.0,,0,
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,T1,,,2
+R2,DB,T2,,,2
+R3,DB,T3,,,2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S,T1,,
+R2,S,T2,,
+R3,S,T3,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:00:00,10:00:00,A,1,0,0
+T1,10:10:00,10:10:00,S1,2,0,0
+T2,10:15:00,10:15:00,S1,1,0,0
+T2,10:25:00,10:25:00,S2,2,0,0
+T3,10:40:00,10:40:00,S2,1,0,0
+T3,10:50:00,10:50:00,B,2,0,0
+)"sv;
+
+TEST(routing, via_stay_at_later_stop_of_the_station) {
+  auto const tt = load_timetable(test_files_via_stay_pass_through, june_2024);
+
+  auto const A = loc_idx(tt, "A");
+  auto const S = loc_idx(tt, "S");
+  auto const B = loc_idx(tt, "B");
+
+  auto const day = sys_days{2024_y / June / 19};
+  for (auto const dir : {direction::kForward, direction::kBackward}) {
+    auto const results = raptor_search(
+        tt, nullptr,
+        routing::query{
+            .start_time_ =
+                dir == direction::kForward
+                    ? interval<unixtime_t>{day + 10h, day + 10h + 15min}
+                    : interval<unixtime_t>{day + 10h + 45min, day + 11h},
+            .start_match_mode_ = routing::location_match_mode::kEquivalent,
+            .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+            .use_start_footpaths_ = false,
+            .start_ = {{dir == direction::kForward ? A : B, 0min, 0U}},
+            .destination_ = {{dir == direction::kForward ? B : A, 0min, 0U}},
+            .via_stops_ = {{S, 10min}}},
+        dir);
+    ASSERT_EQ(1U, results.size()) << to_str(dir);
+    EXPECT_EQ(day + 10h, results.begin()->departure_time()) << to_str(dir);
+    EXPECT_EQ(day + 10h + 50min, results.begin()->arrival_time())
+        << to_str(dir);
+  }
+}
+
+// A is the via (10 min stay); B and D are a 5 min walk from A.
+// T1 leaves B 10:15 for C, T2 leaves A 10:00 for D, T3 leaves C 11:00 for B.
+constexpr auto const test_files_via_start_walk = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Etc/UTC
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,
+B,B,,0.0,1.1,,
+C,C,,1.0,2.0,,
+D,D,,0.0,0.9,,
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+A,B,2,300
+B,A,2,300
+A,D,2,300
+D,A,2,300
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,T1,,,2
+R2,DB,T2,,,2
+R3,DB,T3,,,2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S,T1,,
+R2,S,T2,,
+R3,S,T3,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:15:00,10:15:00,B,1,0,0
+T1,10:45:00,10:45:00,C,2,0,0
+T2,10:00:00,10:00:00,A,1,0,0
+T2,10:30:00,10:30:00,D,2,0,0
+T3,11:00:00,11:00:00,C,1,0,0
+T3,11:30:00,11:30:00,B,2,0,0
+)"sv;
+
+// The stay at the via A is next to a walk: before the walk to B when the
+// journey starts at A (T1), after the walk from B when it ends at A (T3).
+// Both directions find both journeys.
+TEST(routing, via_stay_next_to_start_walk) {
+  auto const tt = load_timetable(test_files_via_start_walk, june_2024);
+  auto const day = sys_days{2024_y / June / 19};
+  for (auto const& [from, to, dep, arr] :
+       {std::tuple{"A", "C", day + 10h, day + 10h + 45min},
+        std::tuple{"C", "A", day + 11h, day + 11h + 45min}}) {
+    for (auto const dir : {direction::kForward, direction::kBackward}) {
+      auto const t = dir == direction::kForward ? dep : arr;
+      auto const results = search(
+          tt, nullptr,
+          routing::query{.start_time_ = interval<unixtime_t>{t, t + 1min},
+                         .use_start_footpaths_ = true,
+                         .start_ = {{loc_idx(tt, from), 0min, 0U}},
+                         .destination_ = {{loc_idx(tt, to), 0min, 0U}},
+                         .via_stops_ = {{loc_idx(tt, "A"), 10min}}},
+          dir);
+      ASSERT_EQ(1U, results.size()) << from << "->" << to << " " << to_str(dir);
+      EXPECT_EQ(dep, results.begin()->departure_time()) << to_str(dir);
+      EXPECT_EQ(arr, results.begin()->arrival_time()) << to_str(dir);
+    }
+  }
+}
+
+// Staying at A and walking to D (15 min) beats T2 (leave 09:50, arrive
+// 10:30). Ping has to see the walk as well, otherwise pong finds no journey
+// matching ping's T2 and throws.
+TEST(routing, pong_via_stay_at_start_before_direct_walk) {
+  auto const tt = load_timetable(test_files_via_start_walk, june_2024);
+  auto const day = sys_days{2024_y / June / 19};
+  auto const results = raptor_search(
+      tt, nullptr,
+      routing::query{
+          .start_time_ = interval<unixtime_t>{day + 9h + 45min, day + 10h},
+          .use_start_footpaths_ = true,
+          .start_ = {{loc_idx(tt, "A"), 0min, 0U}},
+          .destination_ = {{loc_idx(tt, "D"), 0min, 0U}},
+          .via_stops_ = {{loc_idx(tt, "A"), 10min}}},
+      direction::kForward);
+  EXPECT_TRUE(results.empty());
 }

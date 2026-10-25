@@ -38,7 +38,7 @@ struct service;
 // The rules become transfer rules of the timetable: trip pairs with the trips
 // matching their sides (trip_rules_), line pairs with the route ids (one per
 // admin, category, line and direction) matching their sides (route_rules_),
-// admin pairs with their providers at the station (provider_rules_). A global
+// admin pairs with the route ids of the two admins at the station. A global
 // rule is written once per station without an own transfer time where both of
 // its sides occur.
 
@@ -63,6 +63,7 @@ struct admin_rule {
   provider_idx_t from_{provider_idx_t::invalid()};
   provider_idx_t to_{provider_idx_t::invalid()};
   u8_minutes time_{};
+  transfer_rule_idx_t rule_{transfer_rule_idx_t::invalid()};
 };
 
 struct trip_rule {
@@ -125,11 +126,8 @@ struct transfer_times {
   transfer_rule_idx_t first_rule_{transfer_rule_idx_t::invalid()};
   hash_set<pair<location_idx_t, provider_idx_t>> arr_admins_, dep_admins_;
   hash_set<pair<location_idx_t, route_id_idx_t>> arr_routes_, dep_routes_;
-  std::vector<pair<trip_idx_t, transfer_rule_side_idx>> trip_sides_;
-  std::vector<pair<route_id_idx_t, transfer_rule_side_idx>> route_sides_;
-  std::vector<
-      pair<pair<provider_idx_t, location_idx_t>, transfer_rule_side_idx>>
-      provider_sides_;
+  qualified_sides_t<trip_idx_t> trip_sides_;
+  qualified_sides_t<pair<source_idx_t, route_id_idx_t>> route_sides_;
   std::size_t n_station_rules_{0U};
 };
 

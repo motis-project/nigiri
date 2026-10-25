@@ -42,8 +42,8 @@ void optimize_initial_departure(timetable const& tt,
   r.stop_range_ = {0U, static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)};
   for (auto const stp : rt::frun{tt, rtt, r}) {
     if (!q.via_stops_.empty() &&
-        matches(tt, location_match_mode::kEquivalent, stp.get_location_idx(),
-                q.via_stops_.front().location_)) {
+        matches(tt, nullptr, location_match_mode::kEquivalent,
+                stp.get_location_idx(), q.via_stops_.front().location_)) {
       // don't skip over via stops
       break;
     }
@@ -52,7 +52,7 @@ void optimize_initial_departure(timetable const& tt,
     }
     for (auto const& o : offsets) {
       if (offset_dur_best <= o.duration() ||
-          !matches(tt, location_match_mode::kExact, o.target(),
+          !matches(tt, nullptr, location_match_mode::kExact, o.target(),
                    stp.get_location_idx())) {
         continue;
       }
@@ -104,8 +104,8 @@ void optimize_initial_start_footpath(timetable const& tt,
   r.stop_range_ = {0U, static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)};
   for (auto const stp : rt::frun{tt, rtt, r}) {
     if (!q.via_stops_.empty() &&
-        matches(tt, location_match_mode::kEquivalent, stp.get_location_idx(),
-                q.via_stops_[0].location_)) {
+        matches(tt, nullptr, location_match_mode::kEquivalent,
+                stp.get_location_idx(), q.via_stops_[0].location_)) {
       break;  // don't skip over via stops
     }
 
@@ -162,7 +162,7 @@ void optimize_last_arrival(timetable const& tt,
     // don't skip the last via stop
     for (auto i = stop_idx_t{0U}; i < fr.size(); ++i) {
       auto idx = static_cast<stop_idx_t>(fr.size() - i - 1U);
-      if (matches(tt, location_match_mode::kEquivalent,
+      if (matches(tt, nullptr, location_match_mode::kEquivalent,
                   fr[idx].get_location_idx(), q.via_stops_.back().location_)) {
         range_from = std::max(range_from, idx);
         break;
@@ -178,7 +178,7 @@ void optimize_last_arrival(timetable const& tt,
     }
     for (auto const& o : *offsets) {
       if (offset_dur_best <= o.duration() ||
-          !matches(tt, location_match_mode::kExact, o.target(),
+          !matches(tt, nullptr, location_match_mode::kExact, o.target(),
                    stp.get_location_idx())) {
         continue;
       }
@@ -233,7 +233,7 @@ void optimize_final_egress_footpath(timetable const& tt,
     auto const& last_via = q.via_stops_.back();
     for (auto i = stop_idx_t{0U}; i < fr.size(); ++i) {
       auto idx = static_cast<stop_idx_t>(fr.size() - i - 1U);
-      if (matches(tt, location_match_mode::kEquivalent,
+      if (matches(tt, nullptr, location_match_mode::kEquivalent,
                   fr[idx].get_location_idx(), last_via.location_)) {
         range_from = std::max(range_from, idx);
         break;
@@ -294,8 +294,8 @@ bool is_preferred_transfer(timetable const& tt,
     return true;
   };
 
-  auto const root = tt.locations_.get_root_idx(from);
-  for (auto f = from;; f = tt.locations_.parents_[f]) {
+  for (auto f = from; f != location_idx_t::invalid();
+       f = tt.locations_.parents_[f]) {
     if (f < preferred.size() &&
         utl::any_of(
             preferred[f],
@@ -306,10 +306,8 @@ bool is_preferred_transfer(timetable const& tt,
             })) {
       return true;
     }
-    if (f == root) {
-      return false;
-    }
   }
+  return false;
 }
 
 double get_penalty(timetable const& tt,
@@ -323,7 +321,7 @@ double get_penalty(timetable const& tt,
   auto weight = static_cast<double>(duration.count());
 
   // Adjust for station size.
-  if (matches(tt, location_match_mode::kEquivalent, from, to)) {
+  if (matches(tt, nullptr, location_match_mode::kEquivalent, from, to)) {
     auto const x = tt.locations_.get_root_idx(from);
     weight -= (static_cast<double>(tt.locations_.location_importance_[x]) /
                tt.locations_.max_importance_) *
@@ -373,7 +371,7 @@ void optimize_transfers(timetable const& tt,
     // make sure that no via stops are skipped in ree_from
     for (auto s = ree_from.stop_range_.from_; s < fr_from.size(); ++s) {
       if (current_v < q.via_stops_.size() &&
-          matches(tt, location_match_mode::kEquivalent,
+          matches(tt, nullptr, location_match_mode::kEquivalent,
                   fr_from[s].get_location_idx(),
                   q.via_stops_[current_v].location_)) {
         if (q.via_stops_[current_v].stay_ == 0_minutes) {
@@ -394,7 +392,7 @@ void optimize_transfers(timetable const& tt,
     // make sure that no via stops are skipped in ree_to
     for (auto s = ree_to.stop_range_.from_; s < fr_to.size(); ++s) {
       if (current_v < q.via_stops_.size() &&
-          matches(tt, location_match_mode::kEquivalent,
+          matches(tt, nullptr, location_match_mode::kEquivalent,
                   fr_to[s].get_location_idx(),
                   q.via_stops_[current_v].location_)) {
         if (q.via_stops_[current_v].stay_ == 0_minutes) {

@@ -70,7 +70,7 @@ struct gpu_raptor {
       gpu_raptor_state& state,
       bitvec& is_dest,
       std::array<bitvec, kMaxVias> const& is_via,
-      std::vector<std::uint16_t> const& dist_to_dest,
+      std::vector<std::uint16_t>& dist_to_dest,
       hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
       std::vector<std::uint16_t> const& lb,
       std::vector<via_stop> const& via_stops,

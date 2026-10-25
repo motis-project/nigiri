@@ -24,7 +24,7 @@ TEST(gtfs, read_stations_example_data) {
       read_stops(source_idx_t{0}, tt, i18n, timezones,
                  files.get_file(kStopFile).data(), 0U);
 
-  tt.route_ids_.emplace_back();
+  tt.route_ids_.push_back({});
   auto trips = trip_data{};
   read_transfers(source_idx_t{0}, tt, files.get_file(kTransfersFile).data(),
                  stops, trips, false);

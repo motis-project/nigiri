@@ -4,11 +4,12 @@
 #include <cstdint>
 #include <algorithm>
 #include <ranges>
+#include <span>
 #include <tuple>
-#include <vector>
 
 #include "cista/reflection/comparable.h"
 
+#include "nigiri/footpath.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -35,11 +36,17 @@ struct transfer_rule {
   trip_idx_t trip(event_type const ev) const {
     return ev == event_type::kArr ? from_trip_ : to_trip_;
   }
+  bool is_listed(event_type const ev) const {
+    return (listed_ & (ev == event_type::kArr ? 1U : 2U)) != 0U;
+  }
   bool is_qualified(event_type const ev) const {
     return route(ev) != route_id_idx_t::invalid() ||
-           trip(ev) != trip_idx_t::invalid() ||
-           (listed_ & (ev == event_type::kArr ? 1U : 2U)) != 0U;
+           trip(ev) != trip_idx_t::invalid() || is_listed(ev);
   }
+  bool is_qualified() const {
+    return is_qualified(event_type::kArr) || is_qualified(event_type::kDep);
+  }
+  bool is_forbidden() const { return duration_ == footpath::kBan; }
 
   location_idx_t from_stop_{location_idx_t::invalid()};
   location_idx_t to_stop_{location_idx_t::invalid()};
@@ -51,8 +58,8 @@ struct transfer_rule {
   duration_t duration_{0};
   transfer_rule_specificity_t specificity_{0U};
 
-  // side qualified by the trips or providers the loader listed in
-  // trip_rules_ or provider_rules_ (HRDF); bit 0: from side, bit 1: to side
+  // side qualified by the trips or routes the loader listed in trip_rules_
+  // or route_rules_ (HRDF); bit 0: from side, bit 1: to side
   std::uint8_t listed_{0U};
 };
 
@@ -77,29 +84,38 @@ struct transfer_rule_side_idx {
   std::uint32_t v_{0U};
 };
 
-template <typename SortedPairs, typename Key>
-auto values_of(SortedPairs const& v, Key const key) {
-  using entry = std::ranges::range_value_t<SortedPairs>;
-  return std::ranges::equal_range(v, key, {}, &entry::first) |
-         std::views::transform(&entry::second);
+template <typename Qualifier>
+struct qualified_side {
+  CISTA_COMPARABLE()
+  Qualifier qualifier_;
+  location_idx_t l_;
+  transfer_rule_side_idx side_;
+};
+
+template <typename Qualifier>
+using qualified_sides_t = vector<qualified_side<Qualifier>>;
+
+template <typename Qualifier>
+std::span<qualified_side<Qualifier> const> rules_of(
+    qualified_sides_t<Qualifier> const& v, Qualifier const qualifier) {
+  auto const r = std::ranges::equal_range(
+      v, qualifier, {}, &qualified_side<Qualifier>::qualifier_);
+  return {r.begin(), r.end()};
+}
+
+template <typename Qualifier>
+auto rules_at(std::span<qualified_side<Qualifier> const> rules,
+              location_idx_t const l) {
+  return std::ranges::equal_range(rules, l, {},
+                                  &qualified_side<Qualifier>::l_) |
+         std::views::transform(&qualified_side<Qualifier>::side_);
 }
 
 struct transfer_rules {
-  bool empty() const { return rules_.empty(); }
-
-  bool has_provider_rules(provider_idx_t const p) const {
-    return to_idx(p) < provider_has_rules_.size() &&
-           provider_has_rules_.test(to_idx(p));
-  }
-
   vector_map<transfer_rule_idx_t, transfer_rule> rules_;
 
-  vector<pair<trip_idx_t, transfer_rule_side_idx>> trip_rules_;
-  vector<pair<route_id_idx_t, transfer_rule_side_idx>> route_rules_;
-  // sides qualified by a provider, at a station (HRDF admin rules)
-  vector<pair<pair<provider_idx_t, location_idx_t>, transfer_rule_side_idx>>
-      provider_rules_;
-  bitvec provider_has_rules_;
+  qualified_sides_t<trip_idx_t> trip_rules_;
+  qualified_sides_t<pair<source_idx_t, route_id_idx_t>> route_rules_;
 
   vector<pair<location_idx_t, transfer_rule_side_idx>> stop_rules_;
 };

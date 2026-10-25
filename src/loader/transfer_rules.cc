@@ -1,54 +1,66 @@
 #include "nigiri/loader/transfer_rules.h"
 
-#include <cassert>
-#include <algorithm>
 #include <vector>
 
-#include "utl/erase_duplicates.h"
-#include "utl/helpers/algorithm.h"
-#include "utl/lookup.h"
-
 #include "nigiri/common/merge_sorted.h"
-#include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader {
 
-void add_rule_footpaths(
-    timetable const& tt,
-    hash_map<transfer_pair, transfer_rule_idx_t> const& most_specific,
-    mutable_fws_multimap<location_idx_t, footpath>& footpaths) {
-  auto const& rules = tt.transfer_rules_.rules_;
-  for (auto const& [from_to, rule] : most_specific) {
-    // Same base location, its transfer time: the walks of virtual locations.
-    auto const d = rules[rule].duration_;
-    auto const base = tt.base(from_to.from_);
-    if (base == tt.base(from_to.to_) &&
-        d == to_fp_duration(tt.locations_.transfer_time_[base])) {
-      continue;
-    }
-    footpaths[from_to.from_].emplace_back(from_to.to_, d);
-  }
+enum class specificity : std::uint8_t {
+  kStopsOnly,
+  kOneRoute,
+  kBothRoutes,
+  kOneTrip,
+  kTripAndRoute,
+  kBothTrips
+};
+
+transfer_rule_specificity_t get_specificity(timetable const& tt,
+                                            location_idx_t const from_stop,
+                                            location_idx_t const to_stop,
+                                            route_id_idx_t const from_route,
+                                            route_id_idx_t const to_route,
+                                            trip_idx_t const from_trip,
+                                            trip_idx_t const to_trip) {
+  auto const has_from_trip = from_trip != trip_idx_t::invalid();
+  auto const has_to_trip = to_trip != trip_idx_t::invalid();
+  auto const has_from_route = from_route != route_id_idx_t::invalid();
+  auto const has_to_route = to_route != route_id_idx_t::invalid();
+  auto const level =
+      has_from_trip && has_to_trip ? specificity::kBothTrips
+      : (has_from_trip && has_to_route) || (has_from_route && has_to_trip)
+          ? specificity::kTripAndRoute
+      : has_from_trip || has_to_trip   ? specificity::kOneTrip
+      : has_from_route && has_to_route ? specificity::kBothRoutes
+      : has_from_route || has_to_route ? specificity::kOneRoute
+                                       : specificity::kStopsOnly;
+  auto const has_parent = [&](location_idx_t const stop) {
+    return tt.locations_.parents_[stop] != location_idx_t::invalid() ? 1U : 0U;
+  };
+  return static_cast<transfer_rule_specificity_t>(
+      (static_cast<unsigned>(level) << 2U) |
+      (has_parent(from_stop) + has_parent(to_stop)));
 }
 
 void store_rule_lookups(timetable& tt,
                         interval<transfer_rule_idx_t> const rules) {
   auto& tr = tt.transfer_rules_;
-  auto trip_rules = std::vector<pair<trip_idx_t, transfer_rule_side_idx>>{};
-  auto route_rules =
-      std::vector<pair<route_id_idx_t, transfer_rule_side_idx>>{};
+  auto trip_rules = qualified_sides_t<trip_idx_t>{};
+  auto route_rules = qualified_sides_t<pair<source_idx_t, route_id_idx_t>>{};
   auto stop_rules = std::vector<pair<location_idx_t, transfer_rule_side_idx>>{};
   for (auto const rule : rules) {
     auto const& r = tr.rules_[rule];
     for (auto const ev : {event_type::kArr, event_type::kDep}) {
-      auto const s = transfer_rule_side_idx{rule, ev};
-      if ((r.listed_ & (ev == event_type::kArr ? 1U : 2U)) != 0U) {
+      if (r.is_listed(ev)) {
         continue;  // listed by the loader
       }
+      auto const s = transfer_rule_side_idx{rule, ev};
+      auto const root = tt.locations_.get_root_idx(r.stop(ev));
       if (r.trip(ev) != trip_idx_t::invalid()) {
-        trip_rules.push_back({r.trip(ev), s});
+        trip_rules.push_back({r.trip(ev), root, s});
       } else if (r.route(ev) != route_id_idx_t::invalid()) {
-        route_rules.push_back({r.route(ev), s});
+        route_rules.push_back({{r.src_, r.route(ev)}, root, s});
       } else {
         stop_rules.push_back({r.stop(ev), s});
       }
@@ -58,30 +70,6 @@ void store_rule_lookups(timetable& tt,
   merge_sorted(tr.trip_rules_, trip_rules);
   merge_sorted(tr.route_rules_, route_rules);
   merge_sorted(tr.stop_rules_, stop_rules);
-}
-
-hash_map<transfer_pair, transfer_rule_idx_t> get_most_specific(
-    timetable const& tt, interval<transfer_rule_idx_t> const rules) {
-  auto most_specific = hash_map<transfer_pair, transfer_rule_idx_t>{};
-  for (auto const rule : rules) {
-    auto const from_side = transfer_rule_side_idx{rule, event_type::kArr};
-    auto const to_side = transfer_rule_side_idx{rule, event_type::kDep};
-    auto const add = [&](location_idx_t const from, location_idx_t const to) {
-      if (from == to) {
-        return;
-      }
-      auto const [it, is_new] =
-          most_specific.emplace(transfer_pair{from, to}, rule);
-      if (!is_new) {
-        it->second = get_more_specific(tt, it->second, rule);
-      }
-    };
-    for_each_side_location(tt, from_side, [&](location_idx_t const from) {
-      for_each_side_location(tt, to_side,
-                             [&](location_idx_t const to) { add(from, to); });
-    });
-  }
-  return most_specific;
 }
 
 }  // namespace nigiri::loader

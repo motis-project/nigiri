@@ -364,7 +364,7 @@ private:
       return utl::any_of(q_.start_, [&](offset const& o) {
         bool overlaps = false;
         for_each_meta(
-            tt_, q_.start_match_mode_, o.target(),
+            tt_, nullptr, q_.start_match_mode_, o.target(),
             [&](location_idx_t const eq) { overlaps = overlaps || eq == x; });
         return overlaps;
       });
@@ -372,7 +372,7 @@ private:
 
     return utl::any_of(q_.destination_, [&](offset const& o) {
       auto overlaps = false;
-      for_each_meta(tt_, q_.dest_match_mode_, o.target(),
+      for_each_meta(tt_, nullptr, q_.dest_match_mode_, o.target(),
                     [&](location_idx_t const eq) {
                       overlaps = overlaps || overlaps_start(eq);
                     });

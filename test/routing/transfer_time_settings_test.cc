@@ -356,12 +356,9 @@ TEST(routing, transfer_time_settings_beyond_255_min) {
                    {"T4", "R2", {{"B", "15:00"}, {"C", "15:10"}}}},
                   "B,B,2,5400,,,,\n")});
   auto const arrival = [&](routing::transfer_time_settings const tts) {
-    return test::arrival(raptor_search(
-        tt, nullptr,
-        routing::query{.start_time_ = test::at("10:00"),
-                       .start_ = {{test::lidx(tt, "A"), 0_minutes, 0U}},
-                       .destination_ = {{test::lidx(tt, "C"), 0_minutes, 0U}},
-                       .transfer_time_settings_ = tts}));
+    auto q = test::exact_query(tt, "A", "C", test::at("10:00"));
+    q.transfer_time_settings_ = tts;
+    return test::arrival(raptor_search(tt, nullptr, std::move(q)));
   };
   EXPECT_EQ(test::at("12:10"), arrival({}));
   EXPECT_EQ(test::at("15:10"), arrival({.default_ = false, .factor_ = 3.0F}));

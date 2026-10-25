@@ -1,8 +1,6 @@
 #include "nigiri/rt/rt_transfer_rules.h"
 
-#include <cassert>
 #include <algorithm>
-#include <limits>
 #include <optional>
 #include <span>
 #include <tuple>
@@ -65,35 +63,13 @@ struct rule_conflicts {
   std::uint32_t n_unresolved_{0U};
 };
 
-rt::run get_run(rt_timetable const& rtt, rt_transport_idx_t const rt_t) {
-  return {.t_ = rtt.resolve_static(rt_t),
-          .stop_range_ = {stop_idx_t{0U},
-                          static_cast<stop_idx_t>(
-                              rtt.rt_transport_location_seq_[rt_t].size())},
-          .rt_ = rt_t};
-}
-
-rt::run get_run(timetable const& tt,
-                rt_timetable const& rtt,
-                transport const t) {
-  return {
-      .t_ = t,
-      .stop_range_ =
-          {stop_idx_t{0U},
-           static_cast<stop_idx_t>(
-               tt.route_location_seq_[tt.transport_route_[t.t_idx_]].size())},
-      .rt_ = rtt.resolve_rt(t)};
-}
-
-std::optional<change_end> get_change_end(timetable const& tt,
-                                         rt_timetable const& rtt,
-                                         rt::run const& r,
+std::optional<change_end> get_change_end(rt_timetable const& rtt,
+                                         rt::frun const& fr,
                                          stop_idx_t const i,
                                          event_type const ev) {
-  if (!r.is_rt() && !rtt.is_transport_active(r.t_.t_idx_, r.t_.day_)) {
+  if (!fr.is_rt() && !rtt.is_transport_active(fr.t_.t_idx_, fr.t_.day_)) {
     return std::nullopt;
   }
-  auto const fr = rt::frun{tt, &rtt, r};
   if (fr.is_cancelled() ||
       (ev == event_type::kArr ? i == 0U : i + 1U >= fr.size())) {
     return std::nullopt;
@@ -103,7 +79,7 @@ std::optional<change_end> get_change_end(timetable const& tt,
     return std::nullopt;
   }
   return change_end{
-      .r_ = r,
+      .r_ = fr,
       .stop_ = i,
       .time_ = stp.time(ev),
       .location_ = routing::search_location(kDefaultProfile, stp)};
@@ -123,7 +99,7 @@ duration_t get_duration(timetable const& tt,
   return utl::get_or_create(st.durations_, key, [&]() {
     return routing::shortest_transfer(tt, &rtt, kDefaultProfile, key.first,
                                       key.second)
-        .value_or(footpath::kMaxDuration);
+        .value_or(footpath::kBan);
   });
 }
 
@@ -131,12 +107,12 @@ std::vector<side_t> const& get_signature(timetable const& tt,
                                          rt_timetable const& rtt,
                                          rule_conflicts& st,
                                          change_end const& x) {
-  static auto const kNoSides = std::vector<side_t>{};
+  static auto const no_sides = std::vector<side_t>{};
   auto const t = x.r_.t_.t_idx_;
   auto const base = rtt.base(x.location_);
   if (t == transport_idx_t::invalid() ||
       x.stop_ >= tt.route_location_seq_[tt.transport_route_[t]].size()) {
-    return kNoSides;
+    return no_sides;
   }
   return utl::get_or_create(st.signatures_, pair{t, pair{x.stop_, base}},
                             [&]() {
@@ -163,7 +139,7 @@ duration_t get_expected(timetable const& tt,
 }
 
 bool is_possible(duration_t const gap, duration_t const d) {
-  return d < footpath::kMaxDuration && gap >= d;
+  return d < footpath::kBan && gap >= d;
 }
 
 duration_t get_gap(change_side const& x, change_end const& y) {
@@ -177,11 +153,8 @@ std::vector<location_idx_t> get_locations(timetable const& tt,
   auto locations = std::vector<location_idx_t>{base};
   tt.locations_.for_each_virt(
       base, [&](location_idx_t const v) { locations.push_back(v); });
-  rtt.for_each_rt_virt([&](location_idx_t const w, rt_location_idx_t) {
-    if (rtt.base(w) == base) {
-      locations.push_back(w);
-    }
-  });
+  rtt.for_each_rt_virt(base,
+                       [&](location_idx_t const w) { locations.push_back(w); });
   return locations;
 }
 
@@ -223,7 +196,8 @@ void for_each_event_at(timetable const& tt,
             if (rtt.resolve_rt(tr) != rt_transport_idx_t::invalid()) {
               continue;
             }
-            auto const e = get_change_end(tt, rtt, get_run(tt, rtt, tr), j, ev);
+            auto const e =
+                get_change_end(rtt, rt::frun::from_t(tt, &rtt, tr), j, ev);
             if (e.has_value() && window.contains(e->time_)) {
               fn(*e);
             }
@@ -239,12 +213,20 @@ void for_each_event_at(timetable const& tt,
       if (rtt.stop_location(rt_t, j) != l) {
         continue;
       }
-      auto const e = get_change_end(tt, rtt, get_run(rtt, rt_t), j, ev);
+      auto const e =
+          get_change_end(rtt, rt::frun::from_rt(tt, &rtt, rt_t), j, ev);
       if (e.has_value() && window.contains(e->time_)) {
         fn(*e);
       }
     }
   }
+}
+
+template <typename SortedPairs, typename Key>
+auto values_of(SortedPairs const& v, Key const key) {
+  using entry = std::ranges::range_value_t<SortedPairs>;
+  return std::ranges::equal_range(v, key, {}, &entry::first) |
+         std::views::transform(&entry::second);
 }
 
 std::vector<rule_event> get_rule_events(timetable const& tt,
@@ -276,7 +258,7 @@ std::vector<rule_event> get_rule_events(timetable const& tt,
             continue;
           }
           auto const e =
-              get_change_end(tt, rtt, get_run(tt, rtt, {t, d}), j, ev);
+              get_change_end(rtt, rt::frun::from_t(tt, &rtt, {t, d}), j, ev);
           if (e.has_value() && horizon.contains(e->time_)) {
             events.push_back({e->time_, {t, d}, j});
           }
@@ -287,12 +269,6 @@ std::vector<rule_event> get_rule_events(timetable const& tt,
   if (auto const rule_trip = rule.trip(ev);
       rule_trip != trip_idx_t::invalid()) {
     add_trip(rule_trip);
-  } else if (rule.route(ev) == route_id_idx_t::invalid()) {
-    for (auto const& [trip, s] : tr.trip_rules_) {
-      if (s == q) {
-        add_trip(trip);
-      }
-    }
   } else {
     for (auto const trip :
          tt.route_ids_[rule.src_].route_id_trips_[rule.route(ev)]) {
@@ -339,7 +315,7 @@ std::vector<rule_partner> get_rule_partners(timetable const& tt,
     for (auto it =
              std::ranges::lower_bound(events, from, {}, &rule_event::time_);
          it != end(events) && it->time_ <= to; ++it) {
-      auto const y = get_change_end(tt, rtt, get_run(tt, rtt, it->t_),
+      auto const y = get_change_end(rtt, rt::frun::from_t(tt, &rtt, it->t_),
                                     it->stop_, partner_ev);
       if (!y.has_value() || is_same_run(x.e_, *y)) {
         continue;
@@ -427,7 +403,7 @@ std::pair<location_idx_t, std::vector<change_end>> add_location(
     location_idx_t const base,
     std::span<change_side const> sides,
     std::span<rule_partner const> partners) {
-  auto const v = rtt.add_rt_location(base, rtt.transfer_time(base));
+  auto const v = rtt.add_rt_location(base);
   auto moved = std::vector<change_end>{};
   for (auto const is_out : {true, false}) {
     auto durations = hash_map<location_idx_t, duration_t>{};
@@ -437,9 +413,7 @@ std::pair<location_idx_t, std::vector<change_end>> add_location(
       auto const it = durations.emplace(fp.target(), fp.duration()).first;
       it->second = std::min(it->second, fp.duration());
     }
-    if (auto const t = rtt.transfer_time(base); t != kNoTransferAllowed) {
-      durations[base] = duration_t{t.count()};
-    }
+    durations[base] = duration_t{rtt.transfer_time(base)};
     rtt.for_each_rt_virt([&](location_idx_t const w, rt_location_idx_t) {
       if (auto const d = utl::lookup(durations, rtt.base(w));
           w != v && d.has_value()) {
@@ -487,8 +461,8 @@ std::pair<location_idx_t, std::vector<change_end>> add_location(
       if (p.is_out_ != is_out) {
         continue;
       }
-      auto const d = utl::lookup(durations, p.y_.location_)
-                         .value_or(footpath::kMaxDuration);
+      auto const d =
+          utl::lookup(durations, p.y_.location_).value_or(footpath::kBan);
       if (is_possible(p.gap_, d) != is_possible(p.gap_, p.expected_)) {
         moved.push_back(p.y_);
       }
@@ -496,7 +470,7 @@ std::pair<location_idx_t, std::vector<change_end>> add_location(
     auto& out = is_out ? rtt.rt_footpaths_out_ : rtt.rt_footpaths_in_;
     auto& in = is_out ? rtt.rt_footpaths_in_ : rtt.rt_footpaths_out_;
     for (auto const& [l, d] : durations) {
-      if (d != footpath::kMaxDuration) {
+      if (d != footpath::kBan) {
         out[v].emplace_back(l, d);
         in[l].emplace_back(v, d);
       }
@@ -518,7 +492,7 @@ std::vector<stop_event> get_changed_stops(
   auto changed = std::vector<stop_event>{};
   for (auto rt_t = rt_transport_idx_t{0U}; rt_t != rtt.n_rt_transports();
        ++rt_t) {
-    auto const fr = rt::frun{tt, &rtt, get_run(rtt, rt_t)};
+    auto const fr = rt::frun::from_rt(tt, &rtt, rt_t);
     if (!fr.is_scheduled()) {
       continue;
     }
@@ -562,12 +536,9 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
   for (auto const& r : rules) {
     auto const d = std::max(r.duration_, duration_t{1});
     for (auto const l : {r.from_stop_, r.to_stop_}) {
-      if (l != location_idx_t::invalid()) {
-        st.rule_times_[l] = std::max(st.rule_times_[l], d);
-      }
+      st.rule_times_[l] = std::max(st.rule_times_[l], d);
     }
-    if (!r.is_qualified(event_type::kArr) &&
-        !r.is_qualified(event_type::kDep)) {
+    if (!r.is_qualified()) {
       continue;
     }
     for (auto const f : covered(r.from_stop_)) {
@@ -589,8 +560,7 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
   for (auto const [rt_t, i] : queue) {
     auto const t = rtt.unix_event_time(
         rt_t, i, i == 0U ? event_type::kDep : event_type::kArr);
-    st.horizon_.from_ = std::min(st.horizon_.from_, t - footpath::kMaxDuration);
-    st.horizon_.to_ = std::max(st.horizon_.to_, t + footpath::kMaxDuration);
+    st.horizon_ = st.horizon_.extend({t - footpath::kMax, t + footpath::kMax});
   }
 
   auto const n_transports = rtt.n_rt_transports();
@@ -602,10 +572,10 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
     auto const [rt_t, i] = queue.back();
     queue.pop_back();
     ++n_checked;
-    auto const r = get_run(rtt, rt_t);
+    auto const fr = rt::frun::from_rt(tt, &rtt, rt_t);
     sides.clear();
     for (auto const ev : {event_type::kArr, event_type::kDep}) {
-      if (auto const e = get_change_end(tt, rtt, r, i, ev); e.has_value()) {
+      if (auto const e = get_change_end(rtt, fr, i, ev); e.has_value()) {
         sides.push_back(
             change_side{.e_ = *e,
                         .is_out_ = ev == event_type::kArr,
@@ -649,10 +619,11 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
     rtt.update_stop_location(rt_t, i, to);
     ++n_moves;
     for (auto const& y : moved) {
-      auto const y_rt =
-          y.r_.is_rt() ? y.r_.rt_
-                       : rtt.add_rt_transport(
-                             rt::frun{tt, &rtt, y.r_}.id().src_, tt, y.r_.t_);
+      auto y_rt = y.r_.is_rt() ? y.r_.rt_ : rtt.resolve_rt(y.r_.t_);
+      if (y_rt == rt_transport_idx_t::invalid()) {
+        y_rt = rtt.add_rt_transport(rt::frun{tt, &rtt, y.r_}.id().src_, tt,
+                                    y.r_.t_);
+      }
       queue.emplace_back(y_rt, y.stop_);
     }
   }

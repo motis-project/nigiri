@@ -7,67 +7,68 @@
 #include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
 
-#include "nigiri/footpath.h"
 #include "nigiri/stop.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri {
 
-bool has_transfer_rules(timetable const& tt, transport_idx_t const t) {
-  auto const& tr = tt.transfer_rules_;
-  return utl::any_of(tt.transport_section_providers_[t],
-                     [&](provider_idx_t const p) {
-                       return tr.has_provider_rules(p);
-                     }) ||
-         utl::any_of(tt.transport_to_trip_section_[t], [&](auto const s) {
-           return utl::any_of(tt.merged_trips_[s], [&](trip_idx_t const trip) {
-             return !std::ranges::empty(values_of(tr.trip_rules_, trip)) ||
-                    !std::ranges::empty(
-                        values_of(tr.route_rules_, tt.trip_route_id_[trip]));
-           });
-         });
+pair<source_idx_t, route_id_idx_t> route_id_of(timetable const& tt,
+                                               trip_idx_t const trip) {
+  return {tt.trip_id_src_[tt.trip_ids_[trip].front()], tt.trip_route_id_[trip]};
 }
 
-void get_section_sides(timetable const& tt,
-                       merged_trips_idx_t const section,
-                       std::vector<transfer_rule_side_idx>& sides) {
+bool has_transfer_rules(timetable const& tt, transport_idx_t const t) {
   auto const& tr = tt.transfer_rules_;
-  sides.clear();
+  return utl::any_of(tt.transport_to_trip_section_[t], [&](auto const s) {
+    return utl::any_of(tt.merged_trips_[s], [&](trip_idx_t const trip) {
+      return !rules_of(tr.trip_rules_, trip).empty() ||
+             !rules_of(tr.route_rules_, route_id_of(tt, trip)).empty();
+    });
+  });
+}
+
+void get_section_rules(timetable const& tt,
+                       merged_trips_idx_t const section,
+                       section_rules& out) {
+  out.trips_.clear();
+  out.routes_.clear();
+
+  auto const& tr = tt.transfer_rules_;
   for (auto const trip : tt.merged_trips_[section]) {
-    for (auto const s : values_of(tr.trip_rules_, trip)) {
-      sides.push_back(s);
+    auto const trip_rules = rules_of(tr.trip_rules_, trip);
+    if (!trip_rules.empty()) {
+      out.trips_.push_back(trip_rules);
     }
-    auto const src = tt.trip_id_src_[tt.trip_ids_[trip].front()];
-    for (auto const s : values_of(tr.route_rules_, tt.trip_route_id_[trip])) {
-      if (tr.rules_[s.rule()].src_ == src) {
-        sides.push_back(s);
-      }
+
+    auto const route_rules = rules_of(tr.route_rules_, route_id_of(tt, trip));
+    if (!route_rules.empty()) {
+      out.routes_.push_back(route_rules);
     }
   }
 }
 
-void add_stop_sides(timetable const& tt,
-                    std::span<transfer_rule_side_idx const> section_sides,
+void add_stop_rules(timetable const& tt,
+                    section_rules const& section,
                     event_type const ev,
                     location_idx_t const base,
                     std::vector<transfer_rule_side_idx>& sig) {
-  for (auto const s : section_sides) {
+  auto const& tr = tt.transfer_rules_;
+  auto const root = tt.locations_.get_root_idx(base);
+  auto const add = [&](transfer_rule_side_idx const s) {
+    auto const& r = tr.rules_[s.rule()];
     if (s.ev_type() == ev &&
-        is_rule_stop(tt, tt.transfer_rules_.rules_[s.rule()].stop(ev), base)) {
+        tt.locations_.is_self_or_parent(r.stop(ev), base)) {
       sig.push_back(s);
     }
+  };
+  for (auto const rules : section.trips_) {
+    for (auto const s : rules_at(rules, root)) {
+      add(s);
+    }
   }
-}
-
-void add_provider_sides(timetable const& tt,
-                        provider_idx_t const p,
-                        event_type const ev,
-                        location_idx_t const base,
-                        std::vector<transfer_rule_side_idx>& sig) {
-  for (auto const s : values_of(tt.transfer_rules_.provider_rules_,
-                                pair{p, tt.locations_.get_root_idx(base)})) {
-    if (s.ev_type() == ev) {
-      sig.push_back(s);
+  for (auto const rules : section.routes_) {
+    for (auto const s : rules_at(rules, root)) {
+      add(s);
     }
   }
 }
@@ -82,46 +83,17 @@ void get_stop_signature(timetable const& tt,
   auto const seq = tt.route_location_seq_[tt.transport_route_[t]];
   auto const stp = stop{seq[i]};
   auto const sections = tt.transport_to_trip_section_[t];
-  auto const providers = tt.transport_section_providers_[t];
-  auto const section = [&](stop_idx_t const k) {
-    return sections[sections.size() == 1U ? 0U : k];
-  };
-  auto sides = std::vector<transfer_rule_side_idx>{};
-  auto const add = [&](stop_idx_t const k, event_type const ev) {
-    get_section_sides(tt, section(k), sides);
-    add_stop_sides(tt, sides, ev, base, sig);
-    if (!providers.empty()) {
-      add_provider_sides(tt, providers[providers.size() == 1U ? 0U : k], ev,
-                         base, sig);
-    }
-  };
+  auto rules = section_rules{};
   sig.clear();
   if (i != 0U && stp.out_allowed()) {
-    add(static_cast<stop_idx_t>(i - 1U), event_type::kArr);
+    get_section_rules(tt, sections[sections.size() == 1U ? 0U : i - 1U], rules);
+    add_stop_rules(tt, rules, event_type::kArr, base, sig);
   }
   if (i + 1U != seq.size() && stp.in_allowed()) {
-    add(i, event_type::kDep);
+    get_section_rules(tt, sections[sections.size() == 1U ? 0U : i], rules);
+    add_stop_rules(tt, rules, event_type::kDep, base, sig);
   }
   utl::erase_duplicates(sig);
-}
-
-duration_t get_transfer_time(timetable const& tt,
-                             std::span<transfer_rule_side_idx const> sig,
-                             location_idx_t const base) {
-  auto const& rules = tt.transfer_rules_.rules_;
-  auto best = transfer_rule_idx_t::invalid();
-  for (auto const s : sig) {
-    auto const rule = s.rule();
-    if (is_applicable(tt, {rule, event_type::kArr}, sig, base) &&
-        is_applicable(tt, {rule, event_type::kDep}, sig, base)) {
-      best = best == transfer_rule_idx_t::invalid()
-                 ? rule
-                 : get_more_specific(tt, best, rule);
-    }
-  }
-  return best != transfer_rule_idx_t::invalid()
-             ? rules[best].duration_
-             : to_fp_duration(tt.locations_.transfer_time_[base]);
 }
 
 transfer_rule_idx_t get_change_rule(

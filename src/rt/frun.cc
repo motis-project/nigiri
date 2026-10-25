@@ -123,14 +123,6 @@ location_idx_t run_stop::get_location_idx() const {
   return tt().base(get_stop().location_idx());
 }
 
-std::optional<location_idx_t> run_stop::get_virt() const {
-  assert(fr_->size() > stop_idx_);
-  auto const l = fr_->is_rt() && rtt() != nullptr
-                     ? rtt()->stop_location(fr_->rt_, stop_idx_)
-                     : get_stop().location_idx();
-  return l == get_location_idx() ? std::nullopt : std::optional{l};
-}
-
 std::string_view run_stop::get_location_id() const {
   return tt().locations_.ids_[get_location_idx()].view();
 }

@@ -13,10 +13,10 @@
 #include "nigiri/for_each_meta.h"
 #include "nigiri/location_routes.h"
 #include "nigiri/routing/raptor/reconstruct.h"
+#include "nigiri/routing/search_location.h"
 #include "nigiri/routing/transfers.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
-#include "nigiri/rt/rt_transfer_rules.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/td_footpath.h"
 #include "nigiri/timetable.h"
@@ -51,7 +51,7 @@ std::optional<journey::leg> lookup_offset(location_idx_t const loc,
   // Time-dependend offsets take precedence.
   if (auto const it = td_offsets.find(loc); it != end(td_offsets)) {
     auto const td = get_td_duration(td_search_dir, it->second, t);
-    if (!td.has_value() || td->first >= footpath::kMaxDuration) {
+    if (!td.has_value()) {
       return std::nullopt;
     }
     return std::optional{
@@ -81,6 +81,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
                                             std::vector<offset> const& offs,
                                             location_match_mode const mode,
                                             bool const use_footpaths) {
+  auto const virt_rtt = rt_virts(rtt, q.prf_idx_);
   auto const is_boarding = s == side::kBoarding;
   auto const td_search_dir =
       is_boarding ? direction::kBackward : direction::kForward;
@@ -88,9 +89,9 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
   // best_dur includes waiting for a time-dependent footpath to become usable
   // (e.g. an elevator out of service), best_walk does not. best_raw is the
   // footpath duration without transfer time settings.
-  auto best_dur = footpath::kMaxDuration;
-  auto best_walk = footpath::kMaxDuration;
-  auto best_raw = footpath::kMaxDuration;
+  auto best_dur = duration_t::max();
+  auto best_walk = duration_t::max();
+  auto best_raw = duration_t::max();
   auto best_source = location_idx_t{};
 
   // As in the search: footpaths from a source with td footpaths are
@@ -102,7 +103,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
 
   for (auto const& o : offs) {
     auto const o_duration = o.duration();
-    for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
+    for_each_meta(tt, virt_rtt, mode, o.target(), [&](location_idx_t const l) {
       // kExact: changes and walks start at the stop itself, not at the
       // locations of its trips.
       if (mode == location_match_mode::kExact && l != o.target()) {
@@ -122,8 +123,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
 
       // A walk leaves (reaches) a start (destination) stop at the stop: the
       // walks of its virtual locations hold for the trips stopping there.
-      if (tt.locations_.is_virt(l) &&
-          matches(tt, mode, o.target(), tt.base(l))) {
+      if (l != o.target() && tt.locations_.is_virt(l)) {
         return;
       }
 
@@ -133,9 +133,9 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
         return;
       }
 
-      auto eff_dur = footpath::kMaxDuration;
-      auto eff_walk = footpath::kMaxDuration;
-      auto eff_raw = footpath::kMaxDuration;
+      auto eff_dur = duration_t::max();
+      auto eff_walk = duration_t::max();
+      auto eff_raw = duration_t::max();
       auto const fp_from = is_boarding ? l : loc;
       auto const fp_to = is_boarding ? loc : l;
       if (l != loc && is_td_source(fp_from)) {
@@ -158,7 +158,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
         eff_raw = *raw;
       }
 
-      if (eff_dur >= footpath::kMaxDuration) {
+      if (eff_dur == duration_t::max()) {
         return;
       }
       auto const total = o_duration + eff_dur;
@@ -171,7 +171,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
     });
   }
 
-  if (best_dur >= footpath::kMaxDuration) {
+  if (best_dur == duration_t::max()) {
     return std::nullopt;
   }
 
@@ -193,6 +193,7 @@ std::optional<journey::leg> lookup_access(query const& q,
                                           location_idx_t const loc,
                                           unixtime_t const t,
                                           side const s) {
+  auto const virt_rtt = rt_virts(rtt, q.prf_idx_);
   auto const is_boarding = s == side::kBoarding;
   auto const& offs = is_boarding ? q.start_ : q.destination_;
   auto const& td_offs = is_boarding ? q.td_start_ : q.td_dest_;
@@ -200,8 +201,12 @@ std::optional<journey::leg> lookup_access(query const& q,
 
   if (mode == location_match_mode::kIntermodal) {
     auto best = std::optional<journey::leg>{};
-    for (auto const l : {loc, tt.locations_.parents_[loc]}) {
-      if (l == location_idx_t::invalid() || !matches(tt, mode, l, loc)) {
+    auto const parent = to_idx(loc) < tt.n_locations()
+                            ? tt.locations_.parents_[loc]
+                            : rtt->base(loc);
+    for (auto const l : {loc, parent}) {
+      if (l == location_idx_t::invalid() ||
+          !matches(tt, virt_rtt, mode, l, loc)) {
         continue;
       }
       auto const leg = lookup_offset(l, t, s, offs, td_offs);
@@ -223,6 +228,7 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
                                            rt_timetable const* rtt,
                                            query const& q,
                                            side const s) {
+  auto const virt_rtt = rt_virts(rtt, q.prf_idx_);
   auto const is_boarding = s == side::kBoarding;
   auto const& offsets = is_boarding ? q.start_ : q.destination_;
   auto const& td_offsets = is_boarding ? q.td_start_ : q.td_dest_;
@@ -234,7 +240,7 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
   auto const insert = [&](location_idx_t const l) { locs.insert(l); };
   if (mode == location_match_mode::kIntermodal) {
     for (auto const& o : offsets) {
-      for_each_meta(tt, mode, o.target(), insert);
+      for_each_meta(tt, virt_rtt, mode, o.target(), insert);
     }
   } else {
     auto const has_td_arr = rtt == nullptr
@@ -246,33 +252,35 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
             ? nullptr
             : (is_boarding ? &rtt->td_footpaths_out_ : &rtt->td_footpaths_in_);
     for (auto const& o : offsets) {
-      for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
-        locs.insert(l);
-        if (!use_footpaths) {
-          return;
-        }
+      for_each_meta(
+          tt, virt_rtt, mode, o.target(), [&](location_idx_t const l) {
+            locs.insert(l);
+            if (!use_footpaths) {
+              return;
+            }
 
-        for (auto const fp : get_transfers(
-                 tt, rtt, q.prf_idx_,
-                 is_boarding ? direction::kForward : direction::kBackward, l)) {
-          locs.insert(fp.target());
-        }
+            for (auto const fp : get_transfers(
+                     tt, rtt, q.prf_idx_,
+                     is_boarding ? direction::kForward : direction::kBackward,
+                     l)) {
+              locs.insert(fp.target());
+            }
 
-        if (has_td_arr == nullptr || q.prf_idx_ >= has_td_arr->size() ||
-            to_idx(l) >= (*has_td_arr)[q.prf_idx_].size() ||
-            !(*has_td_arr)[q.prf_idx_][l]) {
-          return;
-        }
+            if (has_td_arr == nullptr || q.prf_idx_ >= has_td_arr->size() ||
+                to_idx(l) >= (*has_td_arr)[q.prf_idx_].size() ||
+                !(*has_td_arr)[q.prf_idx_][l]) {
+              return;
+            }
 
-        for (auto const& tdfp : (*td_fps_arr)[q.prf_idx_][l]) {
-          locs.insert(tdfp.target_);
-        }
-      });
+            for (auto const& tdfp : (*td_fps_arr)[q.prf_idx_][l]) {
+              locs.insert(tdfp.target_);
+            }
+          });
     }
   }
 
   for (auto const& [loc, _] : td_offsets) {
-    for_each_meta(tt, location_match_mode::kIntermodal, loc, insert);
+    for_each_meta(tt, virt_rtt, location_match_mode::kIntermodal, loc, insert);
   }
 
   return locs;
@@ -433,8 +441,10 @@ utl::generator<std::vector<journey::leg>> rt_gen(
   auto const alighting_time =
       rtt.unix_event_time(rt_idx, alighting_idx, event_type::kArr);
   auto const loc_seq = rtt.rt_transport_location_seq_[rt_idx];
-  auto const boarding_loc = stop{loc_seq[boarding_idx]}.location_idx();
-  auto const alighting_loc = stop{loc_seq[alighting_idx]}.location_idx();
+  auto const boarding_loc =
+      search_location(rtt, q.prf_idx_, rt_idx, boarding_idx);
+  auto const alighting_loc =
+      search_location(rtt, q.prf_idx_, rt_idx, alighting_idx);
 
   auto const boarding_walk =
       lookup_access(q, tt, &rtt, boarding_loc, boarding_time, side::kBoarding);
@@ -472,6 +482,7 @@ utl::generator<std::vector<journey::leg>> rt_gen(
 
 template <typename LocSeq, typename Fn>
 void for_each_pair(LocSeq const& loc_seq,
+                   std::span<location_idx_t const> const virts,
                    hash_set<location_idx_t> const& boarding_locs,
                    hash_set<location_idx_t> const& alighting_locs,
                    profile_idx_t const prf_idx,
@@ -480,7 +491,9 @@ void for_each_pair(LocSeq const& loc_seq,
   for (auto i = stop_idx_t{0U}; i != static_cast<stop_idx_t>(loc_seq.size());
        ++i) {
     auto const stp = stop{loc_seq[i]};
-    auto const loc = stp.location_idx();
+    auto const loc = virts.empty() || virts[i] == location_idx_t::invalid()
+                         ? stp.location_idx()
+                         : virts[i];
 
     if (boarding_stop_idx.has_value()) {
       if (alighting_locs.contains(loc) && stp.out_allowed(prf_idx)) {
@@ -555,7 +568,7 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
                         .stop_range_ = {
                             0U, static_cast<stop_idx_t>(
                                     tt.route_location_seq_[r].size())}}};
-            for_each_pair(tt.route_location_seq_[r], boarding_locs,
+            for_each_pair(tt.route_location_seq_[r], {}, boarding_locs,
                           alighting_locs, q.prf_idx_,
                           [&](stop_idx_t const a, stop_idx_t const b) {
                             if (sections_violate_constraints(fr, a, b, flags)) {
@@ -607,8 +620,11 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
                                    rtt->rt_transport_location_seq_[x].size())},
                       .rt_ = x}};
               for_each_pair(
-                  rtt->rt_transport_location_seq_[x], boarding_locs,
-                  alighting_locs, q.prf_idx_,
+                  rtt->rt_transport_location_seq_[x],
+                  q.prf_idx_ == kDefaultProfile
+                      ? rtt->rt_stop_virts(x)
+                      : std::span<location_idx_t const>{},
+                  boarding_locs, alighting_locs, q.prf_idx_,
                   [&](stop_idx_t const a, stop_idx_t const b) {
                     if (sections_violate_constraints(fr, a, b, flags)) {
                       return;

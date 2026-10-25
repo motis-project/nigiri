@@ -194,8 +194,6 @@ TEST(gtfs,
   EXPECT_EQ(at("10:40"), arrival_at(tt, "KA", "KB", "09:30"));
 }
 
-namespace {
-
 // Station S with S1, S2. F (RF) arrives at S2 10:30, G (RG) leaves S2 10:35,
 // GL (RG) 10:45.
 std::string station_feed(std::string_view const rows) {
@@ -209,8 +207,6 @@ std::string station_feed(std::string_view const rows) {
                {"GL", "RG", {{"S2", "10:45"}, {"D", "11:10"}}}},
               rows);
 }
-
-}  // namespace
 
 // A row between a station and its stop covers the change at the stop itself
 // (a station stands for all its stops) - also as the default a qualified row

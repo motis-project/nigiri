@@ -9,6 +9,8 @@
 
 namespace nigiri::routing {
 
+std::optional<journey::run_enter_exit> run_of(journey::leg const&);
+
 void fix_transfer_durations(timetable const&,
                             rt_timetable const*,
                             query const&,

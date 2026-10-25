@@ -8,6 +8,7 @@
 
 #include "cista/cuda_check.h"
 #include "cista/memory_holder.h"
+#include "fmt/ostream.h"
 
 #include "geo/box.h"
 #include "geo/latlng.h"
@@ -61,7 +62,7 @@ struct location_id_equals {
 struct timetable {
   struct locations {
     bool is_virt(location_idx_t const l) const {
-      return types_[l] == location_type::kVirt;
+      return to_idx(l) >= types_.size() || types_[l] == location_type::kVirt;
     }
 
     location_idx_t get_base_idx(location_idx_t const l) const {
@@ -75,11 +76,33 @@ struct timetable {
 
     template <typename Fn>
     void for_each_virt(location_idx_t const l, Fn&& fn) const {
+      if (to_idx(l) >= children_.size()) {
+        return;
+      }
       for (auto const c : children_[l]) {
         if (is_virt(c)) {
           fn(c);
         }
       }
+    }
+
+    // Virtual locations walk like their stop: calls fn(f, t) for every pair of
+    // the locations of stop a (a and its virtual locations) and of stop b.
+    template <typename Fn>
+    void for_each_member_pair(location_idx_t const a,
+                              location_idx_t const b,
+                              Fn&& fn) const {
+      auto const from = [&](location_idx_t const f) {
+        auto const to = [&](location_idx_t const t) {
+          if (f != t) {
+            fn(f, t);
+          }
+        };
+        to(b);
+        for_each_virt(b, to);
+      };
+      from(a);
+      for_each_virt(a, from);
     }
 
     location_idx_t get_root_idx(location_idx_t const idx) const {
@@ -115,7 +138,6 @@ struct timetable {
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
     mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_in_;
     vector_map<location_idx_t, std::uint32_t> location_importance_;
@@ -537,20 +559,4 @@ inline std::ostream& operator<<(std::ostream& out, loc const& l) {
 }  // namespace nigiri
 
 template <>
-struct fmt::formatter<nigiri::loc> {
-  constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
-
-  auto format(nigiri::loc const& l, fmt::format_context& ctx) const {
-    if (l.l_ == nigiri::location_idx_t::invalid()) {
-      return fmt::format_to(ctx.out(), "(\"\", \"\")");
-    }
-    if (to_idx(l.l_) >= l.tt_.n_locations()) {
-      return fmt::format_to(ctx.out(), "(\"\", \"rt {}\")", to_idx(l.l_));
-    }
-    auto const& locations = l.tt_.locations_;
-    return fmt::format_to(ctx.out(), "({:?}, \"{}{}\")",
-                          l.tt_.get_default_name(l.l_),
-                          locations.is_virt(l.l_) ? "V#" : "",
-                          locations.ids_[l.tt_.base(l.l_)].view());
-  }
-};
+struct fmt::formatter<nigiri::loc> : fmt::ostream_formatter {};

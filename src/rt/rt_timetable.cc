@@ -197,11 +197,6 @@ void rt_timetable::update_stop_location(rt_transport_idx_t const rt_t,
     locs.resize(static_cast<std::uint32_t>(seq.size()),
                 location_idx_t::invalid());
     locs[stop_idx] = is_rt ? l : location_idx_t::invalid();
-    if (utl::all_of(locs, [](location_idx_t const x) {
-          return x == location_idx_t::invalid();
-        })) {
-      locs.clear();
-    }
   }
 
   add_location_rt_transport(l, rt_t);
@@ -217,12 +212,11 @@ void rt_timetable::add_location_rt_transport(location_idx_t const l,
   }
 }
 
-location_idx_t rt_timetable::add_rt_location(location_idx_t const parent,
-                                             u8_minutes const transfer_time) {
+location_idx_t rt_timetable::add_rt_location(location_idx_t const parent) {
   auto const l = location_idx_t{n_locations()};
   utl::verify(l < footpath::kMaxTarget, "rt location index overflow");
-  rt_locations_.parents_.push_back(parent);
-  rt_locations_.transfer_time_.push_back(transfer_time);
+  rt_location_parents_.push_back(parent);
+  rt_virts_[parent].push_back(l);
   location_rt_transports_[l];
   return l;
 }
@@ -255,45 +249,6 @@ std::string_view rt_timetable::transport_name(
                                     },
                                     [](std::string_view const s) { return s; }},
                     trip_short_name(tt, t));
-}
-
-void add_lb_edge(timetable const&,
-                 rt_timetable&,
-                 location_idx_t from,
-                 location_idx_t to,
-                 duration_t travel_time,
-                 vector_map<location_idx_t, std::vector<footpath>>& tmp_fwd,
-                 vector_map<location_idx_t, std::vector<footpath>>& tmp_bwd);
-
-void rt_timetable::update_lbs(
-    timetable const& tt,
-    rt_transport_idx_t const rt_t,
-    stop_idx_t const stop_idx,
-    vector_map<location_idx_t, std::vector<footpath>>& tmp_fwd,
-    vector_map<location_idx_t, std::vector<footpath>>& tmp_bwd) {
-  auto const from_stop_idx = stop_idx;
-  auto const to_stop_idx = static_cast<stop_idx_t>(stop_idx + 1U);
-
-  auto const travel_time =
-      duration_t{event_time(rt_t, to_stop_idx, event_type::kArr) -
-                 event_time(rt_t, from_stop_idx, event_type::kDep)};
-
-  auto const loc_seq = rt_transport_location_seq_[rt_t];
-  if (travel_time < duration_t{0}) {
-    log(log_lvl::error, "nigiri.rt.update_time",
-        "travel_time < 0: {} -> {}: dep={} - arr={}",
-        loc{tt, stop{loc_seq[from_stop_idx]}.location_idx()},
-        loc{tt, stop{loc_seq[to_stop_idx]}.location_idx()},
-        event_time(rt_t, from_stop_idx, event_type::kDep),
-        event_time(rt_t, to_stop_idx, event_type::kArr));
-    return;
-  }
-
-  auto const from =
-      tt.locations_.get_root_idx(stop{loc_seq[from_stop_idx]}.location_idx());
-  auto const to =
-      tt.locations_.get_root_idx(stop{loc_seq[to_stop_idx]}.location_idx());
-  add_lb_edge(tt, *this, from, to, travel_time, tmp_fwd, tmp_bwd);
 }
 
 void add_lb_edge(timetable const& tt,
@@ -344,8 +299,7 @@ void add_lb_edge(timetable const& tt,
 
         if (it != end(lbs)) {
           // The same target did exist already. Update existing.
-          it->duration_ = static_cast<location_idx_t::value_t>(
-              std::min(footpath::kMaxDuration, travel_time).count());
+          *it = new_fp;
           return;
         }
 
@@ -357,6 +311,37 @@ void add_lb_edge(timetable const& tt,
          rtt.fwd_search_lb_graph_has_edges_, tmp_fwd, direction::kForward);
   update(tt.bwd_search_lb_graph_[kDefaultProfile],
          rtt.bwd_search_lb_graph_has_edges_, tmp_bwd, direction::kBackward);
+}
+
+void rt_timetable::update_lbs(
+    timetable const& tt,
+    rt_transport_idx_t const rt_t,
+    stop_idx_t const stop_idx,
+    vector_map<location_idx_t, std::vector<footpath>>& tmp_fwd,
+    vector_map<location_idx_t, std::vector<footpath>>& tmp_bwd) {
+  auto const from_stop_idx = stop_idx;
+  auto const to_stop_idx = static_cast<stop_idx_t>(stop_idx + 1U);
+
+  auto const travel_time =
+      duration_t{event_time(rt_t, to_stop_idx, event_type::kArr) -
+                 event_time(rt_t, from_stop_idx, event_type::kDep)};
+
+  auto const loc_seq = rt_transport_location_seq_[rt_t];
+  if (travel_time < duration_t{0}) {
+    log(log_lvl::error, "nigiri.rt.update_time",
+        "travel_time < 0: {} -> {}: dep={} - arr={}",
+        loc{tt, stop{loc_seq[from_stop_idx]}.location_idx()},
+        loc{tt, stop{loc_seq[to_stop_idx]}.location_idx()},
+        event_time(rt_t, from_stop_idx, event_type::kDep),
+        event_time(rt_t, to_stop_idx, event_type::kArr));
+    return;
+  }
+
+  auto const from =
+      tt.locations_.get_root_idx(stop{loc_seq[from_stop_idx]}.location_idx());
+  auto const to =
+      tt.locations_.get_root_idx(stop{loc_seq[to_stop_idx]}.location_idx());
+  add_lb_edge(tt, *this, from, to, travel_time, tmp_fwd, tmp_bwd);
 }
 
 void rt_timetable::update_lbs(timetable const& tt) {
