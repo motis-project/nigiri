@@ -27,6 +27,11 @@ constexpr auto kNetex = R"(
           <ToDate>2025-12-14T00:00:00</ToDate>
           <ValidDayBits>1</ValidDayBits>
         </AvailabilityCondition>
+        <!-- Frame validity without ValidDayBits: ignored. -->
+        <AvailabilityCondition id="FRAME">
+          <FromDate>2025-12-14T00:00:00</FromDate>
+          <ToDate>2025-12-14T00:00:00</ToDate>
+        </AvailabilityCondition>
       </validityConditions>
       <scheduledStopPoints>
         <ScheduledStopPoint id="A"><Name>A</Name><Location><Longitude>16.00</Longitude><Latitude>48.0</Latitude></Location></ScheduledStopPoint>
@@ -55,6 +60,16 @@ constexpr auto kNetex = R"(
           <passingTimes>
             <TimetabledPassingTime><StopPointInJourneyPatternRef ref="SP_A"/></TimetabledPassingTime>
             <TimetabledPassingTime><StopPointInJourneyPatternRef ref="SP_B"/></TimetabledPassingTime>
+          </passingTimes>
+        </ServiceJourney>
+
+        <!-- Times at only one stop: trip is removed. -->
+        <ServiceJourney id="ONE_STOP">
+          <keyList><KeyValue><Key>TripNr</Key><Value>5</Value></KeyValue></keyList>
+          <validityConditions><AvailabilityConditionRef ref="AC"/></validityConditions>
+          <ServiceJourneyPatternRef ref="JP"/>
+          <passingTimes>
+            <TimetabledPassingTime><StopPointInJourneyPatternRef ref="SP_B"/><ArrivalTime>10:10:00</ArrivalTime><DepartureTime>10:11:00</DepartureTime></TimetabledPassingTime>
           </passingTimes>
         </ServiceJourney>
 
@@ -94,7 +109,42 @@ constexpr auto kNetex = R"(
             <TimetabledPassingTime><StopPointInJourneyPatternRef ref="SP_B"/><ArrivalTime>10:10:00</ArrivalTime><DepartureTime>10:11:00</DepartureTime></TimetabledPassingTime>
           </passingTimes>
         </ServiceJourney>
+
+        <!-- B only departure, C only arrival: same time for both. -->
+        <ServiceJourney id="DEP_ONLY">
+          <keyList><KeyValue><Key>TripNr</Key><Value>6</Value></KeyValue></keyList>
+          <validityConditions><AvailabilityConditionRef ref="AC"/></validityConditions>
+          <ServiceJourneyPatternRef ref="JP"/>
+          <passingTimes>
+            <TimetabledPassingTime><StopPointInJourneyPatternRef ref="SP_A"/><DepartureTime>10:00:00</DepartureTime></TimetabledPassingTime>
+            <TimetabledPassingTime><StopPointInJourneyPatternRef ref="SP_B"/><DepartureTime>10:11:00</DepartureTime></TimetabledPassingTime>
+            <TimetabledPassingTime><StopPointInJourneyPatternRef ref="SP_C"/><ArrivalTime>10:20:00</ArrivalTime></TimetabledPassingTime>
+            <TimetabledPassingTime><StopPointInJourneyPatternRef ref="SP_D"/><ArrivalTime>10:30:00</ArrivalTime></TimetabledPassingTime>
+          </passingTimes>
+        </ServiceJourney>
+
+        <!-- LineRef to undefined line: falls back to journey pattern line. -->
+        <ServiceJourney id="UNKNOWN_LINE">
+          <keyList><KeyValue><Key>TripNr</Key><Value>7</Value></KeyValue></keyList>
+          <validityConditions><AvailabilityConditionRef ref="AC"/></validityConditions>
+          <LineRef ref="UNKNOWN"/>
+          <ServiceJourneyPatternRef ref="JP"/>
+          <passingTimes>
+            <TimetabledPassingTime><StopPointInJourneyPatternRef ref="SP_A"/><DepartureTime>10:00:00</DepartureTime></TimetabledPassingTime>
+            <TimetabledPassingTime><StopPointInJourneyPatternRef ref="SP_B"/><ArrivalTime>10:10:00</ArrivalTime><DepartureTime>10:11:00</DepartureTime></TimetabledPassingTime>
+            <TimetabledPassingTime><StopPointInJourneyPatternRef ref="SP_C"/><ArrivalTime>10:20:00</ArrivalTime><DepartureTime>10:21:00</DepartureTime></TimetabledPassingTime>
+            <TimetabledPassingTime><StopPointInJourneyPatternRef ref="SP_D"/><ArrivalTime>10:30:00</ArrivalTime></TimetabledPassingTime>
+          </passingTimes>
+        </ServiceJourney>
       </vehicleJourneys>
+      <journeyInterchanges>
+        <!-- Stay seated into a removed trip: ignored. -->
+        <ServiceJourneyInterchange>
+          <StaySeated>true</StaySeated>
+          <FromJourneyRef ref="FILL_START"/>
+          <ToJourneyRef ref="NO_TIMES"/>
+        </ServiceJourneyInterchange>
+      </journeyInterchanges>
     </TimetableFrame>
   </frames>
 </CompositeFrame>
@@ -120,11 +170,16 @@ std::vector<std::string> utc_times(timetable const& tt,
 
 TEST(netex, missing_times) {
   auto const tt = loader::load(
-      {{.tag_ = "test", .path_ = kNetex, .loader_config_ = {}}}, {},
+      {{.tag_ = "test", .path_ = kNetex, .loader_config_ = {}}},
+      {.merge_dupes_intra_src_ = false, .merge_dupes_inter_src_ = false},
       {sys_days{2025_y / December / 14}, sys_days{2025_y / December / 15}});
 
-  EXPECT_TRUE(utl::none_of(tt.trip_id_strings_,
-                           [](auto&& id) { return id.view() == "NO_TIMES"; }));
+  auto const has_trip = [&](std::string_view trip_id) {
+    return utl::any_of(tt.trip_id_strings_,
+                       [&](auto&& id) { return id.view() == trip_id; });
+  };
+  EXPECT_FALSE(has_trip("NO_TIMES"));
+  EXPECT_FALSE(has_trip("ONE_STOP"));
 
   using v = std::vector<std::string>;
   EXPECT_EQ((v{"09:10", "09:10", "09:11", "09:20", "09:21", "09:30"}),
@@ -133,4 +188,8 @@ TEST(netex, missing_times) {
             utc_times(tt, "OUT_OF_ORDER"));
   EXPECT_EQ((v{"09:10", "09:10", "09:11", "09:11", "09:11", "09:30"}),
             utc_times(tt, "COMBINED"));
+  EXPECT_EQ((v{"09:00", "09:11", "09:11", "09:20", "09:20", "09:30"}),
+            utc_times(tt, "DEP_ONLY"));
+  EXPECT_EQ((v{"09:00", "09:10", "09:11", "09:20", "09:21", "09:30"}),
+            utc_times(tt, "UNKNOWN_LINE"));
 }
