@@ -128,7 +128,7 @@ TEST(rt, delay_test) {
   EXPECT_EQ(to_unix(journey->dest_time_), to_unix(expected_arrival));
 }
 
-TEST(rt, stop_sequence_decides_only_for_repeated_stops) {
+TEST(rt, stop_time_update_matching) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {sys_days{2019_y / May / 1}, sys_days{2019_y / May / 2}};
@@ -159,6 +159,7 @@ R1,DB,RE 1,,,3
 route_id,service_id,trip_id,trip_headsign,block_id
 R1,S1,T1,RE 1,
 R1,S1,T2,RE 1,
+R1,S1,T3,RE 1,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -171,6 +172,10 @@ T1,10:50:00,10:50:00,E,6,0,0
 T2,11:00:00,11:00:00,A,1,0,0
 T2,11:10:00,11:10:00,B,2,0,0
 T2,11:20:00,11:20:00,A,3,0,0
+T3,12:00:00,12:00:00,A,1,0,0
+T3,12:10:00,12:10:00,C1,2,0,0
+T3,12:20:00,12:20:00,D,3,0,0
+T3,12:30:00,12:30:00,E,4,0,0
 )"),
                  tt);
   finalize(tt);
@@ -204,6 +209,17 @@ T2,11:20:00,11:20:00,A,3,0,0
     {"stopSequence": 9, "stopId": "A", "arrival": {"delay": 180}}
    ]
   }
+ }, {
+  "id": "3",
+  "tripUpdate": {
+   "trip": {"tripId": "T3", "startDate": "20190501"},
+   "stopTimeUpdate": [
+    {"stopSequence": 2, "stopId": "C1", "scheduleRelationship": "SKIPPED"},
+    {"stopSequence": 2, "stopId": "C2", "arrival": {"delay": 120}},
+    {"stopSequence": 3, "stopId": "D", "arrival": {"delay": 240}},
+    {"stopSequence": 3, "stopId": "D", "scheduleRelationship": "SKIPPED"}
+   ]
+  }
  }]
 })"));
 
@@ -227,4 +243,14 @@ T2,11:20:00,11:20:00,A,3,0,0
   auto const fr2 = rt::frun{tt, &rtt, r2};
   EXPECT_EQ(base + 60min, fr2[0].time(event_type::kDep));
   EXPECT_EQ(base + 83min, fr2[2].time(event_type::kArr));
+
+  td.set_trip_id("T3");
+  auto const [r3, _3] = rt::gtfsrt_resolve_run(sys_days{2019_y / May / 1}, tt,
+                                               &rtt, source_idx_t{0}, td);
+  auto const fr3 = rt::frun{tt, &rtt, r3};
+  EXPECT_FALSE(fr3[1].is_cancelled());
+  EXPECT_EQ(std::string_view{"C2"}, fr3[1].get_location_id());
+  EXPECT_EQ(base + 132min, fr3[1].time(event_type::kArr));
+  EXPECT_FALSE(fr3[2].is_cancelled());
+  EXPECT_EQ(base + 144min, fr3[2].time(event_type::kArr));
 }
