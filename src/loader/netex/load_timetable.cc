@@ -16,6 +16,7 @@
 #include "pugixml.hpp"
 
 #include "utl/concat.h"
+#include "utl/enumerate.h"
 #include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/parallel_for.h"
@@ -118,6 +119,12 @@ struct lookup {
     }
 
     return std::nullopt;
+  }
+
+  template <typename K>
+  auto get(K const& k) const {
+    auto const x = find(k);
+    return (x.has_value() ? **x : at(key_t{})).get();
   }
 
   hash_map<key_t, value_t> const& base_;
@@ -325,10 +332,14 @@ date::sys_days parse_date(utl::cstr s) {
   return date::sys_days{date};
 }
 
+// Marks stop times that are not given in the data.
+// Can't use 0 because 00:00 is a valid HH:MM time.
+constexpr auto const kNoTime = duration_t::min();
+
 // Parses HH:MM
 duration_t parse_time(utl::cstr s, utl::cstr day_offset) {
   if (s.len < 5) {
-    return duration_t{0};
+    return kNoTime;
   }
   return duration_t{utl::parse<int>(day_offset) * 1440 +
                     60 * utl::parse_verify<int>(s.substr(0, utl::size(2))) +
@@ -440,7 +451,7 @@ categories_map_t get_categories(pugi::xml_document const& doc) {
 struct line {
   struct route_key {
     std::uint16_t route_type_;
-    operätor const* operator_;
+    provider_idx_t provider_;
   };
   hash_map<route_key, route_id_idx_t> routes_{};
   std::string_view id_;
@@ -477,12 +488,10 @@ line_map_t get_lines(pugi::xml_document const& doc,
             .id_ = id(n),
             .name_ = val(n, "Name"),
             .short_name_ = val(n, "ShortName"),
-            .category_ =
-                categories.at(ref(n, "TypeOfProductCategoryRef")).get(),
-            .authority_ = authorities.at(ref(n, "AuthorityRef")).get(),
-            .operator_ =
-                operators.at(ref(n.child("additionalOperators"), "OperatorRef"))
-                    .get(),
+            .category_ = categories.get(ref(n, "TypeOfProductCategoryRef")),
+            .authority_ = authorities.get(ref(n, "AuthorityRef")),
+            .operator_ = operators.get(
+                ref(n.child("additionalOperators"), "OperatorRef")),
             .route_type_ = get_route_type(n),
             .color_ = {.color_ = to_color(val(ppt, "Colour")),
                        .text_color_ = to_color(val(ppt, "TextColour"))},
@@ -649,7 +658,10 @@ operating_period_map_t get_operating_periods(
 
   for (auto const s : doc.select_nodes(
            "//ServiceCalendarFrame//operatingPeriods/UicOperatingPeriod |"
-           "//ServiceCalendarFrame/validityConditions/AvailabilityCondition")) {
+           "//ServiceCalendarFrame/validityConditions/AvailabilityCondition |"
+           // AT-MVO
+           "//ServiceFrame/validityConditions/"
+           "AvailabilityCondition[ValidDayBits]")) {
     auto const sn = s.node();
     auto const from = parse_date(val(sn, "FromDate"));
     auto const to = parse_date(val(sn, "ToDate"));
@@ -861,13 +873,17 @@ journey_pattern_map_t get_journey_patterns(
 
     auto stop_points = std::vector<journey_pattern::stop_point>{};
     for (auto const sp : n.child("pointsInSequence").children()) {
+      auto const stop_use = val(sp, "StopUse");
+      // AT-MVO generates these stops with nonsensical attributes
+      auto const is_pass =
+          stop_use == "passthrough" || stop_use == "noBoardingOrAlighting";
       stop_points.push_back({
           .id_ = id(sp),
           .stop_ = get_stop(ref(sp, "ScheduledStopPointRef")),
           .destination_display_ =
-              destination_displays.at(ref(sp, "DestinationDisplayRef")).get(),
-          .in_allowed_ = is_true_or_empty(val(sp, "ForBoarding")),
-          .out_allowed_ = is_true_or_empty(val(sp, "ForAlighting")),
+              destination_displays.get(ref(sp, "DestinationDisplayRef")),
+          .in_allowed_ = !is_pass && is_true_or_empty(val(sp, "ForBoarding")),
+          .out_allowed_ = !is_pass && is_true_or_empty(val(sp, "ForAlighting")),
           .notices_ = get_notice_assignments(notices, sp),
       });
     }
@@ -879,7 +895,7 @@ journey_pattern_map_t get_journey_patterns(
     journey_patterns.emplace(
         id(n),
         uniq(journey_pattern{
-            .line_ = lines.at(ref(n.child("RouteView"), "LineRef")).get(),
+            .line_ = lines.get(ref(n.child("RouteView"), "LineRef")),
             .direction_ =
                 direction_id_t{ref(n, "DirectionRef").ends_with("1::") ? 0 : 1},
             .stop_points_ = std::move(stop_points),
@@ -953,6 +969,7 @@ struct service_journey {
   std::variant<journey_pattern const*, journey_pattern> journey_pattern_{};
   bitfield const* traffic_days_;
   operätor const* operator_;
+  line* line_;
   std::vector<stop_times> stop_times_{};
   ptrdiff_t dbg_offset_;
 };
@@ -995,7 +1012,7 @@ std::vector<service_journey> get_service_journeys(
                       "Value"))
                 : train_nrs.at(train_nr_ref),
         .route_type_ = get_route_type(n),
-        .vehicle_type_ = vehicle_types.at(ref(n, "VehicleTypeRef")).get(),
+        .vehicle_type_ = vehicle_types.get(ref(n, "VehicleTypeRef")),
         .journey_pattern_ =
             n.child("ServiceJourneyPatternRef")  // DE-DELFI
                 ? journey_patterns.at(ref(n, "ServiceJourneyPatternRef")).get()
@@ -1011,13 +1028,15 @@ std::vector<service_journey> get_service_journeys(
                                    n.select_node("dayTypes/DayTypeRef/@ref")
                                        .attribute()
                                        .as_string()),
-        .operator_ = operators.at(ref(n, "OperatorRef")).get(),
+        .operator_ = operators.get(ref(n, "OperatorRef")),
+        // AT-MVO
+        .line_ = lines.get(ref(n, "LineRef")),
         .dbg_offset_ = n.offset_debug()};
 
     auto const calls = n.child("calls");
     if (calls) {
       auto jp = journey_pattern{
-          .line_ = lines.at(ref(n, "LineRef")).get(),
+          .line_ = sj.line_,
           .direction_ =
               direction_id_t{val(n, "DirectionType") == "outbound"sv ? 1 : 2},
           .stop_points_ = {},
@@ -1033,7 +1052,7 @@ std::vector<service_journey> get_service_journeys(
             .destination_display_ =
                 dest_ref.empty() && !jp.stop_points_.empty()
                     ? jp.stop_points_.back().destination_display_
-                    : destination_displays.at(dest_ref).get(),
+                    : destination_displays.get(dest_ref),
             .in_allowed_ = is_true_or_empty(val(dep, "ForBoarding")),
             .out_allowed_ = is_true_or_empty(val(arr, "ForAlighting")),
             .notices_ = utl::merge(notice_assignments,
@@ -1054,9 +1073,13 @@ std::vector<service_journey> get_service_journeys(
 
       auto const& jp = *std::get<journey_pattern const*>(sj.journey_pattern_);
 
-      for (auto const [passing_time, stop_point] :
-           utl::zip(n.select_nodes("passingTimes/TimetabledPassingTime"),
-                    jp.stop_points_)) {
+      // TimetabledPassingTime may leave out stops by referencing
+      // StopPointInJourneyPattern out of order. Deal with this by
+      // pre-allocating a vector of stop times and filling it out one by one.
+      // First observed in AT-MVO.
+      sj.stop_times_.resize(jp.stop_points_.size(), {kNoTime, kNoTime});
+      for (auto const [passing_time_idx, passing_time] : utl::enumerate(
+               n.select_nodes("passingTimes/TimetabledPassingTime"))) {
         auto const pn = passing_time.node();
 
         auto stop_point_id = ref(pn, "StopPointInJourneyPatternRef");  // DELFI
@@ -1064,22 +1087,76 @@ std::vector<service_journey> get_service_journeys(
           stop_point_id = ref(pn, "PointInJourneyPatternRef");  // SNCF
         }
 
-        utl::verify(
-            stop_point.id_ == stop_point_id,
-            "expected pointsInSequence.StopPointInJourneyPattern.id={}, "
-            "got TimetabledPassingTime.StopPointInJourneyPatternRef={}",
-            stop_point.id_, stop_point_id);
+        auto const stop_point_idx = [&]() -> std::optional<std::size_t> {
+          if (passing_time_idx < jp.stop_points_.size() &&
+              jp.stop_points_[passing_time_idx].id_ == stop_point_id) {
+            // Passing times and stop points have the same order.
+            return passing_time_idx;
+          }
 
-        sj.stop_times_.push_back(
-            {.arr_ = parse_time(val(pn, "ArrivalTime"),
-                                val(pn, "ArrivalDayOffset")),
-             .dep_ = parse_time(val(pn, "DepartureTime"),
-                                val(pn, "DepartureDayOffset"))});
+          // Fall back: linear lookup
+          auto const it = utl::find_if(jp.stop_points_, [&](auto&& sp) {
+            return sp.id_ == stop_point_id;
+          });
+          if (it == end(jp.stop_points_)) {
+            return std::nullopt;
+          }
+          return std::distance(begin(jp.stop_points_), it);
+        }();
+
+        if (!stop_point_idx.has_value()) {
+          continue;
+        }
+
+        sj.stop_times_[*stop_point_idx] = {
+            .arr_ =
+                parse_time(val(pn, "ArrivalTime"), val(pn, "ArrivalDayOffset")),
+            .dep_ = parse_time(val(pn, "DepartureTime"),
+                               val(pn, "DepartureDayOffset"))};
       }
     }
 
-    if (sj.get_journey_pattern()->stop_points_.size() < 2U) {
+    auto const n_stops_with_time = utl::count_if(sj.stop_times_, [](auto&& t) {
+      return t.arr_ != kNoTime || t.dep_ != kNoTime;
+    });
+    if (n_stops_with_time < 2) {
       continue;
+    }
+
+    // Fill kNoTime with time from dep <-> arr
+    // from the same stop instead of previous stop.
+    for (auto& t : sj.stop_times_) {
+      if (t.arr_ == kNoTime) {
+        t.arr_ = t.dep_;
+      }
+      if (t.dep_ == kNoTime) {
+        t.dep_ = t.arr_;
+      }
+    }
+
+    // Replace missing times (kNoTime)
+    auto const time_at = [&](std::size_t const i) -> duration_t& {
+      // order arr0, dep0, arr1, dep1, ...
+      auto& t = sj.stop_times_[i / 2U];
+      return i % 2U == 0U ? t.arr_ : t.dep_;
+    };
+
+    // Find first valid time (exists, see check above).
+    auto const n_times = sj.stop_times_.size() * 2U;
+    auto first_time = std::size_t{0U};
+    while (time_at(first_time) == kNoTime) {
+      ++first_time;
+    }
+
+    // Fill first valid time until `first_time`.
+    // Use previous time otherwise.
+    auto pred = time_at(first_time);
+    for (auto i = std::size_t{0U}; i != n_times; ++i) {
+      if (time_at(i) == kNoTime) {
+        time_at(i) = pred;
+      } else {
+        pred = time_at(i);
+      }
     }
 
     service_journeys.emplace_back(std::move(sj));
@@ -1485,14 +1562,14 @@ void load_timetable(loader_config const& config,
       auto const& jp = *sj.get_journey_pattern();
 
       // Check if provider got filtered by script.
-      auto& line = *jp.line_;
+      auto& line = !jp.line_->id_.empty() ? *jp.line_ : *sj.line_;
       auto const op = sj.operator_->id_.empty() ? line.operator_ : sj.operator_;
       if (op->provider_ == provider_idx_t::invalid()) {
         continue;
       }
 
       // Create and register route from (line + route_type).
-      auto const route_it = line.routes_.find({sj.route_type_, op});
+      auto const route_it = line.routes_.find({sj.route_type_, op->provider_});
       auto route_id = route_id_idx_t::invalid();
       if (route_it == end(line.routes_)) {
         auto const id =
@@ -1513,12 +1590,13 @@ void load_timetable(loader_config const& config,
                   op->provider_,
                   line.category_->category_idx_,
                   ticketing_link_idx_t::invalid()};
-        route_id = line.routes_
-                       .emplace_hint(
-                           route_it, line::route_key{sj.route_type_, op},
-                           process_route(r, rout) ? register_route(tt, rout)
-                                                  : route_id_idx_t::invalid())
-                       ->second;
+        route_id =
+            line.routes_
+                .emplace_hint(
+                    route_it, line::route_key{sj.route_type_, op->provider_},
+                    process_route(r, rout) ? register_route(tt, rout)
+                                           : route_id_idx_t::invalid())
+                ->second;
       } else {
         route_id = route_it->second;
       }
@@ -1720,11 +1798,16 @@ void load_timetable(loader_config const& config,
       auto const meeting_it = global_journey_meetings.find(id);
       if (meeting_it != end(global_journey_meetings)) {
         for (auto const& out : meeting_it->second) {
-          auto const to = sj_ids.find(out.to_journey_id_).value();
-          seated_out[i].emplace_back(to);
-          seated_in[to].emplace_back(i);
+          auto const to = sj_ids.find(out.to_journey_id_);
+          if (!to.has_value()) {
+            continue;
+          }
+          seated_out[i].emplace_back(*to);
+          seated_in[*to].emplace_back(i);
         }
-      } else {
+      }
+
+      if (seated_out[i].empty()) {
         for (auto const& t : sj_utc_trips[i]) {
           add_expanded_trip(t);
         }
