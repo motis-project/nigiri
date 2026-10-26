@@ -206,6 +206,10 @@ constexpr auto kDefaultLang = language_idx_t{0U};
 
 using profile_idx_t = std::uint8_t;
 constexpr auto const kDefaultProfile = profile_idx_t{0U};
+
+constexpr bool profile_uses_virts(profile_idx_t const prf) {
+  return prf == kDefaultProfile;
+}
 constexpr auto const kFootProfile = profile_idx_t{1U};
 constexpr auto const kWheelchairProfile = profile_idx_t{2U};
 constexpr auto const kCarProfile = profile_idx_t{3U};

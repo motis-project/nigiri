@@ -36,12 +36,9 @@ auto get_transfers(timetable const& tt,
     auto const b = fps[l];
     transfers[0] = {b.data(), b.size()};
   }
-  if (rtt != nullptr && prf_idx == kDefaultProfile) {
-    auto const& rt_fps = kFwd ? rtt->rt_footpaths_out_ : rtt->rt_footpaths_in_;
-    if (l < rt_fps.size()) {
-      auto const b = rt_fps[l];
-      transfers[1] = {b.begin(), b.end()};
-    }
+  if (rtt != nullptr && profile_uses_virts(prf_idx)) {
+    auto const b = (kFwd ? rtt->rt_footpaths_out_ : rtt->rt_footpaths_in_)[l];
+    transfers[1] = {b.data(), b.size()};
   }
   return std::move(transfers) | std::views::join;
 }

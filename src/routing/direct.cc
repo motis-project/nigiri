@@ -621,7 +621,7 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
                       .rt_ = x}};
               for_each_pair(
                   rtt->rt_transport_location_seq_[x],
-                  q.prf_idx_ == kDefaultProfile
+                  profile_uses_virts(q.prf_idx_)
                       ? rtt->rt_stop_virts(x)
                       : std::span<location_idx_t const>{},
                   boarding_locs, alighting_locs, q.prf_idx_,

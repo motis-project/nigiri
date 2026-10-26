@@ -1,6 +1,7 @@
 #include "nigiri/rt/rt_transfer_rules.h"
 
 #include <algorithm>
+#include <map>
 #include <optional>
 #include <span>
 #include <tuple>
@@ -56,6 +57,8 @@ struct rule_conflicts {
   hash_map<location_idx_t, std::vector<location_idx_t>> to_stops_, from_stops_;
   hash_map<side_t, std::vector<rule_event>> events_;
   hash_map<pair<location_idx_t, location_idx_t>, duration_t> durations_;
+  std::map<location_idx_t, std::vector<footpath>> new_footpaths_out_,
+      new_footpaths_in_;
   hash_map<pair<transport_idx_t, pair<stop_idx_t, location_idx_t>>,
            std::vector<side_t>>
       signatures_;
@@ -97,9 +100,18 @@ duration_t get_duration(timetable const& tt,
                         location_idx_t const other) {
   auto const key = is_out ? pair{l, other} : pair{other, l};
   return utl::get_or_create(st.durations_, key, [&]() {
-    return routing::shortest_transfer(tt, &rtt, kDefaultProfile, key.first,
-                                      key.second)
-        .value_or(footpath::kBan);
+    auto d = routing::shortest_transfer(tt, &rtt, kDefaultProfile, key.first,
+                                        key.second)
+                 .value_or(footpath::kBan);
+    if (auto const it = st.new_footpaths_out_.find(key.first);
+        it != end(st.new_footpaths_out_)) {
+      for (auto const fp : it->second) {
+        if (fp.target() == key.second) {
+          d = std::min(d, fp.duration());
+        }
+      }
+    }
+    return d;
   });
 }
 
@@ -467,8 +479,8 @@ std::pair<location_idx_t, std::vector<change_end>> add_location(
         moved.push_back(p.y_);
       }
     }
-    auto& out = is_out ? rtt.rt_footpaths_out_ : rtt.rt_footpaths_in_;
-    auto& in = is_out ? rtt.rt_footpaths_in_ : rtt.rt_footpaths_out_;
+    auto& out = is_out ? st.new_footpaths_out_ : st.new_footpaths_in_;
+    auto& in = is_out ? st.new_footpaths_in_ : st.new_footpaths_out_;
     for (auto const& [l, d] : durations) {
       if (d != footpath::kBan) {
         out[v].emplace_back(l, d);
@@ -627,6 +639,29 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
       queue.emplace_back(y_rt, y.stop_);
     }
   }
+
+  auto const write_rt_footpaths =
+      [&](vecvec<location_idx_t, footpath>& fps,
+          std::map<location_idx_t, std::vector<footpath>> const& added) {
+        if (added.empty()) {
+          return;
+        }
+        auto next = vecvec<location_idx_t, footpath>{};
+        auto it = begin(added);
+        for (auto l = location_idx_t{0U}; l != rtt.n_locations(); ++l) {
+          next.emplace_back(fps[l]);
+          if (it != end(added) && it->first == l) {
+            for (auto const& fp : it->second) {
+              next.back().push_back(fp);
+            }
+            ++it;
+          }
+        }
+        fps = std::move(next);
+      };
+  write_rt_footpaths(rtt.rt_footpaths_out_, st.new_footpaths_out_);
+  write_rt_footpaths(rtt.rt_footpaths_in_, st.new_footpaths_in_);
+
   log(log_lvl::info, "rt.resolve_conflicts",
       "{} changed stops, {} checked, {} moves, {} unresolved, {} new "
       "real-time transports, {} real-time locations",

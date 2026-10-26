@@ -401,8 +401,8 @@ struct rt_timetable {
 
   mutable_fws_multimap<rt_transport_idx_t, location_idx_t> rt_stop_virts_;
 
-  mutable_fws_multimap<location_idx_t, footpath> rt_footpaths_out_;
-  mutable_fws_multimap<location_idx_t, footpath> rt_footpaths_in_;
+  vecvec<location_idx_t, footpath> rt_footpaths_out_;
+  vecvec<location_idx_t, footpath> rt_footpaths_in_;
 
   // Lower bound graph extension.
   bitvec_map<location_idx_t> fwd_search_lb_graph_has_edges_;

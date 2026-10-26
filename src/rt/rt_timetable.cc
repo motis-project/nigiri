@@ -218,6 +218,8 @@ location_idx_t rt_timetable::add_rt_location(location_idx_t const parent) {
   rt_location_parents_.push_back(parent);
   rt_virts_[parent].push_back(l);
   location_rt_transports_[l];
+  rt_footpaths_out_.resize(n_locations());
+  rt_footpaths_in_.resize(n_locations());
   return l;
 }
 

@@ -8,7 +8,7 @@ namespace nigiri::routing {
 
 inline rt_timetable const* rt_virts(rt_timetable const* rtt,
                                     profile_idx_t const prf) {
-  return prf == kDefaultProfile ? rtt : nullptr;
+  return profile_uses_virts(prf) ? rtt : nullptr;
 }
 
 template <typename Fn>

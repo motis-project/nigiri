@@ -35,7 +35,7 @@ inline location_idx_t search_location(rt_timetable const& rtt,
                                       profile_idx_t const prf,
                                       rt_transport_idx_t const rt_t,
                                       stop_idx_t const stop_idx) {
-  return prf == kDefaultProfile
+  return profile_uses_virts(prf)
              ? rtt.stop_location(rt_t, stop_idx)
              : stop{rtt.rt_transport_location_seq_[rt_t][stop_idx]}
                    .location_idx();
@@ -43,7 +43,7 @@ inline location_idx_t search_location(rt_timetable const& rtt,
 
 inline location_idx_t search_location(profile_idx_t const prf,
                                       rt::run_stop const& stp) {
-  return prf == kDefaultProfile && stp.fr_->is_rt() && stp.rtt() != nullptr
+  return profile_uses_virts(prf) && stp.fr_->is_rt() && stp.rtt() != nullptr
              ? stp.rtt()->stop_location(stp.fr_->rt_, stp.stop_idx_)
              : stp.get_stop().location_idx();
 }
