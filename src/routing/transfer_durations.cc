@@ -53,7 +53,7 @@ void fix_transfer_durations(timetable const& tt,
                             journey& j,
                             std::optional<journey::run_enter_exit> const prev,
                             std::optional<journey::run_enter_exit> const next) {
-  if (q.prf_idx_ != kDefaultProfile || tt.transfer_rules_.rules_.empty()) {
+  if (!profile_uses_virts(q.prf_idx_) || tt.transfer_rules_.rules_.empty()) {
     return;
   }
   auto const clamp = [](duration_t const d, unixtime_t::duration const gap) {

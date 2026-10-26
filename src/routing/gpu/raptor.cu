@@ -370,18 +370,18 @@ struct gpu_rt_timetable::impl {
   }
 
   device_rt_timetable to_device_rt_timetable(profile_idx_t const prf) const {
-    auto const is_default = prf == kDefaultProfile;
+    auto const uses_virts = profile_uses_virts(prf);
     auto d = device_rt_timetable{
         .n_rt_transports_ = n_rt_transports_,
         .base_day_idx_ = base_day_idx_,
         .location_rt_transports_ = to_view(location_rt_transports_),
         .rt_transport_location_seq_ =
-            to_view(is_default && has_rt_virts_ ? rt_virt_seq_
+            to_view(uses_virts && has_rt_virts_ ? rt_virt_seq_
                                                 : rt_transport_location_seq_),
         .rt_transport_stop_times_ = to_view(rt_transport_stop_times_),
         .rt_transport_clasz_ = to_view(rt_transport_clasz_),
         .rt_footpaths_ = to_view(rt_footpaths_)
-                             .first(is_default ? rt_footpaths_.size() : 0U),
+                             .first(uses_virts ? rt_footpaths_.size() : 0U),
         .rt_base_ = to_view(rt_base_),
         .transport_traffic_days_ = to_view(transport_traffic_days_),
         .bitfields_ = to_view(bitfields_),
@@ -698,7 +698,7 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
   reset_arrivals();
 
   auto td_dist = td_dist_to_dest;
-  if (rtt != nullptr && prf_idx_ == kDefaultProfile &&
+  if (rtt != nullptr && profile_uses_virts(prf_idx_) &&
       rtt->n_rt_locations() != 0U) {
     is_dest.resize(rtt->n_locations());
     extend_to_rt_virts(*rtt, dist_to_dest);

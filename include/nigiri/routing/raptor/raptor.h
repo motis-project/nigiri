@@ -125,7 +125,7 @@ struct raptor {
     }
     reset_arrivals();
 
-    if (!dist_to_end_.empty()) {
+    if (is_intermodal_dest()) {
       // only used for intermodal queries (dist_to_dest != empty)
       end_reachable_.resize(n_locations_);
       for (auto i = 0U; i != dist_to_end_.size(); ++i) {
@@ -141,6 +141,18 @@ struct raptor {
           });
         }
       }
+    } else {
+      is_dest_virt_.resize(n_locations_);
+      auto const mark_dest_virt = [&](location_idx_t const v) {
+        is_dest_virt_.set(to_idx(v), true);
+      };
+      is_dest_.for_each_set_bit([&](std::uint64_t const d) {
+        auto const dest = location_idx_t{static_cast<unsigned>(d)};
+        tt_.locations_.for_each_virt(dest, mark_dest_virt);
+        if constexpr (Rt) {
+          rtt_->for_each_rt_virt(dest, mark_dest_virt);
+        }
+      });
     }
   }
 
@@ -772,9 +784,6 @@ private:
   void update_transfers(unsigned const k) {
     state_.prev_station_mark_.for_each_set_bit([&](auto&& i) {
       auto const l = location_idx_t{static_cast<unsigned>(i)};
-      auto const stop = is_intermodal_dest() ? l
-                        : Rt                 ? rtt_->base(l)
-                                             : tt_.base(l);
       for (auto v = 0U; v != Vias + 1; ++v) {
         auto const tmp_time = tmp_[i][v];
         if (tmp_time == kInvalid) {
@@ -790,9 +799,10 @@ private:
                 loc{tt_, location_idx_t{i}}, v, to_unix(tmp_time), is_dest,
                 target_v, stay);
 
-          auto const is_dest_arrival = !is_intermodal_dest() &&
-                                       target_v == Vias &&
-                                       is_dest_[to_idx(stop)];
+          auto const is_virt_dest_arrival =
+              !is_intermodal_dest() && target_v == Vias && is_dest_virt_[i];
+          auto const is_dest_arrival =
+              is_virt_dest_arrival || (!is_intermodal_dest() && is_dest);
           auto const stop_transfer_time = get_transfer_time(l);
           if (!is_dest_arrival && stop_transfer_time == kNoTransferAllowed) {
             continue;
@@ -806,12 +816,14 @@ private:
           auto const fp_target_time =
               clamp(tmp_time + transfer_time + dir(stay.count()));
 
-          if (is_dest_arrival && stop != l &&
-              is_better(fp_target_time, best_[to_idx(stop)][Vias]) &&
-              is_better_loose(fp_target_time, time_at_dest_[k])) {
-            round_times_[k][to_idx(stop)][Vias] = fp_target_time;
-            best_[to_idx(stop)][Vias] = fp_target_time;
-            update_time_at_dest(k, fp_target_time);
+          if (is_virt_dest_arrival) {
+            auto const stop = Rt ? rtt_->base(l) : tt_.base(l);
+            if (is_better(fp_target_time, best_[to_idx(stop)][Vias]) &&
+                is_better_loose(fp_target_time, time_at_dest_[k])) {
+              round_times_[k][to_idx(stop)][Vias] = fp_target_time;
+              best_[to_idx(stop)][Vias] = fp_target_time;
+              update_time_at_dest(k, fp_target_time);
+            }
           }
 
           if (bounds_last_k_ == 0U &&
@@ -870,92 +882,106 @@ private:
         return;
       }
 
-      for (auto const& fp : get_transfers<SearchDir>(tt_, Rt ? rtt_ : nullptr,
-                                                     prf_idx_, l_idx)) {
-        if (!kFwd && use_td_fps && has_td_fps(fp.target(), true)) {
-          continue;
-        }
-
-        ++stats_.n_footpaths_visited_;
-
-        auto const target = to_idx(fp.target());
-
-        for (auto v = 0U; v != Vias + 1; ++v) {
-          auto const tmp_time = tmp_[i][v];
-          if (tmp_time == kInvalid) {
+      auto const for_each_fp = [&](auto const& bucket) {
+        for (auto const& fp : bucket) {
+          if (!kFwd && use_td_fps && has_td_fps(fp.target(), true)) {
             continue;
           }
 
-          auto const [first_start_v, last_start_v] = next_via_states(i, v);
-          for (auto start_v = first_start_v; start_v <= last_start_v;
-               ++start_v) {
-            auto const [first_v, last_v] = next_via_states(target, start_v);
-            for (auto target_v = first_v; target_v <= last_v; ++target_v) {
-              auto const stay =
-                  via_stay(v, start_v) + via_stay(start_v, target_v);
-              auto const fp_target_time = clamp(
-                  tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
-                                                        fp.duration().count()) +
-                                 stay.count()));
-              if (bounds_last_k_ == 0U &&
-                  is_better(fp_target_time, best_[target][target_v])) {
-                round_times_[k][target][target_v] =
-                    get_best(fp_target_time, round_times_[k][target][target_v]);
-              }
+          ++stats_.n_footpaths_visited_;
 
-              if (is_better(fp_target_time, best_[target][target_v]) &&
-                  is_better_loose(fp_target_time, time_at_dest_[k])) {
-                if (!lb_reachable(target) ||
-                    !is_better_loose(fp_target_time + dir(get_lb(target)),
-                                     time_at_dest_[k])) {
-                  ++stats_.fp_update_prevented_by_lower_bound_;
+          auto const target = to_idx(fp.target());
+
+          for (auto v = 0U; v != Vias + 1; ++v) {
+            auto const tmp_time = tmp_[i][v];
+            if (tmp_time == kInvalid) {
+              continue;
+            }
+
+            auto const [first_start_v, last_start_v] = next_via_states(i, v);
+            for (auto start_v = first_start_v; start_v <= last_start_v;
+                 ++start_v) {
+              auto const [first_v, last_v] = next_via_states(target, start_v);
+              for (auto target_v = first_v; target_v <= last_v; ++target_v) {
+                auto const stay =
+                    via_stay(v, start_v) + via_stay(start_v, target_v);
+                auto const fp_target_time =
+                    clamp(tmp_time +
+                          dir(adjusted_transfer_time(transfer_time_settings_,
+                                                     fp.duration().count()) +
+                              stay.count()));
+                if (bounds_last_k_ == 0U &&
+                    is_better(fp_target_time, best_[target][target_v])) {
+                  round_times_[k][target][target_v] = get_best(
+                      fp_target_time, round_times_[k][target][target_v]);
+                }
+
+                if (is_better(fp_target_time, best_[target][target_v]) &&
+                    is_better_loose(fp_target_time, time_at_dest_[k])) {
+                  if (!lb_reachable(target) ||
+                      !is_better_loose(fp_target_time + dir(get_lb(target)),
+                                       time_at_dest_[k])) {
+                    ++stats_.fp_update_prevented_by_lower_bound_;
+                    trace_upd(
+                        "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) "
+                        "--{}--> (to={}, "
+                        "best={}) --> update => {}, LB={}, "
+                        "LB_AT_DEST={}, DEST={}\n",
+                        k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
+                        adjusted_transfer_time(transfer_time_settings_,
+                                               fp.duration()),
+                        loc{tt_, fp.target()}, best_[target][target_v],
+                        to_unix(fp_target_time), get_lb(target),
+                        to_unix(clamp(fp_target_time + dir(get_lb(target)))),
+                        to_unix(time_at_dest_[k]));
+                    continue;
+                  }
+                  if (!within_bounds(k, target, fp_target_time, target_v)) {
+                    continue;
+                  }
+
                   trace_upd(
-                      "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) "
-                      "--{}--> (to={}, "
-                      "best={}) --> update => {}, LB={}, "
-                      "LB_AT_DEST={}, DEST={}\n",
+                      "┊ ├k={}   footpath: ({}, tmp={}) --{}--> ({}, "
+                      "best={}) --> "
+                      "update => {}, v={}->{}, stay={}\n",
                       k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
                       adjusted_transfer_time(transfer_time_settings_,
                                              fp.duration()),
-                      loc{tt_, fp.target()}, best_[target][target_v],
-                      to_unix(fp_target_time), get_lb(target),
-                      to_unix(clamp(fp_target_time + dir(get_lb(target)))),
+                      loc{tt_, fp.target()}, to_unix(best_[target][target_v]),
+                      to_unix(fp_target_time), v, target_v, stay);
+
+                  ++stats_.n_earliest_arrival_updated_by_footpath_;
+                  round_times_[k][target][target_v] = fp_target_time;
+                  best_[target][target_v] = fp_target_time;
+                  state_.station_mark_.set(target, true);
+                  if (target_v == Vias && is_dest_[target]) {
+                    update_time_at_dest(k, fp_target_time);
+                  }
+                } else {
+                  trace(
+                      "┊ ├k={}   NO FP UPDATE: {} [best={}] --{}--> {} "
+                      "[best={}, time_at_dest={}]\n",
+                      k, loc{tt_, l_idx},
+                      to_unix(best_[to_idx(l_idx)][target_v]),
+                      adjusted_transfer_time(transfer_time_settings_,
+                                             fp.duration()),
+                      loc{tt_, fp.target()}, to_unix(best_[target][target_v]),
                       to_unix(time_at_dest_[k]));
-                  continue;
                 }
-                if (!within_bounds(k, target, fp_target_time, target_v)) {
-                  continue;
-                }
-
-                trace_upd(
-                    "┊ ├k={}   footpath: ({}, tmp={}) --{}--> ({}, "
-                    "best={}) --> "
-                    "update => {}, v={}->{}, stay={}\n",
-                    k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
-                    adjusted_transfer_time(transfer_time_settings_,
-                                           fp.duration()),
-                    loc{tt_, fp.target()}, to_unix(best_[target][target_v]),
-                    to_unix(fp_target_time), v, target_v, stay);
-
-                ++stats_.n_earliest_arrival_updated_by_footpath_;
-                round_times_[k][target][target_v] = fp_target_time;
-                best_[target][target_v] = fp_target_time;
-                state_.station_mark_.set(target, true);
-                if (target_v == Vias && is_dest_[target]) {
-                  update_time_at_dest(k, fp_target_time);
-                }
-              } else {
-                trace(
-                    "┊ ├k={}   NO FP UPDATE: {} [best={}] --{}--> {} "
-                    "[best={}, time_at_dest={}]\n",
-                    k, loc{tt_, l_idx}, to_unix(best_[to_idx(l_idx)][target_v]),
-                    adjusted_transfer_time(transfer_time_settings_,
-                                           fp.duration()),
-                    loc{tt_, fp.target()}, to_unix(best_[target][target_v]),
-                    to_unix(time_at_dest_[k]));
               }
             }
           }
+        }
+      };
+      auto const& static_fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx_]
+                                    : tt_.locations_.footpaths_in_[prf_idx_];
+      if (l_idx < static_fps.size()) {
+        for_each_fp(static_fps[l_idx]);
+      }
+      if constexpr (Rt) {
+        if (profile_uses_virts(prf_idx_)) {
+          for_each_fp(
+              (kFwd ? rtt_->rt_footpaths_out_ : rtt_->rt_footpaths_in_)[l_idx]);
         }
       }
     });
@@ -1189,7 +1215,7 @@ private:
             bool WithSectionReservationNotRequiredFilter>
   bool update_rt_transport(unsigned const k, rt_transport_idx_t const rt_t) {
     auto const stop_seq = rtt_->rt_transport_location_seq_[rt_t];
-    auto const rt_stop_virts = prf_idx_ == kDefaultProfile
+    auto const rt_stop_virts = profile_uses_virts(prf_idx_)
                                    ? rtt_->rt_stop_virts(rt_t)
                                    : std::span<location_idx_t const>{};
     // et[v] = there is an entry point on this transport such that the
@@ -1640,6 +1666,7 @@ private:
   std::uint32_t n_static_locations_, n_locations_, n_routes_, n_rt_transports_;
   raptor_state& state_;
   bitvec end_reachable_;
+  bitvec is_dest_virt_;
   std::span<std::array<delta_t, Vias + 1>> tmp_;
   std::span<std::array<delta_t, Vias + 1>> best_;
   flat_matrix_view<std::array<delta_t, Vias + 1>> round_times_;
