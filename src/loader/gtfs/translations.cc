@@ -19,7 +19,7 @@ translation_idx_t translator::get(t const t,
       auto translations = e.translations_;
       auto const has_default =
           utl::any_of(translations, [&](translation const& tr) {
-            return tr.get_language() == source_lang_;
+            return tr.get_language() == source_lang_.value_or("en");
           });
       if (!has_default && !value.empty()) {
         auto& tr = translations.emplace_back();
@@ -27,8 +27,8 @@ translation_idx_t translator::get(t const t,
         tr.set_text(value);
       }
       utl::sort(translations, [&](translation const& a, translation const& b) {
-        return (a.get_language() != source_lang_) <
-               (b.get_language() != source_lang_);
+        return (a.get_language() != source_lang_.value_or("en")) <
+               (b.get_language() != source_lang_.value_or("en"));
       });
       e.idx_ = tt_.register_translation(translations);
     }
