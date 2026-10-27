@@ -9,9 +9,7 @@
 #include "utl/verify.h"
 #include "utl/visit.h"
 
-#include "unicode/schriter.h"
 #include "unicode/translit.h"
-#include "unicode/uchar.h"
 #include "unicode/uloc.h"
 #include "unicode/uscript.h"
 
