@@ -1,8 +1,6 @@
 #pragma once
 
 #include "nigiri/common/delta_t.h"
-#include "nigiri/common/it_range.h"
-#include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/query.h"
@@ -975,13 +973,29 @@ struct raptor_impl {
                          minutes_after_midnight_t const mam_at_stop) {
     auto const event_times = tt_.event_times_at_stop(
         r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
+    auto const n = static_cast<unsigned>(event_times.size());
 
+    // transport offset of the i-th event in search direction
+    auto const t_offset_at = [&](unsigned const i) {
+      return kFwd ? i : n - 1U - i;
+    };
+
+    // Day 0: the first event at or after the time at the stop (backward: at
+    // or before). Routes are FIFO (loader get_index), so the column is sorted
+    // by mam and a binary search finds it.
     auto const seek_first_day = [&]() {
-      return linear_lb(get_begin_it(event_times), get_end_it(event_times),
-                       mam_at_stop,
-                       [&](delta const a, minutes_after_midnight_t const b) {
-                         return is_better(a.mam(), b.count());
-                       });
+      auto lo = 0U;
+      auto hi = n;
+      while (lo < hi) {
+        auto const mid = lo + (hi - lo) / 2U;
+        if (is_better(event_times[t_offset_at(mid)].mam(),
+                      mam_at_stop.count())) {
+          lo = mid + 1U;
+        } else {
+          hi = mid;
+        }
+      }
+      return lo;
     };
 
     constexpr auto const kNDaysToIterate = static_cast<day_idx_t::value_t>(
@@ -992,17 +1006,14 @@ struct raptor_impl {
         continue;
       }
 
-      auto const ev_time_range =
-          it_range{i == 0U ? seek_first_day() : get_begin_it(event_times),
-                   get_end_it(event_times)};
-      if (ev_time_range.empty()) {
+      auto const first = i == 0U ? seek_first_day() : 0U;
+      if (first == n) {
         continue;
       }
 
-      for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
-        auto const t_offset =
-            static_cast<std::size_t>(&*it - event_times.data());
-        auto const ev = *it;
+      for (auto pos = first; pos != n; ++pos) {
+        auto const t_offset = t_offset_at(pos);
+        auto const ev = event_times[t_offset];
         auto const ev_mam = ev.mam();
 
         // an event equal to time-at-dest must still be boardable
@@ -1226,24 +1237,6 @@ struct raptor_impl {
 
   __device__ __forceinline__ int as_int(day_idx_t const d) const {
     return static_cast<int>(d.v_);
-  }
-
-  template <typename T>
-  __device__ __forceinline__ auto get_begin_it(T const& t) {
-    if constexpr (kFwd) {
-      return t.begin();
-    } else {
-      return t.rbegin();
-    }
-  }
-
-  template <typename T>
-  __device__ __forceinline__ auto get_end_it(T const& t) {
-    if constexpr (kFwd) {
-      return t.end();
-    } else {
-      return t.rend();
-    }
   }
 
   std::uint32_t* any_marked_;
