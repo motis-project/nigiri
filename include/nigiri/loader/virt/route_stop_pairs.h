@@ -46,8 +46,8 @@ struct transfer {
 struct route_stop {
   CISTA_COMPARABLE()
 
+  bool is_regular() const { return route_ != route_idx_t::invalid(); }
   bool is_base() const { return sig_ == kEmptySig; }
-  bool has_route() const { return route_ != route_idx_t::invalid(); }
 
   route_idx_t route_;
   stop_idx_t stop_idx_;
@@ -67,9 +67,13 @@ inline route_stop to_base_stop(location_idx_t const l) {
   return {route_idx_t::invalid(), stop_idx_t{0U}, l, kEmptySig};
 }
 
-struct route_stop_pairs {
-  using route_stop_pair_t = pair<route_stop_idx_t, route_stop_idx_t>;
+struct route_stop_pair {
+  CISTA_COMPARABLE()
+  route_stop_idx_t from_;
+  route_stop_idx_t to_;
+};
 
+struct route_stop_pairs {
   bool is_base(route_stop_idx_t const s) const {
     return route_stops_[s].is_base();
   }
@@ -87,9 +91,9 @@ struct route_stop_pairs {
   route_stop_pair_idx_t get_or_create_pair(route_stop_idx_t const from,
                                            route_stop_idx_t const to,
                                            window_t const& hull) {
-    return utl::get_or_create(pair_of_, route_stop_pair_t{from, to}, [&]() {
+    return utl::get_or_create(pair_of_, route_stop_pair{from, to}, [&]() {
       auto const p = route_stop_pair_idx_t{pairs_.size()};
-      pairs_.push_back(route_stop_pair_t{from, to});
+      pairs_.push_back(route_stop_pair{from, to});
       transfers_.emplace_back();
       windows_.push_back(hull);
       auto const from_route = route_stops_[from].route_;
@@ -106,7 +110,7 @@ struct route_stop_pairs {
 
   void add_transfer(route_stop_pair_idx_t const p, transfer const& t) {
     auto const [from, to] = pairs_[p];
-    if (route_stops_[from].has_route() || route_stops_[to].has_route()) {
+    if (route_stops_[from].is_regular() || route_stops_[to].is_regular()) {
       transfers_[p].push_back(t);
     }
     narrow(windows_[p], t);
@@ -114,8 +118,8 @@ struct route_stop_pairs {
 
   vector_map<route_stop_idx_t, route_stop> route_stops_;
   hash_map<route_stop, route_stop_idx_t> route_stop_of_;
-  vector_map<route_stop_pair_idx_t, route_stop_pair_t> pairs_;
-  hash_map<route_stop_pair_t, route_stop_pair_idx_t> pair_of_;
+  vector_map<route_stop_pair_idx_t, route_stop_pair> pairs_;
+  hash_map<route_stop_pair, route_stop_pair_idx_t> pair_of_;
   vector_map<route_stop_pair_idx_t, std::vector<transfer>> transfers_;
   vector_map<route_stop_pair_idx_t, window_t> windows_;
   vector_map<route_idx_t, std::vector<route_stop_pair_idx_t>> of_route_;

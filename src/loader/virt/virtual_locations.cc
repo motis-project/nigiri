@@ -5,6 +5,7 @@
 #include <numeric>
 #include <optional>
 #include <ranges>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -92,11 +93,11 @@ transport_routes split_routes(
   auto const repartition = [&](route_stop_pair_idx_t const p) {
     auto const route_of = [&](route_stop const& s,
                               route_transport_idx_t const t) {
-      return !s.has_route() ? s.route_ : routes.get_route(tt, s.route_, t);
+      return s.is_regular() ? routes.get_route(tt, s.route_, t) : s.route_;
     };
 
-    auto const from = pairs.route_stops_[pairs.pairs_[p].first];
-    auto const to = pairs.route_stops_[pairs.pairs_[p].second];
+    auto const from = pairs.route_stops_[pairs.pairs_[p].from_];
+    auto const to = pairs.route_stops_[pairs.pairs_[p].to_];
     auto const hull =
         durations_of.at(transfer_pair{from.stop_, to.stop_}).hull_;
     auto transfers = std::move(pairs.transfers_[p]);
@@ -127,23 +128,29 @@ transport_routes split_routes(
   };
 
   struct transport_groups {
-    vector_map<route_transport_idx_t, group_idx_t> group_;
+    bool has_conflicts() const { return n_groups_ != 0U; }
+
+    vector_map<route_transport_idx_t, group_idx_t> transport_group_;
     std::uint32_t n_groups_{0U};
   };
   auto const get_groups = [&](route_stop_pair_idx_t const p,
                               bool const is_from) -> transport_groups {
-    auto const& from = pairs.route_stops_[pairs.pairs_[p].first];
-    auto const& to = pairs.route_stops_[pairs.pairs_[p].second];
-    auto const& side = is_from ? from : to;
-    if (!side.has_route()) {
+    auto const& from = pairs.route_stops_[pairs.pairs_[p].from_];
+    auto const& to = pairs.route_stops_[pairs.pairs_[p].to_];
+    auto const& rs = is_from ? from : to;
+
+    if (!rs.is_regular()) {
+      // Base and signature route stops never split.
       return {};
     }
+
+    // For each transport: determine transfer interval based on all transfers.
     auto const& pair_durations =
         durations_of.at(transfer_pair{from.stop_, to.stop_});
-    auto const n_transports = route_transport_idx_t{
-        tt.route_transport_ranges_[routes.base_route_[side.route_]].size()};
+    auto const n_transports = static_cast<std::uint16_t>(
+        tt.route_transport_ranges_[routes.base_route_[rs.route_]].size());
     auto w = vector_map<route_transport_idx_t, std::optional<window_t>>(
-        to_idx(n_transports));
+        n_transports);
     for (auto const& t : pairs.transfers_[p]) {
       auto& tw = w[is_from ? t.from_ : t.to_];
       if (!tw.has_value()) {
@@ -152,39 +159,44 @@ transport_routes split_routes(
       narrow(*tw, t);
     }
 
-    auto items = std::vector<std::pair<route_transport_idx_t, window_t>>{};
+    // Sort transports by "restrictiveness" of their transfer window:
+    // - most restrictive interval end (lowest)
+    // - most restrictive interval begin (highest)
+    // - for stable ordering: by transport index
+    auto transports = std::vector<route_transport_idx_t>{};
     for (auto i = route_transport_idx_t{0U}; i != n_transports; ++i) {
       if (w[i].has_value()) {
-        items.emplace_back(i, *w[i]);
+        transports.push_back(i);
       }
     }
-    utl::sort(items, [](auto const& l, auto const& r) {
-      return std::pair{l.second.to_, l.first} <
-             std::pair{r.second.to_, r.first};
+    utl::sort(transports, [&](auto&& a, auto&& b) {
+      return std::tie(w[a]->to_, w[b]->from_, a) <
+             std::tie(w[b]->to_, w[a]->from_, b);
     });
 
+    // Interval stabbing: Assign each transport to a group so that each group
+    // shares an admissible interval, with as few groups as possible.
+    // Greedy algorithm is optimal locally (least groups per pair) based on the
+    // sort order of transports.
     auto groups = transport_groups{};
-    groups.group_.resize(to_idx(n_transports), group_idx_t::invalid());
+    groups.transport_group_.resize(n_transports, group_idx_t::invalid());
     auto window = window_t{};
-    for (auto const& [t, tw] : items) {
+    for (auto const t : transports) {
+      auto const& tw = *w[t];
       auto const both = window.intersect(tw);
-      if (groups.n_groups_ != 0U &&
-          pick_duration(both, pair_durations.fallback_).has_value()) {
+      if (is_admissible(both)) {
         window = both;
       } else {
         window = tw;
         ++groups.n_groups_;
       }
-      groups.group_[t] = group_idx_t{groups.n_groups_ - 1U};
+      groups.transport_group_[t] = group_idx_t{groups.n_groups_ - 1U};
     }
     return groups.n_groups_ < 2U ? transport_groups{} : groups;
   };
 
-  auto pair_groups =
-      vector_map<pair_side_idx_t,
-                 vector_map<route_transport_idx_t, group_idx_t>>{};
-  auto route_groups =
-      vector_map<split_route_idx_t, vector_map<pair_side_idx_t, group_idx_t>>{};
+  auto pair_groups = vecvec<pair_side_idx_t, group_idx_t>{};
+  auto route_groups = vecvec<split_route_idx_t, group_idx_t>{};
   auto new_route_of = vector_map<route_transport_idx_t, split_route_idx_t>{};
   auto route_sizes = vector_map<split_route_idx_t, std::uint32_t>{};
 
@@ -209,29 +221,39 @@ transport_routes split_routes(
 
     auto const from_groups = get_groups(p, true);
     auto const to_groups = get_groups(p, false);
-    utl::verify(from_groups.n_groups_ != 0U || to_groups.n_groups_ != 0U,
+    auto const from_can_split = from_groups.has_conflicts();
+    auto const to_can_split = to_groups.has_conflicts();
+    utl::verify(from_can_split || to_can_split,
                 "split_routes: inadmissible pair without groups");
 
-    auto const use_from = from_groups.n_groups_ != 0U &&
-                          (to_groups.n_groups_ == 0U ||
-                           from_groups.n_groups_ <= to_groups.n_groups_);
+    // Split preference:
+    // - if only one side can split: the side that can split
+    // - if both sides can split: the side with fewer groups
+    // - if both sides can split and have the same number of groups: from side
     auto const [from, to] = pairs.pairs_[p];
-    auto const r = pairs.route_stops_[use_from ? from : to].route_;
+    auto const rs = std::tie(from_can_split, to_groups.n_groups_) <
+                            std::tie(to_can_split, from_groups.n_groups_)
+                        ? to
+                        : from;
+
+    auto const r = pairs.route_stops_[rs].route_;
     auto const base_route = routes.base_route_[r];
     auto const range = tt.route_transport_ranges_[base_route];
-    auto const n_transports = route_transport_idx_t{range.size()};
+    auto const n_transports = static_cast<std::uint16_t>(range.size());
 
+    // Collect (transport -> group) assignments of pairs with conflicts on
+    // the side of this route.
     pair_groups.clear();
-    for (auto const pq : pairs.of_route_[r]) {
-      if (is_admissible(pairs.windows_[pq])) {
+    for (auto const x : pairs.of_route_[r]) {
+      if (is_admissible(pairs.windows_[x])) {
         continue;
       }
-      auto const [pq_from, pq_to] = pairs.pairs_[pq];
+      auto const [x_from, x_to] = pairs.pairs_[x];
       for (auto const is_from : {true, false}) {
-        if (pairs.route_stops_[is_from ? pq_from : pq_to].route_ == r) {
-          auto g = get_groups(pq, is_from);
-          if (g.n_groups_ != 0U) {
-            pair_groups.push_back(std::move(g.group_));
+        if (pairs.route_stops_[is_from ? x_from : x_to].route_ == r) {
+          auto g = get_groups(x, is_from);
+          if (g.has_conflicts()) {
+            pair_groups.emplace_back(g.transport_group_);
           }
         }
       }
@@ -240,34 +262,35 @@ transport_routes split_routes(
     route_groups.clear();
     route_sizes.clear();
     new_route_of.clear();
-    new_route_of.resize(to_idx(n_transports), split_route_idx_t::invalid());
+    new_route_of.resize(n_transports, split_route_idx_t::invalid());
+    auto groups = vector_map<pair_side_idx_t, group_idx_t>{};
     for (auto t = route_transport_idx_t{0U}; t != n_transports; ++t) {
-      if (routes.get_route(tt, r, t) != r ||
-          utl::all_of(pair_groups, [&](auto const& g) {
-            return g[t] == group_idx_t::invalid();
-          })) {
+      if (routes.get_route(tt, r, t) != r) {
         continue;
       }
-      auto const fits = [&](auto const& groups) {
-        for (auto i = pair_side_idx_t{0U}; i != pair_groups.size(); ++i) {
-          auto const g = pair_groups[i][t];
-          if (g != group_idx_t::invalid() &&
-              groups[i] != group_idx_t::invalid() && groups[i] != g) {
-            return false;
-          }
-        }
-        return true;
+      groups.clear();
+      for (auto const g : pair_groups) {
+        groups.push_back(g[to_idx(t)]);
+      }
+      if (utl::all_of(groups,
+                      [](auto g) { return g == group_idx_t::invalid(); })) {
+        continue;
+      }
+      auto const is_compatible = [](group_idx_t const a, group_idx_t const b) {
+        return a == group_idx_t::invalid() || b == group_idx_t::invalid() ||
+               a == b;
       };
-      auto const it = utl::find_if(route_groups, fits);
+      auto const it = utl::find_if(route_groups, [&](auto const& rg) {
+        return std::ranges::equal(rg, groups, is_compatible);
+      });
       auto const k = split_route_idx_t{it - begin(route_groups)};
       if (it == end(route_groups)) {
-        route_groups.emplace_back(pair_groups.size(), group_idx_t::invalid());
+        route_groups.emplace_back(groups);
         route_sizes.push_back(0U);
-      }
-      for (auto i = pair_side_idx_t{0U}; i != pair_groups.size(); ++i) {
-        if (pair_groups[i][t] != group_idx_t::invalid()) {
-          route_groups[k][i] = pair_groups[i][t];
-        }
+      } else {
+        std::ranges::transform(*it, groups, begin(*it), [](auto a, auto g) {
+          return g == group_idx_t::invalid() ? a : g;
+        });
       }
       new_route_of[t] = k;
       ++route_sizes[k];
@@ -275,13 +298,11 @@ transport_routes split_routes(
     auto const kept_route = split_route_idx_t{
         std::ranges::max_element(route_sizes) - begin(route_sizes)};
 
-    auto changed = std::vector{r};
     for (auto k = split_route_idx_t{0U}; k != route_sizes.size(); ++k) {
       if (k == kept_route) {
         continue;
       }
       auto const new_route = route_idx_t{routes.base_route_.size()};
-      changed.push_back(new_route);
       routes.base_route_.push_back(base_route);
       pairs.of_route_.emplace_back();
       for (auto t = route_transport_idx_t{0U}; t != n_transports; ++t) {
@@ -290,23 +311,25 @@ transport_routes split_routes(
         }
       }
     }
+    auto const n_pairs = pairs.pairs_.size();
     auto const route_pairs = pairs.of_route_[r];
-    for (auto const pq : route_pairs) {
-      repartition(pq);
+    for (auto const x : route_pairs) {
+      repartition(x);
     }
-    for (auto const c : changed) {
-      for (auto const pq : pairs.of_route_[c]) {
-        if (!is_admissible(pairs.windows_[pq])) {
-          q.push_back(pq);
-        }
+    for (auto x = route_stop_pair_idx_t{n_pairs}; x != pairs.pairs_.size();
+         ++x) {
+      if (!is_admissible(pairs.windows_[x])) {
+        q.push_back(x);
       }
     }
     q.push_back(p);
     ++n_split;
   }
+
   log(log_lvl::info, "loader.virtual_locations",
       "{} route stops, {} pairs, {} splits", pairs.route_stops_.size(),
       pairs.pairs_.size(), n_split);
+
   return routes;
 }
 
@@ -706,7 +729,7 @@ void write_routes(timetable& tt,
       if (s == end(pairs.route_stop_of_) && q != r) {
         auto const b = pairs.route_stop_of_.find(route_stop{r, i, l});
         if (b != end(pairs.route_stop_of_) &&
-            !pairs.route_stops_[b->second].has_route()) {
+            !pairs.route_stops_[b->second].is_regular()) {
           s = b;
         }
       }
