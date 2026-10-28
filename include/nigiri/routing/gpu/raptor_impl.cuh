@@ -973,7 +973,7 @@ struct raptor_impl {
                          minutes_after_midnight_t const mam_at_stop) {
     auto const event_times = tt_.event_times_at_stop(
         r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
-    auto const n = static_cast<unsigned>(event_times.size());
+    auto const n = event_times.size();
 
     // transport offset of the i-th event in search direction
     auto const t_offset_at = [&](unsigned const i) {
@@ -1023,7 +1023,7 @@ struct raptor_impl {
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
-        auto const t = tt_.route_transport_ranges_[r][t_offset];
+        auto const t = event_times.transport(t_offset);
         if (i == 0U && !is_better_or_eq(mam_at_stop.count(), ev_mam)) {
           continue;
         }
@@ -1078,7 +1078,7 @@ struct raptor_impl {
     auto const rel_day =
         static_cast<std::uint32_t>(as_int(t.day_) - et_day_lo());
     auto const t_offset =
-        to_idx(t.t_idx_) - to_idx(tt_.route_transport_ranges_[r].from_);
+        to_idx(t.t_idx_) - to_idx(tt_.route_times_[r].transports_.from_);
     auto const x = (rel_day << kEtRelDayShift) | t_offset;
 
     return kFwd ? x : kEtReverseBase - x;
@@ -1090,7 +1090,7 @@ struct raptor_impl {
     auto const rel_day = x >> kEtRelDayShift;
     auto const t_offset = x & ((1U << kEtRelDayShift) - 1U);
     return transport{
-        transport_idx_t{to_idx(tt_.route_transport_ranges_[r].from_) +
+        transport_idx_t{to_idx(tt_.route_times_[r].transports_.from_) +
                         t_offset},
         day_idx_t{static_cast<day_idx_t::value_t>(static_cast<int>(rel_day) +
                                                   et_day_lo())}};

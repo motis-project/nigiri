@@ -8,6 +8,7 @@
 #include <iostream>
 #include <limits>
 #include <optional>
+#include <string_view>
 
 // date/date.h (pulled in transitively via nigiri/types.h above) leaks a
 // `#define NOEXCEPT noexcept`. CCCL's concept machinery builds a requirement
@@ -50,6 +51,117 @@ struct gpu_timetable::impl {
   using t = timetable;
   using fp_t = decltype(t{}.locations_.footpaths_out_[0]);
 
+  // Transports + compressed route stop times, see route_times
+  // (device_timetable.cuh).
+  struct compressed_stop_times {
+    vector_map<transport_idx_t, delta> first_dep_;
+    vector_map<transport_idx_t, route_pattern_idx_t> transport_pattern_;
+    vector_map<route_idx_t, route_times> route_times_;
+    std::vector<delta> patterns_;  // per route: [event][pattern]
+  };
+
+  // The patterns of one route, deduplicated like string_store: the set holds
+  // pattern indices, lookups use the bytes of an offset sequence.
+  using route_patterns_t = vecvec<route_pattern_idx_t, delta>;
+  static std::string_view bytes(auto const& offsets) {
+    return {reinterpret_cast<char const*>(offsets.data()),
+            offsets.size() * sizeof(delta)};
+  }
+  struct pattern_hash {
+    using is_transparent = void;
+    cista::hash_t operator()(std::string_view const s) const {
+      return cista::hash(s);
+    }
+    cista::hash_t operator()(route_pattern_idx_t const p) const {
+      return cista::hash(bytes((*patterns_)[p]));
+    }
+    route_patterns_t const* patterns_;
+  };
+  struct pattern_equals {
+    using is_transparent = void;
+    bool operator()(std::string_view const a,
+                    route_pattern_idx_t const b) const {
+      return a == bytes((*patterns_)[b]);
+    }
+    bool operator()(route_pattern_idx_t const a,
+                    route_pattern_idx_t const b) const {
+      return a == b;
+    }
+    route_patterns_t const* patterns_;
+  };
+
+  static compressed_stop_times compress_stop_times(timetable const& tt) {
+    auto const full = [](delta const d) {
+      return static_cast<int>(d.days()) * 1440 + static_cast<int>(d.mam());
+    };
+    auto const n_transports = tt.transport_route_.size();
+    auto c = compressed_stop_times{};
+    c.first_dep_.resize(n_transports,
+                        delta{std::uint16_t{0U}, std::uint16_t{0U}});
+    c.transport_pattern_.resize(n_transports);
+    c.route_times_.reserve(tt.n_routes());
+
+    auto offsets = std::vector<delta>{};
+    auto route_patterns = route_patterns_t{};
+    auto patterns = hash_set<route_pattern_idx_t, pattern_hash, pattern_equals>{
+        0U, pattern_hash{&route_patterns}, pattern_equals{&route_patterns}};
+    for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
+      auto const range = tt.route_transport_ranges_[r];
+      auto const n = static_cast<unsigned>(range.size());
+      auto const n_ev =
+          static_cast<unsigned>(tt.route_location_seq_[r].size() * 2U - 2U);
+      auto const base = tt.route_stop_time_ranges_[r].from_;
+      auto const stop_time = [&](unsigned const e, unsigned const j) {
+        return tt.route_stop_times_[base + static_cast<std::size_t>(e) * n + j];
+      };
+
+      offsets.assign(n_ev, delta{std::uint16_t{0U}, std::uint16_t{0U}});
+      route_patterns.clear();
+      patterns.clear();
+      for (auto j = 0U; j != n; ++j) {
+        auto const t = range.from_ + j;
+        auto const fd = stop_time(0U, j);
+        auto const fd_full = full(fd);
+        for (auto e = 0U; e != n_ev; ++e) {
+          auto const off = full(stop_time(e, j)) - fd_full;
+          utl::verify(off >= 0,
+                      "gpu timetable: event times of transport {} decrease", t);
+          offsets[e] = delta{static_cast<std::uint16_t>(off / 1440),
+                             static_cast<std::uint16_t>(off % 1440)};
+        }
+
+        auto const it = patterns.find(bytes(offsets));
+        auto const p = it != end(patterns)
+                           ? *it
+                           : route_pattern_idx_t{static_cast<std::uint16_t>(
+                                 route_patterns.size())};
+        if (it == end(patterns)) {
+          utl::verify(
+              route_patterns.size() <
+                  std::numeric_limits<route_pattern_idx_t::value_t>::max(),
+              "gpu timetable: too many stop time patterns in route {}", r);
+          route_patterns.emplace_back(offsets);
+          patterns.emplace(p);
+        }
+        c.first_dep_[t] = fd;
+        c.transport_pattern_[t] = p;
+      }
+
+      auto const n_patterns = static_cast<std::uint16_t>(route_patterns.size());
+      c.route_times_.push_back(
+          {.transports_ = range,
+           .pattern_start_ = static_cast<std::uint32_t>(c.patterns_.size()),
+           .n_patterns_ = n_patterns});
+      for (auto e = 0U; e != n_ev; ++e) {
+        for (auto p = route_pattern_idx_t{0U};
+             p != route_pattern_idx_t{n_patterns}; ++p) {
+          c.patterns_.push_back(route_patterns[p][e]);
+        }
+      }
+    }
+    return c;
+  }
+
   static std::vector<std::uint32_t> build_route_stop_offset(
       timetable const& tt) {
     auto v = std::vector<std::uint32_t>(tt.n_routes() + 1U);
@@ -75,9 +187,6 @@ struct gpu_timetable::impl {
       : n_locations_{tt.n_locations()},
         n_routes_{tt.n_routes()},
         transfer_time_{to_device(tt.locations_.transfer_time_)},
-        route_stop_times_{to_device(tt.route_stop_times_)},
-        route_stop_time_ranges_{to_device(tt.route_stop_time_ranges_)},
-        route_transport_ranges_{to_device(tt.route_transport_ranges_)},
         route_clasz_{to_device(tt.route_clasz_)},
         route_location_seq_{tt.route_location_seq_},
         location_routes_{tt.location_routes_},
@@ -98,6 +207,12 @@ struct gpu_timetable::impl {
         route_reservation_not_required_sections_{
             tt.route_flags_per_section_[kReservationNotRequired]},
         internal_interval_days_{tt.internal_interval_days()} {
+    auto const c = compress_stop_times(tt);
+    first_dep_ = to_device(c.first_dep_);
+    transport_pattern_ = to_device(c.transport_pattern_);
+    route_times_ = to_device(c.route_times_);
+    patterns_ = to_device(c.patterns_);
+
     auto const off = build_route_stop_offset(tt);
     route_stop_offset_.assign(off.begin(), off.end());
     auto const ros = build_route_of_stop(tt, off);
@@ -126,9 +241,10 @@ struct gpu_timetable::impl {
         .n_locations_ = n_locations_,
         .n_routes_ = n_routes_,
         .transfer_time_ = transfer_time_,
-        .route_stop_times_ = to_view(route_stop_times_),
-        .route_stop_time_ranges_ = to_view(route_stop_time_ranges_),
-        .route_transport_ranges_ = to_view(route_transport_ranges_),
+        .first_dep_ = first_dep_,
+        .transport_pattern_ = transport_pattern_,
+        .route_times_ = route_times_,
+        .patterns_ = to_view(patterns_),
         .route_clasz_ = to_view(route_clasz_),
         .route_location_seq_ = to_view(route_location_seq_),
         .location_routes_ = to_view(location_routes_),
@@ -154,9 +270,10 @@ struct gpu_timetable::impl {
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_out_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_in_;
 
-  thrust::device_vector<delta> route_stop_times_;
-  thrust::device_vector<interval<std::uint32_t>> route_stop_time_ranges_;
-  thrust::device_vector<interval<transport_idx_t>> route_transport_ranges_;
+  thrust::device_vector<delta> first_dep_;
+  thrust::device_vector<route_pattern_idx_t> transport_pattern_;
+  thrust::device_vector<route_times> route_times_;
+  thrust::device_vector<delta> patterns_;
   thrust::device_vector<clasz> route_clasz_;
 
   device_vecvec<decltype(t{}.route_location_seq_)> route_location_seq_;
