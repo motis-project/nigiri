@@ -340,73 +340,6 @@ routing_result bmrap_profile(
   // forward search from d returns the entire Pareto set at d.
   auto realized = std::vector<journey>{};
 
-  // Bound for the forward realizations (5b), taken from the mc pong's labels:
-  // for every stop and trips-to-go, the latest time (forward) from which the
-  // step's arrivals are still reached - what the realizations re-find, so it
-  // is far tighter than the anchors' deadlines (mc_ping's `bounds`). A plain
-  // (not staggered) matrix: row i = at most i trips to the destination, read
-  // with the realization's own trip budget. CPU mc pong only: the device one
-  // keeps its labels on the device.
-  constexpr auto const kPongDir = flip(SearchDir);
-  constexpr auto const kRealizeInvalid = kInvalidDelta<kPongDir>;
-  auto realize_bounds = bmrap_bounds{};
-  auto realize_touched = std::vector<std::uint32_t>{};
-  auto realize_mark = bitvec{};
-  // resets the cells of the previous step, sized for `trips` trips
-  auto const realize_begin = [&](std::uint8_t const trips) {
-    auto const n = tt.n_locations();
-    if (realize_bounds.lat_.size() < static_cast<std::size_t>(trips + 1U) * n) {
-      realize_bounds.resize(n, trips, kRealizeInvalid);
-      realize_mark = bitvec{n};
-    } else {
-      for (auto const l : realize_touched) {
-        for (auto i = 0U; i <= realize_bounds.budget_; ++i) {
-          realize_bounds.at(i, l) = kRealizeInvalid;
-        }
-        realize_mark.set(l, false);
-      }
-      realize_bounds.budget_ = trips;
-    }
-    realize_touched.clear();
-  };
-  // after one arrival group's pong: its labels, best time per stop and round
-  // (next_start_time() clears the bags between groups)
-  [[maybe_unused]] auto const realize_merge = [&]() {
-    if constexpr (GpuMc < 2) {
-      auto const& layer = mc_pong_state.bag_;
-      layer.touched_.for_each_set_bit([&](auto const i) {
-        auto const l = static_cast<std::uint32_t>(i);
-        for (auto const& e : layer.span(l)) {
-          if (e.round_ > realize_bounds.budget_) {
-            continue;
-          }
-          auto& cell = realize_bounds.at(e.round_, l);
-          if (cell == kRealizeInvalid ||
-              bmrap_detail::is_better<kPongDir>(e.crit_.arr_, cell)) {
-            cell = e.crit_.arr_;
-          }
-        }
-        if (!realize_mark[l]) {
-          realize_mark.set(l, true);
-          realize_touched.push_back(l);
-        }
-      });
-    }
-  };
-  // rows are "at most i trips": the monotone prefix over the rounds
-  auto const realize_finish = [&]() {
-    for (auto const l : realize_touched) {
-      for (auto i = 1U; i <= realize_bounds.budget_; ++i) {
-        auto const prev = realize_bounds.at(i - 1U, l);
-        auto& cell = realize_bounds.at(i, l);
-        if (prev != kRealizeInvalid &&
-            (cell == kRealizeInvalid ||
-             bmrap_detail::is_better<kPongDir>(prev, cell))) {
-          cell = prev;
-        }
-      }
-    }
-  };
   auto realized_deps = std::vector<unixtime_t>{};
   auto n_realized = std::uint64_t{0U};
   auto n_unrealized = std::uint64_t{0U};
@@ -628,14 +561,6 @@ routing_result bmrap_profile(
 
     mc_pong.reset_arrivals();
     auto step_results = pareto_set<journey>{};
-    if constexpr (GpuMc == 0) {
-      auto mc_trips = std::uint8_t{0U};
-      for (auto const& j : mc_results) {
-        mc_trips =
-            std::max(mc_trips, static_cast<std::uint8_t>(j.transfers_ + 1U));
-      }
-      realize_begin(mc_trips);
-    }
     for_each_arrival_group(mc_results, [&](unixtime_t const arr,
                                            auto const first, auto const last) {
       seed_bwd(mc_pong, arr);
@@ -647,13 +572,7 @@ routing_result bmrap_profile(
                                        })
                           ->transfers_,
                       all_rounds(start_time - kDir), step_results);
-      if constexpr (GpuMc == 0) {
-        realize_merge();
-      }
     });
-    if constexpr (GpuMc == 0) {
-      realize_finish();
-    }
     sw.lap(ms_mc_pong);
 
     for (auto& j : step_results) {
@@ -678,10 +597,13 @@ routing_result bmrap_profile(
     // mc pong reconstructs backwards, so every intermediate leg is the LATEST
     // run that still connects: no slack at any transfer, and one delay loses
     // the chain. Re-running forward from the departure it just pinned yields
-    // the same tuple with the EARLIEST connections. Bounded by the mc pong's
-    // labels of this step (realize_bounds, CPU mc pong) - the anchors'
-    // tau_dep^<- is far looser for journeys whose arrival is known, and
-    // destination pruning alone leaves too much of the network unpruned.
+    // the same tuple with the EARLIEST connections. Bounded like the mc ping,
+    // by the anchors' tau_dep^<- (`bounds`). A matrix from the mc pong's labels
+    // looked tighter, but merging all arrival groups per (stop, round) and
+    // taking the "at most i trips" prefix decouples trips from deadlines: a
+    // label may then use many trips AND reach the latest arrival, which no
+    // result does. On multi-day queries nearly every walking variant passed,
+    // and one realization took 254.6 s instead of 4.6 s (same journeys).
     //
     // Only departures the scan has passed are final, and only those get
     // realized: mc pong re-anchors to departures far beyond the step (and the
@@ -731,15 +653,6 @@ routing_result bmrap_profile(
           loosest_arr = j.start_time_;
         }
       }
-      if constexpr (GpuMc == 0) {
-        // a departure an earlier step's mc pong found has no labels in this
-        // step's realize_bounds
-        mc_ping.set_bounds(
-            utl::any_of(step_results,
-                        [&](journey const& j) { return j.dest_time_ == d; })
-                ? &realize_bounds
-                : &bounds);
-      }
       auto fwd = pareto_set<journey>{};
       run_mc_ping(d, max_tr, *loosest_arr + kDir, fwd);
       for (auto& f : fwd) {
@@ -759,9 +672,6 @@ routing_result bmrap_profile(
           realized.emplace_back(f);
         }
       }
-    }
-    if constexpr (GpuMc == 0) {
-      mc_ping.set_bounds(&bounds);  // the next step's mc ping
     }
     sw.lap(ms_realize);
 
