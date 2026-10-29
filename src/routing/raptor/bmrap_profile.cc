@@ -551,9 +551,19 @@ routing_result bmrap_profile(
     sw.lap(ms_mc);
 
     // ---- 5. MC PONG: re-anchor each mc journey to its latest departure ----
-    // skip journeys an earlier step already validated
+    // skip journeys an earlier step already validated. The results carry the
+    // scan's flipped convention (start_time_ = arrival), mc_results the
+    // ping's: compared as they are, a departure is checked against arrivals,
+    // the skip never fires and every step re-pongs every arrival group.
     utl::erase_if(mc_results, [&](journey const& x) {
-      return s_state.results_.is_dominated(x);
+      auto probe = journey{};
+      probe.start_time_ = x.dest_time_;
+      probe.dest_time_ = x.start_time_;
+      probe.transfers_ = x.transfers_;
+      probe.criteria_cost_ = x.criteria_cost_;
+      probe.criteria_mode_filter_ = x.criteria_mode_filter_;
+      probe.criteria_mode_switches_ = x.criteria_mode_switches_;
+      return s_state.results_.is_dominated(probe);
     });
     utl::sort(mc_results, [&](journey const& a, journey const& b) {
       return is_better(a.dest_time_, b.dest_time_);
