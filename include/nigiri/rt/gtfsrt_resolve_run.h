@@ -49,7 +49,7 @@ void resolve_trip(date::sys_days const today,
          start_time_day_offset - tt.internal_interval_days().from_)
             .count();
 
-    if (day_idx > kMaxDays || day_idx < 0) {
+    if (day_idx >= kMaxDays || day_idx < 0) {
       continue;
     }
 
