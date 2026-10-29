@@ -114,13 +114,13 @@ TEST(routing, td_start_times) {
                  A,
                  std::vector<td_offset>{
                      {.valid_from_ = sys_days{1970_y / January / 1},
-                      .duration_ = footpath::kMaxDuration,
+                      .duration_ = kTdFootpathBan,
                       .transport_mode_payload_ = 0U},
                      {.valid_from_ = sys_days{2020_y / March / 30} + 10h,
                       .duration_ = 10min,
                       .transport_mode_payload_ = 0U},
                      {.valid_from_ = sys_days{2020_y / March / 30} + 12h,
-                      .duration_ = footpath::kMaxDuration,
+                      .duration_ = kTdFootpathBan,
                       .transport_mode_payload_ = 0U}}}}},
              {}, kMaxTravelTime, location_match_mode::kExact, false, starts,
              true, 0U, {});
@@ -186,7 +186,7 @@ TEST(routing, td_start_times_rt_infeasible) {
       hash_map<location_idx_t, std::vector<td_offset>>{{std::pair{
           A,
           std::vector<td_offset>{{.valid_from_ = sys_days{1970_y / January / 1},
-                                  .duration_ = footpath::kMaxDuration,
+                                  .duration_ = kTdFootpathBan,
                                   .transport_mode_payload_ = 0U},
                                  {.valid_from_ = day + 10h + 30min,
                                   .duration_ = 5min,

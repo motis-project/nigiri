@@ -12,6 +12,7 @@
 
 #include "../raptor_search.h"
 #include "../rt/util.h"
+#include "../transfer_rules_util.h"
 #include "results_to_string.h"
 
 using namespace date;
@@ -259,7 +260,7 @@ TEST(join_split, complex) {
     // x1: 18  // > 48:00
     // jl: 13, 14, 15, 17, 20, 21
     EXPECT_EQ(
-        R"([{"idx":0,"firstDay":"2025-06-11","lastDay":"2025-06-21","noLocations":10,"noTrips":6,"transportsXDays":30}])",
+        R"({"feeds":[{"idx":0,"firstDay":"2025-06-11","lastDay":"2025-06-21","noLocations":10,"noTrips":6,"transportsXDays":30}],"noRoutes":12,"profiles":[{"prf":0,"noFootpaths":12}]})",
         to_str(get_metrics(tt), tt));
   };
 
@@ -448,6 +449,26 @@ transfer_type,from_trip_id,to_trip_id
 }
 
 }  // namespace
+
+// A trip that stays seated in itself is just a trip.
+TEST(join_split, self_loop_keeps_trip) {
+  auto const tt = load_feeds(
+      {feed({{"A", 50.0, 6.0}, {"B", 50.0, 6.5}},
+            {{"T", "R", {{"A", "10:00"}, {"B", "10:30"}}}}, "B,A,4,,,,T,T\n")});
+  EXPECT_EQ(at("10:30"), arrival_at(tt, "A", "B", "10:00"));
+}
+
+// T1 -> T2 -> T1: T2 -> T1 is no valid dwell (T1 leaves 23 h after T2
+// arrives), so the chain starts with T1 - neither trip may get lost.
+TEST(join_split, back_edge_keeps_trips) {
+  auto const tt =
+      load_feeds({feed({{"A", 50.0, 6.0}, {"B", 50.0, 6.5}},
+                       {{"T1", "R", {{"A", "10:00"}, {"B", "10:30"}}},
+                        {"T2", "R", {{"B", "10:40"}, {"A", "11:00"}}}},
+                       "B,B,4,,,,T1,T2\nA,A,4,,,,T2,T1\n")});
+  EXPECT_EQ(at("10:30"), arrival_at(tt, "A", "B", "10:00"));
+  EXPECT_EQ(at("11:00"), arrival_at(tt, "B", "A", "10:35"));
+}
 
 TEST(join_split, cross_linked_duplicates) {
   constexpr auto const kN = 20U;

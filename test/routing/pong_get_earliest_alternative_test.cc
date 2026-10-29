@@ -177,12 +177,12 @@ S,20240619,1
 
 // TD footpath at the ingress side (q.prf_idx_ != 0).
 // Ingress X→A only via a TD footpath (5min from 10:55). Static is blocked
-// (kMaxDuration). With from_arr=10:50, the TD footpath enables boarding at
+// (footpath::kBan). With from_arr=10:50, the TD footpath enables boarding at
 // A at 11:00.
 TEST(pong, get_earliest_alternative_td_footpath_ingress) {
   // One transport A→B at 11:00; reaching A on time requires the TD footpath
   // from X→A active at 10:55 (5min duration). The static footpath X→A is
-  // set to kMaxDuration to exclude it.
+  // set to footpath::kBan to exclude it.
   constexpr auto const kGTFS = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -220,13 +220,13 @@ S,20240619,1
   auto const A = find_loc(tt, "A");
   auto const B = find_loc(tt, "B");
 
-  // Static footpath X→A is "blocked" (kMaxDuration).
+  // Static footpath X→A is "blocked" (footpath::kBan).
   tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
   tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
   tt.locations_.footpaths_out_[kProfile][X].push_back(
-      footpath(A, footpath::kMaxDuration));
+      footpath(A, footpath::kBan));
   tt.locations_.footpaths_in_[kProfile][A].push_back(
-      footpath(X, footpath::kMaxDuration));
+      footpath(X, footpath::kBan));
 
   auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / June / 19});
 
@@ -258,11 +258,11 @@ S,20240619,1
 
 // TD footpath at the egress side (q.prf_idx_ != 0).
 // Egress B→Y only via a TD footpath active at 11:30 (5min). Static is
-// kMaxDuration.
+// footpath::kBan.
 TEST(pong, get_earliest_alternative_td_footpath_egress) {
   // One transport A→B at 11:00; the egress B→Y requires a TD footpath
   // active at 11:30 (5min duration). The static footpath B→Y is set to
-  // kMaxDuration to exclude it.
+  // footpath::kBan to exclude it.
   constexpr auto const kGTFS = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -303,9 +303,9 @@ S,20240619,1
   tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
   tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
   tt.locations_.footpaths_out_[kProfile][B].push_back(
-      footpath(Y, footpath::kMaxDuration));
+      footpath(Y, footpath::kBan));
   tt.locations_.footpaths_in_[kProfile][Y].push_back(
-      footpath(B, footpath::kMaxDuration));
+      footpath(B, footpath::kBan));
 
   auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / June / 19});
 

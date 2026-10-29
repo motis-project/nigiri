@@ -63,15 +63,22 @@ TEST(gtfs, stop_groups_equivalent_routing) {
   load_timetable({}, source_idx_t{0}, stop_group_files(), tt);
   finalize(tt);
 
+  // G1 is a dummy stop at (0,0), equivalent to A. Its "walk" to A is thousands
+  // of kilometers - far more minutes than a duration holds - and must not wrap
+  // into a footpath.
   auto const src = source_idx_t{0};
+  auto const g1 = tt.locations_.location_id_to_idx_.at({"G1", src});
+  ASSERT_FALSE(tt.locations_.equivalences_[g1].empty());
+  EXPECT_TRUE(tt.locations_.footpaths_out_[kDefaultProfile][g1].empty());
+  EXPECT_TRUE(tt.locations_.footpaths_in_[kDefaultProfile][g1].empty());
+
   auto q = routing::query{
       .start_time_ = interval<unixtime_t>{sys_days{2020_y / January / 1} + 0h,
                                           sys_days{2020_y / January / 1} + 24h},
       .start_match_mode_ = routing::location_match_mode::kEquivalent,
       .dest_match_mode_ = routing::location_match_mode::kEquivalent,
       .use_start_footpaths_ = true,
-      .start_ = {{tt.locations_.location_id_to_idx_.at({"G1", src}), 0_minutes,
-                  0U}},
+      .start_ = {{g1, 0_minutes, 0U}},
       .destination_ = {
           {tt.locations_.location_id_to_idx_.at({"G2", src}), 0_minutes, 0U}}};
 

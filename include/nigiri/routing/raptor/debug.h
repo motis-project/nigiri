@@ -69,14 +69,15 @@
       "j_start_time={}, offset={}\n",                                     \
       loc{tt, o.target()}, leg_start_time, j.start_time_, o.duration())
 
-#define trace_rc_intermodal_no_match                                    \
-  trace_reconstruct(                                                    \
-      "    no start: INTERMODAL DIRECT START -> {}  matches={}, "       \
-      "leg_start_location={}, leg_start_time={}, j_start_time={}, "     \
-      "offset={}\n",                                                    \
-      loc{tt, o.target()},                                              \
-      matches(tt, q.start_match_mode_, o.target(), leg_start_location), \
-      loc{tt, leg_start_location}, leg_start_time, j.start_time_,       \
+#define trace_rc_intermodal_no_match                                          \
+  trace_reconstruct(                                                          \
+      "    no start: INTERMODAL DIRECT START -> {}  matches={}, "             \
+      "leg_start_location={}, leg_start_time={}, j_start_time={}, "           \
+      "offset={}\n",                                                          \
+      loc{tt, o.target()},                                                    \
+      matches(tt, rt_virts(rtt, q.prf_idx_), q.start_match_mode_, o.target(), \
+              leg_start_location),                                            \
+      loc{tt, leg_start_location}, leg_start_time, j.start_time_,             \
       o.duration())
 
 #define trace_rc_intermodal_fp_start_found                                  \
@@ -94,7 +95,8 @@
       "leg_start_location={}, leg_start_time={}, j_start_time={}, offset={}, " \
       "footpath=({}, {})\n",                                                   \
       loc{tt, o.target()},                                                     \
-      matches(tt, q.start_match_mode_, o.target(), leg_start_location),        \
+      matches(tt, rt_virts(rtt, q.prf_idx_), q.start_match_mode_, o.target(),  \
+              leg_start_location),                                             \
       loc{tt, leg_start_location}, leg_start_time, j.start_time_,              \
       o.duration(),                                                            \
       adjusted_transfer_time(q.transfer_time_settings_, fp.duration()),        \
@@ -184,20 +186,18 @@
       "offset={}\n",                                    \
       curr_time, loc{tt, dest_offset.target_}, dest_offset.duration_)
 
-#define trace_rc_legs_found                                             \
-  trace_reconstruct("found:\n");                                        \
-  transport_leg->print(std::cout, tt, rtt, 1, true);                    \
-  trace_reconstruct(                                                    \
-      " fp leg: {} {} --{}--> {} {}\n", loc{tt, l},                     \
-      delta_to_unix(base, fp_start),                                    \
-      adjusted_transfer_time(q.transfer_time_settings_, fp.duration()), \
-      loc{tt, fp.target()}, delta_to_unix(base, curr_time))
+#define trace_rc_legs_found                                       \
+  trace_reconstruct("found:\n");                                  \
+  transport_leg->print(std::cout, tt, rtt, 1, true);              \
+  trace_reconstruct(" fp leg: {} {} --{}--> {} {}\n", loc{tt, l}, \
+                    delta_to_unix(base, fp_start), fp_duration,   \
+                    loc{tt, target}, delta_to_unix(base, curr_time))
 
 #define trace_rc_check_fp                                                   \
   trace_reconstruct(                                                        \
       "round {}: searching for transports at {} with curr_time={} --{}--> " \
       "fp_start={}, v={}, stay_l={}, stay_fp_target={}, stay_start={}\n ",  \
-      k, loc{tt, fp.target()}, delta_to_unix(base, curr_time), fp_duration, \
+      k, loc{tt, target}, delta_to_unix(base, curr_time), fp_duration,      \
       delta_to_unix(base, fp_start), v, stay_l, stay_fp_target,             \
       delta_to_unix(base, stay_start))
 

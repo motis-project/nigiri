@@ -26,6 +26,7 @@
 
 #include "../raptor_search.h"
 #include "../rt/util.h"
+#include "../transfer_rules_util.h"
 
 using namespace nigiri;
 using namespace date;
@@ -154,8 +155,8 @@ E,A,2,300
 D,H,2,180
 I1,I2,2,240
 I2,I1,2,240
-I,K,2,300
-K,I,2,300
+I,K,2,540
+K,I,2,540
 C,G,2,300
 D,R,2,900
 )"sv;
@@ -1708,6 +1709,40 @@ TEST(routing, via_test_36_S_C_via_V_0m_no_exit) {
 
     EXPECT_EQ(expected_S_C_via_V_no_exit, results_to_str(results, tt));
   }
+}
+
+TEST(routing, via_test_37_A_D_via_V_td_footpath_to_dest) {
+  // A -> D via V: T2 to V, T3 to D (11:00). T1 reaches X at 10:30, and a
+  // time-dependent footpath walks on to D (10:35) - without having been at V,
+  // so it does not end the search.
+  constexpr auto const kProfile = kFootProfile;
+  auto tt = load_timetable(test::feed(
+      {{"A", 0.0, 1.0}, {"X", 0.1, 1.0}, {"V", 0.2, 1.0}, {"D", 0.3, 1.0}},
+      {{"T1", "R1", {{"A", "10:00"}, {"X", "10:30"}}},
+       {"T2", "R2", {{"A", "10:00"}, {"V", "10:20"}}},
+       {"T3", "R3", {{"V", "10:40"}, {"D", "11:00"}}},
+       {"T4", "R4", {{"X", "10:40"}, {"D", "10:50"}}}},
+      ""));
+  tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
+  tt.fwd_search_lb_graph_[kProfile] = tt.fwd_search_lb_graph_[kDefaultProfile];
+  tt.bwd_search_lb_graph_[kProfile] = tt.bwd_search_lb_graph_[kDefaultProfile];
+
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
+  auto const x = loc_idx(tt, "X");
+  rtt.has_td_footpaths_out_[kProfile].set(x, true);
+  rtt.td_footpaths_out_[kProfile][x].push_back(td_footpath{
+      loc_idx(tt, "D"), unixtime_t{sys_days{2019_y / May / 1}}, 5min});
+
+  auto q = test::exact_query(
+      tt, "A", "D",
+      iv("2019-05-01 10:00 Europe/Berlin", "2019-05-01 10:01 Europe/Berlin"));
+  q.prf_idx_ = kProfile;
+  q.via_stops_ = {{loc_idx(tt, "V"), 0_minutes}};
+  auto const results = search(tt, &rtt, std::move(q), direction::kForward);
+
+  ASSERT_EQ(1U, results.size());
+  EXPECT_EQ(test::at("11:00"), begin(results)->dest_time_);
 }
 
 constexpr auto const test_files_via_walk = R"(

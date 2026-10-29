@@ -25,6 +25,8 @@ std::vector<journey> get_leg_alternatives(
     unixtime_t anchor_time,
     std::optional<unixtime_t> max_arrival,
     journey::run_enter_exit const& original,
+    std::optional<journey::run_enter_exit> prev,
+    std::optional<journey::run_enter_exit> next,
     std::size_t max_alternatives);
 
 std::vector<journey> get_leg_alternatives(timetable const&,

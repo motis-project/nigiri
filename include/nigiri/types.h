@@ -206,6 +206,10 @@ constexpr auto kDefaultLang = language_idx_t{0U};
 
 using profile_idx_t = std::uint8_t;
 constexpr auto const kDefaultProfile = profile_idx_t{0U};
+
+constexpr bool profile_uses_virts(profile_idx_t const prf) {
+  return prf == kDefaultProfile;
+}
 constexpr auto const kFootProfile = profile_idx_t{1U};
 constexpr auto const kWheelchairProfile = profile_idx_t{2U};
 constexpr auto const kCarProfile = profile_idx_t{3U};
@@ -218,6 +222,9 @@ using rt_add_trip_id_idx_t =
 using rt_route_idx_t = cista::strong<std::uint32_t, struct _rt_route_idx>;
 using rt_transport_idx_t =
     cista::strong<std::uint32_t, struct _rt_transport_idx>;
+using rt_location_idx_t = cista::strong<std::uint32_t, struct _rt_location_idx>;
+using transfer_rule_idx_t =
+    cista::strong<std::uint32_t, struct _transfer_rule_idx>;
 using rt_merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using rt_transport_direction_string_idx_t =
@@ -359,6 +366,8 @@ struct transport {
 using i32_minutes = std::chrono::duration<std::int32_t, std::ratio<60>>;
 using i16_minutes = std::chrono::duration<std::int16_t, std::ratio<60>>;
 using u8_minutes = std::chrono::duration<std::uint8_t, std::ratio<60>>;
+
+constexpr auto const kNoTransferAllowed = u8_minutes{255};
 using duration_t = i16_minutes;
 using unixtime_t = std::chrono::sys_time<i32_minutes>;
 using local_time = date::local_time<i32_minutes>;
@@ -441,13 +450,18 @@ enum class location_type : std::uint8_t {
   kTrack,  // track from input data (i.e. GTFS) with separate coordinate from
            // parent. No manual connection in routing initialization or
            // additional links between parent<->child necessary.
-  kStation
+  kStation,
+  kVirt
 };
 
 enum class event_type { kArr, kDep };
 
 inline std::string_view to_str(event_type const d) {
   return d == event_type::kArr ? "ARR" : "DEP";
+}
+
+inline constexpr event_type flip(event_type const ev) noexcept {
+  return ev == event_type::kArr ? event_type::kDep : event_type::kArr;
 }
 
 enum class direction {

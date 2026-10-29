@@ -11,6 +11,7 @@
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
+#include "nigiri/rt/rt_transfer_rules.h"
 #include "nigiri/timetable.h"
 
 #include "nigiri/routing/gpu/raptor.h"
@@ -27,6 +28,22 @@ std::string print_results(timetable const& tt,
     ss << "\n\n";
   }
   return ss.str();
+}
+
+// The barrier: a journey that leaves a search names stops, never the virtual
+// locations the transfer rules are stored at.
+void expect_no_virts(timetable const& tt,
+                     rt_timetable const* rtt,
+                     pareto_set<routing::journey> const& results) {
+  for (auto const& j : results) {
+    for (auto const& l : j.legs_) {
+      EXPECT_EQ(rt::base(tt, rtt, l.from_), l.from_);
+      EXPECT_EQ(rt::base(tt, rtt, l.to_), l.to_);
+      if (auto const* fp = std::get_if<footpath>(&l.uses_); fp != nullptr) {
+        EXPECT_EQ(rt::base(tt, rtt, fp->target()), fp->target());
+      }
+    }
+  }
 }
 
 unixtime_t parse_time(std::string_view s, char const* format) {
@@ -56,9 +73,10 @@ static range_result search_range(timetable const& tt,
       routing::raptor_search(tt, rtt, search_state, algo_state, q, search_dir);
   auto results = *result.journeys_;
   auto const delivered = result.interval_;
+  expect_no_virts(tt, rtt, results);
 
 #if defined(NIGIRI_CUDA)
-  if (routing::gpu::gpu_supported(q, rtt)) {
+  if (routing::gpu::is_gpu_supported(q, rtt)) {
     auto gpu_search_state = routing::search_state{};
     auto gpu_timetable = routing::gpu::gpu_timetable{tt};
     auto gpu_state = routing::gpu::gpu_raptor_state{gpu_timetable};
@@ -70,6 +88,7 @@ static range_result search_range(timetable const& tt,
     auto gpu_results = *(routing::raptor_search(tt, rtt, gpu_search_state,
                                                 gpu_state, q, search_dir)
                              .journeys_);
+    expect_no_virts(tt, rtt, gpu_results);
 
     EXPECT_EQ(print_results(tt, rtt, results),
               print_results(tt, rtt, gpu_results));
@@ -178,9 +197,10 @@ pareto_set<routing::journey> search_pong(timetable const& tt,
   auto results =
       *(routing::pong_search(tt, rtt, search_state, algo_state, q, search_dir)
             .journeys_);
+  expect_no_virts(tt, rtt, results);
 
 #if defined(NIGIRI_CUDA)
-  if (routing::gpu::gpu_supported(q, rtt)) {
+  if (routing::gpu::is_gpu_supported(q, rtt)) {
     auto gpu_search_state = routing::search_state{};
     auto gpu_timetable = routing::gpu::gpu_timetable{tt};
     auto gpu_state = routing::gpu::gpu_raptor_state{gpu_timetable};
@@ -192,6 +212,7 @@ pareto_set<routing::journey> search_pong(timetable const& tt,
     auto gpu_results = *(routing::pong_search(tt, rtt, gpu_search_state,
                                               gpu_state, q, search_dir)
                              .journeys_);
+    expect_no_virts(tt, rtt, gpu_results);
 
     EXPECT_EQ(print_results(tt, rtt, results),
               print_results(tt, rtt, gpu_results));

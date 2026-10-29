@@ -21,6 +21,8 @@ rt_timetable create_rt_timetable(timetable const& tt,
   rtt.base_day_idx_ = tt.day_idx(rtt.base_day_);
   // resize for later memory accesses
   rtt.location_rt_transports_[location_idx_t{tt.n_locations() - 1U}];
+  rtt.rt_footpaths_out_.resize(tt.n_locations());
+  rtt.rt_footpaths_in_.resize(tt.n_locations());
   rtt.alerts_.route_type_.resize(tt.n_sources());
   rtt.alerts_.route_id_.resize(tt.n_sources());
   for (auto const [src, r] : utl::enumerate(tt.route_ids_)) {

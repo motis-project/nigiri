@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "fmt/ostream.h"
 
 #include "utl/verify.h"
@@ -14,10 +16,11 @@ namespace nigiri {
 struct footpath {
   using value_type = location_idx_t::value_t;
   static constexpr auto const kTotalBits = 8 * sizeof(value_type);
-  static constexpr auto const kTargetBits = 23U;
+  static constexpr auto const kTargetBits = 24U;
   static constexpr auto const kDurationBits = kTotalBits - kTargetBits;
-  static constexpr auto const kMaxDuration = duration_t{
+  static constexpr auto const kBan = duration_t{
       std::numeric_limits<location_idx_t::value_t>::max() >> kTargetBits};
+  static constexpr auto const kMax = kBan - duration_t{1};
   static constexpr auto const kMaxTarget =
       std::numeric_limits<location_idx_t::value_t>::max() >> kDurationBits;
 
@@ -30,7 +33,7 @@ struct footpath {
   footpath(location_idx_t const target, duration_t const duration)
       : target_{target},
         duration_{static_cast<value_type>(
-            (duration > kMaxDuration ? kMaxDuration : duration).count())} {
+            (duration > kBan ? kMax : duration).count())} {
     utl::verify(to_idx(target) < kMaxTarget, "station index overflow");
   }
 
@@ -66,12 +69,15 @@ struct footpath {
   location_idx_t::value_t duration_ : kDurationBits;
 };
 
+static_assert(footpath::kBan == duration_t{kNoTransferAllowed});
+
 static_assert(std::three_way_comparable<footpath>);
 
 template <std::size_t NMaxTypes>
 constexpr auto static_type_hash(footpath const*,
                                 cista::hash_data<NMaxTypes> h) noexcept {
-  return h.combine(cista::hash("nigiri::footpath"));
+  return h.combine(cista::hash("nigiri::footpath"))
+      .combine(footpath::kTargetBits);
 }
 
 template <typename Ctx>
@@ -79,6 +85,11 @@ inline void serialize(Ctx&, footpath const*, cista::offset_t const) {}
 
 template <typename Ctx>
 inline void deserialize(Ctx const&, footpath*) {}
+
+inline u8_minutes to_transfer_time(duration_t const d) {
+  return u8_minutes{d > footpath::kBan ? footpath::kMax
+                                       : std::max(d, duration_t{0})};
+}
 
 }  // namespace nigiri
 

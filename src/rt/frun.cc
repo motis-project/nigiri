@@ -120,7 +120,7 @@ loc run_stop::get_loc() const { return {tt(), get_location_idx()}; }
 
 location_idx_t run_stop::get_location_idx() const {
   assert(fr_->size() > stop_idx_);
-  return get_stop().location_idx();
+  return tt().base(get_stop().location_idx());
 }
 
 std::string_view run_stop::get_location_id() const {
@@ -129,7 +129,7 @@ std::string_view run_stop::get_location_id() const {
 
 location_idx_t run_stop::get_scheduled_location_idx() const {
   assert(fr_->size() > stop_idx_);
-  return get_scheduled_stop().location_idx();
+  return tt().base(get_scheduled_stop().location_idx());
 }
 
 run_stop run_stop::get_first_trip_stop(event_type const ev_type) const {

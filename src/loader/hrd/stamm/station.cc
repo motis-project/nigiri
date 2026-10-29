@@ -8,6 +8,7 @@
 #include "nigiri/loader/hrd/stamm/stamm.h"
 #include "nigiri/loader/hrd/stamm/timezone.h"
 #include "nigiri/loader/hrd/util.h"
+#include "nigiri/loader/transfer_rules.h"
 #include "nigiri/logging.h"
 
 namespace nigiri::loader::hrd {
@@ -199,6 +200,7 @@ location_map_t parse_stations(config const& c,
     s.idx_ = idx;
   }
 
+  auto const first_rule = transfer_rule_idx_t{tt.transfer_rules_.rules_.size()};
   for (auto& [eva, s] : stations) {
     for (auto const& e : s.equivalent_) {
       if (auto const it = stations.find(e); it != end(stations)) {
@@ -213,12 +215,17 @@ location_map_t parse_stations(config const& c,
       auto const adjusted_duration =
           std::max({tt.locations_.transfer_time_[s.idx_],
                     tt.locations_.transfer_time_[target_idx], duration});
-      tt.locations_.preprocessing_footpaths_out_[s.idx_].emplace_back(
-          target_idx, adjusted_duration);
-      tt.locations_.preprocessing_footpaths_in_[target_idx].emplace_back(
-          s.idx_, adjusted_duration);
+      tt.transfer_rules_.rules_.push_back(transfer_rule{
+          .from_stop_ = s.idx_,
+          .to_stop_ = target_idx,
+          .src_ = src,
+          .duration_ = duration_t{adjusted_duration.count()},
+          .specificity_ = get_specificity(tt, s.idx_, target_idx)});
     }
   }
+  store_rule_lookups(
+      tt, interval{first_rule,
+                   transfer_rule_idx_t{tt.transfer_rules_.rules_.size()}});
 
   return stations;
 }

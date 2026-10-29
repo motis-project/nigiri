@@ -5,7 +5,10 @@
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/routing/transfers.h"
 #include "nigiri/timetable.h"
+
+#include "../transfer_rules_util.h"
 
 using namespace nigiri;
 using namespace date;
@@ -14,9 +17,9 @@ using namespace std::string_view_literals;
 
 namespace {
 
-// ROUTING CONNECTIONS:
-// 10:00 - 11:00 A-C    airplane direct
-// 10:00 - 12:00 A-B-C  train, one transfer
+// Footpaths are the transfers.txt rows in the direction they are stated:
+// B->A and B->C exist, A->B does not. There is no transitive closure either:
+// A and C stay unconnected although both connect to B.
 constexpr auto const test_files = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -76,7 +79,7 @@ service_id,date,exception_type
 
 # transfers.txt
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
-A,B,2,180
+A,B,2,60
 B,X,2,300
 P,Q,2,300
 Q,P,2,300
@@ -105,33 +108,29 @@ TEST(loader, build_footpaths) {
     }
   }
 
-  EXPECT_EQ(R"((A, A)
-  00:03.0->(B, B)
-  00:06.0->(C, C)
-(B, B)
+  EXPECT_EQ(R"((B, B)
   00:03.0->(A, A)
-  00:03.0->(C, C)
+  00:05.0->(C, C)
 (C, C)
   00:03.0->(B, B)
-  00:06.0->(A, A)
 )"sv,
             ss.str());
 }
 
 // A 5 minute "transfer" between stops 300km apart is not walkable. It has to
 // be dropped - writing it with its input duration teleports passengers across
-// the map. Covers both the transitive closure (A/B/X form one component) and
-// the two node shortcut (P/Q).
+// the map. A transfer shorter than the walk (1 min for 222 m) is raised to the
+// walking time.
 TEST(loader, build_footpaths_drop_unwalkable) {
   auto tt = timetable{};
 
   tt.date_range_ = {date::sys_days{2024_y / March / 1},
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({.default_tz_ = "Europe/Berlin"},
-                               source_idx_t{0},
-                               loader::mem_dir::read(unwalkable_files), tt);
-  loader::finalize(tt, /* adjust_footpaths */ true);
+  loader::gtfs::load_timetable(
+      {.adjust_footpaths_ = true, .default_tz_ = "Europe/Berlin"},
+      source_idx_t{0}, loader::mem_dir::read(unwalkable_files), tt);
+  loader::finalize(tt);
 
   auto ss = std::stringstream{};
   for (auto const [i, x] : utl::enumerate(tt.locations_.footpaths_out_[0])) {
@@ -144,9 +143,31 @@ TEST(loader, build_footpaths_drop_unwalkable) {
   }
 
   EXPECT_EQ(R"((A, A)
-  00:03.0->(B, B)
-(B, B)
-  00:03.0->(A, A)
+  00:02.0->(B, B)
 )"sv,
             ss.str());
+}
+
+// E1 has a 5 min transfer time. E2 (same feed, 22 m) and E3 (other feed, 21 m)
+// are equally close: leaving E1 on foot has to cost the same either way. The
+// cross-feed link takes max(transfer times, walk), so the same-feed one has to
+// as well.
+TEST(loader, build_footpaths_same_feed_walk_respects_transfer_time) {
+  auto const tt = test::load_feeds(
+      {test::feed(
+           {{"E1", 60.5, 20.0}, {"E2", 60.5002, 20.0}, {"E0", 60.6, 20.0}},
+           {{"ET1", "RE1", {{"E0", "10:00"}, {"E1", "10:30"}}},
+            {"ET2", "RE2", {{"E2", "10:40"}, {"E0", "11:00"}}}},
+           "E1,E1,2,300,,,,\n"),
+       test::feed({{"E3", 60.5, 20.0004}, {"E9", 60.6, 20.3}},
+                  {{"ET3", "RE3", {{"E3", "10:40"}, {"E9", "11:00"}}}}, "")});
+  auto const walk = [&](location_idx_t const to) {
+    return routing::shortest_transfer(tt, nullptr, kDefaultProfile,
+                                      test::lidx(tt, "E1"), to);
+  };
+  auto const to_e2 = walk(test::lidx(tt, "E2"));
+  auto const to_e3 = walk(test::lidx(tt, "E3", source_idx_t{1U}));
+  ASSERT_TRUE(to_e2.has_value());
+  ASSERT_TRUE(to_e3.has_value());
+  EXPECT_EQ(*to_e3, *to_e2);
 }

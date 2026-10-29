@@ -48,12 +48,13 @@ R1,DAILY,TRAIN
 R2,DAILY,BUS
 )"};
 
+// ticketing_type=1: no ticket can be bought at S2.
 constexpr auto const stop_times = std::string_view{
-    R"(trip_id,arrival_time,departure_time,stop_id,stop_sequence
-TRAIN,08:00:00,08:00:00,S1,1
-TRAIN,08:10:00,08:10:00,S2,2
-BUS,10:00:00,10:00:00,S1,1
-BUS,10:10:00,10:10:00,S2,2
+    R"(trip_id,arrival_time,departure_time,stop_id,stop_sequence,ticketing_type
+TRAIN,08:00:00,08:00:00,S1,1,0
+TRAIN,08:10:00,08:10:00,S2,2,1
+BUS,10:00:00,10:00:00,S1,1,0
+BUS,10:10:00,10:10:00,S2,2,1
 )"};
 
 constexpr auto const deep_links = std::string_view{
@@ -117,6 +118,13 @@ TEST(gtfs, ticketing_deep_links_resolve) {
     }
   }
   EXPECT_EQ(1U, n_route_links);
+
+  auto const loc = [&](std::string_view const id) {
+    return tt.locations_.location_id_to_idx_.at(
+        location_id{.id_ = id, .src_ = source_idx_t{0U}});
+  };
+  EXPECT_FALSE(tt.locations_.ticketing_unavailable_.test(loc("S1")));
+  EXPECT_TRUE(tt.locations_.ticketing_unavailable_.test(loc("S2")));
 }
 
 // An agency referencing a deep link id that ticketing_deep_links.txt does not
