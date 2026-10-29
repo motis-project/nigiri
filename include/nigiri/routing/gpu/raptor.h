@@ -92,7 +92,7 @@ struct gpu_raptor {
     bounds_last_k_ = last_round;
   }
 
-  void add_start(location_idx_t, unixtime_t);
+  void add_start(location_idx_t, unixtime_t, via_offset_t = 0U);
 
   void execute(unixtime_t start_time,
                std::uint8_t max_transfers,

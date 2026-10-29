@@ -1423,7 +1423,8 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
 
 template <direction SearchDir, bool WithBounds>
 void gpu_raptor<SearchDir, WithBounds>::add_start(location_idx_t const l,
-                                                  unixtime_t const t) {
+                                                  unixtime_t const t,
+                                                  via_offset_t) {
   starts_.emplace_back(l, t);
 }
 

@@ -133,11 +133,6 @@ struct rt_timetable {
     return static_transport_interval(*tt_, t);
   }
 
-  void update_lbs(timetable const& tt,
-                  rt_transport_idx_t,
-                  stop_idx_t,
-                  vector_map<location_idx_t, std::vector<footpath>>&,
-                  vector_map<location_idx_t, std::vector<footpath>>&);
   void update_lbs(timetable const& tt);
 
   void cancel_run(rt::run const&);

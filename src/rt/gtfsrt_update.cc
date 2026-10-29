@@ -357,6 +357,23 @@ bool update_run(source_idx_t const src,
                 std::span<stop_idx_t>{},
                 static_cast<stop_idx_t>(location_seq.size())};
 
+  auto const& stus = tripUpdate.stop_time_update();
+
+  // Detect duplicate stop sequence:
+  // SKIPPED + SCHEDULED
+  auto const is_duplicate_seq_with_skip = [&](auto const it) {
+    auto const next = std::next(it);
+    if (next == end(stus)) {
+      return false;
+    }
+    return it->schedule_relationship() ==
+               gtfsrt::TripUpdate_StopTimeUpdate::SKIPPED &&
+           next->schedule_relationship() ==
+               gtfsrt::TripUpdate_StopTimeUpdate::SCHEDULED &&
+           it->has_stop_sequence() && next->has_stop_sequence() &&
+           next->stop_sequence() == it->stop_sequence();
+  };
+
   auto pred = std::optional<delay_propagation>{};
   auto stop_idx =
       r.is_scheduled() ? r.stop_range_.from_ : static_cast<unsigned short>(0U);
@@ -365,20 +382,32 @@ bool update_run(source_idx_t const src,
                        : static_cast<stop_idx_t>(location_seq.size() - 1U);
   auto no_data = false;
   auto seq_it = begin(seq_numbers);
-  auto const& stus = tripUpdate.stop_time_update();
   auto upd_it = begin(stus);
   for (; seq_it != end(seq_numbers); ++stop_idx, ++seq_it) {
     auto const loc_idx = stop{location_seq[stop_idx]}.location_idx();
     auto matches = false;
     while (upd_it != end(stus)) {
+      if (is_duplicate_seq_with_skip(upd_it)) {
+        ++upd_it;
+        continue;
+      }
       auto matches_any_loc = false;
+      auto const remaining_trip_stops = location_seq.subspan(
+          stop_idx,
+          static_cast<std::size_t>(last_stop_idx_of_trip + 1 - stop_idx));
+      auto const has_seq = r.is_scheduled() && upd_it->has_stop_sequence();
+      auto const use_stop_id =
+          !has_seq ||
+          utl::count_if(remaining_trip_stops, [&](stop::value_type const s) {
+            return tt.locations_.ids_[stop{s}.location_idx()].view() ==
+                   upd_it->stop_id();
+          }) < 2;
       auto next_seq_it = seq_it;
       auto next_stop_idx = stop_idx;
       for (; next_seq_it != end(seq_numbers); ++next_stop_idx, ++next_seq_it) {
         auto const next_matches =
-            (r.is_scheduled() && upd_it->has_stop_sequence() &&
-             upd_it->stop_sequence() == *next_seq_it) ||
-            (upd_it->has_stop_id() &&
+            (has_seq && upd_it->stop_sequence() == *next_seq_it) ||
+            (use_stop_id && upd_it->has_stop_id() &&
              upd_it->stop_id() ==
                  tt.locations_
                      .ids_[stop{location_seq[next_stop_idx]}.location_idx()]
