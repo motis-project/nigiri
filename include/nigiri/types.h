@@ -212,6 +212,12 @@ constexpr auto const kCarProfile = profile_idx_t{3U};
 constexpr auto const kBikeProfile = profile_idx_t{4U};
 static constexpr auto const kNProfiles = profile_idx_t{5U};
 
+constexpr bool has_profile_td_footpaths(profile_idx_t const prf_idx) {
+  return prf_idx != kDefaultProfile;
+}
+static_assert(!has_profile_td_footpaths(kDefaultProfile) &&
+              has_profile_td_footpaths(kWheelchairProfile));
+
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using rt_add_trip_id_idx_t =
     cista::strong<std::uint32_t, struct _trip_id_str_idx>;

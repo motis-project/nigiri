@@ -822,7 +822,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
     // As in the search: footpaths from a source with td footpaths are
     // time-dependent, all others are static.
     auto const is_td_source = [&](location_idx_t const x) {
-      return rtt != nullptr && q.prf_idx_ != 0U &&
+      return rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
              rtt->has_td_footpaths_out_[q.prf_idx_].test(x);
     };
     if (kFwd || !is_td_source(l)) {
@@ -839,7 +839,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
     }
 
-    if (rtt != nullptr && q.prf_idx_ != 0U &&
+    if (rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
         (kFwd ? rtt->has_td_footpaths_in_
               : rtt->has_td_footpaths_out_)[q.prf_idx_]
             .test(l)) {
@@ -918,7 +918,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
                 // A time-dependent footpath may only be usable later: it
                 // starts as soon as it is usable after the arrival.
                 if (diff.count() > 0 && it->from_ != it->to_ &&
-                    rtt != nullptr && q.prf_idx_ != 0U &&
+                    rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
                     rtt->has_td_footpaths_out_[q.prf_idx_].test(it->from_)) {
                   auto const t = std::prev(it)->arr_time_ + stay;
                   auto earliest =

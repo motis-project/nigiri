@@ -389,6 +389,11 @@ TEST(vdv_aus, delay_propagation) {
   EXPECT_EQ(fr[4].time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 2_hours);
 
+  EXPECT_EQ((interval{unixtime_t{date::sys_days{2024_y / July / 9} + 22_hours},
+                      unixtime_t{date::sys_days{2024_y / July / 10} + 2_hours +
+                                 1_minutes}}),
+            rtt.coverage_);
+
   using enum rt_data_state;
 
   // A has no prognosis -> no real-time data.
@@ -439,6 +444,12 @@ TEST(vdv_aus, delay_propagation) {
   EXPECT_EQ(fr[4].time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 3_hours);
 
+  // the last arrival moved to 03:00 => coverage extended to the back
+  EXPECT_EQ((interval{unixtime_t{date::sys_days{2024_y / July / 9} + 22_hours},
+                      unixtime_t{date::sys_days{2024_y / July / 10} + 3_hours +
+                                 1_minutes}}),
+            rtt.coverage_);
+
   doc.load_string(vdv_aus_msg2);
   u.update(rtt, doc);
 
@@ -478,6 +489,12 @@ TEST(vdv_aus, delay_propagation) {
             date::sys_days{2024_y / July / 10} + 2_hours);
   EXPECT_EQ(fr[4].time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 2_hours + 7_minutes);
+
+  // the last arrival moved back to 02:07 => coverage is NOT shrunk
+  EXPECT_EQ((interval{unixtime_t{date::sys_days{2024_y / July / 9} + 22_hours},
+                      unixtime_t{date::sys_days{2024_y / July / 10} + 3_hours +
+                                 1_minutes}}),
+            rtt.coverage_);
 
   // D is not contained in the message: delay is propagated.
   EXPECT_EQ((std::vector{kPredicted, kPredicted, kPredicted, kPredicted,

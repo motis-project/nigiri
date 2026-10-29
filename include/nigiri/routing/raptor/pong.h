@@ -10,6 +10,11 @@ namespace nigiri::routing {
 
 static constexpr auto kMinLookAhead = 1_days;
 
+interval<unixtime_t> pong_search_interval(direction,
+                                          timetable const&,
+                                          query const&,
+                                          duration_t min_look_ahead);
+
 std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     timetable const&,
     rt_timetable const*,
