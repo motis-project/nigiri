@@ -409,6 +409,7 @@ routing_result bmrap_profile(
   };
   auto realized_deps = std::vector<unixtime_t>{};
   auto n_realized = std::uint64_t{0U};
+  auto n_unrealized = std::uint64_t{0U};
 
   auto anchors = std::vector<anchor>{};
   auto max_trips = std::uint8_t{0U};
@@ -681,22 +682,47 @@ routing_result bmrap_profile(
     // labels of this step (realize_bounds, CPU mc pong) - the anchors'
     // tau_dep^<- is far looser for journeys whose arrival is known, and
     // destination pruning alone leaves too much of the network unpruned.
-    auto deps = std::vector<unixtime_t>{};
+    //
+    // Only departures the scan has passed are final, and only those get
+    // realized: mc pong re-anchors to departures far beyond the step (and the
+    // window), which the window filter below drops (#547: 36 runs, 156 of 163
+    // results dropped, 7 left on one departure). A departure is realized once
+    // the scan passes it, by the step that does - from the results, as the
+    // mc pong of that step need not have found it again.
+    auto loosest_dep = std::optional<unixtime_t>{};
+    auto const consider = [&](unixtime_t const d) {
+      if (!is_better(d, start_time) &&
+          (!loosest_dep.has_value() || is_better(d, *loosest_dep))) {
+        loosest_dep = d;
+      }
+    };
+    for (auto const& a : anchors) {
+      consider(a.anchored_);
+    }
     for (auto const& j : step_results) {
-      if (!j.error_ && j.is_reconstructed_ &&
-          utl::find(deps, j.dest_time_) == end(deps) &&
+      consider(j.dest_time_);
+    }
+    auto const next = loosest_dep.value_or(start_time) + kDir;
+    auto const passed = is_better(start_time, next) ? next : start_time;
+
+    auto const realizable = [&](journey const& j) {
+      return !j.error_ && j.is_reconstructed_ &&
+             is_better(j.dest_time_, passed) &&
+             j.travel_time() < fastest_direct &&
+             j.travel_time() <= q.max_travel_time_;
+    };
+    auto deps = std::vector<unixtime_t>{};
+    for (auto const& j : s_state.results_) {
+      if (realizable(j) && utl::find(deps, j.dest_time_) == end(deps) &&
           utl::find(realized_deps, j.dest_time_) == end(realized_deps)) {
         deps.emplace_back(j.dest_time_);
       }
     }
-    if constexpr (GpuMc == 0) {
-      mc_ping.set_bounds(&realize_bounds);
-    }
     for (auto const d : deps) {
       auto max_tr = std::uint8_t{0U};
       auto loosest_arr = std::optional<unixtime_t>{};
-      for (auto const& j : step_results) {
-        if (j.error_ || j.dest_time_ != d) {
+      for (auto const& j : s_state.results_) {
+        if (j.dest_time_ != d || !realizable(j)) {
           continue;
         }
         max_tr = std::max(max_tr, j.transfers_);
@@ -704,6 +730,15 @@ routing_result bmrap_profile(
             is_better(*loosest_arr, j.start_time_)) {
           loosest_arr = j.start_time_;
         }
+      }
+      if constexpr (GpuMc == 0) {
+        // a departure an earlier step's mc pong found has no labels in this
+        // step's realize_bounds
+        mc_ping.set_bounds(
+            utl::any_of(step_results,
+                        [&](journey const& j) { return j.dest_time_ == d; })
+                ? &realize_bounds
+                : &bounds);
       }
       auto fwd = pareto_set<journey>{};
       run_mc_ping(d, max_tr, *loosest_arr + kDir, fwd);
@@ -733,24 +768,11 @@ routing_result bmrap_profile(
     // ---- 6. advance ----
     // The multicriteria set can still change between two anchor departures (a
     // later departure with different walking becomes optimal), so advance to
-    // the loosest departure over the anchors AND this step's mc journeys. Only
-    // departures at or after this step count: the pong's worst_time_at_dest is
-    // loosest - 1 min, so a validated departure can land one minute behind the
-    // step, and letting it set the advance would stall the scan.
-    auto loosest_dep = std::optional<unixtime_t>{};
-    auto const consider = [&](unixtime_t const d) {
-      if (!is_better(d, start_time) &&
-          (!loosest_dep.has_value() || is_better(d, *loosest_dep))) {
-        loosest_dep = d;
-      }
-    };
-    for (auto const& a : anchors) {
-      consider(a.anchored_);
-    }
-    for (auto const& j : step_results) {
-      consider(j.dest_time_);
-    }
-    auto const next = loosest_dep.value_or(start_time) + kDir;
+    // the loosest departure over the anchors AND this step's mc journeys (next,
+    // computed above). Only departures at or after this step count: the pong's
+    // worst_time_at_dest is loosest - 1 min, so a validated departure can land
+    // one minute behind the step, and letting it set the advance would stall
+    // the scan.
     if (!is_better(start_time, next)) {
       exit_reason = 3U;
       break;
@@ -798,6 +820,16 @@ routing_result bmrap_profile(
     }
   }
 
+  // restrict to J_R
+  auto n_restricted = std::uint64_t{0U};
+  utl::erase_if(s_state.results_, [&](journey const& j) {
+    auto const drop = outside_restriction<SearchDir>(
+        all_anchors, j.start_time_, j.dest_time_,
+        static_cast<unsigned>(j.transfers_) + 1U);
+    n_restricted += drop ? 1U : 0U;
+    return drop;
+  });
+
   // Splice in the forward realizations: same journey, better legs. Only legs_
   // moves; the tuple must come out identical.
   for (auto& x : s_state.results_) {
@@ -811,18 +843,10 @@ routing_result bmrap_profile(
     if (it != end(realized)) {
       x.legs_ = it->legs_;
       ++n_realized;
+    } else {
+      ++n_unrealized;
     }
   }
-
-  // restrict to J_R
-  auto n_restricted = std::uint64_t{0U};
-  utl::erase_if(s_state.results_, [&](journey const& j) {
-    auto const drop = outside_restriction<SearchDir>(
-        all_anchors, j.start_time_, j.dest_time_,
-        static_cast<unsigned>(j.transfers_) + 1U);
-    n_restricted += drop ? 1U : 0U;
-    return drop;
-  });
 
   enrich_with_slow_direct<SearchDir>(tt, rtt, q, scanned, s_state.results_);
   utl::sort(s_state.results_, [](journey const& a, journey const& b) {
@@ -844,6 +868,7 @@ routing_result bmrap_profile(
   algo_stats["bmrapp_anchor_recomputes"] = n_anchor_recomputes;
   algo_stats["bmrapp_ms_realize"] = ms(ms_realize);
   algo_stats["bmrapp_realized"] = n_realized;
+  algo_stats["bmrapp_unrealized"] = n_unrealized;
   algo_stats["bmrapp_exit"] = exit_reason;
   algo_stats["bmrapp_bound_builds"] = n_bound_builds;
   algo_stats["bmrapp_anchors"] = all_anchors.size();
