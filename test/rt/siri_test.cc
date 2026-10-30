@@ -1262,3 +1262,40 @@ TEST(siri_update, matching_multiple) {
     EXPECT_EQ(1, fr[0].delay(nigiri::event_type::kDep).count());
   }
 }
+
+TEST(siri_update, stop_point_ref_whitespace) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2025_y / July / 1},
+                    date::sys_days{2025_y / July / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, siri_test_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2025_y / July / 3});
+
+  auto u = rt::vdv_aus::updater{tt, src_idx,
+                                rt::vdv_aus::updater::xml_format::kSiri};
+
+  // Same as kMsg, but with whitespace around the stop ids.
+  auto msg = std::string{kMsg};
+  for (auto pos = msg.find("<StopPointRef>"); pos != std::string::npos;
+       pos = msg.find("<StopPointRef>", pos + 1U)) {
+    msg.insert(pos + std::string_view{"<StopPointRef>"}.size(), "  ");
+    msg.insert(msg.find("</StopPointRef>", pos), "\n");
+  }
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(msg.c_str());
+  auto const stats = u.update(rtt, doc);
+  EXPECT_EQ(stats.total_stops_, stats.resolved_stops_);
+
+  auto td = transit_realtime::TripDescriptor{};
+  td.set_trip_id("2867631759");
+  td.set_start_date("20250703");
+  td.set_start_time("10:39:00");
+  auto const [r, trip] =
+      gtfsrt_resolve_run(date::sys_days{2025_y / July / 3}, tt, &rtt, {}, td);
+  ASSERT_TRUE(r.valid());
+  EXPECT_TRUE(r.is_rt());
+}

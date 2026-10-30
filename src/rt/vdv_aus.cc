@@ -77,6 +77,15 @@ auto val(pugi::xml_node const n, First f, Rest... r) {
   }
 }
 
+std::string_view trim(std::string_view s) {
+  constexpr auto const kWhitespace = " \t\r\n"sv;
+  auto const first = s.find_first_not_of(kWhitespace);
+  if (first == std::string_view::npos) {
+    return {};
+  }
+  return s.substr(first, s.find_last_not_of(kWhitespace) - first + 1U);
+}
+
 std::optional<bool> get_opt_bool(
     pugi::xml_node const& node,
     char const* key,
@@ -241,8 +250,8 @@ vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run,
   auto const add_stop = [&](pugi::xml_node const stop, bool const is_recorded) {
     ++stats.total_stops_;
 
-    auto const vdv_stop_id = std::string_view{
-        stop.child_value(is_vdv(format_) ? "HaltID" : "StopPointRef")};
+    auto const vdv_stop_id =
+        trim(stop.child_value(is_vdv(format_) ? "HaltID" : "StopPointRef"));
     auto const l = [&]() {
       auto const x = tt_.find(location_id{vdv_stop_id, src_idx_});
       if (x.has_value()) {
