@@ -69,7 +69,8 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         -Wno-ctad-maybe-unsupported
         -Wno-nrvo
         -Wno-thread-safety-negative
-        -Wno-unused-private-field)
+        -Wno-unused-private-field
+        -Wno-disabled-macro-expansion)
 elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
   set(nigiri-compile-options -Wall -Wextra)
 elseif (NOT MSVC)
