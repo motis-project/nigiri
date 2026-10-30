@@ -2,8 +2,7 @@
 
 #include <cinttypes>
 
-#include <cuda/std/array>
-#include <cuda/std/span>
+#include "nigiri/routing/gpu/gpu_std.cuh"
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -101,10 +100,10 @@ struct device_rt_timetable {
   // Hidden behind pointer to avoid transferring empty structs (perf impact).
   struct td_footpaths {
     using fp_view = d_vecvec_view<decltype(rtt{}.td_footpaths_out_[0])>;
-    cuda::std::array<fp_view, kNProfiles> out_;
-    cuda::std::array<fp_view, kNProfiles> in_;
-    cuda::std::array<device_bitvec<std::uint64_t const>, kNProfiles> has_out_;
-    cuda::std::array<device_bitvec<std::uint64_t const>, kNProfiles> has_in_;
+    d_array<fp_view, kNProfiles> out_;
+    d_array<fp_view, kNProfiles> in_;
+    d_array<device_bitvec<std::uint64_t const>, kNProfiles> has_out_;
+    d_array<device_bitvec<std::uint64_t const>, kNProfiles> has_in_;
   };
   td_footpaths const* td_{nullptr};
 };
@@ -112,7 +111,7 @@ struct device_rt_timetable {
 struct device_timetable {
   using t = timetable;
 
-  __device__ cuda::std::span<delta const> event_times_at_stop(
+  __device__ d_span<delta const> event_times_at_stop(
       route_idx_t const r,
       stop_idx_t const stop_idx,
       event_type const ev_type) const {
@@ -145,14 +144,14 @@ struct device_timetable {
   std::uint32_t n_routes_;
 
   d_vecmap_view<location_idx_t, u8_minutes> transfer_time_;
-  cuda::std::array<d_vecvec_view<decltype(t{}.locations_.footpaths_out_[0])>,
+  d_array<d_vecvec_view<decltype(t{}.locations_.footpaths_out_[0])>,
                    kNProfiles>
       footpaths_out_;
-  cuda::std::array<d_vecvec_view<decltype(t{}.locations_.footpaths_in_[0])>,
+  d_array<d_vecvec_view<decltype(t{}.locations_.footpaths_in_[0])>,
                    kNProfiles>
       footpaths_in_;
 
-  cuda::std::span<delta const> route_stop_times_;
+  d_span<delta const> route_stop_times_;
   d_vecmap_view<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
   d_vecmap_view<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
   d_vecmap_view<route_idx_t, clasz> route_clasz_;
@@ -170,8 +169,8 @@ struct device_timetable {
   // Flat (route, stop) index space for the load-balanced compute_et
   // - route_stop_offset_[r] is route r's flat base.
   // - route_of_stop_[flat] maps a flat index back to a route.
-  cuda::std::span<std::uint32_t const> route_stop_offset_;
-  cuda::std::span<std::uint32_t const> route_of_stop_;
+  d_span<std::uint32_t const> route_stop_offset_;
+  d_span<std::uint32_t const> route_of_stop_;
 
   interval<date::sys_days> internal_interval_days_;
 };

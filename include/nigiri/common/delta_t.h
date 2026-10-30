@@ -4,7 +4,7 @@
 
 #include "nigiri/types.h"
 
-#include "cista/cuda_check.h"
+#include "cista/gpu_compat.h"
 
 namespace nigiri {
 
@@ -12,13 +12,14 @@ using delta_t = std::int16_t;
 static_assert(sizeof(delta_t) == 2);
 
 template <direction SearchDir>
-CISTA_CUDA_DEVICE_COMPAT constexpr static auto const kInvalidDelta =
+CISTA_GPU_DEVICE_COMPAT constexpr static auto const kInvalidDelta =
     SearchDir == direction::kForward ? std::numeric_limits<delta_t>::max()
                                      : std::numeric_limits<delta_t>::min();
 
 template <typename T>
 inline constexpr delta_t clamp(T t) {
-#if defined(NIGIRI_TRACING)
+#if defined(NIGIRI_TRACING) && !defined(__CUDA_ARCH__) && \
+    !defined(__HIP_DEVICE_COMPILE__)
   if (t < std::numeric_limits<delta_t>::min()) {
     fmt::print("CLAMP {} TO {}\n", t, std::numeric_limits<delta_t>::min());
   }
@@ -27,9 +28,14 @@ inline constexpr delta_t clamp(T t) {
   }
 #endif
 
-  return static_cast<delta_t>(
-      std::clamp(t, static_cast<int>(std::numeric_limits<delta_t>::min()),
-                 static_cast<int>(std::numeric_limits<delta_t>::max())));
+  // open-coded instead of std::clamp: its precondition check references
+  // __glibcxx_assert_fail, a host function clang refuses to see from device
+  // code
+  constexpr auto const lo =
+      static_cast<int>(std::numeric_limits<delta_t>::min());
+  constexpr auto const hi =
+      static_cast<int>(std::numeric_limits<delta_t>::max());
+  return static_cast<delta_t>(t < lo ? lo : (t > hi ? hi : t));
 }
 
 inline constexpr delta_t unix_to_delta(date::sys_days const base,
