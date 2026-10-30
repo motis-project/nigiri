@@ -140,7 +140,7 @@ struct translator {
   hash_map<translation_key, entry> i18n_{};
   hash_map<std::string, translation_idx_t> untranslated_{};
   std::string default_lang_{};
-  std::optional<std::string> source_lang_;
+  std::optional<std::string> source_lang_{};
 };
 
 translator read_translations(timetable&,
