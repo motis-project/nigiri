@@ -1,0 +1,86 @@
+name: HIP Build
+
+on:
+  push:
+    branches: [ master, amd-gpu ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  # Compile check only: GitHub's runners have no AMD GPU, so nothing is run.
+  # Catches CUDA-only code without a HIP equivalent, broken HIP #ifdef paths
+  # and API changes the HIP side wasn't updated for. Wrong results, crashes
+  # and performance need a real AMD card.
+  hip-build:
+    runs-on: ubuntu-24.04
+    # Keep the ROCm version in sync with the AMD test machine, so both use the
+    # same compiler. The slim tag lacks rocThrust, which is installed below.
+    container: rocm/dev-ubuntu-24.04:7.2.4
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      # No GPU to detect: build for the RX 9070 XT / GRE (RDNA4).
+      HIP_ARCH: gfx1201
+      BUILDCACHE_COMPRESS: true
+      BUILDCACHE_DIRECT_MODE: true
+      BUILDCACHE_ACCURACY: SLOPPY
+      CLICOLOR_FORCE: 1
+    steps:
+      # git before checkout, otherwise actions/checkout falls back to a
+      # tarball without .git
+      - name: Install build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            cmake ninja-build git rocthrust-dev
+
+      - uses: actions/checkout@v4
+
+      # ${{ github.workspace }} is the host path in container jobs
+      - name: Set buildcache dir
+        run: echo "BUILDCACHE_DIR=$GITHUB_WORKSPACE/.buildcache" >> "$GITHUB_ENV"
+
+      # ==== RESTORE CACHE ====
+      - name: Restore buildcache Cache
+        uses: actions/cache/restore@v3
+        id: restore-buildcache
+        with:
+          path: .buildcache
+          key: buildcache-hip-${{ hashFiles('.pkg') }}-${{ hashFiles('**/*.h', '**/*.cuh') }}-${{ hashFiles('**/*.cc', '**/*.cu') }}
+          restore-keys: |
+            buildcache-hip-${{ hashFiles('.pkg') }}-${{ hashFiles('**/*.h', '**/*.cuh') }}-
+            buildcache-hip-${{ hashFiles('.pkg') }}-
+            buildcache-hip-
+
+      - name: Dependencies Cache
+        uses: actions/cache@v3
+        with:
+          path: deps
+          key: deps-${{ hashFiles('.pkg') }}
+          restore-keys: deps-
+
+      # ==== BUILD ====
+      - name: CMake
+        run: |
+          cmake --preset hip \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH=/opt/rocm \
+            -DCMAKE_HIP_ARCHITECTURES=$HIP_ARCH
+
+      - name: Build
+        run: |
+          ./build/hip/buildcache/bin/buildcache -z
+          cmake --build build/hip --target nigiri-test nigiri-import nigiri-benchmark
+          ./build/hip/buildcache/bin/buildcache -s
+
+      # ==== SAVE CACHE ====
+      - name: Save buildcache Cache
+        if: always()
+        uses: actions/cache/save@v3
+        with:
+          path: .buildcache
+          key: ${{ steps.restore-buildcache.outputs.cache-primary-key }}
