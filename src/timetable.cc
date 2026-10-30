@@ -96,7 +96,7 @@ std::vector<UScriptCode> lang_get_scripts(char const* lang_code) {
 
   if (count <= 0) {
     return {};
-  };
+  }
 
   return {codes, codes + count};
 }
@@ -162,7 +162,7 @@ std::optional<translation> transliterate(std::string_view source_string,
   }
   auto replaceable = icu::UnicodeString::fromUTF8(source_string);
   transliterator->transliterate(replaceable);
-  std::string transliterated = replaceable.toUTF8String<std::string>();
+  auto const transliterated = replaceable.toUTF8String<std::string>();
 
   if (transliterated == source_string) {
     return std::nullopt;
