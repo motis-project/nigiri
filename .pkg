@@ -65,4 +65,4 @@
 [icu]
   url=git@github.com:motis-project/icu.git
   branch=main
-  commit=1893ecd481d9da6bb3307535ca19231c5e26f2cd
+  commit=533fa3f2c6473f6078a560e46565b1f1087dfc7b
