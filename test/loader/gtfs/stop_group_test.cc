@@ -2,10 +2,10 @@
 
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
-#include "nigiri/routing/raptor/pong.h"
-#include "nigiri/routing/raptor/raptor_state.h"
-#include "nigiri/routing/search.h"
+#include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
+
+#include "../../raptor_search.h"
 
 using namespace date;
 using namespace nigiri;
@@ -63,9 +63,6 @@ TEST(gtfs, stop_groups_equivalent_routing) {
   load_timetable({}, source_idx_t{0}, stop_group_files(), tt);
   finalize(tt);
 
-  auto search_state = routing::search_state{};
-  auto raptor_state = routing::raptor_state{};
-
   auto const src = source_idx_t{0};
   auto q = routing::query{
       .start_time_ = interval<unixtime_t>{sys_days{2020_y / January / 1} + 0h,
@@ -79,8 +76,7 @@ TEST(gtfs, stop_groups_equivalent_routing) {
           {tt.locations_.location_id_to_idx_.at({"G2", src}), 0_minutes, 0U}}};
 
   auto const result =
-      routing::pong_search(tt, nullptr, search_state, raptor_state,
-                           std::move(q), direction::kForward);
+      nigiri::test::search_pong(tt, nullptr, std::move(q), direction::kForward);
 
-  ASSERT_FALSE(result.journeys_->empty());
+  ASSERT_FALSE(result.empty());
 }

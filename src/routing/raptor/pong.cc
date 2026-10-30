@@ -52,10 +52,16 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   }
   // the generator anchors the boarding walk at the transit departure
   // (latest start) -> shift to the interior transfer convention:
-  // the walk starts at the previous leg's arrival
-  auto const walk_duration = legs[0].arr_time_ - legs[0].dep_time_;
-  legs[0].dep_time_ = from_arr;
-  legs[0].arr_time_ = from_arr + walk_duration;
+  // the walk starts at the previous leg's arrival.
+  // A time-dependent footpath may only be usable later (e.g. an elevator out
+  // of service): keep the wait before it, as in the reconstruction.
+  auto const is_td = rtt != nullptr && q.prf_idx_ != 0U &&
+                     rtt->has_td_footpaths_out_[q.prf_idx_].test(legs[0].from_);
+  if (!is_td) {
+    auto const walk_duration = legs[0].arr_time_ - legs[0].dep_time_;
+    legs[0].dep_time_ = from_arr;
+    legs[0].arr_time_ = from_arr + walk_duration;
+  }
   return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
 
@@ -258,7 +264,7 @@ routing_result pong(timetable const& tt,
     for (auto const& s : starts) {
       trace_pong("--- PING START: {} at time_at_start={} time_at_stop={}",
                  loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
-      ping.add_start(s.stop_, s.time_at_stop_);
+      ping.add_start(s.stop_, s.time_at_stop_, s.v_);
     }
     auto const worst_time_at_dest =
         start_time +
@@ -312,7 +318,7 @@ routing_result pong(timetable const& tt,
       for (auto const& s : starts) {
         trace_pong("---- PONG START: {} at time_at_start={} time_at_stop={}",
                    loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
-        po.add_start(s.stop_, s.time_at_stop_);
+        po.add_start(s.stop_, s.time_at_stop_, s.v_);
       }
       po.execute(ping_j.dest_time_, ping_j.transfers_, ping_j.start_time_,
                  s_state.results_);

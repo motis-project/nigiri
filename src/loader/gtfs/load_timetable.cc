@@ -366,7 +366,7 @@ void load_timetable(loader_config const& config,
     auto stop_seq_numbers = basic_string<stop_idx_t>{};
     for (auto& trp : trip_data.data_) {
       encode_seq_numbers(trp.seq_numbers_, stop_seq_numbers);
-      tt.trip_stop_seq_numbers_.emplace_back(trp.seq_numbers_);
+      tt.trip_stop_seq_numbers_.emplace_back(stop_seq_numbers);
     }
   }
 
