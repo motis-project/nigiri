@@ -343,6 +343,7 @@ routing_result bmrap_profile(
   auto realized_deps = std::vector<unixtime_t>{};
   auto n_realized = std::uint64_t{0U};
   auto n_unrealized = std::uint64_t{0U};
+  auto n_mc_pong_skipped = std::uint64_t{0U};
 
   auto anchors = std::vector<anchor>{};
   auto max_trips = std::uint8_t{0U};
@@ -555,23 +556,55 @@ routing_result bmrap_profile(
     // re-anchored journey (same arrival and criteria, latest departure) can
     // depart after the dominating result and within this step's window, where
     // no later step finds it again (12 of 60 queries changed, tuples lost).
+    //
+    // An arrival group IS skipped when every mc journey in it already has its
+    // re-anchored version in the results (same arrival, transfers and criteria,
+    // departing no earlier): the pong would only return those again. The mc
+    // ping restarts one minute past the loosest departure of the last step and
+    // finds most of that step's tradeoffs again, so this saves the bulk of the
+    // repeated pongs. Results carry the scan's convention (start_time_ =
+    // arrival), mc journeys the forward one.
     utl::sort(mc_results, [&](journey const& a, journey const& b) {
       return is_better(a.dest_time_, b.dest_time_);
     });
+    auto const re_anchored = [&](journey const& x) {
+      return utl::any_of(s_state.results_, [&](journey const& y) {
+        return y.start_time_ == x.dest_time_ &&
+               !is_better(y.dest_time_, x.start_time_) &&
+               y.transfers_ == x.transfers_ &&
+               y.criteria_cost_ == x.criteria_cost_ &&
+               y.criteria_mode_filter_ == x.criteria_mode_filter_ &&
+               y.criteria_mode_switches_ == x.criteria_mode_switches_;
+      });
+    };
 
     mc_pong.reset_arrivals();
     auto step_results = pareto_set<journey>{};
+    auto skipped_deps = std::vector<unixtime_t>{};
     for_each_arrival_group(mc_results, [&](unixtime_t const arr,
                                            auto const first, auto const last) {
+      auto const group_tr =
+          std::max_element(first, last,
+                           [](journey const& a, journey const& b) {
+                             return a.transfers_ < b.transfers_;
+                           })
+              ->transfers_;
+      if (std::all_of(first, last, re_anchored)) {
+        // the departures this pong would return still set the advance (step 6)
+        // as if it had run: without them the scan stepped past departures
+        // whose journeys no later step finds again
+        ++n_mc_pong_skipped;
+        for (auto const& r : s_state.results_) {
+          if (r.start_time_ == arr && r.transfers_ <= group_tr) {
+            skipped_deps.push_back(r.dest_time_);
+          }
+        }
+        return;
+      }
       seed_bwd(mc_pong, arr);
       // may not depart before the step being scanned
-      mc_pong.execute(arr,
-                      std::max_element(first, last,
-                                       [](journey const& a, journey const& b) {
-                                         return a.transfers_ < b.transfers_;
-                                       })
-                          ->transfers_,
-                      all_rounds(start_time - kDir), step_results);
+      mc_pong.execute(arr, group_tr, all_rounds(start_time - kDir),
+                      step_results);
     });
     sw.lap(ms_mc_pong);
 
@@ -623,6 +656,9 @@ routing_result bmrap_profile(
     }
     for (auto const& j : step_results) {
       consider(j.dest_time_);
+    }
+    for (auto const d : skipped_deps) {
+      consider(d);
     }
     auto const next = loosest_dep.value_or(start_time) + kDir;
     auto const passed = is_better(start_time, next) ? next : start_time;
@@ -794,6 +830,7 @@ routing_result bmrap_profile(
   algo_stats["bmrapp_ms_lb"] = ms(lb_time);
   algo_stats["bmrapp_aligned"] = aligned ? 1U : 0U;
   algo_stats["bmrapp_ms_range"] = ms(ms_range);
+  algo_stats["bmrapp_mc_pong_skipped"] = n_mc_pong_skipped;
 
   return routing_result{
       .journeys_ = &s_state.results_,
