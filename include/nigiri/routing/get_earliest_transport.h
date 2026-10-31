@@ -1,5 +1,7 @@
 #pragma once
 
+#include <iterator>
+
 #include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/routing/raptor/debug.h"
 #include "nigiri/timetable.h"
@@ -66,7 +68,9 @@ transport get_earliest_transport(timetable const& tt,
 
     auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
     for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
-      auto const t_offset = static_cast<std::size_t>(&*it - event_times.data());
+      auto const pos = static_cast<std::size_t>(
+          std::distance(get_begin_it(event_times), it));
+      auto const t_offset = kFwd ? pos : event_times.size() - 1U - pos;
       auto const ev = *it;
       auto const ev_mam = ev.mam();
 

@@ -13,6 +13,7 @@
 #include "geo/latlng.h"
 
 #include "nigiri/common/interval.h"
+#include "nigiri/event_times.h"
 #include "nigiri/fares.h"
 #include "nigiri/footpath.h"
 #include "nigiri/stop.h"
@@ -152,28 +153,30 @@ struct timetable {
     return bitfields_[route_traffic_days_[r]].test(to_idx(day));
   }
 
-  std::span<delta const> event_times_at_stop(route_idx_t const r,
-                                             stop_idx_t const stop_idx,
-                                             event_type const ev_type) const {
-    auto const n_transports =
-        static_cast<unsigned>(route_transport_ranges_[r].size());
-    auto const idx = static_cast<unsigned>(
-        route_stop_time_ranges_[r].from_ +
-        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    return std::span<delta const>{&route_stop_times_[idx], n_transports};
+  event_times event_times_at_stop(route_idx_t const r,
+                                  stop_idx_t const stop_idx,
+                                  event_type const ev_type) const {
+    auto const rt = route_times_[r];
+    return {
+        .first_dep_ = &transport_first_dep_[rt.transports_.from_],
+        .pattern_ = &transport_pattern_[rt.transports_.from_],
+        .offsets_ =
+            &pattern_offsets_[rt.pattern_start_ +
+                              event_idx(stop_idx, ev_type) * rt.n_patterns_],
+        .n_transports_ = static_cast<std::uint32_t>(rt.transports_.size()),
+        .n_patterns_ = rt.n_patterns_};
   }
 
   delta event_mam(route_idx_t const r,
                   transport_idx_t t,
                   stop_idx_t const stop_idx,
                   event_type const ev_type) const {
-    auto const range = route_transport_ranges_[r];
-    auto const n_transports = static_cast<unsigned>(range.size());
-    auto const route_stop_begin = static_cast<unsigned>(
-        route_stop_time_ranges_[r].from_ +
-        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    auto const t_idx_in_route = to_idx(t) - to_idx(range.from_);
-    return route_stop_times_[route_stop_begin + t_idx_in_route];
+    auto const rt = route_times_[r];
+    return transport_first_dep_[t] +
+           pattern_offsets_[rt.pattern_start_ +
+                            event_idx(stop_idx, ev_type) * rt.n_patterns_ +
+                            (rt.n_patterns_ == 1U ? 0U
+                                                  : transport_pattern_[t])];
   }
 
   delta event_mam(transport_idx_t t,
@@ -339,6 +342,7 @@ struct timetable {
   vector_map<trip_idx_t, translation_idx_t> trip_display_names_;
 
   // Route -> range of transports in this route (from/to transport_idx_t)
+  // TODO(felix) duplicate of route_times_[r].transports_
   vector_map<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
 
   // Route -> list of stops
@@ -371,8 +375,39 @@ struct timetable {
   //  stop-1-dep: [...]
   // ...
   // RouteN: ...
+  //
+  // -> filled by loaders during import
+  // -> finalize: converts to compressed stop times
+  // TODO(felix) move into loader context object
   vector_map<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
   vector<delta> route_stop_times_;
+
+  // Compressed route stop times:
+  // A pattern stores travel duration (= pattern offset) from first departure.
+  // Patterns are shared between transports within a route, e.g. peak, off-peak.
+  //
+  // Event major ordering => get_earliest_transport has all offsets of one event
+  // for each pattern of the route next to each other:
+  //
+  // e1p1 e1p2 e1p3 | e2p1 e2p2 e2p3 | e3p1 e3p2 e3p3 | …
+  //   EVENT 1      |    EVENT 2     |    EVENT 3     | …
+  //
+  // route       R
+  // route times r   route_times_[R]
+  // transport   T
+  // event       E   dep 0, arr 1, dep 1, …, arr last
+  //
+  // -> Index(E) = r.pattern_start_ + E * r.n_patterns_ + transport_pattern_[T]
+  // ->       E  = transport_first_dep_[T] + pattern_offsets_[Index(E)]
+  struct route_times {
+    interval<transport_idx_t> transports_;
+    std::uint32_t pattern_start_;  // first offset in pattern_offsets_
+    std::uint16_t n_patterns_;
+  };
+  vector_map<transport_idx_t, delta> transport_first_dep_;
+  vector_map<transport_idx_t, std::uint16_t> transport_pattern_;
+  vector_map<route_idx_t, route_times> route_times_;
+  vector<delta> pattern_offsets_;
 
   // Offset between the stored time and the time given in the GTFS timetable
   // Required to match GTFS-RT with GTFS-static trips.
