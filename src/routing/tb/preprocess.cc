@@ -313,7 +313,7 @@ void preprocess_transport(timetable const& tt,
     while (remaining_traffic_days.any()) {
       // departure time of current transport in relation to arrival day
       auto const dep = static_cast<std::uint16_t>(transfer_day_offset * 1440 +
-                                                  earliest_dep->mam_);
+                                                  (*earliest_dep).mam_);
 
       // check if max transfer time is exceeded
       if (dep - t_arr_mam > kMaxTransferTime) {
@@ -329,7 +329,7 @@ void preprocess_transport(timetable const& tt,
 
       // shift amount due to number of times transport u passed midnight
       auto const u_dep_day_offset =
-          static_cast<std::int8_t>(earliest_dep->days());
+          static_cast<std::int8_t>((*earliest_dep).days());
 
       // total shift amount relative to from transport traffic day
       auto const total_day_offset = static_cast<std::int8_t>(

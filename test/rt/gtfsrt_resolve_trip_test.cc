@@ -77,6 +77,7 @@ TEST(rt, gtfsrt_resolve_static_trip) {
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
 
   {  // test start time >24:00:00
 

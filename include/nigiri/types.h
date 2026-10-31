@@ -450,6 +450,12 @@ inline std::string_view to_str(event_type const d) {
   return d == event_type::kArr ? "ARR" : "DEP";
 }
 
+constexpr unsigned event_idx(stop_idx_t const stop_idx,
+                             event_type const ev_type) {
+  return static_cast<unsigned>(stop_idx * 2 -
+                               (ev_type == event_type::kArr ? 1 : 0));
+}
+
 enum class direction {
   kForward,
   kBackward  // start = final arrival, destination = journey departure
@@ -568,6 +574,8 @@ inline std::ostream& operator<<(std::ostream& out,
 namespace nigiri {
 
 struct delta {
+  delta() = default;
+
   explicit delta(duration_t const d)
       : days_{static_cast<std::uint16_t>(d.count() / 1440)},
         mam_{static_cast<std::uint16_t>(d.count() % 1440)} {
@@ -605,6 +613,14 @@ struct delta {
   friend delta operator-(delta const a, delta const b) {
     return delta{static_cast<std::uint16_t>((a.days_ - b.days_) * 1440U +
                                             (a.mam_ - b.mam_))};
+  }
+
+  friend constexpr delta operator+(delta const a, delta const b) {
+    auto const mam = static_cast<std::uint16_t>(a.mam_ + b.mam_);
+    auto const days = static_cast<std::uint16_t>(a.days_ + b.days_);
+    return mam >= 1440U ? delta{static_cast<std::uint16_t>(days + 1U),
+                                static_cast<std::uint16_t>(mam - 1440U)}
+                        : delta{days, mam};
   }
 
   cista::hash_t hash() const {

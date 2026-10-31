@@ -6,6 +6,7 @@
 
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/build_lb_graph.h"
+#include "nigiri/loader/compress_stop_times.h"
 #include "nigiri/loader/register.h"
 #include "nigiri/flex.h"
 #include "nigiri/special_stations.h"
@@ -200,6 +201,10 @@ void rebuild_route_traffic_days(timetable& tt) {
 void finalize(timetable& tt, finalize_options const opt) {
   tt.location_routes_.resize(tt.n_locations());
 
+  {
+    auto const timer = scoped_timer{"loader.compress_stop_times"};
+    compress_stop_times(tt);
+  }
   {
     auto const timer = scoped_timer{"loader.sort_trip_ids"};
     std::sort(begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_),

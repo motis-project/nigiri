@@ -4,6 +4,7 @@
 #include <set>
 
 #include "nigiri/loader/hrd/load_timetable.h"
+#include "nigiri/loader/init_finish.h"
 
 #include "../service_strings.h"
 #include "./hrd_timetable.h"
@@ -108,6 +109,7 @@ TEST(hrd, services_to_string_test) {
   auto tt = timetable{};
   tt.date_range_ = full_period();
   load_timetable(source_idx_t{0U}, hrd_5_20_26, files(), tt);
+  finalize(tt);
 
   if (expected != service_strings(tt)) {
     std::cout << "OUTPUT:\n";
