@@ -154,7 +154,6 @@ struct device_timetable {
                    kNProfiles>
       footpaths_in_;
 
-  // Transports + compressed route stop times, see route_times.
   d_vecmap_view<transport_idx_t, delta> first_dep_;
   d_vecmap_view<transport_idx_t, std::uint16_t> transport_pattern_;
   d_vecmap_view<route_idx_t, route_times> route_times_;
