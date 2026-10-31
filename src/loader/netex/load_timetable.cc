@@ -3,6 +3,7 @@
 #include "nigiri/loader/get_index.h"
 
 #include <filesystem>
+#include <functional>
 #include <ranges>
 #include <string>
 
@@ -528,7 +529,7 @@ destination_display_map_t get_destination_displays(
 // -------------
 struct stop {
   location_idx_t location_{location_idx_t::invalid()};
-  stop const* parent_{nullptr};
+  stop* parent_{nullptr};
   std::string_view id_;
   std::string_view name_;
   std::string_view public_code_;
@@ -1487,7 +1488,22 @@ void load_timetable(loader_config const& config,
       }
     }
 
-    auto const add_stop = [&](stop* stop) {
+    // Parents have to be registered before their children (arbitrary depth).
+    auto visited = hash_set<stop const*>{};
+    auto add_stop = std::function<void(stop*)>{};
+    add_stop = [&](stop* stop) {
+      if (!visited.emplace(stop).second) {
+        return;
+      }
+
+      if (stop->parent_ != nullptr) {
+        add_stop(stop->parent_);
+      }
+
+      auto const parent_location = stop->parent_ != nullptr
+                                       ? stop->parent_->location_
+                                       : location_idx_t::invalid();
+
       auto const existing = tt.find(location_id{stop->id_, src});
       if (existing.has_value()) {
         stop->location_ = *existing;
@@ -1510,28 +1526,20 @@ void load_timetable(loader_config const& config,
                         kEmptyTranslation,
                         stop->pos_,
                         location_type::kStation,
-                        stop->parent_ != nullptr ? stop->parent_->location_
-                                                 : location_idx_t::invalid(),
+                        parent_location,
                         tz,
                         config.default_transfer_time_,
                         tz_map};
       if (process_location(r, s)) {
         stop->location_ = register_location(tt, s);
-        if (stop->parent_ != nullptr) {
-          tt.locations_.children_[stop->parent_->location_].emplace_back(
+        if (parent_location != location_idx_t::invalid()) {
+          tt.locations_.children_[parent_location].emplace_back(
               stop->location_);
         }
       }
     };
     for (auto& [id, stop] : im.stops_) {
-      if (stop->parent_ == nullptr) {
-        add_stop(stop.get());
-      }
-    }
-    for (auto& [id, stop] : im.stops_) {
-      if (stop->parent_ != nullptr) {
-        add_stop(stop.get());
-      }
+      add_stop(stop.get());
     }
     for (auto const& [id, stop] : im.stop_assignments_) {
       tt.locations_.location_id_to_idx_.emplace(owning_location_id{id, src},
