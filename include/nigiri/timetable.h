@@ -163,6 +163,7 @@ struct timetable {
         .offsets_ =
             &pattern_offsets_[rt.pattern_start_ +
                               event_idx(stop_idx, ev_type) * rt.n_patterns_],
+        .first_transport_ = rt.transports_.from_,
         .n_transports_ = static_cast<std::uint32_t>(rt.transports_.size()),
         .n_patterns_ = rt.n_patterns_};
   }

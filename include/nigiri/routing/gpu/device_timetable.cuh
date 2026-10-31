@@ -111,45 +111,21 @@ struct device_rt_timetable {
 
 using route_times = timetable::route_times;
 
-// The event times of all transports of one route at one event.
-struct event_column {
-  __device__ __forceinline__ delta operator[](unsigned const j) const {
-    return first_dep_[j] +
-           (n_patterns_ == 1U ? off_ : patterns_[pattern_idx_[j]]);
-  }
-
-  __device__ __forceinline__ unsigned size() const { return n_transports_; }
-
-  __device__ __forceinline__ transport_idx_t transport(unsigned const j) const {
-    return transport_idx_t{to_idx(first_transport_) + j};
-  }
-
-  transport_idx_t first_transport_;
-  delta const* first_dep_;  // of the route's transports
-  std::uint16_t const* pattern_idx_;  // of the route's transports
-  delta const* patterns_;  // the event's offsets, one per pattern
-  delta off_;  // the event's offset of the first pattern
-  unsigned n_patterns_;
-  unsigned n_transports_;
-};
-
 struct device_timetable {
   using t = timetable;
 
-  __device__ event_column event_times_at_stop(route_idx_t const r,
-                                              stop_idx_t const stop_idx,
-                                              event_type const ev_type) const {
+  __device__ event_times event_times_at_stop(route_idx_t const r,
+                                             stop_idx_t const stop_idx,
+                                             event_type const ev_type) const {
     auto const rt = route_times_[r];
-    auto const* patterns =
-        &patterns_[rt.pattern_start_ +
-                   event_idx(stop_idx, ev_type) * rt.n_patterns_];
-    return {.first_transport_ = rt.transports_.from_,
-            .first_dep_ = &first_dep_[rt.transports_.from_],
-            .pattern_idx_ = &transport_pattern_[rt.transports_.from_],
-            .patterns_ = patterns,
-            .off_ = *patterns,
-            .n_patterns_ = rt.n_patterns_,
-            .n_transports_ = static_cast<unsigned>(rt.transports_.size())};
+    return {
+        .first_dep_ = &first_dep_[rt.transports_.from_],
+        .pattern_ = &transport_pattern_[rt.transports_.from_],
+        .offsets_ = &patterns_[rt.pattern_start_ +
+                               event_idx(stop_idx, ev_type) * rt.n_patterns_],
+        .first_transport_ = rt.transports_.from_,
+        .n_transports_ = static_cast<std::uint32_t>(rt.transports_.size()),
+        .n_patterns_ = rt.n_patterns_};
   }
 
   __device__ delta event_mam(route_idx_t const r,

@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <iterator>
 
+#include "cista/cuda_check.h"
+
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -13,11 +15,15 @@ namespace nigiri {
 struct event_times {
   struct iterator;
 
-  delta operator[](std::size_t const i) const {
+  CISTA_CUDA_COMPAT delta operator[](std::size_t const i) const {
     return first_dep_[i] + offsets_[n_patterns_ == 1U ? 0U : pattern_[i]];
   }
 
-  std::size_t size() const { return n_transports_; }
+  CISTA_CUDA_COMPAT transport_idx_t transport(std::uint32_t const i) const {
+    return first_transport_ + i;
+  }
+
+  CISTA_CUDA_COMPAT std::size_t size() const { return n_transports_; }
   bool empty() const { return n_transports_ == 0U; }
   delta front() const { return (*this)[0U]; }
   delta back() const { return (*this)[n_transports_ - 1U]; }
@@ -28,6 +34,7 @@ struct event_times {
   delta const* first_dep_;  // of the route's transports
   std::uint16_t const* pattern_;  // of the route's transports
   delta const* offsets_;  // the event's offsets, one per pattern
+  transport_idx_t first_transport_;
   std::uint32_t n_transports_;
   std::uint16_t n_patterns_;
 };

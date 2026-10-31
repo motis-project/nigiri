@@ -1479,7 +1479,7 @@ private:
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
-        auto const t = tt_.route_times_[r].transports_[t_offset];
+        auto const t = event_times.transport(t_offset);
         if (i == 0U && !is_better_or_eq(mam_at_stop.count(), ev_mam)) {
           trace(
               "┊ │k={}      => transport={}, name={}, dbg={}, day={}/{}, "
