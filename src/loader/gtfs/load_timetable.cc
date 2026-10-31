@@ -99,7 +99,10 @@ void load_timetable(loader_config const& config,
       tt.register_source_file((d.path() / kStopTimesFile).generic_string());
   auto timezones = tz_map{};
   auto const feed_info = read_feed_info(load(kFeedInfoFile).data());
-  auto i18n = read_translations(tt, feed_info.feed_lang_,
+  auto i18n = read_translations(tt, feed_info.default_lang_,
+                                feed_info.feed_lang_.has_value()
+                                    ? *feed_info.feed_lang_
+                                    : std::optional{config.default_feed_lang_},
                                 load(kTranslationsFile).data());
   auto [agencies, agency_ticketing] =
       read_agencies(src, tt, i18n, timezones, load(kAgencyFile).data(),

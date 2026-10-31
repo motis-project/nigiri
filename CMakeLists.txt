@@ -69,7 +69,8 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         -Wno-ctad-maybe-unsupported
         -Wno-nrvo
         -Wno-thread-safety-negative
-        -Wno-unused-private-field)
+        -Wno-unused-private-field
+        -Wno-disabled-macro-expansion)
 elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
   set(nigiri-compile-options -Wall -Wextra)
 elseif (NOT MSVC)
@@ -106,6 +107,7 @@ target_link_libraries(
   PRIVATE
   boost-iostreams
   zlibstatic
+  icui18n
 )
 target_compile_features(nigiri PUBLIC cxx_std_23)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
