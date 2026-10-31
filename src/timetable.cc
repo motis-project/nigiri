@@ -198,23 +198,6 @@ source_file_idx_t timetable::register_source_file(std::string_view path) {
   return idx;
 }
 
-void timetable::add_transport(transport&& t) {
-  transport_first_dep_offset_.emplace_back(t.first_dep_offset_);
-  transport_traffic_days_.emplace_back(t.bitfield_idx_);
-  transport_route_.emplace_back(t.route_idx_);
-  transport_to_trip_section_.emplace_back(t.external_trip_ids_);
-  transport_section_attributes_.emplace_back(t.section_attributes_);
-  transport_section_providers_.emplace_back(t.section_providers_);
-  transport_section_directions_.emplace_back(t.section_directions_);
-
-  assert(transport_traffic_days_.size() == transport_route_.size());
-  assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
-  assert(transport_section_directions_.back().size() == 0U ||
-         transport_section_directions_.back().size() == 1U ||
-         transport_section_directions_.back().size() ==
-             route_location_seq_.at(transport_route_.back()).size() - 1U);
-}
-
 transport_idx_t timetable::next_transport_idx() const {
   return transport_idx_t{transport_traffic_days_.size()};
 }

@@ -6,6 +6,8 @@ struct timetable;
 
 namespace nigiri::loader {
 
-void compress_stop_times(timetable&);
+struct import_context;
+
+void compress_stop_times(timetable&, import_context&);
 
 }  // namespace nigiri::loader

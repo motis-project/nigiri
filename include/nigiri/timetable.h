@@ -12,6 +12,7 @@
 #include "geo/box.h"
 #include "geo/latlng.h"
 
+#include "nigiri/common/dedup_vecvec.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/event_times.h"
 #include "nigiri/fares.h"
@@ -91,10 +92,8 @@ struct timetable {
     vector_map<location_idx_t, location_type> types_;
     vector_map<location_idx_t, location_idx_t> parents_;
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
-    mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
-    mutable_fws_multimap<location_idx_t, location_idx_t> children_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
+    vecvec<location_idx_t, location_idx_t> equivalences_;
+    vecvec<location_idx_t, location_idx_t> children_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_in_;
     vector_map<location_idx_t, std::uint32_t> location_importance_;
@@ -140,8 +139,6 @@ struct timetable {
   merged_trips_idx_t register_merged_trip(basic_string<trip_idx_t> const&);
 
   source_file_idx_t register_source_file(std::string_view path);
-
-  void add_transport(transport&& t);
 
   transport_idx_t next_transport_idx() const;
 
@@ -288,7 +285,7 @@ struct timetable {
   vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;
 
   // Trip index -> list of external trip ids
-  mutable_fws_multimap<trip_idx_t, trip_id_idx_t> trip_ids_;
+  vecvec<trip_idx_t, trip_id_idx_t> trip_ids_;
 
   // Storage for trip id strings + source
   vecvec<trip_id_idx_t, char> trip_id_strings_;
@@ -316,13 +313,13 @@ struct timetable {
     vector_map<route_id_idx_t, provider_idx_t> route_id_provider_;
     vector_map<route_id_idx_t, route_color> route_id_colors_;
     vector_map<route_id_idx_t, ticketing_link_idx_t> route_id_ticketing_link_;
-    paged_vecvec<route_id_idx_t, trip_idx_t> route_id_trips_;
+    vecvec<route_id_idx_t, trip_idx_t> route_id_trips_;
     string_store<route_id_idx_t> ids_;
   };
   vector_map<source_idx_t, route_ids> route_ids_;
 
   // Trip index -> all transports with a stop interval
-  paged_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
+  vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
 
   // Transport -> stop sequence numbers (relevant for GTFS-RT stop matching)
   // Compaction:
@@ -330,10 +327,10 @@ struct timetable {
   // - only one '1' entry = one-based sequence 1,2,3,...
   // - only one '10' entry = 10-based sequence 10,20,30,...
   // - more than one entry: exact sequence number for each stop
-  vecvec<trip_idx_t, stop_idx_t> trip_stop_seq_numbers_;
+  dedup_vecvec<trip_idx_t, stop_idx_t> trip_stop_seq_numbers_;
 
   // Trip -> debug info
-  mutable_fws_multimap<trip_idx_t, trip_debug> trip_debug_;
+  vecvec<trip_idx_t, trip_debug> trip_debug_;
   vecvec<source_file_idx_t, char, std::uint32_t> source_file_names_;
 
   // Trip index -> trip name
@@ -367,21 +364,6 @@ struct timetable {
 
   // Location -> list of routes
   vecvec<location_idx_t, route_idx_t> location_routes_;
-
-  // Route 1:
-  //   stop-1-dep: [trip1, trip2, ..., tripN]
-  //   stop-2-arr: [trip1, trip2, ..., tripN]
-  //   ...
-  // Route 2:
-  //  stop-1-dep: [...]
-  // ...
-  // RouteN: ...
-  //
-  // -> filled by loaders during import
-  // -> finalize: converts to compressed stop times
-  // TODO(felix) move into loader context object
-  vector_map<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
-  vector<delta> route_stop_times_;
 
   // Compressed route stop times:
   // A pattern stores travel duration (= pattern offset) from first departure.
@@ -450,8 +432,9 @@ struct timetable {
   // - multiple values = one value for each section
   vecvec<transport_idx_t, attribute_combination_idx_t>
       transport_section_attributes_;
-  vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
-  vecvec<transport_idx_t, translation_idx_t> transport_section_directions_;
+  dedup_vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
+  dedup_vecvec<transport_idx_t, translation_idx_t>
+      transport_section_directions_;
 
   // Lower bound graph.
   std::array<vecvec<location_idx_t, footpath>, kNProfiles> fwd_search_lb_graph_;
@@ -466,8 +449,8 @@ struct timetable {
   vecvec<location_idx_t, area_idx_t> location_areas_;
 
   // Flex
-  paged_vecvec<location_group_idx_t, location_idx_t> location_group_locations_;
-  paged_vecvec<location_idx_t, location_group_idx_t> location_location_groups_;
+  vecvec<location_group_idx_t, location_idx_t> location_group_locations_;
+  vecvec<location_idx_t, location_group_idx_t> location_location_groups_;
   vector_map<location_group_idx_t, translation_idx_t> location_group_name_;
   vector_map<location_group_idx_t, string_idx_t> location_group_id_;
   vector_map<flex_area_idx_t, geo::box> flex_area_bbox_;
@@ -479,9 +462,8 @@ struct timetable {
   vector_map<flex_area_idx_t, translation_idx_t> flex_area_name_;
   vector_map<flex_area_idx_t, translation_idx_t> flex_area_desc_;
   rtree<flex_area_idx_t> flex_area_rtree_;
-  paged_vecvec<location_group_idx_t, flex_transport_idx_t>
-      location_group_transports_;
-  paged_vecvec<flex_area_idx_t, flex_transport_idx_t> flex_area_transports_;
+  vecvec<location_group_idx_t, flex_transport_idx_t> location_group_transports_;
+  vecvec<flex_area_idx_t, flex_transport_idx_t> flex_area_transports_;
   vector_map<flex_transport_idx_t, bitfield_idx_t> flex_transport_traffic_days_;
   vector_map<flex_transport_idx_t, trip_idx_t> flex_transport_trip_;
   vecvec<flex_transport_idx_t, interval<duration_t>>

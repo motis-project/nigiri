@@ -4,11 +4,12 @@
 
 #include "utl/get_or_create.h"
 
+#include "nigiri/loader/import_context.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader {
 
-void compress_stop_times(timetable& tt) {
+void compress_stop_times(timetable& tt, import_context& ctx) {
   auto const n_transports = tt.transport_route_.size();
   tt.transport_first_dep_.resize(n_transports);
   tt.transport_pattern_.resize(n_transports);
@@ -22,9 +23,9 @@ void compress_stop_times(timetable& tt) {
     auto const n = static_cast<unsigned>(transports.size());
     auto const n_ev =
         static_cast<unsigned>(tt.route_location_seq_[r].size() * 2U - 2U);
-    auto const base = tt.route_stop_time_ranges_[r].from_;
+    auto const base = ctx.route_stop_time_ranges_[r].from_;
     auto const stop_time = [&](unsigned const e, transport_idx_t const t) {
-      return tt.route_stop_times_[base + e * n + to_idx(t - transports.from_)];
+      return ctx.route_stop_times_[base + e * n + to_idx(t - transports.from_)];
     };
 
     offsets.resize(n_ev);
@@ -54,8 +55,8 @@ void compress_stop_times(timetable& tt) {
     }
   }
 
-  tt.route_stop_time_ranges_ = {};
-  tt.route_stop_times_ = {};
+  ctx.route_stop_time_ranges_ = {};
+  ctx.route_stop_times_ = {};
 }
 
 }  // namespace nigiri::loader

@@ -14,6 +14,7 @@
 #include "utl/progress_tracker.h"
 #include "utl/verify.h"
 
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/link_nearby_stations.h"
 #include "nigiri/loader/merge_duplicates.h"
 #include "nigiri/common/day_list.h"
@@ -66,14 +67,13 @@ struct component {
   vecvec<location_idx_t, footpath> graph_;
 };
 
-footgraph get_footpath_graph(timetable& tt) {
+footgraph get_footpath_graph(timetable& tt, import_context& ctx) {
   footgraph g;
   g.resize(tt.locations_.src_.size());
   for (auto i = 0U; i != tt.locations_.src_.size(); ++i) {
     auto const idx = location_idx_t{i};
-    g[i].insert(end(g[i]),
-                begin(tt.locations_.preprocessing_footpaths_out_[idx]),
-                end(tt.locations_.preprocessing_footpaths_out_[idx]));
+    g[i].insert(end(g[i]), begin(ctx.preprocessing_footpaths_out_[idx]),
+                end(ctx.preprocessing_footpaths_out_[idx]));
     utl::erase_if(g[i],
                   [&](auto&& fp) { return fp.target() == location_idx_t{i}; });
     utl::erase_duplicates(
@@ -144,6 +144,7 @@ std::optional<u8_minutes> adjust_to_walk_speed(timetable const& tt,
 }
 
 void process_2_node_component(timetable& tt,
+                              import_context& ctx,
                               component const& c,
                               footgraph const& fgraph,
                               bool const adjust_footpaths) {
@@ -166,10 +167,8 @@ void process_2_node_component(timetable& tt,
       adjusted = *a;
     }
 
-    tt.locations_.preprocessing_footpaths_out_[from_l].emplace_back(to_l,
-                                                                    adjusted);
-    tt.locations_.preprocessing_footpaths_in_[to_l].emplace_back(from_l,
-                                                                 adjusted);
+    ctx.preprocessing_footpaths_out_[from_l].emplace_back(to_l, adjusted);
+    ctx.preprocessing_footpaths_in_[to_l].emplace_back(from_l, adjusted);
   };
 
   if (!fgraph[idx_a].empty()) {
@@ -228,6 +227,7 @@ void build_component_graph(
 }
 
 void connect_components(timetable& tt,
+                        import_context& ctx,
                         std::uint16_t const max_footpath_length,
                         bool adjust_footpaths) {
   // ==========================
@@ -235,16 +235,16 @@ void connect_components(timetable& tt,
   // --------------------------
   auto const timer = scoped_timer{"building transitively closed foot graph"};
 
-  auto const fgraph = get_footpath_graph(tt);
+  auto const fgraph = get_footpath_graph(tt, ctx);
   auto assignments = find_components(fgraph);
   utl::sort(assignments);
 
-  tt.locations_.preprocessing_footpaths_out_.clear();
-  tt.locations_.preprocessing_footpaths_out_[location_idx_t{
-      tt.locations_.src_.size() - 1}];
-  tt.locations_.preprocessing_footpaths_in_.clear();
-  tt.locations_.preprocessing_footpaths_in_[location_idx_t{
-      tt.locations_.src_.size() - 1}];
+  ctx.preprocessing_footpaths_out_.clear();
+  ctx.preprocessing_footpaths_out_[location_idx_t{tt.locations_.src_.size() -
+                                                  1}];
+  ctx.preprocessing_footpaths_in_.clear();
+  ctx.preprocessing_footpaths_in_[location_idx_t{tt.locations_.src_.size() -
+                                                 1}];
 
   auto tmp_graph = cista::raw::mutable_fws_multimap<location_idx_t, footpath>{};
   auto components = std::vector<component>{};
@@ -256,7 +256,7 @@ void connect_components(timetable& tt,
         if (c.invalid()) {
           return;
         } else if (c.size() == 2U) {
-          process_2_node_component(tt, c, fgraph, adjust_footpaths);
+          process_2_node_component(tt, ctx, c, fgraph, adjust_footpaths);
         } else {
           build_component_graph(tt, c, fgraph, tmp_graph);
           components.emplace_back(std::move(c));
@@ -338,19 +338,17 @@ void connect_components(timetable& tt,
         adjusted = *a;
       }
 
-      tt.locations_.preprocessing_footpaths_out_[from_l].emplace_back(to_l,
-                                                                      adjusted);
-      tt.locations_.preprocessing_footpaths_in_[to_l].emplace_back(from_l,
-                                                                   adjusted);
+      ctx.preprocessing_footpaths_out_[from_l].emplace_back(to_l, adjusted);
+      ctx.preprocessing_footpaths_in_[to_l].emplace_back(from_l, adjusted);
     }
   }
 }
 
-void add_links_to_and_between_children(timetable& tt) {
+void add_links_to_and_between_children(timetable& tt, import_context& ctx) {
   auto fp_out = mutable_fws_multimap<location_idx_t, footpath>{};
   for (auto l = location_idx_t{0U};
-       l != tt.locations_.preprocessing_footpaths_out_.size(); ++l) {
-    for (auto const& fp : tt.locations_.preprocessing_footpaths_out_[l]) {
+       l != ctx.preprocessing_footpaths_out_.size(); ++l) {
+    for (auto const& fp : ctx.preprocessing_footpaths_out_[l]) {
       for (auto const& neighbor_child : tt.locations_.children_[fp.target()]) {
         if (tt.locations_.types_[neighbor_child] ==
             location_type::kGeneratedTrack) {
@@ -373,9 +371,9 @@ void add_links_to_and_between_children(timetable& tt) {
   }
 
   for (auto l = location_idx_t{0U};
-       l != tt.locations_.preprocessing_footpaths_out_.size(); ++l) {
+       l != ctx.preprocessing_footpaths_out_.size(); ++l) {
     for (auto const& fp : fp_out[l]) {
-      tt.locations_.preprocessing_footpaths_out_[l].emplace_back(fp);
+      ctx.preprocessing_footpaths_out_[l].emplace_back(fp);
     }
   }
 
@@ -388,37 +386,35 @@ void add_links_to_and_between_children(timetable& tt) {
       if (tt.locations_.types_[child_i] != location_type::kGeneratedTrack) {
         continue;
       }
-      tt.locations_.preprocessing_footpaths_out_[parent].emplace_back(child_i,
-                                                                      t);
-      tt.locations_.preprocessing_footpaths_out_[child_i].emplace_back(parent,
-                                                                       t);
+      ctx.preprocessing_footpaths_out_[parent].emplace_back(child_i, t);
+      ctx.preprocessing_footpaths_out_[child_i].emplace_back(parent, t);
       for (auto j = 0U; j != children.size(); ++j) {
         if (i != j) {
-          tt.locations_.preprocessing_footpaths_out_[child_i].emplace_back(
-              children[j], t);
+          ctx.preprocessing_footpaths_out_[child_i].emplace_back(children[j],
+                                                                 t);
         }
       }
     }
   }
 }
 
-void sort_footpaths(timetable& tt) {
+void sort_footpaths(timetable& tt, import_context& ctx) {
   auto const cmp_fp_dur = [](auto const& a, auto const& b) {
     return a.duration_ < b.duration_;
   };
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    utl::sort(tt.locations_.preprocessing_footpaths_out_[i], cmp_fp_dur);
+    utl::sort(ctx.preprocessing_footpaths_out_[i], cmp_fp_dur);
   }
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    utl::sort(tt.locations_.preprocessing_footpaths_in_[i], cmp_fp_dur);
+    utl::sort(ctx.preprocessing_footpaths_in_[i], cmp_fp_dur);
   }
 }
 
-void write_footpaths(timetable& tt) {
+void write_footpaths(timetable& tt, import_context& ctx) {
   assert(tt.locations_.footpaths_out_.size() == kNProfiles);
   assert(tt.locations_.footpaths_in_.size() == kNProfiles);
-  assert(tt.locations_.preprocessing_footpaths_out_.size() == tt.n_locations());
-  assert(tt.locations_.preprocessing_footpaths_in_.size() == tt.n_locations());
+  assert(ctx.preprocessing_footpaths_out_.size() == tt.n_locations());
+  assert(ctx.preprocessing_footpaths_in_.size() == tt.n_locations());
 
   profile_idx_t const prf_idx{0};
 
@@ -432,7 +428,7 @@ void write_footpaths(timetable& tt) {
   auto fps_in = mutable_fws_multimap<location_idx_t, footpath>{};
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
     fps.clear();
-    for (auto const fp : tt.locations_.preprocessing_footpaths_out_[i]) {
+    for (auto const fp : ctx.preprocessing_footpaths_out_[i]) {
       fps.push_back(fp);
     }
     // one edge per target, at the shortest duration offered for it
@@ -463,23 +459,25 @@ void write_footpaths(timetable& tt) {
     tt.locations_.footpaths_in_[prf_idx].emplace_back(fps);
   }
 
-  tt.locations_.preprocessing_footpaths_in_.clear();
-  tt.locations_.preprocessing_footpaths_out_.clear();
+  ctx.preprocessing_footpaths_in_ = {};
+  ctx.preprocessing_footpaths_out_ = {};
 }
 
-void build_footpaths(timetable& tt, finalize_options const opt) {
-  add_links_to_and_between_children(tt);
-  link_nearby_stations(tt);
+void build_footpaths(timetable& tt,
+                     import_context& ctx,
+                     finalize_options const& opt) {
+  add_links_to_and_between_children(tt, ctx);
+  link_nearby_stations(tt, ctx);
 
   if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_) {
-    merge_duplicates(tt, opt.merge_threshold_, opt.merge_dupes_intra_src_,
+    merge_duplicates(tt, ctx, opt.merge_threshold_, opt.merge_dupes_intra_src_,
                      opt.merge_dupes_inter_src_, opt.merge_stats_dir_,
                      opt.src_tags_);
   }
 
-  connect_components(tt, opt.max_footpath_length_, opt.adjust_footpaths_);
-  sort_footpaths(tt);
-  write_footpaths(tt);
+  connect_components(tt, ctx, opt.max_footpath_length_, opt.adjust_footpaths_);
+  sort_footpaths(tt, ctx);
+  write_footpaths(tt, ctx);
 }
 
 }  // namespace nigiri::loader

@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/stop.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/timetable.h"
 
@@ -16,12 +17,14 @@ TEST(gtfs, read_stations_example_data) {
   auto timezones = tz_map{};
   auto i18n = translator{.tt_ = tt};
 
-  register_special_stations(tt);
+  auto ctx = import_context{tt};
+  register_special_stations(tt, ctx);
 
   auto const files = example_files();
-  auto const [stops, _transfers, _accessibility] = read_stops(
-      source_idx_t{0}, tt, i18n, timezones, files.get_file(kStopFile).data(),
-      files.get_file(kTransfersFile).data(), 0U);
+  auto const [stops, _transfers, _accessibility] =
+      read_stops(source_idx_t{0}, tt, ctx, i18n, timezones,
+                 files.get_file(kStopFile).data(),
+                 files.get_file(kTransfersFile).data(), 0U);
 
   EXPECT_EQ(8, stops.size());
 
@@ -63,13 +66,15 @@ TEST(gtfs, read_stations_example_data) {
 
 TEST(gtfs, read_stations_berlin_data) {
   auto tt = timetable{};
+  auto ctx = import_context{tt};
   auto timezones = tz_map{};
   auto i18n = translator{.tt_ = tt};
 
   auto const files = berlin_files();
-  auto const [stops, _transfers, _accessibility] = read_stops(
-      source_idx_t{0}, tt, i18n, timezones, files.get_file(kStopFile).data(),
-      files.get_file(kTransfersFile).data(), 0U);
+  auto const [stops, _transfers, _accessibility] =
+      read_stops(source_idx_t{0}, tt, ctx, i18n, timezones,
+                 files.get_file(kStopFile).data(),
+                 files.get_file(kTransfersFile).data(), 0U);
 
   EXPECT_EQ(3, stops.size());
 
@@ -103,7 +108,8 @@ TEST(gtfs, read_stations_stop_code_and_platform_code) {
   auto timezones = tz_map{};
   auto i18n = translator{.tt_ = tt};
 
-  register_special_stations(tt);
+  auto ctx = import_context{tt};
+  register_special_stations(tt, ctx);
 
   // platform_code and stop_code are independent fields and do not fall back
   // into each other.
@@ -116,7 +122,7 @@ C,,Platform C,,52.0,13.0,0,P,
 )"};
 
   auto const [stops, _transfers, _accessibility] =
-      read_stops(source_idx_t{0}, tt, i18n, timezones, stops_content,
+      read_stops(source_idx_t{0}, tt, ctx, i18n, timezones, stops_content,
                  std::string_view{}, 0U);
 
   auto const platform_code = [&](std::string_view const id) {

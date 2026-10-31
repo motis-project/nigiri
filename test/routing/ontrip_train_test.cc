@@ -1,7 +1,6 @@
 #include "gtest/gtest.h"
 
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/lookup/get_transport.h"
 #include "nigiri/routing/ontrip_train.h"
 #include "nigiri/timetable.h"
@@ -18,11 +17,8 @@ using nigiri::test::raptor_search;
 
 TEST(routing, ontrip_train) {
   using namespace date;
-  timetable tt;
-  tt.date_range_ = full_period();
   constexpr auto const src = source_idx_t{0U};
-  load_timetable(src, loader::hrd::hrd_5_20_26, files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(files(), full_period());
 
   auto const t = get_ref_transport(
       tt, {"3374/0000008/1350/0000006/2950/", source_idx_t{0}},
