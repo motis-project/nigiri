@@ -33,10 +33,10 @@ location_groups_t parse_location_groups(timetable&,
                                         std::string_view file_content);
 
 booking_rules_t parse_booking_rules(timetable&,
+                                    import_context&,
                                     translator&,
                                     std::string_view file_content,
-                                    traffic_days_t const&,
-                                    import_context&);
+                                    traffic_days_t const&);
 
 void expand_flex_trip(timetable&,
                       import_context&,

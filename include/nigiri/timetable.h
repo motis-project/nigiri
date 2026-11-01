@@ -14,6 +14,7 @@
 
 #include "nigiri/common/dedup_vecvec.h"
 #include "nigiri/common/interval.h"
+#include "nigiri/common/sparse_vecvec.h"
 #include "nigiri/event_times.h"
 #include "nigiri/fares.h"
 #include "nigiri/footpath.h"
@@ -93,7 +94,7 @@ struct timetable {
     vector_map<location_idx_t, location_idx_t> parents_;
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
     vecvec<location_idx_t, location_idx_t> equivalences_;
-    vecvec<location_idx_t, location_idx_t> children_;
+    sparse_vecvec<location_idx_t, location_idx_t> children_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_in_;
     vector_map<location_idx_t, std::uint32_t> location_importance_;
@@ -319,7 +320,7 @@ struct timetable {
   vector_map<source_idx_t, route_ids> route_ids_;
 
   // Trip index -> all transports with a stop interval
-  vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
+  sparse_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
 
   // Transport -> stop sequence numbers (relevant for GTFS-RT stop matching)
   // Compaction:
@@ -327,7 +328,7 @@ struct timetable {
   // - only one '1' entry = one-based sequence 1,2,3,...
   // - only one '10' entry = 10-based sequence 10,20,30,...
   // - more than one entry: exact sequence number for each stop
-  dedup_vecvec<trip_idx_t, stop_idx_t> trip_stop_seq_numbers_;
+  sparse_dedup_vecvec<trip_idx_t, stop_idx_t> trip_stop_seq_numbers_;
 
   // Trip -> debug info
   vecvec<trip_idx_t, trip_debug> trip_debug_;
@@ -430,8 +431,9 @@ struct timetable {
   // Transport to section meta infos; Compaction:
   // - only one value = value is valid for the whole run
   // - multiple values = one value for each section
-  vecvec<transport_idx_t, attribute_combination_idx_t>
-      transport_section_attributes_;
+  sparse_vecvec<transport_idx_t, attribute_combination_idx_t>
+      transport_section_attributes_{
+          decltype(transport_section_attributes_)::with_default({})};
   dedup_vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
   dedup_vecvec<transport_idx_t, translation_idx_t>
       transport_section_directions_;
@@ -446,11 +448,11 @@ struct timetable {
   // Fares
   vector_map<source_idx_t, fares> fares_;
   vector_map<area_idx_t, area> areas_;
-  vecvec<location_idx_t, area_idx_t> location_areas_;
+  sparse_vecvec<location_idx_t, area_idx_t> location_areas_;
 
   // Flex
   vecvec<location_group_idx_t, location_idx_t> location_group_locations_;
-  vecvec<location_idx_t, location_group_idx_t> location_location_groups_;
+  sparse_vecvec<location_idx_t, location_group_idx_t> location_location_groups_;
   vector_map<location_group_idx_t, translation_idx_t> location_group_name_;
   vector_map<location_group_idx_t, string_idx_t> location_group_id_;
   vector_map<flex_area_idx_t, geo::box> flex_area_bbox_;
@@ -482,15 +484,16 @@ struct timetable {
 
   // Translated strings
   nvec<translation_idx_t, char, 2U> translations_;
-  vecvec<translation_idx_t, language_idx_t> translation_language_;
+  sparse_vecvec<translation_idx_t, language_idx_t> translation_language_{
+      decltype(translation_language_)::with_default({kDefaultLang})};
   string_store<language_idx_t> languages_;
 
   cista::base_t<source_idx_t> n_sources_{};
 
   // Ticketing
-  vecvec<location_idx_t, pair<provider_idx_t, string_idx_t>>
+  sparse_vecvec<location_idx_t, pair<provider_idx_t, string_idx_t>>
       location_ticketing_identifier_;
-  vecvec<trip_idx_t, string_idx_t> trip_ticketing_identifier_;
+  sparse_vecvec<trip_idx_t, string_idx_t> trip_ticketing_identifier_;
   bitvec_map<trip_idx_t> trip_ticketing_unavailable_;
 
   struct ticketing_links {

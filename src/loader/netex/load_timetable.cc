@@ -1637,8 +1637,8 @@ void load_timetable(loader_config const& config,
         continue;
       }
 
-      tt.trip_stop_seq_numbers_.emplace_back(
-          ctx.trip_stop_seq_numbers_, std::initializer_list<stop_idx_t>{});
+      ctx.trip_stop_seq_numbers_.emplace_back(ctx.trip_stop_seq_numbers_cache_,
+                                              {});
       if (shapes_data != nullptr) {
         shapes_data->add_trip_shape_offsets(
             trip_idx, cista::pair{scoped_shape_idx_t::invalid(),
@@ -2025,7 +2025,7 @@ void load_timetable(loader_config const& config,
                                              trips);
   }
 
-  tt.location_areas_.resize(tt.n_locations());
+  ctx.location_areas_.resize(tt.n_locations());
   ctx.location_location_groups_.resize(tt.n_locations());
 }
 

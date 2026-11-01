@@ -169,10 +169,10 @@ void parse_location_group_stops(timetable& tt,
 }
 
 booking_rules_t parse_booking_rules(timetable& tt,
+                                    import_context& ctx,
                                     translator& i18n,
                                     std::string_view file_content,
-                                    traffic_days_t const& traffic_days,
-                                    import_context& ctx) {
+                                    traffic_days_t const& traffic_days) {
   using utl::csv_col;
 
   struct booking_rule_record {

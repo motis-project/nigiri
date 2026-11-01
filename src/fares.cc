@@ -218,7 +218,7 @@ network_idx_t get_network(rt::frun const& a) {
   return it == end(f.route_networks_) ? network_idx_t::invalid() : it->second;
 }
 
-vecvec<location_idx_t, area_idx_t>::const_bucket get_areas(
+sparse_vecvec<location_idx_t, area_idx_t>::const_bucket get_areas(
     timetable const& tt, location_idx_t const l) {
   auto const l_areas = tt.location_areas_.at(l);
   return l_areas.empty() ? tt.location_areas_.at(parent(tt, l)) : l_areas;

@@ -210,7 +210,7 @@ void finalize(timetable& tt, import_context& ctx, finalize_options const& opt) {
     auto const timer = scoped_timer{"loader.compact_trip_ids"};
     tt.trip_ids_ = cista::raw::make_vecvec(ctx.trip_ids_);
     tt.trip_debug_ = cista::raw::make_vecvec(ctx.trip_debug_);
-    tt.locations_.children_ = cista::raw::make_vecvec(ctx.children_);
+    tt.locations_.children_ = make_sparse_vecvec(ctx.children_);
     for (auto const [src, trips] : utl::enumerate(ctx.route_id_trips_)) {
       tt.route_ids_[source_idx_t{src}].route_id_trips_ =
           cista::raw::make_vecvec(trips);
@@ -218,11 +218,18 @@ void finalize(timetable& tt, import_context& ctx, finalize_options const& opt) {
     tt.location_group_locations_ =
         cista::raw::make_vecvec(ctx.location_group_locations_);
     tt.location_location_groups_ =
-        cista::raw::make_vecvec(ctx.location_location_groups_);
+        make_sparse_vecvec(ctx.location_location_groups_);
     tt.location_group_transports_ =
         cista::raw::make_vecvec(ctx.location_group_transports_);
     tt.flex_area_transports_ =
         cista::raw::make_vecvec(ctx.flex_area_transports_);
+    tt.location_areas_ = make_sparse_vecvec(ctx.location_areas_);
+    tt.location_ticketing_identifier_ =
+        make_sparse_vecvec(ctx.location_ticketing_identifier_);
+    tt.trip_ticketing_identifier_ =
+        make_sparse_vecvec(ctx.trip_ticketing_identifier_);
+    tt.trip_stop_seq_numbers_ =
+        make_sparse_vecvec(std::move(ctx.trip_stop_seq_numbers_));
     ctx.trip_ids_ = {};
     ctx.trip_debug_ = {};
     ctx.children_ = {};
@@ -231,6 +238,9 @@ void finalize(timetable& tt, import_context& ctx, finalize_options const& opt) {
     ctx.location_location_groups_ = {};
     ctx.location_group_transports_ = {};
     ctx.flex_area_transports_ = {};
+    ctx.location_areas_ = {};
+    ctx.location_ticketing_identifier_ = {};
+    ctx.trip_ticketing_identifier_ = {};
   }
   {
     auto const timer = scoped_timer{"loader.sort_trip_ids"};
@@ -254,8 +264,7 @@ void finalize(timetable& tt, import_context& ctx, finalize_options const& opt) {
   build_footpaths(tt, ctx, opt);
   {
     auto const timer = scoped_timer{"loader.compact_trip_transport_ranges"};
-    tt.trip_transport_ranges_ =
-        cista::raw::make_vecvec(ctx.trip_transport_ranges_);
+    tt.trip_transport_ranges_ = make_sparse_vecvec(ctx.trip_transport_ranges_);
     tt.locations_.equivalences_ = cista::raw::make_vecvec(ctx.equivalences_);
     ctx.trip_transport_ranges_ = {};
     ctx.equivalences_ = {};

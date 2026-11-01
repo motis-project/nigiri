@@ -9,7 +9,7 @@
 namespace nigiri::loader {
 
 import_context::import_context(timetable& tt)
-    : trip_stop_seq_numbers_{tt.trip_stop_seq_numbers_.make_cache()},
+    : trip_stop_seq_numbers_cache_{trip_stop_seq_numbers_.make_cache()},
       section_providers_{tt.transport_section_providers_.make_cache()},
       section_directions_{tt.transport_section_directions_.make_cache()} {}
 

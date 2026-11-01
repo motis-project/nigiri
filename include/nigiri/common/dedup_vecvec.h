@@ -54,6 +54,10 @@ struct dedup_vecvec {
     sequence_.push_back(idx);
   }
 
+  void emplace_back(cache_t& cache, std::initializer_list<V> s) {
+    emplace_back<std::initializer_list<V>>(cache, s);
+  }
+
   auto operator[](K const k) const { return sequences_[sequence_[k]]; }
   auto at(K const k) const { return sequences_.at(sequence_.at(k)); }
   std::size_t size() const { return sequence_.size(); }
