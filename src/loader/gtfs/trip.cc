@@ -21,6 +21,7 @@
 #include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/parse_time.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -207,6 +208,7 @@ trip_data read_trips(
     source_idx_t const src,
     source_file_idx_t const source_file,
     timetable& tt,
+    import_context& ctx,
     translator& i18n,
     route_map_t const& routes,
     traffic_days_t const& services,
@@ -365,7 +367,7 @@ trip_data read_trips(
             x.headsign_, trip_short_name, x.direction_, shape_idx, flags,
             std::string{t.ticketing_trip_id->view()},
             t.ticketing_type.val() == 1});
-        ret.data_.back().trip_idx_ = register_trip(tt, x);
+        ret.data_.back().trip_idx_ = register_trip(tt, ctx, x);
         ret.data_.back().clasz_ = trip_clasz;
         ret.trips_.emplace(t.trip_id_->to_str(), gtfs_trp_idx);
         if (blk != nullptr) {

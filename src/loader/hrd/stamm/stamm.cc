@@ -31,13 +31,14 @@ std::vector<file> stamm::load_files(config const& c, dir const& d) {
 
 stamm::stamm(config const& c,
              timetable& tt,
+             import_context& ctx,
              dir const& d,
              source_idx_t const src)
     : tt_{tt}, src_{src} {
   auto const files = load_files(c, d);
   timezones_ = parse_timezones(c, tt, files.at(TIMEZONES).data());
   locations_ =
-      parse_stations(c, src, tt, *this, files.at(STATIONS).data(),
+      parse_stations(c, src, tt, ctx, *this, files.at(STATIONS).data(),
                      files.at(COORDINATES).data(), files.at(FOOTPATHS).data());
   bitfields_ = parse_bitfields(c, files.at(BITFIELDS).data());
   categories_ = parse_categories(c, files.at(CATEGORIES).data());
@@ -45,7 +46,7 @@ stamm::stamm(config const& c,
   attributes_ = parse_attributes(c, tt, files.at(ATTRIBUTES).data());
   directions_ = parse_directions(c, tt, files.at(DIRECTIONS).data());
   date_range_ = parse_interval(files.at(BASIC_DATA).data());
-  tracks_ = parse_track_rules(c, *this, tt, files.at(TRACKS).data());
+  tracks_ = parse_track_rules(c, *this, tt, ctx, files.at(TRACKS).data());
 }
 
 stamm::stamm(timetable& tt, timezone_map_t&& m, source_idx_t const src)

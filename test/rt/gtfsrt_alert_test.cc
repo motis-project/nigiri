@@ -1,9 +1,9 @@
 #include "nigiri/rt/gtfsrt_alert.h"
+#include "nigiri/loader/gtfs/load_timetable.h"
+#include "nigiri/loader/load.h"
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/files.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_alert.h"
@@ -162,12 +162,8 @@ unixtime_t ut(std::uint64_t const s) {
 
 TEST(rt, gtfs_rt_alert_agency) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
   auto const today = date::sys_days{2023_y / August / 9};
-  tt.date_range_ = {today, date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(test_files(), {today, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
@@ -207,12 +203,8 @@ TEST(rt, gtfs_rt_alert_agency) {
 
 TEST(rt, gtfs_rt_alert_active_period_fallback) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
   auto const today = date::sys_days{2023_y / August / 9};
-  tt.date_range_ = {today, date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(test_files(), {today, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});

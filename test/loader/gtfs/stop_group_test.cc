@@ -1,7 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
 
@@ -55,13 +55,8 @@ T1,10:30:00,10:30:00,B,2,0,0
 }  // namespace
 
 TEST(gtfs, stop_groups_equivalent_routing) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {sys_days{2020_y / January / 1},
-                    sys_days{2020_y / January / 2}};
-
-  load_timetable({}, source_idx_t{0}, stop_group_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(stop_group_files(),
+                               {2020_y / January / 1, 2020_y / January / 2});
 
   auto const src = source_idx_t{0};
   auto q = routing::query{

@@ -30,6 +30,7 @@
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/shape_prepare.h"
 #include "nigiri/loader/gtfs/trip.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/loader/netex/utc_trip.h"
 #include "nigiri/common/gunzip.h"
@@ -1381,7 +1382,7 @@ void load_timetable(loader_config const& config,
                     source_idx_t const src,
                     dir const& d,
                     timetable& tt,
-                    hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
+                    import_context& ctx,
                     assistance_times* /*assistance*/,
                     shapes_storage* shapes_data) {
   auto const global_timer = nigiri::scoped_timer{"netex parser"};
@@ -1516,10 +1517,9 @@ void load_timetable(loader_config const& config,
                         config.default_transfer_time_,
                         tz_map};
       if (process_location(r, s)) {
-        stop->location_ = register_location(tt, s);
+        stop->location_ = register_location(tt, ctx, s);
         if (stop->parent_ != nullptr) {
-          tt.locations_.children_[stop->parent_->location_].emplace_back(
-              stop->location_);
+          ctx.children_[stop->parent_->location_].emplace_back(stop->location_);
         }
       }
     };
@@ -1594,7 +1594,7 @@ void load_timetable(loader_config const& config,
             line.routes_
                 .emplace_hint(
                     route_it, line::route_key{sj.route_type_, op->provider_},
-                    process_route(r, rout) ? register_route(tt, rout)
+                    process_route(r, rout) ? register_route(tt, ctx, rout)
                                            : route_id_idx_t::invalid())
                 ->second;
       } else {
@@ -1631,13 +1631,14 @@ void load_timetable(loader_config const& config,
           trip_debug{source_file_idx, static_cast<unsigned>(sj.dbg_offset_),
                      static_cast<unsigned>(sj.dbg_offset_)},
       };
-      auto const trip_idx =
-          process_trip(r, t) ? register_trip(tt, t) : trip_idx_t::invalid();
+      auto const trip_idx = process_trip(r, t) ? register_trip(tt, ctx, t)
+                                               : trip_idx_t::invalid();
       if (trip_idx == trip_idx_t::invalid()) {
         continue;
       }
 
-      tt.trip_stop_seq_numbers_.add_back_sized(0U);
+      tt.trip_stop_seq_numbers_.emplace_back(
+          ctx.trip_stop_seq_numbers_, std::initializer_list<stop_idx_t>{});
       if (shapes_data != nullptr) {
         shapes_data->add_trip_shape_offsets(
             trip_idx, cista::pair{scoped_shape_idx_t::invalid(),
@@ -1843,7 +1844,8 @@ void load_timetable(loader_config const& config,
         [&](service_journey_idx_t const sj_idx) {
           auto const trip_idx = sj_trips[sj_idx];
           return fmt::format(
-              "({}, {})", tt.trip_id_strings_[tt.trip_ids_[trip_idx][0]].view(),
+              "({}, {})",
+              tt.trip_id_strings_[ctx.trip_ids_[trip_idx][0]].view(),
               tt.get_default_translation(tt.trip_display_names_[trip_idx]));
         },
         [&](netex::utc_trip&& x) { add_expanded_trip(std::move(x)); });
@@ -1890,7 +1892,7 @@ void load_timetable(loader_config const& config,
             auto const end =
                 static_cast<std::uint16_t>(prev_end + trp.stop_seq_.size());
 
-            tt.trip_transport_ranges_[trip_idx].emplace_back(
+            ctx.trip_transport_ranges_[trip_idx].emplace_back(
                 transport_range_t{tt.next_transport_idx(), {prev_end, end}});
             prev_end = end - 1;
 
@@ -1922,35 +1924,36 @@ void load_timetable(loader_config const& config,
 
           assert(!section_directions.empty());
           assert(s.first_dep_offset_.count() >= -1);
-          tt.add_transport(timetable::transport{
-              .bitfield_idx_ = utl::get_or_create(
-                  bitfield_indices, s.utc_traffic_days_,
-                  [&]() { return tt.register_bitfield(s.utc_traffic_days_); }),
-              .route_idx_ = route_idx,
-              .first_dep_offset_ = {s.first_dep_offset_, s.tz_offset_},
-              .external_trip_ids_ = external_trip_ids,
-              .section_attributes_ = section_attributes,
-              .section_providers_ = section_providers,
-              .section_directions_ = section_directions});
+          add_transport(
+              tt, ctx,
+              timetable::transport{
+                  .bitfield_idx_ =
+                      register_bitfield(tt, ctx, s.utc_traffic_days_),
+                  .route_idx_ = route_idx,
+                  .first_dep_offset_ = {s.first_dep_offset_, s.tz_offset_},
+                  .external_trip_ids_ = external_trip_ids,
+                  .section_attributes_ = section_attributes,
+                  .section_providers_ = section_providers,
+                  .section_directions_ = section_directions});
         }
 
         tt.finish_route();
 
-        auto const stop_times_begin = tt.route_stop_times_.size();
+        auto const stop_times_begin = ctx.route_stop_times_.size();
         for (auto const [from, to] :
              utl::pairwise(interval{std::size_t{0U}, key.stop_seq_.size()})) {
           // Write departure times of all route services at stop i.
           for (auto const& s : services) {
-            tt.route_stop_times_.emplace_back(s.utc_times_[from * 2]);
+            ctx.route_stop_times_.emplace_back(s.utc_times_[from * 2]);
           }
 
           // Write arrival times of all route services at stop i+1.
           for (auto const& s : services) {
-            tt.route_stop_times_.emplace_back(s.utc_times_[to * 2 - 1]);
+            ctx.route_stop_times_.emplace_back(s.utc_times_[to * 2 - 1]);
           }
         }
-        auto const stop_times_end = tt.route_stop_times_.size();
-        tt.route_stop_time_ranges_.emplace_back(
+        auto const stop_times_end = ctx.route_stop_times_.size();
+        ctx.route_stop_time_ranges_.emplace_back(
             interval{stop_times_begin, stop_times_end});
       }
 
@@ -2010,8 +2013,8 @@ void load_timetable(loader_config const& config,
   for (auto const [i, fps] : utl::enumerate(metas)) {
     auto const from = get_location(i);
     for (auto const fp : fps) {
-      tt.locations_.equivalences_[from].emplace_back(fp.target());
-      tt.locations_.preprocessing_footpaths_out_[from].emplace_back(fp);
+      ctx.equivalences_[from].emplace_back(fp.target());
+      ctx.preprocessing_footpaths_out_[from].emplace_back(fp);
     }
   }
 
@@ -2023,7 +2026,7 @@ void load_timetable(loader_config const& config,
   }
 
   tt.location_areas_.resize(tt.n_locations());
-  tt.location_location_groups_.resize(tt.n_locations());
+  ctx.location_location_groups_.resize(tt.n_locations());
 }
 
 }  // namespace nigiri::loader::netex

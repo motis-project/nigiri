@@ -2,7 +2,7 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
 
@@ -68,11 +68,8 @@ X2,01:00:00,01:00:00,D,3,0,0
 }  // namespace
 
 TEST(gtfs, local_to_unix_trip_test) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   auto const unixtime = [&](transport const t, stop_idx_t const stop_idx,
                             event_type const ev_type) {

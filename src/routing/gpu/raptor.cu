@@ -194,20 +194,6 @@ gpu_timetable::~gpu_timetable() = default;
 struct gpu_rt_timetable::impl {
   using rtt_t = rt_timetable;
 
-  static vecvec<location_idx_t, rt_transport_idx_t> build_location_rt(
-      timetable const& tt, rt_timetable const& rtt) {
-    auto v = vecvec<location_idx_t, rt_transport_idx_t>{};
-    auto tmp = std::vector<rt_transport_idx_t>{};
-    for (auto l = 0U; l != tt.n_locations(); ++l) {
-      tmp.clear();
-      for (auto const rt_t : rtt.location_rt_transports_[location_idx_t{l}]) {
-        tmp.push_back(rt_t);
-      }
-      v.emplace_back(tmp);
-    }
-    return v;
-  }
-
   static std::vector<clasz> build_rt_transport_clasz(rt_timetable const& rtt) {
     auto v = std::vector<clasz>{};
     v.reserve(rtt.n_rt_transports());
@@ -222,7 +208,8 @@ struct gpu_rt_timetable::impl {
   impl(timetable const& tt, rt_timetable const& rtt)
       : n_rt_transports_{rtt.n_rt_transports()},
         base_day_idx_{rtt.base_day_idx_},
-        location_rt_transports_{build_location_rt(tt, rtt)},
+        location_rt_transports_{
+            cista::raw::make_vecvec(rtt.location_rt_transports_)},
         rt_transport_location_seq_{rtt.rt_transport_location_seq_},
         rt_transport_stop_times_{rtt.rt_transport_stop_times_},
         rt_transport_clasz_{to_device(build_rt_transport_clasz(rtt))},

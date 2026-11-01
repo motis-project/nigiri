@@ -4,7 +4,7 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
@@ -1031,13 +1031,10 @@ constexpr auto const kMultipleMatchesMsg2 =
 }  // namespace
 
 TEST(siri_update, matching) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2025_y / July / 1},
-                    date::sys_days{2025_y / July / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, siri_test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(siri_test_files(), {2025_y / July / 1, 2025_y / July / 31},
+                   {.merge_dupes_intra_src_ = false});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2025_y / July / 3});
 
@@ -1118,13 +1115,9 @@ TEST(siri_update, matching) {
 }
 
 TEST(siri_update, observed_arrival_only) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2025_y / July / 1},
-                    date::sys_days{2025_y / July / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, siri_test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(siri_test_files(), {2025_y / July / 1, 2025_y / July / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2025_y / July / 3});
 
@@ -1189,13 +1182,9 @@ TEST(siri_update, observed_arrival_only) {
 }
 
 TEST(siri_update, matching_multiple) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2025_y / July / 1},
-                    date::sys_days{2025_y / July / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, siri_test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(siri_test_files(), {2025_y / July / 1, 2025_y / July / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2025_y / July / 21});
 

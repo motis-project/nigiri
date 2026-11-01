@@ -18,6 +18,7 @@
 #include "geo/latlng.h"
 #include "geo/point_rtree.h"
 
+#include "nigiri/loader/import_context.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
@@ -50,11 +51,12 @@ bool is_duplicate(timetable const& tt,
 }
 
 void repoint_trips(timetable& tt,
+                   import_context& ctx,
                    transport_idx_t const from,
                    transport_idx_t const to) {
   for (auto const merged_trips_idx : tt.transport_to_trip_section_[from]) {
     for (auto const trp : tt.merged_trips_[merged_trips_idx]) {
-      for (auto& [t, range] : tt.trip_transport_ranges_[trp]) {
+      for (auto& [t, range] : ctx.trip_transport_ranges_[trp]) {
         if (t == from) {
           t = to;
         }
@@ -64,6 +66,7 @@ void repoint_trips(timetable& tt,
 }
 
 transport_idx_t merge(timetable& tt,
+                      import_context& ctx,
                       transport_idx_t const a,
                       transport_idx_t const b) {
   auto const& bf_a = tt.bitfields_[tt.transport_traffic_days_[a]];
@@ -77,14 +80,14 @@ transport_idx_t merge(timetable& tt,
   // CASE (1): A is subset of B => A disappears
   if (rest_a.none()) {
     tt.transport_traffic_days_[a] = kEmptyBitfieldIdx;
-    repoint_trips(tt, a, b);
+    repoint_trips(tt, ctx, a, b);
     return a;
   }
 
   // CASE (2): B is subset of A => B disappears
   if (rest_b.none()) {
     tt.transport_traffic_days_[b] = kEmptyBitfieldIdx;
-    repoint_trips(tt, b, a);
+    repoint_trips(tt, ctx, b, a);
     return b;
   }
 
@@ -93,13 +96,13 @@ transport_idx_t merge(timetable& tt,
   // => 3.2 Point A's trip transport ranges to B
 
   // Remove intersection from A.
-  tt.transport_traffic_days_[a] = tt.register_bitfield(rest_a);
+  tt.transport_traffic_days_[a] = register_bitfield(tt, ctx, rest_a);
 
   // Collect A's trips.
   auto a_trips = std::vector<std::pair<trip_idx_t, interval<stop_idx_t>>>{};
   for (auto const merged_trips_idx : tt.transport_to_trip_section_[a]) {
     for (auto const a_trp : tt.merged_trips_[merged_trips_idx]) {
-      for (auto const& [t, a_stop_range] : tt.trip_transport_ranges_[a_trp]) {
+      for (auto const& [t, a_stop_range] : ctx.trip_transport_ranges_[a_trp]) {
         if (t == a) {
           a_trips.emplace_back(a_trp, a_stop_range);
         }
@@ -110,7 +113,7 @@ transport_idx_t merge(timetable& tt,
   // Point A's trips to B.
   auto const has_b = [&](transport_range_t const& r) { return r.first == b; };
   for (auto const& [a_trp, a_stop_range] : a_trips) {
-    auto ranges = tt.trip_transport_ranges_[a_trp];
+    auto ranges = ctx.trip_transport_ranges_[a_trp];
     if (utl::none_of(ranges, has_b)) {
       ranges.push_back(transport_range_t{b, a_stop_range});
     }
@@ -135,6 +138,7 @@ void count_overlap(timetable const& tt,
 }
 
 void merge_route_pair(timetable& tt,
+                      import_context& ctx,
                       route_idx_t const a_route,
                       route_idx_t const b_route,
                       stop_idx_t const n_stops,
@@ -183,7 +187,7 @@ void merge_route_pair(timetable& tt,
         continue;
       }
 
-      auto const absorbed = merge(tt, a_t, b_t);
+      auto const absorbed = merge(tt, ctx, a_t, b_t);
 
       ++stats.n_merges_;
       if (absorbed != transport_idx_t::invalid()) {
@@ -197,6 +201,7 @@ void merge_route_pair(timetable& tt,
 }
 
 void merge_duplicates(timetable& tt,
+                      import_context& ctx,
                       merge_threshold_t const& clasz_threshold,
                       bool const intra_src,
                       bool const inter_src,
@@ -398,7 +403,7 @@ void merge_duplicates(timetable& tt,
         auto const threshold = std::min(
             clasz_threshold[static_cast<unsigned>(tt.route_clasz_[a_route])],
             clasz_threshold[static_cast<unsigned>(tt.route_clasz_[b_route])]);
-        merge_route_pair(tt, a_route, b_route, a.n_stops_, threshold,
+        merge_route_pair(tt, ctx, a_route, b_route, a.n_stops_, threshold,
                          traffic_days_before, stats);
       }
     }

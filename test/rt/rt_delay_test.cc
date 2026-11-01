@@ -1,7 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
@@ -59,12 +59,8 @@ TEST(rt, delay_test) {
         .count();
   };
 
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / May / 1});
 
@@ -129,10 +125,7 @@ TEST(rt, delay_test) {
 }
 
 TEST(rt, stop_time_update_matching) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {sys_days{2019_y / May / 1}, sys_days{2019_y / May / 2}};
-  load_timetable({}, source_idx_t{0}, mem_dir::read(R"(
+  auto const tt = loader::load(mem_dir::read(R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
 DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
@@ -177,8 +170,7 @@ T3,12:10:00,12:10:00,C1,2,0,0
 T3,12:20:00,12:20:00,D,3,0,0
 T3,12:30:00,12:30:00,E,4,0,0
 )"),
-                 tt);
-  finalize(tt);
+                               {2019_y / May / 1, 2019_y / May / 2});
 
   auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
   rt::gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "tag",

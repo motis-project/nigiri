@@ -26,6 +26,8 @@ struct loader_config {
   hash_set<std::string> base_paths_{};
 };
 
+struct import_context;
+
 struct loader_interface {
   virtual ~loader_interface();
   virtual bool applicable(dir const&) const = 0;
@@ -33,7 +35,7 @@ struct loader_interface {
                     source_idx_t,
                     dir const&,
                     timetable&,
-                    hash_map<bitfield, bitfield_idx_t>&,
+                    import_context&,
                     assistance_times*,
                     shapes_storage*) const = 0;
   virtual std::string_view name() const = 0;

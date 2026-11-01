@@ -4,6 +4,7 @@
 
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/tz_map.h"
+#include "nigiri/loader/import_context.h"
 
 #include "sol/sol.hpp"
 
@@ -728,7 +729,9 @@ provider_idx_t register_agency(timetable& tt, agency const& a) {
   return provider_idx_t{idx};
 }
 
-location_idx_t register_location(timetable& tt, location const& l) {
+location_idx_t register_location(timetable& tt,
+                                 import_context& ctx,
+                                 location const& l) {
   auto& loc = tt.locations_;
 
   auto const next_idx = static_cast<location_idx_t::value_t>(loc.names_.size());
@@ -749,10 +752,10 @@ location_idx_t register_location(timetable& tt, location const& l) {
     loc.src_.emplace_back(l.src_);
     loc.types_.emplace_back(l.type_);
     loc.location_timezones_.emplace_back(l.timezone_idx_);
-    loc.equivalences_.emplace_back();
-    loc.children_.emplace_back();
-    loc.preprocessing_footpaths_out_.emplace_back();
-    loc.preprocessing_footpaths_in_.emplace_back();
+    ctx.equivalences_.emplace_back();
+    ctx.children_.emplace_back();
+    ctx.preprocessing_footpaths_out_.emplace_back();
+    ctx.preprocessing_footpaths_in_.emplace_back();
     loc.transfer_time_.emplace_back(l.transfer_time_);
     loc.parents_.emplace_back(l.parent_);
   } else {
@@ -770,17 +773,27 @@ location_idx_t register_location(timetable& tt, location const& l) {
   assert(loc.src_.size() == next_idx + 1);
   assert(loc.types_.size() == next_idx + 1);
   assert(loc.location_timezones_.size() == next_idx + 1);
-  assert(loc.equivalences_.size() == next_idx + 1);
-  assert(loc.children_.size() == next_idx + 1);
-  assert(loc.preprocessing_footpaths_out_.size() == next_idx + 1);
-  assert(loc.preprocessing_footpaths_in_.size() == next_idx + 1);
+  assert(ctx.equivalences_.size() == next_idx + 1);
+  assert(ctx.children_.size() == next_idx + 1);
+  assert(ctx.preprocessing_footpaths_out_.size() == next_idx + 1);
+  assert(ctx.preprocessing_footpaths_in_.size() == next_idx + 1);
   assert(loc.transfer_time_.size() == next_idx + 1);
   assert(loc.parents_.size() == next_idx + 1);
 
   return it->second;
 }
 
-route_id_idx_t register_route(timetable& tt, route const& r) {
+paged_vecvec<route_id_idx_t, trip_idx_t>& route_id_trips(
+    import_context& ctx, source_idx_t const src) {
+  if (ctx.route_id_trips_.size() <= to_idx(src)) {
+    ctx.route_id_trips_.resize(to_idx(src) + 1U);
+  }
+  return ctx.route_id_trips_[src];
+}
+
+route_id_idx_t register_route(timetable& tt,
+                              import_context& ctx,
+                              route const& r) {
   auto& route_id = tt.route_ids_[r.src_];
   auto const idx = route_id.ids_.store(r.id_);
   route_id.route_id_category_.emplace_back(r.category_);
@@ -790,18 +803,18 @@ route_id_idx_t register_route(timetable& tt, route const& r) {
   route_id.route_id_colors_.emplace_back(r.color_);
   route_id.route_id_type_.emplace_back(r.route_type_);
   route_id.route_id_provider_.emplace_back(r.agency_);
-  route_id.route_id_trips_.emplace_back(std::initializer_list<trip_idx_t>{});
+  route_id_trips(ctx, r.src_).emplace_back(std::initializer_list<trip_idx_t>{});
   route_id.route_id_ticketing_link_.emplace_back(r.ticketing_link_);
   return idx;
 }
 
-trip_idx_t register_trip(timetable& tt, trip const& t) {
-  auto const trip_idx = trip_idx_t{tt.trip_ids_.size()};
+trip_idx_t register_trip(timetable& tt, import_context& ctx, trip const& t) {
+  auto const trip_idx = trip_idx_t{tt.n_trips()};
 
   auto const trip_id_idx = trip_id_idx_t{tt.trip_id_strings_.size()};
 
   if (t.route_ != route_id_idx_t::invalid()) {  // HRD
-    tt.route_ids_[t.src_].route_id_trips_[t.route_].push_back(trip_idx);
+    route_id_trips(ctx, t.src_)[t.route_].push_back(trip_idx);
     tt.trip_direction_id_.resize(tt.n_trips() + to_idx(trip_id_idx) + 1U);
     tt.trip_direction_id_.set(trip_idx, t.direction_ == direction_id_t{1U});
   }
@@ -813,9 +826,9 @@ trip_idx_t register_trip(timetable& tt, trip const& t) {
   tt.trip_id_to_idx_.emplace_back(trip_id_idx, trip_idx);
   tt.trip_short_names_.emplace_back(t.short_name_);
   tt.trip_display_names_.emplace_back(t.display_name_);
-  tt.trip_ids_.emplace_back().emplace_back(trip_id_idx);
-  tt.trip_debug_.emplace_back().emplace_back(t.dbg_);
-  tt.trip_transport_ranges_.emplace_back_empty();
+  ctx.trip_ids_.emplace_back().emplace_back(trip_id_idx);
+  ctx.trip_debug_.emplace_back().emplace_back(t.dbg_);
+  ctx.trip_transport_ranges_.emplace_back_empty();
 
   return trip_idx;
 }

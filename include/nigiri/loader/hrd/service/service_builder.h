@@ -8,15 +8,14 @@
 #include "nigiri/loader/hrd/service/progress_update_fn.h"
 #include "nigiri/loader/hrd/service/ref_service.h"
 #include "nigiri/loader/hrd/stamm/stamm.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::hrd {
 
 struct service_builder {
-  explicit service_builder(stamm&,
-                           timetable&,
-                           hash_map<bitfield, bitfield_idx_t>&);
+  explicit service_builder(stamm&, timetable&, import_context&);
 
   void add_services(config const& c,
                     char const* filename,
@@ -38,7 +37,7 @@ private:
   service_store store_;
   hash_map<basic_string<attribute_idx_t>, attribute_combination_idx_t>
       attribute_combinations_;
-  hash_map<bitfield, bitfield_idx_t>& bitfield_indices_;
+  import_context& ctx_;
   interval<std::chrono::sys_days> selection_;
 
   mutable_fws_multimap<location_idx_t, route_idx_t> location_routes_;

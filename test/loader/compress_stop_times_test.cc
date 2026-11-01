@@ -3,6 +3,7 @@
 #include "nigiri/loader/compress_stop_times.h"
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/timetable.h"
 
@@ -55,17 +56,17 @@ T4,24:20:00,24:20:00,S3,2
 )";
 
   auto tt = timetable{};
-  tt.date_range_ = {sys_days{2025_y / September / 1},
-                    sys_days{2025_y / September / 8}};
-  register_special_stations(tt);
+  auto ctx = loader::import_context{tt};
+  tt.date_range_ = {2025_y / September / 1, 2025_y / September / 8};
+  register_special_stations(tt, ctx);
   gtfs::load_timetable({.default_tz_ = "Etc/UTC"}, source_idx_t{0},
-                       mem_dir::read(kTimetable), tt);
+                       mem_dir::read(kTimetable), tt, ctx);
 
-  auto const ranges = tt.route_stop_time_ranges_;
-  auto const times = tt.route_stop_times_;
-  compress_stop_times(tt);
-  EXPECT_TRUE(tt.route_stop_times_.empty());
-  EXPECT_TRUE(tt.route_stop_time_ranges_.empty());
+  auto const ranges = ctx.route_stop_time_ranges_;
+  auto const times = ctx.route_stop_times_;
+  compress_stop_times(tt, ctx);
+  EXPECT_TRUE(ctx.route_stop_times_.empty());
+  EXPECT_TRUE(ctx.route_stop_time_ranges_.empty());
   ASSERT_EQ(4U, tt.transport_route_.size());
 
   auto n_patterns = 0U;
