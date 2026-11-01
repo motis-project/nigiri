@@ -46,7 +46,13 @@ struct import_context {
       location_group_transports_;
   paged_vecvec<flex_area_idx_t, flex_transport_idx_t> flex_area_transports_;
 
-  decltype(timetable::trip_stop_seq_numbers_)::cache_t trip_stop_seq_numbers_;
+  paged_vecvec<location_idx_t, area_idx_t> location_areas_;
+  paged_vecvec<location_idx_t, pair<provider_idx_t, string_idx_t>>
+      location_ticketing_identifier_;
+  paged_vecvec<trip_idx_t, string_idx_t> trip_ticketing_identifier_;
+
+  dedup_vecvec<trip_idx_t, stop_idx_t> trip_stop_seq_numbers_;
+  decltype(trip_stop_seq_numbers_)::cache_t trip_stop_seq_numbers_cache_;
 
   decltype(timetable::transport_section_providers_)::cache_t section_providers_;
   decltype(timetable::transport_section_directions_)::cache_t

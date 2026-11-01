@@ -120,7 +120,7 @@ void load_timetable(loader_config const& config,
                  config.bikes_allowed_default_, config.cars_allowed_default_,
                  config.reservation_not_required_default_, user_script);
   auto const booking_rules = parse_booking_rules(
-      tt, i18n, load(kBookingRulesFile).data(), service, ctx);
+      tt, ctx, i18n, load(kBookingRulesFile).data(), service);
   auto const location_groups =
       parse_location_groups(tt, ctx, i18n, load(kLocationGroupsFile).data());
   auto const flex_areas =
@@ -131,8 +131,8 @@ void load_timetable(loader_config const& config,
   read_stop_times(trip_data, stops, flex_areas, booking_rules, location_groups,
                   i18n, load(kStopTimesFile).data(), shapes_data != nullptr,
                   stops_accessible);
-  load_fares(tt, d, service, routes, stops);
-  load_ticketing(tt, d, agency_ticketing, stops, routes, trip_data, src);
+  load_fares(tt, ctx, d, service, routes, stops);
+  load_ticketing(tt, ctx, d, agency_ticketing, stops, routes, trip_data, src);
   utl::verify(tt.fares_.size() == to_idx(src) + 1U, "fares: size={} src={}",
               tt.fares_.size(), src);
 
@@ -357,8 +357,8 @@ void load_timetable(loader_config const& config,
     auto stop_seq_numbers = basic_string<stop_idx_t>{};
     for (auto& trp : trip_data.data_) {
       encode_seq_numbers(trp.seq_numbers_, stop_seq_numbers);
-      tt.trip_stop_seq_numbers_.emplace_back(ctx.trip_stop_seq_numbers_,
-                                             stop_seq_numbers);
+      ctx.trip_stop_seq_numbers_.emplace_back(ctx.trip_stop_seq_numbers_cache_,
+                                              stop_seq_numbers);
     }
   }
 

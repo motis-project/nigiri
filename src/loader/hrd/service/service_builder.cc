@@ -104,8 +104,8 @@ void service_builder::write_services(source_idx_t const src) {
                    tt_.register_translation(ref.display_name(tt_)), "", "",
                    direction_id_t::invalid(), route_id_idx_t::invalid(), flags,
                    ref.origin_.dbg_});
-          tt_.trip_stop_seq_numbers_.emplace_back(
-              ctx_.trip_stop_seq_numbers_, std::initializer_list<stop_idx_t>{});
+          ctx_.trip_stop_seq_numbers_.emplace_back(
+              ctx_.trip_stop_seq_numbers_cache_, {});
           ctx_.trip_transport_ranges_[id].emplace_back(transport_range_t{
               tt_.next_transport_idx(),
               interval<stop_idx_t>{0U,
