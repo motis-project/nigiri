@@ -181,7 +181,6 @@ using shape_offset_idx_t =
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using route_id_idx_t = cista::strong<std::uint32_t, struct _route_id_idx>;
 using category_idx_t = cista::strong<std::uint32_t, struct _category_idx>;
-using trip_id_idx_t = cista::strong<std::uint32_t, struct _trip_id_str_idx>;
 using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
 using source_idx_t = cista::strong<std::uint16_t, struct _source_idx>;
 using day_idx_t = cista::strong<std::uint16_t, struct _day_idx>;

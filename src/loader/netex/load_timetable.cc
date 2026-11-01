@@ -1844,8 +1844,7 @@ void load_timetable(loader_config const& config,
         [&](service_journey_idx_t const sj_idx) {
           auto const trip_idx = sj_trips[sj_idx];
           return fmt::format(
-              "({}, {})",
-              tt.trip_id_strings_[ctx.trip_ids_[trip_idx][0]].view(),
+              "({}, {})", tt.trip_id_strings_[trip_idx].view(),
               tt.get_default_translation(tt.trip_display_names_[trip_idx]));
         },
         [&](netex::utc_trip&& x) { add_expanded_trip(std::move(x)); });

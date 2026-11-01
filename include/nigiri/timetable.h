@@ -257,10 +257,9 @@ struct timetable {
     auto const trip_idx =
         merged_trips_[transport_to_trip_section_[t].front()].front();
     return debug{
-        source_file_names_[trip_debug_[trip_idx].front().source_file_idx_]
-            .view(),
-        trip_debug_[trip_idx].front().line_number_from_,
-        trip_debug_[trip_idx].front().line_number_to_};
+        source_file_names_[trip_debug_[trip_idx].source_file_idx_].view(),
+        trip_debug_[trip_idx].line_number_from_,
+        trip_debug_[trip_idx].line_number_to_};
   }
 
   friend std::ostream& operator<<(std::ostream&, timetable const&);
@@ -283,20 +282,15 @@ struct timetable {
   vector_map<source_idx_t, date::sys_days> src_end_date_;
 
   // Trip access: external trip id -> internal trip index
-  vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;
-
-  // Trip index -> list of external trip ids
-  vecvec<trip_idx_t, trip_id_idx_t> trip_ids_;
+  // Sorted by (src, trip_id string)
+  vector<trip_idx_t> trip_id_to_idx_;
 
   // Storage for trip id strings + source
-  vecvec<trip_id_idx_t, char> trip_id_strings_;
-  vector_map<trip_id_idx_t, source_idx_t> trip_id_src_;
+  vecvec<trip_idx_t, char> trip_id_strings_;
+  vector_map<trip_idx_t, source_idx_t> trip_id_src_;
 
   // Trip -> direction (valid options 0 or 1)
   bitvec_map<trip_idx_t> trip_direction_id_;
-
-  // Trip train number, if available (otherwise 0)
-  vector_map<trip_id_idx_t, std::uint32_t> trip_train_nr_;
 
   // Trip -> route name
   vector_map<trip_idx_t, route_id_idx_t> trip_route_id_;
@@ -331,7 +325,7 @@ struct timetable {
   sparse_dedup_vecvec<trip_idx_t, stop_idx_t> trip_stop_seq_numbers_;
 
   // Trip -> debug info
-  vecvec<trip_idx_t, trip_debug> trip_debug_;
+  vector_map<trip_idx_t, trip_debug> trip_debug_;
   vecvec<source_file_idx_t, char, std::uint32_t> source_file_names_;
 
   // Trip index -> trip name

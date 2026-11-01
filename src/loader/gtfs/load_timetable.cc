@@ -138,7 +138,7 @@ void load_timetable(loader_config const& config,
 
   {
     for (auto const& t : trip_data.data_) {
-      auto& dbg = ctx.trip_debug_[t.trip_idx_][0];
+      auto& dbg = tt.trip_debug_[t.trip_idx_];
       dbg.line_number_from_ = t.from_line_;
       dbg.line_number_to_ = t.to_line_;
     }
@@ -375,8 +375,7 @@ void load_timetable(loader_config const& config,
         [&](gtfs_trip_idx_t const& t) {
           auto const trip_idx = trip_data.get(t).trip_idx_;
           return fmt::format(
-              "({}, {})",
-              tt.trip_id_strings_[ctx.trip_ids_[trip_idx][0]].view(),
+              "({}, {})", tt.trip_id_strings_[trip_idx].view(),
               tt.get_default_translation(tt.trip_display_names_[trip_idx]));
         },
         add_expanded_trip);

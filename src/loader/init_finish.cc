@@ -1,5 +1,7 @@
 #include "nigiri/loader/init_finish.h"
 
+#include <numeric>
+
 #include "utl/enumerate.h"
 
 #include "geo/box.h"
@@ -208,8 +210,6 @@ void finalize(timetable& tt, import_context& ctx, finalize_options const& opt) {
   }
   {
     auto const timer = scoped_timer{"loader.compact_trip_ids"};
-    tt.trip_ids_ = cista::raw::make_vecvec(ctx.trip_ids_);
-    tt.trip_debug_ = cista::raw::make_vecvec(ctx.trip_debug_);
     tt.locations_.children_ = make_sparse_vecvec(ctx.children_);
     for (auto const [src, trips] : utl::enumerate(ctx.route_id_trips_)) {
       tt.route_ids_[source_idx_t{src}].route_id_trips_ =
@@ -230,8 +230,6 @@ void finalize(timetable& tt, import_context& ctx, finalize_options const& opt) {
         make_sparse_vecvec(ctx.trip_ticketing_identifier_);
     tt.trip_stop_seq_numbers_ =
         make_sparse_vecvec(std::move(ctx.trip_stop_seq_numbers_));
-    ctx.trip_ids_ = {};
-    ctx.trip_debug_ = {};
     ctx.children_ = {};
     ctx.route_id_trips_ = {};
     ctx.location_group_locations_ = {};
@@ -244,14 +242,15 @@ void finalize(timetable& tt, import_context& ctx, finalize_options const& opt) {
   }
   {
     auto const timer = scoped_timer{"loader.sort_trip_ids"};
-    std::sort(begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_),
-              [&](pair<trip_id_idx_t, trip_idx_t> const& a,
-                  pair<trip_id_idx_t, trip_idx_t> const& b) {
-                return std::tuple{tt.trip_id_src_[a.first],
-                                  tt.trip_id_strings_[a.first].view()} <
-                       std::tuple{tt.trip_id_src_[b.first],
-                                  tt.trip_id_strings_[b.first].view()};
-              });
+    tt.trip_id_to_idx_.resize(tt.n_trips());
+    std::iota(begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_),
+              trip_idx_t{0U});
+    std::sort(
+        begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_),
+        [&](trip_idx_t const a, trip_idx_t const b) {
+          return std::tuple{tt.trip_id_src_[a], tt.trip_id_strings_[a].view()} <
+                 std::tuple{tt.trip_id_src_[b], tt.trip_id_strings_[b].view()};
+        });
   }
   {
     auto const timer = scoped_timer{"loader.sort_providers"};

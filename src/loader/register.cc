@@ -811,11 +811,9 @@ route_id_idx_t register_route(timetable& tt,
 trip_idx_t register_trip(timetable& tt, import_context& ctx, trip const& t) {
   auto const trip_idx = trip_idx_t{tt.n_trips()};
 
-  auto const trip_id_idx = trip_id_idx_t{tt.trip_id_strings_.size()};
-
   if (t.route_ != route_id_idx_t::invalid()) {  // HRD
     route_id_trips(ctx, t.src_)[t.route_].push_back(trip_idx);
-    tt.trip_direction_id_.resize(tt.n_trips() + to_idx(trip_id_idx) + 1U);
+    tt.trip_direction_id_.resize(to_idx(trip_idx) + 1U);
     tt.trip_direction_id_.set(trip_idx, t.direction_ == direction_id_t{1U});
   }
   tt.trip_route_id_.emplace_back(t.route_);
@@ -823,11 +821,9 @@ trip_idx_t register_trip(timetable& tt, import_context& ctx, trip const& t) {
   tt.trip_id_strings_.emplace_back(t.id_);
   tt.trip_id_src_.emplace_back(t.src_);
 
-  tt.trip_id_to_idx_.emplace_back(trip_id_idx, trip_idx);
   tt.trip_short_names_.emplace_back(t.short_name_);
   tt.trip_display_names_.emplace_back(t.display_name_);
-  ctx.trip_ids_.emplace_back().emplace_back(trip_id_idx);
-  ctx.trip_debug_.emplace_back().emplace_back(t.dbg_);
+  tt.trip_debug_.push_back(t.dbg_);
   ctx.trip_transport_ranges_.emplace_back_empty();
 
   return trip_idx;
