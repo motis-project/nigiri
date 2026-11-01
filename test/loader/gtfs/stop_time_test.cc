@@ -126,8 +126,6 @@ L001I01S1FES,08:31:00,,23,19,,0,0,7.473
                     std::array{false, false, false, true}, "", false)
       .trip_idx_ = {};
   auto tt = timetable{};
-  auto ctx = loader::import_context{tt};
-  ctx.trip_debug_.emplace_back().emplace_back(trip_debug{});
   auto i18n = translator{.tt_ = tt};
   auto stops = stops_map_t{};
   stops.emplace("6", location_idx_t{0});
@@ -165,8 +163,6 @@ L001I01S1FES,,08:31:00,23,19,,0,0,7.473
                     std::array{false, false, false, true}, "", false)
       .trip_idx_ = {};
   auto tt = timetable{};
-  auto ctx = loader::import_context{tt};
-  ctx.trip_debug_.emplace_back().emplace_back(trip_debug{});
   auto i18n = translator{.tt_ = tt};
   auto stops = stops_map_t{};
   stops.emplace("6", location_idx_t{0});
@@ -195,8 +191,6 @@ L001I01S1FES,,,23,19,,0,0,7.473
                     std::array{false, false, false, true}, "", false)
       .trip_idx_ = {};
   auto tt = timetable{};
-  auto ctx = loader::import_context{tt};
-  ctx.trip_debug_.emplace_back().emplace_back(trip_debug{});
   auto i18n = translator{.tt_ = tt};
   auto stops = stops_map_t{};
   stops.emplace("6", location_idx_t{0});

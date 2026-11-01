@@ -208,8 +208,8 @@ std::string reverse(std::string s) {
 }
 
 std::ostream& operator<<(std::ostream& out, timetable const& tt) {
-  for (auto const [id, idx] : tt.trip_id_to_idx_) {
-    auto const str = tt.trip_id_strings_[id].view();
+  for (auto const idx : tt.trip_id_to_idx_) {
+    auto const str = tt.trip_id_strings_[idx].view();
     out << str << ":\n";
     for (auto const& t : tt.trip_transport_ranges_.at(idx)) {
       out << "  " << t.first << ": " << t.second << " active="

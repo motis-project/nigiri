@@ -143,9 +143,8 @@ TEST(flex, simple) {
 
   auto ss = std::stringstream{};
   for (auto const& t : tt.flex_area_transports_[kArea]) {
-    auto const trip_id = tt.trip_ids_[tt.flex_transport_trip_[t]].front();
-    ss << "TRANSPORT " << t << " [" << tt.trip_id_strings_[trip_id].view()
-       << "]\n";
+    ss << "TRANSPORT " << t << " ["
+       << tt.trip_id_strings_[tt.flex_transport_trip_[t]].view() << "]\n";
     for (auto const [stop, window] :
          utl::zip(tt.flex_stop_seq_[tt.flex_transport_stop_seq_[t]],
                   tt.flex_transport_stop_time_windows_[t])) {

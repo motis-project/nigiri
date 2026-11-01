@@ -29,8 +29,6 @@ struct import_context {
   vector<delta> route_stop_times_;
 
   paged_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
-  mutable_fws_multimap<trip_idx_t, trip_id_idx_t> trip_ids_;
-  mutable_fws_multimap<trip_idx_t, trip_debug> trip_debug_;
 
   mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
   mutable_fws_multimap<location_idx_t, location_idx_t> children_;
