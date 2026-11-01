@@ -1,4 +1,5 @@
 #include "nigiri/loader/gtfs/stop.h"
+#include "nigiri/loader/import_context.h"
 
 #include <algorithm>
 #include <string>
@@ -107,6 +108,7 @@ using stop_map_t = hash_map<std::string_view, std::unique_ptr<stop>>;
 std::pair<stops_map_t, location_accessible_map_t> read_stops(
     source_idx_t const src,
     timetable& tt,
+    import_context& ctx,
     translator& i18n,
     tz_map& timezones,
     std::string_view stops_file_content,
@@ -227,7 +229,7 @@ std::pair<stops_map_t, location_accessible_map_t> read_stops(
         default_transfer_time,
         timezones};
     if (process_location(r, loc)) {
-      locations.emplace(id, s->location_ = register_location(tt, loc));
+      locations.emplace(id, s->location_ = register_location(tt, ctx, loc));
       accessible.insert({s->location_, s->wheelchair_boarding_});
     }
   }
@@ -242,7 +244,7 @@ std::pair<stops_map_t, location_accessible_map_t> read_stops(
       if (s->parent_ != nullptr) {
         tt.locations_.parents_[s->location_] = s->parent_->location_;
       }
-      auto children = tt.locations_.children_[s->location_];
+      auto children = ctx.children_[s->location_];
       for (auto const& c : s->children_) {
         children.push_back(c->location_);
       }
@@ -252,7 +254,7 @@ std::pair<stops_map_t, location_accessible_map_t> read_stops(
     // Generate footpaths to connect stops in close proximity.
     hash_set<stop*> todo, done;
     for (auto const& [id, s] : stops) {
-      auto equivalences = tt.locations_.equivalences_[s->location_];
+      auto equivalences = ctx.equivalences_[s->location_];
       for (auto const& eq : s->get_metas(stop_vec, todo, done)) {
         equivalences.push_back(eq->location_);
       }

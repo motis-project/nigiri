@@ -4,7 +4,7 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
@@ -580,12 +580,8 @@ constexpr auto const expectedWithoutSeq = R"(
 
 TEST(rt, gtfs_rt_update_1) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
   ASSERT_EQ(3U, test::n_virts(tt));
 
   // The same with a stop far away assigned: no track change either.
@@ -624,12 +620,8 @@ TEST(rt, gtfs_rt_update_1) {
 
 TEST(rt, gtfs_rt_update_without_seq_1) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
   ASSERT_EQ(3U, test::n_virts(tt));
 
   // Create empty RT timetable.
@@ -658,12 +650,8 @@ TEST(rt, gtfs_rt_update_without_seq_1) {
 // A skipped stop that gets a track change afterwards is served again: 1992
 // is skipped, then assigned the stop 10000 at the same place.
 TEST(rt, gtfs_rt_track_change_after_skip) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
 
   auto const update = [&](std::string_view const stop_time_update) {

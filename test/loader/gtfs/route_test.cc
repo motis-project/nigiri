@@ -3,6 +3,7 @@
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/route.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/timetable.h"
 
 #include "./test_data.h"
@@ -13,6 +14,7 @@ using namespace nigiri::loader::gtfs;
 
 TEST(gtfs, read_routes_example_data) {
   auto tt = timetable{};
+  auto ctx = loader::import_context{tt};
   auto timezones = tz_map{};
   auto i18n = translator{.tt_ = tt};
 
@@ -23,7 +25,7 @@ TEST(gtfs, read_routes_example_data) {
       source_idx_t{0}, tt, i18n, timezones,
       example_files().get_file(kAgencyFile).data(), "Europe/Berlin");
   auto const routes =
-      read_routes(src, tt, i18n, timezones, agencies,
+      read_routes(src, tt, ctx, i18n, timezones, agencies,
                   example_files().get_file(kRoutesFile).data(), "CET");
 
   EXPECT_EQ(1, routes.size());
@@ -47,6 +49,7 @@ TEST(gtfs, read_routes_example_data) {
 
 TEST(gtfs, read_routes_berlin_data) {
   auto tt = timetable{};
+  auto ctx = loader::import_context{tt};
   auto timezones = tz_map{};
   auto i18n = translator{.tt_ = tt};
 
@@ -57,7 +60,7 @@ TEST(gtfs, read_routes_berlin_data) {
       source_idx_t{0}, tt, i18n, timezones,
       berlin_files().get_file(kAgencyFile).data(), "Europe/Berlin");
   auto const routes =
-      read_routes(src, tt, i18n, timezones, agencies,
+      read_routes(src, tt, ctx, i18n, timezones, agencies,
                   berlin_files().get_file(kRoutesFile).data(), "CET");
 
   EXPECT_EQ(9, routes.size());

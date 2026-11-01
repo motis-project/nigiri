@@ -66,15 +66,17 @@ inline timetable load_feeds(
     date::days const n_days = date::days{1}) {
   auto tt = timetable{};
   tt.date_range_ = {kDay, kDay + n_days};
-  loader::register_special_stations(tt);
+  auto ctx = loader::import_context{tt};
+  loader::register_special_stations(tt, ctx);
   for (auto i = 0U; i != feeds.size(); ++i) {
     loader::gtfs::load_timetable(
         {.adjust_footpaths_ = adjust_footpaths},
         source_idx_t{static_cast<source_idx_t::value_t>(i)},
-        loader::mem_dir::read(feeds[i]), tt);
+        loader::mem_dir::read(feeds[i]), tt, ctx);
   }
   loader::finalize(
-      tt, {.merge_dupes_intra_src_ = false,
+      tt, ctx,
+      {.merge_dupes_intra_src_ = false,
            .merge_dupes_inter_src_ = false,
            .max_footpath_length_ = std::numeric_limits<std::uint16_t>::max(),
            .walks_ = std::move(walks)});

@@ -10,6 +10,7 @@
 #include "utl/helpers/algorithm.h"
 #include "utl/parallel_for.h"
 
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/link_nearby_stations.h"
 #include "nigiri/loader/merge_duplicates.h"
 #include "nigiri/loader/virtual_locations.h"
@@ -42,6 +43,7 @@ void add_if_not_exists(auto bucket, footpath const fp) {
 
 void add_equivalence_footpaths(
     timetable const& tt,
+    import_context const& ctx,
     mutable_fws_multimap<location_idx_t, footpath>& walks,
     std::uint16_t const max_footpath_length) {
   auto const max = std::min<int>(max_footpath_length, footpath::kMax.count());
@@ -58,7 +60,7 @@ void add_equivalence_footpaths(
   };
 
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-    for (auto const eq : tt.locations_.equivalences_[l]) {
+    for (auto const eq : ctx.equivalences_[l]) {
       if (eq != l) {
         add(l, eq);
         add(eq, l);
@@ -139,22 +141,23 @@ void add_transitive_walks(timetable const& tt,
 }
 
 void build_footpaths(timetable& tt,
-                     finalize_options const opt,
+                     import_context& ctx,
+                     finalize_options const& opt,
                      shapes_storage* shapes) {
   auto walks = mutable_fws_multimap<location_idx_t, footpath>{};
   walks[location_idx_t{tt.n_locations() - 1U}];  // resize
-  link_nearby_stations(tt, walks);  // the equivalences
+  link_nearby_stations(tt, ctx, walks);  // the equivalences
   if (!opt.walks_) {
     auto const timer = scoped_timer{"loader.footpath.beelines"};
 
     // Walks between nearby and equivalent stops and their chains, in walking
     // minutes.
-    add_equivalence_footpaths(tt, walks, opt.max_footpath_length_);
+    add_equivalence_footpaths(tt, ctx, walks, opt.max_footpath_length_);
     add_transitive_walks(tt, walks, opt.max_footpath_length_);
   }
 
   if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_) {
-    merge_duplicates(tt, opt.merge_threshold_, opt.merge_dupes_intra_src_,
+    merge_duplicates(tt, ctx, opt.merge_threshold_, opt.merge_dupes_intra_src_,
                      opt.merge_dupes_inter_src_, opt.merge_stats_dir_,
                      opt.src_tags_);
   }
@@ -172,7 +175,7 @@ void build_footpaths(timetable& tt,
           footpath{t, max_with_transfer_times(tt, l, t, bucket[i].duration())};
     }
   }
-  apply_transfer_rules(tt, shapes, walks);
+  apply_transfer_rules(tt, ctx, shapes, walks);
 }
 
 }  // namespace nigiri::loader

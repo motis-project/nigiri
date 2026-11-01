@@ -907,7 +907,8 @@ TEST(gtfs, transfer_rules_route_visits_stop_twice) {
 timetable load_two_day_loop(bool const has_transfers_txt) {
   auto tt = timetable{};
   tt.date_range_ = {test::kDay, test::kDay + date::days{2}};
-  loader::register_special_stations(tt);
+  auto ctx = loader::import_context{tt};
+  loader::register_special_stations(tt, ctx);
   auto const feed = std::string{R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -945,9 +946,10 @@ X,X,3,,R,R,,
 )"
                          : "");
   loader::gtfs::load_timetable({}, source_idx_t{0U},
-                               loader::mem_dir::read(feed), tt);
+                               loader::mem_dir::read(feed), tt, ctx);
   loader::finalize(
-      tt, {.merge_dupes_intra_src_ = false, .merge_dupes_inter_src_ = false});
+      tt, ctx,
+      {.merge_dupes_intra_src_ = false, .merge_dupes_inter_src_ = false});
   return tt;
 }
 

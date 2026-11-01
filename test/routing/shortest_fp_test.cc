@@ -1,8 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/files.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/timetable.h"
 
 #include "../raptor_search.h"
@@ -143,13 +142,7 @@ leg 6: (C5, C5) [2024-06-08 02:50] -> (END, END) [2024-06-08 03:00]
 
 TEST(routing, raptor_shortest_fp_forward) {
   constexpr auto const src = source_idx_t{0U};
-  auto const config = loader_config{};
-
-  timetable tt;
-  tt.date_range_ = shortest_fp_period();
-  register_special_stations(tt);
-  gtfs::load_timetable(config, src, shortest_fp_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(shortest_fp_files(), shortest_fp_period());
 
   auto const results = raptor_intermodal_search(
       tt, nullptr,
@@ -205,13 +198,7 @@ leg 6: (C5, C5) [2024-06-08 02:50] -> (START, START) [2024-06-08 03:00]
 
 TEST(routing, raptor_shortest_fp_backward) {
   constexpr auto const src = source_idx_t{0U};
-  auto const config = loader_config{};
-
-  timetable tt;
-  tt.date_range_ = shortest_fp_period();
-  register_special_stations(tt);
-  gtfs::load_timetable(config, src, shortest_fp_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(shortest_fp_files(), shortest_fp_period());
 
   auto const results = raptor_intermodal_search(
       tt, nullptr,

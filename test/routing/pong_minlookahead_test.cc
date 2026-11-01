@@ -2,7 +2,7 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 
 #include "nigiri/routing/query.h"
 #include "nigiri/special_stations.h"
@@ -55,11 +55,7 @@ R1_MON,10:00:00,10:00:00,S2,1,0,0
 
 timetable get_tt() {
   static auto const files = mem_dir::read(kTimetable);
-  timetable tt;
-  tt.date_range_ = {sys_days{2026_y / June / 01}, sys_days{2026_y / June / 07}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, files, tt);
-  finalize(tt);
+  auto const tt = loader::load(files, {2026_y / June / 01, 2026_y / June / 07});
   return tt;
 }
 

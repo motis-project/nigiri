@@ -1,7 +1,6 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
 #include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
@@ -172,12 +171,8 @@ transfer_type,from_trip_id,to_trip_id
 
 TEST(join_split, complex) {
   auto const run = [](auto&&... trips) {
-    timetable tt;
-    tt.date_range_ = {date::sys_days{2025_y / June / 12},
-                      date::sys_days{2025_y / June / 22}};
-    auto const src = source_idx_t{0};
-    load_timetable({}, src, test_files(trips...), tt);
-    finalize(tt);
+    auto const tt = loader::load(test_files(trips...),
+                                 {2025_y / June / 12, 2025_y / June / 22});
 
     auto rtt = rt::create_rt_timetable(tt, 2025_y / June / 12);
 
@@ -321,9 +316,7 @@ TEST(join_split, simple) {
         loader::load({{.tag_ = "test",
                        .path_ = simple_test_files(trips...),
                        .loader_config_ = {.default_tz_ = "Europe/Berlin"}}},
-                     {},
-                     {date::sys_days{2026_y / March / 27},
-                      date::sys_days{2026_y / April / 1}});
+                     {}, {2026_y / March / 27, 2026_y / April / 1});
     std::cout << tt << "\n";
   };
   run(0U, 1U);
@@ -383,9 +376,7 @@ TEST(join_split, over_night) {
         loader::load({{.tag_ = "test",
                        .path_ = over_night_test_files(trips...),
                        .loader_config_ = {.default_tz_ = "Europe/Berlin"}}},
-                     {},
-                     {date::sys_days{2026_y / March / 27},
-                      date::sys_days{2026_y / April / 1}});
+                     {}, {2026_y / March / 27, 2026_y / April / 1});
     std::cout << tt << "\n";
   };
   run(0U, 1U);
@@ -476,9 +467,7 @@ TEST(join_split, cross_linked_duplicates) {
       loader::load({{.tag_ = "test",
                      .path_ = cross_linked_duplicates_test_files(kN),
                      .loader_config_ = {.default_tz_ = "Europe/Berlin"}}},
-                   {},
-                   {date::sys_days{2026_y / March / 27},
-                    date::sys_days{2026_y / March / 28}});
+                   {}, {2026_y / March / 27, 2026_y / March / 28});
 
   // Too many combinations: all trips added without stay-seated transfers.
   EXPECT_EQ(2U * kN, tt.transport_traffic_days_.size());

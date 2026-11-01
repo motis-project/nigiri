@@ -1,5 +1,7 @@
 #include "nigiri/loader/gtfs/transfers.h"
 
+#include "nigiri/loader/import_context.h"
+
 #include <algorithm>
 #include <optional>
 #include <span>
@@ -74,6 +76,7 @@ bool is_qualifier_overlapping(timetable const& tt,
 }
 
 void fold_pair_defaults(timetable& tt,
+                        import_context const& ctx,
                         source_idx_t const src,
                         std::span<transfer_rule const> rules,
                         std::vector<bool> const& is_voting) {
@@ -139,9 +142,9 @@ void fold_pair_defaults(timetable& tt,
     // For P1 -> P2 both (S1, P2) and (P1, S2) apply with the same specificity.
     // Prevent a majority rule overriding an explicit unqualified rule.
     if ((parents[p.to_] != location_idx_t::invalid() &&
-         !tt.locations_.children_[p.from_].empty()) ||
+         !ctx.children_[p.from_].empty()) ||
         (parents[p.from_] != location_idx_t::invalid() &&
-         !tt.locations_.children_[p.to_].empty())) {
+         !ctx.children_[p.to_].empty())) {
       continue;
     }
 
@@ -182,7 +185,7 @@ void fold_pair_defaults(timetable& tt,
 
     // Check if a majority rule conflict with an existing rule?
     auto const any_with_children = [&](location_idx_t const l, auto&& fn) {
-      return fn(l) || utl::any_of(tt.locations_.children_[l], fn);
+      return fn(l) || utl::any_of(ctx.children_[l], fn);
     };
     auto const any_with_children_and_parent = [&](location_idx_t const l,
                                                   auto&& fn) {
@@ -238,7 +241,7 @@ void fold_pair_defaults(timetable& tt,
   for (auto const& [p, _] : default_duration) {
     if (p.from_ == p.to_) {
       stops.push_back(p.from_);
-      utl::concat(stops, tt.locations_.children_[p.from_]);
+      utl::concat(stops, ctx.children_[p.from_]);
     } else if (parents[p.from_] == p.to_) {
       stops.push_back(p.from_);
     } else if (parents[p.to_] == p.from_) {
@@ -276,6 +279,7 @@ std::optional<duration_t> adjust_to_walk_speed(timetable const& tt,
 
 void read_transfers(source_idx_t const src,
                     timetable& tt,
+                    import_context const& ctx,
                     std::string_view file_content,
                     stops_map_t const& stops,
                     trip_data& trips,
@@ -468,7 +472,7 @@ void read_transfers(source_idx_t const src,
       });
 
   // Majority fold.
-  fold_pair_defaults(tt, src, rules, is_voting);
+  fold_pair_defaults(tt, ctx, src, rules, is_voting);
 
   // Store rules (merge sort).
   store_rule_lookups(

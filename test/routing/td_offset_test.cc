@@ -3,8 +3,7 @@
 #include "utl/helpers/algorithm.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -93,12 +92,8 @@ leg 2: (B, B) [2024-06-19 09:00] -> (END, END) [2024-06-19 09:00]
 )";
 
 TEST(routing, td_start_fwd) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
   ASSERT_TRUE(t1_at_virtual_locations(tt));
 
   auto const A = tt.find(location_id{"A", source_idx_t{}}).value();
@@ -147,12 +142,8 @@ leg 2: (B, B) [2024-06-19 09:05] -> (END, END) [2024-06-19 09:15]
 )";
 
 TEST(routing, td_dest_fwd) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();
@@ -200,12 +191,8 @@ leg 2: (B, B) [2024-06-19 09:05] -> (START, START) [2024-06-19 09:15]
 )";
 
 TEST(routing, td_start_bwd) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();
@@ -253,12 +240,8 @@ leg 2: (B, B) [2024-06-19 09:00] -> (START, START) [2024-06-19 09:00]
 )";
 
 TEST(routing, td_dest_bwd) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();
@@ -306,12 +289,8 @@ leg 2: (B, B) [2024-06-19 09:00] -> (END, END) [2024-06-19 09:00]
 )";
 
 TEST(routing, first_mile_fwd_1min_validity) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();
@@ -363,12 +342,8 @@ leg 2: (B, B) [2024-06-19 09:00] -> (START, START) [2024-06-19 09:00]
 )";
 
 TEST(routing, first_mile_bwd_1min_validity) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();
@@ -420,12 +395,8 @@ leg 2: (B, B) [2024-06-19 09:30] -> (END, END) [2024-06-19 09:40]
 )";
 
 TEST(routing, last_mile_fwd_1min_validity) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();
@@ -477,12 +448,8 @@ leg 2: (B, B) [2024-06-19 09:30] -> (START, START) [2024-06-19 09:40]
 )";
 
 TEST(routing, last_mile_bwd_1min_validity) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();
@@ -535,12 +502,8 @@ leg 2: (B, B) [2024-06-19 09:05] -> (END, END) [2024-06-19 14:05]
 
 TEST(routing, td_dest_fwd_beyond_footpath_max_duration) {
   // A 300 min last mile, more than footpath::kMax, is reconstructed.
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto const tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   auto const A = tt.find({"A", {}}).value();
   auto const B = tt.find({"B", {}}).value();
@@ -586,12 +549,8 @@ leg 2: (B, B) [2024-06-19 09:00] -> (END, END) [2024-06-19 09:00]
 TEST(routing, td_start_fwd_exactly_footpath_max_duration) {
   // The first mile is usable until 03:45 and takes 250 min: with the 5 min
   // wait for T1 at A that is exactly 255 min (footpath::kBan), a real duration.
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto const tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   auto const A = tt.find(location_id{"A", source_idx_t{}}).value();
   auto const B = tt.find(location_id{"B", source_idx_t{}}).value();

@@ -14,7 +14,7 @@ namespace nigiri {
 
 pair<source_idx_t, route_id_idx_t> route_id_of(timetable const& tt,
                                                trip_idx_t const trip) {
-  return {tt.trip_id_src_[tt.trip_ids_[trip].front()], tt.trip_route_id_[trip]};
+  return {tt.trip_id_src_[trip], tt.trip_route_id_[trip]};
 }
 
 bool has_transfer_rules(timetable const& tt, transport_idx_t const t) {

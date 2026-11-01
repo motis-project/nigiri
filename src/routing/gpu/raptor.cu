@@ -98,9 +98,10 @@ struct gpu_timetable::impl {
         transfer_time_{
             to_device(pad_transfer_times(tt.locations_.transfer_time_))},
         base_{to_device(build_base(tt))},
-        route_stop_times_{to_device(tt.route_stop_times_)},
-        route_stop_time_ranges_{to_device(tt.route_stop_time_ranges_)},
-        route_transport_ranges_{to_device(tt.route_transport_ranges_)},
+        first_dep_{to_device(tt.transport_first_dep_)},
+        transport_pattern_{to_device(tt.transport_pattern_)},
+        route_times_{to_device(tt.route_times_)},
+        patterns_{to_device(tt.pattern_offsets_)},
         route_clasz_{to_device(tt.route_clasz_)},
         route_location_seq_{tt.route_location_seq_},
         location_routes_{tt.location_routes_},
@@ -151,9 +152,10 @@ struct gpu_timetable::impl {
         .n_routes_ = n_routes_,
         .transfer_time_ = transfer_time_,
         .base_ = to_view(base_),
-        .route_stop_times_ = to_view(route_stop_times_),
-        .route_stop_time_ranges_ = to_view(route_stop_time_ranges_),
-        .route_transport_ranges_ = to_view(route_transport_ranges_),
+        .first_dep_ = first_dep_,
+        .transport_pattern_ = transport_pattern_,
+        .route_times_ = route_times_,
+        .patterns_ = to_view(patterns_),
         .route_clasz_ = to_view(route_clasz_),
         .route_location_seq_ = to_view(route_location_seq_),
         .location_routes_ = to_view(location_routes_),
@@ -181,9 +183,10 @@ struct gpu_timetable::impl {
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_out_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_in_;
 
-  thrust::device_vector<delta> route_stop_times_;
-  thrust::device_vector<interval<std::uint32_t>> route_stop_time_ranges_;
-  thrust::device_vector<interval<transport_idx_t>> route_transport_ranges_;
+  thrust::device_vector<delta> first_dep_;
+  thrust::device_vector<std::uint16_t> transport_pattern_;
+  thrust::device_vector<route_times> route_times_;
+  thrust::device_vector<delta> patterns_;
   thrust::device_vector<clasz> route_clasz_;
 
   device_vecvec<decltype(t{}.route_location_seq_)> route_location_seq_;

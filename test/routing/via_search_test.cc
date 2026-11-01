@@ -6,16 +6,15 @@
 #include "utl/erase_if.h"
 #include "utl/helpers/algorithm.h"
 
+#include "nigiri/loader/load.h"
 #include "nigiri/common/parse_time.h"
 
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/calendar.h"
 #include "nigiri/loader/gtfs/calendar_date.h"
 #include "nigiri/loader/gtfs/files.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/gtfs/local_to_utc.h"
 #include "nigiri/loader/gtfs/noon_offsets.h"
-#include "nigiri/loader/init_finish.h"
 
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/rt/create_rt_timetable.h"
@@ -186,16 +185,8 @@ interval<unixtime_t> iv(std::string_view const from, std::string_view to) {
 
 timetable load_timetable(std::string_view s,
                          interval<date::sys_days> const date_range = {
-                             date::sys_days{2019_y / May / 1},
-                             date::sys_days{2019_y / May / 2}}) {
-  auto tt = timetable{};
-
-  tt.date_range_ = date_range;
-  loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({}, source_idx_t{0}, loader::mem_dir::read(s),
-                               tt);
-  loader::finalize(tt);
-  return tt;
+                             2019_y / May / 1, 2019_y / May / 2}) {
+  return loader::load(loader::mem_dir::read(s), date_range);
 }
 
 pareto_set<routing::journey> search(timetable const& tt,
@@ -307,7 +298,7 @@ leg 2: (B, B) [2019-05-01 08:15] -> (D, D) [2019-05-01 08:30]
 
 TEST(routing, via_test_3_A_D_via_B_3m) {
   // A -> D, via B (3 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   constexpr auto const expected_A_D_via_B_3min =
       R"(
@@ -347,7 +338,7 @@ leg 2: (B, B) [2019-05-01 08:15] -> (D, D) [2019-05-01 08:30]
 
 TEST(routing, via_test_4_A_D_via_B_10m) {
   // A -> D, via B (10 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   constexpr auto const expected_A_D_via_B_10min =
       R"(
@@ -394,7 +385,7 @@ leg 2: (B, B) [2019-05-01 08:30] -> (D, D) [2019-05-01 08:45]
 
 TEST(routing, via_test_5_A_D_via_C_0m) {
   // A -> D, via C (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   constexpr auto const expected_A_D_via_C_0min =
       R"(
@@ -430,7 +421,7 @@ leg 0: (A, A) [2019-05-01 08:00] -> (D, D) [2019-05-01 08:40]
 
 TEST(routing, via_test_6_A_D_via_C_10m) {
   // A -> D, via C (10 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   constexpr auto const expected_A_D_via_C_10min =
       R"(
@@ -486,7 +477,7 @@ leg 0: (A, A) [2019-05-01 13:00] -> (J, J) [2019-05-01 13:30]
 
 TEST(routing, via_test_7_A_J_via_I_0m) {
   // A -> J, via I (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, iv("2019-05-01 15:00 Europe/Berlin",
@@ -508,7 +499,7 @@ TEST(routing, via_test_7_A_J_via_I_0m) {
 
 TEST(routing, via_test_8_A_J_via_I1_0m) {
   // A -> J, via I1 (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, iv("2019-05-01 15:00 Europe/Berlin",
@@ -530,7 +521,7 @@ TEST(routing, via_test_8_A_J_via_I1_0m) {
 
 TEST(routing, via_test_9_A_J_via_I2_0m) {
   // A -> J, via I2 (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, iv("2019-05-01 15:00 Europe/Berlin",
@@ -552,7 +543,7 @@ TEST(routing, via_test_9_A_J_via_I2_0m) {
 
 TEST(routing, via_test_10_A_J_via_I_0m) {
   // A -> J, via I (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   constexpr auto const expected_A_J_via_I_1600_0min =
       R"(
@@ -597,7 +588,7 @@ leg 2: (I2, I2) [2019-05-01 14:20] -> (J, J) [2019-05-01 14:40]
 
 TEST(routing, via_test_11_A_J_via_I_10m) {
   // A -> J, via I (10 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   constexpr auto const expected_A_J_via_I_1500_10min =
       R"(
@@ -657,7 +648,7 @@ leg 2: (K1, K1) [2019-05-01 13:30] -> (J, J) [2019-05-01 14:00]
 
 TEST(routing, via_test_12_A_J_via_K_0m) {
   // A -> J, via K (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, iv("2019-05-01 15:00 Europe/Berlin",
@@ -679,7 +670,7 @@ TEST(routing, via_test_12_A_J_via_K_0m) {
 
 TEST(routing, via_test_13_A_J_via_K_5m) {
   // A -> J, via K (5 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, iv("2019-05-01 15:00 Europe/Berlin",
@@ -701,7 +692,7 @@ TEST(routing, via_test_13_A_J_via_K_5m) {
 
 TEST(routing, via_test_14_A_J_via_I_0m_K_5m) {
   // A -> J, via I (0 min), K (5 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, iv("2019-05-01 15:00 Europe/Berlin",
@@ -747,7 +738,7 @@ leg 2: (M, M) [2019-05-01 10:00] -> (Q, Q) [2019-05-01 11:00]
 
 TEST(routing, via_test_15_H_Q_via_N_0m) {
   // H -> Q, via N (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, iv("2019-05-01 11:00 Europe/Berlin",
@@ -769,7 +760,7 @@ TEST(routing, via_test_15_H_Q_via_N_0m) {
 
 TEST(routing, via_test_16_A_D_via_C_5m) {
   // A -> D, via C (5 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   constexpr auto const expected_A_D_via_C_5min =
       R"(
@@ -846,7 +837,7 @@ leg 1: (O, O) [2019-05-01 10:30] -> (Q, Q) [2019-05-01 11:00]
 
 TEST(routing, via_test_17_H_Q_via_N_0m_P_0m) {
   // H -> Q, via N (0 min), P (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   test::with_rt_trips(
       tt, sys_days{2019_y / May / 1}, {"T11", "T10"},
@@ -876,7 +867,7 @@ TEST(routing, via_test_17_H_Q_via_N_0m_P_0m) {
 
 TEST(routing, via_test_18_intermodal_HO_Q_via_P_0m) {
   // intermodal start: H / O -> Q, via P (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   test::with_rt_trips(
       tt, sys_days{2019_y / May / 1}, {"T11", "T10"},
@@ -901,7 +892,7 @@ TEST(routing, via_test_18_intermodal_HO_Q_via_P_0m) {
 
 TEST(routing, via_test_19_intermodal_HO_Q_via_O_0m_P_0m) {
   // intermodal start: H / O -> Q, via O (0 min), P (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   test::with_rt_trips(
       tt, sys_days{2019_y / May / 1}, {"T11", "T10"},
@@ -927,7 +918,7 @@ TEST(routing, via_test_19_intermodal_HO_Q_via_O_0m_P_0m) {
 
 TEST(routing, via_test_20_N_intermodal_P_via_P_0m) {
   // intermodal dest: N -> P, via P (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   constexpr auto const expected_intermodal_N_P_via_P_0min =
       R"(
@@ -982,7 +973,7 @@ leg 1: (P, P) [2019-05-01 09:43] -> (END, END) [2019-05-01 09:53]
 
 TEST(routing, via_test_21_H_Q_via_H_0m_N_0m) {
   // H -> Q, via H (0 min), N (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, iv("2019-05-01 11:00 Europe/Berlin",
@@ -1007,7 +998,7 @@ TEST(routing, via_test_21_H_Q_via_H_0m_N_0m) {
 // this test needs kMaxVias = 3, currently disabled because of kMaxVias = 2
 TEST(routing, via_test_22_H_Q_via_H_0m_N_0m_Q_0m) {
   // H -> Q, via H (0 min), N (0 min), Q (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
        {std::pair{direction::kForward,
@@ -1052,7 +1043,7 @@ leg 0: (M, M) [2019-05-01 09:00] -> (Q, Q) [2019-05-01 10:00]
 TEST(routing, via_test_23_M_Q_via_M_0m_O_0m) {
   // test: first via = start
   // M -> Q, via M (0 min), O (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, iv("2019-05-01 11:00 Europe/Berlin",
@@ -1076,7 +1067,7 @@ TEST(routing, via_test_23_M_Q_via_M_0m_O_0m) {
 TEST(routing, via_test_24_M_Q_via_O_0m_Q_0m) {
   // test: last via = destination
   // M -> Q, via O (0 min), Q (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, iv("2019-05-01 11:00 Europe/Berlin",
@@ -1121,7 +1112,7 @@ leg 2: (G, G) [2019-05-01 08:45] -> (L, L) [2019-05-01 10:00]
 TEST(routing, via_test_25_A_L_no_via) {
   // test: shortest footpath between T3->T14 (5m D->R instead of 15m C->G)
   // A -> L
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   auto const results =
       search(tt, nullptr,
@@ -1138,7 +1129,7 @@ TEST(routing, via_test_25_A_L_no_via) {
 TEST(routing, via_test_26_A_L_via_C_0m) {
   // test: shortest footpath between T3->T14 (5m D->R instead of 15m C->G)
   // A -> L, via C (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   auto const results =
       search(tt, nullptr,
@@ -1155,7 +1146,7 @@ TEST(routing, via_test_26_A_L_via_C_0m) {
 TEST(routing, via_test_27_A_L_via_R_0m) {
   // test: shortest footpath between T3->T14 (5m D->R instead of 15m C->G)
   // A -> L, via R (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   auto const results =
       search(tt, nullptr,
@@ -1173,7 +1164,7 @@ TEST(routing, via_test_28_A_L_via_R_2m) {
   // test: keep the transfer with the longer footpath because of the
   // via with stay > 0 min
   // A -> L, via R (2 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   constexpr auto const expected_A_L_via_R_2m =
       R"(
@@ -1210,7 +1201,7 @@ TEST(routing, via_test_29_A_L_via_D_2m) {
   // test: keep the transfer with the longer footpath because of the
   // via with stay > 0 min
   // A -> L, via R (2 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   constexpr auto const expected_A_L_via_D_2m =
       R"(
@@ -1246,7 +1237,7 @@ leg 2: (R, R) [2019-05-01 09:05] -> (L, L) [2019-05-01 10:00]
 TEST(routing, via_test_30_A_intermodal_LP_via_O_0m) {
   // test: keep the longer intermodal offset because of the via O
   // A -> intermodal L/P, via O (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   constexpr auto const expected_A_intermodal_LP_via_O_0m =
       R"(
@@ -1311,7 +1302,7 @@ leg 5: (P, P) [2019-05-01 09:43] -> (END, END) [2019-05-01 10:03]
 TEST(routing, via_test_31_M_Q_via_Q_10m) {
   // test: last via = destination, with stay duration (ignored)
   // M -> Q, via Q (10 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   constexpr auto const expected_M_Q_via_O_10min =
       R"(
@@ -1351,7 +1342,7 @@ leg 0: (M, M) [2019-05-01 09:00] -> (Q, Q) [2019-05-01 10:00]
 TEST(routing, via_test_32_M_intermodal_Q_via_Q_10m) {
   // test: last via = destination, with stay duration (before intermodal fp)
   // M -> Q, via Q (10 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   constexpr auto const expected_M_intermodal_Q_via_O_10min =
       R"(
@@ -1398,7 +1389,7 @@ leg 1: (Q, Q) [2019-05-01 10:10] -> (END, END) [2019-05-01 10:25]
 TEST(routing, via_test_33_M_intermodal_Q_via_Q_0m) {
   // test: last via = destination
   // M -> Q, via Q (0 min)
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   constexpr auto const expected_M_intermodal_Q_via_O_0min =
       R"(
@@ -1521,7 +1512,7 @@ leg 6: (D, D) [2019-05-01 08:57] -> (E, E) [2019-05-01 09:00]
 
 )"sv;
 
-  auto tt = load_timetable(kGTFS);
+  auto const tt = load_timetable(kGTFS);
 
   for (auto const& [dir, start_time] : {
            std::pair{direction::kForward, iv("2019-05-01 10:00 Europe/Berlin",
@@ -1621,7 +1612,7 @@ TEST(routing, via_test_35_S_C_via_V_0m_loop) {
   // (boarded at P) and has already crossed V, so its via offset is 1 -- the
   // switch to TE at B is only possible from the slot-0 feeder label there.
   // Reading the boarding label at v + v_offset misses it in every round.
-  auto tt = load_timetable(test_files_via_loop);
+  auto const tt = load_timetable(test_files_via_loop);
 
   for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, iv("2019-05-01 10:00 Europe/Berlin",
@@ -1691,7 +1682,7 @@ leg 0: (S, S) [2019-05-01 08:00] -> (C, C) [2019-05-01 08:20]
 
 TEST(routing, via_test_36_S_C_via_V_0m_no_exit) {
   // S -> C, via V (0 min): V is ridden through on T1.
-  auto tt = load_timetable(test_files_via_no_exit);
+  auto const tt = load_timetable(test_files_via_no_exit);
 
   for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, iv("2019-05-01 10:00 Europe/Berlin",
@@ -1914,8 +1905,8 @@ TEST(routing, via_test_40_via_stay_later_at_search_start) {
 }
 
 // Feeds below run on 2024-06-19 (Etc/UTC).
-constexpr auto const june_2024 = interval<date::sys_days>{
-    date::sys_days{2024_y / June / 18}, date::sys_days{2024_y / June / 20}};
+constexpr auto const june_2024 =
+    interval<date::sys_days>{2024_y / June / 18, 2024_y / June / 20};
 
 // A --T1--> B ~~fp 5min~~> B2 --T2--> D ~~fp 5min~~> D2 --T3--> C with
 // wide transfer windows and a 10 minute via stay at D (the source of

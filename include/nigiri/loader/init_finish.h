@@ -12,9 +12,13 @@ struct shapes_storage;
 
 namespace nigiri::loader {
 
-void register_special_stations(timetable&);
-void finalize(timetable&, finalize_options, shapes_storage* = nullptr);
+void register_special_stations(timetable&, import_context&);
 void finalize(timetable&,
+              import_context&,
+              finalize_options const&,
+              shapes_storage* = nullptr);
+void finalize(timetable&,
+              import_context&,
               bool merge_dupes_intra_src = false,
               bool merge_dupes_inter_src = false,
               std::uint16_t max_footpath_length =

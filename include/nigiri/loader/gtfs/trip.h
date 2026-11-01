@@ -17,6 +17,7 @@
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/stop.h"
 #include "nigiri/loader/gtfs/translations.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -154,6 +155,7 @@ trip_data read_trips(
     source_idx_t,
     source_file_idx_t,
     timetable&,
+    import_context&,
     translator&,
     route_map_t const&,
     traffic_days_t const&,

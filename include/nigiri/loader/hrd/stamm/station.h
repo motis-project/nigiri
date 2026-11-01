@@ -7,6 +7,7 @@
 #include "nigiri/loader/hrd/eva_number.h"
 #include "nigiri/loader/hrd/parser_config.h"
 #include "nigiri/loader/hrd/stamm/timezone.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -29,6 +30,7 @@ using location_map_t = hash_map<eva_number, hrd_location>;
 location_map_t parse_stations(config const&,
                               source_idx_t,
                               timetable&,
+                              import_context&,
                               stamm&,
                               std::string_view station_names_file,
                               std::string_view station_coordinates_file,

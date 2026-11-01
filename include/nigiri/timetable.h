@@ -13,7 +13,10 @@
 #include "geo/box.h"
 #include "geo/latlng.h"
 
+#include "nigiri/common/dedup_vecvec.h"
 #include "nigiri/common/interval.h"
+#include "nigiri/common/sparse_vecvec.h"
+#include "nigiri/event_times.h"
 #include "nigiri/fares.h"
 #include "nigiri/footpath.h"
 #include "nigiri/stop.h"
@@ -136,8 +139,8 @@ struct timetable {
     vector_map<location_idx_t, location_type> types_;
     vector_map<location_idx_t, location_idx_t> parents_;
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
-    mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
-    mutable_fws_multimap<location_idx_t, location_idx_t> children_;
+    vecvec<location_idx_t, location_idx_t> equivalences_;
+    sparse_vecvec<location_idx_t, location_idx_t> children_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_in_;
     vector_map<location_idx_t, std::uint32_t> location_importance_;
@@ -188,8 +191,6 @@ struct timetable {
 
   source_file_idx_t register_source_file(std::string_view path);
 
-  void add_transport(transport&& t);
-
   transport_idx_t next_transport_idx() const;
 
   bool is_transport_active(transport_idx_t const t, day_idx_t const day) const {
@@ -200,28 +201,31 @@ struct timetable {
     return bitfields_[route_traffic_days_[r]].test(to_idx(day));
   }
 
-  std::span<delta const> event_times_at_stop(route_idx_t const r,
-                                             stop_idx_t const stop_idx,
-                                             event_type const ev_type) const {
-    auto const n_transports =
-        static_cast<unsigned>(route_transport_ranges_[r].size());
-    auto const idx = static_cast<unsigned>(
-        route_stop_time_ranges_[r].from_ +
-        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    return std::span<delta const>{&route_stop_times_[idx], n_transports};
+  event_times event_times_at_stop(route_idx_t const r,
+                                  stop_idx_t const stop_idx,
+                                  event_type const ev_type) const {
+    auto const rt = route_times_[r];
+    return {
+        .first_dep_ = &transport_first_dep_[rt.transports_.from_],
+        .pattern_ = &transport_pattern_[rt.transports_.from_],
+        .offsets_ =
+            &pattern_offsets_[rt.pattern_start_ +
+                              event_idx(stop_idx, ev_type) * rt.n_patterns_],
+        .first_transport_ = rt.transports_.from_,
+        .n_transports_ = static_cast<std::uint32_t>(rt.transports_.size()),
+        .n_patterns_ = rt.n_patterns_};
   }
 
   delta event_mam(route_idx_t const r,
                   transport_idx_t t,
                   stop_idx_t const stop_idx,
                   event_type const ev_type) const {
-    auto const range = route_transport_ranges_[r];
-    auto const n_transports = static_cast<unsigned>(range.size());
-    auto const route_stop_begin = static_cast<unsigned>(
-        route_stop_time_ranges_[r].from_ +
-        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    auto const t_idx_in_route = to_idx(t) - to_idx(range.from_);
-    return route_stop_times_[route_stop_begin + t_idx_in_route];
+    auto const rt = route_times_[r];
+    return transport_first_dep_[t] +
+           pattern_offsets_[rt.pattern_start_ +
+                            event_idx(stop_idx, ev_type) * rt.n_patterns_ +
+                            (rt.n_patterns_ == 1U ? 0U
+                                                  : transport_pattern_[t])];
   }
 
   delta event_mam(transport_idx_t t,
@@ -307,10 +311,9 @@ struct timetable {
     auto const trip_idx =
         merged_trips_[transport_to_trip_section_[t].front()].front();
     return debug{
-        source_file_names_[trip_debug_[trip_idx].front().source_file_idx_]
-            .view(),
-        trip_debug_[trip_idx].front().line_number_from_,
-        trip_debug_[trip_idx].front().line_number_to_};
+        source_file_names_[trip_debug_[trip_idx].source_file_idx_].view(),
+        trip_debug_[trip_idx].line_number_from_,
+        trip_debug_[trip_idx].line_number_to_};
   }
 
   friend std::ostream& operator<<(std::ostream&, timetable const&);
@@ -333,20 +336,15 @@ struct timetable {
   vector_map<source_idx_t, date::sys_days> src_end_date_;
 
   // Trip access: external trip id -> internal trip index
-  vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;
-
-  // Trip index -> list of external trip ids
-  mutable_fws_multimap<trip_idx_t, trip_id_idx_t> trip_ids_;
+  // Sorted by (src, trip_id string)
+  vector<trip_idx_t> trip_id_to_idx_;
 
   // Storage for trip id strings + source
-  vecvec<trip_id_idx_t, char> trip_id_strings_;
-  vector_map<trip_id_idx_t, source_idx_t> trip_id_src_;
+  vecvec<trip_idx_t, char> trip_id_strings_;
+  vector_map<trip_idx_t, source_idx_t> trip_id_src_;
 
   // Trip -> direction (valid options 0 or 1)
   bitvec_map<trip_idx_t> trip_direction_id_;
-
-  // Trip train number, if available (otherwise 0)
-  vector_map<trip_id_idx_t, std::uint32_t> trip_train_nr_;
 
   // Trip -> route name
   vector_map<trip_idx_t, route_id_idx_t> trip_route_id_;
@@ -364,13 +362,13 @@ struct timetable {
     vector_map<route_id_idx_t, provider_idx_t> route_id_provider_;
     vector_map<route_id_idx_t, route_color> route_id_colors_;
     vector_map<route_id_idx_t, ticketing_link_idx_t> route_id_ticketing_link_;
-    paged_vecvec<route_id_idx_t, trip_idx_t> route_id_trips_;
+    vecvec<route_id_idx_t, trip_idx_t> route_id_trips_;
     string_store<route_id_idx_t> ids_;
   };
   vector_map<source_idx_t, route_ids> route_ids_;
 
   // Trip index -> all transports with a stop interval
-  paged_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
+  sparse_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
 
   // Transport -> stop sequence numbers (relevant for GTFS-RT stop matching)
   // Compaction:
@@ -378,10 +376,10 @@ struct timetable {
   // - only one '1' entry = one-based sequence 1,2,3,...
   // - only one '10' entry = 10-based sequence 10,20,30,...
   // - more than one entry: exact sequence number for each stop
-  vecvec<trip_idx_t, stop_idx_t> trip_stop_seq_numbers_;
+  sparse_dedup_vecvec<trip_idx_t, stop_idx_t> trip_stop_seq_numbers_;
 
   // Trip -> debug info
-  mutable_fws_multimap<trip_idx_t, trip_debug> trip_debug_;
+  vector_map<trip_idx_t, trip_debug> trip_debug_;
   vecvec<source_file_idx_t, char, std::uint32_t> source_file_names_;
 
   // Trip index -> trip name
@@ -391,6 +389,7 @@ struct timetable {
   vector_map<trip_idx_t, translation_idx_t> trip_display_names_;
 
   // Route -> range of transports in this route (from/to transport_idx_t)
+  // TODO(felix) duplicate of route_times_[r].transports_
   vector_map<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
 
   // Route -> list of stops
@@ -415,16 +414,32 @@ struct timetable {
   // Location -> list of routes
   vecvec<location_idx_t, route_idx_t> location_routes_;
 
-  // Route 1:
-  //   stop-1-dep: [trip1, trip2, ..., tripN]
-  //   stop-2-arr: [trip1, trip2, ..., tripN]
-  //   ...
-  // Route 2:
-  //  stop-1-dep: [...]
-  // ...
-  // RouteN: ...
-  vector_map<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
-  vector<delta> route_stop_times_;
+  // Compressed route stop times:
+  // A pattern stores travel duration (= pattern offset) from first departure.
+  // Patterns are shared between transports within a route, e.g. peak, off-peak.
+  //
+  // Event major ordering => get_earliest_transport has all offsets of one event
+  // for each pattern of the route next to each other:
+  //
+  // e1p1 e1p2 e1p3 | e2p1 e2p2 e2p3 | e3p1 e3p2 e3p3 | …
+  //   EVENT 1      |    EVENT 2     |    EVENT 3     | …
+  //
+  // route       R
+  // route times r   route_times_[R]
+  // transport   T
+  // event       E   dep 0, arr 1, dep 1, …, arr last
+  //
+  // -> Index(E) = r.pattern_start_ + E * r.n_patterns_ + transport_pattern_[T]
+  // ->       E  = transport_first_dep_[T] + pattern_offsets_[Index(E)]
+  struct route_times {
+    interval<transport_idx_t> transports_;
+    std::uint32_t pattern_start_;  // first offset in pattern_offsets_
+    std::uint16_t n_patterns_;
+  };
+  vector_map<transport_idx_t, delta> transport_first_dep_;
+  vector_map<transport_idx_t, std::uint16_t> transport_pattern_;
+  vector_map<route_idx_t, route_times> route_times_;
+  vector<delta> pattern_offsets_;
 
   // Offset between the stored time and the time given in the GTFS timetable
   // Required to match GTFS-RT with GTFS-static trips.
@@ -464,10 +479,12 @@ struct timetable {
   // Transport to section meta infos; Compaction:
   // - only one value = value is valid for the whole run
   // - multiple values = one value for each section
-  vecvec<transport_idx_t, attribute_combination_idx_t>
-      transport_section_attributes_;
-  vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
-  vecvec<transport_idx_t, translation_idx_t> transport_section_directions_;
+  sparse_vecvec<transport_idx_t, attribute_combination_idx_t>
+      transport_section_attributes_{
+          decltype(transport_section_attributes_)::with_default({})};
+  dedup_vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
+  dedup_vecvec<transport_idx_t, translation_idx_t>
+      transport_section_directions_;
 
   transfer_rules transfer_rules_;
 
@@ -481,11 +498,11 @@ struct timetable {
   // Fares
   vector_map<source_idx_t, fares> fares_;
   vector_map<area_idx_t, area> areas_;
-  vecvec<location_idx_t, area_idx_t> location_areas_;
+  sparse_vecvec<location_idx_t, area_idx_t> location_areas_;
 
   // Flex
-  paged_vecvec<location_group_idx_t, location_idx_t> location_group_locations_;
-  paged_vecvec<location_idx_t, location_group_idx_t> location_location_groups_;
+  vecvec<location_group_idx_t, location_idx_t> location_group_locations_;
+  sparse_vecvec<location_idx_t, location_group_idx_t> location_location_groups_;
   vector_map<location_group_idx_t, translation_idx_t> location_group_name_;
   vector_map<location_group_idx_t, string_idx_t> location_group_id_;
   vector_map<flex_area_idx_t, geo::box> flex_area_bbox_;
@@ -497,9 +514,8 @@ struct timetable {
   vector_map<flex_area_idx_t, translation_idx_t> flex_area_name_;
   vector_map<flex_area_idx_t, translation_idx_t> flex_area_desc_;
   rtree<flex_area_idx_t> flex_area_rtree_;
-  paged_vecvec<location_group_idx_t, flex_transport_idx_t>
-      location_group_transports_;
-  paged_vecvec<flex_area_idx_t, flex_transport_idx_t> flex_area_transports_;
+  vecvec<location_group_idx_t, flex_transport_idx_t> location_group_transports_;
+  vecvec<flex_area_idx_t, flex_transport_idx_t> flex_area_transports_;
   vector_map<flex_transport_idx_t, bitfield_idx_t> flex_transport_traffic_days_;
   vector_map<flex_transport_idx_t, trip_idx_t> flex_transport_trip_;
   vecvec<flex_transport_idx_t, interval<duration_t>>
@@ -518,15 +534,16 @@ struct timetable {
 
   // Translated strings
   nvec<translation_idx_t, char, 2U> translations_;
-  vecvec<translation_idx_t, language_idx_t> translation_language_;
+  sparse_vecvec<translation_idx_t, language_idx_t> translation_language_{
+      decltype(translation_language_)::with_default({kDefaultLang})};
   string_store<language_idx_t> languages_;
 
   cista::base_t<source_idx_t> n_sources_{};
 
   // Ticketing
-  vecvec<location_idx_t, pair<provider_idx_t, string_idx_t>>
+  sparse_vecvec<location_idx_t, pair<provider_idx_t, string_idx_t>>
       location_ticketing_identifier_;
-  vecvec<trip_idx_t, string_idx_t> trip_ticketing_identifier_;
+  sparse_vecvec<trip_idx_t, string_idx_t> trip_ticketing_identifier_;
   bitvec_map<trip_idx_t> trip_ticketing_unavailable_;
 
   struct ticketing_links {

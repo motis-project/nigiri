@@ -20,7 +20,7 @@ using direction_info_t =
     variant<utl::cstr /* custom string */, eva_number /* eva number */>;
 
 struct stamm {
-  stamm(config const&, timetable&, dir const&, source_idx_t);
+  stamm(config const&, timetable&, import_context&, dir const&, source_idx_t);
   stamm(timetable&, timezone_map_t&&, source_idx_t);
 
   interval<std::chrono::sys_days> get_date_range() const;

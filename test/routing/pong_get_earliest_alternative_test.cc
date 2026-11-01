@@ -2,7 +2,7 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -23,11 +23,9 @@ using namespace std::string_view_literals;
 
 namespace {
 
-void load(timetable& tt, std::string_view const gtfs) {
-  tt.date_range_ = {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, mem_dir::read(std::string{gtfs}), tt);
-  finalize(tt);
+timetable load(std::string_view const gtfs) {
+  return loader::load(mem_dir::read(std::string{gtfs}),
+                      {2024_y / June / 18, 2024_y / June / 20});
 }
 
 location_idx_t find_loc(timetable const& tt, std::string_view const id) {
@@ -77,8 +75,7 @@ service_id,date,exception_type
 S,20240619,1
 )"sv;
 
-  auto tt = timetable{};
-  load(tt, kGTFS);
+  auto const tt = load(kGTFS);
   auto const A = find_loc(tt, "A");
   auto const C = find_loc(tt, "C");
 
@@ -146,8 +143,7 @@ service_id,date,exception_type
 S,20240619,1
 )"sv;
 
-  auto tt = timetable{};
-  load(tt, kGTFS);
+  auto const tt = load(kGTFS);
   auto const A = find_loc(tt, "A");
   auto const C = find_loc(tt, "C");
 
@@ -213,8 +209,7 @@ S,20240619,1
 )"sv;
 
   constexpr auto const kProfile = profile_idx_t{2U};
-  auto tt = timetable{};
-  load(tt, kGTFS);
+  auto tt = load(kGTFS);
 
   auto const X = find_loc(tt, "X");
   auto const A = find_loc(tt, "A");
@@ -293,8 +288,7 @@ S,20240619,1
 )"sv;
 
   constexpr auto const kProfile = profile_idx_t{2U};
-  auto tt = timetable{};
-  load(tt, kGTFS);
+  auto tt = load(kGTFS);
 
   auto const A = find_loc(tt, "A");
   auto const B = find_loc(tt, "B");
@@ -367,8 +361,7 @@ S,20240619,1
 )"sv;
 
   constexpr auto const kProfile = profile_idx_t{2U};
-  auto tt = timetable{};
-  load(tt, kGTFS);
+  auto tt = load(kGTFS);
 
   auto const X = find_loc(tt, "X");
   auto const A = find_loc(tt, "A");

@@ -1,8 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/raptor/pong.h"
@@ -165,12 +164,8 @@ leg 4: (C, C) [2024-06-19 10:30] -> (END, END) [2024-06-19 10:40]
 TEST(routing, td_footpath) {
   constexpr auto const kProfile = profile_idx_t{2U};
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   tt.fwd_search_lb_graph_[kWheelchairProfile] =
       tt.fwd_search_lb_graph_[kDefaultProfile];
@@ -308,12 +303,8 @@ TEST(routing, td_footpath_pong_keeps_the_wait) {
   // time-dependent one (10min).
   constexpr auto const kProfile = profile_idx_t{2U};
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   tt.fwd_search_lb_graph_[kWheelchairProfile] =
       tt.fwd_search_lb_graph_[kDefaultProfile];
@@ -362,12 +353,8 @@ TEST(routing, td_footpath_lookup_keeps_the_wait) {
   // so the footpath leg only covers the walk.
   constexpr auto const kProfile = profile_idx_t{2U};
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   auto const B1 = tt.find(location_id{"B1", source_idx_t{0U}}).value();
   auto const B2 = tt.find(location_id{"B2", source_idx_t{0U}}).value();
@@ -463,11 +450,7 @@ TEST(routing, td_footpath_pong_earliest_alternative_keeps_the_wait) {
   // the footpath before the middle transport must not start at the arrival.
   constexpr auto const kProfile = profile_idx_t{2U};
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, mem_dir::read(R"(
+  auto tt = loader::load(mem_dir::read(R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
 DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
@@ -505,8 +488,7 @@ T2,12:30:00,12:30:00,C,2,0,0
 T3,12:40:00,12:40:00,C,1,0,0
 T3,13:00:00,13:00:00,D,2,0,0
 )"),
-                 tt);
-  finalize(tt);
+                         {2024_y / June / 18, 2024_y / June / 20});
 
   tt.fwd_search_lb_graph_[kWheelchairProfile] =
       tt.fwd_search_lb_graph_[kDefaultProfile];
@@ -567,12 +549,8 @@ TEST(routing, td_footpath_pong_walk_right_after_usable) {
   // The walk then starts as soon as it is usable (09:45).
   constexpr auto const kProfile = profile_idx_t{2U};
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   tt.fwd_search_lb_graph_[kWheelchairProfile] =
       tt.fwd_search_lb_graph_[kDefaultProfile];
@@ -646,12 +624,8 @@ TEST(routing, td_footpath_walk_right_before_outage) {
   // Transfer time settings don't apply to time-dependent footpaths.
   constexpr auto const kProfile = profile_idx_t{2U};
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   tt.fwd_search_lb_graph_[kWheelchairProfile] =
       tt.fwd_search_lb_graph_[kDefaultProfile];
@@ -703,12 +677,8 @@ TEST(routing, td_lookups_wait_beyond_footpath_max_duration) {
   // 8-bit footpath duration: a 5 h outage is waited out.
   constexpr auto const kProfile = profile_idx_t{2U};
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   auto const B1 = tt.find(location_id{"B1", source_idx_t{0U}}).value();
   auto const B2 = tt.find(location_id{"B2", source_idx_t{0U}}).value();

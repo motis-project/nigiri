@@ -6,10 +6,9 @@
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/calendar.h"
 #include "nigiri/loader/gtfs/calendar_date.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/gtfs/local_to_utc.h"
 #include "nigiri/loader/gtfs/noon_offsets.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 
 #include "nigiri/routing/query.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -175,14 +174,8 @@ pareto_set<routing::journey> search(timetable const& tt,
 }  // namespace
 
 TEST(routing, transfer_travel_test) {
-  auto tt = timetable{};
-
-  tt.date_range_ = {date::sys_days{2019_y / May / 1},
-                    date::sys_days{2019_y / May / 2}};
-  loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({}, source_idx_t{0},
-                               loader::mem_dir::read(test_files), tt);
-  loader::finalize(tt);
+  auto const tt = loader::load(loader::mem_dir::read(test_files),
+                               {2019_y / May / 1, 2019_y / May / 2});
 
   // Tests for transfer_time_settings
   for (auto const dir : {direction::kForward, direction::kBackward}) {

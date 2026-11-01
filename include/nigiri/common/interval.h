@@ -64,7 +64,7 @@ struct interval {
 
   template <typename X>
     requires std::is_convertible_v<T, X>
-  operator interval<X>() {
+  operator interval<X>() const {
     return {from_, to_};
   }
 

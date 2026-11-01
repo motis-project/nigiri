@@ -84,8 +84,8 @@ template <typename Fn>
 void for_each_transfer(timetable const& tt,
                        route_idx_t const rx,
                        route_idx_t const ry,
-                       std::span<delta const> arrivals,
-                       std::span<delta const> departures,
+                       event_times const arrivals,
+                       event_times const departures,
                        window_t const& hull,
                        Fn&& fn) {
   auto const traffic_days =
@@ -114,16 +114,16 @@ void for_each_transfer(timetable const& tt,
       auto const dep_from = arrival + lo - dep_day;
       auto const dep_to = arrival + hi - dep_day;
       auto it = std::lower_bound(
-          begin(departures), end(departures), dep_from,
+          departures.begin(), departures.end(), dep_from,
           [&](delta const d, i32_minutes const t) { return mam_of(d) < t; });
-      if (it == end(departures) || mam_of(*it) >= dep_to) {
+      if (it == departures.end() || mam_of(*it) >= dep_to) {
         continue;
       }
       auto const n = offset.count();
       auto const days = n >= 0 ? a_days << static_cast<std::size_t>(n)
                                : a_days >> static_cast<std::size_t>(-n);
-      for (; it != end(departures) && mam_of(*it) < dep_to; ++it) {
-        auto const b = route_transport_idx_t{it - begin(departures)};
+      for (; it != departures.end() && mam_of(*it) < dep_to; ++it) {
+        auto const b = route_transport_idx_t{it - departures.begin()};
         if (rx == ry && a == b && n == 0) {
           continue;
         }

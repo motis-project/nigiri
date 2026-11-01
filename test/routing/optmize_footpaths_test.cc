@@ -3,10 +3,7 @@
 #include <string_view>
 #include <vector>
 
-#include "nigiri/loader/build_footpaths.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
-#include "nigiri/loader/transfer_rules.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/common/parse_time.h"
 #include "nigiri/footpath.h"
@@ -33,14 +30,8 @@ std::string print_journey(timetable const& tt,
 }
 
 timetable load_timetable(std::string_view s) {
-  auto tt = timetable{};
-
-  tt.date_range_ = {date::sys_days{2019_y / May / 1},
-                    date::sys_days{2019_y / May / 2}};
-  loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({}, source_idx_t{0}, loader::mem_dir::read(s),
-                               tt);
-  loader::finalize(tt);
+  auto const tt = loader::load(loader::mem_dir::read(s),
+                               {2019_y / May / 1, 2019_y / May / 2});
   return tt;
 }
 
@@ -105,7 +96,7 @@ leg 1: (A, A) [2019-05-01 08:10] -> (C, C) [2019-05-01 08:15]
    2: C       C............................................... a: 01.05 08:15 [01.05 10:15]
 )"sv;
 
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   auto const A = loc_idx(tt, "A");
   auto const B = loc_idx(tt, "B");
@@ -154,7 +145,7 @@ leg 1: (C, C) [2019-05-01 08:15] -> (END, END) [2019-05-01 08:25]
   MUMO (payload=0, duration=10)
 )"sv;
 
-  auto tt = load_timetable(test_files_1);
+  auto const tt = load_timetable(test_files_1);
 
   auto const A = loc_idx(tt, "A");
   auto const B = loc_idx(tt, "B");

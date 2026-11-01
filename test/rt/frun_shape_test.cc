@@ -11,7 +11,7 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/common/delta_t.h"
 #include "nigiri/routing/one_to_all.h"
 #include "nigiri/routing/query.h"
@@ -228,11 +228,9 @@ TEST(
                                     cista::mmap::protection::WRITE};
 
   // Load static timetable.
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / January / 1},
-                    date::sys_days{2024_y / January / 2}};
-  load_timetable({}, source_idx_t{0U}, schedule, tt, nullptr, &shapes_data);
-  finalize(tt);
+  auto const tt =
+      loader::load(schedule, {2024_y / January / 1, 2024_y / January / 2}, {},
+                   nullptr, &shapes_data);
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / January / 1});

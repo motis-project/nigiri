@@ -1,4 +1,5 @@
 #include "nigiri/loader/hrd/stamm/station.h"
+#include "nigiri/loader/import_context.h"
 
 #include "nigiri/loader/register.h"
 
@@ -175,6 +176,7 @@ struct hash {
 location_map_t parse_stations(config const& c,
                               source_idx_t const src,
                               timetable& tt,
+                              import_context& ctx,
                               stamm& st,
                               std::string_view station_names_file,
                               std::string_view station_coordinates_file,
@@ -193,10 +195,11 @@ location_map_t parse_stations(config const& c,
     auto const transfer_time = duration_t{eva_int < 1000000 ? 2 : 5};
     auto const name_translation = tt.register_translation(s.name_);
     auto const idx = register_location(
-        tt, location{tt, src, id, name_translation, kEmptyTranslation,
-                     kEmptyTranslation, kEmptyTranslation, s.pos_,
-                     location_type::kStation, location_idx_t::invalid(),
-                     st.get_tz(s.id_).first, transfer_time, dummy_tz_map});
+        tt, ctx,
+        location{tt, src, id, name_translation, kEmptyTranslation,
+                 kEmptyTranslation, kEmptyTranslation, s.pos_,
+                 location_type::kStation, location_idx_t::invalid(),
+                 st.get_tz(s.id_).first, transfer_time, dummy_tz_map});
     s.idx_ = idx;
   }
 
@@ -204,7 +207,7 @@ location_map_t parse_stations(config const& c,
   for (auto& [eva, s] : stations) {
     for (auto const& e : s.equivalent_) {
       if (auto const it = stations.find(e); it != end(stations)) {
-        tt.locations_.equivalences_[s.idx_].emplace_back(it->second.idx_);
+        ctx.equivalences_[s.idx_].emplace_back(it->second.idx_);
       } else {
         log(log_lvl::error, "loader.hrd.meta", "station {} not found", e);
       }

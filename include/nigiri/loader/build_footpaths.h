@@ -7,6 +7,7 @@
 #include <optional>
 #include <vector>
 
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/merge_duplicates.h"
 #include "nigiri/loader/transfer_rules.h"
 #include "nigiri/td_footpath.h"
@@ -34,7 +35,8 @@ struct finalize_options {
 };
 
 void build_footpaths(timetable& tt,
-                     finalize_options,
+                     import_context&,
+                     finalize_options const&,
                      shapes_storage* = nullptr);
 
 // A profile's walks ignore transfer rules: a virtual location walks like its

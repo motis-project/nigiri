@@ -2,7 +2,7 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
@@ -62,11 +62,8 @@ T2,11:30:00,11:30:00,C,2,0,0
 }  // namespace
 
 TEST(routing, pong_td_egress_dominated_label) {
-  timetable tt;
-  tt.date_range_ = {sys_days{2024_y / June / 16}, sys_days{2024_y / June / 23}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 16, 2024_y / June / 23});
 
   auto const A = tt.find(location_id{"A", source_idx_t{0}}).value();
   auto const C = tt.find(location_id{"C", source_idx_t{0}}).value();

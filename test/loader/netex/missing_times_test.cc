@@ -172,7 +172,7 @@ TEST(netex, missing_times) {
   auto const tt = loader::load(
       {{.tag_ = "test", .path_ = kNetex, .loader_config_ = {}}},
       {.merge_dupes_intra_src_ = false, .merge_dupes_inter_src_ = false},
-      {sys_days{2025_y / December / 14}, sys_days{2025_y / December / 15}});
+      {2025_y / December / 14, 2025_y / December / 15});
 
   auto const has_trip = [&](std::string_view trip_id) {
     return utl::any_of(tt.trip_id_strings_,

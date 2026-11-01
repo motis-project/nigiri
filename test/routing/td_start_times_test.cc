@@ -3,7 +3,7 @@
 #include "utl/equal_ranges_linear.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
@@ -96,11 +96,8 @@ T1,11:00:00,11:00:00,B,2,0,0
 
 TEST(routing, td_start_times) {
   auto const src = source_idx_t{0U};
-  auto tt = timetable{};
-  tt.date_range_ =
-      interval{sys_days{2020_y / March / 30}, sys_days{2020_y / March / 32}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2020_y / March / 30, 2020_y / March / 32});
 
   using namespace date;
   auto const A = tt.locations_.location_id_to_idx_.at(
@@ -150,11 +147,8 @@ TEST(routing, td_start_times) {
 
 TEST(routing, td_start_times_rt_infeasible) {
   auto const day = sys_days{2019_y / May / 1};
-  auto tt = timetable{};
-  tt.date_range_ = {sys_days{2019_y / April / 30}, sys_days{2019_y / May / 2}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, rt_test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(rt_test_files(), {2019_y / April / 30, 2019_y / May / 2});
 
   // T1 departs 10min late -> real-time transport, departure at A 10:10.
   auto rtt = rt::create_rt_timetable(tt, day);

@@ -1,4 +1,5 @@
 #include "nigiri/loader/link_nearby_stations.h"
+#include "nigiri/loader/import_context.h"
 
 #include "geo/latlng.h"
 #include "geo/point_rtree.h"
@@ -27,8 +28,9 @@ struct dist_at {
   double distance_lng_degrees_;
 };
 
-void link_nearby_stations(
-    timetable& tt, mutable_fws_multimap<location_idx_t, footpath>& walks) {
+void link_nearby_stations(timetable& tt,
+                          import_context& ctx,
+                          mutable_fws_multimap<location_idx_t, footpath>& walks) {
   constexpr auto const kLinkNearbyMaxDistance = 300.0;  // [m];
   constexpr auto const kEqDist = 100.0;  // [m];
 
@@ -69,7 +71,7 @@ void link_nearby_stations(
       walks[l_from_idx].emplace_back(l_to_idx, walk);
 
       if (dist.lt(to_pos, kEqDist)) {
-        tt.locations_.equivalences_[l_from_idx].emplace_back(l_to_idx);
+        ctx.equivalences_[l_from_idx].emplace_back(l_to_idx);
       }
     }
   }

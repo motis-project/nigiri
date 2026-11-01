@@ -212,14 +212,14 @@ location_idx_t parent(timetable const& tt, location_idx_t const l) {
 
 network_idx_t get_network(rt::frun const& a) {
   auto const& tt = *a.tt_;
-  auto const src = tt.trip_id_src_[tt.trip_ids_[a.trip_idx()].front()];
+  auto const src = tt.trip_id_src_[a.trip_idx()];
   auto const& f = tt.fares_[src];
   auto const route_id = tt.trip_route_id_[a.trip_idx()];
   auto const it = f.route_networks_.find(route_id);
   return it == end(f.route_networks_) ? network_idx_t::invalid() : it->second;
 }
 
-vecvec<location_idx_t, area_idx_t>::const_bucket get_areas(
+sparse_vecvec<location_idx_t, area_idx_t>::const_bucket get_areas(
     timetable const& tt, location_idx_t const l) {
   auto const l_areas = tt.location_areas_.at(l);
   return l_areas.empty() ? tt.location_areas_.at(parent(tt, l)) : l_areas;
@@ -237,7 +237,7 @@ bool join(timetable const& tt,
     return false;
   }
 
-  auto const src = tt.trip_id_src_[tt.trip_ids_[a.trip_idx()].front()];
+  auto const src = tt.trip_id_src_[a.trip_idx()];
   auto const& fare = tt.fares_[src];
 
   // Leg join rules require network to be defined.
@@ -292,10 +292,7 @@ joined_legs_t join_legs(timetable const& tt,
       return a_l == b_l;
     }
 
-    auto const a_id_idx = tt.trip_ids_[a.trip_idx()].front();
-    auto const b_id_idx = tt.trip_ids_[b.trip_idx()].front();
-
-    return tt.trip_id_src_[a_id_idx] == tt.trip_id_src_[b_id_idx];
+    return tt.trip_id_src_[a.trip_idx()] == tt.trip_id_src_[b.trip_idx()];
   };
 
   auto joined_legs = joined_legs_t{};
@@ -379,10 +376,9 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
   auto const from = first_trip[first_stop_range.from_];
   auto const to = last_trip[last_stop_range.to_ - 1];
 
-  auto const src =
-      first_trip.is_scheduled()
-          ? tt.trip_id_src_[tt.trip_ids_[first_trip.trip_idx()].front()]
-          : first_trip.id().src_;
+  auto const src = first_trip.is_scheduled()
+                       ? tt.trip_id_src_[first_trip.trip_idx()]
+                       : first_trip.id().src_;
   auto const& f = tt.fares_[src];
 
   if (!first_trip.is_scheduled() || !last_trip.is_scheduled()) {

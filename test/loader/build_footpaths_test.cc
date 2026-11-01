@@ -3,8 +3,7 @@
 #include "utl/enumerate.h"
 
 #include "nigiri/loader/gtfs/files.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/routing/transfers.h"
 #include "nigiri/timetable.h"
 
@@ -88,15 +87,9 @@ Q,P,2,300
 }  // namespace
 
 TEST(loader, build_footpaths) {
-  auto tt = timetable{};
-
-  tt.date_range_ = {date::sys_days{2024_y / March / 1},
-                    date::sys_days{2024_y / March / 2}};
-  loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({.default_tz_ = "Europe/Berlin"},
-                               source_idx_t{0},
-                               loader::mem_dir::read(test_files), tt);
-  loader::finalize(tt);
+  auto const tt = loader::load(
+      {{loader::mem_dir::read(test_files), {.default_tz_ = "Europe/Berlin"}}},
+      {2024_y / March / 1, 2024_y / March / 2});
 
   auto ss = std::stringstream{};
   for (auto const [i, x] : utl::enumerate(tt.locations_.footpaths_out_[0])) {
@@ -122,15 +115,12 @@ TEST(loader, build_footpaths) {
 // the map. A transfer shorter than the walk (1 min for 222 m) is raised to the
 // walking time.
 TEST(loader, build_footpaths_drop_unwalkable) {
-  auto tt = timetable{};
-
-  tt.date_range_ = {date::sys_days{2024_y / March / 1},
-                    date::sys_days{2024_y / March / 2}};
-  loader::register_special_stations(tt);
-  loader::gtfs::load_timetable(
-      {.adjust_footpaths_ = true, .default_tz_ = "Europe/Berlin"},
-      source_idx_t{0}, loader::mem_dir::read(unwalkable_files), tt);
-  loader::finalize(tt);
+  auto const tt = loader::load({{loader::mem_dir::read(unwalkable_files),
+                                 {.adjust_footpaths_ = true,
+                                  .default_tz_ = "Europe/Berlin"}}},
+                               {2024_y / March / 1, 2024_y / March / 2},
+                               {.merge_dupes_intra_src_ = false,
+                                .merge_dupes_inter_src_ = false});
 
   auto ss = std::stringstream{};
   for (auto const [i, x] : utl::enumerate(tt.locations_.footpaths_out_[0])) {

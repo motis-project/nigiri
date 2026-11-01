@@ -13,6 +13,7 @@ namespace nigiri::loader::gtfs {
 
 void read_transfers(source_idx_t,
                     timetable&,
+                    import_context const&,
                     std::string_view file_content,
                     stops_map_t const&,
                     trip_data&,
