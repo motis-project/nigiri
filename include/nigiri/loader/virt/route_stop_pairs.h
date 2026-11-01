@@ -51,7 +51,7 @@ struct route_stop {
 
   route_idx_t route_;
   stop_idx_t stop_idx_;
-  location_idx_t stop_;
+  location_idx_t base_;
   signature_idx_t sig_{signature_idx_t::invalid()};
 };
 
@@ -81,7 +81,7 @@ struct route_stop_pairs {
   route_stop_idx_t get_or_create_route_stop(route_stop const& s) {
     return utl::get_or_create(route_stop_of_, s, [&]() {
       if (!s.is_base()) {
-        get_or_create_route_stop(to_base_stop(s.stop_));
+        get_or_create_route_stop(to_base_stop(s.base_));
       }
       route_stops_.push_back(s);
       return route_stop_idx_t{route_stops_.size() - 1U};

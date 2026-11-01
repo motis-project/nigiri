@@ -13,6 +13,22 @@
 
 namespace nigiri::loader {
 
+std::optional<duration_t> pick_duration(window_t const& w,
+                                        duration_t const fallback) {
+  if (w.contains(fallback)) {
+    return fallback;
+  }
+  if (w.contains(kNever)) {
+    return kNever;
+  }
+  return w.from_ < std::min(w.to_, footpath::kBan) ? std::optional{w.from_}
+                                                   : std::nullopt;
+}
+
+bool is_admissible(window_t const& w) {
+  return pick_duration(w, kNever).has_value();
+}
+
 duration_t get_walk(timetable const& tt,
                     mutable_fws_multimap<location_idx_t, footpath> const& walks,
                     rule_index const& stop_rules,

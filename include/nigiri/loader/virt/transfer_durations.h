@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "nigiri/loader/transfer_rules.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/routing/limits.h"
@@ -22,6 +24,10 @@ struct transfer_durations {
   duration_t fallback_;
   window_t hull_;
 };
+
+std::optional<duration_t> pick_duration(window_t const&, duration_t fallback);
+
+bool is_admissible(window_t const&);
 
 duration_t get_walk(timetable const&,
                     mutable_fws_multimap<location_idx_t, footpath> const& walks,
