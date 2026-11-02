@@ -15,8 +15,8 @@ void expand_td_footpaths_to_virts(
     auto const add = [&](location_idx_t const to, unixtime_t const valid_from,
                          duration_t const d) {
       loc.for_each_member_pair(
-          l, to, [&](location_idx_t const f, location_idx_t const t) {
-            expanded[f].push_back({t, valid_from, d});
+          l, to, [&](location_idx_t const a, location_idx_t const b) {
+            expanded[a].push_back({b, valid_from, d});
           });
     };
     // Every location of l replaces its static walks, also without td walks.

@@ -154,9 +154,6 @@ void write_profile(timetable& tt,
   build_lb_graph<direction::kBackward>(tt, prf);
 }
 
-// A walk between two stops (or the stop's transfer time) connects every
-// location of the one with every location of the other - except pairs a rule
-// decides.
 void expand_to_virts(timetable& tt,
                      profile_idx_t const prf,
                      auto const& walks,
@@ -170,14 +167,14 @@ void expand_to_virts(timetable& tt,
     }
     auto const add = [&](location_idx_t const to, duration_t const d) {
       loc.for_each_member_pair(
-          l, to, [&](location_idx_t const f, location_idx_t const t) {
-            if (rule_fps == nullptr || !rule_fps->get(f, t).has_value()) {
-              fps[f].emplace_back(t, d);
+          l, to, [&](location_idx_t const a, location_idx_t const b) {
+            if (rule_fps == nullptr || !rule_fps->get(a, b).has_value()) {
+              fps[a].emplace_back(b, d);
             }
           });
     };
     if (loc.transfer_time_[l] != kNoTransferAllowed) {
-      add(l, duration_t{loc.transfer_time_[l]});
+      add(l, loc.transfer_time_[l]);
     }
     for (auto const fp : walks[l]) {
       add(fp.target(), fp.duration());
@@ -194,6 +191,7 @@ void expand_to_virts(timetable& tt,
       }
     }
   }
+
   write_profile(tt, prf, fps);
 }
 
