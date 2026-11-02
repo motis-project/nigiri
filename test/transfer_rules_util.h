@@ -22,6 +22,7 @@
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/virt/footpaths.h"
 #include "nigiri/common/parse_time.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/one_to_all.h"

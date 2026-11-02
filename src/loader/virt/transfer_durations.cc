@@ -29,14 +29,18 @@ bool is_admissible(window_t const& w) {
   return pick_duration(w, kNever).has_value();
 }
 
+duration_t get_transfer_time(timetable const& tt, location_idx_t const l) {
+  auto const t = tt.locations_.transfer_time_[l];
+  return t == kNoTransferAllowed ? kNever : duration_t{t};
+}
+
 duration_t get_walk(timetable const& tt,
                     mutable_fws_multimap<location_idx_t, footpath> const& walks,
                     rule_index const& stop_rules,
                     location_idx_t const from,
                     location_idx_t const to) {
   if (from == to) {
-    auto const t = tt.locations_.transfer_time_[from];
-    return t == kNoTransferAllowed ? kNever : duration_t{t};
+    return get_transfer_time(tt, from);
   }
   if (auto const rule = stop_rules.get(from, to); rule.has_value()) {
     return *rule == footpath::kBan ? kNever : *rule;
@@ -53,9 +57,9 @@ duration_t get_walk(timetable const& tt,
 hash_map<transfer_pair, transfer_durations> get_transfer_durations(
     timetable const& tt,
     mutable_fws_multimap<location_idx_t, footpath> const& walks,
-    rule_index const& stop_rules,
     signatures const& sigs) {
   auto const& locs = tt.locations_;
+  auto const stop_rules = get_rule_index(tt);
 
   // Mark stops with qualified transfer rules.
   auto rule_stops = bitvec_map<location_idx_t>{};

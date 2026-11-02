@@ -63,6 +63,7 @@ U,U,6.0,2.0
 V,V,7.0,3.0
 W,W,7.0,2.0
 X,X,7.0,1.0
+Z,Z,-5.0,-5.0
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -80,6 +81,7 @@ ROUTE_7,AGENCY_1,Route 7,,3
 ROUTE_8,AGENCY_1,Route 8,,3
 ROUTE_9,AGENCY_1,Route 9,,3
 ROUTE_10,AGENCY_1,Route 10,,3
+ROUTE_11,AGENCY_1,Route 11,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id,shape_id,
@@ -99,6 +101,8 @@ ROUTE_7,SERVICE_1,TRIP_11,E,BLOCK_11,SHAPE_11,
 ROUTE_8,SERVICE_1,TRIP_12,E,BLOCK_12,SHAPE_12,
 ROUTE_9,SERVICE_1,TRIP_13,E,BLOCK_13,SHAPE_13,
 ROUTE_10,SERVICE_1,TRIP_14,E,BLOCK_14,,
+ROUTE_1,SERVICE_1,TRIP_1b,E,BLOCK_1b,SHAPE_1,
+ROUTE_11,SERVICE_1,TRIP_X,E,BLOCK_X,,
 
 # shapes.txt
 "shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence","shape_dist_traveled"
@@ -217,6 +221,16 @@ TRIP_13,13:05:00,13:05:00,O,5,0,0,
 TRIP_14,11:15:00,11:15:00,F,1,0,0,
 TRIP_14,12:15:00,12:15:00,S,2,0,0,
 TRIP_14,13:15:00,13:15:00,W,3,0,0,
+TRIP_1b,20:00:00,20:00:00,A,1,0,0,
+TRIP_1b,21:00:00,21:00:00,B,2,0,0,
+TRIP_1b,22:00:00,22:00:00,C,3,0,0,
+TRIP_1b,23:00:00,23:00:00,D,4,0,0,
+TRIP_X,10:00:00,10:00:00,Z,1,0,0,
+TRIP_X,10:50:00,10:50:00,B,2,0,0,
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+B,B,3,,,,TRIP_X,TRIP_1b
 
 )"sv;
 
@@ -324,6 +338,38 @@ TEST(
           },
           std::runtime_error);
     }
+  }
+  // TRIP_1b: the forbidden transfer TRIP_X -> TRIP_1b (TRIP_X -> TRIP_1 stays
+  // allowed) splits TRIP_1's route, the split route keeps the shape.
+  {
+    auto const run_of = [&](std::string const& id) {
+      transit_realtime::TripDescriptor td;
+      td.set_trip_id(id);
+      return rt::gtfsrt_resolve_run(date::sys_days{2024_y / January / 1}, tt,
+                                    &rtt, source_idx_t{0U}, td)
+          .first;
+    };
+    auto const r1 = run_of("TRIP_1");
+    auto const r1b = run_of("TRIP_1b");
+    ASSERT_TRUE(r1.valid());
+    ASSERT_TRUE(r1b.valid());
+    EXPECT_NE(tt.transport_route_[r1.t_.t_idx_],
+              tt.transport_route_[r1b.t_.t_idx_]);
+
+    leg_shape.clear();
+    rt::frun{tt, &rtt, r1b}.for_each_shape_point(
+        &shapes_data, interval{stop_idx_t{0U}, stop_idx_t{3U + 1U}},
+        plot_point);
+    EXPECT_EQ((geo::polyline{
+                  {1.0F, 1.0F},
+                  {0.5F, 1.5F},
+                  {1.0F, 2.0F},
+                  {0.5F, 2.5F},
+                  {1.0F, 3.0F},
+                  {0.5F, 3.5F},
+                  {1.0F, 4.0F},
+              }),
+              leg_shape);
   }
   // TRIP_6 (trip without shape)
   {
@@ -986,7 +1032,7 @@ TEST(
   // Loading statistics
   {
     EXPECT_EQ(
-        R"({"feeds":[{"idx":0,"firstDay":"2024-01-01","lastDay":"2024-01-01","noLocations":22,"noTrips":16,"transportsXDays":16}],"noRoutes":9,"profiles":[{"prf":0,"noFootpaths":2}]})",
+        R"({"feeds":[{"idx":0,"firstDay":"2024-01-01","lastDay":"2024-01-01","noLocations":23,"noTrips":18,"transportsXDays":18}],"noRoutes":11,"profiles":[{"prf":0,"noFootpaths":4}]})",
         to_str(get_metrics(tt), tt));
   }
 }

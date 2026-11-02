@@ -22,15 +22,17 @@ void rewrite_routes(
     vector_map<route_idx_t, route_idx_t> const& base_route,
     vecvec<route_idx_t, transport_idx_t> const& route_transports) {
   auto const n_routes = tt.route_transport_ranges_.size();
-  auto ranges = vector_map<route_idx_t, interval<transport_idx_t>>{};
-  auto time_ranges = vector_map<route_idx_t, interval<std::uint32_t>>{};
-  auto times = vector<delta>{};
   auto const& starts = route_transports.bucket_starts_;
+  auto& times = ctx.route_stop_times_;
+  tt.route_transport_ranges_.clear();
+  ctx.route_stop_time_ranges_.clear();
+  times.clear();
   for (auto r = route_idx_t{0U}; r != base_route.size(); ++r) {
     auto const o = base_route[r];
     auto const transports = route_transports[r];
-    ranges.emplace_back(transport_idx_t{starts[to_idx(r)]},
-                        transport_idx_t{starts[to_idx(r) + 1U]});
+    tt.route_transport_ranges_.emplace_back(
+        transport_idx_t{starts[to_idx(r)]},
+        transport_idx_t{starts[to_idx(r) + 1U]});
 
     auto const begin_times = times.size();
     auto const n_stops =
@@ -44,8 +46,9 @@ void rewrite_routes(
         times.push_back(tt.event_mam(o, t, i, event_type::kArr));
       }
     }
-    time_ranges.emplace_back(static_cast<std::uint32_t>(begin_times),
-                             static_cast<std::uint32_t>(times.size()));
+    ctx.route_stop_time_ranges_.emplace_back(
+        static_cast<std::uint32_t>(begin_times),
+        static_cast<std::uint32_t>(times.size()));
 
     if (r < n_routes) {
       continue;
@@ -69,9 +72,6 @@ void rewrite_routes(
       shapes->route_segment_bboxes_.emplace_back(segments);
     }
   }
-  tt.route_transport_ranges_ = std::move(ranges);
-  ctx.route_stop_time_ranges_ = std::move(time_ranges);
-  ctx.route_stop_times_ = std::move(times);
   compress_stop_times(tt, ctx);
 
   auto const& order = route_transports.data_;

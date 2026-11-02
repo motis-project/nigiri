@@ -23,7 +23,7 @@ using route_stop_idx_t = cista::strong<std::uint32_t, struct route_stop_>;
 using route_stop_pair_idx_t =
     cista::strong<std::uint32_t, struct route_stop_pair_>;
 
-constexpr auto const kBaseTransport = route_transport_idx_t{0U};
+constexpr auto const kBaseTransport = route_transport_idx_t::invalid();
 
 struct transfer {
   route_transport_idx_t from_;

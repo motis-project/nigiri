@@ -4,9 +4,8 @@
 #include <optional>
 #include <vector>
 
-#include "utl/verify.h"
+#include "utl/expect.h"
 
-#include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/import_context.h"
 #include "nigiri/loader/register.h"
 #include "nigiri/loader/virt/footpaths.h"
@@ -33,8 +32,6 @@ duration_t to_duration(duration_t const d) {
 vector_map<route_stop_idx_t, location_idx_t> add_virts(
     timetable& tt,
     import_context& ctx,
-    mutable_fws_multimap<location_idx_t, footpath> const& walks,
-    rule_index const& stop_rules,
     route_stop_pairs const& pairs,
     vector_map<route_stop_idx_t, route_stop_idx_t> const& route_stop_location) {
   auto virts = vector_map<route_stop_idx_t, location_idx_t>(
@@ -49,12 +46,15 @@ vector_map<route_stop_idx_t, location_idx_t> add_virts(
       virts[s] = base;
       continue;
     }
-    auto const fallback = get_walk(tt, walks, stop_rules, base, base);
+    auto const fallback = get_transfer_time(tt, base);
     auto const self = pairs.pair_of_.find(route_stop_pair{s, s});
-    auto const d = self == end(pairs.pair_of_)
-                       ? std::optional{fallback}
-                       : pick_duration(pairs.windows_[self->second], fallback);
-    utl::verify(d.has_value(), "virtual location without transfer time");
+    auto d = self == end(pairs.pair_of_)
+                 ? std::optional{fallback}
+                 : pick_duration(pairs.windows_[self->second], fallback);
+    if (!utl_expect(d.has_value(), "loader.virtual_locations",
+                    "virtual location without transfer time at {}", base)) {
+      d = fallback;
+    }
     auto l = location{};
     l.src_ = tt.locations_.src_[base];
     l.pos_ = tt.locations_.coordinates_[base];
@@ -73,34 +73,39 @@ vector_map<route_stop_idx_t, location_idx_t> add_virts(
   return virts;
 }
 
-void add_footpaths(
+mutable_fws_multimap<location_idx_t, footpath> get_virt_footpaths(
     timetable const& tt,
     hash_map<transfer_pair, transfer_durations> const& durations_of,
     route_stop_pairs const& pairs,
     vector_map<route_stop_idx_t, route_stop_idx_t> const& route_stop_location,
-    vector_map<route_stop_idx_t, location_idx_t> const& virts,
-    mutable_fws_multimap<location_idx_t, footpath>& durations) {
-  durations[location_idx_t{tt.n_locations() - 1U}];
+    vector_map<route_stop_idx_t, location_idx_t> const& virts) {
+  auto virt_footpaths = mutable_fws_multimap<location_idx_t, footpath>{};
+  virt_footpaths[location_idx_t{tt.n_locations() - 1U}];
   auto n_footpaths = std::size_t{0U};
   for (auto p = route_stop_pair_idx_t{0U}; p != pairs.pairs_.size(); ++p) {
-    auto const [a, c] = pairs.pairs_[p];
-    if (a == c || route_stop_location[a] != a || route_stop_location[c] != c ||
-        (pairs.is_base(a) && pairs.is_base(c))) {
+    auto const [a, b] = pairs.pairs_[p];
+    if (a == b  // self-transfer time is already set on virt locations
+        || route_stop_location[a] != a  // a joined another location
+        || route_stop_location[b] != b  // b joined another location
+        || (pairs.is_base(a) && pairs.is_base(b))) {
       continue;
     }
     auto const fallback = durations_of
                               .at(transfer_pair{pairs.route_stops_[a].base_,
-                                                pairs.route_stops_[c].base_})
+                                                pairs.route_stops_[b].base_})
                               .fallback_;
     auto const d = pick_duration(pairs.windows_[p], fallback);
-    utl::verify(d.has_value(), "location pair without duration");
-    if (*d == fallback) {
+    if (!utl_expect(d.has_value(), "loader.virtual_locations",
+                    "location pair without duration: {} -> {}", virts[a],
+                    virts[b]) ||
+        *d == fallback) {
       continue;
     }
-    durations[virts[a]].push_back(footpath{virts[c], to_duration(*d)});
+    virt_footpaths[virts[a]].push_back(footpath{virts[b], to_duration(*d)});
     ++n_footpaths;
   }
   log(log_lvl::info, "loader.virtual_locations", "{} footpaths", n_footpaths);
+  return virt_footpaths;
 }
 
 void write_routes(
@@ -124,6 +129,7 @@ void write_routes(
     }
     route_transports.emplace_back(transports);
   }
+
   auto seq = stop_seq_t{};
   auto const get_seq = [&](route_idx_t const q) -> stop_seq_t const& {
     auto const r = routes.base_route_[q];
@@ -147,16 +153,20 @@ void write_routes(
     }
     return seq;
   };
+
   for (auto q = route_idx_t{n_routes}; q != routes.base_route_.size(); ++q) {
     tt.route_location_seq_.emplace_back(get_seq(q));
   }
+
   for (auto r = route_idx_t{0U}; r != n_routes; ++r) {
     if (!sigs.has_rules(r)) {
       continue;
     }
     std::ranges::copy(get_seq(r), tt.route_location_seq_[r].begin());
   }
+
   rewrite_routes(tt, ctx, shapes, routes.base_route_, route_transports);
+
   log(log_lvl::info, "loader.virtual_locations", "{} routes -> {}", n_routes,
       tt.n_routes());
 }
@@ -166,43 +176,28 @@ void apply_transfer_rules(
     import_context& ctx,
     shapes_storage* shapes,
     mutable_fws_multimap<location_idx_t, footpath> const& walks) {
-  auto& loc = tt.locations_;
-  if (tt.transfer_rules_.rules_.empty()) {
-    write_default_profile(tt, walks);
-    return;
-  }
-
-  auto const timer = scoped_timer{"loader.virtual_locations"};
-  auto const stop_rules = get_rule_index(tt);
-  auto const sigs = get_signatures(tt);
-  auto const durations_of = get_transfer_durations(tt, walks, stop_rules, sigs);
-  auto pairs = get_route_stop_pairs(tt, sigs, durations_of);
-  auto const routes = split_routes(tt, durations_of, pairs);
-  auto const route_stop_location = merge_locations(durations_of, pairs);
-  auto const n_locations = tt.n_locations();
-  auto const virts =
-      add_virts(tt, ctx, walks, stop_rules, pairs, route_stop_location);
-  if (tt.n_locations() == n_locations) {
-    write_default_profile(tt, walks);
-    return;
-  }
-  auto durations = mutable_fws_multimap<location_idx_t, footpath>{};
-  add_footpaths(tt, durations_of, pairs, route_stop_location, virts, durations);
-  write_routes(tt, ctx, sigs, pairs, routes, route_stop_location, virts,
-               shapes);
-  write_default_profile(tt, walks, durations);
-
-  // Routed walks of other profiles (computed before) reach the virtual
-  // locations as well, importance counts at the root.
-  for (auto prf = profile_idx_t{1U}; prf != kNProfiles; ++prf) {
-    if (!loc.footpaths_out_[prf].empty()) {
-      expand_profile_to_virts(tt, prf);
+  auto virt_footpaths = mutable_fws_multimap<location_idx_t, footpath>{};
+  if (!tt.transfer_rules_.rules_.empty()) {
+    auto const timer = scoped_timer{"loader.virtual_locations"};
+    auto const sigs = get_signatures(tt);
+    auto const durations_of = get_transfer_durations(tt, walks, sigs);
+    auto pairs = get_route_stop_pairs(tt, sigs, durations_of);
+    auto const routes = split_routes(tt, durations_of, pairs);
+    auto const route_stop_location = merge_locations(durations_of, pairs);
+    auto const n_locations = tt.n_locations();
+    auto const virts = add_virts(tt, ctx, pairs, route_stop_location);
+    if (tt.n_locations() != n_locations) {
+      write_routes(tt, ctx, sigs, pairs, routes, route_stop_location, virts,
+                   shapes);
+      virt_footpaths = get_virt_footpaths(tt, durations_of, pairs,
+                                          route_stop_location, virts);
+      tt.location_location_groups_.resize(tt.n_locations());
+      if (tt.location_areas_.size() != 0U) {
+        tt.location_areas_.resize(tt.n_locations());
+      }
     }
   }
-  tt.location_location_groups_.resize(tt.n_locations());
-  if (tt.location_areas_.size() != 0U) {
-    tt.location_areas_.resize(tt.n_locations());
-  }
+  write_profiles(tt, walks, virt_footpaths);
 }
 
 }  // namespace nigiri::loader

@@ -29,6 +29,9 @@ using namespace std::string_view_literals;
 
 namespace {
 
+// TRIP_0 (earlier, same route as TRIP_1) and the forbidden transfer
+// TRIP_Z -> TRIP_1 at E (TRIP_Z -> TRIP_0 stays allowed) move TRIP_1 to a split
+// route with a virtual location of E: the real-time trips below stop at E too.
 mem_dir test_files() {
   return mem_dir::read(R"(
 # agency.txt
@@ -44,6 +47,7 @@ C,C,0.03,0.03
 D,D,0.04,0.04
 E,E,0.05,0.05
 F,F,0.06,0.06
+Z,Z,-5.0,-5.0
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -53,10 +57,13 @@ SERVICE_1,20230811,1
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_type
 ROUTE_1,AGENCY_1,Route 1,,3
+ROUTE_Z,AGENCY_1,Route Z,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id,
 ROUTE_1,SERVICE_1,TRIP_1,E,,
+ROUTE_1,SERVICE_1,TRIP_0,E,,
+ROUTE_Z,SERVICE_1,TRIP_Z,E,,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -66,6 +73,18 @@ TRIP_1,12:00:00,12:00:00,C,3,0,0
 TRIP_1,13:00:00,13:00:00,D,4,0,0
 TRIP_1,14:00:00,14:00:00,E,5,0,0
 TRIP_1,15:00:00,15:00:00,F,6,0,0
+TRIP_0,08:00:00,08:00:00,A,1,0,0
+TRIP_0,09:00:00,09:00:00,B,2,0,0
+TRIP_0,10:00:00,10:00:00,C,3,0,0
+TRIP_0,11:00:00,11:00:00,D,4,0,0
+TRIP_0,12:00:00,12:00:00,E,5,0,0
+TRIP_0,13:00:00,13:00:00,F,6,0,0
+TRIP_Z,11:00:00,11:00:00,Z,1,0,0
+TRIP_Z,11:55:00,11:55:00,E,2,0,0
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+E,E,3,,,,TRIP_Z,TRIP_1
 )");
 }
 

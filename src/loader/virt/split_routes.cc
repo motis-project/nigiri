@@ -8,8 +8,8 @@
 #include <utility>
 #include <vector>
 
+#include "utl/expect.h"
 #include "utl/helpers/algorithm.h"
-#include "utl/verify.h"
 #include "utl/zip.h"
 
 #include "nigiri/loader/virt/route_stop_pairs.h"
@@ -177,8 +177,10 @@ transport_routes split_routes(
     auto const to_groups = get_groups(p, false);
     auto const from_can_split = from_groups.has_conflicts();
     auto const to_can_split = to_groups.has_conflicts();
-    utl::verify(from_can_split || to_can_split,
-                "split_routes: inadmissible pair without groups");
+    if (!utl_expect(from_can_split || to_can_split, "loader.virtual_locations",
+                    "split_routes: inadmissible pair without groups")) {
+      continue;
+    }
 
     // Split preference:
     // - if only one side can split: the side that can split

@@ -197,16 +197,20 @@ void expand_to_virts(timetable& tt,
   write_profile(tt, prf, fps);
 }
 
-void write_default_profile(
+void expand_profile_to_virts(timetable& tt, profile_idx_t const prf) {
+  expand_to_virts(tt, prf, tt.locations_.footpaths_out_[prf], nullptr);
+}
+
+void write_profiles(
     timetable& tt,
     mutable_fws_multimap<location_idx_t, footpath> const& walks,
-    mutable_fws_multimap<location_idx_t, footpath> const& durations) {
-  auto const timer = scoped_timer{"loader.footpath.default_profile"};
+    mutable_fws_multimap<location_idx_t, footpath> const& virt_footpaths) {
+  auto const timer = scoped_timer{"loader.footpath.profiles"};
 
   auto rule_footpaths = get_rule_footpaths(tt);
-  for (auto l = location_idx_t{0U}; l != durations.size(); ++l) {
+  for (auto l = location_idx_t{0U}; l != virt_footpaths.size(); ++l) {
     auto bucket = rule_footpaths[l];
-    for (auto const fp : durations[l]) {
+    for (auto const fp : virt_footpaths[l]) {
       utl::erase_if(
           bucket, [&](footpath const x) { return x.target() == fp.target(); });
       bucket.push_back(fp);
@@ -215,10 +219,12 @@ void write_default_profile(
 
   auto const rule_fps = rule_index{std::move(rule_footpaths)};
   expand_to_virts(tt, kDefaultProfile, walks, &rule_fps);
-}
 
-void expand_profile_to_virts(timetable& tt, profile_idx_t const prf) {
-  expand_to_virts(tt, prf, tt.locations_.footpaths_out_[prf], nullptr);
+  for (auto prf = profile_idx_t{1U}; prf != kNProfiles; ++prf) {
+    if (!tt.locations_.footpaths_out_[prf].empty()) {
+      expand_profile_to_virts(tt, prf);
+    }
+  }
 }
 
 }  // namespace nigiri::loader
