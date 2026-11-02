@@ -57,7 +57,7 @@
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
-  commit=9c0c2674d03912eb463fefd10141e864856a58f5
+  commit=ba87d58cee5045f810674e464a15444ea541a5b7
 [wyhash]
   url=git@github.com:motis-project/wyhash.git
   branch=master
