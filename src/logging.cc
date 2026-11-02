@@ -2,7 +2,7 @@
 
 namespace nigiri {
 
-log_lvl s_verbosity = log_lvl::debug;
+log_lvl s_verbosity = log_lvl::info;
 
 scoped_timer::scoped_timer(std::string name)
     : name_{std::move(name)}, start_{std::chrono::steady_clock::now()} {

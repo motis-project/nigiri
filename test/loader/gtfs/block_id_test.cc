@@ -39,6 +39,7 @@ S5,STOP 5,Fifth Stop,49.872714,8.650961,,,
 S6,STOP 6,Sixth Stop,49.871787,8.643587,,,
 S7,STOP 7,Seventh Stop,49.870769,8.636022,,,
 S8,STOP 8,Eighth Stop,49.872501,8.628313,,,
+SZ,STOP Z,Far Stop,48.0,7.0,,,
 )"};
 
 constexpr auto const agency = std::string_view{
@@ -49,6 +50,7 @@ FunBus,The Fun Bus,http://www.thefunbus.org,Europe/Berlin,(310) 555-0222,en
 auto const routes = std::string_view{
     R"(route_id,route_short_name,route_long_name,route_desc,route_type,agency_id
 A,17,A,A Route,1,FunBus
+Z,99,Z,Z Route,1,FunBus
 )"};
 
 constexpr auto const trips =
@@ -59,6 +61,7 @@ A,T3_DAYS,T3,Trip 3,T3,1
 A,T4_DAYS,T4,Trip 4,T4,1
 A,T5_DAYS,T5,Trip 5,T5,1
 A,T6_DAYS,T6,Trip 6,T6,1
+Z,T6_DAYS,TZ,Trip Z,TZ,
 )";
 
 constexpr auto const stop_times =
@@ -83,7 +86,17 @@ T6,26:00:00,26:00:00,S4,64,0,0
 T6,27:00:00,27:00:00,S5,65,0,0
 T6,28:00:00,28:00:00,S6,66,0,0
 T6,29:00:00,29:00:00,S7,67,0,0
-T6,30:00:00,30:00:00,S8,68,0,0)";
+T6,30:00:00,30:00:00,S8,68,0,0
+TZ,23:00:00,23:00:00,SZ,1,0,0
+TZ,24:30:00,24:30:00,S4,2,0,0)";
+
+// The forbidden transfer TZ -> T6 at S4 gives the block T1 -> T3 -> T6 on
+// 2006-07-02 (one transport S1 .. S8) a virtual location at S4: the block has
+// to continue through it.
+constexpr auto const transfers =
+    R"(from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_trip_id,to_trip_id
+S4,S4,3,,TZ,T6
+)";
 
 constexpr auto const result =
     std::string_view{R"([2006-07-02 21:00, 2006-07-03 04:00]
@@ -110,10 +123,24 @@ TEST(gtfs, block_id) {
                {path{kCalendarDatesFile}, std::string{calendar_dates}},
                {path{kRoutesFile}, std::string{routes}},
                {path{kTripsFile}, std::string{trips}},
-               {path{kStopTimesFile}, std::string{stop_times}}}};
+               {path{kStopTimesFile}, std::string{stop_times}},
+               {path{kTransfersFile}, std::string{transfers}}}};
   ASSERT_TRUE(applicable(files));
 
   auto const tt = loader::load(files, {2006_y / 7 / 1, 2006_y / 8 / 1});
+
+  {
+    auto t6 = transport_idx_t::invalid();
+    for (auto t = trip_idx_t{0U}; t != tt.trip_id_strings_.size(); ++t) {
+      if (tt.trip_id_strings_[t].view() == "T6") {
+        t6 = tt.trip_transport_ranges_[t][0].first;
+      }
+    }
+    ASSERT_NE(transport_idx_t::invalid(), t6);
+    auto const seq = tt.route_location_seq_[tt.transport_route_[t6]];
+    ASSERT_EQ(8U, seq.size());
+    ASSERT_TRUE(tt.locations_.is_virt(stop{seq[3]}.location_idx()));
+  }
 
   auto const expect_no_transfers = [](routing::journey const& j) {
     return j.legs_.size() == 1U;

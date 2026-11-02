@@ -7,7 +7,6 @@
 #include "geo/box.h"
 
 #include "nigiri/loader/build_footpaths.h"
-#include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/compress_stop_times.h"
 #include "nigiri/loader/import_context.h"
 #include "nigiri/loader/register.h"
@@ -43,6 +42,9 @@ void register_special_stations(timetable& tt, import_context& ctx) {
 
 void build_location_tree(timetable& tt) {
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    if (tt.locations_.is_virt(l)) {
+      continue;
+    }
     auto box = geo::box{};
     box.extend(tt.locations_.coordinates_[l]);
     tt.locations_.rtree_.insert(box.min_.lnglat_float(),
@@ -97,8 +99,7 @@ void assign_importance(timetable& tt) {
                                        /* Bus  */ 2,
                                        /* Ship  */ 10,
                                        /* Other  */ 1};
-    auto const p = tt.locations_.parents_[l];
-    auto& x = importance[p == location_idx_t::invalid() ? l : p];
+    auto& x = importance[tt.locations_.get_root_idx(l)];
     for (auto const [clasz, t_count] : utl::enumerate(transport_counts)) {
       x += prio[clasz] * static_cast<float>(t_count);
     }
@@ -201,7 +202,10 @@ void rebuild_route_traffic_days(timetable& tt, import_context& ctx) {
   }
 }
 
-void finalize(timetable& tt, import_context& ctx, finalize_options const& opt) {
+void finalize(timetable& tt,
+              import_context& ctx,
+              finalize_options const& opt,
+              shapes_storage* shapes) {
   tt.location_routes_.resize(tt.n_locations());
 
   {
@@ -230,7 +234,6 @@ void finalize(timetable& tt, import_context& ctx, finalize_options const& opt) {
         make_sparse_vecvec(ctx.trip_ticketing_identifier_);
     tt.trip_stop_seq_numbers_ =
         make_sparse_vecvec(std::move(ctx.trip_stop_seq_numbers_));
-    ctx.children_ = {};
     ctx.route_id_trips_ = {};
     ctx.location_group_locations_ = {};
     ctx.location_location_groups_ = {};
@@ -260,17 +263,16 @@ void finalize(timetable& tt, import_context& ctx, finalize_options const& opt) {
                        std::tie(tt.providers_[b].src_, tt.providers_[b].id_);
               });
   }
-  build_footpaths(tt, ctx, opt);
+  build_footpaths(tt, ctx, opt, shapes);
   {
     auto const timer = scoped_timer{"loader.compact_trip_transport_ranges"};
     tt.trip_transport_ranges_ = make_sparse_vecvec(ctx.trip_transport_ranges_);
     tt.locations_.equivalences_ = cista::raw::make_vecvec(ctx.equivalences_);
     ctx.trip_transport_ranges_ = {};
     ctx.equivalences_ = {};
+    ctx.children_ = {};
   }
   rebuild_route_traffic_days(tt, ctx);
-  build_lb_graph<direction::kForward>(tt, kDefaultProfile);
-  build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
   build_location_tree(tt);
   assign_stops_to_flex_areas(tt);
   assign_importance(tt);
@@ -283,13 +285,11 @@ void finalize(timetable& tt, import_context& ctx, finalize_options const& opt) {
 
 void finalize(timetable& tt,
               import_context& ctx,
-              bool const adjust_footpaths,
               bool const merge_dupes_intra_src,
               bool const merge_dupes_inter_src,
               std::uint16_t const max_footpath_length) {
   finalize(tt, ctx,
-           {adjust_footpaths, merge_dupes_intra_src, merge_dupes_inter_src,
-            max_footpath_length});
+           {merge_dupes_intra_src, merge_dupes_inter_src, max_footpath_length});
 }
 
 }  // namespace nigiri::loader

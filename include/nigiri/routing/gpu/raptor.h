@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "nigiri/common/delta_t.h"
+#include "nigiri/constants.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
@@ -20,8 +21,10 @@
 
 namespace nigiri::routing::gpu {
 
-inline bool gpu_supported(query const& q, rt_timetable const* = nullptr) {
-  return q.via_stops_.empty();
+inline bool is_gpu_supported(query const& q,
+                             rt_timetable const* rtt = nullptr) {
+  return q.via_stops_.empty() &&
+         (rtt == nullptr || rtt->n_rt_locations() <= kRtLocationCapacity);
 }
 
 struct gpu_timetable {
@@ -67,7 +70,7 @@ struct gpu_raptor {
       gpu_raptor_state& state,
       bitvec& is_dest,
       std::array<bitvec, kMaxVias> const& is_via,
-      std::vector<std::uint16_t> const& dist_to_dest,
+      std::vector<std::uint16_t>& dist_to_dest,
       hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
       std::vector<std::uint16_t> const& lb,
       std::vector<via_stop> const& via_stops,
@@ -105,6 +108,10 @@ private:
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + to_idx(base_) * date::days{1};
   }
+
+  duration_t get_unadjusted_transfer_time(location_idx_t from,
+                                          location_idx_t to,
+                                          duration_t adjusted) const;
 
   timetable const& tt_;
   rt_timetable const* rtt_;

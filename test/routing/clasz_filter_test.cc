@@ -23,6 +23,9 @@ namespace {
 // ROUTING CONNECTIONS:
 // 10:00 - 11:00 A-C    airplane direct
 // 10:00 - 12:00 A-B-C  train, one transfer
+// 20:05 - 21:00 B-C    train T2b, route of T2: the forbidden transfer
+//                      TZ -> T2b at B splits it (TZ -> T2 stays allowed), the
+//                      split route has to keep the regional class
 constexpr auto const test_files = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -34,18 +37,22 @@ stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_stat
 A,A,,0.0,1.0,,
 B,B,,2.0,3.0,,
 C,C,,4.0,5.0,,
+Z,Z,,-5.0,-5.0,,
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
 AIR,LH,X,,,1100
 R1,DB,1,,,3
 R2,DB,2,,,2
+R9,DB,9,,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
 AIR,S1,AIR,,
 R1,S1,T1,,
 R2,S1,T2,,
+R2,S1,T2b,,
+R9,S1,TZ,,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -55,10 +62,18 @@ T1,10:00:00,10:00:00,A,0,0,0
 T1,10:55:00,10:55:00,B,1,0,0
 T2,11:05:00,11:05:00,B,0,0,0
 T2,12:00:00,12:00:00,C,1,0,0
+T2b,20:05:00,20:05:00,B,0,0,0
+T2b,21:00:00,21:00:00,C,1,0,0
+TZ,10:00:00,10:00:00,Z,0,0,0
+TZ,11:00:00,11:00:00,B,1,0,0
 
 # calendar_dates.txt
 service_id,date,exception_type
 S1,20240301,1
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+B,B,3,,,,TZ,T2b
 )"sv;
 
 constexpr auto const expected =
@@ -119,6 +134,25 @@ leg 2: (B, B) [2024-03-01 10:15] -> (C, C) [2024-03-01 11:10]
 
 )"sv;
 
+constexpr auto const expected_B_C_regional = R"(
+[2024-03-01 10:05, 2024-03-01 11:00]
+TRANSFERS: 0
+     FROM: (B, B) [2024-03-01 10:05]
+       TO: (C, C) [2024-03-01 11:00]
+leg 0: (B, B) [2024-03-01 10:05] -> (C, C) [2024-03-01 11:00]
+   0: B       B...............................................                               d: 01.03 10:05 [01.03 11:05]  [{name=2, day=2024-03-01, id=T2, src=0}]
+   1: C       C............................................... a: 01.03 11:00 [01.03 12:00]
+
+[2024-03-01 19:05, 2024-03-01 20:00]
+TRANSFERS: 0
+     FROM: (B, B) [2024-03-01 19:05]
+       TO: (C, C) [2024-03-01 20:00]
+leg 0: (B, B) [2024-03-01 19:05] -> (C, C) [2024-03-01 20:00]
+   0: B       B...............................................                               d: 01.03 19:05 [01.03 20:05]  [{name=2, day=2024-03-01, id=T2b, src=0}]
+   1: C       C............................................... a: 01.03 20:00 [01.03 21:00]
+
+)"sv;
+
 }  // namespace
 
 template <typename... T>
@@ -162,6 +196,14 @@ TEST(routing, clasz_filter_test) {
                       direction::kForward, make_mask(clasz::kShip));
 
     EXPECT_TRUE(results.size() == 0U);
+  }
+
+  {  // Regional only from B: T2 and T2b (split route).
+    auto const results =
+        raptor_search(tt, nullptr, "B", "C", tt.date_range_,
+                      direction::kForward, make_mask(clasz::kRegional));
+
+    EXPECT_EQ(expected_B_C_regional, to_string(tt, results));
   }
 
   // Update.

@@ -30,6 +30,7 @@ DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
 stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
 A,A,,0.0,1.0,,
 B,B,,0.02,1.03,,
+Z,Z,,-5.0,-5.0,,
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -38,15 +39,26 @@ S1,20190501,1
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
 R1,DB,RE 1,,,3
+R9,DB,9,,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
 R1,S1,T1,RE 1,
+R1,S1,T0,RE 1,
+R9,S1,TZ,9,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
 T1,10:00:00,10:00:00,A,1,0,0
 T1,11:00:00,11:00:00,B,2,0,0
+T0,08:00:00,08:00:00,A,1,0,0
+T0,09:00:00,09:00:00,B,2,0,0
+TZ,07:00:00,07:00:00,Z,1,0,0
+TZ,07:55:00,07:55:00,A,2,0,0
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+A,A,3,,,,TZ,T1
 )");
 }
 
@@ -87,6 +99,10 @@ TEST(rt, delay_test) {
   auto const stop_update_b = e->mutable_trip_update()->add_stop_time_update();
   stop_update_b->set_stop_sequence(2U);
   stop_update_b->mutable_arrival()->set_delay(0);  // on time
+
+  // The forbidden transfer TZ -> T1 at A (TZ -> T0 stays allowed) moves T1 to
+  // a split route (stop A becomes a virtual location of A).
+  ASSERT_EQ(3U, tt.n_routes());
 
   auto const stats =
       rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
@@ -139,6 +155,7 @@ C1,C,,0.02,1.03,,0,C
 C2,C,,0.0201,1.03,,0,C
 D,D,,0.04,1.06,,
 E,E,,0.06,1.09,,
+Z,Z,,-5.0,-5.0,,
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -153,6 +170,8 @@ route_id,service_id,trip_id,trip_headsign,block_id
 R1,S1,T1,RE 1,
 R1,S1,T2,RE 1,
 R1,S1,T3,RE 1,
+R1,S1,T3a,RE 1,
+R1,S1,TZ,RE 1,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -169,8 +188,32 @@ T3,12:00:00,12:00:00,A,1,0,0
 T3,12:10:00,12:10:00,C1,2,0,0
 T3,12:20:00,12:20:00,D,3,0,0
 T3,12:30:00,12:30:00,E,4,0,0
+T3a,11:45:00,11:45:00,A,1,0,0
+T3a,11:55:00,11:55:00,C1,2,0,0
+T3a,12:05:00,12:05:00,D,3,0,0
+T3a,12:15:00,12:15:00,E,4,0,0
+TZ,11:00:00,11:00:00,Z,1,0,0
+TZ,11:50:00,11:50:00,C1,2,0,0
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+C1,C1,3,,,,TZ,T3
 )"),
                                {2019_y / May / 1, 2019_y / May / 2});
+
+  // The forbidden transfer TZ -> T3 at C1 (TZ -> T3a stays allowed) moves T3
+  // to a split route (stop C1 becomes a virtual location of C1).
+  {
+    auto const route_of = [&](std::string_view const id) {
+      for (auto t = trip_idx_t{0U}; t != tt.trip_id_strings_.size(); ++t) {
+        if (tt.trip_id_strings_[t].view() == id) {
+          return tt.transport_route_[tt.trip_transport_ranges_[t][0].first];
+        }
+      }
+      return route_idx_t::invalid();
+    };
+    ASSERT_NE(route_of("T3"), route_of("T3a"));
+  }
 
   auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
   rt::gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "tag",

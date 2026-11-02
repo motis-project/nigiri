@@ -32,8 +32,6 @@ struct import_context {
 
   mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
   mutable_fws_multimap<location_idx_t, location_idx_t> children_;
-  mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
-  mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
 
   vector_map<source_idx_t, paged_vecvec<route_id_idx_t, trip_idx_t>>
       route_id_trips_;

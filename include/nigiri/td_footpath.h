@@ -1,6 +1,8 @@
 #pragma once
 
+#include <map>
 #include <span>
+#include <vector>
 
 #include "cista/reflection/comparable.h"
 
@@ -15,7 +17,10 @@
 
 namespace nigiri {
 
+struct timetable;
+
 constexpr auto const kNull = unixtime_t{0_minutes};
+constexpr auto const kTdFootpathBan = duration_t::max();
 
 struct td_footpath {
   CISTA_FRIEND_COMPARABLE(td_footpath)
@@ -31,7 +36,7 @@ get_td_duration(Collection const& c, unixtime_t const t) {
 
   if constexpr (SearchDir == direction::kForward) {
     for (auto i = cbegin(c); i != cend(c); ++i) {
-      if (i->duration_ == footpath::kMaxDuration ||
+      if (i->duration_ == kTdFootpathBan ||
           (i->valid_from_ < t && (i + 1) != cend(c) &&
            (i + 1)->valid_from_ <= t)) {
         continue;
@@ -46,8 +51,7 @@ get_td_duration(Collection const& c, unixtime_t const t) {
 
   } else /* (SearchDir == direction::kBackward) */ {
     for (auto i = crbegin(c); i != crend(c); ++i) {
-      if (i->duration_ == footpath::kMaxDuration ||
-          i->valid_from_ + i->duration_ > t) {
+      if (i->duration_ == kTdFootpathBan || i->valid_from_ + i->duration_ > t) {
         continue;
       }
 
@@ -80,7 +84,7 @@ get_td_duration(direction const search_dir,
 
 // Callback: target, duration and walking time. The duration includes waiting
 // for the footpath to become usable and is not limited to
-// footpath::kMaxDuration, the walking time doesn't include waiting.
+// footpath::kMax, the walking time doesn't include waiting.
 template <direction SearchDir, typename Collection, typename Fn>
 void for_each_footpath(Collection const& c, unixtime_t const t, Fn&& f) {
   utl::equal_ranges_linear(
@@ -105,5 +109,11 @@ void for_each_footpath(direction const search_dir,
       ? for_each_footpath<direction::kForward>(c, t, std::forward<Fn>(f))
       : for_each_footpath<direction::kBackward>(c, t, std::forward<Fn>(f));
 }
+
+// Time-dependent walks between stops (by their source) ignore transfer rules:
+// a virtual location walks like its stop. They replace all static walks of
+// their source, so they connect its locations.
+void expand_td_footpaths_to_virts(
+    timetable const&, std::map<location_idx_t, std::vector<td_footpath>>&);
 
 }  // namespace nigiri

@@ -6,6 +6,7 @@
 #include "nigiri/loader/load.h"
 #include "nigiri/common/span_cmp.h"
 #include "nigiri/rt/create_rt_timetable.h"
+#include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
@@ -55,6 +56,7 @@ R2,S1,Trip 2,,,Interior
 R3,S1,Trip 3,,,Last
 R4,S1,Trip 4,,,
 R5,S1,Trip 5,,,Sec1
+R1,S1,Trip 1b,,,not used
 
 # shapes.txt
 "shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
@@ -97,6 +99,13 @@ Trip 5,10:15:00,10:15:00,B,3,0,0
 Trip 5,10:30:00,10:30:00,C,5,0,0
 Trip 5,10:45:00,10:45:00,G,8,0,0
 Trip 5,11:00:00,11:00:00,F,13,0,0
+Trip 1b,11:05:00,11:05:00,F,0,0,0
+Trip 1b,11:20:00,11:20:00,E,1,0,0
+Trip 1b,11:35:00,11:35:00,D,2,0,0
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+F,F,3,,,,Trip 5,Trip 1
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -178,6 +187,41 @@ TEST(shape, single_trip_with_shape) {
           shapes_data.get_bounding_box(route_idx_t{2}, 2);
       ASSERT_TRUE(before_last_extend.has_value());
       EXPECT_EQ((geo::make_box({{5.0, 2.0}, {6.0, 3.0}})), *before_last_extend);
+    }
+  }
+
+  // The forbidden transfer Trip 5 -> Trip 1 splits route R1: the split route
+  // keeps the shapes and bounding boxes of its base route.
+  {
+    auto const transport_of = [&](std::string_view const id) {
+      for (auto t = trip_idx_t{0U}; t != tt.trip_id_strings_.size(); ++t) {
+        if (tt.trip_id_strings_[t].view() == id) {
+          return tt.trip_transport_ranges_[t][0].first;
+        }
+      }
+      return transport_idx_t::invalid();
+    };
+    auto const shape_of = [&](std::string_view const id) {
+      auto shape = geo::polyline{};
+      rt::frun::from_t(tt, nullptr,
+                       {transport_of(id), tt.day_idx(2024_y / March / 1)})
+          .for_each_shape_point(
+              &shapes_data, interval{stop_idx_t{0U}, stop_idx_t{3U}},
+              [&](geo::latlng const& p) { shape.push_back(p); });
+      return shape;
+    };
+    auto const expected = geo::polyline{{1.0, 4.0}, {0.0, 3.0}, {0.0, 2.0}};
+    EXPECT_EQ(expected, shape_of("Trip 1"));
+    EXPECT_EQ(expected, shape_of("Trip 1b"));
+
+    auto const base = tt.transport_route_[transport_of("Trip 1")];
+    auto const split = tt.transport_route_[transport_of("Trip 1b")];
+    ASSERT_NE(base, split);
+    EXPECT_EQ(shapes_data.get_bounding_box(base),
+              shapes_data.get_bounding_box(split));
+    for (auto segment = 0U; segment != 2U; ++segment) {
+      EXPECT_EQ(shapes_data.get_bounding_box(base, segment),
+                shapes_data.get_bounding_box(split, segment));
     }
   }
 }

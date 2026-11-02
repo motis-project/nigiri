@@ -11,6 +11,8 @@ namespace nigiri::loader {
 
 void compress_stop_times(timetable& tt, import_context& ctx) {
   auto const n_transports = tt.transport_route_.size();
+  tt.route_times_.clear();
+  tt.pattern_offsets_.clear();
   tt.transport_first_dep_.resize(n_transports);
   tt.transport_pattern_.resize(n_transports);
   tt.route_times_.reserve(tt.n_routes());

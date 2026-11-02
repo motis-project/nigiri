@@ -13,10 +13,14 @@
 #include "utl/timing.h"
 
 #include "nigiri/location_match_mode.h"
+#include "nigiri/logging.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/leg_alternatives.h"
+#include "nigiri/routing/raptor/reconstruct.h"
+#include "nigiri/routing/search_location.h"
+#include "nigiri/routing/start_times.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/types.h"
@@ -233,7 +237,7 @@ routing_result pong(timetable const& tt,
   };
   auto const get_result_count = [&](bool const include_too_slow) {
     return utl::count_if(*result.journeys_, [&](journey const& j) {
-      return is_validated(j) &&
+      return j.is_reconstructed_ && !j.error_ && is_validated(j) &&
              (include_too_slow || (j.travel_time() < fastest_direct &&
                                    j.travel_time() <= q.max_travel_time_));
     });
@@ -341,7 +345,12 @@ routing_result pong(timetable const& tt,
       trace_pong("---- HIT [updating ping start time {} -> {}]\n",
                  ping_j.start_time_, match->dest_time_);
       if (!match->is_reconstructed_ && !match->error_) {
-        po.reconstruct(q, *match);
+        try {
+          po.reconstruct(q, *match);
+        } catch (std::exception const& e) {
+          match->error_ = true;
+          log(log_lvl::error, "pong", "reconstruct failed: {}", e.what());
+        }
       }
       ping_j.start_time_ = match->dest_time_;
     };
@@ -443,6 +452,7 @@ routing_result pong(timetable const& tt,
   }
 
   for (auto& j : s_state.results_) {
+    auto has_alternative = false;
     for (auto const [transit_1, transfer_1, transit_2, transfer_2, transit_3] :
          utl::nwise<5>(j.legs_)) {
       if (!std::holds_alternative<journey::run_enter_exit>(transit_1.uses_) ||
@@ -464,15 +474,19 @@ routing_result pong(timetable const& tt,
 
       auto const dep_time = to.time(event_type::kDep);
 
-      auto const earlier =
-          get_earliest_alternative(tt, rtt, q, from.get_location_idx(),
-                                   to.get_location_idx(), arr_time, dep_time);
+      auto const earlier = get_earliest_alternative(
+          tt, rtt, q, search_location(q.prf_idx_, from),
+          search_location(q.prf_idx_, to), arr_time, dep_time);
 
       if (earlier.has_value()) {
         transfer_1 = earlier->at(0);
         transit_2 = earlier->at(1);
         transfer_2 = earlier->at(2);
+        has_alternative = true;
       }
+    }
+    if (has_alternative) {
+      finalize_journey(tt, rtt, q, j);
     }
   }
 
@@ -531,6 +545,7 @@ routing_result pong_search(timetable const& tt,
                            query q,
                            direction search_dir,
                            std::optional<std::chrono::seconds> timeout) {
+  expand_td_offsets(tt, q);
   if (search_dir == direction::kForward) {
     return pong_search_with_dir<direction::kForward>(tt, rtt, s_state, r_state,
                                                      std::move(q), timeout);

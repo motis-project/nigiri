@@ -277,7 +277,7 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
                               location_match_mode const match_mode,
                               location_idx_t const l) {
     return utl::any_of(offsets, [&](offset const& o) {
-      return matches(tt_, match_mode, o.target(), l);
+      return matches(tt_, nullptr, match_mode, o.target(), l);
     });
   };
 

@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "utl/enumerate.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
 #include "utl/timer.h"
 #include "utl/verify.h"
@@ -56,10 +57,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   alerts_.rt_transport_.emplace_back_empty();
 
   for (auto const s : location_seq) {
-    auto rt_transports = location_rt_transports_[stop{s}.location_idx()];
-    if (rt_transports.empty() || rt_transports.back() != rt_t) {
-      rt_transports.push_back(rt_t);
-    }
+    add_location_rt_transport(stop{s}.location_idx(), rt_t);
   }
 
   if (time_seq.empty() && r != route_idx_t::invalid()) {
@@ -188,6 +186,45 @@ void rt_timetable::set_track(rt_transport_idx_t const rt_t,
   bucket[static_cast<std::size_t>(ev_idx)] = track_strings_.store(track);
 }
 
+void rt_timetable::update_stop_location(rt_transport_idx_t const rt_t,
+                                        stop_idx_t const stop_idx,
+                                        location_idx_t const l) {
+  auto const is_rt = is_rt_location(l);
+
+  auto seq = rt_transport_location_seq_[rt_t];
+  seq[stop_idx] = stop{seq[stop_idx]}.with_location(static_location(l)).value();
+
+  if (is_rt || !rt_stop_virts(rt_t).empty()) {
+    auto locs = rt_stop_virts_[rt_t];
+    locs.resize(static_cast<std::uint32_t>(seq.size()),
+                location_idx_t::invalid());
+    locs[stop_idx] = is_rt ? l : location_idx_t::invalid();
+  }
+
+  add_location_rt_transport(l, rt_t);
+  add_location_rt_transport(static_location(l), rt_t);
+}
+
+void rt_timetable::add_location_rt_transport(location_idx_t const l,
+                                             rt_transport_idx_t const rt_t) {
+  auto transports = location_rt_transports_[l];
+  auto const it = std::lower_bound(begin(transports), end(transports), rt_t);
+  if (it == end(transports) || *it != rt_t) {
+    transports.insert(it, rt_t);
+  }
+}
+
+location_idx_t rt_timetable::add_rt_location(location_idx_t const parent) {
+  auto const l = location_idx_t{n_locations()};
+  utl::verify(l < footpath::kMaxTarget, "rt location index overflow");
+  rt_location_parents_.push_back(parent);
+  rt_virts_[parent].push_back(l);
+  location_rt_transports_[l];
+  rt_footpaths_out_.resize(n_locations());
+  rt_footpaths_in_.resize(n_locations());
+  return l;
+}
+
 std::optional<std::string_view> rt_timetable::get_track(
     rt_transport_idx_t const rt_t,
     stop_idx_t const stop_idx,
@@ -266,8 +303,8 @@ void add_lb_edge(timetable const& tt,
 
         if (it != end(lbs)) {
           // The same target did exist already. Update existing.
-          it->duration_ = static_cast<location_idx_t::value_t>(
-              std::min(footpath::kMaxDuration, travel_time).count());
+          *it = new_fp;
+          return;
         }
 
         // The same target did not exist yet. Push new.
@@ -295,6 +332,7 @@ void rt_timetable::update_lbs(timetable const& tt) {
         t.is_valid()
             ? std::span{tt.route_location_seq_[tt.transport_route_[t.t_idx_]]}
             : std::span<stop::value_type const>{};
+
     for (auto i = stop_idx_t{0U}; i != n_segments; ++i) {
       auto const j = static_cast<stop_idx_t>(i + 1U);
       auto const travel_time =
@@ -310,9 +348,10 @@ void rt_timetable::update_lbs(timetable const& tt) {
         continue;
       }
 
+      // Skip if segment isn't faster in rt_timetable than in static timetable.
       auto const from = stop{loc_seq[i]}.location_idx();
       auto const to = stop{loc_seq[j]}.location_idx();
-      if (static_seq.size() == loc_seq.size() &&
+      if (static_seq.size() == loc_seq.size() && travel_time < footpath::kMax &&
           stop{static_seq[i]}.location_idx() == from &&
           stop{static_seq[j]}.location_idx() == to &&
           travel_time >= (tt.event_mam(t.t_idx_, j, event_type::kArr) -
@@ -320,9 +359,21 @@ void rt_timetable::update_lbs(timetable const& tt) {
                              .as_duration()) {
         continue;
       }
+
       add_lb_edge(tt, *this, tt.locations_.get_root_idx(from),
                   tt.locations_.get_root_idx(to), travel_time, tmp_fwd_lbs,
                   tmp_bwd_lbs);
+    }
+  }
+
+  auto const root = [&](location_idx_t const l) {
+    return tt.locations_.get_root_idx(base(l));
+  };
+  for (auto from = location_idx_t{0U}; from != rt_footpaths_out_.size();
+       ++from) {
+    for (auto const fp : rt_footpaths_out_[from]) {
+      add_lb_edge(tt, *this, root(from), root(fp.target()), fp.duration(),
+                  tmp_fwd_lbs, tmp_bwd_lbs);
     }
   }
 

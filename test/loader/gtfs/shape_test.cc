@@ -1,6 +1,5 @@
 #include "gtest/gtest.h"
 
-#include <filesystem>
 #include <ranges>
 #include <sstream>
 #include <vector>
@@ -13,7 +12,6 @@
 #include "nigiri/common/span_cmp.h"
 #include "nigiri/shapes_storage.h"
 
-namespace fs = std::filesystem;
 using namespace nigiri;
 using namespace nigiri::loader::gtfs;
 
@@ -32,8 +30,7 @@ TEST(gtfs, shape_get_existing_shape_points) {
 )";
 
   auto shapes_data =
-      shapes_storage{fs::temp_directory_path() / "shape-test-builder",
-                     cista::mmap::protection::WRITE};
+      shapes_storage{"shape-test-builder", cista::mmap::protection::WRITE};
   auto const shape_states = parse_shapes(kShapesData, shapes_data);
   auto const& shapes = shape_states.id_map_;
 
@@ -66,9 +63,8 @@ TEST(gtfs, shape_not_ascending_sequence) {
 1,50.636259,6.473668,0
 )";
 
-  auto shapes_data = shapes_storage{
-      fs::temp_directory_path() / "shape-test-not-ascending-sequence",
-      cista::mmap::protection::WRITE};
+  auto shapes_data = shapes_storage{"shape-test-not-ascending-sequence",
+                                    cista::mmap::protection::WRITE};
   auto const shape_states = parse_shapes(kShapesData, shapes_data);
   auto const& shapes = shape_states.id_map_;
 
@@ -94,9 +90,8 @@ TEST(gtfs, shape_shuffled_rows) {
 235,51.543652,7.217830,1
 )";
 
-  auto shapes_data =
-      shapes_storage{fs::temp_directory_path() / "shape-test-shuffled-rows",
-                     cista::mmap::protection::WRITE};
+  auto shapes_data = shapes_storage{"shape-test-shuffled-rows",
+                                    cista::mmap::protection::WRITE};
   auto const shape_states = parse_shapes(kShapesData, shapes_data);
   auto const& shapes = shape_states.id_map_;
 
@@ -146,9 +141,8 @@ TEST(gtfs, shape_delay_insert_no_ascending_sequence) {
 2,51.473214,7.139521,0
 1,50.636259,6.473668,0
 )";
-  auto shapes_data = shapes_storage{
-      fs::temp_directory_path() / "shape-test-not-ascending-sequence",
-      cista::mmap::protection::WRITE};
+  auto shapes_data = shapes_storage{"shape-test-not-ascending-sequence",
+                                    cista::mmap::protection::WRITE};
   auto const shape_states = parse_shapes(kShapesData, shapes_data);
   auto const& shapes = shape_states.id_map_;
 

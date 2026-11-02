@@ -1,3 +1,5 @@
+#pragma once
+
 #include "nigiri/routing/journey.h"
 
 #include "nigiri/routing/pareto_set.h"

@@ -5,5 +5,6 @@ namespace nigiri {
 constexpr auto kWalkSpeed = 1.5;  // m/s
 constexpr auto kMaxTransitSpeed = 100;  // m/s
 constexpr auto kMaxTransferTime = 1440;  // minutes
+constexpr auto kRtLocationCapacity = 4096U;
 
 }  // namespace nigiri
