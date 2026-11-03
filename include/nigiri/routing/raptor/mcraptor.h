@@ -20,6 +20,7 @@
 #include "nigiri/routing/mc_criteria.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/bmrap_bounds.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/td_footpath.h"
@@ -344,6 +345,9 @@ struct basic_mcraptor {
   using algo_stats_t = raptor_stats;
 
   static constexpr bool kUseLowerBounds = true;
+  // Whether a caller that always sets bounds_ (bmrap_profile.cc) still needs a
+  // real lb array: no, effective_lb() ignores lb_ once bounded.
+  static constexpr bool kNeedsLbWhenBounded = false;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
   static constexpr auto const kUnreachable =
@@ -384,6 +388,11 @@ struct basic_mcraptor {
       std::uint8_t max_transfers,
       std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
       pareto_set<journey>& results);
+
+  // BM-RAPTOR main search: bounds from the backward pruning search discard
+  // arrivals that cannot reach the target within the remaining trip budget and
+  // arrival slack. nullptr = plain McRAPTOR. Must share this search's base day.
+  void set_bounds(bmrap_bounds const* b) { bounds_ = b; }
 
   void reconstruct(query const&, journey&);
 
@@ -453,6 +462,32 @@ private:
                    bool by_route);
   delta_t transfer_buffer(std::uint64_t l) const;
 
+  // An arrival at stop l in round k at time t is discarded iff t is worse than
+  // tau_dep^<-(l, budget - k). `slack` loosens the bound for footpath arrivals,
+  // which pay no transfer buffer at l: the stored bound is post-transfer, right
+  // for transit arrivals but one buffer too tight for footpaths.
+  bool bound_prunes(unsigned const k,
+                    std::uint32_t const l,
+                    delta_t const t,
+                    int const slack = 0) const {
+    if (bounds_ == nullptr) {
+      return false;
+    }
+    // budget of the current start time, not the matrix-wide maximum
+    auto const budget = std::min<unsigned>(cur_budget_, bounds_->budget_);
+    if (k > budget) {
+      return true;
+    }
+    return !is_better_or_eq(
+        t, clamp(static_cast<int>(bounds_->at(budget - k, l)) + slack));
+  }
+
+  // 0 is always a valid lower bound. Under BM-RAPTOR bound_prunes() is already
+  // a tighter feasibility cutoff, so lb_ is only needed when unbounded.
+  std::uint16_t effective_lb(std::uint32_t const l_idx) const {
+    return bounds_ == nullptr ? lb_[l_idx] : std::uint16_t{0U};
+  }
+
   // Destination pruning: a pareto frontier over (round, criteria); a candidate
   // is pruned iff its lb projection is dominated by an entry of no more rounds.
   // Persists across start times.
@@ -510,6 +545,9 @@ private:
   std::vector<std::uint16_t> const& lb_;
   // search-window bound only; dest_bag_ owns destination pruning
   delta_t worst_at_dest_;
+  bmrap_bounds const* bounds_{nullptr};  // nullptr = plain McRAPTOR
+  // trips (max_transfers + 1) of the start time being executed
+  unsigned cur_budget_{0U};
   std::vector<dest_entry> dest_bag_;
   // current start's departure, tagged onto inserted labels (see label::dep_)
   delta_t cur_dep_{};

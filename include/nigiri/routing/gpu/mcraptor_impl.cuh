@@ -508,6 +508,29 @@ struct mcraptor_impl {
     prev_station_mark_.swap_reset(station_mark_);
   }
 
+  // BM-RAPTOR bound pruning, see basic_mcraptor::bound_prunes(); `slack`
+  // relaxes the bound by a stop's transfer buffer for footpath arrivals.
+  __device__ __forceinline__ bool bound_prunes(unsigned const k,
+                                               std::uint32_t const l,
+                                               delta_t const t,
+                                               int const slack = 0) {
+    if (!has_bounds_) {
+      return false;
+    }
+    // the CURRENT start time's trip budget, not the matrix-wide maximum:
+    // every departure has its own floor(sigma_tr * K(d))
+    auto const budget =
+        cur_budget_ < bounds_budget_ ? cur_budget_ : bounds_budget_;
+    if (k > budget) {
+      return true;
+    }
+    return !is_better_or_eq(
+        t, clamp(static_cast<int>(bounds_[static_cast<std::size_t>(budget - k) *
+                                              bounds_n_locations_ +
+                                          l]) +
+                 slack));
+  }
+
   // ---- route scan (CPU update_route) ---------------------------------------
 
   __device__ __forceinline__ int transfer_buffer(std::uint32_t const l) const {
@@ -537,7 +560,8 @@ struct mcraptor_impl {
       return false;
     }
     auto const ride_extras = crit_after_ride(carried, cl);
-    if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
+    if (dest_dominates(k, ride_key + l_lb, ride_extras) ||
+        bound_prunes(k, l_idx, by_transport)) {
       return false;
     }
     breadcrumb.arr_ = clamp(by_transport + transfer_buffer(l_idx));
@@ -1240,7 +1264,8 @@ struct mcraptor_impl {
       return;
     }
     auto const fp_extras = crit_after_walk(te_extras, walk);
-    if (dest_dominates(k, fp_key + target_lb, fp_extras)) {
+    if (dest_dominates(k, fp_key + target_lb, fp_extras) ||
+        bound_prunes(k, target, fp_arr, transfer_buffer(target))) {
       return;
     }
     auto const breadcrumb = walk_breadcrumb(te_breadcrumb, fp_arr);
@@ -1556,6 +1581,12 @@ struct mcraptor_impl {
   delta_t worst_at_dest_;
 
   cuda::std::span<mc_seed const> starts_;
+  // --- BM-RAPTOR (see bmrap_bounds.h) ---
+  cuda::std::span<delta_t const> bounds_{};
+  std::uint32_t bounds_n_locations_{0U};
+  std::uint8_t bounds_budget_{0U};
+  bool has_bounds_{false};
+  unsigned cur_budget_{0U};  // this start time's trip budget
 
   device_bitvec<std::uint64_t const> is_dest_;
   cuda::std::span<std::uint16_t const> dist_to_end_;

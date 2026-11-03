@@ -9,6 +9,7 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/bmrap_bounds.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/types.h"
@@ -114,6 +115,16 @@ struct gpu_mcraptor {
 
   void reconstruct(query const&, journey&);
 
+  // Pong side: next_start_time() clears the bags instead of demoting them, so
+  // only labels of the same departure (one merged anchor run) prune, as on
+  // the CPU engine without range reuse; cross-anchor ones were seen
+  // over-pruning.
+  void set_reuse_same_dep() { reuse_same_dep_ = true; }
+
+  // BM-RAPTOR pruning bounds, uploaded here; nullptr disables. See
+  // basic_mcraptor::set_bounds().
+  void set_bounds(bmrap_bounds const*);
+
 private:
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + to_idx(base_) * date::days{1};
@@ -134,9 +145,14 @@ private:
 
   // search-window bound; the device dest frontier owns destination pruning
   delta_t worst_at_dest_;
+  bool reuse_same_dep_{false};
 
   td_offsets_t const* td_start_{nullptr};
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
+
+  std::uint32_t bounds_n_locations_{0U};
+  std::uint8_t bounds_budget_{0U};
+  bool has_bounds_{false};
 };
 
 }  // namespace nigiri::routing::gpu

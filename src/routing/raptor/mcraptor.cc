@@ -182,6 +182,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
     std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
     pareto_set<journey>& results) {
   auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
+  cur_budget_ = end_k - 1U;  // trips allowed for this start time
 
   // one bound for all rounds: the loosest
   auto const worst = kFwd ? std::ranges::max(worst_time_at_dest)
@@ -252,9 +253,12 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
     clasz const ride_clasz,
     std::uint32_t const transport,
     day_idx_t const day) {
-  auto const lb = lb_[l_idx];
+  auto const lb = effective_lb(l_idx);
   if (!is_better(by_transport, worst_at_dest_) || lb == kUnreachable ||
-      !is_better(by_transport + dir(lb), worst_at_dest_)) {
+      !is_better(by_transport + dir(lb), worst_at_dest_) ||
+      // the pruning search stores the post-transfer value, so the raw transit
+      // arrival is the matching reference
+      bound_prunes(k, l_idx, by_transport)) {
     ++stats_.route_update_prevented_by_lower_bound_;
     return false;
   }
@@ -338,7 +342,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::scan_stops(
       continue;
     }
 
-    if (lb_[l_idx] == kUnreachable) {
+    if (effective_lb(l_idx) == kUnreachable) {
       break;
     }
 
@@ -347,7 +351,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::scan_stops(
         [&](Criteria const& crit, std::uint32_t const breadcrumb) {
           // even the optimistic completion is dominated
           if (!dest_dominates(
-                  k, crit.projected_to(clamp(crit.arr_ + dir(lb_[l_idx]))))) {
+                  k, crit.projected_to(
+                         clamp(crit.arr_ + dir(effective_lb(l_idx)))))) {
             board_label(crit, breadcrumb & state_t::kBreadcrumbMask, stop_idx,
                         stp.location_idx());
           }
@@ -554,11 +559,13 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
           if (!is_better(fp_crit.arr_, worst_at_dest_)) {
             return;
           }
-          auto const lb = lb_[target];
+          auto const lb = effective_lb(target);
           if (lb == kUnreachable ||
               !is_better(fp_crit.arr_ + dir(lb), worst_at_dest_) ||
               dest_dominates(
-                  k, fp_crit.projected_to(clamp(fp_crit.arr_ + dir(lb))))) {
+                  k, fp_crit.projected_to(clamp(fp_crit.arr_ + dir(lb)))) ||
+              // a footpath arrival pays no transfer buffer: relax the bound
+              bound_prunes(k, target, fp_crit.arr_, transfer_buffer(target))) {
             ++stats_.fp_update_prevented_by_lower_bound_;
             return;
           }
@@ -666,7 +673,7 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::get_earliest_transport(
     return lo;
   };
 
-  auto const lb = dir(lb_[to_idx(l)]);
+  auto const lb = dir(effective_lb(to_idx(l)));
   constexpr auto const kNDaysToIterate =
       kMaxTravelTime / std::chrono::days{1} + 1U;
   for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
