@@ -28,9 +28,6 @@ namespace nigiri::routing::gpu {
 #define kUnreachable (std::numeric_limits<std::uint16_t>::max())
 #define kIntermodalTarget (get_special_station(special_station::kEnd))
 
-using td_dest_group_idx_t = cista::strong<std::uint32_t, struct td_dest_group_>;
-using td_dest_offsets_t = vecvec<td_dest_group_idx_t, td_offset>;
-
 template <direction SearchDir, bool WithBounds>
 struct raptor_impl {
   static constexpr via_offset_t Vias = 0U;
