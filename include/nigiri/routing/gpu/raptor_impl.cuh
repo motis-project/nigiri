@@ -33,10 +33,6 @@ constexpr auto const kNoTransferAllowedMinutes =
 #define kUnreachable (std::numeric_limits<std::uint16_t>::max())
 #define kIntermodalTarget (get_special_station(special_station::kEnd))
 
-inline constexpr auto kWarpSize = 32U;
-
-inline constexpr auto kAllLanes = ~std::uint32_t{0};
-
 using td_dest_group_idx_t = cista::strong<std::uint32_t, struct td_dest_group_>;
 using td_dest_offsets_t = vecvec<td_dest_group_idx_t, td_offset>;
 
@@ -841,6 +837,7 @@ struct raptor_impl {
       auto const deferred = __ballot_sync(kAllLanes, defer);
       for_each_set_bit(deferred, [&](unsigned const b) {
         auto const l = location_idx_t{base + b};
+        // full-mask shuffles also reconverge the warp for the strided loop
         auto const l_tmp = static_cast<delta_t>(__shfl_sync(
             kAllLanes, static_cast<int>(tmp_time), static_cast<int>(b)));
         auto const l_bc = __shfl_sync(kAllLanes, bc, static_cast<int>(b));
@@ -977,7 +974,10 @@ struct raptor_impl {
 
       // Update stop time.
       auto const et_board_i = static_cast<unsigned>(et & 0xFFFF'FFFFU);
-      if (i < n && et != kEtKeyInvalid && et_board_i < i) {
+      // stop_idx <= kBcStopMask: no alight at positions the 11-bit
+      // breadcrumb cannot represent (see et_run_lookups)
+      if (i < n && et != kEtKeyInvalid && et_board_i < i &&
+          stop_idx <= kBcStopMask) {
         auto const stp = stop{stop_seq[stop_idx]};
         if (stp.can_finish<SearchDir>(IsWheelchair)) {
           auto const l = stp.location_idx();
@@ -1241,8 +1241,13 @@ struct raptor_impl {
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l = stp.location_idx();
       auto const [day, mam] = split(round_times_.get(k - 1, l, 0U));
+      // the breadcrumb stores stop positions in 11 bits: no boarding at
+      // positions beyond that (a handful of >2048-stop routes exist in
+      // worldwide data; those tails are unreachable for reconstruction)
       et_result_[flat] =
-          pack_et(r, get_earliest_transport(k, r, stop_idx, day, mam));
+          stop_idx > kBcStopMask
+              ? kEtInvalid
+              : pack_et(r, get_earliest_transport(k, r, stop_idx, day, mam));
     }
   }
 

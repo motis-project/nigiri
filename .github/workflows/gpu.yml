@@ -2,7 +2,7 @@ name: GPU Benchmark
 
 on:
   push:
-    branches: [ master, gouda ]
+    branches: [ master, gouda, mcgouda ]
   pull_request:
     branches: [ master ]
   workflow_dispatch:
