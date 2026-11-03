@@ -282,17 +282,6 @@ routing_result pong(timetable const& tt,
           q.max_transfers_, worst_time_at_dest);
       break;
     }
-    utl::erase_if(ping_results, [&](journey const& x) {
-      auto const dominated = result.journeys_->is_dominated(x);
-      if (dominated) {
-        trace_pong("DELETE DOMINATED {}", to_tuple(x));
-      }
-      return dominated;
-    });
-    if (ping_results.empty()) {
-      trace_pong("ALL PING RESULTS FILTERED -> QUIT");
-      break;
-    }
     utl::sort(ping_results, [](journey const& a, journey const& b) {
       return a.transfers_ > b.transfers_;
     });
@@ -347,6 +336,21 @@ routing_result pong(timetable const& tt,
     };
     for (auto& ping_j : ping_results) {
       trace_pong("-- PING RESULT: {}", to_tuple(ping_j));
+
+      // A previous pong already found the latest departure for this arrival
+      // time and number of transfers: the ping found the same journey again,
+      // so the pong would, too.
+      auto const known =
+          utl::find_if(s_state.results_, [&](journey const& pong_j) {
+            return pong_j.transfers_ == ping_j.transfers_ &&
+                   pong_j.start_time_ == ping_j.dest_time_;
+          });
+      if (known != end(s_state.results_)) {
+        trace_pong("---- KNOWN [updating ping start time {} -> {}]\n",
+                   ping_j.start_time_, known->dest_time_);
+        ping_j.start_time_ = known->dest_time_;
+        continue;
+      }
 
       if constexpr (kPruneWithPingBounds) {
         pong.set_bounds(ping_j.transfers_ + 1U);
