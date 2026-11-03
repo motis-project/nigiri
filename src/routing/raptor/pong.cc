@@ -338,13 +338,12 @@ routing_result pong(timetable const& tt,
       trace_pong("-- PING RESULT: {}", to_tuple(ping_j));
 
       // A previous pong already found the latest departure for this arrival
-      // time and number of transfers. If it lies in the remaining search
-      // interval, the ping found the same journey again -> the pong would, too.
+      // time and number of transfers: the ping found the same journey again,
+      // so the pong would, too.
       auto const known =
           utl::find_if(s_state.results_, [&](journey const& pong_j) {
             return pong_j.transfers_ == ping_j.transfers_ &&
-                   pong_j.start_time_ == ping_j.dest_time_ &&
-                   !is_better(pong_j.dest_time_, start_time);
+                   pong_j.start_time_ == ping_j.dest_time_;
           });
       if (known != end(s_state.results_)) {
         trace_pong("---- KNOWN [updating ping start time {} -> {}]\n",
