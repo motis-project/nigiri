@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 
 #include <string>
+#include <utility>
 #include <variant>
 
 #include "fmt/format.h"
@@ -60,9 +61,9 @@ R,S,T,RE 1,
 
 template <typename AlgoState>
 pareto_set<routing::journey> search(timetable const& tt,
-                                    unsigned const from,
-                                    unsigned const to) {
-  auto const loc = [&](unsigned const i) {
+                                    stop_idx_t const from,
+                                    stop_idx_t const to) {
+  auto const loc = [&](stop_idx_t const i) {
     return tt.find({fmt::format("S{}", i), {}}).value();
   };
   auto q = routing::query{};
@@ -98,8 +99,9 @@ TEST(mcraptor, long_route) {
       loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   // alight beyond, then board and alight beyond the 11-bit range
+  using stops_t = std::pair<stop_idx_t, stop_idx_t>;
   for (auto const& [from, to] :
-       {std::pair{0U, kStops - 1U}, std::pair{2050U, kStops - 1U}}) {
+       {stops_t{0U, kStops - 1U}, stops_t{2050U, kStops - 1U}}) {
     auto const raptor = search<routing::raptor_state>(tt, from, to);
     expect_one_ride(tt, raptor, from, to);
     expect_one_ride(tt, search<routing::mcraptor_state>(tt, from, to), from,
