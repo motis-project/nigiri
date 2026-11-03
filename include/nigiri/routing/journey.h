@@ -85,24 +85,19 @@ struct journey {
   };
 
   bool dominates(journey const& o) const {
+    return tuple_dominates(o) && criteria_cost_ <= o.criteria_cost_ &&
+           criteria_mode_filter_ <= o.criteria_mode_filter_ &&
+           criteria_mode_switches_ <= o.criteria_mode_switches_;
+  }
+
+  // Dominance on the user-facing tuple (start, dest, transfers) only. Counts
+  // connections (min_connection_count, interval extension): extra criteria add
+  // pareto trade-offs but must not make the search stop earlier.
+  bool tuple_dominates(journey const& o) const {
     auto const is_fwd = start_time_ != dest_time_
                             ? start_time_ <= dest_time_
                             : o.start_time_ <= o.dest_time_;
     if (is_fwd) {
-      return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
-             dest_time_ <= o.dest_time_ && criteria_cost_ <= o.criteria_cost_;
-    } else {
-      return transfers_ <= o.transfers_ && start_time_ <= o.start_time_ &&
-             dest_time_ >= o.dest_time_ && criteria_cost_ <= o.criteria_cost_;
-    }
-  }
-
-  // dominance on (start, dest, transfers) only - the user-facing
-  // connection tuple. Used for counting connections (min_connection_count/
-  // interval extension): additional criteria (walking) add pareto
-  // trade-offs but must not make the search stop earlier.
-  bool tuple_dominates(journey const& o) const {
-    if (start_time_ <= dest_time_) {
       return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
              dest_time_ <= o.dest_time_;
     } else {
@@ -139,11 +134,11 @@ struct journey {
   unixtime_t dest_time_{};
   location_idx_t dest_{};
   std::uint8_t transfers_{0U};
-  // additional pareto criterion value (e.g. generalized cost in weighted
-  // minutes). Only set by algorithms that optimize it (McRAPTOR cost
-  // configurations); 0 for all others, which keeps their dominance
-  // identical to (start, dest, transfers).
-  std::uint16_t criteria_cost_{0U};
+  // Extra pareto criteria, set only by algorithms that optimize them; the
+  // defaults keep dominance identical to (start, dest, transfers).
+  std::uint16_t criteria_cost_{0U};  // generalized cost or non_transit minutes
+  bool criteria_mode_filter_{false};  // uses an avoided vehicle class
+  std::uint8_t criteria_mode_switches_{0U};  // vehicle-class switches
   bool error_{false};
   bool is_reconstructed_{false};
 };

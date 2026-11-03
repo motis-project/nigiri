@@ -9,20 +9,16 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/bmrap_bounds.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/types.h"
 
 namespace nigiri::routing::gpu {
 
-// GPU McRAPTOR supports the CPU mcraptor scope (see mcraptor_supported):
-// no realtime, no via stops, no time-dependent offsets/footpaths, no
-// bike/car transport requirements. Wheelchair, clasz filters and transfer
-// time settings are supported.
-//
-// One state serves both criteria configurations (the buffers are
-// identical); the distinct types select the algorithm in the
-// raptor_search/benchmark dispatch.
+// GPU McRAPTOR supports the CPU mcraptor scope (see mcraptor_supported).
+// One state serves every criteria configuration (the packed label has the same
+// width); the distinct types select the algorithm in the dispatch.
 struct gpu_mcraptor_state {
   explicit gpu_mcraptor_state(gpu_timetable const&);
   ~gpu_mcraptor_state();
@@ -35,24 +31,46 @@ struct gpu_mcraptor_cost_state : gpu_mcraptor_state {
   using gpu_mcraptor_state::gpu_mcraptor_state;
 };
 
-// WithCost=false: arrival is the only criterion (labels carry extras == 0,
-// dominance degenerates to arrival-only) - result-equal to CPU
-// mcraptor<arr_criteria> and raptor.
-// WithCost=true: arrival + generalized cost extras (walk surcharge +
-// boarding penalties), result-equal to CPU mcraptor<arr_cost_criteria>.
-template <direction SearchDir, bool WithCost>
+struct gpu_mcraptor_non_transit_state : gpu_mcraptor_state {
+  using gpu_mcraptor_state::gpu_mcraptor_state;
+};
+
+// The label configurations the device implements, each result-equal to the CPU
+// mcraptor with the matching criteria. All fit the 16-bit "crit" slot of the
+// packed label:
+//   arr                      arrival only
+//   cost                     arrival + generalized cost
+//   non_transit              arrival + minutes on foot
+//   mode_filter              arrival + "uses an avoided class" bit (AIR)
+//   non_transit_mode_filter  both (non_transit in bits 1..15, mode_filter bit
+//   0)
+enum class mc_crit : std::uint8_t {
+  arr,
+  cost,
+  non_transit,
+  mode_filter,
+  non_transit_mode_filter
+};
+
+template <direction SearchDir, mc_crit Crit>
 struct gpu_mcraptor {
-  using algo_state_t =
-      std::conditional_t<WithCost, gpu_mcraptor_cost_state, gpu_mcraptor_state>;
+  using algo_state_t = std::conditional_t<Crit == mc_crit::cost,
+                                          gpu_mcraptor_cost_state,
+                                          gpu_mcraptor_state>;
   using algo_stats_t = raptor_stats;
 
-  // unlike the single-criterion GPU raptor, mcraptor DOES use lower
-  // bounds: the lb-projected destination pruning is what keeps the pareto
-  // bags small (without it, labels the CPU never stores flood the
-  // fixed-capacity device bags). lb affects pruning only, never results.
+  // Unlike the scalar GPU raptor this uses lower bounds: the lb-projected
+  // destination pruning keeps the bags small, and without it labels the CPU
+  // never stores flood the fixed-capacity device bags. Pruning only.
   static constexpr bool kUseLowerBounds = true;
   static constexpr auto const kDirIdx =
       SearchDir == direction::kForward ? 0U : 1U;
+
+  static constexpr bool kHasCost = Crit == mc_crit::cost;
+  static constexpr bool kHasNonTransit =
+      Crit == mc_crit::non_transit || Crit == mc_crit::non_transit_mode_filter;
+  static constexpr bool kHasModeFilter =
+      Crit == mc_crit::mode_filter || Crit == mc_crit::non_transit_mode_filter;
 
   gpu_mcraptor(
       timetable const& tt,
@@ -69,37 +87,32 @@ struct gpu_mcraptor {
       bool require_bike_transport,
       bool require_car_transport,
       bool is_wheelchair,
-      transfer_time_settings const& tts);
+      bool no_compulsory_reservation,
+      transfer_time_settings const& tts,
+      profile_idx_t prf_idx);
 
   raptor_stats get_stats() const { return stats_; }
 
-  // pong-side engines: reuse-frontier rejections restricted to entries
-  // of the SAME departure (= the same merged anchor run). Cross-anchor
-  // rejections were observed to over-prune without a real dominating
-  // journey behind them (q#45 trace, 2026-07-11).
+  // Pong side: reuse-frontier rejections only against entries of the same
+  // departure (one merged anchor run); cross-anchor ones were seen
+  // over-pruning.
   void set_reuse_same_dep() { reuse_same_dep_ = true; }
 
-  // tight starts (pong ping): re-anchor collected journeys at their
-  // latest feasible departure instead of the step start, so the result
-  // pareto prices real dep-normalized cost - the one-step ping window
-  // otherwise collapses cost-pareto variants under phantom waiting
-  // (see basic_mcraptor::set_tight_start). The device reconstruct
-  // reports the shift per journey (gpu_journey::start_shift_).
-  void set_tight_start() { tight_start_ = true; }
+  // BM-RAPTOR pruning bounds, uploaded here; nullptr disables. See
+  // basic_mcraptor::set_bounds().
+  void set_bounds(bmrap_bounds const*);
 
   void reset_arrivals();
   void next_start_time();
-  void add_start(location_idx_t, unixtime_t);
+  void add_start(location_idx_t, unixtime_t, via_offset_t = 0U);
 
   void execute(unixtime_t start_time,
                std::uint8_t max_transfers,
                unixtime_t worst_time_at_dest,
-               profile_idx_t prf_idx,
                pareto_set<journey>& results);
 
-  // Core legs are materialized by the device breadcrumb chase; this only
-  // adds first/last-mile offset legs and the start footpath (host side,
-  // where the query offsets live).
+  // The device breadcrumb chase materializes the core legs; this adds offset
+  // legs and the start footpath on the host.
   void reconstruct(query const&, journey&);
 
 private:
@@ -108,6 +121,8 @@ private:
   }
 
   timetable const& tt_;
+  rt_timetable const* rtt_;
+  gpu_rt_timetable const* gpu_rtt_;
   std::uint32_t n_locations_;
   gpu_mcraptor_state& state_;
   bitvec const& is_dest_;
@@ -116,15 +131,18 @@ private:
   clasz_mask_t allowed_claszes_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
+  profile_idx_t prf_idx_;
 
-  // pure search-window bound in delta units, persisted across start times
-  // within one query (never journey-tightened - the device dest frontier
-  // owns all destination pruning)
+  // search-window bound; the device dest frontier owns destination pruning
   delta_t worst_at_dest_;
   bool reuse_same_dep_{false};
-  bool tight_start_{false};  // see set_tight_start()
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
+
+  std::uint32_t bounds_n_locations_{0U};
+  std::uint8_t bounds_budget_{0U};
+  bool bounds_staggered_{false};
+  bool has_bounds_{false};
 };
 
 }  // namespace nigiri::routing::gpu
