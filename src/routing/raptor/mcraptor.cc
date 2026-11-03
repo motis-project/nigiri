@@ -1232,7 +1232,6 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::split(delta_t const x) const {
   template struct basic_mcraptor<direction::kBackward, C, true>;
 
 NIGIRI_MC_INSTANTIATE(arr_criteria)
-NIGIRI_MC_INSTANTIATE(arr_cost_criteria)
 NIGIRI_MC_INSTANTIATE(arr_non_transit_criteria)
 NIGIRI_MC_INSTANTIATE(arr_mode_filter_criteria)
 NIGIRI_MC_INSTANTIATE(arr_mode_switches_criteria)

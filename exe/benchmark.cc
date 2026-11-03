@@ -115,15 +115,14 @@ std::uint64_t compare_results(
     unsigned const min_connection_count) {
   auto mismatches = std::uint64_t{0U};
 
-  // criteria_cost_ is 0 unless the algorithm optimizes it
   auto const equal = [](journey const& a, journey const& b) {
     return a.start_time_ == b.start_time_ && a.dest_time_ == b.dest_time_ &&
-           a.transfers_ == b.transfers_ && a.criteria_cost_ == b.criteria_cost_;
+           a.transfers_ == b.transfers_;
   };
 
   auto const key = [](journey const& j) {
-    return fmt::format("dep={} arr={} transfers={} cost={}", j.departure_time(),
-                       j.arrival_time(), j.transfers_, j.criteria_cost_);
+    return fmt::format("dep={} arr={} transfers={}", j.departure_time(),
+                       j.arrival_time(), j.transfers_);
   };
 
   auto const max_window = [&](query const& q) {
@@ -380,8 +379,8 @@ int main(int argc, char* argv[]) {
        "their pareto sets are pairwise cross-checked per query and the "
        "process exits non-zero on any divergence")  //
       ("algo,a", bpo::value(&algos)->multitoken(),
-       "algorithms: range | pong | mcraptor | mcraptor-cost (default: range "
-       "pong); every ran cell (any engine/algo combination) within a (mode, "
+       "algorithms: range | pong | mcraptor (default: range pong); every ran "
+       "cell (any engine/algo combination) within a (mode, "
        "dir) is checked pairwise against every other for agreement on the "
        "intersection of the final search intervals")  //
       ("modes", bpo::value(&modes)->multitoken(),
@@ -580,10 +579,9 @@ int main(int argc, char* argv[]) {
   }
 #endif
   for (auto const& a : algos) {
-    if (a != "range" && a != "pong" && a != "mcraptor" &&
-        a != "mcraptor-cost") {
+    if (a != "range" && a != "pong" && a != "mcraptor") {
       std::cerr << "invalid algo \"" << a
-                << "\", expected range | pong | mcraptor | mcraptor-cost\n";
+                << "\", expected range | pong | mcraptor\n";
       return 1;
     }
   }
@@ -714,9 +712,6 @@ int main(int argc, char* argv[]) {
                 algo_part == "mcraptor"
                     ? run_cpu_cell
                           .template operator()<routing::mcraptor_state>()
-                : algo_part == "mcraptor-cost"
-                    ? run_cpu_cell
-                          .template operator()<routing::mcraptor_cost_state>()
                     : run_cpu_cell
                           .template operator()<routing::raptor_state>());
             ++qa_n_cpu_cells;
@@ -727,15 +722,11 @@ int main(int argc, char* argv[]) {
 
 #if defined(NIGIRI_CUDA)
           if (run_gpu) {
-            cells.push_back(
-                algo_part == "mcraptor"
-                    ? run_gpu_cell.template
-                      operator()<routing::gpu::gpu_mcraptor_state>()
-                : algo_part == "mcraptor-cost"
-                    ? run_gpu_cell.template
-                      operator()<routing::gpu::gpu_mcraptor_cost_state>()
-                    : run_gpu_cell.template
-                      operator()<routing::gpu::gpu_raptor_state>());
+            cells.push_back(algo_part == "mcraptor"
+                                ? run_gpu_cell.template
+                                  operator()<routing::gpu::gpu_mcraptor_state>()
+                                : run_gpu_cell.template
+                                  operator()<routing::gpu::gpu_raptor_state>());
           }
 #endif
         } catch (std::exception const& e) {

@@ -25,10 +25,6 @@ struct gpu_mcraptor_state {
   std::unique_ptr<impl> impl_;
 };
 
-struct gpu_mcraptor_cost_state : gpu_mcraptor_state {
-  using gpu_mcraptor_state::gpu_mcraptor_state;
-};
-
 struct gpu_mcraptor_non_transit_state : gpu_mcraptor_state {
   using gpu_mcraptor_state::gpu_mcraptor_state;
 };
@@ -46,7 +42,6 @@ struct gpu_mcraptor_non_transit_mode_filter_state : gpu_mcraptor_state {
 // avoided-class flag (AIR) in bit 0).
 enum class mc_crit : std::uint8_t {
   arr,
-  cost,
   non_transit,
   mode_filter,
   non_transit_mode_filter
@@ -54,9 +49,7 @@ enum class mc_crit : std::uint8_t {
 
 template <direction SearchDir, mc_crit Crit>
 struct gpu_mcraptor {
-  using algo_state_t = std::conditional_t<Crit == mc_crit::cost,
-                                          gpu_mcraptor_cost_state,
-                                          gpu_mcraptor_state>;
+  using algo_state_t = gpu_mcraptor_state;
   using algo_stats_t = raptor_stats;
 
   // unlike gpu raptor: without lb pruning the fixed-size device bags overflow
@@ -64,7 +57,6 @@ struct gpu_mcraptor {
   static constexpr auto const kDirIdx =
       SearchDir == direction::kForward ? 0U : 1U;
 
-  static constexpr bool kHasCost = Crit == mc_crit::cost;
   static constexpr bool kHasNonTransit =
       Crit == mc_crit::non_transit || Crit == mc_crit::non_transit_mode_filter;
   static constexpr bool kHasModeFilter =

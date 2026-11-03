@@ -138,7 +138,6 @@ static range_result search_range(timetable const& tt,
   auto const base_tuples = journey_tuples(results);
 
   auto const mc = routing::mcraptor_supported(q, rtt);
-  auto mc_cost = pareto_set<routing::journey>{};
   auto mc_non_transit = pareto_set<routing::journey>{};
   auto mc_mode_filter = pareto_set<routing::journey>{};
   auto mc_non_transit_mode_filter = pareto_set<routing::journey>{};
@@ -151,8 +150,6 @@ static range_result search_range(timetable const& tt,
 
     using namespace routing;
     auto const& b = base_tuples;
-    mc_cost =
-        expect_superset<mcraptor_cost_state>(tt, rtt, q, search_dir, b, "cost");
     mc_non_transit = expect_superset<mcraptor_non_transit_state>(
         tt, rtt, q, search_dir, b, "non_transit");
     mc_mode_filter = expect_superset<mcraptor_mode_filter_state>(
@@ -192,8 +189,6 @@ static range_result search_range(timetable const& tt,
           << "gpu mcraptor";
       using namespace routing::gpu;
       auto const& g = gpu_timetable;
-      expect_gpu_equal<gpu_mcraptor_cost_state>(tt, rtt, q, search_dir, g,
-                                                mc_cost, "cost");
       expect_gpu_equal<gpu_mcraptor_non_transit_state>(
           tt, rtt, q, search_dir, g, mc_non_transit, "non_transit");
       expect_gpu_equal<gpu_mcraptor_mode_filter_state>(

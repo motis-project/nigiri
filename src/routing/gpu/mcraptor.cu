@@ -576,7 +576,6 @@ mcraptor_impl<SearchDir, Crit> make_impl(
     profile_idx_t const prf_idx,
     day_idx_t const base,
     delta_t const worst_at_dest,
-    std::uint32_t const walk_surcharge,
     delta_t const dep,
     cuda::std::span<std::pair<location_idx_t, delta_t> const> starts) {
   return mcraptor_impl<SearchDir, Crit>{
@@ -590,7 +589,6 @@ mcraptor_impl<SearchDir, Crit> make_impl(
       .prf_idx_ = prf_idx,
       .base_ = base,
       .worst_at_dest_ = worst_at_dest,
-      .walk_surcharge_ = walk_surcharge,
       .starts_ = starts,
       .is_dest_ = {to_view(s.is_dest_[dir_idx])},
       .dist_to_end_ = to_view(s.dist_to_dest_dev_[dir_idx]),
@@ -656,7 +654,7 @@ void gpu_mcraptor<SearchDir, Crit>::next_start_time() {
   auto& s = *state_.impl_;
   auto const r = make_impl<SearchDir, Crit>(s, kDirIdx, transfer_time_settings_,
                                             allowed_claszes_, 0U, base_,
-                                            worst_at_dest_, 0U, 0, {});
+                                            worst_at_dest_, 0, {});
   mc_launch(mc_clear_bags_kernel<SearchDir, Crit>, s.stream_, r);
   cudaMemsetAsync(thrust::raw_pointer_cast(s.bag_pool_count_.data()), 0,
                   sizeof(std::uint32_t), s.stream_);
@@ -689,9 +687,6 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   worst_at_dest_ = kFwd ? std::min(d_worst, worst_at_dest_)
                         : std::max(d_worst, worst_at_dest_);
 
-  // only the cost criteria weight walking
-  auto const walk_surcharge = kHasCost ? arr_cost_criteria::kWalkSurcharge : 0U;
-
   // upload the seeds (stop, seeded stop time in delta units)
   auto* const starts_pin = s.starts_pin_.ensure(starts_.size());
   for (auto i = std::size_t{0U}; i != starts_.size(); ++i) {
@@ -707,7 +702,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   auto const d_start_dep = unix_to_delta(base(), start_time);
   auto r = make_impl<SearchDir, Crit>(
       s, kDirIdx, transfer_time_settings_, allowed_claszes_, prf_idx_, base_,
-      worst_at_dest_, walk_surcharge, d_start_dep,
+      worst_at_dest_, d_start_dep,
       cuda::std::span<std::pair<location_idx_t, delta_t> const>{
           starts_dev, starts_.size()});
 
@@ -860,13 +855,8 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
     j.dest_time_ = delta_to_unix(base(), gj.dest_time_);
     j.dest_ = gj.dest_l_;
     j.transfers_ = gj.transfers_;
-    if constexpr (kHasCost) {
-      // full generalized cost: common elapsed part + stored extras
-      j.criteria_cost_ = static_cast<std::uint16_t>(
-          gj.criteria_cost_ +
-          static_cast<std::uint16_t>(j.travel_time().count()));
-    } else if constexpr (kHasNonTransit) {
-      j.criteria_cost_ = gj.criteria_cost_;  // raw minutes on foot
+    if constexpr (kHasNonTransit) {
+      j.criteria_cost_ = gj.criteria_cost_;  // minutes on foot
     }
     if constexpr (kHasModeFilter) {
       j.criteria_mode_filter_ = gj.criteria_mode_filter_;
@@ -938,7 +928,6 @@ void gpu_mcraptor<SearchDir, Crit>::reconstruct(query const& q, journey& j) {
   template class gpu_mcraptor<direction::kForward, C>; \
   template class gpu_mcraptor<direction::kBackward, C>;
 NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::arr)
-NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::cost)
 NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::non_transit)
 NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::mode_filter)
 NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::non_transit_mode_filter)
