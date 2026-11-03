@@ -6,7 +6,6 @@
 #include "utl/verify.h"
 
 #include "nigiri/for_each_meta.h"
-#include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/td_footpath.h"
@@ -197,15 +196,6 @@ void mc_reconstruct_offsets(timetable const& tt,
                                      });
       }
     }
-  }
-
-  if constexpr (is_fwd) {
-    optimize_footpaths(tt, rtt, q, j);
-  } else {
-    // legs are chronological, q is in search direction
-    auto journey_q = q;
-    journey_q.flip_dir();
-    optimize_footpaths(tt, rtt, journey_q, j);
   }
 }
 
