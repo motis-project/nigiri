@@ -58,9 +58,7 @@ jobs:
       # forward; the range search must do the same for window symmetry.
       - name: Cross-validate Germany (pong vs range search x cpu/gpu)
         run: |
-          for pair in "pong raptor" \
-                      "pong-mcraptor mcraptor" \
-                      "pong-mcraptor-cost mcraptor-cost"; do
+          for pair in "pong raptor"; do
             ./build/cuda/nigiri-benchmark -p "$HOME/ci-data/ger/data/tt.bin" \
               --engines cpu gpu --cross \
               --algo $pair \

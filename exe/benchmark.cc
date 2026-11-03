@@ -15,6 +15,7 @@
 #include "utl/parallel_for.h"
 #include "utl/parser/cstr.h"
 #include "utl/progress_tracker.h"
+#include "utl/verify.h"
 
 #include "nigiri/logging.h"
 #include "nigiri/qa/qa.h"
@@ -270,13 +271,19 @@ cell_result run_config(
         out.cpu_lat_ = run_load<cpu_ws>(
             queries, label + "-cpu-" + std::to_string(t), prefix(states, t),
             [&](cpu_ws& w, routing::query q, std::size_t const i) {
-              auto const r =
-                  use_pong
-                      ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
-                                             std::move(q), direction::kForward)
-                      : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
-                                               std::move(q),
-                                               direction::kForward);
+              auto r = routing::routing_result{};
+              if constexpr (std::is_same_v<RS, routing::raptor_state>) {
+                r = use_pong ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
+                                                    std::move(q),
+                                                    direction::kForward)
+                             : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
+                                                      std::move(q),
+                                                      direction::kForward);
+              } else {
+                utl::verify(!use_pong, "pong only supports raptor_state");
+                r = routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
+                                           std::move(q), direction::kForward);
+              }
               cpu_res[i] = *r.journeys_;
               cpu_itv[i] = r.interval_;
             });
@@ -311,13 +318,20 @@ cell_result run_config(
         run_load<gpu_ws>(
             queries, label + "-gpu-" + std::to_string(s), prefix(states, s),
             [&](gpu_ws& w, routing::query q, std::size_t const i) {
-              auto const r =
-                  use_pong
-                      ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
-                                             std::move(q), direction::kForward)
-                      : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
-                                               std::move(q),
-                                               direction::kForward);
+              auto r = routing::routing_result{};
+              if constexpr (std::is_same_v<RS,
+                                           routing::gpu::gpu_raptor_state>) {
+                r = use_pong ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
+                                                    std::move(q),
+                                                    direction::kForward)
+                             : routing::raptor_search(tt, nullptr, w.ss_,
+                                                      *w.rs_, std::move(q),
+                                                      direction::kForward);
+              } else {
+                utl::verify(!use_pong, "pong only supports gpu_raptor_state");
+                r = routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
+                                           std::move(q), direction::kForward);
+              }
               gpu_res[i] = *r.journeys_;
               gpu_itv[i] = r.interval_;
             });
@@ -455,8 +469,7 @@ int main(int argc, char* argv[]) {
        "divergence")  //
       ("algo,a", bpo::value(&algos)->multitoken(),
        "algorithms (strategy-algorithm): raptor | pong | mcraptor | "
-       "mcraptor-cost | pong-mcraptor | pong-mcraptor-cost "
-       "(default: raptor pong)")  //
+       "mcraptor-cost (default: raptor pong)")  //
       ("modes", bpo::value(&modes)->multitoken(),
        "<start>-<dest> query modes with station | coordinate, e.g. "
        "station-station coordinate-coordinate (default: those two); "
@@ -496,7 +509,7 @@ int main(int argc, char* argv[]) {
        bpo::value<std::uint32_t>(&gs.min_connection_count_)->default_value(5U),
        "the minimum number of connections to find with each query")  //
       ("cross", bpo::bool_switch()->default_value(false),
-       "cross-validate two algos (e.g. pong-mcraptor-cost vs mcraptor-cost): "
+       "cross-validate two algos (e.g. pong vs raptor): "
        "results must be gap-free consistent up to the shorter result's last "
        "connection, and min_connection_count must be satisfied by both or "
        "neither")  //
@@ -685,11 +698,9 @@ int main(int argc, char* argv[]) {
 #endif
   for (auto const& a : algos) {
     if (a != "raptor" && a != "pong" && a != "mcraptor" &&
-        a != "mcraptor-cost" && a != "pong-mcraptor" &&
-        a != "pong-mcraptor-cost") {
+        a != "mcraptor-cost") {
       std::cerr << "invalid algo \"" << a
-                << "\", expected raptor | pong | mcraptor | mcraptor-cost | "
-                   "pong-mcraptor | pong-mcraptor-cost\n";
+                << "\", expected raptor | pong | mcraptor | mcraptor-cost\n";
       return 1;
     }
   }

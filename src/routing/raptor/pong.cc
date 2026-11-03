@@ -15,10 +15,8 @@
 #include "nigiri/location_match_mode.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_earliest_transport.h"
-#include "nigiri/routing/gpu/mcraptor.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/leg_alternatives.h"
-#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/types.h"
@@ -34,32 +32,11 @@ struct pong_algo_for {
   using type = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>;
 };
 
-template <direction SearchDir, via_offset_t Vias, bool Rt, typename Criteria,
-          bool RangeReuse>
-struct pong_algo_for<SearchDir, Vias, Rt, basic_mcraptor_state<Criteria>,
-                     RangeReuse> {
-  using type = basic_mcraptor<SearchDir, Criteria, RangeReuse>;
-};
 
 #if defined(NIGIRI_CUDA)
 template <direction SearchDir, via_offset_t Vias, bool Rt, bool RangeReuse>
 struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_raptor_state, RangeReuse> {
   using type = gpu::gpu_raptor<SearchDir>;
-};
-
-// GPU mcraptor pong: the state's frontiers are per-direction, so the
-// forward ping and backward pong coexist; the GPU's reuse frontier
-// replaces the CPU's RangeReuse template switch (result-neutral).
-template <direction SearchDir, via_offset_t Vias, bool Rt, bool RangeReuse>
-struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_state,
-                     RangeReuse> {
-  using type = gpu::gpu_mcraptor<SearchDir, /*WithCost=*/false>;
-};
-
-template <direction SearchDir, via_offset_t Vias, bool Rt, bool RangeReuse>
-struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_cost_state,
-                     RangeReuse> {
-  using type = gpu::gpu_mcraptor<SearchDir, /*WithCost=*/true>;
 };
 #endif
 
@@ -97,8 +74,8 @@ routing_result pong(timetable const& tt,
                     std::optional<std::chrono::seconds> timeout) {
   constexpr auto kFwd = (SearchDir == direction::kForward);
 
-  // forward ping = plain EA over the window (no bag reuse for mcraptor);
-  // backward pong = validation toward fixed anchors (rRAPTOR bag reuse ON)
+  // forward ping: plain EA over the window; backward pong: validation towards
+  // fixed anchors with bag reuse
   using ping_algo_t =
       typename pong_algo_for<SearchDir, Vias, Rt, AlgoState, false>::type;
   using pong_algo_t =
@@ -708,22 +685,6 @@ template routing_result pong_search(timetable const&,
                                     direction,
                                     std::optional<std::chrono::seconds>);
 
-template routing_result pong_search(timetable const&,
-                                    rt_timetable const*,
-                                    search_state&,
-                                    mcraptor_state&,
-                                    query,
-                                    direction,
-                                    std::optional<std::chrono::seconds>);
-
-template routing_result pong_search(timetable const&,
-                                    rt_timetable const*,
-                                    search_state&,
-                                    mcraptor_cost_state&,
-                                    query,
-                                    direction,
-                                    std::optional<std::chrono::seconds>);
-
 #if defined(NIGIRI_CUDA)
 template routing_result pong_search(timetable const&,
                                     rt_timetable const*,
@@ -733,21 +694,6 @@ template routing_result pong_search(timetable const&,
                                     direction,
                                     std::optional<std::chrono::seconds>);
 
-template routing_result pong_search(timetable const&,
-                                    rt_timetable const*,
-                                    search_state&,
-                                    gpu::gpu_mcraptor_state&,
-                                    query,
-                                    direction,
-                                    std::optional<std::chrono::seconds>);
-
-template routing_result pong_search(timetable const&,
-                                    rt_timetable const*,
-                                    search_state&,
-                                    gpu::gpu_mcraptor_cost_state&,
-                                    query,
-                                    direction,
-                                    std::optional<std::chrono::seconds>);
 #endif
 
 }  // namespace nigiri::routing
