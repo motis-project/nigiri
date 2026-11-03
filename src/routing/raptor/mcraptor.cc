@@ -255,10 +255,6 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::basic_mcraptor(
   utl::verify(!require_bike_transport && !require_car_transport &&
                   !no_compulsory_reservation,
               "mcraptor: bike/car transport, reservation filter not supported");
-  // overlapping index ranges would silently mis-decode legs (see breadcrumb.h)
-  utl::verify(
-      bc_transport_space_fits(tt_.transport_route_.size(), n_rt_transports_),
-      "mcraptor: transport index space exceeds the breadcrumb field");
   reset_arrivals();
 }
 
@@ -465,7 +461,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
     Label const& rl,
     Sections const& sections,
     clasz const fallback,
-    std::uint32_t const transport_field) {
+    std::uint32_t const transport,
+    day_idx_t const day) {
   auto const lb = lb_[l_idx];
   if (!is_better(by_transport, worst_at_dest_) || lb == kUnreachable ||
       !is_better(by_transport + dir(lb), worst_at_dest_)) {
@@ -495,13 +492,12 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
           static_cast<std::uint8_t>(k), cur_dep_, /*by_route=*/true)) {
     return false;
   }
-  // the payload holds 26 bit transports and 11 bit stop positions
-  assert(transport_field < kStartSentinel);
-  assert(rl.board_ <= kBcStopMask && stop_idx <= kBcStopMask);
-  state_.breadcrumbs_.push_back(
-      {.payload_ = make_transport_payload(transport_field, rl.board_, stop_idx),
-       .parent_ = rl.parent_,
-       .arr_ = post_crit.arr_});
+  state_.breadcrumbs_.push_back({.transport_ = transport,
+                                 .parent_ = rl.parent_,
+                                 .day_ = day,
+                                 .board_ = rl.board_,
+                                 .alight_ = stop_idx,
+                                 .arr_ = post_crit.arr_});
   ++stats_.n_earliest_arrival_updated_by_route_;
   state_.station_mark_.set(l_idx, true);
   // the buffer is 0 at a station destination: ride_crit is the arrival
@@ -546,19 +542,17 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(
     auto const l_idx = cista::to_idx(stp.location_idx());
     auto const is_last = i == n - 1U;
 
-    // breadcrumbs hold 11 bit stop positions: no boarding/alighting beyond
-    if (i != 0U && !route_bag_.empty() && stop_idx <= kBcStopMask &&
+    if (i != 0U && !route_bag_.empty() &&
         stp.can_finish<SearchDir>(is_wheelchair_)) {
       for (auto const& rl : route_bag_) {
         any_marked |=
             alight(k, l_idx, stop_idx, time_at_stop(r, rl.t_, stop_idx, arr_ev),
                    rl, tt_.route_section_clasz_[r], tt_.route_clasz_[r],
-                   to_idx(rl.t_.t_idx_));
+                   to_idx(rl.t_.t_idx_), rl.t_.day_);
       }
     }
 
-    if (is_last || stop_idx > kBcStopMask ||
-        !stp.can_start<SearchDir>(is_wheelchair_) ||
+    if (is_last || !stp.can_start<SearchDir>(is_wheelchair_) ||
         !state_.prev_station_mark_[l_idx]) {
       continue;
     }
@@ -677,20 +671,17 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
     auto const l_idx = cista::to_idx(stp.location_idx());
     auto const is_last = i == n - 1U;
 
-    // stop positions beyond the breadcrumb's 11 bits: see update_route()
-    if (i != 0U && !rt_bag_.empty() && stop_idx <= kBcStopMask &&
+    if (i != 0U && !rt_bag_.empty() &&
         stp.can_finish<SearchDir>(is_wheelchair_)) {
       auto const by_transport = rt_time_at_stop(rt_t, stop_idx, arr_ev);
       for (auto const& rl : rt_bag_) {
-        any_marked |=
-            alight(k, l_idx, stop_idx, by_transport, rl,
-                   rtt_->rt_transport_section_clasz_[rt_t], clasz::kOther,
-                   encode_rt_bc_transport(to_idx(rt_t)));
+        any_marked |= alight(k, l_idx, stop_idx, by_transport, rl,
+                             rtt_->rt_transport_section_clasz_[rt_t],
+                             clasz::kOther, to_idx(rt_t), day_idx_t::invalid());
       }
     }
 
-    if (is_last || stop_idx > kBcStopMask ||
-        !stp.can_start<SearchDir>(is_wheelchair_) ||
+    if (is_last || !stp.can_start<SearchDir>(is_wheelchair_) ||
         !state_.prev_station_mark_[l_idx]) {
       continue;
     }
@@ -999,36 +990,6 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::collect_dest_journeys(
   });
 }
 
-// Traffic day (and event time at alight) of a breadcrumb's trip: arr_day -
-// event_day_offset - {0, 1}, as one footpath crosses midnight at most once.
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-std::optional<std::pair<day_idx_t, delta_t>>
-basic_mcraptor<SearchDir, Criteria, RangeReuse>::recover_day(
-    route_idx_t const r,
-    transport_idx_t const t_idx,
-    stop_idx_t const alight,
-    delta_t const arr) const {
-  constexpr auto const arr_ev = kFwd ? event_type::kArr : event_type::kDep;
-  auto const event_day_offset =
-      tt_.event_mam(r, t_idx, alight, arr_ev).count() / 1440;
-  auto const arr_day = as_int(split(arr).first);
-  for (auto off = 0; off != 2; ++off) {
-    auto const cand = arr_day - event_day_offset - (kFwd ? off : -off);
-    if (cand < 0) {
-      continue;
-    }
-    auto const cand_day = day_idx_t{static_cast<day_idx_t::value_t>(cand)};
-    if (!is_transport_active(t_idx, cand_day)) {
-      continue;
-    }
-    auto const ev = time_at_stop(r, transport{t_idx, cand_day}, alight, arr_ev);
-    if (is_better_or_eq(ev, arr)) {
-      return std::pair{cand_day, ev};
-    }
-  }
-  return std::nullopt;
-}
-
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 journey basic_mcraptor<SearchDir, Criteria, RangeReuse>::materialize(
     location_idx_t const dest,
@@ -1055,16 +1016,15 @@ journey basic_mcraptor<SearchDir, Criteria, RangeReuse>::materialize(
   while (li != state_t::kNoBreadcrumb) {
     auto const& bc = state_.breadcrumbs_[li];
     auto const cur_arr = bc.arr_;  // arrival at cur_l
-    auto const bc_t = bc_transport(bc.payload_);
-    auto const is_rt = is_rt_bc_transport(bc_t, n_rt_transports_);
+    auto const is_rt = bc.day_ == day_idx_t::invalid();
     auto const t_idx =
-        is_rt ? transport_idx_t::invalid() : transport_idx_t{bc_t};
-    auto const rt_t = is_rt ? rt_transport_idx_t{decode_rt_bc_transport(bc_t)}
+        is_rt ? transport_idx_t::invalid() : transport_idx_t{bc.transport_};
+    auto const rt_t = is_rt ? rt_transport_idx_t{bc.transport_}
                             : rt_transport_idx_t::invalid();
-    auto const board = static_cast<stop_idx_t>(bc_board(bc.payload_));
-    auto const alight = static_cast<stop_idx_t>(bc_alight(bc.payload_));
+    auto const board = bc.board_;
+    auto const alight = bc.alight_;
+    auto const day = bc.day_;
 
-    auto day = day_idx_t::invalid();
     auto train_arr = kInvalid;
     auto dep_at_board = kInvalid;
     auto board_loc = location_idx_t::invalid();
@@ -1078,12 +1038,7 @@ journey basic_mcraptor<SearchDir, Criteria, RangeReuse>::materialize(
       dep_at_board = rt_time_at_stop(rt_t, board, dep_ev);
     } else {
       auto const r = tt_.transport_route_[t_idx];
-
-      auto const rec = recover_day(r, t_idx, alight, cur_arr);
-      utl::verify(rec.has_value(),
-                  "mcraptor reconstruct: traffic day recovery failed");
-      std::tie(day, train_arr) = *rec;
-
+      train_arr = time_at_stop(r, transport{t_idx, day}, alight, arr_ev);
       dep_at_board = time_at_stop(r, transport{t_idx, day}, board, dep_ev);
       auto const stop_seq = tt_.route_location_seq_[r];
       board_loc = stop{stop_seq[board]}.location_idx();
