@@ -5,6 +5,7 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/load.h"
+#include "nigiri/routing/raptor/bmraptor.h"
 #include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor_search.h"
@@ -107,12 +108,21 @@ std::vector<tuple_t> pong(fixture const& f, routing::query q) {
                      .journeys_);
 }
 
+std::vector<tuple_t> bmrapp(fixture const& f, routing::query q) {
+  auto ss = routing::search_state{};
+  auto as = routing::raptor_state{};
+  return tuples(*routing::bmrap_profile_search<routing::arr_criteria>(
+                     f.tt_, nullptr, ss, as, std::move(q), direction::kForward)
+                     .journeys_);
+}
+
 // every engine must agree with the plain rRAPTOR reference
 void expect_all_engines_agree(fixture const& f, routing::query const& q) {
   auto const ref = range_search<routing::raptor_state>(f, q);
   ASSERT_FALSE(ref.empty()) << "reference found no journey";
   EXPECT_EQ(ref, range_search<routing::mcraptor_state>(f, q)) << "mcraptor";
   EXPECT_EQ(ref, pong<routing::raptor_state>(f, q)) << "pong (scalar)";
+  EXPECT_EQ(ref, bmrapp(f, q)) << "bmrapp";
   test::raptor_search(f.tt_, nullptr, q, direction::kForward);  // adds the GPU
 }
 
