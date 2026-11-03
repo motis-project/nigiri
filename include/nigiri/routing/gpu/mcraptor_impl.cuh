@@ -407,6 +407,9 @@ struct mcraptor_impl {
       if (v == kMcEmptySlot) {
         continue;
       }
+      if (reuse_same_dep_only_ && mc_reuse_dep(v) != dep_) {
+        continue;
+      }
       if (mc_reuse_round(v) <= round && (!by_route || mc_reuse_by_route(v)) &&
           mc_reuse_key(v) <= arr_key && crit_le(mc_reuse_extras(v), extras)) {
         return true;
@@ -730,6 +733,29 @@ struct mcraptor_impl {
       for_each_set_bit(
           word, [&](unsigned const b) { route_list_[pos++] = w * 32U + b; });
     }
+  }
+
+  // BM-RAPTOR bound pruning, see basic_mcraptor::bound_prunes(); `slack`
+  // relaxes the bound by a stop's transfer buffer for footpath arrivals.
+  __device__ __forceinline__ bool bound_prunes(unsigned const k,
+                                               std::uint32_t const l,
+                                               delta_t const t,
+                                               int const slack = 0) {
+    if (!has_bounds_) {
+      return false;
+    }
+    // the CURRENT start time's trip budget, not the matrix-wide maximum:
+    // every departure has its own floor(sigma_tr * K(d))
+    auto const budget =
+        cur_budget_ < bounds_budget_ ? cur_budget_ : bounds_budget_;
+    if (k > budget) {
+      return true;
+    }
+    return !is_better_or_eq(
+        t, clamp(static_cast<int>(bounds_[static_cast<std::size_t>(budget - k) *
+                                              bounds_n_locations_ +
+                                          l]) +
+                 slack));
   }
 
   __device__ __forceinline__ int transfer_buffer(std::uint32_t const l) const {
@@ -1299,6 +1325,9 @@ struct mcraptor_impl {
       if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
         continue;
       }
+      if (bound_prunes(k, l_idx, by_transport)) {
+        continue;
+      }
       auto const post_arr = clamp(by_transport + buf);
       if (!bag_insert(l_idx, to_key(post_arr), ride_extras, k, true,
                       /*with_bc=*/true,
@@ -1519,6 +1548,9 @@ struct mcraptor_impl {
         if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
           continue;
         }
+        if (bound_prunes(k, l_idx, by_transport)) {
+          continue;
+        }
         auto const post_arr = clamp(by_transport + buf);
         if (!bag_insert(
                 l_idx, to_key(post_arr), ride_extras, k, true,
@@ -1576,6 +1608,9 @@ struct mcraptor_impl {
               crit_after_ride(rl.extras_, tt_.route_clasz_[r]);
           // destination pareto pruning: optimistic projection (key + lb)
           if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
+            continue;
+          }
+          if (bound_prunes(k, l_idx, by_transport)) {
             continue;
           }
           auto const post_arr = clamp(by_transport + buf);
@@ -1702,6 +1737,9 @@ struct mcraptor_impl {
     if (dest_dominates(k, fp_key + target_lb, fp_extras)) {
       return false;
     }
+    if (bound_prunes(k, target, fp_arr, transfer_buffer(target))) {
+      return false;
+    }
     auto const src = bc_read_coherent(te_bc);
     if (!bag_insert(target, fp_key, fp_extras, k, false, /*with_bc=*/true,
                     src.payload_, src.parent_, fp_arr)) {
@@ -1817,6 +1855,9 @@ struct mcraptor_impl {
           auto const ride_extras =
               crit_after_ride(rl.extras_, rtt_.rt_transport_clasz_[rt_t]);
           if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
+            continue;
+          }
+          if (bound_prunes(k, l_idx, by_transport)) {
             continue;
           }
           auto const post_arr = clamp(by_transport + buf);
@@ -2421,6 +2462,12 @@ struct mcraptor_impl {
   delta_t worst_at_dest_;
 
   cuda::std::span<std::pair<location_idx_t, delta_t> const> starts_;
+  // --- BM-RAPTOR (see bmrap_bounds.h) ---
+  cuda::std::span<delta_t const> bounds_{};
+  std::uint32_t bounds_n_locations_{0U};
+  std::uint8_t bounds_budget_{0U};
+  bool has_bounds_{false};
+  unsigned cur_budget_{0U};  // this start time's trip budget
 
   device_bitvec<std::uint64_t const> is_dest_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
@@ -2448,6 +2495,9 @@ struct mcraptor_impl {
   // only weaken pruning)
   std::uint32_t* dest_best_key_;
   std::uint32_t* dest_best_total_;
+  // pong side: only same-departure entries (one merged anchor run) may
+  // reject; cross-anchor rejections were seen over-pruning.
+  bool reuse_same_dep_only_;
   std::uint32_t* bc_pay_lo_;  // arena SoA (12B/entry vs 16B AoS)
   std::uint32_t* bc_hi_arr_;
   std::uint32_t* bc_par_;

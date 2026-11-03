@@ -5,6 +5,7 @@
 #include <cstring>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -28,12 +29,14 @@
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/timer.h"
+#include "utl/verify.h"
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/gpu/cuda_check.cuh"
 #include "nigiri/routing/gpu/device_buffer.cuh"
 #include "nigiri/routing/gpu/device_timetable.cuh"
+#include "nigiri/routing/gpu/mcraptor.h"
 #include "nigiri/routing/gpu/pinned_host_buffer.cuh"
 #include "nigiri/routing/gpu/raptor_impl.cuh"
 #include "nigiri/routing/gpu/timetable_impl.cuh"
@@ -62,7 +65,7 @@ std::unique_ptr<void, void (*)(void*)> make_gpu_rtt(timetable const& tt,
 
 struct gpu_raptor_state::impl {
   explicit impl(gpu_timetable const& gtt)
-      : tt_{gtt.impl_->to_device_timetable()} {
+      : gtt_{&gtt}, tt_{gtt.impl_->to_device_timetable()} {
     cudaStreamCreate(&stream_);
 
     auto const n_route_stops = tt_.route_of_stop_.size();
@@ -112,9 +115,11 @@ struct gpu_raptor_state::impl {
 
   void upload_query(
       unsigned const dir /* fwd=0 bwd=1 -> ping/pong can coexist */,
+      void const* owner,
       nigiri::bitvec const& is_dest,
       std::vector<std::uint16_t> const& dist_to_dest,
       hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest) {
+    q_owner_[dir] = owner;
     is_intermodal_dest_[dir] = !dist_to_dest.empty();
     // td dest offsets: flatten into sorted (loc, range, data) groups.
     if (td_dist_to_dest.empty()) {
@@ -209,7 +214,13 @@ struct gpu_raptor_state::impl {
                 "could not copy dist to dest");
   }
 
+  gpu_timetable const* gtt_;
+  std::unique_ptr<gpu_mcraptor_state> mc_state_;  // see try_mc_state()
+  bool mc_state_failed_{false};  // do not retry a failed allocation
+
   bool is_intermodal_dest_[2];  // per direction: [0]=fwd, [1]=bwd
+  // which gpu_raptor last uploaded into each direction slot
+  void const* q_owner_[2]{nullptr, nullptr};
   thrust::device_vector<std::uint32_t> any_marked_;
   thrust::device_vector<std::uint32_t> done_;
 
@@ -264,6 +275,18 @@ struct gpu_raptor_state::impl {
   thrust::device_vector<std::uint32_t> route_list_;
   thrust::device_vector<std::uint32_t> route_list_count_;
 
+  // BM-RAPTOR bound matrix, (budget+1) x n_locations delta_t, uploaded by
+  // gpu_raptor::set_bounds()
+  thrust::device_vector<delta_t> bmrap_bounds_;
+  // Scratch for build_reach_bounds(), separate from bmrap_bounds_ so building a
+  // matrix cannot clobber the one being pruned with. One slot per kind (0 =
+  // tau_dep^<-, 1 = tau_arr^->) since both are live at once. reach_tag_ is what
+  // set_bounds() matches against.
+  thrust::device_vector<delta_t> reach_out_[2];
+  std::uint64_t reach_tag_[2]{0U, 0U};
+  std::size_t reach_n_[2]{0U, 0U};
+
+  // WithBounds: round/via lower-bound pruning matrix (raptor::fill_bounds())
   device_buffer<delta_t> bounds_dev_;
 
   cudaStream_t stream_;
@@ -273,6 +296,27 @@ gpu_raptor_state::gpu_raptor_state(gpu_timetable const& gtt)
     : impl_{std::make_unique<impl>(gtt)} {}
 
 gpu_raptor_state::~gpu_raptor_state() = default;
+
+gpu_mcraptor_state* gpu_raptor_state::try_mc_state() {
+  if (impl_->mc_state_ == nullptr && !impl_->mc_state_failed_) {
+    try {
+      impl_->mc_state_ = std::make_unique<gpu_mcraptor_state>(*impl_->gtt_);
+    } catch (std::exception const& e) {
+      impl_->mc_state_failed_ = true;
+      log(log_lvl::info, "gpu",
+          "no device mcraptor state ({}) - multicriteria phases stay on the "
+          "CPU",
+          e.what());
+    }
+  }
+  return impl_->mc_state_.get();
+}
+
+gpu_mcraptor_state& gpu_raptor_state::mc_state() {
+  auto* const s = try_mc_state();
+  utl::verify(s != nullptr, "gpu_raptor_state: no device mcraptor state");
+  return *s;
+}
 
 template <direction SearchDir, bool WithBounds>
 gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
@@ -301,6 +345,8 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
       n_locations_{tt_.n_locations()},
       state_{state},
       is_dest_{is_dest},
+      dist_to_dest_{&dist_to_dest},
+      td_dist_to_dest_{&td_dist_to_dest},
       base_{base},
       allowed_claszes_{allowed_claszes},
       require_bike_transport_{require_bike_transport},
@@ -315,7 +361,8 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
               "timetable (rt_timetable::gpu_rtt_)");
   state_.impl_->resize_rt(rtt == nullptr ? 0U : rtt->n_rt_transports());
   reset_arrivals();
-  state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest, td_dist_to_dest);
+  state_.impl_->upload_query(kDirIdx, this, is_dest, dist_to_dest,
+                             td_dist_to_dest);
 }
 
 template <direction SearchDir, bool WithBounds>
@@ -553,12 +600,94 @@ __global__ void reconstruct_kernel(location_idx_t const* const dest_list,
   r.reconstruct_journey(dest_list[tid / end_k], k, &out[tid]);
 }
 
+// Bound build on the device, identical to reach_matrix() in bmrap_common.h:
+// `at(i, l)` is the best round time at l over rounds 0..i, less the location's
+// transfer buffer (subtracted once: the prefix runs over the raw times). Only
+// the (budget + 1) rows the caller keeps cross PCIe. Not templated on
+// WithBounds: it never touches the round/via lower-bound matrix.
+template <direction SearchDir>
+__global__ void reach_bounds_kernel(device_times<SearchDir, 1U> round_times,
+                                    device_timetable tt,
+                                    transfer_time_settings const tts,
+                                    delta_t* out,
+                                    std::uint32_t const n_locations,
+                                    unsigned const budget,
+                                    bool const sub_transfer) {
+  for (auto l = get_global_thread_id(); l < n_locations;
+       l += get_global_stride()) {
+    auto const li = location_idx_t{l};
+    auto const buf =
+        sub_transfer ? (kFwd ? 1 : -1) * adjusted_transfer_time(
+                                             tts, tt.transfer_time_[li].count())
+                     : 0;
+    auto prefix = kInvalid;
+    for (auto i = 0U; i <= budget; ++i) {
+      auto const cur =
+          round_times.get(static_cast<std::uint8_t>(i), li, via_offset_t{0U});
+      // "better in SearchDir" == looser as a bound (build_reach_matrix's
+      // is_looser); kInvalid is the worst value either way, so it loses
+      prefix = (kFwd ? cur < prefix : cur > prefix) ? cur : prefix;
+      out[i * n_locations + l] =
+          prefix == kInvalid ? kInvalid : static_cast<delta_t>(prefix - buf);
+    }
+  }
+}
+
+// Provenance stamps for bmrap_bounds::device_tag_. Monotone and process-wide,
+// so a stamp can never match a matrix built by a different state or an older
+// generation of the same slot.
+static std::uint64_t next_reach_tag() {
+  static auto counter = std::atomic<std::uint64_t>{0U};
+  return counter.fetch_add(1U, std::memory_order_relaxed) + 1U;
+}
+
+template <direction SearchDir, bool WithBounds>
+void gpu_raptor<SearchDir, WithBounds>::build_reach_bounds(
+    bmrap_bounds& out, std::uint8_t const budget, bool const sub_transfer) {
+  auto& s = *state_.impl_;
+  auto const slot = sub_transfer ? 1U : 0U;
+  auto const n = static_cast<std::size_t>(n_locations_) * (budget + 1U);
+  if (s.reach_out_[slot].size() < n) {
+    s.reach_out_[slot].resize(n);
+  }
+
+  auto const [blocks, threads] = launch_dims(reach_bounds_kernel<SearchDir>);
+  reach_bounds_kernel<SearchDir><<<blocks, threads, 0, s.stream_>>>(
+      device_times<SearchDir, 1U>{to_mutable_view(s.round_times_),
+                                  n_locations_},
+      s.tt_, transfer_time_settings_,
+      thrust::raw_pointer_cast(s.reach_out_[slot].data()), n_locations_, budget,
+      sub_transfer);
+
+  out.n_locations_ = n_locations_;
+  out.budget_ = budget;
+  out.device_tag_ = s.reach_tag_[slot] = next_reach_tag();
+  s.reach_n_[slot] = n;
+  // Straight into the caller's buffer: staging through pinned memory costs more
+  // in the extra host-to-host pass than it saves (tens of MB). The host copy
+  // itself is required, since the mc engines read `lat_` unless on the device.
+  out.lat_.resize(n);
+  auto const* const src = thrust::raw_pointer_cast(s.reach_out_[slot].data());
+  CUDA_CHECK(cudaMemcpyAsync(out.lat_.data(), src, n * sizeof(delta_t),
+                             cudaMemcpyDeviceToHost, s.stream_));
+  CUDA_CHECK(cudaStreamSynchronize(s.stream_));
+  CUDA_CHECK(cudaPeekAtLastError());
+}
+
 template <direction SearchDir, bool WithBounds>
 void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
                                                 std::uint8_t max_transfers,
                                                 unixtime_t worst_time_at_dest,
                                                 pareto_set<journey>& results) {
   auto& s = *state_.impl_;
+
+  // BM-RAPTOR runs its pong and its pruning search in the same direction on
+  // one state, so the later ctor overwrites the earlier one's destination
+  // slot. Re-claim it here (a few KB) rather than giving every search its own
+  // device state.
+  if (s.q_owner_[kDirIdx] != this) {
+    s.upload_query(kDirIdx, this, is_dest_, *dist_to_dest_, *td_dist_to_dest_);
+  }
 
   // No start = nothing to do.
   // guard against UB: starts_pinned with size=0 -> data=NULL -> memcpy to NULL
@@ -593,6 +722,23 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
   auto const with_td_fps =
       rt_active && prf_idx_ != 0U && gpu_rtt_->impl_->has_td_fps_[prf_idx_];
   auto r = raptor_impl<SearchDir, WithBounds>{
+      .bm_bounds_ =
+          has_bounds_
+              ? cuda::std::span<delta_t const>{thrust::raw_pointer_cast(
+                                                   s.bmrap_bounds_.data()),
+                                               s.bmrap_bounds_.size()}
+              : cuda::std::span<delta_t const>{},
+      .bounds_n_locations_ = bounds_n_locations_,
+      .bounds_budget_ = bounds_budget_,
+      .has_bounds_ = has_bounds_,
+      .start_round_ = start_round_,
+      .relax_origin_ =
+          relax_on_ ? unix_to_delta(base(), relax_origin_) : delta_t{0},
+      .relax_factor_ = relax_factor_,
+      .relax_floor_ = relax_floor_,
+      .relax_cap_ = relax_cap_,
+      .relax_add_ = relax_add_,
+      .relax_on_ = relax_on_,
       .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
       .done_ = thrust::raw_pointer_cast(s.done_.data()),
       .tt_ = s.tt_,
@@ -644,13 +790,17 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     r.bounds_last_k_ = bounds_last_k_;
   }
 
-  auto const end_k =
-      static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
+  // mirrors raptor::execute(): a staggered run writes its round k into slot
+  // k + start_round_, so the scan is shifted by the same amount and clipped
+  // to the matrix
+  auto const end_k = static_cast<std::uint32_t>(
+      std::min(std::min(max_transfers, kMaxTransfers) + 2U + start_round_,
+               static_cast<unsigned>(kMaxTransfers) + 2U));
 
   // === ROUTING KERNELS ===
   launch(init_arrivals_kernel<SearchDir, WithBounds>, s.stream_, r,
          worst_time_at_dest);
-  for (auto k = 1U; k != end_k; ++k) {
+  for (auto k = start_round_ + 1U; k != end_k; ++k) {
     launch(reuse_previous_arrivals_kernel<SearchDir, WithBounds>, s.stream_, r,
            k);
     launch(mark_routes_kernel<SearchDir, WithBounds>, s.stream_, r, k);
@@ -1137,6 +1287,63 @@ void gpu_raptor<SearchDir, WithBounds>::add_start(location_idx_t const l,
                                                   unixtime_t const t,
                                                   via_offset_t) {
   starts_.emplace_back(l, t);
+}
+
+template <direction SearchDir, bool WithBounds>
+void gpu_raptor<SearchDir, WithBounds>::set_bounds(bmrap_bounds const* b) {
+  if (b == nullptr || b->empty()) {
+    has_bounds_ = false;
+    return;
+  }
+  auto& s = *state_.impl_;
+  if (s.bmrap_bounds_.size() < b->lat_.size()) {
+    s.bmrap_bounds_.resize(b->lat_.size());
+  }
+  // If this is a matrix we built ourselves it is still on the device, so take
+  // it from there rather than pushing the host copy back over PCIe - which is
+  // the common case for PHASE 2a's matrix feeding the PHASE 2b pruning search.
+  auto const from_device = [&] {
+    for (auto slot = 0U; slot != 2U; ++slot) {
+      if (b->device_tag_ != 0U && b->device_tag_ == s.reach_tag_[slot] &&
+          s.reach_n_[slot] == b->lat_.size()) {
+        return static_cast<int>(slot);
+      }
+    }
+    return -1;
+  }();
+  if (from_device >= 0) {
+    CUDA_CHECK(cudaMemcpyAsync(
+        thrust::raw_pointer_cast(s.bmrap_bounds_.data()),
+        thrust::raw_pointer_cast(s.reach_out_[from_device].data()),
+        b->lat_.size() * sizeof(delta_t), cudaMemcpyDeviceToDevice, s.stream_));
+  } else {
+    CUDA_CHECK(cudaMemcpyAsync(thrust::raw_pointer_cast(s.bmrap_bounds_.data()),
+                               b->lat_.data(), b->lat_.size() * sizeof(delta_t),
+                               cudaMemcpyHostToDevice, s.stream_));
+  }
+  CUDA_CHECK(cudaStreamSynchronize(s.stream_));
+  bounds_n_locations_ = b->n_locations_;
+  bounds_budget_ = b->budget_;
+  has_bounds_ = true;
+}
+
+template <direction SearchDir, bool WithBounds>
+void gpu_raptor<SearchDir, WithBounds>::set_dest_relax(unixtime_t const origin,
+                                                       double const factor,
+                                                       int const add_minutes,
+                                                       double const floor_min,
+                                                       double const cap_min) {
+  relax_origin_ = origin;
+  relax_factor_ = factor;
+  relax_add_ = add_minutes;
+  relax_cap_ = cap_min;
+  relax_floor_ = std::min(floor_min, cap_min);
+  relax_on_ = true;
+}
+
+bool gpu_available() {
+  auto n = 0;
+  return cudaGetDeviceCount(&n) == cudaSuccess && n > 0;
 }
 
 template class gpu_raptor<direction::kForward, false>;

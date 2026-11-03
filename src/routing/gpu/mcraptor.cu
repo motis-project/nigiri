@@ -259,6 +259,9 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> bag_pool_count_;
   std::uint32_t bag_pool_cap_;
   thrust::device_vector<std::uint64_t> reuse_bags_[2];
+
+  // BM-RAPTOR bound matrix, uploaded by gpu_mcraptor::set_bounds()
+  thrust::device_vector<delta_t> bmrap_bounds_[2];
   thrust::device_vector<std::uint32_t> bag_locks_;
   thrust::device_vector<std::uint8_t> bag_hwm_;
   thrust::device_vector<mc_label_t> dest_bag_[2];
@@ -576,7 +579,8 @@ mcraptor_impl<SearchDir, Crit> make_impl(
     day_idx_t const base,
     delta_t const worst_at_dest,
     delta_t const dep,
-    cuda::std::span<std::pair<location_idx_t, delta_t> const> starts) {
+    cuda::std::span<std::pair<location_idx_t, delta_t> const> starts,
+    bool const reuse_same_dep = false) {
   return mcraptor_impl<SearchDir, Crit>{
       .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
       .done_ = thrust::raw_pointer_cast(s.done_.data()),
@@ -615,6 +619,7 @@ mcraptor_impl<SearchDir, Crit> make_impl(
           thrust::raw_pointer_cast(s.dest_best_key_[dir_idx].data()),
       .dest_best_total_ =
           thrust::raw_pointer_cast(s.dest_best_total_[dir_idx].data()),
+      .reuse_same_dep_only_ = reuse_same_dep,
       .bc_pay_lo_ = thrust::raw_pointer_cast(s.bc_pay_lo_.data()),
       .bc_hi_arr_ = thrust::raw_pointer_cast(s.bc_hi_arr_.data()),
       .bc_par_ = thrust::raw_pointer_cast(s.bc_par_.data()),
@@ -702,8 +707,9 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   auto r = make_impl<SearchDir, Crit>(
       s, kDirIdx, transfer_time_settings_, allowed_claszes_, prf_idx_, base_,
       worst_at_dest_, d_start_dep,
-      cuda::std::span<std::pair<location_idx_t, delta_t> const>{
-          starts_dev, starts_.size()});
+      cuda::std::span<std::pair<location_idx_t, delta_t> const>{starts_dev,
+                                                                starts_.size()},
+      reuse_same_dep_);
 
   // rt: the rt traffic days make rt-updated static transports inactive (the rt
   // scan covers them); tt_.bitfields_ stays static (is_route_active reads it).
@@ -716,6 +722,17 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
 
   auto const end_k =
       static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
+
+  // BM-RAPTOR pruning (see mcraptor_impl::bound_prunes)
+  if (has_bounds_) {
+    r.bounds_ = cuda::std::span<delta_t const>{
+        thrust::raw_pointer_cast(s.bmrap_bounds_[kDirIdx].data()),
+        s.bmrap_bounds_[kDirIdx].size()};
+    r.bounds_n_locations_ = bounds_n_locations_;
+    r.bounds_budget_ = bounds_budget_;
+    r.has_bounds_ = true;
+  }
+  r.cur_budget_ = end_k - 1U;  // trips allowed for this start time
 
   // === ROUTING KERNELS ===
   mc_launch(mc_init_arrivals_kernel<SearchDir, Crit>, s.stream_, r,
@@ -921,6 +938,25 @@ template <direction SearchDir, mc_crit Crit>
 void gpu_mcraptor<SearchDir, Crit>::reconstruct(query const& q, journey& j) {
   mc_reconstruct_offsets<SearchDir>(tt_, rtt_, q, j);
   j.is_reconstructed_ = true;
+}
+
+template <direction SearchDir, mc_crit Crit>
+void gpu_mcraptor<SearchDir, Crit>::set_bounds(bmrap_bounds const* b) {
+  if (b == nullptr || b->empty()) {
+    has_bounds_ = false;
+    return;
+  }
+  auto& s = *state_.impl_;
+  if (s.bmrap_bounds_[kDirIdx].size() < b->lat_.size()) {
+    s.bmrap_bounds_[kDirIdx].resize(b->lat_.size());
+  }
+  CUDA_CHECK(cudaMemcpyAsync(
+      thrust::raw_pointer_cast(s.bmrap_bounds_[kDirIdx].data()), b->lat_.data(),
+      b->lat_.size() * sizeof(delta_t), cudaMemcpyHostToDevice, s.stream_));
+  CUDA_CHECK(cudaStreamSynchronize(s.stream_));
+  bounds_n_locations_ = b->n_locations_;
+  bounds_budget_ = b->budget_;
+  has_bounds_ = true;
 }
 
 #define NIGIRI_GPU_MCRAPTOR_INSTANTIATE(C)             \
