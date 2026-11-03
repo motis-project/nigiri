@@ -19,7 +19,6 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
-#include "nigiri/routing/raptor/bmrap_bounds.h"
 #include "nigiri/routing/raptor/breadcrumb.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/transfer_time_settings.h"
@@ -32,13 +31,10 @@ struct rt_timetable;
 
 namespace nigiri::routing {
 
-// McRAPTOR supports only the plain one-to-one case: no via stops, no
-// bike/car transport requirement. Realtime and time-dependent offsets work.
+// No via stops, no bike/car/reservation filters; rt and td offsets work.
 bool mcraptor_supported(query const&, rt_timetable const*);
 
-// Adds the first/last-mile offset legs and the start footpath to a journey
-// whose legs_ hold the transit core, then optimizes its footpaths. Shared by
-// the CPU and the GPU mcraptor.
+// Adds offset legs and the start footpath to the transit core legs (CPU + GPU).
 template <direction SearchDir>
 void mc_reconstruct_offsets(timetable const&,
                             rt_timetable const*,
@@ -55,26 +51,17 @@ constexpr bool arr_no_worse(delta_t const a, delta_t const b) {
   return SearchDir == direction::kForward ? a <= b : a >= b;
 }
 
-// A criteria set is the pareto label of the search. Each combination is its
-// own type, so every configuration gets a fully inlined instantiation.
-//   arr_                       primary criterion (scalar pruning, extraction)
-//   dominates<Dir>(o)          pareto dominance over all criteria
-//   completed_dominates<Dir>   same at the destination, where nothing follows
-//   carried                    everything but the arrival, which survives a
-//                              boarding (may be empty); dominates<Dir>, ==
-//   carry(), from_ride(arr, ride duration, ride_attrs, carried)
-//                              convert between the two
-//   at_start(arr, ingress)     round 0; ingress = minutes between the query
-//                              start and the seeded stop time
-//   with_transfer(dt)          after a same-stop transfer (dt signed by dir)
-//   with_walk(dt, duration)    after a footpath / offset
-//   projected_to(arr)          arrival replaced by an optimistic projection
-//                              (arr + lower bound), rest unchanged; used for
-//                              destination pruning
-//   reuse_dominates<Dir>(o, dep, o_dep)
-//                              cross-departure rRAPTOR reuse: does this label
-//                              (departed at dep) dominate the earlier o?
-//   apply_to(journey&)         write the criteria into the result
+// Criteria protocol (the pareto label):
+//   arr_                     arrival
+//   dominates<Dir>           pareto dominance
+//   completed_dominates<Dir> dominance at the destination (nothing follows)
+//   carried, carry(), from_ride(arr, duration, ride_attrs, carried)
+//                            what survives a boarding, and back
+//   at_start(arr, ingress)   round 0 seed
+//   with_transfer(dt), with_walk(dt, duration)
+//   projected_to(arr)        arrival replaced by arr + lower bound
+//   reuse_dominates<Dir>(o, dep, o_dep)  rRAPTOR reuse across departures
+//   apply_to(journey&)       writes the criteria into the result
 struct arr_criteria {
   template <direction SearchDir>
   bool dominates(arr_criteria const& o) const {
@@ -118,17 +105,11 @@ struct arr_criteria {
   delta_t arr_;
 };
 
-// Arrival + generalized cost in weighted minutes (OTP defaults): elapsed
-// time * 1, walking * 2 (1 elapsed + kWalkSurcharge), boardings * 10. The
-// elapsed part is (arr - start) for every label of one start time, so only
-// the extras (walk surcharge + boardings) are stored.
-//
-// In-bag dominance is strict pareto over (arr, extras). Comparing arr + extras
-// would credit an earlier arrival at 1 weighted minute per minute, exact only
-// if the journey ended there; padding it with the waiting penalty of the
-// arrival difference cancels the arrival terms and leaves the pure extras
-// comparison. That also matches reuse_dominates, so range reuse is
-// result-neutral.
+// Arrival + generalized cost (OTP defaults: elapsed * 1, walking * 2,
+// boardings * 10). The elapsed part is common to one start time, so only the
+// extras (walk surcharge + boardings) are stored. In-bag dominance is pareto
+// over (arr, extras): crediting an earlier arrival would only be exact at the
+// destination.
 struct arr_cost_criteria {
   static constexpr auto const kWalkSurcharge = std::uint32_t{1U};
   static constexpr auto const kBoardCost = std::uint32_t{10U};
@@ -138,9 +119,7 @@ struct arr_cost_criteria {
     return arr_no_worse<SearchDir>(arr_, o.arr_) && cost_ <= o.cost_;
   }
 
-  // At the destination the elapsed part is realized, so (arr, arr + extras) is
-  // journey-level cost dominance and stays valid against the lb-projection of
-  // an intermediate label. Not valid between labels in a bag.
+  // at the destination the elapsed part is realized: total cost dominance
   template <direction SearchDir>
   bool completed_dominates(arr_cost_criteria const& o) const {
     constexpr auto const kF = SearchDir == direction::kForward;
@@ -181,10 +160,8 @@ struct arr_cost_criteria {
     return {arr, cost_};
   }
 
-  // A later-departing label dominates an earlier one iff it arrives no later
-  // and its departure-discounted extras (extras - dep) are no worse: the
-  // elapsed charge depends on the departure, so an earlier arrival only buys
-  // longer waiting downstream, not a lower final cost.
+  // later departure dominates iff it arrives no later with no worse
+  // departure-discounted extras (extras - dep)
   template <direction SearchDir>
   bool reuse_dominates(arr_cost_criteria const& o,
                        delta_t const dep,
@@ -206,16 +183,11 @@ struct arr_cost_criteria {
   std::uint16_t cost_;  // extras only: walk surcharge + boarding penalties
 };
 
-// ---- composable dimensions ----
-// A dimension is the criteria protocol minus the arrival, which arr_with owns:
-// dominates, completed_dominates, at_start(ingress), from_ride(duration,
-// ride_attrs, prev), with_transfer(dt), with_walk(dt, duration), apply_to.
-// Each owns a distinct journey slot, which is what makes them freely
-// combinable (and why generalized cost, writing criteria_cost_ like
-// non_transit_dim, is not one).
+// Composable dimensions: the criteria protocol minus the arrival (arr_with owns
+// it). Each writes its own journey slot, so they combine freely; generalized
+// cost shares criteria_cost_ with non_transit and is therefore not one.
 
-// Minutes on foot: ingress offset / start footpath, footpaths, intermodal
-// egress. Not the same-stop transfer buffer (waiting, not walking).
+// Minutes on foot (offsets, footpaths), not the same-stop transfer buffer.
 struct non_transit_dim {
   bool dominates(non_transit_dim const& o) const {
     return non_transit_ <= o.non_transit_;
@@ -241,15 +213,11 @@ struct non_transit_dim {
   std::uint16_t non_transit_{0U};
 };
 
-// Binary "uses an avoided vehicle class": a pareto dimension rather than a
-// filter, so the result keeps both the fast itinerary that flies and the best
-// one that does not.
+// "Uses an avoided vehicle class" as a pareto dimension, not a filter: keeps
+// both the fastest itinerary and the best one without that class.
 struct mode_filter_dim {
-  // The avoided classes (default AIR), e.g. AIR|COACH for motis'
-  // minimizeWithout. Chosen per query, while the criteria type only encodes
-  // THAT the dimension is active - hence a thread_local (one search runs on
-  // one thread start to finish). Set it before every search that reads it; it
-  // is never reset.
+  // Avoided classes (default AIR), per query, hence thread_local (a search runs
+  // on one thread). Set before every search; never reset.
   static clasz_mask_t& avoided_mask() {
     thread_local clasz_mask_t mask = to_mask(clasz::kAir);
     return mask;
@@ -279,14 +247,9 @@ struct mode_filter_dim {
   bool mode_filter_{false};
 };
 
-// Vehicle-class switches between consecutive trips. Suburban, subway, tram
-// and bus form one local-transit group: switching within it is free, all other
-// classes count individually (bus -> tram is free, bus -> regional counts).
-//
-// The carried clasz prices the future: the same switch count in another class
-// may cost one more switch downstream, so a label only dominates with a full
-// switch to spare. A label that rode nothing yet boards anything for free. At
-// the destination nothing follows, so completed_dominates drops the penalty.
+// Vehicle-class switches between trips; suburban, subway, tram and bus are one
+// group. Labels in different classes only dominate with a switch to spare (the
+// next switch may differ); completed_dominates drops that margin.
 struct mode_switches_dim {
   // one past the last clasz doubles as "no trip ridden yet"
   static constexpr clasz no_clasz() { return clasz::kNumClasses; }
@@ -399,8 +362,7 @@ struct arr_with {
   // dimensions only grow, so they are their own lower bound
   arr_with projected_to(delta_t const arr) const { return {arr, d_}; }
 
-  // every dimension is absolute (independent of the departure), so reuse
-  // dominance is plain in-bag dominance
+  // dimensions do not depend on the departure: plain dominance
   template <direction SearchDir>
   bool reuse_dominates(arr_with const& o, delta_t, delta_t) const {
     return dominates<SearchDir>(o);
@@ -418,37 +380,24 @@ struct arr_with {
 
 template <typename Criteria>
 struct basic_mcraptor_state {
-  // Bag entries hold the breadcrumb arena index in the low 31 bits; the top
-  // bit marks transit arrivals (their footpaths still need relaxing -
-  // footpath arrivals never chain).
+  // breadcrumb index in the low 31 bits; the top bit marks transit arrivals
+  // (only those get footpaths relaxed)
   static constexpr auto const kByRoute = std::uint32_t{1U} << 31U;
   static constexpr auto const kBreadcrumbMask = kByRoute - 1U;
   static constexpr auto const kNoBreadcrumb = kBreadcrumbMask;
 
-  // Everything needed to emit the transit leg that produced an arrival and
-  // to continue the chase at its boarding stop.
-  //   payload_  packed (transport, board stop, alight stop), see breadcrumb.h
-  //   parent_   arena index of the boarded breadcrumb (kNoBreadcrumb = start);
-  //             explicit because a stop holds several labels per round
-  //   arr_      arrival at the bag location (drives the chase and the
-  //             traffic-day recovery)
+  // The transit leg behind an arrival: packed (transport, board, alight), the
+  // boarded label's breadcrumb (kNoBreadcrumb = start) and the arrival (for
+  // traffic-day recovery).
   struct breadcrumb {
     breadcrumb_t payload_;
     std::uint32_t parent_;
     delta_t arr_;
   };
 
-  // One pareto label of a stop's bag.
-  //   breadcrumb_  index into breadcrumbs_ (kNoBreadcrumb = round-0 start)
-  //   round_       transfer round that produced the label, an implicit pareto
-  //                dimension: a label is never rejected or evicted by one from
-  //                a lower round. Boarding in round k reads round_ == k - 1,
-  //                footpath/destination collection reads round_ == k.
-  //   dep_         departure that produced the label. Under range reuse the
-  //                bag persists across start times and earlier entries are
-  //                pruned by later-departing ones; boarding, footpaths and
-  //                collection only read the current start. Without reuse it
-  //                is inert.
+  // One label of a stop's bag. round_ is an implicit pareto dimension (never
+  // dominated by a higher round); dep_ tags the start time under range reuse,
+  // where the bag outlives it.
   struct label {
     Criteria crit_;
     std::uint32_t breadcrumb_;
@@ -456,13 +405,11 @@ struct basic_mcraptor_state {
     delta_t dep_;
   };
 
-  // One pareto bag per location: a small inline buffer plus arena overflow.
-  // Most bags fit inline.
+  // per-location bag: inline buffer, arena overflow
   static constexpr auto const kInline = std::uint32_t{4U};
   static constexpr auto const kNoOverflow = std::uint32_t{0xFFFFFFFFU};
 
-  // One cache line. over_ == kNoOverflow: labels live in inline_, else at
-  // arena offset over_ with capacity cap_.
+  // one cache line; over_ != kNoOverflow: labels at arena offset over_
   struct alignas(64) small_bag {
     std::uint16_t size_{0U};
     std::uint16_t cap_{static_cast<std::uint16_t>(kInline)};
@@ -470,9 +417,8 @@ struct basic_mcraptor_state {
     std::array<label, kInline> inline_;
   };
 
-  // Bump arena for overflow spans: power-of-two size classes with a free list
-  // each. Bags store offsets, not pointers, so the vector may grow. Reset when
-  // the bags are cleared per start time.
+  // overflow spans in power-of-two classes with free lists; offsets, not
+  // pointers, so the vector may grow
   struct arena {
     static constexpr auto const kMinClass = std::uint32_t{8U};
     static constexpr auto const kNumClasses = std::size_t{10U};  // 8 .. 4096
@@ -604,8 +550,7 @@ struct basic_mcraptor_state {
     return *this;
   }
 
-  // One accumulating pareto bag per stop over all rounds of a start time; each
-  // label carries its round (see label::round_). Reset per start time.
+  // one bag per stop for all rounds of a start time
   bag_layer bag_;
   std::vector<breadcrumb> breadcrumbs_;
   bitvec station_mark_;
@@ -615,10 +560,8 @@ struct basic_mcraptor_state {
   bitvec rt_transport_mark_;
 };
 
-// RangeReuse: keep the bags across start times (rRAPTOR reuse) instead of
-// clearing them per departure. True for a fixed destination scanned
-// latest-departure first (the search.h interval search), false where start
-// times are independent queries (plain earliest arrival).
+// RangeReuse: keep the bags across start times (rRAPTOR, latest departure
+// first) instead of clearing them per departure.
 template <direction SearchDir, typename Criteria, bool RangeReuse = false>
 struct basic_mcraptor {
   using state_t = basic_mcraptor_state<Criteria>;
@@ -662,13 +605,7 @@ struct basic_mcraptor {
                unixtime_t worst_time_at_dest,
                pareto_set<journey>& results);
 
-  // BM-RAPTOR main search: bounds from the backward pruning search discard
-  // arrivals that cannot reach the target within the remaining trip budget and
-  // arrival slack. nullptr = plain McRAPTOR. Must share this search's base day.
-  void set_bounds(bmrap_bounds const* b) { bounds_ = b; }
-
-  // execute() materializes the core legs; this adds offset legs and the start
-  // footpath.
+  // adds offset legs and the start footpath to execute()'s core legs
   void reconstruct(query const&, journey&);
 
 private:
@@ -677,9 +614,7 @@ private:
   static auto get_best(auto a, auto b) { return is_better(a, b) ? a : b; }
   static auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
-  // Label boarded onto a route while scanning it: a pareto frontier over the
-  // trip order. key_ = (traffic day << 16 | transport offset in route), so
-  // comparing keys orders the trips of a route.
+  // route-scan label; key_ = traffic day << 16 | trip offset orders the trips
   struct route_label {
     transport t_;
     std::uint32_t key_;
@@ -689,8 +624,7 @@ private:
     [[no_unique_address]] typename Criteria::carried carried_;
   };
 
-  // Like route_label for an rt transport, which is a single trip: no trip
-  // order, so the frontier is a plain pareto set over the carried criteria.
+  // rt transports are single trips: no trip order
   struct rt_label {
     delta_t board_dep_;
     stop_idx_t board_;
@@ -744,42 +678,9 @@ private:
                    std::uint8_t round);
   delta_t transfer_buffer(std::uint64_t l) const;
 
-  // An arrival at stop l in round k at time t is discarded iff t is worse than
-  // tau_dep^<-(l, budget - k). `slack` loosens the bound for footpath arrivals,
-  // which pay no transfer buffer at l: the stored bound is post-transfer, right
-  // for transit arrivals but one buffer too tight for footpaths.
-  bool bound_prunes(unsigned const k,
-                    std::uint32_t const l,
-                    delta_t const t,
-                    int const slack = 0) const {
-    if (bounds_ == nullptr) {
-      return false;
-    }
-    // The current start time's budget limits the rounds; which row answers
-    // "k trips used" depends on the matrix (bmrap_bounds::staggered_): a
-    // staggered one is read relative to its own budget, a reach matrix relative
-    // to this search's budget.
-    auto const budget = std::min<unsigned>(cur_budget_, bounds_->budget_);
-    if (k > budget) {
-      return true;
-    }
-    auto const row = bounds_->staggered_ ? bounds_->budget_ - k : budget - k;
-    return !is_better_or_eq(
-        t, clamp(static_cast<int>(bounds_->at(row, l)) + slack));
-  }
-
-  // 0 is always a valid lower bound. Under BM-RAPTOR bound_prunes() is already
-  // a tighter feasibility cutoff, so lb_ is only needed when unbounded.
-  std::uint16_t effective_lb(std::uint32_t const l_idx) const {
-    return bounds_ == nullptr ? lb_[l_idx] : std::uint16_t{0U};
-  }
-
-  // Destination pruning. Scalar earliest-arrival tightening is wrong with
-  // several criteria (a later label can still complete a cheaper pareto-optimal
-  // journey), so destination arrivals form a pareto frontier over (round,
-  // criteria) and a candidate is pruned iff its optimistic projection (arrival
-  // + lower bound) is dominated by an entry of no more rounds. Persists across
-  // start times, which are processed in dominance order.
+  // Destination pruning: a pareto frontier over (round, criteria); a candidate
+  // is pruned iff its lb projection is dominated by an entry of no more rounds.
+  // Persists across start times.
   struct dest_entry {
     unsigned k_;
     Criteria crit_;
@@ -816,8 +717,7 @@ private:
   delta_t time_at_stop(route_idx_t, transport, stop_idx_t, event_type) const;
   // rt event times are absolute on the rt base day: no traffic-day arithmetic
   delta_t rt_time_at_stop(rt_transport_idx_t, stop_idx_t, event_type) const;
-  // a static transport with an rt update reads as inactive, so the rt scan
-  // picks the updated run up instead
+  // inactive if rt-updated: the rt scan covers it
   bool is_transport_active(transport_idx_t, day_idx_t) const;
   delta_t to_delta(day_idx_t day, std::int16_t mam) const;
   unixtime_t to_unix(delta_t) const;
@@ -827,8 +727,7 @@ private:
 
   timetable const& tt_;
   rt_timetable const* rtt_{nullptr};
-  // Runtime rather than a template parameter (unlike raptor.h): mcraptor
-  // already instantiates per criteria x direction x reuse.
+  // runtime, not a template parameter: enough instantiations already
   bool has_rt_{false};
   std::uint32_t n_rt_transports_;
   state_t& state_;
@@ -838,14 +737,10 @@ private:
   std::vector<std::uint16_t> const& lb_;
   // search-window bound only; dest_bag_ owns destination pruning
   delta_t worst_at_dest_;
-  bmrap_bounds const* bounds_{nullptr};  // nullptr = plain McRAPTOR
-  // trips (max_transfers + 1) of the start time being executed
-  unsigned cur_budget_{0U};
   std::vector<dest_entry> dest_bag_;
   // current start's departure, tagged onto inserted labels (see label::dep_)
   delta_t cur_dep_{};
-  // round-0 seeds recorded by add_start, inserted at the top of execute once
-  // the query start time (hence the ingress duration) is known
+  // round-0 seeds, inserted in execute() once the ingress is known
   std::vector<std::pair<std::uint32_t, delta_t>> seeds_;
   day_idx_t base_;
   raptor_stats stats_;

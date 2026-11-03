@@ -54,8 +54,7 @@ struct gpu_mcraptor_state::impl {
     bags_.resize(static_cast<std::size_t>(n_locations) * bag_cap_);
     cudaMemsetAsync(thrust::raw_pointer_cast(bags_.data()), 0xFF,
                     bags_.size() * sizeof(mc_label_t), stream_);
-    // chained blocks: the pool scales with label demand, not with a worst-case
-    // per-stop row
+    // chained blocks: the pool scales with the labels, not a worst-case row
     bag_pool_cap_ = checked_cap(
         "bag pool",
         std::min<std::size_t>(std::max<std::size_t>(n_locations / 2U, 524'288U),
@@ -92,8 +91,7 @@ struct gpu_mcraptor_state::impl {
                       sizeof(std::uint32_t), stream_);
     }
 
-    // breadcrumb arena: transit arrivals + footpath copies of one start time;
-    // overflow trips the device canary
+    // breadcrumbs of one start time; overflow trips the canary
     auto const arena_cap = std::min<std::size_t>(
         std::max<std::size_t>(static_cast<std::size_t>(n_locations) * 16U,
                               8'000'000U),
@@ -122,11 +120,9 @@ struct gpu_mcraptor_state::impl {
     route_single_entry_.resize(tt_.n_routes_);
     route_single_flat_.resize(tt_.n_routes_);
     auto const n_route_stops = tt_.route_of_stop_.size();
-    // Exact-size et rows: the task list/map/offsets are per flat route-stop
-    // (an upper bound on the task count), and the entry pool is reserved at
-    // collect time as hwm + 1 per task, so it follows the actual frontier (~3
-    // entries per task) rather than a worst-case row. The clamp keeps tiny test
-    // timetables above checked_cap's floor.
+    // et tasks are bounded by the flat route-stops; the entry pool is reserved
+    // per task at collect time. The clamp keeps tiny timetables above the
+    // floor.
     et_tasks_cap_ = checked_cap(
         "et tasks", std::clamp<std::size_t>(n_route_stops, 4U, 64'000'000U),
         1U << 28U);
@@ -157,8 +153,7 @@ struct gpu_mcraptor_state::impl {
 
   ~impl() { cudaStreamDestroy(stream_); }
 
-  // the only per-query sizing: the rt timetable may be absent or may have
-  // grown (rt updates) since the last query on this state
+  // per query: the rt timetable may be absent or have grown
   void resize_rt(unsigned const n_rt_transports) {
     rt_transport_mark_.resize(n_bitvec_words(n_rt_transports));
   }
@@ -171,8 +166,7 @@ struct gpu_mcraptor_state::impl {
       std::vector<std::uint16_t> const& lb) {
     is_intermodal_dest_[dir] = !dist_to_dest.empty();
 
-    // td dest offsets: flatten into sorted (loc, range, data) groups, like
-    // the scalar raptor's upload_query
+    // td dest offsets as sorted (loc, range, data) groups, as in gpu raptor
     if (td_dist_to_dest.empty()) {
       td_dest_locs_dev_[dir].clear();
       td_dest_ranges_dev_[dir].clear();
@@ -301,11 +295,6 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> any_marked_;
   thrust::device_vector<std::uint32_t> done_;
   thrust::device_vector<std::uint32_t> overflow_;
-
-  // pruning bounds, uploaded by gpu_mcraptor::set_bounds(); per direction like
-  // the other per-query buffers, so a forward and a backward search on one
-  // state keep their own matrix
-  thrust::device_vector<delta_t> bmrap_bounds_[2];
 
   thrust::device_vector<std::uint64_t> is_dest_[2];
   pinned_host_buffer<std::uint64_t> is_dest_pin_[2];
@@ -472,8 +461,7 @@ __global__ void mc_reconstruct_kernel(location_idx_t const* const dest_list,
                                       mcraptor_impl<SearchDir, Crit> r,
                                       gpu_journey* const out) {
   auto const tid = blockIdx.x * blockDim.x + threadIdx.x;
-  // full chain capacity: a dest bag can use every slot the u8 hwm
-  // allows (inline + all chained blocks), not just inline + one block
+  // a dest bag can use every slot the u8 hwm allows
   auto const per_dest = kMcMaxBagSlots;
   if (tid >= n_dest * per_dest) {
     return;
@@ -487,10 +475,8 @@ __global__ void mc_reconstruct_kernel(location_idx_t const* const dest_list,
   r.reconstruct_label(dest, lab, &out[tid]);
 }
 
-// The cache is keyed by the kernel ADDRESS, not the template parameter:
-// kernels sharing a signature share one mc_launch_dims, and a per-type cache
-// would reuse the first kernel's block size for all (a 1024-thread block from a
-// 6-register kernel fails on a 70-register one: "too many resources").
+// Keyed by kernel address: kernels sharing a signature need their own block
+// size ("too many resources" otherwise).
 template <typename Kernel>
 std::pair<int, int> mc_launch_dims(Kernel kernel) {
   static thread_local std::unordered_map<void*, std::pair<int, int>> cache;
@@ -703,8 +689,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   worst_at_dest_ = kFwd ? std::min(d_worst, worst_at_dest_)
                         : std::max(d_worst, worst_at_dest_);
 
-  // mirror of the CPU arr_cost_criteria::kWalkSurcharge configuration; only
-  // the cost dimension weights walking - non_transit counts raw minutes
+  // only the cost criteria weight walking
   auto const walk_surcharge = kHasCost ? arr_cost_criteria::kWalkSurcharge : 0U;
 
   // upload the seeds (stop, seeded stop time in delta units)
@@ -726,12 +711,8 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
       cuda::std::span<std::pair<location_idx_t, delta_t> const>{
           starts_dev, starts_.size()});
 
-  // Realtime: hand the device the rt timetable and swap in its full-size
-  // transport_traffic_days_, so a static transport with an rt update reads as
-  // inactive in the route scan and the rt scan picks the updated run up (as in
-  // the scalar GPU raptor). tt_.bitfields_ must stay the static array:
-  // is_transport_active() resolves entries into either bitfield set
-  // (kRtBitfieldFlag) and is_route_active() always reads the static one.
+  // rt: the rt traffic days make rt-updated static transports inactive (the rt
+  // scan covers them); tt_.bitfields_ stays static (is_route_active reads it).
   auto const rt_active = gpu_rtt_ != nullptr;
   if (rt_active) {
     r.rtt_ = gpu_rtt_->impl_->to_device_rt_timetable();
@@ -741,18 +722,6 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
 
   auto const end_k =
       static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
-
-  // BM-RAPTOR pruning (see mcraptor_impl::bound_prunes)
-  if (has_bounds_) {
-    r.bounds_ = cuda::std::span<delta_t const>{
-        thrust::raw_pointer_cast(s.bmrap_bounds_[kDirIdx].data()),
-        s.bmrap_bounds_[kDirIdx].size()};
-    r.bounds_n_locations_ = bounds_n_locations_;
-    r.bounds_budget_ = bounds_budget_;
-    r.bounds_staggered_ = bounds_staggered_;
-    r.has_bounds_ = true;
-  }
-  r.cur_budget_ = end_k - 1U;  // trips allowed for this start time
 
   // === ROUTING KERNELS ===
   mc_launch(mc_init_arrivals_kernel<SearchDir, Crit>, s.stream_, r,
@@ -771,8 +740,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
       mc_launch(mc_et_collect_kernel<SearchDir, Crit, false>, s.stream_, r, k);
     }
     mc_launch(mc_et_lookups_kernel<SearchDir, Crit>, s.stream_, r, k);
-    // warp-per-route two-pass scan: fixed geometry + per-warp shared
-    // segment slab (occupancy-launch cannot size dynamic shared memory)
+    // fixed geometry: occupancy launch cannot size the shared segment slab
     auto const scan_blocks = 512U;
     auto const scan_shared =
         (kMcScanThreads / 32U) * kMcMaxSegs * sizeof(mc_seg);
@@ -794,9 +762,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
             <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
       }
     }
-    // rt runs after the static scan: both insert round-k labels and read
-    // round k-1, which a round-k insert never evicts, so the order does not
-    // change what either sees
+    // both read round k - 1 and write round k: order does not matter
     if (with_rt_scan) {
       if (with_clasz) {
         if (is_wheelchair_) {
@@ -948,8 +914,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
       }
     }
 
-    // Backward search: re-anchor footpath durations to the arrival of the
-    // previous trip (no-op for forward search).
+    // backward: re-anchor footpaths to the previous trip's arrival
     for (auto i = std::size_t{1U}; i < j.legs_.size(); ++i) {
       if (std::holds_alternative<footpath>(j.legs_[i].uses_)) {
         auto const dur = std::get<footpath>(j.legs_[i].uses_).duration();
@@ -962,32 +927,11 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   }
 }
 
-// The offset legs and the start footpath are added on the host, where the
-// query offsets live, exactly as for the CPU mcraptor.
+// Offset legs and the start footpath, on the host as for the CPU mcraptor.
 template <direction SearchDir, mc_crit Crit>
 void gpu_mcraptor<SearchDir, Crit>::reconstruct(query const& q, journey& j) {
   mc_reconstruct_offsets<SearchDir>(tt_, rtt_, q, j);
   j.is_reconstructed_ = true;
-}
-
-template <direction SearchDir, mc_crit Crit>
-void gpu_mcraptor<SearchDir, Crit>::set_bounds(bmrap_bounds const* b) {
-  if (b == nullptr || b->empty()) {
-    has_bounds_ = false;
-    return;
-  }
-  auto& s = *state_.impl_;
-  if (s.bmrap_bounds_[kDirIdx].size() < b->lat_.size()) {
-    s.bmrap_bounds_[kDirIdx].resize(b->lat_.size());
-  }
-  CUDA_CHECK(cudaMemcpyAsync(
-      thrust::raw_pointer_cast(s.bmrap_bounds_[kDirIdx].data()), b->lat_.data(),
-      b->lat_.size() * sizeof(delta_t), cudaMemcpyHostToDevice, s.stream_));
-  CUDA_CHECK(cudaStreamSynchronize(s.stream_));
-  bounds_n_locations_ = b->n_locations_;
-  bounds_budget_ = b->budget_;
-  bounds_staggered_ = b->staggered_;
-  has_bounds_ = true;
 }
 
 #define NIGIRI_GPU_MCRAPTOR_INSTANTIATE(C)             \

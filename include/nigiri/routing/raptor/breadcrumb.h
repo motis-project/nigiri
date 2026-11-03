@@ -4,12 +4,8 @@
 
 namespace nigiri::routing {
 
-// The CPU mcraptor packs its transit breadcrumbs exactly like the GPU engines
-// (see gpu/breadcrumb.h). Unlike the single-criterion raptor, whose round times
-// hold one cell per (round, stop) so the previous leg is just (k - 1, board),
-// mcraptor keeps a pareto set per stop: the predecessor is ambiguous, so its
-// breadcrumb also carries an explicit parent arena index (next to the payload,
-// not in this word).
+// The CPU mcraptor uses the GPU breadcrumb encoding; its breadcrumbs also store
+// the parent index, as a stop holds several labels per round.
 using gpu::bc_alight;
 using gpu::bc_board;
 using gpu::bc_transport;

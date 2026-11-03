@@ -16,13 +16,8 @@ using namespace nigiri;
 using namespace nigiri::loader;
 using namespace std::chrono_literals;
 
-// Time-dependent START offsets across every engine that can serve them.
-//
-// PONG does not report the departure its ping was seeded with: the ping runs
-// its window as one step and the backward pong re-derives each journey's
-// latest feasible departure. With a td offset the ingress duration
-// depends on the departure, so a re-anchoring that assumes a constant one can
-// produce a departure that does not exist (pinned by `slower_later` below).
+// Time-dependent start offsets across the engines. PONG re-derives each
+// journey's latest departure, which must not assume a constant ingress.
 namespace {
 
 mem_dir test_files() {
@@ -120,8 +115,7 @@ void expect_all_engines_agree(fixture const& f, routing::query const& q) {
 
 }  // namespace
 
-// The offset is valid for a single minute, so exactly one departure works
-// and the journey waits 20 minutes at A.
+// valid for a single minute: one departure, 20 minutes wait at A
 TEST(routing, td_start_engines_narrow_validity) {
   auto const f = fixture{};
   expect_all_engines_agree(
@@ -137,11 +131,8 @@ TEST(routing, td_start_engines_narrow_validity) {
                  {sys_days{2024_y / June / 19}, sys_days{2024_y / June / 20}}));
 }
 
-// The offset gets SLOWER later in the day (5min before 06:00, 60min after).
-// Re-anchoring a ping journey by the wait at its first boarding assumes the
-// ingress duration is unchanged at the shifted departure; here that lands
-// past every feasible departure and the window engines used to find no
-// journey for their own anchor at all.
+// gets slower later (5 min before 06:00, 60 min after): re-anchoring with a
+// constant ingress would land past every feasible departure
 TEST(routing, td_start_engines_slower_later) {
   auto const f = fixture{};
   expect_all_engines_agree(

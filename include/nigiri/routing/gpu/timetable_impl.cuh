@@ -1,9 +1,6 @@
 #pragma once
 
-// gpu_timetable::impl / gpu_rt_timetable::impl: the device-resident
-// (rt) timetable storage and its view builders. Shared by the raptor and
-// mcraptor translation units (both construct device_timetable /
-// device_rt_timetable views from the same uploaded data).
+// Device-resident (rt) timetable storage, shared by gpu raptor and mcraptor.
 
 #include <array>
 #include <memory>
