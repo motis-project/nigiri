@@ -74,7 +74,8 @@ private:
     explicit vdv_stop(location_idx_t,
                       std::string_view id,
                       pugi::xml_node,
-                      xml_format);
+                      xml_format,
+                      bool is_recorded);
 
     std::optional<std::pair<unixtime_t, event_type>> get_event(
         std::optional<event_type> et = std::nullopt) const;
@@ -82,8 +83,10 @@ private:
     location_idx_t l_;
     std::string_view id_;
     std::optional<unixtime_t> dep_, arr_, rt_dep_, rt_arr_;
+    std::optional<std::string_view> dep_track_, arr_track_;
     bool in_forbidden_, out_forbidden_, passing_through_, arr_canceled_,
         dep_canceled_;
+    bool is_recorded_;
   };
 
   struct run_id {

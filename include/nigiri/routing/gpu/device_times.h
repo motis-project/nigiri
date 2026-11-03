@@ -28,29 +28,26 @@ struct device_times {
   }
   CISTA_CUDA_COMPAT static std::uint64_t pack(delta_t const t,
                                               breadcrumb_t const bc) {
-    return (static_cast<std::uint64_t>(to_key(t)) << 48U) | (bc & kBcMask);
+    return (static_cast<std::uint64_t>(to_key(t)) << kBcBits) | (bc & kBcMask);
   }
-  // packed value representing kInvalid: all-ones (worst key 0xFFFF in the high
-  // bits; breadcrumb bits unused for invalid entries). All-ones so a single
-  // cudaMemset(0xFF) produces it.
   CISTA_CUDA_COMPAT static std::uint64_t invalid_packed() {
-    return ~std::uint64_t{0};
+    return ~std::uint64_t{0};  // 0xFFFF time key = kInvalid
   }
 
   __device__ delta_t get(std::uint8_t const k,
                          location_idx_t const l,
                          via_offset_t const via) {
     return from_key(
-        static_cast<std::uint16_t>(data_[internal_idx(k, l, via)] >> 48U));
+        static_cast<std::uint16_t>(data_[internal_idx(k, l, via)] >> kBcBits));
   }
 
   __device__ delta_t get(location_idx_t const l, via_offset_t const via) {
     return from_key(
-        static_cast<std::uint16_t>(data_[internal_idx(0U, l, via)] >> 48U));
+        static_cast<std::uint16_t>(data_[internal_idx(0U, l, via)] >> kBcBits));
   }
 
   __device__ delta_t get(std::uint8_t const i) {
-    return from_key(static_cast<std::uint16_t>(data_[i] >> 48U));
+    return from_key(static_cast<std::uint16_t>(data_[i] >> kBcBits));
   }
 
   __device__ breadcrumb_t get_bc(std::uint8_t const k,
@@ -84,8 +81,7 @@ struct device_times {
         reinterpret_cast<unsigned long long*>(&data_[idx]);  // NOLINT
     auto const old =
         atomicMin(addr, static_cast<unsigned long long>(new_packed));
-    // strictly improved iff the new time key is smaller than the old one
-    return (new_packed >> 48U) < (old >> 48U);
+    return (new_packed >> kBcBits) < (old >> kBcBits);
   }
 
   __device__ __forceinline__ unsigned internal_idx(std::uint8_t const k,

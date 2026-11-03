@@ -71,10 +71,24 @@ struct stop_seq_number_range {
       return *this;
     }
 
-    iterator operator++(int) noexcept {
+    iterator operator++(int) {
       auto r = *this;
       ++(*this);
       return r;
+    }
+
+    iterator operator+(unsigned int n) {
+      std::visit(utl::overloaded{[n](compact& c) {
+                                   utl::verify(c.num_stops_ >= n, "");
+                                   c.curr_ += c.inc_ * n;
+                                   c.num_stops_ -= n;
+                                 },
+                                 [n](fully_specified& f) {
+                                   utl::verify(f.idx_ + n < f.seq_.size(), "");
+                                   f.idx_ += n;
+                                 }},
+                 seq_numbers_);
+      return *this;
     }
 
     bool operator==(iterator const& o) const {

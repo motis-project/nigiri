@@ -10,6 +10,7 @@
 
 #include "nigiri/constants.h"
 #include "nigiri/footpath.h"
+#include "nigiri/routing/limits.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -36,7 +37,7 @@ get_td_duration(Collection const& c, unixtime_t const t) {
         continue;
       }
 
-      if (i->valid_from_ - t > std::chrono::minutes{kMaxTransferTime}) {
+      if (i->valid_from_ - t > routing::kMaxTravelTime) {
         break;
       }
 
@@ -56,7 +57,7 @@ get_td_duration(Collection const& c, unixtime_t const t) {
               : std::min(
                     t, unixtime_t{(i - 1)->valid_from_ - 1min + i->duration_});
 
-      if (t - latest_arr > std::chrono::minutes{kMaxTransferTime}) {
+      if (t - latest_arr > routing::kMaxTravelTime) {
         break;
       }
 
@@ -77,6 +78,9 @@ get_td_duration(direction const search_dir,
              : get_td_duration<direction::kBackward>(c, t);
 }
 
+// Callback: target, duration and walking time. The duration includes waiting
+// for the footpath to become usable and is not limited to
+// footpath::kMaxDuration, the walking time doesn't include waiting.
 template <direction SearchDir, typename Collection, typename Fn>
 void for_each_footpath(Collection const& c, unixtime_t const t, Fn&& f) {
   utl::equal_ranges_linear(
@@ -87,7 +91,7 @@ void for_each_footpath(Collection const& c, unixtime_t const t, Fn&& f) {
       [&](auto&& from, auto&& to) {
         auto const fp = get_td_duration<SearchDir>(std::span{from, to}, t);
         if (fp.has_value()) {
-          f(footpath{from->target_, fp->first});
+          f(from->target_, fp->first, fp->second.duration_);
         }
       });
 }

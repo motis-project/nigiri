@@ -37,6 +37,7 @@ struct device_transport_filter {
 inline constexpr auto kBikeSections = 1U;
 inline constexpr auto kCarSections = 2U;
 inline constexpr auto kWheelchairSections = 4U;
+inline constexpr auto kNoCompulsoryReservationSections = 8U;
 
 template <typename Key>
 struct device_transport_filters {
@@ -53,12 +54,17 @@ struct device_transport_filters {
         !wheelchair_.sections_[el][sec]) {
       return true;
     }
+    if ((section_mask & kNoCompulsoryReservationSections) != 0U &&
+        !reservation_not_required_.sections_[el][sec]) {
+      return true;
+    }
     return false;
   }
 
   device_transport_filter<Key> bike_;
   device_transport_filter<Key> car_;
   device_transport_filter<Key> wheelchair_;
+  device_transport_filter<Key> reservation_not_required_;
 };
 
 struct device_rt_timetable {
@@ -103,32 +109,34 @@ struct device_rt_timetable {
   td_footpaths const* td_{nullptr};
 };
 
+using route_times = timetable::route_times;
+
 struct device_timetable {
   using t = timetable;
 
-  __device__ cuda::std::span<delta const> event_times_at_stop(
-      route_idx_t const r,
-      stop_idx_t const stop_idx,
-      event_type const ev_type) const {
-    auto const n_transports =
-        static_cast<unsigned>(route_transport_ranges_[r].size());
-    auto const idx = static_cast<unsigned>(
-        route_stop_time_ranges_[r].from_ +
-        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    return {&route_stop_times_[idx], n_transports};
+  __device__ event_times event_times_at_stop(route_idx_t const r,
+                                             stop_idx_t const stop_idx,
+                                             event_type const ev_type) const {
+    auto const rt = route_times_[r];
+    return {
+        .first_dep_ = &first_dep_[rt.transports_.from_],
+        .pattern_ = &transport_pattern_[rt.transports_.from_],
+        .offsets_ = &patterns_[rt.pattern_start_ +
+                               event_idx(stop_idx, ev_type) * rt.n_patterns_],
+        .first_transport_ = rt.transports_.from_,
+        .n_transports_ = static_cast<std::uint32_t>(rt.transports_.size()),
+        .n_patterns_ = rt.n_patterns_};
   }
 
   __device__ delta event_mam(route_idx_t const r,
                              transport_idx_t t,
                              stop_idx_t const stop_idx,
                              event_type const ev_type) const {
-    auto const range = route_transport_ranges_[r];
-    auto const n_transports = static_cast<unsigned>(range.size());
-    auto const route_stop_begin = static_cast<unsigned>(
-        route_stop_time_ranges_[r].from_ +
-        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    auto const t_idx_in_route = to_idx(t) - to_idx(range.from_);
-    return route_stop_times_[route_stop_begin + t_idx_in_route];
+    auto const rt = route_times_[r];
+    return first_dep_[t] +
+           patterns_[rt.pattern_start_ +
+                     event_idx(stop_idx, ev_type) * rt.n_patterns_ +
+                     (rt.n_patterns_ == 1U ? 0U : transport_pattern_[t])];
   }
 
   __device__ interval<date::sys_days> internal_interval_days() const {
@@ -146,9 +154,11 @@ struct device_timetable {
                    kNProfiles>
       footpaths_in_;
 
-  cuda::std::span<delta const> route_stop_times_;
-  d_vecmap_view<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
-  d_vecmap_view<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
+  d_vecmap_view<transport_idx_t, delta> first_dep_;
+  d_vecmap_view<transport_idx_t, std::uint16_t> transport_pattern_;
+  d_vecmap_view<route_idx_t, route_times> route_times_;
+  cuda::std::span<delta const> patterns_;  // per route: [event][pattern]
+
   d_vecmap_view<route_idx_t, clasz> route_clasz_;
 
   d_vecvec_view<decltype(t{}.route_location_seq_)> route_location_seq_;

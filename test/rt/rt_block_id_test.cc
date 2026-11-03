@@ -8,14 +8,14 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/special_stations.h"
 
 #include "../loader/hrd/hrd_timetable.h"
 #include "../raptor_search.h"
@@ -89,11 +89,8 @@ constexpr auto const expected =
 }  // namespace
 
 TEST(rt, rt_block_id_test) {
-  auto tt = timetable{};
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, mem_dir::read(test_files), tt);
-  finalize(tt);
+  auto const tt = loader::load(mem_dir::read(test_files),
+                               {2019_y / March / 25, 2019_y / November / 1});
   auto rtt = rt::create_rt_timetable(tt, May / 1 / 2019);
 
   auto const msg1 = test::to_feed_msg(

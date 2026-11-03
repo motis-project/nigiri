@@ -2,9 +2,11 @@
 
 #include "pugixml.hpp"
 
+#include "fmt/core.h"
+
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -309,6 +311,20 @@ constexpr auto const cancel_all_update = R"(
 </DatenAbrufenAntwort>
 )";
 
+// Event order: dep, arr, dep, ..., arr
+std::vector<rt_data_state> event_states(rt::frun const& fr) {
+  auto states = std::vector<rt_data_state>{};
+  for (auto const rs : fr) {
+    if (rs.stop_idx_ != 0U) {
+      states.push_back(rs.data_state(event_type::kArr));
+    }
+    if (rs.stop_idx_ != fr.size() - 1U) {
+      states.push_back(rs.data_state(event_type::kDep));
+    }
+  }
+  return states;
+}
+
 }  // namespace
 
 TEST(vdv_aus, statistics_add) {
@@ -319,13 +335,9 @@ TEST(vdv_aus, statistics_add) {
 }
 
 TEST(vdv_aus, delay_propagation) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / July / 1},
-                    date::sys_days{2024_y / July / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, vdv_test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(vdv_test_files(), {2024_y / July / 1, 2024_y / July / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
 
@@ -373,8 +385,20 @@ TEST(vdv_aus, delay_propagation) {
   EXPECT_EQ(fr[4].time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 2_hours);
 
+  using enum rt_data_state;
+
+  // A has no prognosis -> no real-time data.
+  EXPECT_EQ((std::vector{kNoRtData, kPredicted, kPredicted, kPredicted,
+                         kPredicted, kPredicted, kPredicted, kPredicted}),
+            event_states(fr));
+
   doc.load_string(vdv_aus_msg1);
   u.update(rtt, doc);
+
+  // B-E are not contained in the message: delay is propagated.
+  EXPECT_EQ((std::vector{kPredicted, kPropagated, kPropagated, kPropagated,
+                         kPropagated, kPropagated, kPropagated, kPropagated}),
+            event_states(fr));
 
   EXPECT_EQ(fr[0].scheduled_time(event_type::kDep),
             date::sys_days{2024_y / July / 9} + 22_hours);
@@ -451,19 +475,205 @@ TEST(vdv_aus, delay_propagation) {
   EXPECT_EQ(fr[4].time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 2_hours + 7_minutes);
 
+  // D is not contained in the message: delay is propagated.
+  EXPECT_EQ((std::vector{kPredicted, kPredicted, kPredicted, kPredicted,
+                         kPredicted, kPropagated, kPropagated, kPredicted}),
+            event_states(fr));
+
   EXPECT_EQ(u.get_cumulative_stats().matched_runs_, 1);
   EXPECT_EQ(u.get_cumulative_stats().updated_events_, 14);
   EXPECT_EQ(u.get_cumulative_stats().propagated_delays_, 9);
 }
 
-TEST(vdv_aus, all_stops_canceled) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / July / 1},
-                    date::sys_days{2024_y / July / 31}};
+namespace {
+
+std::string vdv_aus_ae_msg(std::string_view ist_halte) {
+  return fmt::format(R"(
+<?xml version="1.0" encoding="iso-8859-1"?>
+<DatenAbrufenAntwort>
+  <Bestaetigung Zst="2024-07-10T00:00:00" Ergebnis="ok" Fehlernummer="0" />
+  <AUSNachricht AboID="1">
+    <IstFahrt Zst="2024-07-10T00:00:00">
+      <LinienID>AE</LinienID>
+      <RichtungsID>1</RichtungsID>
+      <FahrtRef>
+        <FahrtID>
+          <FahrtBezeichner>AE</FahrtBezeichner>
+          <Betriebstag>2024-07-10</Betriebstag>
+        </FahrtID>
+      </FahrtRef>
+      <Komplettfahrt>false</Komplettfahrt>
+      <BetreiberID>MTA</BetreiberID>
+      {}
+      <LinienText>AE</LinienText>
+      <ProduktID>Space Train</ProduktID>
+      <RichtungsText>E</RichtungsText>
+      <Zusatzfahrt>false</Zusatzfahrt>
+      <FaelltAus>false</FaelltAus>
+    </IstFahrt>
+  </AUSNachricht>
+</DatenAbrufenAntwort>
+)",
+                     ist_halte);
+}
+
+}  // namespace
+
+TEST(vdv_aus, data_state) {
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, vdv_test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(vdv_test_files(), {2024_y / July / 1, 2024_y / July / 31});
+
+  auto const get_states = [&](std::string_view ist_halte) {
+    auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
+    auto doc = pugi::xml_document{};
+    doc.load_string(vdv_aus_ae_msg(ist_halte).c_str());
+    auto u = rt::vdv_aus::updater{tt, src_idx};
+    u.update(rtt, doc);
+
+    auto const fr = rt::frun(
+        tt, &rtt,
+        {{transport_idx_t{0}, day_idx_t{13}}, {stop_idx_t{0}, stop_idx_t{5}}});
+    EXPECT_TRUE(fr.is_rt());
+    return event_states(fr);
+  };
+
+  using enum rt_data_state;
+
+  // Stops not contained in the message: no real-time data before the first
+  // delay, delay is propagated after the first delay.
+  EXPECT_EQ((std::vector{kNoRtData, kNoRtData, kNoRtData, kPredicted,
+                         kPredicted, kPropagated, kPropagated, kPropagated}),
+            get_states(R"(
+      <IstHalt>
+        <HaltID>C</HaltID>
+        <Ankunftszeit>2024-07-10T00:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T00:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-10T00:10:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-10T00:10:00</IstAbfahrtPrognose>
+      </IstHalt>)"));
+
+  // A: +30min, B: not matched -> propagated +30min (dep 23:30).
+  // C: arrival 23:10 is before B's departure -> B has to be adjusted.
+  // C: departure not given -> propagated from C's arrival.
+  EXPECT_EQ((std::vector{kPredicted, kInconsistent, kInconsistent, kPredicted,
+                         kPropagated, kPropagated, kPropagated, kPropagated}),
+            get_states(R"(
+      <IstHalt>
+        <HaltID>A</HaltID>
+        <Abfahrtszeit>2024-07-09T22:00:00</Abfahrtszeit>
+        <IstAbfahrtPrognose>2024-07-09T22:30:00</IstAbfahrtPrognose>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>C</HaltID>
+        <Ankunftszeit>2024-07-10T00:00:00</Ankunftszeit>
+        <IstAnkunftPrognose>2024-07-09T23:10:00</IstAnkunftPrognose>
+      </IstHalt>)"));
+
+  // The message contains a stop (X) that cannot be matched between A and C:
+  // B could be X -> the propagated delay is only an adjustment.
+  // D is simply not contained in the message -> delay is propagated.
+  EXPECT_EQ((std::vector{kPredicted, kInconsistent, kInconsistent, kPredicted,
+                         kPredicted, kPropagated, kPropagated, kPredicted}),
+            get_states(R"(
+      <IstHalt>
+        <HaltID>A</HaltID>
+        <Abfahrtszeit>2024-07-09T22:00:00</Abfahrtszeit>
+        <IstAbfahrtPrognose>2024-07-09T22:30:00</IstAbfahrtPrognose>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>X</HaltID>
+        <Ankunftszeit>2024-07-09T23:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-09T23:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-09T23:30:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-09T23:30:00</IstAbfahrtPrognose>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>C</HaltID>
+        <Ankunftszeit>2024-07-10T00:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T00:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-10T00:30:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-10T00:30:00</IstAbfahrtPrognose>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>E</HaltID>
+        <Ankunftszeit>2024-07-10T02:00:00</Ankunftszeit>
+        <IstAnkunftPrognose>2024-07-10T02:30:00</IstAnkunftPrognose>
+      </IstHalt>)"));
+
+  // The message contains a stop (X) that cannot be matched between A and C,
+  // A has no prognosis: B could be X, but its times are not changed (no delay
+  // before C) -> no real-time data.
+  EXPECT_EQ((std::vector{kNoRtData, kNoRtData, kNoRtData, kPredicted,
+                         kPredicted, kPredicted, kPredicted, kPredicted}),
+            get_states(R"(
+      <IstHalt>
+        <HaltID>A</HaltID>
+        <Abfahrtszeit>2024-07-09T22:00:00</Abfahrtszeit>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>X</HaltID>
+        <Ankunftszeit>2024-07-09T23:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-09T23:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-09T23:30:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-09T23:30:00</IstAbfahrtPrognose>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>C</HaltID>
+        <Ankunftszeit>2024-07-10T00:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T00:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-10T00:30:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-10T00:30:00</IstAbfahrtPrognose>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>D</HaltID>
+        <Ankunftszeit>2024-07-10T01:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T01:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-10T01:30:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-10T01:30:00</IstAbfahrtPrognose>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>E</HaltID>
+        <Ankunftszeit>2024-07-10T02:00:00</Ankunftszeit>
+        <IstAnkunftPrognose>2024-07-10T02:30:00</IstAnkunftPrognose>
+      </IstHalt>)"));
+
+  // The message ends with a stop (X) that cannot be matched after D:
+  // E could be X -> the propagated delay is only an adjustment.
+  // B is simply not contained in the message -> delay is propagated.
+  EXPECT_EQ((std::vector{kPredicted, kPropagated, kPropagated, kPredicted,
+                         kPredicted, kPredicted, kPredicted, kInconsistent}),
+            get_states(R"(
+      <IstHalt>
+        <HaltID>A</HaltID>
+        <Abfahrtszeit>2024-07-09T22:00:00</Abfahrtszeit>
+        <IstAbfahrtPrognose>2024-07-09T22:30:00</IstAbfahrtPrognose>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>C</HaltID>
+        <Ankunftszeit>2024-07-10T00:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T00:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-10T00:30:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-10T00:30:00</IstAbfahrtPrognose>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>D</HaltID>
+        <Ankunftszeit>2024-07-10T01:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T01:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-10T01:30:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-10T01:30:00</IstAbfahrtPrognose>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>X</HaltID>
+        <Ankunftszeit>2024-07-10T02:00:00</Ankunftszeit>
+        <IstAnkunftPrognose>2024-07-10T02:30:00</IstAnkunftPrognose>
+      </IstHalt>)"));
+}
+
+TEST(vdv_aus, all_stops_canceled) {
+  auto const src_idx = source_idx_t{0};
+  auto tt =
+      loader::load(vdv_test_files(), {2024_y / July / 1, 2024_y / July / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
 
@@ -558,13 +768,9 @@ constexpr auto const after_midnight_update = R"(
 }  // namespace
 
 TEST(vdv_aus, tt_before_midnight_update_after_midnight) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / July / 1},
-                    date::sys_days{2024_y / July / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, before_midnight_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(before_midnight_files(),
+                               {2024_y / July / 1, 2024_y / July / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 9});
 
@@ -659,13 +865,9 @@ constexpr auto const before_midnight_update = R"(
 }  // namespace
 
 TEST(vdv_aus, tt_after_midnight_update_before_midnight) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / July / 1},
-                    date::sys_days{2024_y / July / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, after_midnight_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(after_midnight_files(),
+                               {2024_y / July / 1, 2024_y / July / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
 
@@ -1275,13 +1477,9 @@ constexpr auto const in_out_allowed_rbo707 = R"(
 }  // namespace
 
 TEST(vdv_aus, exact_match_1) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / August / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, rbo707_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(rbo707_files(), {2024_y / August / 1, 2024_y / August / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 23});
 
@@ -1306,13 +1504,9 @@ TEST(vdv_aus, exact_match_1) {
 }
 
 TEST(vdv_aus, cancel_run) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / August / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, rbo707_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(rbo707_files(), {2024_y / August / 1, 2024_y / August / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 23});
 
@@ -1341,13 +1535,9 @@ TEST(vdv_aus, cancel_run) {
 }
 
 TEST(vdv_aus, in_out_allowed) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / August / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, rbo707_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(rbo707_files(), {2024_y / August / 1, 2024_y / August / 31});
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 23});
   auto u = rt::vdv_aus::updater{tt, src_idx};
 
@@ -1688,13 +1878,9 @@ constexpr auto const update_rbo920 = R"(
 }  // namespace
 
 TEST(vdv_aus, exact_match_2) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / August / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, rbo920_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(rbo920_files(), {2024_y / August / 1, 2024_y / August / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 20});
 
@@ -1835,13 +2021,9 @@ constexpr auto const update_rvs347 = R"(
 }  // namespace
 
 TEST(vdv_aus, match_despite_unresolvable_stops) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / August / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, rvs347_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(rvs347_files(), {2024_y / August / 1, 2024_y / August / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
 
@@ -2282,13 +2464,9 @@ constexpr auto const update_vgm270 = R"(
 }  // namespace
 
 TEST(vdv_aus, match_despite_time_discrepancy_1) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / August / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, sv270_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(sv270_files(), {2024_y / August / 1, 2024_y / August / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 20});
 
@@ -2631,13 +2809,9 @@ constexpr auto const update_rbo501 = R"(
 
 // Requires the matching to tolerate time discrepancies of up to 3 minutes
 TEST(vdv_aus, match_despite_time_discrepancy_2) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / August / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, rbo501_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(rbo501_files(), {2024_y / August / 1, 2024_y / August / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
 
@@ -2915,13 +3089,9 @@ constexpr auto const update_smd712 = R"(
 // line being redirected starting from June 29
 // the time differences is up to 4 minutes
 TEST(vdv_aus, match_despite_unknown_route_diversion_1) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / August / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, smd712_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(smd712_files(), {2024_y / August / 1, 2024_y / August / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 20});
 
@@ -3432,13 +3602,9 @@ constexpr auto const update_vgm456 = R"(
 }  // namespace
 
 TEST(vdv_aus, match_despite_unknown_route_diversion_2) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / August / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, vgm456_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(vgm456_files(), {2024_y / August / 1, 2024_y / August / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
 
@@ -3730,13 +3896,9 @@ constexpr auto const update_ovo65 = R"(
 }  // namespace
 
 TEST(vdv_aus, partial_duplicate_1) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / August / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, ovo65_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(ovo65_files(), {2024_y / August / 1, 2024_y / August / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 23});
 
@@ -4033,13 +4195,9 @@ constexpr auto const update_rbo512 = R"(
 }  // namespace
 
 TEST(vdv_aus, partial_duplicate_2) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / August / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, rbo512_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(rbo512_files(), {2024_y / August / 1, 2024_y / August / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
 
@@ -4339,13 +4497,9 @@ constexpr auto const update_rvs261 = R"(
 }  // namespace
 
 TEST(vdv_aus, match_261_not_11) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / August / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, ev11_rvs261_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(ev11_rvs261_files(),
+                               {2024_y / August / 1, 2024_y / August / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 19});
 
@@ -4556,13 +4710,9 @@ constexpr auto const update_rvs360 = R"(
 }  // namespace
 
 TEST(vdv_aus, match_360_not_66) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / August / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, rvs360_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(rvs360_files(), {2024_y / August / 1, 2024_y / August / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 27});
 
@@ -5259,13 +5409,9 @@ constexpr auto const update_vgm418_1 = R"(
 }  // namespace
 
 TEST(vdv_aus, monotonize) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / August / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, vgm418_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(vgm418_files(), {2024_y / August / 1, 2024_y / August / 31});
 
   ASSERT_TRUE(tt.next_transport_idx() != 0U);
 
@@ -5472,13 +5618,9 @@ constexpr auto const update_linie11_1046 = R"(
 )";
 
 TEST(vdv_aus, match_headway_10min) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2025_y / July / 1},
-                    date::sys_days{2025_y / July / 31}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, linie11_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(linie11_files(), {2025_y / July / 1, 2025_y / July / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2025_y / July / 10});
 

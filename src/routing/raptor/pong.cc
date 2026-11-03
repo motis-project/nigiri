@@ -1,11 +1,12 @@
 #include "nigiri/routing/raptor/pong.h"
 
+#include <cstring>
 #include <algorithm>
-#include <cstdio>
-#include <cstdlib>
 #include <future>
-#include <map>
+#include <limits>
 #include <ranges>
+#include <span>
+#include <string_view>
 #include <type_traits>
 
 #include "utl/helpers/algorithm.h"
@@ -26,17 +27,28 @@
 
 namespace nigiri::routing {
 
-template <direction SearchDir, via_offset_t Vias, bool Rt, typename AlgoState,
+// Instantiated twice per query: RangeReuse=false picks the ping (own direction,
+// no reuse), RangeReuse=true the pong (flipped direction, reuse on). For
+// gpu_raptor that split doubles as the WithBounds selector: the ping runs
+// unpruned and fills the round-time bound matrix (raptor::fill_bounds()), the
+// pong is pruned against it.
+template <direction SearchDir,
+          via_offset_t Vias,
+          bool Rt,
+          typename AlgoState,
           bool RangeReuse>
 struct pong_algo_for {
   using type = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>;
 };
 
+// For pong engines with a round-time bound matrix (raptor, gpu_raptor; guarded
+// by `requires` below).
+constexpr auto const kPruneWithPingBounds = true;
 
 #if defined(NIGIRI_CUDA)
 template <direction SearchDir, via_offset_t Vias, bool Rt, bool RangeReuse>
 struct pong_algo_for<SearchDir, Vias, Rt, gpu::gpu_raptor_state, RangeReuse> {
-  using type = gpu::gpu_raptor<SearchDir>;
+  using type = gpu::gpu_raptor<SearchDir, RangeReuse>;
 };
 #endif
 
@@ -61,6 +73,18 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   auto legs = cursor();
   if (legs.back().arr_time_ > to_dep) {
     return std::nullopt;
+  }
+  // the generator anchors the boarding walk at the transit departure
+  // (latest start) -> shift to the interior transfer convention:
+  // the walk starts at the previous leg's arrival.
+  // A time-dependent footpath may only be usable later (e.g. an elevator out
+  // of service): keep the wait before it, as in the reconstruction.
+  auto const is_td = rtt != nullptr && q.prf_idx_ != 0U &&
+                     rtt->has_td_footpaths_out_[q.prf_idx_].test(legs[0].from_);
+  if (!is_td) {
+    auto const walk_duration = legs[0].arr_time_ - legs[0].dep_time_;
+    legs[0].dep_time_ = from_arr;
+    legs[0].arr_time_ = from_arr + walk_duration;
   }
   return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
@@ -120,12 +144,17 @@ routing_result pong(timetable const& tt,
   auto lb_time = std::chrono::steady_clock::duration{};
   auto ping_lb = std::vector<std::uint16_t>{};
   auto pong_lb = std::vector<std::uint16_t>{};
+  // Pong engines with a round-time bound matrix prune against the ping's
+  // bounds and skip this dijkstra.
+  constexpr auto const kSkipPongDijkstra =
+      kPruneWithPingBounds &&
+      requires(pong_algo_t& p, unsigned const budget) { p.set_bounds(budget); };
   // the two lb dijkstras are independent (ping: destination-rooted on the
   // search-direction graph; pong: start-rooted on the flipped graph), so
   // overlap them - they dominate the per-query CPU critical path
   auto pong_lb_time = std::chrono::steady_clock::duration{};
   auto pong_lb_fut = std::future<void>{};
-  if constexpr (pong_algo_t::kUseLowerBounds) {
+  if constexpr (pong_algo_t::kUseLowerBounds && !kSkipPongDijkstra) {
     pong_lb_fut = std::async(std::launch::async, [&tt, rtt, q, &pong_lb,
                                                   &pong_lb_time] {
       auto const t0 = std::chrono::steady_clock::now();
@@ -138,10 +167,9 @@ routing_result pong(timetable const& tt,
                     ? nullptr
                     : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
                              : rtt->fwd_search_lb_graph_has_edges_)),
-               ((rtt == nullptr || kGpu)
-                    ? nullptr
-                    : &(kFwd ? rtt->bwd_search_lb_graph_
-                             : rtt->fwd_search_lb_graph_)),
+               ((rtt == nullptr || kGpu) ? nullptr
+                                         : &(kFwd ? rtt->bwd_search_lb_graph_
+                                                  : rtt->fwd_search_lb_graph_)),
                pong_lb);
       pong_lb_time = std::chrono::steady_clock::now() - t0;
     });
@@ -176,16 +204,9 @@ routing_result pong(timetable const& tt,
                           q.require_bike_transport_,
                           q.require_car_transport_,
                           q.prf_idx_ == 2U,
-                          q.transfer_time_settings_};
-  if constexpr (requires { ping.set_tight_start(); }) {
-    // the ping sweeps its whole window in one step: without tight starts
-    // its journeys are priced from the step start and the contained
-    // phantom waiting collapses dep-normalized cost-pareto variants
-    // before they can become pong anchors (the dual of the phantom-wait
-    // DROP case below). Tight starts re-anchor every ping journey at its
-    // latest feasible departure - search.h semantics.
-    ping.set_tight_start();
-  }
+                          q.no_compulsory_reservation_,
+                          q.transfer_time_settings_,
+                          q.prf_idx_};
 
   // ====
   // PONG
@@ -202,7 +223,11 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, pong_is_via[i]);
   }
 
-  if constexpr (pong_algo_t::kUseLowerBounds) {
+  if constexpr (kSkipPongDijkstra) {
+    if constexpr (pong_algo_t::kUseLowerBounds) {
+      pong_lb.assign(tt.n_locations(), 0U);
+    }
+  } else if constexpr (pong_algo_t::kUseLowerBounds) {
     pong_lb_fut.get();  // overlapped with the ping dijkstra + ping setup
     lb_time += pong_lb_time;
   }
@@ -220,13 +245,12 @@ routing_result pong(timetable const& tt,
                           q.require_bike_transport_,
                           q.require_car_transport_,
                           q.prf_idx_ == 2U,
-                          q.transfer_time_settings_};
-  // pong-side engines: the persistent reuse frontier may only reject
-  // against SAME-departure entries (= the same merged anchor run, plain
-  // dominance semantics). Cross-anchor rejections were observed to fire
-  // without a real dominating journey behind them (see the q#45 trace:
-  // anchor (13:35, +1d 12:56, 8) unreproducible though no dominator can
-  // exist, or the ping pareto would not contain the anchor).
+                          q.no_compulsory_reservation_,
+                          q.transfer_time_settings_,
+                          q.prf_idx_};
+  // The persistent reuse frontier may only reject against same-departure
+  // entries (one merged anchor run): cross-anchor rejections were seen firing
+  // without a real dominating journey behind them.
   if constexpr (requires { pong.set_reuse_same_dep(); }) {
     pong.set_reuse_same_dep();
   }
@@ -262,7 +286,7 @@ routing_result pong(timetable const& tt,
     return utl::count_if(*result.journeys_, [&](journey const& j) {
       return is_validated(j) &&
              (include_too_slow || (j.travel_time() < fastest_direct &&
-                                   j.travel_time() < q.max_travel_time_)) &&
+                                   j.travel_time() <= q.max_travel_time_)) &&
              !is_tuple_dominated(j);
     });
   };
@@ -273,12 +297,6 @@ routing_result pong(timetable const& tt,
     }
     return false;
   };
-  // NIGIRI_PONG_STATS: how often is the identical pong anchor re-executed
-  // within one query? (feasibility data for a per-query result cache)
-  static bool const pong_stats = std::getenv("NIGIRI_PONG_STATS") != nullptr;
-  auto pong_exec_total = 0U;
-  auto pong_exec_keys = std::map<std::pair<unixtime_t, std::uint8_t>, unsigned>{};
-
   while ((is_better(start_time, end_time) ||
           get_result_count(true) + get_result_count(false) <
               2 * q.min_connection_count_) &&
@@ -286,7 +304,6 @@ routing_result pong(timetable const& tt,
     // ----
     // PING
     // ----
-
     trace_pong("START_TIME={}", start_time);
 
     starts.clear();
@@ -299,12 +316,14 @@ routing_result pong(timetable const& tt,
     for (auto const& s : starts) {
       trace_pong("--- PING START: {} at time_at_start={} time_at_stop={}",
                  loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
-      ping.add_start(s.stop_, s.time_at_stop_);
+      ping.add_start(s.stop_, s.time_at_stop_, s.v_);
     }
     auto const worst_time_at_dest =
-        start_time + (kFwd ? 1 : -1) * (q.max_travel_time_ + duration_t{1});
+        start_time +
+        (kFwd ? 1 : -1) *
+            std::min(q.max_travel_time_ + kMinLookAhead, kMaxTravelTime);
     auto ping_results = pareto_set<journey>{};
-    ping.execute(start_time, q.max_transfers_, worst_time_at_dest, q.prf_idx_,
+    ping.execute(start_time, q.max_transfers_, worst_time_at_dest,
                  ping_results);
     kFwd ? ++result.search_stats_.n_execute_fwd_
          : ++result.search_stats_.n_execute_bwd_;
@@ -322,6 +341,10 @@ routing_result pong(timetable const& tt,
       }
       return dominated;
     });
+    if (ping_results.empty()) {
+      trace_pong("ALL PING RESULTS FILTERED -> QUIT");
+      break;
+    }
     // validation anchors must be processed in dominance order (best
     // arrival first): the pong search's destination frontier persists
     // across anchors, so entries may only stem from anchors whose
@@ -335,6 +358,19 @@ routing_result pong(timetable const& tt,
     // ----
     // PONG
     // ----
+    if constexpr (kSkipPongDijkstra &&
+                  requires(std::size_t const n) { ping.fill_bounds(n); }) {
+      // Has to happen before pong.reset_arrivals() wipes the shared
+      // round_times the ping search just filled. ping_results is sorted by
+      // arrival here (not by transfers), so the max has to be found
+      // explicitly rather than read off begin().
+      auto max_ping_transfers = std::uint8_t{0U};
+      for (auto const& j : ping_results) {
+        max_ping_transfers = std::max(max_ping_transfers, j.transfers_);
+      }
+      ping.fill_bounds(static_cast<std::size_t>(max_ping_transfers) +
+                       std::size_t{1U});
+    }
     q.flip_dir();
     // one pong search per distinct anchor ARRIVAL time: all same-arrival
     // pareto anchors (transfers x cost trade-offs) are answered by a
@@ -365,6 +401,12 @@ routing_result pong(timetable const& tt,
           }
         }
 
+        if constexpr (kSkipPongDijkstra) {
+          // kSkipPongDijkstra already proves pong.set_bounds(unsigned)
+          // exists (that's the whole point of the flag).
+          pong.set_bounds(static_cast<unsigned>(max_transfers) + 1U);
+        }
+
         starts.clear();
         get_starts(flip(SearchDir), tt, rtt, g_arr, q.start_, q.td_start_,
                    q.via_stops_, q.max_start_offset_, q.start_match_mode_,
@@ -374,15 +416,9 @@ routing_result pong(timetable const& tt,
         for (auto const& s : starts) {
           trace_pong("---- PONG START: {} at time_at_start={} time_at_stop={}",
                      loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
-          pong.add_start(s.stop_, s.time_at_stop_);
+          pong.add_start(s.stop_, s.time_at_stop_, s.v_);
         }
-        if (pong_stats) {
-          ++pong_exec_total;
-          ++pong_exec_keys[{g_arr, max_transfers}];
-        }
-        pong.execute(g_arr, max_transfers,
-                     loosest_start - duration_t{kFwd ? 1 : -1}, q.prf_idx_,
-                     s_state.results_);
+        pong.execute(g_arr, max_transfers, loosest_start, s_state.results_);
         kFwd ? ++result.search_stats_.n_execute_bwd_
              : ++result.search_stats_.n_execute_fwd_;
       }
@@ -465,6 +501,8 @@ routing_result pong(timetable const& tt,
       }
       trace_pong("---- HIT [updating ping start time {} -> {}]\n",
                  ping_j.start_time_, match->dest_time_);
+      // (already reconstructed above, alongside every other matching
+      // (transfers, start_time) entry - not just this group's winner)
       ping_j.start_time_ = match->dest_time_;
     }
     q.flip_dir();
@@ -497,25 +535,22 @@ routing_result pong(timetable const& tt,
     start_time = next;
   }
 
-  if (pong_stats && pong_exec_total != 0U) {
-    auto repeated = 0U;
-    for (auto const& [k, c] : pong_exec_keys) {
-      repeated += c - 1U;
-    }
-    std::fprintf(stderr, "PONG_EXEC total=%u unique=%zu repeated=%u\n",
-                 pong_exec_total, pong_exec_keys.size(), repeated);
-  }
-
   utl::erase_if(s_state.results_, [&](journey const& j) {
+    auto const j_start_time = j.dest_time_;
+    auto const is_out_of_interval =
+        kFwd ? !q.extend_interval_later_ && j_start_time >= search_interval.to_
+             : !q.extend_interval_earlier_ &&
+                   j_start_time < search_interval.from_;
     auto const erase = !j.is_reconstructed_ || !is_validated(j) ||
+                       is_out_of_interval ||
                        j.travel_time() >= fastest_direct ||
-                       j.travel_time() >= q.max_travel_time_;
+                       j.travel_time() > q.max_travel_time_;
     if (erase) {
       trace_pong(
           "ERASE not_reconstructed={}, not_validated={}, "
           "slower_than_direct={}, slower_than_query_max_travel_time={} {}",
           j.legs_.empty(), !is_validated(j), j.travel_time() >= fastest_direct,
-          j.travel_time() >= q.max_travel_time_, to_tuple(j));
+          j.travel_time() > q.max_travel_time_, to_tuple(j));
     }
     return erase;
   });
@@ -550,9 +585,9 @@ routing_result pong(timetable const& tt,
 
   utl::sort(s_state.results_, [](journey const& a, journey const& b) {
     return std::tuple{a.start_time_, a.transfers_, a.dest_time_,
-                      a.criteria_cost_} <
-           std::tuple{b.start_time_, b.transfers_, b.dest_time_,
-                      b.criteria_cost_};
+                      a.criteria_cost_} < std::tuple{b.start_time_,
+                                                     b.transfers_, b.dest_time_,
+                                                     b.criteria_cost_};
   });
 
   trace_pong("RESULT:\n\t{}",
@@ -564,17 +599,12 @@ routing_result pong(timetable const& tt,
   }
 
   if constexpr (Vias != 0U) {
-    if (utl::any_of(q.via_stops_, [](via_stop const& v) {
-          return v.stay_ == duration_t{0};
-        })) {
-      // Stay duration == 0 means via-stop doesn't require a transfer.
-      // => The via stop could be "optimized away" by get_earliest_alternative!
-      return result;
-    }
+    // via requirements (order, stays) are invisible to
+    // get_earliest_alternative
+    return result;
   }
 
   for (auto& j : s_state.results_) {
-    auto v = via_offset_t{0};
     for (auto const [transit_1, transfer_1, transit_2, transfer_2, transit_3] :
          utl::nwise<5>(j.legs_)) {
       if (!std::holds_alternative<journey::run_enter_exit>(transit_1.uses_) ||
@@ -589,23 +619,12 @@ routing_result pong(timetable const& tt,
       auto const front_r = rt::frun{tt, rtt, front.r_};
       auto const from = front_r[front.stop_range_.to_ - 1U];
 
-      auto arr_time = from.time(event_type::kArr);
-      if (v < q.via_stops_.size() &&
-          matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[v].location_, from.get_location_idx())) {
-        arr_time += q.via_stops_[v++].stay_;
-      }
+      auto const arr_time = from.time(event_type::kArr);
 
       auto const back_r = rt::frun{tt, rtt, back.r_};
       auto const to = back_r[back.stop_range_.from_];
 
-      auto dep_time = to.time(event_type::kDep);
-      if (v < q.via_stops_.size() &&
-          matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[v].location_, to.get_location_idx())) {
-        // do not increment v, via may be used in next iteration
-        dep_time -= q.via_stops_[v].stay_;
-      }
+      auto const dep_time = to.time(event_type::kDep);
 
       auto const earlier =
           get_earliest_alternative(tt, rtt, q, from.get_location_idx(),
@@ -646,18 +665,24 @@ routing_result pong_search_with_dir(
     AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> timeout) {
-  switch (q.via_stops_.size()) {
-    case 0:
-      return pong_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state,
-                                          std::move(q), timeout);
-    case 1:
-      return pong_with_vias<SearchDir, 1>(tt, rtt, s_state, r_state,
-                                          std::move(q), timeout);
-    case 2:
-      return pong_with_vias<SearchDir, 2>(tt, rtt, s_state, r_state,
-                                          std::move(q), timeout);
+  if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
+    utl::verify(q.via_stops_.empty(), "GPU raptor does not support vias");
+    return pong_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state, std::move(q),
+                                        timeout);
+  } else {
+    switch (q.via_stops_.size()) {
+      case 0:
+        return pong_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state,
+                                            std::move(q), timeout);
+      case 1:
+        return pong_with_vias<SearchDir, 1>(tt, rtt, s_state, r_state,
+                                            std::move(q), timeout);
+      case 2:
+        return pong_with_vias<SearchDir, 2>(tt, rtt, s_state, r_state,
+                                            std::move(q), timeout);
+    }
+    throw utl::fail("{} vias not supported (max={})", kMaxVias);
   }
-  throw utl::fail("{} vias not supported (max={})", kMaxVias);
 }
 
 template <typename AlgoState>

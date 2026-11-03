@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "cuda/std/span"
@@ -21,6 +22,13 @@ __device__ __forceinline__ void for_each_set_bit(std::uint32_t word, Fn&& fn) {
     word &= word - 1U;  // clear LSB
     fn(b);
   }
+}
+
+template <typename Block>
+__device__ __forceinline__ bool test_bit(Block const* const blocks,
+                                         std::size_t const i) {
+  constexpr auto const kBits = sizeof(Block) * 8U;
+  return (blocks[i / kBits] & (Block{1U} << (i % kBits))) != 0U;
 }
 
 template <typename Block = std::uint64_t>
@@ -51,8 +59,7 @@ struct device_bitvec {
   __device__ bool test(block_t const i) const { return (*this)[i]; }
 
   __device__ bool operator[](block_t const i) const {
-    auto const bit = i % BITS_PER_BLOCK;
-    return (blocks_[i / BITS_PER_BLOCK] & (block_t{1U} << bit)) != 0U;
+    return test_bit(blocks_.data(), i);
   }
 
   __device__ std::size_t size() const {

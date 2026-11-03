@@ -4,10 +4,12 @@
 
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/tz_map.h"
+#include "nigiri/loader/import_context.h"
 
 #include "sol/sol.hpp"
 
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 #include "utl/get_or_create.h"
 
@@ -46,12 +48,14 @@ agency::agency(timetable& tt,
                std::string_view id,
                translation_idx_t name,
                translation_idx_t url,
+               translation_idx_t fare_url,
                timezone_idx_t const tz_idx,
                gtfs::tz_map& tz_map)
     : src_{src},
       id_{id},
       name_{std::move(name)},
       url_{std::move(url)},
+      fare_url_{std::move(fare_url)},
       timezone_idx_{tz_idx},
       tt_{&tt},
       tz_map_{&tz_map} {}
@@ -80,6 +84,16 @@ std::string_view agency::get_url() const {
 }
 translated_str_t agency::get_url_translations() const { return tt_->get(url_); }
 void agency::set_url(translated_str_t x) {
+  url_ = tt_->register_translation(x);
+}
+
+std::string_view agency::get_fare_url() const {
+  return tt_->get_default_translation(fare_url_);
+}
+translated_str_t agency::get_fare_url_translations() const {
+  return tt_->get(fare_url_);
+}
+void agency::set_fare_url(translated_str_t x) {
   url_ = tt_->register_translation(x);
 }
 
@@ -208,7 +222,8 @@ route::route(timetable& tt,
              route_type_t const route_type,
              route_color const color,
              provider_idx_t const agency,
-             category_idx_t const category)
+             category_idx_t const category,
+             ticketing_link_idx_t const ticketing_link)
     : src_{src},
       id_{id},
       short_name_{short_name},
@@ -218,6 +233,7 @@ route::route(timetable& tt,
       color_{color},
       agency_{agency},
       category_{category},
+      ticketing_link_(ticketing_link),
       tt_{&tt} {}
 
 route::route(timetable& tt, source_idx_t const src, route_id_idx_t const r)
@@ -317,6 +333,7 @@ trip::trip(timetable& tt,
            std::string_view vehicle_type_short_name,
            direction_id_t direction,
            route_id_idx_t route,
+           std::array<bool, kNumRouteFlags>& flags,
            trip_debug dbg)
     : src_{src},
       id_{id},
@@ -327,6 +344,7 @@ trip::trip(timetable& tt,
       vehicle_type_short_name_{vehicle_type_short_name},
       direction_{direction},
       route_{route},
+      flags_{flags},
       dbg_{dbg},
       tt_{&tt} {}
 
@@ -371,6 +389,27 @@ void trip::set_display_name(translated_str_t x) {
 }
 
 route trip::get_route() const { return route{*tt_, src_, route_}; }
+
+bool trip::get_bikes_allowed() const { return flags_[kBikesAllowed]; }
+void trip::set_bikes_allowed(bool const allowed) const {
+  flags_[kBikesAllowed] = allowed;
+}
+bool trip::get_cars_allowed() const { return flags_[kCarsAllowed]; }
+void trip::set_cars_allowed(bool const allowed) const {
+  flags_[kCarsAllowed] = allowed;
+}
+bool trip::get_wheelchair_accessible() const {
+  return flags_[kWheelchairAccessible];
+}
+void trip::set_wheelchair_accessible(bool const accessible) const {
+  flags_[kWheelchairAccessible] = accessible;
+}
+bool trip::get_compulsory_reservation() const {
+  return !flags_[kReservationNotRequired];
+}
+void trip::set_compulsory_reservation(bool const compulsory) const {
+  flags_[kReservationNotRequired] = !compulsory;
+}
 
 // ===========
 // User Script
@@ -594,7 +633,15 @@ script_runner::script_runner(std::string const& user_script)
       "get_display_name_translations",
       &trip::get_display_name_translations,  //
       "set_display_name", &trip::set_display_name,  //
-      "get_route", &trip::get_route  //
+      "get_route", &trip::get_route,  //
+      "get_bikes_allowed", &trip::get_bikes_allowed,  //
+      "set_bikes_allowed", &trip::set_bikes_allowed,  //
+      "get_cars_allowed", &trip::get_cars_allowed,  //
+      "set_cars_allowed", &trip::set_cars_allowed,  //
+      "get_wheelchair_accessible", &trip::get_wheelchair_accessible,  //
+      "set_wheelchair_accessible", &trip::set_wheelchair_accessible,  //
+      "get_compulsory_reservation", &trip::get_compulsory_reservation,  //
+      "set_compulsory_reservation", &trip::set_compulsory_reservation  //
   );
 
   impl_->process_attribute_ = impl_->lua_["process_attribute"];
@@ -676,12 +723,15 @@ attribute_idx_t register_attribute(timetable& tt, attribute const& a) {
 provider_idx_t register_agency(timetable& tt, agency const& a) {
   auto const idx = tt.providers_.size();
   tt.providers_.emplace_back(provider{tt.strings_.store(a.id_), a.name_, a.url_,
-                                      a.timezone_idx_, a.src_});
+                                      a.fare_url_, a.timezone_idx_,
+                                      ticketing_link_idx_t::invalid(), a.src_});
   tt.provider_id_to_idx_.emplace_back(idx);
   return provider_idx_t{idx};
 }
 
-location_idx_t register_location(timetable& tt, location const& l) {
+location_idx_t register_location(timetable& tt,
+                                 import_context& ctx,
+                                 location const& l) {
   auto& loc = tt.locations_;
 
   auto const next_idx = static_cast<location_idx_t::value_t>(loc.names_.size());
@@ -702,10 +752,10 @@ location_idx_t register_location(timetable& tt, location const& l) {
     loc.src_.emplace_back(l.src_);
     loc.types_.emplace_back(l.type_);
     loc.location_timezones_.emplace_back(l.timezone_idx_);
-    loc.equivalences_.emplace_back();
-    loc.children_.emplace_back();
-    loc.preprocessing_footpaths_out_.emplace_back();
-    loc.preprocessing_footpaths_in_.emplace_back();
+    ctx.equivalences_.emplace_back();
+    ctx.children_.emplace_back();
+    ctx.preprocessing_footpaths_out_.emplace_back();
+    ctx.preprocessing_footpaths_in_.emplace_back();
     loc.transfer_time_.emplace_back(l.transfer_time_);
     loc.parents_.emplace_back(l.parent_);
   } else {
@@ -723,17 +773,27 @@ location_idx_t register_location(timetable& tt, location const& l) {
   assert(loc.src_.size() == next_idx + 1);
   assert(loc.types_.size() == next_idx + 1);
   assert(loc.location_timezones_.size() == next_idx + 1);
-  assert(loc.equivalences_.size() == next_idx + 1);
-  assert(loc.children_.size() == next_idx + 1);
-  assert(loc.preprocessing_footpaths_out_.size() == next_idx + 1);
-  assert(loc.preprocessing_footpaths_in_.size() == next_idx + 1);
+  assert(ctx.equivalences_.size() == next_idx + 1);
+  assert(ctx.children_.size() == next_idx + 1);
+  assert(ctx.preprocessing_footpaths_out_.size() == next_idx + 1);
+  assert(ctx.preprocessing_footpaths_in_.size() == next_idx + 1);
   assert(loc.transfer_time_.size() == next_idx + 1);
   assert(loc.parents_.size() == next_idx + 1);
 
   return it->second;
 }
 
-route_id_idx_t register_route(timetable& tt, route const& r) {
+paged_vecvec<route_id_idx_t, trip_idx_t>& route_id_trips(
+    import_context& ctx, source_idx_t const src) {
+  if (ctx.route_id_trips_.size() <= to_idx(src)) {
+    ctx.route_id_trips_.resize(to_idx(src) + 1U);
+  }
+  return ctx.route_id_trips_[src];
+}
+
+route_id_idx_t register_route(timetable& tt,
+                              import_context& ctx,
+                              route const& r) {
   auto& route_id = tt.route_ids_[r.src_];
   auto const idx = route_id.ids_.store(r.id_);
   route_id.route_id_category_.emplace_back(r.category_);
@@ -743,18 +803,17 @@ route_id_idx_t register_route(timetable& tt, route const& r) {
   route_id.route_id_colors_.emplace_back(r.color_);
   route_id.route_id_type_.emplace_back(r.route_type_);
   route_id.route_id_provider_.emplace_back(r.agency_);
-  route_id.route_id_trips_.emplace_back(std::initializer_list<trip_idx_t>{});
+  route_id_trips(ctx, r.src_).emplace_back(std::initializer_list<trip_idx_t>{});
+  route_id.route_id_ticketing_link_.emplace_back(r.ticketing_link_);
   return idx;
 }
 
-trip_idx_t register_trip(timetable& tt, trip const& t) {
-  auto const trip_idx = trip_idx_t{tt.trip_ids_.size()};
-
-  auto const trip_id_idx = trip_id_idx_t{tt.trip_id_strings_.size()};
+trip_idx_t register_trip(timetable& tt, import_context& ctx, trip const& t) {
+  auto const trip_idx = trip_idx_t{tt.n_trips()};
 
   if (t.route_ != route_id_idx_t::invalid()) {  // HRD
-    tt.route_ids_[t.src_].route_id_trips_[t.route_].push_back(trip_idx);
-    tt.trip_direction_id_.resize(tt.n_trips() + to_idx(trip_id_idx) + 1U);
+    route_id_trips(ctx, t.src_)[t.route_].push_back(trip_idx);
+    tt.trip_direction_id_.resize(to_idx(trip_idx) + 1U);
     tt.trip_direction_id_.set(trip_idx, t.direction_ == direction_id_t{1U});
   }
   tt.trip_route_id_.emplace_back(t.route_);
@@ -762,12 +821,10 @@ trip_idx_t register_trip(timetable& tt, trip const& t) {
   tt.trip_id_strings_.emplace_back(t.id_);
   tt.trip_id_src_.emplace_back(t.src_);
 
-  tt.trip_id_to_idx_.emplace_back(trip_id_idx, trip_idx);
   tt.trip_short_names_.emplace_back(t.short_name_);
   tt.trip_display_names_.emplace_back(t.display_name_);
-  tt.trip_ids_.emplace_back().emplace_back(trip_id_idx);
-  tt.trip_debug_.emplace_back().emplace_back(t.dbg_);
-  tt.trip_transport_ranges_.emplace_back_empty();
+  tt.trip_debug_.push_back(t.dbg_);
+  ctx.trip_transport_ranges_.emplace_back_empty();
 
   return trip_idx;
 }

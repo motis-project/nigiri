@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <memory>
 #include <vector>
 
 #include "date/date.h"
@@ -25,11 +26,30 @@ struct timetable_source {
   loader_config loader_config_{};
 };
 
+std::vector<std::unique_ptr<loader_interface>> get_loaders();
+
 timetable load(std::vector<timetable_source> const&,
                finalize_options const&,
                interval<date::sys_days> const&,
                assistance_times* = nullptr,
                shapes_storage* = nullptr,
                bool ignore = false);
+
+struct dir_source {
+  dir const& dir_;
+  loader_config loader_config_{};
+};
+
+timetable load(std::vector<dir_source> const&,
+               interval<date::sys_days> const&,
+               finalize_options const& = {},
+               assistance_times* = nullptr,
+               shapes_storage* = nullptr);
+
+timetable load(dir const&,
+               interval<date::sys_days> const&,
+               finalize_options const& = {},
+               assistance_times* = nullptr,
+               shapes_storage* = nullptr);
 
 }  // namespace nigiri::loader

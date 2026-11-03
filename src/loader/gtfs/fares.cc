@@ -9,6 +9,7 @@
 #include "utl/pipes/transform.h"
 
 #include "nigiri/loader/gtfs/parse_time.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
@@ -408,6 +409,7 @@ void parse_route_networks(
 
 hash_map<std::string, location_idx_t> parse_stop_areas(
     timetable& tt,
+    import_context& ctx,
     std::string_view file_content,
     hash_map<std::string, area_idx_t> const& areas,
     stops_map_t const& stops) {
@@ -416,7 +418,7 @@ hash_map<std::string, location_idx_t> parse_stop_areas(
     utl::csv_col<utl::cstr, UTL_NAME("stop_id")> stop_id_;
   };
 
-  tt.location_areas_.resize(tt.n_locations());
+  ctx.location_areas_.resize(tt.n_locations());
 
   auto m = hash_map<std::string, location_idx_t>{};
   utl::for_each_row<stop_area_record>(
@@ -435,7 +437,7 @@ hash_map<std::string, location_idx_t> parse_stop_areas(
           return;
         }
 
-        tt.location_areas_[*l_idx].push_back(*area_idx);
+        ctx.location_areas_[*l_idx].push_back(*area_idx);
       });
   return m;
 }
@@ -582,6 +584,7 @@ hash_map<std::string, rider_category_idx_t> parse_rider_categories(
 }
 
 void load_fares(timetable& tt,
+                import_context& ctx,
                 dir const& d,
                 traffic_days_t const& services,
                 route_map_t const& routes,
@@ -607,7 +610,7 @@ void load_fares(timetable& tt,
       parse_leg_rules(tt, load(kFareLegRulesFile).data(), f, area_sets,
                       networks, areas, timeframes, products);
   auto const stop_areas =
-      parse_stop_areas(tt, load(kStopAreasFile).data(), areas, stops);
+      parse_stop_areas(tt, ctx, load(kStopAreasFile).data(), areas, stops);
   parse_fare_leg_join_rules(load(kFareLegJoinRulesFile).data(), f, networks,
                             stops);
   parse_fare_transfer_rules(load(kFareTransferRulesFile).data(), f, products,

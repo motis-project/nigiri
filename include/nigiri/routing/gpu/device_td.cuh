@@ -2,6 +2,7 @@
 
 #include "nigiri/constants.h"
 #include "nigiri/footpath.h"
+#include "nigiri/routing/limits.h"
 #include "nigiri/types.h"
 
 namespace nigiri::routing::gpu {
@@ -12,7 +13,7 @@ static_assert(duration_t{kMaxFpMinutes} == footpath::kMaxDuration);
 
 struct d_td_result {
   duration_t duration_{kMaxFpMinutes};
-  std::uint32_t idx_{0U};  // winning entry index (for transport_mode_id_)
+  std::uint32_t idx_{0U};  // winning entry index (for its transport mode)
   bool valid_{false};
 };
 
@@ -21,7 +22,7 @@ __device__ d_td_result d_get_td_duration(Collection const& c,
                                          std::uint32_t const from,
                                          std::uint32_t const to,
                                          unixtime_t const t) {
-  constexpr auto const kMaxWait = i32_minutes{kMaxTransferTime};
+  constexpr auto const kMaxWait = i32_minutes{routing::kMaxTravelTime.count()};
   if constexpr (SearchDir == direction::kForward) {
     for (auto i = from; i != to; ++i) {
       auto const& e = c[i];
@@ -69,10 +70,7 @@ __device__ void d_for_each_td_footpath(Collection const& c,
     }
     auto const r = d_get_td_duration<SearchDir>(c, i, j, t);
     if (r.valid_) {
-      auto const d = r.duration_.count() > kMaxFpMinutes
-                         ? duration_t{kMaxFpMinutes}
-                         : r.duration_;
-      f(c[i].target_, d);
+      f(c[i].target_, r.duration_);
     }
     i = j;
   }

@@ -67,25 +67,24 @@ template <typename Fn>
 void resolve_static_trip_id(date::sys_days const today,
                             timetable const& tt,
                             source_idx_t const src,
-                            std::string const& trip_id,
+                            std::string_view const trip_id,
                             std::optional<date::sys_days> const& start_date,
                             std::optional<duration_t> const& start_time,
                             Fn&& fn) {
   auto const lb = std::lower_bound(
       begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_), trip_id,
-      [&](pair<trip_id_idx_t, trip_idx_t> const& a, auto&& b) {
-        return std::tuple{tt.trip_id_src_[a.first],
-                          tt.trip_id_strings_[a.first].view()} <
+      [&](trip_idx_t const a, auto&& b) {
+        return std::tuple{tt.trip_id_src_[a], tt.trip_id_strings_[a].view()} <
                std::tuple{src, static_cast<std::string_view>(b)};
       });
 
-  auto const id_matches = [&](trip_id_idx_t const t_id_idx) {
-    return tt.trip_id_src_[t_id_idx] == src &&
-           tt.trip_id_strings_[t_id_idx].view() == trip_id;
+  auto const id_matches = [&](trip_idx_t const t) {
+    return tt.trip_id_src_[t] == src &&
+           tt.trip_id_strings_[t].view() == trip_id;
   };
 
-  for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(i->first); ++i) {
-    resolve_trip(today, tt, i->second, start_date, start_time, fn);
+  for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(*i); ++i) {
+    resolve_trip(today, tt, *i, start_date, start_time, fn);
   }
 }
 

@@ -46,7 +46,8 @@ struct algo_for<SearchDir, Vias, Rt, basic_mcraptor_state<Criteria>> {
 #if defined(NIGIRI_CUDA)
 template <direction SearchDir, via_offset_t Vias, bool Rt>
 struct algo_for<SearchDir, Vias, Rt, gpu::gpu_raptor_state> {
-  using type = gpu::gpu_raptor<SearchDir>;
+  // standalone range search, not pong - never pruned against ping bounds
+  using type = gpu::gpu_raptor<SearchDir, false>;
 };
 
 template <direction SearchDir, via_offset_t Vias, bool Rt>

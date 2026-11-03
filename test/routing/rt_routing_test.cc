@@ -3,8 +3,7 @@
 #include <algorithm>
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/rt/create_rt_timetable.h"
@@ -38,8 +37,10 @@ void get_direct_for(timetable const& tt,
   auto qq = routing::query{};
   qq.start_match_mode_ = routing::location_match_mode::kEquivalent;
   qq.dest_match_mode_ = routing::location_match_mode::kEquivalent;
-  qq.start_.emplace_back(from, duration_t{0}, transport_mode_id_t{0});
-  qq.destination_.emplace_back(to, duration_t{0}, transport_mode_id_t{0});
+  qq.start_.emplace_back(from, duration_t{0},
+                         routing::transport_mode_t::payload_t{0});
+  qq.destination_.emplace_back(to, duration_t{0},
+                               routing::transport_mode_t::payload_t{0});
   qq.slow_direct_ = true;
   qq.fastest_slow_direct_factor_ = 0.0;  // disable post-filter
 
@@ -136,11 +137,8 @@ TEST(routing, rt_raptor_forward) {
         .count();
   };
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / May / 3});
@@ -219,11 +217,8 @@ TEST(routing, rt_raptor_backward) {
         .count();
   };
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / May / 3});
@@ -302,11 +297,8 @@ TEST(routing, rt_raptor_unscheduled) {
         .count();
   };
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / May / 3});

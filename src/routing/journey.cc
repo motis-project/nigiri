@@ -32,7 +32,11 @@ void journey::leg::print(std::ostream& out,
           },
           [&](offset const x) {
             indent(out, n_indent);
-            out << "MUMO (id=" << x.transport_mode_id_
+            out << "MUMO (";
+            if (x.transport_mode_ != 0U) {
+              out << "mode=" << x.transport_mode_ << ", ";
+            }
+            out << "payload=" << x.transport_mode_payload_
                 << ", duration=" << x.duration().count() << ")\n";
           }},
       uses_);

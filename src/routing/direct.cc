@@ -5,6 +5,7 @@
 #include "utl/concat.h"
 #include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
 #include "utl/sorted_diff.h"
 
@@ -26,16 +27,20 @@ std::optional<journey::leg> lookup_offset(location_idx_t const loc,
   auto const td_search_dir =
       is_boarding ? direction::kBackward : direction::kForward;
 
-  auto const make_leg = [&](duration_t const dur,
-                            transport_mode_id_t const mode_id) {
+  // dur includes waiting for a time-dependent offset to become usable (e.g.
+  // an elevator out of service), walk does not.
+  // The waiting time is spent at a stop (boarding: after the walk,
+  // alighting: before the walk).
+  auto const make_leg = [&](duration_t const dur, duration_t const walk,
+                            transport_mode_t const mode) {
     auto const boundary = get_special_station(
         is_boarding ? special_station::kStart : special_station::kEnd);
-    auto const dep = is_boarding ? t - dur : t;
-    auto const arr = is_boarding ? t : t + dur;
+    auto const dep = is_boarding ? t - dur : t + dur - walk;
+    auto const arr = is_boarding ? t - dur + walk : t + dur;
     auto const from = is_boarding ? boundary : loc;
     auto const to = is_boarding ? loc : boundary;
-    return journey::leg{direction::kForward,      from, to, dep, arr,
-                        offset{loc, dur, mode_id}};
+    return journey::leg{direction::kForward,    from, to, dep, arr,
+                        offset{loc, walk, mode}};
   };
 
   // Time-dependend offsets take precedence.
@@ -44,20 +49,21 @@ std::optional<journey::leg> lookup_offset(location_idx_t const loc,
     if (!td.has_value() || td->first >= footpath::kMaxDuration) {
       return std::nullopt;
     }
-    return std::optional{make_leg(td->first, td->second.transport_mode_id_)};
+    return std::optional{
+        make_leg(td->first, td->second.duration(), td->second.mode())};
   }
 
-  // Search for shortest offset.
+  // Search for shortest offset, assuming offsets are sorted ASC
   auto best = std::optional<offset>{};
   for (auto const& o : offsets) {
-    if (o.target() == loc &&
-        (!best.has_value() || o.duration() < best->duration())) {
+    if (o.target() == loc) {
       best = o;
+      break;
     }
   }
 
   return best.transform([&](offset const& o) {
-    return make_leg(o.duration(), o.transport_mode_id_);
+    return make_leg(o.duration(), o.duration(), o.mode());
   });
 }
 
@@ -74,17 +80,18 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
   auto const td_search_dir =
       is_boarding ? direction::kBackward : direction::kForward;
 
+  // best_dur includes waiting for a time-dependent footpath to become usable
+  // (e.g. an elevator out of service), best_walk does not.
   auto best_dur = footpath::kMaxDuration;
+  auto best_walk = footpath::kMaxDuration;
   auto best_source = location_idx_t{};
 
-  auto const has_td_arr = rtt == nullptr
-                              ? nullptr
-                              : (is_boarding ? &rtt->has_td_footpaths_out_
-                                             : &rtt->has_td_footpaths_in_);
-  auto const td_fps_arr =
-      rtt == nullptr
-          ? nullptr
-          : (is_boarding ? &rtt->td_footpaths_out_ : &rtt->td_footpaths_in_);
+  // As in the search: footpaths from a source with td footpaths are
+  // time-dependent, all others are static.
+  auto const is_td_source = [&](location_idx_t const x) {
+    return rtt != nullptr && q.prf_idx_ != 0U &&
+           rtt->has_td_footpaths_out_[q.prf_idx_].test(x);
+  };
 
   for (auto const& o : offs) {
     auto const o_duration = o.duration();
@@ -100,6 +107,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
                                           tt.locations_.transfer_time_[l])
                  // kIntermodal / kEquivalent: no transfer time access/egress
                  : u8_minutes{0});
+        best_walk = best_dur;
         best_source = o.target();
       }
 
@@ -108,16 +116,20 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
       }
 
       auto eff_dur = footpath::kMaxDuration;
-      if (has_td_arr != nullptr && q.prf_idx_ < has_td_arr->size() &&
-          to_idx(l) < (*has_td_arr)[q.prf_idx_].size() &&
-          (*has_td_arr)[q.prf_idx_][l]) {
+      auto eff_walk = footpath::kMaxDuration;
+      auto const fp_from = is_boarding ? l : loc;
+      auto const fp_to = is_boarding ? loc : l;
+      if (is_td_source(fp_from)) {
         // td footpaths take precedence
-        for_each_footpath(td_search_dir, (*td_fps_arr)[q.prf_idx_][l], t,
-                          [&](footpath const fp) {
-                            if (fp.target() == loc && fp.duration() < eff_dur) {
-                              eff_dur = fp.duration();
-                            }
-                          });
+        for_each_footpath(
+            td_search_dir, rtt->td_footpaths_out_[q.prf_idx_][fp_from], t,
+            [&](location_idx_t const target, duration_t const duration,
+                duration_t const walk) {
+              if (target == fp_to && duration < eff_dur) {
+                eff_dur = duration;
+                eff_walk = walk;
+              }
+            });
       } else {
         // no td footpath -> take shortest regular footpath
         auto const& fps = is_boarding
@@ -131,6 +143,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
               adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
           if (adj < eff_dur) {
             eff_dur = adj;
+            eff_walk = adj;
           }
         }
       }
@@ -141,6 +154,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
       auto const total = o_duration + eff_dur;
       if (total < best_dur) {
         best_dur = total;
+        best_walk = o_duration + eff_walk;
         best_source = o.target();
       }
     });
@@ -150,12 +164,14 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
     return std::nullopt;
   }
 
-  auto const dep = is_boarding ? t - best_dur : t;
-  auto const arr = is_boarding ? t : t + best_dur;
+  // Any wait is spent at the transport's stop (as in the reconstruction):
+  // after the walk when boarding, before it when alighting.
+  auto const dep = is_boarding ? t - best_dur : t + best_dur - best_walk;
+  auto const arr = is_boarding ? t - best_dur + best_walk : t + best_dur;
   auto const from = is_boarding ? best_source : loc;
   auto const to = is_boarding ? loc : best_source;
-  return journey::leg{direction::kForward,   from, to, dep, arr,
-                      footpath{to, best_dur}};
+  return journey::leg{direction::kForward,    from, to, dep, arr,
+                      footpath{to, best_walk}};
 }
 
 namespace {
@@ -238,26 +254,21 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
   return locs;
 }
 
-bool sections_violate_constraints(rt::frun const& fr,
-                                  unsigned const from_section_idx,
-                                  unsigned const to_section_idx,
-                                  bool const require_bike,
-                                  bool const require_car,
-                                  bool const is_wheelchair) {
-  if (!require_bike && !require_car && !is_wheelchair) {
+bool sections_violate_constraints(
+    rt::frun const& fr,
+    unsigned const from_section_idx,
+    unsigned const to_section_idx,
+    std::array<bool, kNumRouteFlags> const flags) {
+  if (utl::none_of(flags, [](auto f) { return f; })) {
     return false;
   }
   for (auto i = from_section_idx; i != to_section_idx; ++i) {
     auto const section_start = static_cast<stop_idx_t>(i);
-    if (require_bike && !fr[section_start].bikes_allowed(event_type::kDep)) {
-      return true;
-    }
-    if (require_car && !fr[section_start].cars_allowed(event_type::kDep)) {
-      return true;
-    }
-    if (is_wheelchair &&
-        !fr[section_start].wheelchair_accessible(event_type::kDep)) {
-      return true;
+    for (auto f = 0U; f < kNumRouteFlags; ++f) {
+      if (flags[f] && !fr[section_start].is_flag_set(static_cast<route_flag>(f),
+                                                     event_type::kDep)) {
+        return true;
+      }
     }
   }
   return false;
@@ -322,10 +333,10 @@ utl::generator<std::vector<journey::leg>> route_gen(
       }
       auto const start_day =
           day_idx_t{static_cast<day_idx_t::value_t>(day_off)};
-      auto const& bitfields = rtt != nullptr ? rtt->bitfields_ : tt.bitfields_;
-      auto const traffic_idx = rtt != nullptr ? rtt->transport_traffic_days_[t]
-                                              : tt.transport_traffic_days_[t];
-      if (to_idx(start_day) >= bitfields[traffic_idx].size()) {
+      auto const& traffic_days =
+          rtt != nullptr ? rtt->traffic_days(rtt->transport_traffic_days_[t])
+                         : tt.bitfields_[tt.transport_traffic_days_[t]];
+      if (to_idx(start_day) >= traffic_days.size()) {
         continue;
       }
       auto const transport_active = rtt != nullptr
@@ -464,6 +475,8 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
   auto const q = q_in;
   constexpr auto kFwd = Dir == direction::kForward;
   bool const is_wheelchair = q.prf_idx_ == kWheelchairProfile;
+  auto flags = std::array{q.require_bike_transport_, q.require_car_transport_,
+                          is_wheelchair, q.no_compulsory_reservation_};
 
   auto const merge_sorted = [](auto& dst, auto const& src) {
     auto const original_size = static_cast<int>(dst.size());
@@ -504,9 +517,13 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
           [](utl::op, route_idx_t) {},
           [&](route_idx_t const r, route_idx_t) {
             if (!is_allowed(q.allowed_claszes_, tt.route_clasz_[r]) ||
-                (q.require_bike_transport_ && !tt.has_bike_transport(r)) ||
-                (q.require_car_transport_ && !tt.has_car_transport(r)) ||
-                (is_wheelchair && !tt.has_wheelchair_transport(r))) {
+                (q.require_bike_transport_ &&
+                 !tt.is_flag_set(kBikesAllowed, r)) ||
+                (q.require_car_transport_ &&
+                 !tt.is_flag_set(kCarsAllowed, r)) ||
+                (is_wheelchair && !tt.is_flag_set(kWheelchairAccessible, r)) ||
+                (q.no_compulsory_reservation_ &&
+                 !tt.is_flag_set(kReservationNotRequired, r))) {
               return;
             }
 
@@ -520,9 +537,7 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
             for_each_pair(tt.route_location_seq_[r], boarding_locs,
                           alighting_locs, q.prf_idx_,
                           [&](stop_idx_t const a, stop_idx_t const b) {
-                            if (sections_violate_constraints(
-                                    fr, a, b, q.require_bike_transport_,
-                                    q.require_car_transport_, is_wheelchair)) {
+                            if (sections_violate_constraints(fr, a, b, flags)) {
                               return;
                             }
                             add_gen(route_gen<Dir>(tt, rtt, r, a, b, q, time));
@@ -549,9 +564,14 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
             [&](rt_transport_idx_t const x, rt_transport_idx_t) {
               if (!is_allowed(q.allowed_claszes_,
                               rtt->rt_transport_section_clasz_[x].front()) ||
-                  (q.require_bike_transport_ && !rtt->has_bike_transport(x)) ||
-                  (q.require_car_transport_ && !rtt->has_car_transport(x)) ||
-                  (is_wheelchair && !rtt->has_wheelchair_transport(x))) {
+                  (q.require_bike_transport_ &&
+                   !rtt->is_flag_set(kBikesAllowed, x)) ||
+                  (q.require_car_transport_ &&
+                   !rtt->is_flag_set(kCarsAllowed, x)) ||
+                  (is_wheelchair &&
+                   !rtt->is_flag_set(kWheelchairAccessible, x)) ||
+                  (q.no_compulsory_reservation_ &&
+                   !rtt->is_flag_set(kReservationNotRequired, x))) {
                 return;
               }
 
@@ -566,9 +586,7 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
                   rtt->rt_transport_location_seq_[x], boarding_locs,
                   alighting_locs, q.prf_idx_,
                   [&](stop_idx_t const a, stop_idx_t const b) {
-                    if (sections_violate_constraints(
-                            fr, a, b, q.require_bike_transport_,
-                            q.require_car_transport_, is_wheelchair)) {
+                    if (sections_violate_constraints(fr, a, b, flags)) {
                       return;
                     }
                     add_gen(rt_gen<Dir>(tt, *rtt, x, a, b, q, time));

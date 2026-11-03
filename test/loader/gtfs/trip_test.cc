@@ -6,6 +6,7 @@
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/trip.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/common/span_cmp.h"
 #include "nigiri/shapes_storage.h"
@@ -23,17 +24,17 @@ TEST(gtfs, read_trips_example_data) {
   auto const files = example_files();
 
   timetable tt;
-  tt.date_range_ = interval{date::sys_days{July / 1 / 2006},
-                            date::sys_days{August / 1 / 2006}};
+  auto ctx = loader::import_context{tt};
+  tt.date_range_ = interval{July / 1 / 2006, August / 1 / 2006};
   tz_map timezones;
   auto i18n = translator{.tt_ = tt};
 
   auto const config = loader_config{};
-  auto agencies =
+  auto [agencies, _] =
       read_agencies(source_idx_t{}, tt, i18n, timezones,
                     files.get_file(kAgencyFile).data(), "Europe/Berlin");
   auto const routes =
-      read_routes({}, tt, i18n, timezones, agencies,
+      read_routes({}, tt, ctx, i18n, timezones, agencies,
                   files.get_file(kRoutesFile).data(), "Europe/Berlin");
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());
@@ -44,10 +45,10 @@ TEST(gtfs, read_trips_example_data) {
       shapes_storage{"example_shapes", cista::mmap::protection::WRITE};
   auto const shapes =
       parse_shapes(files.get_file(kShapesFile).data(), shapes_store);
-  auto const trip_data =
-      read_trips(source_idx_t{}, source_file_idx_t{}, tt, i18n, routes,
-                 services, shapes, files.get_file(kTripsFile).data(),
-                 config.bikes_allowed_default_, config.cars_allowed_default_);
+  auto const trip_data = read_trips(
+      source_idx_t{}, source_file_idx_t{}, tt, ctx, i18n, routes, services,
+      shapes, files.get_file(kTripsFile).data(), config.bikes_allowed_default_,
+      config.cars_allowed_default_, config.reservation_not_required_default_);
 
   EXPECT_EQ(2U, trip_data.data_.size());
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("AWE1"));
@@ -61,17 +62,17 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const files = berlin_files();
 
   timetable tt;
-  tt.date_range_ = interval{date::sys_days{July / 1 / 2006},
-                            date::sys_days{August / 1 / 2006}};
+  auto ctx = loader::import_context{tt};
+  tt.date_range_ = interval{July / 1 / 2006, August / 1 / 2006};
   tz_map timezones;
   auto i18n = translator{.tt_ = tt};
 
   auto const config = loader_config{};
-  auto agencies =
+  auto [agencies, _] =
       read_agencies(source_idx_t{0}, tt, i18n, timezones,
                     files.get_file(kAgencyFile).data(), "Europe/Berlin");
   auto const routes =
-      read_routes({}, tt, i18n, timezones, agencies,
+      read_routes({}, tt, ctx, i18n, timezones, agencies,
                   files.get_file(kRoutesFile).data(), "Europe/Berlin");
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());
@@ -82,10 +83,10 @@ TEST(gtfs, read_trips_berlin_data) {
       shapes_storage{"berlin_shapes", cista::mmap::protection::WRITE};
   auto const shapes =
       parse_shapes(files.get_file(kShapesFile).data(), shapes_store);
-  auto const trip_data =
-      read_trips(source_idx_t{}, source_file_idx_t{}, tt, i18n, routes,
-                 services, shapes, files.get_file(kTripsFile).data(),
-                 config.bikes_allowed_default_, config.cars_allowed_default_);
+  auto const trip_data = read_trips(
+      source_idx_t{}, source_file_idx_t{}, tt, ctx, i18n, routes, services,
+      shapes, files.get_file(kTripsFile).data(), config.bikes_allowed_default_,
+      config.cars_allowed_default_, config.reservation_not_required_default_);
 
   EXPECT_EQ(3U, trip_data.data_.size());
 

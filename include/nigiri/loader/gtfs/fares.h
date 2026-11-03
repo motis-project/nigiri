@@ -10,6 +10,7 @@
 namespace nigiri::loader::gtfs {
 
 void load_fares(timetable& tt,
+                import_context&,
                 dir const&,
                 traffic_days_t const&,
                 route_map_t const&,
