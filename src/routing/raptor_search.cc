@@ -21,6 +21,8 @@
 
 namespace nigiri::routing {
 
+// TODO: remove once we implement pong for earlier+fwd / later+bwd
+//       -> then range queries require a fixed interval
 interval<unixtime_t> raptor_search_interval(direction const search_dir,
                                             timetable const& tt,
                                             query const& q) {
