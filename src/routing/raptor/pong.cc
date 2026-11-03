@@ -349,7 +349,6 @@ routing_result pong(timetable const& tt,
         trace_pong("---- KNOWN [updating ping start time {} -> {}]\n",
                    ping_j.start_time_, known->dest_time_);
         ping_j.start_time_ = known->dest_time_;
-        ++result.search_stats_.n_pong_skipped_;
         continue;
       }
 
