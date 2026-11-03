@@ -142,11 +142,11 @@ static range_result search_range(timetable const& tt,
   auto mc_mode_filter = pareto_set<routing::journey>{};
   auto mc_non_transit_mode_filter = pareto_set<routing::journey>{};
   if (mc) {
-    // without extra criteria, mcraptor is raptor - down to the legs
-    EXPECT_EQ(print_results(tt, rtt, results),
-              print_results(
-                  tt, rtt,
-                  run_search<routing::mcraptor_state>(tt, rtt, q, search_dir)));
+    // without extra criteria, mcraptor finds raptor's journeys (legs may
+    // differ: mcraptor does not run optimize_footpaths)
+    EXPECT_EQ(base_tuples, journey_tuples(run_search<routing::mcraptor_state>(
+                               tt, rtt, q, search_dir)))
+        << "mcraptor";
 
     using namespace routing;
     auto const& b = base_tuples;

@@ -28,7 +28,6 @@
 #include "nigiri/routing/gpu/pinned_host_buffer.cuh"
 #include "nigiri/routing/gpu/timetable_impl.cuh"
 #include "nigiri/routing/raptor/mcraptor.h"
-#include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/td_footpath.h"
