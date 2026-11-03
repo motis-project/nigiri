@@ -84,8 +84,7 @@ pareto_set<routing::journey> run_search(timetable const& tt,
               .journeys_;
 }
 
-// Each raptor journey is pareto-optimal on (start, dest, transfers), so extra
-// criteria keep (a variant of) it: no other journey can dominate it.
+// extra criteria keep every raptor journey (or a variant of it)
 template <typename State>
 pareto_set<routing::journey> expect_superset(timetable const& tt,
                                              rt_timetable const* rtt,
@@ -103,9 +102,8 @@ pareto_set<routing::journey> expect_superset(timetable const& tt,
 }
 
 #if defined(NIGIRI_CUDA)
-// The device mcraptor must find the CPU one's journey values. Not compared on
-// the printed legs: its bags tolerate insert races, so equal-value journeys may
-// run through different trips (see the mcraptor_impl.cuh header).
+// Compared on values, not legs: racing device inserts may pick other trips of
+// equal value.
 template <typename GpuState>
 void expect_gpu_equal(timetable const& tt,
                       rt_timetable const* rtt,
@@ -173,8 +171,7 @@ static range_result search_range(timetable const& tt,
   }
 
 #if defined(NIGIRI_CUDA)
-  // No gpu_available() gate on purpose: a CUDA build expects a device, and a
-  // missing one should fail loudly rather than skip silently.
+  // no gpu_available() gate: a CUDA build without a device should fail
   if (routing::gpu::gpu_supported(q, rtt)) {
     auto gpu_timetable = routing::gpu::gpu_timetable{tt};
     if (rtt != nullptr) {

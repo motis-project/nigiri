@@ -7,10 +7,7 @@
 
 namespace nigiri::routing::gpu {
 
-// Time-dependent egress offsets (q.td_dest_) as uploaded to the device: the
-// sparse set of locations that carry one, plus their offset lists in a flat
-// vecvec indexed by the position in that set. Shared by the raptor and
-// mcraptor engines.
+// td egress offsets on the device, indexed by position in the location set.
 using td_dest_group_idx_t = cista::strong<std::uint32_t, struct td_dest_group_>;
 using td_dest_offsets_t = vecvec<td_dest_group_idx_t, td_offset>;
 

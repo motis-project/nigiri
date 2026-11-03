@@ -29,9 +29,7 @@ struct algo_for {
   using type = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>;
 };
 
-// Range reuse is result-neutral here: a reuse rejection only drops labels whose
-// completions the rejector's completions dominate. The GPU searches each start
-// with fresh bags and produces identical results.
+// Range reuse is result-neutral: it only drops dominated completions.
 template <direction SearchDir, via_offset_t Vias, bool Rt, typename Criteria>
 struct algo_for<SearchDir, Vias, Rt, basic_mcraptor_state<Criteria>> {
   using type = basic_mcraptor<SearchDir, Criteria, /*RangeReuse=*/true>;

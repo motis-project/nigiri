@@ -59,9 +59,7 @@ void mc_reconstruct_offsets(timetable const& tt,
       front_dep = dep_time - o->duration();
     } else if (auto const& td = is_fwd ? q.td_start_ : q.td_dest_;
                td.contains(from)) {
-      // td offsets are valid at fixed times and the traveller then waits for
-      // the first transit event: the backward query gives the latest departure
-      // that makes the boarding, the forward query from there strips the wait.
+      // latest departure making the boarding, then strip the wait
       auto const& offs = td.at(from);
       auto const back = get_td_duration<direction::kBackward>(offs, dep_time);
       if (back.has_value() && front_ok(back->first)) {
@@ -169,10 +167,7 @@ void mc_reconstruct_offsets(timetable const& tt,
     }
   }
 
-  // Shorten td footpath legs to their walking time: the search stores the wait
-  // in the arrival, but showing it as walking is wrong and misprices the
-  // transfer for optimize_footpaths. The wait is spent at the stop before the
-  // walk, as in the raptor reconstruction.
+  // td footpath legs: walking time only, the wait is spent at the stop
   if (rtt != nullptr && q.prf_idx_ != 0U) {
     auto const& has_td = is_fwd ? rtt->has_td_footpaths_in_[q.prf_idx_]
                                 : rtt->has_td_footpaths_out_[q.prf_idx_];
@@ -297,8 +292,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::next_start_time() {
 
 namespace {
 
-// Visits a bag's labels of one round and departure. Under range reuse the bag
-// also holds other departures' labels, kept only for pruning.
+// Visits a bag's labels of one round and the current departure.
 template <typename Criteria, typename Fn>
 void for_each_label_in_round(
     typename basic_mcraptor_state<Criteria>::bag_layer const& layer,
@@ -313,17 +307,10 @@ void for_each_label_in_round(
   }
 }
 
-// Pareto insert into a stop's bag, which holds every round (and, under range
-// reuse, every departure) at once. A candidate of `round` is
-//   - rejected only by a label of a lower-or-equal round; a by-route candidate
-//     only by another by-route one (footpaths are not transitive: a transit
-//     arrival must survive to relax its own footpaths);
-//   - evicting only labels of a higher-or-equal round, so a fewer-transfer
-//     label is never lost; a by-route candidate evicts any dominated label, a
-//     by-transfer one only dominated by-transfer labels (those are terminal).
-// Same-departure labels use ordinary dominance, others (necessarily later,
-// processed first) the departure-aware reuse dominance. Returns true iff
-// inserted.
+// Pareto insert; true iff inserted. A candidate is rejected only by labels of
+// no higher round (by-route ones only by by-route labels: they still relax
+// their footpaths) and evicts only labels of no lower round (by-transfer ones
+// only by-transfer labels). Other departures compare via reuse_dominates.
 template <direction SearchDir, typename Criteria>
 bool bag_insert(typename basic_mcraptor_state<Criteria>::bag_layer& layer,
                 std::uint32_t const l,
@@ -408,7 +395,6 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
     unixtime_t const worst_time_at_dest,
     pareto_set<journey>& results) {
   auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
-  cur_budget_ = end_k - 1U;  // trips allowed for this start time
 
   worst_at_dest_ =
       get_best(unix_to_delta(base(), worst_time_at_dest), worst_at_dest_);
@@ -448,8 +434,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
     std::swap(state_.prev_station_mark_, state_.station_mark_);
     state_.station_mark_.zero_out();
 
-    // Both scans board from round k-1 and insert at round k, which never
-    // evicts a round-(k-1) label, so their order does not matter.
+    // both read round k - 1 and write round k: order does not matter
     any_marked = loop_routes(k);
     if (has_rt_) {
       any_marked = loop_rt_transports(k) || any_marked;
@@ -468,9 +453,8 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
   }
 }
 
-// Alights the boarded label `rl` at stop l_idx at `by_transport`: prunes, then
-// inserts the arrival (plus transfer buffer) flagged by-route so its footpaths
-// get relaxed. Returns true iff a label was inserted.
+// Alights rl at l_idx; true iff the arrival (plus transfer buffer) was
+// inserted.
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 template <typename Label, typename Sections>
 bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
@@ -482,17 +466,13 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
     Sections const& sections,
     clasz const fallback,
     std::uint32_t const transport_field) {
-  auto const lb = effective_lb(l_idx);
+  auto const lb = lb_[l_idx];
   if (!is_better(by_transport, worst_at_dest_) || lb == kUnreachable ||
-      !is_better(by_transport + dir(lb), worst_at_dest_) ||
-      // the pruning search stores the post-transfer value, so the raw transit
-      // arrival is the matching reference
-      bound_prunes(k, l_idx, by_transport)) {
+      !is_better(by_transport + dir(lb), worst_at_dest_)) {
     ++stats_.route_update_prevented_by_lower_bound_;
     return false;
   }
-  // clasz of the section alighted from: route_clasz_ is that of the first
-  // section, which a run changing category midway never leaves
+  // clasz of the alighted section (route_clasz_ is the first section's)
   auto const n_sec = static_cast<std::uint32_t>(sections.size());
   auto const sec = static_cast<std::uint32_t>(kFwd ? stop_idx - 1 : stop_idx);
   auto const ride = ride_attrs{
@@ -566,8 +546,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(
     auto const l_idx = cista::to_idx(stp.location_idx());
     auto const is_last = i == n - 1U;
 
-    // the breadcrumb stores stop positions in 11 bits: no boarding or alighting
-    // beyond that (a handful of routes in worldwide data are longer)
+    // breadcrumbs hold 11 bit stop positions: no boarding/alighting beyond
     if (i != 0U && !route_bag_.empty() && stop_idx <= kBcStopMask &&
         stp.can_finish<SearchDir>(is_wheelchair_)) {
       for (auto const& rl : route_bag_) {
@@ -584,7 +563,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(
       continue;
     }
 
-    if (effective_lb(l_idx) == kUnreachable) {
+    if (lb_[l_idx] == kUnreachable) {
       break;
     }
 
@@ -602,12 +581,11 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(
       auto const pe_arr = pe_crit.arr_;
       auto const pe_carried = pe_crit.carry();
       // even the optimistic completion is dominated
-      if (dest_dominates(k, pe_crit.projected_to(
-                                clamp(pe_arr + dir(effective_lb(l_idx)))))) {
+      if (dest_dominates(
+              k, pe_crit.projected_to(clamp(pe_arr + dir(lb_[l_idx]))))) {
         return;
       }
-      // skip the lookup if a boarded trip already departs before this arrival
-      // with dominating carried criteria
+      // skip the lookup if a boarded trip already dominates
       for (auto j = std::size_t{0U}; j != route_bag_.size(); ++j) {
         if (route_bag_[j].carried_.template dominates<SearchDir>(pe_carried) &&
             is_better(route_bag_dep_[j], pe_arr)) {
@@ -680,8 +658,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::loop_rt_transports(
   return any_marked;
 }
 
-// update_route for a realtime run: one trip with absolute event times, so no
-// earliest-transport lookup, traffic day or trip order.
+// update_route for an rt run: a single trip with absolute event times.
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
     unsigned const k, rt_transport_idx_t const rt_t) {
@@ -718,7 +695,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
       continue;
     }
 
-    if (effective_lb(l_idx) == kUnreachable) {
+    if (lb_[l_idx] == kUnreachable) {
       break;
     }
 
@@ -736,9 +713,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
           if (!is_better_or_eq(pe_crit.arr_, dep)) {
             return;  // cannot make this run
           }
-          if (dest_dominates(
-                  k, pe_crit.projected_to(
-                         clamp(pe_crit.arr_ + dir(effective_lb(l_idx)))))) {
+          if (dest_dominates(k, pe_crit.projected_to(
+                                    clamp(pe_crit.arr_ + dir(lb_[l_idx]))))) {
             return;
           }
           auto const pe_carried = pe_crit.carry();
@@ -770,8 +746,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
   return any_marked;
 }
 
-// (traffic day << 16 | transport offset in route); trips of a route do not
-// overtake, so this orders them
+// traffic day << 16 | trip offset: orders the trips of a route
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 std::uint32_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::trip_order_key(
     route_idx_t const r, transport const t) const {
@@ -781,8 +756,7 @@ std::uint32_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::trip_order_key(
   return (static_cast<std::uint32_t>(as_int(t.day_)) << 16U) | t_offset;
 }
 
-// Relaxes intermodal egress and footpaths from the marked stops' by-route
-// arrivals of round k (same-stop transfers are folded into alight()).
+// Egress and footpaths from round k's by-route arrivals.
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
     unsigned const k) {
@@ -809,8 +783,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
       return;
     }
 
-    // Copy the by-route labels first (relaxing inserts into the same bag) and
-    // undo the transfer buffer so footpaths start from the transit arrival.
+    // copy first (inserts go into the same bag), without transfer buffer
     auto const buf = transfer_buffer(i);
     fp_labels_.clear();
     for_each_label_in_round<Criteria>(
@@ -831,8 +804,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
     auto const relax_egress = [&](typename state_t::label const& te,
                                   std::uint16_t const duration) {
       auto const end_crit = te.crit_.with_walk(dir(duration), duration);
-      // window bound: nothing past worst_at_dest_ enters the destination
-      // frontier
+      // window bound
       if (!is_better(end_crit.arr_, worst_at_dest_)) {
         return;
       }
@@ -845,8 +817,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
       dest_bag_add(k, end_crit);
     };
 
-    // `duration` is the effective walking time: static footpaths are already
-    // adjusted, td ones carry their own (waiting included) duration.
+    // duration: adjusted static footpath or td duration incl. waiting
     auto const relax_fp = [&](typename state_t::label const& te,
                               std::uint32_t const target,
                               std::uint16_t const duration) {
@@ -855,7 +826,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
       if (!is_better(fp_target_time, worst_at_dest_)) {
         return;
       }
-      auto const lower_bound = effective_lb(target);
+      auto const lower_bound = lb_[target];
       if (lower_bound == kUnreachable ||
           !is_better(fp_target_time + dir(lower_bound), worst_at_dest_)) {
         ++stats_.fp_update_prevented_by_lower_bound_;
@@ -866,13 +837,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
         ++stats_.fp_update_prevented_by_lower_bound_;
         return;
       }
-      // a footpath arrival pays no transfer buffer: relax the bound by it
-      if (bound_prunes(k, target, fp_target_time, transfer_buffer(target))) {
-        ++stats_.fp_update_prevented_by_lower_bound_;
-        return;
-      }
-      // the breadcrumb keeps the ride's payload; the footpath is derived at
-      // reconstruction
+      // keeps the ride's payload; reconstruction derives the footpath
       auto bc = state_.breadcrumbs_[te.breadcrumb_];
       bc.arr_ = fp_crit.arr_;
       if (!merge_round(target, fp_crit, bc, static_cast<std::uint8_t>(k))) {
@@ -969,7 +934,7 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::get_earliest_transport(
     return lo;
   };
 
-  auto const lb = dir(effective_lb(to_idx(l)));
+  auto const lb = dir(lb_[to_idx(l)]);
   constexpr auto const kNDaysToIterate =
       kMaxTravelTime / std::chrono::days{1} + 1U;
   for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
@@ -1034,10 +999,8 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::collect_dest_journeys(
   });
 }
 
-// The traffic day of the trip behind a breadcrumb. Its arrival at `alight` is
-// stored, and a single footpath/transfer crosses midnight at most once, so the
-// day is arr_day - event_day_offset - {0, 1}. Returns the day and the trip's
-// event time at `alight`.
+// Traffic day (and event time at alight) of a breadcrumb's trip: arr_day -
+// event_day_offset - {0, 1}, as one footpath crosses midnight at most once.
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 std::optional<std::pair<day_idx_t, delta_t>>
 basic_mcraptor<SearchDir, Criteria, RangeReuse>::recover_day(
@@ -1080,8 +1043,7 @@ journey basic_mcraptor<SearchDir, Criteria, RangeReuse>::materialize(
   j.transfers_ = static_cast<std::uint8_t>(k - 1U);
   crit.apply_to(j);
 
-  // Chase the breadcrumbs from the destination to the start; legs are
-  // collected in search order.
+  // chase the breadcrumbs back to the start (legs in search order)
   auto& legs = rec_legs_;
   legs.clear();
 

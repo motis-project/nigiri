@@ -23,11 +23,7 @@ static constexpr auto const kUnreachable =
 template <typename T>
 using device_flat_matrix_view = base_flat_matrix_view<cuda::std::span<T>>;
 
-// NB: parenthesised, not braced. libcu++ from CUDA 13 implements C++26's
-// span(initializer_list), which exists only for span<T const>; a braced
-// {pointer, size} then matches it whenever both arguments convert to the
-// element type - i.e. for T = bool - and is rejected as narrowing.
-// Parenthesised construction never considers initializer_list.
+// Parenthesised: braces pick CUDA 13's span(initializer_list) for T = bool.
 template <typename T>
 cuda::std::span<T const> to_view(thrust::device_vector<T> const& v) {
   return cuda::std::span<T const>(thrust::raw_pointer_cast(v.data()),

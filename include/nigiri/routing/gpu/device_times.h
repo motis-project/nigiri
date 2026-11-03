@@ -1,12 +1,7 @@
 #pragma once
 
-// date.h defines NOEXCEPT as `noexcept`. CCCL dispatches its requirement
-// forms by pasting that very token (_CCCL_CONCEPT_REQUIREMENT_CASE_ ##
-// NOEXCEPT), so the macro expands before the paste and the case label comes
-// out as the undefined _CCCL_CONCEPT_REQUIREMENT_CASE_noexcept - every
-// <cuda/std/...> include after a nigiri header then fails to parse. Hide it
-// across the include only: date/tz.h still uses NOEXCEPT afterwards, so this
-// has to be push/pop rather than a plain #undef.
+// date.h's NOEXCEPT macro breaks CCCL's token pasting; hide it across the
+// include only (push/pop: date/tz.h still needs it).
 #pragma push_macro("NOEXCEPT")
 #undef NOEXCEPT
 #include <cuda/std/span>

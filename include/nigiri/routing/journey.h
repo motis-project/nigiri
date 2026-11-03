@@ -83,9 +83,7 @@ struct journey {
            criteria_mode_switches_ <= o.criteria_mode_switches_;
   }
 
-  // Dominance on the user-facing tuple (start, dest, transfers) only. Counts
-  // connections (min_connection_count, interval extension): extra criteria add
-  // pareto trade-offs but must not make the search stop earlier.
+  // (start, dest, transfers) only: for counting connections
   bool tuple_dominates(journey const& o) const {
     if (start_time_ <= dest_time_) {
       return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
@@ -120,8 +118,7 @@ struct journey {
   unixtime_t dest_time_{};
   location_idx_t dest_{};
   std::uint8_t transfers_{0U};
-  // Extra pareto criteria, set only by algorithms that optimize them; the
-  // defaults keep dominance identical to (start, dest, transfers).
+  // extra criteria, only set by algorithms optimizing them
   std::uint16_t criteria_cost_{0U};  // generalized cost or non_transit minutes
   bool criteria_mode_filter_{false};  // uses an avoided vehicle class
   std::uint8_t criteria_mode_switches_{0U};  // vehicle-class switches

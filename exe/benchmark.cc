@@ -115,9 +115,7 @@ std::uint64_t compare_results(
     unsigned const min_connection_count) {
   auto mismatches = std::uint64_t{0U};
 
-  // cost is only set by algorithms that optimize it (mcraptor-cost
-  // configurations); 0 for all others, so comparing it here is a no-op
-  // unless both sides are cost-aware
+  // criteria_cost_ is 0 unless the algorithm optimizes it
   auto const equal = [](journey const& a, journey const& b) {
     return a.start_time_ == b.start_time_ && a.dest_time_ == b.dest_time_ &&
            a.transfers_ == b.transfers_ && a.criteria_cost_ == b.criteria_cost_;
@@ -280,9 +278,7 @@ struct result_set {
   std::vector<double> latencies_;
 };
 
-// worker state, parameterized on the search state type (RS): plain
-// raptor_state for the "range"/"pong" algos, mcraptor_state /
-// mcraptor_cost_state for the "mcraptor" / "mcraptor-cost" families
+// worker state per search state type
 template <typename RS>
 struct cpu_ws_t {
   search_state ss_;
@@ -661,15 +657,12 @@ int main(int argc, char* argv[]) {
 
       auto cells = std::vector<result_set>{};
       for (auto const& algo : algos) {
-        // "pong" is the pong strategy on the plain raptor state; the other
-        // tokens select the algorithm/state type of a range search
+        // pong runs on the raptor state, the rest are range searches
         auto const use_pong = algo == "pong";
         auto const algo_part = use_pong ? std::string{"range"} : algo;
         auto const label = mode + "-" + dir_str + "-" + algo;
 
-        // dispatch to the right search-state type; pong only exists for
-        // the plain raptor state (mcraptor cells are raptor_search-driven
-        // via routing::raptor_search, same as range)
+        // pong only exists for the plain raptor state
         auto const run_cpu_cell = [&]<typename RS>() {
           return run_cell<cpu_ws_t<RS>>(
               qs, label + "-cpu", threads_v,

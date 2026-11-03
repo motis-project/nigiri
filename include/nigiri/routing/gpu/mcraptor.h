@@ -9,16 +9,14 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
-#include "nigiri/routing/raptor/bmrap_bounds.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/types.h"
 
 namespace nigiri::routing::gpu {
 
-// GPU McRAPTOR supports the CPU mcraptor scope (see mcraptor_supported).
-// One state serves every criteria configuration (the packed label has the same
-// width); the distinct types select the algorithm in the dispatch.
+// Same scope as the CPU mcraptor (mcraptor_supported). One state type serves
+// every configuration; the subtypes only select it in the dispatch.
 struct gpu_mcraptor_state {
   explicit gpu_mcraptor_state(gpu_timetable const&);
   ~gpu_mcraptor_state();
@@ -43,15 +41,9 @@ struct gpu_mcraptor_non_transit_mode_filter_state : gpu_mcraptor_state {
   using gpu_mcraptor_state::gpu_mcraptor_state;
 };
 
-// The label configurations the device implements, each result-equal to the CPU
-// mcraptor with the matching criteria. All fit the 16-bit "crit" slot of the
-// packed label:
-//   arr                      arrival only
-//   cost                     arrival + generalized cost
-//   non_transit              arrival + minutes on foot
-//   mode_filter              arrival + "uses an avoided class" bit (AIR)
-//   non_transit_mode_filter  both (non_transit in bits 1..15, mode_filter in
-//                            bit 0)
+// Device configurations, each equal to the matching CPU criteria; the extras
+// fit the label's 16 bit slot (non_transit_mode_filter: minutes in bits 1..15,
+// avoided-class flag (AIR) in bit 0).
 enum class mc_crit : std::uint8_t {
   arr,
   cost,
@@ -67,9 +59,7 @@ struct gpu_mcraptor {
                                           gpu_mcraptor_state>;
   using algo_stats_t = raptor_stats;
 
-  // Unlike the scalar GPU raptor this uses lower bounds: the lb-projected
-  // destination pruning keeps the bags small, and without it labels the CPU
-  // never stores flood the fixed-capacity device bags. Pruning only.
+  // unlike gpu raptor: without lb pruning the fixed-size device bags overflow
   static constexpr bool kUseLowerBounds = true;
   static constexpr auto const kDirIdx =
       SearchDir == direction::kForward ? 0U : 1U;
@@ -101,10 +91,6 @@ struct gpu_mcraptor {
 
   raptor_stats get_stats() const { return stats_; }
 
-  // BM-RAPTOR pruning bounds, uploaded here; nullptr disables. See
-  // basic_mcraptor::set_bounds().
-  void set_bounds(bmrap_bounds const*);
-
   void reset_arrivals();
   void next_start_time();
   void add_start(location_idx_t, unixtime_t, via_offset_t = 0U);
@@ -114,8 +100,7 @@ struct gpu_mcraptor {
                unixtime_t worst_time_at_dest,
                pareto_set<journey>& results);
 
-  // The device breadcrumb chase materializes the core legs; this adds offset
-  // legs and the start footpath on the host.
+  // adds offset legs and the start footpath to the device's core legs
   void reconstruct(query const&, journey&);
 
 private:
@@ -139,11 +124,6 @@ private:
   delta_t worst_at_dest_;
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
-
-  std::uint32_t bounds_n_locations_{0U};
-  std::uint8_t bounds_budget_{0U};
-  bool bounds_staggered_{false};
-  bool has_bounds_{false};
 };
 
 }  // namespace nigiri::routing::gpu

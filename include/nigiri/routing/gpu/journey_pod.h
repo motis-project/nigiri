@@ -36,11 +36,8 @@ struct gpu_journey {
   std::uint8_t transfers_;
   location_idx_t dest_l_;
   delta_t dest_time_;
-  // mcraptor criteria of the winning label, written straight into the host
-  // journey's criteria_* slots. criteria_cost_ carries the cost config's
-  // extras (the host adds the elapsed part) or the non_transit minutes;
-  // criteria_mode_filter_ is the "uses an avoided class" bit. Unused by the
-  // single-criterion raptor and the arr-only mcraptor.
+  // mcraptor criteria: cost extras (host adds the elapsed part) or
+  // non_transit minutes, and the avoided-class flag
   std::uint16_t criteria_cost_;
   std::uint8_t criteria_mode_filter_;
   location_idx_t start_l_;
