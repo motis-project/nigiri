@@ -178,7 +178,6 @@ inline constexpr auto kMcOverflowTaskCap = 64U;  // et_tasks_cap_ exceeded
 template <direction SearchDir, mc_crit Crit>
 struct mcraptor_impl {
   // Which pieces of the 16-bit "crit" label slot are live for this config.
-  static constexpr bool kHasCost = Crit == mc_crit::cost;
   static constexpr bool kHasNonTransit =
       Crit == mc_crit::non_transit || Crit == mc_crit::non_transit_mode_filter;
   static constexpr bool kHasModeFilter =
@@ -190,9 +189,6 @@ struct mcraptor_impl {
   static constexpr auto const kNtShift = kCombo ? 1U : 0U;
   static constexpr auto const kNtMax =
       kCombo ? 0x7FFFU : 0xFFFFU;  // saturate on overflow (pruning stays exact)
-
-  // OTP-default generalized cost (see arr_cost_criteria)
-  static constexpr auto const kBoardCost = kHasCost ? 10U : 0U;
 
   // Fixed avoided classes, must equal the CPU default (motis keeps other masks
   // on the CPU).
@@ -215,9 +211,7 @@ struct mcraptor_impl {
   // crit of a round-0 seed: `ingress` minutes walked to the seeded stop
   __device__ __forceinline__ std::uint32_t crit_at_start(
       std::uint32_t const ingress) const {
-    if constexpr (kHasCost) {
-      return ingress * walk_surcharge_;
-    } else if constexpr (kHasNonTransit) {
+    if constexpr (kHasNonTransit) {
       return umin(ingress, kNtMax) << kNtShift;
     } else {
       return 0U;  // mode_filter (false at the start), arr
@@ -226,9 +220,7 @@ struct mcraptor_impl {
   // crit after a footpath / mumo offset of `dur` minutes from a carried crit
   __device__ __forceinline__ std::uint32_t crit_after_walk(
       std::uint32_t const crit, std::uint32_t const dur) const {
-    if constexpr (kHasCost) {
-      return crit + dur * walk_surcharge_;
-    } else if constexpr (kHasNonTransit) {
+    if constexpr (kHasNonTransit) {
       auto const nt = umin((crit >> kNtShift) + dur, kNtMax) << kNtShift;
       return kCombo ? (nt | (crit & 1U)) : nt;
     } else {
@@ -238,9 +230,7 @@ struct mcraptor_impl {
   // crit after riding a trip of class cl (from_ride)
   __device__ __forceinline__ std::uint32_t crit_after_ride(
       std::uint32_t const carried, clasz const cl) const {
-    if constexpr (kHasCost) {
-      return carried + kBoardCost;
-    } else if constexpr (kHasModeFilter) {
+    if constexpr (kHasModeFilter) {
       return carried | (is_avoided(cl) ? 1U : 0U);
     } else {
       return carried;  // non_transit, arr
@@ -257,7 +247,7 @@ struct mcraptor_impl {
     }
   }
 
-  // pareto over (arr, crit), see arr_cost_criteria::dominates
+  // pareto over (arr, crit)
   __device__ __forceinline__ bool dominates(
       std::uint32_t const a_key,
       std::uint32_t const a_extras,
@@ -266,17 +256,13 @@ struct mcraptor_impl {
     return a_key <= b_key && crit_le(a_extras, b_extras);
   }
 
-  // destination frontier dominance, see arr_cost_criteria::completed_dominates
+  // destination frontier dominance: every criterion only grows, so the same
   __device__ __forceinline__ bool completed_dominates(
       std::uint32_t const a_key,
       std::uint32_t const a_extras,
       std::uint32_t const b_key,
       std::uint32_t const b_extras) const {
-    if constexpr (kHasCost) {
-      return a_key <= b_key && a_key + a_extras <= b_key + b_extras;
-    } else {
-      return a_key <= b_key && crit_le(a_extras, b_extras);
-    }
+    return dominates(a_key, a_extras, b_key, b_extras);
   }
 
   // biased arrival key (identical bias to device_times<SearchDir>)
@@ -410,25 +396,6 @@ struct mcraptor_impl {
             na,     0U,        head};
   }
 
-  // departure-discounted extras: extras - dep (fwd) / extras + dep (bwd)
-  __device__ __forceinline__ int reuse_term(std::uint32_t const extras,
-                                            delta_t const dep) const {
-    return static_cast<int>(extras) -
-           (kFwd ? static_cast<int>(dep) : -static_cast<int>(dep));
-  }
-
-  // reuse dominance on the crit: only cost discounts by departure
-  __device__ __forceinline__ bool reuse_crit_le(std::uint32_t const a_crit,
-                                                delta_t const a_dep,
-                                                std::uint32_t const b_crit,
-                                                delta_t const b_dep) const {
-    if constexpr (kHasCost) {
-      return reuse_term(a_crit, a_dep) <= reuse_term(b_crit, b_dep);
-    } else {
-      return crit_le(a_crit, b_crit);
-    }
-  }
-
   // rejected by an earlier start's label? racy reads only weaken pruning
   __device__ bool reuse_rejected(std::uint64_t const* const rslots,
                                  std::uint32_t const arr_key,
@@ -441,8 +408,7 @@ struct mcraptor_impl {
         continue;
       }
       if (mc_reuse_round(v) <= round && (!by_route || mc_reuse_by_route(v)) &&
-          mc_reuse_key(v) <= arr_key &&
-          reuse_crit_le(mc_reuse_extras(v), mc_reuse_dep(v), extras, dep_)) {
+          mc_reuse_key(v) <= arr_key && crit_le(mc_reuse_extras(v), extras)) {
         return true;
       }
     }
@@ -463,8 +429,7 @@ struct mcraptor_impl {
         continue;
       }
       if (mc_reuse_round(v) >= round && (by_route || !mc_reuse_by_route(v)) &&
-          arr_key <= mc_reuse_key(v) &&
-          reuse_crit_le(extras, dep_, mc_reuse_extras(v), mc_reuse_dep(v))) {
+          arr_key <= mc_reuse_key(v) && crit_le(extras, mc_reuse_extras(v))) {
         rslots[i] = kMcEmptySlot;  // evicted by the new entry
         free_slot = free_slot == ~0U ? i : free_slot;
       }
@@ -1051,7 +1016,7 @@ struct mcraptor_impl {
     std::uint32_t parent_;  // breadcrumb arena index of the boarded label
     delta_t board_dep_;  // departure at the boarding stop
     std::uint16_t board_;  // boarding stop index
-    std::uint16_t extras_;  // carried extras (cost config; 0 otherwise)
+    std::uint16_t extras_;  // carried extras
   };
 
   // prefix scan, falling back to the two-pass and the sequential scan
@@ -2155,8 +2120,8 @@ struct mcraptor_impl {
     {
       auto const crit = kHasExtras ? mc_extras(lab) : 0U;
       // see journey_pod.h
-      out->criteria_cost_ = static_cast<std::uint16_t>(
-          kHasCost || kHasNonTransit ? crit >> kNtShift : 0U);
+      out->criteria_cost_ =
+          static_cast<std::uint16_t>(kHasNonTransit ? crit >> kNtShift : 0U);
       out->criteria_mode_filter_ =
           static_cast<std::uint8_t>(kHasModeFilter ? crit & 1U : 0U);
     }
@@ -2454,7 +2419,6 @@ struct mcraptor_impl {
   profile_idx_t prf_idx_;
   day_idx_t base_;
   delta_t worst_at_dest_;
-  std::uint32_t walk_surcharge_;
 
   cuda::std::span<std::pair<location_idx_t, delta_t> const> starts_;
 

@@ -105,87 +105,8 @@ struct arr_criteria {
   delta_t arr_;
 };
 
-// Arrival + generalized cost (OTP defaults: elapsed * 1, walking * 2,
-// boardings * 10). The elapsed part is common to one start time, so only the
-// extras (walk surcharge + boardings) are stored. In-bag dominance is pareto
-// over (arr, extras): crediting an earlier arrival would only be exact at the
-// destination.
-struct arr_cost_criteria {
-  static constexpr auto const kWalkSurcharge = std::uint32_t{1U};
-  static constexpr auto const kBoardCost = std::uint32_t{10U};
-
-  template <direction SearchDir>
-  bool dominates(arr_cost_criteria const& o) const {
-    return arr_no_worse<SearchDir>(arr_, o.arr_) && cost_ <= o.cost_;
-  }
-
-  // at the destination the elapsed part is realized: total cost dominance
-  template <direction SearchDir>
-  bool completed_dominates(arr_cost_criteria const& o) const {
-    constexpr auto const kF = SearchDir == direction::kForward;
-    return arr_no_worse<SearchDir>(arr_, o.arr_) &&
-           (kF ? arr_ + cost_ <= o.arr_ + o.cost_
-               : -arr_ + cost_ <= -o.arr_ + o.cost_);
-  }
-
-  struct carried {
-    // same boarding: identical future arrivals, totals differ by extras
-    template <direction SearchDir>
-    bool dominates(carried const& o) const {
-      return cost_ <= o.cost_;
-    }
-    bool operator==(carried const&) const = default;
-    std::uint16_t cost_;
-  };
-  carried carry() const { return {cost_}; }
-  static arr_cost_criteria from_ride(delta_t const arr,
-                                     std::uint16_t,
-                                     ride_attrs const&,
-                                     carried const& c) {
-    return {arr, static_cast<std::uint16_t>(c.cost_ + kBoardCost)};
-  }
-  static arr_cost_criteria at_start(delta_t const arr,
-                                    std::uint16_t const ingress) {
-    return {arr, static_cast<std::uint16_t>(ingress * kWalkSurcharge)};
-  }
-  arr_cost_criteria with_transfer(int const dt) const {
-    return {clamp(arr_ + dt), cost_};
-  }
-  arr_cost_criteria with_walk(int const dt,
-                              std::uint16_t const duration) const {
-    return {clamp(arr_ + dt),
-            static_cast<std::uint16_t>(cost_ + duration * kWalkSurcharge)};
-  }
-  arr_cost_criteria projected_to(delta_t const arr) const {
-    return {arr, cost_};
-  }
-
-  // later departure dominates iff it arrives no later with no worse
-  // departure-discounted extras (extras - dep)
-  template <direction SearchDir>
-  bool reuse_dominates(arr_cost_criteria const& o,
-                       delta_t const dep,
-                       delta_t const o_dep) const {
-    constexpr auto const kF = SearchDir == direction::kForward;
-    return arr_no_worse<SearchDir>(arr_, o.arr_) &&
-           (kF ? static_cast<int>(cost_) - dep <=
-                     static_cast<int>(o.cost_) - o_dep
-               : static_cast<int>(cost_) + dep <=
-                     static_cast<int>(o.cost_) + o_dep);
-  }
-
-  void apply_to(journey& j) const {
-    j.criteria_cost_ = static_cast<std::uint16_t>(
-        cost_ + static_cast<std::uint16_t>(j.travel_time().count()));
-  }
-
-  delta_t arr_;
-  std::uint16_t cost_;  // extras only: walk surcharge + boarding penalties
-};
-
 // Composable dimensions: the criteria protocol minus the arrival (arr_with owns
-// it). Each writes its own journey slot, so they combine freely; generalized
-// cost shares criteria_cost_ with non_transit and is therefore not one.
+// it). Each writes its own journey slot, so they combine freely.
 
 // Minutes on foot (offsets, footpaths), not the same-stop transfer buffer.
 struct non_transit_dim {
@@ -770,7 +691,6 @@ private:
 };
 
 using mcraptor_state = basic_mcraptor_state<arr_criteria>;
-using mcraptor_cost_state = basic_mcraptor_state<arr_cost_criteria>;
 
 // Every dispatched combination of dimensions; instantiated in mcraptor.cc.
 using arr_non_transit_criteria = arr_with<non_transit_dim>;
