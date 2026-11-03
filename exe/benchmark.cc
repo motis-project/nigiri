@@ -6,9 +6,7 @@
 #include <map>
 #include <numeric>
 #include <regex>
-#include <set>
 #include <span>
-#include <sstream>
 #include <thread>
 
 #include "boost/program_options.hpp"
@@ -200,16 +198,8 @@ std::uint64_t compare_results(
           fmt::println("  === MISMATCH: {} [{}] vs {} [{}] ===", ref_name,
                        key(*a), cmp_name, key(*b));
           a->print(std::cout, tt);
-          std::cout << "  leg location indices:";
-          for (auto const& lg : a->legs_) {
-            std::cout << " " << to_idx(lg.from_) << "->" << to_idx(lg.to_);
-          }
           fmt::println("");
           b->print(std::cout, tt);
-          std::cout << "  leg location indices:";
-          for (auto const& lg : b->legs_) {
-            std::cout << " " << to_idx(lg.from_) << "->" << to_idx(lg.to_);
-          }
           fmt::println("");
         }
       }
@@ -235,15 +225,6 @@ std::vector<double> run_load(
     }
   }
 
-  // NIGIRI_BENCH_REPEAT=<n>: run the query set n times in one process
-  // (one timetable load) - repro batteries for schedule-dependent bugs
-  static auto const repeat = []() {
-    auto const* v = std::getenv("NIGIRI_BENCH_REPEAT");
-    return v == nullptr ? std::size_t{1U}
-                        : std::max(std::size_t{1U},
-                                   static_cast<std::size_t>(std::atoll(v)));
-  }();
-
   auto next = std::atomic<std::size_t>{0};
   auto done = std::atomic<std::size_t>{0};
   auto lat = std::vector<double>(queries.size(), -1.0);
@@ -251,26 +232,8 @@ std::vector<double> run_load(
   auto workers = std::vector<std::thread>{};
   for (auto* ws : states) {
     workers.emplace_back([&, ws]() {
-      for (auto it = next.fetch_add(1); it < queries.size() * repeat;
-           it = next.fetch_add(1)) {
-        auto const i = it % queries.size();
-        // NIGIRI_BENCH_ONLY_QUERY=<idx>[,<idx>...]: single-query deep dives
-        // and minimal multi-query interference repros
-        static auto const only_q = []() {
-          auto set = std::set<std::size_t>{};
-          if (auto const* s = std::getenv("NIGIRI_BENCH_ONLY_QUERY");
-              s != nullptr) {
-            auto ss = std::stringstream{s};
-            auto tok = std::string{};
-            while (std::getline(ss, tok, ',')) {
-              set.insert(static_cast<std::size_t>(std::stoull(tok)));
-            }
-          }
-          return set;
-        }();
-        if (!only_q.empty() && !only_q.contains(i)) {
-          continue;
-        }
+      for (auto i = next.fetch_add(1); i < queries.size();
+           i = next.fetch_add(1)) {
         try {
           auto const q0 = std::chrono::steady_clock::now();
           search_one(*ws, queries[i].q_, i);
@@ -305,26 +268,9 @@ std::vector<double> run_load(
   auto const avg =
       l.empty() ? 0.0 : std::accumulate(begin(l), end(l), 0.0) / l.size();
   fmt::print(
-      "| {:<36} | {:>6.1f} | {:>6.0f} | {:>6.0f} | {:>6.0f} | {:>6.0f} | "
-      "{:>6.0f} | {:>6.0f} |\n",
-      tag, qps, avg, q(0.50), q(0.75), q(0.90), q(0.99),
-      l.empty() ? 0.0 : l.back());
-  {  // slowest queries: the q99 tail is usually 1-2 identifiable queries
-    auto idx = std::vector<std::size_t>{};
-    for (auto i = std::size_t{0U}; i != lat.size(); ++i) {
-      if (lat[i] >= 0.0) {
-        idx.push_back(i);
-      }
-    }
-    std::sort(begin(idx), end(idx),
-              [&](auto const a, auto const b) { return lat[a] > lat[b]; });
-    fmt::print("    slowest:");
-    for (auto i = std::size_t{0U}; i != std::min<std::size_t>(5U, idx.size());
-         ++i) {
-      fmt::print(" #{}={:.0f}ms", idx[i], lat[idx[i]]);
-    }
-    fmt::print("\n");
-  }
+      "| {:<36} | {:>6.1f} | {:>6.0f} | {:>6.0f} | {:>6.0f} | "
+      "{:>6.0f} |\n",
+      tag, qps, avg, q(0.50), q(0.90), q(0.99));
   return lat;
 }
 
@@ -536,28 +482,6 @@ int main(int argc, char* argv[]) {
   auto tt = *nigiri::timetable::read(tt_path);
   tt.resolve();
 
-  // NIGIRI_ROUTE_STATS: route stop-sequence length distribution (debug aid
-  // for the 11-bit breadcrumb stop position: positions >= 2048 wrap)
-  if (std::getenv("NIGIRI_ROUTE_STATS") != nullptr) {
-    auto max_len = std::size_t{0U};
-    auto over_2047 = 0U;
-    auto max_r = route_idx_t{0U};
-    for (auto r = route_idx_t{0U}; r != tt.route_location_seq_.size(); ++r) {
-      auto const n = tt.route_location_seq_[r].size();
-      if (n > max_len) {
-        max_len = n;
-        max_r = r;
-      }
-      if (n > 2048U) {
-        ++over_2047;
-      }
-    }
-    std::cout << "ROUTE_STATS n_routes " << tt.route_location_seq_.size()
-              << " max_seq_len " << max_len << " (route " << to_idx(max_r)
-              << ") routes_over_2048 " << over_2047 << "\n";
-    return 0;
-  }
-
   gs.interval_size_ = duration_t{interval_size};
 
   if (!bbox_str.empty()) {
@@ -680,12 +604,11 @@ int main(int argc, char* argv[]) {
 
   // padded markdown: renders as a table AND stays aligned as plain text;
   // one table for the whole matrix
+  fmt::print("| {:<36} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} |\n",  //
+             "config", "q/s", "avg ms", "median", "q90", "q99");
   fmt::print(
-      "| {:<36} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} |\n",
-      "config", "q/s", "avg ms", "median", "q75", "q90", "q99", "max");
-  fmt::print(
-      "| {0:-<36} | {0:->5}: | {0:->5}: | {0:->5}: | {0:->5}: | {0:->5}: | "
-      "{0:->5}: | {0:->5}: |\n",
+      "| {0:-<36} | {0:->5}: | {0:->5}: | {0:->5}: | {0:->5}: | "
+      "{0:->5}: |\n",
       "");
 
   auto mode_queries =
@@ -719,43 +642,6 @@ int main(int argc, char* argv[]) {
     auto& fwd_qs = mode_queries[mode];
     if (fwd_qs.empty()) {
       generate_queries(fwd_qs, n_queries, tt, rs, seed);
-    }
-
-    // NIGIRI_BENCH_DUMP_QUERY="i,j,...": print the generated queries'
-    // start/dest (debug aid for triaging specific query indices)
-    if (auto const* dump = std::getenv("NIGIRI_BENCH_DUMP_QUERY");
-        dump != nullptr) {
-      auto const print_pos = [&](char const* tag, auto const& v) {
-        std::visit(utl::overloaded{[&](location_idx_t const l) {
-                                     std::cout << tag << " location "
-                                               << tt.locations_.ids_[l].view();
-                                   },
-                                   [&](geo::latlng const& pos) {
-                                     std::cout << tag << " " << pos.lat_ << ","
-                                               << pos.lng_;
-                                   }},
-                   v);
-      };
-      auto ss2 = std::stringstream{dump};
-      auto tok2 = std::string{};
-      while (std::getline(ss2, tok2, ',')) {
-        auto const i = static_cast<std::size_t>(std::atoll(tok2.c_str()));
-        if (i >= fwd_qs.size()) {
-          continue;
-        }
-        std::cout << "QDUMP #" << i << " ";
-        print_pos("from", fwd_qs[i].start_);
-        print_pos("  to", fwd_qs[i].dest_);
-        std::cout << "  start="
-                  << std::visit(
-                         utl::overloaded{[](interval<unixtime_t> const& iv) {
-                                           return iv.from_;
-                                         },
-                                         [](unixtime_t const t) { return t; }},
-                         fwd_qs[i].q_.start_time_)
-                  << "\n";
-      }
-      return 0;
     }
 
     // (mode, dir) are the incomparable dimensions -- within one (mode, dir),

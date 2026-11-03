@@ -40,8 +40,7 @@ struct algo_for<SearchDir, Vias, Rt, basic_mcraptor_state<Criteria>> {
 #if defined(NIGIRI_CUDA)
 template <direction SearchDir, via_offset_t Vias, bool Rt>
 struct algo_for<SearchDir, Vias, Rt, gpu::gpu_raptor_state> {
-  // standalone range search, not pong - never pruned against ping bounds
-  using type = gpu::gpu_raptor<SearchDir, false>;
+  using type = gpu::gpu_raptor<SearchDir, /*WithBounds=*/false>;
 };
 
 template <direction SearchDir, via_offset_t Vias, bool Rt>
@@ -57,6 +56,20 @@ struct algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_cost_state> {
 template <direction SearchDir, via_offset_t Vias, bool Rt>
 struct algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_non_transit_state> {
   using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::non_transit>;
+};
+
+template <direction SearchDir, via_offset_t Vias, bool Rt>
+struct algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_mode_filter_state> {
+  using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::mode_filter>;
+};
+
+template <direction SearchDir, via_offset_t Vias, bool Rt>
+struct algo_for<SearchDir,
+                Vias,
+                Rt,
+                gpu::gpu_mcraptor_non_transit_mode_filter_state> {
+  using type =
+      gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::non_transit_mode_filter>;
 };
 #endif
 
@@ -213,6 +226,9 @@ NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_raptor_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_cost_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_non_transit_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_mode_filter_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(
+    gpu::gpu_mcraptor_non_transit_mode_filter_state)
 #endif
 
 #undef NIGIRI_RAPTOR_SEARCH_INSTANTIATE

@@ -1,8 +1,11 @@
 #include "./raptor_search.h"
 
+#include <algorithm>
 #include <iostream>
 #include <sstream>
+#include <string_view>
 #include <tuple>
+#include <vector>
 
 #include "gtest/gtest.h"
 
@@ -36,16 +39,86 @@ std::string print_results(timetable const& tt,
 
 namespace {
 
+using tuple_t = std::tuple<unixtime_t, unixtime_t, std::uint8_t>;
+
 // what every engine must agree on, whichever equal-value legs it reports
-std::vector<std::tuple<unixtime_t, unixtime_t, std::uint8_t>> journey_tuples(
-    pareto_set<routing::journey> const& js) {
-  auto v = std::vector<std::tuple<unixtime_t, unixtime_t, std::uint8_t>>{};
+std::vector<tuple_t> journey_tuples(pareto_set<routing::journey> const& js) {
+  auto v = std::vector<tuple_t>{};
   for (auto const& j : js) {
     v.emplace_back(j.start_time_, j.dest_time_, j.transfers_);
   }
   std::sort(begin(v), end(v));
   return v;
 }
+
+#if defined(NIGIRI_CUDA)
+using criteria_tuple_t = std::tuple<unixtime_t,
+                                    unixtime_t,
+                                    std::uint8_t,
+                                    std::uint16_t,
+                                    bool,
+                                    std::uint8_t>;
+
+// ... plus the extra criteria, for engines optimizing the same ones
+std::vector<criteria_tuple_t> criteria_tuples(
+    pareto_set<routing::journey> const& js) {
+  auto v = std::vector<criteria_tuple_t>{};
+  for (auto const& j : js) {
+    v.emplace_back(j.start_time_, j.dest_time_, j.transfers_, j.criteria_cost_,
+                   j.criteria_mode_filter_, j.criteria_mode_switches_);
+  }
+  std::sort(begin(v), end(v));
+  return v;
+}
+#endif
+
+template <typename State, typename... StateArgs>
+pareto_set<routing::journey> run_search(timetable const& tt,
+                                        rt_timetable const* rtt,
+                                        routing::query const& q,
+                                        direction const search_dir,
+                                        StateArgs&&... state_args) {
+  auto search_state = routing::search_state{};
+  auto state = State{std::forward<StateArgs>(state_args)...};
+  return *routing::raptor_search(tt, rtt, search_state, state, q, search_dir)
+              .journeys_;
+}
+
+// Each raptor journey is pareto-optimal on (start, dest, transfers), so extra
+// criteria keep (a variant of) it: no other journey can dominate it.
+template <typename State>
+pareto_set<routing::journey> expect_superset(timetable const& tt,
+                                             rt_timetable const* rtt,
+                                             routing::query const& q,
+                                             direction const search_dir,
+                                             std::vector<tuple_t> const& base,
+                                             std::string_view const config) {
+  auto mc = run_search<State>(tt, rtt, q, search_dir);
+  auto const mc_tuples = journey_tuples(mc);
+  for (auto const& t : base) {
+    EXPECT_TRUE(std::binary_search(begin(mc_tuples), end(mc_tuples), t))
+        << "raptor journey missing in mcraptor (" << config << ")";
+  }
+  return mc;
+}
+
+#if defined(NIGIRI_CUDA)
+// The device mcraptor must find the CPU one's journey values. Not compared on
+// the printed legs: its bags tolerate insert races, so equal-value journeys may
+// run through different trips (see the mcraptor_impl.cuh header).
+template <typename GpuState>
+void expect_gpu_equal(timetable const& tt,
+                      rt_timetable const* rtt,
+                      routing::query const& q,
+                      direction const search_dir,
+                      routing::gpu::gpu_timetable const& gpu_tt,
+                      pareto_set<routing::journey> const& cpu,
+                      std::string_view const config) {
+  EXPECT_EQ(criteria_tuples(cpu), criteria_tuples(run_search<GpuState>(
+                                      tt, rtt, q, search_dir, gpu_tt)))
+      << "gpu mcraptor (" << config << ")";
+}
+#endif
 
 }  // namespace
 
@@ -64,6 +137,40 @@ static range_result search_range(timetable const& tt,
       routing::raptor_search(tt, rtt, search_state, algo_state, q, search_dir);
   auto results = *result.journeys_;
   auto const delivered = result.interval_;
+  auto const base_tuples = journey_tuples(results);
+
+  auto const mc = routing::mcraptor_supported(q, rtt);
+  auto mc_cost = pareto_set<routing::journey>{};
+  auto mc_non_transit = pareto_set<routing::journey>{};
+  auto mc_mode_filter = pareto_set<routing::journey>{};
+  auto mc_non_transit_mode_filter = pareto_set<routing::journey>{};
+  if (mc) {
+    // without extra criteria, mcraptor is raptor - down to the legs
+    EXPECT_EQ(print_results(tt, rtt, results),
+              print_results(
+                  tt, rtt,
+                  run_search<routing::mcraptor_state>(tt, rtt, q, search_dir)));
+
+    using namespace routing;
+    auto const& b = base_tuples;
+    mc_cost =
+        expect_superset<mcraptor_cost_state>(tt, rtt, q, search_dir, b, "cost");
+    mc_non_transit = expect_superset<mcraptor_non_transit_state>(
+        tt, rtt, q, search_dir, b, "non_transit");
+    mc_mode_filter = expect_superset<mcraptor_mode_filter_state>(
+        tt, rtt, q, search_dir, b, "mode_filter");
+    mc_non_transit_mode_filter =
+        expect_superset<mcraptor_non_transit_mode_filter_state>(
+            tt, rtt, q, search_dir, b, "non_transit + mode_filter");
+    expect_superset<mcraptor_mode_switches_state>(tt, rtt, q, search_dir, b,
+                                                  "mode_switches");
+    expect_superset<mcraptor_non_transit_mode_switches_state>(
+        tt, rtt, q, search_dir, b, "non_transit + mode_switches");
+    expect_superset<mcraptor_mode_filter_mode_switches_state>(
+        tt, rtt, q, search_dir, b, "mode_filter + mode_switches");
+    expect_superset<mcraptor_non_transit_mode_filter_mode_switches_state>(
+        tt, rtt, q, search_dir, b, "non_transit + mode_filter + mode_switches");
+  }
 
 #if defined(NIGIRI_CUDA)
   // No gpu_available() gate on purpose: a CUDA build expects a device, and a
@@ -76,27 +183,27 @@ static range_result search_range(timetable const& tt,
           routing::gpu::make_gpu_rtt(tt, *rtt);
     }
 
-    auto gpu_search_state = routing::search_state{};
-    auto gpu_state = routing::gpu::gpu_raptor_state{gpu_timetable};
-    auto gpu_results = *(routing::raptor_search(tt, rtt, gpu_search_state,
-                                                gpu_state, q, search_dir)
-                             .journeys_);
-
     EXPECT_EQ(print_results(tt, rtt, results),
-              print_results(tt, rtt, gpu_results));
+              print_results(tt, rtt,
+                            run_search<routing::gpu::gpu_raptor_state>(
+                                tt, rtt, q, search_dir, gpu_timetable)));
 
-    // The device mcraptor as well, since nothing else exercises its rt / td
-    // paths. Compared on (start, dest, transfers) instead of the printed legs:
-    // its bags tolerate insert races, so equal-value journeys may run through
-    // different trips (see the mcraptor_impl.cuh header).
-    if (routing::mcraptor_supported(q, rtt)) {
-      auto mc_gpu_search_state = routing::search_state{};
-      auto mc_gpu_state = routing::gpu::gpu_mcraptor_state{gpu_timetable};
-      auto const mc_gpu_results =
-          *(routing::raptor_search(tt, rtt, mc_gpu_search_state, mc_gpu_state,
-                                   q, search_dir)
-                .journeys_);
-      EXPECT_EQ(journey_tuples(results), journey_tuples(mc_gpu_results));
+    if (mc) {
+      EXPECT_EQ(base_tuples,
+                journey_tuples(run_search<routing::gpu::gpu_mcraptor_state>(
+                    tt, rtt, q, search_dir, gpu_timetable)))
+          << "gpu mcraptor";
+      using namespace routing::gpu;
+      auto const& g = gpu_timetable;
+      expect_gpu_equal<gpu_mcraptor_cost_state>(tt, rtt, q, search_dir, g,
+                                                mc_cost, "cost");
+      expect_gpu_equal<gpu_mcraptor_non_transit_state>(
+          tt, rtt, q, search_dir, g, mc_non_transit, "non_transit");
+      expect_gpu_equal<gpu_mcraptor_mode_filter_state>(
+          tt, rtt, q, search_dir, g, mc_mode_filter, "mode_filter");
+      expect_gpu_equal<gpu_mcraptor_non_transit_mode_filter_state>(
+          tt, rtt, q, search_dir, g, mc_non_transit_mode_filter,
+          "non_transit + mode_filter");
     }
   }
 #else
@@ -106,32 +213,6 @@ static range_result search_range(timetable const& tt,
     return true;
   }();
 #endif
-
-  if (routing::mcraptor_supported(q, rtt)) {
-    auto mc_search_state = routing::search_state{};
-    auto mc_state = routing::mcraptor_state{};
-    auto const mc_results = *(routing::raptor_search(tt, rtt, mc_search_state,
-                                                     mc_state, q, search_dir)
-                                  .journeys_);
-    EXPECT_EQ(print_results(tt, rtt, results),
-              print_results(tt, rtt, mc_results));
-
-    // The cost configuration keeps extra trade-offs (later or more transfers
-    // but cheaper), so its journeys must be a superset of the baseline.
-    auto walk_search_state = routing::search_state{};
-    auto walk_state = routing::mcraptor_cost_state{};
-    auto const walk_results =
-        *(routing::raptor_search(tt, rtt, walk_search_state, walk_state,
-                                 std::move(q), search_dir)
-              .journeys_);
-    auto const base_tuples = journey_tuples(results);
-    auto const walk_tuples = journey_tuples(walk_results);
-    for (auto const& t : base_tuples) {
-      EXPECT_TRUE(std::find(begin(walk_tuples), end(walk_tuples), t) !=
-                  end(walk_tuples))
-          << "baseline journey missing in walk results";
-    }
-  }
 
   return {std::move(results), delivered};
 }

@@ -35,6 +35,14 @@ struct gpu_mcraptor_non_transit_state : gpu_mcraptor_state {
   using gpu_mcraptor_state::gpu_mcraptor_state;
 };
 
+struct gpu_mcraptor_mode_filter_state : gpu_mcraptor_state {
+  using gpu_mcraptor_state::gpu_mcraptor_state;
+};
+
+struct gpu_mcraptor_non_transit_mode_filter_state : gpu_mcraptor_state {
+  using gpu_mcraptor_state::gpu_mcraptor_state;
+};
+
 // The label configurations the device implements, each result-equal to the CPU
 // mcraptor with the matching criteria. All fit the 16-bit "crit" slot of the
 // packed label:
@@ -42,8 +50,8 @@ struct gpu_mcraptor_non_transit_state : gpu_mcraptor_state {
 //   cost                     arrival + generalized cost
 //   non_transit              arrival + minutes on foot
 //   mode_filter              arrival + "uses an avoided class" bit (AIR)
-//   non_transit_mode_filter  both (non_transit in bits 1..15, mode_filter bit
-//   0)
+//   non_transit_mode_filter  both (non_transit in bits 1..15, mode_filter in
+//                            bit 0)
 enum class mc_crit : std::uint8_t {
   arr,
   cost,
@@ -93,11 +101,6 @@ struct gpu_mcraptor {
 
   raptor_stats get_stats() const { return stats_; }
 
-  // Pong side: reuse-frontier rejections only against entries of the same
-  // departure (one merged anchor run); cross-anchor ones were seen
-  // over-pruning.
-  void set_reuse_same_dep() { reuse_same_dep_ = true; }
-
   // BM-RAPTOR pruning bounds, uploaded here; nullptr disables. See
   // basic_mcraptor::set_bounds().
   void set_bounds(bmrap_bounds const*);
@@ -123,7 +126,6 @@ private:
   timetable const& tt_;
   rt_timetable const* rtt_;
   gpu_rt_timetable const* gpu_rtt_;
-  std::uint32_t n_locations_;
   gpu_mcraptor_state& state_;
   bitvec const& is_dest_;
   day_idx_t base_;
@@ -135,7 +137,6 @@ private:
 
   // search-window bound; the device dest frontier owns destination pruning
   delta_t worst_at_dest_;
-  bool reuse_same_dep_{false};
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
 

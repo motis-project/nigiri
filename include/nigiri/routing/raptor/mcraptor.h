@@ -36,6 +36,15 @@ namespace nigiri::routing {
 // bike/car transport requirement. Realtime and time-dependent offsets work.
 bool mcraptor_supported(query const&, rt_timetable const*);
 
+// Adds the first/last-mile offset legs and the start footpath to a journey
+// whose legs_ hold the transit core, then optimizes its footpaths. Shared by
+// the CPU and the GPU mcraptor.
+template <direction SearchDir>
+void mc_reconstruct_offsets(timetable const&,
+                            rt_timetable const*,
+                            query const&,
+                            journey&);
+
 // What a criterion may know about the trip a label just rode.
 struct ride_attrs {
   clasz clasz_;
@@ -215,7 +224,7 @@ struct non_transit_dim {
     return dominates(o);
   }
   static non_transit_dim at_start(std::uint16_t const ingress) {
-    return {counted_non_transit(ingress)};
+    return {ingress};
   }
   static non_transit_dim from_ride(std::uint16_t,
                                    ride_attrs const&,
@@ -224,8 +233,7 @@ struct non_transit_dim {
   }
   non_transit_dim with_transfer(int) const { return *this; }
   non_transit_dim with_walk(int, std::uint16_t const duration) const {
-    return {static_cast<std::uint16_t>(non_transit_ +
-                                       counted_non_transit(duration))};
+    return {static_cast<std::uint16_t>(non_transit_ + duration)};
   }
   void apply_to(journey& j) const { j.criteria_cost_ = non_transit_; }
   bool operator==(non_transit_dim const&) const = default;
@@ -449,8 +457,7 @@ struct basic_mcraptor_state {
   };
 
   // One pareto bag per location: a small inline buffer plus arena overflow.
-  // On Germany a bag holds mean 1.9 / p95 4 / max 18 labels, so kInline covers
-  // ~97% of bags.
+  // Most bags fit inline.
   static constexpr auto const kInline = std::uint32_t{4U};
   static constexpr auto const kNoOverflow = std::uint32_t{0xFFFFFFFFU};
 
@@ -609,9 +616,9 @@ struct basic_mcraptor_state {
 };
 
 // RangeReuse: keep the bags across start times (rRAPTOR reuse) instead of
-// clearing them per departure. Fixed per driver: false where start times target
-// different arrivals (pong ping, plain EA), true for a fixed destination
-// scanned latest-departure first (pong validation, search.h interval search).
+// clearing them per departure. True for a fixed destination scanned
+// latest-departure first (the search.h interval search), false where start
+// times are independent queries (plain earliest arrival).
 template <direction SearchDir, typename Criteria, bool RangeReuse = false>
 struct basic_mcraptor {
   using state_t = basic_mcraptor_state<Criteria>;
@@ -619,9 +626,6 @@ struct basic_mcraptor {
   using algo_stats_t = raptor_stats;
 
   static constexpr bool kUseLowerBounds = true;
-  // Whether a caller that always sets bounds_ still needs a real lb array: no,
-  // effective_lb() ignores lb_ once bounded.
-  static constexpr bool kNeedsLbWhenBounded = false;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
@@ -753,10 +757,8 @@ private:
     }
     // The current start time's budget limits the rounds; which row answers
     // "k trips used" depends on the matrix (bmrap_bounds::staggered_): a
-    // staggered one is read relative to its own budget - reading it with a
-    // smaller per-departure budget pruned anchors of later departures from
-    // their own bounds - a reach matrix relative to this search's budget, the
-    // tight row.
+    // staggered one is read relative to its own budget, a reach matrix relative
+    // to this search's budget.
     auto const budget = std::min<unsigned>(cur_budget_, bounds_->budget_);
     if (k > budget) {
       return true;
@@ -769,11 +771,7 @@ private:
   // 0 is always a valid lower bound. Under BM-RAPTOR bound_prunes() is already
   // a tighter feasibility cutoff, so lb_ is only needed when unbounded.
   std::uint16_t effective_lb(std::uint32_t const l_idx) const {
-    if constexpr (!kUseLowerBounds) {
-      return 0U;  // no lb array was computed
-    } else {
-      return bounds_ == nullptr ? lb_[l_idx] : std::uint16_t{0U};
-    }
+    return bounds_ == nullptr ? lb_[l_idx] : std::uint16_t{0U};
   }
 
   // Destination pruning. Scalar earliest-arrival tightening is wrong with
@@ -832,9 +830,8 @@ private:
   // Runtime rather than a template parameter (unlike raptor.h): mcraptor
   // already instantiates per criteria x direction x reuse.
   bool has_rt_{false};
-  std::uint32_t n_locations_, n_routes_, n_rt_transports_;
+  std::uint32_t n_rt_transports_;
   state_t& state_;
-  bitvec end_reachable_;
   bitvec const& is_dest_;
   std::vector<std::uint16_t> const& dist_to_end_;
   hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
