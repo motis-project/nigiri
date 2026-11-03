@@ -19,7 +19,6 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
-#include "nigiri/routing/raptor/breadcrumb.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/types.h"
@@ -307,14 +306,19 @@ struct basic_mcraptor_state {
   static constexpr auto const kBreadcrumbMask = kByRoute - 1U;
   static constexpr auto const kNoBreadcrumb = kBreadcrumbMask;
 
-  // The transit leg behind an arrival: packed (transport, board, alight), the
-  // boarded label's breadcrumb (kNoBreadcrumb = start) and the arrival (for
-  // traffic-day recovery).
+  // The transit leg behind an arrival: the trip (a transport_idx_t on traffic
+  // day day_, or an rt_transport_idx_t if day_ is invalid), its board and
+  // alight stops, the arrival at the label's stop and the boarded label's
+  // breadcrumb (kNoBreadcrumb = start).
   struct breadcrumb {
-    breadcrumb_t payload_;
+    std::uint32_t transport_;
     std::uint32_t parent_;
+    day_idx_t day_;
+    stop_idx_t board_;
+    stop_idx_t alight_;
     delta_t arr_;
   };
+  static_assert(sizeof(breadcrumb) == 16U);
 
   // One label of a stop's bag. round_ is an implicit pareto dimension (never
   // dominated by a higher round); dep_ tags the start time under range reuse,
@@ -587,11 +591,8 @@ private:
               Label const&,
               Sections const&,
               clasz fallback,
-              std::uint32_t transport_field);
-  std::optional<std::pair<day_idx_t, delta_t>> recover_day(route_idx_t,
-                                                           transport_idx_t,
-                                                           stop_idx_t alight,
-                                                           delta_t arr) const;
+              std::uint32_t transport,
+              day_idx_t day);
 
   bool merge_round(std::uint32_t l,
                    Criteria const&,
