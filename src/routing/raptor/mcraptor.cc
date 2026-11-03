@@ -1,9 +1,7 @@
 #include "nigiri/routing/raptor/mcraptor.h"
 
-#include <algorithm>
-#include <optional>
+#include <cassert>
 
-#include "utl/erase_if.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/verify.h"
 
@@ -24,13 +22,214 @@ bool mcraptor_supported(query const& q, rt_timetable const*) {
          !q.no_compulsory_reservation_ && q.via_stops_.empty();
 }
 
+template <direction SearchDir>
+void mc_reconstruct_offsets(timetable const& tt,
+                            rt_timetable const* rtt,
+                            query const& q,
+                            journey& j) {
+  utl::verify(!j.legs_.empty(), "mcraptor reconstruct: journey without legs");
+
+  constexpr auto const is_fwd = SearchDir == direction::kForward;
+
+  // front: special_station -> first transit stop
+  auto const from = j.legs_.front().from_;
+  auto const dep_time = j.legs_.front().dep_time_;
+  auto const front_match_mode =
+      is_fwd ? q.start_match_mode_ : q.dest_match_mode_;
+  if (front_match_mode == location_match_mode::kIntermodal) {
+    auto const& offsets = is_fwd ? q.start_ : q.destination_;
+    auto const special = get_special_station(is_fwd ? special_station::kStart
+                                                    : special_station::kEnd);
+    // the front leg ends at the first transit event
+    auto const front_ok = [&](duration_t const d) {
+      return is_fwd
+                 // fwd: query start, check feasibility (allows ontrip start)
+                 ? dep_time - d >= j.start_time_
+                 // bwd: destination, anchored exactly at j.dest_time_
+                 : dep_time - d == j.dest_time_;
+    };
+    auto const o = utl::find_if(offsets, [&](offset const& x) {
+      return matches(tt, front_match_mode, x.target(), from) &&
+             front_ok(x.duration());
+    });
+    auto front = std::optional<offset>{};
+    auto front_dep = dep_time;  // set with the offset, see the td case
+    if (o != end(offsets)) {
+      front = *o;
+      front_dep = dep_time - o->duration();
+    } else if (auto const& td = is_fwd ? q.td_start_ : q.td_dest_;
+               td.contains(from)) {
+      // td offsets are valid at fixed times and the traveller then waits for
+      // the first transit event: the backward query gives the latest departure
+      // that makes the boarding, the forward query from there strips the wait.
+      auto const& offs = td.at(from);
+      auto const back = get_td_duration<direction::kBackward>(offs, dep_time);
+      if (back.has_value() && front_ok(back->first)) {
+        auto const start = dep_time - back->first;
+        auto const fwd = get_td_duration<direction::kForward>(offs, start);
+        if (fwd.has_value()) {
+          front = offset{from, fwd->first, fwd->second.mode()};
+          front_dep = start;
+        }
+      }
+    }
+    utl::verify(front.has_value(), "mcraptor reconstruct: no front offset");
+    auto const dep = front_dep;
+    auto const arr = front_dep + front->duration();
+    j.legs_.insert(begin(j.legs_), journey::leg{direction::kForward, special,
+                                                from, dep, arr, *front});
+  }
+
+  // back: last transit stop -> special_station
+  auto const to = j.legs_.back().to_;
+  auto const arr_time = j.legs_.back().arr_time_;
+  auto const back_match_mode =
+      is_fwd ? q.dest_match_mode_ : q.start_match_mode_;
+  if (back_match_mode == location_match_mode::kIntermodal) {
+    auto const& offsets = is_fwd ? q.destination_ : q.start_;
+    auto const special = get_special_station(is_fwd ? special_station::kEnd
+                                                    : special_station::kStart);
+    // the back leg starts at the last transit event
+    auto const back_ok = [&](duration_t const d) {
+      return is_fwd
+                 // fwd: destination, anchored exactly at j.dest_time_
+                 ? arr_time + d == j.dest_time_
+                 // bwd: query start, anchored by feasibility
+                 : arr_time + d <= j.start_time_;
+    };
+    auto const o = utl::find_if(offsets, [&](offset const& x) {
+      return matches(tt, back_match_mode, x.target(), to) &&
+             back_ok(x.duration());
+    });
+    auto back = std::optional<offset>{};
+    auto back_dep = arr_time;  // set with the offset, see the td case
+    if (o != end(offsets)) {
+      back = *o;
+    } else if (auto const& td = is_fwd ? q.td_dest_ : q.td_start_;
+               td.contains(to)) {
+      // mirrors the td first mile above
+      auto const& offs = td.at(to);
+      auto const fwd = get_td_duration<direction::kForward>(offs, arr_time);
+      if (fwd.has_value() && back_ok(fwd->first)) {
+        auto const journey_end = arr_time + fwd->first;
+        auto const bck =
+            get_td_duration<direction::kBackward>(offs, journey_end);
+        if (bck.has_value() && journey_end - bck->first >= arr_time) {
+          back = offset{to, bck->first, bck->second.mode()};
+          back_dep = journey_end - bck->first;
+        }
+      }
+    }
+    utl::verify(back.has_value(), "mcraptor reconstruct: no back offset");
+    auto const dep = back_dep;
+    auto const arr = back_dep + back->duration();
+    j.legs_.push_back(
+        journey::leg{direction::kForward, to, special, dep, arr, *back});
+    j.dest_ = special;
+  }
+
+  // the start footpath that seeded round 0
+  if (q.start_match_mode_ != location_match_mode::kIntermodal) {
+    auto const is_journey_start = [&](location_idx_t const l) {
+      return utl::any_of(q.start_, [&](offset const& o) {
+        return matches(tt, q.start_match_mode_, o.target(), l);
+      });
+    };
+    auto const start_l = is_fwd ? j.legs_.front().from_ : j.legs_.back().to_;
+    auto const start_t =
+        is_fwd ? j.legs_.front().dep_time_ : j.legs_.back().arr_time_;
+    auto const direct_start_ok =
+        is_fwd ? j.start_time_ <= start_t : j.start_time_ >= start_t;
+    if (!is_journey_start(start_l) || !direct_start_ok) {
+      auto const fps = is_fwd
+                           ? tt.locations_.footpaths_in_[q.prf_idx_][start_l]
+                           : tt.locations_.footpaths_out_[q.prf_idx_][start_l];
+      auto best = std::optional<footpath>{};
+      for (auto const fp : fps) {
+        if ((!best.has_value() || fp.duration() < best->duration()) &&
+            is_journey_start(fp.target())) {
+          best = fp;
+        }
+      }
+      if (best.has_value()) {
+        auto const dur = duration_t{adjusted_transfer_time(
+            q.transfer_time_settings_, best->duration().count())};
+        auto const fp_arr = j.start_time_ + (is_fwd ? dur : -dur);
+        if (is_fwd ? fp_arr <= start_t : fp_arr >= start_t) {
+          auto const lg = journey::leg{
+              SearchDir,     best->target(), start_l,
+              j.start_time_, fp_arr,         footpath{best->target(), dur}};
+          if (is_fwd) {
+            j.legs_.insert(begin(j.legs_), lg);
+          } else {
+            j.legs_.push_back(lg);
+          }
+        }
+      }
+    }
+  }
+
+  // Shorten td footpath legs to their walking time: the search stores the wait
+  // in the arrival, but showing it as walking is wrong and misprices the
+  // transfer for optimize_footpaths. The wait is spent at the stop before the
+  // walk, as in the raptor reconstruction.
+  if (rtt != nullptr && q.prf_idx_ != 0U) {
+    auto const& has_td = is_fwd ? rtt->has_td_footpaths_in_[q.prf_idx_]
+                                : rtt->has_td_footpaths_out_[q.prf_idx_];
+    auto const& td_fps = is_fwd ? rtt->td_footpaths_in_[q.prf_idx_]
+                                : rtt->td_footpaths_out_[q.prf_idx_];
+    if (!td_fps.empty()) {
+      for (auto& lg : j.legs_) {
+        if (!std::holds_alternative<footpath>(lg.uses_)) {
+          continue;
+        }
+        auto const key_l = is_fwd ? lg.to_ : lg.from_;
+        auto const target_l = is_fwd ? lg.from_ : lg.to_;
+        if (!has_td.test(key_l)) {
+          continue;
+        }
+        auto const t = lg.arr_time_;
+        for_each_footpath<SearchDir>(td_fps[key_l], t,
+                                     [&](location_idx_t const fp_target,
+                                         duration_t, duration_t const walk) {
+                                       if (fp_target != target_l) {
+                                         return utl::cflow::kContinue;
+                                       }
+                                       lg.dep_time_ = t - walk;
+                                       lg.arr_time_ = t;
+                                       lg.uses_ = footpath{lg.to_, walk};
+                                       return utl::cflow::kBreak;
+                                     });
+      }
+    }
+  }
+
+  if constexpr (is_fwd) {
+    optimize_footpaths(tt, rtt, q, j);
+  } else {
+    // legs are chronological, q is in search direction
+    auto journey_q = q;
+    journey_q.flip_dir();
+    optimize_footpaths(tt, rtt, journey_q, j);
+  }
+}
+
+template void mc_reconstruct_offsets<direction::kForward>(timetable const&,
+                                                          rt_timetable const*,
+                                                          query const&,
+                                                          journey&);
+template void mc_reconstruct_offsets<direction::kBackward>(timetable const&,
+                                                           rt_timetable const*,
+                                                           query const&,
+                                                           journey&);
+
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 basic_mcraptor<SearchDir, Criteria, RangeReuse>::basic_mcraptor(
     timetable const& tt,
     rt_timetable const* rtt,
     state_t& state,
     bitvec& is_dest,
-    std::array<bitvec, kMaxVias>& is_via,
+    std::array<bitvec, kMaxVias>&,
     std::vector<std::uint16_t>& dist_to_dest,
     hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
     std::vector<std::uint16_t>& lb,
@@ -46,10 +245,8 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::basic_mcraptor(
     : tt_{tt},
       rtt_{rtt},
       has_rt_{rtt != nullptr},
-      n_locations_{tt_.n_locations()},
-      n_routes_{tt_.n_routes()},
       n_rt_transports_{has_rt_ ? rtt->n_rt_transports() : 0U},
-      state_{state.resize(n_locations_, n_routes_, n_rt_transports_)},
+      state_{state.resize(tt.n_locations(), tt.n_routes(), n_rt_transports_)},
       is_dest_{is_dest},
       dist_to_end_{dist_to_dest},
       td_dist_to_end_{td_dist_to_dest},
@@ -59,7 +256,6 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::basic_mcraptor(
       is_wheelchair_{is_wheelchair},
       transfer_time_settings_{tts},
       prf_idx_{prf_idx} {
-  static_cast<void>(is_via);
   utl::verify(via_stops.empty(), "mcraptor: via stops not supported");
   utl::verify(!require_bike_transport && !require_car_transport &&
                   !no_compulsory_reservation,
@@ -69,18 +265,6 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::basic_mcraptor(
       bc_transport_space_fits(tt_.transport_route_.size(), n_rt_transports_),
       "mcraptor: transport index space exceeds the breadcrumb field");
   reset_arrivals();
-  if (!dist_to_end_.empty()) {
-    end_reachable_.resize(n_locations_);
-    for (auto i = 0U; i != dist_to_end_.size(); ++i) {
-      if (dist_to_end_[i] != kUnreachable) {
-        end_reachable_.set(i, true);
-      }
-    }
-    // a td egress location need not have a static offset
-    for (auto const& [l, _] : td_dist_to_end_) {
-      end_reachable_.set(to_idx(l), true);
-    }
-  }
 }
 
 template <direction SearchDir, typename Criteria, bool RangeReuse>
@@ -331,6 +515,9 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
           static_cast<std::uint8_t>(k), cur_dep_, /*by_route=*/true)) {
     return false;
   }
+  // the payload holds 26 bit transports and 11 bit stop positions
+  assert(transport_field < kStartSentinel);
+  assert(rl.board_ <= kBcStopMask && stop_idx <= kBcStopMask);
   state_.breadcrumbs_.push_back(
       {.payload_ = make_transport_payload(transport_field, rl.board_, stop_idx),
        .parent_ = rl.parent_,
@@ -379,7 +566,9 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(
     auto const l_idx = cista::to_idx(stp.location_idx());
     auto const is_last = i == n - 1U;
 
-    if (i != 0U && !route_bag_.empty() &&
+    // the breadcrumb stores stop positions in 11 bits: no boarding or alighting
+    // beyond that (a handful of routes in worldwide data are longer)
+    if (i != 0U && !route_bag_.empty() && stop_idx <= kBcStopMask &&
         stp.can_finish<SearchDir>(is_wheelchair_)) {
       for (auto const& rl : route_bag_) {
         any_marked |=
@@ -389,7 +578,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(
       }
     }
 
-    if (is_last || !stp.can_start<SearchDir>(is_wheelchair_) ||
+    if (is_last || stop_idx > kBcStopMask ||
+        !stp.can_start<SearchDir>(is_wheelchair_) ||
         !state_.prev_station_mark_[l_idx]) {
       continue;
     }
@@ -510,7 +700,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
     auto const l_idx = cista::to_idx(stp.location_idx());
     auto const is_last = i == n - 1U;
 
-    if (i != 0U && !rt_bag_.empty() &&
+    // stop positions beyond the breadcrumb's 11 bits: see update_route()
+    if (i != 0U && !rt_bag_.empty() && stop_idx <= kBcStopMask &&
         stp.can_finish<SearchDir>(is_wheelchair_)) {
       auto const by_transport = rt_time_at_stop(rt_t, stop_idx, arr_ev);
       for (auto const& rl : rt_bag_) {
@@ -521,7 +712,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
       }
     }
 
-    if (is_last || !stp.can_start<SearchDir>(is_wheelchair_) ||
+    if (is_last || stop_idx > kBcStopMask ||
+        !stp.can_start<SearchDir>(is_wheelchair_) ||
         !state_.prev_station_mark_[l_idx]) {
       continue;
     }
@@ -607,15 +799,13 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
                                 .test(l);
     auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx_][l]
                            : tt_.locations_.footpaths_in_[prf_idx_][l];
-    auto const egress_ok =
-        intermodal && end_reachable_.test(static_cast<std::uint32_t>(i)) &&
-        dist_to_end_[i] != std::numeric_limits<std::uint16_t>::max();
+    auto const egress_ok = intermodal && dist_to_end_[i] != kUnreachable;
     // empty for non-td queries: keep the lookup off the hot path
     auto const td_egress = (intermodal && !td_dist_to_end_.empty())
                                ? td_dist_to_end_.find(l)
                                : end(td_dist_to_end_);
     auto const td_egress_ok = td_egress != end(td_dist_to_end_);
-    if ((use_td_fps ? false : fps.empty()) && !egress_ok && !td_egress_ok) {
+    if (!use_td_fps && fps.empty() && !egress_ok && !td_egress_ok) {
       return;
     }
 
@@ -641,8 +831,8 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
     auto const relax_egress = [&](typename state_t::label const& te,
                                   std::uint16_t const duration) {
       auto const end_crit = te.crit_.with_walk(dir(duration), duration);
-      // window bound: keeps pong's reverse searches from writing journeys
-      // beyond the ping's start into the destination frontier
+      // window bound: nothing past worst_at_dest_ enters the destination
+      // frontier
       if (!is_better(end_crit.arr_, worst_at_dest_)) {
         return;
       }
@@ -779,6 +969,7 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::get_earliest_transport(
     return lo;
   };
 
+  auto const lb = dir(effective_lb(to_idx(l)));
   constexpr auto const kNDaysToIterate =
       kMaxTravelTime / std::chrono::days{1} + 1U;
   for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
@@ -793,8 +984,7 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::get_earliest_transport(
       auto const ev = event_times[t_offset];
       auto const ev_mam = ev.mam();
 
-      if (is_better_or_eq(worst_at_dest_, to_delta(day, ev_mam) +
-                                              dir(effective_lb(to_idx(l))))) {
+      if (is_better_or_eq(worst_at_dest_, to_delta(day, ev_mam) + lb)) {
         return {transport_idx_t::invalid(), day_idx_t::invalid()};
       }
 
@@ -1021,197 +1211,10 @@ journey basic_mcraptor<SearchDir, Criteria, RangeReuse>::materialize(
   return j;
 }
 
-// Adds the first/last-mile offset legs and the start footpath.
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 void basic_mcraptor<SearchDir, Criteria, RangeReuse>::reconstruct(
     query const& q, journey& j) {
-  utl::verify(!j.legs_.empty(), "mcraptor reconstruct: journey without legs");
-
-  constexpr auto const is_fwd = SearchDir == direction::kForward;
-
-  // front: special_station -> first transit stop
-  auto const from = j.legs_.front().from_;
-  auto const dep_time = j.legs_.front().dep_time_;
-  auto const front_match_mode =
-      is_fwd ? q.start_match_mode_ : q.dest_match_mode_;
-  if (front_match_mode == location_match_mode::kIntermodal) {
-    auto const& offsets = is_fwd ? q.start_ : q.destination_;
-    auto const special = get_special_station(is_fwd ? special_station::kStart
-                                                    : special_station::kEnd);
-    // the front leg ends at the first transit event
-    auto const front_ok = [&](duration_t const d) {
-      return is_fwd
-                 // fwd: query start, check feasibility (allows ontrip start)
-                 ? dep_time - d >= j.start_time_
-                 // bwd: destination, anchored exactly at j.dest_time_
-                 : dep_time - d == j.dest_time_;
-    };
-    auto const o = utl::find_if(offsets, [&](offset const& x) {
-      return matches(tt_, front_match_mode, x.target(), from) &&
-             front_ok(x.duration());
-    });
-    auto front = std::optional<offset>{};
-    auto front_dep = dep_time;  // set with the offset, see the td case
-    if (o != end(offsets)) {
-      front = *o;
-      front_dep = dep_time - o->duration();
-    } else if (auto const& td = is_fwd ? q.td_start_ : q.td_dest_;
-               td.contains(from)) {
-      // td offsets are valid at fixed times and the traveller then waits for
-      // the first transit event: the backward query gives the latest departure
-      // that makes the boarding, the forward query from there strips the wait.
-      auto const& offs = td.at(from);
-      auto const back = get_td_duration<direction::kBackward>(offs, dep_time);
-      if (back.has_value() && front_ok(back->first)) {
-        auto const start = dep_time - back->first;
-        auto const fwd = get_td_duration<direction::kForward>(offs, start);
-        if (fwd.has_value()) {
-          front = offset{from, fwd->first, fwd->second.mode()};
-          front_dep = start;
-        }
-      }
-    }
-    utl::verify(front.has_value(), "mcraptor reconstruct: no front offset");
-    auto const dep = front_dep;
-    auto const arr = front_dep + front->duration();
-    j.legs_.insert(begin(j.legs_), journey::leg{direction::kForward, special,
-                                                from, dep, arr, *front});
-  }
-
-  // back: last transit stop -> special_station
-  auto const to = j.legs_.back().to_;
-  auto const arr_time = j.legs_.back().arr_time_;
-  auto const back_match_mode =
-      is_fwd ? q.dest_match_mode_ : q.start_match_mode_;
-  if (back_match_mode == location_match_mode::kIntermodal) {
-    auto const& offsets = is_fwd ? q.destination_ : q.start_;
-    auto const special = get_special_station(is_fwd ? special_station::kEnd
-                                                    : special_station::kStart);
-    // the back leg starts at the last transit event
-    auto const back_ok = [&](duration_t const d) {
-      return is_fwd
-                 // fwd: destination, anchored exactly at j.dest_time_
-                 ? arr_time + d == j.dest_time_
-                 // bwd: query start, anchored by feasibility
-                 : arr_time + d <= j.start_time_;
-    };
-    auto const o = utl::find_if(offsets, [&](offset const& x) {
-      return matches(tt_, back_match_mode, x.target(), to) &&
-             back_ok(x.duration());
-    });
-    auto back = std::optional<offset>{};
-    auto back_dep = arr_time;  // set with the offset, see the td case
-    if (o != end(offsets)) {
-      back = *o;
-    } else if (auto const& td = is_fwd ? q.td_dest_ : q.td_start_;
-               td.contains(to)) {
-      // mirrors the td first mile above
-      auto const& offs = td.at(to);
-      auto const fwd = get_td_duration<direction::kForward>(offs, arr_time);
-      if (fwd.has_value() && back_ok(fwd->first)) {
-        auto const journey_end = arr_time + fwd->first;
-        auto const bck =
-            get_td_duration<direction::kBackward>(offs, journey_end);
-        if (bck.has_value() && journey_end - bck->first >= arr_time) {
-          back = offset{to, bck->first, bck->second.mode()};
-          back_dep = journey_end - bck->first;
-        }
-      }
-    }
-    utl::verify(back.has_value(), "mcraptor reconstruct: no back offset");
-    auto const dep = back_dep;
-    auto const arr = back_dep + back->duration();
-    j.legs_.push_back(
-        journey::leg{direction::kForward, to, special, dep, arr, *back});
-    j.dest_ = special;
-  }
-
-  // the start footpath that seeded round 0
-  if (q.start_match_mode_ != location_match_mode::kIntermodal) {
-    auto const is_journey_start = [&](location_idx_t const l) {
-      return utl::any_of(q.start_, [&](offset const& o) {
-        return matches(tt_, q.start_match_mode_, o.target(), l);
-      });
-    };
-    auto const start_l = is_fwd ? j.legs_.front().from_ : j.legs_.back().to_;
-    auto const start_t =
-        is_fwd ? j.legs_.front().dep_time_ : j.legs_.back().arr_time_;
-    auto const direct_start_ok =
-        is_fwd ? j.start_time_ <= start_t : j.start_time_ >= start_t;
-    if (!is_journey_start(start_l) || !direct_start_ok) {
-      auto const fps = is_fwd
-                           ? tt_.locations_.footpaths_in_[q.prf_idx_][start_l]
-                           : tt_.locations_.footpaths_out_[q.prf_idx_][start_l];
-      auto best = std::optional<footpath>{};
-      for (auto const fp : fps) {
-        if ((!best.has_value() || fp.duration() < best->duration()) &&
-            is_journey_start(fp.target())) {
-          best = fp;
-        }
-      }
-      if (best.has_value()) {
-        auto const dur = duration_t{adjusted_transfer_time(
-            q.transfer_time_settings_, best->duration().count())};
-        auto const fp_arr = j.start_time_ + (is_fwd ? dur : -dur);
-        if (is_fwd ? fp_arr <= start_t : fp_arr >= start_t) {
-          auto const lg = journey::leg{
-              SearchDir,     best->target(), start_l,
-              j.start_time_, fp_arr,         footpath{best->target(), dur}};
-          if (is_fwd) {
-            j.legs_.insert(begin(j.legs_), lg);
-          } else {
-            j.legs_.push_back(lg);
-          }
-        }
-      }
-    }
-  }
-
-  // Shorten td footpath legs to their walking time: the search stores the wait
-  // in the arrival, but showing it as walking is wrong and misprices the
-  // transfer for optimize_footpaths. The wait is spent at the stop before the
-  // walk, as in the raptor reconstruction.
-  if (has_rt_ && q.prf_idx_ != 0U) {
-    auto const& has_td = kFwd ? rtt_->has_td_footpaths_in_[q.prf_idx_]
-                              : rtt_->has_td_footpaths_out_[q.prf_idx_];
-    auto const& td_fps = kFwd ? rtt_->td_footpaths_in_[q.prf_idx_]
-                              : rtt_->td_footpaths_out_[q.prf_idx_];
-    if (!td_fps.empty()) {
-      for (auto& lg : j.legs_) {
-        if (!std::holds_alternative<footpath>(lg.uses_)) {
-          continue;
-        }
-        auto const key_l = kFwd ? lg.to_ : lg.from_;
-        auto const target_l = kFwd ? lg.from_ : lg.to_;
-        if (!has_td.test(key_l)) {
-          continue;
-        }
-        auto const t = lg.arr_time_;
-        for_each_footpath<SearchDir>(
-            td_fps[key_l], t,
-            [&](location_idx_t const fp_target, duration_t,
-                duration_t const walk) {
-              if (fp_target != target_l) {
-                return utl::cflow::kContinue;
-              }
-              lg.dep_time_ = t - walk;
-              lg.arr_time_ = t;
-              lg.uses_ = footpath{lg.to_, walk};
-              return utl::cflow::kBreak;
-            });
-      }
-    }
-  }
-
-  if constexpr (is_fwd) {
-    optimize_footpaths(tt_, rtt_, q, j);
-  } else {
-    // legs are chronological, q is in search direction
-    auto journey_q = q;
-    journey_q.flip_dir();
-    optimize_footpaths(tt_, rtt_, journey_q, j);
-  }
-
+  mc_reconstruct_offsets<SearchDir>(tt_, rtt_, q, j);
   j.is_reconstructed_ = true;
 }
 

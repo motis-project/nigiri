@@ -43,12 +43,11 @@ namespace nigiri::routing::gpu {
 //    disturbs the by-route labels it iterates.
 //  * Breadcrumbs are an append-only arena {payload48, parent, arr} (atomicAdd
 //    bump), read only by the reconstruction kernel (a separate launch).
-//  * Destination pruning: a small global pareto frontier over (round,
-//  criteria);
-//    on overflow the insert is skipped (weaker pruning, same results).
+//  * Destination pruning: a small global pareto frontier over
+//    (round, criteria); on overflow the insert is skipped (weaker pruning,
+//    same results).
 //  * Route scan: one warp per marked route, with the route bag (pareto over
-//  trip
-//    order x carried extras) in registers/local memory.
+//    trip order x carried extras) in registers/local memory.
 //  * Realtime transports get a second, simpler pass: a single trip with
 //    absolute event times needs neither the et lookup nor traffic days.
 //
@@ -70,9 +69,8 @@ inline constexpr auto kMcNoBc = std::uint32_t{(1U << 27U) - 1U};
 inline constexpr auto kMcBagCapDefault = 8U;
 // Stops whose frontier outgrows the inline slots chain fixed-size blocks from
 // a global pool (bag_ovf_ = head, bag_next_ = links), keeping the pool
-// proportional to the number of labels. Measured (GER+WW): mean 2-3 labels per
-// bag, <= 8 covers 96-99%, ~97% of spilling bags need one block, worldwide
-// peak 130. Inline 8 + block 16 was the best of the swept geometries.
+// proportional to the number of labels. Most bags fit inline, and most
+// spilling ones need a single block.
 inline constexpr auto kMcBagBlock = 16U;  // slots per chained block
 inline constexpr auto kMcBagPoolDefault = 1U << 20U;  // blocks (~138 MB)
 // The u8 hwm bounds the total slots: inline 8 + 15 blocks. Exceeding it trips
@@ -84,8 +82,7 @@ inline constexpr auto kMcDestCap = 64U;  // dest frontier entries
 // candidates. With no room in the label for a departure tag, a persistent
 // per-stop frontier holds (arr_key, extras, dep, round, by_route) of every
 // accepted label and bag_insert applies the departure-discounted rule to it.
-// Cleared per query; on overflow the entry is dropped (pruning only). 6 slots
-// recover nearly the whole tail at half the memory of 8.
+// Cleared per query; on overflow the entry is dropped (pruning only).
 inline constexpr auto kMcReuseCap = 6U;
 
 CISTA_CUDA_COMPAT inline std::uint64_t mc_reuse_pack(
@@ -141,14 +138,13 @@ struct mc_rt_label {
   std::uint16_t extras_;
   std::uint16_t board_;
 };
-inline constexpr auto kMcMaxSegs = 128U;  // per route; overflow -> seq path
+inline constexpr auto kMcMaxSegs = 128U;  // per route; overflow -> scan_route
 inline constexpr auto kMcPrefixK = 4U;  // register route-bag entries/lane
 inline constexpr auto kMcEtGatherCap = 32U;  // sorted lookup candidates
 inline constexpr auto kMcScanThreads = 128U;  // 4 warps per block
 // Per route-stop earliest-transport result row (et phase): one entry per
 // boardable round-(k-1) label of the stop, filled densely, with the length in
 // et_task_cnt_. Entries beyond it are stale but never read.
-inline constexpr auto kMcEtInvalid = ~std::uint64_t{0};
 
 CISTA_CUDA_COMPAT inline std::uint64_t mc_et_pack(std::uint32_t const et,
                                                   std::uint32_t const extras,
@@ -210,7 +206,7 @@ inline constexpr auto kMcOverflowRouteBag = 4U;
 inline constexpr auto kMcOverflowRec = 8U;
 inline constexpr auto kMcOverflowEtBlock = 16U;
 inline constexpr auto kMcOverflowEtTasks = 32U;  // entry pool exhausted
-inline constexpr auto kMcOverflowTaskCap = 64U;  // raise ET_TASKS
+inline constexpr auto kMcOverflowTaskCap = 64U;  // et_tasks_cap_ exceeded
 
 template <direction SearchDir, mc_crit Crit>
 struct mcraptor_impl {
@@ -259,10 +255,7 @@ struct mcraptor_impl {
     if constexpr (kHasCost) {
       return ingress * walk_surcharge_;
     } else if constexpr (kHasNonTransit) {
-      return umin(counted_non_transit(static_cast<std::uint16_t>(
-                      umin(ingress, 0xFFFFU))),
-                  kNtMax)
-             << kNtShift;
+      return umin(ingress, kNtMax) << kNtShift;
     } else {
       return 0U;  // mode_filter (false at the start), arr
     }
@@ -273,9 +266,7 @@ struct mcraptor_impl {
     if constexpr (kHasCost) {
       return crit + dur * walk_surcharge_;
     } else if constexpr (kHasNonTransit) {
-      auto const counted = static_cast<std::uint32_t>(
-          counted_non_transit(static_cast<std::uint16_t>(umin(dur, 0xFFFFU))));
-      auto const nt = umin((crit >> kNtShift) + counted, kNtMax) << kNtShift;
+      auto const nt = umin((crit >> kNtShift) + dur, kNtMax) << kNtShift;
       return kCombo ? (nt | (crit & 1U)) : nt;
     } else {
       return crit;  // mode_filter bit unchanged, arr
@@ -383,28 +374,10 @@ struct mcraptor_impl {
     return *reinterpret_cast<std::uint8_t const volatile*>(bag_hwm_ + l);
   }
 
-  __device__ mc_label_t bag_label_coherent(std::uint32_t const l,
-                                           std::uint32_t const i) const {
-    if (i < bag_cap_) {
-      return *reinterpret_cast<mc_label_t const volatile*>(bag(l) + i);
-    }
-    // head + links may have been published in THIS kernel by another
-    // SM - stale L1 copies (~0U) would silently hide chain tails, so
-    // every hop reads past L1 (writers fence links before the hwm)
-    auto b = *reinterpret_cast<std::uint32_t const volatile*>(bag_ovf_ + l);
-    for (auto h = (i - bag_cap_) / kMcBagBlock; h != 0U && b != ~0U; --h) {
-      b = *reinterpret_cast<std::uint32_t const volatile*>(bag_next_ + b);
-    }
-    return b == ~0U
-               ? kMcEmptySlot
-               : *reinterpret_cast<mc_label_t const volatile*>(
-                     bag_pool_ + static_cast<std::size_t>(b) * kMcBagBlock +
-                     (i - bag_cap_) % kMcBagBlock);
-  }
-
-  // forward-cursor variant of bag_label_coherent for the fp phase's
-  // ascending slot loops: one chain hop per block instead of a re-walk
-  // per slot (all loads past L1, links fenced before the hwm)
+  // forward-cursor coherent bag reader for the fp phase's ascending slot
+  // loops: one chain hop per block instead of a re-walk per slot. Head and
+  // links may have been published in this kernel by another SM, so all loads
+  // go past L1 (writers fence links before the hwm).
   struct mc_chain_reader {
     mcraptor_impl const* r_;
     std::uint32_t l_;
@@ -530,9 +503,6 @@ struct mcraptor_impl {
     for (auto i = 0U; i != kMcReuseCap; ++i) {
       auto const v = rslots[i];
       if (v == kMcEmptySlot) {
-        continue;
-      }
-      if (reuse_same_dep_only_ && mc_reuse_dep(v) != dep_) {
         continue;
       }
       if (mc_reuse_round(v) <= round && (!by_route || mc_reuse_by_route(v)) &&
@@ -862,15 +832,10 @@ struct mcraptor_impl {
     }
   }
 
-  // No mark swap here (unlike the raptor): the same-stop transfer is folded
+  // Compacts the marked routes into route_list_ and resets any_marked_. No
+  // mark swap afterwards (unlike the raptor): the same-stop transfer is folded
   // into the route-scan inserts, so the arrival marks in station_mark_ must
-  // survive into the next round's route collection. The footpath phase
-  // iterates station_mark_ and extends it with its targets (by-transfer, so
-  // flag-skipped by the iteration).
-
-  // Compacts the marked routes into route_list_ and resets any_marked_. Length
-  // bucketing (long routes first) measured ~5% slower: warp oversubscription
-  // already absorbs the imbalance.
+  // survive into the next round's route collection.
   __device__ void build_route_list() {
     auto const gid = get_global_thread_id();
     auto const stride = get_global_stride();
@@ -927,8 +892,8 @@ struct mcraptor_impl {
 
   // et phase 1: warp-cooperative compaction of the marked routes' boardable
   // stops into a flat task list with exactly sized et rows. The flat -> task
-  // mapping is a bitmap plus rank instead of a u32 per flat stop (worldwide 368
-  // MB -> 11.5 MB): each marked route gets a contiguous task range with one bit
+  // mapping is a bitmap plus rank instead of a u32 per flat stop: each marked
+  // route gets a contiguous task range with one bit
   // per task, and a reader recovers the index as route_task_start_ + popcount
   // of the route's bits below `flat`. Collect clears the route's bit range
   // every round, so no stale state is possible.
@@ -1028,7 +993,7 @@ struct mcraptor_impl {
         route_start = atomicAdd(et_task_count_, route_tasks);
       }
       route_start = __shfl_sync(kAllLanes, route_start, 0);
-      if (route_start + route_tasks > et_tasks_cap_) {  // raise ET_TASKS
+      if (route_start + route_tasks > et_tasks_cap_) {
         if (lane == 0U) {
           atomicOr(overflow_, kMcOverflowTaskCap);
         }
@@ -1043,8 +1008,8 @@ struct mcraptor_impl {
       if (lane == 0U) {
         route_task_start_[ri] = route_start;
       }
-      // pass B: exact entry needs (count round-(k-1) labels; worldwide
-      // the old hwm bound overshot the pool 2-3x), pool reservation via
+      // pass B: exact entry needs (count round-(k-1) labels), pool
+      // reservation via
       // one warp scan per chunk, flat-ordered task writes (bwd: scan
       // order is reverse flat order, so the rank flips)
       auto done_before = 0U;
@@ -1089,7 +1054,7 @@ struct mcraptor_impl {
           atomicOr(task_bits_ + (flat >> 5U), 1U << (flat & 31U));
           auto const eoff = base_off + (incl_sum - need);
           if (static_cast<std::size_t>(eoff) + need > et_pool_cap_) {
-            atomicOr(overflow_, kMcOverflowEtTasks);  // raise ET_POOL
+            atomicOr(overflow_, kMcOverflowEtTasks);  // et_pool_cap_ exceeded
             et_task_off_[ti] = ~0U;
           } else {
             et_task_off_[ti] = eoff;
@@ -1198,7 +1163,7 @@ struct mcraptor_impl {
         ++out;
       }
       // per-task entry count instead of a terminator entry: saves one
-      // pool entry per task (7B x tasks; the flood round has ~44M tasks)
+      // pool entry per task
       et_task_cnt_[t] = static_cast<std::uint8_t>(out);
     }
   }
@@ -1277,10 +1242,7 @@ struct mcraptor_impl {
   }
 
   // One warp per marked route. Packing short routes into sub-warp tiles was
-  // measured slower (427 ms vs 293 ms): lane utilization is the wrong metric
-  // for this latency-bound kernel, the tiles paid K=4 shuffles for the 72% of
-  // routes that run at K=1, and a fused kernel with the tile instantiations
-  // spilled registers.
+  // slower: the kernel is latency-bound, not lane-utilization-bound.
   template <bool WithClaszFilter, bool IsWheelchair>
   __device__ void scan_routes(unsigned const k, mc_seg* const seg_smem) {
     auto const lane = get_global_thread_id() % kWarpSize;
@@ -1305,13 +1267,11 @@ struct mcraptor_impl {
   // the stops' boarding mini-bags, so a Kogge-Stone shuffle scan yields every
   // lane's exclusive state in log2(32) combine steps, and each lane alights its
   // position directly (no shared-memory segments). kMcPrefixK register entries
-  // cover 99.7% of multi-boarding routes (peak live bag: <= 2 93%, <= 4 99.7%,
-  // max 17).
+  // cover nearly all multi-boarding routes.
   // K is adaptive: most routes run K=1 (raptor-shaped, one dominance compare),
   // the rest upgrade to kMcPrefixK and then the two-pass path via a warp ballot
   // fired BEFORE any alight of the affected chunk. Reruns are exact because
   // earlier chunks' inserts are idempotent.
-  // No #pragma unroll on the K-loops: forcing it measured 5% slower.
   template <unsigned K>
   struct mc_pbag {
     std::uint32_t et_[K];
@@ -1764,28 +1724,6 @@ struct mcraptor_impl {
     return __any_sync(kAllLanes, any_marked);
   }
 
-  // sequential single-lane scan: fallback for segment overflow
-  template <bool WithClaszFilter, bool IsWheelchair>
-  __device__ void scan_routes_seq(unsigned const k) {
-    auto const gid = get_global_thread_id();
-    auto const stride = get_global_stride();
-    auto const n_marked = *route_list_count_;
-    auto local_marked = false;
-
-    for (auto idx = gid; idx < n_marked; idx += stride) {
-      auto const r = route_idx_t{route_list_[idx]};
-      if constexpr (WithClaszFilter) {
-        if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
-          continue;
-        }
-      }
-      local_marked |= scan_route<IsWheelchair>(k, r);
-    }
-    if (local_marked && !*any_marked_) {
-      atomicOr(any_marked_, 1U);
-    }
-  }
-
   template <bool IsWheelchair>
   __device__ bool scan_route(unsigned const k, route_idx_t const r) {
     auto const stop_seq = tt_.route_location_seq_[r];
@@ -2225,8 +2163,8 @@ struct mcraptor_impl {
               auto const end_key = to_key(end_arr);
               auto const end_extras =
                   crit_after_walk(te_extras, dist_to_end_[my_i]);
-              // window bound: pong's reverse searches must not write
-              // journeys departing beyond the ping's start time
+              // window bound: nothing past worst_at_dest_ enters the
+              // destination frontier
               if (end_key < worst_key) {
                 auto const src = bc_read_coherent(te_bc);
                 if (bag_insert(to_idx(kIntermodalTarget), end_key, end_extras,
@@ -2743,9 +2681,6 @@ struct mcraptor_impl {
   // Racy-relaxed reads: stale values only weaken pruning, never results.
   std::uint32_t* dest_best_key_;
   std::uint32_t* dest_best_total_;
-  // pong side: only same-departure entries (one merged anchor run) may
-  // reject; cross-anchor rejections were seen over-pruning.
-  bool reuse_same_dep_only_;
   std::uint32_t* bc_pay_lo_;  // arena SoA (12B/entry vs 16B AoS)
   std::uint32_t* bc_hi_arr_;
   std::uint32_t* bc_par_;
