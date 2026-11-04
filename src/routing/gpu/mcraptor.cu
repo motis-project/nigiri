@@ -95,9 +95,7 @@ struct gpu_mcraptor_state::impl {
         std::max<std::size_t>(static_cast<std::size_t>(n_locations) * 16U,
                               8'000'000U),
         32'000'000U);
-    bc_pay_lo_.resize(arena_cap);
-    bc_hi_arr_.resize(arena_cap);
-    bc_par_.resize(arena_cap);
+    bc_.resize(arena_cap);
     bc_count_.resize(1U);
 
     touched_.resize(n_bitvec_words(n_locations));
@@ -265,9 +263,7 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> dest_lock_[2];
   thrust::device_vector<std::uint32_t> dest_best_key_[2];
   thrust::device_vector<std::uint32_t> dest_best_total_[2];
-  thrust::device_vector<std::uint32_t> bc_pay_lo_;
-  thrust::device_vector<std::uint32_t> bc_hi_arr_;
-  thrust::device_vector<std::uint32_t> bc_par_;
+  thrust::device_vector<mc_breadcrumb> bc_;
   thrust::device_vector<std::uint32_t> bc_count_;
 
   thrust::device_vector<std::uint32_t> touched_;
@@ -615,11 +611,9 @@ mcraptor_impl<SearchDir, Crit> make_impl(
           thrust::raw_pointer_cast(s.dest_best_key_[dir_idx].data()),
       .dest_best_total_ =
           thrust::raw_pointer_cast(s.dest_best_total_[dir_idx].data()),
-      .bc_pay_lo_ = thrust::raw_pointer_cast(s.bc_pay_lo_.data()),
-      .bc_hi_arr_ = thrust::raw_pointer_cast(s.bc_hi_arr_.data()),
-      .bc_par_ = thrust::raw_pointer_cast(s.bc_par_.data()),
+      .bc_ = thrust::raw_pointer_cast(s.bc_.data()),
       .bc_count_ = thrust::raw_pointer_cast(s.bc_count_.data()),
-      .bc_cap_ = static_cast<std::uint32_t>(s.bc_pay_lo_.size()),
+      .bc_cap_ = static_cast<std::uint32_t>(s.bc_.size()),
       .touched_ = {to_mutable_view(s.touched_)},
       .station_mark_ = {to_mutable_view(s.station_mark_)},
       .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
@@ -855,10 +849,13 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
     j.dest_ = gj.dest_l_;
     j.transfers_ = gj.transfers_;
     if constexpr (kHasNonTransit) {
-      j.criteria_cost_ = gj.criteria_cost_;  // minutes on foot
+      j.criteria_cost_ = gj.criteria_cost_;
     }
     if constexpr (kHasModeFilter) {
-      j.criteria_mode_filter_ = gj.criteria_mode_filter_;
+      j.criteria_mode_filter_ = gj.criteria_mode_filter_ != 0U;
+    }
+    if constexpr (kHasModeSwitches) {
+      j.criteria_mode_switches_ = gj.criteria_mode_switches_;
     }
 
     for (auto li2 = 0U; li2 != gj.n_legs_; ++li2) {
@@ -930,6 +927,10 @@ NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::arr)
 NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::non_transit)
 NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::mode_filter)
 NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::non_transit_mode_filter)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::mode_switches)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::non_transit_mode_switches)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::mode_filter_mode_switches)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(mc_crit::non_transit_mode_filter_mode_switches)
 #undef NIGIRI_GPU_MCRAPTOR_INSTANTIATE
 
 }  // namespace nigiri::routing::gpu

@@ -15,9 +15,29 @@
 
 namespace nigiri::routing::gpu {
 
+// Device configurations, one per CPU criteria configuration: a set of the
+// non_transit, mode_filter and mode_switches criteria, packed into the label's
+// 16 bit extras slot (see mc_extras in mc_criteria.h).
+enum class mc_crit : std::uint8_t {
+  arr = 0U,
+  non_transit = 1U,
+  mode_filter = 2U,
+  non_transit_mode_filter = 3U,
+  mode_switches = 4U,
+  non_transit_mode_switches = 5U,
+  mode_filter_mode_switches = 6U,
+  non_transit_mode_filter_mode_switches = 7U
+};
+
+constexpr bool has(mc_crit const c, mc_crit const part) {
+  return (static_cast<std::uint8_t>(c) & static_cast<std::uint8_t>(part)) != 0U;
+}
+
 // Same scope as the CPU mcraptor (mcraptor_supported). One state type serves
-// every configuration; the subtypes only select it in the dispatch.
+// every configuration; the subtypes only select it in the dispatch (kCrit).
 struct gpu_mcraptor_state {
+  static constexpr auto kCrit = mc_crit::arr;
+
   explicit gpu_mcraptor_state(gpu_timetable const&);
   ~gpu_mcraptor_state();
 
@@ -25,27 +45,26 @@ struct gpu_mcraptor_state {
   std::unique_ptr<impl> impl_;
 };
 
-struct gpu_mcraptor_non_transit_state : gpu_mcraptor_state {
+template <mc_crit Crit>
+struct gpu_mcraptor_crit_state : gpu_mcraptor_state {
+  static constexpr auto kCrit = Crit;
   using gpu_mcraptor_state::gpu_mcraptor_state;
 };
 
-struct gpu_mcraptor_mode_filter_state : gpu_mcraptor_state {
-  using gpu_mcraptor_state::gpu_mcraptor_state;
-};
-
-struct gpu_mcraptor_non_transit_mode_filter_state : gpu_mcraptor_state {
-  using gpu_mcraptor_state::gpu_mcraptor_state;
-};
-
-// Device configurations, each equal to the matching CPU criteria; the extras
-// fit the label's 16 bit slot (non_transit_mode_filter: minutes in bits 1..15,
-// avoided-class flag (AIR) in bit 0).
-enum class mc_crit : std::uint8_t {
-  arr,
-  non_transit,
-  mode_filter,
-  non_transit_mode_filter
-};
+using gpu_mcraptor_non_transit_state =
+    gpu_mcraptor_crit_state<mc_crit::non_transit>;
+using gpu_mcraptor_mode_filter_state =
+    gpu_mcraptor_crit_state<mc_crit::mode_filter>;
+using gpu_mcraptor_non_transit_mode_filter_state =
+    gpu_mcraptor_crit_state<mc_crit::non_transit_mode_filter>;
+using gpu_mcraptor_mode_switches_state =
+    gpu_mcraptor_crit_state<mc_crit::mode_switches>;
+using gpu_mcraptor_non_transit_mode_switches_state =
+    gpu_mcraptor_crit_state<mc_crit::non_transit_mode_switches>;
+using gpu_mcraptor_mode_filter_mode_switches_state =
+    gpu_mcraptor_crit_state<mc_crit::mode_filter_mode_switches>;
+using gpu_mcraptor_non_transit_mode_filter_mode_switches_state =
+    gpu_mcraptor_crit_state<mc_crit::non_transit_mode_filter_mode_switches>;
 
 template <direction SearchDir, mc_crit Crit>
 struct gpu_mcraptor {
@@ -57,10 +76,9 @@ struct gpu_mcraptor {
   static constexpr auto const kDirIdx =
       SearchDir == direction::kForward ? 0U : 1U;
 
-  static constexpr bool kHasNonTransit =
-      Crit == mc_crit::non_transit || Crit == mc_crit::non_transit_mode_filter;
-  static constexpr bool kHasModeFilter =
-      Crit == mc_crit::mode_filter || Crit == mc_crit::non_transit_mode_filter;
+  static constexpr bool kHasNonTransit = has(Crit, mc_crit::non_transit);
+  static constexpr bool kHasModeFilter = has(Crit, mc_crit::mode_filter);
+  static constexpr bool kHasModeSwitches = has(Crit, mc_crit::mode_switches);
 
   gpu_mcraptor(
       timetable const& tt,

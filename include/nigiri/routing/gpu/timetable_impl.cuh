@@ -13,6 +13,7 @@
 #include "utl/helpers/algorithm.h"
 #include "utl/verify.h"
 
+#include "nigiri/routing/gpu/breadcrumb.h"
 #include "nigiri/routing/gpu/device_timetable.cuh"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/gpu/types.cuh"
@@ -68,6 +69,7 @@ struct gpu_timetable::impl {
         route_times_{to_device(tt.route_times_)},
         patterns_{to_device(tt.pattern_offsets_)},
         route_clasz_{to_device(tt.route_clasz_)},
+        route_section_clasz_{tt.route_section_clasz_},
         route_location_seq_{tt.route_location_seq_},
         location_routes_{tt.location_routes_},
         transport_traffic_days_{to_device(tt.transport_traffic_days_)},
@@ -122,6 +124,7 @@ struct gpu_timetable::impl {
         .route_times_ = route_times_,
         .patterns_ = to_view(patterns_),
         .route_clasz_ = to_view(route_clasz_),
+        .route_section_clasz_ = to_view(route_section_clasz_),
         .route_location_seq_ = to_view(route_location_seq_),
         .location_routes_ = to_view(location_routes_),
         .transport_traffic_days_ = to_view(transport_traffic_days_),
@@ -152,6 +155,7 @@ struct gpu_timetable::impl {
   thrust::device_vector<route_times> route_times_;
   thrust::device_vector<delta> patterns_;
   thrust::device_vector<clasz> route_clasz_;
+  device_vecvec<decltype(t{}.route_section_clasz_)> route_section_clasz_;
 
   device_vecvec<decltype(t{}.route_location_seq_)> route_location_seq_;
   device_vecvec<decltype(t{}.location_routes_)> location_routes_;
@@ -241,6 +245,7 @@ struct gpu_rt_timetable::impl {
         rt_transport_clasz_{to_device(build_rt_transport_clasz(rtt))},
         rt_footpaths_{to_device(build_rt_footpaths(rtt))},
         rt_base_{to_device(rtt.rt_location_parents_)},
+        rt_transport_section_clasz_{rtt.rt_transport_section_clasz_},
         transport_traffic_days_{to_device(rtt.transport_traffic_days_)},
         bitfields_{to_device(rtt.bitfields_)},
         rt_transport_bikes_allowed_{
@@ -332,6 +337,7 @@ struct gpu_rt_timetable::impl {
         .rt_footpaths_ = to_view(rt_footpaths_)
                              .first(uses_virts ? rt_footpaths_.size() : 0U),
         .rt_base_ = to_view(rt_base_),
+        .rt_transport_section_clasz_ = to_view(rt_transport_section_clasz_),
         .transport_traffic_days_ = to_view(transport_traffic_days_),
         .bitfields_ = to_view(bitfields_),
         .filters_ = thrust::raw_pointer_cast(rt_filters_ctx_.data()),
@@ -349,6 +355,8 @@ struct gpu_rt_timetable::impl {
   device_vecvec<decltype(rtt_t{}.rt_transport_stop_times_)>
       rt_transport_stop_times_;
   thrust::device_vector<clasz> rt_transport_clasz_;
+  device_vecvec<decltype(rtt_t{}.rt_transport_section_clasz_)>
+      rt_transport_section_clasz_;
 
   thrust::device_vector<device_rt_timetable::rt_footpath> rt_footpaths_;
   thrust::device_vector<location_idx_t> rt_base_;

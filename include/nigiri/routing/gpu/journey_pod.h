@@ -36,9 +36,10 @@ struct gpu_journey {
   std::uint8_t transfers_;
   location_idx_t dest_l_;
   delta_t dest_time_;
-  // mcraptor criteria: non_transit minutes and the avoided-class flag
+  // mcraptor criteria, as journey::criteria_*
   std::uint16_t criteria_cost_;
   std::uint8_t criteria_mode_filter_;
+  std::uint8_t criteria_mode_switches_;
   location_idx_t start_l_;
   gpu_journey_leg legs_[kMaxRecLegs];
 };
