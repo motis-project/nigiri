@@ -1,7 +1,6 @@
 #pragma once
 
 #include "nigiri/loader/virt/signatures.h"
-#include "nigiri/loader/virt/transfer_durations.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -21,9 +20,6 @@ struct transport_routes {
   vector_map<transport_idx_t, route_idx_t> route_;
 };
 
-transport_routes split_routes(
-    timetable const&,
-    hash_map<transfer_pair, transfer_durations> const& durations_of,
-    route_stop_pairs&);
+transport_routes split_routes(timetable const&, route_stop_pairs&);
 
 }  // namespace nigiri::loader

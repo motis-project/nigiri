@@ -28,10 +28,7 @@ route_idx_t transport_routes::get_route(timetable const& tt,
   return route_[tt.route_transport_ranges_[base_route_[r]].from_ + to_idx(t)];
 }
 
-transport_routes split_routes(
-    timetable const& tt,
-    hash_map<transfer_pair, transfer_durations> const& durations_of,
-    route_stop_pairs& pairs) {
+transport_routes split_routes(timetable const& tt, route_stop_pairs& pairs) {
   // Initialize:
   // - Map each route to iself.
   // - Map each transport to its base route.
@@ -49,8 +46,7 @@ transport_routes split_routes(
 
     auto const from = pairs.route_stops_[pairs.pairs_[p].from_];
     auto const to = pairs.route_stops_[pairs.pairs_[p].to_];
-    auto const hull =
-        durations_of.at(transfer_pair{from.base_, to.base_}).hull_;
+    auto const durations = pairs.durations_[p];
     auto transfers = std::move(pairs.transfers_[p]);
     auto const n_moved = std::erase_if(transfers, [&](transfer const& t) {
       // Check if from route or to route moved to a split route.
@@ -65,7 +61,8 @@ transport_routes split_routes(
           route_stop{from_route, from.stop_idx_, from.base_, from.sig_});
       auto const new_to = pairs.get_or_create_route_stop(
           route_stop{to_route, to.stop_idx_, to.base_, to.sig_});
-      pairs.add_transfer(pairs.get_or_create_pair(new_from, new_to, hull), t);
+      pairs.add_transfer(pairs.get_or_create_pair(new_from, new_to, durations),
+                         t);
 
       return true;
     });
@@ -73,7 +70,7 @@ transport_routes split_routes(
     // Update window.
     if (n_moved != 0U) {
       auto& w = pairs.windows_[p];
-      w = hull;
+      w = durations.hull_;
       for (auto const& t : transfers) {
         narrow(w, t);
       }
@@ -90,9 +87,8 @@ transport_routes split_routes(
   };
   auto const get_groups = [&](route_stop_pair_idx_t const p,
                               bool const is_from) -> transport_groups {
-    auto const& from = pairs.route_stops_[pairs.pairs_[p].from_];
-    auto const& to = pairs.route_stops_[pairs.pairs_[p].to_];
-    auto const& rs = is_from ? from : to;
+    auto const [from, to] = pairs.pairs_[p];
+    auto const& rs = pairs.route_stops_[is_from ? from : to];
 
     if (!rs.is_regular()) {
       // Base and signature route stops never split.
@@ -100,8 +96,6 @@ transport_routes split_routes(
     }
 
     // For each transport: determine transfer interval based on all transfers.
-    auto const& pair_durations =
-        durations_of.at(transfer_pair{from.base_, to.base_});
     auto const n_transports = static_cast<std::uint16_t>(
         tt.route_transport_ranges_[routes.base_route_[rs.route_]].size());
     auto w = vector_map<route_transport_idx_t, std::optional<window_t>>(
@@ -109,7 +103,7 @@ transport_routes split_routes(
     for (auto const& t : pairs.transfers_[p]) {
       auto& tw = w[is_from ? t.from_ : t.to_];
       if (!tw.has_value()) {
-        tw = pair_durations.hull_;
+        tw = pairs.durations_[p].hull_;
       }
       narrow(*tw, t);
     }

@@ -19,6 +19,7 @@
 #include "utl/erase_duplicates.h"
 
 #include "nigiri/loader/build_footpaths.h"
+#include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
@@ -78,9 +79,9 @@ inline timetable load_feeds(
   loader::finalize(
       tt, ctx,
       {.merge_dupes_intra_src_ = false,
-           .merge_dupes_inter_src_ = false,
-           .max_footpath_length_ = std::numeric_limits<std::uint16_t>::max(),
-           .walks_ = std::move(walks)});
+       .merge_dupes_inter_src_ = false,
+       .max_footpath_length_ = std::numeric_limits<std::uint16_t>::max(),
+       .walks_ = std::move(walks)});
   return tt;
 }
 
@@ -249,6 +250,8 @@ inline routing::query exact_query(timetable const& tt,
 inline void add_empty_profile(timetable& tt, profile_idx_t const prf) {
   tt.locations_.footpaths_out_[prf].resize(tt.n_locations());
   loader::expand_profile_to_virts(tt, prf);
+  loader::build_lb_graph<direction::kForward>(tt, prf);
+  loader::build_lb_graph<direction::kBackward>(tt, prf);
 }
 
 // Stop-to-stop search, departing at hhmm on kDay.

@@ -13,6 +13,17 @@ import_context::import_context(timetable& tt)
       section_providers_{tt.transport_section_providers_.make_cache()},
       section_directions_{tt.transport_section_directions_.make_cache()} {}
 
+std::span<delta const> get_stop_times(timetable const& tt,
+                                      import_context const& ctx,
+                                      route_idx_t const r,
+                                      stop_idx_t const i,
+                                      event_type const ev) {
+  auto const n = static_cast<std::size_t>(tt.route_transport_ranges_[r].size());
+  return {&ctx.route_stop_times_[ctx.route_stop_time_ranges_[r].from_ +
+                                 event_idx(i, ev) * n],
+          n};
+}
+
 bitfield_idx_t register_bitfield(timetable& tt,
                                  import_context& ctx,
                                  bitfield const& b) {

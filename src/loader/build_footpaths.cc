@@ -7,13 +7,12 @@
 
 #include "geo/latlng.h"
 
-#include "utl/helpers/algorithm.h"
 #include "utl/parallel_for.h"
 
+#include "nigiri/loader/apply_transfer_rules.h"
 #include "nigiri/loader/import_context.h"
 #include "nigiri/loader/link_nearby_stations.h"
 #include "nigiri/loader/merge_duplicates.h"
-#include "nigiri/loader/virtual_locations.h"
 #include "nigiri/common/dial.h"
 #include "nigiri/constants.h"
 #include "nigiri/logging.h"
@@ -33,14 +32,7 @@ duration_t max_with_transfer_times(timetable const& tt,
   return std::max({walk, transfer_time(from), transfer_time(to)});
 }
 
-void add_if_not_exists(auto bucket, footpath const fp) {
-  if (utl::none_of(bucket, [&](footpath const x) {
-        return x.target() == fp.target();
-      })) {
-    bucket.push_back(fp);
-  }
-}
-
+// Duplicates are fine: add_transitive_walks keeps the shortest per target.
 void add_equivalence_footpaths(
     timetable const& tt,
     import_context const& ctx,
@@ -54,8 +46,8 @@ void add_equivalence_footpaths(
                                      geo::approx_distance_lng_degrees(pos)));
     auto const minutes = std::max(2.0, std::ceil((dist / kWalkSpeed) / 60.0));
     if (minutes <= max) {
-      add_if_not_exists(walks[a],
-                        {b, duration_t{static_cast<duration_t::rep>(minutes)}});
+      walks[a].emplace_back(b,
+                            duration_t{static_cast<duration_t::rep>(minutes)});
     }
   };
 
@@ -69,9 +61,10 @@ void add_equivalence_footpaths(
   }
 }
 
-// A footpath is one change: a walk A -> B -> C needs its own footpath. Adds
-// the chains of the walks so far up to max_footpath_length walking minutes -
-// transfer times come afterwards (walking through a stop is no change there).
+// A footpath is one change: a walk A -> B -> C needs its own footpath. Replaces
+// the walks by their chains (the shortest per target, direct walks included) up
+// to max_footpath_length walking minutes - transfer times come afterwards
+// (walking through a stop is no change there).
 void add_transitive_walks(timetable const& tt,
                           mutable_fws_multimap<location_idx_t, footpath>& fps,
                           std::uint16_t const max_footpath_length) {
@@ -125,17 +118,11 @@ void add_transitive_walks(timetable const& tt,
         s.reached_.clear();
       });
 
-  // Keep the shortest walk per pair.
   for (auto l = location_idx_t{0U}; l != n; ++l) {
     auto bucket = fps[l];
+    bucket.clear();
     for (auto const c : chains[to_idx(l)]) {
-      auto const it = utl::find_if(
-          bucket, [&](footpath const x) { return x.target() == c.target(); });
-      if (it == end(bucket)) {
-        bucket.push_back(c);
-      } else if (c.duration() < it->duration()) {
-        *it = c;
-      }
+      bucket.push_back(c);
     }
   }
 }
@@ -149,9 +136,6 @@ void build_footpaths(timetable& tt,
   link_nearby_stations(tt, ctx, walks);  // the equivalences
   if (!opt.walks_) {
     auto const timer = scoped_timer{"loader.footpath.beelines"};
-
-    // Walks between nearby and equivalent stops and their chains, in walking
-    // minutes.
     add_equivalence_footpaths(tt, ctx, walks, opt.max_footpath_length_);
     add_transitive_walks(tt, walks, opt.max_footpath_length_);
   }
@@ -175,6 +159,8 @@ void build_footpaths(timetable& tt,
           footpath{t, max_with_transfer_times(tt, l, t, bucket[i].duration())};
     }
   }
+
+  // Then transfer rules.
   apply_transfer_rules(tt, ctx, shapes, walks);
 }
 

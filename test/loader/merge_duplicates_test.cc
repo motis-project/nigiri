@@ -908,11 +908,10 @@ TEST(loader, merge_stats_json) {
 TEST(loader, merge_intra_src_attrs_differ) {
   auto const n_merged = [](std::string_view const bikes_b,
                            std::string_view const pickup_b) {
-    auto const tt =
-        loader::load(attr_split_files(bikes_b, pickup_b),
-                     {2024_y / September / 1, 2024_y / September / 6},
-                     {.merge_dupes_intra_src_ = true,
-                      .merge_dupes_inter_src_ = false});
+    auto const tt = loader::load(
+        attr_split_files(bikes_b, pickup_b),
+        {2024_y / September / 1, 2024_y / September / 6},
+        {.merge_dupes_intra_src_ = true, .merge_dupes_inter_src_ = false});
 
     auto n = 0U;
     for (auto t = transport_idx_t{0U}; t != tt.next_transport_idx(); ++t) {

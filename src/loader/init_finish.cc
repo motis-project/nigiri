@@ -7,6 +7,7 @@
 #include "geo/box.h"
 
 #include "nigiri/loader/build_footpaths.h"
+#include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/compress_stop_times.h"
 #include "nigiri/loader/import_context.h"
 #include "nigiri/loader/register.h"
@@ -209,10 +210,6 @@ void finalize(timetable& tt,
   tt.location_routes_.resize(tt.n_locations());
 
   {
-    auto const timer = scoped_timer{"loader.compress_stop_times"};
-    compress_stop_times(tt, ctx);
-  }
-  {
     auto const timer = scoped_timer{"loader.compact_trip_ids"};
     tt.locations_.children_ = make_sparse_vecvec(ctx.children_);
     for (auto const [src, trips] : utl::enumerate(ctx.route_id_trips_)) {
@@ -264,6 +261,19 @@ void finalize(timetable& tt,
               });
   }
   build_footpaths(tt, ctx, opt, shapes);
+  {
+    auto const timer = scoped_timer{"loader.compress_stop_times"};
+    compress_stop_times(tt, ctx);
+  }
+  {
+    auto const timer = scoped_timer{"loader.lb_graph"};
+    for (auto prf = profile_idx_t{0U}; prf != kNProfiles; ++prf) {
+      if (!tt.locations_.footpaths_out_[prf].empty()) {
+        build_lb_graph<direction::kForward>(tt, prf);
+        build_lb_graph<direction::kBackward>(tt, prf);
+      }
+    }
+  }
   {
     auto const timer = scoped_timer{"loader.compact_trip_transport_ranges"};
     tt.trip_transport_ranges_ = make_sparse_vecvec(ctx.trip_transport_ranges_);

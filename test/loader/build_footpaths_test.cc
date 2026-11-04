@@ -115,12 +115,11 @@ TEST(loader, build_footpaths) {
 // the map. A transfer shorter than the walk (1 min for 222 m) is raised to the
 // walking time.
 TEST(loader, build_footpaths_drop_unwalkable) {
-  auto const tt = loader::load({{loader::mem_dir::read(unwalkable_files),
-                                 {.adjust_footpaths_ = true,
-                                  .default_tz_ = "Europe/Berlin"}}},
-                               {2024_y / March / 1, 2024_y / March / 2},
-                               {.merge_dupes_intra_src_ = false,
-                                .merge_dupes_inter_src_ = false});
+  auto const tt = loader::load(
+      {{loader::mem_dir::read(unwalkable_files),
+        {.adjust_footpaths_ = true, .default_tz_ = "Europe/Berlin"}}},
+      {2024_y / March / 1, 2024_y / March / 2},
+      {.merge_dupes_intra_src_ = false, .merge_dupes_inter_src_ = false});
 
   auto ss = std::stringstream{};
   for (auto const [i, x] : utl::enumerate(tt.locations_.footpaths_out_[0])) {

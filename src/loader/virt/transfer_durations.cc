@@ -5,9 +5,9 @@
 #include "utl/get_or_create.h"
 #include "utl/zip.h"
 
-#include "nigiri/loader/virt/footpaths.h"
 #include "nigiri/loader/virt/signatures.h"
 #include "nigiri/footpath.h"
+#include "nigiri/for_each_meta.h"
 #include "nigiri/stop.h"
 #include "nigiri/timetable.h"
 
@@ -34,16 +34,13 @@ duration_t get_transfer_time(timetable const& tt, location_idx_t const l) {
   return t == kNoTransferAllowed ? kNever : duration_t{t};
 }
 
+// Unqualified transfer rules are already applied to the walks.
 duration_t get_walk(timetable const& tt,
                     mutable_fws_multimap<location_idx_t, footpath> const& walks,
-                    rule_index const& stop_rules,
                     location_idx_t const from,
                     location_idx_t const to) {
   if (from == to) {
     return get_transfer_time(tt, from);
-  }
-  if (auto const rule = stop_rules.get(from, to); rule.has_value()) {
-    return *rule == footpath::kBan ? kNever : *rule;
   }
   auto walk = kNever;
   for (auto const fp : walks[from]) {
@@ -58,9 +55,6 @@ hash_map<transfer_pair, transfer_durations> get_transfer_durations(
     timetable const& tt,
     mutable_fws_multimap<location_idx_t, footpath> const& walks,
     signatures const& sigs) {
-  auto const& locs = tt.locations_;
-  auto const stop_rules = get_rule_index(tt);
-
   // Mark stops with qualified transfer rules.
   auto rule_stops = bitvec_map<location_idx_t>{};
   rule_stops.resize(tt.n_locations());
@@ -80,12 +74,11 @@ hash_map<transfer_pair, transfer_durations> get_transfer_durations(
   // Build convex hull interval of
   // - the fallback duration (unqualified rule / routed / beelined)
   // - and all qualified transfer rule durations (forbidden => max=kNever)
+  // Rules map to the stop and all descendants (as unqualified rules do).
   auto durations_of = hash_map<transfer_pair, transfer_durations>{};
   auto const for_each_stop = [&](location_idx_t const l, auto&& fn) {
-    fn(l);
-    for (auto const c : locs.children_[l]) {
-      fn(c);
-    }
+    routing::for_each_meta(tt, nullptr,
+                           routing::location_match_mode::kOnlyChildren, l, fn);
   };
   for (auto const& r : tt.transfer_rules_.rules_) {
     if (!r.is_qualified()) {
@@ -99,7 +92,7 @@ hash_map<transfer_pair, transfer_durations> get_transfer_durations(
         }
         auto& d =
             utl::get_or_create(durations_of, transfer_pair{from, to}, [&]() {
-              auto const fallback = get_walk(tt, walks, stop_rules, from, to);
+              auto const fallback = get_walk(tt, walks, from, to);
               return transfer_durations{
                   fallback, window_t{fallback, fallback + duration_t{1}}};
             });

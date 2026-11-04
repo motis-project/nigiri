@@ -28,9 +28,10 @@ struct dist_at {
   double distance_lng_degrees_;
 };
 
-void link_nearby_stations(timetable& tt,
-                          import_context& ctx,
-                          mutable_fws_multimap<location_idx_t, footpath>& walks) {
+void link_nearby_stations(
+    timetable& tt,
+    import_context& ctx,
+    mutable_fws_multimap<location_idx_t, footpath>& walks) {
   constexpr auto const kLinkNearbyMaxDistance = 300.0;  // [m];
   constexpr auto const kEqDist = 100.0;  // [m];
 

@@ -20,8 +20,8 @@ struct location_route_stop {
   route_idx_t route_;
   stop_idx_t stop_idx_;
   std::span<signature_idx_t const> sigs_;
-  bool has_arr_;
-  bool has_dep_;
+  std::span<delta const> arr_;  // empty: no arrival (exit) at this stop
+  std::span<delta const> dep_;  // empty: no departure (entry) at this stop
   route_stop_idx_t route_stop_{route_stop_idx_t::invalid()};
 };
 
@@ -29,6 +29,7 @@ using location_route_stops_t = vecvec<location_idx_t, location_route_stop>;
 
 location_route_stops_t get_location_route_stops(
     timetable const& tt,
+    import_context const& ctx,
     signatures const& sigs,
     hash_map<transfer_pair, transfer_durations> const& durations_of,
     route_stop_pairs& pairs) {
@@ -53,20 +54,20 @@ location_route_stops_t get_location_route_stops(
           if (stp.location_idx() != l || sigs.get(r, i).empty()) {
             continue;
           }
+          auto const times = [&](bool const has, event_type const ev) {
+            return has ? get_stop_times(tt, ctx, r, i, ev)
+                       : std::span<delta const>{};
+          };
           auto s = location_route_stop{
               .route_ = r,
               .stop_idx_ = i,
               .sigs_ = sigs.get(r, i),
-              .has_arr_ = i != 0U && stp.out_allowed(),
-              .has_dep_ = i + 1U != seq.size() && stp.in_allowed()};
-          auto const rs = route_stop{r, i, l};
+              .arr_ = times(i != 0U && stp.out_allowed(), event_type::kArr),
+              .dep_ = times(i + 1U != seq.size() && stp.in_allowed(),
+                            event_type::kDep)};
           s.route_stop_ = pairs.get_or_create_route_stop(
-              s.is_uniform()
-                  ? route_stop{route_idx_t::invalid(), stop_idx_t{0U}, l,
-                               signatures::get(
-                                   s.sigs_, route_transport_idx_t::invalid())}
-                  : rs);
-          pairs.route_stop_of_.emplace(rs, s.route_stop_);
+              s.is_uniform() ? to_signature_stop(l, s.sigs_.front())
+                             : route_stop{r, i, l});
           v.push_back(s);
         }
       }
@@ -80,9 +81,10 @@ template <typename Fn>
 void for_each_transfer(timetable const& tt,
                        route_idx_t const rx,
                        route_idx_t const ry,
-                       event_times const arrivals,
-                       event_times const departures,
+                       std::span<delta const> const arrivals,
+                       std::span<delta const> const departures,
                        window_t const& hull,
+                       std::vector<std::size_t>& first,
                        Fn&& fn) {
   auto const traffic_days =
       [&](route_idx_t const r,
@@ -91,6 +93,9 @@ void for_each_transfer(timetable const& tt,
                              [tt.route_transport_ranges_[r].from_ + to_idx(u)]];
   };
   auto const mam_of = [](delta const d) { return i32_minutes{d.mam()}; };
+  auto const day_of = [](i32_minutes const t) {
+    return std::chrono::floor<date::days>(t);
+  };
   auto const arr_day = i32_minutes{date::days{arrivals.front().days()}};
   auto const dep_day = i32_minutes{date::days{departures.front().days()}};
   assert(arrivals.front().days() == arrivals.back().days());
@@ -99,27 +104,36 @@ void for_each_transfer(timetable const& tt,
   auto const last_dep = dep_day + mam_of(departures.back());
   auto const lo = hull.from_;
   auto const hi = hull.to_ - duration_t{1};
+
+  auto const min_offset =
+      day_of(arr_day + mam_of(arrivals.front()) + lo - last_dep);
+  auto const max_offset =
+      day_of(arr_day + mam_of(arrivals.back()) + hi - first_dep);
+  first.assign(static_cast<std::size_t>((max_offset - min_offset).count() + 1),
+               0U);
+
   auto const n_arrivals = route_transport_idx_t{arrivals.size()};
   for (auto a = route_transport_idx_t{0U}; a != n_arrivals; ++a) {
     auto const arr = arr_day + mam_of(arrivals[to_idx(a)]);
     auto const& a_days = traffic_days(rx, a);
-    for (auto offset = std::chrono::floor<date::days>(arr + lo - last_dep);
-         offset <= std::chrono::floor<date::days>(arr + hi - first_dep);
-         ++offset) {
+    for (auto offset = day_of(arr + lo - last_dep);
+         offset <= day_of(arr + hi - first_dep); ++offset) {
       auto const arrival = arr - offset;
       auto const dep_from = arrival + lo - dep_day;
       auto const dep_to = arrival + hi - dep_day;
-      auto it = std::lower_bound(
-          departures.begin(), departures.end(), dep_from,
-          [&](delta const d, i32_minutes const t) { return mam_of(d) < t; });
-      if (it == departures.end() || mam_of(*it) >= dep_to) {
+      auto& i = first[static_cast<std::size_t>((offset - min_offset).count())];
+      while (i != departures.size() && mam_of(departures[i]) < dep_from) {
+        ++i;
+      }
+      if (i == departures.size() || mam_of(departures[i]) >= dep_to) {
         continue;
       }
       auto const n = offset.count();
       auto const days = n >= 0 ? a_days << static_cast<std::size_t>(n)
                                : a_days >> static_cast<std::size_t>(-n);
-      for (; it != departures.end() && mam_of(*it) < dep_to; ++it) {
-        auto const b = route_transport_idx_t{it - departures.begin()};
+      for (auto j = i; j != departures.size() && mam_of(departures[j]) < dep_to;
+           ++j) {
+        auto const b = route_transport_idx_t{j};
         if (rx == ry && a == b && n == 0) {
           continue;
         }
@@ -127,8 +141,8 @@ void for_each_transfer(timetable const& tt,
           continue;
         }
         fn(a, b,
-           std::chrono::duration_cast<duration_t>(dep_day + mam_of(*it) -
-                                                  arrival));
+           std::chrono::duration_cast<duration_t>(
+               dep_day + mam_of(departures[j]) - arrival));
       }
     }
   }
@@ -141,28 +155,25 @@ void add_transport_transfers(
     location_route_stops_t::const_bucket to_route_stops,
     auto&& get_expected_duration,
     route_stop_pairs& pairs) {
+  auto first = std::vector<std::size_t>{};
   for (auto const& from_route_stop : from_route_stops) {
-    if (!from_route_stop.has_arr_) {
+    if (from_route_stop.arr_.empty()) {
       continue;
     }
     for (auto const& to_route_stop : to_route_stops) {
-      if (!to_route_stop.has_dep_) {
+      if (to_route_stop.dep_.empty()) {
         continue;
       }
       auto p = route_stop_pair_idx_t::invalid();
       for_each_transfer(
           tt, from_route_stop.route_, to_route_stop.route_,
-          tt.event_times_at_stop(from_route_stop.route_,
-                                 from_route_stop.stop_idx_, event_type::kArr),
-          tt.event_times_at_stop(to_route_stop.route_, to_route_stop.stop_idx_,
-                                 event_type::kDep),
-          pair_durations.hull_,
+          from_route_stop.arr_, to_route_stop.dep_, pair_durations.hull_, first,
           [&](route_transport_idx_t const a, route_transport_idx_t const b,
               duration_t const gap) {
             if (p == route_stop_pair_idx_t::invalid()) {
               p = pairs.get_or_create_pair(from_route_stop.route_stop_,
                                            to_route_stop.route_stop_,
-                                           pair_durations.hull_);
+                                           pair_durations);
             }
             pairs.add_transfer(
                 p, transfer{a, b, gap,
@@ -184,7 +195,7 @@ void add_base_transfers(timetable const& tt,
                         route_stop_pairs& pairs) {
   for (auto const is_arr : {true, false}) {
     for (auto const& s : is_arr ? from_route_stops : to_route_stops) {
-      if (!(is_arr ? s.has_arr_ : s.has_dep_)) {
+      if ((is_arr ? s.arr_ : s.dep_).empty()) {
         continue;
       }
       auto const from_route_stop_idx =
@@ -194,7 +205,7 @@ void add_base_transfers(timetable const& tt,
           is_arr ? pairs.get_or_create_route_stop(to_base_stop(to))
                  : s.route_stop_;
       auto const p = pairs.get_or_create_pair(
-          from_route_stop_idx, to_route_stop_idx, pair_durations.hull_);
+          from_route_stop_idx, to_route_stop_idx, pair_durations);
       auto const n = static_cast<std::uint32_t>(
           tt.route_transport_ranges_[s.route_].size());
       for (auto t = route_transport_idx_t{0U};
@@ -220,12 +231,13 @@ void add_base_transfers(timetable const& tt,
 
 route_stop_pairs get_route_stop_pairs(
     timetable const& tt,
+    import_context const& ctx,
     signatures const& sigs,
     hash_map<transfer_pair, transfer_durations> const& durations_of) {
   auto pairs = route_stop_pairs{};
   pairs.of_route_.resize(tt.n_routes());
   auto const location_route_stops =
-      get_location_route_stops(tt, sigs, durations_of, pairs);
+      get_location_route_stops(tt, ctx, sigs, durations_of, pairs);
   auto expected_duration_cache =
       hash_map<pair<signature_idx_t, signature_idx_t>, duration_t>{};
   for (auto const& [from_to, pair_durations] : durations_of) {

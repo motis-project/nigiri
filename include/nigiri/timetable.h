@@ -442,15 +442,9 @@ struct timetable {
   vector<delta> pattern_offsets_;
 
   // Offset between the stored time and the time given in the GTFS timetable
-  // Required to match GTFS-RT with GTFS-static trips.
+  // (day offset for first departures > 24:00:00 + timezone offset, see
+  // delta::to_offset). Required to match GTFS-RT with GTFS-static trips.
   vector_map<transport_idx_t, delta> transport_first_dep_offset_;
-
-  // Services in GTFS can start with a first departure time > 24:00:00
-  // The loader transforms this into a time <24:00:00 and shifts the bits in
-  // the bitset accordingly. To still be able to match the traffic day from
-  // the corresponding service_id, it's necessary to store the number of days
-  // which is floor(stop_times.txt:departure_time/1440)
-  vector_map<transport_idx_t, std::uint8_t> initial_day_offset_;
 
   // Trip index -> traffic day bitfield
   vector_map<transport_idx_t, bitfield_idx_t> transport_traffic_days_;

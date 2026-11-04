@@ -8,14 +8,11 @@
 
 #include "utl/get_or_create.h"
 
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/transfer_rules.h"
 #include "nigiri/loader/virt/signatures.h"
 #include "nigiri/loader/virt/transfer_durations.h"
 #include "nigiri/types.h"
-
-namespace nigiri {
-struct timetable;
-}  // namespace nigiri
 
 namespace nigiri::loader {
 
@@ -63,6 +60,11 @@ inline void narrow(window_t& w, transfer const& t) {
   }
 }
 
+inline route_stop to_signature_stop(location_idx_t const l,
+                                    signature_idx_t const sig) {
+  return {route_idx_t::invalid(), stop_idx_t{0U}, l, sig};
+}
+
 inline route_stop to_base_stop(location_idx_t const l) {
   return {route_idx_t::invalid(), stop_idx_t{0U}, l, kEmptySig};
 }
@@ -90,12 +92,13 @@ struct route_stop_pairs {
 
   route_stop_pair_idx_t get_or_create_pair(route_stop_idx_t const from,
                                            route_stop_idx_t const to,
-                                           window_t const& hull) {
+                                           transfer_durations const d) {
     return utl::get_or_create(pair_of_, route_stop_pair{from, to}, [&]() {
       auto const p = route_stop_pair_idx_t{pairs_.size()};
       pairs_.push_back(route_stop_pair{from, to});
       transfers_.emplace_back();
-      windows_.push_back(hull);
+      durations_.push_back(d);
+      windows_.push_back(d.hull_);
       auto const from_route = route_stops_[from].route_;
       auto const to_route = route_stops_[to].route_;
       if (from_route != route_idx_t::invalid()) {
@@ -121,12 +124,14 @@ struct route_stop_pairs {
   vector_map<route_stop_pair_idx_t, route_stop_pair> pairs_;
   hash_map<route_stop_pair, route_stop_pair_idx_t> pair_of_;
   vector_map<route_stop_pair_idx_t, std::vector<transfer>> transfers_;
+  vector_map<route_stop_pair_idx_t, transfer_durations> durations_;
   vector_map<route_stop_pair_idx_t, window_t> windows_;
   vector_map<route_idx_t, std::vector<route_stop_pair_idx_t>> of_route_;
 };
 
 route_stop_pairs get_route_stop_pairs(
     timetable const&,
+    import_context const&,
     signatures const&,
     hash_map<transfer_pair, transfer_durations> const& durations_of);
 

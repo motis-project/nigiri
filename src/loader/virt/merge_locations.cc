@@ -12,7 +12,6 @@ constexpr auto const kAnyDuration =
     window_t{duration_t::min(), duration_t::max()};
 
 vector_map<route_stop_idx_t, route_stop_idx_t> merge_locations(
-    hash_map<transfer_pair, transfer_durations> const& durations_of,
     route_stop_pairs& pairs) {
   auto rs_pairs =
       vector_map<route_stop_idx_t, std::vector<route_stop_pair_idx_t>>(
@@ -34,6 +33,7 @@ vector_map<route_stop_idx_t, route_stop_idx_t> merge_locations(
   struct pair_window {
     route_stop_pair pair_;
     window_t window_;
+    route_stop_pair_idx_t src_;
   };
   auto src_pairs = std::vector<pair_window>{};
   auto updates = std::vector<pair_window>{};
@@ -51,7 +51,7 @@ vector_map<route_stop_idx_t, route_stop_idx_t> merge_locations(
     for (auto const p : rs_pairs[src]) {
       auto const [from, to] = pairs.pairs_[p];
       src_pairs.push_back({route_stop_pair{location_of(from), location_of(to)},
-                           pairs.windows_[p]});
+                           pairs.windows_[p], p});
     }
 
     // For each pair, intersect their intervals.
@@ -68,24 +68,21 @@ vector_map<route_stop_idx_t, route_stop_idx_t> merge_locations(
       for (auto const& u : run) {
         w = w.intersect(u.window_);
       }
-      auto const is_ok =
-          pairs.is_base(x.from_) && pairs.is_base(x.to_)
-              ? w.contains(
-                    durations_of
-                        .at(transfer_pair{pairs.route_stops_[x.from_].base_,
-                                          pairs.route_stops_[x.to_].base_})
-                        .fallback_)
-              : is_admissible(w);
+      auto const src_p = run.front().src_;
+      auto const is_ok = pairs.is_base(x.from_) && pairs.is_base(x.to_)
+                             ? w.contains(pairs.durations_[src_p].fallback_)
+                             : is_admissible(w);
       if (!is_ok) {
         return false;
       }
-      updates.push_back({x, w});
+      updates.push_back({x, w, src_p});
     }
 
     // Join successful.
     // -> write updated windows + assign route stop src to dst.
-    for (auto const& [x, w] : updates) {
-      pairs.windows_[pairs.get_or_create_pair(x.from_, x.to_, w)] = w;
+    for (auto const& [x, w, src_p] : updates) {
+      pairs.windows_[pairs.get_or_create_pair(x.from_, x.to_,
+                                              pairs.durations_[src_p])] = w;
     }
     location[src] = dst;
 

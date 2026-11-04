@@ -1,12 +1,10 @@
 #include "nigiri/loader/virt/rewrite_routes.h"
 
 #include <cstdint>
-#include <type_traits>
 #include <utility>
 
 #include "utl/to_vec.h"
 
-#include "nigiri/loader/compress_stop_times.h"
 #include "nigiri/loader/import_context.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/shapes_storage.h"
@@ -23,10 +21,11 @@ void rewrite_routes(
     vecvec<route_idx_t, transport_idx_t> const& route_transports) {
   auto const n_routes = tt.route_transport_ranges_.size();
   auto const& starts = route_transports.bucket_starts_;
+
+  auto const old_transports = std::exchange(tt.route_transport_ranges_, {});
+  auto const old_ranges = std::exchange(ctx.route_stop_time_ranges_, {});
+  auto const old_times = std::exchange(ctx.route_stop_times_, {});
   auto& times = ctx.route_stop_times_;
-  tt.route_transport_ranges_.clear();
-  ctx.route_stop_time_ranges_.clear();
-  times.clear();
   for (auto r = route_idx_t{0U}; r != base_route.size(); ++r) {
     auto const o = base_route[r];
     auto const transports = route_transports[r];
@@ -35,15 +34,12 @@ void rewrite_routes(
         transport_idx_t{starts[to_idx(r) + 1U]});
 
     auto const begin_times = times.size();
-    auto const n_stops =
-        static_cast<stop_idx_t>(tt.route_location_seq_[r].size());
-    for (auto i = stop_idx_t{1U}; i != n_stops; ++i) {
+    auto const n = static_cast<std::size_t>(old_transports[o].size());
+    auto const n_events = 2U * (tt.route_location_seq_[r].size() - 1U);
+    for (auto e = std::size_t{0U}; e != n_events; ++e) {
       for (auto const t : transports) {
-        times.push_back(tt.event_mam(o, t, static_cast<stop_idx_t>(i - 1U),
-                                     event_type::kDep));
-      }
-      for (auto const t : transports) {
-        times.push_back(tt.event_mam(o, t, i, event_type::kArr));
+        times.push_back(old_times[old_ranges[o].from_ + e * n +
+                                  to_idx(t - old_transports[o].from_)]);
       }
     }
     ctx.route_stop_time_ranges_.emplace_back(
@@ -72,7 +68,6 @@ void rewrite_routes(
       shapes->route_segment_bboxes_.emplace_back(segments);
     }
   }
-  compress_stop_times(tt, ctx);
 
   auto const& order = route_transports.data_;
   auto inverse = vector_map<transport_idx_t, transport_idx_t>{};
@@ -87,22 +82,18 @@ void rewrite_routes(
     }
     v = std::move(copy);
   };
-  auto const permute_buckets = [&](auto& v) {
-    auto copy = std::remove_reference_t<decltype(v)>{};
+  auto const permute_buckets = [&](auto& v, auto empty) {
     for (auto const t : order) {
-      copy.emplace_back(v[t]);
+      empty.emplace_back(v[t]);
     }
-    v = std::move(copy);
+    v = std::move(empty);
   };
   permute(tt.transport_first_dep_offset_);
   permute(tt.transport_traffic_days_);
-  permute_buckets(tt.transport_to_trip_section_);
-  auto attributes =
-      decltype(tt.transport_section_attributes_)::with_default({});
-  for (auto const t : order) {
-    attributes.emplace_back(tt.transport_section_attributes_[t]);
-  }
-  tt.transport_section_attributes_ = std::move(attributes);
+  permute_buckets(tt.transport_to_trip_section_,
+                  decltype(tt.transport_to_trip_section_){});
+  permute_buckets(tt.transport_section_attributes_,
+                  decltype(tt.transport_section_attributes_)::with_default({}));
   permute(tt.transport_section_providers_.sequence_);
   permute(tt.transport_section_directions_.sequence_);
   for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {

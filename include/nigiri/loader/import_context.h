@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include "nigiri/common/dedup_vecvec.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -58,6 +60,12 @@ struct import_context {
 };
 
 bitfield_idx_t register_bitfield(timetable&, import_context&, bitfield const&);
+
+std::span<delta const> get_stop_times(timetable const&,
+                                      import_context const&,
+                                      route_idx_t r,
+                                      stop_idx_t i,
+                                      event_type);
 
 void add_transport(timetable&, import_context&, timetable::transport&&);
 

@@ -471,10 +471,10 @@ B,B,2,0,line1,line2,,
 )";
 
 TEST(fares, area_sets) {
-  auto const tt = loader::load(
-      mem_dir::read(
-          fmt::format("{}{}{}", kBasicTimetable, kAreaSets, kRulesAtB)),
-      {2022_y / January / 1, 2022_y / December / 1});
+  auto const tt =
+      loader::load(mem_dir::read(fmt::format("{}{}{}", kBasicTimetable,
+                                             kAreaSets, kRulesAtB)),
+                   {2022_y / January / 1, 2022_y / December / 1});
   ASSERT_LT(0U, n_virts(tt));
 
   auto const results = raptor_search(tt, nullptr, "A", "C",

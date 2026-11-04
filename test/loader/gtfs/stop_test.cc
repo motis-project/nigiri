@@ -125,8 +125,8 @@ B,B_CODE,Platform B,,52.0,13.0,0,P,
 C,,Platform C,,52.0,13.0,0,P,
 )"};
 
-  auto const [stops, _accessibility] = read_stops(
-      source_idx_t{0}, tt, ctx, i18n, timezones, stops_content, 0U);
+  auto const [stops, _accessibility] =
+      read_stops(source_idx_t{0}, tt, ctx, i18n, timezones, stops_content, 0U);
 
   auto const platform_code = [&](std::string_view const id) {
     return tt.get_default_translation(

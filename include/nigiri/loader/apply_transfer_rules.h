@@ -16,6 +16,6 @@ void apply_transfer_rules(
     timetable&,
     import_context&,
     shapes_storage*,
-    mutable_fws_multimap<location_idx_t, footpath> const& walks);
+    mutable_fws_multimap<location_idx_t, footpath>& walks);
 
 }  // namespace nigiri::loader
