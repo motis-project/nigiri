@@ -180,6 +180,10 @@ struct raptor {
     round_times_.reset(kInvalidArray);
   }
 
+  void limit_time_at_dest(unsigned const k, unixtime_t const t) {
+    update_time_at_dest(k, unix_to_delta(base(), t));
+  }
+
   void next_start_time() {
     utl::fill(best_, kInvalidArray);
     utl::fill(tmp_, kInvalidArray);
