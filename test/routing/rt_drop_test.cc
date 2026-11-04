@@ -1,7 +1,6 @@
 #include "gtest/gtest.h"
 
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/rt/create_rt_timetable.h"
@@ -9,7 +8,6 @@
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
-using namespace nigiri::loader::gtfs;
 using namespace nigiri::routing;
 using namespace std::chrono_literals;
 
@@ -62,13 +60,8 @@ unixtime_t t(auto&& x) { return unixtime_t{sys_days{kDay} + x}; }
 unixtime_t at_8(year_month_day const d) { return unixtime_t{sys_days{d} + 8h}; }
 
 timetable load_tt() {
-  auto tt = timetable{};
-  register_special_stations(tt);
-  tt.date_range_ = {sys_days{2019_y / March / 25},
-                    sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
-  return tt;
+  return loader::load(test_files(),
+                      {2019_y / March / 25, 2019_y / November / 1});
 }
 
 }  // namespace
