@@ -120,6 +120,7 @@ bitfield_idx_t timetable::register_bitfield(bitfield const& b) {
 }
 
 route_idx_t timetable::register_route(
+    source_idx_t const src,
     basic_string<stop::value_type> const& stop_seq,
     basic_string<clasz> const& clasz_sections,
     std::array<bitvec, route_flag::kNumRouteFlags> const& flags_per_section) {
@@ -127,6 +128,16 @@ route_idx_t timetable::register_route(
   assert(!clasz_sections.empty());
 
   auto const idx = route_location_seq_.size();
+
+  auto const r = route_idx_t{idx};
+  while (src_routes_.size() <= to_idx(src)) {
+    src_routes_.emplace_back(interval<route_idx_t>{r, r});
+  }
+  auto& src_range = src_routes_[src];
+  utl::verify(src_range.to_ == r,
+              "routes of source {} are not contiguous |  {}, {}", src,
+              src_range.to_, r);
+  src_range.to_ = route_idx_t{idx + 1U};
 
   route_transport_ranges_.emplace_back(
       transport_idx_t{transport_traffic_days_.size()},
