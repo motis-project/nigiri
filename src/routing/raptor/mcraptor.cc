@@ -460,10 +460,10 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
     return false;
   }
   // clasz of the alighted section (route_clasz_ is the first section's)
-  auto const n_sec = static_cast<std::uint32_t>(sections.size());
-  auto const sec = static_cast<std::uint32_t>(kFwd ? stop_idx - 1 : stop_idx);
-  auto const ride = ride_attrs{
-      .clasz_ = n_sec == 0U ? fallback : sections[std::min(sec, n_sec - 1U)]};
+  auto const ride =
+      ride_attrs{.clasz_ = ride_clasz(
+                     sections, fallback,
+                     static_cast<unsigned>(kFwd ? stop_idx - 1 : stop_idx))};
   auto const ride_crit = Criteria::from_ride(
       by_transport,
       static_cast<std::uint16_t>(dir(by_transport - rl.board_dep_)), ride,

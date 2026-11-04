@@ -2,6 +2,7 @@
 
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 #include "date/date.h"
@@ -41,28 +42,11 @@ struct algo_for<SearchDir, Vias, Rt, gpu::gpu_raptor_state> {
   using type = gpu::gpu_raptor<SearchDir, /*WithBounds=*/false>;
 };
 
-template <direction SearchDir, via_offset_t Vias, bool Rt>
-struct algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_state> {
-  using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::arr>;
-};
-
-template <direction SearchDir, via_offset_t Vias, bool Rt>
-struct algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_non_transit_state> {
-  using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::non_transit>;
-};
-
-template <direction SearchDir, via_offset_t Vias, bool Rt>
-struct algo_for<SearchDir, Vias, Rt, gpu::gpu_mcraptor_mode_filter_state> {
-  using type = gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::mode_filter>;
-};
-
-template <direction SearchDir, via_offset_t Vias, bool Rt>
-struct algo_for<SearchDir,
-                Vias,
-                Rt,
-                gpu::gpu_mcraptor_non_transit_mode_filter_state> {
-  using type =
-      gpu::gpu_mcraptor<SearchDir, gpu::mc_crit::non_transit_mode_filter>;
+// every GPU mcraptor state names its configuration
+template <direction SearchDir, via_offset_t Vias, bool Rt, typename AlgoState>
+  requires std::is_base_of_v<gpu::gpu_mcraptor_state, AlgoState>
+struct algo_for<SearchDir, Vias, Rt, AlgoState> {
+  using type = gpu::gpu_mcraptor<SearchDir, AlgoState::kCrit>;
 };
 #endif
 
@@ -220,6 +204,13 @@ NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_non_transit_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_mode_filter_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(
     gpu::gpu_mcraptor_non_transit_mode_filter_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_mode_switches_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(
+    gpu::gpu_mcraptor_non_transit_mode_switches_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(
+    gpu::gpu_mcraptor_mode_filter_mode_switches_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(
+    gpu::gpu_mcraptor_non_transit_mode_filter_mode_switches_state)
 #endif
 
 #undef NIGIRI_RAPTOR_SEARCH_INSTANTIATE

@@ -17,6 +17,7 @@
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
+#include "nigiri/routing/mc_criteria.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
@@ -107,7 +108,8 @@ struct arr_criteria {
 // Composable dimensions: the criteria protocol minus the arrival (arr_with owns
 // it). Each writes its own journey slot, so they combine freely.
 
-// Minutes on foot (offsets, footpaths), not the same-stop transfer buffer.
+// Walking (offsets, footpaths; not the same-stop transfer buffer) in units of
+// kNonTransitBin minutes, see non_transit_add().
 struct non_transit_dim {
   bool dominates(non_transit_dim const& o) const {
     return non_transit_ <= o.non_transit_;
@@ -116,7 +118,7 @@ struct non_transit_dim {
     return dominates(o);
   }
   static non_transit_dim at_start(std::uint16_t const ingress) {
-    return {ingress};
+    return {static_cast<std::uint8_t>(non_transit_add(0U, ingress))};
   }
   static non_transit_dim from_ride(std::uint16_t,
                                    ride_attrs const&,
@@ -125,12 +127,15 @@ struct non_transit_dim {
   }
   non_transit_dim with_transfer(int) const { return *this; }
   non_transit_dim with_walk(int, std::uint16_t const duration) const {
-    return {static_cast<std::uint16_t>(non_transit_ + duration)};
+    return {static_cast<std::uint8_t>(non_transit_add(non_transit_, duration))};
   }
-  void apply_to(journey& j) const { j.criteria_cost_ = non_transit_; }
+  void apply_to(journey& j) const {
+    j.criteria_cost_ =
+        static_cast<std::uint16_t>(non_transit_ * kNonTransitBin);
+  }
   bool operator==(non_transit_dim const&) const = default;
 
-  std::uint16_t non_transit_{0U};
+  std::uint8_t non_transit_{0U};  // units
 };
 
 // "Uses an avoided vehicle class" as a pareto dimension, not a filter: keeps
@@ -167,46 +172,33 @@ struct mode_filter_dim {
   bool mode_filter_{false};
 };
 
-// Vehicle-class switches between trips; suburban, subway, tram and bus are one
-// group. Labels in different classes only dominate with a switch to spare (the
-// next switch may differ); completed_dominates drops that margin.
+// Switches between vehicle class groups (mode_group()) from trip to trip.
+// Labels in different groups only dominate with a switch to spare (the next
+// switch may differ); completed_dominates drops that margin.
 struct mode_switches_dim {
-  // one past the last clasz doubles as "no trip ridden yet"
-  static constexpr clasz no_clasz() { return clasz::kNumClasses; }
-
-  static constexpr clasz group_of(clasz const c) {
-    switch (c) {
-      case clasz::kSuburban:
-      case clasz::kSubway:
-      case clasz::kTram: return clasz::kBus;
-      default: return c;
-    }
-  }
-
-  std::uint8_t switch_penalty(mode_switches_dim const& o) const {
-    return (clasz_ == o.clasz_ || clasz_ == no_clasz()) ? 0U : 1U;
-  }
   bool dominates(mode_switches_dim const& o) const {
-    return switches_ + switch_penalty(o) <= o.switches_;
+    return switches_dominate(group_, switches_, o.group_, o.switches_);
   }
   bool completed_dominates(mode_switches_dim const& o) const {
     return switches_ <= o.switches_;
   }
-  static mode_switches_dim at_start(std::uint16_t) { return {no_clasz(), 0U}; }
+  static mode_switches_dim at_start(std::uint16_t) {
+    return {static_cast<std::uint8_t>(kNoModeGroup), 0U};
+  }
   static mode_switches_dim from_ride(std::uint16_t,
                                      ride_attrs const& ra,
                                      mode_switches_dim const& prev) {
-    auto const group = group_of(ra.clasz_);
-    auto const switched = prev.clasz_ != no_clasz() && prev.clasz_ != group;
-    return {group,
-            static_cast<std::uint8_t>(prev.switches_ + (switched ? 1U : 0U))};
+    auto const group = mode_group(ra.clasz_);
+    return {static_cast<std::uint8_t>(group),
+            static_cast<std::uint8_t>(
+                switches_after_ride(prev.group_, prev.switches_, group))};
   }
   mode_switches_dim with_transfer(int) const { return *this; }
   mode_switches_dim with_walk(int, std::uint16_t) const { return *this; }
   void apply_to(journey& j) const { j.criteria_mode_switches_ = switches_; }
   bool operator==(mode_switches_dim const&) const = default;
 
-  clasz clasz_{clasz::kNumClasses};
+  std::uint8_t group_{static_cast<std::uint8_t>(kNoModeGroup)};
   std::uint8_t switches_{0U};
 };
 
@@ -306,19 +298,8 @@ struct basic_mcraptor_state {
   static constexpr auto const kBreadcrumbMask = kByRoute - 1U;
   static constexpr auto const kNoBreadcrumb = kBreadcrumbMask;
 
-  // The transit leg behind an arrival: the trip (a transport_idx_t on traffic
-  // day day_, or an rt_transport_idx_t if day_ is invalid), its board and
-  // alight stops, the arrival at the label's stop and the boarded label's
-  // breadcrumb (kNoBreadcrumb = start).
-  struct breadcrumb {
-    std::uint32_t transport_;
-    std::uint32_t parent_;
-    day_idx_t day_;
-    stop_idx_t board_;
-    stop_idx_t alight_;
-    delta_t arr_;
-  };
-  static_assert(sizeof(breadcrumb) == 16U);
+  // see mc_breadcrumb; parent_ == kNoBreadcrumb: boarded at the start
+  using breadcrumb = mc_breadcrumb;
 
   // One label of a stop's bag. round_ is an implicit pareto dimension (never
   // dominated by a higher round); dep_ tags the start time under range reuse,
