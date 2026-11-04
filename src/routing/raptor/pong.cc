@@ -285,9 +285,6 @@ routing_result pong(timetable const& tt,
         start_time +
         (kFwd ? 1 : -1) *
             std::min(q.max_travel_time_ + kMinLookAhead, kMaxTravelTime);
-    // Known journeys departing from this start time on stay available, so the
-    // search reaches their arrival times anyway: prune with them right away.
-    // Stored journeys are oriented backward.
     if constexpr (!kGpu) {
       for (auto const& j : s_state.results_) {
         if (!j.error_ && !is_better(j.dest_time_, start_time)) {
