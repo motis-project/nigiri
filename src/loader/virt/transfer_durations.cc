@@ -7,7 +7,6 @@
 
 #include "nigiri/loader/virt/signatures.h"
 #include "nigiri/footpath.h"
-#include "nigiri/for_each_meta.h"
 #include "nigiri/stop.h"
 #include "nigiri/timetable.h"
 
@@ -74,11 +73,12 @@ hash_map<transfer_pair, transfer_durations> get_transfer_durations(
   // Build convex hull interval of
   // - the fallback duration (unqualified rule / routed / beelined)
   // - and all qualified transfer rule durations (forbidden => max=kNever)
-  // Rules map to the stop and all descendants (as unqualified rules do).
   auto durations_of = hash_map<transfer_pair, transfer_durations>{};
   auto const for_each_stop = [&](location_idx_t const l, auto&& fn) {
-    routing::for_each_meta(tt, nullptr,
-                           routing::location_match_mode::kOnlyChildren, l, fn);
+    fn(l);
+    for (auto const c : tt.locations_.children_[l]) {
+      fn(c);
+    }
   };
   for (auto const& r : tt.transfer_rules_.rules_) {
     if (!r.is_qualified()) {

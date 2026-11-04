@@ -631,14 +631,17 @@ TEST(gtfs, transfer_rules_handover_stop_rule_of_arriving_trip_decides) {
 // ===========================================================================
 // Changes across days. Times are UTC (agency_timezone UTC): a trip runs on
 // 2019-05-01 + its day, the timetable spans four days. A -R1-> S -R2-> B, S
-// changes in 5 min.
+// changes in 5 min. C: start of R2 trips that pass S on a later travel day.
 // ===========================================================================
 
 timetable load_utc_feed(std::vector<test::trip_def> const& trips,
                         std::string_view const transfers) {
   return load_feeds(
-      {feed({{"A", 50.0, 6.0}, {"S", 50.0, 6.5}, {"B", 50.0, 7.0}}, trips,
-            fmt::format("S,S,2,300,,,,\n{}", transfers), {}, "UTC")},
+      {feed({{"A", 50.0, 6.0},
+             {"S", 50.0, 6.5},
+             {"B", 50.0, 7.0},
+             {"C", 50.5, 6.5}},
+            trips, fmt::format("S,S,2,300,,,,\n{}", transfers), {}, "UTC")},
       false, {}, date::days{4});
 }
 
@@ -648,35 +651,67 @@ std::optional<unixtime_t> utc_arrival(timetable const& tt,
       raptor_search(tt, nullptr, "A", "B", fmt::format("{} UTC", time)));
 }
 
-// T2 leaves S 3 min after T1 arrives, on the next day - or two days after T1
-// started, for a T1 that arrives at S at 49:58: only the guarantee makes the
-// change.
-TEST(gtfs, transfer_rules_guarantee_across_midnight) {
-  struct test_case {
-    std::vector<test::trip_def> trips_;
-    char const* start_;
-    char const* without_;
-    char const* with_;
+// T1 arrives at S on 2019-05-03 at 01:58 or 23:58, T2 leaves S 3 min later
+// (02:01, or 00:01 after midnight). Each of them is on its first or its third
+// travel day there: a trip on its third travel day started two days earlier
+// at 22:00 (T1 at A, T2 at C). Only the guarantee makes the change, else T2L
+// (19 min after T2).
+TEST(gtfs, transfer_rules_guarantee_day_shifts) {
+  constexpr auto const kDay = 1440;
+  auto const hhmm = [](int const m) {
+    return fmt::format("{:02}:{:02}", m / 60, m % 60);
   };
-  for (auto const& c : std::vector<test_case>{
-           {{{"T1", "R1", {{"A", "23:30"}, {"S", "23:58"}}},
-             {"T2", "R2", {{"S", "00:01"}, {"B", "00:30"}}, {}, 1U},
-             {"T2L", "R2", {{"S", "00:20"}, {"B", "00:50"}}, {}, 1U}},
-            "2019-05-01 23:00",
-            "2019-05-02 00:50 UTC",
-            "2019-05-02 00:30 UTC"},
-           {{{"T1", "R1", {{"A", "22:00"}, {"S", "49:58"}}},
-             {"T2", "R2", {{"S", "02:01"}, {"B", "02:30"}}, {}, 2U},
-             {"T2L", "R2", {{"S", "02:20"}, {"B", "02:50"}}, {}, 2U}},
-            "2019-05-01 21:00",
-            "2019-05-03 02:50 UTC",
-            "2019-05-03 02:30 UTC"}}) {
-    SCOPED_TRACE(c.start_);
-    EXPECT_EQ(t(c.without_),
-              utc_arrival(load_utc_feed(c.trips_, ""), c.start_));
-    auto const with = load_utc_feed(c.trips_, "S,S,1,,,,T1,T2\n");
-    ASSERT_LT(0U, n_virts(with));
-    EXPECT_EQ(t(c.with_), utc_arrival(with, c.start_));
+  auto const utc = [&](int const m) {
+    return fmt::format("2019-05-{:02} {}", 1 + m / kDay, hhmm(m % kDay));
+  };
+  for (auto const arr_day : {0, 2}) {
+    for (auto const dep_day : {0, 2}) {
+      for (auto const is_midnight : {false, true}) {
+        SCOPED_TRACE(fmt::format("T1 travel day {}, T2 travel day {}, {}",
+                                 arr_day, dep_day,
+                                 is_midnight ? "midnight" : "no midnight"));
+
+        // Minutes since 2019-05-01 00:00 UTC.
+        auto const arr = 2 * kDay + (is_midnight ? 23 * 60 + 58 : 60 + 58);
+        auto const dep = arr + 3;
+        auto const t1_start = (arr / kDay - arr_day) * kDay;
+        auto const t2_start = (dep / kDay - dep_day) * kDay;
+        auto const t1_dep = arr_day == 0 ? arr - 28 : t1_start + 22 * 60;
+
+        auto const times = std::vector<std::string>{hhmm(t1_dep - t1_start),
+                                                    hhmm(arr - t1_start),
+                                                    hhmm(22 * 60),
+                                                    hhmm(dep - t2_start),
+                                                    hhmm(dep + 29 - t2_start),
+                                                    hhmm(dep + 19 - t2_start),
+                                                    hhmm(dep + 48 - t2_start)};
+        auto const t2_stops = [&](std::string_view const s,
+                                  std::string_view const b) {
+          auto stops =
+              std::vector<std::pair<std::string_view, std::string_view>>{};
+          if (dep_day != 0) {
+            stops.emplace_back("C", times[2]);
+          }
+          stops.emplace_back("S", s);
+          stops.emplace_back("B", b);
+          return stops;
+        };
+        auto const t1_day = static_cast<unsigned>(t1_start / kDay);
+        auto const t2_day = static_cast<unsigned>(t2_start / kDay);
+        auto const trips = std::vector<test::trip_def>{
+            {"T1", "R1", {{"A", times[0]}, {"S", times[1]}}, {}, t1_day},
+            {"T2", "R2", t2_stops(times[3], times[4]), {}, t2_day},
+            {"T2L", "R2", t2_stops(times[5], times[6]), {}, t2_day}};
+
+        auto const start = utc(t1_dep - 30);
+        EXPECT_EQ(t(fmt::format("{} UTC", utc(dep + 48)).c_str()),
+                  utc_arrival(load_utc_feed(trips, ""), start));
+        auto const with = load_utc_feed(trips, "S,S,1,,,,T1,T2\n");
+        EXPECT_LT(0U, n_virts(with));
+        EXPECT_EQ(t(fmt::format("{} UTC", utc(dep + 29)).c_str()),
+                  utc_arrival(with, start));
+      }
+    }
   }
 }
 

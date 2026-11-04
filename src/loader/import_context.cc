@@ -18,7 +18,7 @@ std::span<delta const> get_stop_times(timetable const& tt,
                                       route_idx_t const r,
                                       stop_idx_t const i,
                                       event_type const ev) {
-  auto const n = static_cast<std::size_t>(tt.route_transport_ranges_[r].size());
+  auto const n = static_cast<unsigned>(tt.route_transport_ranges_[r].size());
   return {&ctx.route_stop_times_[ctx.route_stop_time_ranges_[r].from_ +
                                  event_idx(i, ev) * n],
           n};

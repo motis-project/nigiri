@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <utility>
+#include <vector>
 
 #include "utl/to_vec.h"
 
@@ -23,28 +24,40 @@ void rewrite_routes(
   auto const& starts = route_transports.bucket_starts_;
 
   auto const old_transports = std::exchange(tt.route_transport_ranges_, {});
-  auto const old_ranges = std::exchange(ctx.route_stop_time_ranges_, {});
-  auto const old_times = std::exchange(ctx.route_stop_times_, {});
+  auto pieces = hash_map<route_idx_t, std::vector<route_idx_t>>{};
+  for (auto r = route_idx_t{n_routes}; r != base_route.size(); ++r) {
+    pieces[base_route[r]].push_back(r);
+  }
+  auto& ranges = ctx.route_stop_time_ranges_;
   auto& times = ctx.route_stop_times_;
+  ranges.resize(base_route.size());
+  auto block = std::vector<delta>{};
+  for (auto const& [o, split] : pieces) {
+    auto const n = static_cast<unsigned>(old_transports[o].size());
+    auto const n_events =
+        static_cast<unsigned>(tt.route_location_seq_[o].size() * 2U - 2U);
+    auto i = ranges[o].from_;
+    block.assign(times.begin() + i, times.begin() + i + n_events * n);
+    auto const write = [&](route_idx_t const r) {
+      auto const from = i;
+      for (auto e = 0U; e != n_events; ++e) {
+        for (auto const t : route_transports[r]) {
+          times[i++] = block[e * n + to_idx(t - old_transports[o].from_)];
+        }
+      }
+      ranges[r] = {from, i};
+    };
+    write(o);
+    for (auto const r : split) {
+      write(r);
+    }
+  }
+
   for (auto r = route_idx_t{0U}; r != base_route.size(); ++r) {
     auto const o = base_route[r];
-    auto const transports = route_transports[r];
     tt.route_transport_ranges_.emplace_back(
         transport_idx_t{starts[to_idx(r)]},
         transport_idx_t{starts[to_idx(r) + 1U]});
-
-    auto const begin_times = times.size();
-    auto const n = static_cast<std::size_t>(old_transports[o].size());
-    auto const n_events = 2U * (tt.route_location_seq_[r].size() - 1U);
-    for (auto e = std::size_t{0U}; e != n_events; ++e) {
-      for (auto const t : transports) {
-        times.push_back(old_times[old_ranges[o].from_ + e * n +
-                                  to_idx(t - old_transports[o].from_)]);
-      }
-    }
-    ctx.route_stop_time_ranges_.emplace_back(
-        static_cast<std::uint32_t>(begin_times),
-        static_cast<std::uint32_t>(times.size()));
 
     if (r < n_routes) {
       continue;

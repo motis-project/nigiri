@@ -1,12 +1,10 @@
 #pragma once
 
-#include <compare>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <span>
 
-#include "cista/cuda_check.h"
 #include "cista/memory_holder.h"
 #include "fmt/ostream.h"
 
@@ -89,8 +87,6 @@ struct timetable {
       }
     }
 
-    // Virtual locations walk like their stop: calls fn(f, t) for every pair of
-    // the locations of stop a (a and its virtual locations) and of stop b.
     template <typename Fn>
     void for_each_member_pair(location_idx_t const a,
                               location_idx_t const b,
