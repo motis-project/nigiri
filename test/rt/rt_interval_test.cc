@@ -203,7 +203,8 @@ struct siri_call {
 
 std::string siri_msg(std::string_view journey_ref,
                      sys_days const service_day,
-                     std::vector<siri_call> const& calls) {
+                     std::vector<siri_call> const& calls,
+                     bool const cancelled = false) {
   auto const fmt_time = [](unixtime_t const t) {
     return date::format("%FT%TZ", std::chrono::sys_seconds{t});
   };
@@ -214,15 +215,21 @@ std::string siri_msg(std::string_view journey_ref,
         fmt::format("<EstimatedCall><StopPointRef>{}</StopPointRef>", c.stop_);
     if (c.arr_.has_value()) {
       calls_str += fmt::format(
-          "<AimedArrivalTime>{}</AimedArrivalTime>"
-          "<ExpectedArrivalTime>{}</ExpectedArrivalTime>",
-          fmt_time(*c.arr_), fmt_time(*c.arr_ + kDelay * 1min));
+          "<AimedArrivalTime>{}</AimedArrivalTime>", fmt_time(*c.arr_));
+      if (!cancelled) {
+        calls_str +=
+            fmt::format("<ExpectedArrivalTime>{}</ExpectedArrivalTime>",
+                        fmt_time(*c.arr_ + kDelay * 1min));
+      }
     }
     if (c.dep_.has_value()) {
       calls_str += fmt::format(
-          "<AimedDepartureTime>{}</AimedDepartureTime>"
-          "<ExpectedDepartureTime>{}</ExpectedDepartureTime>",
-          fmt_time(*c.dep_), fmt_time(*c.dep_ + kDelay * 1min));
+          "<AimedDepartureTime>{}</AimedDepartureTime>", fmt_time(*c.dep_));
+      if (!cancelled) {
+        calls_str +=
+            fmt::format("<ExpectedDepartureTime>{}</ExpectedDepartureTime>",
+                        fmt_time(*c.dep_ + kDelay * 1min));
+      }
     }
     calls_str += "</EstimatedCall>";
   }
@@ -239,6 +246,7 @@ std::string siri_msg(std::string_view journey_ref,
             <DataFrameRef>{}</DataFrameRef>
             <DatedVehicleJourneyRef>{}</DatedVehicleJourneyRef>
           </FramedVehicleJourneyRef>
+          {}
           <EstimatedCalls>{}</EstimatedCalls>
           <IsCompleteStopSequence>true</IsCompleteStopSequence>
         </EstimatedVehicleJourney>
@@ -246,28 +254,69 @@ std::string siri_msg(std::string_view journey_ref,
     </EstimatedTimetableDelivery>
   </ServiceDelivery>
 </Siri>)",
-      date::format("%F", service_day), journey_ref, calls_str);
+      date::format("%F", service_day), journey_ref,
+      cancelled ? "<Cancellation>true</Cancellation>" : "", calls_str);
 }
 
-std::string siri_day_msg(sys_days const d) {
+std::string siri_day_msg(sys_days const d, bool const cancelled = false) {
   return siri_msg(fmt::format("DAY-{}", d), d,
                   {{"A", std::nullopt, d + 10h},
                    {"B", d + 10h + 30min, d + 10h + 31min},
-                   {"C", d + 11h, std::nullopt}});
+                   {"C", d + 11h, std::nullopt}},
+                  cancelled);
 }
 
-std::string siri_night_msg(sys_days const d) {
+std::string siri_night_msg(sys_days const d, bool const cancelled = false) {
   return siri_msg(fmt::format("NIGHT-{}", d), d,
                   {{"A", std::nullopt, d + 23h + 30min},
                    {"B", d + 24h + 15min, d + 24h + 16min},
-                   {"C", d + 25h, std::nullopt}});
+                   {"C", d + 25h, std::nullopt}},
+                  cancelled);
 }
 
-std::string siri_edge_msg(sys_days const d) {
+std::string siri_edge_msg(sys_days const d, bool const cancelled = false) {
   return siri_msg(fmt::format("EDGE-{}", d), d,
                   {{"A", std::nullopt, d + 5h + 50min},
                    {"B", d + 12h, d + 12h + 1min},
-                   {"C", d + 18h + 10min, std::nullopt}});
+                   {"C", d + 18h + 10min, std::nullopt}},
+                  cancelled);
+}
+
+void expect_cancelled(timetable const& tt,
+                      rt_timetable const& rtt,
+                      std::string const& trip_id,
+                      sys_days const start_date) {
+  auto const r = resolve(tt, rtt, trip_id, start_date);
+  ASSERT_TRUE(r.valid()) << trip_id << " " << start_date;
+  EXPECT_TRUE(tt.is_transport_active(r.t_.t_idx_, r.t_.day_))
+      << trip_id << " " << start_date;
+  EXPECT_FALSE(rtt.is_transport_active(r.t_.t_idx_, r.t_.day_))
+      << trip_id << " " << start_date;
+  if (r.is_rt()) {
+    EXPECT_TRUE(rt::frun(tt, &rtt, r).is_cancelled())
+        << trip_id << " " << start_date;
+  }
+}
+
+void expect_active(timetable const& tt,
+                   rt_timetable const& rtt,
+                   std::string const& trip_id,
+                   sys_days const start_date) {
+  auto const r = resolve(tt, rtt, trip_id, start_date);
+  ASSERT_TRUE(r.valid()) << trip_id << " " << start_date;
+  EXPECT_TRUE(rtt.is_transport_active(r.t_.t_idx_, r.t_.day_))
+      << trip_id << " " << start_date;
+}
+
+rt::statistics gtfsrt_cancel(timetable const& tt,
+                             rt_timetable& rtt,
+                             std::string const& trip_id,
+                             sys_days const start_date) {
+  return rt::gtfsrt_update_msg(
+      tt, rtt, source_idx_t{0}, "tag",
+      gtfsrt_msg(
+          trip_id, start_date,
+          transit_realtime::TripDescriptor_ScheduleRelationship_CANCELED));
 }
 
 vdv_aus::statistics siri_update(rt_timetable& rtt,
@@ -671,4 +720,193 @@ TEST(rt_interval, base_day_before_timetable) {
         sys_days{2024_y / September / 30}}) {
     EXPECT_EQ(d, rt::create_rt_timetable(tt, d).base_day_);
   }
+}
+
+TEST(rt_interval, gtfsrt_cancel_rt_interval_end) {
+  auto const tt = load();
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / July / 1});
+
+  // Within the RT interval.
+  EXPECT_EQ(1, gtfsrt_cancel(tt, rtt, "DAY", sys_days{2024_y / July / 22})
+                   .total_entities_success_);
+  expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / July / 22});
+
+  // Arrival 18:10 >= 18:07: delay updates are rejected, cancellations not.
+  EXPECT_EQ(1, gtfsrt_cancel(tt, rtt, "EDGE", sys_days{2024_y / July / 22})
+                   .total_entities_success_);
+  expect_cancelled(tt, rtt, "EDGE", sys_days{2024_y / July / 22});
+
+  // Completely after the RT interval end.
+  EXPECT_EQ(1, gtfsrt_cancel(tt, rtt, "NIGHT", sys_days{2024_y / July / 23})
+                   .total_entities_success_);
+  expect_cancelled(tt, rtt, "NIGHT", sys_days{2024_y / July / 23});
+
+  // Last day of the static timetable, far outside of the RT interval.
+  EXPECT_EQ(1, gtfsrt_cancel(tt, rtt, "DAY", sys_days{2024_y / August / 30})
+                   .total_entities_success_);
+  expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / August / 30});
+
+  // Only the cancelled days are affected.
+  expect_active(tt, rtt, "DAY", sys_days{2024_y / July / 21});
+  expect_active(tt, rtt, "EDGE", sys_days{2024_y / July / 21});
+  expect_active(tt, rtt, "NIGHT", sys_days{2024_y / July / 22});
+  expect_active(tt, rtt, "DAY", sys_days{2024_y / August / 29});
+
+  // No RT transports needed for cancellations.
+  EXPECT_EQ(0U, rtt.n_rt_transports());
+
+  // Delay updates for a cancelled run outside of the RT interval are still
+  // rejected and do not reactivate it.
+  EXPECT_EQ(1, gtfsrt_update(tt, rtt, "DAY", sys_days{2024_y / August / 30})
+                   .total_entities_fail_);
+  expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / August / 30});
+  EXPECT_EQ(0U, rtt.n_rt_transports());
+}
+
+TEST(rt_interval, gtfsrt_cancel_rt_interval_start) {
+  auto const tt = load();
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / August / 30});
+
+  // Arrival 01:00 (+1d) < 05:53
+  EXPECT_EQ(1, gtfsrt_cancel(tt, rtt, "NIGHT", sys_days{2024_y / August / 7})
+                   .total_entities_success_);
+  expect_cancelled(tt, rtt, "NIGHT", sys_days{2024_y / August / 7});
+
+  // First day of the static timetable, far outside of the RT interval.
+  EXPECT_EQ(1, gtfsrt_cancel(tt, rtt, "DAY", sys_days{2024_y / July / 1})
+                   .total_entities_success_);
+  expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / July / 1});
+
+  // Departs before date_range_.from_, arrives within.
+  EXPECT_EQ(1, gtfsrt_cancel(tt, rtt, "NIGHT", sys_days{2024_y / June / 30})
+                   .total_entities_success_);
+  expect_cancelled(tt, rtt, "NIGHT", sys_days{2024_y / June / 30});
+
+  // Not part of the static timetable: still unresolvable.
+  EXPECT_EQ(1, gtfsrt_cancel(tt, rtt, "DAY", sys_days{2024_y / June / 30})
+                   .trip_resolve_error_);
+
+  expect_active(tt, rtt, "DAY", sys_days{2024_y / July / 2});
+  EXPECT_EQ(0U, rtt.n_rt_transports());
+}
+
+TEST(rt_interval, gtfsrt_cancel_existing_rt_transport) {
+  auto const tt = load();
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / July / 1});
+  auto const d = sys_days{2024_y / July / 21};
+
+  EXPECT_EQ(1, gtfsrt_update(tt, rtt, "EDGE", d).total_entities_success_);
+  expect_delayed(tt, rtt, "EDGE", d);
+  EXPECT_EQ(1U, rtt.n_rt_transports());
+
+  EXPECT_EQ(1, gtfsrt_cancel(tt, rtt, "EDGE", d).total_entities_success_);
+  expect_cancelled(tt, rtt, "EDGE", d);
+  EXPECT_TRUE(resolve(tt, rtt, "EDGE", d).is_rt());
+  EXPECT_EQ(1U, rtt.n_rt_transports());
+}
+
+TEST(rt_interval, siri_cancel_rt_interval) {
+  auto const tt = load();
+
+  {  // End: base day 2024-07-01 -> runs have to end before 07-22 18:07
+    auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / July / 1});
+    auto u = vdv_aus::updater{tt, source_idx_t{0},
+                              vdv_aus::updater::xml_format::kSiri};
+
+    // Within the RT interval.
+    auto const day = siri_update(
+        rtt, u, siri_day_msg(sys_days{2024_y / July / 22}, true));
+    EXPECT_EQ(1U, day.matched_runs_);
+    EXPECT_EQ(1U, day.cancelled_runs_);
+    expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / July / 22});
+
+    // Arrival 18:10 >= 18:07
+    auto const edge = siri_update(
+        rtt, u, siri_edge_msg(sys_days{2024_y / July / 22}, true));
+    EXPECT_EQ(1U, edge.matched_runs_);
+    EXPECT_EQ(1U, edge.cancelled_runs_);
+    expect_cancelled(tt, rtt, "EDGE", sys_days{2024_y / July / 22});
+
+    // Departure 23:30 >= 18:07
+    auto const night = siri_update(
+        rtt, u, siri_night_msg(sys_days{2024_y / July / 22}, true));
+    EXPECT_EQ(1U, night.matched_runs_);
+    EXPECT_EQ(1U, night.cancelled_runs_);
+    expect_cancelled(tt, rtt, "NIGHT", sys_days{2024_y / July / 22});
+
+    // Last day of the static timetable, far outside of the RT interval.
+    auto const far = siri_update(
+        rtt, u, siri_day_msg(sys_days{2024_y / August / 30}, true));
+    EXPECT_EQ(1U, far.matched_runs_);
+    EXPECT_EQ(1U, far.cancelled_runs_);
+    expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / August / 30});
+
+    // Not part of the static timetable.
+    auto const not_in_tt = siri_update(
+        rtt, u, siri_day_msg(sys_days{2024_y / August / 31}, true));
+    EXPECT_EQ(0U, not_in_tt.matched_runs_);
+    EXPECT_EQ(0U, not_in_tt.cancelled_runs_);
+
+    expect_active(tt, rtt, "DAY", sys_days{2024_y / July / 21});
+    expect_active(tt, rtt, "EDGE", sys_days{2024_y / July / 21});
+    expect_active(tt, rtt, "DAY", sys_days{2024_y / August / 29});
+    EXPECT_EQ(0U, rtt.n_rt_transports());
+
+    // Delay update for the cancelled run outside of the RT interval: found
+    // (already matched), but neither an RT transport is created nor the run
+    // reactivated.
+    EXPECT_EQ(1U,
+              siri_update(rtt, u, siri_day_msg(sys_days{2024_y / August / 30}))
+                  .found_runs_);
+    expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / August / 30});
+    EXPECT_EQ(0U, rtt.n_rt_transports());
+  }
+
+  {  // Start: base day 2024-08-30 -> runs have to start at 08-08 05:53
+    auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / August / 30});
+    auto u = vdv_aus::updater{tt, source_idx_t{0},
+                              vdv_aus::updater::xml_format::kSiri};
+
+    // Departure 05:50 < 05:53
+    auto const edge = siri_update(
+        rtt, u, siri_edge_msg(sys_days{2024_y / August / 8}, true));
+    EXPECT_EQ(1U, edge.matched_runs_);
+    EXPECT_EQ(1U, edge.cancelled_runs_);
+    expect_cancelled(tt, rtt, "EDGE", sys_days{2024_y / August / 8});
+
+    // First day of the static timetable, far outside of the RT interval.
+    auto const far =
+        siri_update(rtt, u, siri_day_msg(sys_days{2024_y / July / 1}, true));
+    EXPECT_EQ(1U, far.matched_runs_);
+    EXPECT_EQ(1U, far.cancelled_runs_);
+    expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / July / 1});
+
+    // Departs before date_range_.from_, arrives within.
+    auto const night = siri_update(
+        rtt, u, siri_night_msg(sys_days{2024_y / June / 30}, true));
+    EXPECT_EQ(1U, night.matched_runs_);
+    EXPECT_EQ(1U, night.cancelled_runs_);
+    expect_cancelled(tt, rtt, "NIGHT", sys_days{2024_y / June / 30});
+
+    expect_active(tt, rtt, "EDGE", sys_days{2024_y / August / 9});
+    expect_active(tt, rtt, "DAY", sys_days{2024_y / July / 2});
+    EXPECT_EQ(0U, rtt.n_rt_transports());
+  }
+}
+
+TEST(rt_interval, siri_cancel_existing_rt_transport) {
+  auto const tt = load();
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / July / 1});
+  auto u = vdv_aus::updater{tt, source_idx_t{0},
+                            vdv_aus::updater::xml_format::kSiri};
+  auto const d = sys_days{2024_y / July / 21};
+
+  siri_update(rtt, u, siri_edge_msg(d));
+  expect_delayed(tt, rtt, "EDGE", d);
+  EXPECT_EQ(1U, rtt.n_rt_transports());
+
+  EXPECT_EQ(1U, siri_update(rtt, u, siri_edge_msg(d, true)).cancelled_runs_);
+  expect_cancelled(tt, rtt, "EDGE", d);
+  EXPECT_TRUE(resolve(tt, rtt, "EDGE", d).is_rt());
+  EXPECT_EQ(1U, rtt.n_rt_transports());
 }

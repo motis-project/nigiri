@@ -793,7 +793,7 @@ void updater::process_vdv_run(rt_timetable& rtt,
     auto const cancelled_run_selector =
         format_ == xml_format::kVdv ? "FaelltAus" : "Cancellation";
     if (get_opt_bool(vdv_run, cancelled_run_selector, false).value()) {
-      rtt.cancel_run(r);
+      rtt.cancel_run(frun{tt_, &rtt, r});
       ++stats.cancelled_runs_;
     } else {
       update_run(rtt, r, vdv_stops, is_complete_run, stats);
