@@ -123,6 +123,12 @@ add_executable(nigiri-benchmark ${nigiri-benchmark-files})
 target_link_libraries(nigiri-benchmark PRIVATE nigiri boost-program_options ianatzdb-res)
 target_compile_features(nigiri-benchmark PUBLIC cxx_std_23)
 
+# --- BENCHMARK ASTAR ---
+file(GLOB_RECURSE nigiri-benchmark-astar-files exe/benchmark_a_star.cc)
+add_executable(nigiri-benchmark-astar ${nigiri-benchmark-astar-files})
+target_link_libraries(nigiri-benchmark-astar PRIVATE nigiri boost-program_options ianatzdb-res)
+target_compile_features(nigiri-benchmark-astar PUBLIC cxx_std_23)
+
 # --- QA ---
 file(GLOB_RECURSE nigiri-qa-files exe/qa.cc)
 add_executable(nigiri-qa ${nigiri-qa-files})
