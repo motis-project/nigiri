@@ -230,3 +230,49 @@ TEST(rt, gtfs_rt_alert_active_period_fallback) {
   EXPECT_EQ((interval<unixtime_t>{ut(600), ut(1200)}),
             rtt.alerts_.impact_period_[idx][0]);
 }
+TEST(rt, gtfs_rt_alert_untagged_first) {
+  auto const today = date::sys_days{2023_y / August / 9};
+  auto const tt = loader::load(test_files(), {today, 2023_y / August / 12});
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
+  auto stats = statistics{.total_entities_ = 0, .feed_timestamp_ = {}};
+
+  auto a = transit_realtime::Alert{};
+  a.add_informed_entity()->set_agency_id("grt");
+
+  auto* de = a.mutable_header_text()->add_translation();
+  de->set_text("Hallo");
+  de->set_language("de");
+  a.mutable_header_text()->add_translation()->set_text("Hello");
+  auto* fr = a.mutable_header_text()->add_translation();
+  fr->set_text("Bonjour");
+  fr->set_language("fr");
+
+  auto* de_img = a.mutable_image()->add_localized_image();
+  de_img->set_url("https://example.org/de.png");
+  de_img->set_media_type("image/png");
+  de_img->set_language("de");
+  auto* img = a.mutable_image()->add_localized_image();
+  img->set_url("https://example.org/default.png");
+  img->set_media_type("image/png");
+
+  handle_alert(today, tt, rtt, source_idx_t{0}, "tag", a, stats);
+
+  auto const& al = rtt.alerts_;
+  auto const get = [&](alert_str_idx_t const x) {
+    return std::string{al.strings_.try_get(x).value_or("-")};
+  };
+  auto const idx = alert_idx_t{0};
+
+  auto const header = al.header_text_[idx];
+  ASSERT_EQ(3U, header.size());
+  EXPECT_EQ(alert_str_idx_t::invalid(), header[0].language_);
+  EXPECT_EQ("Hello", get(header[0].text_));
+  EXPECT_EQ("Hallo", get(header[1].text_));
+  EXPECT_EQ("Bonjour", get(header[2].text_));
+
+  auto const image = al.image_[idx];
+  ASSERT_EQ(2U, image.size());
+  EXPECT_EQ(alert_str_idx_t::invalid(), image[0].language_);
+  EXPECT_EQ("https://example.org/default.png", get(image[0].url_));
+  EXPECT_EQ("https://example.org/de.png", get(image[1].url_));
+}
