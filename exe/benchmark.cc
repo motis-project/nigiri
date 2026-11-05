@@ -379,7 +379,9 @@ int main(int argc, char* argv[]) {
        "their pareto sets are pairwise cross-checked per query and the "
        "process exits non-zero on any divergence")  //
       ("algo,a", bpo::value(&algos)->multitoken(),
-       "algorithms: range | pong | mcraptor (default: range pong); every ran "
+       "algorithms: range | pong | mcraptor | mcraptor-all (default: range "
+       "pong); mcraptor-all optimizes non_transit, mode_filter and "
+       "mode_switches; every ran "
        "cell (any engine/algo combination) within a (mode, "
        "dir) is checked pairwise against every other for agreement on the "
        "intersection of the final search intervals")  //
@@ -579,9 +581,9 @@ int main(int argc, char* argv[]) {
   }
 #endif
   for (auto const& a : algos) {
-    if (a != "range" && a != "pong" && a != "mcraptor") {
+    if (a != "range" && a != "pong" && a != "mcraptor" && a != "mcraptor-all") {
       std::cerr << "invalid algo \"" << a
-                << "\", expected range | pong | mcraptor\n";
+                << "\", expected range | pong | mcraptor | mcraptor-all\n";
       return 1;
     }
   }
@@ -712,6 +714,10 @@ int main(int argc, char* argv[]) {
                 algo_part == "mcraptor"
                     ? run_cpu_cell
                           .template operator()<routing::mcraptor_state>()
+                : algo_part == "mcraptor-all"
+                    ? run_cpu_cell.template operator()<
+                          routing::
+                              mcraptor_non_transit_mode_filter_mode_switches_state>()
                     : run_cpu_cell
                           .template operator()<routing::raptor_state>());
             ++qa_n_cpu_cells;
@@ -722,11 +728,16 @@ int main(int argc, char* argv[]) {
 
 #if defined(NIGIRI_CUDA)
           if (run_gpu) {
-            cells.push_back(algo_part == "mcraptor"
-                                ? run_gpu_cell.template
-                                  operator()<routing::gpu::gpu_mcraptor_state>()
-                                : run_gpu_cell.template
-                                  operator()<routing::gpu::gpu_raptor_state>());
+            cells.push_back(
+                algo_part == "mcraptor"
+                    ? run_gpu_cell.template
+                      operator()<routing::gpu::gpu_mcraptor_state>()
+                : algo_part == "mcraptor-all"
+                    ? run_gpu_cell.template operator()<
+                          routing::gpu::
+                              gpu_mcraptor_non_transit_mode_filter_mode_switches_state>()
+                    : run_gpu_cell.template
+                      operator()<routing::gpu::gpu_raptor_state>());
           }
 #endif
         } catch (std::exception const& e) {
