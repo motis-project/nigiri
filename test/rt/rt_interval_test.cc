@@ -2,8 +2,7 @@
 
 #include "pugixml.hpp"
 
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
@@ -16,7 +15,6 @@
 
 using namespace nigiri;
 using namespace nigiri::loader;
-using namespace nigiri::loader::gtfs;
 using namespace nigiri::rt;
 using namespace date;
 using namespace std::chrono_literals;
@@ -83,12 +81,8 @@ EDGE,18:10:00,18:10:00,C,3
 }
 
 timetable load() {
-  auto tt = timetable{};
-  tt.date_range_ = {sys_days{2024_y / July / 1},
-                    sys_days{2024_y / August / 31}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
-  return tt;
+  return loader::load(test_files(), {sys_days{2024_y / July / 1},
+                                     sys_days{2024_y / August / 31}});
 }
 
 std::string yyyymmdd(sys_days const d) { return date::format("%Y%m%d", d); }

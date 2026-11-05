@@ -4,7 +4,7 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/timetable.h"
 
 using namespace date;
@@ -86,10 +86,7 @@ TEST(gtfs, trip_route_type_splits_route_by_class) {
   auto const files = test_files();
   ASSERT_TRUE(applicable(files));
 
-  auto tt = timetable{};
-  tt.date_range_ = {2006_y / 7 / 1, 2006_y / 8 / 1};
-  load_timetable({}, source_idx_t{0U}, files, tt);
-  finalize(tt);
+  auto const tt = loader::load(files, {2006_y / 7 / 1, 2006_y / 8 / 1});
 
   auto classes = std::multiset<clasz>{};
   for (auto const c : tt.route_clasz_) {
@@ -120,10 +117,7 @@ R1,DAILY,TRAIN2
                {path{kStopTimesFile}, std::string{stop_times}}}};
   ASSERT_TRUE(applicable(files));
 
-  auto tt = timetable{};
-  tt.date_range_ = {2006_y / 7 / 1, 2006_y / 8 / 1};
-  load_timetable({}, source_idx_t{0U}, files, tt);
-  finalize(tt);
+  auto const tt = loader::load(files, {2006_y / 7 / 1, 2006_y / 8 / 1});
 
   auto classes = std::multiset<clasz>{};
   for (auto const c : tt.route_clasz_) {

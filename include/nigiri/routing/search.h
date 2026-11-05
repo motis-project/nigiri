@@ -438,7 +438,7 @@ private:
           for (auto const& s : it_range{from_it, to_it}) {
             trace("init: time_at_start={}, time_at_stop={} at {}\n",
                   s.time_at_start_, s.time_at_stop_, loc{tt_, s.stop_});
-            algo_.add_start(s.stop_, s.time_at_stop_);
+            algo_.add_start(s.stop_, s.time_at_stop_, s.v_);
           }
           trace("RUN ALGO\n");
 

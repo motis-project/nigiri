@@ -3,8 +3,7 @@
 #include <algorithm>
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/rt/create_rt_timetable.h"
@@ -138,11 +137,8 @@ TEST(routing, rt_raptor_forward) {
         .count();
   };
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / May / 3});
@@ -221,11 +217,8 @@ TEST(routing, rt_raptor_backward) {
         .count();
   };
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / May / 3});
@@ -304,11 +297,8 @@ TEST(routing, rt_raptor_unscheduled) {
         .count();
   };
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / May / 3});

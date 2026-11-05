@@ -1,8 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
@@ -76,12 +75,8 @@ T2,00:40:00,24:40:00,3600
 TEST(routing, wheelchair_assistance) {
   auto assistance = read_assistance(kAssistance);
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / June / 18},
-                    date::sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt, &assistance);
-  finalize(tt);
+  auto tt = loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20},
+                         {}, &assistance);
 
   tt.fwd_search_lb_graph_[kWheelchairProfile] =
       tt.fwd_search_lb_graph_[kDefaultProfile];

@@ -248,10 +248,10 @@ TEST(rt, json_to_xml) {
   EXPECT_EQ(kExpected, oss.str());
 
   auto const base_day = date::sys_days{2025_y / October / 25};
-  auto tt = loader::load({{.tag_ = "test",
-                           .path_ = kGtfsTimetable,
-                           .loader_config_ = {.default_tz_ = "UTC"}}},
-                         {}, {base_day, date::sys_days{2025_y / October / 26}});
+  auto const tt = loader::load({{.tag_ = "test",
+                                 .path_ = kGtfsTimetable,
+                                 .loader_config_ = {.default_tz_ = "UTC"}}},
+                               {}, {base_day, 2025_y / October / 26});
 
   auto rtt = rt::create_rt_timetable(tt, base_day);
   auto updater = rt::vdv_aus::updater{tt, source_idx_t{0},

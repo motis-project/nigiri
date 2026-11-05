@@ -4,12 +4,16 @@
 
 #include <ranges>
 
+#include "nigiri/logging.h"
+
 #define trace(...)
 // #define trace(...) fmt::println(std::clog, __VA_ARGS__)
 
 namespace sv = std::views;
 
 namespace nigiri::loader::gtfs {
+
+constexpr auto const kMaxSeatedCombinationSteps = 10'000U;
 
 template <typename UtcTrip, typename TripIdx>
 void build_seated_trips(timetable& tt,
@@ -206,7 +210,21 @@ void build_seated_trips(timetable& tt,
     // ============
     // PART 3: DFS.
     // ------------
+    auto transports = std::vector<UtcTrip>{};
+    auto n_steps = 0U;
     while (!q.empty()) {
+      if (++n_steps > kMaxSeatedCombinationSteps) {
+        log(log_lvl::error, "nigiri.loader.gtfs.seated",
+            "too many stay-seated combinations starting at {}, ignoring",
+            name(*next_remaining));
+        transports.clear();
+        for (auto const& [remaining_idx, offset] : component) {
+          auto& t = transports.emplace_back(remaining.at(remaining_idx));
+          t.utc_traffic_days_ = shift(component_traffic_days, offset);
+        }
+        break;
+      }
+
       auto [curr, prev_rule_trip, transport_offset] = std::move(q.back());
       q.resize(q.size() - 1U);
 
@@ -266,8 +284,11 @@ void build_seated_trips(timetable& tt,
                 return nigiri::loc{tt, stop{s}.location_idx()};
               }),
               curr.utc_times_ | sv::transform(std::identity{}));
-        consumer(std::move(curr));
+        transports.emplace_back(std::move(curr));
       }
+    }
+    for (auto& t : transports) {
+      consumer(std::move(t));
     }
 
     // ===========================

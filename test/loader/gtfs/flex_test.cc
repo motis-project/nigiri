@@ -3,8 +3,6 @@
 #include "utl/zip.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
 #include "nigiri/loader/load.h"
 #include "nigiri/flex.h"
 #include "nigiri/rt/create_rt_timetable.h"
@@ -122,9 +120,7 @@ TEST(flex, simple) {
       loader::load({{.tag_ = "test",
                      .path_ = kTimetable,
                      .loader_config_ = {.default_tz_ = "Europe/Berlin"}}},
-                   {},
-                   {date::sys_days{2025_y / January / 1},
-                    date::sys_days{2025_y / December / 1}});
+                   {}, {2025_y / January / 1, 2025_y / December / 1});
 
   auto const outside = geo::latlng{47.357516806408995, 9.446811993220308};
   auto const inside = geo::latlng{47.35780140178716, 9.440695867171229};
@@ -147,9 +143,8 @@ TEST(flex, simple) {
 
   auto ss = std::stringstream{};
   for (auto const& t : tt.flex_area_transports_[kArea]) {
-    auto const trip_id = tt.trip_ids_[tt.flex_transport_trip_[t]].front();
-    ss << "TRANSPORT " << t << " [" << tt.trip_id_strings_[trip_id].view()
-       << "]\n";
+    ss << "TRANSPORT " << t << " ["
+       << tt.trip_id_strings_[tt.flex_transport_trip_[t]].view() << "]\n";
     for (auto const [stop, window] :
          utl::zip(tt.flex_stop_seq_[tt.flex_transport_stop_seq_[t]],
                   tt.flex_transport_stop_time_windows_[t])) {

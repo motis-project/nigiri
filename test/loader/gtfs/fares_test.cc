@@ -1,8 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -460,13 +459,9 @@ std::string to_string(timetable const& tt,
 }
 
 TEST(fares, area_sets) {
-  auto tt = timetable{};
-  tt.date_range_ = {date::sys_days{2022_y / January / 1},
-                    date::sys_days{2022_y / December / 1}};
-  load_timetable({}, source_idx_t{0},
-                 mem_dir::read(fmt::format("{}{}", kBasicTimetable, kAreaSets)),
-                 tt);
-  finalize(tt);
+  auto const tt = loader::load(
+      mem_dir::read(fmt::format("{}{}", kBasicTimetable, kAreaSets)),
+      {2022_y / January / 1, 2022_y / December / 1});
 
   auto const results = raptor_search(tt, nullptr, "A", "C",
                                      unixtime_t{sys_days{2022_y / March / 30}});
@@ -495,14 +490,10 @@ id=three_zone_single_ticket, name=Children Three Zone Ticket [priority=0]: 2.2 E
 }
 
 TEST(fares, simple_fares) {
-  auto tt = timetable{};
-  tt.date_range_ = {date::sys_days{2022_y / January / 1},
-                    date::sys_days{2022_y / December / 1}};
-  load_timetable({}, source_idx_t{0},
-                 mem_dir::read(fmt::format("{}{}{}", kBasicTimetable,
-                                           kBasicFares, kFareTimetable1)),
-                 tt);
-  finalize(tt);
+  auto tt =
+      loader::load(mem_dir::read(fmt::format("{}{}{}", kBasicTimetable,
+                                             kBasicFares, kFareTimetable1)),
+                   {2022_y / January / 1, 2022_y / December / 1});
 
   {  // OFFPEAK TEST
     auto const results = raptor_search(
@@ -626,14 +617,10 @@ TEST(fares, rt_added_fares) {
         .count();
   };
 
-  auto tt = timetable{};
-  tt.date_range_ = {date::sys_days{2022_y / January / 1},
-                    date::sys_days{2022_y / December / 1}};
-  load_timetable({}, source_idx_t{0},
-                 mem_dir::read(fmt::format("{}{}{}", kBasicTimetable,
-                                           kBasicFares, kFareTimetable1)),
-                 tt);
-  finalize(tt);
+  auto tt =
+      loader::load(mem_dir::read(fmt::format("{}{}{}", kBasicTimetable,
+                                             kBasicFares, kFareTimetable1)),
+                   {2022_y / January / 1, 2022_y / December / 1});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2022_y / March / 30});
@@ -707,12 +694,8 @@ PRODUCTS
 }
 
 TEST(fares, fares_without_fares) {
-  auto tt = timetable{};
-  tt.date_range_ = {date::sys_days{2022_y / January / 1},
-                    date::sys_days{2022_y / December / 1}};
-  load_timetable({}, source_idx_t{0}, mem_dir::read(kTimetableWithoutFares),
-                 tt);
-  finalize(tt);
+  auto const tt = loader::load(mem_dir::read(kTimetableWithoutFares),
+                               {2022_y / January / 1, 2022_y / December / 1});
 
   {
     auto const results = raptor_search(

@@ -1,7 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_alert.h"
@@ -117,12 +117,8 @@ void expect_no_delay(frun const& fr) {
 }  // namespace
 
 TEST(rt, data_state_static_run) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   auto const rtt = rt::create_rt_timetable(tt, kBaseDay);
 
@@ -135,12 +131,8 @@ TEST(rt, data_state_static_run) {
 }
 
 TEST(rt, data_state_rt_transport_from_alert) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   auto rtt = rt::create_rt_timetable(tt, kBaseDay);
   auto stats = statistics{.total_entities_ = 0, .feed_timestamp_ = {}};
@@ -162,12 +154,8 @@ TEST(rt, data_state_rt_transport_from_alert) {
 }
 
 TEST(rt, data_state_predicted_and_propagated) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   auto rtt = rt::create_rt_timetable(tt, kBaseDay);
   auto const stats = rt::gtfsrt_update_msg(
@@ -187,12 +175,8 @@ TEST(rt, data_state_predicted_and_propagated) {
 }
 
 TEST(rt, data_state_first_update_not_at_first_stop) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   auto rtt = rt::create_rt_timetable(tt, kBaseDay);
   auto const stats = rt::gtfsrt_update_msg(
@@ -213,12 +197,8 @@ TEST(rt, data_state_first_update_not_at_first_stop) {
 }
 
 TEST(rt, data_state_gtfsrt_no_data) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   auto rtt = rt::create_rt_timetable(tt, kBaseDay);
   auto const stats = rt::gtfsrt_update_msg(
@@ -244,12 +224,8 @@ TEST(rt, data_state_gtfsrt_no_data) {
 }
 
 TEST(rt, data_state_gtfsrt_no_data_resets_previous_update) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   auto rtt = rt::create_rt_timetable(tt, kBaseDay);
   rt::gtfsrt_update_msg(
@@ -269,12 +245,8 @@ TEST(rt, data_state_gtfsrt_no_data_resets_previous_update) {
 }
 
 TEST(rt, data_state_inconsistent_lower_bound) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   // B arrival (on time, 10:10) would be before A departure (10:20).
   auto rtt = rt::create_rt_timetable(tt, kBaseDay);
@@ -293,12 +265,8 @@ TEST(rt, data_state_inconsistent_lower_bound) {
 }
 
 TEST(rt, data_state_inconsistent_after_no_data) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   // A +30min is propagated to B. C has NO_DATA -> scheduled time 10:20 is
   // before B's propagated departure 10:40 and has to be adjusted.
@@ -320,12 +288,8 @@ TEST(rt, data_state_inconsistent_after_no_data) {
 }
 
 TEST(rt, data_state_arrival_and_departure_differ) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   // A +20min is propagated to B's arrival (10:30). B's departure (on time,
   // 10:10) is adjusted to 10:30.
@@ -349,12 +313,8 @@ TEST(rt, data_state_arrival_and_departure_differ) {
 }
 
 TEST(rt, data_state_incremental_update_keeps_previous_stops) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   auto rtt = rt::create_rt_timetable(tt, kBaseDay);
   rt::gtfsrt_update_msg(
@@ -449,19 +409,15 @@ states_t get_block_states(timetable const& tt, rt_timetable const& rtt) {
   return states;
 }
 
-void load_block_timetable(timetable& tt) {
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, block_test_files(), tt);
-  finalize(tt);
+timetable load_block_timetable() {
+  return loader::load(block_test_files(),
+                      {2019_y / March / 25, 2019_y / November / 1});
 }
 
 }  // namespace
 
 TEST(rt, data_state_block_id_no_update_for_later_trip) {
-  timetable tt;
-  load_block_timetable(tt);
+  auto const tt = load_block_timetable();
 
   auto rtt = rt::create_rt_timetable(tt, kBaseDay);
 
@@ -495,8 +451,7 @@ TEST(rt, data_state_block_id_no_update_for_later_trip) {
 }
 
 TEST(rt, data_state_block_id_later_trip_inconsistent) {
-  timetable tt;
-  load_block_timetable(tt);
+  auto const tt = load_block_timetable();
 
   // Update for T1 only. The arrival at C (10:45) is after T2's scheduled
   // departure at C (10:30) -> T2's times are adjusted to avoid time travel
@@ -523,8 +478,7 @@ TEST(rt, data_state_block_id_later_trip_inconsistent) {
 }
 
 TEST(rt, data_state_block_id_later_trip_update_starts_at_second_stop) {
-  timetable tt;
-  load_block_timetable(tt);
+  auto const tt = load_block_timetable();
 
   // Update for T2 only, starting at D (seq=2). T1 has no real-time data.
   // C dep (first stop of T2) has no real-time data either: nothing is

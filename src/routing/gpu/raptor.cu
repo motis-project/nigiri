@@ -75,9 +75,10 @@ struct gpu_timetable::impl {
       : n_locations_{tt.n_locations()},
         n_routes_{tt.n_routes()},
         transfer_time_{to_device(tt.locations_.transfer_time_)},
-        route_stop_times_{to_device(tt.route_stop_times_)},
-        route_stop_time_ranges_{to_device(tt.route_stop_time_ranges_)},
-        route_transport_ranges_{to_device(tt.route_transport_ranges_)},
+        first_dep_{to_device(tt.transport_first_dep_)},
+        transport_pattern_{to_device(tt.transport_pattern_)},
+        route_times_{to_device(tt.route_times_)},
+        patterns_{to_device(tt.pattern_offsets_)},
         route_clasz_{to_device(tt.route_clasz_)},
         route_location_seq_{tt.route_location_seq_},
         location_routes_{tt.location_routes_},
@@ -126,9 +127,10 @@ struct gpu_timetable::impl {
         .n_locations_ = n_locations_,
         .n_routes_ = n_routes_,
         .transfer_time_ = transfer_time_,
-        .route_stop_times_ = to_view(route_stop_times_),
-        .route_stop_time_ranges_ = to_view(route_stop_time_ranges_),
-        .route_transport_ranges_ = to_view(route_transport_ranges_),
+        .first_dep_ = first_dep_,
+        .transport_pattern_ = transport_pattern_,
+        .route_times_ = route_times_,
+        .patterns_ = to_view(patterns_),
         .route_clasz_ = to_view(route_clasz_),
         .route_location_seq_ = to_view(route_location_seq_),
         .location_routes_ = to_view(location_routes_),
@@ -154,9 +156,10 @@ struct gpu_timetable::impl {
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_out_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_in_;
 
-  thrust::device_vector<delta> route_stop_times_;
-  thrust::device_vector<interval<std::uint32_t>> route_stop_time_ranges_;
-  thrust::device_vector<interval<transport_idx_t>> route_transport_ranges_;
+  thrust::device_vector<delta> first_dep_;
+  thrust::device_vector<std::uint16_t> transport_pattern_;
+  thrust::device_vector<route_times> route_times_;
+  thrust::device_vector<delta> patterns_;
   thrust::device_vector<clasz> route_clasz_;
 
   device_vecvec<decltype(t{}.route_location_seq_)> route_location_seq_;
@@ -191,20 +194,6 @@ gpu_timetable::~gpu_timetable() = default;
 struct gpu_rt_timetable::impl {
   using rtt_t = rt_timetable;
 
-  static vecvec<location_idx_t, rt_transport_idx_t> build_location_rt(
-      timetable const& tt, rt_timetable const& rtt) {
-    auto v = vecvec<location_idx_t, rt_transport_idx_t>{};
-    auto tmp = std::vector<rt_transport_idx_t>{};
-    for (auto l = 0U; l != tt.n_locations(); ++l) {
-      tmp.clear();
-      for (auto const rt_t : rtt.location_rt_transports_[location_idx_t{l}]) {
-        tmp.push_back(rt_t);
-      }
-      v.emplace_back(tmp);
-    }
-    return v;
-  }
-
   static std::vector<clasz> build_rt_transport_clasz(rt_timetable const& rtt) {
     auto v = std::vector<clasz>{};
     v.reserve(rtt.n_rt_transports());
@@ -219,7 +208,8 @@ struct gpu_rt_timetable::impl {
   impl(timetable const& tt, rt_timetable const& rtt)
       : n_rt_transports_{rtt.n_rt_transports()},
         base_day_idx_{rtt.base_day_idx_},
-        location_rt_transports_{build_location_rt(tt, rtt)},
+        location_rt_transports_{
+            cista::raw::make_vecvec(rtt.location_rt_transports_)},
         rt_transport_location_seq_{rtt.rt_transport_location_seq_},
         rt_transport_stop_times_{rtt.rt_transport_stop_times_},
         rt_transport_clasz_{to_device(build_rt_transport_clasz(rtt))},
@@ -790,7 +780,8 @@ template <direction SearchDir, bool WithBounds>
 void gpu_raptor<SearchDir, WithBounds>::fill_bounds(std::size_t const n_rows) {
   auto& s = *state_.impl_;
   auto const* td_stops = static_cast<std::uint64_t const*>(nullptr);
-  if (rtt_ != nullptr && prf_idx_ != 0U && rtt_->gpu_rtt_.ptr_ != nullptr) {
+  if (rtt_ != nullptr && has_profile_td_footpaths(prf_idx_) &&
+      rtt_->gpu_rtt_.ptr_ != nullptr) {
     auto const* const gpu_rtt =
         static_cast<gpu_rt_timetable const*>(rtt_->gpu_rtt_.ptr_.get());
     auto const& blocks = SearchDir == direction::kForward
@@ -878,8 +869,8 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
   auto const rt_transports_active =
       rt_active && gpu_rtt_->impl_->n_rt_transports_ != 0U;
   auto const with_td_dest = s.td_dest_locs_dev_[kDirIdx].size() > 0U;
-  auto const with_td_fps =
-      rt_active && prf_idx_ != 0U && gpu_rtt_->impl_->has_td_fps_[prf_idx_];
+  auto const with_td_fps = rt_active && has_profile_td_footpaths(prf_idx_) &&
+                           gpu_rtt_->impl_->has_td_fps_[prf_idx_];
   auto r = raptor_impl<SearchDir, WithBounds>{
       .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
       .done_ = thrust::raw_pointer_cast(s.done_.data()),
@@ -1114,7 +1105,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     for (auto i = std::size_t{1U}; i < j.legs_.size(); ++i) {
       if (std::holds_alternative<footpath>(j.legs_[i].uses_) &&
           !(j.legs_[i].from_ != j.legs_[i].to_ && rtt_ != nullptr &&
-            prf_idx_ != 0U &&
+            has_profile_td_footpaths(prf_idx_) &&
             rtt_->has_td_footpaths_out_[prf_idx_].test(j.legs_[i].from_))) {
         auto const dur = std::get<footpath>(j.legs_[i].uses_).duration();
         j.legs_[i].dep_time_ = j.legs_[i - 1U].arr_time_;
@@ -1123,7 +1114,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     }
 
     // Shorten td footpaths to their actual duration (excluding waiting).
-    if (rtt_ != nullptr && prf_idx_ != 0U &&
+    if (rtt_ != nullptr && has_profile_td_footpaths(prf_idx_) &&
         !(SearchDir == direction::kForward ? rtt_->td_footpaths_in_[prf_idx_]
                                            : rtt_->td_footpaths_out_[prf_idx_])
              .empty()) {
@@ -1161,7 +1152,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     // Backward search: time-dependent footpaths start as soon as they are
     // usable after the arrival (as in the reconstruction).
     if constexpr (SearchDir == direction::kBackward) {
-      if (rtt_ != nullptr && prf_idx_ != 0U) {
+      if (rtt_ != nullptr && has_profile_td_footpaths(prf_idx_)) {
         for (auto i = std::size_t{1U}; i < j.legs_.size(); ++i) {
           auto& lg = j.legs_[i];
           if (!std::holds_alternative<footpath>(lg.uses_) ||
@@ -1422,7 +1413,8 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
 
 template <direction SearchDir, bool WithBounds>
 void gpu_raptor<SearchDir, WithBounds>::add_start(location_idx_t const l,
-                                                  unixtime_t const t) {
+                                                  unixtime_t const t,
+                                                  via_offset_t) {
   starts_.emplace_back(l, t);
 }
 

@@ -110,7 +110,7 @@ struct query_engine {
 
   void next_start_time() { state_.q_n_.reset(); }
 
-  void add_start(location_idx_t, unixtime_t);
+  void add_start(location_idx_t, unixtime_t, via_offset_t = 0U);
 
   void execute(unixtime_t const start_time,
                std::uint8_t const max_transfers,

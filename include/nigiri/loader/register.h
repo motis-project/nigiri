@@ -11,6 +11,8 @@ struct timetable;
 
 namespace nigiri::loader {
 
+struct import_context;
+
 extern gtfs::tz_map dummy_tz_map;
 
 struct attribute {
@@ -260,8 +262,8 @@ bool process_trip(script_runner const&, trip&);
 
 attribute_idx_t register_attribute(timetable&, attribute const&);
 provider_idx_t register_agency(timetable&, agency const&);
-location_idx_t register_location(timetable&, location const&);
-route_id_idx_t register_route(timetable&, route const&);
-trip_idx_t register_trip(timetable&, trip const&);
+location_idx_t register_location(timetable&, import_context&, location const&);
+route_id_idx_t register_route(timetable&, import_context&, route const&);
+trip_idx_t register_trip(timetable&, import_context&, trip const&);
 
 }  // namespace nigiri::loader

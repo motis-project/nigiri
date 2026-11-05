@@ -4,7 +4,7 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
@@ -140,12 +140,8 @@ constexpr auto const expected = R"(
 
 TEST(rt, gtfs_rt_skip) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / November / 25},
-                    date::sys_days{2023_y / November / 27}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(
+      test_files(), {2023_y / November / 25, 2023_y / November / 27});
 
   // Create empty RT timetable.
   auto rtt =
@@ -187,12 +183,8 @@ TEST(rt, gtfs_rt_skip) {
 
 TEST(rt, gtfs_rt_cancel) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / November / 25},
-                    date::sys_days{2023_y / November / 27}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(
+      test_files(), {2023_y / November / 25, 2023_y / November / 27});
 
   // Create empty RT timetable.
   auto rtt =

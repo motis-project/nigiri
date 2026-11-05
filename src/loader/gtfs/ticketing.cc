@@ -19,6 +19,7 @@ constexpr auto kTicketingIdentifiers = "ticketing_identifiers.txt";
 namespace nigiri::loader::gtfs {
 
 void read_ticketing_identifiers(timetable& tt,
+                                import_context& ctx,
                                 std::string_view file_content,
                                 stops_map_t const& stops,
                                 source_idx_t const src) {
@@ -28,7 +29,7 @@ void read_ticketing_identifiers(timetable& tt,
     utl::csv_col<utl::cstr, UTL_NAME("agency_id")> agency_id;
   };
 
-  tt.location_ticketing_identifier_.resize(tt.n_locations());
+  ctx.location_ticketing_identifier_.resize(tt.n_locations());
 
   utl::for_each_row<ticketing_identifiers_row>(
       file_content, [&](ticketing_identifiers_row const& t) {
@@ -37,14 +38,15 @@ void read_ticketing_identifiers(timetable& tt,
           auto provider = tt.get_provider_idx(t.agency_id->view(), src);
           string_idx_t const str_idx =
               tt.strings_.store(t.ticketing_stop_id->view());
-          tt.location_ticketing_identifier_.at(location_it->second)
+          ctx.location_ticketing_identifier_.at(location_it->second)
               .push_back(pair<provider_idx_t, string_idx_t>{provider, str_idx});
         }
       });
 
   for (auto loc = location_idx_t{0U};
-       loc != location_idx_t{tt.location_ticketing_identifier_.size()}; ++loc) {
-    auto bucket = tt.location_ticketing_identifier_[loc];
+       loc != location_idx_t{ctx.location_ticketing_identifier_.size()};
+       ++loc) {
+    auto bucket = ctx.location_ticketing_identifier_[loc];
     utl::sort(bucket, [](auto&& a, auto&& b) { return a.first < b.first; });
   }
 }
@@ -81,6 +83,7 @@ hash_map<std::string, ticketing_link_idx_t> read_ticketing_deep_links(
 }
 
 void load_ticketing(timetable& tt,
+                    import_context& ctx,
                     dir const& d,
                     agency_ticketing_map_t const& agency_ticketing,
                     stops_map_t const& stops,
@@ -93,7 +96,7 @@ void load_ticketing(timetable& tt,
 
   utl::get_active_progress_tracker()->status("Load Ticketing");
 
-  read_ticketing_identifiers(tt, load(kTicketingIdentifiers).data(), stops,
+  read_ticketing_identifiers(tt, ctx, load(kTicketingIdentifiers).data(), stops,
                              src);
   auto const deep_links =
       read_ticketing_deep_links(tt, load(kTicketingDeeplinks).data());
@@ -122,7 +125,7 @@ void load_ticketing(timetable& tt,
     }
   }
 
-  tt.trip_ticketing_identifier_.resize(tt.n_trips());
+  ctx.trip_ticketing_identifier_.resize(tt.n_trips());
 
   for (auto const& trip : trips.data_) {
     if (trip.ticketing_unavailable_) {
@@ -146,7 +149,7 @@ void load_ticketing(timetable& tt,
 
     if (!trip.ticketing_trip_id_.empty()) {
       auto const str_idx = tt.strings_.store(trip.ticketing_trip_id_);
-      tt.trip_ticketing_identifier_[trip.trip_idx_].push_back(str_idx);
+      ctx.trip_ticketing_identifier_[trip.trip_idx_].push_back(str_idx);
     }
   }
 }

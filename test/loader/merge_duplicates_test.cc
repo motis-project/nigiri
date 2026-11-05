@@ -9,7 +9,9 @@
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/timetable.h"
 #include "nigiri/timetable_metrics.h"
@@ -157,16 +159,16 @@ mem_dir rbo500_a_files() {
 
 TEST(loader, merge_intra_src) {
   auto tt = timetable{};
+  auto ctx = loader::import_context{tt};
 
-  tt.date_range_ = {date::sys_days{2024_y / August / 5},
-                    date::sys_days{2024_y / December / 14}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, rbo500_a_files(), tt);
+  tt.date_range_ = {2024_y / August / 5, 2024_y / December / 14};
+  register_special_stations(tt, ctx);
+  load_timetable({}, source_idx_t{0}, rbo500_a_files(), tt, ctx);
 
   ASSERT_TRUE(!tt.bitfields_.empty() &&
               tt.bitfields_[bitfield_idx_t{0U}].none());
 
-  finalize(tt, false, true, false);
+  finalize(tt, ctx, false, true, false);
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
@@ -354,15 +356,17 @@ mem_dir line1_2593402613_files() {
 }  // namespace
 
 TEST(loader, merge_inter_src) {
+  auto const load = [](timetable& x, import_context& x_ctx) {
+    x.date_range_ = {2024_y / August / 5, 2024_y / December / 14};
+    register_special_stations(x, x_ctx);
+    // 2593432458 and 2593402613 are mostly the same as, except no trips on
+    // Thursdays for 2593402613
+    load_timetable({}, source_idx_t{0}, line1_2593432458_files(), x, x_ctx);
+    load_timetable({}, source_idx_t{1}, line1_2593402613_files(), x, x_ctx);
+  };
   auto tt = timetable{};
-
-  tt.date_range_ = {date::sys_days{2024_y / August / 5},
-                    date::sys_days{2024_y / December / 14}};
-  register_special_stations(tt);
-  // 2593432458 and 2593402613 are mostly the same as, except no trips on
-  // Thursdays for 2593402613
-  load_timetable({}, source_idx_t{0}, line1_2593432458_files(), tt);
-  load_timetable({}, source_idx_t{1}, line1_2593402613_files(), tt);
+  auto ctx = loader::import_context{tt};
+  load(tt, ctx);
 
   ASSERT_TRUE(!tt.bitfields_.empty() &&
               tt.bitfields_[bitfield_idx_t{0U}].none());
@@ -373,8 +377,13 @@ TEST(loader, merge_inter_src) {
       R"({{"idx":1,"firstDay":"2024-08-14","lastDay":"2024-12-13","noLocations":16,"noTrips":1,"transportsXDays":{0}}})"
       "]"};
   // No duplicates removed; No transfers on Thursdays for 2593402613
-  EXPECT_EQ(fmt::format(kMetricTemplate, 86), to_str(get_metrics(tt), tt));
-  finalize(tt, false, false, true);
+  auto unmerged = timetable{};
+  auto unmerged_ctx = loader::import_context{unmerged};
+  load(unmerged, unmerged_ctx);
+  finalize(unmerged, unmerged_ctx, false, false, false);
+  EXPECT_EQ(fmt::format(kMetricTemplate, 86),
+            to_str(get_metrics(unmerged), unmerged));
+  finalize(tt, ctx, false, false, true);
   // With duplicates removed; With transfers on Thursdays for both trips
   EXPECT_EQ(fmt::format(kMetricTemplate, 102), to_str(get_metrics(tt), tt));
 
@@ -699,16 +708,16 @@ mem_dir rbo500_b_files() {
 
 TEST(loader, merge_reflexive_matching) {
   timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 5},
-                    date::sys_days{2024_y / December / 14}};
+  auto ctx = loader::import_context{tt};
+  register_special_stations(tt, ctx);
+  tt.date_range_ = {2024_y / August / 5, 2024_y / December / 14};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, rbo500_b_files(), tt);
+  load_timetable({}, src_idx, rbo500_b_files(), tt, ctx);
 
   ASSERT_TRUE(!tt.bitfields_.empty() &&
               tt.bitfields_[bitfield_idx_t{0U}].none());
 
-  finalize(tt, false, true, false);
+  finalize(tt, ctx, false, true, false);
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
@@ -750,19 +759,21 @@ TEST(loader, merge_reflexive_matching) {
 // at stop_range.from_
 TEST(loader, merge_stay_seated_keeps_stop_range) {
   auto tt = timetable{};
-  tt.date_range_ = {date::sys_days{2024_y / September / 1},
-                    date::sys_days{2024_y / September / 6}};
-  register_special_stations(tt);
+  auto ctx = loader::import_context{tt};
+  tt.date_range_ = {2024_y / September / 1, 2024_y / September / 6};
+  register_special_stations(tt, ctx);
   load_timetable({}, source_idx_t{0},
-                 stay_seated_files("a", "SVC,20240902,1\nSVC,20240903,1"), tt);
+                 stay_seated_files("a", "SVC,20240902,1\nSVC,20240903,1"), tt,
+                 ctx);
   load_timetable({}, source_idx_t{1},
-                 stay_seated_files("b", "SVC,20240903,1\nSVC,20240904,1"), tt);
+                 stay_seated_files("b", "SVC,20240903,1\nSVC,20240904,1"), tt,
+                 ctx);
 
   // the fixture is only meaningful if a trip really starts mid-transport
   auto n_mid_route = 0U;
-  for (auto trp = trip_idx_t{0U}; trp != tt.trip_transport_ranges_.size();
+  for (auto trp = trip_idx_t{0U}; trp != ctx.trip_transport_ranges_.size();
        ++trp) {
-    for (auto const& [t, r] : tt.trip_transport_ranges_[trp]) {
+    for (auto const& [t, r] : ctx.trip_transport_ranges_[trp]) {
       if (r.from_ != 0U) {
         ++n_mid_route;
       }
@@ -770,7 +781,7 @@ TEST(loader, merge_stay_seated_keeps_stop_range) {
   }
   ASSERT_NE(0U, n_mid_route) << "fixture did not produce a stay-seated block";
 
-  finalize(tt, false, false, true);
+  finalize(tt, ctx, false, false, true);
 
   auto n_extra = 0U;
   for (auto trp = trip_idx_t{0U}; trp != tt.trip_transport_ranges_.size();
@@ -800,22 +811,23 @@ TEST(loader, merge_stay_seated_keeps_stop_range) {
 // share, so each trip keeps its own part no matter how the other feed splits.
 TEST(loader, merge_stay_seated_different_split) {
   auto tt = timetable{};
-  tt.date_range_ = {date::sys_days{2024_y / September / 1},
-                    date::sys_days{2024_y / September / 6}};
-  register_special_stations(tt);
+  auto ctx = loader::import_context{tt};
+  tt.date_range_ = {2024_y / September / 1, 2024_y / September / 6};
+  register_special_stations(tt, ctx);
   load_timetable({}, source_idx_t{0},
-                 stay_seated_files("a", "SVC,20240902,1\nSVC,20240903,1"), tt);
+                 stay_seated_files("a", "SVC,20240902,1\nSVC,20240903,1"), tt,
+                 ctx);
   load_timetable({}, source_idx_t{1},
-                 unsplit_files("b", "SVC,20240903,1\nSVC,20240904,1"), tt);
+                 unsplit_files("b", "SVC,20240903,1\nSVC,20240904,1"), tt, ctx);
 
   auto const range_of = [&](trip_idx_t const trp) {
-    return tt.trip_transport_ranges_[trp][0].second;
+    return ctx.trip_transport_ranges_[trp][0].second;
   };
   auto const before = utl::to_vec(
-      interval{trip_idx_t{0U}, trip_idx_t{tt.trip_transport_ranges_.size()}},
+      interval{trip_idx_t{0U}, trip_idx_t{ctx.trip_transport_ranges_.size()}},
       range_of);
 
-  finalize(tt, false, false, true);
+  finalize(tt, ctx, false, false, true);
 
   // the merge has to have actually pointed a trip at the other transport,
   // otherwise this proves nothing
@@ -839,13 +851,14 @@ TEST(loader, merge_stay_seated_different_split) {
 // the JSON dump has to be valid and carry the per-feed and per-agency numbers
 TEST(loader, merge_stats_json) {
   auto tt = timetable{};
-  tt.date_range_ = {date::sys_days{2024_y / September / 1},
-                    date::sys_days{2024_y / September / 6}};
-  register_special_stations(tt);
+  auto ctx = loader::import_context{tt};
+  tt.date_range_ = {2024_y / September / 1, 2024_y / September / 6};
+  register_special_stations(tt, ctx);
   load_timetable({}, source_idx_t{0},
-                 stay_seated_files("a", "SVC,20240902,1\nSVC,20240903,1"), tt);
+                 stay_seated_files("a", "SVC,20240902,1\nSVC,20240903,1"), tt,
+                 ctx);
   load_timetable({}, source_idx_t{1},
-                 unsplit_files("b", "SVC,20240903,1\nSVC,20240904,1"), tt);
+                 unsplit_files("b", "SVC,20240903,1\nSVC,20240904,1"), tt, ctx);
 
   // relative to the test's working directory: a fixed name in the shared
   // temp dir is owned by whoever runs the suite on this machine first
@@ -858,7 +871,7 @@ TEST(loader, merge_stats_json) {
   opt.merge_dupes_inter_src_ = true;
   opt.merge_stats_dir_ = dir;
   opt.src_tags_ = {"feed-a", "feed-b"};
-  finalize(tt, opt);
+  finalize(tt, ctx, opt);
 
   auto const out = dir / "merge_stats.json";
   ASSERT_TRUE(std::filesystem::exists(out));
@@ -890,13 +903,12 @@ TEST(loader, merge_stats_json) {
 TEST(loader, merge_intra_src_attrs_differ) {
   auto const n_merged = [](std::string_view const bikes_b,
                            std::string_view const pickup_b) {
-    auto tt = timetable{};
-    tt.date_range_ = {date::sys_days{2024_y / September / 1},
-                      date::sys_days{2024_y / September / 6}};
-    register_special_stations(tt);
-    load_timetable({}, source_idx_t{0}, attr_split_files(bikes_b, pickup_b),
-                   tt);
-    finalize(tt, false, true, false);
+    auto const tt =
+        loader::load(attr_split_files(bikes_b, pickup_b),
+                     {2024_y / September / 1, 2024_y / September / 6},
+                     {.adjust_footpaths_ = false,
+                      .merge_dupes_intra_src_ = true,
+                      .merge_dupes_inter_src_ = false});
 
     auto n = 0U;
     for (auto t = transport_idx_t{0U}; t != tt.next_transport_idx(); ++t) {

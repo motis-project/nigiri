@@ -1,7 +1,6 @@
 #include "gtest/gtest.h"
 
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/special_stations.h"
 
 #include "../loader/hrd/hrd_timetable.h"
@@ -45,13 +44,8 @@ leg 2: (B, 0000002) [2020-03-30 06:45] -> (C, 0000003) [2020-03-30 07:45]
 )";
 
 TEST(routing, raptor_forward) {
-  constexpr auto const src = source_idx_t{0U};
 
-  timetable tt;
-  tt.date_range_ = full_period();
-  register_special_stations(tt);
-  load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
-  finalize(tt);
+  auto const tt = loader::load(files_abc(), full_period());
 
   auto const results = raptor_search(
       tt, nullptr, "0000001", "0000003",
@@ -92,13 +86,8 @@ leg 2: (B, 0000002) [2020-03-30 04:45] -> (C, 0000003) [2020-03-30 05:45]
 
 TEST(routing, raptor_backward) {
   using namespace date;
-  constexpr auto const src = source_idx_t{0U};
 
-  timetable tt;
-  tt.date_range_ = full_period();
-  register_special_stations(tt);
-  load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
-  finalize(tt);
+  auto const tt = loader::load(files_abc(), full_period());
 
   auto const results = raptor_search(
       tt, nullptr, "0000003", "0000001",

@@ -4,6 +4,7 @@
 
 #include "nigiri/loader/hrd/eva_number.h"
 #include "nigiri/loader/hrd/parser_config.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -42,6 +43,7 @@ struct tracks {
 tracks parse_track_rules(config const&,
                          stamm&,
                          timetable&,
+                         import_context&,
                          std::string_view file_content);
 
 }  // namespace nigiri::loader::hrd
