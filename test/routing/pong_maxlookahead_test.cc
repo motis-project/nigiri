@@ -1,8 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/dir.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/special_stations.h"
@@ -12,7 +11,6 @@
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
-using namespace nigiri::loader::gtfs;
 using namespace std::chrono_literals;
 
 namespace {
@@ -51,12 +49,8 @@ R0_DAILY,09:00:00,09:00:00,S1,1,0,0
 
 timetable get_tt() {
   static auto const files = mem_dir::read(kTimetable);
-  timetable tt;
-  tt.date_range_ = {sys_days{2026_y / June / 01}, sys_days{2026_y / July / 01}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, files, tt);
-  finalize(tt);
-  return tt;
+  return loader::load(
+      files, {sys_days{2026_y / June / 01}, sys_days{2026_y / July / 01}});
 }
 
 // Enough connections requested that the search would keep crawling through the
