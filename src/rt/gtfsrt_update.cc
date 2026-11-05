@@ -104,7 +104,7 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
 
 struct delay_propagation {
   unixtime_t pred_time_;
-  duration_t pred_delay_;
+  i32_minutes pred_delay_;
 };
 
 std::string remove_nl(std::string s) {
@@ -117,7 +117,7 @@ delay_propagation update_delay(timetable const& tt,
                                run const& r,
                                stop_idx_t const stop_idx,
                                event_type const ev_type,
-                               duration_t const delay,
+                               i32_minutes const delay,
                                std::optional<unixtime_t> const min,
                                rt_data_state const state) {
   auto const static_time =
@@ -125,12 +125,13 @@ delay_propagation update_delay(timetable const& tt,
   auto const new_time = static_time + delay;
   auto const lower_bounded_new_time =
       min.has_value() ? std::max(*min, new_time) : new_time;
-  rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time,
-                  lower_bounded_new_time != new_time
-                      ? rt_data_state::kInconsistent
-                      : state);
-  rtt.dispatch_delay(r, stop_idx, ev_type,
-                     lower_bounded_new_time - static_time);
+  if (rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time,
+                      lower_bounded_new_time != new_time
+                          ? rt_data_state::kInconsistent
+                          : state)) {
+    rtt.dispatch_delay(r, stop_idx, ev_type,
+                       lower_bounded_new_time - static_time);
+  }
   return {rtt.unix_event_time(r.rt_, stop_idx, ev_type), delay};
 }
 
@@ -154,13 +155,15 @@ delay_propagation update_event(timetable const& tt,
         r.is_scheduled() ? tt.event_time(r.t_, stop_idx, ev_type) : new_time;
     auto const lower_bounded_new_time =
         pred_time.has_value() ? std::max(*pred_time, new_time) : new_time;
-    rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time,
-                    lower_bounded_new_time != new_time
-                        ? rt_data_state::kInconsistent
-                        : rt_data_state::kPredicted);
-    rtt.dispatch_delay(r, stop_idx, ev_type,
-                       lower_bounded_new_time - static_time);
-    return {lower_bounded_new_time, lower_bounded_new_time - static_time};
+    if (rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time,
+                        lower_bounded_new_time != new_time
+                            ? rt_data_state::kInconsistent
+                            : rt_data_state::kPredicted)) {
+      rtt.dispatch_delay(r, stop_idx, ev_type,
+                         lower_bounded_new_time - static_time);
+    }
+    auto const t = rtt.unix_event_time(r.rt_, stop_idx, ev_type);
+    return {t, t - static_time};
   }
 }
 
@@ -208,6 +211,13 @@ bool add_rt_trip(source_idx_t const src,
                  rt_timetable& rtt,
                  run& r,
                  gtfsrt::TripUpdate const& tripUpdate) {
+  if (r.is_scheduled() && !rtt.is_in_rt_interval(tt, r.t_)) {
+    log(log_lvl::debug, "rt.gtfs.unsupported",
+        "run outside of real-time interval {} (src={}, trip_id={}), skipping",
+        rtt.rt_interval(), src, tripUpdate.trip().trip_id());
+    return false;
+  }
+
   auto const& stus = tripUpdate.stop_time_update();
   auto const sr = tripUpdate.trip().schedule_relationship();
   auto const added_or_replaced =
@@ -228,6 +238,14 @@ bool add_rt_trip(source_idx_t const src,
             std::chrono::seconds{stu.arrival().time()})};
       } else {
         throw utl::fail("absolute times are required for unscheduled trips");
+      }
+      if (!rtt.rt_interval().contains(new_time)) {
+        log(log_lvl::debug, "rt.gtfs.unsupported",
+            "time {} outside of real-time interval {} "
+            "(src={}, trip_id={}, stop_id={}), skipping",
+            new_time, rtt.rt_interval(), src, tripUpdate.trip().trip_id(),
+            stu.stop_id());
+        return false;
       }
       utl::verify(stu.has_stop_id(),
                   "stop_id is required for unscheduled trips");
@@ -597,6 +615,7 @@ void handle_vehicle_position(timetable const& tt,
     if (!r.is_scheduled()) {
       log(log_lvl::info, "rt.gtfs.unsupported",
           R"(Run is not scheduled. Skipping Message)", tag, entity.id());
+      ++stats.total_entities_fail_;
       return;
     }
 
@@ -606,6 +625,13 @@ void handle_vehicle_position(timetable const& tt,
 
     // add rt_transport if not existent
     if (!r.is_rt()) {
+      if (!rtt.is_in_rt_interval(tt, r.t_)) {
+        log(log_lvl::debug, "rt.gtfs.unsupported",
+            "run outside of real-time interval {} (tag={}, id={}), skipping",
+            rtt.rt_interval(), tag, entity.id());
+        ++stats.total_entities_fail_;
+        return;
+      }
       r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
     }
 
@@ -643,7 +669,7 @@ void handle_vehicle_position(timetable const& tt,
             ? tt.event_time(r.t_, stopped_at_idx, event_type::kDep)
             : tt.event_time(r.t_, stopped_at_idx, event_type::kArr);
     auto const delay_cast =
-        std::chrono::duration_cast<duration_t>(vp_ts - ev_time);
+        std::chrono::duration_cast<i32_minutes>(vp_ts - ev_time);
 
     // update delay for remaining stops
     auto const stops_after = interval{stopped_at_idx, fr.stop_range_.to_};
@@ -854,6 +880,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
         } else if (!added) {
           if (update_run(src, tt, rtt, trip, r, entity.trip_update())) {
             ++stats.total_entities_success_;
+          } else {
+            ++stats.total_entities_fail_;
           }
         }
 
@@ -868,6 +896,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
         if (update_run(src, tt, rtt, trip_idx_t::invalid(), r,
                        entity.trip_update())) {
           ++stats.total_entities_success_;
+        } else {
+          ++stats.total_entities_fail_;
         }
         continue;
       }
