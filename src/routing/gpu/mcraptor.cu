@@ -41,29 +41,18 @@ struct gpu_mcraptor_state::impl {
     cudaStreamCreate(&stream_);
 
     auto const n_locations = tt_.n_locations_;
-    auto const checked_cap = [](char const* what, std::size_t const x,
-                                std::uint32_t const max) {
-      utl::verify(x >= 4U && x <= max,
-                  "gpu mcraptor: {} cap {} out of range "
-                  "[4, {}]",
-                  what, x, max);
-      return static_cast<std::uint32_t>(x);
-    };
-    // inline slots per stop; the hwm byte bounds inline + block chain
-    bag_cap_ = checked_cap("bag", kMcBagCapDefault, 255U - kMcBagBlock);
+    bag_cap_ = kMcBagCap;
     bags_.resize(static_cast<std::size_t>(n_locations) * bag_cap_);
     cudaMemsetAsync(thrust::raw_pointer_cast(bags_.data()), 0xFF,
                     bags_.size() * sizeof(mc_label_t), stream_);
     // chained blocks: the pool scales with the labels, not a worst-case row
-    bag_pool_cap_ = checked_cap(
-        "bag pool",
-        std::min<std::size_t>(std::max<std::size_t>(n_locations / 2U, 524'288U),
-                              kMcBagPoolDefault * 4U),
-        1U << 25U);
+    bag_pool_cap_ = std::clamp(n_locations / 2U, kMcBagPoolMin, kMcBagPoolMax);
     bag_pool_.resize(static_cast<std::size_t>(bag_pool_cap_) * kMcBagBlock);
     cudaMemsetAsync(thrust::raw_pointer_cast(bag_pool_.data()), 0xFF,
                     bag_pool_.size() * sizeof(mc_label_t), stream_);
-    bag_next_.resize(bag_pool_cap_);
+    bag_next_.resize(bag_pool_cap_);  // free blocks link to ~0U
+    cudaMemsetAsync(thrust::raw_pointer_cast(bag_next_.data()), 0xFF,
+                    bag_next_.size() * sizeof(std::uint32_t), stream_);
     bag_ovf_.resize(n_locations);
     cudaMemsetAsync(thrust::raw_pointer_cast(bag_ovf_.data()), 0xFF,
                     bag_ovf_.size() * sizeof(std::uint32_t), stream_);
@@ -91,11 +80,9 @@ struct gpu_mcraptor_state::impl {
                       sizeof(std::uint32_t), stream_);
     }
 
-    // breadcrumbs of one start time; overflow trips the canary
-    auto const arena_cap = std::min<std::size_t>(
-        std::max<std::size_t>(static_cast<std::size_t>(n_locations) * 16U,
-                              8'000'000U),
-        32'000'000U);
+    auto const arena_cap =
+        std::clamp(static_cast<std::size_t>(n_locations) * kMcArenaPerLocation,
+                   std::size_t{kMcArenaMin}, std::size_t{kMcArenaMax});
     bc_.resize(arena_cap);
     bc_count_.resize(1U);
 
@@ -114,32 +101,13 @@ struct gpu_mcraptor_state::impl {
 
     route_list_.resize(tt_.n_routes_);
     route_list_count_.resize(1U);
-    route_entry_count_.resize(tt_.n_routes_);
     auto const n_route_stops = tt_.route_of_stop_.size();
-    // et tasks are bounded by the flat route-stops; the entry pool is reserved
-    // per task at collect time. The clamp keeps tiny timetables above the
-    // floor.
-    et_tasks_cap_ = checked_cap(
-        "et tasks", std::clamp<std::size_t>(n_route_stops, 4U, 64'000'000U),
-        1U << 28U);
-    et_task_list_.resize(et_tasks_cap_);
-    et_task_off_.resize(et_tasks_cap_);
-    et_task_cnt_.resize(et_tasks_cap_);
+    et_task_list_.resize(n_route_stops);
     et_task_count_.resize(1U);
-    et_entry_count_.resize(1U);
-    et_pool_cap_ =
-        checked_cap("et pool",
-                    std::min<std::size_t>(
-                        std::max<std::size_t>(8U * n_route_stops, 64'000'000U),
-                        224'000'000U),
-                    1U << 30U);
-    et_ent_key_.resize(et_pool_cap_);
-    et_ent_ex_.resize(et_pool_cap_);
-    et_ent_sl_.resize(et_pool_cap_);
-    task_bits_.resize((n_route_stops >> 5U) + 2U);
-    cudaMemsetAsync(thrust::raw_pointer_cast(task_bits_.data()), 0,
-                    task_bits_.size() * sizeof(std::uint32_t), stream_);
-    route_task_start_.resize(tt_.n_routes_);
+    sb_n_.resize(n_route_stops);
+    sb_et_.resize(n_route_stops * kMcPrefixK);
+    sb_par_.resize(n_route_stops * kMcPrefixK);
+    sb_bx_.resize(n_route_stops * kMcPrefixK);
     any_marked_.resize(1U);
     done_.resize(1U);
     overflow_.resize(1U);
@@ -244,8 +212,6 @@ struct gpu_mcraptor_state::impl {
 
   bool is_intermodal_dest_[2];  // per direction: [0]=fwd, [1]=bwd
   std::uint32_t bag_cap_;
-  std::size_t et_pool_cap_;
-  std::uint32_t et_tasks_cap_;
 
   device_timetable tt_;
 
@@ -275,15 +241,10 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> route_list_count_;
   thrust::device_vector<std::uint32_t> et_task_list_;
   thrust::device_vector<std::uint32_t> et_task_count_;
-  thrust::device_vector<std::uint32_t> et_ent_key_;
-  thrust::device_vector<std::uint16_t> et_ent_ex_;
-  thrust::device_vector<std::uint8_t> et_ent_sl_;
-  thrust::device_vector<std::uint32_t> task_bits_;
-  thrust::device_vector<std::uint32_t> route_task_start_;
-  thrust::device_vector<std::uint32_t> et_task_off_;
-  thrust::device_vector<std::uint8_t> et_task_cnt_;
-  thrust::device_vector<std::uint32_t> et_entry_count_;
-  thrust::device_vector<std::uint32_t> route_entry_count_;
+  thrust::device_vector<std::uint32_t> sb_n_;
+  thrust::device_vector<std::uint32_t> sb_et_;
+  thrust::device_vector<std::uint32_t> sb_par_;
+  thrust::device_vector<std::uint32_t> sb_bx_;
   thrust::device_vector<std::uint32_t> any_marked_;
   thrust::device_vector<std::uint32_t> done_;
   thrust::device_vector<std::uint32_t> overflow_;
@@ -322,6 +283,8 @@ gpu_mcraptor_state::gpu_mcraptor_state(gpu_timetable const& gtt)
 gpu_mcraptor_state::~gpu_mcraptor_state() = default;
 
 // ---- kernels ----------------------------------------------------------------
+// The rounds run without host syncs: every kernel after the init returns once
+// done_ is set.
 
 template <direction SearchDir, mc_crit Crit>
 __global__ void mc_init_arrivals_kernel(mcraptor_impl<SearchDir, Crit> r,
@@ -331,35 +294,22 @@ __global__ void mc_init_arrivals_kernel(mcraptor_impl<SearchDir, Crit> r,
 
 template <direction SearchDir, mc_crit Crit>
 __global__ void mc_mark_routes_kernel(mcraptor_impl<SearchDir, Crit> r) {
-  if (*r.done_) {
-    return;
+  if (!*r.done_) {
+    r.mark_routes();
   }
-  r.mark_routes();
 }
 
 // only launched when the query carries rt transports (see execute)
 template <direction SearchDir, mc_crit Crit>
-__global__ void mc_mark_rt_kernel(mcraptor_impl<SearchDir, Crit> r) {
-  if (*r.done_) {
-    return;
+__global__ void mc_mark_rt_transports_kernel(mcraptor_impl<SearchDir, Crit> r) {
+  if (!*r.done_) {
+    r.mark_rt_transports();
   }
-  r.mark_rt_transports();
-}
-
-template <direction SearchDir,
-          mc_crit Crit,
-          bool WithClaszFilter,
-          bool IsWheelchair>
-__global__ void mc_scan_rt_kernel(mcraptor_impl<SearchDir, Crit> r,
-                                  unsigned const k) {
-  if (*r.done_) {
-    return;
-  }
-  r.template scan_rt_transports<WithClaszFilter, IsWheelchair>(k);
 }
 
 template <direction SearchDir, mc_crit Crit>
-__global__ void mc_begin_transit_kernel(mcraptor_impl<SearchDir, Crit> r) {
+__global__ void mc_begin_transit_phase_kernel(
+    mcraptor_impl<SearchDir, Crit> r) {
   if (*r.done_) {
     return;
   }
@@ -373,64 +323,74 @@ __global__ void mc_begin_transit_kernel(mcraptor_impl<SearchDir, Crit> r) {
 }
 
 template <direction SearchDir, mc_crit Crit>
-__global__ void mc_build_route_list_kernel(mcraptor_impl<SearchDir, Crit> r) {
-  if (*r.done_) {
-    return;
+__global__ void mc_et_build_route_list_kernel(
+    mcraptor_impl<SearchDir, Crit> r) {
+  if (!*r.done_) {
+    r.et_build_route_list();
   }
-  r.build_route_list();
 }
 
 template <direction SearchDir, mc_crit Crit, bool IsWheelchair>
-__global__ void mc_et_collect_kernel(mcraptor_impl<SearchDir, Crit> r,
-                                     unsigned const k) {
-  if (*r.done_) {
-    return;
+__global__ void mc_et_collect_tasks_kernel(mcraptor_impl<SearchDir, Crit> r) {
+  if (!*r.done_) {
+    r.template et_collect_tasks<IsWheelchair>();
   }
-  r.template et_collect_tasks<IsWheelchair>(k);
 }
 
 template <direction SearchDir, mc_crit Crit>
-__global__ void mc_et_lookups_kernel(mcraptor_impl<SearchDir, Crit> r,
-                                     unsigned const k) {
-  if (*r.done_) {
-    return;
+__global__ void mc_et_run_lookups_kernel(mcraptor_impl<SearchDir, Crit> r,
+                                         unsigned const k) {
+  if (!*r.done_) {
+    r.et_run_lookups(k);
   }
-  r.et_run_lookups(k);
 }
 
 template <direction SearchDir,
           mc_crit Crit,
           bool WithClaszFilter,
           bool IsWheelchair>
-__global__ void mc_scan_routes_kernel(mcraptor_impl<SearchDir, Crit> r,
+__global__ void mc_loop_routes_kernel(mcraptor_impl<SearchDir, Crit> r,
                                       unsigned const k) {
-  if (*r.done_) {
-    return;
+  if (!*r.done_) {
+    r.template loop_routes<WithClaszFilter, IsWheelchair>(k);
   }
-  r.template scan_routes<WithClaszFilter, IsWheelchair>(k);
 }
 
-// single thread: no location improved -> converged; else reset the flag for
-// the next round's route marking
-template <direction SearchDir, mc_crit Crit>
-__global__ void mc_begin_footpath_kernel(mcraptor_impl<SearchDir, Crit> r) {
-  if (*r.done_) {
-    return;
+// only launched when the query carries rt transports (see execute)
+template <direction SearchDir,
+          mc_crit Crit,
+          bool WithClaszFilter,
+          bool IsWheelchair>
+__global__ void mc_update_rt_transports_kernel(mcraptor_impl<SearchDir, Crit> r,
+                                               unsigned const k) {
+  if (!*r.done_) {
+    r.template update_rt_transports<WithClaszFilter, IsWheelchair>(k);
   }
-  if (*r.any_marked_ == 0U) {
-    *r.done_ = 1U;
-  }
-  *r.any_marked_ = 0U;
 }
 
 template <direction SearchDir, mc_crit Crit>
-__global__ void mc_transfers_footpaths_kernel(mcraptor_impl<SearchDir, Crit> r,
-                                              unsigned const k) {
+__global__ void mc_begin_footpath_phase_kernel(
+    mcraptor_impl<SearchDir, Crit> r) {
   if (*r.done_) {
     return;
   }
-  r.update_transfers_and_footpaths(k);
-  r.route_mark_.reset();
+  if (*r.any_marked_ == 0U) {  // no location improved -> search converged
+    if (get_global_thread_id() == 0U) {
+      *r.done_ = 1U;
+    }
+    return;
+  }
+  r.begin_footpath_phase();
+}
+
+template <direction SearchDir, mc_crit Crit>
+__global__ void mc_footpaths_kernel(mcraptor_impl<SearchDir, Crit> r,
+                                    unsigned const k) {
+  if (!*r.done_) {
+    r.update_footpaths(k);
+    r.route_mark_.reset();
+    r.rt_transport_mark_.reset();
+  }
 }
 
 template <direction SearchDir, mc_crit Crit>
@@ -438,6 +398,7 @@ __global__ void mc_clear_bags_kernel(mcraptor_impl<SearchDir, Crit> r) {
   r.clear_bags();
 }
 
+// one thread per destination bag slot; the journeys are packed at the front
 template <direction SearchDir, mc_crit Crit>
 __global__ void mc_reconstruct_kernel(location_idx_t const* const dest_list,
                                       std::uint32_t const n_dest,
@@ -445,13 +406,11 @@ __global__ void mc_reconstruct_kernel(location_idx_t const* const dest_list,
                                       gpu_journey* const out,
                                       std::uint32_t* const out_count) {
   auto const tid = blockIdx.x * blockDim.x + threadIdx.x;
-  // a dest bag can use every slot the u8 hwm allows
-  auto const per_dest = kMcMaxBagSlots;
-  if (tid >= n_dest * per_dest) {
+  if (tid >= n_dest * kMcMaxBagSlots) {
     return;
   }
-  auto const dest = dest_list[tid / per_dest];
-  auto const lab = r.bag_label(to_idx(dest), tid % per_dest);
+  auto const dest = dest_list[tid / kMcMaxBagSlots];
+  auto const lab = r.bag_slots(to_idx(dest))[tid % kMcMaxBagSlots];
   if (lab == kMcEmptySlot || mc_round(lab) == 0U) {
     return;  // empty, or a round-0 seed at the destination (no legs)
   }
@@ -559,12 +518,12 @@ mcraptor_impl<SearchDir, Crit> make_impl(
     profile_idx_t const prf_idx,
     day_idx_t const base,
     delta_t const worst_at_dest,
-    delta_t const dep,
     cuda::std::span<std::pair<location_idx_t, delta_t> const> starts) {
+  auto const ptr = [](auto& v) { return thrust::raw_pointer_cast(v.data()); };
   return mcraptor_impl<SearchDir, Crit>{
-      .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
-      .done_ = thrust::raw_pointer_cast(s.done_.data()),
-      .overflow_ = thrust::raw_pointer_cast(s.overflow_.data()),
+      .any_marked_ = ptr(s.any_marked_),
+      .done_ = ptr(s.done_),
+      .overflow_ = ptr(s.overflow_),
       .tt_ = s.tt_,
       .rtt_ = device_rt_timetable{},
       .transfer_time_settings_ = tts,
@@ -582,25 +541,22 @@ mcraptor_impl<SearchDir, Crit> make_impl(
                    .bucket_starts_ = {s.td_dest_ranges_dev_[dir_idx].data(),
                                       s.td_dest_ranges_dev_[dir_idx].size()}},
       .lb_ = {s.lb_dev_[dir_idx].data(), s.lb_dev_[dir_idx].size()},
-      .bags_ = thrust::raw_pointer_cast(s.bags_.data()),
-      .bag_pool_ = thrust::raw_pointer_cast(s.bag_pool_.data()),
-      .bag_ovf_ = thrust::raw_pointer_cast(s.bag_ovf_.data()),
-      .bag_next_ = thrust::raw_pointer_cast(s.bag_next_.data()),
-      .bag_pool_count_ = thrust::raw_pointer_cast(s.bag_pool_count_.data()),
-      .bag_pool_cap_ = s.bag_pool_cap_,
-      .reuse_bags_ = thrust::raw_pointer_cast(s.reuse_bags_[dir_idx].data()),
+      .bags_ = ptr(s.bags_),
       .bag_cap_ = s.bag_cap_,
-      .dep_ = dep,
-      .bag_locks_ = thrust::raw_pointer_cast(s.bag_locks_.data()),
-      .bag_hwm_ = thrust::raw_pointer_cast(s.bag_hwm_.data()),
-      .dest_bag_ = thrust::raw_pointer_cast(s.dest_bag_[dir_idx].data()),
-      .dest_lock_ = thrust::raw_pointer_cast(s.dest_lock_[dir_idx].data()),
-      .dest_best_key_ =
-          thrust::raw_pointer_cast(s.dest_best_key_[dir_idx].data()),
-      .dest_best_total_ =
-          thrust::raw_pointer_cast(s.dest_best_total_[dir_idx].data()),
-      .bc_ = thrust::raw_pointer_cast(s.bc_.data()),
-      .bc_count_ = thrust::raw_pointer_cast(s.bc_count_.data()),
+      .bag_pool_ = ptr(s.bag_pool_),
+      .bag_ovf_ = ptr(s.bag_ovf_),
+      .bag_next_ = ptr(s.bag_next_),
+      .bag_pool_count_ = ptr(s.bag_pool_count_),
+      .bag_pool_cap_ = s.bag_pool_cap_,
+      .bag_hwm_ = ptr(s.bag_hwm_),
+      .bag_locks_ = ptr(s.bag_locks_),
+      .reuse_bags_ = ptr(s.reuse_bags_[dir_idx]),
+      .dest_bag_ = ptr(s.dest_bag_[dir_idx]),
+      .dest_lock_ = ptr(s.dest_lock_[dir_idx]),
+      .dest_best_key_ = ptr(s.dest_best_key_[dir_idx]),
+      .dest_best_total_ = ptr(s.dest_best_total_[dir_idx]),
+      .bc_ = ptr(s.bc_),
+      .bc_count_ = ptr(s.bc_count_),
       .bc_cap_ = static_cast<std::uint32_t>(s.bc_.size()),
       .touched_ = {to_mutable_view(s.touched_)},
       .station_mark_ = {to_mutable_view(s.station_mark_)},
@@ -608,21 +564,13 @@ mcraptor_impl<SearchDir, Crit> make_impl(
       .route_mark_ = {to_mutable_view(s.route_mark_)},
       .rt_transport_mark_ = {to_mutable_view(s.rt_transport_mark_)},
       .route_list_ = to_mutable_view(s.route_list_),
-      .route_list_count_ = thrust::raw_pointer_cast(s.route_list_count_.data()),
+      .route_list_count_ = ptr(s.route_list_count_),
       .et_task_list_ = to_mutable_view(s.et_task_list_),
-      .et_task_count_ = thrust::raw_pointer_cast(s.et_task_count_.data()),
-      .et_ent_key_ = thrust::raw_pointer_cast(s.et_ent_key_.data()),
-      .et_ent_ex_ = thrust::raw_pointer_cast(s.et_ent_ex_.data()),
-      .et_ent_sl_ = thrust::raw_pointer_cast(s.et_ent_sl_.data()),
-      .task_bits_ = thrust::raw_pointer_cast(s.task_bits_.data()),
-      .route_task_start_ = thrust::raw_pointer_cast(s.route_task_start_.data()),
-      .et_task_off_ = thrust::raw_pointer_cast(s.et_task_off_.data()),
-      .et_task_cnt_ = thrust::raw_pointer_cast(s.et_task_cnt_.data()),
-      .et_entry_count_ = thrust::raw_pointer_cast(s.et_entry_count_.data()),
-      .et_pool_cap_ = s.et_pool_cap_,
-      .et_tasks_cap_ = s.et_tasks_cap_,
-      .route_entry_count_ =
-          thrust::raw_pointer_cast(s.route_entry_count_.data())};
+      .et_task_count_ = ptr(s.et_task_count_),
+      .sb_n_ = ptr(s.sb_n_),
+      .sb_et_ = ptr(s.sb_et_),
+      .sb_par_ = ptr(s.sb_par_),
+      .sb_bx_ = ptr(s.sb_bx_)};
 }
 
 template <direction SearchDir, mc_crit Crit>
@@ -631,7 +579,7 @@ void gpu_mcraptor<SearchDir, Crit>::next_start_time() {
   auto& s = *state_.impl_;
   auto const r = make_impl<SearchDir, Crit>(s, kDirIdx, transfer_time_settings_,
                                             allowed_claszes_, 0U, base_,
-                                            worst_at_dest_, 0, {});
+                                            worst_at_dest_, {});
   mc_launch(mc_clear_bags_kernel<SearchDir, Crit>, s.stream_, r);
   // memsets, not thrust::fill: those synchronize the stream
   auto const zero = [&](auto& v) {
@@ -682,7 +630,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   auto const d_start_dep = unix_to_delta(base(), start_time);
   auto r = make_impl<SearchDir, Crit>(
       s, kDirIdx, transfer_time_settings_, allowed_claszes_, prf_idx_, base_,
-      worst_at_dest_, d_start_dep,
+      worst_at_dest_,
       cuda::std::span<std::pair<location_idx_t, delta_t> const>{
           starts_dev, starts_.size()});
 
@@ -707,35 +655,38 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
                : (is_wheelchair_ ? f(n{}, t{}) : f(n{}, n{}));
   };
 
-  // === ROUTING KERNELS ===
+  // === ROUTING KERNELS (as gpu raptor) ===
   mc_launch(mc_init_arrivals_kernel<SearchDir, Crit>, s.stream_, r,
             d_start_dep);
   for (auto k = 1U; k != end_k; ++k) {
     mc_launch(mc_mark_routes_kernel<SearchDir, Crit>, s.stream_, r);
     if (with_rt_scan) {
-      mc_launch(mc_mark_rt_kernel<SearchDir, Crit>, s.stream_, r);
+      mc_launch(mc_mark_rt_transports_kernel<SearchDir, Crit>, s.stream_, r);
     }
-    mc_launch(mc_begin_transit_kernel<SearchDir, Crit>, s.stream_, r);
-    mc_launch(mc_build_route_list_kernel<SearchDir, Crit>, s.stream_, r);
+    mc_launch(mc_begin_transit_phase_kernel<SearchDir, Crit>, s.stream_, r);
+    mc_launch(mc_et_build_route_list_kernel<SearchDir, Crit>, s.stream_, r);
     if (is_wheelchair_) {
-      mc_launch(mc_et_collect_kernel<SearchDir, Crit, true>, s.stream_, r, k);
+      mc_launch(mc_et_collect_tasks_kernel<SearchDir, Crit, true>, s.stream_,
+                r);
     } else {
-      mc_launch(mc_et_collect_kernel<SearchDir, Crit, false>, s.stream_, r, k);
+      mc_launch(mc_et_collect_tasks_kernel<SearchDir, Crit, false>, s.stream_,
+                r);
     }
-    mc_launch(mc_et_lookups_kernel<SearchDir, Crit>, s.stream_, r, k);
+    mc_launch(mc_et_run_lookups_kernel<SearchDir, Crit>, s.stream_, r, k);
     // route and rt scans read round k - 1 and write round k (any order)
     with_flags([&](auto const clasz_filter, auto const wheelchair) {
       constexpr auto kClasz = decltype(clasz_filter)::value;
       constexpr auto kWheelchair = decltype(wheelchair)::value;
-      mc_launch(mc_scan_routes_kernel<SearchDir, Crit, kClasz, kWheelchair>,
+      mc_launch(mc_loop_routes_kernel<SearchDir, Crit, kClasz, kWheelchair>,
                 s.stream_, r, k);
       if (with_rt_scan) {
-        mc_launch(mc_scan_rt_kernel<SearchDir, Crit, kClasz, kWheelchair>,
+        mc_launch(mc_update_rt_transports_kernel<SearchDir, Crit, kClasz,
+                                                 kWheelchair>,
                   s.stream_, r, k);
       }
     });
-    mc_begin_footpath_kernel<SearchDir, Crit><<<1, 1, 0, s.stream_>>>(r);
-    mc_launch(mc_transfers_footpaths_kernel<SearchDir, Crit>, s.stream_, r, k);
+    mc_launch(mc_begin_footpath_phase_kernel<SearchDir, Crit>, s.stream_, r);
+    mc_launch(mc_footpaths_kernel<SearchDir, Crit>, s.stream_, r, k);
   }
 
   // === DEVICE RECONSTRUCT ===
@@ -763,7 +714,8 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
                              cudaMemcpyHostToDevice, s.stream_));
   auto* const rec_out_dev = s.rec_out_.ensure(total, s.stream_);
   auto* const rec_host = s.rec_host_out_.ensure(total);
-  auto* const overflow_pin = s.overflow_pin_.ensure(1U);
+  auto* const overflow_pin =
+      s.overflow_pin_.ensure(3U);  // flags, bc + pool use
   auto* const rec_count_dev = s.rec_count_.ensure(1U, s.stream_);
   auto* const rec_count_pin = s.rec_count_pin_.ensure(1U);
 
@@ -787,6 +739,12 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   CUDA_CHECK(cudaMemcpyAsync(
       overflow_pin, thrust::raw_pointer_cast(s.overflow_.data()),
       sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_));
+  CUDA_CHECK(cudaMemcpyAsync(
+      overflow_pin + 1U, thrust::raw_pointer_cast(s.bc_count_.data()),
+      sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_));
+  CUDA_CHECK(cudaMemcpyAsync(
+      overflow_pin + 2U, thrust::raw_pointer_cast(s.bag_pool_count_.data()),
+      sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_));
   cudaStreamSynchronize(s.stream_);
   CUDA_CHECK(cudaPeekAtLastError());
   auto const n_rec = *rec_count_pin;
@@ -799,15 +757,12 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
 
   // capacity canaries: a lossy search must never go unnoticed
   utl::verify(*overflow_pin == 0U,
-              "gpu mcraptor: capacity overflow (mask={}): bag={} arena={} "
-              "route_bag={} rec={} et_block={} et_tasks={} task_cap={}",
-              *overflow_pin, (*overflow_pin & kMcOverflowBag) != 0U,
-              (*overflow_pin & kMcOverflowArena) != 0U,
-              (*overflow_pin & kMcOverflowRouteBag) != 0U,
-              (*overflow_pin & kMcOverflowRec) != 0U,
-              (*overflow_pin & kMcOverflowEtBlock) != 0U,
-              (*overflow_pin & kMcOverflowEtTasks) != 0U,
-              (*overflow_pin & kMcOverflowTaskCap) != 0U);
+              "gpu mcraptor: capacity overflow: bag={} (pool {} of {} blocks) "
+              "arena={} ({} of {} breadcrumbs) route_bag={}",
+              (*overflow_pin & kMcOverflowBag) != 0U, overflow_pin[2],
+              s.bag_pool_cap_, (*overflow_pin & kMcOverflowArena) != 0U,
+              overflow_pin[1], s.bc_.size(),
+              (*overflow_pin & kMcOverflowRouteBag) != 0U);
 
   // === CONVERT DEVICE JOURNEYS TO HOST JOURNEYS ===
   for (auto idx = std::uint32_t{0U}; idx != n_rec; ++idx) {
