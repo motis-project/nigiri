@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/timetable.h"
 
 using namespace date;
@@ -79,8 +80,9 @@ mem_dir test_files(std::string_view const agency_txt,
 }
 
 void load(timetable& tt, mem_dir const& files) {
+  auto ctx = import_context{tt};
   tt.date_range_ = {2006_y / 7 / 1, 2006_y / 8 / 1};
-  load_timetable({}, source_idx_t{0U}, files, tt);
+  load_timetable({}, source_idx_t{0U}, files, tt, ctx);
 }
 
 }  // namespace

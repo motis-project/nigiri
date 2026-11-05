@@ -1,7 +1,6 @@
 #include "gtest/gtest.h"
 
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/query_generator/generator.h"
 #include "nigiri/query_generator/generator_settings.h"
 #include "nigiri/query_generator/transport_mode.h"
@@ -16,12 +15,7 @@ using namespace nigiri::test_data::hrd_timetable;
 using namespace nigiri::query_generation;
 
 TEST(query_generation, pretrip_station) {
-  constexpr auto const src = source_idx_t{0U};
-  timetable tt;
-  tt.date_range_ = full_period();
-  register_special_stations(tt);
-  load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
-  finalize(tt);
+  auto const tt = loader::load(files_abc(), full_period());
 
   generator_settings gs;
   gs.start_match_mode_ = routing::location_match_mode::kEquivalent;
@@ -34,12 +28,7 @@ TEST(query_generation, pretrip_station) {
 }
 
 TEST(query_generation, pretrip_intermodal) {
-  constexpr auto const src = source_idx_t{0U};
-  timetable tt;
-  tt.date_range_ = full_period();
-  register_special_stations(tt);
-  load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
-  finalize(tt);
+  auto const tt = loader::load(files_abc(), full_period());
 
   generator_settings gs;
   gs.start_mode_ = kCar;
@@ -51,12 +40,7 @@ TEST(query_generation, pretrip_intermodal) {
 }
 
 TEST(query_generation, reproducibility) {
-  constexpr auto const src = source_idx_t{0U};
-  timetable tt;
-  tt.date_range_ = full_period();
-  register_special_stations(tt);
-  load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
-  finalize(tt);
+  auto const tt = loader::load(files_abc(), full_period());
 
   generator_settings const gs;
   auto const seed = 2342;

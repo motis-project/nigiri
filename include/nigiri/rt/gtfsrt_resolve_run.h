@@ -66,24 +66,36 @@ void resolve_trip(date::sys_days const today,
 template <typename Fn>
 void for_each_trip(timetable const& tt,
                    source_idx_t const src,
-                   std::string const& trip_id,
+                   std::string_view const trip_id,
                    Fn&& fn) {
   auto const lb = std::lower_bound(
       begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_), trip_id,
-      [&](pair<trip_id_idx_t, trip_idx_t> const& a, auto&& b) {
-        return std::tuple{tt.trip_id_src_[a.first],
-                          tt.trip_id_strings_[a.first].view()} <
+      [&](trip_idx_t const a, auto&& b) {
+        return std::tuple{tt.trip_id_src_[a], tt.trip_id_strings_[a].view()} <
                std::tuple{src, static_cast<std::string_view>(b)};
       });
 
-  auto const id_matches = [&](trip_id_idx_t const t_id_idx) {
-    return tt.trip_id_src_[t_id_idx] == src &&
-           tt.trip_id_strings_[t_id_idx].view() == trip_id;
+  auto const id_matches = [&](trip_idx_t const t) {
+    return tt.trip_id_src_[t] == src &&
+           tt.trip_id_strings_[t].view() == trip_id;
   };
 
-  for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(i->first); ++i) {
-    fn(i->second);
+  for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(*i); ++i) {
+    fn(*i);
   }
+}
+
+template <typename Fn>
+void resolve_static_trip_id(date::sys_days const today,
+                            timetable const& tt,
+                            source_idx_t const src,
+                            std::string_view const trip_id,
+                            std::optional<date::sys_days> const& start_date,
+                            std::optional<duration_t> const& start_time,
+                            Fn&& fn) {
+  for_each_trip(tt, src, trip_id, [&](trip_idx_t const trip) {
+    resolve_trip(today, tt, trip, start_date, start_time, fn);
+  });
 }
 
 template <typename Fn>
@@ -125,9 +137,8 @@ void resolve_static(date::sys_days const today,
                               : std::nullopt;
 
   if (td.has_trip_id()) {
-    for_each_trip(tt, src, td.trip_id(), [&](trip_idx_t const trip) {
-      resolve_trip(today, tt, trip, start_date, start_time, fn);
-    });
+    resolve_static_trip_id(today, tt, src, td.trip_id(), start_date, start_time,
+                           std::forward<Fn>(fn));
   } else {
     utl_verify(td.has_route_id() && td.has_direction_id() &&
                    start_time.has_value() && start_date.has_value(),

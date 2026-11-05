@@ -36,6 +36,12 @@ transit_realtime::FeedMessage to_feed_msg(std::vector<trip> const& trip_delays,
       if (stop_delay.seq_.has_value()) {
         upd->set_stop_sequence(*stop_delay.seq_);
       }
+      if (stop_delay.no_data_) {
+        upd->set_schedule_relationship(
+            transit_realtime::
+                TripUpdate_StopTimeUpdate_ScheduleRelationship_NO_DATA);
+        continue;
+      }
       stop_delay.ev_type_ == nigiri::event_type::kDep
           ? upd->mutable_departure()->set_delay(stop_delay.delay_minutes_ * 60)
           : upd->mutable_arrival()->set_delay(stop_delay.delay_minutes_ * 60);

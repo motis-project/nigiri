@@ -2,7 +2,7 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
 
@@ -113,10 +113,7 @@ TEST(gtfs, block_id) {
                {path{kStopTimesFile}, std::string{stop_times}}}};
   ASSERT_TRUE(applicable(files));
 
-  auto tt = timetable{};
-  tt.date_range_ = {2006_y / 7 / 1, 2006_y / 8 / 1};
-  load_timetable({}, source_idx_t{0U}, files, tt);
-  finalize(tt);
+  auto const tt = loader::load(files, {2006_y / 7 / 1, 2006_y / 8 / 1});
 
   auto const expect_no_transfers = [](routing::journey const& j) {
     return j.legs_.size() == 1U;
@@ -139,9 +136,8 @@ TEST(gtfs, block_id) {
       auto const ev_type =
           s.stop_idx_ == fr.size() - 1U ? event_type::kArr : event_type::kDep;
       auto const [start_day, start_time] = s.get_trip_start(ev_type);
-      ss << tt.trip_id_strings_[tt.trip_ids_[s.get_trip_idx(ev_type)].front()]
-                .view()
-         << ": " << date::format("%F", start_day) << ", " << start_time << "\n";
+      ss << tt.trip_id_strings_[s.get_trip_idx(ev_type)].view() << ": "
+         << date::format("%F", start_day) << ", " << start_time << "\n";
     }
     EXPECT_EQ(R"(T1: 2006-07-02, 23:00.0
 T3: 2006-07-02, 00:00.1

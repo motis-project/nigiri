@@ -2,7 +2,7 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 
 #include "nigiri/rt/frun.h"
 #include "nigiri/special_stations.h"
@@ -88,11 +88,8 @@ pareto_set<routing::journey> search(timetable const& tt,
 }  // namespace
 
 TEST(routing, via_earliest_alternative) {
-  auto tt = timetable{};
-  tt.date_range_ = {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   auto const A = tt.find(location_id{"A", source_idx_t{0}}).value();
   auto const V = tt.find(location_id{"V", source_idx_t{0}}).value();
@@ -202,11 +199,8 @@ T3,13:00:00,13:00:00,D,2,0,0
 // disabled: needs via-aware wait minimization -- pong keeps the
 // latest-departing T2 while range delivers the express
 TEST(routing, DISABLED_via_earliest_alternative_completed_via) {
-  auto tt = timetable{};
-  tt.date_range_ = {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, completed_via_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(completed_via_files(),
+                               {2024_y / June / 18, 2024_y / June / 20});
 
   auto const A = tt.find(location_id{"A", source_idx_t{0}}).value();
   auto const B2 = tt.find(location_id{"B2", source_idx_t{0}}).value();

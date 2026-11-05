@@ -29,6 +29,7 @@ clasz to_clasz(route_type_t);
 
 route_map_t read_routes(source_idx_t,
                         timetable&,
+                        import_context&,
                         translator&,
                         tz_map&,
                         agency_map_t&,

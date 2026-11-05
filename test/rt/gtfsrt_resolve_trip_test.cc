@@ -4,7 +4,7 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
@@ -71,12 +71,10 @@ constexpr auto const kTransportAfterUpdate = std::string_view{
 }  // namespace
 
 TEST(rt, gtfsrt_resolve_static_trip) {
-  timetable tt;
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
   rt_timetable rtt;
   rtt.tt_ = &tt;
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
 
   {  // test start time >24:00:00
 
@@ -190,13 +188,8 @@ service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,e
 }
 
 TEST(rt, resolve_tz) {
-  auto tt = timetable{};
-
-  tt.date_range_ = {date::sys_days{2023_y / August / 3},
-                    date::sys_days{2023_y / August / 5}};
-  loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({}, source_idx_t{0}, miami_test_files(), tt);
-  loader::finalize(tt);
+  auto const tt = loader::load(miami_test_files(),
+                               {2023_y / August / 3, 2023_y / August / 5});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 3});
 
@@ -244,12 +237,8 @@ TEST(rt, gtfs_rt_update) {
   };
 
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   // Create empty RT timetable.
   auto rtt = rt_timetable{};

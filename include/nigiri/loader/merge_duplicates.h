@@ -21,7 +21,10 @@ constexpr merge_threshold_t uniform_merge_threshold(duration_t const d) {
   return t;
 }
 
+struct import_context;
+
 void merge_duplicates(timetable&,
+                      import_context&,
                       merge_threshold_t const&,
                       bool intra_src,
                       bool inter_src,

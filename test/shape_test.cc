@@ -3,8 +3,7 @@
 #include "geo/box.h"
 #include "geo/polyline.h"
 
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/common/span_cmp.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
@@ -107,15 +106,11 @@ S1,20240301,1
 }  // namespace
 
 TEST(shape, single_trip_with_shape) {
-  auto tt = timetable{};
-  tt.date_range_ = {date::sys_days{2024_y / March / 1},
-                    date::sys_days{2024_y / March / 2}};
-  loader::register_special_stations(tt);
   auto shapes_data = shapes_storage{"shape-route-trip-with-shape",
                                     cista::mmap::protection::WRITE};
-  loader::gtfs::load_timetable({}, {}, loader::mem_dir::read(kWithShapes), tt,
+  auto const tt = loader::load(loader::mem_dir::read(kWithShapes),
+                               {2024_y / March / 1, 2024_y / March / 2}, {},
                                nullptr, &shapes_data);
-  loader::finalize(tt);
 
   // Testing shape 'Last', used by 'Trip 3' (index == 2)
   {

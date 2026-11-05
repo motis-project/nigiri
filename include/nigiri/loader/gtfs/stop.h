@@ -24,6 +24,7 @@ using location_accessible_map_t = hash_map<location_idx_t, bool>;
 std::tuple<stops_map_t, seated_transfers_map_t, location_accessible_map_t>
 read_stops(source_idx_t,
            timetable&,
+           import_context&,
            translator&,
            tz_map&,
            std::string_view stops_file_content,

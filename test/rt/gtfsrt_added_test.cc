@@ -7,7 +7,7 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
@@ -772,12 +772,8 @@ constexpr auto const expectedDuplicated = R"(
 
 TEST(rt, gtfs_rt_added) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 11});
@@ -863,12 +859,8 @@ TEST(rt, gtfs_rt_added) {
 
 TEST(rt, gtfs_rt_new) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
@@ -934,13 +926,8 @@ TEST(rt, gtfs_rt_new) {
 
 TEST(rt, gtfs_rt_new_different_source) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  load_timetable({}, source_idx_t{1}, test_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load({{test_files()}, {test_files()}},
+                               {2023_y / August / 9, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
@@ -969,12 +956,8 @@ TEST(rt, gtfs_rt_new_different_source) {
 
 TEST(rt, gtfs_rt_new_with_existing_trip_id) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
@@ -998,12 +981,8 @@ TEST(rt, gtfs_rt_new_with_existing_trip_id) {
 
 TEST(rt, gtfs_rt_new_no_route) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
@@ -1032,12 +1011,8 @@ TEST(rt, gtfs_rt_new_no_route) {
 
 TEST(rt, gtfs_rt_new_bare) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
@@ -1075,12 +1050,8 @@ TEST(rt, gtfs_rt_new_bare) {
 
 TEST(rt, gtfs_rt_new_non_existing_stops) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
@@ -1102,12 +1073,8 @@ TEST(rt, gtfs_rt_new_non_existing_stops) {
 
 TEST(rt, gtfs_rt_new_relative) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
@@ -1121,12 +1088,8 @@ TEST(rt, gtfs_rt_new_relative) {
 
 TEST(rt, DISABLED_gtfs_rt_replacement) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
@@ -1168,12 +1131,8 @@ TEST(rt, DISABLED_gtfs_rt_replacement) {
 
 TEST(rt, DISABLED_gtfs_rt_duplicated_empty) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 11});
@@ -1227,12 +1186,8 @@ TEST(rt, DISABLED_gtfs_rt_duplicated_empty) {
 
 TEST(rt, DISABLED_gtfs_rt_duplicated) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 11});
@@ -1275,12 +1230,8 @@ TEST(rt, DISABLED_gtfs_rt_duplicated) {
 
 TEST(rt, DISABLED_gtfs_rt_duplicated_non_existent) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 11});
@@ -1294,12 +1245,8 @@ TEST(rt, DISABLED_gtfs_rt_duplicated_non_existent) {
 
 TEST(rt, DISABLED_gtfs_rt_duplicated_bare) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2023_y / August / 9},
-                    date::sys_days{2023_y / August / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 11});

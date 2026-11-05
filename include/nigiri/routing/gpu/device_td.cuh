@@ -70,10 +70,7 @@ __device__ void d_for_each_td_footpath(Collection const& c,
     }
     auto const r = d_get_td_duration<SearchDir>(c, i, j, t);
     if (r.valid_) {
-      auto const d = r.duration_.count() > kMaxFpMinutes
-                         ? duration_t{kMaxFpMinutes}
-                         : r.duration_;
-      f(c[i].target_, d);
+      f(c[i].target_, r.duration_);
     }
     i = j;
   }
