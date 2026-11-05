@@ -170,6 +170,7 @@ struct fare_leg {
 struct fare_transfer {
   std::optional<fares::fare_transfer_rule> rule_;
   std::vector<fare_leg> legs_;
+  bool main_{false};  // part of the cheapest cover for the default traveler
 };
 
 std::vector<fare_transfer> get_fares(timetable const&,
