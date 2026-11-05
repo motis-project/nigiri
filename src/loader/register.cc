@@ -217,7 +217,9 @@ route::route(timetable& tt,
              source_idx_t const src,
              std::string_view id,
              translation_idx_t short_name,
+             display_type short_name_display,
              translation_idx_t long_name,
+             display_type long_name_display,
              translation_idx_t url,
              route_type_t const route_type,
              route_color const color,
@@ -227,7 +229,9 @@ route::route(timetable& tt,
     : src_{src},
       id_{id},
       short_name_{short_name},
+      short_name_display_{short_name_display},
       long_name_{long_name},
+      long_name_display_{long_name_display},
       url_{url},
       route_type_{route_type},
       color_{color},
@@ -328,6 +332,7 @@ trip::trip(timetable& tt,
            std::string_view id,
            translation_idx_t headsign,
            translation_idx_t short_name,
+           display_type trip_short_name_display,
            translation_idx_t display_name,
            std::string_view vehicle_type_name,
            std::string_view vehicle_type_short_name,
@@ -339,6 +344,7 @@ trip::trip(timetable& tt,
       id_{id},
       headsign_{headsign},
       short_name_{short_name},
+      display_type_{trip_short_name_display},
       display_name_{display_name},
       vehicle_type_name_{vehicle_type_name},
       vehicle_type_short_name_{vehicle_type_short_name},
@@ -798,7 +804,9 @@ route_id_idx_t register_route(timetable& tt,
   auto const idx = route_id.ids_.store(r.id_);
   route_id.route_id_category_.emplace_back(r.category_);
   route_id.route_id_short_names_.emplace_back(r.short_name_);
+  route_id.route_id_short_names_display_.emplace_back(r.short_name_display_);
   route_id.route_id_long_names_.emplace_back(r.long_name_);
+  route_id.route_id_long_names_display_.emplace_back(r.long_name_display_);
   route_id.route_id_url_.emplace_back(r.url_);
   route_id.route_id_colors_.emplace_back(r.color_);
   route_id.route_id_type_.emplace_back(r.route_type_);
@@ -822,6 +830,7 @@ trip_idx_t register_trip(timetable& tt, import_context& ctx, trip const& t) {
   tt.trip_id_src_.emplace_back(t.src_);
 
   tt.trip_short_names_.emplace_back(t.short_name_);
+  tt.trip_short_names_display_.emplace_back(t.display_type_);
   tt.trip_display_names_.emplace_back(t.display_name_);
   tt.trip_debug_.push_back(t.dbg_);
   ctx.trip_transport_ranges_.emplace_back_empty();
