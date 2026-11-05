@@ -222,10 +222,10 @@ struct mcraptor_impl {
   struct bag_cursor {
     // nullptr: not reachable (yet)
     __device__ mc_label_t* slot(std::uint32_t const i) {
-      if (i < cap_) {
+      if (i < kMcBagCap) {
         return inline_ + i;
       }
-      auto const ord = (i - cap_) / kMcBagBlock;
+      auto const ord = (i - kMcBagCap) / kMcBagBlock;
       if (blk_ == ~0U || ord < ord_) {
         ord_ = 0U;
         blk_ = *head_;
@@ -237,7 +237,7 @@ struct mcraptor_impl {
       return blk_ == ~0U
                  ? nullptr
                  : pool_ + static_cast<std::size_t>(blk_) * kMcBagBlock +
-                       (i - cap_) % kMcBagBlock;
+                       (i - kMcBagCap) % kMcBagBlock;
     }
     __device__ mc_label_t operator[](std::uint32_t const i) {
       auto const* const s = slot(i);
@@ -249,15 +249,14 @@ struct mcraptor_impl {
     mc_label_t* pool_;
     std::uint32_t const* next_;
     std::uint32_t const* head_;
-    std::uint32_t cap_, n_;
+    std::uint32_t n_;
     std::uint32_t ord_{0U}, blk_{~0U};
   };
   __device__ __forceinline__ bag_cursor bag_slots(std::uint32_t const l) const {
-    return {.inline_ = bags_ + static_cast<std::size_t>(l) * bag_cap_,
+    return {.inline_ = bags_ + static_cast<std::size_t>(l) * kMcBagCap,
             .pool_ = bag_pool_,
             .next_ = bag_next_,
             .head_ = bag_ovf_ + l,
-            .cap_ = bag_cap_,
             .n_ = bag_hwm_[l]};
   }
 
@@ -357,19 +356,12 @@ struct mcraptor_impl {
     }
     // grow, appending a pool block when the tail is full
     if (free_slot == ~0U && hwm < kMcMaxBagSlots) {
-      if (hwm < bag_cap_ || (hwm - bag_cap_) % kMcBagBlock != 0U) {
+      if (hwm < kMcBagCap || (hwm - kMcBagCap) % kMcBagBlock != 0U) {
         free_slot = hwm;
       } else if (auto const b = atomicAdd(bag_pool_count_, 1U);
                  b < bag_pool_cap_) {
-        if (hwm == bag_cap_) {
-          bag_ovf_[l] = b;
-        } else {
-          auto t = bag_ovf_[l];
-          while (bag_next_[t] != ~0U) {
-            t = bag_next_[t];
-          }
-          bag_next_[t] = b;
-        }
+        // the scan above left the cursor on the tail block
+        (hwm == kMcBagCap ? bag_ovf_[l] : bag_next_[bag.blk_]) = b;
         free_slot = hwm;
       }
     }
@@ -397,7 +389,7 @@ struct mcraptor_impl {
   // kMcNoBc on arena overflow (insert dropped, canary set)
   __device__ std::uint32_t bc_append(mc_breadcrumb const& entry) {
     auto const idx = atomicAdd(bc_count_, 1U);
-    if (idx >= bc_cap_ || idx >= kMcNoBc) {
+    if (idx >= bc_cap_) {  // bc_cap_ <= kMcArenaMax < kMcNoBc
       atomicOr(overflow_, kMcOverflowArena);
       return kMcNoBc;
     }
@@ -614,6 +606,10 @@ struct mcraptor_impl {
         std::uint32_t const bx) {
       return bx & 0xFFFFU;
     }
+    __device__ __forceinline__ static std::uint32_t pack_bx(
+        stop_idx_t const board, std::uint32_t const ex) {
+      return (static_cast<std::uint32_t>(board) << 16U) | ex;
+    }
     __device__ __forceinline__ std::uint32_t board(unsigned const i) const {
       return bx_[i] >> 16U;
     }
@@ -621,9 +617,8 @@ struct mcraptor_impl {
     // false if full
     __device__ bool add(std::uint32_t const et,
                         std::uint32_t const par,
-                        stop_idx_t const board,
-                        std::uint32_t const ex) {
-      auto const bx = (static_cast<std::uint32_t>(board) << 16U) | ex;
+                        std::uint32_t const bx) {
+      auto const ex = extras(bx);
       for (auto i = 0U; i != K; ++i) {
         if (i < n_ && et_[i] == et && extras(bx_[i]) == ex) {
           par_[i] = par;
@@ -699,26 +694,44 @@ struct mcraptor_impl {
       ++n_;
     }
 
-    __device__ route_bag shfl_up(unsigned const d) const {
+    // every field through the warp shuffle f
+    __device__ __forceinline__ route_bag shuffled(auto&& f) const {
       auto r = route_bag{};
       for (auto i = 0U; i != K; ++i) {
-        r.et_[i] = __shfl_up_sync(kAllLanes, et_[i], d);
-        r.par_[i] = __shfl_up_sync(kAllLanes, par_[i], d);
-        r.bx_[i] = __shfl_up_sync(kAllLanes, bx_[i], d);
+        r.et_[i] = f(et_[i]);
+        r.par_[i] = f(par_[i]);
+        r.bx_[i] = f(bx_[i]);
       }
-      r.n_ = __shfl_up_sync(kAllLanes, n_, d);
+      r.n_ = f(n_);
       return r;
     }
-
+    __device__ route_bag shfl_up(unsigned const d) const {
+      return shuffled(
+          [&](auto const x) { return __shfl_up_sync(kAllLanes, x, d); });
+    }
     __device__ route_bag bcast(int const src) const {
-      auto r = route_bag{};
+      return shuffled(
+          [&](auto const x) { return __shfl_sync(kAllLanes, x, src); });
+    }
+
+    // stop bag f (et_run_lookups' output) <-> route bag
+    __device__ void load(mcraptor_impl const& m, std::uint32_t const f) {
+      n_ = m.sb_n_[f];
       for (auto i = 0U; i != K; ++i) {
-        r.et_[i] = __shfl_sync(kAllLanes, et_[i], src);
-        r.par_[i] = __shfl_sync(kAllLanes, par_[i], src);
-        r.bx_[i] = __shfl_sync(kAllLanes, bx_[i], src);
+        if (i < n_) {
+          et_[i] = m.sb_et_[f * kPrefixK + i];
+          par_[i] = m.sb_par_[f * kPrefixK + i];
+          bx_[i] = m.sb_bx_[f * kPrefixK + i];
+        }
       }
-      r.n_ = __shfl_sync(kAllLanes, n_, src);
-      return r;
+    }
+    __device__ void store(mcraptor_impl const& m, std::uint32_t const f) const {
+      m.sb_n_[f] = n_;
+      for (auto i = 0U; i != n_; ++i) {
+        m.sb_et_[f * kPrefixK + i] = et_[i];
+        m.sb_par_[f * kPrefixK + i] = par_[i];
+        m.sb_bx_[f * kPrefixK + i] = bx_[i];
+      }
     }
 
     std::uint32_t et_[K];  // packed trip (pack_et: scan order)
@@ -774,7 +787,8 @@ struct mcraptor_impl {
         et_dep_key =
             et.is_valid() ? to_key(time_at_stop(r, et, stop_idx, kDepEv)) : 0U;
       }
-      if (et.is_valid() && !bag.add(pack_et(r, et), mc_bc(lab), stop_idx, ex)) {
+      if (et.is_valid() && !bag.add(pack_et(r, et), mc_bc(lab),
+                                    route_bag<K>::pack_bx(stop_idx, ex))) {
         return false;
       }
     }
@@ -887,15 +901,10 @@ struct mcraptor_impl {
       auto const stop_idx =
           static_cast<stop_idx_t>(f - tt_.route_stop_offset_[to_idx(r)]);
       auto bag = route_bag<kPrefixK>{};
-      if (!board(k, r, stop_idx, bag)) {
+      if (board(k, r, stop_idx, bag)) {
+        bag.store(*this, f);
+      } else {
         sb_n_[f] = kSbOverflow;
-        continue;
-      }
-      sb_n_[f] = bag.n_;
-      for (auto j = 0U; j != bag.n_; ++j) {
-        sb_et_[f * kPrefixK + j] = bag.et_[j];
-        sb_par_[f * kPrefixK + j] = bag.par_[j];
-        sb_bx_[f * kPrefixK + j] = bag.bx_[j];
       }
     }
   }
@@ -919,15 +928,9 @@ struct mcraptor_impl {
       auto overflow = false;
       if (p + 1U < n) {  // the last stop never boards
         auto const f = base_flat + (kFwd ? p : n - 1U - p);
-        auto const cnt = sb_n_[f];
-        overflow = cnt == kSbOverflow || cnt > K;
-        incl.n_ = overflow ? 0U : cnt;
-        for (auto i = 0U; i != K; ++i) {
-          if (i < incl.n_) {
-            incl.et_[i] = sb_et_[f * kPrefixK + i];
-            incl.par_[i] = sb_par_[f * kPrefixK + i];
-            incl.bx_[i] = sb_bx_[f * kPrefixK + i];
-          }
+        overflow = sb_n_[f] == kSbOverflow || sb_n_[f] > K;
+        if (!overflow) {
+          incl.load(*this, f);
         }
       }
       // no boardings in this chunk: the state everywhere is the carry
@@ -980,10 +983,8 @@ struct mcraptor_impl {
         ok = board(k, r, static_cast<stop_idx_t>(kFwd ? p : n - 1U - p), bag);
       } else {
         for (auto i = 0U; i != sb_n_[f]; ++i) {
-          auto const bx = sb_bx_[f * kPrefixK + i];
-          ok =
-              ok && bag.add(sb_et_[f * kPrefixK + i], sb_par_[f * kPrefixK + i],
-                            static_cast<stop_idx_t>(bx >> 16U), bx & 0xFFFFU);
+          auto const j = f * kPrefixK + i;
+          ok = ok && bag.add(sb_et_[j], sb_par_[j], sb_bx_[j]);
         }
       }
       if (!ok) {
@@ -1089,7 +1090,8 @@ struct mcraptor_impl {
         if (dest_dominates(k, mc_arr_key(lab) + l_lb, ex)) {
           continue;
         }
-        if (!bag.add(0U, mc_bc(lab), stop_idx, ex)) {
+        if (!bag.add(0U, mc_bc(lab),
+                     route_bag<kMcRouteBagCap>::pack_bx(stop_idx, ex))) {
           atomicOr(overflow_, kMcOverflowRouteBag);
           break;
         }
@@ -1328,8 +1330,8 @@ struct mcraptor_impl {
       }
       for_each_set_bit(word, [&](unsigned const b) {
         auto const l = w * 32U + b;
-        auto* const slots = bags_ + static_cast<std::size_t>(l) * bag_cap_;
-        for (auto s = 0U; s != umin(bag_hwm_[l], bag_cap_); ++s) {
+        auto* const slots = bags_ + static_cast<std::size_t>(l) * kMcBagCap;
+        for (auto s = 0U; s != umin(bag_hwm_[l], kMcBagCap); ++s) {
           slots[s] = kMcEmptySlot;
         }
         // free the chain: blocks back to empty slots, linking to ~0U
@@ -1627,8 +1629,7 @@ struct mcraptor_impl {
   // lower bounds to the destination (pruning only; projection = key + lb)
   cuda::std::span<std::uint16_t const> lb_;
 
-  mc_label_t* bags_;  // n_locations x bag_cap_ inline slots
-  std::uint32_t bag_cap_;
+  mc_label_t* bags_;  // n_locations x kMcBagCap inline slots
   mc_label_t* bag_pool_;  // bag_pool_cap_ x kMcBagBlock chained blocks
   std::uint32_t* bag_ovf_;  // n_locations chain head (~0 = none)
   std::uint32_t* bag_next_;  // bag_pool_cap_ chain links (~0 = end / free)

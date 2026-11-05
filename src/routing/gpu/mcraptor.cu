@@ -1,8 +1,6 @@
 #include "nigiri/routing/gpu/mcraptor.h"
 
-#include <cstring>
 #include <algorithm>
-#include <optional>
 #include <type_traits>
 #include <unordered_map>
 
@@ -13,15 +11,10 @@
 #pragma pop_macro("NOEXCEPT")
 
 #include "thrust/device_vector.h"
-#include "thrust/functional.h"
-#include "thrust/reduce.h"
-#include "thrust/transform.h"
-#include "thrust/transform_reduce.h"
 
 #include "utl/helpers/algorithm.h"
 #include "utl/verify.h"
 
-#include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/gpu/cuda_check.cuh"
 #include "nigiri/routing/gpu/device_buffer.cuh"
@@ -35,49 +28,63 @@
 
 namespace nigiri::routing::gpu {
 
+// async byte fill (thrust::fill would synchronize the stream)
+template <typename V>
+void fill_bytes(V& v, int const byte, cudaStream_t const stream) {
+  if (!v.empty()) {  // no rt transports: the rt marks are empty
+    CUDA_CHECK(cudaMemsetAsync(thrust::raw_pointer_cast(v.data()), byte,
+                               v.size() * sizeof(typename V::value_type),
+                               stream));
+  }
+}
+
+// host range -> pinned staging -> device, async
+template <typename T, typename Range>
+void upload(T* const dev,
+            pinned_host_buffer<T>& pin,
+            Range const& src,
+            cudaStream_t const stream,
+            char const* what) {
+  auto* const p = pin.ensure(src.size());
+  std::copy(begin(src), end(src), p);
+  utl::verify(cudaMemcpyAsync(dev, p, src.size() * sizeof(T),
+                              cudaMemcpyHostToDevice, stream) == cudaSuccess,
+              "gpu mcraptor: could not copy {}", what);
+}
+
 struct gpu_mcraptor_state::impl {
   explicit impl(gpu_timetable const& gtt)
       : tt_{gtt.impl_->to_device_timetable()} {
     cudaStreamCreate(&stream_);
 
     auto const n_locations = tt_.n_locations_;
-    bag_cap_ = kMcBagCap;
-    bags_.resize(static_cast<std::size_t>(n_locations) * bag_cap_);
-    cudaMemsetAsync(thrust::raw_pointer_cast(bags_.data()), 0xFF,
-                    bags_.size() * sizeof(mc_label_t), stream_);
+    bags_.resize(static_cast<std::size_t>(n_locations) * kMcBagCap);
+    fill_bytes(bags_, 0xFF, stream_);
     // chained blocks: the pool scales with the labels, not a worst-case row
     bag_pool_cap_ = std::clamp(n_locations / 2U, kMcBagPoolMin, kMcBagPoolMax);
     bag_pool_.resize(static_cast<std::size_t>(bag_pool_cap_) * kMcBagBlock);
-    cudaMemsetAsync(thrust::raw_pointer_cast(bag_pool_.data()), 0xFF,
-                    bag_pool_.size() * sizeof(mc_label_t), stream_);
+    fill_bytes(bag_pool_, 0xFF, stream_);
     bag_next_.resize(bag_pool_cap_);  // free blocks link to ~0U
-    cudaMemsetAsync(thrust::raw_pointer_cast(bag_next_.data()), 0xFF,
-                    bag_next_.size() * sizeof(std::uint32_t), stream_);
+    fill_bytes(bag_next_, 0xFF, stream_);
     bag_ovf_.resize(n_locations);
-    cudaMemsetAsync(thrust::raw_pointer_cast(bag_ovf_.data()), 0xFF,
-                    bag_ovf_.size() * sizeof(std::uint32_t), stream_);
+    fill_bytes(bag_ovf_, 0xFF, stream_);
     bag_pool_count_.resize(1U);
-    cudaMemsetAsync(thrust::raw_pointer_cast(bag_pool_count_.data()), 0,
-                    sizeof(std::uint32_t), stream_);
+    fill_bytes(bag_pool_count_, 0, stream_);
     for (auto d = 0U; d != 2U; ++d) {
       reuse_bags_[d].resize(static_cast<std::size_t>(n_locations) *
                             kMcReuseCap);
-      cudaMemsetAsync(thrust::raw_pointer_cast(reuse_bags_[d].data()), 0xFF,
-                      reuse_bags_[d].size() * sizeof(std::uint64_t), stream_);
+      fill_bytes(reuse_bags_[d], 0xFF, stream_);
     }
     bag_locks_.resize(n_locations);
-    cudaMemsetAsync(thrust::raw_pointer_cast(bag_locks_.data()), 0,
-                    bag_locks_.size() * sizeof(std::uint32_t), stream_);
+    fill_bytes(bag_locks_, 0, stream_);
     bag_hwm_.resize(n_locations);
-    cudaMemsetAsync(thrust::raw_pointer_cast(bag_hwm_.data()), 0,
-                    bag_hwm_.size() * sizeof(std::uint8_t), stream_);
+    fill_bytes(bag_hwm_, 0, stream_);
     for (auto d = 0U; d != 2U; ++d) {
       dest_bag_[d].resize(kMcDestCap);
       dest_best_key_[d].resize(kMaxTransfers + 2U);
       dest_best_total_[d].resize(kMaxTransfers + 2U);
       dest_lock_[d].resize(1U);
-      cudaMemsetAsync(thrust::raw_pointer_cast(dest_lock_[d].data()), 0,
-                      sizeof(std::uint32_t), stream_);
+      fill_bytes(dest_lock_[d], 0, stream_);
     }
 
     auto const arena_cap =
@@ -90,14 +97,10 @@ struct gpu_mcraptor_state::impl {
     station_mark_.resize(n_bitvec_words(n_locations));
     prev_station_mark_.resize(n_bitvec_words(n_locations));
     route_mark_.resize(n_bitvec_words(tt_.n_routes_));
-    thrust::fill(thrust::cuda::par.on(stream_), touched_.begin(),
-                 touched_.end(), 0U);
-    thrust::fill(thrust::cuda::par.on(stream_), station_mark_.begin(),
-                 station_mark_.end(), 0U);
-    thrust::fill(thrust::cuda::par.on(stream_), prev_station_mark_.begin(),
-                 prev_station_mark_.end(), 0U);
-    thrust::fill(thrust::cuda::par.on(stream_), route_mark_.begin(),
-                 route_mark_.end(), 0U);
+    fill_bytes(touched_, 0, stream_);
+    fill_bytes(station_mark_, 0, stream_);
+    fill_bytes(prev_station_mark_, 0, stream_);
+    fill_bytes(route_mark_, 0, stream_);
 
     route_list_.resize(tt_.n_routes_);
     route_list_count_.resize(1U);
@@ -111,8 +114,7 @@ struct gpu_mcraptor_state::impl {
     any_marked_.resize(1U);
     done_.resize(1U);
     overflow_.resize(1U);
-    cudaMemsetAsync(thrust::raw_pointer_cast(overflow_.data()), 0,
-                    sizeof(std::uint32_t), stream_);
+    fill_bytes(overflow_, 0, stream_);
   }
 
   ~impl() { cudaStreamDestroy(stream_); }
@@ -149,69 +151,31 @@ struct gpu_mcraptor_state::impl {
         td_data.insert(end(td_data), begin(v), end(v));
         ranges.push_back(static_cast<std::uint32_t>(td_data.size()));
       }
-      auto* const locs_pin = td_dest_locs_pin_[dir].ensure(locs.size());
-      std::copy(locs.begin(), locs.end(), locs_pin);
-      auto* const ranges_pin = td_dest_ranges_pin_[dir].ensure(ranges.size());
-      std::copy(ranges.begin(), ranges.end(), ranges_pin);
-      auto* const data_pin = td_dest_data_pin_[dir].ensure(td_data.size());
-      std::copy(td_data.begin(), td_data.end(), data_pin);
-      utl::verify(
-          cudaSuccess ==
-                  cudaMemcpyAsync(
-                      td_dest_locs_dev_[dir].ensure(locs.size(), stream_),
-                      locs_pin, locs.size() * sizeof(location_idx_t),
-                      cudaMemcpyHostToDevice, stream_) &&
-              cudaSuccess ==
-                  cudaMemcpyAsync(
-                      td_dest_ranges_dev_[dir].ensure(ranges.size(), stream_),
-                      ranges_pin, ranges.size() * sizeof(std::uint32_t),
-                      cudaMemcpyHostToDevice, stream_) &&
-              cudaSuccess ==
-                  cudaMemcpyAsync(
-                      td_dest_data_dev_[dir].ensure(td_data.size(), stream_),
-                      data_pin, td_data.size() * sizeof(td_offset),
-                      cudaMemcpyHostToDevice, stream_),
-          "gpu mcraptor: could not copy td dest offsets");
+      upload(td_dest_locs_dev_[dir].ensure(locs.size(), stream_),
+             td_dest_locs_pin_[dir], locs, stream_, "td dest locations");
+      upload(td_dest_ranges_dev_[dir].ensure(ranges.size(), stream_),
+             td_dest_ranges_pin_[dir], ranges, stream_, "td dest ranges");
+      upload(td_dest_data_dev_[dir].ensure(td_data.size(), stream_),
+             td_dest_data_pin_[dir], td_data, stream_, "td dest offsets");
     }
 
     is_dest_[dir].resize(is_dest.blocks_.size());
-    auto* const is_dest_pin = is_dest_pin_[dir].ensure(is_dest.blocks_.size());
-    std::copy(is_dest.blocks_.begin(), is_dest.blocks_.end(), is_dest_pin);
-    utl::verify(
-        cudaSuccess ==
-            cudaMemcpyAsync(thrust::raw_pointer_cast(is_dest_[dir].data()),
-                            is_dest_pin,
-                            is_dest.blocks_.size() * sizeof(std::uint64_t),
-                            cudaMemcpyHostToDevice, stream_),
-        "gpu mcraptor: could not copy is_dest");
-
+    upload(thrust::raw_pointer_cast(is_dest_[dir].data()), is_dest_pin_[dir],
+           is_dest.blocks_, stream_, "is_dest");
     dist_to_dest_dev_[dir].resize(dist_to_dest.size());
-    auto* const dd_pin = dist_to_dest_pin_[dir].ensure(dist_to_dest.size());
-    std::copy(dist_to_dest.begin(), dist_to_dest.end(), dd_pin);
-    utl::verify(cudaSuccess ==
-                    cudaMemcpyAsync(
-                        thrust::raw_pointer_cast(dist_to_dest_dev_[dir].data()),
-                        dd_pin, dist_to_dest.size() * sizeof(std::uint16_t),
-                        cudaMemcpyHostToDevice, stream_),
-                "gpu mcraptor: could not copy dist_to_dest");
-
+    upload(thrust::raw_pointer_cast(dist_to_dest_dev_[dir].data()),
+           dist_to_dest_pin_[dir], dist_to_dest, stream_, "dist_to_dest");
     if (lb.empty()) {  // no lower bounds supplied: inert zeros
       auto const n = static_cast<std::size_t>(tt_.n_locations_);
       cudaMemsetAsync(lb_dev_[dir].ensure(n, stream_), 0,
                       n * sizeof(std::uint16_t), stream_);
-      return;
+    } else {
+      upload(lb_dev_[dir].ensure(lb.size(), stream_), lb_pin_[dir], lb, stream_,
+             "lower bounds");
     }
-    auto* const lb_pin = lb_pin_[dir].ensure(lb.size());
-    std::copy(lb.begin(), lb.end(), lb_pin);
-    utl::verify(cudaSuccess ==
-                    cudaMemcpyAsync(lb_dev_[dir].ensure(lb.size(), stream_),
-                                    lb_pin, lb.size() * sizeof(std::uint16_t),
-                                    cudaMemcpyHostToDevice, stream_),
-                "gpu mcraptor: could not copy lower bounds");
   }
 
   bool is_intermodal_dest_[2];  // per direction: [0]=fwd, [1]=bwd
-  std::uint32_t bag_cap_;
 
   device_timetable tt_;
 
@@ -494,19 +458,11 @@ template <direction SearchDir, mc_crit Crit>
 void gpu_mcraptor<SearchDir, Crit>::reset_arrivals() {
   auto& s = *state_.impl_;
   worst_at_dest_ = kInvalidDelta<SearchDir>;
-  cudaMemsetAsync(thrust::raw_pointer_cast(s.dest_bag_[kDirIdx].data()), 0xFF,
-                  s.dest_bag_[kDirIdx].size() * sizeof(mc_label_t), s.stream_);
-  cudaMemsetAsync(thrust::raw_pointer_cast(s.reuse_bags_[kDirIdx].data()), 0xFF,
-                  s.reuse_bags_[kDirIdx].size() * sizeof(std::uint64_t),
-                  s.stream_);
-  cudaMemsetAsync(
-      thrust::raw_pointer_cast(s.dest_best_key_[kDirIdx].data()), 0xFF,
-      s.dest_best_key_[kDirIdx].size() * sizeof(std::uint32_t), s.stream_);
-  cudaMemsetAsync(
-      thrust::raw_pointer_cast(s.dest_best_total_[kDirIdx].data()), 0xFF,
-      s.dest_best_total_[kDirIdx].size() * sizeof(std::uint32_t), s.stream_);
-  cudaMemsetAsync(thrust::raw_pointer_cast(s.overflow_.data()), 0,
-                  sizeof(std::uint32_t), s.stream_);
+  fill_bytes(s.dest_bag_[kDirIdx], 0xFF, s.stream_);
+  fill_bytes(s.reuse_bags_[kDirIdx], 0xFF, s.stream_);
+  fill_bytes(s.dest_best_key_[kDirIdx], 0xFF, s.stream_);
+  fill_bytes(s.dest_best_total_[kDirIdx], 0xFF, s.stream_);
+  fill_bytes(s.overflow_, 0, s.stream_);
 }
 
 template <direction SearchDir, mc_crit Crit>
@@ -542,7 +498,6 @@ mcraptor_impl<SearchDir, Crit> make_impl(
                                       s.td_dest_ranges_dev_[dir_idx].size()}},
       .lb_ = {s.lb_dev_[dir_idx].data(), s.lb_dev_[dir_idx].size()},
       .bags_ = ptr(s.bags_),
-      .bag_cap_ = s.bag_cap_,
       .bag_pool_ = ptr(s.bag_pool_),
       .bag_ovf_ = ptr(s.bag_ovf_),
       .bag_next_ = ptr(s.bag_next_),
@@ -581,19 +536,11 @@ void gpu_mcraptor<SearchDir, Crit>::next_start_time() {
                                             allowed_claszes_, 0U, base_,
                                             worst_at_dest_, {});
   mc_launch(mc_clear_bags_kernel<SearchDir, Crit>, s.stream_, r);
-  // memsets, not thrust::fill: those synchronize the stream
-  auto const zero = [&](auto& v) {
-    if (!v.empty()) {  // no rt transports: the rt marks are empty
-      using value_t = typename std::decay_t<decltype(v)>::value_type;
-      CUDA_CHECK(cudaMemsetAsync(thrust::raw_pointer_cast(v.data()), 0,
-                                 v.size() * sizeof(value_t), s.stream_));
-    }
-  };
-  zero(s.bag_pool_count_);
-  zero(s.station_mark_);
-  zero(s.prev_station_mark_);
-  zero(s.route_mark_);
-  zero(s.rt_transport_mark_);
+  fill_bytes(s.bag_pool_count_, 0, s.stream_);
+  fill_bytes(s.station_mark_, 0, s.stream_);
+  fill_bytes(s.prev_station_mark_, 0, s.stream_);
+  fill_bytes(s.route_mark_, 0, s.stream_);
+  fill_bytes(s.rt_transport_mark_, 0, s.stream_);
 }
 
 template <direction SearchDir, mc_crit Crit>
@@ -706,12 +653,8 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   auto const n_dest = static_cast<std::uint32_t>(dest_list.size());
   auto const total = n_dest * kMcMaxBagSlots;
 
-  auto* const dest_pin = s.rec_dest_pin_.ensure(dest_list.size());
-  std::copy(dest_list.begin(), dest_list.end(), dest_pin);
   auto* const dest_dev = s.rec_dest_.ensure(dest_list.size(), s.stream_);
-  CUDA_CHECK(cudaMemcpyAsync(dest_dev, dest_pin,
-                             dest_list.size() * sizeof(location_idx_t),
-                             cudaMemcpyHostToDevice, s.stream_));
+  upload(dest_dev, s.rec_dest_pin_, dest_list, s.stream_, "destinations");
   auto* const rec_out_dev = s.rec_out_.ensure(total, s.stream_);
   auto* const rec_host = s.rec_host_out_.ensure(total);
   auto* const overflow_pin =
