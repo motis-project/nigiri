@@ -1,7 +1,6 @@
 #include "gtest/gtest.h"
 
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -11,7 +10,6 @@
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
-using namespace nigiri::loader::gtfs;
 using namespace std::chrono_literals;
 using nigiri::test::to_unix;
 
@@ -58,13 +56,8 @@ constexpr auto const kDay = 2019_y / May / 1;
 unixtime_t t(auto&& x) { return unixtime_t{sys_days{kDay} + x}; }
 
 timetable load_tt() {
-  auto tt = timetable{};
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
-  return tt;
+  return loader::load(test_files(),
+                      {2019_y / March / 25, 2019_y / November / 1});
 }
 
 transit_realtime::FeedMessage msg_header() {
