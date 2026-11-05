@@ -122,7 +122,7 @@ struct raptor {
     auto& s = state_;
     auto const n = static_cast<std::size_t>(s.n_locations_);
 
-    auto const td_stops = rtt_ != nullptr && prf_idx_ != 0U
+    auto const td_stops = rtt_ != nullptr && has_profile_td_footpaths(prf_idx_)
                               ? &(kFwd ? rtt_->has_td_footpaths_out_
                                        : rtt_->has_td_footpaths_in_)[prf_idx_]
                               : nullptr;
@@ -178,6 +178,10 @@ struct raptor {
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
     round_times_.reset(kInvalidArray);
+  }
+
+  void limit_time_at_dest(unsigned const k, unixtime_t const t) {
+    update_time_at_dest(k, unix_to_delta(base(), t));
   }
 
   void next_start_time() {
@@ -774,9 +778,10 @@ private:
       // (see update_td_offsets) and replace all its static footpaths.
       auto const has_td_fps = [&](location_idx_t const x, bool const out) {
         if constexpr (Rt) {
-          return prf_idx_ != 0U && (out ? rtt_->has_td_footpaths_out_
-                                        : rtt_->has_td_footpaths_in_)[prf_idx_]
-                                       .test(x);
+          return has_profile_td_footpaths(prf_idx_) &&
+                 (out ? rtt_->has_td_footpaths_out_
+                      : rtt_->has_td_footpaths_in_)[prf_idx_]
+                     .test(x);
         } else {
           return false;
         }
@@ -885,7 +890,7 @@ private:
       return;
     }
 
-    if (prf_idx_ == 0U) {
+    if (!has_profile_td_footpaths(prf_idx_)) {
       return;
     }
 
