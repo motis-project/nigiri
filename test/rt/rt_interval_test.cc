@@ -829,10 +829,10 @@ TEST(rt_interval, siri_cancel_rt_interval) {
     expect_cancelled(tt, rtt, "NIGHT", sys_days{2024_y / July / 22});
 
     // Last day of the static timetable, far outside of the RT interval.
-    auto const far =
+    auto const far_out =
         siri_update(rtt, u, siri_day_msg(sys_days{2024_y / August / 30}, true));
-    EXPECT_EQ(1U, far.matched_runs_);
-    EXPECT_EQ(1U, far.cancelled_runs_);
+    EXPECT_EQ(1U, far_out.matched_runs_);
+    EXPECT_EQ(1U, far_out.cancelled_runs_);
     expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / August / 30});
 
     // Not part of the static timetable.
@@ -869,10 +869,10 @@ TEST(rt_interval, siri_cancel_rt_interval) {
     expect_cancelled(tt, rtt, "EDGE", sys_days{2024_y / August / 8});
 
     // First day of the static timetable, far outside of the RT interval.
-    auto const far =
+    auto const far_out =
         siri_update(rtt, u, siri_day_msg(sys_days{2024_y / July / 1}, true));
-    EXPECT_EQ(1U, far.matched_runs_);
-    EXPECT_EQ(1U, far.cancelled_runs_);
+    EXPECT_EQ(1U, far_out.matched_runs_);
+    EXPECT_EQ(1U, far_out.cancelled_runs_);
     expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / July / 1});
 
     // Departs before date_range_.from_, arrives within.
