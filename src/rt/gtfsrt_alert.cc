@@ -1,7 +1,9 @@
 #include "nigiri/rt/gtfsrt_alert.h"
 
+#include <algorithm>
 #include <ranges>
 
+#include "utl/to_vec.h"
 #include "utl/verify.h"
 
 #include "nigiri/rt/gtfsrt_resolve_run.h"
@@ -234,8 +236,15 @@ void handle_alert(date::sys_days const today,
                                                 : alert_str_idx_t::invalid()};
       };
 
+  auto const untagged_first = [](auto entries) {
+    std::ranges::stable_partition(entries, [](auto const& e) {
+      return e.language_ == alert_str_idx_t::invalid();
+    });
+    return entries;
+  };
+
   auto const translate = [&](auto&& x) {
-    return x.translation() | std::views::transform(to_translation);
+    return untagged_first(utl::to_vec(x.translation(), to_translation));
   };
 
   auto const active_period =
@@ -311,8 +320,8 @@ void handle_alert(date::sys_days const today,
   }
 
   if (a.has_image()) {
-    alerts.image_.emplace_back(a.image().localized_image() |
-                               std::views::transform(to_localized_image));
+    alerts.image_.emplace_back(untagged_first(
+        utl::to_vec(a.image().localized_image(), to_localized_image)));
   } else {
     alerts.image_.emplace_back(std::initializer_list<localized_image>{});
   }
