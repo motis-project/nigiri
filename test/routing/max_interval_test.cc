@@ -1,7 +1,8 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
+#include "nigiri/special_stations.h"
 
 #include "../raptor_search.h"
 #include "results_to_string.h"
@@ -73,12 +74,9 @@ leg 0: (A, A) [2019-05-01 11:00] -> (B, B) [2019-05-01 12:00]
 }  // namespace
 
 TEST(routing, max_interval) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
   auto const src = source_idx_t{0};
-  load_timetable({}, src, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   auto const results = raptor_search(
       tt, nullptr,

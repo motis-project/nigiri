@@ -3,8 +3,7 @@
 #include "utl/equal_ranges_linear.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -267,10 +266,7 @@ start_time=2020-03-30 00:00
 
 TEST(routing, start_times) {
   auto const src = source_idx_t{0U};
-  auto tt = timetable{};
-  tt.date_range_ = full_period();
-  load_timetable(src, loader::hrd::hrd_5_20_26, files_simple(), tt);
-  finalize(tt);
+  auto const tt = loader::load(files_simple(), full_period());
 
   using namespace date;
   auto const A = tt.locations_.location_id_to_idx_.at(
@@ -351,12 +347,9 @@ TEST(routing, rt_start_times) {
   using namespace nigiri::loader::gtfs;
   using namespace date;
 
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {sys_days{2024_y / July / 1}, sys_days{2024_y / July / 31}};
   auto const src = source_idx_t{0};
-  load_timetable({}, src, rt_start_times_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(rt_start_times_files(),
+                               {2024_y / July / 1, 2024_y / July / 31});
 
   auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / July / 10});
 

@@ -4,10 +4,13 @@
 
 #include "utl/enumerate.h"
 #include "utl/progress_tracker.h"
+#include "utl/to_vec.h"
+#include "utl/verify.h"
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/loader.h"
 #include "nigiri/loader/hrd/loader.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/loader/netex/loader.h"
 #include "nigiri/timetable.h"
@@ -36,9 +39,9 @@ timetable load(std::vector<timetable_source> const& sources,
   auto tt = timetable{};
   tt.date_range_ = date_range;
   tt.n_sources_ = static_cast<cista::base_t<source_idx_t>>(sources.size());
-  register_special_stations(tt);
+  auto ctx = import_context{tt};
+  register_special_stations(tt, ctx);
   auto const progress_tracker = utl::get_active_progress_tracker();
-  auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
   for (auto const [idx, in] : utl::enumerate(sources)) {
     auto const& [tag, path, local_config] = in;
     auto const is_in_memory = path.starts_with("\n#");
@@ -55,7 +58,7 @@ timetable load(std::vector<timetable_source> const& sources,
       }
       progress_tracker->context(std::string{tag});
       try {
-        (*it)->load(local_config, src, *dir, tt, bitfields, a, shapes);
+        (*it)->load(local_config, src, *dir, tt, ctx, a, shapes);
       } catch (std::exception const& e) {
         throw utl::fail("failed to load {}: {}", path, e.what());
       }
@@ -68,9 +71,45 @@ timetable load(std::vector<timetable_source> const& sources,
   }
 
   progress_tracker->status("Finalizing").out_bounds(98.F, 100.F).in_high(1);
-  finalize(tt, finalize_opt);
+  auto opt = finalize_opt;
+  for (auto const& s : sources) {
+    opt.src_tags_.push_back(s.tag_);
+  }
+  finalize(tt, ctx, opt);
 
   return tt;
+}
+
+timetable load(std::vector<dir_source> const& sources,
+               interval<date::sys_days> const& date_range,
+               finalize_options const& opt,
+               assistance_times* a,
+               shapes_storage* shapes) {
+  auto const loaders = get_loaders();
+
+  auto tt = timetable{};
+  tt.date_range_ = date_range;
+  tt.n_sources_ = static_cast<cista::base_t<source_idx_t>>(sources.size());
+  auto ctx = import_context{tt};
+  register_special_stations(tt, ctx);
+  for (auto const [idx, s] : utl::enumerate(sources)) {
+    auto const it =
+        utl::find_if(loaders, [&](auto&& l) { return l->applicable(s.dir_); });
+    utl::verify(it != end(loaders), "no loader for source {} found", idx);
+    (*it)->load(s.loader_config_, source_idx_t{idx}, s.dir_, tt, ctx, a,
+                shapes);
+  }
+  finalize(tt, ctx, opt);
+
+  return tt;
+}
+
+timetable load(dir const& d,
+               interval<date::sys_days> const& date_range,
+               finalize_options const& opt,
+               assistance_times* a,
+               shapes_storage* shapes) {
+  return load(std::vector<dir_source>{{d}}, date_range, opt, a, shapes);
 }
 
 }  // namespace nigiri::loader

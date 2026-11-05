@@ -39,6 +39,7 @@ query_engine<UseLowerBounds>::query_engine(
     bool,
     bool,
     bool,
+    bool,
     transfer_time_settings,
     profile_idx_t)
     : tt_{tt},
@@ -226,7 +227,8 @@ void query_engine<UseLowerBounds>::seg_transfers(queue_idx_t const q,
 
 template <bool UseLowerBounds>
 void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
-                                             unixtime_t const t) {
+                                             unixtime_t const t,
+                                             via_offset_t) {
   auto const [day, mam] = tt_.day_idx_mam(t);
   for (auto const r : tt_.location_routes_[l]) {
     // iterate stop sequence of route, skip last stop

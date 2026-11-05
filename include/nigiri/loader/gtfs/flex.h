@@ -16,27 +16,30 @@ using flex_areas_t = hash_map<std::string, flex_area_idx_t>;
 using stop_seq_map_t = hash_map<std::vector<flex_stop_t>, flex_stop_seq_idx_t>;
 
 flex_areas_t parse_flex_areas(timetable&,
+                              import_context&,
                               translator&,
                               source_idx_t,
                               std::string_view file_content);
 
 void parse_location_group_stops(timetable&,
+                                import_context&,
                                 std::string_view file_content,
                                 location_groups_t const&,
                                 stops_map_t const&);
 
 location_groups_t parse_location_groups(timetable&,
+                                        import_context&,
                                         translator&,
                                         std::string_view file_content);
 
 booking_rules_t parse_booking_rules(timetable&,
+                                    import_context&,
                                     translator&,
                                     std::string_view file_content,
-                                    traffic_days_t const&,
-                                    hash_map<bitfield, bitfield_idx_t>&);
+                                    traffic_days_t const&);
 
 void expand_flex_trip(timetable&,
-                      hash_map<bitfield, bitfield_idx_t>&,
+                      import_context&,
                       stop_seq_map_t&,
                       noon_offset_hours_t const& noon_offsets,
                       interval<date::sys_days> const& selection,

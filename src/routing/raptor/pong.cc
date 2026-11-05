@@ -17,6 +17,7 @@
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/leg_alternatives.h"
+#include "nigiri/routing/search_interval.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/types.h"
@@ -26,7 +27,30 @@
 
 namespace nigiri::routing {
 
+interval<unixtime_t> pong_search_interval(direction const search_dir,
+                                          timetable const& tt,
+                                          query const& q,
+                                          duration_t const min_look_ahead) {
+  auto const query_iv = start_time_interval(q.start_time_);
+  auto const tt_iv = tt.external_interval();
+  auto const max_search_iv = search_dir == direction::kForward
+                                 ? interval{query_iv.from_, tt_iv.to_}
+                                 : interval{tt_iv.from_, query_iv.to_};
+
+  return reachable_events(
+      search_dir, max_search_iv,
+      std::min(q.max_travel_time_ + min_look_ahead, kMaxTravelTime));
+}
+
 constexpr auto const kPruneWithPingBounds = true;
+
+// Pong traverses huge parts of the timetable to collect the requested number
+// of journeys. Journeys departing (kFwd) / arriving (!kFwd) weeks or months
+// after / before the queried start time are most likely not interesting for
+// the user, so the search is capped at this distance from the query start
+// time. Six days (instead of a full week) prevents a query on a Monday from
+// reporting journeys on the following / previous Monday.
+constexpr auto const kMaxLookAhead = 6_days;
 
 auto to_tuple(journey const& j) {
   return std::tuple{j.departure_time(), j.arrival_time(), j.transfers_};
@@ -50,6 +74,18 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   if (legs.back().arr_time_ > to_dep) {
     return std::nullopt;
   }
+  // the generator anchors the boarding walk at the transit departure
+  // (latest start) -> shift to the interior transfer convention:
+  // the walk starts at the previous leg's arrival.
+  // A time-dependent footpath may only be usable later (e.g. an elevator out
+  // of service): keep the wait before it, as in the reconstruction.
+  auto const is_td = rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
+                     rtt->has_td_footpaths_out_[q.prf_idx_].test(legs[0].from_);
+  if (!is_td) {
+    auto const walk_duration = legs[0].arr_time_ - legs[0].dep_time_;
+    legs[0].dep_time_ = from_arr;
+    legs[0].arr_time_ = from_arr + walk_duration;
+  }
   return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
 
@@ -72,7 +108,6 @@ routing_result pong(timetable const& tt,
       raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>>;
 
   s_state.results_.clear();
-  q.sanitize(tt);
 
   auto const processing_start_time = std::chrono::steady_clock::now();
 
@@ -92,6 +127,9 @@ routing_result pong(timetable const& tt,
                         ((search_interval.to_ - search_interval.from_) / 2)) -
                     tt.internal_interval().from_)
                     .count()};
+
+  auto const lookahead_end = kFwd ? search_interval.from_ + kMaxLookAhead
+                                  : search_interval.to_ - kMaxLookAhead;
 
   // ====
   // PING
@@ -139,6 +177,7 @@ routing_result pong(timetable const& tt,
                           q.require_bike_transport_,
                           q.require_car_transport_,
                           q.prf_idx_ == 2U,
+                          q.no_compulsory_reservation_,
                           q.transfer_time_settings_,
                           q.prf_idx_};
 
@@ -192,6 +231,7 @@ routing_result pong(timetable const& tt,
                           q.require_bike_transport_,
                           q.require_car_transport_,
                           q.prf_idx_ == 2U,
+                          q.no_compulsory_reservation_,
                           q.transfer_time_settings_,
                           q.prf_idx_};
 
@@ -221,7 +261,7 @@ routing_result pong(timetable const& tt,
     return utl::count_if(*result.journeys_, [&](journey const& j) {
       return is_validated(j) &&
              (include_too_slow || (j.travel_time() < fastest_direct &&
-                                   j.travel_time() < q.max_travel_time_));
+                                   j.travel_time() <= q.max_travel_time_));
     });
   };
   auto const is_timeout_reached = [&]() {
@@ -234,7 +274,8 @@ routing_result pong(timetable const& tt,
   while ((is_better(start_time, end_time) ||
           get_result_count(true) + get_result_count(false) <
               2 * q.min_connection_count_) &&
-         tt.external_interval().contains(start_time) && !is_timeout_reached()) {
+         tt.external_interval().contains(start_time) &&
+         is_better(start_time, lookahead_end) && !is_timeout_reached()) {
     // ----
     // PING
     // ----
@@ -250,10 +291,19 @@ routing_result pong(timetable const& tt,
     for (auto const& s : starts) {
       trace_pong("--- PING START: {} at time_at_start={} time_at_stop={}",
                  loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
-      ping.add_start(s.stop_, s.time_at_stop_);
+      ping.add_start(s.stop_, s.time_at_stop_, s.v_);
     }
     auto const worst_time_at_dest =
-        start_time + (kFwd ? 1 : -1) * (q.max_travel_time_ + duration_t{1});
+        start_time +
+        (kFwd ? 1 : -1) *
+            std::min(q.max_travel_time_ + kMinLookAhead, kMaxTravelTime);
+    if constexpr (!kGpu) {
+      for (auto const& j : s_state.results_) {
+        if (!j.error_ && !is_better(j.dest_time_, start_time)) {
+          ping.limit_time_at_dest(j.transfers_ + 1U, j.start_time_);
+        }
+      }
+    }
     auto ping_results = pareto_set<journey>{};
     ping.execute(start_time, q.max_transfers_, worst_time_at_dest,
                  ping_results);
@@ -264,17 +314,6 @@ routing_result pong(timetable const& tt,
           "EMPTY PING RESULTS -> QUIT (max_transfers={}, "
           "worst_time_at_dest={})",
           q.max_transfers_, worst_time_at_dest);
-      break;
-    }
-    utl::erase_if(ping_results, [&](journey const& x) {
-      auto const dominated = result.journeys_->is_dominated(x);
-      if (dominated) {
-        trace_pong("DELETE DOMINATED {}", to_tuple(x));
-      }
-      return dominated;
-    });
-    if (ping_results.empty()) {
-      trace_pong("ALL PING RESULTS FILTERED -> QUIT");
       break;
     }
     utl::sort(ping_results, [](journey const& a, journey const& b) {
@@ -302,10 +341,9 @@ routing_result pong(timetable const& tt,
       for (auto const& s : starts) {
         trace_pong("---- PONG START: {} at time_at_start={} time_at_stop={}",
                    loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
-        po.add_start(s.stop_, s.time_at_stop_);
+        po.add_start(s.stop_, s.time_at_stop_, s.v_);
       }
-      po.execute(ping_j.dest_time_, ping_j.transfers_,
-                 ping_j.start_time_ - duration_t{kFwd ? 1 : -1},
+      po.execute(ping_j.dest_time_, ping_j.transfers_, ping_j.start_time_,
                  s_state.results_);
       kFwd ? ++result.search_stats_.n_execute_bwd_
            : ++result.search_stats_.n_execute_fwd_;
@@ -332,6 +370,21 @@ routing_result pong(timetable const& tt,
     };
     for (auto& ping_j : ping_results) {
       trace_pong("-- PING RESULT: {}", to_tuple(ping_j));
+
+      // A previous pong already found the latest departure for this arrival
+      // time and number of transfers: the ping found the same journey again,
+      // so the pong would, too.
+      auto const known =
+          utl::find_if(s_state.results_, [&](journey const& pong_j) {
+            return pong_j.transfers_ == ping_j.transfers_ &&
+                   pong_j.start_time_ == ping_j.dest_time_;
+          });
+      if (known != end(s_state.results_)) {
+        trace_pong("---- KNOWN [updating ping start time {} -> {}]\n",
+                   ping_j.start_time_, known->dest_time_);
+        ping_j.start_time_ = known->dest_time_;
+        continue;
+      }
 
       if constexpr (kPruneWithPingBounds) {
         pong.set_bounds(ping_j.transfers_ + 1U);
@@ -361,15 +414,24 @@ routing_result pong(timetable const& tt,
   }
 
   utl::erase_if(s_state.results_, [&](journey const& j) {
+    auto const j_start_time = j.dest_time_;
+    auto const is_out_of_interval =
+        kFwd ? !q.extend_interval_later_ && j_start_time >= search_interval.to_
+             : !q.extend_interval_earlier_ &&
+                   j_start_time < search_interval.from_;
+    auto const is_out_of_lookahead = !is_better(j_start_time, lookahead_end);
     auto const erase = !j.is_reconstructed_ || !is_validated(j) ||
+                       is_out_of_interval || is_out_of_lookahead ||
                        j.travel_time() >= fastest_direct ||
-                       j.travel_time() >= q.max_travel_time_;
+                       j.travel_time() > q.max_travel_time_;
     if (erase) {
       trace_pong(
           "ERASE not_reconstructed={}, not_validated={}, "
-          "slower_than_direct={}, slower_than_query_max_travel_time={} {}",
+          "slower_than_direct={}, slower_than_query_max_travel_time={}, "
+          "beyond_max_lookahead={} {}",
           j.legs_.empty(), !is_validated(j), j.travel_time() >= fastest_direct,
-          j.travel_time() >= q.max_travel_time_, to_tuple(j));
+          j.travel_time() > q.max_travel_time_, is_out_of_lookahead,
+          to_tuple(j));
     }
     return erase;
   });
@@ -378,8 +440,11 @@ routing_result pong(timetable const& tt,
     std::swap(x.start_time_, x.dest_time_);
   }
 
-  result.interval_ = {kFwd ? search_interval.from_ : start_time + duration_t{1},
-                      kFwd ? start_time : search_interval.to_};
+  auto const searched_until =
+      is_better(lookahead_end, start_time) ? lookahead_end : start_time;
+  result.interval_ = {
+      kFwd ? search_interval.from_ : searched_until + duration_t{1},
+      kFwd ? searched_until : search_interval.to_};
   result.algo_stats_ = (ping.get_stats() + pong.get_stats()).to_map();
   result.search_stats_.execute_time_ =
       std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -416,17 +481,12 @@ routing_result pong(timetable const& tt,
   }
 
   if constexpr (Vias != 0U) {
-    if (utl::any_of(q.via_stops_, [](via_stop const& v) {
-          return v.stay_ == duration_t{0};
-        })) {
-      // Stay duration == 0 means via-stop doesn't require a transfer.
-      // => The via stop could be "optimized away" by get_earliest_alternative!
-      return result;
-    }
+    // via requirements (order, stays) are invisible to
+    // get_earliest_alternative
+    return result;
   }
 
   for (auto& j : s_state.results_) {
-    auto v = via_offset_t{0};
     for (auto const [transit_1, transfer_1, transit_2, transfer_2, transit_3] :
          utl::nwise<5>(j.legs_)) {
       if (!std::holds_alternative<journey::run_enter_exit>(transit_1.uses_) ||
@@ -441,23 +501,12 @@ routing_result pong(timetable const& tt,
       auto const front_r = rt::frun{tt, rtt, front.r_};
       auto const from = front_r[front.stop_range_.to_ - 1U];
 
-      auto arr_time = from.time(event_type::kArr);
-      if (v < q.via_stops_.size() &&
-          matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[v].location_, from.get_location_idx())) {
-        arr_time += q.via_stops_[v++].stay_;
-      }
+      auto const arr_time = from.time(event_type::kArr);
 
       auto const back_r = rt::frun{tt, rtt, back.r_};
       auto const to = back_r[back.stop_range_.from_];
 
-      auto dep_time = to.time(event_type::kDep);
-      if (v < q.via_stops_.size() &&
-          matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[v].location_, to.get_location_idx())) {
-        // do not increment v, via may be used in next iteration
-        dep_time -= q.via_stops_[v].stay_;
-      }
+      auto const dep_time = to.time(event_type::kDep);
 
       auto const earlier =
           get_earliest_alternative(tt, rtt, q, from.get_location_idx(),
@@ -498,6 +547,14 @@ routing_result pong_search_with_dir(
     AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> timeout) {
+  q.sanitize(tt);
+
+  if (rtt != nullptr &&
+      !rtt->affects(pong_search_interval(SearchDir, tt, q, kMinLookAhead),
+                    q.prf_idx_)) {
+    rtt = nullptr;
+  }
+
   if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
     utl::verify(q.via_stops_.empty(), "GPU raptor does not support vias");
     return pong_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state, std::move(q),

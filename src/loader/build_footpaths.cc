@@ -3,6 +3,7 @@
 #include <mutex>
 #include <optional>
 #include <stack>
+#include <tuple>
 
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
@@ -13,6 +14,7 @@
 #include "utl/progress_tracker.h"
 #include "utl/verify.h"
 
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/link_nearby_stations.h"
 #include "nigiri/loader/merge_duplicates.h"
 #include "nigiri/common/day_list.h"
@@ -65,14 +67,13 @@ struct component {
   vecvec<location_idx_t, footpath> graph_;
 };
 
-footgraph get_footpath_graph(timetable& tt) {
+footgraph get_footpath_graph(timetable& tt, import_context& ctx) {
   footgraph g;
   g.resize(tt.locations_.src_.size());
   for (auto i = 0U; i != tt.locations_.src_.size(); ++i) {
     auto const idx = location_idx_t{i};
-    g[i].insert(end(g[i]),
-                begin(tt.locations_.preprocessing_footpaths_out_[idx]),
-                end(tt.locations_.preprocessing_footpaths_out_[idx]));
+    g[i].insert(end(g[i]), begin(ctx.preprocessing_footpaths_out_[idx]),
+                end(ctx.preprocessing_footpaths_out_[idx]));
     utl::erase_if(g[i],
                   [&](auto&& fp) { return fp.target() == location_idx_t{i}; });
     utl::erase_duplicates(
@@ -119,32 +120,63 @@ std::vector<assignment> find_components(footgraph const& fgraph) {
   return components;
 }
 
+std::optional<u8_minutes> adjust_to_walk_speed(timetable const& tt,
+                                               location_idx_t const a,
+                                               location_idx_t const b,
+                                               u8_minutes const duration) {
+
+  constexpr auto const kMaxWalkDistance =
+      std::numeric_limits<u8_minutes::rep>::max() * 60.0 * kWalkSpeed;
+
+  auto const distance = geo::distance(tt.locations_.coordinates_[a],
+                                      tt.locations_.coordinates_[b]);
+  if (distance > kMaxWalkDistance) {
+    log(log_lvl::error, "loader.footpath.adjust",
+        "dropping footpath {} -> {}: {:.1f} km apart, not walkable",
+        tt.locations_.ids_[a].view(), tt.locations_.ids_[b].view(),
+        distance / 1000.0);
+    return std::nullopt;
+  }
+
+  return u8_minutes{
+      std::max(static_cast<duration_t::rep>(duration.count()),
+               static_cast<duration_t::rep>(distance / kWalkSpeed / 60))};
+}
+
 void process_2_node_component(timetable& tt,
+                              import_context& ctx,
                               component const& c,
-                              footgraph const& fgraph) {
+                              footgraph const& fgraph,
+                              bool const adjust_footpaths) {
   auto const l_idx_a = c.from_->l_;
   auto const l_idx_b = std::next(c.from_)->l_;
   auto const idx_a = to_idx(l_idx_a);
   auto const idx_b = to_idx(l_idx_b);
 
-  if (!fgraph[idx_a].empty()) {
-    auto const duration = std::max({u8_minutes{fgraph[idx_a].front().duration_},
-                                    tt.locations_.transfer_time_[l_idx_a],
+  auto const write = [&](location_idx_t const from_l, location_idx_t const to_l,
+                         u8_minutes const raw) {
+    auto const duration = std::max({raw, tt.locations_.transfer_time_[l_idx_a],
                                     tt.locations_.transfer_time_[l_idx_b]});
-    tt.locations_.preprocessing_footpaths_out_[l_idx_a].emplace_back(l_idx_b,
-                                                                     duration);
-    tt.locations_.preprocessing_footpaths_in_[l_idx_b].emplace_back(l_idx_a,
-                                                                    duration);
+
+    auto adjusted = duration;
+    if (adjust_footpaths) {
+      auto const a = adjust_to_walk_speed(tt, from_l, to_l, duration);
+      if (!a.has_value()) {
+        return;
+      }
+      adjusted = *a;
+    }
+
+    ctx.preprocessing_footpaths_out_[from_l].emplace_back(to_l, adjusted);
+    ctx.preprocessing_footpaths_in_[to_l].emplace_back(from_l, adjusted);
+  };
+
+  if (!fgraph[idx_a].empty()) {
+    write(l_idx_a, l_idx_b, u8_minutes{fgraph[idx_a].front().duration_});
   }
 
   if (!fgraph[idx_b].empty()) {
-    auto const duration = std::max({u8_minutes{fgraph[idx_b].front().duration_},
-                                    tt.locations_.transfer_time_[l_idx_a],
-                                    tt.locations_.transfer_time_[l_idx_b]});
-    tt.locations_.preprocessing_footpaths_out_[l_idx_b].emplace_back(l_idx_a,
-                                                                     duration);
-    tt.locations_.preprocessing_footpaths_in_[l_idx_a].emplace_back(l_idx_b,
-                                                                    duration);
+    write(l_idx_b, l_idx_a, u8_minutes{fgraph[idx_b].front().duration_});
   }
 }
 
@@ -195,6 +227,7 @@ void build_component_graph(
 }
 
 void connect_components(timetable& tt,
+                        import_context& ctx,
                         std::uint16_t const max_footpath_length,
                         bool adjust_footpaths) {
   // ==========================
@@ -202,16 +235,16 @@ void connect_components(timetable& tt,
   // --------------------------
   auto const timer = scoped_timer{"building transitively closed foot graph"};
 
-  auto const fgraph = get_footpath_graph(tt);
+  auto const fgraph = get_footpath_graph(tt, ctx);
   auto assignments = find_components(fgraph);
   utl::sort(assignments);
 
-  tt.locations_.preprocessing_footpaths_out_.clear();
-  tt.locations_.preprocessing_footpaths_out_[location_idx_t{
-      tt.locations_.src_.size() - 1}];
-  tt.locations_.preprocessing_footpaths_in_.clear();
-  tt.locations_.preprocessing_footpaths_in_[location_idx_t{
-      tt.locations_.src_.size() - 1}];
+  ctx.preprocessing_footpaths_out_.clear();
+  ctx.preprocessing_footpaths_out_[location_idx_t{tt.locations_.src_.size() -
+                                                  1}];
+  ctx.preprocessing_footpaths_in_.clear();
+  ctx.preprocessing_footpaths_in_[location_idx_t{tt.locations_.src_.size() -
+                                                 1}];
 
   auto tmp_graph = cista::raw::mutable_fws_multimap<location_idx_t, footpath>{};
   auto components = std::vector<component>{};
@@ -223,7 +256,7 @@ void connect_components(timetable& tt,
         if (c.invalid()) {
           return;
         } else if (c.size() == 2U) {
-          process_2_node_component(tt, c, fgraph);
+          process_2_node_component(tt, ctx, c, fgraph, adjust_footpaths);
         } else {
           build_component_graph(tt, c, fgraph, tmp_graph);
           components.emplace_back(std::move(c));
@@ -298,32 +331,24 @@ void connect_components(timetable& tt,
 
       auto adjusted = duration;
       if (adjust_footpaths) {
-        auto const distance = geo::distance(tt.locations_.coordinates_[from_l],
-                                            tt.locations_.coordinates_[to_l]);
-        auto const adjusted_int = static_cast<int>(distance / kWalkSpeed / 60);
-        if (adjusted_int > std::numeric_limits<u8_minutes::rep>::max()) {
-          log(log_lvl::error, "loader.footpath.adjust",
-              "too long after adjust: {}>256", adjusted_int);
-        } else {
-          adjusted = u8_minutes{
-              std::max(static_cast<duration_t::rep>(duration.count()),
-                       static_cast<duration_t::rep>(adjusted_int))};
+        auto const a = adjust_to_walk_speed(tt, from_l, to_l, duration);
+        if (!a.has_value()) {
+          continue;
         }
+        adjusted = *a;
       }
 
-      tt.locations_.preprocessing_footpaths_out_[from_l].emplace_back(to_l,
-                                                                      adjusted);
-      tt.locations_.preprocessing_footpaths_in_[to_l].emplace_back(from_l,
-                                                                   adjusted);
+      ctx.preprocessing_footpaths_out_[from_l].emplace_back(to_l, adjusted);
+      ctx.preprocessing_footpaths_in_[to_l].emplace_back(from_l, adjusted);
     }
   }
 }
 
-void add_links_to_and_between_children(timetable& tt) {
+void add_links_to_and_between_children(timetable& tt, import_context& ctx) {
   auto fp_out = mutable_fws_multimap<location_idx_t, footpath>{};
   for (auto l = location_idx_t{0U};
-       l != tt.locations_.preprocessing_footpaths_out_.size(); ++l) {
-    for (auto const& fp : tt.locations_.preprocessing_footpaths_out_[l]) {
+       l != ctx.preprocessing_footpaths_out_.size(); ++l) {
+    for (auto const& fp : ctx.preprocessing_footpaths_out_[l]) {
       for (auto const& neighbor_child : tt.locations_.children_[fp.target()]) {
         if (tt.locations_.types_[neighbor_child] ==
             location_type::kGeneratedTrack) {
@@ -346,9 +371,9 @@ void add_links_to_and_between_children(timetable& tt) {
   }
 
   for (auto l = location_idx_t{0U};
-       l != tt.locations_.preprocessing_footpaths_out_.size(); ++l) {
+       l != ctx.preprocessing_footpaths_out_.size(); ++l) {
     for (auto const& fp : fp_out[l]) {
-      tt.locations_.preprocessing_footpaths_out_[l].emplace_back(fp);
+      ctx.preprocessing_footpaths_out_[l].emplace_back(fp);
     }
   }
 
@@ -361,78 +386,98 @@ void add_links_to_and_between_children(timetable& tt) {
       if (tt.locations_.types_[child_i] != location_type::kGeneratedTrack) {
         continue;
       }
-      tt.locations_.preprocessing_footpaths_out_[parent].emplace_back(child_i,
-                                                                      t);
-      tt.locations_.preprocessing_footpaths_out_[child_i].emplace_back(parent,
-                                                                       t);
+      ctx.preprocessing_footpaths_out_[parent].emplace_back(child_i, t);
+      ctx.preprocessing_footpaths_out_[child_i].emplace_back(parent, t);
       for (auto j = 0U; j != children.size(); ++j) {
         if (i != j) {
-          tt.locations_.preprocessing_footpaths_out_[child_i].emplace_back(
-              children[j], t);
+          ctx.preprocessing_footpaths_out_[child_i].emplace_back(children[j],
+                                                                 t);
         }
       }
     }
   }
 }
 
-void sort_footpaths(timetable& tt) {
+void sort_footpaths(timetable& tt, import_context& ctx) {
   auto const cmp_fp_dur = [](auto const& a, auto const& b) {
     return a.duration_ < b.duration_;
   };
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    utl::sort(tt.locations_.preprocessing_footpaths_out_[i], cmp_fp_dur);
+    utl::sort(ctx.preprocessing_footpaths_out_[i], cmp_fp_dur);
   }
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    utl::sort(tt.locations_.preprocessing_footpaths_in_[i], cmp_fp_dur);
+    utl::sort(ctx.preprocessing_footpaths_in_[i], cmp_fp_dur);
   }
 }
 
-void write_footpaths(timetable& tt) {
+void write_footpaths(timetable& tt, import_context& ctx) {
   assert(tt.locations_.footpaths_out_.size() == kNProfiles);
   assert(tt.locations_.footpaths_in_.size() == kNProfiles);
-  assert(tt.locations_.preprocessing_footpaths_out_.size() == tt.n_locations());
-  assert(tt.locations_.preprocessing_footpaths_in_.size() == tt.n_locations());
+  assert(ctx.preprocessing_footpaths_out_.size() == tt.n_locations());
+  assert(ctx.preprocessing_footpaths_in_.size() == tt.n_locations());
 
   profile_idx_t const prf_idx{0};
 
+  // shortest duration first, the order sort_footpaths() left the preprocessing
+  // layers in; the target breaks ties so the built timetable is reproducible
+  auto const by_duration = [](footpath const a, footpath const b) {
+    return std::tie(a.duration_, a.target_) < std::tie(b.duration_, b.target_);
+  };
+
+  auto fps = std::vector<footpath>{};
+  auto fps_in = mutable_fws_multimap<location_idx_t, footpath>{};
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    tt.locations_.footpaths_out_[prf_idx].emplace_back(
-        tt.locations_.preprocessing_footpaths_out_[i]);
-  }
-
-  for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    tt.locations_.footpaths_in_[prf_idx].emplace_back(
-        tt.locations_.preprocessing_footpaths_in_[i]);
-  }
-
-  tt.locations_.preprocessing_footpaths_in_.clear();
-  tt.locations_.preprocessing_footpaths_out_.clear();
-}
-
-void build_footpaths(timetable& tt, finalize_options const opt) {
-  add_links_to_and_between_children(tt);
-  link_nearby_stations(tt);
-  if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_) {
-    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-      if (tt.locations_.src_[l] == source_idx_t{source_idx_t::invalid()}) {
-        continue;
-      }
-      for (auto e : tt.locations_.equivalences_[l]) {
-        if (tt.locations_.src_[e] == source_idx_t{source_idx_t::invalid()} ||
-            (!opt.merge_dupes_intra_src_ &&
-             tt.locations_.src_[l] == tt.locations_.src_[e]) ||
-            (!opt.merge_dupes_inter_src_ &&
-             tt.locations_.src_[l] != tt.locations_.src_[e])) {
-          continue;
-        }
-
-        find_duplicates(tt, l, e);
-      }
+    fps.clear();
+    for (auto const fp : ctx.preprocessing_footpaths_out_[i]) {
+      fps.push_back(fp);
+    }
+    // one edge per target, at the shortest duration offered for it
+    utl::erase_duplicates(
+        fps,
+        [](footpath const a, footpath const b) {
+          return std::tie(a.target_, a.duration_) <
+                 std::tie(b.target_, b.duration_);
+        },
+        [](footpath const a, footpath const b) {
+          return a.target_ == b.target_;
+        });  // sorts by target; keeps the shortest duration per target
+    utl::sort(fps, by_duration);
+    tt.locations_.footpaths_out_[prf_idx].emplace_back(fps);
+    // the in layer is the transpose of out - every writer of the
+    // preprocessing layers fills both directions as a mirrored pair
+    for (auto const fp : fps) {
+      fps_in[fp.target()].emplace_back(i, fp.duration());
     }
   }
-  connect_components(tt, opt.max_footpath_length_, opt.adjust_footpaths_);
-  sort_footpaths(tt);
-  write_footpaths(tt);
+
+  for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
+    fps.clear();
+    for (auto const fp : fps_in[i]) {
+      fps.push_back(fp);
+    }
+    utl::sort(fps, by_duration);
+    tt.locations_.footpaths_in_[prf_idx].emplace_back(fps);
+  }
+
+  ctx.preprocessing_footpaths_in_ = {};
+  ctx.preprocessing_footpaths_out_ = {};
+}
+
+void build_footpaths(timetable& tt,
+                     import_context& ctx,
+                     finalize_options const& opt) {
+  add_links_to_and_between_children(tt, ctx);
+  link_nearby_stations(tt, ctx);
+
+  if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_) {
+    merge_duplicates(tt, ctx, opt.merge_threshold_, opt.merge_dupes_intra_src_,
+                     opt.merge_dupes_inter_src_, opt.merge_stats_dir_,
+                     opt.src_tags_);
+  }
+
+  connect_components(tt, ctx, opt.max_footpath_length_, opt.adjust_footpaths_);
+  sort_footpaths(tt, ctx);
+  write_footpaths(tt, ctx);
 }
 
 }  // namespace nigiri::loader

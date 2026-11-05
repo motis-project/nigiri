@@ -1,7 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 
 #include "hrd/hrd_timetable.h"
 
@@ -11,10 +11,7 @@ using namespace nigiri::loader::hrd;
 using namespace nigiri::test_data::hrd_timetable;
 
 TEST(routing, lb_graph_distances_check) {
-  auto tt = timetable{};
-  tt.date_range_ = full_period();
-  load_timetable(source_idx_t{0U}, hrd_5_20_26, files_simple(), tt);
-  finalize(tt);
+  auto const tt = loader::load(files_simple(), full_period());
 
   using distance_table_t =
       std::map<std::pair<std::string, std::string>, duration_t>;

@@ -4,7 +4,6 @@
 #include <span>
 
 #include "nigiri/common/delta_t.h"
-#include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/common/prefetch.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
@@ -30,6 +29,11 @@ template <direction SearchDir,
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
+
+  struct transport_times {
+    delta_t first_dep_{0};
+    delta const* offsets_{nullptr};
+  };
 
   static constexpr bool kUseLowerBounds = true;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
@@ -69,6 +73,7 @@ struct raptor {
       bool const require_bike_transport,
       bool const require_car_transport,
       bool const is_wheelchair,
+      bool const no_compulsory_reservation,
       transfer_time_settings const& tts,
       profile_idx_t const prf_idx)
       : tt_{tt},
@@ -93,6 +98,7 @@ struct raptor {
         allowed_claszes_{allowed_claszes},
         require_bike_transport_{require_bike_transport},
         require_car_transport_{require_car_transport},
+        no_compulsory_reservation_{no_compulsory_reservation},
         is_wheelchair_{is_wheelchair},
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
@@ -121,7 +127,7 @@ struct raptor {
     auto& s = state_;
     auto const n = static_cast<std::size_t>(s.n_locations_);
 
-    auto const td_stops = rtt_ != nullptr && prf_idx_ != 0U
+    auto const td_stops = rtt_ != nullptr && has_profile_td_footpaths(prf_idx_)
                               ? &(kFwd ? rtt_->has_td_footpaths_out_
                                        : rtt_->has_td_footpaths_in_)[prf_idx_]
                               : nullptr;
@@ -179,6 +185,10 @@ struct raptor {
     round_times_.reset(kInvalidArray);
   }
 
+  void limit_time_at_dest(unsigned const k, unixtime_t const t) {
+    update_time_at_dest(k, unix_to_delta(base(), t));
+  }
+
   void next_start_time() {
     utl::fill(best_, kInvalidArray);
     utl::fill(tmp_, kInvalidArray);
@@ -190,8 +200,9 @@ struct raptor {
     }
   }
 
-  void add_start(location_idx_t const l, unixtime_t const t) {
-    auto const v = (Vias != 0 && is_via_[0][to_idx(l)]) ? 1U : 0U;
+  void add_start(location_idx_t const l,
+                 unixtime_t const t,
+                 via_offset_t const v = 0U) {
     trace_upd(
         "adding start [fwd={}] {}: {}, v={} [current: best={}, round={} => "
         "best={}]\n",
@@ -252,29 +263,47 @@ struct raptor {
 
       bool const clasz_filter = allowed_claszes_ != all_clasz_allowed();
       uint8_t const filters =
-          static_cast<uint8_t>(clasz_filter << 3) |
-          static_cast<uint8_t>(require_bike_transport_ << 2) |
-          static_cast<uint8_t>(require_car_transport_ << 1) |
-          static_cast<uint8_t>(is_wheelchair_ << 0);
+          static_cast<uint8_t>(clasz_filter << 4) |
+          static_cast<uint8_t>(require_bike_transport_ << 3) |
+          static_cast<uint8_t>(require_car_transport_ << 2) |
+          static_cast<uint8_t>(is_wheelchair_ << 1) |
+          static_cast<uint8_t>(no_compulsory_reservation_ << 0);
 
       any_marked |= [&]() {
         switch (filters) {
-          case 0b0000: return loop_routes<false, false, false, false>(k);
-          case 0b0001: return loop_routes<false, false, false, true>(k);
-          case 0b0010: return loop_routes<false, false, true, false>(k);
-          case 0b0011: return loop_routes<false, false, true, true>(k);
-          case 0b0100: return loop_routes<false, true, false, false>(k);
-          case 0b0101: return loop_routes<false, true, false, true>(k);
-          case 0b0110: return loop_routes<false, true, true, false>(k);
-          case 0b0111: return loop_routes<false, true, true, true>(k);
-          case 0b1000: return loop_routes<true, false, false, false>(k);
-          case 0b1001: return loop_routes<true, false, false, true>(k);
-          case 0b1010: return loop_routes<true, false, true, false>(k);
-          case 0b1011: return loop_routes<true, false, true, true>(k);
-          case 0b1100: return loop_routes<true, true, false, false>(k);
-          case 0b1101: return loop_routes<true, true, false, true>(k);
-          case 0b1110: return loop_routes<true, true, true, false>(k);
-          case 0b1111: return loop_routes<true, true, true, true>(k);
+          case 0b00000:
+            return loop_routes<false, false, false, false, false>(k);
+          case 0b00001: return loop_routes<false, false, false, false, true>(k);
+          case 0b00010: return loop_routes<false, false, false, true, false>(k);
+          case 0b00011: return loop_routes<false, false, false, true, true>(k);
+          case 0b00100: return loop_routes<false, false, true, false, false>(k);
+          case 0b00101: return loop_routes<false, false, true, false, true>(k);
+          case 0b00110: return loop_routes<false, false, true, true, false>(k);
+          case 0b00111: return loop_routes<false, false, true, true, true>(k);
+          case 0b01000: return loop_routes<false, true, false, false, false>(k);
+          case 0b01001: return loop_routes<false, true, false, false, true>(k);
+          case 0b01010: return loop_routes<false, true, false, true, false>(k);
+          case 0b01011: return loop_routes<false, true, false, true, true>(k);
+          case 0b01100: return loop_routes<false, true, true, false, false>(k);
+          case 0b01101: return loop_routes<false, true, true, false, true>(k);
+          case 0b01110: return loop_routes<false, true, true, true, false>(k);
+          case 0b01111: return loop_routes<false, true, true, true, true>(k);
+          case 0b10000: return loop_routes<true, false, false, false, false>(k);
+          case 0b10001: return loop_routes<true, false, false, false, true>(k);
+          case 0b10010: return loop_routes<true, false, false, true, false>(k);
+          case 0b10011: return loop_routes<true, false, false, true, true>(k);
+          case 0b10100: return loop_routes<true, false, true, false, false>(k);
+          case 0b10101: return loop_routes<true, false, true, false, true>(k);
+          case 0b10110: return loop_routes<true, false, true, true, false>(k);
+          case 0b10111: return loop_routes<true, false, true, true, true>(k);
+          case 0b11000: return loop_routes<true, true, false, false, false>(k);
+          case 0b11001: return loop_routes<true, true, false, false, true>(k);
+          case 0b11010: return loop_routes<true, true, false, true, false>(k);
+          case 0b11011: return loop_routes<true, true, false, true, true>(k);
+          case 0b11100: return loop_routes<true, true, true, false, false>(k);
+          case 0b11101: return loop_routes<true, true, true, false, true>(k);
+          case 0b11110: return loop_routes<true, true, true, true, false>(k);
+          case 0b11111: return loop_routes<true, true, true, true, true>(k);
           default: std::unreachable();
         }
       }();
@@ -282,22 +311,70 @@ struct raptor {
       if constexpr (Rt) {
         any_marked |= [&]() {
           switch (filters) {
-            case 0b0000: return loop_rt_routes<false, false, false, false>(k);
-            case 0b0001: return loop_rt_routes<false, false, false, true>(k);
-            case 0b0010: return loop_rt_routes<false, false, true, false>(k);
-            case 0b0011: return loop_rt_routes<false, false, true, true>(k);
-            case 0b0100: return loop_rt_routes<false, true, false, false>(k);
-            case 0b0101: return loop_rt_routes<false, true, false, true>(k);
-            case 0b0110: return loop_rt_routes<false, true, true, false>(k);
-            case 0b0111: return loop_rt_routes<false, true, true, true>(k);
-            case 0b1000: return loop_rt_routes<true, false, false, false>(k);
-            case 0b1001: return loop_rt_routes<true, false, false, true>(k);
-            case 0b1010: return loop_rt_routes<true, false, true, false>(k);
-            case 0b1011: return loop_rt_routes<true, false, true, true>(k);
-            case 0b1100: return loop_rt_routes<true, true, false, false>(k);
-            case 0b1101: return loop_rt_routes<true, true, false, true>(k);
-            case 0b1110: return loop_rt_routes<true, true, true, false>(k);
-            case 0b1111: return loop_rt_routes<true, true, true, true>(k);
+            case 0b00000:
+              return loop_rt_routes<false, false, false, false, false>(k);
+            case 0b00001:
+              return loop_rt_routes<false, false, false, false, true>(k);
+            case 0b00010:
+              return loop_rt_routes<false, false, false, true, false>(k);
+            case 0b00011:
+              return loop_rt_routes<false, false, false, true, true>(k);
+            case 0b00100:
+              return loop_rt_routes<false, false, true, false, false>(k);
+            case 0b00101:
+              return loop_rt_routes<false, false, true, false, true>(k);
+            case 0b00110:
+              return loop_rt_routes<false, false, true, true, false>(k);
+            case 0b00111:
+              return loop_rt_routes<false, false, true, true, true>(k);
+            case 0b01000:
+              return loop_rt_routes<false, true, false, false, false>(k);
+            case 0b01001:
+              return loop_rt_routes<false, true, false, false, true>(k);
+            case 0b01010:
+              return loop_rt_routes<false, true, false, true, false>(k);
+            case 0b01011:
+              return loop_rt_routes<false, true, false, true, true>(k);
+            case 0b01100:
+              return loop_rt_routes<false, true, true, false, false>(k);
+            case 0b01101:
+              return loop_rt_routes<false, true, true, false, true>(k);
+            case 0b01110:
+              return loop_rt_routes<false, true, true, true, false>(k);
+            case 0b01111:
+              return loop_rt_routes<false, true, true, true, true>(k);
+            case 0b10000:
+              return loop_rt_routes<true, false, false, false, false>(k);
+            case 0b10001:
+              return loop_rt_routes<true, false, false, false, true>(k);
+            case 0b10010:
+              return loop_rt_routes<true, false, false, true, false>(k);
+            case 0b10011:
+              return loop_rt_routes<true, false, false, true, true>(k);
+            case 0b10100:
+              return loop_rt_routes<true, false, true, false, false>(k);
+            case 0b10101:
+              return loop_rt_routes<true, false, true, false, true>(k);
+            case 0b10110:
+              return loop_rt_routes<true, false, true, true, false>(k);
+            case 0b10111:
+              return loop_rt_routes<true, false, true, true, true>(k);
+            case 0b11000:
+              return loop_rt_routes<true, true, false, false, false>(k);
+            case 0b11001:
+              return loop_rt_routes<true, true, false, false, true>(k);
+            case 0b11010:
+              return loop_rt_routes<true, true, false, true, false>(k);
+            case 0b11011:
+              return loop_rt_routes<true, true, false, true, true>(k);
+            case 0b11100:
+              return loop_rt_routes<true, true, true, false, false>(k);
+            case 0b11101:
+              return loop_rt_routes<true, true, true, false, true>(k);
+            case 0b11110:
+              return loop_rt_routes<true, true, true, true, false>(k);
+            case 0b11111:
+              return loop_rt_routes<true, true, true, true, true>(k);
             default: std::unreachable();
           }
         }();
@@ -427,7 +504,8 @@ private:
   template <bool WithClaszFilter,
             bool WithBikeFilter,
             bool WithCarFilter,
-            bool WithWheelchairFilter>
+            bool WithWheelchairFilter,
+            bool WithReservationNotRequiredFilter>
   bool loop_routes(unsigned const k) {
     auto any_marked = false;
     state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
@@ -439,66 +517,69 @@ private:
         }
       }
 
-      auto section_bike_filter = false;
+      auto filters = static_cast<uint8_t>(0);
+
+      auto const apply_filter = [&](route_flag const f) {
+        auto const flag_set_on_all_sections =
+            tt_.route_flags_[f].test(r_idx * 2);
+        if (!flag_set_on_all_sections) {
+          auto const flag_set_on_some_sections =
+              tt_.route_flags_[f].test(r_idx * 2 + 1);
+          if (!flag_set_on_some_sections) {
+            return false;
+          }
+          filters |=
+              static_cast<uint8_t>(1 << (route_flag::kNumRouteFlags - f - 1));
+          return true;
+        }
+        return true;
+      };
+
       if constexpr (WithBikeFilter) {
-        auto const bikes_allowed_on_all_sections =
-            tt_.route_bikes_allowed_.test(r_idx * 2);
-        if (!bikes_allowed_on_all_sections) {
-          auto const bikes_allowed_on_some_sections =
-              tt_.route_bikes_allowed_.test(r_idx * 2 + 1);
-          if (!bikes_allowed_on_some_sections) {
-            return;
-          }
-          section_bike_filter = true;
+        if (!apply_filter(route_flag::kBikesAllowed)) {
+          return;
         }
       }
 
-      auto section_car_filter = false;
       if constexpr (WithCarFilter) {
-        auto const cars_allowed_on_all_sections =
-            tt_.route_cars_allowed_.test(r_idx * 2);
-        if (!cars_allowed_on_all_sections) {
-          auto const cars_allowed_on_some_sections =
-              tt_.route_cars_allowed_.test(r_idx * 2 + 1);
-          if (!cars_allowed_on_some_sections) {
-            return;
-          }
-          section_car_filter = true;
+        if (!apply_filter(route_flag::kCarsAllowed)) {
+          return;
         }
       }
 
-      auto section_wheelchair_filter = false;
       if constexpr (WithWheelchairFilter) {
-        auto const wheelchair_accessibility_on_all_sections =
-            tt_.route_wheelchair_accessible_.test(r_idx * 2);
-        if (!wheelchair_accessibility_on_all_sections) {
-          auto const wheelchair_accessibility_on_some_sections =
-              tt_.route_wheelchair_accessible_.test(r_idx * 2 + 1);
-          if (!wheelchair_accessibility_on_some_sections) {
-            return;
-          }
-          section_wheelchair_filter = true;
+        if (!apply_filter(route_flag::kWheelchairAccessible)) {
+          return;
+        }
+      }
+
+      if constexpr (WithReservationNotRequiredFilter) {
+        if (!apply_filter(route_flag::kReservationNotRequired)) {
+          return;
         }
       }
 
       ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating route {}\n", k, r);
 
-      uint8_t const filters =
-          static_cast<uint8_t>(section_bike_filter << 2) |
-          static_cast<uint8_t>(section_car_filter << 1) |
-          static_cast<uint8_t>(section_wheelchair_filter << 0);
-
       any_marked |= [&]() {
         switch (filters) {
-          case 0b000: return update_route<false, false, false>(k, r);
-          case 0b001: return update_route<false, false, true>(k, r);
-          case 0b010: return update_route<false, true, false>(k, r);
-          case 0b011: return update_route<false, true, true>(k, r);
-          case 0b100: return update_route<true, false, false>(k, r);
-          case 0b101: return update_route<true, false, true>(k, r);
-          case 0b110: return update_route<true, true, false>(k, r);
-          case 0b111: return update_route<true, true, true>(k, r);
+          case 0b0000: return update_route<false, false, false, false>(k, r);
+          case 0b0001: return update_route<false, false, false, true>(k, r);
+          case 0b0010: return update_route<false, false, true, false>(k, r);
+          case 0b0011: return update_route<false, false, true, true>(k, r);
+          case 0b0100: return update_route<false, true, false, false>(k, r);
+          case 0b0101: return update_route<false, true, false, true>(k, r);
+          case 0b0110: return update_route<false, true, true, false>(k, r);
+          case 0b0111: return update_route<false, true, true, true>(k, r);
+          case 0b1000: return update_route<true, false, false, false>(k, r);
+          case 0b1001: return update_route<true, false, false, true>(k, r);
+          case 0b1010: return update_route<true, false, true, false>(k, r);
+          case 0b1011: return update_route<true, false, true, true>(k, r);
+          case 0b1100: return update_route<true, true, false, false>(k, r);
+          case 0b1101: return update_route<true, true, false, true>(k, r);
+          case 0b1110: return update_route<true, true, true, false>(k, r);
+          case 0b1111: return update_route<true, true, true, true>(k, r);
           default: std::unreachable();
         }
       }();
@@ -509,7 +590,8 @@ private:
   template <bool WithClaszFilter,
             bool WithBikeFilter,
             bool WithCarFilter,
-            bool WithWheelchairFilter>
+            bool WithWheelchairFilter,
+            bool WithReservationNotRequiredFilter>
   bool loop_rt_routes(unsigned const k) {
     auto any_marked = false;
     state_.rt_transport_mark_.for_each_set_bit([&](auto const rt_t_idx) {
@@ -522,72 +604,111 @@ private:
         }
       }
 
-      auto section_bike_filter = false;
+      auto filters = static_cast<uint8_t>(0);
+
+      auto const apply_filter = [&](route_flag const f) {
+        auto const flag_set_on_all_sections =
+            rtt_->rt_transport_flags_[f].test(rt_t_idx * 2);
+        if (!flag_set_on_all_sections) {
+          auto const flag_set_on_some_sections =
+              rtt_->rt_transport_flags_[f].test(rt_t_idx * 2 + 1);
+          if (!flag_set_on_some_sections) {
+            return false;
+          }
+          filters |=
+              static_cast<uint8_t>(1 << (route_flag::kNumRouteFlags - f - 1));
+          return true;
+        }
+        return true;
+      };
+
       if constexpr (WithBikeFilter) {
-        auto const bikes_allowed_on_all_sections =
-            rtt_->rt_transport_bikes_allowed_.test(rt_t_idx * 2);
-        if (!bikes_allowed_on_all_sections) {
-          auto const bikes_allowed_on_some_sections =
-              rtt_->rt_transport_bikes_allowed_.test(rt_t_idx * 2 + 1);
-          if (!bikes_allowed_on_some_sections) {
-            return;
-          }
-          section_bike_filter = true;
+        if (!apply_filter(route_flag::kBikesAllowed)) {
+          return;
         }
       }
 
-      auto section_car_filter = false;
       if constexpr (WithCarFilter) {
-        auto const cars_allowed_on_all_sections =
-            rtt_->rt_transport_cars_allowed_.test(rt_t_idx * 2);
-        if (!cars_allowed_on_all_sections) {
-          auto const cars_allowed_on_some_sections =
-              rtt_->rt_transport_cars_allowed_.test(rt_t_idx * 2 + 1);
-          if (!cars_allowed_on_some_sections) {
-            return;
-          }
-          section_car_filter = true;
+        if (!apply_filter(route_flag::kCarsAllowed)) {
+          return;
         }
       }
 
-      auto section_wheelchair_filter = false;
       if constexpr (WithWheelchairFilter) {
-        auto const wheelchair_accessible_on_all_sections =
-            rtt_->rt_transport_wheelchair_accessibility_.test(rt_t_idx * 2);
-        if (!wheelchair_accessible_on_all_sections) {
-          auto const wheelchair_accessible_on_some_sections =
-              rtt_->rt_transport_wheelchair_accessibility_.test(rt_t_idx * 2 +
-                                                                1);
-          if (!wheelchair_accessible_on_some_sections) {
-            return;
-          }
-          section_wheelchair_filter = true;
+        if (!apply_filter(route_flag::kWheelchairAccessible)) {
+          return;
+        }
+      }
+
+      if constexpr (WithReservationNotRequiredFilter) {
+        if (!apply_filter(route_flag::kReservationNotRequired)) {
+          return;
         }
       }
 
       ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating rt transport {}\n", k, rt_t);
 
-      uint8_t const filters =
-          static_cast<uint8_t>(section_bike_filter << 2) |
-          static_cast<uint8_t>(section_car_filter << 1) |
-          static_cast<uint8_t>(section_wheelchair_filter << 0);
-
       any_marked |= [&]() {
         switch (filters) {
-          case 0b000: return update_rt_transport<false, false, false>(k, rt_t);
-          case 0b001: return update_rt_transport<false, false, true>(k, rt_t);
-          case 0b010: return update_rt_transport<false, true, false>(k, rt_t);
-          case 0b011: return update_rt_transport<false, true, true>(k, rt_t);
-          case 0b100: return update_rt_transport<true, false, false>(k, rt_t);
-          case 0b101: return update_rt_transport<true, false, true>(k, rt_t);
-          case 0b110: return update_rt_transport<true, true, false>(k, rt_t);
-          case 0b111: return update_rt_transport<true, true, true>(k, rt_t);
+          case 0b0000:
+            return update_rt_transport<false, false, false, false>(k, rt_t);
+          case 0b0001:
+            return update_rt_transport<false, false, false, true>(k, rt_t);
+          case 0b0010:
+            return update_rt_transport<false, false, true, false>(k, rt_t);
+          case 0b0011:
+            return update_rt_transport<false, false, true, true>(k, rt_t);
+          case 0b0100:
+            return update_rt_transport<false, true, false, false>(k, rt_t);
+          case 0b0101:
+            return update_rt_transport<false, true, false, true>(k, rt_t);
+          case 0b0110:
+            return update_rt_transport<false, true, true, false>(k, rt_t);
+          case 0b0111:
+            return update_rt_transport<false, true, true, true>(k, rt_t);
+          case 0b1000:
+            return update_rt_transport<true, false, false, false>(k, rt_t);
+          case 0b1001:
+            return update_rt_transport<true, false, false, true>(k, rt_t);
+          case 0b1010:
+            return update_rt_transport<true, false, true, false>(k, rt_t);
+          case 0b1011:
+            return update_rt_transport<true, false, true, true>(k, rt_t);
+          case 0b1100:
+            return update_rt_transport<true, true, false, false>(k, rt_t);
+          case 0b1101:
+            return update_rt_transport<true, true, false, true>(k, rt_t);
+          case 0b1110:
+            return update_rt_transport<true, true, true, false>(k, rt_t);
+          case 0b1111:
+            return update_rt_transport<true, true, true, true>(k, rt_t);
           default: std::unreachable();
         }
       }();
     });
     return any_marked;
+  }
+
+  // Via states [first, last] at l, reached with v vias:
+  // l is not the next via:
+  //   -> v
+  // Via stay duration == 0:
+  //   -> v+1
+  // Via stay duration != 0:
+  //   - v (option not to spend the stay -> leave earlier)
+  //   - v+1 (spend the stay -> leave later)
+  std::pair<unsigned, unsigned> next_via_states(std::size_t const l,
+                                                unsigned const v) const {
+    auto const is_via =
+        v < Vias && is_via_[v][static_cast<bitvec::size_type>(l)];
+    auto const last = is_via ? v + 1U : v;
+    auto const first = is_via && via_stops_[v].stay_ == 0_minutes ? last : v;
+    return {first, last};
+  }
+
+  duration_t via_stay(unsigned const v, unsigned const target_v) const {
+    return target_v == v ? 0_minutes : via_stops_[v].stay_;
   }
 
   void update_transfers(unsigned const k) {
@@ -598,57 +719,56 @@ private:
           continue;
         }
 
-        auto const is_via = v != Vias && is_via_[v][i];
-        auto const target_v = is_via ? v + 1 : v;
-        auto const is_dest = target_v == Vias && is_dest_[i];
-        auto const stay = is_via ? via_stops_[v].stay_ : 0_minutes;
+        auto const [first_v, last_v] = next_via_states(i, v);
+        for (auto target_v = first_v; target_v <= last_v; ++target_v) {
+          auto const stay = via_stay(v, target_v);
+          auto const is_dest = target_v == Vias && is_dest_[i];
 
-        trace(
-            "  loc={}, v={}, tmp={}, is_dest={}, is_via={}, target_v={}, "
-            "stay={}\n",
-            loc{tt_, location_idx_t{i}}, v, to_unix(tmp_time), is_dest, is_via,
-            target_v, stay);
+          trace("  loc={}, v={}, tmp={}, is_dest={}, target_v={}, stay={}\n",
+                loc{tt_, location_idx_t{i}}, v, to_unix(tmp_time), is_dest,
+                target_v, stay);
 
-        auto const transfer_time =
-            (!is_intermodal_dest() && is_dest)
-                ? 0
-                : dir(adjusted_transfer_time(
-                      transfer_time_settings_,
-                      tt_.locations_.transfer_time_[location_idx_t{i}]
-                          .count()));
-        auto const fp_target_time =
-            clamp(tmp_time + transfer_time + dir(stay.count()));
+          auto const transfer_time =
+              (!is_intermodal_dest() && is_dest)
+                  ? 0
+                  : dir(adjusted_transfer_time(
+                        transfer_time_settings_,
+                        tt_.locations_.transfer_time_[location_idx_t{i}]
+                            .count()));
+          auto const fp_target_time =
+              clamp(tmp_time + transfer_time + dir(stay.count()));
 
-        if (bounds_last_k_ == 0U &&
-            is_better(fp_target_time, best_[i][target_v])) {
-          round_times_[k][i][target_v] =
-              get_best(fp_target_time, round_times_[k][i][target_v]);
-        }
-
-        trace(
-            "    transfer_time={}, fp_target_time={}, best@target={}, "
-            "dest={}\n",
-            transfer_time, to_unix(fp_target_time), to_unix(best_[i][target_v]),
-            to_unix(time_at_dest_[k]));
-
-        if (is_better(fp_target_time, best_[i][target_v]) &&
-            is_better_loose(fp_target_time, time_at_dest_[k])) {
-          if (!lb_reachable(i) ||
-              !is_better_loose(fp_target_time + dir(get_lb(i)),
-                               time_at_dest_[k])) {
-            ++stats_.fp_update_prevented_by_lower_bound_;
-            continue;
-          }
-          if (!within_bounds(k, i, fp_target_time, target_v)) {
-            continue;
+          if (bounds_last_k_ == 0U &&
+              is_better(fp_target_time, best_[i][target_v])) {
+            round_times_[k][i][target_v] =
+                get_best(fp_target_time, round_times_[k][i][target_v]);
           }
 
-          ++stats_.n_earliest_arrival_updated_by_footpath_;
-          round_times_[k][i][target_v] = fp_target_time;
-          best_[i][target_v] = fp_target_time;
-          state_.station_mark_.set(i, true);
-          if (is_dest) {
-            update_time_at_dest(k, fp_target_time);
+          trace(
+              "    transfer_time={}, fp_target_time={}, best@target={}, "
+              "dest={}\n",
+              transfer_time, to_unix(fp_target_time),
+              to_unix(best_[i][target_v]), to_unix(time_at_dest_[k]));
+
+          if (is_better(fp_target_time, best_[i][target_v]) &&
+              is_better_loose(fp_target_time, time_at_dest_[k])) {
+            if (!lb_reachable(i) ||
+                !is_better_loose(fp_target_time + dir(get_lb(i)),
+                                 time_at_dest_[k])) {
+              ++stats_.fp_update_prevented_by_lower_bound_;
+              continue;
+            }
+            if (!within_bounds(k, i, fp_target_time, target_v)) {
+              continue;
+            }
+
+            ++stats_.n_earliest_arrival_updated_by_footpath_;
+            round_times_[k][i][target_v] = fp_target_time;
+            best_[i][target_v] = fp_target_time;
+            state_.station_mark_.set(i, true);
+            if (is_dest) {
+              update_time_at_dest(k, fp_target_time);
+            }
           }
         }
       }
@@ -658,10 +778,31 @@ private:
   void update_footpaths(unsigned const k) {
     auto const process = [&](auto const i) {
       auto const l_idx = location_idx_t{i};
+      // Footpaths from a source with td footpaths are time-dependent
+      // (see update_td_offsets) and replace all its static footpaths.
+      auto const has_td_fps = [&](location_idx_t const x, bool const out) {
+        if constexpr (Rt) {
+          return has_profile_td_footpaths(prf_idx_) &&
+                 (out ? rtt_->has_td_footpaths_out_
+                      : rtt_->has_td_footpaths_in_)[prf_idx_]
+                     .test(x);
+        } else {
+          return false;
+        }
+      };
+      auto const use_td_fps = has_td_fps(l_idx, kFwd);
+      if (kFwd && use_td_fps) {
+        return;
+      }
+
       auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx_][l_idx]
                              : tt_.locations_.footpaths_in_[prf_idx_][l_idx];
 
       for (auto const& fp : fps) {
+        if (!kFwd && use_td_fps && has_td_fps(fp.target(), true)) {
+          continue;
+        }
+
         ++stats_.n_footpaths_visited_;
 
         auto const target = to_idx(fp.target());
@@ -672,93 +813,81 @@ private:
             continue;
           }
 
-          auto target_v = v;
-          auto stay = 0_minutes;
-          if constexpr (Vias != 0U) {
-            auto const start_is_via =
-                v < Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
-            auto const start_v = start_is_via ? v + 1 : v;
-            auto const target_is_via =
-                start_v < Vias && is_via_[start_v][target];
-            target_v = target_is_via ? start_v + 1 : start_v;
-            if (start_is_via) {
-              stay += via_stops_[v].stay_;
-            }
-            if (target_is_via) {
-              stay += via_stops_[start_v].stay_;
-            }
-          }
+          auto const [first_start_v, last_start_v] = next_via_states(i, v);
+          for (auto start_v = first_start_v; start_v <= last_start_v;
+               ++start_v) {
+            auto const [first_v, last_v] = next_via_states(target, start_v);
+            for (auto target_v = first_v; target_v <= last_v; ++target_v) {
+              auto const stay =
+                  via_stay(v, start_v) + via_stay(start_v, target_v);
+              auto const fp_target_time = clamp(
+                  tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
+                                                        fp.duration().count()) +
+                                 stay.count()));
 
-          auto const fp_target_time = clamp(
-              tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
-                                                    fp.duration().count()) +
-                             stay.count()));
+              if (bounds_last_k_ == 0U &&
+                  is_better(fp_target_time, best_[target][target_v])) {
+                round_times_[k][target][target_v] =
+                    get_best(fp_target_time, round_times_[k][target][target_v]);
+              }
 
-          if (bounds_last_k_ == 0U &&
-              is_better(fp_target_time, best_[target][target_v])) {
-            round_times_[k][target][target_v] =
-                get_best(fp_target_time, round_times_[k][target][target_v]);
-          }
+              if (is_better(fp_target_time, best_[target][target_v]) &&
+                  is_better_loose(fp_target_time, time_at_dest_[k])) {
+                if (!lb_reachable(target) ||
+                    !is_better_loose(fp_target_time + dir(get_lb(target)),
+                                     time_at_dest_[k])) {
+                  ++stats_.fp_update_prevented_by_lower_bound_;
+                  trace_upd(
+                      "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) "
+                      "--{}--> (to={}, "
+                      "best={}) --> update => {}, LB={}, "
+                      "LB_AT_DEST={}, DEST={}\n",
+                      k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
+                      adjusted_transfer_time(transfer_time_settings_,
+                                             fp.duration()),
+                      loc{tt_, fp.target()}, best_[target][target_v],
+                      to_unix(fp_target_time), get_lb(target),
+                      to_unix(clamp(fp_target_time + dir(get_lb(target)))),
+                      to_unix(time_at_dest_[k]));
+                  continue;
+                }
+                if (!within_bounds(k, target, fp_target_time, target_v)) {
+                  continue;
+                }
 
-          if (is_better(fp_target_time, best_[target][target_v]) &&
-              is_better_loose(fp_target_time, time_at_dest_[k])) {
-            if (!lb_reachable(target) ||
-                !is_better_loose(fp_target_time + dir(get_lb(target)),
-                                 time_at_dest_[k])) {
-              ++stats_.fp_update_prevented_by_lower_bound_;
-              trace_upd(
-                  "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
-                  "best={}) --> update => {}, LB={}, LB_AT_DEST={}, DEST={}\n",
-                  k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
-                  adjusted_transfer_time(transfer_time_settings_,
-                                         fp.duration()),
-                  loc{tt_, fp.target()}, best_[target][target_v],
-                  to_unix(fp_target_time), get_lb(target),
-                  to_unix(clamp(fp_target_time + dir(get_lb(target)))),
-                  to_unix(time_at_dest_[k]));
-              continue;
+                trace_upd(
+                    "┊ ├k={}   footpath: ({}, tmp={}) --{}--> ({}, "
+                    "best={}) --> "
+                    "update => {}, v={}->{}, stay={}\n",
+                    k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
+                    adjusted_transfer_time(transfer_time_settings_,
+                                           fp.duration()),
+                    loc{tt_, fp.target()}, to_unix(best_[target][target_v]),
+                    to_unix(fp_target_time), v, target_v, stay);
+
+                ++stats_.n_earliest_arrival_updated_by_footpath_;
+                round_times_[k][target][target_v] = fp_target_time;
+                best_[target][target_v] = fp_target_time;
+                state_.station_mark_.set(target, true);
+                if (target_v == Vias && is_dest_[target]) {
+                  update_time_at_dest(k, fp_target_time);
+                }
+              } else {
+                trace(
+                    "┊ ├k={}   NO FP UPDATE: {} [best={}] --{}--> {} "
+                    "[best={}, time_at_dest={}]\n",
+                    k, loc{tt_, l_idx}, to_unix(best_[to_idx(l_idx)][target_v]),
+                    adjusted_transfer_time(transfer_time_settings_,
+                                           fp.duration()),
+                    loc{tt_, fp.target()}, to_unix(best_[target][target_v]),
+                    to_unix(time_at_dest_[k]));
+              }
             }
-            if (!within_bounds(k, target, fp_target_time, target_v)) {
-              continue;
-            }
-
-            trace_upd(
-                "┊ ├k={}   footpath: ({}, tmp={}) --{}--> ({}, best={}) --> "
-                "update => {}, v={}->{}, stay={}\n",
-                k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
-                adjusted_transfer_time(transfer_time_settings_, fp.duration()),
-                loc{tt_, fp.target()}, to_unix(best_[target][target_v]),
-                to_unix(fp_target_time), v, target_v, stay);
-
-            ++stats_.n_earliest_arrival_updated_by_footpath_;
-            round_times_[k][target][target_v] = fp_target_time;
-            best_[target][target_v] = fp_target_time;
-            state_.station_mark_.set(target, true);
-            if (target_v == Vias && is_dest_[target]) {
-              update_time_at_dest(k, fp_target_time);
-            }
-          } else {
-            trace(
-                "┊ ├k={}   NO FP UPDATE: {} [best={}] --{}--> {} "
-                "[best={}, time_at_dest={}]\n",
-                k, loc{tt_, l_idx}, to_unix(best_[to_idx(l_idx)][target_v]),
-                adjusted_transfer_time(transfer_time_settings_, fp.duration()),
-                loc{tt_, fp.target()}, to_unix(best_[target][target_v]),
-                to_unix(time_at_dest_[k]));
           }
         }
       }
     };
 
-    if constexpr (Rt) {
-      if (prf_idx_ != 0U) {
-        state_.prev_station_mark_.for_each_set_bit_and_not(
-            (kFwd ? rtt_->has_td_footpaths_out_
-                  : rtt_->has_td_footpaths_in_)[prf_idx_],
-            process);
-        return;
-      }
-    }
     state_.prev_station_mark_.for_each_set_bit(process);
   }
 
@@ -767,14 +896,18 @@ private:
       return;
     }
 
-    if (prf_idx_ == 0U) {
+    if (!has_profile_td_footpaths(prf_idx_)) {
       return;
     }
 
-    auto const& has_td = (kFwd ? rtt_->has_td_footpaths_out_
-                               : rtt_->has_td_footpaths_in_)[prf_idx_];
-    state_.prev_station_mark_.for_each_set_bit(has_td, [&](auto const i) {
+    state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
       auto const l_idx = location_idx_t{i};
+      if (!(kFwd ? rtt_->has_td_footpaths_out_
+                 : rtt_->has_td_footpaths_in_)[prf_idx_]
+               .test(l_idx)) {
+        return;
+      }
+
       auto const& fps = kFwd ? rtt_->td_footpaths_out_[prf_idx_][l_idx]
                              : rtt_->td_footpaths_in_[prf_idx_][l_idx];
 
@@ -783,86 +916,87 @@ private:
         if (tmp_time == kInvalid) {
           continue;
         }
-        for_each_footpath<
-            SearchDir>(fps, to_unix(tmp_time), [&](footpath const fp) {
-          ++stats_.n_footpaths_visited_;
+        for_each_footpath<SearchDir>(
+            fps, to_unix(tmp_time),
+            [&](location_idx_t const fp_target, duration_t const duration,
+                auto) {
+              ++stats_.n_footpaths_visited_;
 
-          auto const target = to_idx(fp.target());
+              auto const target = to_idx(fp_target);
 
-          auto target_v = v;
-          auto stay = 0_minutes;
-          if constexpr (Vias != 0U) {
-            auto const start_is_via =
-                v < Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
-            auto const start_v = start_is_via ? v + 1 : v;
-            auto const target_is_via =
-                start_v < Vias && is_via_[start_v][target];
-            target_v = target_is_via ? start_v + 1 : start_v;
-            if (start_is_via) {
-              stay += via_stops_[v].stay_;
-            }
-            if (target_is_via) {
-              stay += via_stops_[start_v].stay_;
-            }
-          }
+              auto const [first_start_v, last_start_v] = next_via_states(i, v);
+              for (auto start_v = first_start_v; start_v <= last_start_v;
+                   ++start_v) {
+                auto const [first_v, last_v] = next_via_states(target, start_v);
+                for (auto target_v = first_v; target_v <= last_v; ++target_v) {
+                  auto const stay =
+                      via_stay(v, start_v) + via_stay(start_v, target_v);
+                  auto const fp_target_time =
+                      clamp(tmp_time + dir(duration.count() + stay.count()));
 
-          auto const fp_target_time =
-              clamp(tmp_time + dir(fp.duration().count() + stay.count()));
+                  if (bounds_last_k_ == 0U &&
+                      is_better(fp_target_time, best_[target][target_v])) {
+                    round_times_[k][target][target_v] = get_best(
+                        fp_target_time, round_times_[k][target][target_v]);
+                  }
 
-          if (bounds_last_k_ == 0U &&
-              is_better(fp_target_time, best_[target][target_v])) {
-            round_times_[k][target][target_v] =
-                get_best(fp_target_time, round_times_[k][target][target_v]);
-          }
+                  if (is_better(fp_target_time, best_[target][target_v]) &&
+                      is_better_loose(fp_target_time, time_at_dest_[k])) {
+                    if (!lb_reachable(target) ||
+                        !is_better_loose(fp_target_time + dir(get_lb(target)),
+                                         time_at_dest_[k])) {
+                      ++stats_.fp_update_prevented_by_lower_bound_;
+                      trace_upd(
+                          "┊ ├k={} *** LB NO TD FP UPD: (from={}, "
+                          "tmp={}) --{}--> "
+                          "(to={}, best={}) --> update => {}, LB={}, "
+                          "LB_AT_DEST={}, "
+                          "DEST={}\n",
+                          k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
+                          fp.duration(), loc{tt_, fp.target()},
+                          best_[target][target_v], fp_target_time,
+                          get_lb(target),
+                          to_unix(clamp(fp_target_time + dir(get_lb(target)))),
+                          to_unix(time_at_dest_[k]));
+                      continue;
+                    }
+                    if (!within_bounds(k, target, fp_target_time, target_v)) {
+                      continue;
+                    }
 
-          if (is_better(fp_target_time, best_[target][target_v]) &&
-              is_better_loose(fp_target_time, time_at_dest_[k])) {
-            if (!lb_reachable(target) ||
-                !is_better_loose(fp_target_time + dir(get_lb(target)),
-                                 time_at_dest_[k])) {
-              ++stats_.fp_update_prevented_by_lower_bound_;
-              trace_upd(
-                  "┊ ├k={} *** LB NO TD FP UPD: (from={}, tmp={}) --{}--> "
-                  "(to={}, best={}) --> update => {}, LB={}, LB_AT_DEST={}, "
-                  "DEST={}\n",
-                  k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
-                  fp.duration(), loc{tt_, fp.target()}, best_[target][target_v],
-                  fp_target_time, get_lb(target),
-                  to_unix(clamp(fp_target_time + dir(get_lb(target)))),
-                  to_unix(time_at_dest_[k]));
+                    trace_upd(
+                        "┊ ├k={}   td footpath: ({}, tmp={}) --{}--> "
+                        "({}, best={}) "
+                        "--> "
+                        "update => {}, v={}->{}, stay={}\n",
+                        k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
+                        fp.duration(), loc{tt_, fp.target()},
+                        to_unix(best_[target][target_v]),
+                        to_unix(fp_target_time), v, target_v, stay);
+
+                    ++stats_.n_earliest_arrival_updated_by_footpath_;
+                    round_times_[k][target][target_v] = fp_target_time;
+                    best_[target][target_v] = fp_target_time;
+                    state_.station_mark_.set(target, true);
+                    if (is_dest_[target]) {
+                      update_time_at_dest(k, fp_target_time);
+                    }
+                  } else {
+                    trace(
+                        "┊ ├k={}   NO TD FP UPDATE: {} [best={}] "
+                        "--{}--> {} "
+                        "[best={}, time_at_dest={}]\n",
+                        k, loc{tt_, l_idx}, best_[to_idx(l_idx)][v],
+                        adjusted_transfer_time(transfer_time_settings_,
+                                               fp.duration()),
+                        loc{tt_, fp.target()}, best_[target][v],
+                        to_unix(time_at_dest_[k]));
+                  }
+                }
+              }
+
               return utl::cflow::kContinue;
-            }
-            if (!within_bounds(k, target, fp_target_time, target_v)) {
-              return utl::cflow::kContinue;
-            }
-
-            trace_upd(
-                "┊ ├k={}   td footpath: ({}, tmp={}) --{}--> ({}, best={}) --> "
-                "update => {}, v={}->{}, stay={}\n",
-                k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
-                fp.duration(), loc{tt_, fp.target()},
-                to_unix(best_[target][target_v]), to_unix(fp_target_time), v,
-                target_v, stay);
-
-            ++stats_.n_earliest_arrival_updated_by_footpath_;
-            round_times_[k][target][target_v] = fp_target_time;
-            best_[target][target_v] = fp_target_time;
-            state_.station_mark_.set(target, true);
-            if (is_dest_[target]) {
-              update_time_at_dest(k, fp_target_time);
-            }
-          } else {
-            trace(
-                "┊ ├k={}   NO TD FP UPDATE: {} [best={}] --{}--> {} "
-                "[best={}, time_at_dest={}]\n",
-                k, loc{tt_, l_idx}, best_[to_idx(l_idx)][v],
-                adjusted_transfer_time(transfer_time_settings_, fp.duration()),
-                loc{tt_, fp.target()}, best_[target][v],
-                to_unix(time_at_dest_[k]));
-          }
-
-          return utl::cflow::kContinue;
-        });
+            });
       }
     });
   }
@@ -897,7 +1031,7 @@ private:
                 loc{tt_, location_idx_t{kIntermodalTarget}},
                 to_unix(best_[kIntermodalTarget][Vias]), to_unix(end_time));
 
-            if (is_better(end_time, time_at_dest_[k])) {
+            if (is_better_loose(end_time, time_at_dest_[k])) {
               round_times_[k][kIntermodalTarget][Vias] = end_time;
               best_[kIntermodalTarget][Vias] = end_time;
               update_time_at_dest(k, end_time);
@@ -924,7 +1058,7 @@ private:
             loc{tt_, location_idx_t{kIntermodalTarget}},
             to_unix(best_[kIntermodalTarget][Vias]), to_unix(end_time));
 
-        if (is_better(end_time, time_at_dest_[k])) {
+        if (is_better_loose(end_time, time_at_dest_[k])) {
           round_times_[k][kIntermodalTarget][Vias] = end_time;
           best_[kIntermodalTarget][Vias] = end_time;
           update_time_at_dest(k, end_time);
@@ -947,7 +1081,7 @@ private:
           auto const& [duration, _] = *fp;
           auto const end_time = clamp(fp_start_time + dir(duration.count()));
 
-          if (is_better(end_time, time_at_dest_[k]) &&
+          if (is_better_loose(end_time, time_at_dest_[k]) &&
               is_better(end_time, best_[kIntermodalTarget][Vias])) {
             round_times_[k][kIntermodalTarget][Vias] = end_time;
             best_[kIntermodalTarget][Vias] = end_time;
@@ -973,7 +1107,8 @@ private:
 
   template <bool WithSectionBikeFilter,
             bool WithSectionCarFilter,
-            bool WithSectionWheelchairFilter>
+            bool WithSectionWheelchairFilter,
+            bool WithSectionReservationNotRequiredFilter>
   bool update_rt_transport(unsigned const k, rt_transport_idx_t const rt_t) {
     auto const stop_seq = rtt_->rt_transport_location_seq_[rt_t];
     // et[v] = there is an entry point on this transport such that the
@@ -990,27 +1125,28 @@ private:
       auto const is_first = i == 0U;
       auto const is_last = i == n_stops - 1U;
 
-      if constexpr (WithSectionBikeFilter) {
+      auto const apply_filter = [&](route_flag const f) {
         if (!is_first &&
-            !rtt_->rt_bikes_allowed_per_section_[rt_t][kFwd ? stop_idx - 1
-                                                            : stop_idx]) {
+            !rtt_->rt_flags_per_section_[f][rt_t]
+                                        [kFwd ? stop_idx - 1 : stop_idx]) {
           et.fill(false);
         }
+      };
+
+      if constexpr (WithSectionBikeFilter) {
+        apply_filter(route_flag::kBikesAllowed);
       }
 
       if constexpr (WithSectionCarFilter) {
-        if (!is_first &&
-            !rtt_->rt_cars_allowed_per_section_[rt_t][kFwd ? stop_idx - 1
-                                                           : stop_idx]) {
-          et.fill(false);
-        }
+        apply_filter(route_flag::kCarsAllowed);
       }
 
       if constexpr (WithSectionWheelchairFilter) {
-        if (!is_first && !rtt_->rt_wheelchair_accessible_per_section_
-                              [rt_t][kFwd ? stop_idx - 1 : stop_idx]) {
-          et.fill(false);
-        }
+        apply_filter(route_flag::kWheelchairAccessible);
+      }
+
+      if constexpr (WithSectionReservationNotRequiredFilter) {
+        apply_filter(route_flag::kReservationNotRequired);
       }
 
       if ((kFwd && stop_idx != 0U) || (kBwd && stop_idx != n_stops - 1U)) {
@@ -1074,12 +1210,15 @@ private:
 
   template <bool WithSectionBikeFilter,
             bool WithSectionCarFilter,
-            bool WithSectionWheelchairFilter>
+            bool WithSectionWheelchairFilter,
+            bool WithSectionReservationNotRequiredFilter>
   bool update_route(unsigned const k, route_idx_t const r) {
     auto const stop_seq = tt_.route_location_seq_[r];
     bool any_marked = false;
 
     auto et = std::array<std::array<transport, Vias + 1>, Vias + 1>{};
+    auto et_times_cache =
+        std::array<std::array<transport_times, Vias + 1>, Vias + 1>{};
     auto const n_stops = stop_seq.size();
 
     auto const has_ride_at = [&](unsigned const cs) {
@@ -1094,6 +1233,26 @@ private:
     auto const time_at_dest_k = time_at_dest_[k];
     auto prev_round_times = round_times_[k - 1];
 
+    auto const rt = tt_.route_times_[r];
+    auto const* const offsets = &tt_.pattern_offsets_[rt.pattern_start_];
+    auto const get_transport_times = [&](transport const t) {
+      auto const pattern =
+          rt.n_patterns_ == 1U
+              ? 0U
+              : static_cast<unsigned>(tt_.transport_pattern_[t.t_idx_]);
+      return transport_times{
+          .first_dep_ =
+              to_delta(t.day_, tt_.transport_first_dep_[t.t_idx_].count()),
+          .offsets_ = offsets + pattern};
+    };
+    auto const get_time = [&](transport_times const& times,
+                              stop_idx_t const stop_idx,
+                              event_type const ev_type) {
+      return clamp(times.first_dep_ +
+                   times.offsets_[event_idx(stop_idx, ev_type) * rt.n_patterns_]
+                       .count());
+    };
+
     for (auto i = 0U; i != n_stops; ++i) {
       auto const stop_idx =
           static_cast<stop_idx_t>(kFwd ? i : n_stops - i - 1U);
@@ -1105,27 +1264,27 @@ private:
       auto const is_first = i == 0U;
       auto const is_last = i == n_stops - 1U;
 
-      if constexpr (WithSectionBikeFilter) {
-        if (!is_first &&
-            !tt_.route_bikes_allowed_per_section_[r][kFwd ? stop_idx - 1
-                                                          : stop_idx]) {
+      auto const apply_filter = [&](route_flag const f) {
+        if (!is_first && !tt_.route_flags_per_section_[f][r][kFwd ? stop_idx - 1
+                                                                  : stop_idx]) {
           et = {};
         }
+      };
+
+      if constexpr (WithSectionBikeFilter) {
+        apply_filter(route_flag::kBikesAllowed);
       }
 
       if constexpr (WithSectionCarFilter) {
-        if (!is_first &&
-            !tt_.route_cars_allowed_per_section_[r][kFwd ? stop_idx - 1
-                                                         : stop_idx]) {
-          et = {};
-        }
+        apply_filter(route_flag::kCarsAllowed);
       }
 
       if constexpr (WithSectionWheelchairFilter) {
-        if (!is_first && !tt_.route_wheelchair_accessibility_per_section_
-                              [r][kFwd ? stop_idx - 1 : stop_idx]) {
-          et = {};
-        }
+        apply_filter(route_flag::kWheelchairAccessible);
+      }
+
+      if constexpr (WithSectionReservationNotRequiredFilter) {
+        apply_filter(route_flag::kReservationNotRequired);
       }
 
       if constexpr (Vias != 0U) {
@@ -1138,12 +1297,12 @@ private:
               auto& to = et[e][o];
               if (!to.is_valid() ||
                   is_better(
-                      time_at_stop(r, from, stop_idx,
-                                   kFwd ? event_type::kArr : event_type::kDep),
-                      time_at_stop(
-                          r, to, stop_idx,
-                          kFwd ? event_type::kArr : event_type::kDep))) {
+                      get_time(et_times_cache[e][o - 1U], stop_idx,
+                               kFwd ? event_type::kArr : event_type::kDep),
+                      get_time(et_times_cache[e][o], stop_idx,
+                               kFwd ? event_type::kArr : event_type::kDep))) {
                 to = from;
+                et_times_cache[e][o] = et_times_cache[e][o - 1U];
               }
               from = {};
             }
@@ -1159,10 +1318,13 @@ private:
             continue;
           }
           if (!is_last) {
-            prefetch(tt_.event_mam_ptr(
-                r, ride.t_idx_,
-                static_cast<stop_idx_t>(kFwd ? stop_idx + 1 : stop_idx - 1),
-                kFwd ? event_type::kArr : event_type::kDep));
+            prefetch(
+                &et_times_cache[e][cs - e]
+                     .offsets_[event_idx(
+                                   static_cast<stop_idx_t>(kFwd ? stop_idx + 1
+                                                                : stop_idx - 1),
+                                   kFwd ? event_type::kArr : event_type::kDep) *
+                               rt.n_patterns_]);
           }
           if (!stp.can_finish<SearchDir>(is_wheelchair_)) {
             trace(
@@ -1172,8 +1334,9 @@ private:
                 (kFwd ? stp.out_allowed() : stp.in_allowed()));
             continue;
           }
-          auto const by_transport = time_at_stop(
-              r, ride, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+          auto const by_transport =
+              get_time(et_times_cache[e][cs - e], stop_idx,
+                       kFwd ? event_type::kArr : event_type::kDep);
 
           assert(by_transport != std::numeric_limits<delta_t>::min() &&
                  by_transport != std::numeric_limits<delta_t>::max());
@@ -1222,8 +1385,8 @@ private:
         }
         auto const et_time_at_stop =
             fresh.is_valid()
-                ? time_at_stop(r, fresh, stop_idx,
-                               kFwd ? event_type::kDep : event_type::kArr)
+                ? get_time(et_times_cache[v][0], stop_idx,
+                           kFwd ? event_type::kDep : event_type::kArr)
                 : kInvalid;
         if (is_better_or_eq(prev_round_time, et_time_at_stop)) {
           auto const [day, mam] = split(prev_round_time);
@@ -1232,13 +1395,16 @@ private:
           auto const no_existing_label =
               !(has_ride_at(v) && stp.can_finish<SearchDir>(is_wheelchair_)) &&
               best_[l_idx][v] == kInvalid && tmp_[l_idx][v] == kInvalid;
+          auto const new_times = new_et.is_valid() ? get_transport_times(new_et)
+                                                   : transport_times{};
           if (new_et.is_valid() &&
               (no_existing_label ||
                is_better_or_eq(
-                   time_at_stop(r, new_et, stop_idx,
-                                kFwd ? event_type::kDep : event_type::kArr),
+                   get_time(new_times, stop_idx,
+                            kFwd ? event_type::kDep : event_type::kArr),
                    et_time_at_stop))) {
             fresh = new_et;
+            et_times_cache[v][0] = new_times;
             trace("┊ │k={} v={}    update et: time_at_stop={}\n", k, v,
                   to_unix(et_time_at_stop));
           } else if (new_et.is_valid()) {
@@ -1265,12 +1431,24 @@ private:
     auto const event_times = tt_.event_times_at_stop(
         r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
 
+    auto const n = static_cast<unsigned>(event_times.size());
+    auto const t_offset_at = [&](unsigned const pos) {
+      return kFwd ? pos : n - 1U - pos;
+    };
+
     auto const seek_first_day = [&]() {
-      return linear_lb(get_begin_it(event_times), get_end_it(event_times),
-                       mam_at_stop,
-                       [&](delta const a, minutes_after_midnight_t const b) {
-                         return is_better(a.mam(), b.count());
-                       });
+      auto lo = 0U;
+      auto hi = n;
+      while (lo < hi) {
+        auto const mid = lo + (hi - lo) / 2U;
+        if (is_better(event_times[t_offset_at(mid)].mam(),
+                      mam_at_stop.count())) {
+          lo = mid + 1U;
+        } else {
+          hi = mid;
+        }
+      }
+      return lo;
     };
 
     trace("┊ │k={}    et: current_best_at_stop={}, stop_idx={}, location={}\n",
@@ -1285,16 +1463,13 @@ private:
         continue;
       }
 
-      auto const ev_time_range =
-          it_range{i == 0U ? seek_first_day() : get_begin_it(event_times),
-                   get_end_it(event_times)};
-      if (ev_time_range.empty()) {
+      auto const first = i == 0U ? seek_first_day() : 0U;
+      if (first == n) {
         continue;
       }
-      for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
-        auto const t_offset =
-            static_cast<std::size_t>(&*it - event_times.data());
-        auto const ev = *it;
+      for (auto pos = first; pos != n; ++pos) {
+        auto const t_offset = t_offset_at(pos);
+        auto const ev = event_times[t_offset];
         auto const ev_mam = ev.mam();
 
         if (!is_better_loose(to_delta(day, ev_mam) + dir(get_lb(to_idx(l))),
@@ -1311,7 +1486,7 @@ private:
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
-        auto const t = tt_.route_transport_ranges_[r][t_offset];
+        auto const t = event_times.transport(t_offset);
         if (i == 0U && !is_better_or_eq(mam_at_stop.count(), ev_mam)) {
           trace(
               "┊ │k={}      => transport={}, name={}, dbg={}, day={}/{}, "
@@ -1355,14 +1530,6 @@ private:
     }
   }
 
-  delta_t time_at_stop(route_idx_t const r,
-                       transport const t,
-                       stop_idx_t const stop_idx,
-                       event_type const ev_type) {
-    return to_delta(t.day_,
-                    tt_.event_mam(r, t.t_idx_, stop_idx, ev_type).count());
-  }
-
   delta_t rt_time_at_stop(rt_transport_idx_t const rt_t,
                           stop_idx_t const stop_idx,
                           event_type const ev_type) {
@@ -1393,24 +1560,6 @@ private:
 
   int as_int(day_idx_t const d) const { return static_cast<int>(d.v_); }
 
-  template <typename T>
-  auto get_begin_it(T const& t) {
-    if constexpr (kFwd) {
-      return t.begin();
-    } else {
-      return t.rbegin();
-    }
-  }
-
-  template <typename T>
-  auto get_end_it(T const& t) {
-    if constexpr (kFwd) {
-      return t.end();
-    } else {
-      return t.rend();
-    }
-  }
-
   timetable const& tt_;
   rt_timetable const* rtt_{nullptr};
   int n_days_;
@@ -1436,6 +1585,7 @@ private:
   clasz_mask_t allowed_claszes_;
   bool require_bike_transport_;
   bool require_car_transport_;
+  bool no_compulsory_reservation_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
 };

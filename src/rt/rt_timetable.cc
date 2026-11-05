@@ -1,5 +1,9 @@
 #include "nigiri/rt/rt_timetable.h"
 
+#include <algorithm>
+#include <span>
+#include <utility>
+
 #include "utl/enumerate.h"
 #include "utl/overloaded.h"
 #include "utl/timer.h"
@@ -76,22 +80,32 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
         break;
       }
     }
+
+    coverage_ = coverage_.hull(rt_transport_interval(rt_t));
   } else {
     rt_transport_stop_times_.emplace_back(time_seq);
   }
 
+  rt_transport_data_states_.add_back_sized(
+      rt_transport_stop_times_[rt_t].size());
+
+  coverage_ = coverage_.hull(static_transport_interval(tt, t));
+
   rt_transport_track_sequence_.add_back_sized(0U);
 
-  auto const bikes_allowed_default = false;  // TODO
-  auto const cars_allowed_default = false;  // TODO
-  auto const wheelchair_accessible_default = false;  // TODO
+  auto const flags_defaults = std::array{
+      // TODO
+      false,  // kBikesAllowed
+      false,  // kCarsAllowed
+      false,  // kWheelchairAccessible
+      true,  // kReservationNotRequired
+  };
 
   rt_transport_line_.add_back_sized(0U);
   rt_transport_is_cancelled_.resize(rt_transport_is_cancelled_.size() + 1U);
-  rt_transport_bikes_allowed_.resize(rt_transport_bikes_allowed_.size() + 2U);
-  rt_transport_cars_allowed_.resize(rt_transport_cars_allowed_.size() + 2U);
-  rt_transport_wheelchair_accessibility_.resize(
-      rt_transport_wheelchair_accessibility_.size() + 2U);
+  for (auto i = 0U; i < kNumRouteFlags; ++i) {
+    rt_transport_flags_[i].resize(rt_transport_flags_[i].size() + 2U);
+  }
   rt_transport_section_directions_.add_back_sized(0U);  // TODO outside
   rt_transport_trip_short_names_.emplace_back(trip_short_name);
 
@@ -100,56 +114,38 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
 
   if (r != route_idx_t::invalid()) {
     rt_transport_section_clasz_.emplace_back(tt.route_section_clasz_[r]);
-    rt_transport_bikes_allowed_.set(rt_t_idx * 2,
-                                    tt.route_bikes_allowed_[r.v_ * 2]);
-    rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1,
-                                    tt.route_bikes_allowed_[r.v_ * 2 + 1]);
-    rt_transport_cars_allowed_.set(rt_t_idx * 2,
-                                   tt.route_cars_allowed_[r.v_ * 2]);
-    rt_transport_cars_allowed_.set(rt_t_idx * 2 + 1,
-                                   tt.route_cars_allowed_[r.v_ * 2 + 1]);
-    rt_transport_wheelchair_accessibility_.set(
-        rt_t_idx * 2, tt.route_wheelchair_accessible_[r.v_ * 2]);
-    rt_transport_wheelchair_accessibility_.set(
-        rt_t_idx * 2 + 1, tt.route_wheelchair_accessible_[r.v_ * 2 + 1]);
-
+    for (auto i = 0U; i < kNumRouteFlags; ++i) {
+      rt_transport_flags_[i].set(rt_t_idx * 2, tt.route_flags_[i][r.v_ * 2]);
+      rt_transport_flags_[i].set(rt_t_idx * 2 + 1,
+                                 tt.route_flags_[i][r.v_ * 2 + 1]);
+    }
   } else if (given_r != route_id_idx_t::invalid()) {
     rt_transport_section_clasz_.emplace_back(
         std::vector<clasz>{loader::gtfs::to_clasz(
             tt.route_ids_[src].route_id_type_.at(given_r).v_)});  // TODO
-    rt_transport_bikes_allowed_.set(rt_t_idx * 2, bikes_allowed_default);
-    rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1, false);
-    rt_transport_cars_allowed_.set(rt_t_idx * 2, cars_allowed_default);
-    rt_transport_cars_allowed_.set(rt_t_idx * 2 + 1, false);
-    rt_transport_wheelchair_accessibility_.set(rt_t_idx * 2,
-                                               wheelchair_accessible_default);
-    rt_transport_wheelchair_accessibility_.set(rt_t_idx * 2 + 1, false);
 
+    for (auto i = 0U; i < kNumRouteFlags; ++i) {
+      rt_transport_flags_[i].set(rt_t_idx * 2, flags_defaults[i]);
+      rt_transport_flags_[i].set(rt_t_idx * 2 + 1, false);
+    }
   } else {
     rt_transport_section_clasz_.emplace_back(std::vector<clasz>{clasz::kOther});
-    rt_transport_bikes_allowed_.set(rt_t_idx * 2, bikes_allowed_default);
-    rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1, false);
-    rt_transport_cars_allowed_.set(rt_t_idx * 2, cars_allowed_default);
-    rt_transport_cars_allowed_.set(rt_t_idx * 2 + 1, false);
-    rt_transport_wheelchair_accessibility_.set(rt_t_idx * 2,
-                                               wheelchair_accessible_default);
-    rt_transport_wheelchair_accessibility_.set(rt_t_idx * 2 + 1, false);
+
+    for (auto i = 0U; i < kNumRouteFlags; ++i) {
+      rt_transport_flags_[i].set(rt_t_idx * 2, flags_defaults[i]);
+      rt_transport_flags_[i].set(rt_t_idx * 2 + 1, false);
+    }
   }
   if (r != route_idx_t::invalid() && stop_seq.empty()) {
-    rt_bikes_allowed_per_section_.emplace_back(
-        tt.route_bikes_allowed_per_section_[r]);
-    rt_cars_allowed_per_section_.emplace_back(
-        tt.route_cars_allowed_per_section_[r]);
-    rt_wheelchair_accessible_per_section_.emplace_back(
-        tt.route_wheelchair_accessibility_per_section_[r]);
-
+    for (auto i = 0U; i < kNumRouteFlags; ++i) {
+      rt_flags_per_section_[i].emplace_back(tt.route_flags_per_section_[i][r]);
+    }
   } else {
-    rt_bikes_allowed_per_section_.emplace_back(
-        std::vector<bool>{bikes_allowed_default});
-    rt_cars_allowed_per_section_.emplace_back(
-        std::vector<bool>{cars_allowed_default});
-    rt_wheelchair_accessible_per_section_.emplace_back(
-        std::vector<bool>{cars_allowed_default});
+    for (auto i = 0U; i < kNumRouteFlags; ++i) {
+      rt_flags_per_section_[i].emplace_back(
+          std::vector<bool>{flags_defaults[i]});
+      rt_transport_flags_[i].set(rt_t_idx * 2 + 1, false);
+    }
   }
 
   assert(time_seq.empty() || time_seq.size() == location_seq.size() * 2U - 2U);
@@ -166,12 +162,15 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   assert(rt_transport_route_id_.size() == rt_t_idx + 1U);
   assert(rt_transport_stop_times_.size() == rt_t_idx + 1U);
   assert(rt_transport_location_seq_.size() == rt_t_idx + 1U);
+  assert(rt_transport_data_states_.size() == rt_t_idx + 1U);
   assert(rt_transport_trip_short_names_.size() == rt_t_idx + 1U);
   assert(rt_transport_section_clasz_.size() == rt_t_idx + 1U);
   assert(rt_transport_line_.size() == rt_t_idx + 1U);
-  assert(rt_bikes_allowed_per_section_.size() == rt_t_idx + 1U);
-  assert(rt_cars_allowed_per_section_.size() == rt_t_idx + 1U);
-  assert(rt_wheelchair_accessible_per_section_.size() == rt_t_idx + 1U);
+  assert(rt_flags_per_section_[kBikesAllowed].size() == rt_t_idx + 1U);
+  assert(rt_flags_per_section_[kCarsAllowed].size() == rt_t_idx + 1U);
+  assert(rt_flags_per_section_[kWheelchairAccessible].size() == rt_t_idx + 1U);
+  assert(rt_flags_per_section_[kReservationNotRequired].size() ==
+         rt_t_idx + 1U);
 
   return rt_transport_idx_t{rt_t_idx};
 }
@@ -215,6 +214,20 @@ std::optional<std::string_view> rt_timetable::get_track(
   return track_strings_.try_get(bucket[static_cast<std::size_t>(ev_idx)]);
 }
 
+interval<unixtime_t> rt_timetable::static_transport_interval(
+    timetable const& tt, transport const t) const {
+  if (!t.is_valid()) {
+    return {};
+  }
+  auto const n_stops =
+      tt.route_location_seq_[tt.transport_route_[t.t_idx_]].size();
+  assert(n_stops >= 2U);
+  return {tt.event_time(t, stop_idx_t{0U}, event_type::kDep),
+          tt.event_time(t, static_cast<stop_idx_t>(n_stops - 1U),
+                        event_type::kArr) +
+              unixtime_t::duration{1}};
+}
+
 std::string_view rt_timetable::transport_name(
     timetable const& tt, rt_transport_idx_t const t) const {
   return std::visit(utl::overloaded{[&](translation_idx_t const idx) {
@@ -224,35 +237,13 @@ std::string_view rt_timetable::transport_name(
                     trip_short_name(tt, t));
 }
 
-void rt_timetable::update_lbs(
-    timetable const& tt,
-    rt_transport_idx_t const rt_t,
-    stop_idx_t const stop_idx,
-    vector_map<location_idx_t, std::vector<footpath>>& tmp_fwd,
-    vector_map<location_idx_t, std::vector<footpath>>& tmp_bwd) {
-  auto const from_stop_idx = stop_idx;
-  auto const to_stop_idx = static_cast<stop_idx_t>(stop_idx + 1U);
-
-  auto const travel_time =
-      duration_t{event_time(rt_t, to_stop_idx, event_type::kArr) -
-                 event_time(rt_t, from_stop_idx, event_type::kDep)};
-
-  auto const loc_seq = rt_transport_location_seq_[rt_t];
-  if (travel_time < duration_t{0}) {
-    log(log_lvl::error, "nigiri.rt.update_time",
-        "travel_time < 0: {} -> {}: dep={} - arr={}",
-        loc{tt, stop{loc_seq[from_stop_idx]}.location_idx()},
-        loc{tt, stop{loc_seq[to_stop_idx]}.location_idx()},
-        event_time(rt_t, from_stop_idx, event_type::kDep),
-        event_time(rt_t, to_stop_idx, event_type::kArr));
-    return;
-  }
-
-  auto const from =
-      tt.locations_.get_root_idx(stop{loc_seq[from_stop_idx]}.location_idx());
-  auto const to =
-      tt.locations_.get_root_idx(stop{loc_seq[to_stop_idx]}.location_idx());
-
+void add_lb_edge(timetable const& tt,
+                 rt_timetable& rtt,
+                 location_idx_t const from,
+                 location_idx_t const to,
+                 duration_t const travel_time,
+                 hash_map<location_idx_t, std::vector<footpath>>& tmp_fwd,
+                 hash_map<location_idx_t, std::vector<footpath>>& tmp_bwd) {
   if (from == to) {
     return;  // e.g. from one child to another within the same parent
   }
@@ -266,7 +257,7 @@ void rt_timetable::update_lbs(
   auto const update =
       [&](vecvec<location_idx_t, footpath> const& tt_lbs,
           bitvec_map<location_idx_t>& rtt_has_lbs,
-          vector_map<location_idx_t, std::vector<footpath>>& rtt_lbs,
+          hash_map<location_idx_t, std::vector<footpath>>& rtt_lbs,
           direction const dir) {
         auto const fwd = dir == direction::kForward;
         auto const src = fwd ? to : from;  // lbs are backwards!
@@ -303,35 +294,73 @@ void rt_timetable::update_lbs(
       };
 
   update(tt.fwd_search_lb_graph_[kDefaultProfile],
-         fwd_search_lb_graph_has_edges_, tmp_fwd, direction::kForward);
+         rtt.fwd_search_lb_graph_has_edges_, tmp_fwd, direction::kForward);
   update(tt.bwd_search_lb_graph_[kDefaultProfile],
-         bwd_search_lb_graph_has_edges_, tmp_bwd, direction::kBackward);
+         rtt.bwd_search_lb_graph_has_edges_, tmp_bwd, direction::kBackward);
 }
 
 void rt_timetable::update_lbs(timetable const& tt) {
   auto timer = utl::scoped_timer{"update_lbs"};
 
   // --- UPDATE LBS ---
-  auto tmp_fwd_lbs = vector_map<location_idx_t, std::vector<footpath>>{};
-  auto tmp_bwd_lbs = vector_map<location_idx_t, std::vector<footpath>>{};
-  tmp_fwd_lbs.resize(tt.n_locations());
-  tmp_bwd_lbs.resize(tt.n_locations());
+  auto tmp_fwd_lbs = hash_map<location_idx_t, std::vector<footpath>>{};
+  auto tmp_bwd_lbs = hash_map<location_idx_t, std::vector<footpath>>{};
   for (auto rt_t = rt_transport_idx_t{0U}; rt_t != n_rt_transports(); ++rt_t) {
-    auto const n_events = rt_transport_stop_times_[rt_t].size();
-    auto const n_segments = static_cast<stop_idx_t>(n_events / 2U);
+    auto const loc_seq = rt_transport_location_seq_[rt_t];
+    auto const n_segments =
+        static_cast<stop_idx_t>(rt_transport_stop_times_[rt_t].size() / 2U);
+    auto const t = resolve_static(rt_t);
+    auto const static_seq =
+        t.is_valid()
+            ? std::span{tt.route_location_seq_[tt.transport_route_[t.t_idx_]]}
+            : std::span<stop::value_type const>{};
     for (auto i = stop_idx_t{0U}; i != n_segments; ++i) {
-      update_lbs(tt, rt_t, i, tmp_fwd_lbs, tmp_bwd_lbs);
+      auto const j = static_cast<stop_idx_t>(i + 1U);
+      auto const travel_time =
+          duration_t{event_time(rt_t, j, event_type::kArr) -
+                     event_time(rt_t, i, event_type::kDep)};
+      if (travel_time < duration_t{0}) {
+        log(log_lvl::error, "nigiri.rt.update_time",
+            "travel_time < 0: {} -> {}: dep={} - arr={}",
+            loc{tt, stop{loc_seq[i]}.location_idx()},
+            loc{tt, stop{loc_seq[j]}.location_idx()},
+            event_time(rt_t, i, event_type::kDep),
+            event_time(rt_t, j, event_type::kArr));
+        continue;
+      }
+
+      auto const from = stop{loc_seq[i]}.location_idx();
+      auto const to = stop{loc_seq[j]}.location_idx();
+      if (static_seq.size() == loc_seq.size() &&
+          stop{static_seq[i]}.location_idx() == from &&
+          stop{static_seq[j]}.location_idx() == to &&
+          travel_time >= (tt.event_mam(t.t_idx_, j, event_type::kArr) -
+                          tt.event_mam(t.t_idx_, i, event_type::kDep))
+                             .as_duration()) {
+        continue;
+      }
+      add_lb_edge(tt, *this, tt.locations_.get_root_idx(from),
+                  tt.locations_.get_root_idx(to), travel_time, tmp_fwd_lbs,
+                  tmp_bwd_lbs);
     }
   }
 
   // --- COPY TO RT_TIMETABLE ---
   auto const copy =
       [&](vecvec<location_idx_t, footpath>& to,
-          vector_map<location_idx_t, std::vector<footpath>> const& from) {
+          hash_map<location_idx_t, std::vector<footpath>> const& from) {
+        auto sorted =
+            std::vector<std::pair<location_idx_t, std::vector<footpath>>>{
+                begin(from), end(from)};
+        std::ranges::sort(
+            sorted, {},
+            &std::pair<location_idx_t, std::vector<footpath>>::first);
         to.clear();
-        for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-          to.emplace_back(from[l]);
+        for (auto const& [l, fps] : sorted) {
+          to.resize(to_idx(l));
+          to.emplace_back(fps);
         }
+        to.resize(tt.n_locations());
       };
   copy(fwd_search_lb_graph_, tmp_fwd_lbs);
   copy(bwd_search_lb_graph_, tmp_bwd_lbs);
@@ -340,8 +369,11 @@ void rt_timetable::update_lbs(timetable const& tt) {
 void rt_timetable::cancel_run(rt::run const& r) {
   if (r.is_rt()) {
     rt_transport_is_cancelled_.set(to_idx(r.rt_), true);
+    coverage_ = coverage_.hull(rt_transport_interval(r.rt_));
   }
   if (r.is_scheduled()) {
+    coverage_ = coverage_.hull(static_transport_interval(r.t_));
+
     auto const bf = traffic_days(transport_traffic_days_[r.t_.t_idx_]);
     bitfields_.emplace_back(bf).set(to_idx(r.t_.day_), false);
     transport_traffic_days_[r.t_.t_idx_] = rt_bitfield_idx();

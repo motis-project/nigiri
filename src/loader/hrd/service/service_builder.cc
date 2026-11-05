@@ -7,6 +7,7 @@
 
 #include "nigiri/loader/get_index.h"
 #include "nigiri/loader/hrd/service/read_services.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/register.h"
 
 namespace nigiri::loader::hrd {
@@ -47,11 +48,8 @@ void service_builder::add_service(ref_service&& s) {
   }
 }
 
-service_builder::service_builder(
-    stamm& s,
-    timetable& tt,
-    hash_map<bitfield, bitfield_idx_t>& bitfield_indices)
-    : stamm_{s}, tt_{tt}, bitfield_indices_(bitfield_indices) {}
+service_builder::service_builder(stamm& s, timetable& tt, import_context& ctx)
+    : stamm_{s}, tt_{tt}, ctx_{ctx} {}
 
 void service_builder::add_services(config const& c,
                                    char const* filename,
@@ -68,16 +66,14 @@ void service_builder::write_services(source_idx_t const src) {
   tt_.route_ids_.emplace_back();
 
   auto const timer = scoped_timer{"loader.hrd.services.write"};
-  auto const empty_bikes_allowed = bitvec{};  // not implemented for hrd
-  auto const empty_cars_allowed = bitvec{};  // not implemented for hrd
-  auto const empty_wheelchair_accessible = bitvec{};  // not implemented for hrd
+  auto const empty_flags = std::array{bitvec{}, bitvec{}, bitvec{},
+                                      bitvec{"1"}};  // not implemented for hrd
 
   for (auto const& [key, sub_routes] : route_services_) {
     for (auto const& services : sub_routes) {
       auto const& [stop_seq, sections_clasz] = key;
       auto const route_idx =
-          tt_.register_route(stop_seq, sections_clasz, empty_bikes_allowed,
-                             empty_cars_allowed, empty_wheelchair_accessible);
+          tt_.register_route(stop_seq, sections_clasz, empty_flags);
 
       for (auto const& s : stop_seq) {
         auto s_routes = location_routes_[stop{s}.location_idx()];
@@ -85,6 +81,8 @@ void service_builder::write_services(source_idx_t const src) {
           s_routes.emplace_back(route_idx);
         }
       }
+
+      auto flags = std::array<bool, kNumRouteFlags>{};
 
       for (auto const& s : services) {
         auto const& ref = store_.get(s.ref_);
@@ -99,16 +97,16 @@ void service_builder::write_services(source_idx_t const src) {
               s.utc_times_.back().count(), s.line_info(store_));
 
           auto const id = register_trip(
-              tt_,
+              tt_, ctx_,
               trip{tt_, src,
                    std::string_view{trip_id_buf_.data(), trip_id_buf_.size()},
                    kEmptyTranslation, kEmptyTranslation,
                    tt_.register_translation(ref.display_name(tt_)), "", "",
-                   direction_id_t::invalid(), route_id_idx_t::invalid(),
+                   direction_id_t::invalid(), route_id_idx_t::invalid(), flags,
                    ref.origin_.dbg_});
-          tt_.trip_stop_seq_numbers_.emplace_back(
-              std::initializer_list<stop_idx_t>{});
-          tt_.trip_transport_ranges_[id].emplace_back(transport_range_t{
+          ctx_.trip_stop_seq_numbers_.emplace_back(
+              ctx_.trip_stop_seq_numbers_cache_, {});
+          ctx_.trip_transport_ranges_[id].emplace_back(transport_range_t{
               tt_.next_transport_idx(),
               interval<stop_idx_t>{0U,
                                    static_cast<stop_idx_t>(stop_seq.size())}});
@@ -217,18 +215,18 @@ void service_builder::write_services(source_idx_t const src) {
           }
 
           auto const merged_trip = tt_.register_merged_trip({id});
-          tt_.add_transport(timetable::transport{
-              .bitfield_idx_ = utl::get_or_create(
-                  bitfield_indices_, s.utc_traffic_days_,
-                  [&]() { return tt_.register_bitfield(s.utc_traffic_days_); }),
-              .route_idx_ = route_idx,
-              .first_dep_offset_ = {0, 0},
-              .external_trip_ids_ = {merged_trip},
-              .section_attributes_ = section_attributes_,
-              .section_providers_ = section_providers_,
-              .section_directions_ = section_directions_,
-              // .section_lines_ = section_lines_,
-          });
+          add_transport(tt_, ctx_,
+                        timetable::transport{
+                            .bitfield_idx_ = register_bitfield(
+                                tt_, ctx_, s.utc_traffic_days_),
+                            .route_idx_ = route_idx,
+                            .first_dep_offset_ = {0, 0},
+                            .external_trip_ids_ = {merged_trip},
+                            .section_attributes_ = section_attributes_,
+                            .section_providers_ = section_providers_,
+                            .section_directions_ = section_directions_,
+                            // .section_lines_ = section_lines_,
+                        });
         } catch (std::exception const& e) {
           log(log_lvl::error, "loader.hrd.service",
               "unable to load service {}: {}", ref.origin_, e.what());
@@ -261,21 +259,21 @@ void service_builder::write_services(source_idx_t const src) {
       // Where D(x, y) is departure of transport x at stop index y in the route
       // location sequence and A(x, y) is the arrival.
 
-      auto const stop_times_begin = tt_.departure_route_stop_times_.size();
+      auto const stop_times_begin = ctx_.route_stop_times_.size();
       for (auto const [from, to] :
            utl::pairwise(interval{std::size_t{0U}, stop_seq.size()})) {
         // Write departure times of all route services at stop i.
         for (auto const& s : services) {
-          tt_.departure_route_stop_times_.emplace_back(s.utc_times_[from * 2]);
+          ctx_.route_stop_times_.emplace_back(s.utc_times_[from * 2]);
         }
 
         // Write arrival times of all route services at stop i+1.
         for (auto const& s : services) {
-          tt_.arrival_route_stop_times_.emplace_back(s.utc_times_[to * 2 - 1]);
+          ctx_.route_stop_times_.emplace_back(s.utc_times_[to * 2 - 1]);
         }
       }
-      auto const stop_times_end = tt_.departure_route_stop_times_.size();
-      tt_.route_stop_time_ranges_.emplace_back(
+      auto const stop_times_end = ctx_.route_stop_times_.size();
+      ctx_.route_stop_time_ranges_.emplace_back(
           interval{stop_times_begin, stop_times_end});
     }
   }

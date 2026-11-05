@@ -1,11 +1,17 @@
+#include "boost/json.hpp"
+#include <filesystem>
+#include <fstream>
 #include "gtest/gtest.h"
 
+#include "utl/to_vec.h"
 #include "utl/zip.h"
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/timetable.h"
 #include "nigiri/timetable_metrics.h"
@@ -153,16 +159,16 @@ mem_dir rbo500_a_files() {
 
 TEST(loader, merge_intra_src) {
   auto tt = timetable{};
+  auto ctx = loader::import_context{tt};
 
-  tt.date_range_ = {date::sys_days{2024_y / August / 5},
-                    date::sys_days{2024_y / December / 14}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, rbo500_a_files(), tt);
+  tt.date_range_ = {2024_y / August / 5, 2024_y / December / 14};
+  register_special_stations(tt, ctx);
+  load_timetable({}, source_idx_t{0}, rbo500_a_files(), tt, ctx);
 
   ASSERT_TRUE(!tt.bitfields_.empty() &&
               tt.bitfields_[bitfield_idx_t{0U}].none());
 
-  finalize(tt, false, true, false);
+  finalize(tt, ctx, false, true, false);
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
@@ -350,15 +356,17 @@ mem_dir line1_2593402613_files() {
 }  // namespace
 
 TEST(loader, merge_inter_src) {
+  auto const load = [](timetable& x, import_context& x_ctx) {
+    x.date_range_ = {2024_y / August / 5, 2024_y / December / 14};
+    register_special_stations(x, x_ctx);
+    // 2593432458 and 2593402613 are mostly the same as, except no trips on
+    // Thursdays for 2593402613
+    load_timetable({}, source_idx_t{0}, line1_2593432458_files(), x, x_ctx);
+    load_timetable({}, source_idx_t{1}, line1_2593402613_files(), x, x_ctx);
+  };
   auto tt = timetable{};
-
-  tt.date_range_ = {date::sys_days{2024_y / August / 5},
-                    date::sys_days{2024_y / December / 14}};
-  register_special_stations(tt);
-  // 2593432458 and 2593402613 are mostly the same as, except no trips on
-  // Thursdays for 2593402613
-  load_timetable({}, source_idx_t{0}, line1_2593432458_files(), tt);
-  load_timetable({}, source_idx_t{1}, line1_2593402613_files(), tt);
+  auto ctx = loader::import_context{tt};
+  load(tt, ctx);
 
   ASSERT_TRUE(!tt.bitfields_.empty() &&
               tt.bitfields_[bitfield_idx_t{0U}].none());
@@ -369,8 +377,13 @@ TEST(loader, merge_inter_src) {
       R"({{"idx":1,"firstDay":"2024-08-14","lastDay":"2024-12-13","noLocations":16,"noTrips":1,"transportsXDays":{0}}})"
       "]"};
   // No duplicates removed; No transfers on Thursdays for 2593402613
-  EXPECT_EQ(fmt::format(kMetricTemplate, 86), to_str(get_metrics(tt), tt));
-  finalize(tt, false, false, true);
+  auto unmerged = timetable{};
+  auto unmerged_ctx = loader::import_context{unmerged};
+  load(unmerged, unmerged_ctx);
+  finalize(unmerged, unmerged_ctx, false, false, false);
+  EXPECT_EQ(fmt::format(kMetricTemplate, 86),
+            to_str(get_metrics(unmerged), unmerged));
+  finalize(tt, ctx, false, false, true);
   // With duplicates removed; With transfers on Thursdays for both trips
   EXPECT_EQ(fmt::format(kMetricTemplate, 102), to_str(get_metrics(tt), tt));
 
@@ -410,6 +423,150 @@ TEST(loader, merge_inter_src) {
 }
 
 namespace {
+
+// two feeds publishing the same stay-seated service: one block of two trips
+// joined at S3, so the resulting transport spans five stops while each trip
+// covers only its own half of it
+mem_dir stay_seated_files(std::string_view const tag,
+                          std::string_view const dates) {
+  auto const t = std::string{tag};
+  auto const d = std::string{dates};
+  return mem_dir::read(R"__(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+AG_)__" + t + R"__(,Agency )__" +
+                       t + R"__(,https://example.com,Europe/Berlin
+
+# calendar_dates.txt
+service_id,date,exception_type
+)__" + d + R"__(
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_type
+R_)__" + t + R"__(,AG_)__" +
+                       t + R"__(,1,,3
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon
+S1_)__" + t + R"__(,Stop 1,49.880015,8.664131
+S2_)__" + t + R"__(,Stop 2,49.878166,8.661501
+S3_)__" + t + R"__(,Stop 3,49.875208,8.658878
+S4_)__" + t + R"__(,Stop 4,49.872985,8.655666
+S5_)__" + t + R"__(,Stop 5,49.872714,8.650961
+
+# trips.txt
+route_id,service_id,trip_id,block_id
+R_)__" + t + R"__(,SVC,T1_)__" +
+                       t + R"__(,BLK
+R_)__" + t + R"__(,SVC,T2_)__" +
+                       t + R"__(,BLK
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+T1_)__" + t + R"__(,09:00:00,09:00:00,S1_)__" +
+                       t + R"__(,1
+T1_)__" + t + R"__(,09:10:00,09:10:00,S2_)__" +
+                       t + R"__(,2
+T1_)__" + t + R"__(,09:20:00,09:20:00,S3_)__" +
+                       t + R"__(,3
+T2_)__" + t + R"__(,09:20:00,09:20:00,S3_)__" +
+                       t + R"__(,1
+T2_)__" + t + R"__(,09:30:00,09:30:00,S4_)__" +
+                       t + R"__(,2
+T2_)__" + t + R"__(,09:40:00,09:40:00,S5_)__" +
+                       t + R"__(,3
+)__");
+}
+
+// the same five-stop run published as a single trip instead of a block, so the
+// two feeds disagree about where the run is split
+mem_dir unsplit_files(std::string_view const tag,
+                      std::string_view const dates) {
+  auto const t = std::string{tag};
+  auto const d = std::string{dates};
+  return mem_dir::read(R"__(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+AG_)__" + t + R"__(,Agency )__" +
+                       t + R"__(,https://example.com,Europe/Berlin
+
+# calendar_dates.txt
+service_id,date,exception_type
+)__" + d + R"__(
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_type
+R_)__" + t + R"__(,AG_)__" +
+                       t + R"__(,1,,3
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon
+S1_)__" + t + R"__(,Stop 1,49.880015,8.664131
+S2_)__" + t + R"__(,Stop 2,49.878166,8.661501
+S3_)__" + t + R"__(,Stop 3,49.875208,8.658878
+S4_)__" + t + R"__(,Stop 4,49.872985,8.655666
+S5_)__" + t + R"__(,Stop 5,49.872714,8.650961
+
+# trips.txt
+route_id,service_id,trip_id,block_id
+R_)__" + t + R"__(,SVC,U_)__" +
+                       t + R"__(,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+U_)__" + t + R"__(,09:00:00,09:00:00,S1_)__" +
+                       t + R"__(,1
+U_)__" + t + R"__(,09:10:00,09:10:00,S2_)__" +
+                       t + R"__(,2
+U_)__" + t + R"__(,09:20:00,09:20:00,S3_)__" +
+                       t + R"__(,3
+U_)__" + t + R"__(,09:30:00,09:30:00,S4_)__" +
+                       t + R"__(,4
+U_)__" + t + R"__(,09:40:00,09:40:00,S5_)__" +
+                       t + R"__(,5
+)__");
+}
+
+// two identical trips in one feed, only the attributes of the second differ
+mem_dir attr_split_files(std::string_view const bikes_b,
+                         std::string_view const pickup_b) {
+  auto const b = std::string{bikes_b};
+  auto const p = std::string{pickup_b};
+  return mem_dir::read(R"__(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+AG,Agency,https://example.com,Europe/Berlin
+
+# calendar_dates.txt
+service_id,date,exception_type
+SVC,20240902,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_type
+R,AG,1,,3
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon
+S1,Stop 1,49.880015,8.664131
+S2,Stop 2,49.878166,8.661501
+S3,Stop 3,49.875208,8.658878
+
+# trips.txt
+route_id,service_id,trip_id,bikes_allowed
+R,SVC,T_A,0
+R,SVC,T_B,)__" + b + R"__(
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type
+T_A,09:00:00,09:00:00,S1,1,0
+T_A,09:10:00,09:10:00,S2,2,0
+T_A,09:20:00,09:20:00,S3,3,0
+T_B,09:00:00,09:00:00,S1,1,0
+T_B,09:10:00,09:10:00,S2,2,)__" +
+                       p + R"__(
+T_B,09:20:00,09:20:00,S3,3,0
+)__");
+}
 
 mem_dir rbo500_b_files() {
   return mem_dir::read(R"__(
@@ -551,16 +708,16 @@ mem_dir rbo500_b_files() {
 
 TEST(loader, merge_reflexive_matching) {
   timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 5},
-                    date::sys_days{2024_y / December / 14}};
+  auto ctx = loader::import_context{tt};
+  register_special_stations(tt, ctx);
+  tt.date_range_ = {2024_y / August / 5, 2024_y / December / 14};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, rbo500_b_files(), tt);
+  load_timetable({}, src_idx, rbo500_b_files(), tt, ctx);
 
   ASSERT_TRUE(!tt.bitfields_.empty() &&
               tt.bitfields_[bitfield_idx_t{0U}].none());
 
-  finalize(tt, false, true, false);
+  finalize(tt, ctx, false, true, false);
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
@@ -595,4 +752,177 @@ TEST(loader, merge_reflexive_matching) {
     EXPECT_FALSE(
         tt.bitfields_[tt.transport_traffic_days_[tr_range_a.first]].none());
   }
+}
+
+// merging must not rewrite a trip's stop range: a stay-seated trip covers only
+// part of the transport, and gtfsrt_resolve_run identifies it by the departure
+// at stop_range.from_
+TEST(loader, merge_stay_seated_keeps_stop_range) {
+  auto tt = timetable{};
+  auto ctx = loader::import_context{tt};
+  tt.date_range_ = {2024_y / September / 1, 2024_y / September / 6};
+  register_special_stations(tt, ctx);
+  load_timetable({}, source_idx_t{0},
+                 stay_seated_files("a", "SVC,20240902,1\nSVC,20240903,1"), tt,
+                 ctx);
+  load_timetable({}, source_idx_t{1},
+                 stay_seated_files("b", "SVC,20240903,1\nSVC,20240904,1"), tt,
+                 ctx);
+
+  // the fixture is only meaningful if a trip really starts mid-transport
+  auto n_mid_route = 0U;
+  for (auto trp = trip_idx_t{0U}; trp != ctx.trip_transport_ranges_.size();
+       ++trp) {
+    for (auto const& [t, r] : ctx.trip_transport_ranges_[trp]) {
+      if (r.from_ != 0U) {
+        ++n_mid_route;
+      }
+    }
+  }
+  ASSERT_NE(0U, n_mid_route) << "fixture did not produce a stay-seated block";
+
+  finalize(tt, ctx, false, false, true);
+
+  auto n_extra = 0U;
+  for (auto trp = trip_idx_t{0U}; trp != tt.trip_transport_ranges_.size();
+       ++trp) {
+    n_extra +=
+        static_cast<unsigned>(tt.trip_transport_ranges_[trp].size()) - 1U;
+  }
+  ASSERT_NE(0U, n_extra) << "no trip was pointed at a second transport";
+
+  for (auto trp = trip_idx_t{0U}; trp != tt.trip_transport_ranges_.size();
+       ++trp) {
+    auto const ranges = tt.trip_transport_ranges_[trp];
+    if (ranges.empty()) {
+      continue;
+    }
+    auto const expected = ranges[0].second;
+    for (auto const& [t, r] : ranges) {
+      EXPECT_EQ(expected, r)
+          << "trip " << to_idx(trp) << " points at transport " << to_idx(t)
+          << " with a different part of the run";
+    }
+  }
+}
+
+// one feed splits the run into a stay-seated block, the other publishes it
+// whole. the stop ranges are indices into a stop sequence both transports
+// share, so each trip keeps its own part no matter how the other feed splits.
+TEST(loader, merge_stay_seated_different_split) {
+  auto tt = timetable{};
+  auto ctx = loader::import_context{tt};
+  tt.date_range_ = {2024_y / September / 1, 2024_y / September / 6};
+  register_special_stations(tt, ctx);
+  load_timetable({}, source_idx_t{0},
+                 stay_seated_files("a", "SVC,20240902,1\nSVC,20240903,1"), tt,
+                 ctx);
+  load_timetable({}, source_idx_t{1},
+                 unsplit_files("b", "SVC,20240903,1\nSVC,20240904,1"), tt, ctx);
+
+  auto const range_of = [&](trip_idx_t const trp) {
+    return ctx.trip_transport_ranges_[trp][0].second;
+  };
+  auto const before = utl::to_vec(
+      interval{trip_idx_t{0U}, trip_idx_t{ctx.trip_transport_ranges_.size()}},
+      range_of);
+
+  finalize(tt, ctx, false, false, true);
+
+  // the merge has to have actually pointed a trip at the other transport,
+  // otherwise this proves nothing
+  auto n_extra = 0U;
+  for (auto trp = trip_idx_t{0U}; trp != tt.trip_transport_ranges_.size();
+       ++trp) {
+    n_extra +=
+        static_cast<unsigned>(tt.trip_transport_ranges_[trp].size()) - 1U;
+  }
+  ASSERT_NE(0U, n_extra) << "no trip was pointed at a second transport";
+
+  for (auto trp = trip_idx_t{0U}; trp != tt.trip_transport_ranges_.size();
+       ++trp) {
+    for (auto const& [t, r] : tt.trip_transport_ranges_[trp]) {
+      EXPECT_EQ(before[to_idx(trp)], r)
+          << "trip " << to_idx(trp) << " changed its part of the run";
+    }
+  }
+}
+
+// the JSON dump has to be valid and carry the per-feed and per-agency numbers
+TEST(loader, merge_stats_json) {
+  auto tt = timetable{};
+  auto ctx = loader::import_context{tt};
+  tt.date_range_ = {2024_y / September / 1, 2024_y / September / 6};
+  register_special_stations(tt, ctx);
+  load_timetable({}, source_idx_t{0},
+                 stay_seated_files("a", "SVC,20240902,1\nSVC,20240903,1"), tt,
+                 ctx);
+  load_timetable({}, source_idx_t{1},
+                 unsplit_files("b", "SVC,20240903,1\nSVC,20240904,1"), tt, ctx);
+
+  // relative to the test's working directory: a fixed name in the shared
+  // temp dir is owned by whoever runs the suite on this machine first
+  auto const dir = std::filesystem::path{"nigiri_merge_stats"};
+  std::filesystem::remove_all(dir);
+
+  auto opt = finalize_options{};
+  opt.adjust_footpaths_ = false;
+  opt.merge_dupes_intra_src_ = false;
+  opt.merge_dupes_inter_src_ = true;
+  opt.merge_stats_dir_ = dir;
+  opt.src_tags_ = {"feed-a", "feed-b"};
+  finalize(tt, ctx, opt);
+
+  auto const out = dir / "merge_stats.json";
+  ASSERT_TRUE(std::filesystem::exists(out));
+  ASSERT_TRUE(std::filesystem::exists(dir / "merge_stats.html"));
+  auto const doc = boost::json::parse(
+      std::string{std::istreambuf_iterator<char>{
+                      *std::make_unique<std::ifstream>(out).get()},
+                  std::istreambuf_iterator<char>{}});
+  auto const& o = doc.as_object();
+  EXPECT_TRUE(o.contains("merges"));
+  EXPECT_TRUE(o.contains("sources"));
+  EXPECT_TRUE(o.contains("source_pairs"));
+  EXPECT_TRUE(o.contains("providers"));
+  EXPECT_TRUE(o.contains("provider_pairs"));
+  EXPECT_NE(0U, o.at("merges").to_number<std::uint32_t>());
+  EXPECT_EQ(2U, o.at("sources").as_array().size());
+  EXPECT_FALSE(o.at("source_pairs").as_array().empty());
+  EXPECT_FALSE(o.at("providers").as_array().empty());
+
+  // feeds are named by their tag, never by a bare index
+  EXPECT_EQ("feed-a", o.at("sources").as_array()[0].at("src").as_string());
+  EXPECT_EQ("feed-b", o.at("sources").as_array()[1].at("src").as_string());
+  for (auto const& e : o.at("source_pairs").as_array()) {
+    EXPECT_TRUE(e.at("a").as_string() == "feed-a" ||
+                e.at("a").as_string() == "feed-b");
+  }
+}
+
+TEST(loader, merge_intra_src_attrs_differ) {
+  auto const n_merged = [](std::string_view const bikes_b,
+                           std::string_view const pickup_b) {
+    auto const tt =
+        loader::load(attr_split_files(bikes_b, pickup_b),
+                     {2024_y / September / 1, 2024_y / September / 6},
+                     {.adjust_footpaths_ = false,
+                      .merge_dupes_intra_src_ = true,
+                      .merge_dupes_inter_src_ = false});
+
+    auto n = 0U;
+    for (auto t = transport_idx_t{0U}; t != tt.next_transport_idx(); ++t) {
+      if (tt.bitfields_[tt.transport_traffic_days_[t]].none()) {
+        ++n;
+      }
+    }
+    return n;
+  };
+
+  // control: identical attributes -> merged
+  EXPECT_EQ(1U, n_merged("0", "0"));
+
+  // bikes_allowed / pickup_type differ -> kept apart
+  EXPECT_EQ(0U, n_merged("1", "0"));
+  EXPECT_EQ(0U, n_merged("0", "1"));
 }

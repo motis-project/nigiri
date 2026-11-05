@@ -1,8 +1,6 @@
 #include "gtest/gtest.h"
 
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/search.h"
 #include "nigiri/routing/tb/preprocess.h"
@@ -18,20 +16,12 @@ using namespace std::chrono_literals;
 using namespace nigiri::test_data::hrd_timetable;
 
 timetable load_gtfs(auto const& files) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2021_y / March / 1},
-                    date::sys_days{2021_y / March / 8}};
-  register_special_stations(tt);
-  gtfs::load_timetable({}, source_idx_t{0}, files(), tt);
-  finalize(tt);
+  auto const tt =
+      loader::load(files(), {2021_y / March / 1, 2021_y / March / 8});
   return tt;
 }
 timetable load_hrd(auto const& files) {
-  timetable tt;
-  tt.date_range_ = full_period();
-  register_special_stations(tt);
-  hrd::load_timetable(source_idx_t{0U}, loader::hrd::hrd_5_20_26, files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(files(), full_period());
   return tt;
 }
 
@@ -854,7 +844,7 @@ TRANSFERS: 1
      FROM: (START, START) [2020-03-30 05:20]
        TO: (END, END) [2020-03-30 08:00]
 leg 0: (START, START) [2020-03-30 05:20] -> (A, 0000001) [2020-03-30 05:30]
-  MUMO (id=99, duration=10)
+  MUMO (payload=99, duration=10)
 leg 1: (A, 0000001) [2020-03-30 05:30] -> (B, 0000002) [2020-03-30 06:30]
    0: 0000001 A...............................................                               d: 30.03 05:30 [30.03 07:30]  [{name=RE 1337, day=2020-03-30, id=1337/0000001/330/0000002/390/, src=0}]
    1: 0000002 B............................................... a: 30.03 06:30 [30.03 08:30]
@@ -864,14 +854,14 @@ leg 3: (B, 0000002) [2020-03-30 06:45] -> (C, 0000003) [2020-03-30 07:45]
    0: 0000002 B...............................................                               d: 30.03 06:45 [30.03 08:45]  [{name=RE 7331, day=2020-03-30, id=7331/0000002/405/0000003/465/, src=0}]
    1: 0000003 C............................................... a: 30.03 07:45 [30.03 09:45]
 leg 4: (C, 0000003) [2020-03-30 07:45] -> (END, END) [2020-03-30 08:00]
-  MUMO (id=77, duration=15)
+  MUMO (payload=77, duration=15)
 
 [2020-03-30 05:50, 2020-03-30 08:30]
 TRANSFERS: 1
      FROM: (START, START) [2020-03-30 05:50]
        TO: (END, END) [2020-03-30 08:30]
 leg 0: (START, START) [2020-03-30 05:50] -> (A, 0000001) [2020-03-30 06:00]
-  MUMO (id=99, duration=10)
+  MUMO (payload=99, duration=10)
 leg 1: (A, 0000001) [2020-03-30 06:00] -> (B, 0000002) [2020-03-30 07:00]
    0: 0000001 A...............................................                               d: 30.03 06:00 [30.03 08:00]  [{name=RE 1337, day=2020-03-30, id=1337/0000001/360/0000002/420/, src=0}]
    1: 0000002 B............................................... a: 30.03 07:00 [30.03 09:00]
@@ -881,7 +871,7 @@ leg 3: (B, 0000002) [2020-03-30 07:15] -> (C, 0000003) [2020-03-30 08:15]
    0: 0000002 B...............................................                               d: 30.03 07:15 [30.03 09:15]  [{name=RE 7331, day=2020-03-30, id=7331/0000002/435/0000003/495/, src=0}]
    1: 0000003 C............................................... a: 30.03 08:15 [30.03 10:15]
 leg 4: (C, 0000003) [2020-03-30 08:15] -> (END, END) [2020-03-30 08:30]
-  MUMO (id=77, duration=15)
+  MUMO (payload=77, duration=15)
 
 )";
 

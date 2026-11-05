@@ -27,6 +27,7 @@ rt_timetable create_rt_timetable(timetable const& tt,
     rtt.alerts_.route_id_[source_idx_t{src}].resize(r.route_id_type_.size());
   }
   rtt.alerts_.location_.resize(tt.n_locations());
+  rtt.alerts_.trip_.resize(tt.n_trips());
   rtt.alerts_.agency_.resize(tt.n_agencies());
   for (auto i = 0U; i != kNProfiles; ++i) {
     if (!tt.locations_.footpaths_out_[i].empty()) {

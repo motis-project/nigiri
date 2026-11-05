@@ -7,7 +7,7 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
@@ -286,12 +286,8 @@ auto const kTripUpdateSummer =
 
 TEST(rt, gtfs_rt_utc_12) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / May / 2},
-                    date::sys_days{2019_y / November / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / May / 2, 2019_y / November / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / May / 3});
@@ -367,12 +363,8 @@ TEST(rt, gtfs_rt_utc_12) {
 
 TEST(rt, gtfs_rt_utc_13) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2019_y / May / 2},
-                    date::sys_days{2019_y / November / 12}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / May / 2, 2019_y / November / 12});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / November / 3});

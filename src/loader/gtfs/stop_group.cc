@@ -1,4 +1,5 @@
 #include "nigiri/loader/gtfs/stop_group.h"
+#include "nigiri/loader/import_context.h"
 
 #include <cmath>
 #include <algorithm>
@@ -13,6 +14,7 @@
 namespace nigiri::loader::gtfs {
 
 void add_stop_groups(timetable& tt,
+                     import_context& ctx,
                      std::string_view stop_group_elements_file_content,
                      stops_map_t const& stops) {
   struct stop_group_element_record {
@@ -52,11 +54,11 @@ void add_stop_groups(timetable& tt,
           }
 
           auto const stop_l = stop_it->second;
-          tt.locations_.equivalences_[meta_l].emplace_back(stop_l);
-          for (auto const child1 : tt.locations_.children_[stop_l]) {
-            tt.locations_.equivalences_[meta_l].emplace_back(child1);
-            for (auto const child2 : tt.locations_.children_[child1]) {
-              tt.locations_.equivalences_[meta_l].emplace_back(child2);
+          ctx.equivalences_[meta_l].emplace_back(stop_l);
+          for (auto const child1 : ctx.children_[stop_l]) {
+            ctx.equivalences_[meta_l].emplace_back(child1);
+            for (auto const child2 : ctx.children_[child1]) {
+              ctx.equivalences_[meta_l].emplace_back(child2);
             }
           }
         });
