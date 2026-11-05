@@ -44,6 +44,7 @@ struct statistics {
   std::uint32_t resolved_stops_{0U};
 
   std::uint32_t runs_without_stops_{0U};
+  std::uint32_t runs_outside_rt_interval_{0U};
 
   std::uint32_t cancelled_runs_{0U};
 

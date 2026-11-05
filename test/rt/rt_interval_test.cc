@@ -163,6 +163,13 @@ rt::statistics gtfsrt_update(timetable const& tt,
                                gtfsrt_msg(trip_id, start_date));
 }
 
+// Resolved, but dropped: e.g. the run can't be stored in the RT interval.
+void expect_failed(rt::statistics const& s) {
+  EXPECT_EQ(0, s.total_entities_success_);
+  EXPECT_EQ(1, s.total_entities_fail_);
+  EXPECT_EQ(0, s.trip_resolve_error_);
+}
+
 void expect_delayed(timetable const& tt,
                     rt_timetable const& rtt,
                     std::string const& trip_id,
@@ -413,20 +420,15 @@ TEST(rt_interval, gtfsrt_rt_interval_end) {
   expect_delayed(tt, rtt, "DAY", sys_days{2024_y / July / 22});
 
   // Departure 05:50 < 18:07, but arrival 18:10 >= 18:07
-  auto const edge =
-      gtfsrt_update(tt, rtt, "EDGE", sys_days{2024_y / July / 22});
-  EXPECT_EQ(0, edge.total_entities_success_);
-  EXPECT_EQ(1, edge.total_entities_fail_);
+  expect_failed(gtfsrt_update(tt, rtt, "EDGE", sys_days{2024_y / July / 22}));
   expect_not_rt(tt, rtt, "EDGE", sys_days{2024_y / July / 22});
 
   // Departure 23:30 >= 18:07
-  EXPECT_EQ(1, gtfsrt_update(tt, rtt, "NIGHT", sys_days{2024_y / July / 22})
-                   .total_entities_fail_);
+  expect_failed(gtfsrt_update(tt, rtt, "NIGHT", sys_days{2024_y / July / 22}));
   expect_not_rt(tt, rtt, "NIGHT", sys_days{2024_y / July / 22});
 
   // Still within the static timetable, but far outside the RT interval.
-  EXPECT_EQ(1, gtfsrt_update(tt, rtt, "DAY", sys_days{2024_y / August / 30})
-                   .total_entities_fail_);
+  expect_failed(gtfsrt_update(tt, rtt, "DAY", sys_days{2024_y / August / 30}));
   expect_not_rt(tt, rtt, "DAY", sys_days{2024_y / August / 30});
 
   EXPECT_EQ(2U, rtt.n_rt_transports());
@@ -447,13 +449,11 @@ TEST(rt_interval, gtfsrt_rt_interval_start) {
   expect_delayed(tt, rtt, "DAY", sys_days{2024_y / August / 8});
 
   // Departure 05:50 < 05:53
-  EXPECT_EQ(1, gtfsrt_update(tt, rtt, "EDGE", sys_days{2024_y / August / 8})
-                   .total_entities_fail_);
+  expect_failed(gtfsrt_update(tt, rtt, "EDGE", sys_days{2024_y / August / 8}));
   expect_not_rt(tt, rtt, "EDGE", sys_days{2024_y / August / 8});
 
   // Arrival 01:00 (+1d) < 05:53
-  EXPECT_EQ(1, gtfsrt_update(tt, rtt, "NIGHT", sys_days{2024_y / August / 7})
-                   .total_entities_fail_);
+  expect_failed(gtfsrt_update(tt, rtt, "NIGHT", sys_days{2024_y / August / 7}));
   expect_not_rt(tt, rtt, "NIGHT", sys_days{2024_y / August / 7});
 
   EXPECT_EQ(2U, rtt.n_rt_transports());
@@ -507,10 +507,18 @@ TEST(rt_interval, gtfsrt_new_trip_rt_interval) {
                    .total_entities_success_);
 
   // Last arrival 18:07 is the (exclusive) end of the RT interval
-  EXPECT_EQ(0, rt::gtfsrt_update_msg(
-                   tt, rtt, source_idx_t{0}, "tag",
-                   gtfsrt_new_trip_msg("NEW_OUT", d + 17h, d + 18h + 7min))
-                   .total_entities_success_);
+  expect_failed(rt::gtfsrt_update_msg(
+      tt, rtt, source_idx_t{0}, "tag",
+      gtfsrt_new_trip_msg("NEW_OUT", d + 17h, d + 18h + 7min)));
+
+  // Stop not contained in the static timetable.
+  auto unknown_stop = gtfsrt_new_trip_msg("NEW_STOP", d + 17h, d + 18h);
+  unknown_stop.mutable_entity(0)
+      ->mutable_trip_update()
+      ->mutable_stop_time_update(0)
+      ->set_stop_id("UNKNOWN");
+  expect_failed(
+      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", unknown_stop));
 
   auto const& added = rtt.additional_trips_[source_idx_t{0}];
   ASSERT_TRUE(added.ids_.find("NEW_IN").has_value());
@@ -594,17 +602,21 @@ TEST(rt_interval, siri_rt_interval) {
     siri_update(rtt, u, siri_edge_msg(sys_days{2024_y / July / 21}));
     expect_delayed(tt, rtt, "EDGE", sys_days{2024_y / July / 21});
 
-    siri_update(rtt, u, siri_day_msg(sys_days{2024_y / July / 22}));
+    auto const day =
+        siri_update(rtt, u, siri_day_msg(sys_days{2024_y / July / 22}));
+    EXPECT_EQ(0U, day.runs_outside_rt_interval_);
     expect_delayed(tt, rtt, "DAY", sys_days{2024_y / July / 22});
 
     auto const edge =
         siri_update(rtt, u, siri_edge_msg(sys_days{2024_y / July / 22}));
     EXPECT_EQ(1U, edge.matched_runs_);
+    EXPECT_EQ(1U, edge.runs_outside_rt_interval_);
     expect_not_rt(tt, rtt, "EDGE", sys_days{2024_y / July / 22});
 
-    EXPECT_EQ(1U,
-              siri_update(rtt, u, siri_day_msg(sys_days{2024_y / August / 30}))
-                  .matched_runs_);
+    auto const far_out =
+        siri_update(rtt, u, siri_day_msg(sys_days{2024_y / August / 30}));
+    EXPECT_EQ(1U, far_out.matched_runs_);
+    EXPECT_EQ(1U, far_out.runs_outside_rt_interval_);
     expect_not_rt(tt, rtt, "DAY", sys_days{2024_y / August / 30});
 
     EXPECT_EQ(2U, rtt.n_rt_transports());
@@ -618,9 +630,10 @@ TEST(rt_interval, siri_rt_interval) {
     siri_update(rtt, u, siri_edge_msg(sys_days{2024_y / August / 9}));
     expect_delayed(tt, rtt, "EDGE", sys_days{2024_y / August / 9});
 
-    EXPECT_EQ(1U,
-              siri_update(rtt, u, siri_edge_msg(sys_days{2024_y / August / 8}))
-                  .matched_runs_);
+    auto const edge =
+        siri_update(rtt, u, siri_edge_msg(sys_days{2024_y / August / 8}));
+    EXPECT_EQ(1U, edge.matched_runs_);
+    EXPECT_EQ(1U, edge.runs_outside_rt_interval_);
     expect_not_rt(tt, rtt, "EDGE", sys_days{2024_y / August / 8});
 
     EXPECT_EQ(1U, rtt.n_rt_transports());
@@ -751,8 +764,7 @@ TEST(rt_interval, gtfsrt_cancel_rt_interval_end) {
 
   // Delay updates for a cancelled run outside of the RT interval are still
   // rejected and do not reactivate it.
-  EXPECT_EQ(1, gtfsrt_update(tt, rtt, "DAY", sys_days{2024_y / August / 30})
-                   .total_entities_fail_);
+  expect_failed(gtfsrt_update(tt, rtt, "DAY", sys_days{2024_y / August / 30}));
   expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / August / 30});
   EXPECT_EQ(0U, rtt.n_rt_transports());
 }
@@ -833,6 +845,7 @@ TEST(rt_interval, siri_cancel_rt_interval) {
         siri_update(rtt, u, siri_day_msg(sys_days{2024_y / August / 30}, true));
     EXPECT_EQ(1U, far_out.matched_runs_);
     EXPECT_EQ(1U, far_out.cancelled_runs_);
+    EXPECT_EQ(0U, far_out.runs_outside_rt_interval_);
     expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / August / 30});
 
     // Not part of the static timetable.
@@ -849,9 +862,10 @@ TEST(rt_interval, siri_cancel_rt_interval) {
     // Delay update for the cancelled run outside of the RT interval: found
     // (already matched), but neither an RT transport is created nor the run
     // reactivated.
-    EXPECT_EQ(1U,
-              siri_update(rtt, u, siri_day_msg(sys_days{2024_y / August / 30}))
-                  .found_runs_);
+    auto const delayed =
+        siri_update(rtt, u, siri_day_msg(sys_days{2024_y / August / 30}));
+    EXPECT_EQ(1U, delayed.found_runs_);
+    EXPECT_EQ(1U, delayed.runs_outside_rt_interval_);
     expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / August / 30});
     EXPECT_EQ(0U, rtt.n_rt_transports());
   }
@@ -873,6 +887,7 @@ TEST(rt_interval, siri_cancel_rt_interval) {
         siri_update(rtt, u, siri_day_msg(sys_days{2024_y / July / 1}, true));
     EXPECT_EQ(1U, far_out.matched_runs_);
     EXPECT_EQ(1U, far_out.cancelled_runs_);
+    EXPECT_EQ(0U, far_out.runs_outside_rt_interval_);
     expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / July / 1});
 
     // Departs before date_range_.from_, arrives within.
@@ -902,5 +917,45 @@ TEST(rt_interval, siri_cancel_existing_rt_transport) {
   EXPECT_EQ(1U, siri_update(rtt, u, siri_edge_msg(d, true)).cancelled_runs_);
   expect_cancelled(tt, rtt, "EDGE", d);
   EXPECT_TRUE(resolve(tt, rtt, "EDGE", d).is_rt());
+  EXPECT_EQ(1U, rtt.n_rt_transports());
+}
+
+TEST(rt_interval, gtfsrt_vehicle_position_rt_interval) {
+  auto const tt = load();
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / July / 1});
+
+  auto const vehicle_update = [&](sys_days const d) {
+    auto msg = transit_realtime::FeedMessage{};
+    auto const hdr = msg.mutable_header();
+    hdr->set_gtfs_realtime_version("2.0");
+    hdr->set_incrementality(
+        transit_realtime::FeedHeader_Incrementality_FULL_DATASET);
+    hdr->set_timestamp(test::to_unix(d));
+
+    auto const e = msg.add_entity();
+    e->set_id("1");
+    auto const vp = e->mutable_vehicle();
+    vp->mutable_trip()->set_trip_id("DAY");
+    vp->mutable_trip()->set_start_date(yyyymmdd(d));
+    vp->mutable_position()->set_latitude(49.0F);  // stop A
+    vp->mutable_position()->set_longitude(8.0F);
+    vp->set_timestamp(test::to_unix(d + 10h + kDelay * 1min));
+
+    return rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg, true);
+  };
+
+  // Within the RT interval.
+  EXPECT_EQ(
+      1, vehicle_update(sys_days{2024_y / July / 1}).total_entities_success_);
+  expect_delayed(tt, rtt, "DAY", sys_days{2024_y / July / 1});
+
+  // Within the static timetable, but outside of the RT interval.
+  expect_failed(vehicle_update(sys_days{2024_y / August / 30}));
+  expect_not_rt(tt, rtt, "DAY", sys_days{2024_y / August / 30});
+
+  // Not part of the static timetable.
+  EXPECT_EQ(1,
+            vehicle_update(sys_days{2024_y / June / 1}).total_entities_fail_);
+
   EXPECT_EQ(1U, rtt.n_rt_transports());
 }

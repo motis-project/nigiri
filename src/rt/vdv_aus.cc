@@ -141,6 +141,7 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
       << "\ntotal stops: " << s.total_stops_
       << "\nresolved stops: " << s.resolved_stops_
       << "\nruns without stops: " << s.runs_without_stops_
+      << "\nruns outside rt interval: " << s.runs_outside_rt_interval_
       << "\ncancelled runs: " << s.cancelled_runs_
       << "\nskipped vdv stops: " << s.skipped_vdv_stops_
       << "\nexcess vdv stops: " << s.excess_vdv_stops_
@@ -535,6 +536,13 @@ void updater::update_run(rt_timetable& rtt,
   auto fr = rt::frun(tt_, &rtt, r);
   if (!fr.is_rt()) {
     if (!rtt.is_in_rt_interval(tt_, fr.t_)) {
+      log(log_lvl::debug, "vdv_update.outside_rt_interval",
+          "run outside of real-time interval {} "
+          "(src={}, trip_id={}, dep={}), skipping",
+          rtt.rt_interval(), src_idx_,
+          tt_.trip_id_strings_[fr.trip_idx()].view(),
+          fr[0].scheduled_time(event_type::kDep));
+      ++stats.runs_outside_rt_interval_;
       return;
     }
     fr.rt_ = rtt.add_rt_transport(src_idx_, tt_, fr.t_);

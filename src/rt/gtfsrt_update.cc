@@ -211,8 +211,12 @@ bool add_rt_trip(source_idx_t const src,
                  rt_timetable& rtt,
                  run& r,
                  gtfsrt::TripUpdate const& tripUpdate) {
-  utl::verify(!r.is_scheduled() || rtt.is_in_rt_interval(tt, r.t_),
-              "run outside of real-time interval {}", rtt.rt_interval());
+  if (r.is_scheduled() && !rtt.is_in_rt_interval(tt, r.t_)) {
+    log(log_lvl::debug, "rt.gtfs.unsupported",
+        "run outside of real-time interval {} (src={}, trip_id={}), skipping",
+        rtt.rt_interval(), src, tripUpdate.trip().trip_id());
+    return false;
+  }
 
   auto const& stus = tripUpdate.stop_time_update();
   auto const sr = tripUpdate.trip().schedule_relationship();
@@ -235,9 +239,14 @@ bool add_rt_trip(source_idx_t const src,
       } else {
         throw utl::fail("absolute times are required for unscheduled trips");
       }
-      utl::verify(rtt.rt_interval().contains(new_time),
-                  "time {} outside of real-time interval {}", new_time,
-                  rtt.rt_interval());
+      if (!rtt.rt_interval().contains(new_time)) {
+        log(log_lvl::debug, "rt.gtfs.unsupported",
+            "time {} outside of real-time interval {} "
+            "(src={}, trip_id={}, stop_id={}), skipping",
+            new_time, rtt.rt_interval(), src, tripUpdate.trip().trip_id(),
+            stu.stop_id());
+        return false;
+      }
       utl::verify(stu.has_stop_id(),
                   "stop_id is required for unscheduled trips");
       auto const it =
@@ -606,6 +615,7 @@ void handle_vehicle_position(timetable const& tt,
     if (!r.is_scheduled()) {
       log(log_lvl::info, "rt.gtfs.unsupported",
           R"(Run is not scheduled. Skipping Message)", tag, entity.id());
+      ++stats.total_entities_fail_;
       return;
     }
 
@@ -615,8 +625,13 @@ void handle_vehicle_position(timetable const& tt,
 
     // add rt_transport if not existent
     if (!r.is_rt()) {
-      utl::verify(rtt.is_in_rt_interval(tt, r.t_),
-                  "run outside of real-time interval {}", rtt.rt_interval());
+      if (!rtt.is_in_rt_interval(tt, r.t_)) {
+        log(log_lvl::debug, "rt.gtfs.unsupported",
+            "run outside of real-time interval {} (tag={}, id={}), skipping",
+            rtt.rt_interval(), tag, entity.id());
+        ++stats.total_entities_fail_;
+        return;
+      }
       r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
     }
 
@@ -865,6 +880,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
         } else if (!added) {
           if (update_run(src, tt, rtt, trip, r, entity.trip_update())) {
             ++stats.total_entities_success_;
+          } else {
+            ++stats.total_entities_fail_;
           }
         }
 
@@ -879,6 +896,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
         if (update_run(src, tt, rtt, trip_idx_t::invalid(), r,
                        entity.trip_update())) {
           ++stats.total_entities_success_;
+        } else {
+          ++stats.total_entities_fail_;
         }
         continue;
       }
