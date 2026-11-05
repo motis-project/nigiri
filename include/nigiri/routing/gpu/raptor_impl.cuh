@@ -1,8 +1,6 @@
 #pragma once
 
 #include "nigiri/common/delta_t.h"
-#include "nigiri/common/it_range.h"
-#include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/query.h"
@@ -662,10 +660,19 @@ struct raptor_impl {
     }
   }
 
-  __device__ __forceinline__ bool has_td_fps(location_idx_t const l) const {
-    auto const& bv =
-        kFwd ? rtt_.td_->has_out_[prf_idx_] : rtt_.td_->has_in_[prf_idx_];
-    return !bv.blocks_.empty() && bv[to_idx(l)];
+  // Footpaths from a source with td footpaths are time-dependent and replace
+  // all its static footpaths. out: l is such a source, !out: l is the target
+  // of td footpaths or of replaced static footpaths.
+  template <bool WithTdFootpaths>
+  __device__ __forceinline__ bool has_td_fps(location_idx_t const l,
+                                             bool const out) const {
+    if constexpr (WithTdFootpaths) {
+      auto const& bv =
+          out ? rtt_.td_->has_out_[prf_idx_] : rtt_.td_->has_in_[prf_idx_];
+      return !bv.blocks_.empty() && bv[to_idx(l)];
+    } else {
+      return false;
+    }
   }
 
   __device__ void update_td_dest_offsets(unsigned const k) {
@@ -735,6 +742,7 @@ struct raptor_impl {
       auto bc = breadcrumb_t{0U};
       auto n_fps = 0U;
       auto defer = false;
+      auto use_td_fps = false;
 
       auto const t_at_dest = time_at_dest_.get(k);
 
@@ -769,10 +777,7 @@ struct raptor_impl {
           }
 
           // footpaths: short lists inline, hubs deferred to the whole warp
-          auto use_td_fps = false;
-          if constexpr (WithTdFootpaths) {
-            use_td_fps = has_td_fps(l);
-          }
+          use_td_fps = has_td_fps<WithTdFootpaths>(l, kFwd);
           if (use_td_fps) {
             if constexpr (WithTdFootpaths) {
               auto const td_fps = kFwd ? rtt_.td_->out_[prf_idx_][l]
@@ -784,12 +789,17 @@ struct raptor_impl {
                                     tmp_time, bc, t_at_dest);
                   });
             }
-          } else {
+          }
+          if (!kFwd || !use_td_fps) {
             auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
                                   : tt_.footpaths_in_[prf_idx_][l];
             n_fps = static_cast<unsigned>(fps.size());
             if (n_fps <= kWarpFpThreshold) {
               for (auto j = 0U; j != n_fps; ++j) {
+                if (!kFwd && use_td_fps &&
+                    has_td_fps<WithTdFootpaths>(fps[j].target(), true)) {
+                  continue;
+                }
                 relax_footpath(k, fps[j], tmp_time, bc, t_at_dest);
               }
             } else {
@@ -807,9 +817,17 @@ struct raptor_impl {
             kAllLanes, static_cast<int>(tmp_time), static_cast<int>(b)));
         auto const l_bc = __shfl_sync(kAllLanes, bc, static_cast<int>(b));
         auto const l_n = __shfl_sync(kAllLanes, n_fps, static_cast<int>(b));
+        auto const l_use_td_fps =
+            WithTdFootpaths && !kFwd &&
+            __shfl_sync(kAllLanes, static_cast<int>(use_td_fps),
+                        static_cast<int>(b)) != 0;
         auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
                               : tt_.footpaths_in_[prf_idx_][l];
         for (auto j = lane; j < l_n; j += kWarpSize) {
+          if (l_use_td_fps &&
+              has_td_fps<WithTdFootpaths>(fps[j].target(), true)) {
+            continue;
+          }
           relax_footpath(k, fps[j], l_tmp, l_bc, t_at_dest);
         }
       });
@@ -955,13 +973,29 @@ struct raptor_impl {
                          minutes_after_midnight_t const mam_at_stop) {
     auto const event_times = tt_.event_times_at_stop(
         r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
+    auto const n = static_cast<unsigned>(event_times.size());
 
+    // transport offset of the i-th event in search direction
+    auto const t_offset_at = [&](unsigned const i) {
+      return kFwd ? i : n - 1U - i;
+    };
+
+    // Day 0: the first event at or after the time at the stop (backward: at
+    // or before). Routes are FIFO (loader get_index), so the column is sorted
+    // by mam and a binary search finds it.
     auto const seek_first_day = [&]() {
-      return linear_lb(get_begin_it(event_times), get_end_it(event_times),
-                       mam_at_stop,
-                       [&](delta const a, minutes_after_midnight_t const b) {
-                         return is_better(a.mam(), b.count());
-                       });
+      auto lo = 0U;
+      auto hi = n;
+      while (lo < hi) {
+        auto const mid = lo + (hi - lo) / 2U;
+        if (is_better(event_times[t_offset_at(mid)].mam(),
+                      mam_at_stop.count())) {
+          lo = mid + 1U;
+        } else {
+          hi = mid;
+        }
+      }
+      return lo;
     };
 
     constexpr auto const kNDaysToIterate = static_cast<day_idx_t::value_t>(
@@ -972,17 +1006,14 @@ struct raptor_impl {
         continue;
       }
 
-      auto const ev_time_range =
-          it_range{i == 0U ? seek_first_day() : get_begin_it(event_times),
-                   get_end_it(event_times)};
-      if (ev_time_range.empty()) {
+      auto const first = i == 0U ? seek_first_day() : 0U;
+      if (first == n) {
         continue;
       }
 
-      for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
-        auto const t_offset =
-            static_cast<std::size_t>(&*it - event_times.data());
-        auto const ev = *it;
+      for (auto pos = first; pos != n; ++pos) {
+        auto const t_offset = t_offset_at(pos);
+        auto const ev = event_times[t_offset];
         auto const ev_mam = ev.mam();
 
         // an event equal to time-at-dest must still be boardable
@@ -992,7 +1023,7 @@ struct raptor_impl {
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
-        auto const t = tt_.route_transport_ranges_[r][t_offset];
+        auto const t = event_times.transport(t_offset);
         if (i == 0U && !is_better_or_eq(mam_at_stop.count(), ev_mam)) {
           continue;
         }
@@ -1047,7 +1078,7 @@ struct raptor_impl {
     auto const rel_day =
         static_cast<std::uint32_t>(as_int(t.day_) - et_day_lo());
     auto const t_offset =
-        to_idx(t.t_idx_) - to_idx(tt_.route_transport_ranges_[r].from_);
+        to_idx(t.t_idx_) - to_idx(tt_.route_times_[r].transports_.from_);
     auto const x = (rel_day << kEtRelDayShift) | t_offset;
 
     return kFwd ? x : kEtReverseBase - x;
@@ -1059,7 +1090,7 @@ struct raptor_impl {
     auto const rel_day = x >> kEtRelDayShift;
     auto const t_offset = x & ((1U << kEtRelDayShift) - 1U);
     return transport{
-        transport_idx_t{to_idx(tt_.route_transport_ranges_[r].from_) +
+        transport_idx_t{to_idx(tt_.route_times_[r].transports_.from_) +
                         t_offset},
         day_idx_t{static_cast<day_idx_t::value_t>(static_cast<int>(rel_day) +
                                                   et_day_lo())}};
@@ -1206,24 +1237,6 @@ struct raptor_impl {
 
   __device__ __forceinline__ int as_int(day_idx_t const d) const {
     return static_cast<int>(d.v_);
-  }
-
-  template <typename T>
-  __device__ __forceinline__ auto get_begin_it(T const& t) {
-    if constexpr (kFwd) {
-      return t.begin();
-    } else {
-      return t.rbegin();
-    }
-  }
-
-  template <typename T>
-  __device__ __forceinline__ auto get_end_it(T const& t) {
-    if constexpr (kFwd) {
-      return t.end();
-    } else {
-      return t.rend();
-    }
   }
 
   std::uint32_t* any_marked_;

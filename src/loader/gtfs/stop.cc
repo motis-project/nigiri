@@ -1,4 +1,5 @@
 #include "nigiri/loader/gtfs/stop.h"
+#include "nigiri/loader/import_context.h"
 
 #include <algorithm>
 #include <string>
@@ -207,6 +208,7 @@ seated_transfers_map_t read_transfers(stop_map_t& stops,
 std::tuple<stops_map_t, seated_transfers_map_t, location_accessible_map_t>
 read_stops(source_idx_t const src,
            timetable& tt,
+           import_context& ctx,
            translator& i18n,
            tz_map& timezones,
            std::string_view stops_file_content,
@@ -329,7 +331,7 @@ read_stops(source_idx_t const src,
         s->transfer_time_.value_or(default_transfer_time),
         timezones};
     if (process_location(r, loc)) {
-      locations.emplace(id, s->location_ = register_location(tt, loc));
+      locations.emplace(id, s->location_ = register_location(tt, ctx, loc));
       accessible.insert({s->location_, s->wheelchair_boarding_});
     }
   }
@@ -353,27 +355,25 @@ read_stops(source_idx_t const src,
         tt.locations_.parents_[s->location_] = s->parent_->location_;
       }
       for (auto const& c : s->children_) {
-        tt.locations_.children_[s->location_].emplace_back(c->location_);
+        ctx.children_[s->location_].emplace_back(c->location_);
       }
 
       // GTFS footpaths
       for (auto const& fp : s->footpaths_) {
-        tt.locations_.preprocessing_footpaths_out_[s->location_].emplace_back(
+        ctx.preprocessing_footpaths_out_[s->location_].emplace_back(
             fp.to_->location_, fp.duration_);
-        tt.locations_.preprocessing_footpaths_in_[fp.to_->location_]
-            .emplace_back(s->location_, fp.duration_);
+        ctx.preprocessing_footpaths_in_[fp.to_->location_].emplace_back(
+            s->location_, fp.duration_);
       }
     }
 
     // Make GTFS footpaths symmetric (if not already).
     for (auto const& [id, s] : stops) {
       for (auto const& fp : s->footpaths_) {
-        add_if_not_exists(
-            tt.locations_.preprocessing_footpaths_out_[fp.to_->location_],
-            {s->location_, fp.duration_});
-        add_if_not_exists(
-            tt.locations_.preprocessing_footpaths_in_[s->location_],
-            {fp.to_->location_, fp.duration_});
+        add_if_not_exists(ctx.preprocessing_footpaths_out_[fp.to_->location_],
+                          {s->location_, fp.duration_});
+        add_if_not_exists(ctx.preprocessing_footpaths_in_[s->location_],
+                          {fp.to_->location_, fp.duration_});
       }
     }
 
@@ -391,19 +391,15 @@ read_stops(source_idx_t const src,
           continue;
         }
 
-        tt.locations_.equivalences_[s->location_].emplace_back(eq->location_);
-        add_if_not_exists(
-            tt.locations_.preprocessing_footpaths_out_[s->location_],
-            {eq->location_, duration});
-        add_if_not_exists(
-            tt.locations_.preprocessing_footpaths_in_[eq->location_],
-            {s->location_, duration});
-        add_if_not_exists(
-            tt.locations_.preprocessing_footpaths_out_[eq->location_],
-            {s->location_, duration});
-        add_if_not_exists(
-            tt.locations_.preprocessing_footpaths_in_[s->location_],
-            {eq->location_, duration});
+        ctx.equivalences_[s->location_].emplace_back(eq->location_);
+        add_if_not_exists(ctx.preprocessing_footpaths_out_[s->location_],
+                          {eq->location_, duration});
+        add_if_not_exists(ctx.preprocessing_footpaths_in_[eq->location_],
+                          {s->location_, duration});
+        add_if_not_exists(ctx.preprocessing_footpaths_out_[eq->location_],
+                          {s->location_, duration});
+        add_if_not_exists(ctx.preprocessing_footpaths_in_[s->location_],
+                          {eq->location_, duration});
       }
       progress_tracker->increment();
     }

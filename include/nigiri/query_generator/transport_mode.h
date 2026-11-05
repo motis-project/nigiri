@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "nigiri/routing/query.h"
 #include "nigiri/types.h"
 
 namespace nigiri::query_generation {
@@ -11,7 +12,7 @@ struct transport_mode {
   }  // [m]
 
   friend std::ostream& operator<<(std::ostream& out, transport_mode const& tm) {
-    out << "(id: " << tm.mode_id_ << ", speed: " << tm.speed_
+    out << "(mode: " << tm.mode_ << ", speed: " << tm.speed_
         << ", max_duration: " << tm.max_duration_ << ")";
     return out;
   }
@@ -19,17 +20,17 @@ struct transport_mode {
   friend bool operator==(transport_mode const& a,
                          transport_mode const& b) = default;
 
-  transport_mode_id_t mode_id_;
+  routing::transport_mode_t::mode_t mode_;
   std::uint16_t speed_;  // [m/minute]
   std::uint16_t max_duration_;  // [minutes]
 };
 
 constexpr auto const kWalk =
-    transport_mode{.mode_id_ = 1, .speed_ = 50U, .max_duration_ = 15U};
+    transport_mode{.mode_ = 1, .speed_ = 50U, .max_duration_ = 15U};
 constexpr auto const kBicycle =
-    transport_mode{.mode_id_ = 2, .speed_ = 200U, .max_duration_ = 15U};
+    transport_mode{.mode_ = 2, .speed_ = 200U, .max_duration_ = 15U};
 constexpr auto const kCar =
-    transport_mode{.mode_id_ = 3, .speed_ = 800U, .max_duration_ = 15U};
+    transport_mode{.mode_ = 3, .speed_ = 800U, .max_duration_ = 15U};
 
 constexpr std::optional<transport_mode> to_transport_mode(
     std::string_view const& str) {

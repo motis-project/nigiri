@@ -20,6 +20,14 @@
 
 namespace nigiri {
 
+enum class rt_data_state : std::uint8_t {
+  kNoRtData,
+  kInconsistent,
+  kObserved,
+  kPropagated,
+  kPredicted
+};
+
 // If set, the bitfield has to be looked up in the RT timetable.
 constexpr auto const kRtBitfieldFlag = std::uint32_t{0x8000'0000U};
 
@@ -64,22 +72,67 @@ struct rt_timetable {
     return clamp(d);
   }
 
-  void update_time(rt_transport_idx_t const rt_t,
-                   stop_idx_t const stop_idx,
-                   event_type const ev_type,
-                   unixtime_t const new_time) {
+  std::size_t event_idx([[maybe_unused]] rt_transport_idx_t const rt_t,
+                        stop_idx_t const stop_idx,
+                        event_type const ev_type) const {
     auto const ev_idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
     assert(ev_idx >= 0 && static_cast<stop_idx_t>(ev_idx) <
                               rt_transport_stop_times_[rt_t].size());
-    rt_transport_stop_times_[rt_t][static_cast<std::size_t>(ev_idx)] =
-        unix_to_delta(new_time);
+    return static_cast<std::size_t>(ev_idx);
   }
 
-  void update_lbs(timetable const& tt,
-                  rt_transport_idx_t,
-                  stop_idx_t,
-                  vector_map<location_idx_t, std::vector<footpath>>&,
-                  vector_map<location_idx_t, std::vector<footpath>>&);
+  void update_time(rt_transport_idx_t const rt_t,
+                   stop_idx_t const stop_idx,
+                   event_type const ev_type,
+                   unixtime_t const new_time,
+                   rt_data_state const state = rt_data_state::kPredicted) {
+    auto const ev_idx = event_idx(rt_t, stop_idx, ev_type);
+    auto const d = unix_to_delta(new_time);
+    rt_transport_stop_times_[rt_t][ev_idx] = d;
+    rt_transport_data_states_[rt_t][ev_idx] = state;
+    coverage_.extend(delta_to_unix(base_day_, d));
+  }
+
+  void set_data_state(rt_transport_idx_t const rt_t,
+                      stop_idx_t const stop_idx,
+                      event_type const ev_type,
+                      rt_data_state const state) {
+    rt_transport_data_states_[rt_t][event_idx(rt_t, stop_idx, ev_type)] = state;
+  }
+
+  rt_data_state data_state(rt_transport_idx_t const rt_t,
+                           stop_idx_t const stop_idx,
+                           event_type const ev_type) const {
+    return rt_transport_data_states_[rt_t][event_idx(rt_t, stop_idx, ev_type)];
+  }
+
+  bool affects(interval<unixtime_t> const iv,
+               profile_idx_t const prf_idx) const noexcept {
+    return (has_profile_td_footpaths(prf_idx) &&
+            (has_td_footpaths_out_[prf_idx].any() ||
+             has_td_footpaths_in_[prf_idx].any())) ||
+           iv.overlaps(coverage_);
+  }
+
+  interval<unixtime_t> rt_transport_interval(
+      rt_transport_idx_t const rt_t) const {
+    auto const times = rt_transport_stop_times_[rt_t];
+    if (times.empty()) {
+      return {};
+    }
+    return {delta_to_unix(base_day_, times.front()),
+            delta_to_unix(base_day_, times.back()) + unixtime_t::duration{1}};
+  }
+
+  // Interval covered by the event times of the static transport `t`.
+  interval<unixtime_t> static_transport_interval(timetable const&,
+                                                 transport) const;
+
+  interval<unixtime_t> static_transport_interval(transport const t) const {
+    assert(tt_ != nullptr);
+    return static_transport_interval(*tt_, t);
+  }
+
   void update_lbs(timetable const& tt);
 
   void cancel_run(rt::run const&);
@@ -262,6 +315,9 @@ struct rt_timetable {
   vecvec<rt_transport_idx_t, delta_t> rt_transport_stop_times_;
   vecvec<rt_transport_idx_t, stop::value_type> rt_transport_location_seq_;
 
+  // RT transport -> real-time data state for each event (dep, arr, dep, ...)
+  vecvec<rt_transport_idx_t, rt_data_state> rt_transport_data_states_;
+
   // RT transport -> real-time track (dep, arr, dep, arr, ...)
   // - empty if no overwrite exists at all
   // - track_idx_t::invalid for stops where no overwrite exists
@@ -308,6 +364,8 @@ struct rt_timetable {
     std::unique_ptr<void, void (*)(void*)> ptr_{nullptr, [](void*) {}};
   };
   gpu_rtt_slot gpu_rtt_;
+
+  interval<unixtime_t> coverage_;
 };
 
 }  // namespace nigiri

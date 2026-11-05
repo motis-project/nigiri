@@ -1,8 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/files.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/timetable.h"
 
 #include "../raptor_search.h"
@@ -116,7 +115,7 @@ TRANSFERS: 2
      FROM: (START, START) [2024-06-07 23:57]
        TO: (END, END) [2024-06-08 03:00]
 leg 0: (START, START) [2024-06-07 23:57] -> (A0, A0) [2024-06-08 00:00]
-  MUMO (id=23, duration=3)
+  MUMO (payload=23, duration=3)
 leg 1: (A0, A0) [2024-06-08 00:00] -> (A3, A3) [2024-06-08 00:15]
    0: A0      A0..............................................                               d: 08.06 00:00 [08.06 02:00]  [{name=A, day=2024-06-08, id=AWE, src=0}]
    1: A1      A1.............................................. a: 08.06 00:01 [08.06 02:01]  d: 08.06 00:02 [08.06 02:02]  [{name=A, day=2024-06-08, id=AWE, src=0}]
@@ -137,19 +136,13 @@ leg 5: (C2, C2) [2024-06-08 02:20] -> (C5, C5) [2024-06-08 02:50]
    4: C4      C4.............................................. a: 08.06 02:40 [08.06 04:40]  d: 08.06 02:42 [08.06 04:42]  [{name=C, day=2024-06-08, id=CWE, src=0}]
    5: C5      C5.............................................. a: 08.06 02:50 [08.06 04:50]
 leg 6: (C5, C5) [2024-06-08 02:50] -> (END, END) [2024-06-08 03:00]
-  MUMO (id=42, duration=10)
+  MUMO (payload=42, duration=10)
 
 )";
 
 TEST(routing, raptor_shortest_fp_forward) {
   constexpr auto const src = source_idx_t{0U};
-  auto const config = loader_config{};
-
-  timetable tt;
-  tt.date_range_ = shortest_fp_period();
-  register_special_stations(tt);
-  gtfs::load_timetable(config, src, shortest_fp_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(shortest_fp_files(), shortest_fp_period());
 
   auto const results = raptor_intermodal_search(
       tt, nullptr,
@@ -178,7 +171,7 @@ TRANSFERS: 2
      FROM: (END, END) [2024-06-07 23:57]
        TO: (START, START) [2024-06-08 03:00]
 leg 0: (END, END) [2024-06-07 23:57] -> (A0, A0) [2024-06-08 00:00]
-  MUMO (id=23, duration=3)
+  MUMO (payload=23, duration=3)
 leg 1: (A0, A0) [2024-06-08 00:00] -> (A3, A3) [2024-06-08 00:15]
    0: A0      A0..............................................                               d: 08.06 00:00 [08.06 02:00]  [{name=A, day=2024-06-08, id=AWE, src=0}]
    1: A1      A1.............................................. a: 08.06 00:01 [08.06 02:01]  d: 08.06 00:02 [08.06 02:02]  [{name=A, day=2024-06-08, id=AWE, src=0}]
@@ -199,19 +192,13 @@ leg 5: (C2, C2) [2024-06-08 02:20] -> (C5, C5) [2024-06-08 02:50]
    4: C4      C4.............................................. a: 08.06 02:40 [08.06 04:40]  d: 08.06 02:42 [08.06 04:42]  [{name=C, day=2024-06-08, id=CWE, src=0}]
    5: C5      C5.............................................. a: 08.06 02:50 [08.06 04:50]
 leg 6: (C5, C5) [2024-06-08 02:50] -> (START, START) [2024-06-08 03:00]
-  MUMO (id=42, duration=10)
+  MUMO (payload=42, duration=10)
 
 )";
 
 TEST(routing, raptor_shortest_fp_backward) {
   constexpr auto const src = source_idx_t{0U};
-  auto const config = loader_config{};
-
-  timetable tt;
-  tt.date_range_ = shortest_fp_period();
-  register_special_stations(tt);
-  gtfs::load_timetable(config, src, shortest_fp_files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(shortest_fp_files(), shortest_fp_period());
 
   auto const results = raptor_intermodal_search(
       tt, nullptr,

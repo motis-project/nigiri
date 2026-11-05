@@ -25,15 +25,34 @@ namespace nigiri::routing {
 // which transportation mode was used.
 using start_type_t = std::int32_t;
 
+struct transport_mode_t {
+  using mode_t = std::uint16_t;
+  using payload_t = std::uint32_t;
+
+  CISTA_PRINTABLE(transport_mode_t, "mode", "payload")
+  friend auto operator<=>(transport_mode_t, transport_mode_t) = default;
+
+  mode_t mode_{};
+  payload_t payload_{};
+};
+
 struct offset {
   offset(location_idx_t const l,
          duration_t const d,
-         transport_mode_id_t const t)
-      : target_{l}, duration_{d}, transport_mode_id_{t} {}
+         transport_mode_t::payload_t const p)
+      : target_{l}, duration_{d}, transport_mode_payload_{p} {}
+
+  offset(location_idx_t const l, duration_t const d, transport_mode_t const m)
+      : target_{l},
+        duration_{d},
+        transport_mode_{m.mode_},
+        transport_mode_payload_{m.payload_} {}
 
   location_idx_t target() const noexcept { return target_; }
   duration_t duration() const noexcept { return duration_; }
-  transport_mode_id_t type() const noexcept { return transport_mode_id_; }
+  transport_mode_t mode() const noexcept {
+    return {transport_mode_, transport_mode_payload_};
+  }
 
   friend bool operator<(offset const& a, offset const& b) {
     return a.duration_ < b.duration_;
@@ -43,18 +62,38 @@ struct offset {
 
   location_idx_t target_;
   duration_t duration_;
-  transport_mode_id_t transport_mode_id_;
+  transport_mode_t::mode_t transport_mode_{};
+  transport_mode_t::payload_t transport_mode_payload_{};
 };
 
+static_assert(sizeof(offset) == 12U);
+
 struct td_offset {
+  // Kept an aggregate so designated initializers still work; this is the
+  // counterpart of `offset`'s `transport_mode_t` constructor.
+  static constexpr td_offset make(unixtime_t const valid_from,
+                                  duration_t const d,
+                                  transport_mode_t const m) {
+    return {.valid_from_ = valid_from,
+            .duration_ = d,
+            .transport_mode_ = m.mode_,
+            .transport_mode_payload_ = m.payload_};
+  }
+
   friend bool operator==(td_offset const&, td_offset const&) = default;
 
   duration_t duration() const noexcept { return duration_; }
+  transport_mode_t mode() const noexcept {
+    return {transport_mode_, transport_mode_payload_};
+  }
 
   unixtime_t valid_from_;
   duration_t duration_;
-  transport_mode_id_t transport_mode_id_;
+  transport_mode_t::mode_t transport_mode_{};
+  transport_mode_t::payload_t transport_mode_payload_{};
 };
+
+static_assert(sizeof(td_offset) == 12U);
 
 struct via_stop {
   friend bool operator==(via_stop const&, via_stop const&) = default;
@@ -101,3 +140,6 @@ struct query {
 };
 
 }  // namespace nigiri::routing
+
+template <>
+struct fmt::formatter<nigiri::routing::transport_mode_t> : ostream_formatter {};

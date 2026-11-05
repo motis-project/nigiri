@@ -142,6 +142,7 @@ clasz to_clasz(std::uint16_t const route_type) {
 
 route_map_t read_routes(source_idx_t const src,
                         timetable& tt,
+                        import_context& ctx,
                         translator& i18n,
                         tz_map& timezones,
                         agency_map_t& agencies,
@@ -223,7 +224,7 @@ route_map_t read_routes(source_idx_t const src,
           if (process_route(user_script, x)) {
             map.emplace(r.route_id_->to_str(),
                         std::make_unique<route>(route{
-                            .route_id_idx_ = register_route(tt, x),
+                            .route_id_idx_ = register_route(tt, ctx, x),
                             .network_ = std::string{r.network_id_->view()},
                             .ticketing_deep_link_id_ =
                                 std::string{r.ticketing_deep_link_id_->view()},

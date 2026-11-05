@@ -2,7 +2,7 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
@@ -77,11 +77,8 @@ T2_13,13:25:00,13:25:00,C,2,0,0
 // count towards 2 x min_connection_count, terminate the sweep early, and
 // real later departures are never found.
 TEST(routing, pong_td_egress_respects_worst_time_at_dest) {
-  auto tt = timetable{};
-  tt.date_range_ = {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   auto const A = tt.find(location_id{"A", source_idx_t{0}}).value();
   auto const B = tt.find(location_id{"B", source_idx_t{0}}).value();
@@ -98,10 +95,10 @@ TEST(routing, pong_td_egress_respects_worst_time_at_dest) {
       .td_start_ = {{B,
                      {{.valid_from_ = day + 0h,
                        .duration_ = 10min,
-                       .transport_mode_id_ = 5},
+                       .transport_mode_payload_ = 5},
                       {.valid_from_ = day + 5h,
                        .duration_ = footpath::kMaxDuration,
-                       .transport_mode_id_ = 5}}}},
+                       .transport_mode_payload_ = 5}}}},
       .min_connection_count_ = 3U,
       .extend_interval_later_ = true};
 

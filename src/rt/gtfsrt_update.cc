@@ -118,13 +118,17 @@ delay_propagation update_delay(timetable const& tt,
                                stop_idx_t const stop_idx,
                                event_type const ev_type,
                                duration_t const delay,
-                               std::optional<unixtime_t> const min) {
+                               std::optional<unixtime_t> const min,
+                               rt_data_state const state) {
   auto const static_time =
       r.is_scheduled() ? tt.event_time(r.t_, stop_idx, ev_type) : min.value();
-  auto const lower_bounded_new_time = min.has_value()
-                                          ? std::max(*min, static_time + delay)
-                                          : static_time + delay;
-  rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time);
+  auto const new_time = static_time + delay;
+  auto const lower_bounded_new_time =
+      min.has_value() ? std::max(*min, new_time) : new_time;
+  rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time,
+                  lower_bounded_new_time != new_time
+                      ? rt_data_state::kInconsistent
+                      : state);
   rtt.dispatch_delay(r, stop_idx, ev_type,
                      lower_bounded_new_time - static_time);
   return {rtt.unix_event_time(r.rt_, stop_idx, ev_type), delay};
@@ -141,7 +145,7 @@ delay_propagation update_event(timetable const& tt,
     return update_delay(tt, rtt, r, stop_idx, ev_type,
                         std::chrono::duration_cast<unixtime_t::duration>(
                             std::chrono::seconds{ev.delay()}),
-                        pred_time);
+                        pred_time, rt_data_state::kPredicted);
   } else /* if (ev.has_time()) */ {
     auto const new_time =
         unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
@@ -150,11 +154,28 @@ delay_propagation update_event(timetable const& tt,
         r.is_scheduled() ? tt.event_time(r.t_, stop_idx, ev_type) : new_time;
     auto const lower_bounded_new_time =
         pred_time.has_value() ? std::max(*pred_time, new_time) : new_time;
-    rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time);
+    rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time,
+                    lower_bounded_new_time != new_time
+                        ? rt_data_state::kInconsistent
+                        : rt_data_state::kPredicted);
     rtt.dispatch_delay(r, stop_idx, ev_type,
                        lower_bounded_new_time - static_time);
     return {lower_bounded_new_time, lower_bounded_new_time - static_time};
   }
+}
+
+void reset_to_schedule(timetable const& tt,
+                       rt_timetable& rtt,
+                       run const& r,
+                       stop_idx_t const stop_idx,
+                       event_type const ev_type) {
+  if (!r.is_scheduled()) {
+    return;
+  }
+  rtt.update_time(r.rt_, stop_idx, ev_type,
+                  tt.event_time(r.t_, stop_idx, ev_type),
+                  rt_data_state::kNoRtData);
+  rtt.dispatch_delay(r, stop_idx, ev_type, 0_minutes);
 }
 
 unixtime_t fallback_pred(rt_timetable const& rtt,
@@ -336,29 +357,57 @@ bool update_run(source_idx_t const src,
                 std::span<stop_idx_t>{},
                 static_cast<stop_idx_t>(location_seq.size())};
 
-  auto pred = r.is_scheduled() && r.stop_range_.from_ > 0U
-                  ? std::make_optional<delay_propagation>(delay_propagation{
-                        .pred_time_ = rtt.unix_event_time(
-                            r.rt_, r.stop_range_.from_, event_type::kArr),
-                        .pred_delay_ = 0_minutes})
-                  : std::nullopt;
+  auto const& stus = tripUpdate.stop_time_update();
+
+  // Detect duplicate stop sequence:
+  // SKIPPED + SCHEDULED
+  auto const is_duplicate_seq_with_skip = [&](auto const it) {
+    auto const next = std::next(it);
+    if (next == end(stus)) {
+      return false;
+    }
+    return it->schedule_relationship() ==
+               gtfsrt::TripUpdate_StopTimeUpdate::SKIPPED &&
+           next->schedule_relationship() ==
+               gtfsrt::TripUpdate_StopTimeUpdate::SCHEDULED &&
+           it->has_stop_sequence() && next->has_stop_sequence() &&
+           next->stop_sequence() == it->stop_sequence();
+  };
+
+  auto pred = std::optional<delay_propagation>{};
   auto stop_idx =
       r.is_scheduled() ? r.stop_range_.from_ : static_cast<unsigned short>(0U);
+  auto const last_stop_idx_of_trip =
+      r.is_scheduled() ? static_cast<stop_idx_t>(r.stop_range_.to_ - 1U)
+                       : static_cast<stop_idx_t>(location_seq.size() - 1U);
+  auto no_data = false;
   auto seq_it = begin(seq_numbers);
-  auto const& stus = tripUpdate.stop_time_update();
   auto upd_it = begin(stus);
   for (; seq_it != end(seq_numbers); ++stop_idx, ++seq_it) {
     auto const loc_idx = stop{location_seq[stop_idx]}.location_idx();
     auto matches = false;
     while (upd_it != end(stus)) {
+      if (is_duplicate_seq_with_skip(upd_it)) {
+        ++upd_it;
+        continue;
+      }
       auto matches_any_loc = false;
+      auto const remaining_trip_stops = location_seq.subspan(
+          stop_idx,
+          static_cast<std::size_t>(last_stop_idx_of_trip + 1 - stop_idx));
+      auto const has_seq = r.is_scheduled() && upd_it->has_stop_sequence();
+      auto const use_stop_id =
+          !has_seq ||
+          utl::count_if(remaining_trip_stops, [&](stop::value_type const s) {
+            return tt.locations_.ids_[stop{s}.location_idx()].view() ==
+                   upd_it->stop_id();
+          }) < 2;
       auto next_seq_it = seq_it;
       auto next_stop_idx = stop_idx;
       for (; next_seq_it != end(seq_numbers); ++next_stop_idx, ++next_seq_it) {
         auto const next_matches =
-            (r.is_scheduled() && upd_it->has_stop_sequence() &&
-             upd_it->stop_sequence() == *next_seq_it) ||
-            (upd_it->has_stop_id() &&
+            (has_seq && upd_it->stop_sequence() == *next_seq_it) ||
+            (use_stop_id && upd_it->has_stop_id() &&
              upd_it->stop_id() ==
                  tt.locations_
                      .ids_[stop{location_seq[next_stop_idx]}.location_idx()]
@@ -440,21 +489,36 @@ bool update_run(source_idx_t const src,
       }
     }
 
+    // NO_DATA: no real-time information for this stop. It is propagated to
+    // all subsequent stops until a stop with real-time information is found.
+    auto const has_data =
+        matches &&
+        upd_it->schedule_relationship() !=
+            gtfsrt::TripUpdate_StopTimeUpdate_ScheduleRelationship_NO_DATA;
+    if (matches && !has_data) {
+      no_data = true;
+      pred = std::nullopt;
+    }
+
     // Update arrival, propagate delay.
     if (stop_idx != r.stop_range_.from_) {
-      if (matches && upd_it->has_arrival() &&
+      if (has_data && upd_it->has_arrival() &&
           (upd_it->arrival().has_delay() || upd_it->arrival().has_time())) {
         pred = update_event(
             tt, rtt, r, stop_idx, event_type::kArr, upd_it->arrival(),
             fallback_pred(rtt, r, pred, stop_idx, event_type::kDep));
+        no_data = false;
       } else if (pred.has_value()) {
         pred = update_delay(tt, rtt, r, stop_idx, event_type::kArr,
-                            pred->pred_delay_, pred->pred_time_);
+                            pred->pred_delay_, pred->pred_time_,
+                            rt_data_state::kPropagated);
+      } else if (no_data) {
+        reset_to_schedule(tt, rtt, r, stop_idx, event_type::kArr);
       }
     }
 
     // Update departure, propagate delay.
-    if (stop_idx == 0U && matches && upd_it->has_arrival() &&
+    if (stop_idx == 0U && has_data && upd_it->has_arrival() &&
         !upd_it->has_departure() &&
         (upd_it->arrival().has_delay() || upd_it->arrival().has_time())) {
       // First arrival has update, but first departure doesn't. Update departure
@@ -463,15 +527,20 @@ bool update_run(source_idx_t const src,
       // propagation.
       pred = update_event(tt, rtt, r, stop_idx, event_type::kDep,
                           upd_it->arrival(), unixtime_t{0_minutes});
-    } else if (stop_idx != location_seq.size() - 1U) {
-      if (matches && upd_it->has_departure() &&
+      no_data = false;
+    } else if (stop_idx != last_stop_idx_of_trip) {
+      if (has_data && upd_it->has_departure() &&
           (upd_it->departure().has_time() || upd_it->departure().has_delay())) {
         pred = update_event(
             tt, rtt, r, stop_idx, event_type::kDep, upd_it->departure(),
             fallback_pred(rtt, r, pred, stop_idx, event_type::kArr));
+        no_data = false;
       } else if (pred.has_value()) {
         pred = update_delay(tt, rtt, r, stop_idx, event_type::kDep,
-                            pred->pred_delay_, pred->pred_time_);
+                            pred->pred_delay_, pred->pred_time_,
+                            rt_data_state::kPropagated);
+      } else if (no_data) {
+        reset_to_schedule(tt, rtt, r, stop_idx, event_type::kDep);
       }
     }
 
@@ -493,6 +562,7 @@ bool update_run(source_idx_t const src,
                                    ? tt.event_time(r.t_, stop, ev_type)
                                    : curr_unix_time;
       rtt.dispatch_delay(r, stop, ev_type, curr_unix_time - static_time);
+      rtt.set_data_state(r.rt_, stop, ev_type, rt_data_state::kInconsistent);
     }
     pred_time = curr;
     ++i;
@@ -579,13 +649,16 @@ void handle_vehicle_position(timetable const& tt,
     auto const stops_after = interval{stopped_at_idx, fr.stop_range_.to_};
     if (stopped_at_idx != *fr.stop_range_.begin()) {
       update_delay(tt, rtt, r, stopped_at_idx, event_type::kArr, delay_cast,
-                   std::nullopt);
+                   std::nullopt, rt_data_state::kObserved);
     }
     for (auto const [first, second] : utl::pairwise(stops_after)) {
-      update_delay(tt, rtt, r, first, event_type::kDep, delay_cast,
-                   std::nullopt);
+      // The departure at the first stop is derived from the position directly.
+      update_delay(
+          tt, rtt, r, first, event_type::kDep, delay_cast, std::nullopt,
+          first == *fr.stop_range_.begin() ? rt_data_state::kPredicted
+                                           : rt_data_state::kPropagated);
       update_delay(tt, rtt, r, second, event_type::kArr, delay_cast,
-                   std::nullopt);
+                   std::nullopt, rt_data_state::kPropagated);
     }
 
     // update delay for previous stops if necessary
@@ -599,13 +672,13 @@ void handle_vehicle_position(timetable const& tt,
       if (rtt.unix_event_time(r.rt_, curr_stop, event_type::kArr) <
           rtt.unix_event_time(r.rt_, prev_stop, event_type::kDep)) {
         update_delay(tt, rtt, r, prev_stop, event_type::kDep, delay_cast,
-                     std::nullopt);
+                     std::nullopt, rt_data_state::kInconsistent);
 
         if (prev != *stops_before.begin() &&
             rtt.unix_event_time(r.rt_, prev_stop, event_type::kDep) <
                 rtt.unix_event_time(r.rt_, prev_stop, event_type::kArr)) {
           update_delay(tt, rtt, r, prev_stop, event_type::kArr, delay_cast,
-                       std::nullopt);
+                       std::nullopt, rt_data_state::kInconsistent);
           continue;
         }
       }

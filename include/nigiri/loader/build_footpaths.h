@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/merge_duplicates.h"
 #include "nigiri/timetable.h"
 
@@ -15,6 +16,6 @@ struct finalize_options {
   vector_map<source_idx_t, std::string> src_tags_{};
 };
 
-void build_footpaths(timetable& tt, finalize_options);
+void build_footpaths(timetable& tt, import_context&, finalize_options const&);
 
 }  // namespace nigiri::loader

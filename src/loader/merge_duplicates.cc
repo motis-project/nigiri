@@ -18,6 +18,7 @@
 #include "geo/latlng.h"
 #include "geo/point_rtree.h"
 
+#include "nigiri/loader/import_context.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
@@ -50,11 +51,12 @@ bool is_duplicate(timetable const& tt,
 }
 
 void repoint_trips(timetable& tt,
+                   import_context& ctx,
                    transport_idx_t const from,
                    transport_idx_t const to) {
   for (auto const merged_trips_idx : tt.transport_to_trip_section_[from]) {
     for (auto const trp : tt.merged_trips_[merged_trips_idx]) {
-      for (auto& [t, range] : tt.trip_transport_ranges_[trp]) {
+      for (auto& [t, range] : ctx.trip_transport_ranges_[trp]) {
         if (t == from) {
           t = to;
         }
@@ -64,6 +66,7 @@ void repoint_trips(timetable& tt,
 }
 
 transport_idx_t merge(timetable& tt,
+                      import_context& ctx,
                       transport_idx_t const a,
                       transport_idx_t const b) {
   auto const& bf_a = tt.bitfields_[tt.transport_traffic_days_[a]];
@@ -77,14 +80,14 @@ transport_idx_t merge(timetable& tt,
   // CASE (1): A is subset of B => A disappears
   if (rest_a.none()) {
     tt.transport_traffic_days_[a] = kEmptyBitfieldIdx;
-    repoint_trips(tt, a, b);
+    repoint_trips(tt, ctx, a, b);
     return a;
   }
 
   // CASE (2): B is subset of A => B disappears
   if (rest_b.none()) {
     tt.transport_traffic_days_[b] = kEmptyBitfieldIdx;
-    repoint_trips(tt, b, a);
+    repoint_trips(tt, ctx, b, a);
     return b;
   }
 
@@ -93,13 +96,13 @@ transport_idx_t merge(timetable& tt,
   // => 3.2 Point A's trip transport ranges to B
 
   // Remove intersection from A.
-  tt.transport_traffic_days_[a] = tt.register_bitfield(rest_a);
+  tt.transport_traffic_days_[a] = register_bitfield(tt, ctx, rest_a);
 
   // Collect A's trips.
   auto a_trips = std::vector<std::pair<trip_idx_t, interval<stop_idx_t>>>{};
   for (auto const merged_trips_idx : tt.transport_to_trip_section_[a]) {
     for (auto const a_trp : tt.merged_trips_[merged_trips_idx]) {
-      for (auto const& [t, a_stop_range] : tt.trip_transport_ranges_[a_trp]) {
+      for (auto const& [t, a_stop_range] : ctx.trip_transport_ranges_[a_trp]) {
         if (t == a) {
           a_trips.emplace_back(a_trp, a_stop_range);
         }
@@ -110,7 +113,7 @@ transport_idx_t merge(timetable& tt,
   // Point A's trips to B.
   auto const has_b = [&](transport_range_t const& r) { return r.first == b; };
   for (auto const& [a_trp, a_stop_range] : a_trips) {
-    auto ranges = tt.trip_transport_ranges_[a_trp];
+    auto ranges = ctx.trip_transport_ranges_[a_trp];
     if (utl::none_of(ranges, has_b)) {
       ranges.push_back(transport_range_t{b, a_stop_range});
     }
@@ -135,10 +138,12 @@ void count_overlap(timetable const& tt,
 }
 
 void merge_route_pair(timetable& tt,
+                      import_context& ctx,
                       route_idx_t const a_route,
                       route_idx_t const b_route,
                       stop_idx_t const n_stops,
                       duration_t const threshold,
+                      vector_map<transport_idx_t, bitfield_idx_t> const& before,
                       merge_stats& stats) {
   auto const budget = static_cast<int>(2U * (n_stops - 1U)) * threshold.count();
   auto const a_range = tt.route_transport_ranges_[a_route];
@@ -163,19 +168,26 @@ void merge_route_pair(timetable& tt,
       }
 
       auto const b_t = transport_idx_t{to_idx(b_range.from_) + bi};
-      auto const has_common_traffic_days =
-          (tt.bitfields_[tt.transport_traffic_days_[a_t]] &
-           tt.bitfields_[tt.transport_traffic_days_[b_t]])
-              .any();
-      if (!has_common_traffic_days) {
+
+      // Whether the two are duplicates of each other is a property of the
+      // input: ask the traffic days as they were before any merging. Merging
+      // empties the absorbed transport's days, so the live state would hide
+      // every further duplicate of it - and report it as unique instead.
+      if (!(tt.bitfields_[before[a_t]] & tt.bitfields_[before[b_t]]).any() ||
+          !is_duplicate(tt, a_route, b_route, a_t, b_t, n_stops, budget)) {
         continue;
       }
 
-      if (!is_duplicate(tt, a_route, b_route, a_t, b_t, n_stops, budget)) {
+      count_overlap(tt, a_t, b_t, stats);
+
+      // Merging itself has to respect what is left.
+      if (!(tt.bitfields_[tt.transport_traffic_days_[a_t]] &
+            tt.bitfields_[tt.transport_traffic_days_[b_t]])
+               .any()) {
         continue;
       }
 
-      auto const absorbed = merge(tt, a_t, b_t);
+      auto const absorbed = merge(tt, ctx, a_t, b_t);
 
       ++stats.n_merges_;
       if (absorbed != transport_idx_t::invalid()) {
@@ -184,19 +196,21 @@ void merge_route_pair(timetable& tt,
         ++stats.provider_n_absorbed_transports_[p];
         ++stats.src_n_absorbed_transports_[tt.providers_[p].src_];
       }
-
-      count_overlap(tt, a_t, b_t, stats);
     }
   }
 }
 
 void merge_duplicates(timetable& tt,
+                      import_context& ctx,
                       merge_threshold_t const& clasz_threshold,
                       bool const intra_src,
                       bool const inter_src,
                       std::filesystem::path const& stats_dir,
                       vector_map<source_idx_t, std::string> const& src_tags) {
   auto stats = merge_stats{tt};
+
+  // Duplicate detection reports on the input, not on the half-merged state.
+  auto const traffic_days_before = tt.transport_traffic_days_;
 
   // Key (root location, stop sequence length) => routes
   struct route_start {
@@ -389,7 +403,8 @@ void merge_duplicates(timetable& tt,
         auto const threshold = std::min(
             clasz_threshold[static_cast<unsigned>(tt.route_clasz_[a_route])],
             clasz_threshold[static_cast<unsigned>(tt.route_clasz_[b_route])]);
-        merge_route_pair(tt, a_route, b_route, a.n_stops_, threshold, stats);
+        merge_route_pair(tt, ctx, a_route, b_route, a.n_stops_, threshold,
+                         traffic_days_before, stats);
       }
     }
   };

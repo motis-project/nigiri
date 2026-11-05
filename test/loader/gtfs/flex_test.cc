@@ -3,8 +3,6 @@
 #include "utl/zip.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
 #include "nigiri/loader/load.h"
 #include "nigiri/flex.h"
 #include "nigiri/rt/create_rt_timetable.h"
@@ -72,6 +70,7 @@ route_id,service_id,trip_id,trip_headsign,trip_short_name,direction_id,block_id
 "odv_j25_1","14-","odv_j25_1_1_29_29_14-_1","Publicar Appenzell","Innerhalb Publicar Appenzell","",""
 "odv_j25_1","56-","odv_j25_1_1_29_29_56-_3","Publicar Appenzell","Innerhalb Publicar Appenzell","",""
 "odv_j25_1","77+","odv_j25_1_1_29_29_77+_4","Publicar Appenzell","Innerhalb Publicar Appenzell","",""
+"odv_j25_1","14-","odv_j25_1_fixed","Publicar Appenzell","Fixed departure 09:00","",""
 "odv_j25_13","14-","odv_j25_13_1_48_48_14-_54","mybuxi Belp 2025","myBuxi Belp","",""
 "odv_j25_13","55-","odv_j25_13_1_48_48_55-_55","mybuxi Belp 2025","myBuxi Belp","",""
 "odv_j25_13","66-","odv_j25_13_1_48_48_66-_56","mybuxi Belp 2025","myBuxi Belp","",""
@@ -90,6 +89,8 @@ trip_id,arrival_time,departure_time,stop_id,location_group_id, location_id,stop_
 "odv_j25_1_1_29_29_56-_3","","","","","odv_29","1","06:00:00","23:30:00","booking_rule_j25_1","booking_rule_j25_1","","2","2"
 "odv_j25_1_1_29_29_77+_4","","","","","odv_29","2","07:00:00","19:00:00","booking_rule_j25_1","booking_rule_j25_1","","2","2"
 "odv_j25_1_1_29_29_77+_4","","","","","odv_29","1","07:00:00","19:00:00","booking_rule_j25_1","booking_rule_j25_1","","2","2"
+"odv_j25_1_fixed","","","","","odv_29","1","09:00:00","09:00:00","booking_rule_j25_1","booking_rule_j25_1","","2","2"
+"odv_j25_1_fixed","","","","","odv_29","2","09:00:00","09:00:00","booking_rule_j25_1","booking_rule_j25_1","","2","2"
 "odv_j25_13_1_48_48_14-_54","","","","odv_location_group_48","","1","06:00:00","24:00:00","booking_rule_j25_13","booking_rule_j25_13","","2","2"
 "odv_j25_13_1_48_48_14-_54","","","","odv_location_group_48","","2","06:00:00","24:00:00","booking_rule_j25_13","booking_rule_j25_13","","2","2"
 "odv_j25_13_1_48_48_55-_55","","","","odv_location_group_48","","1","06:00:00","24:40:00","booking_rule_j25_13","booking_rule_j25_13","","2","2"
@@ -119,9 +120,7 @@ TEST(flex, simple) {
       loader::load({{.tag_ = "test",
                      .path_ = kTimetable,
                      .loader_config_ = {.default_tz_ = "Europe/Berlin"}}},
-                   {},
-                   {date::sys_days{2025_y / January / 1},
-                    date::sys_days{2025_y / December / 1}});
+                   {}, {2025_y / January / 1, 2025_y / December / 1});
 
   auto const outside = geo::latlng{47.357516806408995, 9.446811993220308};
   auto const inside = geo::latlng{47.35780140178716, 9.440695867171229};
@@ -144,9 +143,8 @@ TEST(flex, simple) {
 
   auto ss = std::stringstream{};
   for (auto const& t : tt.flex_area_transports_[kArea]) {
-    auto const trip_id = tt.trip_ids_[tt.flex_transport_trip_[t]].front();
-    ss << "TRANSPORT " << t << " [" << tt.trip_id_strings_[trip_id].view()
-       << "]\n";
+    ss << "TRANSPORT " << t << " ["
+       << tt.trip_id_strings_[tt.flex_transport_trip_[t]].view() << "]\n";
     for (auto const [stop, window] :
          utl::zip(tt.flex_stop_seq_[tt.flex_transport_stop_seq_[t]],
                   tt.flex_transport_stop_time_windows_[t])) {
@@ -178,11 +176,18 @@ TRANSPORT 4 [odv_j25_1_1_29_29_77+_4]
 TRANSPORT 5 [odv_j25_1_1_29_29_77+_4]
   AREA Publicar Appenzell: [05:00.0, 17:00.0[
   AREA Publicar Appenzell: [05:00.0, 17:00.0[
+TRANSPORT 6 [odv_j25_1_fixed]
+  AREA Publicar Appenzell: [08:00.0, 08:01.0[
+  AREA Publicar Appenzell: [08:00.0, 08:01.0[
+TRANSPORT 7 [odv_j25_1_fixed]
+  AREA Publicar Appenzell: [07:00.0, 07:01.0[
+  AREA Publicar Appenzell: [07:00.0, 07:01.0[
 )",
             ss.str());
 
   // 2 x 185 (14-) + 94 (56-) + 2 x 55 (77+) + 48 (55-) + 48 (66-)
+  // + 185 (14-, the fixed departure)
   EXPECT_EQ(
-      R"([{"idx":0,"firstDay":"2025-01-01","lastDay":"2025-11-30","noLocations":3,"noTrips":7,"transportsXDays":670}])",
+      R"([{"idx":0,"firstDay":"2025-01-01","lastDay":"2025-11-30","noLocations":3,"noTrips":8,"transportsXDays":855}])",
       to_str(get_metrics(tt), tt));
 }
