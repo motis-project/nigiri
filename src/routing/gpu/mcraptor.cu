@@ -3,6 +3,7 @@
 #include <cstring>
 #include <algorithm>
 #include <optional>
+#include <type_traits>
 #include <unordered_map>
 
 // hide date.h's NOEXCEPT from CCCL's token pasting, see device_times.h
@@ -114,8 +115,6 @@ struct gpu_mcraptor_state::impl {
     route_list_.resize(tt_.n_routes_);
     route_list_count_.resize(1U);
     route_entry_count_.resize(tt_.n_routes_);
-    route_single_entry_.resize(tt_.n_routes_);
-    route_single_flat_.resize(tt_.n_routes_);
     auto const n_route_stops = tt_.route_of_stop_.size();
     // et tasks are bounded by the flat route-stops; the entry pool is reserved
     // per task at collect time. The clamp keeps tiny timetables above the
@@ -285,8 +284,6 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint8_t> et_task_cnt_;
   thrust::device_vector<std::uint32_t> et_entry_count_;
   thrust::device_vector<std::uint32_t> route_entry_count_;
-  thrust::device_vector<std::uint64_t> route_single_entry_;
-  thrust::device_vector<std::uint32_t> route_single_flat_;
   thrust::device_vector<std::uint32_t> any_marked_;
   thrust::device_vector<std::uint32_t> done_;
   thrust::device_vector<std::uint32_t> overflow_;
@@ -313,6 +310,8 @@ struct gpu_mcraptor_state::impl {
   device_buffer<gpu_journey> rec_out_;
   pinned_host_buffer<gpu_journey> rec_host_out_;
   pinned_host_buffer<std::uint32_t> overflow_pin_;
+  device_buffer<std::uint32_t> rec_count_;
+  pinned_host_buffer<std::uint32_t> rec_count_pin_;
 
   cudaStream_t stream_;
 };
@@ -328,16 +327,6 @@ template <direction SearchDir, mc_crit Crit>
 __global__ void mc_init_arrivals_kernel(mcraptor_impl<SearchDir, Crit> r,
                                         delta_t const d_start) {
   r.init_arrivals(d_start);
-}
-
-template <direction SearchDir, mc_crit Crit>
-__global__ void mc_begin_round_kernel(mcraptor_impl<SearchDir, Crit> r) {
-  if (*r.done_) {
-    return;
-  }
-  if (get_global_thread_id() == 0U) {
-    *r.any_marked_ = 0U;
-  }
 }
 
 template <direction SearchDir, mc_crit Crit>
@@ -413,26 +402,25 @@ template <direction SearchDir,
           mc_crit Crit,
           bool WithClaszFilter,
           bool IsWheelchair>
-__global__ void __launch_bounds__(kMcScanThreads)
-    mc_scan_routes_kernel(mcraptor_impl<SearchDir, Crit> r, unsigned const k) {
-  extern __shared__ mc_seg seg_smem[];  // kMcMaxSegs per warp
+__global__ void mc_scan_routes_kernel(mcraptor_impl<SearchDir, Crit> r,
+                                      unsigned const k) {
   if (*r.done_) {
     return;
   }
-  r.template scan_routes<WithClaszFilter, IsWheelchair>(k, seg_smem);
+  r.template scan_routes<WithClaszFilter, IsWheelchair>(k);
 }
 
+// single thread: no location improved -> converged; else reset the flag for
+// the next round's route marking
 template <direction SearchDir, mc_crit Crit>
 __global__ void mc_begin_footpath_kernel(mcraptor_impl<SearchDir, Crit> r) {
   if (*r.done_) {
     return;
   }
-  if (*r.any_marked_ == 0U) {  // no location improved -> search converged
-    if (get_global_thread_id() == 0U) {
-      *r.done_ = 1U;
-    }
-    return;
+  if (*r.any_marked_ == 0U) {
+    *r.done_ = 1U;
   }
+  *r.any_marked_ = 0U;
 }
 
 template <direction SearchDir, mc_crit Crit>
@@ -454,20 +442,20 @@ template <direction SearchDir, mc_crit Crit>
 __global__ void mc_reconstruct_kernel(location_idx_t const* const dest_list,
                                       std::uint32_t const n_dest,
                                       mcraptor_impl<SearchDir, Crit> r,
-                                      gpu_journey* const out) {
+                                      gpu_journey* const out,
+                                      std::uint32_t* const out_count) {
   auto const tid = blockIdx.x * blockDim.x + threadIdx.x;
   // a dest bag can use every slot the u8 hwm allows
   auto const per_dest = kMcMaxBagSlots;
   if (tid >= n_dest * per_dest) {
     return;
   }
-  out[tid].state_ = reconstruction_result::kNotReconstructed;
   auto const dest = dest_list[tid / per_dest];
   auto const lab = r.bag_label(to_idx(dest), tid % per_dest);
-  if (lab == kMcEmptySlot) {
-    return;
+  if (lab == kMcEmptySlot || mc_round(lab) == 0U) {
+    return;  // empty, or a round-0 seed at the destination (no legs)
   }
-  r.reconstruct_label(dest, lab, &out[tid]);
+  r.reconstruct_label(dest, lab, &out[atomicAdd(out_count, 1U)]);
 }
 
 // Keyed by kernel address: kernels sharing a signature need their own block
@@ -634,11 +622,7 @@ mcraptor_impl<SearchDir, Crit> make_impl(
       .et_pool_cap_ = s.et_pool_cap_,
       .et_tasks_cap_ = s.et_tasks_cap_,
       .route_entry_count_ =
-          thrust::raw_pointer_cast(s.route_entry_count_.data()),
-      .route_single_entry_ =
-          thrust::raw_pointer_cast(s.route_single_entry_.data()),
-      .route_single_flat_ =
-          thrust::raw_pointer_cast(s.route_single_flat_.data())};
+          thrust::raw_pointer_cast(s.route_entry_count_.data())};
 }
 
 template <direction SearchDir, mc_crit Crit>
@@ -649,16 +633,19 @@ void gpu_mcraptor<SearchDir, Crit>::next_start_time() {
                                             allowed_claszes_, 0U, base_,
                                             worst_at_dest_, 0, {});
   mc_launch(mc_clear_bags_kernel<SearchDir, Crit>, s.stream_, r);
-  cudaMemsetAsync(thrust::raw_pointer_cast(s.bag_pool_count_.data()), 0,
-                  sizeof(std::uint32_t), s.stream_);
-  thrust::fill(thrust::cuda::par.on(s.stream_), s.station_mark_.begin(),
-               s.station_mark_.end(), 0U);
-  thrust::fill(thrust::cuda::par.on(s.stream_), s.prev_station_mark_.begin(),
-               s.prev_station_mark_.end(), 0U);
-  thrust::fill(thrust::cuda::par.on(s.stream_), s.route_mark_.begin(),
-               s.route_mark_.end(), 0U);
-  thrust::fill(thrust::cuda::par.on(s.stream_), s.rt_transport_mark_.begin(),
-               s.rt_transport_mark_.end(), 0U);
+  // memsets, not thrust::fill: those synchronize the stream
+  auto const zero = [&](auto& v) {
+    if (!v.empty()) {  // no rt transports: the rt marks are empty
+      using value_t = typename std::decay_t<decltype(v)>::value_type;
+      CUDA_CHECK(cudaMemsetAsync(thrust::raw_pointer_cast(v.data()), 0,
+                                 v.size() * sizeof(value_t), s.stream_));
+    }
+  };
+  zero(s.bag_pool_count_);
+  zero(s.station_mark_);
+  zero(s.prev_station_mark_);
+  zero(s.route_mark_);
+  zero(s.rt_transport_mark_);
 }
 
 template <direction SearchDir, mc_crit Crit>
@@ -711,11 +698,19 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   auto const end_k =
       static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
 
+  // calls f(clasz filter?, wheelchair?) with both as std::bool_constant
+  auto const with_clasz = allowed_claszes_ != all_clasz_allowed();
+  auto const with_flags = [&](auto&& f) {
+    using t = std::true_type;
+    using n = std::false_type;
+    with_clasz ? (is_wheelchair_ ? f(t{}, t{}) : f(t{}, n{}))
+               : (is_wheelchair_ ? f(n{}, t{}) : f(n{}, n{}));
+  };
+
   // === ROUTING KERNELS ===
   mc_launch(mc_init_arrivals_kernel<SearchDir, Crit>, s.stream_, r,
             d_start_dep);
   for (auto k = 1U; k != end_k; ++k) {
-    mc_launch(mc_begin_round_kernel<SearchDir, Crit>, s.stream_, r);
     mc_launch(mc_mark_routes_kernel<SearchDir, Crit>, s.stream_, r);
     if (with_rt_scan) {
       mc_launch(mc_mark_rt_kernel<SearchDir, Crit>, s.stream_, r);
@@ -728,53 +723,20 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
       mc_launch(mc_et_collect_kernel<SearchDir, Crit, false>, s.stream_, r, k);
     }
     mc_launch(mc_et_lookups_kernel<SearchDir, Crit>, s.stream_, r, k);
-    // fixed geometry: occupancy launch cannot size the shared segment slab
-    auto const scan_blocks = 512U;
-    auto const scan_shared =
-        (kMcScanThreads / 32U) * kMcMaxSegs * sizeof(mc_seg);
-    auto const with_clasz = allowed_claszes_ != all_clasz_allowed();
-    if (with_clasz) {
-      if (is_wheelchair_) {
-        mc_scan_routes_kernel<SearchDir, Crit, true, true>
-            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
-      } else {
-        mc_scan_routes_kernel<SearchDir, Crit, true, false>
-            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
+    // route and rt scans read round k - 1 and write round k (any order)
+    with_flags([&](auto const clasz_filter, auto const wheelchair) {
+      constexpr auto kClasz = decltype(clasz_filter)::value;
+      constexpr auto kWheelchair = decltype(wheelchair)::value;
+      mc_launch(mc_scan_routes_kernel<SearchDir, Crit, kClasz, kWheelchair>,
+                s.stream_, r, k);
+      if (with_rt_scan) {
+        mc_launch(mc_scan_rt_kernel<SearchDir, Crit, kClasz, kWheelchair>,
+                  s.stream_, r, k);
       }
-    } else {
-      if (is_wheelchair_) {
-        mc_scan_routes_kernel<SearchDir, Crit, false, true>
-            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
-      } else {
-        mc_scan_routes_kernel<SearchDir, Crit, false, false>
-            <<<scan_blocks, kMcScanThreads, scan_shared, s.stream_>>>(r, k);
-      }
-    }
-    // both read round k - 1 and write round k: order does not matter
-    if (with_rt_scan) {
-      if (with_clasz) {
-        if (is_wheelchair_) {
-          mc_launch(mc_scan_rt_kernel<SearchDir, Crit, true, true>, s.stream_,
-                    r, k);
-        } else {
-          mc_launch(mc_scan_rt_kernel<SearchDir, Crit, true, false>, s.stream_,
-                    r, k);
-        }
-      } else {
-        if (is_wheelchair_) {
-          mc_launch(mc_scan_rt_kernel<SearchDir, Crit, false, true>, s.stream_,
-                    r, k);
-        } else {
-          mc_launch(mc_scan_rt_kernel<SearchDir, Crit, false, false>, s.stream_,
-                    r, k);
-        }
-      }
-    }
-    mc_launch(mc_begin_footpath_kernel<SearchDir, Crit>, s.stream_, r);
+    });
+    mc_begin_footpath_kernel<SearchDir, Crit><<<1, 1, 0, s.stream_>>>(r);
     mc_launch(mc_transfers_footpaths_kernel<SearchDir, Crit>, s.stream_, r, k);
   }
-  cudaStreamSynchronize(s.stream_);
-  CUDA_CHECK(cudaPeekAtLastError());
 
   // === DEVICE RECONSTRUCT ===
   auto dest_list = std::vector<location_idx_t>{};
@@ -785,6 +747,8 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
         [&](auto const i) { dest_list.push_back(location_idx_t{i}); });
   }
   if (dest_list.empty()) {
+    cudaStreamSynchronize(s.stream_);
+    CUDA_CHECK(cudaPeekAtLastError());
     return;
   }
 
@@ -800,21 +764,38 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   auto* const rec_out_dev = s.rec_out_.ensure(total, s.stream_);
   auto* const rec_host = s.rec_host_out_.ensure(total);
   auto* const overflow_pin = s.overflow_pin_.ensure(1U);
+  auto* const rec_count_dev = s.rec_count_.ensure(1U, s.stream_);
+  auto* const rec_count_pin = s.rec_count_pin_.ensure(1U);
 
+  // The kernel packs the journeys at the front: copy the count and a prefix
+  // that usually holds all of them, so one sync suffices.
+  auto const prefix = std::min(total, kMcRecPrefix);
+  CUDA_CHECK(
+      cudaMemsetAsync(rec_count_dev, 0, sizeof(std::uint32_t), s.stream_));
   {
     auto const threads = 128U;
     auto const blocks = (total + threads - 1U) / threads;
-    mc_reconstruct_kernel<SearchDir, Crit>
-        <<<blocks, threads, 0, s.stream_>>>(dest_dev, n_dest, r, rec_out_dev);
-    CUDA_CHECK(cudaMemcpyAsync(rec_host, rec_out_dev,
-                               total * sizeof(gpu_journey),
+    mc_reconstruct_kernel<SearchDir, Crit><<<blocks, threads, 0, s.stream_>>>(
+        dest_dev, n_dest, r, rec_out_dev, rec_count_dev);
+  }
+  CUDA_CHECK(cudaMemcpyAsync(rec_count_pin, rec_count_dev,
+                             sizeof(std::uint32_t), cudaMemcpyDeviceToHost,
+                             s.stream_));
+  CUDA_CHECK(cudaMemcpyAsync(rec_host, rec_out_dev,
+                             prefix * sizeof(gpu_journey),
+                             cudaMemcpyDeviceToHost, s.stream_));
+  CUDA_CHECK(cudaMemcpyAsync(
+      overflow_pin, thrust::raw_pointer_cast(s.overflow_.data()),
+      sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_));
+  cudaStreamSynchronize(s.stream_);
+  CUDA_CHECK(cudaPeekAtLastError());
+  auto const n_rec = *rec_count_pin;
+  if (n_rec > prefix) {
+    CUDA_CHECK(cudaMemcpyAsync(rec_host + prefix, rec_out_dev + prefix,
+                               (n_rec - prefix) * sizeof(gpu_journey),
                                cudaMemcpyDeviceToHost, s.stream_));
-    CUDA_CHECK(cudaMemcpyAsync(
-        overflow_pin, thrust::raw_pointer_cast(s.overflow_.data()),
-        sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_));
     cudaStreamSynchronize(s.stream_);
   }
-  CUDA_CHECK(cudaPeekAtLastError());
 
   // capacity canaries: a lossy search must never go unnoticed
   utl::verify(*overflow_pin == 0U,
@@ -829,7 +810,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
               (*overflow_pin & kMcOverflowTaskCap) != 0U);
 
   // === CONVERT DEVICE JOURNEYS TO HOST JOURNEYS ===
-  for (auto idx = std::uint32_t{0U}; idx != total; ++idx) {
+  for (auto idx = std::uint32_t{0U}; idx != n_rec; ++idx) {
     auto const& gj = rec_host[idx];
 
     if (gj.state_ == reconstruction_result::kReconstructionFailed) {
