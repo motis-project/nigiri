@@ -21,8 +21,7 @@ bool has_transfer_rules(timetable const& tt, transport_idx_t const t) {
   auto const& tr = tt.transfer_rules_;
   return utl::any_of(tt.transport_to_trip_section_[t], [&](auto const s) {
     return utl::any_of(tt.merged_trips_[s], [&](trip_idx_t const trip) {
-      return !rules_of(tr.trip_rules_, trip).empty() ||
-             !rules_of(tr.route_rules_, route_id_of(tt, trip)).empty();
+      return tr.trip_has_rule_.test(trip);
     });
   });
 }

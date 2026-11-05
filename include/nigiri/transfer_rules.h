@@ -111,6 +111,7 @@ struct transfer_rules {
   qualified_sides_t<pair<source_idx_t, route_id_idx_t>> route_rules_;
 
   vector<pair<location_idx_t, transfer_rule_side_idx>> stop_rules_;
+  bitvec_map<trip_idx_t> trip_has_rule_;
 };
 
 }  // namespace nigiri

@@ -63,7 +63,6 @@ struct rule_conflicts {
   interval<unixtime_t> horizon_;
   vector_map<location_idx_t, duration_t> rule_times_;
   bitvec_map<location_idx_t> is_virt_or_rule_stop_;
-  bitvec_map<trip_idx_t> rule_trips_;
   hash_map<location_idx_t, std::vector<location_idx_t>> to_stops_, from_stops_;
   hash_map<rule_events_key, std::vector<rule_event>> events_;
   hash_map<pair<location_idx_t, location_idx_t>, duration_t> durations_;
@@ -529,13 +528,6 @@ std::pair<location_idx_t, std::vector<change_end>> add_location(
 std::vector<stop_event> get_changed_stops(timetable const& tt,
                                           rt_timetable const& rtt,
                                           rule_conflicts const& st) {
-  auto const has_rules = [&](transport_idx_t const t) {
-    return utl::any_of(tt.transport_to_trip_section_[t], [&](auto const s) {
-      return utl::any_of(tt.merged_trips_[s], [&](trip_idx_t const trip) {
-        return st.rule_trips_.test(trip);
-      });
-    });
-  };
   auto changed = std::vector<stop_event>{};
   for (auto rt_t = rt_transport_idx_t{0U}; rt_t != rtt.n_rt_transports();
        ++rt_t) {
@@ -554,7 +546,7 @@ std::vector<stop_event> get_changed_stops(timetable const& tt,
         }
         if (!tt.locations_.is_virt(l)) {
           if (!is_rule_transport.has_value()) {
-            is_rule_transport = has_rules(fr.t_.t_idx_);
+            is_rule_transport = has_transfer_rules(tt, fr.t_.t_idx_);
           }
           if (!*is_rule_transport) {
             continue;
@@ -622,21 +614,6 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
       st.is_virt_or_rule_stop_.set(l);
     }
   }
-  auto const& tr = tt.transfer_rules_;
-  st.rule_trips_.resize(tt.n_trips());
-  for (auto const& s : tr.trip_rules_) {
-    st.rule_trips_.set(s.qualifier_);
-  }
-  for (auto it = begin(tr.route_rules_); it != end(tr.route_rules_);) {
-    auto const [src, route] = it->qualifier_;
-    for (auto const trip : tt.route_ids_[src].route_id_trips_[route]) {
-      st.rule_trips_.set(trip);
-    }
-    it = std::find_if(it, end(tr.route_rules_), [&](auto const& x) {
-      return x.qualifier_ != it->qualifier_;
-    });
-  }
-
   auto queue = get_changed_stops(tt, rtt, st);
   auto const n_changed = queue.size();
   st.horizon_ = interval{unixtime_t::max(), unixtime_t::min()};

@@ -209,6 +209,20 @@ void write_routes(timetable& tt,
       tt.n_routes());
 }
 
+void write_trip_has_rule(timetable& tt) {
+  auto& tr = tt.transfer_rules_;
+  tr.trip_has_rule_.resize(tt.n_trips());
+  for (auto const& s : tr.trip_rules_) {
+    tr.trip_has_rule_.set(s.qualifier_);
+  }
+  for (auto const& s : tr.route_rules_) {
+    auto const [src, route] = s.qualifier_;
+    for (auto const trip : tt.route_ids_[src].route_id_trips_[route]) {
+      tr.trip_has_rule_.set(trip);
+    }
+  }
+}
+
 void apply_transfer_rules(
     timetable& tt,
     import_context& ctx,
@@ -217,6 +231,7 @@ void apply_transfer_rules(
   auto virt_footpaths = mutable_fws_multimap<location_idx_t, footpath>{};
   if (!tt.transfer_rules_.rules_.empty()) {
     apply_unqualified_rules(tt, walks);
+    write_trip_has_rule(tt);
 
     auto const timer = scoped_timer{"loader.virtual_locations"};
     auto const sigs = get_signatures(tt);
