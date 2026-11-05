@@ -208,8 +208,8 @@ std::string siri_msg(std::string_view journey_ref,
     calls_str +=
         fmt::format("<EstimatedCall><StopPointRef>{}</StopPointRef>", c.stop_);
     if (c.arr_.has_value()) {
-      calls_str += fmt::format(
-          "<AimedArrivalTime>{}</AimedArrivalTime>", fmt_time(*c.arr_));
+      calls_str += fmt::format("<AimedArrivalTime>{}</AimedArrivalTime>",
+                               fmt_time(*c.arr_));
       if (!cancelled) {
         calls_str +=
             fmt::format("<ExpectedArrivalTime>{}</ExpectedArrivalTime>",
@@ -217,8 +217,8 @@ std::string siri_msg(std::string_view journey_ref,
       }
     }
     if (c.dep_.has_value()) {
-      calls_str += fmt::format(
-          "<AimedDepartureTime>{}</AimedDepartureTime>", fmt_time(*c.dep_));
+      calls_str += fmt::format("<AimedDepartureTime>{}</AimedDepartureTime>",
+                               fmt_time(*c.dep_));
       if (!cancelled) {
         calls_str +=
             fmt::format("<ExpectedDepartureTime>{}</ExpectedDepartureTime>",
@@ -808,36 +808,36 @@ TEST(rt_interval, siri_cancel_rt_interval) {
                               vdv_aus::updater::xml_format::kSiri};
 
     // Within the RT interval.
-    auto const day = siri_update(
-        rtt, u, siri_day_msg(sys_days{2024_y / July / 22}, true));
+    auto const day =
+        siri_update(rtt, u, siri_day_msg(sys_days{2024_y / July / 22}, true));
     EXPECT_EQ(1U, day.matched_runs_);
     EXPECT_EQ(1U, day.cancelled_runs_);
     expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / July / 22});
 
     // Arrival 18:10 >= 18:07
-    auto const edge = siri_update(
-        rtt, u, siri_edge_msg(sys_days{2024_y / July / 22}, true));
+    auto const edge =
+        siri_update(rtt, u, siri_edge_msg(sys_days{2024_y / July / 22}, true));
     EXPECT_EQ(1U, edge.matched_runs_);
     EXPECT_EQ(1U, edge.cancelled_runs_);
     expect_cancelled(tt, rtt, "EDGE", sys_days{2024_y / July / 22});
 
     // Departure 23:30 >= 18:07
-    auto const night = siri_update(
-        rtt, u, siri_night_msg(sys_days{2024_y / July / 22}, true));
+    auto const night =
+        siri_update(rtt, u, siri_night_msg(sys_days{2024_y / July / 22}, true));
     EXPECT_EQ(1U, night.matched_runs_);
     EXPECT_EQ(1U, night.cancelled_runs_);
     expect_cancelled(tt, rtt, "NIGHT", sys_days{2024_y / July / 22});
 
     // Last day of the static timetable, far outside of the RT interval.
-    auto const far = siri_update(
-        rtt, u, siri_day_msg(sys_days{2024_y / August / 30}, true));
+    auto const far =
+        siri_update(rtt, u, siri_day_msg(sys_days{2024_y / August / 30}, true));
     EXPECT_EQ(1U, far.matched_runs_);
     EXPECT_EQ(1U, far.cancelled_runs_);
     expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / August / 30});
 
     // Not part of the static timetable.
-    auto const not_in_tt = siri_update(
-        rtt, u, siri_day_msg(sys_days{2024_y / August / 31}, true));
+    auto const not_in_tt =
+        siri_update(rtt, u, siri_day_msg(sys_days{2024_y / August / 31}, true));
     EXPECT_EQ(0U, not_in_tt.matched_runs_);
     EXPECT_EQ(0U, not_in_tt.cancelled_runs_);
 
@@ -862,8 +862,8 @@ TEST(rt_interval, siri_cancel_rt_interval) {
                               vdv_aus::updater::xml_format::kSiri};
 
     // Departure 05:50 < 05:53
-    auto const edge = siri_update(
-        rtt, u, siri_edge_msg(sys_days{2024_y / August / 8}, true));
+    auto const edge =
+        siri_update(rtt, u, siri_edge_msg(sys_days{2024_y / August / 8}, true));
     EXPECT_EQ(1U, edge.matched_runs_);
     EXPECT_EQ(1U, edge.cancelled_runs_);
     expect_cancelled(tt, rtt, "EDGE", sys_days{2024_y / August / 8});
@@ -876,8 +876,8 @@ TEST(rt_interval, siri_cancel_rt_interval) {
     expect_cancelled(tt, rtt, "DAY", sys_days{2024_y / July / 1});
 
     // Departs before date_range_.from_, arrives within.
-    auto const night = siri_update(
-        rtt, u, siri_night_msg(sys_days{2024_y / June / 30}, true));
+    auto const night =
+        siri_update(rtt, u, siri_night_msg(sys_days{2024_y / June / 30}, true));
     EXPECT_EQ(1U, night.matched_runs_);
     EXPECT_EQ(1U, night.cancelled_runs_);
     expect_cancelled(tt, rtt, "NIGHT", sys_days{2024_y / June / 30});
