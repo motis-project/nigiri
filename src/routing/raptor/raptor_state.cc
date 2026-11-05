@@ -18,10 +18,10 @@ raptor_state& raptor_state::resize(unsigned const n_locations,
                                    unsigned const n_vias) {
   utl::verify(n_vias <= kMaxVias, "too many vias: {}", n_vias);
   n_locations_ = n_locations;
-  auto const slots = static_cast<std::size_t>(n_locations) * (n_vias + 1U);
-  tmp_storage_.resize(slots);
-  best_storage_.resize(slots);
-  round_times_storage_.resize(slots * (kMaxTransfers + 2));
+  auto const n_entries = static_cast<std::size_t>(n_locations) * (n_vias + 1U);
+  tmp_storage_.resize(n_entries);
+  best_storage_.resize(n_entries);
+  round_times_storage_.resize(n_entries * (kMaxTransfers + 2));
   station_mark_.resize(n_locations);
   prev_station_mark_.resize(n_locations);
   route_mark_.resize(n_routes);
