@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cstring>
-
 #include "nigiri/common/delta_t.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
@@ -20,22 +18,20 @@
 namespace nigiri::routing::gpu {
 
 // ============================================================================
-// GPU McRAPTOR (CPU reference: raptor/mcraptor.h)
-//
-// The CPU design on fixed-capacity, lock-free structures:
+// GPU McRAPTOR, structured as the CPU reference (raptor/mcraptor.cc) on
+// fixed-capacity, lock-free structures:
 //  * A label is one u64 [arr_key:16 | extras:16 | round:4 | by_route:1 | bc:27]
-//    (arr_key direction-biased: smaller is better), updated with atomicCAS.
-//  * Bag inserts follow the CPU rules. Races may leave mutually dominated
-//    labels (only dominated work, results are pareto-filtered), but never lose
-//    a non-dominated one. Round-k inserts never evict round-(k-1) labels, so
-//    scans read the previous round while writing the current one.
-//  * Breadcrumbs: append-only arena, read by the reconstruction kernel.
+//    (arr_key direction-biased: smaller is better), inserted under a per-stop
+//    spinlock. Bag rules as the CPU; round-k inserts never evict round-(k-1)
+//    labels and footpath inserts never evict by-route labels, so the labels a
+//    phase reads are stable while it writes.
+//  * Breadcrumbs: append-only arena (mc_breadcrumb, as the CPU).
 //  * Destination pruning: a small pareto frontier over (round, criteria).
-//  * Route scan: one warp per route; rt transports get a simpler pass.
+//  * Route scan: one warp per route, a warp prefix scan over the stops'
+//    boardings (sequential on overflow); rt transports one thread each.
 // Capacity overflows set a canary the host checks after every query.
 // ============================================================================
 
-#define kInvalid (kInvalidDelta<SearchDir>)
 #define kFwd (SearchDir == direction::kForward)
 #define kUnreachable (std::numeric_limits<std::uint16_t>::max())
 #define kIntermodalTarget (get_special_station(special_station::kEnd))
@@ -45,79 +41,40 @@ using mc_label_t = std::uint64_t;
 
 inline constexpr auto kMcEmptySlot = ~mc_label_t{0};
 inline constexpr auto kMcNoBc = std::uint32_t{(1U << 27U) - 1U};
-// Inline slots per stop (max 127: u8 hwm minus the overflow block).
-inline constexpr auto kMcBagCapDefault = 8U;
-// Bags outgrowing the inline slots chain blocks from a global pool
+// Capacities: all preallocated per state; exceeding one trips its canary and
+// fails the query (nothing is silently dropped).
+// Inline slots per stop; bags outgrowing them chain blocks from a global pool
 // (bag_ovf_ = head, bag_next_ = links).
+inline constexpr auto kMcBagCap = 8U;
 inline constexpr auto kMcBagBlock = 16U;  // slots per chained block
-inline constexpr auto kMcBagPoolDefault = 1U << 20U;  // blocks (~138 MB)
+// pool blocks (132 B each): n_locations / 2, clamped
+inline constexpr auto kMcBagPoolMin = 1U << 19U;  // ~69 MB
+inline constexpr auto kMcBagPoolMax = 1U << 22U;  // ~553 MB
 // u8 hwm: inline 8 + 15 blocks; more trips the bag canary
 inline constexpr auto kMcMaxBagSlots = 248U;
+// breadcrumbs of one start time (16 B each): per location, clamped (DE all
+// criteria needs up to ~21 per location)
+inline constexpr auto kMcArenaPerLocation = 32U;
+inline constexpr auto kMcArenaMin = 8'000'000U;  // 128 MB
+inline constexpr auto kMcArenaMax = 32'000'000U;  // 512 MB
+static_assert(kMcBagCap + kMcBagBlock <= 255U);  // u8 hwm
+static_assert(kMcArenaMax < kMcNoBc);  // 27-bit breadcrumb index
 // reconstructed journeys copied back with the count (more cost a 2nd sync)
 inline constexpr auto kMcRecPrefix = std::uint32_t{64U};
 inline constexpr auto kMcDestCap = 64U;  // dest frontier entries
-// rRAPTOR range reuse: the label has no room for a departure, so a per-stop
-// frontier keeps (arr_key, extras, dep, round, by_route) of accepted labels to
-// reject candidates of later starts. Cleared per query; overflow only weakens
+// rRAPTOR range reuse (CPU RangeReuse): the bags are cleared per start time,
+// so a per-stop frontier of accepted labels (bc-less) rejects candidates of
+// later starts by the bag rules. Cleared per query; overflow only weakens
 // pruning.
 inline constexpr auto kMcReuseCap = 6U;
+inline constexpr auto kMcPrefixK = 4U;  // route-bag entries per lane
+inline constexpr auto kMcRouteBagCap = 32U;  // sequential / rt route bag
+inline constexpr auto kSbOverflow = ~0U;  // stop bag over kMcPrefixK entries
 
-CISTA_CUDA_COMPAT inline std::uint64_t mc_reuse_pack(
-    std::uint32_t const arr_key,
-    std::uint32_t const extras,
-    delta_t const dep,
-    std::uint32_t const round,
-    bool const by_route) {
-  return (static_cast<std::uint64_t>(arr_key & 0xFFFFU) << 48U) |
-         (static_cast<std::uint64_t>(extras & 0xFFFFU) << 32U) |
-         (static_cast<std::uint64_t>(static_cast<std::uint16_t>(dep)) << 16U) |
-         (static_cast<std::uint64_t>(round & 0xFU) << 4U) |
-         (by_route ? 1U : 0U);
-}
-CISTA_CUDA_COMPAT inline std::uint32_t mc_reuse_key(std::uint64_t const x) {
-  return static_cast<std::uint32_t>(x >> 48U);
-}
-CISTA_CUDA_COMPAT inline std::uint32_t mc_reuse_extras(std::uint64_t const x) {
-  return static_cast<std::uint32_t>(x >> 32U) & 0xFFFFU;
-}
-CISTA_CUDA_COMPAT inline delta_t mc_reuse_dep(std::uint64_t const x) {
-  return static_cast<delta_t>(static_cast<std::uint16_t>(x >> 16U));
-}
-CISTA_CUDA_COMPAT inline std::uint32_t mc_reuse_round(std::uint64_t const x) {
-  return static_cast<std::uint32_t>(x >> 4U) & 0xFU;
-}
-CISTA_CUDA_COMPAT inline bool mc_reuse_by_route(std::uint64_t const x) {
-  return (x & 1U) != 0U;
-}
-inline constexpr auto kMcRouteBagCap = 32U;  // boardings per route scan
-
-// rt scan label: a single trip, pareto over the extras only
-struct mc_rt_label {
-  std::uint32_t parent_;
-  std::uint16_t extras_;
-  std::uint16_t board_;
-};
-inline constexpr auto kMcPrefixK = 4U;  // register route-bag entries/lane
-inline constexpr auto kMcEtGatherCap = 32U;  // sorted lookup candidates
-// et rows: one entry per boardable label of a route stop, length in
-// et_task_cnt_.
-
-CISTA_CUDA_COMPAT inline std::uint64_t mc_et_pack(std::uint32_t const et,
-                                                  std::uint32_t const extras,
-                                                  std::uint32_t const slot) {
-  return (static_cast<std::uint64_t>(et) << 32U) |
-         (static_cast<std::uint64_t>(extras & 0xFFFFU) << 16U) |
-         (static_cast<std::uint64_t>(slot & 0xFFU) << 8U) | 1U;
-}
-CISTA_CUDA_COMPAT inline std::uint32_t mc_et_key(std::uint64_t const x) {
-  return static_cast<std::uint32_t>(x >> 32U);
-}
-CISTA_CUDA_COMPAT inline std::uint32_t mc_et_extras(std::uint64_t const x) {
-  return static_cast<std::uint32_t>(x >> 16U) & 0xFFFFU;
-}
-CISTA_CUDA_COMPAT inline std::uint32_t mc_et_slot(std::uint64_t const x) {
-  return static_cast<std::uint32_t>(x >> 8U) & 0xFFU;
-}
+// device canary bits (checked by the host after each query)
+inline constexpr auto kMcOverflowBag = 1U;
+inline constexpr auto kMcOverflowArena = 2U;
+inline constexpr auto kMcOverflowRouteBag = 4U;
 
 CISTA_CUDA_COMPAT inline mc_label_t mc_pack(std::uint32_t const arr_key,
                                             std::uint32_t const extras,
@@ -146,15 +103,6 @@ CISTA_CUDA_COMPAT inline std::uint32_t mc_bc(mc_label_t const x) {
   return static_cast<std::uint32_t>(x) & kMcNoBc;
 }
 
-// device canary bits (checked by the host after each query)
-inline constexpr auto kMcOverflowBag = 1U;
-inline constexpr auto kMcOverflowArena = 2U;
-inline constexpr auto kMcOverflowRouteBag = 4U;
-inline constexpr auto kMcOverflowRec = 8U;
-inline constexpr auto kMcOverflowEtBlock = 16U;
-inline constexpr auto kMcOverflowEtTasks = 32U;  // entry pool exhausted
-inline constexpr auto kMcOverflowTaskCap = 64U;  // et_tasks_cap_ exceeded
-
 template <direction SearchDir, mc_crit Crit>
 struct mcraptor_impl {
   // Which criteria of the 16 bit extras slot (mc_extras) are live.
@@ -162,13 +110,15 @@ struct mcraptor_impl {
   static constexpr bool kHasModeFilter = has(Crit, mc_crit::mode_filter);
   static constexpr bool kHasModeSwitches = has(Crit, mc_crit::mode_switches);
   static constexpr bool kHasExtras = Crit != mc_crit::arr;
+  // arrival-only route bags hold a single trip
+  static constexpr auto kPrefixK = kHasExtras ? kMcPrefixK : 1U;
 
   // Fixed avoided classes, must equal the CPU default (motis keeps other masks
   // on the CPU).
   static constexpr clasz_mask_t kAvoidedMask = to_mask(clasz::kAir);
-  __device__ __forceinline__ static bool is_avoided(clasz const c) {
-    return is_allowed(kAvoidedMask, c);
-  }
+
+  static constexpr auto kArrEv = kFwd ? event_type::kArr : event_type::kDep;
+  static constexpr auto kDepEv = kFwd ? event_type::kDep : event_type::kArr;
 
   __device__ __forceinline__ bool is_better(auto a, auto b) const {
     return kFwd ? a < b : a > b;
@@ -180,7 +130,7 @@ struct mcraptor_impl {
     return (kFwd ? 1 : -1) * a;
   }
 
-  // ---- criteria (extras slot) helpers, as the CPU dimensions ------------
+  // ---- criteria (extras slot), as the CPU dimensions --------------------
   // a round-0 seed: `ingress` minutes walked to the seeded stop
   __device__ __forceinline__ static std::uint32_t crit_at_start(
       std::uint32_t const ingress) {
@@ -206,7 +156,7 @@ struct mcraptor_impl {
     auto group = mc_extras::group(carried);
     auto sw = mc_extras::switches(carried);
     if constexpr (kHasModeFilter) {
-      mf |= is_avoided(cl) ? 1U : 0U;
+      mf |= is_allowed(kAvoidedMask, cl) ? 1U : 0U;
     }
     if constexpr (kHasModeSwitches) {
       auto const g = mode_group(cl);
@@ -231,13 +181,25 @@ struct mcraptor_impl {
     return a_key <= b_key && crit_le(a_extras, b_extras);
   }
 
-  // destination frontier: no next switch, so without the mode group margin
-  __device__ __forceinline__ static bool completed_dominates(
-      std::uint32_t const a_key,
-      std::uint32_t const a_extras,
-      std::uint32_t const b_key,
-      std::uint32_t const b_extras) {
-    return a_key <= b_key && mc_extras::completed_dominates(a_extras, b_extras);
+  // label v rejects a candidate (by-route ones only by by-route labels)
+  __device__ __forceinline__ static bool rejects(std::uint64_t const v,
+                                                 std::uint32_t const arr_key,
+                                                 std::uint32_t const extras,
+                                                 std::uint32_t const round,
+                                                 bool const by_route) {
+    return v != kMcEmptySlot && mc_round(v) <= round &&
+           (!by_route || mc_by_route(v)) &&
+           dominates(mc_arr_key(v), mc_extras(v), arr_key, extras);
+  }
+  // a candidate evicts label v (by-transfer ones only by-transfer labels)
+  __device__ __forceinline__ static bool evicts(std::uint64_t const v,
+                                                std::uint32_t const arr_key,
+                                                std::uint32_t const extras,
+                                                std::uint32_t const round,
+                                                bool const by_route) {
+    return v != kMcEmptySlot && mc_round(v) >= round &&
+           (by_route || !mc_by_route(v)) &&
+           dominates(arr_key, extras, mc_arr_key(v), mc_extras(v));
   }
 
   // biased arrival key (identical bias to device_times<SearchDir>)
@@ -250,126 +212,53 @@ struct mcraptor_impl {
                 : static_cast<delta_t>(32767 - static_cast<int>(k));
   }
 
-  // ---- bag ops -------------------------------------------------------------
+  // ---- bags ----------------------------------------------------------------
 
-  __device__ __forceinline__ mc_label_t* bag(std::uint32_t const l) const {
-    return bags_ + static_cast<std::size_t>(l) * bag_cap_;
-  }
-
-  // walk the block chain to ordinal j (~0U if the chain is shorter)
-  __device__ __forceinline__ std::uint32_t chain_block(
-      std::uint32_t const l, std::uint32_t const j) const {
-    auto b = bag_ovf_[l];
-    for (auto h = 0U; h != j && b != ~0U; ++h) {
-      b = bag_next_[b];
-    }
-    return b;
-  }
-
-  // single-slot read across inline + chain (post-kernel-boundary contexts)
-  __device__ mc_label_t bag_label(std::uint32_t const l,
-                                  std::uint32_t const i) const {
-    if (i < bag_cap_) {
-      return bag(l)[i];
-    }
-    auto const b = chain_block(l, (i - bag_cap_) / kMcBagBlock);
-    return b == ~0U ? kMcEmptySlot
-                    : bag_pool_[static_cast<std::size_t>(b) * kMcBagBlock +
-                                (i - bag_cap_) % kMcBagBlock];
-  }
-
-  // Same-round reads (footpath phase) must bypass L1, which is not coherent
-  // across SMs; previous-round reads are ordered by the kernel boundary.
-  __device__ __forceinline__ std::uint32_t bag_hwm_coherent(
-      std::uint32_t const l) const {
-    return *reinterpret_cast<std::uint8_t const volatile*>(bag_hwm_ + l);
-  }
-
-  // coherent forward cursor over a bag's chain (one hop per block)
-  struct mc_chain_reader {
-    mcraptor_impl const* r_;
-    std::uint32_t l_;
-    std::uint32_t cur_ord_{0U};
-    std::uint32_t cur_blk_{~0U};
-    bool init_{false};
-    __device__ __forceinline__ mc_label_t at(std::uint32_t const i) {
-      if (i < r_->bag_cap_) {
-        return *reinterpret_cast<mc_label_t const volatile*>(r_->bag(l_) + i);
+  // Cursor over a bag's slots: inline, then the block chain (forward reads hop
+  // one block, backward jumps restart at the head). Lock-free reads are safe:
+  // a read returns the value at kernel start or a later one, and a free block
+  // always links to ~0U (clear_bags), so the cursor never leaves the chain.
+  // Slots not reachable yet read as empty.
+  struct bag_cursor {
+    // nullptr: not reachable (yet)
+    __device__ mc_label_t* slot(std::uint32_t const i) {
+      if (i < cap_) {
+        return inline_ + i;
       }
-      auto const ord = (i - r_->bag_cap_) / kMcBagBlock;
-      if (!init_ || ord < cur_ord_ || cur_blk_ == ~0U) {
-        cur_blk_ =
-            *reinterpret_cast<std::uint32_t const volatile*>(r_->bag_ovf_ + l_);
-        cur_ord_ = 0U;
-        init_ = true;
+      auto const ord = (i - cap_) / kMcBagBlock;
+      if (blk_ == ~0U || ord < ord_) {
+        ord_ = 0U;
+        blk_ = *head_;
       }
-      while (cur_ord_ != ord && cur_blk_ != ~0U) {
-        cur_blk_ = *reinterpret_cast<std::uint32_t const volatile*>(
-            r_->bag_next_ + cur_blk_);
-        ++cur_ord_;
+      while (ord_ != ord && blk_ != ~0U) {
+        blk_ = next_[blk_];
+        ++ord_;
       }
-      return cur_blk_ == ~0U
-                 ? kMcEmptySlot
-                 : *reinterpret_cast<mc_label_t const volatile*>(
-                       r_->bag_pool_ +
-                       static_cast<std::size_t>(cur_blk_) * kMcBagBlock +
-                       (i - r_->bag_cap_) % kMcBagBlock);
+      return blk_ == ~0U
+                 ? nullptr
+                 : pool_ + static_cast<std::size_t>(blk_) * kMcBagBlock +
+                       (i - cap_) % kMcBagBlock;
     }
+    __device__ mc_label_t operator[](std::uint32_t const i) {
+      auto const* const s = slot(i);
+      return s == nullptr ? kMcEmptySlot : *s;
+    }
+    __device__ std::uint32_t size() const { return n_; }
+
+    mc_label_t* inline_;
+    mc_label_t* pool_;
+    std::uint32_t const* next_;
+    std::uint32_t const* head_;
+    std::uint32_t cap_, n_;
+    std::uint32_t ord_{0U}, blk_{~0U};
   };
-
-  // an entry another SM may just have written (published by the label)
-  __device__ mc_breadcrumb bc_read_coherent(std::uint32_t const i) const {
-    auto const* const w =
-        reinterpret_cast<std::uint32_t const volatile*>(bc_ + i);
-    std::uint32_t words[4];
-    for (auto j = 0U; j != 4U; ++j) {
-      words[j] = w[j];
-    }
-    auto bc = mc_breadcrumb{};
-    memcpy(&bc, words, sizeof(bc));
-    return bc;
-  }
-
-  // Cursor over a bag's slots; backwards jumps restart from the head. Slots of
-  // a concurrently growing chain that are not reachable yet read as empty,
-  // which is fine where such reads happen (advisory pre-scan, previous-round
-  // reads).
-  struct mc_bag_view {
-    mc_label_t const* a_;  // inline slots
-    mc_label_t const* pool_;  // block pool base
-    std::uint32_t const* nxt_;  // chain links
-    std::uint32_t head_;  // first block (~0U: none)
-    std::uint32_t n_, na_;
-    mutable std::uint32_t cur_ord_{0U};
-    mutable std::uint32_t cur_blk_{~0U};
-    __device__ __forceinline__ mc_label_t
-    operator[](std::uint32_t const i) const {
-      if (i < na_) {
-        return a_[i];
-      }
-      auto const ord = (i - na_) / kMcBagBlock;
-      if (ord < cur_ord_ || cur_blk_ == ~0U) {
-        cur_ord_ = 0U;
-        cur_blk_ = head_;
-      }
-      while (cur_ord_ != ord && cur_blk_ != ~0U) {
-        cur_blk_ = nxt_[cur_blk_];
-        ++cur_ord_;
-      }
-      // not yet reachable: empty
-      return cur_blk_ == ~0U
-                 ? kMcEmptySlot
-                 : pool_[static_cast<std::size_t>(cur_blk_) * kMcBagBlock +
-                         (i - na_) % kMcBagBlock];
-    }
-    __device__ __forceinline__ std::uint32_t size() const { return n_; }
-  };
-  __device__ __forceinline__ mc_bag_view bag_view(std::uint32_t const l) const {
-    auto const hwm = static_cast<std::uint32_t>(bag_hwm_[l]);
-    auto const na = hwm < bag_cap_ ? hwm : bag_cap_;
-    auto const head = hwm > bag_cap_ ? bag_ovf_[l] : ~0U;
-    return {bag(l), bag_pool_, bag_next_, head, head == ~0U ? na : hwm,
-            na,     0U,        head};
+  __device__ __forceinline__ bag_cursor bag_slots(std::uint32_t const l) const {
+    return {.inline_ = bags_ + static_cast<std::size_t>(l) * bag_cap_,
+            .pool_ = bag_pool_,
+            .next_ = bag_next_,
+            .head_ = bag_ovf_ + l,
+            .cap_ = bag_cap_,
+            .n_ = bag_hwm_[l]};
   }
 
   // rejected by an earlier start's label? racy reads only weaken pruning
@@ -379,12 +268,7 @@ struct mcraptor_impl {
                                  std::uint32_t const round,
                                  bool const by_route) const {
     for (auto i = 0U; i != kMcReuseCap; ++i) {
-      auto const v = rslots[i];
-      if (v == kMcEmptySlot) {
-        continue;
-      }
-      if (mc_reuse_round(v) <= round && (!by_route || mc_reuse_by_route(v)) &&
-          mc_reuse_key(v) <= arr_key && crit_le(mc_reuse_extras(v), extras)) {
+      if (rejects(rslots[i], arr_key, extras, round, by_route)) {
         return true;
       }
     }
@@ -397,38 +281,35 @@ struct mcraptor_impl {
                                std::uint32_t const extras,
                                std::uint32_t const round,
                                bool const by_route) {
+    auto const entry = mc_pack(arr_key, extras, round, by_route, kMcNoBc);
     auto free_slot = ~0U;
     for (auto i = 0U; i != kMcReuseCap; ++i) {
-      auto const v = rslots[i];
-      if (v == kMcEmptySlot) {
-        free_slot = free_slot == ~0U ? i : free_slot;
-        continue;
+      if (evicts(rslots[i], arr_key, extras, round, by_route)) {
+        rslots[i] = kMcEmptySlot;
       }
-      if (mc_reuse_round(v) >= round && (by_route || !mc_reuse_by_route(v)) &&
-          arr_key <= mc_reuse_key(v) && crit_le(extras, mc_reuse_extras(v))) {
-        rslots[i] = kMcEmptySlot;  // evicted by the new entry
-        free_slot = free_slot == ~0U ? i : free_slot;
+      if (rslots[i] == kMcEmptySlot && free_slot == ~0U) {
+        free_slot = i;
       }
     }
     if (free_slot != ~0U) {
-      rslots[free_slot] = mc_reuse_pack(arr_key, extras, dep_, round, by_route);
+      rslots[free_slot] = entry;
       return;
     }
     // full: evict the latest arrival of round >= the newcomer's (any choice is
     // correct, this one keeps the broadest rejectors)
     auto worst = ~0U;
     for (auto i = 0U; i != kMcReuseCap; ++i) {
-      if (mc_reuse_round(rslots[i]) >= round &&
-          (worst == ~0U ||
-           mc_reuse_key(rslots[i]) > mc_reuse_key(rslots[worst]))) {
+      if (mc_round(rslots[i]) >= round &&
+          (worst == ~0U || mc_arr_key(rslots[i]) > mc_arr_key(rslots[worst]))) {
         worst = i;
       }
     }
-    if (worst != ~0U && arr_key < mc_reuse_key(rslots[worst])) {
-      rslots[worst] = mc_reuse_pack(arr_key, extras, dep_, round, by_route);
+    if (worst != ~0U && arr_key < mc_arr_key(rslots[worst])) {
+      rslots[worst] = entry;
     }
   }
 
+  // CPU bag_insert; true iff inserted
   __device__ bool bag_insert(std::uint32_t const l,
                              std::uint32_t const arr_key,
                              std::uint32_t const extras,
@@ -440,16 +321,12 @@ struct mcraptor_impl {
     if (reuse_rejected(rslots, arr_key, extras, round, by_route)) {
       return false;
     }
-    // Lock-free reject pre-scan (most candidates are dominated). Aligned u64
-    // loads do not tear, the locked re-scan catches misses, and an evicted
-    // dominator's evictor dominates the candidate too.
+    // Lock-free reject pre-scan (most candidates are dominated): a stale label
+    // was evicted by one that dominates the candidate too.
     {
-      auto const pre = bag_view(l);
+      auto pre = bag_slots(l);
       for (auto i = 0U; i != pre.size(); ++i) {
-        auto const v = pre[i];
-        if (v != kMcEmptySlot && mc_round(v) <= round &&
-            (!by_route || mc_by_route(v)) &&
-            dominates(mc_arr_key(v), mc_extras(v), arr_key, extras)) {
+        if (rejects(pre[i], arr_key, extras, round, by_route)) {
           return false;
         }
       }
@@ -462,88 +339,50 @@ struct mcraptor_impl {
     }
     __threadfence();  // acquire: see prior holders' plain stores
 
-    auto* const slots = bag(l);
-    // chain cursor; the lock keeps the chain stable
-    auto cur_ord = 0U;
-    auto cur_blk = bag_ovf_[l];
-    auto const slot_at = [&](std::uint32_t const i) -> mc_label_t& {
-      if (i < bag_cap_) {
-        return slots[i];
-      }
-      auto const ord = (i - bag_cap_) / kMcBagBlock;
-      if (ord < cur_ord || cur_blk == ~0U) {
-        cur_ord = 0U;
-        cur_blk = bag_ovf_[l];
-      }
-      while (cur_ord != ord) {
-        cur_blk = bag_next_[cur_blk];
-        ++cur_ord;
-      }
-      return bag_pool_[static_cast<std::size_t>(cur_blk) * kMcBagBlock +
-                       (i - bag_cap_) % kMcBagBlock];
-    };
+    auto bag = bag_slots(l);
+    auto const hwm = bag.size();
     auto inserted = false;
     auto free_slot = ~0U;
-    auto const hwm = static_cast<std::uint32_t>(bag_hwm_[l]);
     for (auto i = 0U; i != hwm; ++i) {
-      auto const v = slot_at(i);
-      if (v == kMcEmptySlot) {
-        free_slot = free_slot == ~0U ? i : free_slot;
-        continue;
-      }
-      // reject (by-route candidates only by by-route labels)
-      if (mc_round(v) <= round && (!by_route || mc_by_route(v)) &&
-          dominates(mc_arr_key(v), mc_extras(v), arr_key, extras)) {
+      auto& v = *bag.slot(i);
+      if (rejects(v, arr_key, extras, round, by_route)) {
         goto unlock;
       }
-      // evict (by-transfer candidates only by-transfer labels)
-      if (mc_round(v) >= round && (by_route || !mc_by_route(v)) &&
-          dominates(arr_key, extras, mc_arr_key(v), mc_extras(v))) {
-        slot_at(i) = kMcEmptySlot;
-        free_slot = free_slot == ~0U ? i : free_slot;
+      if (evicts(v, arr_key, extras, round, by_route)) {
+        v = kMcEmptySlot;
+      }
+      if (v == kMcEmptySlot && free_slot == ~0U) {
+        free_slot = i;
       }
     }
-    // grow, appending a pool block when full (links are published before the
-    // hwm, see the fence below)
+    // grow, appending a pool block when the tail is full
     if (free_slot == ~0U && hwm < kMcMaxBagSlots) {
       if (hwm < bag_cap_ || (hwm - bag_cap_) % kMcBagBlock != 0U) {
-        free_slot = hwm;  // inline space or room in the tail block
-      } else {
-        auto const b = atomicAdd(bag_pool_count_, 1U);
-        if (b < bag_pool_cap_) {
-          bag_next_[b] = ~0U;
-          if (hwm == bag_cap_) {
-            bag_ovf_[l] = b;
-          } else {
-            auto t = bag_ovf_[l];
-            while (bag_next_[t] != ~0U) {
-              t = bag_next_[t];
-            }
-            bag_next_[t] = b;
+        free_slot = hwm;
+      } else if (auto const b = atomicAdd(bag_pool_count_, 1U);
+                 b < bag_pool_cap_) {
+        if (hwm == bag_cap_) {
+          bag_ovf_[l] = b;
+        } else {
+          auto t = bag_ovf_[l];
+          while (bag_next_[t] != ~0U) {
+            t = bag_next_[t];
           }
-          free_slot = hwm;
+          bag_next_[t] = b;
         }
+        free_slot = hwm;
       }
     }
     if (free_slot == ~0U) {
-      // inline + block full of non-dominated labels, or pool exhausted
+      // inline + blocks full of non-dominated labels, or pool exhausted
       atomicOr(overflow_, kMcOverflowBag);
     } else {
       auto bc = kMcNoBc;
-      if (bc_entry != nullptr) {
-        bc = bc_append(*bc_entry);
-        if (bc == kMcNoBc) {
-          goto unlock;  // arena overflow (canary set)
-        }
-        // arena entry before the label: lock-free same-round readers on other
-        // SMs would see a stale entry otherwise
-        __threadfence();
+      if (bc_entry != nullptr && (bc = bc_append(*bc_entry)) == kMcNoBc) {
+        goto unlock;  // arena overflow (canary set)
       }
-      slot_at(free_slot) = mc_pack(arr_key, extras, round, by_route, bc);
+      *bag.slot(free_slot) = mc_pack(arr_key, extras, round, by_route, bc);
       if (free_slot + 1U > hwm) {
-        // slot (and new block links) before the hwm, which lock-free readers
-        // use to find labels
-        __threadfence();
         bag_hwm_[l] = static_cast<std::uint8_t>(free_slot + 1U);
       }
       reuse_upsert(rslots, arr_key, extras, round, by_route);
@@ -566,12 +405,16 @@ struct mcraptor_impl {
     return idx;
   }
 
-  __device__ __forceinline__ mc_breadcrumb const& bc_read(
-      std::uint32_t const i) const {
-    return bc_[i];
-  }
-
   // ---- destination frontier (pruning only, persists across start times) ---
+
+  // destination frontier: no next switch, so without the mode group margin
+  __device__ __forceinline__ static bool completed_dominates(
+      std::uint32_t const a_key,
+      std::uint32_t const a_extras,
+      std::uint32_t const b_key,
+      std::uint32_t const b_extras) {
+    return a_key <= b_key && mc_extras::completed_dominates(a_extras, b_extras);
+  }
 
   __device__ bool dest_dominates(std::uint32_t const round,
                                  std::uint32_t const arr_key,
@@ -631,61 +474,356 @@ struct mcraptor_impl {
     atomicExch(dest_lock_, 0U);
   }
 
-  // ---- phases ---------------------------------------------------------------
+  // ---- rounds (CPU execute) ------------------------------------------------
 
+  // round-0 labels; the ingress walk is the seeded time minus the query start
   __device__ void init_arrivals(delta_t const d_start) {
     auto const gid = get_global_thread_id();
-    auto const stride = get_global_stride();
     if (gid == 0U) {
       *done_ = 0U;
       *any_marked_ = 0U;
     }
-    for (auto i = gid; i < starts_.size(); i += stride) {
+    for (auto i = gid; i < starts_.size(); i += get_global_stride()) {
       auto const l = to_idx(starts_[i].first);
       auto const arr = starts_[i].second;
-      // at_start: ingress = walking between query start and seeded stop
       auto const ingress = static_cast<std::uint32_t>(dir(arr - d_start));
-      auto const extras = crit_at_start(ingress);
-      if (bag_insert(l, to_key(arr), extras, 0U, false, nullptr)) {
+      if (bag_insert(l, to_key(arr), crit_at_start(ingress), 0U, false,
+                     nullptr)) {
         touched_.mark(l);
         station_mark_.mark(l);
       }
     }
   }
 
-  __device__ void mark_routes() {
-    auto const gid = get_global_thread_id();
-    auto const stride = get_global_stride();
-    for (auto i = gid; i < tt_.n_locations_; i += stride) {
-      if (station_mark_[i]) {
-        if (!tt_.location_routes_[location_idx_t{i}].empty() && !*any_marked_) {
+  // The routes / rt transports of the stops improved last round (as
+  // raptor_impl): a warp per mark word, long lists by the whole warp.
+  template <typename Lists>
+  __device__ void mark_from_locations(Lists const& lists,
+                                      device_bitvec<std::uint32_t>& marks) {
+    constexpr auto const kInline = 8U;
+    auto const lane = get_global_thread_id() % kWarpSize;
+    auto const n_warps = get_global_stride() / kWarpSize;
+    auto const n_blocks = station_mark_.blocks_.size();
+    for (auto w = get_global_thread_id() / kWarpSize; w < n_blocks;
+         w += n_warps) {
+      auto const bits = station_mark_.blocks_[w];
+      if (bits == 0U) {  // uniform: nothing writes the marks here
+        continue;
+      }
+      auto const my_i = w * kWarpSize + lane;
+      auto n = 0U;
+      if (((bits >> lane) & 1U) != 0U) {
+        auto const list = lists[location_idx_t{my_i}];
+        n = static_cast<unsigned>(list.size());
+        if (n != 0U && !*any_marked_) {
           atomicOr(any_marked_, 1U);
         }
-        for (auto r : tt_.location_routes_[location_idx_t{i}]) {
-          route_mark_.mark(to_idx(r));
+        if (n <= kInline) {
+          for (auto j = 0U; j != n; ++j) {
+            marks.mark(to_idx(list[j]));
+          }
+          n = 0U;  // done on this lane
         }
       }
+      for_each_set_bit(
+          __ballot_sync(kAllLanes, n != 0U), [&](unsigned const b) {
+            auto const src_i =
+                __shfl_sync(kAllLanes, my_i, static_cast<int>(b));
+            auto const cnt = __shfl_sync(kAllLanes, n, static_cast<int>(b));
+            auto const list = lists[location_idx_t{src_i}];
+            for (auto j = lane; j < cnt; j += kWarpSize) {
+              marks.mark(to_idx(list[j]));
+            }
+          });
     }
   }
 
+  __device__ void mark_routes() {
+    mark_from_locations(tt_.location_routes_, route_mark_);
+  }
+
+  __device__ void mark_rt_transports() {
+    mark_from_locations(rtt_.location_rt_transports_, rt_transport_mark_);
+  }
+
+  // CPU swap + zero_out: the routes board from prev_station_mark_
   __device__ void begin_transit_phase() {
     prev_station_mark_.swap_reset(station_mark_);
     if (get_global_thread_id() == 0U) {
-      *route_list_count_ = 0U;
       *et_task_count_ = 0U;
-      *et_entry_count_ = 0U;
+      *route_list_count_ = 0U;
     }
   }
 
-  // Compacts the marked routes and resets any_marked_. No mark swap (unlike
-  // raptor): same-stop transfers are folded into the route-scan inserts.
-  __device__ void build_route_list() {
+  // the footpaths read the scan's marks and write station_mark_
+  __device__ void begin_footpath_phase() {
+    prev_station_mark_.swap_reset(station_mark_);
+  }
+
+  // ---- route scan (CPU update_route) ---------------------------------------
+
+  __device__ __forceinline__ int transfer_buffer(std::uint32_t const l) const {
+    return (!is_intermodal_dest() && is_dest_[l])
+               ? 0
+               : dir(adjusted_transfer_time(
+                     transfer_time_settings_,
+                     tt_.transfer_time_[location_idx_t{l}].count()));
+  }
+
+  __device__ __forceinline__ bool is_intermodal_dest() const {
+    return !dist_to_end_.empty();
+  }
+
+  // CPU alight: rides into l_idx at by_transport with the carried extras of
+  // class cl; true iff the arrival (plus transfer buffer) was inserted.
+  __device__ bool alight(unsigned const k,
+                         std::uint32_t const l_idx,
+                         delta_t const by_transport,
+                         std::uint32_t const carried,
+                         clasz const cl,
+                         mc_breadcrumb bc) {
+    auto const l_lb = lb_[l_idx];
+    auto const ride_key = to_key(by_transport);
+    auto const worst_key = to_key(worst_at_dest_);
+    if (ride_key >= worst_key || l_lb == kUnreachable ||
+        ride_key + l_lb >= worst_key) {
+      return false;
+    }
+    auto const ride_extras = crit_after_ride(carried, cl);
+    if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
+      return false;
+    }
+    bc.arr_ = clamp(by_transport + transfer_buffer(l_idx));
+    if (!bag_insert(l_idx, to_key(bc.arr_), ride_extras, k, true, &bc)) {
+      return false;
+    }
+    touched_.mark(l_idx);
+    station_mark_.mark(l_idx);
+    // the buffer is 0 at a station destination: ride_key is the arrival
+    if (is_dest_[l_idx]) {
+      dest_bag_add(k, ride_key, ride_extras);
+    }
+    return true;
+  }
+
+  // Route bag: pareto over (trip order, carried extras), merged as the CPU
+  // board_from (same trip and extras: board closest to the exit).
+  template <unsigned K>
+  struct route_bag {
+    __device__ __forceinline__ static std::uint32_t extras(
+        std::uint32_t const bx) {
+      return bx & 0xFFFFU;
+    }
+    __device__ __forceinline__ std::uint32_t board(unsigned const i) const {
+      return bx_[i] >> 16U;
+    }
+
+    // false if full
+    __device__ bool add(std::uint32_t const et,
+                        std::uint32_t const par,
+                        stop_idx_t const board,
+                        std::uint32_t const ex) {
+      auto const bx = (static_cast<std::uint32_t>(board) << 16U) | ex;
+      for (auto i = 0U; i != K; ++i) {
+        if (i < n_ && et_[i] == et && extras(bx_[i]) == ex) {
+          par_[i] = par;
+          bx_[i] = bx;
+          return true;
+        }
+        if (i < n_ && et_[i] <= et && crit_le(extras(bx_[i]), ex)) {
+          return true;  // dominated: not-earlier trip, extras no better
+        }
+      }
+      auto w = 0U;
+      for (auto i = 0U; i != K; ++i) {
+        if (i < n_ && !(et <= et_[i] && crit_le(ex, extras(bx_[i])))) {
+          et_[w] = et_[i];
+          par_[w] = par_[i];
+          bx_[w] = bx_[i];
+          ++w;
+        }
+      }
+      n_ = w;
+      if (n_ == K) {
+        return false;
+      }
+      et_[n_] = et;
+      par_[n_] = par;
+      bx_[n_] = bx;
+      ++n_;
+      return true;
+    }
+
+    // the scan operator: later boardings b absorb a (ties go to b); false on
+    // overflow
+    __device__ static bool combine(route_bag const& a, route_bag& b) {
+      auto r = route_bag{};
+      for (auto bi = 0U; bi != K; ++bi) {
+        auto keep = bi < b.n_;
+        for (auto ai = 0U; ai != K; ++ai) {
+          if (ai < a.n_ && a.et_[ai] <= b.et_[bi] &&
+              crit_le(extras(a.bx_[ai]), extras(b.bx_[bi])) &&
+              !(a.et_[ai] == b.et_[bi] &&
+                extras(a.bx_[ai]) == extras(b.bx_[bi]))) {
+            keep = false;
+          }
+        }
+        if (keep) {
+          r.copy_from(b, bi);
+        }
+      }
+      for (auto ai = 0U; ai != K; ++ai) {
+        auto keep = ai < a.n_;
+        for (auto bi = 0U; bi != K; ++bi) {
+          if (bi < b.n_ && b.et_[bi] <= a.et_[ai] &&
+              crit_le(extras(b.bx_[bi]), extras(a.bx_[ai]))) {
+            keep = false;
+          }
+        }
+        if (keep) {
+          if (r.n_ == K) {
+            return false;
+          }
+          r.copy_from(a, ai);
+        }
+      }
+      b = r;
+      return true;
+    }
+
+    __device__ __forceinline__ void copy_from(route_bag const& o,
+                                              unsigned const i) {
+      et_[n_] = o.et_[i];
+      par_[n_] = o.par_[i];
+      bx_[n_] = o.bx_[i];
+      ++n_;
+    }
+
+    __device__ route_bag shfl_up(unsigned const d) const {
+      auto r = route_bag{};
+      for (auto i = 0U; i != K; ++i) {
+        r.et_[i] = __shfl_up_sync(kAllLanes, et_[i], d);
+        r.par_[i] = __shfl_up_sync(kAllLanes, par_[i], d);
+        r.bx_[i] = __shfl_up_sync(kAllLanes, bx_[i], d);
+      }
+      r.n_ = __shfl_up_sync(kAllLanes, n_, d);
+      return r;
+    }
+
+    __device__ route_bag bcast(int const src) const {
+      auto r = route_bag{};
+      for (auto i = 0U; i != K; ++i) {
+        r.et_[i] = __shfl_sync(kAllLanes, et_[i], src);
+        r.par_[i] = __shfl_sync(kAllLanes, par_[i], src);
+        r.bx_[i] = __shfl_sync(kAllLanes, bx_[i], src);
+      }
+      r.n_ = __shfl_sync(kAllLanes, n_, src);
+      return r;
+    }
+
+    std::uint32_t et_[K];  // packed trip (pack_et: scan order)
+    std::uint32_t par_[K];  // breadcrumb arena index of the boarded label
+    std::uint32_t bx_[K];  // [board stop_idx:16 | carried extras:16]
+    unsigned n_;
+  };
+
+  // CPU update_route's boarding conditions at stop_idx
+  template <bool IsWheelchair>
+  __device__ bool boardable(route_idx_t const r,
+                            unsigned const n,
+                            unsigned const stop_idx) const {
+    if (kFwd ? stop_idx + 1U == n : stop_idx == 0U) {
+      return false;  // the last stop never boards
+    }
+    auto const stop_seq = tt_.route_location_seq_[r];
+    auto const stp = stop{stop_seq[stop_idx]};
+    auto const l = to_idx(stp.location_idx());
+    return prev_station_mark_[l] && stp.can_start<SearchDir>(IsWheelchair) &&
+           lb_[l] != kUnreachable && bag_hwm_[l] != 0U;
+  }
+
+  // CPU board_from at a boardable stop: the earliest trip of every
+  // round-(k-1) label into the bag; false on overflow
+  template <unsigned K>
+  __device__ bool board(unsigned const k,
+                        route_idx_t const r,
+                        stop_idx_t const stop_idx,
+                        route_bag<K>& bag) {
+    auto const stop_seq = tt_.route_location_seq_[r];
+    auto const l = to_idx(stop{stop_seq[stop_idx]}.location_idx());
+    auto const l_lb = lb_[l];
+    // the earliest trip is monotone in the arrival (FIFO): a lookup holds for
+    // the same arrival and while its trip is still catchable
+    auto et = transport{};
+    auto et_key = ~0U;  // arrival of the last lookup
+    auto et_dep_key = 0U;  // its trip's departure (0: none)
+    auto labels = bag_slots(l);
+    for (auto sl = 0U; sl != labels.size(); ++sl) {
+      auto const lab = labels[sl];
+      auto const key = mc_arr_key(lab);
+      auto const ex = kHasExtras ? mc_extras(lab) : 0U;
+      // not of the last round, or even the optimistic completion is dominated
+      if (lab == kMcEmptySlot || mc_round(lab) != k - 1U ||
+          dest_dominates(k, key + l_lb, ex)) {
+        continue;
+      }
+      if (key != et_key && !(et_key <= key && key <= et_dep_key)) {
+        auto const [day, mam] = split(from_key(key));
+        et = get_earliest_transport(r, stop_idx, day, mam, l_lb);
+        et_key = key;
+        et_dep_key =
+            et.is_valid() ? to_key(time_at_stop(r, et, stop_idx, kDepEv)) : 0U;
+      }
+      if (et.is_valid() && !bag.add(pack_et(r, et), mc_bc(lab), stop_idx, ex)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // CPU alight loop at scan position p
+  template <bool IsWheelchair, unsigned K>
+  __device__ bool alight_all(unsigned const k,
+                             route_idx_t const r,
+                             unsigned const n,
+                             unsigned const p,
+                             route_bag<K> const& bag) {
+    if (p == 0U || bag.n_ == 0U) {
+      return false;
+    }
+    auto const stop_idx = static_cast<stop_idx_t>(kFwd ? p : n - 1U - p);
+    auto const stop_seq = tt_.route_location_seq_[r];
+    auto const stp = stop{stop_seq[stop_idx]};
+    if (!stp.can_finish<SearchDir>(IsWheelchair)) {
+      return false;
+    }
+    auto const l = to_idx(stp.location_idx());
+    auto const cl = ride_clasz_at(r, stop_idx);
+    auto any = false;
+    for (auto i = 0U; i != K; ++i) {
+      if (i < bag.n_) {
+        auto const t = unpack_et(r, bag.et_[i]);
+        any |= alight(k, l, time_at_stop(r, t, stop_idx, kArrEv),
+                      route_bag<K>::extras(bag.bx_[i]), cl,
+                      {.transport_ = to_idx(t.t_idx_),
+                       .parent_ = bag.par_[i],
+                       .day_ = t.day_,
+                       .board_ = static_cast<stop_idx_t>(bag.board(i)),
+                       .alight_ = stop_idx});
+      }
+    }
+    return any;
+  }
+
+  // et phase 1 (as raptor_impl): compact the marked routes into route_list_,
+  // resetting any_marked_ for the scans (nothing reads it in this kernel)
+  __device__ void et_build_route_list() {
     auto const gid = get_global_thread_id();
-    auto const stride = get_global_stride();
     if (gid == 0U) {
       *any_marked_ = 0U;
     }
-    for (auto w = gid; w < route_mark_.blocks_.size(); w += stride) {
+    for (auto w = gid; w < route_mark_.blocks_.size();
+         w += get_global_stride()) {
       auto const word = route_mark_.blocks_[w];
       if (word == 0U) {
         continue;
@@ -695,6 +833,269 @@ struct mcraptor_impl {
       for_each_set_bit(
           word, [&](unsigned const b) { route_list_[pos++] = w * 32U + b; });
     }
+  }
+
+  // et phase 2 (as raptor_impl): the boardable stops of the marked routes
+  // into et_task_list_ (warp-aggregated compaction), the other stop bags
+  // emptied
+  template <bool IsWheelchair>
+  __device__ void et_collect_tasks() {
+    auto const lane = get_global_thread_id() % kWarpSize;
+    auto const n_warps = get_global_stride() / kWarpSize;
+    auto const n_marked = *route_list_count_;
+    for (auto idx = get_global_thread_id() / kWarpSize; idx < n_marked;
+         idx += n_warps) {
+      auto const r = route_idx_t{route_list_[idx]};
+      auto const base_flat = tt_.route_stop_offset_[to_idx(r)];
+      auto const n = static_cast<unsigned>(tt_.route_location_seq_[r].size());
+      for (auto chunk = 0U; chunk < n; chunk += kWarpSize) {
+        auto const s = chunk + lane;
+        auto is_task = false;
+        if (s < n) {
+          sb_n_[base_flat + s] = 0U;
+          is_task = boardable<IsWheelchair>(r, n, s);
+        }
+        auto const ballot = __ballot_sync(kAllLanes, is_task);
+        if (ballot == 0U) {
+          continue;
+        }
+        auto const leader =
+            static_cast<int>(__ffs(static_cast<int>(ballot))) - 1;
+        auto base_pos = 0U;
+        if (lane == static_cast<unsigned>(leader)) {
+          base_pos =
+              atomicAdd(et_task_count_, static_cast<unsigned>(__popc(ballot)));
+        }
+        base_pos = __shfl_sync(kAllLanes, base_pos, leader);
+        if (is_task) {
+          et_task_list_[base_pos + static_cast<unsigned>(
+                                       __popc(ballot & ((1U << lane) - 1U)))] =
+              base_flat + s;
+        }
+      }
+    }
+  }
+
+  // et phase 3: one thread per boardable stop fills its stop bag (up to
+  // kPrefixK entries, kSbOverflow if they did not fit)
+  __device__ void et_run_lookups(unsigned const k) {
+    auto const n_tasks = *et_task_count_;
+    for (auto i = get_global_thread_id(); i < n_tasks;
+         i += get_global_stride()) {
+      auto const f = et_task_list_[i];
+      auto const r = route_idx_t{tt_.route_of_stop_[f]};
+      auto const stop_idx =
+          static_cast<stop_idx_t>(f - tt_.route_stop_offset_[to_idx(r)]);
+      auto bag = route_bag<kPrefixK>{};
+      if (!board(k, r, stop_idx, bag)) {
+        sb_n_[f] = kSbOverflow;
+        continue;
+      }
+      sb_n_[f] = bag.n_;
+      for (auto j = 0U; j != bag.n_; ++j) {
+        sb_et_[f * kPrefixK + j] = bag.et_[j];
+        sb_par_[f * kPrefixK + j] = bag.par_[j];
+        sb_bx_[f * kPrefixK + j] = bag.bx_[j];
+      }
+    }
+  }
+
+  // The route bag before position p is an associative pareto prefix over the
+  // stops' boardings: a Kogge-Stone shuffle scan gives every lane its state.
+  // False on a K overflow (the caller rescans: inserts are idempotent,
+  // so `marked` already counts those of the earlier chunks).
+  template <unsigned K, bool IsWheelchair>
+  __device__ bool scan_prefix(unsigned const k,
+                              route_idx_t const r,
+                              unsigned const lane,
+                              bool& marked) {
+    using bag_t = route_bag<K>;
+    auto const n = static_cast<unsigned>(tt_.route_location_seq_[r].size());
+    auto const base_flat = tt_.route_stop_offset_[to_idx(r)];
+    auto carry = bag_t{};
+    for (auto base = 0U; base < n; base += kWarpSize) {
+      auto const p = base + lane;
+      auto incl = bag_t{};
+      auto overflow = false;
+      if (p + 1U < n) {  // the last stop never boards
+        auto const f = base_flat + (kFwd ? p : n - 1U - p);
+        auto const cnt = sb_n_[f];
+        overflow = cnt == kSbOverflow || cnt > K;
+        incl.n_ = overflow ? 0U : cnt;
+        for (auto i = 0U; i != K; ++i) {
+          if (i < incl.n_) {
+            incl.et_[i] = sb_et_[f * kPrefixK + i];
+            incl.par_[i] = sb_par_[f * kPrefixK + i];
+            incl.bx_[i] = sb_bx_[f * kPrefixK + i];
+          }
+        }
+      }
+      // no boardings in this chunk: the state everywhere is the carry
+      if (__ballot_sync(kAllLanes, incl.n_ != 0U || overflow) == 0U) {
+        if (p < n) {
+          marked |= alight_all<IsWheelchair>(k, r, n, p, carry);
+        }
+        continue;
+      }
+      for (auto d = 1U; d < kWarpSize; d <<= 1U) {
+        auto const other = incl.shfl_up(d);
+        if (lane >= d) {
+          overflow |= !bag_t::combine(other, incl);
+        }
+      }
+      auto excl = incl.shfl_up(1U);
+      if (lane == 0U) {
+        excl.n_ = 0U;
+      }
+      overflow |= !bag_t::combine(carry, excl);  // state before p
+      auto next_carry = incl.bcast(static_cast<int>(kWarpSize - 1U));
+      overflow |= !bag_t::combine(carry, next_carry);
+      if (__ballot_sync(kAllLanes, overflow) != 0U) {
+        return false;
+      }
+      if (p < n) {
+        marked |= alight_all<IsWheelchair>(k, r, n, p, excl);
+      }
+      carry = next_carry;
+    }
+    return true;
+  }
+
+  // the CPU update_route loop, for routes overflowing the prefix scan: the
+  // stop bags, looked up again only at stops that overflowed their own
+  template <bool IsWheelchair>
+  __device__ bool scan_sequential(unsigned const k, route_idx_t const r) {
+    auto const n = static_cast<unsigned>(tt_.route_location_seq_[r].size());
+    auto const base_flat = tt_.route_stop_offset_[to_idx(r)];
+    auto bag = route_bag<kMcRouteBagCap>{};
+    auto any = false;
+    for (auto p = 0U; p != n; ++p) {
+      any |= alight_all<IsWheelchair>(k, r, n, p, bag);
+      if (p + 1U == n) {
+        break;  // the last stop never boards
+      }
+      auto const f = base_flat + (kFwd ? p : n - 1U - p);
+      auto ok = true;
+      if (sb_n_[f] == kSbOverflow) {
+        ok = board(k, r, static_cast<stop_idx_t>(kFwd ? p : n - 1U - p), bag);
+      } else {
+        for (auto i = 0U; i != sb_n_[f]; ++i) {
+          auto const bx = sb_bx_[f * kPrefixK + i];
+          ok =
+              ok && bag.add(sb_et_[f * kPrefixK + i], sb_par_[f * kPrefixK + i],
+                            static_cast<stop_idx_t>(bx >> 16U), bx & 0xFFFFU);
+        }
+      }
+      if (!ok) {
+        atomicOr(overflow_, kMcOverflowRouteBag);
+      }
+    }
+    return any;
+  }
+
+  // one warp per marked route (CPU loop_routes, as raptor_impl)
+  template <bool WithClaszFilter, bool IsWheelchair>
+  __device__ void loop_routes(unsigned const k) {
+    auto const lane = get_global_thread_id() % kWarpSize;
+    auto const n_warps = get_global_stride() / kWarpSize;
+    auto marked = false;
+    for (auto i = get_global_thread_id() / kWarpSize; i < tt_.n_routes_;
+         i += n_warps) {
+      auto const r = route_idx_t{i};
+      if (!route_mark_[i] ||
+          (WithClaszFilter &&
+           !is_allowed(allowed_claszes_, tt_.route_clasz_[r]))) {
+        continue;
+      }
+      // K = 1 holds most routes, a wider scan or the sequential one the rest
+      if (!scan_prefix<1U, IsWheelchair>(k, r, lane, marked) &&
+          (kPrefixK == 1U ||
+           !scan_prefix<kPrefixK, IsWheelchair>(k, r, lane, marked)) &&
+          lane == 0U) {
+        marked |= scan_sequential<IsWheelchair>(k, r);
+      }
+      __syncwarp();
+    }
+    if (__any_sync(kAllLanes, marked) && lane == 0U && !*any_marked_) {
+      atomicOr(any_marked_, 1U);
+    }
+  }
+
+  // ---- rt scan (CPU update_rt_transport) -----------------------------------
+
+  // one thread per marked rt transport (CPU loop_rt_transports)
+  template <bool WithClaszFilter, bool IsWheelchair>
+  __device__ void update_rt_transports(unsigned const k) {
+    auto marked = false;
+    for (auto i = get_global_thread_id(); i < rtt_.n_rt_transports_;
+         i += get_global_stride()) {
+      auto const rt_t = rt_transport_idx_t{i};
+      if (rt_transport_mark_[i] &&
+          (!WithClaszFilter ||
+           is_allowed(allowed_claszes_, rtt_.rt_transport_clasz_[rt_t]))) {
+        marked |= update_rt_transport<IsWheelchair>(k, rt_t);
+      }
+    }
+    if (marked && !*any_marked_) {
+      atomicOr(any_marked_, 1U);
+    }
+  }
+
+  // update_route for an rt run: a single trip with absolute event times, so
+  // the route bag reduces to the carried extras
+  template <bool IsWheelchair>
+  __device__ bool update_rt_transport(unsigned const k,
+                                      rt_transport_idx_t const rt_t) {
+    auto const stop_seq = rtt_.rt_transport_location_seq_[rt_t];
+    auto const n = static_cast<unsigned>(stop_seq.size());
+    auto bag = route_bag<kMcRouteBagCap>{};
+    auto any = false;
+    for (auto i = 0U; i != n; ++i) {
+      auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - i - 1U);
+      auto const stp = stop{stop_seq[stop_idx]};
+      auto const l = to_idx(stp.location_idx());
+
+      if (i != 0U && bag.n_ != 0U && stp.can_finish<SearchDir>(IsWheelchair)) {
+        auto const by_transport = rt_time_at_stop(rt_t, stop_idx, kArrEv);
+        auto const cl = rt_ride_clasz_at(rt_t, stop_idx);
+        for (auto b = 0U; b != bag.n_; ++b) {
+          any |= alight(k, l, by_transport,
+                        route_bag<kMcRouteBagCap>::extras(bag.bx_[b]), cl,
+                        {.transport_ = to_idx(rt_t),
+                         .parent_ = bag.par_[b],
+                         .day_ = day_idx_t::invalid(),
+                         .board_ = static_cast<stop_idx_t>(bag.board(b)),
+                         .alight_ = stop_idx});
+        }
+      }
+
+      if (i == n - 1U || !stp.can_start<SearchDir>(IsWheelchair) ||
+          !prev_station_mark_[l]) {
+        continue;
+      }
+      auto const l_lb = lb_[l];
+      if (l_lb == kUnreachable) {
+        break;
+      }
+      auto const dep_key = to_key(rt_time_at_stop(rt_t, stop_idx, kDepEv));
+      auto labels = bag_slots(l);
+      for (auto sl = 0U; sl != labels.size(); ++sl) {
+        auto const lab = labels[sl];
+        if (lab == kMcEmptySlot || mc_round(lab) != k - 1U ||
+            mc_arr_key(lab) > dep_key) {
+          continue;  // not of the last round, or misses this run
+        }
+        auto const ex = kHasExtras ? mc_extras(lab) : 0U;
+        if (dest_dominates(k, mc_arr_key(lab) + l_lb, ex)) {
+          continue;
+        }
+        if (!bag.add(0U, mc_bc(lab), stop_idx, ex)) {
+          atomicOr(overflow_, kMcOverflowRouteBag);
+          break;
+        }
+      }
+    }
+    return any;
   }
 
   // class of a ride alighted at stop_idx, as the CPU (only read by the mode
@@ -718,773 +1119,57 @@ struct mcraptor_impl {
     }
   }
 
-  // breadcrumb of a static ride (t, board -> stop_idx) arriving at arr
-  __device__ __forceinline__ static mc_breadcrumb ride_bc(
-      transport const t,
-      std::uint32_t const board,
-      stop_idx_t const stop_idx,
-      std::uint32_t const parent,
-      delta_t const arr) {
-    return {.transport_ = to_idx(t.t_idx_),
-            .parent_ = parent,
-            .day_ = t.day_,
-            .board_ = static_cast<stop_idx_t>(board),
-            .alight_ = stop_idx,
-            .arr_ = arr};
-  }
+  // ---- footpaths (CPU update_footpaths) ------------------------------------
 
   // a walk keeps the ride's breadcrumb, only the arrival changes
   __device__ __forceinline__ mc_breadcrumb walk_bc(std::uint32_t const te_bc,
                                                    delta_t const arr) const {
-    auto bc = bc_read_coherent(te_bc);
+    auto bc = bc_[te_bc];
     bc.arr_ = arr;
     return bc;
   }
 
-  __device__ __forceinline__ int transfer_buffer(std::uint32_t const l) const {
-    return (!is_intermodal_dest() && is_dest_[l])
-               ? 0
-               : dir(adjusted_transfer_time(
-                     transfer_time_settings_,
-                     tt_.transfer_time_[location_idx_t{l}].count()));
-  }
-
-  __device__ __forceinline__ bool is_intermodal_dest() const {
-    return !dist_to_end_.empty();
-  }
-
-  // et phase 1: compacts the boardable route stops into tasks. flat -> task is
-  // route_task_start_ + popcount of the route's task bits below flat.
-  __device__ __forceinline__ std::uint32_t et_task_for(
-      std::uint32_t const ri,
-      std::uint32_t const base_flat,
-      std::uint32_t const flat) const {
-    if (((task_bits_[flat >> 5U] >> (flat & 31U)) & 1U) == 0U) {
-      return ~0U;  // not a boarding stop this round
+  // CPU relax_egress: to the intermodal target
+  __device__ void relax_egress(unsigned const k,
+                               std::uint32_t const dur,
+                               delta_t const te_arr,
+                               std::uint32_t const te_extras,
+                               std::uint32_t const te_bc) {
+    auto const end_arr = clamp(te_arr + dir(static_cast<int>(dur)));
+    auto const end_key = to_key(end_arr);
+    if (end_key >= to_key(worst_at_dest_)) {
+      return;  // window bound
     }
-    auto const w0 = base_flat >> 5U;
-    auto const wf = flat >> 5U;
-    auto const lo_mask = ~0U << (base_flat & 31U);
-    auto const hi_mask = (1U << (flat & 31U)) - 1U;
-    auto rank = 0U;
-    if (w0 == wf) {
-      rank = static_cast<unsigned>(__popc(task_bits_[w0] & lo_mask & hi_mask));
-    } else {
-      rank = static_cast<unsigned>(__popc(task_bits_[w0] & lo_mask));
-      for (auto w = w0 + 1U; w < wf; ++w) {
-        rank += static_cast<unsigned>(__popc(task_bits_[w]));
-      }
-      rank += static_cast<unsigned>(__popc(task_bits_[wf] & hi_mask));
-    }
-    return route_task_start_[ri] + rank;
-  }
-
-  template <bool IsWheelchair>
-  __device__ void et_collect_tasks(unsigned const k) {
-    auto const gid = get_global_thread_id();
-    auto const stride = get_global_stride();
-    auto const lane = gid % kWarpSize;
-    auto const warp_id = gid / kWarpSize;
-    auto const n_warps = stride / kWarpSize;
-    auto const n_marked = *route_list_count_;
-    for (auto idx = warp_id; idx < n_marked; idx += n_warps) {
-      auto const ri = route_list_[idx];
-      auto const r = route_idx_t{ri};
-      auto const base_flat =
-          static_cast<std::uint32_t>(tt_.route_stop_offset_[ri]);
-      auto const stop_seq = tt_.route_location_seq_[r];
-      auto const n = static_cast<unsigned>(stop_seq.size());
-      if (lane == 0U) {
-        route_entry_count_[ri] = 0U;
-      }
-      auto const boardable = [&](unsigned const i, unsigned& l_out) {
-        if (i + 1U >= n) {
-          return false;  // last stop never boards
-        }
-        auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
-        auto const stp = stop{stop_seq[stop_idx]};
-        auto const l = to_idx(stp.location_idx());
-        l_out = l;
-        auto const ok = prev_station_mark_[l] &&
-                        stp.can_start<SearchDir>(IsWheelchair) &&
-                        lb_[l] != kUnreachable && bag_hwm_[l] != 0U;
-        return ok;
-      };
-      // pass A: count tasks, clear the bit range (masked atomics at shared
-      // boundary words)
-      auto route_tasks = 0U;
-      for (auto chunk = 0U; chunk < n; chunk += kWarpSize) {
-        auto l = 0U;
-        auto const t = chunk + lane < n && boardable(chunk + lane, l);
-        route_tasks +=
-            static_cast<unsigned>(__popc(__ballot_sync(kAllLanes, t)));
-      }
-      {
-        auto const w0 = base_flat >> 5U;
-        auto const w1 = (base_flat + n - 1U) >> 5U;
-        auto const lo = ~0U << (base_flat & 31U);
-        auto const hi_rem = (base_flat + n) & 31U;
-        auto const hi = hi_rem == 0U ? ~0U : (1U << hi_rem) - 1U;
-        for (auto w = w0 + lane; w <= w1; w += kWarpSize) {
-          auto keep = 0U;
-          if (w == w0) {
-            keep |= ~lo;
-          }
-          if (w == w1) {
-            keep |= ~hi;
-          }
-          if (keep == 0U) {
-            task_bits_[w] = 0U;
-          } else {
-            atomicAnd(task_bits_ + w, keep);
-          }
-        }
-      }
-      if (route_tasks == 0U) {
-        continue;
-      }
-      auto route_start = 0U;
-      if (lane == 0U) {
-        route_start = atomicAdd(et_task_count_, route_tasks);
-      }
-      route_start = __shfl_sync(kAllLanes, route_start, 0);
-      if (route_start + route_tasks > et_tasks_cap_) {
-        if (lane == 0U) {
-          atomicOr(overflow_, kMcOverflowTaskCap);
-        }
-        // neutralize the reserved-but-unwritten slots for the lookup pass
-        for (auto t = route_start + lane;
-             t < umin(route_start + route_tasks, et_tasks_cap_);
-             t += kWarpSize) {
-          et_task_off_[t] = ~0U;
-        }
-        continue;
-      }
-      if (lane == 0U) {
-        route_task_start_[ri] = route_start;
-      }
-      // pass B: reserve the exact entries, write tasks in flat order (the rank
-      // flips backward)
-      auto done_before = 0U;
-      for (auto chunk = 0U; chunk < n; chunk += kWarpSize) {
-        auto const i = chunk + lane;
-        auto l = 0U;
-        auto const is_task = i < n && boardable(i, l);
-        auto need = 0U;
-        if (is_task) {
-          auto const bv = bag_view(l);
-          for (auto sl = 0U; sl != bv.size(); ++sl) {
-            auto const lab = bv[sl];
-            need += (lab != kMcEmptySlot && mc_round(lab) == k - 1U) ? 1U : 0U;
-          }
-          need = umin(need, kMcEtGatherCap);
-        }
-        auto const ballot = __ballot_sync(kAllLanes, is_task);
-        if (ballot == 0U) {
-          continue;
-        }
-        auto incl_sum = need;
-        for (auto d = 1U; d < kWarpSize; d <<= 1U) {
-          auto const v = __shfl_up_sync(kAllLanes, incl_sum, d);
-          if (lane >= d) {
-            incl_sum += v;
-          }
-        }
-        auto base_off = 0U;
-        if (lane == kWarpSize - 1U) {
-          base_off = atomicAdd(et_entry_count_, incl_sum);
-        }
-        base_off = __shfl_sync(kAllLanes, base_off, kWarpSize - 1U);
-        if (is_task) {
-          auto const rank_i =
-              done_before +
-              static_cast<unsigned>(__popc(ballot & ((1U << lane) - 1U)));
-          auto const ti = kFwd ? route_start + rank_i
-                               : route_start + route_tasks - 1U - rank_i;
-          auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - 1U - i);
-          auto const flat = base_flat + stop_idx;
-          et_task_list_[ti] = flat;
-          atomicOr(task_bits_ + (flat >> 5U), 1U << (flat & 31U));
-          auto const eoff = base_off + (incl_sum - need);
-          if (static_cast<std::size_t>(eoff) + need > et_pool_cap_) {
-            atomicOr(overflow_, kMcOverflowEtTasks);  // et_pool_cap_ exceeded
-            et_task_off_[ti] = ~0U;
-          } else {
-            et_task_off_[ti] = eoff;
-          }
-        }
-        done_before += static_cast<unsigned>(__popc(ballot));
-      }
+    auto const end_extras = crit_after_walk(te_extras, dur);
+    auto const bc = walk_bc(te_bc, end_arr);
+    if (bag_insert(to_idx(kIntermodalTarget), end_key, end_extras, k, false,
+                   &bc)) {
+      touched_.mark(to_idx(kIntermodalTarget));
+      dest_bag_add(k, end_key, end_extras);
     }
   }
 
-  // et phase 2: one thread per task, a lookup per boardable label (no skip
-  // heuristic: the scan's route-bag merge drops redundant ones)
-  __device__ void et_run_lookups(unsigned const k) {
-    auto const gid = get_global_thread_id();
-    auto const stride = get_global_stride();
-    auto const n_tasks = umin(*et_task_count_, et_tasks_cap_);
-    for (auto t = gid; t < n_tasks; t += stride) {
-      auto const eoff = et_task_off_[t];
-      if (eoff == ~0U) {
-        et_task_cnt_[t] = 0U;
-        continue;  // entry pool exhausted (canary already set)
-      }
-      auto const flat = et_task_list_[t];
-      auto const r = route_idx_t{tt_.route_of_stop_[flat]};
-      auto const stop_idx =
-          static_cast<stop_idx_t>(flat - tt_.route_stop_offset_[to_idx(r)]);
-      auto const stop_seq = tt_.route_location_seq_[r];
-      auto const l_idx = to_idx(stop{stop_seq[stop_idx]}.location_idx());
-      auto const l_lb = lb_[l_idx];
-      auto const stop_bag = bag_view(l_idx);
-      auto const stop_hwm = stop_bag.size();
-
-      // sorted by arrival: the earliest transport is monotone in it, so the
-      // previous result is reused while still catchable
-      struct cand {
-        std::uint32_t key_;
-        std::uint16_t extras_;
-        std::uint8_t sl_;
-      };
-      cand cands[kMcEtGatherCap];
-      auto n_cands = 0U;
-      for (auto sl = 0U; sl != stop_hwm; ++sl) {
-        auto const lab = stop_bag[sl];
-        if (lab == kMcEmptySlot || mc_round(lab) != k - 1U) {
-          continue;
-        }
-        auto const pe_key = mc_arr_key(lab);
-        auto const pe_extras = kHasExtras ? mc_extras(lab) : 0U;
-        if (dest_dominates(k, pe_key + l_lb, pe_extras)) {
-          continue;
-        }
-        if (n_cands == kMcEtGatherCap) {
-          atomicOr(overflow_, kMcOverflowEtBlock);
-          break;
-        }
-        auto j = n_cands;
-        while (j != 0U && cands[j - 1U].key_ > pe_key) {
-          cands[j] = cands[j - 1U];
-          --j;
-        }
-        cands[j] = {pe_key, static_cast<std::uint16_t>(pe_extras),
-                    static_cast<std::uint8_t>(sl)};
-        ++n_cands;
-      }
-
-      auto const dep_ev = kFwd ? event_type::kDep : event_type::kArr;
-      auto out = 0U;
-      auto prev_key = ~0U;
-      auto prev_valid = false;
-      auto prev_et = transport{};
-      auto prev_dep = delta_t{0};
-      for (auto ci = 0U; ci != n_cands; ++ci) {
-        auto const key = cands[ci].key_;
-        auto need_seek = true;
-        if (key == prev_key) {
-          need_seek = false;  // identical arrival: identical result
-        } else if (prev_valid && is_better_or_eq(from_key(key), prev_dep)) {
-          need_seek = false;  // previous trip still catchable: same result
-        }
-        if (need_seek) {
-          auto const [day, mam] = split(from_key(key));
-          auto const et = get_earliest_transport(r, stop_idx, day, mam, l_lb);
-          prev_valid = et.is_valid();
-          if (prev_valid) {
-            prev_et = et;
-            prev_dep = time_at_stop(r, et, stop_idx, dep_ev);
-          }
-        }
-        prev_key = key;
-        if (!prev_valid) {
-          continue;  // nothing catchable from this (or an equal) arrival
-        }
-        auto const slot = static_cast<std::size_t>(eoff) + out;
-        et_ent_key_[slot] = pack_et(r, prev_et);
-        et_ent_ex_[slot] = cands[ci].extras_;
-        et_ent_sl_[slot] = cands[ci].sl_;
-        atomicAdd(route_entry_count_ + to_idx(r), 1U);
-        ++out;
-      }
-      // entry count instead of a terminator entry
-      et_task_cnt_[t] = static_cast<std::uint8_t>(out);
-    }
-  }
-
-  // route bag entry: pareto over trip order x carried extras
-  struct route_label {
-    std::uint32_t et_;  // packed (rel day | transport offset), scan order
-    std::uint32_t parent_;  // breadcrumb arena index of the boarded label
-    delta_t board_dep_;  // departure at the boarding stop
-    std::uint16_t board_;  // boarding stop index
-    std::uint16_t extras_;  // carried extras
-  };
-
-  // prefix scan (K = 1, then kMcPrefixK), the sequential scan on overflow
-  template <bool WithClaszFilter, bool IsWheelchair>
-  __device__ bool scan_route_warp(unsigned const k,
-                                  route_idx_t const r,
-                                  unsigned const lane) {
-    if constexpr (WithClaszFilter) {
-      if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
-        return false;
-      }
-    }
-    if (route_entry_count_[to_idx(r)] == 0U) {
-      return false;  // all lookups pruned: nothing boards this route
-    }
-    auto marked = false;
-    if (scan_prefix<1U, IsWheelchair>(k, r, lane, marked) ||
-        scan_prefix<kMcPrefixK, IsWheelchair>(k, r, lane, marked)) {
-      __syncwarp();
-      return marked;
-    }
-    if (lane == 0U) {
-      marked |= scan_route<IsWheelchair>(k, r);
-    }
-    return __shfl_sync(kAllLanes, marked ? 1 : 0, 0) != 0;
-  }
-
-  // one warp per marked route (sub-warp tiles were slower)
-  template <bool WithClaszFilter, bool IsWheelchair>
-  __device__ void scan_routes(unsigned const k) {
-    auto const lane = get_global_thread_id() % kWarpSize;
-    auto const warp_id = get_global_thread_id() / kWarpSize;
-    auto const n_warps = get_global_stride() / kWarpSize;
-    auto local_marked = false;
-
-    auto const n_marked = *route_list_count_;
-    for (auto task = warp_id; task < n_marked; task += n_warps) {
-      local_marked |= scan_route_warp<WithClaszFilter, IsWheelchair>(
-          k, route_idx_t{route_list_[task]}, lane);
-      __syncwarp();
-    }
-    if (__any_sync(kAllLanes, local_marked) && lane == 0U && !*any_marked_) {
-      atomicOr(any_marked_, 1U);
-    }
-  }
-
-  // ---- warp-prefix scan --------------------------------------------------
-  // The route bag before position p is an associative pareto prefix over the
-  // stops' boarding mini-bags: a Kogge-Stone shuffle scan gives every lane its
-  // state. K adapts (1, kMcPrefixK, then the sequential scan) via a ballot
-  // before any alight; reruns are exact as inserts are idempotent.
-  template <unsigned K>
-  struct mc_pbag {
-    std::uint32_t et_[K];
-    std::uint32_t par_[K];  // breadcrumb arena index of the board
-    std::uint32_t bx_[K];  // [board stop_idx:16 | extras:16]
-    unsigned cnt_;
-  };
-
-  template <unsigned K>
-  __device__ static mc_pbag<K> pbag_shfl_up(mc_pbag<K> const& v,
-                                            unsigned const d) {
-    auto r = mc_pbag<K>{};
-    for (auto i = 0U; i != K; ++i) {
-      r.et_[i] = __shfl_up_sync(kAllLanes, v.et_[i], d);
-      r.par_[i] = __shfl_up_sync(kAllLanes, v.par_[i], d);
-      r.bx_[i] = __shfl_up_sync(kAllLanes, v.bx_[i], d);
-    }
-    r.cnt_ = __shfl_up_sync(kAllLanes, v.cnt_, d);
-    return r;
-  }
-
-  template <unsigned K>
-  __device__ static mc_pbag<K> pbag_bcast(mc_pbag<K> const& v,
-                                          unsigned const src) {
-    auto r = mc_pbag<K>{};
-    for (auto i = 0U; i != K; ++i) {
-      r.et_[i] = __shfl_sync(kAllLanes, v.et_[i], static_cast<int>(src));
-      r.par_[i] = __shfl_sync(kAllLanes, v.par_[i], static_cast<int>(src));
-      r.bx_[i] = __shfl_sync(kAllLanes, v.bx_[i], static_cast<int>(src));
-    }
-    r.cnt_ = __shfl_sync(kAllLanes, v.cnt_, static_cast<int>(src));
-    return r;
-  }
-
-  // later boardings b absorb a with the route-bag rules (ties go to b: board
-  // closest to the exit); associative
-  template <unsigned K>
-  __device__ static void pbag_combine(mc_pbag<K> const& a,
-                                      mc_pbag<K>& b,
-                                      bool& overflow) {
-    auto r = mc_pbag<K>{};
-    r.cnt_ = 0U;
-    for (auto bi = 0U; bi != K; ++bi) {
-      if (bi >= b.cnt_) {
-        break;
-      }
-      auto keep = true;
-      for (auto ai = 0U; ai != K; ++ai) {
-        if (ai < a.cnt_ && a.et_[ai] <= b.et_[bi] &&
-            crit_le(a.bx_[ai] & 0xFFFFU, b.bx_[bi] & 0xFFFFU) &&
-            !(a.et_[ai] == b.et_[bi] &&
-              (a.bx_[ai] & 0xFFFFU) == (b.bx_[bi] & 0xFFFFU))) {
-          keep = false;
-        }
-      }
-      if (keep) {
-        r.et_[r.cnt_] = b.et_[bi];
-        r.par_[r.cnt_] = b.par_[bi];
-        r.bx_[r.cnt_] = b.bx_[bi];
-        ++r.cnt_;
-      }
-    }
-    for (auto ai = 0U; ai != K; ++ai) {
-      if (ai >= a.cnt_) {
-        break;
-      }
-      auto keep = true;
-      for (auto bi = 0U; bi != K; ++bi) {
-        if (bi < b.cnt_ && b.et_[bi] <= a.et_[ai] &&
-            crit_le(b.bx_[bi] & 0xFFFFU, a.bx_[ai] & 0xFFFFU)) {
-          keep = false;
-        }
-      }
-      if (keep) {
-        if (r.cnt_ == K) {
-          overflow = true;
-          break;
-        }
-        r.et_[r.cnt_] = a.et_[ai];
-        r.par_[r.cnt_] = a.par_[ai];
-        r.bx_[r.cnt_] = a.bx_[ai];
-        ++r.cnt_;
-      }
-    }
-    b = r;
-  }
-
-  // one stop's boarding mini-bag from its et block (route-bag rules)
-  template <unsigned K>
-  __device__ void pbag_local(route_idx_t const r,
-                             unsigned const n,
-                             std::size_t const base_flat,
-                             unsigned const pos,
-                             mc_pbag<K>& out,
-                             bool& overflow) const {
-    out.cnt_ = 0U;
-    if (pos + 1U >= n) {
-      return;  // last stop never boards
-    }
-    auto const stop_idx = static_cast<stop_idx_t>(kFwd ? pos : n - 1U - pos);
-    auto const flat = static_cast<std::size_t>(base_flat + stop_idx);
-    auto const ti =
-        et_task_for(to_idx(r), static_cast<std::uint32_t>(base_flat),
-                    static_cast<std::uint32_t>(flat));
-    if (ti == ~0U || et_task_cnt_[ti] == 0U) {
-      return;
-    }
-    auto const eoff = et_task_off_[ti];
-    auto const n_ent = static_cast<std::uint32_t>(et_task_cnt_[ti]);
-    auto const stop_seq = tt_.route_location_seq_[r];
-    auto const l_idx = to_idx(stop{stop_seq[stop_idx]}.location_idx());
-    auto const stop_bag = bag_view(l_idx);
-    for (auto e = 0U; e != n_ent; ++e) {
-      auto const et_key = et_ent_key_[eoff + e];
-      auto const pe_extras = kHasExtras ? et_ent_ex_[eoff + e] : 0U;
-      auto merged = false;
-      for (auto i = 0U; i != K; ++i) {
-        if (i < out.cnt_ && !merged) {
-          if (out.et_[i] == et_key && (out.bx_[i] & 0xFFFFU) == pe_extras) {
-            out.par_[i] = mc_bc(stop_bag[et_ent_sl_[eoff + e]]);
-            merged = true;
-          } else if (et_key >= out.et_[i] &&
-                     crit_le(out.bx_[i] & 0xFFFFU, pe_extras)) {
-            merged = true;  // dominated
-          }
-        }
-      }
-      if (merged) {
-        continue;
-      }
-      auto w = 0U;
-      for (auto i = 0U; i != K; ++i) {
-        if (i < out.cnt_ && !(et_key <= out.et_[i] &&
-                              crit_le(pe_extras, out.bx_[i] & 0xFFFFU))) {
-          out.et_[w] = out.et_[i];
-          out.par_[w] = out.par_[i];
-          out.bx_[w] = out.bx_[i];
-          ++w;
-        }
-      }
-      out.cnt_ = w;
-      if (out.cnt_ == K) {
-        overflow = true;
-        return;
-      }
-      out.et_[out.cnt_] = et_key;
-      out.par_[out.cnt_] = mc_bc(stop_bag[et_ent_sl_[eoff + e]]);
-      out.bx_[out.cnt_] =
-          (static_cast<std::uint32_t>(stop_idx) << 16U) | pe_extras;
-      ++out.cnt_;
-    }
-  }
-
-  // the alight work for one position, fed from registers
-  template <bool IsWheelchair, unsigned K>
-  __device__ bool alight_position(unsigned const k,
-                                  route_idx_t const r,
-                                  unsigned const n,
-                                  unsigned const p,
-                                  mc_pbag<K> const& bag,
-                                  std::uint32_t const worst_key) {
-    auto const stop_seq = tt_.route_location_seq_[r];
-    auto const stop_idx = static_cast<stop_idx_t>(kFwd ? p : n - 1U - p);
-    auto const stp = stop{stop_seq[stop_idx]};
-    if (!stp.can_finish<SearchDir>(IsWheelchair)) {
-      return false;
-    }
-    auto const l_idx = to_idx(stp.location_idx());
-    auto const l_lb = lb_[l_idx];
-    if (l_lb == kUnreachable) {
-      return false;
-    }
-    auto const buf = transfer_buffer(l_idx);
-    auto const is_dest = is_dest_[l_idx];
-    auto const arr_ev = kFwd ? event_type::kArr : event_type::kDep;
-    auto any = false;
-    for (auto i = 0U; i != K; ++i) {
-      if (i >= bag.cnt_) {
-        break;
-      }
-      auto const t = unpack_et(r, bag.et_[i]);
-      auto const by_transport = time_at_stop(r, t, stop_idx, arr_ev);
-      auto const ride_key = to_key(by_transport);
-      if (ride_key >= worst_key || ride_key + l_lb >= worst_key) {
-        continue;
-      }
-      auto const ride_extras =
-          crit_after_ride(bag.bx_[i] & 0xFFFFU, ride_clasz_at(r, stop_idx));
-      if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
-        continue;
-      }
-      auto const post_arr = clamp(by_transport + buf);
-      auto const bc =
-          ride_bc(t, bag.bx_[i] >> 16U, stop_idx, bag.par_[i], post_arr);
-      if (!bag_insert(l_idx, to_key(post_arr), ride_extras, k, true, &bc)) {
-        continue;
-      }
-      touched_.mark(l_idx);
-      station_mark_.mark(l_idx);
-      any = true;
-      if (is_dest) {
-        dest_bag_add(k, ride_key, ride_extras);
-      }
-    }
-    return any;
-  }
-
-  // returns false on K-overflow -> caller upgrades K / scans sequentially
-  template <unsigned K, bool IsWheelchair>
-  __device__ bool scan_prefix(unsigned const k,
-                              route_idx_t const r,
-                              unsigned const lane,
-                              bool& any_marked) {
-    auto const n = static_cast<unsigned>(tt_.route_location_seq_[r].size());
-    auto const base_flat = tt_.route_stop_offset_[to_idx(r)];
-    auto const worst_key = to_key(worst_at_dest_);
-
-    auto carry = mc_pbag<K>{};
-    carry.cnt_ = 0U;
-    auto marked = false;
-
-    for (auto base = 0U; base < n; base += kWarpSize) {
-      auto overflow = false;
-      auto const pos = base + lane;
-      auto incl = mc_pbag<K>{};
-      pbag_local(r, n, base_flat, pos, incl, overflow);
-      // chunk without boardings: the state everywhere is just the carry
-      if (__ballot_sync(kAllLanes, incl.cnt_ != 0U) == 0U) {
-        if (carry.cnt_ != 0U && pos >= 1U && pos < n) {
-          marked |=
-              alight_position<IsWheelchair>(k, r, n, pos, carry, worst_key);
-        }
-        continue;
-      }
-      for (auto d = 1U; d < kWarpSize; d <<= 1U) {
-        auto const other = pbag_shfl_up(incl, d);
-        if (lane >= d) {
-          pbag_combine(other, incl, overflow);
-        }
-      }
-      auto excl = pbag_shfl_up(incl, 1U);
-      if (lane == 0U) {
-        excl.cnt_ = 0U;
-      }
-      pbag_combine(carry, excl, overflow);  // full state before pos
-      auto next_carry = pbag_bcast(incl, kWarpSize - 1U);
-      pbag_combine(carry, next_carry, overflow);
-      if (__ballot_sync(kAllLanes, overflow) != 0U) {
-        return false;
-      }
-      if (pos >= 1U && pos < n && excl.cnt_ != 0U) {
-        marked |= alight_position<IsWheelchair>(k, r, n, pos, excl, worst_key);
-      }
-      carry = next_carry;
-    }
-    any_marked |= marked;
-    return true;
-  }
-
-  template <bool IsWheelchair>
-  __device__ bool scan_route(unsigned const k, route_idx_t const r) {
-    auto const stop_seq = tt_.route_location_seq_[r];
-    auto const n = static_cast<unsigned>(stop_seq.size());
-    auto any_marked = false;
-
-    route_label route_bag[kMcRouteBagCap];
-    auto bag_size = 0U;
-
-    auto const arr_ev = kFwd ? event_type::kArr : event_type::kDep;
-    auto const worst_key = to_key(worst_at_dest_);
-
-    for (auto i = 0U; i != n; ++i) {
-      auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - i - 1U);
-      auto const stp = stop{stop_seq[stop_idx]};
-      auto const l_idx = to_idx(stp.location_idx());
-      auto const is_last = i == n - 1U;
-
-      // ---- alight: write arrivals of carried boardings -----------------
-      if (i != 0U && bag_size != 0U &&
-          stp.can_finish<SearchDir>(IsWheelchair)) {
-        auto const buf = transfer_buffer(l_idx);
-        auto const l_lb = lb_[l_idx];
-        for (auto b = 0U; b != bag_size; ++b) {
-          auto const& rl = route_bag[b];
-          auto const t = unpack_et(r, rl.et_);
-          auto const by_transport = time_at_stop(r, t, stop_idx, arr_ev);
-          auto const ride_key = to_key(by_transport);
-          // window bound with the lb projection (CPU update_route)
-          if (ride_key >= worst_key || l_lb == kUnreachable ||
-              ride_key + l_lb >= worst_key) {
-            continue;
-          }
-          auto const ride_extras =
-              crit_after_ride(rl.extras_, ride_clasz_at(r, stop_idx));
-          // destination pareto pruning: optimistic projection (key + lb)
-          if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
-            continue;
-          }
-          auto const post_arr = clamp(by_transport + buf);
-          auto const bc = ride_bc(t, rl.board_, stop_idx, rl.parent_, post_arr);
-          if (!bag_insert(l_idx, to_key(post_arr), ride_extras, k, true, &bc)) {
-            continue;
-          }
-          touched_.mark(l_idx);
-          station_mark_.mark(l_idx);
-          any_marked = true;
-          if (is_dest_[l_idx]) {
-            // no buffer at a station destination
-            dest_bag_add(k, ride_key, ride_extras);
-          }
-        }
-      }
-
-      // ---- board: merge this stop's round-(k-1) labels ------------------
-      if (is_last || !stp.can_start<SearchDir>(IsWheelchair) ||
-          !prev_station_mark_[l_idx]) {
-        continue;
-      }
-
-      if (lb_[l_idx] == kUnreachable) {  // CPU update_route: scan abort
-        break;
-      }
-
-      auto const stop_bag = bag_view(l_idx);
-      auto const rsbase = tt_.route_stop_offset_[to_idx(r)];
-      auto const flat = rsbase + stop_idx;
-      auto const ti = et_task_for(to_idx(r), static_cast<std::uint32_t>(rsbase),
-                                  static_cast<std::uint32_t>(flat));
-      if (ti == ~0U || et_task_cnt_[ti] == 0U) {
-        continue;
-      }
-      auto const eoff = et_task_off_[ti];
-      auto const n_ent = static_cast<std::uint32_t>(et_task_cnt_[ti]);
-
-      for (auto e = 0U; e != n_ent; ++e) {
-        auto const et_key = et_ent_key_[eoff + e];
-        auto const pe_extras = kHasExtras ? et_ent_ex_[eoff + e] : 0U;
-        auto const pe_parent = mc_bc(stop_bag[et_ent_sl_[eoff + e]]);
-
-        // merge into the route bag: pareto over (trip order, extras)
-        auto merged = false;
-        for (auto b = 0U; b != bag_size; ++b) {
-          auto& rl = route_bag[b];
-          if (rl.et_ == et_key && rl.extras_ == pe_extras) {
-            // same trip, same carried extras: board closest to the exit
-            rl.board_ = stop_idx;
-            rl.parent_ = pe_parent;
-            merged = true;
-            break;
-          }
-          if (et_key >= rl.et_ && crit_le(rl.extras_, pe_extras)) {
-            merged = true;  // dominated: not-earlier trip, extras no better
-            break;
-          }
-        }
-        if (merged) {
-          continue;
-        }
-        auto w = 0U;
-        for (auto b = 0U; b != bag_size; ++b) {
-          if (!(et_key <= route_bag[b].et_) ||
-              !crit_le(pe_extras, route_bag[b].extras_)) {
-            route_bag[w] = route_bag[b];
-            ++w;
-          }
-        }
-        bag_size = w;
-        if (bag_size == kMcRouteBagCap) {
-          atomicOr(overflow_, kMcOverflowRouteBag);
-          continue;
-        }
-        route_bag[bag_size] = {et_key, pe_parent, 0, stop_idx,
-                               static_cast<std::uint16_t>(pe_extras)};
-        ++bag_size;
-      }
-    }
-    return any_marked;
-  }
-
-  // one footpath from a transit arrival, pruned like the CPU
-  __device__ __forceinline__ void relax_fp(unsigned const k,
-                                           std::uint32_t const source,
-                                           footpath const fp,
-                                           delta_t const te_arr,
-                                           std::uint32_t const te_extras,
-                                           std::uint32_t const te_bc,
-                                           std::uint32_t const worst_key) {
-    relax_fp_target(
-        k, source, to_idx(fp.target()),
-        adjusted_transfer_time(transfer_time_settings_, fp.duration().count()),
-        te_arr, te_extras, te_bc, worst_key);
-  }
-
-  // td durations (incl. waiting) verbatim, static ones adjusted
-  __device__ __forceinline__ void relax_fp_target(
-      unsigned const k,
-      std::uint32_t const source,
-      std::uint32_t const target,
-      int const fp_duration,
-      delta_t const te_arr,
-      std::uint32_t const te_extras,
-      std::uint32_t const te_bc,
-      std::uint32_t const worst_key) {
+  // CPU relax_fp: td durations (incl. waiting) verbatim, static ones adjusted
+  __device__ void relax_fp(unsigned const k,
+                           std::uint32_t const source,
+                           std::uint32_t const target,
+                           int const dur,
+                           delta_t const te_arr,
+                           std::uint32_t const te_extras,
+                           std::uint32_t const te_bc) {
     if (target == source) {
       return;
     }
-    auto const fp_arr = clamp(te_arr + dir(fp_duration));
+    auto const fp_arr = clamp(te_arr + dir(dur));
     auto const fp_key = to_key(fp_arr);
     auto const target_lb = lb_[target];
+    auto const worst_key = to_key(worst_at_dest_);
     if (fp_key >= worst_key || target_lb == kUnreachable ||
         fp_key + target_lb >= worst_key) {
       return;
     }
     auto const fp_extras =
-        crit_after_walk(te_extras, static_cast<std::uint32_t>(fp_duration));
+        crit_after_walk(te_extras, static_cast<std::uint32_t>(dur));
     if (dest_dominates(k, fp_key + target_lb, fp_extras)) {
       return;
     }
@@ -1524,316 +1209,108 @@ struct mcraptor_impl {
     return !bv.blocks_.empty() && bv[to_idx(l)];
   }
 
-  __device__ void mark_rt_transports() {
-    auto const gid = get_global_thread_id();
-    auto const stride = get_global_stride();
-    for (auto i = gid; i < tt_.n_locations_; i += stride) {
-      if (!station_mark_[i]) {
+  __device__ __forceinline__ auto static_fps(location_idx_t const l) const {
+    return kFwd ? tt_.footpaths_out_[prf_idx_][l]
+                : tt_.footpaths_in_[prf_idx_][l];
+  }
+
+  // Egress and footpaths from stop i's round-k by-route arrivals. The static
+  // footpaths are strided (first, step) so a warp can share a hub; the rest
+  // is done by first == 0.
+  __device__ void relax_stop(unsigned const k,
+                             std::uint32_t const i,
+                             unsigned const first,
+                             unsigned const step) {
+    auto const l = location_idx_t{i};
+    auto const use_td_fps = has_td_fps(l);  // replace the static ones
+    auto const fps = static_fps(l);
+    auto const n_fps = use_td_fps ? 0U : static_cast<unsigned>(fps.size());
+    auto const egress_ok =
+        is_intermodal_dest() && dist_to_end_[i] != kUnreachable;
+    auto const td_grp = is_intermodal_dest() ? td_dest_group_of(l) : ~0U;
+    if (n_fps == 0U && !egress_ok && td_grp == ~0U && !use_td_fps) {
+      return;
+    }
+    auto const buf = transfer_buffer(i);
+    auto labels = bag_slots(i);
+    // a hub's lanes share the trip count (by-route labels lie below every
+    // lane's hwm) and reconverge per label, so the label reads coalesce
+    auto const warp = step != 1U;
+    auto const n =
+        warp ? __shfl_sync(kAllLanes, labels.size(), 0) : labels.size();
+    for (auto sl = 0U; sl != n; ++sl) {
+      if (warp) {
+        __syncwarp();
+      }
+      auto const lab = labels[sl];
+      if (lab == kMcEmptySlot || mc_round(lab) != k || !mc_by_route(lab)) {
         continue;
       }
-      auto const rt_transports =
-          rtt_.location_rt_transports_[location_idx_t{i}];
-      if (!rt_transports.empty() && !*any_marked_) {
-        atomicOr(any_marked_, 1U);
+      // without the transfer buffer
+      auto const te_arr = clamp(from_key(mc_arr_key(lab)) - buf);
+      auto const te_extras = kHasExtras ? mc_extras(lab) : 0U;
+      auto const te_bc = mc_bc(lab);
+      if (first == 0U) {
+        if (egress_ok) {
+          relax_egress(k, dist_to_end_[i], te_arr, te_extras, te_bc);
+        }
+        // td durations depend on the arrival, so they are evaluated per label
+        if (td_grp != ~0U) {
+          auto const offsets = td_dest_[td_dest_group_idx_t{td_grp}];
+          auto const rr = d_get_td_duration<SearchDir>(
+              offsets, 0U, static_cast<std::uint32_t>(offsets.size()),
+              to_unix(te_arr));
+          if (rr.valid_) {
+            relax_egress(k, static_cast<std::uint32_t>(rr.duration_.count()),
+                         te_arr, te_extras, te_bc);
+          }
+        }
+        if (use_td_fps) {
+          d_for_each_td_footpath<SearchDir>(
+              kFwd ? rtt_.td_->out_[prf_idx_][l] : rtt_.td_->in_[prf_idx_][l],
+              to_unix(te_arr),
+              [&](location_idx_t const target, duration_t const d) {
+                relax_fp(k, i, to_idx(target), static_cast<int>(d.count()),
+                         te_arr, te_extras, te_bc);
+              });
+        }
       }
-      for (auto const rt_t : rt_transports) {
-        rt_transport_mark_.mark(to_idx(rt_t));
+      for (auto f = first; f < n_fps; f += step) {
+        relax_fp(k, i, to_idx(fps[f].target()),
+                 adjusted_transfer_time(transfer_time_settings_,
+                                        fps[f].duration().count()),
+                 te_arr, te_extras, te_bc);
       }
     }
   }
 
-  template <bool WithClaszFilter, bool IsWheelchair>
-  __device__ void scan_rt_transports(unsigned const k) {
-    auto const gid = get_global_thread_id();
-    auto const stride = get_global_stride();
-    auto local_marked = false;
-    for (auto i = gid; i < rtt_.n_rt_transports_; i += stride) {
-      if (!rt_transport_mark_.test(i)) {
-        continue;
-      }
-      if constexpr (WithClaszFilter) {
-        if (!is_allowed(allowed_claszes_,
-                        rtt_.rt_transport_clasz_[rt_transport_idx_t{i}])) {
-          continue;
-        }
-      }
-      local_marked |= scan_rt_transport<IsWheelchair>(k, rt_transport_idx_t{i});
-    }
-    if (local_marked && !*any_marked_) {
-      atomicOr(any_marked_, 1U);
-    }
-  }
-
-  // scan_route for an rt run: one trip, boards straight from the stop bag
-  template <bool IsWheelchair>
-  __device__ bool scan_rt_transport(unsigned const k,
-                                    rt_transport_idx_t const rt_t) {
-    auto const stop_seq = rtt_.rt_transport_location_seq_[rt_t];
-    auto const n = static_cast<unsigned>(stop_seq.size());
-    auto any_marked = false;
-
-    mc_rt_label rt_bag[kMcRouteBagCap];
-    auto bag_size = 0U;
-
-    auto const arr_ev = kFwd ? event_type::kArr : event_type::kDep;
-    auto const dep_ev = kFwd ? event_type::kDep : event_type::kArr;
-    auto const worst_key = to_key(worst_at_dest_);
-
-    for (auto i = 0U; i != n; ++i) {
-      auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - i - 1U);
-      auto const stp = stop{stop_seq[stop_idx]};
-      auto const l_idx = to_idx(stp.location_idx());
-      auto const is_last = i == n - 1U;
-
-      // ---- alight ------------------------------------------------------
-      if (i != 0U && bag_size != 0U &&
-          stp.can_finish<SearchDir>(IsWheelchair)) {
-        auto const buf = transfer_buffer(l_idx);
-        auto const l_lb = lb_[l_idx];
-        auto const by_transport = rt_time_at_stop(rt_t, stop_idx, arr_ev);
-        auto const ride_key = to_key(by_transport);
-        for (auto b = 0U; b != bag_size; ++b) {
-          auto const& rl = rt_bag[b];
-          if (ride_key >= worst_key || l_lb == kUnreachable ||
-              ride_key + l_lb >= worst_key) {
-            continue;
-          }
-          auto const ride_extras =
-              crit_after_ride(rl.extras_, rt_ride_clasz_at(rt_t, stop_idx));
-          if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
-            continue;
-          }
-          auto const post_arr = clamp(by_transport + buf);
-          auto const bc = mc_breadcrumb{.transport_ = to_idx(rt_t),
-                                        .parent_ = rl.parent_,
-                                        .day_ = day_idx_t::invalid(),
-                                        .board_ = rl.board_,
-                                        .alight_ = stop_idx,
-                                        .arr_ = post_arr};
-          if (!bag_insert(l_idx, to_key(post_arr), ride_extras, k, true, &bc)) {
-            continue;
-          }
-          touched_.mark(l_idx);
-          station_mark_.mark(l_idx);
-          any_marked = true;
-          if (is_dest_[l_idx]) {
-            dest_bag_add(k, ride_key, ride_extras);
-          }
-        }
-      }
-
-      // ---- board -------------------------------------------------------
-      if (is_last || !stp.can_start<SearchDir>(IsWheelchair) ||
-          !prev_station_mark_[l_idx]) {
-        continue;
-      }
-      auto const l_lb = lb_[l_idx];
-      if (l_lb == kUnreachable) {
-        break;
-      }
-      auto const stop_hwm = static_cast<std::uint32_t>(bag_hwm_[l_idx]);
-      if (stop_hwm == 0U) {
-        continue;
-      }
-      auto const dep = rt_time_at_stop(rt_t, stop_idx, dep_ev);
-      auto const dep_key = to_key(dep);
-      auto const stop_bag = bag_view(l_idx);
-      for (auto sl = 0U; sl != stop_bag.size(); ++sl) {
-        auto const lab = stop_bag[sl];
-        if (lab == kMcEmptySlot || mc_round(lab) != k - 1U) {
-          continue;
-        }
-        auto const pe_key = mc_arr_key(lab);
-        if (pe_key > dep_key) {
-          continue;  // arrives after this run departs
-        }
-        auto const pe_extras = kHasExtras ? mc_extras(lab) : 0U;
-        if (dest_dominates(k, pe_key + l_lb, pe_extras)) {
-          continue;
-        }
-        auto const pe_parent = mc_bc(lab);
-
-        // merge into the boarded frontier: pareto over the extras alone
-        auto merged = false;
-        for (auto b = 0U; b != bag_size; ++b) {
-          auto& rl = rt_bag[b];
-          if (rl.extras_ == pe_extras) {
-            // same run, same carried extras: board closest to the exit
-            rl.board_ = stop_idx;
-            rl.parent_ = pe_parent;
-            merged = true;
-            break;
-          }
-          if (crit_le(rl.extras_, pe_extras)) {
-            merged = true;  // dominated
-            break;
-          }
-        }
-        if (merged) {
-          continue;
-        }
-        auto w = 0U;
-        for (auto b = 0U; b != bag_size; ++b) {
-          if (!crit_le(pe_extras, rt_bag[b].extras_)) {
-            rt_bag[w] = rt_bag[b];
-            ++w;
-          }
-        }
-        bag_size = w;
-        if (bag_size == kMcRouteBagCap) {
-          atomicOr(overflow_, kMcOverflowRouteBag);
-          continue;
-        }
-        rt_bag[bag_size] = {pe_parent, static_cast<std::uint16_t>(pe_extras),
-                            static_cast<std::uint16_t>(stop_idx)};
-        ++bag_size;
-      }
-    }
-    return any_marked;
-  }
-
-  __device__ void update_transfers_and_footpaths(unsigned const k) {
-    // warp-cooperative footpath relaxation from this many footpaths on
+  // one warp per stop mark word: a lane per stop, hubs by the whole warp
+  __device__ void update_footpaths(unsigned const k) {
     constexpr auto const kWarpFpThreshold = 4U;
     auto const lane = get_global_thread_id() % kWarpSize;
-    auto const warp_id = get_global_thread_id() / kWarpSize;
     auto const n_warps = get_global_stride() / kWarpSize;
-    auto const intermodal = is_intermodal_dest();
-    auto const worst_key = to_key(worst_at_dest_);
-    auto const n_blocks = static_cast<unsigned>(station_mark_.blocks_.size());
-
-    for (auto w = warp_id; w < n_blocks; w += n_warps) {
-      auto const bits = station_mark_.blocks_[w];
-      if (bits == 0U) {  // uniform: all lanes read the same word
+    auto const n_words =
+        static_cast<unsigned>(prev_station_mark_.blocks_.size());
+    for (auto w = get_global_thread_id() / kWarpSize; w < n_words;
+         w += n_warps) {
+      auto const bits = prev_station_mark_.blocks_[w];
+      if (bits == 0U) {  // uniform: nothing writes prev_station_mark_ here
         continue;
       }
-      auto const base = w * kWarpSize;
-      auto const my_i = base + lane;
-      auto const my_marked = ((bits >> lane) & 1U) != 0U;
-
-      auto defer = false;
-      if (my_marked && bag_hwm_coherent(my_i) != 0U) {
-        auto const l = location_idx_t{my_i};
-        // td footpaths replace the static ones
-        auto const use_td_fps = has_td_fps(l);
-        auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
-                              : tt_.footpaths_in_[prf_idx_][l];
-        auto const n_fps = use_td_fps ? 0U : static_cast<unsigned>(fps.size());
-        auto const egress_ok = intermodal && dist_to_end_[my_i] != kUnreachable;
-        auto const td_grp = intermodal ? td_dest_group_of(l) : ~0U;
-        if (n_fps != 0U || egress_ok || use_td_fps || td_grp != ~0U) {
-          auto const buf = transfer_buffer(my_i);
-          auto const stop_hwm = bag_hwm_coherent(my_i);
-          if (n_fps > kWarpFpThreshold) {
-            defer = true;  // hub: the whole warp strides the list below
-          }
-          auto rd = mc_chain_reader{this, my_i};
-          for (auto sl = 0U; sl != stop_hwm; ++sl) {
-            auto const lab = rd.at(sl);
-            if (lab == kMcEmptySlot || mc_round(lab) != k ||
-                !mc_by_route(lab)) {
-              continue;
-            }
-            auto const te_arr = clamp(from_key(mc_arr_key(lab)) - buf);
-            auto const te_extras = kHasExtras ? mc_extras(lab) : 0U;
-            auto const te_bc = mc_bc(lab);
-
-            if (egress_ok) {
-              auto const end_arr = clamp(te_arr + dir(dist_to_end_[my_i]));
-              auto const end_key = to_key(end_arr);
-              auto const end_extras =
-                  crit_after_walk(te_extras, dist_to_end_[my_i]);
-              // window bound
-              if (end_key < worst_key) {
-                auto const bc = walk_bc(te_bc, end_arr);
-                if (bag_insert(to_idx(kIntermodalTarget), end_key, end_extras,
-                               k, false, &bc)) {
-                  touched_.mark(to_idx(kIntermodalTarget));
-                  dest_bag_add(k, end_key, end_extras);
-                }
-              }
-            }
-
-            // td egress: time-dependent, so it is evaluated per label
-            if (td_grp != ~0U) {
-              auto const offsets = td_dest_[td_dest_group_idx_t{td_grp}];
-              auto const rr = d_get_td_duration<SearchDir>(
-                  offsets, 0U, static_cast<std::uint32_t>(offsets.size()),
-                  to_unix(te_arr));
-              if (rr.valid_) {
-                auto const dur =
-                    static_cast<std::uint32_t>(rr.duration_.count());
-                auto const end_arr = clamp(te_arr + dir(static_cast<int>(dur)));
-                auto const end_key = to_key(end_arr);
-                auto const end_extras = crit_after_walk(te_extras, dur);
-                if (end_key < worst_key) {
-                  auto const bc = walk_bc(te_bc, end_arr);
-                  if (bag_insert(to_idx(kIntermodalTarget), end_key, end_extras,
-                                 k, false, &bc)) {
-                    touched_.mark(to_idx(kIntermodalTarget));
-                    dest_bag_add(k, end_key, end_extras);
-                  }
-                }
-              }
-            }
-
-            if (use_td_fps) {
-              auto const td_fps = kFwd ? rtt_.td_->out_[prf_idx_][l]
-                                       : rtt_.td_->in_[prf_idx_][l];
-              d_for_each_td_footpath<SearchDir>(
-                  td_fps, to_unix(te_arr),
-                  [&](location_idx_t const target, duration_t const d) {
-                    relax_fp_target(k, my_i, to_idx(target),
-                                    static_cast<int>(d.count()), te_arr,
-                                    te_extras, te_bc, worst_key);
-                  });
-            } else if (!defer) {
-              for (auto f = 0U; f != n_fps; ++f) {
-                relax_fp(k, my_i, fps[f], te_arr, te_extras, te_bc, worst_key);
-              }
-            }
-          }
-        }
+      // the scan's stops stay marked for the next round (CPU: no swap before
+      // the footpaths; raptor_impl re-marks them by the same-stop transfer)
+      if (lane == 0U) {
+        atomicOr(&station_mark_.blocks_[w], bits);
       }
-
-      // hubs: all lanes stride one deferred stop's footpath list per label
-      auto const deferred = __ballot_sync(kAllLanes, defer);
-      for_each_set_bit(deferred, [&](unsigned const b) {
-        __syncwarp();  // neccessary, otherwise lanes are missing -> incorrect
-        auto const i = base + b;
-        auto const l = location_idx_t{i};
-        auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
-                              : tt_.footpaths_in_[prf_idx_][l];
-        auto const n_fps = static_cast<unsigned>(fps.size());
-        auto const buf = transfer_buffer(i);
-        // Lane 0 reads, the warp broadcasts: concurrent inserts make per-lane
-        // reads differ, and a divergent skip would drop relaxations. The
-        // shuffle also reconverges after relax_fp's spinlocks.
-        auto stop_hwm = std::uint32_t{0U};
-        if (lane == 0U) {
-          stop_hwm = bag_hwm_coherent(i);
-        }
-        stop_hwm = __shfl_sync(kAllLanes, stop_hwm, 0);
-        auto rd = mc_chain_reader{this, i};
-        for (auto sl = 0U; sl != stop_hwm; ++sl) {
-          auto lab = mc_label_t{kMcEmptySlot};
-          if (lane == 0U) {
-            lab = rd.at(sl);
-          }
-          lab = __shfl_sync(kAllLanes, lab, 0);
-          if (lab == kMcEmptySlot || mc_round(lab) != k || !mc_by_route(lab)) {
-            continue;
-          }
-          auto const te_arr = clamp(from_key(mc_arr_key(lab)) - buf);
-          auto const te_extras = kHasExtras ? mc_extras(lab) : 0U;
-          auto const te_bc = mc_bc(lab);
-          for (auto f = lane; f < n_fps; f += kWarpSize) {
-            relax_fp(k, i, fps[f], te_arr, te_extras, te_bc, worst_key);
-          }
-          // Barrier per label: a lane lagging in relax_fp's spinlocks could
-          // otherwise get the next label's shuffle (wrong source).
-          __syncwarp();
-        }
+      auto const i = w * kWarpSize + lane;
+      auto const mine = ((bits >> lane) & 1U) != 0U && bag_hwm_[i] != 0U;
+      auto const hub = mine && !has_td_fps(location_idx_t{i}) &&
+                       static_fps(location_idx_t{i}).size() > kWarpFpThreshold;
+      if (mine && !hub) {
+        relax_stop(k, i, 0U, 1U);
+      }
+      for_each_set_bit(__ballot_sync(kAllLanes, hub), [&](unsigned const b) {
+        relax_stop(k, w * kWarpSize + b, lane, kWarpSize);
       });
     }
   }
@@ -1841,39 +1318,32 @@ struct mcraptor_impl {
   // clear the touched bags + arena between start times (selective sweep)
   __device__ void clear_bags() {
     auto const gid = get_global_thread_id();
-    auto const stride = get_global_stride();
     if (gid == 0U) {
       *bc_count_ = 0U;
     }
-    for (auto w = gid; w < touched_.blocks_.size(); w += stride) {
+    for (auto w = gid; w < touched_.blocks_.size(); w += get_global_stride()) {
       auto const word = touched_.blocks_[w];
       if (word == 0U) {
         continue;
       }
       for_each_set_bit(word, [&](unsigned const b) {
         auto const l = w * 32U + b;
-        auto* const slots = bag(l);
-        auto const n = static_cast<std::uint32_t>(bag_hwm_[l]);
-        auto const na = n < bag_cap_ ? n : bag_cap_;
-        for (auto s = 0U; s != na; ++s) {
+        auto* const slots = bags_ + static_cast<std::size_t>(l) * bag_cap_;
+        for (auto s = 0U; s != umin(bag_hwm_[l], bag_cap_); ++s) {
           slots[s] = kMcEmptySlot;
         }
-        if (n > bag_cap_) {  // clear the chain, release blocks for reuse
-          auto rem = n - bag_cap_;
-          auto b = bag_ovf_[l];
-          while (b != ~0U && rem != 0U) {
-            auto const m = rem < kMcBagBlock ? rem : kMcBagBlock;
-            auto* const p =
-                bag_pool_ + static_cast<std::size_t>(b) * kMcBagBlock;
-            for (auto s = 0U; s != m; ++s) {
-              p[s] = kMcEmptySlot;
-            }
-            rem -= m;
-            b = bag_next_[b];
+        // free the chain: blocks back to empty slots, linking to ~0U
+        for (auto blk = bag_ovf_[l]; blk != ~0U;) {
+          auto* const p =
+              bag_pool_ + static_cast<std::size_t>(blk) * kMcBagBlock;
+          for (auto s = 0U; s != kMcBagBlock; ++s) {
+            p[s] = kMcEmptySlot;
           }
-          bag_ovf_[l] = ~0U;  // links become unreachable garbage (pool
-                              // bump counter resets per start)
+          auto const next = bag_next_[blk];
+          bag_next_[blk] = ~0U;
+          blk = next;
         }
+        bag_ovf_[l] = ~0U;
         bag_hwm_[l] = 0U;
       });
       touched_.blocks_[w] = 0U;
@@ -1904,15 +1374,11 @@ struct mcraptor_impl {
           static_cast<std::uint8_t>(mc_extras::switches(crit));
     }
 
-    auto const arr_ev = kFwd ? event_type::kArr : event_type::kDep;
-    auto const dep_ev = kFwd ? event_type::kDep : event_type::kArr;
-
-    // breadcrumb chase as in the CPU materialize
     auto cur_l = dest_l;
     auto li = mc_bc(lab);
     auto n = 0U;
     while (li != kMcNoBc) {
-      auto const& bc = bc_read(li);
+      auto const& bc = bc_[li];
       auto const cur_arr = bc.arr_;
       auto const is_rt = bc.day_ == day_idx_t::invalid();
       auto const t_idx =
@@ -1923,29 +1389,27 @@ struct mcraptor_impl {
       auto const alight = bc.alight_;
       auto const day = is_rt ? day_idx_t{0U} : bc.day_;
 
-      auto train_arr = kInvalid;
-      auto dep_at_board = kInvalid;
+      auto train_arr = delta_t{};
+      auto dep_at_board = delta_t{};
       auto board_loc = location_idx_t::invalid();
       auto alight_loc = location_idx_t::invalid();
-
       if (is_rt) {
         // rt event times are absolute: no traffic-day recovery
         auto const stop_seq = rtt_.rt_transport_location_seq_[rt_t];
         board_loc = stop{stop_seq[board]}.location_idx();
         alight_loc = stop{stop_seq[alight]}.location_idx();
-        train_arr = rt_time_at_stop(rt_t, alight, arr_ev);
-        dep_at_board = rt_time_at_stop(rt_t, board, dep_ev);
+        train_arr = rt_time_at_stop(rt_t, alight, kArrEv);
+        dep_at_board = rt_time_at_stop(rt_t, board, kDepEv);
       } else {
         auto const r = tt_.transport_route_[t_idx];
-        train_arr = time_at_stop(r, transport{t_idx, day}, alight, arr_ev);
-        dep_at_board = time_at_stop(r, transport{t_idx, day}, board, dep_ev);
+        train_arr = time_at_stop(r, transport{t_idx, day}, alight, kArrEv);
+        dep_at_board = time_at_stop(r, transport{t_idx, day}, board, kDepEv);
         auto const stop_seq = tt_.route_location_seq_[r];
         board_loc = stop{stop_seq[board]}.location_idx();
         alight_loc = stop{stop_seq[alight]}.location_idx();
       }
 
-      auto const is_egress = is_intermodal_dest() && cur_l == kIntermodalTarget;
-      if (is_egress) {
+      if (is_intermodal_dest() && cur_l == kIntermodalTarget) {
         // the last mile is the host's offset leg
         out->dest_l_ = alight_loc;
       } else if (n != 0U || alight_loc != cur_l || train_arr != cur_arr) {
@@ -1997,8 +1461,7 @@ struct mcraptor_impl {
                          day_idx_t const day_at_stop,
                          minutes_after_midnight_t const mam_at_stop,
                          std::uint16_t const l_lb) {
-    auto const event_times = tt_.event_times_at_stop(
-        r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
+    auto const event_times = tt_.event_times_at_stop(r, stop_idx, kDepEv);
     auto const n = static_cast<unsigned>(event_times.size());
 
     // transport offset of the i-th event in search direction
@@ -2031,8 +1494,7 @@ struct mcraptor_impl {
         continue;
       }
 
-      auto const first = i == 0U ? seek_first_day() : 0U;
-      for (auto pos = first; pos < n; ++pos) {
+      for (auto pos = i == 0U ? seek_first_day() : 0U; pos < n; ++pos) {
         auto const t_offset = t_offset_at(pos);
         auto const ev = event_times[t_offset];
         auto const ev_mam = ev.mam();
@@ -2048,14 +1510,11 @@ struct mcraptor_impl {
           continue;
         }
 
-        auto const ev_day_offset = ev.days();
-        auto const start_day =
-            static_cast<std::size_t>(static_cast<int>(day.v_) - ev_day_offset);
-        if (!is_transport_active(t, start_day)) {
+        auto const start_day = static_cast<int>(day.v_) - ev.days();
+        if (!is_transport_active(t, static_cast<std::size_t>(start_day))) {
           continue;
         }
-        return {t, static_cast<day_idx_t>(static_cast<int>(day.v_) -
-                                          ev_day_offset)};
+        return {t, static_cast<day_idx_t>(start_day)};
       }
     }
     return {};
@@ -2078,7 +1537,7 @@ struct mcraptor_impl {
                static_cast<std::size_t>(static_cast<int>(day.v_)));
   }
 
-  // packed earliest transport [rel_day:6 | t_offset:26], ordered as unsigned
+  // packed trip [rel_day:6 | t_offset:26], ordered as unsigned in scan order
   static constexpr auto kEtRelDayShift = 26U;
   static constexpr auto kEtReverseBase = (~std::uint32_t{0}) - 1U;
 
@@ -2169,17 +1628,15 @@ struct mcraptor_impl {
   cuda::std::span<std::uint16_t const> lb_;
 
   mc_label_t* bags_;  // n_locations x bag_cap_ inline slots
+  std::uint32_t bag_cap_;
   mc_label_t* bag_pool_;  // bag_pool_cap_ x kMcBagBlock chained blocks
   std::uint32_t* bag_ovf_;  // n_locations chain head (~0 = none)
-  std::uint32_t* bag_next_;  // bag_pool_cap_ chain links (~0 = end)
+  std::uint32_t* bag_next_;  // bag_pool_cap_ chain links (~0 = end / free)
   std::uint32_t* bag_pool_count_;  // bump allocator
   std::uint32_t bag_pool_cap_;
-  std::uint64_t* reuse_bags_;  // n_locations x kMcReuseCap, per-query
-  std::uint32_t bag_cap_;
-  delta_t dep_;  // this execute's departure (for the reuse rule)
+  std::uint8_t* bag_hwm_;  // per bag used-slot bound (under the bag lock)
   std::uint32_t* bag_locks_;  // n_locations spinlocks
-  // per-bag used-slot bound, maintained under the bag lock
-  std::uint8_t* bag_hwm_;
+  std::uint64_t* reuse_bags_;  // n_locations x kMcReuseCap, per query
   mc_label_t* dest_bag_;  // kMcDestCap
   std::uint32_t* dest_lock_;
   // per round: min key / min key + extras of the dest frontier (racy reads
@@ -2196,27 +1653,20 @@ struct mcraptor_impl {
   device_bitvec<std::uint32_t> route_mark_;
   device_bitvec<std::uint32_t> rt_transport_mark_;
 
+  // marked routes this round, boardable route stops (et phase)
   cuda::std::span<std::uint32_t> route_list_;
   std::uint32_t* route_list_count_;
-
-  // et phase: flat (route, stop) tasks and their result blocks
   cuda::std::span<std::uint32_t> et_task_list_;
   std::uint32_t* et_task_count_;
-  std::uint32_t* et_ent_key_;  // entry pool SoA (7B/entry vs 8B packed)
-  std::uint16_t* et_ent_ex_;
-  std::uint8_t* et_ent_sl_;
-  std::uint32_t* task_bits_;  // 1 bit per flat route-stop (this round)
-  std::uint32_t* route_task_start_;  // route -> first task index
-  std::uint32_t* et_task_off_;  // task -> first pool entry (~0 = no space)
-  std::uint8_t* et_task_cnt_;  // task -> entry count (replaces terminator)
-  std::uint32_t* et_entry_count_;  // pool bump allocator
-  std::size_t et_pool_cap_;
-  std::uint32_t et_tasks_cap_;
-  // single-boarding fast path: per-route entry count and the recorded entry
-  std::uint32_t* route_entry_count_;
+
+  // per route stop (route_of_stop_ order): boarding count and kMcPrefixK
+  // route-bag entries (et_run_lookups -> loop_routes)
+  std::uint32_t* sb_n_;
+  std::uint32_t* sb_et_;
+  std::uint32_t* sb_par_;
+  std::uint32_t* sb_bx_;
 };
 
-#undef kInvalid
 #undef kFwd
 #undef kUnreachable
 #undef kIntermodalTarget
