@@ -14,6 +14,7 @@
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/loader/netex/loader.h"
 #include "nigiri/timetable.h"
+#include "nigiri/loader/gtfs/validate.h"
 
 namespace nigiri::loader {
 
@@ -36,13 +37,14 @@ timetable load(std::vector<timetable_source> const& sources,
                bool ignore) {
   auto const loaders = get_loaders();
 
+  auto const accepted_sources = gtfs::validate_sources(sources);
   auto tt = timetable{};
   tt.date_range_ = date_range;
-  tt.n_sources_ = static_cast<cista::base_t<source_idx_t>>(sources.size());
+  tt.n_sources_ = static_cast<cista::base_t<source_idx_t>>(accepted_sources.size());
   auto ctx = import_context{tt};
   register_special_stations(tt, ctx);
   auto const progress_tracker = utl::get_active_progress_tracker();
-  for (auto const [idx, in] : utl::enumerate(sources)) {
+  for (auto const [idx, in] : utl::enumerate(accepted_sources)) {
     auto const& [tag, path, local_config] = in;
     auto const is_in_memory = path.starts_with("\n#");
     auto const src = source_idx_t{idx};
@@ -72,7 +74,7 @@ timetable load(std::vector<timetable_source> const& sources,
 
   progress_tracker->status("Finalizing").out_bounds(98.F, 100.F).in_high(1);
   auto opt = finalize_opt;
-  for (auto const& s : sources) {
+  for (auto const& s : accepted_sources) {
     opt.src_tags_.push_back(s.tag_);
   }
   finalize(tt, ctx, opt);

@@ -25,4 +25,6 @@ std::pair<agency_map_t, agency_ticketing_map_t> read_agencies(
     std::string_view default_tz,
     script_runner const& = script_runner{});
 
+bool has_missing_agency_timezone(std::string_view, std::string_view);
+
 }  // namespace nigiri::loader::gtfs
