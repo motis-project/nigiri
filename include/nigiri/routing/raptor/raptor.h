@@ -4,6 +4,7 @@
 #include <span>
 
 #include "nigiri/common/delta_t.h"
+#include "nigiri/common/prefetch.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
@@ -110,8 +111,12 @@ struct raptor {
           end_reachable_.set(i, true);
         }
       }
-      for (auto const& [l, _] : td_dist_to_end_) {
-        end_reachable_.set(to_idx(l), true);
+      if (!td_dist_to_end_.empty()) {
+        has_td_dist_to_end_.resize(n_locations_);
+        for (auto const& [l, _] : td_dist_to_end_) {
+          end_reachable_.set(to_idx(l), true);
+          has_td_dist_to_end_.set(to_idx(l), true);
+        }
       }
     }
   }
@@ -230,12 +235,11 @@ struct raptor {
           best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
         }
       }
-      is_dest_.for_each_set_bit([&](std::uint64_t const i) {
-        update_time_at_dest(k, best_[i][Vias]);
-      });
+      is_dest_.for_each_set_bit(
+          [&](auto const i) { update_time_at_dest(k, best_[i][Vias]); });
 
       auto any_marked = false;
-      state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+      state_.station_mark_.for_each_set_bit([&](auto const i) {
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
           any_marked = true;
           state_.route_mark_.set(to_idx(r), true);
@@ -708,7 +712,7 @@ private:
   }
 
   void update_transfers(unsigned const k) {
-    state_.prev_station_mark_.for_each_set_bit([&](auto&& i) {
+    state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
       for (auto v = 0U; v != Vias + 1; ++v) {
         auto const tmp_time = tmp_[i][v];
         if (tmp_time == kInvalid) {
@@ -772,7 +776,7 @@ private:
   }
 
   void update_footpaths(unsigned const k) {
-    state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+    auto const process = [&](auto const i) {
       auto const l_idx = location_idx_t{i};
       // Footpaths from a source with td footpaths are time-dependent
       // (see update_td_offsets) and replace all its static footpaths.
@@ -882,7 +886,9 @@ private:
           }
         }
       }
-    });
+    };
+
+    state_.prev_station_mark_.for_each_set_bit(process);
   }
 
   void update_td_offsets(unsigned const k) {
@@ -894,7 +900,7 @@ private:
       return;
     }
 
-    state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+    state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
       auto const l_idx = location_idx_t{i};
       if (!(kFwd ? rtt_->has_td_footpaths_out_
                  : rtt_->has_td_footpaths_in_)[prf_idx_]
@@ -1000,14 +1006,7 @@ private:
       return;
     }
 
-    state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
-      if (!end_reachable_.test(i)) {
-        trace_upd("┊ ├k={}   no end_reachable: {}\n", k,
-                  loc{tt_, location_idx_t{i}});
-        [[likely]];
-        return;
-      }
-
+    auto const process = [&](auto const i) {
       trace_upd("┊ ├k={}   end_reachable: {}\n", k,
                 loc{tt_, location_idx_t{i}});
 
@@ -1069,13 +1068,13 @@ private:
         }
       }
 
-      if (auto const it = td_dist_to_end_.find(l); it != end(td_dist_to_end_)) {
-        [[unlikely]];
-
+      if (has_td_dist_to_end_.test(i)) [[unlikely]] {
         auto const fp_start_time = tmp_[i][Vias];
         if (fp_start_time == kInvalid) {
           return;
         }
+        auto const it = td_dist_to_end_.find(l);
+        assert(it != end(td_dist_to_end_));
         auto const fp =
             get_td_duration<SearchDir>(it->second, to_unix(fp_start_time));
         if (fp.has_value()) {
@@ -1102,7 +1101,8 @@ private:
           }
         }
       }
-    });
+    };
+    state_.prev_station_mark_.for_each_set_bit(end_reachable_, process);
   }
 
   template <bool WithSectionBikeFilter,
@@ -1166,31 +1166,21 @@ private:
         for (auto j = 0U; j != Vias + 1; ++j) {
           auto const v = Vias - j;
           if (et[v] && stp.can_finish<SearchDir>(is_wheelchair_)) {
-            auto current_best = get_best(round_times_[k - 1][l_idx][v],
-                                         tmp_[l_idx][v], best_[l_idx][v]);
-
             if (is_better_loose(by_transport, time_at_dest_[k]) &&
                 lb_reachable(l_idx) &&
                 is_better_loose(by_transport + dir(get_lb(l_idx)),
                                 time_at_dest_[k]) &&
                 within_bounds(k, l_idx, by_transport, v)) {
               trace_upd(
-                  "┊ │k={}    RT | name={}, dbg={}, "
-                  "time_by_transport={}, "
-                  "BETTER THAN current_best={} => update, {} marking station "
-                  "{}!\n",
+                  "┊ │k={}    RT | name={}, dbg={}, time_by_transport={} => "
+                  "update, marking station {}!\n",
                   k, rtt_->default_trip_short_name(tt_, rt_t),
                   rtt_->dbg(tt_, rt_t), to_unix(by_transport),
-                  to_unix(current_best),
-                  !is_better(by_transport, current_best) ? "NOT" : "",
                   loc{tt_, stp.location_idx()});
 
               ++stats_.n_earliest_arrival_updated_by_route_;
               tmp_[l_idx][v] = get_best(by_transport, tmp_[l_idx][v]);
               state_.station_mark_.set(l_idx, true);
-              if (is_better(by_transport, current_best)) {
-                current_best = by_transport;
-              }
               any_marked = true;
             }
           }
@@ -1231,6 +1221,18 @@ private:
         std::array<std::array<transport_times, Vias + 1>, Vias + 1>{};
     auto const n_stops = stop_seq.size();
 
+    auto const has_ride_at = [&](unsigned const cs) {
+      for (auto e = 0U; e != cs + 1U; ++e) {
+        if (et[e][cs - e].is_valid()) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    auto const time_at_dest_k = time_at_dest_[k];
+    auto prev_round_times = round_times_[k - 1];
+
     auto const rt = tt_.route_times_[r];
     auto const* const offsets = &tt_.pattern_offsets_[rt.pattern_start_];
     auto const get_transport_times = [&](transport const t) {
@@ -1256,6 +1258,9 @@ private:
           static_cast<stop_idx_t>(kFwd ? i : n_stops - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l_idx = cista::to_idx(stp.location_idx());
+      auto const prev_marked = state_.prev_station_mark_[l_idx];
+      auto const lb_l = get_lb(l_idx);
+      auto const lb_l_reachable = lb_reachable(l_idx);
       auto const is_first = i == 0U;
       auto const is_last = i == n_stops - 1U;
 
@@ -1305,15 +1310,21 @@ private:
         }
       }
 
-      auto current_best = std::array<delta_t, Vias + 1>{};
-      current_best.fill(kInvalid);
-
       for (auto j = 0U; j != Vias + 1; ++j) {
         auto const cs = Vias - j;  // current via state, descending
         for (auto e = 0U; e != cs + 1U; ++e) {
           auto const& ride = et[e][cs - e];
           if (!ride.is_valid()) {
             continue;
+          }
+          if (!is_last) {
+            prefetch(
+                &et_times_cache[e][cs - e]
+                     .offsets_[event_idx(
+                                   static_cast<stop_idx_t>(kFwd ? stop_idx + 1
+                                                                : stop_idx - 1),
+                                   kFwd ? event_type::kArr : event_type::kDep) *
+                               rt.n_patterns_]);
           }
           if (!stp.can_finish<SearchDir>(is_wheelchair_)) {
             trace(
@@ -1327,53 +1338,40 @@ private:
               get_time(et_times_cache[e][cs - e], stop_idx,
                        kFwd ? event_type::kArr : event_type::kDep);
 
-          if (current_best[cs] == kInvalid) {
-            current_best[cs] = get_best(round_times_[k - 1][l_idx][cs],
-                                        tmp_[l_idx][cs], best_[l_idx][cs]);
-          }
-
           assert(by_transport != std::numeric_limits<delta_t>::min() &&
                  by_transport != std::numeric_limits<delta_t>::max());
-          if (is_better_loose(by_transport, time_at_dest_[k]) &&
-              lb_reachable(l_idx) &&
-              is_better_loose(by_transport + dir(get_lb(l_idx)),
-                              time_at_dest_[k]) &&
+          if (is_better_loose(by_transport, time_at_dest_k) && lb_l_reachable &&
+              is_better_loose(by_transport + dir(lb_l), time_at_dest_k) &&
               within_bounds(k, l_idx, by_transport, cs)) {
             trace_upd(
                 "┊ │k={} cs={}    name={}, dbg={}, "
-                "time_by_transport={}, "
-                "BETTER THAN current_best={} => update, {} marking station "
-                "{}!\n",
+                "time_by_transport={} => update, marking station {}!\n",
                 k, cs, tt_.transport_name(ride.t_idx_), tt_.dbg(ride.t_idx_),
-                to_unix(by_transport), to_unix(current_best[cs]),
-                !is_better(by_transport, current_best[cs]) ? "NOT" : "",
-                loc{tt_, stp.location_idx()});
+                to_unix(by_transport), loc{tt_, stp.location_idx()});
 
             ++stats_.n_earliest_arrival_updated_by_route_;
             tmp_[l_idx][cs] = get_best(by_transport, tmp_[l_idx][cs]);
             state_.station_mark_.set(l_idx, true);
-            if (is_better(by_transport, current_best[cs])) {
-              current_best[cs] = by_transport;
-            }
             any_marked = true;
           } else {
             trace(
                 "┊ │k={} cs={}    *** NO UPD: at={}, name={}, "
                 "dbg={}, "
-                "time_by_transport={}, current_best={}\n",
+                "time_by_transport={}, round/best/tmp=({}, {}, {})\n",
                 k, cs, loc{tt_, location_idx_t{l_idx}},
                 tt_.transport_name(ride.t_idx_), tt_.dbg(ride.t_idx_),
-                to_unix(by_transport), to_unix(current_best[cs]));
+                to_unix(by_transport), to_unix(prev_round_times[l_idx][cs]),
+                to_unix(best_[l_idx][cs]), to_unix(tmp_[l_idx][cs]));
           }
         }
       }
 
       if (is_last || !stp.can_start<SearchDir>(is_wheelchair_) ||
-          !state_.prev_station_mark_[l_idx]) {
+          !prev_marked) {
         continue;
       }
 
-      if (!lb_reachable(l_idx)) {
+      if (!lb_l_reachable) {
         break;
       }
 
@@ -1381,23 +1379,26 @@ private:
         // fresh boardings from a slot-v label always enter rider (v, 0);
         // carried riders (e < v with crossings) continue unaffected
         auto& fresh = et[v][0];
+        auto const prev_round_time = prev_round_times[l_idx][v];
+        if (prev_round_time == kInvalid) {
+          continue;
+        }
         auto const et_time_at_stop =
             fresh.is_valid()
                 ? get_time(et_times_cache[v][0], stop_idx,
                            kFwd ? event_type::kDep : event_type::kArr)
                 : kInvalid;
-        auto const prev_round_time = round_times_[k - 1][l_idx][v];
-        if (prev_round_time != kInvalid &&
-            is_better_or_eq(prev_round_time, et_time_at_stop)) {
+        if (is_better_or_eq(prev_round_time, et_time_at_stop)) {
           auto const [day, mam] = split(prev_round_time);
           auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
                                                      stp.location_idx());
-          current_best[v] =
-              get_best(current_best[v], best_[l_idx][v], tmp_[l_idx][v]);
+          auto const no_existing_label =
+              !(has_ride_at(v) && stp.can_finish<SearchDir>(is_wheelchair_)) &&
+              best_[l_idx][v] == kInvalid && tmp_[l_idx][v] == kInvalid;
           auto const new_times = new_et.is_valid() ? get_transport_times(new_et)
                                                    : transport_times{};
           if (new_et.is_valid() &&
-              (current_best[v] == kInvalid ||
+              (no_existing_label ||
                is_better_or_eq(
                    get_time(new_times, stop_idx,
                             kFwd ? event_type::kDep : event_type::kArr),
@@ -1418,12 +1419,13 @@ private:
     return any_marked;
   }
 
-  transport get_earliest_transport(unsigned const k,
-                                   route_idx_t const r,
-                                   stop_idx_t const stop_idx,
-                                   day_idx_t const day_at_stop,
-                                   minutes_after_midnight_t const mam_at_stop,
-                                   location_idx_t const l) {
+  inline transport get_earliest_transport(
+      unsigned const k,
+      route_idx_t const r,
+      stop_idx_t const stop_idx,
+      day_idx_t const day_at_stop,
+      minutes_after_midnight_t const mam_at_stop,
+      location_idx_t const l) {
     ++stats_.n_earliest_trip_calls_;
 
     auto const event_times = tt_.event_times_at_stop(
@@ -1564,6 +1566,7 @@ private:
   std::uint32_t n_locations_, n_routes_, n_rt_transports_;
   raptor_state& state_;
   bitvec end_reachable_;
+  bitvec has_td_dist_to_end_;
   std::span<std::array<delta_t, Vias + 1>> tmp_;
   std::span<std::array<delta_t, Vias + 1>> best_;
   flat_matrix_view<std::array<delta_t, Vias + 1>> round_times_;

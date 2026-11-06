@@ -7,6 +7,7 @@
 #include "utl/enumerate.h"
 #include "utl/raii.h"
 
+#include "nigiri/common/prefetch.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/journey.h"
@@ -204,11 +205,9 @@ void query_engine<UseLowerBounds>::seg_transfers(queue_idx_t const q,
       state_.tbd_.segment_transfers_[qe.segment_range_.from_].begin();
   auto const to = state_.tbd_.segment_transfers_[qe.segment_range_.to_].begin();
   for (auto it = from; it != to; ++it) {
-#ifndef _MSC_VER
     if (it + 4 < to) {
-      __builtin_prefetch(&*(it + 4));
+      prefetch(&*(it + 4));
     }
-#endif
 
     auto const& transfer = *it;
 
