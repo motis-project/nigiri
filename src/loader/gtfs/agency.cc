@@ -34,6 +34,7 @@ std::pair<agency_map_t, agency_ticketing_map_t> read_agencies(
   auto map = agency_map_t{};
   auto ticketing_map = agency_ticketing_map_t{};
   utl::for_each_row<agency_row>(file_content, [&](agency_row const& a) {
+    auto const timezone = a.tz_name_->trim();
     auto x = agency{
         tt,
         src,
@@ -44,7 +45,7 @@ std::pair<agency_map_t, agency_ticketing_map_t> read_agencies(
                  a.id_->view()),
         get_tz_idx(
             tt, timezones,
-            a.tz_name_->view().empty() ? default_tz : a.tz_name_->view()),
+            timezone.empty() ? default_tz : timezone.view()),
         timezones};
     auto const provider_idx = process_agency(r, x) ? register_agency(tt, x)
                                                    : provider_idx_t::invalid();
