@@ -34,22 +34,23 @@ std::pair<agency_map_t, agency_ticketing_map_t> read_agencies(
   auto map = agency_map_t{};
   auto ticketing_map = agency_ticketing_map_t{};
   utl::for_each_row<agency_row>(file_content, [&](agency_row const& a) {
+    auto const agency_id = a.id_->trim();
     auto const timezone = a.tz_name_->trim();
     auto x = agency{
         tt,
         src,
-        a.id_->view(),
-        i18n.get(t::kAgency, f::kAgencyName, a.name_->view(), a.id_->view()),
-        i18n.get(t::kAgency, f::kAgencyURL, a.url_->view(), a.id_->view()),
+        agency_id.view(),
+        i18n.get(t::kAgency, f::kAgencyName, a.name_->view(), agency_id.view()),
+        i18n.get(t::kAgency, f::kAgencyURL, a.url_->view(), agency_id.view()),
         i18n.get(t::kAgency, f::kAgencyFareUrl, a.fare_url_->view(),
-                 a.id_->view()),
+                 agency_id.view()),
         get_tz_idx(
             tt, timezones,
             timezone.empty() ? default_tz : timezone.view()),
         timezones};
     auto const provider_idx = process_agency(r, x) ? register_agency(tt, x)
                                                    : provider_idx_t::invalid();
-    map.emplace(a.id_->view(), provider_idx);
+    map.emplace(agency_id.view(), provider_idx);
 
     if (!a.ticketing_deep_link_id->empty()) {
       ticketing_map.emplace(provider_idx,
