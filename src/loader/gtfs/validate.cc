@@ -2,6 +2,7 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/agency.h"
+#include "nigiri/loader/gtfs/route.h"
 
 namespace nigiri::loader::gtfs {
 
@@ -15,7 +16,11 @@ namespace nigiri::loader::gtfs {
             continue;
           }
           auto const agency_file = dir->get_file(kAgencyFile);
-          if(!has_invalid_agency_timezone(agency_file.data(), source.loader_config_.default_tz_)) {
+          auto const routes_file = dir->get_file(kRoutesFile);
+          auto const agency_ids = read_agency_ids(agency_file.data());
+          auto const default_tz = source.loader_config_.default_tz_;
+          if(!has_invalid_agency_timezone(agency_file.data(), default_tz) &&
+            !has_unknown_route_agency(routes_file.data(), agency_ids, default_tz)) {
             accepted.emplace_back(source);
           }
       }

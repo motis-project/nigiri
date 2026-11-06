@@ -80,4 +80,12 @@ bool has_invalid_agency_timezone(std::string_view file, std::string_view default
   return invalid_tz;
 }
 
+std::vector<std::string> read_agency_ids(std::string_view file) {
+  auto ids = std::vector<std::string>{};
+  utl::for_each_row<agency_row>(file, [&](agency_row const& agency) {
+    ids.emplace_back(agency.id_->trim().view());
+  });
+  return ids;
+}
+
 }  // namespace nigiri::loader::gtfs
