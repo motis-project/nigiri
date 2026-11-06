@@ -98,6 +98,7 @@ struct query {
   double fastest_direct_factor_{1.0};
   bool slow_direct_{false};
   double fastest_slow_direct_factor_{2.0};
+  bool n_to_all_{false};
 };
 
 }  // namespace nigiri::routing

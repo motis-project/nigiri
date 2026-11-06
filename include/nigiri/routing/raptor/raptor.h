@@ -30,7 +30,11 @@ struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
 
-  static constexpr bool kUseLowerBounds = true;
+  // A one-to-all search has no destination: nothing to compute lower bounds to.
+  static constexpr bool kUseLowerBounds = SearchMode == search_mode::kOneToOne;
+  // n-to-all minimum tracking (raptor_state::min_) is forward only.
+  static constexpr bool kTrackMin =
+      SearchMode == search_mode::kOneToAll && SearchDir == direction::kForward;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
@@ -104,6 +108,11 @@ struct raptor {
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
     reset_arrivals();
+    if constexpr (kTrackMin) {
+      if (state_.track_min_) {
+        state_.min_.assign(n_locations_, min_label{});
+      }
+    }
     if (!dist_to_end_.empty()) {
       // only used for intermodal queries (dist_to_dest != empty)
       end_reachable_.resize(n_locations_);
@@ -185,7 +194,7 @@ struct raptor {
   void next_start_time() {
     utl::fill(best_, kInvalidArray);
     utl::fill(tmp_, kInvalidArray);
-    utl::fill(owner_, make_invalid_owner_array());
+    //utl::fill(owner_, make_invalid_owner_array());
     utl::fill(tmp_owner_, make_invalid_owner_array());
     utl::fill(state_.prev_station_mark_.blocks_, 0U);
     utl::fill(state_.station_mark_.blocks_, 0U);
@@ -195,8 +204,7 @@ struct raptor {
     }
   }
 
-  void add_start(location_idx_t const l, unixtime_t const t,
-                 location_idx_t const origin = location_idx_t::invalid()) {
+  void add_start(location_idx_t const l, unixtime_t const t) {
     auto const v = (Vias != 0 && is_via_[0][to_idx(l)]) ? 1U : 0U;
     trace_upd(
         "adding start [fwd={}] {}: {}, v={} [current: best={}, round={} => "
@@ -204,8 +212,10 @@ struct raptor {
         kFwd, loc{tt_, l}, t, v, to_unix(best_[to_idx(l)][v]),
         to_unix(round_times_[0U][to_idx(l)][v]),
         get_best(t, to_unix(best_[to_idx(l)][v])));
-    if (origin!=location_idx_t::invalid() && is_better(unix_to_delta(base(),t), best_[to_idx(l)][v]))
-      owner_[to_idx(l)][v] = origin;
+
+    if (is_better(unix_to_delta(base(), t), best_[to_idx(l)][v])) {
+      owner_[to_idx(l)][v] = l;  // owner = start stop; the caller maps it to its origin
+    }
     best_[to_idx(l)][v] =
         get_best(unix_to_delta(base(), t), best_[to_idx(l)][v]);
     round_times_[0U][to_idx(l)][v] =
@@ -225,7 +235,11 @@ struct raptor {
     }
 
     trace_print_init_state();
-
+    if constexpr (kTrackMin) {
+      if (state_.track_min_) {
+        update_min(start_time, 0U, d_worst_at_dest);  // the start stops themselves
+      }
+    }
     for (auto k = 1U; k != end_k; ++k) {
       for (auto i = 0U; i != n_locations_; ++i) {
         for (auto v = 0U; v != Vias + 1; ++v) {
@@ -393,7 +407,11 @@ struct raptor {
       update_intermodal_footpaths(k);
       update_footpaths(k);
       update_td_offsets(k);
-
+      if constexpr (kTrackMin) {
+        if (state_.track_min_) {
+          update_min(start_time, k, d_worst_at_dest);
+        }
+      }
       trace_print_state_after_round();
     }
 
@@ -436,6 +454,31 @@ struct raptor {
 private:
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
+  }
+
+  void update_min(unixtime_t const run_start,
+                  unsigned const k,
+                  delta_t const worst) {
+    state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+      auto const ready = best_[i][Vias];
+      auto const owner = owner_[i][Vias];
+      if (ready == kInvalid || owner == location_idx_t::invalid()) {
+        return;
+      }
+
+      if (!is_better(ready, worst)) {
+        return;
+      }
+      auto const dur = duration_t{static_cast<duration_t::rep>(
+          (delta_to_unix(base(), ready) - run_start).count())};
+      auto& m = state_.min_[i];
+      if (dur < m.dur_) {  // strict: on a tie the earlier-processed run stays
+        m.dur_ = dur;
+        m.owner_ = owner;
+        m.transfers_ = static_cast<std::uint8_t>(k == 0U ? 0U : k - 1U);
+        m.departure_ = run_start;
+      }
+    });
   }
 
   std::uint16_t get_lb(std::uint32_t const i) const {
