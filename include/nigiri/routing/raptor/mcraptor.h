@@ -6,7 +6,7 @@
 #include <limits>
 #include <optional>
 #include <span>
-#include <type_traits>
+#include <tuple>
 #include <vector>
 
 #include "cista/containers/bitvec.h"
@@ -41,72 +41,15 @@ void mc_reconstruct_offsets(timetable const&,
                             query const&,
                             journey&);
 
-// What a criterion may know about the trip a label just rode.
-struct ride_attrs {
-  clasz clasz_;
-};
-
 template <direction SearchDir>
 constexpr bool arr_no_worse(delta_t const a, delta_t const b) {
   return SearchDir == direction::kForward ? a <= b : a >= b;
 }
 
-// Criteria protocol (the pareto label):
-//   arr_                     arrival
-//   dominates<Dir>           pareto dominance
-//   completed_dominates<Dir> dominance at the destination (nothing follows)
-//   carried, carry(), from_ride(arr, duration, ride_attrs, carried)
-//                            what survives a boarding, and back
-//   at_start(arr, ingress)   round 0 seed
-//   with_transfer(dt), with_walk(dt, duration)
-//   projected_to(arr)        arrival replaced by arr + lower bound
-//   reuse_dominates<Dir>(o, dep, o_dep)  rRAPTOR reuse across departures
-//   apply_to(journey&)       writes the criteria into the result
-struct arr_criteria {
-  template <direction SearchDir>
-  bool dominates(arr_criteria const& o) const {
-    return arr_no_worse<SearchDir>(arr_, o.arr_);
-  }
-
-  template <direction SearchDir>
-  bool completed_dominates(arr_criteria const& o) const {
-    return dominates<SearchDir>(o);
-  }
-
-  struct carried {
-    template <direction SearchDir>
-    bool dominates(carried const&) const {
-      return true;
-    }
-    bool operator==(carried const&) const = default;
-  };
-  carried carry() const { return {}; }
-  static arr_criteria from_ride(delta_t const arr,
-                                std::uint16_t,
-                                ride_attrs const&,
-                                carried const&) {
-    return {arr};
-  }
-  static arr_criteria at_start(delta_t const arr, std::uint16_t) {
-    return {arr};
-  }
-  arr_criteria with_transfer(int const dt) const { return {clamp(arr_ + dt)}; }
-  arr_criteria with_walk(int const dt, std::uint16_t) const {
-    return {clamp(arr_ + dt)};
-  }
-  arr_criteria projected_to(delta_t const arr) const { return {arr}; }
-  void apply_to(journey&) const {}
-
-  template <direction SearchDir>
-  bool reuse_dominates(arr_criteria const& o, delta_t, delta_t) const {
-    return dominates<SearchDir>(o);
-  }
-
-  delta_t arr_;
-};
-
-// Composable dimensions: the criteria protocol minus the arrival (arr_with owns
-// it). Each writes its own journey slot, so they combine freely.
+// Composable pareto dimensions besides the arrival; each writes its own journey
+// slot, so they combine freely (see arr_with):
+//   dominates, completed_dominates (at the destination: nothing follows)
+//   at_start(ingress), from_ride(clasz, prev), with_walk(duration), apply_to
 
 // Walking (offsets, footpaths; not the same-stop transfer buffer) in units of
 // kNonTransitBin minutes, see non_transit_add().
@@ -120,13 +63,10 @@ struct non_transit_dim {
   static non_transit_dim at_start(std::uint16_t const ingress) {
     return {static_cast<std::uint8_t>(non_transit_add(0U, ingress))};
   }
-  static non_transit_dim from_ride(std::uint16_t,
-                                   ride_attrs const&,
-                                   non_transit_dim const& prev) {
+  static non_transit_dim from_ride(clasz, non_transit_dim const& prev) {
     return prev;
   }
-  non_transit_dim with_transfer(int) const { return *this; }
-  non_transit_dim with_walk(int, std::uint16_t const duration) const {
+  non_transit_dim with_walk(std::uint16_t const duration) const {
     return {static_cast<std::uint8_t>(non_transit_add(non_transit_, duration))};
   }
   void apply_to(journey& j) const {
@@ -148,9 +88,6 @@ struct mode_filter_dim {
     return mask;
   }
   static void set_avoided(clasz_mask_t const m) { avoided_mask() = m; }
-  static bool is_avoided(clasz const c) {
-    return is_allowed(avoided_mask(), c);
-  }
 
   bool dominates(mode_filter_dim const& o) const {
     return mode_filter_ <= o.mode_filter_;
@@ -159,13 +96,10 @@ struct mode_filter_dim {
     return dominates(o);
   }
   static mode_filter_dim at_start(std::uint16_t) { return {false}; }
-  static mode_filter_dim from_ride(std::uint16_t,
-                                   ride_attrs const& ra,
-                                   mode_filter_dim const& prev) {
-    return {prev.mode_filter_ || is_avoided(ra.clasz_)};
+  static mode_filter_dim from_ride(clasz const c, mode_filter_dim const& prev) {
+    return {prev.mode_filter_ || is_allowed(avoided_mask(), c)};
   }
-  mode_filter_dim with_transfer(int) const { return *this; }
-  mode_filter_dim with_walk(int, std::uint16_t) const { return *this; }
+  mode_filter_dim with_walk(std::uint16_t) const { return *this; }
   void apply_to(journey& j) const { j.criteria_mode_filter_ = mode_filter_; }
   bool operator==(mode_filter_dim const&) const = default;
 
@@ -185,16 +119,14 @@ struct mode_switches_dim {
   static mode_switches_dim at_start(std::uint16_t) {
     return {static_cast<std::uint8_t>(kNoModeGroup), 0U};
   }
-  static mode_switches_dim from_ride(std::uint16_t,
-                                     ride_attrs const& ra,
+  static mode_switches_dim from_ride(clasz const c,
                                      mode_switches_dim const& prev) {
-    auto const group = mode_group(ra.clasz_);
+    auto const group = mode_group(c);
     return {static_cast<std::uint8_t>(group),
             static_cast<std::uint8_t>(
                 switches_after_ride(prev.group_, prev.switches_, group))};
   }
-  mode_switches_dim with_transfer(int) const { return *this; }
-  mode_switches_dim with_walk(int, std::uint16_t) const { return *this; }
+  mode_switches_dim with_walk(std::uint16_t) const { return *this; }
   void apply_to(journey& j) const { j.criteria_mode_switches_ = switches_; }
   bool operator==(mode_switches_dim const&) const = default;
 
@@ -202,93 +134,64 @@ struct mode_switches_dim {
   std::uint8_t switches_{0U};
 };
 
-// Arrival plus any set of dimensions; strict pareto over all of them.
+// The pareto label: arrival plus any set of dimensions, strict over all of
+// them.
 template <typename... Dims>
 struct arr_with {
-  using dims_t = std::tuple<Dims...>;
-  using idx_t = std::index_sequence_for<Dims...>;
+  using carried = std::tuple<Dims...>;  // what survives a boarding
 
-  template <typename F>
-  static dims_t make(F&& f) {
-    return [&]<std::size_t... I>(std::index_sequence<I...>) {
-      return dims_t{f.template operator()<I>()...};
-    }(idx_t{});
+  static bool carried_dominates([[maybe_unused]] carried const& a,
+                                [[maybe_unused]] carried const& b) {
+    return (std::get<Dims>(a).dominates(std::get<Dims>(b)) && ...);
   }
-  template <typename F>
-  static bool all(dims_t const& a, dims_t const& b, F&& f) {
-    return [&]<std::size_t... I>(std::index_sequence<I...>) {
-      return (f(std::get<I>(a), std::get<I>(b)) && ...);
-    }(idx_t{});
-  }
-
   template <direction SearchDir>
   bool dominates(arr_with const& o) const {
-    return arr_no_worse<SearchDir>(arr_, o.arr_) &&
-           all(d_, o.d_,
-               [](auto const& x, auto const& y) { return x.dominates(y); });
+    return arr_no_worse<SearchDir>(arr_, o.arr_) && carried_dominates(d_, o.d_);
   }
-
   template <direction SearchDir>
   bool completed_dominates(arr_with const& o) const {
     return arr_no_worse<SearchDir>(arr_, o.arr_) &&
-           all(d_, o.d_, [](auto const& x, auto const& y) {
-             return x.completed_dominates(y);
-           });
+           (std::get<Dims>(d_).completed_dominates(std::get<Dims>(o.d_)) &&
+            ...);
   }
-
-  struct carried {
-    template <direction SearchDir>
-    bool dominates(carried const& o) const {
-      return all(d_, o.d_,
-                 [](auto const& x, auto const& y) { return x.dominates(y); });
-    }
-    bool operator==(carried const&) const = default;
-    dims_t d_;
-  };
-  carried carry() const { return {d_}; }
-
   static arr_with from_ride(delta_t const arr,
-                            std::uint16_t const ride_duration,
-                            ride_attrs const& ra,
-                            carried const& c) {
-    return {arr, make([&]<std::size_t I>() {
-              return std::tuple_element_t<I, dims_t>::from_ride(
-                  ride_duration, ra, std::get<I>(c.d_));
-            })};
+                            [[maybe_unused]] clasz const c,
+                            [[maybe_unused]] carried const& prev) {
+    return {arr, carried{Dims::from_ride(c, std::get<Dims>(prev))...}};
   }
-  static arr_with at_start(delta_t const arr, std::uint16_t const ingress) {
-    return {arr, make([&]<std::size_t I>() {
-              return std::tuple_element_t<I, dims_t>::at_start(ingress);
-            })};
+  static arr_with at_start(delta_t const arr,
+                           [[maybe_unused]] std::uint16_t const ingress) {
+    return {arr, carried{Dims::at_start(ingress)...}};
   }
-  arr_with with_transfer(int const dt) const {
-    return {clamp(arr_ + dt), make([&]<std::size_t I>() {
-              return std::get<I>(d_).with_transfer(dt);
-            })};
-  }
-  arr_with with_walk(int const dt, std::uint16_t const duration) const {
-    return {clamp(arr_ + dt), make([&]<std::size_t I>() {
-              return std::get<I>(d_).with_walk(dt, duration);
-            })};
+  arr_with with_transfer(int const dt) const { return {clamp(arr_ + dt), d_}; }
+  arr_with with_walk(int const dt,
+                     [[maybe_unused]] std::uint16_t const duration) const {
+    return {clamp(arr_ + dt),
+            carried{std::get<Dims>(d_).with_walk(duration)...}};
   }
   // dimensions only grow, so they are their own lower bound
   arr_with projected_to(delta_t const arr) const { return {arr, d_}; }
-
-  // dimensions do not depend on the departure: plain dominance
-  template <direction SearchDir>
-  bool reuse_dominates(arr_with const& o, delta_t, delta_t) const {
-    return dominates<SearchDir>(o);
-  }
-
-  void apply_to(journey& j) const {
-    [&]<std::size_t... I>(std::index_sequence<I...>) {
-      (std::get<I>(d_).apply_to(j), ...);
-    }(idx_t{});
+  void apply_to([[maybe_unused]] journey& j) const {
+    (std::get<Dims>(d_).apply_to(j), ...);
   }
 
   delta_t arr_;
-  dims_t d_;
+  [[no_unique_address]] carried d_;
 };
+
+// Every dispatched combination of dimensions; instantiated in mcraptor.cc.
+using arr_criteria = arr_with<>;
+using arr_non_transit_criteria = arr_with<non_transit_dim>;
+using arr_mode_filter_criteria = arr_with<mode_filter_dim>;
+using arr_mode_switches_criteria = arr_with<mode_switches_dim>;
+using arr_non_transit_mode_filter_criteria =
+    arr_with<non_transit_dim, mode_filter_dim>;
+using arr_non_transit_mode_switches_criteria =
+    arr_with<non_transit_dim, mode_switches_dim>;
+using arr_mode_filter_mode_switches_criteria =
+    arr_with<mode_filter_dim, mode_switches_dim>;
+using arr_non_transit_mode_filter_mode_switches_criteria =
+    arr_with<non_transit_dim, mode_filter_dim, mode_switches_dim>;
 
 template <typename Criteria>
 struct basic_mcraptor_state {
@@ -297,9 +200,6 @@ struct basic_mcraptor_state {
   static constexpr auto const kByRoute = std::uint32_t{1U} << 31U;
   static constexpr auto const kBreadcrumbMask = kByRoute - 1U;
   static constexpr auto const kNoBreadcrumb = kBreadcrumbMask;
-
-  // see mc_breadcrumb; parent_ == kNoBreadcrumb: boarded at the start
-  using breadcrumb = mc_breadcrumb;
 
   // One label of a stop's bag. round_ is an implicit pareto dimension (never
   // dominated by a higher round); dep_ tags the start time under range reuse,
@@ -323,53 +223,6 @@ struct basic_mcraptor_state {
     std::array<label, kInline> inline_;
   };
 
-  // overflow spans in power-of-two classes with free lists; offsets, not
-  // pointers, so the vector may grow
-  struct arena {
-    static constexpr auto const kMinClass = std::uint32_t{8U};
-    static constexpr auto const kNumClasses = std::size_t{10U};  // 8 .. 4096
-
-    static std::uint32_t class_of(std::uint32_t const cap) {
-      auto idx = std::uint32_t{0U};
-      while ((kMinClass << idx) < cap) {
-        ++idx;
-      }
-      return idx;
-    }
-    std::uint32_t alloc(std::uint32_t const cap) {  // cap: pow2 >= kMinClass
-      auto const idx = class_of(cap);
-      assert(idx < kNumClasses);
-      if (!free_[idx].empty()) {
-        auto const off = free_[idx].back();
-        free_[idx].pop_back();
-        return off;
-      }
-      auto const off = bump_;
-      bump_ += cap;
-      if (bump_ > data_.size()) {
-        data_.resize(std::max<std::size_t>(bump_, data_.size() * 2U));
-      }
-      return off;
-    }
-    void free_span(std::uint32_t const off, std::uint32_t const cap) {
-      free_[class_of(cap)].push_back(off);
-    }
-    void reset() {
-      bump_ = 0U;
-      for (auto& f : free_) {
-        f.clear();
-      }
-    }
-    label* ptr(std::uint32_t const off) { return data_.data() + off; }
-    label const* ptr(std::uint32_t const off) const {
-      return data_.data() + off;
-    }
-
-    std::vector<label> data_;
-    std::uint32_t bump_{0U};
-    std::array<std::vector<std::uint32_t>, kNumClasses> free_{};
-  };
-
   // touched_ marks non-empty bags so clearing only visits those.
   struct bag_layer {
     void resize(std::size_t const n) {
@@ -378,10 +231,12 @@ struct basic_mcraptor_state {
     }
 
     label* data(small_bag& b) {
-      return b.over_ == kNoOverflow ? b.inline_.data() : arena_.ptr(b.over_);
+      return b.over_ == kNoOverflow ? b.inline_.data()
+                                    : arena_.data() + b.over_;
     }
     label const* data(small_bag const& b) const {
-      return b.over_ == kNoOverflow ? b.inline_.data() : arena_.ptr(b.over_);
+      return b.over_ == kNoOverflow ? b.inline_.data()
+                                    : arena_.data() + b.over_;
     }
 
     std::span<label> span(std::uint32_t const l) {
@@ -409,15 +264,17 @@ struct basic_mcraptor_state {
       data(b)[b.size_++] = x;
     }
 
+    // doubles: outgrown spans are only reclaimed by clear()
     void grow(small_bag& b) {
-      auto const new_cap = std::uint32_t{b.cap_} * 2U;  // 4->8->16->...
-      auto const new_off = arena_.alloc(new_cap);  // may resize arena_.data_
-      auto* const dst = arena_.ptr(new_off);
-      auto const* const src = data(b);
-      std::copy(src, src + b.size_, dst);
-      if (b.over_ != kNoOverflow) {
-        arena_.free_span(b.over_, b.cap_);
+      auto const new_cap = std::uint32_t{b.cap_} * 2U;
+      assert(new_cap <= std::numeric_limits<std::uint16_t>::max());
+      auto const new_off = arena_size_;
+      arena_size_ += new_cap;
+      if (arena_size_ > arena_.size()) {
+        arena_.resize(std::max<std::size_t>(arena_size_, arena_.size() * 2U));
       }
+      auto const* const src = data(b);
+      std::copy(src, src + b.size_, arena_.data() + new_off);
       b.over_ = new_off;
       b.cap_ = static_cast<std::uint16_t>(new_cap);
     }
@@ -430,12 +287,13 @@ struct basic_mcraptor_state {
         b.over_ = kNoOverflow;
       });
       touched_.zero_out();
-      arena_.reset();
+      arena_size_ = 0U;
     }
 
     std::vector<small_bag> bags_;
     bitvec touched_;
-    arena arena_;
+    std::vector<label> arena_;  // offsets, not pointers: it may grow
+    std::uint32_t arena_size_{0U};
   };
 
   basic_mcraptor_state() = default;
@@ -458,7 +316,8 @@ struct basic_mcraptor_state {
 
   // one bag per stop for all rounds of a start time
   bag_layer bag_;
-  std::vector<breadcrumb> breadcrumbs_;
+  // parent_ == kNoBreadcrumb: boarded at the start
+  std::vector<mc_breadcrumb> breadcrumbs_;
   bitvec station_mark_;
   bitvec prev_station_mark_;
   bitvec route_mark_;
@@ -476,10 +335,13 @@ struct basic_mcraptor {
 
   static constexpr bool kUseLowerBounds = true;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
-  static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
   static constexpr auto const kUnreachable =
       std::numeric_limits<std::uint16_t>::max();
+  static constexpr auto const kArrEv =
+      kFwd ? event_type::kArr : event_type::kDep;
+  static constexpr auto const kDepEv =
+      kFwd ? event_type::kDep : event_type::kArr;
 
   basic_mcraptor(
       timetable const&,
@@ -520,19 +382,10 @@ private:
   static auto get_best(auto a, auto b) { return is_better(a, b) ? a : b; }
   static auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
-  // route-scan label; key_ = traffic day << 16 | trip offset orders the trips
+  // route-scan label; key_ orders the trips (trip_order_key, rt: a single trip)
   struct route_label {
     transport t_;
     std::uint32_t key_;
-    delta_t board_dep_;  // departure at the boarding stop (ride duration)
-    stop_idx_t board_;
-    std::uint32_t parent_;
-    [[no_unique_address]] typename Criteria::carried carried_;
-  };
-
-  // rt transports are single trips: no trip order
-  struct rt_label {
-    delta_t board_dep_;
     stop_idx_t board_;
     std::uint32_t parent_;
     [[no_unique_address]] typename Criteria::carried carried_;
@@ -544,15 +397,18 @@ private:
   bool update_route(unsigned k, route_idx_t);
   bool loop_rt_transports(unsigned k);
   bool update_rt_transport(unsigned k, rt_transport_idx_t);
+  template <typename Stops, typename Alight, typename Board>
+  bool scan_stops(unsigned k, Stops const&, Alight&&, Board&&);
+  void board(std::uint32_t key,
+             transport,
+             stop_idx_t,
+             std::uint32_t parent,
+             typename Criteria::carried const&);
   void update_footpaths(unsigned k);
   void collect_dest_journeys(unsigned k,
                              unixtime_t start_time,
                              pareto_set<journey>& results);
-  journey materialize(location_idx_t dest,
-                      unsigned k,
-                      Criteria const&,
-                      std::uint32_t breadcrumb_idx,
-                      unixtime_t start_time);
+  void add_legs(journey&, std::uint32_t breadcrumb_idx);
 
   transport get_earliest_transport(route_idx_t,
                                    stop_idx_t,
@@ -564,21 +420,29 @@ private:
     return kFwd ? a < b : a > b;
   }
 
-  template <typename Label, typename Sections>
+  template <typename Sections>
   bool alight(unsigned k,
               std::uint32_t l_idx,
               stop_idx_t,
               delta_t by_transport,
-              Label const&,
+              route_label const&,
               Sections const&,
               clasz fallback,
               std::uint32_t transport,
               day_idx_t day);
 
+  template <typename Fn>
+  void for_each_label(std::uint32_t l, unsigned round, Fn&&) const;
+  bool bag_insert(std::uint32_t l,
+                  Criteria const&,
+                  std::uint32_t flagged_breadcrumb,
+                  unsigned round,
+                  bool by_route);
   bool merge_round(std::uint32_t l,
                    Criteria const&,
-                   typename state_t::breadcrumb const&,
-                   std::uint8_t round);
+                   mc_breadcrumb const&,
+                   unsigned round,
+                   bool by_route);
   delta_t transfer_buffer(std::uint64_t l) const;
 
   // Destination pruning: a pareto frontier over (round, criteria); a candidate
@@ -630,9 +494,6 @@ private:
 
   timetable const& tt_;
   rt_timetable const* rtt_{nullptr};
-  // runtime, not a template parameter: enough instantiations already
-  bool has_rt_{false};
-  std::uint32_t n_rt_transports_;
   state_t& state_;
   bitvec const& is_dest_;
   std::vector<std::uint16_t> const& dist_to_end_;
@@ -652,40 +513,11 @@ private:
   transfer_time_settings transfer_time_settings_;
   profile_idx_t prf_idx_;
   std::vector<route_label> route_bag_;
-  std::vector<rt_label> rt_bag_;
-  // departures of route_bag_ labels at the scanned stop (saves lookups)
-  std::vector<delta_t> route_bag_dep_;
   // a stop's by-route entries, copied before footpath expansion inserts
   std::vector<typename state_t::label> fp_labels_;
-  // journey materialization scratch (legs in search order)
-  struct rec_leg {
-    bool is_footpath_;
-    location_idx_t from_, to_;
-    delta_t dep_, arr_;
-    // exactly one of the two is valid on a transit leg
-    transport_idx_t t_;
-    rt_transport_idx_t rt_;
-    day_idx_t day_;
-    stop_idx_t enter_, exit_;
-    std::uint16_t fp_duration_;
-  };
-  std::vector<rec_leg> rec_legs_;
 };
 
 using mcraptor_state = basic_mcraptor_state<arr_criteria>;
-
-// Every dispatched combination of dimensions; instantiated in mcraptor.cc.
-using arr_non_transit_criteria = arr_with<non_transit_dim>;
-using arr_mode_filter_criteria = arr_with<mode_filter_dim>;
-using arr_mode_switches_criteria = arr_with<mode_switches_dim>;
-using arr_non_transit_mode_filter_criteria =
-    arr_with<non_transit_dim, mode_filter_dim>;
-using arr_non_transit_mode_switches_criteria =
-    arr_with<non_transit_dim, mode_switches_dim>;
-using arr_mode_filter_mode_switches_criteria =
-    arr_with<mode_filter_dim, mode_switches_dim>;
-using arr_non_transit_mode_filter_mode_switches_criteria =
-    arr_with<non_transit_dim, mode_filter_dim, mode_switches_dim>;
 
 using mcraptor_non_transit_state =
     basic_mcraptor_state<arr_non_transit_criteria>;

@@ -715,7 +715,8 @@ struct mcraptor_impl {
     }
 
     // stop bag f (et_run_lookups' output) <-> route bag
-    __device__ void load(mcraptor_impl const& m, std::uint32_t const f) {
+    __device__ __forceinline__ void load(mcraptor_impl const& m,
+                                         std::uint32_t const f) {
       n_ = m.sb_n_[f];
       for (auto i = 0U; i != K; ++i) {
         if (i < n_) {
@@ -725,7 +726,8 @@ struct mcraptor_impl {
         }
       }
     }
-    __device__ void store(mcraptor_impl const& m, std::uint32_t const f) const {
+    __device__ __forceinline__ void store(mcraptor_impl const& m,
+                                          std::uint32_t const f) const {
       m.sb_n_[f] = n_;
       for (auto i = 0U; i != n_; ++i) {
         m.sb_et_[f * kPrefixK + i] = et_[i];
