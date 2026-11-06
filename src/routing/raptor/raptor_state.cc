@@ -5,6 +5,7 @@
 #include "fmt/core.h"
 
 #include "utl/helpers/algorithm.h"
+#include "utl/verify.h"
 
 #include "nigiri/routing/limits.h"
 #include "nigiri/timetable.h"
@@ -13,13 +14,14 @@ namespace nigiri::routing {
 
 raptor_state& raptor_state::resize(unsigned const n_locations,
                                    unsigned const n_routes,
-                                   unsigned const n_rt_transports) {
+                                   unsigned const n_rt_transports,
+                                   unsigned const n_vias) {
+  utl::verify(n_vias <= kMaxVias, "too many vias: {}", n_vias);
   n_locations_ = n_locations;
-  tmp_storage_.resize(n_locations * (kMaxVias + 1));
-  best_storage_.resize(n_locations * (kMaxVias + 1));
-  round_times_storage_.resize(n_locations * (kMaxVias + 1) *
-                              (kMaxTransfers + 2));
-  bounds_storage_.resize(n_locations * (kMaxVias + 1) * (kMaxTransfers + 2));
+  auto const n_entries = static_cast<std::size_t>(n_locations) * (n_vias + 1U);
+  tmp_storage_.resize(n_entries);
+  best_storage_.resize(n_entries);
+  round_times_storage_.resize(n_entries * (kMaxTransfers + 2));
   station_mark_.resize(n_locations);
   prev_station_mark_.resize(n_locations);
   route_mark_.resize(n_routes);
