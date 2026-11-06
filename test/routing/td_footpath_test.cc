@@ -1,10 +1,15 @@
 #include "gtest/gtest.h"
 
+#include <algorithm>
+
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/load.h"
 
 #include "nigiri/routing/direct.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor/pong.h"
+#include "nigiri/routing/raptor_search.h"
+#include "nigiri/routing/search.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "../raptor_search.h"
@@ -190,38 +195,38 @@ TEST(routing, td_footpath) {
 
   auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / June / 19});
 
+  auto const make_query = [&]() {
+    return routing::query{
+        .start_time_ = unixtime_t{sys_days{2024_y / June / 19}} + 7h,
+        .start_match_mode_ = routing::location_match_mode::kIntermodal,
+        .dest_match_mode_ = routing::location_match_mode::kIntermodal,
+        .use_start_footpaths_ = false,
+        .td_start_ =
+            {{{A,
+               {{.valid_from_ = sys_days{1970_y / January / 1},
+                 .duration_ = footpath::kMaxDuration,
+                 .transport_mode_payload_ = 0},
+                {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 30min,
+                 .duration_ = 10min,
+                 .transport_mode_payload_ = 0},
+                {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 45min,
+                 .duration_ = footpath::kMaxDuration,
+                 .transport_mode_payload_ = 0}}}}},
+        .td_dest_ =
+            {{{C,
+               {{.valid_from_ = sys_days{1970_y / January / 1},
+                 .duration_ = 10min,
+                 .transport_mode_payload_ = 0},
+                {.valid_from_ = sys_days{2024_y / June / 19} + 12h + 30min,
+                 .duration_ = footpath::kMaxDuration,
+                 .transport_mode_payload_ = 0},
+                {.valid_from_ = sys_days{2024_y / June / 19} + 13h + 30min,
+                 .duration_ = 10min,
+                 .transport_mode_payload_ = 0}}}}},
+        .prf_idx_ = 2U};
+  };
   auto const run_search = [&]() {
-    return raptor_search(
-        tt, &rtt,
-        routing::query{
-            .start_time_ = unixtime_t{sys_days{2024_y / June / 19}} + 7h,
-            .start_match_mode_ = routing::location_match_mode::kIntermodal,
-            .dest_match_mode_ = routing::location_match_mode::kIntermodal,
-            .use_start_footpaths_ = false,
-            .td_start_ =
-                {{{A,
-                   {{.valid_from_ = sys_days{1970_y / January / 1},
-                     .duration_ = footpath::kMaxDuration,
-                     .transport_mode_payload_ = 0},
-                    {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 30min,
-                     .duration_ = 10min,
-                     .transport_mode_payload_ = 0},
-                    {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 45min,
-                     .duration_ = footpath::kMaxDuration,
-                     .transport_mode_payload_ = 0}}}}},
-            .td_dest_ =
-                {{{C,
-                   {{.valid_from_ = sys_days{1970_y / January / 1},
-                     .duration_ = 10min,
-                     .transport_mode_payload_ = 0},
-                    {.valid_from_ = sys_days{2024_y / June / 19} + 12h + 30min,
-                     .duration_ = footpath::kMaxDuration,
-                     .transport_mode_payload_ = 0},
-                    {.valid_from_ = sys_days{2024_y / June / 19} + 13h + 30min,
-                     .duration_ = 10min,
-                     .transport_mode_payload_ = 0}}}}},
-            .prf_idx_ = 2U},
-        direction::kForward);
+    return raptor_search(tt, &rtt, make_query(), direction::kForward);
   };
 
   // Base: elevator available, no real-time information.
@@ -257,6 +262,28 @@ TEST(routing, td_footpath) {
       B1, unixtime_t{sys_days{2024_y / June / 19} + 9h + 25min}, 10min});
 
   EXPECT_EQ(kElevatorStartsWorkingAt1125, to_string(tt, run_search()));
+
+  // Waiting for the walk to open, at the start, for the elevator and at the
+  // end, isn't walking: 3 walks of 10 minutes each.
+  auto const walked = [&](routing::query q, direction const dir) {
+    auto ss = routing::search_state{};
+    auto state = routing::mcraptor_non_transit_state{};
+    auto const r =
+        routing::raptor_search(tt, &rtt, ss, state, std::move(q), dir);
+    auto const fastest = std::min_element(
+        begin(*r.journeys_), end(*r.journeys_),
+        [](routing::journey const& a, routing::journey const& b) {
+          return a.arrival_time() < b.arrival_time();
+        });
+    return fastest == end(*r.journeys_) ? -1 : int{fastest->criteria_cost_};
+  };
+  EXPECT_EQ(30, walked(make_query(), direction::kForward));
+
+  auto bwd = make_query();
+  bwd.flip_dir();
+  bwd.start_time_ = unixtime_t{sys_days{2024_y / June / 19}} + 10h + 40min;
+  EXPECT_EQ(30, walked(bwd, direction::kBackward));
+  raptor_search(tt, &rtt, bwd, direction::kBackward);  // the engines agree
 }
 
 // clang-format off

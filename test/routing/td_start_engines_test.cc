@@ -11,6 +11,8 @@
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 
+#include "../raptor_search.h"
+
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
@@ -111,6 +113,7 @@ void expect_all_engines_agree(fixture const& f, routing::query const& q) {
   ASSERT_FALSE(ref.empty()) << "reference found no journey";
   EXPECT_EQ(ref, range_search<routing::mcraptor_state>(f, q)) << "mcraptor";
   EXPECT_EQ(ref, pong<routing::raptor_state>(f, q)) << "pong (scalar)";
+  test::raptor_search(f.tt_, nullptr, q, direction::kForward);  // adds the GPU
 }
 
 }  // namespace

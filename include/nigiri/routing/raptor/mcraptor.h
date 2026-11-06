@@ -22,6 +22,7 @@
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/transfer_time_settings.h"
+#include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -33,6 +34,25 @@ namespace nigiri::routing {
 
 // No via stops, no bike/car/reservation filters; rt and td offsets work.
 bool mcraptor_supported(query const&, rt_timetable const*);
+
+// Minutes walked to a seed reached `elapsed` minutes after the query start
+// (CPU + GPU): a time-dependent start offset may also wait, before the walk or
+// for the trip after it, and waiting is not walking.
+template <direction SearchDir>
+std::uint16_t seed_walk(td_offsets_t const* td_start,
+                        location_idx_t const l,
+                        unixtime_t const start_time,
+                        std::uint16_t const elapsed) {
+  if (td_start != nullptr) {
+    if (auto const it = td_start->find(l); it != end(*td_start)) {
+      auto const fp = get_td_duration<SearchDir>(it->second, start_time);
+      if (fp.has_value() && fp->first.count() <= elapsed) {
+        return static_cast<std::uint16_t>(fp->second.duration_.count());
+      }
+    }
+  }
+  return elapsed;
+}
 
 // Adds offset legs and the start footpath to the transit core legs (CPU + GPU).
 template <direction SearchDir>
@@ -367,6 +387,7 @@ struct basic_mcraptor {
   void reset_arrivals();
   void next_start_time();
   void add_start(location_idx_t, unixtime_t, via_offset_t = 0U);
+  void set_td_start(td_offsets_t const& td) { td_start_ = &td; }
 
   void execute(unixtime_t start_time,
                std::uint8_t max_transfers,
@@ -498,6 +519,7 @@ private:
   bitvec const& is_dest_;
   std::vector<std::uint16_t> const& dist_to_end_;
   hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
+  td_offsets_t const* td_start_{nullptr};
   std::vector<std::uint16_t> const& lb_;
   // search-window bound only; dest_bag_ owns destination pruning
   delta_t worst_at_dest_;

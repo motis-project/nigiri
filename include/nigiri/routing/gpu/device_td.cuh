@@ -74,7 +74,7 @@ __device__ void d_for_each_td_footpath(Collection const& c,
     }
     auto const r = d_get_td_duration<SearchDir>(c, i, j, t);
     if (r.valid_) {
-      f(c[i].target_, r.duration_);
+      f(c[i].target_, r.duration_, c[r.idx_].duration_);
     }
     i = j;
   }

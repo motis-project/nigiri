@@ -199,6 +199,9 @@ struct search {
                    algo_state)},
         timeout_(timeout) {
     q_.sanitize(tt);
+    if constexpr (requires { algo_.set_td_start(q_.td_start_); }) {
+      algo_.set_td_start(q_.td_start_);
+    }
   }
 
   routing_result execute() {

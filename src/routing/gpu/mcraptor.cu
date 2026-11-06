@@ -227,8 +227,8 @@ struct gpu_mcraptor_state::impl {
   device_buffer<std::uint16_t> lb_dev_[2];
   pinned_host_buffer<std::uint16_t> lb_pin_[2];
 
-  pinned_host_buffer<std::pair<location_idx_t, delta_t>> starts_pin_;
-  device_buffer<std::pair<location_idx_t, delta_t>> starts_dev_;
+  pinned_host_buffer<mc_seed> starts_pin_;
+  device_buffer<mc_seed> starts_dev_;
 
   pinned_host_buffer<location_idx_t> rec_dest_pin_;
   device_buffer<location_idx_t> rec_dest_;
@@ -251,9 +251,8 @@ gpu_mcraptor_state::~gpu_mcraptor_state() = default;
 // done_ is set.
 
 template <direction SearchDir, mc_crit Crit>
-__global__ void mc_init_arrivals_kernel(mcraptor_impl<SearchDir, Crit> r,
-                                        delta_t const d_start) {
-  r.init_arrivals(d_start);
+__global__ void mc_init_arrivals_kernel(mcraptor_impl<SearchDir, Crit> r) {
+  r.init_arrivals();
 }
 
 template <direction SearchDir, mc_crit Crit>
@@ -474,7 +473,7 @@ mcraptor_impl<SearchDir, Crit> make_impl(
     profile_idx_t const prf_idx,
     day_idx_t const base,
     delta_t const worst_at_dest,
-    cuda::std::span<std::pair<location_idx_t, delta_t> const> starts) {
+    cuda::std::span<mc_seed const> starts) {
   auto const ptr = [](auto& v) { return thrust::raw_pointer_cast(v.data()); };
   return mcraptor_impl<SearchDir, Crit>{
       .any_marked_ = ptr(s.any_marked_),
@@ -562,24 +561,27 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   worst_at_dest_ = kFwd ? std::min(d_worst, worst_at_dest_)
                         : std::max(d_worst, worst_at_dest_);
 
-  // upload the seeds (stop, seeded stop time in delta units)
+  auto const d_start_dep = unix_to_delta(base(), start_time);
+
+  // upload the seeds
   auto* const starts_pin = s.starts_pin_.ensure(starts_.size());
   for (auto i = std::size_t{0U}; i != starts_.size(); ++i) {
-    starts_pin[i] = {starts_[i].first,
-                     unix_to_delta(base(), starts_[i].second)};
+    auto const arr = unix_to_delta(base(), starts_[i].second);
+    auto const elapsed = kFwd ? arr - d_start_dep : d_start_dep - arr;
+    starts_pin[i] = {
+        starts_[i].first, arr,
+        seed_walk<SearchDir>(td_start_, starts_[i].first, start_time,
+                             static_cast<std::uint16_t>(elapsed))};
   }
   auto* const starts_dev = s.starts_dev_.ensure(starts_.size(), s.stream_);
-  CUDA_CHECK(cudaMemcpyAsync(
-      starts_dev, starts_pin,
-      starts_.size() * sizeof(std::pair<location_idx_t, delta_t>),
-      cudaMemcpyHostToDevice, s.stream_));
+  CUDA_CHECK(cudaMemcpyAsync(starts_dev, starts_pin,
+                             starts_.size() * sizeof(mc_seed),
+                             cudaMemcpyHostToDevice, s.stream_));
 
-  auto const d_start_dep = unix_to_delta(base(), start_time);
   auto r = make_impl<SearchDir, Crit>(
       s, kDirIdx, transfer_time_settings_, allowed_claszes_, prf_idx_, base_,
       worst_at_dest_,
-      cuda::std::span<std::pair<location_idx_t, delta_t> const>{
-          starts_dev, starts_.size()});
+      cuda::std::span<mc_seed const>{starts_dev, starts_.size()});
 
   // rt: the rt traffic days make rt-updated static transports inactive (the rt
   // scan covers them); tt_.bitfields_ stays static (is_route_active reads it).
@@ -603,8 +605,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   };
 
   // === ROUTING KERNELS (as gpu raptor) ===
-  mc_launch(mc_init_arrivals_kernel<SearchDir, Crit>, s.stream_, r,
-            d_start_dep);
+  mc_launch(mc_init_arrivals_kernel<SearchDir, Crit>, s.stream_, r);
   for (auto k = 1U; k != end_k; ++k) {
     mc_launch(mc_mark_routes_kernel<SearchDir, Crit>, s.stream_, r);
     if (with_rt_scan) {

@@ -777,7 +777,8 @@ struct raptor_impl {
                                        : rtt_.td_->in_[prf_idx_][l];
               d_for_each_td_footpath<SearchDir>(
                   td_fps, to_unix(tmp_time),
-                  [&](location_idx_t const target, duration_t const d) {
+                  [&](location_idx_t const target, duration_t const d,
+                      duration_t) {
                     relax_fp_target(k, target, static_cast<int>(d.count()),
                                     tmp_time, bc, t_at_dest);
                   });

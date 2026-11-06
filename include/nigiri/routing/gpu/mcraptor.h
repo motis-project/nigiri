@@ -104,6 +104,7 @@ struct gpu_mcraptor {
   void reset_arrivals();
   void next_start_time();
   void add_start(location_idx_t, unixtime_t, via_offset_t = 0U);
+  void set_td_start(td_offsets_t const& td) { td_start_ = &td; }
 
   void execute(unixtime_t start_time,
                std::uint8_t max_transfers,
@@ -133,6 +134,7 @@ private:
   // search-window bound; the device dest frontier owns destination pruning
   delta_t worst_at_dest_;
 
+  td_offsets_t const* td_start_{nullptr};
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
 };
 
