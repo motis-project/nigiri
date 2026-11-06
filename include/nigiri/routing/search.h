@@ -199,6 +199,9 @@ struct search {
                    algo_state)},
         timeout_(timeout) {
     q_.sanitize(tt);
+    if constexpr (requires { algo_.set_td_start(q_.td_start_); }) {
+      algo_.set_td_start(q_.td_start_);
+    }
   }
 
   routing_result execute() {
@@ -327,8 +330,10 @@ struct search {
                                          state_.results_);
 
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
-        return std::tuple{a.start_time_, a.transfers_} <
-               std::tuple{b.start_time_, b.transfers_};
+        return std::tuple{a.start_time_, a.transfers_, a.dest_time_,
+                          a.criteria_cost_} <
+               std::tuple{b.start_time_, b.transfers_, b.dest_time_,
+                          b.criteria_cost_};
       });
     }
 
@@ -377,15 +382,19 @@ private:
     });
   }
 
+  bool is_tuple_dominated(journey const& j) const {
+    return utl::any_of(state_.results_, [&](journey const& o) {
+      return &o != &j && o.tuple_dominates(j);
+    });
+  }
+
   unsigned n_results_in_interval() const {
-    if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
-      auto count = utl::count_if(state_.results_, [&](journey const& j) {
-        return search_interval_.contains(j.start_time_);
-      });
-      return static_cast<unsigned>(count);
-    } else {
-      return static_cast<unsigned>(state_.results_.size());
-    }
+    auto count = utl::count_if(state_.results_, [&](journey const& j) {
+      return (!holds_alternative<interval<unixtime_t>>(q_.start_time_) ||
+              search_interval_.contains(j.start_time_)) &&
+             !is_tuple_dominated(j);
+    });
+    return static_cast<unsigned>(count);
   }
 
   bool max_interval_reached() const {

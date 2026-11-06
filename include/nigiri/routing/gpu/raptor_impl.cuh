@@ -28,13 +28,6 @@ namespace nigiri::routing::gpu {
 #define kUnreachable (std::numeric_limits<std::uint16_t>::max())
 #define kIntermodalTarget (get_special_station(special_station::kEnd))
 
-inline constexpr auto kWarpSize = 32U;
-
-inline constexpr auto kAllLanes = ~std::uint32_t{0};
-
-using td_dest_group_idx_t = cista::strong<std::uint32_t, struct td_dest_group_>;
-using td_dest_offsets_t = vecvec<td_dest_group_idx_t, td_offset>;
-
 template <direction SearchDir, bool WithBounds>
 struct raptor_impl {
   static constexpr via_offset_t Vias = 0U;
@@ -784,7 +777,8 @@ struct raptor_impl {
                                        : rtt_.td_->in_[prf_idx_][l];
               d_for_each_td_footpath<SearchDir>(
                   td_fps, to_unix(tmp_time),
-                  [&](location_idx_t const target, duration_t const d) {
+                  [&](location_idx_t const target, duration_t const d,
+                      duration_t) {
                     relax_fp_target(k, target, static_cast<int>(d.count()),
                                     tmp_time, bc, t_at_dest);
                   });

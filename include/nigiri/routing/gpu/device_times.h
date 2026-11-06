@@ -1,6 +1,11 @@
 #pragma once
 
+// date.h's NOEXCEPT macro breaks CCCL's token pasting; hide it across the
+// include only (push/pop: date/tz.h still needs it).
+#pragma push_macro("NOEXCEPT")
+#undef NOEXCEPT
 #include <cuda/std/span>
+#pragma pop_macro("NOEXCEPT")
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/routing/gpu/breadcrumb.h"
