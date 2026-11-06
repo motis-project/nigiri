@@ -15,7 +15,7 @@ namespace nigiri::loader::gtfs {
             continue;
           }
           auto const agency_file = dir->get_file(kAgencyFile);
-          if(!has_missing_agency_timezone(agency_file.data(), source.loader_config_.default_tz_)) {
+          if(!has_invalid_agency_timezone(agency_file.data(), source.loader_config_.default_tz_)) {
             accepted.emplace_back(source);
           }
       }
