@@ -56,10 +56,20 @@ jobs:
         run: |
           ./build/cuda/nigiri-benchmark -p tt.bin \
             --engines cpu gpu \
-            --algo range pong \
+            --algo range pong mcraptor \
             --modes s2s c2c \
             --dirs fwd bwd \
             -n 25
+
+      - name: Validate Germany (all criteria, CPU + GPU)
+        run: |
+          ./build/cuda/nigiri-benchmark -p tt.bin \
+            --engines cpu gpu \
+            --algo mcraptor-all \
+            --modes s2s c2c \
+            --dirs fwd bwd \
+            --threads 8 \
+            -n 10
 
       - name: Validate Germany (vias=1, CPU)
         run: |

@@ -371,14 +371,15 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
   worst_at_dest_ =
       get_best(unix_to_delta(base(), worst_time_at_dest), worst_at_dest_);
 
-  // Round-0 labels; the ingress walk is the seeded time minus the query start.
+  // Round-0 labels.
   auto const d_start = unix_to_delta(base(), start_time);
   cur_dep_ = d_start;
   for (auto const& [l, arr] : seeds_) {
-    bag_insert(
-        l,
-        Criteria::at_start(arr, static_cast<std::uint16_t>(dir(arr - d_start))),
-        state_t::kNoBreadcrumb, /*round=*/0U, /*by_route=*/false);
+    auto const walk =
+        seed_walk<SearchDir>(td_start_, location_idx_t{l}, start_time,
+                             static_cast<std::uint16_t>(dir(arr - d_start)));
+    bag_insert(l, Criteria::at_start(arr, walk), state_t::kNoBreadcrumb,
+               /*round=*/0U, /*by_route=*/false);
   }
   seeds_.clear();
 
@@ -687,8 +688,9 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
 
     // egress to the intermodal target, plain and/or time-dependent
     auto const relax_egress = [&](typename state_t::label const& te,
-                                  std::uint16_t const duration) {
-      auto const end_crit = te.crit_.with_walk(dir(duration), duration);
+                                  std::uint16_t const duration,
+                                  std::uint16_t const walk) {
+      auto const end_crit = te.crit_.with_walk(dir(duration), walk);
       // window bound
       if (!is_better(end_crit.arr_, worst_at_dest_)) {
         return;
@@ -703,37 +705,37 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
     };
 
     // duration: adjusted static footpath or td duration incl. waiting
-    auto const relax_fp = [&](typename state_t::label const& te,
-                              std::uint32_t const target,
-                              std::uint16_t const duration) {
-      auto const fp_crit = te.crit_.with_walk(dir(duration), duration);
-      if (!is_better(fp_crit.arr_, worst_at_dest_)) {
-        return;
-      }
-      auto const lb = lb_[target];
-      if (lb == kUnreachable ||
-          !is_better(fp_crit.arr_ + dir(lb), worst_at_dest_) ||
-          dest_dominates(k,
-                         fp_crit.projected_to(clamp(fp_crit.arr_ + dir(lb))))) {
-        ++stats_.fp_update_prevented_by_lower_bound_;
-        return;
-      }
-      // keeps the ride's payload; reconstruction derives the footpath
-      auto bc = state_.breadcrumbs_[te.breadcrumb_];
-      bc.arr_ = fp_crit.arr_;
-      if (!merge_round(target, fp_crit, bc, k, /*by_route=*/false)) {
-        return;
-      }
-      ++stats_.n_earliest_arrival_updated_by_footpath_;
-      state_.station_mark_.set(target, true);
-      if (is_dest_[target]) {
-        dest_bag_add(k, fp_crit);
-      }
-    };
+    auto const relax_fp =
+        [&](typename state_t::label const& te, std::uint32_t const target,
+            std::uint16_t const duration, std::uint16_t const walk) {
+          auto const fp_crit = te.crit_.with_walk(dir(duration), walk);
+          if (!is_better(fp_crit.arr_, worst_at_dest_)) {
+            return;
+          }
+          auto const lb = lb_[target];
+          if (lb == kUnreachable ||
+              !is_better(fp_crit.arr_ + dir(lb), worst_at_dest_) ||
+              dest_dominates(
+                  k, fp_crit.projected_to(clamp(fp_crit.arr_ + dir(lb))))) {
+            ++stats_.fp_update_prevented_by_lower_bound_;
+            return;
+          }
+          // keeps the ride's payload; reconstruction derives the footpath
+          auto bc = state_.breadcrumbs_[te.breadcrumb_];
+          bc.arr_ = fp_crit.arr_;
+          if (!merge_round(target, fp_crit, bc, k, /*by_route=*/false)) {
+            return;
+          }
+          ++stats_.n_earliest_arrival_updated_by_footpath_;
+          state_.station_mark_.set(target, true);
+          if (is_dest_[target]) {
+            dest_bag_add(k, fp_crit);
+          }
+        };
 
     if (egress_ok) {
       for (auto const& te : fp_labels_) {
-        relax_egress(te, dist_to_end_[i]);
+        relax_egress(te, dist_to_end_[i], dist_to_end_[i]);
       }
     }
 
@@ -743,7 +745,9 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
         auto const fp = get_td_duration<SearchDir>(td_egress->second,
                                                    to_unix(te.crit_.arr_));
         if (fp.has_value()) {
-          relax_egress(te, static_cast<std::uint16_t>(fp->first.count()));
+          relax_egress(
+              te, static_cast<std::uint16_t>(fp->first.count()),
+              static_cast<std::uint16_t>(fp->second.duration_.count()));
         }
       }
     }
@@ -755,14 +759,15 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
         for_each_footpath<SearchDir>(
             td_fps, to_unix(te.crit_.arr_),
             [&](location_idx_t const fp_target, duration_t const duration,
-                auto) {
+                duration_t const walk) {
               ++stats_.n_footpaths_visited_;
               auto const target = to_idx(fp_target);
               if (target == i) {
                 return;
               }
               relax_fp(te, static_cast<std::uint32_t>(target),
-                       static_cast<std::uint16_t>(duration.count()));
+                       static_cast<std::uint16_t>(duration.count()),
+                       static_cast<std::uint16_t>(walk.count()));
             });
       }
     } else {
@@ -776,6 +781,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
                                                         fp.duration().count());
         for (auto const& te : fp_labels_) {
           relax_fp(te, static_cast<std::uint32_t>(target),
+                   static_cast<std::uint16_t>(fp_duration),
                    static_cast<std::uint16_t>(fp_duration));
         }
       }

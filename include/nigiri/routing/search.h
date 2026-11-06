@@ -173,7 +173,11 @@ struct search {
                    q_.require_car_transport_,
                    q_.no_compulsory_reservation_,
                    algo_state)},
-        timeout_(timeout) {}
+        timeout_(timeout) {
+    if constexpr (requires { algo_.set_td_start(q_.td_start_); }) {
+      algo_.set_td_start(q_.td_start_);
+    }
+  }
 
   routing_result execute() {
     auto span = get_otel_tracer()->StartSpan("search::execute");

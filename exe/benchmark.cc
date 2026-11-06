@@ -8,6 +8,7 @@
 #include <regex>
 #include <span>
 #include <thread>
+#include <tuple>
 
 #include "boost/program_options.hpp"
 
@@ -115,15 +116,29 @@ std::uint64_t compare_results(
     unsigned const min_connection_count) {
   auto mismatches = std::uint64_t{0U};
 
-  auto const equal = [](journey const& a, journey const& b) {
-    return a.start_time_ == b.start_time_ && a.dest_time_ == b.dest_time_ &&
-           a.transfers_ == b.transfers_;
+  auto const criteria = [](journey const& j) {
+    return std::tuple{j.start_time_,
+                      j.transfers_,
+                      j.dest_time_,
+                      j.criteria_cost_,
+                      j.criteria_mode_filter_,
+                      j.criteria_mode_switches_};
+  };
+
+  auto const equal = [&](journey const& a, journey const& b) {
+    return criteria(a) == criteria(b);
   };
 
   auto const key = [](journey const& j) {
-    return fmt::format("dep={} arr={} transfers={}", j.departure_time(),
-                       j.arrival_time(), j.transfers_);
+    return fmt::format(
+        "dep={} arr={} transfers={} cost={} mode_filter={} mode_switches={}",
+        j.departure_time(), j.arrival_time(), j.transfers_, j.criteria_cost_,
+        j.criteria_mode_filter_, j.criteria_mode_switches_);
   };
+
+  // labels end in the engine, so this compares everything but the engine
+  auto const same_algo = ref_name.substr(0U, ref_name.rfind('-')) ==
+                         cmp_name.substr(0U, cmp_name.rfind('-'));
 
   auto const max_window = [&](query const& q) {
     return search_dir == direction::kForward
@@ -131,8 +146,8 @@ std::uint64_t compare_results(
                : interval_estimator<direction::kBackward>{tt, q}.max_interval();
   };
 
-  auto const filtered = [](pareto_set<routing::journey> const& set,
-                           interval<unixtime_t> const& window) {
+  auto const filtered = [&](pareto_set<routing::journey> const& set,
+                            interval<unixtime_t> const& window) {
     auto v = std::vector<journey const*>{};
     for (auto const& j : set) {
       if (j.travel_time() < kCheckedMaxTravelTime /* slack for pong */ &&
@@ -140,6 +155,10 @@ std::uint64_t compare_results(
         v.push_back(&j);
       }
     }
+    // the search leaves ties on the last criteria in no particular order
+    std::sort(begin(v), end(v), [&](journey const* a, journey const* b) {
+      return criteria(*a) < criteria(*b);
+    });
     return v;
   };
 
@@ -166,16 +185,21 @@ std::uint64_t compare_results(
     auto const r_zip = std::span{r.data(), n};
     auto const c_zip = std::span{c.data(), n};
 
-    // Count under-deliverying results:
-    // >= min_connection_count reached by one but not the other
-    auto const raw_r = ref[i].size();
-    auto const raw_c = cmp[i].size();
     auto misses = std::uint64_t{0U};
-    if (r_size >= min_connection_count && raw_c < min_connection_count) {
-      misses += min_connection_count - raw_c;
-    }
-    if (c_size >= min_connection_count && raw_r < min_connection_count) {
-      misses += min_connection_count - raw_r;
+    if (same_algo) {
+      // Engines running the same algorithm have to find the same set.
+      misses += std::max(r_size, c_size) - n;
+    } else {
+      // Count under-deliverying results:
+      // >= min_connection_count reached by one but not the other
+      auto const raw_r = ref[i].size();
+      auto const raw_c = cmp[i].size();
+      if (r_size >= min_connection_count && raw_c < min_connection_count) {
+        misses += min_connection_count - raw_c;
+      }
+      if (c_size >= min_connection_count && raw_r < min_connection_count) {
+        misses += min_connection_count - raw_r;
+      }
     }
 
     // Count inequalities.

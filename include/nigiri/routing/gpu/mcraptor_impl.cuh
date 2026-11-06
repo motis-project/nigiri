@@ -48,7 +48,7 @@ inline constexpr auto kMcNoBc = std::uint32_t{(1U << 27U) - 1U};
 inline constexpr auto kMcBagCap = 8U;
 inline constexpr auto kMcBagBlock = 16U;  // slots per chained block
 // pool blocks (132 B each): n_locations / 2, clamped
-inline constexpr auto kMcBagPoolMin = 1U << 19U;  // ~69 MB
+inline constexpr auto kMcBagPoolMin = 1U << 20U;  // ~138 MB
 inline constexpr auto kMcBagPoolMax = 1U << 22U;  // ~553 MB
 // u8 hwm: inline 8 + 15 blocks; more trips the bag canary
 inline constexpr auto kMcMaxBagSlots = 248U;
@@ -70,6 +70,13 @@ inline constexpr auto kMcReuseCap = 6U;
 inline constexpr auto kMcPrefixK = 4U;  // route-bag entries per lane
 inline constexpr auto kMcRouteBagCap = 32U;  // sequential / rt route bag
 inline constexpr auto kSbOverflow = ~0U;  // stop bag over kMcPrefixK entries
+
+// a round-0 label: seeded stop time, minutes walked to the stop
+struct mc_seed {
+  location_idx_t l_;
+  delta_t arr_;
+  std::uint16_t walk_;
+};
 
 // device canary bits (checked by the host after each query)
 inline constexpr auto kMcOverflowBag = 1U;
@@ -468,19 +475,17 @@ struct mcraptor_impl {
 
   // ---- rounds (CPU execute) ------------------------------------------------
 
-  // round-0 labels; the ingress walk is the seeded time minus the query start
-  __device__ void init_arrivals(delta_t const d_start) {
+  // round-0 labels
+  __device__ void init_arrivals() {
     auto const gid = get_global_thread_id();
     if (gid == 0U) {
       *done_ = 0U;
       *any_marked_ = 0U;
     }
     for (auto i = gid; i < starts_.size(); i += get_global_stride()) {
-      auto const l = to_idx(starts_[i].first);
-      auto const arr = starts_[i].second;
-      auto const ingress = static_cast<std::uint32_t>(dir(arr - d_start));
-      if (bag_insert(l, to_key(arr), crit_at_start(ingress), 0U, false,
-                     nullptr)) {
+      auto const l = to_idx(starts_[i].l_);
+      if (bag_insert(l, to_key(starts_[i].arr_),
+                     crit_at_start(starts_[i].walk_), 0U, false, nullptr)) {
         touched_.mark(l);
         station_mark_.mark(l);
       }
@@ -1136,6 +1141,7 @@ struct mcraptor_impl {
   // CPU relax_egress: to the intermodal target
   __device__ void relax_egress(unsigned const k,
                                std::uint32_t const dur,
+                               std::uint32_t const walk,
                                delta_t const te_arr,
                                std::uint32_t const te_extras,
                                std::uint32_t const te_bc) {
@@ -1144,7 +1150,7 @@ struct mcraptor_impl {
     if (end_key >= to_key(worst_at_dest_)) {
       return;  // window bound
     }
-    auto const end_extras = crit_after_walk(te_extras, dur);
+    auto const end_extras = crit_after_walk(te_extras, walk);
     auto const bc = walk_bc(te_bc, end_arr);
     if (bag_insert(to_idx(kIntermodalTarget), end_key, end_extras, k, false,
                    &bc)) {
@@ -1158,6 +1164,7 @@ struct mcraptor_impl {
                            std::uint32_t const source,
                            std::uint32_t const target,
                            int const dur,
+                           std::uint32_t const walk,
                            delta_t const te_arr,
                            std::uint32_t const te_extras,
                            std::uint32_t const te_bc) {
@@ -1172,8 +1179,7 @@ struct mcraptor_impl {
         fp_key + target_lb >= worst_key) {
       return;
     }
-    auto const fp_extras =
-        crit_after_walk(te_extras, static_cast<std::uint32_t>(dur));
+    auto const fp_extras = crit_after_walk(te_extras, walk);
     if (dest_dominates(k, fp_key + target_lb, fp_extras)) {
       return;
     }
@@ -1256,7 +1262,8 @@ struct mcraptor_impl {
       auto const te_bc = mc_bc(lab);
       if (first == 0U) {
         if (egress_ok) {
-          relax_egress(k, dist_to_end_[i], te_arr, te_extras, te_bc);
+          relax_egress(k, dist_to_end_[i], dist_to_end_[i], te_arr, te_extras,
+                       te_bc);
         }
         // td durations depend on the arrival, so they are evaluated per label
         if (td_grp != ~0U) {
@@ -1265,25 +1272,29 @@ struct mcraptor_impl {
               offsets, 0U, static_cast<std::uint32_t>(offsets.size()),
               to_unix(te_arr));
           if (rr.valid_) {
-            relax_egress(k, static_cast<std::uint32_t>(rr.duration_.count()),
-                         te_arr, te_extras, te_bc);
+            relax_egress(
+                k, static_cast<std::uint32_t>(rr.duration_.count()),
+                static_cast<std::uint32_t>(offsets[rr.idx_].duration_.count()),
+                te_arr, te_extras, te_bc);
           }
         }
         if (use_td_fps) {
           d_for_each_td_footpath<SearchDir>(
               kFwd ? rtt_.td_->out_[prf_idx_][l] : rtt_.td_->in_[prf_idx_][l],
               to_unix(te_arr),
-              [&](location_idx_t const target, duration_t const d) {
+              [&](location_idx_t const target, duration_t const d,
+                  duration_t const walk) {
                 relax_fp(k, i, to_idx(target), static_cast<int>(d.count()),
-                         te_arr, te_extras, te_bc);
+                         static_cast<std::uint32_t>(walk.count()), te_arr,
+                         te_extras, te_bc);
               });
         }
       }
       for (auto f = first; f < n_fps; f += step) {
-        relax_fp(k, i, to_idx(fps[f].target()),
-                 adjusted_transfer_time(transfer_time_settings_,
-                                        fps[f].duration().count()),
-                 te_arr, te_extras, te_bc);
+        auto const dur = adjusted_transfer_time(transfer_time_settings_,
+                                                fps[f].duration().count());
+        relax_fp(k, i, to_idx(fps[f].target()), dur,
+                 static_cast<std::uint32_t>(dur), te_arr, te_extras, te_bc);
       }
     }
   }
@@ -1621,7 +1632,7 @@ struct mcraptor_impl {
   day_idx_t base_;
   delta_t worst_at_dest_;
 
-  cuda::std::span<std::pair<location_idx_t, delta_t> const> starts_;
+  cuda::std::span<mc_seed const> starts_;
 
   device_bitvec<std::uint64_t const> is_dest_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
