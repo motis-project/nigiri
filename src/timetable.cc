@@ -123,7 +123,7 @@ std::string lang_code_without_country(std::string const& locale) {
 std::string find_best_transliterator(std::string_view source_lang) {
   UErrorCode ec = U_ZERO_ERROR;
 
-  std::unique_ptr<icu::StringEnumeration> ids(
+  auto const ids = std::unique_ptr<icu::StringEnumeration>(
       icu::Transliterator::getAvailableIDs(ec));
   utl::verify(!U_FAILURE(ec), "icu build broken");
 
@@ -152,9 +152,10 @@ std::optional<translation> transliterate(std::string_view source_string,
   auto const translit_id = find_best_transliterator(source_lang);
 
   UErrorCode ec = U_ZERO_ERROR;
-  auto const transliterator = icu::Transliterator::createInstance(
-      icu::UnicodeString::fromUTF8(translit_id),
-      UTransDirection::UTRANS_FORWARD, ec);
+  auto const transliterator =
+      std::unique_ptr<icu::Transliterator>(icu::Transliterator::createInstance(
+          icu::UnicodeString::fromUTF8(translit_id),
+          UTransDirection::UTRANS_FORWARD, ec));
   if (!transliterator) {
     log(log_lvl::debug, "timetable.transliterate",
         "No transliterator for {} :(", translit_id);
