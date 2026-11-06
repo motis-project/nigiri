@@ -181,18 +181,19 @@ route_map_t read_routes(source_idx_t const src,
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_route>()  //
       | utl::for_each([&](csv_route const& r) {
+          auto const agency_id = r.agency_id_->trim();
           auto const a =
               agencies.size() == 1U
                   ? agencies.begin()->second
-                  : utl::get_or_create(agencies, r.agency_id_->view(), [&]() {
+                  : utl::get_or_create(agencies, agency_id.view(), [&]() {
                       log(log_lvl::error, "gtfs.route",
                           "agency {} not found, using UNKNOWN with default "
                           "timezone {}",
-                          r.agency_id_->view(), default_tz);
+                          agency_id.view(), default_tz);
 
-                      auto const id = r.agency_id_->view().empty()
+                      auto const id = agency_id.empty()
                                           ? "UKN"
-                                          : r.agency_id_->view();
+                                          : agency_id.view();
                       return register_agency(
                           tt, agency{tt, src, id, kEmptyTranslation,
                                      kEmptyTranslation, kEmptyTranslation,
