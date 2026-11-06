@@ -17,15 +17,18 @@ feed_info read_feed_info(std::string_view file_content) {
 
   auto ret = feed_info{
       .feed_end_date_ = {},
-      .feed_lang_ = "en",
+      .feed_lang_ = {},
+      .default_lang_ = "en",
   };
   utl::for_each_row<feed_info_record>(
       file_content, [&](feed_info_record const& r) {
         ret.feed_end_date_ = r.feed_end_date_->and_then(
             [](unsigned const x) { return std::optional{parse_date(x)}; });
-        ret.feed_lang_ = r.feed_lang_->or_else([&] { return *r.default_lang_; })
-                             .value_or("en")
-                             .view();
+        ret.feed_lang_ =
+            r.feed_lang_->transform([](auto v) { return v.view(); });
+        ret.default_lang_ =
+            r.default_lang_->transform([](auto v) { return v.view(); })
+                .value_or("en");
       });
   return ret;
 }

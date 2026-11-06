@@ -15,6 +15,8 @@
 #include "nigiri/loader/netex/loader.h"
 #include "nigiri/timetable.h"
 
+#include "unicode/uclean.h"
+
 namespace nigiri::loader {
 
 std::vector<std::unique_ptr<loader_interface>> get_loaders() {
@@ -100,6 +102,9 @@ timetable load(std::vector<dir_source> const& sources,
                 shapes);
   }
   finalize(tt, ctx, opt);
+
+  // Clean up global ICU registry
+  u_cleanup();
 
   return tt;
 }
