@@ -3,7 +3,8 @@
 #include <array>
 #include <span>
 #include <vector>
-
+#include <cstdint>
+#include <limits>
 #include "date/date.h"
 
 #include "cista/containers/bitvec.h"
@@ -12,13 +13,20 @@
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/flat_matrix_view.h"
 #include "nigiri/routing/limits.h"
-
+#include "nigiri/types.h"
 namespace nigiri {
 struct timetable;
 }
 
 namespace nigiri::routing {
 
+struct min_label {
+  bool reached() const { return owner_ != location_idx_t::invalid(); }
+  duration_t dur_{std::numeric_limits<duration_t::rep>::max()};
+  location_idx_t owner_{location_idx_t::invalid()};
+  std::uint8_t transfers_{std::numeric_limits<std::uint8_t>::max()};
+  unixtime_t departure_{unixtime_t::max()};
+};
 struct raptor_state {
   raptor_state() = default;
   raptor_state(raptor_state const&) = delete;
@@ -126,6 +134,8 @@ struct raptor_state {
             n_locations_};
   }
   unsigned n_locations_{};
+  bool track_min_{false};
+  std::vector<min_label> min_;
   std::vector<delta_t> tmp_storage_;
   std::vector<delta_t> best_storage_;
   std::vector<delta_t> round_times_storage_;
