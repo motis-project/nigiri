@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <limits>
 #include <ranges>
 #include <span>
@@ -87,6 +88,77 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     legs[0].arr_time_ = from_arr + walk_duration;
   }
   return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
+}
+
+void swap_special_stations(journey& j) {
+  auto const swap = [](location_idx_t const l) -> location_idx_t {
+    switch (to_idx(l)) {
+      case to_idx(get_special_station(special_station::kStart)):
+        return get_special_station(special_station::kEnd);
+      case to_idx(get_special_station(special_station::kEnd)):
+        return get_special_station(special_station::kStart);
+      default: return l;
+    }
+  };
+  j.legs_.front().from_ = swap(j.legs_.front().from_);
+  j.legs_.back().to_ = swap(j.legs_.back().to_);
+}
+
+template <direction SearchDir, via_offset_t Vias>
+void finish_journeys(timetable const& tt,
+                     rt_timetable const* rtt,
+                     query const& q,
+                     interval<unixtime_t> const iv,
+                     pareto_set<journey>& results) {
+  enrich_with_slow_direct<SearchDir>(tt, rtt, q, iv, results);
+
+  utl::sort(results, [](journey const& a, journey const& b) {
+    return std::tuple{a.start_time_, a.transfers_} <
+           std::tuple{b.start_time_, b.transfers_};
+  });
+
+  trace_pong("RESULT:\n\t{}",
+             fmt::join(results.els_ | std::views::transform(to_tuple), "\n\t"));
+
+  if constexpr (SearchDir == direction::kBackward || Vias != 0U) {
+    // via requirements (order, stays) are invisible to
+    // get_earliest_alternative
+    return;
+  }
+
+  for (auto& j : results) {
+    for (auto const [transit_1, transfer_1, transit_2, transfer_2, transit_3] :
+         utl::nwise<5>(j.legs_)) {
+      if (!std::holds_alternative<journey::run_enter_exit>(transit_1.uses_) ||
+          !std::holds_alternative<journey::run_enter_exit>(transit_2.uses_) ||
+          !std::holds_alternative<journey::run_enter_exit>(transit_3.uses_)) {
+        continue;
+      }
+
+      auto const& front = std::get<journey::run_enter_exit>(transit_1.uses_);
+      auto const& back = std::get<journey::run_enter_exit>(transit_3.uses_);
+
+      auto const front_r = rt::frun{tt, rtt, front.r_};
+      auto const from = front_r[front.stop_range_.to_ - 1U];
+
+      auto const arr_time = from.time(event_type::kArr);
+
+      auto const back_r = rt::frun{tt, rtt, back.r_};
+      auto const to = back_r[back.stop_range_.from_];
+
+      auto const dep_time = to.time(event_type::kDep);
+
+      auto const earlier =
+          get_earliest_alternative(tt, rtt, q, from.get_location_idx(),
+                                   to.get_location_idx(), arr_time, dep_time);
+
+      if (earlier.has_value()) {
+        transfer_1 = earlier->at(0);
+        transit_2 = earlier->at(1);
+        transfer_2 = earlier->at(2);
+      }
+    }
+  }
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias, typename AlgoState>
@@ -322,6 +394,18 @@ routing_result pong(timetable const& tt,
     utl::sort(ping_results, [](journey const& a, journey const& b) {
       return a.transfers_ > b.transfers_;
     });
+    if (!result.cursor_bounds_.has_value()) {
+      auto bounds = std::array<unixtime_t, kMaxTransfers + 2U>{};
+      bounds.fill(kFwd ? unixtime_t::max() : unixtime_t::min());
+      for (auto const& j : ping_results) {
+        for (auto k = j.transfers_ + 1U; k != bounds.size(); ++k) {
+          if (is_better(j.dest_time_, bounds[k])) {
+            bounds[k] = j.dest_time_;
+          }
+        }
+      }
+      result.cursor_bounds_ = bounds;
+    }
 
     // ----
     // PONG
@@ -457,75 +541,474 @@ routing_result pong(timetable const& tt,
           (std::chrono::steady_clock::now() - processing_start_time));
 
   for (auto& j : s_state.results_) {
-    auto const swap = [](location_idx_t const l) -> location_idx_t {
-      switch (to_idx(l)) {
-        case to_idx(get_special_station(special_station::kStart)):
-          return get_special_station(special_station::kEnd);
-        case to_idx(get_special_station(special_station::kEnd)):
-          return get_special_station(special_station::kStart);
-        default: return l;
-      }
-    };
-    j.legs_.front().from_ = swap(j.legs_.front().from_);
-    j.legs_.back().to_ = swap(j.legs_.back().to_);
+    swap_special_stations(j);
   }
 
-  auto const iv = result.interval_;
-  enrich_with_slow_direct<SearchDir>(tt, rtt, q, iv, s_state.results_);
+  finish_journeys<SearchDir, Vias>(tt, rtt, q, result.interval_,
+                                   s_state.results_);
+  return result;
+}
 
-  utl::sort(s_state.results_, [](journey const& a, journey const& b) {
-    return std::tuple{a.start_time_, a.transfers_} <
-           std::tuple{b.start_time_, b.transfers_};
-  });
+// Paging against the search direction: fwd + extend earlier (the page before
+// a page that starts at T), bwd + extend later. The page holds every journey
+// departing in it that is pareto-optimal among all journeys departing after
+// it (the standard pong's result semantics). The page is enumerated from the
+// arrival side (reverse ping = latest departures arriving before a deadline,
+// forward pong = their exact arrival): first until it holds enough journeys,
+// then what arrives at or after the adjacent page's earliest arrival, per
+// transfer count below the adjacent page's arrival for that count, and finally
+// the rest, all bounded by the page start that follows the journeys found.
+//
+// Cursor: q.cursor_bounds_ = per round the earliest arrival (fwd) / latest
+// departure (bwd) of the adjacent page's first ping: every journey arriving
+// before the best of them departs before T, and a journey with k transfers
+// arriving at or after the bound of round k+1 is dominated by the adjacent
+// page. Computed with one ping at T if not given.
+template <direction SearchDir, bool Rt, via_offset_t Vias, typename AlgoState>
+routing_result pong_reverse(timetable const& tt,
+                            rt_timetable const* rtt,
+                            search_state& s_state,
+                            AlgoState& r_state,
+                            query q,
+                            std::optional<std::chrono::seconds> timeout) {
+  constexpr auto const kFwd = (SearchDir == direction::kForward);
+  constexpr auto const kRev = flip(SearchDir);
+  constexpr auto const kGpu = std::is_same_v<AlgoState, gpu::gpu_raptor_state>;
 
-  trace_pong("RESULT:\n\t{}",
-             fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),
-                       "\n\t"));
+  using ping_t =
+      std::conditional_t<kGpu, gpu::gpu_raptor<SearchDir, false>,
+                         raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>>;
+  using rev_ping_t =
+      std::conditional_t<kGpu, gpu::gpu_raptor<kRev, false>,
+                         raptor<kRev, Rt, Vias, search_mode::kOneToOne>>;
+  using rev_pong_t =
+      std::conditional_t<kGpu, gpu::gpu_raptor<SearchDir, kPruneWithPingBounds>,
+                         raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>>;
 
-  if constexpr (!kFwd) {
-    return result;
+  s_state.results_.clear();
+
+  auto const processing_start_time = std::chrono::steady_clock::now();
+  auto const is_timeout_reached = [&]() {
+    return timeout.has_value() && (std::chrono::steady_clock::now() -
+                                   processing_start_time) >= *timeout;
+  };
+
+  auto const fastest_direct = get_fastest_direct(tt, q, SearchDir);
+  auto const search_interval = start_time_interval(q.start_time_);
+  auto const base_day =
+      day_idx_t{std::chrono::duration_cast<date::days>(
+                    std::chrono::round<std::chrono::days>(
+                        search_interval.from_ +
+                        ((search_interval.to_ - search_interval.from_) / 2)) -
+                    tt.internal_interval().from_)
+                    .count()};
+  auto const is_better = [](auto a, auto b) { return kFwd ? a < b : a > b; };
+  auto const dir = [](duration_t const d) { return kFwd ? d : -d; };
+  auto const step = dir(duration_t{1});
+  auto const max_look =
+      dir(std::min(q.max_travel_time_ + kMinLookAhead, kMaxTravelTime));
+
+  // t0: the last minute of this page next to the cursor T
+  auto const t0 = kFwd ? search_interval.to_ - step : search_interval.from_;
+  auto const target =
+      kFwd ? search_interval.from_ : search_interval.to_ - duration_t{1};
+  auto const lookahead_end = t0 - dir(kMaxLookAhead);
+
+  auto qr = q;
+  qr.flip_dir();
+
+  struct side {
+    std::vector<std::uint16_t> dist_to_dest_;
+    bitvec is_dest_;
+    std::array<bitvec, kMaxVias> is_via_;
+  };
+  auto const make_side = [&](query const& x) {
+    auto s = side{};
+    collect_destinations(tt, x.destination_, x.dest_match_mode_, s.is_dest_,
+                         s.dist_to_dest_);
+    for (auto const [i, via] : utl::enumerate(x.via_stops_)) {
+      collect_via_destinations(tt, via.location_, s.is_via_[i]);
+    }
+    return s;
+  };
+  auto fwd_side = make_side(q);
+  auto rev_side = make_side(qr);
+
+  auto lb_time = std::chrono::steady_clock::duration{};
+  auto const compute_lb = [&]<direction Dir>(query const& x,
+                                             std::vector<std::uint16_t>& lb) {
+    constexpr auto const kDirFwd = Dir == direction::kForward;
+    auto const start = std::chrono::steady_clock::now();
+    dijkstra(
+        tt, x,
+        (kDirFwd ? tt.fwd_search_lb_graph_[x.prf_idx_]
+                 : tt.bwd_search_lb_graph_[x.prf_idx_]),
+        ((rtt == nullptr || kGpu)
+             ? nullptr
+             : &(kDirFwd ? rtt->fwd_search_lb_graph_has_edges_
+                         : rtt->bwd_search_lb_graph_has_edges_)),
+        ((rtt == nullptr || kGpu) ? nullptr
+                                  : &(kDirFwd ? rtt->fwd_search_lb_graph_
+                                              : rtt->bwd_search_lb_graph_)),
+        lb);
+    lb_time += std::chrono::steady_clock::now() - start;
+  };
+  auto ping_lb = std::vector<std::uint16_t>{};
+  auto rev_lb = std::vector<std::uint16_t>{};
+  auto bounded_lb = std::vector<std::uint16_t>{};
+  if constexpr (ping_t::kUseLowerBounds) {
+    compute_lb.template operator()<SearchDir>(q, ping_lb);
+    compute_lb.template operator()<kRev>(qr, rev_lb);
+    bounded_lb.assign(tt.n_locations(), 0U);
   }
 
-  if constexpr (Vias != 0U) {
-    // via requirements (order, stays) are invisible to
-    // get_earliest_alternative
-    return result;
-  }
+  auto const make = [&]<typename Algo>(side& s, query const& x,
+                                       std::vector<std::uint16_t>& lb) {
+    return Algo{tt,
+                rtt,
+                r_state,
+                s.is_dest_,
+                s.is_via_,
+                s.dist_to_dest_,
+                x.td_dest_,
+                lb,
+                x.via_stops_,
+                base_day,
+                x.allowed_claszes_,
+                x.require_bike_transport_,
+                x.require_car_transport_,
+                x.prf_idx_ == 2U,
+                x.no_compulsory_reservation_,
+                x.transfer_time_settings_,
+                x.prf_idx_};
+  };
+  auto ping = make.template operator()<ping_t>(fwd_side, q, ping_lb);
+  auto rev_ping = make.template operator()<rev_ping_t>(rev_side, qr, rev_lb);
+  auto rev_pong = make.template operator()<rev_pong_t>(fwd_side, q, bounded_lb);
 
-  for (auto& j : s_state.results_) {
-    for (auto const [transit_1, transfer_1, transit_2, transfer_2, transit_3] :
-         utl::nwise<5>(j.legs_)) {
-      if (!std::holds_alternative<journey::run_enter_exit>(transit_1.uses_) ||
-          !std::holds_alternative<journey::run_enter_exit>(transit_2.uses_) ||
-          !std::holds_alternative<journey::run_enter_exit>(transit_3.uses_)) {
-        continue;
+  auto result = routing_result{.journeys_ = &s_state.results_,
+                               .interval_ = search_interval,
+                               .search_stats_ = {},
+                               .algo_stats_ = {}};
+  auto starts = std::vector<start>{};
+  auto const worst_array = [](unixtime_t const t) {
+    auto a = std::array<unixtime_t, kMaxTransfers + 2U>{};
+    a.fill(t);
+    return a;
+  };
+  auto const best_of = [&](pareto_set<journey> const& set) {
+    return std::min_element(begin(set), end(set),
+                            [&](journey const& a, journey const& b) {
+                              return is_better(a.dest_time_, b.dest_time_);
+                            })
+        ->dest_time_;
+  };
+
+  auto page_edge = t0 + step;  // validated: page_edge..t0 (both inclusive)
+  auto const is_validated = [&](journey const& j) {
+    return !is_better(j.start_time_, page_edge) &&
+           !is_better(t0, j.start_time_);
+  };
+  auto const is_fast = [&](journey const& j) {
+    return j.travel_time() < fastest_direct &&
+           j.travel_time() <= q.max_travel_time_;
+  };
+  auto const is_known = [&](journey const& j) {
+    return j.is_reconstructed_ && !j.error_ &&
+           !is_better(j.start_time_, lookahead_end);
+  };
+
+  // per round: the arrivals of the adjacent page's first ping
+  auto adjacent_worst = worst_array(t0 + step + max_look);
+
+  // ping from the start side: earliest arrivals for departures >= t with at
+  // most max_transfers, bounded by the known journeys departing >= t
+  auto const run_ping = [&](unixtime_t const t,
+                            std::uint8_t const max_transfers,
+                            pareto_set<journey>& out) {
+    starts.clear();
+    get_starts(SearchDir, tt, rtt, t, q.start_, q.td_start_, q.via_stops_,
+               q.max_start_offset_, q.start_match_mode_, q.use_start_footpaths_,
+               starts, false, q.prf_idx_, q.transfer_time_settings_);
+    ping.reset_arrivals();
+    ping.next_start_time();
+    for (auto const& s : starts) {
+      ping.add_start(s.stop_, s.time_at_stop_, s.v_);
+    }
+    auto worst_time_at_dest = adjacent_worst;
+    for (auto k = 0U; k != worst_time_at_dest.size(); ++k) {
+      if (is_better(t + max_look, worst_time_at_dest[k])) {
+        worst_time_at_dest[k] = t + max_look;
       }
-
-      auto const& front = std::get<journey::run_enter_exit>(transit_1.uses_);
-      auto const& back = std::get<journey::run_enter_exit>(transit_3.uses_);
-
-      auto const front_r = rt::frun{tt, rtt, front.r_};
-      auto const from = front_r[front.stop_range_.to_ - 1U];
-
-      auto const arr_time = from.time(event_type::kArr);
-
-      auto const back_r = rt::frun{tt, rtt, back.r_};
-      auto const to = back_r[back.stop_range_.from_];
-
-      auto const dep_time = to.time(event_type::kDep);
-
-      auto const earlier =
-          get_earliest_alternative(tt, rtt, q, from.get_location_idx(),
-                                   to.get_location_idx(), arr_time, dep_time);
-
-      if (earlier.has_value()) {
-        transfer_1 = earlier->at(0);
-        transit_2 = earlier->at(1);
-        transfer_2 = earlier->at(2);
+    }
+    for (auto const& j : s_state.results_) {
+      if (!j.error_ && !is_better(j.start_time_, t)) {
+        for (auto k = j.transfers_ + 1U; k != worst_time_at_dest.size(); ++k) {
+          if (is_better(j.dest_time_, worst_time_at_dest[k])) {
+            worst_time_at_dest[k] = j.dest_time_;
+          }
+        }
       }
+    }
+    ping.execute(t, max_transfers, worst_time_at_dest, out);
+    kFwd ? ++result.search_stats_.n_execute_fwd_
+         : ++result.search_stats_.n_execute_bwd_;
+  };
+
+  // deadline for the reverse ping: before the earliest arrival of everything
+  // departing >= T, so that it only finds departures of this page
+  auto const no_bound = kFwd ? unixtime_t::max() : unixtime_t::min();
+  auto deadline = t0;
+  if (q.cursor_bounds_.has_value()) {
+    for (auto k = 0U; k != adjacent_worst.size(); ++k) {
+      auto const b = (*q.cursor_bounds_)[k];
+      if (b != no_bound) {
+        adjacent_worst[k] = b;
+        if (deadline == t0 || is_better(b - step, deadline)) {
+          deadline = b - step;
+        }
+      }
+    }
+  } else {
+    auto first = pareto_set<journey>{};
+    run_ping(t0 + step, q.max_transfers_, first);
+    for (auto const& j : first) {
+      for (auto k = j.transfers_ + 1U; k != adjacent_worst.size(); ++k) {
+        if (is_better(j.dest_time_, adjacent_worst[k])) {
+          adjacent_worst[k] = j.dest_time_;
+        }
+      }
+    }
+    if (!first.empty()) {
+      deadline = best_of(first) - step;
     }
   }
 
+  // one step from the arrival side: the latest departures (>= from) arriving
+  // before the deadline, with their exact arrival; then the deadline moves
+  // before the latest of these arrivals
+  auto rev_exhausted = false;
+  auto const rev_step = [&](unixtime_t const from,
+                            std::uint8_t const max_transfers) {
+    starts.clear();
+    get_starts(kRev, tt, rtt, deadline, qr.start_, qr.td_start_, qr.via_stops_,
+               qr.max_start_offset_, qr.start_match_mode_,
+               qr.use_start_footpaths_, starts, false, qr.prf_idx_,
+               qr.transfer_time_settings_);
+    rev_ping.reset_arrivals();
+    rev_ping.next_start_time();
+    for (auto const& s : starts) {
+      rev_ping.add_start(s.stop_, s.time_at_stop_, s.v_);
+    }
+    auto rev_results = pareto_set<journey>{};
+    rev_ping.execute(deadline, max_transfers, worst_array(from), rev_results);
+    kFwd ? ++result.search_stats_.n_execute_bwd_
+         : ++result.search_stats_.n_execute_fwd_;
+    if (rev_results.empty()) {
+      rev_exhausted = true;
+      return;
+    }
+    utl::sort(rev_results, [](journey const& a, journey const& b) {
+      return a.transfers_ > b.transfers_;
+    });
+
+    if constexpr (kPruneWithPingBounds) {
+      rev_ping.fill_bounds(rev_results.begin()->transfers_ + std::size_t{1U});
+    }
+    rev_pong.reset_arrivals();
+    for (auto& pj : rev_results) {
+      auto const known = utl::find_if(s_state.results_, [&](journey const& j) {
+        return j.transfers_ == pj.transfers_ && j.start_time_ == pj.dest_time_;
+      });
+      if (known != end(s_state.results_)) {
+        pj.start_time_ = known->dest_time_;
+        continue;
+      }
+      if constexpr (kPruneWithPingBounds) {
+        rev_pong.set_bounds(pj.transfers_ + 1U);
+      }
+      starts.clear();
+      get_starts(SearchDir, tt, rtt, pj.dest_time_, q.start_, q.td_start_,
+                 q.via_stops_, q.max_start_offset_, q.start_match_mode_,
+                 q.start_match_mode_ != location_match_mode::kIntermodal,
+                 starts, false, q.prf_idx_, q.transfer_time_settings_);
+      rev_pong.next_start_time();
+      for (auto const& x : starts) {
+        rev_pong.add_start(x.stop_, x.time_at_stop_, x.v_);
+      }
+      auto pong_results = pareto_set<journey>{};
+      rev_pong.execute(pj.dest_time_, pj.transfers_,
+                       worst_array(pj.start_time_), pong_results);
+      kFwd ? ++result.search_stats_.n_execute_fwd_
+           : ++result.search_stats_.n_execute_bwd_;
+      auto const match = utl::find_if(pong_results, [&](journey const& j) {
+        return j.transfers_ == pj.transfers_ && j.start_time_ == pj.dest_time_;
+      });
+      if (match == end(pong_results)) {
+        throw utl::fail("pong_reverse: no pong for transfers={}, time={}",
+                        pj.transfers_, pj.dest_time_);
+      }
+      rev_pong.reconstruct(q, *match);
+      pj.start_time_ = match->dest_time_;
+      s_state.results_.add(std::move(*match));
+    }
+
+    auto const next =
+        std::max_element(begin(rev_results), end(rev_results),
+                         [&](journey const& a, journey const& b) {
+                           return is_better(a.start_time_, b.start_time_);
+                         })
+            ->start_time_ -
+        step;
+    if (!is_better(next, deadline)) {
+      throw utl::fail("pong_reverse: no progress: deadline={}, next={}",
+                      deadline, next);
+    }
+    deadline = next;
+  };
+  auto const can_step = [&]() {
+    return !rev_exhausted && tt.external_interval().contains(deadline) &&
+           is_better(lookahead_end, deadline) && !is_timeout_reached();
+  };
+
+  auto const first_deadline = deadline;
+
+  // the page starts at the departure that makes it hold enough journeys
+  // (no such departure: everything known is in the page)
+  auto const choose_page_edge = [&]() {
+    auto known = std::vector<journey const*>{};
+    for (auto const& j : s_state.results_) {
+      if (is_known(j) && !is_better(t0, j.start_time_)) {
+        known.push_back(&j);
+      }
+    }
+    utl::sort(known, [&](journey const* a, journey const* b) {
+      return is_better(b->start_time_, a->start_time_);
+    });
+    auto n = 0U;
+    auto edge = t0 + step;
+    for (auto const* j : known) {
+      edge = j->start_time_;
+      n += is_fast(*j) ? 2U : 1U;
+      if (n >= 2 * q.min_connection_count_) {
+        return std::pair{edge, true};
+      }
+    }
+    return std::pair{edge, false};
+  };
+  auto const clamp_page_edge = [&](unixtime_t edge) {
+    if (is_better(target, edge)) {
+      edge = target;
+    }
+    if (is_better(edge, lookahead_end)) {
+      edge = lookahead_end;
+    }
+    return edge;
+  };
+
+  // enumerate from the arrival side until the page holds enough journeys
+  auto enough = false;
+  while (can_step()) {
+    auto const [edge, is_enough] = choose_page_edge();
+    enough = is_enough;
+    if (enough) {
+      page_edge = clamp_page_edge(edge);
+      break;
+    }
+    rev_step(deadline - max_look, q.max_transfers_);
+  }
+  if (!enough) {
+    page_edge = clamp_page_edge(choose_page_edge().first);
+  }
+  auto const main_deadline = deadline;
+  auto const main_exhausted = rev_exhausted;
+
+  // slow journeys (arriving at or after the adjacent page's earliest arrival)
+  // are pareto-optimal only with fewer transfers than every adjacent-page
+  // journey arriving before them: with k transfers they arrive before the
+  // adjacent page's best arrival with <= k transfers (round k+1). They are
+  // enumerated from the arrival side per transfer count, from the most
+  // transfers down over disjoint arrival ranges, bounded by the page start,
+  // which follows the journeys found
+  auto covered = first_deadline + step;
+  for (auto k = q.max_transfers_ + 1U; k-- != 0U;) {
+    auto const upper = adjacent_worst[k + 1U];
+    if (!is_better(covered, upper)) {
+      continue;
+    }
+    deadline = upper - step;
+    if (!tt.external_interval().contains(deadline)) {
+      deadline = kFwd ? tt.external_interval().to_ - duration_t{1}
+                      : tt.external_interval().from_;
+    }
+    rev_exhausted = false;
+    while (!rev_exhausted && !is_better(deadline, covered) &&
+           tt.external_interval().contains(deadline) && !is_timeout_reached()) {
+      auto const [edge, is_enough] = choose_page_edge();
+      enough = is_enough;
+      if (enough) {
+        page_edge = clamp_page_edge(edge);
+      }
+      rev_step(enough ? page_edge : deadline - max_look,
+               static_cast<std::uint8_t>(k));
+    }
+    covered = upper;
+  }
+
+  // the rest of the page from the arrival side, bounded by the page start,
+  // which follows the journeys found
+  deadline = main_deadline;
+  rev_exhausted = main_exhausted;
+  while (can_step()) {
+    auto const [edge, is_enough] = choose_page_edge();
+    enough = is_enough;
+    if (enough) {
+      page_edge = clamp_page_edge(edge);
+      if (is_better(deadline, page_edge)) {
+        break;
+      }
+      rev_step(page_edge, q.max_transfers_);
+    } else {
+      rev_step(deadline - max_look, q.max_transfers_);
+    }
+  }
+  page_edge = clamp_page_edge(choose_page_edge().first);
+
+  // per round the best dest time of everything departing in or after the page
+  auto bounds = std::array<unixtime_t, kMaxTransfers + 2U>{};
+  for (auto k = 0U; k != bounds.size(); ++k) {
+    bounds[k] = adjacent_worst[k] == t0 + step + max_look ? no_bound
+                                                          : adjacent_worst[k];
+  }
+  for (auto const& j : s_state.results_) {
+    if (is_known(j) && is_validated(j)) {
+      for (auto k = j.transfers_ + 1U; k != bounds.size(); ++k) {
+        if (is_better(j.dest_time_, bounds[k])) {
+          bounds[k] = j.dest_time_;
+        }
+      }
+    }
+  }
+  result.cursor_bounds_ = bounds;
+
+  utl::erase_if(s_state.results_, [&](journey const& j) {
+    return !j.is_reconstructed_ || !is_validated(j) ||
+           j.travel_time() >= fastest_direct ||
+           j.travel_time() > q.max_travel_time_;
+  });
+
+  result.interval_ =
+      kFwd ? interval{page_edge, t0 + step} : interval{t0, page_edge - step};
+  result.search_stats_.lb_time_ = static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(lb_time).count());
+  result.algo_stats_ =
+      (ping.get_stats() + rev_ping.get_stats() + rev_pong.get_stats()).to_map();
+  result.search_stats_.execute_time_ =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          (std::chrono::steady_clock::now() - processing_start_time));
+
+  finish_journeys<SearchDir, Vias>(tt, rtt, q, result.interval_,
+                                   s_state.results_);
   return result;
 }
 
@@ -536,6 +1019,17 @@ routing_result pong_with_vias(timetable const& tt,
                               AlgoState& r_state,
                               query q,
                               std::optional<std::chrono::seconds> timeout) {
+  auto const reverse =
+      SearchDir == direction::kForward
+          ? q.extend_interval_earlier_ && !q.extend_interval_later_
+          : q.extend_interval_later_ && !q.extend_interval_earlier_;
+  if (reverse) {
+    return rtt == nullptr
+               ? pong_reverse<SearchDir, false, Vias>(tt, rtt, s_state, r_state,
+                                                      std::move(q), timeout)
+               : pong_reverse<SearchDir, true, Vias>(tt, rtt, s_state, r_state,
+                                                     std::move(q), timeout);
+  }
   if (rtt == nullptr) {
     return pong<SearchDir, false, Vias>(tt, rtt, s_state, r_state, std::move(q),
                                         timeout);
@@ -555,10 +1049,14 @@ routing_result pong_search_with_dir(
     std::optional<std::chrono::seconds> timeout) {
   q.sanitize(tt);
 
-  if (rtt != nullptr &&
-      !rtt->affects(pong_search_interval(SearchDir, tt, q, kMinLookAhead),
-                    q.prf_idx_)) {
-    rtt = nullptr;
+  if (rtt != nullptr) {
+    auto const a = pong_search_interval(SearchDir, tt, q, kMinLookAhead);
+    auto const b = pong_search_interval(flip(SearchDir), tt, q, kMinLookAhead);
+    if (!rtt->affects(
+            interval{std::min(a.from_, b.from_), std::max(a.to_, b.to_)},
+            q.prf_idx_)) {
+      rtt = nullptr;
+    }
   }
 
   if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {

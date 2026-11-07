@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <atomic>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <numeric>
@@ -110,7 +111,8 @@ std::uint64_t compare_results(
     std::vector<pareto_set<routing::journey>> const& cmp,
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
     direction const search_dir,
-    unsigned const min_connection_count) {
+    unsigned const min_connection_count,
+    bool const query_window) {
   auto mismatches = std::uint64_t{0U};
 
   auto const equal = [](journey const& a, journey const& b) {
@@ -124,6 +126,9 @@ std::uint64_t compare_results(
   };
 
   auto const max_window = [&](query const& q) {
+    if (query_window) {  // compare inside the query interval only
+      return std::get<interval<unixtime_t>>(q.start_time_);
+    }
     return search_dir == direction::kForward
                ? interval_estimator<direction::kForward>{tt, q}.max_interval()
                : interval_estimator<direction::kBackward>{tt, q}.max_interval();
@@ -269,11 +274,52 @@ std::vector<double> run_load(
   return lat;
 }
 
+struct cell_result {
+  pareto_set<routing::journey> journeys_;
+  routing::search_stats stats_;
+  std::map<std::string, std::uint64_t> algo_stats_;
+};
+
 struct result_set {
   std::string label_;
   std::vector<pareto_set<routing::journey>> res_;
+  std::vector<routing::search_stats> stats_;
+  std::vector<std::map<std::string, std::uint64_t>> algo_stats_;
   std::vector<double> latencies_;
 };
+
+// averages per query: executes per direction, lb time, routes visited
+std::string stats_row(result_set const& c) {
+  auto const n = static_cast<double>(std::max<std::size_t>(c.stats_.size(), 1));
+  auto fwd = 0.0, bwd = 0.0, lb = 0.0, skipped = 0.0, reduction = 0.0,
+       extensions = 0.0;
+  for (auto const& s : c.stats_) {
+    fwd += static_cast<double>(s.n_execute_fwd_);
+    bwd += static_cast<double>(s.n_execute_bwd_);
+    lb += static_cast<double>(s.lb_time_);
+    skipped += static_cast<double>(s.n_events_skipped_by_early_termination_);
+    reduction += static_cast<double>(
+        s.search_interval_reduction_by_early_termination_.count());
+    extensions += static_cast<double>(s.interval_extensions_);
+  }
+  auto algo = std::map<std::string, double>{};
+  for (auto const& m : c.algo_stats_) {
+    for (auto const& [k, v] : m) {
+      if (k == "n_routes_visited") {
+        algo[k] += static_cast<double>(v);
+      }
+    }
+  }
+  auto row = fmt::format(
+      "{:<28} exec_fwd={:>5.1f} exec_bwd={:>5.1f} lb_ms={:>5.1f} "
+      "skipped={:>5.1f} reduction_min={:>6.1f} extensions={:>4.2f}",
+      c.label_, fwd / n, bwd / n, lb / n, skipped / n, reduction / n,
+      extensions / n);
+  for (auto const& [k, v] : algo) {
+    row += fmt::format(" {}={:.1f}", k, v / n);
+  }
+  return row;
+}
 
 struct cpu_ws {
   search_state ss_;
@@ -301,6 +347,8 @@ result_set run_cell(
     StateArgs const&... state_args) {
   auto out = result_set{.label_ = label};
   out.res_.resize(queries.size());
+  out.stats_.resize(queries.size());
+  out.algo_stats_.resize(queries.size());
 
   auto states = std::vector<std::unique_ptr<WS>>{};
   for (auto i = 0U; i != *std::max_element(begin(n_parallel), end(n_parallel));
@@ -316,7 +364,10 @@ result_set run_cell(
     out.latencies_ =
         run_load<WS>(queries, label + "-" + std::to_string(n), pool,
                      [&](WS& w, routing::query q, std::size_t const i) {
-                       out.res_[i] = search(w, std::move(q));
+                       auto r = search(w, std::move(q));
+                       out.res_[i] = std::move(r.journeys_);
+                       out.stats_[i] = r.stats_;
+                       out.algo_stats_[i] = std::move(r.algo_stats_);
                      });
   }
 
@@ -351,6 +402,9 @@ int main(int argc, char* argv[]) {
   auto start_loc_val = location_idx_t::value_t{0U};
   auto dest_loc_val = location_idx_t::value_t{0U};
   auto seed = std::int64_t{0};
+  auto only = std::int64_t{-1};
+  auto per_query_stats = std::filesystem::path{};
+  auto extension = std::string{"default"};
   auto min_transfer_time = duration_t::rep{};
   auto qa_path = std::filesystem::path{};
   auto engines = std::vector<std::string>{"cpu", "gpu"};
@@ -392,8 +446,15 @@ int main(int argc, char* argv[]) {
        "concurrency)")  //
       ("gpu_states", bpo::value(&gpu_states_v)->multitoken(),
        "concurrent GPU pipeline counts to sweep (default: 2)")  //
+      ("extension", bpo::value(&extension)->default_value(extension),
+       "interval extension: default (fwd later, bwd earlier), reverse (fwd "
+       "earlier, bwd later = pong_reverse), none")  //
       ("seed,s", bpo::value<std::int64_t>(&seed)->default_value(seed),
        "query generator RNG seed, -1 for a random seed")  //
+      ("only", bpo::value<std::int64_t>(&only)->default_value(only),
+       "run only the generated query with this index")  //
+      ("per_query_stats", bpo::value(&per_query_stats),
+       "append one line per query and cell with latency and search stats")  //
       ("num_queries,n", bpo::value(&n_queries)->default_value(n_queries),
        "number of queries to generate/process")(
           "interval_size,i",
@@ -573,7 +634,7 @@ int main(int argc, char* argv[]) {
   }
 #endif
   for (auto const& a : algos) {
-    if (a != "range" && a != "pong") {
+    if (a != "range" && a != "pong" && a != "pong-ref") {
       std::cerr << "invalid algo \"" << a << "\", expected raptor | pong\n";
       return 1;
     }
@@ -602,6 +663,7 @@ int main(int argc, char* argv[]) {
       std::map<std::string,
                std::vector<nigiri::query_generation::start_dest_query>>{};
   auto summary = std::vector<std::string>{};
+  auto stats_rows = std::vector<std::string>{};
   auto total = std::uint64_t{0U};
   auto qa_cell = std::optional<result_set>{};
   auto qa_n_cpu_cells = 0U;
@@ -629,6 +691,10 @@ int main(int argc, char* argv[]) {
     auto& fwd_qs = mode_queries[mode];
     if (fwd_qs.empty()) {
       generate_queries(fwd_qs, n_queries, tt, rs, seed);
+      if (only >= 0 && static_cast<std::size_t>(only) < fwd_qs.size()) {
+        auto one = fwd_qs[static_cast<std::size_t>(only)];
+        fwd_qs = {one};
+      }
     }
 
     // (mode, dir) are the incomparable dimensions -- within one (mode, dir),
@@ -642,13 +708,28 @@ int main(int argc, char* argv[]) {
         if (dir == direction::kBackward) {
           sdq.q_.flip_dir();
         }
-        sdq.q_.extend_interval_earlier_ = dir == direction::kBackward;
-        sdq.q_.extend_interval_later_ = dir == direction::kForward;
+        auto const earlier = dir == direction::kBackward;
+        sdq.q_.extend_interval_earlier_ = extension == "default"   ? earlier
+                                          : extension == "reverse" ? !earlier
+                                                                   : false;
+        sdq.q_.extend_interval_later_ = extension == "default"   ? !earlier
+                                        : extension == "reverse" ? earlier
+                                                                 : false;
       }
 
       auto cells = std::vector<result_set>{};
       for (auto const& algo : algos) {
-        auto const use_pong = algo == "pong";
+        auto const use_pong = algo != "range";
+        // pong-ref: the standard pong on the query window only (reference for
+        // the reverse variant, which is the "pong" cell with --extension
+        // reverse)
+        auto const prepare = [&](routing::query q) {
+          if (algo == "pong-ref") {
+            q.extend_interval_earlier_ = false;
+            q.extend_interval_later_ = false;
+          }
+          return q;
+        };
         auto const label = mode + "-" + dir_str + "-" + algo;
 
         try {
@@ -659,10 +740,11 @@ int main(int argc, char* argv[]) {
                   auto const r =
                       use_pong
                           ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
-                                                 std::move(q), dir)
+                                                 prepare(std::move(q)), dir)
                           : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
                                                    std::move(q), dir);
-                  return *r.journeys_;
+                  return cell_result{*r.journeys_, r.search_stats_,
+                                     r.algo_stats_};
                 }));
             ++qa_n_cpu_cells;
             if (vm.count("qa_path")) {
@@ -678,10 +760,11 @@ int main(int argc, char* argv[]) {
                   auto const r =
                       use_pong
                           ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
-                                                 std::move(q), dir)
+                                                 prepare(std::move(q)), dir)
                           : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
                                                    std::move(q), dir);
-                  return *r.journeys_;
+                  return cell_result{*r.journeys_, r.search_stats_,
+                                     r.algo_stats_};
                 },
                 *gpu_tt));
           }
@@ -695,15 +778,48 @@ int main(int argc, char* argv[]) {
         }
       }
 
+      for (auto const& c : cells) {
+        stats_rows.push_back(stats_row(c));
+        if (!per_query_stats.empty()) {
+          auto out = std::ofstream{per_query_stats, std::ios::app};
+          for (auto i = std::size_t{0U}; i != c.res_.size(); ++i) {
+            auto const ll = [](auto const& v) {
+              return std::holds_alternative<geo::latlng>(v)
+                         ? fmt::format("{:.5f},{:.5f}",
+                                       std::get<geo::latlng>(v).lat_,
+                                       std::get<geo::latlng>(v).lng_)
+                         : std::string{"loc"};
+            };
+            auto const& sdq = qs[i];
+            out << c.label_ << ' '
+                << (only >= 0 ? only : static_cast<std::int64_t>(i))
+                << " ms=" << c.latencies_[i] << " n=" << c.res_[i].size()
+                << " exec_fwd=" << c.stats_[i].n_execute_fwd_
+                << " exec_bwd=" << c.stats_[i].n_execute_bwd_
+                << " lb_ms=" << c.stats_[i].lb_time_
+                << " ext=" << c.stats_[i].interval_extensions_
+                << " start=" << ll(sdq.start_) << " dest=" << ll(sdq.dest_)
+                << " t="
+                << std::get<interval<unixtime_t>>(sdq.q_.start_time_).from_;
+            for (auto const& [k, v] : c.algo_stats_[i]) {
+              if (k.starts_with("pr_")) {
+                out << ' ' << k << '=' << v;
+              }
+            }
+            out << '\n';
+          }
+        }
+      }
       if (cells.size() == 1U) {
         summary.push_back(fmt::format("{:<24} n={:<6} benchmark only",
                                       cells.front().label_, qs.size()));
       }
       for (auto a = std::size_t{0U}; a < cells.size(); ++a) {
         for (auto b = a + 1U; b < cells.size(); ++b) {
-          auto const mismatches = compare_results(
-              tt, cells[a].label_, cells[a].res_, cells[b].label_,
-              cells[b].res_, qs, dir, gs.min_connection_count_);
+          auto const mismatches =
+              compare_results(tt, cells[a].label_, cells[a].res_,
+                              cells[b].label_, cells[b].res_, qs, dir,
+                              gs.min_connection_count_, extension != "default");
           summary.push_back(
               fmt::format("{:<24} vs {:<24} n={:<6} mismatches={:<4} {}",
                           cells[a].label_, cells[b].label_, qs.size(),
@@ -716,6 +832,10 @@ int main(int argc, char* argv[]) {
 
   std::cout << "\n=== SUMMARY ===\n";
   for (auto const& s : summary) {
+    std::cout << s << "\n";
+  }
+  std::cout << "\n--- search stats (avg per query) ---\n";
+  for (auto const& s : stats_rows) {
     std::cout << s << "\n";
   }
   print_memory_usage();

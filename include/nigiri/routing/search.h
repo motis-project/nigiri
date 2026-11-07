@@ -73,6 +73,10 @@ struct routing_result {
   interval<unixtime_t> interval_;
   search_stats search_stats_;
   std::map<std::string, std::uint64_t> algo_stats_;
+  // pong: per round the earliest arrival (fwd) / latest departure (bwd) of
+  // the first ping (unixtime_t::max()/min() where it has no journey), the
+  // cursor bounds for the page in the opposite direction
+  std::optional<std::array<unixtime_t, kMaxTransfers + 2U>> cursor_bounds_{};
 };
 
 template <direction SearchDir, typename Algo>

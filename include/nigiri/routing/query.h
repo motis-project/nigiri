@@ -125,6 +125,10 @@ struct query {
   unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};
   bool extend_interval_later_{false};
+  // paging against the search direction (fwd + extend earlier, bwd + extend
+  // later): per round the best dest time of the adjacent page's first ping
+  // (unixtime_t::max()/min() where it has no journey), see pong_reverse
+  std::optional<std::array<unixtime_t, kMaxTransfers + 2U>> cursor_bounds_{};
   std::optional<interval<unixtime_t>> max_interval_{};
   profile_idx_t prf_idx_{0};
   clasz_mask_t allowed_claszes_{all_clasz_allowed()};
