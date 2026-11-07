@@ -3,6 +3,8 @@
 #include "utl/verify.h"
 
 #include "nigiri/for_each_meta.h"
+#include "nigiri/rt/rt_timetable.h"
+#include "nigiri/timetable.h"
 
 namespace nigiri::routing {
 
@@ -21,6 +23,74 @@ bool query::operator==(query const& o) const {
             ...);
   }(std::make_index_sequence<
              std::tuple_size_v<decltype(cista::to_tuple(*this))>>());
+}
+
+namespace {
+void set_range(bitvec_map<route_idx_t>& b, interval<route_idx_t> const r) {
+  using block_t = std::decay_t<decltype(b)>::block_t;
+  using idx_t = std::decay_t<decltype(b.blocks_)>::access_type;
+  constexpr auto const kBits = std::decay_t<decltype(b)>::bits_per_block;
+  constexpr auto const kOnes = ~block_t{0U};
+
+  auto const from = static_cast<std::size_t>(to_idx(r.from_));
+  auto const to = static_cast<std::size_t>(to_idx(r.to_));
+  if (from >= to) {
+    return;
+  }
+
+  auto const first = static_cast<idx_t>(from / kBits);
+  auto const last = static_cast<idx_t>((to - 1U) / kBits);
+  auto const head = kOnes << (from % kBits);
+  auto const tail = (to % kBits) == 0U ? kOnes : ~(kOnes << (to % kBits));
+
+  if (first == last) {
+    b.blocks_[first] |= (head & tail);
+    return;
+  }
+  b.blocks_[first] |= head;
+  for (auto i = static_cast<idx_t>(first + 1U); i != last; ++i) {
+    b.blocks_[i] |= kOnes;
+  }
+  b.blocks_[last] |= tail;
+}
+
+}  // namespace
+
+void blocked_feeds::verify_rtt(rt_timetable const* rtt) const {
+  if (!any()) {
+    return;
+  }
+  auto const n =
+      rtt == nullptr ? 0U : static_cast<std::size_t>(rtt->n_rt_transports());
+  utl::verify(rt_transports_.size() == n, "rt_transports_.size() != n");
+}
+
+blocked_feeds make_blocked_feeds(timetable const& tt,
+                                 rt_timetable const* rtt,
+                                 bitvec_map<source_idx_t> blocked_srcs) {
+  auto f = blocked_feeds{};
+  if (!blocked_srcs.any()) {
+    return f;
+  }
+
+  f.srcs_ = std::move(blocked_srcs);
+  f.routes_.resize(tt.n_routes());
+  for (auto src = source_idx_t{0U}; src != tt.src_routes_.size(); ++src) {
+    if (f.srcs_.test(src)) {
+      set_range(f.routes_, tt.src_routes_[src]);
+    }
+  }
+
+  auto const n_rt = rtt == nullptr ? 0U : rtt->n_rt_transports();
+  f.rt_transports_.resize(n_rt);
+  for (auto i = 0U; i != n_rt; ++i) {
+    auto const rt_t = rt_transport_idx_t{i};
+    if (f.srcs_.test(rtt->rt_transport_src_[rt_t])) {
+      f.rt_transports_.set(rt_t);
+    }
+  }
+
+  return f;
 }
 
 void sanitize_query(query& q) {

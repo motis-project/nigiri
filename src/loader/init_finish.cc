@@ -3,6 +3,7 @@
 #include <numeric>
 
 #include "utl/enumerate.h"
+#include "utl/verify.h"
 
 #include "geo/box.h"
 
@@ -204,6 +205,12 @@ void rebuild_route_traffic_days(timetable& tt, import_context& ctx) {
 void finalize(timetable& tt, import_context& ctx, finalize_options const& opt) {
   tt.location_routes_.resize(tt.n_locations());
 
+  if (tt.src_routes_.size() < tt.n_sources()) {
+    auto const end_of_routes = route_idx_t{tt.n_routes()};
+    tt.src_routes_.resize(tt.n_sources(),
+                          interval<route_idx_t>{end_of_routes, end_of_routes});
+  }
+
   {
     auto const timer = scoped_timer{"loader.compress_stop_times"};
     compress_stop_times(tt, ctx);
@@ -275,6 +282,11 @@ void finalize(timetable& tt, import_context& ctx, finalize_options const& opt) {
   assign_stops_to_flex_areas(tt);
   assign_importance(tt);
   correct_color_contrast(tt);
+
+  utl::verify(
+      (tt.src_routes_.empty() ? route_idx_t{0U} : tt.src_routes_.back().to_) ==
+          route_idx_t{tt.n_routes()},
+      "src_routes_ isn't covering all the {} routes", tt.n_routes());
 
   log(log_lvl::info, "nigiri.loader.finalize",
       "{} locations ({}% of idx space used)", tt.n_locations(),

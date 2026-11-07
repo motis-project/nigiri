@@ -154,9 +154,21 @@ struct raptor_impl {
              std::uint32_t{1U} << (i % 32U));
   }
 
+  template <typename Idx>
+  __device__ __forceinline__ static void mark_unless_blocked(
+      device_bitvec<std::uint64_t const> const& blocked,
+      Idx const i,
+      device_bitvec<std::uint32_t>& marks) {
+    if (blocked.blocks_.empty() || !blocked[to_idx(i)]) {
+      marks.mark(to_idx(i));
+    }
+  }
+
   template <typename Lists>
-  __device__ void mark_from_locations(Lists const& lists,
-                                      device_bitvec<std::uint32_t>& marks) {
+  __device__ void mark_from_locations(
+      Lists const& lists,
+      device_bitvec<std::uint64_t const> const& blocked,
+      device_bitvec<std::uint32_t>& marks) {
     constexpr auto const kInline = 8U;
     auto const lane = get_global_thread_id() % kWarpSize;
     auto const warp_id = get_global_thread_id() / kWarpSize;
@@ -182,7 +194,7 @@ struct raptor_impl {
         }
         if (n <= kInline) {
           for (auto j = 0U; j != n; ++j) {
-            marks.mark(to_idx(list[j]));
+            mark_unless_blocked(blocked, list[j], marks);
           }
           n = 0U;  // done on this lane
         }
@@ -195,18 +207,19 @@ struct raptor_impl {
         auto const cnt = __shfl_sync(kAllLanes, n, static_cast<int>(b));
         auto const list = lists[location_idx_t{src_i}];
         for (auto j = lane; j < cnt; j += kWarpSize) {
-          marks.mark(to_idx(list[j]));
+          mark_unless_blocked(blocked, list[j], marks);
         }
       });
     }
   }
 
   __device__ void mark_routes(unsigned const) {
-    mark_from_locations(tt_.location_routes_, route_mark_);
+    mark_from_locations(tt_.location_routes_, blocked_routes_, route_mark_);
   }
 
   __device__ void mark_rt_transports(unsigned const) {
-    mark_from_locations(rtt_.location_rt_transports_, rt_transport_mark_);
+    mark_from_locations(rtt_.location_rt_transports_, blocked_rt_transports_,
+                        rt_transport_mark_);
   }
 
   __device__ void begin_transit_phase() {
@@ -1273,6 +1286,9 @@ struct raptor_impl {
   std::uint32_t has_reusable_round_times_{0U};
   cuda::std::span<location_idx_t const> dest_locs_;
   std::uint32_t n_dest_locs_{0U};
+  // blocked feeds (empty means no filter)
+  device_bitvec<std::uint64_t const> blocked_routes_;
+  device_bitvec<std::uint64_t const> blocked_rt_transports_;
 
   // earliest transports per flat (route,stop)
   cuda::std::span<std::uint32_t> et_result_;
