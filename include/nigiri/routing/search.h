@@ -446,10 +446,12 @@ private:
            * Upper bound: Search journeys faster than 'worst_time_at_dest'
            * It will not find journeys with the same duration
            */
-          auto const worst_time_at_dest =
+          auto worst_time_at_dest =
+              std::array<unixtime_t, kMaxTransfers + 2U>{};
+          worst_time_at_dest.fill(
               start_time + (kFwd ? 1 : -1) *
                                (std::min(fastest_direct_, q_.max_travel_time_) +
-                                duration_t{1});
+                                duration_t{1}));
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
                         state_.results_);
           kFwd ? ++stats_.n_execute_fwd_ : ++stats_.n_execute_bwd_;
