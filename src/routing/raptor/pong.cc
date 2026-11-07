@@ -293,13 +293,19 @@ routing_result pong(timetable const& tt,
                  loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
       ping.add_start(s.stop_, s.time_at_stop_, s.v_);
     }
-    auto const worst_time_at_dest =
+    auto worst_time_at_dest = std::array<unixtime_t, kMaxTransfers + 2U>{};
+    worst_time_at_dest.fill(
         start_time +
         (kFwd ? 1 : -1) *
-            std::min(q.max_travel_time_ + kMinLookAhead, kMaxTravelTime);
+            std::min(q.max_travel_time_ + kMinLookAhead, kMaxTravelTime));
     for (auto const& j : s_state.results_) {
       if (!j.error_ && !is_better(j.dest_time_, start_time)) {
-        ping.limit_time_at_dest(j.transfers_ + 1U, j.start_time_);
+        for (auto k = j.transfers_ + 1U; k != worst_time_at_dest.size();
+             ++k) {
+          if (is_better(j.start_time_, worst_time_at_dest[k])) {
+            worst_time_at_dest[k] = j.start_time_;
+          }
+        }
       }
     }
     auto ping_results = pareto_set<journey>{};
@@ -341,8 +347,10 @@ routing_result pong(timetable const& tt,
                    loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
         po.add_start(s.stop_, s.time_at_stop_, s.v_);
       }
-      po.execute(ping_j.dest_time_, ping_j.transfers_, ping_j.start_time_,
-                 s_state.results_);
+      auto pong_worst_time_at_dest = std::array<unixtime_t, kMaxTransfers + 2U>{};
+      pong_worst_time_at_dest.fill(ping_j.start_time_);
+      po.execute(ping_j.dest_time_, ping_j.transfers_,
+                 pong_worst_time_at_dest, s_state.results_);
       kFwd ? ++result.search_stats_.n_execute_bwd_
            : ++result.search_stats_.n_execute_fwd_;
 

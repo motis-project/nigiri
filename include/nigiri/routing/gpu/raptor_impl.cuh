@@ -93,8 +93,7 @@ struct raptor_impl {
   }
 
   __device__ void init_arrivals(
-      unixtime_t const worst_time_at_dest,
-      cuda::std::array<delta_t, kMaxTransfers + 2U> const limits) {
+      cuda::std::array<delta_t, kMaxTransfers + 2U> const worst_time_at_dest) {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
 
@@ -112,10 +111,8 @@ struct raptor_impl {
       station_mark_.mark(to_idx(l));
     }
 
-    auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
     for (auto i = global_t_id; i < kMaxTransfers + 2U; i += global_stride) {
-      time_at_dest_.update_min(i, d_worst_at_dest);
-      time_at_dest_.update_min(i, limits[i]);
+      time_at_dest_.update_min(i, worst_time_at_dest[i]);
     }
   }
 
