@@ -490,6 +490,7 @@ struct gpu_raptor_state::impl {
   bool is_intermodal_dest_[2];  // per direction: [0]=fwd, [1]=bwd
   thrust::device_vector<std::uint32_t> any_marked_;
   thrust::device_vector<std::uint32_t> done_;
+  pinned_host_buffer<std::uint32_t> done_pin_;
 
   // 16bit time | 48bit breadcrumb
   thrust::device_vector<std::uint64_t> time_at_dest_;
@@ -988,6 +989,15 @@ void gpu_raptor<SearchDir, WithBounds>::execute(
     } else {
       launch(transfers_footpaths_kernel<SearchDir, WithBounds, true, true>,
              s.stream_, r, k);
+    }
+    if (k + 1U != end_k) {
+      auto* done_host = s.done_pin_.ensure(1U);
+      cudaMemcpyAsync(done_host, thrust::raw_pointer_cast(s.done_.data()),
+                      sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_);
+      cudaStreamSynchronize(s.stream_);
+      if (*done_host != 0U) {
+        break;
+      }
     }
   }
   cudaStreamSynchronize(s.stream_);
