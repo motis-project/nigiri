@@ -297,11 +297,9 @@ routing_result pong(timetable const& tt,
         start_time +
         (kFwd ? 1 : -1) *
             std::min(q.max_travel_time_ + kMinLookAhead, kMaxTravelTime);
-    if constexpr (!kGpu) {
-      for (auto const& j : s_state.results_) {
-        if (!j.error_ && !is_better(j.dest_time_, start_time)) {
-          ping.limit_time_at_dest(j.transfers_ + 1U, j.start_time_);
-        }
+    for (auto const& j : s_state.results_) {
+      if (!j.error_ && !is_better(j.dest_time_, start_time)) {
+        ping.limit_time_at_dest(j.transfers_ + 1U, j.start_time_);
       }
     }
     auto ping_results = pareto_set<journey>{};

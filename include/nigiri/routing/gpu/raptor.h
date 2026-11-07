@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <memory>
 #include <vector>
@@ -84,6 +85,15 @@ struct gpu_raptor {
   void reset_arrivals();
   void next_start_time();
 
+  void limit_time_at_dest(unsigned const k, unixtime_t const t) {
+    auto const d = unix_to_delta(base(), t);
+    for (auto i = k; i < dest_limits_.size(); ++i) {
+      dest_limits_[i] = SearchDir == direction::kForward
+                            ? std::min(dest_limits_[i], d)
+                            : std::max(dest_limits_[i], d);
+    }
+  }
+
   void fill_bounds(std::size_t n_rows);
 
   void set_bounds(unsigned const last_round)
@@ -126,6 +136,17 @@ private:
   unsigned bounds_last_k_{0U};
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
+
+  static constexpr std::array<delta_t, kMaxTransfers + 2U> invalid_limits() {
+    auto a = std::array<delta_t, kMaxTransfers + 2U>{};
+    for (auto& x : a) {
+      x = kInvalidDelta<SearchDir>;
+    }
+    return a;
+  }
+  // per-round destination limits from known journeys (limit_time_at_dest),
+  // applied by init_arrivals, cleared by reset_arrivals
+  std::array<delta_t, kMaxTransfers + 2U> dest_limits_ = invalid_limits();
 };
 
 }  // namespace nigiri::routing::gpu

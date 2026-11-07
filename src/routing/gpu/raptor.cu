@@ -597,9 +597,11 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
 }
 
 template <direction SearchDir, bool WithBounds>
-__global__ void init_arrivals_kernel(raptor_impl<SearchDir, WithBounds> r,
-                                     unixtime_t const worst_time_at_dest) {
-  r.init_arrivals(worst_time_at_dest);
+__global__ void init_arrivals_kernel(
+    raptor_impl<SearchDir, WithBounds> r,
+    unixtime_t const worst_time_at_dest,
+    cuda::std::array<delta_t, kMaxTransfers + 2U> const limits) {
+  r.init_arrivals(worst_time_at_dest, limits);
 }
 
 template <direction SearchDir, bool WithBounds>
@@ -927,8 +929,12 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
 
   // === ROUTING KERNELS ===
+  auto limits = cuda::std::array<delta_t, kMaxTransfers + 2U>{};
+  for (auto i = 0U; i != limits.size(); ++i) {
+    limits[i] = dest_limits_[i];
+  }
   launch(init_arrivals_kernel<SearchDir, WithBounds>, s.stream_, r,
-         worst_time_at_dest);
+         worst_time_at_dest, limits);
   for (auto k = 1U; k != end_k; ++k) {
     launch(reuse_previous_arrivals_kernel<SearchDir, WithBounds>, s.stream_, r,
            k);
@@ -1184,6 +1190,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
 template <direction SearchDir, bool WithBounds>
 void gpu_raptor<SearchDir, WithBounds>::reset_arrivals() {
   auto& s = *state_.impl_;
+  dest_limits_ = invalid_limits();
   cudaMemsetAsync(thrust::raw_pointer_cast(s.time_at_dest_.data()), 0xFF,
                   s.time_at_dest_.size() * sizeof(std::uint64_t), s.stream_);
   s.has_reusable_round_times_ = false;
