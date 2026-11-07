@@ -207,15 +207,16 @@ struct raptor {
     state_.station_mark_.set(to_idx(l), true);
   }
 
-  void execute(unixtime_t const start_time,
-               std::uint8_t const max_transfers,
-               std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
-               pareto_set<journey>& results) {
+  void execute(
+      unixtime_t const start_time,
+      std::uint8_t const max_transfers,
+      std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
+      pareto_set<journey>& results) {
     auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
 
     for (auto k = 0U; k != time_at_dest_.size(); ++k) {
-      time_at_dest_[k] = get_best(
-          unix_to_delta(base(), worst_time_at_dest[k]), time_at_dest_[k]);
+      time_at_dest_[k] = get_best(unix_to_delta(base(), worst_time_at_dest[k]),
+                                  time_at_dest_[k]);
     }
 
     trace_print_init_state();

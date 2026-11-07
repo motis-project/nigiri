@@ -43,9 +43,9 @@ void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
   // labels equal to the cutoff, so journeys with travel time exactly
   // max_travel_time_ are found, slower ones are not.
   auto worst_time_at_dest = std::array<unixtime_t, kMaxTransfers + 2U>{};
-  worst_time_at_dest.fill(
-      start_time +
-      (SearchDir == direction::kForward ? 1 : -1) * q.max_travel_time_);
+  worst_time_at_dest.fill(start_time +
+                          (SearchDir == direction::kForward ? 1 : -1) *
+                              q.max_travel_time_);
 
   algo.execute(start_time, q.max_transfers_, worst_time_at_dest, results);
 }
