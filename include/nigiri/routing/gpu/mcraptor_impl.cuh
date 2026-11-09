@@ -559,6 +559,8 @@ struct mcraptor_impl {
   // board_from (same trip and extras: board closest to the exit).
   template <unsigned K>
   struct route_bag {
+    static constexpr auto kCap = K;
+
     __device__ __forceinline__ static std::uint32_t extras(
         std::uint32_t const bx) {
       return bx & 0xFFFFU;
@@ -870,32 +872,27 @@ struct mcraptor_impl {
 
   // The route bag before position p is an associative pareto prefix over the
   // stops' boardings: a Kogge-Stone shuffle scan gives every lane its state.
-  // False on a K overflow (the caller rescans: inserts are idempotent,
-  // so `marked` already counts those of the earlier chunks).
-  template <unsigned K, bool IsWheelchair>
-  __device__ bool scan_prefix(unsigned const k,
-                              route_idx_t const r,
+  // board_at(p, bag) adds position p's boardings (false: more than K),
+  // alight_at(p, bag) alights there. False on a K overflow (the caller rescans:
+  // inserts are idempotent, so `marked` already counts those of the earlier
+  // chunks).
+  template <unsigned K>
+  __device__ bool scan_prefix(unsigned const n,
                               unsigned const lane,
-                              bool& marked) {
+                              bool& marked,
+                              auto&& board_at,
+                              auto&& alight_at) {
     using bag_t = route_bag<K>;
-    auto const n = static_cast<unsigned>(tt_.route_location_seq_[r].size());
-    auto const base_flat = tt_.route_stop_offset_[to_idx(r)];
     auto carry = bag_t{};
     for (auto base = 0U; base < n; base += kWarpSize) {
       auto const p = base + lane;
       auto incl = bag_t{};
-      auto overflow = false;
-      if (p + 1U < n) {  // the last stop never boards
-        auto const f = base_flat + (kFwd ? p : n - 1U - p);
-        overflow = sb_n_[f] == kSbOverflow || sb_n_[f] > K;
-        if (!overflow) {
-          incl.load(*this, f);
-        }
-      }
+      // the last stop never boards
+      auto overflow = p + 1U < n && !board_at(p, incl);
       // no boardings in this chunk: the state everywhere is the carry
       if (__ballot_sync(kAllLanes, incl.n_ != 0U || overflow) == 0U) {
         if (p < n) {
-          marked |= alight_all<IsWheelchair>(k, r, n, p, carry);
+          marked |= alight_at(p, carry);
         }
         continue;
       }
@@ -916,7 +913,7 @@ struct mcraptor_impl {
         return false;
       }
       if (p < n) {
-        marked |= alight_all<IsWheelchair>(k, r, n, p, excl);
+        marked |= alight_at(p, excl);
       }
       carry = next_carry;
     }
@@ -967,10 +964,24 @@ struct mcraptor_impl {
            !is_allowed(allowed_claszes_, tt_.route_clasz_[r]))) {
         continue;
       }
+      auto const n = static_cast<unsigned>(tt_.route_location_seq_[r].size());
+      auto const base_flat = tt_.route_stop_offset_[to_idx(r)];
+      // the stop bags of et_run_lookups
+      auto const board_at = [&](unsigned const p, auto& bag) {
+        auto const f = base_flat + (kFwd ? p : n - 1U - p);
+        if (sb_n_[f] == kSbOverflow || sb_n_[f] > bag.kCap) {
+          return false;
+        }
+        bag.load(*this, f);
+        return true;
+      };
+      auto const alight_at = [&](unsigned const p, auto const& bag) {
+        return alight_all<IsWheelchair>(k, r, n, p, bag);
+      };
       // K = 1 holds most routes, a wider scan or the sequential one the rest
-      if (!scan_prefix<1U, IsWheelchair>(k, r, lane, marked) &&
+      if (!scan_prefix<1U>(n, lane, marked, board_at, alight_at) &&
           (kPrefixK == 1U ||
-           !scan_prefix<kPrefixK, IsWheelchair>(k, r, lane, marked)) &&
+           !scan_prefix<kPrefixK>(n, lane, marked, board_at, alight_at)) &&
           lane == 0U) {
         marked |= scan_sequential<IsWheelchair>(k, r);
       }
@@ -983,77 +994,120 @@ struct mcraptor_impl {
 
   // ---- rt scan (CPU update_rt_transport) -----------------------------------
 
-  // one thread per marked rt transport (CPU loop_rt_transports)
+  // one warp per marked rt transport (CPU loop_rt_transports, as loop_routes)
   template <bool WithClaszFilter, bool IsWheelchair>
   __device__ void update_rt_transports(unsigned const k) {
+    auto const lane = get_global_thread_id() % kWarpSize;
+    auto const n_warps = get_global_stride() / kWarpSize;
     auto marked = false;
-    for (auto i = get_global_thread_id(); i < rtt_.n_rt_transports_;
-         i += get_global_stride()) {
+    for (auto i = get_global_thread_id() / kWarpSize; i < rtt_.n_rt_transports_;
+         i += n_warps) {
       auto const rt_t = rt_transport_idx_t{i};
-      if (rt_transport_mark_[i] &&
-          (!WithClaszFilter ||
-           is_allowed(allowed_claszes_, rtt_.rt_transport_clasz_[rt_t]))) {
-        marked |= update_rt_transport<IsWheelchair>(k, rt_t);
+      if (!rt_transport_mark_[i] ||
+          (WithClaszFilter &&
+           !is_allowed(allowed_claszes_, rtt_.rt_transport_clasz_[rt_t]))) {
+        continue;
       }
+      auto const n =
+          static_cast<unsigned>(rtt_.rt_transport_location_seq_[rt_t].size());
+      auto const board_at = [&](unsigned const p, auto& bag) {
+        return rt_board<IsWheelchair>(k, rt_t, n, p, bag);
+      };
+      auto const alight_at = [&](unsigned const p, auto const& bag) {
+        return rt_alight_all<IsWheelchair>(k, rt_t, n, p, bag);
+      };
+      if (!scan_prefix<1U>(n, lane, marked, board_at, alight_at) &&
+          (kPrefixK == 1U ||
+           !scan_prefix<kPrefixK>(n, lane, marked, board_at, alight_at)) &&
+          lane == 0U) {
+        marked |= update_rt_transport<IsWheelchair>(k, rt_t, n);
+      }
+      __syncwarp();
     }
-    if (marked && !*any_marked_) {
+    if (__any_sync(kAllLanes, marked) && lane == 0U && !*any_marked_) {
       atomicOr(any_marked_, 1U);
     }
   }
 
-  // update_route for an rt run: a single trip with absolute event times, so
-  // the route bag reduces to the carried extras
-  template <bool IsWheelchair>
-  __device__ bool update_rt_transport(unsigned const k,
-                                      rt_transport_idx_t const rt_t) {
-    auto const stop_seq = rtt_.rt_transport_location_seq_[rt_t];
-    auto const n = static_cast<unsigned>(stop_seq.size());
-    auto bag = route_bag<kMcRouteBagCap>{};
-    auto any = false;
-    for (auto i = 0U; i != n; ++i) {
-      auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - i - 1U);
-      auto const stp = stop{stop_seq[stop_idx]};
-      auto const l = to_idx(stp.location_idx());
-
-      if (i != 0U && bag.n_ != 0U && stp.can_finish<SearchDir>(IsWheelchair)) {
-        auto const by_transport = rt_time_at_stop(rt_t, stop_idx, kArrEv);
-        auto const cl = rt_ride_clasz_at(rt_t, stop_idx);
-        for (auto b = 0U; b != bag.n_; ++b) {
-          any |= alight(k, l, by_transport,
-                        route_bag<kMcRouteBagCap>::extras(bag.bx_[b]), cl,
-                        {.transport_ = to_idx(rt_t),
-                         .parent_ = bag.par_[b],
-                         .day_ = day_idx_t::invalid(),
-                         .board_ = static_cast<stop_idx_t>(bag.board(b)),
-                         .alight_ = stop_idx});
-        }
-      }
-
-      if (i == n - 1U || !stp.can_start<SearchDir>(IsWheelchair) ||
-          !prev_station_mark_[l]) {
+  // CPU update_rt_transport's boarding at scan position p: the round-(k-1)
+  // labels that catch the run (a single trip: the route bag reduces to the
+  // carried extras); false on overflow
+  template <bool IsWheelchair, unsigned K>
+  __device__ bool rt_board(unsigned const k,
+                           rt_transport_idx_t const rt_t,
+                           unsigned const n,
+                           unsigned const p,
+                           route_bag<K>& bag) {
+    auto const stop_idx = static_cast<stop_idx_t>(kFwd ? p : n - 1U - p);
+    auto const stp = stop{rtt_.rt_transport_location_seq_[rt_t][stop_idx]};
+    auto const l = to_idx(stp.location_idx());
+    auto const l_lb = lb_[l];
+    if (p + 1U == n || !stp.can_start<SearchDir>(IsWheelchair) ||
+        !prev_station_mark_[l] || l_lb == kUnreachable) {
+      return true;
+    }
+    auto const dep_key = to_key(rt_time_at_stop(rt_t, stop_idx, kDepEv));
+    auto labels = bag_slots(l);
+    for (auto sl = 0U; sl != labels.size(); ++sl) {
+      auto const lab = labels[sl];
+      auto const ex = kHasExtras ? mc_extras(lab) : 0U;
+      // not of the last round, misses this run, or even the optimistic
+      // completion is dominated
+      if (lab == kMcEmptySlot || mc_round(lab) != k - 1U ||
+          mc_bc(lab) == kMcDemoted || mc_arr_key(lab) > dep_key ||
+          dest_dominates(k, mc_arr_key(lab) + l_lb, ex)) {
         continue;
       }
-      auto const l_lb = lb_[l];
-      if (l_lb == kUnreachable) {
-        break;
+      if (!bag.add(0U, mc_bc(lab), route_bag<K>::pack_bx(stop_idx, ex))) {
+        return false;
       }
-      auto const dep_key = to_key(rt_time_at_stop(rt_t, stop_idx, kDepEv));
-      auto labels = bag_slots(l);
-      for (auto sl = 0U; sl != labels.size(); ++sl) {
-        auto const lab = labels[sl];
-        if (lab == kMcEmptySlot || mc_round(lab) != k - 1U ||
-            mc_bc(lab) == kMcDemoted || mc_arr_key(lab) > dep_key) {
-          continue;  // not of the last round, or misses this run
-        }
-        auto const ex = kHasExtras ? mc_extras(lab) : 0U;
-        if (dest_dominates(k, mc_arr_key(lab) + l_lb, ex)) {
-          continue;
-        }
-        if (!bag.add(0U, mc_bc(lab),
-                     route_bag<kMcRouteBagCap>::pack_bx(stop_idx, ex))) {
-          atomicOr(overflow_, kMcOverflowRouteBag);
-          break;
-        }
+    }
+    return true;
+  }
+
+  // CPU alight loop of an rt run at scan position p
+  template <bool IsWheelchair, unsigned K>
+  __device__ bool rt_alight_all(unsigned const k,
+                                rt_transport_idx_t const rt_t,
+                                unsigned const n,
+                                unsigned const p,
+                                route_bag<K> const& bag) {
+    if (p == 0U || bag.n_ == 0U) {
+      return false;
+    }
+    auto const stop_idx = static_cast<stop_idx_t>(kFwd ? p : n - 1U - p);
+    auto const stp = stop{rtt_.rt_transport_location_seq_[rt_t][stop_idx]};
+    if (!stp.can_finish<SearchDir>(IsWheelchair)) {
+      return false;
+    }
+    auto const l = to_idx(stp.location_idx());
+    auto const by_transport = rt_time_at_stop(rt_t, stop_idx, kArrEv);
+    auto const cl = rt_ride_clasz_at(rt_t, stop_idx);
+    auto any = false;
+    for (auto i = 0U; i != K; ++i) {
+      if (i < bag.n_) {
+        any |= alight(k, l, by_transport, route_bag<K>::extras(bag.bx_[i]), cl,
+                      {.transport_ = to_idx(rt_t),
+                       .parent_ = bag.par_[i],
+                       .day_ = day_idx_t::invalid(),
+                       .board_ = static_cast<stop_idx_t>(bag.board(i)),
+                       .alight_ = stop_idx});
+      }
+    }
+    return any;
+  }
+
+  // the CPU update_rt_transport loop, for runs overflowing the prefix scan
+  template <bool IsWheelchair>
+  __device__ bool update_rt_transport(unsigned const k,
+                                      rt_transport_idx_t const rt_t,
+                                      unsigned const n) {
+    auto bag = route_bag<kMcRouteBagCap>{};
+    auto any = false;
+    for (auto p = 0U; p != n; ++p) {
+      any |= rt_alight_all<IsWheelchair>(k, rt_t, n, p, bag);
+      if (!rt_board<IsWheelchair>(k, rt_t, n, p, bag)) {
+        atomicOr(overflow_, kMcOverflowRouteBag);
       }
     }
     return any;
