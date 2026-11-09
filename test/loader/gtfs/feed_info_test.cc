@@ -29,7 +29,7 @@ TEST(gtfs, read_feed_info_lang_default) {
       R"(feed_publisher_name,feed_publisher_url,feed_version
 City of Moose Jaw,https://moosejaw.ca,1)";
   auto const feed_info = nigiri::loader::gtfs::read_feed_info(kFeedInfoNoLang);
-  EXPECT_EQ("en", feed_info.default_lang_);
+  EXPECT_EQ("und", feed_info.default_lang_);
 }
 
 TEST(gtfs, read_feed_info_lang) {
@@ -38,4 +38,12 @@ TEST(gtfs, read_feed_info_lang) {
 City of Moose Jaw,https://moosejaw.ca,1,en)";
   auto const feed_info = nigiri::loader::gtfs::read_feed_info(kFeedInfoNoLang);
   EXPECT_EQ("en", feed_info.feed_lang_);
+}
+
+TEST(gtfs, read_feed_info_no_lang) {
+  constexpr auto const kFeedInfoNoLang =
+      R"(feed_publisher_name,feed_publisher_url,feed_version,feed_lang
+City of Moose Jaw,https://moosejaw.ca,1)";
+  auto const feed_info = nigiri::loader::gtfs::read_feed_info(kFeedInfoNoLang);
+  EXPECT_EQ("und", feed_info.feed_lang_);
 }

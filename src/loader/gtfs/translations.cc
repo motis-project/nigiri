@@ -19,16 +19,16 @@ translation_idx_t translator::get(t const t,
       auto translations = e.translations_;
       auto const has_default =
           utl::any_of(translations, [&](translation const& tr) {
-            return tr.get_language() == source_lang_.value_or("en");
+            return tr.get_language() == source_lang_;
           });
       if (!has_default && !value.empty()) {
         auto& tr = translations.emplace_back();
-        tr.set_language(source_lang_.value_or("en"));
+        tr.set_language(source_lang_);
         tr.set_text(value);
       }
       utl::sort(translations, [&](translation const& a, translation const& b) {
-        return (a.get_language() != source_lang_.value_or("en")) <
-               (b.get_language() != source_lang_.value_or("en"));
+        return (a.get_language() != source_lang_) <
+               (b.get_language() != source_lang_);
       });
       e.idx_ = tt_.register_translation(translations);
     }
@@ -66,11 +66,7 @@ translation_idx_t translator::get(t const t,
   }
 
   return utl::get_or_create(untranslated_, value, [&]() {
-    if (source_lang_) {
-      return tt_.register_translation(value, *source_lang_);
-    } else {
-      return tt_.register_translation(value);
-    }
+    return tt_.register_translation(value, source_lang_);
   });
 }
 
@@ -140,7 +136,7 @@ std::optional<f> parse_field_name(std::string_view s) {
 
 translator read_translations(timetable& tt,
                              std::string const& default_lang,
-                             std::optional<std::string> const& feed_lang,
+                             std::string const& feed_lang,
                              std::string_view file_content) {
   utl::get_active_progress_tracker()->status("Parse Translations");
 
