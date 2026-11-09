@@ -1049,7 +1049,8 @@ struct mcraptor_impl {
                            unsigned const p,
                            route_bag<K>& bag) {
     auto const stop_idx = static_cast<stop_idx_t>(kFwd ? p : n - 1U - p);
-    auto const stp = stop{rtt_.rt_transport_location_seq_[rt_t][stop_idx]};
+    auto const stop_seq = rtt_.rt_transport_location_seq_[rt_t];
+    auto const stp = stop{stop_seq[stop_idx]};
     auto const l = to_idx(stp.location_idx());
     auto const l_lb = lb_[l];
     if (p + 1U == n || !stp.can_start<SearchDir>(IsWheelchair) ||
@@ -1087,7 +1088,8 @@ struct mcraptor_impl {
       return false;
     }
     auto const stop_idx = static_cast<stop_idx_t>(kFwd ? p : n - 1U - p);
-    auto const stp = stop{rtt_.rt_transport_location_seq_[rt_t][stop_idx]};
+    auto const stop_seq = rtt_.rt_transport_location_seq_[rt_t];
+    auto const stp = stop{stop_seq[stop_idx]};
     if (!stp.can_finish<SearchDir>(IsWheelchair)) {
       return false;
     }
