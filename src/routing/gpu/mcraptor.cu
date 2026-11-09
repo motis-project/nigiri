@@ -64,7 +64,7 @@ struct gpu_mcraptor_state::impl {
     bag_pool_cap_ = std::clamp(n_locations / 2U, kMcBagPoolMin, kMcBagPoolMax);
     bag_pool_.resize(static_cast<std::size_t>(bag_pool_cap_) * kMcBagBlock);
     fill_bytes(bag_pool_, 0xFF, stream_);
-    bag_next_.resize(bag_pool_cap_);  // free blocks link to ~0U
+    bag_next_.resize(bag_pool_cap_);  // free blocks link to kMcInvalid
     fill_bytes(bag_next_, 0xFF, stream_);
     bag_ovf_.resize(n_locations);
     fill_bytes(bag_ovf_, 0xFF, stream_);
@@ -433,6 +433,7 @@ gpu_mcraptor<SearchDir, Crit>::gpu_mcraptor(
       is_dest_{is_dest},
       base_{base},
       allowed_claszes_{allowed_claszes},
+      avoided_{mode_filter_dim::avoided_mask()},
       is_wheelchair_{is_wheelchair},
       transfer_time_settings_{tts},
       prf_idx_{prf_idx},
@@ -470,6 +471,7 @@ mcraptor_impl<SearchDir, Crit> make_impl(
     unsigned const dir_idx,
     transfer_time_settings const& tts,
     clasz_mask_t const allowed_claszes,
+    clasz_mask_t const avoided,
     profile_idx_t const prf_idx,
     day_idx_t const base,
     delta_t const worst_at_dest,
@@ -483,6 +485,7 @@ mcraptor_impl<SearchDir, Crit> make_impl(
       .rtt_ = device_rt_timetable{},
       .transfer_time_settings_ = tts,
       .allowed_claszes_ = allowed_claszes,
+      .avoided_ = avoided,
       .prf_idx_ = prf_idx,
       .base_ = base,
       .worst_at_dest_ = worst_at_dest,
@@ -532,8 +535,8 @@ void gpu_mcraptor<SearchDir, Crit>::next_start_time() {
   starts_.clear();
   auto& s = *state_.impl_;
   auto const r = make_impl<SearchDir, Crit>(s, kDirIdx, transfer_time_settings_,
-                                            allowed_claszes_, 0U, base_,
-                                            worst_at_dest_, {});
+                                            allowed_claszes_, avoided_, 0U,
+                                            base_, worst_at_dest_, {});
   mc_launch(mc_clear_bags_kernel<SearchDir, Crit>, s.stream_, r);
   fill_bytes(s.bag_pool_count_, 0, s.stream_);
   fill_bytes(s.station_mark_, 0, s.stream_);
@@ -579,8 +582,8 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
                              cudaMemcpyHostToDevice, s.stream_));
 
   auto r = make_impl<SearchDir, Crit>(
-      s, kDirIdx, transfer_time_settings_, allowed_claszes_, prf_idx_, base_,
-      worst_at_dest_,
+      s, kDirIdx, transfer_time_settings_, allowed_claszes_, avoided_, prf_idx_,
+      base_, worst_at_dest_,
       cuda::std::span<mc_seed const>{starts_dev, starts_.size()});
 
   // rt: the rt traffic days make rt-updated static transports inactive (the rt

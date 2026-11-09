@@ -70,6 +70,9 @@ inline constexpr auto kMcReuseCap = 6U;
 inline constexpr auto kMcPrefixK = 4U;  // route-bag entries per lane
 inline constexpr auto kMcRouteBagCap = 64U;  // sequential / rt route bag
 inline constexpr auto kSbOverflow = ~0U;  // stop bag over kMcPrefixK entries
+// invalid: no pool block (bag_ovf_ / bag_next_ links, filled with 0xFF bytes),
+// slot, td egress group or lookup
+inline constexpr auto kMcInvalid = ~0U;
 
 // a round-0 label: seeded stop time, minutes walked to the stop
 struct mc_seed {
@@ -120,10 +123,6 @@ struct mcraptor_impl {
   // arrival-only route bags hold a single trip
   static constexpr auto kPrefixK = kHasExtras ? kMcPrefixK : 1U;
 
-  // Fixed avoided classes, must equal the CPU default (motis keeps other masks
-  // on the CPU).
-  static constexpr clasz_mask_t kAvoidedMask = to_mask(clasz::kAir);
-
   static constexpr auto kArrEv = kFwd ? event_type::kArr : event_type::kDep;
   static constexpr auto kDepEv = kFwd ? event_type::kDep : event_type::kArr;
 
@@ -157,13 +156,13 @@ struct mcraptor_impl {
     }
   }
   // after riding a trip of class cl
-  __device__ __forceinline__ static std::uint32_t crit_after_ride(
-      std::uint32_t const carried, clasz const cl) {
+  __device__ __forceinline__ std::uint32_t crit_after_ride(
+      std::uint32_t const carried, clasz const cl) const {
     auto mf = mc_extras::mode_filter(carried);
     auto group = mc_extras::group(carried);
     auto sw = mc_extras::switches(carried);
     if constexpr (kHasModeFilter) {
-      mf |= is_allowed(kAvoidedMask, cl) ? 1U : 0U;
+      mf |= is_allowed(avoided_, cl) ? 1U : 0U;
     }
     if constexpr (kHasModeSwitches) {
       auto const g = mode_group(cl);
@@ -224,8 +223,8 @@ struct mcraptor_impl {
   // Cursor over a bag's slots: inline, then the block chain (forward reads hop
   // one block, backward jumps restart at the head). Lock-free reads are safe:
   // a read returns the value at kernel start or a later one, and a free block
-  // always links to ~0U (clear_bags), so the cursor never leaves the chain.
-  // Slots not reachable yet read as empty.
+  // always links to kMcInvalid (clear_bags), so the cursor never leaves the
+  // chain. Slots not reachable yet read as empty.
   struct bag_cursor {
     // nullptr: not reachable (yet)
     __device__ mc_label_t* slot(std::uint32_t const i) {
@@ -233,15 +232,15 @@ struct mcraptor_impl {
         return inline_ + i;
       }
       auto const ord = (i - kMcBagCap) / kMcBagBlock;
-      if (blk_ == ~0U || ord < ord_) {
+      if (blk_ == kMcInvalid || ord < ord_) {
         ord_ = 0U;
         blk_ = *head_;
       }
-      while (ord_ != ord && blk_ != ~0U) {
+      while (ord_ != ord && blk_ != kMcInvalid) {
         blk_ = next_[blk_];
         ++ord_;
       }
-      return blk_ == ~0U
+      return blk_ == kMcInvalid
                  ? nullptr
                  : pool_ + static_cast<std::size_t>(blk_) * kMcBagBlock +
                        (i - kMcBagCap) % kMcBagBlock;
@@ -257,7 +256,7 @@ struct mcraptor_impl {
     std::uint32_t const* next_;
     std::uint32_t const* head_;
     std::uint32_t n_;
-    std::uint32_t ord_{0U}, blk_{~0U};
+    std::uint32_t ord_{0U}, blk_{kMcInvalid};
   };
   __device__ __forceinline__ bag_cursor bag_slots(std::uint32_t const l) const {
     return {.inline_ = bags_ + static_cast<std::size_t>(l) * kMcBagCap,
@@ -288,29 +287,30 @@ struct mcraptor_impl {
                                std::uint32_t const round,
                                bool const by_route) {
     auto const entry = mc_pack(arr_key, extras, round, by_route, kMcNoBc);
-    auto free_slot = ~0U;
+    auto free_slot = kMcInvalid;
     for (auto i = 0U; i != kMcReuseCap; ++i) {
       if (evicts(rslots[i], arr_key, extras, round, by_route)) {
         rslots[i] = kMcEmptySlot;
       }
-      if (rslots[i] == kMcEmptySlot && free_slot == ~0U) {
+      if (rslots[i] == kMcEmptySlot && free_slot == kMcInvalid) {
         free_slot = i;
       }
     }
-    if (free_slot != ~0U) {
+    if (free_slot != kMcInvalid) {
       rslots[free_slot] = entry;
       return;
     }
     // full: evict the latest arrival of round >= the newcomer's (any choice is
     // correct, this one keeps the broadest rejectors)
-    auto worst = ~0U;
+    auto worst = kMcInvalid;
     for (auto i = 0U; i != kMcReuseCap; ++i) {
       if (mc_round(rslots[i]) >= round &&
-          (worst == ~0U || mc_arr_key(rslots[i]) > mc_arr_key(rslots[worst]))) {
+          (worst == kMcInvalid ||
+           mc_arr_key(rslots[i]) > mc_arr_key(rslots[worst]))) {
         worst = i;
       }
     }
-    if (worst != ~0U && arr_key < mc_arr_key(rslots[worst])) {
+    if (worst != kMcInvalid && arr_key < mc_arr_key(rslots[worst])) {
       rslots[worst] = entry;
     }
   }
@@ -337,60 +337,73 @@ struct mcraptor_impl {
         }
       }
     }
-    auto* const lock = bag_locks_ + l;
-    while (atomicCAS(lock, 0U, 1U) != 0U) {
-#if __CUDA_ARCH__ >= 700
-      __nanosleep(32);
-#endif
-    }
-    __threadfence();  // acquire: see prior holders' plain stores
-
-    auto bag = bag_slots(l);
-    auto const hwm = bag.size();
-    auto inserted = false;
-    auto free_slot = ~0U;
-    for (auto i = 0U; i != hwm; ++i) {
-      auto& v = *bag.slot(i);
-      if (rejects(v, arr_key, extras, round, by_route)) {
-        goto unlock;
+    return locked(bag_locks_ + l, [&] {
+      auto bag = bag_slots(l);
+      auto const hwm = bag.size();
+      auto free_slot = kMcInvalid;
+      for (auto i = 0U; i != hwm; ++i) {
+        auto& v = *bag.slot(i);
+        if (rejects(v, arr_key, extras, round, by_route)) {
+          return false;
+        }
+        if (evicts(v, arr_key, extras, round, by_route)) {
+          v = kMcEmptySlot;
+        }
+        if (v == kMcEmptySlot && free_slot == kMcInvalid) {
+          free_slot = i;
+        }
       }
-      if (evicts(v, arr_key, extras, round, by_route)) {
-        v = kMcEmptySlot;
+      // grow, appending a pool block when the tail is full
+      if (free_slot == kMcInvalid && hwm < kMcMaxBagSlots) {
+        if (hwm < kMcBagCap || (hwm - kMcBagCap) % kMcBagBlock != 0U) {
+          free_slot = hwm;
+        } else if (auto const b = atomicAdd(bag_pool_count_, 1U);
+                   b < bag_pool_cap_) {
+          // the scan above left the cursor on the tail block
+          if (hwm == kMcBagCap) {
+            bag_ovf_[l] = b;
+          } else {
+            bag_next_[bag.blk_] = b;
+          }
+          free_slot = hwm;
+        }
       }
-      if (v == kMcEmptySlot && free_slot == ~0U) {
-        free_slot = i;
+      if (free_slot == kMcInvalid) {
+        // inline + blocks full of non-dominated labels, or pool exhausted
+        atomicOr(overflow_, kMcOverflowBag);
+        return false;
       }
-    }
-    // grow, appending a pool block when the tail is full
-    if (free_slot == ~0U && hwm < kMcMaxBagSlots) {
-      if (hwm < kMcBagCap || (hwm - kMcBagCap) % kMcBagBlock != 0U) {
-        free_slot = hwm;
-      } else if (auto const b = atomicAdd(bag_pool_count_, 1U);
-                 b < bag_pool_cap_) {
-        // the scan above left the cursor on the tail block
-        (hwm == kMcBagCap ? bag_ovf_[l] : bag_next_[bag.blk_]) = b;
-        free_slot = hwm;
-      }
-    }
-    if (free_slot == ~0U) {
-      // inline + blocks full of non-dominated labels, or pool exhausted
-      atomicOr(overflow_, kMcOverflowBag);
-    } else {
       auto bc = kMcNoBc;
       if (bc_entry != nullptr && (bc = bc_append(*bc_entry)) == kMcNoBc) {
-        goto unlock;  // arena overflow (canary set)
+        return false;  // arena overflow (canary set)
       }
       *bag.slot(free_slot) = mc_pack(arr_key, extras, round, by_route, bc);
       if (free_slot + 1U > hwm) {
         bag_hwm_[l] = static_cast<std::uint8_t>(free_slot + 1U);
       }
       reuse_upsert(rslots, arr_key, extras, round, by_route);
-      inserted = true;
+      return true;
+    });
+  }
+
+  // f() under a spin lock; the fences make the previous holder's plain stores
+  // visible (acquire) and publish f's (release). The holder runs f inside the
+  // loop: without independent thread scheduling (pre-Volta), lanes spinning
+  // after the loop would starve a holder of their own warp.
+  template <typename Fn>
+  __device__ static bool locked(std::uint32_t* const lock, Fn&& f) {
+    while (true) {
+      if (atomicCAS(lock, 0U, 1U) == 0U) {
+        __threadfence();
+        auto const r = f();
+        __threadfence();
+        atomicExch(lock, 0U);
+        return r;
+      }
+#if __CUDA_ARCH__ >= 700
+      __nanosleep(32);  // back off from a contended lock
+#endif
     }
-  unlock:
-    __threadfence();  // release: publish stores before unlocking
-    atomicExch(lock, 0U);
-    return inserted;
   }
 
   // kMcNoBc on arena overflow (insert dropped, canary set)
@@ -436,41 +449,35 @@ struct mcraptor_impl {
   __device__ void dest_bag_add(std::uint32_t const round,
                                std::uint32_t const arr_key,
                                std::uint32_t const extras) {
-    while (atomicCAS(dest_lock_, 0U, 1U) != 0U) {
-#if __CUDA_ARCH__ >= 700
-      __nanosleep(32);
-#endif
-    }
-    __threadfence();
-    auto free_slot = ~0U;
-    for (auto i = 0U; i != kMcDestCap; ++i) {
-      auto const v = dest_bag_[i];
-      if (v == kMcEmptySlot) {
-        free_slot = free_slot == ~0U ? i : free_slot;
-        continue;
+    locked(dest_lock_, [&] {
+      auto free_slot = kMcInvalid;
+      for (auto i = 0U; i != kMcDestCap; ++i) {
+        auto const v = dest_bag_[i];
+        if (v == kMcEmptySlot) {
+          free_slot = free_slot == kMcInvalid ? i : free_slot;
+          continue;
+        }
+        if (mc_round(v) <= round &&
+            completed_dominates(mc_arr_key(v), mc_extras(v), arr_key, extras)) {
+          return false;
+        }
+        if (mc_round(v) >= round &&
+            completed_dominates(arr_key, extras, mc_arr_key(v), mc_extras(v))) {
+          dest_bag_[i] = kMcEmptySlot;
+          free_slot = free_slot == kMcInvalid ? i : free_slot;
+        }
       }
-      if (mc_round(v) <= round &&
-          completed_dominates(mc_arr_key(v), mc_extras(v), arr_key, extras)) {
-        goto unlock;
+      if (free_slot == kMcInvalid) {
+        return false;  // full of non-dominated entries: weaker pruning only
       }
-      if (mc_round(v) >= round &&
-          completed_dominates(arr_key, extras, mc_arr_key(v), mc_extras(v))) {
-        dest_bag_[i] = kMcEmptySlot;
-        free_slot = free_slot == ~0U ? i : free_slot;
-      }
-    }
-    if (free_slot != ~0U) {
       dest_bag_[free_slot] = mc_pack(arr_key, extras, round, false, kMcNoBc);
       for (auto r = round; r != kMaxTransfers + 2U; ++r) {
         dest_best_key_[r] = min(dest_best_key_[r], arr_key);
         dest_best_total_[r] =
             min(dest_best_total_[r], arr_key + mc_extras::ordered(extras));
       }
-    }
-    // else: full of non-dominated entries -> skip (weaker pruning only)
-  unlock:
-    __threadfence();
-    atomicExch(dest_lock_, 0U);
+      return true;
+    });
   }
 
   // ---- rounds (CPU execute) ------------------------------------------------
@@ -775,7 +782,7 @@ struct mcraptor_impl {
     // the earliest trip is monotone in the arrival (FIFO): a lookup holds for
     // the same arrival and while its trip is still catchable
     auto et = transport{};
-    auto et_key = ~0U;  // arrival of the last lookup
+    auto et_key = kMcInvalid;  // arrival of the last lookup
     auto et_dep_key = 0U;  // its trip's departure (0: none)
     auto labels = bag_slots(l);
     for (auto sl = 0U; sl != labels.size(); ++sl) {
@@ -1194,7 +1201,7 @@ struct mcraptor_impl {
     }
   }
 
-  // index of l in the sorted td egress list (~0U = none)
+  // index of l in the sorted td egress list (kMcInvalid = none)
   __device__ __forceinline__ std::uint32_t td_dest_group_of(
       location_idx_t const l) const {
     auto lo = std::uint32_t{0U};
@@ -1207,7 +1214,8 @@ struct mcraptor_impl {
         hi = mid;
       }
     }
-    return (lo < td_dest_locs_.size() && td_dest_locs_[lo] == l) ? lo : ~0U;
+    return (lo < td_dest_locs_.size() && td_dest_locs_[lo] == l) ? lo
+                                                                 : kMcInvalid;
   }
 
   __device__ __forceinline__ bool has_td_fps(location_idx_t const l) const {
@@ -1237,8 +1245,8 @@ struct mcraptor_impl {
     auto const n_fps = use_td_fps ? 0U : static_cast<unsigned>(fps.size());
     auto const egress_ok =
         is_intermodal_dest() && dist_to_end_[i] != kUnreachable;
-    auto const td_grp = is_intermodal_dest() ? td_dest_group_of(l) : ~0U;
-    if (n_fps == 0U && !egress_ok && td_grp == ~0U && !use_td_fps) {
+    auto const td_grp = is_intermodal_dest() ? td_dest_group_of(l) : kMcInvalid;
+    if (n_fps == 0U && !egress_ok && td_grp == kMcInvalid && !use_td_fps) {
       return;
     }
     auto const buf = transfer_buffer(i);
@@ -1266,7 +1274,7 @@ struct mcraptor_impl {
                        te_bc);
         }
         // td durations depend on the arrival, so they are evaluated per label
-        if (td_grp != ~0U) {
+        if (td_grp != kMcInvalid) {
           auto const offsets = td_dest_[td_dest_group_idx_t{td_grp}];
           auto const rr = d_get_td_duration<SearchDir>(
               offsets, 0U, static_cast<std::uint32_t>(offsets.size()),
@@ -1347,18 +1355,18 @@ struct mcraptor_impl {
         for (auto s = 0U; s != umin(bag_hwm_[l], kMcBagCap); ++s) {
           slots[s] = kMcEmptySlot;
         }
-        // free the chain: blocks back to empty slots, linking to ~0U
-        for (auto blk = bag_ovf_[l]; blk != ~0U;) {
+        // free the chain: blocks back to empty slots, linking to kMcInvalid
+        for (auto blk = bag_ovf_[l]; blk != kMcInvalid;) {
           auto* const p =
               bag_pool_ + static_cast<std::size_t>(blk) * kMcBagBlock;
           for (auto s = 0U; s != kMcBagBlock; ++s) {
             p[s] = kMcEmptySlot;
           }
           auto const next = bag_next_[blk];
-          bag_next_[blk] = ~0U;
+          bag_next_[blk] = kMcInvalid;
           blk = next;
         }
-        bag_ovf_[l] = ~0U;
+        bag_ovf_[l] = kMcInvalid;
         bag_hwm_[l] = 0U;
       });
       touched_.blocks_[w] = 0U;
@@ -1628,6 +1636,7 @@ struct mcraptor_impl {
   device_rt_timetable rtt_;
   transfer_time_settings transfer_time_settings_;
   clasz_mask_t allowed_claszes_;
+  clasz_mask_t avoided_;  // mode_filter: the CPU's mode_filter_dim mask
   profile_idx_t prf_idx_;
   day_idx_t base_;
   delta_t worst_at_dest_;

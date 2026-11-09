@@ -72,12 +72,15 @@ O2,O2,,,,,,
 O9,O9,,,,,,
 T1,T1,,,,,,
 T9,T9,,,,,,
+M0,M0,,,,,,
+M9,M9,,,,,,
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
 RAIL,MTA,RAIL,,,2
 BUS,MTA,BUS,,,3
 AIR,MTA,AIR,,,1100
+COACH,MTA,COACH,,,202
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
@@ -112,6 +115,9 @@ BUS,D,O_EGRESS2,,
 BUS,D,T_A,,
 BUS,D,T_B,,
 BUS,D,T_C,,
+AIR,D,M_AIR,,
+COACH,D,M_COACH,,
+RAIL,D,M_RAIL,,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -177,6 +183,12 @@ T_B,10:30:00,10:30:00,T1,0,0,0
 T_B,11:30:00,11:30:00,T9,1,0,0
 T_C,11:00:00,11:00:00,T1,0,0,0
 T_C,12:00:00,12:00:00,T9,1,0,0
+M_AIR,10:00:00,10:00:00,M0,0,0,0
+M_AIR,10:30:00,10:30:00,M9,1,0,0
+M_COACH,10:00:00,10:00:00,M0,0,0,0
+M_COACH,10:50:00,10:50:00,M9,1,0,0
+M_RAIL,10:00:00,10:00:00,M0,0,0,0
+M_RAIL,11:30:00,11:30:00,M9,1,0,0
 
 # transfers.txt
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
@@ -319,6 +331,27 @@ TEST(mcraptor_criteria, mode_filter_keeps_best_without_avoided_class) {
   expect_engines(s, {"10:00 10:30 t0 c0 f0 s0"});
   expect_rows<mcraptor_mode_filter_state>(
       s, {"10:00 10:30 t0 c0 f1 s0", "10:00 11:30 t0 c0 f0 s0"});
+}
+
+// air 10:30, coach 10:50, rail 11:30: each mask motis offers (minimizeWithout:
+// AIR, COACH, both), on the CPU and, through expect_engines, the GPU
+TEST(mcraptor_criteria, mode_filter_avoids_each_mask) {
+  auto const s =
+      between("M0", "M9", {at(9, 30), at(10, 30)}, {at(10, 15), at(11, 45)});
+  auto const check = [&](clasz_mask_t const avoided,
+                         std::vector<std::string> const& expected) {
+    mode_filter_dim::set_avoided(avoided);
+    expect_engines(s, {"10:00 10:30 t0 c0 f0 s0"});
+    expect_rows<mcraptor_mode_filter_state>(s, expected);
+    expect_rows<mcraptor_non_transit_mode_filter_mode_switches_state>(s,
+                                                                      expected);
+  };
+  check(to_mask(clasz::kAir),
+        {"10:00 10:30 t0 c0 f1 s0", "10:00 10:50 t0 c0 f0 s0"});
+  check(to_mask(clasz::kCoach), {"10:00 10:30 t0 c0 f0 s0"});
+  check(to_mask(clasz::kAir) | to_mask(clasz::kCoach),
+        {"10:00 10:30 t0 c0 f1 s0", "10:00 11:30 t0 c0 f0 s0"});
+  mode_filter_dim::set_avoided(to_mask(clasz::kAir));  // the default
 }
 
 // rail + bus arrives at 11:00, bus + bus at 11:10 without changing group
