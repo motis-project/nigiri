@@ -64,16 +64,16 @@ struct gpu_mcraptor_state::impl {
     bag_pool_cap_ = std::clamp(n_locations / 2U, kMcBagPoolMin, kMcBagPoolMax);
     bag_pool_.resize(static_cast<std::size_t>(bag_pool_cap_) * kMcBagBlock);
     fill_bytes(bag_pool_, 0xFF, stream_);
-    bag_next_.resize(bag_pool_cap_);  // free blocks link to kMcInvalid
-    fill_bytes(bag_next_, 0xFF, stream_);
-    bag_ovf_.resize(n_locations);
-    fill_bytes(bag_ovf_, 0xFF, stream_);
+    bag_chain_next_.resize(bag_pool_cap_);  // free blocks link to kMcInvalid
+    fill_bytes(bag_chain_next_, 0xFF, stream_);
+    bag_chain_head_.resize(n_locations);
+    fill_bytes(bag_chain_head_, 0xFF, stream_);
     bag_pool_count_.resize(1U);
     fill_bytes(bag_pool_count_, 0, stream_);
     bag_locks_.resize(n_locations);
     fill_bytes(bag_locks_, 0, stream_);
-    bag_hwm_.resize(n_locations);
-    fill_bytes(bag_hwm_, 0, stream_);
+    bag_n_slots_.resize(n_locations);
+    fill_bytes(bag_n_slots_, 0, stream_);
     for (auto d = 0U; d != 2U; ++d) {
       dest_bag_[d].resize(kMcDestCap);
       dest_best_key_[d].resize(kMaxTransfers + 2U);
@@ -85,8 +85,8 @@ struct gpu_mcraptor_state::impl {
     auto const arena_cap =
         std::clamp(static_cast<std::size_t>(n_locations) * kMcArenaPerLocation,
                    std::size_t{kMcArenaMin}, std::size_t{kMcArenaMax});
-    bc_.resize(arena_cap);
-    bc_count_.resize(1U);
+    breadcrumbs_.resize(arena_cap);
+    n_breadcrumbs_.resize(1U);
 
     touched_.resize(n_bitvec_words(n_locations));
     station_mark_.resize(n_bitvec_words(n_locations));
@@ -102,10 +102,10 @@ struct gpu_mcraptor_state::impl {
     auto const n_route_stops = tt_.route_of_stop_.size();
     et_task_list_.resize(n_route_stops);
     et_task_count_.resize(1U);
-    sb_n_.resize(n_route_stops);
-    sb_et_.resize(n_route_stops * kMcPrefixK);
-    sb_par_.resize(n_route_stops * kMcPrefixK);
-    sb_bx_.resize(n_route_stops * kMcPrefixK);
+    stop_bag_size_.resize(n_route_stops);
+    stop_bag_trips_.resize(n_route_stops * kMcPrefixK);
+    stop_bag_parents_.resize(n_route_stops * kMcPrefixK);
+    stop_bag_board_extras_.resize(n_route_stops * kMcPrefixK);
     any_marked_.resize(1U);
     done_.resize(1U);
     overflow_.resize(1U);
@@ -176,18 +176,18 @@ struct gpu_mcraptor_state::impl {
 
   thrust::device_vector<mc_label_t> bags_;
   thrust::device_vector<mc_label_t> bag_pool_;
-  thrust::device_vector<std::uint32_t> bag_next_;
-  thrust::device_vector<std::uint32_t> bag_ovf_;
+  thrust::device_vector<std::uint32_t> bag_chain_next_;
+  thrust::device_vector<std::uint32_t> bag_chain_head_;
   thrust::device_vector<std::uint32_t> bag_pool_count_;
   std::uint32_t bag_pool_cap_;
   thrust::device_vector<std::uint32_t> bag_locks_;
-  thrust::device_vector<std::uint8_t> bag_hwm_;
+  thrust::device_vector<std::uint8_t> bag_n_slots_;
   thrust::device_vector<mc_label_t> dest_bag_[2];
   thrust::device_vector<std::uint32_t> dest_lock_[2];
   thrust::device_vector<std::uint32_t> dest_best_key_[2];
   thrust::device_vector<std::uint32_t> dest_best_total_[2];
-  thrust::device_vector<mc_breadcrumb> bc_;
-  thrust::device_vector<std::uint32_t> bc_count_;
+  thrust::device_vector<mc_breadcrumb> breadcrumbs_;
+  thrust::device_vector<std::uint32_t> n_breadcrumbs_;
 
   thrust::device_vector<std::uint32_t> touched_;
   thrust::device_vector<std::uint32_t> station_mark_;
@@ -199,10 +199,10 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> route_list_count_;
   thrust::device_vector<std::uint32_t> et_task_list_;
   thrust::device_vector<std::uint32_t> et_task_count_;
-  thrust::device_vector<std::uint32_t> sb_n_;
-  thrust::device_vector<std::uint32_t> sb_et_;
-  thrust::device_vector<std::uint32_t> sb_par_;
-  thrust::device_vector<std::uint32_t> sb_bx_;
+  thrust::device_vector<std::uint32_t> stop_bag_size_;
+  thrust::device_vector<std::uint32_t> stop_bag_trips_;
+  thrust::device_vector<std::uint32_t> stop_bag_parents_;
+  thrust::device_vector<std::uint32_t> stop_bag_board_extras_;
   thrust::device_vector<std::uint32_t> any_marked_;
   thrust::device_vector<std::uint32_t> done_;
   thrust::device_vector<std::uint32_t> overflow_;
@@ -489,19 +489,19 @@ mcraptor_impl<SearchDir, Crit> make_impl(
       .lb_ = {s.lb_dev_[dir_idx].data(), s.lb_dev_[dir_idx].size()},
       .bags_ = ptr(s.bags_),
       .bag_pool_ = ptr(s.bag_pool_),
-      .bag_ovf_ = ptr(s.bag_ovf_),
-      .bag_next_ = ptr(s.bag_next_),
+      .bag_chain_head_ = ptr(s.bag_chain_head_),
+      .bag_chain_next_ = ptr(s.bag_chain_next_),
       .bag_pool_count_ = ptr(s.bag_pool_count_),
       .bag_pool_cap_ = s.bag_pool_cap_,
-      .bag_hwm_ = ptr(s.bag_hwm_),
+      .bag_n_slots_ = ptr(s.bag_n_slots_),
       .bag_locks_ = ptr(s.bag_locks_),
       .dest_bag_ = ptr(s.dest_bag_[dir_idx]),
       .dest_lock_ = ptr(s.dest_lock_[dir_idx]),
       .dest_best_key_ = ptr(s.dest_best_key_[dir_idx]),
       .dest_best_total_ = ptr(s.dest_best_total_[dir_idx]),
-      .bc_ = ptr(s.bc_),
-      .bc_count_ = ptr(s.bc_count_),
-      .bc_cap_ = static_cast<std::uint32_t>(s.bc_.size()),
+      .breadcrumbs_ = ptr(s.breadcrumbs_),
+      .n_breadcrumbs_ = ptr(s.n_breadcrumbs_),
+      .breadcrumb_cap_ = static_cast<std::uint32_t>(s.breadcrumbs_.size()),
       .touched_ = {to_mutable_view(s.touched_)},
       .station_mark_ = {to_mutable_view(s.station_mark_)},
       .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
@@ -511,10 +511,10 @@ mcraptor_impl<SearchDir, Crit> make_impl(
       .route_list_count_ = ptr(s.route_list_count_),
       .et_task_list_ = to_mutable_view(s.et_task_list_),
       .et_task_count_ = ptr(s.et_task_count_),
-      .sb_n_ = ptr(s.sb_n_),
-      .sb_et_ = ptr(s.sb_et_),
-      .sb_par_ = ptr(s.sb_par_),
-      .sb_bx_ = ptr(s.sb_bx_)};
+      .stop_bag_size_ = ptr(s.stop_bag_size_),
+      .stop_bag_trips_ = ptr(s.stop_bag_trips_),
+      .stop_bag_parents_ = ptr(s.stop_bag_parents_),
+      .stop_bag_board_extras_ = ptr(s.stop_bag_board_extras_)};
 }
 
 template <direction SearchDir, mc_crit Crit>
@@ -688,7 +688,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
       overflow_pin, thrust::raw_pointer_cast(s.overflow_.data()),
       sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_));
   CUDA_CHECK(cudaMemcpyAsync(
-      overflow_pin + 1U, thrust::raw_pointer_cast(s.bc_count_.data()),
+      overflow_pin + 1U, thrust::raw_pointer_cast(s.n_breadcrumbs_.data()),
       sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_));
   CUDA_CHECK(cudaMemcpyAsync(
       overflow_pin + 2U, thrust::raw_pointer_cast(s.bag_pool_count_.data()),
@@ -709,7 +709,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
               "arena={} ({} of {} breadcrumbs) route_bag={}",
               (*overflow_pin & kMcOverflowBag) != 0U, overflow_pin[2],
               s.bag_pool_cap_, (*overflow_pin & kMcOverflowArena) != 0U,
-              overflow_pin[1], s.bc_.size(),
+              overflow_pin[1], s.breadcrumbs_.size(),
               (*overflow_pin & kMcOverflowRouteBag) != 0U);
 
   // === CONVERT DEVICE JOURNEYS TO HOST JOURNEYS ===
