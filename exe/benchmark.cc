@@ -674,6 +674,9 @@ int main(int argc, char* argv[]) {
       for (auto& sdq : qs) {
         if (dir == direction::kBackward) {
           sdq.q_.flip_dir();
+          sdq.q_.use_start_footpaths_ =
+              gs.use_start_footpaths_ &&
+              sdq.q_.start_match_mode_ != location_match_mode::kIntermodal;
         }
         sdq.q_.extend_interval_earlier_ = dir == direction::kBackward;
         sdq.q_.extend_interval_later_ = dir == direction::kForward;

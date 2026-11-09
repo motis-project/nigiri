@@ -68,7 +68,7 @@ inline constexpr auto kMcDestCap = 64U;  // dest frontier entries
 // pruning.
 inline constexpr auto kMcReuseCap = 6U;
 inline constexpr auto kMcPrefixK = 4U;  // route-bag entries per lane
-inline constexpr auto kMcRouteBagCap = 32U;  // sequential / rt route bag
+inline constexpr auto kMcRouteBagCap = 64U;  // sequential / rt route bag
 inline constexpr auto kSbOverflow = ~0U;  // stop bag over kMcPrefixK entries
 
 // a round-0 label: seeded stop time, minutes walked to the stop
