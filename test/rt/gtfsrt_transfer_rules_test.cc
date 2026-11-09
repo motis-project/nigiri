@@ -274,6 +274,38 @@ INSTANTIATE_TEST_SUITE_P(
               [] { return at("11:06"); }}),
     case_name<delay>);
 
+// F -> G is guaranteed (type 1, 0 min), the walk S1 -> S2 takes 5 min.
+// Scheduled, F -> G has 10 min, fine both ways, so the import leaves the
+// footpath at the walk. F 7 min late: 3 min is enough by the guarantee but not
+// by the footpath. G leaves more than the longest rule duration after F
+// arrives and has to be found as a partner anyway.
+TEST(gtfsrt_transfer_rules, delay_makes_rule_beyond_rule_window_binding) {
+  auto const tt =
+      test::load_network_with_walks("S,S,1,,,,F,G", {}, {{"S1", "S2", 5}});
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  EXPECT_EQ(g_from_f(), arrival(tt, &rtt, kAtoB));
+  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 7}}}});
+  EXPECT_EQ(g_from_f(), arrival(tt, &rtt, kAtoB));
+}
+
+// X runs A -> S1 like F but has no rule. The split keeps it in F's route, so it
+// stands on F's virtual location at S1, whose footpath to H encodes the RF ->
+// RH guarantee (0 min). X 5 min early: 1 min to H is enough by that footpath,
+// but X only has S1's 2 min. X has to leave the virtual location.
+TEST(gtfsrt_transfer_rules, trip_without_rules_on_shared_virtual_location) {
+  auto const tt = load_network(
+      "S1,S1,2,120,,,,\nS1,S1,2,0,RF,RH,,",
+      {.trips_ = {{"X", "RX", {{"A", "10:05"}, {"S1", "10:35"}}}}});
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  auto const [x, trip] = resolve(tt, rtt, "X");
+  ASSERT_TRUE(x.valid());
+  ASSERT_TRUE(tt.locations_.is_virt(
+      rt::frun{tt, &rtt, x}[1U].get_stop().location_idx()));
+  EXPECT_EQ(at("11:30"), arrival(search(tt, rtt, kAtoC, "10:05")));
+  update(tt, rtt, {{"X", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = -5}}}});
+  EXPECT_EQ(at("11:30"), arrival(search(tt, rtt, kAtoC, "10:05")));
+}
+
 TEST(gtfsrt_transfer_rules, delay_moves_both_visits_of_partner) {
   auto const tt = load_network(
       "S,S,2,120,,,,\n"

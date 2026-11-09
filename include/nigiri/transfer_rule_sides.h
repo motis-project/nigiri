@@ -60,8 +60,8 @@ inline bool is_applicable(timetable const& tt,
 
 transfer_rule_idx_t get_change_rule(
     timetable const&,
-    std::span<transfer_rule_side_idx const> from,
-    std::span<transfer_rule_side_idx const> to,
+    std::span<transfer_rule_side_idx const> from_sig,
+    std::span<transfer_rule_side_idx const> to_sig,
     location_idx_t from_base,
     location_idx_t to_base);
 

@@ -198,11 +198,6 @@ bool is_added(gtfsrt::TripDescriptor_ScheduleRelationship const sr) {
          sr == gtfsrt::TripDescriptor_ScheduleRelationship_NEW;
 }
 
-bool is_added_with_ref(gtfsrt::TripDescriptor_ScheduleRelationship const sr) {
-  return sr == gtfsrt::TripDescriptor_ScheduleRelationship_REPLACEMENT ||
-         sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED;
-}
-
 bool add_rt_trip(source_idx_t const src,
                  timetable const& tt,
                  rt_timetable& rtt,
@@ -210,12 +205,10 @@ bool add_rt_trip(source_idx_t const src,
                  gtfsrt::TripUpdate const& tripUpdate) {
   auto const& stus = tripUpdate.stop_time_update();
   auto const sr = tripUpdate.trip().schedule_relationship();
-  auto const added_or_replaced =
-      is_added(sr) ||
-      sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT;
+  auto const added = is_added(sr);
 
   auto stops = std::vector<stop::value_type>{};
-  if (added_or_replaced) {
+  if (added) {
     auto last_pos = geo::latlng{};
     auto last_time = unixtime_t{};
     for (auto const& stu : stus) {
@@ -278,33 +271,23 @@ bool add_rt_trip(source_idx_t const src,
                 "added trip must contain more than 1 valid stop");
   }
 
-  auto times = added_or_replaced
-                   ? std::vector<delta_t>(stops.size() * 2U - 2U, 0)
-                   : std::vector<delta_t>{};
+  auto times = added ? std::vector<delta_t>(stops.size() * 2U - 2U, 0)
+                     : std::vector<delta_t>{};
 
   auto const new_trip_id = [&]() -> std::string_view {
     if (is_added(sr) && tripUpdate.trip().has_trip_id()) {
       return std::string_view{tripUpdate.trip().trip_id()};
     }
-    if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED &&
-        tripUpdate.has_trip_properties() &&
-        tripUpdate.trip_properties().has_trip_id()) {
-      return std::string_view{tripUpdate.trip_properties().trip_id()};
-    }
     return {};
   };
   auto const route_id = [&]() -> std::string_view {
-    if ((is_added(sr) ||
-         sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED) &&
-        tripUpdate.trip().has_route_id()) {
+    if (is_added(sr) && tripUpdate.trip().has_route_id()) {
       return std::string_view{tripUpdate.trip().route_id()};
     }
     return {};
   };
   auto const direction_id = [&]() -> direction_id_t {
-    if ((is_added(sr) ||
-         sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED) &&
-        tripUpdate.trip().has_direction_id()) {
+    if (is_added(sr) && tripUpdate.trip().has_direction_id()) {
       return direction_id_t{tripUpdate.trip().direction_id() != 0U};
     }
     return direction_id_t{};
@@ -315,13 +298,8 @@ bool add_rt_trip(source_idx_t const src,
           ? std::string_view{tripUpdate.trip_properties().trip_short_name()}
           : std::string_view{};
   // ADDED/NEW stops+times+new_trip_id
-  // REPLACEMENT stops+times
-  // DUPL new_trip_id
   r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, new_trip_id(),
                                route_id(), direction_id(), trip_short_name);
-  if (sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT) {
-    r.t_ = transport::invalid();
-  }
   return true;
 }
 
@@ -808,18 +786,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
                         ? entity.trip_update().trip().schedule_relationship()
                         : gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED;
 
-    if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED &&
-        (!entity.trip_update().has_trip_properties() ||
-         !entity.trip_update().trip_properties().has_trip_id())) {
-      log(log_lvl::debug, "rt.gtfs.unsupported",
-          R"(unsupported: no "trip_properties.trip_id" field in "trip_update.trip" for DUPLICATED (tag={}, id={}), skipping message)",
-          tag, entity.id());
-      ++stats.unsupported_no_trip_id_;
-      continue;
-    }
-
     auto const added = is_added(sr);
-    // auto const added_with_ref = is_added_with_ref(sr);
 
     if (sr != gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED &&
         sr != gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED && !added) {

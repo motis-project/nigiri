@@ -24,8 +24,7 @@ std::optional<duration_t> get_rule_transfer_time(
   auto const signature = [&](rt::run const& r, stop_idx_t const i,
                              location_idx_t const base) {
     auto sig = std::vector<transfer_rule_side_idx>{};
-    if (r.is_scheduled() &&
-        i < tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]].size()) {
+    if (r.is_scheduled()) {
       get_stop_signature(tt, r.t_.t_idx_, i, base, sig);
     }
     return sig;

@@ -6,6 +6,7 @@
 #include <tuple>
 #include <vector>
 
+#include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
 #include "utl/expect.h"
 #include "utl/helpers/algorithm.h"
@@ -73,7 +74,6 @@ duration_t to_duration(duration_t const d) {
   return d >= kNever ? footpath::kBan : d;
 }
 
-// Location of each route stop (joined ones: of the route stop they joined).
 vector_map<route_stop_idx_t, location_idx_t> add_virts(
     timetable& tt,
     import_context& ctx,
@@ -223,6 +223,44 @@ void write_trip_has_rule(timetable& tt) {
   }
 }
 
+void write_rule_locations(timetable& tt) {
+  auto& tr = tt.transfer_rules_;
+  tr.max_rule_duration_.resize(tt.n_locations(), duration_t{0});
+  tr.is_rule_location_.resize(tt.n_locations());
+  auto const for_each_covered = [&](location_idx_t const s, auto&& fn) {
+    fn(s);
+    for (auto const c : tt.locations_.children_[s]) {
+      if (!tt.locations_.is_virt(c)) {
+        fn(c);
+      }
+    }
+  };
+  for (auto const& r : tr.rules_) {
+    for (auto const l : {r.from_stop_, r.to_stop_}) {
+      tr.max_rule_duration_[l] =
+          std::max(tr.max_rule_duration_[l], r.duration_);
+      for_each_covered(l, [&](location_idx_t const c) {
+        tr.is_rule_location_.set(c);
+        tt.locations_.for_each_virt(
+            c, [&](location_idx_t const v) { tr.is_rule_location_.set(v); });
+      });
+    }
+    if (r.is_qualified()) {
+      tr.to_stops_.push_back({r.from_stop_, r.to_stop_});
+      tr.from_stops_.push_back({r.to_stop_, r.from_stop_});
+    }
+  }
+  utl::erase_duplicates(tr.to_stops_);
+  utl::erase_duplicates(tr.from_stops_);
+  auto const own = tr.max_rule_duration_;
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    auto const parent = tt.locations_.parents_[l];
+    if (parent != location_idx_t::invalid()) {
+      tr.max_rule_duration_[l] = std::max(own[l], own[parent]);
+    }
+  }
+}
+
 void apply_transfer_rules(
     timetable& tt,
     import_context& ctx,
@@ -250,6 +288,7 @@ void apply_transfer_rules(
         tt.location_areas_.resize(tt.n_locations());
       }
     }
+    write_rule_locations(tt);
   }
   write_profiles(tt, walks, virt_footpaths);
 }

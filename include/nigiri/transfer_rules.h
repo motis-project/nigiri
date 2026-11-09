@@ -104,6 +104,13 @@ auto rules_at(std::span<qualified_side<Qualifier> const> rules,
          std::views::transform(&qualified_side<Qualifier>::side_);
 }
 
+template <typename SortedPairs, typename Key>
+auto values_of(SortedPairs const& v, Key const key) {
+  using entry = std::ranges::range_value_t<SortedPairs>;
+  return std::ranges::equal_range(v, key, {}, &entry::first) |
+         std::views::transform(&entry::second);
+}
+
 struct transfer_rules {
   vector_map<transfer_rule_idx_t, transfer_rule> rules_;
 
@@ -112,6 +119,10 @@ struct transfer_rules {
 
   vector<pair<location_idx_t, transfer_rule_side_idx>> stop_rules_;
   bitvec_map<trip_idx_t> trip_has_rule_;
+
+  vector_map<location_idx_t, duration_t> max_rule_duration_;
+  vector<pair<location_idx_t, location_idx_t>> to_stops_, from_stops_;
+  bitvec_map<location_idx_t> is_rule_location_;
 };
 
 }  // namespace nigiri

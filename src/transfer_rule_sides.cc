@@ -72,8 +72,6 @@ void add_stop_rules(timetable const& tt,
   }
 }
 
-// The from sides of the arriving trips' rules, the to sides of the departing
-// trips' rules (block_id / stay seated: they are not the same trips).
 void get_stop_signature(timetable const& tt,
                         transport_idx_t const t,
                         stop_idx_t const i,
@@ -97,8 +95,8 @@ void get_stop_signature(timetable const& tt,
 
 transfer_rule_idx_t get_change_rule(
     timetable const& tt,
-    std::span<transfer_rule_side_idx const> from,
-    std::span<transfer_rule_side_idx const> to,
+    std::span<transfer_rule_side_idx const> from_sig,
+    std::span<transfer_rule_side_idx const> to_sig,
     location_idx_t const from_base,
     location_idx_t const to_base) {
   auto best = transfer_rule_idx_t::invalid();
@@ -107,15 +105,16 @@ transfer_rule_idx_t get_change_rule(
                ? r
                : get_more_specific(tt, best, r);
   };
-  for (auto const side : from) {
+  for (auto const side : from_sig) {
     if (side.ev_type() == event_type::kArr &&
-        is_applicable(tt, {side.rule(), event_type::kDep}, to, to_base)) {
+        is_applicable(tt, {side.rule(), event_type::kDep}, to_sig, to_base)) {
       keep(side.rule());
     }
   }
-  for (auto const side : to) {
+  for (auto const side : to_sig) {
     if (side.ev_type() == event_type::kDep &&
-        is_applicable(tt, {side.rule(), event_type::kArr}, from, from_base)) {
+        is_applicable(tt, {side.rule(), event_type::kArr}, from_sig,
+                      from_base)) {
       keep(side.rule());
     }
   }
