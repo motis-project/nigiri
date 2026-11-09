@@ -127,6 +127,7 @@ private:
   day_idx_t base_;
   raptor_stats stats_;
   clasz_mask_t allowed_claszes_;
+  clasz_mask_t avoided_;  // mode_filter_dim::avoided_mask() at construction
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
   profile_idx_t prf_idx_;
