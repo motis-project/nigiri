@@ -25,7 +25,11 @@ namespace nigiri::routing::gpu {
 //    spinlock. Bag rules as the CPU; round-k inserts never evict round-(k-1)
 //    labels and footpath inserts never evict by-route labels, so the labels a
 //    phase reads are stable while it writes.
-//  * Breadcrumbs: append-only arena (mc_breadcrumb, as the CPU).
+//  * Breadcrumbs: append-only arena (mc_breadcrumb, as the CPU), one start time
+//    at a time.
+//  * Range search keeps the bags across start times (CPU RangeReuse): a new
+//    start time demotes the labels to prune-only (bc = kMcDemoted, the CPU's
+//    dep_ != cur_dep_), as their breadcrumbs are gone.
 //  * Destination pruning: a small pareto frontier over (round, criteria).
 //  * Route scan: one warp per route, a warp prefix scan over the stops'
 //    boardings (sequential on overflow); rt transports one thread each.
@@ -58,15 +62,11 @@ inline constexpr auto kMcArenaPerLocation = 32U;
 inline constexpr auto kMcArenaMin = 8'000'000U;  // 128 MB
 inline constexpr auto kMcArenaMax = 32'000'000U;  // 512 MB
 static_assert(kMcBagCap + kMcBagBlock <= 255U);  // u8 hwm
-static_assert(kMcArenaMax < kMcNoBc);  // 27-bit breadcrumb index
+inline constexpr auto kMcDemoted = kMcNoBc - 1U;  // label of an earlier start
+static_assert(kMcArenaMax < kMcDemoted);  // 27-bit breadcrumb index
 // reconstructed journeys copied back with the count (more cost a 2nd sync)
 inline constexpr auto kMcRecPrefix = std::uint32_t{64U};
 inline constexpr auto kMcDestCap = 64U;  // dest frontier entries
-// rRAPTOR range reuse (CPU RangeReuse): the bags are cleared per start time,
-// so a per-stop frontier of accepted labels (bc-less) rejects candidates of
-// later starts by the bag rules. Cleared per query; overflow only weakens
-// pruning.
-inline constexpr auto kMcReuseCap = 6U;
 inline constexpr auto kMcPrefixK = 4U;  // route-bag entries per lane
 inline constexpr auto kMcRouteBagCap = 64U;  // sequential / rt route bag
 inline constexpr auto kSbOverflow = ~0U;  // stop bag over kMcPrefixK entries
@@ -266,55 +266,6 @@ struct mcraptor_impl {
             .n_ = bag_hwm_[l]};
   }
 
-  // rejected by an earlier start's label? racy reads only weaken pruning
-  __device__ bool reuse_rejected(std::uint64_t const* const rslots,
-                                 std::uint32_t const arr_key,
-                                 std::uint32_t const extras,
-                                 std::uint32_t const round,
-                                 bool const by_route) const {
-    for (auto i = 0U; i != kMcReuseCap; ++i) {
-      if (rejects(rslots[i], arr_key, extras, round, by_route)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // adds an accepted label to the reuse frontier (under the bag lock)
-  __device__ void reuse_upsert(std::uint64_t* const rslots,
-                               std::uint32_t const arr_key,
-                               std::uint32_t const extras,
-                               std::uint32_t const round,
-                               bool const by_route) {
-    auto const entry = mc_pack(arr_key, extras, round, by_route, kMcNoBc);
-    auto free_slot = kMcInvalid;
-    for (auto i = 0U; i != kMcReuseCap; ++i) {
-      if (evicts(rslots[i], arr_key, extras, round, by_route)) {
-        rslots[i] = kMcEmptySlot;
-      }
-      if (rslots[i] == kMcEmptySlot && free_slot == kMcInvalid) {
-        free_slot = i;
-      }
-    }
-    if (free_slot != kMcInvalid) {
-      rslots[free_slot] = entry;
-      return;
-    }
-    // full: evict the latest arrival of round >= the newcomer's (any choice is
-    // correct, this one keeps the broadest rejectors)
-    auto worst = kMcInvalid;
-    for (auto i = 0U; i != kMcReuseCap; ++i) {
-      if (mc_round(rslots[i]) >= round &&
-          (worst == kMcInvalid ||
-           mc_arr_key(rslots[i]) > mc_arr_key(rslots[worst]))) {
-        worst = i;
-      }
-    }
-    if (worst != kMcInvalid && arr_key < mc_arr_key(rslots[worst])) {
-      rslots[worst] = entry;
-    }
-  }
-
   // CPU bag_insert; true iff inserted
   __device__ bool bag_insert(std::uint32_t const l,
                              std::uint32_t const arr_key,
@@ -322,11 +273,6 @@ struct mcraptor_impl {
                              std::uint32_t const round,
                              bool const by_route,
                              mc_breadcrumb const* const bc_entry) {
-    auto* const rslots =
-        reuse_bags_ + static_cast<std::size_t>(l) * kMcReuseCap;
-    if (reuse_rejected(rslots, arr_key, extras, round, by_route)) {
-      return false;
-    }
     // Lock-free reject pre-scan (most candidates are dominated): a stale label
     // was evicted by one that dominates the candidate too.
     {
@@ -381,7 +327,6 @@ struct mcraptor_impl {
       if (free_slot + 1U > hwm) {
         bag_hwm_[l] = static_cast<std::uint8_t>(free_slot + 1U);
       }
-      reuse_upsert(rslots, arr_key, extras, round, by_route);
       return true;
     });
   }
@@ -791,7 +736,7 @@ struct mcraptor_impl {
       auto const ex = kHasExtras ? mc_extras(lab) : 0U;
       // not of the last round, or even the optimistic completion is dominated
       if (lab == kMcEmptySlot || mc_round(lab) != k - 1U ||
-          dest_dominates(k, key + l_lb, ex)) {
+          mc_bc(lab) == kMcDemoted || dest_dominates(k, key + l_lb, ex)) {
         continue;
       }
       if (key != et_key && !(et_key <= key && key <= et_dep_key)) {
@@ -1097,7 +1042,7 @@ struct mcraptor_impl {
       for (auto sl = 0U; sl != labels.size(); ++sl) {
         auto const lab = labels[sl];
         if (lab == kMcEmptySlot || mc_round(lab) != k - 1U ||
-            mc_arr_key(lab) > dep_key) {
+            mc_bc(lab) == kMcDemoted || mc_arr_key(lab) > dep_key) {
           continue;  // not of the last round, or misses this run
         }
         auto const ex = kHasExtras ? mc_extras(lab) : 0U;
@@ -1261,7 +1206,8 @@ struct mcraptor_impl {
         __syncwarp();
       }
       auto const lab = labels[sl];
-      if (lab == kMcEmptySlot || mc_round(lab) != k || !mc_by_route(lab)) {
+      if (lab == kMcEmptySlot || mc_round(lab) != k || !mc_by_route(lab) ||
+          mc_bc(lab) == kMcDemoted) {
         continue;
       }
       // without the transfer buffer
@@ -1338,39 +1284,61 @@ struct mcraptor_impl {
     }
   }
 
-  // clear the touched bags + arena between start times (selective sweep)
-  __device__ void clear_bags() {
-    auto const gid = get_global_thread_id();
-    if (gid == 0U) {
-      *bc_count_ = 0U;
-    }
-    for (auto w = gid; w < touched_.blocks_.size(); w += get_global_stride()) {
+  // f(l) for every touched stop; `clear` resets the touched bits
+  template <typename Fn>
+  __device__ void for_each_touched(bool const clear, Fn&& f) {
+    for (auto w = get_global_thread_id(); w < touched_.blocks_.size();
+         w += get_global_stride()) {
       auto const word = touched_.blocks_[w];
       if (word == 0U) {
         continue;
       }
-      for_each_set_bit(word, [&](unsigned const b) {
-        auto const l = w * 32U + b;
-        auto* const slots = bags_ + static_cast<std::size_t>(l) * kMcBagCap;
-        for (auto s = 0U; s != umin(bag_hwm_[l], kMcBagCap); ++s) {
-          slots[s] = kMcEmptySlot;
-        }
-        // free the chain: blocks back to empty slots, linking to kMcInvalid
-        for (auto blk = bag_ovf_[l]; blk != kMcInvalid;) {
-          auto* const p =
-              bag_pool_ + static_cast<std::size_t>(blk) * kMcBagBlock;
-          for (auto s = 0U; s != kMcBagBlock; ++s) {
-            p[s] = kMcEmptySlot;
-          }
-          auto const next = bag_next_[blk];
-          bag_next_[blk] = kMcInvalid;
-          blk = next;
-        }
-        bag_ovf_[l] = kMcInvalid;
-        bag_hwm_[l] = 0U;
-      });
-      touched_.blocks_[w] = 0U;
+      for_each_set_bit(word, [&](unsigned const b) { f(w * 32U + b); });
+      if (clear) {
+        touched_.blocks_[w] = 0U;
+      }
     }
+  }
+
+  // next start time: the bags stay, their labels only prune; new arena
+  __device__ void demote_bags() {
+    if (get_global_thread_id() == 0U) {
+      *bc_count_ = 0U;
+    }
+    for_each_touched(false, [&](std::uint32_t const l) {
+      auto bag = bag_slots(l);
+      for (auto i = 0U; i != bag.size(); ++i) {
+        auto* const s = bag.slot(i);
+        if (s != nullptr && *s != kMcEmptySlot) {
+          *s = (*s & ~mc_label_t{kMcNoBc}) | kMcDemoted;
+        }
+      }
+    });
+  }
+
+  // new query / interval: empty the touched bags, free their blocks
+  __device__ void clear_bags() {
+    if (get_global_thread_id() == 0U) {
+      *bc_count_ = 0U;
+    }
+    for_each_touched(true, [&](std::uint32_t const l) {
+      auto* const slots = bags_ + static_cast<std::size_t>(l) * kMcBagCap;
+      for (auto s = 0U; s != umin(bag_hwm_[l], kMcBagCap); ++s) {
+        slots[s] = kMcEmptySlot;
+      }
+      // free the chain: blocks back to empty slots, linking to kMcInvalid
+      for (auto blk = bag_ovf_[l]; blk != kMcInvalid;) {
+        auto* const p = bag_pool_ + static_cast<std::size_t>(blk) * kMcBagBlock;
+        for (auto s = 0U; s != kMcBagBlock; ++s) {
+          p[s] = kMcEmptySlot;
+        }
+        auto const next = bag_next_[blk];
+        bag_next_[blk] = kMcInvalid;
+        blk = next;
+      }
+      bag_ovf_[l] = kMcInvalid;
+      bag_hwm_[l] = 0U;
+    });
   }
 
   // ---- reconstruction (breadcrumb chase, cf. CPU materialize) --------------
@@ -1659,7 +1627,6 @@ struct mcraptor_impl {
   std::uint32_t bag_pool_cap_;
   std::uint8_t* bag_hwm_;  // per bag used-slot bound (under the bag lock)
   std::uint32_t* bag_locks_;  // n_locations spinlocks
-  std::uint64_t* reuse_bags_;  // n_locations x kMcReuseCap, per query
   mc_label_t* dest_bag_;  // kMcDestCap
   std::uint32_t* dest_lock_;
   // per round: min key / min key + extras of the dest frontier (racy reads

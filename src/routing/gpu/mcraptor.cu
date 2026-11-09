@@ -70,11 +70,6 @@ struct gpu_mcraptor_state::impl {
     fill_bytes(bag_ovf_, 0xFF, stream_);
     bag_pool_count_.resize(1U);
     fill_bytes(bag_pool_count_, 0, stream_);
-    for (auto d = 0U; d != 2U; ++d) {
-      reuse_bags_[d].resize(static_cast<std::size_t>(n_locations) *
-                            kMcReuseCap);
-      fill_bytes(reuse_bags_[d], 0xFF, stream_);
-    }
     bag_locks_.resize(n_locations);
     fill_bytes(bag_locks_, 0, stream_);
     bag_hwm_.resize(n_locations);
@@ -185,7 +180,6 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> bag_ovf_;
   thrust::device_vector<std::uint32_t> bag_pool_count_;
   std::uint32_t bag_pool_cap_;
-  thrust::device_vector<std::uint64_t> reuse_bags_[2];
   thrust::device_vector<std::uint32_t> bag_locks_;
   thrust::device_vector<std::uint8_t> bag_hwm_;
   thrust::device_vector<mc_label_t> dest_bag_[2];
@@ -361,6 +355,11 @@ __global__ void mc_clear_bags_kernel(mcraptor_impl<SearchDir, Crit> r) {
   r.clear_bags();
 }
 
+template <direction SearchDir, mc_crit Crit>
+__global__ void mc_demote_bags_kernel(mcraptor_impl<SearchDir, Crit> r) {
+  r.demote_bags();
+}
+
 // one thread per destination bag slot; the journeys are packed at the front
 template <direction SearchDir, mc_crit Crit>
 __global__ void mc_reconstruct_kernel(location_idx_t const* const dest_list,
@@ -374,8 +373,8 @@ __global__ void mc_reconstruct_kernel(location_idx_t const* const dest_list,
   }
   auto const dest = dest_list[tid / kMcMaxBagSlots];
   auto const lab = r.bag_slots(to_idx(dest))[tid % kMcMaxBagSlots];
-  if (lab == kMcEmptySlot || mc_round(lab) == 0U) {
-    return;  // empty, or a round-0 seed at the destination (no legs)
+  if (lab == kMcEmptySlot || mc_round(lab) == 0U || mc_bc(lab) == kMcDemoted) {
+    return;  // empty, a round-0 seed (no legs) or an earlier start's label
   }
   r.reconstruct_label(dest, lab, &out[atomicAdd(out_count, 1U)]);
 }
@@ -455,17 +454,6 @@ gpu_mcraptor<SearchDir, Crit>::gpu_mcraptor(
 }
 
 template <direction SearchDir, mc_crit Crit>
-void gpu_mcraptor<SearchDir, Crit>::reset_arrivals() {
-  auto& s = *state_.impl_;
-  worst_at_dest_ = kInvalidDelta<SearchDir>;
-  fill_bytes(s.dest_bag_[kDirIdx], 0xFF, s.stream_);
-  fill_bytes(s.reuse_bags_[kDirIdx], 0xFF, s.stream_);
-  fill_bytes(s.dest_best_key_[kDirIdx], 0xFF, s.stream_);
-  fill_bytes(s.dest_best_total_[kDirIdx], 0xFF, s.stream_);
-  fill_bytes(s.overflow_, 0, s.stream_);
-}
-
-template <direction SearchDir, mc_crit Crit>
 mcraptor_impl<SearchDir, Crit> make_impl(
     gpu_mcraptor_state::impl& s,
     unsigned const dir_idx,
@@ -507,7 +495,6 @@ mcraptor_impl<SearchDir, Crit> make_impl(
       .bag_pool_cap_ = s.bag_pool_cap_,
       .bag_hwm_ = ptr(s.bag_hwm_),
       .bag_locks_ = ptr(s.bag_locks_),
-      .reuse_bags_ = ptr(s.reuse_bags_[dir_idx]),
       .dest_bag_ = ptr(s.dest_bag_[dir_idx]),
       .dest_lock_ = ptr(s.dest_lock_[dir_idx]),
       .dest_best_key_ = ptr(s.dest_best_key_[dir_idx]),
@@ -531,14 +518,28 @@ mcraptor_impl<SearchDir, Crit> make_impl(
 }
 
 template <direction SearchDir, mc_crit Crit>
+void gpu_mcraptor<SearchDir, Crit>::reset_arrivals() {
+  auto& s = *state_.impl_;
+  worst_at_dest_ = kInvalidDelta<SearchDir>;
+  fill_bytes(s.dest_bag_[kDirIdx], 0xFF, s.stream_);
+  fill_bytes(s.dest_best_key_[kDirIdx], 0xFF, s.stream_);
+  fill_bytes(s.dest_best_total_[kDirIdx], 0xFF, s.stream_);
+  fill_bytes(s.overflow_, 0, s.stream_);
+  mc_launch(mc_clear_bags_kernel<SearchDir, Crit>, s.stream_,
+            make_impl<SearchDir, Crit>(s, kDirIdx, transfer_time_settings_,
+                                       allowed_claszes_, avoided_, 0U, base_,
+                                       worst_at_dest_, {}));
+  fill_bytes(s.bag_pool_count_, 0, s.stream_);
+}
+
+template <direction SearchDir, mc_crit Crit>
 void gpu_mcraptor<SearchDir, Crit>::next_start_time() {
   starts_.clear();
   auto& s = *state_.impl_;
-  auto const r = make_impl<SearchDir, Crit>(s, kDirIdx, transfer_time_settings_,
-                                            allowed_claszes_, avoided_, 0U,
-                                            base_, worst_at_dest_, {});
-  mc_launch(mc_clear_bags_kernel<SearchDir, Crit>, s.stream_, r);
-  fill_bytes(s.bag_pool_count_, 0, s.stream_);
+  mc_launch(mc_demote_bags_kernel<SearchDir, Crit>, s.stream_,
+            make_impl<SearchDir, Crit>(s, kDirIdx, transfer_time_settings_,
+                                       allowed_claszes_, avoided_, 0U, base_,
+                                       worst_at_dest_, {}));
   fill_bytes(s.station_mark_, 0, s.stream_);
   fill_bytes(s.prev_station_mark_, 0, s.stream_);
   fill_bytes(s.route_mark_, 0, s.stream_);
