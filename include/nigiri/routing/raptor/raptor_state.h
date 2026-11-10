@@ -99,6 +99,8 @@ struct raptor_state {
             n_locations_};
   }
 
+  bool skip_optimize_footpaths_{false};
+
   unsigned n_locations_{};
   std::vector<delta_t> tmp_storage_;
   std::vector<delta_t> best_storage_;
