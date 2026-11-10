@@ -3,13 +3,16 @@
 #include <compare>
 #include <cstdint>
 #include <algorithm>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <tuple>
 
 #include "cista/reflection/comparable.h"
 
+#include "nigiri/common/interval.h"
 #include "nigiri/footpath.h"
+#include "nigiri/routing/limits.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -124,5 +127,31 @@ struct transfer_rules {
   vector<pair<location_idx_t, location_idx_t>> to_stops_, from_stops_;
   bitvec_map<location_idx_t> is_rule_location_;
 };
+
+using window_t = interval<duration_t>;
+
+constexpr auto const kNever = duration_t{routing::kMaxTravelTime};
+
+inline void narrow(window_t& w,
+                   duration_t const gap,
+                   duration_t const expected) {
+  if (gap >= expected) {
+    w.to_ = std::min(w.to_, gap + duration_t{1});
+  } else {
+    w.from_ = std::max(w.from_, gap + duration_t{1});
+  }
+}
+
+inline std::optional<duration_t> pick_duration(window_t const& w,
+                                               duration_t const fallback) {
+  if (w.contains(fallback)) {
+    return fallback;
+  }
+  if (w.contains(kNever)) {
+    return kNever;
+  }
+  return w.from_ < std::min(w.to_, footpath::kBan) ? std::optional{w.from_}
+                                                   : std::nullopt;
+}
 
 }  // namespace nigiri

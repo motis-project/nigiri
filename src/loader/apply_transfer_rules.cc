@@ -237,8 +237,10 @@ void write_rule_locations(timetable& tt) {
   };
   for (auto const& r : tr.rules_) {
     for (auto const l : {r.from_stop_, r.to_stop_}) {
-      tr.max_rule_duration_[l] =
-          std::max(tr.max_rule_duration_[l], r.duration_);
+      if (!r.is_forbidden()) {
+        tr.max_rule_duration_[l] =
+            std::max(tr.max_rule_duration_[l], r.duration_);
+      }
       for_each_covered(l, [&](location_idx_t const c) {
         tr.is_rule_location_.set(c);
         tt.locations_.for_each_virt(

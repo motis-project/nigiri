@@ -274,6 +274,20 @@ INSTANTIATE_TEST_SUITE_P(
               [] { return at("11:06"); }}),
     case_name<delay>);
 
+// F -> QL and P -> QL are forbidden, QL leaves S2 4.5 h after F arrives. No
+// trip from A gets to D2. F moved to S3 has to keep the ban.
+TEST(gtfsrt_transfer_rules, track_change_keeps_ban_to_late_partner) {
+  auto const tt = load_network(
+      "S,S,3,,,,F,QL\nS,S,3,,,,P,QL",
+      {.stops_ = {{"D2", 50.0, 8.5}},
+       .trips_ = {{"QL", "RQL", {{"S2", "15:00"}, {"D2", "15:30"}}}}});
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  EXPECT_EQ(std::nullopt, arrival(tt, &rtt, std::pair{"A", "D2"}));
+  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}}});
+  EXPECT_EQ("S3", stop_id_at(tt, rtt, "F", 1U));
+  EXPECT_EQ(std::nullopt, arrival(tt, &rtt, std::pair{"A", "D2"}));
+}
+
 // F -> G is guaranteed (type 1, 0 min), the walk S1 -> S2 takes 5 min.
 // Scheduled, F -> G has 10 min, fine both ways, so the import leaves the
 // footpath at the walk. F 7 min late: 3 min is enough by the guarantee but not
@@ -716,6 +730,21 @@ TEST(gtfsrt_transfer_rules, track_change_twice) {
   EXPECT_EQ(g_from_f(), arrival(tt, &rtt, kAtoB));
 }
 
+// A same-stop rule of the moved trip: F -> any trip at S3 takes 15 min, S3
+// itself 2 min. Y leaves S3 5 min after F arrives. Scheduled, F walks over
+// from S1 and gets Y. Moved to S3, F misses Y and takes HL - only if F does not
+// stand on S3 itself.
+TEST(gtfsrt_transfer_rules, track_change_makes_same_stop_rule_binding) {
+  auto const tt = load_network(
+      "S3,S3,2,120,,,,\nS3,S3,2,900,,,F,",
+      {.trips_ = {{"Y", "RY", {{"S3", "10:35"}, {"C", "11:10"}}}}});
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  EXPECT_EQ(at("11:10"), arrival(tt, &rtt, kAtoC));
+  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}}});
+  EXPECT_EQ("S3", stop_id_at(tt, rtt, "F", 1U));
+  EXPECT_EQ(at("11:30"), arrival(tt, &rtt, kAtoC));
+}
+
 // Backward search uses the rule of the new platform too: arriving at B by
 // 11:05 needs G, which F cannot reach from S3. The same holds for a departure
 // interval instead of one departure time (range search), in both directions.
@@ -978,6 +1007,29 @@ TEST(gtfsrt_transfer_rules,
       {{"ST1",
         {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3", .arr_delay_ = 6}}}});
   EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, std::pair{"A2", "B"}));
+}
+
+// The handover stop has a rule on both sides: getting off is ST1's rule (ST1 ->
+// G: 5 min), getting on is ST2's (F -> ST2: 15 min). Moved to S3 and 6 min late
+// (10:36), the one location of the stop has to keep both: ST1 misses G (4 min)
+// and takes GL, F misses ST2 (6 min, C 11:06) and takes HL (C 11:30).
+TEST(gtfsrt_transfer_rules, track_change_at_handover_stop_keeps_both_rules) {
+  auto const tt = load_network(
+      "S1,S1,4,,,,ST1,ST2\nS,S,2,120,,,,\nS,S,2,300,,,ST1,G\n"
+      "S,S,2,900,,,F,ST2",
+      kRows);
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  EXPECT_EQ(g_from_f(), arrival(tt, &rtt, std::pair{"A2", "B"}));
+  EXPECT_EQ(at("11:30"), arrival(tt, &rtt, kAtoC));
+  update(
+      tt, rtt,
+      {{"ST1",
+        {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3", .arr_delay_ = 6}}},
+       {"ST2",
+        {{.seq_ = 1U, .stop_id_ = "S1", .assigned_ = "S3", .dep_delay_ = 6}}}});
+  EXPECT_EQ("S3", stop_id_at(tt, rtt, "ST2", 0U));
+  EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, std::pair{"A2", "B"}));
+  EXPECT_EQ(at("11:30"), arrival(tt, &rtt, kAtoC));
 }
 
 // ===========================================================================

@@ -53,11 +53,7 @@ struct route_stop {
 };
 
 inline void narrow(window_t& w, transfer const& t) {
-  if (t.gap_ >= t.expected_) {
-    w.to_ = std::min(w.to_, t.gap_ + duration_t{1});
-  } else {
-    w.from_ = std::max(w.from_, t.gap_ + duration_t{1});
-  }
+  narrow(w, t.gap_, t.expected_);
 }
 
 inline route_stop to_signature_stop(location_idx_t const l,
