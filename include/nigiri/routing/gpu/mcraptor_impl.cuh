@@ -1284,12 +1284,15 @@ struct mcraptor_impl {
                                                                  : kMcInvalid;
   }
 
-  __device__ __forceinline__ bool has_td_fps(location_idx_t const l) const {
+  // td footpaths replace the static ones of their source (as raptor_impl).
+  // out: l is such a source, !out: l is the target of td footpaths
+  __device__ __forceinline__ bool has_td_fps(location_idx_t const l,
+                                             bool const out) const {
     if (rtt_.td_ == nullptr) {
       return false;
     }
     auto const& bv =
-        kFwd ? rtt_.td_->has_out_[prf_idx_] : rtt_.td_->has_in_[prf_idx_];
+        out ? rtt_.td_->has_out_[prf_idx_] : rtt_.td_->has_in_[prf_idx_];
     return !bv.blocks_.empty() && bv[to_idx(l)];
   }
 
@@ -1306,9 +1309,12 @@ struct mcraptor_impl {
                              unsigned const first,
                              unsigned const step) {
     auto const l = location_idx_t{i};
-    auto const use_td_fps = has_td_fps(l);  // replace the static ones
+    // forward: all of l's static footpaths replaced, backward: those from
+    // sources with td footpaths (skipped below)
+    auto const use_td_fps = has_td_fps(l, kFwd);
     auto const fps = static_fps(l);
-    auto const n_fps = use_td_fps ? 0U : static_cast<unsigned>(fps.size());
+    auto const n_fps =
+        kFwd && use_td_fps ? 0U : static_cast<unsigned>(fps.size());
     auto const egress_ok =
         is_intermodal_dest() && dist_to_end_[i] != kUnreachable;
     auto const td_grp = is_intermodal_dest() ? td_dest_group_of(l) : kMcInvalid;
@@ -1366,6 +1372,9 @@ struct mcraptor_impl {
         }
       }
       for (auto f = first; f < n_fps; f += step) {
+        if (!kFwd && use_td_fps && has_td_fps(fps[f].target(), true)) {
+          continue;
+        }
         auto const dur = adjusted_transfer_time(transfer_time_settings_,
                                                 fps[f].duration().count());
         relax_fp(k, i, to_idx(fps[f].target()), dur,
@@ -1394,7 +1403,7 @@ struct mcraptor_impl {
       }
       auto const i = w * kWarpSize + lane;
       auto const mine = ((bits >> lane) & 1U) != 0U && bag_n_slots_[i] != 0U;
-      auto const hub = mine && !has_td_fps(location_idx_t{i}) &&
+      auto const hub = mine && !has_td_fps(location_idx_t{i}, kFwd) &&
                        static_fps(location_idx_t{i}).size() > kWarpFpThreshold;
       if (mine && !hub) {
         relax_stop(k, i, 0U, 1U);

@@ -245,6 +245,16 @@ TEST(routing, td_footpath) {
       td_footpath{D, unixtime_t{0min}, footpath::kMaxDuration});
 
   EXPECT_EQ(kEverythingWorks, to_string(tt, run_search()));
+  {  // also backward: B2 has td footpaths in, B1 -> B2 stays static
+    auto q = make_query();
+    q.flip_dir();
+    q.start_time_ = unixtime_t{sys_days{2024_y / June / 19}} + 10h + 10min;
+    auto const bwd =
+        raptor_search(tt, &rtt, std::move(q), direction::kBackward);
+    ASSERT_EQ(1U, bwd.size());
+    EXPECT_EQ(unixtime_t{sys_days{2024_y / June / 19}} + 7h + 44min,
+              begin(bwd)->departure_time());
+  }
 
   // Switch to real-time footpaths but don't add any footpaths.
   // Represents "elevator broken forever".
