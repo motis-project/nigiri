@@ -208,7 +208,6 @@ struct gpu_rt_timetable::impl {
         "transport idx space too small: {} static + {} rt",
         tt.transport_route_.size(), n_rt_transports_);
 
-    // Copy filters.
     auto f = device_transport_filters<rt_transport_idx_t>{
         .bike_ = {{to_view(rt_transport_bikes_allowed_)},
                   to_view(rt_bike_sections_)},
@@ -222,7 +221,6 @@ struct gpu_rt_timetable::impl {
     rt_filters_ctx_.resize(1);
     thrust::copy_n(&f, 1, rt_filters_ctx_.begin());
 
-    // Copy td-footpaths.
     for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
       // for the host-side kernel dispatch
       has_td_fps_[p] = rtt.has_td_footpaths_out_[p].any() ||

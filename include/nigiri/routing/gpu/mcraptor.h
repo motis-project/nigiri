@@ -111,7 +111,6 @@ struct gpu_mcraptor {
                unixtime_t worst_time_at_dest,
                pareto_set<journey>& results);
 
-  // adds offset legs and the start footpath to the device's core legs
   void reconstruct(query const&, journey&);
 
 private:

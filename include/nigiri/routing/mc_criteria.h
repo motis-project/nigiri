@@ -66,8 +66,7 @@ CISTA_CUDA_COMPAT constexpr bool switches_dominate(std::uint32_t const a_group,
   return a_sw + penalty <= b_sw;
 }
 
-// ---- packed form (the GPU label's 16 bit extras slot)
-// -------------------------
+// ---- packed form (the GPU label's 16 bit extras slot) ---------------------
 //   bit  0      mode_filter: uses an avoided vehicle class
 //   bits 1..7   non_transit units
 //   bits 8..10  mode group of the last trip

@@ -35,9 +35,8 @@ namespace nigiri::routing {
 // No via stops, no bike/car/reservation filters; rt and td offsets work.
 bool mcraptor_supported(query const&, rt_timetable const*);
 
-// Minutes walked to a seed reached `elapsed` minutes after the query start
-// (CPU + GPU): a time-dependent start offset may also wait, before the walk or
-// for the trip after it, and waiting is not walking.
+// Minutes walked to a seed reached `elapsed` minutes after the query start: a
+// td start offset may also wait, which is not walking.
 template <direction SearchDir>
 std::uint16_t seed_walk(td_offsets_t const* td_start,
                         location_idx_t const l,
@@ -59,10 +58,9 @@ constexpr bool arr_no_worse(delta_t const a, delta_t const b) {
   return SearchDir == direction::kForward ? a <= b : a >= b;
 }
 
-// Composable pareto dimensions besides the arrival; each writes its own journey
-// slot, so they combine freely (see arr_with):
-//   dominates, completed_dominates (at the destination: nothing follows)
-//   at_start(ingress), from_ride(clasz, prev), with_walk(duration), apply_to
+// Pareto dimensions besides the arrival, combined by arr_with. Each provides
+// dominates, completed_dominates (at the destination: nothing follows),
+// at_start, from_ride, with_walk and apply_to (its own journey field).
 
 // Walking (offsets, footpaths; not the same-stop transfer buffer) in units of
 // kNonTransitBin minutes, see non_transit_add().
@@ -94,8 +92,8 @@ struct non_transit_dim {
 // "Uses an avoided vehicle class" as a pareto dimension, not a filter: keeps
 // both the fastest itinerary and the best one without that class.
 struct mode_filter_dim {
-  // Avoided classes (default AIR), per query, hence thread_local (a search runs
-  // on one thread). Set before every search; never reset.
+  // Avoided classes (default AIR), set per query; thread_local, as a search
+  // runs on one thread.
   static clasz_mask_t& avoided_mask() {
     thread_local clasz_mask_t mask = to_mask(clasz::kAir);
     return mask;
@@ -147,8 +145,7 @@ struct mode_switches_dim {
   std::uint8_t switches_{0U};
 };
 
-// The pareto label: arrival plus any set of dimensions, strict over all of
-// them.
+// The label: arrival plus any set of dimensions.
 template <typename... Dims>
 struct arr_with {
   using carried = std::tuple<Dims...>;  // what survives a boarding
@@ -387,7 +384,6 @@ struct basic_mcraptor {
                unixtime_t worst_time_at_dest,
                pareto_set<journey>& results);
 
-  // adds offset legs and the start footpath to execute()'s core legs
   void reconstruct(query const&, journey&);
 
 private:

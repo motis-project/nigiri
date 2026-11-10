@@ -190,7 +190,7 @@ std::uint64_t compare_results(
       // Engines running the same algorithm have to find the same set.
       misses += std::max(r_size, c_size) - n;
     } else {
-      // Count under-deliverying results:
+      // Count under-delivering results:
       // >= min_connection_count reached by one but not the other
       auto const raw_r = ref[i].size();
       auto const raw_c = cmp[i].size();

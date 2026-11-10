@@ -17,25 +17,18 @@
 
 namespace nigiri::routing::gpu {
 
-// ============================================================================
-// GPU McRAPTOR, structured as the CPU reference (raptor/mcraptor.cc) on
-// fixed-capacity, lock-free structures:
+// GPU McRAPTOR, structured as the CPU one (raptor/mcraptor.cc):
 //  * A label is one u64
 //    [arr_key:16 | extras:16 | round:4 | by_route:1 | breadcrumb:27]
 //    (arr_key direction-biased: smaller is better), inserted under a per-stop
-//    spinlock. Bag rules as the CPU; round-k inserts never evict round-(k-1)
-//    labels and footpath inserts never evict by-route labels, so the labels a
-//    phase reads are stable while it writes.
-//  * Breadcrumbs: append-only arena (mc_breadcrumb, as the CPU), one start time
-//    at a time.
-//  * Range search keeps the bags across start times (CPU RangeReuse): a new
-//    start time demotes the labels to prune-only (breadcrumb = kMcDemoted, the
-//    CPU's dep_ != cur_dep_), as their breadcrumbs are gone.
-//  * Destination pruning: a small pareto frontier over (round, criteria).
-//  * Route scan: one warp per route, a warp prefix scan over the stops'
-//    boardings (sequential on overflow); rt transports one thread each.
-// Capacity overflows set a canary the host checks after every query.
-// ============================================================================
+//    lock. Round-k inserts never evict round-(k-1) labels and footpath inserts
+//    never evict by-route labels, so what a phase reads is stable while it
+//    writes.
+//  * Range search keeps the bags across start times: a new start time demotes
+//    the labels to prune-only (breadcrumb = kMcDemoted) and resets the arena.
+//  * Route scan: a warp per route / rt run, a prefix scan over the stops'
+//    boardings (sequential on overflow).
+// A capacity overflow sets a canary the host checks after every query.
 
 #define kFwd (SearchDir == direction::kForward)
 #define kUnreachable (std::numeric_limits<std::uint16_t>::max())
@@ -46,10 +39,8 @@ using mc_label_t = std::uint64_t;
 
 inline constexpr auto kMcEmptySlot = ~mc_label_t{0};
 inline constexpr auto kMcNoBreadcrumb = std::uint32_t{(1U << 27U) - 1U};
-// Capacities: all preallocated per state; exceeding one trips its canary and
-// fails the query (nothing is silently dropped).
-// Inline slots per stop; bags outgrowing them chain blocks from a global pool
-// (bag_chain_head_ = head, bag_chain_next_ = links).
+// Capacities, preallocated: exceeding one fails the query (canary).
+// Inline slots per stop; larger bags chain blocks from a global pool.
 inline constexpr auto kMcBagCap = 8U;
 inline constexpr auto kMcBagBlock = 16U;  // slots per chained block
 // pool blocks (132 B each): n_locations / 2, clamped
@@ -57,8 +48,8 @@ inline constexpr auto kMcBagPoolMin = 1U << 20U;  // ~138 MB
 inline constexpr auto kMcBagPoolMax = 1U << 22U;  // ~553 MB
 // u8 bag_n_slots_: inline 8 + 15 blocks; more trips the bag canary
 inline constexpr auto kMcMaxBagSlots = 248U;
-// breadcrumbs of one start time (16 B each): per location, clamped (DE all
-// criteria needs up to ~21 per location)
+// breadcrumbs per start time (16 B each): per location, clamped (DE all
+// criteria needs up to ~21)
 inline constexpr auto kMcArenaPerLocation = 32U;
 inline constexpr auto kMcArenaMin = 8'000'000U;  // 128 MB
 inline constexpr auto kMcArenaMax = 32'000'000U;  // 512 MB
@@ -66,10 +57,10 @@ static_assert(kMcBagCap + kMcBagBlock <= 255U);  // u8 bag_n_slots_
 // breadcrumb of a label from an earlier start time (prune-only)
 inline constexpr auto kMcDemoted = kMcNoBreadcrumb - 1U;
 static_assert(kMcArenaMax < kMcDemoted);  // 27-bit breadcrumb index
-// reconstructed journeys copied back with the count (more cost a 2nd sync)
+// journeys copied back with the count (more need a second sync)
 inline constexpr auto kMcRecPrefix = std::uint32_t{64U};
-// a destination label's breadcrumbs, from the label back to the start (the
-// host builds the legs with mc_add_legs, as the CPU)
+// a destination label's breadcrumbs (label -> start); the host builds the
+// legs with mc_add_legs
 inline constexpr auto kMcMaxRides = kMaxTransfers + 1U;
 struct gpu_mc_journey {
   reconstruction_result state_;
@@ -85,18 +76,17 @@ inline constexpr auto kMcPrefixK = 4U;  // route-bag entries per lane
 inline constexpr auto kMcRouteBagCap = 64U;  // sequential / rt route bag
 inline constexpr auto kStopBagOverflow =
     ~0U;  // stop bag over kMcPrefixK entries
-// invalid: no pool block (bag_chain_head_ / bag_chain_next_ links, filled with
-// 0xFF bytes), slot, td egress group or lookup
+// none: no pool block (0xFF-filled links), slot, td egress group or lookup
 inline constexpr auto kMcInvalid = ~0U;
 
-// a round-0 label: seeded stop time, minutes walked to the stop
+// a round-0 label: arrival at the seeded stop, minutes walked to it
 struct mc_seed {
   location_idx_t l_;
   delta_t arr_;
   std::uint16_t walk_;
 };
 
-// device canary bits (checked by the host after each query)
+// canary bits
 inline constexpr auto kMcOverflowBag = 1U;
 inline constexpr auto kMcOverflowArena = 2U;
 inline constexpr auto kMcOverflowRouteBag = 4U;
@@ -131,7 +121,6 @@ CISTA_CUDA_COMPAT inline std::uint32_t mc_breadcrumb_idx(mc_label_t const x) {
 
 template <direction SearchDir, mc_crit Crit>
 struct mcraptor_impl {
-  // Which criteria of the 16 bit extras slot (mc_extras) are live.
   static constexpr bool kHasNonTransit = has(Crit, mc_crit::non_transit);
   static constexpr bool kHasModeFilter = has(Crit, mc_crit::mode_filter);
   static constexpr bool kHasModeSwitches = has(Crit, mc_crit::mode_switches);
@@ -152,15 +141,13 @@ struct mcraptor_impl {
     return (kFwd ? 1 : -1) * a;
   }
 
-  // ---- criteria (extras slot), as the CPU dimensions --------------------
-  // a round-0 seed: `ingress` minutes walked to the seeded stop
+  // ---- criteria (mc_extras), as the CPU dimensions ------------------------
   __device__ __forceinline__ static std::uint32_t crit_at_start(
       std::uint32_t const ingress) {
     return kHasNonTransit ? mc_extras::pack(0U, non_transit_add(0U, ingress),
                                             kNoModeGroup, 0U)
                           : 0U;
   }
-  // after a footpath / mumo offset of `dur` minutes
   __device__ __forceinline__ static std::uint32_t crit_after_walk(
       std::uint32_t const crit, std::uint32_t const dur) {
     if constexpr (kHasNonTransit) {
@@ -171,7 +158,6 @@ struct mcraptor_impl {
       return crit;
     }
   }
-  // after riding a trip of class cl
   __device__ __forceinline__ std::uint32_t crit_after_ride(
       std::uint32_t const carried, clasz const cl) const {
     auto mf = mc_extras::mode_filter(carried);
@@ -194,7 +180,6 @@ struct mcraptor_impl {
     return mc_extras::dominates(a, b);
   }
 
-  // pareto over (arr, crit)
   __device__ __forceinline__ static bool dominates(
       std::uint32_t const a_key,
       std::uint32_t const a_extras,
@@ -236,11 +221,9 @@ struct mcraptor_impl {
 
   // ---- bags ----------------------------------------------------------------
 
-  // Cursor over a bag's slots: inline, then the block chain (forward reads hop
-  // one block, backward jumps restart at the head). Lock-free reads are safe:
-  // a read returns the value at kernel start or a later one, and a free block
-  // always links to kMcInvalid (clear_bags), so the cursor never leaves the
-  // chain. Slots not reachable yet read as empty.
+  // Cursor over a bag's slots: inline, then the block chain. Lock-free reads
+  // are safe: a free block links to kMcInvalid, so the cursor never leaves the
+  // chain, and slots not reachable yet read as empty.
   struct bag_cursor {
     // nullptr: not reachable (yet)
     __device__ mc_label_t* slot(std::uint32_t const i) {
@@ -282,7 +265,7 @@ struct mcraptor_impl {
             .n_slots_ = bag_n_slots_[l]};
   }
 
-  // CPU bag_insert; true iff inserted
+  // true iff inserted
   __device__ bool bag_insert(std::uint32_t const l,
                              std::uint32_t const arr_key,
                              std::uint32_t const extras,
@@ -351,10 +334,8 @@ struct mcraptor_impl {
     });
   }
 
-  // f() under a spin lock; the fences make the previous holder's plain stores
-  // visible (acquire) and publish f's (release). The holder runs f inside the
-  // loop: without independent thread scheduling (pre-Volta), lanes spinning
-  // after the loop would starve a holder of their own warp.
+  // f() under a spin lock, fenced (acquire / release). f runs inside the loop:
+  // pre-Volta, lanes spinning after it would starve a holder of their warp.
   template <typename Fn>
   __device__ static bool locked(std::uint32_t* const lock, Fn&& f) {
     while (true) {
@@ -449,7 +430,6 @@ struct mcraptor_impl {
 
   // ---- rounds (CPU execute) ------------------------------------------------
 
-  // round-0 labels
   __device__ void init_arrivals() {
     auto const gid = get_global_thread_id();
     if (gid == 0U) {
@@ -466,8 +446,8 @@ struct mcraptor_impl {
     }
   }
 
-  // The routes / rt transports of the stops improved last round (as
-  // raptor_impl): a warp per mark word, long lists by the whole warp.
+  // the routes / rt transports at last round's improved stops: a warp per
+  // mark word, long lists by the whole warp
   template <typename Lists>
   __device__ void mark_from_locations(Lists const& lists,
                                       device_bitvec<std::uint32_t>& marks) {
@@ -545,8 +525,7 @@ struct mcraptor_impl {
     return !dist_to_end_.empty();
   }
 
-  // CPU alight: rides into l_idx at by_transport with the carried extras of
-  // class cl; true iff the arrival (plus transfer buffer) was inserted.
+  // true iff the arrival (plus transfer buffer) was inserted
   __device__ bool alight(unsigned const k,
                          std::uint32_t const l_idx,
                          delta_t const by_transport,
@@ -681,7 +660,6 @@ struct mcraptor_impl {
       ++size_;
     }
 
-    // every field through the warp shuffle f
     __device__ __forceinline__ route_bag shuffled(auto&& f) const {
       auto r = route_bag{};
       for (auto i = 0U; i != K; ++i) {
@@ -736,7 +714,6 @@ struct mcraptor_impl {
     return kFwd ? p - 1U : n - 1U - p;
   }
 
-  // CPU update_route's boarding conditions at stop_idx
   template <bool IsWheelchair>
   __device__ bool boardable(route_idx_t const r,
                             unsigned const n,
@@ -751,8 +728,8 @@ struct mcraptor_impl {
            lb_[l] != kUnreachable && bag_n_slots_[l] != 0U;
   }
 
-  // CPU board_from at a boardable stop: the earliest trip of every
-  // round-(k-1) label into the bag; false on overflow
+  // the earliest trip of every round-(k-1) label into the bag; false on
+  // overflow
   template <unsigned K>
   __device__ bool board(unsigned const k,
                         route_idx_t const r,
@@ -793,7 +770,6 @@ struct mcraptor_impl {
     return true;
   }
 
-  // CPU alight loop at scan position p
   template <bool IsWheelchair, unsigned K>
   __device__ bool alight_all(unsigned const k,
                              route_idx_t const r,
@@ -827,8 +803,8 @@ struct mcraptor_impl {
     return any;
   }
 
-  // et phase 1 (as raptor_impl): compact the marked routes into route_list_,
-  // resetting any_marked_ for the scans (nothing reads it in this kernel)
+  // et phase 1: the marked routes into route_list_ (and any_marked_ reset for
+  // the scans)
   __device__ void et_build_route_list() {
     auto const gid = get_global_thread_id();
     if (gid == 0U) {
@@ -847,9 +823,8 @@ struct mcraptor_impl {
     }
   }
 
-  // et phase 2 (as raptor_impl): the boardable stops of the marked routes
-  // into et_task_list_ (warp-aggregated compaction), the other stop bags
-  // emptied
+  // et phase 2: the boardable stops of the marked routes into et_task_list_,
+  // the other stop bags emptied
   template <bool IsWheelchair>
   __device__ void et_collect_tasks() {
     auto const lane = get_global_thread_id() % kWarpSize;
@@ -907,14 +882,12 @@ struct mcraptor_impl {
     }
   }
 
-  // The route bag before position p is an associative pareto prefix over the
-  // stops' boardings: a Kogge-Stone shuffle scan gives every lane its state.
-  // board_at(p, bag) adds position p's boardings (false: more than K),
-  // alight_at(p, bag) alights there, killed_at(p) forbids riding into p (a
-  // section filter: nothing boarded before p reaches p or beyond). False on a
-  // K overflow (the caller rescans: inserts are idempotent, so `marked`
-  // already counts those of the earlier chunks). The scan is collective: the
-  // branches and the return are warp-uniform (__any_sync).
+  // The route bag before position p is a pareto prefix over the stops'
+  // boardings: a Kogge-Stone shuffle scan gives every lane its state.
+  // board_at(p, bag) adds p's boardings (false: more than K), alight_at(p, bag)
+  // alights there, killed_at(p) forbids riding into p (section filter). False
+  // on a K overflow; the caller rescans (inserts are idempotent). Branches and
+  // the return are warp-uniform.
   template <unsigned K>
   __device__ bool scan_prefix(unsigned const n,
                               unsigned const lane,
@@ -976,8 +949,8 @@ struct mcraptor_impl {
     return true;
   }
 
-  // the CPU update_route loop, for routes overflowing the prefix scan: the
-  // stop bags, looked up again only at stops that overflowed their own
+  // fallback for routes overflowing the prefix scan; looks up again only at
+  // stops that overflowed their stop bag
   template <bool IsWheelchair>
   __device__ bool scan_sequential(unsigned const k,
                                   route_idx_t const r,
@@ -1012,7 +985,7 @@ struct mcraptor_impl {
     return any;
   }
 
-  // one warp per marked route (CPU loop_routes, as raptor_impl)
+  // a warp per marked route
   template <bool WithClaszFilter, bool IsWheelchair>
   __device__ void loop_routes(unsigned const k) {
     auto const lane = get_global_thread_id() % kWarpSize;
@@ -1067,7 +1040,7 @@ struct mcraptor_impl {
 
   // ---- rt scan (CPU update_rt_transport) -----------------------------------
 
-  // one warp per marked rt transport (CPU loop_rt_transports, as loop_routes)
+  // a warp per marked rt transport
   template <bool WithClaszFilter, bool IsWheelchair>
   __device__ void update_rt_transports(unsigned const k) {
     auto const lane = get_global_thread_id() % kWarpSize;
@@ -1112,9 +1085,8 @@ struct mcraptor_impl {
     }
   }
 
-  // CPU update_rt_transport's boarding at scan position p: the round-(k-1)
-  // labels that catch the run (a single trip: the route bag reduces to the
-  // carried extras); false on overflow
+  // the round-(k-1) labels that catch the run at p (a single trip: the route
+  // bag holds just the carried extras); false on overflow
   template <bool IsWheelchair, unsigned K>
   __device__ bool rt_board(unsigned const k,
                            rt_transport_idx_t const rt_t,
@@ -1150,7 +1122,6 @@ struct mcraptor_impl {
     return true;
   }
 
-  // CPU alight loop of an rt run at scan position p
   template <bool IsWheelchair, unsigned K>
   __device__ bool rt_alight_all(unsigned const k,
                                 rt_transport_idx_t const rt_t,
@@ -1184,7 +1155,7 @@ struct mcraptor_impl {
     return any;
   }
 
-  // the CPU update_rt_transport loop, for runs overflowing the prefix scan
+  // fallback for runs overflowing the prefix scan
   template <bool IsWheelchair>
   __device__ bool update_rt_transport(unsigned const k,
                                       rt_transport_idx_t const rt_t,
@@ -1204,8 +1175,7 @@ struct mcraptor_impl {
     return any;
   }
 
-  // class of a ride: the route's, as the CPU and raptor's clasz filter (only
-  // read by the mode criteria)
+  // the route's class, as raptor's clasz filter (read by the mode criteria)
   __device__ __forceinline__ clasz ride_clasz(route_idx_t const r) const {
     if constexpr (kHasModeFilter || kHasModeSwitches) {
       return tt_.route_clasz_[r];
@@ -1232,7 +1202,6 @@ struct mcraptor_impl {
     return breadcrumb;
   }
 
-  // CPU relax_egress: to the intermodal target
   __device__ void relax_egress(unsigned const k,
                                std::uint32_t const dur,
                                std::uint32_t const walk,
@@ -1253,8 +1222,7 @@ struct mcraptor_impl {
     }
   }
 
-  // CPU relax_fp: td durations (incl. waiting) verbatim, static ones
-  // adjusted
+  // td durations (incl. waiting) verbatim, static ones adjusted
   __device__ void relax_fp(unsigned const k,
                            std::uint32_t const source,
                            std::uint32_t const target,
@@ -1517,7 +1485,7 @@ struct mcraptor_impl {
                           : reconstruction_result::kReconstructionFailed;
   }
 
-  // ---- helpers as in raptor_impl ----------------------------------------
+  // ---- helpers -----------------------------------------------------------
 
   __device__ transport
   get_earliest_transport(route_idx_t const r,
