@@ -537,7 +537,8 @@ std::unique_ptr<dir> find_gtfs_root(std::unique_ptr<dir> d) {
   }
   auto const chosen_sub_dir = sub_dirs.front();
   log(log_lvl::error, "loader.gtfs.find_gtfs_root",
-        "feed {}: Found {} subfolders and chose: {}.", d->path().generic_string(), sub_dirs.size(), chosen_sub_dir.generic_string());
+      "feed {}: Found {} subfolders and chose: {}.", d->path().generic_string(),
+      sub_dirs.size(), chosen_sub_dir.generic_string());
   return std::make_unique<sub_dir>(std::move(d), std::move(chosen_sub_dir));
 }
 
