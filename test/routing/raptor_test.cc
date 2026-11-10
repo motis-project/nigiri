@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 
+#include "nigiri/loader/dir.h"
 #include "nigiri/loader/load.h"
 #include "nigiri/special_stations.h"
 
@@ -98,4 +99,94 @@ TEST(routing, raptor_backward) {
   EXPECT_EQ(2U, results.size());
 
   EXPECT_EQ(std::string_view{bwd_journeys}, to_string(tt, results));
+}
+
+namespace {
+
+// Local times (Europe/Berlin, UTC+2). MO runs Mon 2024-06-17, WE Wed 06-19.
+// A -> B Mon 22:00-23:00, B -> C only Wed 07:00-08:00: the earliest trip at B
+// is two days later, past a day without the route.
+// E -> F Mon 23:00-02:10, then the night trip H 23:30 -> F 02:40 -> G 03:00:
+// Monday's service, boarded at F on Tuesday also in UTC (00:40), the
+// timetable's day.
+loader::mem_dir multi_day_files() {
+  return loader::mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+MTA,MOTIS Transit Authority,https://motis-project.de/,Europe/Berlin
+
+# calendar_dates.txt
+service_id,date,exception_type
+MO,20240617,1
+WE,20240619,1
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,,,,,
+B,B,,,,,,
+C,C,,,,,,
+E,E,,,,,,
+F,F,,,,,,
+G,G,,,,,,
+H,H,,,,,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R,MTA,R,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R,MO,AB,,
+R,WE,BC,,
+R,MO,EF,,
+R,MO,NIGHT,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+AB,22:00:00,22:00:00,A,0,0,0
+AB,23:00:00,23:00:00,B,1,0,0
+BC,07:00:00,07:00:00,B,0,0,0
+BC,08:00:00,08:00:00,C,1,0,0
+EF,23:00:00,23:00:00,E,0,0,0
+EF,26:10:00,26:10:00,F,1,0,0
+NIGHT,23:30:00,23:30:00,H,0,0,0
+NIGHT,26:40:00,26:40:00,F,1,0,0
+NIGHT,27:00:00,27:00:00,G,2,0,0
+)");
+}
+
+}  // namespace
+
+// The earliest trip lookup across days, on every engine (test::raptor_search
+// compares pong, McRAPTOR and the GPU against plain RAPTOR).
+TEST(routing, earliest_transport_across_days) {
+  using namespace std::chrono_literals;
+  auto const tt =
+      loader::load(multi_day_files(), {2024_y / June / 16, 2024_y / June / 24});
+  auto const utc = [](date::sys_days const d, std::chrono::minutes const m) {
+    return unixtime_t{d} + m;
+  };
+  auto const mon = sys_days{2024_y / June / 17};
+  auto const wed = sys_days{2024_y / June / 19};
+  auto const check = [&](std::string_view const from, std::string_view const to,
+                         interval<unixtime_t> const window, direction const dir,
+                         unixtime_t const dep, unixtime_t const arr) {
+    auto const results = raptor_search(tt, nullptr, from, to, window, dir);
+    ASSERT_EQ(1U, results.size()) << from << " -> " << to;
+    EXPECT_EQ(dep, begin(results)->departure_time()) << from << " -> " << to;
+    EXPECT_EQ(arr, begin(results)->arrival_time()) << from << " -> " << to;
+  };
+
+  // A 20:00 UTC Mon -> C 06:00 UTC Wed
+  check("A", "C", {utc(mon, 19h + 30min), utc(mon, 20h + 30min)},
+        direction::kForward, utc(mon, 20h), utc(wed, 6h));
+  check("C", "A", {utc(wed, 5h + 30min), utc(wed, 6h + 30min)},
+        direction::kBackward, utc(mon, 20h), utc(wed, 6h));
+
+  // E 21:00 UTC Mon -> G 01:00 UTC Tue
+  auto const tue = sys_days{2024_y / June / 18};
+  check("E", "G", {utc(mon, 20h + 30min), utc(mon, 21h + 30min)},
+        direction::kForward, utc(mon, 21h), utc(tue, 1h));
+  check("G", "E", {utc(tue, 0h + 30min), utc(tue, 1h + 30min)},
+        direction::kBackward, utc(mon, 21h), utc(tue, 1h));
 }
