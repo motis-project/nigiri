@@ -734,9 +734,10 @@ routing_result bmrap_profile(
                       : interval<unixtime_t>{start_time + duration_t{1},
                                              scan_interval.to_})
               : scan_interval;
+  // Cut at the reported window, not at start_time: in the opposed case the
+  // last step can jump past the window to a boundary anchor.
   utl::erase_if(s_state.results_, [&](journey const& j) {
-    return !j.is_reconstructed_ || j.error_ ||
-           !is_better(j.dest_time_, start_time) ||
+    return !j.is_reconstructed_ || j.error_ || !scanned.contains(j.dest_time_) ||
            j.travel_time() >= fastest_direct ||
            j.travel_time() > q.max_travel_time_;
   });
