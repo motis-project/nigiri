@@ -547,7 +547,6 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
 
   auto const d_start_dep = unix_to_delta(base(), start_time);
 
-  // upload the seeds
   auto* const starts_pin = s.starts_pin_.ensure(starts_.size());
   for (auto i = std::size_t{0U}; i != starts_.size(); ++i) {
     auto const arr = unix_to_delta(base(), starts_[i].second);
@@ -588,7 +587,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
                : (is_wheelchair_ ? f(n{}, t{}) : f(n{}, n{}));
   };
 
-  // === ROUTING KERNELS (as gpu raptor) ===
+  // === ROUTING KERNELS ===
   launch(mc_init_arrivals_kernel<SearchDir, Crit>, s.stream_, r);
   for (auto k = 1U; k != end_k; ++k) {
     launch(mc_mark_routes_kernel<SearchDir, Crit>, s.stream_, r);
@@ -699,7 +698,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
               overflow_pin[1], s.breadcrumbs_.size(),
               (*overflow_pin & kMcOverflowRouteBag) != 0U);
 
-  // === HOST JOURNEYS: the legs as the CPU mcraptor ===
+  // === HOST JOURNEYS ===
   for (auto idx = std::uint32_t{0U}; idx != n_rec; ++idx) {
     auto const& gj = rec_host[idx];
     if (gj.state_ == reconstruction_result::kReconstructionFailed) {
@@ -737,7 +736,6 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   }
 }
 
-// Offset legs and the start footpath, on the host as for the CPU mcraptor.
 template <direction SearchDir, mc_crit Crit>
 void gpu_mcraptor<SearchDir, Crit>::reconstruct(query const& q, journey& j) {
   mc_reconstruct_offsets<SearchDir>(tt_, rtt_, q, j);

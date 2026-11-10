@@ -188,7 +188,6 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
   worst_at_dest_ =
       get_best(unix_to_delta(base(), worst_time_at_dest), worst_at_dest_);
 
-  // Round-0 labels.
   auto const d_start = unix_to_delta(base(), start_time);
   cur_dep_ = d_start;
   for (auto const& [l, arr] : seeds_) {
@@ -242,8 +241,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
   }
 }
 
-// Alights rl at l_idx; true iff the arrival (plus transfer buffer) was
-// inserted.
+// true iff the arrival (plus transfer buffer) was inserted
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
     unsigned const k,

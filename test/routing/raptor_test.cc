@@ -157,8 +157,7 @@ NIGHT,27:00:00,27:00:00,G,2,0,0
 
 }  // namespace
 
-// The earliest trip lookup across days, on every engine (test::raptor_search
-// compares pong, McRAPTOR and the GPU against plain RAPTOR).
+// The earliest trip lookup across days, on every engine.
 TEST(routing, earliest_transport_across_days) {
   using namespace std::chrono_literals;
   auto const tt =
