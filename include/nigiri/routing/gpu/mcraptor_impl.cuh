@@ -20,7 +20,8 @@ namespace nigiri::routing::gpu {
 // ============================================================================
 // GPU McRAPTOR, structured as the CPU reference (raptor/mcraptor.cc) on
 // fixed-capacity, lock-free structures:
-//  * A label is one u64 [arr_key:16 | extras:16 | round:4 | by_route:1 | bc:27]
+//  * A label is one u64
+//    [arr_key:16 | extras:16 | round:4 | by_route:1 | breadcrumb:27]
 //    (arr_key direction-biased: smaller is better), inserted under a per-stop
 //    spinlock. Bag rules as the CPU; round-k inserts never evict round-(k-1)
 //    labels and footpath inserts never evict by-route labels, so the labels a
@@ -28,8 +29,8 @@ namespace nigiri::routing::gpu {
 //  * Breadcrumbs: append-only arena (mc_breadcrumb, as the CPU), one start time
 //    at a time.
 //  * Range search keeps the bags across start times (CPU RangeReuse): a new
-//    start time demotes the labels to prune-only (bc = kMcDemoted, the CPU's
-//    dep_ != cur_dep_), as their breadcrumbs are gone.
+//    start time demotes the labels to prune-only (breadcrumb = kMcDemoted, the
+//    CPU's dep_ != cur_dep_), as their breadcrumbs are gone.
 //  * Destination pruning: a small pareto frontier over (round, criteria).
 //  * Route scan: one warp per route, a warp prefix scan over the stops'
 //    boardings (sequential on overflow); rt transports one thread each.
@@ -44,7 +45,7 @@ namespace nigiri::routing::gpu {
 using mc_label_t = std::uint64_t;
 
 inline constexpr auto kMcEmptySlot = ~mc_label_t{0};
-inline constexpr auto kMcNoBc = std::uint32_t{(1U << 27U) - 1U};
+inline constexpr auto kMcNoBreadcrumb = std::uint32_t{(1U << 27U) - 1U};
 // Capacities: all preallocated per state; exceeding one trips its canary and
 // fails the query (nothing is silently dropped).
 // Inline slots per stop; bags outgrowing them chain blocks from a global pool
@@ -62,7 +63,8 @@ inline constexpr auto kMcArenaPerLocation = 32U;
 inline constexpr auto kMcArenaMin = 8'000'000U;  // 128 MB
 inline constexpr auto kMcArenaMax = 32'000'000U;  // 512 MB
 static_assert(kMcBagCap + kMcBagBlock <= 255U);  // u8 bag_n_slots_
-inline constexpr auto kMcDemoted = kMcNoBc - 1U;  // label of an earlier start
+// breadcrumb of a label from an earlier start time (prune-only)
+inline constexpr auto kMcDemoted = kMcNoBreadcrumb - 1U;
 static_assert(kMcArenaMax < kMcDemoted);  // 27-bit breadcrumb index
 // reconstructed journeys copied back with the count (more cost a 2nd sync)
 inline constexpr auto kMcRecPrefix = std::uint32_t{64U};
@@ -87,16 +89,17 @@ inline constexpr auto kMcOverflowBag = 1U;
 inline constexpr auto kMcOverflowArena = 2U;
 inline constexpr auto kMcOverflowRouteBag = 4U;
 
-CISTA_CUDA_COMPAT inline mc_label_t mc_pack(std::uint32_t const arr_key,
-                                            std::uint32_t const extras,
-                                            std::uint32_t const round,
-                                            bool const by_route,
-                                            std::uint32_t const bc) {
+CISTA_CUDA_COMPAT inline mc_label_t mc_pack(
+    std::uint32_t const arr_key,
+    std::uint32_t const extras,
+    std::uint32_t const round,
+    bool const by_route,
+    std::uint32_t const breadcrumb_idx) {
   return (static_cast<mc_label_t>(arr_key & 0xFFFFU) << 48U) |
          (static_cast<mc_label_t>(extras & 0xFFFFU) << 32U) |
          (static_cast<mc_label_t>(round & 0xFU) << 28U) |
          (static_cast<mc_label_t>(by_route ? 1U : 0U) << 27U) |
-         static_cast<mc_label_t>(bc & kMcNoBc);
+         static_cast<mc_label_t>(breadcrumb_idx & kMcNoBreadcrumb);
 }
 CISTA_CUDA_COMPAT inline std::uint32_t mc_arr_key(mc_label_t const x) {
   return static_cast<std::uint32_t>(x >> 48U);
@@ -110,8 +113,8 @@ CISTA_CUDA_COMPAT inline std::uint32_t mc_round(mc_label_t const x) {
 CISTA_CUDA_COMPAT inline bool mc_by_route(mc_label_t const x) {
   return ((x >> 27U) & 0x1U) != 0U;
 }
-CISTA_CUDA_COMPAT inline std::uint32_t mc_bc(mc_label_t const x) {
-  return static_cast<std::uint32_t>(x) & kMcNoBc;
+CISTA_CUDA_COMPAT inline std::uint32_t mc_breadcrumb_idx(mc_label_t const x) {
+  return static_cast<std::uint32_t>(x) & kMcNoBreadcrumb;
 }
 
 template <direction SearchDir, mc_crit Crit>
@@ -273,7 +276,7 @@ struct mcraptor_impl {
                              std::uint32_t const extras,
                              std::uint32_t const round,
                              bool const by_route,
-                             mc_breadcrumb const* const bc_entry) {
+                             mc_breadcrumb const* const breadcrumb) {
     // Lock-free reject pre-scan (most candidates are dominated): a stale label
     // was evicted by one that dominates the candidate too.
     {
@@ -320,12 +323,15 @@ struct mcraptor_impl {
         atomicOr(overflow_, kMcOverflowBag);
         return false;
       }
-      auto bc = kMcNoBc;
-      if (bc_entry != nullptr &&
-          (bc = append_breadcrumb(*bc_entry)) == kMcNoBc) {
-        return false;  // arena overflow (canary set)
+      auto breadcrumb_idx = kMcNoBreadcrumb;
+      if (breadcrumb != nullptr) {
+        breadcrumb_idx = append_breadcrumb(*breadcrumb);
+        if (breadcrumb_idx == kMcNoBreadcrumb) {
+          return false;  // arena overflow (canary set)
+        }
       }
-      *bag.slot(free_slot) = mc_pack(arr_key, extras, round, by_route, bc);
+      *bag.slot(free_slot) =
+          mc_pack(arr_key, extras, round, by_route, breadcrumb_idx);
       if (free_slot + 1U > n_slots) {
         bag_n_slots_[l] = static_cast<std::uint8_t>(free_slot + 1U);
       }
@@ -353,12 +359,13 @@ struct mcraptor_impl {
     }
   }
 
-  // kMcNoBc on arena overflow (insert dropped, canary set)
+  // kMcNoBreadcrumb on arena overflow (insert dropped, canary set)
   __device__ std::uint32_t append_breadcrumb(mc_breadcrumb const& entry) {
     auto const idx = atomicAdd(n_breadcrumbs_, 1U);
-    if (idx >= breadcrumb_cap_) {  // breadcrumb_cap_ <= kMcArenaMax < kMcNoBc
+    // breadcrumb_cap_ <= kMcArenaMax < kMcNoBreadcrumb
+    if (idx >= breadcrumb_cap_) {
       atomicOr(overflow_, kMcOverflowArena);
-      return kMcNoBc;
+      return kMcNoBreadcrumb;
     }
     breadcrumbs_[idx] = entry;
     return idx;
@@ -417,7 +424,8 @@ struct mcraptor_impl {
       if (free_slot == kMcInvalid) {
         return false;  // full of non-dominated entries: weaker pruning only
       }
-      dest_bag_[free_slot] = mc_pack(arr_key, extras, round, false, kMcNoBc);
+      dest_bag_[free_slot] =
+          mc_pack(arr_key, extras, round, false, kMcNoBreadcrumb);
       for (auto r = round; r != kMaxTransfers + 2U; ++r) {
         dest_best_key_[r] = min(dest_best_key_[r], arr_key);
         dest_best_total_[r] =
@@ -532,7 +540,7 @@ struct mcraptor_impl {
                          delta_t const by_transport,
                          std::uint32_t const carried,
                          clasz const cl,
-                         mc_breadcrumb bc) {
+                         mc_breadcrumb breadcrumb) {
     auto const l_lb = lb_[l_idx];
     auto const ride_key = to_key(by_transport);
     auto const worst_key = to_key(worst_at_dest_);
@@ -544,8 +552,9 @@ struct mcraptor_impl {
     if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
       return false;
     }
-    bc.arr_ = clamp(by_transport + transfer_buffer(l_idx));
-    if (!bag_insert(l_idx, to_key(bc.arr_), ride_extras, k, true, &bc)) {
+    breadcrumb.arr_ = clamp(by_transport + transfer_buffer(l_idx));
+    if (!bag_insert(l_idx, to_key(breadcrumb.arr_), ride_extras, k, true,
+                    &breadcrumb)) {
       return false;
     }
     touched_.mark(l_idx);
@@ -752,7 +761,8 @@ struct mcraptor_impl {
       auto const ex = kHasExtras ? mc_extras(lab) : 0U;
       // not of the last round, or even the optimistic completion is dominated
       if (lab == kMcEmptySlot || mc_round(lab) != k - 1U ||
-          mc_bc(lab) == kMcDemoted || dest_dominates(k, key + l_lb, ex)) {
+          mc_breadcrumb_idx(lab) == kMcDemoted ||
+          dest_dominates(k, key + l_lb, ex)) {
         continue;
       }
       if (key != et_key && !(et_key <= key && key <= et_dep_key)) {
@@ -763,7 +773,7 @@ struct mcraptor_impl {
             et.is_valid() ? to_key(time_at_stop(r, et, stop_idx, kDepEv)) : 0U;
       }
       if (et.is_valid() &&
-          !bag.add(pack_et(r, et), mc_bc(lab),
+          !bag.add(pack_et(r, et), mc_breadcrumb_idx(lab),
                    route_bag<K>::pack_board_extras(stop_idx, ex))) {
         return false;
       }
@@ -1116,11 +1126,11 @@ struct mcraptor_impl {
       // not of the last round, misses this run, or even the optimistic
       // completion is dominated
       if (lab == kMcEmptySlot || mc_round(lab) != k - 1U ||
-          mc_bc(lab) == kMcDemoted || mc_arr_key(lab) > dep_key ||
+          mc_breadcrumb_idx(lab) == kMcDemoted || mc_arr_key(lab) > dep_key ||
           dest_dominates(k, mc_arr_key(lab) + l_lb, ex)) {
         continue;
       }
-      if (!bag.add(0U, mc_bc(lab),
+      if (!bag.add(0U, mc_breadcrumb_idx(lab),
                    route_bag<K>::pack_board_extras(stop_idx, ex))) {
         return false;
       }
@@ -1203,11 +1213,11 @@ struct mcraptor_impl {
   // ---- footpaths (CPU update_footpaths) ------------------------------------
 
   // a walk keeps the ride's breadcrumb, only the arrival changes
-  __device__ __forceinline__ mc_breadcrumb walk_bc(std::uint32_t const te_bc,
-                                                   delta_t const arr) const {
-    auto bc = breadcrumbs_[te_bc];
-    bc.arr_ = arr;
-    return bc;
+  __device__ __forceinline__ mc_breadcrumb
+  walk_breadcrumb(std::uint32_t const te_breadcrumb, delta_t const arr) const {
+    auto breadcrumb = breadcrumbs_[te_breadcrumb];
+    breadcrumb.arr_ = arr;
+    return breadcrumb;
   }
 
   // CPU relax_egress: to the intermodal target
@@ -1216,16 +1226,16 @@ struct mcraptor_impl {
                                std::uint32_t const walk,
                                delta_t const te_arr,
                                std::uint32_t const te_extras,
-                               std::uint32_t const te_bc) {
+                               std::uint32_t const te_breadcrumb) {
     auto const end_arr = clamp(te_arr + dir(static_cast<int>(dur)));
     auto const end_key = to_key(end_arr);
     if (end_key >= to_key(worst_at_dest_)) {
       return;  // window bound
     }
     auto const end_extras = crit_after_walk(te_extras, walk);
-    auto const bc = walk_bc(te_bc, end_arr);
+    auto const breadcrumb = walk_breadcrumb(te_breadcrumb, end_arr);
     if (bag_insert(to_idx(kIntermodalTarget), end_key, end_extras, k, false,
-                   &bc)) {
+                   &breadcrumb)) {
       touched_.mark(to_idx(kIntermodalTarget));
       dest_bag_add(k, end_key, end_extras);
     }
@@ -1240,7 +1250,7 @@ struct mcraptor_impl {
                            std::uint32_t const walk,
                            delta_t const te_arr,
                            std::uint32_t const te_extras,
-                           std::uint32_t const te_bc) {
+                           std::uint32_t const te_breadcrumb) {
     if (target == source) {
       return;
     }
@@ -1256,8 +1266,8 @@ struct mcraptor_impl {
     if (dest_dominates(k, fp_key + target_lb, fp_extras)) {
       return;
     }
-    auto const bc = walk_bc(te_bc, fp_arr);
-    if (!bag_insert(target, fp_key, fp_extras, k, false, &bc)) {
+    auto const breadcrumb = walk_breadcrumb(te_breadcrumb, fp_arr);
+    if (!bag_insert(target, fp_key, fp_extras, k, false, &breadcrumb)) {
       return;
     }
     touched_.mark(target);
@@ -1334,17 +1344,17 @@ struct mcraptor_impl {
       }
       auto const lab = labels[sl];
       if (lab == kMcEmptySlot || mc_round(lab) != k || !mc_by_route(lab) ||
-          mc_bc(lab) == kMcDemoted) {
+          mc_breadcrumb_idx(lab) == kMcDemoted) {
         continue;
       }
       // without the transfer buffer
       auto const te_arr = clamp(from_key(mc_arr_key(lab)) - buf);
       auto const te_extras = kHasExtras ? mc_extras(lab) : 0U;
-      auto const te_bc = mc_bc(lab);
+      auto const te_breadcrumb = mc_breadcrumb_idx(lab);
       if (first == 0U) {
         if (egress_ok) {
           relax_egress(k, dist_to_end_[i], dist_to_end_[i], te_arr, te_extras,
-                       te_bc);
+                       te_breadcrumb);
         }
         // td durations depend on the arrival, so they are evaluated per label
         if (td_grp != kMcInvalid) {
@@ -1356,7 +1366,7 @@ struct mcraptor_impl {
             relax_egress(
                 k, static_cast<std::uint32_t>(rr.duration_.count()),
                 static_cast<std::uint32_t>(offsets[rr.idx_].duration_.count()),
-                te_arr, te_extras, te_bc);
+                te_arr, te_extras, te_breadcrumb);
           }
         }
         if (use_td_fps) {
@@ -1367,7 +1377,7 @@ struct mcraptor_impl {
                   duration_t const walk) {
                 relax_fp(k, i, to_idx(target), static_cast<int>(d.count()),
                          static_cast<std::uint32_t>(walk.count()), te_arr,
-                         te_extras, te_bc);
+                         te_extras, te_breadcrumb);
               });
         }
       }
@@ -1378,7 +1388,8 @@ struct mcraptor_impl {
         auto const dur = adjusted_transfer_time(transfer_time_settings_,
                                                 fps[f].duration().count());
         relax_fp(k, i, to_idx(fps[f].target()), dur,
-                 static_cast<std::uint32_t>(dur), te_arr, te_extras, te_bc);
+                 static_cast<std::uint32_t>(dur), te_arr, te_extras,
+                 te_breadcrumb);
       }
     }
   }
@@ -1440,7 +1451,7 @@ struct mcraptor_impl {
       for (auto i = 0U; i != bag.size(); ++i) {
         auto* const s = bag.slot(i);
         if (s != nullptr && *s != kMcEmptySlot) {
-          *s = (*s & ~mc_label_t{kMcNoBc}) | kMcDemoted;
+          *s = (*s & ~mc_label_t{kMcNoBreadcrumb}) | kMcDemoted;
         }
       }
     });
@@ -1496,19 +1507,19 @@ struct mcraptor_impl {
     }
 
     auto cur_l = dest_l;
-    auto li = mc_bc(lab);
+    auto li = mc_breadcrumb_idx(lab);
     auto n = 0U;
-    while (li != kMcNoBc) {
-      auto const& bc = breadcrumbs_[li];
-      auto const cur_arr = bc.arr_;
-      auto const is_rt = bc.day_ == day_idx_t::invalid();
-      auto const t_idx =
-          is_rt ? transport_idx_t::invalid() : transport_idx_t{bc.transport_};
-      auto const rt_t = is_rt ? rt_transport_idx_t{bc.transport_}
+    while (li != kMcNoBreadcrumb) {
+      auto const& breadcrumb = breadcrumbs_[li];
+      auto const cur_arr = breadcrumb.arr_;
+      auto const is_rt = breadcrumb.day_ == day_idx_t::invalid();
+      auto const t_idx = is_rt ? transport_idx_t::invalid()
+                               : transport_idx_t{breadcrumb.transport_};
+      auto const rt_t = is_rt ? rt_transport_idx_t{breadcrumb.transport_}
                               : rt_transport_idx_t::invalid();
-      auto const board = bc.board_;
-      auto const alight = bc.alight_;
-      auto const day = is_rt ? day_idx_t{0U} : bc.day_;
+      auto const board = breadcrumb.board_;
+      auto const alight = breadcrumb.alight_;
+      auto const day = is_rt ? day_idx_t{0U} : breadcrumb.day_;
 
       auto train_arr = delta_t{};
       auto dep_at_board = delta_t{};
@@ -1565,7 +1576,7 @@ struct mcraptor_impl {
       lg.exit_stop_ = alight;
 
       cur_l = board_loc;
-      li = bc.parent_;
+      li = breadcrumb.parent_;
     }
 
     out->start_l_ = cur_l;

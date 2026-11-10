@@ -374,7 +374,8 @@ __global__ void mc_reconstruct_kernel(location_idx_t const* const dest_list,
   }
   auto const dest = dest_list[tid / kMcMaxBagSlots];
   auto const lab = r.bag_slots(to_idx(dest))[tid % kMcMaxBagSlots];
-  if (lab == kMcEmptySlot || mc_round(lab) == 0U || mc_bc(lab) == kMcDemoted) {
+  if (lab == kMcEmptySlot || mc_round(lab) == 0U ||
+      mc_breadcrumb_idx(lab) == kMcDemoted) {
     return;  // empty, a round-0 seed (no legs) or an earlier start's label
   }
   r.reconstruct_label(dest, lab, &out[atomicAdd(out_count, 1U)]);
@@ -673,7 +674,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   auto* const rec_out_dev = s.rec_out_.ensure(total, s.stream_);
   auto* const rec_host = s.rec_host_out_.ensure(total);
   auto* const overflow_pin =
-      s.overflow_pin_.ensure(3U);  // flags, bc + pool use
+      s.overflow_pin_.ensure(3U);  // flags, breadcrumb + pool use
   auto* const rec_count_dev = s.rec_count_.ensure(1U, s.stream_);
   auto* const rec_count_pin = s.rec_count_pin_.ensure(1U);
 
