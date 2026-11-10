@@ -235,7 +235,7 @@ route_map_t read_routes(source_idx_t const src,
   return map;
 }
 
-bool has_unknown_route_agency(std::string_view file, std::vector<std::string> const& agency_ids, std::string_view default_timezone) {
+bool has_unknown_route_agency(std::string_view file, std::vector<std::string> const& agency_ids, std::string_view default_timezone, std::string_view feed) {
   if(agency_ids.size() == 1U) {
     return false;
   }
@@ -249,7 +249,7 @@ bool has_unknown_route_agency(std::string_view file, std::vector<std::string> co
       return agency_id == route_agency_id;
     });
     if(!found_agency) {
-      std::cout<<"route "<<route.route_id_->view()<<" has unknown agency with id: "<<route_agency_id<<std::endl;
+      log(log_lvl::error, "loader.gtfs.root", "feed {}: the agency {} referenced by route {} does not exist.", feed, route_agency_id, route.route_id_->view());
       unknown_agency = true;
     }
   });

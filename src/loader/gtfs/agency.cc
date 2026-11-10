@@ -60,20 +60,20 @@ std::pair<agency_map_t, agency_ticketing_map_t> read_agencies(
   return {map, ticketing_map};
 }
 
-bool has_invalid_agency_timezone(std::string_view file, std::string_view default_timezone) {
+bool has_invalid_agency_timezone(std::string_view file, std::string_view default_timezone, std::string_view feed) {
   auto invalid_tz = false;
   utl::for_each_row<agency_row>(file, [&](agency_row const& agency) {
     auto const agency_timezone = agency.tz_name_->trim();
     auto const used_timezone = agency_timezone.empty() ? default_timezone : agency_timezone.view();
     if(used_timezone.empty()) {
-      std::cout<<"agency "<<std::string{agency.id_->view()}<<" has empty timezone."<<std::endl;
+      log(log_lvl::error, "loader.gtfs.validate", "feed {}: agency {} has no timezone and there is no default timezone.", feed, agency.id_->view());
       invalid_tz = true;
       return;
     }
     try {
       static_cast<void>(date::locate_zone(used_timezone));
     } catch (std::exception const&) {
-      std::cout<<"agency "<<std::string{agency.id_->view()}<<" has invalid timezone."<<std::endl;
+      log(log_lvl::error, "loader.gtfs.validate", "feed {}: agency {} has invalid timezone.", feed, agency.id_->view());
       invalid_tz = true;
     }
   });

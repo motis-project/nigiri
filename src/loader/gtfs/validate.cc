@@ -19,8 +19,8 @@ namespace nigiri::loader::gtfs {
           auto const routes_file = dir->get_file(kRoutesFile);
           auto const agency_ids = read_agency_ids(agency_file.data());
           auto const default_tz = source.loader_config_.default_tz_;
-          if(!has_invalid_agency_timezone(agency_file.data(), default_tz) &&
-            !has_unknown_route_agency(routes_file.data(), agency_ids, default_tz)) {
+          if(!has_invalid_agency_timezone(agency_file.data(), default_tz, source.path_) &&
+            !has_unknown_route_agency(routes_file.data(), agency_ids, default_tz, source.path_)) {
             accepted.emplace_back(source);
           }
       }
