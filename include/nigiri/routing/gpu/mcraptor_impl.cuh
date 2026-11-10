@@ -68,6 +68,18 @@ inline constexpr auto kMcDemoted = kMcNoBreadcrumb - 1U;
 static_assert(kMcArenaMax < kMcDemoted);  // 27-bit breadcrumb index
 // reconstructed journeys copied back with the count (more cost a 2nd sync)
 inline constexpr auto kMcRecPrefix = std::uint32_t{64U};
+// a destination label's breadcrumbs, from the label back to the start (the
+// host builds the legs with mc_add_legs, as the CPU)
+inline constexpr auto kMcMaxRides = kMaxTransfers + 1U;
+struct gpu_mc_journey {
+  reconstruction_result state_;
+  std::uint8_t n_rides_;
+  std::uint8_t transfers_;
+  std::uint16_t extras_;
+  location_idx_t dest_l_;
+  delta_t dest_time_;
+  mc_breadcrumb chain_[kMcMaxRides];
+};
 inline constexpr auto kMcDestCap = 64U;  // dest frontier entries
 inline constexpr auto kMcPrefixK = 4U;  // route-bag entries per lane
 inline constexpr auto kMcRouteBagCap = 64U;  // sequential / rt route bag
@@ -1482,107 +1494,27 @@ struct mcraptor_impl {
     });
   }
 
-  // ---- reconstruction (breadcrumb chase, cf. CPU materialize) --------------
+  // ---- reconstruction: the breadcrumb chain, legs on the host -------------
 
-  __device__ void reconstruct_label(location_idx_t const dest_l,
-                                    mc_label_t const lab,
-                                    gpu_journey* out) const {
-    out->state_ = reconstruction_result::kNotReconstructed;
-    auto const K = mc_round(lab);
-    if (K == 0U) {
-      return;  // round-0 seed at the destination: no transit legs
-    }
+  __device__ void collect_chain(location_idx_t const dest_l,
+                                mc_label_t const lab,
+                                gpu_mc_journey* out) const {
     out->dest_l_ = dest_l;
     out->dest_time_ = from_key(mc_arr_key(lab));
-    out->transfers_ = static_cast<std::uint8_t>(K - 1U);
-    {
-      // as the CPU dimensions' apply_to()
-      auto const crit = kHasExtras ? mc_extras(lab) : 0U;
-      out->criteria_cost_ = static_cast<std::uint16_t>(
-          mc_extras::non_transit(crit) * kNonTransitBin);
-      out->criteria_mode_filter_ =
-          static_cast<std::uint8_t>(mc_extras::mode_filter(crit));
-      out->criteria_mode_switches_ =
-          static_cast<std::uint8_t>(mc_extras::switches(crit));
-    }
-
-    auto cur_l = dest_l;
-    auto li = mc_breadcrumb_idx(lab);
+    out->transfers_ = static_cast<std::uint8_t>(mc_round(lab) - 1U);
+    out->extras_ = static_cast<std::uint16_t>(kHasExtras ? mc_extras(lab) : 0U);
     auto n = 0U;
-    while (li != kMcNoBreadcrumb) {
-      auto const& breadcrumb = breadcrumbs_[li];
-      auto const cur_arr = breadcrumb.arr_;
-      auto const is_rt = breadcrumb.day_ == day_idx_t::invalid();
-      auto const t_idx = is_rt ? transport_idx_t::invalid()
-                               : transport_idx_t{breadcrumb.transport_};
-      auto const rt_t = is_rt ? rt_transport_idx_t{breadcrumb.transport_}
-                              : rt_transport_idx_t::invalid();
-      auto const board = breadcrumb.board_;
-      auto const alight = breadcrumb.alight_;
-      auto const day = is_rt ? day_idx_t{0U} : breadcrumb.day_;
-
-      auto train_arr = delta_t{};
-      auto dep_at_board = delta_t{};
-      auto board_loc = location_idx_t::invalid();
-      auto alight_loc = location_idx_t::invalid();
-      if (is_rt) {
-        // rt event times are absolute: no traffic-day recovery
-        auto const stop_seq = rtt_.rt_transport_location_seq_[rt_t];
-        board_loc = stop{stop_seq[board]}.location_idx();
-        alight_loc = stop{stop_seq[alight]}.location_idx();
-        train_arr = rt_time_at_stop(rt_t, alight, kArrEv);
-        dep_at_board = rt_time_at_stop(rt_t, board, kDepEv);
-      } else {
-        auto const r = tt_.transport_route_[t_idx];
-        train_arr = time_at_stop(r, transport{t_idx, day}, alight, kArrEv);
-        dep_at_board = time_at_stop(r, transport{t_idx, day}, board, kDepEv);
-        auto const stop_seq = tt_.route_location_seq_[r];
-        board_loc = stop{stop_seq[board]}.location_idx();
-        alight_loc = stop{stop_seq[alight]}.location_idx();
-      }
-
-      if (is_intermodal_dest() && cur_l == kIntermodalTarget) {
-        // the last mile is the host's offset leg
-        out->dest_l_ = alight_loc;
-      } else if (n != 0U || alight_loc != cur_l || train_arr != cur_arr) {
-        if (n >= kMaxRecLegs) {
-          out->state_ = reconstruction_result::kReconstructionFailed;
-          return;
-        }
-        auto& lg = out->legs_[n++];
-        lg.is_footpath_ = true;
-        lg.from_l_ = alight_loc;
-        lg.to_l_ = cur_l;
-        lg.dep_ = train_arr;
-        lg.arr_ = cur_arr;
-        lg.fp_duration_ = static_cast<std::uint16_t>(
-            kFwd ? (cur_arr - train_arr) : (train_arr - cur_arr));
-      }
-
-      if (n >= kMaxRecLegs) {
+    for (auto li = mc_breadcrumb_idx(lab); li != kMcNoBreadcrumb;
+         li = breadcrumbs_[li].parent_) {
+      if (n == kMcMaxRides) {
         out->state_ = reconstruction_result::kReconstructionFailed;
         return;
       }
-      auto& lg = out->legs_[n++];
-      lg.is_footpath_ = false;
-      lg.from_l_ = board_loc;
-      lg.to_l_ = alight_loc;
-      lg.dep_ = dep_at_board;
-      lg.arr_ = train_arr;
-      lg.transport_ = t_idx;
-      lg.rt_transport_ = rt_t;
-      lg.day_ = day;
-      lg.enter_stop_ = board;
-      lg.exit_stop_ = alight;
-
-      cur_l = board_loc;
-      li = breadcrumb.parent_;
+      out->chain_[n++] = breadcrumbs_[li];
     }
-
-    out->start_l_ = cur_l;
-    out->n_legs_ = static_cast<std::uint8_t>(n);
-    out->state_ = (n != 0U) ? reconstruction_result::kOk
-                            : reconstruction_result::kReconstructionFailed;
+    out->n_rides_ = static_cast<std::uint8_t>(n);
+    out->state_ = n != 0U ? reconstruction_result::kOk
+                          : reconstruction_result::kReconstructionFailed;
   }
 
   // ---- helpers as in raptor_impl ----------------------------------------

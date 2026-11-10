@@ -21,6 +21,7 @@
 #include "nigiri/routing/gpu/mcraptor_impl.cuh"
 #include "nigiri/routing/gpu/pinned_host_buffer.cuh"
 #include "nigiri/routing/gpu/timetable_impl.cuh"
+#include "nigiri/routing/raptor/mc_reconstruct.h"
 #include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
@@ -227,8 +228,8 @@ struct gpu_mcraptor_state::impl {
 
   pinned_host_buffer<location_idx_t> rec_dest_pin_;
   device_buffer<location_idx_t> rec_dest_;
-  device_buffer<gpu_journey> rec_out_;
-  pinned_host_buffer<gpu_journey> rec_host_out_;
+  device_buffer<gpu_mc_journey> rec_out_;
+  pinned_host_buffer<gpu_mc_journey> rec_host_out_;
   pinned_host_buffer<std::uint32_t> overflow_pin_;
   device_buffer<std::uint32_t> rec_count_;
   pinned_host_buffer<std::uint32_t> rec_count_pin_;
@@ -366,7 +367,7 @@ template <direction SearchDir, mc_crit Crit>
 __global__ void mc_reconstruct_kernel(location_idx_t const* const dest_list,
                                       std::uint32_t const n_dest,
                                       mcraptor_impl<SearchDir, Crit> r,
-                                      gpu_journey* const out,
+                                      gpu_mc_journey* const out,
                                       std::uint32_t* const out_count) {
   auto const tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= n_dest * kMcMaxBagSlots) {
@@ -378,7 +379,7 @@ __global__ void mc_reconstruct_kernel(location_idx_t const* const dest_list,
       mc_breadcrumb_idx(lab) == kMcDemoted) {
     return;  // empty, a round-0 seed (no legs) or an earlier start's label
   }
-  r.reconstruct_label(dest, lab, &out[atomicAdd(out_count, 1U)]);
+  r.collect_chain(dest, lab, &out[atomicAdd(out_count, 1U)]);
 }
 
 // ---- algorithm --------------------------------------------------------------
@@ -668,7 +669,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
                              sizeof(std::uint32_t), cudaMemcpyDeviceToHost,
                              s.stream_));
   CUDA_CHECK(cudaMemcpyAsync(rec_host, rec_out_dev,
-                             prefix * sizeof(gpu_journey),
+                             prefix * sizeof(gpu_mc_journey),
                              cudaMemcpyDeviceToHost, s.stream_));
   CUDA_CHECK(cudaMemcpyAsync(
       overflow_pin, thrust::raw_pointer_cast(s.overflow_.data()),
@@ -684,7 +685,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   auto const n_rec = *rec_count_pin;
   if (n_rec > prefix) {
     CUDA_CHECK(cudaMemcpyAsync(rec_host + prefix, rec_out_dev + prefix,
-                               (n_rec - prefix) * sizeof(gpu_journey),
+                               (n_rec - prefix) * sizeof(gpu_mc_journey),
                                cudaMemcpyDeviceToHost, s.stream_));
     cudaStreamSynchronize(s.stream_);
   }
@@ -698,10 +699,9 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
               overflow_pin[1], s.breadcrumbs_.size(),
               (*overflow_pin & kMcOverflowRouteBag) != 0U);
 
-  // === CONVERT DEVICE JOURNEYS TO HOST JOURNEYS ===
+  // === HOST JOURNEYS: the legs as the CPU mcraptor ===
   for (auto idx = std::uint32_t{0U}; idx != n_rec; ++idx) {
     auto const& gj = rec_host[idx];
-
     if (gj.state_ == reconstruction_result::kReconstructionFailed) {
       log(log_lvl::error, "search",
           "gpu mcraptor reconstruct failed: breadcrumb chain "
@@ -709,7 +709,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
           to_idx(gj.dest_l_));
       continue;
     }
-    if (gj.state_ != reconstruction_result::kOk || gj.n_legs_ == 0U) {
+    if (gj.state_ != reconstruction_result::kOk) {
       continue;
     }
 
@@ -718,67 +718,21 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
     j.dest_time_ = delta_to_unix(base(), gj.dest_time_);
     j.dest_ = gj.dest_l_;
     j.transfers_ = gj.transfers_;
+    // as the CPU dimensions' apply_to()
     if constexpr (kHasNonTransit) {
-      j.criteria_cost_ = gj.criteria_cost_;
+      j.criteria_cost_ = static_cast<std::uint16_t>(
+          mc_extras::non_transit(gj.extras_) * kNonTransitBin);
     }
     if constexpr (kHasModeFilter) {
-      j.criteria_mode_filter_ = gj.criteria_mode_filter_ != 0U;
+      j.criteria_mode_filter_ = mc_extras::mode_filter(gj.extras_) != 0U;
     }
     if constexpr (kHasModeSwitches) {
-      j.criteria_mode_switches_ = gj.criteria_mode_switches_;
+      j.criteria_mode_switches_ =
+          static_cast<std::uint8_t>(mc_extras::switches(gj.extras_));
     }
-
-    for (auto li2 = 0U; li2 != gj.n_legs_; ++li2) {
-      auto const li = (SearchDir == direction::kForward)
-                          ? (static_cast<unsigned>(gj.n_legs_) - 1U - li2)
-                          : li2;
-      auto const& gl = gj.legs_[li];
-      auto const from = gl.from_l_;
-      auto const to = gl.to_l_;
-      auto const dep = delta_to_unix(base(), gl.dep_);
-      auto const arr = delta_to_unix(base(), gl.arr_);
-
-      if (gl.is_footpath_) {
-        j.legs_.emplace_back(journey::leg{
-            SearchDir, from, to, dep, arr,
-            footpath{to, duration_t{
-                             static_cast<duration_t::rep>(gl.fp_duration_)}}});
-      } else if (gl.rt_transport_ != rt_transport_idx_t::invalid()) {
-        auto const rt_t = gl.rt_transport_;
-        auto const run =
-            rt::run{.t_ = rtt_->resolve_static(rt_t),
-                    .stop_range_ =
-                        interval<stop_idx_t>{
-                            stop_idx_t{0},
-                            static_cast<stop_idx_t>(
-                                rtt_->rt_transport_location_seq_[rt_t].size())},
-                    .rt_ = rt_t};
-        j.legs_.emplace_back(journey::leg{
-            SearchDir, from, to, dep, arr,
-            journey::run_enter_exit{run, gl.enter_stop_, gl.exit_stop_}});
-      } else {
-        auto const t_idx = gl.transport_;
-        auto const route = tt_.transport_route_[t_idx];
-        auto const route_len =
-            static_cast<stop_idx_t>(tt_.route_location_seq_[route].size());
-        auto const run = rt::run{
-            .t_ = transport{t_idx, gl.day_},
-            .stop_range_ = interval<stop_idx_t>{stop_idx_t{0}, route_len}};
-        j.legs_.emplace_back(journey::leg{
-            SearchDir, from, to, dep, arr,
-            journey::run_enter_exit{run, gl.enter_stop_, gl.exit_stop_}});
-      }
-    }
-
-    // backward: re-anchor footpaths to the previous trip's arrival
-    for (auto i = std::size_t{1U}; i < j.legs_.size(); ++i) {
-      if (std::holds_alternative<footpath>(j.legs_[i].uses_)) {
-        auto const dur = std::get<footpath>(j.legs_[i].uses_).duration();
-        j.legs_[i].dep_time_ = j.legs_[i - 1U].arr_time_;
-        j.legs_[i].arr_time_ = j.legs_[i].dep_time_ + dur;
-      }
-    }
-
+    mc_add_legs<SearchDir>(
+        tt_, rtt_, base_, s.is_intermodal_dest_[kDirIdx],
+        std::span<mc_breadcrumb const>{gj.chain_, gj.n_rides_}, j);
     results.add(std::move(j));
   }
 }
