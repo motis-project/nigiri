@@ -211,6 +211,7 @@ struct gpu_raptor_state::impl {
   bool is_intermodal_dest_[2];  // per direction: [0]=fwd, [1]=bwd
   thrust::device_vector<std::uint32_t> any_marked_;
   thrust::device_vector<std::uint32_t> done_;
+  pinned_host_buffer<std::uint32_t> done_pin_;
 
   // 16bit time | 48bit breadcrumb
   thrust::device_vector<std::uint64_t> time_at_dest_;
@@ -318,8 +319,9 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
 }
 
 template <direction SearchDir, bool WithBounds>
-__global__ void init_arrivals_kernel(raptor_impl<SearchDir, WithBounds> r,
-                                     unixtime_t const worst_time_at_dest) {
+__global__ void init_arrivals_kernel(
+    raptor_impl<SearchDir, WithBounds> r,
+    cuda::std::array<delta_t, kMaxTransfers + 2U> const worst_time_at_dest) {
   r.init_arrivals(worst_time_at_dest);
 }
 
@@ -536,10 +538,11 @@ __global__ void reconstruct_kernel(location_idx_t const* const dest_list,
 }
 
 template <direction SearchDir, bool WithBounds>
-void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
-                                                std::uint8_t max_transfers,
-                                                unixtime_t worst_time_at_dest,
-                                                pareto_set<journey>& results) {
+void gpu_raptor<SearchDir, WithBounds>::execute(
+    unixtime_t const start_time,
+    std::uint8_t const max_transfers,
+    std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
+    pareto_set<journey>& results) {
   auto& s = *state_.impl_;
 
   // No start = nothing to do.
@@ -630,8 +633,12 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
       static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
 
   // === ROUTING KERNELS ===
+  auto d_worst_time_at_dest = cuda::std::array<delta_t, kMaxTransfers + 2U>{};
+  for (auto k = 0U; k != d_worst_time_at_dest.size(); ++k) {
+    d_worst_time_at_dest[k] = unix_to_delta(base(), worst_time_at_dest[k]);
+  }
   launch(init_arrivals_kernel<SearchDir, WithBounds>, s.stream_, r,
-         worst_time_at_dest);
+         d_worst_time_at_dest);
   for (auto k = 1U; k != end_k; ++k) {
     launch(reuse_previous_arrivals_kernel<SearchDir, WithBounds>, s.stream_, r,
            k);
@@ -685,6 +692,15 @@ void gpu_raptor<SearchDir, WithBounds>::execute(unixtime_t start_time,
     } else {
       launch(transfers_footpaths_kernel<SearchDir, WithBounds, true, true>,
              s.stream_, r, k);
+    }
+    if (k + 1U != end_k) {
+      auto* done_host = s.done_pin_.ensure(1U);
+      cudaMemcpyAsync(done_host, thrust::raw_pointer_cast(s.done_.data()),
+                      sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_);
+      cudaStreamSynchronize(s.stream_);
+      if (*done_host != 0U) {
+        break;
+      }
     }
   }
   cudaStreamSynchronize(s.stream_);
