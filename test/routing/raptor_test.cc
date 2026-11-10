@@ -166,8 +166,8 @@ TEST(routing, earliest_transport_across_days) {
   auto const utc = [](date::sys_days const d, std::chrono::minutes const m) {
     return unixtime_t{d} + m;
   };
-  auto const mon = sys_days{2024_y / June / 17};
-  auto const wed = sys_days{2024_y / June / 19};
+  auto const monday = sys_days{2024_y / June / 17};
+  auto const wednesday = sys_days{2024_y / June / 19};
   auto const check = [&](std::string_view const from, std::string_view const to,
                          interval<unixtime_t> const window, direction const dir,
                          unixtime_t const dep, unixtime_t const arr) {
@@ -178,15 +178,15 @@ TEST(routing, earliest_transport_across_days) {
   };
 
   // A 20:00 UTC Mon -> C 06:00 UTC Wed
-  check("A", "C", {utc(mon, 19h + 30min), utc(mon, 20h + 30min)},
-        direction::kForward, utc(mon, 20h), utc(wed, 6h));
-  check("C", "A", {utc(wed, 5h + 30min), utc(wed, 6h + 30min)},
-        direction::kBackward, utc(mon, 20h), utc(wed, 6h));
+  check("A", "C", {utc(monday, 19h + 30min), utc(monday, 20h + 30min)},
+        direction::kForward, utc(monday, 20h), utc(wednesday, 6h));
+  check("C", "A", {utc(wednesday, 5h + 30min), utc(wednesday, 6h + 30min)},
+        direction::kBackward, utc(monday, 20h), utc(wednesday, 6h));
 
   // E 21:00 UTC Mon -> G 01:00 UTC Tue
-  auto const tue = sys_days{2024_y / June / 18};
-  check("E", "G", {utc(mon, 20h + 30min), utc(mon, 21h + 30min)},
-        direction::kForward, utc(mon, 21h), utc(tue, 1h));
-  check("G", "E", {utc(tue, 0h + 30min), utc(tue, 1h + 30min)},
-        direction::kBackward, utc(mon, 21h), utc(tue, 1h));
+  auto const tuesday = sys_days{2024_y / June / 18};
+  check("E", "G", {utc(monday, 20h + 30min), utc(monday, 21h + 30min)},
+        direction::kForward, utc(monday, 21h), utc(tuesday, 1h));
+  check("G", "E", {utc(tuesday, 0h + 30min), utc(tuesday, 1h + 30min)},
+        direction::kBackward, utc(monday, 21h), utc(tuesday, 1h));
 }
