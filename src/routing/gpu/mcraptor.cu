@@ -534,14 +534,18 @@ void gpu_mcraptor<SearchDir, Crit>::add_start(location_idx_t const l,
 }
 
 template <direction SearchDir, mc_crit Crit>
-void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
-                                            std::uint8_t const max_transfers,
-                                            unixtime_t const worst_time_at_dest,
-                                            pareto_set<journey>& results) {
+void gpu_mcraptor<SearchDir, Crit>::execute(
+    unixtime_t const start_time,
+    std::uint8_t const max_transfers,
+    std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
+    pareto_set<journey>& results) {
   auto& s = *state_.impl_;
   constexpr auto const kFwd = SearchDir == direction::kForward;
 
-  auto const d_worst = unix_to_delta(base(), worst_time_at_dest);
+  // one bound for all rounds: the loosest
+  auto const d_worst = unix_to_delta(
+      base(), kFwd ? std::ranges::max(worst_time_at_dest)
+                   : std::ranges::min(worst_time_at_dest));
   worst_at_dest_ = kFwd ? std::min(d_worst, worst_at_dest_)
                         : std::max(d_worst, worst_at_dest_);
 

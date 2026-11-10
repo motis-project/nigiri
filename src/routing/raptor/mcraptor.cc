@@ -179,12 +179,14 @@ template <direction SearchDir, typename Criteria, bool RangeReuse>
 void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
     unixtime_t const start_time,
     std::uint8_t const max_transfers,
-    unixtime_t const worst_time_at_dest,
+    std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
     pareto_set<journey>& results) {
   auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
 
-  worst_at_dest_ =
-      get_best(unix_to_delta(base(), worst_time_at_dest), worst_at_dest_);
+  // one bound for all rounds: the loosest
+  auto const worst = kFwd ? std::ranges::max(worst_time_at_dest)
+                          : std::ranges::min(worst_time_at_dest);
+  worst_at_dest_ = get_best(unix_to_delta(base(), worst), worst_at_dest_);
 
   auto const d_start = unix_to_delta(base(), start_time);
   cur_dep_ = d_start;
