@@ -15,6 +15,7 @@
 #include "nigiri/loader/netex/loader.h"
 #include "nigiri/timetable.h"
 #include "nigiri/loader/gtfs/validate.h"
+#include "nigiri/loader/gtfs/load_timetable.h"
 
 namespace nigiri::loader {
 
@@ -51,7 +52,7 @@ timetable load(std::vector<timetable_source> const& sources,
     auto const dir = is_in_memory
                          // hack to load strings in integration tests
                          ? std::make_unique<mem_dir>(mem_dir::read(path))
-                         : make_dir(path);
+                         : gtfs::find_gtfs_root(make_dir(path));
     auto const it =
         utl::find_if(loaders, [&](auto&& l) { return l->applicable(*dir); });
     if (it != end(loaders)) {

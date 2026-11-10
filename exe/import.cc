@@ -11,6 +11,7 @@
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/load.h"
 #include "nigiri/loader/loader_interface.h"
+#include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/common/parse_date.h"
 #include "nigiri/shapes_storage.h"
 
@@ -99,7 +100,7 @@ int main(int ac, char** av) {
           // still consume a source index, which breaks the per-source
           // bookkeeping of subsequent loaders
           try {
-            auto const dir = make_dir(e.path());
+            auto const dir = gtfs::find_gtfs_root(make_dir(e.path()));
             if (!utl::any_of(loaders,
                              [&](auto&& l) { return l->applicable(*dir); })) {
               std::cout << "ignoring " << e.path() << "\n";

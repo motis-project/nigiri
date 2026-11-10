@@ -9,7 +9,7 @@ namespace nigiri::loader::gtfs {
     std::vector<timetable_source> validate_sources(std::vector<timetable_source> const& sources) {
       auto accepted = std::vector<timetable_source>{};
       for (auto const& source : sources) {
-          auto const dir = make_dir(source.path_);
+          auto const dir = find_gtfs_root(make_dir(source.path_));
 
           if(!applicable(*dir)) {
             accepted.emplace_back(source);

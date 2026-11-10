@@ -334,4 +334,28 @@ mem_dir mem_dir::read(std::string_view s) {
   return {dir};
 }
 
+sub_dir::sub_dir(std::unique_ptr<dir> chosen_sub_dir, std::filesystem::path path) :
+  dir{chosen_sub_dir->path()},
+  chosen_sub_dir_{std::move(chosen_sub_dir)},
+  path_{std::move(path)} {}
+std::vector<std::filesystem::path> sub_dir::list_files(
+    std::filesystem::path const& p) const {
+  return chosen_sub_dir_->list_files(path_ / p);
+}
+file sub_dir::get_file(std::filesystem::path const& p) const {
+  return chosen_sub_dir_->get_file(path_ / p);
+}
+bool sub_dir::exists(std::filesystem::path const& p) const {
+  return chosen_sub_dir_->exists(path_ / p);
+}
+std::size_t sub_dir::file_size(std::filesystem::path const& p) const {
+  return chosen_sub_dir_->file_size(path_ / p);
+}
+dir_type sub_dir::type() const {
+  return chosen_sub_dir_->type();
+}
+std::uint64_t sub_dir::hash() const {
+  return chosen_sub_dir_->hash();
+}
+
 }  // namespace nigiri::loader
