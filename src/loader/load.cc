@@ -8,14 +8,14 @@
 #include "utl/verify.h"
 
 #include "nigiri/loader/dir.h"
+#include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/gtfs/loader.h"
+#include "nigiri/loader/gtfs/validate.h"
 #include "nigiri/loader/hrd/loader.h"
 #include "nigiri/loader/import_context.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/loader/netex/loader.h"
 #include "nigiri/timetable.h"
-#include "nigiri/loader/gtfs/validate.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
 
 namespace nigiri::loader {
 
@@ -41,7 +41,8 @@ timetable load(std::vector<timetable_source> const& sources,
   auto const accepted_sources = gtfs::validate_sources(sources);
   auto tt = timetable{};
   tt.date_range_ = date_range;
-  tt.n_sources_ = static_cast<cista::base_t<source_idx_t>>(accepted_sources.size());
+  tt.n_sources_ =
+      static_cast<cista::base_t<source_idx_t>>(accepted_sources.size());
   auto ctx = import_context{tt};
   register_special_stations(tt, ctx);
   auto const progress_tracker = utl::get_active_progress_tracker();

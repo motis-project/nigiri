@@ -61,9 +61,7 @@ constexpr auto const required_files = {kAgencyFile, kStopFile, kRoutesFile,
                                        kTripsFile, kStopTimesFile};
 
 bool applicable(dir const& d, std::filesystem::path path) {
-  auto const exists = [&](auto const file) {
-    return d.exists(path / file);
-  };
+  auto const exists = [&](auto const file) { return d.exists(path / file); };
   for (auto const& file_name : required_files) {
     if (!exists(file_name)) {
       return false;
@@ -72,9 +70,7 @@ bool applicable(dir const& d, std::filesystem::path path) {
   return exists(kCalenderFile) || exists(kCalendarDatesFile);
 }
 
-bool applicable(dir const& d) {
-  return applicable(d, {});
-}
+bool applicable(dir const& d) { return applicable(d, {}); }
 
 void load_timetable(loader_config const& config,
                     source_idx_t const src,
@@ -523,24 +519,26 @@ void load_timetable(loader_config const& config,
 }
 
 std::unique_ptr<dir> find_gtfs_root(std::unique_ptr<dir> d) {
-  if(applicable(*d)) {
+  if (applicable(*d)) {
     return d;
   }
   auto sub_dirs = std::vector<std::filesystem::path>{};
-  for(auto const& file: d->list_files(".")) {
-    if(file.filename() != kRoutesFile) {
+  for (auto const& file : d->list_files(".")) {
+    if (file.filename() != kRoutesFile) {
       continue;
     }
     auto const path = file.parent_path();
-    if(applicable(*d, path)) {
+    if (applicable(*d, path)) {
       push_unique(sub_dirs, path);
     }
   }
-  if(sub_dirs.empty()) {
+  if (sub_dirs.empty()) {
     return d;
   }
-  if(sub_dirs.size() != 1U) {
-    std::cout<<"Found a nested gtfs directory with more than one valid gtfs subdirectory. "<<d->path()<<" chose: "<<sub_dirs.front()<<std::endl;
+  if (sub_dirs.size() != 1U) {
+    std::cout << "Found a nested gtfs directory with more than one valid gtfs "
+                 "subdirectory. "
+              << d->path() << " chose: " << sub_dirs.front() << std::endl;
   }
   return std::make_unique<sub_dir>(std::move(d), std::move(sub_dirs.front()));
 }

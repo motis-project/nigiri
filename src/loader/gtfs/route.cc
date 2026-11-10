@@ -191,9 +191,8 @@ route_map_t read_routes(source_idx_t const src,
                           "timezone {}",
                           agency_id.view(), default_tz);
 
-                      auto const id = agency_id.empty()
-                                          ? "UKN"
-                                          : agency_id.view();
+                      auto const id =
+                          agency_id.empty() ? "UKN" : agency_id.view();
                       return register_agency(
                           tt, agency{tt, src, id, kEmptyTranslation,
                                      kEmptyTranslation, kEmptyTranslation,
@@ -235,21 +234,27 @@ route_map_t read_routes(source_idx_t const src,
   return map;
 }
 
-bool has_unknown_route_agency(std::string_view file, std::vector<std::string> const& agency_ids, std::string_view default_timezone, std::string_view feed) {
-  if(agency_ids.size() == 1U) {
+bool has_unknown_route_agency(std::string_view file,
+                              std::vector<std::string> const& agency_ids,
+                              std::string_view default_timezone,
+                              std::string_view feed) {
+  if (agency_ids.size() == 1U) {
     return false;
   }
-  if(!default_timezone.empty()) {
+  if (!default_timezone.empty()) {
     return false;
   }
   auto unknown_agency = false;
   utl::for_each_row<csv_route>(file, [&](csv_route const& route) {
     auto const route_agency_id = route.agency_id_->trim().view();
-    auto const found_agency = std::any_of(begin(agency_ids), end(agency_ids), [&](std::string const& agency_id) {
-      return agency_id == route_agency_id;
-    });
-    if(!found_agency) {
-      log(log_lvl::error, "loader.gtfs.root", "feed {}: the agency {} referenced by route {} does not exist.", feed, route_agency_id, route.route_id_->view());
+    auto const found_agency = std::any_of(begin(agency_ids), end(agency_ids),
+                                          [&](std::string const& agency_id) {
+                                            return agency_id == route_agency_id;
+                                          });
+    if (!found_agency) {
+      log(log_lvl::error, "loader.gtfs.root",
+          "feed {}: the agency {} referenced by route {} does not exist.", feed,
+          route_agency_id, route.route_id_->view());
       unknown_agency = true;
     }
   });

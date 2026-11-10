@@ -25,7 +25,9 @@ std::pair<agency_map_t, agency_ticketing_map_t> read_agencies(
     std::string_view default_tz,
     script_runner const& = script_runner{});
 
-bool has_invalid_agency_timezone(std::string_view, std::string_view, std::string_view);
+bool has_invalid_agency_timezone(std::string_view,
+                                 std::string_view,
+                                 std::string_view);
 
 std::vector<std::string> read_agency_ids(std::string_view);
 

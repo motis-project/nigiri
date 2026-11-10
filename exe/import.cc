@@ -9,9 +9,9 @@
 #include "utl/progress_tracker.h"
 
 #include "nigiri/loader/dir.h"
+#include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/load.h"
 #include "nigiri/loader/loader_interface.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/common/parse_date.h"
 #include "nigiri/shapes_storage.h"
 
