@@ -535,12 +535,10 @@ std::unique_ptr<dir> find_gtfs_root(std::unique_ptr<dir> d) {
   if (sub_dirs.empty()) {
     return d;
   }
-  if (sub_dirs.size() != 1U) {
-    std::cout << "Found a nested gtfs directory with more than one valid gtfs "
-                 "subdirectory. "
-              << d->path() << " chose: " << sub_dirs.front() << std::endl;
-  }
-  return std::make_unique<sub_dir>(std::move(d), std::move(sub_dirs.front()));
+  auto const chosen_sub_dir = sub_dirs.front();
+  log(log_lvl::error, "loader.gtfs.find_gtfs_root",
+        "feed {}: Found {} subfolders and chose: {}.", d->path().generic_string(), sub_dirs.size(), chosen_sub_dir.generic_string());
+  return std::make_unique<sub_dir>(std::move(d), std::move(chosen_sub_dir));
 }
 
 }  // namespace nigiri::loader::gtfs
