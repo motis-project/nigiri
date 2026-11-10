@@ -205,6 +205,7 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> stop_bag_board_extras_;
   thrust::device_vector<std::uint32_t> any_marked_;
   thrust::device_vector<std::uint32_t> done_;
+  pinned_host_buffer<std::uint32_t> done_pin_;
   thrust::device_vector<std::uint32_t> overflow_;
 
   thrust::device_vector<std::uint64_t> is_dest_[2];
@@ -241,8 +242,8 @@ gpu_mcraptor_state::gpu_mcraptor_state(gpu_timetable const& gtt)
 gpu_mcraptor_state::~gpu_mcraptor_state() = default;
 
 // ---- kernels ----------------------------------------------------------------
-// The rounds run without host syncs: every kernel after the init returns once
-// done_ is set.
+// Every kernel after the init returns once done_ is set; the host checks it
+// after each round to skip the remaining rounds' launches (as gpu raptor).
 
 template <direction SearchDir, mc_crit Crit>
 __global__ void mc_init_arrivals_kernel(mcraptor_impl<SearchDir, Crit> r) {
@@ -639,6 +640,15 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
     });
     mc_launch(mc_begin_footpath_phase_kernel<SearchDir, Crit>, s.stream_, r);
     mc_launch(mc_footpaths_kernel<SearchDir, Crit>, s.stream_, r, k);
+    if (k + 1U != end_k) {
+      auto* done_host = s.done_pin_.ensure(1U);
+      cudaMemcpyAsync(done_host, thrust::raw_pointer_cast(s.done_.data()),
+                      sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_);
+      cudaStreamSynchronize(s.stream_);
+      if (*done_host != 0U) {
+        break;
+      }
+    }
   }
 
   // === DEVICE RECONSTRUCT ===
