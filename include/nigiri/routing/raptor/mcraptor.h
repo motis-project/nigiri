@@ -441,14 +441,12 @@ private:
     return kFwd ? a < b : a > b;
   }
 
-  template <typename Sections>
   bool alight(unsigned k,
               std::uint32_t l_idx,
               stop_idx_t,
               delta_t by_transport,
               route_label const&,
-              Sections const&,
-              clasz fallback,
+              clasz,
               std::uint32_t transport,
               day_idx_t day);
 
