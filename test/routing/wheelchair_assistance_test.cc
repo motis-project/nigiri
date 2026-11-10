@@ -225,8 +225,8 @@ TEST(routing, wheelchair_accessible_trips) {
                       routing::all_clasz_allowed(), false, false, false, prf);
     EXPECT_EQ(expected, dep_arr(bwd)) << to << " backward, profile " << prf;
 
-    // test::raptor_search only requires McRAPTOR to find a superset on the
-    // CPU: check it directly
+    // test::raptor_search only requires a superset from the CPU McRAPTOR
+    // with extra criteria: check those directly
     for (auto const dir : {direction::kForward, direction::kBackward}) {
       auto q = routing::query{};
       q.start_ = {{tt.find(location_id{"A", {}}).value(), 0min, 0U}};
