@@ -54,13 +54,6 @@ std::uint16_t seed_walk(td_offsets_t const* td_start,
   return elapsed;
 }
 
-// Adds offset legs and the start footpath to the transit core legs (CPU + GPU).
-template <direction SearchDir>
-void mc_reconstruct_offsets(timetable const&,
-                            rt_timetable const*,
-                            query const&,
-                            journey&);
-
 template <direction SearchDir>
 constexpr bool arr_no_worse(delta_t const a, delta_t const b) {
   return SearchDir == direction::kForward ? a <= b : a >= b;
@@ -429,7 +422,6 @@ private:
   void collect_dest_journeys(unsigned k,
                              unixtime_t start_time,
                              pareto_set<journey>& results);
-  void add_legs(journey&, std::uint32_t breadcrumb_idx);
 
   transport get_earliest_transport(route_idx_t,
                                    stop_idx_t,
@@ -535,6 +527,7 @@ private:
   std::vector<route_label> route_bag_;
   // a stop's by-route entries, copied before footpath expansion inserts
   std::vector<typename state_t::label> fp_labels_;
+  std::vector<mc_breadcrumb> chain_;
 };
 
 using mcraptor_state = basic_mcraptor_state<arr_criteria>;
