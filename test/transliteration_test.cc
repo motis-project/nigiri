@@ -63,6 +63,10 @@ Chełm,5100303,51.141315,23.4942
 )";
 
 constexpr auto const kGTFSmul = R"(
+# feed_info.txt
+feed_lang
+mul
+
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
 1,Укрзалізниця,https://www.uz.gov.ua/,Europe/Kyiv
