@@ -676,11 +676,15 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
       return;
     }
     auto const l = location_idx_t{i};
-    // td footpaths replace the static ones
-    auto const use_td_fps = rtt_ != nullptr && prf_idx_ != 0U &&
-                            (kFwd ? rtt_->has_td_footpaths_out_
-                                  : rtt_->has_td_footpaths_in_)[prf_idx_]
-                                .test(l);
+    // td footpaths replace the static ones of their source (as raptor):
+    // forward all of l's, backward those from sources with td footpaths
+    auto const has_td_fps = [&](location_idx_t const x, bool const out) {
+      return rtt_ != nullptr && prf_idx_ != 0U &&
+             (out ? rtt_->has_td_footpaths_out_
+                  : rtt_->has_td_footpaths_in_)[prf_idx_]
+                 .test(x);
+    };
+    auto const use_td_fps = has_td_fps(l, kFwd);
     auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx_][l]
                            : tt_.locations_.footpaths_in_[prf_idx_][l];
     auto const egress_ok = intermodal && dist_to_end_[i] != kUnreachable;
@@ -793,8 +797,12 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
                        static_cast<std::uint16_t>(walk.count()));
             });
       }
-    } else {
+    }
+    if (!kFwd || !use_td_fps) {
       for (auto const& fp : fps) {
+        if (!kFwd && use_td_fps && has_td_fps(fp.target(), true)) {
+          continue;
+        }
         ++stats_.n_footpaths_visited_;
         auto const target = to_idx(fp.target());
         if (target == i) {
