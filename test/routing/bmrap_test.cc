@@ -1023,9 +1023,9 @@ TEST(bmrap, relaxed_ping_keeps_best_intermodal_arrival) {
 
   auto ss = routing::search_state{};
   auto as = routing::raptor_state{};
-  auto const pong = tuples(*routing::pong_search(tt, nullptr, ss, as, q,
-                                                 direction::kForward)
-                                .journeys_);
+  auto const pong =
+      tuples(*routing::pong_search(tt, nullptr, ss, as, q, direction::kForward)
+                  .journeys_);
   auto const two_transfers =
       tuple_t{unixtime_t{day} + 8h + 1min, unixtime_t{day} + 8h + 30min, 2U};
   ASSERT_TRUE(std::find(begin(pong), end(pong), two_transfers) != end(pong))

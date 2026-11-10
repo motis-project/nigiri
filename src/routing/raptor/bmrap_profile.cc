@@ -584,11 +584,9 @@ routing_result bmrap_profile(
     for_each_arrival_group(mc_results, [&](unixtime_t const arr,
                                            auto const first, auto const last) {
       auto const group_tr =
-          std::max_element(first, last,
-                           [](journey const& a, journey const& b) {
-                             return a.transfers_ < b.transfers_;
-                           })
-              ->transfers_;
+          std::max_element(first, last, [](journey const& a, journey const& b) {
+            return a.transfers_ < b.transfers_;
+          })->transfers_;
       if (std::all_of(first, last, re_anchored)) {
         // the departures this pong would return still set the advance (step 6)
         // as if it had run: without them the scan stepped past departures
