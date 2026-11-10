@@ -472,6 +472,20 @@ routing::query extend_query(fixture const& f, extend_case const& c) {
   return q;
 }
 
+// journeys whose scan key (departure forward, arrival backward) is in `win`
+std::vector<tuple_t> in_window(std::vector<tuple_t> const& js,
+                               interval<unixtime_t> const& win,
+                               direction const dir) {
+  auto v = std::vector<tuple_t>{};
+  for (auto const& j : js) {
+    if (win.contains(dir == direction::kForward ? std::get<0>(j)
+                                                : std::get<1>(j))) {
+      v.push_back(j);
+    }
+  }
+  return v;
+}
+
 // A query that forbids growing on one side must not grow on it: journeys
 // outside the requested window are not what was asked for, and on a paging
 // request they are the ones already shown.
@@ -549,7 +563,83 @@ TEST(bmrap, opposed_extension_is_a_superset_of_pong) {
     q.extend_interval_later_ = c.dir_ == direction::kForward;
     q.min_connection_count_ = 0U;
 
-    expect_subset(r.js_, pong_reference(f, q, c.dir_).js_, c.name_);
+    // PONG may grow on the aligned side and return journeys past the window
+    // (its last re-anchoring step can land there); the opposed query forbids
+    // that side, so compare inside the window only
+    expect_subset(r.js_,
+                  in_window(pong_reference(f, q, c.dir_).js_, r.scanned_,
+                            c.dir_),
+                  c.name_);
+  }
+}
+
+namespace {
+
+std::vector<extend_case> all_extend_cases() {
+  auto v = aligned_cases();
+  for (auto const& c : opposed_cases()) {
+    v.push_back(c);
+  }
+  return v;
+}
+
+// Whichever path settled the window (aligned: the scan, opposed: the range
+// search up front), the result is the restricted set over that window.
+template <typename Criteria, typename McState>
+void expect_extension_equals_restricted_mcraptor(fixture const& f,
+                                                 extend_case const& c) {
+  auto const r = bmrapp<Criteria>(f, extend_query(f, c), c.dir_);
+  ASSERT_FALSE(r.js_.empty()) << c.name_ << ": nothing to compare";
+
+  auto q = f.make_query(c.dir_);
+  q.start_time_ = r.scanned_;
+  q.min_connection_count_ = 0U;  // the window is settled: no extension
+  EXPECT_EQ(restricted_reference<McState>(f, q, c.dir_), r.js_) << c.name_;
+}
+
+// The aligned and the opposed query of one direction see different windows,
+// but must return the same journeys where those overlap.
+template <typename Criteria>
+void expect_aligned_matches_opposed(fixture const& f, direction const dir) {
+  auto const of_dir = [&](std::vector<extend_case> const& cases) {
+    return *std::find_if(begin(cases), end(cases), [&](extend_case const& c) {
+      return c.dir_ == dir;
+    });
+  };
+  auto const a = of_dir(aligned_cases());
+  auto const o = of_dir(opposed_cases());
+  auto const ra = bmrapp<Criteria>(f, extend_query(f, a), dir);
+  auto const ro = bmrapp<Criteria>(f, extend_query(f, o), dir);
+
+  auto const common =
+      interval<unixtime_t>{std::max(ra.scanned_.from_, ro.scanned_.from_),
+                           std::min(ra.scanned_.to_, ro.scanned_.to_)};
+  ASSERT_LT(common.from_, common.to_)
+      << name(dir) << ": the two windows do not overlap";
+  auto const aligned = in_window(ra.js_, common, dir);
+  ASSERT_FALSE(aligned.empty())
+      << name(dir) << ": no journey in the common window - says nothing";
+  EXPECT_EQ(aligned, in_window(ro.js_, common, dir)) << name(dir);
+}
+
+}  // namespace
+
+TEST(bmrap, extension_cases_equal_restricted_mcraptor) {
+  auto const f = fixture{};
+  for (auto const& c : all_extend_cases()) {
+    expect_extension_equals_restricted_mcraptor<routing::arr_criteria,
+                                                routing::mcraptor_state>(f, c);
+    expect_extension_equals_restricted_mcraptor<
+        routing::arr_non_transit_criteria,
+        routing::mcraptor_non_transit_state>(f, c);
+  }
+}
+
+TEST(bmrap, aligned_extension_matches_opposed) {
+  auto const f = fixture{};
+  for (auto const dir : kDirs) {
+    expect_aligned_matches_opposed<routing::arr_criteria>(f, dir);
+    expect_aligned_matches_opposed<routing::arr_non_transit_criteria>(f, dir);
   }
 }
 
@@ -1170,6 +1260,21 @@ TEST(bmrap, gpu_mc_pong_matches_mc_ping) {
                 f, q, direction::kForward, 1),
             run_bmrapp_gpu<routing::arr_non_transit_criteria>(
                 f, q, direction::kForward, 2));
+}
+
+// The four (arriveBy x extension side) cases on the device, in every mc mode.
+TEST(bmrap, gpu_extension_cases_match_cpu) {
+  SKIP_WITHOUT_GPU();
+  auto const f = fixture{};
+  for (auto const& c : all_extend_cases()) {
+    auto const q = extend_query(f, c);
+    auto const cpu = bmrapp<routing::arr_non_transit_criteria>(f, q, c.dir_);
+    for (auto const mode : {0, 1, 2}) {
+      EXPECT_EQ(cpu.js_, run_bmrapp_gpu<routing::arr_non_transit_criteria>(
+                             f, q, c.dir_, mode))
+          << c.name_ << ", gpu_mc_mode=" << mode;
+    }
+  }
 }
 
 #undef SKIP_WITHOUT_GPU
