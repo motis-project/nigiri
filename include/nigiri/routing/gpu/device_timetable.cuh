@@ -91,9 +91,6 @@ struct device_rt_timetable {
   d_vecvec_view<decltype(rtt{}.rt_transport_stop_times_)>
       rt_transport_stop_times_;
   d_vecmap_view<rt_transport_idx_t, clasz> rt_transport_clasz_;
-  // per section, see ride_clasz()
-  d_vecvec_view<decltype(rtt{}.rt_transport_section_clasz_)>
-      rt_transport_section_clasz_;
 
   d_vecmap_view<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
   d_vecmap_view<bitfield_idx_t, bitfield> bitfields_;
@@ -167,8 +164,6 @@ struct device_timetable {
   cuda::std::span<delta const> patterns_;  // per route: [event][pattern]
 
   d_vecmap_view<route_idx_t, clasz> route_clasz_;
-  // per section, see ride_clasz()
-  d_vecvec_view<decltype(t{}.route_section_clasz_)> route_section_clasz_;
 
   d_vecvec_view<decltype(t{}.route_location_seq_)> route_location_seq_;
   d_vecvec_view<decltype(t{}.location_routes_)> location_routes_;

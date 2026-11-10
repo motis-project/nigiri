@@ -13,6 +13,9 @@
 #include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
+#include "nigiri/rt/create_rt_timetable.h"
+#include "nigiri/rt/gtfsrt_update.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 
 #include "../raptor_search.h"
@@ -74,6 +77,9 @@ T1,T1,,,,,,
 T9,T9,,,,,,
 M0,M0,,,,,,
 M9,M9,,,,,,
+U0,U0,,,,,,
+U1,U1,,,,,,
+U2,U2,,,,,,
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -118,6 +124,8 @@ BUS,D,T_C,,
 AIR,D,M_AIR,,
 COACH,D,M_COACH,,
 RAIL,D,M_RAIL,,
+AIR,D,U_AIR,,
+RAIL,D,U_RAIL,,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -189,6 +197,11 @@ M_COACH,10:00:00,10:00:00,M0,0,0,0
 M_COACH,10:50:00,10:50:00,M9,1,0,0
 M_RAIL,10:00:00,10:00:00,M0,0,0,0
 M_RAIL,11:30:00,11:30:00,M9,1,0,0
+U_AIR,10:00:00,10:00:00,U0,0,0,0
+U_AIR,10:15:00,10:15:00,U1,1,0,0
+U_AIR,10:30:00,10:30:00,U2,2,0,0
+U_RAIL,10:00:00,10:00:00,U0,0,0,0
+U_RAIL,11:30:00,11:30:00,U2,1,0,0
 
 # transfers.txt
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
@@ -279,12 +292,13 @@ template <typename State>
 void expect_rows(scenario const& s,
                  std::vector<std::string> const& expected,
                  dirs_t const dirs = {direction::kForward,
-                                      direction::kBackward}) {
+                                      direction::kBackward},
+                 rt_timetable const* rtt = nullptr) {
   for (auto const dir : dirs) {
     auto ss = search_state{};
     auto state = State{};
     auto const r =
-        routing::raptor_search(test_tt(), nullptr, ss, state, s.make(dir), dir);
+        routing::raptor_search(test_tt(), rtt, ss, state, s.make(dir), dir);
     EXPECT_EQ(expected, rows(*r.journeys_))
         << (dir == direction::kForward ? "forward" : "backward");
   }
@@ -294,10 +308,11 @@ void expect_rows(scenario const& s,
 void expect_engines(scenario const& s,
                     std::vector<std::string> const& expected,
                     dirs_t const dirs = {direction::kForward,
-                                         direction::kBackward}) {
+                                         direction::kBackward},
+                    rt_timetable const* rtt = nullptr) {
   for (auto const dir : dirs) {
     EXPECT_EQ(expected,
-              rows(test::raptor_search(test_tt(), nullptr, s.make(dir), dir)))
+              rows(test::raptor_search(test_tt(), rtt, s.make(dir), dir)))
         << (dir == direction::kForward ? "forward" : "backward");
   }
 }
@@ -352,6 +367,48 @@ TEST(mcraptor_criteria, mode_filter_avoids_each_mask) {
   check(to_mask(clasz::kAir) | to_mask(clasz::kCoach),
         {"10:00 10:30 t0 c0 f1 s0", "10:00 11:30 t0 c0 f0 s0"});
   mode_filter_dim::set_avoided(to_mask(clasz::kAir));  // the default
+}
+
+// A ride has its route's class (route_clasz_, as raptor's clasz filter), also
+// when alighted behind the first section (U0 -> U2 over U1) and as an rt run
+TEST(mcraptor_criteria, ride_has_the_route_class) {
+  auto const s =
+      between("U0", "U2", {at(9, 30), at(10, 30)}, {at(10, 15), at(11, 45)});
+  auto const check = [&](rt_timetable const* rtt,
+                         std::string const& flight_plain,
+                         std::string const& flight) {
+    auto const both = dirs_t{direction::kForward, direction::kBackward};
+    expect_engines(s, {flight_plain}, both, rtt);
+    auto expected = std::vector<std::string>{flight, "10:00 11:30 t0 c0 f0 s0"};
+    std::sort(begin(expected), end(expected));  // as rows()
+    expect_rows<mcraptor_mode_filter_state>(s, expected, both, rtt);
+    expect_rows<mcraptor_non_transit_mode_filter_mode_switches_state>(
+        s, expected, both, rtt);
+  };
+  check(nullptr, "10:00 10:30 t0 c0 f0 s0", "10:00 10:30 t0 c0 f1 s0");
+
+  auto rtt = rt::create_rt_timetable(test_tt(), sys_days{2024_y / June / 19});
+  auto msg = transit_realtime::FeedMessage{};
+  auto const hdr = msg.mutable_header();
+  hdr->set_gtfs_realtime_version("2.0");
+  hdr->set_incrementality(
+      transit_realtime::FeedHeader_Incrementality_FULL_DATASET);
+  hdr->set_timestamp(std::chrono::duration_cast<std::chrono::seconds>(
+                         at(9, 0).time_since_epoch())
+                         .count());
+  auto const e = msg.add_entity();
+  e->set_id("1");
+  auto const td = e->mutable_trip_update()->mutable_trip();
+  td->set_start_time("10:00:00");
+  td->set_start_date("20240619");
+  td->set_trip_id("U_AIR");
+  auto const stop_update = e->mutable_trip_update()->add_stop_time_update();
+  stop_update->set_stop_sequence(0U);
+  stop_update->mutable_departure()->set_delay(10 * 60);
+  ASSERT_EQ(rt::gtfsrt_update_msg(test_tt(), rtt, source_idx_t{0}, "tag", msg)
+                .total_entities_success_,
+            1U);
+  check(&rtt, "10:10 10:40 t0 c0 f0 s0", "10:10 10:40 t0 c0 f1 s0");
 }
 
 // rail + bus arrives at 11:00, bus + bus at 11:10 without changing group

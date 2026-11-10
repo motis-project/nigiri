@@ -788,7 +788,7 @@ struct mcraptor_impl {
       return false;
     }
     auto const l = to_idx(stp.location_idx());
-    auto const cl = ride_clasz_at(r, stop_idx);
+    auto const cl = ride_clasz(r);
     auto any = false;
     for (auto i = 0U; i != K; ++i) {
       if (i < bag.size_) {
@@ -1146,7 +1146,7 @@ struct mcraptor_impl {
     }
     auto const l = to_idx(stp.location_idx());
     auto const by_transport = rt_time_at_stop(rt_t, stop_idx, kArrEv);
-    auto const cl = rt_ride_clasz_at(rt_t, stop_idx);
+    auto const cl = ride_clasz(rt_t);
     auto any = false;
     for (auto i = 0U; i != K; ++i) {
       if (i < bag.size_) {
@@ -1182,22 +1182,19 @@ struct mcraptor_impl {
     return any;
   }
 
-  // class of a ride alighted at stop_idx, as the CPU (only read by the mode
-  // criteria)
-  __device__ __forceinline__ clasz
-  ride_clasz_at(route_idx_t const r, stop_idx_t const stop_idx) const {
+  // class of a ride: the route's, as the CPU and raptor's clasz filter (only
+  // read by the mode criteria)
+  __device__ __forceinline__ clasz ride_clasz(route_idx_t const r) const {
     if constexpr (kHasModeFilter || kHasModeSwitches) {
-      return ride_clasz(tt_.route_section_clasz_[r], tt_.route_clasz_[r],
-                        static_cast<unsigned>(kFwd ? stop_idx - 1 : stop_idx));
+      return tt_.route_clasz_[r];
     } else {
       return clasz::kOther;
     }
   }
-  __device__ __forceinline__ clasz rt_ride_clasz_at(
-      rt_transport_idx_t const rt_t, stop_idx_t const stop_idx) const {
+  __device__ __forceinline__ clasz
+  ride_clasz(rt_transport_idx_t const rt_t) const {
     if constexpr (kHasModeFilter || kHasModeSwitches) {
-      return ride_clasz(rtt_.rt_transport_section_clasz_[rt_t], clasz::kOther,
-                        static_cast<unsigned>(kFwd ? stop_idx - 1 : stop_idx));
+      return rtt_.rt_transport_clasz_[rt_t];
     } else {
       return clasz::kOther;
     }

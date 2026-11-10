@@ -66,16 +66,6 @@ CISTA_CUDA_COMPAT constexpr bool switches_dominate(std::uint32_t const a_group,
   return a_sw + penalty <= b_sw;
 }
 
-// Class of a ride, from the section it is alighted from (kFwd: the one before
-// the alight stop). A route with a single class has a single section entry.
-template <typename Sections>
-CISTA_CUDA_COMPAT clasz ride_clasz(Sections const& sections,
-                                   clasz const fallback,
-                                   unsigned const section) {
-  auto const n = static_cast<unsigned>(sections.size());
-  return n == 0U ? fallback : sections[section < n ? section : n - 1U];
-}
-
 // ---- packed form (the GPU label's 16 bit extras slot)
 // -------------------------
 //   bit  0      mode_filter: uses an avoided vehicle class

@@ -428,15 +428,13 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
 // Alights rl at l_idx; true iff the arrival (plus transfer buffer) was
 // inserted.
 template <direction SearchDir, typename Criteria, bool RangeReuse>
-template <typename Sections>
 bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
     unsigned const k,
     std::uint32_t const l_idx,
     stop_idx_t const stop_idx,
     delta_t const by_transport,
     route_label const& rl,
-    Sections const& sections,
-    clasz const fallback,
+    clasz const ride_clasz,
     std::uint32_t const transport,
     day_idx_t const day) {
   auto const lb = lb_[l_idx];
@@ -445,12 +443,9 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
     ++stats_.route_update_prevented_by_lower_bound_;
     return false;
   }
-  // clasz of the alighted section (route_clasz_ is the first section's)
-  auto const ride_crit = Criteria::from_ride(
-      by_transport,
-      ride_clasz(sections, fallback,
-                 static_cast<unsigned>(kFwd ? stop_idx - 1 : stop_idx)),
-      rl.carried_);
+  // the class of the whole route, as raptor's clasz filter
+  auto const ride_crit =
+      Criteria::from_ride(by_transport, ride_clasz, rl.carried_);
   if (dest_dominates(k,
                      ride_crit.projected_to(clamp(by_transport + dir(lb))))) {
     ++stats_.route_update_prevented_by_lower_bound_;
@@ -591,8 +586,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(
           stop_idx_t const stop_idx) {
         return alight(k, l_idx, stop_idx,
                       time_at_stop(r, rl.t_, stop_idx, kArrEv), rl,
-                      tt_.route_section_clasz_[r], tt_.route_clasz_[r],
-                      to_idx(rl.t_.t_idx_), rl.t_.day_);
+                      tt_.route_clasz_[r], to_idx(rl.t_.t_idx_), rl.t_.day_);
       },
       [&](Criteria const& crit, std::uint32_t const parent,
           stop_idx_t const stop_idx, location_idx_t const l) {
@@ -650,8 +644,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
           stop_idx_t const stop_idx) {
         return alight(k, l_idx, stop_idx,
                       rt_time_at_stop(rt_t, stop_idx, kArrEv), rl,
-                      rtt_->rt_transport_section_clasz_[rt_t], clasz::kOther,
-                      to_idx(rt_t), day_idx_t::invalid());
+                      rtt_->rt_transport_section_clasz_[rt_t][0], to_idx(rt_t),
+                      day_idx_t::invalid());
       },
       [&](Criteria const& crit, std::uint32_t const parent,
           stop_idx_t const stop_idx, location_idx_t) {
