@@ -393,9 +393,10 @@ TEST(mcraptor_criteria, ride_has_the_route_class) {
   hdr->set_gtfs_realtime_version("2.0");
   hdr->set_incrementality(
       transit_realtime::FeedHeader_Incrementality_FULL_DATASET);
-  hdr->set_timestamp(std::chrono::duration_cast<std::chrono::seconds>(
-                         at(9, 0).time_since_epoch())
-                         .count());
+  hdr->set_timestamp(static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::seconds>(
+          at(9, 0).time_since_epoch())
+          .count()));
   auto const e = msg.add_entity();
   e->set_id("1");
   auto const td = e->mutable_trip_update()->mutable_trip();
