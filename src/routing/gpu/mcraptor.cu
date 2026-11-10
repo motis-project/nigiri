@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <type_traits>
-#include <unordered_map>
 
 // hide date.h's NOEXCEPT from CCCL's token pasting, see device_times.h
 #pragma push_macro("NOEXCEPT")
@@ -18,6 +17,7 @@
 #include "nigiri/logging.h"
 #include "nigiri/routing/gpu/cuda_check.cuh"
 #include "nigiri/routing/gpu/device_buffer.cuh"
+#include "nigiri/routing/gpu/launch.cuh"
 #include "nigiri/routing/gpu/mcraptor_impl.cuh"
 #include "nigiri/routing/gpu/pinned_host_buffer.cuh"
 #include "nigiri/routing/gpu/timetable_impl.cuh"
@@ -381,29 +381,6 @@ __global__ void mc_reconstruct_kernel(location_idx_t const* const dest_list,
   r.reconstruct_label(dest, lab, &out[atomicAdd(out_count, 1U)]);
 }
 
-// Keyed by kernel address: kernels sharing a signature need their own block
-// size ("too many resources" otherwise).
-template <typename Kernel>
-std::pair<int, int> mc_launch_dims(Kernel kernel) {
-  static thread_local std::unordered_map<void*, std::pair<int, int>> cache;
-  auto const key = reinterpret_cast<void*>(kernel);
-  if (auto const it = cache.find(key); it != end(cache)) {
-    return it->second;
-  }
-  auto blocks = 0;
-  auto threads = 0;
-  cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
-  auto const dims = std::pair{blocks, threads};
-  cache.emplace(key, dims);
-  return dims;
-}
-
-template <typename Kernel, typename... Args>
-void mc_launch(Kernel kernel, cudaStream_t stream, Args&&... args) {
-  auto const [blocks, threads] = mc_launch_dims(kernel);
-  kernel<<<blocks, threads, 0, stream>>>(std::forward<Args>(args)...);
-}
-
 // ---- algorithm --------------------------------------------------------------
 
 template <direction SearchDir, mc_crit Crit>
@@ -527,10 +504,10 @@ void gpu_mcraptor<SearchDir, Crit>::reset_arrivals() {
   fill_bytes(s.dest_best_key_[kDirIdx], 0xFF, s.stream_);
   fill_bytes(s.dest_best_total_[kDirIdx], 0xFF, s.stream_);
   fill_bytes(s.overflow_, 0, s.stream_);
-  mc_launch(mc_clear_bags_kernel<SearchDir, Crit>, s.stream_,
-            make_impl<SearchDir, Crit>(s, kDirIdx, transfer_time_settings_,
-                                       allowed_claszes_, avoided_, 0U, base_,
-                                       worst_at_dest_, {}));
+  launch(mc_clear_bags_kernel<SearchDir, Crit>, s.stream_,
+         make_impl<SearchDir, Crit>(s, kDirIdx, transfer_time_settings_,
+                                    allowed_claszes_, avoided_, 0U, base_,
+                                    worst_at_dest_, {}));
   fill_bytes(s.bag_pool_count_, 0, s.stream_);
 }
 
@@ -538,10 +515,10 @@ template <direction SearchDir, mc_crit Crit>
 void gpu_mcraptor<SearchDir, Crit>::next_start_time() {
   starts_.clear();
   auto& s = *state_.impl_;
-  mc_launch(mc_demote_bags_kernel<SearchDir, Crit>, s.stream_,
-            make_impl<SearchDir, Crit>(s, kDirIdx, transfer_time_settings_,
-                                       allowed_claszes_, avoided_, 0U, base_,
-                                       worst_at_dest_, {}));
+  launch(mc_demote_bags_kernel<SearchDir, Crit>, s.stream_,
+         make_impl<SearchDir, Crit>(s, kDirIdx, transfer_time_settings_,
+                                    allowed_claszes_, avoided_, 0U, base_,
+                                    worst_at_dest_, {}));
   fill_bytes(s.station_mark_, 0, s.stream_);
   fill_bytes(s.prev_station_mark_, 0, s.stream_);
   fill_bytes(s.route_mark_, 0, s.stream_);
@@ -611,36 +588,34 @@ void gpu_mcraptor<SearchDir, Crit>::execute(unixtime_t const start_time,
   };
 
   // === ROUTING KERNELS (as gpu raptor) ===
-  mc_launch(mc_init_arrivals_kernel<SearchDir, Crit>, s.stream_, r);
+  launch(mc_init_arrivals_kernel<SearchDir, Crit>, s.stream_, r);
   for (auto k = 1U; k != end_k; ++k) {
-    mc_launch(mc_mark_routes_kernel<SearchDir, Crit>, s.stream_, r);
+    launch(mc_mark_routes_kernel<SearchDir, Crit>, s.stream_, r);
     if (with_rt_scan) {
-      mc_launch(mc_mark_rt_transports_kernel<SearchDir, Crit>, s.stream_, r);
+      launch(mc_mark_rt_transports_kernel<SearchDir, Crit>, s.stream_, r);
     }
-    mc_launch(mc_begin_transit_phase_kernel<SearchDir, Crit>, s.stream_, r);
-    mc_launch(mc_et_build_route_list_kernel<SearchDir, Crit>, s.stream_, r);
+    launch(mc_begin_transit_phase_kernel<SearchDir, Crit>, s.stream_, r);
+    launch(mc_et_build_route_list_kernel<SearchDir, Crit>, s.stream_, r);
     if (is_wheelchair_) {
-      mc_launch(mc_et_collect_tasks_kernel<SearchDir, Crit, true>, s.stream_,
-                r);
+      launch(mc_et_collect_tasks_kernel<SearchDir, Crit, true>, s.stream_, r);
     } else {
-      mc_launch(mc_et_collect_tasks_kernel<SearchDir, Crit, false>, s.stream_,
-                r);
+      launch(mc_et_collect_tasks_kernel<SearchDir, Crit, false>, s.stream_, r);
     }
-    mc_launch(mc_et_run_lookups_kernel<SearchDir, Crit>, s.stream_, r, k);
+    launch(mc_et_run_lookups_kernel<SearchDir, Crit>, s.stream_, r, k);
     // route and rt scans read round k - 1 and write round k (any order)
     with_flags([&](auto const clasz_filter, auto const wheelchair) {
       constexpr auto kClasz = decltype(clasz_filter)::value;
       constexpr auto kWheelchair = decltype(wheelchair)::value;
-      mc_launch(mc_loop_routes_kernel<SearchDir, Crit, kClasz, kWheelchair>,
-                s.stream_, r, k);
+      launch(mc_loop_routes_kernel<SearchDir, Crit, kClasz, kWheelchair>,
+             s.stream_, r, k);
       if (with_rt_scan) {
-        mc_launch(mc_update_rt_transports_kernel<SearchDir, Crit, kClasz,
-                                                 kWheelchair>,
-                  s.stream_, r, k);
+        launch(mc_update_rt_transports_kernel<SearchDir, Crit, kClasz,
+                                              kWheelchair>,
+               s.stream_, r, k);
       }
     });
-    mc_launch(mc_begin_footpath_phase_kernel<SearchDir, Crit>, s.stream_, r);
-    mc_launch(mc_footpaths_kernel<SearchDir, Crit>, s.stream_, r, k);
+    launch(mc_begin_footpath_phase_kernel<SearchDir, Crit>, s.stream_, r);
+    launch(mc_footpaths_kernel<SearchDir, Crit>, s.stream_, r, k);
     if (k + 1U != end_k) {
       auto* done_host = s.done_pin_.ensure(1U);
       cudaMemcpyAsync(done_host, thrust::raw_pointer_cast(s.done_.data()),

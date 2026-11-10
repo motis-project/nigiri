@@ -1592,111 +1592,26 @@ struct mcraptor_impl {
                          stop_idx_t const stop_idx,
                          day_idx_t const day_at_stop,
                          minutes_after_midnight_t const mam_at_stop,
-                         std::uint16_t const l_lb) {
-    auto const event_times = tt_.event_times_at_stop(r, stop_idx, kDepEv);
-    auto const n = static_cast<unsigned>(event_times.size());
-
-    // transport offset of the i-th event in search direction
-    auto const t_offset_at = [&](unsigned const i) {
-      return kFwd ? i : n - 1U - i;
-    };
-
-    // day 0: the first event at or after the time at the stop (FIFO routes,
-    // so the column is sorted by mam)
-    auto const seek_first_day = [&]() {
-      auto lo = 0U;
-      auto hi = n;
-      while (lo < hi) {
-        auto const mid = lo + (hi - lo) / 2U;
-        if (is_better(event_times[t_offset_at(mid)].mam(),
-                      mam_at_stop.count())) {
-          lo = mid + 1U;
-        } else {
-          hi = mid;
-        }
-      }
-      return lo;
-    };
-
-    constexpr auto const kNDaysToIterate = static_cast<day_idx_t::value_t>(
-        kMaxTravelTime / std::chrono::days{1} + 1U);
-    for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
-      auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
-      if (!is_route_active(r, day)) {
-        continue;
-      }
-
-      for (auto pos = i == 0U ? seek_first_day() : 0U; pos < n; ++pos) {
-        auto const t_offset = t_offset_at(pos);
-        auto const ev = event_times[t_offset];
-        auto const ev_mam = ev.mam();
-
-        // window pruning with the lb projection (CPU form)
-        if (is_better_or_eq(worst_at_dest_,
-                            to_delta(day, ev_mam) + dir(l_lb))) {
-          return {transport_idx_t::invalid(), day_idx_t::invalid()};
-        }
-
-        auto const t = event_times.transport(t_offset);
-        if (i == 0U && !is_better_or_eq(mam_at_stop.count(), ev_mam)) {
-          continue;
-        }
-
-        auto const start_day = static_cast<int>(day.v_) - ev.days();
-        if (!is_transport_active(t, static_cast<std::size_t>(start_day))) {
-          continue;
-        }
-        return {t, static_cast<day_idx_t>(start_day)};
-      }
-    }
-    return {};
+                         std::uint16_t const l_lb) const {
+    // window pruning with the lb projection (CPU form)
+    return tt_.get_earliest_transport<SearchDir>(
+        rtt_, r, stop_idx, day_at_stop, mam_at_stop,
+        [&](day_idx_t const day, auto const mam) {
+          return is_better_or_eq(worst_at_dest_,
+                                 to_delta(day, mam) + dir(l_lb));
+        });
   }
-
-  __device__ __forceinline__ bool is_transport_active(
-      transport_idx_t const t, std::size_t const day) const {
-    // kRtBitfieldFlag entries resolve into rtt_.bitfields_ (as in raptor_impl)
-    auto const i = to_idx(tt_.transport_traffic_days_[t]);
-    return ((i & kRtBitfieldFlag) != 0U
-                ? rtt_.bitfields_[bitfield_idx_t{i & ~kRtBitfieldFlag}]
-                : tt_.bitfields_[bitfield_idx_t{i}])
-        .test(day);
-  }
-
-  __device__ __forceinline__ bool is_route_active(route_idx_t const r,
-                                                  day_idx_t const day) const {
-    return static_cast<int>(day.v_) >= 0 &&
-           tt_.bitfields_[tt_.route_traffic_days_[r]].test(
-               static_cast<std::size_t>(static_cast<int>(day.v_)));
-  }
-
-  // packed trip [rel_day:6 | t_offset:26], ordered as unsigned in scan order
-  static constexpr auto kEtRelDayShift = 26U;
-  static constexpr auto kEtReverseBase = (~std::uint32_t{0}) - 1U;
 
   __device__ __forceinline__ int et_day_lo() const {
     return static_cast<int>(base_.v_) - 28;
   }
-
   __device__ __forceinline__ std::uint32_t pack_et(route_idx_t const r,
                                                    transport const t) const {
-    auto const rel_day =
-        static_cast<std::uint32_t>(static_cast<int>(t.day_.v_) - et_day_lo());
-    auto const t_offset =
-        to_idx(t.t_idx_) - to_idx(tt_.route_times_[r].transports_.from_);
-    auto const x = (rel_day << kEtRelDayShift) | t_offset;
-    return kFwd ? x : kEtReverseBase - x;
+    return tt_.pack_et<SearchDir>(r, t, et_day_lo());
   }
-
   __device__ __forceinline__ transport unpack_et(route_idx_t const r,
                                                  std::uint32_t const p) const {
-    auto const x = kFwd ? p : kEtReverseBase - p;
-    auto const rel_day = x >> kEtRelDayShift;
-    auto const t_offset = x & ((1U << kEtRelDayShift) - 1U);
-    return transport{
-        transport_idx_t{to_idx(tt_.route_times_[r].transports_.from_) +
-                        t_offset},
-        day_idx_t{static_cast<day_idx_t::value_t>(static_cast<int>(rel_day) +
-                                                  et_day_lo())}};
+    return tt_.unpack_et<SearchDir>(r, p, et_day_lo());
   }
 
   __device__ delta_t time_at_stop(route_idx_t const r,

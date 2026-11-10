@@ -34,6 +34,7 @@
 #include "nigiri/routing/gpu/cuda_check.cuh"
 #include "nigiri/routing/gpu/device_buffer.cuh"
 #include "nigiri/routing/gpu/device_timetable.cuh"
+#include "nigiri/routing/gpu/launch.cuh"
 #include "nigiri/routing/gpu/pinned_host_buffer.cuh"
 #include "nigiri/routing/gpu/raptor_impl.cuh"
 #include "nigiri/routing/gpu/timetable_impl.cuh"
@@ -41,8 +42,6 @@
 #include "nigiri/td_footpath.h"
 
 namespace nigiri::routing::gpu {
-
-
 
 gpu_timetable::gpu_timetable(timetable const& tt)
     : impl_{std::make_unique<impl>(tt)} {}
@@ -447,24 +446,6 @@ __global__ void transfers_footpaths_kernel(raptor_impl<SearchDir, WithBounds> r,
   r.template update_transfers_and_footpaths<WithTdDest, WithTdFootpaths>(k);
   r.route_mark_.reset();
   r.rt_transport_mark_.reset();
-}
-
-template <typename Kernel>
-std::pair<int, int> launch_dims(Kernel kernel) {
-  thread_local auto cache = hash_map<void const*, std::pair<int, int>>{};
-  return utl::get_or_create(
-      cache, reinterpret_cast<void const*>(kernel), [&]() {
-        auto blocks = 0;
-        auto threads = 0;
-        cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
-        return std::pair{blocks, threads};
-      });
-}
-
-template <typename Kernel, typename... Args>
-void launch(Kernel kernel, cudaStream_t stream, Args&&... args) {
-  auto const [blocks, threads] = launch_dims(kernel);
-  kernel<<<blocks, threads, 0, stream>>>(std::forward<Args>(args)...);
 }
 
 template <direction PingDir>
