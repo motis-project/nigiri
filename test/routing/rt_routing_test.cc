@@ -355,8 +355,8 @@ namespace {
 
 // LONG: 70 stops P00..P69 (three warp chunks on the GPU), 2 minutes apart from
 // 10:00, delayed by 10 minutes. From X it is boarded at P08 (bus feeder), P20
-// (rail feeder, same departure: a second route bag entry with other extras) or
-// P40 (20 minute walk).
+// (rail feeders via Y, same departure: one more transfer but no mode switch,
+// a second route bag entry with other extras) or P40 (20 minute walk).
 mem_dir long_run_files() {
   auto s = std::string{R"(
 # agency.txt
@@ -377,6 +377,7 @@ route_id,service_id,trip_id,trip_headsign,block_id
 RAIL,D,LONG,,
 BUS,D,FEED_BUS,,
 RAIL,D,FEED_RAIL,,
+RAIL,D,FEED_RAIL2,,
 
 # transfers.txt
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
@@ -385,6 +386,7 @@ X,P40,2,1200
 # stops.txt
 stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
 X,X,,,,,,
+Y,Y,,,,,,
 )"};
   for (auto i = 0; i != 70; ++i) {
     s += fmt::format("P{0:02},P{0:02},,,,,,\n", i);
@@ -395,7 +397,9 @@ trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_t
 FEED_BUS,10:00:00,10:00:00,X,1,0,0
 FEED_BUS,10:10:00,10:10:00,P08,2,0,0
 FEED_RAIL,10:00:00,10:00:00,X,1,0,0
-FEED_RAIL,10:30:00,10:30:00,P20,2,0,0
+FEED_RAIL,10:10:00,10:10:00,Y,2,0,0
+FEED_RAIL2,10:15:00,10:15:00,Y,1,0,0
+FEED_RAIL2,10:30:00,10:30:00,P20,2,0,0
 )";
   for (auto i = 0; i != 70; ++i) {
     auto const m = 10 * 60 + 2 * i;
