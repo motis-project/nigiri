@@ -418,8 +418,8 @@ private:
   bool update_route(unsigned k, route_idx_t);
   bool loop_rt_transports(unsigned k);
   bool update_rt_transport(unsigned k, rt_transport_idx_t);
-  template <typename Stops, typename Alight, typename Board>
-  bool scan_stops(unsigned k, Stops const&, Alight&&, Board&&);
+  template <typename Stops, typename Ridable, typename Alight, typename Board>
+  bool scan_stops(unsigned k, Stops const&, Ridable&&, Alight&&, Board&&);
   void board(std::uint32_t key,
              transport,
              stop_idx_t,

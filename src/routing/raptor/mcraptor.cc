@@ -483,7 +483,9 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::loop_routes(
   auto any_marked = false;
   state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
     auto const r = route_idx_t{r_idx};
-    if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
+    if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r]) ||
+        (is_wheelchair_ &&
+         !tt_.is_flag_set(route_flag::kWheelchairAccessible, r))) {
       return;
     }
     ++stats_.n_routes_visited_;
@@ -493,12 +495,14 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::loop_routes(
 }
 
 // One trip sequence's stops: alight route_bag_, then board the last round's
-// labels (board_label decides on the trip, board() updates the bag).
+// labels (board_label decides on the trip, board() updates the bag). A ride
+// into a stop that is not ridable (a section filter) drops the boarded trips.
 template <direction SearchDir, typename Criteria, bool RangeReuse>
-template <typename Stops, typename Alight, typename Board>
+template <typename Stops, typename Ridable, typename Alight, typename Board>
 bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::scan_stops(
     unsigned const k,
     Stops const& stop_seq,
+    Ridable&& ridable,
     Alight&& alight_label,
     Board&& board_label) {
   auto const n = static_cast<unsigned>(stop_seq.size());
@@ -508,6 +512,10 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::scan_stops(
     auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - i - 1U);
     auto const stp = stop{stop_seq[stop_idx]};
     auto const l_idx = static_cast<std::uint32_t>(to_idx(stp.location_idx()));
+
+    if (i != 0U && !ridable(stop_idx)) {
+      route_bag_.clear();
+    }
 
     if (i != 0U && stp.can_finish<SearchDir>(is_wheelchair_)) {
       for (auto const& rl : route_bag_) {
@@ -568,8 +576,17 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::board(
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(
     unsigned const k, route_idx_t const r) {
+  // wheelchair: accessible on all sections, or check the section ridden into
+  auto const all_sections =
+      !is_wheelchair_ ||
+      tt_.route_flags_[route_flag::kWheelchairAccessible].test(to_idx(r) * 2U);
   return scan_stops(
       k, tt_.route_location_seq_[r],
+      [&](stop_idx_t const stop_idx) {
+        return all_sections ||
+               tt_.route_flags_per_section_[route_flag::kWheelchairAccessible]
+                                           [r][kFwd ? stop_idx - 1 : stop_idx];
+      },
       [&](route_label const& rl, std::uint32_t const l_idx,
           stop_idx_t const stop_idx) {
         return alight(k, l_idx, stop_idx,
@@ -600,9 +617,11 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::loop_rt_transports(
   auto any_marked = false;
   state_.rt_transport_mark_.for_each_set_bit([&](auto const rt_t_idx) {
     auto const rt_t = rt_transport_idx_t{rt_t_idx};
-    if (allowed_claszes_ != all_clasz_allowed() &&
-        !is_allowed(allowed_claszes_,
-                    rtt_->rt_transport_section_clasz_[rt_t][0])) {
+    if ((allowed_claszes_ != all_clasz_allowed() &&
+         !is_allowed(allowed_claszes_,
+                     rtt_->rt_transport_section_clasz_[rt_t][0])) ||
+        (is_wheelchair_ &&
+         !rtt_->is_flag_set(route_flag::kWheelchairAccessible, rt_t))) {
       return;
     }
     ++stats_.n_routes_visited_;
@@ -615,8 +634,18 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::loop_rt_transports(
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
     unsigned const k, rt_transport_idx_t const rt_t) {
+  auto const all_sections =
+      !is_wheelchair_ ||
+      rtt_->rt_transport_flags_[route_flag::kWheelchairAccessible].test(
+          to_idx(rt_t) * 2U);
   return scan_stops(
       k, rtt_->rt_transport_location_seq_[rt_t],
+      [&](stop_idx_t const stop_idx) {
+        return all_sections ||
+               rtt_->rt_flags_per_section_[route_flag::kWheelchairAccessible]
+                                          [rt_t]
+                                          [kFwd ? stop_idx - 1 : stop_idx];
+      },
       [&](route_label const& rl, std::uint32_t const l_idx,
           stop_idx_t const stop_idx) {
         return alight(k, l_idx, stop_idx,
