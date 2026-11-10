@@ -3,10 +3,8 @@
 #include <cassert>
 #include <algorithm>
 
-#include "utl/helpers/algorithm.h"
 #include "utl/verify.h"
 
-#include "nigiri/for_each_meta.h"
 #include "nigiri/routing/raptor/mc_reconstruct.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"

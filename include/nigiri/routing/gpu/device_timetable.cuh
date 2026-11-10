@@ -112,6 +112,18 @@ struct device_rt_timetable {
     cuda::std::array<device_bitvec<std::uint64_t const>, kNProfiles> has_in_;
   };
   td_footpaths const* td_{nullptr};
+
+  // td footpaths replace the static ones of their source. out: l is such a
+  // source, !out: l is the target of td footpaths
+  __device__ __forceinline__ bool has_td_fps(profile_idx_t const prf,
+                                             location_idx_t const l,
+                                             bool const out) const {
+    if (td_ == nullptr) {
+      return false;
+    }
+    auto const& bv = out ? td_->has_out_[prf] : td_->has_in_[prf];
+    return !bv.blocks_.empty() && bv[to_idx(l)];
+  }
 };
 
 using route_times = timetable::route_times;

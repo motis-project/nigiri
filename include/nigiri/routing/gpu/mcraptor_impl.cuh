@@ -131,9 +131,6 @@ struct mcraptor_impl {
   static constexpr auto kArrEv = kFwd ? event_type::kArr : event_type::kDep;
   static constexpr auto kDepEv = kFwd ? event_type::kDep : event_type::kArr;
 
-  __device__ __forceinline__ bool is_better(auto a, auto b) const {
-    return kFwd ? a < b : a > b;
-  }
   __device__ __forceinline__ bool is_better_or_eq(auto a, auto b) const {
     return kFwd ? a <= b : a >= b;
   }
@@ -558,7 +555,7 @@ struct mcraptor_impl {
   }
 
   // Route bag: pareto over (trip order, carried extras), merged as the CPU
-  // board_from (same trip and extras: board closest to the exit).
+  // board() (same trip and extras: board closest to the exit).
   template <unsigned K>
   struct route_bag {
     static constexpr auto kCapacity = K;
@@ -1274,16 +1271,9 @@ struct mcraptor_impl {
                                                                  : kMcInvalid;
   }
 
-  // td footpaths replace the static ones of their source (as raptor_impl).
-  // out: l is such a source, !out: l is the target of td footpaths
   __device__ __forceinline__ bool has_td_fps(location_idx_t const l,
                                              bool const out) const {
-    if (rtt_.td_ == nullptr) {
-      return false;
-    }
-    auto const& bv =
-        out ? rtt_.td_->has_out_[prf_idx_] : rtt_.td_->has_in_[prf_idx_];
-    return !bv.blocks_.empty() && bv[to_idx(l)];
+    return rtt_.has_td_fps(prf_idx_, l, out);
   }
 
   __device__ __forceinline__ auto static_fps(location_idx_t const l) const {

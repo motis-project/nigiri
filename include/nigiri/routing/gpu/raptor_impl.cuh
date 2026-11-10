@@ -661,9 +661,7 @@ struct raptor_impl {
   __device__ __forceinline__ bool has_td_fps(location_idx_t const l,
                                              bool const out) const {
     if constexpr (WithTdFootpaths) {
-      auto const& bv =
-          out ? rtt_.td_->has_out_[prf_idx_] : rtt_.td_->has_in_[prf_idx_];
-      return !bv.blocks_.empty() && bv[to_idx(l)];
+      return rtt_.has_td_fps(prf_idx_, l, out);
     } else {
       return false;
     }
