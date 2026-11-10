@@ -379,10 +379,11 @@ struct basic_mcraptor {
   void add_start(location_idx_t, unixtime_t, via_offset_t = 0U);
   void set_td_start(td_offsets_t const& td) { td_start_ = &td; }
 
-  void execute(unixtime_t start_time,
-               std::uint8_t max_transfers,
-               unixtime_t worst_time_at_dest,
-               pareto_set<journey>& results);
+  void execute(
+      unixtime_t start_time,
+      std::uint8_t max_transfers,
+      std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
+      pareto_set<journey>& results);
 
   void reconstruct(query const&, journey&);
 
