@@ -30,13 +30,6 @@ namespace nigiri::routing::gpu {
 #define kUnreachable (std::numeric_limits<std::uint16_t>::max())
 #define kIntermodalTarget (get_special_station(special_station::kEnd))
 
-inline constexpr auto kWarpSize = 32U;
-
-inline constexpr auto kAllLanes = ~std::uint32_t{0};
-
-using td_dest_group_idx_t = cista::strong<std::uint32_t, struct td_dest_group_>;
-using td_dest_offsets_t = vecvec<td_dest_group_idx_t, td_offset>;
-
 template <direction SearchDir, bool WithBounds>
 struct raptor_impl {
   static constexpr via_offset_t Vias = 0U;
@@ -289,7 +282,8 @@ struct raptor_impl {
           if (cand < 0) {
             continue;
           }
-          if (!is_transport_active(t_idx, static_cast<std::size_t>(cand))) {
+          if (!tt_.is_transport_active(rtt_, t_idx,
+                                       static_cast<std::size_t>(cand))) {
             continue;
           }
           auto const tr = transport{
@@ -669,9 +663,7 @@ struct raptor_impl {
   __device__ __forceinline__ bool has_td_fps(location_idx_t const l,
                                              bool const out) const {
     if constexpr (WithTdFootpaths) {
-      auto const& bv =
-          out ? rtt_.td_->has_out_[prf_idx_] : rtt_.td_->has_in_[prf_idx_];
-      return !bv.blocks_.empty() && bv[to_idx(l)];
+      return rtt_.has_td_fps(prf_idx_, l, out);
     } else {
       return false;
     }
@@ -786,7 +778,8 @@ struct raptor_impl {
                                        : rtt_.td_->in_[prf_idx_][l];
               d_for_each_td_footpath<SearchDir>(
                   td_fps, to_unix(tmp_time),
-                  [&](location_idx_t const target, duration_t const d) {
+                  [&](location_idx_t const target, duration_t const d,
+                      duration_t) {
                     relax_fp_target(k, target, static_cast<int>(d.count()),
                                     tmp_time, bc, t_at_dest);
                   });
@@ -973,129 +966,25 @@ struct raptor_impl {
                          stop_idx_t const stop_idx,
                          day_idx_t const day_at_stop,
                          minutes_after_midnight_t const mam_at_stop) {
-    auto const event_times = tt_.event_times_at_stop(
-        r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
-    auto const n = static_cast<unsigned>(event_times.size());
-
-    // transport offset of the i-th event in search direction
-    auto const t_offset_at = [&](unsigned const i) {
-      return kFwd ? i : n - 1U - i;
-    };
-
-    // Day 0: the first event at or after the time at the stop (backward: at
-    // or before). Routes are FIFO (loader get_index), so the column is sorted
-    // by mam and a binary search finds it.
-    auto const seek_first_day = [&]() {
-      auto lo = 0U;
-      auto hi = n;
-      while (lo < hi) {
-        auto const mid = lo + (hi - lo) / 2U;
-        if (is_better(event_times[t_offset_at(mid)].mam(),
-                      mam_at_stop.count())) {
-          lo = mid + 1U;
-        } else {
-          hi = mid;
-        }
-      }
-      return lo;
-    };
-
-    constexpr auto const kNDaysToIterate = static_cast<day_idx_t::value_t>(
-        kMaxTravelTime / std::chrono::days{1} + 1U);
-    for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
-      auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
-      if (!is_route_active(r, day)) {
-        continue;
-      }
-
-      auto const first = i == 0U ? seek_first_day() : 0U;
-      if (first == n) {
-        continue;
-      }
-
-      for (auto pos = first; pos != n; ++pos) {
-        auto const t_offset = t_offset_at(pos);
-        auto const ev = event_times[t_offset];
-        auto const ev_mam = ev.mam();
-
-        // an event equal to time-at-dest must still be boardable
-        // (equal-arrival coverage for the pong)
-        auto const ev_t = to_delta(day, ev_mam);
-        if (is_better(time_at_dest_.get(k), ev_t)) {
-          return {transport_idx_t::invalid(), day_idx_t::invalid()};
-        }
-
-        auto const t = event_times.transport(t_offset);
-        if (i == 0U && !is_better_or_eq(mam_at_stop.count(), ev_mam)) {
-          continue;
-        }
-
-        auto const ev_day_offset = ev.days();
-        auto const start_day =
-            static_cast<std::size_t>(as_int(day) - ev_day_offset);
-        if (!is_transport_active(t, start_day)) {
-          continue;
-        }
-        return {t, static_cast<day_idx_t>(as_int(day) - ev_day_offset)};
-      }
-    }
-    return {};
+    // an event equal to time-at-dest must still be boardable
+    // (equal-arrival coverage for the pong)
+    return tt_.get_earliest_transport<SearchDir>(
+        rtt_, r, stop_idx, day_at_stop, mam_at_stop,
+        [&](day_idx_t const day, auto const mam) {
+          return is_better(time_at_dest_.get(k), to_delta(day, mam));
+        });
   }
-
-  __device__ __forceinline__ bool is_transport_active(
-      transport_idx_t const t, std::size_t const day) const {
-    auto const i = to_idx(tt_.transport_traffic_days_[t]);
-    return ((i & kRtBitfieldFlag) != 0U
-                ? rtt_.bitfields_[bitfield_idx_t{i & ~kRtBitfieldFlag}]
-                : tt_.bitfields_[bitfield_idx_t{i}])
-        .test(day);
-  }
-
-  __device__ __forceinline__ bool is_route_active(route_idx_t const r,
-                                                  day_idx_t const day) const {
-    return as_int(day) >= 0 && tt_.bitfields_[tt_.route_traffic_days_[r]].test(
-                                   static_cast<std::size_t>(as_int(day)));
-  }
-
-  // Packed earliest transport, 32 bits: [rel_day : 6 | t_offset : 26].
-  //  - rel_day: traffic day relative to (base_ - 28)
-  //  - t_offset: transport index relative to the route's first transport
-  //
-  // Bwd: encode t_offset as (kEtReverseBase - x [including 0]) != kEtInvalid
-  // -> taking min() is still correct (yields later transport for bwd search)
-  static constexpr auto kEtInvalid = ~std::uint32_t{0};
-  static constexpr auto kEtRelDayShift = 26U;
-  static constexpr auto kEtReverseBase = kEtInvalid - 1U;
 
   __device__ __forceinline__ int et_day_lo() const {
     return as_int(base_) - 28;
   }
-
   __device__ __forceinline__ std::uint32_t pack_et(route_idx_t const r,
                                                    transport const t) const {
-    if (!t.is_valid()) {
-      return kEtInvalid;
-    }
-
-    auto const rel_day =
-        static_cast<std::uint32_t>(as_int(t.day_) - et_day_lo());
-    auto const t_offset =
-        to_idx(t.t_idx_) - to_idx(tt_.route_times_[r].transports_.from_);
-    auto const x = (rel_day << kEtRelDayShift) | t_offset;
-
-    return kFwd ? x : kEtReverseBase - x;
+    return tt_.pack_et<SearchDir>(r, t, et_day_lo());
   }
-
   __device__ __forceinline__ transport unpack_et(route_idx_t const r,
                                                  std::uint32_t const p) const {
-    auto const x = kFwd ? p : kEtReverseBase - p;
-    auto const rel_day = x >> kEtRelDayShift;
-    auto const t_offset = x & ((1U << kEtRelDayShift) - 1U);
-    return transport{
-        transport_idx_t{to_idx(tt_.route_times_[r].transports_.from_) +
-                        t_offset},
-        day_idx_t{static_cast<day_idx_t::value_t>(static_cast<int>(rel_day) +
-                                                  et_day_lo())}};
+    return tt_.unpack_et<SearchDir>(r, p, et_day_lo());
   }
 
   // et PHASE 1: compact the marked routes into route_list_. Also resets

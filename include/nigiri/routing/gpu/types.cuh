@@ -2,7 +2,11 @@
 
 #include <limits>
 
+// hide date.h's NOEXCEPT from CCCL's token pasting, see device_times.h
+#pragma push_macro("NOEXCEPT")
+#undef NOEXCEPT
 #include <cuda/std/span>
+#pragma pop_macro("NOEXCEPT")
 
 #include "thrust/device_vector.h"
 
@@ -19,9 +23,11 @@ static constexpr auto const kUnreachable =
 template <typename T>
 using device_flat_matrix_view = base_flat_matrix_view<cuda::std::span<T>>;
 
+// Parenthesised: braces pick CUDA 13's span(initializer_list) for T = bool.
 template <typename T>
 cuda::std::span<T const> to_view(thrust::device_vector<T> const& v) {
-  return cuda::std::span<T const>(thrust::raw_pointer_cast(v.data()), v.size());
+  return cuda::std::span<T const>(thrust::raw_pointer_cast(v.data()),
+                                  v.size());
 }
 
 template <typename T>
@@ -34,7 +40,8 @@ thrust::device_vector<typename T::value_type> to_device(T const& t) {
   return thrust::device_vector<typename T::value_type>(begin(t), end(t));
 }
 
-thrust::device_vector<std::uint64_t> to_device(cista::raw::bitvec const& t) {
+inline thrust::device_vector<std::uint64_t> to_device(
+    cista::raw::bitvec const& t) {
   return to_device(t.blocks_);
 }
 

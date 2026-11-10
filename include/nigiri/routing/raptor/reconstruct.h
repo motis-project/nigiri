@@ -45,4 +45,13 @@ void optimize_footpaths(timetable const&,
 
 void specify_td_offsets(query const&, journey&);
 
+// Offset legs (intermodal first / last mile, also td) and the start footpath
+// around the chronological transit legs of j, for the engines that rebuild
+// those legs themselves (gpu raptor, mcraptor).
+template <direction SearchDir>
+void add_offset_legs(timetable const&,
+                     rt_timetable const*,
+                     query const&,
+                     journey&);
+
 }  // namespace nigiri::routing

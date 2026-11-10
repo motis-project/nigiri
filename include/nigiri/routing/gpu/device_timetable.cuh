@@ -2,10 +2,15 @@
 
 #include <cinttypes>
 
+// hide date.h's NOEXCEPT from CCCL's token pasting, see device_times.h
+#pragma push_macro("NOEXCEPT")
+#undef NOEXCEPT
 #include <cuda/std/array>
 #include <cuda/std/span>
+#pragma pop_macro("NOEXCEPT")
 
 #include "nigiri/common/delta_t.h"
+#include "nigiri/routing/limits.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -107,9 +112,29 @@ struct device_rt_timetable {
     cuda::std::array<device_bitvec<std::uint64_t const>, kNProfiles> has_in_;
   };
   td_footpaths const* td_{nullptr};
+
+  // td footpaths replace the static ones of their source. out: l is such a
+  // source, !out: l is the target of td footpaths
+  __device__ __forceinline__ bool has_td_fps(profile_idx_t const prf,
+                                             location_idx_t const l,
+                                             bool const out) const {
+    if (td_ == nullptr) {
+      return false;
+    }
+    auto const& bv = out ? td_->has_out_[prf] : td_->has_in_[prf];
+    return !bv.blocks_.empty() && bv[to_idx(l)];
+  }
 };
 
 using route_times = timetable::route_times;
+
+// A trip of a route in 32 bits, [rel_day:6 | t_offset:26]: the traffic day
+// relative to a search's day_lo, the transport relative to the route's first.
+// Ordered as unsigned in scan order: backward stores kEtReverseBase - x, so a
+// min() still yields the best trip (the later one).
+inline constexpr auto kEtInvalid = ~std::uint32_t{0};
+inline constexpr auto kEtRelDayShift = 26U;
+inline constexpr auto kEtReverseBase = kEtInvalid - 1U;
 
 struct device_timetable {
   using t = timetable;
@@ -141,6 +166,122 @@ struct device_timetable {
 
   __device__ interval<date::sys_days> internal_interval_days() const {
     return internal_interval_days_;
+  }
+
+  __device__ __forceinline__ bool is_route_active(route_idx_t const r,
+                                                  day_idx_t const day) const {
+    auto const d = static_cast<int>(day.v_);
+    return d >= 0 &&
+           bitfields_[route_traffic_days_[r]].test(static_cast<std::size_t>(d));
+  }
+
+  // kRtBitfieldFlag entries resolve into the rt timetable's bitfields (with
+  // an rt timetable, transport_traffic_days_ is its copy)
+  __device__ __forceinline__ bool is_transport_active(
+      device_rt_timetable const& rtt,
+      transport_idx_t const t,
+      std::size_t const day) const {
+    auto const i = to_idx(transport_traffic_days_[t]);
+    return ((i & kRtBitfieldFlag) != 0U
+                ? rtt.bitfields_[bitfield_idx_t{i & ~kRtBitfieldFlag}]
+                : bitfields_[bitfield_idx_t{i}])
+        .test(day);
+  }
+
+  // The first trip of r at stop_idx at or after day_at_stop / mam_at_stop
+  // (backward: at or before) that runs, as CPU raptor. give_up(day, mam) of
+  // a candidate event: no trip from there on can help (returns invalid).
+  template <direction SearchDir>
+  __device__ transport
+  get_earliest_transport(device_rt_timetable const& rtt,
+                         route_idx_t const r,
+                         stop_idx_t const stop_idx,
+                         day_idx_t const day_at_stop,
+                         minutes_after_midnight_t const mam_at_stop,
+                         auto&& give_up) const {
+    constexpr auto kFwd = SearchDir == direction::kForward;
+    auto const is_better = [](auto a, auto b) { return kFwd ? a < b : a > b; };
+    auto const event_times = event_times_at_stop(
+        r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
+    auto const n = static_cast<unsigned>(event_times.size());
+
+    // transport offset of the i-th event in search direction
+    auto const t_offset_at = [&](unsigned const i) {
+      return kFwd ? i : n - 1U - i;
+    };
+
+    // Day 0: the first event at or after the time at the stop (backward: at
+    // or before). Routes are FIFO (loader get_index), so the column is sorted
+    // by mam and a binary search finds it.
+    auto const seek_first_day = [&]() {
+      auto lo = 0U;
+      auto hi = n;
+      while (lo < hi) {
+        auto const mid = lo + (hi - lo) / 2U;
+        if (is_better(event_times[t_offset_at(mid)].mam(),
+                      mam_at_stop.count())) {
+          lo = mid + 1U;
+        } else {
+          hi = mid;
+        }
+      }
+      return lo;
+    };
+
+    constexpr auto const kNDaysToIterate = static_cast<day_idx_t::value_t>(
+        kMaxTravelTime / std::chrono::days{1} + 1U);
+    for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
+      auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
+      if (!is_route_active(r, day)) {
+        continue;
+      }
+      for (auto pos = i == 0U ? seek_first_day() : 0U; pos < n; ++pos) {
+        auto const t_offset = t_offset_at(pos);
+        auto const ev = event_times[t_offset];
+        auto const ev_mam = ev.mam();
+        if (give_up(day, ev_mam)) {
+          return {transport_idx_t::invalid(), day_idx_t::invalid()};
+        }
+        if (i == 0U && is_better(ev_mam, mam_at_stop.count())) {
+          continue;
+        }
+        auto const t = event_times.transport(t_offset);
+        auto const start_day = static_cast<int>(day.v_) - ev.days();
+        if (!is_transport_active(rtt, t, static_cast<std::size_t>(start_day))) {
+          continue;
+        }
+        return {t, static_cast<day_idx_t>(start_day)};
+      }
+    }
+    return {};
+  }
+
+  template <direction SearchDir>
+  __device__ __forceinline__ std::uint32_t pack_et(route_idx_t const r,
+                                                   transport const t,
+                                                   int const day_lo) const {
+    if (!t.is_valid()) {
+      return kEtInvalid;
+    }
+    auto const rel_day =
+        static_cast<std::uint32_t>(static_cast<int>(t.day_.v_) - day_lo);
+    auto const t_offset =
+        to_idx(t.t_idx_) - to_idx(route_times_[r].transports_.from_);
+    auto const x = (rel_day << kEtRelDayShift) | t_offset;
+    return SearchDir == direction::kForward ? x : kEtReverseBase - x;
+  }
+
+  template <direction SearchDir>
+  __device__ __forceinline__ transport unpack_et(route_idx_t const r,
+                                                 std::uint32_t const p,
+                                                 int const day_lo) const {
+    auto const x = SearchDir == direction::kForward ? p : kEtReverseBase - p;
+    auto const rel_day = x >> kEtRelDayShift;
+    auto const t_offset = x & ((1U << kEtRelDayShift) - 1U);
+    return transport{
+        transport_idx_t{to_idx(route_times_[r].transports_.from_) + t_offset},
+        day_idx_t{static_cast<day_idx_t::value_t>(static_cast<int>(rel_day) +
+                                                  day_lo)}};
   }
 
   std::uint32_t n_locations_;

@@ -1,6 +1,9 @@
 #include "gtest/gtest.h"
 
 #include <algorithm>
+#include <string>
+
+#include "fmt/format.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/load.h"
@@ -346,4 +349,114 @@ TEST(routing, rt_raptor_unscheduled) {
 
   EXPECT_EQ(std::string_view{unscheduled_journeys},
             to_string(tt, &rtt, results));
+}
+
+namespace {
+
+// LONG: 70 stops P00..P69 (three warp chunks on the GPU), 2 minutes apart from
+// 10:00, delayed by 10 minutes. From X it is boarded at P08 (bus feeder), P20
+// (rail feeders via Y, same departure: one more transfer but no mode switch,
+// a second route bag entry with other extras) or P40 (20 minute walk).
+mem_dir long_run_files() {
+  auto s = std::string{R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+MTA,MOTIS Transit Authority,https://motis-project.de/,Etc/UTC
+
+# calendar_dates.txt
+service_id,date,exception_type
+D,20190503,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+RAIL,MTA,RAIL,,,2
+BUS,MTA,BUS,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+RAIL,D,LONG,,
+BUS,D,FEED_BUS,,
+RAIL,D,FEED_RAIL,,
+RAIL,D,FEED_RAIL2,,
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+X,P40,2,1200
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+X,X,,,,,,
+Y,Y,,,,,,
+)"};
+  for (auto i = 0; i != 70; ++i) {
+    s += fmt::format("P{0:02},P{0:02},,,,,,\n", i);
+  }
+  s += R"(
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+FEED_BUS,10:00:00,10:00:00,X,1,0,0
+FEED_BUS,10:10:00,10:10:00,P08,2,0,0
+FEED_RAIL,10:00:00,10:00:00,X,1,0,0
+FEED_RAIL,10:10:00,10:10:00,Y,2,0,0
+FEED_RAIL2,10:15:00,10:15:00,Y,1,0,0
+FEED_RAIL2,10:30:00,10:30:00,P20,2,0,0
+)";
+  for (auto i = 0; i != 70; ++i) {
+    auto const m = 10 * 60 + 2 * i;
+    s += fmt::format("LONG,{0:02}:{1:02}:00,{0:02}:{1:02}:00,P{2:02},{3},0,0\n",
+                     m / 60, m % 60, i, i + 1);
+  }
+  return mem_dir::read(s);
+}
+
+}  // namespace
+
+// Every engine (plain, McRAPTOR variants, GPU) agrees on runs longer than a
+// warp, boarded in the first and second chunk and left in the second and
+// third, forward and backward; all journeys ride the delayed run.
+TEST(routing, rt_long_run) {
+  auto const tt =
+      loader::load(long_run_files(), {2019_y / May / 2, 2019_y / May / 4});
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / May / 3});
+
+  auto msg = transit_realtime::FeedMessage{};
+  auto const hdr = msg.mutable_header();
+  hdr->set_gtfs_realtime_version("2.0");
+  hdr->set_incrementality(
+      transit_realtime::FeedHeader_Incrementality_FULL_DATASET);
+  hdr->set_timestamp(std::chrono::duration_cast<std::chrono::seconds>(
+                         (sys_days{2019_y / May / 3} + 9h).time_since_epoch())
+                         .count());
+  auto const e = msg.add_entity();
+  e->set_id("1");
+  auto const td = e->mutable_trip_update()->mutable_trip();
+  td->set_start_time("10:00:00");
+  td->set_start_date("20190503");
+  td->set_trip_id("LONG");
+  auto const stop_update = e->mutable_trip_update()->add_stop_time_update();
+  stop_update->set_stop_sequence(1U);
+  stop_update->mutable_departure()->set_delay(10 * 60);
+  EXPECT_EQ(rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg)
+                .total_entities_success_,
+            1U);
+
+  auto const day = sys_days{2019_y / May / 3};
+  // P45 at 11:30, P69 at 12:18 as scheduled
+  for (auto const& [to, arr] : {std::pair{"P45", day + 11h + 40min},
+                                std::pair{"P69", day + 12h + 28min}}) {
+    auto const fwd = raptor_search(
+        tt, &rtt, "X", to,
+        interval<unixtime_t>{day + 9h + 30min, day + 11h + 15min});
+    ASSERT_FALSE(fwd.empty()) << to;
+    for (auto const& j : fwd) {
+      EXPECT_EQ(arr, j.arrival_time()) << to;
+    }
+    auto const bwd = raptor_search(
+        tt, &rtt, to, "X", interval<unixtime_t>{arr - 30min, arr + 30min},
+        direction::kBackward);
+    ASSERT_FALSE(bwd.empty()) << to;
+    for (auto const& j : bwd) {
+      EXPECT_EQ(arr, j.arrival_time()) << to;
+    }
+  }
 }
