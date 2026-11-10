@@ -486,7 +486,7 @@ int main(int argc, char* argv[]) {
     blocked_srcs.set(source_idx_t{src});
   }
   auto const blocked =
-      routing::make_blocked_feeds(tt, nullptr, std::move(blocked_srcs));
+      routing::make_blocked_routes(tt, nullptr, std::move(blocked_srcs));
 
   gs.interval_size_ = duration_t{interval_size};
 

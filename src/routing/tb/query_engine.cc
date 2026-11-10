@@ -41,7 +41,7 @@ query_engine<UseLowerBounds>::query_engine(
     bool,
     transfer_time_settings,
     profile_idx_t,
-    blocked_feeds const&)
+    blocked_routes const&)
     : tt_{tt},
       state_{state},
       is_dest_{is_dest},

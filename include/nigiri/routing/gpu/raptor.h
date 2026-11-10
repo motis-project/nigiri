@@ -79,7 +79,7 @@ struct gpu_raptor {
       bool const no_compulsory_reservation_,
       transfer_time_settings const& tts,
       profile_idx_t const prf_idx,
-      blocked_feeds const& blocked = {});
+      blocked_routes const& blocked = {});
 
   raptor_stats get_stats() const { return stats_; }
   void reset_arrivals();

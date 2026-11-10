@@ -75,7 +75,7 @@ struct raptor {
       bool const no_compulsory_reservation,
       transfer_time_settings const& tts,
       profile_idx_t const prf_idx,
-      blocked_feeds const& blocked = {})
+      blocked_routes const& blocked = {})
       : tt_{tt},
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},
@@ -1580,7 +1580,7 @@ private:
   bool no_compulsory_reservation_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
-  blocked_feeds blocked_;
+  blocked_routes blocked_;
   bool src_filter_;
 };
 

@@ -2,9 +2,7 @@
 
 #include <compare>
 #include <cstdint>
-#include <algorithm>
 #include <filesystem>
-#include <iterator>
 #include <optional>
 #include <span>
 
@@ -231,17 +229,6 @@ struct timetable {
 
   cista::base_t<provider_idx_t> n_agencies() const { return providers_.size(); }
 
-  source_idx_t route_src(route_idx_t const r) const {
-    auto const it = std::upper_bound(
-        src_routes_.begin(), src_routes_.end(), r,
-        [](route_idx_t const x, interval<route_idx_t> const& i) {
-          return x < i.to_;
-        });
-    assert(it != src_routes_.end());
-    return source_idx_t{static_cast<cista::base_t<source_idx_t>>(
-        std::distance(src_routes_.begin(), it))};
-  }
-
   interval<unixtime_t> external_interval() const {
     return {std::chrono::time_point_cast<i32_minutes>(date_range_.from_),
             std::chrono::time_point_cast<i32_minutes>(date_range_.to_)};
@@ -355,8 +342,8 @@ struct timetable {
   // Route -> list of stops
   vecvec<route_idx_t, stop::value_type> route_location_seq_;
 
-  // Source -> its routes
-  vector_map<source_idx_t, interval<route_idx_t>> src_routes_;
+  // Route -> source
+  vector_map<route_idx_t, source_idx_t> route_src_;
 
   // Route -> clasz
   vector_map<route_idx_t, clasz> route_clasz_;

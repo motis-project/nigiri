@@ -393,7 +393,7 @@ struct gpu_raptor_state::impl {
       nigiri::bitvec const& is_dest,
       std::vector<std::uint16_t> const& dist_to_dest,
       hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
-      blocked_feeds const& blocked) {
+      blocked_routes const& blocked) {
     is_intermodal_dest_[dir] = !dist_to_dest.empty();
     // td dest offsets: flatten into sorted (loc, range, data) groups.
     if (td_dist_to_dest.empty()) {
@@ -599,7 +599,7 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
     bool const no_compulsory_reservation,
     transfer_time_settings const& tts,
     profile_idx_t const prf_idx,
-    blocked_feeds const& blocked)
+    blocked_routes const& blocked)
     : tt_{tt},
       rtt_{rtt},
       gpu_rtt_{rtt == nullptr ? nullptr

@@ -97,7 +97,7 @@ struct query_engine {
                bool,
                transfer_time_settings,
                profile_idx_t,
-               blocked_feeds const& = {});
+               blocked_routes const& = {});
 
   algo_stats_t get_stats() const { return stats_; }
 

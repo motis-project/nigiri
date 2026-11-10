@@ -134,7 +134,7 @@ void add_starts_in_interval(direction const search_dir,
                             profile_idx_t const p,
                             std::vector<start>& starts,
                             bool const add_ontrip,
-                            blocked_feeds const& blocked) {
+                            blocked_routes const& blocked) {
   trace_start(
       "    add_starts_in_interval(interval={}, stop={}): {} "
       "routes\n",
@@ -270,7 +270,7 @@ void get_starts(
     bool const add_ontrip,
     profile_idx_t const prf_idx,
     transfer_time_settings const& tts,
-    blocked_feeds const& blocked) {
+    blocked_routes const& blocked) {
   auto start_via = hash_set<location_idx_t>{};
   if (!via_stops.empty()) {
     for_each_meta(tt, location_match_mode::kEquivalent,

@@ -76,7 +76,7 @@ S1,20190501,1
 
 }  // namespace
 
-TEST(routing, blocked_feeds) {
+TEST(routing, blocked_routes) {
   auto const slow = loader::mem_dir::read(kSlowFeed);
   auto const fast = loader::mem_dir::read(kFastFeed);
   auto const tt =
@@ -102,7 +102,7 @@ TEST(routing, blocked_feeds) {
                        {loc("A", source_idx_t{1}), 0min, 0U}},
             .destination_ = {{loc("B", source_idx_t{0}), 0min, 0U},
                              {loc("B", source_idx_t{1}), 0min, 0U}},
-            .blocked_ = routing::make_blocked_feeds(tt, nullptr, srcs)});
+            .blocked_ = routing::make_blocked_routes(tt, nullptr, srcs)});
   };
 
   auto const arrival = [](pareto_set<routing::journey> const& results) {
