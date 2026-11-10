@@ -350,9 +350,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::scan_stops(
         l_idx, k - 1U,
         [&](Criteria const& crit, std::uint32_t const breadcrumb) {
           // even the optimistic completion is dominated
-          if (!dest_dominates(
-                  k, crit.projected_to(
-                         clamp(crit.arr_ + dir(effective_lb(l_idx)))))) {
+          if (!dest_dominates(k, crit.projected_to(clamp(
+                                     crit.arr_ + dir(effective_lb(l_idx)))))) {
             board_label(crit, breadcrumb & state_t::kBreadcrumbMask, stop_idx,
                         stp.location_idx());
           }
