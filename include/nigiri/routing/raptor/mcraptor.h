@@ -206,18 +206,15 @@ using arr_non_transit_mode_filter_mode_switches_criteria =
 
 template <typename Criteria>
 struct basic_mcraptor_state {
-  // breadcrumb index in the low 31 bits; the top bit marks transit arrivals
-  // (only those get footpaths relaxed)
-  static constexpr auto const kByRoute = std::uint32_t{1U} << 31U;
-  static constexpr auto const kBreadcrumbMask = kByRoute - 1U;
-  static constexpr auto const kNoBreadcrumb = kBreadcrumbMask;
+  static constexpr auto const kNoBreadcrumb = (std::uint32_t{1U} << 31U) - 1U;
 
   // One label of a stop's bag. round_ is an implicit pareto dimension (never
   // dominated by a higher round); dep_ tags the start time under range reuse,
   // where the bag outlives it.
   struct label {
     Criteria crit_;
-    std::uint32_t breadcrumb_;
+    std::uint32_t breadcrumb_ : 31;  // kNoBreadcrumb: a start label
+    std::uint32_t by_route_ : 1;  // transit arrival: gets footpaths relaxed
     std::uint8_t round_;
     delta_t dep_;
   };
