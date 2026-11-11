@@ -23,7 +23,8 @@ namespace nigiri::routing {
 // device as well, for the combinations the device mcraptor implements
 // (kGpuMcSupported in bmrap_common.h). They run on the CPU when false, when
 // the device mc state cannot be allocated (gpu_raptor_state::try_mc_state())
-// and for every other combination. motis sets it iff server.gpu_mc_states > 0.
+// and for every other combination. motis sets it for the pool slots it gave a
+// device mc state at startup (server.gpu_mc_states), so no query allocates one.
 template <typename Criteria, typename AlgoState>
 routing_result bmrap_profile_search(
     timetable const&,

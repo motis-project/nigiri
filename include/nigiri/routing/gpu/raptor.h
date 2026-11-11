@@ -24,10 +24,13 @@ namespace nigiri::routing::gpu {
 
 constexpr auto kRtLocationCapacity = 8192U;
 
+// An rt search needs the rt timetable's device copy (make_gpu_rtt()), which a
+// failed upload leaves out.
 inline bool is_gpu_supported(query const& q,
                              rt_timetable const* rtt = nullptr) {
   return q.via_stops_.empty() &&
-         (rtt == nullptr || rtt->n_rt_locations() <= kRtLocationCapacity);
+         (rtt == nullptr || (rtt->gpu_rtt_.ptr_ != nullptr &&
+                             rtt->n_rt_locations() <= kRtLocationCapacity));
 }
 
 // Is there a usable CUDA device? False when the toolkit is present but the
