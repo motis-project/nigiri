@@ -53,7 +53,7 @@ timetable load(std::vector<timetable_source> const& sources,
     auto const dir = is_in_memory
                          // hack to load strings in integration tests
                          ? std::make_unique<mem_dir>(mem_dir::read(path))
-                         : gtfs::find_gtfs_root(make_dir(path));
+                         : gtfs::find_gtfs_root(make_dir(path), false);
     auto const it =
         utl::find_if(loaders, [&](auto&& l) { return l->applicable(*dir); });
     if (it != end(loaders)) {

@@ -26,6 +26,6 @@ void load_timetable(loader_config const&,
                     assistance_times* = nullptr,
                     shapes_storage* = nullptr);
 
-std::unique_ptr<dir> find_gtfs_root(std::unique_ptr<dir>);
+std::unique_ptr<dir> find_gtfs_root(std::unique_ptr<dir>, bool);
 
 }  // namespace nigiri::loader::gtfs

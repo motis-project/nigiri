@@ -518,28 +518,37 @@ void load_timetable(loader_config const& config,
   }
 }
 
-std::unique_ptr<dir> find_gtfs_root(std::unique_ptr<dir> d) {
+std::unique_ptr<dir> find_gtfs_root(std::unique_ptr<dir> d, bool expanded_zip) {
   if (applicable(*d)) {
     return d;
   }
-  auto sub_dirs = std::vector<std::filesystem::path>{};
   for (auto const& file : d->list_files(".")) {
-    if (file.filename() != kRoutesFile) {
-      continue;
+    if (file.filename() == kRoutesFile) {
+      auto const path = file.parent_path();
+      if (applicable(*d, path)) {
+        if (!expanded_zip) {
+          log(log_lvl::info, "loader.gtfs.find_gtfs_root",
+              "feed {}: Found subfolder: {}", d->path().generic_string(),
+              path.generic_string());
+        }
+        return std::make_unique<sub_dir>(std::move(d), std::move(path));
+      }
     }
-    auto const path = file.parent_path();
-    if (applicable(*d, path)) {
-      push_unique(sub_dirs, path);
+    if (!expanded_zip && file.extension() == ".zip") {
+      auto const inner_file = d->get_file(file);
+      auto const data = inner_file.data();
+      auto inner_zip = std::make_unique<zip_dir>(
+          std::move(std::vector<std::uint8_t>{data.begin(), data.end()}));
+      auto root = find_gtfs_root(std::move(inner_zip), true);
+      if (applicable(*root)) {
+        log(log_lvl::info, "loader.gtfs.find_gtfs_root",
+            "feed {}: Found subfolder: {}", d->path().generic_string(),
+            file.generic_string());
+        return root;
+      }
     }
   }
-  if (sub_dirs.empty()) {
-    return d;
-  }
-  auto const chosen_sub_dir = sub_dirs.front();
-  log(log_lvl::error, "loader.gtfs.find_gtfs_root",
-      "feed {}: Found {} subfolders and chose: {}.", d->path().generic_string(),
-      sub_dirs.size(), chosen_sub_dir.generic_string());
-  return std::make_unique<sub_dir>(std::move(d), std::move(chosen_sub_dir));
+  return d;
 }
 
 }  // namespace nigiri::loader::gtfs
