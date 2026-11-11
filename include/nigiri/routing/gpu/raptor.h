@@ -21,8 +21,11 @@
 
 namespace nigiri::routing::gpu {
 
-inline bool gpu_supported(query const& q, rt_timetable const* = nullptr) {
-  return q.via_stops_.empty();
+// An rt search needs the rt timetable's device copy (make_gpu_rtt()), which a
+// failed upload leaves out.
+inline bool gpu_supported(query const& q, rt_timetable const* rtt = nullptr) {
+  return q.via_stops_.empty() &&
+         (rtt == nullptr || rtt->gpu_rtt_.ptr_ != nullptr);
 }
 
 // Is there a usable CUDA device? False when the toolkit is present but the
