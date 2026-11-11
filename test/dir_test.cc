@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/dir.h"
+#include "nigiri/loader/gtfs/load_timetable.h"
 
 #include "utl/parser/cstr.h"
 #include "utl/zip.h"
@@ -69,6 +70,22 @@ TEST(dir, directory_listing) {
             fs.list_files("stamm/bahnhof.101"));
   EXPECT_EQ(mem.list_files("stamm/bahnhof.101"),
             fs.list_files("stamm/bahnhof.101"));
+}
+
+TEST(nigiri, nested_gtfs) {
+  auto const paths =
+      std::vector{"test/test_data/nested_gtfs_data/outer_fs_inner_fs",
+                  "test/test_data/nested_gtfs_data/outer_fs_inner_zip",
+                  "test/test_data/nested_gtfs_data/outer_zip_inner_fs.zip",
+                  "test/test_data/nested_gtfs_data/outer_zip_inner_zip.zip"};
+
+  for (auto const path : paths) {
+    auto const sub_dir = gtfs::find_gtfs_root(make_dir(path), false);
+    EXPECT_TRUE(sub_dir->exists("agency.txt"));
+    EXPECT_TRUE(sub_dir->exists("routes.txt"));
+    EXPECT_TRUE(sub_dir->exists("trips.txt"));
+    EXPECT_TRUE(sub_dir->exists("stop_times.txt"));
+  }
 }
 
 TEST(nigiri, to_dir) {
