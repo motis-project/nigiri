@@ -14,7 +14,7 @@ std::vector<timetable_source> validate_sources(
     // hack to load strings in integration tests
     auto const dir =
         is_in_memory ? std::make_unique<mem_dir>(mem_dir::read(source.path_))
-                     : (make_dir(source.path_));
+                     : gtfs::find_gtfs_root(make_dir(source.path_), false);
 
     if (!applicable(*dir)) {
       accepted.emplace_back(source);
