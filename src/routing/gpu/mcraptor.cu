@@ -64,6 +64,11 @@ struct gpu_mcraptor_state::impl {
     cudaStreamCreate(&stream_);
 
     auto const n_locations = tt_.n_locations_;
+    // BM-RAPTOR bound matrices at the most rows any trip budget needs, so
+    // set_bounds() never grows them (see gpu_raptor_state::reserve_bmrap())
+    for (auto& b : bmrap_bounds_) {
+      b.resize(static_cast<std::size_t>(n_locations) * (kMaxTransfers + 2U));
+    }
     bags_.resize(static_cast<std::size_t>(n_locations) * kMcBagCap);
     fill_bytes(bags_, 0xFF, stream_);
     // chained blocks: the pool scales with the labels, not a worst-case row
@@ -796,9 +801,8 @@ void gpu_mcraptor<SearchDir, Criteria>::set_bounds(bmrap_bounds const* b) {
     return;
   }
   auto& s = *state_.impl_;
-  if (s.bmrap_bounds_[kDirIdx].size() < b->lat_.size()) {
-    s.bmrap_bounds_[kDirIdx].resize(b->lat_.size());
-  }
+  utl::verify(b->lat_.size() <= s.bmrap_bounds_[kDirIdx].size(),
+              "bmrap bounds: budget {} too big", b->budget_);
   CUDA_CHECK(cudaMemcpyAsync(
       thrust::raw_pointer_cast(s.bmrap_bounds_[kDirIdx].data()), b->lat_.data(),
       b->lat_.size() * sizeof(delta_t), cudaMemcpyHostToDevice, s.stream_));
