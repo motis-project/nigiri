@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "nigiri/routing/clasz_mask.h"
@@ -38,13 +39,23 @@ constexpr bool has(mc_crit const c, mc_crit const part) {
 // others are looked up by the sequential scan
 inline constexpr auto kMcEtTaskMax = 1U << 22U;  // 4M: 210 MB of stop bags
 
+// Preallocated capacities; unset = sized from the timetable. Running out of
+// et task slots only slows a round down; a full stop bag, bag pool or
+// breadcrumb arena (or the sequential scan's route bag) fails the search, since
+// it would be lossy.
+struct gpu_mcraptor_limits {
+  std::uint32_t et_tasks_{kMcEtTaskMax};
+  std::optional<std::uint32_t> bag_pool_blocks_{};
+  std::optional<std::uint32_t> breadcrumbs_{};
+};
+
 // Same scope as the CPU mcraptor (mcraptor_supported). One state type serves
 // every configuration; the subtypes only select it in the dispatch (kCrit).
 struct gpu_mcraptor_state {
   static constexpr auto kCrit = mc_crit::arr;
 
   explicit gpu_mcraptor_state(gpu_timetable const&,
-                              std::uint32_t max_et_tasks = kMcEtTaskMax);
+                              gpu_mcraptor_limits const& = {});
   ~gpu_mcraptor_state();
 
   struct impl;

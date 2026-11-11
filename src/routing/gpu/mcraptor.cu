@@ -54,11 +54,11 @@ void upload(T* const dev,
 }
 
 struct gpu_mcraptor_state::impl {
-  impl(gpu_timetable const& gtt, std::uint32_t const max_et_tasks)
+  impl(gpu_timetable const& gtt, gpu_mcraptor_limits const& limits)
       : tt_{gtt.impl_->to_device_timetable()} {
-    utl::verify(max_et_tasks <= stop_bag_ref::kMaxSlots,
+    utl::verify(limits.et_tasks_ <= stop_bag_ref::kMaxSlots,
                 "gpu mcraptor: {} et task slots exceed the stop bag ref",
-                max_et_tasks);
+                limits.et_tasks_);
     cudaStreamCreate(&stream_);
 
     auto const n_locations = tt_.n_locations_;
@@ -70,7 +70,8 @@ struct gpu_mcraptor_state::impl {
     bags_.resize(static_cast<std::size_t>(n_locations) * kMcBagCap);
     fill_bytes(bags_, 0xFF, stream_);
     // chained blocks: the pool scales with the labels, not a worst-case row
-    bag_pool_cap_ = std::clamp(n_locations / 2U, kMcBagPoolMin, kMcBagPoolMax);
+    bag_pool_cap_ = limits.bag_pool_blocks_.value_or(
+        std::clamp(n_locations / 2U, kMcBagPoolMin, kMcBagPoolMax));
     bag_pool_.resize(static_cast<std::size_t>(bag_pool_cap_) * kMcBagBlock);
     fill_bytes(bag_pool_, 0xFF, stream_);
     bag_chain_next_.resize(bag_pool_cap_);  // free blocks link to kMcInvalid
@@ -92,8 +93,11 @@ struct gpu_mcraptor_state::impl {
     }
 
     auto const arena_cap =
-        std::clamp(static_cast<std::size_t>(n_locations) * kMcArenaPerLocation,
-                   std::size_t{kMcArenaMin}, std::size_t{kMcArenaMax});
+        limits.breadcrumbs_.has_value()
+            ? std::size_t{*limits.breadcrumbs_}
+            : std::clamp(
+                  static_cast<std::size_t>(n_locations) * kMcArenaPerLocation,
+                  std::size_t{kMcArenaMin}, std::size_t{kMcArenaMax});
     breadcrumbs_.resize(arena_cap);
     n_breadcrumbs_.resize(1U);
 
@@ -111,7 +115,7 @@ struct gpu_mcraptor_state::impl {
     auto const n_route_stops = tt_.route_of_stop_.size();
     // stop bags per et task slot, not per route stop: a round only looks up
     // the boardable stops of its marked routes (see stop_bag_ref)
-    auto const n_slots = std::min<std::size_t>(n_route_stops, max_et_tasks);
+    auto const n_slots = std::min<std::size_t>(n_route_stops, limits.et_tasks_);
     et_task_list_.resize(n_slots);
     et_task_count_.resize(1U);
     stop_bag_ref_.resize(n_route_stops);
@@ -256,8 +260,8 @@ struct gpu_mcraptor_state::impl {
 };
 
 gpu_mcraptor_state::gpu_mcraptor_state(gpu_timetable const& gtt,
-                                       std::uint32_t const max_et_tasks)
-    : impl_{std::make_unique<impl>(gtt, max_et_tasks)} {}
+                                       gpu_mcraptor_limits const& limits)
+    : impl_{std::make_unique<impl>(gtt, limits)} {}
 
 gpu_mcraptor_state::~gpu_mcraptor_state() = default;
 
