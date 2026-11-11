@@ -100,7 +100,7 @@ int main(int ac, char** av) {
           // still consume a source index, which breaks the per-source
           // bookkeeping of subsequent loaders
           try {
-            auto const dir = gtfs::find_gtfs_root(make_dir(e.path()));
+            auto const dir = gtfs::find_gtfs_root(make_dir(e.path()), false);
             if (!utl::any_of(loaders,
                              [&](auto&& l) { return l->applicable(*dir); })) {
               std::cout << "ignoring " << e.path() << "\n";
