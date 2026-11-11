@@ -7,6 +7,10 @@
 
 namespace nigiri::routing::gpu {
 
+// td egress offsets on the device, indexed by position in the location set.
+using td_dest_group_idx_t = cista::strong<std::uint32_t, struct td_dest_group_>;
+using td_dest_offsets_t = vecvec<td_dest_group_idx_t, td_offset>;
+
 inline constexpr auto const kMaxFpMinutes = static_cast<duration_t::rep>(
     (std::int32_t{1} << footpath::kDurationBits) - 1);
 static_assert(duration_t{kMaxFpMinutes} == footpath::kMaxDuration);
@@ -70,7 +74,7 @@ __device__ void d_for_each_td_footpath(Collection const& c,
     }
     auto const r = d_get_td_duration<SearchDir>(c, i, j, t);
     if (r.valid_) {
-      f(c[i].target_, r.duration_);
+      f(c[i].target_, r.duration_, c[r.idx_].duration_);
     }
     i = j;
   }

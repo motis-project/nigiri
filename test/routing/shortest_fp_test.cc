@@ -160,7 +160,8 @@ TEST(routing, raptor_shortest_fp_forward) {
         10_minutes, 42U}},
       interval{unixtime_t{sys_days{2024_y / June / 7}},
                unixtime_t{sys_days{2024_y / June / 8}}},
-      direction::kForward);
+      direction::kForward, 0U, false, false,
+      /*mc_same_legs=*/false);  // raptor picks the shortest egress
 
   EXPECT_EQ(std::string_view{exp_fwd_journey}, to_string(tt, results));
 }

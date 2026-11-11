@@ -8,6 +8,7 @@
 #include <regex>
 #include <span>
 #include <thread>
+#include <tuple>
 
 #include "boost/program_options.hpp"
 
@@ -21,6 +22,8 @@
 #include "nigiri/qa/qa.h"
 #include "nigiri/query_generator/generator.h"
 #include "nigiri/routing/interval_estimate.h"
+#include "nigiri/routing/raptor/bmraptor.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
@@ -28,6 +31,7 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+#include "nigiri/routing/gpu/mcraptor.h"
 #include "nigiri/routing/gpu/raptor.h"
 
 #ifndef _WIN32
@@ -102,25 +106,63 @@ void generate_queries(
 // -> give Pong some slack
 constexpr auto const kCheckedMaxTravelTime = routing::kMaxTravelTime - 1_days;
 
+struct result_set {
+  std::string label_;
+  std::vector<pareto_set<routing::journey>> res_;
+  // the interval each search reports as covered (routing_result::interval_)
+  std::vector<interval<unixtime_t>> intervals_;
+  std::vector<double> latencies_;
+};
+
+// bmrapp optimizes every criterion the device mcraptor supports as well
+using bmrapp_criteria_t =
+    routing::arr_non_transit_mode_filter_mode_switches_criteria;
+
+// algorithms optimizing more than (departure, arrival, transfers)
+bool is_multicriteria(std::string const& label) {
+  return label.find("-bmrapp-") != std::string::npos ||
+         label.find("-mcraptor-all-") != std::string::npos;
+}
+
 std::uint64_t compare_results(
     timetable const& tt,
-    std::string const& ref_name,
-    std::vector<pareto_set<routing::journey>> const& ref,
-    std::string const& cmp_name,
-    std::vector<pareto_set<routing::journey>> const& cmp,
+    result_set const& ref,
+    result_set const& cmp,
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
     direction const search_dir,
     unsigned const min_connection_count) {
+  auto const& ref_name = ref.label_;
+  auto const& cmp_name = cmp.label_;
   auto mismatches = std::uint64_t{0U};
 
-  auto const equal = [](journey const& a, journey const& b) {
-    return a.start_time_ == b.start_time_ && a.dest_time_ == b.dest_time_ &&
-           a.transfers_ == b.transfers_;
+  auto const criteria = [](journey const& j) {
+    return std::tuple{j.start_time_,
+                      j.transfers_,
+                      j.dest_time_,
+                      j.criteria_cost_,
+                      j.criteria_mode_filter_,
+                      j.criteria_mode_switches_};
+  };
+  auto const front_criteria = [](journey const& j) {
+    return std::tuple{j.start_time_, j.transfers_, j.dest_time_};
+  };
+  auto const front_dominates = [](journey const& a, journey const& b) {
+    return a.departure_time() >= b.departure_time() &&
+           a.arrival_time() <= b.arrival_time() && a.transfers_ <= b.transfers_;
+  };
+  auto const strictly_dominates = [&](journey const& a, journey const& b) {
+    return front_dominates(a, b) && !front_dominates(b, a);
   };
 
+  // labels end in the engine, so this compares everything but the engine
+  auto const same_algo = ref_name.substr(0U, ref_name.rfind('-')) ==
+                         cmp_name.substr(0U, cmp_name.rfind('-'));
+
   auto const key = [](journey const& j) {
-    return fmt::format("dep={} arr={} transfers={}", j.departure_time(),
-                       j.arrival_time(), j.transfers_);
+    return fmt::format(
+        "dep={} arr={} transfers={} cost={} mode_filter={} mode_switches={}",
+        j.departure_time(), j.arrival_time(), j.transfers_, j.criteria_cost_,
+        j.criteria_mode_filter_, j.criteria_mode_switches_);
   };
 
   auto const max_window = [&](query const& q) {
@@ -129,8 +171,8 @@ std::uint64_t compare_results(
                : interval_estimator<direction::kBackward>{tt, q}.max_interval();
   };
 
-  auto const filtered = [](pareto_set<routing::journey> const& set,
-                           interval<unixtime_t> const& window) {
+  auto const filtered = [&](pareto_set<routing::journey> const& set,
+                            interval<unixtime_t> const& window) {
     auto v = std::vector<journey const*>{};
     for (auto const& j : set) {
       if (j.travel_time() < kCheckedMaxTravelTime /* slack for pong */ &&
@@ -138,7 +180,28 @@ std::uint64_t compare_results(
         v.push_back(&j);
       }
     }
+    // the search leaves ties on the last criteria in no particular order
+    std::sort(begin(v), end(v), [&](journey const* a, journey const* b) {
+      return criteria(*a) < criteria(*b);
+    });
+    if (search_dir == direction::kBackward) {
+      std::reverse(begin(v), end(v));
+    }
     return v;
+  };
+
+  // (departure, arrival, transfers) pareto front of a set, one per tie
+  auto const front = [&](std::vector<journey const*> const& v) {
+    auto out = std::vector<journey const*>{};
+    for (auto const* a : v) {
+      if (utl::none_of(v, [&](journey const* b) {
+            return front_dominates(*b, *a) &&
+                   (!front_dominates(*a, *b) || b < a);
+          })) {
+        out.push_back(a);
+      }
+    }
+    return out;
   };
 
   auto const print_set = [&](std::string const& name, auto const& journeys) {
@@ -149,54 +212,96 @@ std::uint64_t compare_results(
     fmt::println("");
   };
 
-  for (auto i = std::size_t{0U}; i != ref.size(); ++i) {
-    auto const window = max_window(queries[i].q_);
-    auto r = filtered(ref[i], window);
-    auto c = filtered(cmp[i], window);
-    if (search_dir == direction::kBackward) {
-      std::reverse(begin(r), end(r));
-      std::reverse(begin(c), end(c));
+  for (auto i = std::size_t{0U}; i != ref.res_.size(); ++i) {
+    // Engines running the same algorithm have to find the same set within
+    // the widest window. Different algorithms scan different windows (their
+    // own stop criteria), so they are compared where both say they searched.
+    auto window = max_window(queries[i].q_);
+    if (!same_algo) {
+      for (auto const& itv : {ref.intervals_[i], cmp.intervals_[i]}) {
+        window = {std::max(window.from_, itv.from_),
+                  std::min(window.to_, itv.to_)};
+      }
+      if (window.from_ >= window.to_) {
+        continue;  // nothing both covered
+      }
     }
+    auto const r = filtered(ref.res_[i], window);
+    auto const c = filtered(cmp.res_[i], window);
 
-    auto const r_size = r.size();
-    auto const c_size = c.size();
-    auto const n = std::min(r_size, c_size);
-    auto const r_zip = std::span{r.data(), n};
-    auto const c_zip = std::span{c.data(), n};
-
-    // Count under-deliverying results:
-    // >= min_connection_count reached by one but not the other
-    auto const raw_r = ref[i].size();
-    auto const raw_c = cmp[i].size();
     auto misses = std::uint64_t{0U};
-    if (r_size >= min_connection_count && raw_c < min_connection_count) {
-      misses += min_connection_count - raw_c;
-    }
-    if (c_size >= min_connection_count && raw_r < min_connection_count) {
-      misses += min_connection_count - raw_r;
-    }
+    auto problems = std::vector<std::string>{};
+    if (same_algo) {
+      auto const n = std::min(r.size(), c.size());
+      misses += std::max(r.size(), c.size()) - n;
+      for (auto k = std::size_t{0U}; k != n; ++k) {
+        if (criteria(*r[k]) != criteria(*c[k])) {
+          ++misses;
+          problems.push_back(fmt::format("{} [{}] vs {} [{}]", ref_name,
+                                         key(*r[k]), cmp_name, key(*c[k])));
+        }
+      }
+    } else {
+      // Count under-delivering results: >= min_connection_count reached by
+      // one but not the other. A multicriteria side reaches the count with
+      // criteria variants of fewer tuples, so it never makes a two-criteria
+      // side under-deliver.
+      auto const raw_r = ref.res_[i].size();
+      auto const raw_c = cmp.res_[i].size();
+      auto const ref_mc = is_multicriteria(ref_name);
+      auto const cmp_mc = is_multicriteria(cmp_name);
+      if (r.size() >= min_connection_count && raw_c < min_connection_count &&
+          (cmp_mc || !ref_mc)) {
+        misses += min_connection_count - raw_c;
+      }
+      if (c.size() >= min_connection_count && raw_r < min_connection_count &&
+          (ref_mc || !cmp_mc)) {
+        misses += min_connection_count - raw_r;
+      }
 
-    // Count inequalities.
-    for (auto const [a, b] : utl::zip(r_zip, c_zip)) {
-      if (!equal(*a, *b)) {
-        ++misses;
+      // A two-criteria side's front is exact: the other side must contain
+      // each of its tuples and may beat none. A multicriteria side's own
+      // front is no such reference - it keeps journeys whose two-criteria
+      // dominator departs outside the window.
+      auto const check = [&](std::string const& x_name,
+                             std::vector<journey const*> const& x,
+                             std::string const& y_name,
+                             std::vector<journey const*> const& y) {
+        for (auto const* a : front(x)) {
+          if (utl::none_of(y, [&](journey const* b) {
+                return front_criteria(*a) == front_criteria(*b);
+              })) {
+            ++misses;
+            problems.push_back(
+                fmt::format("{} lacks {} [{}]", y_name, x_name, key(*a)));
+          }
+          for (auto const* b : y) {
+            if (strictly_dominates(*b, *a)) {
+              ++misses;
+              problems.push_back(fmt::format("{} [{}] beats {} [{}]", y_name,
+                                             key(*b), x_name, key(*a)));
+            }
+          }
+        }
+      };
+      if (!is_multicriteria(ref_name)) {
+        check(ref_name, r, cmp_name, c);
+      }
+      if (!is_multicriteria(cmp_name)) {
+        check(cmp_name, c, ref_name, r);
       }
     }
 
     if (misses != 0U) {
-      fmt::println("query #{} mismatches={} ({} n={}, {} n={})", i, misses,
-                   ref_name, r_size, cmp_name, c_size);
+      fmt::println(
+          "query #{} mismatches={} ({} n={} itv={}, {} n={} itv={}, "
+          "compared in {})",
+          i, misses, ref_name, r.size(), ref.intervals_[i], cmp_name, c.size(),
+          cmp.intervals_[i], window);
       print_set(ref_name, r);
       print_set(cmp_name, c);
-      for (auto const [a, b] : utl::zip(r_zip, c_zip)) {
-        if (!equal(*a, *b)) {
-          fmt::println("  === MISMATCH: {} [{}] vs {} [{}] ===", ref_name,
-                       key(*a), cmp_name, key(*b));
-          a->print(std::cout, tt);
-          fmt::println("");
-          b->print(std::cout, tt);
-          fmt::println("");
-        }
+      for (auto const& p : problems) {
+        fmt::println("  === MISMATCH: {} ===", p);
       }
     }
 
@@ -269,23 +374,20 @@ std::vector<double> run_load(
   return lat;
 }
 
-struct result_set {
-  std::string label_;
-  std::vector<pareto_set<routing::journey>> res_;
-  std::vector<double> latencies_;
-};
-
-struct cpu_ws {
+// worker state per search state type
+template <typename RS>
+struct cpu_ws_t {
   search_state ss_;
-  routing::raptor_state rs_;
+  RS rs_;
 };
 
 #if defined(NIGIRI_CUDA)
-struct gpu_ws {
-  explicit gpu_ws(routing::gpu::gpu_timetable const& gtt)
-      : rs_{std::make_unique<routing::gpu::gpu_raptor_state>(gtt)} {}
+template <typename RS>
+struct gpu_ws_t {
+  explicit gpu_ws_t(routing::gpu::gpu_timetable const& gtt)
+      : rs_{std::make_unique<RS>(gtt)} {}
   search_state ss_;
-  std::unique_ptr<routing::gpu::gpu_raptor_state> rs_;
+  std::unique_ptr<RS> rs_;
 };
 #endif
 
@@ -301,6 +403,7 @@ result_set run_cell(
     StateArgs const&... state_args) {
   auto out = result_set{.label_ = label};
   out.res_.resize(queries.size());
+  out.intervals_.resize(queries.size());
 
   auto states = std::vector<std::unique_ptr<WS>>{};
   for (auto i = 0U; i != *std::max_element(begin(n_parallel), end(n_parallel));
@@ -316,7 +419,9 @@ result_set run_cell(
     out.latencies_ =
         run_load<WS>(queries, label + "-" + std::to_string(n), pool,
                      [&](WS& w, routing::query q, std::size_t const i) {
-                       out.res_[i] = search(w, std::move(q));
+                       auto const r = search(w, std::move(q));
+                       out.res_[i] = *r.journeys_;
+                       out.intervals_[i] = r.interval_;
                      });
   }
 
@@ -360,6 +465,7 @@ int main(int argc, char* argv[]) {
   auto threads_v =
       std::vector<unsigned>{std::max(std::thread::hardware_concurrency(), 1U)};
   auto gpu_states_v = std::vector<unsigned>{2U};
+  auto bmrap_gpu_mc_v = std::vector<int>{1};
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
@@ -367,16 +473,23 @@ int main(int argc, char* argv[]) {
        "path to a binary file containing a serialized nigiri timetable")  //
       ("engines", bpo::value(&engines)->multitoken(),
        "engines to benchmark (default: cpu gpu); every axis is a vector -- "
-       "the run is the full cross product of engines x algos x modes (x "
-       "threads/states within an engine), all against the once-loaded "
+       "the run is the full cross product of engines x algos x modes x dirs "
+       "(x threads/states within an engine), all against the once-loaded "
        "timetable, with one PROFILE throughput/latency line per point; "
-       "whenever BOTH engines ran a (mode, algo) cell, their pareto sets are "
-       "cross-checked per query and the process exits non-zero on any "
-       "divergence")  //
+       "whenever more than one (engine, algo) cell ran within a (mode, dir), "
+       "their pareto sets are pairwise cross-checked per query and the "
+       "process exits non-zero on any divergence")  //
       ("algo,a", bpo::value(&algos)->multitoken(),
-       "algorithms: raptor | pong (default: both); if both ran with the cpu "
-       "engine, the pong cell of each (mode, dir) is checked against raptor "
-       "for agreement on the intersection of the final search intervals")  //
+       "algorithms: range | pong | mcraptor | mcraptor-all | bmrapp (default: "
+       "range pong); mcraptor-all optimizes non_transit, mode_filter and "
+       "mode_switches; bmrapp is the BM-RAPTOR profile search over the same "
+       "criteria; against another algorithm, a two-criteria side's "
+       "(departure, arrival, transfers) front must be contained in the other "
+       "side and not be beaten by it, within the intervals both report; "
+       "every ran "
+       "cell (any engine/algo combination) within a (mode, "
+       "dir) is checked pairwise against every other for agreement on the "
+       "intersection of the final search intervals")  //
       ("modes", bpo::value(&modes)->multitoken(),
        "<start>2<dest> query modes with s = station, c = coordinate: "
        "s2s | s2c | c2s | c2c (default: s2s c2c); c = intermodal offsets "
@@ -392,6 +505,9 @@ int main(int argc, char* argv[]) {
        "concurrency)")  //
       ("gpu_states", bpo::value(&gpu_states_v)->multitoken(),
        "concurrent GPU pipeline counts to sweep (default: 2)")  //
+      ("bmrap_gpu_mc", bpo::value(&bmrap_gpu_mc_v)->multitoken(),
+       "bmrapp on the GPU: where the multicriteria phases run, one cell "
+       "each (0 = CPU, 1 = device; default: 1)")  //
       ("seed,s", bpo::value<std::int64_t>(&seed)->default_value(seed),
        "query generator RNG seed, -1 for a random seed")  //
       ("num_queries,n", bpo::value(&n_queries)->default_value(n_queries),
@@ -543,7 +659,7 @@ int main(int argc, char* argv[]) {
   }
   // process program options - end
 
-  // ---- benchmark matrix: engines x algos x modes (x threads/states) ----
+  // ---- benchmark matrix: engines x algos x modes x dirs (x threads/states)
   for (auto const& d : dirs) {
     if (d != "fwd" && d != "bwd") {
       std::cerr << "invalid dir \"" << d << "\", expected fwd | bwd\n";
@@ -573,8 +689,11 @@ int main(int argc, char* argv[]) {
   }
 #endif
   for (auto const& a : algos) {
-    if (a != "range" && a != "pong") {
-      std::cerr << "invalid algo \"" << a << "\", expected raptor | pong\n";
+    if (a != "range" && a != "pong" && a != "mcraptor" && a != "mcraptor-all" &&
+        a != "bmrapp") {
+      std::cerr << "invalid algo \"" << a
+                << "\", expected range | pong | mcraptor | mcraptor-all | "
+                   "bmrapp\n";
       return 1;
     }
   }
@@ -641,6 +760,9 @@ int main(int argc, char* argv[]) {
       for (auto& sdq : qs) {
         if (dir == direction::kBackward) {
           sdq.q_.flip_dir();
+          sdq.q_.use_start_footpaths_ =
+              gs.use_start_footpaths_ &&
+              sdq.q_.start_match_mode_ != location_match_mode::kIntermodal;
         }
         sdq.q_.extend_interval_earlier_ = dir == direction::kBackward;
         sdq.q_.extend_interval_later_ = dir == direction::kForward;
@@ -648,22 +770,75 @@ int main(int argc, char* argv[]) {
 
       auto cells = std::vector<result_set>{};
       for (auto const& algo : algos) {
+        // pong and bmrapp run on the raptor state, the rest are range searches
         auto const use_pong = algo == "pong";
+        auto const use_bmrap = algo == "bmrapp";
+        auto const algo_part =
+            use_pong || use_bmrap ? std::string{"range"} : algo;
         auto const label = mode + "-" + dir_str + "-" + algo;
+
+        // pong only exists for the plain raptor state
+        auto const run_cpu_cell = [&]<typename RS>() {
+          return run_cell<cpu_ws_t<RS>>(
+              qs, label + "-cpu", threads_v,
+              [&](cpu_ws_t<RS>& w, routing::query q) {
+                if constexpr (std::is_same_v<RS, routing::raptor_state>) {
+                  return use_bmrap
+                             ? routing::bmrap_profile_search<bmrapp_criteria_t>(
+                                   tt, nullptr, w.ss_, w.rs_, std::move(q), dir)
+                         : use_pong
+                             ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
+                                                    std::move(q), dir)
+                             : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
+                                                      std::move(q), dir);
+                } else {
+                  utl::verify(!use_pong, "pong only supports raptor_state");
+                  return routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
+                                                std::move(q), dir);
+                }
+              });
+        };
+#if defined(NIGIRI_CUDA)
+        auto const run_gpu_cell = [&]<typename RS>(
+                                      std::string const& engine = "gpu",
+                                      bool const gpu_mc = true) {
+          return run_cell<gpu_ws_t<RS>>(
+              qs, label + "-" + engine, gpu_states_v,
+              [&](gpu_ws_t<RS>& w, routing::query q) {
+                if constexpr (std::is_same_v<RS,
+                                             routing::gpu::gpu_raptor_state>) {
+                  return use_bmrap
+                             ? routing::bmrap_profile_search<bmrapp_criteria_t>(
+                                   tt, nullptr, w.ss_, *w.rs_, std::move(q),
+                                   dir, std::nullopt, gpu_mc)
+                         : use_pong
+                             ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
+                                                    std::move(q), dir)
+                             : routing::raptor_search(tt, nullptr, w.ss_,
+                                                      *w.rs_, std::move(q),
+                                                      dir);
+                } else {
+                  utl::verify(!use_pong, "pong only supports gpu_raptor_state");
+                  return routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
+                                                std::move(q), dir);
+                }
+              },
+              *gpu_tt);
+        };
+#endif
 
         try {
           if (run_cpu) {
-            cells.push_back(run_cell<cpu_ws>(
-                qs, label + "-cpu", threads_v,
-                [&](cpu_ws& w, routing::query q) {
-                  auto const r =
-                      use_pong
-                          ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
-                                                 std::move(q), dir)
-                          : routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
-                                                   std::move(q), dir);
-                  return *r.journeys_;
-                }));
+            cells.push_back(
+                algo_part == "mcraptor"
+                    ? run_cpu_cell
+                          .template operator()<routing::mcraptor_state>()
+                : algo_part == "mcraptor-all"
+                    ? run_cpu_cell.template operator()<
+                          routing::
+                              mcraptor_non_transit_mode_filter_mode_switches_state>()
+                    : run_cpu_cell
+                          .template operator()<routing::raptor_state>());
             ++qa_n_cpu_cells;
             if (vm.count("qa_path")) {
               qa_cell = cells.back();
@@ -671,19 +846,27 @@ int main(int argc, char* argv[]) {
           }
 
 #if defined(NIGIRI_CUDA)
-          if (run_gpu) {
-            cells.push_back(run_cell<gpu_ws>(
-                qs, label + "-gpu", gpu_states_v,
-                [&](gpu_ws& w, routing::query q) {
-                  auto const r =
-                      use_pong
-                          ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
-                                                 std::move(q), dir)
-                          : routing::raptor_search(tt, nullptr, w.ss_, *w.rs_,
-                                                   std::move(q), dir);
-                  return *r.journeys_;
-                },
-                *gpu_tt));
+          if (run_gpu && use_bmrap) {
+            // one cell per mc placement ("gpu.mc0": mc phases on the CPU,
+            // "gpu.mc1": on the device); keeping the engine the last label
+            // token checks all of them as one algorithm
+            for (auto const m : bmrap_gpu_mc_v) {
+              cells.push_back(
+                  run_gpu_cell
+                      .template operator()<routing::gpu::gpu_raptor_state>(
+                          "gpu.mc" + std::to_string(m != 0 ? 1 : 0), m != 0));
+            }
+          } else if (run_gpu) {
+            cells.push_back(
+                algo_part == "mcraptor"
+                    ? run_gpu_cell.template
+                      operator()<routing::gpu::gpu_mcraptor_state>()
+                : algo_part == "mcraptor-all"
+                    ? run_gpu_cell.template operator()<
+                          routing::gpu::
+                              gpu_mcraptor_non_transit_mode_filter_mode_switches_state>()
+                    : run_gpu_cell.template
+                      operator()<routing::gpu::gpu_raptor_state>());
           }
 #endif
         } catch (std::exception const& e) {
@@ -702,8 +885,7 @@ int main(int argc, char* argv[]) {
       for (auto a = std::size_t{0U}; a < cells.size(); ++a) {
         for (auto b = a + 1U; b < cells.size(); ++b) {
           auto const mismatches = compare_results(
-              tt, cells[a].label_, cells[a].res_, cells[b].label_,
-              cells[b].res_, qs, dir, gs.min_connection_count_);
+              tt, cells[a], cells[b], qs, dir, gs.min_connection_count_);
           summary.push_back(
               fmt::format("{:<24} vs {:<24} n={:<6} mismatches={:<4} {}",
                           cells[a].label_, cells[b].label_, qs.size(),

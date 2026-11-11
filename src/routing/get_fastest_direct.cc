@@ -1,5 +1,8 @@
 #include "nigiri/routing/get_fastest_direct.h"
 
+#include <cmath>
+#include <algorithm>
+
 #include "utl/get_or_create.h"
 
 #include "nigiri/common/dial.h"
@@ -93,10 +96,13 @@ duration_t get_fastest_direct(timetable const& tt,
     }
   }
 
+  // saturate: a large factor must not wrap the 16 bit minutes around to a tiny
+  // bound that filters every journey
   return duration_t{end_dist == kUnreachable
                         ? kUnreachable
-                        : static_cast<duration_t::rep>(
-                              std::ceil(end_dist * q.fastest_direct_factor_))};
+                        : static_cast<duration_t::rep>(std::min(
+                              std::ceil(end_dist * q.fastest_direct_factor_),
+                              static_cast<double>(kUnreachable)))};
 }
 
 }  // namespace nigiri::routing

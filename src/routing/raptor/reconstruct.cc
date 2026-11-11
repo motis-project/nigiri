@@ -947,7 +947,9 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
   }
 
-  optimize_footpaths(tt, rtt, journey_q, j);
+  if (!raptor_state.skip_optimize_footpaths_) {
+    optimize_footpaths(tt, rtt, journey_q, j);
+  }
   specify_td_offsets(journey_q, j);
 
   j.is_reconstructed_ = true;

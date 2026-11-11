@@ -38,10 +38,14 @@ pareto_set<routing::journey> raptor_search(
     bool no_compulsory_reservation = false,
     profile_idx_t const profile = 0U);
 
+// mc_same_legs: plain mcraptor must report raptor's legs (without
+// optimize_footpaths); off where raptor's reconstruction picks among
+// equal-value journeys that mcraptor's breadcrumbs pin.
 pareto_set<routing::journey> raptor_search(timetable const&,
                                            rt_timetable const*,
                                            routing::query,
-                                           direction = direction::kForward);
+                                           direction = direction::kForward,
+                                           bool mc_same_legs = true);
 
 pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            rt_timetable const* rtt,
@@ -65,6 +69,7 @@ pareto_set<routing::journey> raptor_intermodal_search(
     direction = direction::kForward,
     std::uint8_t min_connection_count = 0U,
     bool extend_interval_earlier = false,
-    bool extend_interval_later = false);
+    bool extend_interval_later = false,
+    bool mc_same_legs = true);
 
 }  // namespace nigiri::test

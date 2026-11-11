@@ -5,6 +5,7 @@
 #include <cstring>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -28,304 +29,27 @@
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/timer.h"
+#include "utl/verify.h"
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/gpu/cuda_check.cuh"
 #include "nigiri/routing/gpu/device_buffer.cuh"
 #include "nigiri/routing/gpu/device_timetable.cuh"
+#include "nigiri/routing/gpu/launch.cuh"
+#include "nigiri/routing/gpu/mcraptor.h"
 #include "nigiri/routing/gpu/pinned_host_buffer.cuh"
 #include "nigiri/routing/gpu/raptor_impl.cuh"
+#include "nigiri/routing/gpu/timetable_impl.cuh"
 #include "nigiri/routing/gpu/types.cuh"
 #include "nigiri/td_footpath.h"
 
 namespace nigiri::routing::gpu {
 
-// words a device_bitvec<std::uint32_t> needs to hold n bits
-constexpr std::uint32_t n_bitvec_words(std::uint32_t const n) {
-  return n / 32U + 1U;
-}
-
-struct gpu_timetable::impl {
-  using t = timetable;
-  using fp_t = decltype(t{}.locations_.footpaths_out_[0]);
-
-  static std::vector<std::uint32_t> build_route_stop_offset(
-      timetable const& tt) {
-    auto v = std::vector<std::uint32_t>(tt.n_routes() + 1U);
-    for (auto r = 0U; r < tt.n_routes(); ++r) {
-      v[r + 1U] = v[r] + static_cast<std::uint32_t>(
-                             tt.route_location_seq_[route_idx_t{r}].size());
-    }
-    return v;
-  }
-
-  static std::vector<std::uint32_t> build_route_of_stop(
-      timetable const& tt, std::vector<std::uint32_t> const& off) {
-    auto v = std::vector<std::uint32_t>(off.back());
-    for (auto r = 0U; r < tt.n_routes(); ++r) {
-      for (auto s = off[r]; s < off[r + 1U]; ++s) {
-        v[s] = r;
-      }
-    }
-    return v;
-  }
-
-  explicit impl(timetable const& tt)
-      : n_locations_{tt.n_locations()},
-        n_routes_{tt.n_routes()},
-        transfer_time_{to_device(tt.locations_.transfer_time_)},
-        first_dep_{to_device(tt.transport_first_dep_)},
-        transport_pattern_{to_device(tt.transport_pattern_)},
-        route_times_{to_device(tt.route_times_)},
-        patterns_{to_device(tt.pattern_offsets_)},
-        route_clasz_{to_device(tt.route_clasz_)},
-        route_location_seq_{tt.route_location_seq_},
-        location_routes_{tt.location_routes_},
-        transport_traffic_days_{to_device(tt.transport_traffic_days_)},
-        route_traffic_days_{to_device(tt.route_traffic_days_)},
-        transport_route_{to_device(tt.transport_route_)},
-        bitfields_{to_device(tt.bitfields_)},
-        route_bikes_allowed_{to_device(tt.route_flags_[kBikesAllowed].blocks_)},
-        route_cars_allowed_{to_device(tt.route_flags_[kCarsAllowed].blocks_)},
-        route_wheelchair_accessible_{
-            to_device(tt.route_flags_[kWheelchairAccessible].blocks_)},
-        route_reservation_not_required_{
-            to_device(tt.route_flags_[kReservationNotRequired].blocks_)},
-        route_bike_sections_{tt.route_flags_per_section_[kBikesAllowed]},
-        route_car_sections_{tt.route_flags_per_section_[kCarsAllowed]},
-        route_wheelchair_sections_{
-            tt.route_flags_per_section_[kWheelchairAccessible]},
-        route_reservation_not_required_sections_{
-            tt.route_flags_per_section_[kReservationNotRequired]},
-        internal_interval_days_{tt.internal_interval_days()} {
-    auto const off = build_route_stop_offset(tt);
-    route_stop_offset_.assign(off.begin(), off.end());
-    auto const ros = build_route_of_stop(tt, off);
-    route_of_stop_.assign(ros.begin(), ros.end());
-    for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
-      footpaths_out_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_out_[p]};
-      footpaths_in_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_in_[p]};
-    }
-
-    // device-resident (launch-arg size, see device_transport_filters)
-    auto f = device_transport_filters<route_idx_t>{
-        .bike_ = {{to_view(route_bikes_allowed_)},
-                  to_view(route_bike_sections_)},
-        .car_ = {{to_view(route_cars_allowed_)}, to_view(route_car_sections_)},
-        .wheelchair_ = {{to_view(route_wheelchair_accessible_)},
-                        to_view(route_wheelchair_sections_)},
-        .reservation_not_required_ = {
-            {to_view(route_reservation_not_required_)},
-            to_view(route_reservation_not_required_sections_)}};
-    filters_ctx_.resize(1);
-    thrust::copy_n(&f, 1, filters_ctx_.begin());
-  }
-
-  device_timetable to_device_timetable() const {
-    auto dt = device_timetable{
-        .n_locations_ = n_locations_,
-        .n_routes_ = n_routes_,
-        .transfer_time_ = transfer_time_,
-        .first_dep_ = first_dep_,
-        .transport_pattern_ = transport_pattern_,
-        .route_times_ = route_times_,
-        .patterns_ = to_view(patterns_),
-        .route_clasz_ = to_view(route_clasz_),
-        .route_location_seq_ = to_view(route_location_seq_),
-        .location_routes_ = to_view(location_routes_),
-        .transport_traffic_days_ = to_view(transport_traffic_days_),
-        .route_traffic_days_ = to_view(route_traffic_days_),
-        .transport_route_ = to_view(transport_route_),
-        .bitfields_ = to_view(bitfields_),
-        .filters_ = thrust::raw_pointer_cast(filters_ctx_.data()),
-        .route_stop_offset_ = to_view(route_stop_offset_),
-        .route_of_stop_ = to_view(route_of_stop_),
-        .internal_interval_days_ = internal_interval_days_};
-    for (auto p = 0U; p != kNProfiles; ++p) {
-      dt.footpaths_out_[p] = to_view(footpaths_out_[p]);
-      dt.footpaths_in_[p] = to_view(footpaths_in_[p]);
-    }
-    return dt;
-  }
-
-  std::uint32_t n_locations_;
-  std::uint32_t n_routes_;
-
-  thrust::device_vector<u8_minutes> transfer_time_;
-  std::array<device_vecvec<fp_t>, kNProfiles> footpaths_out_;
-  std::array<device_vecvec<fp_t>, kNProfiles> footpaths_in_;
-
-  thrust::device_vector<delta> first_dep_;
-  thrust::device_vector<std::uint16_t> transport_pattern_;
-  thrust::device_vector<route_times> route_times_;
-  thrust::device_vector<delta> patterns_;
-  thrust::device_vector<clasz> route_clasz_;
-
-  device_vecvec<decltype(t{}.route_location_seq_)> route_location_seq_;
-  device_vecvec<decltype(t{}.location_routes_)> location_routes_;
-
-  thrust::device_vector<bitfield_idx_t> transport_traffic_days_;
-  thrust::device_vector<bitfield_idx_t> route_traffic_days_;
-  thrust::device_vector<route_idx_t> transport_route_;
-  thrust::device_vector<bitfield> bitfields_;
-  thrust::device_vector<std::uint64_t> route_bikes_allowed_;
-  thrust::device_vector<std::uint64_t> route_cars_allowed_;
-  thrust::device_vector<std::uint64_t> route_wheelchair_accessible_;
-  thrust::device_vector<std::uint64_t> route_reservation_not_required_;
-  device_vecvec<decltype(t{}.route_flags_per_section_[0])> route_bike_sections_;
-  device_vecvec<decltype(t{}.route_flags_per_section_[0])> route_car_sections_;
-  device_vecvec<decltype(t{}.route_flags_per_section_[0])>
-      route_wheelchair_sections_;
-  device_vecvec<decltype(t{}.route_flags_per_section_[0])>
-      route_reservation_not_required_sections_;
-  thrust::device_vector<device_transport_filters<route_idx_t>> filters_ctx_;
-  thrust::device_vector<std::uint32_t> route_stop_offset_;
-  thrust::device_vector<std::uint32_t> route_of_stop_;
-
-  interval<date::sys_days> internal_interval_days_;
-};
-
 gpu_timetable::gpu_timetable(timetable const& tt)
     : impl_{std::make_unique<impl>(tt)} {}
 
 gpu_timetable::~gpu_timetable() = default;
-
-struct gpu_rt_timetable::impl {
-  using rtt_t = rt_timetable;
-
-  static std::vector<clasz> build_rt_transport_clasz(rt_timetable const& rtt) {
-    auto v = std::vector<clasz>{};
-    v.reserve(rtt.n_rt_transports());
-    for (auto rt_t = 0U; rt_t != rtt.n_rt_transports(); ++rt_t) {
-      auto const sections =
-          rtt.rt_transport_section_clasz_[rt_transport_idx_t{rt_t}];
-      v.push_back(sections.empty() ? clasz::kOther : sections[0]);
-    }
-    return v;
-  }
-
-  impl(timetable const& tt, rt_timetable const& rtt)
-      : n_rt_transports_{rtt.n_rt_transports()},
-        base_day_idx_{rtt.base_day_idx_},
-        location_rt_transports_{
-            cista::raw::make_vecvec(rtt.location_rt_transports_)},
-        rt_transport_location_seq_{rtt.rt_transport_location_seq_},
-        rt_transport_stop_times_{rtt.rt_transport_stop_times_},
-        rt_transport_clasz_{to_device(build_rt_transport_clasz(rtt))},
-        transport_traffic_days_{to_device(rtt.transport_traffic_days_)},
-        bitfields_{to_device(rtt.bitfields_)},
-        rt_transport_bikes_allowed_{
-            to_device(rtt.rt_transport_flags_[kBikesAllowed].blocks_)},
-        rt_transport_cars_allowed_{
-            to_device(rtt.rt_transport_flags_[kCarsAllowed].blocks_)},
-        rt_transport_wheelchair_accessibility_{
-            to_device(rtt.rt_transport_flags_[kWheelchairAccessible].blocks_)},
-        rt_transport_reservation_not_required_{to_device(
-            rtt.rt_transport_flags_[kReservationNotRequired].blocks_)},
-        rt_bike_sections_{rtt.rt_flags_per_section_[kBikesAllowed]},
-        rt_car_sections_{rtt.rt_flags_per_section_[kCarsAllowed]},
-        rt_wheelchair_sections_{
-            rtt.rt_flags_per_section_[kWheelchairAccessible]},
-        rt_reservation_not_required_sections_{
-            rtt.rt_flags_per_section_[kReservationNotRequired]} {
-    utl::verify(
-        bc_transport_space_fits(tt.transport_route_.size(), n_rt_transports_),
-        "transport idx space too small: {} static + {} rt",
-        tt.transport_route_.size(), n_rt_transports_);
-
-    // Copy filters.
-    auto f = device_transport_filters<rt_transport_idx_t>{
-        .bike_ = {{to_view(rt_transport_bikes_allowed_)},
-                  to_view(rt_bike_sections_)},
-        .car_ = {{to_view(rt_transport_cars_allowed_)},
-                 to_view(rt_car_sections_)},
-        .wheelchair_ = {{to_view(rt_transport_wheelchair_accessibility_)},
-                        to_view(rt_wheelchair_sections_)},
-        .reservation_not_required_ = {
-            {to_view(rt_transport_reservation_not_required_)},
-            to_view(rt_reservation_not_required_sections_)}};
-    rt_filters_ctx_.resize(1);
-    thrust::copy_n(&f, 1, rt_filters_ctx_.begin());
-
-    // Copy td-footpaths.
-    for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
-      // for the host-side kernel dispatch
-      has_td_fps_[p] = rtt.has_td_footpaths_out_[p].any() ||
-                       rtt.has_td_footpaths_in_[p].any();
-
-      if (!has_td_fps_[p]) {
-        continue;
-      }
-
-      td_footpaths_out_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_out_[p]};
-      has_td_out_[p] = to_device(rtt.has_td_footpaths_out_[p].blocks_);
-      td_footpaths_in_[p] = device_vecvec<td_fp_t>{rtt.td_footpaths_in_[p]};
-      has_td_in_[p] = to_device(rtt.has_td_footpaths_in_[p].blocks_);
-    }
-
-    // device-resident view struct (the launch-parameter struct only carries
-    // a pointer; ~480B of views inline cost ~0.5% pong throughput)
-    auto td = device_rt_timetable::td_footpaths{};
-    for (auto p = 0U; p != kNProfiles; ++p) {
-      td.out_[p] = to_view(td_footpaths_out_[p]);
-      td.in_[p] = to_view(td_footpaths_in_[p]);
-      td.has_out_[p] = {to_view(has_td_out_[p])};
-      td.has_in_[p] = {to_view(has_td_in_[p])};
-    }
-    td_ctx_.resize(1);
-    thrust::copy_n(&td, 1, td_ctx_.begin());
-  }
-
-  device_rt_timetable to_device_rt_timetable() const {
-    auto d = device_rt_timetable{
-        .n_rt_transports_ = n_rt_transports_,
-        .base_day_idx_ = base_day_idx_,
-        .location_rt_transports_ = to_view(location_rt_transports_),
-        .rt_transport_location_seq_ = to_view(rt_transport_location_seq_),
-        .rt_transport_stop_times_ = to_view(rt_transport_stop_times_),
-        .rt_transport_clasz_ = to_view(rt_transport_clasz_),
-        .transport_traffic_days_ = to_view(transport_traffic_days_),
-        .bitfields_ = to_view(bitfields_),
-        .filters_ = thrust::raw_pointer_cast(rt_filters_ctx_.data()),
-        .td_ = thrust::raw_pointer_cast(td_ctx_.data())};
-    return d;
-  }
-
-  std::uint32_t n_rt_transports_;
-  day_idx_t base_day_idx_;
-
-  device_vecvec<vecvec<location_idx_t, rt_transport_idx_t>>
-      location_rt_transports_;
-  device_vecvec<decltype(rtt_t{}.rt_transport_location_seq_)>
-      rt_transport_location_seq_;
-  device_vecvec<decltype(rtt_t{}.rt_transport_stop_times_)>
-      rt_transport_stop_times_;
-  thrust::device_vector<clasz> rt_transport_clasz_;
-
-  thrust::device_vector<bitfield_idx_t> transport_traffic_days_;
-  thrust::device_vector<bitfield> bitfields_;
-  thrust::device_vector<std::uint64_t> rt_transport_bikes_allowed_;
-  thrust::device_vector<std::uint64_t> rt_transport_cars_allowed_;
-  thrust::device_vector<std::uint64_t> rt_transport_wheelchair_accessibility_;
-  thrust::device_vector<std::uint64_t> rt_transport_reservation_not_required_;
-  device_vecvec<decltype(rtt_t{}.rt_flags_per_section_[0])> rt_bike_sections_;
-  device_vecvec<decltype(rtt_t{}.rt_flags_per_section_[0])> rt_car_sections_;
-  device_vecvec<decltype(rtt_t{}.rt_flags_per_section_[0])>
-      rt_wheelchair_sections_;
-  device_vecvec<decltype(rtt_t{}.rt_flags_per_section_[0])>
-      rt_reservation_not_required_sections_;
-  thrust::device_vector<device_transport_filters<rt_transport_idx_t>>
-      rt_filters_ctx_;
-
-  using td_fp_t = decltype(rtt_t{}.td_footpaths_out_[0]);
-  std::array<device_vecvec<td_fp_t>, kNProfiles> td_footpaths_out_;
-  std::array<device_vecvec<td_fp_t>, kNProfiles> td_footpaths_in_;
-  std::array<thrust::device_vector<std::uint64_t>, kNProfiles> has_td_out_;
-  std::array<thrust::device_vector<std::uint64_t>, kNProfiles> has_td_in_;
-  std::array<bool, kNProfiles> has_td_fps_{};
-  thrust::device_vector<device_rt_timetable::td_footpaths> td_ctx_;
-};
 
 gpu_rt_timetable::gpu_rt_timetable(timetable const& tt, rt_timetable const& rtt)
     : impl_{std::make_unique<impl>(tt, rtt)} {}
@@ -340,7 +64,7 @@ std::unique_ptr<void, void (*)(void*)> make_gpu_rtt(timetable const& tt,
 
 struct gpu_raptor_state::impl {
   explicit impl(gpu_timetable const& gtt)
-      : tt_{gtt.impl_->to_device_timetable()} {
+      : gtt_{&gtt}, tt_{gtt.impl_->to_device_timetable()} {
     cudaStreamCreate(&stream_);
 
     auto const n_route_stops = tt_.route_of_stop_.size();
@@ -380,7 +104,13 @@ struct gpu_raptor_state::impl {
     // upload_query (called by the gpu_raptor ctor -> one per dir)
   }
 
-  ~impl() { cudaStreamDestroy(stream_); }
+  // Work still queued on the stream (e.g. the selective clears at the end of
+  // a query) would otherwise run on the buffers the members free below.
+  ~impl() {
+    mc_state_.reset();  // runs on stream_ (gpu_mcraptor_scratch)
+    cudaStreamSynchronize(stream_);
+    cudaStreamDestroy(stream_);
+  }
 
   // the only per-query sizing: the rt timetable may be absent or may have
   // grown (rt updates) since the last query on this state
@@ -390,9 +120,11 @@ struct gpu_raptor_state::impl {
 
   void upload_query(
       unsigned const dir /* fwd=0 bwd=1 -> ping/pong can coexist */,
+      void const* owner,
       nigiri::bitvec const& is_dest,
       std::vector<std::uint16_t> const& dist_to_dest,
       hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest) {
+    q_owner_[dir] = owner;
     is_intermodal_dest_[dir] = !dist_to_dest.empty();
     // td dest offsets: flatten into sorted (loc, range, data) groups.
     if (td_dist_to_dest.empty()) {
@@ -487,7 +219,13 @@ struct gpu_raptor_state::impl {
                 "could not copy dist to dest");
   }
 
+  gpu_timetable const* gtt_;
+  std::unique_ptr<gpu_mcraptor_state> mc_state_;  // see try_mc_state()
+  bool mc_state_failed_{false};  // do not retry a failed allocation
+
   bool is_intermodal_dest_[2];  // per direction: [0]=fwd, [1]=bwd
+  // which gpu_raptor last uploaded into each direction slot
+  void const* q_owner_[2]{nullptr, nullptr};
   thrust::device_vector<std::uint32_t> any_marked_;
   thrust::device_vector<std::uint32_t> done_;
   pinned_host_buffer<std::uint32_t> done_pin_;
@@ -543,6 +281,28 @@ struct gpu_raptor_state::impl {
   thrust::device_vector<std::uint32_t> route_list_;
   thrust::device_vector<std::uint32_t> route_list_count_;
 
+  // BM-RAPTOR's bound matrices (build_reach_bounds()), read in place by the
+  // device raptor and mcraptor (set_bounds()). One slot per kind (0 =
+  // tau_dep^<-, 1 = tau_arr^->) since both are live at once; reach_tag_ stamps
+  // the matrix a slot holds.
+  thrust::device_vector<delta_t> reach_out_[2];
+  std::uint64_t reach_tag_[2]{0U, 0U};
+
+  // The reach matrices above, at the most rows any trip budget needs
+  // (budget + 1 <= kMaxTransfers + 2), so no query grows them: a growth after
+  // the device mc state took the rest of the device failed mid-query.
+  // Idempotent; called on first use and before the mc state (try_mc_state()).
+  static constexpr auto kBmrapRows = std::size_t{kMaxTransfers} + 2U;
+  void reserve_bmrap() {
+    auto const n = static_cast<std::size_t>(tt_.n_locations_) * kBmrapRows;
+    if (reach_out_[0].size() != n) {
+      reach_out_[0].resize(n);
+      reach_out_[1].resize(n);
+    }
+  }
+
+  // WithBounds: PONG's round/via lower-bound pruning matrix,
+  // n_locations x (kMaxTransfers + 2) (raptor::fill_bounds())
   device_buffer<delta_t> bounds_dev_;
 
   cudaStream_t stream_;
@@ -552,6 +312,35 @@ gpu_raptor_state::gpu_raptor_state(gpu_timetable const& gtt)
     : impl_{std::make_unique<impl>(gtt)} {}
 
 gpu_raptor_state::~gpu_raptor_state() = default;
+
+gpu_mcraptor_state* gpu_raptor_state::try_mc_state() {
+  if (impl_->mc_state_ == nullptr && !impl_->mc_state_failed_) {
+    try {
+      // the scalar side's matrices first: the mc state takes what is left
+      impl_->reserve_bmrap();
+      impl_->mc_state_ = std::make_unique<gpu_mcraptor_state>(
+          *impl_->gtt_, gpu_mcraptor_limits{},
+          gpu_mcraptor_scratch{
+              .et_result_ = thrust::raw_pointer_cast(impl_->et_result_.data()),
+              .et_task_list_ =
+                  thrust::raw_pointer_cast(impl_->et_task_list_.data()),
+              .stream_ = impl_->stream_});
+    } catch (std::exception const& e) {
+      impl_->mc_state_failed_ = true;
+      log(log_lvl::info, "gpu",
+          "no device mcraptor state ({}) - multicriteria phases stay on the "
+          "CPU",
+          e.what());
+    }
+  }
+  return impl_->mc_state_.get();
+}
+
+gpu_mcraptor_state& gpu_raptor_state::mc_state() {
+  auto* const s = try_mc_state();
+  utl::verify(s != nullptr, "gpu_raptor_state: no device mcraptor state");
+  return *s;
+}
 
 template <direction SearchDir, bool WithBounds>
 gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
@@ -580,6 +369,8 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
       n_locations_{tt_.n_locations()},
       state_{state},
       is_dest_{is_dest},
+      dist_to_dest_{&dist_to_dest},
+      td_dist_to_dest_{&td_dist_to_dest},
       base_{base},
       allowed_claszes_{allowed_claszes},
       require_bike_transport_{require_bike_transport},
@@ -594,7 +385,8 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
               "timetable (rt_timetable::gpu_rtt_)");
   state_.impl_->resize_rt(rtt == nullptr ? 0U : rtt->n_rt_transports());
   reset_arrivals();
-  state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest, td_dist_to_dest);
+  state_.impl_->upload_query(kDirIdx, this, is_dest, dist_to_dest,
+                             td_dist_to_dest);
 }
 
 template <direction SearchDir, bool WithBounds>
@@ -729,24 +521,6 @@ __global__ void transfers_footpaths_kernel(raptor_impl<SearchDir, WithBounds> r,
   r.rt_transport_mark_.reset();
 }
 
-template <typename Kernel>
-std::pair<int, int> launch_dims(Kernel kernel) {
-  thread_local auto cache = hash_map<void const*, std::pair<int, int>>{};
-  return utl::get_or_create(
-      cache, reinterpret_cast<void const*>(kernel), [&]() {
-        auto blocks = 0;
-        auto threads = 0;
-        cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
-        return std::pair{blocks, threads};
-      });
-}
-
-template <typename Kernel, typename... Args>
-void launch(Kernel kernel, cudaStream_t stream, Args&&... args) {
-  auto const [blocks, threads] = launch_dims(kernel);
-  kernel<<<blocks, threads, 0, stream>>>(std::forward<Args>(args)...);
-}
-
 template <direction PingDir>
 __global__ void fill_bounds_kernel(std::uint64_t const* const round_times,
                                    delta_t* const bounds,
@@ -834,6 +608,84 @@ __global__ void reconstruct_kernel(location_idx_t const* const dest_list,
   r.reconstruct_journey(dest_list[tid / end_k], k, &out[tid]);
 }
 
+// Bound build on the device, identical to reach_matrix() in bmrap_common.h:
+// `at(i, l)` is the best round time at l over rounds 0..i, less the location's
+// transfer buffer (subtracted once: the prefix runs over the raw times). Only
+// the (budget + 1) rows the caller keeps cross PCIe. Not templated on
+// WithBounds: it never touches the round/via lower-bound matrix.
+template <direction SearchDir>
+__global__ void reach_bounds_kernel(device_times<SearchDir, 1U> round_times,
+                                    device_timetable tt,
+                                    transfer_time_settings const tts,
+                                    delta_t* out,
+                                    std::uint32_t const n_locations,
+                                    unsigned const budget,
+                                    bool const sub_transfer) {
+  for (auto l = get_global_thread_id(); l < n_locations;
+       l += get_global_stride()) {
+    auto const li = location_idx_t{l};
+    auto const buf =
+        sub_transfer ? (kFwd ? 1 : -1) * adjusted_transfer_time(
+                                             tts, tt.transfer_time_[li].count())
+                     : 0;
+    auto prefix = kInvalid;
+    for (auto i = 0U; i <= budget; ++i) {
+      auto const cur =
+          round_times.get(static_cast<std::uint8_t>(i), li, via_offset_t{0U});
+      // "better in SearchDir" == looser as a bound (build_reach_matrix's
+      // is_looser); kInvalid is the worst value either way, so it loses
+      prefix = (kFwd ? cur < prefix : cur > prefix) ? cur : prefix;
+      out[i * n_locations + l] =
+          prefix == kInvalid ? kInvalid : static_cast<delta_t>(prefix - buf);
+    }
+  }
+}
+
+// Provenance stamps for bmrap_bounds::device_tag_. Monotone and process-wide,
+// so a stamp can never match a matrix built by a different state or an older
+// generation of the same slot.
+static std::uint64_t next_reach_tag() {
+  static auto counter = std::atomic<std::uint64_t>{0U};
+  return counter.fetch_add(1U, std::memory_order_relaxed) + 1U;
+}
+
+template <direction SearchDir, bool WithBounds>
+void gpu_raptor<SearchDir, WithBounds>::build_reach_bounds(
+    bmrap_bounds& out,
+    std::uint8_t const budget,
+    bool const sub_transfer,
+    bool const host_copy) {
+  auto& s = *state_.impl_;
+  auto const slot = sub_transfer ? 1U : 0U;
+  auto const n = static_cast<std::size_t>(n_locations_) * (budget + 1U);
+  s.reserve_bmrap();
+  utl::verify(n <= s.reach_out_[slot].size(), "reach matrix: budget {} too big",
+              budget);
+
+  auto* const dst = thrust::raw_pointer_cast(s.reach_out_[slot].data());
+  auto const [blocks, threads] = launch_dims(reach_bounds_kernel<SearchDir>);
+  reach_bounds_kernel<SearchDir><<<blocks, threads, 0, s.stream_>>>(
+      device_times<SearchDir, 1U>{to_mutable_view(s.round_times_),
+                                  n_locations_},
+      s.tt_, transfer_time_settings_, dst, n_locations_, budget, sub_transfer);
+
+  out.n_locations_ = n_locations_;
+  out.budget_ = budget;
+  out.device_ = dst;
+  out.device_tag_ = s.reach_tag_[slot] = next_reach_tag();
+  if (host_copy) {
+    // Straight into the caller's buffer: staging through pinned memory costs
+    // more in the extra host-to-host pass than it saves (tens of MB).
+    out.lat_.resize(n);
+    CUDA_CHECK(cudaMemcpyAsync(out.lat_.data(), dst, n * sizeof(delta_t),
+                               cudaMemcpyDeviceToHost, s.stream_));
+  } else {
+    out.lat_.clear();
+  }
+  CUDA_CHECK(cudaStreamSynchronize(s.stream_));
+  CUDA_CHECK(cudaPeekAtLastError());
+}
+
 template <direction SearchDir, bool WithBounds>
 void gpu_raptor<SearchDir, WithBounds>::execute(
     unixtime_t const start_time,
@@ -841,6 +693,14 @@ void gpu_raptor<SearchDir, WithBounds>::execute(
     std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
     pareto_set<journey>& results) {
   auto& s = *state_.impl_;
+
+  // BM-RAPTOR runs its pong and its pruning search in the same direction on
+  // one state, so the later ctor overwrites the earlier one's destination
+  // slot. Re-claim it here (a few KB) rather than giving every search its own
+  // device state.
+  if (s.q_owner_[kDirIdx] != this) {
+    s.upload_query(kDirIdx, this, is_dest_, *dist_to_dest_, *td_dist_to_dest_);
+  }
 
   // No start = nothing to do.
   // guard against UB: starts_pinned with size=0 -> data=NULL -> memcpy to NULL
@@ -875,6 +735,21 @@ void gpu_raptor<SearchDir, WithBounds>::execute(
   auto const with_td_fps = rt_active && has_profile_td_footpaths(prf_idx_) &&
                            gpu_rtt_->impl_->has_td_fps_[prf_idx_];
   auto r = raptor_impl<SearchDir, WithBounds>{
+      .bm_bounds_ =
+          has_bounds_
+              ? cuda::std::span<delta_t const>{bm_bounds_, bm_bounds_size_}
+              : cuda::std::span<delta_t const>{},
+      .bounds_n_locations_ = bounds_n_locations_,
+      .bounds_budget_ = bounds_budget_,
+      .has_bounds_ = has_bounds_,
+      .start_round_ = start_round_,
+      .relax_origin_ =
+          relax_on_ ? unix_to_delta(base(), relax_origin_) : delta_t{0},
+      .relax_factor_ = relax_factor_,
+      .relax_floor_ = relax_floor_,
+      .relax_cap_ = relax_cap_,
+      .relax_add_ = relax_add_,
+      .relax_on_ = relax_on_,
       .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
       .done_ = thrust::raw_pointer_cast(s.done_.data()),
       .tt_ = s.tt_,
@@ -926,8 +801,12 @@ void gpu_raptor<SearchDir, WithBounds>::execute(
     r.bounds_last_k_ = bounds_last_k_;
   }
 
-  auto const end_k =
-      static_cast<std::uint32_t>(std::min(max_transfers, kMaxTransfers) + 2U);
+  // mirrors raptor::execute(): a staggered run writes its round k into slot
+  // k + start_round_, so the scan is shifted by the same amount and clipped
+  // to the matrix
+  auto const end_k = static_cast<std::uint32_t>(
+      std::min(std::min(max_transfers, kMaxTransfers) + 2U + start_round_,
+               static_cast<unsigned>(kMaxTransfers) + 2U));
 
   // === ROUTING KERNELS ===
   auto d_worst_time_at_dest = cuda::std::array<delta_t, kMaxTransfers + 2U>{};
@@ -936,7 +815,7 @@ void gpu_raptor<SearchDir, WithBounds>::execute(
   }
   launch(init_arrivals_kernel<SearchDir, WithBounds>, s.stream_, r,
          d_worst_time_at_dest);
-  for (auto k = 1U; k != end_k; ++k) {
+  for (auto k = start_round_ + 1U; k != end_k; ++k) {
     launch(reuse_previous_arrivals_kernel<SearchDir, WithBounds>, s.stream_, r,
            k);
     launch(mark_routes_kernel<SearchDir, WithBounds>, s.stream_, r, k);
@@ -1236,182 +1115,10 @@ void gpu_raptor<SearchDir, WithBounds>::next_start_time() {
 template <direction SearchDir, bool WithBounds>
 void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
                                                     journey& j) {
-  // The core legs (boarding station -> alighting station) reconstructed by the
-  // GPU kernel (breadcrumb pointer chase).
-  utl::verify(!j.legs_.empty(), "gpu reconstruct: journey without core legs");
-
-  // The legs are chronological (materialization reverses forward device order).
+  // The core legs (boarding station -> alighting station) come from the GPU
+  // kernel (breadcrumb pointer chase), chronological.
+  add_offset_legs<SearchDir>(tt_, rtt_, q, j);
   constexpr auto const is_fwd = SearchDir == direction::kForward;
-
-  // Front-side mumo leg: special_station -> first transit stop.
-  auto const from = j.legs_.front().from_;
-  auto const dep_time = j.legs_.front().dep_time_;
-  auto const front_match_mode =
-      is_fwd ? q.start_match_mode_ : q.dest_match_mode_;
-  if (front_match_mode == location_match_mode::kIntermodal) {
-    auto const& offsets = is_fwd ? q.start_ : q.destination_;
-    auto const& td_offsets = is_fwd ? q.td_start_ : q.td_dest_;
-    auto const special = get_special_station(is_fwd ? special_station::kStart
-                                                    : special_station::kEnd);
-    auto const o = utl::find_if(offsets, [&](offset const& x) {
-      return matches(tt_, front_match_mode, x.target(), from) &&
-             (is_fwd
-                  // fwd: query start, check feasibility (allows ontrip start)
-                  ? dep_time - x.duration() >= j.start_time_
-                  // bwd: destination, anchored exactly at j.dest_time_
-                  : dep_time - x.duration() == j.dest_time_);
-    });
-    if (o != end(offsets)) {
-      auto const dep = dep_time - o->duration();
-      j.legs_.insert(begin(j.legs_), journey::leg{direction::kForward, special,
-                                                  from, dep, dep_time, *o});
-    } else {
-      // td offset (e.g. flex), mirrors the CPU reconstruct:
-      // - fwd = query start side (find_start_footpath): evaluated backward
-      //   from the first transit departure, feasible if not before the
-      //   journey start
-      // - bwd = td egress side (get_legs intermodal dest): evaluated forward
-      //   from the final label j.dest_time_
-      // specify_td_offsets() refines both to the raw entry duration below.
-      auto inserted = false;
-      for (auto const& [target, tds] : td_offsets) {
-        if (!matches(tt_, front_match_mode, target, from)) {
-          continue;
-        }
-        if (is_fwd) {
-          auto const fp = get_td_duration<direction::kBackward>(tds, dep_time);
-          if (!fp.has_value() || dep_time - fp->first < j.start_time_) {
-            continue;
-          }
-          j.legs_.insert(
-              begin(j.legs_),
-              journey::leg{direction::kForward, special, from,
-                           dep_time - fp->first, dep_time,
-                           offset{target, fp->first, fp->second.mode()}});
-        } else {
-          auto const t = j.dest_time_;
-          auto const fp = get_td_duration<direction::kForward>(tds, t);
-          if (!fp.has_value() || t + fp->first > dep_time) {
-            continue;  // must reach the stop before the transit departure
-          }
-          j.legs_.insert(
-              begin(j.legs_),
-              journey::leg{direction::kForward, special, from, t, t + fp->first,
-                           offset{target, fp->first, fp->second.mode()}});
-        }
-        inserted = true;
-        break;
-      }
-      utl::verify(inserted, "gpu reconstruct: no front mumo offset");
-    }
-  }
-
-  // offset: last transit stop -> special_station.
-  auto const to = j.legs_.back().to_;
-  auto const arr_time = j.legs_.back().arr_time_;
-  auto const back_match_mode =
-      is_fwd ? q.dest_match_mode_ : q.start_match_mode_;
-  if (back_match_mode == location_match_mode::kIntermodal) {
-    auto const& offsets = is_fwd ? q.destination_ : q.start_;
-    auto const& td_offsets = is_fwd ? q.td_dest_ : q.td_start_;
-    auto const special = get_special_station(is_fwd ? special_station::kEnd
-                                                    : special_station::kStart);
-    auto const o = utl::find_if(offsets, [&](offset const& x) {
-      return matches(tt_, back_match_mode, x.target(), to) &&
-             (is_fwd
-                  // fwd: destination, anchored exactly at j.dest_time_
-                  ? arr_time + x.duration() == j.dest_time_
-                  // bwd: query start, anchored by feasibility
-                  : arr_time + x.duration() <= j.start_time_);
-    });
-    if (o != end(offsets)) {
-      auto const arr = arr_time + o->duration();
-      j.legs_.push_back(
-          journey::leg{direction::kForward, to, special, arr_time, arr, *o});
-      j.dest_ = special;
-    } else {
-      // dest td offset
-      auto inserted = false;
-      for (auto const& [target, tds] : td_offsets) {
-        if (!matches(tt_, back_match_mode, target, to)) {
-          continue;
-        }
-
-        if (is_fwd) {
-          auto const fp =
-              get_td_duration<direction::kBackward>(tds, j.dest_time_);
-          if (!fp.has_value() ||
-              j.dest_time_ - fp->first /* duration*/ < arr_time) {
-            continue;
-          }
-
-          j.legs_.push_back(journey::leg{
-              direction::kForward, to, special, j.dest_time_ - fp->first,
-              j.dest_time_, offset{target, fp->first, fp->second.mode()}});
-        } else {
-          auto const fp = get_td_duration<direction::kForward>(tds, arr_time);
-          if (!fp.has_value() || arr_time + fp->first > j.start_time_) {
-            continue;
-          }
-
-          j.legs_.push_back(journey::leg{
-              direction::kForward, to, special, arr_time, arr_time + fp->first,
-              offset{target, fp->first, fp->second.mode()}});
-        }
-
-        j.dest_ = special;
-        inserted = true;
-
-        break;
-      }
-      utl::verify(inserted, "gpu reconstruct: no back mumo offset");
-    }
-  }
-
-  // use_start_footpaths_ == true:
-  // reconstruct the start footpath that seeded round k=0 at the first stop.
-  if (q.start_match_mode_ != location_match_mode::kIntermodal) {
-    auto const is_journey_start = [&](location_idx_t const l) {
-      for (auto const& o : q.start_) {
-        if (matches(tt_, q.start_match_mode_, o.target(), l)) {
-          return true;
-        }
-      }
-      return false;
-    };
-    auto const start_l = is_fwd ? j.legs_.front().from_ : j.legs_.back().to_;
-    auto const start_t =
-        is_fwd ? j.legs_.front().dep_time_ : j.legs_.back().arr_time_;
-    auto const direct_start_ok =
-        is_fwd ? j.start_time_ <= start_t : j.start_time_ >= start_t;
-    if (!is_journey_start(start_l) || !direct_start_ok) {
-      auto const fps = is_fwd
-                           ? tt_.locations_.footpaths_in_[q.prf_idx_][start_l]
-                           : tt_.locations_.footpaths_out_[q.prf_idx_][start_l];
-      auto best = std::optional<footpath>{};
-      for (auto const fp : fps) {
-        if ((!best.has_value() || fp.duration() < best->duration()) &&
-            is_journey_start(fp.target())) {
-          best = fp;
-        }
-      }
-      if (best.has_value()) {
-        auto const dur = duration_t{adjusted_transfer_time(
-            q.transfer_time_settings_, best->duration().count())};
-        auto const fp_arr = j.start_time_ + (is_fwd ? dur : -dur);
-        if (is_fwd ? fp_arr <= start_t : fp_arr >= start_t) {
-          auto const lg = journey::leg{
-              SearchDir,     best->target(), start_l,
-              j.start_time_, fp_arr,         footpath{best->target(), dur}};
-          if (is_fwd) {
-            j.legs_.insert(begin(j.legs_), lg);
-          } else {
-            j.legs_.push_back(lg);
-          }
-        }
-      }
-    }
-  }
 
   if constexpr (is_fwd) {
     optimize_footpaths(tt_, rtt_, q, j);
@@ -1432,6 +1139,45 @@ void gpu_raptor<SearchDir, WithBounds>::add_start(location_idx_t const l,
                                                   unixtime_t const t,
                                                   via_offset_t) {
   starts_.emplace_back(l, t);
+}
+
+template <direction SearchDir, bool WithBounds>
+void gpu_raptor<SearchDir, WithBounds>::set_bounds(bmrap_bounds const* b) {
+  if (b == nullptr || b->empty()) {
+    has_bounds_ = false;
+    return;
+  }
+  auto& s = *state_.impl_;
+  auto const in_slot = [&](unsigned const slot) {
+    return b->device_ == thrust::raw_pointer_cast(s.reach_out_[slot].data()) &&
+           b->device_tag_ == s.reach_tag_[slot];
+  };
+  utl::verify(in_slot(0U) || in_slot(1U),
+              "bmrap bounds: not (or no longer) in this state's reach slot");
+  bm_bounds_ = b->device_;
+  bm_bounds_size_ = b->size();
+  bounds_n_locations_ = b->n_locations_;
+  bounds_budget_ = b->budget_;
+  has_bounds_ = true;
+}
+
+template <direction SearchDir, bool WithBounds>
+void gpu_raptor<SearchDir, WithBounds>::set_dest_relax(unixtime_t const origin,
+                                                       double const factor,
+                                                       int const add_minutes,
+                                                       double const floor_min,
+                                                       double const cap_min) {
+  relax_origin_ = origin;
+  relax_factor_ = factor;
+  relax_add_ = add_minutes;
+  relax_cap_ = cap_min;
+  relax_floor_ = std::min(floor_min, cap_min);
+  relax_on_ = true;
+}
+
+bool gpu_available() {
+  auto n = 0;
+  return cudaGetDeviceCount(&n) == cudaSuccess && n > 0;
 }
 
 template class gpu_raptor<direction::kForward, false>;

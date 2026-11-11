@@ -10,6 +10,7 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/bmrap_bounds.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/routing/transfer_time_settings.h"
@@ -20,9 +21,17 @@
 
 namespace nigiri::routing::gpu {
 
-inline bool gpu_supported(query const& q, rt_timetable const* = nullptr) {
-  return q.via_stops_.empty();
+// An rt search needs the rt timetable's device copy (make_gpu_rtt()), which a
+// failed upload leaves out.
+inline bool gpu_supported(query const& q, rt_timetable const* rtt = nullptr) {
+  return q.via_stops_.empty() &&
+         (rtt == nullptr || rtt->gpu_rtt_.ptr_ != nullptr);
 }
+
+// Is there a usable CUDA device? False when the toolkit is present but the
+// driver is not (a CUDA-enabled build on a machine without a GPU), which
+// lets tests skip instead of reporting failures.
+bool gpu_available();
 
 struct gpu_timetable {
   explicit gpu_timetable(timetable const&);
@@ -44,9 +53,24 @@ struct gpu_rt_timetable {
 std::unique_ptr<void, void (*)(void*)> make_gpu_rtt(timetable const&,
                                                     rt_timetable const&);
 
+struct gpu_mcraptor_state;
+
 struct gpu_raptor_state {
   explicit gpu_raptor_state(gpu_timetable const&);
   ~gpu_raptor_state();
+
+  // Device state for BM-RAPTOR's multicriteria phases, built on first use (or
+  // up front, by a server) and kept for this state's lifetime (a pool slot)
+  // since it is too expensive to allocate per query. One instance serves the
+  // mc ping and pong: the per-query buffers are direction-indexed. It borrows
+  // this state's per-round scratch and stream (gpu_mcraptor_scratch).
+  //
+  // A large timetable can fail this allocation, so ask try_mc_state() BEFORE
+  // committing to the device engines: the mc phases are optional, and losing
+  // them must not cost the ping/pong/pruning searches the device. A failure is
+  // remembered, costing one attempt per state.
+  gpu_mcraptor_state* try_mc_state();
+  gpu_mcraptor_state& mc_state();
 
   struct impl;
   std::unique_ptr<impl> impl_;
@@ -102,6 +126,29 @@ struct gpu_raptor {
 
   void reconstruct(query const&, journey&);
 
+  // BM-RAPTOR hooks, as on the CPU raptor. The pruning matrix must be one this
+  // state built (build_reach_bounds) and is read in place; nullptr disables it.
+  void set_bounds(bmrap_bounds const*);
+  // staggered rounds: add_start writes round k, the scan runs k + 1 .. end_k
+  void set_start_round(unsigned k) {
+    start_round_ = static_cast<std::uint8_t>(k);
+  }
+  // relaxed target pruning, so the round times form a valid tau_arr^->(v, i)
+  // matrix; floor/cap are relax_arr()'s clamps
+  void set_dest_relax(unixtime_t origin,
+                      double factor,
+                      int add_minutes,
+                      double floor_min = 0.0,
+                      double cap_min = 0.0);
+  // reach_matrix() on the device, into the state's slot for its kind:
+  // sub_transfer subtracts each location's transfer buffer (the tau_arr^->
+  // matrix); the tau_dep^<- matrix passes false. host_copy also fills
+  // out.lat_ (budget + 1 rows) for CPU engines.
+  void build_reach_bounds(bmrap_bounds& out,
+                          std::uint8_t budget,
+                          bool sub_transfer,
+                          bool host_copy);
+
 private:
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + to_idx(base_) * date::days{1};
@@ -112,7 +159,13 @@ private:
   gpu_rt_timetable const* gpu_rtt_;
   std::uint32_t n_locations_;
   gpu_raptor_state& state_;
+  // The per-query device buffers live in the shared state, keyed by direction,
+  // so two same-direction searches on one state (BM-RAPTOR's pong and pruning
+  // search) would inherit whichever was constructed last. The inputs are kept
+  // so execute() can re-upload them when the slot changed hands.
   bitvec const& is_dest_;
+  std::vector<std::uint16_t> const* dist_to_dest_;
+  hash_map<location_idx_t, std::vector<td_offset>> const* td_dist_to_dest_;
   day_idx_t base_;
   raptor_stats stats_;
   clasz_mask_t allowed_claszes_;
@@ -127,6 +180,20 @@ private:
   unsigned bounds_last_k_{0U};
 
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
+
+  // BM-RAPTOR state (see the setters above)
+  delta_t const* bm_bounds_{nullptr};  // the state's reach slot
+  std::size_t bm_bounds_size_{0U};
+  std::uint32_t bounds_n_locations_{0U};
+  std::uint8_t bounds_budget_{0U};
+  bool has_bounds_{false};
+  std::uint8_t start_round_{0U};
+  unixtime_t relax_origin_{};
+  double relax_factor_{1.0};
+  double relax_floor_{0.0};
+  double relax_cap_{0.0};
+  int relax_add_{0};
+  bool relax_on_{false};
 };
 
 }  // namespace nigiri::routing::gpu
