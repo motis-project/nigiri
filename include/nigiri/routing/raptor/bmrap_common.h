@@ -90,30 +90,38 @@ struct bmrap_mc_algo_for {
 };
 
 #if defined(NIGIRI_CUDA)
-// CPU criteria -> device label configuration (see kGpuMcSupported)
-template <typename Criteria>
-constexpr gpu::mc_crit mc_crit_of() {
-  if constexpr (std::is_same_v<Criteria, arr_criteria>) {
-    return gpu::mc_crit::arr;
-  } else if constexpr (std::is_same_v<Criteria, arr_non_transit_criteria>) {
-    return gpu::mc_crit::non_transit;
-  } else if constexpr (std::is_same_v<Criteria, arr_mode_filter_criteria>) {
-    return gpu::mc_crit::mode_filter;
+// CPU criteria -> device label configuration: one mc_crit bit per dimension,
+// and the device mcraptor is instantiated for every combination.
+template <typename Dim>
+constexpr std::uint8_t mc_crit_bit() {
+  if constexpr (std::is_same_v<Dim, non_transit_dim>) {
+    return static_cast<std::uint8_t>(gpu::mc_crit::non_transit);
+  } else if constexpr (std::is_same_v<Dim, mode_filter_dim>) {
+    return static_cast<std::uint8_t>(gpu::mc_crit::mode_filter);
   } else {
-    static_assert(
-        std::is_same_v<Criteria, arr_non_transit_mode_filter_criteria>,
-        "criteria has no device mcraptor equivalent");
-    return gpu::mc_crit::non_transit_mode_filter;
+    static_assert(std::is_same_v<Dim, mode_switches_dim>,
+                  "dimension has no device mcraptor equivalent");
+    return static_cast<std::uint8_t>(gpu::mc_crit::mode_switches);
   }
 }
 
-// non_transit + mode_filter (two live fields in one label slot) is not wired up
-// yet and stays on the CPU.
+template <typename Criteria>
+struct mc_crit_of_t;
+
+template <typename... Dims>
+struct mc_crit_of_t<arr_with<Dims...>> {
+  static constexpr auto value =
+      static_cast<gpu::mc_crit>((std::uint8_t{0U} | ... | mc_crit_bit<Dims>()));
+};
+
+template <typename Criteria>
+constexpr gpu::mc_crit mc_crit_of() {
+  return mc_crit_of_t<Criteria>::value;
+}
+
 template <typename Criteria>
 inline constexpr bool kMcCritSupported =
-    std::is_same_v<Criteria, arr_criteria> ||
-    std::is_same_v<Criteria, arr_non_transit_criteria> ||
-    std::is_same_v<Criteria, arr_mode_filter_criteria>;
+    requires { mc_crit_of_t<Criteria>::value; };
 
 // Which (criteria, state) combinations run the mc phases on the device; the
 // scalar engine must be there too, else it only adds transfers.
