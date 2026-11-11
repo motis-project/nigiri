@@ -130,7 +130,17 @@ struct alerts {
     auto const l =
         stop_idx ? first.get_location_idx() : location_idx_t::invalid();
     auto const time = interval<unixtime_t>{from, to + duration_t{1}};
+    return get_alerts(tt, src, t, fr, l, time, fuzzy_stop);
+  }
 
+  // For flex (without run): explicit time window.
+  hash_set<alert_idx_t> get_alerts(timetable const& tt,
+                                   source_idx_t const src,
+                                   trip_idx_t const t,
+                                   rt::run const& r,
+                                   location_idx_t const l,
+                                   interval<unixtime_t> const& time,
+                                   bool const fuzzy_stop) const {
     auto const route_id_idx = tt.trip_route_id_[t];
     auto const route_type = tt.route_ids_[src].route_id_type_[route_id_idx];
     auto const agency = tt.route_ids_[src].route_id_provider_[route_id_idx];
@@ -149,8 +159,8 @@ struct alerts {
 
     auto alerts = hash_set<alert_idx_t>{};
 
-    if (fr.is_rt()) {
-      for (auto const& a : rt_transport_[fr.rt_]) {
+    if (r.is_rt()) {
+      for (auto const& a : rt_transport_[r.rt_]) {
         if (matches_location(a.l_) && impacts(a.alert_, time)) {
           alerts.insert(a.alert_);
         }
@@ -158,7 +168,7 @@ struct alerts {
     }
 
     for (auto const& a : trip_[t]) {
-      if ((!a.t_.is_valid() || a.t_ == fr.t_) && matches_location(a.l_) &&
+      if ((!a.t_.is_valid() || a.t_ == r.t_) && matches_location(a.l_) &&
           impacts(a.alert_, time)) {
         alerts.insert(a.alert_);
       }
