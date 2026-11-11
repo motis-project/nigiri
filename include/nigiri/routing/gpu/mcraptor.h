@@ -34,12 +34,17 @@ constexpr bool has(mc_crit const c, mc_crit const part) {
   return (static_cast<std::uint8_t>(c) & static_cast<std::uint8_t>(part)) != 0U;
 }
 
+// et tasks (boardable stops of marked routes) per round with a stop bag; the
+// others are looked up by the sequential scan
+inline constexpr auto kMcEtTaskMax = 1U << 22U;  // 4M: 210 MB of stop bags
+
 // Same scope as the CPU mcraptor (mcraptor_supported). One state type serves
 // every configuration; the subtypes only select it in the dispatch (kCrit).
 struct gpu_mcraptor_state {
   static constexpr auto kCrit = mc_crit::arr;
 
-  explicit gpu_mcraptor_state(gpu_timetable const&);
+  explicit gpu_mcraptor_state(gpu_timetable const&,
+                              std::uint32_t max_et_tasks = kMcEtTaskMax);
   ~gpu_mcraptor_state();
 
   struct impl;

@@ -74,8 +74,21 @@ struct gpu_mc_journey {
 inline constexpr auto kMcDestCap = 64U;  // dest frontier entries
 inline constexpr auto kMcPrefixK = 4U;  // route-bag entries per lane
 inline constexpr auto kMcRouteBagCap = 64U;  // sequential / rt route bag
-inline constexpr auto kStopBagOverflow =
-    ~0U;  // stop bag over kMcPrefixK entries
+// A route stop's stop bag: its entries live in the slot of the round's et
+// task, not per route stop. {} = empty, overflow = more than kMcPrefixK
+// boardings or no task slot (the sequential scan looks the stop up itself).
+struct stop_bag_ref {
+  static constexpr auto kOverflow = 7U;
+  CISTA_CUDA_COMPAT bool overflow() const { return size_ == kOverflow; }
+
+  static constexpr auto kMaxSlots = 1U << 29U;
+
+  std::uint32_t slot_ : 29;
+  std::uint32_t size_ : 3;
+};
+static_assert(sizeof(stop_bag_ref) == 4U);
+static_assert(kMcPrefixK < stop_bag_ref::kOverflow);
+static_assert(kMcEtTaskMax <= stop_bag_ref::kMaxSlots);
 // none: no pool block (0xFF-filled links), slot, td egress group or lookup
 inline constexpr auto kMcInvalid = ~0U;
 
@@ -702,25 +715,29 @@ struct mcraptor_impl {
           [&](auto const x) { return __shfl_sync(kAllLanes, x, src); });
     }
 
-    // stop bag f (et_run_lookups' output) <-> route bag
+    // stop bag f (et_run_lookups' output, never an overflow here) <-> route
+    // bag; the entries are in the task slot
     __device__ __forceinline__ void load(mcraptor_impl const& m,
                                          std::uint32_t const f) {
-      size_ = m.stop_bag_size_[f];
+      auto const ref = m.stop_bag_ref_[f];
+      size_ = ref.size_;
+      auto const base = ref.slot_ * kPrefixK;
       for (auto i = 0U; i != K; ++i) {
         if (i < size_) {
-          trips_[i] = m.stop_bag_trips_[f * kPrefixK + i];
-          parents_[i] = m.stop_bag_parents_[f * kPrefixK + i];
-          board_extras_[i] = m.stop_bag_board_extras_[f * kPrefixK + i];
+          trips_[i] = m.stop_bag_trips_[base + i];
+          parents_[i] = m.stop_bag_parents_[base + i];
+          board_extras_[i] = m.stop_bag_board_extras_[base + i];
         }
       }
     }
     __device__ __forceinline__ void store(mcraptor_impl const& m,
-                                          std::uint32_t const f) const {
-      m.stop_bag_size_[f] = size_;
+                                          std::uint32_t const f,
+                                          std::uint32_t const slot) const {
+      m.stop_bag_ref_[f] = {.slot_ = slot, .size_ = size_};
       for (auto i = 0U; i != size_; ++i) {
-        m.stop_bag_trips_[f * kPrefixK + i] = trips_[i];
-        m.stop_bag_parents_[f * kPrefixK + i] = parents_[i];
-        m.stop_bag_board_extras_[f * kPrefixK + i] = board_extras_[i];
+        m.stop_bag_trips_[slot * kPrefixK + i] = trips_[i];
+        m.stop_bag_parents_[slot * kPrefixK + i] = parents_[i];
+        m.stop_bag_board_extras_[slot * kPrefixK + i] = board_extras_[i];
       }
     }
 
@@ -862,7 +879,7 @@ struct mcraptor_impl {
         auto const s = chunk + lane;
         auto is_task = false;
         if (s < n) {
-          stop_bag_size_[base_flat + s] = 0U;
+          stop_bag_ref_[base_flat + s] = {};
           is_task = boardable<IsWheelchair>(r, n, s);
         }
         auto const ballot = __ballot_sync(kAllLanes, is_task);
@@ -878,19 +895,27 @@ struct mcraptor_impl {
         }
         base_pos = __shfl_sync(kAllLanes, base_pos, leader);
         if (is_task) {
-          et_task_list_[base_pos + static_cast<unsigned>(
-                                       __popc(ballot & ((1U << lane) - 1U)))] =
-              base_flat + s;
+          auto const pos = base_pos + static_cast<unsigned>(
+                                          __popc(ballot & ((1U << lane) - 1U)));
+          if (pos < et_task_list_.size()) {
+            et_task_list_[pos] = base_flat + s;
+          } else {
+            // no slot: the sequential scan looks this stop up itself
+            stop_bag_ref_[base_flat + s] = {.slot_ = 0U,
+                                            .size_ = stop_bag_ref::kOverflow};
+          }
         }
       }
     }
   }
 
   // et phase 3: one thread per boardable stop fills its stop bag (up to
-  // kPrefixK entries, kStopBagOverflow if they did not fit)
+  // kPrefixK entries, an overflow if they did not fit)
   __device__ void et_run_lookups(unsigned const k) {
     auto const n_tasks = *et_task_count_;
-    for (auto i = get_global_thread_id(); i < n_tasks;
+    auto const n_slots =
+        umin(n_tasks, static_cast<unsigned>(et_task_list_.size()));
+    for (auto i = get_global_thread_id(); i < n_slots;
          i += get_global_stride()) {
       auto const f = et_task_list_[i];
       auto const r = route_idx_t{tt_.route_of_stop_[f]};
@@ -898,9 +923,9 @@ struct mcraptor_impl {
           static_cast<stop_idx_t>(f - tt_.route_stop_offset_[to_idx(r)]);
       auto bag = route_bag<kPrefixK>{};
       if (board(k, r, stop_idx, bag)) {
-        bag.store(*this, f);
+        bag.store(*this, f, i);
       } else {
-        stop_bag_size_[f] = kStopBagOverflow;
+        stop_bag_ref_[f] = {.slot_ = 0U, .size_ = stop_bag_ref::kOverflow};
       }
     }
   }
@@ -992,11 +1017,11 @@ struct mcraptor_impl {
       }
       auto const f = base_flat + (kFwd ? p : n - 1U - p);
       auto ok = true;
-      if (stop_bag_size_[f] == kStopBagOverflow) {
+      if (auto const ref = stop_bag_ref_[f]; ref.overflow()) {
         ok = board(k, r, static_cast<stop_idx_t>(kFwd ? p : n - 1U - p), bag);
       } else {
-        for (auto i = 0U; i != stop_bag_size_[f]; ++i) {
-          auto const j = f * kPrefixK + i;
+        for (auto i = 0U; i != ref.size_; ++i) {
+          auto const j = ref.slot_ * kPrefixK + i;
           ok = ok && bag.add(stop_bag_trips_[j], stop_bag_parents_[j],
                              stop_bag_board_extras_[j]);
         }
@@ -1037,8 +1062,8 @@ struct mcraptor_impl {
       // the stop bags of et_run_lookups
       auto const board_at = [&](unsigned const p, auto& bag) {
         auto const f = base_flat + (kFwd ? p : n - 1U - p);
-        if (stop_bag_size_[f] == kStopBagOverflow ||
-            stop_bag_size_[f] > bag.kCapacity) {
+        if (auto const ref = stop_bag_ref_[f];
+            ref.overflow() || ref.size_ > bag.kCapacity) {
           return false;
         }
         bag.load(*this, f);
@@ -1630,9 +1655,9 @@ struct mcraptor_impl {
   cuda::std::span<std::uint32_t> et_task_list_;
   std::uint32_t* et_task_count_;
 
-  // per route stop (route_of_stop_ order): boarding count and kMcPrefixK
-  // route-bag entries (et_run_lookups -> loop_routes)
-  std::uint32_t* stop_bag_size_;
+  // per route stop (route_of_stop_ order) its stop bag's slot and size, per
+  // et task slot kMcPrefixK route-bag entries (et_run_lookups -> loop_routes)
+  stop_bag_ref* stop_bag_ref_;
   std::uint32_t* stop_bag_trips_;
   std::uint32_t* stop_bag_parents_;
   std::uint32_t* stop_bag_board_extras_;

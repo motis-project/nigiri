@@ -280,18 +280,31 @@ struct gpu_raptor_state::impl {
   thrust::device_vector<std::uint32_t> route_list_;
   thrust::device_vector<std::uint32_t> route_list_count_;
 
-  // BM-RAPTOR bound matrix, (budget+1) x n_locations delta_t, uploaded by
-  // gpu_raptor::set_bounds()
-  thrust::device_vector<delta_t> bmrap_bounds_;
-  // Scratch for build_reach_bounds(), separate from bmrap_bounds_ so building a
-  // matrix cannot clobber the one being pruned with. One slot per kind (0 =
-  // tau_dep^<-, 1 = tau_arr^->) since both are live at once. reach_tag_ is what
-  // set_bounds() matches against.
+  // Scratch for build_reach_bounds(), separate from the pruning matrix
+  // (bounds_dev_) so building a matrix cannot clobber the one being pruned
+  // with. One slot per kind (0 = tau_dep^<-, 1 = tau_arr^->) since both are
+  // live at once. reach_tag_ is what set_bounds() matches against.
   thrust::device_vector<delta_t> reach_out_[2];
   std::uint64_t reach_tag_[2]{0U, 0U};
   std::size_t reach_n_[2]{0U, 0U};
 
-  // WithBounds: round/via lower-bound pruning matrix (raptor::fill_bounds())
+  // The reach matrices above, at the most rows any trip budget needs
+  // (budget + 1 <= kMaxTransfers + 2), so no query grows them: a growth after
+  // the device mc state took the rest of the device failed mid-query.
+  // Idempotent; called on first use and before the mc state (try_mc_state()).
+  static constexpr auto kBmrapRows = std::size_t{kMaxTransfers} + 2U;
+  void reserve_bmrap() {
+    auto const n = static_cast<std::size_t>(tt_.n_locations_) * kBmrapRows;
+    if (reach_out_[0].size() != n) {
+      reach_out_[0].resize(n);
+      reach_out_[1].resize(n);
+    }
+  }
+
+  // The pruning matrix, n_locations x (kMaxTransfers + 2): PONG's round/via
+  // lower bounds (WithBounds, raptor::fill_bounds()) or BM-RAPTOR's bounds
+  // (gpu_raptor::set_bounds()). Shared since no query uses both: BM-RAPTOR's
+  // engines all run without WithBounds.
   device_buffer<delta_t> bounds_dev_;
 
   cudaStream_t stream_;
@@ -305,6 +318,8 @@ gpu_raptor_state::~gpu_raptor_state() = default;
 gpu_mcraptor_state* gpu_raptor_state::try_mc_state() {
   if (impl_->mc_state_ == nullptr && !impl_->mc_state_failed_) {
     try {
+      // the scalar side's matrices first: the mc state takes what is left
+      impl_->reserve_bmrap();
       impl_->mc_state_ = std::make_unique<gpu_mcraptor_state>(*impl_->gtt_);
     } catch (std::exception const& e) {
       impl_->mc_state_failed_ = true;
@@ -636,9 +651,9 @@ void gpu_raptor<SearchDir, WithBounds>::build_reach_bounds(
   auto& s = *state_.impl_;
   auto const slot = sub_transfer ? 1U : 0U;
   auto const n = static_cast<std::size_t>(n_locations_) * (budget + 1U);
-  if (s.reach_out_[slot].size() < n) {
-    s.reach_out_[slot].resize(n);
-  }
+  s.reserve_bmrap();
+  utl::verify(n <= s.reach_out_[slot].size(), "reach matrix: budget {} too big",
+              budget);
 
   auto const [blocks, threads] = launch_dims(reach_bounds_kernel<SearchDir>);
   reach_bounds_kernel<SearchDir><<<blocks, threads, 0, s.stream_>>>(
@@ -712,12 +727,10 @@ void gpu_raptor<SearchDir, WithBounds>::execute(
   auto const with_td_fps = rt_active && has_profile_td_footpaths(prf_idx_) &&
                            gpu_rtt_->impl_->has_td_fps_[prf_idx_];
   auto r = raptor_impl<SearchDir, WithBounds>{
-      .bm_bounds_ =
-          has_bounds_
-              ? cuda::std::span<delta_t const>{thrust::raw_pointer_cast(
-                                                   s.bmrap_bounds_.data()),
-                                               s.bmrap_bounds_.size()}
-              : cuda::std::span<delta_t const>{},
+      .bm_bounds_ = has_bounds_
+                        ? cuda::std::span<delta_t const>{s.bounds_dev_.ptr_,
+                                                         s.bounds_dev_.size()}
+                        : cuda::std::span<delta_t const>{},
       .bounds_n_locations_ = bounds_n_locations_,
       .bounds_budget_ = bounds_budget_,
       .has_bounds_ = has_bounds_,
@@ -1127,9 +1140,8 @@ void gpu_raptor<SearchDir, WithBounds>::set_bounds(bmrap_bounds const* b) {
     return;
   }
   auto& s = *state_.impl_;
-  if (s.bmrap_bounds_.size() < b->lat_.size()) {
-    s.bmrap_bounds_.resize(b->lat_.size());
-  }
+  utl::verify(b->lat_.size() <= s.bounds_dev_.size(),
+              "bmrap bounds: budget {} too big", b->budget_);
   // If this is a matrix we built ourselves it is still on the device, so take
   // it from there rather than pushing the host copy back over PCIe - which is
   // the common case for PHASE 2a's matrix feeding the PHASE 2b pruning search.
@@ -1144,12 +1156,12 @@ void gpu_raptor<SearchDir, WithBounds>::set_bounds(bmrap_bounds const* b) {
   }();
   if (from_device >= 0) {
     CUDA_CHECK(cudaMemcpyAsync(
-        thrust::raw_pointer_cast(s.bmrap_bounds_.data()),
+        s.bounds_dev_.ptr_,
         thrust::raw_pointer_cast(s.reach_out_[from_device].data()),
         b->lat_.size() * sizeof(delta_t), cudaMemcpyDeviceToDevice, s.stream_));
   } else {
-    CUDA_CHECK(cudaMemcpyAsync(thrust::raw_pointer_cast(s.bmrap_bounds_.data()),
-                               b->lat_.data(), b->lat_.size() * sizeof(delta_t),
+    CUDA_CHECK(cudaMemcpyAsync(s.bounds_dev_.ptr_, b->lat_.data(),
+                               b->lat_.size() * sizeof(delta_t),
                                cudaMemcpyHostToDevice, s.stream_));
   }
   CUDA_CHECK(cudaStreamSynchronize(s.stream_));

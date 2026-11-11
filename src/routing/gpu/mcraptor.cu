@@ -54,11 +54,19 @@ void upload(T* const dev,
 }
 
 struct gpu_mcraptor_state::impl {
-  explicit impl(gpu_timetable const& gtt)
+  impl(gpu_timetable const& gtt, std::uint32_t const max_et_tasks)
       : tt_{gtt.impl_->to_device_timetable()} {
+    utl::verify(max_et_tasks <= stop_bag_ref::kMaxSlots,
+                "gpu mcraptor: {} et task slots exceed the stop bag ref",
+                max_et_tasks);
     cudaStreamCreate(&stream_);
 
     auto const n_locations = tt_.n_locations_;
+    // BM-RAPTOR bound matrices at the most rows any trip budget needs, so
+    // set_bounds() never grows them (see gpu_raptor_state::reserve_bmrap())
+    for (auto& b : bmrap_bounds_) {
+      b.resize(static_cast<std::size_t>(n_locations) * (kMaxTransfers + 2U));
+    }
     bags_.resize(static_cast<std::size_t>(n_locations) * kMcBagCap);
     fill_bytes(bags_, 0xFF, stream_);
     // chained blocks: the pool scales with the labels, not a worst-case row
@@ -101,12 +109,15 @@ struct gpu_mcraptor_state::impl {
     route_list_.resize(tt_.n_routes_);
     route_list_count_.resize(1U);
     auto const n_route_stops = tt_.route_of_stop_.size();
-    et_task_list_.resize(n_route_stops);
+    // stop bags per et task slot, not per route stop: a round only looks up
+    // the boardable stops of its marked routes (see stop_bag_ref)
+    auto const n_slots = std::min<std::size_t>(n_route_stops, max_et_tasks);
+    et_task_list_.resize(n_slots);
     et_task_count_.resize(1U);
-    stop_bag_size_.resize(n_route_stops);
-    stop_bag_trips_.resize(n_route_stops * kMcPrefixK);
-    stop_bag_parents_.resize(n_route_stops * kMcPrefixK);
-    stop_bag_board_extras_.resize(n_route_stops * kMcPrefixK);
+    stop_bag_ref_.resize(n_route_stops);
+    stop_bag_trips_.resize(n_slots * kMcPrefixK);
+    stop_bag_parents_.resize(n_slots * kMcPrefixK);
+    stop_bag_board_extras_.resize(n_slots * kMcPrefixK);
     any_marked_.resize(1U);
     done_.resize(1U);
     overflow_.resize(1U);
@@ -207,7 +218,7 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> route_list_count_;
   thrust::device_vector<std::uint32_t> et_task_list_;
   thrust::device_vector<std::uint32_t> et_task_count_;
-  thrust::device_vector<std::uint32_t> stop_bag_size_;
+  thrust::device_vector<stop_bag_ref> stop_bag_ref_;
   thrust::device_vector<std::uint32_t> stop_bag_trips_;
   thrust::device_vector<std::uint32_t> stop_bag_parents_;
   thrust::device_vector<std::uint32_t> stop_bag_board_extras_;
@@ -244,8 +255,9 @@ struct gpu_mcraptor_state::impl {
   cudaStream_t stream_;
 };
 
-gpu_mcraptor_state::gpu_mcraptor_state(gpu_timetable const& gtt)
-    : impl_{std::make_unique<impl>(gtt)} {}
+gpu_mcraptor_state::gpu_mcraptor_state(gpu_timetable const& gtt,
+                                       std::uint32_t const max_et_tasks)
+    : impl_{std::make_unique<impl>(gtt, max_et_tasks)} {}
 
 gpu_mcraptor_state::~gpu_mcraptor_state() = default;
 
@@ -498,7 +510,7 @@ mcraptor_impl<SearchDir, Crit> make_impl(
       .route_list_count_ = ptr(s.route_list_count_),
       .et_task_list_ = to_mutable_view(s.et_task_list_),
       .et_task_count_ = ptr(s.et_task_count_),
-      .stop_bag_size_ = ptr(s.stop_bag_size_),
+      .stop_bag_ref_ = ptr(s.stop_bag_ref_),
       .stop_bag_trips_ = ptr(s.stop_bag_trips_),
       .stop_bag_parents_ = ptr(s.stop_bag_parents_),
       .stop_bag_board_extras_ = ptr(s.stop_bag_board_extras_)};
@@ -555,9 +567,9 @@ void gpu_mcraptor<SearchDir, Crit>::execute(
   constexpr auto const kFwd = SearchDir == direction::kForward;
 
   // one bound for all rounds: the loosest
-  auto const d_worst = unix_to_delta(
-      base(), kFwd ? std::ranges::max(worst_time_at_dest)
-                   : std::ranges::min(worst_time_at_dest));
+  auto const d_worst =
+      unix_to_delta(base(), kFwd ? std::ranges::max(worst_time_at_dest)
+                                 : std::ranges::min(worst_time_at_dest));
   worst_at_dest_ = kFwd ? std::min(d_worst, worst_at_dest_)
                         : std::max(d_worst, worst_at_dest_);
 
@@ -776,9 +788,8 @@ void gpu_mcraptor<SearchDir, Crit>::set_bounds(bmrap_bounds const* b) {
     return;
   }
   auto& s = *state_.impl_;
-  if (s.bmrap_bounds_[kDirIdx].size() < b->lat_.size()) {
-    s.bmrap_bounds_[kDirIdx].resize(b->lat_.size());
-  }
+  utl::verify(b->lat_.size() <= s.bmrap_bounds_[kDirIdx].size(),
+              "bmrap bounds: budget {} too big", b->budget_);
   CUDA_CHECK(cudaMemcpyAsync(
       thrust::raw_pointer_cast(s.bmrap_bounds_[kDirIdx].data()), b->lat_.data(),
       b->lat_.size() * sizeof(delta_t), cudaMemcpyHostToDevice, s.stream_));
