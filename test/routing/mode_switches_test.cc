@@ -41,6 +41,56 @@ TEST(mode_switches, remaining_classes_are_one_group) {
   EXPECT_EQ(1U, switches({clasz::kShip, clasz::kBus}));
 }
 
+// At a stop, a label of another group only dominates with a switch to spare:
+// the next ride may switch one of the two but not the other. Before the first
+// ride (kNoModeGroup) there is nothing to switch from.
+TEST(mode_switches, other_group_dominates_with_a_switch_to_spare) {
+  auto const at = [](clasz const c, std::uint8_t const switches) {
+    return mode_switches_dim{static_cast<std::uint8_t>(mode_group(c)),
+                             switches};
+  };
+  auto const start = mode_switches_dim::at_start(0U);
+
+  EXPECT_TRUE(at(clasz::kRegional, 1U).dominates(at(clasz::kRegional, 1U)));
+  EXPECT_FALSE(at(clasz::kRegional, 1U).dominates(at(clasz::kBus, 1U)));
+  EXPECT_FALSE(at(clasz::kBus, 1U).dominates(at(clasz::kRegional, 1U)));
+  EXPECT_TRUE(at(clasz::kRegional, 0U).dominates(at(clasz::kBus, 1U)));
+  EXPECT_FALSE(at(clasz::kRegional, 2U).dominates(at(clasz::kRegional, 1U)));
+  EXPECT_TRUE(start.dominates(at(clasz::kBus, 0U)));
+
+  // a completed journey has no next ride: the count alone decides
+  EXPECT_TRUE(
+      at(clasz::kRegional, 1U).completed_dominates(at(clasz::kBus, 1U)));
+  EXPECT_FALSE(
+      at(clasz::kRegional, 2U).completed_dominates(at(clasz::kBus, 1U)));
+}
+
+// The GPU label's packed extras (mc_extras) dominate as the CPU dimension, for
+// every group pair and switch counts around the one-switch margin.
+TEST(mode_switches, packed_extras_dominate_as_the_cpu_dimension) {
+  for (auto ga = 0U; ga != 8U; ++ga) {
+    for (auto gb = 0U; gb != 8U; ++gb) {
+      for (auto sa = 0U; sa != 4U; ++sa) {
+        for (auto sb = 0U; sb != 4U; ++sb) {
+          auto const a = mode_switches_dim{static_cast<std::uint8_t>(ga),
+                                           static_cast<std::uint8_t>(sa)};
+          auto const b = mode_switches_dim{static_cast<std::uint8_t>(gb),
+                                           static_cast<std::uint8_t>(sb)};
+          auto const pa = mc_extras::pack(0U, 0U, ga, sa);
+          auto const pb = mc_extras::pack(0U, 0U, gb, sb);
+          EXPECT_EQ(a.dominates(b), mc_extras::dominates(pa, pb))
+              << "groups " << ga << "/" << gb << ", switches " << sa << "/"
+              << sb;
+          EXPECT_EQ(a.completed_dominates(b),
+                    mc_extras::completed_dominates(pa, pb))
+              << "groups " << ga << "/" << gb << ", switches " << sa << "/"
+              << sb;
+        }
+      }
+    }
+  }
+}
+
 TEST(non_transit, walks_count_in_floored_units) {
   if constexpr (routing::kNonTransitFullResolution) {
     GTEST_SKIP() << "full resolution";
