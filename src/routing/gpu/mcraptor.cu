@@ -397,9 +397,10 @@ __global__ void mc_reconstruct_kernel(location_idx_t const* const dest_list,
     return;
   }
   auto const dest = dest_list[tid / kMcMaxBagSlots];
-  auto const lab = r.bag_slots(to_idx(dest))[tid % kMcMaxBagSlots];
-  if (lab == kMcEmptySlot || mc_round(lab) == 0U ||
-      mc_breadcrumb_idx(lab) == kMcDemoted) {
+  auto const raw = r.bag_slots(to_idx(dest))[tid % kMcMaxBagSlots];
+  auto const lab = mc_label::of(raw);
+  if (raw == kMcEmptySlot || lab.round_ == 0U ||
+      lab.breadcrumb_ == kMcDemoted) {
     return;  // empty, a round-0 seed (no legs) or an earlier start's label
   }
   r.collect_chain(dest, lab, &out[atomicAdd(out_count, 1U)]);

@@ -95,7 +95,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::for_each_label(
     std::uint32_t const l, unsigned const round, Fn&& fn) const {
   for (auto const& e : state_.bag_.span(l)) {
     if (e.round_ == round && e.dep_ == cur_dep_) {
-      fn(e.crit_, e.breadcrumb_);
+      fn(e);
     }
   }
 }
@@ -108,7 +108,7 @@ template <direction SearchDir, typename Criteria, bool RangeReuse>
 bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::bag_insert(
     std::uint32_t const l,
     Criteria const& crit,
-    std::uint32_t const flagged_breadcrumb,
+    std::uint32_t const breadcrumb,
     unsigned const round,
     bool const by_route) {
   auto& layer = state_.bag_;
@@ -117,16 +117,14 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::bag_insert(
   }
   auto const bag = layer.span(l);
   for (auto const& e : bag) {
-    if (e.round_ <= round &&
-        (!by_route || (e.breadcrumb_ & state_t::kByRoute) != 0U) &&
+    if (e.round_ <= round && (!by_route || e.by_route_) &&
         e.crit_.template dominates<SearchDir>(crit)) {
       return false;
     }
   }
   auto removed = std::size_t{0U};
   for (auto i = std::size_t{0U}; i != bag.size(); ++i) {
-    if (bag[i].round_ >= round &&
-        (by_route || (bag[i].breadcrumb_ & state_t::kByRoute) == 0U) &&
+    if (bag[i].round_ >= round && (by_route || !bag[i].by_route_) &&
         crit.template dominates<SearchDir>(bag[i].crit_)) {
       ++removed;
       continue;
@@ -134,8 +132,11 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::bag_insert(
     bag[i - removed] = bag[i];
   }
   layer.set_size(l, static_cast<std::uint32_t>(bag.size() - removed));
-  layer.push_back(l, {crit, flagged_breadcrumb,
-                      static_cast<std::uint8_t>(round), cur_dep_});
+  layer.push_back(l, {.crit_ = crit,
+                      .breadcrumb_ = breadcrumb,
+                      .by_route_ = by_route,
+                      .round_ = static_cast<std::uint8_t>(round),
+                      .dep_ = cur_dep_});
   return true;
 }
 
@@ -159,8 +160,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::merge_round(
     unsigned const round,
     bool const by_route) {
   auto const idx = static_cast<std::uint32_t>(state_.breadcrumbs_.size());
-  if (!bag_insert(l, crit, by_route ? idx | state_t::kByRoute : idx, round,
-                  by_route)) {
+  if (!bag_insert(l, crit, idx, round, by_route)) {
     return false;
   }
   state_.breadcrumbs_.push_back(bc);
@@ -346,16 +346,13 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::scan_stops(
       break;
     }
 
-    for_each_label(
-        l_idx, k - 1U,
-        [&](Criteria const& crit, std::uint32_t const breadcrumb) {
-          // even the optimistic completion is dominated
-          if (!dest_dominates(k, crit.projected_to(clamp(
-                                     crit.arr_ + dir(effective_lb(l_idx)))))) {
-            board_label(crit, breadcrumb & state_t::kBreadcrumbMask, stop_idx,
-                        stp.location_idx());
-          }
-        });
+    for_each_label(l_idx, k - 1U, [&](typename state_t::label const& e) {
+      // even the optimistic completion is dominated
+      if (!dest_dominates(k, e.crit_.projected_to(clamp(
+                                 e.crit_.arr_ + dir(effective_lb(l_idx)))))) {
+        board_label(e.crit_, e.breadcrumb_, stop_idx, stp.location_idx());
+      }
+    });
   }
   return any_marked;
 }
@@ -519,15 +516,13 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
     // copy first (inserts go into the same bag), without transfer buffer
     auto const buf = transfer_buffer(i);
     fp_labels_.clear();
-    for_each_label(
-        static_cast<std::uint32_t>(i), k,
-        [&](Criteria const& e_crit, std::uint32_t const e_breadcrumb) {
-          if ((e_breadcrumb & state_t::kByRoute) != 0U) {
-            fp_labels_.push_back({e_crit.with_transfer(-buf),
-                                  e_breadcrumb & state_t::kBreadcrumbMask,
-                                  std::uint8_t{0U}, cur_dep_});
-          }
-        });
+    for_each_label(static_cast<std::uint32_t>(i), k,
+                   [&](typename state_t::label const& e) {
+                     if (e.by_route_) {
+                       fp_labels_.push_back(e);
+                       fp_labels_.back().crit_ = e.crit_.with_transfer(-buf);
+                     }
+                   });
     if (fp_labels_.empty()) {
       return;
     }
@@ -715,28 +710,28 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::collect_dest_journeys(
     unixtime_t const start_time,
     pareto_set<journey>& results) {
   is_dest_.for_each_set_bit([&](std::uint64_t const i) {
-    for_each_label(
-        static_cast<std::uint32_t>(i), k,
-        [&](Criteria const& e_crit, std::uint32_t const e_breadcrumb) {
-          auto j = journey{};
-          j.start_time_ = start_time;
-          j.dest_time_ = to_unix(e_crit.arr_);
-          j.dest_ = location_idx_t{i};
-          j.transfers_ = static_cast<std::uint8_t>(k - 1U);
-          e_crit.apply_to(j);
-          // most candidates are dominated: only the others get legs
-          if (!results.is_dominated(j)) {
-            chain_.clear();
-            for (auto li = e_breadcrumb & state_t::kBreadcrumbMask;
-                 li != state_t::kNoBreadcrumb;
-                 li = state_.breadcrumbs_[li].parent_) {
-              chain_.push_back(state_.breadcrumbs_[li]);
-            }
-            mc_add_legs<SearchDir>(tt_, rtt_, base_, is_intermodal_dest(),
-                                   chain_, j);
-            results.add(std::move(j));
-          }
-        });
+    for_each_label(static_cast<std::uint32_t>(i), k,
+                   [&](typename state_t::label const& e) {
+                     auto const& e_crit = e.crit_;
+                     auto j = journey{};
+                     j.start_time_ = start_time;
+                     j.dest_time_ = to_unix(e_crit.arr_);
+                     j.dest_ = location_idx_t{i};
+                     j.transfers_ = static_cast<std::uint8_t>(k - 1U);
+                     e_crit.apply_to(j);
+                     // most candidates are dominated: only the others get legs
+                     if (!results.is_dominated(j)) {
+                       chain_.clear();
+                       for (auto li = static_cast<std::uint32_t>(e.breadcrumb_);
+                            li != state_t::kNoBreadcrumb;
+                            li = state_.breadcrumbs_[li].parent_) {
+                         chain_.push_back(state_.breadcrumbs_[li]);
+                       }
+                       mc_add_legs<SearchDir>(tt_, rtt_, base_,
+                                              is_intermodal_dest(), chain_, j);
+                       results.add(std::move(j));
+                     }
+                   });
   });
 }
 
