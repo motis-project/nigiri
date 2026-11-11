@@ -54,19 +54,20 @@ void upload(T* const dev,
 }
 
 struct gpu_mcraptor_state::impl {
-  impl(gpu_timetable const& gtt, gpu_mcraptor_limits const& limits)
-      : tt_{gtt.impl_->to_device_timetable()} {
+  impl(gpu_timetable const& gtt,
+       gpu_mcraptor_limits const& limits,
+       std::optional<gpu_mcraptor_scratch> const& scratch)
+      : tt_{gtt.impl_->to_device_timetable()}, owns_stream_{!scratch} {
     utl::verify(limits.et_tasks_ <= stop_bag_ref::kMaxSlots,
                 "gpu mcraptor: {} et task slots exceed the stop bag ref",
                 limits.et_tasks_);
-    cudaStreamCreate(&stream_);
+    if (scratch.has_value()) {
+      stream_ = scratch->stream_;
+    } else {
+      cudaStreamCreate(&stream_);
+    }
 
     auto const n_locations = tt_.n_locations_;
-    // BM-RAPTOR bound matrices at the most rows any trip budget needs, so
-    // set_bounds() never grows them (see gpu_raptor_state::reserve_bmrap())
-    for (auto& b : bmrap_bounds_) {
-      b.resize(static_cast<std::size_t>(n_locations) * (kMaxTransfers + 2U));
-    }
     bags_.resize(static_cast<std::size_t>(n_locations) * kMcBagCap);
     fill_bytes(bags_, 0xFF, stream_);
     // chained blocks: the pool scales with the labels, not a worst-case row
@@ -116,9 +117,16 @@ struct gpu_mcraptor_state::impl {
     // stop bags per et task slot, not per route stop: a round only looks up
     // the boardable stops of its marked routes (see stop_bag_ref)
     auto const n_slots = std::min<std::size_t>(n_route_stops, limits.et_tasks_);
-    et_task_list_.resize(n_slots);
+    if (scratch.has_value()) {
+      et_task_list_ = {scratch->et_task_list_, n_slots};
+      stop_bag_ref_ = reinterpret_cast<stop_bag_ref*>(scratch->et_result_);
+    } else {
+      own_et_task_list_.resize(n_slots);
+      own_stop_bag_ref_.resize(n_route_stops);
+      et_task_list_ = to_mutable_view(own_et_task_list_);
+      stop_bag_ref_ = thrust::raw_pointer_cast(own_stop_bag_ref_.data());
+    }
     et_task_count_.resize(1U);
-    stop_bag_ref_.resize(n_route_stops);
     stop_bag_trips_.resize(n_slots * kMcPrefixK);
     stop_bag_parents_.resize(n_slots * kMcPrefixK);
     stop_bag_board_extras_.resize(n_slots * kMcPrefixK);
@@ -132,7 +140,9 @@ struct gpu_mcraptor_state::impl {
   // a query) would otherwise run on the buffers the members free below.
   ~impl() {
     cudaStreamSynchronize(stream_);
-    cudaStreamDestroy(stream_);
+    if (owns_stream_) {
+      cudaStreamDestroy(stream_);
+    }
   }
 
   // per query: the rt timetable may be absent or have grown
@@ -201,8 +211,6 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> bag_chain_head_;
   thrust::device_vector<std::uint32_t> bag_pool_count_;
   std::uint32_t bag_pool_cap_;
-  // BM-RAPTOR bound matrix, uploaded by gpu_mcraptor::set_bounds()
-  thrust::device_vector<delta_t> bmrap_bounds_[2];
   thrust::device_vector<std::uint32_t> bag_locks_;
   thrust::device_vector<std::uint8_t> bag_n_slots_;
   thrust::device_vector<mc_label_t> dest_bag_[2];
@@ -220,9 +228,12 @@ struct gpu_mcraptor_state::impl {
 
   thrust::device_vector<std::uint32_t> route_list_;
   thrust::device_vector<std::uint32_t> route_list_count_;
-  thrust::device_vector<std::uint32_t> et_task_list_;
+  // borrowed (gpu_mcraptor_scratch) or the own_* below
+  cuda::std::span<std::uint32_t> et_task_list_;
+  stop_bag_ref* stop_bag_ref_;
+  thrust::device_vector<std::uint32_t> own_et_task_list_;
+  thrust::device_vector<stop_bag_ref> own_stop_bag_ref_;
   thrust::device_vector<std::uint32_t> et_task_count_;
-  thrust::device_vector<stop_bag_ref> stop_bag_ref_;
   thrust::device_vector<std::uint32_t> stop_bag_trips_;
   thrust::device_vector<std::uint32_t> stop_bag_parents_;
   thrust::device_vector<std::uint32_t> stop_bag_board_extras_;
@@ -256,12 +267,15 @@ struct gpu_mcraptor_state::impl {
   device_buffer<std::uint32_t> rec_count_;
   pinned_host_buffer<std::uint32_t> rec_count_pin_;
 
+  bool owns_stream_;  // else the owning scalar state's (gpu_mcraptor_scratch)
   cudaStream_t stream_;
 };
 
-gpu_mcraptor_state::gpu_mcraptor_state(gpu_timetable const& gtt,
-                                       gpu_mcraptor_limits const& limits)
-    : impl_{std::make_unique<impl>(gtt, limits)} {}
+gpu_mcraptor_state::gpu_mcraptor_state(
+    gpu_timetable const& gtt,
+    gpu_mcraptor_limits const& limits,
+    std::optional<gpu_mcraptor_scratch> const& scratch)
+    : impl_{std::make_unique<impl>(gtt, limits, scratch)} {}
 
 gpu_mcraptor_state::~gpu_mcraptor_state() = default;
 
@@ -513,9 +527,9 @@ mcraptor_impl<SearchDir, Crit> make_impl(
       .rt_transport_mark_ = {to_mutable_view(s.rt_transport_mark_)},
       .route_list_ = to_mutable_view(s.route_list_),
       .route_list_count_ = ptr(s.route_list_count_),
-      .et_task_list_ = to_mutable_view(s.et_task_list_),
+      .et_task_list_ = s.et_task_list_,
       .et_task_count_ = ptr(s.et_task_count_),
-      .stop_bag_ref_ = ptr(s.stop_bag_ref_),
+      .stop_bag_ref_ = s.stop_bag_ref_,
       .stop_bag_trips_ = ptr(s.stop_bag_trips_),
       .stop_bag_parents_ = ptr(s.stop_bag_parents_),
       .stop_bag_board_extras_ = ptr(s.stop_bag_board_extras_)};
@@ -621,9 +635,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(
   };
   // BM-RAPTOR pruning (see mcraptor_impl::bound_prunes)
   if (has_bounds_) {
-    r.bounds_ = cuda::std::span<delta_t const>{
-        thrust::raw_pointer_cast(s.bmrap_bounds_[kDirIdx].data()),
-        s.bmrap_bounds_[kDirIdx].size()};
+    r.bounds_ = cuda::std::span<delta_t const>{bounds_, bounds_size_};
     r.bounds_n_locations_ = bounds_n_locations_;
     r.bounds_budget_ = bounds_budget_;
     r.bounds_staggered_ = bounds_staggered_;
@@ -792,13 +804,12 @@ void gpu_mcraptor<SearchDir, Crit>::set_bounds(bmrap_bounds const* b) {
     has_bounds_ = false;
     return;
   }
-  auto& s = *state_.impl_;
-  utl::verify(b->lat_.size() <= s.bmrap_bounds_[kDirIdx].size(),
-              "bmrap bounds: budget {} too big", b->budget_);
-  CUDA_CHECK(cudaMemcpyAsync(
-      thrust::raw_pointer_cast(s.bmrap_bounds_[kDirIdx].data()), b->lat_.data(),
-      b->lat_.size() * sizeof(delta_t), cudaMemcpyHostToDevice, s.stream_));
-  CUDA_CHECK(cudaStreamSynchronize(s.stream_));
+  // the building scalar engine synchronized its stream after the build, and
+  // it builds the next matrix of this kind only after our searches ran
+  utl::verify(b->device_ != nullptr,
+              "gpu mcraptor: bmrap bounds must be built on the device");
+  bounds_ = b->device_;
+  bounds_size_ = b->size();
   bounds_n_locations_ = b->n_locations_;
   bounds_budget_ = b->budget_;
   bounds_staggered_ = b->staggered_;

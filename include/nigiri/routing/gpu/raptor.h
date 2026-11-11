@@ -56,10 +56,11 @@ struct gpu_raptor_state {
   explicit gpu_raptor_state(gpu_timetable const&);
   ~gpu_raptor_state();
 
-  // Device state for BM-RAPTOR's multicriteria phases, built on first use and
-  // kept for this state's lifetime (a pool slot) since it is too expensive to
-  // allocate per query. One instance serves the mc ping and pong: the
-  // per-query buffers are direction-indexed.
+  // Device state for BM-RAPTOR's multicriteria phases, built on first use (or
+  // up front, by a server) and kept for this state's lifetime (a pool slot)
+  // since it is too expensive to allocate per query. One instance serves the
+  // mc ping and pong: the per-query buffers are direction-indexed. It borrows
+  // this state's per-round scratch and stream (gpu_mcraptor_scratch).
   //
   // A large timetable can fail this allocation, so ask try_mc_state() BEFORE
   // committing to the device engines: the mc phases are optional, and losing
@@ -122,8 +123,8 @@ struct gpu_raptor {
 
   void reconstruct(query const&, journey&);
 
-  // BM-RAPTOR hooks, as on the CPU raptor. The pruning matrix is uploaded here;
-  // nullptr disables it.
+  // BM-RAPTOR hooks, as on the CPU raptor. The pruning matrix must be one this
+  // state built (build_reach_bounds) and is read in place; nullptr disables it.
   void set_bounds(bmrap_bounds const*);
   // staggered rounds: add_start writes round k, the scan runs k + 1 .. end_k
   void set_start_round(unsigned k) {
@@ -136,12 +137,14 @@ struct gpu_raptor {
                       int add_minutes,
                       double floor_min = 0.0,
                       double cap_min = 0.0);
-  // reach_matrix() on the device: only the (budget + 1) rows the caller keeps
-  // come back. sub_transfer subtracts each location's transfer buffer (the
-  // tau_arr^-> matrix); the tau_dep^<- matrix passes false.
+  // reach_matrix() on the device, into the state's slot for its kind:
+  // sub_transfer subtracts each location's transfer buffer (the tau_arr^->
+  // matrix); the tau_dep^<- matrix passes false. host_copy also fills
+  // out.lat_ (budget + 1 rows) for CPU engines.
   void build_reach_bounds(bmrap_bounds& out,
                           std::uint8_t budget,
-                          bool sub_transfer);
+                          bool sub_transfer,
+                          bool host_copy);
 
 private:
   date::sys_days base() const {
@@ -176,6 +179,8 @@ private:
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
 
   // BM-RAPTOR state (see the setters above)
+  delta_t const* bm_bounds_{nullptr};  // the state's reach slot
+  std::size_t bm_bounds_size_{0U};
   std::uint32_t bounds_n_locations_{0U};
   std::uint8_t bounds_budget_{0U};
   bool has_bounds_{false};

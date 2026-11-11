@@ -465,7 +465,7 @@ int main(int argc, char* argv[]) {
   auto threads_v =
       std::vector<unsigned>{std::max(std::thread::hardware_concurrency(), 1U)};
   auto gpu_states_v = std::vector<unsigned>{2U};
-  auto bmrap_gpu_mc_v = std::vector<int>{kBmrapGpuMcModeDefault};
+  auto bmrap_gpu_mc_v = std::vector<int>{1};
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
@@ -506,9 +506,8 @@ int main(int argc, char* argv[]) {
       ("gpu_states", bpo::value(&gpu_states_v)->multitoken(),
        "concurrent GPU pipeline counts to sweep (default: 2)")  //
       ("bmrap_gpu_mc", bpo::value(&bmrap_gpu_mc_v)->multitoken(),
-       "bmrapp on the GPU: device multicriteria modes to run, one cell each "
-       "(0 = mc phases on the CPU, 1 = mc ping, 2 = mc ping + mc pong; "
-       "default: 1)")  //
+       "bmrapp on the GPU: where the multicriteria phases run, one cell "
+       "each (0 = CPU, 1 = device; default: 1)")  //
       ("seed,s", bpo::value<std::int64_t>(&seed)->default_value(seed),
        "query generator RNG seed, -1 for a random seed")  //
       ("num_queries,n", bpo::value(&n_queries)->default_value(n_queries),
@@ -802,8 +801,7 @@ int main(int argc, char* argv[]) {
 #if defined(NIGIRI_CUDA)
         auto const run_gpu_cell = [&]<typename RS>(
                                       std::string const& engine = "gpu",
-                                      int const gpu_mc_mode =
-                                          kBmrapGpuMcModeDefault) {
+                                      bool const gpu_mc = true) {
           return run_cell<gpu_ws_t<RS>>(
               qs, label + "-" + engine, gpu_states_v,
               [&](gpu_ws_t<RS>& w, routing::query q) {
@@ -812,7 +810,7 @@ int main(int argc, char* argv[]) {
                   return use_bmrap
                              ? routing::bmrap_profile_search<bmrapp_criteria_t>(
                                    tt, nullptr, w.ss_, *w.rs_, std::move(q),
-                                   dir, std::nullopt, gpu_mc_mode)
+                                   dir, std::nullopt, gpu_mc)
                          : use_pong
                              ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
                                                     std::move(q), dir)
@@ -849,12 +847,14 @@ int main(int argc, char* argv[]) {
 
 #if defined(NIGIRI_CUDA)
           if (run_gpu && use_bmrap) {
-            // one cell per device mc mode; "gpu.mcN" keeps the engine the
-            // last label token, so all of them are checked as one algorithm
+            // one cell per mc placement ("gpu.mc0": mc phases on the CPU,
+            // "gpu.mc1": on the device); keeping the engine the last label
+            // token checks all of them as one algorithm
             for (auto const m : bmrap_gpu_mc_v) {
-              cells.push_back(run_gpu_cell.template
-                              operator()<routing::gpu::gpu_raptor_state>(
-                                  "gpu.mc" + std::to_string(m), m));
+              cells.push_back(
+                  run_gpu_cell
+                      .template operator()<routing::gpu::gpu_raptor_state>(
+                          "gpu.mc" + std::to_string(m != 0 ? 1 : 0), m != 0));
             }
           } else if (run_gpu) {
             cells.push_back(

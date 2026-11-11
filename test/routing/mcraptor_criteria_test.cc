@@ -59,6 +59,11 @@ S9,S9,,,,,,
 G0,G0,,,,,,
 G1,G1,,,,,,
 G9,G9,,,,,,
+H0,H0,,,,,,
+H1,H1,,,,,,
+H2,H2,,,,,,
+H3,H3,,,,,,
+H9,H9,,,,,,
 A0,A0,,,,,,
 A1,A1,,,,,,
 A2,A2,,,,,,
@@ -103,6 +108,11 @@ BUS,D,S_BUS2,,
 RAIL,D,G_RAIL,,
 BUS,D,G_BUS,,
 BUS,D,G_LAST,,
+RAIL,D,H_RAIL1,,
+BUS,D,H_BUS1,,
+BUS,D,H_BUS0,,
+RAIL,D,H_RAIL0,,
+RAIL,D,H_LAST,,
 AIR,D,A_AIR,,
 RAIL,D,A_WALK1,,
 RAIL,D,A_WALK2,,
@@ -155,6 +165,16 @@ G_BUS,10:00:00,10:00:00,G0,0,0,0
 G_BUS,10:20:00,10:20:00,G1,1,0,0
 G_LAST,10:30:00,10:30:00,G1,0,0,0
 G_LAST,11:00:00,11:00:00,G9,1,0,0
+H_RAIL1,10:00:00,10:00:00,H0,0,0,0
+H_RAIL1,10:05:00,10:05:00,H1,1,0,0
+H_BUS1,10:10:00,10:10:00,H1,0,0,0
+H_BUS1,10:20:00,10:20:00,H2,1,0,0
+H_BUS0,10:00:00,10:00:00,H0,0,0,0
+H_BUS0,10:05:00,10:05:00,H3,1,0,0
+H_RAIL0,10:15:00,10:15:00,H3,0,0,0
+H_RAIL0,10:30:00,10:30:00,H2,1,0,0
+H_LAST,10:40:00,10:40:00,H2,0,0,0
+H_LAST,11:00:00,11:00:00,H9,1,0,0
 A_AIR,10:00:00,10:00:00,A0,0,0,0
 A_AIR,10:30:00,10:30:00,A9,1,0,0
 A_WALK1,10:00:00,10:00:00,A0,0,0,0
@@ -428,6 +448,17 @@ TEST(mcraptor_criteria, mode_switches_keeps_later_label_of_other_group) {
       between("G0", "G9", {at(9, 30), at(10, 30)}, {at(10, 45), at(11, 30)});
   expect_rows<mcraptor_mode_switches_state>(s, {"10:00 11:00 t1 c0 f0 s0"});
   expect_engines(s, {"10:00 11:00 t1 c0 f0 s0"});
+}
+
+// The same with a switch already behind both labels: at H2, rail + bus
+// (10:20, 1 switch) beats bus + rail (10:30, 1 switch) on time, but only the
+// rail arrival rides on in the last trip's group (rail) without another
+// switch. Pruning it would leave rail + bus + rail with 2 switches.
+TEST(mcraptor_criteria, mode_switches_keeps_equal_label_of_other_group) {
+  auto const s =
+      between("H0", "H9", {at(9, 30), at(10, 30)}, {at(10, 45), at(11, 30)});
+  expect_rows<mcraptor_mode_switches_state>(s, {"10:00 11:00 t2 c0 f0 s1"});
+  expect_engines(s, {"10:00 11:00 t2 c0 f0 s0"});
 }
 
 // A0 -> A9: flight 10:30 | rail + 10 min walk + rail 11:00 | rail + bus 11:10 |

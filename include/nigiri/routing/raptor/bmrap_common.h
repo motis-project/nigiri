@@ -471,17 +471,21 @@ std::size_t close_anchor_profile(timetable const& tt,
 // footpath arrivals never paid it, so this can only weaken the bound. The
 // prefix runs over the raw times (row i - 1 has the buffer taken off, so it is
 // added back) to avoid subtracting it again in every round the prefix survives.
+//
+// A device-built matrix stays on the device; `host_copy` also fills lat_ for
+// CPU engines (always filled when built on the CPU).
 template <direction PruneDir, typename AlgoState, typename Algo>
 bmrap_bounds reach_matrix(timetable const& tt,
                           query const& q,
                           AlgoState& state,
                           [[maybe_unused]] Algo& algo,
                           std::uint8_t const budget,
-                          bool const sub_transfer) {
+                          bool const sub_transfer,
+                          [[maybe_unused]] bool const host_copy) {
 #if defined(NIGIRI_CUDA)
   if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
     auto out = bmrap_bounds{};
-    algo.build_reach_bounds(out, budget, sub_transfer);
+    algo.build_reach_bounds(out, budget, sub_transfer, host_copy);
     return out;
   } else
 #endif
@@ -541,7 +545,8 @@ bmrap_bounds compute_bounds(timetable const& tt,
                             std::uint8_t const budget,
                             AlgoState& state,
                             raptor_stats& stats,
-                            bmrap_bounds const* reach = nullptr) {
+                            bmrap_bounds const* reach,
+                            bool const host_copy) {
   // `horizon` is the far end of the main search's window; bounds beyond it are
   // dead weight.
   constexpr auto const kPruneDir = flip(SearchDir);
@@ -628,7 +633,7 @@ bmrap_bounds compute_bounds(timetable const& tt,
   stats = stats + r.get_stats();
 
   auto bounds = reach_matrix<kPruneDir>(tt, q, state, r, budget,
-                                        /*sub_transfer=*/false);
+                                        /*sub_transfer=*/false, host_copy);
   bounds.staggered_ = true;
   return bounds;
 }

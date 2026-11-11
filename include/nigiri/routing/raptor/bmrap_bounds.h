@@ -25,7 +25,10 @@ namespace nigiri::routing {
 // trips: the trip budget of the whole main search. A label of round k has
 // budget_ - k trips left.
 struct bmrap_bounds {
-  bool empty() const { return lat_.empty(); }
+  bool empty() const { return n_locations_ == 0U; }
+  std::size_t size() const {
+    return static_cast<std::size_t>(budget_ + 1U) * n_locations_;
+  }
 
   delta_t at(unsigned const rounds_left, std::uint32_t const l) const {
     return lat_[static_cast<std::size_t>(rounds_left) * n_locations_ + l];
@@ -53,9 +56,12 @@ struct bmrap_bounds {
   // origin), where a reader with budget B has B - k trips left - row B - k,
   // tighter than budget_ - k whenever B < budget_.
   bool staggered_{false};
-  // Set by an engine that built this matrix on a device and still holds the
-  // copy, so it can copy device-to-device instead of re-uploading `lat_`. 0 =
-  // no device copy. Only the issuing engine may interpret it.
+  // Built on a device (gpu_raptor::build_reach_bounds): the matrix stays in the
+  // building state's reach slot and the device engines read it there, as the
+  // CPU engines read `lat_` - which is only filled when a CPU engine needs it.
+  // The slot holds it until the next matrix of the same kind is built;
+  // device_tag_ (the slot's stamp at build time) lets a reader check that.
+  delta_t const* device_{nullptr};
   std::uint64_t device_tag_{0U};
 };
 
