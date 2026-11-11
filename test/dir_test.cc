@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
+#include "nigiri/loader/gtfs/validate.h"
 
 #include "utl/parser/cstr.h"
 #include "utl/zip.h"
@@ -81,10 +82,15 @@ TEST(nigiri, nested_gtfs) {
 
   for (auto const path : paths) {
     auto const sub_dir = gtfs::find_gtfs_root(make_dir(path), false);
+    // The root is found in all cases.
     EXPECT_TRUE(sub_dir->exists("agency.txt"));
     EXPECT_TRUE(sub_dir->exists("routes.txt"));
     EXPECT_TRUE(sub_dir->exists("trips.txt"));
     EXPECT_TRUE(sub_dir->exists("stop_times.txt"));
+
+    // The validation finds the errors in the gtfs subfolders.
+    auto const accepted_dirs = gtfs::validate_sources(std::vector<timetable_source>{timetable_source{.tag_ = "", .path_ = path}});
+    EXPECT_TRUE(accepted_dirs.empty());
   }
 }
 
