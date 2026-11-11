@@ -16,6 +16,8 @@
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/types.h"
 
+struct CUstream_st;  // cudaStream_t
+
 namespace nigiri::routing::gpu {
 
 // et tasks (boardable stops of marked routes) per round with a stop bag, the
@@ -32,12 +34,24 @@ struct gpu_mcraptor_limits {
   std::optional<std::uint32_t> breadcrumbs_{};
 };
 
-// scope as mcraptor_supported(); the subtypes only select the criteria
+// The owning scalar state's per-round scratch (n_route_stops entries each)
+// and stream, borrowed instead of allocated (gpu_raptor_state::try_mc_state()):
+// both engines rewrite the scratch every round before reading it, and on one
+// stream their kernels never overlap.
+struct gpu_mcraptor_scratch {
+  std::uint32_t* et_result_;
+  std::uint32_t* et_task_list_;
+  CUstream_st* stream_;
+};
+
+// scope as mcraptor_supported(); the subtypes only select kCrit
 struct gpu_mcraptor_state {
   using criteria_t = arr_criteria;
 
-  explicit gpu_mcraptor_state(gpu_timetable const&,
-                              gpu_mcraptor_limits const& = {});
+  explicit gpu_mcraptor_state(
+      gpu_timetable const&,
+      gpu_mcraptor_limits const& = {},
+      std::optional<gpu_mcraptor_scratch> const& = std::nullopt);
   ~gpu_mcraptor_state();
 
   struct impl;
@@ -73,6 +87,9 @@ struct gpu_mcraptor {
 
   // unlike gpu raptor: without lb pruning the fixed-size device bags overflow
   static constexpr bool kUseLowerBounds = true;
+  // ... unless bounded (bmrap_profile.cc): the BM-RAPTOR bounds prune harder,
+  // so it runs on an all-zero lb, as basic_mcraptor's effective_lb()
+  static constexpr bool kNeedsLbWhenBounded = false;
   static constexpr auto const kDirIdx =
       SearchDir == direction::kForward ? 0U : 1U;
 
@@ -122,7 +139,8 @@ struct gpu_mcraptor {
   // over-pruning.
   void set_reuse_same_dep() { reuse_same_dep_ = true; }
 
-  // BM-RAPTOR pruning bounds, uploaded here; nullptr disables. See
+  // BM-RAPTOR pruning bounds, read in place from the scalar state that built
+  // them (gpu_raptor::build_reach_bounds); nullptr disables. See
   // basic_mcraptor::set_bounds().
   void set_bounds(bmrap_bounds const*);
 
@@ -151,6 +169,8 @@ private:
   mc_start start_;
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
 
+  delta_t const* bounds_{nullptr};
+  std::size_t bounds_size_{0U};
   std::uint32_t bounds_n_locations_{0U};
   std::uint8_t bounds_budget_{0U};
   bool bounds_staggered_{false};

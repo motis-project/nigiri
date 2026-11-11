@@ -566,10 +566,9 @@ TEST(bmrap, opposed_extension_is_a_superset_of_pong) {
     // PONG may grow on the aligned side and return journeys past the window
     // (its last re-anchoring step can land there); the opposed query forbids
     // that side, so compare inside the window only
-    expect_subset(r.js_,
-                  in_window(pong_reference(f, q, c.dir_).js_, r.scanned_,
-                            c.dir_),
-                  c.name_);
+    expect_subset(
+        r.js_, in_window(pong_reference(f, q, c.dir_).js_, r.scanned_, c.dir_),
+        c.name_);
   }
 }
 
@@ -602,9 +601,8 @@ void expect_extension_equals_restricted_mcraptor(fixture const& f,
 template <typename Criteria>
 void expect_aligned_matches_opposed(fixture const& f, direction const dir) {
   auto const of_dir = [&](std::vector<extend_case> const& cases) {
-    return *std::find_if(begin(cases), end(cases), [&](extend_case const& c) {
-      return c.dir_ == dir;
-    });
+    return *std::find_if(begin(cases), end(cases),
+                         [&](extend_case const& c) { return c.dir_ == dir; });
   };
   auto const a = of_dir(aligned_cases());
   auto const o = of_dir(opposed_cases());
@@ -630,8 +628,8 @@ TEST(bmrap, extension_cases_equal_restricted_mcraptor) {
     expect_extension_equals_restricted_mcraptor<routing::arr_criteria,
                                                 routing::mcraptor_state>(f, c);
     expect_extension_equals_restricted_mcraptor<
-        routing::arr_non_transit_criteria,
-        routing::mcraptor_non_transit_state>(f, c);
+        routing::arr_non_transit_criteria, routing::mcraptor_non_transit_state>(
+        f, c);
   }
 }
 
@@ -1173,25 +1171,32 @@ TEST(bmrap, bounded_needs_lb_matches_real_engines) {
       routing::basic_mcraptor<direction::kForward, routing::arr_criteria>;
   EXPECT_FALSE(routing::bounded_needs_lb<cpu_raptor>());
   EXPECT_FALSE(routing::bounded_needs_lb<cpu_mcraptor>());
+#if defined(NIGIRI_CUDA)
+  // ... nor the device ones: all-GPU BMRAPP runs no lower-bound dijkstra
+  EXPECT_FALSE((routing::bounded_needs_lb<
+                routing::gpu::gpu_raptor<direction::kForward, false>>()));
+  EXPECT_FALSE((routing::bounded_needs_lb<routing::gpu::gpu_mcraptor<
+                    direction::kForward, routing::gpu::mc_crit::arr>>()));
+#endif
 }
 
 #if defined(NIGIRI_CUDA)
 namespace {
 
-// The multicriteria phases run on the CPU unless gpu_mc_mode says otherwise
-// (see bmrap_algo_for), so every criteria configuration is comparable here.
+// gpu_mc: the multicriteria phases on the device as well (if it implements
+// the criteria, see kGpuMcSupported) or on the CPU.
 template <typename Criteria>
 std::vector<tuple_t> run_bmrapp_gpu(fixture const& f,
                                     routing::query q,
                                     direction const dir,
-                                    int const gpu_mc_mode = 1) {
+                                    bool const gpu_mc = true) {
   auto ss = routing::search_state{};
   auto gtt = routing::gpu::gpu_timetable{f.tt_};
   auto as = routing::gpu::gpu_raptor_state{gtt};
-  return tuples(*(
-      routing::bmrap_profile_search<Criteria>(
-          f.tt_, nullptr, ss, as, std::move(q), dir, std::nullopt, gpu_mc_mode)
-          .journeys_));
+  return tuples(
+      *(routing::bmrap_profile_search<Criteria>(
+            f.tt_, nullptr, ss, as, std::move(q), dir, std::nullopt, gpu_mc)
+            .journeys_));
 }
 
 // The device mcraptor on its own: nothing else exercises gpu_mcraptor, so a
@@ -1234,8 +1239,8 @@ TEST(bmrap, gpu_mcraptor_matches_cpu) {
   }
 }
 
-// Only the ping, pong and backward pruning searches move to the device, and
-// arriveBy exercises the other, direction-indexed half of the GPU state.
+// Every phase on the device; arriveBy exercises the other, direction-indexed
+// half of the GPU state.
 TEST(bmrap, gpu_matches_cpu) {
   SKIP_WITHOUT_GPU();
   for (auto const dir : kDirs) {
@@ -1247,32 +1252,33 @@ TEST(bmrap, gpu_matches_cpu) {
   }
 }
 
-// gpu_mc_mode 2 also runs the mc pong on the device; the journeys must not
-// change.
-TEST(bmrap, gpu_mc_pong_matches_mc_ping) {
+// The multicriteria phases on the device or on the CPU (the fallback without
+// a device mc state): the journeys must not change.
+TEST(bmrap, gpu_mc_matches_cpu_mc) {
   SKIP_WITHOUT_GPU();
   auto const f = fixture{};
   auto const q = f.make_query();
   EXPECT_EQ(
-      run_bmrapp_gpu<routing::arr_criteria>(f, q, direction::kForward, 1),
-      run_bmrapp_gpu<routing::arr_criteria>(f, q, direction::kForward, 2));
+      run_bmrapp_gpu<routing::arr_criteria>(f, q, direction::kForward, false),
+      run_bmrapp_gpu<routing::arr_criteria>(f, q, direction::kForward, true));
   EXPECT_EQ(run_bmrapp_gpu<routing::arr_non_transit_criteria>(
-                f, q, direction::kForward, 1),
+                f, q, direction::kForward, false),
             run_bmrapp_gpu<routing::arr_non_transit_criteria>(
-                f, q, direction::kForward, 2));
+                f, q, direction::kForward, true));
 }
 
-// The four (arriveBy x extension side) cases on the device, in every mc mode.
+// The four (arriveBy x extension side) cases on the device, the mc phases on
+// the CPU and on the device.
 TEST(bmrap, gpu_extension_cases_match_cpu) {
   SKIP_WITHOUT_GPU();
   auto const f = fixture{};
   for (auto const& c : all_extend_cases()) {
     auto const q = extend_query(f, c);
     auto const cpu = bmrapp<routing::arr_non_transit_criteria>(f, q, c.dir_);
-    for (auto const mode : {0, 1, 2}) {
+    for (auto const gpu_mc : {false, true}) {
       EXPECT_EQ(cpu.js_, run_bmrapp_gpu<routing::arr_non_transit_criteria>(
-                             f, q, c.dir_, mode))
-          << c.name_ << ", gpu_mc_mode=" << mode;
+                             f, q, c.dir_, gpu_mc))
+          << c.name_ << ", gpu_mc=" << gpu_mc;
     }
   }
 }
