@@ -113,7 +113,12 @@ struct gpu_mcraptor_state::impl {
     fill_bytes(overflow_, 0, stream_);
   }
 
-  ~impl() { cudaStreamDestroy(stream_); }
+  // Work still queued on the stream (e.g. the selective clears at the end of
+  // a query) would otherwise run on the buffers the members free below.
+  ~impl() {
+    cudaStreamSynchronize(stream_);
+    cudaStreamDestroy(stream_);
+  }
 
   // per query: the rt timetable may be absent or have grown
   void resize_rt(unsigned const n_rt_transports) {

@@ -104,7 +104,12 @@ struct gpu_raptor_state::impl {
     // upload_query (called by the gpu_raptor ctor -> one per dir)
   }
 
-  ~impl() { cudaStreamDestroy(stream_); }
+  // Work still queued on the stream (e.g. the selective clears at the end of
+  // a query) would otherwise run on the buffers the members free below.
+  ~impl() {
+    cudaStreamSynchronize(stream_);
+    cudaStreamDestroy(stream_);
+  }
 
   // the only per-query sizing: the rt timetable may be absent or may have
   // grown (rt updates) since the last query on this state
