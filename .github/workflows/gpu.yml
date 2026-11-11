@@ -71,6 +71,19 @@ jobs:
             --threads 8 \
             -n 10
 
+      # BMRAPP (all criteria): CPU and every device mc mode must find the same
+      # restricted set, containing plain pong's (dep, arr, transfers) front
+      - name: Validate Germany (bmrapp, CPU + GPU)
+        run: |
+          ./build/cuda/nigiri-benchmark -p tt.bin \
+            --engines cpu gpu \
+            --algo pong bmrapp \
+            --bmrap_gpu_mc 0 1 2 \
+            --modes s2s c2c \
+            --dirs fwd bwd \
+            --gpu_states 1 \
+            -n 25
+
       - name: Validate Germany (vias=1, CPU)
         run: |
           ./build/cuda/nigiri-benchmark -p tt.bin \
