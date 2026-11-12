@@ -778,20 +778,19 @@ struct raptor_impl {
           auto const transfer_time =
               static_cast<int>(tt_.transfer_time_[l].count());
           auto const is_dest_arrival = !intermodal && is_dest_[to_idx(stop)];
-          if (is_dest_arrival || transfer_time != kNoTransferAllowedMinutes) {
-            relax_fp_target(k, l,
-                            is_dest_arrival
-                                ? 0
-                                : adjusted_transfer_time(
-                                      transfer_time_settings_, transfer_time),
-                            tmp_time, bc, t_at_dest);
-          }
-          if (is_dest_arrival && stop != l &&
-              is_better_loose(tmp_time, t_at_dest)) {
-            round_times_.update_min(k, stop, Vias, tmp_time, bc);
-            touch_round(k, stop);
-            best_.update_min(stop, Vias, tmp_time);
-            update_time_at_dest(k, tmp_time);
+          if (is_dest_arrival) {
+            relax_fp_target(k, l, 0, tmp_time, bc, t_at_dest);
+            if (stop != l && is_better_loose(tmp_time, t_at_dest)) {
+              round_times_.update_min(k, stop, Vias, tmp_time, bc);
+              touch_round(k, stop);
+              best_.update_min(stop, Vias, tmp_time);
+              update_time_at_dest(k, tmp_time);
+            }
+          } else if (transfer_time != kNoTransferAllowedMinutes) {
+            relax_fp_target(
+                k, l,
+                adjusted_transfer_time(transfer_time_settings_, transfer_time),
+                tmp_time, bc, t_at_dest);
           }
 
           // intermodal egress (former update_intermodal_footpaths)
