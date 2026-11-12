@@ -21,8 +21,6 @@ inline u8_minutes get_transfer_time(timetable const& tt,
              : tt.locations_.transfer_time_[l];
 }
 
-// The footpaths of a location, the real-time ones included (only the default
-// profile has real-time virtual locations).
 template <direction SearchDir>
 auto get_transfers(timetable const& tt,
                    rt_timetable const* rtt,
@@ -36,7 +34,7 @@ auto get_transfers(timetable const& tt,
     auto const b = fps[l];
     transfers[0] = {b.data(), b.size()};
   }
-  if (rtt != nullptr && profile_uses_virts(prf_idx)) {
+  if (rtt != nullptr && profile_uses_rt_virts(prf_idx)) {
     auto const b = (kFwd ? rtt->rt_footpaths_out_ : rtt->rt_footpaths_in_)[l];
     transfers[1] = {b.data(), b.size()};
   }

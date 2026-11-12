@@ -450,18 +450,19 @@ bool update_run(source_idx_t const src,
         // Cancel skipped stops (in_allowed = out_allowed = false).
         stp = stop{l_idx, false, false, false, false}.value();
         rtt.dispatch_stop_change(r, stop_idx, stop{stp});
-      } else if (auto const track = get_track_change(); track.has_value()) {
-        // The stop's scheduled flags: a track change revokes a skip.
-        stp = location_seq[stop_idx];
-        rtt.update_stop_location(r.rt_, stop_idx, *track);
-        rtt.dispatch_stop_change(r, stop_idx, stop{stp});
       } else {
         // Just reset in case a track change / skipped stop got reversed.
-        if (location_seq[stop_idx] != stp) {
-          auto const reset_stop = stop{location_seq[stop_idx]};
+        auto const target = get_track_change().value_or(
+            stop{location_seq[stop_idx]}.location_idx());
+        auto const has_same_flags = stop{location_seq[stop_idx]}
+                                        .with_location(stop{stp}.location_idx())
+                                        .value() == stp;
+        if (!has_same_flags ||
+            rtt.base(rtt.stop_location(r.rt_, stop_idx)) != tt.base(target)) {
+          // The stop's scheduled flags: a track change revokes a skip.
           stp = location_seq[stop_idx];
-          rtt.update_stop_location(r.rt_, stop_idx, reset_stop.location_idx());
-          rtt.dispatch_stop_change(r, stop_idx, reset_stop);
+          rtt.update_stop_location(r.rt_, stop_idx, target);
+          rtt.dispatch_stop_change(r, stop_idx, stop{stp});
         }
       }
     }

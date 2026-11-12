@@ -983,7 +983,7 @@ private:
         for_each_fp(static_fps[l_idx]);
       }
       if constexpr (Rt) {
-        if (profile_uses_virts(prf_idx_)) {
+        if (profile_uses_rt_virts(prf_idx_)) {
           for_each_fp(
               (kFwd ? rtt_->rt_footpaths_out_ : rtt_->rt_footpaths_in_)[l_idx]);
         }
@@ -1085,10 +1085,8 @@ private:
                         "┊ ├k={}   NO TD FP UPDATE: {} [best={}] "
                         "--{}--> {} "
                         "[best={}, time_at_dest={}]\n",
-                        k, loc{tt_, l_idx}, best_[to_idx(l_idx)][v],
-                        adjusted_transfer_time(transfer_time_settings_,
-                                               fp.duration()),
-                        loc{tt_, fp.target()}, best_[target][v],
+                        k, loc{tt_, l_idx}, best_[to_idx(l_idx)][v], duration,
+                        loc{tt_, location_idx_t{target}}, best_[target][v],
                         to_unix(time_at_dest_[k]));
                   }
                 }
@@ -1219,7 +1217,7 @@ private:
             bool WithSectionReservationNotRequiredFilter>
   bool update_rt_transport(unsigned const k, rt_transport_idx_t const rt_t) {
     auto const stop_seq = rtt_->rt_transport_location_seq_[rt_t];
-    auto const rt_stop_virts = profile_uses_virts(prf_idx_)
+    auto const rt_stop_virts = profile_uses_rt_virts(prf_idx_)
                                    ? rtt_->rt_stop_virts(rt_t)
                                    : std::span<location_idx_t const>{};
     // et[v] = there is an entry point on this transport such that the

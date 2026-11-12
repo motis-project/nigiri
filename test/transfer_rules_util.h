@@ -327,12 +327,14 @@ struct walk {
   std::string_view a_;
   std::string_view b_;
   int minutes_;
+  std::optional<int> back_minutes_{};  // b -> a, if it differs
 };
 
 // These walks instead of the loader's beelines, before the rules apply.
 inline timetable load_feeds_with_walks(std::vector<std::string> const& feeds,
-                                       std::vector<walk> const& walks) {
-  return load_feeds(feeds, false, [&](timetable& tt, auto& pending) {
+                                       std::vector<walk> const& walks,
+                                       int const n_days = 1) {
+  auto const set_walks = [&](timetable& tt, auto& pending) {
     // The walks a street router found (motis: osr_footpath) between stops, both
     // ways.
     pending.clear();
@@ -342,17 +344,19 @@ inline timetable load_feeds_with_walks(std::vector<std::string> const& feeds,
     for (auto const& w : walks) {
       auto const a = lidx(tt, w.a_);
       auto const b = lidx(tt, w.b_);
-      auto const d = duration_t{w.minutes_};
-      pending[a].push_back(footpath{b, d});
-      pending[b].push_back(footpath{a, d});
+      pending[a].push_back(footpath{b, duration_t{w.minutes_}});
+      pending[b].push_back(
+          footpath{a, duration_t{w.back_minutes_.value_or(w.minutes_)}});
     }
-  });
+  };
+  return load_feeds(feeds, false, set_walks, date::days{n_days});
 }
 
 inline timetable load_network_with_walks(std::string_view const transfers,
                                          network_rows const& rows,
-                                         std::vector<walk> const& walks) {
-  return load_feeds_with_walks({network(transfers, rows)}, walks);
+                                         std::vector<walk> const& walks,
+                                         int const n_days = 1) {
+  return load_feeds_with_walks({network(transfers, rows)}, walks, n_days);
 }
 
 }  // namespace nigiri::test

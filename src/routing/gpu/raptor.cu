@@ -373,7 +373,7 @@ struct gpu_rt_timetable::impl {
   }
 
   device_rt_timetable to_device_rt_timetable(profile_idx_t const prf) const {
-    auto const uses_virts = profile_uses_virts(prf);
+    auto const uses_virts = profile_uses_rt_virts(prf);
     auto d = device_rt_timetable{
         .n_rt_transports_ = n_rt_transports_,
         .base_day_idx_ = base_day_idx_,
@@ -701,7 +701,7 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
   reset_arrivals();
 
   auto td_dist = td_dist_to_dest;
-  if (rtt != nullptr && profile_uses_virts(prf_idx_) &&
+  if (rtt != nullptr && profile_uses_rt_virts(prf_idx_) &&
       rtt->n_rt_locations() != 0U) {
     is_dest.resize(rtt->n_locations());
     extend_to_rt_virts(*rtt, dist_to_dest);

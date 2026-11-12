@@ -1,12 +1,18 @@
 #include "gtest/gtest.h"
 
 #include <chrono>
+#include <cstdint>
+#include <algorithm>
 #include <optional>
 #include <ostream>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#include "fmt/format.h"
+
+#include "google/protobuf/util/json_util.h"
 
 #include "gtfsrt/gtfs-realtime.pb.h"
 
@@ -60,16 +66,66 @@ std::pair<rt::run, trip_idx_t> resolve(timetable const& tt,
   return rt::gtfsrt_resolve_run(kDay, tt, &rtt, source_idx_t{0}, td);
 }
 
+// The real-time locations, the stop locations of all real-time transports and
+// the real-time footpaths, as text.
+std::string rt_state(rt_timetable const& rtt) {
+  auto s = fmt::format("rt locations: {}\n", rtt.n_rt_locations());
+  for (auto rt_t = rt_transport_idx_t{0U}; rt_t != rtt.n_rt_transports();
+       ++rt_t) {
+    s += fmt::format("rt transport {}:", to_idx(rt_t));
+    for (auto i = stop_idx_t{0U};
+         i != rtt.rt_transport_location_seq_[rt_t].size(); ++i) {
+      s += fmt::format(" {}", to_idx(rtt.stop_location(rt_t, i)));
+    }
+    s += "\n";
+  }
+  for (auto const* fps : {&rtt.rt_footpaths_out_, &rtt.rt_footpaths_in_}) {
+    for (auto l = location_idx_t{0U}; l != fps->size(); ++l) {
+      auto sorted = std::vector<std::pair<std::uint32_t, std::int16_t>>{};
+      for (auto const fp : (*fps)[l]) {
+        sorted.emplace_back(to_idx(fp.target()), fp.duration().count());
+      }
+      std::ranges::sort(sorted);
+      for (auto const& [target, duration] : sorted) {
+        s += fmt::format("footpath {} {} -> {}: {}\n",
+                         fps == &rtt.rt_footpaths_out_ ? "out" : "in",
+                         to_idx(l), target, duration);
+      }
+    }
+  }
+  return s;
+}
+
 // Applies the updates; the transfer rules and the lower bounds follow, as
-// motis does after every update.
+// motis does after every update. Applying the same message a second time must
+// not change anything (motis with incremental_rt_update re-applies the same
+// feed every cycle).
+void update_msg(timetable const& tt,
+                rt_timetable& rtt,
+                transit_realtime::FeedMessage const& msg) {
+  EXPECT_EQ(0U, rt::validate_transfer_times(tt, rtt, tt.internal_interval()))
+      << "before the update";
+  auto const apply = [&]() {
+    rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "", msg);
+    rt::resolve_conflicts(tt, rtt);
+    rtt.update_lbs(tt);
+  };
+  apply();
+  EXPECT_EQ(0U, rt::validate_transfer_times(tt, rtt, tt.internal_interval()))
+      << "after the update";
+  auto const first = rt_state(rtt);
+  rt::resolve_conflicts(tt, rtt);
+  EXPECT_EQ(first, rt_state(rtt)) << "after resolving again";
+  apply();
+  EXPECT_EQ(first, rt_state(rtt)) << "after applying the update again";
+}
+
 void update(timetable const& tt,
             rt_timetable& rtt,
-            std::vector<trip_update> const& updates) {
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_msg(updates, kDay + std::chrono::hours{8}, "20190501"));
-  rt::resolve_conflicts(tt, rtt);
-  rtt.update_lbs(tt);
+            std::vector<trip_update> const& updates,
+            std::string const& start_date = "20190501") {
+  update_msg(tt, rtt,
+             test::to_msg(updates, kDay + std::chrono::hours{8}, start_date));
 }
 
 // Further stops and trips for the tests that need them:
@@ -204,6 +260,22 @@ INSTANTIATE_TEST_SUITE_P(
               g_from_f,
               gl_from_f,
               2U},
+        // F 8 min late (10:38) leaves exactly the default 2 min to G (10:40):
+        // the walk would do, the rule (8 min) does not.
+        delay{"delay_leaves_exactly_the_default_change_time",
+              "S,S,2,120,,,,\nS,S,2,480,,,F,G",
+              {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 8}}}},
+              kAtoB,
+              g_from_f,
+              gl_from_f},
+        // F 1 min early (10:29) leaves exactly the default 2 min to H (10:31),
+        // but F -> H is banned.
+        delay{"early_arrival_leaves_the_default_change_time_to_banned_partner",
+              "S,S,2,120,,,,\nS,S,3,,,,F,H",
+              {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = -1}}}},
+              kAtoC,
+              [] { return at("11:30"); },
+              [] { return at("11:30"); }},
         // A delay that leaves every rule decision as it was moves nothing:
         // F -> G still has 9 min >= 8 min.
         delay{"delay_within_rule_moves_nothing",
@@ -300,6 +372,61 @@ TEST(gtfsrt_transfer_rules, delay_makes_rule_beyond_rule_window_binding) {
   EXPECT_EQ(g_from_f(), arrival(tt, &rtt, kAtoB));
   update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 7}}}});
   EXPECT_EQ(g_from_f(), arrival(tt, &rtt, kAtoB));
+}
+
+// G3 leaves Y two days before it reaches S: service day 2019-05-01, S2 at
+// 58:40 = 2019-05-03 10:40. F3 runs on 2019-05-03, F3 -> G3 is guaranteed
+// (type 1, 0 min), the walk S1 -> S2 takes 5 min. F3 7 min late: 3 min is
+// enough by the guarantee but not by the walk. G3 has to be found as a partner
+// although its run started two days before.
+TEST(gtfsrt_transfer_rules, delay_keeps_rule_to_partner_of_earlier_day) {
+  auto const tt = test::load_network_with_walks(
+      "S,S,1,,,,F3,G3",
+      {.stops_ = {{"Y", 50.2, 6.0}},
+       .trips_ = {{"F3", "RF3", {{"A", "10:00"}, {"S1", "10:30"}}, "", 2U},
+                  {"G3",
+                   "RG3",
+                   {{"Y", "10:00"}, {"S2", "58:40"}, {"B", "59:00"}}}}},
+      {{"S1", "S2", 5}}, 3);
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  auto const arrival_at_b = [&]() {
+    return arrival(raptor_search(
+        tt, &rtt,
+        station_query(tt, "A", "B", test::t("2019-05-03 10:00 Europe/Berlin")),
+        direction::kForward));
+  };
+  EXPECT_EQ(test::t("2019-05-03 11:00 Europe/Berlin"), arrival_at_b());
+  update(tt, rtt, {{"F3", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 7}}}},
+         "20190503");
+  EXPECT_EQ(test::t("2019-05-03 11:00 Europe/Berlin"), arrival_at_b());
+}
+
+// F4 leaves Y two days before it reaches S: service day 2019-05-01, S1 at
+// 73:58 = 2019-05-04 01:58 (23:58 UTC). G4 runs on the next service day,
+// 2019-05-04: S2 02:08 (00:08 UTC). F4 -> G4 is guaranteed, the walk S1 -> S2
+// takes 5 min. G4 leaves 7 min early, 00:01 UTC: 3 min is enough by the
+// guarantee but not by the walk. F4 arrives on the UTC day before G4 leaves
+// and has to be found as a partner anyway.
+TEST(gtfsrt_transfer_rules, early_departure_keeps_rule_over_midnight) {
+  auto const tt = test::load_network_with_walks(
+      "S,S,1,,,,F4,G4",
+      {.stops_ = {{"Y", 50.2, 6.0}, {"W", 50.0, 6.3}},
+       .trips_ = {{"F4",
+                   "RF4",
+                   {{"Y", "10:00"}, {"W", "73:30"}, {"S1", "73:58"}}},
+                  {"G4", "RG4", {{"S2", "02:08"}, {"B", "02:30"}}, "", 3U}}},
+      {{"S1", "S2", 5}}, 4);
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  auto const arrival_at_b = [&]() {
+    return arrival(raptor_search(
+        tt, &rtt,
+        station_query(tt, "W", "B", test::t("2019-05-04 01:00 Europe/Berlin")),
+        direction::kForward));
+  };
+  EXPECT_EQ(test::t("2019-05-04 02:30 Europe/Berlin"), arrival_at_b());
+  update(tt, rtt, {{"G4", {{.seq_ = 1U, .stop_id_ = "S2", .dep_delay_ = -7}}}},
+         "20190504");
+  EXPECT_EQ(test::t("2019-05-04 02:23 Europe/Berlin"), arrival_at_b());
 }
 
 // X runs A -> S1 like F but has no rule. The split keeps it in F's route, so it
@@ -1184,4 +1311,306 @@ TEST(gtfsrt_transfer_rules, move_onto_location_without_departures) {
            {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 20, .dep_delay_ = 20},
             {.seq_ = 3U, .stop_id_ = "D", .arr_delay_ = 20}}}});
   EXPECT_EQ(at("11:35"), arrival(tt, &rtt, std::pair{"C", "D"}, "10:15"));
+}
+
+// F -> G (at S) and M -> K (at X) are guaranteed (type 1, 0 min), the walks
+// S1 <-> S2 and X1 <-> X2 take 5 min, S1 -> X1 8 min (X1 -> S1 30 min). F 7
+// min late and K 3 min early break both guarantees by the walks: F, K and
+// their partners G, M each move to a real-time virtual location. F -> K has no
+// rule, the walk between their locations is S1 -> X1's (not the way back): F
+// (10:37) still reaches K (10:47), not only KL (11:20) at X1.
+//   M  (RM): Y 10:10 -> X2 10:44
+//   K  (RK): X1 10:50 -> D 11:20
+//   KL (RK): X1 11:20 -> D 11:50
+TEST(gtfsrt_transfer_rules, walk_between_real_time_locations) {
+  auto const tt = test::load_network_with_walks(
+      "S,S,1,,,,F,G\nX,X,1,,,,M,K",
+      {.stops_ = {{"Y", 50.2, 6.8}},
+       .trips_ = {{"M", "RM", {{"Y", "10:10"}, {"X2", "10:44"}}},
+                  {"K", "RK", {{"X1", "10:50"}, {"D", "11:20"}}},
+                  {"KL", "RK", {{"X1", "11:20"}, {"D", "11:50"}}}}},
+      {{"S1", "S2", 5}, {"X1", "X2", 5}, {"S1", "X1", 8, 30}});
+  auto const f =
+      trip_update{"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 7}}};
+  auto const k =
+      trip_update{"K", {{.seq_ = 1U, .stop_id_ = "X1", .dep_delay_ = -3}}};
+  // Both orders: the location placed second builds the walk between them
+  // (F's from the walks out of S1, K's from the walks into X1).
+  for (auto const& updates : {std::vector{f, k}, std::vector{k, f}}) {
+    auto rtt = rt::create_rt_timetable(tt, kDay);
+    EXPECT_EQ(at("11:06"), arrival(tt, &rtt, std::pair{"A", "D"}));  // F -> F2
+    update(tt, rtt, updates);
+    ASSERT_EQ(4U, rtt.n_rt_locations()) << "precondition";
+    EXPECT_EQ(at("11:17"), arrival(tt, &rtt, std::pair{"A", "D"}))
+        << updates.front().trip_id_ << " first";
+  }
+}
+
+// F -> G takes 8 min by rule, Y2 -> HL 5 min, other changes at S 2 min. F 5
+// min late makes F -> G binding: F moves to a real-time virtual location at S1
+// it only arrives at (G moves as well). Y2 2 min late still makes HL (9 min >=
+// 5 min) and has to stay: the change from S2 to F's location has to be the one
+// to S1, although nothing leaves there.
+//   Y2 (RY): A2 10:20 -> S2 10:50
+TEST(gtfsrt_transfer_rules, partner_stays_next_to_arrival_only_location) {
+  auto const tt = load_network(
+      "S,S,2,120,,,,\nS,S,2,480,,,F,G\nS,S,2,300,,,Y2,HL",
+      {.trips_ = {{"Y2", "RY", {{"A2", "10:20"}, {"S2", "10:50"}}}}});
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  EXPECT_EQ(g_from_f(), arrival(tt, &rtt, kAtoB));
+  EXPECT_EQ(at("11:30"), arrival(tt, &rtt, std::pair{"A2", "C"}));
+  update(tt, rtt,
+         {{"Y2", {{.seq_ = 2U, .stop_id_ = "S2", .arr_delay_ = 2}}},
+          {"F", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 5}}}});
+  EXPECT_EQ(2U, rtt.n_rt_locations());
+  EXPECT_EQ(gl_from_f(), arrival(tt, &rtt, kAtoB));
+  EXPECT_EQ(at("11:30"), arrival(tt, &rtt, std::pair{"A2", "C"}));
+}
+
+// Changes at S4 take 2 min, RF -> RH 10 min, changes to RG are banned. F and
+// GX move to S4. F (10:30) -> H4 (10:35) breaks the RF -> RH rule: F moves to
+// a real-time virtual location at S4 it only arrives at (H4 moves as well).
+// GX (10:20) is banned from every arrival at S4, so it cannot stay on the
+// platform. Its own location keeps the walks from S1..S3: F0 (S3 09:30) still
+// reaches GX and B at 10:45, not only G (11:00).
+//   H4 (RH): S4 10:35 -> C 11:05
+//   GX (RG): S2 10:20 -> B 10:45
+TEST(gtfsrt_transfer_rules, banned_departure_keeps_walks_from_neighbours) {
+  auto const tt = load_network(
+      "S4,S4,2,120,,,,\nS4,S4,2,600,RF,RH,,\nS4,S4,3,,,RG,,",
+      {.trips_ = {{"H4", "RH", {{"S4", "10:35"}, {"C", "11:05"}}},
+                  {"GX", "RG", {{"S2", "10:20"}, {"B", "10:45"}}}}});
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  EXPECT_EQ(at("10:45"), arrival(tt, &rtt, std::pair{"A2", "B"}, "09:00"));
+  update(tt, rtt,
+         {{"GX", {{.seq_ = 1U, .stop_id_ = "S2", .assigned_ = "S4"}}},
+          {"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S4"}}}});
+  EXPECT_EQ("S4", stop_id_at(tt, rtt, "GX", 0U));
+  EXPECT_EQ(at("10:45"), arrival(tt, &rtt, std::pair{"A2", "B"}, "09:00"));
+}
+
+// RF -> RH is guaranteed (0 min), other changes at S1 take 2 min. X (no rule)
+// runs A -> S1 like F and stands on F's virtual location. H leaves 1 min
+// early: F has 0 min to H and has to make it, X 1 min and must not. No
+// footpath from their shared location does both: H moves, X keeps the 2 min to
+// it, F moves as well and keeps the guarantee.
+//   X (RX): A 09:59 -> S1 10:29
+TEST(gtfsrt_transfer_rules, guarantee_and_plain_change_on_one_location) {
+  auto const tt = load_network(
+      "S1,S1,2,120,,,,\nS1,S1,2,0,RF,RH,,",
+      {.trips_ = {{"X", "RX", {{"A", "09:59"}, {"S1", "10:29"}}}}});
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  auto const [x, trip] = resolve(tt, rtt, "X");
+  ASSERT_TRUE(x.valid());
+  auto const x_location = rt::frun{tt, &rtt, x}[1U].get_stop().location_idx();
+  ASSERT_TRUE(tt.locations_.is_virt(x_location));
+
+  // With X at its location at 10:29 (a search from A takes F at 10:00).
+  auto const from_x = [&]() {
+    auto q = routing::query{.start_time_ = at("10:29"),
+                            .start_ = {{x_location, 0_minutes, 0U}},
+                            .destination_ = {{lidx(tt, "C"), 0_minutes, 0U}}};
+    q.use_start_footpaths_ = true;
+    return arrival(raptor_search(tt, &rtt, std::move(q), direction::kForward));
+  };
+  EXPECT_EQ(at("11:00"), from_x());  // X -> H
+  EXPECT_EQ(at("11:00"), arrival(search(tt, rtt, kAtoC, "10:00")));  // F -> H
+  update(tt, rtt, {{"H", {{.seq_ = 1U, .stop_id_ = "S1", .dep_delay_ = -1}}}});
+  EXPECT_EQ(at("11:30"), from_x());  // X -> HL
+  EXPECT_EQ(at("10:59"), arrival(search(tt, rtt, kAtoC, "10:00")));  // F -> H
+}
+
+// Like guarantee_and_plain_change_on_one_location, but H leaves 2 min early
+// (10:29), in the minute X arrives on F's virtual location: 0 min is exactly
+// the guarantee's footpath, X (no rule) needs the 2 min default.
+TEST(gtfsrt_transfer_rules, plain_arrival_in_the_departure_minute_of_partner) {
+  auto const tt = load_network(
+      "S1,S1,2,120,,,,\nS1,S1,2,0,RF,RH,,",
+      {.trips_ = {{"X", "RX", {{"A", "09:59"}, {"S1", "10:29"}}}}});
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  auto const [x, trip] = resolve(tt, rtt, "X");
+  ASSERT_TRUE(x.valid());
+  auto const x_location = rt::frun{tt, &rtt, x}[1U].get_stop().location_idx();
+  auto const from_x = [&]() {
+    auto q = routing::query{.start_time_ = at("10:29"),
+                            .start_ = {{x_location, 0_minutes, 0U}},
+                            .destination_ = {{lidx(tt, "C"), 0_minutes, 0U}}};
+    q.use_start_footpaths_ = true;
+    return arrival(raptor_search(tt, &rtt, std::move(q), direction::kForward));
+  };
+  EXPECT_EQ(at("11:00"), from_x());  // X -> H
+  update(tt, rtt, {{"H", {{.seq_ = 1U, .stop_id_ = "S1", .dep_delay_ = -2}}}});
+  EXPECT_EQ(at("11:30"), from_x());  // X -> HL
+}
+
+// Like guarantee_and_plain_change_on_one_location, but X has a real-time
+// update (on time): its arrival on F's virtual location is a real-time
+// transport's event the window of H has to see as well.
+TEST(gtfsrt_transfer_rules,
+     guarantee_and_real_time_plain_change_on_one_location) {
+  auto const tt = load_network(
+      "S1,S1,2,120,,,,\nS1,S1,2,0,RF,RH,,",
+      {.trips_ = {{"X", "RX", {{"A", "09:59"}, {"S1", "10:29"}}}}});
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  auto const [x, trip] = resolve(tt, rtt, "X");
+  ASSERT_TRUE(x.valid());
+  auto const x_location = rt::frun{tt, &rtt, x}[1U].get_stop().location_idx();
+  ASSERT_TRUE(tt.locations_.is_virt(x_location));
+
+  auto const from_x = [&]() {
+    auto q = routing::query{.start_time_ = at("10:29"),
+                            .start_ = {{x_location, 0_minutes, 0U}},
+                            .destination_ = {{lidx(tt, "C"), 0_minutes, 0U}}};
+    q.use_start_footpaths_ = true;
+    return arrival(raptor_search(tt, &rtt, std::move(q), direction::kForward));
+  };
+  EXPECT_EQ(at("11:00"), from_x());  // X -> H
+  update(tt, rtt,
+         {{"X", {{.seq_ = 2U, .stop_id_ = "S1", .arr_delay_ = 0}}},
+          {"H", {{.seq_ = 1U, .stop_id_ = "S1", .dep_delay_ = -1}}}});
+  ASSERT_TRUE(resolve(tt, rtt, "X").first.is_rt()) << "precondition";
+  EXPECT_EQ(at("11:30"), from_x());  // X -> HL
+  EXPECT_EQ(at("10:59"), arrival(search(tt, rtt, kAtoC, "10:00")));  // F -> H
+}
+
+// The pattern of guarantee_and_plain_change_on_one_location twice, at S1 and
+// at X1, as two updates on one real-time timetable: H leaves 1 min early (F
+// and H move), then W leaves 1 min early (P and W move). The second update
+// adds footpaths for its locations to the real-time footpaths of the first,
+// which have to stay: F still makes H, X still misses it.
+//   X  (RX): A  09:59 -> S1 10:29
+//   V  (RV): A  11:59 -> S1 12:29 -> X1 12:49
+//   W  (RW): X1 12:51 -> D 13:20
+//   WL (RW): X1 13:21 -> D 13:50
+TEST(gtfsrt_transfer_rules, second_update_keeps_footpaths_of_first) {
+  auto const tt = load_network(
+      "S1,S1,2,120,,,,\nS1,S1,2,0,RF,RH,,\nX1,X1,2,120,,,,\nX1,X1,2,0,RP,RW,,",
+      {.trips_ = {
+           {"X", "RX", {{"A", "09:59"}, {"S1", "10:29"}}},
+           {"V", "RV", {{"A", "11:59"}, {"S1", "12:29"}, {"X1", "12:49"}}},
+           {"W", "RW", {{"X1", "12:51"}, {"D", "13:20"}}},
+           {"WL", "RW", {{"X1", "13:21"}, {"D", "13:50"}}}}});
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  auto const from = [&](std::string const& trip_id, stop_idx_t const stop,
+                        std::string_view const hhmm,
+                        std::string_view const to) {
+    auto const [r, _] = resolve(tt, rtt, trip_id);
+    auto q = routing::query{
+        .start_time_ = at(hhmm),
+        .start_ = {{rt::frun{tt, &rtt, r}[stop].get_stop().location_idx(),
+                    0_minutes, 0U}},
+        .destination_ = {{lidx(tt, to), 0_minutes, 0U}}};
+    q.use_start_footpaths_ = true;
+    return arrival(raptor_search(tt, &rtt, std::move(q), direction::kForward));
+  };
+  update(tt, rtt, {{"H", {{.seq_ = 1U, .stop_id_ = "S1", .dep_delay_ = -1}}}});
+  ASSERT_EQ(2U, rtt.n_rt_locations()) << "precondition";
+  EXPECT_EQ(at("11:30"), from("X", 1U, "10:29", "C"));  // X -> HL
+  EXPECT_EQ(at("10:59"), arrival(search(tt, rtt, kAtoC, "10:00")));  // F -> H
+  EXPECT_EQ(at("13:20"), from("V", 2U, "12:49", "D"));  // V -> W
+  update(tt, rtt, {{"W", {{.seq_ = 1U, .stop_id_ = "X1", .dep_delay_ = -1}}}});
+  ASSERT_EQ(4U, rtt.n_rt_locations()) << "precondition";
+  EXPECT_EQ(at("13:50"), from("V", 2U, "12:49", "D"));  // V -> WL
+  EXPECT_EQ(at("13:19"),
+            arrival(search(tt, rtt, std::pair{"A", "D"}, "12:00")));
+  EXPECT_EQ(at("11:30"), from("X", 1U, "10:29", "C"));  // X -> HL
+  EXPECT_EQ(at("10:59"), arrival(search(tt, rtt, kAtoC, "10:00")));  // F -> H
+}
+
+// B1 and B2 are one vehicle (block BL): B1 A2 10:00 -> S1 10:30, B2 S1 10:30
+// -> C 11:00. The rule B2 -> F2 (10 min) names an arrival of B2 at S1 that B2
+// does not have: the vehicle's arrival at S1 is B1's (B2's stop range starts
+// there, the arrival belongs to B1's section). F2 leaves 1 min late (10:37):
+// B1 still makes it by the default 2 min, the rule must not decide.
+TEST(gtfsrt_transfer_rules, rule_on_arrival_the_continuing_trip_does_not_have) {
+  auto const tt = load_network(
+      "S1,S1,2,120,,,,\nS1,S1,2,600,,,B2,F2",
+      {.trips_ = {{"B1", "RB1", {{"A2", "10:00"}, {"S1", "10:30"}}, "BL"},
+                  {"B2", "RB2", {{"S1", "10:30"}, {"C", "11:00"}}, "BL"}}});
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  EXPECT_EQ(at("11:06"), arrival(tt, &rtt, std::pair{"A2", "D"}));
+  update(tt, rtt, {{"F2", {{.seq_ = 1U, .stop_id_ = "S1", .dep_delay_ = 1}}}});
+  EXPECT_EQ(at("11:07"), arrival(tt, &rtt, std::pair{"A2", "D"}));
+}
+
+// Every single-trip delay from -4 to +14 min on six rule sets: update() checks
+// the transfer times (validate_transfer_times) and that applying the update
+// again changes nothing.
+TEST(gtfsrt_transfer_rules, delays_keep_transfer_times_sweep) {
+  auto const rule_sets = std::vector<std::string>{
+      "S,S,2,120,,,,\nS,S,2,480,,,F,G",
+      "S1,S1,2,120,,,,\nS1,S1,2,0,RF,RH,,",
+      "S,S,2,120,,,,\nS,S,2,600,RF,RG,,",
+      "S,S,2,120,,,,\nS,S,3,,,,F,H",
+      "S,S,2,120,,,,\nS,S,2,300,,,F,G\nS,S,2,60,,,F2,G",
+      "S1,S1,2,120,,,,\nS1,S1,2,0,RF,RH,,\nS1,S1,2,300,RX,RH,,"};
+  struct upd {
+    std::string trip_;
+    unsigned seq_;
+    std::string stop_;
+    bool is_arr_;
+  };
+  auto const trips = std::vector<upd>{
+      {"F", 2U, "S1", true},  {"X", 2U, "S1", true},   {"G", 1U, "S2", false},
+      {"H", 1U, "S1", false}, {"F2", 1U, "S1", false}, {"HL", 1U, "S1", false}};
+  for (auto const& rules : rule_sets) {
+    auto const tt = load_network(
+        rules, {.trips_ = {{"X", "RX", {{"A", "09:59"}, {"S1", "10:29"}}}}});
+    for (auto const& u : trips) {
+      for (auto delay = -4; delay <= 14; ++delay) {
+        SCOPED_TRACE(
+            fmt::format("rules=[{}] trip={} delay={}", rules, u.trip_, delay));
+        auto rtt = rt::create_rt_timetable(tt, kDay);
+        auto s = test::stu{.seq_ = u.seq_, .stop_id_ = u.stop_};
+        if (u.is_arr_) {
+          s.arr_delay_ = delay;
+        } else {
+          s.dep_delay_ = delay;
+        }
+        update(tt, rtt, {{u.trip_, {s}}});
+      }
+    }
+  }
+}
+
+// Z is added in real time (NEW, route RG: no rule). It gets off passengers at
+// S1 but takes none (pickupType NONE). Its arrival at S1 is a plain event with
+// the default 2 min: 10:29 -> H 10:31 works, after H leaves 1 min early
+// (10:30) it does not, while F -> H keeps its guarantee (0 min).
+TEST(gtfsrt_transfer_rules, added_trip_at_rule_stop) {
+  auto const tt = load_network("S1,S1,2,120,,,,\nS1,S1,2,0,RF,RH,,");
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  auto const time = [](std::string_view const hhmm) {
+    return at(hhmm).time_since_epoch().count() * 60;
+  };
+  auto msg = transit_realtime::FeedMessage{};
+  ASSERT_TRUE(google::protobuf::util::JsonStringToMessage(
+                  fmt::format(R"({{
+ "header": {{"gtfsRealtimeVersion": "2.0", "incrementality": "FULL_DATASET",
+             "timestamp": "{}"}},
+ "entity": [{{"id": "z", "tripUpdate": {{
+   "trip": {{"tripId": "Z", "startTime": "10:00:00", "startDate": "20190501",
+            "scheduleRelationship": "NEW", "routeId": "RG"}},
+   "stopTimeUpdate": [
+    {{"stopSequence": 1, "stopId": "A2", "arrival": {{"time": "{}"}},
+      "departure": {{"time": "{}"}}}},
+    {{"stopSequence": 2, "stopId": "S1", "arrival": {{"time": "{}"}},
+      "departure": {{"time": "{}"}},
+      "stopTimeProperties": {{"dropOffType": "REGULAR", "pickupType": "NONE"}}}},
+    {{"stopSequence": 3, "stopId": "D", "arrival": {{"time": "{}"}},
+      "departure": {{"time": "{}"}}}}]}}}}]}})",
+                              time("08:00"), time("10:00"), time("10:00"),
+                              time("10:29"), time("10:29"), time("11:00"),
+                              time("11:00")),
+                  &msg)
+                  .ok());
+  update_msg(tt, rtt, msg);
+  ASSERT_EQ(1U, rtt.n_rt_transports()) << "precondition";
+  EXPECT_EQ(at("11:00"), arrival(tt, &rtt, std::pair{"A2", "C"}));  // Z -> H
+  EXPECT_EQ(at("11:00"), arrival(tt, &rtt, std::pair{"A2", "D"}));  // Z
+  EXPECT_EQ(at("11:06"),  // F2: Z takes no one at S1
+            arrival(tt, &rtt, std::pair{"S1", "D"}, "10:29"));
+  update(tt, rtt, {{"H", {{.seq_ = 1U, .stop_id_ = "S1", .dep_delay_ = -1}}}});
+  EXPECT_EQ(at("11:30"), arrival(tt, &rtt, std::pair{"A2", "C"}));  // Z -> HL
+  EXPECT_EQ(at("10:59"), arrival(tt, &rtt, kAtoC));  // F -> H
 }
