@@ -4,10 +4,7 @@
 
 #include "nigiri/loader/gtfs/stop.h"
 #include "nigiri/loader/gtfs/trip.h"
-
-namespace nigiri {
-struct timetable;
-}
+#include "nigiri/timetable.h"
 
 namespace nigiri::loader::gtfs {
 

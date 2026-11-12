@@ -3,12 +3,9 @@
 #include <cstdint>
 #include <span>
 
+#include "nigiri/timetable.h"
 #include "nigiri/transfer_rules.h"
 #include "nigiri/types.h"
-
-namespace nigiri {
-struct timetable;
-}  // namespace nigiri
 
 namespace nigiri::loader {
 

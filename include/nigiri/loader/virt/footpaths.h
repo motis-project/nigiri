@@ -1,11 +1,8 @@
 #pragma once
 
 #include "nigiri/footpath.h"
+#include "nigiri/timetable.h"
 #include "nigiri/types.h"
-
-namespace nigiri {
-struct timetable;
-}  // namespace nigiri
 
 namespace nigiri::loader {
 

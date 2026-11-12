@@ -1,16 +1,15 @@
 #pragma once
 
+#include "nigiri/loader/import_context.h"
 #include "nigiri/footpath.h"
+#include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
-struct timetable;
 struct shapes_storage;
 }  // namespace nigiri
 
 namespace nigiri::loader {
-
-struct import_context;
 
 void apply_transfer_rules(
     timetable&,

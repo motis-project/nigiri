@@ -1,16 +1,12 @@
 #pragma once
 
 #include "nigiri/loader/transfer_rules.h"
+#include "nigiri/loader/virt/signatures.h"
+#include "nigiri/timetable.h"
 #include "nigiri/transfer_rules.h"
 #include "nigiri/types.h"
 
-namespace nigiri {
-struct timetable;
-}  // namespace nigiri
-
 namespace nigiri::loader {
-
-struct signatures;
 
 struct transfer_durations {
   duration_t fallback_;

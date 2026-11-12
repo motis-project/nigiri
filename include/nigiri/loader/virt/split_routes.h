@@ -1,15 +1,11 @@
 #pragma once
 
+#include "nigiri/loader/virt/route_stop_pairs.h"
 #include "nigiri/loader/virt/signatures.h"
+#include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
-namespace nigiri {
-struct timetable;
-}  // namespace nigiri
-
 namespace nigiri::loader {
-
-struct route_stop_pairs;
 
 struct transport_routes {
   route_idx_t get_route(timetable const&,
