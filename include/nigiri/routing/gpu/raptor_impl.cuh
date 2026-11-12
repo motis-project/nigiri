@@ -141,7 +141,7 @@ struct raptor_impl {
       }
 
       for (auto d = global_t_id; d < n_dest_locs_; d += get_global_stride()) {
-        update_time_at_dest(k, best_.get(dest_locs_[d], Vias));
+        update_time_at_dest(k, round_times_.get(k, dest_locs_[d], Vias));
       }
     }
 
