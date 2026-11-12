@@ -32,6 +32,7 @@ void get_starts(
     std::vector<offset> const& start_offsets,
     hash_map<location_idx_t, std::vector<td_offset>> const& start_td_offsets,
     std::vector<via_stop> const& via_stops,
+    bitvec const& is_dest,
     duration_t const max_start_offset,
     location_match_mode,
     bool use_start_footpaths,
@@ -39,6 +40,8 @@ void get_starts(
     bool add_ontrip,
     profile_idx_t,
     transfer_time_settings const&);
+
+bool start_dest_overlap(timetable const&, query const&);
 
 void collect_destinations(timetable const&,
                           std::vector<offset> const& destinations,

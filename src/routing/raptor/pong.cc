@@ -120,6 +120,9 @@ routing_result pong(timetable const& tt,
                         return interval<unixtime_t>{start_time, start_time};
                       }},
       q.start_time_);
+  if (start_dest_overlap(tt, q)) {
+    return {.journeys_ = &s_state.results_, .interval_ = search_interval};
+  }
   auto const base_day =
       day_idx_t{std::chrono::duration_cast<date::days>(
                     std::chrono::round<std::chrono::days>(
@@ -283,9 +286,9 @@ routing_result pong(timetable const& tt,
 
     starts.clear();
     get_starts(SearchDir, tt, rtt, start_time, q.start_, q.td_start_,
-               q.via_stops_, q.max_start_offset_, q.start_match_mode_,
-               q.use_start_footpaths_, starts, false, q.prf_idx_,
-               q.transfer_time_settings_);
+               q.via_stops_, ping_is_dest, q.max_start_offset_,
+               q.start_match_mode_, q.use_start_footpaths_, starts, false,
+               q.prf_idx_, q.transfer_time_settings_);
     ping.reset_arrivals();
     ping.next_start_time();
     for (auto const& s : starts) {
@@ -336,7 +339,7 @@ routing_result pong(timetable const& tt,
     auto const run_pong = [&](auto& po, journey& ping_j) {
       starts.clear();
       get_starts(flip(SearchDir), tt, rtt, ping_j.dest_time_, q.start_,
-                 q.td_start_, q.via_stops_, q.max_start_offset_,
+                 q.td_start_, q.via_stops_, pong_is_dest, q.max_start_offset_,
                  q.start_match_mode_,
                  q.start_match_mode_ != location_match_mode::kIntermodal,
                  starts, false, q.prf_idx_, q.transfer_time_settings_);
