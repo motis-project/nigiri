@@ -134,7 +134,7 @@ void build_footpaths(timetable& tt,
   auto walks = mutable_fws_multimap<location_idx_t, footpath>{};
   walks[location_idx_t{tt.n_locations() - 1U}];  // resize
   link_nearby_stations(tt, ctx, walks);  // the equivalences
-  if (!opt.walks_) {
+  if (!opt.compute_walks_) {
     auto const timer = scoped_timer{"loader.footpath.beelines"};
     add_equivalence_footpaths(tt, ctx, walks, opt.max_footpath_length_);
     add_transitive_walks(tt, walks, opt.max_footpath_length_);
@@ -146,8 +146,8 @@ void build_footpaths(timetable& tt,
                      opt.src_tags_);
   }
 
-  if (opt.walks_) {
-    opt.walks_(tt, walks);
+  if (opt.compute_walks_) {
+    opt.compute_walks_(tt, walks);
   }
 
   // Then transfer times.

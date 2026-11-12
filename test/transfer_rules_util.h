@@ -81,7 +81,7 @@ inline timetable load_feeds(
       {.merge_dupes_intra_src_ = false,
        .merge_dupes_inter_src_ = false,
        .max_footpath_length_ = std::numeric_limits<std::uint16_t>::max(),
-       .walks_ = std::move(walks)});
+       .compute_walks_ = std::move(walks)});
   return tt;
 }
 
