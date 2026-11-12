@@ -111,7 +111,7 @@ void for_each_footpath(direction const search_dir,
 }
 
 // Time-dependent walks between stops (by their source) ignore transfer rules:
-// a virtual location walks like its stop. They replace all static walks of
+// a virtual location walks like its stop. They replace all static footpaths of
 // their source, so they connect its locations.
 void expand_td_footpaths_to_virts(
     timetable const&, std::map<location_idx_t, std::vector<td_footpath>>&);

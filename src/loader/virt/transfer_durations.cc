@@ -22,7 +22,7 @@ duration_t get_transfer_time(timetable const& tt, location_idx_t const l) {
 }
 
 // Unqualified transfer rules are already applied to the walks.
-duration_t get_walk(
+duration_t get_fallback(
     timetable const& tt,
     mutable_fws_multimap<location_idx_t, footpath> const& fallback_fps,
     location_idx_t const from,
@@ -81,7 +81,7 @@ hash_map<transfer_pair, transfer_durations> get_transfer_durations(
         }
         auto& d =
             utl::get_or_create(durations_of, transfer_pair{from, to}, [&]() {
-              auto const fallback = get_walk(tt, fallback_fps, from, to);
+              auto const fallback = get_fallback(tt, fallback_fps, from, to);
               return transfer_durations{
                   fallback, window_t{fallback, fallback + duration_t{1}}};
             });

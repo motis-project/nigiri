@@ -19,7 +19,7 @@ void expand_td_footpaths_to_virts(
             expanded[a].push_back({b, valid_from, d});
           });
     };
-    // Every location of l replaces its static walks, also without td walks.
+    // Every location of l replaces its static footpaths, also without td walks.
     expanded[l];
     loc.for_each_virt(l, [&](location_idx_t const v) { expanded[v]; });
     if (loc.transfer_time_[l] != kNoTransferAllowed) {
