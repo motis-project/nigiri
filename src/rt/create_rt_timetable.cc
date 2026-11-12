@@ -1,5 +1,7 @@
 #include "nigiri/rt/create_rt_timetable.h"
 
+#include <algorithm>
+
 #include "utl/enumerate.h"
 #include "utl/verify.h"
 
@@ -17,7 +19,7 @@ rt_timetable create_rt_timetable(timetable const& tt,
   auto rtt = rt_timetable{};
   rtt.tt_ = &tt;
   rtt.transport_traffic_days_ = tt.transport_traffic_days_;
-  rtt.base_day_ = base_day;
+  rtt.base_day_ = std::max(base_day, tt.internal_interval_days().from_);
   rtt.base_day_idx_ = tt.day_idx(rtt.base_day_);
   // resize for later memory accesses
   rtt.location_rt_transports_[location_idx_t{tt.n_locations() - 1U}];
@@ -29,6 +31,7 @@ rt_timetable create_rt_timetable(timetable const& tt,
     rtt.alerts_.route_id_[source_idx_t{src}].resize(r.route_id_type_.size());
   }
   rtt.alerts_.location_.resize(tt.n_locations());
+  rtt.alerts_.trip_.resize(tt.n_trips());
   rtt.alerts_.agency_.resize(tt.n_agencies());
   for (auto i = 0U; i != kNProfiles; ++i) {
     if (!tt.locations_.footpaths_out_[i].empty()) {

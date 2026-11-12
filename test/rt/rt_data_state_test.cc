@@ -4,7 +4,6 @@
 #include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
-#include "nigiri/rt/gtfsrt_alert.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -130,20 +129,17 @@ TEST(rt, data_state_static_run) {
             get_states(tt, rtt));
 }
 
-TEST(rt, data_state_rt_transport_from_alert) {
+TEST(rt, data_state_rt_transport_without_times) {
   auto tt =
       loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   auto rtt = rt::create_rt_timetable(tt, kBaseDay);
-  auto stats = statistics{.total_entities_ = 0, .feed_timestamp_ = {}};
 
-  // An alert for the trip creates an RT transport without any times.
-  auto a = transit_realtime::Alert{};
-  auto const td = a.add_informed_entity()->mutable_trip();
-  td->set_trip_id("T1");
-  td->set_start_date("20190501");
-  td->set_start_time("10:00:00");
-  handle_alert(kBaseDay, tt, rtt, source_idx_t{0}, "tag", a, stats);
+  // An RT transport copied from the static run, without any RT times.
+  auto const static_fr = get_frun(tt, rtt);
+  ASSERT_TRUE(static_fr.valid());
+  ASSERT_FALSE(static_fr.is_rt());
+  rtt.add_rt_transport(source_idx_t{0}, tt, static_fr.t_);
 
   auto const fr = get_frun(tt, rtt);
   ASSERT_TRUE(fr.is_rt());

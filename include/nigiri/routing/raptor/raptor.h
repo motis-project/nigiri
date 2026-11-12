@@ -198,7 +198,7 @@ struct raptor {
     }
 
     if constexpr (Rt) {
-      if (prf_idx_ != 0U) {
+      if (has_profile_td_footpaths(prf_idx_)) {
         // td_footpaths have no upper bound -> disable pruning
         constexpr auto const kPassAll =
             kFwd ? std::numeric_limits<delta_t>::min()
@@ -252,15 +252,16 @@ struct raptor {
     state_.station_mark_.set(to_idx(l), true);
   }
 
-  void execute(unixtime_t const start_time,
-               std::uint8_t const max_transfers,
-               unixtime_t const worst_time_at_dest,
-               pareto_set<journey>& results) {
+  void execute(
+      unixtime_t const start_time,
+      std::uint8_t const max_transfers,
+      std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
+      pareto_set<journey>& results) {
     auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
 
-    auto const d_worst_at_dest = to_delta(worst_time_at_dest);
-    for (auto& time_at_dest : time_at_dest_) {
-      time_at_dest = get_best(d_worst_at_dest, time_at_dest);
+    for (auto k = 0U; k != time_at_dest_.size(); ++k) {
+      time_at_dest_[k] =
+          get_best(to_delta(worst_time_at_dest[k]), time_at_dest_[k]);
     }
 
     trace_print_init_state();
@@ -275,7 +276,7 @@ struct raptor {
         }
       }
       is_dest_.for_each_set_bit([&](std::uint64_t const i) {
-        update_time_at_dest(k, best_[i][Vias]);
+        update_time_at_dest(k, round_times_[k][i][Vias]);
       });
 
       auto any_marked = false;
@@ -874,9 +875,10 @@ private:
       // (see update_td_offsets) and replace all its static footpaths.
       auto const has_td_fps = [&](location_idx_t const x, bool const out) {
         if constexpr (Rt) {
-          return prf_idx_ != 0U && (out ? rtt_->has_td_footpaths_out_
-                                        : rtt_->has_td_footpaths_in_)[prf_idx_]
-                                       .test(x);
+          return has_profile_td_footpaths(prf_idx_) &&
+                 (out ? rtt_->has_td_footpaths_out_
+                      : rtt_->has_td_footpaths_in_)[prf_idx_]
+                     .test(x);
         } else {
           return false;
         }
@@ -996,7 +998,7 @@ private:
       return;
     }
 
-    if (prf_idx_ == 0U) {
+    if (!has_profile_td_footpaths(prf_idx_)) {
       return;
     }
 

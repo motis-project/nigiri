@@ -96,15 +96,16 @@ query_engine<UseLowerBounds>::query_engine(
 }
 
 template <bool UseLowerBounds>
-void query_engine<UseLowerBounds>::execute(unixtime_t const start_time,
-                                           std::uint8_t const max_transfers,
-                                           unixtime_t const worst_time_at_dest,
-                                           pareto_set<journey>& results) {
+void query_engine<UseLowerBounds>::execute(
+    unixtime_t const start_time,
+    std::uint8_t const max_transfers,
+    std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
+    pareto_set<journey>& results) {
   tb_queue_dbg("--- EXECUTE START_TIME={}", start_time);
 
   for (auto k = 0U; k != kMaxTransfers; ++k) {
-    if (state_.t_min_[k] >= worst_time_at_dest) {
-      state_.t_min_[k] = worst_time_at_dest;
+    if (state_.t_min_[k] >= worst_time_at_dest[k + 1U]) {
+      state_.t_min_[k] = worst_time_at_dest[k + 1U];
       state_.parent_[k] = queue_entry::kNoParent;
     }
   }

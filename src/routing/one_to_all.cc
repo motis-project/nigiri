@@ -41,7 +41,10 @@ void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
         [&](nigiri::location_idx_t const l) { algo.add_start(l, t); });
   }
 
-  algo.execute(start_time, q.max_transfers_, worst_time_at_dest, results);
+  auto worst = std::array<unixtime_t, kMaxTransfers + 2U>{};
+  worst.fill(worst_time_at_dest);
+
+  algo.execute(start_time, q.max_transfers_, worst, results);
 }
 
 template <direction SearchDir>
