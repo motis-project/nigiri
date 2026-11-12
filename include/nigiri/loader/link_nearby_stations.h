@@ -1,3 +1,5 @@
+#pragma once
+
 #include "nigiri/footpath.h"
 #include "nigiri/types.h"
 
