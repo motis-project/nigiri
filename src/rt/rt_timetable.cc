@@ -200,7 +200,7 @@ void rt_timetable::update_stop_location(rt_transport_idx_t const rt_t,
   seq[stop_idx] = stop{seq[stop_idx]}.with_location(static_location(l)).value();
 
   if (is_rt || !rt_stop_virts(rt_t).empty()) {
-    auto locs = rt_stop_virts_[rt_t];
+    auto locs = rt_transport_stop_virts_[rt_t];
     locs.resize(static_cast<std::uint32_t>(seq.size()),
                 location_idx_t::invalid());
     locs[stop_idx] = is_rt ? l : location_idx_t::invalid();
@@ -223,7 +223,7 @@ location_idx_t rt_timetable::add_rt_location(location_idx_t const parent) {
   auto const l = location_idx_t{n_locations()};
   utl::verify(l < footpath::kMaxTarget, "rt location index overflow");
   rt_location_parents_.push_back(parent);
-  rt_virts_[parent].push_back(l);
+  location_rt_virts_[parent].push_back(l);
   location_rt_transports_[l];
   rt_footpaths_out_.resize(n_locations());
   rt_footpaths_in_.resize(n_locations());

@@ -25,7 +25,8 @@ using split_route_idx_t = cista::strong<std::uint32_t, struct split_route_>;
 route_idx_t transport_routes::get_route(timetable const& tt,
                                         route_idx_t const r,
                                         route_transport_idx_t const t) const {
-  return route_[tt.route_transport_ranges_[base_route_[r]].from_ + to_idx(t)];
+  return transport_route_[tt.route_transport_ranges_[base_route_[r]].from_ +
+                          to_idx(t)];
 }
 
 transport_routes split_routes(timetable const& tt, route_stop_pairs& pairs) {
@@ -36,7 +37,7 @@ transport_routes split_routes(timetable const& tt, route_stop_pairs& pairs) {
   routes.base_route_.resize(tt.n_routes());
   std::iota(begin(routes.base_route_), end(routes.base_route_),
             route_idx_t{0U});
-  routes.route_ = tt.transport_route_;
+  routes.transport_route_ = tt.transport_route_;
 
   auto const reassign_transfers = [&](route_stop_pair_idx_t const p) {
     auto const route_of = [&](route_stop const& s,
@@ -268,7 +269,7 @@ transport_routes split_routes(timetable const& tt, route_stop_pairs& pairs) {
       }
 
       // Update (transport -> split route) mapping.
-      routes.route_[range.from_ + to_idx(t)] = split_route[to_idx(k)];
+      routes.transport_route_[range.from_ + to_idx(t)] = split_route[to_idx(k)];
     }
 
     // Repartition all pairs.

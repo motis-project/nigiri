@@ -13,7 +13,7 @@ struct transport_routes {
                         route_transport_idx_t) const;
 
   vector_map<route_idx_t, route_idx_t> base_route_;
-  vector_map<transport_idx_t, route_idx_t> route_;
+  vector_map<transport_idx_t, route_idx_t> transport_route_;
 };
 
 transport_routes split_routes(timetable const&, route_stop_pairs&);

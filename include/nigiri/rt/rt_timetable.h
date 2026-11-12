@@ -316,7 +316,8 @@ struct rt_timetable {
   }
   template <typename Fn>
   void for_each_rt_virt(location_idx_t const base, Fn&& fn) const {
-    if (auto const it = rt_virts_.find(base); it != end(rt_virts_)) {
+    if (auto const it = location_rt_virts_.find(base);
+        it != end(location_rt_virts_)) {
       for (auto const v : it->second) {
         fn(v);
       }
@@ -327,10 +328,10 @@ struct rt_timetable {
 
   std::span<location_idx_t const> rt_stop_virts(
       rt_transport_idx_t const rt_t) const {
-    if (rt_t >= rt_stop_virts_.size()) {
+    if (rt_t >= rt_transport_stop_virts_.size()) {
       return {};
     }
-    auto const b = rt_stop_virts_[rt_t];
+    auto const b = rt_transport_stop_virts_[rt_t];
     return {b.begin(), b.size()};
   }
   location_idx_t stop_location(rt_transport_idx_t const rt_t,
@@ -446,9 +447,10 @@ struct rt_timetable {
   change_callback_t change_callback_;
 
   vector_map<rt_location_idx_t, location_idx_t> rt_location_parents_;
-  hash_map<location_idx_t, vector<location_idx_t>> rt_virts_;
+  hash_map<location_idx_t, vector<location_idx_t>> location_rt_virts_;
 
-  mutable_fws_multimap<rt_transport_idx_t, location_idx_t> rt_stop_virts_;
+  mutable_fws_multimap<rt_transport_idx_t, location_idx_t>
+      rt_transport_stop_virts_;
 
   vecvec<location_idx_t, footpath> rt_footpaths_out_;
   vecvec<location_idx_t, footpath> rt_footpaths_in_;

@@ -167,7 +167,7 @@ void write_routes(timetable& tt,
   for (auto r = route_idx_t{0U}; r != routes.base_route_.size(); ++r) {
     transports.clear();
     for (auto const t : tt.route_transport_ranges_[routes.base_route_[r]]) {
-      if (routes.route_[t] == r) {
+      if (routes.transport_route_[t] == r) {
         transports.push_back(t);
       }
     }

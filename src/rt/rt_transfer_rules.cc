@@ -166,9 +166,9 @@ auto get_virts(timetable const& tt,
   }
 
   // Rt-virts.
-  auto const rt_virts_it = rtt.rt_virts_.find(base);
+  auto const rt_virts_it = rtt.location_rt_virts_.find(base);
   auto const rt_virts =
-      rt_virts_it == end(rtt.rt_virts_)
+      rt_virts_it == end(rtt.location_rt_virts_)
           ? std::span<location_idx_t const>{}
           : std::span<location_idx_t const>{rt_virts_it->second};
 
