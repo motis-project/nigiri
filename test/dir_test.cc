@@ -73,23 +73,28 @@ TEST(dir, directory_listing) {
             fs.list_files("stamm/bahnhof.101"));
 }
 
-TEST(nigiri, nested_gtfs) {
-  auto const paths =
-      std::vector{"test/test_data/nested_gtfs_data/outer_fs_inner_fs",
-                  "test/test_data/nested_gtfs_data/outer_fs_inner_zip",
-                  "test/test_data/nested_gtfs_data/outer_zip_inner_fs.zip",
-                  "test/test_data/nested_gtfs_data/outer_zip_inner_zip.zip"};
+auto const nested_gtfs_paths =
+    std::vector{"test/test_data/nested_gtfs_data/outer_fs_inner_fs",
+                "test/test_data/nested_gtfs_data/outer_fs_inner_zip",
+                "test/test_data/nested_gtfs_data/outer_zip_inner_fs.zip",
+                "test/test_data/nested_gtfs_data/outer_zip_inner_zip.zip"};
 
-  for (auto const path : paths) {
+TEST(nigiri, find_nested_gtfs) {
+  for (auto const path : nested_gtfs_paths) {
     auto const sub_dir = gtfs::find_gtfs_root(make_dir(path), false);
-    // The root is found in all cases.
     EXPECT_TRUE(sub_dir->exists("agency.txt"));
     EXPECT_TRUE(sub_dir->exists("routes.txt"));
     EXPECT_TRUE(sub_dir->exists("trips.txt"));
     EXPECT_TRUE(sub_dir->exists("stop_times.txt"));
+  }
+}
 
-    // The validation finds the errors in the gtfs subfolders.
-    auto const accepted_dirs = gtfs::validate_sources(std::vector<timetable_source>{timetable_source{.tag_ = "", .path_ = path}});
+TEST(nigiri, validate_nested_gtfs) {
+  for (auto const path : nested_gtfs_paths) {
+    auto const sub_dir = gtfs::find_gtfs_root(make_dir(path), false);
+    auto const accepted_dirs =
+        gtfs::validate_sources(std::vector<timetable_source>{
+            timetable_source{.tag_ = "", .path_ = path}});
     EXPECT_TRUE(accepted_dirs.empty());
   }
 }
