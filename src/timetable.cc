@@ -65,15 +65,19 @@ translation_idx_t timetable::register_translation(translated_str_t const& s) {
 
         auto transliterations = x;
         for (auto const& t : x) {
+          if (std::ranges::find_if(x, [&](auto const& tr) {
+                auto const l = tr.get_language();
+                return l.size() == t.get_language().size() +
+                                       std::string_view("-Latn").size() &&
+                       l.starts_with(t.get_language()) && l.ends_with("-Latn");
+              }) != std::end(x)) {
+            continue;
+          }
           auto const translit = transliterate(t.get_text(), t.get_language());
           if (!translit) {
             continue;
           }
-          if (std::ranges::find_if(x, [&](auto const& tr) {
-                return tr.get_text() == translit->get_text();
-              }) == std::end(x)) {
-            transliterations.emplace_back(*translit);
-          }
+          transliterations.emplace_back(*translit);
         }
 
         translations_.emplace_back(
