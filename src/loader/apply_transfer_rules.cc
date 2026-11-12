@@ -121,13 +121,13 @@ vector_map<route_stop_idx_t, location_idx_t> add_virts(
   return virts;
 }
 
-mutable_fws_multimap<location_idx_t, footpath> get_virt_footpaths(
+mutable_fws_multimap<location_idx_t, footpath> get_qualified_rule_fps(
     timetable const& tt,
     route_stop_pairs const& pairs,
     vector_map<route_stop_idx_t, route_stop_idx_t> const& route_stop_location,
     vector_map<route_stop_idx_t, location_idx_t> const& virts) {
-  auto virt_footpaths = mutable_fws_multimap<location_idx_t, footpath>{};
-  virt_footpaths[location_idx_t{tt.n_locations() - 1U}];
+  auto qualified_rule_fps = mutable_fws_multimap<location_idx_t, footpath>{};
+  qualified_rule_fps[location_idx_t{tt.n_locations() - 1U}];
   auto n_footpaths = std::size_t{0U};
   for (auto p = route_stop_pair_idx_t{0U}; p != pairs.pairs_.size(); ++p) {
     auto const [a, b] = pairs.pairs_[p];
@@ -145,11 +145,11 @@ mutable_fws_multimap<location_idx_t, footpath> get_virt_footpaths(
         *d == fallback) {
       continue;
     }
-    virt_footpaths[virts[a]].push_back(footpath{virts[b], to_duration(*d)});
+    qualified_rule_fps[virts[a]].push_back(footpath{virts[b], to_duration(*d)});
     ++n_footpaths;
   }
   log(log_lvl::info, "loader.virtual_locations", "{} footpaths", n_footpaths);
-  return virt_footpaths;
+  return qualified_rule_fps;
 }
 
 void write_routes(timetable& tt,
@@ -268,7 +268,7 @@ void apply_transfer_rules(
     import_context& ctx,
     shapes_storage* shapes,
     mutable_fws_multimap<location_idx_t, footpath>& walks) {
-  auto virt_footpaths = mutable_fws_multimap<location_idx_t, footpath>{};
+  auto qualified_rule_fps = mutable_fws_multimap<location_idx_t, footpath>{};
   if (!tt.transfer_rules_.rules_.empty()) {
     apply_unqualified_rules(tt, walks);
     write_trip_has_rule(tt);
@@ -283,8 +283,8 @@ void apply_transfer_rules(
     auto const virts = add_virts(tt, ctx, pairs, route_stop_location);
     if (tt.n_locations() != n_locations) {
       write_routes(tt, ctx, sigs, pairs, routes, virts, shapes);
-      virt_footpaths =
-          get_virt_footpaths(tt, pairs, route_stop_location, virts);
+      qualified_rule_fps =
+          get_qualified_rule_fps(tt, pairs, route_stop_location, virts);
       tt.location_location_groups_.resize(tt.n_locations());
       if (tt.location_areas_.size() != 0U) {
         tt.location_areas_.resize(tt.n_locations());
@@ -292,7 +292,7 @@ void apply_transfer_rules(
     }
     write_rule_locations(tt);
   }
-  write_profiles(tt, walks, virt_footpaths);
+  write_profiles(tt, walks, qualified_rule_fps);
 }
 
 }  // namespace nigiri::loader

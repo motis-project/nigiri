@@ -22,15 +22,16 @@ duration_t get_transfer_time(timetable const& tt, location_idx_t const l) {
 }
 
 // Unqualified transfer rules are already applied to the walks.
-duration_t get_walk(timetable const& tt,
-                    mutable_fws_multimap<location_idx_t, footpath> const& walks,
-                    location_idx_t const from,
-                    location_idx_t const to) {
+duration_t get_walk(
+    timetable const& tt,
+    mutable_fws_multimap<location_idx_t, footpath> const& fallback_fps,
+    location_idx_t const from,
+    location_idx_t const to) {
   if (from == to) {
     return get_transfer_time(tt, from);
   }
   auto walk = kNever;
-  for (auto const fp : walks[from]) {
+  for (auto const fp : fallback_fps[from]) {
     if (fp.target() == to) {
       walk = std::min(walk, fp.duration());
     }
@@ -40,7 +41,7 @@ duration_t get_walk(timetable const& tt,
 
 hash_map<transfer_pair, transfer_durations> get_transfer_durations(
     timetable const& tt,
-    mutable_fws_multimap<location_idx_t, footpath> const& walks,
+    mutable_fws_multimap<location_idx_t, footpath> const& fallback_fps,
     signatures const& sigs) {
   // Mark stops with qualified transfer rules.
   auto rule_stops = bitvec_map<location_idx_t>{};
@@ -80,7 +81,7 @@ hash_map<transfer_pair, transfer_durations> get_transfer_durations(
         }
         auto& d =
             utl::get_or_create(durations_of, transfer_pair{from, to}, [&]() {
-              auto const fallback = get_walk(tt, walks, from, to);
+              auto const fallback = get_walk(tt, fallback_fps, from, to);
               return transfer_durations{
                   fallback, window_t{fallback, fallback + duration_t{1}}};
             });

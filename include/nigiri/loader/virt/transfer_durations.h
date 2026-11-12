@@ -19,7 +19,7 @@ duration_t get_transfer_time(timetable const&, location_idx_t);
 
 hash_map<transfer_pair, transfer_durations> get_transfer_durations(
     timetable const&,
-    mutable_fws_multimap<location_idx_t, footpath> const& walks,
+    mutable_fws_multimap<location_idx_t, footpath> const& fallback_fps,
     signatures const&);
 
 }  // namespace nigiri::loader

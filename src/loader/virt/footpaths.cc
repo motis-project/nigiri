@@ -56,18 +56,18 @@ void write_profile(timetable& tt,
 void expand_to_virts(
     timetable& tt,
     profile_idx_t const prf,
-    auto const& walks,
-    mutable_fws_multimap<location_idx_t, footpath> const& virt_fps) {
+    auto const& fallback_fps,
+    mutable_fws_multimap<location_idx_t, footpath> const& qualified_rule_fps) {
   auto const& loc = tt.locations_;
   auto const has_virt_fp = [&](location_idx_t const a, location_idx_t const b) {
-    return to_idx(a) < virt_fps.size() &&
+    return to_idx(a) < qualified_rule_fps.size() &&
            utl::any_of(
-               virt_fps[a],
+               qualified_rule_fps[a],
                [&](footpath const fp) { return fp.target() == b; });
   };
   auto fps = vector_map<location_idx_t, std::vector<footpath>>{};
   fps.resize(tt.n_locations());
-  for (auto l = location_idx_t{0U}; l != walks.size(); ++l) {
+  for (auto l = location_idx_t{0U}; l != fallback_fps.size(); ++l) {
     if (loc.is_virt(l)) {
       continue;
     }
@@ -82,13 +82,13 @@ void expand_to_virts(
     if (loc.transfer_time_[l] != kNoTransferAllowed) {
       add(l, loc.transfer_time_[l]);
     }
-    for (auto const fp : walks[l]) {
+    for (auto const fp : fallback_fps[l]) {
       add(fp.target(), fp.duration());
     }
   }
 
-  for (auto l = location_idx_t{0U}; l != virt_fps.size(); ++l) {
-    for (auto const fp : virt_fps[l]) {
+  for (auto l = location_idx_t{0U}; l != qualified_rule_fps.size(); ++l) {
+    for (auto const fp : qualified_rule_fps[l]) {
       if (fp.duration() != footpath::kBan) {
         fps[l].push_back(fp);
       }
@@ -104,11 +104,11 @@ void expand_profile_to_virts(timetable& tt, profile_idx_t const prf) {
 
 void write_profiles(
     timetable& tt,
-    mutable_fws_multimap<location_idx_t, footpath> const& walks,
-    mutable_fws_multimap<location_idx_t, footpath> const& virt_footpaths) {
+    mutable_fws_multimap<location_idx_t, footpath> const& fallback_fps,
+    mutable_fws_multimap<location_idx_t, footpath> const& qualified_rule_fps) {
   auto const timer = scoped_timer{"loader.footpath.profiles"};
 
-  expand_to_virts(tt, kDefaultProfile, walks, virt_footpaths);
+  expand_to_virts(tt, kDefaultProfile, fallback_fps, qualified_rule_fps);
 
   for (auto prf = profile_idx_t{1U}; prf != kNProfiles; ++prf) {
     if (!tt.locations_.footpaths_out_[prf].empty()) {
