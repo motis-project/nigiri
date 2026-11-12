@@ -1073,7 +1073,11 @@ TEST(gtfsrt_transfer_rules, rule_stop_is_its_platform) {
   auto const without_rule = load_network("");
   for (auto const* tt : {&without_rule, &with_rule}) {
     auto rtt = rt::create_rt_timetable(*tt, kDay);
-    rtt.alerts_.location_[lidx(*tt, "S")].push_back(alert_idx_t{7U});
+    auto const alert = alert_idx_t{
+        static_cast<std::uint32_t>(rtt.alerts_.impact_period_.size())};
+    rtt.alerts_.impact_period_.emplace_back(
+        std::vector<interval<unixtime_t>>{});  // no period: always active
+    rtt.alerts_.location_[lidx(*tt, "S")].push_back(alert);
 
     auto const [r, trip] = resolve(*tt, rtt, "F");
     ASSERT_TRUE(r.valid());
@@ -1083,10 +1087,9 @@ TEST(gtfsrt_transfer_rules, rule_stop_is_its_platform) {
     EXPECT_EQ("S", stop.id());
     EXPECT_EQ("S1", stop.get_location_id());
     EXPECT_TRUE(rtt.alerts_
-                    .get_alerts(*tt, source_idx_t{0}, trip,
-                                rt_transport_idx_t::invalid(),
-                                stop.get_location_idx(), false)
-                    .contains(alert_idx_t{7U}));
+                    .get_alerts(*tt, rtt, source_idx_t{0}, trip, r,
+                                stop_idx_t{1U}, false)
+                    .contains(alert));
   }
 }
 
