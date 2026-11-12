@@ -94,7 +94,6 @@ struct device_rt_timetable {
   };
   cuda::std::span<rt_footpath const> rt_footpaths_;
 
-  // The stops of the real-time virtual locations.
   d_vecmap_view<rt_location_idx_t, location_idx_t> rt_base_;
 
   d_vecmap_view<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
