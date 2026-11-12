@@ -157,7 +157,6 @@ struct device_timetable {
   std::uint32_t n_routes_;
 
   d_vecmap_view<location_idx_t, u8_minutes> transfer_time_;
-  // A location's stop: the parent of a virtual location, else itself.
   d_vecmap_view<location_idx_t, location_idx_t> base_;
   cuda::std::array<d_vecvec_view<decltype(t{}.locations_.footpaths_out_[0])>,
                    kNProfiles>
