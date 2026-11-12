@@ -77,7 +77,7 @@ struct route_stop_pairs {
   }
 
   route_stop_idx_t get_or_create_route_stop(route_stop const& s) {
-    return utl::get_or_create(route_stop_of_, s, [&]() {
+    return utl::get_or_create(route_stop_to_idx_, s, [&]() {
       if (!s.is_base()) {
         get_or_create_route_stop(to_base_stop(s.base_));
       }
@@ -89,7 +89,7 @@ struct route_stop_pairs {
   route_stop_pair_idx_t get_or_create_pair(route_stop_idx_t const from,
                                            route_stop_idx_t const to,
                                            transfer_durations const d) {
-    return utl::get_or_create(pair_of_, route_stop_pair{from, to}, [&]() {
+    return utl::get_or_create(pair_to_idx_, route_stop_pair{from, to}, [&]() {
       auto const p = route_stop_pair_idx_t{pairs_.size()};
       pairs_.push_back(route_stop_pair{from, to});
       transfers_.emplace_back();
@@ -98,10 +98,10 @@ struct route_stop_pairs {
       auto const from_route = route_stops_[from].route_;
       auto const to_route = route_stops_[to].route_;
       if (from_route != route_idx_t::invalid()) {
-        of_route_[from_route].push_back(p);
+        route_pairs_[from_route].push_back(p);
       }
       if (to_route != route_idx_t::invalid() && to_route != from_route) {
-        of_route_[to_route].push_back(p);
+        route_pairs_[to_route].push_back(p);
       }
       return p;
     });
@@ -116,13 +116,13 @@ struct route_stop_pairs {
   }
 
   vector_map<route_stop_idx_t, route_stop> route_stops_;
-  hash_map<route_stop, route_stop_idx_t> route_stop_of_;
+  hash_map<route_stop, route_stop_idx_t> route_stop_to_idx_;
   vector_map<route_stop_pair_idx_t, route_stop_pair> pairs_;
-  hash_map<route_stop_pair, route_stop_pair_idx_t> pair_of_;
+  hash_map<route_stop_pair, route_stop_pair_idx_t> pair_to_idx_;
   vector_map<route_stop_pair_idx_t, std::vector<transfer>> transfers_;
   vector_map<route_stop_pair_idx_t, transfer_durations> durations_;
   vector_map<route_stop_pair_idx_t, window_t> windows_;
-  vector_map<route_idx_t, std::vector<route_stop_pair_idx_t>> of_route_;
+  vector_map<route_idx_t, std::vector<route_stop_pair_idx_t>> route_pairs_;
 };
 
 route_stop_pairs get_route_stop_pairs(

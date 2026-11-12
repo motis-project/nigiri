@@ -269,7 +269,7 @@ route_stop_pairs get_route_stop_pairs(
     signatures const& sigs,
     hash_map<transfer_pair, transfer_durations> const& durations_of) {
   auto pairs = route_stop_pairs{};
-  pairs.of_route_.resize(tt.n_routes());
+  pairs.route_pairs_.resize(tt.n_routes());
   auto const location_route_stops =
       get_location_route_stops(tt, ctx, sigs, durations_of, pairs);
   auto expected_duration_cache =

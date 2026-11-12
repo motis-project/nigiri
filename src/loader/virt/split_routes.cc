@@ -193,7 +193,7 @@ transport_routes split_routes(timetable const& tt, route_stop_pairs& pairs) {
 
     // Collect (transport -> group) assignments for each conflict.
     conflict_transport_group.clear();
-    for (auto const x : pairs.of_route_[r]) {
+    for (auto const x : pairs.route_pairs_[r]) {
       if (is_admissible(pairs.windows_[x])) {
         continue;
       }
@@ -253,7 +253,7 @@ transport_routes split_routes(timetable const& tt, route_stop_pairs& pairs) {
             split_route.empty() ? r : route_idx_t{routes.base_route_.size()});
         if (split_route.back() != r) {
           routes.base_route_.push_back(base_route);
-          pairs.of_route_.emplace_back();
+          pairs.route_pairs_.emplace_back();
         }
       } else {
         // Existing compatible split route found.
@@ -274,7 +274,7 @@ transport_routes split_routes(timetable const& tt, route_stop_pairs& pairs) {
     // Repartition all pairs.
     auto const n_pairs_before = pairs.pairs_.size();
     // !! Copy to allow modifications in reassign_transfers(x).
-    auto const route_pairs = pairs.of_route_[r];
+    auto const route_pairs = pairs.route_pairs_[r];
     for (auto const x : route_pairs) {
       reassign_transfers(x);
     }

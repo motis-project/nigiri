@@ -95,8 +95,8 @@ vector_map<route_stop_idx_t, location_idx_t> add_virts(
       continue;
     }
     auto const fallback = get_transfer_time(tt, base);
-    auto const self = pairs.pair_of_.find(route_stop_pair{s, s});
-    auto d = self == end(pairs.pair_of_)
+    auto const self = pairs.pair_to_idx_.find(route_stop_pair{s, s});
+    auto d = self == end(pairs.pair_to_idx_)
                  ? std::optional{fallback}
                  : pick_duration(pairs.windows_[self->second], fallback);
     if (!utl_expect(d.has_value(), "loader.virtual_locations",
@@ -184,12 +184,12 @@ void write_routes(timetable& tt,
       auto const s = stop{seq[i]};
       auto const l = tt.locations_.get_base_idx(s.location_idx());
       auto const stop_sigs = sigs.get(base_r, i);
-      auto const it = pairs.route_stop_of_.find(
+      auto const it = pairs.route_stop_to_idx_.find(
           stop_sigs.size() == 1U  // uniform: shared signature route stop
               ? to_signature_stop(l, stop_sigs.front())
               : route_stop{r, i, l});
       seq[i] = s.with_location(
-                    it == end(pairs.route_stop_of_) ? l : virts[it->second])
+                    it == end(pairs.route_stop_to_idx_) ? l : virts[it->second])
                    .value();
     }
     return seq;

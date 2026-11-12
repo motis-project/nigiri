@@ -61,8 +61,8 @@ vector_map<route_stop_idx_t, route_stop_idx_t> merge_locations(
            return a.pair_ == b.pair_;
          })) {
       auto const x = run.front().pair_;
-      auto const existing = pairs.pair_of_.find(x);
-      auto w = existing == end(pairs.pair_of_)
+      auto const existing = pairs.pair_to_idx_.find(x);
+      auto w = existing == end(pairs.pair_to_idx_)
                    ? kAnyDuration
                    : pairs.windows_[existing->second];
       for (auto const& u : run) {
@@ -98,7 +98,7 @@ vector_map<route_stop_idx_t, route_stop_idx_t> merge_locations(
     // Try to join base stops first, then any existing virt.
     auto const base = pairs.route_stops_[s].base_;
     auto& virts = base_virts[base];
-    if (!join(s, pairs.route_stop_of_.at(to_base_stop(base))) &&
+    if (!join(s, pairs.route_stop_to_idx_.at(to_base_stop(base))) &&
         utl::none_of(virts,
                      [&](route_stop_idx_t const v) { return join(s, v); })) {
       virts.push_back(s);
