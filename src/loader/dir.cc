@@ -338,19 +338,19 @@ sub_dir::sub_dir(std::unique_ptr<dir> chosen_sub_dir,
                  std::filesystem::path path)
     : dir{chosen_sub_dir->path()},
       chosen_sub_dir_{std::move(chosen_sub_dir)},
-      path_{std::move(path)} {}
+      path_prefix_{std::move(path)} {}
 std::vector<std::filesystem::path> sub_dir::list_files(
     std::filesystem::path const& p) const {
-  return chosen_sub_dir_->list_files(path_ / p);
+  return chosen_sub_dir_->list_files(path_prefix_ / p);
 }
 file sub_dir::get_file(std::filesystem::path const& p) const {
-  return chosen_sub_dir_->get_file(path_ / p);
+  return chosen_sub_dir_->get_file(path_prefix_ / p);
 }
 bool sub_dir::exists(std::filesystem::path const& p) const {
-  return chosen_sub_dir_->exists(path_ / p);
+  return chosen_sub_dir_->exists(path_prefix_ / p);
 }
 std::size_t sub_dir::file_size(std::filesystem::path const& p) const {
-  return chosen_sub_dir_->file_size(path_ / p);
+  return chosen_sub_dir_->file_size(path_prefix_ / p);
 }
 dir_type sub_dir::type() const { return chosen_sub_dir_->type(); }
 std::uint64_t sub_dir::hash() const { return chosen_sub_dir_->hash(); }

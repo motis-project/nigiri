@@ -537,8 +537,7 @@ std::unique_ptr<dir> find_gtfs_root(std::unique_ptr<dir> d, bool expanded_zip) {
     if (!expanded_zip && file.extension() == ".zip") {
       auto const inner_file = d->get_file(file);
       auto const data = inner_file.data();
-      auto inner_zip = std::make_unique<zip_dir>(
-          std::move(std::vector<std::uint8_t>{data.begin(), data.end()}));
+      auto inner_zip = std::make_unique<zip_dir>(std::vector<std::uint8_t>{data.begin(), data.end()});
       auto root = find_gtfs_root(std::move(inner_zip), true);
       if (applicable(*root)) {
         log(log_lvl::info, "loader.gtfs.find_gtfs_root",

@@ -110,7 +110,7 @@ struct sub_dir final : public dir {
   std::uint64_t hash() const final;
 
   std::unique_ptr<dir> chosen_sub_dir_;
-  std::filesystem::path path_;
+  std::filesystem::path path_prefix_;
 };
 
 std::unique_ptr<dir> make_dir(std::filesystem::path const& p);
