@@ -63,8 +63,8 @@ bitfield_idx_t register_bitfield(timetable&, import_context&, bitfield const&);
 
 std::span<delta const> get_stop_times(timetable const&,
                                       import_context const&,
-                                      route_idx_t r,
-                                      stop_idx_t i,
+                                      route_idx_t,
+                                      stop_idx_t,
                                       event_type);
 
 void add_transport(timetable&, import_context&, timetable::transport&&);
