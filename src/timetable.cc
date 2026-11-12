@@ -1,15 +1,14 @@
 #include "nigiri/timetable.h"
+#include "nigiri/transliteration.h"
 
 #include <ranges>
+#include <set>
 
 #include "cista/io.h"
 
-#include "utl/overloaded.h"
-#include "utl/verify.h"
 #include "utl/visit.h"
 
 #include "nigiri/common/day_list.h"
-#include "nigiri/logging.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/translations_view.h"
 
@@ -43,6 +42,12 @@ translation_idx_t timetable::register_translation(std::string const& s) {
   return register_translation(std::string_view{s});
 }
 
+translation_idx_t timetable::register_translation(std::string_view source_str,
+                                                  std::string_view feed_lang) {
+  return register_translation(
+      translated_str_t{std::vector{translation{feed_lang, source_str}}});
+}
+
 translation_idx_t timetable::register_translation(std::string_view s) {
   auto idx = translations_.size();
   translations_.emplace_back(std::initializer_list<std::string_view>{s});
@@ -57,10 +62,29 @@ translation_idx_t timetable::register_translation(translated_str_t const& s) {
       s,
       [&](std::vector<translation> const& x) {
         using std::views::transform;
+
+        auto transliterations = x;
+        for (auto const& t : x) {
+          if (std::ranges::find_if(x, [&](auto const& tr) {
+                auto const l = tr.get_language();
+                return l.size() == t.get_language().size() +
+                                       std::string_view("-Latn").size() &&
+                       l.starts_with(t.get_language()) && l.ends_with("-Latn");
+              }) != std::end(x)) {
+            continue;
+          }
+          auto const translit = transliterate(t.get_text(), t.get_language());
+          if (!translit) {
+            continue;
+          }
+          transliterations.emplace_back(*translit);
+        }
+
         translations_.emplace_back(
-            x | transform([](translation const& t) { return t.get_text(); }));
+            transliterations |
+            transform([](translation const& t) { return t.get_text(); }));
         translation_language_.emplace_back(
-            x | transform([&](translation const& t) {
+            transliterations | transform([&](translation const& t) {
               return languages_.store(t.get_language());
             }));
       },
@@ -92,6 +116,44 @@ std::string_view timetable::translate(lang_t const& lang,
       if (translation_lang == preferred_lang) {
         return text;
       }
+
+      // Other variants of the language but with same script
+      if (lang_code_without_country(std::string{languages_.get(
+              translation_lang)}) == lang_code_without_country(std::string{
+                                         languages_.get(preferred_lang)})) {
+        return text;
+      }
+    }
+  }
+
+  std::set<UScriptCode> readable_scripts;
+  for (auto const& preferred_lang : *lang) {
+    for (auto const& script : lang_get_scripts(preferred_lang.c_str())) {
+      readable_scripts.insert(script);
+    }
+  }
+
+  // matching script for user requested languages
+  for (auto const [translation_lang, text] : get_translation_view(*this, t)) {
+    auto const tl = std::string{languages_.get(translation_lang)};
+    auto const required_scripts = lang_get_scripts(tl.c_str());
+
+    auto const readable = std::ranges::all_of(
+        required_scripts, [&readable_scripts](auto const s) {
+          return readable_scripts.contains(s);
+        });
+
+    if (readable) {
+      return text;
+    }
+  }
+
+  // Assume latin is more understandable than local script
+  for (auto const [translation_lang, text] : get_translation_view(*this, t)) {
+    auto const tl = std::string{languages_.get(translation_lang)};
+    auto const required_scripts = lang_get_scripts(tl.c_str());
+    if (std::ranges::contains(required_scripts, UScriptCode::USCRIPT_LATIN)) {
+      return text;
     }
   }
 

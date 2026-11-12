@@ -30,7 +30,7 @@ TEST(gtfs, translations_default_lang_from_field_value) {
   auto tt = timetable{};
   auto timezones = tz_map{};
 
-  auto i18n = read_translations(tt, "de", kTranslationsCsv);
+  auto i18n = read_translations(tt, "de", "de", kTranslationsCsv);
   auto const [agencies, _] = read_agencies(source_idx_t{0}, tt, i18n, timezones,
                                            kAgencyCsv, "Europe/Berlin");
 
