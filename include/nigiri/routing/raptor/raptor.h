@@ -228,7 +228,7 @@ struct raptor {
         }
       }
       is_dest_.for_each_set_bit([&](std::uint64_t const i) {
-        update_time_at_dest(k, best_[i][Vias]);
+        update_time_at_dest(k, round_times_[k][i][Vias]);
       });
 
       auto any_marked = false;
