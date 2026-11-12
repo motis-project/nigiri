@@ -84,7 +84,7 @@ hash_map<transfer_pair, transfer_durations> get_transfer_durations(
               return transfer_durations{
                   fallback, window_t{fallback, fallback + duration_t{1}}};
             });
-        d.hull_ = d.hull_.extend({m, m + duration_t{1}});
+        d.hull_.extend(m);
       });
     });
   }
