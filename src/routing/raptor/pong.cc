@@ -121,7 +121,10 @@ routing_result pong(timetable const& tt,
                       }},
       q.start_time_);
   if (start_dest_overlap(tt, q)) {
-    return {.journeys_ = &s_state.results_, .interval_ = search_interval};
+    return {.journeys_ = &s_state.results_,
+            .interval_ = search_interval,
+            .search_stats_ = {},
+            .algo_stats_ = {}};
   }
   auto const base_day =
       day_idx_t{std::chrono::duration_cast<date::days>(
