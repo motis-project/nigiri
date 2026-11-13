@@ -65,11 +65,9 @@ void link_nearby_stations(
         continue;
       }
 
-      auto const walk = duration_t{static_cast<unsigned>(
-          std::round(dist.get(to_pos) / (60 * kWalkSpeed)))};
-      // The walk alone: build_footpaths chains walks, then applies transfer
-      // times.
-      walks[l_from_idx].emplace_back(l_to_idx, walk);
+      walks[l_from_idx].emplace_back(
+          l_to_idx, duration_t{static_cast<unsigned>(
+                        std::round(dist.get(to_pos) / (60 * kWalkSpeed)))});
 
       if (dist.lt(to_pos, kEqDist)) {
         ctx.equivalences_[l_from_idx].emplace_back(l_to_idx);
