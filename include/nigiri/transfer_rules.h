@@ -163,7 +163,7 @@ void get_stop_signature(timetable const&,
                         transport_idx_t,
                         stop_idx_t,
                         location_idx_t base,
-                        signature_t& sig);
+                        signature_t&);
 
 struct section_rules {
   bool empty() const { return trips_.empty() && routes_.empty(); }
@@ -178,7 +178,7 @@ void add_stop_rules(timetable const&,
                     section_rules const&,
                     event_type,
                     location_idx_t base,
-                    signature_t& sig);
+                    signature_t&);
 
 transfer_rule_idx_t get_change_rule(
     timetable const&,
