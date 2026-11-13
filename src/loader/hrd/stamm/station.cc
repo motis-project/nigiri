@@ -218,12 +218,11 @@ location_map_t parse_stations(config const& c,
       auto const adjusted_duration =
           std::max({tt.locations_.transfer_time_[s.idx_],
                     tt.locations_.transfer_time_[target_idx], duration});
-      tt.transfer_rules_.rules_.push_back(transfer_rule{
-          .from_stop_ = s.idx_,
-          .to_stop_ = target_idx,
-          .src_ = src,
-          .duration_ = duration_t{adjusted_duration.count()},
-          .specificity_ = get_specificity(tt, s.idx_, target_idx)});
+      tt.transfer_rules_.rules_.push_back(
+          transfer_rule{.from_stop_ = s.idx_,
+                        .to_stop_ = target_idx,
+                        .src_ = src,
+                        .duration_ = duration_t{adjusted_duration.count()}});
     }
   }
   store_rule_lookups(

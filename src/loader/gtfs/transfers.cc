@@ -36,6 +36,43 @@ enum class transfer_type : std::uint8_t {
   kNoStaySeated = 5U,
 };
 
+enum class specificity : std::uint8_t {
+  kStopsOnly,
+  kOneRoute,
+  kBothRoutes,
+  kOneTrip,
+  kTripAndRoute,
+  kBothTrips
+};
+
+transfer_rule_specificity_t get_specificity(
+    timetable const& tt,
+    location_idx_t const from_stop,
+    location_idx_t const to_stop,
+    route_id_idx_t const from_route = route_id_idx_t::invalid(),
+    route_id_idx_t const to_route = route_id_idx_t::invalid(),
+    trip_idx_t const from_trip = trip_idx_t::invalid(),
+    trip_idx_t const to_trip = trip_idx_t::invalid()) {
+  auto const has_from_trip = from_trip != trip_idx_t::invalid();
+  auto const has_to_trip = to_trip != trip_idx_t::invalid();
+  auto const has_from_route = from_route != route_id_idx_t::invalid();
+  auto const has_to_route = to_route != route_id_idx_t::invalid();
+  auto const level =
+      has_from_trip && has_to_trip ? specificity::kBothTrips
+      : (has_from_trip && has_to_route) || (has_from_route && has_to_trip)
+          ? specificity::kTripAndRoute
+      : has_from_trip || has_to_trip   ? specificity::kOneTrip
+      : has_from_route && has_to_route ? specificity::kBothRoutes
+      : has_from_route || has_to_route ? specificity::kOneRoute
+                                       : specificity::kStopsOnly;
+  auto const has_parent = [&](location_idx_t const stop) {
+    return tt.locations_.parents_[stop] != location_idx_t::invalid() ? 1U : 0U;
+  };
+  return static_cast<transfer_rule_specificity_t>(
+      (static_cast<unsigned>(level) << 2U) |
+      (has_parent(from_stop) + has_parent(to_stop)));
+}
+
 struct csv_transfer {
   utl::csv_col<utl::cstr, UTL_NAME("from_stop_id")> from_stop_id_;
   utl::csv_col<utl::cstr, UTL_NAME("to_stop_id")> to_stop_id_;
