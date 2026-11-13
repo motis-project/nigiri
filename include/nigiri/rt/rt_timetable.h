@@ -285,35 +285,44 @@ struct rt_timetable {
   std::uint32_t n_locations() const noexcept {
     return tt_->n_locations() + n_rt_locations();
   }
+
   std::uint32_t n_rt_locations() const noexcept {
     return static_cast<std::uint32_t>(rt_location_parents_.size());
   }
+
   bool is_rt_location(location_idx_t const l) const noexcept {
     return l >= tt_->n_locations();
   }
+
   rt_location_idx_t to_rt_location(location_idx_t const l) const noexcept {
     assert(is_rt_location(l));
     return rt_location_idx_t{to_idx(l) - tt_->n_locations()};
   }
+
   location_idx_t to_location(rt_location_idx_t const i) const noexcept {
     return location_idx_t{tt_->n_locations() + to_idx(i)};
   }
+
   location_idx_t base(location_idx_t const l) const {
     return is_rt_location(l) ? rt_location_parents_[to_rt_location(l)]
                              : tt_->base(l);
   }
+
   location_idx_t static_location(location_idx_t const l) const {
     return is_rt_location(l) ? rt_location_parents_[to_rt_location(l)] : l;
   }
+
   u8_minutes transfer_time(location_idx_t const l) const {
     return tt_->locations_.transfer_time_[static_location(l)];
   }
+
   template <typename Fn>
   void for_each_rt_virt(Fn&& fn) const {
     for (auto i = rt_location_idx_t{0U}; i != n_rt_locations(); ++i) {
       fn(to_location(i), i);
     }
   }
+
   template <typename Fn>
   void for_each_rt_virt(location_idx_t const base, Fn&& fn) const {
     if (auto const it = location_rt_virts_.find(base);
@@ -323,6 +332,7 @@ struct rt_timetable {
       }
     }
   }
+
   location_idx_t add_rt_location(location_idx_t parent);
   void add_location_rt_transport(location_idx_t, rt_transport_idx_t);
 
@@ -334,6 +344,7 @@ struct rt_timetable {
     auto const b = rt_transport_stop_virts_[rt_t];
     return {b.begin(), b.size()};
   }
+
   location_idx_t stop_location(rt_transport_idx_t const rt_t,
                                stop_idx_t const stop_idx) const {
     auto const locs = rt_stop_virts(rt_t);
@@ -342,7 +353,8 @@ struct rt_timetable {
                : stop{rt_transport_location_seq_[rt_t][stop_idx]}
                      .location_idx();
   }
-  void update_stop_location(rt_transport_idx_t, stop_idx_t, location_idx_t l);
+
+  void update_stop_location(rt_transport_idx_t, stop_idx_t, location_idx_t);
 
   bool is_flag_set(route_flag const f, rt_transport_idx_t const r) const {
     return rt_transport_flags_[f][to_idx(r) * 2U] ||
