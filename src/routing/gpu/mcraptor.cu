@@ -1,6 +1,8 @@
 #include "nigiri/routing/gpu/mcraptor.h"
 
 #include <algorithm>
+#include <numeric>
+#include <tuple>
 #include <type_traits>
 
 // hide date.h's NOEXCEPT from CCCL's token pasting, see device_times.h
@@ -720,7 +722,16 @@ void gpu_mcraptor<SearchDir, Crit>::execute(
               (*overflow_pin & kMcOverflowRouteBag) != 0U);
 
   // === HOST JOURNEYS ===
-  for (auto idx = std::uint32_t{0U}; idx != n_rec; ++idx) {
+  // The kernel packs them in arbitrary order. Add them as the CPU engine does
+  // (round, then destination location): on a tie, as equal journeys to the
+  // several locations of a destination station, the same one wins.
+  auto order = std::vector<std::uint32_t>(n_rec);
+  std::iota(begin(order), end(order), 0U);
+  std::sort(begin(order), end(order), [&](auto const a, auto const b) {
+    return std::tuple{rec_host[a].transfers_, rec_host[a].dest_l_} <
+           std::tuple{rec_host[b].transfers_, rec_host[b].dest_l_};
+  });
+  for (auto const idx : order) {
     auto const& gj = rec_host[idx];
     if (gj.state_ == reconstruction_result::kReconstructionFailed) {
       log(log_lvl::error, "search",
