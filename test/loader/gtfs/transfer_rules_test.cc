@@ -10,11 +10,6 @@
 
 #include "utl/helpers/algorithm.h"
 
-#include "nigiri/loader/dir.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
-#include "nigiri/loader/register.h"
-#include "nigiri/loader/transfer_rules.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/transfers.h"
 #include "nigiri/stop.h"
@@ -940,10 +935,6 @@ TEST(gtfs, transfer_rules_route_visits_stop_twice) {
 }
 
 timetable load_two_day_loop(bool const has_transfers_txt) {
-  auto tt = timetable{};
-  tt.date_range_ = {test::kDay, test::kDay + date::days{2}};
-  auto ctx = loader::import_context{tt};
-  loader::register_special_stations(tt, ctx);
   auto const feed = std::string{R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -980,12 +971,7 @@ from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_i
 X,X,3,,R,R,,
 )"
                          : "");
-  loader::gtfs::load_timetable({}, source_idx_t{0U},
-                               loader::mem_dir::read(feed), tt, ctx);
-  loader::finalize(
-      tt, ctx,
-      {.merge_dupes_intra_src_ = false, .merge_dupes_inter_src_ = false});
-  return tt;
+  return load_feeds({feed}, false, {}, date::days{2});
 }
 
 TEST(gtfs, transfer_rules_forbid_change_to_next_day_run_of_same_transport) {

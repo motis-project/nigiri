@@ -30,6 +30,7 @@ constexpr auto const stops = std::string_view{
     R"(stop_id,stop_name,stop_lat,stop_lon
 S1,Stop 1,49.880,8.664
 S2,Stop 2,49.878,8.661
+S3,Stop 2,49.876,8.658
 )"};
 
 constexpr auto const calendar = std::string_view{
@@ -44,18 +45,20 @@ R2,VU,R2,Bus Route,3,
 )"};
 
 constexpr auto const trips = std::string_view{
-    R"(route_id,service_id,trip_id
-R1,DAILY,TRAIN
-R2,DAILY,BUS
+    R"(route_id,service_id,trip_id,ticketing_type
+R1,DAILY,TRAIN,0
+R2,DAILY,BUS,0
+R2,DAILY,BUS_WITHOUT_TICKETING,1
 )"};
 
-// ticketing_type=1: no ticket can be bought at S2.
+// ticketing_type=1: no ticket can be bought at S3.
 constexpr auto const stop_times = std::string_view{
     R"(trip_id,arrival_time,departure_time,stop_id,stop_sequence,ticketing_type
 TRAIN,08:00:00,08:00:00,S1,1,0
-TRAIN,08:10:00,08:10:00,S2,2,1
+TRAIN,08:10:00,08:10:00,S2,2,0
+TRAIN,08:20:00,08:20:00,S3,3,1
 BUS,10:00:00,10:00:00,S1,1,0
-BUS,10:10:00,10:10:00,S2,2,1
+BUS,10:10:00,10:10:00,S2,2,0
 )"};
 
 constexpr auto const deep_links = std::string_view{
@@ -126,7 +129,8 @@ TEST(gtfs, ticketing_deep_links_resolve) {
         location_id{.id_ = id, .src_ = source_idx_t{0U}});
   };
   EXPECT_FALSE(tt.locations_.ticketing_unavailable_.test(loc("S1")));
-  EXPECT_TRUE(tt.locations_.ticketing_unavailable_.test(loc("S2")));
+  EXPECT_FALSE(tt.locations_.ticketing_unavailable_.test(loc("S2")));
+  EXPECT_TRUE(tt.locations_.ticketing_unavailable_.test(loc("S3")));
 }
 
 // An agency referencing a deep link id that ticketing_deep_links.txt does not

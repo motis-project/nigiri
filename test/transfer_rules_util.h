@@ -17,12 +17,12 @@
 #include "fmt/format.h"
 
 #include "utl/erase_duplicates.h"
+#include "utl/to_vec.h"
 
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/dir.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/loader/virt/footpaths.h"
 #include "nigiri/common/parse_time.h"
 #include "nigiri/routing/journey.h"
@@ -66,23 +66,19 @@ inline timetable load_feeds(
                        mutable_fws_multimap<location_idx_t, footpath>&)> walks =
         {},
     date::days const n_days = date::days{1}) {
-  auto tt = timetable{};
-  tt.date_range_ = {kDay, kDay + n_days};
-  auto ctx = loader::import_context{tt};
-  loader::register_special_stations(tt, ctx);
-  for (auto i = 0U; i != feeds.size(); ++i) {
-    loader::gtfs::load_timetable(
-        {.adjust_footpaths_ = adjust_footpaths},
-        source_idx_t{static_cast<source_idx_t::value_t>(i)},
-        loader::mem_dir::read(feeds[i]), tt, ctx);
-  }
-  loader::finalize(
-      tt, ctx,
+  auto const dirs = utl::to_vec(
+      feeds, [](std::string const& f) { return loader::mem_dir::read(f); });
+  return loader::load(
+      utl::to_vec(dirs,
+                  [&](loader::mem_dir const& d) {
+                    return loader::dir_source{
+                        d, {.adjust_footpaths_ = adjust_footpaths}};
+                  }),
+      {kDay, kDay + n_days},
       {.merge_dupes_intra_src_ = false,
        .merge_dupes_inter_src_ = false,
        .max_footpath_length_ = std::numeric_limits<std::uint16_t>::max(),
        .compute_walks_ = std::move(walks)});
-  return tt;
 }
 
 // A feed built from its stops, trips and transfers.txt rows.
