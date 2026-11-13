@@ -9,11 +9,9 @@
 
 #include "nigiri/stop.h"
 #include "nigiri/timetable.h"
-#include "nigiri/transfer_rule_sides.h"
+#include "nigiri/transfer_rules.h"
 
 namespace nigiri::loader {
-
-using sig_t = std::vector<transfer_rule_side_idx>;
 
 struct sig_hash {
   using is_transparent = void;
@@ -44,12 +42,12 @@ struct sig_equals {
 
 signatures get_signatures(timetable const& tt) {
   auto sigs = signatures{};
-  sigs.rules_.emplace_back(sig_t{});  // kEmptySig
+  sigs.rules_.emplace_back(signature_t{});  // kEmptySig
 
   auto signature_of = hash_set<signature_idx_t, sig_hash, sig_equals>{
       0U, sig_hash{&sigs}, sig_equals{&sigs}};
 
-  auto sig = sig_t{};
+  auto sig = signature_t{};
   auto rules = std::vector<section_rules>{};
   auto route_sigs = std::vector<std::vector<signature_idx_t>>{};
 
@@ -61,9 +59,9 @@ signatures get_signatures(timetable const& tt) {
 
       // Get trip rules.
       auto const sections = tt.transport_to_trip_section_[t];
-      rules.resize(sections.size());
-      for (auto k = 0U; k != sections.size(); ++k) {
-        get_section_rules(tt, sections[k], rules[k]);
+      rules.clear();
+      for (auto const s : sections) {
+        rules.push_back(get_section_rules(tt, s));
       }
       if (route_sigs.empty() &&
           utl::all_of(rules, [](auto&& x) { return x.empty(); })) {

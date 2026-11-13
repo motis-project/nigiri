@@ -7,6 +7,7 @@
 #include <ranges>
 #include <span>
 #include <tuple>
+#include <vector>
 
 #include "cista/reflection/comparable.h"
 
@@ -153,5 +154,37 @@ inline std::optional<duration_t> pick_duration(window_t const& w,
   return w.from_ < std::min(w.to_, footpath::kBan) ? std::optional{w.from_}
                                                    : std::nullopt;
 }
+
+using signature_t = std::vector<transfer_rule_side_idx>;
+
+bool has_transfer_rules(timetable const&, transport_idx_t);
+
+void get_stop_signature(timetable const&,
+                        transport_idx_t,
+                        stop_idx_t,
+                        location_idx_t base,
+                        signature_t& sig);
+
+struct section_rules {
+  bool empty() const { return trips_.empty() && routes_.empty(); }
+
+  std::span<qualified_side<trip_idx_t> const> trips_;
+  std::span<qualified_side<pair<source_idx_t, route_id_idx_t>> const> routes_;
+};
+
+section_rules get_section_rules(timetable const&, merged_trips_idx_t);
+
+void add_stop_rules(timetable const&,
+                    section_rules const&,
+                    event_type,
+                    location_idx_t base,
+                    signature_t& sig);
+
+transfer_rule_idx_t get_change_rule(
+    timetable const&,
+    std::span<transfer_rule_side_idx const> from_sig,
+    std::span<transfer_rule_side_idx const> to_sig,
+    location_idx_t from_base,
+    location_idx_t to_base);
 
 }  // namespace nigiri

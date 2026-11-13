@@ -19,7 +19,6 @@
 #include "nigiri/routing/search_location.h"
 #include "nigiri/routing/transfers.h"
 #include "nigiri/rt/frun.h"
-#include "nigiri/transfer_rule_sides.h"
 #include "nigiri/transfer_rules.h"
 
 namespace nigiri::rt {
@@ -51,7 +50,7 @@ struct rule_events_key {
 struct changed_event {
   run_event e_;
   event_type ev_;
-  std::vector<transfer_rule_side_idx> signature_;
+  signature_t signature_;
   location_idx_t base_;
 };
 
@@ -115,10 +114,10 @@ duration_t get_shortest_transfer(timetable const& tt,
   });
 }
 
-std::vector<transfer_rule_side_idx> get_signature(timetable const& tt,
-                                                  rt_timetable const& rtt,
-                                                  run_event const& x) {
-  auto sig = std::vector<transfer_rule_side_idx>{};
+signature_t get_signature(timetable const& tt,
+                          rt_timetable const& rtt,
+                          run_event const& x) {
+  auto sig = signature_t{};
   if (x.r_.t_.t_idx_ != transport_idx_t::invalid()) {
     get_stop_signature(tt, x.r_.t_.t_idx_, x.stop_, rtt.base(x.location_), sig);
   }

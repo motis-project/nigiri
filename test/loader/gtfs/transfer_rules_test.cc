@@ -19,7 +19,7 @@
 #include "nigiri/routing/transfers.h"
 #include "nigiri/stop.h"
 #include "nigiri/timetable.h"
-#include "nigiri/transfer_rule_sides.h"
+#include "nigiri/transfer_rules.h"
 
 #include "../../raptor_search.h"
 #include "../../transfer_rules_util.h"

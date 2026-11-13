@@ -1,7 +1,8 @@
-#include "nigiri/transfer_rule_sides.h"
+#include "nigiri/transfer_rules.h"
 
 #include <algorithm>
 #include <span>
+#include <tuple>
 #include <vector>
 
 #include "utl/erase_duplicates.h"
@@ -26,31 +27,19 @@ bool has_transfer_rules(timetable const& tt, transport_idx_t const t) {
   });
 }
 
-void get_section_rules(timetable const& tt,
-                       merged_trips_idx_t const section,
-                       section_rules& out) {
-  out.trips_.clear();
-  out.routes_.clear();
-
+section_rules get_section_rules(timetable const& tt,
+                                merged_trips_idx_t const section) {
   auto const& tr = tt.transfer_rules_;
-  for (auto const trip : tt.merged_trips_[section]) {
-    auto const trip_rules = rules_of(tr.trip_rules_, trip);
-    if (!trip_rules.empty()) {
-      out.trips_.push_back(trip_rules);
-    }
-
-    auto const route_rules = rules_of(tr.route_rules_, route_id_of(tt, trip));
-    if (!route_rules.empty()) {
-      out.routes_.push_back(route_rules);
-    }
-  }
+  auto const trip = tt.merged_trips_[section].front();
+  return {.trips_ = rules_of(tr.trip_rules_, trip),
+          .routes_ = rules_of(tr.route_rules_, route_id_of(tt, trip))};
 }
 
 void add_stop_rules(timetable const& tt,
                     section_rules const& section,
                     event_type const ev,
                     location_idx_t const base,
-                    std::vector<transfer_rule_side_idx>& sig) {
+                    signature_t& sig) {
   auto const& tr = tt.transfer_rules_;
   auto const root = tt.locations_.get_root_idx(base);
   auto const add = [&](transfer_rule_side_idx const s) {
@@ -60,15 +49,11 @@ void add_stop_rules(timetable const& tt,
       sig.push_back(s);
     }
   };
-  for (auto const rules : section.trips_) {
-    for (auto const s : rules_at(rules, root)) {
-      add(s);
-    }
+  for (auto const s : rules_at(section.trips_, root)) {
+    add(s);
   }
-  for (auto const rules : section.routes_) {
-    for (auto const s : rules_at(rules, root)) {
-      add(s);
-    }
+  for (auto const s : rules_at(section.routes_, root)) {
+    add(s);
   }
 }
 
@@ -76,21 +61,43 @@ void get_stop_signature(timetable const& tt,
                         transport_idx_t const t,
                         stop_idx_t const i,
                         location_idx_t const base,
-                        std::vector<transfer_rule_side_idx>& sig) {
+                        signature_t& sig) {
   auto const seq = tt.route_location_seq_[tt.transport_route_[t]];
   auto const stp = stop{seq[i]};
   auto const sections = tt.transport_to_trip_section_[t];
-  auto rules = section_rules{};
+  auto const rules = [&](unsigned const k) {
+    return get_section_rules(tt, sections[sections.size() == 1U ? 0U : k]);
+  };
   sig.clear();
   if (i != 0U && stp.out_allowed()) {
-    get_section_rules(tt, sections[sections.size() == 1U ? 0U : i - 1U], rules);
-    add_stop_rules(tt, rules, event_type::kArr, base, sig);
+    add_stop_rules(tt, rules(i - 1U), event_type::kArr, base, sig);
   }
   if (i + 1U != seq.size() && stp.in_allowed()) {
-    get_section_rules(tt, sections[sections.size() == 1U ? 0U : i], rules);
-    add_stop_rules(tt, rules, event_type::kDep, base, sig);
+    add_stop_rules(tt, rules(i), event_type::kDep, base, sig);
   }
   utl::erase_duplicates(sig);
+}
+
+transfer_rule_idx_t get_more_specific(timetable const& tt,
+                                      transfer_rule_idx_t const a,
+                                      transfer_rule_idx_t const b) {
+  // Compare with rule index as tie breaker
+  // -> deterministic ordering accross imports
+  // -> loader and real-time updates choose the same rule
+  auto const& rules = tt.transfer_rules_.rules_;
+  return std::tie(rules[a].specificity_, a) < std::tie(rules[b].specificity_, b)
+             ? b
+             : a;
+}
+
+bool is_applicable(timetable const& tt,
+                   transfer_rule_side_idx const side,
+                   std::span<transfer_rule_side_idx const> sig,
+                   location_idx_t const base) {
+  auto const& r = tt.transfer_rules_.rules_[side.rule()];
+  return r.is_qualified(side.ev_type())
+             ? std::ranges::binary_search(sig, side)
+             : tt.locations_.is_self_or_parent(r.stop(side.ev_type()), base);
 }
 
 transfer_rule_idx_t get_change_rule(
