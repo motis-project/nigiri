@@ -41,7 +41,6 @@ struct section_rules {
 
 void get_section_rules(timetable const&, merged_trips_idx_t, section_rules&);
 
-// Appends the sides of the event type whose rule stop covers the base.
 void add_stop_rules(timetable const&,
                     section_rules const&,
                     event_type,
