@@ -41,11 +41,6 @@ std::optional<duration_t> get_rule_transfer_time(
   return shortest_transfer(tt, rtt, kDefaultProfile, from_base, to_base);
 }
 
-std::optional<journey::run_enter_exit> run_of(journey::leg const& l) {
-  auto const* r = std::get_if<journey::run_enter_exit>(&l.uses_);
-  return r == nullptr ? std::nullopt : std::optional{*r};
-}
-
 void fix_transfer_durations(timetable const& tt,
                             rt_timetable const* rtt,
                             query const& q,
@@ -63,8 +58,8 @@ void fix_transfer_durations(timetable const& tt,
   for (auto i = 0U; i != n; ++i) {
     auto& leg = j.legs_[i];
     auto const* fp = std::get_if<footpath>(&leg.uses_);
-    auto const a = i == 0U ? prev : run_of(j.legs_[i - 1U]);
-    auto const b = i + 1U == n ? next : run_of(j.legs_[i + 1U]);
+    auto const a = i == 0U ? prev : j.legs_[i - 1U].get_run();
+    auto const b = i + 1U == n ? next : j.legs_[i + 1U].get_run();
     if (fp == nullptr || !a.has_value() || !b.has_value()) {
       continue;
     }

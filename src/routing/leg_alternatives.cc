@@ -140,8 +140,8 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
 
   auto const has_prev = prev_it != std::rend(j.legs_);
   auto const has_next = next_it != end(j.legs_);
-  auto const prev = has_prev ? run_of(*prev_it) : std::nullopt;
-  auto const next = has_next ? run_of(*next_it) : std::nullopt;
+  auto const prev = has_prev ? prev_it->get_run() : std::nullopt;
+  auto const next = has_next ? next_it->get_run() : std::nullopt;
 
   // Create direct query: the changes are those of the journey, from where the
   // previous trip arrives to where the next one leaves (the legs name the
