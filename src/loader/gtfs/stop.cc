@@ -251,7 +251,7 @@ std::pair<stops_map_t, location_accessible_map_t> read_stops(
       utl::sort(children);
     }
 
-    // Generate footpaths to connect stops in close proximity.
+    // Generate equivalences for stops in close proximity.
     hash_set<stop*> todo, done;
     for (auto const& [id, s] : stops) {
       auto equivalences = ctx.equivalences_[s->location_];
