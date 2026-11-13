@@ -85,16 +85,13 @@ template <typename Qualifier>
 struct qualified_side {
   CISTA_COMPARABLE()
   Qualifier qualifier_;
-  location_idx_t l_;
+  location_idx_t root_;
   transfer_rule_side_idx side_;
 };
 
 template <typename Qualifier>
-using qualified_sides_t = vector<qualified_side<Qualifier>>;
-
-template <typename Qualifier>
 std::span<qualified_side<Qualifier> const> rules_of(
-    qualified_sides_t<Qualifier> const& v, Qualifier const qualifier) {
+    vector<qualified_side<Qualifier>> const& v, Qualifier const qualifier) {
   auto const r = std::ranges::equal_range(
       v, qualifier, {}, &qualified_side<Qualifier>::qualifier_);
   return {r.begin(), r.end()};
@@ -102,9 +99,9 @@ std::span<qualified_side<Qualifier> const> rules_of(
 
 template <typename Qualifier>
 auto rules_at(std::span<qualified_side<Qualifier> const> rules,
-              location_idx_t const l) {
-  return std::ranges::equal_range(rules, l, {},
-                                  &qualified_side<Qualifier>::l_) |
+              location_idx_t const root) {
+  return std::ranges::equal_range(rules, root, {},
+                                  &qualified_side<Qualifier>::root_) |
          std::views::transform(&qualified_side<Qualifier>::side_);
 }
 
@@ -118,8 +115,8 @@ auto values_of(SortedPairs const& v, Key const key) {
 struct transfer_rules {
   vector_map<transfer_rule_idx_t, transfer_rule> rules_;
 
-  qualified_sides_t<trip_idx_t> trip_rules_;
-  qualified_sides_t<pair<source_idx_t, route_id_idx_t>> route_rules_;
+  vector<qualified_side<trip_idx_t>> trip_rules_;
+  vector<qualified_side<pair<source_idx_t, route_id_idx_t>>> route_rules_;
 
   vector<pair<location_idx_t, transfer_rule_side_idx>> stop_rules_;
   bitvec_map<trip_idx_t> trip_has_rule_;

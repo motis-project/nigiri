@@ -10,8 +10,9 @@ namespace nigiri::loader {
 void store_rule_lookups(timetable& tt,
                         interval<transfer_rule_idx_t> const rules) {
   auto& tr = tt.transfer_rules_;
-  auto trip_rules = qualified_sides_t<trip_idx_t>{};
-  auto route_rules = qualified_sides_t<pair<source_idx_t, route_id_idx_t>>{};
+  auto trip_rules = vector<qualified_side<trip_idx_t>>{};
+  auto route_rules =
+      vector<qualified_side<pair<source_idx_t, route_id_idx_t>>>{};
   auto stop_rules = std::vector<pair<location_idx_t, transfer_rule_side_idx>>{};
   for (auto const rule : rules) {
     auto const& r = tr.rules_[rule];
