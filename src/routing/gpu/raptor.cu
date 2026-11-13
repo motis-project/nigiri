@@ -1563,11 +1563,7 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
   if constexpr (!is_fwd) {
     journey_q.flip_dir();
   }
-  optimize_footpaths(tt_, rtt_, journey_q, j);
-  specify_td_offsets(journey_q, j);
   finalize_journey(tt_, rtt_, journey_q, j);
-
-  j.is_reconstructed_ = true;
 }
 
 template <direction SearchDir, bool WithBounds>

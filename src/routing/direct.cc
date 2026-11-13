@@ -14,6 +14,7 @@
 #include "nigiri/location_routes.h"
 #include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/routing/search_location.h"
+#include "nigiri/routing/transfer_durations.h"
 #include "nigiri/routing/transfers.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -325,7 +326,8 @@ std::vector<journey::leg> assemble_legs(timetable const& tt,
   if (!drop_at_boundary(alighting_walk)) {
     j.legs_.push_back(alighting_walk);
   }
-  finalize_journey(tt, rtt, q, j);
+  fix_transfer_durations(tt, rtt, q, j);
+  map_to_bases(tt, rtt, j);
   return std::move(j.legs_);
 }
 

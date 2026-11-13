@@ -47,8 +47,11 @@ void finalize_journey(timetable const& tt,
                       rt_timetable const* rtt,
                       query const& q,
                       journey& j) {
+  optimize_footpaths(tt, rtt, q, j);
+  specify_td_offsets(q, j);
   fix_transfer_durations(tt, rtt, q, j);
   map_to_bases(tt, rtt, j);
+  j.is_reconstructed_ = true;
 }
 
 bool is_journey_start(timetable const& tt,
@@ -961,11 +964,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
   }
 
-  optimize_footpaths(tt, rtt, journey_q, j);
-  specify_td_offsets(journey_q, j);
   finalize_journey(tt, rtt, journey_q, j);
-
-  j.is_reconstructed_ = true;
 
 #if defined(NIGIRI_TRACE_RECUSTRUCT)
   j.print(std::cout, tt, true);
