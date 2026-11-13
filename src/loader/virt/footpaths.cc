@@ -13,8 +13,6 @@
 
 namespace nigiri::loader {
 
-// The footpaths of a profile: the shortest per target, shortest first (the
-// target breaks ties so the built timetable is reproducible), and their mirror.
 void write_profile(timetable& tt,
                    profile_idx_t const prf,
                    vector_map<location_idx_t, std::vector<footpath>>& fps) {
@@ -51,8 +49,6 @@ void write_profile(timetable& tt,
   }
 }
 
-// Base footpaths apply to all virtual locations of their stops, except where
-// a virtual location has its own footpath (forbidden: none at all).
 void expand_to_virts(
     timetable& tt,
     profile_idx_t const prf,
