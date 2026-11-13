@@ -1,7 +1,9 @@
+#include <cmath>
 #include <cstdio>
 #include <algorithm>
 #include <atomic>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <numeric>
@@ -13,21 +15,26 @@
 #include "boost/program_options.hpp"
 
 #include "utl/helpers/algorithm.h"
+#include "utl/overloaded.h"
 #include "utl/parallel_for.h"
 #include "utl/parser/cstr.h"
 #include "utl/progress_tracker.h"
+#include "utl/verify.h"
 #include "utl/zip.h"
 
 #include "nigiri/logging.h"
 #include "nigiri/qa/qa.h"
 #include "nigiri/query_generator/generator.h"
 #include "nigiri/routing/interval_estimate.h"
+#include "nigiri/routing/raptor/bmrap_common.h"
 #include "nigiri/routing/raptor/bmraptor.h"
 #include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
+#include "nigiri/rt/frun.h"
+#include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -121,7 +128,282 @@ using bmrapp_criteria_t =
 // algorithms optimizing more than (departure, arrival, transfers)
 bool is_multicriteria(std::string const& label) {
   return label.find("-bmrapp-") != std::string::npos ||
-         label.find("-mcraptor-all-") != std::string::npos;
+         label.find("-mcraptor-all-") != std::string::npos ||
+         label.find("-mcraptor-restricted-") != std::string::npos;
+}
+
+// Problems with a journey's legs, empty = valid: rides as in the timetable,
+// connected in place and time (footpaths as in the timetable, same-stop
+// transfers at least the transfer time), and the journey's transfers and - if
+// `mc` - extra criteria recomputed from the legs as the mc engines count them.
+std::vector<std::string> leg_problems(timetable const& tt,
+                                      query const& q,
+                                      journey const& j,
+                                      bool const mc) {
+  auto problems = std::vector<std::string>{};
+  auto const fail = [&]<typename... Args>(fmt::format_string<Args...> f,
+                                          Args&&... args) {
+    problems.push_back(fmt::format(f, std::forward<Args>(args)...));
+  };
+  if (j.legs_.empty()) {
+    fail("no legs");
+    return problems;
+  }
+  if (j.legs_.front().dep_time_ != j.departure_time() ||
+      j.legs_.back().arr_time_ != j.arrival_time()) {
+    fail("legs span {}..{}, journey {}..{}", j.legs_.front().dep_time_,
+         j.legs_.back().arr_time_, j.departure_time(), j.arrival_time());
+  }
+  auto const transfer = [&](location_idx_t const l) {
+    return duration_t{adjusted_transfer_time(
+        q.transfer_time_settings_, tt.locations_.transfer_time_[l].count())};
+  };
+
+  auto n_rides = 0U;
+  auto units = 0U;
+  auto avoided = false;
+  auto group = routing::kNoModeGroup;
+  auto switches = 0U;
+  auto prev_ride_end = std::optional<std::pair<location_idx_t, unixtime_t>>{};
+  for (auto i = 0U; i != j.legs_.size(); ++i) {
+    auto const& l = j.legs_[i];
+    if (l.arr_time_ < l.dep_time_) {
+      fail("leg {} ends before it starts", i);
+    }
+    if (i != 0U) {
+      auto const& p = j.legs_[i - 1U];
+      if (p.to_ != l.from_ || p.arr_time_ > l.dep_time_) {
+        fail("leg {} does not continue leg {} ({} at {} -> {} at {})", i, i - 1,
+             tt.locations_.ids_[p.to_].view(), p.arr_time_,
+             tt.locations_.ids_[l.from_].view(), l.dep_time_);
+      }
+    }
+    std::visit(
+        utl::overloaded{
+            [&](journey::run_enter_exit const& ree) {
+              auto fr = rt::frun{tt, nullptr, ree.r_};
+              fr.stop_range_ = ree.stop_range_;
+              auto const first = fr[0];
+              auto const last =
+                  fr[static_cast<stop_idx_t>(fr.stop_range_.size() - 1U)];
+              if (first.get_location_idx() != l.from_ ||
+                  last.get_location_idx() != l.to_ ||
+                  first.time(event_type::kDep) != l.dep_time_ ||
+                  last.time(event_type::kArr) != l.arr_time_) {
+                fail("ride {} not as in the timetable", i);
+              }
+              if (!first.in_allowed() || !last.out_allowed()) {
+                fail("ride {} boards or alights where it may not", i);
+              }
+              if (prev_ride_end.has_value() &&
+                  prev_ride_end->first == l.from_ &&
+                  l.dep_time_ - prev_ride_end->second < transfer(l.from_)) {
+                fail("ride {}: transfer at {} shorter than {}", i,
+                     tt.locations_.ids_[l.from_].view(), transfer(l.from_));
+              }
+              prev_ride_end = {l.to_, l.arr_time_};
+              auto const c = tt.route_clasz_[tt.transport_route_[fr.t_.t_idx_]];
+              avoided |=
+                  is_allowed(routing::mode_filter_dim::avoided_mask(), c);
+              auto const g = routing::mode_group(c);
+              switches = routing::switches_after_ride(group, switches, g);
+              group = g;
+              ++n_rides;
+            },
+            [&](footpath const& fp) {
+              if (l.from_ == l.to_) {
+                return;  // a same-stop transfer: no walk
+              }
+              auto const fps =
+                  tt.locations_.footpaths_out_[q.prf_idx_][l.from_];
+              auto const it = utl::find_if(
+                  fps, [&](footpath const& x) { return x.target() == l.to_; });
+              auto const need =
+                  it == end(fps)
+                      ? fp.duration()
+                      : duration_t{adjusted_transfer_time(
+                            q.transfer_time_settings_, it->duration().count())};
+              if (it == end(fps) || l.arr_time_ - l.dep_time_ < need) {
+                fail("footpath {} {} -> {} not in the timetable or too short",
+                     i, tt.locations_.ids_[l.from_].view(),
+                     tt.locations_.ids_[l.to_].view());
+              }
+              units = routing::non_transit_add(
+                  units, static_cast<std::uint32_t>(
+                             (l.arr_time_ - l.dep_time_).count()));
+            },
+            [&](offset const& o) {
+              units = routing::non_transit_add(
+                  units, static_cast<std::uint32_t>(o.duration().count()));
+            }},
+        l.uses_);
+  }
+  if (n_rides != 0U && j.transfers_ != n_rides - 1U) {
+    fail("transfers {} with {} rides", j.transfers_, n_rides);
+  }
+  if (mc) {
+    if (j.criteria_cost_ != units * routing::kNonTransitBin ||
+        j.criteria_mode_filter_ != avoided ||
+        j.criteria_mode_switches_ != switches) {
+      fail("criteria {}/{}/{} recomputed from the legs {}/{}/{}",
+           j.criteria_cost_, j.criteria_mode_filter_, j.criteria_mode_switches_,
+           units * routing::kNonTransitBin, avoided, switches);
+    }
+  }
+  return problems;
+}
+
+// Range McRAPTOR over every criterion, cut down by the restricted-set
+// definition (bmrap_common.h): the anchors are its own journeys optimal on
+// (departure, arrival, transfers) alone, and a journey survives if it is an
+// anchor or stays within the trip budget and deadline of its anchors. This is
+// what bmrapp computes, the slow way. See compare_restricted() for where the
+// two can be compared.
+std::vector<routing::bmrap_detail::anchor> anchors_of(
+    pareto_set<journey> const& res) {
+  auto anchors = std::vector<routing::bmrap_detail::anchor>{};
+  for (auto const& j : res) {
+    if (utl::none_of(res, [&](journey const& o) {
+          return o.tuple_dominates(j) && !j.tuple_dominates(o);
+        })) {
+      anchors.push_back({j.start_time_, j.dest_time_,
+                         static_cast<std::uint8_t>(j.transfers_ + 1U)});
+    }
+  }
+  return anchors;
+}
+
+template <direction SearchDir>
+routing::routing_result restricted_range_search(
+    timetable const& tt,
+    search_state& ss,
+    routing::mcraptor_non_transit_mode_filter_mode_switches_state& state,
+    routing::query q) {
+  auto r =
+      routing::raptor_search(tt, nullptr, ss, state, std::move(q), SearchDir);
+  auto& res = ss.results_;
+  auto const anchors = anchors_of(res);
+  utl::erase_if(res.els_, [&](journey const& j) {
+    return routing::bmrap_detail::outside_restriction<SearchDir>(
+        anchors, j.start_time_, j.dest_time_,
+        static_cast<unsigned>(j.transfers_) + 1U);
+  });
+  return r;
+}
+
+// bmrapp against the restricted range McRAPTOR: the same set, criteria and all,
+// for every journey both can decide. The restriction of a journey depends on
+// the anchors after it, so near the end of its window the reference may lack
+// one. It can decide a journey anchored at d with n trips iff one of its
+// anchors y is available at d (anchored no earlier), has at most n trips, and
+// arrives (found_) within its covered interval: any anchor it never saw is
+// anchored after that, so it arrives after y and changes nothing. Legs differ
+// where equal journeys have several paths; those are only counted.
+struct restricted_diff {
+  std::uint64_t mismatches_{0U}, compared_{0U}, other_legs_{0U};
+};
+restricted_diff compare_restricted(result_set const& bm,
+                                   result_set const& ref,
+                                   direction const search_dir) {
+  auto const fwd = search_dir == direction::kForward;
+  auto const is_better = [&](unixtime_t const a, unixtime_t const b) {
+    return fwd ? a < b : a > b;
+  };
+  auto const criteria = [](journey const& j) {
+    return std::tuple{j.start_time_,
+                      j.dest_time_,
+                      j.transfers_,
+                      j.criteria_cost_,
+                      j.criteria_mode_filter_,
+                      j.criteria_mode_switches_};
+  };
+  auto d = restricted_diff{};
+  for (auto i = 0U; i != bm.res_.size(); ++i) {
+    auto const& itv = ref.intervals_[i];
+    auto const window =
+        interval<unixtime_t>{std::max(itv.from_, bm.intervals_[i].from_),
+                             std::min(itv.to_, bm.intervals_[i].to_)};
+    auto const edge = fwd ? itv.to_ : itv.from_;
+    auto const anchors = anchors_of(ref.res_[i]);
+    auto const decidable = [&](journey const& j) {
+      return window.contains(j.start_time_) &&
+             j.travel_time() < kCheckedMaxTravelTime &&
+             utl::any_of(anchors, [&](routing::bmrap_detail::anchor const& y) {
+               return !is_better(y.anchored_, j.start_time_) &&
+                      y.trips_ <= j.transfers_ + 1U &&
+                      !is_better(edge, y.found_);
+             });
+    };
+    auto const set = [&](pareto_set<journey> const& res) {
+      auto v = std::vector<journey const*>{};
+      for (auto const& j : res) {
+        if (decidable(j)) {
+          v.push_back(&j);
+        }
+      }
+      utl::sort(v, [&](journey const* a, journey const* b) {
+        return criteria(*a) < criteria(*b);
+      });
+      return v;
+    };
+    auto const b = set(bm.res_[i]);
+    auto const r = set(ref.res_[i]);
+    auto problems = std::vector<std::string>{};
+    auto const key = [](journey const& j) {
+      return fmt::format("dep={} arr={} tr={} walk={} avoided={} switches={}",
+                         j.departure_time(), j.arrival_time(), j.transfers_,
+                         j.criteria_cost_, j.criteria_mode_filter_,
+                         j.criteria_mode_switches_);
+    };
+    d.compared_ += b.size();
+    for (auto const* x : b) {
+      auto const it = utl::find_if(
+          r, [&](journey const* y) { return criteria(*x) == criteria(*y); });
+      if (it == end(r)) {
+        problems.push_back(fmt::format("only {}: {}", bm.label_, key(*x)));
+      } else if ((*it)->legs_ != x->legs_) {
+        ++d.other_legs_;
+      }
+    }
+    for (auto const* y : r) {
+      if (utl::none_of(b, [&](journey const* x) {
+            return criteria(*x) == criteria(*y);
+          })) {
+        problems.push_back(fmt::format("only {}: {}", ref.label_, key(*y)));
+      }
+    }
+    if (!problems.empty()) {
+      fmt::println("query #{} {} vs {}: {} restricted mismatches", i, bm.label_,
+                   ref.label_, problems.size());
+      for (auto const& p : problems) {
+        fmt::println("  === MISMATCH: {} ===", p);
+      }
+    }
+    d.mismatches_ += problems.size();
+  }
+  return d;
+}
+
+// every journey of a cell through leg_problems(); returns the invalid ones
+std::uint64_t validate_legs(
+    timetable const& tt,
+    result_set const& cell,
+    std::vector<nigiri::query_generation::start_dest_query> const& queries) {
+  auto invalid = std::uint64_t{0U};
+  for (auto i = 0U; i != cell.res_.size(); ++i) {
+    for (auto const& j : cell.res_[i]) {
+      auto const problems =
+          leg_problems(tt, queries[i].q_, j, is_multicriteria(cell.label_));
+      if (!problems.empty()) {
+        if (invalid < 10U) {
+          fmt::println("query #{} {}: invalid legs: {}", i, cell.label_,
+                       fmt::join(problems, "; "));
+        }
+        ++invalid;
+      }
+    }
+  }
+  return invalid;
 }
 
 std::uint64_t compare_results(
@@ -360,18 +642,87 @@ std::vector<double> run_load(
   auto l = lat;
   std::erase_if(l, [](double const x) { return x < 0.0; });
   std::sort(begin(l), end(l));
-  auto const q = [&](double const p) {
+  auto const q = [&](double const p) {  // nearest rank
     return l.empty() ? 0.0
-                     : l[std::min(l.size() - 1,
-                                  static_cast<std::size_t>(p * l.size()))];
+                     : l[static_cast<std::size_t>(
+                             std::max(std::ceil(p * l.size()), 1.0)) -
+                         1U];
   };
   auto const avg =
       l.empty() ? 0.0 : std::accumulate(begin(l), end(l), 0.0) / l.size();
   fmt::print(
       "| {:<36} | {:>6.1f} | {:>6.0f} | {:>6.0f} | {:>6.0f} | "
-      "{:>6.0f} |\n",
-      tag, qps, avg, q(0.50), q(0.90), q(0.99));
+      "{:>6.0f} | {:>6.0f} |\n",
+      tag, qps, avg, q(0.50), q(0.90), q(0.99), l.empty() ? 0.0 : l.back());
   return lat;
+}
+
+// bmrapp: the average time per phase (bmrapp_ms_* stats) over the answered
+// queries, and what the phases leave of the average latency
+void print_phases(
+    std::string const& tag,
+    std::vector<double> const& latencies,
+    std::vector<std::map<std::string, std::uint64_t>> const& stats) {
+  constexpr auto kPrefix = std::string_view{"bmrapp_ms_"};
+  auto sum = std::map<std::string, double>{};
+  auto latency = 0.0;
+  auto n = 0U;
+  for (auto i = 0U; i != stats.size(); ++i) {
+    if (latencies[i] < 0.0 || !stats[i].contains("bmrapp_steps")) {
+      continue;
+    }
+    ++n;
+    latency += latencies[i];
+    for (auto const& [k, v] : stats[i]) {
+      if (k.starts_with(kPrefix)) {
+        sum[k.substr(kPrefix.size())] += static_cast<double>(v);
+      }
+    }
+  }
+  if (n == 0U) {
+    return;
+  }
+  auto line = fmt::format("  phases {} (avg ms, n={}):", tag, n);
+  auto phases = 0.0;
+  for (auto const& [k, v] : sum) {
+    line += fmt::format(" {}={:.0f}", k, v / n);
+    phases += v;
+  }
+  fmt::println("{} other={:.0f}", line, (latency - phases) / n);
+}
+
+// --stats_path: one JSON line per (cell, query) - latency, result count, the
+// query window and covered interval (unix minutes) and the algo stats
+auto stats_out = std::ofstream{};
+
+void dump_stats(
+    std::string const& tag,
+    std::vector<nigiri::query_generation::start_dest_query> const& queries,
+    result_set const& out,
+    std::vector<std::map<std::string, std::uint64_t>> const& stats) {
+  if (!stats_out.is_open()) {
+    return;
+  }
+  auto const minutes = [](unixtime_t const t) {
+    return t.time_since_epoch().count();
+  };
+  for (auto i = 0U; i != queries.size(); ++i) {
+    auto const window = std::visit(
+        utl::overloaded{
+            [](interval<unixtime_t> const x) { return x; },
+            [](unixtime_t const t) { return interval<unixtime_t>{t, t}; }},
+        queries[i].q_.start_time_);
+    auto line = fmt::format(
+        R"({{"cell":"{}","i":{},"ms":{:.1f},"n":{},"q":[{},{}],"itv":[{},{}])",
+        tag, i, out.latencies_[i], out.res_[i].size(), minutes(window.from_),
+        minutes(window.to_), minutes(out.intervals_[i].from_),
+        minutes(out.intervals_[i].to_));
+    for (auto const& [k, v] : stats[i]) {
+      line += fmt::format(R"(,"{}":{})", k, v);
+    }
+    stats_out << line << "}\n";
+  }
+  stats_out.flush();
 }
 
 // worker state per search state type
@@ -416,13 +767,18 @@ result_set run_cell(
     for (auto i = 0U; i != n; ++i) {
       pool.push_back(states[i].get());
     }
+    auto stats =
+        std::vector<std::map<std::string, std::uint64_t>>(queries.size());
     out.latencies_ =
         run_load<WS>(queries, label + "-" + std::to_string(n), pool,
                      [&](WS& w, routing::query q, std::size_t const i) {
                        auto const r = search(w, std::move(q));
                        out.res_[i] = *r.journeys_;
                        out.intervals_[i] = r.interval_;
+                       stats[i] = r.algo_stats_;
                      });
+    print_phases(label + "-" + std::to_string(n), out.latencies_, stats);
+    dump_stats(label + "-" + std::to_string(n), queries, out, stats);
   }
 
   return out;
@@ -458,6 +814,7 @@ int main(int argc, char* argv[]) {
   auto seed = std::int64_t{0};
   auto min_transfer_time = duration_t::rep{};
   auto qa_path = std::filesystem::path{};
+  auto stats_path = std::filesystem::path{};
   auto engines = std::vector<std::string>{"cpu", "gpu"};
   auto algos = std::vector<std::string>{"range", "pong"};
   auto modes = std::vector<std::string>{"s2s", "c2c"};
@@ -483,7 +840,10 @@ int main(int argc, char* argv[]) {
        "algorithms: range | pong | mcraptor | mcraptor-all | bmrapp (default: "
        "range pong); mcraptor-all optimizes non_transit, mode_filter and "
        "mode_switches; bmrapp is the BM-RAPTOR profile search over the same "
-       "criteria; against another algorithm, a two-criteria side's "
+       "criteria; mcraptor-restricted (cpu) is mcraptor-all cut down by the "
+       "restricted-set definition, which bmrapp must equal criteria and all "
+       "(compare_restricted()); every cell's legs are validated "
+       "(leg_problems()); against another algorithm, a two-criteria side's "
        "(departure, arrival, transfers) front must be contained in the other "
        "side and not be beaten by it, within the intervals both report; "
        "every ran "
@@ -495,11 +855,12 @@ int main(int argc, char* argv[]) {
        "s2s | s2c | c2s | c2c (default: s2s c2c); c = intermodal offsets "
        "(walk)")  //
       ("dirs", bpo::value(&dirs)->multitoken(),
-       "search directions: fwd | bwd (default: fwd); bwd flips the generated "
-       "queries (start/dest swapped, vias reversed) and searches backward = "
-       "arriveBy with the interval as arrival window; the interval extension "
-       "flags are forced to the search direction (fwd: later only, bwd: "
-       "earlier only), overriding -e/-l")  //
+       "search directions: fwd | bwd | fwd-opp | bwd-opp (default: fwd); bwd "
+       "flips the generated queries (start/dest swapped, vias reversed) and "
+       "searches backward = arriveBy with the interval as arrival window; the "
+       "interval extension flags are forced to the search direction (fwd: "
+       "later only, bwd: earlier only), overriding -e/-l; -opp extends against "
+       "it instead (fwd: earlier, bwd: later), as a later page does")  //
       ("threads", bpo::value(&threads_v)->multitoken(),
        "CPU worker thread counts to sweep (default: hardware "
        "concurrency)")  //
@@ -570,6 +931,8 @@ int main(int argc, char* argv[]) {
        "start location for random queries")  //
       ("dest_loc", bpo::value<location_idx_t::value_t>(&dest_loc_val),
        "destination location for random queries")  //
+      ("stats_path", bpo::value(&stats_path),
+       "write per-query latency, interval and algo stats as JSON lines")  //
       ("qa_path,q", bpo::value(&qa_path),
        "path to write the journey criteria to for qa");
   bpo::variables_map vm;
@@ -582,6 +945,10 @@ int main(int argc, char* argv[]) {
   }
 
   bpo::notify(vm);
+  if (!stats_path.empty()) {
+    stats_out.open(stats_path);
+    utl::verify(stats_out.is_open(), "cannot open {}", stats_path.string());
+  }
 
   std::cout << "loading timetable...\n";
   auto tt = *nigiri::timetable::read(tt_path);
@@ -661,8 +1028,9 @@ int main(int argc, char* argv[]) {
 
   // ---- benchmark matrix: engines x algos x modes x dirs (x threads/states)
   for (auto const& d : dirs) {
-    if (d != "fwd" && d != "bwd") {
-      std::cerr << "invalid dir \"" << d << "\", expected fwd | bwd\n";
+    if (d != "fwd" && d != "bwd" && d != "fwd-opp" && d != "bwd-opp") {
+      std::cerr << "invalid dir \"" << d
+                << "\", expected fwd | bwd | fwd-opp | bwd-opp\n";
       return 1;
     }
   }
@@ -690,10 +1058,10 @@ int main(int argc, char* argv[]) {
 #endif
   for (auto const& a : algos) {
     if (a != "range" && a != "pong" && a != "mcraptor" && a != "mcraptor-all" &&
-        a != "bmrapp") {
+        a != "mcraptor-restricted" && a != "bmrapp") {
       std::cerr << "invalid algo \"" << a
                 << "\", expected range | pong | mcraptor | mcraptor-all | "
-                   "bmrapp\n";
+                   "mcraptor-restricted | bmrapp\n";
       return 1;
     }
   }
@@ -710,11 +1078,11 @@ int main(int argc, char* argv[]) {
 
   // padded markdown: renders as a table AND stays aligned as plain text;
   // one table for the whole matrix
-  fmt::print("| {:<36} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} |\n",  //
-             "config", "q/s", "avg ms", "median", "q90", "q99");
+  fmt::print("| {:<36} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6} |\n",
+             "config", "q/s", "avg ms", "median", "q90", "q99", "max");
   fmt::print(
       "| {0:-<36} | {0:->5}: | {0:->5}: | {0:->5}: | {0:->5}: | "
-      "{0:->5}: |\n",
+      "{0:->5}: | {0:->5}: |\n",
       "");
 
   auto mode_queries =
@@ -753,8 +1121,10 @@ int main(int argc, char* argv[]) {
     // (mode, dir) are the incomparable dimensions -- within one (mode, dir),
     // every (engine, algo) combination has to agree
     for (auto const& dir_str : dirs) {
-      auto const dir =
-          dir_str == "fwd" ? direction::kForward : direction::kBackward;
+      auto const dir = dir_str.starts_with("fwd") ? direction::kForward
+                                                  : direction::kBackward;
+      // extend against the search direction (bmrapp's opposed path)
+      auto const opposed = dir_str.ends_with("-opp");
 
       auto qs = fwd_qs;
       for (auto& sdq : qs) {
@@ -764,8 +1134,9 @@ int main(int argc, char* argv[]) {
               gs.use_start_footpaths_ &&
               sdq.q_.start_match_mode_ != location_match_mode::kIntermodal;
         }
-        sdq.q_.extend_interval_earlier_ = dir == direction::kBackward;
-        sdq.q_.extend_interval_later_ = dir == direction::kForward;
+        sdq.q_.extend_interval_earlier_ =
+            (dir == direction::kBackward) != opposed;
+        sdq.q_.extend_interval_later_ = (dir == direction::kForward) != opposed;
       }
 
       auto cells = std::vector<result_set>{};
@@ -773,8 +1144,10 @@ int main(int argc, char* argv[]) {
         // pong and bmrapp run on the raptor state, the rest are range searches
         auto const use_pong = algo == "pong";
         auto const use_bmrap = algo == "bmrapp";
-        auto const algo_part =
-            use_pong || use_bmrap ? std::string{"range"} : algo;
+        auto const use_restricted = algo == "mcraptor-restricted";
+        auto const algo_part = use_pong || use_bmrap ? std::string{"range"}
+                               : use_restricted ? std::string{"mcraptor-all"}
+                                                : algo;
         auto const label = mode + "-" + dir_str + "-" + algo;
 
         // pong only exists for the plain raptor state
@@ -793,6 +1166,20 @@ int main(int argc, char* argv[]) {
                                                       std::move(q), dir);
                 } else {
                   utl::verify(!use_pong, "pong only supports raptor_state");
+                  if constexpr (
+                      std::is_same_v<
+                          RS,
+                          routing::
+                              mcraptor_non_transit_mode_filter_mode_switches_state>) {
+                    if (use_restricted) {
+                      return dir == direction::kForward
+                                 ? restricted_range_search<direction::kForward>(
+                                       tt, w.ss_, w.rs_, std::move(q))
+                                 : restricted_range_search<
+                                       direction::kBackward>(tt, w.ss_, w.rs_,
+                                                             std::move(q));
+                    }
+                  }
                   return routing::raptor_search(tt, nullptr, w.ss_, w.rs_,
                                                 std::move(q), dir);
                 }
@@ -856,7 +1243,7 @@ int main(int argc, char* argv[]) {
                       .template operator()<routing::gpu::gpu_raptor_state>(
                           "gpu.mc" + std::to_string(m != 0 ? 1 : 0), m != 0));
             }
-          } else if (run_gpu) {
+          } else if (run_gpu && !use_restricted) {  // a cpu reference
             cells.push_back(
                 algo_part == "mcraptor"
                     ? run_gpu_cell.template
@@ -882,8 +1269,35 @@ int main(int argc, char* argv[]) {
         summary.push_back(fmt::format("{:<24} n={:<6} benchmark only",
                                       cells.front().label_, qs.size()));
       }
+      auto const is_restricted = [](result_set const& c) {
+        return c.label_.find("-mcraptor-restricted-") != std::string::npos;
+      };
+      auto const is_bmrapp = [](result_set const& c) {
+        return c.label_.find("-bmrapp-") != std::string::npos;
+      };
+      for (auto const& c : cells) {
+        auto const invalid = validate_legs(tt, c, qs);
+        summary.push_back(fmt::format("{:<24} legs: invalid={:<4} {}", c.label_,
+                                      invalid,
+                                      invalid == 0U ? "PASS" : "FAIL"));
+        total += invalid;
+      }
       for (auto a = std::size_t{0U}; a < cells.size(); ++a) {
         for (auto b = a + 1U; b < cells.size(); ++b) {
+          if ((is_restricted(cells[a]) && is_bmrapp(cells[b])) ||
+              (is_bmrapp(cells[a]) && is_restricted(cells[b]))) {
+            auto const& bm = is_bmrapp(cells[a]) ? cells[a] : cells[b];
+            auto const& ref = is_bmrapp(cells[a]) ? cells[b] : cells[a];
+            auto const d = compare_restricted(bm, ref, dir);
+            summary.push_back(fmt::format(
+                "{:<24} vs {:<24} n={:<6} mismatches={:<4} {} ({} journeys "
+                "compared, {} with other legs)",
+                bm.label_, ref.label_, qs.size(), d.mismatches_,
+                d.mismatches_ == 0U ? "PASS" : "FAIL", d.compared_,
+                d.other_legs_));
+            total += d.mismatches_;
+            continue;
+          }
           auto const mismatches = compare_results(
               tt, cells[a], cells[b], qs, dir, gs.min_connection_count_);
           summary.push_back(
