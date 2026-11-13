@@ -23,6 +23,42 @@ namespace nigiri::routing {
 
 namespace {
 
+// A search's mc_oracle against another search's labels (mc_label_snapshot): a
+// label at l is feasible iff a stored label at l is catchable from it (the
+// stored time is post-transfer: one buffer of slack) and the two join - trips
+// and criteria - into one of the targets. Either side may be the prefix: the
+// join is symmetric.
+template <direction SearchDir, typename Criteria>
+struct join_oracle final : mc_oracle<Criteria> {
+  bool feasible(std::uint32_t const l,
+                unsigned const k,
+                delta_t const t,
+                Criteria const& label) const override {
+    auto const slack = adjusted_transfer_time(
+        *settings_, tt_->locations_.transfer_time_[location_idx_t{l}].count());
+    auto const at = static_cast<int>(t);
+    for (auto const& e : labels_->at(l)) {
+      auto const other_at = static_cast<int>(e.crit_.arr_);
+      if (SearchDir == direction::kForward ? at > other_at + slack
+                                           : at < other_at - slack) {
+        continue;  // not catchable
+      }
+      for (auto const* j : targets_) {
+        if (k + e.round_ <= j->transfers_ + 1U &&
+            label.join_fits(e.crit_, *j)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  timetable const* tt_;
+  transfer_time_settings const* settings_;
+  mc_label_snapshot<Criteria> const* labels_;
+  std::vector<journey const*> targets_;
+};
+
 using namespace bmrap_detail;
 using clk = std::chrono::steady_clock;
 
@@ -60,7 +96,8 @@ void for_each_arrival_group(Journeys& js, Fn&& fn) {
 //   4. mc ping       bounded multicriteria search from this departure
 //   5. mc pong       backward, re-anchors each mc journey to its latest
 //                    departure (the mc ping reports them at the step's start)
-//   5b. re-realize   forward, for better intermediate legs
+//   5b. realize      forward, for the earliest connections, guided by the
+//                    mc pong's labels
 template <direction SearchDir,
           bool Rt,
           typename Criteria,
@@ -135,31 +172,26 @@ routing_result bmrap_profile(
              nullptr, nullptr, bwd_lb);
   }
   sw.lap(lb_time);
+  auto ms_setup = clk::duration{};
 
   auto is_via = std::array<bitvec, kMaxVias>{};
   auto no_via = std::vector<via_stop>{};
 
   // One state serves ping, pong and slacked pong, as in pong.cc: within a step
   // they run in sequence and each resets what it needs, and the GPU's buffers
-  // are direction-indexed. The mc phases use their own CPU state unless the
-  // device implements their shape (see GpuMc); on the device they share one
-  // state that outlives the query, the allocation being too large to repeat.
-  auto cpu_mc_ping_state = std::conditional_t<GpuMc, std::monostate,
-                                              basic_mcraptor_state<Criteria>>{};
-  auto cpu_mc_pong_state = std::conditional_t<GpuMc, std::monostate,
-                                              basic_mcraptor_state<Criteria>>{};
-  auto& mc_ping_state = [&]() -> typename mc_ping_for::state& {
+  // are direction-indexed. Likewise one mc state serves the mc ping, mc pong
+  // and realizations: a phase that prunes with another's labels reads them
+  // from a copy (mc_label_snapshot). On the device it outlives the query, the
+  // allocation being too large to repeat.
+  static_assert(
+      std::is_same_v<typename mc_ping_for::state, typename mc_pong_for::state>);
+  auto cpu_mc_state = std::conditional_t<GpuMc, std::monostate,
+                                         basic_mcraptor_state<Criteria>>{};
+  auto& mc_state = [&]() -> typename mc_ping_for::state& {
     if constexpr (GpuMc) {
       return r_state.mc_state();
     } else {
-      return cpu_mc_ping_state;
-    }
-  }();
-  auto& mc_pong_state = [&]() -> typename mc_pong_for::state& {
-    if constexpr (GpuMc) {
-      return r_state.mc_state();
-    } else {
-      return cpu_mc_pong_state;
+      return cpu_mc_state;
     }
   }();
 
@@ -190,9 +222,9 @@ routing_result bmrap_profile(
   auto pong = make.template operator()<pong_t>(r_state, bwd_is_dest, bwd_dist,
                                                qf.td_dest_, bwd_lb);
   auto mc_ping = make.template operator()<mc_ping_t>(
-      mc_ping_state, fwd_is_dest, fwd_dist, q.td_dest_, fwd_lb);
+      mc_state, fwd_is_dest, fwd_dist, q.td_dest_, fwd_lb);
   auto mc_pong = make.template operator()<mc_pong_t>(
-      mc_pong_state, bwd_is_dest, bwd_dist, qf.td_dest_, bwd_lb);
+      mc_state, bwd_is_dest, bwd_dist, qf.td_dest_, bwd_lb);
 
   if constexpr (GpuMc) {
     // Phase 5 runs several departures under ONE reset_arrivals(). The device
@@ -202,6 +234,7 @@ routing_result bmrap_profile(
     // equal arrival). Within one departure the two agree.
     mc_pong.set_reuse_same_dep();
   }
+  sw.lap(ms_setup);  // the states and engines
 
   auto stats = raptor_stats{};
   auto prune_stats = raptor_stats{};
@@ -334,14 +367,93 @@ routing_result bmrap_profile(
 
   auto bounds = bmrap_bounds{};
 
-  // Forward realizations (step 5b), in the forward convention, spliced in after
-  // the results are swapped over. One per departure covers the whole scan: a
-  // forward search from d returns the entire Pareto set at d.
+  // ---- 5b. REALIZE FORWARD ----
+  // mc pong reconstructs backwards, so every intermediate leg is the LATEST
+  // run that still connects: no slack at any transfer, and one delay loses the
+  // chain. Re-running forward from each departure it found yields the same
+  // tuples with the EARLIEST connections, spliced in after the results are
+  // swapped over (forward convention). Forward searches only: for arriveBy the
+  // mc pong runs forward and already takes the earliest connections, which a
+  // backward realization would replace with the latest.
+  //
+  // Guided by the mc pong's labels: right after an arrival group's mc pong,
+  // its labels are copied (mc_label_snapshot / gpu_mcraptor::take_guide()),
+  // and the forward run per departure keeps only the labels that join one of
+  // them - catchable within the transfer time, trips and criteria within -
+  // into one of that departure's journeys. A bound matrix from the same labels
+  // (one time per stop and round, merged over the groups) decoupled trips,
+  // deadlines and criteria: one realization took 254.6 s instead of 4.6 s.
+  // Complete as long as the bounded mc phases project with a zero lower bound:
+  // destination pruning then never cuts a label that can still complete to a
+  // target (and ties survive, see dest_dominates()).
+  static_assert(!bounded_needs_lb<mc_ping_t>() &&
+                !bounded_needs_lb<mc_pong_t>());
   auto realized = std::vector<journey>{};
-
-  auto realized_deps = std::vector<unixtime_t>{};
   auto n_realized = std::uint64_t{0U};
   auto n_unrealized = std::uint64_t{0U};
+  auto pong_labels =
+      std::conditional_t<GpuMc, std::monostate, mc_label_snapshot<Criteria>>{};
+  auto max_guide_labels = std::size_t{0U};
+  auto const realize = [&](unixtime_t const arr,
+                           pareto_set<journey> const& pong_results) {
+    {
+
+      auto group = std::vector<journey const*>{};
+      for (auto const& j : pong_results) {
+        if (j.start_time_ == arr && !j.error_) {
+          group.push_back(&j);
+        }
+      }
+      auto deps = std::vector<unixtime_t>{};
+      for (auto const* j : group) {
+        if (utl::find(deps, j->dest_time_) == end(deps)) {
+          deps.push_back(j->dest_time_);
+        }
+      }
+      for (auto const d : deps) {
+        auto targets = std::vector<journey const*>{};
+        auto max_tr = std::uint8_t{0U};
+        for (auto const* j : group) {
+          if (j->dest_time_ == d) {
+            targets.push_back(j);
+            max_tr = std::max(max_tr, j->transfers_);
+          }
+        }
+        auto oracle = std::conditional_t<GpuMc, std::monostate,
+                                         join_oracle<SearchDir, Criteria>>{};
+        if constexpr (GpuMc) {
+          mc_ping.set_guide(targets);
+        } else {
+          oracle.tt_ = &tt;
+          oracle.settings_ = &q.transfer_time_settings_;
+          oracle.labels_ = &pong_labels;
+          oracle.targets_ = std::move(targets);
+          mc_ping.set_oracle(&oracle);
+        }
+        auto fwd = pareto_set<journey>{};
+        run_mc_ping(d, max_tr, arr + kDir, fwd);
+        if constexpr (GpuMc) {
+          mc_ping.set_guide({});
+        } else {
+          mc_ping.set_oracle(nullptr);
+        }
+        for (auto& f : fwd) {
+          if (!f.is_reconstructed_ && !f.error_) {
+            try {
+              mc_ping.reconstruct(q, f);
+            } catch (std::exception const& e) {
+              f.error_ = true;
+              log(log_lvl::error, "bmrap_profile", "realize failed: {}",
+                  e.what());
+            }
+          }
+          if (!f.error_ && f.is_reconstructed_) {
+            realized.emplace_back(f);
+          }
+        }
+      }
+    }
+  };
   auto n_mc_pong_skipped = std::uint64_t{0U};
 
   auto anchors = std::vector<anchor>{};
@@ -406,32 +518,44 @@ routing_result bmrap_profile(
 
       if (!aligned) {
         // the anchor set comes from the range search: slice out the anchors
-        // still available at this step
-        anchors.clear();
-        max_trips = 0U;
+        // still available at this step, and of those the (arrival, trips)
+        // front - what the aligned path's pong reports. A(J) is always on it
+        // (one beating A(J) would be J's anchor instead), and an anchor beaten
+        // now is A(J) only for journeys departing after the one beating it,
+        // which a later step covers with the then current front.
+        auto available = std::vector<anchor>{};
         for (auto const& a : all_anchors) {
           if (!is_better(a.anchored_, start_time)) {
+            available.push_back(a);
+          }
+        }
+        utl::sort(available, [&](anchor const& a, anchor const& b) {
+          return a.found_ != b.found_ ? is_better(a.found_, b.found_)
+                                      : a.trips_ < b.trips_;
+        });
+        anchors.clear();
+        for (auto const& a : available) {
+          if (anchors.empty() || a.trips_ < anchors.back().trips_) {
             anchors.push_back(a);
-            max_trips = std::max(max_trips, a.trips_);
           }
         }
         if (anchors.empty()) {
           exit_reason = 2U;
           break;
         }
-        if (fwd_bounds.empty()) {
-          // One tau_arr^->(v, i) matrix for the whole window, without a
-          // per-step ping to take it from. Built at the window's near end it is
-          // a valid, merely looser, bound for every later step.
-          sw = stopwatch{};
-          run_ping(start_time);
-          fwd_bounds = reach_matrix<SearchDir>(
-              tt, q, r_state, ping, trip_budget(max_trips, budget_cap),
-              /*sub_transfer=*/true, /*host_copy=*/!GpuMc);
-          sw.lap(ms_fwd_bounds);
-          ++n_fwd_bound_builds;
-          mc_pong.set_bounds(&fwd_bounds);
-        }
+        max_trips = anchors.front().trips_;
+        // The step's own tau_arr^->(v, i) matrix, as on the aligned path: one
+        // built once at the window's near end is sized by that step's trips
+        // (too few rounds for a later step's budget) and loose by up to the
+        // window width.
+        sw = stopwatch{};
+        run_ping(start_time);
+        fwd_bounds = reach_matrix<SearchDir>(
+            tt, q, r_state, ping, trip_budget(max_trips, budget_cap),
+            /*sub_transfer=*/true, /*host_copy=*/!GpuMc);
+        sw.lap(ms_fwd_bounds);
+        ++n_fwd_bound_builds;
+        mc_pong.set_bounds(&fwd_bounds);
       } else {
         // ---- 1. PING ----
         sw = stopwatch{};
@@ -602,20 +726,33 @@ routing_result bmrap_profile(
       // may not depart before the step being scanned
       mc_pong.execute(arr, group_tr, all_rounds(start_time - kDir),
                       step_results);
-    });
-    sw.lap(ms_mc_pong);
-
-    for (auto& j : step_results) {
-      if (!j.is_reconstructed_ && !j.error_) {
-        try {
-          mc_pong.reconstruct(qf, j);
-        } catch (std::exception const& e) {
-          j.error_ = true;
-          log(log_lvl::error, "bmrap_profile", "reconstruct failed: {}",
-              e.what());
+      // now: the realization reuses the state, breadcrumbs included
+      for (auto& j : step_results) {
+        if (!j.is_reconstructed_ && !j.error_) {
+          try {
+            mc_pong.reconstruct(qf, j);
+          } catch (std::exception const& e) {
+            j.error_ = true;
+            log(log_lvl::error, "bmrap_profile", "reconstruct failed: {}",
+                e.what());
+          }
         }
       }
-    }
+
+      if constexpr (kFwd) {
+        if constexpr (GpuMc) {
+          mc_pong.take_guide();
+        } else {
+          pong_labels.take(mc_state);
+          max_guide_labels =
+              std::max(max_guide_labels, pong_labels.labels_.size());
+        }
+        sw.lap(ms_mc_pong);
+        realize(arr, step_results);
+        sw.lap(ms_realize);
+      }
+    });
+    sw.lap(ms_mc_pong);
     for (auto const& j : step_results) {
       if (!j.error_) {
         s_state.results_.add(journey{j});
@@ -623,24 +760,8 @@ routing_result bmrap_profile(
     }
     sw.lap(ms_recon);
 
-    // ---- 5b. RE-REALIZE FORWARD ----
-    // mc pong reconstructs backwards, so every intermediate leg is the LATEST
-    // run that still connects: no slack at any transfer, and one delay loses
-    // the chain. Re-running forward from the departure it just pinned yields
-    // the same tuple with the EARLIEST connections. Bounded like the mc ping,
-    // by the anchors' tau_dep^<- (`bounds`). A matrix from the mc pong's labels
-    // looked tighter, but merging all arrival groups per (stop, round) and
-    // taking the "at most i trips" prefix decouples trips from deadlines: a
-    // label may then use many trips AND reach the latest arrival, which no
-    // result does. On multi-day queries nearly every walking variant passed,
-    // and one realization took 254.6 s instead of 4.6 s (same journeys).
-    //
-    // Only departures the scan has passed are final, and only those get
-    // realized: mc pong re-anchors to departures far beyond the step (and the
-    // window), which the window filter below drops (#547: 36 runs, 156 of 163
-    // results dropped, 7 left on one departure). A departure is realized once
-    // the scan passes it, by the step that does - from the results, as the
-    // mc pong of that step need not have found it again.
+    // The loosest departure of this step (step 6): anchors, mc journeys and
+    // skipped groups, only those at or after the step.
     auto loosest_dep = std::optional<unixtime_t>{};
     auto const consider = [&](unixtime_t const d) {
       if (!is_better(d, start_time) &&
@@ -658,55 +779,6 @@ routing_result bmrap_profile(
       consider(d);
     }
     auto const next = loosest_dep.value_or(start_time) + kDir;
-    auto const passed = is_better(start_time, next) ? next : start_time;
-
-    auto const realizable = [&](journey const& j) {
-      return !j.error_ && j.is_reconstructed_ &&
-             is_better(j.dest_time_, passed) &&
-             j.travel_time() < fastest_direct &&
-             j.travel_time() <= q.max_travel_time_;
-    };
-    auto deps = std::vector<unixtime_t>{};
-    for (auto const& j : s_state.results_) {
-      if (realizable(j) && utl::find(deps, j.dest_time_) == end(deps) &&
-          utl::find(realized_deps, j.dest_time_) == end(realized_deps)) {
-        deps.emplace_back(j.dest_time_);
-      }
-    }
-    for (auto const d : deps) {
-      auto max_tr = std::uint8_t{0U};
-      auto loosest_arr = std::optional<unixtime_t>{};
-      for (auto const& j : s_state.results_) {
-        if (j.dest_time_ != d || !realizable(j)) {
-          continue;
-        }
-        max_tr = std::max(max_tr, j.transfers_);
-        if (!loosest_arr.has_value() ||
-            is_better(*loosest_arr, j.start_time_)) {
-          loosest_arr = j.start_time_;
-        }
-      }
-      auto fwd = pareto_set<journey>{};
-      run_mc_ping(d, max_tr, *loosest_arr + kDir, fwd);
-      for (auto& f : fwd) {
-        if (f.is_reconstructed_ || f.error_) {
-          continue;
-        }
-        try {
-          mc_ping.reconstruct(q, f);
-        } catch (std::exception const& e) {
-          f.error_ = true;
-          log(log_lvl::error, "bmrap_profile", "realize failed: {}", e.what());
-        }
-      }
-      realized_deps.emplace_back(d);
-      for (auto const& f : fwd) {
-        if (!f.error_ && f.is_reconstructed_) {
-          realized.emplace_back(f);
-        }
-      }
-    }
-    sw.lap(ms_realize);
 
     // ---- 6. advance ----
     // The multicriteria set can still change between two anchor departures (a
@@ -777,19 +849,21 @@ routing_result bmrap_profile(
 
   // Splice in the forward realizations: same journey, better legs. Only legs_
   // moves; the tuple must come out identical.
-  for (auto& x : s_state.results_) {
-    auto const it = utl::find_if(realized, [&](journey const& f) {
-      return f.start_time_ == x.start_time_ && f.dest_time_ == x.dest_time_ &&
-             f.transfers_ == x.transfers_ &&
-             f.criteria_cost_ == x.criteria_cost_ &&
-             f.criteria_mode_filter_ == x.criteria_mode_filter_ &&
-             f.criteria_mode_switches_ == x.criteria_mode_switches_;
-    });
-    if (it != end(realized)) {
-      x.legs_ = it->legs_;
-      ++n_realized;
-    } else {
-      ++n_unrealized;
+  if constexpr (kFwd) {
+    for (auto& x : s_state.results_) {
+      auto const it = utl::find_if(realized, [&](journey const& f) {
+        return f.start_time_ == x.start_time_ && f.dest_time_ == x.dest_time_ &&
+               f.transfers_ == x.transfers_ &&
+               f.criteria_cost_ == x.criteria_cost_ &&
+               f.criteria_mode_filter_ == x.criteria_mode_filter_ &&
+               f.criteria_mode_switches_ == x.criteria_mode_switches_;
+      });
+      if (it != end(realized)) {
+        x.legs_ = it->legs_;
+        ++n_realized;
+      } else {
+        ++n_unrealized;
+      }
     }
   }
 
@@ -806,6 +880,11 @@ routing_result bmrap_profile(
         std::chrono::duration_cast<std::chrono::milliseconds>(d).count());
   };
   auto algo_stats = stats.to_map();
+  // labels the mc phases inserted (incl. the realizations): what guiding saves
+  auto const mc_stats = mc_ping.get_stats() + mc_pong.get_stats();
+  algo_stats["bmrapp_mc_labels"] =
+      mc_stats.n_earliest_arrival_updated_by_route_ +
+      mc_stats.n_earliest_arrival_updated_by_footpath_;
   for (auto const& [k, v] : prune_stats.to_map()) {
     algo_stats["prune_" + k] = v;
   }
@@ -827,6 +906,8 @@ routing_result bmrap_profile(
   algo_stats["bmrapp_ms_fwd_bounds"] = ms(ms_fwd_bounds);
   algo_stats["bmrapp_fwd_bound_builds"] = n_fwd_bound_builds;
   algo_stats["bmrapp_ms_lb"] = ms(lb_time);
+  algo_stats["bmrapp_ms_setup"] = ms(ms_setup);
+  algo_stats["bmrapp_max_guide_labels"] = max_guide_labels;
   algo_stats["bmrapp_aligned"] = aligned ? 1U : 0U;
   algo_stats["bmrapp_ms_range"] = ms(ms_range);
   algo_stats["bmrapp_mc_pong_skipped"] = n_mc_pong_skipped;

@@ -219,7 +219,7 @@ inline std::uint8_t trip_budget(std::uint8_t const trips,
 // A(J) for a journey with `trips` trips anchored at `anchored`: among the
 // anchors available there (anchored no earlier - a traveller can take a
 // later-departing anchor) with at most as many trips, the one arriving
-// EARLIEST.
+// EARLIEST, on a tie the one with the fewest trips.
 //
 // The paper says "highest trip count <= |J|". That agrees on the raw
 // (arrival, trips) Pareto set but not on the "available at d" slice of the
@@ -236,7 +236,8 @@ anchor const* anchor_of(std::vector<anchor> const& anchors,
     if (a.trips_ > trips || is_better<SearchDir>(a.anchored_, anchored)) {
       continue;
     }
-    if (best == nullptr || is_better<SearchDir>(a.found_, best->found_)) {
+    if (best == nullptr || is_better<SearchDir>(a.found_, best->found_) ||
+        (a.found_ == best->found_ && a.trips_ < best->trips_)) {
       best = &a;
     }
   }
@@ -244,15 +245,12 @@ anchor const* anchor_of(std::vector<anchor> const& anchors,
 }
 
 // Is a journey with `trips` trips, anchored at `anchored` and found at `found`,
-// outside the restricted set? An anchor is its own reference. Anything else
-// has a SET of anchors: A(J), plus every anchor available at J that arrives
-// before A(J) - those have more trips than J (A(J) is the earliest arrival with
-// at most as many), and J may still be a reasonable fallback to them. Without
-// an A(J) (every available anchor has more trips), all available anchors are
-// in the set. J stays if it is within the trip budget and deadline of any of
-// them - the same deadlines the bounds were built from; compute_bounds() keeps
-// the union over ALL anchors of a step, a superset, so pruning never removes
-// what this keeps.
+// outside the restricted set? An anchor is its own reference; anything else
+// must stay within A(J)'s trip budget and deadline - the same deadlines the
+// bounds were built from. A(J) is never beaten on (arrival, trips) by another
+// available anchor, so the per-step pong reports it; compute_bounds() keeps
+// the union over all anchors of a step, so pruning never removes what this
+// keeps.
 template <direction SearchDir>
 bool outside_restriction(std::vector<anchor> const& anchors,
                          unixtime_t const anchored,
@@ -264,19 +262,10 @@ bool outside_restriction(std::vector<anchor> const& anchors,
       })) {
     return false;
   }
-  auto const within_slack = [&](anchor const& x) {
-    return trips <= trip_budget(x.trips_, std::uint8_t{kMaxTransfers + 1U}) &&
-           !misses_deadline<SearchDir>(x, found);
-  };
   auto const* const a = anchor_of<SearchDir>(anchors, anchored, trips);
-  if (a != nullptr && within_slack(*a)) {
-    return false;
-  }
-  return utl::none_of(anchors, [&](anchor const& x) {
-    return !is_better<SearchDir>(x.anchored_, anchored) &&  // available at J
-           (a == nullptr || is_better<SearchDir>(x.found_, a->found_)) &&
-           within_slack(x);
-  });
+  return a == nullptr ||
+         trips > trip_budget(a->trips_, std::uint8_t{kMaxTransfers + 1U}) ||
+         misses_deadline<SearchDir>(*a, found);
 }
 
 // PHASE 1: the two-criteria range search yielding the anchor set J_A. PONG is
@@ -315,8 +304,7 @@ routing_result run_anchor_search(timetable const& tt,
 // those departing at or after it. For k trips, A(J) can only be the earliest
 // arrival with at most k trips among them - the (arrival, trips) pareto set of
 // a ping from the boundary, re-anchored to its latest departures by a pong:
-// one more step of the anchor search's ping-pong. (The earlier-arriving anchors
-// of the restriction's set are on that front, too.) Returns the number of
+// one more step of the anchor search's ping-pong. Returns the number of
 // anchors added.
 template <direction SearchDir, bool Rt>
 std::size_t close_anchor_profile_impl(

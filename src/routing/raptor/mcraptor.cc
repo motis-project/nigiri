@@ -272,8 +272,10 @@ bool basic_mcraptor<SearchDir, Criteria>::alight(
     return false;
   }
   auto const ride_crit =
-      Criteria::from_ride(by_transport, ride_clasz, rl.carried_, ctx_);
-  if (dest_dominates(k,
+      Criteria::from_ride(by_transport, ride_clasz, rl.carried_);
+  if ((oracle_ != nullptr &&
+       !oracle_->feasible(l_idx, k, by_transport, ride_crit)) ||
+      dest_dominates(k,
                      ride_crit.projected_to(clamp(by_transport + dir(lb))))) {
     ++stats_.route_update_prevented_by_lower_bound_;
     return false;
@@ -594,6 +596,8 @@ void basic_mcraptor<SearchDir, Criteria>::update_footpaths(unsigned const k) {
               !is_better(fp_crit.arr_ + dir(lb), worst_at_dest_) ||
               dest_dominates(
                   k, fp_crit.projected_to(clamp(fp_crit.arr_ + dir(lb)))) ||
+              (oracle_ != nullptr &&
+               !oracle_->feasible(target, k, fp_crit.arr_, fp_crit)) ||
               // a footpath arrival pays no transfer buffer: relax the bound
               bound_prunes(k, target, fp_crit.arr_, transfer_buffer(target))) {
             ++stats_.fp_update_prevented_by_lower_bound_;
