@@ -874,7 +874,7 @@ private:
         return;
       }
 
-      auto const for_each_fp = [&](auto const& bucket) {
+      auto const relax_fps = [&](auto const& bucket) {
         for (auto const& fp : bucket) {
           if (!kFwd && use_td_fps && has_td_fps(fp.target(), true)) {
             continue;
@@ -968,11 +968,11 @@ private:
       auto const& static_fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx_]
                                     : tt_.locations_.footpaths_in_[prf_idx_];
       if (l_idx < static_fps.size()) {
-        for_each_fp(static_fps[l_idx]);
+        relax_fps(static_fps[l_idx]);
       }
       if constexpr (Rt) {
         if (profile_uses_rt_virts(prf_idx_)) {
-          for_each_fp(
+          relax_fps(
               (kFwd ? rtt_->rt_footpaths_out_ : rtt_->rt_footpaths_in_)[l_idx]);
         }
       }
