@@ -63,7 +63,8 @@ struct location_id_equals {
 struct timetable {
   struct locations {
     bool is_virt(location_idx_t const l) const {
-      return to_idx(l) >= types_.size() || types_[l] == location_type::kVirt;
+      return to_idx(l) >= types_.size()  // rt virt
+             || types_[l] == location_type::kVirt;
     }
 
     location_idx_t get_base_idx(location_idx_t const l) const {
