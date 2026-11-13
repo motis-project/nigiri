@@ -792,56 +792,38 @@ private:
                 loc{tt_, location_idx_t{i}}, v, to_unix(tmp_time), is_dest,
                 target_v, stay);
 
-          auto const stop = Rt ? rtt_->base(l) : tt_.base(l);
-          auto const is_virt_dest_arrival = !is_intermodal_dest() &&
-                                            target_v == Vias && stop != l &&
-                                            is_dest_[to_idx(stop)];
-          auto const is_dest_arrival =
-              is_virt_dest_arrival || (!is_intermodal_dest() && is_dest);
-          auto const stop_transfer_time = get_transfer_time(l);
-          if (!is_dest_arrival && stop_transfer_time == kNoTransferAllowed) {
-            continue;
-          }
-          auto const transfer_time =
-              is_dest_arrival
-                  ? 0
-                  : dir(adjusted_transfer_time(
-                        transfer_time_settings_,
-                        static_cast<int>(stop_transfer_time.count())));
-          auto const fp_target_time =
-              clamp(tmp_time + transfer_time + dir(stay.count()));
-
-          if (is_virt_dest_arrival) {
-            if (is_better(fp_target_time, best_[to_idx(stop)][Vias]) &&
-                is_better_loose(fp_target_time, time_at_dest_[k])) {
-              round_times_[k][to_idx(stop)][Vias] = fp_target_time;
-              best_[to_idx(stop)][Vias] = fp_target_time;
-              update_time_at_dest(k, fp_target_time);
+          auto const stop =
+              is_intermodal_dest() ? l : (Rt ? rtt_->base(l) : tt_.base(l));
+          auto const is_dest_arrival = !is_intermodal_dest() &&
+                                       target_v == Vias &&
+                                       is_dest_[to_idx(stop)];
+          auto const relax = [&](int const transfer_time) {
+            auto const fp_target_time =
+                clamp(tmp_time + transfer_time + dir(stay.count()));
+            if (bounds_last_k_ == 0U &&
+                is_better(fp_target_time, best_[i][target_v])) {
+              round_times_[k][i][target_v] =
+                  get_best(fp_target_time, round_times_[k][i][target_v]);
             }
-          }
 
-          if (bounds_last_k_ == 0U &&
-              is_better(fp_target_time, best_[i][target_v])) {
-            round_times_[k][i][target_v] =
-                get_best(fp_target_time, round_times_[k][i][target_v]);
-          }
+            trace(
+                "    transfer_time={}, fp_target_time={}, best@target={}, "
+                "dest={}\n",
+                transfer_time, to_unix(fp_target_time),
+                to_unix(best_[i][target_v]), to_unix(time_at_dest_[k]));
 
-          trace(
-              "    transfer_time={}, fp_target_time={}, best@target={}, "
-              "dest={}\n",
-              transfer_time, to_unix(fp_target_time),
-              to_unix(best_[i][target_v]), to_unix(time_at_dest_[k]));
-
-          if (is_better(fp_target_time, best_[i][target_v]) &&
-              is_better_loose(fp_target_time, time_at_dest_[k])) {
+            if (!is_better(fp_target_time, best_[i][target_v]) ||
+                !is_better_loose(fp_target_time, time_at_dest_[k])) {
+              return;
+            }
             if (!lb_reachable(i) ||
                 !is_better_loose(fp_target_time + dir(get_lb(i)),
                                  time_at_dest_[k])) {
               ++stats_.fp_update_prevented_by_lower_bound_;
-              continue;
+              return;
             }
             if (!within_bounds(k, i, fp_target_time, target_v)) {
-              continue;
+              return;
             }
 
             ++stats_.n_earliest_arrival_updated_by_footpath_;
@@ -851,6 +833,21 @@ private:
             if (is_dest) {
               update_time_at_dest(k, fp_target_time);
             }
+          };
+
+          if (is_dest_arrival) {
+            relax(0);
+            auto const arr = clamp(tmp_time + dir(stay.count()));
+            if (stop != l && is_better(arr, best_[to_idx(stop)][Vias]) &&
+                is_better_loose(arr, time_at_dest_[k])) {
+              round_times_[k][to_idx(stop)][Vias] = arr;
+              best_[to_idx(stop)][Vias] = arr;
+              update_time_at_dest(k, arr);
+            }
+          } else if (auto const t = get_transfer_time(l);
+                     t != kNoTransferAllowed) {
+            relax(dir(adjusted_transfer_time(transfer_time_settings_,
+                                             static_cast<int>(t.count()))));
           }
         }
       }
