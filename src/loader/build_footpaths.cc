@@ -32,7 +32,6 @@ duration_t max_with_transfer_times(timetable const& tt,
   return std::max({walk, transfer_time(from), transfer_time(to)});
 }
 
-// Duplicates are fine: add_transitive_walks keeps the shortest per target.
 void add_equivalence_footpaths(
     timetable const& tt,
     import_context const& ctx,
@@ -61,10 +60,6 @@ void add_equivalence_footpaths(
   }
 }
 
-// A footpath is one change: a walk A -> B -> C needs its own footpath. Replaces
-// the walks by their chains (the shortest per target, direct walks included) up
-// to max_footpath_length walking minutes - transfer times come afterwards
-// (walking through a stop is no change there).
 void add_transitive_walks(timetable const& tt,
                           mutable_fws_multimap<location_idx_t, footpath>& fps,
                           std::uint16_t const max_footpath_length) {
