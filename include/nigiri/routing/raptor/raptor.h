@@ -145,18 +145,6 @@ struct raptor {
           });
         }
       }
-    } else {
-      is_dest_virt_.resize(n_locations_);
-      auto const mark_dest_virt = [&](location_idx_t const v) {
-        is_dest_virt_.set(to_idx(v), true);
-      };
-      is_dest_.for_each_set_bit([&](std::uint64_t const d) {
-        auto const dest = location_idx_t{static_cast<unsigned>(d)};
-        tt_.locations_.for_each_virt(dest, mark_dest_virt);
-        if constexpr (Rt) {
-          rtt_->for_each_rt_virt(dest, mark_dest_virt);
-        }
-      });
     }
   }
 
@@ -804,8 +792,10 @@ private:
                 loc{tt_, location_idx_t{i}}, v, to_unix(tmp_time), is_dest,
                 target_v, stay);
 
-          auto const is_virt_dest_arrival =
-              !is_intermodal_dest() && target_v == Vias && is_dest_virt_[i];
+          auto const stop = Rt ? rtt_->base(l) : tt_.base(l);
+          auto const is_virt_dest_arrival = !is_intermodal_dest() &&
+                                            target_v == Vias && stop != l &&
+                                            is_dest_[to_idx(stop)];
           auto const is_dest_arrival =
               is_virt_dest_arrival || (!is_intermodal_dest() && is_dest);
           auto const stop_transfer_time = get_transfer_time(l);
@@ -822,7 +812,6 @@ private:
               clamp(tmp_time + transfer_time + dir(stay.count()));
 
           if (is_virt_dest_arrival) {
-            auto const stop = Rt ? rtt_->base(l) : tt_.base(l);
             if (is_better(fp_target_time, best_[to_idx(stop)][Vias]) &&
                 is_better_loose(fp_target_time, time_at_dest_[k])) {
               round_times_[k][to_idx(stop)][Vias] = fp_target_time;
@@ -1679,7 +1668,6 @@ private:
   std::uint32_t n_static_locations_, n_locations_, n_routes_, n_rt_transports_;
   raptor_state& state_;
   bitvec end_reachable_;
-  bitvec is_dest_virt_;
   std::span<std::array<delta_t, Vias + 1>> tmp_;
   std::span<std::array<delta_t, Vias + 1>> best_;
   flat_matrix_view<std::array<delta_t, Vias + 1>> round_times_;
