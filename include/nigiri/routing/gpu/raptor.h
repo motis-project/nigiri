@@ -54,9 +54,12 @@ std::unique_ptr<void, void (*)(void*)> make_gpu_rtt(timetable const&,
                                                     rt_timetable const&);
 
 struct gpu_mcraptor_state;
+struct gpu_mcraptor_limits;
 
 struct gpu_raptor_state {
   explicit gpu_raptor_state(gpu_timetable const&);
+  // mc: capacities of the device mc state (try_mc_state())
+  gpu_raptor_state(gpu_timetable const&, gpu_mcraptor_limits const& mc);
   ~gpu_raptor_state();
 
   // Device state for BM-RAPTOR's multicriteria phases, built on first use (or

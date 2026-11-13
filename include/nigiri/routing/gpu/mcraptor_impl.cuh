@@ -123,6 +123,20 @@ struct mc_seed {
   std::uint16_t walk_;
 };
 
+// Guided realization (bmrap_profile.cc): one search's labels per stop, copied
+// for a later search that keeps only the labels joining one of them into a
+// target journey. `t_` is the plain time (the copy converts the key).
+struct mc_guide_entry {
+  delta_t t_;
+  std::uint8_t round_;
+  std::uint16_t extras_;  // mc_extras
+};
+struct mc_guide_target {
+  std::uint8_t trips_;
+  std::uint16_t extras_;  // mc_extras, group 0
+};
+inline constexpr auto kMcGuideTargetCap = 64U;
+
 // canary bits
 inline constexpr auto kMcOverflowBag = 1U;
 inline constexpr auto kMcOverflowArena = 2U;
@@ -396,8 +410,11 @@ struct mcraptor_impl {
     for (auto i = 0U; i != kMcDestCap; ++i) {
       auto const raw = dest_bag_[i];
       auto const v = mc_label::of(raw);
+      // strict: a tie survives (see basic_mcraptor::dest_dominates())
       if (raw != kMcEmptySlot && v.round_ <= round &&
-          completed_dominates(v.arr_key_, v.extras_, arr_key, extras)) {
+          completed_dominates(v.arr_key_, v.extras_, arr_key, extras) &&
+          !(round <= v.round_ &&
+            completed_dominates(arr_key, extras, v.arr_key_, v.extras_))) {
         return true;
       }
     }
@@ -582,7 +599,8 @@ struct mcraptor_impl {
     }
     auto const ride_extras = crit_after_ride(carried, cl);
     if (dest_dominates(k, ride_key + l_lb, ride_extras) ||
-        bound_prunes(k, l_idx, by_transport)) {
+        bound_prunes(k, l_idx, by_transport) ||
+        !guide_feasible(l_idx, k, by_transport, ride_extras)) {
       return false;
     }
     breadcrumb.arr_ = clamp(by_transport + transfer_buffer(l_idx));
@@ -1045,12 +1063,15 @@ struct mcraptor_impl {
     auto const lane = get_global_thread_id() % kWarpSize;
     auto const n_warps = get_global_stride() / kWarpSize;
     auto marked = false;
-    for (auto i = get_global_thread_id() / kWarpSize; i < tt_.n_routes_;
-         i += n_warps) {
+    // the marked routes, as et_build_route_list() collected them: striding
+    // over all routes cost a guided search's few the same as a full one's
+    auto const n_marked = *route_list_count_;
+    for (auto idx = get_global_thread_id() / kWarpSize; idx < n_marked;
+         idx += n_warps) {
+      auto const i = route_list_[idx];
       auto const r = route_idx_t{i};
-      if (!route_mark_[i] ||
-          (WithClaszFilter &&
-           !is_allowed(allowed_claszes_, tt_.route_clasz_[r]))) {
+      if (WithClaszFilter &&
+          !is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
         continue;
       }
       // wheelchair: not accessible on any section -> skip, on some -> kill
@@ -1300,7 +1321,8 @@ struct mcraptor_impl {
     }
     auto const fp_extras = crit_after_walk(te_extras, walk);
     if (dest_dominates(k, fp_key + target_lb, fp_extras) ||
-        bound_prunes(k, target, fp_arr, transfer_buffer(target))) {
+        bound_prunes(k, target, fp_arr, transfer_buffer(target)) ||
+        !guide_feasible(target, k, fp_arr, fp_extras)) {
       return;
     }
     auto const breadcrumb = walk_breadcrumb(te_breadcrumb, fp_arr);
@@ -1455,6 +1477,88 @@ struct mcraptor_impl {
         relax_stop(k, w * kWarpSize + b, lane, kWarpSize);
       });
     }
+  }
+
+  // ---- guided realization (mc_guide_entry) -------------------------------
+
+  // prefix and suffix labels joined at a stop, against a target (mc_extras;
+  // basic_mcraptor's arr_with::join_fits())
+  __device__ __forceinline__ static bool join_fits(std::uint32_t const a,
+                                                   std::uint32_t const b,
+                                                   std::uint32_t const t) {
+    auto const ga = mc_extras::group(a);
+    auto const gb = mc_extras::group(b);
+    auto const junction =
+        ga != kNoModeGroup && gb != kNoModeGroup && ga != gb ? 1U : 0U;
+    auto const nt = mc_extras::non_transit(a) + mc_extras::non_transit(b);
+    auto const sw = mc_extras::switches(a) + mc_extras::switches(b) + junction;
+    return (mc_extras::mode_filter(a) | mc_extras::mode_filter(b)) <=
+               mc_extras::mode_filter(t) &&
+           umin(nt, kNonTransitMax) <= mc_extras::non_transit(t) &&
+           umin(sw, kMaxModeSwitches) <= mc_extras::switches(t);
+  }
+
+  // an arrival at l after k trips at t (raw) with `extras` is kept iff a guide
+  // label at l is catchable from it (post-transfer: one buffer of slack) and
+  // the two join into a target; no targets = not guided
+  __device__ bool guide_feasible(std::uint32_t const l,
+                                 unsigned const k,
+                                 delta_t const t,
+                                 std::uint32_t const extras) const {
+    if (guide_targets_.empty()) {
+      return true;
+    }
+    auto const from = guide_begin_[l];
+    auto const n = guide_n_[l];
+    auto const slack = adjusted_transfer_time(
+        transfer_time_settings_, tt_.transfer_time_[location_idx_t{l}].count());
+    for (auto i = from; i != from + n; ++i) {
+      auto const e = guide_labels_[i];
+      if (kFwd ? t > e.t_ + slack : t < e.t_ - slack) {
+        continue;  // not catchable
+      }
+      for (auto const& target : guide_targets_) {
+        if (k + e.round_ <= target.trips_ &&
+            join_fits(extras, e.extras_, target.extras_)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // copies the bags of the touched stops (after this search ran); guide_n_
+  // and guide_count_ start at 0
+  __device__ void take_guide() {
+    for_each_touched(false, [&](std::uint32_t const l) {
+      auto bag = bag_slots(l);
+      auto n = 0U;
+      for (auto i = 0U; i != bag.size(); ++i) {
+        auto* const s = bag.slot(i);
+        n += (s != nullptr && *s != kMcEmptySlot) ? 1U : 0U;
+      }
+      if (n == 0U) {
+        return;
+      }
+      auto const from = atomicAdd(guide_count_, n);
+      if (from + n > guide_cap_) {
+        atomicOr(guide_overflow_, 1U);
+        return;
+      }
+      auto w = from;
+      for (auto i = 0U; i != bag.size(); ++i) {
+        auto* const s = bag.slot(i);
+        if (s != nullptr && *s != kMcEmptySlot) {
+          auto const v = mc_label::of(*s);
+          guide_labels_[w++] = {
+              .t_ = from_key(static_cast<std::uint32_t>(v.arr_key_)),
+              .round_ = static_cast<std::uint8_t>(v.round_),
+              .extras_ = static_cast<std::uint16_t>(v.extras_)};
+        }
+      }
+      guide_begin_[l] = from;
+      guide_n_[l] = n;
+    });
   }
 
   // f(l) for every touched stop; `clear` resets the touched bits
@@ -1673,6 +1777,16 @@ struct mcraptor_impl {
   std::uint32_t* stop_bag_trips_;
   std::uint32_t* stop_bag_parents_;
   std::uint32_t* stop_bag_board_extras_;
+
+  // guided realization: the copy (shared by the engines of a state) and this
+  // search's targets (empty = not guided)
+  mc_guide_entry* guide_labels_;
+  std::uint32_t* guide_begin_;  // n_locations
+  std::uint32_t* guide_n_;  // n_locations, 0 = no label
+  std::uint32_t* guide_count_;
+  std::uint32_t* guide_overflow_;
+  std::uint32_t guide_cap_;
+  cuda::std::span<mc_guide_target const> guide_targets_{};
 };
 
 #undef kFwd

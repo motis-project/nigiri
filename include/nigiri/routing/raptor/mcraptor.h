@@ -85,6 +85,15 @@ struct non_transit_dim {
     j.criteria_cost_ =
         static_cast<std::uint16_t>(non_transit_ * kNonTransitBin);
   }
+  // a stop splits no walk: the units of both halves add up (saturating)
+  static bool join_fits(non_transit_dim const& pre,
+                        non_transit_dim const& suf,
+                        journey const& j) {
+    return std::min(std::uint32_t{pre.non_transit_} + suf.non_transit_,
+                    kNonTransitMax) *
+               kNonTransitBin <=
+           j.criteria_cost_;
+  }
   bool operator==(non_transit_dim const&) const = default;
 
   std::uint8_t non_transit_{0U};  // units
@@ -113,6 +122,11 @@ struct mode_filter_dim {
   }
   mode_filter_dim with_walk(std::uint16_t) const { return *this; }
   void apply_to(journey& j) const { j.criteria_mode_filter_ = mode_filter_; }
+  static bool join_fits(mode_filter_dim const& pre,
+                        mode_filter_dim const& suf,
+                        journey const& j) {
+    return (pre.mode_filter_ || suf.mode_filter_) <= j.criteria_mode_filter_;
+  }
   bool operator==(mode_filter_dim const&) const = default;
 
   bool mode_filter_{false};
@@ -140,6 +154,18 @@ struct mode_switches_dim {
   }
   mode_switches_dim with_walk(std::uint16_t) const { return *this; }
   void apply_to(journey& j) const { j.criteria_mode_switches_ = switches_; }
+  // the suffix (a backward label) carries its first trip's group, the prefix
+  // its last: one more switch where they meet in different groups
+  static bool join_fits(mode_switches_dim const& pre,
+                        mode_switches_dim const& suf,
+                        journey const& j) {
+    auto const junction = pre.group_ != kNoModeGroup &&
+                          suf.group_ != kNoModeGroup &&
+                          pre.group_ != suf.group_;
+    return std::min(std::uint32_t{pre.switches_} + suf.switches_ +
+                        (junction ? 1U : 0U),
+                    kMaxModeSwitches) <= j.criteria_mode_switches_;
+  }
   bool operator==(mode_switches_dim const&) const = default;
 
   std::uint8_t group_{static_cast<std::uint8_t>(kNoModeGroup)};
@@ -184,6 +210,13 @@ struct arr_with {
   arr_with projected_to(delta_t const arr) const { return {arr, d_}; }
   void apply_to([[maybe_unused]] journey& j) const {
     (std::get<Dims>(d_).apply_to(j), ...);
+  }
+  // Does this prefix (forward label) joined with a backward search's suffix
+  // label at the same stop still fit journey j's criteria? See mc_oracle.
+  bool join_fits([[maybe_unused]] arr_with const& suffix,
+                 [[maybe_unused]] journey const& j) const {
+    return (Dims::join_fits(std::get<Dims>(d_), std::get<Dims>(suffix.d_), j) &&
+            ...);
   }
 
   delta_t arr_;
@@ -333,6 +366,66 @@ struct basic_mcraptor_state {
   bitvec rt_transport_mark_;
 };
 
+// One search's labels per stop, copied for a later search's mc_oracle before
+// that search reuses the state. Grows as needed; take() resets only what the
+// last copy set.
+template <typename Criteria>
+struct mc_label_snapshot {
+  struct entry {
+    Criteria crit_;
+    std::uint8_t round_;
+  };
+  static constexpr auto kNone = std::numeric_limits<std::uint32_t>::max();
+
+  void take(basic_mcraptor_state<Criteria> const& s) {
+    for (auto const l : stops_) {
+      slot_[l] = kNone;
+    }
+    stops_.clear();
+    ranges_.clear();
+    labels_.clear();
+    slot_.resize(s.bag_.bags_.size(), kNone);
+    s.bag_.touched_.for_each_set_bit([&](auto const i) {
+      auto const l = static_cast<std::uint32_t>(i);
+      auto const bag = s.bag_.span(l);
+      if (bag.empty()) {
+        return;
+      }
+      slot_[l] = static_cast<std::uint32_t>(ranges_.size());
+      stops_.push_back(l);
+      ranges_.emplace_back(static_cast<std::uint32_t>(labels_.size()),
+                           static_cast<std::uint32_t>(bag.size()));
+      for (auto const& e : bag) {
+        labels_.push_back({e.crit_, e.round_});
+      }
+    });
+  }
+
+  std::span<entry const> at(std::uint32_t const l) const {
+    if (l >= slot_.size() || slot_[l] == kNone) {
+      return {};
+    }
+    auto const [from, n] = ranges_[slot_[l]];
+    return {labels_.data() + from, n};
+  }
+
+  std::vector<std::uint32_t> slot_, stops_;
+  std::vector<std::pair<std::uint32_t, std::uint32_t>> ranges_;  // from, n
+  std::vector<entry> labels_;
+};
+
+// Lets a forward search keep only the labels the oracle calls feasible, e.g.
+// those a backward search's labels can complete to a known journey. `t` is the
+// label's raw arrival at l after k trips, `prefix` its criteria.
+template <typename Criteria>
+struct mc_oracle {
+  virtual ~mc_oracle() = default;
+  virtual bool feasible(std::uint32_t l,
+                        unsigned k,
+                        delta_t t,
+                        Criteria const& prefix) const = 0;
+};
+
 // RangeReuse: keep the bags across start times (rRAPTOR, latest departure
 // first) instead of clearing them per departure.
 template <direction SearchDir, typename Criteria, bool RangeReuse = false>
@@ -390,6 +483,9 @@ struct basic_mcraptor {
   // arrivals that cannot reach the target within the remaining trip budget and
   // arrival slack. nullptr = plain McRAPTOR. Must share this search's base day.
   void set_bounds(bmrap_bounds const* b) { bounds_ = b; }
+
+  // see mc_oracle; nullptr = off
+  void set_oracle(mc_oracle<Criteria> const* o) { oracle_ = o; }
 
   void reconstruct(query const&, journey&);
 
@@ -499,10 +595,15 @@ private:
     Criteria crit_;
   };
 
+  // Strict: a tie survives (raptor's loose <=), so a search's bags keep every
+  // label that can still complete to one of its results - what the guided
+  // phases (mc_oracle) join against. Measured +0.05% labels.
   bool dest_dominates(unsigned const k, Criteria const& projected) const {
     for (auto const& e : dest_bag_) {
       if (e.k_ <= k &&
-          e.crit_.template completed_dominates<SearchDir>(projected)) {
+          e.crit_.template completed_dominates<SearchDir>(projected) &&
+          !(k <= e.k_ &&
+            projected.template completed_dominates<SearchDir>(e.crit_))) {
         return true;
       }
     }
@@ -549,6 +650,7 @@ private:
   // search-window bound only; dest_bag_ owns destination pruning
   delta_t worst_at_dest_;
   bmrap_bounds const* bounds_{nullptr};  // nullptr = plain McRAPTOR
+  mc_oracle<Criteria> const* oracle_{nullptr};  // see set_oracle()
   // trips (max_transfers + 1) of the start time being executed
   unsigned cur_budget_{0U};
   std::vector<dest_entry> dest_bag_;

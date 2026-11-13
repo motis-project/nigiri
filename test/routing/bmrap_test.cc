@@ -4,6 +4,7 @@
 #include <array>
 #include <set>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <vector>
 
@@ -659,12 +660,10 @@ TEST(bmrap, finds_departures_beyond_fastest_direct) {
             bmrapp<routing::arr_criteria>(f, q, direction::kForward).js_);
 }
 
-// The restriction references a SET of anchors: A(J) (the earliest-arriving
-// anchor available at J with at most J's trips) plus every available anchor
-// arriving before A(J), whatever its trip count. J stays if any of them has
-// its slack satisfied. Default slack: deadline = departure + travel +
-// clamp(travel / 2, 20 min, 180 min).
-TEST(bmrap, restriction_uses_earlier_arriving_anchors) {
+// The restriction references A(J) alone: the earliest-arriving anchor
+// available at J with at most J's trips. Default slack: deadline = departure +
+// travel + clamp(travel / 2, 20 min, 180 min).
+TEST(bmrap, restriction_uses_only_a_of_j) {
   using routing::bmrap_detail::anchor;
   using routing::bmrap_detail::outside_restriction;
   auto const at = [](int const h, int const m) {
@@ -681,12 +680,32 @@ TEST(bmrap, restriction_uses_earlier_arriving_anchors) {
                                                     2U);
   };
   EXPECT_FALSE(outside(at(11, 20))) << "within A(J)'s deadline";
-  EXPECT_FALSE(outside(at(11, 22)))
-      << "past A(J)'s deadline, within the earlier-arriving anchor's";
-  EXPECT_TRUE(outside(at(11, 24))) << "past both deadlines";
-  EXPECT_TRUE(outside(at(11, 30)))
-      << "only the later-arriving anchor's deadline covers it, and that one "
-         "is not in the set";
+  EXPECT_TRUE(outside(at(11, 22)))
+      << "past A(J)'s deadline: the other anchors have more trips than J";
+}
+
+// A(J) on a tie in arrival is the anchor with the fewest trips - the one a
+// search from J reports, whatever the order of the anchor list (bmrapp builds
+// it incrementally, the reference from a pareto set).
+TEST(bmrap, restriction_ties_take_fewest_trips) {
+  using routing::bmrap_detail::anchor;
+  using routing::bmrap_detail::outside_restriction;
+  auto const at = [](int const h, int const m) {
+    return unixtime_t{sys_days{2024_y / June / 19}} + std::chrono::hours{h} +
+           std::chrono::minutes{m};
+  };
+  auto anchors = std::vector<anchor>{
+      {at(10, 0), at(11, 0), 1U},  // trip budget 2: J's 3 trips exceed it
+      {at(10, 20), at(11, 0), 3U},  // budget 4, deadline 11:20
+  };
+  for (auto i = 0; i != 2; ++i) {
+    EXPECT_TRUE(outside_restriction<direction::kForward>(anchors, at(9, 50),
+                                                         at(11, 10), 3U));
+    EXPECT_FALSE(outside_restriction<direction::kForward>(anchors, at(10, 10),
+                                                          at(11, 10), 3U))
+        << "departing after the 1-trip anchor, the 3-trip one is A(J)";
+    std::reverse(begin(anchors), end(anchors));
+  }
 }
 
 // get_fastest_direct() scales the footpath distance by fastest_direct_factor_
@@ -996,35 +1015,214 @@ TEST(bmrap, realization_takes_earliest_connections) {
   };
 
   auto const day = unixtime_t{sys_days{2024_y / June / 19}};
-  auto q = routing::query{};
-  q.start_time_ = interval<unixtime_t>{day + 8h, day + 8h + 1min};
-  q.start_ = {{loc("O"), 0_minutes, 0U}};
-  q.destination_ = {{loc("D"), 0_minutes, 0U}};
-  q.via_stops_ = {};
-  q.min_connection_count_ = 1U;
-  q.extend_interval_later_ = true;
+  // arriveBy realizes nothing: its mc pong runs forward and takes the
+  // earliest connections itself
+  for (auto const dir : {direction::kForward, direction::kBackward}) {
+    auto const fwd = dir == direction::kForward;
+    auto q = routing::query{};
+    q.start_time_ =
+        fwd ? interval<unixtime_t>{day + 8h, day + 8h + 1min}
+            : interval<unixtime_t>{day + 9h + 30min, day + 9h + 31min};
+    q.start_ = {{loc(fwd ? "O" : "D"), 0_minutes, 0U}};
+    q.destination_ = {{loc(fwd ? "D" : "O"), 0_minutes, 0U}};
+    q.via_stops_ = {};
+    q.min_connection_count_ = 1U;
+    q.extend_interval_later_ = fwd;
+    q.extend_interval_earlier_ = !fwd;
 
-  auto ss = routing::search_state{};
-  auto as = routing::raptor_state{};
-  auto const r =
-      routing::bmrap_profile_search<routing::arr_non_transit_criteria>(
-          tt, nullptr, ss, as, q, direction::kForward);
-  auto const j = std::find_if(begin(*r.journeys_), end(*r.journeys_),
-                              [&](routing::journey const& x) {
-                                return x.departure_time() == day + 8h &&
-                                       x.arrival_time() == day + 9h + 30min;
-                              });
-  ASSERT_NE(j, end(*r.journeys_)) << "O 10:00 -> D 11:30 not found";
-  auto rides = std::vector<routing::journey::leg>{};
-  for (auto const& l : j->legs_) {
-    if (std::holds_alternative<routing::journey::run_enter_exit>(l.uses_)) {
-      rides.push_back(l);
+    auto ss = routing::search_state{};
+    auto as = routing::raptor_state{};
+    auto const r =
+        routing::bmrap_profile_search<routing::arr_non_transit_criteria>(
+            tt, nullptr, ss, as, q, dir);
+    auto const j = std::find_if(begin(*r.journeys_), end(*r.journeys_),
+                                [&](routing::journey const& x) {
+                                  return x.departure_time() == day + 8h &&
+                                         x.arrival_time() == day + 9h + 30min;
+                                });
+    ASSERT_NE(j, end(*r.journeys_))
+        << "O 10:00 -> D 11:30 not found" << (fwd ? "" : " (arriveBy)");
+    auto rides = std::vector<routing::journey::leg>{};
+    for (auto const& l : j->legs_) {
+      if (std::holds_alternative<routing::journey::run_enter_exit>(l.uses_)) {
+        rides.push_back(l);
+      }
+    }
+    ASSERT_EQ(3U, rides.size());
+    EXPECT_EQ(day + 8h + 35min, rides[1].arr_time_)
+        << "M -> X is not the earliest connection (10:35 local)"
+        << (fwd ? "" : " (arriveBy)");
+    EXPECT_EQ(fwd, r.algo_stats_.at("bmrapp_realized") > 0U);
+  }
+}
+
+// Ties for the guided realization: equal journeys through different stops
+// (X and Y), and two start stops with equal offsets (O1, O2), so the mc pong's
+// destination pruning drops tied alternatives. The realization prunes with
+// the mc pong's labels and must still realize every departure with connected
+// legs - which holds as long as the bounded mc phases project with a zero
+// lower bound (see kGuided in bmrap_profile.cc).
+namespace {
+
+constexpr auto const kTieGTFS = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,DB,https://db.de,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+O,O,0.0,1.0,,
+O1,O1,0.0,1.1,,
+O2,O2,0.0,1.2,,
+X,X,1.0,1.0,,
+Y,Y,1.0,2.0,,
+D,D,3.0,1.0,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,R1,,,3
+R2,DB,R2,,,3
+R3,DB,R3,,,3
+R4,DB,R4,,,3
+R5,DB,R5,,,3
+R6,DB,R6,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S,T1,,
+R2,S,T2,,
+R3,S,T3,,
+R4,S,T4,,
+R5,S,T5,,
+R6,S,T6,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:00:00,10:00:00,O,0,0,0
+T1,10:20:00,10:20:00,X,1,0,0
+T2,10:00:00,10:00:00,O,0,0,0
+T2,10:20:00,10:20:00,Y,1,0,0
+T3,10:30:00,10:30:00,X,0,0,0
+T3,11:00:00,11:00:00,D,1,0,0
+T4,10:30:00,10:30:00,Y,0,0,0
+T4,11:00:00,11:00:00,D,1,0,0
+T5,10:10:00,10:10:00,O1,0,0,0
+T5,11:10:00,11:10:00,D,1,0,0
+T6,10:10:00,10:10:00,O2,0,0,0
+T6,11:10:00,11:10:00,D,1,0,0
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+)"sv;
+
+// every journey's legs connect, in place and time
+void expect_connected(routing::journey const& j) {
+  ASSERT_FALSE(j.legs_.empty());
+  EXPECT_EQ(j.departure_time(), j.legs_.front().dep_time_);
+  EXPECT_EQ(j.arrival_time(), j.legs_.back().arr_time_);
+  for (auto i = 1U; i < j.legs_.size(); ++i) {
+    EXPECT_EQ(j.legs_[i - 1U].to_, j.legs_[i].from_) << "leg " << i;
+    EXPECT_LE(j.legs_[i - 1U].arr_time_, j.legs_[i].dep_time_) << "leg " << i;
+  }
+}
+
+}  // namespace
+
+TEST(bmrap, guided_realization_survives_ties) {
+  auto const tt = loader::load(
+      mem_dir::read(std::string{kTieGTFS}),
+      {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}});
+  auto const loc = [&](char const* id) {
+    return tt.locations_.location_id_to_idx_.at({id, source_idx_t{0}});
+  };
+  auto const day = unixtime_t{sys_days{2024_y / June / 19}};
+
+  struct tie_case {
+    char const* name_;
+    std::vector<routing::offset> start_;
+    routing::location_match_mode start_match_;
+    unixtime_t dep_, arr_;
+    unsigned transfers_;
+  };
+  auto const cases = std::vector<tie_case>{
+      {"through X or Y",
+       {{loc("O"), 0_minutes, 0U}},
+       routing::location_match_mode::kEquivalent,
+       day + 8h,
+       day + 9h,
+       1U},
+      {"from O1 or O2",
+       {{loc("O1"), 5_minutes, 0U}, {loc("O2"), 5_minutes, 0U}},
+       routing::location_match_mode::kIntermodal,
+       day + 8h + 5min,
+       day + 9h + 10min,
+       0U}};
+  for (auto const& c : cases) {
+    for (auto const dir : {direction::kForward, direction::kBackward}) {
+      auto q = routing::query{};
+      q.start_time_ = interval<unixtime_t>{day + 7h + 55min, day + 8h + 15min};
+      q.start_ = c.start_;
+      q.start_match_mode_ = c.start_match_;
+      q.destination_ = {{loc("D"), 0_minutes, 0U}};
+      q.min_connection_count_ = 1U;
+      if (dir == direction::kBackward) {
+        q.flip_dir();
+        q.start_time_ =
+            interval<unixtime_t>{day + 8h + 55min, day + 9h + 15min};
+      }
+      auto ss = routing::search_state{};
+      auto const check = [&](auto& algo_state, char const* engine) {
+        auto const r = routing::bmrap_profile_search<
+            routing::arr_non_transit_mode_filter_mode_switches_criteria>(
+            tt, nullptr, ss, algo_state, q, dir, std::nullopt, true);
+        auto const tag =
+            fmt::format("{} {} {}", c.name_,
+                        dir == direction::kForward ? "fwd" : "bwd", engine);
+        EXPECT_TRUE(std::any_of(begin(*r.journeys_), end(*r.journeys_),
+                                [&](routing::journey const& x) {
+                                  return x.departure_time() == c.dep_ &&
+                                         x.arrival_time() == c.arr_ &&
+                                         x.transfers_ == c.transfers_;
+                                }))
+            << tag;
+        for (auto const& x : *r.journeys_) {
+          expect_connected(x);
+        }
+        // arriveBy keeps the forward mc pong's legs: nothing to realize
+        if (dir == direction::kForward) {
+          EXPECT_GT(r.algo_stats_.at("bmrapp_realized"), 0U) << tag;
+        } else {
+          EXPECT_EQ(0U, r.algo_stats_.at("bmrapp_realized")) << tag;
+        }
+        EXPECT_EQ(0U, r.algo_stats_.at("bmrapp_unrealized")) << tag;
+      };
+      auto as = routing::raptor_state{};
+      check(as, "cpu");
+#if defined(NIGIRI_CUDA)
+      // the device copy of the mc pong labels (take_guide())
+      auto const gtt = routing::gpu::gpu_timetable{tt};
+      auto gs = routing::gpu::gpu_raptor_state{gtt};
+      check(gs, "gpu");
+      // a copy past its capacity fails the search (motis then answers with
+      // plain raptor) instead of realizing unguided or losing journeys
+      auto small = routing::gpu::gpu_raptor_state{
+          gtt, routing::gpu::gpu_mcraptor_limits{.guide_labels_ = 1U}};
+      if (dir == direction::kForward) {
+        try {
+          check(small, "gpu, guide capacity 1");
+          ADD_FAILURE() << c.name_ << ": no guide overflow";
+        } catch (std::exception const& e) {
+          EXPECT_NE(std::string_view{e.what()}.find("guide"),
+                    std::string_view::npos)
+              << e.what();
+        }
+      } else {
+        check(small, "gpu, guide capacity 1 (no guide taken)");
+      }
+#endif
     }
   }
-  ASSERT_EQ(3U, rides.size());
-  EXPECT_EQ(day + 8h + 35min, rides[1].arr_time_)
-      << "M -> X is not the earliest connection (10:35 local)";
-  EXPECT_GT(r.algo_stats_.at("bmrapp_realized"), 0U);
 }
 
 // Two destination offsets reached in the same round: D1 at 10:30 (2

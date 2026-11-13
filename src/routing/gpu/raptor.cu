@@ -222,6 +222,7 @@ struct gpu_raptor_state::impl {
   gpu_timetable const* gtt_;
   std::unique_ptr<gpu_mcraptor_state> mc_state_;  // see try_mc_state()
   bool mc_state_failed_{false};  // do not retry a failed allocation
+  gpu_mcraptor_limits mc_limits_;
 
   bool is_intermodal_dest_[2];  // per direction: [0]=fwd, [1]=bwd
   // which gpu_raptor last uploaded into each direction slot
@@ -309,7 +310,13 @@ struct gpu_raptor_state::impl {
 };
 
 gpu_raptor_state::gpu_raptor_state(gpu_timetable const& gtt)
-    : impl_{std::make_unique<impl>(gtt)} {}
+    : gpu_raptor_state{gtt, gpu_mcraptor_limits{}} {}
+
+gpu_raptor_state::gpu_raptor_state(gpu_timetable const& gtt,
+                                   gpu_mcraptor_limits const& mc)
+    : impl_{std::make_unique<impl>(gtt)} {
+  impl_->mc_limits_ = mc;
+}
 
 gpu_raptor_state::~gpu_raptor_state() = default;
 
@@ -319,7 +326,7 @@ gpu_mcraptor_state* gpu_raptor_state::try_mc_state() {
       // the scalar side's matrices first: the mc state takes what is left
       impl_->reserve_bmrap();
       impl_->mc_state_ = std::make_unique<gpu_mcraptor_state>(
-          *impl_->gtt_, gpu_mcraptor_limits{},
+          *impl_->gtt_, impl_->mc_limits_,
           gpu_mcraptor_scratch{
               .et_result_ = thrust::raw_pointer_cast(impl_->et_result_.data()),
               .et_task_list_ =

@@ -41,6 +41,9 @@ constexpr bool has(mc_crit const c, mc_crit const part) {
 // others are looked up by the sequential scan
 inline constexpr auto kMcEtTaskMax = 1U << 22U;  // 4M: 210 MB of stop bags
 
+// labels of one guide copy (take_guide()), 6 bytes each
+inline constexpr auto kMcGuideLabels = 1U << 23U;  // 8M: 48 MB
+
 // Preallocated capacities; unset = sized from the timetable. Running out of
 // et task slots only slows a round down; a full stop bag, bag pool or
 // breadcrumb arena (or the sequential scan's route bag) fails the search, since
@@ -49,6 +52,7 @@ struct gpu_mcraptor_limits {
   std::uint32_t et_tasks_{kMcEtTaskMax};
   std::optional<std::uint32_t> bag_pool_blocks_{};
   std::optional<std::uint32_t> breadcrumbs_{};
+  std::uint32_t guide_labels_{kMcGuideLabels};
 };
 
 // The owning scalar state's per-round scratch (n_route_stops entries each)
@@ -154,6 +158,15 @@ struct gpu_mcraptor {
   // over-pruning.
   void set_reuse_same_dep() { reuse_same_dep_ = true; }
 
+  // Guided realization (bmrap_profile.cc): take_guide() copies this search's
+  // labels per stop into the state; a later search of the other direction
+  // with set_guide() keeps only the labels that join one of them into one of
+  // `targets` (trips and criteria within, catchable at the stop). Empty
+  // targets: not guided. A copy beyond gpu_mcraptor_limits::guide_labels_
+  // fails the guided search.
+  void take_guide();
+  void set_guide(std::vector<journey const*> const& targets);
+
   // BM-RAPTOR pruning bounds, read in place from the scalar state that built
   // them (gpu_raptor::build_reach_bounds); nullptr disables. See
   // basic_mcraptor::set_bounds().
@@ -190,6 +203,7 @@ private:
   std::uint8_t bounds_budget_{0U};
   bool bounds_staggered_{false};
   bool has_bounds_{false};
+  std::uint32_t n_guide_targets_{0U};
 };
 
 }  // namespace nigiri::routing::gpu
