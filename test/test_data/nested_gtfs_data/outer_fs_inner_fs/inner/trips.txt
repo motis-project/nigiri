@@ -1,0 +1,2 @@
+route_id,service_id,trip_id
+1,id,trip_1

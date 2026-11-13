@@ -140,6 +140,22 @@ clasz to_clasz(std::uint16_t const route_type) {
   return clasz::kOther;
 }
 
+struct csv_route {
+  utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
+  utl::csv_col<utl::cstr, UTL_NAME("agency_id")> agency_id_;
+  utl::csv_col<utl::cstr, UTL_NAME("route_short_name")> route_short_name_;
+  utl::csv_col<utl::cstr, UTL_NAME("route_long_name")> route_long_name_;
+  utl::csv_col<utl::cstr, UTL_NAME("route_url")> route_url_;
+  utl::csv_col<utl::cstr, UTL_NAME("route_desc")> route_desc_;
+  utl::csv_col<std::uint16_t, UTL_NAME("route_type")> route_type_;
+  utl::csv_col<utl::cstr, UTL_NAME("route_color")> route_color_;
+  utl::csv_col<utl::cstr, UTL_NAME("route_text_color")> route_text_color_;
+  utl::csv_col<utl::cstr, UTL_NAME("network_id")> network_id_;
+  // Google Transit Ticketing extension
+  utl::csv_col<utl::cstr, UTL_NAME("ticketing_deep_link_id")>
+      ticketing_deep_link_id_;
+};
+
 route_map_t read_routes(source_idx_t const src,
                         timetable& tt,
                         import_context& ctx,
@@ -156,22 +172,6 @@ route_map_t read_routes(source_idx_t const src,
               tt.route_ids_.size(), src);
   tt.route_ids_.emplace_back();
 
-  struct csv_route {
-    utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
-    utl::csv_col<utl::cstr, UTL_NAME("agency_id")> agency_id_;
-    utl::csv_col<utl::cstr, UTL_NAME("route_short_name")> route_short_name_;
-    utl::csv_col<utl::cstr, UTL_NAME("route_long_name")> route_long_name_;
-    utl::csv_col<utl::cstr, UTL_NAME("route_url")> route_url_;
-    utl::csv_col<utl::cstr, UTL_NAME("route_desc")> route_desc_;
-    utl::csv_col<std::uint16_t, UTL_NAME("route_type")> route_type_;
-    utl::csv_col<utl::cstr, UTL_NAME("route_color")> route_color_;
-    utl::csv_col<utl::cstr, UTL_NAME("route_text_color")> route_text_color_;
-    utl::csv_col<utl::cstr, UTL_NAME("network_id")> network_id_;
-    // Google Transit Ticketing extension
-    utl::csv_col<utl::cstr, UTL_NAME("ticketing_deep_link_id")>
-        ticketing_deep_link_id_;
-  };
-
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Parse Routes")
       .out_bounds(27.F, 29.F)
@@ -181,18 +181,18 @@ route_map_t read_routes(source_idx_t const src,
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_route>()  //
       | utl::for_each([&](csv_route const& r) {
+          auto const agency_id = r.agency_id_->trim();
           auto const a =
               agencies.size() == 1U
                   ? agencies.begin()->second
-                  : utl::get_or_create(agencies, r.agency_id_->view(), [&]() {
+                  : utl::get_or_create(agencies, agency_id.view(), [&]() {
                       log(log_lvl::error, "gtfs.route",
                           "agency {} not found, using UNKNOWN with default "
                           "timezone {}",
-                          r.agency_id_->view(), default_tz);
+                          agency_id.view(), default_tz);
 
-                      auto const id = r.agency_id_->view().empty()
-                                          ? "UKN"
-                                          : r.agency_id_->view();
+                      auto const id =
+                          agency_id.empty() ? "UKN" : agency_id.view();
                       return register_agency(
                           tt, agency{tt, src, id, kEmptyTranslation,
                                      kEmptyTranslation, kEmptyTranslation,
@@ -232,6 +232,33 @@ route_map_t read_routes(source_idx_t const src,
           }
         });
   return map;
+}
+
+bool has_unknown_route_agency(std::string_view file,
+                              std::vector<std::string> const& agency_ids,
+                              std::string_view default_timezone,
+                              std::string_view feed) {
+  if (agency_ids.size() == 1U) {
+    return false;
+  }
+  if (!default_timezone.empty()) {
+    return false;
+  }
+  auto unknown_agency = false;
+  utl::for_each_row<csv_route>(file, [&](csv_route const& route) {
+    auto const route_agency_id = route.agency_id_->trim().view();
+    auto const found_agency = std::any_of(begin(agency_ids), end(agency_ids),
+                                          [&](std::string const& agency_id) {
+                                            return agency_id == route_agency_id;
+                                          });
+    if (!found_agency) {
+      log(log_lvl::error, "loader.gtfs.root",
+          "feed {}: the agency {} referenced by route {} does not exist.", feed,
+          route_agency_id, route.route_id_->view());
+      unknown_agency = true;
+    }
+  });
+  return unknown_agency;
 }
 
 }  // namespace nigiri::loader::gtfs

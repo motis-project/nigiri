@@ -1,6 +1,8 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/dir.h"
+#include "nigiri/loader/gtfs/load_timetable.h"
+#include "nigiri/loader/gtfs/validate.h"
 
 #include "utl/parser/cstr.h"
 #include "utl/zip.h"
@@ -69,6 +71,32 @@ TEST(dir, directory_listing) {
             fs.list_files("stamm/bahnhof.101"));
   EXPECT_EQ(mem.list_files("stamm/bahnhof.101"),
             fs.list_files("stamm/bahnhof.101"));
+}
+
+auto const nested_gtfs_paths =
+    std::vector{"test/test_data/nested_gtfs_data/outer_fs_inner_fs",
+                "test/test_data/nested_gtfs_data/outer_fs_inner_zip",
+                "test/test_data/nested_gtfs_data/outer_zip_inner_fs.zip",
+                "test/test_data/nested_gtfs_data/outer_zip_inner_zip.zip"};
+
+TEST(nigiri, find_nested_gtfs) {
+  for (auto const path : nested_gtfs_paths) {
+    auto const sub_dir = gtfs::find_gtfs_root(make_dir(path), false);
+    EXPECT_TRUE(sub_dir->exists("agency.txt"));
+    EXPECT_TRUE(sub_dir->exists("routes.txt"));
+    EXPECT_TRUE(sub_dir->exists("trips.txt"));
+    EXPECT_TRUE(sub_dir->exists("stop_times.txt"));
+  }
+}
+
+TEST(nigiri, validate_nested_gtfs) {
+  for (auto const path : nested_gtfs_paths) {
+    auto const sub_dir = gtfs::find_gtfs_root(make_dir(path), false);
+    auto const accepted_dirs =
+        gtfs::validate_sources(std::vector<timetable_source>{
+            timetable_source{.tag_ = "", .path_ = path}});
+    EXPECT_TRUE(accepted_dirs.empty());
+  }
 }
 
 TEST(nigiri, to_dir) {

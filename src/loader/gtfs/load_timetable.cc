@@ -60,14 +60,17 @@ void push_unique(Vec& vec, El&& value) {
 constexpr auto const required_files = {kAgencyFile, kStopFile, kRoutesFile,
                                        kTripsFile, kStopTimesFile};
 
-bool applicable(dir const& d) {
+bool applicable(dir const& d, std::filesystem::path path) {
+  auto const exists = [&](auto const file) { return d.exists(path / file); };
   for (auto const& file_name : required_files) {
-    if (!d.exists(file_name)) {
+    if (!exists(file_name)) {
       return false;
     }
   }
-  return d.exists(kCalenderFile) || d.exists(kCalendarDatesFile);
+  return exists(kCalenderFile) || exists(kCalendarDatesFile);
 }
+
+bool applicable(dir const& d) { return applicable(d, {}); }
 
 void load_timetable(loader_config const& config,
                     source_idx_t const src,
@@ -513,6 +516,39 @@ void load_timetable(loader_config const& config,
       expand_flex_trip(tt, ctx, stop_seq, noon_offsets, tt.date_range_, trp);
     }
   }
+}
+
+std::unique_ptr<dir> find_gtfs_root(std::unique_ptr<dir> d, bool expanded_zip) {
+  if (applicable(*d)) {
+    return d;
+  }
+  for (auto const& file : d->list_files(".")) {
+    if (file.filename() == kRoutesFile) {
+      auto const path = file.parent_path();
+      if (applicable(*d, path)) {
+        if (!expanded_zip) {
+          log(log_lvl::info, "loader.gtfs.find_gtfs_root",
+              "feed {}: Found subfolder: {}", d->path().generic_string(),
+              path.generic_string());
+        }
+        return std::make_unique<sub_dir>(std::move(d), std::move(path));
+      }
+    }
+    if (!expanded_zip && file.extension() == ".zip") {
+      auto const inner_file = d->get_file(file);
+      auto const data = inner_file.data();
+      auto inner_zip = std::make_unique<zip_dir>(
+          std::vector<std::uint8_t>{data.begin(), data.end()});
+      auto root = find_gtfs_root(std::move(inner_zip), true);
+      if (applicable(*root)) {
+        log(log_lvl::info, "loader.gtfs.find_gtfs_root",
+            "feed {}: Found subfolder: {}", d->path().generic_string(),
+            file.generic_string());
+        return root;
+      }
+    }
+  }
+  return d;
 }
 
 }  // namespace nigiri::loader::gtfs
