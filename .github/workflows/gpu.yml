@@ -85,6 +85,36 @@ jobs:
             --gpu_states 1 \
             -n 25
 
+      # BMRAPP must equal the range McRAPTOR over all criteria cut down by the
+      # restricted-set definition (mcraptor-restricted, CPU), criteria and all,
+      # on every journey the reference can decide. Every step also validates
+      # each cell's legs against the timetable and their criteria.
+      - name: Validate Germany (bmrapp vs restricted mcraptor, CPU + GPU)
+        run: |
+          ./build/cuda/nigiri-benchmark -p tt.bin \
+            --engines cpu gpu \
+            --algo bmrapp mcraptor-restricted \
+            --bmrap_gpu_mc 0 1 \
+            --modes s2s c2c \
+            --dirs fwd bwd \
+            --threads 8 \
+            --gpu_states 1 \
+            -n 10
+
+      # the same, extending against the search direction as a later page does:
+      # bmrapp's opposed path (anchor set from a range search up front)
+      - name: Validate Germany (bmrapp vs restricted mcraptor, opposed)
+        run: |
+          ./build/cuda/nigiri-benchmark -p tt.bin \
+            --engines cpu gpu \
+            --algo bmrapp mcraptor-restricted \
+            --bmrap_gpu_mc 0 1 \
+            --modes s2s c2c \
+            --dirs fwd-opp bwd-opp \
+            --threads 8 \
+            --gpu_states 1 \
+            -n 10
+
       - name: Validate Germany (vias=1, CPU)
         run: |
           ./build/cuda/nigiri-benchmark -p tt.bin \
