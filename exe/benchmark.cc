@@ -21,6 +21,7 @@
 #include "nigiri/qa/qa.h"
 #include "nigiri/query_generator/generator.h"
 #include "nigiri/routing/interval_estimate.h"
+#include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
@@ -353,6 +354,7 @@ int main(int argc, char* argv[]) {
   auto seed = std::int64_t{0};
   auto min_transfer_time = duration_t::rep{};
   auto qa_path = std::filesystem::path{};
+  auto blocked_sources = std::vector<source_idx_t::value_t>{};
   auto engines = std::vector<std::string>{"cpu", "gpu"};
   auto algos = std::vector<std::string>{"range", "pong"};
   auto modes = std::vector<std::string>{"s2s", "c2c"};
@@ -454,6 +456,8 @@ int main(int argc, char* argv[]) {
        "start location for random queries")  //
       ("dest_loc", bpo::value<location_idx_t::value_t>(&dest_loc_val),
        "destination location for random queries")  //
+      ("blocked_sources", bpo::value(&blocked_sources)->multitoken(),
+       "source indices to exclude from routing (default: none)")  //
       ("qa_path,q", bpo::value(&qa_path),
        "path to write the journey criteria to for qa");
   bpo::variables_map vm;
@@ -470,6 +474,19 @@ int main(int argc, char* argv[]) {
   std::cout << "loading timetable...\n";
   auto tt = *nigiri::timetable::read(tt_path);
   tt.resolve();
+
+  auto blocked_srcs = bitvec_map<source_idx_t>{};
+  blocked_srcs.resize(tt.n_sources());
+  for (auto const src : blocked_sources) {
+    if (src >= tt.n_sources()) {
+      std::cout << "Error: blocked source " << src
+                << " >= n_sources=" << tt.n_sources() << "\n";
+      return 1;
+    }
+    blocked_srcs.set(source_idx_t{src});
+  }
+  auto const blocked =
+      routing::make_blocked_routes(tt, nullptr, std::move(blocked_srcs));
 
   gs.interval_size_ = duration_t{interval_size};
 
@@ -644,6 +661,7 @@ int main(int argc, char* argv[]) {
         }
         sdq.q_.extend_interval_earlier_ = dir == direction::kBackward;
         sdq.q_.extend_interval_later_ = dir == direction::kForward;
+        sdq.q_.blocked_ = blocked;
       }
 
       auto cells = std::vector<result_set>{};
