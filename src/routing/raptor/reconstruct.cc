@@ -53,9 +53,9 @@ void finalize_journey(timetable const& tt,
 
 bool is_journey_start(timetable const& tt,
                       query const& q,
-                      location_idx_t const candidate_l) {
+                      location_idx_t const l) {
   return utl::any_of(q.start_, [&](offset const& o) {
-    return matches(tt, nullptr, q.start_match_mode_, o.target(), candidate_l);
+    return matches(tt, nullptr, q.start_match_mode_, o.target(), l);
   });
 }
 

@@ -23,9 +23,7 @@ void finalize_journey(timetable const&,
                       query const&,
                       journey&);
 
-bool is_journey_start(timetable const&,
-                      query const&,
-                      location_idx_t candidate_l);
+bool is_journey_start(timetable const&, query const&, location_idx_t);
 
 template <direction SearchDir>
 void reconstruct_journey(timetable const&,
