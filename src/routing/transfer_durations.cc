@@ -50,9 +50,9 @@ void fix_transfer_durations(timetable const& tt,
   if (q.prf_idx_ != kDefaultProfile || tt.transfer_rules_.rules_.empty()) {
     return;
   }
-  auto const clamp = [](duration_t const d, unixtime_t::duration const gap) {
-    return std::min(d, std::max(duration_t{0},
-                                std::chrono::duration_cast<duration_t>(gap)));
+  auto const clamp = [](unixtime_t::duration const d,
+                        unixtime_t::duration const gap) {
+    return std::clamp(gap, {}, d);
   };
   auto const n = j.legs_.size();
   for (auto i = 0U; i != n; ++i) {
@@ -63,10 +63,12 @@ void fix_transfer_durations(timetable const& tt,
     if (fp == nullptr || !a.has_value() || !b.has_value()) {
       continue;
     }
+
     auto const d = get_rule_transfer_time(tt, rtt, *a, *b, leg.from_, leg.to_);
     if (!d.has_value() || *d == footpath::kBan) {
-      continue;
+      continue;  // handled as valid option for itinerary-id
     }
+
     auto const duration = adjusted_transfer_time(q.transfer_time_settings_, *d);
     leg.uses_ = footpath{fp->target(), *d};
     if (i == 0U) {

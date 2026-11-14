@@ -107,22 +107,21 @@ transfer_rule_idx_t get_change_rule(
     location_idx_t const from_base,
     location_idx_t const to_base) {
   auto best = transfer_rule_idx_t::invalid();
-  auto const keep = [&](transfer_rule_idx_t const r) {
+  auto const update_best = [&](transfer_rule_idx_t const r) {
     best = best == transfer_rule_idx_t::invalid()
                ? r
                : get_more_specific(tt, best, r);
   };
-  for (auto const side : from_sig) {
-    if (side.ev_type() == event_type::kArr &&
-        is_applicable(tt, {side.rule(), event_type::kDep}, to_sig, to_base)) {
-      keep(side.rule());
+  for (auto const r : from_sig) {
+    if (r.ev_type() == event_type::kArr &&
+        is_applicable(tt, {r.rule(), event_type::kDep}, to_sig, to_base)) {
+      update_best(r.rule());
     }
   }
-  for (auto const side : to_sig) {
-    if (side.ev_type() == event_type::kDep &&
-        is_applicable(tt, {side.rule(), event_type::kArr}, from_sig,
-                      from_base)) {
-      keep(side.rule());
+  for (auto const r : to_sig) {
+    if (r.ev_type() == event_type::kDep &&
+        is_applicable(tt, {r.rule(), event_type::kArr}, from_sig, from_base)) {
+      update_best(r.rule());
     }
   }
   return best;
