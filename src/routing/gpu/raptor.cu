@@ -8,6 +8,7 @@
 #include <iostream>
 #include <limits>
 #include <optional>
+#include <ranges>
 
 // date/date.h (pulled in transitively via nigiri/types.h above) leaks a
 // `#define NOEXCEPT noexcept`. CCCL's concept machinery builds a requirement
@@ -83,20 +84,11 @@ struct gpu_timetable::impl {
     return v;
   }
 
-  static std::vector<u8_minutes> pad_transfer_times(
-      vector_map<location_idx_t, u8_minutes> const& transfer_times) {
-    auto v =
-        std::vector<u8_minutes>(begin(transfer_times), end(transfer_times));
-    v.resize(v.size() + kRtLocationCapacity, kNoTransferAllowed);
-    return v;
-  }
-
   explicit impl(timetable const& tt)
       : n_locations_{tt.n_locations() + kRtLocationCapacity},
         n_static_locations_{tt.n_locations()},
         n_routes_{tt.n_routes()},
-        transfer_time_{
-            to_device(pad_transfer_times(tt.locations_.transfer_time_))},
+        transfer_time_{to_device(tt.locations_.transfer_time_)},
         base_{to_device(build_base(tt))},
         first_dep_{to_device(tt.transport_first_dep_)},
         transport_pattern_{to_device(tt.transport_pattern_)},
@@ -224,15 +216,12 @@ struct gpu_rt_timetable::impl {
   static vecvec<location_idx_t, rt_transport_idx_t> build_location_rt(
       rt_timetable const& rtt) {
     auto v = vecvec<location_idx_t, rt_transport_idx_t>{};
-    auto tmp = std::vector<rt_transport_idx_t>{};
-    for (auto l = 0U; l != rtt.n_locations(); ++l) {
-      tmp.clear();
-      for (auto const rt_t : rtt.location_rt_transports_[location_idx_t{l}]) {
-        if (!rtt.rt_transport_is_cancelled_[to_idx(rt_t)]) {
-          tmp.push_back(rt_t);
-        }
-      }
-      v.emplace_back(tmp);
+    for (auto l = location_idx_t{0U}; l != rtt.n_locations(); ++l) {
+      auto const rt_transports = rtt.location_rt_transports_[l];
+      v.emplace_back(rt_transports |
+                     std::views::filter([&](rt_transport_idx_t const rt_t) {
+                       return !rtt.rt_transport_is_cancelled_[to_idx(rt_t)];
+                     }));
     }
     return v;
   }
@@ -241,18 +230,16 @@ struct gpu_rt_timetable::impl {
   static vecvec<rt_transport_idx_t, stop::value_type> build_rt_virt_seq(
       rt_timetable const& rtt) {
     auto v = vecvec<rt_transport_idx_t, stop::value_type>{};
-    auto tmp = std::vector<stop::value_type>{};
     for (auto rt_t = rt_transport_idx_t{0U}; rt_t != rtt.n_rt_transports();
          ++rt_t) {
-      tmp.clear();
       auto const seq = rtt.rt_transport_location_seq_[rt_t];
-      for (auto i = 0U; i != seq.size(); ++i) {
-        tmp.push_back(stop{seq[i]}
-                          .with_location(rtt.stop_location(
-                              rt_t, static_cast<stop_idx_t>(i)))
-                          .value());
-      }
-      v.emplace_back(tmp);
+      v.emplace_back(std::views::iota(stop_idx_t{0U},
+                                      static_cast<stop_idx_t>(seq.size())) |
+                     std::views::transform([&](stop_idx_t const i) {
+                       return stop{seq[i]}
+                           .with_location(rtt.stop_location(rt_t, i))
+                           .value();
+                     }));
     }
     return v;
   }
@@ -263,13 +250,6 @@ struct gpu_rt_timetable::impl {
     for (auto l = location_idx_t{0U}; l != rtt.rt_footpaths_out_.size(); ++l) {
       for (auto const fp : rtt.rt_footpaths_out_[l]) {
         v.push_back({l, fp});
-      }
-    }
-    for (auto i = rt_location_idx_t{0U}; i != rtt.n_rt_locations(); ++i) {
-      auto const l = rtt.to_location(i);
-      if (auto const transfer_time = rtt.transfer_time(l);
-          transfer_time != kNoTransferAllowed) {
-        v.push_back({l, footpath{l, duration_t{transfer_time}}});
       }
     }
     return v;
