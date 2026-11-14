@@ -1200,25 +1200,22 @@ TEST(bmrap, guided_realization_survives_ties) {
       auto as = routing::raptor_state{};
       check(as, "cpu");
 #if defined(NIGIRI_CUDA)
-      // the device copy of the mc pong labels (take_guide())
+      // the device copies of the mc ping and mc pong labels (take_guide())
       auto const gtt = routing::gpu::gpu_timetable{tt};
       auto gs = routing::gpu::gpu_raptor_state{gtt};
       check(gs, "gpu");
       // a copy past its capacity fails the search (motis then answers with
-      // plain raptor) instead of realizing unguided or losing journeys
+      // plain raptor) instead of running unguided or losing journeys; the mc
+      // ping's copy guides the mc pong in both directions
       auto small = routing::gpu::gpu_raptor_state{
           gtt, routing::gpu::gpu_mcraptor_limits{.guide_labels_ = 1U}};
-      if (dir == direction::kForward) {
-        try {
-          check(small, "gpu, guide capacity 1");
-          ADD_FAILURE() << c.name_ << ": no guide overflow";
-        } catch (std::exception const& e) {
-          EXPECT_NE(std::string_view{e.what()}.find("guide"),
-                    std::string_view::npos)
-              << e.what();
-        }
-      } else {
-        check(small, "gpu, guide capacity 1 (no guide taken)");
+      try {
+        check(small, "gpu, guide capacity 1");
+        ADD_FAILURE() << c.name_ << ": no guide overflow";
+      } catch (std::exception const& e) {
+        EXPECT_NE(std::string_view{e.what()}.find("guide"),
+                  std::string_view::npos)
+            << e.what();
       }
 #endif
     }

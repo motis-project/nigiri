@@ -1,6 +1,7 @@
 #include "nigiri/routing/gpu/mcraptor.h"
 
 #include <algorithm>
+#include <array>
 #include <numeric>
 #include <tuple>
 #include <type_traits>
@@ -137,13 +138,15 @@ struct gpu_mcraptor_state::impl {
     overflow_.resize(1U);
     fill_bytes(overflow_, 0, stream_);
 
-    guide_labels_.resize(limits.guide_labels_);
-    guide_begin_.resize(n_locations);
-    guide_n_.resize(n_locations);
-    fill_bytes(guide_n_, 0, stream_);
-    guide_count_.resize(1U);
-    guide_overflow_.resize(1U);
-    fill_bytes(guide_overflow_, 0, stream_);
+    for (auto& g : guide_) {
+      g.labels_.resize(limits.guide_labels_);
+      g.begin_.resize(n_locations);
+      g.n_.resize(n_locations);
+      fill_bytes(g.n_, 0, stream_);
+      g.count_.resize(1U);
+      g.overflow_.resize(1U);
+      fill_bytes(g.overflow_, 0, stream_);
+    }
     guide_targets_.resize(kMcGuideTargetCap);
   }
 
@@ -253,13 +256,18 @@ struct gpu_mcraptor_state::impl {
   pinned_host_buffer<std::uint32_t> done_pin_;
   thrust::device_vector<std::uint32_t> overflow_;
 
-  // guided realization, see mc_guide_entry: the copy outlives the search that
-  // took it; its overflow flag is not reset with the searches' canaries
-  thrust::device_vector<mc_guide_entry> guide_labels_;
-  thrust::device_vector<std::uint32_t> guide_begin_;
-  thrust::device_vector<std::uint32_t> guide_n_;
-  thrust::device_vector<std::uint32_t> guide_count_;
-  thrust::device_vector<std::uint32_t> guide_overflow_;
+  // guided searches, see mc_guide_entry: one copy per direction, taken by a
+  // search of that direction and read by the other's; a copy outlives the
+  // search that took it, its overflow flag is not reset with the searches'
+  // canaries
+  struct guide_copy {
+    thrust::device_vector<mc_guide_entry> labels_;
+    thrust::device_vector<std::uint32_t> begin_;
+    thrust::device_vector<std::uint32_t> n_;
+    thrust::device_vector<std::uint32_t> count_;
+    thrust::device_vector<std::uint32_t> overflow_;
+  };
+  std::array<guide_copy, 2> guide_;
   thrust::device_vector<mc_guide_target> guide_targets_;
   pinned_host_buffer<mc_guide_target> guide_targets_pin_;
 
@@ -497,6 +505,17 @@ gpu_mcraptor<SearchDir, Crit>::gpu_mcraptor(
                              lb);
 }
 
+static mc_guide_copy guide_view(gpu_mcraptor_state::impl::guide_copy& g) {
+  auto const ptr = [](auto& v) { return thrust::raw_pointer_cast(v.data()); };
+  return {.labels_ = ptr(g.labels_),
+          .begin_ = ptr(g.begin_),
+          .n_ = ptr(g.n_),
+          .count_ = ptr(g.count_),
+          .overflow_ = ptr(g.overflow_),
+          .cap_ = static_cast<std::uint32_t>(g.labels_.size())};
+}
+
+// guided by the other direction's copy (take_guide() points at its own)
 template <direction SearchDir, mc_crit Crit>
 mcraptor_impl<SearchDir, Crit> make_impl(
     gpu_mcraptor_state::impl& s,
@@ -559,12 +578,7 @@ mcraptor_impl<SearchDir, Crit> make_impl(
       .stop_bag_trips_ = ptr(s.stop_bag_trips_),
       .stop_bag_parents_ = ptr(s.stop_bag_parents_),
       .stop_bag_board_extras_ = ptr(s.stop_bag_board_extras_),
-      .guide_labels_ = ptr(s.guide_labels_),
-      .guide_begin_ = ptr(s.guide_begin_),
-      .guide_n_ = ptr(s.guide_n_),
-      .guide_count_ = ptr(s.guide_count_),
-      .guide_overflow_ = ptr(s.guide_overflow_),
-      .guide_cap_ = static_cast<std::uint32_t>(s.guide_labels_.size())};
+      .guide_ = guide_view(s.guide_[dir_idx ^ 1U])};
 }
 
 template <direction SearchDir, mc_crit Crit>
@@ -772,7 +786,8 @@ void gpu_mcraptor<SearchDir, Crit>::execute(
       overflow_pin + 2U, thrust::raw_pointer_cast(s.bag_pool_count_.data()),
       sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_));
   CUDA_CHECK(cudaMemcpyAsync(
-      overflow_pin + 3U, thrust::raw_pointer_cast(s.guide_overflow_.data()),
+      overflow_pin + 3U,
+      thrust::raw_pointer_cast(s.guide_[kDirIdx ^ 1U].overflow_.data()),
       sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_));
   cudaStreamSynchronize(s.stream_);
   CUDA_CHECK(cudaPeekAtLastError());
@@ -787,7 +802,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(
   // capacity canaries: a lossy search must never go unnoticed
   utl::verify(n_guide_targets_ == 0U || overflow_pin[3] == 0U,
               "gpu mcraptor: capacity overflow: guide (cap {} labels)",
-              s.guide_labels_.size());
+              s.guide_[kDirIdx ^ 1U].labels_.size());
   utl::verify(*overflow_pin == 0U,
               "gpu mcraptor: capacity overflow: bag={} (pool {} of {} blocks) "
               "arena={} ({} of {} breadcrumbs) route_bag={}",
@@ -852,24 +867,26 @@ void gpu_mcraptor<SearchDir, Crit>::reconstruct(query const& q, journey& j) {
 template <direction SearchDir, mc_crit Crit>
 void gpu_mcraptor<SearchDir, Crit>::take_guide() {
   auto& s = *state_.impl_;
-  fill_bytes(s.guide_n_, 0, s.stream_);
-  fill_bytes(s.guide_count_, 0, s.stream_);
-  fill_bytes(s.guide_overflow_, 0, s.stream_);
-  launch(mc_take_guide_kernel<SearchDir, Crit>, s.stream_,
-         make_impl<SearchDir, Crit>(s, kDirIdx, transfer_time_settings_,
-                                    allowed_claszes_, avoided_, 0U, base_,
-                                    worst_at_dest_, {}));
+  auto& g = s.guide_[kDirIdx];
+  fill_bytes(g.n_, 0, s.stream_);
+  fill_bytes(g.count_, 0, s.stream_);
+  fill_bytes(g.overflow_, 0, s.stream_);
+  auto r = make_impl<SearchDir, Crit>(s, kDirIdx, transfer_time_settings_,
+                                      allowed_claszes_, avoided_, 0U, base_,
+                                      worst_at_dest_, {});
+  r.guide_ = guide_view(g);  // its own direction's copy
+  launch(mc_take_guide_kernel<SearchDir, Crit>, s.stream_, r);
 }
 
 template <direction SearchDir, mc_crit Crit>
 void gpu_mcraptor<SearchDir, Crit>::set_guide(
     std::vector<journey const*> const& targets) {
   auto& s = *state_.impl_;
-  utl::verify(targets.size() <= kMcGuideTargetCap,
-              "gpu mcraptor: {} guide targets exceed {}", targets.size(),
-              kMcGuideTargetCap);
-  n_guide_targets_ = static_cast<std::uint32_t>(targets.size());
-  if (targets.empty()) {
+  // beyond the target buffer: unguided, which is complete, only slower
+  n_guide_targets_ = targets.size() <= kMcGuideTargetCap
+                         ? static_cast<std::uint32_t>(targets.size())
+                         : 0U;
+  if (n_guide_targets_ == 0U) {
     return;
   }
   // the previous search synchronized the stream: the pin is free

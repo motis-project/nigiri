@@ -41,7 +41,7 @@ constexpr bool has(mc_crit const c, mc_crit const part) {
 // others are looked up by the sequential scan
 inline constexpr auto kMcEtTaskMax = 1U << 22U;  // 4M: 210 MB of stop bags
 
-// labels of one guide copy (take_guide()), 6 bytes each
+// labels of one guide copy (take_guide(), one per direction), 6 bytes each
 inline constexpr auto kMcGuideLabels = 1U << 23U;  // 8M: 48 MB
 
 // Preallocated capacities; unset = sized from the timetable. Running out of
@@ -158,12 +158,12 @@ struct gpu_mcraptor {
   // over-pruning.
   void set_reuse_same_dep() { reuse_same_dep_ = true; }
 
-  // Guided realization (bmrap_profile.cc): take_guide() copies this search's
-  // labels per stop into the state; a later search of the other direction
-  // with set_guide() keeps only the labels that join one of them into one of
-  // `targets` (trips and criteria within, catchable at the stop). Empty
-  // targets: not guided. A copy beyond gpu_mcraptor_limits::guide_labels_
-  // fails the guided search.
+  // Guided searches (bmrap_profile.cc): take_guide() copies this search's
+  // labels per stop into the state, one copy per direction; a later search of
+  // the other direction with set_guide() keeps only the labels that join one
+  // of them into one of `targets` (trips and criteria within, catchable at the
+  // stop). Empty targets, or more than the device buffer holds: not guided. A
+  // copy beyond gpu_mcraptor_limits::guide_labels_ fails the guided search.
   void take_guide();
   void set_guide(std::vector<journey const*> const& targets);
 

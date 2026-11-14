@@ -137,6 +137,16 @@ struct mc_guide_target {
 };
 inline constexpr auto kMcGuideTargetCap = 64U;
 
+// one copy (gpu_mcraptor_state::impl::guide_copy)
+struct mc_guide_copy {
+  mc_guide_entry* labels_;
+  std::uint32_t* begin_;  // n_locations
+  std::uint32_t* n_;  // n_locations, 0 = no label
+  std::uint32_t* count_;
+  std::uint32_t* overflow_;
+  std::uint32_t cap_;
+};
+
 // canary bits
 inline constexpr auto kMcOverflowBag = 1U;
 inline constexpr auto kMcOverflowArena = 2U;
@@ -1508,12 +1518,12 @@ struct mcraptor_impl {
     if (guide_targets_.empty()) {
       return true;
     }
-    auto const from = guide_begin_[l];
-    auto const n = guide_n_[l];
+    auto const from = guide_.begin_[l];
+    auto const n = guide_.n_[l];
     auto const slack = adjusted_transfer_time(
         transfer_time_settings_, tt_.transfer_time_[location_idx_t{l}].count());
     for (auto i = from; i != from + n; ++i) {
-      auto const e = guide_labels_[i];
+      auto const e = guide_.labels_[i];
       if (kFwd ? t > e.t_ + slack : t < e.t_ - slack) {
         continue;  // not catchable
       }
@@ -1527,8 +1537,8 @@ struct mcraptor_impl {
     return false;
   }
 
-  // copies the bags of the touched stops (after this search ran); guide_n_
-  // and guide_count_ start at 0
+  // copies the bags of the touched stops (after this search ran); guide_.n_
+  // and guide_.count_ start at 0
   __device__ void take_guide() {
     for_each_touched(false, [&](std::uint32_t const l) {
       auto bag = bag_slots(l);
@@ -1540,9 +1550,9 @@ struct mcraptor_impl {
       if (n == 0U) {
         return;
       }
-      auto const from = atomicAdd(guide_count_, n);
-      if (from + n > guide_cap_) {
-        atomicOr(guide_overflow_, 1U);
+      auto const from = atomicAdd(guide_.count_, n);
+      if (from + n > guide_.cap_) {
+        atomicOr(guide_.overflow_, 1U);
         return;
       }
       auto w = from;
@@ -1550,14 +1560,14 @@ struct mcraptor_impl {
         auto* const s = bag.slot(i);
         if (s != nullptr && *s != kMcEmptySlot) {
           auto const v = mc_label::of(*s);
-          guide_labels_[w++] = {
+          guide_.labels_[w++] = {
               .t_ = from_key(static_cast<std::uint32_t>(v.arr_key_)),
               .round_ = static_cast<std::uint8_t>(v.round_),
               .extras_ = static_cast<std::uint16_t>(v.extras_)};
         }
       }
-      guide_begin_[l] = from;
-      guide_n_[l] = n;
+      guide_.begin_[l] = from;
+      guide_.n_[l] = n;
     });
   }
 
@@ -1778,14 +1788,9 @@ struct mcraptor_impl {
   std::uint32_t* stop_bag_parents_;
   std::uint32_t* stop_bag_board_extras_;
 
-  // guided realization: the copy (shared by the engines of a state) and this
+  // guided searches: the copy read (or, in take_guide(), written) and this
   // search's targets (empty = not guided)
-  mc_guide_entry* guide_labels_;
-  std::uint32_t* guide_begin_;  // n_locations
-  std::uint32_t* guide_n_;  // n_locations, 0 = no label
-  std::uint32_t* guide_count_;
-  std::uint32_t* guide_overflow_;
-  std::uint32_t guide_cap_;
+  mc_guide_copy guide_;
   cuda::std::span<mc_guide_target const> guide_targets_{};
 };
 
