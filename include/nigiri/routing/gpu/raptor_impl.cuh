@@ -404,11 +404,9 @@ struct raptor_impl {
     auto const warp_id = get_global_thread_id() / kWarpSize;
     auto const n_warps = get_global_stride() / kWarpSize;
 
-    for (auto i = warp_id; i < tt_.n_routes_; i += n_warps) {
-      if (!route_mark_.test(i)) {
-        continue;
-      }
-
+    auto const n_marked = *route_list_count_;
+    for (auto idx = warp_id; idx < n_marked; idx += n_warps) {
+      auto const i = route_list_[idx];
       auto const r = route_idx_t{i};
       if constexpr (WithClaszFilter) {
         if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
