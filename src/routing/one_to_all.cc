@@ -57,8 +57,6 @@ void finish_one_to_all(delta_t const worst_at_dest, raptor_state& state) {
   auto best = state.get_best<kVias>();
   auto& arrivals = state.one_to_all_arrivals_;
 
-  // Stops: arrivals (see raptor::update_one_to_all_arrivals) -> best (within
-  // worst_at_dest). Virtual locations have none.
   for (auto l = location_idx_t{0U}; l != state.n_locations_; ++l) {
     auto& b = best[to_idx(l)][kVias];
     b = kInvalid;
