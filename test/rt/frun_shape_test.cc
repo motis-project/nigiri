@@ -63,6 +63,7 @@ U,U,6.0,2.0
 V,V,7.0,3.0
 W,W,7.0,2.0
 X,X,7.0,1.0
+Z,Z,-5.0,-5.0
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -80,6 +81,7 @@ ROUTE_7,AGENCY_1,Route 7,,3
 ROUTE_8,AGENCY_1,Route 8,,3
 ROUTE_9,AGENCY_1,Route 9,,3
 ROUTE_10,AGENCY_1,Route 10,,3
+ROUTE_11,AGENCY_1,Route 11,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id,shape_id,
@@ -99,6 +101,8 @@ ROUTE_7,SERVICE_1,TRIP_11,E,BLOCK_11,SHAPE_11,
 ROUTE_8,SERVICE_1,TRIP_12,E,BLOCK_12,SHAPE_12,
 ROUTE_9,SERVICE_1,TRIP_13,E,BLOCK_13,SHAPE_13,
 ROUTE_10,SERVICE_1,TRIP_14,E,BLOCK_14,,
+ROUTE_1,SERVICE_1,TRIP_1b,E,BLOCK_1b,SHAPE_1,
+ROUTE_11,SERVICE_1,TRIP_X,E,BLOCK_X,,
 
 # shapes.txt
 "shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence","shape_dist_traveled"
@@ -217,10 +221,18 @@ TRIP_13,13:05:00,13:05:00,O,5,0,0,
 TRIP_14,11:15:00,11:15:00,F,1,0,0,
 TRIP_14,12:15:00,12:15:00,S,2,0,0,
 TRIP_14,13:15:00,13:15:00,W,3,0,0,
+TRIP_1b,20:00:00,20:00:00,A,1,0,0,
+TRIP_1b,21:00:00,21:00:00,B,2,0,0,
+TRIP_1b,22:00:00,22:00:00,C,3,0,0,
+TRIP_1b,23:00:00,23:00:00,D,4,0,0,
+TRIP_X,10:00:00,10:00:00,Z,1,0,0,
+TRIP_X,10:50:00,10:50:00,B,2,0,0,
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+B,B,3,,,,TRIP_X,TRIP_1b
 
 )"sv;
-
-constexpr auto const kDefaultFootpathDuration = 2_minutes;
 
 TEST(
     rt,
@@ -326,6 +338,38 @@ TEST(
           },
           std::runtime_error);
     }
+  }
+  // TRIP_1b: the forbidden transfer TRIP_X -> TRIP_1b (TRIP_X -> TRIP_1 stays
+  // allowed) splits TRIP_1's route, the split route keeps the shape.
+  {
+    auto const run_of = [&](std::string const& id) {
+      transit_realtime::TripDescriptor td;
+      td.set_trip_id(id);
+      return rt::gtfsrt_resolve_run(date::sys_days{2024_y / January / 1}, tt,
+                                    &rtt, source_idx_t{0U}, td)
+          .first;
+    };
+    auto const r1 = run_of("TRIP_1");
+    auto const r1b = run_of("TRIP_1b");
+    ASSERT_TRUE(r1.valid());
+    ASSERT_TRUE(r1b.valid());
+    EXPECT_NE(tt.transport_route_[r1.t_.t_idx_],
+              tt.transport_route_[r1b.t_.t_idx_]);
+
+    leg_shape.clear();
+    rt::frun{tt, &rtt, r1b}.for_each_shape_point(
+        &shapes_data, interval{stop_idx_t{0U}, stop_idx_t{3U + 1U}},
+        plot_point);
+    EXPECT_EQ((geo::polyline{
+                  {1.0F, 1.0F},
+                  {0.5F, 1.5F},
+                  {1.0F, 2.0F},
+                  {0.5F, 2.5F},
+                  {1.0F, 3.0F},
+                  {0.5F, 3.5F},
+                  {1.0F, 4.0F},
+              }),
+              leg_shape);
   }
   // TRIP_6 (trip without shape)
   {
@@ -845,8 +889,7 @@ TEST(
       auto const q = routing::query{
           .start_time_ = start_time,
           .start_ = to_offsets("A"),
-          .max_travel_time_ =
-              4_hours + kDefaultFootpathDuration,  // Exact limit
+          .max_travel_time_ = 4_hours,  // Exact limit
       };
       auto state = nigiri::routing::one_to_all<kSearchDir>(tt, nullptr, q);
 
@@ -867,9 +910,7 @@ TEST(
       auto const q = routing::query{
           .start_time_ = start_time,
           .start_ = to_offsets("A"),
-          .max_travel_time_ =
-              4_hours + 4_minutes +
-              kDefaultFootpathDuration,  // Exact limit - 1 minute
+          .max_travel_time_ = 4_hours + 4_minutes,  // Exact limit - 1 minute
       };
       auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
 
@@ -883,19 +924,16 @@ TEST(
         auto const stats_s = get_fastest_one_to_all_offsets(
             tt, state, kSearchDir, to_location_idx("S"), start_time,
             q.max_transfers_);
-        ASSERT_EQ(stats_s.duration_,
-                  delta_t{140 + kDefaultFootpathDuration.count()});
+        ASSERT_EQ(stats_s.duration_, delta_t{140});
         ASSERT_EQ(stats_s.k_, 2U);
         auto const stats_w = get_fastest_one_to_all_offsets(
             tt, state, kSearchDir, to_location_idx("W"), start_time,
             q.max_transfers_);
-        ASSERT_EQ(stats_w.duration_,
-                  delta_t{200 + kDefaultFootpathDuration.count()});
+        ASSERT_EQ(stats_w.duration_, delta_t{200});
         ASSERT_EQ(stats_w.k_, 2U);
         auto const stats_s_direct = get_fastest_one_to_all_offsets(
             tt, state, kSearchDir, to_location_idx("S"), start_time, 0);
-        ASSERT_EQ(stats_s_direct.duration_,
-                  delta_t{185 + kDefaultFootpathDuration.count()});
+        ASSERT_EQ(stats_s_direct.duration_, delta_t{185});
         ASSERT_EQ(stats_s_direct.k_, 1U);
       }
       // Test round times
@@ -904,17 +942,13 @@ TEST(
         routing::for_each_one_to_all_round_time(
             tt, state, kSearchDir, to_location_idx("S"), start_time,
             q.max_transfers_, add_round_time);
-        EXPECT_EQ(
-            (round_times_t{{1, duration_t{185} + kDefaultFootpathDuration},
-                           {2, duration_t{140} + kDefaultFootpathDuration}}),
-            round_times);
+        EXPECT_EQ((round_times_t{{1, duration_t{185}}, {2, duration_t{140}}}),
+                  round_times);
         round_times.clear();
         routing::for_each_one_to_all_round_time(
             tt, state, kSearchDir, to_location_idx("W"), start_time,
             q.max_transfers_, add_round_time);
-        EXPECT_EQ(
-            (round_times_t{{2, duration_t{200} + kDefaultFootpathDuration}}),
-            round_times);
+        EXPECT_EQ((round_times_t{{2, duration_t{200}}}), round_times);
       }
     }
   }
@@ -940,8 +974,7 @@ TEST(
     auto const stats_b = get_fastest_one_to_all_offsets(
         tt, state, kSearchDir, to_location_idx("B"), start_time,
         q.max_transfers_);
-    ASSERT_EQ(stats_b.duration_,
-              delta_t{-150 - kDefaultFootpathDuration.count()});
+    ASSERT_EQ(stats_b.duration_, delta_t{-150});
   }
   // One-to-All forwards with nontrivial offsets at F
   {
@@ -964,8 +997,7 @@ TEST(
     auto const stats_s = get_fastest_one_to_all_offsets(
         tt, state, kSearchDir, to_location_idx("S"), start_time,
         q.max_transfers_);
-    EXPECT_EQ(stats_s.duration_,
-              delta_t{80 + kDefaultFootpathDuration.count()});
+    EXPECT_EQ(stats_s.duration_, delta_t{80});
   }
   // One-to-All backwards with nontrivial offsets at S
   {
@@ -977,9 +1009,7 @@ TEST(
     auto const q = routing::query{
         .start_time_ = start_time,
         .start_ = {{to_location_idx("S"), 10_minutes, 0U}},
-        .max_travel_time_ =
-            110_minutes +
-            kDefaultFootpathDuration,  // Exact limit for backward search
+        .max_travel_time_ = 110_minutes,  // Exact limit for backward search
     };
     auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
 
@@ -991,20 +1021,18 @@ TEST(
     auto const stats_f = get_fastest_one_to_all_offsets(
         tt, state, kSearchDir, to_location_idx("F"), start_time,
         q.max_transfers_);
-    EXPECT_EQ(stats_f.duration_,
-              delta_t{-110 - kDefaultFootpathDuration.count()});
+    EXPECT_EQ(stats_f.duration_, delta_t{-110});
     // Test round times
     round_times.clear();
     routing::for_each_one_to_all_round_time(tt, state, kSearchDir,
                                             to_location_idx("F"), start_time,
                                             q.max_transfers_, add_round_time);
-    EXPECT_EQ((round_times_t{{1, duration_t{110} + kDefaultFootpathDuration}}),
-              round_times);
+    EXPECT_EQ((round_times_t{{1, duration_t{110}}}), round_times);
   }
   // Loading statistics
   {
     EXPECT_EQ(
-        R"([{"idx":0,"firstDay":"2024-01-01","lastDay":"2024-01-01","noLocations":22,"noTrips":16,"transportsXDays":16}])",
+        R"({"feeds":[{"idx":0,"firstDay":"2024-01-01","lastDay":"2024-01-01","noLocations":23,"noTrips":18,"transportsXDays":18}],"noRoutes":11,"profiles":[{"prf":0,"noFootpaths":4}]})",
         to_str(get_metrics(tt), tt));
   }
 }

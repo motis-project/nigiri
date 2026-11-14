@@ -29,22 +29,21 @@ TEST(td_footpath, simple) {
       td_footpath{b, kNull, 5min},
       td_footpath{b, sys_days{June / 15 / 2024_y} + 10h, 10min},
       td_footpath{b, sys_days{June / 15 / 2024_y} + 14h, 5min},
-      td_footpath{b, sys_days{June / 16 / 2024_y} + 11h,
-                  footpath::kMaxDuration},
+      td_footpath{b, sys_days{June / 16 / 2024_y} + 11h, kTdFootpathBan},
       td_footpath{b, sys_days{June / 17 / 2024_y} + 12h, 5min},
 
       /*
        *                      |  2024/06/15  9:00 pm   |   not possible
        * 2024/06/15  9:00 pm  |                        |   5 min
-       * (waiting longer than footpath::kMaxDuration)
+       * (waiting longer than footpath::kMax)
        */
-      td_footpath{c, kNull, footpath::kMaxDuration},
+      td_footpath{c, kNull, kTdFootpathBan},
       td_footpath{c, sys_days{June / 15 / 2024_y} + 21h, 5min},
 
       /*
        * not possible
        */
-      td_footpath{d, kNull, footpath::kMaxDuration},
+      td_footpath{d, kNull, kTdFootpathBan},
 
       /*
        * start > t
@@ -83,7 +82,7 @@ TEST(td_footpath, backward_single) {
   auto const fps = std::vector<td_footpath>{
       {.target_ = location_idx_t{0U},
        .valid_from_ = sys_days{1970_y / January / 1},
-       .duration_ = footpath::kMaxDuration},
+       .duration_ = kTdFootpathBan},
       {.target_ = location_idx_t{0U},
        .valid_from_ = sys_days{2020_y / March / 30} + 10h,
        .duration_ = 10min}};
@@ -118,7 +117,7 @@ TEST(td_footpath, backward_1) {
        .duration_ = 10min,
        .transport_mode_payload_ = 0},
       {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 30min,
-       .duration_ = footpath::kMaxDuration,
+       .duration_ = kTdFootpathBan,
        .transport_mode_payload_ = 0},
       {.valid_from_ = sys_days{2024_y / June / 19} + 12h + 00min,
        .duration_ = 10min,
@@ -134,13 +133,13 @@ TEST(td_footpath, backward) {
   auto const fps = std::vector<td_footpath>{
       {.target_ = location_idx_t{0U},
        .valid_from_ = sys_days{1970_y / January / 1},
-       .duration_ = footpath::kMaxDuration},
+       .duration_ = kTdFootpathBan},
       {.target_ = location_idx_t{0U},
        .valid_from_ = sys_days{2020_y / March / 30} + 10h,
        .duration_ = 10min},
       {.target_ = location_idx_t{0U},
        .valid_from_ = sys_days{2020_y / March / 30} + 12h,
-       .duration_ = footpath::kMaxDuration}};
+       .duration_ = kTdFootpathBan}};
 
   auto called = false;
   auto x = duration_t{};
@@ -189,41 +188,29 @@ TEST(td_footpath, backward_last) {
   auto const l = location_idx_t{0U};
   auto const fps = std::vector<td_footpath>{
       {l, date::sys_days{2025_y / August / 11} + 7h + 22min, 25min},
-      {l, date::sys_days{2025_y / August / 11} + 7h + 47min,
-       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 7h + 47min, kTdFootpathBan},
       {l, date::sys_days{2025_y / August / 11} + 8h + 14min, 25min},
-      {l, date::sys_days{2025_y / August / 11} + 8h + 47min,
-       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 8h + 47min, kTdFootpathBan},
       {l, date::sys_days{2025_y / August / 11} + 9h + 22min, 25min},
-      {l, date::sys_days{2025_y / August / 11} + 10h + 8min,
-       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 10h + 8min, kTdFootpathBan},
       {l, date::sys_days{2025_y / August / 11} + 10h + 22min, 25min},
-      {l, date::sys_days{2025_y / August / 11} + 11h + 17min,
-       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 11h + 17min, kTdFootpathBan},
       {l, date::sys_days{2025_y / August / 11} + 11h + 22min, 25min},
-      {l, date::sys_days{2025_y / August / 11} + 12h + 17min,
-       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 12h + 17min, kTdFootpathBan},
       {l, date::sys_days{2025_y / August / 11} + 12h + 22min, 25min},
-      {l, date::sys_days{2025_y / August / 11} + 13h + 8min,
-       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 13h + 8min, kTdFootpathBan},
       {l, date::sys_days{2025_y / August / 11} + 13h + 22min, 25min},
-      {l, date::sys_days{2025_y / August / 11} + 14h + 8min,
-       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 14h + 8min, kTdFootpathBan},
       {l, date::sys_days{2025_y / August / 11} + 14h + 22min, 25min},
-      {l, date::sys_days{2025_y / August / 11} + 15h + 8min,
-       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 15h + 8min, kTdFootpathBan},
       {l, date::sys_days{2025_y / August / 11} + 15h + 22min, 25min},
-      {l, date::sys_days{2025_y / August / 11} + 16h + 8min,
-       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 16h + 8min, kTdFootpathBan},
       {l, date::sys_days{2025_y / August / 11} + 16h + 22min, 25min},
-      {l, date::sys_days{2025_y / August / 11} + 16h + 47min,
-       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 16h + 47min, kTdFootpathBan},
       {l, date::sys_days{2025_y / August / 11} + 17h + 22min, 25min},
-      {l, date::sys_days{2025_y / August / 11} + 17h + 47min,
-       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 17h + 47min, kTdFootpathBan},
       {l, date::sys_days{2025_y / August / 11} + 18h + 22min, 25min},
-      {l, date::sys_days{2025_y / August / 11} + 18h + 47min,
-       footpath::kMaxDuration}};
+      {l, date::sys_days{2025_y / August / 11} + 18h + 47min, kTdFootpathBan}};
 
   auto const x = date::sys_days{2025_y / August / 12} + 4h + 8min;
   auto const fp = get_td_duration<direction::kBackward>(fps, x);

@@ -27,21 +27,28 @@ namespace nigiri::loader {
 constexpr auto const kEqDist = 600.0;  // [m]
 
 bool is_duplicate(timetable const& tt,
+                  import_context const& ctx,
                   route_idx_t const a_route,
                   route_idx_t const b_route,
                   transport_idx_t const a,
                   transport_idx_t const b,
                   stop_idx_t const n_stops,
                   int const budget) {
+  auto const time = [&](route_idx_t const r, transport_idx_t const t,
+                        stop_idx_t const i, event_type const ev) {
+    return get_stop_times(tt, ctx, r, i,
+                          ev)[to_idx(t - tt.route_transport_ranges_[r].from_)]
+        .count();
+  };
   auto delta = 0;
   for (auto i = stop_idx_t{0U}; i != n_stops; ++i) {
     if (i != 0U) {
-      delta += std::abs(tt.event_mam(a_route, a, i, event_type::kArr).count() -
-                        tt.event_mam(b_route, b, i, event_type::kArr).count());
+      delta += std::abs(time(a_route, a, i, event_type::kArr) -
+                        time(b_route, b, i, event_type::kArr));
     }
     if (i != n_stops - 1U) {
-      delta += std::abs(tt.event_mam(a_route, a, i, event_type::kDep).count() -
-                        tt.event_mam(b_route, b, i, event_type::kDep).count());
+      delta += std::abs(time(a_route, a, i, event_type::kDep) -
+                        time(b_route, b, i, event_type::kDep));
     }
     if (delta > budget) {
       return false;
@@ -148,8 +155,8 @@ void merge_route_pair(timetable& tt,
   auto const budget = static_cast<int>(2U * (n_stops - 1U)) * threshold.count();
   auto const a_range = tt.route_transport_ranges_[a_route];
   auto const b_range = tt.route_transport_ranges_[b_route];
-  auto const a_dep = tt.event_times_at_stop(a_route, 0U, event_type::kDep);
-  auto const b_dep = tt.event_times_at_stop(b_route, 0U, event_type::kDep);
+  auto const a_dep = get_stop_times(tt, ctx, a_route, 0U, event_type::kDep);
+  auto const b_dep = get_stop_times(tt, ctx, b_route, 0U, event_type::kDep);
   auto const is_reflexive = a_route == b_route;
 
   auto b_first = std::size_t{0U};
@@ -174,7 +181,7 @@ void merge_route_pair(timetable& tt,
       // empties the absorbed transport's days, so the live state would hide
       // every further duplicate of it - and report it as unique instead.
       if (!(tt.bitfields_[before[a_t]] & tt.bitfields_[before[b_t]]).any() ||
-          !is_duplicate(tt, a_route, b_route, a_t, b_t, n_stops, budget)) {
+          !is_duplicate(tt, ctx, a_route, b_route, a_t, b_t, n_stops, budget)) {
         continue;
       }
 

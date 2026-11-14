@@ -51,6 +51,7 @@ R2,DAILY,BUS,0
 R2,DAILY,BUS_WITHOUT_TICKETING,1
 )"};
 
+// ticketing_type=1: no ticket can be bought at S3.
 constexpr auto const stop_times = std::string_view{
     R"(trip_id,arrival_time,departure_time,stop_id,stop_sequence,ticketing_type
 TRAIN,08:00:00,08:00:00,S1,1,0
@@ -122,6 +123,14 @@ TEST(gtfs, ticketing_deep_links_resolve) {
     }
   }
   EXPECT_EQ(1U, n_route_links);
+
+  auto const loc = [&](std::string_view const id) {
+    return tt.locations_.location_id_to_idx_.at(
+        location_id{.id_ = id, .src_ = source_idx_t{0U}});
+  };
+  EXPECT_FALSE(tt.locations_.ticketing_unavailable_.test(loc("S1")));
+  EXPECT_FALSE(tt.locations_.ticketing_unavailable_.test(loc("S2")));
+  EXPECT_TRUE(tt.locations_.ticketing_unavailable_.test(loc("S3")));
 }
 
 // An agency referencing a deep link id that ticketing_deep_links.txt does not

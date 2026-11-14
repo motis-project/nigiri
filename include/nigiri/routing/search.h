@@ -331,7 +331,7 @@ struct search {
 
     stats_.execute_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(
-            (std::chrono::steady_clock::now() - processing_start_time));
+            (std::chrono::steady_clock::now() - start_time_));
     return {.journeys_ = &state_.results_,
             .interval_ = search_interval_,
             .search_stats_ = stats_,
@@ -463,6 +463,8 @@ private:
         });
   }
 
+  std::chrono::steady_clock::time_point start_time_{
+      std::chrono::steady_clock::now()};
   timetable const& tt_;
   rt_timetable const* rtt_;
   search_state& state_;

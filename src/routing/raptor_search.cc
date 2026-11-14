@@ -18,6 +18,7 @@
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/search_interval.h"
+#include "nigiri/routing/start_times.h"
 
 namespace nigiri::routing {
 
@@ -133,6 +134,7 @@ routing_result raptor_search(
     std::optional<std::chrono::seconds> const timeout) {
   auto span = get_otel_tracer()->StartSpan("raptor_search");
   auto scope = opentelemetry::trace::Scope{span};
+  expand_td_offsets(tt, q);
   if (span->IsRecording()) {
     std::visit(utl::overloaded{
                    [&](interval<unixtime_t> const& interval) {

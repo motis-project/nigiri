@@ -15,6 +15,8 @@
 #include "nigiri/timetable.h"
 #include "nigiri/timetable_metrics.h"
 
+#include "../transfer_rules_util.h"
+
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
@@ -24,6 +26,8 @@ using namespace std::chrono_literals;
 
 namespace {
 
+// The route rules in transfers.txt give AE_TRIP virtual locations at all its
+// stops, so VDV run matching has to find routes of virtual locations too.
 mem_dir vdv_test_files() {
   return mem_dir::read(R"__(
 
@@ -68,6 +72,19 @@ BC_TRIP,02:00,02:00,C,1,0,0
 BD_TRIP,01:00,01:00,B,0,0,0
 BD_TRIP,02:00,02:00,C,1,0,0
 BD_TRIP,03:00,03:00,D,2,0,0
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+A,A,2,120,,,,
+A,A,2,600,AE,,,
+B,B,2,120,,,,
+B,B,2,600,AE,,,
+C,C,2,120,,,,
+C,C,2,600,AE,,,
+D,D,2,120,,,,
+D,D,2,600,AE,,,
+E,E,2,120,,,,
+E,E,2,600,AE,,,
 
 )__");
 }
@@ -338,6 +355,7 @@ TEST(vdv_aus, delay_propagation) {
   auto const src_idx = source_idx_t{0};
   auto tt =
       loader::load(vdv_test_files(), {2024_y / July / 1, 2024_y / July / 31});
+  ASSERT_LT(0U, test::n_virts(tt));
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
 
@@ -691,6 +709,7 @@ TEST(vdv_aus, all_stops_canceled) {
   auto const src_idx = source_idx_t{0};
   auto tt =
       loader::load(vdv_test_files(), {2024_y / July / 1, 2024_y / July / 31});
+  ASSERT_LT(0U, test::n_virts(tt));
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
 
@@ -900,21 +919,27 @@ TEST(vdv_aus, tt_after_midnight_update_before_midnight) {
   EXPECT_TRUE(fr.is_rt());
 
   EXPECT_EQ(
-      R"([{"idx":0,"firstDay":"2024-07-10","lastDay":"2024-07-10","noLocations":2,"noTrips":1,"transportsXDays":1}])",
+      R"({"feeds":[{"idx":0,"firstDay":"2024-07-10","lastDay":"2024-07-10","noLocations":2,"noTrips":1,"transportsXDays":1}],"noRoutes":1,"profiles":[]})",
       to_str(get_metrics(tt), tt));
 }
 
 namespace {
 
+// TR0 (same stops, two hours earlier) and the forbidden transfer TZ ->
+// 2593399830 at Luga (TZ -> TR0 stays allowed) move 2593399830 to a split
+// route with a virtual location of Luga: VDV AUS has to match through it.
 mem_dir rbo707_files() {
   return mem_dir::read(R"__(
 # trips.txt
 "route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
 "de:von:27-707_3",1180,2593399830,"Caßlau","",0,,89176,0,0
+"de:von:27-707_3",1180,TR0,"Caßlau","",0,,89176,0,0
+"Z",1180,TZ,"Z","",0,,,0,0
 
 # routes.txt
 "route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
 "de:von:27-707_3",7874,"707","",3,"","",""
+"Z",7874,"Z","",3,"","",""
 
 # agency.txt
 "agency_id","agency_name","agency_url","agency_timezone","agency_lang","agency_phone"
@@ -946,10 +971,37 @@ mem_dir rbo707_files() {
 2593399830,13:12:00,13:12:00,"de:14625:7698:0:1",21,0,0,""
 2593399830,13:14:00,13:14:00,"de:14625:7695:0:1_G",22,0,0,""
 2593399830,13:18:00,13:18:00,"de:14625:7697:0:1",23,0,0,""
+TR0,10:15:00,10:15:00,"de:14625:7501:0:7_G",0,0,0,""
+TR0,10:19:00,10:19:00,"de:14625:7502:0:1_G",1,0,0,""
+TR0,10:21:00,10:21:00,"de:14625:7507:0:1_G",2,0,0,""
+TR0,10:23:00,10:23:00,"de:14625:7578:0:1_G",3,0,0,""
+TR0,10:25:00,10:25:00,"de:14625:7577:0:1_G",4,0,0,""
+TR0,10:28:00,10:28:00,"de:14625:7652:0:1_G",5,0,0,""
+TR0,10:31:00,10:31:00,"de:14625:7662:0:1",6,0,0,""
+TR0,10:33:00,10:33:00,"de:14625:7776:0:2",7,0,0,""
+TR0,10:37:00,10:37:00,"de:14625:7772:0:1_G",8,0,0,""
+TR0,10:41:00,10:41:00,"de:14625:7683:0:1",9,0,0,""
+TR0,10:42:00,10:42:00,"de:14625:7684:0:1",10,0,0,""
+TR0,10:46:00,10:46:00,"de:14625:7686:0:1_G",11,0,0,""
+TR0,10:48:00,10:48:00,"de:14625:7677:0:1_G",12,0,0,""
+TR0,10:50:00,10:50:00,"de:14625:7679:0:1_G",13,0,0,""
+TR0,10:56:00,10:56:00,"de:14625:7704:0:1",14,0,0,""
+TR0,10:58:00,10:58:00,"de:14625:7708:0:2",15,0,0,""
+TR0,11:00:00,11:00:00,"de:14625:7705:0:1_G",16,0,0,""
+TR0,11:02:00,11:02:00,"de:14625:7709:0:1_G",17,0,0,""
+TR0,11:04:00,11:04:00,"de:14625:7707:0:1_G",18,0,0,""
+TR0,11:09:00,11:09:00,"de:14625:7706:0:1",19,0,0,""
+TR0,11:11:00,11:11:00,"de:14625:7699:0:1",20,0,0,""
+TR0,11:12:00,11:12:00,"de:14625:7698:0:1",21,0,0,""
+TR0,11:14:00,11:14:00,"de:14625:7695:0:1_G",22,0,0,""
+TR0,11:18:00,11:18:00,"de:14625:7697:0:1",23,0,0,""
+TZ,10:00:00,10:00:00,"Z",0,0,0,""
+TZ,10:38:00,10:38:00,"de:14625:7683:0:1",1,0,0,""
 
 # stops.txt
 "stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","level_id"
 "de:14625:7695:0:1_G","","Doberschütz (b Neschwitz)",,"51.270937000000","14.267852000000",0,,0,"",""
+"Z","","Z",,"40.0","10.0",0,,0,"",""
 "de:14625:7695:0:1","","Doberschütz (b Neschwitz)",,"51.270915000000","14.267852000000",0,,0,"",""
 "de:14625:7708:0:2","","Wetro Werk",,"51.256384000000","14.302096000000",0,,0,"",""
 "de:14625:7706:0:1","","Neu-Puschwitz",,"51.259161000000","14.294864000000",0,,0,"",""
@@ -1018,7 +1070,19 @@ mem_dir rbo707_files() {
 1180,20241011,2
 1180,20241018,2
 
+# transfers.txt
+"from_stop_id","to_stop_id","transfer_type","min_transfer_time","from_route_id","to_route_id","from_trip_id","to_trip_id"
+"de:14625:7683:0:1","de:14625:7683:0:1",3,,,,"TZ","2593399830"
 )__");
+}
+
+transport_idx_t rbo707_transport(timetable const& tt) {
+  for (auto t = trip_idx_t{0U}; t != tt.trip_id_strings_.size(); ++t) {
+    if (tt.trip_id_strings_[t].view() == "2593399830") {
+      return tt.trip_transport_ranges_[t][0].first;
+    }
+  }
+  return transport_idx_t::invalid();
 }
 
 constexpr auto const update_rbo707 = R"(
@@ -1508,7 +1572,7 @@ TEST(vdv_aus, exact_match_1) {
 
   auto const fr = rt::frun{tt,
                            &rtt,
-                           {{transport_idx_t{0U}, day_idx_t{27U}},
+                           {{rbo707_transport(tt), day_idx_t{27U}},
                             {stop_idx_t{0U}, stop_idx_t{24U}}}};
 
   ASSERT_TRUE(fr.valid());
@@ -1516,7 +1580,7 @@ TEST(vdv_aus, exact_match_1) {
   EXPECT_FALSE(fr.is_cancelled());
 
   EXPECT_EQ(
-      R"([{"idx":0,"firstDay":"2024-08-14","lastDay":"2024-08-30","noLocations":41,"noTrips":1,"transportsXDays":13}])",
+      R"({"feeds":[{"idx":0,"firstDay":"2024-08-14","lastDay":"2024-08-30","noLocations":42,"noTrips":3,"transportsXDays":39}],"noRoutes":3,"profiles":[{"prf":0,"noFootpaths":39}]})",
       to_str(get_metrics(tt), tt));
 }
 
@@ -1537,7 +1601,7 @@ TEST(vdv_aus, cancel_run) {
 
   EXPECT_TRUE((rt::frun{tt,
                         &rtt,
-                        {{transport_idx_t{0U}, day_idx_t{27U}},
+                        {{rbo707_transport(tt), day_idx_t{27U}},
                          {stop_idx_t{0U}, stop_idx_t{24U}}}})
                   .is_cancelled());
 
@@ -1546,7 +1610,7 @@ TEST(vdv_aus, cancel_run) {
   u.update(rtt, doc);
   EXPECT_FALSE((rt::frun{tt,
                          &rtt,
-                         {{transport_idx_t{0U}, day_idx_t{27U}},
+                         {{rbo707_transport(tt), day_idx_t{27U}},
                           {stop_idx_t{0U}, stop_idx_t{24U}}}})
                    .is_cancelled());
 }
@@ -1565,7 +1629,7 @@ TEST(vdv_aus, in_out_allowed) {
   u.update(rtt, doc);
   EXPECT_TRUE((rt::frun{tt,
                         &rtt,
-                        {{transport_idx_t{0U}, day_idx_t{27U}},
+                        {{rbo707_transport(tt), day_idx_t{27U}},
                          {stop_idx_t{0U}, stop_idx_t{24U}}}})
                   .is_rt());
 
@@ -1573,7 +1637,7 @@ TEST(vdv_aus, in_out_allowed) {
   u.update(rtt, doc);
   auto const fr = rt::frun{tt,
                            &rtt,
-                           {{transport_idx_t{0U}, day_idx_t{27U}},
+                           {{rbo707_transport(tt), day_idx_t{27U}},
                             {stop_idx_t{0U}, stop_idx_t{24U}}}};
   EXPECT_FALSE(fr[19].out_allowed());
   EXPECT_TRUE(fr[19].in_allowed());

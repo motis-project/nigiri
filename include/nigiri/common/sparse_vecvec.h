@@ -74,6 +74,12 @@ struct sparse_vecvec {
     emplace_back<std::initializer_list<V>>(s);
   }
 
+  void resize(std::uint32_t const n) {
+    while (size() < n) {
+      add_key(false);
+    }
+  }
+
   void add_key(bool const has_bucket) {
     auto const i = size();
     if (i % kBlockSize == 0U) {

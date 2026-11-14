@@ -34,7 +34,7 @@ int main(int ac, char** av) {
   auto ignore = false;
 
   auto finalize_opt = finalize_options{};
-  auto c = loader_config{};
+  auto c = loader_config{.adjust_footpaths_ = true};
 
   auto desc = bpo::options_description{"Options"};
   desc.add_options()  //
@@ -63,8 +63,7 @@ int main(int ac, char** av) {
            ->default_value(finalize_opt.merge_dupes_inter_src_),
        "merge duplicates between different sources")  //
       ("adjust_footpaths",
-       bpo::value(&finalize_opt.adjust_footpaths_)
-           ->default_value(finalize_opt.adjust_footpaths_),
+       bpo::value(&c.adjust_footpaths_)->default_value(c.adjust_footpaths_),
        "adjust footpath lengths")  //
       ("max_footpath_length",
        bpo::value(&finalize_opt.max_footpath_length_)
