@@ -112,15 +112,9 @@ struct raptor_impl {
       auto const l = starts_[i].first;
       auto const t = unix_to_delta(base(), starts_[i].second);
       auto const v = via_offset_t{0};
-      best_.update_min(l, v, t);
       round_times_.update_min(0U, l, v, t, make_start_bc());
       touch_round(0U, l);
       station_mark_.mark(to_idx(l));
-      if (is_dest_[to_idx(l)]) {
-        for (auto k = 0U; k != kMaxTransfers + 2U; ++k) {
-          time_at_dest_.update_min(k, t);
-        }
-      }
     }
 
     for (auto i = global_t_id; i < kMaxTransfers + 2U; i += global_stride) {

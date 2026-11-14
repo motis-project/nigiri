@@ -7,7 +7,6 @@
 #include "utl/erase_if.h"
 #include "utl/timing.h"
 
-#include "nigiri/for_each_meta.h"
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/dijkstra.h"
@@ -207,14 +206,6 @@ struct search {
 
     state_.results_.clear();
 
-    if (start_dest_overlap()) {
-      stats_.execute_time_ =
-          std::chrono::duration_cast<std::chrono::milliseconds>(
-              std::chrono::steady_clock::now() - start_time_);
-      return {&state_.results_, search_interval_, stats_,
-              algo_.get_stats().to_map()};
-    }
-
     auto const itv_est = interval_estimator<SearchDir>{tt_, q_};
     if (is_pretrip()) {
       search_interval_ = itv_est.initial(search_interval_);
@@ -353,32 +344,6 @@ private:
   }
 
   bool is_pretrip() const { return !is_ontrip(); }
-
-  bool start_dest_overlap() const {
-    if (q_.start_match_mode_ == location_match_mode::kIntermodal ||
-        q_.dest_match_mode_ == location_match_mode::kIntermodal) {
-      return false;
-    }
-
-    auto const overlaps_start = [&](location_idx_t const x) {
-      return utl::any_of(q_.start_, [&](offset const& o) {
-        bool overlaps = false;
-        for_each_meta(
-            tt_, nullptr, q_.start_match_mode_, o.target(),
-            [&](location_idx_t const eq) { overlaps = overlaps || eq == x; });
-        return overlaps;
-      });
-    };
-
-    return utl::any_of(q_.destination_, [&](offset const& o) {
-      auto overlaps = false;
-      for_each_meta(tt_, nullptr, q_.dest_match_mode_, o.target(),
-                    [&](location_idx_t const eq) {
-                      overlaps = overlaps || overlaps_start(eq);
-                    });
-      return overlaps;
-    });
-  }
 
   unsigned n_results_in_interval() const {
     if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {

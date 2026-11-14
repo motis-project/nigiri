@@ -234,7 +234,6 @@ struct raptor {
         kFwd, loc{tt_, l}, t, v, to_unix(best_[to_idx(l)][v]),
         to_unix(round_times_[0U][to_idx(l)][v]),
         get_best(t, to_unix(best_[to_idx(l)][v])));
-    best_[to_idx(l)][v] = get_best(to_delta(t), best_[to_idx(l)][v]);
     round_times_[0U][to_idx(l)][v] =
         get_best(to_delta(t), round_times_[0U][to_idx(l)][v]);
     state_.station_mark_.set(to_idx(l), true);
