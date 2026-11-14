@@ -680,17 +680,18 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
   state_.impl_->resize_rt(rtt == nullptr ? 0U : rtt->n_rt_transports());
   reset_arrivals();
 
+  // Extend is_dest and dist_to_dest to cover rt locations.
   auto td_dist = td_dist_to_dest;
   if (rtt != nullptr && profile_uses_rt_virts(prf_idx_) &&
       rtt->n_rt_locations() != 0U) {
     is_dest.resize(rtt->n_locations());
     extend_to_rt_virts(*rtt, dist_to_dest);
-    // A td destination at a stop also holds at its real-time locations.
     for (auto const& [l, offsets] : td_dist_to_dest) {
       rtt->for_each_rt_virt(
           l, [&](location_idx_t const v) { td_dist.emplace(v, offsets); });
     }
   }
+
   state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest, td_dist);
 }
 
