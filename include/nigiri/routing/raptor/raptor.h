@@ -71,9 +71,9 @@ struct raptor {
       timetable const& tt,
       rt_timetable const* rtt,
       raptor_state& state,
-      bitvec& is_dest,
-      std::array<bitvec, kMaxVias>& is_via,
-      std::vector<std::uint16_t>& dist_to_dest,
+      bitvec const& is_dest,
+      std::array<bitvec, kMaxVias> const& is_via,
+      std::vector<std::uint16_t> const& dist_to_dest,
       hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
       std::vector<std::uint16_t>& lb,
       std::vector<via_stop> const& via_stops,
@@ -114,14 +114,7 @@ struct raptor {
     assert(Vias == via_stops_.size());
 
     if constexpr (Rt) {
-      if (n_locations_ != n_static_locations_) {
-        is_dest.resize(n_locations_);
-        for (auto v = 0U; v != Vias; ++v) {
-          extend_to_rt_virts(*rtt_, is_via[v]);
-        }
-        extend_to_rt_virts(*rtt_, dist_to_dest);
-        extend_to_rt_virts(*rtt_, lb);
-      }
+      extend_to_rt_virts(*rtt_, lb);
     }
 
     if constexpr (SearchMode == search_mode::kOneToAll) {
@@ -139,11 +132,6 @@ struct raptor {
       }
       for (auto const& [l, _] : td_dist_to_end_) {
         end_reachable_.set(to_idx(l), true);
-        if constexpr (Rt) {
-          rtt_->for_each_rt_virt(l, [&](location_idx_t const v) {
-            end_reachable_.set(to_idx(v), true);
-          });
-        }
       }
     }
   }
@@ -1159,10 +1147,7 @@ private:
         }
       }
 
-      auto const td_l =
-          Rt && to_idx(l) >= n_static_locations_ ? rtt_->base(l) : l;
-      if (auto const it = td_dist_to_end_.find(td_l);
-          it != end(td_dist_to_end_)) {
+      if (auto const it = td_dist_to_end_.find(l); it != end(td_dist_to_end_)) {
         [[unlikely]];
 
         auto const fp_start_time = tmp_[i][Vias];

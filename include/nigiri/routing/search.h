@@ -103,11 +103,11 @@ struct search {
                    && tts.min_transfer_time_ == 0_minutes  //
                    && tts.additional_time_ == 0_minutes;
 
-    collect_destinations(tt_, q_.destination_, q_.dest_match_mode_,
+    collect_destinations(tt_, rtt_, q_.destination_, q_.dest_match_mode_,
                          state_.is_destination_, state_.dist_to_dest_);
 
     for (auto const [i, via] : utl::enumerate(q_.via_stops_)) {
-      collect_via_destinations(tt_, via.location_, state_.is_via_[i]);
+      collect_via_destinations(tt_, rtt_, via.location_, state_.is_via_[i]);
     }
 
     if constexpr (Algo::kUseLowerBounds) {

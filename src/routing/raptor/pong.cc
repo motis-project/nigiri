@@ -143,10 +143,10 @@ routing_result pong(timetable const& tt,
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
   auto ping_is_via = std::array<bitvec, kMaxVias>{};
-  collect_destinations(tt, q.destination_, q.dest_match_mode_, ping_is_dest,
-                       ping_dist_to_dest);
+  collect_destinations(tt, rtt, q.destination_, q.dest_match_mode_,
+                       ping_is_dest, ping_dist_to_dest);
   for (auto const [i, via] : utl::enumerate(q.via_stops_)) {
-    collect_via_destinations(tt, via.location_, ping_is_via[i]);
+    collect_via_destinations(tt, rtt, via.location_, ping_is_via[i]);
   }
 
   auto lb_time = std::chrono::steady_clock::duration{};
@@ -192,12 +192,12 @@ routing_result pong(timetable const& tt,
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
   auto pong_is_dest = bitvec{};
-  collect_destinations(tt, q.destination_, q.dest_match_mode_, pong_is_dest,
-                       pong_dist_to_dest);
+  collect_destinations(tt, rtt, q.destination_, q.dest_match_mode_,
+                       pong_is_dest, pong_dist_to_dest);
 
   auto pong_is_via = std::array<bitvec, kMaxVias>{};
   for (auto const [i, via] : utl::enumerate(q.via_stops_)) {
-    collect_via_destinations(tt, via.location_, pong_is_via[i]);
+    collect_via_destinations(tt, rtt, via.location_, pong_is_via[i]);
   }
 
   auto const pong_lb_start = std::chrono::steady_clock::now();
@@ -574,6 +574,7 @@ routing_result pong_search_with_dir(
                     q.prf_idx_)) {
     rtt = nullptr;
   }
+  expand_td_offsets(tt, rtt, q);
 
   if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
     utl::verify(q.via_stops_.empty(), "GPU raptor does not support vias");
@@ -603,7 +604,6 @@ routing_result pong_search(timetable const& tt,
                            query q,
                            direction search_dir,
                            std::optional<std::chrono::seconds> timeout) {
-  expand_td_offsets(tt, q);
   if (search_dir == direction::kForward) {
     return pong_search_with_dir<direction::kForward>(tt, rtt, s_state, r_state,
                                                      std::move(q), timeout);

@@ -88,6 +88,7 @@ routing_result raptor_search_with_dir(
       !rtt->affects(raptor_search_interval(SearchDir, tt, q), q.prf_idx_)) {
     rtt = nullptr;
   }
+  expand_td_offsets(tt, rtt, q);
 
   utl::verify(q.via_stops_.size() <= kMaxVias,
               "too many via stops: {}, limit: {}", q.via_stops_.size(),
@@ -134,7 +135,6 @@ routing_result raptor_search(
     std::optional<std::chrono::seconds> const timeout) {
   auto span = get_otel_tracer()->StartSpan("raptor_search");
   auto scope = opentelemetry::trace::Scope{span};
-  expand_td_offsets(tt, q);
   if (span->IsRecording()) {
     std::visit(utl::overloaded{
                    [&](interval<unixtime_t> const& interval) {

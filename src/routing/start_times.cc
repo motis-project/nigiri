@@ -362,37 +362,39 @@ void get_starts(
         start_via.contains(rtt == nullptr ? stop : rtt->static_location(stop))
             ? 1U
             : 0U);
-    auto const add_td_start = [&](location_idx_t const l) {
-      std::visit(
-          utl::overloaded{[&](interval<unixtime_t> const interval) {
-                            add_starts_in_interval(
-                                search_dir, tt, rtt, interval, l,
-                                location_offset_t{std::span{offsets}}, v,
-                                max_start_offset, prf_idx, starts, add_ontrip);
-                          },
-                          [&](unixtime_t const t) {
-                            auto const d =
-                                get_duration(search_dir, t, offsets, false);
-                            if (d.has_value()) {
-                              starts.emplace_back(
-                                  start{.time_at_start_ = t,
-                                        .time_at_stop_ = fwd ? t + *d : t - *d,
-                                        .stop_ = l,
-                                        .v_ = v});
-                            }
-                          }},
-          start_time);
-    };
-    add_td_start(stop);
-    if (auto const r = virt_rtt; r != nullptr) {
-      r->for_each_rt_virt(stop, add_td_start);
-    }
+    std::visit(utl::overloaded{
+                   [&](interval<unixtime_t> const interval) {
+                     add_starts_in_interval(
+                         search_dir, tt, rtt, interval, stop,
+                         location_offset_t{std::span{offsets}}, v,
+                         max_start_offset, prf_idx, starts, add_ontrip);
+                   },
+                   [&](unixtime_t const t) {
+                     auto const d = get_duration(search_dir, t, offsets, false);
+                     if (d.has_value()) {
+                       starts.emplace_back(
+                           start{.time_at_start_ = t,
+                                 .time_at_stop_ = fwd ? t + *d : t - *d,
+                                 .stop_ = stop,
+                                 .v_ = v});
+                     }
+                   }},
+               start_time);
   }
 }
 
-void expand_td_offsets(timetable const& tt, query& q) {
+void expand_td_offsets(timetable const& tt, rt_timetable const* rtt, query& q) {
+  auto const virt_rtt = rt_virts(rtt, q.prf_idx_);
   auto const add = [&](hash_map<location_idx_t, std::vector<td_offset>>& td) {
     auto children = std::vector<std::pair<location_idx_t, location_idx_t>>{};
+    auto const copy_offsets = [&]() {
+      for (auto const& [c, l] : children) {
+        auto offsets = td.at(l);
+        td.emplace(c, std::move(offsets));
+      }
+      children.clear();
+    };
+
     for (auto const& [l, _] : td) {
       for_each_meta(tt, nullptr, location_match_mode::kIntermodal, l,
                     [&](location_idx_t const c) {
@@ -401,9 +403,14 @@ void expand_td_offsets(timetable const& tt, query& q) {
                       }
                     });
     }
-    for (auto const& [c, l] : children) {
-      auto offsets = td.at(l);
-      td.emplace(c, std::move(offsets));
+    copy_offsets();
+
+    if (virt_rtt != nullptr) {
+      for (auto const& [l, _] : td) {
+        virt_rtt->for_each_rt_virt(
+            l, [&](location_idx_t const v) { children.emplace_back(v, l); });
+      }
+      copy_offsets();
     }
   };
   add(q.td_start_);
@@ -411,11 +418,12 @@ void expand_td_offsets(timetable const& tt, query& q) {
 }
 
 void collect_destinations(timetable const& tt,
+                          rt_timetable const* rtt,
                           std::vector<offset> const& dest,
                           location_match_mode const match_mode,
                           bitvec& is_dest,
                           std::vector<std::uint16_t>& dist_to_dest) {
-  is_dest.resize(tt.n_locations());
+  is_dest.resize(rtt == nullptr ? tt.n_locations() : rtt->n_locations());
   utl::fill(is_dest.blocks_, 0U);
 
   static constexpr auto const kIntermodalTarget =
@@ -444,9 +452,14 @@ void collect_destinations(timetable const& tt,
                       d.duration_);
         });
   }
+
+  if (rtt != nullptr) {
+    extend_to_rt_virts(*rtt, dist_to_dest);
+  }
 }
 
 void collect_via_destinations(timetable const& tt,
+                              rt_timetable const* rtt,
                               location_idx_t const via,
                               bitvec& is_destination) {
   is_destination.resize(tt.n_locations());
@@ -458,6 +471,10 @@ void collect_via_destinations(timetable const& tt,
                   is_destination.set(to_idx(l), true);
                   trace_start("  VIA META: {}\n", loc{tt, l});
                 });
+
+  if (rtt != nullptr) {
+    extend_to_rt_virts(*rtt, is_destination);
+  }
 }
 
 }  // namespace nigiri::routing

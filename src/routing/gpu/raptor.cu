@@ -643,9 +643,9 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
     timetable const& tt,
     rt_timetable const* rtt,
     gpu_raptor_state& state,
-    nigiri::bitvec& is_dest,
+    nigiri::bitvec const& is_dest,
     std::array<nigiri::bitvec, kMaxVias> const& /* is_via (GPU: no vias) */,
-    std::vector<std::uint16_t>& dist_to_dest,
+    std::vector<std::uint16_t> const& dist_to_dest,
     hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
     std::vector<std::uint16_t> const& /* lb (GPU: no lower bounds) */,
     std::vector<via_stop> const& via_stops,
@@ -679,20 +679,7 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
               "timetable (rt_timetable::gpu_rtt_)");
   state_.impl_->resize_rt(rtt == nullptr ? 0U : rtt->n_rt_transports());
   reset_arrivals();
-
-  // Extend is_dest and dist_to_dest to cover rt locations.
-  auto td_dist = td_dist_to_dest;
-  if (rtt != nullptr && profile_uses_rt_virts(prf_idx_) &&
-      rtt->n_rt_locations() != 0U) {
-    is_dest.resize(rtt->n_locations());
-    extend_to_rt_virts(*rtt, dist_to_dest);
-    for (auto const& [l, offsets] : td_dist_to_dest) {
-      rtt->for_each_rt_virt(
-          l, [&](location_idx_t const v) { td_dist.emplace(v, offsets); });
-    }
-  }
-
-  state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest, td_dist);
+  state_.impl_->upload_query(kDirIdx, is_dest, dist_to_dest, td_dist_to_dest);
 }
 
 template <direction SearchDir, bool WithBounds>

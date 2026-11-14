@@ -23,12 +23,6 @@ bool query::operator==(query const& o) const {
              std::tuple_size_v<decltype(cista::to_tuple(*this))>>());
 }
 
-void sanitize_query(query& q) {
-  if (q.max_travel_time_.count() < 0 || q.max_travel_time_ > kMaxTravelTime) {
-    q.max_travel_time_ = kMaxTravelTime;
-  }
-}
-
 void sanitize_via_stops(timetable const& tt, query& q) {
   while (q.via_stops_.size() >= 2) {
     auto updated = false;
@@ -60,7 +54,9 @@ void query::sanitize(timetable const& tt) {
   utl::verify(start_match_mode_ != location_match_mode::kIntermodal ||
                   !use_start_footpaths_,
               "intermodal start is incompatible with use_start_footpaths");
-  sanitize_query(*this);
+  if (max_travel_time_.count() < 0 || max_travel_time_ > kMaxTravelTime) {
+    max_travel_time_ = kMaxTravelTime;
+  }
   sanitize_via_stops(tt, *this);
   utl::sort(start_);
   utl::sort(destination_);
