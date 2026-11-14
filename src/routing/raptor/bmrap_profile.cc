@@ -340,12 +340,13 @@ routing_result bmrap_profile(
                                     q.extend_interval_later_);
 
   auto scan_interval = search_interval;
-  auto range_state = raptor_state{};
   if (!aligned) {
+    // on the scalar state: an engine re-uploads its query when another one
+    // used the state in between
     sw = stopwatch{};
     auto range_s_state = search_state{};
     auto const ar = run_anchor_search<SearchDir>(tt, rtt, range_s_state,
-                                                 range_state, q, timeout);
+                                                 r_state, q, timeout);
     scan_interval = ar.interval_;
     for (auto const& j : *ar.journeys_) {
       all_anchors.push_back({j.start_time_, j.dest_time_,
@@ -354,7 +355,7 @@ routing_result bmrap_profile(
     // A windowed anchor set is truncated near its far end; the aligned path's
     // per-step ping searches with no far boundary and never is.
     if (!all_anchors.empty()) {
-      close_anchor_profile<SearchDir>(tt, rtt, q, scan_interval, range_state,
+      close_anchor_profile<SearchDir>(tt, rtt, q, scan_interval, r_state,
                                       all_anchors);
     }
     sw.lap(ms_range);
@@ -392,6 +393,10 @@ routing_result bmrap_profile(
   auto n_realized = std::uint64_t{0U};
   auto n_unrealized = std::uint64_t{0U};
   auto pong_labels =
+      std::conditional_t<GpuMc, std::monostate, mc_label_snapshot<Criteria>>{};
+  // the mc ping's labels, guiding the mc pong the same way (on the device:
+  // the copy of the forward direction, the mc pong's being the other one)
+  auto ping_labels =
       std::conditional_t<GpuMc, std::monostate, mc_label_snapshot<Criteria>>{};
   auto max_guide_labels = std::size_t{0U};
   auto const realize = [&](unixtime_t const arr,
@@ -672,6 +677,11 @@ routing_result bmrap_profile(
     auto mc_results = pareto_set<journey>{};
     run_mc_ping(start_time, static_cast<std::uint8_t>(budget - 1U),
                 mc_worst + kDir, mc_results);
+    if constexpr (GpuMc) {
+      mc_ping.take_guide();
+    } else {
+      ping_labels.take(mc_state);
+    }
     sw.lap(ms_mc);
 
     // ---- 5. MC PONG: re-anchor each mc journey to its latest departure ----
@@ -722,10 +732,35 @@ routing_result bmrap_profile(
         }
         return;
       }
+      // Guided by the mc ping's labels: the pong only re-anchors this group's
+      // mc journeys, and every prefix of a re-anchored one departs no earlier
+      // than the step, so a ping label at each of its stops is catchable and
+      // joins it into the mc journey it re-anchors.
+      auto targets = std::vector<journey const*>{};
+      for (auto it = first; it != last; ++it) {
+        targets.push_back(&*it);
+      }
+      auto oracle =
+          std::conditional_t<GpuMc, std::monostate,
+                             join_oracle<flip(SearchDir), Criteria>>{};
+      if constexpr (GpuMc) {
+        mc_pong.set_guide(targets);
+      } else {
+        oracle.tt_ = &tt;
+        oracle.settings_ = &q.transfer_time_settings_;
+        oracle.labels_ = &ping_labels;
+        oracle.targets_ = std::move(targets);
+        mc_pong.set_oracle(&oracle);
+      }
       seed_bwd(mc_pong, arr);
       // may not depart before the step being scanned
       mc_pong.execute(arr, group_tr, all_rounds(start_time - kDir),
                       step_results);
+      if constexpr (GpuMc) {
+        mc_pong.set_guide({});
+      } else {
+        mc_pong.set_oracle(nullptr);
+      }
       // now: the realization reuses the state, breadcrumbs included
       for (auto& j : step_results) {
         if (!j.is_reconstructed_ && !j.error_) {

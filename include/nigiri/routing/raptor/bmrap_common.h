@@ -270,12 +270,13 @@ bool outside_restriction(std::vector<anchor> const& anchors,
 
 // PHASE 1: the two-criteria range search yielding the anchor set J_A. PONG is
 // fastest but only covers the interval extensions running with the search
-// direction; rRAPTOR answers the rest with the same set.
-template <direction SearchDir>
+// direction; rRAPTOR answers the rest with the same set. On the scalar state
+// of the caller (device or host).
+template <direction SearchDir, typename AlgoState>
 routing_result run_anchor_search(timetable const& tt,
                                  rt_timetable const* rtt,
                                  search_state& s_state,
-                                 raptor_state& r_state,
+                                 AlgoState& r_state,
                                  query const& q,
                                  std::optional<std::chrono::seconds> timeout) {
   auto const pretrip =
@@ -306,19 +307,18 @@ routing_result run_anchor_search(timetable const& tt,
 // a ping from the boundary, re-anchored to its latest departures by a pong:
 // one more step of the anchor search's ping-pong. Returns the number of
 // anchors added.
-template <direction SearchDir, bool Rt>
+template <direction SearchDir, bool Rt, typename AlgoState>
 std::size_t close_anchor_profile_impl(
     timetable const& tt,
     rt_timetable const* rtt,
     query const& q,
     interval<unixtime_t> const anchor_interval,
-    raptor_state& state,
+    AlgoState& state,
     std::vector<anchor>& anchors) {
   constexpr auto const kFwd = (SearchDir == direction::kForward);
   constexpr auto const kDir = duration_t{kFwd ? 1 : -1};
-  using ping_t = typename bmrap_algo_for<SearchDir, Rt, raptor_state>::type;
-  using pong_t =
-      typename bmrap_algo_for<flip(SearchDir), Rt, raptor_state>::type;
+  using ping_t = typename bmrap_algo_for<SearchDir, Rt, AlgoState>::type;
+  using pong_t = typename bmrap_algo_for<flip(SearchDir), Rt, AlgoState>::type;
 
   auto const t = kFwd ? anchor_interval.to_ : anchor_interval.from_;
   auto const base_day = day_idx_t{std::chrono::duration_cast<date::days>(
@@ -436,12 +436,12 @@ std::size_t close_anchor_profile_impl(
   return n_added;
 }
 
-template <direction SearchDir>
+template <direction SearchDir, typename AlgoState>
 std::size_t close_anchor_profile(timetable const& tt,
                                  rt_timetable const* rtt,
                                  query const& q,
                                  interval<unixtime_t> const anchor_interval,
-                                 raptor_state& state,
+                                 AlgoState& state,
                                  std::vector<anchor>& anchors) {
   return rtt == nullptr ? close_anchor_profile_impl<SearchDir, false>(
                               tt, rtt, q, anchor_interval, state, anchors)
