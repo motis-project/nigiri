@@ -83,20 +83,11 @@ struct gpu_timetable::impl {
     return v;
   }
 
-  static std::vector<u8_minutes> pad_transfer_times(
-      vector_map<location_idx_t, u8_minutes> const& transfer_times) {
-    auto v =
-        std::vector<u8_minutes>(begin(transfer_times), end(transfer_times));
-    v.resize(v.size() + kRtLocationCapacity, kNoTransferAllowed);
-    return v;
-  }
-
   explicit impl(timetable const& tt)
       : n_locations_{tt.n_locations() + kRtLocationCapacity},
         n_static_locations_{tt.n_locations()},
         n_routes_{tt.n_routes()},
-        transfer_time_{
-            to_device(pad_transfer_times(tt.locations_.transfer_time_))},
+        transfer_time_{to_device(tt.locations_.transfer_time_)},
         base_{to_device(build_base(tt))},
         first_dep_{to_device(tt.transport_first_dep_)},
         transport_pattern_{to_device(tt.transport_pattern_)},
@@ -263,13 +254,6 @@ struct gpu_rt_timetable::impl {
     for (auto l = location_idx_t{0U}; l != rtt.rt_footpaths_out_.size(); ++l) {
       for (auto const fp : rtt.rt_footpaths_out_[l]) {
         v.push_back({l, fp});
-      }
-    }
-    for (auto i = rt_location_idx_t{0U}; i != rtt.n_rt_locations(); ++i) {
-      auto const l = rtt.to_location(i);
-      if (auto const transfer_time = rtt.transfer_time(l);
-          transfer_time != kNoTransferAllowed) {
-        v.push_back({l, footpath{l, duration_t{transfer_time}}});
       }
     }
     return v;

@@ -87,8 +87,7 @@ struct raptor_impl {
       // -> 10:00 < 10:05 would get rejected.
       // -> ping journey would not be found in pong
       auto const* const row = bounds_ + (bounds_last_k_ - k) * tt_.n_locations_;
-      auto const transfer_time =
-          static_cast<int>(tt_.transfer_time_[l].count());
+      auto const transfer_time = get_transfer_time(l);
       if (transfer_time == kNoTransferAllowedMinutes) {
         return true;
       }
@@ -642,6 +641,12 @@ struct raptor_impl {
                : rtt_.rt_base_[rt_location_idx_t{i - tt_.n_static_locations_}];
   }
 
+  __device__ __forceinline__ int get_transfer_time(
+      location_idx_t const l) const {
+    auto const s = to_idx(l) < tt_.n_static_locations_ ? l : base_location(l);
+    return static_cast<int>(tt_.transfer_time_[s].count());
+  }
+
   __device__ __forceinline__ void relax_fp_target(unsigned const k,
                                                   location_idx_t const target_l,
                                                   int const duration,
@@ -769,8 +774,7 @@ struct raptor_impl {
           auto const stop = intermodal ? l : base_location(l);
 
           // same-station transfer (former update_transfers)
-          auto const transfer_time =
-              static_cast<int>(tt_.transfer_time_[l].count());
+          auto const transfer_time = get_transfer_time(l);
           auto const is_dest_arrival = !intermodal && is_dest_[to_idx(stop)];
           if (is_dest_arrival) {
             relax_fp_target(k, l, 0, tmp_time, bc, t_at_dest);
