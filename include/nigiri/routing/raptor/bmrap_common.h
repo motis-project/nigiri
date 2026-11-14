@@ -547,8 +547,18 @@ bmrap_bounds compute_bounds(timetable const& tt,
   using run_t = std::pair<unixtime_t, std::uint8_t>;
   auto runs = std::vector<run_t>{};
   runs.reserve(anchors.size());
+  // The paper's cap: a journey with as many trips as an anchor arriving
+  // earlier has that one (or a better one) as A(J), so a run needs no rounds
+  // beyond it. On this step's anchors only: a journey departing after that
+  // anchor's departure is found again by a later step, which no longer has it.
   for (auto const& a : anchors) {
-    runs.emplace_back(anchor_deadline(a), trip_budget(a.trips_, budget));
+    auto b = trip_budget(a.trips_, budget);
+    for (auto const& x : anchors) {
+      if (x.trips_ > a.trips_ && is_better<SearchDir>(x.found_, a.found_)) {
+        b = std::min(b, static_cast<std::uint8_t>(x.trips_ - 1U));
+      }
+    }
+    runs.emplace_back(anchor_deadline(a), b);
   }
   // Most trips first, ties by looseness; a run is redundant once a kept one is
   // at least as loose.
