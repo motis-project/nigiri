@@ -41,8 +41,6 @@ void get_starts(
     profile_idx_t,
     transfer_time_settings const&);
 
-bool start_dest_overlap(timetable const&, query const&);
-
 void collect_destinations(timetable const&,
                           std::vector<offset> const& destinations,
                           location_match_mode const,

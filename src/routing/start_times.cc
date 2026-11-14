@@ -3,7 +3,6 @@
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
 #include "utl/get_or_create.h"
-#include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
 
 #include "nigiri/for_each_meta.h"
@@ -360,32 +359,6 @@ void get_starts(
             }},
         start_time);
   }
-}
-
-bool start_dest_overlap(timetable const& tt, query const& q) {
-  if (q.start_match_mode_ == location_match_mode::kIntermodal ||
-      q.dest_match_mode_ == location_match_mode::kIntermodal) {
-    return false;
-  }
-
-  auto const overlaps_start = [&](location_idx_t const x) {
-    return utl::any_of(q.start_, [&](offset const& o) {
-      bool overlaps = false;
-      for_each_meta(
-          tt, q.start_match_mode_, o.target(),
-          [&](location_idx_t const eq) { overlaps = overlaps || eq == x; });
-      return overlaps;
-    });
-  };
-
-  return utl::any_of(q.destination_, [&](offset const& o) {
-    auto overlaps = false;
-    for_each_meta(tt, q.dest_match_mode_, o.target(),
-                  [&](location_idx_t const eq) {
-                    overlaps = overlaps || overlaps_start(eq);
-                  });
-    return overlaps;
-  });
 }
 
 void collect_destinations(timetable const& tt,

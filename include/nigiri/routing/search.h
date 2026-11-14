@@ -207,7 +207,7 @@ struct search {
 
     state_.results_.clear();
 
-    if (start_dest_overlap(tt_, q_)) {
+    if (start_dest_overlap()) {
       return {&state_.results_, search_interval_, stats_,
               algo_.get_stats().to_map()};
     }
@@ -350,6 +350,32 @@ private:
   }
 
   bool is_pretrip() const { return !is_ontrip(); }
+
+  bool start_dest_overlap() const {
+    if (q_.start_match_mode_ == location_match_mode::kIntermodal ||
+        q_.dest_match_mode_ == location_match_mode::kIntermodal) {
+      return false;
+    }
+
+    auto const overlaps_start = [&](location_idx_t const x) {
+      return utl::any_of(q_.start_, [&](offset const& o) {
+        bool overlaps = false;
+        for_each_meta(
+            tt_, q_.start_match_mode_, o.target(),
+            [&](location_idx_t const eq) { overlaps = overlaps || eq == x; });
+        return overlaps;
+      });
+    };
+
+    return utl::any_of(q_.destination_, [&](offset const& o) {
+      auto overlaps = false;
+      for_each_meta(tt_, q_.dest_match_mode_, o.target(),
+                    [&](location_idx_t const eq) {
+                      overlaps = overlaps || overlaps_start(eq);
+                    });
+      return overlaps;
+    });
+  }
 
   unsigned n_results_in_interval() const {
     if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
