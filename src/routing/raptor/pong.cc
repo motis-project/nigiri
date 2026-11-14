@@ -138,8 +138,6 @@ routing_result pong(timetable const& tt,
   // ====
   // PING
   // ----
-  constexpr auto const kGpu = std::is_same_v<AlgoState, gpu::gpu_raptor_state>;
-
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
   auto ping_is_via = std::array<bitvec, kMaxVias>{};
@@ -153,17 +151,7 @@ routing_result pong(timetable const& tt,
   auto const ping_lb_start = std::chrono::steady_clock::now();
   auto ping_lb = std::vector<std::uint16_t>{};
   if constexpr (ping_algo_t::kUseLowerBounds) {
-    dijkstra(tt, q,
-             (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
-                   : tt.bwd_search_lb_graph_[q.prf_idx_]),
-             ((rtt == nullptr || kGpu)
-                  ? nullptr
-                  : &(kFwd ? rtt->fwd_search_lb_graph_has_edges_
-                           : rtt->bwd_search_lb_graph_has_edges_)),
-             ((rtt == nullptr || kGpu) ? nullptr
-                                       : &(kFwd ? rtt->fwd_search_lb_graph_
-                                                : rtt->bwd_search_lb_graph_)),
-             ping_lb);
+    dijkstra(tt, rtt, q, SearchDir, ping_lb);
   }
   lb_time += std::chrono::steady_clock::now() - ping_lb_start;
 
@@ -204,19 +192,10 @@ routing_result pong(timetable const& tt,
   auto pong_lb = std::vector<std::uint16_t>{};
   if constexpr (pong_algo_t::kUseLowerBounds) {
     if (kPruneWithPingBounds) {
-      pong_lb.assign(tt.n_locations(), 0U);
+      pong_lb.assign(rtt == nullptr ? tt.n_locations() : rtt->n_locations(),
+                     0U);
     } else {
-      dijkstra(tt, q,
-               (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
-                     : tt.fwd_search_lb_graph_[q.prf_idx_]),
-               ((rtt == nullptr || kGpu)
-                    ? nullptr
-                    : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
-                             : rtt->fwd_search_lb_graph_has_edges_)),
-               ((rtt == nullptr || kGpu) ? nullptr
-                                         : &(kFwd ? rtt->bwd_search_lb_graph_
-                                                  : rtt->fwd_search_lb_graph_)),
-               pong_lb);
+      dijkstra(tt, rtt, q, flip(SearchDir), pong_lb);
     }
   }
   lb_time += std::chrono::steady_clock::now() - pong_lb_start;

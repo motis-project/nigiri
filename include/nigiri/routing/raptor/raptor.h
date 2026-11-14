@@ -75,7 +75,7 @@ struct raptor {
       std::array<bitvec, kMaxVias> const& is_via,
       std::vector<std::uint16_t> const& dist_to_dest,
       hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
-      std::vector<std::uint16_t>& lb,
+      std::vector<std::uint16_t> const& lb,
       std::vector<via_stop> const& via_stops,
       day_idx_t const base,
       clasz_mask_t const allowed_claszes,
@@ -112,10 +112,6 @@ struct raptor {
         is_wheelchair_{is_wheelchair},
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
-
-    if constexpr (Rt) {
-      extend_to_rt_virts(*rtt_, lb);
-    }
 
     if constexpr (SearchMode == search_mode::kOneToAll) {
       state_.one_to_all_arrivals_.resize(kMaxTransfers + 2U, n_locations_);
