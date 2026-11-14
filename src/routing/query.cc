@@ -50,7 +50,7 @@ void query::flip_dir() {
   std::reverse(begin(via_stops_), end(via_stops_));
 }
 
-void query::sanitize(timetable const& tt) {
+query& query::sanitize(timetable const& tt) {
   utl::verify(start_match_mode_ != location_match_mode::kIntermodal ||
                   !use_start_footpaths_,
               "intermodal start is incompatible with use_start_footpaths");
@@ -58,8 +58,11 @@ void query::sanitize(timetable const& tt) {
     max_travel_time_ = kMaxTravelTime;
   }
   sanitize_via_stops(tt, *this);
+  utl::verify(via_stops_.size() <= kMaxVias,
+              "too many via stops: {}, limit: {}", via_stops_.size(), kMaxVias);
   utl::sort(start_);
   utl::sort(destination_);
+  return *this;
 }
 
 }  // namespace nigiri::routing

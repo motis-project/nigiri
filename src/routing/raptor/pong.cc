@@ -560,8 +560,10 @@ routing_result pong_search_with_dir(
     return pong_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state, std::move(q),
                                         timeout);
   } else {
+    static_assert(kMaxVias == 2, "pong.cc needs to be adjusted for kMaxVias");
     switch (q.via_stops_.size()) {
       case 0:
+      default:
         return pong_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state,
                                             std::move(q), timeout);
       case 1:
@@ -571,7 +573,6 @@ routing_result pong_search_with_dir(
         return pong_with_vias<SearchDir, 2>(tt, rtt, s_state, r_state,
                                             std::move(q), timeout);
     }
-    throw utl::fail("{} vias not supported (max={})", kMaxVias);
   }
 }
 

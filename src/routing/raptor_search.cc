@@ -11,7 +11,6 @@
 
 #include "utl/overloaded.h"
 #include "utl/to_vec.h"
-#include "utl/verify.h"
 
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/routing/gpu/raptor.h"
@@ -90,15 +89,12 @@ routing_result raptor_search_with_dir(
   }
   expand_td_offsets(tt, rtt, q);
 
-  utl::verify(q.via_stops_.size() <= kMaxVias,
-              "too many via stops: {}, limit: {}", q.via_stops_.size(),
-              kMaxVias);
-
   static_assert(kMaxVias == 2,
                 "raptor_search.cc needs to be adjusted for kMaxVias");
 
   switch (q.via_stops_.size()) {
     case 0:
+    default:
       return raptor_search_with_vias<SearchDir, 0>(tt, rtt, s_state, algo_state,
                                                    std::move(q), timeout);
     case 1:
@@ -108,7 +104,6 @@ routing_result raptor_search_with_dir(
       return raptor_search_with_vias<SearchDir, 2>(tt, rtt, s_state, algo_state,
                                                    std::move(q), timeout);
   }
-  std::unreachable();
 }
 
 std::string_view location_match_mode_str(location_match_mode const mode) {

@@ -91,10 +91,6 @@ struct search {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
 
-    utl::verify(q_.via_stops_.size() <= kMaxVias,
-                "too many via stops: {}, limit: {}", q_.via_stops_.size(),
-                kMaxVias);
-
     collect_destinations(tt_, rtt_, q_.destination_, q_.dest_match_mode_,
                          state_.is_destination_, state_.dist_to_dest_);
 
@@ -161,7 +157,7 @@ struct search {
       : tt_{tt},
         rtt_{rtt},
         state_{s},
-        q_{std::move(q)},
+        q_{std::move(q.sanitize(tt))},
         search_interval_{std::visit(
             utl::overloaded{[](interval<unixtime_t> const start_interval) {
                               return start_interval;
@@ -177,9 +173,7 @@ struct search {
                    q_.require_car_transport_,
                    q_.no_compulsory_reservation_,
                    algo_state)},
-        timeout_(timeout) {
-    q_.sanitize(tt);
-  }
+        timeout_(timeout) {}
 
   routing_result execute() {
     auto span = get_otel_tracer()->StartSpan("search::execute");
