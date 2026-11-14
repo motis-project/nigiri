@@ -226,7 +226,6 @@ struct gpu_rt_timetable::impl {
     return v;
   }
 
-  // The stops at real-time virtual locations (only for the default profile).
   static vecvec<rt_transport_idx_t, stop::value_type> build_rt_virt_seq(
       rt_timetable const& rtt) {
     auto v = vecvec<rt_transport_idx_t, stop::value_type>{};
