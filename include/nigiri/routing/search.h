@@ -84,7 +84,6 @@ struct search {
             bool const require_bikes_allowed,
             bool const require_cars_allowed,
             bool const no_compulsory_reservation,
-            transfer_time_settings& tts,
             algo_state_t& algo_state) {
     auto span = get_otel_tracer()->StartSpan("search::init");
     auto scope = opentelemetry::trace::Scope{span};
@@ -95,13 +94,6 @@ struct search {
     utl::verify(q_.via_stops_.size() <= kMaxVias,
                 "too many via stops: {}, limit: {}", q_.via_stops_.size(),
                 kMaxVias);
-
-    tts.factor_ = std::max(tts.factor_, 1.0F);
-    tts.min_transfer_time_ = std::max(tts.min_transfer_time_, 0_minutes);
-    tts.additional_time_ = std::max(tts.additional_time_, 0_minutes);
-    tts.default_ = tts.factor_ == 1.0F  //
-                   && tts.min_transfer_time_ == 0_minutes  //
-                   && tts.additional_time_ == 0_minutes;
 
     collect_destinations(tt_, rtt_, q_.destination_, q_.dest_match_mode_,
                          state_.is_destination_, state_.dist_to_dest_);
@@ -156,7 +148,7 @@ struct search {
         require_cars_allowed,
         q_.prf_idx_ == 2U,
         no_compulsory_reservation,
-        tts,
+        q_.transfer_time_settings_,
         q_.prf_idx_};
   }
 
@@ -184,7 +176,6 @@ struct search {
                    q_.require_bike_transport_,
                    q_.require_car_transport_,
                    q_.no_compulsory_reservation_,
-                   q_.transfer_time_settings_,
                    algo_state)},
         timeout_(timeout) {
     q_.sanitize(tt);
