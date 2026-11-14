@@ -771,10 +771,9 @@ struct raptor_impl {
         tmp_time = tmp_.get(l, Vias);
         if (tmp_time != kInvalid) {
           bc = tmp_.get_bc(0U, l, Vias);
-          auto const stop = intermodal ? l : base_location(l);
 
           // same-station transfer (former update_transfers)
-          auto const transfer_time = get_transfer_time(l);
+          auto const stop = intermodal ? l : base_location(l);
           auto const is_dest_arrival = !intermodal && is_dest_[to_idx(stop)];
           if (is_dest_arrival) {
             relax_fp_target(k, l, 0, tmp_time, bc, t_at_dest);
@@ -784,7 +783,8 @@ struct raptor_impl {
               best_.update_min(stop, Vias, tmp_time);
               update_time_at_dest(k, tmp_time);
             }
-          } else if (transfer_time != kNoTransferAllowedMinutes) {
+          } else if (auto const transfer_time = get_transfer_time(l);
+                     transfer_time != kNoTransferAllowedMinutes) {
             relax_fp_target(
                 k, l,
                 adjusted_transfer_time(transfer_time_settings_, transfer_time),
