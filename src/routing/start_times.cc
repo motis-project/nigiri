@@ -256,7 +256,6 @@ void get_starts(
     std::vector<offset> const& start_offsets,
     hash_map<location_idx_t, std::vector<td_offset>> const& start_td_offsets,
     std::vector<via_stop> const& via_stops,
-    bitvec const& is_dest,
     duration_t const max_start_offset,
     location_match_mode const mode,
     bool const use_start_footpaths,
@@ -291,11 +290,6 @@ void get_starts(
     }
   };
 
-  auto const is_dest_start = [&](via_offset_t const v, location_idx_t const l) {
-    return v == via_stops.size() && to_idx(l) < is_dest.size() &&
-           is_dest.test(to_idx(l));
-  };
-
   auto const fwd = search_dir == direction::kForward;
   for (auto const& o : start_offsets) {
     for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
@@ -314,9 +308,6 @@ void get_starts(
 
   for (auto v = via_offset_t{0U}; v != shortest_start.size(); ++v) {
     for (auto const& [l, o] : shortest_start[v]) {
-      if (is_dest_start(v, l)) {
-        continue;
-      }
       std::visit(utl::overloaded{[&](interval<unixtime_t> const interval) {
                                    add_starts_in_interval(
                                        search_dir, tt, rtt, interval, l, o, v,
@@ -337,9 +328,6 @@ void get_starts(
   for (auto const& [stop, offsets] : start_td_offsets) {
     auto const v =
         static_cast<via_offset_t>(start_via.contains(stop) ? 1U : 0U);
-    if (is_dest_start(v, stop)) {
-      continue;
-    }
     std::visit(
         utl::overloaded{
             [&](interval<unixtime_t> const interval) {

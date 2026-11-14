@@ -141,8 +141,9 @@ TEST(routing, origin_is_destination_has_no_round_trip) {
   EXPECT_EQ(0U, results.size());
 }
 
-// X is an origin (5 min offset) and the destination: origin and destination
-// overlap, so there is no journey (RAPTOR and PONG, no "no pong found").
+// X is an origin (5 min offset) and the destination. BUS S 10:01 -> X 10:03
+// beats the 5 min offset and is a journey (RAPTOR and PONG, no "no pong
+// found").
 constexpr auto const kOriginWithOffsetIsDestination = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -177,8 +178,8 @@ OUT,10:10:00,10:10:00,X,0,0,0
 OUT,10:30:00,10:30:00,Z,1,0,0
 )"sv;
 
-void expect_no_journey_to_x(std::string_view const destination,
-                            routing::location_match_mode const mode) {
+void expect_bus_to_x(std::string_view const destination,
+                     routing::location_match_mode const mode) {
   auto const tt = loader::load(
       loader::mem_dir::read(kOriginWithOffsetIsDestination),
       {2019_y / May / 1, 2019_y / May / 2}, {.adjust_footpaths_ = false});
@@ -193,14 +194,16 @@ void expect_no_journey_to_x(std::string_view const destination,
                      .start_ = {{loc("S"), 0min, 0U}, {loc("X"), 5min, 0U}},
                      .destination_ = {{loc(destination), 0min, 0U}}},
       direction::kForward);
-  EXPECT_EQ(0U, results.size());
+  ASSERT_EQ(1U, results.size());
+  EXPECT_EQ(kTen + 1min, results.begin()->start_time_);
+  EXPECT_EQ(kTen + 3min, results.begin()->dest_time_);
 }
 
-TEST(routing, origin_with_offset_is_destination_has_no_journey) {
-  expect_no_journey_to_x("X", routing::location_match_mode::kExact);
+TEST(routing, origin_with_offset_is_destination_keeps_faster_trip) {
+  expect_bus_to_x("X", routing::location_match_mode::kExact);
 }
 
 // Same, but X is a destination only through its parent PX.
-TEST(routing, origin_with_offset_is_destination_child_has_no_journey) {
-  expect_no_journey_to_x("PX", routing::location_match_mode::kEquivalent);
+TEST(routing, origin_with_offset_is_destination_child_keeps_faster_trip) {
+  expect_bus_to_x("PX", routing::location_match_mode::kEquivalent);
 }

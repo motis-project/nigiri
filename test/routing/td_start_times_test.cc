@@ -119,7 +119,7 @@ TEST(routing, td_start_times) {
                      {.valid_from_ = sys_days{2020_y / March / 30} + 12h,
                       .duration_ = footpath::kMaxDuration,
                       .transport_mode_payload_ = 0U}}}}},
-             {}, {}, kMaxTravelTime, location_match_mode::kExact, false, starts,
+             {}, kMaxTravelTime, location_match_mode::kExact, false, starts,
              true, 0U, {});
   std::sort(begin(starts), end(starts),
             [](auto&& a, auto&& b) { return a > b; });
@@ -185,7 +185,7 @@ TEST(routing, td_start_times_rt_infeasible) {
                                  {.valid_from_ = day + 10h + 30min,
                                   .duration_ = 5min,
                                   .transport_mode_payload_ = 0U}}}}},
-      {}, {}, kMaxTravelTime, location_match_mode::kIntermodal, false, starts,
+      {}, kMaxTravelTime, location_match_mode::kIntermodal, false, starts,
       false, 0U, {});
   EXPECT_TRUE(starts.empty());
 }

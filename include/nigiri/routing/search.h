@@ -7,7 +7,6 @@
 #include "utl/erase_if.h"
 #include "utl/timing.h"
 
-#include "nigiri/for_each_meta.h"
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/dijkstra.h"
@@ -207,11 +206,6 @@ struct search {
 
     state_.results_.clear();
 
-    if (start_dest_overlap()) {
-      return {&state_.results_, search_interval_, stats_,
-              algo_.get_stats().to_map()};
-    }
-
     auto const itv_est = interval_estimator<SearchDir>{tt_, q_};
     if (is_pretrip()) {
       search_interval_ = itv_est.initial(search_interval_);
@@ -351,32 +345,6 @@ private:
 
   bool is_pretrip() const { return !is_ontrip(); }
 
-  bool start_dest_overlap() const {
-    if (q_.start_match_mode_ == location_match_mode::kIntermodal ||
-        q_.dest_match_mode_ == location_match_mode::kIntermodal) {
-      return false;
-    }
-
-    auto const overlaps_start = [&](location_idx_t const x) {
-      return utl::any_of(q_.start_, [&](offset const& o) {
-        bool overlaps = false;
-        for_each_meta(
-            tt_, q_.start_match_mode_, o.target(),
-            [&](location_idx_t const eq) { overlaps = overlaps || eq == x; });
-        return overlaps;
-      });
-    };
-
-    return utl::any_of(q_.destination_, [&](offset const& o) {
-      auto overlaps = false;
-      for_each_meta(tt_, q_.dest_match_mode_, o.target(),
-                    [&](location_idx_t const eq) {
-                      overlaps = overlaps || overlaps_start(eq);
-                    });
-      return overlaps;
-    });
-  }
-
   unsigned n_results_in_interval() const {
     if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
       auto count = utl::count_if(state_.results_, [&](journey const& j) {
@@ -402,9 +370,9 @@ private:
                         bool const add_ontrip) {
     state_.starts_.reserve(500'000);
     get_starts(SearchDir, tt_, rtt_, start_interval, q_.start_, q_.td_start_,
-               q_.via_stops_, state_.is_destination_, q_.max_start_offset_,
-               q_.start_match_mode_, q_.use_start_footpaths_, state_.starts_,
-               add_ontrip, q_.prf_idx_, q_.transfer_time_settings_);
+               q_.via_stops_, q_.max_start_offset_, q_.start_match_mode_,
+               q_.use_start_footpaths_, state_.starts_, add_ontrip, q_.prf_idx_,
+               q_.transfer_time_settings_);
     std::sort(
         begin(state_.starts_), end(state_.starts_),
         [&](start const& a, start const& b) { return kFwd ? b < a : a < b; });
