@@ -123,9 +123,7 @@ struct mc_seed {
   std::uint16_t walk_;
 };
 
-// Guided realization (bmrap_profile.cc): one search's labels per stop, copied
-// for a later search that keeps only the labels joining one of them into a
-// target journey. `t_` is the plain time (the copy converts the key).
+// a search's labels per stop, copied for a guided search; `t_` plain time
 struct mc_guide_entry {
   delta_t t_;
   std::uint8_t round_;
@@ -1083,8 +1081,7 @@ struct mcraptor_impl {
     auto const lane = get_global_thread_id() % kWarpSize;
     auto const n_warps = get_global_stride() / kWarpSize;
     auto marked = false;
-    // the marked routes, as et_build_route_list() collected them: striding
-    // over all routes cost a guided search's few the same as a full one's
+    // the marked routes as collected by et_build_route_list()
     auto const n_marked = *route_list_count_;
     for (auto idx = get_global_thread_id() / kWarpSize; idx < n_marked;
          idx += n_warps) {
@@ -1542,7 +1539,7 @@ struct mcraptor_impl {
     }
   }
 
-  // ---- guided realization (mc_guide_entry) -------------------------------
+  // ---- guided searches (mc_guide_entry) ----------------------------------
 
   // prefix and suffix labels joined at a stop, against a target (mc_extras;
   // basic_mcraptor's arr_with::join_fits())

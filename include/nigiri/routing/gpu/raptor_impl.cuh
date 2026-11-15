@@ -1014,8 +1014,7 @@ struct raptor_impl {
                          stop_idx_t const stop_idx,
                          day_idx_t const day_at_stop,
                          minutes_after_midnight_t const mam_at_stop) {
-    // an event equal to time-at-dest must still be boardable
-    // (equal-arrival coverage for the pong)
+    // an event equal to time_at_dest_ stays boardable (for the pong)
     return tt_.get_earliest_transport<SearchDir>(
         rtt_, r, stop_idx, day_at_stop, mam_at_stop,
         [&](day_idx_t const day, auto const mam) {
@@ -1168,9 +1167,7 @@ struct raptor_impl {
     return !dist_to_end_.empty();
   }
 
-  // BM-RAPTOR bound pruning - mirrors raptor::bound_prunes() exactly.
-  // bm_bounds_ holds tau_dep^<-(v, i) as (budget_+1) x n_locations rows of
-  // delta_t; a label produced in round k has bounds_budget_ - k trips left.
+  // as raptor::bound_prunes()
   __device__ __forceinline__ bool bound_prunes(unsigned const k,
                                                std::uint32_t const l,
                                                delta_t const t) {
@@ -1186,9 +1183,7 @@ struct raptor_impl {
                       l]);
   }
 
-  // Mirrors raptor::update_time_at_dest(): with relax_on_ the destination
-  // bound is loosened to "travel + clamp(extra, floor, cap)" so this
-  // search's round times stay a valid tau_arr^-> matrix (paper, Sec. 4.3).
+  // as raptor::update_time_at_dest()
   __device__ void update_time_at_dest(unsigned const k, delta_t const t) {
     auto relaxed = t;
     if (relax_on_) {
@@ -1212,14 +1207,12 @@ struct raptor_impl {
   }
 
   // --- BM-RAPTOR (see bmrap_bounds.h) ---
-  // (bounds_budget_ + 1) x bounds_n_locations_ rows of tau_dep^<-, empty
-  // when this search is not bound-pruned
+  // empty: not bound-pruned
   cuda::std::span<delta_t const> bm_bounds_{};
   std::uint32_t bounds_n_locations_{0U};
   std::uint8_t bounds_budget_{0U};
   bool has_bounds_{false};
-  // staggered round alignment: the starts are written into this round and
-  // the scan runs start_round_+1 .. end_k (paper, Sec. 4.2)
+  // the starts' round (staggered runs)
   std::uint8_t start_round_{0U};
   // relaxed target pruning, see update_time_at_dest()
   delta_t relax_origin_{0};

@@ -256,10 +256,8 @@ struct gpu_mcraptor_state::impl {
   pinned_host_buffer<std::uint32_t> done_pin_;
   thrust::device_vector<std::uint32_t> overflow_;
 
-  // guided searches, see mc_guide_entry: one copy per direction, taken by a
-  // search of that direction and read by the other's; a copy outlives the
-  // search that took it, its overflow flag is not reset with the searches'
-  // canaries
+  // one guide copy per direction, taken by its searches and read by the other
+  // direction's; outlives the search, and so does its overflow flag
   struct guide_copy {
     thrust::device_vector<mc_guide_entry> labels_;
     thrust::device_vector<std::uint32_t> begin_;
@@ -684,11 +682,12 @@ void gpu_mcraptor<SearchDir, Criteria>::execute(
                : (is_wheelchair_ ? f(n{}, t{}) : f(n{}, n{}));
   };
   // BM-RAPTOR pruning (see mcraptor_impl::bound_prunes)
-  if (has_bounds_) {
-    r.bounds_ = cuda::std::span<delta_t const>{bounds_, bounds_size_};
-    r.bounds_n_locations_ = bounds_n_locations_;
-    r.bounds_budget_ = bounds_budget_;
-    r.bounds_staggered_ = bounds_staggered_;
+  if (bounds_ != nullptr) {
+    r.bounds_ =
+        cuda::std::span<delta_t const>{bounds_->device_, bounds_->size()};
+    r.bounds_n_locations_ = bounds_->n_locations_;
+    r.bounds_budget_ = bounds_->budget_;
+    r.bounds_staggered_ = bounds_->staggered_;
     r.has_bounds_ = true;
   }
   r.cur_budget_ = end_k - 1U;  // trips allowed for this start time
@@ -903,20 +902,9 @@ void gpu_mcraptor<SearchDir, Criteria>::set_guide(
 
 template <direction SearchDir, typename Criteria>
 void gpu_mcraptor<SearchDir, Criteria>::set_bounds(bmrap_bounds const* b) {
-  if (b == nullptr || b->empty()) {
-    has_bounds_ = false;
-    return;
-  }
-  // the building scalar engine synchronized its stream after the build, and
-  // it builds the next matrix of this kind only after our searches ran
-  utl::verify(b->device_ != nullptr,
+  bounds_ = (b == nullptr || b->empty()) ? nullptr : b;
+  utl::verify(bounds_ == nullptr || bounds_->device_ != nullptr,
               "gpu mcraptor: bmrap bounds must be built on the device");
-  bounds_ = b->device_;
-  bounds_size_ = b->size();
-  bounds_n_locations_ = b->n_locations_;
-  bounds_budget_ = b->budget_;
-  bounds_staggered_ = b->staggered_;
-  has_bounds_ = true;
 }
 
 #define NIGIRI_GPU_MCRAPTOR_INSTANTIATE(C)             \

@@ -195,27 +195,15 @@ struct raptor {
 
   void set_bounds(unsigned const last_round) { bounds_last_k_ = last_round; }
 
-  // BM-RAPTOR stage 2 (Delling/Dibbelt/Pajor, Sec. 4.3): the per-anchor
-  // reverse searches share one search space, staggered so a run allowed n of m
-  // trips writes its round k at slot k + (m - n). Slot i then means "i trips
-  // remaining" for every anchor, and each run inherits the labels of the
-  // previous, higher-budget one.
+  // BM-RAPTOR stage 2 (paper, Sec. 4.3): the reverse runs share one search
+  // space; a run allowed n of m trips writes round k at slot k + (m - n).
   void set_start_round(unsigned const k) { start_round_ = k; }
 
-  // Prunes stage 2 by stage 1 (paper, Sec. 4.3): a departure label
-  // tau_dep(k, p) is useless if it lies before the earliest time the origin can
-  // reach p. `b` must come from a search in the opposite direction that is
-  // valid at every stop (one-to-all, no target/local pruning).
+  // stage 2 pruned by stage 1's tau_arr^->: `b` must be valid at every stop
   void set_bounds(bmrap_bounds const* b) { bm_bounds_ = b; }
 
-  // BM-RAPTOR stage 1 (paper, Sec. 4.3): the target pruning is relaxed by the
-  // arrival slack, so the round times are valid at every stop and can serve as
-  // a tau_arr^->(v, i) matrix without a separate one-to-all search. `lb_`
-  // prunes against the same time_at_dest_, so it is covered too.
-  //
-  // `factor` scales the travel time from `origin` and `add_minutes` pads it
-  // (the restriction's two modes, matching anchor_deadline());
-  // floor_min/cap_min are relax_arr()'s clamps.
+  // BM-RAPTOR stage 1: target pruning relaxed by the arrival slack (as
+  // anchor_deadline()), so the round times are a valid tau_arr^->(v, i)
   void set_dest_relax(
       unixtime_t const origin,
       double const factor,
@@ -1688,12 +1676,8 @@ private:
 
   bool is_intermodal_dest() const { return !dist_to_end_.empty(); }
 
-  // Whether reaching the intermodal target at t in round k is worth writing.
-  // time_at_dest_ alone decides that only while it holds the best arrival:
-  // with set_dest_relax() it runs ahead by the slack, and a later end-reachable
-  // stop arriving worse (within the slack) would overwrite the round's best -
-  // the round then reports a journey a fewer-transfer one dominates, and the
-  // faster one is lost. best_ holds the true best arrival over the rounds.
+  // Relaxed, time_at_dest_ runs ahead by the slack: compare against best_, or
+  // a worse arrival would overwrite the round's best.
   bool improves_intermodal_target(unsigned const k, delta_t const t) const {
     return is_better_loose(t, time_at_dest_[k]) &&
            is_better_or_eq(t, best_[kIntermodalTarget][Vias]);
@@ -1707,12 +1691,11 @@ private:
       if (!relax_on_) {
         return t;
       }
-      // dir() makes the travel magnitude positive in both directions
       auto const travel = static_cast<double>(dir(t - relax_origin_));
       if (travel <= 0.0) {
         return t;
       }
-      // mirrors relax_arr(): reference + clamp(extra, floor, cap)
+      // as relax_arr()
       auto const extra = travel * (relax_factor_ - 1.0) + relax_add_;
       return clamp(static_cast<int>(relax_origin_) +
                    dir(static_cast<int>(std::llround(

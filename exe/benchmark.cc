@@ -133,10 +133,9 @@ bool is_multicriteria(std::string const& label) {
          label.find("-mcraptor-restricted-") != std::string::npos;
 }
 
-// Problems with a journey's legs, empty = valid: rides as in the timetable,
-// connected in place and time (footpaths as in the timetable, same-stop
-// transfers at least the transfer time), and the journey's transfers and - if
-// `mc` - extra criteria recomputed from the legs as the mc engines count them.
+// Problems with a journey's legs (empty: valid): rides and footpaths as in the
+// timetable, connected, and transfers (and with `mc` the criteria) as
+// recomputed from the legs.
 std::vector<std::string> leg_problems(timetable const& tt,
                                       query const& q,
                                       journey const& j,
@@ -254,12 +253,9 @@ std::vector<std::string> leg_problems(timetable const& tt,
   return problems;
 }
 
-// Range McRAPTOR over every criterion, cut down by the restricted-set
-// definition (bmrap_common.h): the anchors are its own journeys optimal on
-// (departure, arrival, transfers) alone, and a journey survives if it is an
-// anchor or stays within the trip budget and deadline of its anchors. This is
-// what bmrapp computes, the slow way. See compare_restricted() for where the
-// two can be compared.
+// What bmrapp computes, the slow way: range McRAPTOR over every criterion,
+// cut down by the restriction (bmrap_common.h) with its own 2-criteria
+// journeys as the anchors.
 std::vector<routing::bmrap_detail::anchor> anchors_of(
     pareto_set<journey> const& res) {
   auto anchors = std::vector<routing::bmrap_detail::anchor>{};
@@ -292,14 +288,10 @@ routing::routing_result restricted_range_search(
   return r;
 }
 
-// bmrapp against the restricted range McRAPTOR: the same set, criteria and all,
-// for every journey both can decide. The restriction of a journey depends on
-// the anchors after it, so near the end of its window the reference may lack
-// one. It can decide a journey anchored at d with n trips iff one of its
-// anchors y is available at d (anchored no earlier), has at most n trips, and
-// arrives (found_) within its covered interval: any anchor it never saw is
-// anchored after that, so it arrives after y and changes nothing. Legs differ
-// where equal journeys have several paths; those are only counted.
+// bmrapp against the restricted range McRAPTOR, for every journey the
+// reference can decide: one anchored at d with n trips iff one of its anchors
+// available at d with at most n trips arrives within its covered interval
+// (any anchor it never saw arrives later). Differing legs are only counted.
 struct restricted_diff {
   std::uint64_t mismatches_{0U}, compared_{0U}, other_legs_{0U};
 };
@@ -540,10 +532,8 @@ std::uint64_t compare_results(
         }
       }
     } else {
-      // Count under-delivering results: >= min_connection_count reached by
-      // one but not the other. A multicriteria side reaches the count with
-      // criteria variants of fewer tuples, so it never makes a two-criteria
-      // side under-deliver.
+      // under-delivering: min_connection_count reached by one side only (a
+      // multicriteria side counts criteria variants, so only 2-criteria)
       auto const raw_r = ref.res_[i].size();
       auto const raw_c = cmp.res_[i].size();
       auto const ref_mc = is_multicriteria(ref_name);
@@ -557,10 +547,8 @@ std::uint64_t compare_results(
         misses += min_connection_count - raw_r;
       }
 
-      // A two-criteria side's front is exact: the other side must contain
-      // each of its tuples and may beat none. A multicriteria side's own
-      // front is no such reference - it keeps journeys whose two-criteria
-      // dominator departs outside the window.
+      // a 2-criteria side's front is exact: the other side contains it and
+      // beats none of it (a multicriteria front is no such reference)
       auto const check = [&](std::string const& x_name,
                              std::vector<journey const*> const& x,
                              std::string const& y_name,
@@ -821,6 +809,7 @@ int main(int argc, char* argv[]) {
   auto bbox_str = std::string{};
   auto intermodal_start_str = std::string{};
   auto intermodal_dest_str = std::string{};
+  auto intermodal_max_duration = std::uint16_t{0U};
   auto max_transfers = std::uint32_t{kMaxTransfers};
   auto prf_idx = std::uint32_t{0};
   auto start_coord_str = std::string{};
@@ -905,6 +894,9 @@ int main(int argc, char* argv[]) {
        bpo::value<std::string>(&intermodal_dest_str)->default_value("walk"),
        "last-mile transport mode for *-coordinate --modes: "
        "walk | bicycle | car")  //
+      ("intermodal_max_duration",
+       bpo::value<std::uint16_t>(&intermodal_max_duration)->default_value(0U),
+       "longest first/last mile in minutes (0: the mode's default, 15)")  //
       ("use_start_footpaths",
        bpo::value<bool>(&gs.use_start_footpaths_)->default_value(true),
        "")  //
@@ -992,6 +984,10 @@ int main(int argc, char* argv[]) {
   }
   gs.start_mode_ = *intermodal_start_mode;
   gs.dest_mode_ = *intermodal_dest_mode;
+  if (intermodal_max_duration != 0U) {
+    gs.start_mode_.max_duration_ = intermodal_max_duration;
+    gs.dest_mode_.max_duration_ = intermodal_max_duration;
+  }
 
   gs.max_transfers_ = max_transfers > std::numeric_limits<std::uint8_t>::max()
                           ? std::numeric_limits<std::uint8_t>::max()

@@ -119,12 +119,11 @@ struct arr_with {
     return {clamp(arr_ + dt),
             static_cast<carried>(extras_t::after_walk(extras_, duration))};
   }
+  // this prefix joined with a suffix label at the same stop fits j
   // the criteria only grow, so they are their own lower bound
   arr_with projected_to(delta_t const arr) const { return {arr, extras_}; }
   void apply_to(journey& j) const { extras_t::to_journey(extras_, j); }
   bool operator==(arr_with const&) const = default;
-  // Does this prefix (forward label) joined with a backward search's suffix
-  // label at the same stop still fit journey j's criteria? See mc_oracle.
   bool join_fits(arr_with const& suffix, journey const& j) const {
     return extras_t::join_fits(extras_, suffix.extras_,
                                extras_t::of_journey(j));
@@ -269,9 +268,7 @@ struct basic_mcraptor_state {
   bitvec rt_transport_mark_;
 };
 
-// One search's labels per stop, copied for a later search's mc_oracle before
-// that search reuses the state. Grows as needed; take() resets only what the
-// last copy set.
+// a search's labels per stop, copied before the next search reuses the state
 template <typename Criteria>
 struct mc_label_snapshot {
   struct entry {
@@ -317,9 +314,8 @@ struct mc_label_snapshot {
   std::vector<entry> labels_;
 };
 
-// Lets a forward search keep only the labels the oracle calls feasible, e.g.
-// those a backward search's labels can complete to a known journey. `t` is the
-// label's raw arrival at l after k trips, `prefix` its criteria.
+// A search keeps only the labels the oracle calls feasible; `t` is the raw
+// arrival at l after k trips.
 template <typename Criteria>
 struct mc_oracle {
   virtual ~mc_oracle() = default;
@@ -339,9 +335,7 @@ struct basic_mcraptor {
   using algo_stats_t = raptor_stats;
 
   static constexpr bool kUseLowerBounds = true;
-  // Whether a caller that always sets bounds_ (bmrap_profile.cc) still needs a
-  // real lb array: no, effective_lb() ignores lb_ once bounded.
-  static constexpr bool kNeedsLbWhenBounded = false;
+  static constexpr bool kNeedsLbWhenBounded = false;  // see effective_lb()
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
   static constexpr auto const kUnreachable =
@@ -389,12 +383,9 @@ struct basic_mcraptor {
       std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
       pareto_set<journey>& results);
 
-  // BM-RAPTOR main search: bounds from the backward pruning search discard
-  // arrivals that cannot reach the target within the remaining trip budget and
-  // arrival slack. nullptr = plain McRAPTOR. Must share this search's base day.
+  // BM-RAPTOR bounds on this search's base day; nullptr: plain McRAPTOR
   void set_bounds(bmrap_bounds const* b) { bounds_ = b; }
 
-  // see mc_oracle; nullptr = off
   void set_oracle(mc_oracle<Criteria> const* o) { oracle_ = o; }
 
   void reconstruct(query const&, journey&);
@@ -479,10 +470,8 @@ private:
            kNoTransferAllowed;
   }
 
-  // An arrival at stop l in round k at time t is discarded iff t is worse than
-  // tau_dep^<-(l, budget - k). `slack` loosens the bound for footpath arrivals,
-  // which pay no transfer buffer at l: the stored bound is post-transfer, right
-  // for transit arrivals but one buffer too tight for footpaths.
+  // t worse than tau_dep^<-(l, trips left)? The bound is post-transfer:
+  // footpath arrivals pay no buffer and pass it as `slack`.
   bool bound_prunes(unsigned const k,
                     std::uint32_t const l,
                     delta_t const t,
@@ -490,12 +479,7 @@ private:
     if (bounds_ == nullptr) {
       return false;
     }
-    // The current start time's budget limits the rounds; which row answers
-    // "k trips used" depends on the matrix (bmrap_bounds::staggered_): a
-    // staggered one is read relative to its own budget - reading it with a
-    // smaller per-departure budget (range BMRAP's max_transfers_fn_) pruned
-    // anchors of later departures from their own bounds - a reach matrix
-    // relative to this search's budget, the tight row.
+    // row: see bmrap_bounds::staggered_
     auto const budget = std::min<unsigned>(cur_budget_, bounds_->budget_);
     if (k > budget) {
       return true;
@@ -505,23 +489,19 @@ private:
         t, clamp(static_cast<int>(bounds_->at(row, l)) + slack));
   }
 
-  // 0 is always a valid lower bound. Under BM-RAPTOR bound_prunes() is already
-  // a tighter feasibility cutoff, so lb_ is only needed when unbounded.
+  // bounded, bound_prunes() is the tighter cutoff
   std::uint16_t effective_lb(std::uint32_t const l_idx) const {
     return bounds_ == nullptr ? lb_[l_idx] : std::uint16_t{0U};
   }
 
-  // Destination pruning: a pareto frontier over (round, criteria); a candidate
-  // is pruned iff its lb projection is dominated by an entry of no more rounds.
-  // Persists across start times.
+  // destination frontier over (round, criteria), across start times
   struct dest_entry {
     unsigned k_;
     Criteria crit_;
   };
 
-  // Strict: a tie survives (raptor's loose <=), so a search's bags keep every
-  // label that can still complete to one of its results - what the guided
-  // phases (mc_oracle) join against. Measured +0.05% labels.
+  // Strict: a tie survives, so the bags keep every label that can complete to
+  // one of the results (what guided searches join against).
   bool dest_dominates(unsigned const k, Criteria const& projected) const {
     for (auto const& e : dest_bag_) {
       if (e.k_ <= k &&
@@ -571,12 +551,10 @@ private:
   hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
   mc_start start_;
   std::vector<std::uint16_t> const& lb_;
-  // search-window bound only; dest_bag_ owns destination pruning
-  delta_t worst_at_dest_;
-  bmrap_bounds const* bounds_{nullptr};  // nullptr = plain McRAPTOR
-  mc_oracle<Criteria> const* oracle_{nullptr};  // see set_oracle()
-  // trips (max_transfers + 1) of the start time being executed
-  unsigned cur_budget_{0U};
+  delta_t worst_at_dest_;  // search window only, see dest_bag_
+  bmrap_bounds const* bounds_{nullptr};
+  mc_oracle<Criteria> const* oracle_{nullptr};
+  unsigned cur_budget_{0U};  // trips of the current start time
   std::vector<dest_entry> dest_bag_;
   delta_t cur_dep_{};
   // inserted in execute() once the ingress is known

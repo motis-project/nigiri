@@ -27,10 +27,8 @@ inline constexpr auto kMcEtTaskMax = 1U << 22U;  // 4M: 210 MB of stop bags
 // labels of one guide copy (take_guide(), one per direction), 6 bytes each
 inline constexpr auto kMcGuideLabels = 1U << 23U;  // 8M: 48 MB
 
-// Preallocated capacities; unset = sized from the timetable. Running out of
-// et task slots only slows a round down; a full stop bag, bag pool or
-// breadcrumb arena (or the sequential scan's route bag) fails the search, since
-// it would be lossy.
+// Capacities, unset: sized from the timetable. Full et task slots slow a round
+// down, anything else full fails the search (it would be lossy).
 struct gpu_mcraptor_limits {
   std::uint32_t et_tasks_{kMcEtTaskMax};
   std::optional<std::uint32_t> bag_pool_blocks_{};
@@ -38,10 +36,8 @@ struct gpu_mcraptor_limits {
   std::uint32_t guide_labels_{kMcGuideLabels};
 };
 
-// The owning scalar state's per-round scratch (n_route_stops entries each)
-// and stream, borrowed instead of allocated (gpu_raptor_state::try_mc_state()):
-// both engines rewrite the scratch every round before reading it, and on one
-// stream their kernels never overlap.
+// scratch and stream borrowed from the owning scalar state: both engines
+// rewrite the scratch every round, and on one stream never overlap
 struct gpu_mcraptor_scratch {
   std::uint32_t* et_result_;
   std::uint32_t* et_task_list_;
@@ -89,10 +85,8 @@ struct gpu_mcraptor {
   using algo_state_t = gpu_mcraptor_state;
   using algo_stats_t = raptor_stats;
 
-  // unlike gpu raptor: without lb pruning the fixed-size device bags overflow
+  // without lb pruning the fixed-size bags overflow, unless bounded
   static constexpr bool kUseLowerBounds = true;
-  // ... unless bounded (bmrap_profile.cc): the BM-RAPTOR bounds prune harder,
-  // so it runs on an all-zero lb, as basic_mcraptor's effective_lb()
   static constexpr bool kNeedsLbWhenBounded = false;
   static constexpr auto const kDirIdx =
       SearchDir == direction::kForward ? 0U : 1U;
@@ -137,10 +131,8 @@ struct gpu_mcraptor {
 
   void reconstruct(query const&, journey&);
 
-  // Pong side: next_start_time() clears the bags instead of demoting them, so
-  // only labels of the same departure (one merged anchor run) prune, as on
-  // the CPU engine without range reuse; cross-anchor ones were seen
-  // over-pruning.
+  // next_start_time() clears the bags instead of demoting them (as the CPU
+  // engine without range reuse)
   void set_reuse_same_dep() { reuse_same_dep_ = true; }
 
   // Guided searches (bmrap_profile.cc): take_guide() copies this search's
@@ -152,9 +144,7 @@ struct gpu_mcraptor {
   void take_guide();
   void set_guide(std::vector<journey const*> const& targets);
 
-  // BM-RAPTOR pruning bounds, read in place from the scalar state that built
-  // them (gpu_raptor::build_reach_bounds); nullptr disables. See
-  // basic_mcraptor::set_bounds().
+  // device-built bounds, see basic_mcraptor::set_bounds()
   void set_bounds(bmrap_bounds const*);
 
 private:
@@ -175,19 +165,13 @@ private:
   transfer_time_settings transfer_time_settings_;
   profile_idx_t prf_idx_;
 
-  // search-window bound; the device dest frontier owns destination pruning
-  delta_t worst_at_dest_;
+  delta_t worst_at_dest_;  // search window only
   bool reuse_same_dep_{false};
 
   mc_start start_;
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
 
-  delta_t const* bounds_{nullptr};
-  std::size_t bounds_size_{0U};
-  std::uint32_t bounds_n_locations_{0U};
-  std::uint8_t bounds_budget_{0U};
-  bool bounds_staggered_{false};
-  bool has_bounds_{false};
+  bmrap_bounds const* bounds_{nullptr};
   std::uint32_t n_guide_targets_{0U};
 };
 

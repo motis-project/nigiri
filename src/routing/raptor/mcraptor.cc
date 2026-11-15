@@ -191,7 +191,7 @@ void basic_mcraptor<SearchDir, Criteria>::execute(
     std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
     pareto_set<journey>& results) {
   auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
-  cur_budget_ = end_k - 1U;  // trips allowed for this start time
+  cur_budget_ = end_k - 1U;
 
   // one bound for all rounds: the loosest
   auto const worst = kFwd ? std::ranges::max(worst_time_at_dest)
@@ -265,8 +265,6 @@ bool basic_mcraptor<SearchDir, Criteria>::alight(
   auto const lb = effective_lb(l_idx);
   if (!is_better(by_transport, worst_at_dest_) || lb == kUnreachable ||
       !is_better(by_transport + dir(lb), worst_at_dest_) ||
-      // the pruning search stores the post-transfer value, so the raw transit
-      // arrival is the matching reference
       bound_prunes(k, l_idx, by_transport)) {
     ++stats_.route_update_prevented_by_lower_bound_;
     return false;
@@ -366,16 +364,16 @@ bool basic_mcraptor<SearchDir, Criteria>::scan_stops(
       continue;
     }
 
-    if (effective_lb(l_idx) == kUnreachable) {
+    auto const lb = effective_lb(l_idx);
+    if (lb == kUnreachable) {
       break;
     }
 
     auto const banned = no_transfer(l_idx);
     for_each_label(l_idx, k - 1U, [&](typename state_t::label const& e) {
-      // even the optimistic completion is dominated
       if (!(banned && e.by_route_) &&
-          !dest_dominates(k, e.crit_.projected_to(clamp(
-                                 e.crit_.arr_ + dir(effective_lb(l_idx)))))) {
+          !dest_dominates(
+              k, e.crit_.projected_to(clamp(e.crit_.arr_ + dir(lb))))) {
         board_label(e.crit_, e.breadcrumb_, stop_idx, l);
       }
     });
@@ -598,7 +596,6 @@ void basic_mcraptor<SearchDir, Criteria>::update_footpaths(unsigned const k) {
                   k, fp_crit.projected_to(clamp(fp_crit.arr_ + dir(lb)))) ||
               (oracle_ != nullptr &&
                !oracle_->feasible(target, k, fp_crit.arr_, fp_crit)) ||
-              // a footpath arrival pays no transfer buffer: relax the bound
               bound_prunes(k, target, fp_crit.arr_, transfer_buffer(target))) {
             ++stats_.fp_update_prevented_by_lower_bound_;
             return;
