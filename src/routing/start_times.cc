@@ -133,7 +133,8 @@ void add_starts_in_interval(direction const search_dir,
                             duration_t const max_start_offset,
                             profile_idx_t const p,
                             std::vector<start>& starts,
-                            bool const add_ontrip) {
+                            bool const add_ontrip,
+                            blocked_routes const& blocked) {
   trace_start(
       "    add_starts_in_interval(interval={}, stop={}): {} "
       "routes\n",
@@ -142,6 +143,9 @@ void add_starts_in_interval(direction const search_dir,
 
   // Iterate routes visiting the location.
   for (auto const& r : tt.location_routes_.at(l)) {
+    if (blocked.routes_.test(r)) {
+      continue;
+    }
 
     // Iterate the location sequence, searching the given location.
     auto const location_seq = tt.route_location_seq_.at(r);
@@ -180,6 +184,9 @@ void add_starts_in_interval(direction const search_dir,
   // Real-time starts
   if (rtt != nullptr) {
     for (auto const& rt_t : rtt->location_rt_transports_.at(l)) {
+      if (blocked.rt_transports_.test(rt_t)) {
+        continue;
+      }
       auto const location_seq = rtt->rt_transport_location_seq_.at(rt_t);
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         auto const stp = stop{s};
@@ -262,7 +269,8 @@ void get_starts(
     std::vector<start>& starts,
     bool const add_ontrip,
     profile_idx_t const prf_idx,
-    transfer_time_settings const& tts) {
+    transfer_time_settings const& tts,
+    blocked_routes const& blocked) {
   auto start_via = hash_set<location_idx_t>{};
   if (!via_stops.empty()) {
     for_each_meta(tt, location_match_mode::kEquivalent,
@@ -312,7 +320,7 @@ void get_starts(
                                    add_starts_in_interval(
                                        search_dir, tt, rtt, interval, l, o, v,
                                        max_start_offset, prf_idx, starts,
-                                       add_ontrip);
+                                       add_ontrip, blocked);
                                  },
                                  [&](unixtime_t const t) {
                                    starts.emplace_back(start{
@@ -334,7 +342,7 @@ void get_starts(
               add_starts_in_interval(search_dir, tt, rtt, interval, stop,
                                      location_offset_t{std::span{offsets}}, v,
                                      max_start_offset, prf_idx, starts,
-                                     add_ontrip);
+                                     add_ontrip, blocked);
             },
             [&](unixtime_t const t) {
               auto const d = get_duration(search_dir, t, offsets, false);

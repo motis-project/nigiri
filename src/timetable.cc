@@ -120,6 +120,7 @@ bitfield_idx_t timetable::register_bitfield(bitfield const& b) {
 }
 
 route_idx_t timetable::register_route(
+    source_idx_t const src,
     basic_string<stop::value_type> const& stop_seq,
     basic_string<clasz> const& clasz_sections,
     std::array<bitvec, route_flag::kNumRouteFlags> const& flags_per_section) {
@@ -128,6 +129,7 @@ route_idx_t timetable::register_route(
 
   auto const idx = route_location_seq_.size();
 
+  route_src_.emplace_back(src);
   route_transport_ranges_.emplace_back(
       transport_idx_t{transport_traffic_days_.size()},
       transport_idx_t::invalid());
