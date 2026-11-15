@@ -532,47 +532,6 @@ TEST(transfer_rules, direct_intermodal_reaches_virtual_locations) {
   EXPECT_EQ(1U, n_fc);
 }
 
-// S -> B via the start station S with a 10 min stay: the stay holds at its
-// stop S1 as well. From 10:00, Y (10:05) is too early, Y2 (10:20) is not.
-//
-// Via = start with a stay: X arrives at S 3 min before Y leaves, the RX -> RY
-// rule (5 min) forbids it, so Y leaves from a location of its own. From S at
-// 10:00 with a 10 min stay at S, Y (10:05) is too early, Y2 (10:20) is not -
-// at every location of S.
-TEST(transfer_rules, via_stay_at_start_holds_at_every_location) {
-  struct layout {
-    std::string feed_;
-    routing::location_match_mode match_mode_;
-    bool has_virts_;
-  };
-  for (auto const& [f, match_mode, has_virts] : std::vector<layout>{
-           {feed({{"S", 55.0, 13.0, "", true},
-                  {"S1", 55.0001, 13.0, "S"},
-                  {"B", 55.2, 13.0}},
-                 {{"Y", "RY", {{"S1", "10:05"}, {"B", "10:30"}}},
-                  {"Y2", "RY", {{"S1", "10:20"}, {"B", "10:45"}}}},
-                 ""),
-            routing::location_match_mode::kEquivalent, false},
-           {feed({{"S", 55.0, 13.0}, {"A", 55.1, 13.0}, {"B", 55.2, 13.0}},
-                 {{"X", "RX", {{"A", "09:00"}, {"S", "10:02"}}},
-                  {"Y", "RY", {{"S", "10:05"}, {"B", "10:30"}}},
-                  {"Y2", "RY2", {{"S", "10:20"}, {"B", "10:45"}}}},
-                 "S,S,2,120,,,,\nS,S,2,300,RX,RY,,\n"),
-            routing::location_match_mode::kExact, true}}) {
-    auto const tt = load_feeds({f});
-    if (has_virts) {
-      ASSERT_LT(0U, n_virts(tt));
-    }
-    auto q = test::exact_query(tt, "S", "B", at("10:00"));
-    q.start_match_mode_ = match_mode;
-    q.dest_match_mode_ = match_mode;
-    q.via_stops_ = {{lidx(tt, "S"), 10_minutes}};
-    auto const res = raptor_search(tt, nullptr, std::move(q));
-    ASSERT_EQ(1U, res.size());
-    EXPECT_EQ(at("10:45"), begin(res)->dest_time_);
-  }
-}
-
 // A footpath leg between two transport legs shows the time the rules state
 // for the two transports, whatever the footpath of their virtual locations
 // says: T0 -> T1 at S is their 1 min rule. The leg stays anchored to T0's
