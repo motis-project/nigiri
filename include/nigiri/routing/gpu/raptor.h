@@ -20,8 +20,12 @@
 
 namespace nigiri::routing::gpu {
 
-inline bool gpu_supported(query const& q, rt_timetable const* = nullptr) {
-  return q.via_stops_.empty();
+constexpr auto kRtLocationCapacity = 8192U;
+
+inline bool is_gpu_supported(query const& q,
+                             rt_timetable const* rtt = nullptr) {
+  return q.via_stops_.empty() &&
+         (rtt == nullptr || rtt->n_rt_locations() <= kRtLocationCapacity);
 }
 
 struct gpu_timetable {
@@ -65,7 +69,7 @@ struct gpu_raptor {
       timetable const& tt,
       rt_timetable const* rtt,
       gpu_raptor_state& state,
-      bitvec& is_dest,
+      bitvec const& is_dest,
       std::array<bitvec, kMaxVias> const& is_via,
       std::vector<std::uint16_t> const& dist_to_dest,
       hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,

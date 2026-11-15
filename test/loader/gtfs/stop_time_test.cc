@@ -227,10 +227,9 @@ TEST(gtfs, read_stop_times_example_data) {
       source_idx_t{}, source_file_idx_t{}, tt, ctx, i18n, routes, services, {},
       files.get_file(kTripsFile).data(), config.bikes_allowed_default_,
       config.cars_allowed_default_, config.reservation_not_required_default_);
-  auto const [stops, _transfers, accessibility] =
+  auto const [stops, accessibility] =
       read_stops(source_idx_t{0}, tt, ctx, i18n, timezones,
-                 files.get_file(kStopFile).data(),
-                 files.get_file(kTransfersFile).data(), 0U);
+                 files.get_file(kStopFile).data(), 0U);
 
   read_stop_times(trip_data, stops, {}, {}, {}, i18n,
                   files.get_file(kStopTimesFile).data(), true, accessibility);

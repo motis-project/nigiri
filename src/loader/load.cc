@@ -75,7 +75,7 @@ timetable load(std::vector<timetable_source> const& sources,
   for (auto const& s : sources) {
     opt.src_tags_.push_back(s.tag_);
   }
-  finalize(tt, ctx, opt);
+  finalize(tt, ctx, opt, shapes);
 
   return tt;
 }
@@ -99,7 +99,7 @@ timetable load(std::vector<dir_source> const& sources,
     (*it)->load(s.loader_config_, source_idx_t{idx}, s.dir_, tt, ctx, a,
                 shapes);
   }
-  finalize(tt, ctx, opt);
+  finalize(tt, ctx, opt, shapes);
 
   return tt;
 }

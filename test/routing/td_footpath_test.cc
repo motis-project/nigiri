@@ -201,13 +201,13 @@ TEST(routing, td_footpath) {
             .td_start_ =
                 {{{A,
                    {{.valid_from_ = sys_days{1970_y / January / 1},
-                     .duration_ = footpath::kMaxDuration,
+                     .duration_ = kTdFootpathBan,
                      .transport_mode_payload_ = 0},
                     {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 30min,
                      .duration_ = 10min,
                      .transport_mode_payload_ = 0},
                     {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 45min,
-                     .duration_ = footpath::kMaxDuration,
+                     .duration_ = kTdFootpathBan,
                      .transport_mode_payload_ = 0}}}}},
             .td_dest_ =
                 {{{C,
@@ -215,7 +215,7 @@ TEST(routing, td_footpath) {
                      .duration_ = 10min,
                      .transport_mode_payload_ = 0},
                     {.valid_from_ = sys_days{2024_y / June / 19} + 12h + 30min,
-                     .duration_ = footpath::kMaxDuration,
+                     .duration_ = kTdFootpathBan,
                      .transport_mode_payload_ = 0},
                     {.valid_from_ = sys_days{2024_y / June / 19} + 13h + 30min,
                      .duration_ = 10min,
@@ -235,9 +235,9 @@ TEST(routing, td_footpath) {
   rtt.td_footpaths_out_[kProfile].resize(tt.n_locations());
   rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
   rtt.td_footpaths_out_[kProfile][D].push_back(
-      td_footpath{B2, unixtime_t{0min}, footpath::kMaxDuration});
+      td_footpath{B2, unixtime_t{0min}, kTdFootpathBan});
   rtt.td_footpaths_in_[kProfile][B2].push_back(
-      td_footpath{D, unixtime_t{0min}, footpath::kMaxDuration});
+      td_footpath{D, unixtime_t{0min}, kTdFootpathBan});
 
   EXPECT_EQ(kEverythingWorks, to_string(tt, run_search()));
 
@@ -379,8 +379,8 @@ TEST(routing, td_footpath_lookup_keeps_the_wait) {
       td_footpath{B1, unixtime_t{day + 9h + 25min}, 10min});
   auto const q = routing::query{.prf_idx_ = kProfile};
   auto const alighting = routing::lookup_footpath(
-      B1, unixtime_t{day + 9h}, routing::side::kAlighting, tt, &rtt, q,
-      {{B2, 0min, 0U}}, routing::location_match_mode::kExact, true);
+      B1, unixtime_t{day + 9h}, event_type::kArr, tt, &rtt, q, {{B2, 0min, 0U}},
+      routing::location_match_mode::kExact, true);
   ASSERT_TRUE(alighting.has_value());
   EXPECT_EQ(B1, alighting->from_);
   EXPECT_EQ(B2, alighting->to_);
@@ -390,11 +390,11 @@ TEST(routing, td_footpath_lookup_keeps_the_wait) {
   // Boarding at B2 at 10:00, the footpath from B1 is only usable until 09:40:
   // walk until 09:49 at the latest, then wait.
   rtt.td_footpaths_out_[kProfile][B1].push_back(
-      td_footpath{B2, unixtime_t{day + 9h + 40min}, footpath::kMaxDuration});
+      td_footpath{B2, unixtime_t{day + 9h + 40min}, kTdFootpathBan});
   rtt.td_footpaths_in_[kProfile][B2].push_back(
-      td_footpath{B1, unixtime_t{day + 9h + 40min}, footpath::kMaxDuration});
+      td_footpath{B1, unixtime_t{day + 9h + 40min}, kTdFootpathBan});
   auto const boarding = routing::lookup_footpath(
-      B2, unixtime_t{day + 10h}, routing::side::kBoarding, tt, &rtt, q,
+      B2, unixtime_t{day + 10h}, event_type::kDep, tt, &rtt, q,
       {{B1, 0min, 0U}}, routing::location_match_mode::kExact, true);
   ASSERT_TRUE(boarding.has_value());
   EXPECT_EQ(B1, boarding->from_);
@@ -406,24 +406,26 @@ TEST(routing, td_footpath_lookup_keeps_the_wait) {
 TEST(routing, td_offset_lookup_keeps_the_wait) {
   // The wait for a time-dependent offset is spent at the transport's stop, so
   // the offset leg only covers the walk.
+  auto const tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
   auto const day = sys_days{2024_y / June / 19};
-  auto const l = location_idx_t{42U};
+  auto const l = tt.find(location_id{"B1", source_idx_t{0U}}).value();
   auto const td_offsets =
       routing::td_offsets_t{{l,
                              {{.valid_from_ = sys_days{1970_y / January / 1},
-                               .duration_ = footpath::kMaxDuration,
+                               .duration_ = kTdFootpathBan,
                                .transport_mode_payload_ = 0},
                               {.valid_from_ = day + 9h + 25min,
                                .duration_ = 10min,
                                .transport_mode_payload_ = 0},
                               {.valid_from_ = day + 9h + 40min,
-                               .duration_ = footpath::kMaxDuration,
+                               .duration_ = kTdFootpathBan,
                                .transport_mode_payload_ = 0}}}};
 
   // Alighting at 09:00, the offset is usable from 09:25: wait until 09:25,
   // then walk.
   auto const alighting = routing::lookup_offset(
-      l, unixtime_t{day + 9h}, routing::side::kAlighting, {}, td_offsets);
+      tt, l, unixtime_t{day + 9h}, event_type::kArr, {}, td_offsets);
   ASSERT_TRUE(alighting.has_value());
   EXPECT_EQ(l, alighting->from_);
   EXPECT_EQ(get_special_station(special_station::kEnd), alighting->to_);
@@ -434,7 +436,7 @@ TEST(routing, td_offset_lookup_keeps_the_wait) {
   // Boarding at 10:00, the offset is only usable until 09:40: walk until 09:49
   // at the latest, then wait.
   auto const boarding = routing::lookup_offset(
-      l, unixtime_t{day + 10h}, routing::side::kBoarding, {}, td_offsets);
+      tt, l, unixtime_t{day + 10h}, event_type::kDep, {}, td_offsets);
   ASSERT_TRUE(boarding.has_value());
   EXPECT_EQ(get_special_station(special_station::kStart), boarding->from_);
   EXPECT_EQ(l, boarding->to_);
@@ -579,7 +581,7 @@ TEST(routing, td_footpath_pong_walk_right_after_usable) {
   rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
   for (auto const& [from, dur] :
        {std::pair{unixtime_t{0min}, duration_t{10min}},
-        std::pair{unixtime_t{day + 8h + 41min}, footpath::kMaxDuration},
+        std::pair{unixtime_t{day + 8h + 41min}, kTdFootpathBan},
         std::pair{unixtime_t{day + 9h + 45min}, duration_t{10min}}}) {
     rtt.td_footpaths_out_[kProfile][B1].push_back(td_footpath{B2, from, dur});
     rtt.td_footpaths_in_[kProfile][B2].push_back(td_footpath{B1, from, dur});
@@ -614,6 +616,21 @@ leg 2: (B2, B2) [2024-06-19 09:30] -> (C, C) [2024-06-19 10:00]
    1: C       C............................................... a: 19.06 10:00 [19.06 12:00]
 
 )";
+constexpr auto const kWalkAfterOutage = R"(
+[2024-06-19 07:00, 2024-06-19 10:00]
+TRANSFERS: 1
+     FROM: (A, A) [2024-06-19 08:00]
+       TO: (C, C) [2024-06-19 10:00]
+leg 0: (A, A) [2024-06-19 08:00] -> (B1, B1) [2024-06-19 09:00]
+   0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
+   1: B1      B1.............................................. a: 19.06 09:00 [19.06 11:00]
+leg 1: (B1, B1) [2024-06-19 09:12] -> (B2, B2) [2024-06-19 09:22]
+  FOOTPATH (duration=10)
+leg 2: (B2, B2) [2024-06-19 09:30] -> (C, C) [2024-06-19 10:00]
+   0: B2      B2..............................................                               d: 19.06 09:30 [19.06 11:30]  [{name=RE 2, day=2024-06-19, id=T2, src=0}]
+   1: C       C............................................... a: 19.06 10:00 [19.06 12:00]
+
+)";
 // clang-format on
 
 TEST(routing, td_footpath_walk_right_before_outage) {
@@ -621,7 +638,9 @@ TEST(routing, td_footpath_walk_right_before_outage) {
   // down at 09:15, and usable again from 09:20. The forward search walks from
   // 09:00 to 09:10. The footpath must be looked up for an arrival at 09:10, not
   // a departure at 09:10 (which would wait for 09:20 and start at 08:50).
-  // Transfer time settings don't apply to time-dependent footpaths.
+  // Transfer time settings don't apply to time-dependent footpaths. Out of
+  // service from 08:55 to 09:12 instead, T1's riders wait at B1: the footpath
+  // starts at 09:12 and takes its 10 min.
   constexpr auto const kProfile = profile_idx_t{2U};
 
   auto tt =
@@ -643,6 +662,70 @@ TEST(routing, td_footpath_walk_right_before_outage) {
   tt.locations_.footpaths_out_[kProfile][B1].push_back(footpath{B2, 10min});
   tt.locations_.footpaths_in_[kProfile][B2].push_back(footpath{B1, 10min});
 
+  auto const search = [&](std::chrono::minutes const out_of_service,
+                          std::chrono::minutes const usable_again) {
+    auto rtt = rt::create_rt_timetable(tt, day);
+    for (auto const l : {B1, B2}) {
+      rtt.has_td_footpaths_in_[kProfile].set(l, true);
+      rtt.has_td_footpaths_out_[kProfile].set(l, true);
+    }
+    rtt.td_footpaths_out_[kProfile].resize(tt.n_locations());
+    rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
+    for (auto const& [from, dur] :
+         {std::pair{unixtime_t{0min}, duration_t{10min}},
+          std::pair{unixtime_t{day + out_of_service}, kTdFootpathBan},
+          std::pair{unixtime_t{day + usable_again}, duration_t{10min}}}) {
+      rtt.td_footpaths_out_[kProfile][B1].push_back(td_footpath{B2, from, dur});
+      rtt.td_footpaths_in_[kProfile][B2].push_back(td_footpath{B1, from, dur});
+    }
+    auto const result = raptor_search(
+        tt, &rtt,
+        routing::query{
+            .start_time_ = unixtime_t{day + 7h},
+            .start_match_mode_ = routing::location_match_mode::kEquivalent,
+            .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+            .start_ = {{A, 0min, 0U}},
+            .destination_ = {{C, 0min, 0U}},
+            .prf_idx_ = kProfile,
+            .transfer_time_settings_ = {.default_ = false, .factor_ = 2.0F}},
+        direction::kForward);
+    return to_string(tt, &rtt, result);
+  };
+  EXPECT_EQ(kWalkRightBeforeOutage, search(9h + 6min, 9h + 20min));
+  EXPECT_EQ(kWalkAfterOutage, search(8h + 55min, 9h + 12min));
+}
+
+TEST(routing, td_lookups_wait_beyond_footpath_max_duration) {
+  // Waiting for a time-dependent offset or footpath is not limited by the
+  // 8-bit footpath duration: a 5 h outage is waited out.
+  constexpr auto const kProfile = profile_idx_t{2U};
+
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
+
+  auto const B1 = tt.find(location_id{"B1", source_idx_t{0U}}).value();
+  auto const B2 = tt.find(location_id{"B2", source_idx_t{0U}}).value();
+  auto const day = sys_days{2024_y / June / 19};
+
+  // Alighting at B1 at 09:00, the offset is usable from 14:00: 5 h wait plus
+  // 10 min walk, more than footpath::kMax.
+  auto const td_offsets =
+      routing::td_offsets_t{{B1,
+                             {{.valid_from_ = sys_days{1970_y / January / 1},
+                               .duration_ = kTdFootpathBan,
+                               .transport_mode_payload_ = 0},
+                              {.valid_from_ = day + 14h,
+                               .duration_ = 10min,
+                               .transport_mode_payload_ = 0}}}};
+  auto const offset_leg = routing::lookup_offset(
+      tt, B1, unixtime_t{day + 9h}, event_type::kArr, {}, td_offsets);
+  ASSERT_TRUE(offset_leg.has_value());
+  EXPECT_EQ(unixtime_t{day + 14h}, offset_leg->dep_time_);
+  EXPECT_EQ(unixtime_t{day + 14h + 10min}, offset_leg->arr_time_);
+
+  // The same for the footpath from B1 to B2.
+  tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
   auto rtt = rt::create_rt_timetable(tt, day);
   for (auto const l : {B1, B2}) {
     rtt.has_td_footpaths_in_[kProfile].set(l, true);
@@ -650,24 +733,15 @@ TEST(routing, td_footpath_walk_right_before_outage) {
   }
   rtt.td_footpaths_out_[kProfile].resize(tt.n_locations());
   rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
-  for (auto const& [from, dur] :
-       {std::pair{unixtime_t{0min}, duration_t{10min}},
-        std::pair{unixtime_t{day + 9h + 6min}, footpath::kMaxDuration},
-        std::pair{unixtime_t{day + 9h + 20min}, duration_t{10min}}}) {
-    rtt.td_footpaths_out_[kProfile][B1].push_back(td_footpath{B2, from, dur});
-    rtt.td_footpaths_in_[kProfile][B2].push_back(td_footpath{B1, from, dur});
-  }
-
-  auto const result = raptor_search(
-      tt, &rtt,
-      routing::query{
-          .start_time_ = unixtime_t{day + 7h},
-          .start_match_mode_ = routing::location_match_mode::kEquivalent,
-          .dest_match_mode_ = routing::location_match_mode::kEquivalent,
-          .start_ = {{A, 0min, 0U}},
-          .destination_ = {{C, 0min, 0U}},
-          .prf_idx_ = kProfile,
-          .transfer_time_settings_ = {.default_ = false, .factor_ = 2.0F}},
-      direction::kForward);
-  EXPECT_EQ(kWalkRightBeforeOutage, to_string(tt, &rtt, result));
+  rtt.td_footpaths_out_[kProfile][B1].push_back(
+      td_footpath{B2, unixtime_t{day + 14h}, 10min});
+  rtt.td_footpaths_in_[kProfile][B2].push_back(
+      td_footpath{B1, unixtime_t{day + 14h}, 10min});
+  auto const q = routing::query{.prf_idx_ = kProfile};
+  auto const footpath_leg = routing::lookup_footpath(
+      B1, unixtime_t{day + 9h}, event_type::kArr, tt, &rtt, q, {{B2, 0min, 0U}},
+      routing::location_match_mode::kExact, true);
+  ASSERT_TRUE(footpath_leg.has_value());
+  EXPECT_EQ(unixtime_t{day + 14h}, footpath_leg->dep_time_);
+  EXPECT_EQ(unixtime_t{day + 14h + 10min}, footpath_leg->arr_time_);
 }

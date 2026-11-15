@@ -11,13 +11,13 @@
 
 #include "utl/overloaded.h"
 #include "utl/to_vec.h"
-#include "utl/verify.h"
 
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/search_interval.h"
+#include "nigiri/routing/start_times.h"
 
 namespace nigiri::routing {
 
@@ -87,16 +87,14 @@ routing_result raptor_search_with_dir(
       !rtt->affects(raptor_search_interval(SearchDir, tt, q), q.prf_idx_)) {
     rtt = nullptr;
   }
-
-  utl::verify(q.via_stops_.size() <= kMaxVias,
-              "too many via stops: {}, limit: {}", q.via_stops_.size(),
-              kMaxVias);
+  expand_td_offsets(tt, rtt, q);
 
   static_assert(kMaxVias == 2,
                 "raptor_search.cc needs to be adjusted for kMaxVias");
 
   switch (q.via_stops_.size()) {
     case 0:
+    default:
       return raptor_search_with_vias<SearchDir, 0>(tt, rtt, s_state, algo_state,
                                                    std::move(q), timeout);
     case 1:
@@ -106,7 +104,6 @@ routing_result raptor_search_with_dir(
       return raptor_search_with_vias<SearchDir, 2>(tt, rtt, s_state, algo_state,
                                                    std::move(q), timeout);
   }
-  std::unreachable();
 }
 
 std::string_view location_match_mode_str(location_match_mode const mode) {

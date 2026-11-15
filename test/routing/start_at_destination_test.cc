@@ -60,8 +60,7 @@ D,S,2,300
 
 TEST(routing, walk_to_destination_does_not_hide_journey) {
   auto const tt = loader::load(loader::mem_dir::read(kWalkToDestination),
-                               {2019_y / May / 1, 2019_y / May / 2},
-                               {.adjust_footpaths_ = false});
+                               {2019_y / May / 1, 2019_y / May / 2});
   auto const loc = [&](std::string_view const id) {
     return tt.find(location_id{id, source_idx_t{0}}).value();
   };
@@ -123,8 +122,7 @@ P,S,2,180
 
 TEST(routing, origin_is_destination_has_no_round_trip) {
   auto const tt = loader::load(loader::mem_dir::read(kOriginIsDestination),
-                               {2019_y / May / 1, 2019_y / May / 2},
-                               {.adjust_footpaths_ = false});
+                               {2019_y / May / 1, 2019_y / May / 2});
   auto const loc = [&](std::string_view const id) {
     return tt.find(location_id{id, source_idx_t{0}}).value();
   };
@@ -180,9 +178,9 @@ OUT,10:30:00,10:30:00,Z,1,0,0
 
 void expect_bus_to_x(std::string_view const destination,
                      routing::location_match_mode const mode) {
-  auto const tt = loader::load(
-      loader::mem_dir::read(kOriginWithOffsetIsDestination),
-      {2019_y / May / 1, 2019_y / May / 2}, {.adjust_footpaths_ = false});
+  auto const tt =
+      loader::load(loader::mem_dir::read(kOriginWithOffsetIsDestination),
+                   {2019_y / May / 1, 2019_y / May / 2});
   auto const loc = [&](std::string_view const id) {
     return tt.find(location_id{id, source_idx_t{0}}).value();
   };

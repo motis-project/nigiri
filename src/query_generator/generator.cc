@@ -3,7 +3,6 @@
 #include "nigiri/location_match_mode.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/get_fastest_direct.h"
-#include "nigiri/routing/ontrip_train.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"

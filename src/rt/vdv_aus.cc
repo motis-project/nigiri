@@ -5,10 +5,12 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "pugixml.hpp"
 
 #include "utl/enumerate.h"
+#include "utl/erase_duplicates.h"
 #include "utl/parser/arg_parser.h"
 
 #include "fmt/core.h"
@@ -17,6 +19,7 @@
 #include "nigiri/common/mam_dist.h"
 #include "nigiri/common/parse_time.h"
 #include "nigiri/for_each_meta.h"
+#include "nigiri/location_routes.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -348,10 +351,15 @@ void updater::match_run(run_id const& vdv_id,
     }
     auto no_transport_found_at_stop = true;
     for (auto const l : tt_.locations_.equivalences_[vdv_stop.l_]) {
-      for (auto const r : tt_.location_routes_[l]) {
+      auto routes = std::vector<route_idx_t>{};
+      for_each_route_at_stop(tt_, l, [&](location_idx_t, route_idx_t const r) {
+        routes.push_back(r);
+      });
+      utl::erase_duplicates(routes);
+      for (auto const r : routes) {
         auto const location_seq = tt_.route_location_seq_[r];
         for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
-          if (stop{s}.location_idx() != l) {
+          if (tt_.base(stop{s}.location_idx()) != l) {
             continue;
           }
           auto const vdv_ev = stop_idx == 0
@@ -597,7 +605,7 @@ void updater::update_run(rt_timetable& rtt,
     skipped_stops.clear();
     for (auto vdv_stop = cursor; vdv_stop != end(vdv_stops); ++vdv_stop) {
       if (vdv_stop->l_ != location_idx_t::invalid() &&
-          matches(tt_, routing::location_match_mode::kEquivalent,
+          matches(tt_, nullptr, routing::location_match_mode::kEquivalent,
                   rs.get_location_idx(), vdv_stop->l_)) {
         if (rs.stop_idx_ != 0 && vdv_stop->arr_.has_value() &&
             (static_cast<std::uint32_t>(std::abs(

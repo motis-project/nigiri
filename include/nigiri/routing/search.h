@@ -84,7 +84,6 @@ struct search {
             bool const require_bikes_allowed,
             bool const require_cars_allowed,
             bool const no_compulsory_reservation,
-            transfer_time_settings& tts,
             algo_state_t& algo_state) {
     auto span = get_otel_tracer()->StartSpan("search::init");
     auto scope = opentelemetry::trace::Scope{span};
@@ -92,39 +91,18 @@ struct search {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
 
-    utl::verify(q_.via_stops_.size() <= kMaxVias,
-                "too many via stops: {}, limit: {}", q_.via_stops_.size(),
-                kMaxVias);
-
-    tts.factor_ = std::max(tts.factor_, 1.0F);
-    tts.min_transfer_time_ = std::max(tts.min_transfer_time_, 0_minutes);
-    tts.additional_time_ = std::max(tts.additional_time_, 0_minutes);
-    tts.default_ = tts.factor_ == 1.0F  //
-                   && tts.min_transfer_time_ == 0_minutes  //
-                   && tts.additional_time_ == 0_minutes;
-
-    collect_destinations(tt_, q_.destination_, q_.dest_match_mode_,
+    collect_destinations(tt_, rtt_, q_.destination_, q_.dest_match_mode_,
                          state_.is_destination_, state_.dist_to_dest_);
 
     for (auto const [i, via] : utl::enumerate(q_.via_stops_)) {
-      collect_via_destinations(tt_, via.location_, state_.is_via_[i]);
+      collect_via_destinations(tt_, rtt_, via.location_, state_.is_via_[i]);
     }
 
     if constexpr (Algo::kUseLowerBounds) {
       auto lb_span = get_otel_tracer()->StartSpan("lower bounds");
       auto lb_scope = opentelemetry::trace::Scope{lb_span};
       UTL_START_TIMING(lb);
-      dijkstra(
-          tt_, q_,
-          (kFwd ? tt_.fwd_search_lb_graph_[q_.prf_idx_]
-                : tt_.bwd_search_lb_graph_[q_.prf_idx_]),
-          (rtt_ == nullptr ? nullptr
-                           : &(kFwd ? rtt_->fwd_search_lb_graph_has_edges_
-                                    : rtt_->bwd_search_lb_graph_has_edges_)),
-          (rtt_ == nullptr ? nullptr
-                           : &(kFwd ? rtt_->fwd_search_lb_graph_
-                                    : rtt_->bwd_search_lb_graph_)),
-          state_.travel_time_lower_bound_);
+      dijkstra(tt_, rtt_, q_, SearchDir, state_.travel_time_lower_bound_);
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
 
@@ -166,7 +144,7 @@ struct search {
         require_cars_allowed,
         q_.prf_idx_ == 2U,
         no_compulsory_reservation,
-        tts,
+        q_.transfer_time_settings_,
         q_.prf_idx_};
   }
 
@@ -179,7 +157,7 @@ struct search {
       : tt_{tt},
         rtt_{rtt},
         state_{s},
-        q_{std::move(q)},
+        q_{std::move(q.sanitize(tt))},
         search_interval_{std::visit(
             utl::overloaded{[](interval<unixtime_t> const start_interval) {
                               return start_interval;
@@ -194,11 +172,8 @@ struct search {
                    q_.require_bike_transport_,
                    q_.require_car_transport_,
                    q_.no_compulsory_reservation_,
-                   q_.transfer_time_settings_,
                    algo_state)},
-        timeout_(timeout) {
-    q_.sanitize(tt);
-  }
+        timeout_(timeout) {}
 
   routing_result execute() {
     auto span = get_otel_tracer()->StartSpan("search::execute");
@@ -321,8 +296,8 @@ struct search {
                                          state_.results_);
 
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
-        return std::tuple{a.start_time_, a.transfers_} <
-               std::tuple{b.start_time_, b.transfers_};
+        return std::tie(a.start_time_, a.transfers_, a) <
+               std::tie(b.start_time_, b.transfers_, b);
       });
     }
 
@@ -331,7 +306,7 @@ struct search {
 
     stats_.execute_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(
-            (std::chrono::steady_clock::now() - processing_start_time));
+            (std::chrono::steady_clock::now() - start_time_));
     return {.journeys_ = &state_.results_,
             .interval_ = search_interval_,
             .search_stats_ = stats_,
@@ -463,6 +438,8 @@ private:
         });
   }
 
+  std::chrono::steady_clock::time_point start_time_{
+      std::chrono::steady_clock::now()};
   timetable const& tt_;
   rt_timetable const* rtt_;
   search_state& state_;

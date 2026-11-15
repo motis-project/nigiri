@@ -5,6 +5,7 @@
 #include <cstdint>
 #include "nigiri/loader/dir.h"
 #include "nigiri/abi.h"
+#include "nigiri/footpath.h"
 #include "nigiri/rt/util.h"
 
 nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
@@ -27,6 +28,10 @@ using namespace std::string_view_literals;
 
 namespace {
 
+// LATE (route 201, ten hours later, 2023-08-09 only) and the forbidden transfer
+// TZ -> LATE at 3891 (TZ -> 3248651 stays allowed) split route 201: 3248651
+// stays transport 0 on route 0, LATE moves to a split route with a virtual
+// location of 3891 where TZ arrives too.
 mem_dir test_files() {
   return mem_dir::read(R"(
      "(
@@ -64,6 +69,7 @@ stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,zone_id,stop_url,locatio
 1916,1916,King / Weber,,  43.484988, -80.526677,,,0,4073,1,
 1918,1918,King / Manulife,,  43.491207, -80.528026,,,0,4073,1,
 1127,1127,Conestoga Station,,  43.498036, -80.528999,,
+Z,Z,Z,,  44.0, -81.0,,
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -111,14 +117,18 @@ service_id,date,exception_type
 201-Weekday-66-23SUMM-1111100,20230830,1
 201-Weekday-66-23SUMM-1111100,20230831,1
 201-Weekday-66-23SUMM-1111100,20230901,1
+LATE_DAY,20230809,1
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
 201,grt,iXpress Fischer-Hallman,,3,https://www.grt.ca/en/schedules-maps/schedules.aspx
+Z,grt,Z,,3,
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,direction_id,block_id,shape_id,wheelchair_accessible,bikes_allowed
 201,201-Weekday-66-23SUMM-1111100,3248651,Conestoga Station,0,340341,2010025,1,1
+201,LATE_DAY,LATE,Conestoga Station,0,,2010025,1,1
+Z,LATE_DAY,TZ,Z,0,,,1,1
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -150,6 +160,40 @@ trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_t
 3248651,05:55:00,05:55:00,1916,26,0,0
 3248651,05:56:00,05:56:00,1918,27,0,0
 3248651,05:58:00,05:58:00,1127,28,1,0
+LATE,15:15:00,15:15:00,2351,1,0,0
+LATE,15:16:00,15:16:00,1033,2,0,0
+LATE,15:18:00,15:18:00,2086,3,0,0
+LATE,15:19:00,15:19:00,2885,4,0,0
+LATE,15:21:00,15:21:00,2888,5,0,0
+LATE,15:22:00,15:22:00,3189,6,0,0
+LATE,15:24:00,15:24:00,3895,7,0,0
+LATE,15:26:00,15:26:00,3893,8,0,0
+LATE,15:27:00,15:27:00,2969,9,0,0
+LATE,15:29:00,15:29:00,2971,10,0,0
+LATE,15:31:00,15:31:00,2986,11,0,0
+LATE,15:32:00,15:32:00,3891,12,0,0
+LATE,15:33:00,15:33:00,3143,13,0,0
+LATE,15:35:00,15:35:00,3144,14,0,0
+LATE,15:37:00,15:37:00,3146,15,0,0
+LATE,15:38:00,15:38:00,1992,16,0,0
+LATE,15:39:00,15:39:00,1972,17,0,0
+LATE,15:40:00,15:40:00,3465,18,0,0
+LATE,15:42:00,15:42:00,3890,19,0,0
+LATE,15:43:00,15:43:00,1117,20,0,0
+LATE,15:46:00,15:46:00,3899,21,0,0
+LATE,15:47:00,15:49:00,1223,22,0,0
+LATE,15:50:00,15:50:00,3887,23,0,0
+LATE,15:53:00,15:53:00,2524,24,0,0
+LATE,15:54:00,15:54:00,4073,25,0,0
+LATE,15:55:00,15:55:00,1916,26,0,0
+LATE,15:56:00,15:56:00,1918,27,0,0
+LATE,15:58:00,15:58:00,1127,28,1,0
+TZ,05:00:00,05:00:00,Z,1,0,0
+TZ,05:30:00,05:30:00,3891,2,0,0
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+3891,3891,3,,,,TZ,LATE
 )");
 }
 
@@ -344,13 +388,13 @@ TEST(rt, abi_timetable) {
       0);
 
   auto const route_count = nigiri_get_route_count(t);
-  EXPECT_EQ(1, route_count);
+  EXPECT_EQ(3, route_count);
 
   auto const transport_count = nigiri_get_transport_count(t);
-  EXPECT_EQ(1, transport_count);
+  EXPECT_EQ(3, transport_count);
 
   auto const location_count = nigiri_get_location_count(t);
-  EXPECT_EQ(37, location_count);
+  EXPECT_EQ(39, location_count);
 
   auto const l0 = nigiri_get_location(t, 0);
   auto const l0_name = std::string{l0->name, l0->name_len};
@@ -378,14 +422,15 @@ TEST(rt, abi_timetable) {
   EXPECT_EQ(2, l35->n_footpaths);
   EXPECT_EQ(34, l35->footpaths[0].target_location_idx);
   EXPECT_EQ(8, l35->footpaths[0].duration);
+  EXPECT_EQ(33, l35->footpaths[1].target_location_idx);
+  EXPECT_EQ(11, l35->footpaths[1].duration);
   EXPECT_FLOAT_EQ(43.491207, l35->lat);
   EXPECT_FLOAT_EQ(-80.528026, l35->lon);
   EXPECT_EQ(2, l35->transfer_time);
   EXPECT_EQ(33, l35->parent);
   nigiri_destroy_location(l35);
 
-  auto const l36 =
-      nigiri_get_location_with_footpaths(t, location_count - 1, true);
+  auto const l36 = nigiri_get_location_with_footpaths(t, 36, true);
   auto const l36_name = std::string{l36->name, l36->name_len};
   EXPECT_EQ("Conestoga Station", l36_name);
   auto const l36_id = std::string{l36->id, l36->id_len};
@@ -396,6 +441,19 @@ TEST(rt, abi_timetable) {
   EXPECT_EQ(2, l36->transfer_time);
   EXPECT_EQ(0, l36->parent);
   nigiri_destroy_location(l36);
+
+  // The virtual location comes last: no id and name, the position and parent
+  // of its base 3891 (location 20). TZ arrives and LATE departs there, so
+  // changing within it is banned (TZ -> LATE): transfer time kBan.
+  auto const virt =
+      nigiri_get_location_with_footpaths(t, location_count - 1, true);
+  EXPECT_EQ(0, virt->name_len);
+  EXPECT_EQ(0, virt->id_len);
+  EXPECT_FLOAT_EQ(43.431587, virt->lat);
+  EXPECT_FLOAT_EQ(-80.525376, virt->lon);
+  EXPECT_EQ(nigiri::footpath::kBan.count(), virt->transfer_time);
+  EXPECT_EQ(20, virt->parent);
+  nigiri_destroy_location(virt);
 
   EXPECT_EQ(
       std::chrono::system_clock::to_time_t(date::sys_days{2023_y / August / 4}),

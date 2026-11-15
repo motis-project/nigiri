@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include "nigiri/common/dedup_vecvec.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -32,8 +34,6 @@ struct import_context {
 
   mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
   mutable_fws_multimap<location_idx_t, location_idx_t> children_;
-  mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
-  mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
 
   vector_map<source_idx_t, paged_vecvec<route_id_idx_t, trip_idx_t>>
       route_id_trips_;
@@ -60,6 +60,12 @@ struct import_context {
 };
 
 bitfield_idx_t register_bitfield(timetable&, import_context&, bitfield const&);
+
+std::span<delta const> get_stop_times(timetable const&,
+                                      import_context const&,
+                                      route_idx_t,
+                                      stop_idx_t,
+                                      event_type);
 
 void add_transport(timetable&, import_context&, timetable::transport&&);
 

@@ -2,6 +2,8 @@
 
 #include <cinttypes>
 #include <iosfwd>
+#include <optional>
+#include <tuple>
 #include <variant>
 #include <vector>
 
@@ -62,6 +64,11 @@ struct journey {
                unsigned n_indent = 0U,
                bool debug = false) const;
 
+    std::optional<run_enter_exit> get_run() const {
+      auto const* r = std::get_if<run_enter_exit>(&uses_);
+      return r == nullptr ? std::nullopt : std::optional{*r};
+    }
+
     friend bool operator==(leg const& a, leg const& b) {
       return std::tie(a.from_, a.to_, a.dep_time_, a.arr_time_, a.uses_) ==
              std::tie(b.from_, b.to_, b.dep_time_, b.arr_time_, b.uses_);
@@ -78,7 +85,10 @@ struct journey {
   };
 
   bool dominates(journey const& o) const {
-    if (start_time_ <= dest_time_) {
+    auto const is_fwd = start_time_ != dest_time_
+                            ? start_time_ <= dest_time_
+                            : o.start_time_ <= o.dest_time_;
+    if (is_fwd) {
       return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
              dest_time_ <= o.dest_time_;
     } else {
@@ -99,6 +109,10 @@ struct journey {
 
   unixtime_t arrival_time() const {
     return start_time_ <= dest_time_ ? dest_time_ : start_time_;
+  }
+
+  auto criteria() const {
+    return std::tuple{departure_time(), arrival_time(), transfers_};
   }
 
   void print(std::ostream&,

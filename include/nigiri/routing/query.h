@@ -108,7 +108,7 @@ using td_offsets_t = hash_map<location_idx_t, std::vector<routing::td_offset>>;
 
 struct query {
   void flip_dir();
-  void sanitize(timetable const&);
+  query& sanitize(timetable const&);
   bool operator==(query const& o) const;
 
   start_time_t start_time_{};
