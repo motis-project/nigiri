@@ -98,12 +98,12 @@ std::optional<journey::leg> get_offset_leg(timetable const& tt,
   auto const& o = best->first;
   auto const boundary = get_special_station(special);
   if (ev == event_type::kDep) {
-    // Boarding -> waiting spent before the walk.
+    // Boarding -> waiting spent after the walk.
     auto const dep = t - best->second;
     return journey::leg{direction::kForward, boundary, o.target(), dep,
                         dep + o.duration(),  o};
   } else {
-    // Alighting -> waiting spent after the walk.
+    // Alighting -> waiting spent before the walk.
     auto const arr = t + best->second;
     return journey::leg{direction::kForward, o.target(), boundary,
                         arr - o.duration(),  arr,        o};
