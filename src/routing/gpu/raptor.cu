@@ -1253,27 +1253,22 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
     auto const& transit_leg = is_front ? j.legs_.front() : j.legs_.back();
     auto const stop =
         rt::base(tt_, rtt_, is_front ? transit_leg.from_ : transit_leg.to_);
-    auto const stop_time =
-        is_front ? transit_leg.dep_time_ : transit_leg.arr_time_;
-    auto const t = is_start ? stop_time : j.dest_time_;
-    auto const o = get_offset_duration(tt_, flip(SearchDir), t, stop,
-                                       is_start ? q.start_ : q.destination_,
-                                       is_start ? q.td_start_ : q.td_dest_);
-    utl::verify(o.has_value(), "gpu reconstruct: no mumo offset");
+    auto leg = get_offset_leg(
+        tt_, is_front ? event_type::kDep : event_type::kArr,
+        is_front ? transit_leg.dep_time_ : transit_leg.arr_time_, stop,
+        is_start ? special_station::kStart : special_station::kEnd,
+        is_start ? q.start_ : q.destination_,
+        is_start ? q.td_start_ : q.td_dest_);
+    utl::verify(leg.has_value(), "gpu reconstruct: no mumo offset");
 
-    auto const d = o->duration();
-    auto const dep = is_fwd ? t - d : t;
-    auto const arr = is_fwd ? t : t + d;
-    auto const bound = is_start ? j.start_time_ : stop_time;
-    utl::verify(is_fwd ? dep >= bound : arr <= bound,
+    auto const special_time = is_front ? leg->dep_time_ : leg->arr_time_;
+    utl::verify(!is_start ? special_time == j.dest_time_
+                : is_fwd  ? special_time >= j.start_time_
+                          : special_time <= j.start_time_,
                 "gpu reconstruct: mumo offset does not fit");
 
-    auto const special = get_special_station(is_start ? special_station::kStart
-                                                      : special_station::kEnd);
-    j.legs_.insert(
-        is_front ? begin(j.legs_) : end(j.legs_),
-        journey::leg{direction::kForward, is_front ? special : stop,
-                     is_front ? stop : special, dep, arr, o->offset_});
+    (is_front ? leg->to_ : leg->from_) = stop;
+    j.legs_.insert(is_front ? begin(j.legs_) : end(j.legs_), *leg);
   };
   add_offset_leg(true);
   add_offset_leg(false);

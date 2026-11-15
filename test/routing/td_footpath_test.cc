@@ -379,8 +379,8 @@ TEST(routing, td_footpath_lookup_keeps_the_wait) {
       td_footpath{B1, unixtime_t{day + 9h + 25min}, 10min});
   auto const q = routing::query{.prf_idx_ = kProfile};
   auto const alighting = routing::lookup_footpath(
-      B1, unixtime_t{day + 9h}, routing::side::kAlighting, tt, &rtt, q,
-      {{B2, 0min, 0U}}, routing::location_match_mode::kExact, true);
+      B1, unixtime_t{day + 9h}, event_type::kArr, tt, &rtt, q, {{B2, 0min, 0U}},
+      routing::location_match_mode::kExact, true);
   ASSERT_TRUE(alighting.has_value());
   EXPECT_EQ(B1, alighting->from_);
   EXPECT_EQ(B2, alighting->to_);
@@ -394,7 +394,7 @@ TEST(routing, td_footpath_lookup_keeps_the_wait) {
   rtt.td_footpaths_in_[kProfile][B2].push_back(
       td_footpath{B1, unixtime_t{day + 9h + 40min}, kTdFootpathBan});
   auto const boarding = routing::lookup_footpath(
-      B2, unixtime_t{day + 10h}, routing::side::kBoarding, tt, &rtt, q,
+      B2, unixtime_t{day + 10h}, event_type::kDep, tt, &rtt, q,
       {{B1, 0min, 0U}}, routing::location_match_mode::kExact, true);
   ASSERT_TRUE(boarding.has_value());
   EXPECT_EQ(B1, boarding->from_);
@@ -425,7 +425,7 @@ TEST(routing, td_offset_lookup_keeps_the_wait) {
   // Alighting at 09:00, the offset is usable from 09:25: wait until 09:25,
   // then walk.
   auto const alighting = routing::lookup_offset(
-      tt, l, unixtime_t{day + 9h}, routing::side::kAlighting, {}, td_offsets);
+      tt, l, unixtime_t{day + 9h}, event_type::kArr, {}, td_offsets);
   ASSERT_TRUE(alighting.has_value());
   EXPECT_EQ(l, alighting->from_);
   EXPECT_EQ(get_special_station(special_station::kEnd), alighting->to_);
@@ -436,7 +436,7 @@ TEST(routing, td_offset_lookup_keeps_the_wait) {
   // Boarding at 10:00, the offset is only usable until 09:40: walk until 09:49
   // at the latest, then wait.
   auto const boarding = routing::lookup_offset(
-      tt, l, unixtime_t{day + 10h}, routing::side::kBoarding, {}, td_offsets);
+      tt, l, unixtime_t{day + 10h}, event_type::kDep, {}, td_offsets);
   ASSERT_TRUE(boarding.has_value());
   EXPECT_EQ(get_special_station(special_station::kStart), boarding->from_);
   EXPECT_EQ(l, boarding->to_);
@@ -718,7 +718,7 @@ TEST(routing, td_lookups_wait_beyond_footpath_max_duration) {
                                .duration_ = 10min,
                                .transport_mode_payload_ = 0}}}};
   auto const offset_leg = routing::lookup_offset(
-      tt, B1, unixtime_t{day + 9h}, routing::side::kAlighting, {}, td_offsets);
+      tt, B1, unixtime_t{day + 9h}, event_type::kArr, {}, td_offsets);
   ASSERT_TRUE(offset_leg.has_value());
   EXPECT_EQ(unixtime_t{day + 14h}, offset_leg->dep_time_);
   EXPECT_EQ(unixtime_t{day + 14h + 10min}, offset_leg->arr_time_);
@@ -739,8 +739,8 @@ TEST(routing, td_lookups_wait_beyond_footpath_max_duration) {
       td_footpath{B1, unixtime_t{day + 14h}, 10min});
   auto const q = routing::query{.prf_idx_ = kProfile};
   auto const footpath_leg = routing::lookup_footpath(
-      B1, unixtime_t{day + 9h}, routing::side::kAlighting, tt, &rtt, q,
-      {{B2, 0min, 0U}}, routing::location_match_mode::kExact, true);
+      B1, unixtime_t{day + 9h}, event_type::kArr, tt, &rtt, q, {{B2, 0min, 0U}},
+      routing::location_match_mode::kExact, true);
   ASSERT_TRUE(footpath_leg.has_value());
   EXPECT_EQ(unixtime_t{day + 14h}, footpath_leg->dep_time_);
   EXPECT_EQ(unixtime_t{day + 14h + 10min}, footpath_leg->arr_time_);

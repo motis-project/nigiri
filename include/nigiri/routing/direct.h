@@ -9,6 +9,7 @@
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/transfers.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -18,18 +19,16 @@ struct rt_timetable;
 
 namespace routing {
 
-enum class side { kBoarding, kAlighting };
-
 std::optional<journey::leg> lookup_offset(timetable const&,
                                           location_idx_t,
                                           unixtime_t,
-                                          side,
+                                          event_type,
                                           std::vector<offset> const&,
                                           td_offsets_t const&);
 
 std::optional<journey::leg> lookup_footpath(location_idx_t,
                                             unixtime_t,
-                                            side,
+                                            event_type,
                                             timetable const&,
                                             rt_timetable const*,
                                             query const&,

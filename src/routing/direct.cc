@@ -27,37 +27,18 @@ namespace nigiri::routing {
 std::optional<journey::leg> lookup_offset(timetable const& tt,
                                           location_idx_t const loc,
                                           unixtime_t const t,
-                                          side const s,
+                                          event_type const ev,
                                           std::vector<offset> const& offsets,
                                           td_offsets_t const& td_offsets) {
-  auto const is_boarding = s == side::kBoarding;
-  auto const o = get_offset_duration(
-      tt, is_boarding ? direction::kBackward : direction::kForward, t, loc,
+  return get_offset_leg(
+      tt, ev, t, loc,
+      ev == event_type::kDep ? special_station::kStart : special_station::kEnd,
       offsets, td_offsets);
-  if (!o.has_value()) {
-    return std::nullopt;
-  }
-
-  // The waiting time is spent at a stop (boarding: after the walk,
-  // alighting: before the walk).
-  auto const dur = o->duration();
-  auto const walk = o->offset_.duration();
-  auto const target = o->offset_.target();
-  auto const boundary = get_special_station(
-      is_boarding ? special_station::kStart : special_station::kEnd);
-  auto const dep = is_boarding ? t - dur : t + dur - walk;
-  auto const arr = is_boarding ? t - dur + walk : t + dur;
-  return journey::leg{direction::kForward,
-                      is_boarding ? boundary : target,
-                      is_boarding ? target : boundary,
-                      dep,
-                      arr,
-                      o->offset_};
 }
 
 std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
                                             unixtime_t const t,
-                                            side const s,
+                                            event_type const ev,
                                             timetable const& tt,
                                             rt_timetable const* rtt,
                                             query const& q,
@@ -65,7 +46,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
                                             location_match_mode const mode,
                                             bool const use_footpaths) {
   auto const virt_rtt = rt_virts(rtt, q.prf_idx_);
-  auto const is_boarding = s == side::kBoarding;
+  auto const is_boarding = ev == event_type::kDep;
   auto const td_search_dir =
       is_boarding ? direction::kBackward : direction::kForward;
 
@@ -146,26 +127,26 @@ std::optional<journey::leg> lookup_access(query const& q,
                                           rt_timetable const* rtt,
                                           location_idx_t const loc,
                                           unixtime_t const t,
-                                          side const s) {
-  auto const is_boarding = s == side::kBoarding;
+                                          event_type const ev) {
+  auto const is_boarding = ev == event_type::kDep;
   auto const& offs = is_boarding ? q.start_ : q.destination_;
   auto const& td_offs = is_boarding ? q.td_start_ : q.td_dest_;
   auto const mode = is_boarding ? q.start_match_mode_ : q.dest_match_mode_;
 
   if (mode == location_match_mode::kIntermodal) {
-    return lookup_offset(tt, rt::base(tt, rtt, loc), t, s, offs, td_offs);
+    return lookup_offset(tt, rt::base(tt, rtt, loc), t, ev, offs, td_offs);
   }
 
   auto const use_footpaths = is_boarding ? q.use_start_footpaths_ : true;
-  return lookup_footpath(loc, t, s, tt, rtt, q, offs, mode, use_footpaths);
+  return lookup_footpath(loc, t, ev, tt, rtt, q, offs, mode, use_footpaths);
 }
 
 hash_set<location_idx_t> collect_locations(timetable const& tt,
                                            rt_timetable const* rtt,
                                            query const& q,
-                                           side const s) {
+                                           event_type const ev) {
   auto const virt_rtt = rt_virts(rtt, q.prf_idx_);
-  auto const is_boarding = s == side::kBoarding;
+  auto const is_boarding = ev == event_type::kDep;
   auto const& offsets = is_boarding ? q.start_ : q.destination_;
   auto const& td_offsets = is_boarding ? q.td_start_ : q.td_dest_;
   auto const mode = is_boarding ? q.start_match_mode_ : q.dest_match_mode_;
@@ -326,9 +307,9 @@ utl::generator<std::vector<journey::leg>> route_gen(
           tt.event_time(tr, alighting_idx, event_type::kArr);
 
       auto const boarding_walk = lookup_access(q, tt, rtt, boarding_loc,
-                                               boarding_time, side::kBoarding);
+                                               boarding_time, event_type::kDep);
       auto const alighting_walk = lookup_access(
-          q, tt, rtt, alighting_loc, alighting_time, side::kAlighting);
+          q, tt, rtt, alighting_loc, alighting_time, event_type::kArr);
       if (!boarding_walk.has_value() || !alighting_walk.has_value()) {
         continue;
       }
@@ -384,13 +365,13 @@ utl::generator<std::vector<journey::leg>> rt_gen(
       search_location(rtt, q.prf_idx_, rt_idx, alighting_idx);
 
   auto const boarding_walk =
-      lookup_access(q, tt, &rtt, boarding_loc, boarding_time, side::kBoarding);
+      lookup_access(q, tt, &rtt, boarding_loc, boarding_time, event_type::kDep);
   if (!boarding_walk.has_value()) {
     co_return;
   }
 
   auto const alighting_walk = lookup_access(q, tt, &rtt, alighting_loc,
-                                            alighting_time, side::kAlighting);
+                                            alighting_time, event_type::kArr);
   if (!alighting_walk.has_value()) {
     co_return;
   }
@@ -467,8 +448,8 @@ utl::generator<std::vector<journey::leg>> get_direct_journeys(
     }
   };
 
-  auto const boarding_locs = collect_locations(tt, rtt, q, side::kBoarding);
-  auto const alighting_locs = collect_locations(tt, rtt, q, side::kAlighting);
+  auto const boarding_locs = collect_locations(tt, rtt, q, event_type::kDep);
+  auto const alighting_locs = collect_locations(tt, rtt, q, event_type::kArr);
 
   // ==============================
   // Collect route_idx_t generators

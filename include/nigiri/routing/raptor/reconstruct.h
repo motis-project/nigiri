@@ -52,6 +52,4 @@ void optimize_footpaths(timetable const&,
                         query const&,
                         journey&);
 
-void specify_td_offsets(query const&, journey&);
-
 }  // namespace nigiri::routing

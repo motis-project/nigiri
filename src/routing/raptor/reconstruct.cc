@@ -139,7 +139,6 @@ void finalize_journey(timetable const& tt,
   place_footpaths(tt, rtt, q, j);
   map_to_bases(tt, rtt, j);
   optimize_footpaths(tt, rtt, q, j);
-  specify_td_offsets(q, j);
   fix_transfer_durations(tt, rtt, q, j);
   map_to_bases(tt, rtt, j);
   j.is_reconstructed_ = true;
@@ -201,15 +200,15 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
   if (q.start_match_mode_ == location_match_mode::kIntermodal) {
     trace_reconstruct("  intermodal start mode\n");
-    auto const o = get_offset_duration(tt, flip(SearchDir), leg_start_time,
-                                       rt::base(tt, rtt, leg_start_location),
-                                       q.start_, q.td_start_);
-    if (o.has_value() &&
-        is_better_or_eq(j.start_time_, leg_start_time - dir(o->duration()))) {
-      return journey::leg{
-          SearchDir,          get_special_station(special_station::kStart),
-          leg_start_location, leg_start_time - dir(o->duration()),
-          leg_start_time,     o->offset_};
+    auto leg =
+        get_offset_leg(tt, kFwd ? event_type::kDep : event_type::kArr,
+                       leg_start_time, rt::base(tt, rtt, leg_start_location),
+                       special_station::kStart, q.start_, q.td_start_);
+    if (leg.has_value() &&
+        is_better_or_eq(j.start_time_,
+                        kFwd ? leg->dep_time_ : leg->arr_time_)) {
+      (kFwd ? leg->to_ : leg->from_) = leg_start_location;
+      return leg;
     }
   } else {
     trace_reconstruct("  direct start mode\n");
@@ -747,8 +746,15 @@ void reconstruct_journey_with_vias(timetable const& tt,
         auto const fp = get_td_duration<flip(SearchDir)>(td, t);
         if (fp.has_value()) {
           auto const [d, td_fp] = *fp;
-          auto const ret = find_dest_leg(k, l, {from, d, td_fp.mode()}, true);
+          auto ret = find_dest_leg(k, l, {from, d, td_fp.mode()}, true);
           if (ret.has_value()) {
+            auto& o = ret->first;
+            o.uses_ = offset{from, td_fp.duration(), td_fp.mode()};
+            if constexpr (kFwd) {
+              o.dep_time_ = o.arr_time_ - td_fp.duration();
+            } else {
+              o.arr_time_ = o.dep_time_ + td_fp.duration();
+            }
             return std::move(*ret);
           } else {
             trace_reconstruct(

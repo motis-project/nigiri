@@ -458,8 +458,8 @@ TEST(transfer_rules, leg_alternatives_after_trip_at_virtual_location) {
   auto const arrived_at = leg_location(tt, fa, true);
   ASSERT_NE(lidx(tt, "U"), arrived_at);
   EXPECT_TRUE(routing::lookup_footpath(
-                  arrived_at, fa.arr_time_, routing::side::kAlighting, tt,
-                  nullptr, routing::query{}, {{lidx(tt, "U"), 0_minutes, 0U}},
+                  arrived_at, fa.arr_time_, event_type::kArr, tt, nullptr,
+                  routing::query{}, {{lidx(tt, "U"), 0_minutes, 0U}},
                   routing::location_match_mode::kExact, true)
                   .has_value());
 
