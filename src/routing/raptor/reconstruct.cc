@@ -68,9 +68,9 @@ via_counts count_vias(timetable const& tt,
   }
   auto v = via_offset_t{0U};
   auto const is_via = [&](location_idx_t const l) {
-    return v != q.via_stops_.size() && matches(tt, nullptr,
-                                               location_match_mode::kEquivalent,
-                                               q.via_stops_[v].location_, l);
+    return v != q.via_stops_.size() &&
+           matches(tt, nullptr, location_match_mode::kEquivalent,
+                   q.via_stops_[v].location_, l);
   };
   for (auto i = 0U; i != j.legs_.size(); ++i) {
     auto const& leg = j.legs_[i];
@@ -140,9 +140,8 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       kFwd ? j.legs_.back().from_ : j.legs_.back().to_;
   auto const static_leg_start = rt::static_location(rtt, leg_start_location);
   auto const is_start_via =
-      v != 0U &&
-      matches(tt, nullptr, location_match_mode::kEquivalent,
-              q.via_stops_.front().location_, static_leg_start);
+      v != 0U && matches(tt, nullptr, location_match_mode::kEquivalent,
+                         q.via_stops_.front().location_, static_leg_start);
   // Anchor for the start offset: the first transit event, shifted by a via
   // stay at the search-start location (the offset must not overlap the
   // mandatory stay between the transit event and the offset leg).
@@ -173,8 +172,8 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
     trace_reconstruct("  intermodal start mode\n");
 
     for (auto const& o : q.start_) {
-      if (matches(tt, nullptr, q.start_match_mode_,
-                  o.target(), static_leg_start) &&
+      if (matches(tt, nullptr, q.start_match_mode_, o.target(),
+                  static_leg_start) &&
           is_better_or_eq(j.start_time_, leg_start_time - dir(o.duration()))) {
         trace_rc_intermodal_start_found;
         return journey::leg{
@@ -229,13 +228,13 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       // A walk leaves a start stop from the stop (see get_starts).
       auto const src = fp.target();
       // The stay at the via before the walk to a stop that is no via.
-      auto const stay = v != 0U && !is_start_via &&
-                                matches(tt, nullptr,
-                                        location_match_mode::kEquivalent,
-                                        q.via_stops_.front().location_,
-                                        rt::static_location(rtt, src))
-                            ? q.via_stops_.front().stay_
-                            : duration_t{0};
+      auto const stay =
+          v != 0U && !is_start_via &&
+                  matches(tt, nullptr, location_match_mode::kEquivalent,
+                          q.via_stops_.front().location_,
+                          rt::static_location(rtt, src))
+              ? q.via_stops_.front().stay_
+              : duration_t{0};
       if (to_idx(src) < tt.n_locations() && is_journey_start(tt, q, src) &&
           !(tt.locations_.is_virt(src) &&
             is_journey_start(tt, q, tt.base(src))) &&
@@ -309,11 +308,10 @@ void reconstruct_journey_with_vias(timetable const& tt,
       // Advances each finish_state[via_offset].
       auto const ride_through = [&](location_idx_t const l) {
         for (auto s = via_offset_t{0U}; s != kMaxVias + 1; ++s) {
-          auto const advance = s < n_vias &&
-                               q.via_stops_[s].stay_ == 0_minutes &&
-                               matches(tt, nullptr,
-                                       location_match_mode::kEquivalent,
-                                       q.via_stops_[s].location_, l);
+          auto const advance =
+              s < n_vias && q.via_stops_[s].stay_ == 0_minutes &&
+              matches(tt, nullptr, location_match_mode::kEquivalent,
+                      q.via_stops_[s].location_, l);
           if (advance) {
             finish_state[s] = finish_state[s + 1U];
           }
@@ -601,13 +599,11 @@ void reconstruct_journey_with_vias(timetable const& tt,
           q.dest_match_mode_ == location_match_mode::kIntermodal, adjust_via);
 
       if (adjust_via && v != 0 &&
-          matches(tt, nullptr,
-                  location_match_mode::kEquivalent,
+          matches(tt, nullptr, location_match_mode::kEquivalent,
                   q.via_stops_[v - 1].location_, rt::static_location(rtt, l))) {
         --v;
         adjusted = true;
-        if (matches(tt, nullptr,
-                    location_match_mode::kEquivalent,
+        if (matches(tt, nullptr, location_match_mode::kEquivalent,
                     rt::static_location(rtt, l),
                     rt::static_location(rtt, target))) {
           stay_fp_target = q.via_stops_[v].stay_;
@@ -625,8 +621,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
 
       if (adjust_via && v != 0 &&
-          matches(tt, nullptr,
-                  location_match_mode::kEquivalent,
+          matches(tt, nullptr, location_match_mode::kEquivalent,
                   q.via_stops_[v - 1].location_,
                   rt::static_location(rtt, target))) {
         --v;

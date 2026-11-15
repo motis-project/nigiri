@@ -121,7 +121,7 @@ inline std::string feed(std::vector<stop_def> const& stops,
     services.emplace_back(x.day_, x.n_days_);
   }
   utl::erase_duplicates(services);
-  for (auto const [day, n] : services) {
+  for (auto const& [day, n] : services) {
     for (auto i = 0U; i != n; ++i) {
       s += fmt::format("{},{},1\n", service(day, n),
                        date::format("%Y%m%d", kDay + date::days{day + i}));
