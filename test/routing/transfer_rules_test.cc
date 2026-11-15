@@ -330,38 +330,6 @@ TEST(transfer_rules, one_to_all_reaches_stop_without_changes) {
             fastest(direction::kBackward, "E", "A", "11:00").k_);
 }
 
-// One-to-all reaches a stop at the arrival, its virtual locations are no
-// stops of their own: FA arrives at, and FB leaves from, virtual locations of
-// U. The RF1 -> RF2 rule (1 min) holds for changing to RF2 only.
-TEST(transfer_rules, one_to_all_reaches_stop_at_the_arrival) {
-  auto const tt = load_feeds(
-      {feed({{"L", 55.0, 13.0}, {"U", 55.1, 13.0}, {"M", 55.2, 13.0}},
-            {{"FA", "RF1", {{"L", "10:00"}, {"U", "10:30"}}},
-             {"FB", "RF2", {{"U", "10:31"}, {"M", "11:00"}}}},
-            "U,U,2,120,,,,\n"
-            "U,U,2,60,RF1,RF2,,\n")});
-  ASSERT_LT(0U, n_virts(tt));
-  auto const one_to_all = [&](direction const dir, std::string_view const from,
-                              std::string_view const time) {
-    auto const [u, state] = test::one_to_all(tt, nullptr, dir, from, "U", time);
-    auto const invalid = dir == direction::kForward
-                             ? kInvalidDelta<direction::kForward>
-                             : kInvalidDelta<direction::kBackward>;
-    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-      if (tt.locations_.is_virt(l)) {
-        EXPECT_EQ(invalid, state.get_best<0U>()[to_idx(l)][0]) << loc{tt, l};
-      }
-    }
-    return std::pair{u.duration_, u.k_};
-  };
-  // arrival 10:30
-  EXPECT_EQ(std::pair(delta_t{30}, std::uint8_t{1U}),
-            one_to_all(direction::kForward, "L", "10:00"));
-  // departure 10:31
-  EXPECT_EQ(std::pair(delta_t{-29}, std::uint8_t{1U}),
-            one_to_all(direction::kBackward, "M", "11:00"));
-}
-
 // One-to-all reaches a stop that bans changes at the arrival (departure), also
 // where its trips stop at virtual locations for an exception: S1 bans changes
 // except RF -> RH (1 min), F arrives at 10:30, H leaves at 10:31.
@@ -767,6 +735,68 @@ TEST(transfer_rules, leg_alternatives_show_rule_transfer_times) {
   EXPECT_EQ(walk_after.dep_time_ + 2_minutes, walk_after.arr_time_);
 }
 
+// A via stop keeps the rule of the change there: F (S1 10:30) -> H (S1 10:31)
+// is a 1 min change by the rule F -> H (S's default: 2 min). Through S as a via
+// without a stay, F's riders make H (C 11:00); with a 15 min stay at S, HL
+// (C 11:30). Via queries run on the CPU only.
+TEST(transfer_rules, via_stop_keeps_rule_change) {
+  auto const tt = test::load_network("S,S,2,120,,,,\nS,S,2,60,,,F,H\n");
+  ASSERT_LT(0U, n_virts(tt));
+  auto const arrival_via = [&](duration_t const stay) {
+    auto q = test::station_query(tt, "A", "C", at("10:00"));
+    q.via_stops_ = {{.location_ = lidx(tt, "S"), .stay_ = stay}};
+    return nigiri::test::arrival(raptor_search(tt, nullptr, std::move(q)));
+  };
+  EXPECT_EQ(at("11:00"), arrival_via(0_minutes));
+  EXPECT_EQ(at("11:30"), arrival_via(15_minutes));
+}
+
+// T1's riders may not change from A to C (any trip), so the journey walks
+// 15 min to B and takes T2 there (10:20). The alternatives of the T2 leg start
+// where T1 arrives: T3 from B (10:42) is one. Boarding T2 (10:08) or T3
+// (10:30) at C is not - the walk A -> C (2 min) of the stop itself must not
+// move the boarding there.
+TEST(transfer_rules, leg_alternatives_keep_forbidden_transfer) {
+  auto const tt = test::load_feeds_with_walks(
+      {feed({{"O", 56.0, 14.0},
+             {"A", 56.1, 14.0},
+             {"C", 56.2, 14.0},
+             {"B", 56.3, 14.0},
+             {"D", 56.4, 14.0}},
+            {{"T1", "RT1", {{"O", "09:30"}, {"A", "10:00"}}},
+             {"T2", "RT2", {{"C", "10:08"}, {"B", "10:20"}, {"D", "10:40"}}},
+             {"T3", "RT3", {{"C", "10:30"}, {"B", "10:42"}, {"D", "11:00"}}}},
+            "A,C,3,,,,T1,\n")},
+      {{"A", "C", 2}, {"A", "B", 15}});
+  ASSERT_LT(0U, n_virts(tt));
+  auto const q = test::exact_query(tt, "O", "D", at("09:30"));
+  auto const res = raptor_search(tt, nullptr, routing::query{q});
+  ASSERT_EQ(1U, res.size());
+  auto const& j = *begin(res);
+  EXPECT_EQ(at("10:40"), j.dest_time_);
+
+  auto t2_leg = j.legs_.size();
+  for (auto i = 0U; i != j.legs_.size(); ++i) {
+    if (test::is_transit(j.legs_[i]) && j.legs_[i].dep_time_ == at("10:20")) {
+      t2_leg = i;
+    }
+  }
+  ASSERT_NE(j.legs_.size(), t2_leg);
+
+  auto const alternatives =
+      routing::get_leg_alternatives(tt, nullptr, q, j, t2_leg, 3U);
+  auto const offers = [&](std::string_view const dep) {
+    return utl::any_of(alternatives, [&](routing::journey const& alt) {
+      return utl::any_of(alt.legs_, [&](routing::journey::leg const& l) {
+        return test::is_transit(l) && l.dep_time_ == at(dep);
+      });
+    });
+  };
+  EXPECT_TRUE(offers("10:42"));
+  EXPECT_FALSE(offers("10:08"));
+  EXPECT_FALSE(offers("10:30"));
+}
+
 TEST(transfer_rules,
      fastest_direct_ignores_rule_footpaths_of_virtual_locations) {
   auto const tt =
@@ -786,7 +816,12 @@ TEST(transfer_rules,
   EXPECT_EQ(at("10:15"), nigiri::test::arrival(raptor_search(tt, nullptr, q)));
 }
 
-TEST(transfer_rules, one_to_all_reaches_stop_at_the_arrival_with_rule_to_any) {
+// One-to-all reaches a stop at the arrival (departure), its virtual locations
+// are no stops of their own: FA arrives at, and FB / FC leave from, virtual
+// locations of U. The RF1 -> RF2 rule (1 min) holds for changing to RF2 only;
+// a rule from RF1 to any trip (banned, 10 min) keeps FB (10:31) and FC (10:35)
+// out of reach.
+TEST(transfer_rules, one_to_all_reaches_stop_at_the_arrival) {
   auto const load = [](std::string_view const rule) {
     return load_feeds(
         {feed({{"L", 55.0, 13.0}, {"U", 55.1, 13.0}, {"M", 55.2, 13.0}},
@@ -795,12 +830,21 @@ TEST(transfer_rules, one_to_all_reaches_stop_at_the_arrival_with_rule_to_any) {
                {"FC", "RF3", {{"U", "10:35"}, {"M", "11:05"}}}},
               std::string{"U,U,2,120,,,,\n"} + std::string{rule})});
   };
-  auto const fastest =
-      [](timetable const& tt, direction const dir, std::string_view const from,
-         std::string_view const to, std::string_view const time) {
-        return test::one_to_all(tt, nullptr, dir, from, to, time)
-            .fastest_.duration_;
-      };
+  auto const fastest = [](timetable const& tt, direction const dir,
+                          std::string_view const from,
+                          std::string_view const to,
+                          std::string_view const time) {
+    auto const [u, state] = test::one_to_all(tt, nullptr, dir, from, to, time);
+    auto const invalid = dir == direction::kForward
+                             ? kInvalidDelta<direction::kForward>
+                             : kInvalidDelta<direction::kBackward>;
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      if (tt.locations_.is_virt(l)) {
+        EXPECT_EQ(invalid, state.get_best<0U>()[to_idx(l)][0]) << loc{tt, l};
+      }
+    }
+    return u.duration_;
+  };
   constexpr auto const kUnreachable = routing::fastest_offset{}.duration_;
 
   auto const plain = load("");
@@ -809,7 +853,10 @@ TEST(transfer_rules, one_to_all_reaches_stop_at_the_arrival_with_rule_to_any) {
   EXPECT_NE(kUnreachable,
             fastest(plain, direction::kForward, "L", "M", "10:00"));
 
-  for (auto const rule : {"U,U,3,,RF1,,,\n", "U,U,2,600,RF1,,,\n"}) {
+  for (auto const& [rule, l_to_m] :
+       {std::pair{"U,U,2,60,RF1,RF2,,\n", delta_t{60}},
+        std::pair{"U,U,3,,RF1,,,\n", kUnreachable},
+        std::pair{"U,U,2,600,RF1,,,\n", kUnreachable}}) {
     auto const tt = load(rule);
     ASSERT_LT(0U, n_virts(tt)) << rule;
     EXPECT_EQ(delta_t{30}, fastest(tt, direction::kForward, "L", "U", "10:00"))
@@ -817,8 +864,7 @@ TEST(transfer_rules, one_to_all_reaches_stop_at_the_arrival_with_rule_to_any) {
     EXPECT_EQ(delta_t{-29},
               fastest(tt, direction::kBackward, "M", "U", "11:00"))
         << rule;
-    // FB (10:31) and FC (10:35) leave before the rule allows a change.
-    EXPECT_EQ(kUnreachable, fastest(tt, direction::kForward, "L", "M", "10:00"))
+    EXPECT_EQ(l_to_m, fastest(tt, direction::kForward, "L", "M", "10:00"))
         << rule;
   }
 }

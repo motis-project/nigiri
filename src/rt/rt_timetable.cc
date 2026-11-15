@@ -370,7 +370,7 @@ void rt_timetable::update_lbs(timetable const& tt) {
       // Skip if segment isn't faster in rt_timetable than in static timetable.
       auto const from = stop{loc_seq[i]}.location_idx();
       auto const to = stop{loc_seq[j]}.location_idx();
-      if (static_seq.size() == loc_seq.size() && travel_time < footpath::kMax &&
+      if (static_seq.size() == loc_seq.size() &&
           stop{static_seq[i]}.location_idx() == from &&
           stop{static_seq[j]}.location_idx() == to &&
           travel_time >= (tt.event_mam(t.t_idx_, j, event_type::kArr) -

@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cmath>
 #include <algorithm>
+#include <limits>
 
 #include "fmt/ostream.h"
 
@@ -8,6 +10,7 @@
 
 #include "cista/reflection/printable.h"
 
+#include "nigiri/constants.h"
 #include "nigiri/logging.h"
 #include "nigiri/types.h"
 
@@ -85,6 +88,13 @@ inline void serialize(Ctx&, footpath const*, cista::offset_t const) {}
 
 template <typename Ctx>
 inline void deserialize(Ctx const&, footpath*) {}
+
+inline duration_t walk_duration(double const meters) {
+  auto const minutes = std::ceil(meters / kWalkSpeed / 60.0);
+  return duration_t{static_cast<duration_t::rep>(std::min(
+      minutes,
+      static_cast<double>(std::numeric_limits<duration_t::rep>::max())))};
+}
 
 inline u8_minutes to_transfer_time(duration_t const d) {
   return u8_minutes{d > footpath::kBan ? footpath::kMax

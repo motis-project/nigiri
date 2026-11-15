@@ -43,10 +43,9 @@ void add_equivalence_footpaths(
     auto const dist = std::sqrt(
         geo::approx_squared_distance(pos, tt.locations_.coordinates_[b],
                                      geo::approx_distance_lng_degrees(pos)));
-    auto const minutes = std::max(2.0, std::ceil((dist / kWalkSpeed) / 60.0));
-    if (minutes <= max) {
-      walks[a].emplace_back(b,
-                            duration_t{static_cast<duration_t::rep>(minutes)});
+    auto const minutes = std::max(duration_t{2}, walk_duration(dist));
+    if (minutes.count() <= max) {
+      walks[a].emplace_back(b, minutes);
     }
   };
 

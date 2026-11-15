@@ -3,9 +3,9 @@
 #include "pugixml.hpp"
 
 #include "nigiri/loader/load.h"
+#include "nigiri/resolve.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
-#include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/vdv_aus.h"
@@ -144,17 +144,6 @@ transit_realtime::FeedMessage gtfsrt_new_trip_msg(std::string const& trip_id,
   return msg;
 }
 
-rt::run resolve(timetable const& tt,
-                rt_timetable const& rtt,
-                std::string const& trip_id,
-                sys_days const start_date) {
-  auto td = transit_realtime::TripDescriptor{};
-  td.set_trip_id(trip_id);
-  td.set_start_date(yyyymmdd(start_date));
-  return rt::gtfsrt_resolve_run(start_date, tt, &rtt, source_idx_t{0}, td)
-      .first;
-}
-
 rt::statistics gtfsrt_update(timetable const& tt,
                              rt_timetable& rtt,
                              std::string const& trip_id,
@@ -174,8 +163,7 @@ void expect_delayed(timetable const& tt,
                     rt_timetable const& rtt,
                     std::string const& trip_id,
                     sys_days const start_date) {
-  auto const r = resolve(tt, rtt, trip_id, start_date);
-  ASSERT_TRUE(r.valid()) << trip_id << " " << start_date;
+  auto const r = resolve(tt, &rtt, trip_id, yyyymmdd(start_date));
   ASSERT_TRUE(r.is_rt()) << trip_id << " " << start_date;
 
   auto const fr = rt::frun{tt, &rtt, r};
@@ -192,8 +180,7 @@ void expect_not_rt(timetable const& tt,
                    rt_timetable const& rtt,
                    std::string const& trip_id,
                    sys_days const start_date) {
-  auto const r = resolve(tt, rtt, trip_id, start_date);
-  ASSERT_TRUE(r.valid()) << trip_id << " " << start_date;
+  auto const r = resolve(tt, &rtt, trip_id, yyyymmdd(start_date));
   EXPECT_FALSE(r.is_rt()) << trip_id << " " << start_date;
 }
 
@@ -287,8 +274,7 @@ void expect_cancelled(timetable const& tt,
                       rt_timetable const& rtt,
                       std::string const& trip_id,
                       sys_days const start_date) {
-  auto const r = resolve(tt, rtt, trip_id, start_date);
-  ASSERT_TRUE(r.valid()) << trip_id << " " << start_date;
+  auto const r = resolve(tt, &rtt, trip_id, yyyymmdd(start_date));
   EXPECT_TRUE(tt.is_transport_active(r.t_.t_idx_, r.t_.day_))
       << trip_id << " " << start_date;
   EXPECT_FALSE(rtt.is_transport_active(r.t_.t_idx_, r.t_.day_))
@@ -303,8 +289,7 @@ void expect_active(timetable const& tt,
                    rt_timetable const& rtt,
                    std::string const& trip_id,
                    sys_days const start_date) {
-  auto const r = resolve(tt, rtt, trip_id, start_date);
-  ASSERT_TRUE(r.valid()) << trip_id << " " << start_date;
+  auto const r = resolve(tt, &rtt, trip_id, yyyymmdd(start_date));
   EXPECT_TRUE(rtt.is_transport_active(r.t_.t_idx_, r.t_.day_))
       << trip_id << " " << start_date;
 }
@@ -466,7 +451,7 @@ TEST(rt_interval, gtfsrt_rt_interval_start) {
           transit_realtime::TripDescriptor_ScheduleRelationship_CANCELED));
   EXPECT_EQ(1, cancel.total_entities_success_);
   auto const cancelled =
-      resolve(tt, rtt, "EDGE", sys_days{2024_y / August / 8});
+      resolve(tt, &rtt, "EDGE", yyyymmdd(sys_days{2024_y / August / 8}));
   ASSERT_TRUE(cancelled.valid());
   EXPECT_FALSE(rtt.is_transport_active(cancelled.t_.t_idx_, cancelled.t_.day_));
   EXPECT_EQ(2U, rtt.n_rt_transports());
@@ -487,7 +472,7 @@ TEST(rt_interval, gtfsrt_rt_interval_buffer) {
   EXPECT_EQ(1, rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg)
                    .total_entities_success_);
 
-  auto const fr = rt::frun{tt, &rtt, resolve(tt, rtt, "EDGE", d)};
+  auto const fr = resolve(tt, &rtt, "EDGE", yyyymmdd(d));
   ASSERT_TRUE(fr.is_rt());
   EXPECT_EQ(d + 1_days + 5h + 50min, fr[0].time(event_type::kDep));
   EXPECT_EQ(d + 1_days + 18h + 10min, fr[2].time(event_type::kArr));
@@ -655,7 +640,7 @@ TEST(rt_interval, gtfsrt_event_outside_rt_interval) {
   EXPECT_EQ(1, rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg)
                    .total_entities_success_);
 
-  auto const fr = rt::frun{tt, &rtt, resolve(tt, rtt, "DAY", d)};
+  auto const fr = resolve(tt, &rtt, "DAY", yyyymmdd(d));
   ASSERT_TRUE(fr.is_rt());
   EXPECT_EQ(d + 10h, fr[0].time(event_type::kDep));
   EXPECT_EQ(rt_data_state::kNoRtData, fr[0].data_state(event_type::kDep));
@@ -676,7 +661,7 @@ TEST(rt_interval, gtfsrt_event_outside_rt_interval) {
   EXPECT_EQ(1, rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", abs_msg)
                    .total_entities_success_);
 
-  auto const night = rt::frun{tt, &rtt, resolve(tt, rtt, "NIGHT", d)};
+  auto const night = resolve(tt, &rtt, "NIGHT", yyyymmdd(d));
   ASSERT_TRUE(night.is_rt());
   EXPECT_EQ(d + 23h + 30min, night[0].time(event_type::kDep));
   EXPECT_EQ(d + 25h, night[2].time(event_type::kArr));
@@ -701,7 +686,7 @@ TEST(rt_interval, siri_event_outside_rt_interval) {
   auto const stats = siri_update(rtt, u, msg);
   EXPECT_EQ(1U, stats.matched_runs_);
 
-  auto const fr = rt::frun{tt, &rtt, resolve(tt, rtt, "DAY", d)};
+  auto const fr = resolve(tt, &rtt, "DAY", yyyymmdd(d));
   ASSERT_TRUE(fr.is_rt());
   EXPECT_EQ(d + 10h, fr[0].time(event_type::kDep));
   EXPECT_EQ(d + 10h + 35min, fr[1].time(event_type::kArr));
@@ -807,7 +792,7 @@ TEST(rt_interval, gtfsrt_cancel_existing_rt_transport) {
 
   EXPECT_EQ(1, gtfsrt_cancel(tt, rtt, "EDGE", d).total_entities_success_);
   expect_cancelled(tt, rtt, "EDGE", d);
-  EXPECT_TRUE(resolve(tt, rtt, "EDGE", d).is_rt());
+  EXPECT_TRUE(resolve(tt, &rtt, "EDGE", yyyymmdd(d)).is_rt());
   EXPECT_EQ(1U, rtt.n_rt_transports());
 }
 
@@ -916,7 +901,7 @@ TEST(rt_interval, siri_cancel_existing_rt_transport) {
 
   EXPECT_EQ(1U, siri_update(rtt, u, siri_edge_msg(d, true)).cancelled_runs_);
   expect_cancelled(tt, rtt, "EDGE", d);
-  EXPECT_TRUE(resolve(tt, rtt, "EDGE", d).is_rt());
+  EXPECT_TRUE(resolve(tt, &rtt, "EDGE", yyyymmdd(d)).is_rt());
   EXPECT_EQ(1U, rtt.n_rt_transports());
 }
 

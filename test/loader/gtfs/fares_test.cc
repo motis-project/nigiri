@@ -534,8 +534,9 @@ TEST(fares, leg_join_rule_stop_with_transfer_rules) {
               "BS,BS,,0.02,1.03,,1,\nB,B,,0.02,1.03,,,BS\n");
   auto const joined_at_b =
       replace(std::string{kAreaSets}, "HSL,HSL,,\n", "HSL,HSL,B,B\n");
-  EXPECT_EQ(fares_a_to_c(joined_at_b, "", b_in_station),
-            fares_a_to_c(joined_at_b, kRulesAtB, b_in_station));
+  auto const without_rules = fares_a_to_c(joined_at_b, "", b_in_station);
+  EXPECT_NE(std::string::npos, without_rules.find("** JOINED WITH"));
+  EXPECT_EQ(without_rules, fares_a_to_c(joined_at_b, kRulesAtB, b_in_station));
 }
 
 TEST(fares, simple_fares) {

@@ -268,10 +268,9 @@ std::string test_files_2() {
       "C,E,2,300,,,,\n");
 }
 
-// Two walks u <-> v, the slower one first: the transfer is the faster one.
-timetable load_with_slow_and_fast_walk(std::string_view const u,
-                                       std::string_view const v) {
-  return test::load_feeds_with_walks({test_files_2()}, {{u, v, 10}, {u, v, 3}});
+// A 3 min walk u <-> v.
+timetable load_with_walk(std::string_view const u, std::string_view const v) {
+  return test::load_feeds_with_walks({test_files_2()}, {{u, v, 3}});
 }
 
 routing::journey::run_enter_exit ride(std::uint32_t const t,
@@ -283,8 +282,8 @@ routing::journey::run_enter_exit ride(std::uint32_t const t,
           static_cast<stop_idx_t>(to - 1U)};
 }
 
-TEST(routing, optimize_initial_start_footpath_takes_shortest_transfer) {
-  auto const tt = load_with_slow_and_fast_walk("S", "B");
+TEST(routing, optimize_initial_start_footpath_walks_to_earlier_stop) {
+  auto const tt = load_with_walk("S", "B");
   auto const S = loc_idx(tt, "S");
   auto const B = loc_idx(tt, "B");
   auto const C = loc_idx(tt, "C");
@@ -306,8 +305,8 @@ TEST(routing, optimize_initial_start_footpath_takes_shortest_transfer) {
   EXPECT_EQ(test::at("10:07"), j.legs_[0].dep_time_);
 }
 
-TEST(routing, optimize_final_egress_footpath_takes_shortest_transfer) {
-  auto const tt = load_with_slow_and_fast_walk("B", "Z");
+TEST(routing, optimize_final_egress_footpath_walks_from_later_stop) {
+  auto const tt = load_with_walk("B", "Z");
   auto const A = loc_idx(tt, "A");
   auto const B = loc_idx(tt, "B");
   auto const G = loc_idx(tt, "G");
@@ -329,8 +328,8 @@ TEST(routing, optimize_final_egress_footpath_takes_shortest_transfer) {
   EXPECT_EQ(test::at("10:13"), j.legs_[1].arr_time_);
 }
 
-TEST(routing, optimize_transfers_takes_shortest_transfer) {
-  auto const tt = load_with_slow_and_fast_walk("B", "D");
+TEST(routing, optimize_transfers_takes_walk_over_rule_transfer) {
+  auto const tt = load_with_walk("B", "D");
   auto const A = loc_idx(tt, "A");
   auto const B = loc_idx(tt, "B");
   auto const C = loc_idx(tt, "C");
@@ -338,8 +337,8 @@ TEST(routing, optimize_transfers_takes_shortest_transfer) {
   auto const E = loc_idx(tt, "E");
   auto const F = loc_idx(tt, "F");
 
-  // Only the fast walk fits between B (10:10) and D (10:15), and it beats
-  // the rule transfer C -> E.
+  // The walk fits between B (10:10) and D (10:15), and it beats the rule
+  // transfer C -> E.
   auto j = routing::journey{};
   j.start_time_ = test::at("10:00");
   j.dest_time_ = test::at("10:40");

@@ -498,6 +498,11 @@ inline location_idx_t base(timetable const& tt,
                                         : rtt->base(l);
 }
 
+inline location_idx_t static_location(rt_timetable const* rtt,
+                                      location_idx_t const l) {
+  return rtt == nullptr ? l : rtt->static_location(l);
+}
+
 }  // namespace rt
 
 }  // namespace nigiri

@@ -425,7 +425,8 @@ window_t get_window(timetable const& tt,
 
   // Iterate all events within `gaps` at `other`
   // to cover partners no qualified rule names.
-  auto const to = std::min(gaps.to_, footpath::kBan);
+  auto const to =
+      std::min(gaps.to_, base_expected == kNever ? kNever : footpath::kBan);
   if (gaps.from_ >= to) {
     return w;
   }
@@ -516,10 +517,17 @@ std::pair<location_idx_t, std::vector<run_event>> add_location(
         fps[other_base] = expected;
         for (auto const other : get_virts(tt, rtt, other_base)) {
           if (other != v) {
+            auto w = get_window(tt, rtt, x, transfers, other, expected,
+                                {duration_t{0}, kNever});
+            auto hull_max = expected;
+            for (auto const& tr : transfers) {
+              if (tr.ev_ == x.ev_ && tr.other_.location_ == other) {
+                hull_max = std::max(hull_max, tr.expected_);
+              }
+            }
+            w.to_ = std::min(w.to_, hull_max + duration_t{1});
             fps[other] =
-                pick_duration(get_window(tt, rtt, x, transfers, other, expected,
-                                         {duration_t{0}, footpath::kBan}),
-                              expected)
+                pick_duration(w, expected)
                     // it can happen that a conflict requires 2 virts
                     // -> if the duration window is empty, use `expected`
                     // -> this conflict will end up in `conflicting`

@@ -140,7 +140,7 @@ void fold_pair_defaults(timetable& tt,
     by_pair[p].push_back(&rules[i]);
     if (is_voting[i]) {
       // Count durations of qualified transfer rules for each stop pair.
-      // Forbidden and recommended (=0min) transfers are not counted.
+      // Forbidden and timed (=0min) transfers are not counted.
       auto& durations = qualified[p];
       auto const it = utl::find_if(
           durations, [&](auto const& c) { return c.first == r.duration_; });
@@ -213,14 +213,7 @@ void fold_pair_defaults(timetable& tt,
       return true;
     }
 
-    // Keep all rules that don't just restate the default duration.
-    auto const from_to = transfer_pair{r.from_stop_, r.to_stop_};
-    auto const d = get_default_duration(from_to);
-    if (d != r.duration_) {
-      return true;
-    }
-
-    // Check if a majority rule conflict with an existing rule?
+    // Check if a majority rule conflicts with an existing rule?
     auto const any_with_children = [&](location_idx_t const l, auto&& fn) {
       return fn(l) || utl::any_of(ctx.children_[l], fn);
     };
@@ -242,11 +235,7 @@ void fold_pair_defaults(timetable& tt,
         // with a different duration? => keep this rule
         any_pair(any_with_children,  // this/children stop pairs
                  [&](transfer_pair const stop_pair) {
-                   return utl::lookup(default_duration, stop_pair)
-                       .transform([&](default_duration_t const& x) {
-                         return x.duration_ != r.duration_;
-                       })
-                       .value_or(false);
+                   return get_default_duration(stop_pair) != r.duration_;
                  })
 
         // Would removing this rule let a less or equally specific overlapping
@@ -309,9 +298,7 @@ std::optional<duration_t> adjust_to_walk_speed(timetable const& tt,
     return std::nullopt;
   }
 
-  return std::max(
-      duration,
-      duration_t{static_cast<duration_t::rep>(distance / kWalkSpeed / 60)});
+  return std::max(duration, walk_duration(distance));
 }
 
 void read_transfers(source_idx_t const src,
@@ -354,7 +341,7 @@ void read_transfers(source_idx_t const src,
       | utl::csv<csv_transfer>()  //
       |
       utl::for_each([&](csv_transfer const& t) {
-        // Skip invalid/unkonwn transfer types.
+        // Skip invalid/unknown transfer types.
         if (*t.transfer_type_ < 0 ||
             *t.transfer_type_ >
                 static_cast<int>(transfer_type::kNoStaySeated)) {
@@ -462,8 +449,9 @@ void read_transfers(source_idx_t const src,
         auto const from_trip = trip_idx(*from_gtfs_trip);
         auto const to_trip = trip_idx(*to_gtfs_trip);
 
-        // Skip trip self-transfer rules:
-        // Transferring into the same trip can't yield a better journey.
+        // Skip trip self-transfer rules (not supported yet):
+        // they only bind changes between two runs of the same trip
+        // (next day, frequency instances), route self-transfer rules apply.
         if (from_trip != trip_idx_t::invalid() && from_trip == to_trip) {
           return;
         }

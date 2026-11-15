@@ -132,7 +132,7 @@ TEST(loader, build_footpaths_drop_unwalkable) {
   }
 
   EXPECT_EQ(R"((A, A)
-  00:02.0->(B, B)
+  00:03.0->(B, B)
 )"sv,
             ss.str());
 }

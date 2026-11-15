@@ -5729,3 +5729,132 @@ TEST(vdv_aus, match_headway_10min) {
                                  {stop_idx_t{0U}, stop_idx_t{11U}}}};
   EXPECT_FALSE(fr_1056.is_rt());
 }
+
+// A loop route visits A twice, 4 min apart. The rule (any -> LOOP at A:
+// 10 min) only binds the first visit (no boarding at the second), so the
+// first visit stops at a virtual location of A, the second at A itself. Both
+// visits match the run's first VDV stop A: the match (by stops - the run id
+// names no trip) has to start at the first visit, or the delay at B (between
+// the two visits) is lost.
+TEST(vdv_aus, loop_route_visits_virtual_location_first) {
+  auto const tt = loader::load(mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+MTA,MOTIS Transit Authority,https://motis-project.de/,Europe/Berlin
+
+# calendar_dates.txt
+service_id,date,exception_type
+D,20240710,1
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,50.0,6.0,,,
+B,B,,50.1,6.0,,,
+C,C,,50.2,6.0,,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+LOOP,MTA,LOOP,LOOP,A -> B -> A -> C,0
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+LOOP,D,LOOP_T,LOOP_T,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+LOOP_T,10:00:00,10:00:00,A,0,0,0
+LOOP_T,10:02:00,10:02:00,B,1,0,0
+LOOP_T,10:04:00,10:04:00,A,2,1,0
+LOOP_T,10:10:00,10:10:00,C,3,0,0
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+A,A,2,120,,,,
+A,A,2,600,,LOOP,,
+)"),
+                               {2024_y / July / 1, 2024_y / July / 31});
+  auto const seq =
+      tt.route_location_seq_[tt.transport_route_[transport_idx_t{0U}]];
+  ASSERT_TRUE(tt.locations_.is_virt(stop{seq[0]}.location_idx()));
+  ASSERT_FALSE(tt.locations_.is_virt(stop{seq[2]}.location_idx()));
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
+  auto doc = pugi::xml_document{};
+  doc.load_string(R"(
+<?xml version="1.0" encoding="iso-8859-1"?>
+<DatenAbrufenAntwort>
+  <Bestaetigung Zst="2024-07-10T08:00:00" Ergebnis="ok" Fehlernummer="0" />
+  <AUSNachricht AboID="1">
+    <IstFahrt Zst="2024-07-10T08:00:00">
+      <LinienID>LOOP</LinienID>
+      <RichtungsID>1</RichtungsID>
+      <FahrtRef>
+        <FahrtID>
+          <FahrtBezeichner>VDV_LOOP_1</FahrtBezeichner>
+          <Betriebstag>2024-07-10</Betriebstag>
+        </FahrtID>
+      </FahrtRef>
+      <Komplettfahrt>true</Komplettfahrt>
+      <BetreiberID>MTA</BetreiberID>
+      <IstHalt>
+        <HaltID>A</HaltID>
+        <Abfahrtszeit>2024-07-10T08:00:00</Abfahrtszeit>
+        <Einsteigeverbot>false</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>B</HaltID>
+        <Ankunftszeit>2024-07-10T08:02:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T08:02:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-10T08:07:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-10T08:07:00</IstAbfahrtPrognose>
+        <Einsteigeverbot>false</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>A</HaltID>
+        <Ankunftszeit>2024-07-10T08:04:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T08:04:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-10T08:09:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-10T08:09:00</IstAbfahrtPrognose>
+        <Einsteigeverbot>true</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>C</HaltID>
+        <Ankunftszeit>2024-07-10T08:10:00</Ankunftszeit>
+        <IstAnkunftPrognose>2024-07-10T08:15:00</IstAnkunftPrognose>
+        <Einsteigeverbot>false</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <LinienText>LOOP</LinienText>
+      <ProduktID>Space Train</ProduktID>
+      <RichtungsText>C</RichtungsText>
+      <Zusatzfahrt>false</Zusatzfahrt>
+      <FaelltAus>false</FaelltAus>
+    </IstFahrt>
+  </AUSNachricht>
+</DatenAbrufenAntwort>
+)");
+  auto u = rt::vdv_aus::updater{tt, source_idx_t{0}};
+  u.update(rtt, doc);
+
+  auto const fr = rt::frun{
+      tt,
+      &rtt,
+      {{transport_idx_t{0U}, tt.day_idx(date::sys_days{2024_y / July / 10})},
+       {stop_idx_t{0U}, stop_idx_t{4U}}}};
+  ASSERT_TRUE(fr.is_rt());
+  EXPECT_EQ(date::sys_days{2024_y / July / 10} + 8h + 7min,
+            fr[1].time(event_type::kArr));
+  EXPECT_EQ(date::sys_days{2024_y / July / 10} + 8h + 15min,
+            fr[3].time(event_type::kArr));
+}

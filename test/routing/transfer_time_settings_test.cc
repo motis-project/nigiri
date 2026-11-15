@@ -356,3 +356,35 @@ TEST(routing, transfer_time_settings_beyond_255_min) {
   EXPECT_EQ(test::at("12:10"), arrival({}));
   EXPECT_EQ(test::at("15:10"), arrival({.default_ = false, .factor_ = 3.0F}));
 }
+
+// B -> C is a 150 min walk: 300 min with a minimum transfer time of 300 min,
+// more than a footpath holds (254). The walk leg still states its unadjusted
+// 150 min, on the GPU as well (raptor_search compares the CPU and GPU
+// journeys). The minimum makes adjusted(150) == adjusted(254), so
+// optimize_footpaths keeps the leg as reconstructed (a factor would let it
+// replace a 254 min leg with the shorter walk). No transfers.txt rows:
+// fix_transfer_durations would rewrite the leg otherwise.
+TEST(routing, transfer_time_settings_walk_beyond_254_min) {
+  auto const tt = test::load_feeds_with_walks(
+      {test::feed({{"A", 56.2, 14.0},
+                   {"B", 56.0, 14.0},
+                   {"C", 55.0, 14.0},
+                   {"D", 54.8, 14.0}},
+                  {{"T1", "R1", {{"A", "10:00"}, {"B", "10:10"}}},
+                   {"T2", "R2", {{"C", "15:20"}, {"D", "15:30"}}}},
+                  "")},
+      {{"B", "C", 150}});
+  for (auto const dir : {direction::kForward, direction::kBackward}) {
+    SCOPED_TRACE(dir == direction::kForward ? "forward" : "backward");
+    auto const is_fwd = dir == direction::kForward;
+    auto q = test::exact_query(tt, is_fwd ? "A" : "D", is_fwd ? "D" : "A",
+                               test::at(is_fwd ? "10:00" : "15:30"));
+    q.transfer_time_settings_ = {.default_ = false,
+                                 .min_transfer_time_ = duration_t{300}};
+    auto const results = raptor_search(tt, nullptr, std::move(q), dir);
+    ASSERT_EQ(1U, results.size());
+    auto const& legs = begin(results)->legs_;
+    ASSERT_EQ(3U, legs.size());
+    EXPECT_EQ(150_minutes, std::get<footpath>(legs[1].uses_).duration());
+  }
+}

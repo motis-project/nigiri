@@ -65,9 +65,7 @@ void link_nearby_stations(
         continue;
       }
 
-      walks[l_from_idx].emplace_back(
-          l_to_idx, duration_t{static_cast<unsigned>(
-                        std::round(dist.get(to_pos) / (60 * kWalkSpeed)))});
+      walks[l_from_idx].emplace_back(l_to_idx, walk_duration(dist.get(to_pos)));
 
       if (dist.lt(to_pos, kEqDist)) {
         ctx.equivalences_[l_from_idx].emplace_back(l_to_idx);

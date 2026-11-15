@@ -101,6 +101,27 @@ TEST(gtfs, transfer_rules_fold_keeps_explicit_station_default) {
   EXPECT_EQ(at("11:15"), arrival_at(tt, "JA", "JB", "10:00"));
 }
 
+// The route rule RF -> RG on SA -> B1 (2 min) restates SA -> SB (2 min), but
+// not the default of its stop pair A1 -> B1: that one is A1 -> SB (10 min,
+// more specific than SA -> SB). So the route rule must stay: F (A1 10:30)
+// makes G (B1 10:36), not GL (B1 10:45).
+TEST(gtfs, transfer_rules_fold_keeps_rule_over_more_specific_default) {
+  auto const tt =
+      load_feeds({feed({{"SA", 60.0, 18.0, "", true},
+                        {"A1", 60.0, 18.0, "SA"},
+                        {"SB", 60.0003, 18.0, "", true},
+                        {"B1", 60.0003, 18.0, "SB"},
+                        {"FA", 60.1, 18.0},
+                        {"GB", 60.2, 18.0}},
+                       {{"F", "RF", {{"FA", "10:00"}, {"A1", "10:30"}}},
+                        {"G", "RG", {{"B1", "10:36"}, {"GB", "11:00"}}},
+                        {"GL", "RG", {{"B1", "10:45"}, {"GB", "11:10"}}}},
+                       "SA,SB,2,120,,,,\n"
+                       "A1,SB,2,600,,,,\n"
+                       "SA,B1,2,120,RF,RG,,\n")});
+  EXPECT_EQ(at("11:00"), arrival_at(tt, "FA", "GB", "10:00"));
+}
+
 // The station states its default (LS,LS: 1 min), so the qualified rows at
 // stop L1 are exceptions to it and nothing is folded: every other trip pair
 // at L1 has the station's value - for a trip at a virtual location of L1 (LT5,

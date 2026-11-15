@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "nigiri/common/delta_t.h"
-#include "nigiri/constants.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
@@ -20,6 +19,8 @@
 #include "nigiri/types.h"
 
 namespace nigiri::routing::gpu {
+
+constexpr auto kRtLocationCapacity = 8192U;
 
 inline bool is_gpu_supported(query const& q,
                              rt_timetable const* rtt = nullptr) {

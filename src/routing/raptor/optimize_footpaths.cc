@@ -73,6 +73,14 @@ void optimize_initial_departure(timetable const& tt,
   }
 }
 
+location_idx_t exact_location(location_match_mode const mode,
+                              std::vector<offset> const& offsets,
+                              location_idx_t const l) {
+  return mode == location_match_mode::kExact && offsets.size() == 1U
+             ? offsets.front().target()
+             : l;
+}
+
 void optimize_initial_start_footpath(timetable const& tt,
                                      rt_timetable const* rtt,
                                      query const& q,
@@ -87,7 +95,8 @@ void optimize_initial_start_footpath(timetable const& tt,
   auto& transport_leg = j.legs_[1];
   auto& ree = get<journey::run_enter_exit>(transport_leg.uses_);
 
-  auto const start_loc = fp_leg.from_;
+  auto const start_loc =
+      exact_location(q.start_match_mode_, q.start_, fp_leg.from_);
 
   if (rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
       rtt->has_td_footpaths_out_[q.prf_idx_].test(start_loc)) {
@@ -212,7 +221,8 @@ void optimize_final_egress_footpath(timetable const& tt,
   auto& transport_leg = rbegin(j.legs_)[1];
   auto& ree = get<journey::run_enter_exit>(transport_leg.uses_);
 
-  auto const dest_loc = fp_leg.to_;
+  auto const dest_loc =
+      exact_location(q.dest_match_mode_, q.destination_, fp_leg.to_);
 
   if (rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
       rtt->has_td_footpaths_in_[q.prf_idx_].test(dest_loc)) {
@@ -261,7 +271,7 @@ void optimize_final_egress_footpath(timetable const& tt,
           fp_leg.from_ = stp.get_location_idx();
           fp_leg.dep_time_ = arr;
           fp_leg.arr_time_ = fp_end;
-          fp_leg.uses_ = footpath{dest_loc, fp.duration()};
+          fp_leg.uses_ = footpath{fp_leg.to_, fp.duration()};
           transport_leg.to_ = stp.get_location_idx();
           transport_leg.arr_time_ = arr;
           ree.stop_range_.to_ = stp.stop_idx_ + 1U;

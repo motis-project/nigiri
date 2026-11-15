@@ -5,6 +5,7 @@
 
 #include "nigiri/loader/load.h"
 #include "nigiri/common/span_cmp.h"
+#include "nigiri/resolve.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_update.h"
@@ -193,18 +194,12 @@ TEST(shape, single_trip_with_shape) {
   // The forbidden transfer Trip 5 -> Trip 1 splits route R1: the split route
   // keeps the shapes and bounding boxes of its base route.
   {
-    auto const transport_of = [&](std::string_view const id) {
-      for (auto t = trip_idx_t{0U}; t != tt.trip_id_strings_.size(); ++t) {
-        if (tt.trip_id_strings_[t].view() == id) {
-          return tt.trip_transport_ranges_[t][0].first;
-        }
-      }
-      return transport_idx_t::invalid();
+    auto const transport_of = [&](std::string const& id) {
+      return resolve(tt, nullptr, id, "20240301").t_;
     };
-    auto const shape_of = [&](std::string_view const id) {
+    auto const shape_of = [&](std::string const& id) {
       auto shape = geo::polyline{};
-      rt::frun::from_t(tt, nullptr,
-                       {transport_of(id), tt.day_idx(2024_y / March / 1)})
+      rt::frun::from_t(tt, nullptr, transport_of(id))
           .for_each_shape_point(
               &shapes_data, interval{stop_idx_t{0U}, stop_idx_t{3U}},
               [&](geo::latlng const& p) { shape.push_back(p); });
@@ -214,8 +209,8 @@ TEST(shape, single_trip_with_shape) {
     EXPECT_EQ(expected, shape_of("Trip 1"));
     EXPECT_EQ(expected, shape_of("Trip 1b"));
 
-    auto const base = tt.transport_route_[transport_of("Trip 1")];
-    auto const split = tt.transport_route_[transport_of("Trip 1b")];
+    auto const base = tt.transport_route_[transport_of("Trip 1").t_idx_];
+    auto const split = tt.transport_route_[transport_of("Trip 1b").t_idx_];
     ASSERT_NE(base, split);
     EXPECT_EQ(shapes_data.get_bounding_box(base),
               shapes_data.get_bounding_box(split));

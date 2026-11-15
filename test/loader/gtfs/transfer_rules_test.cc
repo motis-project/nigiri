@@ -773,7 +773,8 @@ TEST(gtfs,
 // invalid input: at most it means "no time", never "no transfer". 36000 s =
 // 600 min is valid (if long): it exceeds what a footpath can hold (254 min),
 // so it is capped - but it is no ban, and neither wraps a huge value. NT2
-// leaves 10 min, NT2L 9 h after NT1 arrives.
+// leaves 10 min, NT2M 2 h (reached if 600 min wrapped to 8 bit: 88 min), NT2L
+// 9 h after NT1 arrives.
 TEST(gtfs, transfer_rules_min_transfer_time_is_not_a_ban) {
   for (auto const& [seconds, arr] :
        {std::tuple{"-120", "11:00"}, std::tuple{"36000", "19:50"},
@@ -786,6 +787,7 @@ TEST(gtfs, transfer_rules_min_transfer_time_is_not_a_ban) {
                           {"N9", 64.2, 23.0}},
                          {{"NT1", "RN1", {{"N0", "10:00"}, {"NA1", "10:30"}}},
                           {"NT2", "RN2", {{"NA2", "10:40"}, {"N9", "11:00"}}},
+                          {"NT2M", "RN2", {{"NA2", "12:30"}, {"N9", "12:50"}}},
                           {"NT2L", "RN2", {{"NA2", "19:30"}, {"N9", "19:50"}}}},
                          fmt::format("NA1,NA2,2,{},,,,\n", seconds))});
     EXPECT_EQ(at(arr), arrival_at(tt, "N0", "N9", "10:00"));
@@ -883,20 +885,22 @@ TEST(gtfs, transfer_rules_qualified_rule_keeps_walks_of_other_trips) {
 //     T1 (R1): A 09:50 -> S 10:00 -> B 10:10 -> S 10:20 -> C 10:30
 //     T2 (R2): S 10:03 -> D 10:30 (3 min after the first visit -> ok)
 //     T3 (R2): S 10:21 -> D 10:48 (1 min after the second visit < 2 -> not)
+//     T9 (R2): S 10:23 -> D 10:50 (3 min after the second visit -> ok)
 //     T4 (R2): S 10:40 -> D 11:07
 //
 // The same, but the rule names only trip T1 of R1: T1 and T5 have the same
 // stops, so they share a route, but their signatures at S differ. Each visit
-// is its own route node, the first visit splits R1, and T1's two visits end up
-// in different locations (first: 2 min, second: S's 5 min).
+// is its own route stop and the first visit splits R1. T1's arrivals keep the
+// rule at both visits; T5's take S's 5 min (T10 3 min after its second visit
+// only with the route rule).
 //     T1 (R1): A 09:50 -> S 10:00 -> B 10:10 -> S 10:20 -> C 10:30
 //     T5 (R1): A 10:50 -> S 11:00 -> B 11:10 -> S 11:20 -> C 11:30
-//     T2/T3/T4 (R2): S 10:03/10:21/10:40 -> D 10:30/10:48/11:07
-//     T6/T7/T8 (R2): S 11:03/11:21/11:40 -> D 11:30/11:48/12:07
+//     T2/T3/T9/T4 (R2): S 10:03/10:21/10:23/10:40 -> D 10:30/10:48/10:50/11:07
+//     T6/T7/T10/T8 (R2): S 11:03/11:21/11:23/11:40 -> D 11:30/11:48/11:50/12:07
 TEST(gtfs, transfer_rules_route_visits_stop_twice) {
-  for (auto const& [rule, t5_arrival] :
-       {std::pair{"S,S,2,120,R1,R2,,\n", "11:30"},
-        std::pair{"S,S,2,120,,R2,T1,\n", "11:48"}}) {
+  for (auto const& [rule, t5_arrival, t5_second_visit_arrival] :
+       {std::tuple{"S,S,2,120,R1,R2,,\n", "11:30", "11:50"},
+        std::tuple{"S,S,2,120,,R2,T1,\n", "11:48", "12:07"}}) {
     SCOPED_TRACE(rule);
     auto const tt =
         load_feeds({feed({{"A", 53.0, 9.0},
@@ -920,22 +924,44 @@ TEST(gtfs, transfer_rules_route_visits_stop_twice) {
                             {"C", "11:30"}}},
                           {"T2", "R2", {{"S", "10:03"}, {"D", "10:30"}}},
                           {"T3", "R2", {{"S", "10:21"}, {"D", "10:48"}}},
+                          {"T9", "R2", {{"S", "10:23"}, {"D", "10:50"}}},
                           {"T4", "R2", {{"S", "10:40"}, {"D", "11:07"}}},
                           {"T6", "R2", {{"S", "11:03"}, {"D", "11:30"}}},
                           {"T7", "R2", {{"S", "11:21"}, {"D", "11:48"}}},
+                          {"T10", "R2", {{"S", "11:23"}, {"D", "11:50"}}},
                           {"T8", "R2", {{"S", "11:40"}, {"D", "12:07"}}}},
                          fmt::format("S,S,2,300,,,,\n{}", rule))});
     ASSERT_LT(0U, n_virts(tt));
 
     EXPECT_EQ(at("10:30"), arrival_at(tt, "A", "D", "09:50"));
-    EXPECT_EQ(at("11:07"), arrival_at(tt, "B", "D", "10:10"));
+    EXPECT_EQ(at("10:50"), arrival_at(tt, "B", "D", "10:10"));
     EXPECT_EQ(at(t5_arrival), arrival_at(tt, "A", "D", "10:50"));
-    EXPECT_EQ(at("12:07"), arrival_at(tt, "B", "D", "11:10"));
+    EXPECT_EQ(at(t5_second_visit_arrival), arrival_at(tt, "B", "D", "11:10"));
   }
 }
 
 timetable load_two_day_loop(bool const has_transfers_txt) {
-  auto const feed = std::string{R"(
+  return load_feeds(
+      {feed({{"X", 50.0, 6.0}, {"Y", 50.0, 6.1}, {"W", 50.0, 6.2}},
+            {{"T",
+              "R",
+              {{"X", "10:00"}, {"Y", "10:20"}, {"W", "10:30"}, {"X", "10:40"}},
+              "",
+              0U,
+              2U}},
+            has_transfers_txt ? "X,X,3,,R,R,,\n" : "")},
+      false, {}, date::days{2});
+}
+
+// A loop served by frequencies: T runs every 45 min from 10:00 (instances at
+// 10:00 and 10:45), X -> Y (+20) -> W (+30) -> X (+40). Its instances are one
+// trip, so W -> Y changes at X from T to T (X 10:40 -> 10:45, Y 11:05). A
+// route row (R -> R) forbids that. A trip row (T -> T) should as well, but
+// rows with from_trip_id == to_trip_id are skipped (not supported yet): the
+// change stays possible.
+TEST(gtfs, transfer_rules_change_between_frequency_instances) {
+  auto const load = [](std::string_view const transfers) {
+    return load_feeds({std::string{R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
 AG,Agency,https://example.com,Europe/Berlin
@@ -943,7 +969,6 @@ AG,Agency,https://example.com,Europe/Berlin
 # calendar_dates.txt
 service_id,date,exception_type
 S1,20190501,1
-S1,20190502,1
 
 # stops.txt
 stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
@@ -965,13 +990,19 @@ T,10:00:00,10:00:00,X,1
 T,10:20:00,10:20:00,Y,2
 T,10:30:00,10:30:00,W,3
 T,10:40:00,10:40:00,X,4
-)"} + (has_transfers_txt ? R"(
+
+# frequencies.txt
+trip_id,start_time,end_time,headway_secs
+T,10:00:00,11:30:00,2700
+
 # transfers.txt
 from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
-X,X,3,,R,R,,
-)"
-                         : "");
-  return load_feeds({feed}, false, {}, date::days{2});
+)"} + std::string{transfers}});
+  };
+  EXPECT_EQ(at("11:05"), arrival_at(load(""), "W", "Y", "10:25"));
+  EXPECT_EQ(std::nullopt,
+            arrival_at(load("X,X,3,,R,R,,\n"), "W", "Y", "10:25"));
+  EXPECT_EQ(at("11:05"), arrival_at(load("X,X,3,,,,T,T\n"), "W", "Y", "10:25"));
 }
 
 TEST(gtfs, transfer_rules_forbid_change_to_next_day_run_of_same_transport) {
@@ -983,7 +1014,7 @@ TEST(gtfs, transfer_rules_forbid_change_to_next_day_run_of_same_transport) {
 
 // Route ids are numbered per source: the first route of every feed has the
 // same route_id_idx_t. A route rule of feed 0 binds no route of feed 1.
-TEST(transfer_rules, route_rule_binds_only_routes_of_its_feed) {
+TEST(gtfs, transfer_rules_route_rule_binds_only_routes_of_its_feed) {
   auto const f0 = feed({{"A", 50.0, 6.0}, {"B", 50.0, 6.1}},
                        {{"TA", "RA", {{"A", "10:00"}, {"B", "10:10"}}},
                         {"TB", "RB", {{"B", "10:20"}, {"A", "10:40"}}}},
@@ -1004,7 +1035,7 @@ TEST(transfer_rules, route_rule_binds_only_routes_of_its_feed) {
 
 // adjust_footpaths raises a row's time to the walk at 1.5 m/s. The walk has to
 // fit a footpath: 254 min is the longest, 255 min would be a ban.
-TEST(transfer_rules, adjusted_walk_fits_a_footpath) {
+TEST(gtfs, transfer_rules_adjusted_walk_fits_a_footpath) {
   auto const walk = [](double const metres) {
     // one degree of latitude is 111,195 m
     auto const tt = load_feeds(
@@ -1019,6 +1050,6 @@ TEST(transfer_rules, adjusted_walk_fits_a_footpath) {
     }
     return std::optional<duration_t>{};
   };
-  EXPECT_EQ(253_minutes, walk(22800.0));
+  EXPECT_EQ(254_minutes, walk(22800.0));
   EXPECT_EQ(std::nullopt, walk(22905.0));  // 254.5 min: too far, row ignored
 }

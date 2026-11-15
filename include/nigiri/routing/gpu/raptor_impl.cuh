@@ -777,7 +777,8 @@ struct raptor_impl {
           auto const is_dest_arrival = !intermodal && is_dest_[to_idx(stop)];
           if (is_dest_arrival) {
             relax_fp_target(k, l, 0, tmp_time, bc, t_at_dest);
-            if (stop != l && is_better_loose(tmp_time, t_at_dest)) {
+            if (stop != l && is_better(tmp_time, best_.get(stop, Vias)) &&
+                is_better_loose(tmp_time, t_at_dest)) {
               round_times_.update_min(k, stop, Vias, tmp_time, bc);
               touch_round(k, stop);
               best_.update_min(stop, Vias, tmp_time);
@@ -818,9 +819,10 @@ struct raptor_impl {
                   });
             }
           }
-          if ((!kFwd || !use_td_fps) && my_i < tt_.n_static_locations_) {
-            auto const fps = kFwd ? tt_.footpaths_out_[prf_idx_][l]
-                                  : tt_.footpaths_in_[prf_idx_][l];
+          auto const& static_fps =
+              kFwd ? tt_.footpaths_out_[prf_idx_] : tt_.footpaths_in_[prf_idx_];
+          if ((!kFwd || !use_td_fps) && my_i < static_fps.size()) {
+            auto const fps = static_fps[l];
             n_fps = static_cast<unsigned>(fps.size());
             if (n_fps <= kWarpFpThreshold) {
               for (auto j = 0U; j != n_fps; ++j) {

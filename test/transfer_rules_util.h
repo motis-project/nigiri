@@ -95,7 +95,8 @@ struct trip_def {
   std::string_view route_;
   std::vector<std::pair<std::string_view, std::string_view>> times_;
   std::string_view block_{};
-  unsigned day_{0U};
+  unsigned day_{0U};  // runs on day_ .. day_ + n_days_ - 1 (0 = kDay)
+  unsigned n_days_{1U};
 };
 
 // Routes are taken from the trips, plus the ones rules name without a trip.
@@ -111,14 +112,20 @@ inline std::string feed(std::vector<stop_def> const& stops,
       "# calendar_dates.txt\n"
       "service_id,date,exception_type\n",
       tz);
-  auto days = std::vector<unsigned>{0U};
+  auto const service = [](unsigned const day, unsigned const n) {
+    return n == 1U ? fmt::format("S{}", day + 1U)
+                   : fmt::format("S{}x{}", day + 1U, n);
+  };
+  auto services = std::vector<std::pair<unsigned, unsigned>>{{0U, 1U}};
   for (auto const& x : trips) {
-    days.push_back(x.day_);
+    services.emplace_back(x.day_, x.n_days_);
   }
-  utl::erase_duplicates(days);
-  for (auto const d : days) {
-    s += fmt::format("S{},{},1\n", d + 1U,
-                     date::format("%Y%m%d", kDay + date::days{d}));
+  utl::erase_duplicates(services);
+  for (auto const [day, n] : services) {
+    for (auto i = 0U; i != n; ++i) {
+      s += fmt::format("{},{},1\n", service(day, n),
+                       date::format("%Y%m%d", kDay + date::days{day + i}));
+    }
   }
   s += "\n# stops.txt\n"
        "stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station\n";
@@ -140,7 +147,8 @@ inline std::string feed(std::vector<stop_def> const& stops,
 
   s += "\n# trips.txt\nroute_id,service_id,trip_id,block_id\n";
   for (auto const& x : trips) {
-    s += fmt::format("{},S{},{},{}\n", x.route_, x.day_ + 1U, x.id_, x.block_);
+    s += fmt::format("{},{},{},{}\n", x.route_, service(x.day_, x.n_days_),
+                     x.id_, x.block_);
   }
 
   s += "\n# stop_times.txt\n"
@@ -167,7 +175,7 @@ struct network_rows {
 
 // S is a station with the child stops S1..S4 a few meters apart (mutually
 // equivalent -> valid track changes). Default transfer time at a stop: 2 min,
-// S1 <-> S2 walk: a few minutes.
+// S1 <-> S2 walk: 2 min.
 //
 //   F  (RF): A  10:00 -> S1 10:30         feeder
 //   F0 (RF): A2 09:00 -> S3 09:30         a second RF trip, scheduled at S3
@@ -242,7 +250,8 @@ inline routing::query exact_query(timetable const& tt,
 }
 
 // Sets up the profile prf without walks between stops, next to the loaded
-// ones: a profile that ignores transfers.txt.
+// ones. Changes within a stop keep the transfer times of the stop and its
+// virtual locations, so rules at one shared virtual location still apply.
 inline void add_empty_profile(timetable& tt, profile_idx_t const prf) {
   tt.locations_.footpaths_out_[prf].resize(tt.n_locations());
   loader::expand_profile_to_virts(tt, prf);
@@ -293,24 +302,66 @@ inline std::optional<unixtime_t> arrival(
                           : std::optional{begin(res)->dest_time_};
 }
 
-// The arrival of the stop-to-stop search from -> to, departing at hhmm.
+// Both search directions see the same rules. With walks at both ends of the
+// journey in both directions (use_start_footpaths_): the backward search from
+// the forward query's earliest arrival leaves no earlier than the query, and
+// the forward search from that departure arrives at the same time.
+inline void expect_backward_agrees(timetable const& tt,
+                                   rt_timetable const* rtt,
+                                   routing::query q) {
+  auto const earliest_arrival = [](pareto_set<routing::journey> const& res) {
+    auto t = std::optional<unixtime_t>{};
+    for (auto const& j : res) {
+      t = std::min(t.value_or(j.dest_time_), j.dest_time_);
+    }
+    return t;
+  };
+  q.use_start_footpaths_ = true;
+  auto const arr = earliest_arrival(raptor_search(tt, rtt, routing::query{q}));
+  ASSERT_TRUE(arr.has_value()) << "forward with start footpaths";
+  auto bwd = q;
+  std::swap(bwd.start_, bwd.destination_);
+  std::swap(bwd.start_match_mode_, bwd.dest_match_mode_);
+  bwd.start_time_ = *arr;
+  auto const res = raptor_search(tt, rtt, std::move(bwd), direction::kBackward);
+  ASSERT_NE(0U, res.size()) << "backward: no journey arriving by " << *arr;
+  auto latest = unixtime_t::min();
+  for (auto const& j : res) {
+    latest = std::max(latest, j.legs_.front().dep_time_);
+  }
+  EXPECT_LE(std::get<unixtime_t>(q.start_time_), latest) << "backward";
+  q.start_time_ = latest;
+  EXPECT_EQ(arr, earliest_arrival(raptor_search(tt, rtt, std::move(q))))
+      << "forward from the backward departure " << latest;
+}
+
+// The arrival of the stop-to-stop search from -> to, departing at hhmm (checked
+// against the backward search).
 inline std::optional<unixtime_t> arrival_at(timetable const& tt,
                                             std::string_view const from,
                                             std::string_view const to,
                                             std::string_view const hhmm) {
-  return arrival(search_at(tt, from, to, hhmm));
+  auto const q = exact_query(tt, from, to, at(hhmm));
+  auto const arr = arrival(raptor_search(tt, nullptr, routing::query{q}));
+  if (arr.has_value()) {
+    expect_backward_agrees(tt, nullptr, q);
+  }
+  return arr;
 }
 
 // The arrival of the station query from od.first to od.second, departing at
-// hhmm.
+// hhmm (checked against the backward search).
 inline std::optional<unixtime_t> arrival(
     timetable const& tt,
     rt_timetable const* rtt,
     std::pair<char const*, char const*> const& od,
     std::string_view const hhmm = "10:00") {
-  return arrival(raptor_search(tt, rtt,
-                               station_query(tt, od.first, od.second, at(hhmm)),
-                               direction::kForward));
+  auto const q = station_query(tt, od.first, od.second, at(hhmm));
+  auto const arr = arrival(raptor_search(tt, rtt, routing::query{q}));
+  if (arr.has_value()) {
+    expect_backward_agrees(tt, rtt, q);
+  }
+  return arr;
 }
 
 inline std::size_t n_virts(timetable const& tt) {

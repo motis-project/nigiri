@@ -5,6 +5,8 @@
 
 #include "google/protobuf/util/json_util.h"
 
+#include "utl/helpers/algorithm.h"
+
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/load.h"
@@ -609,6 +611,9 @@ TEST(rt, gtfs_rt_added) {
   // Load static timetable.
   auto tt =
       loader::load(test_files(), {2023_y / August / 9, 2023_y / August / 12});
+  ASSERT_TRUE(utl::any_of(tt.locations_.types_, [](location_type const t) {
+    return t == location_type::kVirt;
+  }));
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 11});

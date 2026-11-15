@@ -13,6 +13,7 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/load.h"
 #include "nigiri/common/delta_t.h"
+#include "nigiri/resolve.h"
 #include "nigiri/routing/one_to_all.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/rt/create_rt_timetable.h"
@@ -21,6 +22,7 @@
 #include "nigiri/rt/run.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
+
 #include "nigiri/timetable_metrics.h"
 #include "nigiri/types.h"
 
@@ -342,17 +344,8 @@ TEST(
   // TRIP_1b: the forbidden transfer TRIP_X -> TRIP_1b (TRIP_X -> TRIP_1 stays
   // allowed) splits TRIP_1's route, the split route keeps the shape.
   {
-    auto const run_of = [&](std::string const& id) {
-      transit_realtime::TripDescriptor td;
-      td.set_trip_id(id);
-      return rt::gtfsrt_resolve_run(date::sys_days{2024_y / January / 1}, tt,
-                                    &rtt, source_idx_t{0U}, td)
-          .first;
-    };
-    auto const r1 = run_of("TRIP_1");
-    auto const r1b = run_of("TRIP_1b");
-    ASSERT_TRUE(r1.valid());
-    ASSERT_TRUE(r1b.valid());
+    auto const r1 = resolve(tt, &rtt, "TRIP_1", "20240101");
+    auto const r1b = resolve(tt, &rtt, "TRIP_1b", "20240101");
     EXPECT_NE(tt.transport_route_[r1.t_.t_idx_],
               tt.transport_route_[r1b.t_.t_idx_]);
 

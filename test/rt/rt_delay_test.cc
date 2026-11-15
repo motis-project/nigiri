@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/load.h"
+#include "nigiri/resolve.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
@@ -204,13 +205,9 @@ C1,C1,3,,,,TZ,T3
   // The forbidden transfer TZ -> T3 at C1 (TZ -> T3a stays allowed) moves T3
   // to a split route (stop C1 becomes a virtual location of C1).
   {
-    auto const route_of = [&](std::string_view const id) {
-      for (auto t = trip_idx_t{0U}; t != tt.trip_id_strings_.size(); ++t) {
-        if (tt.trip_id_strings_[t].view() == id) {
-          return tt.transport_route_[tt.trip_transport_ranges_[t][0].first];
-        }
-      }
-      return route_idx_t::invalid();
+    auto const route_of = [&](std::string const& id) {
+      return tt
+          .transport_route_[resolve(tt, nullptr, id, "20190501").t_.t_idx_];
     };
     ASSERT_NE(route_of("T3"), route_of("T3a"));
   }

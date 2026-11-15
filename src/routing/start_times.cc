@@ -298,7 +298,7 @@ void get_starts(
                           bool const is_walked,
                           bool const is_walked_from_via = false) {
     if (!is_walked_from_via &&
-        !start_via.contains(rtt == nullptr ? l : rtt->static_location(l))) {
+        !start_via.contains(rt::static_location(rtt, l))) {
       update_min(0U, l, offset, is_walked);
       return;
     }
@@ -326,8 +326,7 @@ void get_starts(
                 })) {
               return;
             }
-            auto const is_via = start_via.contains(
-                rtt == nullptr ? l : rtt->static_location(l));
+            auto const is_via = start_via.contains(rt::static_location(rtt, l));
             for (auto const fp :
                  get_transfers(tt, rtt, prf_idx, search_dir, l)) {
               update(fp.target(),
@@ -359,9 +358,7 @@ void get_starts(
 
   for (auto const& [stop, offsets] : start_td_offsets) {
     auto const v = static_cast<via_offset_t>(
-        start_via.contains(rtt == nullptr ? stop : rtt->static_location(stop))
-            ? 1U
-            : 0U);
+        start_via.contains(rt::static_location(rtt, stop)) ? 1U : 0U);
     std::visit(utl::overloaded{
                    [&](interval<unixtime_t> const interval) {
                      add_starts_in_interval(

@@ -1,11 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <algorithm>
 #include <functional>
-#include <map>
-#include <optional>
-#include <vector>
 
 #include "nigiri/loader/import_context.h"
 #include "nigiri/loader/merge_duplicates.h"

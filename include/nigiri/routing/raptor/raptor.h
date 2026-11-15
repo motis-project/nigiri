@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "nigiri/common/delta_t.h"
+#include "nigiri/location_routes.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
@@ -88,7 +89,6 @@ struct raptor {
       : tt_{tt},
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},
-        n_static_locations_{tt_.n_locations()},
         n_locations_{Rt ? rtt->n_locations() : tt_.n_locations()},
         n_routes_{tt.n_routes()},
         n_rt_transports_{Rt ? rtt->n_rt_transports() : 0U},
@@ -260,11 +260,8 @@ struct raptor {
               state_.rt_transport_mark_.set(to_idx(rt_t), true);
             }
           }
-          if (rtt_->is_rt_location(l)) {
-            return;
-          }
         }
-        for (auto const& r : tt_.location_routes_[l]) {
+        for (auto const& r : static_routes(tt_, Rt ? rtt_ : nullptr, l)) {
           any_marked = true;
           state_.route_mark_.set(to_idx(r), true);
         }
@@ -1642,7 +1639,7 @@ private:
   timetable const& tt_;
   rt_timetable const* rtt_{nullptr};
   int n_days_;
-  std::uint32_t n_static_locations_, n_locations_, n_routes_, n_rt_transports_;
+  std::uint32_t n_locations_, n_routes_, n_rt_transports_;
   raptor_state& state_;
   bitvec end_reachable_;
   std::span<std::array<delta_t, Vias + 1>> tmp_;
