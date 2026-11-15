@@ -69,7 +69,6 @@ date::sys_days basic_mcraptor<SearchDir, Criteria, RangeReuse>::base() const {
   return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
 }
 
-// Per-query reset. Under range reuse the bag survives next_start_time().
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 void basic_mcraptor<SearchDir, Criteria, RangeReuse>::reset_arrivals() {
   worst_at_dest_ = kInvalid;
@@ -103,10 +102,9 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::for_each_label(
   }
 }
 
-// Pareto insert; true iff inserted. A candidate is rejected only by labels of
-// no higher round (by-route ones only by by-route labels: they still relax
-// their footpaths) and evicts only labels of no lower round (by-transfer ones
-// only by-transfer labels), across start times.
+// A candidate is rejected by labels of no higher round, evicts labels of no
+// lower round. By-route labels are only rejected by by-route ones (their
+// footpaths are still to relax) and only evict those.
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::bag_insert(
     std::uint32_t const l,
@@ -237,14 +235,12 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
       break;
     }
 
-    // one fused pass for intermodal egress and footpaths
     update_footpaths(k);
 
     collect_dest_journeys(k, start_time, results);
   }
 }
 
-// true iff the arrival (plus transfer buffer) was inserted
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
     unsigned const k,
@@ -261,7 +257,6 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
     ++stats_.route_update_prevented_by_lower_bound_;
     return false;
   }
-  // the class of the whole route, as raptor's clasz filter
   auto const ride_crit =
       Criteria::from_ride(by_transport, ride_clasz, rl.carried_);
   if (dest_dominates(k,
@@ -269,7 +264,6 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
     ++stats_.route_update_prevented_by_lower_bound_;
     return false;
   }
-  // Post-buffer dominance equals pre-buffer (the buffer is per-stop constant).
   auto const post_crit = ride_crit.with_transfer(transfer_buffer(l_idx));
   if (!merge_round(l_idx, post_crit,
                    {.transport_ = transport,
@@ -283,8 +277,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
   }
   ++stats_.n_earliest_arrival_updated_by_route_;
   state_.station_mark_.set(l_idx, true);
-  // the buffer is 0 at a station destination: ride_crit is the arrival
-  if (is_dest_[l_idx]) {
+  if (is_dest_[l_idx]) {  // no buffer at a station destination
     dest_bag_add(k, ride_crit);
   }
   return true;
@@ -307,9 +300,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::loop_routes(
   return any_marked;
 }
 
-// One trip sequence's stops: alight route_bag_, then board the last round's
-// labels (board_label decides on the trip, board() updates the bag). A ride
-// into a stop that is not ridable (a section filter) drops the boarded trips.
+// Per stop: alight route_bag_, then board the last round's labels. A section
+// that is not ridable drops the boarded trips.
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 template <typename Stops, typename Ridable, typename Alight, typename Board>
 bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::scan_stops(
@@ -439,7 +431,6 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::loop_rt_transports(
   return any_marked;
 }
 
-// update_route for an rt run: a single trip with absolute event times.
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
     unsigned const k, rt_transport_idx_t const rt_t) {
@@ -481,7 +472,7 @@ std::uint32_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::trip_order_key(
   return (static_cast<std::uint32_t>(as_int(t.day_)) << 16U) | t_offset;
 }
 
-// Egress and footpaths from round k's by-route arrivals.
+// egress and footpaths from round k's by-route arrivals
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
     unsigned const k) {
@@ -491,8 +482,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
       return;
     }
     auto const l = location_idx_t{i};
-    // td footpaths replace the static ones of their source (as raptor):
-    // forward all of l's, backward those from sources with td footpaths
+    // td footpaths replace the static ones of their source (as raptor)
     auto const has_td_fps = [&](location_idx_t const x, bool const out) {
       return rtt_ != nullptr && prf_idx_ != 0U &&
              (out ? rtt_->has_td_footpaths_out_
@@ -503,7 +493,6 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
     auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx_][l]
                            : tt_.locations_.footpaths_in_[prf_idx_][l];
     auto const egress_ok = intermodal && dist_to_end_[i] != kUnreachable;
-    // empty for non-td queries: keep the lookup off the hot path
     auto const td_egress = (intermodal && !td_dist_to_end_.empty())
                                ? td_dist_to_end_.find(l)
                                : end(td_dist_to_end_);
@@ -512,7 +501,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
       return;
     }
 
-    // copy first (inserts go into the same bag), without transfer buffer
+    // copy first (inserts go into the same bag), minus the transfer buffer
     auto const buf = transfer_buffer(i);
     fp_labels_.clear();
     for_each_label(static_cast<std::uint32_t>(i), k,
@@ -526,12 +515,10 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
       return;
     }
 
-    // egress to the intermodal target, plain and/or time-dependent
     auto const relax_egress = [&](typename state_t::label const& te,
                                   std::uint16_t const duration,
                                   std::uint16_t const walk) {
       auto const end_crit = te.crit_.with_walk(dir(duration), walk);
-      // window bound
       if (!is_better(end_crit.arr_, worst_at_dest_)) {
         return;
       }
@@ -544,7 +531,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
       dest_bag_add(k, end_crit);
     };
 
-    // duration: adjusted static footpath or td duration incl. waiting
+    // duration: incl. td waiting
     auto const relax_fp =
         [&](typename state_t::label const& te, std::uint32_t const target,
             std::uint16_t const duration, std::uint16_t const walk) {
@@ -560,7 +547,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
             ++stats_.fp_update_prevented_by_lower_bound_;
             return;
           }
-          // keeps the ride's payload; reconstruction derives the footpath
+          // the ride's breadcrumb: reconstruction derives the footpath
           auto bc = state_.breadcrumbs_[te.breadcrumb_];
           bc.arr_ = fp_crit.arr_;
           if (!merge_round(target, fp_crit, bc, k, /*by_route=*/false)) {
@@ -579,7 +566,6 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
       }
     }
 
-    // td durations depend on the arrival, so they are evaluated per label
     if (td_egress_ok) {
       for (auto const& te : fp_labels_) {
         auto const fp = get_td_duration<SearchDir>(td_egress->second,
@@ -716,7 +702,6 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::collect_dest_journeys(
                      j.dest_ = location_idx_t{i};
                      j.transfers_ = static_cast<std::uint8_t>(k - 1U);
                      e_crit.apply_to(j);
-                     // most candidates are dominated: only the others get legs
                      if (!results.is_dominated(j)) {
                        chain_.clear();
                        for (auto li = static_cast<std::uint32_t>(e.breadcrumb_);
@@ -783,7 +768,6 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::split(delta_t const x) const {
   return split_day_mam(base_, x);
 }
 
-// One line per criteria configuration: both directions, range reuse off/on.
 #define NIGIRI_MC_INSTANTIATE(C)                                  \
   template struct basic_mcraptor<direction::kForward, C, false>;  \
   template struct basic_mcraptor<direction::kBackward, C, false>; \

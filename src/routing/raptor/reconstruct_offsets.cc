@@ -19,7 +19,6 @@ void add_offset_legs(timetable const& tt,
                      journey& j) {
   utl::verify(!j.legs_.empty(), "reconstruct: journey without transit legs");
 
-  // The legs are chronological.
   constexpr auto const is_fwd = SearchDir == direction::kForward;
 
   auto const add_offset_leg = [&](bool const is_front) {
@@ -52,8 +51,7 @@ void add_offset_legs(timetable const& tt,
   add_offset_leg(true);
   add_offset_leg(false);
 
-  // use_start_footpaths_ == true:
-  // reconstruct the start footpath that seeded round k=0 at the first stop.
+  // the start footpath that seeded round 0 (use_start_footpaths_)
   if (q.start_match_mode_ != location_match_mode::kIntermodal) {
     auto const search_start_l =
         is_fwd ? j.legs_.front().from_ : j.legs_.back().to_;

@@ -541,7 +541,6 @@ struct mcraptor_impl {
     return !dist_to_end_.empty();
   }
 
-  // true iff the arrival (plus transfer buffer) was inserted
   __device__ bool alight(unsigned const k,
                          std::uint32_t const l_idx,
                          delta_t const by_transport,
@@ -566,7 +565,7 @@ struct mcraptor_impl {
     }
     touched_.mark(l_idx);
     station_mark_.mark(l_idx);
-    // the buffer is 0 at a station destination: ride_key is the arrival
+    // no buffer at a station destination
     if (is_dest_[l_idx]) {
       dest_bag_add(k, ride_key, ride_extras);
     }
@@ -1361,7 +1360,6 @@ struct mcraptor_impl {
           relax_egress(k, dist_to_end_[i], dist_to_end_[i], te_arr, te_extras,
                        te_breadcrumb);
         }
-        // td durations depend on the arrival, so they are evaluated per label
         if (td_grp != kMcInvalid) {
           auto const offsets = td_dest_[td_dest_group_idx_t{td_grp}];
           auto const rr = d_get_td_duration<SearchDir>(

@@ -15,13 +15,11 @@ namespace nigiri::routing {
 struct query;
 struct journey;
 
-// Journey reconstruction shared by the CPU and the GPU McRAPTOR.
+// Shared by the CPU and the GPU McRAPTOR.
 
-// The transit legs, with the footpaths between them, behind a destination
-// label: chain holds its breadcrumbs from the label back to the start (as
-// parent_ links them), times relative to base_day. A ride into the intermodal
-// target ends the journey at its alighting stop (the offset leg follows in
-// mc_reconstruct_offsets). Legs end up chronological.
+// The transit legs and footpaths behind a destination label; `chain`: its
+// breadcrumbs back to the start. The offset legs follow in
+// mc_reconstruct_offsets().
 template <direction SearchDir>
 void mc_add_legs(timetable const&,
                  rt_timetable const*,
@@ -30,8 +28,7 @@ void mc_add_legs(timetable const&,
                  std::span<mc_breadcrumb const> chain,
                  journey&);
 
-// Offset legs and the start footpath around the transit legs (as gpu raptor,
-// without optimize_footpaths), td footpaths cut to their walk.
+// offset legs and the start footpath around the transit legs
 template <direction SearchDir>
 void mc_reconstruct_offsets(timetable const&,
                             rt_timetable const*,

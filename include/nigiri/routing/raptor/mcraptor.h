@@ -59,9 +59,8 @@ constexpr bool arr_no_worse(delta_t const a, delta_t const b) {
   return SearchDir == direction::kForward ? a <= b : a >= b;
 }
 
-// Pareto dimensions besides the arrival, combined by arr_with. Each provides
-// dominates, completed_dominates (at the destination: nothing follows),
-// at_start, from_ride, with_walk and apply_to (its own journey field).
+// Pareto dimensions besides the arrival, combined by arr_with.
+// completed_dominates: at the destination, nothing follows.
 
 // Walking (offsets, footpaths; not the same-stop transfer buffer) in units of
 // kNonTransitBin minutes, see non_transit_add().
@@ -90,11 +89,9 @@ struct non_transit_dim {
   std::uint8_t non_transit_{0U};  // units
 };
 
-// "Uses an avoided vehicle class" as a pareto dimension, not a filter: keeps
-// both the fastest itinerary and the best one without that class.
+// "Uses an avoided vehicle class" as a Pareto dimension, not a filter.
 struct mode_filter_dim {
-  // Avoided classes (default AIR), set per query; thread_local, as a search
-  // runs on one thread.
+  // set per query (default AIR); a search runs on one thread
   static clasz_mask_t& avoided_mask() {
     thread_local clasz_mask_t mask = to_mask(clasz::kAir);
     return mask;
@@ -118,9 +115,8 @@ struct mode_filter_dim {
   bool mode_filter_{false};
 };
 
-// Switches between vehicle class groups (mode_group()) from trip to trip.
-// Labels in different groups only dominate with a switch to spare (the next
-// switch may differ); completed_dominates drops that margin.
+// Switches between vehicle class groups (mode_group()). Labels in different
+// groups only dominate with a switch to spare.
 struct mode_switches_dim {
   bool dominates(mode_switches_dim const& o) const {
     return switches_dominate(group_, switches_, o.group_, o.switches_);
@@ -146,7 +142,6 @@ struct mode_switches_dim {
   std::uint8_t switches_{0U};
 };
 
-// The label: arrival plus any set of dimensions.
 template <typename... Dims>
 struct arr_with {
   using carried = std::tuple<Dims...>;  // what survives a boarding
@@ -190,7 +185,6 @@ struct arr_with {
   [[no_unique_address]] carried d_;
 };
 
-// Every dispatched combination of dimensions; instantiated in mcraptor.cc.
 using arr_criteria = arr_with<>;
 using arr_non_transit_criteria = arr_with<non_transit_dim>;
 using arr_mode_filter_criteria = arr_with<mode_filter_dim>;
@@ -208,9 +202,8 @@ template <typename Criteria>
 struct basic_mcraptor_state {
   static constexpr auto const kNoBreadcrumb = (std::uint32_t{1U} << 31U) - 1U;
 
-  // One label of a stop's bag. round_ is an implicit pareto dimension (never
-  // dominated by a higher round); dep_ tags the start time under range reuse,
-  // where the bag outlives it.
+  // round_ is an implicit Pareto dimension; dep_ tags the start time under
+  // range reuse
   struct label {
     Criteria crit_;
     std::uint32_t breadcrumb_ : 31;  // kNoBreadcrumb: a start label
@@ -223,7 +216,7 @@ struct basic_mcraptor_state {
   static constexpr auto const kInline = std::uint32_t{4U};
   static constexpr auto const kNoOverflow = std::uint32_t{0xFFFFFFFFU};
 
-  // one cache line; over_ != kNoOverflow: labels at arena offset over_
+  // one cache line; labels at arena offset over_ once grown
   struct alignas(64) small_bag {
     std::uint16_t size_{0U};
     std::uint16_t cap_{static_cast<std::uint16_t>(kInline)};
@@ -231,7 +224,6 @@ struct basic_mcraptor_state {
     std::array<label, kInline> inline_;
   };
 
-  // touched_ marks non-empty bags so clearing only visits those.
   struct bag_layer {
     void resize(std::size_t const n) {
       bags_.resize(n);
@@ -258,12 +250,10 @@ struct basic_mcraptor_state {
 
     bool empty(std::uint32_t const l) const { return bags_[l].size_ == 0U; }
 
-    // shrink to n labels; capacity unchanged
     void set_size(std::uint32_t const l, std::uint32_t const n) {
       bags_[l].size_ = static_cast<std::uint16_t>(n);
     }
 
-    // append one label, moving to a larger arena span when full
     void push_back(std::uint32_t const l, label const& x) {
       auto& b = bags_[l];
       if (b.size_ == b.cap_) {
@@ -272,7 +262,7 @@ struct basic_mcraptor_state {
       data(b)[b.size_++] = x;
     }
 
-    // doubles: outgrown spans are only reclaimed by clear()
+    // outgrown spans are only reclaimed by clear()
     void grow(small_bag& b) {
       auto const new_cap = std::uint32_t{b.cap_} * 2U;
       assert(new_cap <= std::numeric_limits<std::uint16_t>::max());
@@ -300,7 +290,7 @@ struct basic_mcraptor_state {
 
     std::vector<small_bag> bags_;
     bitvec touched_;
-    std::vector<label> arena_;  // offsets, not pointers: it may grow
+    std::vector<label> arena_;
     std::uint32_t arena_size_{0U};
   };
 
@@ -322,14 +312,11 @@ struct basic_mcraptor_state {
     return *this;
   }
 
-  // one bag per stop for all rounds of a start time
-  bag_layer bag_;
-  // parent_ == kNoBreadcrumb: boarded at the start
+  bag_layer bag_;  // all rounds of a start time
   std::vector<mc_breadcrumb> breadcrumbs_;
   bitvec station_mark_;
   bitvec prev_station_mark_;
   bitvec route_mark_;
-  // empty unless the query carries an rt_timetable with rt transports
   bitvec rt_transport_mark_;
 };
 
@@ -509,9 +496,8 @@ private:
   // search-window bound only; dest_bag_ owns destination pruning
   delta_t worst_at_dest_;
   std::vector<dest_entry> dest_bag_;
-  // current start's departure, tagged onto inserted labels (see label::dep_)
   delta_t cur_dep_{};
-  // round-0 seeds, inserted in execute() once the ingress is known
+  // inserted in execute() once the ingress is known
   std::vector<std::pair<std::uint32_t, delta_t>> seeds_;
   day_idx_t base_;
   raptor_stats stats_;
