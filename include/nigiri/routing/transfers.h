@@ -7,7 +7,9 @@
 
 #include "nigiri/footpath.h"
 #include "nigiri/routing/search_location.h"
+#include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/td_footpath.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -71,6 +73,48 @@ inline std::optional<duration_t> shortest_transfer(timetable const& tt,
     }
   }
   return shortest;
+}
+
+inline bool is_td_source(rt_timetable const* rtt,
+                         profile_idx_t const prf_idx,
+                         location_idx_t const l) {
+  return rtt != nullptr && has_profile_td_footpaths(prf_idx) &&
+         rtt->has_td_footpaths_out_[prf_idx].test(l);
+}
+
+struct footpath_duration {
+  duration_t duration_;
+  duration_t travel_time_;
+  duration_t raw_;
+};
+
+inline std::optional<footpath_duration> get_footpath_duration(
+    timetable const& tt,
+    rt_timetable const* rtt,
+    profile_idx_t const prf_idx,
+    transfer_time_settings const& settings,
+    direction const dir,
+    unixtime_t const t,
+    location_idx_t const from,
+    location_idx_t const to) {
+  if (from != to && is_td_source(rtt, prf_idx, from)) {
+    auto best = std::optional<footpath_duration>{};
+    for_each_footpath(
+        dir, rtt->td_footpaths_out_[prf_idx][from], t,
+        [&](location_idx_t const target, duration_t const d,
+            duration_t const w) {
+          if (target == to && (!best.has_value() || d < best->duration_)) {
+            best = footpath_duration{d, w, w};
+          }
+        });
+    return best;
+  }
+  auto const raw = shortest_transfer(tt, rtt, prf_idx, from, to);
+  if (!raw.has_value()) {
+    return std::nullopt;
+  }
+  auto const d = adjusted_transfer_time(settings, *raw);
+  return footpath_duration{d, d, *raw};
 }
 
 }  // namespace nigiri::routing

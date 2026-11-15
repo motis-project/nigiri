@@ -38,17 +38,6 @@ void map_to_bases(timetable const& tt, rt_timetable const* rtt, journey& j) {
   j.dest_ = rt::base(tt, rtt, j.dest_);
 }
 
-void finalize_journey(timetable const& tt,
-                      rt_timetable const* rtt,
-                      query const& q,
-                      journey& j) {
-  optimize_footpaths(tt, rtt, q, j);
-  specify_td_offsets(q, j);
-  fix_transfer_durations(tt, rtt, q, j);
-  map_to_bases(tt, rtt, j);
-  j.is_reconstructed_ = true;
-}
-
 bool is_journey_start(timetable const& tt,
                       query const& q,
                       location_idx_t const l) {
@@ -112,6 +101,50 @@ via_counts count_vias(timetable const& tt,
         leg.uses_);
   }
   return counts;
+}
+
+void place_footpaths(timetable const& tt,
+                     rt_timetable const* rtt,
+                     query const& q,
+                     journey& j) {
+  // Footpaths begin at the arrival time of the previous leg (and the via stay
+  // there). A time-dependent footpath may only be usable later: it starts as
+  // soon as it is usable after the arrival.
+  auto const vias = count_vias(tt, rtt, q, j);
+  for (auto i = 0U; i != j.legs_.size(); ++i) {
+    auto& leg = j.legs_[i];
+    if (!std::holds_alternative<footpath>(leg.uses_)) {
+      continue;
+    }
+    auto const is_first = i == 0U;
+    auto const t =
+        is_first ? leg.arr_time_ : j.legs_[i - 1U].arr_time_ + vias.stay_[i];
+    auto const fp = get_footpath_duration(
+        tt, rtt, q.prf_idx_, q.transfer_time_settings_,
+        is_first ? direction::kBackward : direction::kForward, t, leg.from_,
+        leg.to_);
+    if (!fp.has_value() || (!is_first && i + 1U != j.legs_.size() &&
+                            t + fp->duration_ > j.legs_[i + 1U].dep_time_)) {
+      continue;
+    }
+    leg.dep_time_ =
+        is_first ? t - fp->duration_ : t + fp->duration_ - fp->travel_time_;
+    leg.arr_time_ = leg.dep_time_ + fp->travel_time_;
+    leg.uses_ = footpath{leg.to_, fp->raw_};
+  }
+}
+
+void finalize_journey(timetable const& tt,
+                      rt_timetable const* rtt,
+                      query const& q,
+                      journey& j) {
+  place_footpaths(tt, rtt, q, j);
+  map_to_bases(tt, rtt, j);
+  optimize_footpaths(tt, rtt, q, j);
+  specify_td_offsets(q, j);
+  fix_transfer_durations(tt, rtt, q, j);
+  map_to_bases(tt, rtt, j);
+  j.is_reconstructed_ = true;
 }
 
 template <direction SearchDir, via_offset_t Vias>
@@ -831,8 +864,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
     // As in the search: footpaths from a source with td footpaths are
     // time-dependent, all others are static.
     auto const is_td_source = [&](location_idx_t const x) {
-      return rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
-             rtt->has_td_footpaths_out_[q.prf_idx_].test(x);
+      return routing::is_td_source(rtt, q.prf_idx_, x);
     };
     if (kFwd || !is_td_source(l)) {
       for (auto const fp :
@@ -900,8 +932,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
     j.add(std::move(*init_fp));
   }
 
-  map_to_bases(tt, rtt, j);
-
   // Journey is always returned in order START -> END (as presented to user) but
   // is reconstructed in opposite direction as search direction (query
   // direction). If direction is kBackward, flip query to match journey
@@ -912,49 +942,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
   if constexpr (kFwd) {
     std::reverse(begin(j.legs_), end(j.legs_));
-  } else {
-    // adjust footpaths so that they always begin at the arrival time of
-    // the previous leg (and the via stay there)
-    auto const vias = count_vias(tt, rtt, journey_q, j);
-    for (auto it = std::next(j.legs_.begin()); it != j.legs_.end(); ++it) {
-      std::visit(
-          utl::overloaded{
-              [&](journey::run_enter_exit const&) {},
-              [&](footpath const&) {
-                auto const stay = vias.stay_[static_cast<std::size_t>(
-                    std::distance(j.legs_.begin(), it))];
-                auto const diff =
-                    it->dep_time_ - std::prev(it)->arr_time_ - stay;
-                // A time-dependent footpath may only be usable later: it
-                // starts as soon as it is usable after the arrival.
-                if (diff.count() > 0 && it->from_ != it->to_ &&
-                    rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
-                    rtt->has_td_footpaths_out_[q.prf_idx_].test(it->from_)) {
-                  auto const t = std::prev(it)->arr_time_ + stay;
-                  auto earliest =
-                      std::optional<std::pair<unixtime_t, duration_t>>{};
-                  for_each_footpath<direction::kForward>(
-                      rtt->td_footpaths_out_[q.prf_idx_][it->from_], t,
-                      [&](location_idx_t const target,
-                          duration_t const duration, duration_t const walk) {
-                        if (target == it->to_ &&
-                            t + duration <= it->arr_time_) {
-                          earliest = std::pair{t + duration - walk, walk};
-                        }
-                      });
-                  if (earliest.has_value()) {
-                    auto const [dep, walk] = *earliest;
-                    it->dep_time_ = dep;
-                    it->arr_time_ = dep + walk;
-                    it->uses_ = footpath{it->to_, walk};
-                  }
-                  return;
-                }
-                it->dep_time_ -= diff;
-                it->arr_time_ -= diff;
-              }},
-          it->uses_);
-    }
   }
 
   finalize_journey(tt, rtt, journey_q, j);

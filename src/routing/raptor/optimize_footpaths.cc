@@ -98,8 +98,7 @@ void optimize_initial_start_footpath(timetable const& tt,
   auto const start_loc =
       exact_location(q.start_match_mode_, q.start_, fp_leg.from_);
 
-  if (rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
-      rtt->has_td_footpaths_out_[q.prf_idx_].test(start_loc)) {
+  if (is_td_source(rtt, q.prf_idx_, start_loc)) {
     return;  // TODO(felix) handle shortening of td-footpaths
   }
 
@@ -423,8 +422,7 @@ void optimize_transfers(timetable const& tt,
 
     // The static footpaths are not valid where time-dependent ones exist
     // (e.g. an elevator out of service).
-    if (rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
-        rtt->has_td_footpaths_out_[q.prf_idx_].test(leg_footpath.from_)) {
+    if (is_td_source(rtt, q.prf_idx_, leg_footpath.from_)) {
       continue;
     }
 

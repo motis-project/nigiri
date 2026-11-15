@@ -3,6 +3,7 @@
 #include <cinttypes>
 #include <iosfwd>
 #include <optional>
+#include <tuple>
 #include <variant>
 #include <vector>
 
@@ -108,6 +109,10 @@ struct journey {
 
   unixtime_t arrival_time() const {
     return start_time_ <= dest_time_ ? dest_time_ : start_time_;
+  }
+
+  auto criteria() const {
+    return std::tuple{departure_time(), arrival_time(), transfers_};
   }
 
   void print(std::ostream&,

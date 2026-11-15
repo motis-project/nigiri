@@ -1161,12 +1161,10 @@ void gpu_raptor<SearchDir, WithBounds>::execute(
       auto const arr = delta_to_unix(base(), gl.arr_);
 
       if (gl.is_footpath_) {
-        auto const fp_duration = get_unadjusted_transfer_time(
-            SearchDir == direction::kForward ? from : to,
-            SearchDir == direction::kForward ? to : from,
-            duration_t{static_cast<duration_t::rep>(gl.fp_duration_)});
-        j.legs_.emplace_back(journey::leg{SearchDir, from, to, dep, arr,
-                                          footpath{to, fp_duration}});
+        j.legs_.emplace_back(journey::leg{
+            SearchDir, from, to, dep, arr,
+            footpath{to, duration_t{
+                             static_cast<duration_t::rep>(gl.fp_duration_)}}});
       } else if (gl.rt_transport_ != rt_transport_idx_t::invalid()) {
         auto const rt_t = gl.rt_transport_;
         auto const run =
@@ -1194,106 +1192,10 @@ void gpu_raptor<SearchDir, WithBounds>::execute(
       }
     }
 
-    // Backward search requires to re-anchor footpath durations
-    // to the arrival of the previous trip
-    // instead of the departure of the next trip.
-    // No-op for forward search.
-    // A time-dependent footpath may only be usable later, so we don't want
-    // to move it.
-    for (auto i = std::size_t{1U}; i < j.legs_.size(); ++i) {
-      if (std::holds_alternative<footpath>(j.legs_[i].uses_) &&
-          !(j.legs_[i].from_ != j.legs_[i].to_ && rtt_ != nullptr &&
-            has_profile_td_footpaths(prf_idx_) &&
-            rtt_->has_td_footpaths_out_[prf_idx_].test(j.legs_[i].from_))) {
-        auto const elapsed = j.legs_[i].arr_time_ - j.legs_[i].dep_time_;
-        j.legs_[i].dep_time_ = j.legs_[i - 1U].arr_time_;
-        j.legs_[i].arr_time_ = j.legs_[i].dep_time_ + elapsed;
-      }
-    }
-
-    // Shorten td footpaths to their actual duration (excluding waiting).
-    if (rtt_ != nullptr && has_profile_td_footpaths(prf_idx_) &&
-        !(SearchDir == direction::kForward ? rtt_->td_footpaths_in_[prf_idx_]
-                                           : rtt_->td_footpaths_out_[prf_idx_])
-             .empty()) {
-      constexpr auto const kIsFwd = SearchDir == direction::kForward;
-      auto const& has_td = kIsFwd ? rtt_->has_td_footpaths_in_[prf_idx_]
-                                  : rtt_->has_td_footpaths_out_[prf_idx_];
-      auto const& td_fps = kIsFwd ? rtt_->td_footpaths_in_[prf_idx_]
-                                  : rtt_->td_footpaths_out_[prf_idx_];
-      for (auto& lg : j.legs_) {
-        if (!std::holds_alternative<footpath>(lg.uses_)) {
-          continue;
-        }
-        auto const key_l = kIsFwd ? lg.to_ : lg.from_;
-        auto const target_l = kIsFwd ? lg.from_ : lg.to_;
-        if (!has_td.test(key_l)) {
-          continue;
-        }
-        // t is the arrival in both search directions.
-        auto const t = lg.arr_time_;
-        for_each_footpath<direction::kBackward>(
-            td_fps[key_l], t,
-            [&](location_idx_t const target, duration_t const duration,
-                duration_t const walk) {
-              if (target != target_l) {
-                return utl::cflow::kContinue;
-              }
-              lg.dep_time_ = t - duration;
-              lg.arr_time_ = lg.dep_time_ + walk;
-              lg.uses_ = footpath{lg.to_, walk};
-              return utl::cflow::kBreak;
-            });
-      }
-    }
-
-    // Backward search: time-dependent footpaths start as soon as they are
-    // usable after the arrival (as in the reconstruction).
-    if constexpr (SearchDir == direction::kBackward) {
-      if (rtt_ != nullptr && has_profile_td_footpaths(prf_idx_)) {
-        for (auto i = std::size_t{1U}; i < j.legs_.size(); ++i) {
-          auto& lg = j.legs_[i];
-          if (!std::holds_alternative<footpath>(lg.uses_) ||
-              lg.from_ == lg.to_ ||
-              !rtt_->has_td_footpaths_out_[prf_idx_].test(lg.from_)) {
-            continue;
-          }
-          auto const t = j.legs_[i - 1U].arr_time_;
-          for_each_footpath<direction::kForward>(
-              rtt_->td_footpaths_out_[prf_idx_][lg.from_], t,
-              [&](location_idx_t const target, duration_t const duration,
-                  duration_t const walk) {
-                if (target == lg.to_ && t + duration <= lg.arr_time_) {
-                  lg.dep_time_ = t + duration - walk;
-                  lg.arr_time_ = lg.dep_time_ + walk;
-                  lg.uses_ = footpath{lg.to_, walk};
-                }
-              });
-        }
-      }
-    }
-
     // is_reconstructed_ stays false
     // -> only reconstruct() called by pong/search.h might set it to true
     results.add(std::move(j));
   }
-}
-
-template <direction SearchDir, bool WithBounds>
-duration_t gpu_raptor<SearchDir, WithBounds>::get_unadjusted_transfer_time(
-    location_idx_t const from,
-    location_idx_t const to,
-    duration_t const adjusted) const {
-  if (from == to && adjusted == duration_t{0}) {
-    return adjusted;
-  }
-  auto const d = shortest_transfer(tt_, rtt_, prf_idx_, from, to);
-  if (!d.has_value() ||
-      (from != to &&
-       adjusted_transfer_time(transfer_time_settings_, *d) != adjusted)) {
-    return adjusted;
-  }
-  return *d;
 }
 
 template <direction SearchDir, bool WithBounds>
@@ -1497,9 +1399,9 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
         auto const fp_arr = j.start_time_ + (is_fwd ? dur : -dur);
         if (is_fwd ? fp_arr <= start_t : fp_arr >= start_t) {
           auto lg = journey::leg{
-              SearchDir, best->target(),
-              start_l,   j.start_time_,
-              fp_arr,    footpath{best->target(), best->duration()}};
+              SearchDir,      best->target(),
+              search_start_l, j.start_time_,
+              fp_arr,         footpath{best->target(), best->duration()}};
           if (is_fwd) {
             j.legs_.insert(begin(j.legs_), lg);
           } else {
@@ -1511,8 +1413,6 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
       }
     }
   }
-
-  map_to_bases(tt_, rtt_, j);
 
   // The journey's legs are chronological, but q is in search direction.
   auto journey_q = q;

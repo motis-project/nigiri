@@ -107,6 +107,8 @@ TEST(routing, td_start_fwd) {
             .start_match_mode_ = routing::location_match_mode::kIntermodal,
             .dest_match_mode_ = routing::location_match_mode::kIntermodal,
             .use_start_footpaths_ = false,
+            .start_ = {{A, duration_t{90},
+                        routing::transport_mode_t::payload_t{1}}},
             .destination_ = {{B, duration_t{0},
                               routing::transport_mode_t::payload_t{0}}},
             .td_start_ =
@@ -158,6 +160,8 @@ TEST(routing, td_dest_fwd) {
             .use_start_footpaths_ = false,
             .start_ = {{A, duration_t{0},
                         routing::transport_mode_t::payload_t{0}}},
+            .destination_ = {{B, duration_t{30},
+                              routing::transport_mode_t::payload_t{1}}},
             .td_dest_ =
                 {{{B,
                    {{.valid_from_ = sys_days{2024_y / June / 19} + 9h + 5min,
@@ -205,6 +209,8 @@ TEST(routing, td_start_bwd) {
             .start_match_mode_ = routing::location_match_mode::kIntermodal,
             .dest_match_mode_ = routing::location_match_mode::kIntermodal,
             .use_start_footpaths_ = false,
+            .start_ = {{B, duration_t{90},
+                        routing::transport_mode_t::payload_t{1}}},
             .destination_ = {{A, duration_t{0},
                               routing::transport_mode_t::payload_t{0}}},
             .td_start_ =
@@ -256,6 +262,8 @@ TEST(routing, td_dest_bwd) {
             .use_start_footpaths_ = false,
             .start_ = {{B, duration_t{0},
                         routing::transport_mode_t::payload_t{0}}},
+            .destination_ = {{A, duration_t{30},
+                              routing::transport_mode_t::payload_t{1}}},
             .td_dest_ =
                 {{{A,
                    {{.valid_from_ = sys_days{2024_y / June / 19} + 7h + 45min,

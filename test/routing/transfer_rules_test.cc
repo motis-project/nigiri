@@ -228,16 +228,20 @@ TEST(transfer_rules, exact_match_includes_virtual_locations) {
 TEST(transfer_rules, trip_pair_rule_walk_holds_for_its_trip) {
   for (auto const rule : {"S1,S2,2,60,RF,RZ,,\n", "S1,S2,1,,RF,RZ,,\n"}) {
     auto const tt = test::load_network(
-        fmt::format("S1,S2,2,120,,,,\n{}", rule),
+        fmt::format("S1,S2,2,120,,,,\nS3,S2,2,300,,,,\n{}", rule),
         {.stops_ = {{"E", 50.0, 9.0}},
          .trips_ = {{"Z", "RZ", {{"S2", "10:31"}, {"E", "11:00"}}},
                     {"ZL", "RZL", {{"S2", "11:01"}, {"E", "11:30"}}}}});
     ASSERT_LT(0U, n_virts(tt));
     auto const search =
         [&](std::string_view const from, std::string_view const to,
-            interval<unixtime_t> const times, direction const dir) {
+            interval<unixtime_t> const times, direction const dir,
+            std::string_view const second_start = {}) {
           auto q = test::exact_query(tt, from, to, times);
           q.use_start_footpaths_ = true;
+          if (!second_start.empty()) {
+            q.start_.push_back({lidx(tt, second_start), 0_minutes, 0U});
+          }
           auto const res = raptor_search(tt, nullptr, std::move(q), dir);
           EXPECT_EQ(1U, res.size())
               << rule << test::print_results(tt, nullptr, res);
@@ -251,6 +255,11 @@ TEST(transfer_rules, trip_pair_rule_walk_holds_for_its_trip) {
     EXPECT_EQ(
         std::pair(at("10:59"), at("11:30")),
         search("S1", "E", {at("10:30"), at("11:00")}, direction::kForward))
+        << rule;
+    // S3 walks to S2 in 5 min: the journey keeps the start walk from S1.
+    EXPECT_EQ(std::pair(at("10:59"), at("11:30")),
+              search("S1", "E", {at("10:30"), at("11:00")}, direction::kForward,
+                     "S3"))
         << rule;
     EXPECT_EQ(
         std::pair(at("10:59"), at("11:30")),

@@ -95,13 +95,6 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
   auto best_raw = duration_t::max();
   auto best_source = location_idx_t{};
 
-  // As in the search: footpaths from a source with td footpaths are
-  // time-dependent, all others are static.
-  auto const is_td_source = [&](location_idx_t const x) {
-    return rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
-           rtt->has_td_footpaths_out_[q.prf_idx_].test(x);
-  };
-
   for (auto const& o : offs) {
     auto const o_duration = o.duration();
     for_each_meta(tt, virt_rtt, mode, o.target(), [&](location_idx_t const l) {
@@ -134,39 +127,17 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
         return;
       }
 
-      auto eff_dur = duration_t::max();
-      auto eff_walk = duration_t::max();
-      auto eff_raw = duration_t::max();
-      auto const fp_from = is_boarding ? l : loc;
-      auto const fp_to = is_boarding ? loc : l;
-      if (l != loc && is_td_source(fp_from)) {
-        // td footpaths take precedence
-        for_each_footpath(
-            td_search_dir, rtt->td_footpaths_out_[q.prf_idx_][fp_from], t,
-            [&](location_idx_t const target, duration_t const duration,
-                duration_t const walk) {
-              if (target == fp_to && duration < eff_dur) {
-                eff_dur = duration;
-                eff_walk = walk;
-                eff_raw = walk;
-              }
-            });
-      } else if (auto const raw =
-                     shortest_transfer(tt, rtt, q.prf_idx_, fp_from, fp_to);
-                 raw.has_value()) {
-        eff_dur = adjusted_transfer_time(q.transfer_time_settings_, *raw);
-        eff_walk = eff_dur;
-        eff_raw = *raw;
-      }
-
-      if (eff_dur == duration_t::max()) {
+      auto const fp = get_footpath_duration(
+          tt, rtt, q.prf_idx_, q.transfer_time_settings_, td_search_dir, t,
+          is_boarding ? l : loc, is_boarding ? loc : l);
+      if (!fp.has_value()) {
         return;
       }
-      auto const total = o_duration + eff_dur;
+      auto const total = o_duration + fp->duration_;
       if (total < best_dur) {
         best_dur = total;
-        best_walk = o_duration + eff_walk;
-        best_raw = o_duration + eff_raw;
+        best_walk = o_duration + fp->travel_time_;
+        best_raw = o_duration + fp->raw_;
         best_source = o.target();
       }
     });

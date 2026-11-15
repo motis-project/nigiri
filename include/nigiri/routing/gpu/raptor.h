@@ -111,10 +111,6 @@ private:
     return tt_.internal_interval_days().from_ + to_idx(base_) * date::days{1};
   }
 
-  duration_t get_unadjusted_transfer_time(location_idx_t from,
-                                          location_idx_t to,
-                                          duration_t adjusted) const;
-
   timetable const& tt_;
   rt_timetable const* rtt_;
   gpu_rt_timetable const* gpu_rtt_;

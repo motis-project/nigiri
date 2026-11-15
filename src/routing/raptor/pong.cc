@@ -56,10 +56,6 @@ constexpr auto const kPruneWithPingBounds = true;
 // reporting journeys on the following / previous Monday.
 constexpr auto const kMaxLookAhead = 6_days;
 
-auto to_tuple(journey const& j) {
-  return std::tuple{j.departure_time(), j.arrival_time(), j.transfers_};
-}
-
 std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     timetable const& tt,
     rt_timetable const* rtt,
@@ -77,18 +73,6 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
   auto legs = cursor();
   if (legs.back().arr_time_ > to_dep) {
     return std::nullopt;
-  }
-  // the generator anchors the boarding walk at the transit departure
-  // (latest start) -> shift to the interior transfer convention:
-  // the walk starts at the previous leg's arrival.
-  // A time-dependent footpath may only be usable later (e.g. an elevator out
-  // of service): keep the wait before it, as in the reconstruction.
-  auto const is_td = rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
-                     rtt->has_td_footpaths_out_[q.prf_idx_].test(legs[0].from_);
-  if (!is_td) {
-    auto const walk_duration = legs[0].arr_time_ - legs[0].dep_time_;
-    legs[0].dep_time_ = from_arr;
-    legs[0].arr_time_ = from_arr + walk_duration;
   }
   return std::array{std::move(legs[0]), std::move(legs[1]), std::move(legs[2])};
 }
@@ -347,7 +331,7 @@ routing_result pong(timetable const& tt,
         throw utl::fail(
             "no pong for transfers={}, start_time={} found, journeys={}",
             ping_j.transfers_, ping_j.dest_time_,
-            s_state.results_.els_ | std::views::transform(to_tuple));
+            s_state.results_.els_ | std::views::transform(&journey::criteria));
       }
 
       trace_pong("---- HIT [updating ping start time {} -> {}]\n",
@@ -363,7 +347,7 @@ routing_result pong(timetable const& tt,
       ping_j.start_time_ = match->dest_time_;
     };
     for (auto& ping_j : ping_results) {
-      trace_pong("-- PING RESULT: {}", to_tuple(ping_j));
+      trace_pong("-- PING RESULT: {}", ping_j.criteria());
 
       // A previous pong already found the latest departure for this arrival
       // time and number of transfers: the ping found the same journey again,
@@ -399,10 +383,10 @@ routing_result pong(timetable const& tt,
                       next);
     }
 
-    trace_pong(
-        "AFTER {} [next={}]:\n\t{}", start_time, next,
-        fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),
-                  "\n\t"));
+    trace_pong("AFTER {} [next={}]:\n\t{}", start_time, next,
+               fmt::join(s_state.results_.els_ |
+                             std::views::transform(&journey::criteria),
+                         "\n\t"));
 
     start_time = next;
   }
@@ -425,7 +409,7 @@ routing_result pong(timetable const& tt,
           "beyond_max_lookahead={} {}",
           j.legs_.empty(), !is_validated(j), j.travel_time() >= fastest_direct,
           j.travel_time() > q.max_travel_time_, is_out_of_lookahead,
-          to_tuple(j));
+          j.criteria());
     }
     return erase;
   });
@@ -467,7 +451,8 @@ routing_result pong(timetable const& tt,
   });
 
   trace_pong("RESULT:\n\t{}",
-             fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),
+             fmt::join(s_state.results_.els_ |
+                           std::views::transform(&journey::criteria),
                        "\n\t"));
 
   if constexpr (!kFwd) {
