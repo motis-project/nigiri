@@ -1170,14 +1170,19 @@ TEST(gtfsrt_transfer_rules, start_offset_of_real_time_location_honours_rule) {
 // The first walk of a journey that boards at a real-time virtual location is
 // that location's own, the one the search took: the rule's 30 min to G at S4,
 // not the 2 min to the platform S4 - neither when the journey is reconstructed
-// nor when its walks are shortened afterwards.
+// nor when its walks are shortened afterwards, nor when the ping-pong search
+// rebuilds the middle of G -> M1 -> M2 from a direct connection.
 TEST(gtfsrt_transfer_rules, start_walk_to_real_time_virtual_location) {
-  auto const tt = load_network("S1,S4,2,120,,,,\nS1,S4,2,1800,,,,G");
+  auto const tt = load_network(
+      "S1,S4,2,120,,,,\nS1,S4,2,1800,,,,G",
+      {.stops_ = {{"Y", 50.0, 9.5}, {"Z", 50.0, 10.0}},
+       .trips_ = {{"M1", "RM1", {{"B", "11:10"}, {"Y", "11:30"}}},
+                  {"M2", "RM2", {{"Y", "11:40"}, {"Z", "12:00"}}}}});
   auto rtt = rt::create_rt_timetable(tt, kDay);
   update(tt, rtt, {{"G", {{.seq_ = 1U, .stop_id_ = "S2", .assigned_ = "S4"}}}});
   ASSERT_EQ(1U, rtt.n_rt_locations()) << "precondition";
 
-  auto q = test::exact_query(tt, "S1", "B", at("10:05"));
+  auto q = test::exact_query(tt, "S1", "Z", interval{at("10:00"), at("10:15")});
   q.use_start_footpaths_ = true;
   auto const res = raptor_search(tt, &rtt, std::move(q), direction::kForward);
   ASSERT_EQ(1U, res.size());

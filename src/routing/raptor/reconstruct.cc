@@ -107,13 +107,11 @@ void place_footpaths(timetable const& tt,
                      rt_timetable const* rtt,
                      query const& q,
                      journey& j) {
-  // Footpaths begin at the arrival time of the previous leg (and the via stay
-  // there). A time-dependent footpath may only be usable later: it starts as
-  // soon as it is usable after the arrival.
   auto const vias = count_vias(tt, rtt, q, j);
   for (auto i = 0U; i != j.legs_.size(); ++i) {
     auto& leg = j.legs_[i];
-    if (!std::holds_alternative<footpath>(leg.uses_)) {
+    if (!std::holds_alternative<footpath>(leg.uses_) ||
+        (j.is_reconstructed_ && (i == 0U || i + 1U == j.legs_.size()))) {
       continue;
     }
     auto const is_first = i == 0U;
