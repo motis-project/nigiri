@@ -63,23 +63,6 @@
       q.start_match_mode_ == location_match_mode::kEquivalent,               \
       is_journey_start(tt, q, leg_start_location))
 
-#define trace_rc_intermodal_start_found                                   \
-  trace_reconstruct(                                                      \
-      "    --> start: INTERMODAL DIRECT START -> {}  leg_start_time={}, " \
-      "j_start_time={}, offset={}\n",                                     \
-      loc{tt, o.target()}, leg_start_time, j.start_time_, o.duration())
-
-#define trace_rc_intermodal_no_match                                          \
-  trace_reconstruct(                                                          \
-      "    no start: INTERMODAL DIRECT START -> {}  matches={}, "             \
-      "leg_start_location={}, leg_start_time={}, j_start_time={}, "           \
-      "offset={}\n",                                                          \
-      loc{tt, o.target()},                                                    \
-      matches(tt, rt_virts(rtt, q.prf_idx_), q.start_match_mode_, o.target(), \
-              leg_start_location),                                            \
-      loc{tt, leg_start_location}, leg_start_time, j.start_time_,             \
-      o.duration())
-
 #define trace_rc_fp_start_found                                            \
   trace_reconstruct(                                                       \
       "    --> from={}, j_start={}, journey_start={}, fp_target_time={}, " \
@@ -170,8 +153,6 @@
 #define trace_rc_direct_start_found
 #define trace_rc_direct_start_excluded
 #define trace_rc_checking_start_fp
-#define trace_rc_intermodal_start_found
-#define trace_rc_intermodal_no_match
 #define trace_rc_fp_start_found
 #define trace_rc_fp_start_no_match
 #define trace_rc_transport

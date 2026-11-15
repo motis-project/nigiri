@@ -406,8 +406,10 @@ TEST(routing, td_footpath_lookup_keeps_the_wait) {
 TEST(routing, td_offset_lookup_keeps_the_wait) {
   // The wait for a time-dependent offset is spent at the transport's stop, so
   // the offset leg only covers the walk.
+  auto const tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
   auto const day = sys_days{2024_y / June / 19};
-  auto const l = location_idx_t{42U};
+  auto const l = tt.find(location_id{"B1", source_idx_t{0U}}).value();
   auto const td_offsets =
       routing::td_offsets_t{{l,
                              {{.valid_from_ = sys_days{1970_y / January / 1},
@@ -423,7 +425,7 @@ TEST(routing, td_offset_lookup_keeps_the_wait) {
   // Alighting at 09:00, the offset is usable from 09:25: wait until 09:25,
   // then walk.
   auto const alighting = routing::lookup_offset(
-      l, unixtime_t{day + 9h}, routing::side::kAlighting, {}, td_offsets);
+      tt, l, unixtime_t{day + 9h}, routing::side::kAlighting, {}, td_offsets);
   ASSERT_TRUE(alighting.has_value());
   EXPECT_EQ(l, alighting->from_);
   EXPECT_EQ(get_special_station(special_station::kEnd), alighting->to_);
@@ -434,7 +436,7 @@ TEST(routing, td_offset_lookup_keeps_the_wait) {
   // Boarding at 10:00, the offset is only usable until 09:40: walk until 09:49
   // at the latest, then wait.
   auto const boarding = routing::lookup_offset(
-      l, unixtime_t{day + 10h}, routing::side::kBoarding, {}, td_offsets);
+      tt, l, unixtime_t{day + 10h}, routing::side::kBoarding, {}, td_offsets);
   ASSERT_TRUE(boarding.has_value());
   EXPECT_EQ(get_special_station(special_station::kStart), boarding->from_);
   EXPECT_EQ(l, boarding->to_);
@@ -716,7 +718,7 @@ TEST(routing, td_lookups_wait_beyond_footpath_max_duration) {
                                .duration_ = 10min,
                                .transport_mode_payload_ = 0}}}};
   auto const offset_leg = routing::lookup_offset(
-      B1, unixtime_t{day + 9h}, routing::side::kAlighting, {}, td_offsets);
+      tt, B1, unixtime_t{day + 9h}, routing::side::kAlighting, {}, td_offsets);
   ASSERT_TRUE(offset_leg.has_value());
   EXPECT_EQ(unixtime_t{day + 14h}, offset_leg->dep_time_);
   EXPECT_EQ(unixtime_t{day + 14h + 10min}, offset_leg->arr_time_);

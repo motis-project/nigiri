@@ -20,7 +20,8 @@ namespace routing {
 
 enum class side { kBoarding, kAlighting };
 
-std::optional<journey::leg> lookup_offset(location_idx_t,
+std::optional<journey::leg> lookup_offset(timetable const&,
+                                          location_idx_t,
                                           unixtime_t,
                                           side,
                                           std::vector<offset> const&,

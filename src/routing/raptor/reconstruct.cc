@@ -203,53 +203,15 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
   if (q.start_match_mode_ == location_match_mode::kIntermodal) {
     trace_reconstruct("  intermodal start mode\n");
-
-    for (auto const& o : q.start_) {
-      if (matches(tt, nullptr, q.start_match_mode_, o.target(),
-                  static_leg_start) &&
-          is_better_or_eq(j.start_time_, leg_start_time - dir(o.duration()))) {
-        trace_rc_intermodal_start_found;
-        return journey::leg{
-            SearchDir,          get_special_station(special_station::kStart),
-            leg_start_location, leg_start_time - dir(o.duration()),
-            leg_start_time,     o};
-      } else {
-        trace_rc_intermodal_no_match;
-      }
-    }
-
-    if (auto const it = q.td_start_.find(static_leg_start);
-        it != end(q.td_start_)) {
-      auto const fp =
-          get_td_duration<flip(SearchDir)>(it->second, leg_start_time);
-      if (fp.has_value() &&
-          is_better_or_eq(j.start_time_, leg_start_time - dir(fp->first))) {
-        return journey::leg{SearchDir,
-                            get_special_station(special_station::kStart),
-                            leg_start_location,
-                            leg_start_time - dir(fp->first),
-                            leg_start_time,
-                            offset{it->first, fp->first, fp->second.mode()}};
-      } else {
-#ifdef NIGIRI_TRACE_RECONSTRUCT
-        for (auto const& x : it->second) {
-          trace_reconstruct("    td_start {}: {}\n", x.valid_from_,
-                            x.duration());
-        }
-#endif
-        trace_reconstruct(
-            "  excluded td journey start at leg_start_location={}: "
-            "search_dir={}, leg_start_time={}, duration={}, start={}, "
-            "journey_start={}\n",
-            to_str(flip(SearchDir)), loc{tt, leg_start_location},
-            leg_start_time, fp.has_value() ? fp->first : kTdFootpathBan,
-            fp.has_value() ? leg_start_time - dir(fp->first)
-                           : unixtime_t{0_minutes},
-            j.start_time_);
-      }
-    } else {
-      trace_reconstruct("  no td start found for location: {}\n",
-                        loc{tt, leg_start_location});
+    auto const o = get_offset_duration(tt, flip(SearchDir), leg_start_time,
+                                       rt::base(tt, rtt, leg_start_location),
+                                       q.start_, q.td_start_);
+    if (o.has_value() &&
+        is_better_or_eq(j.start_time_, leg_start_time - dir(o->duration()))) {
+      return journey::leg{
+          SearchDir,          get_special_station(special_station::kStart),
+          leg_start_location, leg_start_time - dir(o->duration()),
+          leg_start_time,     o->offset_};
     }
   } else {
     trace_reconstruct("  direct start mode\n");

@@ -24,53 +24,35 @@
 
 namespace nigiri::routing {
 
-std::optional<journey::leg> lookup_offset(location_idx_t const loc,
+std::optional<journey::leg> lookup_offset(timetable const& tt,
+                                          location_idx_t const loc,
                                           unixtime_t const t,
                                           side const s,
                                           std::vector<offset> const& offsets,
                                           td_offsets_t const& td_offsets) {
   auto const is_boarding = s == side::kBoarding;
-  auto const td_search_dir =
-      is_boarding ? direction::kBackward : direction::kForward;
+  auto const o = get_offset_duration(
+      tt, is_boarding ? direction::kBackward : direction::kForward, t, loc,
+      offsets, td_offsets);
+  if (!o.has_value()) {
+    return std::nullopt;
+  }
 
-  // dur includes waiting for a time-dependent offset to become usable (e.g.
-  // an elevator out of service), walk does not.
   // The waiting time is spent at a stop (boarding: after the walk,
   // alighting: before the walk).
-  auto const make_leg = [&](duration_t const dur, duration_t const walk,
-                            transport_mode_t const mode) {
-    auto const boundary = get_special_station(
-        is_boarding ? special_station::kStart : special_station::kEnd);
-    auto const dep = is_boarding ? t - dur : t + dur - walk;
-    auto const arr = is_boarding ? t - dur + walk : t + dur;
-    auto const from = is_boarding ? boundary : loc;
-    auto const to = is_boarding ? loc : boundary;
-    return journey::leg{direction::kForward,    from, to, dep, arr,
-                        offset{loc, walk, mode}};
-  };
-
-  // Time-dependend offsets take precedence.
-  if (auto const it = td_offsets.find(loc); it != end(td_offsets)) {
-    auto const td = get_td_duration(td_search_dir, it->second, t);
-    if (!td.has_value()) {
-      return std::nullopt;
-    }
-    return std::optional{
-        make_leg(td->first, td->second.duration(), td->second.mode())};
-  }
-
-  // Search for shortest offset, assuming offsets are sorted ASC
-  auto best = std::optional<offset>{};
-  for (auto const& o : offsets) {
-    if (o.target() == loc) {
-      best = o;
-      break;
-    }
-  }
-
-  return best.transform([&](offset const& o) {
-    return make_leg(o.duration(), o.duration(), o.mode());
-  });
+  auto const dur = o->duration();
+  auto const walk = o->offset_.duration();
+  auto const target = o->offset_.target();
+  auto const boundary = get_special_station(
+      is_boarding ? special_station::kStart : special_station::kEnd);
+  auto const dep = is_boarding ? t - dur : t + dur - walk;
+  auto const arr = is_boarding ? t - dur + walk : t + dur;
+  return journey::leg{direction::kForward,
+                      is_boarding ? boundary : target,
+                      is_boarding ? target : boundary,
+                      dep,
+                      arr,
+                      o->offset_};
 }
 
 std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
@@ -165,31 +147,13 @@ std::optional<journey::leg> lookup_access(query const& q,
                                           location_idx_t const loc,
                                           unixtime_t const t,
                                           side const s) {
-  auto const virt_rtt = rt_virts(rtt, q.prf_idx_);
   auto const is_boarding = s == side::kBoarding;
   auto const& offs = is_boarding ? q.start_ : q.destination_;
   auto const& td_offs = is_boarding ? q.td_start_ : q.td_dest_;
   auto const mode = is_boarding ? q.start_match_mode_ : q.dest_match_mode_;
 
   if (mode == location_match_mode::kIntermodal) {
-    auto best = std::optional<journey::leg>{};
-    auto const parent = to_idx(loc) < tt.n_locations()
-                            ? tt.locations_.parents_[loc]
-                            : rtt->base(loc);
-    for (auto const l : {loc, parent}) {
-      if (l == location_idx_t::invalid() ||
-          !matches(tt, virt_rtt, mode, l, loc)) {
-        continue;
-      }
-      auto const leg = lookup_offset(l, t, s, offs, td_offs);
-      if (leg.has_value() &&
-          (!best.has_value() ||
-           (is_boarding ? leg->dep_time_ > best->dep_time_
-                        : leg->arr_time_ < best->arr_time_))) {
-        best = leg;
-      }
-    }
-    return best;
+    return lookup_offset(tt, rt::base(tt, rtt, loc), t, s, offs, td_offs);
   }
 
   auto const use_footpaths = is_boarding ? q.use_start_footpaths_ : true;
@@ -662,6 +626,7 @@ void enrich_with_slow_direct(timetable const& tt,
       j.legs_.push_back(std::move(leg));
     }
     j.dest_ = j.legs_.back().to_;
+    j.is_reconstructed_ = true;
 
     if (j.travel_time() < shortest_duration) {
       shortest_duration = j.travel_time();

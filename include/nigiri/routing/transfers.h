@@ -6,6 +6,8 @@
 #include <span>
 
 #include "nigiri/footpath.h"
+#include "nigiri/for_each_meta.h"
+#include "nigiri/routing/query.h"
 #include "nigiri/routing/search_location.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -115,6 +117,46 @@ inline std::optional<footpath_duration> get_footpath_duration(
   }
   auto const d = adjusted_transfer_time(settings, *raw);
   return footpath_duration{d, d, *raw};
+}
+
+struct offset_duration {
+  duration_t duration() const { return offset_.duration() + wait_; }
+
+  offset offset_;
+  duration_t wait_;
+};
+
+inline std::optional<offset_duration> get_offset_duration(
+    timetable const& tt,
+    direction const dir,
+    unixtime_t const t,
+    location_idx_t const l,
+    std::vector<offset> const& offsets,
+    td_offsets_t const& td_offsets) {
+  auto best = std::optional<offset_duration>{};
+  auto const update = [&](offset_duration const& o) {
+    if (!best.has_value() || o.duration() < best->duration()) {
+      best = o;
+    }
+  };
+  for (auto const target : {l, tt.locations_.parents_[l]}) {
+    if (target == location_idx_t::invalid() ||
+        !matches(tt, nullptr, location_match_mode::kIntermodal, target, l)) {
+      continue;
+    }
+    for (auto const& o : offsets) {
+      if (o.target() == target) {
+        update({o, duration_t{0}});
+      }
+    }
+    if (auto const it = td_offsets.find(target); it != end(td_offsets)) {
+      if (auto const td = get_td_duration(dir, it->second, t); td.has_value()) {
+        update({offset{target, td->second.duration(), td->second.mode()},
+                td->first - td->second.duration()});
+      }
+    }
+  }
+  return best;
 }
 
 }  // namespace nigiri::routing
