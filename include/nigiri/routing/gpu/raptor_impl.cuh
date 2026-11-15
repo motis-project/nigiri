@@ -772,7 +772,7 @@ struct raptor_impl {
         if (tmp_time != kInvalid) {
           bc = tmp_.get_bc(0U, l, Vias);
 
-          // same-station transfer (former update_transfers)
+          // same-station transfer
           auto const stop = intermodal ? l : base_location(l);
           auto const is_dest_arrival = !intermodal && is_dest_[to_idx(stop)];
           if (is_dest_arrival) {
@@ -792,7 +792,7 @@ struct raptor_impl {
                 tmp_time, bc, t_at_dest);
           }
 
-          // intermodal egress (former update_intermodal_footpaths)
+          // intermodal egress
           if (intermodal && dist_to_end_[my_i] != kUnreachable) {
             auto const end_time = clamp(tmp_time + dir(dist_to_end_[my_i]));
             if (is_better_loose(end_time, t_at_dest)) {
