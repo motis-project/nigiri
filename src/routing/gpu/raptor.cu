@@ -33,6 +33,7 @@
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
+#include "nigiri/routing/direct.h"
 #include "nigiri/routing/gpu/cuda_check.cuh"
 #include "nigiri/routing/gpu/device_buffer.cuh"
 #include "nigiri/routing/gpu/device_timetable.cuh"
@@ -1284,36 +1285,16 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
     auto const direct_start_ok =
         is_fwd ? j.start_time_ <= start_t : j.start_time_ >= start_t;
     if (!routing::is_journey_start(tt_, q, start_l) || !direct_start_ok) {
-      auto best = std::optional<footpath>{};
-      for (auto const fp : get_transfers<flip(SearchDir)>(tt_, rtt_, q.prf_idx_,
-                                                          search_start_l)) {
-        // A walk leaves a start stop from the stop (see get_starts).
-        auto const src = fp.target();
-        if ((!best.has_value() || fp.duration() < best->duration()) &&
-            to_idx(src) < tt_.n_locations() &&
-            routing::is_journey_start(tt_, q, src) &&
-            !(tt_.locations_.is_virt(src) &&
-              routing::is_journey_start(tt_, q, tt_.base(src)))) {
-          best = fp;
-        }
+      auto fp = lookup_footpath(
+          search_start_l, start_t, is_fwd ? event_type::kDep : event_type::kArr,
+          tt_, rtt_, q, q.start_, q.start_match_mode_, q.use_start_footpaths_);
+      if (fp.has_value() && is_fwd) {
+        fp->arr_time_ = j.start_time_ + (fp->arr_time_ - fp->dep_time_);
+        fp->dep_time_ = j.start_time_;
       }
-      if (best.has_value()) {
-        auto const dur = duration_t{adjusted_transfer_time(
-            q.transfer_time_settings_, best->duration().count())};
-        auto const fp_arr = j.start_time_ + (is_fwd ? dur : -dur);
-        if (is_fwd ? fp_arr <= start_t : fp_arr >= start_t) {
-          auto lg = journey::leg{
-              SearchDir,      best->target(),
-              search_start_l, j.start_time_,
-              fp_arr,         footpath{best->target(), best->duration()}};
-          if (is_fwd) {
-            j.legs_.insert(begin(j.legs_), lg);
-          } else {
-            lg.dep_time_ = j.legs_.back().arr_time_;
-            lg.arr_time_ = lg.dep_time_ + dur;
-            j.legs_.push_back(lg);
-          }
-        }
+      if (fp.has_value() &&
+          fp->arr_time_ <= (is_fwd ? start_t : j.start_time_)) {
+        j.legs_.insert(is_fwd ? begin(j.legs_) : end(j.legs_), *fp);
       }
     }
   }

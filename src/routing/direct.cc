@@ -101,7 +101,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
         best_dur = total;
         best_walk = o_duration + fp->travel_time_;
         best_raw = o_duration + fp->raw_;
-        best_source = o.target();
+        best_source = l;
       }
     });
   }
@@ -114,8 +114,8 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
   // after the walk when boarding, before it when alighting.
   auto const dep = is_boarding ? t - best_dur : t + best_dur - best_walk;
   auto const arr = is_boarding ? t - best_dur + best_walk : t + best_dur;
-  auto const from = rt::base(tt, rtt, is_boarding ? best_source : loc);
-  auto const to = rt::base(tt, rtt, is_boarding ? loc : best_source);
+  auto const from = is_boarding ? best_source : loc;
+  auto const to = is_boarding ? loc : best_source;
   return journey::leg{direction::kForward,   from, to, dep, arr,
                       footpath{to, best_raw}};
 }
