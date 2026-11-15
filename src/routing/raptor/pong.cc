@@ -446,8 +446,8 @@ routing_result pong(timetable const& tt,
   enrich_with_slow_direct<SearchDir>(tt, rtt, q, iv, s_state.results_);
 
   utl::sort(s_state.results_, [](journey const& a, journey const& b) {
-    return std::tuple{a.start_time_, a.transfers_} <
-           std::tuple{b.start_time_, b.transfers_};
+    return std::tie(a.start_time_, a.transfers_, a) <
+           std::tie(b.start_time_, b.transfers_, b);
   });
 
   trace_pong("RESULT:\n\t{}",
