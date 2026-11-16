@@ -1,8 +1,8 @@
 #pragma once
 
 #include <cassert>
-#include <algorithm>
 #include <cstdlib>
+#include <algorithm>
 #include <limits>
 #include <span>
 #include <vector>
@@ -844,7 +844,7 @@ private:
             if (bound_prunes(k, static_cast<std::uint32_t>(i),
                              fp_target_time)) {
               ++stats_.fp_update_prevented_by_lower_bound_;
-              continue;
+              return;
             }
 
             ++stats_.n_earliest_arrival_updated_by_footpath_;

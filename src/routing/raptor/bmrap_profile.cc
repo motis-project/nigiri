@@ -153,30 +153,24 @@ routing_result bmrap_profile(
 
   auto fwd_is_dest = bitvec{};
   auto fwd_dist = std::vector<std::uint16_t>{};
-  collect_destinations(tt, q.destination_, q.dest_match_mode_, fwd_is_dest,
+  collect_destinations(tt, rtt, q.destination_, q.dest_match_mode_, fwd_is_dest,
                        fwd_dist);
   auto qf = q;
   qf.flip_dir();
   auto bwd_is_dest = bitvec{};
   auto bwd_dist = std::vector<std::uint16_t>{};
-  collect_destinations(tt, qf.destination_, qf.dest_match_mode_, bwd_is_dest,
-                       bwd_dist);
+  collect_destinations(tt, rtt, qf.destination_, qf.dest_match_mode_,
+                       bwd_is_dest, bwd_dist);
 
   auto fwd_lb = std::vector<std::uint16_t>{};
   auto bwd_lb = std::vector<std::uint16_t>{};
   auto lb_time = clk::duration{};
   auto sw = stopwatch{};
   if constexpr (ping_t::kUseLowerBounds || bounded_needs_lb<mc_ping_t>()) {
-    dijkstra(tt, q,
-             (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
-                   : tt.bwd_search_lb_graph_[q.prf_idx_]),
-             nullptr, nullptr, fwd_lb);
+    dijkstra(tt, nullptr, q, SearchDir, fwd_lb);
   }
   if constexpr (bounded_needs_lb<pong_t>() || bounded_needs_lb<mc_pong_t>()) {
-    dijkstra(tt, qf,
-             (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
-                   : tt.fwd_search_lb_graph_[q.prf_idx_]),
-             nullptr, nullptr, bwd_lb);
+    dijkstra(tt, nullptr, qf, flip(SearchDir), bwd_lb);
   }
   sw.lap(lb_time);
   auto ms_setup = clk::duration{};

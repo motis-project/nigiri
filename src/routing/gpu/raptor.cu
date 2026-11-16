@@ -30,8 +30,8 @@
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/timer.h"
-#include "utl/visit.h"
 #include "utl/verify.h"
+#include "utl/visit.h"
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
@@ -622,6 +622,8 @@ __global__ void reach_bounds_kernel(device_times<SearchDir, 1U> round_times,
                                     std::uint32_t const n_locations,
                                     unsigned const budget,
                                     bool const sub_transfer) {
+  constexpr auto kFwd = SearchDir == direction::kForward;
+  constexpr auto kInvalid = kInvalidDelta<SearchDir>;
   for (auto l = get_global_thread_id(); l < n_locations;
        l += get_global_stride()) {
     auto const li = location_idx_t{l};

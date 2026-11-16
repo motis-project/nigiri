@@ -36,6 +36,12 @@
 
 namespace nigiri::routing::bmrap_detail {
 
+// incl. rt virtual locations
+inline std::uint32_t n_search_locations(timetable const& tt,
+                                        rt_timetable const* rtt) {
+  return rtt == nullptr ? tt.n_locations() : rtt->n_locations();
+}
+
 constexpr auto const kVias = via_offset_t{0U};
 
 inline std::array<unixtime_t, kMaxTransfers + 2U> all_rounds(
@@ -288,15 +294,16 @@ std::size_t close_anchor_profile_impl(
   qf.flip_dir();
   auto fwd_is_dest = bitvec{};
   auto fwd_dist = std::vector<std::uint16_t>{};
-  collect_destinations(tt, q.destination_, q.dest_match_mode_, fwd_is_dest,
+  collect_destinations(tt, rtt, q.destination_, q.dest_match_mode_, fwd_is_dest,
                        fwd_dist);
   auto bwd_is_dest = bitvec{};
   auto bwd_dist = std::vector<std::uint16_t>{};
-  collect_destinations(tt, qf.destination_, qf.dest_match_mode_, bwd_is_dest,
-                       bwd_dist);
+  collect_destinations(tt, rtt, qf.destination_, qf.dest_match_mode_,
+                       bwd_is_dest, bwd_dist);
   auto is_via = std::array<bitvec, kMaxVias>{};
   auto no_via = std::vector<via_stop>{};
-  auto lb = std::vector<std::uint16_t>(tt.n_locations(), std::uint16_t{0U});
+  auto lb = std::vector<std::uint16_t>(n_search_locations(tt, rtt),
+                                       std::uint16_t{0U});
   auto const make = [&]<typename Algo>(bitvec& is_dest,
                                        std::vector<std::uint16_t>& dist,
                                        auto const& td_dest) {
@@ -429,9 +436,11 @@ bmrap_bounds reach_matrix(timetable const& tt,
     auto const round_times =
         static_cast<AlgoState const&>(state).template get_round_times<kVias>();
     auto bounds = bmrap_bounds{};
-    bounds.resize(tt.n_locations(), budget, kInvalid);
+    // incl. rt virtual locations
+    auto const n_locations = static_cast<AlgoState const&>(state).n_locations_;
+    bounds.resize(n_locations, budget, kInvalid);
     for (auto i = 0U; i <= budget; ++i) {
-      for (auto l = 0U; l != tt.n_locations(); ++l) {
+      for (auto l = 0U; l != n_locations; ++l) {
         auto const cur = round_times[i][l][kVias];
         auto const prev_out = (i == 0U) ? kInvalid : bounds.at(i - 1U, l);
         if (cur == kInvalid && prev_out == kInvalid) {
@@ -509,12 +518,13 @@ bmrap_bounds compute_bounds(timetable const& tt,
   }
   runs = std::move(reduced);
 
-  auto is_dest = bitvec{tt.n_locations()};
+  auto is_dest = bitvec{n_search_locations(tt, rtt)};
   auto is_via = std::array<bitvec, kMaxVias>{};
   auto dist_to_dest = std::vector<std::uint16_t>{};
   auto td_dist_to_dest = hash_map<location_idx_t, std::vector<td_offset>>{};
   auto via_stops = std::vector<via_stop>{};
-  auto lb = std::vector<std::uint16_t>(tt.n_locations(), std::uint16_t{0U});
+  auto lb = std::vector<std::uint16_t>(n_search_locations(tt, rtt),
+                                       std::uint16_t{0U});
 
   auto r = typename bmrap_prune_algo_for<kPruneDir, Rt, AlgoState>::type{
       tt,
