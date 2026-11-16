@@ -194,15 +194,17 @@ struct mcraptor_impl {
     return a_key <= b_key && crit_le(a_extras, b_extras);
   }
 
-  // label v rejects a candidate (by-route ones only by by-route labels)
+  // label v rejects a candidate (by-route ones only by by-route labels);
+  // separate: the same-stop transfer is banned, the kinds do not compare
   __device__ __forceinline__ static bool rejects(mc_label_t const raw,
                                                  std::uint32_t const arr_key,
                                                  std::uint32_t const extras,
                                                  std::uint32_t const round,
-                                                 bool const by_route) {
+                                                 bool const by_route,
+                                                 bool const separate) {
     auto const v = mc_label::of(raw);
     return raw != kMcEmptySlot && v.round_ <= round &&
-           (!by_route || v.by_route_) &&
+           (separate ? v.by_route_ == by_route : !by_route || v.by_route_) &&
            dominates(v.arr_key_, v.extras_, arr_key, extras);
   }
   // a candidate evicts label v (by-transfer ones only by-transfer labels)
@@ -210,10 +212,11 @@ struct mcraptor_impl {
                                                 std::uint32_t const arr_key,
                                                 std::uint32_t const extras,
                                                 std::uint32_t const round,
-                                                bool const by_route) {
+                                                bool const by_route,
+                                                bool const separate) {
     auto const v = mc_label::of(raw);
     return raw != kMcEmptySlot && v.round_ >= round &&
-           (by_route || !v.by_route_) &&
+           (separate ? v.by_route_ == by_route : by_route || !v.by_route_) &&
            dominates(arr_key, extras, v.arr_key_, v.extras_);
   }
 
@@ -278,12 +281,13 @@ struct mcraptor_impl {
                              std::uint32_t const round,
                              bool const by_route,
                              mc_breadcrumb const* const breadcrumb) {
+    auto const separate = no_transfer(l);
     // Lock-free reject pre-scan (most candidates are dominated): a stale label
     // was evicted by one that dominates the candidate too.
     {
       auto pre = bag_slots(l);
       for (auto i = 0U; i != pre.size(); ++i) {
-        if (rejects(pre[i], arr_key, extras, round, by_route)) {
+        if (rejects(pre[i], arr_key, extras, round, by_route, separate)) {
           return false;
         }
       }
@@ -294,10 +298,10 @@ struct mcraptor_impl {
       auto free_slot = kMcInvalid;
       for (auto i = 0U; i != n_slots; ++i) {
         auto& v = *bag.slot(i);
-        if (rejects(v, arr_key, extras, round, by_route)) {
+        if (rejects(v, arr_key, extras, round, by_route, separate)) {
           return false;
         }
-        if (evicts(v, arr_key, extras, round, by_route)) {
+        if (evicts(v, arr_key, extras, round, by_route, separate)) {
           v = kMcEmptySlot;
         }
         if (v == kMcEmptySlot && free_slot == kMcInvalid) {
@@ -479,7 +483,7 @@ struct mcraptor_impl {
       }
       auto const my_i = w * kWarpSize + lane;
       auto n = 0U;
-      if (((bits >> lane) & 1U) != 0U) {
+      if (((bits >> lane) & 1U) != 0U && my_i < lists.size()) {
         auto const list = lists[location_idx_t{my_i}];
         n = static_cast<unsigned>(list.size());
         if (n != 0U && !*any_marked_) {
@@ -529,12 +533,31 @@ struct mcraptor_impl {
 
   // ---- route scan (CPU update_route) ---------------------------------------
 
+  // a virt's (incl. rt virt's) stop, as rt::base()
+  __device__ __forceinline__ std::uint32_t base_of(
+      std::uint32_t const l) const {
+    return l < tt_.n_static_locations_ ? to_idx(tt_.base_[location_idx_t{l}])
+                                       : to_idx(rtt_.rt_base_[rt_location_idx_t{
+                                             l - tt_.n_static_locations_}]);
+  }
+  __device__ __forceinline__ int transfer_time(std::uint32_t const l) const {
+    return tt_
+        .transfer_time_[location_idx_t{
+            l < tt_.n_static_locations_ ? l : base_of(l)}]
+        .count();
+  }
+  // transfer rules ban the same-stop transfer: arrivals by transport only walk
+  __device__ __forceinline__ bool no_transfer(std::uint32_t const l) const {
+    return transfer_time(l) == static_cast<int>(kNoTransferAllowed.count());
+  }
+
+  // 0 at a non-intermodal destination (or a virt of it) and where the
+  // same-stop transfer is banned (those labels do not board)
   __device__ __forceinline__ int transfer_buffer(std::uint32_t const l) const {
-    return (!is_intermodal_dest() && is_dest_[l])
+    return (!is_intermodal_dest() && is_dest_[base_of(l)]) || no_transfer(l)
                ? 0
-               : dir(adjusted_transfer_time(
-                     transfer_time_settings_,
-                     tt_.transfer_time_[location_idx_t{l}].count()));
+               : dir(adjusted_transfer_time(transfer_time_settings_,
+                                            transfer_time(l)));
   }
 
   __device__ __forceinline__ bool is_intermodal_dest() const {
@@ -565,8 +588,15 @@ struct mcraptor_impl {
     }
     touched_.mark(l_idx);
     station_mark_.mark(l_idx);
-    // no buffer at a station destination
-    if (is_dest_[l_idx]) {
+    // no buffer at a station destination; a virt arrives at its base
+    auto const dest_l = is_intermodal_dest() ? l_idx : base_of(l_idx);
+    if (is_dest_[dest_l]) {
+      if (dest_l != l_idx) {
+        breadcrumb.arr_ = by_transport;
+        if (bag_insert(dest_l, ride_key, ride_extras, k, false, &breadcrumb)) {
+          touched_.mark(dest_l);
+        }
+      }
       dest_bag_add(k, ride_key, ride_extras);
     }
     return true;
@@ -757,6 +787,7 @@ struct mcraptor_impl {
     auto const stop_seq = tt_.route_location_seq_[r];
     auto const l = to_idx(stop{stop_seq[stop_idx]}.location_idx());
     auto const l_lb = lb_[l];
+    auto const banned = no_transfer(l);
     // the earliest trip is monotone in the arrival (FIFO): a lookup holds for
     // the same arrival and while its trip is still catchable
     auto et = transport{};
@@ -768,9 +799,11 @@ struct mcraptor_impl {
       auto const lab = mc_label::of(raw);
       auto const key = static_cast<std::uint32_t>(lab.arr_key_);
       auto const ex = kHasExtras ? static_cast<std::uint32_t>(lab.extras_) : 0U;
-      // not of the last round, or even the optimistic completion is dominated
+      // not of the last round, banned from boarding, or even the optimistic
+      // completion is dominated
       if (raw == kMcEmptySlot || lab.round_ != k - 1U ||
-          lab.breadcrumb_ == kMcDemoted || dest_dominates(k, key + l_lb, ex)) {
+          lab.breadcrumb_ == kMcDemoted || (lab.by_route_ && banned) ||
+          dest_dominates(k, key + l_lb, ex)) {
         continue;
       }
       if (key != et_key && !(et_key <= key && key <= et_dep_key)) {
@@ -1130,6 +1163,7 @@ struct mcraptor_impl {
       return true;
     }
     auto const dep_key = to_key(rt_time_at_stop(rt_t, stop_idx, kDepEv));
+    auto const banned = no_transfer(l);
     auto labels = bag_slots(l);
     for (auto sl = 0U; sl != labels.size(); ++sl) {
       auto const raw = labels[sl];
@@ -1140,7 +1174,7 @@ struct mcraptor_impl {
       // completion is dominated
       if (raw == kMcEmptySlot || lab.round_ != k - 1U ||
           lab.breadcrumb_ == kMcDemoted || key > dep_key ||
-          dest_dominates(k, key + l_lb, ex)) {
+          (lab.by_route_ && banned) || dest_dominates(k, key + l_lb, ex)) {
         continue;
       }
       if (!bag.add(0U, lab.breadcrumb_,
@@ -1308,9 +1342,21 @@ struct mcraptor_impl {
     return rtt_.has_td_fps(prf_idx_, l, out);
   }
 
+  // rt virts have none
+  __device__ __forceinline__ bool has_static_fps(location_idx_t const l) const {
+    return to_idx(l) <
+           (kFwd ? tt_.footpaths_out_ : tt_.footpaths_in_)[prf_idx_].size();
+  }
   __device__ __forceinline__ auto static_fps(location_idx_t const l) const {
-    return kFwd ? tt_.footpaths_out_[prf_idx_][l]
-                : tt_.footpaths_in_[prf_idx_][l];
+    auto const x = has_static_fps(l) ? l : location_idx_t{0U};
+    return kFwd ? tt_.footpaths_out_[prf_idx_][x]
+                : tt_.footpaths_in_[prf_idx_][x];
+  }
+  // between locations of one stop (virts) a footpath is a transfer, no walk
+  __device__ __forceinline__ std::uint32_t walk(std::uint32_t const from,
+                                                std::uint32_t const to,
+                                                int const dur) const {
+    return base_of(from) == base_of(to) ? 0U : static_cast<std::uint32_t>(dur);
   }
 
   // Egress and footpaths from stop i's round-k by-route arrivals. The static
@@ -1325,8 +1371,9 @@ struct mcraptor_impl {
     // sources with td footpaths (skipped below)
     auto const use_td_fps = has_td_fps(l, kFwd);
     auto const fps = static_fps(l);
-    auto const n_fps =
-        kFwd && use_td_fps ? 0U : static_cast<unsigned>(fps.size());
+    auto const n_fps = (kFwd && use_td_fps) || !has_static_fps(l)
+                           ? 0U
+                           : static_cast<unsigned>(fps.size());
     auto const egress_ok =
         is_intermodal_dest() && dist_to_end_[i] != kUnreachable;
     auto const td_grp = is_intermodal_dest() ? td_dest_group_of(l) : kMcInvalid;
@@ -1390,8 +1437,8 @@ struct mcraptor_impl {
         }
         auto const dur = adjusted_transfer_time(transfer_time_settings_,
                                                 fps[f].duration().count());
-        relax_fp(k, i, to_idx(fps[f].target()), dur,
-                 static_cast<std::uint32_t>(dur), te_arr, te_extras,
+        auto const target = static_cast<std::uint32_t>(to_idx(fps[f].target()));
+        relax_fp(k, i, target, dur, walk(i, target, dur), te_arr, te_extras,
                  te_breadcrumb);
       }
     }
@@ -1418,6 +1465,7 @@ struct mcraptor_impl {
       auto const i = w * kWarpSize + lane;
       auto const mine = ((bits >> lane) & 1U) != 0U && bag_n_slots_[i] != 0U;
       auto const hub = mine && !has_td_fps(location_idx_t{i}, kFwd) &&
+                       has_static_fps(location_idx_t{i}) &&
                        static_fps(location_idx_t{i}).size() > kWarpFpThreshold;
       if (mine && !hub) {
         relax_stop(k, i, 0U, 1U);
@@ -1425,6 +1473,35 @@ struct mcraptor_impl {
       for_each_set_bit(__ballot_sync(kAllLanes, hub), [&](unsigned const b) {
         relax_stop(k, w * kWarpSize + b, lane, kWarpSize);
       });
+    }
+
+    // rt footpaths (rt virts): a flat list, all at once (as raptor_impl)
+    for (auto x = get_global_thread_id(); x < rtt_.rt_footpaths_.size();
+         x += get_global_stride()) {
+      auto const& e = rtt_.rt_footpaths_[x];
+      auto const src =
+          static_cast<std::uint32_t>(to_idx(kFwd ? e.from_ : e.fp_.target()));
+      auto const dst =
+          static_cast<std::uint32_t>(to_idx(kFwd ? e.fp_.target() : e.from_));
+      if (!prev_station_mark_[src]) {
+        continue;
+      }
+      auto const buf = transfer_buffer(src);
+      auto const dur = adjusted_transfer_time(transfer_time_settings_,
+                                              e.fp_.duration().count());
+      auto labels = bag_slots(src);
+      for (auto sl = 0U; sl != labels.size(); ++sl) {
+        auto const raw = labels[sl];
+        auto const lab = mc_label::of(raw);
+        if (raw == kMcEmptySlot || lab.round_ != k || !lab.by_route_ ||
+            lab.breadcrumb_ == kMcDemoted) {
+          continue;
+        }
+        relax_fp(k, src, dst, dur, walk(src, dst, dur),
+                 clamp(from_key(lab.arr_key_) - buf),
+                 kHasExtras ? static_cast<std::uint32_t>(lab.extras_) : 0U,
+                 static_cast<std::uint32_t>(lab.breadcrumb_));
+      }
     }
   }
 

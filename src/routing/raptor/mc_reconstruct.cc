@@ -9,6 +9,7 @@
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/reconstruct.h"
+#include "nigiri/routing/search_location.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/special_stations.h"
@@ -20,6 +21,7 @@ namespace nigiri::routing {
 template <direction SearchDir>
 void mc_add_legs(timetable const& tt,
                  rt_timetable const* rtt,
+                 profile_idx_t const prf_idx,
                  day_idx_t const base_day,
                  bool const is_intermodal_dest,
                  std::span<mc_breadcrumb const> chain,
@@ -60,15 +62,18 @@ void mc_add_legs(timetable const& tt,
     auto board_loc = location_idx_t::invalid();
     auto alight_loc = location_idx_t::invalid();
     auto run = rt::run{};
-    auto const set_stops = [&](auto const stop_seq) {
-      board_loc = stop{stop_seq[bc.board_]}.location_idx();
-      alight_loc = stop{stop_seq[bc.alight_]}.location_idx();
+    auto const set_stops = [&](auto const stop_seq, auto&& location_of) {
+      board_loc = location_of(bc.board_);
+      alight_loc = location_of(bc.alight_);
       run.stop_range_ = interval<stop_idx_t>{
           stop_idx_t{0U}, static_cast<stop_idx_t>(stop_seq.size())};
     };
     if (bc.day_ == day_idx_t::invalid()) {
       auto const rt_t = rt_transport_idx_t{bc.transport_};
-      set_stops(rtt->rt_transport_location_seq_[rt_t]);
+      // the locations searched: rt virts (search_location)
+      set_stops(rtt->rt_transport_location_seq_[rt_t], [&](stop_idx_t const i) {
+        return search_location(*rtt, prf_idx, rt_t, i);
+      });
       train_arr = rt_time_at_stop(rt_t, bc.alight_, kArrEv);
       dep_at_board = rt_time_at_stop(rt_t, bc.board_, kDepEv);
       run.t_ = rtt->resolve_static(rt_t);
@@ -76,7 +81,9 @@ void mc_add_legs(timetable const& tt,
     } else {
       auto const t = transport{transport_idx_t{bc.transport_}, bc.day_};
       auto const r = tt.transport_route_[t.t_idx_];
-      set_stops(tt.route_location_seq_[r]);
+      auto const seq = tt.route_location_seq_[r];
+      set_stops(
+          seq, [&](stop_idx_t const i) { return stop{seq[i]}.location_idx(); });
       train_arr = time_at_stop(r, t, bc.alight_, kArrEv);
       dep_at_board = time_at_stop(r, t, bc.board_, kDepEv);
       run.t_ = t;
@@ -85,7 +92,7 @@ void mc_add_legs(timetable const& tt,
     if (is_intermodal_dest && cur_l == kIntermodalTarget) {
       // the last mile is added by mc_reconstruct_offsets
       j.dest_ = alight_loc;
-    } else if (!j.legs_.empty() || alight_loc != cur_l ||
+    } else if (!j.legs_.empty() || rt::base(tt, rtt, alight_loc) != cur_l ||
                train_arr != cur_arr) {
       // footpaths are always emitted, even zero-minute transfers
       j.legs_.emplace_back(journey::leg{
@@ -136,12 +143,14 @@ void mc_reconstruct_offsets(timetable const& tt,
 
 template void mc_add_legs<direction::kForward>(timetable const&,
                                                rt_timetable const*,
+                                               profile_idx_t,
                                                day_idx_t,
                                                bool,
                                                std::span<mc_breadcrumb const>,
                                                journey&);
 template void mc_add_legs<direction::kBackward>(timetable const&,
                                                 rt_timetable const*,
+                                                profile_idx_t,
                                                 day_idx_t,
                                                 bool,
                                                 std::span<mc_breadcrumb const>,

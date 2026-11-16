@@ -10,6 +10,7 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/types.h"
@@ -117,7 +118,12 @@ struct gpu_mcraptor {
   void reset_arrivals();
   void next_start_time();
   void add_start(location_idx_t, unixtime_t, via_offset_t = 0U);
-  void set_td_start(td_offsets_t const& td) { td_start_ = &td; }
+  void set_td_start(td_offsets_t const& td) { start_.td_ = &td; }
+  void set_start_stops(std::vector<offset> const& offsets,
+                       location_match_mode const mode) {
+    start_.offsets_ = &offsets;
+    start_.mode_ = mode;
+  }
 
   void execute(
       unixtime_t start_time,
@@ -148,7 +154,7 @@ private:
   // search-window bound; the device dest frontier owns destination pruning
   delta_t worst_at_dest_;
 
-  td_offsets_t const* td_start_{nullptr};
+  mc_start start_;
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
 };
 

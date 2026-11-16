@@ -444,7 +444,8 @@ gpu_mcraptor<SearchDir, Crit>::gpu_mcraptor(
   utl::verify(rtt == nullptr || gpu_rtt_ != nullptr,
               "gpu mcraptor: rt search requires the uploaded device rt "
               "timetable (rt_timetable::gpu_rtt_)");
-  utl::verify(lb.empty() || lb.size() == tt.n_locations(),
+  utl::verify(lb.empty() || lb.size() == (rtt == nullptr ? tt.n_locations()
+                                                         : rtt->n_locations()),
               "gpu mcraptor: lower bounds required (kUseLowerBounds)");
   state_.impl_->resize_rt(rtt == nullptr ? 0U : rtt->n_rt_transports());
   reset_arrivals();
@@ -576,7 +577,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(
     auto const elapsed = kFwd ? arr - d_start_dep : d_start_dep - arr;
     starts_pin[i] = {
         starts_[i].first, arr,
-        seed_walk<SearchDir>(td_start_, starts_[i].first, start_time,
+        seed_walk<SearchDir>(tt_, rtt_, start_, starts_[i].first, start_time,
                              static_cast<std::uint16_t>(elapsed))};
   }
   auto* const starts_dev = s.starts_dev_.ensure(starts_.size(), s.stream_);
@@ -762,7 +763,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(
           static_cast<std::uint8_t>(mc_extras::switches(gj.extras_));
     }
     mc_add_legs<SearchDir>(
-        tt_, rtt_, base_, s.is_intermodal_dest_[kDirIdx],
+        tt_, rtt_, prf_idx_, base_, s.is_intermodal_dest_[kDirIdx],
         std::span<mc_breadcrumb const>{gj.chain_, gj.n_rides_}, j);
     results.add(std::move(j));
   }

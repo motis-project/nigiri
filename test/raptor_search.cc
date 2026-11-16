@@ -121,6 +121,26 @@ void expect_legs_match_criteria(timetable const& tt,
                                 mc_crits const c,
                                 std::string_view const config) {
   using namespace routing;
+  expect_no_virts(tt, rtt, js);
+  // Between two trips at a stop with transfers.txt rules, the reported walk
+  // is the rule's (fix_transfer_durations); the search counted the footpath it
+  // took (between virtual locations), which the legs then no longer show.
+  auto const rule_sets_walk = [&](journey const& j) {
+    auto const& is_rule_location = tt.transfer_rules_.is_rule_location_;
+    auto const rule_at = [&](location_idx_t const l) {
+      return to_idx(l) < is_rule_location.size() && is_rule_location.test(l);
+    };
+    for (auto i = 1U; i + 1U < j.legs_.size(); ++i) {
+      auto const& l = j.legs_[i];
+      if (std::holds_alternative<footpath>(l.uses_) &&
+          j.legs_[i - 1U].get_run().has_value() &&
+          j.legs_[i + 1U].get_run().has_value() &&
+          (rule_at(l.from_) || rule_at(l.to_))) {
+        return true;
+      }
+    }
+    return false;
+  };
   for (auto const& j : js) {
     auto units = 0U;
     auto avoided = false;
@@ -162,9 +182,11 @@ void expect_legs_match_criteria(timetable const& tt,
     ss << config << ": " << j.departure_time() << " -> " << j.arrival_time();
     EXPECT_EQ(rides == 0U ? 0U : rides - 1U, unsigned{j.transfers_})
         << ss.str();
-    EXPECT_EQ(c.non_transit_ ? units * kNonTransitBin : 0U,
-              unsigned{j.criteria_cost_})
-        << ss.str();
+    if (!rule_sets_walk(j)) {
+      EXPECT_EQ(c.non_transit_ ? units * kNonTransitBin : 0U,
+                unsigned{j.criteria_cost_})
+          << ss.str();
+    }
     EXPECT_EQ(c.mode_filter_ && avoided, j.criteria_mode_filter_) << ss.str();
     EXPECT_EQ(c.mode_switches_ ? switches : 0U,
               unsigned{j.criteria_mode_switches_})
@@ -206,7 +228,8 @@ void expect_gpu_equal(timetable const& tt,
   auto const gpu = run_search<GpuState>(tt, rtt, q, search_dir, gpu_tt);
   EXPECT_EQ(criteria_tuples(cpu), criteria_tuples(gpu))
       << "gpu mcraptor (" << config << ")";
-  expect_legs_match_criteria(tt, rtt, gpu, crits, config);
+  expect_legs_match_criteria(tt, rtt, gpu, crits,
+                             fmt::format("gpu {}", config));
 }
 #endif
 
@@ -231,7 +254,7 @@ static range_result search_range(timetable const& tt,
   expect_no_virts(tt, rtt, results);
   auto const base_tuples = journey_tuples(results);
 
-  auto const mc = routing::mcraptor_supported(tt, q, rtt);
+  auto const mc = routing::mcraptor_supported(q, rtt);
   auto mc_non_transit = pareto_set<routing::journey>{};
   auto mc_mode_filter = pareto_set<routing::journey>{};
   auto mc_non_transit_mode_filter = pareto_set<routing::journey>{};

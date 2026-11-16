@@ -23,6 +23,7 @@ struct journey;
 template <direction SearchDir>
 void mc_add_legs(timetable const&,
                  rt_timetable const*,
+                 profile_idx_t,
                  day_idx_t base_day,
                  bool is_intermodal_dest,
                  std::span<mc_breadcrumb const> chain,

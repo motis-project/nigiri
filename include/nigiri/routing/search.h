@@ -176,6 +176,7 @@ struct search {
         timeout_(timeout) {
     if constexpr (requires { algo_.set_td_start(q_.td_start_); }) {
       algo_.set_td_start(q_.td_start_);
+      algo_.set_start_stops(q_.start_, q_.start_match_mode_);
     }
   }
 

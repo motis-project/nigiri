@@ -13,6 +13,8 @@
 
 #include "date/date.h"
 
+#include "utl/helpers/algorithm.h"
+
 #include "nigiri/common/delta_t.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/journey.h"
@@ -22,6 +24,8 @@
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/transfer_time_settings.h"
+#include "nigiri/routing/transfers.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
 
@@ -32,17 +36,37 @@ struct rt_timetable;
 
 namespace nigiri::routing {
 
-// No via stops, no bike/car/reservation filters, no transfer rules (their
-// virtual locations are not mapped to walks); rt and td offsets work.
-bool mcraptor_supported(timetable const&, query const&, rt_timetable const*);
+// No via stops, no bike/car/reservation filters; rt, td offsets and transfer
+// rules (virtual locations, rt virts) work.
+bool mcraptor_supported(query const&, rt_timetable const*);
+
+// The query's start, for seed_walk() (set_start_stops / set_td_start).
+struct mc_start {
+  std::vector<offset> const* offsets_{nullptr};
+  location_match_mode mode_{location_match_mode::kExact};
+  td_offsets_t const* td_{nullptr};
+};
 
 // Minutes walked to a seed reached `elapsed` minutes after the query start: a
-// td start offset may also wait, which is not walking.
+// td start offset may also wait, which is not walking, and a location of a
+// start stop (its base or a virtual location) is reached by a transfer.
 template <direction SearchDir>
-std::uint16_t seed_walk(td_offsets_t const* td_start,
+std::uint16_t seed_walk(timetable const& tt,
+                        rt_timetable const* rtt,
+                        mc_start const& start,
                         location_idx_t const l,
                         unixtime_t const start_time,
                         std::uint16_t const elapsed) {
+  if (start.offsets_ != nullptr &&
+      start.mode_ != location_match_mode::kIntermodal) {
+    auto const b = rt::base(tt, rtt, l);
+    if (utl::any_of(*start.offsets_, [&](offset const& o) {
+          return rt::base(tt, rtt, o.target()) == b;
+        })) {
+      return 0U;
+    }
+  }
+  auto const* const td_start = start.td_;
   if (td_start != nullptr) {
     if (auto const it = td_start->find(l); it != end(*td_start)) {
       auto const fp = get_td_duration<SearchDir>(it->second, start_time);
@@ -362,7 +386,12 @@ struct basic_mcraptor {
   void reset_arrivals();
   void next_start_time();
   void add_start(location_idx_t, unixtime_t, via_offset_t = 0U);
-  void set_td_start(td_offsets_t const& td) { td_start_ = &td; }
+  void set_td_start(td_offsets_t const& td) { start_.td_ = &td; }
+  void set_start_stops(std::vector<offset> const& offsets,
+                       location_match_mode const mode) {
+    start_.offsets_ = &offsets;
+    start_.mode_ = mode;
+  }
 
   void execute(
       unixtime_t start_time,
@@ -393,8 +422,14 @@ private:
   bool update_route(unsigned k, route_idx_t);
   bool loop_rt_transports(unsigned k);
   bool update_rt_transport(unsigned k, rt_transport_idx_t);
+  // virts: the rt virts of the stops (rt_stop_virts), empty: the stops
   template <typename Stops, typename Ridable, typename Alight, typename Board>
-  bool scan_stops(unsigned k, Stops const&, Ridable&&, Alight&&, Board&&);
+  bool scan_stops(unsigned k,
+                  Stops const&,
+                  std::span<location_idx_t const> virts,
+                  Ridable&&,
+                  Alight&&,
+                  Board&&);
   void board(std::uint32_t key,
              transport,
              stop_idx_t,
@@ -437,6 +472,14 @@ private:
                    unsigned round,
                    bool by_route);
   delta_t transfer_buffer(std::uint64_t l) const;
+  location_idx_t base_of(std::uint32_t const l) const {
+    return rt::base(tt_, rtt_, location_idx_t{l});
+  }
+  // transfer rules ban the same-stop transfer: arrivals by transport only walk
+  bool no_transfer(std::uint32_t const l) const {
+    return get_transfer_time(tt_, rtt_, location_idx_t{l}) ==
+           kNoTransferAllowed;
+  }
 
   // Destination pruning: a pareto frontier over (round, criteria); a candidate
   // is pruned iff its lb projection is dominated by an entry of no more rounds.
@@ -491,7 +534,7 @@ private:
   bitvec const& is_dest_;
   std::vector<std::uint16_t> const& dist_to_end_;
   hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
-  td_offsets_t const* td_start_{nullptr};
+  mc_start start_;
   std::vector<std::uint16_t> const& lb_;
   // search-window bound only; dest_bag_ owns destination pruning
   delta_t worst_at_dest_;

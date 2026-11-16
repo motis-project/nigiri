@@ -2,9 +2,11 @@
 
 #include <cassert>
 #include <algorithm>
+#include <span>
 
 #include "utl/verify.h"
 
+#include "nigiri/location_routes.h"
 #include "nigiri/routing/raptor/mc_reconstruct.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
@@ -16,12 +18,9 @@ namespace nigiri::routing {
 constexpr auto const kIntermodalTarget =
     get_special_station(special_station::kEnd);
 
-bool mcraptor_supported(timetable const& tt,
-                        query const& q,
-                        rt_timetable const*) {
-  return tt.transfer_rules_.rules_.empty() && !q.require_bike_transport_ &&
-         !q.require_car_transport_ && !q.no_compulsory_reservation_ &&
-         q.via_stops_.empty();
+bool mcraptor_supported(query const& q, rt_timetable const*) {
+  return !q.require_bike_transport_ && !q.require_car_transport_ &&
+         !q.no_compulsory_reservation_ && q.via_stops_.empty();
 }
 
 template <direction SearchDir, typename Criteria, bool RangeReuse>
@@ -45,9 +44,10 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::basic_mcraptor(
     profile_idx_t const prf_idx)
     : tt_{tt},
       rtt_{rtt},
-      state_{state.resize(tt.n_locations(),
-                          tt.n_routes(),
-                          rtt != nullptr ? rtt->n_rt_transports() : 0U)},
+      state_{
+          state.resize(rtt != nullptr ? rtt->n_locations() : tt.n_locations(),
+                       tt.n_routes(),
+                       rtt != nullptr ? rtt->n_rt_transports() : 0U)},
       is_dest_{is_dest},
       dist_to_end_{dist_to_dest},
       td_dist_to_end_{td_dist_to_dest},
@@ -104,7 +104,8 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::for_each_label(
 
 // A candidate is rejected by labels of no higher round, evicts labels of no
 // lower round. By-route labels are only rejected by by-route ones (their
-// footpaths are still to relax) and only evict those.
+// footpaths are still to relax). Where the same-stop transfer is banned they
+// cannot board, so the two kinds do not compare at all.
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::bag_insert(
     std::uint32_t const l,
@@ -117,15 +118,19 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::bag_insert(
     layer.touched_.set(l);
   }
   auto const bag = layer.span(l);
+  auto const separate = no_transfer(l);
   for (auto const& e : bag) {
-    if (e.round_ <= round && (!by_route || e.by_route_) &&
+    if (e.round_ <= round &&
+        (separate ? e.by_route_ == by_route : !by_route || e.by_route_) &&
         e.crit_.template dominates<SearchDir>(crit)) {
       return false;
     }
   }
   auto removed = std::size_t{0U};
   for (auto i = std::size_t{0U}; i != bag.size(); ++i) {
-    if (bag[i].round_ >= round && (by_route || !bag[i].by_route_) &&
+    if (bag[i].round_ >= round &&
+        (separate ? bag[i].by_route_ == by_route
+                  : by_route || !bag[i].by_route_) &&
         crit.template dominates<SearchDir>(bag[i].crit_)) {
       ++removed;
       continue;
@@ -141,16 +146,20 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::bag_insert(
   return true;
 }
 
-// same-stop transfer buffer; 0 at a non-intermodal destination
+// same-stop transfer buffer; 0 at a non-intermodal destination (or a virt of
+// it) and where the transfer is banned (those labels do not board)
 template <direction SearchDir, typename Criteria, bool RangeReuse>
 delta_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::transfer_buffer(
     std::uint64_t const l) const {
-  return static_cast<delta_t>(
-      (!is_intermodal_dest() && is_dest_[static_cast<std::uint32_t>(l)])
-          ? 0
-          : dir(adjusted_transfer_time(
-                transfer_time_settings_,
-                tt_.locations_.transfer_time_[location_idx_t{l}].count())));
+  auto const i = static_cast<std::uint32_t>(l);
+  if (!is_intermodal_dest() && is_dest_[to_idx(base_of(i))]) {
+    return 0;
+  }
+  auto const t = get_transfer_time(tt_, rtt_, location_idx_t{i});
+  return t == kNoTransferAllowed
+             ? delta_t{0}
+             : static_cast<delta_t>(dir(adjusted_transfer_time(
+                   transfer_time_settings_, static_cast<int>(t.count()))));
 }
 
 template <direction SearchDir, typename Criteria, bool RangeReuse>
@@ -193,7 +202,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
   cur_dep_ = d_start;
   for (auto const& [l, arr] : seeds_) {
     auto const walk =
-        seed_walk<SearchDir>(td_start_, location_idx_t{l}, start_time,
+        seed_walk<SearchDir>(tt_, rtt_, start_, location_idx_t{l}, start_time,
                              static_cast<std::uint16_t>(dir(arr - d_start)));
     bag_insert(l, Criteria::at_start(arr, walk), state_t::kNoBreadcrumb,
                /*round=*/0U, /*by_route=*/false);
@@ -203,15 +212,17 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
   for (auto k = 1U; k != end_k; ++k) {
     auto any_marked = false;
     state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
-      for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
+      auto const l = location_idx_t{i};
+      for (auto const& r : static_routes(tt_, rtt_, l)) {
         any_marked = true;
         state_.route_mark_.set(to_idx(r), true);
       }
       if (rtt_ != nullptr) {
-        for (auto const& rt_t :
-             rtt_->location_rt_transports_[location_idx_t{i}]) {
-          any_marked = true;
-          state_.rt_transport_mark_.set(to_idx(rt_t), true);
+        for (auto const& rt_t : rtt_->location_rt_transports_[l]) {
+          if (!rtt_->rt_transport_is_cancelled_[to_idx(rt_t)]) {
+            any_marked = true;
+            state_.rt_transport_mark_.set(to_idx(rt_t), true);
+          }
         }
       }
     });
@@ -277,7 +288,21 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
   }
   ++stats_.n_earliest_arrival_updated_by_route_;
   state_.station_mark_.set(l_idx, true);
-  if (is_dest_[l_idx]) {  // no buffer at a station destination
+  // no buffer at a station destination; a virt arrives at its base
+  auto const dest_l = is_intermodal_dest()
+                          ? l_idx
+                          : static_cast<std::uint32_t>(to_idx(base_of(l_idx)));
+  if (is_dest_[dest_l]) {
+    if (dest_l != l_idx) {
+      merge_round(dest_l, ride_crit,
+                  {.transport_ = transport,
+                   .parent_ = rl.parent_,
+                   .day_ = day,
+                   .board_ = rl.board_,
+                   .alight_ = stop_idx,
+                   .arr_ = ride_crit.arr_},
+                  k, /*by_route=*/false);
+    }
     dest_bag_add(k, ride_crit);
   }
   return true;
@@ -307,6 +332,7 @@ template <typename Stops, typename Ridable, typename Alight, typename Board>
 bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::scan_stops(
     unsigned const k,
     Stops const& stop_seq,
+    std::span<location_idx_t const> const virts,
     Ridable&& ridable,
     Alight&& alight_label,
     Board&& board_label) {
@@ -316,7 +342,10 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::scan_stops(
   for (auto i = 0U; i != n; ++i) {
     auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : n - i - 1U);
     auto const stp = stop{stop_seq[stop_idx]};
-    auto const l_idx = static_cast<std::uint32_t>(to_idx(stp.location_idx()));
+    auto const l = virts.empty() || virts[stop_idx] == location_idx_t::invalid()
+                       ? stp.location_idx()
+                       : virts[stop_idx];
+    auto const l_idx = static_cast<std::uint32_t>(to_idx(l));
 
     if (i != 0U && !ridable(stop_idx)) {
       route_bag_.clear();
@@ -337,11 +366,13 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::scan_stops(
       break;
     }
 
+    auto const banned = no_transfer(l_idx);
     for_each_label(l_idx, k - 1U, [&](typename state_t::label const& e) {
       // even the optimistic completion is dominated
-      if (!dest_dominates(
+      if (!(banned && e.by_route_) &&
+          !dest_dominates(
               k, e.crit_.projected_to(clamp(e.crit_.arr_ + dir(lb_[l_idx]))))) {
-        board_label(e.crit_, e.breadcrumb_, stop_idx, stp.location_idx());
+        board_label(e.crit_, e.breadcrumb_, stop_idx, l);
       }
     });
   }
@@ -383,7 +414,7 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(
       !is_wheelchair_ ||
       tt_.route_flags_[route_flag::kWheelchairAccessible].test(to_idx(r) * 2U);
   return scan_stops(
-      k, tt_.route_location_seq_[r],
+      k, tt_.route_location_seq_[r], {},
       [&](stop_idx_t const stop_idx) {
         return all_sections ||
                tt_.route_flags_per_section_[route_flag::kWheelchairAccessible]
@@ -440,6 +471,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
           to_idx(rt_t) * 2U);
   return scan_stops(
       k, rtt_->rt_transport_location_seq_[rt_t],
+      profile_uses_rt_virts(prf_idx_) ? rtt_->rt_stop_virts(rt_t)
+                                      : std::span<location_idx_t const>{},
       [&](stop_idx_t const stop_idx) {
         return all_sections ||
                rtt_->rt_flags_per_section_[route_flag::kWheelchairAccessible]
@@ -484,20 +517,37 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
     auto const l = location_idx_t{i};
     // td footpaths replace the static ones of their source (as raptor)
     auto const has_td_fps = [&](location_idx_t const x, bool const out) {
-      return rtt_ != nullptr && prf_idx_ != 0U &&
-             (out ? rtt_->has_td_footpaths_out_
-                  : rtt_->has_td_footpaths_in_)[prf_idx_]
-                 .test(x);
+      if (rtt_ == nullptr || prf_idx_ == 0U) {
+        return false;
+      }
+      auto const& has = (out ? rtt_->has_td_footpaths_out_
+                             : rtt_->has_td_footpaths_in_)[prf_idx_];
+      return to_idx(x) < has.size() && has.test(x);
     };
     auto const use_td_fps = has_td_fps(l, kFwd);
-    auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx_][l]
-                           : tt_.locations_.footpaths_in_[prf_idx_][l];
+    // static footpaths of static locations, rt footpaths (rt virts) of all
+    auto const& static_fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx_]
+                                  : tt_.locations_.footpaths_in_[prf_idx_];
+    auto const fps = i < static_fps.size()
+                         ? std::span<footpath const>{static_fps[l].begin(),
+                                                     static_fps[l].size()}
+                         : std::span<footpath const>{};
+    auto const rt_fps =
+        rtt_ != nullptr && profile_uses_rt_virts(prf_idx_)
+            ? std::span<footpath const>{(kFwd ? rtt_->rt_footpaths_out_
+                                              : rtt_->rt_footpaths_in_)[l]
+                                            .begin(),
+                                        (kFwd ? rtt_->rt_footpaths_out_
+                                              : rtt_->rt_footpaths_in_)[l]
+                                            .size()}
+            : std::span<footpath const>{};
     auto const egress_ok = intermodal && dist_to_end_[i] != kUnreachable;
     auto const td_egress = (intermodal && !td_dist_to_end_.empty())
                                ? td_dist_to_end_.find(l)
                                : end(td_dist_to_end_);
     auto const td_egress_ok = td_egress != end(td_dist_to_end_);
-    if (!use_td_fps && fps.empty() && !egress_ok && !td_egress_ok) {
+    if (!use_td_fps && fps.empty() && rt_fps.empty() && !egress_ok &&
+        !td_egress_ok) {
       return;
     }
 
@@ -597,8 +647,8 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
             });
       }
     }
-    if (!kFwd || !use_td_fps) {
-      for (auto const& fp : fps) {
+    auto const relax_fps = [&](std::span<footpath const> const bucket) {
+      for (auto const& fp : bucket) {
         if (!kFwd && use_td_fps && has_td_fps(fp.target(), true)) {
           continue;
         }
@@ -609,13 +659,22 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
         }
         auto const fp_duration = adjusted_transfer_time(transfer_time_settings_,
                                                         fp.duration().count());
+        // between locations of one stop (virts) it is a transfer, no walk
+        auto const walk = base_of(static_cast<std::uint32_t>(i)) ==
+                                  base_of(static_cast<std::uint32_t>(target))
+                              ? 0U
+                              : fp_duration;
         for (auto const& te : fp_labels_) {
           relax_fp(te, static_cast<std::uint32_t>(target),
                    static_cast<std::uint16_t>(fp_duration),
-                   static_cast<std::uint16_t>(fp_duration));
+                   static_cast<std::uint16_t>(walk));
         }
       }
+    };
+    if (!kFwd || !use_td_fps) {
+      relax_fps(fps);
     }
+    relax_fps(rt_fps);
   });
 }
 
@@ -709,7 +768,7 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::collect_dest_journeys(
                             li = state_.breadcrumbs_[li].parent_) {
                          chain_.push_back(state_.breadcrumbs_[li]);
                        }
-                       mc_add_legs<SearchDir>(tt_, rtt_, base_,
+                       mc_add_legs<SearchDir>(tt_, rtt_, prf_idx_, base_,
                                               is_intermodal_dest(), chain_, j);
                        results.add(std::move(j));
                      }
