@@ -2375,3 +2375,104 @@ TEST(routing, pong_via_stay_at_start_before_direct_walk) {
       direction::kForward);
   EXPECT_TRUE(results.empty());
 }
+
+// A -> D via X (0 min), so a ride that passes X moves to via state 1 and
+// leaves no state-0 label behind. The only state-0 label at I comes from T2,
+// which avoids X (round 1, I at 12:40). Round 2 finds A -T1-> X -T4-> D at
+// 12:30, which bounds the arrival at D for round 3. In round 3, T3 leaves I at
+// 11:10 and reaches D at 12:10. It can be boarded from the state-1 label at I
+// (T4, 11:00), which is earlier than the state-0 label. A route-level lower
+// bound check that looks at state 0 only (12:40 + lb(D) = 0 is not better
+// than 12:30) skips T3's route and loses the 12:10 journey.
+constexpr auto const test_files_via_route_lb = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,location_type,parent_station
+A,A,,0.0,1.0,,
+X,X,,2.0,3.0,,
+I,I,,4.0,5.0,,
+D,D,,6.0,7.0,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,1,,,3
+R2,DB,2,,,3
+R3,DB,3,,,3
+R4,DB,4,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S1,T1,,
+R2,S1,T2,,
+R3,S1,T3,,
+R4,S1,T4,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+T1,10:00:00,10:00:00,A,0
+T1,10:20:00,10:20:00,X,1
+T2,10:00:00,10:00:00,A,0
+T2,12:40:00,12:40:00,I,1
+T3,11:10:00,11:10:00,I,0
+T3,12:10:00,12:10:00,D,1
+T4,10:30:00,10:30:00,X,0
+T4,11:00:00,11:00:00,I,1
+T4,12:30:00,12:30:00,D,2
+
+# calendar_dates.txt
+service_id,date,exception_type
+S1,20190501,1
+)"sv;
+
+constexpr auto const expected_via_route_lb = R"(
+[2019-05-01 08:00, 2019-05-01 10:30]
+TRANSFERS: 1
+     FROM: (A, A) [2019-05-01 08:00]
+       TO: (D, D) [2019-05-01 10:30]
+leg 0: (A, A) [2019-05-01 08:00] -> (X, X) [2019-05-01 08:20]
+   0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=1, day=2019-05-01, id=T1, src=0}]
+   1: X       X............................................... a: 01.05 08:20 [01.05 10:20]
+leg 1: (X, X) [2019-05-01 08:20] -> (X, X) [2019-05-01 08:22]
+  FOOTPATH (duration=2)
+leg 2: (X, X) [2019-05-01 08:30] -> (D, D) [2019-05-01 10:30]
+   0: X       X...............................................                               d: 01.05 08:30 [01.05 10:30]  [{name=4, day=2019-05-01, id=T4, src=0}]
+   1: I       I............................................... a: 01.05 09:00 [01.05 11:00]  d: 01.05 09:00 [01.05 11:00]  [{name=4, day=2019-05-01, id=T4, src=0}]
+   2: D       D............................................... a: 01.05 10:30 [01.05 12:30]
+
+
+[2019-05-01 08:00, 2019-05-01 10:10]
+TRANSFERS: 2
+     FROM: (A, A) [2019-05-01 08:00]
+       TO: (D, D) [2019-05-01 10:10]
+leg 0: (A, A) [2019-05-01 08:00] -> (X, X) [2019-05-01 08:20]
+   0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=1, day=2019-05-01, id=T1, src=0}]
+   1: X       X............................................... a: 01.05 08:20 [01.05 10:20]
+leg 1: (X, X) [2019-05-01 08:20] -> (X, X) [2019-05-01 08:22]
+  FOOTPATH (duration=2)
+leg 2: (X, X) [2019-05-01 08:30] -> (I, I) [2019-05-01 09:00]
+   0: X       X...............................................                               d: 01.05 08:30 [01.05 10:30]  [{name=4, day=2019-05-01, id=T4, src=0}]
+   1: I       I............................................... a: 01.05 09:00 [01.05 11:00]
+leg 3: (I, I) [2019-05-01 09:00] -> (I, I) [2019-05-01 09:02]
+  FOOTPATH (duration=2)
+leg 4: (I, I) [2019-05-01 09:10] -> (D, D) [2019-05-01 10:10]
+   0: I       I...............................................                               d: 01.05 09:10 [01.05 11:10]  [{name=3, day=2019-05-01, id=T3, src=0}]
+   1: D       D............................................... a: 01.05 10:10 [01.05 12:10]
+
+
+)"sv;
+
+TEST(routing, via_route_lb_uses_all_via_states) {
+  auto const tt = load_timetable(test_files_via_route_lb);
+  auto const results = search(
+      tt, nullptr,
+      routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
+                                       "2019-05-01 10:01 Europe/Berlin"),
+                     .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                     .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
+                     .via_stops_ = {{loc_idx(tt, "X"), 0_minutes}}},
+      direction::kForward);
+  EXPECT_EQ(expected_via_route_lb, results_to_str(results, tt));
+}

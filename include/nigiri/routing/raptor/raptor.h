@@ -269,10 +269,12 @@ struct raptor {
           any_marked = true;
           state_.route_mark_.set(to_idx(r), true);
           if constexpr (kUseLowerBounds) {
+            // The route is boarded from every via state. A via without stay
+            // moves the label to the next via state and keeps none in the
+            // current one, so state 0 can be later than the others.
             auto& a = state_.route_best_arr_[to_idx(r)];
-            auto const arr = best_[i][0];
-            if (a == kInvalid || is_better(arr, a)) {
-              a = arr;
+            for (auto v = 0U; v != Vias + 1; ++v) {
+              a = get_best(a, best_[i][v]);
             }
           }
         }
