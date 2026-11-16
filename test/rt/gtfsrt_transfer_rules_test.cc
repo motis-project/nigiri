@@ -1047,10 +1047,16 @@ TEST(gtfsrt_transfer_rules, rule_stop_is_its_platform) {
     EXPECT_EQ("S", stop.name(lang_t{}));
     EXPECT_EQ("S", stop.id());
     EXPECT_EQ("S1", stop.get_location_id());
-    EXPECT_TRUE(rtt.alerts_
-                    .get_alerts(*tt, rtt, source_idx_t{0}, fr.trip_idx(), fr,
-                                stop_idx_t{1U}, false)
-                    .contains(alert));
+    EXPECT_TRUE(
+        rtt.alerts_
+            .get_alerts(
+                *tt, rtt,
+                {.t_ = fr.t_,
+                 .stop_range_ = {stop.stop_idx_,
+                                 static_cast<stop_idx_t>(stop.stop_idx_ + 1U)},
+                 .rt_ = fr.rt_},
+                alert_stop_match::kStopMatch)
+            .contains(alert));
   }
 }
 
