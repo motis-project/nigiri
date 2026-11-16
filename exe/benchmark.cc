@@ -734,6 +734,7 @@ template <typename RS>
 struct cpu_ws_t {
   search_state ss_;
   RS rs_;
+  routing::basic_mcraptor_state<bmrapp_criteria_t> mc_;  // bmrapp's mc phases
 };
 
 #if defined(NIGIRI_CUDA)
@@ -743,6 +744,7 @@ struct gpu_ws_t {
       : rs_{std::make_unique<RS>(gtt)} {}
   search_state ss_;
   std::unique_ptr<RS> rs_;
+  routing::basic_mcraptor_state<bmrapp_criteria_t> mc_;  // bmrapp's CPU mc
 };
 #endif
 
@@ -1170,7 +1172,8 @@ int main(int argc, char* argv[]) {
                 if constexpr (std::is_same_v<RS, routing::raptor_state>) {
                   return use_bmrap
                              ? routing::bmrap_profile_search<bmrapp_criteria_t>(
-                                   tt, nullptr, w.ss_, w.rs_, std::move(q), dir)
+                                   tt, nullptr, w.ss_, w.rs_, w.mc_,
+                                   std::move(q), dir)
                          : use_pong
                              ? routing::pong_search(tt, nullptr, w.ss_, w.rs_,
                                                     std::move(q), dir)
@@ -1208,8 +1211,8 @@ int main(int argc, char* argv[]) {
                                              routing::gpu::gpu_raptor_state>) {
                   return use_bmrap
                              ? routing::bmrap_profile_search<bmrapp_criteria_t>(
-                                   tt, nullptr, w.ss_, *w.rs_, std::move(q),
-                                   dir, std::nullopt, gpu_mc)
+                                   tt, nullptr, w.ss_, *w.rs_, w.mc_,
+                                   std::move(q), dir, std::nullopt, gpu_mc)
                          : use_pong
                              ? routing::pong_search(tt, nullptr, w.ss_, *w.rs_,
                                                     std::move(q), dir)

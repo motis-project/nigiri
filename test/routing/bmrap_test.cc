@@ -172,8 +172,9 @@ template <typename Criteria>
 run_result bmrapp(fixture const& f, routing::query q, direction const dir) {
   auto ss = routing::search_state{};
   auto as = routing::raptor_state{};
+  auto ms = routing::basic_mcraptor_state<Criteria>{};
   auto const r = routing::bmrap_profile_search<Criteria>(f.tt_, nullptr, ss, as,
-                                                         std::move(q), dir);
+                                                         ms, std::move(q), dir);
   return {tuples(*r.journeys_), r.interval_};
 }
 
@@ -841,9 +842,10 @@ TEST(bmrap, mc_ping_bound_follows_anchor_deadlines) {
   auto const j = tuple_t{day + 6h, day + 8h + 10min, 0U};  // 08:00 -> 10:10
   auto ss = routing::search_state{};
   auto as = routing::raptor_state{};
+  auto ms = routing::basic_mcraptor_state<routing::arr_non_transit_criteria>{};
   auto const bm =
       tuples(*routing::bmrap_profile_search<routing::arr_non_transit_criteria>(
-                  tt, nullptr, ss, as, q, direction::kForward)
+                  tt, nullptr, ss, as, ms, q, direction::kForward)
                   .journeys_);
   ASSERT_FALSE(bm.empty()) << "the anchor itself was not found";
   EXPECT_TRUE(std::find(begin(bm), end(bm), j) != end(bm))
@@ -946,9 +948,10 @@ TEST(bmrap, anchor_margin_covers_every_trip_count) {
   auto const j = tuple_t{day + 8h + 20min, day + 13h, 0U};  // 10:20 -> 15:00
   auto ss = routing::search_state{};
   auto as = routing::raptor_state{};
+  auto ms = routing::basic_mcraptor_state<routing::arr_non_transit_criteria>{};
   auto const profile =
       tuples(*routing::bmrap_profile_search<routing::arr_non_transit_criteria>(
-                  tt, nullptr, ss, as, q, direction::kForward)
+                  tt, nullptr, ss, as, ms, q, direction::kForward)
                   .journeys_);
   // a fixed window is BMRAPP's "opposed" case: its anchors come from the same
   // range search and close_anchor_profile()
@@ -1032,9 +1035,11 @@ TEST(bmrap, realization_takes_earliest_connections) {
 
     auto ss = routing::search_state{};
     auto as = routing::raptor_state{};
+    auto ms =
+        routing::basic_mcraptor_state<routing::arr_non_transit_criteria>{};
     auto const r =
         routing::bmrap_profile_search<routing::arr_non_transit_criteria>(
-            tt, nullptr, ss, as, q, dir);
+            tt, nullptr, ss, as, ms, q, dir);
     auto const j = std::find_if(begin(*r.journeys_), end(*r.journeys_),
                                 [&](routing::journey const& x) {
                                   return x.departure_time() == day + 8h &&
@@ -1172,10 +1177,12 @@ TEST(bmrap, guided_realization_survives_ties) {
             interval<unixtime_t>{day + 8h + 55min, day + 9h + 15min};
       }
       auto ss = routing::search_state{};
+      auto ms = routing::basic_mcraptor_state<
+          routing::arr_non_transit_mode_filter_mode_switches_criteria>{};
       auto const check = [&](auto& algo_state, char const* engine) {
         auto const r = routing::bmrap_profile_search<
             routing::arr_non_transit_mode_filter_mode_switches_criteria>(
-            tt, nullptr, ss, algo_state, q, dir, std::nullopt, true);
+            tt, nullptr, ss, algo_state, ms, q, dir, std::nullopt, true);
         auto const tag =
             fmt::format("{} {} {}", c.name_,
                         dir == direction::kForward ? "fwd" : "bwd", engine);
@@ -1316,8 +1323,9 @@ TEST(bmrap, relaxed_ping_keeps_best_intermodal_arrival) {
 
   auto ss2 = routing::search_state{};
   auto as2 = routing::raptor_state{};
+  auto ms2 = routing::basic_mcraptor_state<routing::arr_criteria>{};
   expect_subset(tuples(*routing::bmrap_profile_search<routing::arr_criteria>(
-                            tt, nullptr, ss2, as2, q, direction::kForward)
+                            tt, nullptr, ss2, as2, ms2, q, direction::kForward)
                             .journeys_),
                 pong, "two destination offsets in one round");
 }
@@ -1388,9 +1396,10 @@ std::vector<tuple_t> run_bmrapp_gpu(fixture const& f,
   auto ss = routing::search_state{};
   auto gtt = routing::gpu::gpu_timetable{f.tt_};
   auto as = routing::gpu::gpu_raptor_state{gtt};
+  auto ms = routing::basic_mcraptor_state<Criteria>{};
   return tuples(
       *(routing::bmrap_profile_search<Criteria>(
-            f.tt_, nullptr, ss, as, std::move(q), dir, std::nullopt, gpu_mc)
+            f.tt_, nullptr, ss, as, ms, std::move(q), dir, std::nullopt, gpu_mc)
             .journeys_));
 }
 

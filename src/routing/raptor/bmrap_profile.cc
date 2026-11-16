@@ -115,6 +115,7 @@ routing_result bmrap_profile(
     rt_timetable const* rtt,
     search_state& s_state,
     AlgoState& r_state,
+    basic_mcraptor_state<Criteria>& cpu_mc_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
   constexpr auto const kFwd = (SearchDir == direction::kForward);
@@ -185,12 +186,9 @@ routing_result bmrap_profile(
 
   // One scalar state serves ping, pong and slacked pong, one mc state all mc
   // phases: they run in sequence, and a phase guided by another's labels reads
-  // a copy of them. The device mc state outlives the query (too large to
-  // allocate per query).
+  // a copy of them.
   static_assert(
       std::is_same_v<typename mc_ping_for::state, typename mc_pong_for::state>);
-  auto cpu_mc_state = std::conditional_t<GpuMc, std::monostate,
-                                         basic_mcraptor_state<Criteria>>{};
   auto& mc_state = [&]() -> typename mc_ping_for::state& {
     if constexpr (GpuMc) {
       return r_state.mc_state();
@@ -851,6 +849,7 @@ routing_result bmrap_profile_search(
     rt_timetable const* rtt,
     search_state& s_state,
     AlgoState& algo_state,
+    basic_mcraptor_state<Criteria>& mc_state,
     query q,
     direction const search_dir,
     std::optional<std::chrono::seconds> const timeout,
@@ -858,10 +857,10 @@ routing_result bmrap_profile_search(
   auto const run = [&]<bool GpuMc>() {
     return search_dir == direction::kForward
                ? bmrap_profile<direction::kForward, false, Criteria, AlgoState,
-                               GpuMc>(tt, rtt, s_state, algo_state,
+                               GpuMc>(tt, rtt, s_state, algo_state, mc_state,
                                       std::move(q), timeout)
                : bmrap_profile<direction::kBackward, false, Criteria, AlgoState,
-                               GpuMc>(tt, rtt, s_state, algo_state,
+                               GpuMc>(tt, rtt, s_state, algo_state, mc_state,
                                       std::move(q), timeout);
   };
   // the device mc state is a large allocation that can fail: fall back to the
@@ -874,10 +873,11 @@ routing_result bmrap_profile_search(
   return run.template operator()<false>();
 }
 
-#define NIGIRI_BMRAPP_INSTANTIATE(C, S)                                \
-  template routing_result bmrap_profile_search<C>(                     \
-      timetable const&, rt_timetable const*, search_state&, S&, query, \
-      direction, std::optional<std::chrono::seconds>, bool);
+#define NIGIRI_BMRAPP_INSTANTIATE(C, S)                         \
+  template routing_result bmrap_profile_search<C>(              \
+      timetable const&, rt_timetable const*, search_state&, S&, \
+      basic_mcraptor_state<C>&, query, direction,               \
+      std::optional<std::chrono::seconds>, bool);
 
 NIGIRI_BMRAPP_INSTANTIATE(arr_criteria, raptor_state)
 NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_criteria, raptor_state)

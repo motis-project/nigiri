@@ -111,9 +111,11 @@ std::vector<tuple_t> pong(fixture const& f, routing::query q) {
 std::vector<tuple_t> bmrapp(fixture const& f, routing::query q) {
   auto ss = routing::search_state{};
   auto as = routing::raptor_state{};
-  return tuples(*routing::bmrap_profile_search<routing::arr_criteria>(
-                     f.tt_, nullptr, ss, as, std::move(q), direction::kForward)
-                     .journeys_);
+  auto ms = routing::basic_mcraptor_state<routing::arr_criteria>{};
+  return tuples(
+      *routing::bmrap_profile_search<routing::arr_criteria>(
+           f.tt_, nullptr, ss, as, ms, std::move(q), direction::kForward)
+           .journeys_);
 }
 
 // every engine must agree with the plain rRAPTOR reference

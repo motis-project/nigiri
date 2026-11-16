@@ -25,7 +25,7 @@ namespace nigiri::routing::gpu {
 inline constexpr auto kMcEtTaskMax = 1U << 22U;  // 4M: 210 MB of stop bags
 
 // labels of one guide copy (take_guide(), one per direction), 6 bytes each
-inline constexpr auto kMcGuideLabels = 1U << 23U;  // 8M: 48 MB
+inline constexpr auto kMcGuideLabels = 1U << 25U;  // 32M: 192 MB
 
 // Capacities, unset: sized from the timetable. Full et task slots slow a round
 // down, anything else full fails the search (it would be lossy).
