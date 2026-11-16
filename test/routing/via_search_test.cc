@@ -2466,13 +2466,13 @@ leg 4: (I, I) [2019-05-01 09:10] -> (D, D) [2019-05-01 10:10]
 
 TEST(routing, via_route_lb_uses_all_via_states) {
   auto const tt = load_timetable(test_files_via_route_lb);
-  auto const results = search(
-      tt, nullptr,
-      routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
-                                       "2019-05-01 10:01 Europe/Berlin"),
-                     .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                     .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
-                     .via_stops_ = {{loc_idx(tt, "X"), 0_minutes}}},
-      direction::kForward);
+  auto const results =
+      search(tt, nullptr,
+             routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
+                                              "2019-05-01 10:01 Europe/Berlin"),
+                            .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                            .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
+                            .via_stops_ = {{loc_idx(tt, "X"), 0_minutes}}},
+             direction::kForward);
   EXPECT_EQ(expected_via_route_lb, results_to_str(results, tt));
 }
