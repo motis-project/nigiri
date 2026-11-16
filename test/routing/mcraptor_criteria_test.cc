@@ -282,8 +282,8 @@ td_offset td(unixtime_t const from, duration_t const duration) {
 // reachable for walks beginning in the minute at `from` only
 std::vector<td_offset> one_minute(unixtime_t const from,
                                   duration_t const duration) {
-  return {td(unixtime_t{0h}, footpath::kMaxDuration), td(from, duration),
-          td(from + 1min, footpath::kMaxDuration)};
+  return {td(unixtime_t{0h}, kTdFootpathBan), td(from, duration),
+          td(from + 1min, kTdFootpathBan)};
 }
 
 using dirs_t = std::initializer_list<direction>;
@@ -518,8 +518,7 @@ TEST(td_offset_engines, destination_closes_and_reopens) {
   auto const s = scenario{
       .from_ = {{stop_loc("T1"), 0min, 0U}},
       .td_to_ = {{stop_loc("T9"),
-                  {td(unixtime_t{0h}, 5min),
-                   td(at(11, 10), footpath::kMaxDuration),
+                  {td(unixtime_t{0h}, 5min), td(at(11, 10), kTdFootpathBan),
                    td(at(12, 0), 5min)}}},
       .deps_ = {at(9, 30), at(11, 30)},
       .arrs_ = {at(10, 45), at(12, 30)},
@@ -532,8 +531,7 @@ TEST(td_offset_engines, both_ends) {
   auto const s = scenario{
       .td_from_ = {{stop_loc("T1"), one_minute(at(9, 40), 5min)}},
       .td_to_ = {{stop_loc("T9"),
-                  {td(unixtime_t{0h}, 5min),
-                   td(at(11, 10), footpath::kMaxDuration)}}},
+                  {td(unixtime_t{0h}, 5min), td(at(11, 10), kTdFootpathBan)}}},
       .deps_ = {at(9, 30), at(10, 30)},
       .arrs_ = {at(10, 45), at(11, 30)},
       .intermodal_ = true,

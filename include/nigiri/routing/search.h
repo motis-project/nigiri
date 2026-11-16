@@ -299,9 +299,9 @@ struct search {
 
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
         return std::tie(a.start_time_, a.transfers_, a.dest_time_,
-                        a.criteria_cost_, a) <
-               std::tie(b.start_time_, b.transfers_, b.dest_time_,
-                        b.criteria_cost_, b);
+                        a.criteria_cost_,
+                        a) < std::tie(b.start_time_, b.transfers_, b.dest_time_,
+                                      b.criteria_cost_, b);
       });
     }
 

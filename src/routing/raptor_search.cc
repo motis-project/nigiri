@@ -18,9 +18,9 @@
 #include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/search_interval.h"
 #include "nigiri/routing/start_times.h"
-#include "nigiri/routing/raptor/mcraptor.h"
 
 namespace nigiri::routing {
 

@@ -16,9 +16,12 @@ namespace nigiri::routing {
 constexpr auto const kIntermodalTarget =
     get_special_station(special_station::kEnd);
 
-bool mcraptor_supported(query const& q, rt_timetable const*) {
-  return !q.require_bike_transport_ && !q.require_car_transport_ &&
-         !q.no_compulsory_reservation_ && q.via_stops_.empty();
+bool mcraptor_supported(timetable const& tt,
+                        query const& q,
+                        rt_timetable const*) {
+  return tt.transfer_rules_.rules_.empty() && !q.require_bike_transport_ &&
+         !q.require_car_transport_ && !q.no_compulsory_reservation_ &&
+         q.via_stops_.empty();
 }
 
 template <direction SearchDir, typename Criteria, bool RangeReuse>

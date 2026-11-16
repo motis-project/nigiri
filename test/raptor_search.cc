@@ -134,10 +134,13 @@ void expect_legs_match_criteria(timetable const& tt,
                 units = non_transit_add(
                     units, static_cast<std::uint32_t>(o.duration().count()));
               },
-              [&](footpath const& fp) {
+              [&](footpath const&) {
+                // the leg spans the walk as adjusted by the transfer time
+                // settings (its footpath holds the raw duration)
                 if (l.from_ != l.to_) {
                   units = non_transit_add(
-                      units, static_cast<std::uint32_t>(fp.duration().count()));
+                      units, static_cast<std::uint32_t>(
+                                 (l.arr_time_ - l.dep_time_).count()));
                 }
               },
               [&](journey::run_enter_exit const& ree) {

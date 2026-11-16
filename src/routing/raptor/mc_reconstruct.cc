@@ -124,65 +124,14 @@ void mc_reconstruct_offsets(timetable const& tt,
   constexpr auto const is_fwd = SearchDir == direction::kForward;
 
   add_offset_legs<SearchDir>(tt, rtt, q, j);
-  if constexpr (is_fwd) {
-    specify_td_offsets(q, j);
-  } else {
-    // legs are chronological, q is in search direction
-    auto journey_q = q;
-    journey_q.flip_dir();
-    specify_td_offsets(journey_q, j);
-  }
 
-  // td footpath legs: walking time only, the wait is spent at the stop
-  if (rtt != nullptr && q.prf_idx_ != 0U) {
-    auto const& has_td = is_fwd ? rtt->has_td_footpaths_in_[q.prf_idx_]
-                                : rtt->has_td_footpaths_out_[q.prf_idx_];
-    auto const& td_fps = is_fwd ? rtt->td_footpaths_in_[q.prf_idx_]
-                                : rtt->td_footpaths_out_[q.prf_idx_];
-    if (!td_fps.empty()) {
-      for (auto z = std::size_t{0U}; z != j.legs_.size(); ++z) {
-        auto& lg = j.legs_[z];
-        if (!std::holds_alternative<footpath>(lg.uses_)) {
-          continue;
-        }
-        auto const key_l = is_fwd ? lg.to_ : lg.from_;
-        auto const target_l = is_fwd ? lg.from_ : lg.to_;
-        if (!has_td.test(key_l)) {
-          continue;
-        }
-        if (is_fwd || z == 0U) {
-          auto const t = lg.arr_time_;
-          for_each_footpath<SearchDir>(td_fps[key_l], t,
-                                       [&](location_idx_t const fp_target,
-                                           duration_t, duration_t const walk) {
-                                         if (fp_target != target_l) {
-                                           return utl::cflow::kContinue;
-                                         }
-                                         lg.dep_time_ = t - walk;
-                                         lg.arr_time_ = t;
-                                         lg.uses_ = footpath{lg.to_, walk};
-                                         return utl::cflow::kBreak;
-                                       });
-        } else {
-          // backward: walk as soon as possible after the previous leg, as
-          // raptor (the anchor above is the next departure)
-          auto const t = j.legs_[z - 1U].arr_time_;
-          for_each_footpath<direction::kForward>(
-              td_fps[key_l], t,
-              [&](location_idx_t const fp_target, duration_t const dur,
-                  duration_t const walk) {
-                if (fp_target != target_l) {
-                  return utl::cflow::kContinue;
-                }
-                lg.dep_time_ = t + dur - walk;
-                lg.arr_time_ = t + dur;
-                lg.uses_ = footpath{lg.to_, walk};
-                return utl::cflow::kBreak;
-              });
-        }
-      }
-    }
+  // the legs as found, placed as raptor places them (no optimize_footpaths:
+  // the legs must keep the criteria they were optimized for)
+  auto journey_q = q;  // the legs are chronological
+  if constexpr (!is_fwd) {
+    journey_q.flip_dir();
   }
+  finalize_journey(tt, rtt, journey_q, j, false);
 }
 
 template void mc_add_legs<direction::kForward>(timetable const&,

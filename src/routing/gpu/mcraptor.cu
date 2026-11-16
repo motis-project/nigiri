@@ -574,7 +574,7 @@ void gpu_mcraptor<SearchDir, Crit>::execute(
   // scan covers them); tt_.bitfields_ stays static (is_route_active reads it).
   auto const rt_active = gpu_rtt_ != nullptr;
   if (rt_active) {
-    r.rtt_ = gpu_rtt_->impl_->to_device_rt_timetable();
+    r.rtt_ = gpu_rtt_->impl_->to_device_rt_timetable(prf_idx_);
     r.tt_.transport_traffic_days_ = r.rtt_.transport_traffic_days_;
   }
   auto const with_rt_scan = rt_active && r.rtt_.n_rt_transports_ != 0U;

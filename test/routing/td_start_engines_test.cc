@@ -123,13 +123,13 @@ TEST(routing, td_start_engines_narrow_validity) {
   auto const f = fixture{};
   expect_all_engines_agree(
       f, f.query({{.valid_from_ = unixtime_t{0h},
-                   .duration_ = footpath::kMaxDuration,
+                   .duration_ = kTdFootpathBan,
                    .transport_mode_payload_ = 5},
                   {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 30min,
                    .duration_ = 10min,
                    .transport_mode_payload_ = 5},
                   {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 31min,
-                   .duration_ = footpath::kMaxDuration,
+                   .duration_ = kTdFootpathBan,
                    .transport_mode_payload_ = 5}},
                  {sys_days{2024_y / June / 19}, sys_days{2024_y / June / 20}}));
 }

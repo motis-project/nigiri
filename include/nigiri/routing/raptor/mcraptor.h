@@ -32,8 +32,9 @@ struct rt_timetable;
 
 namespace nigiri::routing {
 
-// No via stops, no bike/car/reservation filters; rt and td offsets work.
-bool mcraptor_supported(query const&, rt_timetable const*);
+// No via stops, no bike/car/reservation filters, no transfer rules (their
+// virtual locations are not mapped to walks); rt and td offsets work.
+bool mcraptor_supported(timetable const&, query const&, rt_timetable const*);
 
 // Minutes walked to a seed reached `elapsed` minutes after the query start: a
 // td start offset may also wait, which is not walking.
