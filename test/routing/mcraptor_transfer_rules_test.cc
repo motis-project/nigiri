@@ -49,35 +49,40 @@ TEST(mcraptor_transfer_rules, banned_stop_keeps_walk_ins) {
   EXPECT_EQ(at("11:00"), arrival_at(tt, "A", "D", "10:00"));
 }
 
-// The rule for R1 -> R2 at S (15 min, the default 2 min for R3) is no
-// transfer time of S: the pair gets a virtual location there. The change to
-// T2L is a transfer within the stop, no walk, on the CPU and the GPU.
+// S takes 6 min to change (S,S row), R1 -> R2 15 min: R1 cannot share a
+// location of S with both R2 (T2: more than 10 min) and R3 (T3: at most 10
+// min), so S gets a virtual location, and one of the changes walks a footpath
+// of at least 6 min (a walking unit: kNonTransitBin) between two locations of
+// S. Either is a transfer within the stop, no walk, on the CPU and the GPU.
 //     T1 (R1):  A 10:00 -> S 10:30
 //     T2 (R2):  S 10:40 -> D 11:00 (10 min: too short)
 //     T2L (R2): S 10:50 -> D 11:10
-//     T3 (R3):  S 10:33 -> E 10:50 (3 min: enough)
+//     T3 (R3):  S 10:40 -> E 10:50 (10 min: enough)
 TEST(mcraptor_transfer_rules, change_within_stop_is_no_walk) {
   auto const tt = load_feeds({feed(
       {{"A", 51.0, 6.0}, {"S", 51.0, 7.0}, {"D", 51.0, 8.0}, {"E", 51.0, 9.0}},
       {{"T1", "R1", {{"A", "10:00"}, {"S", "10:30"}}},
        {"T2", "R2", {{"S", "10:40"}, {"D", "11:00"}}},
        {"T2L", "R2", {{"S", "10:50"}, {"D", "11:10"}}},
-       {"T3", "R3", {{"S", "10:33"}, {"E", "10:50"}}}},
-      "S,S,2,120,,,,\n"
+       {"T3", "R3", {{"S", "10:40"}, {"E", "10:50"}}}},
+      "S,S,2,360,,,,\n"
       "S,S,2,900,R1,R2,,\n")});
   ASSERT_LT(0U, n_virts(tt));
-  auto const q = exact_query(tt, "A", "D", at("10:00"));
 
-  auto const check = [&](pareto_set<routing::journey> const& js,
-                         char const* engine) {
-    ASSERT_EQ(1U, js.size()) << engine;
-    EXPECT_EQ(at("11:10"), begin(js)->arrival_time()) << engine;
-    EXPECT_EQ(0U, begin(js)->criteria_cost_) << engine;
-  };
-  check(mc_search<routing::mcraptor_non_transit_state>(tt, q), "cpu");
+  for (auto const& [to, arr] :
+       {std::pair{"D", at("11:10")}, std::pair{"E", at("10:50")}}) {
+    auto const q = exact_query(tt, "A", to, at("10:00"));
+    auto const check = [&](pareto_set<routing::journey> const& js,
+                           char const* engine) {
+      ASSERT_EQ(1U, js.size()) << to << " " << engine;
+      EXPECT_EQ(arr, begin(js)->arrival_time()) << to << " " << engine;
+      EXPECT_EQ(0U, begin(js)->criteria_cost_) << to << " " << engine;
+    };
+    check(mc_search<routing::mcraptor_non_transit_state>(tt, q), "cpu");
 #if defined(NIGIRI_CUDA)
-  auto const gtt = routing::gpu::gpu_timetable{tt};
-  check(mc_search<routing::gpu::gpu_mcraptor_non_transit_state>(tt, q, gtt),
-        "gpu");
+    auto const gtt = routing::gpu::gpu_timetable{tt};
+    check(mc_search<routing::gpu::gpu_mcraptor_non_transit_state>(tt, q, gtt),
+          "gpu");
 #endif
+  }
 }
