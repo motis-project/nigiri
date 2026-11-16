@@ -72,6 +72,11 @@ struct localized_image {
   alert_str_idx_t language_;
 };
 
+enum class alert_stop_match : std::uint8_t {
+  kStopMatch,  // only alerts for the stop (or its parents)
+  kStopMatchOrNoStop  // + alerts that name no stop (trip, route, agency)
+};
+
 struct alerts {
   struct by_route_id {
     direction_id_t direction_;
@@ -101,36 +106,48 @@ struct alerts {
            utl::any_of(periods, [&](auto&& p) { return p.overlaps(time); });
   }
 
-  // stop_idx: set = that stop, arrival to departure; empty = the whole run,
-  //   first departure to last arrival. The alert period is checked against it.
-  // fuzzy_stop parameter:
-  //   - true: alert.l_=invalid matches everything
+  // r.stop_range_ with one stop: alerts for that stop of every trip there,
+  //   arrival to departure. More stops: alerts of every trip ridden (at least
+  //   two of its stops), first departure to last arrival of its part.
+  //   The alert period is checked against it.
+  // match:
+  //   - kStopMatchOrNoStop: for a stop, also alerts that name no stop
   //     => used for stop times
-  //   - false: alert.l_=invalid matches iff the question is about the run
-  //     => used for itineraries (leg vs. from/to/intermediate stop)
+  //   - kStopMatch: only alerts for the stop, for the run only alerts that
+  //     name no stop => used for itineraries (leg vs. from/to/intermediate)
   hash_set<alert_idx_t> get_alerts(timetable const& tt,
                                    rt_timetable const& rtt,
-                                   source_idx_t const src,
-                                   trip_idx_t const t,
                                    rt::run const& r,
-                                   std::optional<stop_idx_t> const stop_idx,
-                                   bool const fuzzy_stop) const {
-    auto const fr = rt::frun{tt, &rtt, r};
+                                   alert_stop_match const match) const {
+    auto alerts = hash_set<alert_idx_t>{};
+    auto fr = rt::frun{tt, &rtt, r};
+    if (!fr.is_scheduled()) {
+      return alerts;
+    }
 
-    auto const first =
-        stop_idx ? rt::run_stop{.fr_ = &fr, .stop_idx_ = *stop_idx} : fr[0];
-    auto const last =
-        stop_idx ? first
-                 : fr[static_cast<stop_idx_t>(fr.stop_range_.size() - 1)];
-    auto const from = first.time(stop_idx && *stop_idx != 0 ? event_type::kArr
-                                                            : event_type::kDep);
-    auto const to =
-        last.time(stop_idx && *stop_idx + 1 != fr.size() ? event_type::kDep
-                                                         : event_type::kArr);
-    auto const l =
-        stop_idx ? first.get_location_idx() : location_idx_t::invalid();
-    auto const time = interval<unixtime_t>{from, to + duration_t{1}};
-    return get_alerts(tt, src, t, fr, l, time, fuzzy_stop);
+    auto const is_stop = r.stop_range_.size() == 1;
+    fr.stop_range_ = {stop_idx_t{0U}, fr.size()};  // all trips of the run
+    fr.for_each_trip([&](trip_idx_t const t,
+                         interval<stop_idx_t> const trip_stops) {
+      auto const s = trip_stops.intersect(r.stop_range_);
+      if (s.size() < (is_stop ? 1 : 2)) {
+        return;
+      }
+      auto const first = rt::run_stop{.fr_ = &fr, .stop_idx_ = s.from_};
+      auto const last = rt::run_stop{
+          .fr_ = &fr, .stop_idx_ = static_cast<stop_idx_t>(s.to_ - 1U)};
+      auto const from = first.time(is_stop && s.from_ != 0 ? event_type::kArr
+                                                           : event_type::kDep);
+      auto const to = last.time(
+          is_stop && s.to_ != fr.size() ? event_type::kDep : event_type::kArr);
+      auto const l =
+          is_stop ? first.get_location_idx() : location_idx_t::invalid();
+      auto const trip_alerts =
+          get_alerts(tt, tt.trip_id_src_[t], t, r, l,
+                     interval<unixtime_t>{from, to + duration_t{1}}, match);
+      alerts.insert(begin(trip_alerts), end(trip_alerts));
+    });
+    return alerts;
   }
 
   // For flex (without run): explicit time window.
@@ -140,7 +157,7 @@ struct alerts {
                                    rt::run const& r,
                                    location_idx_t const l,
                                    interval<unixtime_t> const& time,
-                                   bool const fuzzy_stop) const {
+                                   alert_stop_match const match) const {
     auto const route_id_idx = tt.trip_route_id_[t];
     auto const route_type = tt.route_ids_[src].route_id_type_[route_id_idx];
     auto const agency = tt.route_ids_[src].route_id_provider_[route_id_idx];
@@ -151,8 +168,9 @@ struct alerts {
                                  ? location_idx_t::invalid()
                                  : tt.locations_.parents_[parent];
     auto const matches_location = [&](location_idx_t const x) {
-      return (fuzzy_stop ? (x == location_idx_t::invalid() || x == l)
-                         : (x == l)) ||
+      return x == l ||
+             (match == alert_stop_match::kStopMatchOrNoStop &&
+              x == location_idx_t::invalid()) ||
              (parent != location_idx_t::invalid() && parent == x) ||
              (grandparent != location_idx_t::invalid() && grandparent == x);
     };

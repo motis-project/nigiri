@@ -64,6 +64,8 @@ stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,zone_id,stop_url,locatio
 1916,1916,King / Weber,,  43.484988, -80.526677,,,0,,1,
 1918,1918,King / Manulife,,  43.491207, -80.528026,,,0,,1,
 1127,1127,Conestoga Station,,  43.498036, -80.528999,,
+9001,9001,Northfield / Bridge,,  43.505000, -80.530000,,,0,,1,
+9002,9002,Bridge / Lancaster,,  43.510000, -80.531000,,,0,,1,
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -119,6 +121,7 @@ route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,direction_id,block_id,shape_id,wheelchair_accessible,bikes_allowed
 201,201-Weekday-66-23SUMM-1111100,3248651,Conestoga Station,0,340341,2010025,1,1
+201,201-Weekday-66-23SUMM-1111100,B,Bridge / Lancaster,0,340341,2010025,1,1
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -150,6 +153,9 @@ trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_t
 3248651,05:55:00,05:55:00,1916,26,0,0
 3248651,05:56:00,05:56:00,1918,27,0,0
 3248651,05:58:00,05:58:00,1127,28,1,0
+B,06:00:00,06:00:00,1127,1,0,0
+B,06:05:00,06:05:00,9001,2,0,0
+B,06:10:00,06:10:00,9002,3,0,0
 )");
 }
 
@@ -165,13 +171,14 @@ run run_on(timetable const& tt, date::sys_days const d) {
   return rt::gtfsrt_resolve_run(d, tt, nullptr, source_idx_t{0}, td).first;
 }
 
-std::size_t alerts_for(
-    rt_timetable const& rtt,
-    timetable const& tt,
-    trip_idx_t const t,
-    run const& r,
-    std::optional<stop_idx_t> const stop_idx = std::nullopt) {
-  return rtt.alerts_.get_alerts(tt, rtt, source_idx_t{0}, t, r, stop_idx, false)
+std::size_t alerts_for(rt_timetable const& rtt,
+                       timetable const& tt,
+                       run r,
+                       std::optional<stop_idx_t> const stop = std::nullopt) {
+  if (stop) {
+    r.stop_range_ = {*stop, static_cast<stop_idx_t>(*stop + 1U)};
+  }
+  return rtt.alerts_.get_alerts(tt, rtt, r, alert_stop_match::kStopMatch)
       .size();
 }
 
@@ -219,9 +226,8 @@ TEST(rt, gtfs_rt_alert_agency) {
 
   // The impact period gates the alert, whatever the selector was: the run of
   // the 10th (09:15-09:58Z) overlaps it, the run of the 11th does not.
-  auto const t = trip_idx_t{0};
-  EXPECT_EQ(1, alerts_for(rtt, tt, t, run_on(tt, 2023_y / August / 10)));
-  EXPECT_EQ(0, alerts_for(rtt, tt, t, run_on(tt, 2023_y / August / 11)));
+  EXPECT_EQ(1, alerts_for(rtt, tt, run_on(tt, 2023_y / August / 10)));
+  EXPECT_EQ(0, alerts_for(rtt, tt, run_on(tt, 2023_y / August / 11)));
 }
 
 TEST(rt, gtfs_rt_alert_active_period_fallback) {
@@ -283,7 +289,7 @@ TEST(rt, gtfs_rt_alert_trip_without_start_date) {
   ASSERT_EQ(1, rtt.alerts_.trip_[t].size());
 
   auto const alerts_on = [&](date::year_month_day const d) {
-    return alerts_for(rtt, tt, t, run_on(tt, d));
+    return alerts_for(rtt, tt, run_on(tt, d));
   };
 
   // 2023-08-11, two days after the feed day, inside the first period.
@@ -310,6 +316,28 @@ TEST(rt, gtfs_rt_alert_trip_without_start_date) {
 
   // 2023-08-17 is in the gap of the first alert, the open ended one applies.
   EXPECT_EQ(1, alerts_on(2023_y / August / 17));
+
+  // Block 340341: 3248651 continues from its last stop (27) as B, 06:00-06:10
+  // local. A leg over both trips gets the alerts of both trips, each checked
+  // against its own part of the run: alert 3 (3248651 while B runs) matches
+  // neither.
+  auto c = transit_realtime::Alert{};
+  c.add_informed_entity()->mutable_trip()->set_trip_id("B");
+  handle_alert(today, tt, rtt, source_idx_t{0}, "tag", c, stats);
+  auto d = transit_realtime::Alert{};
+  d.add_informed_entity()->mutable_trip()->set_trip_id("3248651");
+  auto* while_b = d.add_active_period();
+  while_b->set_start(1692266700);  // 2023-08-17T10:05Z
+  while_b->set_end(1692267000);  // 2023-08-17T10:10Z
+  handle_alert(today, tt, rtt, source_idx_t{0}, "tag", d, stats);
+
+  auto both = run_on(tt, 2023_y / August / 17);
+  both.stop_range_.to_ = stop_idx_t{30U};
+  auto const on_both =
+      rtt.alerts_.get_alerts(tt, rtt, both, alert_stop_match::kStopMatch);
+  EXPECT_EQ(1, alerts_on(2023_y / August / 17));
+  EXPECT_EQ(2U, on_both.size());
+  EXPECT_TRUE(on_both.contains(alert_idx_t{2}));
 }
 
 TEST(rt, gtfs_rt_alert_trip_with_start_date) {
@@ -334,8 +362,8 @@ TEST(rt, gtfs_rt_alert_trip_with_start_date) {
   ASSERT_EQ(1, rtt.alerts_.trip_[t].size());
 
   // The run of 2023-08-10 has the alert, the one of 2023-08-11 does not.
-  EXPECT_EQ(1, alerts_for(rtt, tt, t, run_on(tt, 2023_y / August / 10)));
-  EXPECT_EQ(0, alerts_for(rtt, tt, t, run_on(tt, 2023_y / August / 11)));
+  EXPECT_EQ(1, alerts_for(rtt, tt, run_on(tt, 2023_y / August / 10)));
+  EXPECT_EQ(0, alerts_for(rtt, tt, run_on(tt, 2023_y / August / 11)));
 }
 
 TEST(rt, gtfs_rt_alert_route_type) {
@@ -371,16 +399,15 @@ TEST(rt, gtfs_rt_alert_route_type) {
   ASSERT_EQ(2, rtt.alerts_.route_type_[src][route_type_t{0}].size());
   ASSERT_EQ(1, rtt.alerts_.route_type_[src][route_type_t{3}].size());
 
-  auto const t = trip_idx_t{0};
   auto const r = run_on(tt, 2023_y / August / 10);
 
   // For the leg: only the alert that named no stop.
-  EXPECT_EQ(1, alerts_for(rtt, tt, t, r));
+  EXPECT_EQ(1, alerts_for(rtt, tt, r));
 
   // For a stop: only the alert that named it. 2351 is the first stop of the
   // run, 1033 the second.
-  EXPECT_EQ(1, alerts_for(rtt, tt, t, r, stop_idx_t{0}));
-  EXPECT_EQ(0, alerts_for(rtt, tt, t, r, stop_idx_t{1}));
+  EXPECT_EQ(1, alerts_for(rtt, tt, r, stop_idx_t{0}));
+  EXPECT_EQ(0, alerts_for(rtt, tt, r, stop_idx_t{1}));
 }
 
 TEST(rt, gtfs_rt_alert_bad_trip_descriptor) {
