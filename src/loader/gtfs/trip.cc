@@ -10,6 +10,7 @@
 #include "utl/erase_if.h"
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/lookup.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv.h"
@@ -276,10 +277,8 @@ trip_data read_trips(
           return;
         }
 
-        auto const shape_it = shapes.find(t.shape_id_->view());
-        auto const shape_idx = (shape_it == end(shapes))
-                                   ? shape_idx_t::invalid()
-                                   : shape_it->second;
+        auto const shape_idx = utl::lookup(shapes, t.shape_id_->view())
+                                   .value_or(shape_idx_t::invalid());
 
         auto const route_id = route_it->second->route_id_idx_;
 
@@ -408,8 +407,8 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
          |
          utl::for_each([&](csv_frequency const& freq) {
            auto const t = freq.trip_id_->trim().view();
-           auto const trip_it = trips.trips_.find(t);
-           if (trip_it == end(trips.trips_)) {
+           auto const trip_idx = utl::lookup(trips.trips_, t);
+           if (!trip_idx.has_value()) {
              log(log_lvl::error, "loader.gtfs.frequencies",
                  "frequencies.txt: skipping frequency (trip \"{}\" not "
                  "found)",
@@ -431,7 +430,7 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
                exact == "1" ? frequency::schedule_relationship::kScheduled
                             : frequency::schedule_relationship::kUnscheduled;
 
-           auto& frequencies = trips.data_[trip_it->second].frequency_;
+           auto& frequencies = trips.data_[*trip_idx].frequency_;
            if (!frequencies.has_value()) {
              frequencies = std::vector<frequency>{};
            }

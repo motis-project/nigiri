@@ -11,6 +11,7 @@
 #include "utl/helpers/algorithm.h"
 #include "utl/sorted_diff.h"
 #include "utl/timing.h"
+#include "utl/visit.h"
 
 #include "nigiri/location_match_mode.h"
 #include "nigiri/logging.h"
@@ -100,14 +101,12 @@ routing_result pong(timetable const& tt,
   auto const processing_start_time = std::chrono::steady_clock::now();
 
   auto const fastest_direct = get_fastest_direct(tt, q, SearchDir);
-  auto const search_interval = std::visit(
-      utl::overloaded{[](interval<unixtime_t> const start_interval) {
-                        return start_interval;
-                      },
-                      [](unixtime_t const start_time) {
-                        return interval<unixtime_t>{start_time, start_time};
-                      }},
-      q.start_time_);
+  auto const search_interval = utl::visit(
+      q.start_time_,
+      [](interval<unixtime_t> const start_interval) { return start_interval; },
+      [](unixtime_t const start_time) {
+        return interval<unixtime_t>{start_time, start_time};
+      });
   auto const base_day =
       day_idx_t{std::chrono::duration_cast<date::days>(
                     std::chrono::round<std::chrono::days>(

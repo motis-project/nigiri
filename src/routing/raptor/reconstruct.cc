@@ -8,7 +8,6 @@
 
 #include "utl/enumerate.h"
 #include "utl/helpers/algorithm.h"
-#include "utl/overloaded.h"
 #include "utl/visit.h"
 
 #include "nigiri/common/delta_t.h"
@@ -81,24 +80,23 @@ via_counts count_vias(timetable const& tt,
         }
       }
     };
-    std::visit(
-        utl::overloaded{[&](journey::run_enter_exit const& t) {
-                          auto const fr = rt::frun{tt, rtt, t.r_};
-                          for (auto s = t.stop_range_.from_;
-                               s != t.stop_range_.to_; ++s) {
-                            if (v != q.via_stops_.size() &&
-                                q.via_stops_[v].stay_ == 0_minutes &&
-                                is_via(fr[s].get_location_idx())) {
-                              ++v;
-                            }
-                          }
-                        },
-                        [&](footpath const& fp) {
-                          count_walk(adjusted_transfer_time(
-                              q.transfer_time_settings_, fp.duration()));
-                        },
-                        [&](offset const& o) { count_walk(o.duration()); }},
-        leg.uses_);
+    utl::visit(
+        leg.uses_,
+        [&](journey::run_enter_exit const& t) {
+          auto const fr = rt::frun{tt, rtt, t.r_};
+          for (auto s = t.stop_range_.from_; s != t.stop_range_.to_; ++s) {
+            if (v != q.via_stops_.size() &&
+                q.via_stops_[v].stay_ == 0_minutes &&
+                is_via(fr[s].get_location_idx())) {
+              ++v;
+            }
+          }
+        },
+        [&](footpath const& fp) {
+          count_walk(
+              adjusted_transfer_time(q.transfer_time_settings_, fp.duration()));
+        },
+        [&](offset const& o) { count_walk(o.duration()); });
   }
   return counts;
 }

@@ -5,7 +5,6 @@
 #include <span>
 #include <variant>
 
-#include "utl/overloaded.h"
 #include "utl/verify.h"
 #include "utl/visit.h"
 
@@ -729,27 +728,26 @@ void frun::for_each_shape_point(
         auto const common_stops = subrange.intersect(absolute_stop_range);
         if (common_stops.size() > 1) {
           auto const relative_common_stops = common_stops << stop_range_.from_;
-          std::visit(
-              utl::overloaded{
-                  [&](std::span<geo::latlng const> shape) {
-                    if (current_shape_source == shape_source::kTimetable) {
-                      consume_pos((*this)[relative_common_stops.from_].pos());
-                    }
-                    for (auto const& pos : shape) {
-                      consume_pos(pos);
-                    }
-                    if (current_shape_source == shape_source::kTimetable) {
-                      consume_pos((*this)[static_cast<stop_idx_t>(
-                                              relative_common_stops.to_ - 1)]
-                                      .pos());
-                    }
-                  },
-                  [&](interval<stop_idx_t> relative_range) {
-                    for (auto const stop_idx : relative_range) {
-                      consume_pos((*this)[stop_idx].pos());
-                    }
-                  }},
-              get_subshape(common_stops, trip_idx, subrange.from_));
+          utl::visit(
+              get_subshape(common_stops, trip_idx, subrange.from_),
+              [&](std::span<geo::latlng const> shape) {
+                if (current_shape_source == shape_source::kTimetable) {
+                  consume_pos((*this)[relative_common_stops.from_].pos());
+                }
+                for (auto const& pos : shape) {
+                  consume_pos(pos);
+                }
+                if (current_shape_source == shape_source::kTimetable) {
+                  consume_pos((*this)[static_cast<stop_idx_t>(
+                                          relative_common_stops.to_ - 1)]
+                                  .pos());
+                }
+              },
+              [&](interval<stop_idx_t> relative_range) {
+                for (auto const stop_idx : relative_range) {
+                  consume_pos((*this)[stop_idx].pos());
+                }
+              });
         }
       });
   if (consumed == 0U) {

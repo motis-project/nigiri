@@ -19,6 +19,7 @@
 #include "utl/enumerate.h"
 #include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/lookup.h"
 #include "utl/parallel_for.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/pipes.h"
@@ -797,13 +798,12 @@ journey_pattern_map_t get_journey_patterns(
   auto const get_stop =
       [&](std::string_view stop_point_ref) -> netex::stop const* {
     auto const assigned = [&]() -> netex::stop const* {
-      auto const timetable_it =
-          stop_assignments.timetable_.find(stop_point_ref);
-      if (timetable_it != end(stop_assignments.timetable_)) {
-        return timetable_it->second;
+      if (auto const timetable_stop =
+              utl::lookup(stop_assignments.timetable_, stop_point_ref)) {
+        return *timetable_stop;
       }
-      auto const base_it = stop_assignments.base_.find(stop_point_ref);
-      return base_it != end(stop_assignments.base_) ? base_it->second : nullptr;
+      return utl::lookup(stop_assignments.base_, stop_point_ref)
+          .value_or(nullptr);
     }();
 
     auto const ssp_pos = [&]() {
@@ -1469,8 +1469,8 @@ void load_timetable(loader_config const& config,
     auto const tz = gtfs::get_tz_idx(tt, tz_map, im.tz_->name());
 
     for (auto& [id, o] : im.operators_) {
-      if (auto const it = providers.find(id); it != end(providers)) {
-        o->provider_ = it->second;
+      if (auto const p = utl::lookup(providers, id)) {
+        o->provider_ = *p;
         continue;
       }
 

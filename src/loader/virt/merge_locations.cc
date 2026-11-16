@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "utl/helpers/algorithm.h"
+#include "utl/lookup.h"
 
 namespace nigiri::loader {
 
@@ -61,10 +62,8 @@ vector_map<route_stop_idx_t, route_stop_idx_t> merge_locations(
            return a.pair_ == b.pair_;
          })) {
       auto const x = run.front().pair_;
-      auto const existing = pairs.pair_to_idx_.find(x);
-      auto w = existing == end(pairs.pair_to_idx_)
-                   ? kAnyDuration
-                   : pairs.windows_[existing->second];
+      auto const existing = utl::lookup(pairs.pair_to_idx_, x);
+      auto w = existing.has_value() ? pairs.windows_[*existing] : kAnyDuration;
       for (auto const& u : run) {
         w = w.intersect(u.window_);
       }

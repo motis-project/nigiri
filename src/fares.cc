@@ -3,6 +3,7 @@
 #include <array>
 #include <ranges>
 
+#include "utl/lookup.h"
 #include "utl/to_vec.h"
 
 #include "nigiri/routing/journey.h"
@@ -215,8 +216,8 @@ network_idx_t get_network(rt::frun const& a) {
   auto const src = tt.trip_id_src_[a.trip_idx()];
   auto const& f = tt.fares_[src];
   auto const route_id = tt.trip_route_id_[a.trip_idx()];
-  auto const it = f.route_networks_.find(route_id);
-  return it == end(f.route_networks_) ? network_idx_t::invalid() : it->second;
+  return utl::lookup(f.route_networks_, route_id)
+      .value_or(network_idx_t::invalid());
 }
 
 sparse_vecvec<location_idx_t, area_idx_t>::const_bucket get_areas(
@@ -504,16 +505,17 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
           for (auto const ta : tos) {
             for (auto const ftg : from_tfs) {
               for (auto const ttg : to_tfs) {
-                auto const it = f.fare_leg_rule_keys_.find(
+                auto const group = utl::lookup(
+                    f.fare_leg_rule_keys_,
                     fares::fare_leg_rule_key{.network_ = nw,
                                              .from_area_ = fa,
                                              .to_area_ = ta,
                                              .from_timeframe_group_ = ftg,
                                              .to_timeframe_group_ = ttg});
-                if (it == end(f.fare_leg_rule_keys_)) {
+                if (!group.has_value()) {
                   continue;
                 }
-                for (auto const& r : f.fare_leg_rule_groups_[it->second]) {
+                for (auto const& r : f.fare_leg_rule_groups_[*group]) {
                   if (area_set_matches(r)) {
                     trace("RULE MATCH\n\t\tRULE = {}\n\t\tLEG = {}\n",
                           leg_rule{tt, f, r}, leg_rule{tt, f, x});

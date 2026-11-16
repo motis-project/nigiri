@@ -10,6 +10,7 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+#include "utl/lookup.h"
 #include "utl/parser/csv_range.h"
 #include "utl/progress_tracker.h"
 
@@ -33,13 +34,12 @@ void read_ticketing_identifiers(timetable& tt,
 
   utl::for_each_row<ticketing_identifiers_row>(
       file_content, [&](ticketing_identifiers_row const& t) {
-        auto location_it = stops.find(std::string{t.stop_id->view()});
-        if (location_it != stops.end()) {
+        if (auto const l = utl::lookup(stops, t.stop_id->view())) {
           auto provider = tt.get_provider_idx(t.agency_id->view(), src);
           string_idx_t const str_idx =
               tt.strings_.store(t.ticketing_stop_id->view());
-          ctx.location_ticketing_identifier_.at(location_it->second)
-              .push_back(pair<provider_idx_t, string_idx_t>{provider, str_idx});
+          ctx.location_ticketing_identifier_.at(*l).push_back(
+              pair<provider_idx_t, string_idx_t>{provider, str_idx});
         }
       });
 
@@ -102,26 +102,25 @@ void load_ticketing(timetable& tt,
       read_ticketing_deep_links(tt, load(kTicketingDeeplinks).data());
 
   for (auto const& [provider_idx, deep_link_id] : agency_ticketing) {
-    auto const it = deep_links.find(deep_link_id);
-    if (it == deep_links.end()) {
+    auto const link = utl::lookup(deep_links, deep_link_id);
+    if (!link.has_value()) {
       log(log_lvl::error, "nigiri.loader.gtfs.ticketing",
           "agency: ticketing_deep_link_id {} not found", deep_link_id);
       continue;
     }
-    tt.providers_[provider_idx].ticketing_link_ = it->second;
+    tt.providers_[provider_idx].ticketing_link_ = *link;
   }
 
   for (auto const& [route_id, route] : routes) {
     if (!route->ticketing_deep_link_id_.empty()) {
-      auto const it = deep_links.find(route->ticketing_deep_link_id_);
-      if (it == deep_links.end()) {
+      auto const link = utl::lookup(deep_links, route->ticketing_deep_link_id_);
+      if (!link.has_value()) {
         log(log_lvl::error, "nigiri.loader.gtfs.ticketing",
             "route {}: ticketing_deep_link_id {} not found", route_id,
             route->ticketing_deep_link_id_);
         continue;
       }
-      tt.route_ids_[src].route_id_ticketing_link_[route->route_id_idx_] =
-          it->second;
+      tt.route_ids_[src].route_id_ticketing_link_[route->route_id_idx_] = *link;
     }
   }
 

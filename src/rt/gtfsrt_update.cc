@@ -242,9 +242,8 @@ bool add_rt_trip(source_idx_t const src,
       }
       utl::verify(stu.has_stop_id(),
                   "stop_id is required for unscheduled trips");
-      auto const it =
-          tt.locations_.location_id_to_idx_.find({stu.stop_id(), src});
-      if (it == end(tt.locations_.location_id_to_idx_)) {
+      auto const l = tt.find(location_id{stu.stop_id(), src});
+      if (!l.has_value()) {
         log(log_lvl::debug, "rt.gtfs.unsupported",
             "NEW/ADDED stop_id must be contained in stops.txt "
             "(src={}, trip_id={}, stop_id={}), skipping",
@@ -254,7 +253,7 @@ bool add_rt_trip(source_idx_t const src,
       if (last_time != unixtime_t{}) {
         auto const time_between_stops = (new_time - last_time).count();
         auto const dist_between_stops =
-            geo::distance(tt.locations_.coordinates_.at(it->second), last_pos);
+            geo::distance(tt.locations_.coordinates_.at(*l), last_pos);
         if (dist_between_stops / std::max(time_between_stops, 1) / 60 >
             kMaxTransitSpeed) {
           log(log_lvl::debug, "rt.gtfs.invalid",
@@ -265,7 +264,7 @@ bool add_rt_trip(source_idx_t const src,
           return false;
         }
       }
-      last_pos = tt.locations_.coordinates_.at(it->second);
+      last_pos = tt.locations_.coordinates_.at(*l);
       last_time = new_time;
       auto in_allowed = true, out_allowed = true;
       if (stu.has_stop_time_properties()) {
@@ -282,7 +281,7 @@ bool add_rt_trip(source_idx_t const src,
                   TripUpdate_StopTimeUpdate_StopTimeProperties_DropOffPickupType_NONE;
         }
       }
-      stops.emplace_back(stop{it->second, in_allowed, out_allowed, false, false}
+      stops.emplace_back(stop{*l, in_allowed, out_allowed, false, false}
                              .value());  // TODO wheelchair
     }
     utl::verify(stops.size() > 1,
@@ -441,9 +440,8 @@ bool update_run(source_idx_t const src,
         if (new_id == tt.locations_.ids_[loc_idx].view()) {
           return std::nullopt;
         }
-        auto const l_it = tt.locations_.location_id_to_idx_.find(
-            {.id_ = new_id, .src_ = src});
-        if (l_it == end(tt.locations_.location_id_to_idx_)) {
+        auto const l = tt.find(location_id{.id_ = new_id, .src_ = src});
+        if (!l.has_value()) {
           log(log_lvl::debug, "gtfsrt.stop_assignment",
               "stop assignment: src={}, old_stop_id=\"{}\", new_stop_id=\"{}\" "
               "not found",
@@ -451,14 +449,14 @@ bool update_run(source_idx_t const src,
           return std::nullopt;
         }
         auto const& equiv_locs = tt.locations_.equivalences_.at(loc_idx);
-        if (utl::find(equiv_locs, l_it->second) == end(equiv_locs)) {
+        if (utl::find(equiv_locs, *l) == end(equiv_locs)) {
           log(log_lvl::debug, "gtfsrt.stop_assignment",
               "stop assignment: src={}, old_stop_id=\"{}\", new_stop_id=\"{}\" "
               "is not a mere track change, skipping",
               src, tt.locations_.ids_[loc_idx].view(), new_id);
           return std::nullopt;
         }
-        return l_it->second;
+        return l;
       };
 
       auto& stp = rtt.rt_transport_location_seq_[r.rt_][stop_idx];

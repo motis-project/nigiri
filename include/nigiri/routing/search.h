@@ -6,6 +6,7 @@
 #include "utl/equal_ranges_linear.h"
 #include "utl/erase_if.h"
 #include "utl/timing.h"
+#include "utl/visit.h"
 
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
@@ -158,15 +159,14 @@ struct search {
         rtt_{rtt},
         state_{s},
         q_{std::move(q.sanitize(tt))},
-        search_interval_{std::visit(
-            utl::overloaded{[](interval<unixtime_t> const start_interval) {
-                              return start_interval;
-                            },
-                            [](unixtime_t const start_time) {
-                              return interval<unixtime_t>{start_time,
-                                                          start_time};
-                            }},
-            q_.start_time_)},
+        search_interval_{utl::visit(
+            q_.start_time_,
+            [](interval<unixtime_t> const start_interval) {
+              return start_interval;
+            },
+            [](unixtime_t const start_time) {
+              return interval<unixtime_t>{start_time, start_time};
+            })},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
         algo_{init(q_.allowed_claszes_,
                    q_.require_bike_transport_,
@@ -217,15 +217,14 @@ struct search {
             "number_of_results_in_interval={}, results_with_+1_ontrip={}, "
             "timeout_reached={}\n",
             is_ontrip(), q_.extend_interval_earlier_, q_.extend_interval_later_,
-            std::visit(
-                utl::overloaded{[](interval<unixtime_t> const& start_interval) {
-                                  return start_interval;
-                                },
-                                [](unixtime_t const start_time) {
-                                  return interval<unixtime_t>{start_time,
-                                                              start_time};
-                                }},
-                q_.start_time_),
+            utl::visit(
+                q_.start_time_,
+                [](interval<unixtime_t> const& start_interval) {
+                  return start_interval;
+                },
+                [](unixtime_t const start_time) {
+                  return interval<unixtime_t>{start_time, start_time};
+                }),
             search_interval_, tt_.external_interval(), n_results_in_interval(),
             state_.results_.size(), is_timeout_reached());
         span->SetAttribute("nigiri.search.timeout_reached",
@@ -237,15 +236,14 @@ struct search {
             "extend_later={}, initial={}, interval={}, timetable={}, "
             "number_of_results_in_interval={}\n",
             q_.extend_interval_earlier_, q_.extend_interval_later_,
-            std::visit(
-                utl::overloaded{[](interval<unixtime_t> const& start_interval) {
-                                  return start_interval;
-                                },
-                                [](unixtime_t const start_time) {
-                                  return interval<unixtime_t>{start_time,
-                                                              start_time};
-                                }},
-                q_.start_time_),
+            utl::visit(
+                q_.start_time_,
+                [](interval<unixtime_t> const& start_interval) {
+                  return start_interval;
+                },
+                [](unixtime_t const start_time) {
+                  return interval<unixtime_t>{start_time, start_time};
+                }),
             search_interval_, tt_.external_interval(), n_results_in_interval());
       }
 

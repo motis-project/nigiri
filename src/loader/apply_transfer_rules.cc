@@ -10,6 +10,7 @@
 #include "utl/erase_if.h"
 #include "utl/expect.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/lookup.h"
 
 #include "nigiri/loader/import_context.h"
 #include "nigiri/loader/register.h"
@@ -95,10 +96,9 @@ vector_map<route_stop_idx_t, location_idx_t> add_virts(
       continue;
     }
     auto const fallback = get_transfer_time(tt, base);
-    auto const self = pairs.pair_to_idx_.find(route_stop_pair{s, s});
-    auto d = self == end(pairs.pair_to_idx_)
-                 ? std::optional{fallback}
-                 : pick_duration(pairs.windows_[self->second], fallback);
+    auto const self = utl::lookup(pairs.pair_to_idx_, route_stop_pair{s, s});
+    auto d = self.has_value() ? pick_duration(pairs.windows_[*self], fallback)
+                              : std::optional{fallback};
     if (!utl_expect(d.has_value(), "loader.virtual_locations",
                     "virtual location without transfer time at {}", base)) {
       d = fallback;
@@ -184,13 +184,12 @@ void write_routes(timetable& tt,
       auto const s = stop{seq[i]};
       auto const l = tt.locations_.get_base_idx(s.location_idx());
       auto const stop_sigs = sigs.get(base_r, i);
-      auto const it = pairs.route_stop_to_idx_.find(
+      auto const virt = utl::lookup(
+          pairs.route_stop_to_idx_,
           stop_sigs.size() == 1U  // uniform: shared signature route stop
               ? to_signature_stop(l, stop_sigs.front())
               : route_stop{r, i, l});
-      seq[i] = s.with_location(
-                    it == end(pairs.route_stop_to_idx_) ? l : virts[it->second])
-                   .value();
+      seq[i] = s.with_location(virt.has_value() ? virts[*virt] : l).value();
     }
     return seq;
   };

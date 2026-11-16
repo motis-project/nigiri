@@ -1,6 +1,7 @@
 #include "nigiri/routing/get_fastest_direct.h"
 
 #include "utl/get_or_create.h"
+#include "utl/lookup.h"
 
 #include "nigiri/common/dial.h"
 #include "nigiri/for_each_meta.h"
@@ -91,8 +92,8 @@ duration_t get_fastest_direct(timetable const& tt,
       }
     }
 
-    if (auto const it = dest_offsets.find(l.l_); it != end(dest_offsets)) {
-      auto const new_dist = l.d_ + static_cast<label::dist_t>(it->second);
+    if (auto const d = utl::lookup(dest_offsets, l.l_)) {
+      auto const new_dist = l.d_ + static_cast<label::dist_t>(*d);
       if (new_dist < max_dist && new_dist < end_dist) {
         end_dist = static_cast<label::dist_t>(new_dist);
       }

@@ -11,6 +11,7 @@
 #include <variant>
 #include <vector>
 
+#include "utl/lookup.h"
 #include "utl/visit.h"
 
 #include "nigiri/common/delta_t.h"
@@ -273,9 +274,8 @@ struct rt_timetable {
   }
 
   rt_transport_idx_t resolve_rt(transport const t) const noexcept {
-    auto const it = static_trip_lookup_.find(t);
-    return it == end(static_trip_lookup_) ? rt_transport_idx_t::invalid()
-                                          : it->second;
+    return utl::lookup(static_trip_lookup_, t)
+        .value_or(rt_transport_idx_t::invalid());
   }
 
   std::uint32_t n_rt_transports() const noexcept {

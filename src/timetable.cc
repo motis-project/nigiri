@@ -4,6 +4,7 @@
 
 #include "cista/io.h"
 
+#include "utl/lookup.h"
 #include "utl/overloaded.h"
 #include "utl/verify.h"
 #include "utl/visit.h"
@@ -99,9 +100,7 @@ std::string_view timetable::translate(lang_t const& lang,
 }
 
 std::optional<location_idx_t> timetable::find(location_id const& id) const {
-  auto const it = locations_.location_id_to_idx_.find(id);
-  return it == end(locations_.location_id_to_idx_) ? std::nullopt
-                                                   : std::optional{it->second};
+  return utl::lookup(locations_.location_id_to_idx_, id);
 }
 
 void timetable::resolve() {

@@ -5,7 +5,6 @@
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/lookup.h"
-#include "utl/overloaded.h"
 #include "utl/visit.h"
 
 #include "nigiri/for_each_meta.h"
@@ -339,44 +338,41 @@ void get_starts(
 
   for (auto v = via_offset_t{0U}; v != shortest_start.size(); ++v) {
     for (auto const& [l, o] : shortest_start[v]) {
-      std::visit(utl::overloaded{[&](interval<unixtime_t> const interval) {
-                                   add_starts_in_interval(
-                                       search_dir, tt, rtt, interval, l, o, v,
-                                       max_start_offset, prf_idx, starts,
-                                       add_ontrip);
-                                 },
-                                 [&](unixtime_t const t) {
-                                   starts.emplace_back(start{
-                                       .time_at_start_ = t,
-                                       .time_at_stop_ = fwd ? t + o : t - o,
-                                       .stop_ = l,
-                                       .v_ = v});
-                                 }},
-                 start_time);
+      utl::visit(
+          start_time,
+          [&](interval<unixtime_t> const interval) {
+            add_starts_in_interval(search_dir, tt, rtt, interval, l, o, v,
+                                   max_start_offset, prf_idx, starts,
+                                   add_ontrip);
+          },
+          [&](unixtime_t const t) {
+            starts.emplace_back(start{.time_at_start_ = t,
+                                      .time_at_stop_ = fwd ? t + o : t - o,
+                                      .stop_ = l,
+                                      .v_ = v});
+          });
     }
   }
 
   for (auto const& [stop, offsets] : start_td_offsets) {
     auto const v = static_cast<via_offset_t>(
         start_via.contains(rt::static_location(rtt, stop)) ? 1U : 0U);
-    std::visit(utl::overloaded{
-                   [&](interval<unixtime_t> const interval) {
-                     add_starts_in_interval(
-                         search_dir, tt, rtt, interval, stop,
-                         location_offset_t{std::span{offsets}}, v,
-                         max_start_offset, prf_idx, starts, add_ontrip);
-                   },
-                   [&](unixtime_t const t) {
-                     auto const d = get_duration(search_dir, t, offsets, false);
-                     if (d.has_value()) {
-                       starts.emplace_back(
-                           start{.time_at_start_ = t,
-                                 .time_at_stop_ = fwd ? t + *d : t - *d,
-                                 .stop_ = stop,
-                                 .v_ = v});
-                     }
-                   }},
-               start_time);
+    utl::visit(
+        start_time,
+        [&](interval<unixtime_t> const interval) {
+          add_starts_in_interval(search_dir, tt, rtt, interval, stop,
+                                 location_offset_t{std::span{offsets}}, v,
+                                 max_start_offset, prf_idx, starts, add_ontrip);
+        },
+        [&](unixtime_t const t) {
+          auto const d = get_duration(search_dir, t, offsets, false);
+          if (d.has_value()) {
+            starts.emplace_back(start{.time_at_start_ = t,
+                                      .time_at_stop_ = fwd ? t + *d : t - *d,
+                                      .stop_ = stop,
+                                      .v_ = v});
+          }
+        });
   }
 }
 
