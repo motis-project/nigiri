@@ -269,9 +269,6 @@ struct raptor {
           any_marked = true;
           state_.route_mark_.set(to_idx(r), true);
           if constexpr (kUseLowerBounds) {
-            // The route is boarded from every via state. A via without stay
-            // moves the label to the next via state and keeps none in the
-            // current one, so state 0 can be later than the others.
             auto& a = state_.route_best_arr_[to_idx(r)];
             for (auto v = 0U; v != Vias + 1; ++v) {
               a = get_best(a, best_[i][v]);
@@ -595,11 +592,6 @@ private:
         }
       }
 
-      // The bound is applied per stop inside the scan, but a route whose best
-      // conceivable contribution cannot beat the destination need not be
-      // entered at all. route_min_lb_ is the minimum over the route's stops -
-      // computed on first use and reused for the rest of the query, since lb_
-      // is fixed once the destination is known.
       if constexpr (kUseLowerBounds) {
         auto const a = state_.route_best_arr_[to_idx(r)];
         if (a != kInvalid) {
