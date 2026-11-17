@@ -23,8 +23,8 @@ bool mcraptor_supported(query const& q, rt_timetable const*) {
          !q.no_compulsory_reservation_ && q.via_stops_.empty();
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-basic_mcraptor<SearchDir, Criteria, RangeReuse>::basic_mcraptor(
+template <direction SearchDir, typename Criteria>
+basic_mcraptor<SearchDir, Criteria>::basic_mcraptor(
     timetable const& tt,
     rt_timetable const* rtt,
     state_t& state,
@@ -64,13 +64,13 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::basic_mcraptor(
   reset_arrivals();
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-date::sys_days basic_mcraptor<SearchDir, Criteria, RangeReuse>::base() const {
+template <direction SearchDir, typename Criteria>
+date::sys_days basic_mcraptor<SearchDir, Criteria>::base() const {
   return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-void basic_mcraptor<SearchDir, Criteria, RangeReuse>::reset_arrivals() {
+template <direction SearchDir, typename Criteria>
+void basic_mcraptor<SearchDir, Criteria>::reset_arrivals() {
   worst_at_dest_ = kInvalid;
   dest_bag_.clear();
   state_.bag_.clear();
@@ -78,12 +78,8 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::reset_arrivals() {
   seeds_.clear();
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-void basic_mcraptor<SearchDir, Criteria, RangeReuse>::next_start_time() {
-  if constexpr (!RangeReuse) {
-    state_.bag_.clear();
-    state_.breadcrumbs_.clear();
-  }
+template <direction SearchDir, typename Criteria>
+void basic_mcraptor<SearchDir, Criteria>::next_start_time() {
   seeds_.clear();
   state_.prev_station_mark_.zero_out();
   state_.station_mark_.zero_out();
@@ -91,10 +87,11 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::next_start_time() {
   state_.rt_transport_mark_.zero_out();
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
+template <direction SearchDir, typename Criteria>
 template <typename Fn>
-void basic_mcraptor<SearchDir, Criteria, RangeReuse>::for_each_label(
-    std::uint32_t const l, unsigned const round, Fn&& fn) const {
+void basic_mcraptor<SearchDir, Criteria>::for_each_label(std::uint32_t const l,
+                                                         unsigned const round,
+                                                         Fn&& fn) const {
   for (auto const& e : state_.bag_.span(l)) {
     if (e.round_ == round && e.dep_ == cur_dep_) {
       fn(e);
@@ -106,8 +103,8 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::for_each_label(
 // lower round. By-route labels are only rejected by by-route ones (their
 // footpaths are still to relax). Where the same-stop transfer is banned they
 // cannot board, so the two kinds do not compare at all.
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::bag_insert(
+template <direction SearchDir, typename Criteria>
+bool basic_mcraptor<SearchDir, Criteria>::bag_insert(
     std::uint32_t const l,
     Criteria const& crit,
     std::uint32_t const breadcrumb,
@@ -148,8 +145,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::bag_insert(
 
 // same-stop transfer buffer; 0 at a non-intermodal destination (or a virt of
 // it) and where the transfer is banned (those labels do not board)
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-delta_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::transfer_buffer(
+template <direction SearchDir, typename Criteria>
+delta_t basic_mcraptor<SearchDir, Criteria>::transfer_buffer(
     std::uint64_t const l) const {
   auto const i = static_cast<std::uint32_t>(l);
   if (!is_intermodal_dest() && is_dest_[to_idx(base_of(i))]) {
@@ -162,13 +159,12 @@ delta_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::transfer_buffer(
                    transfer_time_settings_, static_cast<int>(t.count()))));
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::merge_round(
-    std::uint32_t const l,
-    Criteria const& crit,
-    mc_breadcrumb const& bc,
-    unsigned const round,
-    bool const by_route) {
+template <direction SearchDir, typename Criteria>
+bool basic_mcraptor<SearchDir, Criteria>::merge_round(std::uint32_t const l,
+                                                      Criteria const& crit,
+                                                      mc_breadcrumb const& bc,
+                                                      unsigned const round,
+                                                      bool const by_route) {
   auto const idx = static_cast<std::uint32_t>(state_.breadcrumbs_.size());
   if (!bag_insert(l, crit, idx, round, by_route)) {
     return false;
@@ -177,16 +173,17 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::merge_round(
   return true;
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-void basic_mcraptor<SearchDir, Criteria, RangeReuse>::add_start(
-    location_idx_t const l, unixtime_t const t, via_offset_t) {
+template <direction SearchDir, typename Criteria>
+void basic_mcraptor<SearchDir, Criteria>::add_start(location_idx_t const l,
+                                                    unixtime_t const t,
+                                                    via_offset_t) {
   auto const i = to_idx(l);
   seeds_.emplace_back(static_cast<std::uint32_t>(i), unix_to_delta(base(), t));
   state_.station_mark_.set(i, true);
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
+template <direction SearchDir, typename Criteria>
+void basic_mcraptor<SearchDir, Criteria>::execute(
     unixtime_t const start_time,
     std::uint8_t const max_transfers,
     std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
@@ -252,16 +249,15 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::execute(
   }
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
-    unsigned const k,
-    std::uint32_t const l_idx,
-    stop_idx_t const stop_idx,
-    delta_t const by_transport,
-    route_label const& rl,
-    clasz const ride_clasz,
-    std::uint32_t const transport,
-    day_idx_t const day) {
+template <direction SearchDir, typename Criteria>
+bool basic_mcraptor<SearchDir, Criteria>::alight(unsigned const k,
+                                                 std::uint32_t const l_idx,
+                                                 stop_idx_t const stop_idx,
+                                                 delta_t const by_transport,
+                                                 route_label const& rl,
+                                                 clasz const ride_clasz,
+                                                 std::uint32_t const transport,
+                                                 day_idx_t const day) {
   auto const lb = lb_[l_idx];
   if (!is_better(by_transport, worst_at_dest_) || lb == kUnreachable ||
       !is_better(by_transport + dir(lb), worst_at_dest_)) {
@@ -308,9 +304,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::alight(
   return true;
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::loop_routes(
-    unsigned const k) {
+template <direction SearchDir, typename Criteria>
+bool basic_mcraptor<SearchDir, Criteria>::loop_routes(unsigned const k) {
   auto any_marked = false;
   state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
     auto const r = route_idx_t{r_idx};
@@ -327,9 +322,9 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::loop_routes(
 
 // Per stop: alight route_bag_, then board the last round's labels. A section
 // that is not ridable drops the boarded trips.
-template <direction SearchDir, typename Criteria, bool RangeReuse>
+template <direction SearchDir, typename Criteria>
 template <typename Stops, typename Ridable, typename Alight, typename Board>
-bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::scan_stops(
+bool basic_mcraptor<SearchDir, Criteria>::scan_stops(
     unsigned const k,
     Stops const& stop_seq,
     std::span<location_idx_t const> const virts,
@@ -380,8 +375,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::scan_stops(
 }
 
 // pareto over (trip order, carried criteria)
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-void basic_mcraptor<SearchDir, Criteria, RangeReuse>::board(
+template <direction SearchDir, typename Criteria>
+void basic_mcraptor<SearchDir, Criteria>::board(
     std::uint32_t const key,
     transport const t,
     stop_idx_t const stop_idx,
@@ -406,9 +401,9 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::board(
   route_bag_.push_back({t, key, stop_idx, parent, carried});
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(
-    unsigned const k, route_idx_t const r) {
+template <direction SearchDir, typename Criteria>
+bool basic_mcraptor<SearchDir, Criteria>::update_route(unsigned const k,
+                                                       route_idx_t const r) {
   // wheelchair: accessible on all sections, or check the section ridden into
   auto const all_sections =
       !is_wheelchair_ ||
@@ -443,9 +438,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_route(
       });
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::loop_rt_transports(
-    unsigned const k) {
+template <direction SearchDir, typename Criteria>
+bool basic_mcraptor<SearchDir, Criteria>::loop_rt_transports(unsigned const k) {
   auto any_marked = false;
   state_.rt_transport_mark_.for_each_set_bit([&](auto const rt_t_idx) {
     auto const rt_t = rt_transport_idx_t{rt_t_idx};
@@ -462,8 +456,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::loop_rt_transports(
   return any_marked;
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
+template <direction SearchDir, typename Criteria>
+bool basic_mcraptor<SearchDir, Criteria>::update_rt_transport(
     unsigned const k, rt_transport_idx_t const rt_t) {
   auto const all_sections =
       !is_wheelchair_ ||
@@ -496,8 +490,8 @@ bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_rt_transport(
 }
 
 // traffic day << 16 | trip offset: orders the trips of a route
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-std::uint32_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::trip_order_key(
+template <direction SearchDir, typename Criteria>
+std::uint32_t basic_mcraptor<SearchDir, Criteria>::trip_order_key(
     route_idx_t const r, transport const t) const {
   auto const t_offset = static_cast<std::uint32_t>(
       to_idx(t.t_idx_) - to_idx(tt_.route_transport_ranges_[r].from_));
@@ -506,9 +500,8 @@ std::uint32_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::trip_order_key(
 }
 
 // egress and footpaths from round k's by-route arrivals
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
-    unsigned const k) {
+template <direction SearchDir, typename Criteria>
+void basic_mcraptor<SearchDir, Criteria>::update_footpaths(unsigned const k) {
   auto const intermodal = is_intermodal_dest();
   state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
     if (state_.bag_.empty(static_cast<std::uint32_t>(i))) {
@@ -678,9 +671,8 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
   });
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-transport
-basic_mcraptor<SearchDir, Criteria, RangeReuse>::get_earliest_transport(
+template <direction SearchDir, typename Criteria>
+transport basic_mcraptor<SearchDir, Criteria>::get_earliest_transport(
     route_idx_t const r,
     stop_idx_t const stop_idx,
     day_idx_t const day_at_stop,
@@ -746,8 +738,8 @@ basic_mcraptor<SearchDir, Criteria, RangeReuse>::get_earliest_transport(
   return {};
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-void basic_mcraptor<SearchDir, Criteria, RangeReuse>::collect_dest_journeys(
+template <direction SearchDir, typename Criteria>
+void basic_mcraptor<SearchDir, Criteria>::collect_dest_journeys(
     unsigned const k,
     unixtime_t const start_time,
     pareto_set<journey>& results) {
@@ -776,15 +768,15 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::collect_dest_journeys(
   });
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-void basic_mcraptor<SearchDir, Criteria, RangeReuse>::reconstruct(
-    query const& q, journey& j) {
+template <direction SearchDir, typename Criteria>
+void basic_mcraptor<SearchDir, Criteria>::reconstruct(query const& q,
+                                                      journey& j) {
   mc_reconstruct_offsets<SearchDir>(tt_, rtt_, q, j);
   j.is_reconstructed_ = true;
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-delta_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::time_at_stop(
+template <direction SearchDir, typename Criteria>
+delta_t basic_mcraptor<SearchDir, Criteria>::time_at_stop(
     route_idx_t const r,
     transport const t,
     stop_idx_t const stop_idx,
@@ -793,8 +785,8 @@ delta_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::time_at_stop(
                   tt_.event_mam(r, t.t_idx_, stop_idx, ev_type).count());
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-delta_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::rt_time_at_stop(
+template <direction SearchDir, typename Criteria>
+delta_t basic_mcraptor<SearchDir, Criteria>::rt_time_at_stop(
     rt_transport_idx_t const rt_t,
     stop_idx_t const stop_idx,
     event_type const ev_type) const {
@@ -802,36 +794,33 @@ delta_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::rt_time_at_stop(
                   rtt_->event_time(rt_t, stop_idx, ev_type));
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-bool basic_mcraptor<SearchDir, Criteria, RangeReuse>::is_transport_active(
+template <direction SearchDir, typename Criteria>
+bool basic_mcraptor<SearchDir, Criteria>::is_transport_active(
     transport_idx_t const t, day_idx_t const day) const {
   return rtt_ != nullptr ? rtt_->is_transport_active(t, day)
                          : tt_.is_transport_active(t, day);
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-delta_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::to_delta(
+template <direction SearchDir, typename Criteria>
+delta_t basic_mcraptor<SearchDir, Criteria>::to_delta(
     day_idx_t const day, std::int16_t const mam) const {
   return clamp((as_int(day) - as_int(base_)) * 1440 + mam);
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
-unixtime_t basic_mcraptor<SearchDir, Criteria, RangeReuse>::to_unix(
-    delta_t const t) const {
+template <direction SearchDir, typename Criteria>
+unixtime_t basic_mcraptor<SearchDir, Criteria>::to_unix(delta_t const t) const {
   return delta_to_unix(base(), t);
 }
 
-template <direction SearchDir, typename Criteria, bool RangeReuse>
+template <direction SearchDir, typename Criteria>
 std::pair<day_idx_t, minutes_after_midnight_t>
-basic_mcraptor<SearchDir, Criteria, RangeReuse>::split(delta_t const x) const {
+basic_mcraptor<SearchDir, Criteria>::split(delta_t const x) const {
   return split_day_mam(base_, x);
 }
 
-#define NIGIRI_MC_INSTANTIATE(C)                                  \
-  template struct basic_mcraptor<direction::kForward, C, false>;  \
-  template struct basic_mcraptor<direction::kBackward, C, false>; \
-  template struct basic_mcraptor<direction::kForward, C, true>;   \
-  template struct basic_mcraptor<direction::kBackward, C, true>;
+#define NIGIRI_MC_INSTANTIATE(C)                          \
+  template struct basic_mcraptor<direction::kForward, C>; \
+  template struct basic_mcraptor<direction::kBackward, C>;
 
 NIGIRI_MC_INSTANTIATE(arr_criteria)
 NIGIRI_MC_INSTANTIATE(arr_non_transit_criteria)

@@ -226,8 +226,8 @@ template <typename Criteria>
 struct basic_mcraptor_state {
   static constexpr auto const kNoBreadcrumb = (std::uint32_t{1U} << 31U) - 1U;
 
-  // round_ is an implicit Pareto dimension; dep_ tags the start time under
-  // range reuse
+  // round_ is an implicit Pareto dimension; dep_ tags the start time (the
+  // bags outlive next_start_time())
   struct label {
     Criteria crit_;
     std::uint32_t breadcrumb_ : 31;  // kNoBreadcrumb: a start label
@@ -344,9 +344,10 @@ struct basic_mcraptor_state {
   bitvec rt_transport_mark_;
 };
 
-// RangeReuse: keep the bags across start times (rRAPTOR, latest departure
-// first) instead of clearing them per departure.
-template <direction SearchDir, typename Criteria, bool RangeReuse = false>
+// As raptor's round times, the bags outlive next_start_time() (rRAPTOR, latest
+// departure first; labels of earlier start times only prune) and
+// reset_arrivals() clears them.
+template <direction SearchDir, typename Criteria>
 struct basic_mcraptor {
   using state_t = basic_mcraptor_state<Criteria>;
   using algo_state_t = state_t;

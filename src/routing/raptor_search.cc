@@ -52,10 +52,9 @@ struct algo_for {
   using type = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>;
 };
 
-// Range reuse is result-neutral: it only drops dominated completions.
 template <direction SearchDir, via_offset_t Vias, bool Rt, typename Criteria>
 struct algo_for<SearchDir, Vias, Rt, basic_mcraptor_state<Criteria>> {
-  using type = basic_mcraptor<SearchDir, Criteria, /*RangeReuse=*/true>;
+  using type = basic_mcraptor<SearchDir, Criteria>;
 };
 
 #if defined(NIGIRI_CUDA)
