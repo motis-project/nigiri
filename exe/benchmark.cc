@@ -12,6 +12,7 @@
 
 #include "boost/program_options.hpp"
 
+#include "utl/erase_if.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/parallel_for.h"
 #include "utl/parser/cstr.h"
@@ -116,13 +117,20 @@ std::uint64_t compare_results(
     unsigned const min_connection_count) {
   auto mismatches = std::uint64_t{0U};
 
-  auto const criteria = [](journey const& j) {
+  // Only mcraptor-all optimizes the extra criteria. Against it, compare what
+  // both optimize: the (start, dest, transfers) front.
+  auto const has_extras = [](std::string const& name) {
+    return name.find("mcraptor-all") != std::string::npos;
+  };
+  auto const tuple_only = has_extras(ref_name) != has_extras(cmp_name);
+
+  auto const criteria = [&](journey const& j) {
     return std::tuple{j.start_time_,
                       j.transfers_,
                       j.dest_time_,
-                      j.criteria_cost_,
-                      j.criteria_mode_filter_,
-                      j.criteria_mode_switches_};
+                      tuple_only ? 0U : j.criteria_cost_,
+                      !tuple_only && j.criteria_mode_filter_,
+                      tuple_only ? 0U : j.criteria_mode_switches_};
   };
 
   auto const equal = [&](journey const& a, journey const& b) {
@@ -154,6 +162,14 @@ std::uint64_t compare_results(
           window.contains(j.start_time_) /* range raptor search limit */) {
         v.push_back(&j);
       }
+    }
+    if (tuple_only) {  // ties count once, as in search::n_results_in_interval
+      auto const all = v;
+      utl::erase_if(v, [&](journey const* j) {
+        return utl::any_of(all, [&](journey const* o) {
+          return o->tuple_dominates(*j) && (!j->tuple_dominates(*o) || o < j);
+        });
+      });
     }
     // the search leaves ties on the last criteria in no particular order
     std::sort(begin(v), end(v), [&](journey const* a, journey const* b) {

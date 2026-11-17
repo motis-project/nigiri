@@ -4,6 +4,7 @@
 #include <initializer_list>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "fmt/format.h"
@@ -85,6 +86,11 @@ M9,M9,,,,,,
 U0,U0,,,,,,
 U1,U1,,,,,,
 U2,U2,,,,,,
+K0,K0,,,,,,
+K1,K1,,,,,,
+K2,K2,,,,,,
+K3,K3,,,,,,
+K9,K9,,,,,,
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -136,6 +142,11 @@ COACH,D,M_COACH,,
 RAIL,D,M_RAIL,,
 AIR,D,U_AIR,,
 RAIL,D,U_RAIL,,
+RAIL,D,K_WALK1,,
+RAIL,D,K_WALK2,,
+RAIL,D,K_MIX1,,
+BUS,D,K_MIX2,,
+BUS,D,K_LATE,,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -222,12 +233,23 @@ U_AIR,10:15:00,10:15:00,U1,1,0,0
 U_AIR,10:30:00,10:30:00,U2,2,0,0
 U_RAIL,10:00:00,10:00:00,U0,0,0,0
 U_RAIL,11:30:00,11:30:00,U2,1,0,0
+K_WALK1,10:00:00,10:00:00,K0,0,0,0
+K_WALK1,10:20:00,10:20:00,K1,1,0,0
+K_WALK2,10:35:00,10:35:00,K2,0,0,0
+K_WALK2,11:00:00,11:00:00,K9,1,0,0
+K_MIX1,10:00:00,10:00:00,K0,0,0,0
+K_MIX1,10:20:00,10:20:00,K3,1,0,0
+K_MIX2,10:35:00,10:35:00,K3,0,0,0
+K_MIX2,11:00:00,11:00:00,K9,1,0,0
+K_LATE,16:00:00,16:00:00,K0,0,0,0
+K_LATE,16:30:00,16:30:00,K9,1,0,0
 
 # transfers.txt
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
 W1,W2,2,600
 A1,A2,2,600
 L1,L2,2,600
+K1,K2,2,600
 )");
 }
 
@@ -493,6 +515,24 @@ TEST(mcraptor_criteria, later_departure_dominates_across_the_range) {
   expect_rows<mcraptor_non_transit_state>(s, expected);
   expect_rows<mcraptor_non_transit_mode_filter_mode_switches_state>(s,
                                                                     expected);
+}
+
+// K0 -> K9 leaves at 10:00 and arrives at 11:00 with one transfer, by a 10
+// minute walk or a switch from rail to bus. The two are one connection, so
+// min_connection_count 1 is met by the first interval (to 12:30), without
+// extending it to the 16:00.
+TEST(mcraptor_criteria, ties_count_once_for_the_interval_extension) {
+  auto q = between("K0", "K9", {at(9, 30), at(10, 30)}, {})
+               .make(direction::kForward);
+  q.min_connection_count_ = 1U;
+  q.extend_interval_later_ = true;
+  auto ss = search_state{};
+  auto state = mcraptor_non_transit_mode_filter_mode_switches_state{};
+  auto const r = routing::raptor_search(test_tt(), nullptr, ss, state,
+                                        std::move(q), direction::kForward);
+  EXPECT_EQ((std::vector<std::string>{"10:00 11:00 t1 c0 f0 s1",
+                                      "10:00 11:00 t1 c10 f0 s0"}),
+            rows(*r.journeys_));
 }
 
 // 10 minute walk to O1 (arrives 10:30) or none from O2 (arrives 11:00)

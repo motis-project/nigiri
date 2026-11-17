@@ -325,9 +325,11 @@ private:
 
   bool is_pretrip() const { return !is_ontrip(); }
 
+  // Journeys with the same (start, dest, transfers) and other criteria count
+  // once: the first of them is the one left undominated.
   bool is_tuple_dominated(journey const& j) const {
     return utl::any_of(state_.results_, [&](journey const& o) {
-      return &o != &j && o.tuple_dominates(j);
+      return o.tuple_dominates(j) && (!j.tuple_dominates(o) || &o < &j);
     });
   }
   unsigned n_results_in_interval() const {
