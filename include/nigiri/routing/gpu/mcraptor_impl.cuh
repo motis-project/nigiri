@@ -128,12 +128,10 @@ inline constexpr auto kMcOverflowBag = 1U;
 inline constexpr auto kMcOverflowArena = 2U;
 inline constexpr auto kMcOverflowRouteBag = 4U;
 
-template <direction SearchDir, mc_crit Crit>
+template <direction SearchDir, typename Criteria>
 struct mcraptor_impl {
-  static constexpr bool kHasNonTransit = has(Crit, mc_crit::non_transit);
-  static constexpr bool kHasModeFilter = has(Crit, mc_crit::mode_filter);
-  static constexpr bool kHasModeSwitches = has(Crit, mc_crit::mode_switches);
-  static constexpr bool kHasExtras = Crit != mc_crit::arr;
+  using extras_t = typename Criteria::extras_t;
+  static constexpr bool kHasExtras = extras_t::kAny;
   // arrival-only route bags hold a single trip
   static constexpr auto kPrefixK = kHasExtras ? kMcPrefixK : 1U;
 
@@ -147,43 +145,23 @@ struct mcraptor_impl {
     return (kFwd ? 1 : -1) * a;
   }
 
-  // ---- criteria (mc_extras), as the CPU dimensions ------------------------
+  // ---- criteria (mc_criteria.h), as the CPU's arr_with --------------------
   __device__ __forceinline__ static std::uint32_t crit_at_start(
       std::uint32_t const ingress) {
-    return kHasNonTransit ? mc_extras::pack(0U, non_transit_add(0U, ingress),
-                                            kNoModeGroup, 0U)
-                          : 0U;
+    return extras_t::at_start(ingress);
   }
   __device__ __forceinline__ static std::uint32_t crit_after_walk(
       std::uint32_t const crit, std::uint32_t const dur) {
-    if constexpr (kHasNonTransit) {
-      return mc_extras::pack(mc_extras::mode_filter(crit),
-                             non_transit_add(mc_extras::non_transit(crit), dur),
-                             mc_extras::group(crit), mc_extras::switches(crit));
-    } else {
-      return crit;
-    }
+    return extras_t::after_walk(crit, dur);
   }
   __device__ __forceinline__ std::uint32_t crit_after_ride(
       std::uint32_t const carried, clasz const cl) const {
-    auto mf = mc_extras::mode_filter(carried);
-    auto group = mc_extras::group(carried);
-    auto sw = mc_extras::switches(carried);
-    if constexpr (kHasModeFilter) {
-      mf |= is_allowed(avoided_, cl) ? 1U : 0U;
-    }
-    if constexpr (kHasModeSwitches) {
-      auto const g = mode_group(cl);
-      sw = switches_after_ride(group, sw, g);
-      group = g;
-    }
-    return mc_extras::pack(mf, mc_extras::non_transit(carried), group, sw);
+    return extras_t::after_ride(carried, cl, ctx_);
   }
-
-  // field-wise (mc_extras::dominates), never as integers
+  // field-wise, never as integers
   __device__ __forceinline__ static bool crit_le(std::uint32_t const a,
                                                  std::uint32_t const b) {
-    return mc_extras::dominates(a, b);
+    return extras_t::dominates(a, b);
   }
 
   __device__ __forceinline__ static bool dominates(
@@ -386,7 +364,7 @@ struct mcraptor_impl {
       std::uint32_t const a_extras,
       std::uint32_t const b_key,
       std::uint32_t const b_extras) {
-    return a_key <= b_key && mc_extras::completed_dominates(a_extras, b_extras);
+    return a_key <= b_key && extras_t::completed_dominates(a_extras, b_extras);
   }
 
   __device__ bool dest_dominates(std::uint32_t const round,
@@ -394,7 +372,7 @@ struct mcraptor_impl {
                                  std::uint32_t const extras) const {
     // cheap necessary conditions before the frontier scan
     if (dest_best_key_[round] > arr_key ||
-        dest_best_total_[round] > arr_key + mc_extras::ordered(extras)) {
+        dest_best_total_[round] > arr_key + extras_t::ordered(extras)) {
       return false;
     }
     for (auto i = 0U; i != kMcDestCap; ++i) {
@@ -442,7 +420,7 @@ struct mcraptor_impl {
       for (auto r = round; r != kMaxTransfers + 2U; ++r) {
         dest_best_key_[r] = min(dest_best_key_[r], arr_key);
         dest_best_total_[r] =
-            min(dest_best_total_[r], arr_key + mc_extras::ordered(extras));
+            min(dest_best_total_[r], arr_key + extras_t::ordered(extras));
       }
       return true;
     });
@@ -1240,7 +1218,7 @@ struct mcraptor_impl {
 
   // the route's class, as raptor's clasz filter (read by the mode criteria)
   __device__ __forceinline__ clasz ride_clasz(route_idx_t const r) const {
-    if constexpr (kHasModeFilter || kHasModeSwitches) {
+    if constexpr (extras_t::kRide) {
       return tt_.route_clasz_[r];
     } else {
       return clasz::kOther;
@@ -1248,7 +1226,7 @@ struct mcraptor_impl {
   }
   __device__ __forceinline__ clasz
   ride_clasz(rt_transport_idx_t const rt_t) const {
-    if constexpr (kHasModeFilter || kHasModeSwitches) {
+    if constexpr (extras_t::kRide) {
       return rtt_.rt_transport_clasz_[rt_t];
     } else {
       return clasz::kOther;
@@ -1662,7 +1640,7 @@ struct mcraptor_impl {
   device_rt_timetable rtt_;
   transfer_time_settings transfer_time_settings_;
   clasz_mask_t allowed_claszes_;
-  clasz_mask_t avoided_;  // mode_filter: the CPU's mode_filter_dim mask
+  mc_context ctx_;
   profile_idx_t prf_idx_;
   day_idx_t base_;
   delta_t worst_at_dest_;

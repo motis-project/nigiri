@@ -173,7 +173,9 @@ void expect_legs_match_criteria(timetable const& tt,
                 avoided =
                     avoided || is_allowed(mode_filter_dim::avoided_mask(), cl);
                 auto const g = mode_group(cl);
-                switches = switches_after_ride(group, switches, g);
+                switches = std::min(
+                    switches + (group != kNoModeGroup && group != g ? 1U : 0U),
+                    kMaxModeSwitches);
                 group = g;
               }},
           l.uses_);

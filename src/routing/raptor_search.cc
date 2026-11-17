@@ -67,7 +67,7 @@ struct algo_for<SearchDir, Vias, Rt, gpu::gpu_raptor_state> {
 template <direction SearchDir, via_offset_t Vias, bool Rt, typename AlgoState>
   requires std::is_base_of_v<gpu::gpu_mcraptor_state, AlgoState>
 struct algo_for<SearchDir, Vias, Rt, AlgoState> {
-  using type = gpu::gpu_mcraptor<SearchDir, AlgoState::kCrit>;
+  using type = gpu::gpu_mcraptor<SearchDir, typename AlgoState::criteria_t>;
 };
 #endif
 

@@ -54,6 +54,7 @@ basic_mcraptor<SearchDir, Criteria>::basic_mcraptor(
       lb_{lb},
       base_{base},
       allowed_claszes_{allowed_claszes},
+      ctx_{.avoided_ = mode_filter_dim::avoided_mask()},
       is_wheelchair_{is_wheelchair},
       transfer_time_settings_{tts},
       prf_idx_{prf_idx} {
@@ -265,7 +266,7 @@ bool basic_mcraptor<SearchDir, Criteria>::alight(unsigned const k,
     return false;
   }
   auto const ride_crit =
-      Criteria::from_ride(by_transport, ride_clasz, rl.carried_);
+      Criteria::from_ride(by_transport, ride_clasz, rl.carried_, ctx_);
   if (dest_dominates(k,
                      ride_crit.projected_to(clamp(by_transport + dir(lb))))) {
     ++stats_.route_update_prevented_by_lower_bound_;
@@ -381,7 +382,7 @@ void basic_mcraptor<SearchDir, Criteria>::board(
     transport const t,
     stop_idx_t const stop_idx,
     std::uint32_t const parent,
-    typename Criteria::carried const& carried) {
+    typename Criteria::carried const carried) {
   for (auto& rl : route_bag_) {
     if (rl.key_ == key && rl.carried_ == carried) {
       // same trip and criteria: board closest to the exit
@@ -425,7 +426,7 @@ bool basic_mcraptor<SearchDir, Criteria>::update_route(unsigned const k,
           stop_idx_t const stop_idx, location_idx_t const l) {
         // skip the lookup if a boarded trip already dominates
         for (auto const& rl : route_bag_) {
-          if (Criteria::carried_dominates(rl.carried_, crit.d_) &&
+          if (Criteria::carried_dominates(rl.carried_, crit.extras_) &&
               is_better(time_at_stop(r, rl.t_, stop_idx, kDepEv), crit.arr_)) {
             return;
           }
@@ -433,7 +434,7 @@ bool basic_mcraptor<SearchDir, Criteria>::update_route(unsigned const k,
         auto const [day, mam] = split(crit.arr_);
         auto const et = get_earliest_transport(r, stop_idx, day, mam, l);
         if (et.is_valid()) {
-          board(trip_order_key(r, et), et, stop_idx, parent, crit.d_);
+          board(trip_order_key(r, et), et, stop_idx, parent, crit.extras_);
         }
       });
 }
@@ -484,7 +485,7 @@ bool basic_mcraptor<SearchDir, Criteria>::update_rt_transport(
           stop_idx_t const stop_idx, location_idx_t) {
         if (is_better_or_eq(crit.arr_,
                             rt_time_at_stop(rt_t, stop_idx, kDepEv))) {
-          board(0U, transport{}, stop_idx, parent, crit.d_);
+          board(0U, transport{}, stop_idx, parent, crit.extras_);
         }
       });
 }

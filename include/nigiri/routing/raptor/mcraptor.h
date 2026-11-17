@@ -83,130 +83,48 @@ constexpr bool arr_no_worse(delta_t const a, delta_t const b) {
   return SearchDir == direction::kForward ? a <= b : a >= b;
 }
 
-// Pareto dimensions besides the arrival, combined by arr_with.
-// completed_dominates: at the destination, nothing follows.
-
-// Walking (offsets, footpaths; not the same-stop transfer buffer) in units of
-// kNonTransitBin minutes, see non_transit_add().
-struct non_transit_dim {
-  bool dominates(non_transit_dim const& o) const {
-    return non_transit_ <= o.non_transit_;
-  }
-  bool completed_dominates(non_transit_dim const& o) const {
-    return dominates(o);
-  }
-  static non_transit_dim at_start(std::uint16_t const ingress) {
-    return {static_cast<std::uint8_t>(non_transit_add(0U, ingress))};
-  }
-  static non_transit_dim from_ride(clasz, non_transit_dim const& prev) {
-    return prev;
-  }
-  non_transit_dim with_walk(std::uint16_t const duration) const {
-    return {static_cast<std::uint8_t>(non_transit_add(non_transit_, duration))};
-  }
-  void apply_to(journey& j) const {
-    j.criteria_cost_ =
-        static_cast<std::uint16_t>(non_transit_ * kNonTransitBin);
-  }
-  bool operator==(non_transit_dim const&) const = default;
-
-  std::uint8_t non_transit_{0U};  // units
-};
-
-// "Uses an avoided vehicle class" as a Pareto dimension, not a filter.
-struct mode_filter_dim {
-  // set per query (default AIR); a search runs on one thread
-  static clasz_mask_t& avoided_mask() {
-    thread_local clasz_mask_t mask = to_mask(clasz::kAir);
-    return mask;
-  }
-  static void set_avoided(clasz_mask_t const m) { avoided_mask() = m; }
-
-  bool dominates(mode_filter_dim const& o) const {
-    return mode_filter_ <= o.mode_filter_;
-  }
-  bool completed_dominates(mode_filter_dim const& o) const {
-    return dominates(o);
-  }
-  static mode_filter_dim at_start(std::uint16_t) { return {false}; }
-  static mode_filter_dim from_ride(clasz const c, mode_filter_dim const& prev) {
-    return {prev.mode_filter_ || is_allowed(avoided_mask(), c)};
-  }
-  mode_filter_dim with_walk(std::uint16_t) const { return *this; }
-  void apply_to(journey& j) const { j.criteria_mode_filter_ = mode_filter_; }
-  bool operator==(mode_filter_dim const&) const = default;
-
-  bool mode_filter_{false};
-};
-
-// Switches between vehicle class groups (mode_group()). Labels in different
-// groups only dominate with a switch to spare.
-struct mode_switches_dim {
-  bool dominates(mode_switches_dim const& o) const {
-    return switches_dominate(group_, switches_, o.group_, o.switches_);
-  }
-  bool completed_dominates(mode_switches_dim const& o) const {
-    return switches_ <= o.switches_;
-  }
-  static mode_switches_dim at_start(std::uint16_t) {
-    return {static_cast<std::uint8_t>(kNoModeGroup), 0U};
-  }
-  static mode_switches_dim from_ride(clasz const c,
-                                     mode_switches_dim const& prev) {
-    auto const group = mode_group(c);
-    return {static_cast<std::uint8_t>(group),
-            static_cast<std::uint8_t>(
-                switches_after_ride(prev.group_, prev.switches_, group))};
-  }
-  mode_switches_dim with_walk(std::uint16_t) const { return *this; }
-  void apply_to(journey& j) const { j.criteria_mode_switches_ = switches_; }
-  bool operator==(mode_switches_dim const&) const = default;
-
-  std::uint8_t group_{static_cast<std::uint8_t>(kNoModeGroup)};
-  std::uint8_t switches_{0U};
-};
-
+// The arrival and the criteria Dims (mc_criteria.h), packed as on the GPU.
 template <typename... Dims>
 struct arr_with {
-  using carried = std::tuple<Dims...>;  // what survives a boarding
+  using extras_t = mc_extras<Dims...>;
+  using carried = std::uint16_t;  // what survives a boarding: the extras
 
-  static bool carried_dominates([[maybe_unused]] carried const& a,
-                                [[maybe_unused]] carried const& b) {
-    return (std::get<Dims>(a).dominates(std::get<Dims>(b)) && ...);
+  static bool carried_dominates(carried const a, carried const b) {
+    return extras_t::dominates(a, b);
   }
   template <direction SearchDir>
   bool dominates(arr_with const& o) const {
-    return arr_no_worse<SearchDir>(arr_, o.arr_) && carried_dominates(d_, o.d_);
+    return arr_no_worse<SearchDir>(arr_, o.arr_) &&
+           extras_t::dominates(extras_, o.extras_);
   }
   template <direction SearchDir>
   bool completed_dominates(arr_with const& o) const {
     return arr_no_worse<SearchDir>(arr_, o.arr_) &&
-           (std::get<Dims>(d_).completed_dominates(std::get<Dims>(o.d_)) &&
-            ...);
+           extras_t::completed_dominates(extras_, o.extras_);
   }
   static arr_with from_ride(delta_t const arr,
-                            [[maybe_unused]] clasz const c,
-                            [[maybe_unused]] carried const& prev) {
-    return {arr, carried{Dims::from_ride(c, std::get<Dims>(prev))...}};
+                            clasz const c,
+                            carried const prev,
+                            mc_context const& ctx) {
+    return {arr, static_cast<carried>(extras_t::after_ride(prev, c, ctx))};
   }
-  static arr_with at_start(delta_t const arr,
-                           [[maybe_unused]] std::uint16_t const ingress) {
-    return {arr, carried{Dims::at_start(ingress)...}};
+  static arr_with at_start(delta_t const arr, std::uint16_t const ingress) {
+    return {arr, static_cast<carried>(extras_t::at_start(ingress))};
   }
-  arr_with with_transfer(int const dt) const { return {clamp(arr_ + dt), d_}; }
-  arr_with with_walk(int const dt,
-                     [[maybe_unused]] std::uint16_t const duration) const {
+  arr_with with_transfer(int const dt) const {
+    return {clamp(arr_ + dt), extras_};
+  }
+  arr_with with_walk(int const dt, std::uint16_t const duration) const {
     return {clamp(arr_ + dt),
-            carried{std::get<Dims>(d_).with_walk(duration)...}};
+            static_cast<carried>(extras_t::after_walk(extras_, duration))};
   }
-  // dimensions only grow, so they are their own lower bound
-  arr_with projected_to(delta_t const arr) const { return {arr, d_}; }
-  void apply_to([[maybe_unused]] journey& j) const {
-    (std::get<Dims>(d_).apply_to(j), ...);
-  }
+  // the criteria only grow, so they are their own lower bound
+  arr_with projected_to(delta_t const arr) const { return {arr, extras_}; }
+  void apply_to(journey& j) const { extras_t::to_journey(extras_, j); }
+  bool operator==(arr_with const&) const = default;
 
   delta_t arr_;
-  [[no_unique_address]] carried d_;
+  carried extras_{0U};
 };
 
 using arr_criteria = arr_with<>;
@@ -414,7 +332,7 @@ private:
     std::uint32_t key_;
     stop_idx_t board_;
     std::uint32_t parent_;
-    [[no_unique_address]] typename Criteria::carried carried_;
+    typename Criteria::carried carried_;
   };
 
   date::sys_days base() const;
@@ -435,7 +353,7 @@ private:
              transport,
              stop_idx_t,
              std::uint32_t parent,
-             typename Criteria::carried const&);
+             typename Criteria::carried);
   void update_footpaths(unsigned k);
   void collect_dest_journeys(unsigned k,
                              unixtime_t start_time,
@@ -546,6 +464,7 @@ private:
   day_idx_t base_;
   raptor_stats stats_;
   clasz_mask_t allowed_claszes_;
+  mc_context ctx_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
   profile_idx_t prf_idx_;

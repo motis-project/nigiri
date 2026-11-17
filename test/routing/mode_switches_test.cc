@@ -7,12 +7,30 @@ using namespace nigiri::routing;
 
 namespace {
 
-std::uint8_t switches(std::initializer_list<clasz> const rides) {
-  auto d = mode_switches_dim::at_start(0U);
+using msd = mode_switches_dim;
+
+std::uint32_t switches(std::initializer_list<clasz> const rides) {
+  auto f = mc_fields{};
   for (auto const c : rides) {
-    d = mode_switches_dim::from_ride(c, d);
+    msd::after_ride(f, c, mc_context{});
   }
-  return d.switches_;
+  return f.switches_;
+}
+
+mc_fields at(clasz const c, std::uint32_t const switches) {
+  return {.group_ = static_cast<std::uint16_t>(mode_group(c)),
+          .switches_ = static_cast<std::uint16_t>(switches)};
+}
+
+mc_fields complete(mc_fields f) {
+  msd::complete(f);
+  return f;
+}
+
+std::uint32_t join(mc_fields const a, mc_fields const b) {
+  auto out = mc_fields{};
+  msd::join(a, b, out);
+  return out.switches_;
 }
 
 }  // namespace
@@ -45,46 +63,57 @@ TEST(mode_switches, remaining_classes_are_one_group) {
 // the next ride may switch one of the two but not the other. Before the first
 // ride (kNoModeGroup) there is nothing to switch from.
 TEST(mode_switches, other_group_dominates_with_a_switch_to_spare) {
-  auto const at = [](clasz const c, std::uint8_t const switches) {
-    return mode_switches_dim{static_cast<std::uint8_t>(mode_group(c)),
-                             switches};
-  };
-  auto const start = mode_switches_dim::at_start(0U);
+  auto const start = mc_fields{};
 
-  EXPECT_TRUE(at(clasz::kRegional, 1U).dominates(at(clasz::kRegional, 1U)));
-  EXPECT_FALSE(at(clasz::kRegional, 1U).dominates(at(clasz::kBus, 1U)));
-  EXPECT_FALSE(at(clasz::kBus, 1U).dominates(at(clasz::kRegional, 1U)));
-  EXPECT_TRUE(at(clasz::kRegional, 0U).dominates(at(clasz::kBus, 1U)));
-  EXPECT_FALSE(at(clasz::kRegional, 2U).dominates(at(clasz::kRegional, 1U)));
-  EXPECT_TRUE(start.dominates(at(clasz::kBus, 0U)));
-
-  // a completed journey has no next ride: the count alone decides
   EXPECT_TRUE(
-      at(clasz::kRegional, 1U).completed_dominates(at(clasz::kBus, 1U)));
+      msd::dominates(at(clasz::kRegional, 1U), at(clasz::kRegional, 1U)));
+  EXPECT_FALSE(msd::dominates(at(clasz::kRegional, 1U), at(clasz::kBus, 1U)));
+  EXPECT_FALSE(msd::dominates(at(clasz::kBus, 1U), at(clasz::kRegional, 1U)));
+  EXPECT_TRUE(msd::dominates(at(clasz::kRegional, 0U), at(clasz::kBus, 1U)));
   EXPECT_FALSE(
-      at(clasz::kRegional, 2U).completed_dominates(at(clasz::kBus, 1U)));
+      msd::dominates(at(clasz::kRegional, 2U), at(clasz::kRegional, 1U)));
+  EXPECT_TRUE(msd::dominates(start, at(clasz::kBus, 0U)));
+
+  // a complete journey has no next ride: the count alone decides
+  EXPECT_TRUE(msd::dominates(complete(at(clasz::kRegional, 1U)),
+                             complete(at(clasz::kBus, 1U))));
+  EXPECT_FALSE(msd::dominates(complete(at(clasz::kRegional, 2U)),
+                              complete(at(clasz::kBus, 1U))));
+
+  // halves of different groups meet with one more switch
+  EXPECT_EQ(2U, join(at(clasz::kRegional, 1U), at(clasz::kBus, 0U)));
+  EXPECT_EQ(1U, join(at(clasz::kBus, 1U), at(clasz::kBus, 0U)));
+  EXPECT_EQ(1U, join(start, at(clasz::kBus, 1U)));
 }
 
-// The GPU label's packed extras (mc_extras) dominate as the CPU dimension, for
-// every group pair and switch counts around the one-switch margin.
-TEST(mode_switches, packed_extras_dominate_as_the_cpu_dimension) {
-  for (auto ga = 0U; ga != 8U; ++ga) {
-    for (auto gb = 0U; gb != 8U; ++gb) {
-      for (auto sa = 0U; sa != 4U; ++sa) {
-        for (auto sb = 0U; sb != 4U; ++sb) {
-          auto const a = mode_switches_dim{static_cast<std::uint8_t>(ga),
-                                           static_cast<std::uint8_t>(sa)};
-          auto const b = mode_switches_dim{static_cast<std::uint8_t>(gb),
-                                           static_cast<std::uint8_t>(sb)};
-          auto const pa = mc_extras::pack(0U, 0U, ga, sa);
-          auto const pb = mc_extras::pack(0U, 0U, gb, sb);
-          EXPECT_EQ(a.dominates(b), mc_extras::dominates(pa, pb))
-              << "groups " << ga << "/" << gb << ", switches " << sa << "/"
-              << sb;
-          EXPECT_EQ(a.completed_dominates(b),
-                    mc_extras::completed_dominates(pa, pb))
-              << "groups " << ga << "/" << gb << ", switches " << sa << "/"
-              << sb;
+// The destination frontier prunes with ordered() before comparing field-wise:
+// complete dominance has to imply ordered(a) <= ordered(b), and the integer
+// has to keep every field.
+TEST(mc_extras, fields_are_independent_and_ordered) {
+  using x = arr_non_transit_mode_filter_mode_switches_criteria::extras_t;
+  auto const make = [](std::uint32_t const nt, std::uint32_t const mf,
+                       std::uint32_t const g, std::uint32_t const sw) {
+    return x::bits({.non_transit_ = static_cast<std::uint16_t>(nt),
+                    .mode_filter_ = static_cast<std::uint16_t>(mf),
+                    .group_ = static_cast<std::uint16_t>(g),
+                    .switches_ = static_cast<std::uint16_t>(sw)});
+  };
+  for (auto const nt : {0U, 1U, kNonTransitMax}) {
+    for (auto const mf : {0U, 1U}) {
+      for (auto const g : {kNoModeGroup, 3U, 7U}) {
+        for (auto const sw : {0U, 2U, kMaxModeSwitches}) {
+          auto const a = make(nt, mf, g, sw);
+          auto const f = x::fields(a);
+          EXPECT_EQ(nt, std::uint32_t{f.non_transit_});
+          EXPECT_EQ(mf, std::uint32_t{f.mode_filter_});
+          EXPECT_EQ(g, std::uint32_t{f.group_});
+          EXPECT_EQ(sw, std::uint32_t{f.switches_});
+          for (auto const b : {make(nt, 1U, 1U, sw),
+                               make(kNonTransitMax, mf, g, kMaxModeSwitches)}) {
+            if (x::completed_dominates(a, b)) {
+              EXPECT_LE(x::ordered(a), x::ordered(b));
+            }
+          }
         }
       }
     }

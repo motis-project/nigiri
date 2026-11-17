@@ -1,15 +1,66 @@
 #pragma once
 
 #include <cstdint>
+#include <bit>
+#include <type_traits>
 
 #include "cista/cuda_check.h"
 
 #include "nigiri/common/delta_t.h"
+#include "nigiri/routing/clasz_mask.h"
+#include "nigiri/routing/journey.h"
 #include "nigiri/types.h"
 
-// McRAPTOR's extra criteria and breadcrumbs, shared by the CPU engine
-// (raptor/mcraptor.h) and the GPU one (gpu/mcraptor_impl.cuh).
+// McRAPTOR's criteria besides the arrival and its breadcrumbs, shared by the
+// CPU engine (raptor/mcraptor.h) and the GPU one (gpu/mcraptor_impl.cuh).
+//
+// A criterion owns fields of mc_fields, the label's 16 bits. Derived from
+// mc_dim (no-op updates, kRide false), it defines what applies of
+//   kRide                    whether a ride changes its fields
+//   at_start(f, minutes)     a start label (minutes walked to it)
+//   after_ride(f, c, ctx)    after riding a trip of class c
+//   after_walk(f, minutes)   after a walk (offset, footpath)
+//   complete(f)              drops what only counts while the journey goes on
+//   dominates(a, b)          a is no worse than b; on complete() fields, also
+//                            once nothing follows
+//   join(prefix, suffix, out)  out: the complete fields of both halves
+//   to_journey(f, j), of_journey(j, f)  the journey's field (complete fields)
+// A new criterion also needs its fields here, aliases (raptor/mcraptor.h,
+// gpu/mcraptor.h) and instantiations (raptor/mcraptor.cc, gpu/mcraptor.cu).
 namespace nigiri::routing {
+
+// what the updates need per query
+struct mc_context {
+  clasz_mask_t avoided_{to_mask(clasz::kAir)};  // mode_filter_dim
+};
+
+// Every criterion's fields. A configuration's criteria set theirs, the others
+// stay 0. No padding: the engines store and compare the 16 bits as an integer.
+struct mc_fields {
+  std::uint16_t non_transit_ : 7 {0U};  // non_transit_dim
+  std::uint16_t mode_filter_ : 1 {0U};  // mode_filter_dim
+  std::uint16_t group_ : 3 {0U};  // mode_switches_dim: group of the last trip
+  std::uint16_t switches_ : 4 {0U};  // mode_switches_dim
+  std::uint16_t spare_ : 1 {0U};
+};
+static_assert(sizeof(mc_fields) == 2U &&
+                  std::has_unique_object_representations_v<mc_fields>,
+              "the label's 16 bits, all of them fields");
+
+CISTA_CUDA_COMPAT constexpr std::uint16_t saturate(std::uint32_t const v,
+                                                   std::uint32_t const max) {
+  return static_cast<std::uint16_t>(v < max ? v : max);
+}
+
+struct mc_dim {
+  static constexpr bool kRide = false;
+  CISTA_CUDA_COMPAT static void at_start(mc_fields&, std::uint32_t) {}
+  CISTA_CUDA_COMPAT static void after_ride(mc_fields&,
+                                           clasz,
+                                           mc_context const&) {}
+  CISTA_CUDA_COMPAT static void after_walk(mc_fields&, std::uint32_t) {}
+  CISTA_CUDA_COMPAT static void complete(mc_fields&) {}
+};
 
 // ---- non_transit ------------------------------------------------------------
 // Each walk (offset, footpath) counts its minutes floored to whole units of
@@ -22,9 +73,78 @@ inline constexpr std::uint32_t kNonTransitMax = 0x7FU;
 
 CISTA_CUDA_COMPAT constexpr std::uint32_t non_transit_add(
     std::uint32_t const units, std::uint32_t const minutes) {
-  auto const sum = units + minutes / kNonTransitBin;
-  return sum < kNonTransitMax ? sum : kNonTransitMax;
+  return saturate(units + minutes / kNonTransitBin, kNonTransitMax);
 }
+
+// Walking (offsets, footpaths; not the same-stop transfer buffer) in units of
+// kNonTransitBin minutes.
+struct non_transit_dim : mc_dim {
+  CISTA_CUDA_COMPAT static void at_start(mc_fields& f,
+                                         std::uint32_t const minutes) {
+    f.non_transit_ = static_cast<std::uint16_t>(non_transit_add(0U, minutes));
+  }
+  CISTA_CUDA_COMPAT static void after_walk(mc_fields& f,
+                                           std::uint32_t const minutes) {
+    f.non_transit_ =
+        static_cast<std::uint16_t>(non_transit_add(f.non_transit_, minutes));
+  }
+  CISTA_CUDA_COMPAT static bool dominates(mc_fields const a,
+                                          mc_fields const b) {
+    return a.non_transit_ <= b.non_transit_;
+  }
+  CISTA_CUDA_COMPAT static void join(mc_fields const a,
+                                     mc_fields const b,
+                                     mc_fields& out) {
+    out.non_transit_ =
+        saturate(a.non_transit_ + b.non_transit_, kNonTransitMax);
+  }
+  static void to_journey(mc_fields const f, journey& j) {
+    j.criteria_cost_ =
+        static_cast<std::uint16_t>(f.non_transit_ * kNonTransitBin);
+  }
+  static void of_journey(journey const& j, mc_fields& f) {
+    f.non_transit_ =
+        saturate(j.criteria_cost_ / kNonTransitBin, kNonTransitMax);
+  }
+};
+
+// ---- mode_filter ------------------------------------------------------------
+// "Uses an avoided vehicle class" as a Pareto dimension, not a filter.
+struct mode_filter_dim : mc_dim {
+  static constexpr bool kRide = true;
+
+  // set per query (default AIR) on the thread that runs the search; the
+  // engines copy it into their mc_context
+  static clasz_mask_t& avoided_mask() {
+    thread_local clasz_mask_t mask = to_mask(clasz::kAir);
+    return mask;
+  }
+  static void set_avoided(clasz_mask_t const m) { avoided_mask() = m; }
+
+  CISTA_CUDA_COMPAT static void after_ride(mc_fields& f,
+                                           clasz const c,
+                                           mc_context const& ctx) {
+    if (is_allowed(ctx.avoided_, c)) {
+      f.mode_filter_ = 1U;
+    }
+  }
+  CISTA_CUDA_COMPAT static bool dominates(mc_fields const a,
+                                          mc_fields const b) {
+    return a.mode_filter_ <= b.mode_filter_;
+  }
+  CISTA_CUDA_COMPAT static void join(mc_fields const a,
+                                     mc_fields const b,
+                                     mc_fields& out) {
+    out.mode_filter_ =
+        static_cast<std::uint16_t>(a.mode_filter_ | b.mode_filter_);
+  }
+  static void to_journey(mc_fields const f, journey& j) {
+    j.criteria_mode_filter_ = f.mode_filter_ != 0U;
+  }
+  static void of_journey(journey const& j, mc_fields& f) {
+    f.mode_filter_ = j.criteria_mode_filter_ ? 1U : 0U;
+  }
+};
 
 // ---- mode switches ----------------------------------------------------------
 // Vehicle class groups; a change of group between trips is a switch.
@@ -46,78 +166,123 @@ CISTA_CUDA_COMPAT constexpr std::uint32_t mode_group(clasz const c) {
   }
 }
 
-CISTA_CUDA_COMPAT constexpr std::uint32_t switches_after_ride(
-    std::uint32_t const prev_group,
-    std::uint32_t const switches,
-    std::uint32_t const group) {
-  auto const switched = prev_group != kNoModeGroup && prev_group != group;
-  auto const s = switches + (switched ? 1U : 0U);
-  return s < kMaxModeSwitches ? s : kMaxModeSwitches;
-}
-
 // Labels in different groups only dominate with a switch to spare (the next
-// switch may differ); a completed journey has no next switch.
-CISTA_CUDA_COMPAT constexpr bool switches_dominate(std::uint32_t const a_group,
-                                                   std::uint32_t const a_sw,
-                                                   std::uint32_t const b_group,
-                                                   std::uint32_t const b_sw) {
-  auto const penalty =
-      (a_group == b_group || a_group == kNoModeGroup) ? 0U : 1U;
-  return a_sw + penalty <= b_sw;
-}
+// switch may differ); a complete journey has no group and no next switch.
+struct mode_switches_dim : mc_dim {
+  static constexpr bool kRide = true;
 
-// ---- packed form (the GPU label's 16 bit extras slot) ---------------------
-//   bit  0      mode_filter: uses an avoided vehicle class
-//   bits 1..7   non_transit units
-//   bits 8..10  mode group of the last trip
-//   bits 11..14 mode switches
-// Unused criteria stay 0, so one dominance rule serves every configuration.
-namespace mc_extras {
+  CISTA_CUDA_COMPAT static void after_ride(mc_fields& f,
+                                           clasz const c,
+                                           mc_context const&) {
+    auto const g = mode_group(c);
+    auto const sw = f.group_ != kNoModeGroup && f.group_ != g ? 1U : 0U;
+    f.group_ = static_cast<std::uint16_t>(g);
+    f.switches_ = saturate(f.switches_ + sw, kMaxModeSwitches);
+  }
+  CISTA_CUDA_COMPAT static void complete(mc_fields& f) {
+    f.group_ = kNoModeGroup;
+  }
+  CISTA_CUDA_COMPAT static bool dominates(mc_fields const a,
+                                          mc_fields const b) {
+    auto const penalty =
+        (a.group_ == b.group_ || a.group_ == kNoModeGroup) ? 0U : 1U;
+    return a.switches_ + penalty <= b.switches_;
+  }
+  // a change of group where the halves meet is one more switch
+  CISTA_CUDA_COMPAT static void join(mc_fields const a,
+                                     mc_fields const b,
+                                     mc_fields& out) {
+    auto const junction = a.group_ != kNoModeGroup &&
+                          b.group_ != kNoModeGroup && a.group_ != b.group_;
+    out.switches_ = saturate(a.switches_ + b.switches_ + (junction ? 1U : 0U),
+                             kMaxModeSwitches);
+  }
+  static void to_journey(mc_fields const f, journey& j) {
+    j.criteria_mode_switches_ = static_cast<std::uint8_t>(f.switches_);
+  }
+  static void of_journey(journey const& j, mc_fields& f) {
+    f.switches_ = saturate(j.criteria_mode_switches_, kMaxModeSwitches);
+  }
+};
 
-inline constexpr std::uint32_t kNtShift = 1U;
-inline constexpr std::uint32_t kGroupShift = 8U;
-inline constexpr std::uint32_t kGroupMask = 0x7U;
-inline constexpr std::uint32_t kSwShift = 11U;
+// ---- the extras -------------------------------------------------------------
+// The criteria Dims on the label's 16 bits as an integer, as the engines store
+// them. Field-wise (complete) dominance implies ordered(a) <= ordered(b),
+// whatever the fields' layout.
+template <typename... Dims>
+struct mc_extras {
+  static constexpr bool kAny = sizeof...(Dims) != 0U;
+  static constexpr bool kRide = (... || Dims::kRide);
 
-CISTA_CUDA_COMPAT constexpr std::uint32_t mode_filter(std::uint32_t const x) {
-  return x & 1U;
-}
-CISTA_CUDA_COMPAT constexpr std::uint32_t non_transit(std::uint32_t const x) {
-  return (x >> kNtShift) & kNonTransitMax;
-}
-CISTA_CUDA_COMPAT constexpr std::uint32_t group(std::uint32_t const x) {
-  return (x >> kGroupShift) & kGroupMask;
-}
-CISTA_CUDA_COMPAT constexpr std::uint32_t switches(std::uint32_t const x) {
-  return (x >> kSwShift) & kMaxModeSwitches;
-}
+  CISTA_CUDA_COMPAT static mc_fields fields(std::uint32_t const x) {
+    return std::bit_cast<mc_fields>(static_cast<std::uint16_t>(x));
+  }
+  CISTA_CUDA_COMPAT static std::uint32_t bits(mc_fields const f) {
+    return std::bit_cast<std::uint16_t>(f);
+  }
+  CISTA_CUDA_COMPAT static mc_fields completed(std::uint32_t const x) {
+    auto f = fields(x);
+    (Dims::complete(f), ...);
+    return f;
+  }
 
-CISTA_CUDA_COMPAT constexpr std::uint32_t pack(std::uint32_t const mode_filter,
-                                               std::uint32_t const non_transit,
-                                               std::uint32_t const group,
-                                               std::uint32_t const switches) {
-  return mode_filter | (non_transit << kNtShift) | (group << kGroupShift) |
-         (switches << kSwShift);
-}
-
-CISTA_CUDA_COMPAT constexpr bool dominates(std::uint32_t const a,
-                                           std::uint32_t const b) {
-  return mode_filter(a) <= mode_filter(b) && non_transit(a) <= non_transit(b) &&
-         switches_dominate(group(a), switches(a), group(b), switches(b));
-}
-
-CISTA_CUDA_COMPAT constexpr bool completed_dominates(std::uint32_t const a,
-                                                     std::uint32_t const b) {
-  return mode_filter(a) <= mode_filter(b) && non_transit(a) <= non_transit(b) &&
-         switches(a) <= switches(b);
-}
-
-// Without the group, (completed) dominance implies a <= b as integers.
-CISTA_CUDA_COMPAT constexpr std::uint32_t ordered(std::uint32_t const x) {
-  return x & ~(kGroupMask << kGroupShift);
-}
-
-}  // namespace mc_extras
+  CISTA_CUDA_COMPAT static std::uint32_t at_start(
+      [[maybe_unused]] std::uint32_t const minutes) {
+    auto f = mc_fields{};
+    (Dims::at_start(f, minutes), ...);
+    return bits(f);
+  }
+  CISTA_CUDA_COMPAT static std::uint32_t after_ride(
+      std::uint32_t const x,
+      [[maybe_unused]] clasz const c,
+      [[maybe_unused]] mc_context const& ctx) {
+    auto f = fields(x);
+    (Dims::after_ride(f, c, ctx), ...);
+    return bits(f);
+  }
+  CISTA_CUDA_COMPAT static std::uint32_t after_walk(
+      std::uint32_t const x, [[maybe_unused]] std::uint32_t const minutes) {
+    auto f = fields(x);
+    (Dims::after_walk(f, minutes), ...);
+    return bits(f);
+  }
+  CISTA_CUDA_COMPAT static bool dominates(std::uint32_t const a,
+                                          std::uint32_t const b) {
+    [[maybe_unused]] auto const fa = fields(a);
+    [[maybe_unused]] auto const fb = fields(b);
+    return (... && Dims::dominates(fa, fb));
+  }
+  CISTA_CUDA_COMPAT static bool completed_dominates(std::uint32_t const a,
+                                                    std::uint32_t const b) {
+    [[maybe_unused]] auto const fa = completed(a);
+    [[maybe_unused]] auto const fb = completed(b);
+    return (... && Dims::dominates(fa, fb));
+  }
+  CISTA_CUDA_COMPAT static std::uint32_t ordered(std::uint32_t const x) {
+    return bits(completed(x));
+  }
+  // a prefix and a suffix label joined at a stop fit a journey's criteria
+  // (target: of_journey())
+  CISTA_CUDA_COMPAT static bool join_fits(std::uint32_t const prefix,
+                                          std::uint32_t const suffix,
+                                          std::uint32_t const target) {
+    [[maybe_unused]] auto const p = fields(prefix);
+    [[maybe_unused]] auto const s = fields(suffix);
+    [[maybe_unused]] auto const t = fields(target);
+    [[maybe_unused]] auto j = mc_fields{};
+    (Dims::join(p, s, j), ...);
+    return (... && Dims::dominates(j, t));
+  }
+  static void to_journey(std::uint32_t const x, [[maybe_unused]] journey& j) {
+    [[maybe_unused]] auto const f = completed(x);
+    (Dims::to_journey(f, j), ...);
+  }
+  static std::uint32_t of_journey([[maybe_unused]] journey const& j) {
+    auto f = mc_fields{};
+    (Dims::of_journey(j, f), ...);
+    return bits(f);
+  }
+};
 
 // ---- breadcrumbs ------------------------------------------------------------
 // The transit leg behind an arrival: the trip (transport_idx_t on traffic day
