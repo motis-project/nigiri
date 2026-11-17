@@ -860,14 +860,20 @@ routing_result bmrap_profile_search(
     return raptor_search(tt, rtt, s_state, mc_state, std::move(q), search_dir,
                          timeout);
   }
+  // Rt as in raptor_search: the CPU raptor sizes its state by it
   auto const run = [&]<bool GpuMc>() {
+    auto const with_dir = [&]<direction Dir>() {
+      return rtt == nullptr
+                 ? bmrap_profile<Dir, false, Criteria, AlgoState, GpuMc>(
+                       tt, rtt, s_state, algo_state, mc_state, std::move(q),
+                       timeout)
+                 : bmrap_profile<Dir, true, Criteria, AlgoState, GpuMc>(
+                       tt, rtt, s_state, algo_state, mc_state, std::move(q),
+                       timeout);
+    };
     return search_dir == direction::kForward
-               ? bmrap_profile<direction::kForward, false, Criteria, AlgoState,
-                               GpuMc>(tt, rtt, s_state, algo_state, mc_state,
-                                      std::move(q), timeout)
-               : bmrap_profile<direction::kBackward, false, Criteria, AlgoState,
-                               GpuMc>(tt, rtt, s_state, algo_state, mc_state,
-                                      std::move(q), timeout);
+               ? with_dir.template operator()<direction::kForward>()
+               : with_dir.template operator()<direction::kBackward>();
   };
   // the device mc state is a large allocation that can fail: fall back to the
   // CPU mc phases then
