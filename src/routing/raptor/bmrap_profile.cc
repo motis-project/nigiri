@@ -221,6 +221,12 @@ routing_result bmrap_profile(
       mc_state, fwd_is_dest, fwd_dist, q.td_dest_, fwd_lb);
   auto mc_pong = make.template operator()<mc_pong_t>(
       mc_state, bwd_is_dest, bwd_dist, qf.td_dest_, bwd_lb);
+  // the starts' walks, as search.h tells the plain engines: td offsets may
+  // wait, locations of a start stop are reached by a transfer
+  mc_ping.set_td_start(q.td_start_);
+  mc_ping.set_start_stops(q.start_, q.start_match_mode_);
+  mc_pong.set_td_start(qf.td_start_);
+  mc_pong.set_start_stops(qf.start_, qf.start_match_mode_);
 
   if constexpr (GpuMc) {
     // phase 5 runs several departures under one reset_arrivals(): the device
