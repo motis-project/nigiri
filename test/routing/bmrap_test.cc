@@ -1379,7 +1379,7 @@ TEST(bmrap, bounded_needs_lb_matches_real_engines) {
   EXPECT_FALSE((routing::bounded_needs_lb<
                 routing::gpu::gpu_raptor<direction::kForward, false>>()));
   EXPECT_FALSE((routing::bounded_needs_lb<routing::gpu::gpu_mcraptor<
-                    direction::kForward, routing::gpu::mc_crit::arr>>()));
+                    direction::kForward, routing::arr_criteria>>()));
 #endif
 }
 

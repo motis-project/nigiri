@@ -214,7 +214,10 @@ std::vector<std::string> leg_problems(timetable const& tt,
               avoided |=
                   is_allowed(routing::mode_filter_dim::avoided_mask(), c);
               auto const g = routing::mode_group(c);
-              switches = routing::switches_after_ride(group, switches, g);
+              switches = std::min(
+                  switches +
+                      (group != routing::kNoModeGroup && group != g ? 1U : 0U),
+                  routing::kMaxModeSwitches);
               group = g;
               ++n_rides;
             },

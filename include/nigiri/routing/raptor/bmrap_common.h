@@ -81,56 +81,22 @@ struct bmrap_prune_algo_for<SearchDir, Rt, gpu::gpu_raptor_state> {
 };
 #endif
 
-// engine of the mc phases: the device one only takes the criteria that fit its
-// packed label (mc_crit)
+// engine of the mc phases (the same criteria types on both)
 template <direction SearchDir, typename Criteria, bool GpuMc>
 struct bmrap_mc_algo_for {
-  using type = basic_mcraptor<SearchDir, Criteria, /*RangeReuse=*/false>;
+  using type = basic_mcraptor<SearchDir, Criteria>;
   using state = basic_mcraptor_state<Criteria>;
 };
 
 #if defined(NIGIRI_CUDA)
-// one mc_crit bit per criteria dimension
-template <typename Dim>
-constexpr std::uint8_t mc_crit_bit() {
-  if constexpr (std::is_same_v<Dim, non_transit_dim>) {
-    return static_cast<std::uint8_t>(gpu::mc_crit::non_transit);
-  } else if constexpr (std::is_same_v<Dim, mode_filter_dim>) {
-    return static_cast<std::uint8_t>(gpu::mc_crit::mode_filter);
-  } else {
-    static_assert(std::is_same_v<Dim, mode_switches_dim>,
-                  "dimension has no device mcraptor equivalent");
-    return static_cast<std::uint8_t>(gpu::mc_crit::mode_switches);
-  }
-}
-
-template <typename Criteria>
-struct mc_crit_of_t;
-
-template <typename... Dims>
-struct mc_crit_of_t<arr_with<Dims...>> {
-  static constexpr auto value =
-      static_cast<gpu::mc_crit>((std::uint8_t{0U} | ... | mc_crit_bit<Dims>()));
-};
-
-template <typename Criteria>
-constexpr gpu::mc_crit mc_crit_of() {
-  return mc_crit_of_t<Criteria>::value;
-}
-
-template <typename Criteria>
-inline constexpr bool kMcCritSupported =
-    requires { mc_crit_of_t<Criteria>::value; };
-
 // mc phases on the device only with the scalar engine there too
 template <typename Criteria, typename AlgoState>
 inline constexpr bool kGpuMcSupported =
-    std::is_same_v<AlgoState, gpu::gpu_raptor_state> &&
-    kMcCritSupported<Criteria>;
+    std::is_same_v<AlgoState, gpu::gpu_raptor_state>;
 
 template <direction SearchDir, typename Criteria>
 struct bmrap_mc_algo_for<SearchDir, Criteria, true> {
-  using type = gpu::gpu_mcraptor<SearchDir, mc_crit_of<Criteria>()>;
+  using type = gpu::gpu_mcraptor<SearchDir, Criteria>;
   using state = gpu::gpu_mcraptor_state;
 };
 #else

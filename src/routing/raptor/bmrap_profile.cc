@@ -23,52 +23,6 @@ namespace nigiri::routing {
 
 namespace {
 
-// Keeps a label at l iff a label of the other search at l is catchable from it
-// (stored post-transfer: one buffer of slack) and the two join into a target.
-template <direction SearchDir, typename Criteria>
-struct join_oracle final : mc_oracle<Criteria> {
-  join_oracle(timetable const& tt,
-              transfer_time_settings const& settings,
-              mc_label_snapshot<Criteria> const& labels,
-              std::vector<journey const*> targets)
-      : tt_{&tt},
-        settings_{&settings},
-        labels_{&labels},
-        targets_{std::move(targets)} {}
-
-  bool feasible(std::uint32_t const l,
-                unsigned const k,
-                delta_t const t,
-                Criteria const& label) const override {
-    // a real-time location: its parent's transfer time, at most a ban
-    auto const slack = adjusted_transfer_time(
-        *settings_,
-        l < tt_->n_locations()
-            ? tt_->locations_.transfer_time_[location_idx_t{l}].count()
-            : kNoTransferAllowed.count());
-    auto const at = static_cast<int>(t);
-    for (auto const& e : labels_->at(l)) {
-      auto const other_at = static_cast<int>(e.crit_.arr_);
-      if (SearchDir == direction::kForward ? at > other_at + slack
-                                           : at < other_at - slack) {
-        continue;  // not catchable
-      }
-      for (auto const* j : targets_) {
-        if (k + e.round_ <= j->transfers_ + 1U &&
-            label.join_fits(e.crit_, *j)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  timetable const* tt_;
-  transfer_time_settings const* settings_;
-  mc_label_snapshot<Criteria> const* labels_;
-  std::vector<journey const*> targets_;
-};
-
 using namespace bmrap_detail;
 
 bool same_criteria(journey const& a, journey const& b) {
@@ -351,30 +305,18 @@ routing_result bmrap_profile(
   auto bounds = bmrap_bounds{};
 
   // Guided searches keep only the labels that join one of the other
-  // direction's labels (copied right after it ran: mc_label_snapshot, on the
-  // device take_guide()) into one of the targets. Complete as long as the mc
-  // phases project with a zero lower bound: destination pruning then never
-  // cuts a label that can still complete to a target.
+  // direction's labels (copied right after it ran: take_guide()) into one of
+  // the targets. Complete as long as the mc phases project with a zero lower
+  // bound: destination pruning then never cuts a label that can still
+  // complete to a target.
   static_assert(!bounded_needs_lb<mc_ping_t>() &&
                 !bounded_needs_lb<mc_pong_t>());
-  using labels_t =
-      std::conditional_t<GpuMc, std::monostate, mc_label_snapshot<Criteria>>;
-  auto ping_labels = labels_t{};
-  auto pong_labels = labels_t{};
-  auto const guided = [&]<direction Dir>(
-                          auto& engine, [[maybe_unused]] labels_t const& labels,
-                          std::vector<journey const*> targets, auto&& run) {
-    if constexpr (GpuMc) {
-      engine.set_guide(targets);
-      run();
-      engine.set_guide({});
-    } else {
-      auto const oracle = join_oracle<Dir, Criteria>{
-          tt, q.transfer_time_settings_, labels, std::move(targets)};
-      engine.set_oracle(&oracle);
-      run();
-      engine.set_oracle(nullptr);
-    }
+  auto const guided = [&](auto& engine,
+                          std::vector<journey const*> const& targets,
+                          auto&& run) {
+    engine.set_guide(targets);
+    run();
+    engine.set_guide({});
   };
 
   // ---- 5b. REALIZE ----
@@ -385,7 +327,6 @@ routing_result bmrap_profile(
   auto realized = std::vector<journey>{};
   auto n_realized = std::uint64_t{0U};
   auto n_unrealized = std::uint64_t{0U};
-  auto max_guide_labels = std::size_t{0U};
   auto const realize = [&](unixtime_t const arr,
                            pareto_set<journey> const& pong_results) {
     auto deps = std::vector<unixtime_t>{};
@@ -405,9 +346,8 @@ routing_result bmrap_profile(
         }
       }
       auto fwd = pareto_set<journey>{};
-      guided.template operator()<SearchDir>(
-          mc_ping, pong_labels, std::move(targets),
-          [&]() { run_mc_ping(d, max_tr, arr + kDir, fwd); });
+      guided(mc_ping, targets,
+             [&]() { run_mc_ping(d, max_tr, arr + kDir, fwd); });
       for (auto& f : fwd) {
         if (!f.is_reconstructed_ && !f.error_) {
           try {
@@ -614,11 +554,7 @@ routing_result bmrap_profile(
     auto mc_results = pareto_set<journey>{};
     run_mc_ping(start_time, static_cast<std::uint8_t>(budget - 1U),
                 mc_worst + kDir, mc_results);
-    if constexpr (GpuMc) {
-      mc_ping.take_guide();
-    } else {
-      ping_labels.take(mc_state);
-    }
+    mc_ping.take_guide();
     sw.lap(ms_mc);
 
     // ---- 5. MC PONG ----
@@ -663,11 +599,10 @@ routing_result bmrap_profile(
         targets.push_back(&*it);
       }
       seed_bwd(mc_pong, arr);
-      guided.template operator()<flip(SearchDir)>(
-          mc_pong, ping_labels, std::move(targets), [&]() {
-            mc_pong.execute(arr, group_tr, all_rounds(start_time - kDir),
-                            step_results);
-          });
+      guided(mc_pong, targets, [&]() {
+        mc_pong.execute(arr, group_tr, all_rounds(start_time - kDir),
+                        step_results);
+      });
       // before the realization reuses the state
       for (auto& j : step_results) {
         if (!j.is_reconstructed_ && !j.error_) {
@@ -682,13 +617,7 @@ routing_result bmrap_profile(
       }
 
       if constexpr (kFwd) {
-        if constexpr (GpuMc) {
-          mc_pong.take_guide();
-        } else {
-          pong_labels.take(mc_state);
-          max_guide_labels =
-              std::max(max_guide_labels, pong_labels.labels_.size());
-        }
+        mc_pong.take_guide();
         sw.lap(ms_mc_pong);
         realize(arr, step_results);
         sw.lap(ms_realize);
@@ -829,7 +758,6 @@ routing_result bmrap_profile(
   algo_stats["bmrapp_fwd_bound_builds"] = n_fwd_bound_builds;
   algo_stats["bmrapp_ms_lb"] = ms(lb_time);
   algo_stats["bmrapp_ms_setup"] = ms(ms_setup);
-  algo_stats["bmrapp_max_guide_labels"] = max_guide_labels;
   algo_stats["bmrapp_aligned"] = aligned ? 1U : 0U;
   algo_stats["bmrapp_ms_range"] = ms(ms_range);
   algo_stats["bmrapp_mc_pong_skipped"] = n_mc_pong_skipped;

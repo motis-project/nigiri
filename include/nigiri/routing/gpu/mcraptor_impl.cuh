@@ -123,16 +123,7 @@ struct mc_seed {
   std::uint16_t walk_;
 };
 
-// a search's labels per stop, copied for a guided search; `t_` plain time
-struct mc_guide_entry {
-  delta_t t_;
-  std::uint8_t round_;
-  std::uint16_t extras_;  // mc_extras
-};
-struct mc_guide_target {
-  std::uint8_t trips_;
-  std::uint16_t extras_;  // mc_extras, group 0
-};
+// guided searches: mc_guide_entry, mc_guide_target (mc_criteria.h)
 inline constexpr auto kMcGuideTargetCap = 64U;
 
 // one copy (gpu_mcraptor_state::impl::guide_copy)
@@ -1541,50 +1532,18 @@ struct mcraptor_impl {
 
   // ---- guided searches (mc_guide_entry) ----------------------------------
 
-  // prefix and suffix labels joined at a stop, against a target (mc_extras;
-  // basic_mcraptor's arr_with::join_fits())
-  __device__ __forceinline__ static bool join_fits(std::uint32_t const a,
-                                                   std::uint32_t const b,
-                                                   std::uint32_t const t) {
-    auto const ga = mc_extras::group(a);
-    auto const gb = mc_extras::group(b);
-    auto const junction =
-        ga != kNoModeGroup && gb != kNoModeGroup && ga != gb ? 1U : 0U;
-    auto const nt = mc_extras::non_transit(a) + mc_extras::non_transit(b);
-    auto const sw = mc_extras::switches(a) + mc_extras::switches(b) + junction;
-    return (mc_extras::mode_filter(a) | mc_extras::mode_filter(b)) <=
-               mc_extras::mode_filter(t) &&
-           umin(nt, kNonTransitMax) <= mc_extras::non_transit(t) &&
-           umin(sw, kMaxModeSwitches) <= mc_extras::switches(t);
-  }
-
-  // an arrival at l after k trips at t (raw) with `extras` is kept iff a guide
-  // label at l is catchable from it (post-transfer: one buffer of slack) and
-  // the two join into a target; no targets = not guided
+  // see routing::guide_feasible(); no targets = not guided
   __device__ bool guide_feasible(std::uint32_t const l,
                                  unsigned const k,
                                  delta_t const t,
                                  std::uint32_t const extras) const {
-    if (guide_targets_.empty()) {
-      return true;
-    }
-    auto const from = guide_.begin_[l];
-    auto const n = guide_.n_[l];
-    auto const slack = adjusted_transfer_time(
-        transfer_time_settings_, tt_.transfer_time_[location_idx_t{l}].count());
-    for (auto i = from; i != from + n; ++i) {
-      auto const e = guide_.labels_[i];
-      if (kFwd ? t > e.t_ + slack : t < e.t_ - slack) {
-        continue;  // not catchable
-      }
-      for (auto const& target : guide_targets_) {
-        if (k + e.round_ <= target.trips_ &&
-            join_fits(extras, e.extras_, target.extras_)) {
-          return true;
-        }
-      }
-    }
-    return false;
+    return guide_targets_.empty() ||
+           routing::guide_feasible<SearchDir, extras_t>(
+               cuda::std::span<mc_guide_entry const>{
+                   guide_.labels_ + guide_.begin_[l], guide_.n_[l]},
+               guide_targets_, k, t, extras,
+               adjusted_transfer_time(transfer_time_settings_,
+                                      transfer_time(l)));
   }
 
   // copies the bags of the touched stops (after this search ran); guide_.n_

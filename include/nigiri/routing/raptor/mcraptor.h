@@ -119,15 +119,10 @@ struct arr_with {
     return {clamp(arr_ + dt),
             static_cast<carried>(extras_t::after_walk(extras_, duration))};
   }
-  // this prefix joined with a suffix label at the same stop fits j
   // the criteria only grow, so they are their own lower bound
   arr_with projected_to(delta_t const arr) const { return {arr, extras_}; }
   void apply_to(journey& j) const { extras_t::to_journey(extras_, j); }
   bool operator==(arr_with const&) const = default;
-  bool join_fits(arr_with const& suffix, journey const& j) const {
-    return extras_t::join_fits(extras_, suffix.extras_,
-                               extras_t::of_journey(j));
-  }
 
   delta_t arr_;
   carried extras_{0U};
@@ -266,63 +261,14 @@ struct basic_mcraptor_state {
   bitvec prev_station_mark_;
   bitvec route_mark_;
   bitvec rt_transport_mark_;
-};
 
-// a search's labels per stop, copied before the next search reuses the state
-template <typename Criteria>
-struct mc_label_snapshot {
-  struct entry {
-    Criteria crit_;
-    std::uint8_t round_;
+  // guided searches: one copy per direction (take_guide()), read by the other
+  struct guide_copy {
+    std::vector<mc_guide_entry> labels_;
+    std::vector<std::uint32_t> begin_, n_;  // per location
+    std::vector<std::uint32_t> stops_;  // those with labels
   };
-  static constexpr auto kNone = std::numeric_limits<std::uint32_t>::max();
-
-  void take(basic_mcraptor_state<Criteria> const& s) {
-    for (auto const l : stops_) {
-      slot_[l] = kNone;
-    }
-    stops_.clear();
-    ranges_.clear();
-    labels_.clear();
-    slot_.resize(s.bag_.bags_.size(), kNone);
-    s.bag_.touched_.for_each_set_bit([&](auto const i) {
-      auto const l = static_cast<std::uint32_t>(i);
-      auto const bag = s.bag_.span(l);
-      if (bag.empty()) {
-        return;
-      }
-      slot_[l] = static_cast<std::uint32_t>(ranges_.size());
-      stops_.push_back(l);
-      ranges_.emplace_back(static_cast<std::uint32_t>(labels_.size()),
-                           static_cast<std::uint32_t>(bag.size()));
-      for (auto const& e : bag) {
-        labels_.push_back({e.crit_, e.round_});
-      }
-    });
-  }
-
-  std::span<entry const> at(std::uint32_t const l) const {
-    if (l >= slot_.size() || slot_[l] == kNone) {
-      return {};
-    }
-    auto const [from, n] = ranges_[slot_[l]];
-    return {labels_.data() + from, n};
-  }
-
-  std::vector<std::uint32_t> slot_, stops_;
-  std::vector<std::pair<std::uint32_t, std::uint32_t>> ranges_;  // from, n
-  std::vector<entry> labels_;
-};
-
-// A search keeps only the labels the oracle calls feasible; `t` is the raw
-// arrival at l after k trips.
-template <typename Criteria>
-struct mc_oracle {
-  virtual ~mc_oracle() = default;
-  virtual bool feasible(std::uint32_t l,
-                        unsigned k,
-                        delta_t t,
-                        Criteria const& prefix) const = 0;
+  std::array<guide_copy, 2> guide_;
 };
 
 // As raptor's round times, the bags outlive next_start_time() (rRAPTOR, latest
@@ -337,6 +283,7 @@ struct basic_mcraptor {
   static constexpr bool kUseLowerBounds = true;
   static constexpr bool kNeedsLbWhenBounded = false;  // see effective_lb()
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
+  static constexpr auto const kDirIdx = kFwd ? 0U : 1U;
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
   static constexpr auto const kUnreachable =
       std::numeric_limits<std::uint16_t>::max();
@@ -386,7 +333,12 @@ struct basic_mcraptor {
   // BM-RAPTOR bounds on this search's base day; nullptr: plain McRAPTOR
   void set_bounds(bmrap_bounds const* b) { bounds_ = b; }
 
-  void set_oracle(mc_oracle<Criteria> const* o) { oracle_ = o; }
+  // Guided searches (bmrap_profile.cc), as on the GPU: take_guide() copies
+  // this search's labels, a search of the other direction with set_guide()
+  // keeps only the labels that join one of them into one of the targets
+  // (routing::guide_feasible()). No targets: not guided.
+  void take_guide();
+  void set_guide(std::vector<journey const*> const& targets);
 
   void reconstruct(query const&, journey&);
 
@@ -469,6 +421,12 @@ private:
     return get_transfer_time(tt_, rtt_, location_idx_t{l}) ==
            kNoTransferAllowed;
   }
+
+  // see set_guide()
+  bool guide_feasible(std::uint32_t l,
+                      unsigned k,
+                      delta_t t,
+                      std::uint32_t extras) const;
 
   // t worse than tau_dep^<-(l, trips left)? The bound is post-transfer:
   // footpath arrivals pay no buffer and pass it as `slack`.
@@ -553,7 +511,7 @@ private:
   std::vector<std::uint16_t> const& lb_;
   delta_t worst_at_dest_;  // search window only, see dest_bag_
   bmrap_bounds const* bounds_{nullptr};
-  mc_oracle<Criteria> const* oracle_{nullptr};
+  std::vector<mc_guide_target> guide_targets_;  // see set_guide()
   unsigned cur_budget_{0U};  // trips of the current start time
   std::vector<dest_entry> dest_bag_;
   delta_t cur_dep_{};

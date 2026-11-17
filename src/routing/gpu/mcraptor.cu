@@ -602,9 +602,9 @@ template <direction SearchDir, typename Criteria>
 void gpu_mcraptor<SearchDir, Criteria>::next_start_time() {
   starts_.clear();
   auto& s = *state_.impl_;
-  auto const r = make_impl<SearchDir, Criteria>(s, kDirIdx, transfer_time_settings_,
-                                            allowed_claszes_, ctx_, 0U,
-                                            base_, worst_at_dest_, {});
+  auto const r = make_impl<SearchDir, Criteria>(
+      s, kDirIdx, transfer_time_settings_, allowed_claszes_, ctx_, 0U, base_,
+      worst_at_dest_, {});
   if (reuse_same_dep_) {
     launch(mc_clear_bags_kernel<SearchDir, Criteria>, s.stream_, r);
     fill_bytes(s.bag_pool_count_, 0, s.stream_);
@@ -868,8 +868,8 @@ void gpu_mcraptor<SearchDir, Criteria>::take_guide() {
   fill_bytes(g.count_, 0, s.stream_);
   fill_bytes(g.overflow_, 0, s.stream_);
   auto r = make_impl<SearchDir, Criteria>(s, kDirIdx, transfer_time_settings_,
-                                      allowed_claszes_, ctx_, 0U, base_,
-                                      worst_at_dest_, {});
+                                          allowed_claszes_, ctx_, 0U, base_,
+                                          worst_at_dest_, {});
   r.guide_ = guide_view(g);  // its own direction's copy
   launch(mc_take_guide_kernel<SearchDir, Criteria>, s.stream_, r);
 }
@@ -890,10 +890,8 @@ void gpu_mcraptor<SearchDir, Criteria>::set_guide(
   for (auto i = 0U; i != targets.size(); ++i) {
     auto const& j = *targets[i];
     pin[i] = {.trips_ = static_cast<std::uint8_t>(j.transfers_ + 1U),
-              .extras_ = static_cast<std::uint16_t>(mc_extras::pack(
-                  j.criteria_mode_filter_ ? 1U : 0U,
-                  static_cast<std::uint32_t>(j.criteria_cost_ / kNonTransitBin),
-                  kNoModeGroup, j.criteria_mode_switches_))};
+              .extras_ = static_cast<std::uint16_t>(
+                  Criteria::extras_t::of_journey(j))};
   }
   CUDA_CHECK(cudaMemcpyAsync(thrust::raw_pointer_cast(s.guide_targets_.data()),
                              pin, targets.size() * sizeof(mc_guide_target),
