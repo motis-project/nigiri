@@ -271,7 +271,7 @@ struct raptor {
           if constexpr (kUseLowerBounds) {
             auto& a = state_.route_best_arr_[to_idx(r)];
             for (auto v = 0U; v != Vias + 1; ++v) {
-              a = get_best(a, best_[i][v]);
+              a = get_best(a, round_times_[k - 1][i][v]);
             }
           }
         }
