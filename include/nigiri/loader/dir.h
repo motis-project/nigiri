@@ -99,6 +99,20 @@ struct mem_dir final : public dir {
   dir_t dir_;
 };
 
+struct sub_dir final : public dir {
+  sub_dir(std::unique_ptr<dir>, std::filesystem::path);
+  std::vector<std::filesystem::path> list_files(
+      std::filesystem::path const&) const final;
+  file get_file(std::filesystem::path const&) const final;
+  bool exists(std::filesystem::path const&) const final;
+  std::size_t file_size(std::filesystem::path const&) const final;
+  dir_type type() const final;
+  std::uint64_t hash() const final;
+
+  std::unique_ptr<dir> chosen_sub_dir_;
+  std::filesystem::path path_prefix_;
+};
+
 std::unique_ptr<dir> make_dir(std::filesystem::path const& p);
 
 }  // namespace nigiri::loader

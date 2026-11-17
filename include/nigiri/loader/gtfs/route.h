@@ -37,4 +37,9 @@ route_map_t read_routes(source_idx_t,
                         std::string_view default_tz,
                         script_runner const& = script_runner{});
 
+bool has_unknown_route_agency(std::string_view file,
+                              std::vector<std::string> const&,
+                              std::string_view,
+                              std::string_view);
+
 }  // namespace nigiri::loader::gtfs
