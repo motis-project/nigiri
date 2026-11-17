@@ -38,7 +38,7 @@ TEST(gtfs, read_trips_example_data) {
                   files.get_file(kRoutesFile).data(), "Europe/Berlin");
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());
-  auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
+  auto const calendar = read_calendar(files.get_file(kCalendarFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto shapes_store =
@@ -76,7 +76,7 @@ TEST(gtfs, read_trips_berlin_data) {
                   files.get_file(kRoutesFile).data(), "Europe/Berlin");
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());
-  auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
+  auto const calendar = read_calendar(files.get_file(kCalendarFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto shapes_store =

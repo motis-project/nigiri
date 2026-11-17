@@ -23,6 +23,10 @@ constexpr merge_threshold_t uniform_merge_threshold(duration_t const d) {
 
 struct import_context;
 
+bool roots_match(vecvec<location_idx_t, location_idx_t> const& neighbours,
+                 location_idx_t,
+                 location_idx_t);
+
 void merge_duplicates(timetable&,
                       import_context&,
                       merge_threshold_t const&,

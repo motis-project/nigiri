@@ -297,6 +297,16 @@ struct attribute {
   translation_idx_t text_;
 };
 
+using wikibase_idx_t = cista::strong<std::uint16_t, struct _wikibase_idx>;
+
+struct wikidata_id {
+  CISTA_COMPARABLE()
+  CISTA_PRINTABLE(wikidata_id, "item", "wikibase")
+  bool valid() const { return item_ != 0U; }
+  std::uint32_t item_{0U};
+  wikibase_idx_t wikibase_{0U};
+};
+
 struct provider {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(provider, "short_name", "long_name", "url", "fare_url")
@@ -305,6 +315,7 @@ struct provider {
   timezone_idx_t tz_{timezone_idx_t::invalid()};
   ticketing_link_idx_t ticketing_link_;
   source_idx_t src_;
+  wikidata_id wikidata_{};
 };
 
 // colors in ARGB layout, 0 thus indicates no color specified
