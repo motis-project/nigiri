@@ -660,14 +660,14 @@ void basic_mcraptor<SearchDir, Criteria, RangeReuse>::update_footpaths(
         auto const fp_duration = adjusted_transfer_time(transfer_time_settings_,
                                                         fp.duration().count());
         // between locations of one stop (virts) it is a transfer, no walk
-        auto const walk = base_of(static_cast<std::uint32_t>(i)) ==
-                                  base_of(static_cast<std::uint32_t>(target))
-                              ? 0U
-                              : fp_duration;
+        auto const walk = static_cast<std::uint16_t>(
+            base_of(static_cast<std::uint32_t>(i)) ==
+                    base_of(static_cast<std::uint32_t>(target))
+                ? 0
+                : fp_duration);
         for (auto const& te : fp_labels_) {
           relax_fp(te, static_cast<std::uint32_t>(target),
-                   static_cast<std::uint16_t>(fp_duration),
-                   static_cast<std::uint16_t>(walk));
+                   static_cast<std::uint16_t>(fp_duration), walk);
         }
       }
     };
