@@ -12,7 +12,7 @@ constexpr auto const kShapesFile = std::string_view{"shapes.txt"};
 constexpr auto const kStopTimesFile = std::string_view{"stop_times.txt"};
 constexpr auto const kStopGroupElementsFile =
     std::string_view{"stop_group_elements.txt"};
-constexpr auto const kCalenderFile = std::string_view{"calendar.txt"};
+constexpr auto const kCalendarFile = std::string_view{"calendar.txt"};
 constexpr auto const kCalendarDatesFile =
     std::string_view{"calendar_dates.txt"};
 constexpr auto const kTransfersFile = std::string_view{"transfers.txt"};

@@ -65,6 +65,7 @@ agency::agency(timetable& tt, provider_idx_t const a)
       name_{tt.providers_[a].name_},
       url_{tt.providers_[a].url_},
       timezone_idx_{tt.providers_[a].tz_},
+      wikidata_{tt.providers_[a].wikidata_},
       tt_{&tt} {}
 
 std::string_view agency::get_id() const { return id_; }
@@ -120,6 +121,7 @@ location::location(timetable const& tt, location_idx_t const l)
       parent_{tt.locations_.parents_[l]},
       timezone_idx_{tt.locations_.location_timezones_[l]},
       transfer_time_{tt.locations_.transfer_time_[l]},
+      wikidata_{tt.locations_.wikidata_[l]},
       tt_{const_cast<timetable*>(&tt)} {}
 
 location::location(timetable& tt,
@@ -245,6 +247,7 @@ route::route(timetable& tt, source_idx_t const src, route_id_idx_t const r)
       color_{tt.route_ids_[src].route_id_colors_[r]},
       agency_{tt.route_ids_[src].route_id_provider_[r]},
       category_{tt.route_ids_[src].route_id_category_[r]},
+      wikidata_{tt.route_ids_[src].route_id_wikidata_[r]},
       tt_{&tt} {}
 
 std::string_view route::get_id() const { return id_; }
@@ -724,7 +727,8 @@ provider_idx_t register_agency(timetable& tt, agency const& a) {
   auto const idx = tt.providers_.size();
   tt.providers_.emplace_back(provider{tt.strings_.store(a.id_), a.name_, a.url_,
                                       a.fare_url_, a.timezone_idx_,
-                                      ticketing_link_idx_t::invalid(), a.src_});
+                                      ticketing_link_idx_t::invalid(), a.src_,
+                                      a.wikidata_});
   tt.provider_id_to_idx_.emplace_back(idx);
   return provider_idx_t{idx};
 }
@@ -755,6 +759,7 @@ location_idx_t register_location(timetable& tt,
   loc.platform_codes_.push_back(l.platform_code_);
   loc.stop_codes_.push_back(l.stop_code_);
   loc.descriptions_.push_back(l.description_);
+  loc.wikidata_.push_back(l.wikidata_);
   loc.coordinates_.push_back(l.pos_);
   loc.ids_.emplace_back(l.id_);
   loc.src_.push_back(l.src_);
@@ -804,6 +809,7 @@ route_id_idx_t register_route(timetable& tt,
   route_id.route_id_provider_.emplace_back(r.agency_);
   route_id_trips(ctx, r.src_).emplace_back(std::initializer_list<trip_idx_t>{});
   route_id.route_id_ticketing_link_.emplace_back(r.ticketing_link_);
+  route_id.route_id_wikidata_.emplace_back(r.wikidata_);
   return idx;
 }
 

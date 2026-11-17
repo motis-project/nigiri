@@ -73,7 +73,7 @@ mem_dir test_files(std::string_view const agency_txt,
   using std::filesystem::path;
   auto files = mem_dir::dir_t{{path{kAgencyFile}, std::string{agency_txt}},
                               {path{kStopFile}, std::string{stops}},
-                              {path{kCalenderFile}, std::string{calendar}},
+                              {path{kCalendarFile}, std::string{calendar}},
                               {path{kRoutesFile}, std::string{routes_txt}},
                               {path{kTripsFile}, std::string{trips}},
                               {path{kStopTimesFile}, std::string{stop_times}}};

@@ -14,6 +14,72 @@
 
 namespace nigiri::loader {
 
+namespace {
+
+void remove_routes_without_transports(timetable& tt,
+                                      import_context& ctx,
+                                      shapes_storage* shapes) {
+  auto const has_bboxes =
+      shapes != nullptr && shapes->route_bboxes_.size() == tt.n_routes();
+  auto kept = std::vector<route_idx_t>{};
+  for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
+    if (!tt.route_transport_ranges_[r].empty()) {
+      kept.push_back(r);
+    }
+  }
+  if (kept.size() == tt.n_routes()) {
+    return;
+  }
+
+  auto const keep = [&](auto& v) {
+    auto copy = std::remove_cvref_t<decltype(v)>{};
+    for (auto const r : kept) {
+      copy.push_back(v[r]);
+    }
+    v = std::move(copy);
+  };
+  auto const keep_buckets = [&](auto& v) {
+    auto copy = std::remove_cvref_t<decltype(v)>{};
+    for (auto const r : kept) {
+      copy.emplace_back(utl::to_vec(v[r]));
+    }
+    v = std::move(copy);
+  };
+  keep(tt.route_transport_ranges_);
+  keep_buckets(tt.route_location_seq_);
+  keep(tt.route_clasz_);
+  keep_buckets(tt.route_section_clasz_);
+  keep(ctx.route_stop_time_ranges_);
+  for (auto f = 0U; f != kNumRouteFlags; ++f) {
+    auto flags = bitvec{};
+    flags.resize(static_cast<bitvec::size_type>(kept.size() * 2U));
+    for (auto i = 0U; i != kept.size(); ++i) {
+      flags.set(i * 2U, tt.route_flags_[f].test(to_idx(kept[i]) * 2U));
+      flags.set(i * 2U + 1U, tt.route_flags_[f].test(to_idx(kept[i]) * 2U + 1U));
+    }
+    tt.route_flags_[f] = std::move(flags);
+    keep_buckets(tt.route_flags_per_section_[f]);
+  }
+  if (has_bboxes) {
+    auto const bboxes = utl::to_vec(
+        kept, [&](route_idx_t const r) { return shapes->route_bboxes_[r]; });
+    auto const segments = utl::to_vec(kept, [&](route_idx_t const r) {
+      return utl::to_vec(shapes->route_segment_bboxes_[r]);
+    });
+    shapes->route_bboxes_.resize(0U);
+    shapes->route_segment_bboxes_.data_.resize(0U);
+    shapes->route_segment_bboxes_.bucket_starts_.resize(0U);
+    for (auto i = 0U; i != kept.size(); ++i) {
+      shapes->route_bboxes_.push_back(bboxes[i]);
+      shapes->route_segment_bboxes_.emplace_back(segments[i]);
+    }
+  }
+}
+
+}  // namespace
+
+// Transports missing in route_transports are removed, as well as routes left
+// without transports.
 void rewrite_routes(
     timetable& tt,
     import_context& ctx,
@@ -32,7 +98,10 @@ void rewrite_routes(
   auto& times = ctx.route_stop_times_;
   ranges.resize(base_route.size());
   auto block = std::vector<delta>{};
-  for (auto const& [o, split] : pieces) {
+  auto const no_split = std::vector<route_idx_t>{};
+  for (auto o = route_idx_t{0U}; o != n_routes; ++o) {
+    auto const it = pieces.find(o);
+    auto const& split = it == end(pieces) ? no_split : it->second;
     auto const n = static_cast<unsigned>(old_transports[o].size());
     auto const n_events =
         static_cast<unsigned>(tt.route_location_seq_[o].size() * 2U - 2U);
@@ -82,14 +151,17 @@ void rewrite_routes(
     }
   }
 
+  remove_routes_without_transports(tt, ctx, shapes);
+
   auto const& order = route_transports.data_;
   auto inverse = vector_map<transport_idx_t, transport_idx_t>{};
-  inverse.resize(order.size());
+  inverse.resize(tt.transport_traffic_days_.size(), transport_idx_t::invalid());
   for (auto t = transport_idx_t{0U}; t != order.size(); ++t) {
     inverse[order[to_idx(t)]] = t;
   }
   auto const permute = [&](auto& v) {
     auto copy = v;
+    copy.resize(order.size());
     for (auto t = transport_idx_t{0U}; t != order.size(); ++t) {
       copy[t] = v[order[to_idx(t)]];
     }
@@ -109,6 +181,7 @@ void rewrite_routes(
                   decltype(tt.transport_section_attributes_)::with_default({}));
   permute(tt.transport_section_providers_.sequence_);
   permute(tt.transport_section_directions_.sequence_);
+  tt.transport_route_.resize(order.size());
   for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
     for (auto const t : tt.route_transport_ranges_[r]) {
       tt.transport_route_[t] = r;
@@ -119,6 +192,21 @@ void rewrite_routes(
     for (auto& range : ctx.trip_transport_ranges_[trip]) {
       range.first = inverse[range.first];
     }
+  }
+  if (order.size() != inverse.size()) {
+    auto trip_transports = decltype(ctx.trip_transport_ranges_){};
+    auto trip_ranges = std::vector<transport_range_t>{};
+    for (auto trip = trip_idx_t{0U}; trip != ctx.trip_transport_ranges_.size();
+         ++trip) {
+      trip_ranges.clear();
+      for (auto const& range : ctx.trip_transport_ranges_[trip]) {
+        if (range.first != transport_idx_t::invalid()) {
+          trip_ranges.push_back(range);
+        }
+      }
+      trip_transports.emplace_back(trip_ranges);
+    }
+    ctx.trip_transport_ranges_ = std::move(trip_transports);
   }
 
   auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};

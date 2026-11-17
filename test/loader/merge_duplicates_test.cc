@@ -371,13 +371,13 @@ TEST(loader, merge_inter_src) {
   ASSERT_TRUE(!tt.bitfields_.empty() &&
               tt.bitfields_[bitfield_idx_t{0U}].none());
 
-  // {0}: the second feed's transport days. Feeds and routes only: merging
-  // duplicates does not touch the footpaths.
+  // {0}: the second feed's transport days, {1}: routes. Feeds and routes
+  // only: merging duplicates does not touch the footpaths.
   constexpr auto const kMetricTemplate = std::string_view{
       R"({{"feeds":[)"
       R"({{"idx":0,"firstDay":"2024-08-14","lastDay":"2024-12-13","noLocations":16,"noTrips":1,"transportsXDays":102}},)"
       R"({{"idx":1,"firstDay":"2024-08-14","lastDay":"2024-12-13","noLocations":16,"noTrips":1,"transportsXDays":{0}}})"
-      R"(],"noRoutes":2,"profiles":[]}})"};
+      R"(],"noRoutes":{1},"profiles":[]}})"};
   auto const metrics = [](timetable const& x) {
     auto m = get_metrics(x);
     m.profiles_ = {};
@@ -388,10 +388,10 @@ TEST(loader, merge_inter_src) {
   auto unmerged_ctx = loader::import_context{unmerged};
   load(unmerged, unmerged_ctx);
   finalize(unmerged, unmerged_ctx, false, false);
-  EXPECT_EQ(fmt::format(kMetricTemplate, 86), metrics(unmerged));
+  EXPECT_EQ(fmt::format(kMetricTemplate, 86, 2), metrics(unmerged));
   finalize(tt, ctx, false, true);
   // With duplicates removed; With transfers on Thursdays for both trips
-  EXPECT_EQ(fmt::format(kMetricTemplate, 102), metrics(tt));
+  EXPECT_EQ(fmt::format(kMetricTemplate, 102, 1), metrics(tt));
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
@@ -913,13 +913,7 @@ TEST(loader, merge_intra_src_attrs_differ) {
         {2024_y / September / 1, 2024_y / September / 6},
         {.merge_dupes_intra_src_ = true, .merge_dupes_inter_src_ = false});
 
-    auto n = 0U;
-    for (auto t = transport_idx_t{0U}; t != tt.next_transport_idx(); ++t) {
-      if (tt.bitfields_[tt.transport_traffic_days_[t]].none()) {
-        ++n;
-      }
-    }
-    return n;
+    return 2U - to_idx(tt.next_transport_idx());
   };
 
   // control: identical attributes -> merged

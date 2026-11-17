@@ -71,7 +71,7 @@ mem_dir test_files() {
   using std::filesystem::path;
   return mem_dir{{{path{kAgencyFile}, std::string{agency}},
                   {path{kStopFile}, std::string{stops}},
-                  {path{kCalenderFile}, std::string{calendar}},
+                  {path{kCalendarFile}, std::string{calendar}},
                   {path{kRoutesFile}, std::string{routes}},
                   {path{kTripsFile}, std::string{trips}},
                   {path{kStopTimesFile}, std::string{stop_times}}}};
@@ -111,7 +111,7 @@ R1,DAILY,TRAIN2
   auto const files =
       mem_dir{{{path{kAgencyFile}, std::string{agency}},
                {path{kStopFile}, std::string{stops}},
-               {path{kCalenderFile}, std::string{calendar}},
+               {path{kCalendarFile}, std::string{calendar}},
                {path{kRoutesFile}, std::string{routes}},
                {path{kTripsFile}, std::string{trips_no_override}},
                {path{kStopTimesFile}, std::string{stop_times}}}};
@@ -140,7 +140,7 @@ S2,S2,3,,TRAIN,REPL
   using std::filesystem::path;
   auto const files = mem_dir{{{path{kAgencyFile}, std::string{agency}},
                               {path{kStopFile}, std::string{stops}},
-                              {path{kCalenderFile}, std::string{calendar}},
+                              {path{kCalendarFile}, std::string{calendar}},
                               {path{kRoutesFile}, std::string{routes}},
                               {path{kTripsFile}, std::string{trips}},
                               {path{kStopTimesFile}, std::string{stop_times}},

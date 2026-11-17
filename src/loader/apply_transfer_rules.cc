@@ -167,7 +167,8 @@ void write_routes(timetable& tt,
   for (auto r = route_idx_t{0U}; r != routes.base_route_.size(); ++r) {
     transports.clear();
     for (auto const t : tt.route_transport_ranges_[routes.base_route_[r]]) {
-      if (routes.transport_route_[t] == r) {
+      if (routes.transport_route_[t] == r &&
+          tt.transport_traffic_days_[t] != kEmptyBitfieldIdx) {
         transports.push_back(t);
       }
     }
@@ -263,6 +264,30 @@ void write_rule_locations(timetable& tt) {
   }
 }
 
+void remove_inactive_transports(timetable& tt,
+                                import_context& ctx,
+                                shapes_storage* shapes) {
+  auto base_route = vector_map<route_idx_t, route_idx_t>{};
+  auto route_transports = vecvec<route_idx_t, transport_idx_t>{};
+  auto transports = std::vector<transport_idx_t>{};
+  for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
+    transports.clear();
+    for (auto const t : tt.route_transport_ranges_[r]) {
+      if (tt.transport_traffic_days_[t] != kEmptyBitfieldIdx) {
+        transports.push_back(t);
+      }
+    }
+    base_route.push_back(r);
+    route_transports.emplace_back(transports);
+  }
+  if (route_transports.data_.size() != tt.transport_traffic_days_.size()) {
+    auto const n_routes = tt.n_routes();
+    rewrite_routes(tt, ctx, shapes, base_route, route_transports);
+    log(log_lvl::info, "loader.remove_inactive_transports", "{} routes -> {}",
+        n_routes, tt.n_routes());
+  }
+}
+
 void apply_transfer_rules(
     timetable& tt,
     import_context& ctx,
@@ -293,6 +318,7 @@ void apply_transfer_rules(
     write_rule_locations(tt);
   }
   write_profiles(tt, walks, qualified_rule_fps);
+  remove_inactive_transports(tt, ctx, shapes);
 }
 
 }  // namespace nigiri::loader

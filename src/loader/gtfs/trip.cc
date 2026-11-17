@@ -225,7 +225,8 @@ trip_data read_trips(
     std::array<bool, kNumClasses> const& bikes_allowed_default,
     std::array<bool, kNumClasses> const& cars_allowed_default,
     std::array<bool, kNumClasses> const& reservation_not_required_default,
-    script_runner const& user_script) {
+    script_runner const& user_script,
+    bitfield const* unknown_service) {
   struct csv_trip {
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
     utl::csv_col<utl::cstr, UTL_NAME("service_id")> service_id_;
@@ -261,7 +262,10 @@ trip_data read_trips(
       |
       utl::for_each([&](csv_trip const& t) {
         auto const traffic_days_it = services.find(t.service_id_->view());
-        if (traffic_days_it == end(services)) {
+        auto const service = traffic_days_it == end(services)
+                                 ? unknown_service
+                                 : traffic_days_it->second.get();
+        if (service == nullptr) {
           log(log_lvl::error, "loader.gtfs.trip",
               R"(trip "{}": service_id "{}" not found)", t.trip_id_->view(),
               t.service_id_->view());
@@ -371,7 +375,7 @@ trip_data read_trips(
         auto const gtfs_trp_idx = gtfs_trip_idx_t{ret.data_.size()};
 
         ret.data_.push_back(trip{
-            route_id, traffic_days_it->second.get(), blk, t.trip_id_->to_str(),
+            route_id, service, blk, t.trip_id_->to_str(),
             x.headsign_, trip_short_name, x.direction_, shape_idx, flags,
             std::string{t.ticketing_trip_id->view()},
             t.ticketing_type.val() == 1});
