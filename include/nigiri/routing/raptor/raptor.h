@@ -476,8 +476,7 @@ private:
   // must not be read.
   void init_rounds_up_to(unsigned const k) {
     for (; n_init_rounds_ <= k; ++n_init_rounds_) {
-      std::fill_n(&round_times_[n_init_rounds_][0U], n_locations_,
-                  kInvalidArray);
+      utl::fill(round_times_[n_init_rounds_], kInvalidArray);
     }
   }
 
