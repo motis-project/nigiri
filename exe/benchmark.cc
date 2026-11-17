@@ -158,6 +158,14 @@ std::vector<std::string> leg_problems(timetable const& tt,
     return duration_t{adjusted_transfer_time(
         q.transfer_time_settings_, tt.locations_.transfer_time_[l].count())};
   };
+  // transfers.txt rules set the changes and walks at their stops (virtual
+  // locations, fix_transfer_durations): not the stop's transfer time and
+  // footpaths, nor the footpath the search counted as walking
+  auto const& is_rule_location = tt.transfer_rules_.is_rule_location_;
+  auto const rule_at = [&](location_idx_t const l) {
+    return to_idx(l) < is_rule_location.size() && is_rule_location.test(l);
+  };
+  auto rule_walk = false;
 
   auto n_rides = 0U;
   auto units = 0U;
@@ -186,8 +194,8 @@ std::vector<std::string> leg_problems(timetable const& tt,
               auto const first = fr[0];
               auto const last =
                   fr[static_cast<stop_idx_t>(fr.stop_range_.size() - 1U)];
-              if (first.get_location_idx() != l.from_ ||
-                  last.get_location_idx() != l.to_ ||
+              if (tt.base(first.get_location_idx()) != l.from_ ||
+                  tt.base(last.get_location_idx()) != l.to_ ||
                   first.time(event_type::kDep) != l.dep_time_ ||
                   last.time(event_type::kArr) != l.arr_time_) {
                 fail("ride {} not as in the timetable", i);
@@ -196,7 +204,7 @@ std::vector<std::string> leg_problems(timetable const& tt,
                 fail("ride {} boards or alights where it may not", i);
               }
               if (prev_ride_end.has_value() &&
-                  prev_ride_end->first == l.from_ &&
+                  prev_ride_end->first == l.from_ && !rule_at(l.from_) &&
                   l.dep_time_ - prev_ride_end->second < transfer(l.from_)) {
                 fail("ride {}: transfer at {} shorter than {}", i,
                      tt.locations_.ids_[l.from_].view(), transfer(l.from_));
@@ -213,6 +221,10 @@ std::vector<std::string> leg_problems(timetable const& tt,
             [&](footpath const& fp) {
               if (l.from_ == l.to_) {
                 return;  // a same-stop transfer: no walk
+              }
+              if (rule_at(l.from_) || rule_at(l.to_)) {
+                rule_walk = true;
+                return;
               }
               auto const fps =
                   tt.locations_.footpaths_out_[q.prf_idx_][l.from_];
@@ -242,7 +254,7 @@ std::vector<std::string> leg_problems(timetable const& tt,
     fail("transfers {} with {} rides", j.transfers_, n_rides);
   }
   if (mc) {
-    if (j.criteria_cost_ != units * routing::kNonTransitBin ||
+    if ((!rule_walk && j.criteria_cost_ != units * routing::kNonTransitBin) ||
         j.criteria_mode_filter_ != avoided ||
         j.criteria_mode_switches_ != switches) {
       fail("criteria {}/{}/{} recomputed from the legs {}/{}/{}",
