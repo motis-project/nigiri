@@ -15,6 +15,7 @@
 #include "nigiri/timetable.h"
 
 #include "../raptor_search.h"
+#include "../transfer_rules_util.h"
 #include "results_to_string.h"
 
 using namespace nigiri;
@@ -87,6 +88,8 @@ leg 2: (B, B) [2019-05-01 08:13] -> (C, C) [2019-05-01 08:22]
 
 )"sv;
 
+// The change at B takes 10 / 3 / 4 min under the settings (see the leg
+// times), but the footpath leg states B's unadjusted transfer time: 2 min.
 constexpr auto const expected_A_C_dur10 =
     R"(
 [2019-05-01 08:00, 2019-05-01 08:30]
@@ -97,7 +100,7 @@ leg 0: (A, A) [2019-05-01 08:00] -> (B, B) [2019-05-01 08:10]
    0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=1, day=2019-05-01, id=T1, src=0}]
    1: B       B............................................... a: 01.05 08:10 [01.05 10:10]
 leg 1: (B, B) [2019-05-01 08:10] -> (B, B) [2019-05-01 08:20]
-  FOOTPATH (duration=10)
+  FOOTPATH (duration=2)
 leg 2: (B, B) [2019-05-01 08:20] -> (C, C) [2019-05-01 08:30]
    0: B       B...............................................                               d: 01.05 08:20 [01.05 10:20]  [{name=2, day=2019-05-01, id=T3, src=0}]
    1: C       C............................................... a: 01.05 08:30 [01.05 10:30]
@@ -114,7 +117,7 @@ leg 0: (A, A) [2019-05-01 08:00] -> (B, B) [2019-05-01 08:10]
    0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=1, day=2019-05-01, id=T1, src=0}]
    1: B       B............................................... a: 01.05 08:10 [01.05 10:10]
 leg 1: (B, B) [2019-05-01 08:10] -> (B, B) [2019-05-01 08:13]
-  FOOTPATH (duration=3)
+  FOOTPATH (duration=2)
 leg 2: (B, B) [2019-05-01 08:13] -> (C, C) [2019-05-01 08:22]
    0: B       B...............................................                               d: 01.05 08:13 [01.05 10:13]  [{name=2, day=2019-05-01, id=T2, src=0}]
    1: C       C............................................... a: 01.05 08:22 [01.05 10:22]
@@ -131,7 +134,7 @@ leg 0: (A, A) [2019-05-01 08:00] -> (B, B) [2019-05-01 08:10]
    0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=1, day=2019-05-01, id=T1, src=0}]
    1: B       B............................................... a: 01.05 08:10 [01.05 10:10]
 leg 1: (B, B) [2019-05-01 08:10] -> (B, B) [2019-05-01 08:14]
-  FOOTPATH (duration=4)
+  FOOTPATH (duration=2)
 leg 2: (B, B) [2019-05-01 08:20] -> (C, C) [2019-05-01 08:30]
    0: B       B...............................................                               d: 01.05 08:20 [01.05 10:20]  [{name=2, day=2019-05-01, id=T3, src=0}]
    1: C       C............................................... a: 01.05 08:30 [01.05 10:30]
@@ -331,5 +334,57 @@ TEST(routing, transfer_travel_test) {
                                  .max_transfers_ = 0U,
                                  .max_travel_time_ = 35_minutes});
     EXPECT_EQ("\n", to_string(tt, results));
+  }
+}
+
+// B changes in 90 min (B,B,2,5400). With a factor of 3, a change takes 270
+// min: more than an u8 holds. T2 (20 min) must stay out of reach, T3 (90 min)
+// as well.
+TEST(routing, transfer_time_settings_beyond_255_min) {
+  auto const tt = test::load_feeds(
+      {test::feed({{"A", 56.1, 14.0}, {"B", 56.0, 14.0}, {"C", 56.2, 14.0}},
+                  {{"T1", "R1", {{"A", "10:00"}, {"B", "10:30"}}},
+                   {"T2", "R2", {{"B", "10:50"}, {"C", "11:00"}}},
+                   {"T3", "R2", {{"B", "12:00"}, {"C", "12:10"}}},
+                   {"T4", "R2", {{"B", "15:00"}, {"C", "15:10"}}}},
+                  "B,B,2,5400,,,,\n")});
+  auto const arrival = [&](routing::transfer_time_settings const tts) {
+    auto q = test::exact_query(tt, "A", "C", test::at("10:00"));
+    q.transfer_time_settings_ = tts;
+    return test::arrival(raptor_search(tt, nullptr, std::move(q)));
+  };
+  EXPECT_EQ(test::at("12:10"), arrival({}));
+  EXPECT_EQ(test::at("15:10"), arrival({.default_ = false, .factor_ = 3.0F}));
+}
+
+// B -> C is a 150 min walk: 300 min with a minimum transfer time of 300 min,
+// more than a footpath holds (254). The walk leg still states its unadjusted
+// 150 min, on the GPU as well (raptor_search compares the CPU and GPU
+// journeys). The minimum makes adjusted(150) == adjusted(254), so
+// optimize_footpaths keeps the leg as reconstructed (a factor would let it
+// replace a 254 min leg with the shorter walk). No transfers.txt rows:
+// fix_transfer_durations would rewrite the leg otherwise.
+TEST(routing, transfer_time_settings_walk_beyond_254_min) {
+  auto const tt = test::load_feeds_with_walks(
+      {test::feed({{"A", 56.2, 14.0},
+                   {"B", 56.0, 14.0},
+                   {"C", 55.0, 14.0},
+                   {"D", 54.8, 14.0}},
+                  {{"T1", "R1", {{"A", "10:00"}, {"B", "10:10"}}},
+                   {"T2", "R2", {{"C", "15:20"}, {"D", "15:30"}}}},
+                  "")},
+      {{"B", "C", 150}});
+  for (auto const dir : {direction::kForward, direction::kBackward}) {
+    SCOPED_TRACE(dir == direction::kForward ? "forward" : "backward");
+    auto const is_fwd = dir == direction::kForward;
+    auto q = test::exact_query(tt, is_fwd ? "A" : "D", is_fwd ? "D" : "A",
+                               test::at(is_fwd ? "10:00" : "15:30"));
+    q.transfer_time_settings_ = {.default_ = false,
+                                 .min_transfer_time_ = duration_t{300}};
+    auto const results = raptor_search(tt, nullptr, std::move(q), dir);
+    ASSERT_EQ(1U, results.size());
+    auto const& legs = begin(results)->legs_;
+    ASSERT_EQ(3U, legs.size());
+    EXPECT_EQ(150_minutes, std::get<footpath>(legs[1].uses_).duration());
   }
 }

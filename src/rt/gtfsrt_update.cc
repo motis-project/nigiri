@@ -104,7 +104,7 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
 
 struct delay_propagation {
   unixtime_t pred_time_;
-  duration_t pred_delay_;
+  i32_minutes pred_delay_;
 };
 
 std::string remove_nl(std::string s) {
@@ -117,7 +117,7 @@ delay_propagation update_delay(timetable const& tt,
                                run const& r,
                                stop_idx_t const stop_idx,
                                event_type const ev_type,
-                               duration_t const delay,
+                               i32_minutes const delay,
                                std::optional<unixtime_t> const min,
                                rt_data_state const state) {
   auto const static_time =
@@ -125,12 +125,13 @@ delay_propagation update_delay(timetable const& tt,
   auto const new_time = static_time + delay;
   auto const lower_bounded_new_time =
       min.has_value() ? std::max(*min, new_time) : new_time;
-  rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time,
-                  lower_bounded_new_time != new_time
-                      ? rt_data_state::kInconsistent
-                      : state);
-  rtt.dispatch_delay(r, stop_idx, ev_type,
-                     lower_bounded_new_time - static_time);
+  if (rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time,
+                      lower_bounded_new_time != new_time
+                          ? rt_data_state::kInconsistent
+                          : state)) {
+    rtt.dispatch_delay(r, stop_idx, ev_type,
+                       lower_bounded_new_time - static_time);
+  }
   return {rtt.unix_event_time(r.rt_, stop_idx, ev_type), delay};
 }
 
@@ -154,13 +155,15 @@ delay_propagation update_event(timetable const& tt,
         r.is_scheduled() ? tt.event_time(r.t_, stop_idx, ev_type) : new_time;
     auto const lower_bounded_new_time =
         pred_time.has_value() ? std::max(*pred_time, new_time) : new_time;
-    rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time,
-                    lower_bounded_new_time != new_time
-                        ? rt_data_state::kInconsistent
-                        : rt_data_state::kPredicted);
-    rtt.dispatch_delay(r, stop_idx, ev_type,
-                       lower_bounded_new_time - static_time);
-    return {lower_bounded_new_time, lower_bounded_new_time - static_time};
+    if (rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time,
+                        lower_bounded_new_time != new_time
+                            ? rt_data_state::kInconsistent
+                            : rt_data_state::kPredicted)) {
+      rtt.dispatch_delay(r, stop_idx, ev_type,
+                         lower_bounded_new_time - static_time);
+    }
+    auto const t = rtt.unix_event_time(r.rt_, stop_idx, ev_type);
+    return {t, t - static_time};
   }
 }
 
@@ -198,24 +201,24 @@ bool is_added(gtfsrt::TripDescriptor_ScheduleRelationship const sr) {
          sr == gtfsrt::TripDescriptor_ScheduleRelationship_NEW;
 }
 
-bool is_added_with_ref(gtfsrt::TripDescriptor_ScheduleRelationship const sr) {
-  return sr == gtfsrt::TripDescriptor_ScheduleRelationship_REPLACEMENT ||
-         sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED;
-}
-
 bool add_rt_trip(source_idx_t const src,
                  timetable const& tt,
                  rt_timetable& rtt,
                  run& r,
                  gtfsrt::TripUpdate const& tripUpdate) {
+  if (r.is_scheduled() && !rtt.is_in_rt_interval(tt, r.t_)) {
+    log(log_lvl::debug, "rt.gtfs.unsupported",
+        "run outside of real-time interval {} (src={}, trip_id={}), skipping",
+        rtt.rt_interval(), src, tripUpdate.trip().trip_id());
+    return false;
+  }
+
   auto const& stus = tripUpdate.stop_time_update();
   auto const sr = tripUpdate.trip().schedule_relationship();
-  auto const added_or_replaced =
-      is_added(sr) ||
-      sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT;
+  auto const added = is_added(sr);
 
   auto stops = std::vector<stop::value_type>{};
-  if (added_or_replaced) {
+  if (added) {
     auto last_pos = geo::latlng{};
     auto last_time = unixtime_t{};
     for (auto const& stu : stus) {
@@ -229,11 +232,18 @@ bool add_rt_trip(source_idx_t const src,
       } else {
         throw utl::fail("absolute times are required for unscheduled trips");
       }
+      if (!rtt.rt_interval().contains(new_time)) {
+        log(log_lvl::debug, "rt.gtfs.unsupported",
+            "time {} outside of real-time interval {} "
+            "(src={}, trip_id={}, stop_id={}), skipping",
+            new_time, rtt.rt_interval(), src, tripUpdate.trip().trip_id(),
+            stu.stop_id());
+        return false;
+      }
       utl::verify(stu.has_stop_id(),
                   "stop_id is required for unscheduled trips");
-      auto const it =
-          tt.locations_.location_id_to_idx_.find({stu.stop_id(), src});
-      if (it == end(tt.locations_.location_id_to_idx_)) {
+      auto const l = tt.find(location_id{stu.stop_id(), src});
+      if (!l.has_value()) {
         log(log_lvl::debug, "rt.gtfs.unsupported",
             "NEW/ADDED stop_id must be contained in stops.txt "
             "(src={}, trip_id={}, stop_id={}), skipping",
@@ -243,7 +253,7 @@ bool add_rt_trip(source_idx_t const src,
       if (last_time != unixtime_t{}) {
         auto const time_between_stops = (new_time - last_time).count();
         auto const dist_between_stops =
-            geo::distance(tt.locations_.coordinates_.at(it->second), last_pos);
+            geo::distance(tt.locations_.coordinates_.at(*l), last_pos);
         if (dist_between_stops / std::max(time_between_stops, 1) / 60 >
             kMaxTransitSpeed) {
           log(log_lvl::debug, "rt.gtfs.invalid",
@@ -254,7 +264,7 @@ bool add_rt_trip(source_idx_t const src,
           return false;
         }
       }
-      last_pos = tt.locations_.coordinates_.at(it->second);
+      last_pos = tt.locations_.coordinates_.at(*l);
       last_time = new_time;
       auto in_allowed = true, out_allowed = true;
       if (stu.has_stop_time_properties()) {
@@ -271,40 +281,30 @@ bool add_rt_trip(source_idx_t const src,
                   TripUpdate_StopTimeUpdate_StopTimeProperties_DropOffPickupType_NONE;
         }
       }
-      stops.emplace_back(stop{it->second, in_allowed, out_allowed, false, false}
+      stops.emplace_back(stop{*l, in_allowed, out_allowed, false, false}
                              .value());  // TODO wheelchair
     }
     utl::verify(stops.size() > 1,
                 "added trip must contain more than 1 valid stop");
   }
 
-  auto times = added_or_replaced
-                   ? std::vector<delta_t>(stops.size() * 2U - 2U, 0)
-                   : std::vector<delta_t>{};
+  auto times = added ? std::vector<delta_t>(stops.size() * 2U - 2U, 0)
+                     : std::vector<delta_t>{};
 
   auto const new_trip_id = [&]() -> std::string_view {
     if (is_added(sr) && tripUpdate.trip().has_trip_id()) {
       return std::string_view{tripUpdate.trip().trip_id()};
     }
-    if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED &&
-        tripUpdate.has_trip_properties() &&
-        tripUpdate.trip_properties().has_trip_id()) {
-      return std::string_view{tripUpdate.trip_properties().trip_id()};
-    }
     return {};
   };
   auto const route_id = [&]() -> std::string_view {
-    if ((is_added(sr) ||
-         sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED) &&
-        tripUpdate.trip().has_route_id()) {
+    if (is_added(sr) && tripUpdate.trip().has_route_id()) {
       return std::string_view{tripUpdate.trip().route_id()};
     }
     return {};
   };
   auto const direction_id = [&]() -> direction_id_t {
-    if ((is_added(sr) ||
-         sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED) &&
-        tripUpdate.trip().has_direction_id()) {
+    if (is_added(sr) && tripUpdate.trip().has_direction_id()) {
       return direction_id_t{tripUpdate.trip().direction_id() != 0U};
     }
     return direction_id_t{};
@@ -315,13 +315,8 @@ bool add_rt_trip(source_idx_t const src,
           ? std::string_view{tripUpdate.trip_properties().trip_short_name()}
           : std::string_view{};
   // ADDED/NEW stops+times+new_trip_id
-  // REPLACEMENT stops+times
-  // DUPL new_trip_id
   r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, new_trip_id(),
                                route_id(), direction_id(), trip_short_name);
-  if (sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT) {
-    r.t_ = transport::invalid();
-  }
   return true;
 }
 
@@ -384,7 +379,7 @@ bool update_run(source_idx_t const src,
   auto seq_it = begin(seq_numbers);
   auto upd_it = begin(stus);
   for (; seq_it != end(seq_numbers); ++stop_idx, ++seq_it) {
-    auto const loc_idx = stop{location_seq[stop_idx]}.location_idx();
+    auto const loc_idx = tt.base(stop{location_seq[stop_idx]}.location_idx());
     auto matches = false;
     while (upd_it != end(stus)) {
       if (is_duplicate_seq_with_skip(upd_it)) {
@@ -399,7 +394,7 @@ bool update_run(source_idx_t const src,
       auto const use_stop_id =
           !has_seq ||
           utl::count_if(remaining_trip_stops, [&](stop::value_type const s) {
-            return tt.locations_.ids_[stop{s}.location_idx()].view() ==
+            return tt.locations_.ids_[tt.base(stop{s}.location_idx())].view() ==
                    upd_it->stop_id();
           }) < 2;
       auto next_seq_it = seq_it;
@@ -410,7 +405,8 @@ bool update_run(source_idx_t const src,
             (use_stop_id && upd_it->has_stop_id() &&
              upd_it->stop_id() ==
                  tt.locations_
-                     .ids_[stop{location_seq[next_stop_idx]}.location_idx()]
+                     .ids_[tt.base(
+                         stop{location_seq[next_stop_idx]}.location_idx())]
                      .view());
 
         if (next_matches) {
@@ -429,62 +425,60 @@ bool update_run(source_idx_t const src,
     }
 
     if (matches) {
+      // The stop the update assigns within the station (a track change). An
+      // unknown or far one, or the scheduled one, is none: only the times of
+      // the update apply.
+      auto const get_track_change = [&]() -> std::optional<location_idx_t> {
+        auto const has_assigned =
+            upd_it->stop_time_properties().has_assigned_stop_id();
+        if (!has_assigned && !upd_it->has_stop_id()) {
+          return std::nullopt;
+        }
+        auto const& new_id =
+            has_assigned ? upd_it->stop_time_properties().assigned_stop_id()
+                         : upd_it->stop_id();
+        if (new_id == tt.locations_.ids_[loc_idx].view()) {
+          return std::nullopt;
+        }
+        auto const l = tt.find(location_id{.id_ = new_id, .src_ = src});
+        if (!l.has_value()) {
+          log(log_lvl::debug, "gtfsrt.stop_assignment",
+              "stop assignment: src={}, old_stop_id=\"{}\", new_stop_id=\"{}\" "
+              "not found",
+              src, tt.locations_.ids_[loc_idx].view(), new_id);
+          return std::nullopt;
+        }
+        auto const& equiv_locs = tt.locations_.equivalences_.at(loc_idx);
+        if (utl::find(equiv_locs, *l) == end(equiv_locs)) {
+          log(log_lvl::debug, "gtfsrt.stop_assignment",
+              "stop assignment: src={}, old_stop_id=\"{}\", new_stop_id=\"{}\" "
+              "is not a mere track change, skipping",
+              src, tt.locations_.ids_[loc_idx].view(), new_id);
+          return std::nullopt;
+        }
+        return l;
+      };
+
       auto& stp = rtt.rt_transport_location_seq_[r.rt_][stop_idx];
       if (upd_it->schedule_relationship() ==
           gtfsrt::TripUpdate_StopTimeUpdate_ScheduleRelationship_SKIPPED) {
         auto l_idx = stop{stp}.location_idx();
         // Cancel skipped stops (in_allowed = out_allowed = false).
         stp = stop{l_idx, false, false, false, false}.value();
-        rtt.dispatch_stop_change(r, stop_idx, event_type::kArr, l_idx, false);
-        rtt.dispatch_stop_change(r, stop_idx, event_type::kDep, l_idx, false);
-      } else if (upd_it->stop_time_properties().has_assigned_stop_id() ||
-                 (upd_it->has_stop_id() &&
-                  upd_it->stop_id() != tt.locations_.ids_[loc_idx].view())) {
-        // Handle track change.
-        auto const& new_id =
-            upd_it->stop_time_properties().has_assigned_stop_id()
-                ? upd_it->stop_time_properties().assigned_stop_id()
-                : upd_it->stop_id();
-        auto const l_it = tt.locations_.location_id_to_idx_.find(
-            {.id_ = new_id, .src_ = src});
-        if (l_it == end(tt.locations_.location_id_to_idx_)) {
-          log(log_lvl::debug, "gtfsrt.stop_assignment",
-              "stop assignment: src={}, old_stop_id=\"{}\", new_stop_id=\"{}\" "
-              "not found",
-              src, tt.locations_.ids_[loc_idx].view(), new_id);
-          continue;
-        }
-        auto const& equiv_locs = tt.locations_.equivalences_.at(loc_idx);
-        if (utl::find(equiv_locs, l_it->second) == end(equiv_locs)) {
-          log(log_lvl::debug, "gtfsrt.stop_assignment",
-              "stop assignment: src={}, old_stop_id=\"{}\", new_stop_id=\"{}\" "
-              "is not a mere track change, skipping",
-              src, tt.locations_.ids_[loc_idx].view(), new_id);
-          continue;
-        }
-        auto const s = stop{stp};
-        stp = stop{l_it->second, s.in_allowed(), s.out_allowed(),
-                   s.in_allowed_wheelchair(), s.out_allowed_wheelchair()}
-                  .value();
-        auto transports = rtt.location_rt_transports_[l_it->second];
-        if (utl::find(transports, r.rt_) == end(transports)) {
-          transports.push_back(r.rt_);
-        }
-        rtt.dispatch_stop_change(r, stop_idx, event_type::kArr, l_it->second,
-                                 s.out_allowed());
-        rtt.dispatch_stop_change(r, stop_idx, event_type::kDep, l_it->second,
-                                 s.in_allowed());
+        rtt.dispatch_stop_change(r, stop_idx, stop{stp});
       } else {
         // Just reset in case a track change / skipped stop got reversed.
-        if (location_seq[stop_idx] != stp) {
+        auto const target = get_track_change().value_or(
+            stop{location_seq[stop_idx]}.location_idx());
+        auto const has_same_flags = stop{location_seq[stop_idx]}
+                                        .with_location(stop{stp}.location_idx())
+                                        .value() == stp;
+        if (!has_same_flags ||
+            rtt.base(rtt.stop_location(r.rt_, stop_idx)) != tt.base(target)) {
+          // The stop's scheduled flags: a track change revokes a skip.
           stp = location_seq[stop_idx];
-          auto reset_stop = stop{stp};
-          rtt.dispatch_stop_change(r, stop_idx, event_type::kArr,
-                                   reset_stop.location_idx(),
-                                   reset_stop.out_allowed());
-          rtt.dispatch_stop_change(r, stop_idx, event_type::kDep,
-                                   reset_stop.location_idx(),
-                                   reset_stop.in_allowed());
+          rtt.update_stop_location(r.rt_, stop_idx, target);
+          rtt.dispatch_stop_change(r, stop_idx, stop{stp});
         }
       }
     }
@@ -597,6 +591,7 @@ void handle_vehicle_position(timetable const& tt,
     if (!r.is_scheduled()) {
       log(log_lvl::info, "rt.gtfs.unsupported",
           R"(Run is not scheduled. Skipping Message)", tag, entity.id());
+      ++stats.total_entities_fail_;
       return;
     }
 
@@ -606,6 +601,13 @@ void handle_vehicle_position(timetable const& tt,
 
     // add rt_transport if not existent
     if (!r.is_rt()) {
+      if (!rtt.is_in_rt_interval(tt, r.t_)) {
+        log(log_lvl::debug, "rt.gtfs.unsupported",
+            "run outside of real-time interval {} (tag={}, id={}), skipping",
+            rtt.rt_interval(), tag, entity.id());
+        ++stats.total_entities_fail_;
+        return;
+      }
       r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
     }
 
@@ -643,7 +645,7 @@ void handle_vehicle_position(timetable const& tt,
             ? tt.event_time(r.t_, stopped_at_idx, event_type::kDep)
             : tt.event_time(r.t_, stopped_at_idx, event_type::kArr);
     auto const delay_cast =
-        std::chrono::duration_cast<duration_t>(vp_ts - ev_time);
+        std::chrono::duration_cast<i32_minutes>(vp_ts - ev_time);
 
     // update delay for remaining stops
     auto const stops_after = interval{stopped_at_idx, fr.stop_range_.to_};
@@ -809,18 +811,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
                         ? entity.trip_update().trip().schedule_relationship()
                         : gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED;
 
-    if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED &&
-        (!entity.trip_update().has_trip_properties() ||
-         !entity.trip_update().trip_properties().has_trip_id())) {
-      log(log_lvl::debug, "rt.gtfs.unsupported",
-          R"(unsupported: no "trip_properties.trip_id" field in "trip_update.trip" for DUPLICATED (tag={}, id={}), skipping message)",
-          tag, entity.id());
-      ++stats.unsupported_no_trip_id_;
-      continue;
-    }
-
     auto const added = is_added(sr);
-    // auto const added_with_ref = is_added_with_ref(sr);
 
     if (sr != gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED &&
         sr != gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED && !added) {
@@ -854,6 +845,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
         } else if (!added) {
           if (update_run(src, tt, rtt, trip, r, entity.trip_update())) {
             ++stats.total_entities_success_;
+          } else {
+            ++stats.total_entities_fail_;
           }
         }
 
@@ -868,6 +861,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
         if (update_run(src, tt, rtt, trip_idx_t::invalid(), r,
                        entity.trip_update())) {
           ++stats.total_entities_success_;
+        } else {
+          ++stats.total_entities_fail_;
         }
         continue;
       }

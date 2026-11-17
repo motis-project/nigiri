@@ -19,6 +19,7 @@
 #include "utl/enumerate.h"
 #include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/lookup.h"
 #include "utl/parallel_for.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/pipes.h"
@@ -797,13 +798,12 @@ journey_pattern_map_t get_journey_patterns(
   auto const get_stop =
       [&](std::string_view stop_point_ref) -> netex::stop const* {
     auto const assigned = [&]() -> netex::stop const* {
-      auto const timetable_it =
-          stop_assignments.timetable_.find(stop_point_ref);
-      if (timetable_it != end(stop_assignments.timetable_)) {
-        return timetable_it->second;
+      if (auto const timetable_stop =
+              utl::lookup(stop_assignments.timetable_, stop_point_ref)) {
+        return *timetable_stop;
       }
-      auto const base_it = stop_assignments.base_.find(stop_point_ref);
-      return base_it != end(stop_assignments.base_) ? base_it->second : nullptr;
+      return utl::lookup(stop_assignments.base_, stop_point_ref)
+          .value_or(nullptr);
     }();
 
     auto const ssp_pos = [&]() {
@@ -1469,8 +1469,8 @@ void load_timetable(loader_config const& config,
     auto const tz = gtfs::get_tz_idx(tt, tz_map, im.tz_->name());
 
     for (auto& [id, o] : im.operators_) {
-      if (auto const it = providers.find(id); it != end(providers)) {
-        o->provider_ = it->second;
+      if (auto const p = utl::lookup(providers, id)) {
+        o->provider_ = *p;
         continue;
       }
 
@@ -1966,7 +1966,7 @@ void load_timetable(loader_config const& config,
     }
   }
 
-  // Generate default footpaths.
+  // Equivalences between nearby stops (finalize builds their walks).
   auto const locations_end = location_idx_t{tt.n_locations()};
   auto const new_locations = interval{locations_start, locations_end};
   auto const get_location = [&](std::size_t const i) {
@@ -1980,7 +1980,7 @@ void load_timetable(loader_config const& config,
       new_locations,
       [&](location_idx_t const l) { return tt.locations_.coordinates_[l]; });
 
-  auto metas = std::vector<std::vector<footpath>>{};
+  auto metas = std::vector<std::vector<location_idx_t>>{};
   metas.resize(new_locations.size());
 
   pt->status("Stop Neighbors")
@@ -1994,26 +1994,17 @@ void load_timetable(loader_config const& config,
         if (std::abs(pos.lat_) < 2.0 && std::abs(pos.lng_) < 2.0) {
           return;
         }
-        auto const dist_lng_degrees = geo::approx_distance_lng_degrees(pos);
         for (auto const& eq :
              stop_rtree.in_radius(pos, config.link_stop_distance_)) {
-          auto const neighbor = get_location(eq);
-          auto const neighbor_pos = tt.locations_.coordinates_[neighbor];
-          auto const dist = std::sqrt(geo::approx_squared_distance(
-              pos, neighbor_pos, dist_lng_degrees));
-          auto const duration = duration_t{std::max(
-              static_cast<int>(config.default_transfer_time_.count()),
-              static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
-          metas[get_new_location(l)].emplace_back(neighbor, duration);
+          metas[get_new_location(l)].emplace_back(get_location(eq));
         }
       },
       pt->update_fn());
 
-  for (auto const [i, fps] : utl::enumerate(metas)) {
+  for (auto const [i, eqs] : utl::enumerate(metas)) {
     auto const from = get_location(i);
-    for (auto const fp : fps) {
-      ctx.equivalences_[from].emplace_back(fp.target());
-      ctx.preprocessing_footpaths_out_[from].emplace_back(fp);
+    for (auto const eq : eqs) {
+      ctx.equivalences_[from].emplace_back(eq);
     }
   }
 

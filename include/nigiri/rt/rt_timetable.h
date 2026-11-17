@@ -2,11 +2,16 @@
 
 #include "utl/pairwise.h"
 
+#include <cassert>
+#include <limits>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <variant>
+#include <vector>
 
+#include "utl/lookup.h"
 #include "utl/visit.h"
 
 #include "nigiri/common/delta_t.h"
@@ -30,6 +35,8 @@ enum class rt_data_state : std::uint8_t {
 
 // If set, the bitfield has to be looked up in the RT timetable.
 constexpr auto const kRtBitfieldFlag = std::uint32_t{0x8000'0000U};
+
+constexpr auto const kRtIntervalBuffer = i32_minutes{1440};
 
 using change_callback_t =
     std::function<void(transport const transport,
@@ -72,6 +79,24 @@ struct rt_timetable {
     return clamp(d);
   }
 
+  interval<unixtime_t> rt_interval() const {
+    auto const base =
+        std::chrono::time_point_cast<unixtime_t::duration>(base_day_);
+    return {base + i32_minutes{std::numeric_limits<delta_t>::min() + 1},
+            base + i32_minutes{std::numeric_limits<delta_t>::max()}};
+  }
+
+  bool is_in_rt_interval(timetable const& tt, transport const t) const {
+    auto const n_stops =
+        tt.route_location_seq_[tt.transport_route_[t.t_idx_]].size();
+    auto const rt_iv = rt_interval();
+    auto const iv = interval<unixtime_t>{rt_iv.from_ + kRtIntervalBuffer,
+                                         rt_iv.to_ - kRtIntervalBuffer};
+    return iv.contains(tt.event_time(t, 0U, event_type::kDep)) &&
+           iv.contains(tt.event_time(t, static_cast<stop_idx_t>(n_stops - 1U),
+                                     event_type::kArr));
+  }
+
   std::size_t event_idx([[maybe_unused]] rt_transport_idx_t const rt_t,
                         stop_idx_t const stop_idx,
                         event_type const ev_type) const {
@@ -81,16 +106,20 @@ struct rt_timetable {
     return static_cast<std::size_t>(ev_idx);
   }
 
-  void update_time(rt_transport_idx_t const rt_t,
+  bool update_time(rt_transport_idx_t const rt_t,
                    stop_idx_t const stop_idx,
                    event_type const ev_type,
                    unixtime_t const new_time,
                    rt_data_state const state = rt_data_state::kPredicted) {
+    if (!rt_interval().contains(new_time)) {
+      return false;
+    }
     auto const ev_idx = event_idx(rt_t, stop_idx, ev_type);
     auto const d = unix_to_delta(new_time);
     rt_transport_stop_times_[rt_t][ev_idx] = d;
     rt_transport_data_states_[rt_t][ev_idx] = state;
     coverage_.extend(delta_to_unix(base_day_, d));
+    return true;
   }
 
   void set_data_state(rt_transport_idx_t const rt_t,
@@ -173,6 +202,15 @@ struct rt_timetable {
                    std::nullopt);
   }
 
+  void dispatch_stop_change(rt::run const& r,
+                            stop_idx_t const stop_idx,
+                            stop const s) {
+    dispatch_stop_change(r, stop_idx, event_type::kArr, base(s.location_idx()),
+                         s.out_allowed());
+    dispatch_stop_change(r, stop_idx, event_type::kDep, base(s.location_idx()),
+                         s.in_allowed());
+  }
+
   void set_track(rt_transport_idx_t, stop_idx_t, event_type, std::string_view);
   std::optional<std::string_view> get_track(rt_transport_idx_t,
                                             stop_idx_t,
@@ -236,14 +274,87 @@ struct rt_timetable {
   }
 
   rt_transport_idx_t resolve_rt(transport const t) const noexcept {
-    auto const it = static_trip_lookup_.find(t);
-    return it == end(static_trip_lookup_) ? rt_transport_idx_t::invalid()
-                                          : it->second;
+    return utl::lookup(static_trip_lookup_, t)
+        .value_or(rt_transport_idx_t::invalid());
   }
 
   std::uint32_t n_rt_transports() const noexcept {
     return rt_transport_src_.size();
   }
+
+  std::uint32_t n_locations() const noexcept {
+    return tt_->n_locations() + n_rt_locations();
+  }
+
+  std::uint32_t n_rt_locations() const noexcept {
+    return static_cast<std::uint32_t>(rt_location_parents_.size());
+  }
+
+  bool is_rt_location(location_idx_t const l) const noexcept {
+    return l >= tt_->n_locations();
+  }
+
+  rt_location_idx_t to_rt_location(location_idx_t const l) const noexcept {
+    assert(is_rt_location(l));
+    return rt_location_idx_t{to_idx(l) - tt_->n_locations()};
+  }
+
+  location_idx_t to_location(rt_location_idx_t const i) const noexcept {
+    return location_idx_t{tt_->n_locations() + to_idx(i)};
+  }
+
+  location_idx_t base(location_idx_t const l) const {
+    return is_rt_location(l) ? rt_location_parents_[to_rt_location(l)]
+                             : tt_->base(l);
+  }
+
+  location_idx_t static_location(location_idx_t const l) const {
+    return is_rt_location(l) ? rt_location_parents_[to_rt_location(l)] : l;
+  }
+
+  u8_minutes transfer_time(location_idx_t const l) const {
+    return tt_->locations_.transfer_time_[static_location(l)];
+  }
+
+  template <typename Fn>
+  void for_each_rt_virt(Fn&& fn) const {
+    for (auto i = rt_location_idx_t{0U}; i != n_rt_locations(); ++i) {
+      fn(to_location(i), i);
+    }
+  }
+
+  template <typename Fn>
+  void for_each_rt_virt(location_idx_t const base, Fn&& fn) const {
+    if (auto const it = location_rt_virts_.find(base);
+        it != end(location_rt_virts_)) {
+      for (auto const v : it->second) {
+        fn(v);
+      }
+    }
+  }
+
+  location_idx_t add_rt_location(location_idx_t parent);
+  void add_location_rt_transport(location_idx_t, rt_transport_idx_t);
+
+  std::span<location_idx_t const> rt_stop_virts(
+      rt_transport_idx_t const rt_t) const {
+    if (rt_t >= rt_transport_stop_virts_.size()) {
+      return {};
+    }
+    auto const b = rt_transport_stop_virts_[rt_t];
+    return {b.begin(), b.size()};
+  }
+
+  location_idx_t stop_location(rt_transport_idx_t const rt_t,
+                               stop_idx_t const stop_idx) const {
+    auto const locs = rt_stop_virts(rt_t);
+    return !locs.empty() && locs[stop_idx] != location_idx_t::invalid()
+               ? locs[stop_idx]
+               : stop{rt_transport_location_seq_[rt_t][stop_idx]}
+                     .location_idx();
+  }
+
+  void update_stop_location(rt_transport_idx_t, stop_idx_t, location_idx_t);
 
   bool is_flag_set(route_flag const f, rt_transport_idx_t const r) const {
     return rt_transport_flags_[f][to_idx(r) * 2U] ||
@@ -347,6 +458,15 @@ struct rt_timetable {
 
   change_callback_t change_callback_;
 
+  vector_map<rt_location_idx_t, location_idx_t> rt_location_parents_;
+  hash_map<location_idx_t, vector<location_idx_t>> location_rt_virts_;
+
+  mutable_fws_multimap<rt_transport_idx_t, location_idx_t>
+      rt_transport_stop_virts_;
+
+  vecvec<location_idx_t, footpath> rt_footpaths_out_;
+  vecvec<location_idx_t, footpath> rt_footpaths_in_;
+
   // Lower bound graph extension.
   bitvec_map<location_idx_t> fwd_search_lb_graph_has_edges_;
   bitvec_map<location_idx_t> bwd_search_lb_graph_has_edges_;
@@ -367,5 +487,22 @@ struct rt_timetable {
 
   interval<unixtime_t> coverage_;
 };
+
+namespace rt {
+
+inline location_idx_t base(timetable const& tt,
+                           rt_timetable const* rtt,
+                           location_idx_t const l) {
+  return l == location_idx_t::invalid() ? l
+         : rtt == nullptr               ? tt.base(l)
+                                        : rtt->base(l);
+}
+
+inline location_idx_t static_location(rt_timetable const* rtt,
+                                      location_idx_t const l) {
+  return rtt == nullptr ? l : rtt->static_location(l);
+}
+
+}  // namespace rt
 
 }  // namespace nigiri

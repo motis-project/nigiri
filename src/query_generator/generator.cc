@@ -1,9 +1,10 @@
 #include "nigiri/query_generator/generator.h"
 
+#include "utl/visit.h"
+
 #include "nigiri/location_match_mode.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/get_fastest_direct.h"
-#include "nigiri/routing/ontrip_train.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -70,15 +71,13 @@ std::optional<start_dest_query> generator::random_query() {
     auto start_loc_idx = std::optional{location_idx_t{}};
     auto start_coord = std::optional<geo::latlng>{};
     if (s_.start_.has_value()) {
-      start_loc_idx = std::visit(
-          utl::overloaded{[](location_idx_t const loc_idx) {
-                            return std::optional{loc_idx};
-                          },
-                          [&](geo::latlng const& coord) {
-                            start_coord = coord;
-                            return random_location(coord, s_.start_mode_);
-                          }},
-          s_.start_.value());
+      start_loc_idx = utl::visit(
+          s_.start_.value(),
+          [](location_idx_t const loc_idx) { return std::optional{loc_idx}; },
+          [&](geo::latlng const& coord) {
+            start_coord = coord;
+            return random_location(coord, s_.start_mode_);
+          });
     } else {
       start_loc_idx = random_location();
     }
@@ -98,15 +97,13 @@ std::optional<start_dest_query> generator::random_query() {
     auto dest_loc_idx = std::optional<location_idx_t>{};
     auto dest_coord = std::optional<geo::latlng>{};
     if (s_.dest_.has_value()) {
-      dest_loc_idx = std::visit(
-          utl::overloaded{[](location_idx_t const loc_idx) {
-                            return std::optional{loc_idx};
-                          },
-                          [&](geo::latlng const& coord) {
-                            dest_coord = coord;
-                            return random_location(coord, s_.dest_mode_);
-                          }},
-          s_.dest_.value());
+      dest_loc_idx = utl::visit(
+          s_.dest_.value(),
+          [](location_idx_t const loc_idx) { return std::optional{loc_idx}; },
+          [&](geo::latlng const& coord) {
+            dest_coord = coord;
+            return random_location(coord, s_.dest_mode_);
+          });
     } else {
       auto const dest_itv = interval<unixtime_t>{
           start_itv.value().from_, start_itv.value().from_ + 1_days};

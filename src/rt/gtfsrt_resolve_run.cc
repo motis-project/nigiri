@@ -1,5 +1,7 @@
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 
+#include "utl/lookup.h"
+
 #include "nigiri/common/day_list.h"
 #include "nigiri/common/split_duration.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -32,9 +34,8 @@ void resolve_rt(rt_timetable const& rtt,
                 run& output,
                 std::string_view rt_changed_trip_id,
                 source_idx_t const src) {
-  auto const it = rtt.static_trip_lookup_.find(output.t_);
-  if (it != end(rtt.static_trip_lookup_)) {
-    output.rt_ = it->second;
+  if (auto const rt = utl::lookup(rtt.static_trip_lookup_, output.t_)) {
+    output.rt_ = *rt;
     return;
   }
   if (output.is_scheduled()) {

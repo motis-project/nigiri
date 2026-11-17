@@ -16,6 +16,7 @@
 #include "nigiri/loader/gtfs/local_to_utc.h"
 #include "nigiri/loader/gtfs/noon_offsets.h"
 
+#include "nigiri/resolve.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
@@ -25,6 +26,7 @@
 
 #include "../raptor_search.h"
 #include "../rt/util.h"
+#include "../transfer_rules_util.h"
 
 using namespace nigiri;
 using namespace date;
@@ -63,6 +65,7 @@ O,O,,28.0,29.0,,
 P,P,,30.0,31.0,,
 Q,Q,,32.0,33.0,,
 R,R,,34.0,35.0,,
+Z,Z,,40.0,41.0,,
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -77,6 +80,7 @@ R7,DB,7,,,3
 R8,DB,8,,,3
 R9,DB,9,,,3
 R10,DB,10,,,3
+R11,DB,11,,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
@@ -95,6 +99,9 @@ R8,S1,T11,,
 R9,S1,T12,,
 R2,S1,T13,,
 R10,S1,T14,,
+R11,S1,TX,,
+R11,S1,TY,,
+R11,S1,TZ,,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -142,21 +149,30 @@ T14,11:02:00,11:05:00,R,2
 T14,12:00:00,12:02:00,L,3
 T14,12:22:00,12:25:00,O,4
 T14,12:40:00,12:40:00,P,5
+TX,10:12:00,10:12:00,B,0
+TX,11:00:00,11:00:00,Z,1
+TY,10:22:00,10:22:00,C,0
+TY,11:00:00,11:00:00,Z,1
+TZ,16:17:00,16:17:00,I1,0
+TZ,17:00:00,17:00:00,Z,1
 
 # calendar_dates.txt
 service_id,date,exception_type
 S1,20190501,1
 
 # transfers.txt
-from_stop_id,to_stop_id,transfer_type,min_transfer_time
-E,A,2,300
-D,H,2,180
-I1,I2,2,240
-I2,I1,2,240
-I,K,2,300
-K,I,2,300
-C,G,2,300
-D,R,2,900
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_trip_id,to_trip_id
+E,A,2,300,,
+D,H,2,180,,
+I1,I2,2,240,,
+I2,I1,2,240,,
+I,K,2,540,,
+K,I,2,540,,
+C,G,2,300,,
+D,R,2,900,,
+B,B,3,,T0,TX
+C,C,3,,T3,TY
+I1,I1,3,,T6,TZ
 )"sv;
 
 std::string results_to_str(pareto_set<routing::journey> const& results,
@@ -185,8 +201,7 @@ interval<unixtime_t> iv(std::string_view const from, std::string_view to) {
 timetable load_timetable(std::string_view s,
                          interval<date::sys_days> const date_range = {
                              2019_y / May / 1, 2019_y / May / 2}) {
-  return loader::load(loader::mem_dir::read(s), date_range,
-                      {.adjust_footpaths_ = false});
+  return loader::load(loader::mem_dir::read(s), date_range);
 }
 
 pareto_set<routing::journey> search(timetable const& tt,
@@ -202,6 +217,18 @@ pareto_set<routing::journey> search(timetable const& tt,
 }
 
 }  // namespace
+
+// The forbidden transfers T0 -> TX at B, T3 -> TY at C and T6 -> TZ at I1 (TX,
+// TY and TZ only go to Z) put T0, T3 and T6 on virtual locations there: the
+// via tests on test_files_1 run through them.
+TEST(routing, via_test_0_virtual_locations) {
+  auto const tt = load_timetable(test_files_1);
+  for (auto const* trip : {"T0", "T3", "T6"}) {
+    EXPECT_TRUE(tt.locations_.is_virt(
+        resolve(tt, nullptr, trip, "20190501")[1U].get_stop().location_idx()))
+        << trip;
+  }
+}
 
 TEST(routing, via_test_1_A_D_no_via) {
   // A -> D, no via
@@ -1702,6 +1729,40 @@ TEST(routing, via_test_36_S_C_via_V_0m_no_exit) {
   }
 }
 
+TEST(routing, via_test_37_A_D_via_V_td_footpath_to_dest) {
+  // A -> D via V: T2 to V, T3 to D (11:00). T1 reaches X at 10:30, and a
+  // time-dependent footpath walks on to D (10:35) - without having been at V,
+  // so it does not end the search.
+  constexpr auto const kProfile = kFootProfile;
+  auto tt = load_timetable(test::feed(
+      {{"A", 0.0, 1.0}, {"X", 0.1, 1.0}, {"V", 0.2, 1.0}, {"D", 0.3, 1.0}},
+      {{"T1", "R1", {{"A", "10:00"}, {"X", "10:30"}}},
+       {"T2", "R2", {{"A", "10:00"}, {"V", "10:20"}}},
+       {"T3", "R3", {{"V", "10:40"}, {"D", "11:00"}}},
+       {"T4", "R4", {{"X", "10:40"}, {"D", "10:50"}}}},
+      ""));
+  tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
+  tt.fwd_search_lb_graph_[kProfile] = tt.fwd_search_lb_graph_[kDefaultProfile];
+  tt.bwd_search_lb_graph_[kProfile] = tt.bwd_search_lb_graph_[kDefaultProfile];
+
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
+  auto const x = loc_idx(tt, "X");
+  rtt.has_td_footpaths_out_[kProfile].set(x, true);
+  rtt.td_footpaths_out_[kProfile][x].push_back(td_footpath{
+      loc_idx(tt, "D"), unixtime_t{sys_days{2019_y / May / 1}}, 5min});
+
+  auto q = test::exact_query(
+      tt, "A", "D",
+      iv("2019-05-01 10:00 Europe/Berlin", "2019-05-01 10:01 Europe/Berlin"));
+  q.prf_idx_ = kProfile;
+  q.via_stops_ = {{loc_idx(tt, "V"), 0_minutes}};
+  auto const results = search(tt, &rtt, std::move(q), direction::kForward);
+
+  ASSERT_EQ(1U, results.size());
+  EXPECT_EQ(test::at("11:00"), begin(results)->dest_time_);
+}
+
 constexpr auto const test_files_via_walk = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -1800,6 +1861,7 @@ S1,S1,56.0,13.0,,S
 S2,S2,56.1,13.0,,S
 B,B,57.0,13.0,,
 B0,B0,57.0,13.5,,
+Z,Z,60.0,13.0,,
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -1810,12 +1872,14 @@ route_id,agency_id,route_short_name,route_long_name,route_type
 R1,AG,R1,,3
 R2,AG,R2,,3
 R3,AG,R3,,3
+R4,AG,R4,,3
 
 # trips.txt
 route_id,service_id,trip_id
 R1,S1,T1
 R2,S1,T2
 R3,S1,T3
+R4,S1,TX
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -1825,11 +1889,15 @@ T2,10:15:00,10:15:00,S1,1
 T2,10:25:00,10:25:00,S2,2
 T3,10:40:00,10:40:00,S2,1
 T3,10:50:00,10:50:00,B,2
+TX,10:00:00,10:00:00,Z,1
+TX,10:12:00,10:12:00,S1,2
 
 # transfers.txt
-from_stop_id,to_stop_id,transfer_type,min_transfer_time
-A0,S1,2,300
-S2,B0,2,300
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_trip_id,to_trip_id
+A0,S1,2,300,,
+S2,B0,2,300,,
+S1,S1,2,120,,
+S1,S1,2,300,,T2
 )"sv;
 
 TEST(routing, via_test_40_via_stay_later_at_search_start) {
@@ -1839,8 +1907,13 @@ TEST(routing, via_test_40_via_stay_later_at_search_start) {
   // twice, the stay fits at one visit only: S2 from S1 / A0, S1 to S2 / B0. A
   // search starting at the other visit (directly or by its first walk) has to
   // leave it without the stay and spend it later. Walking between S1 and S2
-  // (2 h) gives further journeys without a transfer.
+  // (2 h) gives further journeys without a transfer. Changes to T2 at S1 take
+  // 5 min (TX arrives 3 min before T2 leaves): T2 leaves from a virtual
+  // location, the stay at the start has to hold there as well.
   auto const tt = load_timetable(test_files_via_stay_later);
+  ASSERT_TRUE(tt.locations_.is_virt(
+      resolve(tt, nullptr, "T2", "20190501")[0U].get_stop().location_idx()))
+      << "precondition";
   for (auto const dir : {direction::kForward, direction::kBackward}) {
     for (auto const& [from, to, dep, arr] : {
              std::tuple{"S1", "B", "10:15", "10:50"},

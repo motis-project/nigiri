@@ -5,6 +5,7 @@
 #include "boost/json.hpp"
 
 #include "utl/get_or_create.h"
+#include "utl/lookup.h"
 #include "utl/parser/csv_range.h"
 
 #include "geo/box.h"
@@ -146,25 +147,23 @@ void parse_location_group_stops(timetable& tt,
   };
   utl::for_each_row<location_group_record>(
       file_content, [&](location_group_record const& r) {
-        auto const location_group_it =
-            location_groups.find(r.location_group_id_->view());
-        if (location_group_it == end(location_groups)) {
+        auto const location_group =
+            utl::lookup(location_groups, r.location_group_id_->view());
+        if (!location_group.has_value()) {
           log(log_lvl::error, "nigiri.loader.gtfs.flex",
               "location_group_id={} not found", r.location_group_id_->view());
           return;
         }
 
-        auto const stop_it = stops.find(r.stop_id_->view());
-        if (stop_it == end(stops)) {
+        auto const l = utl::lookup(stops, r.stop_id_->view());
+        if (!l.has_value()) {
           log(log_lvl::error, "nigiri.loader.gtfs.flex",
               "location_group_id={} not found", r.location_group_id_->view());
           return;
         }
 
-        ctx.location_location_groups_[stop_it->second].push_back(
-            location_group_it->second);
-        ctx.location_group_locations_[location_group_it->second].push_back(
-            stop_it->second);
+        ctx.location_location_groups_[*l].push_back(*location_group);
+        ctx.location_group_locations_[*location_group].push_back(*l);
       });
 }
 

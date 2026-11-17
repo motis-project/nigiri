@@ -2,7 +2,10 @@
 
 #include "nigiri/loader/netex/utc_trip.h"
 
+#include <algorithm>
 #include <ranges>
+
+#include "utl/helpers/algorithm.h"
 
 #include "nigiri/logging.h"
 
@@ -185,26 +188,37 @@ void build_seated_trips(timetable& tt,
                                rule_trip_idx_t,  // last rule trip in chain
                                int  // transport offset relative to component
                                >>{};
+    // An incoming transfer counts only where the component has it (valid
+    // dwell, see PART 1).
+    auto const is_entry = [&](remaining_idx_t const i) {
+      return std::ranges::none_of(incoming(i), [&](rule_trip_idx_t const in) {
+        auto const r = get_representative(in);
+        return r.has_value() && is_valid_dwell_time(r->first, i);
+      });
+    };
+    auto const push_start = [&](remaining_idx_t const remaining_idx,
+                                int const offset) {
+      auto const transport_traffic_days = shift(component_traffic_days, offset);
+      assert((remaining.at(remaining_idx).utc_traffic_days_ &
+              transport_traffic_days) == transport_traffic_days);
+      trace("    -> PUSH {}, on={} (transport_offset={})", name(remaining_idx),
+            day_list{transport_traffic_days, base}, -offset);
+      auto start = remaining.at(remaining_idx);
+      start.utc_traffic_days_ = transport_traffic_days;
+      q.emplace_back(std::move(start),
+                     seated.remaining_rule_trip_[remaining_idx], -offset);
+    };
     for (auto const& [remaining_idx, offset] : component) {
       trace("  -> {}: {} on {}", name(remaining_idx), offset,
             day_list{shift(component_traffic_days, offset), base});
-      auto const is_entry = std::ranges::empty(
-          incoming(remaining_idx)  //
-          | sv::transform(get_representative)  //
-          | sv::filter([](auto&& r) { return r.has_value(); }));
-      if (is_entry) {
-        auto const transport_traffic_days =
-            shift(component_traffic_days, offset);
-        assert((remaining.at(remaining_idx).utc_traffic_days_ &
-                transport_traffic_days) == transport_traffic_days);
-        trace("    -> PUSH {}, on={} (transport_offset={})",
-              name(remaining_idx), day_list{transport_traffic_days, base},
-              -offset);
-        auto start = remaining.at(remaining_idx);
-        start.utc_traffic_days_ = transport_traffic_days;
-        q.emplace_back(std::move(start),
-                       seated.remaining_rule_trip_[remaining_idx], -offset);
+      if (is_entry(remaining_idx)) {
+        push_start(remaining_idx, offset);
       }
+    }
+    if (q.empty()) {  // a cycle: start at its first trip
+      auto const first = std::ranges::min_element(
+          component, {}, [](auto const& x) { return x.first; });
+      push_start(first->first, first->second);
     }
 
     // ============
@@ -230,9 +244,13 @@ void build_seated_trips(timetable& tt,
 
       // Expand search.
       auto has_next = false;
+      auto const prev = get_representative(prev_rule_trip);
       for (auto const& next : seated.seated_out_[prev_rule_trip]) {
         auto const r = get_representative(next);
-        if (r.has_value()) {
+        if (r.has_value() && prev.has_value() &&
+            is_valid_dwell_time(prev->first, r->first) &&
+            utl::find(curr.trips_, remaining[r->first].trips_[0]) ==
+                end(curr.trips_)) {
           auto copy = curr;
           auto const [remaining_idx, offset] = *r;
           auto const& next_r = remaining.at(remaining_idx);

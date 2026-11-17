@@ -5,10 +5,12 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "pugixml.hpp"
 
 #include "utl/enumerate.h"
+#include "utl/erase_duplicates.h"
 #include "utl/parser/arg_parser.h"
 
 #include "fmt/core.h"
@@ -17,6 +19,7 @@
 #include "nigiri/common/mam_dist.h"
 #include "nigiri/common/parse_time.h"
 #include "nigiri/for_each_meta.h"
+#include "nigiri/location_routes.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -141,6 +144,7 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
       << "\ntotal stops: " << s.total_stops_
       << "\nresolved stops: " << s.resolved_stops_
       << "\nruns without stops: " << s.runs_without_stops_
+      << "\nruns outside rt interval: " << s.runs_outside_rt_interval_
       << "\ncancelled runs: " << s.cancelled_runs_
       << "\nskipped vdv stops: " << s.skipped_vdv_stops_
       << "\nexcess vdv stops: " << s.excess_vdv_stops_
@@ -347,10 +351,15 @@ void updater::match_run(run_id const& vdv_id,
     }
     auto no_transport_found_at_stop = true;
     for (auto const l : tt_.locations_.equivalences_[vdv_stop.l_]) {
-      for (auto const r : tt_.location_routes_[l]) {
+      auto routes = std::vector<route_idx_t>{};
+      for_each_route_at_stop(tt_, l, [&](location_idx_t, route_idx_t const r) {
+        routes.push_back(r);
+      });
+      utl::erase_duplicates(routes);
+      for (auto const r : routes) {
         auto const location_seq = tt_.route_location_seq_[r];
         for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
-          if (stop{s}.location_idx() != l) {
+          if (tt_.base(stop{s}.location_idx()) != l) {
             continue;
           }
           auto const vdv_ev = stop_idx == 0
@@ -363,6 +372,9 @@ void updater::match_run(run_id const& vdv_id,
           }
 
           auto const [vdv_time, ev_type] = *vdv_ev;
+          if (!tt_.internal_interval().contains(vdv_time)) {
+            continue;
+          }
           auto const [vdv_day_idx, vdv_mam] = tt_.day_idx_mam(vdv_time);
 
           for (auto const [nigiri_ev_time_idx, nigiri_ev_time] :
@@ -475,7 +487,9 @@ void update_event(rt_timetable& rtt,
             rs.get_loc(), et == event_type::kArr ? "ARR" : "DEP",
             rs.scheduled_time(et), delay.count() >= 0 ? "+" : "",
             delay.count());
-  rtt.update_time(rs.fr_->rt_, rs.stop_idx_, et, new_time, state);
+  if (!rtt.update_time(rs.fr_->rt_, rs.stop_idx_, et, new_time, state)) {
+    return;
+  }
   rtt.dispatch_delay(*rs.fr_, rs.stop_idx_, et, delay);
   if (delay_propagation != nullptr) {
     *delay_propagation = delay;
@@ -529,6 +543,16 @@ void updater::update_run(rt_timetable& rtt,
                          statistics& stats) {
   auto fr = rt::frun(tt_, &rtt, r);
   if (!fr.is_rt()) {
+    if (!rtt.is_in_rt_interval(tt_, fr.t_)) {
+      log(log_lvl::debug, "vdv_update.outside_rt_interval",
+          "run outside of real-time interval {} "
+          "(src={}, trip_id={}, dep={}), skipping",
+          rtt.rt_interval(), src_idx_,
+          tt_.trip_id_strings_[fr.trip_idx()].view(),
+          fr[0].scheduled_time(event_type::kDep));
+      ++stats.runs_outside_rt_interval_;
+      return;
+    }
     fr.rt_ = rtt.add_rt_transport(src_idx_, tt_, fr.t_);
   } else {
     rtt.rt_transport_is_cancelled_.set(to_idx(fr.rt_), false);
@@ -541,9 +565,11 @@ void updater::update_run(rt_timetable& rtt,
               rs.get_loc(), et == event_type::kArr ? "ARR" : "DEP",
               rs.scheduled_time(et), delay->count() >= 0 ? "+" : "",
               delay->count());
-    rtt.update_time(fr.rt_, rs.stop_idx_, et, rs.scheduled_time(et) + *delay,
-                    rt_data_state::kPropagated);
-    rtt.dispatch_delay(fr, rs.stop_idx_, et, *delay);
+    if (rtt.update_time(fr.rt_, rs.stop_idx_, et,
+                        rs.scheduled_time(et) + *delay,
+                        rt_data_state::kPropagated)) {
+      rtt.dispatch_delay(fr, rs.stop_idx_, et, *delay);
+    }
     ++stats.propagated_delays_;
   };
 
@@ -579,7 +605,7 @@ void updater::update_run(rt_timetable& rtt,
     skipped_stops.clear();
     for (auto vdv_stop = cursor; vdv_stop != end(vdv_stops); ++vdv_stop) {
       if (vdv_stop->l_ != location_idx_t::invalid() &&
-          matches(tt_, routing::location_match_mode::kEquivalent,
+          matches(tt_, nullptr, routing::location_match_mode::kEquivalent,
                   rs.get_location_idx(), vdv_stop->l_)) {
         if (rs.stop_idx_ != 0 && vdv_stop->arr_.has_value() &&
             (static_cast<std::uint32_t>(std::abs(
@@ -783,7 +809,7 @@ void updater::process_vdv_run(rt_timetable& rtt,
     auto const cancelled_run_selector =
         format_ == xml_format::kVdv ? "FaelltAus" : "Cancellation";
     if (get_opt_bool(vdv_run, cancelled_run_selector, false).value()) {
-      rtt.cancel_run(r);
+      rtt.cancel_run(frun{tt_, &rtt, r});
       ++stats.cancelled_runs_;
     } else {
       update_run(rtt, r, vdv_stops, is_complete_run, stats);

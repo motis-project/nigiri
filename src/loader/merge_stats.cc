@@ -5,6 +5,7 @@
 #include "boost/json.hpp"
 
 #include "utl/helpers/algorithm.h"
+#include "utl/lookup.h"
 #include "utl/verify.h"
 
 #include "nigiri/logging.h"
@@ -208,7 +209,6 @@ tr.a[hidden]{display:none}
 
   auto i = 0U;
   for (auto const& [a, b, n] : rows) {
-    auto const back = src_n.find({b, a});
     auto const uniq = [&](source_idx_t const x) {
       auto const t = s.src_n_transports_[x];
       return pct(t - s.src_overlap_.n_duplicated_transports_[x], t);
@@ -224,7 +224,8 @@ tr.a[hidden]{display:none}
   </tr>
 )",
         i, esc(tag(a)), pct(n, s.src_n_transports_[a]),
-        pct(back == end(src_n) ? 0U : back->second, s.src_n_transports_[b]),
+        pct(utl::lookup(src_n, std::pair{b, a}).value_or(0U),
+            s.src_n_transports_[b]),
         esc(tag(b)), uniq(a), uniq(b));
 
     auto const it = agencies.find({a, b});

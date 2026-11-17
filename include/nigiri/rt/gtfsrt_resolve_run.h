@@ -49,7 +49,7 @@ void resolve_trip(date::sys_days const today,
          start_time_day_offset - tt.internal_interval_days().from_)
             .count();
 
-    if (day_idx > kMaxDays || day_idx < 0) {
+    if (day_idx >= kMaxDays || day_idx < 0) {
       continue;
     }
 
@@ -64,13 +64,10 @@ void resolve_trip(date::sys_days const today,
 }
 
 template <typename Fn>
-void resolve_static_trip_id(date::sys_days const today,
-                            timetable const& tt,
-                            source_idx_t const src,
-                            std::string_view const trip_id,
-                            std::optional<date::sys_days> const& start_date,
-                            std::optional<duration_t> const& start_time,
-                            Fn&& fn) {
+void for_each_trip(timetable const& tt,
+                   source_idx_t const src,
+                   std::string_view const trip_id,
+                   Fn&& fn) {
   auto const lb = std::lower_bound(
       begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_), trip_id,
       [&](trip_idx_t const a, auto&& b) {
@@ -84,8 +81,21 @@ void resolve_static_trip_id(date::sys_days const today,
   };
 
   for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(*i); ++i) {
-    resolve_trip(today, tt, *i, start_date, start_time, fn);
+    fn(*i);
   }
+}
+
+template <typename Fn>
+void resolve_static_trip_id(date::sys_days const today,
+                            timetable const& tt,
+                            source_idx_t const src,
+                            std::string_view const trip_id,
+                            std::optional<date::sys_days> const& start_date,
+                            std::optional<duration_t> const& start_time,
+                            Fn&& fn) {
+  for_each_trip(tt, src, trip_id, [&](trip_idx_t const trip) {
+    resolve_trip(today, tt, trip, start_date, start_time, fn);
+  });
 }
 
 template <typename Fn>

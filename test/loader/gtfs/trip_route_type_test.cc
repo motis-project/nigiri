@@ -127,3 +127,37 @@ R1,DAILY,TRAIN2
   EXPECT_EQ(1U, classes.size());
   EXPECT_EQ(1U, classes.count(clasz::kRegional));
 }
+
+// A forbidden transfer TRAIN -> REPL at S2 (TRAIN -> BUS stays allowed) splits
+// both routes: TRAIN's own transfers conflict (BUS needs <= 120 min, REPL
+// > 180 min), so the rail route splits off TRAIN, then the bus route splits
+// BUS and REPL. The split routes have to keep their class.
+TEST(gtfs, trip_route_type_survives_route_split) {
+  constexpr auto const transfers = std::string_view{
+      R"(from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_trip_id,to_trip_id
+S2,S2,3,,TRAIN,REPL
+)"};
+  using std::filesystem::path;
+  auto const files = mem_dir{{{path{kAgencyFile}, std::string{agency}},
+                              {path{kStopFile}, std::string{stops}},
+                              {path{kCalenderFile}, std::string{calendar}},
+                              {path{kRoutesFile}, std::string{routes}},
+                              {path{kTripsFile}, std::string{trips}},
+                              {path{kStopTimesFile}, std::string{stop_times}},
+                              {path{kTransfersFile}, std::string{transfers}}}};
+  ASSERT_TRUE(applicable(files));
+  auto const tt = loader::load(files, {2006_y / 7 / 1, 2006_y / 8 / 1});
+
+  auto classes = std::multiset<clasz>{};
+  for (auto const c : tt.route_clasz_) {
+    classes.insert(c);
+  }
+  EXPECT_EQ(4U, classes.size());
+  EXPECT_EQ(2U, classes.count(clasz::kRegional));
+  EXPECT_EQ(2U, classes.count(clasz::kBus));
+  for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
+    for (auto const c : tt.route_section_clasz_[r]) {
+      EXPECT_EQ(tt.route_clasz_[r], c);
+    }
+  }
+}
