@@ -854,6 +854,12 @@ routing_result bmrap_profile_search(
     direction const search_dir,
     std::optional<std::chrono::seconds> const timeout,
     bool const gpu_mc) {
+  // A fixed start time has no profile to restrict (and no window to scan):
+  // the mcraptor Pareto set of that departure.
+  if (std::holds_alternative<unixtime_t>(q.start_time_)) {
+    return raptor_search(tt, rtt, s_state, mc_state, std::move(q), search_dir,
+                         timeout);
+  }
   auto const run = [&]<bool GpuMc>() {
     return search_dir == direction::kForward
                ? bmrap_profile<direction::kForward, false, Criteria, AlgoState,
